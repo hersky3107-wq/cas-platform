@@ -1,65 +1,212 @@
-import Image from "next/image";
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  BookHeart,
+  Footprints,
+  Handshake,
+  Globe,
+  Info,
+  Lock,
+  Sparkles,
+  Sword,
+  Table2,
+  X,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  activeModules,
+  betaModules,
+  type ModuleConfig,
+} from "@/lib/modules/config";
+
+const iconMap: Record<string, LucideIcon> = {
+  Globe,
+  Table2,
+  Sparkles,
+  BookHeart,
+  Footprints,
+  Sword,
+  Handshake,
+  Zap, // fallback for any missing icon mapping
+};
+
+function LobbyCard({
+  module,
+  onComingSoon,
+}: {
+  module: ModuleConfig;
+  onComingSoon: (item: ModuleConfig) => void;
+}) {
+  const Icon = iconMap[module.icon] ?? Zap;
+  const imageScale =
+    module.id === "custom"
+      ? 1.0
+      : module.id === "suit"
+        ? 1.5
+        : module.id === "persona"
+          ? 1.25
+          : module.id === "compare"
+            ? 1.1
+            : 1.3;
+  const iconClass = `relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px] ${module.imageSrc ? "bg-transparent" : `bg-gradient-to-br ${module.accent}`}`;
+  const content = (
+    <div className="flex flex-col items-center">
+      <div
+        className={`${iconClass} ${module.status === "coming-soon" ? "opacity-50" : "opacity-100"}`}        
+      >
+        {module.imageSrc ? (
+          <img
+            src={module.id === "arena" ? "/icons/arena.png" : module.imageSrc}
+            alt={`${module.name} icon`}
+            style={{
+              transform: `scale(${imageScale})`,
+              transformOrigin: "center",
+            }}
+            className="absolute inset-0 h-full w-full object-contain object-center"
+          />
+        ) : (
+          <Icon className="h-8 w-8 text-white lg:h-10 lg:w-10" />
+        )}
+        {module.status === "coming-soon" ? (
+          <span className="absolute -bottom-1 -right-1 rounded-full bg-black/75 p-1">
+            <Lock className="h-3 w-3 text-white" />
+          </span>
+        ) : null}
+      </div>
+      <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
+        {module.name}
+      </span>
+    </div>
+  );
+
+  if (module.status === "active" && module.href) {
+    return (
+      <Link href={module.href} className="flex items-center justify-center">
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="flex cursor-pointer items-center justify-center"
+      onClick={() => onComingSoon(module)}
+    >
+      {content}
+    </button>
+  );
+}
 
 export default function Home() {
+  const [modalItem, setModalItem] = useState<ModuleConfig | null>(null);
+  const [email, setEmail] = useState("");
+  const router = useRouter();
+
+  const mvpModules = useMemo(() => {
+    // Explicit order: COMPARE first, CUSTOM last (for MVP).
+    const compare = activeModules.find((m) => m.id === "compare")!;
+    const persona = activeModules.find((m) => m.id === "persona")!;
+    const verdict = activeModules.find((m) => m.id === "verdict")!;
+    const arena = activeModules.find((m) => m.id === "arena")!;
+    const suit = activeModules.find((m) => m.id === "suit")!;
+    const custom = activeModules.find((m) => m.id === "custom")!;
+
+    return [compare, persona, verdict, arena, suit, custom];
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-[#0a0f1e] text-white">
+      <div className="fixed right-3 top-3 z-30 flex items-center gap-2">
+        <div className="whitespace-nowrap rounded-full bg-[#131c35] px-2 py-1 text-xs text-white">
+          First time here?
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <button
+          type="button"
+          onClick={() => router.push("/about")}
+          aria-label="About"
+          className="animate-pulse flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
+        >
+          <Info className="h-5 w-5" />
+        </button>
+      </div>
+
+      <section className="mx-auto flex min-h-screen w-full flex-col items-center justify-center px-8 py-16 lg:px-16">
+        <div className="w-full max-w-6xl">
+          <div className="mb-12">
+            <p className="mb-4 text-center text-[11px] font-medium uppercase tracking-[0.24em] text-white/55">
+              MVP
+            </p>
+            <div className="grid justify-items-center grid-cols-4 gap-6 sm:grid-cols-5 md:grid-cols-6 lg:gap-8">
+              {mvpModules.map((module) => (
+                <LobbyCard
+                  key={module.id}
+                  module={module}
+                  onComingSoon={setModalItem}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-4 text-center text-[11px] font-medium uppercase tracking-[0.24em] text-white/55">
+              BETA
+            </p>
+            <div className="grid justify-items-center grid-cols-4 gap-6 sm:grid-cols-5 md:grid-cols-6 lg:gap-8">
+              {betaModules.map((module) => (
+                <LobbyCard
+                  key={module.id}
+                  module={module}
+                  onComingSoon={setModalItem}
+                />
+              ))}
+            </div>
+          </div>
         </div>
-      </main>
-    </div>
+      </section>
+
+      {modalItem ? (
+        <div className="fixed inset-0 z-40 bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[20px] bg-[#131c35] p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-cyan-300/85">Coming Soon</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">{modalItem.name}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalItem(null)}
+                className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white"
+                aria-label="Close modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm text-slate-300">Get notified when this launches</p>
+
+            <div className="mt-5 space-y-3">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                className="w-full rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/55 focus:outline-none"
+              />
+              <button
+                type="button"
+                className="w-full rounded-2xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300"
+              >
+                Notify Me
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </main>
   );
 }
