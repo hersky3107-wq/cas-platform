@@ -174,8 +174,11 @@ export default function Home() {
           <div className="w-full max-w-md rounded-[20px] bg-[#131c35] p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-cyan-300/85">Coming Soon</p>
+                <p className="text-xs font-medium tracking-[0.24em] text-cyan-300/85">
+                  Coming in Beta
+                </p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">{modalItem.name}</h2>
+                <p className="mt-1 text-sm text-slate-300">In Development</p>
               </div>
               <button
                 type="button"
@@ -187,7 +190,9 @@ export default function Home() {
               </button>
             </div>
 
-            <p className="mt-4 text-sm text-slate-300">Get notified when this launches</p>
+            <p className="mt-4 text-sm text-slate-300">
+              This mode is currently in development. See you in Beta!
+            </p>
 
             <div className="mt-5 space-y-3">
               <input
