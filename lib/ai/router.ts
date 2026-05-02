@@ -168,6 +168,7 @@ async function callOpenAICompatibleChat({
   prompt,
   systemPrompt,
   temperature,
+  maxCompletionTokens,
 }: {
   baseUrl: string
   apiKey: string
@@ -175,6 +176,7 @@ async function callOpenAICompatibleChat({
   prompt: string
   systemPrompt: string
   temperature?: number
+  maxCompletionTokens?: number
 }) {
   const payload: Record<string, unknown> = {
     model,
@@ -185,6 +187,9 @@ async function callOpenAICompatibleChat({
   }
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
     payload.temperature = temperature
+  }
+  if (typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0) {
+    payload.max_tokens = maxCompletionTokens
   }
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -222,16 +227,22 @@ async function callAnthropic({
   prompt,
   systemPrompt,
   temperature,
+  maxCompletionTokens,
 }: {
   apiKey: string
   model: string
   prompt: string
   systemPrompt: string
   temperature?: number
+  maxCompletionTokens?: number
 }) {
+  const capped =
+    typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0
+      ? maxCompletionTokens
+      : 1024
   const anthropicBody: Record<string, unknown> = {
     model,
-    max_tokens: 1024,
+    max_tokens: capped,
     system: systemPrompt || undefined,
     messages: [{ role: 'user', content: prompt }],
   }
@@ -279,12 +290,14 @@ async function callGoogleGemini({
   prompt,
   systemPrompt,
   temperature,
+  maxCompletionTokens,
 }: {
   apiKey: string
   model: string
   prompt: string
   systemPrompt: string
   temperature?: number
+  maxCompletionTokens?: number
 }) {
   const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`
 
@@ -296,8 +309,15 @@ async function callGoogleGemini({
       },
     ],
   }
+  const generationConfig: Record<string, unknown> = {}
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
-    geminiBody.generationConfig = { temperature }
+    generationConfig.temperature = temperature
+  }
+  if (typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0) {
+    generationConfig.maxOutputTokens = maxCompletionTokens
+  }
+  if (Object.keys(generationConfig).length) {
+    geminiBody.generationConfig = generationConfig
   }
 
   const res = await fetch(url, {
@@ -335,12 +355,14 @@ async function callProvider({
   prompt,
   systemPrompt,
   temperature,
+  maxCompletionTokens,
 }: {
   provider: AiProviderName
   apiKey: string
   prompt: string
   systemPrompt: string
   temperature?: number
+  maxCompletionTokens?: number
 }) {
   const model = MODEL_BY_PROVIDER[provider]
 
@@ -352,6 +374,7 @@ async function callProvider({
       prompt,
       systemPrompt,
       temperature,
+      maxCompletionTokens,
     })
     return { model, text, usage }
   }
@@ -364,6 +387,7 @@ async function callProvider({
       prompt,
       systemPrompt,
       temperature,
+      maxCompletionTokens,
     })
     return { model, text, usage }
   }
@@ -376,6 +400,7 @@ async function callProvider({
       prompt,
       systemPrompt,
       temperature,
+      maxCompletionTokens,
     })
     return { model, text, usage }
   }
@@ -388,6 +413,7 @@ async function callProvider({
       prompt,
       systemPrompt,
       temperature,
+      maxCompletionTokens,
     })
     return { model, text, usage }
   }
@@ -399,6 +425,7 @@ async function callProvider({
       prompt,
       systemPrompt,
       temperature,
+      maxCompletionTokens,
     })
     return { model, text, usage }
   }
@@ -409,6 +436,7 @@ async function callProvider({
     prompt,
     systemPrompt,
     temperature,
+    maxCompletionTokens,
   })
   return { model, text, usage }
 }
@@ -425,6 +453,8 @@ export type RunSingleProviderParams = {
   saveCompareArtifacts?: boolean
   /** Sampling temperature (e.g. 0.1–1); omit for provider defaults */
   temperature?: number
+  /** When set (e.g. 300), caps completion length via each provider API. */
+  maxCompletionTokens?: number
 }
 
 async function saveCompareArtifactsRows(
@@ -481,6 +511,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     supabaseAccessToken,
     saveCompareArtifacts,
     temperature,
+    maxCompletionTokens,
   } = params
 
   const started = nowMs()
@@ -504,6 +535,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       prompt,
       systemPrompt,
       temperature,
+      maxCompletionTokens,
     })
 
     const responseTimeMs = nowMs() - started
@@ -627,16 +659,26 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
 
 export async function* iterateCompareProviderResults(input: {
   prompt: string
-  systemPrompt: string
+  /** Ignored when getSystemPrompt is set */
+  systemPrompt?: string
+  /** Overrides systemPrompt when provided (one system string per AI). */
+  getSystemPrompt?: (provider: AiProviderName) => string
   providers: AiProviderName[]
   sessionId: string
   supabaseAccessToken?: string
   saveCompareArtifacts?: boolean
   temperature?: number
+  maxCompletionTokens?: number
 }): AsyncGenerator<RouterResult, void, unknown> {
   const providers = uniqueProviders(input.providers)
   const supabase = getAuthedSupabase(input.supabaseAccessToken)
   const userId = input.supabaseAccessToken ? await getUserIdFromToken(supabase) : null
+
+  const resolveSystemPrompt = (provider: AiProviderName) => {
+    if (input.getSystemPrompt) return input.getSystemPrompt(provider)
+    if (input.systemPrompt != null && input.systemPrompt !== '') return input.systemPrompt
+    throw new Error('iterateCompareProviderResults: provide systemPrompt or getSystemPrompt')
+  }
 
   const inflight = new Map(
     providers.map((provider) => {
@@ -646,10 +688,11 @@ export async function* iterateCompareProviderResults(input: {
         userId,
         provider,
         prompt: input.prompt,
-        systemPrompt: input.systemPrompt,
+        systemPrompt: resolveSystemPrompt(provider),
         supabaseAccessToken: input.supabaseAccessToken,
         saveCompareArtifacts: input.saveCompareArtifacts,
         temperature: input.temperature,
+        maxCompletionTokens: input.maxCompletionTokens,
       })
       return [provider, p] as const
     })

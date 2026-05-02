@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const COMPARE_SYSTEM_PROMPT =
-  'Respond in 5-7 sentences. Be direct and clear. Maximum 150 words.'
+  'Respond in 5-7 sentences. Be direct and clear. STRICT LIMIT: Maximum 150 words. Stop writing after 150 words.'
 
 /** 3 AIs = 10, 4 = 12, 5 = 14, 6 = 16 (also n=1→6, n=2→8). */
 export function creditsPerMessage(aiCount: number): number {

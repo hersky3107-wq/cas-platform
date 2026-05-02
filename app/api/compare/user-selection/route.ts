@@ -38,18 +38,23 @@ export async function POST(req: Request) {
       .eq('id', sessionId)
       .maybeSingle()
 
-    if (!sess || (sess.mode !== 'compare' && sess.mode !== 'custom')) {
+    if (
+      !sess ||
+      (sess.mode !== 'compare' && sess.mode !== 'custom' && sess.mode !== 'persona')
+    ) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 400 })
     }
 
     const createdAt = new Date().toISOString()
+    const bestAnswerCategory =
+      sess.mode === 'persona' ? 'persona_best_answer' : 'compare_best_answer'
 
     const primary = {
       session_id: sessionId,
       user_id: user.id,
       selected_ai_provider: provider,
       selected_ai_model: model,
-      category: 'compare_best_answer',
+      category: bestAnswerCategory,
       created_at: createdAt,
     }
 
@@ -64,7 +69,7 @@ export async function POST(req: Request) {
       selected_ai_name: provider,
       selected_ai_provider: provider,
       selected_ai_model: model,
-      category: 'compare_best_answer',
+      category: bestAnswerCategory,
     }
 
     const { error: e2 } = await supabase.from('user_selections').insert([fallback])

@@ -35,13 +35,23 @@ export async function POST(req: Request) {
       .eq('id', sessionId)
       .maybeSingle()
 
-    if (!sess || (sess.mode !== 'compare' && sess.mode !== 'custom')) {
+    if (
+      !sess ||
+      (sess.mode !== 'compare' && sess.mode !== 'custom' && sess.mode !== 'persona')
+    ) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 400 })
     }
 
     const provider = winner as AiProviderName
     const model = MODEL_BY_PROVIDER[provider]
     const createdAt = new Date().toISOString()
+    const sessionResultCategory = sess.mode === 'persona' ? 'persona' : 'compare'
+    const endReason =
+      sess.mode === 'persona'
+        ? 'persona_session_best_overall'
+        : 'compare_session_best_overall'
+    const endSelectionCategory =
+      sess.mode === 'persona' ? 'persona_session_end' : 'compare_session_end'
 
     const sel = await supabase.from('user_selections').insert([
       {
@@ -49,8 +59,8 @@ export async function POST(req: Request) {
         user_id: user.id,
         selected_ai_provider: provider,
         selected_ai_model: model,
-        reason: 'compare_session_best_overall',
-        category: 'compare_session_end',
+        reason: endReason,
+        category: endSelectionCategory,
         created_at: createdAt,
       },
     ])
@@ -62,7 +72,7 @@ export async function POST(req: Request) {
           selected_ai_provider: provider,
           selected_ai_model: model,
           selected_ai_name: provider,
-          category: 'compare_session_end',
+          category: endSelectionCategory,
         },
       ])
       if (sel2.error) {
@@ -70,8 +80,8 @@ export async function POST(req: Request) {
           {
             session_id: sessionId,
             selected_ai_name: provider,
-            reason: 'compare_session_best_overall',
-            category: 'compare',
+            reason: endReason,
+            category: sessionResultCategory,
           },
         ])
         if (sel3.error) {
@@ -90,7 +100,7 @@ export async function POST(req: Request) {
       {
         session_id: sessionId,
         winner_ai_name: provider,
-        category: 'compare',
+        category: sessionResultCategory,
       },
     ])
     if (res.error) {
