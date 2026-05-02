@@ -31,7 +31,7 @@ export type RouterResult = {
   error?: string
 }
 
-const MODEL_BY_PROVIDER: Record<AiProviderName, string> = {
+export const MODEL_BY_PROVIDER: Record<AiProviderName, string> = {
   openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-6',
   google: 'gemini-2.5-flash',
@@ -167,26 +167,33 @@ async function callOpenAICompatibleChat({
   model,
   prompt,
   systemPrompt,
+  temperature,
 }: {
   baseUrl: string
   apiKey: string
   model: string
   prompt: string
   systemPrompt: string
+  temperature?: number
 }) {
+  const payload: Record<string, unknown> = {
+    model,
+    messages: [
+      ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+      { role: 'user', content: prompt },
+    ],
+  }
+  if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
+    payload.temperature = temperature
+  }
+
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-        { role: 'user', content: prompt },
-      ],
-    }),
+    body: JSON.stringify(payload),
   })
 
   if (!res.ok) {
@@ -214,12 +221,24 @@ async function callAnthropic({
   model,
   prompt,
   systemPrompt,
+  temperature,
 }: {
   apiKey: string
   model: string
   prompt: string
   systemPrompt: string
+  temperature?: number
 }) {
+  const anthropicBody: Record<string, unknown> = {
+    model,
+    max_tokens: 1024,
+    system: systemPrompt || undefined,
+    messages: [{ role: 'user', content: prompt }],
+  }
+  if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
+    anthropicBody.temperature = temperature
+  }
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -227,12 +246,7 @@ async function callAnthropic({
       'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1024,
-      system: systemPrompt || undefined,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify(anthropicBody),
   })
 
   if (!res.ok) {
@@ -264,13 +278,27 @@ async function callGoogleGemini({
   model,
   prompt,
   systemPrompt,
+  temperature,
 }: {
   apiKey: string
   model: string
   prompt: string
   systemPrompt: string
+  temperature?: number
 }) {
   const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`
+
+  const geminiBody: Record<string, unknown> = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }],
+      },
+    ],
+  }
+  if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
+    geminiBody.generationConfig = { temperature }
+  }
 
   const res = await fetch(url, {
     method: 'POST',
@@ -278,14 +306,7 @@ async function callGoogleGemini({
       'Content-Type': 'application/json',
       'x-goog-api-key': apiKey,
     },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }],
-        },
-      ],
-    }),
+    body: JSON.stringify(geminiBody),
   })
 
   if (!res.ok) {
@@ -313,11 +334,13 @@ async function callProvider({
   apiKey,
   prompt,
   systemPrompt,
+  temperature,
 }: {
   provider: AiProviderName
   apiKey: string
   prompt: string
   systemPrompt: string
+  temperature?: number
 }) {
   const model = MODEL_BY_PROVIDER[provider]
 
@@ -328,6 +351,7 @@ async function callProvider({
       model,
       prompt,
       systemPrompt,
+      temperature,
     })
     return { model, text, usage }
   }
@@ -339,6 +363,7 @@ async function callProvider({
       model,
       prompt,
       systemPrompt,
+      temperature,
     })
     return { model, text, usage }
   }
@@ -350,6 +375,7 @@ async function callProvider({
       model,
       prompt,
       systemPrompt,
+      temperature,
     })
     return { model, text, usage }
   }
@@ -361,17 +387,281 @@ async function callProvider({
       model,
       prompt,
       systemPrompt,
+      temperature,
     })
     return { model, text, usage }
   }
 
   if (provider === 'anthropic') {
-    const { text, usage } = await callAnthropic({ apiKey, model, prompt, systemPrompt })
+    const { text, usage } = await callAnthropic({
+      apiKey,
+      model,
+      prompt,
+      systemPrompt,
+      temperature,
+    })
     return { model, text, usage }
   }
 
-  const { text, usage } = await callGoogleGemini({ apiKey, model, prompt, systemPrompt })
+  const { text, usage } = await callGoogleGemini({
+    apiKey,
+    model,
+    prompt,
+    systemPrompt,
+    temperature,
+  })
   return { model, text, usage }
+}
+
+export type RunSingleProviderParams = {
+  supabase: SupabaseClient
+  sessionId: string | null
+  userId: string | null
+  provider: AiProviderName
+  prompt: string
+  systemPrompt: string
+  supabaseAccessToken?: string
+  /** Extra Day-2 rows for compare mode: scores + debate_logs assistant entries */
+  saveCompareArtifacts?: boolean
+  /** Sampling temperature (e.g. 0.1–1); omit for provider defaults */
+  temperature?: number
+}
+
+async function saveCompareArtifactsRows(
+  supabase: SupabaseClient,
+  sessionId: string,
+  provider: AiProviderName,
+  text: string | null,
+  responseTimeMs: number,
+  errorText?: string | null
+) {
+  const snippet = errorText
+    ? `[error] ${errorText}`
+    : text ?? ''
+  await insertWithFallback(
+    supabase,
+    'scores',
+    {
+      session_id: sessionId,
+      ai_name: provider,
+      score_value: responseTimeMs,
+      category: 'response_time_ms',
+    },
+    {
+      session_id: sessionId,
+      ai_name: provider,
+      points: responseTimeMs,
+    }
+  )
+  await insertWithFallback(
+    supabase,
+    'debate_logs',
+    {
+      session_id: sessionId,
+      ai_name: provider,
+      message_text: snippet,
+      role: 'assistant',
+    },
+    {
+      session_id: sessionId,
+      content: snippet,
+      speaker: String(provider),
+    }
+  )
+}
+
+export async function runSingleAiProvider(params: RunSingleProviderParams): Promise<RouterResult> {
+  const {
+    supabase,
+    sessionId,
+    userId,
+    provider,
+    prompt,
+    systemPrompt,
+    supabaseAccessToken,
+    saveCompareArtifacts,
+    temperature,
+  } = params
+
+  const started = nowMs()
+  const model = MODEL_BY_PROVIDER[provider]
+
+  try {
+    const byok =
+      userId && supabaseAccessToken
+        ? await getUserByokKey({ supabase, userId, provider })
+        : null
+    const platform = getEnvKey(provider)
+    const apiKey = byok ?? platform
+
+    if (!apiKey) {
+      throw new Error(`Missing API key for ${provider}. Set env var or save BYOK in user_api_keys.`)
+    }
+
+    const { text, usage } = await callProvider({
+      provider,
+      apiKey,
+      prompt,
+      systemPrompt,
+      temperature,
+    })
+
+    const responseTimeMs = nowMs() - started
+
+    const rowPrimary = {
+      session_id: sessionId,
+      ai_name: provider,
+      model_name: model,
+      response_text: text,
+      response_time_ms: responseTimeMs,
+      prompt_tokens: usage.promptTokens,
+      completion_tokens: usage.completionTokens,
+      total_tokens: usage.totalTokens,
+      error_text: null,
+    }
+    const rowFallback = {
+      session_id: sessionId,
+      ai_name: provider,
+      model_name: model,
+      response_text: text,
+    }
+
+    if (sessionId) {
+      await insertWithFallback(supabase, 'ai_responses', rowPrimary, rowFallback)
+      await insertWithFallback(
+        supabase,
+        'model_cost_logs',
+        {
+          session_id: sessionId,
+          ai_name: provider,
+          model_name: model,
+          prompt_tokens: usage.promptTokens,
+          completion_tokens: usage.completionTokens,
+          total_tokens: usage.totalTokens,
+          response_time_ms: responseTimeMs,
+          cost_usd: 0,
+        },
+        {
+          session_id: sessionId,
+          model_name: model,
+          total_tokens: usage.totalTokens,
+        }
+      )
+      if (saveCompareArtifacts) {
+        await saveCompareArtifactsRows(supabase, sessionId, provider, text, responseTimeMs, null)
+      }
+    }
+
+    return {
+      provider,
+      model,
+      text,
+      responseTimeMs,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+    }
+  } catch (e: any) {
+    const responseTimeMs = nowMs() - started
+    const error = e?.message ? String(e.message) : 'Unknown error'
+
+    if (sessionId) {
+      await insertWithFallback(
+        supabase,
+        'ai_responses',
+        {
+          session_id: sessionId,
+          ai_name: provider,
+          model_name: model,
+          response_text: null,
+          response_time_ms: responseTimeMs,
+          prompt_tokens: null,
+          completion_tokens: null,
+          total_tokens: null,
+          error_text: error,
+        },
+        {
+          session_id: sessionId,
+          ai_name: provider,
+          model_name: model,
+          response_text: `ERROR: ${error}`,
+        }
+      )
+
+      await insertWithFallback(
+        supabase,
+        'model_cost_logs',
+        {
+          session_id: sessionId,
+          ai_name: provider,
+          model_name: model,
+          prompt_tokens: null,
+          completion_tokens: null,
+          total_tokens: null,
+          response_time_ms: responseTimeMs,
+          cost_usd: 0,
+          error_text: error,
+        },
+        {
+          session_id: sessionId,
+          model_name: model,
+        }
+      )
+      if (saveCompareArtifacts) {
+        await saveCompareArtifactsRows(supabase, sessionId, provider, null, responseTimeMs, error)
+      }
+    }
+
+    return {
+      provider,
+      model,
+      text: null,
+      responseTimeMs,
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+      error,
+    }
+  }
+}
+
+export async function* iterateCompareProviderResults(input: {
+  prompt: string
+  systemPrompt: string
+  providers: AiProviderName[]
+  sessionId: string
+  supabaseAccessToken?: string
+  saveCompareArtifacts?: boolean
+  temperature?: number
+}): AsyncGenerator<RouterResult, void, unknown> {
+  const providers = uniqueProviders(input.providers)
+  const supabase = getAuthedSupabase(input.supabaseAccessToken)
+  const userId = input.supabaseAccessToken ? await getUserIdFromToken(supabase) : null
+
+  const inflight = new Map(
+    providers.map((provider) => {
+      const p = runSingleAiProvider({
+        supabase,
+        sessionId: input.sessionId,
+        userId,
+        provider,
+        prompt: input.prompt,
+        systemPrompt: input.systemPrompt,
+        supabaseAccessToken: input.supabaseAccessToken,
+        saveCompareArtifacts: input.saveCompareArtifacts,
+        temperature: input.temperature,
+      })
+      return [provider, p] as const
+    })
+  )
+
+  while (inflight.size) {
+    const next = await Promise.race(
+      [...inflight.entries()].map(([provider, pr]) => pr.then((r) => ({ provider, r })))
+    )
+    inflight.delete(next.provider)
+    yield next.r
+  }
 }
 
 export async function routeAI(input: RouterInput) {
@@ -388,143 +678,17 @@ export async function routeAI(input: RouterInput) {
   const sessionId = sessionRow?.id ?? null
 
   const settled = await Promise.allSettled(
-    providers.map(async (provider): Promise<RouterResult> => {
-      const started = nowMs()
-      const model = MODEL_BY_PROVIDER[provider]
-
-      try {
-        const byok =
-          userId && input.supabaseAccessToken
-            ? await getUserByokKey({ supabase, userId, provider })
-            : null
-        const platform = getEnvKey(provider)
-        const apiKey = byok ?? platform
-
-        if (!apiKey) {
-          throw new Error(
-            `Missing API key for ${provider}. Set env var or save BYOK in user_api_keys.`
-          )
-        }
-
-        const { text, usage } = await callProvider({
-          provider,
-          apiKey,
-          prompt: input.prompt,
-          systemPrompt: input.systemPrompt,
-        })
-
-        const responseTimeMs = nowMs() - started
-
-        const rowPrimary = {
-          session_id: sessionId,
-          ai_name: provider,
-          model_name: model,
-          response_text: text,
-          response_time_ms: responseTimeMs,
-          prompt_tokens: usage.promptTokens,
-          completion_tokens: usage.completionTokens,
-          total_tokens: usage.totalTokens,
-          error_text: null,
-        }
-        const rowFallback = {
-          session_id: sessionId,
-          ai_name: provider,
-          model_name: model,
-          response_text: text,
-        }
-
-        if (sessionId) {
-          await insertWithFallback(supabase, 'ai_responses', rowPrimary, rowFallback)
-          await insertWithFallback(
-            supabase,
-            'model_cost_logs',
-            {
-              session_id: sessionId,
-              ai_name: provider,
-              model_name: model,
-              prompt_tokens: usage.promptTokens,
-              completion_tokens: usage.completionTokens,
-              total_tokens: usage.totalTokens,
-              response_time_ms: responseTimeMs,
-              cost_usd: 0,
-            },
-            {
-              session_id: sessionId,
-              model_name: model,
-              total_tokens: usage.totalTokens,
-            }
-          )
-        }
-
-        return {
-          provider,
-          model,
-          text,
-          responseTimeMs,
-          promptTokens: usage.promptTokens,
-          completionTokens: usage.completionTokens,
-          totalTokens: usage.totalTokens,
-        }
-      } catch (e: any) {
-        const responseTimeMs = nowMs() - started
-        const error = e?.message ? String(e.message) : 'Unknown error'
-
-        if (sessionId) {
-          await insertWithFallback(
-            supabase,
-            'ai_responses',
-            {
-              session_id: sessionId,
-              ai_name: provider,
-              model_name: model,
-              response_text: null,
-              response_time_ms: responseTimeMs,
-              prompt_tokens: null,
-              completion_tokens: null,
-              total_tokens: null,
-              error_text: error,
-            },
-            {
-              session_id: sessionId,
-              ai_name: provider,
-              model_name: model,
-              response_text: `ERROR: ${error}`,
-            }
-          )
-
-          await insertWithFallback(
-            supabase,
-            'model_cost_logs',
-            {
-              session_id: sessionId,
-              ai_name: provider,
-              model_name: model,
-              prompt_tokens: null,
-              completion_tokens: null,
-              total_tokens: null,
-              response_time_ms: responseTimeMs,
-              cost_usd: 0,
-              error_text: error,
-            },
-            {
-              session_id: sessionId,
-              model_name: model,
-            }
-          )
-        }
-
-        return {
-          provider,
-          model,
-          text: null,
-          responseTimeMs,
-          promptTokens: null,
-          completionTokens: null,
-          totalTokens: null,
-          error,
-        }
-      }
-    })
+    providers.map((provider) =>
+      runSingleAiProvider({
+        supabase,
+        sessionId,
+        userId,
+        provider,
+        prompt: input.prompt,
+        systemPrompt: input.systemPrompt,
+        supabaseAccessToken: input.supabaseAccessToken,
+      })
+    )
   )
 
   const results = settled.map((r, idx) => {
