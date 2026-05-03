@@ -62,7 +62,7 @@ export const activeModules: ModuleConfig[] = [
     status: 'active',
     href: '/modes/verdict',
     accent: 'from-amber-300 to-yellow-600',
-    submodes: ['SCORE', 'VOTE', 'REVIEW', 'RANK'],
+    submodes: ['SCORE', 'VOTE', 'RANK', 'PREDICT', 'FACT CHECK'],
   },
   {
     id: 'arena',
@@ -139,6 +139,7 @@ export const betaModules: ModuleConfig[] = [
 export const verdictSubmodes = [
   { id: 'score', name: 'SCORE', icon: 'BadgePercent' },
   { id: 'vote', name: 'VOTE', icon: 'Vote' },
+  { id: 'predict', name: 'PREDICT', icon: 'BadgePercent' },
   { id: 'review', name: 'REVIEW', icon: 'FileSearch' },
   { id: 'rank', name: 'RANK', icon: 'Trophy' },
 ] as const

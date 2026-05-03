@@ -78,7 +78,7 @@ function LobbyCard({
         ) : null}
       </div>
       <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
-        {module.name}
+        {module.id === "verdict" ? "PANEL" : module.name}
       </span>
     </div>
   );
