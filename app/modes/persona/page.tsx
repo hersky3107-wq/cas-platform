@@ -62,23 +62,32 @@ const MIN_ROWS_SEND = 2;
 const ROLE_CUSTOM_SENTINEL = "__ROLE_CUSTOM__";
 
 const PRESET_ROLES = [
+  "Optimist",
+  "Romantic",
+  "Pessimist",
+  "Realist",
+  "Stoic",
+  "Futurist",
+  "Devil's Advocate",
+  "Traditionalist",
+  "Progressive",
+  "Philosopher",
+  "Cold Analyst",
   "Lawyer",
+  "Psychologist",
+  "Doctor",
   "Economist",
+  "Financial Advisor",
   "Scientist",
   "Historian",
-  "Devil's Advocate",
-  "Optimist",
-  "Pessimist",
-  "Skeptic",
-  "Creative Thinker",
+  "Startup Founder",
+  "Career Coach",
+  "Architect",
   "Artist",
-  "Critic",
-  "Philosopher",
-  "Rule Breaker",
-  "Justice Seeker",
+  "Creative Thinker",
+  "Purist",
   "Child",
   "Alien Observer",
-  "Cold Analyst",
 ] as const;
 
 type PersonaRow = {
@@ -92,7 +101,7 @@ function createBlankRow(): PersonaRow {
   return {
     id: crypto.randomUUID(),
     provider: "",
-    roleChoice: "Lawyer",
+    roleChoice: "Optimist",
     customRole: "",
   };
 }

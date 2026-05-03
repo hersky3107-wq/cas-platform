@@ -284,6 +284,31 @@ async function callAnthropic({
   }
 }
 
+type GeminiUsageMeta = {
+  promptTokenCount?: number
+  candidatesTokenCount?: number
+  totalTokenCount?: number
+}
+
+/** Text from one Gemini GenerateContentResponse (REST shape: candidates[].content.parts[].text — not OpenAI delta.content). */
+function extractGeminiResponseText(obj: unknown): string {
+  if (!obj || typeof obj !== 'object') return ''
+  const root = obj as Record<string, unknown>
+  const candidates = root.candidates
+  if (!Array.isArray(candidates) || candidates.length === 0) return ''
+  const first = candidates[0] as Record<string, unknown> | undefined
+  const content = first?.content as Record<string, unknown> | undefined
+  const parts = content?.parts
+  if (!Array.isArray(parts)) return ''
+  let out = ''
+  for (const p of parts) {
+    if (p && typeof p === 'object' && typeof (p as { text?: unknown }).text === 'string') {
+      out += (p as { text: string }).text
+    }
+  }
+  return out
+}
+
 async function callGoogleGemini({
   apiKey,
   model,
@@ -299,7 +324,9 @@ async function callGoogleGemini({
   temperature?: number
   maxCompletionTokens?: number
 }) {
-  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model,
+  )}:streamGenerateContent?alt=sse`
 
   const geminiBody: Record<string, unknown> = {
     contents: [
@@ -308,16 +335,25 @@ async function callGoogleGemini({
         parts: [{ text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }],
       },
     ],
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    ],
   }
   const generationConfig: Record<string, unknown> = {}
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
     generationConfig.temperature = temperature
   }
-  if (typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0) {
-    generationConfig.maxOutputTokens = maxCompletionTokens
-  }
-  if (Object.keys(generationConfig).length) {
-    geminiBody.generationConfig = generationConfig
+  generationConfig.maxOutputTokens =
+    typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0
+      ? maxCompletionTokens
+      : 8192
+
+  geminiBody.generationConfig = {
+    ...generationConfig,
+    thinkingConfig: { thinkingBudget: 0 },
   }
 
   const res = await fetch(url, {
@@ -334,17 +370,79 @@ async function callGoogleGemini({
     throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`)
   }
 
-  const json: any = await res.json()
-  const parts = json?.candidates?.[0]?.content?.parts
-  const text = Array.isArray(parts) ? parts.map((p: any) => p?.text).filter(Boolean).join('') : null
-  const usage = json?.usageMetadata ?? {}
+  if (!res.body) {
+    throw new Error('Gemini: empty response body')
+  }
 
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let carry = ''
+  let aggregatedText = ''
+  const usageHolder: { meta: GeminiUsageMeta | null } = { meta: null }
+
+  const applyParsedChunk = (parsed: unknown) => {
+    const piece = extractGeminiResponseText(parsed)
+    if (piece) aggregatedText += piece
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const um = (parsed as { usageMetadata?: GeminiUsageMeta }).usageMetadata
+      if (um && typeof um === 'object') usageHolder.meta = um as GeminiUsageMeta
+    }
+  }
+
+  const consumeSseEventPayload = (payload: string) => {
+    const trimmed = payload.trim()
+    if (!trimmed || trimmed === '[DONE]') return
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      return
+    }
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        applyParsedChunk(item)
+      }
+      return
+    }
+    applyParsedChunk(parsed)
+  }
+
+  const processSseLine = (line: string) => {
+    const t = line.trimEnd()
+    if (!t.startsWith('data:')) return
+    const data = t.startsWith('data: ') ? t.slice(6) : t.slice(5)
+    consumeSseEventPayload(data)
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (value) {
+        carry += decoder.decode(value, { stream: !done })
+      }
+      const lines = carry.split(/\r?\n/)
+      carry = lines.pop() ?? ''
+      for (const line of lines) {
+        processSseLine(line)
+      }
+      if (done) {
+        if (carry.trim()) {
+          processSseLine(carry)
+        }
+        break
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const u = usageHolder.meta
   return {
-    text: typeof text === 'string' ? text : null,
+    text: aggregatedText.length ? aggregatedText : null,
     usage: normalizeTokens({
-      promptTokens: usage?.promptTokenCount,
-      completionTokens: usage?.candidatesTokenCount,
-      totalTokens: usage?.totalTokenCount,
+      promptTokens: u?.promptTokenCount,
+      completionTokens: u?.candidatesTokenCount,
+      totalTokens: u?.totalTokenCount,
     }),
   }
 }

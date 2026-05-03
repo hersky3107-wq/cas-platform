@@ -38,15 +38,26 @@ function normalizeRole(raw: string): string {
 
 function buildPersonaSystemPrompt(aiDisplayName: string, role: string): string {
   const r = normalizeRole(role)
-  return (
-    `You are ${aiDisplayName} playing the role of a ${r}. ` +
-    `Answer ONLY from this role's perspective. ` +
-    `Do NOT be neutral. Do NOT say 'as an AI' or break character. ` +
-    `Respond with the biases, priorities, and worldview of a ${r}. ` +
-    `Stay in character completely. ` +
-    `STRICT LIMIT: Maximum 150 words. Stop writing after 150 words. Be direct and stay in character. ` +
-    `Answer in the same language as the user's question.`
-  )
+  return `You are ${aiDisplayName} playing the role of ${r}.
+
+ROLE INTEGRITY — ABSOLUTE:
+- Stay in character completely. Never break role.
+- Answer ONLY from this role's worldview, bias, and expertise
+- Your opinion, emotion, and perspective must be that of ${r} — not neutral, not balanced
+
+QUALITY REQUIREMENTS — WITHIN ROLE:
+- Respond at the highest level of ${r}'s expertise
+- Use terminology, frameworks, and reasoning that a true ${r} professional would use
+- Include specific details, case references, or insider knowledge relevant to ${r}
+- Never give surface-level answers — a ${r} with real depth would not do that
+- Make the reader feel they just consulted the sharpest ${r} in the room
+
+WHAT TO AVOID:
+- Breaking character to give balanced views
+- Generic statements any ${r} would say on day one
+- Safe, textbook-level responses
+
+STRICT LIMIT: Maximum 180 words.`
 }
 
 async function insertUserDebateEntry(supabase: SupabaseClient, sessionId: string, prompt: string) {
@@ -217,7 +228,8 @@ export async function POST(req: Request) {
           sessionId,
           supabaseAccessToken: token,
           saveCompareArtifacts: true,
-          maxCompletionTokens: 300,
+          temperature: 0.7,
+          maxCompletionTokens: 900,
         })
 
         for await (const result of gen) {

@@ -6,7 +6,7 @@ import {
   type AiProviderName,
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
-import { COMPARE_SYSTEM_PROMPT, creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
+import { CUSTOM_SYSTEM_PROMPT, creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 
 function uniqueProviders(providers: AiProviderName[]) {
   return Array.from(new Set(providers)) as AiProviderName[]
@@ -14,8 +14,8 @@ function uniqueProviders(providers: AiProviderName[]) {
 
 function buildCustomModeSystemPrompt(optionalUserText: string): string {
   const t = optionalUserText.trim().slice(0, 500)
-  if (!t) return COMPARE_SYSTEM_PROMPT
-  return `${COMPARE_SYSTEM_PROMPT}\n\nAdditional instructions:\n${t}`
+  if (!t) return CUSTOM_SYSTEM_PROMPT
+  return `${CUSTOM_SYSTEM_PROMPT}\n\nAdditional instructions:\n${t}`
 }
 
 async function insertUserDebateEntry(supabase: SupabaseClient, sessionId: string, prompt: string) {
@@ -42,12 +42,6 @@ export async function POST(req: Request) {
   const providersRaw = Array.isArray(body.providers) ? body.providers : []
   const providers = uniqueProviders(providersRaw as AiProviderName[])
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
-
-  const rawTemp = body.temperature
-  let temperature = 0.5
-  if (typeof rawTemp === 'number' && !Number.isNaN(rawTemp)) {
-    temperature = Math.min(1, Math.max(0.1, rawTemp))
-  }
 
   const customRaw =
     typeof body.customSystemPrompt === 'string' ? body.customSystemPrompt.slice(0, 500) : ''
@@ -156,7 +150,8 @@ export async function POST(req: Request) {
           sessionId,
           supabaseAccessToken: token,
           saveCompareArtifacts: true,
-          temperature,
+          temperature: 0.7,
+          maxCompletionTokens: 900,
         })
 
         for await (const result of gen) {

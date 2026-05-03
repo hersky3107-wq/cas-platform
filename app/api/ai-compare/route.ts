@@ -139,7 +139,8 @@ export async function POST(req: Request) {
           sessionId,
           supabaseAccessToken: token,
           saveCompareArtifacts: true,
-          maxCompletionTokens: 300,
+          temperature: 0.7,
+          maxCompletionTokens: 900,
         })
 
         for await (const result of gen) {
