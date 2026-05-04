@@ -815,7 +815,7 @@ export default function ArenaPage() {
                   onClick={() => void runBattleRound(3)}
                   className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-500"
                 >
-                  Next Round — Round 3
+                  Next Round
                 </button>
               </div>
             ) : null}
@@ -858,7 +858,7 @@ export default function ArenaPage() {
                   }}
                   className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
                 >
-                  승부가 안 났다. 계속 →
+                  The battle continues. Keep going →
                 </button>
                 {paidBattleCost != null ? (
                   <p className="w-full text-center text-[11px] text-slate-500">

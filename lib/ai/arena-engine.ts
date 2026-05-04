@@ -71,11 +71,6 @@ function nextArenaTurn() {
   return arenaTurnSeq
 }
 
-function sortSelectedAIs(selected: ArenaAI[]): ArenaAI[] {
-  const uniq = Array.from(new Set(selected))
-  return uniq.sort((a, b) => ARENA_ORDER.indexOf(a) - ARENA_ORDER.indexOf(b))
-}
-
 function formatPriorOpenings(responses: ArenaResponse[]): string {
   if (responses.length === 0) return ''
   return responses
@@ -300,21 +295,22 @@ function openingSnippet(round1: ArenaRound | undefined, ai: ArenaAI): string {
   return r?.content?.slice(0, 2000) ?? '(no prior opening recorded)'
 }
 
-function fisherYatesShuffleResponses(responses: ArenaResponse[]): ArenaResponse[] {
-  const a = [...responses]
-  for (let i = a.length - 1; i > 0; i--) {
+/** Fisher–Yates shuffle (copy; does not mutate the caller's array). */
+function fisherYatesShuffleAIs(selected: ArenaAI[]): ArenaAI[] {
+  const array = [...selected]
+  for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j]!, a[i]!]
+    ;[array[i], array[j]] = [array[j]!, array[i]!]
   }
-  return a
+  return array
 }
 
 /**
- * After all Round 1 responses: shuffle every CHAMPION:YES declaration,
- * then pick first in shuffled order on left camp, then first on right camp (≠ left).
+ * Champions = first CHAMPION:YES in Round 1 **call order** (already shuffled)
+ * on each camp; left slot first, then right slot (≠ left).
  */
-function pickChampionsFromGlobalYesShuffle(
-  responses: ArenaResponse[],
+function pickChampionsFirstYesInCallOrder(
+  responsesInCallOrder: ArenaResponse[],
   leftCamp: ArenaAI[],
   rightCamp: ArenaAI[],
   fallbackLeft: ArenaAI | null,
@@ -322,24 +318,13 @@ function pickChampionsFromGlobalYesShuffle(
 ): { championLeft: ArenaAI | null; championRight: ArenaAI | null } {
   const L = new Set(leftCamp)
   const R = new Set(rightCamp)
-  const yes = responses.filter((r) => r.champion)
-  if (yes.length === 0) {
-    return { championLeft: fallbackLeft, championRight: fallbackRight }
-  }
-  const shuffled = fisherYatesShuffleResponses(yes)
   let championLeft: ArenaAI | null = null
-  for (const r of shuffled) {
-    if (L.has(r.ai)) {
-      championLeft = r.ai
-      break
-    }
-  }
   let championRight: ArenaAI | null = null
-  for (const r of shuffled) {
-    if (R.has(r.ai) && r.ai !== championLeft) {
-      championRight = r.ai
-      break
-    }
+  for (const r of responsesInCallOrder) {
+    if (!r.champion) continue
+    if (championLeft == null && L.has(r.ai)) championLeft = r.ai
+    else if (championRight == null && R.has(r.ai) && r.ai !== championLeft) championRight = r.ai
+    if (championLeft != null && championRight != null) break
   }
   if (championLeft == null) championLeft = fallbackLeft
   if (championRight == null) championRight = fallbackRight
@@ -380,11 +365,13 @@ export async function runArenaRound1(
   onResponse: (response: ArenaResponse) => void,
   onThinking?: (ai: ArenaAI) => void
 ): Promise<ArenaRound> {
-  const ordered = sortSelectedAIs(selectedAIs)
+  const uniq = Array.from(new Set(selectedAIs))
+  const shuffledAIs = fisherYatesShuffleAIs(uniq)
+  console.log('Shuffled call order:', shuffledAIs)
   const collected: ArenaResponse[] = []
   let prior = ''
 
-  for (const ai of ordered) {
+  for (const ai of shuffledAIs) {
     onThinking?.(ai)
     const block =
       prior.length === 0
@@ -434,7 +421,7 @@ export async function runArenaRound1(
   }
 
   const sides = determineSides(collected)
-  const champs = pickChampionsFromGlobalYesShuffle(
+  const champs = pickChampionsFirstYesInCallOrder(
     collected,
     sides.left,
     sides.right,
