@@ -300,6 +300,79 @@ function openingSnippet(round1: ArenaRound | undefined, ai: ArenaAI): string {
   return r?.content?.slice(0, 2000) ?? '(no prior opening recorded)'
 }
 
+function fisherYatesShuffleResponses(responses: ArenaResponse[]): ArenaResponse[] {
+  const a = [...responses]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j]!, a[i]!]
+  }
+  return a
+}
+
+/**
+ * After all Round 1 responses: shuffle every CHAMPION:YES declaration,
+ * then pick first in shuffled order on left camp, then first on right camp (≠ left).
+ */
+function pickChampionsFromGlobalYesShuffle(
+  responses: ArenaResponse[],
+  leftCamp: ArenaAI[],
+  rightCamp: ArenaAI[],
+  fallbackLeft: ArenaAI | null,
+  fallbackRight: ArenaAI | null
+): { championLeft: ArenaAI | null; championRight: ArenaAI | null } {
+  const L = new Set(leftCamp)
+  const R = new Set(rightCamp)
+  const yes = responses.filter((r) => r.champion)
+  if (yes.length === 0) {
+    return { championLeft: fallbackLeft, championRight: fallbackRight }
+  }
+  const shuffled = fisherYatesShuffleResponses(yes)
+  let championLeft: ArenaAI | null = null
+  for (const r of shuffled) {
+    if (L.has(r.ai)) {
+      championLeft = r.ai
+      break
+    }
+  }
+  let championRight: ArenaAI | null = null
+  for (const r of shuffled) {
+    if (R.has(r.ai) && r.ai !== championLeft) {
+      championRight = r.ai
+      break
+    }
+  }
+  if (championLeft == null) championLeft = fallbackLeft
+  if (championRight == null) championRight = fallbackRight
+  return { championLeft, championRight }
+}
+
+/**
+ * Prior ANGLE lines for this champion: Round 1 opening + battle rounds 2..(current-1)
+ * where they appear as champion.
+ */
+function priorChampionAngleSummary(
+  ai: ArenaAI,
+  rounds: ArenaRound[],
+  currentBattleRound: number
+): string {
+  const lines: string[] = []
+  const r1 = rounds.find((r) => r.roundNumber === 1)
+  if (r1 && currentBattleRound >= 3) {
+    const list1 = Array.isArray(r1.responses) ? r1.responses : []
+    const row1 = list1.find((x) => x?.ai === ai)
+    const a1 = row1?.angle?.trim()
+    if (a1) lines.push(`- Round 1 (opening ANGLE): ${a1}`)
+  }
+  for (const rnd of rounds) {
+    if (!rnd || rnd.roundNumber < 2 || rnd.roundNumber >= currentBattleRound) continue
+    const list = Array.isArray(rnd.responses) ? rnd.responses : []
+    const row = list.find((x) => x?.ai === ai && x.champion)
+    const ang = row?.angle?.trim()
+    if (ang) lines.push(`- Round ${rnd.roundNumber}: ${ang}`)
+  }
+  return lines.length > 0 ? lines.join('\n') : '(no prior champion ANGLE lines recorded)'
+}
+
 export async function runArenaRound1(
   userPrompt: string,
   selectedAIs: ArenaAI[],
@@ -325,7 +398,7 @@ export async function runArenaRound1(
       ctx,
       roundNumber: 1,
       persistTurn,
-      maxTokens: 600,
+      maxTokens: ai === 'mistral' ? 800 : 600,
     })
 
     let ar: ArenaResponse
@@ -360,12 +433,19 @@ export async function runArenaRound1(
     }
   }
 
-  const { left, right, championLeft, championRight } = determineSides(collected)
+  const sides = determineSides(collected)
+  const champs = pickChampionsFromGlobalYesShuffle(
+    collected,
+    sides.left,
+    sides.right,
+    sides.championLeft,
+    sides.championRight
+  )
   return {
     roundNumber: 1,
     responses: collected,
-    sides: { left, right },
-    champion: { left: championLeft, right: championRight },
+    sides: { left: sides.left, right: sides.right },
+    champion: { left: champs.championLeft, right: champs.championRight },
   }
 }
 
@@ -407,17 +487,24 @@ export async function runArenaRound(
     const oppBlock = showOpposing
       ? `\nOpposing champion's latest argument in THIS battle round:\n"""\n${opposingChampionLatest.slice(0, 3500)}\n"""\n`
       : ''
+    const antiRepeatBlock =
+      roundNumber >= 3
+        ? `\n\n=== YOUR PRIOR CHAMPION ANGLES (do NOT reuse) ===\n${priorChampionAngleSummary(ai, allPreviousRounds, roundNumber)}\n\nYou have already argued in previous battle rounds.\nHere is what you already stated as your ANGLE (above).\nDo NOT use any of these arguments, framings, statistics, countries, or years again.\nFind completely different evidence this round.\n`
+        : ''
     return `${history}
 
 User topic:
 ${userPrompt}
 ${oppBlock}
+${antiRepeatBlock}
 Your opening statement from ROUND 1 (stay consistent; cite yourself if needed):
 ${openingSnippet(r1, ai)}
 
 You are the ${side.toUpperCase()} camp champion (${ai}). ${role}
 Use the mandatory tag block first, then your argument.`
   }
+
+  const championMaxTokens = (ai: ArenaAI) => (ai === 'mistral' ? 800 : 650)
 
   const emitSupporterAngle = async (ai: ArenaAI, champ: ArenaAI, side: 'left' | 'right') => {
     const ar = syntheticSupporterAngleLine(ai, champ, side, r1)
@@ -510,7 +597,7 @@ Use the mandatory tag block first, then your argument.`
     'left',
     true,
     championUserPrompt(leftChamp, 'left', '', leftRole),
-    650
+    championMaxTokens(leftChamp)
   )
   const lastLeftChampTurn = out[out.length - 1]!.content
 
@@ -520,7 +607,7 @@ Use the mandatory tag block first, then your argument.`
     'right',
     true,
     championUserPrompt(rightChamp, 'right', lastLeftChampTurn, rightRole),
-    650
+    championMaxTokens(rightChamp)
   )
 
   if (roundNumber === 2) {
