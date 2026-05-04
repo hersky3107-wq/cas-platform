@@ -1,16 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { MODEL_BY_PROVIDER, type AiProviderName } from '@/lib/ai/router'
+import { MODEL_BY_PROVIDER } from '@/lib/ai/router'
 import {
   ARENA_TO_PROVIDER,
+  arenaBattleApiCallCount,
   resetArenaTurnCounter,
   runArenaRound,
   runArenaRound1,
   type ArenaAI,
+  type ArenaResponse,
   type ArenaRound,
   type ArenaTransportContext,
 } from '@/lib/ai/arena-engine'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
-import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
+import { creditsPerMessage, deductCreditsBalance, getCreditsBalance } from '@/lib/credits'
 
 async function insertWithFallback(
   supabase: SupabaseClient,
@@ -53,8 +55,31 @@ function parseArenaAiList(raw: unknown): ArenaAI[] {
   return Array.from(new Set(out))
 }
 
-function battleCallCount(leftSupport: number, rightSupport: number): number {
-  return 3 + leftSupport + rightSupport
+
+function normalizeArenaRounds(raw: unknown): ArenaRound[] {
+  if (!Array.isArray(raw)) return []
+  const out: ArenaRound[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    const rn = typeof r.roundNumber === 'number' ? r.roundNumber : Number(r.roundNumber)
+    if (!Number.isFinite(rn)) continue
+    const responses = Array.isArray(r.responses) ? (r.responses as ArenaResponse[]) : []
+    const sides = r.sides as Record<string, unknown> | undefined
+    const left = Array.isArray(sides?.left) ? (sides!.left as ArenaAI[]) : []
+    const right = Array.isArray(sides?.right) ? (sides!.right as ArenaAI[]) : []
+    const champ = r.champion as Record<string, unknown> | undefined
+    out.push({
+      roundNumber: rn,
+      responses,
+      sides: { left, right },
+      champion: {
+        left: (champ?.left as ArenaAI | null) ?? null,
+        right: (champ?.right as ArenaAI | null) ?? null,
+      },
+    })
+  }
+  return out
 }
 
 export async function POST(req: Request) {
@@ -145,33 +170,45 @@ export async function POST(req: Request) {
     }
   }
 
-  let cost: number
+  const battleRoundNumber =
+    action === 'battle' && typeof body.roundNumber === 'number' && body.roundNumber >= 2
+      ? Math.floor(body.roundNumber)
+      : 2
+
+  let cost = 0
   try {
     if (action === 'start') {
-      cost = creditsPerMessage(selectedAIs.length)
+      cost = 0
+    } else if (battleRoundNumber <= 3) {
+      cost = 0
     } else {
-      const leftSupport = typeof body.leftSupportCount === 'number' ? body.leftSupportCount : 0
-      const rightSupport = typeof body.rightSupportCount === 'number' ? body.rightSupportCount : 0
-      cost = creditsPerMessage(battleCallCount(leftSupport, rightSupport))
+      const roundsForCost = normalizeArenaRounds(body.rounds)
+      const r1 = roundsForCost.find((x) => x.roundNumber === 1)
+      cost = creditsPerMessage(arenaBattleApiCallCount(r1))
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Invalid AI count'
     return Response.json({ error: msg }, { status: 400 })
   }
 
-  const deduct = await deductCreditsBalance(supabase, user.id, cost)
-  if (!deduct.ok) {
-    const insufficient = deduct.reason === 'insufficient'
-    return Response.json(
-      {
-        error: insufficient ? 'Insufficient credits' : 'Could not update credits',
-        balance: deduct.balance,
-        required: cost,
-      },
-      { status: insufficient ? 402 : 500 }
-    )
+  let creditsRemaining: number | null = null
+  if (cost > 0) {
+    const deduct = await deductCreditsBalance(supabase, user.id, cost)
+    if (!deduct.ok) {
+      const insufficient = deduct.reason === 'insufficient'
+      return Response.json(
+        {
+          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+          balance: deduct.balance,
+          required: cost,
+        },
+        { status: insufficient ? 402 : 500 }
+      )
+    }
+    creditsRemaining = deduct.balance
+  } else {
+    creditsRemaining = await getCreditsBalance(supabase, user.id)
   }
-  const creditsRemaining = deduct.balance
 
   let sessionId: string
 
@@ -241,9 +278,17 @@ export async function POST(req: Request) {
             supabaseAccessToken: token,
           }
 
-          const round1 = await runArenaRound1(topic, selectedAIs, ctx, (response) => {
-            writeJson({ type: 'arena_response', roundNumber: 1, response })
-          })
+          const round1 = await runArenaRound1(
+            topic,
+            selectedAIs,
+            ctx,
+            (response) => {
+              writeJson({ type: 'arena_response', roundNumber: 1, response })
+            },
+            (ai) => {
+              writeJson({ type: 'arena_thinking', roundNumber: 1, ai })
+            }
+          )
 
           writeJson({ type: 'arena_round', round: round1 })
           writeJson({ type: 'done' })
@@ -280,19 +325,9 @@ export async function POST(req: Request) {
   }
   sessionId = existing.id
 
-  const roundNumber =
-    typeof body.roundNumber === 'number' && body.roundNumber >= 2
-      ? Math.floor(body.roundNumber)
-      : 2
+  const roundNumber = battleRoundNumber
 
-  let rounds: ArenaRound[] = []
-  if (Array.isArray(body.rounds)) {
-    try {
-      rounds = body.rounds as ArenaRound[]
-    } catch {
-      rounds = []
-    }
-  }
+  const rounds = normalizeArenaRounds(body.rounds)
   if (rounds.length === 0) {
     return Response.json({ error: 'rounds payload is required' }, { status: 400 })
   }
@@ -332,9 +367,19 @@ export async function POST(req: Request) {
           supabaseAccessToken: token,
         }
 
-        const round = await runArenaRound(roundNumber, topic, rounds, currentSides, ctx, (response) => {
-          writeJson({ type: 'arena_response', roundNumber, response })
-        })
+        const round = await runArenaRound(
+          roundNumber,
+          topic,
+          rounds,
+          currentSides,
+          ctx,
+          (response) => {
+            writeJson({ type: 'arena_response', roundNumber, response })
+          },
+          (ai) => {
+            writeJson({ type: 'arena_thinking', roundNumber, ai })
+          }
+        )
 
         writeJson({ type: 'arena_round', round })
         writeJson({ type: 'done' })

@@ -5,6 +5,11 @@ export const VERDICT_PREDICT_AI_ORDER: AiProviderName[] = [...VERDICT_SCORE_AI_O
 
 export function buildVerdictPredictSystemPrompt(): string {
   return (
+    `CRITICAL: Your response must contain EXACTLY two lines.\n` +
+    `Nothing else. No tables, no headers, no extra text, no markdown.\n` +
+    `PROBABILITY: [number]%\n` +
+    `REASONING: [2-3 sentences only]\n` +
+    `Any response not following this exact format is considered invalid.\n\n` +
     `You are a precise forecasting expert. The user will give you a question ` +
     `or scenario to predict the probability of.\n\n` +
     `Respond in EXACTLY this format and nothing else:\n` +
@@ -37,14 +42,25 @@ export function parseVerdictPredictResponse(text: string | null): {
   reasoning: string
 } {
   if (!text) return { probability: null, reasoning: '' }
-  const probMatch = text.match(/PROBABILITY:\s*(\d+(?:\.\d+)?)\s*%?/i)
+  const trimmed = text.trim()
+  const probMatch = trimmed.match(/PROBABILITY:\s*(\d+(?:\.\d+)?)\s*%?/i)
   let probability: number | null = null
   if (probMatch) {
     const n = parseFloat(probMatch[1]!)
     if (!Number.isNaN(n)) probability = Math.min(100, Math.max(0, Math.round(n * 100) / 100))
   }
-  const reasonMatch = text.match(/REASONING:\s*([\s\S]+)/i)
-  const reasoning = reasonMatch ? reasonMatch[1].trim() : text.trim()
+  if (probability == null) {
+    const anyPct = trimmed.match(/(\d+(?:\.\d+)?)\s*%/)
+    if (anyPct) {
+      const n = parseFloat(anyPct[1]!)
+      if (!Number.isNaN(n)) probability = Math.min(100, Math.max(0, Math.round(n * 100) / 100))
+    }
+  }
+  if (probability == null && trimmed.length > 0) {
+    probability = 50
+  }
+  const reasonMatch = trimmed.match(/REASONING:\s*([\s\S]+)/i)
+  const reasoning = reasonMatch ? reasonMatch[1].trim() : trimmed
   return { probability, reasoning }
 }
 

@@ -11,6 +11,8 @@ export interface ArenaResponse {
   content: string
   responseTimeMs: number
   side: 'left' | 'right' | 'neutral'
+  /** No API call — static supporter line in battle rounds */
+  synthetic?: boolean
 }
 
 export interface ArenaRound {

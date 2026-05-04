@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 /** Paths accessible without login (prefix match except `/`). */
 const PUBLIC_PATH_PREFIXES = [
+  '/modes/arena',
   '/modes/compare',
   '/modes/custom',
   '/modes/persona',
