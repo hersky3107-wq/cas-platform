@@ -553,6 +553,20 @@ export type RunSingleProviderParams = {
   temperature?: number
   /** When set (e.g. 300), caps completion length via each provider API. */
   maxCompletionTokens?: number
+  /**
+   * When set, stored in `ai_responses.response_text` instead of the raw provider `text`
+   * (e.g. Arena mode: store user-visible body without internal tags).
+   */
+  storedResponseText?: string | null
+  /** Merged into successful `ai_responses` insert primary row (e.g. `round`, metadata JSON). */
+  aiResponseExtras?: Record<string, unknown>
+  /**
+   * Applied to successful responses before DB insert. Overrides `storedResponseText` / merges extras.
+   */
+  transformPersist?: (rawText: string) => {
+    storedResponseText: string | null
+    aiResponseExtras?: Record<string, unknown>
+  }
 }
 
 async function saveCompareArtifactsRows(
@@ -610,6 +624,9 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     saveCompareArtifacts,
     temperature,
     maxCompletionTokens,
+    storedResponseText,
+    aiResponseExtras,
+    transformPersist,
   } = params
 
   const started = nowMs()
@@ -637,23 +654,33 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     })
 
     const responseTimeMs = nowMs() - started
+    let textForRow = text
+    let mergeExtras: Record<string, unknown> = { ...(aiResponseExtras ?? {}) }
+    if (typeof text === 'string' && text.length && transformPersist) {
+      const t = transformPersist(text)
+      textForRow = t.storedResponseText ?? text
+      mergeExtras = { ...mergeExtras, ...(t.aiResponseExtras ?? {}) }
+    } else if (storedResponseText !== undefined) {
+      textForRow = storedResponseText
+    }
 
     const rowPrimary = {
       session_id: sessionId,
       ai_name: provider,
       model_name: model,
-      response_text: text,
+      response_text: textForRow,
       response_time_ms: responseTimeMs,
       prompt_tokens: usage.promptTokens,
       completion_tokens: usage.completionTokens,
       total_tokens: usage.totalTokens,
       error_text: null,
+      ...mergeExtras,
     }
     const rowFallback = {
       session_id: sessionId,
       ai_name: provider,
       model_name: model,
-      response_text: text,
+      response_text: textForRow,
     }
 
     if (sessionId) {
