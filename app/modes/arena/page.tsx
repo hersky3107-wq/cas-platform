@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ChevronLeft, Swords } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
 import { creditsPerMessage } from "@/lib/credits";
@@ -13,17 +14,61 @@ import {
   type ArenaResponse,
   type ArenaRound,
 } from "@/lib/ai/arena-engine";
+import {
+  type ArenaCampContext,
+  computeBubbleAlign,
+  determineSides,
+  stripArenaMarkdown,
+  stripInternalTargetingBlock,
+} from "@/lib/ai/arena-parser";
+
+function visibleArenaText(s: string): string {
+  return stripArenaMarkdown(stripInternalTargetingBlock(s));
+}
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
+/** Brand colors for camp UI, progress dots, thinking labels. */
 const ARENA_COLOR: Record<ArenaAI, string> = {
   gpt: "#10A37F",
   claude: "#D97757",
   gemini: "#4285F4",
-  grok: "#718096",
+  grok: "#000000",
   deepseek: "#4D6BFE",
   mistral: "#FF7000",
 };
+
+function AiNameBadge({ ai, label }: { ai: ArenaAI; label: string }) {
+  if (ai === "gemini") {
+    return (
+      <span className="inline-flex shrink-0 items-center rounded-lg border border-white/20 bg-[#171717] px-2.5 py-0.5 text-xs font-bold leading-tight shadow-sm">
+        <span
+          className="bg-clip-text font-bold text-transparent"
+          style={{
+            display: "inline-block",
+            backgroundImage: "linear-gradient(90deg, #4285F4, #EA4335, #FBBC05, #34A853)",
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+          }}
+        >
+          {label}
+        </span>
+      </span>
+    );
+  }
+  const bg = ARENA_COLOR[ai] ?? "#475569";
+  return (
+    <span
+      className="inline-flex shrink-0 rounded-lg border border-black/35 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm"
+      style={{
+        backgroundColor: bg,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
 
 const CHAMPION_GOLD = "#F59E0B";
 const DISAGREE_RED = "#EF4444";
@@ -32,10 +77,11 @@ const AGREE_GREEN = "#10B981";
 type Phase = "input" | "round1" | "sides_reveal" | "battle" | "result";
 
 function positionBadgeStyle(position: string): { label: string; color: string } {
-  const p = position.toUpperCase();
-  if (p.includes("DISAGREE")) return { label: position, color: DISAGREE_RED };
-  if (p.includes("AGREE")) return { label: position, color: AGREE_GREEN };
-  return { label: position || "INDEPENDENT", color: "#94A3B8" };
+  const visible = visibleArenaText(position);
+  const p = visible.toUpperCase();
+  if (p.includes("DISAGREE")) return { label: visible, color: DISAGREE_RED };
+  if (p.includes("AGREE")) return { label: visible, color: AGREE_GREEN };
+  return { label: visible || "INDEPENDENT", color: "#94A3B8" };
 }
 
 function ArenaBubble({
@@ -49,7 +95,6 @@ function ArenaBubble({
 }) {
   const badge = positionBadgeStyle(r.position);
   const name = ARENA_DISPLAY[r.ai];
-  const color = ARENA_COLOR[r.ai];
   return (
     <div className={`flex w-full max-w-[min(100%,520px)] ${align === "right" ? "ml-auto" : ""}`}>
       <div
@@ -64,12 +109,7 @@ function ArenaBubble({
         }}
       >
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span
-            className="inline-flex rounded-lg px-2 py-0.5 text-xs font-bold text-white"
-            style={{ backgroundColor: color }}
-          >
-            {name}
-          </span>
+          <AiNameBadge ai={r.ai} label={name} />
           {r.champion ? (
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
@@ -79,27 +119,65 @@ function ArenaBubble({
             </span>
           ) : null}
           {r.support ? (
-            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">
-              SUPPORT → {ARENA_DISPLAY[r.support as ArenaAI] ?? r.support}
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">
+              <span>SUPPORT →</span>
+              {(ARENA_ORDER as readonly string[]).includes(String(r.support)) ? (
+                <AiNameBadge
+                  ai={r.support as ArenaAI}
+                  label={ARENA_DISPLAY[r.support as ArenaAI] ?? String(r.support)}
+                />
+              ) : (
+                <span className="rounded-md bg-slate-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  {r.support}
+                </span>
+              )}
             </span>
           ) : null}
         </div>
-        {r.angle ? (
-          <p className="mb-2 text-sm font-semibold text-white/95">&ldquo;{r.angle}&rdquo;</p>
-        ) : null}
-        <p
-          className="mb-2 inline-block rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-          style={{ color: badge.color, backgroundColor: `${badge.color}18` }}
-        >
-          {badge.label}
-        </p>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">{r.content}</p>
-        {r.supportComment ? (
-          <p className="mt-2 border-t border-white/10 pt-2 text-xs italic text-slate-400">
-            {r.supportComment}
+        {!r.synthetic && r.angle ? (
+          <p className="mb-2 text-sm font-semibold text-white/95">
+            &ldquo;{visibleArenaText(r.angle)}&rdquo;
           </p>
         ) : null}
-        <p className="mt-2 text-right text-[10px] text-slate-500">{r.responseTimeMs} ms</p>
+        {!r.synthetic ? (
+          <p
+            className="mb-2 inline-block rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+            style={{ color: badge.color, backgroundColor: `${badge.color}18` }}
+          >
+            {badge.label}
+          </p>
+        ) : null}
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
+          {visibleArenaText(r.content)}
+        </p>
+        {r.supportComment ? (
+          <p className="mt-2 border-t border-white/10 pt-2 text-xs italic text-slate-400">
+            {visibleArenaText(r.supportComment)}
+          </p>
+        ) : null}
+        {!r.synthetic ? (
+          <p className="mt-2 text-right text-[10px] text-slate-500">{r.responseTimeMs} ms</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({ current, total }: { current: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-[11px] text-slate-400">
+        <span>Progress</span>
+        <span className="tabular-nums">
+          {current}/{total} AIs responded
+        </span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full rounded-full bg-rose-500/90 transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );
@@ -116,7 +194,8 @@ export default function ArenaPage() {
   );
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [rounds, setRounds] = useState<ArenaRound[]>([]);
-  const [currentRound, setCurrentRound] = useState(1);
+  /** API battle round number (2 = first battle after openings). */
+  const [displayBattleRound, setDisplayBattleRound] = useState(1);
   const [sides, setSides] = useState<{
     left: ArenaAI | null;
     right: ArenaAI | null;
@@ -125,31 +204,61 @@ export default function ArenaPage() {
   }>({ left: null, right: null, leftSupport: [], rightSupport: [] });
   const [isLoading, setIsLoading] = useState(false);
   const [round1Live, setRound1Live] = useState<ArenaResponse[]>([]);
+  const [round1Complete, setRound1Complete] = useState(false);
   const [battleLive, setBattleLive] = useState<ArenaResponse[]>([]);
+  const [awaitingNextBattleRound, setAwaitingNextBattleRound] = useState(false);
+  const [thinkingAi, setThinkingAi] = useState<ArenaAI | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<ArenaAI | null>(null);
   const [voteDone, setVoteDone] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const roundsRef = useRef<ArenaRound[]>([]);
+  /** Avoid stale `isLoading` in useCallback blocking chained battle requests (Continue +3). */
+  const battleInflightRef = useRef(false);
 
   const selectedList = useMemo(() => ARENA_ORDER.filter((a) => selected.has(a)), [selected]);
 
-  const fixedCostRound1 = useMemo(() => {
-    try {
-      return creditsPerMessage(selectedList.length);
-    } catch {
-      return null;
+  /** Round 2: champions + one static supporter line each; round 3+: 1v1 only. */
+  const battleResponsesPerRound = useMemo(() => {
+    if (displayBattleRound === 2) {
+      return 2 + sides.leftSupport.length + sides.rightSupport.length;
     }
-  }, [selectedList.length]);
+    return 2;
+  }, [displayBattleRound, sides.leftSupport.length, sides.rightSupport.length]);
 
-  const battleCost = useMemo(() => {
+  const round1CampCtx = useMemo((): ArenaCampContext => {
+    const d = determineSides(round1Live);
+    return {
+      left: d.left,
+      right: d.right,
+      leftChamp: d.championLeft,
+      rightChamp: d.championRight,
+    };
+  }, [round1Live]);
+
+  const battleCampCtx = useMemo((): ArenaCampContext => {
+    const left: ArenaAI[] = sides.left ? [sides.left, ...sides.leftSupport] : [...sides.leftSupport];
+    const right: ArenaAI[] = sides.right ? [sides.right, ...sides.rightSupport] : [...sides.rightSupport];
+    return {
+      left,
+      right,
+      leftChamp: sides.left,
+      rightChamp: sides.right,
+    };
+  }, [sides]);
+
+  const paidBattleCost = useMemo(() => {
     try {
-      const n = 3 + sides.leftSupport.length + sides.rightSupport.length;
-      return creditsPerMessage(n);
+      return creditsPerMessage(2);
     } catch {
       return null;
     }
-  }, [sides.leftSupport.length, sides.rightSupport.length]);
+  }, []);
+
+  const paidBundleMinCredits = useMemo(() => {
+    if (paidBattleCost == null) return null;
+    return paidBattleCost * 3;
+  }, [paidBattleCost]);
 
   useEffect(() => {
     roundsRef.current = rounds;
@@ -192,7 +301,7 @@ export default function ArenaPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [phase, round1Live, battleLive, rounds, isLoading]);
+  }, [phase, round1Live, battleLive, rounds, isLoading, round1Complete, awaitingNextBattleRound]);
 
   const toggleAi = (ai: ArenaAI) => {
     setSelected((prev) => {
@@ -213,7 +322,8 @@ export default function ArenaPage() {
       body: Record<string, unknown>,
       onMeta: (m: { sessionId?: string; creditsRemaining?: number }) => void,
       onResponse: (r: ArenaResponse, roundNumber: number) => void,
-      onRound: (r: ArenaRound) => void
+      onRound: (r: ArenaRound) => void,
+      onThinking?: (payload: { ai: ArenaAI; roundNumber: number }) => void
     ) => {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
@@ -255,6 +365,7 @@ export default function ArenaPage() {
             roundNumber?: number;
             round?: ArenaRound;
             error?: string;
+            ai?: string;
           };
           try {
             msg = JSON.parse(line) as typeof msg;
@@ -262,10 +373,42 @@ export default function ArenaPage() {
             continue;
           }
           if (msg.type === "meta") onMeta(msg);
-          if (msg.type === "arena_response" && msg.response && typeof msg.roundNumber === "number") {
-            onResponse(msg.response, msg.roundNumber);
+          if (msg.type === "arena_thinking" && msg.ai && typeof msg.roundNumber === "number") {
+            if ((ARENA_ORDER as string[]).includes(msg.ai)) {
+              onThinking?.({ ai: msg.ai as ArenaAI, roundNumber: msg.roundNumber });
+              await new Promise<void>((resolve) => {
+                requestAnimationFrame(() => resolve());
+              });
+            }
           }
-          if (msg.type === "arena_round" && msg.round) onRound(msg.round);
+          if (
+            msg.type === "arena_response" &&
+            msg.response &&
+            typeof msg.roundNumber === "number"
+          ) {
+            const rn = msg.roundNumber;
+            flushSync(() => {
+              setThinkingAi(null);
+              onResponse(msg.response!, rn);
+            });
+            await new Promise<void>((resolve) => {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => resolve());
+              });
+            });
+          }
+          if (msg.type === "arena_round") {
+            const completed = msg.round;
+            if (completed) {
+              flushSync(() => {
+                setThinkingAi(null);
+                onRound(completed);
+              });
+              await new Promise<void>((resolve) => {
+                requestAnimationFrame(() => resolve());
+              });
+            }
+          }
           if (msg.type === "error" && msg.error) setError(msg.error);
         }
       }
@@ -273,17 +416,25 @@ export default function ArenaPage() {
     [router]
   );
 
+  const resetArenaUi = useCallback(() => {
+    setRound1Live([]);
+    setRound1Complete(false);
+    setRounds([]);
+    roundsRef.current = [];
+    setBattleLive([]);
+    setSessionId(null);
+    setSides({ left: null, right: null, leftSupport: [], rightSupport: [] });
+    setAwaitingNextBattleRound(false);
+    setThinkingAi(null);
+    setDisplayBattleRound(1);
+  }, []);
+
   const startArena = useCallback(async () => {
     const t = topic.trim();
     if (selectedList.length < 3 || selectedList.length > 6 || !t || isLoading) return;
     setError(null);
     setIsLoading(true);
-    setRound1Live([]);
-    setRounds([]);
-    roundsRef.current = [];
-    setBattleLive([]);
-    setSessionId(null);
-    setCurrentRound(1);
+    resetArenaUi();
     setPhase("round1");
     try {
       await readNdjsonArena(
@@ -308,23 +459,32 @@ export default function ArenaPage() {
             leftSupport: ls,
             rightSupport: rs,
           });
-          setPhase("sides_reveal");
-        }
+          setRound1Complete(true);
+        },
+        ({ ai }) => setThinkingAi(ai)
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setIsLoading(false);
     }
-  }, [topic, selectedList, isLoading, readNdjsonArena]);
+  }, [topic, selectedList, isLoading, readNdjsonArena, resetArenaUi]);
 
   const runBattleRound = useCallback(
     async (roundNumber: number) => {
       const t = topic.trim();
-      if (!sessionId || !sides.left || !sides.right || !t || isLoading) return;
+      if (!sessionId || !sides.left || !sides.right || !t) {
+        return;
+      }
+      if (battleInflightRef.current) {
+        return;
+      }
+      battleInflightRef.current = true;
       setError(null);
       setIsLoading(true);
       setBattleLive([]);
+      setAwaitingNextBattleRound(false);
+      setDisplayBattleRound(roundNumber);
       setPhase("battle");
       const roundsPayload = roundsRef.current;
       try {
@@ -347,22 +507,30 @@ export default function ArenaPage() {
             setBattleLive((prev) => [...prev, response]);
           },
           (round) => {
+            const rn = Number(round.roundNumber);
+            setDisplayBattleRound(rn);
             setRounds((prev) => {
               const n = [...prev.filter((x) => x.roundNumber !== round.roundNumber), round];
               roundsRef.current = n;
               return n;
             });
-            setCurrentRound(round.roundNumber);
             setBattleLive([]);
-          }
+            if (rn === 2) {
+              setAwaitingNextBattleRound(true);
+            } else if (rn >= 3) {
+              setAwaitingNextBattleRound(false);
+            }
+          },
+          ({ ai }) => setThinkingAi(ai)
         );
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Unknown error");
       } finally {
+        battleInflightRef.current = false;
         setIsLoading(false);
       }
     },
-    [sessionId, sides, topic, isLoading, readNdjsonArena]
+    [sessionId, sides, topic, readNdjsonArena]
   );
 
   const submitVote = useCallback(async () => {
@@ -399,7 +567,9 @@ export default function ArenaPage() {
   const leftColor = sides.left ? ARENA_COLOR[sides.left] : "#64748B";
   const rightColor = sides.right ? ARENA_COLOR[sides.right] : "#64748B";
   const battleRounds = rounds.filter((r) => r.roundNumber >= 2);
-  const maxRound = rounds.length ? Math.max(...rounds.map((r) => r.roundNumber)) : 1;
+  const maxRound = rounds.length ? Math.max(...rounds.map((r) => Number(r.roundNumber))) : 1;
+  const showPostRound3Actions =
+    phase === "battle" && maxRound >= 3 && !awaitingNextBattleRound && !isLoading;
 
   return (
     <div className={BG}>
@@ -434,10 +604,13 @@ export default function ArenaPage() {
             <textarea
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="주제 또는 질문을 입력하세요…"
+              placeholder="Enter a topic or question for the panel to debate…"
               disabled={isLoading}
               className="min-h-[120px] w-full resize-y rounded-xl border border-white/12 bg-white/6 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-rose-400/40 focus:outline-none"
             />
+            <p className="text-xs leading-relaxed text-slate-500">
+              Rounds 1–3 cost no credits. Battle rounds after round 3 cost credits.
+            </p>
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Select 3–6 AIs ({selectedList.length} selected)
@@ -471,46 +644,80 @@ export default function ArenaPage() {
             <button
               type="button"
               onClick={() => void startArena()}
-              disabled={
-                isLoading ||
-                !topic.trim() ||
-                selectedList.length < 3 ||
-                (credits !== null && fixedCostRound1 !== null && credits < fixedCostRound1)
-              }
+              disabled={isLoading || !topic.trim() || selectedList.length < 3}
               className="w-full rounded-2xl bg-rose-500 py-3 text-sm font-semibold text-white transition enabled:hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-40"
             >
               START ARENA
             </button>
-            <p className="text-center text-[11px] text-slate-500">
-              Round 1 · {fixedCostRound1 ?? "—"} credits
-            </p>
           </div>
         ) : null}
 
         {phase === "round1" ? (
           <div>
             <h2 className="mb-4 text-center text-lg font-bold text-white">ROUND 1 — Opening Statements</h2>
-            <div className="flex flex-col gap-3">
-              {round1Live.map((r) => (
-                <ArenaBubble key={`${r.ai}-${r.responseTimeMs}`} r={r} align="left" repColor={ARENA_COLOR[r.ai]} />
-              ))}
+            <div className="mb-4">
+              <ProgressBar current={round1Live.length} total={selectedList.length} />
+            </div>
+            {thinkingAi && isLoading ? (
+              <p className="mb-3 text-center text-sm text-slate-300">
+                <span className="font-semibold" style={{ color: ARENA_COLOR[thinkingAi] }}>
+                  {ARENA_DISPLAY[thinkingAi]}
+                </span>{" "}
+                is thinking…
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-3 pr-1">
+              {round1Live.map((r) => {
+                const a1 = computeBubbleAlign(r, round1CampCtx);
+                const r1Rep =
+                  a1 === "right"
+                    ? round1CampCtx.rightChamp
+                      ? ARENA_COLOR[round1CampCtx.rightChamp]
+                      : "#64748B"
+                    : round1CampCtx.leftChamp
+                      ? ARENA_COLOR[round1CampCtx.leftChamp]
+                      : "#64748B";
+                return (
+                  <ArenaBubble
+                    key={`${r.ai}-${r.responseTimeMs}`}
+                    r={r}
+                    align={a1}
+                    repColor={r1Rep}
+                  />
+                );
+              })}
               {isLoading && round1Live.length === 0 ? (
                 <p className="text-center text-sm text-slate-400">Connecting…</p>
               ) : null}
-              {isLoading ? (
+              {isLoading && !thinkingAi ? (
                 <div className="flex items-center gap-2 text-sm text-slate-400">
                   <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-rose-400" />
-                  Next AI is thinking…
+                  Waiting for next speaker…
                 </div>
               ) : null}
             </div>
+            {round1Complete && !isLoading ? (
+              <div className="mt-8 flex flex-col items-center gap-2">
+                <p className="text-center text-sm text-slate-400">Read the openings, then continue.</p>
+                <button
+                  type="button"
+                  onClick={() => setPhase("sides_reveal")}
+                  className="rounded-2xl bg-cyan-500 px-8 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+                >
+                  Next: Camp lineup
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
         {phase === "sides_reveal" ? (
           <div className="fixed inset-0 z-30 flex flex-col items-center justify-center bg-[#0a0f1e]/96 px-4 backdrop-blur-md">
-            <p className="mb-2 text-2xl font-bold text-white">진영이 나뉘었습니다 ⚔️</p>
-            <div className="mt-6 grid w-full max-w-lg grid-cols-2 gap-4 text-center">
+            <p className="mb-2 text-center text-2xl font-bold text-white">Sides are set ⚔️</p>
+            <p className="mb-4 max-w-md text-center text-sm text-slate-400">
+              Champions lead each camp. Supporters back them in later battle rounds.
+            </p>
+            <div className="mt-4 grid w-full max-w-lg grid-cols-2 gap-4 text-center">
               <div
                 className="rounded-2xl border p-4"
                 style={{ borderColor: leftColor, backgroundColor: `${leftColor}14` }}
@@ -540,45 +747,58 @@ export default function ArenaPage() {
             </div>
             <button
               type="button"
-              disabled={
-                isLoading ||
-                !sides.left ||
-                !sides.right ||
-                (credits !== null && battleCost !== null && credits < battleCost)
-              }
+              disabled={isLoading || !sides.left || !sides.right}
               onClick={() => void runBattleRound(2)}
               className="mt-10 rounded-2xl bg-cyan-500 px-8 py-3 text-sm font-semibold text-slate-950 transition enabled:hover:bg-cyan-400 disabled:opacity-40"
             >
-              ROUND 2 시작
+              Begin Round 2
             </button>
-            <p className="mt-2 text-[11px] text-slate-500">Battle · {battleCost ?? "—"} credits</p>
           </div>
         ) : null}
 
         {phase === "battle" ? (
           <div>
-            <h2 className="mb-4 text-center text-lg font-bold text-white">
-              ROUND {Math.max(2, currentRound)} — Battle
+            <h2 className="mb-2 text-center text-lg font-bold text-white">
+              ROUND {displayBattleRound} — Battle
             </h2>
-            <div className="flex flex-col gap-4">
+            <div className="mb-4">
+              <ProgressBar current={battleLive.length} total={battleResponsesPerRound} />
+            </div>
+            {thinkingAi && isLoading ? (
+              <p className="mb-3 text-center text-sm text-slate-300">
+                <span className="font-semibold" style={{ color: ARENA_COLOR[thinkingAi] }}>
+                  {ARENA_DISPLAY[thinkingAi]}
+                </span>{" "}
+                is thinking…
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-4 pr-1">
               {battleRounds.flatMap((br) =>
-                br.responses.map((r) => (
-                  <ArenaBubble
-                    key={`${br.roundNumber}-${r.ai}-${r.responseTimeMs}`}
-                    r={r}
-                    align={r.side === "right" ? "right" : "left"}
-                    repColor={r.side === "right" ? rightColor : leftColor}
-                  />
-                ))
+                br.responses.map((r) => {
+                  const align = computeBubbleAlign(r, battleCampCtx);
+                  const repColor = align === "right" ? rightColor : leftColor;
+                  return (
+                    <ArenaBubble
+                      key={`${br.roundNumber}-${r.ai}-${r.responseTimeMs}`}
+                      r={r}
+                      align={align}
+                      repColor={repColor}
+                    />
+                  );
+                })
               )}
-              {battleLive.map((r) => (
-                <ArenaBubble
-                  key={`live-${r.ai}-${r.responseTimeMs}`}
-                  r={r}
-                  align={r.side === "right" ? "right" : "left"}
-                  repColor={r.side === "right" ? rightColor : leftColor}
-                />
-              ))}
+              {battleLive.map((r) => {
+                const align = computeBubbleAlign(r, battleCampCtx);
+                const repColor = align === "right" ? rightColor : leftColor;
+                return (
+                  <ArenaBubble
+                    key={`live-${r.ai}-${r.responseTimeMs}`}
+                    r={r}
+                    align={align}
+                    repColor={repColor}
+                  />
+                );
+              })}
               {isLoading ? (
                 <div className="flex items-center justify-center gap-2 text-sm text-slate-400">
                   <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
@@ -587,48 +807,65 @@ export default function ArenaPage() {
               ) : null}
             </div>
 
-            {!isLoading && maxRound === 2 ? (
-              <div className="mt-8 flex justify-center">
+            {awaitingNextBattleRound && maxRound === 2 && !isLoading ? (
+              <div className="mt-8 flex flex-col items-center gap-2">
+                <p className="text-center text-sm text-slate-400">When you are ready, start the next round.</p>
                 <button
                   type="button"
-                  disabled={credits !== null && battleCost !== null && credits < battleCost}
                   onClick={() => void runBattleRound(3)}
-                  className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                  className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-500"
                 >
-                  ROUND 3 계속
+                  Next Round — Round 3
                 </button>
               </div>
             ) : null}
 
-            {maxRound >= 3 && !isLoading ? (
-              <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
+            {showPostRound3Actions ? (
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
                 <button
                   type="button"
                   onClick={() => setPhase("result")}
                   className="rounded-xl border border-white/15 bg-white/8 px-4 py-2 text-sm text-white"
                 >
-                  ⏹ STOP
+                  STOP
                 </button>
                 <button
                   type="button"
                   onClick={() => setPhase("result")}
                   className="rounded-xl bg-amber-500/90 px-4 py-2 text-sm font-semibold text-slate-950"
                 >
-                  누가 맞나요? 선택하기
+                  Who was right? Vote
                 </button>
                 <button
                   type="button"
-                  disabled={credits !== null && battleCost !== null && credits < battleCost * 3}
+                  disabled={
+                    credits !== null &&
+                    paidBundleMinCredits !== null &&
+                    credits < paidBundleMinCredits
+                  }
                   onClick={async () => {
                     for (let i = 0; i < 3; i++) {
-                      const m = Math.max(1, ...roundsRef.current.map((x) => x.roundNumber));
-                      await runBattleRound(m + 1);
+                      const nums = roundsRef.current.map((x) => Number(x.roundNumber) || 0);
+                      const m = nums.length ? Math.max(1, ...nums) : 1;
+                      const next = m + 1;
+                      await runBattleRound(next);
+                      await new Promise<void>((resolve) => {
+                        requestAnimationFrame(() => {
+                          requestAnimationFrame(() => resolve());
+                        });
+                      });
                     }
                   }}
                   className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
                 >
-                  ▶ +3라운드 계속
+                  승부가 안 났다. 계속 →
                 </button>
+                {paidBattleCost != null ? (
+                  <p className="w-full text-center text-[11px] text-slate-500">
+                    Each extra round charges {paidBattleCost} credits (2 champion calls; Round 2
+                    adds static supporter lines only).
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -637,8 +874,8 @@ export default function ArenaPage() {
         {phase === "result" ? (
           <div className="mx-auto max-w-lg space-y-6 text-center">
             <h2 className="text-xl font-bold text-white">ARENA ENDED</h2>
-            <p className="text-sm text-slate-400">총 {rounds.length} 라운드</p>
-            <p className="text-sm text-slate-300">어떤 주장이 가장 설득력 있었나요?</p>
+            <p className="text-sm text-slate-400">{rounds.length} round(s) played</p>
+            <p className="text-sm text-slate-300">Which argument was most convincing?</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {ARENA_ORDER.filter((a) => selectedList.includes(a)).map((ai) => (
                 <button
@@ -660,10 +897,10 @@ export default function ArenaPage() {
               onClick={() => void submitVote()}
               className="w-full rounded-2xl bg-rose-500 py-3 text-sm font-semibold text-white disabled:opacity-40"
             >
-              {voteDone ? "저장됨" : "결과 저장"}
+              {voteDone ? "Saved" : "Save result"}
             </button>
             <Link href="/" className="inline-block text-sm text-cyan-400 underline">
-              로비로 돌아가기
+              Back to lobby
             </Link>
           </div>
         ) : null}

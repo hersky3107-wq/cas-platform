@@ -3,6 +3,47 @@ import type { ArenaAI, ArenaResponse } from '@/lib/ai/arena-types'
 const INTERNAL_BLOCK =
   /<Internal_Targeting>[\s\S]*?<\/Internal_Targeting>/gi
 
+/** Remove internal targeting block and tags (case-insensitive). */
+export function stripInternalTargetingBlock(text: string): string {
+  return text.replace(INTERNAL_BLOCK, '').trim()
+}
+
+/** Strip ** * __ _ style markdown from visible body. */
+export function stripArenaMarkdown(text: string): string {
+  let t = text
+  t = t.replace(/\*\*([^*]+)\*\*/g, '$1')
+  t = t.replace(/\*([^*]+)\*/g, '$1')
+  t = t.replace(/\*{2,}/g, '')
+  t = t.replace(/\*/g, '')
+  t = t.replace(/__([^_]+)__/g, '$1')
+  t = t.replace(/__+/g, '')
+  t = t.replace(/(^|[\s(])_([^_\n]+?)_([\s).,!?;:]|$)/g, '$1$2$3')
+  return t
+}
+
+/** Remove any line that looks like a structured arena tag (anywhere in the body). */
+export function stripArenaTagLines(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => {
+      const s = line.trim()
+      return !/^(CHAMPION|POSITION|ANGLE|CHALLENGE|SUPPORT|SUPPORT_COMMENT)\s*:/i.test(s)
+    })
+    .join('\n')
+    .trim()
+}
+
+/** Strip tags, internal blocks, markdown; repeat until stable (handles stray tag lines). */
+export function finalizeArenaVisibleBody(text: string): string {
+  let t = text
+  for (let i = 0; i < 10; i++) {
+    const next = stripArenaMarkdown(stripInternalTargetingBlock(stripArenaTagLines(t))).trim()
+    if (next === t) break
+    t = next
+  }
+  return t
+}
+
 const LINE_TAGS = [
   'CHAMPION',
   'POSITION',
@@ -56,6 +97,8 @@ export function parseDisagreeTarget(position: string): ArenaAI | null {
 }
 
 export function parseAgreeTarget(position: string): ArenaAI | null {
+  // "DISAGREE_WITH_X" contains the substring "AGREE_WITH_X" — do not treat as agreement.
+  if (/DISAGREE_WITH_/i.test(position)) return null
   const m = position.match(/AGREE_WITH_([A-Za-z0-9_\s-]+)/i)
   if (!m) return null
   return resolveArenaAiName(m[1]!.replace(/_/g, ' '))
@@ -72,21 +115,29 @@ export type ParsedArenaTagBlock = {
 }
 
 export function parseArenaResponse(rawText: string): ParsedArenaTagBlock {
-  const stripped = rawText.replace(INTERNAL_BLOCK, '').trim()
+  const stripped = stripInternalTargetingBlock(rawText)
   const championRaw = lineValue(stripped, 'CHAMPION')
   const champion = Boolean(championRaw && championRaw.toUpperCase().startsWith('Y'))
   const position = lineValue(stripped, 'POSITION') ?? 'INDEPENDENT'
-  const angle = lineValue(stripped, 'ANGLE') ?? ''
+  const angleRaw = lineValue(stripped, 'ANGLE') ?? ''
   const challenge = noneOrString(lineValue(stripped, 'CHALLENGE'))
   const support = noneOrString(lineValue(stripped, 'SUPPORT'))
-  const supportComment = noneOrString(lineValue(stripped, 'SUPPORT_COMMENT'))
+  const supportCommentRaw = noneOrString(lineValue(stripped, 'SUPPORT_COMMENT'))
 
   let content = stripped
   for (const key of LINE_TAGS) {
     const re = new RegExp(`^${key}:\\s*[^\\n]*\\n?`, 'gim')
     content = content.replace(re, '')
   }
-  content = content.replace(INTERNAL_BLOCK, '').trim()
+  content = stripInternalTargetingBlock(content)
+  content = finalizeArenaVisibleBody(content)
+
+  const angle = stripArenaMarkdown(angleRaw)
+  const supportComment = supportCommentRaw ? stripArenaMarkdown(supportCommentRaw) : null
+  const angleForFallback = (stripArenaMarkdown(angleRaw) || '').trim()
+  if (content.replace(/\s+/g, ' ').trim().length < 30 && angleForFallback.length > 0) {
+    content = finalizeArenaVisibleBody(angleForFallback)
+  }
 
   return {
     champion,
@@ -94,13 +145,48 @@ export function parseArenaResponse(rawText: string): ParsedArenaTagBlock {
     angle: angle || '',
     challenge: challenge ?? null,
     support: support ?? null,
-    supportComment: supportComment ?? null,
-    content: content || stripped,
+    supportComment,
+    content:
+      finalizeArenaVisibleBody(content || angleForFallback || stripInternalTargetingBlock(stripped)),
   }
 }
 
 function opposite(side: 'left' | 'right'): 'left' | 'right' {
   return side === 'left' ? 'right' : 'left'
+}
+
+export type ArenaCampContext = {
+  left: ArenaAI[]
+  right: ArenaAI[]
+  leftChamp: ArenaAI | null
+  rightChamp: ArenaAI | null
+}
+
+function campOfAi(ai: ArenaAI, ctx: ArenaCampContext): 'left' | 'right' | null {
+  if (ctx.leftChamp === ai || ctx.left.includes(ai)) return 'left'
+  if (ctx.rightChamp === ai || ctx.right.includes(ai)) return 'right'
+  return null
+}
+
+/**
+ * Visual column: DISAGREE_WITH_X → opposite side from X's camp.
+ * AGREE_WITH_X → same side as X. Else speaker's camp.
+ */
+export function computeBubbleAlign(r: ArenaResponse, ctx: ArenaCampContext): 'left' | 'right' {
+  const dis = parseDisagreeTarget(r.position)
+  if (dis) {
+    const targetCamp = campOfAi(dis, ctx)
+    if (targetCamp === 'left') return 'right'
+    if (targetCamp === 'right') return 'left'
+  }
+  const agr = parseAgreeTarget(r.position)
+  if (agr) {
+    const c = campOfAi(agr, ctx)
+    if (c === 'left' || c === 'right') return c
+  }
+  const self = campOfAi(r.ai, ctx)
+  if (self === 'left' || self === 'right') return self
+  return 'left'
 }
 
 /**
@@ -151,14 +237,23 @@ export function determineSides(responses: ArenaResponse[]): {
   while (changed && guard++ < 20) {
     changed = false
     for (const r of responses) {
+      const dis = parseDisagreeTarget(r.position)
+      if (dis && side.has(dis) && !side.has(r.ai)) {
+        assign(r.ai, opposite(side.get(dis)!))
+        changed = true
+      }
+    }
+    for (const r of responses) {
       const agree = parseAgreeTarget(r.position)
       if (agree && side.has(agree) && !side.has(r.ai)) {
         assign(r.ai, side.get(agree)!)
         changed = true
       }
-      const dis = parseDisagreeTarget(r.position)
-      if (dis && side.has(dis) && !side.has(r.ai)) {
-        assign(r.ai, opposite(side.get(dis)!))
+    }
+    for (const r of responses) {
+      const sup = r.support ? resolveArenaAiName(String(r.support)) : null
+      if (sup && side.has(sup) && !side.has(r.ai)) {
+        assign(r.ai, side.get(sup)!)
         changed = true
       }
     }
@@ -177,11 +272,20 @@ export function determineSides(responses: ArenaResponse[]): {
   const orderIdx = (a: ArenaAI) =>
     ['grok', 'gpt', 'gemini', 'deepseek', 'mistral', 'claude'].indexOf(a)
 
+  const shuffleResponses = (arr: ArenaResponse[]): ArenaResponse[] => {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[a[i], a[j]] = [a[j]!, a[i]!]
+    }
+    return a
+  }
+
   const pickChampion = (ais: ArenaAI[]): ArenaAI | null => {
     if (ais.length === 0) return null
     const inOrder = [...responses].filter((r) => ais.includes(r.ai))
     const champs = inOrder.filter((r) => r.champion)
-    if (champs.length) return champs[0]!.ai
+    if (champs.length) return shuffleResponses(champs)[0]!.ai
     const disagrees = inOrder.filter((r) => parseDisagreeTarget(r.position) != null)
     if (disagrees.length) return disagrees[0]!.ai
     return [...ais].sort((a, b) => orderIdx(a) - orderIdx(b))[0] ?? null

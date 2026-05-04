@@ -3,7 +3,10 @@ import { runSingleAiProvider, type AiProviderName } from '@/lib/ai/router'
 import { buildArenaSystemPrompt } from '@/lib/ai/arena-prompts'
 import {
   determineSides,
+  finalizeArenaVisibleBody,
   parseArenaResponse,
+  stripArenaMarkdown,
+  stripInternalTargetingBlock,
   type ParsedArenaTagBlock,
 } from '@/lib/ai/arena-parser'
 import type { ArenaAI, ArenaResponse, ArenaRound } from '@/lib/ai/arena-types'
@@ -86,11 +89,14 @@ function formatPriorOpenings(responses: ArenaResponse[]): string {
 export function formatArenaHistory(rounds: ArenaRound[]): string {
   let out = ''
   for (const r of rounds) {
+    if (!r || typeof r.roundNumber !== 'number') continue
+    const responses = Array.isArray(r.responses) ? r.responses : []
     out += `\n======== ROUND ${r.roundNumber} ========\n`
-    for (const x of r.responses) {
-      out += `\n[${x.ai} | ${x.side} | champion=${x.champion}]\n`
-      out += `POSITION: ${x.position}\nANGLE: ${x.angle}\n`
-      out += `${x.content}\n`
+    for (const x of responses) {
+      if (!x?.ai) continue
+      out += `\n[${x.ai} | ${x.side ?? 'neutral'} | champion=${x.champion}]\n`
+      out += `POSITION: ${x.position ?? ''}\nANGLE: ${x.angle ?? ''}\n`
+      out += `${x.content ?? ''}\n`
     }
   }
   return out.trim()
@@ -105,7 +111,7 @@ function errorArenaResponse(ai: ArenaAI, err: string, ms: number): ArenaResponse
     challenge: null,
     support: null,
     supportComment: null,
-    content: `[Call failed] ${err}`,
+    content: stripArenaMarkdown(`[Call failed] ${err}`),
     responseTimeMs: ms,
     side: 'neutral',
   }
@@ -126,9 +132,47 @@ function toArenaResponse(
     challenge: parsed.challenge,
     support: parsed.support,
     supportComment: parsed.supportComment,
-    content: parsed.content,
+    content: finalizeArenaVisibleBody(parsed.content),
     responseTimeMs: ms,
     side,
+  }
+}
+
+/** Billable model calls per battle round: two champions only. */
+export function arenaBattleApiCallCount(_r1?: ArenaRound | undefined | null): number {
+  return 2
+}
+
+function round1AngleSnippet(r1: ArenaRound, ai: ArenaAI): string {
+  const list = Array.isArray(r1.responses) ? r1.responses : []
+  const row = list.find((x) => x?.ai === ai)
+  const raw = row?.angle?.trim() || row?.content?.trim() || '…'
+  return stripArenaMarkdown(stripInternalTargetingBlock(raw)).trim() || '…'
+}
+
+/** Zero API — Round 2 only; Korean static line + Round 1 ANGLE. */
+function syntheticSupporterAngleLine(
+  ai: ArenaAI,
+  champ: ArenaAI,
+  side: 'left' | 'right',
+  r1: ArenaRound
+): ArenaResponse {
+  const snippet = round1AngleSnippet(r1, ai)
+  const aiName = ARENA_DISPLAY[ai]
+  const champName = ARENA_DISPLAY[champ]
+  const content = `${aiName}은 ${champName}의 주장에 동의한다.\n${snippet}`
+  return {
+    ai,
+    champion: false,
+    position: `AGREE_WITH_${champ}`,
+    angle: '',
+    challenge: null,
+    support: champ,
+    supportComment: null,
+    content,
+    responseTimeMs: 0,
+    side,
+    synthetic: true,
   }
 }
 
@@ -193,54 +237,66 @@ async function invokeArenaModel(params: {
   const provider = ARENA_TO_PROVIDER[ai]
   const systemPrompt = buildArenaSystemPrompt(ai)
 
-  const res = await runSingleAiProvider({
-    supabase: ctx.supabase,
-    sessionId: ctx.sessionId,
-    userId: ctx.userId,
-    provider,
-    prompt: userPrompt,
-    systemPrompt,
-    supabaseAccessToken: ctx.supabaseAccessToken,
-    saveCompareArtifacts: false,
-    temperature: temperature ?? 0.75,
-    maxCompletionTokens: maxTokens,
-    transformPersist: (raw) => {
-      const parsed = parseArenaResponse(raw)
-      const stored = parsed.content.trim() || raw.trim()
-      return {
-        storedResponseText: stored,
-        aiResponseExtras: {
-          round: roundNumber,
-          arena_turn: persistTurn,
-          arena_tags: JSON.stringify({
-            ai,
-            champion: parsed.champion,
-            position: parsed.position,
-            angle: parsed.angle,
-            challenge: parsed.challenge,
-            support: parsed.support,
-            supportComment: parsed.supportComment,
-          }),
-        },
-      }
-    },
-  })
+  try {
+    const res = await runSingleAiProvider({
+      supabase: ctx.supabase,
+      sessionId: ctx.sessionId,
+      userId: ctx.userId,
+      provider,
+      prompt: userPrompt,
+      systemPrompt,
+      supabaseAccessToken: ctx.supabaseAccessToken,
+      saveCompareArtifacts: false,
+      temperature: temperature ?? 0.75,
+      maxCompletionTokens: maxTokens,
+      transformPersist: (raw) => {
+        const parsed = parseArenaResponse(raw)
+        const stored = parsed.content.trim() || raw.trim()
+        return {
+          storedResponseText: stored,
+          aiResponseExtras: {
+            round: roundNumber,
+            arena_turn: persistTurn,
+            arena_tags: JSON.stringify({
+              ai,
+              champion: parsed.champion,
+              position: parsed.position,
+              angle: parsed.angle,
+              challenge: parsed.challenge,
+              support: parsed.support,
+              supportComment: parsed.supportComment,
+            }),
+          },
+        }
+      },
+    })
 
-  if (res.error || res.text == null) {
+    if (res.error || res.text == null) {
+      return {
+        parsed: parseArenaResponse(''),
+        raw: res.text ?? '',
+        ms: res.responseTimeMs,
+        error: res.error ?? 'Empty response',
+      }
+    }
+
+    const parsed = parseArenaResponse(res.text)
+    return { parsed, raw: res.text, ms: res.responseTimeMs }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error'
     return {
       parsed: parseArenaResponse(''),
-      raw: res.text ?? '',
-      ms: res.responseTimeMs,
-      error: res.error ?? 'Empty response',
+      raw: '',
+      ms: 0,
+      error: msg,
     }
   }
-
-  const parsed = parseArenaResponse(res.text)
-  return { parsed, raw: res.text, ms: res.responseTimeMs }
 }
 
 function openingSnippet(round1: ArenaRound | undefined, ai: ArenaAI): string {
-  const r = round1?.responses.find((x) => x.ai === ai)
+  const list = round1?.responses
+  if (!Array.isArray(list)) return '(no prior opening recorded)'
+  const r = list.find((x) => x?.ai === ai)
   return r?.content?.slice(0, 2000) ?? '(no prior opening recorded)'
 }
 
@@ -248,13 +304,15 @@ export async function runArenaRound1(
   userPrompt: string,
   selectedAIs: ArenaAI[],
   ctx: ArenaTransportContext,
-  onResponse: (response: ArenaResponse) => void
+  onResponse: (response: ArenaResponse) => void,
+  onThinking?: (ai: ArenaAI) => void
 ): Promise<ArenaRound> {
   const ordered = sortSelectedAIs(selectedAIs)
   const collected: ArenaResponse[] = []
   let prior = ''
 
   for (const ai of ordered) {
+    onThinking?.(ai)
     const block =
       prior.length === 0
         ? userPrompt
@@ -267,7 +325,7 @@ export async function runArenaRound1(
       ctx,
       roundNumber: 1,
       persistTurn,
-      maxTokens: 1400,
+      maxTokens: 600,
     })
 
     let ar: ArenaResponse
@@ -317,42 +375,74 @@ export async function runArenaRound(
   allPreviousRounds: ArenaRound[],
   currentSides: { left: ArenaAI; right: ArenaAI },
   ctx: ArenaTransportContext,
-  onResponse: (response: ArenaResponse) => void
+  onResponse: (response: ArenaResponse) => void,
+  onThinking?: (ai: ArenaAI) => void
 ): Promise<ArenaRound> {
   const r1 = allPreviousRounds.find((r) => r.roundNumber === 1)
+  if (!r1 || !Array.isArray(r1.responses) || r1.responses.length === 0) {
+    throw new Error('Arena battle requires a completed round 1 with responses.')
+  }
+
   const leftChamp = currentSides.left
   const rightChamp = currentSides.right
-  const leftSupport = (r1?.sides.left ?? []).filter((a) => a !== leftChamp)
-  const rightSupport = (r1?.sides.right ?? []).filter((a) => a !== rightChamp)
+  if (!leftChamp || !rightChamp) {
+    throw new Error('Arena battle requires both left and right champions.')
+  }
+
+  const leftSideList = Array.isArray(r1.sides?.left) ? r1.sides.left : []
+  const rightSideList = Array.isArray(r1.sides?.right) ? r1.sides.right : []
+  const leftSupport = leftSideList.filter((a) => a !== leftChamp)
+  const rightSupport = rightSideList.filter((a) => a !== rightChamp)
 
   const history = formatArenaHistory(allPreviousRounds)
   const out: ArenaResponse[] = []
 
-  const championPrompt = (
+  const championUserPrompt = (
     ai: ArenaAI,
     side: 'left' | 'right',
+    opposingChampionLatest: string,
     role: string
-  ) => `${history}
+  ) => {
+    const showOpposing = opposingChampionLatest.trim().length > 0 && side === 'right'
+    const oppBlock = showOpposing
+      ? `\nOpposing champion's latest argument in THIS battle round:\n"""\n${opposingChampionLatest.slice(0, 3500)}\n"""\n`
+      : ''
+    return `${history}
 
 User topic:
 ${userPrompt}
-
+${oppBlock}
 Your opening statement from ROUND 1 (stay consistent; cite yourself if needed):
 ${openingSnippet(r1, ai)}
 
 You are the ${side.toUpperCase()} camp champion (${ai}). ${role}
 Use the mandatory tag block first, then your argument.`
+  }
 
-  const supportPrompt = (ai: ArenaAI, side: 'left' | 'right', champ: ArenaAI) => `${history}
-
-User topic:
-${userPrompt}
-
-Your round 1 opening:
-${openingSnippet(r1, ai)}
-
-You are ${ai} on the ${side.toUpperCase()} side supporting champion ${champ}.
-Add a short supporting strike (2–5 sentences) after the tags. CHAMPION must be NO. CHALLENGE: NONE unless essential.`
+  const emitSupporterAngle = async (ai: ArenaAI, champ: ArenaAI, side: 'left' | 'right') => {
+    const ar = syntheticSupporterAngleLine(ai, champ, side, r1)
+    out.push(ar)
+    onResponse(ar)
+    const persistTurn = nextArenaTurn()
+    const tags: ParsedArenaTagBlock = {
+      champion: false,
+      position: ar.position,
+      angle: '',
+      challenge: null,
+      support: champ,
+      supportComment: null,
+      content: ar.content,
+    }
+    await saveArenaDebateLog(ctx.supabase, ctx.sessionId, {
+      round: roundNumber,
+      turn: persistTurn,
+      arenaAi: ai,
+      provider: ARENA_TO_PROVIDER[ai],
+      content: ar.content,
+      tags,
+      rawSnippet: '[synthetic supporter angle]',
+    })
+  }
 
   const push = async (
     ai: ArenaAI,
@@ -361,15 +451,31 @@ Add a short supporting strike (2–5 sentences) after the tags. CHAMPION must be
     prompt: string,
     maxTok: number
   ) => {
+    onThinking?.(ai)
     const persistTurn = nextArenaTurn()
-    const { parsed, raw, ms, error } = await invokeArenaModel({
-      ai,
-      userPrompt: prompt,
-      ctx,
-      roundNumber,
-      persistTurn,
-      maxTokens: maxTok,
-    })
+    let parsed: ParsedArenaTagBlock
+    let raw: string
+    let ms: number
+    let error: string | undefined
+    try {
+      const result = await invokeArenaModel({
+        ai,
+        userPrompt: prompt,
+        ctx,
+        roundNumber,
+        persistTurn,
+        maxTokens: maxTok,
+      })
+      parsed = result.parsed
+      raw = result.raw
+      ms = result.ms
+      error = result.error
+    } catch (e: unknown) {
+      parsed = parseArenaResponse('')
+      raw = ''
+      ms = 0
+      error = e instanceof Error ? e.message : 'Unknown error'
+    }
     let ar: ArenaResponse
     if (error) {
       ar = errorArenaResponse(ai, error, ms)
@@ -398,43 +504,44 @@ Add a short supporting strike (2–5 sentences) after the tags. CHAMPION must be
     onResponse(ar)
   }
 
+  const leftRole = 'Press your camp case against the opposing champion.'
   await push(
     leftChamp,
     'left',
     true,
-    championPrompt(leftChamp, 'left', 'Open with your attack for this battle round.'),
-    1600
+    championUserPrompt(leftChamp, 'left', '', leftRole),
+    650
   )
-  for (const s of leftSupport) {
-    await push(s, 'left', false, supportPrompt(s, 'left', leftChamp), 700)
-  }
+  const lastLeftChampTurn = out[out.length - 1]!.content
 
+  const rightRole = 'Rebut the left champion directly.'
   await push(
     rightChamp,
     'right',
     true,
-    championPrompt(rightChamp, 'right', 'Rebut the opposing champion and their allies.'),
-    1600
+    championUserPrompt(rightChamp, 'right', lastLeftChampTurn, rightRole),
+    650
   )
-  for (const s of rightSupport) {
-    await push(s, 'right', false, supportPrompt(s, 'right', rightChamp), 700)
-  }
 
-  await push(
-    leftChamp,
-    'left',
-    true,
-    championPrompt(leftChamp, 'left', 'Second strike: press the advantage against the right camp.'),
-    1600
-  )
+  if (roundNumber === 2) {
+    for (const s of leftSupport) {
+      await emitSupporterAngle(s, leftChamp, 'left')
+    }
+    for (const s of rightSupport) {
+      await emitSupporterAngle(s, rightChamp, 'right')
+    }
+  }
 
   return {
     roundNumber,
     responses: out,
-    sides: { left: r1?.sides.left ?? [leftChamp], right: r1?.sides.right ?? [rightChamp] },
+    sides: {
+      left: leftSideList.length ? leftSideList : [leftChamp],
+      right: rightSideList.length ? rightSideList : [rightChamp],
+    },
     champion: {
-      left: r1?.champion.left ?? leftChamp,
-      right: r1?.champion.right ?? rightChamp,
+      left: r1.champion?.left ?? leftChamp,
+      right: r1.champion?.right ?? rightChamp,
     },
   }
 }
