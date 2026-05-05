@@ -68,6 +68,13 @@ function extractFinding(verdict: string): string | null {
   return m?.[1]?.trim() ?? null;
 }
 
+function localizeVerdictLabelsKo(verdict: string): string {
+  return verdict
+    .replace(/^\s*RULING\s*:/gim, "판결:")
+    .replace(/^\s*FINDING\s*:/gim, "판결 이유:")
+    .replace(/^\s*DISSENT\s*NOTE\s*:/gim, "주목할 반론:");
+}
+
 function GeminiNameStripe({ label }: { label: string }) {
   const short = label.length > 42 ? `${label.slice(0, 40)}…` : label;
   return (
@@ -159,7 +166,9 @@ function VerdictCard({ text, animate }: { text: string; animate: boolean }) {
           <Gavel className="h-5 w-5" />
           <span className="text-xs font-bold uppercase tracking-[0.35em]">Verdict of the Court</span>
         </div>
-        <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-stone-900">{text}</p>
+        <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-stone-900">
+          {localizeVerdictLabelsKo(text)}
+        </p>
       </div>
     </div>
   );

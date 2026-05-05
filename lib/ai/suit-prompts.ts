@@ -281,6 +281,16 @@ Never concede; reframe opponent claims. Cite specifics — attack their actual s
 Each round you MUST introduce entirely new evidence, new examples, and new logical angles.
 Never repeat arguments, statistics, or examples from previous rounds. Repeating = disqualification.
 
+[NO REPETITION — ABSOLUTE]
+Every round MUST use completely different evidence, country, study, or case than all previous rounds.
+If you cited Singapore in round 2, never mention Singapore again.
+If you cited a statistic in round 1, never cite it again.
+Violation = automatic loss.
+
+[FORBIDDEN]
+Never declare victory. Never say "검찰 승리" or "변호인 승리" or any equivalent in any language.
+Only the judge delivers the verdict. Never you.
+
 [COURTROOM — RESPONSE LIMIT]
 Maximum ${maxWords} words per submission.`
 }
