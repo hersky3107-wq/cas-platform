@@ -391,13 +391,10 @@ export default function PersonaModePage() {
 
   useEffect(() => {
     void (async () => {
-      const { data } = await supabase.auth.getSession();
-      const t = data.session?.access_token;
-      if (!t) return;
       const res = await fetch("/api/credits/balance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ supabaseAccessToken: t }),
+        body: JSON.stringify({}),
       });
       const j = (await res.json().catch(() => null)) as { balance?: number };
       if (typeof j?.balance === "number") setCredits(j.balance);
@@ -477,19 +474,12 @@ export default function PersonaModePage() {
       if (!bestAnswerPanel?.sessionId) return;
       setError(null);
       try {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (!token) {
-          router.replace("/auth");
-          return;
-        }
         const res = await fetch("/api/compare/user-selection", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sessionId: bestAnswerPanel.sessionId,
             selectedProvider: provider,
-            supabaseAccessToken: token,
           }),
         });
         if (!res.ok) {
@@ -543,13 +533,6 @@ export default function PersonaModePage() {
     setInput("");
 
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) {
-        router.replace("/auth");
-        return;
-      }
-
       let resolvedSessionId: string | null = sessionId;
 
       const res = await fetch("/api/ai-persona", {
@@ -559,7 +542,6 @@ export default function PersonaModePage() {
           prompt: text,
           assignments,
           sessionId,
-          supabaseAccessToken: token,
         }),
       });
 
@@ -675,19 +657,12 @@ export default function PersonaModePage() {
       setEndSubmitting(true);
       setError(null);
       try {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (!token) {
-          router.replace("/auth");
-          return;
-        }
         const res = await fetch("/api/compare/end", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sessionId,
             winner,
-            supabaseAccessToken: token,
           }),
         });
         if (!res.ok) {

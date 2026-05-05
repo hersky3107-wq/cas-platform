@@ -269,13 +269,10 @@ export default function ArenaPage() {
 
   useEffect(() => {
     void (async () => {
-      const { data } = await supabase.auth.getSession();
-      const t = data.session?.access_token;
-      if (!t) return;
       const res = await fetch("/api/credits/balance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ supabaseAccessToken: t }),
+        body: JSON.stringify({}),
       });
       const j = (await res.json().catch(() => null)) as { balance?: number };
       if (typeof j?.balance === "number") setCredits(j.balance);
@@ -308,16 +305,10 @@ export default function ArenaPage() {
       onRound: (r: ArenaRound) => void,
       onThinking?: (payload: { ai: ArenaAI; roundNumber: number }) => void
     ): Promise<boolean> => {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) {
-        router.replace("/auth");
-        return false;
-      }
       const res = await fetch("/api/ai-arena", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, supabaseAccessToken: token }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as { error?: string; balance?: number };
@@ -442,19 +433,12 @@ export default function ArenaPage() {
   const purchaseArenaFinalBundleIfNeeded = useCallback(async (): Promise<boolean> => {
     if (arenaFinalBundleTokenRef.current) return true;
     if (!sessionId) return false;
-    const { data } = await supabase.auth.getSession();
-    const tok = data.session?.access_token;
-    if (!tok) {
-      router.replace("/auth");
-      return false;
-    }
     const res = await fetch("/api/ai-arena", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "arena_buy_final_bundle",
         sessionId,
-        supabaseAccessToken: tok,
       }),
     });
     const j = (await res.json().catch(() => null)) as {
@@ -623,9 +607,6 @@ export default function ArenaPage() {
 
   const submitVote = useCallback(async () => {
     if (!sessionId || !picked) return;
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (!token) return;
     const res = await fetch("/api/ai-arena", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -633,7 +614,6 @@ export default function ArenaPage() {
         action: "vote",
         sessionId,
         chosenAi: picked,
-        supabaseAccessToken: token,
       }),
     });
     if (!res.ok) {

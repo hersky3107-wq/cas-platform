@@ -165,7 +165,6 @@ function formatBreakdown(counts: Record<FactVerdict, number>): string {
 
 export default function VerdictFactcheckPage() {
   const router = useRouter();
-  const [authReady, setAuthReady] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [claim, setClaim] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -190,39 +189,16 @@ export default function VerdictFactcheckPage() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      if (!data.session) {
-        router.replace("/auth");
-        return;
-      }
-      setAuthReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) router.replace("/auth");
-    });
-    return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!authReady) return;
     void (async () => {
-      const { data } = await supabase.auth.getSession();
-      const t = data.session?.access_token;
-      if (!t) return;
       const res = await fetch("/api/credits/balance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ supabaseAccessToken: t }),
+        body: JSON.stringify({}),
       });
       const j = (await res.json().catch(() => null)) as { balance?: number };
       if (typeof j?.balance === "number") setCredits(j.balance);
     })();
-  }, [authReady]);
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -269,20 +245,12 @@ export default function VerdictFactcheckPage() {
     }
 
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) {
-        router.replace("/auth");
-        return;
-      }
-
       const res = await fetch("/api/ai-verdict-factcheck", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           claim: body,
           sessionId,
-          supabaseAccessToken: token,
         }),
       });
 
@@ -381,14 +349,6 @@ export default function VerdictFactcheckPage() {
       setSending(false);
     }
   }, [claim, sending, sessionId, router]);
-
-  if (!authReady) {
-    return (
-      <div className={`${BG} flex min-h-screen items-center justify-center`}>
-        <p className="text-sm text-white/60">Loading…</p>
-      </div>
-    );
-  }
 
   const winnerMeta =
     finalWinner != null && !finalDivided ? FACT_VERDICT_DISPLAY[finalWinner] : null;

@@ -163,15 +163,8 @@ export default function SuitSetupPage() {
     }
     setStarting(true);
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) {
-        router.replace("/auth");
-        return;
-      }
       const body: Record<string, unknown> = {
         action: "start",
-        supabaseAccessToken: token,
         topic: topic.trim(),
         format,
         participationMode: participation,

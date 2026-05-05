@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { supabase } from '@/lib/db/supabase'
 
 type ProviderName = 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek' | 'mistral'
 
@@ -44,9 +43,6 @@ export default function TestRouterPage() {
     setLoading(true)
 
     try {
-      const { data } = await supabase.auth.getSession()
-      const accessToken = data.session?.access_token
-
       const res = await fetch('/api/ai-router', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,7 +50,6 @@ export default function TestRouterPage() {
           prompt,
           systemPrompt,
           providers,
-          supabaseAccessToken: accessToken ?? undefined,
         }),
       })
 
