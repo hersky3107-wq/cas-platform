@@ -190,7 +190,6 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 
 export default function ArenaPage() {
   const router = useRouter();
-  const [authReady, setAuthReady] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [phase, setPhase] = useState<Phase>("input");
   const [topic, setTopic] = useState("");
@@ -269,26 +268,6 @@ export default function ArenaPage() {
   }, [rounds]);
 
   useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      if (!data.session) {
-        router.replace("/auth");
-        return;
-      }
-      setAuthReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) router.replace("/auth");
-    });
-    return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!authReady) return;
     void (async () => {
       const { data } = await supabase.auth.getSession();
       const t = data.session?.access_token;
@@ -301,7 +280,7 @@ export default function ArenaPage() {
       const j = (await res.json().catch(() => null)) as { balance?: number };
       if (typeof j?.balance === "number") setCredits(j.balance);
     })();
-  }, [authReady]);
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -664,14 +643,6 @@ export default function ArenaPage() {
     }
     setVoteDone(true);
   }, [sessionId, picked]);
-
-  if (!authReady) {
-    return (
-      <div className={`${BG} flex min-h-screen items-center justify-center`}>
-        <p className="text-sm text-white/60">Loading…</p>
-      </div>
-    );
-  }
 
   const leftColor = sides.left ? ARENA_COLOR[sides.left] : "#64748B";
   const rightColor = sides.right ? ARENA_COLOR[sides.right] : "#64748B";

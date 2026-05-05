@@ -312,7 +312,6 @@ function StaggeredAiChatBubble({
 
 export default function PersonaModePage() {
   const router = useRouter();
-  const [authReady, setAuthReady] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [rows, setRows] = useState<PersonaRow[]>([]);
   const [input, setInput] = useState("");
@@ -391,26 +390,6 @@ export default function PersonaModePage() {
   }, [turns]);
 
   useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      if (!data.session) {
-        router.replace("/auth");
-        return;
-      }
-      setAuthReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) router.replace("/auth");
-    });
-    return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!authReady) return;
     void (async () => {
       const { data } = await supabase.auth.getSession();
       const t = data.session?.access_token;
@@ -423,7 +402,7 @@ export default function PersonaModePage() {
       const j = (await res.json().catch(() => null)) as { balance?: number };
       if (typeof j?.balance === "number") setCredits(j.balance);
     })();
-  }, [authReady]);
+  }, []);
 
   useEffect(() => {
     if (turns.length === 0) {
@@ -739,14 +718,6 @@ export default function PersonaModePage() {
 
   /** Full role editor visible before first chat turn, or when user expands. */
   const rolesEditorOpen = turns.length === 0 || rolesSectionExpanded;
-
-  if (!authReady) {
-    return (
-      <div className={`${BG} flex min-h-screen items-center justify-center`}>
-        <p className="text-sm text-white/60">Loading…</p>
-      </div>
-    );
-  }
 
   return (
     <div className={`flex min-h-[100dvh] flex-col ${BG}`}>

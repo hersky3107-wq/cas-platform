@@ -320,7 +320,6 @@ function StaggeredAiChatBubble({
 
 export default function CustomModePage() {
   const router = useRouter();
-  const [authReady, setAuthReady] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [selected, setSelected] = useState<Record<AiProviderName, boolean>>(
     defaultSelected
@@ -372,26 +371,6 @@ export default function CustomModePage() {
   }, [turns]);
 
   useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      if (!data.session) {
-        router.replace("/auth");
-        return;
-      }
-      setAuthReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) router.replace("/auth");
-    });
-    return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!authReady) return;
     (async () => {
       const { data } = await supabase.auth.getSession();
       const t = data.session?.access_token;
@@ -404,7 +383,7 @@ export default function CustomModePage() {
       const j = (await res.json().catch(() => null)) as { balance?: number };
       if (typeof j?.balance === "number") setCredits(j.balance);
     })();
-  }, [authReady]);
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -663,14 +642,6 @@ export default function CustomModePage() {
     },
     [sessionId, router]
   );
-
-  if (!authReady) {
-    return (
-      <div className={`${BG} flex min-h-screen items-center justify-center`}>
-        <p className="text-sm text-white/60">Loading…</p>
-      </div>
-    );
-  }
 
   return (
     <div className={BG}>

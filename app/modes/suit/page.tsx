@@ -26,7 +26,6 @@ type WizardStep =
 
 export default function SuitSetupPage() {
   const router = useRouter();
-  const [authReady, setAuthReady] = useState(false);
   const [step, setStep] = useState<WizardStep>("topic");
   const [topic, setTopic] = useState("");
   const [format, setFormat] = useState<"criminal" | "civil" | null>(null);
@@ -38,25 +37,6 @@ export default function SuitSetupPage() {
   const [counselAiProvider, setCounselAiProvider] = useState<AiProviderName | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      if (!data.session) {
-        router.replace("/auth");
-        return;
-      }
-      setAuthReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) router.replace("/auth");
-    });
-    return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
-    };
-  }, [router]);
 
   const flow = useMemo(() => {
     const needsCriminalSide =
@@ -236,14 +216,6 @@ export default function SuitSetupPage() {
         ? "border-amber-400/55 bg-[#131c35] shadow-[0_0_28px_rgba(245,158,11,0.12)]"
         : "border-white/12 bg-[#131c35]/80 hover:border-white/20"
     }`;
-
-  if (!authReady) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0a0f1e] text-white">
-        <p className="text-sm text-white/60">Loading…</p>
-      </main>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-[#0a0f1e] pb-24 text-white">
