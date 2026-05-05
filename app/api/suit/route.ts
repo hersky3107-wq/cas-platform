@@ -37,7 +37,13 @@ async function insertWithFallback(
 }
 
 function anthropicPlatformKey(): string | null {
-  return process.env.ANTHROPIC_API_KEY ?? null
+  // Prefer server env keys; accept common fallbacks used in other routes/deploys.
+  return (
+    process.env.ANTHROPIC_API_KEY ??
+    process.env.CLAUDE_API_KEY ??
+    process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY ??
+    null
+  )
 }
 
 async function insertParticipants(supabase: SupabaseClient, sessionId: string, assignments: RoleAssignment[]) {
@@ -425,105 +431,138 @@ export async function POST(req: Request) {
   }
 
   if (action === 'spectator_stream' || action === 'witness_stream_resume') {
-    const resume = action === 'witness_stream_resume'
-    const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
-    const topic = typeof body.topic === 'string' ? body.topic.trim() : ''
-    const format = (body.format === 'civil' ? 'civil' : 'criminal') as SuitFormat
-    const participationMode =
-      body.participationMode === 'witness' ? 'witness' : 'spectator'
+    console.log('[suit:spectator_stream] starting stream')
+    console.log('[suit:spectator_stream] body:', JSON.stringify(body))
+    try {
+      const resume = action === 'witness_stream_resume'
+      const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+      const topic = typeof body.topic === 'string' ? body.topic.trim() : ''
+      const format = (body.format === 'civil' ? 'civil' : 'criminal') as SuitFormat
+      const participationMode =
+        body.participationMode === 'witness' ? 'witness' : 'spectator'
 
-    let messages = parseMessages(body.messages)
-    const assignments = parseAssignments(body.assignments)
-    const apiKey = anthropicPlatformKey()
+      let messages = parseMessages(body.messages)
+      const assignments = parseAssignments(body.assignments)
+      const apiKey = anthropicPlatformKey()
 
-    if (!sessionId || !topic || !assignments.length || !apiKey) {
-      return Response.json({ error: 'bad stream payload' }, { status: 400 })
-    }
+      if (!sessionId || !topic || !assignments.length || !apiKey) {
+        console.log('[suit:spectator_stream] 400 bad stream payload', {
+          resume,
+          sessionId_ok: Boolean(sessionId),
+          topic_ok: Boolean(topic),
+          assignments_len: assignments.length,
+          apiKey_ok: Boolean(apiKey),
+        })
+        return Response.json({ error: 'bad stream payload' }, { status: 400 })
+      }
 
-    const { data: sess } = await supabase.from('sessions').select('mode').eq('id', sessionId).maybeSingle()
-    if (!sess || sess.mode !== 'suit') {
-      return Response.json({ error: 'bad session' }, { status: 400 })
-    }
+      const { data: sess } = await supabase
+        .from('sessions')
+        .select('mode')
+        .eq('id', sessionId)
+        .maybeSingle()
+      if (!sess || sess.mode !== 'suit') {
+        console.log('[suit:spectator_stream] 400 bad session', {
+          sessionId,
+          sess_mode: sess?.mode ?? null,
+        })
+        return Response.json({ error: 'bad session' }, { status: 400 })
+      }
 
-    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }
-    const enc = new TextEncoder()
+      const ctx: SuitTransportContext = {
+        supabase,
+        sessionId,
+        userId: user.id,
+        supabaseAccessToken: tokenForRouter,
+      }
+      const enc = new TextEncoder()
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        const emitBuffered = createEmitter(messages, enc, controller, resume ? messages.length : 0)
-        try {
-          write(enc, controller, { type: 'meta', sessionId })
+      const stream = new ReadableStream({
+        async start(controller) {
+          const emitBuffered = createEmitter(messages, enc, controller, resume ? messages.length : 0)
+          try {
+            write(enc, controller, { type: 'meta', sessionId })
 
-          if (!resume) {
-            messages.length = 0
-            await runJudgeOpening(topic, format, ctx, apiKey, messages)
-            emitBuffered()
-
-            for (const rnd of [1, 2, 3] as const) {
-              await runSuitRound(topic, format, participationMode, rnd, assignments, messages, ctx)
+            if (!resume) {
+              messages.length = 0
+              await runJudgeOpening(topic, format, ctx, apiKey, messages)
               emitBuffered()
-            }
 
-            if (participationMode === 'witness') {
-              write(enc, controller, { type: 'need_witness' })
-              write(enc, controller, {
-                type: 'partial',
-                messages,
-              })
+              for (const rnd of [1, 2, 3] as const) {
+                await runSuitRound(topic, format, participationMode, rnd, assignments, messages, ctx)
+                emitBuffered()
+              }
+
+              if (participationMode === 'witness') {
+                write(enc, controller, { type: 'need_witness' })
+                write(enc, controller, {
+                  type: 'partial',
+                  messages,
+                })
+              } else {
+                await runSuitRound(topic, format, participationMode, 4, assignments, messages, ctx)
+                emitBuffered()
+                const v = await runJudgeVerdict(topic, format, ctx, apiKey, messages)
+                emitBuffered()
+                await persistSuitVerdictResult(supabase, sessionId, v ?? '')
+                write(enc, controller, { type: 'complete', verdictText: v })
+              }
             } else {
-              await runSuitRound(topic, format, participationMode, 4, assignments, messages, ctx)
-              emitBuffered()
-              const v = await runJudgeVerdict(topic, format, ctx, apiKey, messages)
-              emitBuffered()
-              await persistSuitVerdictResult(supabase, sessionId, v ?? '')
-              write(enc, controller, { type: 'complete', verdictText: v })
+              const wt = typeof body.witnessTestimony === 'string' ? body.witnessTestimony.trim() : ''
+              if (!wt || wt.length > 200) {
+                write(enc, controller, { type: 'error', error: 'Witness testimony ≤200 characters' })
+              } else {
+                messages.push({
+                  id: `w-${Date.now()}`,
+                  role: 'user',
+                  sideBucket: 'neutral',
+                  provider: 'user',
+                  displayName: 'Witness (You)',
+                  phase: 'witness_stand',
+                  content: wt.slice(0, 200),
+                  createdAt: Date.now(),
+                })
+                await insertUserDeb(supabase, sessionId, `[witness] ${wt}`)
+                emitBuffered()
+
+                await runSuitRound(topic, format, 'witness', 35, assignments, messages, ctx, wt.slice(0, 200))
+                emitBuffered()
+
+                await runSuitRound(topic, format, 'witness', 4, assignments, messages, ctx)
+                emitBuffered()
+
+                const v = await runJudgeVerdict(topic, format, ctx, apiKey, messages)
+                emitBuffered()
+                await persistSuitVerdictResult(supabase, sessionId, v ?? '')
+                write(enc, controller, { type: 'complete', verdictText: v })
+              }
             }
-          } else {
-            const wt = typeof body.witnessTestimony === 'string' ? body.witnessTestimony.trim() : ''
-            if (!wt || wt.length > 200) {
-              write(enc, controller, { type: 'error', error: 'Witness testimony ≤200 characters' })
-            } else {
-              messages.push({
-                id: `w-${Date.now()}`,
-                role: 'user',
-                sideBucket: 'neutral',
-                provider: 'user',
-                displayName: 'Witness (You)',
-                phase: 'witness_stand',
-                content: wt.slice(0, 200),
-                createdAt: Date.now(),
-              })
-              await insertUserDeb(supabase, sessionId, `[witness] ${wt}`)
-              emitBuffered()
 
-              await runSuitRound(topic, format, 'witness', 35, assignments, messages, ctx, wt.slice(0, 200))
-              emitBuffered()
-
-              await runSuitRound(topic, format, 'witness', 4, assignments, messages, ctx)
-              emitBuffered()
-
-              const v = await runJudgeVerdict(topic, format, ctx, apiKey, messages)
-              emitBuffered()
-              await persistSuitVerdictResult(supabase, sessionId, v ?? '')
-              write(enc, controller, { type: 'complete', verdictText: v })
-            }
+            write(enc, controller, { type: 'done' })
+          } catch (e: unknown) {
+            write(enc, controller, {
+              type: 'error',
+              error: e instanceof Error ? e.message : String(e),
+            })
+          } finally {
+            controller.close()
           }
+        },
+      })
 
-          write(enc, controller, { type: 'done' })
-        } catch (e: unknown) {
-          write(enc, controller, { type: 'error', error: e instanceof Error ? e.message : String(e) })
-        } finally {
-          controller.close()
-        }
-      },
-    })
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'application/x-ndjson; charset=utf-8',
-        'Cache-Control': 'no-store',
-      },
-    })
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'application/x-ndjson; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      })
+    } catch (err) {
+      console.error('[suit:spectator_stream] error:', err)
+      console.log('[suit:spectator_stream] 400 caught error returning', {
+        errorString: String(err),
+      })
+      return new Response(JSON.stringify({ error: String(err) }), { status: 400 })
+    }
   }
 
   return Response.json({ error: 'Unknown action' }, { status: 400 })
