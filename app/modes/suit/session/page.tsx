@@ -172,6 +172,7 @@ export default function SuitSessionPage() {
   const [messages, setMessages] = useState<SuitMessage[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [awaitingNext, setAwaitingNext] = useState(false);
   const [awaitWitness, setAwaitWitness] = useState(false);
   const [witnessText, setWitnessText] = useState("");
   const [verdictText, setVerdictText] = useState<string | null>(null);
@@ -188,10 +189,24 @@ export default function SuitSessionPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const spectatorStreamStarted = useRef<string | null>(null);
   const counselStreamStarted = useRef<string | null>(null);
+  const lastSpectatorChunkAt = useRef<number>(0);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, awaitWitness, loading, verdictText, counselExchange]);
+
+  useEffect(() => {
+    if (!loading || awaitWitness || verdictText) {
+      setAwaitingNext(false);
+      return;
+    }
+    const id = window.setInterval(() => {
+      const t = lastSpectatorChunkAt.current;
+      if (!t) return;
+      setAwaitingNext(Date.now() - t > 260);
+    }, 150);
+    return () => window.clearInterval(id);
+  }, [loading, awaitWitness, verdictText]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(STORAGE_KEY);
@@ -264,6 +279,8 @@ export default function SuitSessionPage() {
   const readSpectatorWitnessStream = useCallback(
     async (body: Record<string, unknown>) => {
       setLoading(true);
+      setAwaitingNext(false);
+      lastSpectatorChunkAt.current = Date.now();
       setStreamError(null);
       const res = await fetch("/api/suit", {
         method: "POST",
@@ -309,21 +326,39 @@ export default function SuitSessionPage() {
               setStreamError(msg.error);
             }
             if (msg.type === "suit_message" && msg.message) {
+              lastSpectatorChunkAt.current = Date.now();
               setMessages((prev) => [...prev, msg.message!]);
+              await new Promise<void>((resolve) => {
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => resolve());
+                });
+              });
             }
             if (msg.type === "partial" && Array.isArray(msg.messages)) {
-              setMessages(msg.messages);
+              lastSpectatorChunkAt.current = Date.now();
+              setMessages((prev) => {
+                if (prev.length === 0) return msg.messages as SuitMessage[];
+                const next = msg.messages as SuitMessage[];
+                if (next.length <= prev.length) return prev;
+                return [...prev, ...next.slice(prev.length)];
+              });
+              await new Promise<void>((resolve) => {
+                requestAnimationFrame(() => resolve());
+              });
             }
             if (msg.type === "need_witness") {
+              lastSpectatorChunkAt.current = Date.now();
               setAwaitWitness(true);
             }
             if (msg.type === "complete" && typeof msg.verdictText === "string") {
+              lastSpectatorChunkAt.current = Date.now();
               setVerdictText(msg.verdictText);
             }
           }
         }
       } finally {
         setLoading(false);
+        setAwaitingNext(false);
       }
       return true;
     },
@@ -599,6 +634,13 @@ export default function SuitSessionPage() {
             .map((m) => (
               <TranscriptBubble key={m.id} m={m} />
             ))}
+
+          {loading && !awaitWitness && !verdictText && awaitingNext ? (
+            <div className="mx-auto flex w-full max-w-[min(100%,520px)] items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/60">
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white/70" />
+              <span>Awaiting next statement…</span>
+            </div>
+          ) : null}
 
           {awaitWitness ? (
             <div className="mx-auto mt-8 w-full max-w-lg rounded-2xl border border-amber-400/35 bg-black/40 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">

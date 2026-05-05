@@ -411,6 +411,13 @@ export async function runCounselOpponentTurn(opts: {
   const { opponent, ctx, exchangeNum } = opts
   const opp = opponent.provider as AiProviderName
   const system = `${suitCounselModeOppositionPrefix(opts.userRoleLabel)}\n\n${buildCounselSystemPrompt(opp, opts.format, opponent.role, opponent.sideBucket, opts.topic, exchangeNum === 2 ? 120 : 100)}`
+  console.log('[suit:counsel_system]', {
+    provider: opp,
+    format: opts.format,
+    role: opponent.role,
+    phase: `counsel_exchange_${exchangeNum}`,
+    system_preview: system.slice(0, 260),
+  })
   const user = buildCounselExchangeUserPrompt(
     exchangeNum,
     formatTranscript(opts.history),
@@ -488,6 +495,13 @@ export async function runSuitRound(
       topic,
       maxWords
     )
+    console.log('[suit:counsel_system]', {
+      provider: a.provider as AiProviderName,
+      format,
+      role: a.role,
+      round,
+      system_preview: system.slice(0, 260),
+    })
     const user = buildUserPromptForCounsel(
       topic,
       format,

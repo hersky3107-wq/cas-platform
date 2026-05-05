@@ -19,7 +19,6 @@ type WizardStep =
   | "topic"
   | "format"
   | "participation"
-  | "criminal_side"
   | "counsel_role"
   | "counsel_ai"
   | "review";
@@ -30,7 +29,6 @@ export default function SuitSetupPage() {
   const [topic, setTopic] = useState("");
   const [format, setFormat] = useState<"criminal" | "civil" | null>(null);
   const [participation, setParticipation] = useState<"spectator" | "witness" | "counsel" | null>(null);
-  const [criminalSide, setCriminalSide] = useState<"prosecution" | "defense" | null>(null);
   const [counselRole, setCounselRole] = useState<
     "prosecutor" | "defense" | "counsel_a" | "counsel_b" | null
   >(null);
@@ -39,10 +37,8 @@ export default function SuitSetupPage() {
   const [starting, setStarting] = useState(false);
 
   const flow = useMemo(() => {
-    const needsCriminalSide =
-      format === "criminal" && participation !== null && participation !== "counsel";
     const needsCounselRole = participation === "counsel";
-    return { needsCriminalSide, needsCounselRole };
+    return { needsCounselRole };
   }, [format, participation]);
 
   const goNext = () => {
@@ -66,22 +62,6 @@ export default function SuitSetupPage() {
     if (step === "participation") {
       if (!participation) {
         setError("Choose how you will participate.");
-        return;
-      }
-      if (flow.needsCriminalSide) {
-        setStep("criminal_side");
-        return;
-      }
-      if (flow.needsCounselRole) {
-        setStep("counsel_role");
-        return;
-      }
-      setStep("review");
-      return;
-    }
-    if (step === "criminal_side") {
-      if (!criminalSide) {
-        setError("Choose which side you support for the gallery vote.");
         return;
       }
       if (flow.needsCounselRole) {
@@ -118,25 +98,13 @@ export default function SuitSetupPage() {
       setStep("format");
       return;
     }
-    if (step === "criminal_side") {
-      setStep("participation");
-      return;
-    }
     if (step === "counsel_role") {
-      if (flow.needsCriminalSide) {
-        setStep("criminal_side");
-        return;
-      }
       setStep("participation");
       return;
     }
     if (step === "review") {
       if (flow.needsCounselRole) {
         setStep("counsel_ai");
-        return;
-      }
-      if (flow.needsCriminalSide) {
-        setStep("criminal_side");
         return;
       }
       setStep("participation");
@@ -149,10 +117,6 @@ export default function SuitSetupPage() {
   const startSession = async () => {
     setError(null);
     if (!format || !participation) return;
-    if (flow.needsCriminalSide && !criminalSide) {
-      setError("Side selection required.");
-      return;
-    }
     if (flow.needsCounselRole && !counselRole) {
       setError("Counsel role required.");
       return;
@@ -169,9 +133,6 @@ export default function SuitSetupPage() {
         format,
         participationMode: participation,
       };
-      if (flow.needsCriminalSide && criminalSide) {
-        body.userPreferredSide = criminalSide;
-      }
       if (flow.needsCounselRole && counselRole) {
         body.counselUserRole = counselRole;
       }
@@ -318,34 +279,6 @@ export default function SuitSetupPage() {
           </section>
         ) : null}
 
-        {step === "criminal_side" ? (
-          <section className="space-y-4">
-            <p className="text-center text-[11px] font-medium uppercase tracking-[0.28em] text-amber-300/75">
-              Step 4 — Gallery
-            </p>
-            <h1 className="text-center text-2xl font-semibold">Which side do you support entering the courtroom?</h1>
-            <p className="text-center text-xs text-white/50">Affects your final vote UI only — not AI roles.</p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <button
-                type="button"
-                className={cardCls(criminalSide === "prosecution")}
-                onClick={() => setCriminalSide("prosecution")}
-              >
-                <span className="text-lg text-red-400">Prosecution</span>
-                <p className="mt-2 text-sm text-white/60">You enter with the state&apos;s table.</p>
-              </button>
-              <button
-                type="button"
-                className={cardCls(criminalSide === "defense")}
-                onClick={() => setCriminalSide("defense")}
-              >
-                <span className="text-lg text-blue-400">Defense</span>
-                <p className="mt-2 text-sm text-white/60">You enter with the defense table.</p>
-              </button>
-            </div>
-          </section>
-        ) : null}
-
         {step === "counsel_role" ? (
           <section className="space-y-4">
             <p className="text-center text-[11px] font-medium uppercase tracking-[0.28em] text-amber-300/75">
@@ -438,12 +371,6 @@ export default function SuitSetupPage() {
                 <dt className="text-white/50">Mode</dt>
                 <dd className="capitalize text-white/90">{participation}</dd>
               </div>
-              {criminalSide ? (
-                <div className="flex justify-between gap-4 border-b border-white/10 pb-2">
-                  <dt className="text-white/50">Gallery side</dt>
-                  <dd className="capitalize text-white/90">{criminalSide}</dd>
-                </div>
-              ) : null}
               {counselRole ? (
                 <div className="flex justify-between gap-4 border-b border-white/10 pb-2">
                   <dt className="text-white/50">Counsel role</dt>
