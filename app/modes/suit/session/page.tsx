@@ -50,14 +50,13 @@ function phaseRibbon(phase: string): string {
     const n = phase.replace("counsel_exchange_", "");
     return `EXCHANGE ${n}`;
   }
-  if (phase === "witness_exam") return "ROUND 3.5 — WITNESS EXAMINATION";
+  if (phase === "witness_exam") return "WITNESS EXAMINATION";
   const m = /^round_(\d+)$/.exec(phase);
   if (m) {
     const r = m[1];
     if (r === "1") return "ROUND 1 — OPENING STATEMENTS";
     if (r === "2") return "ROUND 2 — EVIDENCE & ARGUMENT";
-    if (r === "3") return "ROUND 3 — CROSS-EXAMINATION";
-    if (r === "4") return "ROUND 4 — REBUTTAL";
+    if (r === "3") return "ROUND 3 — REBUTTAL";
     return `ROUND ${r}`;
   }
   if (phase === "verdict") return "VERDICT";
@@ -178,6 +177,8 @@ export default function SuitSessionPage() {
   const [verdictText, setVerdictText] = useState<string | null>(null);
   const [verdictReveal, setVerdictReveal] = useState(false);
   const [voteDone, setVoteDone] = useState(false);
+  const [completedRound, setCompletedRound] = useState(0);
+  const [openingDone, setOpeningDone] = useState(false);
 
   /** Counsel */
   const [counselExchange, setCounselExchange] = useState(0);
@@ -365,29 +366,44 @@ export default function SuitSessionPage() {
     [router]
   );
 
-  const runSpectatorFlow = useCallback(async () => {
-    if (!pack) return;
+  const runStep = useCallback(
+    async (step: "opening" | "round" | "witness_exam" | "verdict", roundNumber?: number, wt?: string) => {
+      if (!pack) return false;
+      return await readSpectatorWitnessStream({
+        action: "suit_step",
+        step,
+        roundNumber,
+        witnessTestimony: wt,
+        sessionId: pack.sessionId,
+        topic: pack.topic,
+        format: pack.format,
+        participationMode: pack.participationMode,
+        assignments: pack.assignments,
+        messages,
+      });
+    },
+    [pack, messages, readSpectatorWitnessStream]
+  );
+
+  const resetSpectatorState = useCallback(() => {
     setMessages([]);
     setVerdictText(null);
     setAwaitWitness(false);
     setVoteDone(false);
-    await readSpectatorWitnessStream({
-      action: "spectator_stream",
-      sessionId: pack.sessionId,
-      topic: pack.topic,
-      format: pack.format,
-      participationMode: pack.participationMode,
-      assignments: pack.assignments,
-    });
-  }, [pack, readSpectatorWitnessStream]);
+    setCompletedRound(0);
+    setOpeningDone(false);
+  }, []);
 
   useEffect(() => {
     if (!pack) return;
     if (pack.participationMode === "counsel") return;
     if (spectatorStreamStarted.current === pack.sessionId) return;
     spectatorStreamStarted.current = pack.sessionId;
-    void runSpectatorFlow();
-  }, [pack, runSpectatorFlow]);
+    resetSpectatorState();
+    void runStep("opening").then((ok) => {
+      if (ok) setOpeningDone(true);
+    });
+  }, [pack, resetSpectatorState, runStep]);
 
   const submitWitness = async () => {
     if (!pack) return;
@@ -398,16 +414,7 @@ export default function SuitSessionPage() {
     }
     setAwaitWitness(false);
     setWitnessText("");
-    await readSpectatorWitnessStream({
-      action: "witness_stream_resume",
-      sessionId: pack.sessionId,
-      topic: pack.topic,
-      format: pack.format,
-      participationMode: "witness",
-      assignments: pack.assignments,
-      messages,
-      witnessTestimony: t,
-    });
+    await runStep("witness_exam", undefined, t);
   };
 
   const counselStart = useCallback(async () => {
@@ -626,6 +633,44 @@ export default function SuitSessionPage() {
 
         {loading ? (
           <p className="text-center text-sm text-white/50">The court is in session…</p>
+        ) : null}
+
+        {pack && pack.participationMode !== "counsel" && openingDone && !verdictText && !loading ? (
+          <div className="mx-auto flex w-full max-w-md flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-center">
+            {pack.participationMode === "witness" && completedRound >= 2 && awaitWitness ? (
+              <p className="text-sm text-white/70">The witness is called. Enter testimony to continue.</p>
+            ) : completedRound < 3 ? (
+              <>
+                <p className="text-xs uppercase tracking-[0.2em] text-white/45">
+                  Round {completedRound}/3 completed
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const next = completedRound + 1;
+                    const ok = await runStep("round", next);
+                    if (ok) {
+                      setCompletedRound(next);
+                      if (pack.participationMode === "witness" && next === 2) {
+                        setAwaitWitness(true);
+                      }
+                    }
+                  }}
+                  className="rounded-xl bg-amber-600 py-3 text-sm font-semibold text-[#0a0f1e] hover:bg-amber-500"
+                >
+                  Next round →
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void runStep("verdict")}
+                className="rounded-xl bg-amber-600 py-3 text-sm font-semibold text-[#0a0f1e] hover:bg-amber-500"
+              >
+                Request verdict →
+              </button>
+            )}
+          </div>
         ) : null}
 
         <div className="space-y-6">

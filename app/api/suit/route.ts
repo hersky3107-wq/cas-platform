@@ -1,12 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { AiProviderName } from '@/lib/ai/router'
+import { MODEL_BY_PROVIDER, type AiProviderName } from '@/lib/ai/router'
 import type { SuitClientConfig } from '@/lib/ai/suit-types'
 import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import {
-  assignCounselOpponent,
-  assignSpectatorCivil,
-  assignSpectatorCriminal,
-  assignWitness,
   JUDGE_MODEL_ID,
   runCounselOpponentTurn,
   runJudgeCounselOpening,
@@ -90,20 +86,59 @@ function isAiProviderName(x: unknown): x is AiProviderName {
 function buildAssignments(opts: {
   format: SuitFormat
   mode: SuitParticipationMode
+  sideAPicks?: AiProviderName[]
   counselUserRole?: 'prosecutor' | 'defense' | 'counsel_a' | 'counsel_b'
-  userCounselProvider?: AiProviderName
 }): RoleAssignment[] {
-  if (opts.mode === 'counsel' && opts.counselUserRole && opts.userCounselProvider) {
-    return assignCounselOpponent({
-      format: opts.format,
-      userRole: opts.counselUserRole,
-      userCounselProvider: opts.userCounselProvider,
-    }).assignments
+  const all: AiProviderName[] = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'mistral']
+  const picks = Array.isArray(opts.sideAPicks)
+    ? Array.from(new Set(opts.sideAPicks.filter((p) => all.includes(p))))
+    : []
+  const sideA = picks.length ? picks : all.slice(0, 2)
+  const sideB = all.filter((p) => !sideA.includes(p))
+
+  const judge: RoleAssignment = { provider: 'anthropic', model: JUDGE_MODEL_ID, role: 'judge', sideBucket: 'side_a' }
+
+  if (opts.mode === 'counsel' && opts.counselUserRole) {
+    const userSide =
+      opts.format === 'criminal'
+        ? (opts.counselUserRole === 'prosecutor' ? 'side_a' : 'side_b')
+        : (opts.counselUserRole === 'counsel_a' ? 'side_a' : 'side_b')
+    const userAssign: RoleAssignment = {
+      provider: 'user',
+      model: 'human',
+      role: opts.counselUserRole,
+      sideBucket: userSide,
+    }
+    const opponentProvider = (userSide === 'side_a' ? sideB[0] : sideA[0]) ?? all[0]!
+    const opponentRole: RoleAssignment['role'] =
+      opts.format === 'criminal'
+        ? (userSide === 'side_a' ? 'defense' : 'prosecutor')
+        : (userSide === 'side_a' ? 'counsel_b' : 'counsel_a')
+    const opponentBucket = userSide === 'side_a' ? 'side_b' : 'side_a'
+    const opponent: RoleAssignment = {
+      provider: opponentProvider,
+      model: MODEL_BY_PROVIDER[opponentProvider],
+      role: opponentRole,
+      sideBucket: opponentBucket,
+    }
+    return [userAssign, opponent, judge]
   }
-  if (opts.mode === 'spectator') {
-    return opts.format === 'criminal' ? assignSpectatorCriminal() : assignSpectatorCivil()
-  }
-  return assignWitness(opts.format)
+
+  const roleA: RoleAssignment['role'] = opts.format === 'criminal' ? 'prosecutor' : 'counsel_a'
+  const roleB: RoleAssignment['role'] = opts.format === 'criminal' ? 'defense' : 'counsel_b'
+  const teamA: RoleAssignment[] = sideA.map((p) => ({
+    provider: p,
+    model: MODEL_BY_PROVIDER[p],
+    role: roleA,
+    sideBucket: 'side_a',
+  }))
+  const teamB: RoleAssignment[] = sideB.map((p) => ({
+    provider: p,
+    model: MODEL_BY_PROVIDER[p],
+    role: roleB,
+    sideBucket: 'side_b',
+  }))
+  return [...teamA, ...teamB, judge]
 }
 
 function write(enc: TextEncoder, controller: ReadableStreamDefaultController<Uint8Array>, obj: unknown) {
@@ -230,16 +265,6 @@ export async function POST(req: Request) {
       if (!counselRole) {
         return Response.json({ error: 'counselUserRole required for counsel mode' }, { status: 400 })
       }
-      const aiPick = body.counselAiProvider
-      if (!isAiProviderName(aiPick)) {
-        return Response.json(
-          {
-            error:
-              'counselAiProvider required for counsel mode (openai | anthropic | google | xai | deepseek | mistral)',
-          },
-          { status: 400 }
-        )
-      }
     }
 
     const sideStep =
@@ -251,16 +276,17 @@ export async function POST(req: Request) {
 
     // userPreferredSide is optional (setup wizard no longer collects it).
 
-    const counselAi: AiProviderName | undefined =
-      mode === 'counsel' && isAiProviderName(body.counselAiProvider)
-        ? body.counselAiProvider
-        : undefined
+    const sideAPicksRaw = Array.isArray(body.sideAPicks) ? body.sideAPicks : []
+    const sideAPicks = sideAPicksRaw.filter(isAiProviderName) as AiProviderName[]
+    if (!sideAPicks.length || sideAPicks.length > 2) {
+      return Response.json({ error: 'sideAPicks (1-2 AIs) required' }, { status: 400 })
+    }
 
     const assignments = buildAssignments({
       format: format as SuitFormat,
       mode,
+      sideAPicks,
       counselUserRole: counselRole ?? undefined,
-      userCounselProvider: counselAi,
     })
 
     const ins = await supabase
@@ -292,7 +318,6 @@ export async function POST(req: Request) {
     if (sideStep) config.userPreferredSide = sideStep
     if (counselRole) config.userCounselRole = counselRole
     if (mode === 'counsel') {
-      if (counselAi) config.userCounselProvider = counselAi
       const o = assignments.find((x) => x.provider !== 'user' && x.role !== 'judge')
       if (o) config.opponentProvider = o.provider as AiProviderName
     }
@@ -304,7 +329,7 @@ export async function POST(req: Request) {
         session_id: sessionId,
         user_id: user.id,
         category: 'suit_started',
-        reason: JSON.stringify({ format, mode, counselAi: counselAi ?? null }).slice(0, 2000),
+        reason: JSON.stringify({ format, mode, sideAPicksLen: sideAPicks.length }).slice(0, 2000),
       },
       { session_id: sessionId, category: 'suit_started' }
     )
@@ -426,6 +451,96 @@ export async function POST(req: Request) {
     return Response.json({ verdictText, messages, humanPrevails })
   }
 
+  if (action === 'suit_step') {
+    const step = typeof body.step === 'string' ? body.step : ''
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+    const topic = typeof body.topic === 'string' ? body.topic.trim() : ''
+    const format = (body.format === 'civil' ? 'civil' : 'criminal') as SuitFormat
+    const participationMode =
+      body.participationMode === 'witness' ? 'witness' : 'spectator'
+    const roundNumber = Number(body.roundNumber)
+    const apiKey = anthropicPlatformKey()
+    const assignments = parseAssignments(body.assignments)
+    const messages = parseMessages(body.messages)
+    const witnessTestimony =
+      typeof body.witnessTestimony === 'string' ? body.witnessTestimony.trim().slice(0, 200) : ''
+
+    if (!sessionId || !topic || !apiKey || !assignments.length) {
+      return Response.json({ error: 'bad suit_step payload' }, { status: 400 })
+    }
+    const { data: sess } = await supabase.from('sessions').select('mode').eq('id', sessionId).maybeSingle()
+    if (!sess || sess.mode !== 'suit') return Response.json({ error: 'bad session' }, { status: 400 })
+
+    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }
+    const enc = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const emitBuffered = createEmitter(messages, enc, controller, messages.length)
+        try {
+          write(enc, controller, { type: 'meta', sessionId })
+          if (step === 'opening') {
+            await runJudgeOpening(topic, format, ctx, apiKey, messages)
+            emitBuffered()
+            write(enc, controller, { type: 'done' })
+            return
+          }
+          if (step === 'round') {
+            if (![1, 2, 3].includes(roundNumber)) {
+              write(enc, controller, { type: 'error', error: 'roundNumber must be 1-3' })
+              write(enc, controller, { type: 'done' })
+              return
+            }
+            await runSuitRound(topic, format, participationMode, roundNumber, assignments, messages, ctx)
+            emitBuffered()
+            write(enc, controller, { type: 'done' })
+            return
+          }
+          if (step === 'witness_exam') {
+            if (!witnessTestimony) {
+              write(enc, controller, { type: 'error', error: 'Witness testimony ≤200 characters' })
+              write(enc, controller, { type: 'done' })
+              return
+            }
+            messages.push({
+              id: `w-${Date.now()}`,
+              role: 'user',
+              sideBucket: 'neutral',
+              provider: 'user',
+              displayName: 'Witness (You)',
+              phase: 'witness_stand',
+              content: witnessTestimony,
+              createdAt: Date.now(),
+            })
+            await insertUserDeb(supabase, sessionId, `[witness] ${witnessTestimony}`)
+            emitBuffered()
+            await runSuitRound(topic, format, 'witness', 35, assignments, messages, ctx, witnessTestimony)
+            emitBuffered()
+            write(enc, controller, { type: 'done' })
+            return
+          }
+          if (step === 'verdict') {
+            const v = await runJudgeVerdict(topic, format, ctx, apiKey, messages)
+            emitBuffered()
+            await persistSuitVerdictResult(supabase, sessionId, v ?? '')
+            write(enc, controller, { type: 'complete', verdictText: v })
+            write(enc, controller, { type: 'done' })
+            return
+          }
+          write(enc, controller, { type: 'error', error: 'Unknown step' })
+          write(enc, controller, { type: 'done' })
+        } catch (e: unknown) {
+          write(enc, controller, { type: 'error', error: e instanceof Error ? e.message : String(e) })
+        } finally {
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' },
+    })
+  }
+
   if (action === 'spectator_stream' || action === 'witness_stream_resume') {
     console.log('[suit:spectator_stream] starting stream')
     console.log('[suit:spectator_stream] body:', JSON.stringify(body))
@@ -484,6 +599,7 @@ export async function POST(req: Request) {
               await runJudgeOpening(topic, format, ctx, apiKey, messages)
               emitBuffered()
 
+              // 3-round structure (1: opening, 2: evidence, 3: rebuttal) then verdict.
               for (const rnd of [1, 2, 3] as const) {
                 await runSuitRound(topic, format, participationMode, rnd, assignments, messages, ctx)
                 emitBuffered()
@@ -496,8 +612,6 @@ export async function POST(req: Request) {
                   messages,
                 })
               } else {
-                await runSuitRound(topic, format, participationMode, 4, assignments, messages, ctx)
-                emitBuffered()
                 const v = await runJudgeVerdict(topic, format, ctx, apiKey, messages)
                 emitBuffered()
                 await persistSuitVerdictResult(supabase, sessionId, v ?? '')
@@ -521,10 +635,10 @@ export async function POST(req: Request) {
                 await insertUserDeb(supabase, sessionId, `[witness] ${wt}`)
                 emitBuffered()
 
-                await runSuitRound(topic, format, 'witness', 35, assignments, messages, ctx, wt.slice(0, 200))
+              await runSuitRound(topic, format, 'witness', 35, assignments, messages, ctx, wt.slice(0, 200))
                 emitBuffered()
 
-                await runSuitRound(topic, format, 'witness', 4, assignments, messages, ctx)
+              await runSuitRound(topic, format, 'witness', 3, assignments, messages, ctx)
                 emitBuffered()
 
                 const v = await runJudgeVerdict(topic, format, ctx, apiKey, messages)

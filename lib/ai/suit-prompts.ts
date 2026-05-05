@@ -323,11 +323,9 @@ export function roundInstructionUser(round: number, format: SuitFormat): string 
     case 2:
       return `ROUND 2 — EVIDENCE & ARGUMENT\nPresent key evidence and logic. Maximum 120 words.${tail}`
     case 3:
-      return `ROUND 3 — CROSS-EXAMINATION\nAttack the opposing side's Round 2 argument directly. Quote or reference specific claims they made. Maximum 100 words.${tail}`
+      return `ROUND 3 — REBUTTAL\nFinal argument before verdict. Maximum 100 words.${tail}`
     case 35:
       return `ROUND 3.5 — WITNESS EXAMINATION\nWitness testimony appeared in the record. Prosecution-aligned counsel ATTACK the testimony; Defense-aligned counsel SUPPORT the testimony (Civil: Side A attacks / Side B supports — follow your assigned side). Maximum 100 words each. Tag your stance explicitly in opening clause.${tail}`
-    case 4:
-      return `ROUND 4 — REBUTTAL\nFinal argument before verdict. Maximum 100 words.${tail}`
     default:
       return `Present your submission. Respect word limits stated in prior instructions.${tail}`
   }

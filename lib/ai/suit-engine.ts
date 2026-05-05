@@ -9,6 +9,7 @@ import {
   buildCounselSystemPrompt,
   roundInstructionUser,
   SUIT_JUDGE_SYSTEM_PROMPT,
+  suitCounselSelectorMeta,
   suitCounselModeOppositionPrefix,
   suitJudgeCounselOpeningSystem,
   suitJudgeCounselOpeningUser,
@@ -342,18 +343,12 @@ function displayNameFor(
   a: RoleAssignment,
   short: boolean
 ): string {
-  if (a.role === 'judge') return 'Judge (Opus 4.7)'
+  if (a.role === 'judge') return 'Judge'
   if (a.provider === 'user') return 'You'
-  const side =
-    format === 'criminal'
-      ? a.sideBucket === 'side_a'
-        ? 'Prosecution'
-        : 'Defense'
-      : a.sideBucket === 'side_a'
-        ? 'Counsel A'
-        : 'Counsel B'
-  const model = a.model
-  return short ? `${a.provider}` : `${side} · ${a.provider} (${model})`
+  const meta = suitCounselSelectorMeta(a.provider as AiProviderName)
+  const name = meta?.nameEn ?? String(a.provider)
+  const epi = meta?.epithetKo ? ` (${meta.epithetKo})` : ''
+  return short ? `${name}${epi}` : `${name}${epi}`
 }
 
 function pushMessage(
