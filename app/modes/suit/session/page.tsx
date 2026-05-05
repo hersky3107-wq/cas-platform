@@ -189,6 +189,7 @@ export default function SuitSessionPage() {
   const [voteThanks, setVoteThanks] = useState(false);
   const [completedRound, setCompletedRound] = useState(0);
   const [openingDone, setOpeningDone] = useState(false);
+  const [verdictRequesting, setVerdictRequesting] = useState(false);
 
   /** Counsel */
   const [counselExchange, setCounselExchange] = useState(0);
@@ -217,6 +218,14 @@ export default function SuitSessionPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, awaitWitness, loading, verdictText, counselExchange]);
+
+  useEffect(() => {
+    if (completedRound >= 3 && !verdictText) {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      });
+    }
+  }, [completedRound, verdictText]);
 
   useEffect(() => {
     if (!loading || awaitWitness || verdictText) {
@@ -689,13 +698,7 @@ export default function SuitSessionPage() {
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => void runStep("verdict")}
-                className="rounded-xl bg-amber-600 py-3 text-sm font-semibold text-[#0a0f1e] hover:bg-amber-500"
-              >
-                Request verdict →
-              </button>
+              <p className="text-sm text-white/70">All rounds completed. Request the court&apos;s final verdict below.</p>
             )}
           </div>
         ) : null}
@@ -778,9 +781,9 @@ export default function SuitSessionPage() {
                           sessionStorage.removeItem(STORAGE_KEY);
                           router.replace("/modes/suit");
                         }}
-                        className="w-full rounded-xl border border-white/15 bg-white/5 py-2.5 text-xs font-semibold uppercase tracking-wide text-white/80 hover:bg-white/10"
+                        className="w-full rounded-xl bg-amber-600 py-3 text-sm font-semibold text-[#0a0f1e] hover:bg-amber-500"
                       >
-                        Start new case →
+                        새 사건 시작하기 →
                       </button>
                     </div>
                   ) : null}
@@ -806,6 +809,29 @@ export default function SuitSessionPage() {
 
         <div ref={bottomRef} />
       </div>
+
+      {pack.participationMode !== "counsel" && openingDone && completedRound >= 3 && !verdictText ? (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0a0f1e]/98 p-4 backdrop-blur">
+          <div className="mx-auto max-w-3xl">
+            <button
+              type="button"
+              disabled={verdictRequesting}
+              onClick={async () => {
+                if (verdictRequesting) return;
+                setVerdictRequesting(true);
+                try {
+                  await runStep("verdict");
+                } finally {
+                  setVerdictRequesting(false);
+                }
+              }}
+              className="w-full rounded-2xl bg-amber-600 py-3.5 text-sm font-semibold text-[#0a0f1e] hover:bg-amber-500 disabled:opacity-60"
+            >
+              {verdictRequesting ? "판결문 작성 중..." : "재판부에 최종 판결을 요청합니다 →"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {pack.participationMode === "counsel" && counselRevealDone &&
       counselExchange >= 1 &&

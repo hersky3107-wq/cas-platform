@@ -188,6 +188,28 @@ export function formatTranscript(messages: SuitMessage[]): string {
     .join('\n\n')
 }
 
+function formatTranscriptForJudgeVerdict(messages: SuitMessage[]): string {
+  const witness = messages.find((m) => m.phase === 'witness_stand' && m.provider === 'user')
+  if (!witness) return formatTranscript(messages)
+
+  const r2 = [...messages].reverse().find((m) => m.phase === 'round_2')
+  const r3 = messages.find((m) => m.phase === 'round_3')
+  if (!r2 || !r3) return formatTranscript(messages)
+
+  const out: string[] = []
+  for (const m of messages) {
+    if (m === r3) {
+      out.push(
+        `[WITNESS TESTIMONY]\n"${witness.content}"`,
+        ''
+      )
+    }
+    if (m.phase === 'witness_stand') continue
+    out.push(`[${m.phase}] ${m.displayName}: ${m.content}`, '')
+  }
+  return out.join('\n').trim()
+}
+
 async function persistDebateLog(
   supabase: SupabaseClient,
   sessionId: string,
@@ -625,7 +647,7 @@ export async function runJudgeVerdict(
   extras?: Record<string, unknown>,
   transcriptFooter?: string
 ): Promise<string | null> {
-  const base = formatTranscript(messages)
+  const base = formatTranscriptForJudgeVerdict(messages)
   const user = suitJudgeVerdictUser(
     topic,
     transcriptFooter ? `${base}\n\n---\n${transcriptFooter}` : base
