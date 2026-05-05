@@ -249,11 +249,7 @@ export async function POST(req: Request) {
         body.userPreferredSide :
         undefined
 
-    if (format === 'criminal' && (mode === 'spectator' || mode === 'witness') && !sideStep) {
-      return Response.json({
-        error: 'userPreferredSide prosecution|defense required (criminal spectator/witness)',
-      }, { status: 400 })
-    }
+    // userPreferredSide is optional (setup wizard no longer collects it).
 
     const counselAi: AiProviderName | undefined =
       mode === 'counsel' && isAiProviderName(body.counselAiProvider)
