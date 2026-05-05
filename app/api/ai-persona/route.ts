@@ -6,6 +6,7 @@ import {
   type AiProviderName,
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
+import { supabaseAdmin } from '@/lib/supabase/server'
 import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 
 const MAX_ROLE_CHARS = 200
@@ -130,11 +131,12 @@ export async function POST(req: Request) {
     assignments.map((a) => [a.provider, a.role])
   ) as Record<AiProviderName, string>
 
-  const supabase = createSupabaseWithToken(token)
+  const supabaseAuth = createSupabaseWithToken(token)
+  const supabase = supabaseAdmin
   const {
     data: { user },
     error: authErr,
-  } = await supabase.auth.getUser()
+  } = await supabaseAuth.auth.getUser()
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }

@@ -6,6 +6,7 @@ import {
   type AiProviderName,
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
+import { supabaseAdmin } from '@/lib/supabase/server'
 import { CUSTOM_SYSTEM_PROMPT, creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 
 function uniqueProviders(providers: AiProviderName[]) {
@@ -58,11 +59,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Select at least one AI' }, { status: 400 })
   }
 
-  const supabase = createSupabaseWithToken(token)
+  const supabaseAuth = createSupabaseWithToken(token)
+  const supabase = supabaseAdmin
   const {
     data: { user },
     error: authErr,
-  } = await supabase.auth.getUser()
+  } = await supabaseAuth.auth.getUser()
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }

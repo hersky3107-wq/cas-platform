@@ -1,18 +1,18 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-/** Paths accessible without login (prefix match except `/`). */
-const PUBLIC_PATH_PREFIXES = [
+/** Paths that require login (prefix match). */
+const AUTH_PATH_PREFIXES = [
   '/modes/arena',
   '/modes/compare',
   '/modes/custom',
   '/modes/persona',
   '/modes/verdict',
+  '/modes/suit',
 ]
 
-function isPublicPath(pathname: string): boolean {
-  if (pathname === '/' || pathname === '/auth' || pathname === '/about') return true
-  return PUBLIC_PATH_PREFIXES.some(
+function isAuthPath(pathname: string): boolean {
+  return AUTH_PATH_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   )
 }
@@ -28,9 +28,13 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
-  if (isPublicPath(pathname)) {
+  // Non-auth routes (marketing / landing) can pass through.
+  if (pathname === '/' || pathname === '/auth' || pathname === '/about') {
     return supabaseResponse
   }
+
+  // Only enforce auth for protected mode routes.
+  if (!isAuthPath(pathname)) return supabaseResponse
 
   try {
     const supabase = createServerClient(

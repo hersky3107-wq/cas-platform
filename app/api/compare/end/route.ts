@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
+import { supabaseAdmin } from '@/lib/supabase/server'
 import { MODEL_BY_PROVIDER, type AiProviderName } from '@/lib/ai/router'
 
 /**
@@ -20,11 +21,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'sessionId and winner are required' }, { status: 400 })
     }
 
-    const supabase = createSupabaseWithToken(token)
+    const supabaseAuth = createSupabaseWithToken(token)
+    const supabase = supabaseAdmin
     const {
       data: { user },
       error: authErr,
-    } = await supabase.auth.getUser()
+    } = await supabaseAuth.auth.getUser()
     if (authErr || !user) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }

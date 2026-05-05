@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   BookHeart,
   Footprints,
+  Gavel,
   Handshake,
   Globe,
   Info,
@@ -31,6 +32,7 @@ const iconMap: Record<string, LucideIcon> = {
   Footprints,
   Sword,
   Handshake,
+  Gavel,
   Zap, // fallback for any missing icon mapping
 };
 

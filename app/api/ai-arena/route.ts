@@ -16,6 +16,7 @@ import {
   verifyArenaFinalBundleToken,
 } from '@/lib/ai/arena-bundle'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
+import { supabaseAdmin } from '@/lib/supabase/server'
 import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits'
 
 async function insertWithFallback(
@@ -101,11 +102,12 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
 
-  const supabase = createSupabaseWithToken(token)
+  const supabaseAuth = createSupabaseWithToken(token)
+  const supabase = supabaseAdmin
   const {
     data: { user },
     error: authErr,
-  } = await supabase.auth.getUser()
+  } = await supabaseAuth.auth.getUser()
   if (authErr || !user) {
     return Response.json({ error: 'Invalid session' }, { status: 401 })
   }
