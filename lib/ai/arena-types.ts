@@ -13,6 +13,8 @@ export interface ArenaResponse {
   side: 'left' | 'right' | 'neutral'
   /** No API call — static supporter line in battle rounds */
   synthetic?: boolean
+  /** Round 4+ co-fighter from the larger camp (real API turn) */
+  joinedFight?: boolean
 }
 
 export interface ArenaRound {

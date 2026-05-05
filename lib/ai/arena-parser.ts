@@ -21,23 +21,54 @@ export function stripArenaMarkdown(text: string): string {
   return t
 }
 
-/** Remove any line that looks like a structured arena tag (anywhere in the body). */
+const ARENA_LEAK_SUBSTRINGS = [
+  'CHAMPION:',
+  'POSITION:',
+  'ANGLE:',
+  'CHALLENGE:',
+  'SUPPORT:',
+  'SUPPORT_COMMENT:',
+  'AGREE_WITH',
+  'DISAGREE_WITH',
+  'Internal_Targeting',
+  'INTERNAL_TARGETING',
+] as const
+
+/** Remove leaked template / tag lines (substring match per line). */
 export function stripArenaTagLines(text: string): string {
   return text
     .split('\n')
     .filter((line) => {
       const s = line.trim()
-      return !/^(CHAMPION|POSITION|ANGLE|CHALLENGE|SUPPORT|SUPPORT_COMMENT)\s*:/i.test(s)
+      if (!s) return true
+      if (ARENA_LEAK_SUBSTRINGS.some((frag) => s.includes(frag))) return false
+      const loneTag = s.match(/^([A-Z][A-Z0-9_]*)\s*:\s*\S/)
+      if (loneTag?.[1] && loneTag[1] === loneTag[1].toUpperCase() && loneTag[1].length <= 56) {
+        return false
+      }
+      return true
     })
     .join('\n')
     .trim()
 }
 
+function stripArenaAngleBrackets(text: string): string {
+  let t = text
+  for (let i = 0; i < 8; i++) {
+    const next = t.replace(/<[^>\n]*>/g, '').trim()
+    if (next === t) break
+    t = next
+  }
+  return t
+}
+
 /** Strip tags, internal blocks, markdown; repeat until stable (handles stray tag lines). */
 export function finalizeArenaVisibleBody(text: string): string {
   let t = text
-  for (let i = 0; i < 10; i++) {
-    const next = stripArenaMarkdown(stripInternalTargetingBlock(stripArenaTagLines(t))).trim()
+  for (let i = 0; i < 12; i++) {
+    const next = stripArenaMarkdown(
+      stripArenaAngleBrackets(stripInternalTargetingBlock(stripArenaTagLines(t)))
+    ).trim()
     if (next === t) break
     t = next
   }
@@ -135,7 +166,7 @@ export function parseArenaResponse(rawText: string): ParsedArenaTagBlock {
   const angle = stripArenaMarkdown(angleRaw)
   const supportComment = supportCommentRaw ? stripArenaMarkdown(supportCommentRaw) : null
   const angleForFallback = (stripArenaMarkdown(angleRaw) || '').trim()
-  if (content.replace(/\s+/g, ' ').trim().length < 30 && angleForFallback.length > 0) {
+  if (content.replace(/\s+/g, ' ').trim().length < 20 && angleForFallback.length > 0) {
     content = finalizeArenaVisibleBody(angleForFallback)
   }
 

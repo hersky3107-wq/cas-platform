@@ -10,6 +10,7 @@ import { creditsPerMessage } from "@/lib/credits";
 import {
   ARENA_DISPLAY,
   ARENA_ORDER,
+  arenaBattleApiCallCount,
   type ArenaAI,
   type ArenaResponse,
   type ArenaRound,
@@ -110,6 +111,11 @@ function ArenaBubble({
       >
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <AiNameBadge ai={r.ai} label={name} />
+          {r.joinedFight ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/50 bg-cyan-500/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-200">
+              {name} joins the fight
+            </span>
+          ) : null}
           {r.champion ? (
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
@@ -218,10 +224,13 @@ export default function ArenaPage() {
 
   const selectedList = useMemo(() => ARENA_ORDER.filter((a) => selected.has(a)), [selected]);
 
-  /** Round 2: champions + one static supporter line each; round 3+: 1v1 only. */
+  /** Round 2: champs + static supporter lines; round 3: 1v1; round 4+: champs + co-fighter. */
   const battleResponsesPerRound = useMemo(() => {
     if (displayBattleRound === 2) {
       return 2 + sides.leftSupport.length + sides.rightSupport.length;
+    }
+    if (displayBattleRound >= 4) {
+      return 3;
     }
     return 2;
   }, [displayBattleRound, sides.leftSupport.length, sides.rightSupport.length]);
@@ -249,7 +258,7 @@ export default function ArenaPage() {
 
   const paidBattleCost = useMemo(() => {
     try {
-      return creditsPerMessage(2);
+      return creditsPerMessage(arenaBattleApiCallCount(4));
     } catch {
       return null;
     }
@@ -862,8 +871,8 @@ export default function ArenaPage() {
                 </button>
                 {paidBattleCost != null ? (
                   <p className="w-full text-center text-[11px] text-slate-500">
-                    Each extra round charges {paidBattleCost} credits (2 champion calls; Round 2
-                    adds static supporter lines only).
+                    Each extra round charges {paidBattleCost} credits (Round 4+ uses 3 model calls:
+                    both champions plus one co-fighter).
                   </p>
                 ) : null}
               </div>

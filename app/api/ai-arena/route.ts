@@ -182,9 +182,7 @@ export async function POST(req: Request) {
     } else if (battleRoundNumber <= 3) {
       cost = 0
     } else {
-      const roundsForCost = normalizeArenaRounds(body.rounds)
-      const r1 = roundsForCost.find((x) => x.roundNumber === 1)
-      cost = creditsPerMessage(arenaBattleApiCallCount(r1))
+      cost = creditsPerMessage(arenaBattleApiCallCount(battleRoundNumber))
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Invalid AI count'
