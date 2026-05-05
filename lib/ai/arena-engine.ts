@@ -142,9 +142,9 @@ function toArenaResponse(
   }
 }
 
-/** Billable model calls per battle round: champs + optional co-fighter (round 4+). */
+/** Model calls in one battle round: 3 for rounds with co-fighter (4–6), else champs-only. */
 export function arenaBattleApiCallCount(battleRoundNumber: number): number {
-  return battleRoundNumber >= 4 ? 3 : 2
+  return battleRoundNumber >= 4 && battleRoundNumber <= 6 ? 3 : 2
 }
 
 function round1AngleSnippet(r1: ArenaRound, ai: ArenaAI): string {
@@ -462,6 +462,19 @@ function pickCoFighterFromLargerSide(
   return { side, ai: pool[Math.floor(Math.random() * pool.length)]! }
 }
 
+function pickCoFighterWithFallback(
+  leftSupport: ArenaAI[],
+  rightSupport: ArenaAI[]
+): { side: 'left' | 'right'; ai: ArenaAI } | null {
+  const primary = pickCoFighterFromLargerSide(leftSupport, rightSupport)
+  if (primary) return primary
+  const merged = [...new Set([...leftSupport, ...rightSupport])]
+  if (merged.length === 0) return null
+  const ai = merged[Math.floor(Math.random() * merged.length)]!
+  const side: 'left' | 'right' = leftSupport.includes(ai) ? 'left' : 'right'
+  return { side, ai }
+}
+
 function coFighterJoinSystemAddition(championAi: ArenaAI, coAi: ArenaAI): string {
   return `CO-FIGHTER BRIEFING (THIS TURN ONLY)
 You are ${ARENA_DISPLAY[coAi]} entering the debate to support ${ARENA_DISPLAY[championAi]}.
@@ -499,6 +512,34 @@ Your champion (${ARENA_DISPLAY[opts.champ]}), who you reinforce, argued this sam
 """
 ${opts.champTurnThisRound.trim().slice(0, 2800)}
 """`
+}
+
+/** Co-fighter speaks BEFORE their champion (slot between left champ and right champ). */
+function buildCoFighterBeforeChampionPrompt(opts: {
+  history: string
+  userPrompt: string
+  championYouSupport: ArenaAI
+  opposingChampion: ArenaAI
+  opposingChampionJustSaid: string
+}): string {
+  return `=== RECENT ROUNDS TRANSCRIPT (TRUNCATED) ===
+${opts.history}
+
+User topic:
+${opts.userPrompt}
+
+Opposing champion (${ARENA_DISPLAY[opts.opposingChampion]}) attacked this exchange first:
+
+"""
+${opts.opposingChampionJustSaid.trim().slice(0, 2800)}
+"""
+
+Your champion (${ARENA_DISPLAY[opts.championYouSupport]}) speaks immediately AFTER you this same round.
+Add one sharp new angle that sets them up — do NOT repeat what they will say — attack ${ARENA_DISPLAY[opts.opposingChampion]} by name.`
+}
+
+function coFighterBeforeChampionAddon(championAi: ArenaAI): string {
+  return `PLACEMENT: You speak BEFORE ${ARENA_DISPLAY[championAi]} this round — one strike only, tee them up, no overlap with their headline.`
 }
 
 function coFighterMaxTokens(ai: ArenaAI): number {
@@ -594,8 +635,8 @@ export async function runArenaRound(
   onResponse: (response: ArenaResponse) => void,
   onThinking?: (ai: ArenaAI) => void
 ): Promise<ArenaRound> {
-  if (roundNumber > 4) {
-    throw new Error('Arena is capped at round 4. Start a new session to debate again.')
+  if (roundNumber > 6) {
+    throw new Error('Arena is capped at round 6. Start a new session to debate again.')
   }
   const r1 = allPreviousRounds.find((r) => r.roundNumber === 1)
   if (!r1 || !Array.isArray(r1.responses) || r1.responses.length === 0) {
@@ -616,14 +657,16 @@ export async function runArenaRound(
   const historySourceRounds =
     roundNumber >= 2 ? sliceLastArenaRounds(allPreviousRounds, 4) : allPreviousRounds
   const history = formatArenaHistory(historySourceRounds)
-  const coFightSetup = roundNumber >= 4 ? pickCoFighterFromLargerSide(leftSupport, rightSupport) : null
+  const coFightSetup =
+    roundNumber >= 4 && roundNumber <= 6 ? pickCoFighterWithFallback(leftSupport, rightSupport) : null
   const out: ArenaResponse[] = []
 
   const championUserPrompt = (
     ai: ArenaAI,
     side: 'left' | 'right',
     opposingChampionLatest: string,
-    role: string
+    role: string,
+    trailingNotes?: string
   ) => {
     const showOpposing = opposingChampionLatest.trim().length > 0 && side === 'right'
     const oppBlock = showOpposing
@@ -649,7 +692,7 @@ Your opening statement from ROUND 1 (stay consistent; cite yourself if needed):
 ${openingSnippet(r1, ai)}
 
 You are the ${side.toUpperCase()} camp champion (${ai}). ${role}
-Use the mandatory tag block first, then your argument.`
+${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}Use the mandatory tag block first, then your argument.`
   }
 
   const championMaxTokens = (ai: ArenaAI): number => {
@@ -761,24 +804,49 @@ Use the mandatory tag block first, then your argument.`
   })
   const lastLeftChampTurn = out[out.length - 1]!.content
 
-  if (coFightSetup?.side === 'left') {
-    await pushBattleTurn({
-      ai: coFightSetup.ai,
-      side: 'left',
-      treatAsChampionTag: false,
-      prompt: buildCoFighterUserPrompt({
-        history,
-        userPrompt,
-        champ: leftChamp,
-        oppChamp: rightChamp,
-        champTurnThisRound: lastLeftChampTurn,
-        oppChampTurnThisRound: null,
-      }),
-      maxTok: coFighterMaxTokens(coFightSetup.ai),
-      extraSystemPrompt: coFighterJoinSystemAddition(leftChamp, coFightSetup.ai),
-      plainSpeech: true,
-      joinedFight: true,
-    })
+  let oppBlockForRight = lastLeftChampTurn
+  let briefForRightCoAlly = ''
+
+  if (coFightSetup) {
+    if (coFightSetup.side === 'left') {
+      await pushBattleTurn({
+        ai: coFightSetup.ai,
+        side: 'left',
+        treatAsChampionTag: false,
+        prompt: buildCoFighterUserPrompt({
+          history,
+          userPrompt,
+          champ: leftChamp,
+          oppChamp: rightChamp,
+          champTurnThisRound: lastLeftChampTurn,
+          oppChampTurnThisRound: null,
+        }),
+        maxTok: coFighterMaxTokens(coFightSetup.ai),
+        extraSystemPrompt: coFighterJoinSystemAddition(leftChamp, coFightSetup.ai),
+        plainSpeech: true,
+        joinedFight: true,
+      })
+      const coTxt = out[out.length - 1]!.content
+      oppBlockForRight = `${lastLeftChampTurn}\n\n---\n\nSame-exchange ally (${ARENA_DISPLAY[coFightSetup.ai]}):\n${coTxt}`
+    } else {
+      await pushBattleTurn({
+        ai: coFightSetup.ai,
+        side: 'right',
+        treatAsChampionTag: false,
+        prompt: buildCoFighterBeforeChampionPrompt({
+          history,
+          userPrompt,
+          championYouSupport: rightChamp,
+          opposingChampion: leftChamp,
+          opposingChampionJustSaid: lastLeftChampTurn,
+        }),
+        maxTok: coFighterMaxTokens(coFightSetup.ai),
+        extraSystemPrompt: `${coFighterJoinSystemAddition(rightChamp, coFightSetup.ai)}\n${coFighterBeforeChampionAddon(rightChamp)}`,
+        plainSpeech: true,
+        joinedFight: true,
+      })
+      briefForRightCoAlly = `Your co-fighter (${ARENA_DISPLAY[coFightSetup.ai]}) just spoke before you:\n"""\n${out[out.length - 1]!.content.trim().slice(0, 2800)}\n"""\nBuild on them; dismantle (${ARENA_DISPLAY[leftChamp]}) above.`
+    }
   }
 
   const rightRole = 'Rebut the left champion directly.'
@@ -786,30 +854,9 @@ Use the mandatory tag block first, then your argument.`
     ai: rightChamp,
     side: 'right',
     treatAsChampionTag: true,
-    prompt: championUserPrompt(rightChamp, 'right', lastLeftChampTurn, rightRole),
+    prompt: championUserPrompt(rightChamp, 'right', oppBlockForRight, rightRole, briefForRightCoAlly),
     maxTok: championMaxTokens(rightChamp),
   })
-  const lastRightChampTurn = out[out.length - 1]!.content
-
-  if (coFightSetup?.side === 'right') {
-    await pushBattleTurn({
-      ai: coFightSetup.ai,
-      side: 'right',
-      treatAsChampionTag: false,
-      prompt: buildCoFighterUserPrompt({
-        history,
-        userPrompt,
-        champ: rightChamp,
-        oppChamp: leftChamp,
-        champTurnThisRound: lastRightChampTurn,
-        oppChampTurnThisRound: lastLeftChampTurn,
-      }),
-      maxTok: coFighterMaxTokens(coFightSetup.ai),
-      extraSystemPrompt: coFighterJoinSystemAddition(rightChamp, coFightSetup.ai),
-      plainSpeech: true,
-      joinedFight: true,
-    })
-  }
 
   if (roundNumber === 2) {
     for (const s of leftSupport) {

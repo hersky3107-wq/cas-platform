@@ -2,7 +2,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { MODEL_BY_PROVIDER } from '@/lib/ai/router'
 import {
   ARENA_TO_PROVIDER,
-  arenaBattleApiCallCount,
   resetArenaTurnCounter,
   runArenaRound,
   runArenaRound1,
@@ -11,8 +10,13 @@ import {
   type ArenaRound,
   type ArenaTransportContext,
 } from '@/lib/ai/arena-engine'
+import {
+  arenaFinalBundleCreditCost,
+  signArenaFinalBundleToken,
+  verifyArenaFinalBundleToken,
+} from '@/lib/ai/arena-bundle'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
-import { creditsPerMessage, deductCreditsBalance, getCreditsBalance } from '@/lib/credits'
+import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits'
 
 async function insertWithFallback(
   supabase: SupabaseClient,
@@ -152,6 +156,40 @@ export async function POST(req: Request) {
     return Response.json({ ok: true })
   }
 
+  if (action === 'arena_buy_final_bundle') {
+    const buySessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+    if (!buySessionId) {
+      return Response.json({ error: 'sessionId is required' }, { status: 400 })
+    }
+    const { data: buySess, error: buyErr } = await supabase
+      .from('sessions')
+      .select('id, mode')
+      .eq('id', buySessionId)
+      .maybeSingle()
+    if (buyErr || !buySess || buySess.mode !== 'arena') {
+      return Response.json({ error: 'Invalid session' }, { status: 400 })
+    }
+    const amount = arenaFinalBundleCreditCost()
+    const deduct = await deductCreditsBalance(supabase, user.id, amount)
+    if (!deduct.ok) {
+      const insufficient = deduct.reason === 'insufficient'
+      return Response.json(
+        {
+          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+          balance: deduct.balance,
+          required: amount,
+        },
+        { status: insufficient ? 402 : 500 }
+      )
+    }
+    const arenaFinalBundleToken = signArenaFinalBundleToken({
+      sessionId: buySess.id,
+      userId: user.id,
+    })
+    const creditsRemaining = deduct.balance
+    return Response.json({ ok: true, creditsRemaining, arenaFinalBundleToken })
+  }
+
   if (action !== 'start' && action !== 'battle') {
     return Response.json({ error: 'Unknown action' }, { status: 400 })
   }
@@ -174,43 +212,6 @@ export async function POST(req: Request) {
     action === 'battle' && typeof body.roundNumber === 'number' && body.roundNumber >= 2
       ? Math.floor(body.roundNumber)
       : 2
-
-  if (action === 'battle' && battleRoundNumber > 4) {
-    return Response.json({ error: 'Arena is capped at round 4.' }, { status: 400 })
-  }
-
-  let cost = 0
-  try {
-    if (action === 'start') {
-      cost = 0
-    } else if (battleRoundNumber <= 3) {
-      cost = 0
-    } else {
-      cost = creditsPerMessage(arenaBattleApiCallCount(battleRoundNumber))
-    }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Invalid AI count'
-    return Response.json({ error: msg }, { status: 400 })
-  }
-
-  let creditsRemaining: number | null = null
-  if (cost > 0) {
-    const deduct = await deductCreditsBalance(supabase, user.id, cost)
-    if (!deduct.ok) {
-      const insufficient = deduct.reason === 'insufficient'
-      return Response.json(
-        {
-          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
-          balance: deduct.balance,
-          required: cost,
-        },
-        { status: insufficient ? 402 : 500 }
-      )
-    }
-    creditsRemaining = deduct.balance
-  } else {
-    creditsRemaining = await getCreditsBalance(supabase, user.id)
-  }
 
   let sessionId: string
 
@@ -256,6 +257,8 @@ export async function POST(req: Request) {
 
     await insertUserDebateEntry(supabase, sessionId, topic)
 
+    const creditsRemaining = await getCreditsBalance(supabase, user.id)
+
     const enc = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
@@ -269,7 +272,7 @@ export async function POST(req: Request) {
             type: 'meta',
             sessionId,
             creditsRemaining,
-            cost,
+            cost: 0,
             action: 'start',
           })
 
@@ -329,6 +332,25 @@ export async function POST(req: Request) {
 
   const roundNumber = battleRoundNumber
 
+  if (roundNumber > 6) {
+    return Response.json({ error: 'Arena is capped at round 6.' }, { status: 400 })
+  }
+
+  const arenaFinalBundleTok =
+    typeof body.arenaFinalBundleToken === 'string' ? body.arenaFinalBundleToken : ''
+
+  if (roundNumber >= 4) {
+    const okTok = verifyArenaFinalBundleToken(arenaFinalBundleTok, sessionId, user.id)
+    if (!okTok) {
+      return Response.json(
+        { error: 'Final rounds require purchasing rounds 4–6 (Continue to Final Rounds).' },
+        { status: 402 }
+      )
+    }
+  }
+
+  const creditsRemaining = await getCreditsBalance(supabase, user.id)
+
   const rounds = normalizeArenaRounds(body.rounds)
   if (rounds.length === 0) {
     return Response.json({ error: 'rounds payload is required' }, { status: 400 })
@@ -357,7 +379,7 @@ export async function POST(req: Request) {
           type: 'meta',
           sessionId,
           creditsRemaining,
-          cost,
+          cost: 0,
           action: 'battle',
           roundNumber,
         })

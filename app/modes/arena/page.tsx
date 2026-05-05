@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChevronLeft, Swords } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
+import { arenaFinalBundleCreditCost } from "@/lib/ai/arena-bundle";
 import {
   ARENA_DISPLAY,
   ARENA_ORDER,
@@ -217,12 +218,21 @@ export default function ArenaPage() {
   const [voteDone, setVoteDone] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const roundsRef = useRef<ArenaRound[]>([]);
-  /** Avoid stale `isLoading` in useCallback blocking chained battle requests (Continue +3). */
+  /** Avoid concurrent battle requests while one NDJSON round is streaming. */
   const battleInflightRef = useRef(false);
+  const arenaFinalBundleTokenRef = useRef<string | null>(null);
 
   const selectedList = useMemo(() => ARENA_ORDER.filter((a) => selected.has(a)), [selected]);
 
-  /** Round 2: champs + static supporter lines; round 3: 1v1; round 4+: champs + co-fighter. */
+  const finalBundleCost = useMemo(() => {
+    try {
+      return arenaFinalBundleCreditCost();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /** Round 2: champs + static supporters; round 3: 1v1; rounds 4–6: left → co → right. */
   const battleResponsesPerRound = useMemo(() => {
     if (displayBattleRound === 2) {
       return 2 + sides.leftSupport.length + sides.rightSupport.length;
@@ -318,12 +328,12 @@ export default function ArenaPage() {
       onResponse: (r: ArenaResponse, roundNumber: number) => void,
       onRound: (r: ArenaRound) => void,
       onThinking?: (payload: { ai: ArenaAI; roundNumber: number }) => void
-    ) => {
+    ): Promise<boolean> => {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) {
         router.replace("/auth");
-        return;
+        return false;
       }
       const res = await fetch("/api/ai-arena", {
         method: "POST",
@@ -334,12 +344,12 @@ export default function ArenaPage() {
         const j = (await res.json().catch(() => null)) as { error?: string; balance?: number };
         setError(j?.error ?? "Request failed");
         if (typeof j?.balance === "number") setCredits(j.balance);
-        return;
+        return false;
       }
       const reader = res.body?.getReader();
       if (!reader) {
         setError("No response body");
-        return;
+        return false;
       }
       const decoder = new TextDecoder();
       let buffer = "";
@@ -406,6 +416,7 @@ export default function ArenaPage() {
           if (msg.type === "error" && msg.error) setError(msg.error);
         }
       }
+      return true;
     },
     [router]
   );
@@ -421,7 +432,70 @@ export default function ArenaPage() {
     setAwaitingNextBattleRound(false);
     setThinkingAi(null);
     setDisplayBattleRound(1);
+    arenaFinalBundleTokenRef.current = null;
   }, []);
+
+  const mergeBattleBodyForRound = useCallback(
+    (roundNumber: number) => {
+      const t = topic.trim();
+      const base = {
+        action: "battle" as const,
+        sessionId: sessionId as string,
+        topic: t,
+        rounds: roundsRef.current,
+        roundNumber,
+        championLeft: sides.left as ArenaAI,
+        championRight: sides.right as ArenaAI,
+        leftSupportCount: sides.leftSupport.length,
+        rightSupportCount: sides.rightSupport.length,
+      };
+      if (roundNumber >= 4 && arenaFinalBundleTokenRef.current) {
+        return {
+          ...base,
+          arenaFinalBundleToken: arenaFinalBundleTokenRef.current,
+        };
+      }
+      return base;
+    },
+    [sessionId, sides, topic]
+  );
+
+  const purchaseArenaFinalBundleIfNeeded = useCallback(async (): Promise<boolean> => {
+    if (arenaFinalBundleTokenRef.current) return true;
+    if (!sessionId) return false;
+    const { data } = await supabase.auth.getSession();
+    const tok = data.session?.access_token;
+    if (!tok) {
+      router.replace("/auth");
+      return false;
+    }
+    const res = await fetch("/api/ai-arena", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "arena_buy_final_bundle",
+        sessionId,
+        supabaseAccessToken: tok,
+      }),
+    });
+    const j = (await res.json().catch(() => null)) as {
+      arenaFinalBundleToken?: string;
+      creditsRemaining?: number;
+      error?: string;
+      balance?: number;
+      required?: number;
+    };
+    if (!res.ok) {
+      setError(j?.error ?? "Purchase failed");
+      if (typeof j?.balance === "number") setCredits(j.balance);
+      return false;
+    }
+    if (typeof j?.creditsRemaining === "number") setCredits(j.creditsRemaining);
+    if (typeof j?.arenaFinalBundleToken === "string") {
+      arenaFinalBundleTokenRef.current = j.arenaFinalBundleToken;
+    }
+    return Boolean(arenaFinalBundleTokenRef.current);
+  }, [router, sessionId]);
 
   const startArena = useCallback(async () => {
     const t = topic.trim();
@@ -464,17 +538,29 @@ export default function ArenaPage() {
     }
   }, [topic, selectedList, isLoading, readNdjsonArena, resetArenaUi]);
 
+  const battleUiRoundComplete = useCallback((roundComplete: ArenaRound) => {
+    const rn = Number(roundComplete.roundNumber);
+    setDisplayBattleRound(rn);
+    setRounds((prev) => {
+      const n = [...prev.filter((x) => x.roundNumber !== roundComplete.roundNumber), roundComplete];
+      roundsRef.current = n;
+      return n;
+    });
+    setBattleLive([]);
+    if (rn === 2) setAwaitingNextBattleRound(true);
+    else setAwaitingNextBattleRound(false);
+  }, []);
+
   const runBattleRound = useCallback(
     async (roundNumber: number) => {
-      const t = topic.trim();
-      if (!sessionId || !sides.left || !sides.right || !t) {
-        return;
+      if (!sessionId || !sides.left || !sides.right || !topic.trim()) {
+        return false;
       }
-      if (roundNumber > 4) {
-        return;
+      if (roundNumber > 6) {
+        return false;
       }
       if (battleInflightRef.current) {
-        return;
+        return false;
       }
       battleInflightRef.current = true;
       setError(null);
@@ -483,52 +569,78 @@ export default function ArenaPage() {
       setAwaitingNextBattleRound(false);
       setDisplayBattleRound(roundNumber);
       setPhase("battle");
-      const roundsPayload = roundsRef.current;
       try {
-        await readNdjsonArena(
-          {
-            action: "battle",
-            sessionId,
-            topic: t,
-            rounds: roundsPayload,
-            roundNumber,
-            championLeft: sides.left,
-            championRight: sides.right,
-            leftSupportCount: sides.leftSupport.length,
-            rightSupportCount: sides.rightSupport.length,
-          },
+        const okStream = await readNdjsonArena(
+          mergeBattleBodyForRound(roundNumber),
           (meta) => {
             if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
           },
           (response) => {
             setBattleLive((prev) => [...prev, response]);
           },
-          (round) => {
-            const rn = Number(round.roundNumber);
-            setDisplayBattleRound(rn);
-            setRounds((prev) => {
-              const n = [...prev.filter((x) => x.roundNumber !== round.roundNumber), round];
-              roundsRef.current = n;
-              return n;
-            });
-            setBattleLive([]);
-            if (rn === 2 || rn === 3) {
-              setAwaitingNextBattleRound(true);
-            } else if (rn >= 4) {
-              setAwaitingNextBattleRound(false);
-            }
-          },
+          battleUiRoundComplete,
           ({ ai }) => setThinkingAi(ai)
         );
+        return okStream;
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Unknown error");
+        return false;
       } finally {
         battleInflightRef.current = false;
         setIsLoading(false);
       }
     },
-    [sessionId, sides, topic, readNdjsonArena]
+    [battleUiRoundComplete, mergeBattleBodyForRound, readNdjsonArena, sessionId, sides, topic]
   );
+
+  const runFinalRounds456 = useCallback(async () => {
+    const t = topic.trim();
+    if (!sessionId || !sides.left || !sides.right || !t) return;
+    if (battleInflightRef.current) return;
+    setError(null);
+    battleInflightRef.current = true;
+    setIsLoading(true);
+    setPhase("battle");
+    setAwaitingNextBattleRound(false);
+    try {
+      const purchased = await purchaseArenaFinalBundleIfNeeded();
+      if (!purchased) return;
+
+      const sequence = [4, 5, 6];
+      for (const rn of sequence) {
+        setBattleLive([]);
+        setDisplayBattleRound(rn);
+        const okStream = await readNdjsonArena(
+          mergeBattleBodyForRound(rn),
+          (meta) => {
+            if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
+          },
+          (response) => {
+            setBattleLive((prev) => [...prev, response]);
+          },
+          battleUiRoundComplete,
+          ({ ai }) => setThinkingAi(ai)
+        );
+        if (!okStream) break;
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      battleInflightRef.current = false;
+      setIsLoading(false);
+      setThinkingAi(null);
+      setBattleLive([]);
+    }
+  }, [
+    battleUiRoundComplete,
+    mergeBattleBodyForRound,
+    purchaseArenaFinalBundleIfNeeded,
+    readNdjsonArena,
+    sessionId,
+    sides.left,
+    sides.right,
+    topic,
+  ]);
 
   const submitVote = useCallback(async () => {
     if (!sessionId || !picked) return;
@@ -565,11 +677,11 @@ export default function ArenaPage() {
   const rightColor = sides.right ? ARENA_COLOR[sides.right] : "#64748B";
   const battleRounds = rounds.filter((r) => r.roundNumber >= 2);
   const maxRound = rounds.length ? Math.max(...rounds.map((r) => Number(r.roundNumber))) : 1;
-  const showPostRound4EndActions =
-    phase === "battle" &&
-    maxRound === 4 &&
-    !awaitingNextBattleRound &&
-    !isLoading;
+  const showPostRoundThreeActions =
+    phase === "battle" && maxRound === 3 && !awaitingNextBattleRound && !isLoading;
+
+  const showPostRoundSixEndActions =
+    phase === "battle" && maxRound === 6 && !awaitingNextBattleRound && !isLoading;
 
   return (
     <div className={BG}>
@@ -609,7 +721,8 @@ export default function ArenaPage() {
               className="min-h-[120px] w-full resize-y rounded-xl border border-white/12 bg-white/6 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-rose-400/40 focus:outline-none"
             />
             <p className="text-xs leading-relaxed text-slate-500">
-              Rounds 1–3 cost no credits. Round 4 is the final battle (may charge credits).
+              Opening bracket is rounds 1–3 per topic. Continuing runs rounds 4–6 once and spends one
+              credit package for that triple round.
             </p>
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -807,23 +920,56 @@ export default function ArenaPage() {
               ) : null}
             </div>
 
-            {awaitingNextBattleRound && (maxRound === 2 || maxRound === 3) && !isLoading ? (
+            {awaitingNextBattleRound && maxRound === 2 && !isLoading ? (
               <div className="mt-8 flex flex-col items-center gap-2">
-                <p className="text-center text-sm text-slate-400">When you are ready, start the next round.</p>
+                <p className="text-center text-sm text-slate-400">When you are ready, start Round 3.</p>
                 <button
                   type="button"
-                  onClick={() =>
-                    void runBattleRound(maxRound === 2 ? 3 : 4)
-                  }
+                  onClick={() => void runBattleRound(3)}
                   className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-500"
                 >
-                  {maxRound === 2 ? "Next Round" : "Begin final round (Round 4)"}
+                  Round 3
                 </button>
               </div>
             ) : null}
 
-            {showPostRound4EndActions ? (
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
+            {showPostRoundThreeActions ? (
+              <div className="mt-8 flex flex-col items-center gap-3">
+                <p className="text-center text-sm text-slate-400">
+                  End here, judge the debate, or run rounds 4–6 (single credit package).
+                </p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPhase("result")}
+                    className="rounded-xl border border-white/15 bg-white/8 px-4 py-2 text-sm text-white"
+                  >
+                    STOP
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPhase("result")}
+                    className="rounded-xl bg-amber-500/90 px-4 py-2 text-sm font-semibold text-slate-950"
+                  >
+                    Who was right? Vote
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      isLoading ||
+                      (finalBundleCost != null && credits !== null && credits < finalBundleCost)
+                    }
+                    onClick={() => void runFinalRounds456()}
+                    className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                  >
+                    Continue to Final Rounds (uses credits)
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {showPostRoundSixEndActions ? (
+              <div className="mt-8 flex flex-wrap justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => setPhase("result")}
