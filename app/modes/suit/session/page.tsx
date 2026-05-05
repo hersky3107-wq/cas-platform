@@ -177,6 +177,7 @@ export default function SuitSessionPage() {
   const [verdictText, setVerdictText] = useState<string | null>(null);
   const [verdictReveal, setVerdictReveal] = useState(false);
   const [voteDone, setVoteDone] = useState(false);
+  const [voteThanks, setVoteThanks] = useState(false);
   const [completedRound, setCompletedRound] = useState(0);
   const [openingDone, setOpeningDone] = useState(false);
 
@@ -191,6 +192,18 @@ export default function SuitSessionPage() {
   const spectatorStreamStarted = useRef<string | null>(null);
   const counselStreamStarted = useRef<string | null>(null);
   const lastSpectatorChunkAt = useRef<number>(0);
+
+  const awaitingLabel = useMemo(() => {
+    if (!pack) return "Awaiting next statement…";
+    const round = Math.min(3, Math.max(1, completedRound + 1));
+    const meta = (p: string) => suitCounselSelectorMeta(p as any);
+    const a = pack.assignments.find((x) => x.sideBucket === "side_a" && x.role !== "judge" && x.provider !== "user");
+    const b = pack.assignments.find((x) => x.sideBucket === "side_b" && x.role !== "judge" && x.provider !== "user");
+    const nextProvider = (round % 2 === 1 ? a?.provider : b?.provider) ?? a?.provider ?? b?.provider ?? "ai";
+    const m = meta(String(nextProvider));
+    const name = m ? `${m.nameEn} (${m.epithetKo})` : String(nextProvider);
+    return `Round ${round} · Waiting for ${name}...`;
+  }, [pack, completedRound]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -545,6 +558,11 @@ export default function SuitSessionPage() {
       }),
     });
     setVoteDone(true);
+    setVoteThanks(true);
+    window.setTimeout(() => {
+      sessionStorage.removeItem(STORAGE_KEY);
+      router.replace("/modes/suit");
+    }, 2000);
   };
 
   const verdictBlock = verdictText ?? messages.find((x) => x.phase === "verdict")?.content ?? null;
@@ -683,7 +701,7 @@ export default function SuitSessionPage() {
           {loading && !awaitWitness && !verdictText && awaitingNext ? (
             <div className="mx-auto flex w-full max-w-[min(100%,520px)] items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/60">
               <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white/70" />
-              <span>Awaiting next statement…</span>
+              <span>{awaitingLabel}</span>
             </div>
           ) : null}
 
@@ -742,8 +760,20 @@ export default function SuitSessionPage() {
                       I disagree
                     </button>
                   </div>
-                  {voteDone ? (
-                    <p className="text-center text-[11px] text-white/45">Your response was recorded.</p>
+                  {voteThanks ? (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-center text-[11px] text-white/60">Thank you for your verdict.</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sessionStorage.removeItem(STORAGE_KEY);
+                          router.replace("/modes/suit");
+                        }}
+                        className="w-full rounded-xl border border-white/15 bg-white/5 py-2.5 text-xs font-semibold uppercase tracking-wide text-white/80 hover:bg-white/10"
+                      >
+                        Start new case →
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               ) : null}

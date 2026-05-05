@@ -86,15 +86,13 @@ function isAiProviderName(x: unknown): x is AiProviderName {
 function buildAssignments(opts: {
   format: SuitFormat
   mode: SuitParticipationMode
-  sideAPicks?: AiProviderName[]
+  sideA?: AiProviderName
+  sideB?: AiProviderName
   counselUserRole?: 'prosecutor' | 'defense' | 'counsel_a' | 'counsel_b'
 }): RoleAssignment[] {
   const all: AiProviderName[] = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'mistral']
-  const picks = Array.isArray(opts.sideAPicks)
-    ? Array.from(new Set(opts.sideAPicks.filter((p) => all.includes(p))))
-    : []
-  const sideA = picks.length ? picks : all.slice(0, 2)
-  const sideB = all.filter((p) => !sideA.includes(p))
+  const a = opts.sideA && all.includes(opts.sideA) ? opts.sideA : all[0]!
+  const b = opts.sideB && all.includes(opts.sideB) && opts.sideB !== a ? opts.sideB : all.find((x) => x !== a)!
 
   const judge: RoleAssignment = { provider: 'anthropic', model: JUDGE_MODEL_ID, role: 'judge', sideBucket: 'side_a' }
 
@@ -109,7 +107,7 @@ function buildAssignments(opts: {
       role: opts.counselUserRole,
       sideBucket: userSide,
     }
-    const opponentProvider = (userSide === 'side_a' ? sideB[0] : sideA[0]) ?? all[0]!
+    const opponentProvider = userSide === 'side_a' ? b : a
     const opponentRole: RoleAssignment['role'] =
       opts.format === 'criminal'
         ? (userSide === 'side_a' ? 'defense' : 'prosecutor')
@@ -126,19 +124,9 @@ function buildAssignments(opts: {
 
   const roleA: RoleAssignment['role'] = opts.format === 'criminal' ? 'prosecutor' : 'counsel_a'
   const roleB: RoleAssignment['role'] = opts.format === 'criminal' ? 'defense' : 'counsel_b'
-  const teamA: RoleAssignment[] = sideA.map((p) => ({
-    provider: p,
-    model: MODEL_BY_PROVIDER[p],
-    role: roleA,
-    sideBucket: 'side_a',
-  }))
-  const teamB: RoleAssignment[] = sideB.map((p) => ({
-    provider: p,
-    model: MODEL_BY_PROVIDER[p],
-    role: roleB,
-    sideBucket: 'side_b',
-  }))
-  return [...teamA, ...teamB, judge]
+  const teamA: RoleAssignment = { provider: a, model: MODEL_BY_PROVIDER[a], role: roleA, sideBucket: 'side_a' }
+  const teamB: RoleAssignment = { provider: b, model: MODEL_BY_PROVIDER[b], role: roleB, sideBucket: 'side_b' }
+  return [teamA, teamB, judge]
 }
 
 function write(enc: TextEncoder, controller: ReadableStreamDefaultController<Uint8Array>, obj: unknown) {
@@ -276,16 +264,17 @@ export async function POST(req: Request) {
 
     // userPreferredSide is optional (setup wizard no longer collects it).
 
-    const sideAPicksRaw = Array.isArray(body.sideAPicks) ? body.sideAPicks : []
-    const sideAPicks = sideAPicksRaw.filter(isAiProviderName) as AiProviderName[]
-    if (!sideAPicks.length || sideAPicks.length > 2) {
-      return Response.json({ error: 'sideAPicks (1-2 AIs) required' }, { status: 400 })
+    const sideA = isAiProviderName(body.sideA) ? (body.sideA as AiProviderName) : null
+    const sideB = isAiProviderName(body.sideB) ? (body.sideB as AiProviderName) : null
+    if (!sideA || !sideB || sideA === sideB) {
+      return Response.json({ error: 'sideA and sideB (two different AIs) required' }, { status: 400 })
     }
 
     const assignments = buildAssignments({
       format: format as SuitFormat,
       mode,
-      sideAPicks,
+      sideA,
+      sideB,
       counselUserRole: counselRole ?? undefined,
     })
 
@@ -329,7 +318,7 @@ export async function POST(req: Request) {
         session_id: sessionId,
         user_id: user.id,
         category: 'suit_started',
-        reason: JSON.stringify({ format, mode, sideAPicksLen: sideAPicks.length }).slice(0, 2000),
+        reason: JSON.stringify({ format, mode, sideA, sideB }).slice(0, 2000),
       },
       { session_id: sessionId, category: 'suit_started' }
     )

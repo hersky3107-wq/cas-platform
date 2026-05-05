@@ -19,7 +19,8 @@ type WizardStep =
   | "topic"
   | "format"
   | "participation"
-  | "ai_select"
+  | "ai_select_prosecution"
+  | "ai_select_defense"
   | "counsel_role"
   | "review";
 
@@ -32,7 +33,8 @@ export default function SuitSetupPage() {
   const [counselRole, setCounselRole] = useState<
     "prosecutor" | "defense" | "counsel_a" | "counsel_b" | null
   >(null);
-  const [sideAPicks, setSideAPicks] = useState<AiProviderName[]>([]);
+  const [sideA, setSideA] = useState<AiProviderName | null>(null);
+  const [sideB, setSideB] = useState<AiProviderName | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
@@ -68,7 +70,7 @@ export default function SuitSetupPage() {
         setStep("counsel_role");
         return;
       }
-      setStep("ai_select");
+      setStep("ai_select_prosecution");
       return;
     }
     if (step === "counsel_role") {
@@ -76,16 +78,20 @@ export default function SuitSetupPage() {
         setError("Choose your role in the courtroom.");
         return;
       }
-      setStep("ai_select");
+      setStep("ai_select_prosecution");
       return;
     }
-    if (step === "ai_select") {
-      if (!format) {
-        setError("Choose Criminal or Civil.");
+    if (step === "ai_select_prosecution") {
+      if (!sideA) {
+        setError(format === "criminal" ? "Pick your Prosecution AI." : "Pick your Counsel A AI.");
         return;
       }
-      if (sideAPicks.length < 1 || sideAPicks.length > 2) {
-        setError("Pick 1 or 2 AIs for Side A.");
+      setStep("ai_select_defense");
+      return;
+    }
+    if (step === "ai_select_defense") {
+      if (!sideB) {
+        setError(format === "criminal" ? "Pick your Defense AI." : "Pick your Counsel B AI.");
         return;
       }
       setStep("review");
@@ -106,7 +112,7 @@ export default function SuitSetupPage() {
       setStep("participation");
       return;
     }
-    if (step === "ai_select") {
+    if (step === "ai_select_prosecution") {
       if (flow.needsCounselRole) {
         setStep("counsel_role");
         return;
@@ -114,8 +120,12 @@ export default function SuitSetupPage() {
       setStep("participation");
       return;
     }
+    if (step === "ai_select_defense") {
+      setStep("ai_select_prosecution");
+      return;
+    }
     if (step === "review") {
-      setStep("ai_select");
+      setStep("ai_select_defense");
     }
   };
 
@@ -126,8 +136,8 @@ export default function SuitSetupPage() {
       setError("Counsel role required.");
       return;
     }
-    if (sideAPicks.length < 1 || sideAPicks.length > 2) {
-      setError("AI selection required.");
+    if (!sideA || !sideB || sideA === sideB) {
+      setError("Pick one AI for each side.");
       return;
     }
     setStarting(true);
@@ -137,7 +147,8 @@ export default function SuitSetupPage() {
         topic: topic.trim(),
         format,
         participationMode: participation,
-        sideAPicks,
+        sideA,
+        sideB,
       };
       if (flow.needsCounselRole && counselRole) {
         body.counselUserRole = counselRole;
@@ -328,43 +339,84 @@ export default function SuitSetupPage() {
           </section>
         ) : null}
 
-        {step === "ai_select" ? (
+        {step === "ai_select_prosecution" ? (
           <section className="space-y-5">
             <p className="text-center text-[11px] font-medium uppercase tracking-[0.28em] text-amber-300/75">
-              Step {participation === "counsel" ? 5 : 4} — AI selection
+              Step 1 — AI selection
             </p>
             <h1 className="text-center text-2xl font-semibold">
-              {format === "criminal" ? "Pick Prosecution team AIs" : "Pick Counsel A team AIs"}
+              {format === "criminal" ? "Pick your Prosecution AI" : "Pick your Counsel A AI"}
             </h1>
             <p className="text-center text-xs text-white/55">
-              Choose 1 or 2 AIs for Side A. The remaining AIs will argue for Side B. Judge is fixed (Claude Opus 4.7).
+              Choose exactly 1 AI for Side A. Judge is fixed (Claude Opus 4.7).
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               {SUIT_COUNSEL_AI_SELECTOR_CARDS.map((card) => {
-                const active = sideAPicks.includes(card.provider);
-                const locked = !active && sideAPicks.length >= 2;
+                const active = sideA === card.provider;
+                const dim = sideA !== null && !active;
                 return (
                   <button
                     key={card.provider}
                     type="button"
-                    disabled={locked}
                     onClick={() => {
-                      setSideAPicks((prev) => {
-                        if (prev.includes(card.provider)) return prev.filter((p) => p !== card.provider);
-                        if (prev.length >= 2) return prev;
-                        return [...prev, card.provider];
-                      });
+                      setSideA(card.provider);
+                      if (sideB === card.provider) setSideB(null);
                     }}
-                    className={`${cardCls(active)} ${locked ? "opacity-60" : ""}`}
+                    className={`${cardCls(active)} ${dim ? "opacity-60" : ""}`}
                   >
                     <span className="text-[15px] font-semibold text-white">
                       {card.nameEn} — {card.epithetKo}
                     </span>
                     <span className="mt-2 block text-[13px] text-amber-200/90">&ldquo;{card.taglineKo}&rdquo;</span>
                     <p className="mt-2 text-left text-xs leading-relaxed text-white/58">{card.blurbKo}</p>
-                    <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-white/55">
-                      {active ? "Selected for Side A" : "Side B if not selected"}
-                    </p>
+                    {active ? (
+                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-emerald-200/90">
+                        Selected
+                      </p>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {step === "ai_select_defense" ? (
+          <section className="space-y-5">
+            <p className="text-center text-[11px] font-medium uppercase tracking-[0.28em] text-amber-300/75">
+              Step 2 — AI selection
+            </p>
+            <h1 className="text-center text-2xl font-semibold">
+              {format === "criminal" ? "Pick your Defense AI" : "Pick your Counsel B AI"}
+            </h1>
+            <p className="text-center text-xs text-white/55">Choose 1 AI from the remaining 5.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {SUIT_COUNSEL_AI_SELECTOR_CARDS.map((card) => {
+                const disabled = sideA === card.provider;
+                const active = sideB === card.provider;
+                const dim = (sideB !== null && !active) || disabled;
+                return (
+                  <button
+                    key={card.provider}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setSideB(card.provider)}
+                    className={`${cardCls(active)} ${dim ? "opacity-60" : ""}`}
+                  >
+                    <span className="text-[15px] font-semibold text-white">
+                      {card.nameEn} — {card.epithetKo}
+                    </span>
+                    <span className="mt-2 block text-[13px] text-amber-200/90">&ldquo;{card.taglineKo}&rdquo;</span>
+                    <p className="mt-2 text-left text-xs leading-relaxed text-white/58">{card.blurbKo}</p>
+                    {disabled ? (
+                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                        Already selected for Side A
+                      </p>
+                    ) : active ? (
+                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-emerald-200/90">
+                        Selected
+                      </p>
+                    ) : null}
                   </button>
                 );
               })}
@@ -394,19 +446,20 @@ export default function SuitSetupPage() {
                   <dd className="text-white/90">{counselRole.replace("_", " ")}</dd>
                 </div>
               ) : null}
-              {sideAPicks.length ? (
+              {sideA && sideB ? (
                 <div className="flex flex-col gap-1 border-b border-white/10 pb-2">
                   <div className="flex justify-between gap-4">
                     <dt className="text-white/50 shrink-0">
-                      {format === "criminal" ? "Prosecution picks" : "Counsel A picks"}
+                      {format === "criminal" ? "Prosecution / Defense" : "Counsel A / Counsel B"}
                     </dt>
                     <dd className="text-right text-sm text-white/90">
-                      {sideAPicks
-                        .map((p) => {
-                          const c = SUIT_COUNSEL_AI_SELECTOR_CARDS.find((x) => x.provider === p);
-                          return c ? `${c.nameEn} — ${c.epithetKo}` : p;
-                        })
-                        .join(", ")}
+                      {(() => {
+                        const a = SUIT_COUNSEL_AI_SELECTOR_CARDS.find((x) => x.provider === sideA);
+                        const b = SUIT_COUNSEL_AI_SELECTOR_CARDS.find((x) => x.provider === sideB);
+                        const aLabel = a ? `${a.nameEn} — ${a.epithetKo}` : sideA;
+                        const bLabel = b ? `${b.nameEn} — ${b.epithetKo}` : sideB;
+                        return `${aLabel} / ${bLabel}`;
+                      })()}
                     </dd>
                   </div>
                 </div>
