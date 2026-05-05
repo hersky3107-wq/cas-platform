@@ -88,6 +88,7 @@ function buildAssignments(opts: {
   mode: SuitParticipationMode
   sideA?: AiProviderName
   sideB?: AiProviderName
+  opponentProvider?: AiProviderName
   counselUserRole?: 'prosecutor' | 'defense' | 'counsel_a' | 'counsel_b'
 }): RoleAssignment[] {
   const all: AiProviderName[] = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'mistral']
@@ -107,7 +108,10 @@ function buildAssignments(opts: {
       role: opts.counselUserRole,
       sideBucket: userSide,
     }
-    const opponentProvider = userSide === 'side_a' ? b : a
+    const opponentProvider =
+      opts.opponentProvider && all.includes(opts.opponentProvider)
+        ? opts.opponentProvider
+        : (userSide === 'side_a' ? b : a)
     const opponentRole: RoleAssignment['role'] =
       opts.format === 'criminal'
         ? (userSide === 'side_a' ? 'defense' : 'prosecutor')
@@ -264,17 +268,28 @@ export async function POST(req: Request) {
 
     // userPreferredSide is optional (setup wizard no longer collects it).
 
+    const opponentProvider = isAiProviderName(body.opponentProvider)
+      ? (body.opponentProvider as AiProviderName)
+      : null
+
     const sideA = isAiProviderName(body.sideA) ? (body.sideA as AiProviderName) : null
     const sideB = isAiProviderName(body.sideB) ? (body.sideB as AiProviderName) : null
-    if (!sideA || !sideB || sideA === sideB) {
-      return Response.json({ error: 'sideA and sideB (two different AIs) required' }, { status: 400 })
+    if (mode === 'counsel') {
+      if (!opponentProvider) {
+        return Response.json({ error: 'opponentProvider required for counsel mode' }, { status: 400 })
+      }
+    } else {
+      if (!sideA || !sideB || sideA === sideB) {
+        return Response.json({ error: 'sideA and sideB (two different AIs) required' }, { status: 400 })
+      }
     }
 
     const assignments = buildAssignments({
       format: format as SuitFormat,
       mode,
-      sideA,
-      sideB,
+      sideA: sideA ?? undefined,
+      sideB: sideB ?? undefined,
+      opponentProvider: opponentProvider ?? undefined,
       counselUserRole: counselRole ?? undefined,
     })
 
@@ -318,7 +333,7 @@ export async function POST(req: Request) {
         session_id: sessionId,
         user_id: user.id,
         category: 'suit_started',
-        reason: JSON.stringify({ format, mode, sideA, sideB }).slice(0, 2000),
+        reason: JSON.stringify({ format, mode, sideA, sideB, opponentProvider }).slice(0, 2000),
       },
       { session_id: sessionId, category: 'suit_started' }
     )
