@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AiProviderName } from '@/lib/ai/router'
 import type { SuitClientConfig } from '@/lib/ai/suit-types'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import {
   assignCounselOpponent,
   assignSpectatorCivil,
@@ -155,10 +157,28 @@ export async function POST(req: Request) {
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : ''
   const action = typeof body.action === 'string' ? body.action : ''
 
-  if (!token) return Response.json({ error: 'Authentication required' }, { status: 401 })
-
-  const supabaseAuth = createSupabaseWithToken(token)
+  const cookieStore = await cookies()
+  const supabaseAuth =
+    token
+      ? createSupabaseWithToken(token)
+      : createServerClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            cookies: {
+              getAll() {
+                return cookieStore.getAll()
+              },
+              setAll(cookiesToSet) {
+                cookiesToSet.forEach(({ name, value, options }) => {
+                  cookieStore.set(name, value, options)
+                })
+              },
+            },
+          }
+        )
   const supabase = supabaseAdmin
+  const tokenForRouter = token || undefined
   const {
     data: { user },
     error: authErr,
@@ -306,7 +326,7 @@ export async function POST(req: Request) {
     if (!sess || sess.mode !== 'suit') return Response.json({ error: 'bad session' }, { status: 400 })
     const apiKey = anthropicPlatformKey()
     if (!apiKey) return Response.json({ error: 'Judge API missing' }, { status: 500 })
-    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: token }
+    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }
     const messages: SuitMessage[] = []
     await runJudgeCounselOpening(topic, ctx, apiKey, messages)
     return Response.json({ messages })
@@ -328,7 +348,7 @@ export async function POST(req: Request) {
     const { data: sess } = await supabase.from('sessions').select('mode').eq('id', sessionId).maybeSingle()
     if (!sess || sess.mode !== 'suit') return Response.json({ error: 'bad session' }, { status: 400 })
 
-    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: token }
+    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }
 
     const roleLabel =
       format === 'criminal'
@@ -380,7 +400,7 @@ export async function POST(req: Request) {
     const { data: sess } = await supabase.from('sessions').select('mode').eq('id', sessionId).maybeSingle()
     if (!sess || sess.mode !== 'suit') return Response.json({ error: 'bad session' }, { status: 400 })
 
-    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: token }
+    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }
 
     const userRole =
       format === 'criminal'
@@ -431,7 +451,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'bad session' }, { status: 400 })
     }
 
-    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: token }
+    const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }
     const enc = new TextEncoder()
 
     const stream = new ReadableStream({

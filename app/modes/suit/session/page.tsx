@@ -168,7 +168,6 @@ function VerdictCard({ text, animate }: { text: string; animate: boolean }) {
 
 export default function SuitSessionPage() {
   const router = useRouter();
-  const [authReady, setAuthReady] = useState(false);
   const [pack, setPack] = useState<Packed | null>(null);
   const [messages, setMessages] = useState<SuitMessage[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -195,26 +194,6 @@ export default function SuitSessionPage() {
   }, [messages, awaitWitness, loading, verdictText, counselExchange]);
 
   useEffect(() => {
-    let cancelled = false;
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      if (!data.session) {
-        router.replace("/auth");
-        return;
-      }
-      setAuthReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) router.replace("/auth");
-    });
-    return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!authReady) return;
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) {
       router.replace("/modes/suit");
@@ -230,7 +209,7 @@ export default function SuitSessionPage() {
     } catch {
       router.replace("/modes/suit");
     }
-  }, [authReady, router]);
+  }, [router]);
 
   useEffect(() => {
     if (!pack) return;
@@ -281,18 +260,12 @@ export default function SuitSessionPage() {
 
   const readSpectatorWitnessStream = useCallback(
     async (body: Record<string, unknown>) => {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) {
-        router.replace("/auth");
-        return false;
-      }
       setLoading(true);
       setStreamError(null);
       const res = await fetch("/api/suit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, supabaseAccessToken: token }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as { error?: string };
@@ -408,15 +381,11 @@ export default function SuitSessionPage() {
     setVoteDone(false);
     setCounselBusy(true);
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) return;
       const res = await fetch("/api/suit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "counsel_opening",
-          supabaseAccessToken: token,
           sessionId: pack.sessionId,
           topic: pack.topic,
         }),
@@ -450,15 +419,11 @@ export default function SuitSessionPage() {
     setStreamError(null);
     setCounselDraft("");
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) return;
       const res = await fetch("/api/suit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "counsel_turn",
-          supabaseAccessToken: token,
           sessionId: pack.sessionId,
           topic: pack.topic,
           format: pack.format,
@@ -492,15 +457,11 @@ export default function SuitSessionPage() {
     if (!pack) return;
     setCounselBusy(true);
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) return;
       const res = await fetch("/api/suit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "counsel_verdict",
-          supabaseAccessToken: token,
           sessionId: pack.sessionId,
           topic: pack.topic,
           format: pack.format,
@@ -529,15 +490,11 @@ export default function SuitSessionPage() {
 
   const castVote = async (agree: boolean) => {
     if (!pack) return;
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (!token) return;
     await fetch("/api/suit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "vote",
-        supabaseAccessToken: token,
         sessionId: pack.sessionId,
         agreeJudge: agree,
       }),
@@ -547,10 +504,10 @@ export default function SuitSessionPage() {
 
   const verdictBlock = verdictText ?? messages.find((x) => x.phase === "verdict")?.content ?? null;
 
-  if (!authReady || !pack) {
+  if (!pack) {
     return (
       <main className={`${BG} flex items-center justify-center`}>
-        <p className="text-sm text-white/60">{!authReady ? "Loading…" : "Recovering session…"}</p>
+        <p className="text-sm text-white/60">Recovering session…</p>
       </main>
     );
   }
