@@ -445,14 +445,7 @@ export async function POST(req: Request) {
 
     await persistSuitVerdictResult(supabase, sessionId, verdictText ?? '')
 
-    const vlow = verdictText?.toLowerCase() ?? ''
-    const humanPrevails =
-      (userAssign?.role === 'prosecutor' && /prosecution prevails/i.test(vlow)) ||
-      (userAssign?.role === 'defense' && /defense prevails/i.test(vlow)) ||
-      (userAssign?.role === 'counsel_a' && /counsel a prevails/i.test(vlow)) ||
-      (userAssign?.role === 'counsel_b' && /counsel b prevails/i.test(vlow))
-
-    return Response.json({ verdictText, messages, humanPrevails })
+    return Response.json({ verdictText, messages })
   }
 
   if (action === 'suit_step') {

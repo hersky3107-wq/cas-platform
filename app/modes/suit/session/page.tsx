@@ -75,6 +75,19 @@ function localizeVerdictLabelsKo(verdict: string): string {
     .replace(/^\s*DISSENT\s*NOTE\s*:/gim, "주목할 반론:");
 }
 
+function parseWinnerSideBucketFromVerdict(verdict: string, format: "criminal" | "civil"): "side_a" | "side_b" | null {
+  const rulingLine = verdict.split("\n").find((l) => /판결\s*:|ruling\s*:/i.test(l)) ?? verdict;
+  const s = rulingLine.replace(/\s+/g, " ").trim();
+  if (format === "criminal") {
+    if (/검찰\s*승소/.test(s)) return "side_a";
+    if (/변호인\s*승소/.test(s)) return "side_b";
+    return null;
+  }
+  if (/A측\s*승소/i.test(s)) return "side_a";
+  if (/B측\s*승소/i.test(s)) return "side_b";
+  return null;
+}
+
 function GeminiNameStripe({ label }: { label: string }) {
   const short = label.length > 42 ? `${label.slice(0, 40)}…` : label;
   return (
@@ -296,9 +309,16 @@ export default function SuitSessionPage() {
   }, [pack]);
 
   const yourCounselLine = useMemo(() => {
-    if (!pack?.userCounselProvider) return null;
-    const m = suitCounselSelectorMeta(pack.userCounselProvider);
-    return m ? `${m.nameEn} — ${m.epithetKo}` : pack.userCounselProvider;
+    if (!pack || pack.participationMode !== "counsel") return null;
+    const role =
+      pack.format === "criminal"
+        ? pack.userCounselRole === "prosecutor"
+          ? "검사"
+          : "변호인"
+        : pack.userCounselRole === "counsel_a"
+          ? "Counsel A"
+          : "Counsel B";
+    return `본인 (직접 참여) · ${role}`;
   }, [pack]);
 
   const opposingCounselLine = useMemo(() => {
@@ -584,6 +604,14 @@ export default function SuitSessionPage() {
   };
 
   const verdictBlock = verdictText ?? messages.find((x) => x.phase === "verdict")?.content ?? null;
+  const counselWon = useMemo(() => {
+    if (!pack || pack.participationMode !== "counsel" || !verdictBlock) return null;
+    const userAssign = pack.assignments.find((x) => x.provider === "user");
+    if (!userAssign) return null;
+    const winner = parseWinnerSideBucketFromVerdict(localizeVerdictLabelsKo(verdictBlock), pack.format);
+    if (!winner) return null;
+    return winner === userAssign.sideBucket;
+  }, [pack, verdictBlock]);
 
   if (!pack) {
     return (
@@ -794,7 +822,7 @@ export default function SuitSessionPage() {
                 <div className="mx-auto mt-8 w-full max-w-lg rounded-2xl border border-white/15 bg-[#131c35] p-6 text-center shadow-lg">
                   <p className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-200/85">Bench assessment</p>
                   <p className="mt-4 text-2xl font-bold text-white">
-                    {humanPrevails === true ? "You won" : humanPrevails === false ? "You lost" : "Verdict rendered"}
+                    {counselWon === true ? "You won" : counselWon === false ? "You lost" : "Verdict rendered"}
                   </p>
                   {extractFinding(verdictBlock) ? (
                     <blockquote className="mt-5 border-l-2 border-amber-400/60 pl-4 text-left text-sm italic text-white/75">
