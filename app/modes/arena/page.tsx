@@ -6,11 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChevronLeft, Swords } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
-import { creditsPerMessage } from "@/lib/credits";
 import {
   ARENA_DISPLAY,
   ARENA_ORDER,
-  arenaBattleApiCallCount,
   type ArenaAI,
   type ArenaResponse,
   type ArenaRound,
@@ -256,19 +254,6 @@ export default function ArenaPage() {
     };
   }, [sides]);
 
-  const paidBattleCost = useMemo(() => {
-    try {
-      return creditsPerMessage(arenaBattleApiCallCount(4));
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const paidBundleMinCredits = useMemo(() => {
-    if (paidBattleCost == null) return null;
-    return paidBattleCost * 3;
-  }, [paidBattleCost]);
-
   useEffect(() => {
     roundsRef.current = rounds;
   }, [rounds]);
@@ -485,6 +470,9 @@ export default function ArenaPage() {
       if (!sessionId || !sides.left || !sides.right || !t) {
         return;
       }
+      if (roundNumber > 4) {
+        return;
+      }
       if (battleInflightRef.current) {
         return;
       }
@@ -524,9 +512,9 @@ export default function ArenaPage() {
               return n;
             });
             setBattleLive([]);
-            if (rn === 2) {
+            if (rn === 2 || rn === 3) {
               setAwaitingNextBattleRound(true);
-            } else if (rn >= 3) {
+            } else if (rn >= 4) {
               setAwaitingNextBattleRound(false);
             }
           },
@@ -577,8 +565,11 @@ export default function ArenaPage() {
   const rightColor = sides.right ? ARENA_COLOR[sides.right] : "#64748B";
   const battleRounds = rounds.filter((r) => r.roundNumber >= 2);
   const maxRound = rounds.length ? Math.max(...rounds.map((r) => Number(r.roundNumber))) : 1;
-  const showPostRound3Actions =
-    phase === "battle" && maxRound >= 3 && !awaitingNextBattleRound && !isLoading;
+  const showPostRound4EndActions =
+    phase === "battle" &&
+    maxRound === 4 &&
+    !awaitingNextBattleRound &&
+    !isLoading;
 
   return (
     <div className={BG}>
@@ -618,7 +609,7 @@ export default function ArenaPage() {
               className="min-h-[120px] w-full resize-y rounded-xl border border-white/12 bg-white/6 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-rose-400/40 focus:outline-none"
             />
             <p className="text-xs leading-relaxed text-slate-500">
-              Rounds 1–3 cost no credits. Battle rounds after round 3 cost credits.
+              Rounds 1–3 cost no credits. Round 4 is the final battle (may charge credits).
             </p>
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -816,20 +807,22 @@ export default function ArenaPage() {
               ) : null}
             </div>
 
-            {awaitingNextBattleRound && maxRound === 2 && !isLoading ? (
+            {awaitingNextBattleRound && (maxRound === 2 || maxRound === 3) && !isLoading ? (
               <div className="mt-8 flex flex-col items-center gap-2">
                 <p className="text-center text-sm text-slate-400">When you are ready, start the next round.</p>
                 <button
                   type="button"
-                  onClick={() => void runBattleRound(3)}
+                  onClick={() =>
+                    void runBattleRound(maxRound === 2 ? 3 : 4)
+                  }
                   className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-500"
                 >
-                  Next Round
+                  {maxRound === 2 ? "Next Round" : "Begin final round (Round 4)"}
                 </button>
               </div>
             ) : null}
 
-            {showPostRound3Actions ? (
+            {showPostRound4EndActions ? (
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
                 <button
                   type="button"
@@ -845,36 +838,6 @@ export default function ArenaPage() {
                 >
                   Who was right? Vote
                 </button>
-                <button
-                  type="button"
-                  disabled={
-                    credits !== null &&
-                    paidBundleMinCredits !== null &&
-                    credits < paidBundleMinCredits
-                  }
-                  onClick={async () => {
-                    for (let i = 0; i < 3; i++) {
-                      const nums = roundsRef.current.map((x) => Number(x.roundNumber) || 0);
-                      const m = nums.length ? Math.max(1, ...nums) : 1;
-                      const next = m + 1;
-                      await runBattleRound(next);
-                      await new Promise<void>((resolve) => {
-                        requestAnimationFrame(() => {
-                          requestAnimationFrame(() => resolve());
-                        });
-                      });
-                    }
-                  }}
-                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                >
-                  The battle continues. Keep going →
-                </button>
-                {paidBattleCost != null ? (
-                  <p className="w-full text-center text-[11px] text-slate-500">
-                    Each extra round charges {paidBattleCost} credits (Round 4+ uses 3 model calls:
-                    both champions plus one co-fighter).
-                  </p>
-                ) : null}
               </div>
             ) : null}
           </div>

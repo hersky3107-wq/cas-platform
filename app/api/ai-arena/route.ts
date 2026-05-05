@@ -175,6 +175,10 @@ export async function POST(req: Request) {
       ? Math.floor(body.roundNumber)
       : 2
 
+  if (action === 'battle' && battleRoundNumber > 4) {
+    return Response.json({ error: 'Arena is capped at round 4.' }, { status: 400 })
+  }
+
   let cost = 0
   try {
     if (action === 'start') {

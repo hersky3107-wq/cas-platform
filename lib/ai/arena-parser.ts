@@ -1,11 +1,25 @@
 import type { ArenaAI, ArenaResponse } from '@/lib/ai/arena-types'
 
-const INTERNAL_BLOCK =
-  /<Internal_Targeting>[\s\S]*?<\/Internal_Targeting>/gi
+/** Balanced <Internal_Targeting>...</Internal_Targeting> (spacing / case tolerant). */
+const INTERNAL_BLOCK_BALANCED =
+  /<\s*Internal_Targeting\b[^>]*>[\s\S]*?<\s*\/\s*Internal_Targeting\b[^>]*>/gi
+const INTERNAL_CLOSING_ALONE = /<\s*\/\s*Internal_Targeting\b[^>]*>/gi
+const INTERNAL_OPEN_TO_EOF = /<\s*Internal_Targeting\b[^>]*>[\s\S]*/gi
 
-/** Remove internal targeting block and tags (case-insensitive). */
+/**
+ * Remove Internal_Targeting blocks before display.
+ * Strips balanced regions first, then orphan closers, then any unclosed opener through end of text.
+ */
 export function stripInternalTargetingBlock(text: string): string {
-  return text.replace(INTERNAL_BLOCK, '').trim()
+  let t = text
+  for (let i = 0; i < 64; i++) {
+    const next = t.replace(INTERNAL_BLOCK_BALANCED, '')
+    if (next === t) break
+    t = next
+  }
+  t = t.replace(INTERNAL_CLOSING_ALONE, '')
+  t = t.replace(INTERNAL_OPEN_TO_EOF, '')
+  return t.trim()
 }
 
 /** Strip ** * __ _ style markdown from visible body. */

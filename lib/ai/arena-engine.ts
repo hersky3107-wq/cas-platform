@@ -534,7 +534,7 @@ export async function runArenaRound1(
       ctx,
       roundNumber: 1,
       persistTurn,
-      maxTokens: ai === 'claude' ? 1000 : ai === 'mistral' ? 900 : 600,
+      maxTokens: ai === 'claude' ? 1200 : ai === 'mistral' ? 900 : 600,
     })
 
     let ar: ArenaResponse
@@ -594,6 +594,9 @@ export async function runArenaRound(
   onResponse: (response: ArenaResponse) => void,
   onThinking?: (ai: ArenaAI) => void
 ): Promise<ArenaRound> {
+  if (roundNumber > 4) {
+    throw new Error('Arena is capped at round 4. Start a new session to debate again.')
+  }
   const r1 = allPreviousRounds.find((r) => r.roundNumber === 1)
   if (!r1 || !Array.isArray(r1.responses) || r1.responses.length === 0) {
     throw new Error('Arena battle requires a completed round 1 with responses.')
@@ -650,7 +653,7 @@ Use the mandatory tag block first, then your argument.`
   }
 
   const championMaxTokens = (ai: ArenaAI): number => {
-    if (ai === 'claude') return 1000
+    if (ai === 'claude') return 1200
     if (ai === 'mistral') return 900
     return 650
   }
