@@ -37,9 +37,10 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith(route)
   )
 
-  if (isProtected && !user) {
-    return NextResponse.redirect(new URL('/auth', request.url))
-  }
+  // TEMP: auth guard disabled (debugging)
+  // if (isProtected && !user) {
+  //   return NextResponse.redirect(new URL('/auth', request.url))
+  // }
 
   if (request.nextUrl.pathname === '/auth' && user) {
     return NextResponse.redirect(new URL('/', request.url))
