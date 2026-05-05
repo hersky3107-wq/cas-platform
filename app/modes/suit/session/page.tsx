@@ -196,17 +196,20 @@ export default function SuitSessionPage() {
   useEffect(() => {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) {
+      sessionStorage.removeItem(STORAGE_KEY);
       router.replace("/modes/suit");
       return;
     }
     try {
       const parsed = JSON.parse(raw) as Packed;
       if (!parsed?.sessionId || !parsed.topic || !parsed.format || !parsed.participationMode) {
+        sessionStorage.removeItem(STORAGE_KEY);
         router.replace("/modes/suit");
         return;
       }
       setPack(parsed);
     } catch {
+      sessionStorage.removeItem(STORAGE_KEY);
       router.replace("/modes/suit");
     }
   }, [router]);
