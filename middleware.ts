@@ -1,73 +1,55 @@
 import { createServerClient } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
-
-/** Paths that require login (prefix match). */
-const AUTH_PATH_PREFIXES = [
-  '/modes/arena',
-  '/modes/compare',
-  '/modes/custom',
-  '/modes/persona',
-  '/modes/verdict',
-  '/modes/suit',
-]
-
-function isAuthPath(pathname: string): boolean {
-  return AUTH_PATH_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  )
-}
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
+  let response = NextResponse.next({
+    request: { headers: request.headers },
   })
 
-  const pathname = request.nextUrl.pathname
-
-  if (pathname.startsWith('/api')) {
-    return supabaseResponse
-  }
-
-  // Non-auth routes (marketing / landing) can pass through.
-  if (pathname === '/' || pathname === '/auth' || pathname === '/about') {
-    return supabaseResponse
-  }
-
-  // Only enforce auth for protected mode routes.
-  if (!isAuthPath(pathname)) return supabaseResponse
-
-  try {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              supabaseResponse.cookies.set(name, value, options)
-            )
-          },
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
         },
-      }
-    )
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/auth'
-      return NextResponse.redirect(url)
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          })
+
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
+      },
     }
-  } catch {
-    return supabaseResponse
+  )
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const protectedRoutes = ['/modes', '/me', '/settings']
+  const isProtected = protectedRoutes.some((route) =>
+    request.nextUrl.pathname.startsWith(route)
+  )
+
+  if (isProtected && !user) {
+    return NextResponse.redirect(new URL('/auth', request.url))
   }
 
-  return supabaseResponse
+  if (request.nextUrl.pathname === '/auth' && user) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  return response
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 }
