@@ -7,6 +7,7 @@ import {
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import { CUSTOM_SYSTEM_PROMPT, creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 
 function uniqueProviders(providers: AiProviderName[]) {
@@ -49,9 +50,6 @@ export async function POST(req: Request) {
 
   const systemPrompt = buildCustomModeSystemPrompt(customRaw)
 
-  if (!token) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
   if (!prompt.trim()) {
     return NextResponse.json({ error: 'prompt is required' }, { status: 400 })
   }
@@ -59,7 +57,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Select at least one AI' }, { status: 400 })
   }
 
-  const supabaseAuth = createSupabaseWithToken(token)
+  const supabaseAuth = token
+    ? createSupabaseWithToken(token)
+    : await createSupabaseRouteAuthClient()
   const supabase = supabaseAdmin
   const {
     data: { user },

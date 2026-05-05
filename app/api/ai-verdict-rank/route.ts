@@ -6,6 +6,7 @@ import {
   type RouterResult,
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 import {
   VERDICT_RANK_AI_ORDER,
@@ -66,9 +67,6 @@ export async function POST(req: Request) {
   const sessionIdIn = typeof body.sessionId === 'string' ? body.sessionId : null
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
 
-  if (!token) {
-    return Response.json({ error: 'Authentication required' }, { status: 401 })
-  }
   const trimmed = itemsToRank.trim()
   if (!trimmed) {
     return Response.json({ error: 'itemsToRank is required' }, { status: 400 })
@@ -95,7 +93,7 @@ export async function POST(req: Request) {
   const systemPrompt = buildVerdictRankSystemPrompt(rankingCriteria)
   const userLogText = `Ranking criteria: ${rankingCriteria.trim() || '(none)'}\n\n---\n\n${trimmed}`
 
-  const supabase = createSupabaseWithToken(token)
+  const supabase = token ? createSupabaseWithToken(token) : await createSupabaseRouteAuthClient()
   const {
     data: { user },
     error: authErr,

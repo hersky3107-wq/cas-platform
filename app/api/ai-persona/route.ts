@@ -7,6 +7,7 @@ import {
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 
 const MAX_ROLE_CHARS = 200
@@ -109,10 +110,6 @@ export async function POST(req: Request) {
   const sessionIdIn = typeof body.sessionId === 'string' ? body.sessionId : null
   const assignments = parseAssignments(body.assignments)
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
-
-  if (!token) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-  }
   if (!assignments) {
     return NextResponse.json({
       error: 'assignments requires 2–6 unique providers with roles',
@@ -131,7 +128,9 @@ export async function POST(req: Request) {
     assignments.map((a) => [a.provider, a.role])
   ) as Record<AiProviderName, string>
 
-  const supabaseAuth = createSupabaseWithToken(token)
+  const supabaseAuth = token
+    ? createSupabaseWithToken(token)
+    : await createSupabaseRouteAuthClient()
   const supabase = supabaseAdmin
   const {
     data: { user },

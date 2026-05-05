@@ -183,7 +183,11 @@ export default function SuitSetupPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const j = (await res.json().catch(() => null)) as {
+      const rawText = await res.text().catch(() => "");
+      // Debug: see whether /api/suit start succeeded and what it returned.
+      console.log("[suit:start] status", res.status, "ok", res.ok);
+      console.log("[suit:start] body", rawText);
+      const j = (rawText ? JSON.parse(rawText) : null) as {
         error?: string;
         sessionId?: string;
         config?: SuitClientConfig;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import { MODEL_BY_PROVIDER, type AiProviderName } from '@/lib/ai/router'
 
 /**
@@ -13,10 +14,6 @@ export async function POST(req: Request) {
     const providerRaw = typeof body.selectedProvider === 'string' ? body.selectedProvider : ''
     const token =
       typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
-
-    if (!token) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    }
     if (!sessionId || !providerRaw) {
       return NextResponse.json({ error: 'sessionId and selectedProvider are required' }, { status: 400 })
     }
@@ -24,7 +21,9 @@ export async function POST(req: Request) {
     const provider = providerRaw as AiProviderName
     const model = MODEL_BY_PROVIDER[provider]
 
-    const supabaseAuth = createSupabaseWithToken(token)
+    const supabaseAuth = token
+      ? createSupabaseWithToken(token)
+      : await createSupabaseRouteAuthClient()
     const supabase = supabaseAdmin
     const {
       data: { user },

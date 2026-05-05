@@ -1,8 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AiProviderName } from '@/lib/ai/router'
 import type { SuitClientConfig } from '@/lib/ai/suit-types'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import {
   assignCounselOpponent,
   assignSpectatorCivil,
@@ -156,34 +155,27 @@ export async function POST(req: Request) {
 
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : ''
   const action = typeof body.action === 'string' ? body.action : ''
+  // Debug: track what the API is receiving (avoid logging secrets).
+  console.log('[api/suit] action=', action, 'hasToken=', Boolean(token))
+  if (action === 'start') {
+    console.log('[api/suit:start] format=', body.format, 'mode=', body.participationMode)
+    console.log('[api/suit:start] topic_len=', typeof body.topic === 'string' ? body.topic.length : null)
+  }
 
-  const cookieStore = await cookies()
   const supabaseAuth =
     token
       ? createSupabaseWithToken(token)
-      : createServerClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          {
-            cookies: {
-              getAll() {
-                return cookieStore.getAll()
-              },
-              setAll(cookiesToSet) {
-                cookiesToSet.forEach(({ name, value, options }) => {
-                  cookieStore.set(name, value, options)
-                })
-              },
-            },
-          }
-        )
+      : await createSupabaseRouteAuthClient()
   const supabase = supabaseAdmin
   const tokenForRouter = token || undefined
   const {
     data: { user },
     error: authErr,
   } = await supabaseAuth.auth.getUser()
-  if (authErr || !user) return Response.json({ error: 'Invalid session' }, { status: 401 })
+  if (authErr || !user) {
+    console.log('[api/suit] auth failed:', authErr?.message ?? 'no_user')
+    return Response.json({ error: 'Invalid session' }, { status: 401 })
+  }
 
   if (action === 'vote') {
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
@@ -315,7 +307,9 @@ export async function POST(req: Request) {
       { session_id: sessionId, category: 'suit_started' }
     )
 
-    return Response.json({ sessionId, assignments, config: { ...config, assignments } })
+    const out = { sessionId, assignments, config: { ...config, assignments } }
+    console.log('[api/suit:start] ok sessionId=', sessionId, 'assignments=', assignments.length)
+    return Response.json(out)
   }
 
   if (action === 'counsel_opening') {

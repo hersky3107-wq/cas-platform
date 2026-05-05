@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import { MODEL_BY_PROVIDER, type AiProviderName } from '@/lib/ai/router'
 
 /**
@@ -13,15 +14,13 @@ export async function POST(req: Request) {
     const winner = typeof body.winner === 'string' ? body.winner : ''
     const token =
       typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
-
-    if (!token) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    }
     if (!sessionId || !winner) {
       return NextResponse.json({ error: 'sessionId and winner are required' }, { status: 400 })
     }
 
-    const supabaseAuth = createSupabaseWithToken(token)
+    const supabaseAuth = token
+      ? createSupabaseWithToken(token)
+      : await createSupabaseRouteAuthClient()
     const supabase = supabaseAdmin
     const {
       data: { user },

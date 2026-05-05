@@ -17,6 +17,7 @@ import {
 } from '@/lib/ai/arena-bundle'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits'
 
 async function insertWithFallback(
@@ -98,11 +99,9 @@ export async function POST(req: Request) {
   const action = typeof body.action === 'string' ? body.action : ''
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
 
-  if (!token) {
-    return Response.json({ error: 'Authentication required' }, { status: 401 })
-  }
-
-  const supabaseAuth = createSupabaseWithToken(token)
+  const supabaseAuth = token
+    ? createSupabaseWithToken(token)
+    : await createSupabaseRouteAuthClient()
   const supabase = supabaseAdmin
   const {
     data: { user },

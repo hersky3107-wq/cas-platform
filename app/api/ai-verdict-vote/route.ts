@@ -6,6 +6,7 @@ import {
   type RouterResult,
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 import {
   AI_PROVIDER_LABEL,
@@ -91,9 +92,6 @@ export async function POST(req: Request) {
   const sessionIdIn = typeof body.sessionId === 'string' ? body.sessionId : null
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
 
-  if (!token) {
-    return Response.json({ error: 'Authentication required' }, { status: 401 })
-  }
   if (!question) {
     return Response.json({ error: 'question is required' }, { status: 400 })
   }
@@ -105,7 +103,7 @@ export async function POST(req: Request) {
   const systemPrompt = buildVerdictVoteSystemPrompt()
   const userLogText = `${question}\n\n[User vote: ${userVoteRaw}]`
 
-  const supabase = createSupabaseWithToken(token)
+  const supabase = token ? createSupabaseWithToken(token) : await createSupabaseRouteAuthClient()
   const {
     data: { user },
     error: authErr,

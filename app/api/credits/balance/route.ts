@@ -1,18 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getCreditsBalance } from '@/lib/credits'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
+import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
-    const token =
-      typeof body?.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
-
-    if (!token) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    }
-
-    const supabase = createSupabaseWithToken(token)
+    void (await req.json().catch(() => null)) // body not required; keep API signature stable
+    const supabase = await createSupabaseRouteAuthClient()
     const {
       data: { user },
       error,
