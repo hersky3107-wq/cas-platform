@@ -14,6 +14,7 @@ import {
   Sparkles,
   Sword,
   Table2,
+  Clapperboard,
   X,
   Zap,
   type LucideIcon,
@@ -33,6 +34,7 @@ const iconMap: Record<string, LucideIcon> = {
   Sword,
   Handshake,
   Gavel,
+  Clapperboard,
   Zap, // fallback for any missing icon mapping
 };
 
@@ -151,6 +153,21 @@ export default function Home() {
                   onComingSoon={setModalItem}
                 />
               ))}
+              <Link href="/modes/stage" className="flex items-center justify-center">
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px] bg-gradient-to-br from-indigo-400 to-sky-600`}
+                  >
+                    <Clapperboard className="h-8 w-8 text-white lg:h-10 lg:w-10" />
+                  </div>
+                  <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
+                    STAGE
+                  </span>
+                  <span className="mt-0.5 text-center text-[10px] leading-[1.15] text-white/55">
+                    AI entertainment
+                  </span>
+                </div>
+              </Link>
             </div>
           </div>
 
