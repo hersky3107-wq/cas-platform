@@ -7,11 +7,12 @@ import type { AiProviderName } from "@/lib/ai/router";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
-const GENRE_TABS = ["All", "Horror", "Romance", "Absurd", "Sci-Fi", "Fairy Tale", "Sad Story"] as const;
+const GENRE_TABS = ["Best", "Horror", "Romance", "Absurd", "Sci-Fi", "Fairy Tale", "Sad Story", "Custom", "All"] as const;
 type GenreTab = (typeof GENRE_TABS)[number];
+const STANDARD_GENRES = ["Horror", "Romance", "Absurd", "Sci-Fi", "Fairy Tale", "Sad Story"] as const;
 
 const GENRE_META: Record<
-  Exclude<GenreTab, "All">,
+  Exclude<GenreTab, "All" | "Best">,
   { icon: string; color: string; bg: string }
 > = {
   Horror: { icon: "👻", color: "text-rose-200", bg: "bg-rose-500/15 border-rose-500/25" },
@@ -20,6 +21,7 @@ const GENRE_META: Record<
   "Sci-Fi": { icon: "🚀", color: "text-sky-200", bg: "bg-sky-500/15 border-sky-500/25" },
   "Fairy Tale": { icon: "🧚", color: "text-lime-200", bg: "bg-lime-500/15 border-lime-500/25" },
   "Sad Story": { icon: "💧", color: "text-slate-200", bg: "bg-slate-500/15 border-slate-500/25" },
+  Custom: { icon: "✏️", color: "text-slate-200", bg: "bg-white/6 border-white/12" },
 };
 
 const AI_LABEL: Record<AiProviderName, string> = {
@@ -32,6 +34,35 @@ const AI_LABEL: Record<AiProviderName, string> = {
 };
 
 const GEMINI_LETTER_COLORS = ["#4285F4", "#EA4335", "#FBBC05", "#34A853", "#4285F4", "#EA4335"] as const;
+
+function languageDisplayName(raw: string): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "";
+  const key = s.toLowerCase();
+
+  const map: Record<string, string> = {
+    korean: "한국어",
+    "한국어": "한국어",
+    hangul: "한국어",
+    english: "English",
+    japanese: "日本語",
+    "日本語": "日本語",
+    chinese: "中文",
+    "中文": "中文",
+    mandarin: "中文",
+    spanish: "Español",
+    french: "Français",
+    german: "Deutsch",
+    italian: "Italiano",
+    portuguese: "Português",
+    russian: "Русский",
+    vietnamese: "Tiếng Việt",
+    thai: "ไทย",
+    indonesian: "Bahasa Indonesia",
+  };
+
+  return map[key] ?? s;
+}
 
 function AiNameBadge({ provider }: { provider: AiProviderName }) {
   const base = "inline-flex rounded-lg px-2.5 py-0.5 text-sm font-bold";
@@ -58,7 +89,7 @@ type ArchiveStory = {
   session_id: string;
   ai_provider: AiProviderName;
   ai_model: string;
-  genre: Exclude<GenreTab, "All">;
+  genre: string;
   language: string;
   story_text: string;
   vote_count: number;
@@ -70,18 +101,17 @@ export default function StageArchivePage() {
   const [phase, setPhase] = useState<"checking" | "blocked" | "ready">("checking");
   const [credits, setCredits] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<GenreTab>("All");
+  const [tab, setTab] = useState<GenreTab>("Best");
   const [loadingList, setLoadingList] = useState(false);
   const [stories, setStories] = useState<ArchiveStory[]>([]);
   const [expanded, setExpanded] = useState<Partial<Record<string, boolean>>>({});
   const [voteBusy, setVoteBusy] = useState<Partial<Record<string, boolean>>>({});
 
-  const fetchStories = useCallback(async (genreTab: GenreTab) => {
+  const fetchStories = useCallback(async () => {
     setLoadingList(true);
     setError(null);
     try {
-      const qs = genreTab === "All" ? "" : `?genre=${encodeURIComponent(genreTab)}`;
-      const res = await fetch(`/api/stage/archive${qs}`, { method: "GET" });
+      const res = await fetch(`/api/stage/archive`, { method: "GET" });
       const j = (await res.json().catch(() => null)) as { stories?: ArchiveStory[]; error?: string };
       if (!res.ok) throw new Error(j?.error ?? "Request failed");
       setStories(Array.isArray(j?.stories) ? j.stories : []);
@@ -110,7 +140,7 @@ export default function StageArchivePage() {
         }
         if (typeof j?.creditsRemaining === "number") setCredits(j.creditsRemaining);
         setPhase("ready");
-        await fetchStories("All");
+        await fetchStories();
       } catch (e: unknown) {
         setPhase("blocked");
         setError(e instanceof Error ? e.message : "Unknown error");
@@ -120,7 +150,14 @@ export default function StageArchivePage() {
 
   const filtered = useMemo(() => {
     if (tab === "All") return stories;
-    return stories.filter((s) => s.genre === tab);
+    if (tab === "Best") return stories.filter((s) => (s.vote_count ?? 0) >= 5).sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0));
+    if (tab === "Custom") {
+      return stories.filter((s) => {
+        const g = String(s.genre ?? "").trim();
+        return !STANDARD_GENRES.includes(g as (typeof STANDARD_GENRES)[number]);
+      });
+    }
+    return stories.filter((s) => String(s.genre ?? "").trim() === tab);
   }, [stories, tab]);
 
   const voteFor = useCallback(async (s: ArchiveStory) => {
@@ -203,13 +240,17 @@ export default function StageArchivePage() {
                   type="button"
                   onClick={() => {
                     setTab(t);
-                    void fetchStories(t);
+                    void fetchStories();
                   }}
                   className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
                     tab === t ? "border-cyan-300 bg-cyan-500/15 text-white" : "border-white/12 bg-white/5 text-slate-200"
                   }`}
                 >
-                  {t === "All" ? "All" : `${GENRE_META[t].icon} ${t}`}
+                  {t === "Best"
+                    ? `⭐ Best`
+                    : t === "All"
+                      ? "📚 All"
+                      : `${GENRE_META[t].icon} ${t}`}
                 </button>
               ))}
             </div>
@@ -222,14 +263,30 @@ export default function StageArchivePage() {
 
             {!loadingList && filtered.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
-                <p className="text-lg font-semibold text-white">No stories yet.</p>
-                <p className="mt-2 text-sm text-slate-400">Be the first — go to TALE and create one.</p>
-                <Link
-                  href="/modes/stage/tale"
-                  className="mt-4 inline-flex rounded-xl bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
-                >
-                  Go to TALE
-                </Link>
+                {tab === "Best" ? (
+                  <>
+                    <p className="text-lg font-semibold text-white">No Best Picks yet.</p>
+                    <p className="mt-2 text-sm text-slate-400">Stories with 5+ likes will appear here.</p>
+                    <button
+                      type="button"
+                      onClick={() => setTab("All")}
+                      className="mt-4 text-sm font-semibold text-cyan-300 hover:text-cyan-200"
+                    >
+                      Browse All →
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-semibold text-white">No stories yet.</p>
+                    <p className="mt-2 text-sm text-slate-400">Be the first — go to TALE and create one.</p>
+                    <Link
+                      href="/modes/stage/tale"
+                      className="mt-4 inline-flex rounded-xl bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+                    >
+                      Go to TALE
+                    </Link>
+                  </>
+                )}
               </div>
             ) : null}
 
@@ -237,17 +294,23 @@ export default function StageArchivePage() {
               {filtered.map((s) => {
                 const key = `${s.session_id}::${s.ai_provider}`;
                 const isExpanded = expanded[key] === true;
-                const meta = GENRE_META[s.genre];
+                const isStandard = STANDARD_GENRES.includes(String(s.genre ?? "").trim() as (typeof STANDARD_GENRES)[number]);
+                const meta = isStandard ? GENRE_META[String(s.genre).trim() as Exclude<GenreTab, "All">] : GENRE_META.Custom;
                 const preview = s.story_text;
                 return (
                   <div key={key} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                    {tab === "Best" ? (
+                      <span className="mb-3 inline-flex items-center gap-1 rounded-full border border-yellow-300/30 bg-yellow-500/10 px-2 py-1 text-xs font-semibold text-yellow-100">
+                        ⭐ Best Pick
+                      </span>
+                    ) : null}
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${meta.bg} ${meta.color}`}>
                         <span aria-hidden>{meta.icon}</span>
-                        {s.genre}
+                        {isStandard ? String(s.genre) : `Custom`}
                       </span>
                       <AiNameBadge provider={s.ai_provider} />
-                      <span className="ml-auto text-xs text-slate-400">{s.language || "English"}</span>
+                      <span className="ml-auto text-xs text-slate-400">{languageDisplayName(s.language)}</span>
                     </div>
 
                     {!isExpanded ? (

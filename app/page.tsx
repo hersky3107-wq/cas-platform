@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -67,19 +68,16 @@ function LobbyCard({
             src={module.id === "arena" ? "/icons/arena.png" : module.imageSrc}
             alt={`${module.name} icon`}
             style={{
-              transform: `scale(${imageScale})`,
               transformOrigin: "center",
+              ...(module.id === "compare"
+                ? ({ width: "100%", height: "100%", objectFit: "contain", transform: "scale(1.2)" } as const)
+                : ({ transform: `scale(${imageScale})` } as const)),
             }}
             className="absolute inset-0 h-full w-full object-contain object-center"
           />
         ) : (
           <Icon className="h-8 w-8 text-white lg:h-10 lg:w-10" />
         )}
-        {module.status === "coming-soon" ? (
-          <span className="absolute -bottom-1 -right-1 rounded-full bg-black/75 p-1">
-            <Lock className="h-3 w-3 text-white" />
-          </span>
-        ) : null}
       </div>
       <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
         {module.id === "verdict" ? "PANEL" : module.name}
@@ -143,7 +141,7 @@ export default function Home() {
         <div className="w-full max-w-6xl">
           <div className="mb-12">
             <p className="mb-4 text-center text-[11px] font-medium uppercase tracking-[0.24em] text-white/55">
-              MVP
+              BETA
             </p>
             <div className="grid justify-items-center grid-cols-4 gap-6 sm:grid-cols-5 md:grid-cols-6 lg:gap-8">
               {mvpModules.map((module) => (
@@ -153,18 +151,65 @@ export default function Home() {
                   onComingSoon={setModalItem}
                 />
               ))}
+              {[
+                {
+                  id: "deep",
+                  src: "/icons/deep.png",
+                  label: "DEEP",
+                },
+                {
+                  id: "oracle",
+                  src: "/icons/oracle.png",
+                  label: "ORACLE",
+                },
+                {
+                  id: "mindgame",
+                  src: "/icons/mindgame.png",
+                  label: "MINDGAME",
+                },
+                {
+                  id: "council",
+                  src: "/icons/council.png",
+                  label: "COUNCIL",
+                },
+              ].map((m) => (
+                <div key={m.id} className="flex items-center justify-center">
+                  <div className="flex flex-col items-center">
+                    <div className="relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl bg-white/5 shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px]">
+                      <Image
+                        src={m.src}
+                        alt={m.label}
+                        fill
+                        sizes="96px"
+                        className="absolute inset-0 h-full w-full object-contain object-center"
+                        style={
+                          m.id === "oracle"
+                            ? { filter: "brightness(0.75)" }
+                            : m.id === "council"
+                              ? { filter: "brightness(1.3)" }
+                              : undefined
+                        }
+                      />
+                    </div>
+                    <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">{m.label}</span>
+                  </div>
+                </div>
+              ))}
               <Link href="/modes/stage" className="flex items-center justify-center">
                 <div className="flex flex-col items-center">
                   <div
                     className={`relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px] bg-gradient-to-br from-indigo-400 to-sky-600`}
                   >
-                    <Clapperboard className="h-8 w-8 text-white lg:h-10 lg:w-10" />
+                    <Image
+                      src="/icons/stage.png"
+                      alt="STAGE"
+                      fill
+                      sizes="96px"
+                      className="absolute inset-0 h-full w-full object-contain object-center"
+                    />
                   </div>
                   <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
                     STAGE
-                  </span>
-                  <span className="mt-0.5 text-center text-[10px] leading-[1.15] text-white/55">
-                    AI entertainment
                   </span>
                 </div>
               </Link>
@@ -173,7 +218,7 @@ export default function Home() {
 
           <div>
             <p className="mb-4 text-center text-[11px] font-medium uppercase tracking-[0.24em] text-white/55">
-              BETA
+              Version 1.0
             </p>
             <div className="grid justify-items-center grid-cols-4 gap-6 sm:grid-cols-5 md:grid-cols-6 lg:gap-8">
               {betaModules.map((module) => (

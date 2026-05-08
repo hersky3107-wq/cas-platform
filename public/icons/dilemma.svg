@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#0d1633"/>
+      <stop offset="100%" stop-color="#070c1a"/>
+    </radialGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="48" fill="url(#bg)"/>
+
+  <!-- Center node -->
+  <circle cx="256" cy="292" r="14" fill="#ffffff" opacity="0.9"/>
+  <circle cx="256" cy="292" r="6" fill="#0ff3ff" opacity="0.95" filter="url(#glow)"/>
+
+  <!-- Stem up -->
+  <path d="M256 360 V305" stroke="#ffffff" stroke-width="22" stroke-linecap="round"/>
+
+  <!-- Split paths -->
+  <path d="M256 292 C232 270 206 248 176 228" stroke="#0ff3ff" stroke-width="22" stroke-linecap="round" fill="none" filter="url(#glow)"/>
+  <path d="M256 292 C280 270 306 248 336 228" stroke="#0ff3ff" stroke-width="22" stroke-linecap="round" fill="none" filter="url(#glow)"/>
+
+  <!-- Left arrow -->
+  <path d="M118 228 L194 186 L188 214 L266 214 L266 242 L188 242 L194 270 Z" fill="#ffffff" opacity="0.95"/>
+  <path d="M118 228 L180 198 L176 214 L250 214 L250 242 L176 242 L180 258 Z" fill="#0ff3ff" opacity="0.55"/>
+
+  <!-- Right arrow -->
+  <path d="M394 228 L318 186 L324 214 L246 214 L246 242 L324 242 L318 270 Z" fill="#ffffff" opacity="0.95"/>
+  <path d="M394 228 L332 198 L336 214 L262 214 L262 242 L336 242 L332 258 Z" fill="#0ff3ff" opacity="0.55"/>
+
+  <!-- Subtle framing -->
+  <path d="M128 400 C178 430 218 444 256 444 C294 444 334 430 384 400" stroke="#ffffff" stroke-opacity="0.12" stroke-width="12" fill="none" stroke-linecap="round"/>
+</svg>
+

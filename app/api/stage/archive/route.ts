@@ -7,19 +7,6 @@ import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits";
 type Genre = "Horror" | "Romance" | "Absurd" | "Sci-Fi" | "Fairy Tale" | "Sad Story";
 const GENRES: Genre[] = ["Horror", "Romance", "Absurd", "Sci-Fi", "Fairy Tale", "Sad Story"];
 
-async function insertWithFallback(
-  supabase: SupabaseClient,
-  table: string,
-  primary: Record<string, unknown>,
-  fallback: Record<string, unknown>
-) {
-  const a = await supabase.from(table).insert([primary]);
-  if (!a.error) return { ok: true as const };
-  const b = await supabase.from(table).insert([fallback]);
-  if (!b.error) return { ok: true as const };
-  return { ok: false as const, primaryError: a.error.message, fallbackError: b.error.message };
-}
-
 function normalizeGenreParam(raw: string | null): Genre | null {
   if (!raw) return null;
   const s = raw.trim().toLowerCase();
@@ -47,6 +34,32 @@ function parseGenreFromCategory(category: unknown): Genre | null {
   return (GENRES as readonly string[]).includes(g) ? (g as Genre) : null;
 }
 
+function inferLanguageFromText(text: string): string | null {
+  const t = text.toLowerCase();
+  if (
+    t.includes("korean") ||
+    t.includes("한국어") ||
+    t.includes("한글") ||
+    t.includes("ko-kr") ||
+    t.includes("ko_kr") ||
+    t.includes("ko kr") ||
+    t.includes("ko")
+  )
+    return "Korean";
+  if (t.includes("japanese") || t.includes("日本語") || t.includes("にほんご") || t.includes("ja-jp") || t.includes("ja_jp"))
+    return "Japanese";
+  if (t.includes("english") || t.includes("영어") || t.includes("en-us") || t.includes("en_us") || t.includes("en"))
+    return "English";
+  if (t.includes("chinese") || t.includes("中文") || t.includes("汉语") || t.includes("zh-cn") || t.includes("zh_cn")) return "Chinese";
+  return null;
+}
+
+function normalizeLanguage(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  return s ? s : null;
+}
+
 export async function GET(req: Request) {
   const supabaseAuth = await createSupabaseRouteAuthClient();
   const {
@@ -59,95 +72,147 @@ export async function GET(req: Request) {
   const genreFilter = normalizeGenreParam(url.searchParams.get("genre"));
   const supabase = supabaseAdmin;
 
-  const { data: resultsRows, error: srErr } = await supabase
+  // 1) Sessions (TALE only)
+  const { data: sessionsRows, error: sErr } = await supabase
+    .from("sessions")
+    .select("id, created_at, title, prompt")
+    .eq("mode", "tale")
+    .limit(5000);
+  if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 });
+
+  const sessionIds = [...new Set((sessionsRows ?? []).map((s) => String((s as any).id ?? "")).filter(Boolean))];
+  if (!sessionIds.length) return NextResponse.json({ stories: [] as unknown[] });
+
+  const sessionLangHint = new Map<string, string>();
+  for (const s of sessionsRows ?? []) {
+    const id = String((s as any).id ?? "");
+    if (!id) continue;
+    const title = typeof (s as any).title === "string" ? (s as any).title : "";
+    const prompt = typeof (s as any).prompt === "string" ? (s as any).prompt : "";
+    const inferred = inferLanguageFromText(`${title}\n${prompt}`);
+    if (inferred) sessionLangHint.set(id, inferred);
+  }
+
+  // 2) Winner rows
+  const { data: srRows, error: srErr } = await supabase
     .from("session_results")
-    .select("session_id, winner_ai_name, category, created_at")
-    .ilike("category", "tale_%")
-    .limit(500);
+    .select("session_id, winner_ai_name, category, created_at, pinned, result_type")
+    .in("session_id", sessionIds)
+    .eq("result_type", "tale")
+    .limit(5000);
   if (srErr) return NextResponse.json({ error: srErr.message }, { status: 500 });
 
-  const winners = (resultsRows ?? [])
+  // Keep latest result per session_id (if duplicates exist).
+  const latestBySession = new Map<string, any>();
+  for (const r of srRows ?? []) {
+    const sid = String((r as any).session_id ?? "");
+    if (!sid) continue;
+    const prev = latestBySession.get(sid);
+    if (!prev) {
+      latestBySession.set(sid, r);
+      continue;
+    }
+    const prevAt = String((prev as any).created_at ?? "");
+    const nextAt = String((r as any).created_at ?? "");
+    if (nextAt && (!prevAt || nextAt > prevAt)) latestBySession.set(sid, r);
+  }
+
+  const winners = [...latestBySession.values()]
     .map((r) => {
-      const genre = parseGenreFromCategory((r as any).category);
-      if (!genre) return null;
-      if (genreFilter && genre !== genreFilter) return null;
       const session_id = String((r as any).session_id ?? "");
       const ai_provider = String((r as any).winner_ai_name ?? "");
+      const category = String((r as any).category ?? "").trim();
       const selected_at = String((r as any).created_at ?? "");
+      const pinned = Boolean((r as any).pinned);
       if (!session_id || !ai_provider) return null;
-      return { session_id, ai_provider, genre, selected_at };
+      const genre = category || "Custom";
+      if (genreFilter && genre !== genreFilter) return null;
+      return { session_id, ai_provider, genre, selected_at, pinned };
     })
-    .filter(Boolean) as { session_id: string; ai_provider: string; genre: Genre; selected_at: string }[];
+    .filter(Boolean) as { session_id: string; ai_provider: string; genre: string; selected_at: string; pinned: boolean }[];
 
   if (!winners.length) return NextResponse.json({ stories: [] as unknown[] });
 
-  const sessionIds = [...new Set(winners.map((w) => w.session_id))];
+  const winnerSessionIds = [...new Set(winners.map((w) => w.session_id))];
+  const winnerProviders = [...new Set(winners.map((w) => w.ai_provider))];
 
+  // 3) Winner AI response text + language
   const { data: responsesRows, error: arErr } = await supabase
     .from("ai_responses")
-    .select("session_id, ai_name, model_name, response_text, created_at, tale_language")
-    .in("session_id", sessionIds)
-    .limit(5000);
+    .select("session_id, ai_name, model_name, response_text, tale_language, created_at")
+    .in("session_id", winnerSessionIds)
+    .in("ai_name", winnerProviders)
+    .limit(50000);
   if (arErr) return NextResponse.json({ error: arErr.message }, { status: 500 });
 
-  const { data: votesRows, error: vErr } = await supabase
-    .from("votes")
-    .select("session_id, user_id, voted_ai_provider, ai_provider, vote_choice, created_at")
-    .in("session_id", sessionIds)
-    .limit(20000);
-  if (vErr) return NextResponse.json({ error: vErr.message }, { status: 500 });
-
-  const voteCountKey = (sessionId: string, provider: string) => `${sessionId}::${provider}`;
-  const voteCounts = new Map<string, number>();
-  const userVoted = new Set<string>();
-
-  for (const row of votesRows ?? []) {
-    const sessionId = String((row as any).session_id ?? "");
-    const userId = String((row as any).user_id ?? "");
-    const provider =
-      (typeof (row as any).voted_ai_provider === "string" && (row as any).voted_ai_provider) ||
-      (typeof (row as any).ai_provider === "string" && (row as any).ai_provider) ||
-      (typeof (row as any).vote_choice === "string" && (row as any).vote_choice) ||
-      "";
-    if (!sessionId || !provider) continue;
-    const k = voteCountKey(sessionId, provider);
-    voteCounts.set(k, (voteCounts.get(k) ?? 0) + 1);
-    if (userId && userId === user.id) userVoted.add(k);
-  }
-
   const respIndex = new Map<string, any>();
+  const key = (sessionId: string, provider: string) => `${sessionId}::${provider}`;
   for (const r of responsesRows ?? []) {
     const sessionId = String((r as any).session_id ?? "");
     const provider = String((r as any).ai_name ?? "");
     if (!sessionId || !provider) continue;
-    respIndex.set(voteCountKey(sessionId, provider), r);
+    const k = key(sessionId, provider);
+    if (!respIndex.has(k)) respIndex.set(k, r);
   }
+
+  // 4) Votes per story (session_id + target_ai_name)
+  const { data: votesRows, error: vErr } = await supabase
+    .from("votes")
+    .select("session_id, user_id, target_ai_name")
+    .in("session_id", winnerSessionIds)
+    .limit(200000);
+  if (vErr) return NextResponse.json({ error: vErr.message }, { status: 500 });
+
+  const voteCountsByStory = new Map<string, number>();
+  const userVotedWinner = new Set<string>();
+  for (const v of votesRows ?? []) {
+    const sessionId = String((v as any).session_id ?? "");
+    const userId = String((v as any).user_id ?? "");
+    const target = String((v as any).target_ai_name ?? "");
+    if (!sessionId || !target) continue;
+
+    const k = key(sessionId, target);
+    voteCountsByStory.set(k, (voteCountsByStory.get(k) ?? 0) + 1);
+    if (userId && userId === user.id) userVotedWinner.add(k);
+  }
+
+  const PROVIDER_LABEL: Record<string, string> = {
+    anthropic: "Claude",
+    openai: "ChatGPT",
+    google: "Gemini",
+    xai: "Grok",
+    deepseek: "DeepSeek",
+    mistral: "Mistral",
+  };
 
   const stories = winners
     .map((w) => {
-      const r = respIndex.get(voteCountKey(w.session_id, w.ai_provider));
+      const r = respIndex.get(key(w.session_id, w.ai_provider));
       if (!r) return null;
       const story_text = typeof (r as any).response_text === "string" ? ((r as any).response_text as string) : "";
       if (!story_text) return null;
-      const language = typeof (r as any).tale_language === "string" ? ((r as any).tale_language as string) : "English";
+      const language = normalizeLanguage((r as any).tale_language) ?? sessionLangHint.get(w.session_id) ?? "Korean";
       const ai_model = typeof (r as any).model_name === "string" ? ((r as any).model_name as string) : "";
-      const vote_count = voteCounts.get(voteCountKey(w.session_id, w.ai_provider)) ?? 0;
-      const user_has_voted = userVoted.has(voteCountKey(w.session_id, w.ai_provider));
+      const vote_count = voteCountsByStory.get(key(w.session_id, w.ai_provider)) ?? 0;
+      const user_has_voted = userVotedWinner.has(key(w.session_id, w.ai_provider));
       return {
         session_id: w.session_id,
         ai_provider: w.ai_provider,
+        ai_provider_label: PROVIDER_LABEL[w.ai_provider] ?? w.ai_provider,
         ai_model,
         genre: w.genre,
         language,
         story_text,
         vote_count,
         selected_at: w.selected_at,
+        pinned: w.pinned,
         user_has_voted,
       };
     })
     .filter(Boolean) as any[];
 
   stories.sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
     const dv = (b.vote_count ?? 0) - (a.vote_count ?? 0);
     if (dv !== 0) return dv;
     return String(b.selected_at).localeCompare(String(a.selected_at));
@@ -204,26 +269,21 @@ export async function POST(req: Request) {
       .select("id")
       .eq("session_id", sessionId)
       .eq("user_id", user.id)
-      .or(`voted_ai_provider.eq.${provider},ai_provider.eq.${provider},vote_choice.eq.${provider}`)
+      .eq("target_ai_name", provider)
       .limit(1);
     if (exErr) return NextResponse.json({ error: exErr.message }, { status: 500 });
     if (existing && existing.length) return NextResponse.json({ ok: true, already: true });
 
-    const primary: Record<string, unknown> = {
+    const { error: insErr } = await supabase.from("votes").insert([
+      {
       session_id: sessionId,
       user_id: user.id,
-      voted_ai_provider: provider,
-      created_at: new Date().toISOString(),
-      category: "archive_story_like",
-    };
-    const fallback: Record<string, unknown> = {
-      session_id: sessionId,
-      user_id: user.id,
-      category: "archive_story_like",
-      vote_choice: provider,
-    };
-    const ins = await insertWithFallback(supabase, "votes", primary, fallback);
-    if (!ins.ok) return NextResponse.json({ error: "Could not save vote" }, { status: 500 });
+      target_ai_name: provider,
+      voter_ai_name: "user",
+      reason: "archive_like",
+      },
+    ]);
+    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
 

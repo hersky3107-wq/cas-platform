@@ -7,6 +7,11 @@ export async function middleware(request: NextRequest) {
     request: { headers: request.headers },
   })
 
+  // Allow /admin to pass through without special handling.
+  if (request.nextUrl.pathname.startsWith('/admin')) {
+    return response
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

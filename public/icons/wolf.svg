@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#0d1633"/>
+      <stop offset="100%" stop-color="#070c1a"/>
+    </radialGradient>
+    <filter id="eyeGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feColorMatrix
+        in="b"
+        type="matrix"
+        values="
+          0 0 0 0 0
+          0 0 0 0 1
+          0 0 0 0 1
+          0 0 0 0.9 0"
+        result="c"
+      />
+      <feMerge>
+        <feMergeNode in="c"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="48" fill="url(#bg)"/>
+
+  <!-- Ears -->
+  <path d="M120 180 L178 84 L224 200 Z" fill="#e8eef7" opacity="0.95"/>
+  <path d="M392 180 L334 84 L288 200 Z" fill="#e8eef7" opacity="0.95"/>
+  <path d="M150 182 L184 122 L212 196 Z" fill="#9aa6b8" opacity="0.9"/>
+  <path d="M362 182 L328 122 L300 196 Z" fill="#9aa6b8" opacity="0.9"/>
+
+  <!-- Face outer -->
+  <path
+    d="M256 92
+       C182 92 132 150 120 228
+       C110 292 130 356 176 404
+       C210 439 232 452 256 452
+       C280 452 302 439 336 404
+       C382 356 402 292 392 228
+       C380 150 330 92 256 92 Z"
+    fill="#e8eef7"
+  />
+
+  <!-- Face shadow mask -->
+  <path
+    d="M256 120
+       C206 120 168 154 158 214
+       C150 264 166 316 202 352
+       C226 377 240 388 256 388
+       C272 388 286 377 310 352
+       C346 316 362 264 354 214
+       C344 154 306 120 256 120 Z"
+    fill="#9aa6b8"
+    opacity="0.45"
+  />
+
+  <!-- Cheek highlights -->
+  <path d="M156 280 C170 318 198 352 224 368 C198 352 178 324 168 292 Z" fill="#ffffff" opacity="0.6"/>
+  <path d="M356 280 C342 318 314 352 288 368 C314 352 334 324 344 292 Z" fill="#ffffff" opacity="0.6"/>
+
+  <!-- Eyes -->
+  <g filter="url(#eyeGlow)">
+    <ellipse cx="204" cy="250" rx="26" ry="18" fill="#0ff3ff" opacity="0.95"/>
+    <ellipse cx="308" cy="250" rx="26" ry="18" fill="#0ff3ff" opacity="0.95"/>
+  </g>
+  <ellipse cx="204" cy="252" rx="10" ry="8" fill="#061023"/>
+  <ellipse cx="308" cy="252" rx="10" ry="8" fill="#061023"/>
+  <path d="M178 236 C194 220 214 220 230 236" stroke="#061023" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <path d="M282 236 C298 220 318 220 334 236" stroke="#061023" stroke-width="10" stroke-linecap="round" fill="none"/>
+
+  <!-- Snout -->
+  <path
+    d="M256 286
+       C226 286 206 302 198 326
+       C192 346 206 370 256 388
+       C306 370 320 346 314 326
+       C306 302 286 286 256 286 Z"
+    fill="#e8eef7"
+    opacity="0.95"
+  />
+  <path
+    d="M256 304
+       C240 304 228 312 224 326
+       C220 342 232 356 256 366
+       C280 356 292 342 288 326
+       C284 312 272 304 256 304 Z"
+    fill="#9aa6b8"
+    opacity="0.65"
+  />
+
+  <!-- Nose and mouth -->
+  <path d="M256 320 L236 338 Q256 352 276 338 Z" fill="#061023" opacity="0.9"/>
+  <path d="M256 346 C244 356 234 362 220 364" stroke="#061023" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M256 346 C268 356 278 362 292 364" stroke="#061023" stroke-width="8" stroke-linecap="round" fill="none"/>
+
+  <!-- Chin -->
+  <path d="M236 400 C246 414 266 414 276 400" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.55"/>
+</svg>
+

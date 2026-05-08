@@ -15,6 +15,7 @@ const GENRES = [
   { id: "Sci-Fi", icon: "🚀", name: "Sci-Fi", desc: "The future is weirder than you think." },
   { id: "Fairy Tale", icon: "🧚", name: "Fairy Tale", desc: "Old stories, new twists." },
   { id: "Sad Story", icon: "💧", name: "Sad Story", desc: "Beautiful and devastating." },
+  { id: "Custom", icon: "✏️", name: "Custom", desc: "Your genre. Your rules." },
 ] as const;
 
 const AI_ORDER: AiProviderName[] = [
@@ -107,6 +108,10 @@ export default function StageTalePage() {
 
   const generateStories = useCallback(async () => {
     if (!genre || generating) return;
+    if (genre === "Custom" && !keyword.trim()) {
+      setError("Describe your genre to continue.");
+      return;
+    }
     setError(null);
     setGenerating(true);
     setStep("generating");
@@ -122,9 +127,8 @@ export default function StageTalePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "generate",
           genre,
-          keyword: twistOpen ? keyword : "",
+          keyword: genre === "Custom" ? keyword : twistOpen ? keyword : "",
           language: language.trim() || "English",
         }),
       });
@@ -143,43 +147,64 @@ export default function StageTalePage() {
 
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
+
+      const seen = new Set<AiProviderName>();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let msg: any;
-          try {
-            msg = JSON.parse(line);
-          } catch {
-            continue;
-          }
-          if (msg.type === "meta") {
-            if (typeof msg.sessionId === "string") setSessionId(msg.sessionId);
-            if (typeof msg.creditsRemaining === "number") setCredits(msg.creditsRemaining);
-          }
-          if (msg.type === "result" && msg.result) {
-            const r = msg.result as TaleStory & { provider: AiProviderName };
-            if ((AI_ORDER as string[]).includes(r.provider)) {
-              setStories((prev) => ({ ...prev, [r.provider]: r }));
-              setCompletedOrder((prev) => (prev.includes(r.provider) ? prev : [...prev, r.provider]));
+
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+        for (const ev of events) {
+          const lines = ev.split("\n");
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t.startsWith("data:")) continue;
+            const payload = t.startsWith("data: ") ? t.slice(6) : t.slice(5);
+            if (!payload.trim()) continue;
+
+            let msg: any;
+            try {
+              msg = JSON.parse(payload);
+            } catch {
+              continue;
             }
-          }
-          if (msg.type === "progress") {
-            const p = msg.provider as AiProviderName;
-            if ((AI_ORDER as string[]).includes(p)) {
+
+            if (msg?.done === true) {
+              if (typeof msg.sessionId === "string") setSessionId(msg.sessionId);
+              setStep("review");
+              setShowVoting(true);
+              continue;
+            }
+
+            if (typeof msg?.error === "string" && !msg.provider) {
+              setError(msg.error);
+              continue;
+            }
+
+            const p = msg?.provider as AiProviderName;
+            if (!(AI_ORDER as readonly string[]).includes(p)) continue;
+
+            const storyRow: TaleStory = {
+              provider: p,
+              model: typeof msg?.model === "string" ? msg.model : "",
+              story: typeof msg?.story === "string" ? msg.story : null,
+              responseTimeMs: typeof msg?.responseTimeMs === "number" ? msg.responseTimeMs : 0,
+              totalTokens:
+                typeof msg?.token_input === "number" && typeof msg?.token_output === "number"
+                  ? msg.token_input + msg.token_output
+                  : null,
+              error: typeof msg?.error === "string" ? msg.error : undefined,
+            };
+
+            setStories((prev) => ({ ...prev, [p]: storyRow }));
+            setCompletedOrder((prev) => (prev.includes(p) ? prev : [...prev, p]));
+            if (!seen.has(p)) {
+              seen.add(p);
               setReadyMap((prev) => ({ ...prev, [p]: true }));
+              setReadyCount(seen.size);
             }
-            if (typeof msg.ready === "number") setReadyCount(msg.ready);
-          }
-          if (msg.type === "error" && typeof msg.error === "string") {
-            setError(msg.error);
-          }
-          if (msg.type === "done") {
-            // handled by allDone effect below
           }
         }
       }
@@ -195,23 +220,20 @@ export default function StageTalePage() {
     if (step === "generating" && allDone && !generating) setStep("review");
   }, [allDone, generating, step]);
 
+  // no-op cleanup needed for streaming; fetch is tied to user action
+
   const pickWinner = useCallback(
     async (provider: AiProviderName) => {
-      if (!sessionId || !genre) return;
-      const row = stories[provider];
+      if (!sessionId) return;
       setPicked(provider);
       setError(null);
       try {
-        const res = await fetch("/api/stage/tale", {
+        const res = await fetch("/api/stage/tale/select", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "select",
             sessionId,
-            genre,
-            keyword: twistOpen ? keyword : "",
-            winnerProvider: provider,
-            winnerModel: row?.model ?? "",
+            selectedProvider: provider,
           }),
         });
         if (!res.ok) {
@@ -224,7 +246,7 @@ export default function StageTalePage() {
         setError(e instanceof Error ? e.message : "Unknown error");
       }
     },
-    [genre, keyword, sessionId, stories, twistOpen]
+    [sessionId]
   );
 
   return (
@@ -278,7 +300,7 @@ export default function StageTalePage() {
                   type="button"
                   onClick={() => {
                     setGenre(g.id);
-                    setTwistOpen(false);
+                    setTwistOpen(g.id === "Custom");
                     setKeyword("");
                     setStep("twist");
                   }}
@@ -322,22 +344,37 @@ export default function StageTalePage() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setTwistOpen((v) => !v)}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-sm text-white/90 hover:bg-white/8"
-            >
-              ＋ Add your own twist (optional)
-            </button>
+            {genre !== "Custom" ? (
+              <button
+                type="button"
+                onClick={() => setTwistOpen((v) => !v)}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-sm text-white/90 hover:bg-white/8"
+              >
+                ＋ Add your own twist (optional)
+              </button>
+            ) : null}
 
             {twistOpen ? (
-              <input
-                type="text"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="e.g. a rainy night, a missing letter, an old photograph..."
-                className="mt-3 w-full rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400/50 focus:outline-none"
-              />
+              <div className="mt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  {genre === "Custom" ? "Describe your genre" : "Optional keyword"}
+                </p>
+                <input
+                  type="text"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  required={genre === "Custom"}
+                  placeholder={
+                    genre === "Custom"
+                      ? "e.g. Cyberpunk noir, Medieval comedy, Space romance, Zombie slice-of-life..."
+                      : "e.g. a rainy night, a missing letter, an old photograph..."
+                  }
+                  className="mt-2 w-full rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400/50 focus:outline-none"
+                />
+                {genre === "Custom" ? (
+                  <p className="mt-2 text-xs text-slate-500">⚠️ Custom genres may produce unexpected results.</p>
+                ) : null}
+              </div>
             ) : null}
 
             <div className="mt-5 flex items-center justify-between gap-3">
@@ -351,7 +388,7 @@ export default function StageTalePage() {
               <button
                 type="button"
                 onClick={() => void generateStories()}
-                disabled={generating}
+                disabled={generating || (genre === "Custom" && !keyword.trim())}
                 className="rounded-xl bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 transition disabled:opacity-40"
               >
                 Generate Stories (5 credits)
@@ -454,12 +491,13 @@ export default function StageTalePage() {
               >
                 Try Another Genre
               </button>
-              <Link
-                href="/modes/stage/archive"
+              <button
+                type="button"
+                onClick={() => router.push("/modes/stage/archive")}
                 className="rounded-xl border border-white/12 bg-white/6 px-5 py-2 text-sm font-semibold text-white hover:bg-white/8"
               >
                 View Archive
-              </Link>
+              </button>
             </div>
           </div>
         ) : null}
