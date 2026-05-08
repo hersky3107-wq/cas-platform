@@ -294,8 +294,12 @@ export default function StageArchivePage() {
               {filtered.map((s) => {
                 const key = `${s.session_id}::${s.ai_provider}`;
                 const isExpanded = expanded[key] === true;
-                const isStandard = STANDARD_GENRES.includes(String(s.genre ?? "").trim() as (typeof STANDARD_GENRES)[number]);
-                const meta = isStandard ? GENRE_META[String(s.genre).trim() as Exclude<GenreTab, "All">] : GENRE_META.Custom;
+                const genre = String(s.genre ?? "").trim();
+                const isStandard = STANDARD_GENRES.includes(genre as (typeof STANDARD_GENRES)[number]);
+                const meta =
+                  isStandard && genre !== "Best"
+                    ? GENRE_META[genre as Exclude<GenreTab, "All" | "Best">]
+                    : GENRE_META.Custom;
                 const preview = s.story_text;
                 return (
                   <div key={key} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
