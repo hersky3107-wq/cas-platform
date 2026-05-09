@@ -40,6 +40,9 @@ export const MODEL_BY_PROVIDER: Record<AiProviderName, string> = {
   mistral: 'mistral-large-latest',
 }
 
+/** Model used when an Anthropic task is routed for maximum depth (DEEP mode orchestration output). */
+export const ANTHROPIC_DEEP_TASK_MODEL = 'claude-opus-4-6'
+
 function uniqueProviders(providers: AiProviderName[]) {
   return Array.from(new Set(providers))
 }
@@ -450,6 +453,7 @@ async function callGoogleGemini({
 async function callProvider({
   provider,
   apiKey,
+  model: modelParam,
   prompt,
   systemPrompt,
   temperature,
@@ -457,12 +461,14 @@ async function callProvider({
 }: {
   provider: AiProviderName
   apiKey: string
+  /** Defaults to MODEL_BY_PROVIDER[provider]. */
+  model?: string
   prompt: string
   systemPrompt: string
   temperature?: number
   maxCompletionTokens?: number
 }) {
-  const model = MODEL_BY_PROVIDER[provider]
+  const model = modelParam ?? MODEL_BY_PROVIDER[provider]
 
   if (provider === 'openai') {
     const { text, usage } = await callOpenAICompatibleChat({
@@ -554,6 +560,10 @@ export type RunSingleProviderParams = {
   /** When set (e.g. 300), caps completion length via each provider API. */
   maxCompletionTokens?: number
   /**
+   * Overrides the default model for this provider (e.g. DEEP mode: Anthropic uses Opus for assigned parts).
+   */
+  modelOverride?: string
+  /**
    * When set, stored in `ai_responses.response_text` instead of the raw provider `text`
    * (e.g. Arena mode: store user-visible body without internal tags).
    */
@@ -624,13 +634,14 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     saveCompareArtifacts,
     temperature,
     maxCompletionTokens,
+    modelOverride,
     storedResponseText,
     aiResponseExtras,
     transformPersist,
   } = params
 
   const started = nowMs()
-  const model = MODEL_BY_PROVIDER[provider]
+  const model = modelOverride ?? MODEL_BY_PROVIDER[provider]
 
   try {
     const byok =
@@ -647,6 +658,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     const { text, usage } = await callProvider({
       provider,
       apiKey,
+      model,
       prompt,
       systemPrompt,
       temperature,

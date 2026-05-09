@@ -172,8 +172,8 @@ export default function Home() {
                   src: "/icons/council.png",
                   label: "COUNCIL",
                 },
-              ].map((m) => (
-                <div key={m.id} className="flex items-center justify-center">
+              ].map((m) => {
+                const tile = (
                   <div className="flex flex-col items-center">
                     <div className="relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl bg-white/5 shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px]">
                       <Image
@@ -191,10 +191,42 @@ export default function Home() {
                         }
                       />
                     </div>
-                    <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">{m.label}</span>
+                    <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
+                      {m.label}
+                    </span>
                   </div>
-                </div>
-              ))}
+                );
+
+                if (m.id === "deep") {
+                  return (
+                    <Link
+                      key={m.id}
+                      href="/modes/deep"
+                      className="flex items-center justify-center"
+                    >
+                      {tile}
+                    </Link>
+                  );
+                }
+
+                if (m.id === "oracle") {
+                  return (
+                    <Link
+                      key={m.id}
+                      href="/modes/oracle"
+                      className="flex items-center justify-center"
+                    >
+                      {tile}
+                    </Link>
+                  );
+                }
+
+                return (
+                  <div key={m.id} className="flex items-center justify-center">
+                    {tile}
+                  </div>
+                );
+              })}
               <Link href="/modes/stage" className="flex items-center justify-center">
                 <div className="flex flex-col items-center">
                   <div

@@ -1,0 +1,629 @@
+{
+  "version": 1,
+  "deck": [
+    {
+      "id": 0,
+      "index": "00",
+      "name": "The Fool",
+      "slug": "the-fool",
+      "file": "00-the-fool.jpg",
+      "src": "/tarot/00-the-fool.jpg"
+    },
+    {
+      "id": 1,
+      "index": "01",
+      "name": "The Magician",
+      "slug": "the-magician",
+      "file": "01-the-magician.jpg",
+      "src": "/tarot/01-the-magician.jpg"
+    },
+    {
+      "id": 2,
+      "index": "02",
+      "name": "The High Priestess",
+      "slug": "the-high-priestess",
+      "file": "02-the-high-priestess.jpg",
+      "src": "/tarot/02-the-high-priestess.jpg"
+    },
+    {
+      "id": 3,
+      "index": "03",
+      "name": "The Empress",
+      "slug": "the-empress",
+      "file": "03-the-empress.jpg",
+      "src": "/tarot/03-the-empress.jpg"
+    },
+    {
+      "id": 4,
+      "index": "04",
+      "name": "The Emperor",
+      "slug": "the-emperor",
+      "file": "04-the-emperor.jpg",
+      "src": "/tarot/04-the-emperor.jpg"
+    },
+    {
+      "id": 5,
+      "index": "05",
+      "name": "The Hierophant",
+      "slug": "the-hierophant",
+      "file": "05-the-hierophant.jpg",
+      "src": "/tarot/05-the-hierophant.jpg"
+    },
+    {
+      "id": 6,
+      "index": "06",
+      "name": "The Lovers",
+      "slug": "the-lovers",
+      "file": "06-the-lovers.jpg",
+      "src": "/tarot/06-the-lovers.jpg"
+    },
+    {
+      "id": 7,
+      "index": "07",
+      "name": "The Chariot",
+      "slug": "the-chariot",
+      "file": "07-the-chariot.jpg",
+      "src": "/tarot/07-the-chariot.jpg"
+    },
+    {
+      "id": 8,
+      "index": "08",
+      "name": "Strength",
+      "slug": "strength",
+      "file": "08-strength.jpg",
+      "src": "/tarot/08-strength.jpg"
+    },
+    {
+      "id": 9,
+      "index": "09",
+      "name": "The Hermit",
+      "slug": "the-hermit",
+      "file": "09-the-hermit.jpg",
+      "src": "/tarot/09-the-hermit.jpg"
+    },
+    {
+      "id": 10,
+      "index": "10",
+      "name": "Wheel of Fortune",
+      "slug": "wheel-of-fortune",
+      "file": "10-wheel-of-fortune.jpg",
+      "src": "/tarot/10-wheel-of-fortune.jpg"
+    },
+    {
+      "id": 11,
+      "index": "11",
+      "name": "Justice",
+      "slug": "justice",
+      "file": "11-justice.jpg",
+      "src": "/tarot/11-justice.jpg"
+    },
+    {
+      "id": 12,
+      "index": "12",
+      "name": "The Hanged Man",
+      "slug": "the-hanged-man",
+      "file": "12-the-hanged-man.jpg",
+      "src": "/tarot/12-the-hanged-man.jpg"
+    },
+    {
+      "id": 13,
+      "index": "13",
+      "name": "Death",
+      "slug": "death",
+      "file": "13-death.jpg",
+      "src": "/tarot/13-death.jpg"
+    },
+    {
+      "id": 14,
+      "index": "14",
+      "name": "Temperance",
+      "slug": "temperance",
+      "file": "14-temperance.jpg",
+      "src": "/tarot/14-temperance.jpg"
+    },
+    {
+      "id": 15,
+      "index": "15",
+      "name": "The Devil",
+      "slug": "the-devil",
+      "file": "15-the-devil.jpg",
+      "src": "/tarot/15-the-devil.jpg"
+    },
+    {
+      "id": 16,
+      "index": "16",
+      "name": "The Tower",
+      "slug": "the-tower",
+      "file": "16-the-tower.jpg",
+      "src": "/tarot/16-the-tower.jpg"
+    },
+    {
+      "id": 17,
+      "index": "17",
+      "name": "The Star",
+      "slug": "the-star",
+      "file": "17-the-star.jpg",
+      "src": "/tarot/17-the-star.jpg"
+    },
+    {
+      "id": 18,
+      "index": "18",
+      "name": "The Moon",
+      "slug": "the-moon",
+      "file": "18-the-moon.jpg",
+      "src": "/tarot/18-the-moon.jpg"
+    },
+    {
+      "id": 19,
+      "index": "19",
+      "name": "The Sun",
+      "slug": "the-sun",
+      "file": "19-the-sun.jpg",
+      "src": "/tarot/19-the-sun.jpg"
+    },
+    {
+      "id": 20,
+      "index": "20",
+      "name": "Judgement",
+      "slug": "judgement",
+      "file": "20-judgement.jpg",
+      "src": "/tarot/20-judgement.jpg"
+    },
+    {
+      "id": 21,
+      "index": "21",
+      "name": "The World",
+      "slug": "the-world",
+      "file": "21-the-world.jpg",
+      "src": "/tarot/21-the-world.jpg"
+    },
+    {
+      "id": 22,
+      "index": "22",
+      "name": "Ace of Cups",
+      "slug": "ace-of-cups",
+      "file": "22-ace-of-cups.jpg",
+      "src": "/tarot/22-ace-of-cups.jpg"
+    },
+    {
+      "id": 23,
+      "index": "23",
+      "name": "Two of Cups",
+      "slug": "two-of-cups",
+      "file": "23-two-of-cups.jpg",
+      "src": "/tarot/23-two-of-cups.jpg"
+    },
+    {
+      "id": 24,
+      "index": "24",
+      "name": "Three of Cups",
+      "slug": "three-of-cups",
+      "file": "24-three-of-cups.jpg",
+      "src": "/tarot/24-three-of-cups.jpg"
+    },
+    {
+      "id": 25,
+      "index": "25",
+      "name": "Four of Cups",
+      "slug": "four-of-cups",
+      "file": "25-four-of-cups.jpg",
+      "src": "/tarot/25-four-of-cups.jpg"
+    },
+    {
+      "id": 26,
+      "index": "26",
+      "name": "Five of Cups",
+      "slug": "five-of-cups",
+      "file": "26-five-of-cups.jpg",
+      "src": "/tarot/26-five-of-cups.jpg"
+    },
+    {
+      "id": 27,
+      "index": "27",
+      "name": "Six of Cups",
+      "slug": "six-of-cups",
+      "file": "27-six-of-cups.jpg",
+      "src": "/tarot/27-six-of-cups.jpg"
+    },
+    {
+      "id": 28,
+      "index": "28",
+      "name": "Seven of Cups",
+      "slug": "seven-of-cups",
+      "file": "28-seven-of-cups.jpg",
+      "src": "/tarot/28-seven-of-cups.jpg"
+    },
+    {
+      "id": 29,
+      "index": "29",
+      "name": "Eight of Cups",
+      "slug": "eight-of-cups",
+      "file": "29-eight-of-cups.jpg",
+      "src": "/tarot/29-eight-of-cups.jpg"
+    },
+    {
+      "id": 30,
+      "index": "30",
+      "name": "Nine of Cups",
+      "slug": "nine-of-cups",
+      "file": "30-nine-of-cups.jpg",
+      "src": "/tarot/30-nine-of-cups.jpg"
+    },
+    {
+      "id": 31,
+      "index": "31",
+      "name": "Ten of Cups",
+      "slug": "ten-of-cups",
+      "file": "31-ten-of-cups.jpg",
+      "src": "/tarot/31-ten-of-cups.jpg"
+    },
+    {
+      "id": 32,
+      "index": "32",
+      "name": "Page of Cups",
+      "slug": "page-of-cups",
+      "file": "32-page-of-cups.jpg",
+      "src": "/tarot/32-page-of-cups.jpg"
+    },
+    {
+      "id": 33,
+      "index": "33",
+      "name": "Knight of Cups",
+      "slug": "knight-of-cups",
+      "file": "33-knight-of-cups.jpg",
+      "src": "/tarot/33-knight-of-cups.jpg"
+    },
+    {
+      "id": 34,
+      "index": "34",
+      "name": "Queen of Cups",
+      "slug": "queen-of-cups",
+      "file": "34-queen-of-cups.jpg",
+      "src": "/tarot/34-queen-of-cups.jpg"
+    },
+    {
+      "id": 35,
+      "index": "35",
+      "name": "King of Cups",
+      "slug": "king-of-cups",
+      "file": "35-king-of-cups.jpg",
+      "src": "/tarot/35-king-of-cups.jpg"
+    },
+    {
+      "id": 36,
+      "index": "36",
+      "name": "Ace of Swords",
+      "slug": "ace-of-swords",
+      "file": "36-ace-of-swords.jpg",
+      "src": "/tarot/36-ace-of-swords.jpg"
+    },
+    {
+      "id": 37,
+      "index": "37",
+      "name": "Two of Swords",
+      "slug": "two-of-swords",
+      "file": "37-two-of-swords.jpg",
+      "src": "/tarot/37-two-of-swords.jpg"
+    },
+    {
+      "id": 38,
+      "index": "38",
+      "name": "Three of Swords",
+      "slug": "three-of-swords",
+      "file": "38-three-of-swords.jpg",
+      "src": "/tarot/38-three-of-swords.jpg"
+    },
+    {
+      "id": 39,
+      "index": "39",
+      "name": "Four of Swords",
+      "slug": "four-of-swords",
+      "file": "39-four-of-swords.jpg",
+      "src": "/tarot/39-four-of-swords.jpg"
+    },
+    {
+      "id": 40,
+      "index": "40",
+      "name": "Five of Swords",
+      "slug": "five-of-swords",
+      "file": "40-five-of-swords.jpg",
+      "src": "/tarot/40-five-of-swords.jpg"
+    },
+    {
+      "id": 41,
+      "index": "41",
+      "name": "Six of Swords",
+      "slug": "six-of-swords",
+      "file": "41-six-of-swords.jpg",
+      "src": "/tarot/41-six-of-swords.jpg"
+    },
+    {
+      "id": 42,
+      "index": "42",
+      "name": "Seven of Swords",
+      "slug": "seven-of-swords",
+      "file": "42-seven-of-swords.jpg",
+      "src": "/tarot/42-seven-of-swords.jpg"
+    },
+    {
+      "id": 43,
+      "index": "43",
+      "name": "Eight of Swords",
+      "slug": "eight-of-swords",
+      "file": "43-eight-of-swords.jpg",
+      "src": "/tarot/43-eight-of-swords.jpg"
+    },
+    {
+      "id": 44,
+      "index": "44",
+      "name": "Nine of Swords",
+      "slug": "nine-of-swords",
+      "file": "44-nine-of-swords.jpg",
+      "src": "/tarot/44-nine-of-swords.jpg"
+    },
+    {
+      "id": 45,
+      "index": "45",
+      "name": "Ten of Swords",
+      "slug": "ten-of-swords",
+      "file": "45-ten-of-swords.jpg",
+      "src": "/tarot/45-ten-of-swords.jpg"
+    },
+    {
+      "id": 46,
+      "index": "46",
+      "name": "Page of Swords",
+      "slug": "page-of-swords",
+      "file": "46-page-of-swords.jpg",
+      "src": "/tarot/46-page-of-swords.jpg"
+    },
+    {
+      "id": 47,
+      "index": "47",
+      "name": "Knight of Swords",
+      "slug": "knight-of-swords",
+      "file": "47-knight-of-swords.jpg",
+      "src": "/tarot/47-knight-of-swords.jpg"
+    },
+    {
+      "id": 48,
+      "index": "48",
+      "name": "Queen of Swords",
+      "slug": "queen-of-swords",
+      "file": "48-queen-of-swords.jpg",
+      "src": "/tarot/48-queen-of-swords.jpg"
+    },
+    {
+      "id": 49,
+      "index": "49",
+      "name": "King of Swords",
+      "slug": "king-of-swords",
+      "file": "49-king-of-swords.jpg",
+      "src": "/tarot/49-king-of-swords.jpg"
+    },
+    {
+      "id": 50,
+      "index": "50",
+      "name": "Ace of Wands",
+      "slug": "ace-of-wands",
+      "file": "50-ace-of-wands.jpg",
+      "src": "/tarot/50-ace-of-wands.jpg"
+    },
+    {
+      "id": 51,
+      "index": "51",
+      "name": "Two of Wands",
+      "slug": "two-of-wands",
+      "file": "51-two-of-wands.jpg",
+      "src": "/tarot/51-two-of-wands.jpg"
+    },
+    {
+      "id": 52,
+      "index": "52",
+      "name": "Three of Wands",
+      "slug": "three-of-wands",
+      "file": "52-three-of-wands.jpg",
+      "src": "/tarot/52-three-of-wands.jpg"
+    },
+    {
+      "id": 53,
+      "index": "53",
+      "name": "Four of Wands",
+      "slug": "four-of-wands",
+      "file": "53-four-of-wands.jpg",
+      "src": "/tarot/53-four-of-wands.jpg"
+    },
+    {
+      "id": 54,
+      "index": "54",
+      "name": "Five of Wands",
+      "slug": "five-of-wands",
+      "file": "54-five-of-wands.jpg",
+      "src": "/tarot/54-five-of-wands.jpg"
+    },
+    {
+      "id": 55,
+      "index": "55",
+      "name": "Six of Wands",
+      "slug": "six-of-wands",
+      "file": "55-six-of-wands.jpg",
+      "src": "/tarot/55-six-of-wands.jpg"
+    },
+    {
+      "id": 56,
+      "index": "56",
+      "name": "Seven of Wands",
+      "slug": "seven-of-wands",
+      "file": "56-seven-of-wands.jpg",
+      "src": "/tarot/56-seven-of-wands.jpg"
+    },
+    {
+      "id": 57,
+      "index": "57",
+      "name": "Eight of Wands",
+      "slug": "eight-of-wands",
+      "file": "57-eight-of-wands.jpg",
+      "src": "/tarot/57-eight-of-wands.jpg"
+    },
+    {
+      "id": 58,
+      "index": "58",
+      "name": "Nine of Wands",
+      "slug": "nine-of-wands",
+      "file": "58-nine-of-wands.jpg",
+      "src": "/tarot/58-nine-of-wands.jpg"
+    },
+    {
+      "id": 59,
+      "index": "59",
+      "name": "Ten of Wands",
+      "slug": "ten-of-wands",
+      "file": "59-ten-of-wands.jpg",
+      "src": "/tarot/59-ten-of-wands.jpg"
+    },
+    {
+      "id": 60,
+      "index": "60",
+      "name": "Page of Wands",
+      "slug": "page-of-wands",
+      "file": "60-page-of-wands.jpg",
+      "src": "/tarot/60-page-of-wands.jpg"
+    },
+    {
+      "id": 61,
+      "index": "61",
+      "name": "Knight of Wands",
+      "slug": "knight-of-wands",
+      "file": "61-knight-of-wands.jpg",
+      "src": "/tarot/61-knight-of-wands.jpg"
+    },
+    {
+      "id": 62,
+      "index": "62",
+      "name": "Queen of Wands",
+      "slug": "queen-of-wands",
+      "file": "62-queen-of-wands.jpg",
+      "src": "/tarot/62-queen-of-wands.jpg"
+    },
+    {
+      "id": 63,
+      "index": "63",
+      "name": "King of Wands",
+      "slug": "king-of-wands",
+      "file": "63-king-of-wands.jpg",
+      "src": "/tarot/63-king-of-wands.jpg"
+    },
+    {
+      "id": 64,
+      "index": "64",
+      "name": "Ace of Pentacles",
+      "slug": "ace-of-pentacles",
+      "file": "64-ace-of-pentacles.jpg",
+      "src": "/tarot/64-ace-of-pentacles.jpg"
+    },
+    {
+      "id": 65,
+      "index": "65",
+      "name": "Two of Pentacles",
+      "slug": "two-of-pentacles",
+      "file": "65-two-of-pentacles.jpg",
+      "src": "/tarot/65-two-of-pentacles.jpg"
+    },
+    {
+      "id": 66,
+      "index": "66",
+      "name": "Three of Pentacles",
+      "slug": "three-of-pentacles",
+      "file": "66-three-of-pentacles.jpg",
+      "src": "/tarot/66-three-of-pentacles.jpg"
+    },
+    {
+      "id": 67,
+      "index": "67",
+      "name": "Four of Pentacles",
+      "slug": "four-of-pentacles",
+      "file": "67-four-of-pentacles.jpg",
+      "src": "/tarot/67-four-of-pentacles.jpg"
+    },
+    {
+      "id": 68,
+      "index": "68",
+      "name": "Five of Pentacles",
+      "slug": "five-of-pentacles",
+      "file": "68-five-of-pentacles.jpg",
+      "src": "/tarot/68-five-of-pentacles.jpg"
+    },
+    {
+      "id": 69,
+      "index": "69",
+      "name": "Six of Pentacles",
+      "slug": "six-of-pentacles",
+      "file": "69-six-of-pentacles.jpg",
+      "src": "/tarot/69-six-of-pentacles.jpg"
+    },
+    {
+      "id": 70,
+      "index": "70",
+      "name": "Seven of Pentacles",
+      "slug": "seven-of-pentacles",
+      "file": "70-seven-of-pentacles.jpg",
+      "src": "/tarot/70-seven-of-pentacles.jpg"
+    },
+    {
+      "id": 71,
+      "index": "71",
+      "name": "Eight of Pentacles",
+      "slug": "eight-of-pentacles",
+      "file": "71-eight-of-pentacles.jpg",
+      "src": "/tarot/71-eight-of-pentacles.jpg"
+    },
+    {
+      "id": 72,
+      "index": "72",
+      "name": "Nine of Pentacles",
+      "slug": "nine-of-pentacles",
+      "file": "72-nine-of-pentacles.jpg",
+      "src": "/tarot/72-nine-of-pentacles.jpg"
+    },
+    {
+      "id": 73,
+      "index": "73",
+      "name": "Ten of Pentacles",
+      "slug": "ten-of-pentacles",
+      "file": "73-ten-of-pentacles.jpg",
+      "src": "/tarot/73-ten-of-pentacles.jpg"
+    },
+    {
+      "id": 74,
+      "index": "74",
+      "name": "Page of Pentacles",
+      "slug": "page-of-pentacles",
+      "file": "74-page-of-pentacles.jpg",
+      "src": "/tarot/74-page-of-pentacles.jpg"
+    },
+    {
+      "id": 75,
+      "index": "75",
+      "name": "Knight of Pentacles",
+      "slug": "knight-of-pentacles",
+      "file": "75-knight-of-pentacles.jpg",
+      "src": "/tarot/75-knight-of-pentacles.jpg"
+    },
+    {
+      "id": 76,
+      "index": "76",
+      "name": "Queen of Pentacles",
+      "slug": "queen-of-pentacles",
+      "file": "76-queen-of-pentacles.jpg",
+      "src": "/tarot/76-queen-of-pentacles.jpg"
+    },
+    {
+      "id": 77,
+      "index": "77",
+      "name": "King of Pentacles",
+      "slug": "king-of-pentacles",
+      "file": "77-king-of-pentacles.jpg",
+      "src": "/tarot/77-king-of-pentacles.jpg"
+    }
+  ]
+}
