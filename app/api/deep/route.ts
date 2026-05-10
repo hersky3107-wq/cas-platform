@@ -13,8 +13,8 @@ import { deductCreditsBalance } from '@/lib/credits'
 
 const ORCHESTRATOR_MODEL = 'claude-sonnet-4-6'
 const DEEP_SESSION_CREDITS = 10
-const CORE_MAX_TOKENS = 2000
-const SUPPORT_MAX_TOKENS = 1200
+const CORE_MAX_TOKENS = 1500
+const SUPPORT_MAX_TOKENS = 900
 
 /** Fixed order for deterministic repair when the orchestrator repeats a provider. */
 const PROVIDER_ORDER: AiProviderName[] = [
@@ -37,9 +37,12 @@ type DeepOrchestratorPart = {
   angle: string
 }
 
-const LANGUAGE_MIRROR_RULE = `Respond in the same language as the user's original question.
-If the question is in Korean, respond in Korean.
-If in English, respond in English.`
+const LANGUAGE_MIRROR_RULE = `CRITICAL — LANGUAGE RULE (absolute priority):
+Detect the language of the user's original question.
+Write your ENTIRE response in that exact language from first word to last word.
+Korean question → 100% Korean response. English question → 100% English response.
+This rule applies to EVERY sentence including your conclusion.
+Switching language at any point is a critical violation. No exceptions.`
 
 const PROSE_STYLE_RULE = `Write in flowing prose paragraphs.
 Do NOT use markdown headers (##, ###).
@@ -65,15 +68,17 @@ A short complete answer is always better than a long truncated one.`
 function systemPromptForPart(priority: 'CORE' | 'SUPPORT', angle: string): string {
   const a = angle.trim() || 'Analyze your assigned sub-topic with maximum clarity.'
   if (priority === 'CORE') {
-    return `Write in flowing prose only. No markdown headers (##, ###).
+    return `${LANGUAGE_MIRROR_RULE}
+
+Write in flowing prose only. No markdown headers (##, ###).
 No nested bullet lists. Bold sparingly.
-You have 2000 tokens. Use the first 1800 for substance,
-the last 200 to write a complete concluding paragraph.
-Never end mid-sentence.
+STOP RULE — READ FIRST:
+You have exactly 1500 tokens. At 1200 tokens you MUST stop your current thought,
+write 'In conclusion,' and finish in 2-3 sentences. Do not start any new point after 1200 tokens.
+A complete shorter answer is far better than a cut-off longer one.
+Never end mid-sentence or mid-word under any circumstances.
 
 You are answering this specific angle: ${a}. Go deep. Be specific. Don't hedge. If the conventional wisdom is wrong, say so.
-
-${LANGUAGE_MIRROR_RULE}
 
 ${PROSE_STYLE_RULE}
 
@@ -81,9 +86,13 @@ ${AMPLE_SPACE_RULE}
 
 ${RESPONSE_COMPLETION_RULE}`
   }
-  return `You are answering this specific angle: ${a}. Be sharp and direct. No filler. Make your perspective distinct from what a generic analysis would say.
+  return `${LANGUAGE_MIRROR_RULE}
 
-${LANGUAGE_MIRROR_RULE}
+You have 900 tokens total. Write your full analysis in the first 700 tokens,
+then use the remaining 200 to write one complete concluding sentence and stop.
+Never end mid-sentence or mid-word. Pace yourself from the start.
+
+You are answering this specific angle: ${a}. Be sharp and direct. No filler. Make your perspective distinct from what a generic analysis would say.
 
 ${PROSE_STYLE_RULE}
 
@@ -371,6 +380,75 @@ function pickWinnerAiName(parts: DeepOrchestratorPart[], byIndex: Map<number, Ro
   return core[0]?.assigned_provider ?? parts[0]!.assigned_provider
 }
 
+function truncateAtLastSentence(text: string): string {
+  if (!text) return text
+  const sentenceEnders = /[.!?。]\s/g
+  let lastIndex = -1
+  let match
+  while ((match = sentenceEnders.exec(text)) !== null) {
+    lastIndex = match.index
+  }
+  if (lastIndex === -1) return text
+  return text.slice(0, lastIndex + 1).trim()
+}
+
+async function runSynthesis(
+  originalQuestion: string,
+  parts: DeepOrchestratorPart[],
+  byIndex: Map<number, RouterResult>
+): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY not configured')
+
+  const responseSummary = parts
+    .map((part) => {
+      const result = byIndex.get(part.index)
+      const text = result?.text ?? '[no response]'
+      return `[${part.assigned_provider.toUpperCase()} — ${part.topic}]\n${text}`
+    })
+    .join('\n\n---\n\n')
+
+  const systemPrompt = `You are a master synthesizer. You have received six different AI perspectives on a single question. Your job is to write a final synthesis that:
+1. Identifies the strongest points of agreement across the responses
+2. Highlights the sharpest points of disagreement or tension
+3. Offers your own integrative conclusion that goes beyond any single perspective
+4. Is written in the same language as the original question
+
+Rules:
+- Do NOT summarize each AI separately. Synthesize, don't list.
+- Be decisive. Take positions. Don't hedge everything.
+- Maximum 400 words.
+- End with a complete sentence. Never cut off mid-sentence.`
+
+  const userMessage = `Original question: ${originalQuestion}\n\nSix AI perspectives:\n\n${responseSummary}\n\nWrite your synthesis now.`
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4.1',
+      max_tokens: 1500,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => '')
+    throw new Error(`Synthesis HTTP ${res.status}: ${err.slice(0, 300)}`)
+  }
+
+  const json = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  return json.choices?.[0]?.message?.content ?? ''
+}
+
 export async function POST(req: Request) {
   let body: Record<string, unknown>
   try {
@@ -552,7 +630,7 @@ export async function POST(req: Request) {
             priority: part.priority,
             assigned_provider: part.assigned_provider,
             angle: part.angle,
-            result: r,
+            result: { ...r, text: r.text ? truncateAtLastSentence(r.text) : r.text },
           })
         }
 
@@ -567,7 +645,19 @@ export async function POST(req: Request) {
           { session_id: sessionId, winner_ai_name: winner }
         )
 
-        writeJson({ type: 'done', winner_ai_name: winner })
+        let synthesisText = ''
+        try {
+          synthesisText = await runSynthesis(prompt, plan.parts, byIndex)
+          synthesisText = truncateAtLastSentence(synthesisText)
+        } catch (e) {
+          console.warn('[deep] synthesis failed:', e)
+        }
+
+        writeJson({
+          type: 'done',
+          winner_ai_name: winner,
+          synthesis: synthesisText,
+        })
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Unknown error'
         writeJson({ type: 'error', error: msg })

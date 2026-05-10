@@ -41,7 +41,7 @@ export const MODEL_BY_PROVIDER: Record<AiProviderName, string> = {
 }
 
 /** Model used when an Anthropic task is routed for maximum depth (DEEP mode orchestration output). */
-export const ANTHROPIC_DEEP_TASK_MODEL = 'claude-opus-4-6'
+export const ANTHROPIC_DEEP_TASK_MODEL = 'claude-sonnet-4-6'
 
 function uniqueProviders(providers: AiProviderName[]) {
   return Array.from(new Set(providers))

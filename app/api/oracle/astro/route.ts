@@ -20,12 +20,35 @@ function jsonResp(obj: unknown, status: number): Response {
   })
 }
 
+const ASTRO_SYSTEM_LANGUAGE_FIRST_LINE = `Detect the language of the user's question and respond entirely in that language. No exceptions. Do not switch to English even if your system instructions are in English.`
+
+const ASTRO_SYSTEM_LANGUAGE_RULE = `CRITICAL — LANGUAGE RULE (absolute priority):
+Detect the language of the user's original question or input.
+Write your ENTIRE response in that exact language from first word to last word.
+Korean input → 100% Korean response. English input → 100% English response.
+This rule applies to every sentence. No exceptions.`
+
+function astroSystemLanguageOverride(detectedLang: string): string {
+  return `SYSTEM OVERRIDE: You MUST respond in ${detectedLang} only. 
+Do NOT mix in any English words, phrases, or terms — not even technical terms, 
+planet names, or astrological terms. 
+Translate everything into ${detectedLang}. 
+This is absolute. No exceptions.`
+}
+
 function astroSynthesisSystemPromptExact(params: {
   birthDataLine: string
   currentDateIso: string
   languageInstruction: string
+  detectedLang: string
 }): string {
-  return `${params.languageInstruction}
+  return `${astroSystemLanguageOverride(params.detectedLang)}
+
+${ASTRO_SYSTEM_LANGUAGE_FIRST_LINE}
+
+${ASTRO_SYSTEM_LANGUAGE_RULE}
+
+${params.languageInstruction}
 This overrides everything else. Follow it strictly.
 
 You are a warm fortune reader who has just received readings 
@@ -70,6 +93,21 @@ CRITICAL RULES:
 - Never cut off mid-sentence`
 }
 
+function detectLanguage(text: string): string {
+  if (!text || text.trim().length === 0) return 'English'
+  const korean = /[\uAC00-\uD7AF]/
+  const japanese = /[\u3040-\u30FF]/
+  const chinese = /[\u4E00-\u9FFF]/
+  const arabic = /[\u0600-\u06FF]/
+  const russian = /[\u0400-\u04FF]/
+  if (korean.test(text)) return 'Korean'
+  if (japanese.test(text)) return 'Japanese'
+  if (chinese.test(text)) return 'Chinese'
+  if (arabic.test(text)) return 'Arabic'
+  if (russian.test(text)) return 'Russian'
+  return 'English'
+}
+
 export async function POST(req: Request) {
   let body: Record<string, unknown>
   try {
@@ -83,6 +121,9 @@ export async function POST(req: Request) {
   const questionLine =
     questionRaw ||
     'The person did not ask a specific question; offer a warm, grounded portrait from their birth timing only.'
+
+  const userQuestion = questionRaw
+  const detectedLang = detectLanguage(userQuestion || '')
 
   const supabaseAuth = await createSupabaseRouteAuthClient()
   const {
@@ -195,7 +236,13 @@ export async function POST(req: Request) {
             'Example: never write "impulsive한" — write "충동적인" instead.',
           ].join('\n')
         : ''
-    return `${languageInstruction}
+    return `${astroSystemLanguageOverride(detectedLang)}
+
+${ASTRO_SYSTEM_LANGUAGE_FIRST_LINE}
+
+${ASTRO_SYSTEM_LANGUAGE_RULE}
+
+${languageInstruction}
 This overrides everything else. Follow it strictly.
 
 Your role: ${roleLine}
@@ -266,6 +313,7 @@ ${mistralLangGuard}`
               birthDataLine: birthDataLine,
               currentDateIso: todayIso,
               languageInstruction,
+              detectedLang,
             }),
             userPrompt: userPayload,
             maxTokens: ORACLE_SYNTH_MAX_TOKENS,

@@ -129,6 +129,7 @@ export default function DeepModePage() {
     >
   >(new Map());
   const [winner, setWinner] = useState<string | null>(null);
+  const [synthesis, setSynthesis] = useState("");
   const [credits, setCredits] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Visible in React state; ref avoids double-invoke / timer cleared by overlapping effects. */
@@ -162,6 +163,7 @@ export default function DeepModePage() {
     setSending(true);
     setError(null);
     setWinner(null);
+    setSynthesis("");
     setPlan(null);
     setPartsOut(new Map());
     setPhase("orchestrating");
@@ -215,6 +217,7 @@ export default function DeepModePage() {
             angle?: string;
             result?: RouterResult;
             winner_ai_name?: string;
+            synthesis?: string;
             error?: string;
           };
           try {
@@ -252,6 +255,7 @@ export default function DeepModePage() {
           if (msg.type === "done" && msg.winner_ai_name) {
             setWinner(msg.winner_ai_name);
             setPhase("done");
+            setSynthesis(msg.synthesis ?? "");
           }
 
           if (msg.type === "error" && msg.error) {
@@ -383,12 +387,6 @@ export default function DeepModePage() {
                   </p>
                   <p className="mt-3 text-[10px] tabular-nums text-slate-500">
                     {got.result.responseTimeMs} ms
-                    {got.result.model ? (
-                      <>
-                        {" "}
-                        · <span className="text-slate-400">{got.result.model}</span>
-                      </>
-                    ) : null}
                   </p>
                 </>
               );
@@ -460,6 +458,21 @@ export default function DeepModePage() {
                 </details>
               );
             })}
+            {synthesis.trim() ? (
+              <article
+                className="rounded-3xl bg-black/45 p-6 shadow-[0_12px_40px_rgba(0,0,0,0.45)] ring-2 ring-amber-400/55 lg:p-8"
+              >
+                <div className="flex flex-wrap items-center gap-3 gap-y-2 border-b border-amber-400/25 pb-4">
+                  <p className="text-base font-bold uppercase tracking-[0.28em] text-amber-100 sm:text-lg">
+                    SYNTHESIS
+                  </p>
+                  <AiNameBadge provider="openai" />
+                </div>
+                <p className="mt-6 whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
+                  {synthesis}
+                </p>
+              </article>
+            ) : null}
           </section>
         ) : null}
 

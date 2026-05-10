@@ -221,6 +221,18 @@ export default function Home() {
                   );
                 }
 
+                if (m.id === "mindgame") {
+                  return (
+                    <Link
+                      key={m.id}
+                      href="/modes/mindgame"
+                      className="flex items-center justify-center"
+                    >
+                      {tile}
+                    </Link>
+                  );
+                }
+
                 return (
                   <div key={m.id} className="flex items-center justify-center">
                     {tile}

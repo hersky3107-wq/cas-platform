@@ -192,7 +192,7 @@ Give practical guidance for today: what to embrace, what to avoid.
 Honest reading — if today's energy is difficult, say so clearly.
 Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
-Maximum 500 tokens. Complete your response fully.
+Maximum 700 tokens. Complete your response fully.
 Never end mid-sentence.`
 
         const geminiSys = `You are reading today's fortune through Western astrology.
@@ -208,7 +208,7 @@ Give practical guidance for today: what energy to work with, what to watch out f
 Honest reading — if today's transits are challenging, say so clearly.
 Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
-Maximum 500 tokens. Complete your response fully.
+Maximum 700 tokens. Complete your response fully.
 Never end mid-sentence.`
 
         const claudeSys = `You are reading today's fortune through a single tarot card.
@@ -224,15 +224,15 @@ Honest reading — if the card carries warning energy, say so directly first.
 Then give practical advice for navigating today with this energy.
 Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
-Maximum 500 tokens. Complete your response fully.
+Maximum 700 tokens. Complete your response fully.
 Never end mid-sentence.`
 
         const userPrompt = 'Write the reading now.'
 
         const jobs = [
-          { provider: 'deepseek' as const, name: 'DeepSeek', sys: deepseekSys, max: 500, modelOverride: 'deepseek-chat' },
-          { provider: 'google' as const, name: 'Gemini', sys: geminiSys, max: 500, modelOverride: 'gemini-2.5-flash' },
-          { provider: 'anthropic' as const, name: 'Claude', sys: claudeSys, max: 500, modelOverride: 'claude-sonnet-4-6' },
+          { provider: 'deepseek' as const, name: 'DeepSeek', sys: deepseekSys, max: 700, modelOverride: 'deepseek-chat' },
+          { provider: 'google' as const, name: 'Gemini', sys: geminiSys, max: 700, modelOverride: 'gemini-2.5-flash' },
+          { provider: 'anthropic' as const, name: 'Claude', sys: claudeSys, max: 700, modelOverride: 'claude-sonnet-4-6' },
         ].map(async (j) => {
           const r = await runAndStore({
             sessionId,
