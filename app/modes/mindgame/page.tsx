@@ -32,6 +32,35 @@ export default function MindgameLobbyPage() {
 
         <section className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
           <Link
+            href="/modes/mindgame/carrier"
+            className="group relative flex min-h-[280px] flex-col rounded-2xl border border-emerald-500/35 bg-gradient-to-br from-emerald-950/40 to-gray-950/80 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.45)] ring-1 ring-white/5 transition hover:border-emerald-400/55 hover:shadow-[0_24px_60px_rgba(16,185,129,0.12)] md:min-h-[320px] md:p-8"
+          >
+            <span className="text-4xl" aria-hidden>
+              🦠
+            </span>
+            <h2 className="mt-4 text-2xl font-black tracking-tight text-white">
+              CARRIER
+            </h2>
+            <p className="mt-3 flex-1 text-sm leading-relaxed text-zinc-400 group-hover:text-zinc-300">
+              Hidden zombie, alliances, shotgun and vaccine. Infections spread
+              through teams — five rounds, then the outbreak is judged.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              {["Infection", "Alliances", "Deduction"].map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-md bg-black/30 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-200/90 ring-1 ring-emerald-500/25"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+            <span className="mt-6 text-xs font-semibold uppercase tracking-wider text-emerald-400/90 transition group-hover:text-emerald-300">
+              Enter →
+            </span>
+          </Link>
+
+          <Link
             href="/modes/mindgame/wolf"
             className="group relative flex min-h-[280px] flex-col rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-950/40 to-gray-950/80 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.45)] ring-1 ring-white/5 transition hover:border-amber-400/55 hover:shadow-[0_24px_60px_rgba(251,191,36,0.12)] md:min-h-[320px] md:p-8"
           >
@@ -60,25 +89,25 @@ export default function MindgameLobbyPage() {
             </span>
           </Link>
 
-          <div className="relative flex min-h-[280px] flex-col rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 opacity-70 md:min-h-[320px] md:p-8">
-            <span className="absolute right-4 top-4 rounded-full bg-zinc-800 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 ring-1 ring-white/10">
+          <div className="relative flex min-h-[280px] flex-col rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-950/35 to-gray-950/80 p-6 opacity-90 ring-1 ring-white/5 md:min-h-[320px] md:p-8">
+            <span className="absolute right-4 top-4 rounded-full bg-zinc-800 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-300 ring-1 ring-white/10">
               Coming Soon
             </span>
             <span className="text-4xl" aria-hidden>
-              ⚡
+              ⚔️
             </span>
-            <h2 className="mt-4 text-2xl font-black tracking-tight text-zinc-500">
-              DILEMMA
+            <h2 className="mt-4 text-2xl font-black tracking-tight text-white">
+              FACTION
             </h2>
-            <p className="mt-3 flex-1 text-sm leading-relaxed text-zinc-600">
-              Six AIs face impossible moral choices. Watch them argue. Then
-              decide for yourself.
+            <p className="mt-3 flex-1 text-sm leading-relaxed text-zinc-400">
+              Team loyalties shift every round. Alliances, intel, and public
+              stands — placeholder for the next mindgame mode.
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
-              {["Philosophy", "Ethics", "Debate"].map((tag) => (
+              {["Teams", "Strategy", "Bluff"].map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md bg-black/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-600 ring-1 ring-white/5"
+                  className="rounded-md bg-black/30 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-200/90 ring-1 ring-violet-500/25"
                 >
                   {tag}
                 </span>
