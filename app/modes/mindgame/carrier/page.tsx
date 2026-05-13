@@ -39,13 +39,15 @@ type Phase =
   | "user_speech"
   | "paused_after_speeches"
   | "actions"
-  | "paused_user_alliance"
   | "paused_user_action"
   | "summary"
   | "between_rounds"
+  | "pre_end_aggregate"
   | "ended";
 
 type Role = "human" | "zombie";
+
+type PlayerStatus = "HUMAN" | "ZOMBIE";
 
 type Player = {
   provider: string;
@@ -53,18 +55,46 @@ type Player = {
   color: string;
   isAlive: boolean;
   role: Role;
+  status: PlayerStatus;
+  teamId: string | null;
   isUser?: boolean;
 };
+
+function roleToPlayerStatus(role: Role): PlayerStatus {
+  return role === "zombie" ? "ZOMBIE" : "HUMAN";
+}
+
+function syncPlayersWithRolesTeams(
+  prev: Player[],
+  roles: Record<string, Role>,
+  teams: CarrierTeam[]
+): Player[] {
+  return prev.map((p) => {
+    const role = roles[p.provider] ?? p.role;
+    const t = teams.find((tm) => tm.members.includes(p.provider));
+    return {
+      ...p,
+      role,
+      status: roleToPlayerStatus(role),
+      teamId: t?.id ?? null,
+    };
+  });
+}
 
 type GameMessage = {
   provider: string;
   name: string;
   text: string;
   round: number;
-  type: "speech" | "system" | "alliance_request" | "alliance_response";
+  type: "speech" | "system";
 };
 
-type CarrierTeam = { id: string; members: string[]; hasLatentInfection?: boolean };
+type CarrierTeam = {
+  id: string;
+  members: string[];
+  hasLatentInfection?: boolean;
+  round?: number;
+};
 
 type RoundSummaryEntry = {
   round: number;
@@ -74,50 +104,128 @@ type RoundSummaryEntry = {
   vaccineResult: string;
   teams: CarrierTeam[];
   score: { humans: number; zombies: number; humansAll: number; zombiesAll: number };
+  /** Latent zombie-in-team risk after this round's actions (before summary infection roll). */
+  allianceLatentFromActionsRound?: boolean;
 };
 
-type LatentInfectionEvent = {
+type CarrierRoundHistoryEntry = {
   round: number;
-  zombieName: string;
-  infectedTeamMembers: string[];
+  shotgunResult: string;
+  vaccineResult: string;
+  infiltrationHint: string;
 };
 
-type PendingInfectionTeamClient = {
-  zombieProvider: string;
-  memberIds: string[];
+type DeductionShotgunEvent = {
+  shooter: string;
+  target: string;
+  result: "zombie_killed" | "human_killed";
 };
 
-type UserRoundAction =
-  | "ALLIANCE_REQUEST"
-  | "SHOTGUN"
-  | "VACCINE"
-  | "EXPEL"
-  | "NONE";
+type DeductionVaccineEvent = {
+  user: string;
+  target: string;
+  result: "saved" | "no_effect" | "immunized";
+};
+
+type DeductionElimination = { provider: string; reason: string };
+
+/** Mirrors server — spectator / AI deduction trail. */
+type DeductionRoundHistory = {
+  round: number;
+  teams: { id: string; members: string[] }[];
+  speeches: { provider: string; name: string; summary: string }[];
+  votes: Record<string, string>;
+  expelResult: string | null;
+  expelledRole?: "human" | "zombie" | null;
+  shotgunEvents: DeductionShotgunEvent[];
+  vaccineEvents: DeductionVaccineEvent[];
+  infectionOccurred: boolean;
+  infectionCount: number;
+  newInfections?: string[];
+  aliveAfter: string[];
+  zombieCountAfter?: number;
+  humanCountAfter?: number;
+  eliminations?: DeductionElimination[];
+};
+
+type UserRoundAction = "SHOTGUN" | "VACCINE" | "EXPEL" | "NONE";
 
 type ActionFeedLine = { id: string; text: string; tone?: "ok" | "bad" | "neutral" };
 
-type ActionsPausedPayload = {
+type ActionsUserTurnPayload = {
   acted: string[];
   order: string[];
   resumeIndex: number;
   teams: CarrierTeam[];
   roles: Record<string, Role>;
   eliminated: string[];
-  shotgunUsed: boolean;
-  vaccineUsed: boolean;
+  shotgunUsed: number;
+  vaccineUsed: number;
   shotgunResult: string;
   vaccineResult: string;
   allianceLatentThisRound: boolean;
-  allianceJoinedIdsThisRound?: string[];
-  allianceResponderAcceptedIdsThisRound?: string[];
   actionsThisRound?: Record<string, string>;
-  pending: { requester: string; target: string; reqText: string };
+  expelVotes?: Record<string, string>;
+  vaccinatedThisRound?: string[];
+  shotgunEventsDeduction?: DeductionShotgunEvent[];
+  vaccineEventsDeduction?: DeductionVaccineEvent[];
+  eliminationsDeduction?: DeductionElimination[];
 };
 
-type ActionsUserTurnPayload = Omit<ActionsPausedPayload, "pending">;
+function parseCarrierToolUses(raw: unknown, max = 3): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Math.max(0, Math.min(max, Math.floor(raw)));
+  }
+  if (raw === true) return 1;
+  return 0;
+}
+
+const MAX_CARRIER_TOOL_USES = 3;
+
+function formatCarrierOriginalZombiesLine(ids: string[]): string {
+  const uniq = [...new Set(ids)].filter(Boolean);
+  if (!uniq.length) return "—";
+  return uniq
+    .map((id) =>
+      id === "user"
+        ? "You"
+        : AI_PLAYERS.find((a) => a.provider === id)?.name ?? id
+    )
+    .join(" · ");
+}
+
+function carrierDisplayNameForProvider(pid: string, players: Player[]): string {
+  if (pid === "user") {
+    const u = players.find((p) => p.isUser || p.provider === "user");
+    return u?.name ?? "You";
+  }
+  const pl = players.find((p) => p.provider === pid);
+  if (pl) return pl.name;
+  return AI_PLAYERS.find((a) => a.provider === pid)?.name ?? pid;
+}
+
+function summarizeDeductionVotes(votes: Record<string, string>, players: Player[]): string {
+  const entries = Object.entries(votes);
+  if (!entries.length) return "—";
+  return entries
+    .map(
+      ([v, t]) =>
+        `${carrierDisplayNameForProvider(v, players)}→${carrierDisplayNameForProvider(t, players)}`
+    )
+    .join(", ");
+}
 
 const BG =
   "min-h-screen bg-gray-950 text-zinc-100 selection:bg-emerald-500/30";
+
+const TEAM_BORDER_ACCENT_PALETTE = [
+  "#34d399",
+  "#38bdf8",
+  "#c084fc",
+  "#fb923c",
+  "#f472b6",
+  "#fcd34d",
+] as const;
 
 /** API `result` strings → Korean labels for action feed (접종/발사). */
 function formatCarrierToolResultKo(result: unknown): string {
@@ -127,6 +235,8 @@ function formatCarrierToolResultKo(result: unknown): string {
       return "인간이었습니다 (낭비)";
     case "no_effect":
       return "인간이었습니다 (효과 없음)";
+    case "immunized":
+      return "면역 부여 (이번 라운드 감염 방지)";
     case "zombie_eliminated":
       return "좀비 제거 성공!";
     case "zombie_cured":
@@ -142,16 +252,13 @@ const MESSAGE_STAGGER_MS = 400;
 
 function fullConversationPayload(msgs: GameMessage[]) {
   return msgs
-    .filter(
-      (m): m is GameMessage & { type: "speech" | "alliance_request" | "alliance_response" } =>
-        m.type === "speech" || m.type === "alliance_request" || m.type === "alliance_response"
-    )
+    .filter((m): m is GameMessage => m.type === "speech")
     .map((m) => ({
       provider: m.provider,
       name: m.name,
       text: m.text,
       round: m.round,
-      type: m.type,
+      type: "speech" as const,
     }));
 }
 
@@ -208,15 +315,16 @@ export default function CarrierModePage() {
   const [messages, setMessages] = useState<GameMessage[]>([]);
   const [currentRound, setCurrentRound] = useState(1);
   const [gameId, setGameId] = useState<string | null>(null);
-  const [zombieId, setZombieId] = useState<string | null>(null);
+  const [zombieIds, setZombieIds] = useState<string[]>([]);
   const [shotgunHolderId, setShotgunHolderId] = useState<string | null>(null);
   const [vaccineHolderId, setVaccineHolderId] = useState<string | null>(null);
-  const [shotgunUsed, setShotgunUsed] = useState(false);
-  const [vaccineUsed, setVaccineUsed] = useState(false);
+  const [shotgunUsed, setShotgunUsed] = useState(0);
+  const [vaccineUsed, setVaccineUsed] = useState(0);
   const [roles, setRoles] = useState<Record<string, Role>>({});
   const [teams, setTeams] = useState<CarrierTeam[]>([]);
   const [roundSummary, setRoundSummary] = useState<RoundSummaryEntry | null>(null);
   const [winner, setWinner] = useState<"humans" | "zombies" | null>(null);
+  const [gameEndingNarration, setGameEndingNarration] = useState("");
   const [userInput, setUserInput] = useState("");
   const [userTimer, setUserTimer] = useState(45);
   const [streamingProvider, setStreamingProvider] = useState<string | null>(null);
@@ -227,13 +335,19 @@ export default function CarrierModePage() {
   const [actionFeed, setActionFeed] = useState<ActionFeedLine[]>([]);
   const [userRoundAction, setUserRoundAction] = useState<UserRoundAction>("NONE");
   const [userRoundTarget, setUserRoundTarget] = useState<string | null>(null);
-  const [allianceRequestDraft, setAllianceRequestDraft] = useState("");
-  const [alliancePauseUi, setAlliancePauseUi] = useState<ActionsPausedPayload | null>(null);
   const [userTurnPauseUi, setUserTurnPauseUi] = useState<ActionsUserTurnPayload | null>(null);
-  const [latentInfectionEvents, setLatentInfectionEvents] = useState<
-    LatentInfectionEvent[]
-  >([]);
-  const [gameEndingNarration, setGameEndingNarration] = useState<string>("");
+  const [roundHistories, setRoundHistories] = useState<CarrierRoundHistoryEntry[]>(
+    []
+  );
+  const [pendingGameEnd, setPendingGameEnd] = useState<{
+    winner: "humans" | "zombies";
+    soloEliminated: string[];
+    teamsAtJudgment: CarrierTeam[];
+  } | null>(null);
+  /** From the most recent `round_summary` SSE (drives continue-button → pre_end vs next round). */
+  const [summaryHadGameOver, setSummaryHadGameOver] = useState(false);
+  const [deductionRoundHistory, setDeductionRoundHistory] = useState<DeductionRoundHistory[]>([]);
+  const [deductionBoardOpen, setDeductionBoardOpen] = useState(false);
 
   const feedRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -242,27 +356,27 @@ export default function CarrierModePage() {
   const currentRoundRef = useRef(1);
   const rolesRef = useRef<Record<string, Role>>({});
   const teamsRef = useRef<CarrierTeam[]>([]);
-  const shotgunUsedRef = useRef(false);
-  const vaccineUsedRef = useRef(false);
+  const shotgunUsedRef = useRef(0);
+  const vaccineUsedRef = useRef(0);
   const shotgunHolderRef = useRef<string | null>(null);
   const vaccineHolderRef = useRef<string | null>(null);
-  const zombieIdRef = useRef<string | null>(null);
+  const zombieIdsRef = useRef<string[]>([]);
   const gameIdRef = useRef<string | null>(null);
-  /** From last `actions_complete` — sent to `round_summary` as `pendingInfectionTeams` (latent applied once there). */
-  const pendingInfectionTeamsRef = useRef<PendingInfectionTeamClient[]>([]);
+  /** From last `actions_complete` — sent to `round_summary` for announcer hint. */
   const allianceLatentThisRoundRef = useRef(false);
   const actionsResultsRef = useRef<{
     shotgunResult: string;
     vaccineResult: string;
-    shotgunUsed: boolean;
-    vaccineUsed: boolean;
+    shotgunUsed: number;
+    vaccineUsed: number;
     roles: Record<string, Role>;
     eliminated: string[];
     teams: CarrierTeam[];
   } | null>(null);
-  const actionsAlliancePausedRef = useRef<ActionsPausedPayload | null>(null);
   const actionsUserTurnPausedRef = useRef<ActionsUserTurnPayload | null>(null);
   const actionsStreamPausedRef = useRef(false);
+  const roundHistoriesRef = useRef<CarrierRoundHistoryEntry[]>([]);
+  const deductionRoundHistoryRef = useRef<DeductionRoundHistory[]>([]);
   const turnExpireGuard = useRef(false);
 
   useEffect(() => {
@@ -290,16 +404,24 @@ export default function CarrierModePage() {
     vaccineUsedRef.current = vaccineUsed;
     shotgunHolderRef.current = shotgunHolderId;
     vaccineHolderRef.current = vaccineHolderId;
-    zombieIdRef.current = zombieId;
+    zombieIdsRef.current = zombieIds;
     gameIdRef.current = gameId;
   }, [
     shotgunUsed,
     vaccineUsed,
     shotgunHolderId,
     vaccineHolderId,
-    zombieId,
+    zombieIds,
     gameId,
   ]);
+
+  useEffect(() => {
+    roundHistoriesRef.current = roundHistories;
+  }, [roundHistories]);
+
+  useEffect(() => {
+    deductionRoundHistoryRef.current = deductionRoundHistory;
+  }, [deductionRoundHistory]);
 
   useEffect(() => {
     if (feedRef.current) {
@@ -352,11 +474,12 @@ export default function CarrierModePage() {
     setMessages([]);
     setCurrentRound(1);
     setGameId(null);
-    setZombieId(null);
+    setZombieIds([]);
+    zombieIdsRef.current = [];
     setShotgunHolderId(null);
     setVaccineHolderId(null);
-    setShotgunUsed(false);
-    setVaccineUsed(false);
+    setShotgunUsed(0);
+    setVaccineUsed(0);
     setRoles({});
     setTeams([]);
     setRoundSummary(null);
@@ -370,15 +493,17 @@ export default function CarrierModePage() {
     setActionFeed([]);
     setUserRoundAction("NONE");
     setUserRoundTarget(null);
-    setAllianceRequestDraft("");
-    setLatentInfectionEvents([]);
+    setRoundHistories([]);
+    roundHistoriesRef.current = [];
+    setDeductionRoundHistory([]);
+    deductionRoundHistoryRef.current = [];
+    setDeductionBoardOpen(false);
     setGameEndingNarration("");
-    pendingInfectionTeamsRef.current = [];
+    setPendingGameEnd(null);
+    setSummaryHadGameOver(false);
     allianceLatentThisRoundRef.current = false;
     actionsResultsRef.current = null;
-    actionsAlliancePausedRef.current = null;
     actionsUserTurnPausedRef.current = null;
-    setAlliancePauseUi(null);
     setUserTurnPauseUi(null);
     messagesRef.current = [];
     playersRef.current = [];
@@ -415,75 +540,95 @@ export default function CarrierModePage() {
 
   const applyActionsComplete = useCallback(
     (ev: Record<string, unknown>, round: number) => {
+      const rolesRaw = (ev.roles as Record<string, Role>) ?? {}
+      const roles =
+        userMode === "blind" && Object.keys(rolesRaw).length === 0
+          ? rolesRef.current
+          : rolesRaw
+
       actionsResultsRef.current = {
         shotgunResult: String(ev.shotgunResult ?? "not_used"),
         vaccineResult: String(ev.vaccineResult ?? "not_used"),
-        shotgunUsed: ev.shotgunUsed === true,
-        vaccineUsed: ev.vaccineUsed === true,
-        roles: (ev.roles as Record<string, Role>) ?? {},
+        shotgunUsed: parseCarrierToolUses(ev.shotgunUsed, MAX_CARRIER_TOOL_USES),
+        vaccineUsed: parseCarrierToolUses(ev.vaccineUsed, MAX_CARRIER_TOOL_USES),
+        roles,
         eliminated: Array.isArray(ev.eliminated) ? (ev.eliminated as string[]) : [],
         teams: Array.isArray(ev.teams) ? (ev.teams as CarrierTeam[]) : [],
-      };
-      if (Array.isArray(ev.pendingInfectionTeams)) {
-        pendingInfectionTeamsRef.current = ev.pendingInfectionTeams as PendingInfectionTeamClient[];
-      } else {
-        pendingInfectionTeamsRef.current = [];
       }
-      allianceLatentThisRoundRef.current = pendingInfectionTeamsRef.current.length > 0;
-      const ir = actionsResultsRef.current;
-      setShotgunUsed(ir.shotgunUsed);
-      setVaccineUsed(ir.vaccineUsed);
-      setRoles(ir.roles);
-      rolesRef.current = ir.roles;
+      allianceLatentThisRoundRef.current = ev.allianceLatentThisRound === true
+      const ir = actionsResultsRef.current
+      setShotgunUsed(ir.shotgunUsed)
+      setVaccineUsed(ir.vaccineUsed)
+      setRoles(ir.roles)
+      rolesRef.current = ir.roles
       const teamsSnapshot = ir.teams.map((t) => ({
         id: t.id,
         members: [...t.members],
         ...(t.hasLatentInfection !== undefined
           ? { hasLatentInfection: t.hasLatentInfection }
           : {}),
-      }));
-      setTeams(teamsSnapshot);
-      teamsRef.current = teamsSnapshot;
+      }))
+      setTeams(teamsSnapshot)
+      teamsRef.current = teamsSnapshot
+
+      setPlayers((prev) => {
+        let next = syncPlayersWithRolesTeams(prev, roles, teamsSnapshot)
+        for (const e of ir.eliminated) {
+          next = next.map((p) => (p.provider === e ? { ...p, isAlive: false } : p))
+        }
+        playersRef.current = next
+        return next
+      })
+
       for (const e of ir.eliminated) {
-        setPlayers((prev) => {
-          const next = prev.map((p) =>
-            p.provider === e ? { ...p, isAlive: false } : p
-          );
-          playersRef.current = next;
-          return next;
-        });
         if (e === "user") {
-          setIsUserEliminated(true);
+          setIsUserEliminated(true)
           addMessage({
             provider: "system",
             name: "System",
             text: "You were eliminated. Observing in blind mode.",
             round,
             type: "system",
-          });
+          })
         }
       }
+
+      const rawDeduction = ev.deductionRoundEntry as DeductionRoundHistory | undefined;
+      if (rawDeduction && typeof rawDeduction.round === "number") {
+        const speechMsgs = messagesRef.current.filter(
+          (m) => m.round === round && m.type === "speech"
+        );
+        const speeches = speechMsgs.map((m) => ({
+          provider: m.provider,
+          name: m.name,
+          summary: m.text.length > 200 ? `${m.text.slice(0, 197)}…` : m.text,
+        }));
+        const merged: DeductionRoundHistory = { ...rawDeduction, speeches };
+        setDeductionRoundHistory((prev) => {
+          const rest = prev.filter((x) => x.round !== merged.round);
+          const next = [...rest, merged].sort((a, b) => a.round - b.round);
+          deductionRoundHistoryRef.current = next;
+          return next;
+        });
+      }
     },
-    [addMessage]
+    [addMessage, userMode]
   );
 
   const handleActionSse = useCallback(
     (ev: Record<string, unknown>, round: number) => {
       const fromn = (x: unknown) => String(x ?? "?");
-      if (ev.type === "action_request") {
-        pushActionLine(
-          `💬 ${fromn(ev.fromName)} → ${fromn(ev.toName)}: ${fromn(ev.text)}`,
-          "neutral",
-          { provider: String(ev.from ?? "unknown"), actionType: "action_request" }
-        );
-      }
-      if (ev.type === "action_response") {
-        const acc = ev.accepted === true;
-        pushActionLine(
-          `${acc ? "✅" : "❌"} ${fromn(ev.fromName)}: ${fromn(ev.text)}`,
-          acc ? "ok" : "bad",
-          { provider: String(ev.from ?? "unknown"), actionType: "action_response" }
-        );
+      if (ev.type === "action_speech") {
+        const sp = typeof ev.speech === "string" ? ev.speech.trim() : "";
+        if (sp) {
+          const act = typeof ev.action === "string" ? ev.action : "";
+          const ov = ev.overridden === true ? " (서버 수정)" : "";
+          pushActionLine(
+            `🎭 ${fromn(ev.name)}: ${sp}${act ? ` [${act}]` : ""}${ov}`,
+            "neutral",
+            { provider: String(ev.provider ?? "unknown"), actionType: "action_speech" }
+          );
+        }
       }
       if (ev.type === "action_shotgun") {
         pushActionLine(
@@ -498,26 +643,108 @@ export default function CarrierModePage() {
           "neutral",
           { provider: String(ev.user ?? "unknown"), actionType: "VACCINE" }
         );
+        if (ev.result === "zombie_cured") {
+          const tgt = String(ev.target ?? "");
+          if (tgt) {
+            setPlayers((prev) => {
+              const next = prev.map((p) =>
+                p.provider === tgt
+                  ? {
+                      ...p,
+                      isAlive: true,
+                      role: "human" as Role,
+                      status: "HUMAN" as PlayerStatus,
+                    }
+                  : p
+              );
+              playersRef.current = next;
+              return next;
+            });
+            setRoles((prev) => {
+              const n = { ...prev, [tgt]: "human" as Role };
+              rolesRef.current = n;
+              return n;
+            });
+          }
+        }
       }
-      if (ev.type === "action_expel") {
+      if (ev.type === "action_vote") {
         pushActionLine(
-          `🚫 ${fromn(ev.fromName)} → ${fromn(ev.targetName)}: 추방!`,
+          `🗳 ${fromn(ev.voterName)} → ${fromn(ev.targetName)}: 추방 투표`,
           "neutral",
-          { provider: String(ev.from ?? "unknown"), actionType: "EXPEL" }
+          { provider: String(ev.voter ?? "unknown"), actionType: "VOTE" }
         );
+      }
+      if (ev.type === "vote_resolution") {
+        const tally = ev.tally as Record<string, number> | undefined;
+        const expelled =
+          typeof ev.expelled === "string" && ev.expelled.length > 0 ? ev.expelled : null;
+        const expelledRoleEv =
+          ev.expelledRole === "zombie" || ev.expelledRole === "human"
+            ? ev.expelledRole
+            : null;
+        const snap = playersRef.current;
+        const koLang = languageRef.current === "Korean";
+        const tallyStr =
+          tally && typeof tally === "object"
+            ? Object.entries(tally)
+                .map(
+                  ([id, n]) =>
+                    `${carrierDisplayNameForProvider(id, snap)} ×${String(n)}`
+                )
+                .join(", ")
+            : "";
+        if (expelled) {
+          const roleSuffix =
+            expelledRoleEv === "zombie"
+              ? koLang
+                ? " — 🧟 좀비였습니다!"
+                : " — 🧟 Was a zombie!"
+              : expelledRoleEv === "human"
+                ? koLang
+                  ? " — 😇 인간이었습니다..."
+                  : " — 😇 Was human..."
+                : "";
+          const tone: ActionFeedLine["tone"] =
+            expelledRoleEv === "zombie"
+              ? "ok"
+              : expelledRoleEv === "human"
+                ? "bad"
+                : "neutral";
+          pushActionLine(
+            `📋 집계: ${carrierDisplayNameForProvider(expelled, snap)} 추방 (${tallyStr || "표"})${roleSuffix}`,
+            tone,
+            { provider: expelled, actionType: "vote_out" }
+          );
+        } else {
+          pushActionLine(
+            `📋 집계: 추방 없음 — 동표 또는 최다 2표 미만${tallyStr ? ` (${tallyStr})` : ""}`,
+            "neutral",
+            { provider: "system", actionType: "vote_none" }
+          );
+        }
+
+        const allVotes = ev.votes as Record<string, string> | undefined;
+        if (allVotes && tally && typeof tally === "object") {
+          const tallyTotal = Object.values(tally).reduce((a, b) => a + b, 0);
+          const voteTotal = Object.keys(allVotes).length;
+          if (tallyTotal < voteTotal) {
+            const invalidCount = voteTotal - tallyTotal;
+            const invalidNote = koLang
+              ? `⚠️ ${invalidCount}표 무효 처리 (투표 후 사살된 플레이어)`
+              : `⚠️ ${invalidCount} vote(s) invalidated (voter eliminated after voting)`;
+            pushActionLine(invalidNote, "neutral", {
+              provider: "system",
+              actionType: "vote_invalid_note",
+            });
+          }
+        }
       }
       if (ev.type === "action_none") {
         pushActionLine(`⏸ ${fromn(ev.name)}: 이번 라운드 행동 없음`, "neutral", {
           provider: String(ev.provider ?? "unknown"),
           actionType: "NONE",
         });
-      }
-      if (ev.type === "actions_paused") {
-        actionsStreamPausedRef.current = true;
-        const p = ev.payload as ActionsPausedPayload;
-        actionsAlliancePausedRef.current = p;
-        setAlliancePauseUi(p);
-        setPhase("paused_user_alliance");
       }
       if (ev.type === "actions_paused_user_turn") {
         actionsStreamPausedRef.current = true;
@@ -551,14 +778,14 @@ export default function CarrierModePage() {
         action: "actions",
         sessionId: sid,
         alivePlayers: alivePlayersForApi(playersRef.current, userMode),
-        zombieId: zombieIdRef.current,
+        zombieIds: zombieIdsRef.current,
         shotgunHolderId: shotgunHolderRef.current,
         vaccineHolderId: vaccineHolderRef.current,
         shotgunUsed: shotgunUsedRef.current,
         vaccineUsed: vaccineUsedRef.current,
         roles: rolesRef.current,
+        deductionRoundHistory: deductionRoundHistoryRef.current,
         conversation: fullConversationPayload(messagesRef.current),
-        teams: teamsRef.current,
         userMode,
         language: languageRef.current,
         round,
@@ -589,17 +816,18 @@ export default function CarrierModePage() {
         action: "speeches",
         sessionId: sid,
         alivePlayers: alivePlayersForApi(playersRef.current, userMode),
-        zombieId: zombieIdRef.current,
+        zombieIds: zombieIdsRef.current,
         shotgunHolderId: shotgunHolderRef.current,
         vaccineHolderId: vaccineHolderRef.current,
         shotgunUsed: shotgunUsedRef.current,
         vaccineUsed: vaccineUsedRef.current,
         roles: rolesRef.current,
         conversation: fullConversationPayload(messagesRef.current),
-        teams: teamsRef.current,
         userMode,
         language: languageRef.current,
         round,
+        roundHistories: roundHistoriesRef.current,
+        deductionRoundHistory: deductionRoundHistoryRef.current,
       });
       if (!res.ok) {
         addMessage({
@@ -613,6 +841,39 @@ export default function CarrierModePage() {
         return;
       }
       await readCarrierSse(res, (ev) => {
+        if (ev.type === "round_teams") {
+          const rTeams = Array.isArray(ev.teams)
+            ? (ev.teams as CarrierTeam[]).map((t) => ({
+                id: String(t.id),
+                members: [...t.members],
+                ...(t.hasLatentInfection !== undefined
+                  ? { hasLatentInfection: t.hasLatentInfection }
+                  : {}),
+                ...(typeof (t as CarrierTeam).round === "number"
+                  ? { round: (t as CarrierTeam).round }
+                  : {}),
+              }))
+            : [];
+          const snap = rTeams.filter((x) => x.members.length > 0);
+          setTeams(snap);
+          teamsRef.current = snap;
+          const nar = typeof ev.narration === "string" ? ev.narration.trim() : "";
+          if (nar) {
+            addMessage({
+              provider: "system",
+              name: "Teams",
+              text: nar,
+              round: typeof ev.round === "number" ? ev.round : round,
+              type: "system",
+            });
+          }
+          const rolesEv = rolesRef.current;
+          setPlayers((prev) => {
+            const next = syncPlayersWithRolesTeams(prev, rolesEv, snap);
+            playersRef.current = next;
+            return next;
+          });
+        }
         if (ev.type === "speech") {
           setStreamingProvider(String(ev.provider ?? ""));
           addMessage({
@@ -657,15 +918,14 @@ export default function CarrierModePage() {
         action: "round_summary",
         sessionId: sid,
         alivePlayers: alivePlayersForApi(playersRef.current, userMode),
-        zombieId: zombieIdRef.current,
+        zombieIds: zombieIdsRef.current,
         shotgunHolderId: shotgunHolderRef.current,
         vaccineHolderId: vaccineHolderRef.current,
         shotgunUsed: shotgunUsedRef.current,
         vaccineUsed: vaccineUsedRef.current,
         roles: rolesRef.current,
-        teams: teamsRef.current,
-        pendingInfectionTeams: pendingInfectionTeamsRef.current,
         allianceLatentThisRound: allianceLatentThisRoundRef.current,
+        deductionRoundHistory: deductionRoundHistoryRef.current,
         shotgunResult: ir?.shotgunResult ?? "not_used",
         vaccineResult: ir?.vaccineResult ?? "not_used",
         userMode,
@@ -691,7 +951,11 @@ export default function CarrierModePage() {
           const announcement = String(ev.announcement ?? "");
           const hint = String(ev.hint ?? "");
           const score = ev.score as RoundSummaryEntry["score"];
-          const rolesEv = (ev.roles as Record<string, Role>) ?? {};
+          const rolesEvRaw = (ev.roles as Record<string, Role>) ?? {};
+          const rolesEv =
+            userMode === "blind" && Object.keys(rolesEvRaw).length === 0
+              ? rolesRef.current
+              : rolesEvRaw;
           setRoles(rolesEv);
           rolesRef.current = rolesEv;
           setRoundSummary({
@@ -701,6 +965,7 @@ export default function CarrierModePage() {
             shotgunResult: String(ev.shotgunResult ?? ""),
             vaccineResult: String(ev.vaccineResult ?? ""),
             teams: Array.isArray(ev.teams) ? (ev.teams as CarrierTeam[]) : [],
+            allianceLatentFromActionsRound: ev.allianceLatentFromActionsRound === true,
             score: score ?? {
               humans: 0,
               zombies: 0,
@@ -715,37 +980,87 @@ export default function CarrierModePage() {
             round,
             type: "system",
           });
-          pendingInfectionTeamsRef.current = [];
-          allianceLatentThisRoundRef.current = false;
-          if (ev.latentInfectionSummary && typeof ev.latentInfectionSummary === "object") {
-            const ls = ev.latentInfectionSummary as Record<string, unknown>;
-            const zname = String(ls.zombieName ?? "");
-            const members = Array.isArray(ls.infectedTeamMembers)
-              ? (ls.infectedTeamMembers as unknown[]).map((x) => String(x))
-              : [];
-            const r = typeof ls.round === "number" ? ls.round : round;
-            if (zname && members.length) {
-              setLatentInfectionEvents((prev) => [
-                ...prev,
-                { round: r, zombieName: zname, infectedTeamMembers: members },
-              ]);
-            }
-          }
-          setPlayers((prev) =>
-            prev.map((p) => ({
-              ...p,
-              role: rolesEv[p.provider] ?? p.role,
-            }))
-          );
-          if (ev.gameOver === true) {
-            setWinner(
-              ev.winner === "humans" || ev.winner === "zombies"
-                ? ev.winner
-                : null
+          allianceLatentThisRoundRef.current = ev.allianceLatentFromActionsRound === true;
+          const teamsSnap = Array.isArray(ev.teams)
+            ? (ev.teams as CarrierTeam[]).map((t) => ({
+                id: t.id,
+                members: [...t.members],
+                ...(t.hasLatentInfection !== undefined
+                  ? { hasLatentInfection: t.hasLatentInfection }
+                  : {}),
+                ...(typeof t.round === "number" ? { round: t.round } : {}),
+              }))
+            : [];
+          setRoundHistories((prev) => {
+            const rest = prev.filter((x) => x.round !== round);
+            const next = [
+              ...rest,
+              {
+                round,
+                shotgunResult: String(ev.shotgunResult ?? "unknown"),
+                vaccineResult: String(ev.vaccineResult ?? "unknown"),
+                infiltrationHint: hint,
+              },
+            ];
+            next.sort((a, b) => a.round - b.round);
+            roundHistoriesRef.current = next;
+            return next;
+          });
+          setPlayers((prev) => {
+            const next = syncPlayersWithRolesTeams(prev, rolesEv, teamsSnap);
+            playersRef.current = next;
+            return next;
+          });
+          const gameOver = ev.gameOver === true;
+          if (
+            gameOver &&
+            Array.isArray(ev.originalZombieIds) &&
+            ev.originalZombieIds.length > 0
+          ) {
+            const oz = (ev.originalZombieIds as unknown[]).filter(
+              (x): x is string => typeof x === "string"
             );
-            setPhase("ended");
+            setZombieIds(oz);
+            zombieIdsRef.current = oz;
+          }
+          const w =
+            ev.winner === "humans" || ev.winner === "zombies" ? ev.winner : null;
+          setTeams(teamsSnap);
+          teamsRef.current = teamsSnap;
+          const soloIdsFromPayload = Array.isArray(ev.soloEliminatedForJudgment)
+            ? (ev.soloEliminatedForJudgment as unknown[]).filter(
+                (x): x is string => typeof x === "string"
+              )
+            : teamsSnap
+                .filter((t) => t.members.length === 1)
+                .flatMap((t) => t.members);
+          const soloNames = soloIdsFromPayload.map((id) =>
+            carrierDisplayNameForProvider(id, playersRef.current)
+          );
+
+          setSummaryHadGameOver(gameOver);
+          setPhase("between_rounds");
+
+          if (gameOver && w) {
+            setWinner(w);
+            setPendingGameEnd({
+              winner: w,
+              soloEliminated: soloNames,
+              teamsAtJudgment: teamsSnap,
+            });
+          } else if (gameOver && !w) {
+            setWinner(null);
+            setPendingGameEnd(null);
+          } else if (round >= 5) {
+            const ww: "humans" | "zombies" = w ?? "humans";
+            setWinner(ww);
+            setPendingGameEnd({
+              winner: ww,
+              soloEliminated: soloNames,
+              teamsAtJudgment: teamsSnap,
+            });
           } else {
-            setPhase("between_rounds");
+            setPendingGameEnd(null);
           }
         }
         if (ev.type === "error") {
@@ -781,24 +1096,6 @@ export default function CarrierModePage() {
     })();
   }, [runActionsStream, finishAfterActionsIfDone]);
 
-  const resumeAllianceResponse = useCallback(
-    async (accepted: boolean, text?: string) => {
-      const sid = gameIdRef.current;
-      const pack = actionsAlliancePausedRef.current;
-      if (!sid || !pack) return;
-      stopUserTimer();
-      const r = currentRoundRef.current;
-      const completed = await runActionsStream(sid, r, {
-        actionsPausedResume: pack,
-        userAllianceResponse: { accepted, text: text ?? "" },
-      });
-      actionsAlliancePausedRef.current = null;
-      setAlliancePauseUi(null);
-      if (completed) await finishAfterActionsIfDone(sid, r);
-    },
-    [runActionsStream, finishAfterActionsIfDone, stopUserTimer]
-  );
-
   const submitUserRoundAction = useCallback(async () => {
     const sid = gameIdRef.current;
     const pack = actionsUserTurnPausedRef.current;
@@ -811,16 +1108,11 @@ export default function CarrierModePage() {
         action: userRoundAction,
         target: userRoundTarget,
       },
-      userAllianceRequestText:
-        userRoundAction === "ALLIANCE_REQUEST" && allianceRequestDraft.trim()
-          ? allianceRequestDraft.trim()
-          : null,
     });
     actionsUserTurnPausedRef.current = null;
     setUserTurnPauseUi(null);
     setUserRoundAction("NONE");
     setUserRoundTarget(null);
-    setAllianceRequestDraft("");
     if (completed) await finishAfterActionsIfDone(sid, r);
   }, [
     runActionsStream,
@@ -828,16 +1120,23 @@ export default function CarrierModePage() {
     stopUserTimer,
     userRoundAction,
     userRoundTarget,
-    allianceRequestDraft,
   ]);
 
   const beginRound = useCallback(
     async (round: number) => {
       const sid = gameIdRef.current;
       if (!sid) return;
+      setActionFeed([]);
       currentRoundRef.current = round;
       setCurrentRound(round);
       setActiveHalf(1);
+      setSummaryHadGameOver(false);
+      setRoundSummary(null);
+      setMessages((prev) => {
+        const next = prev.filter((m) => !(m.type === "system" && m.round < round));
+        messagesRef.current = next;
+        return next;
+      });
       addMessage({
         provider: "system",
         name: "System",
@@ -855,10 +1154,17 @@ export default function CarrierModePage() {
     setMessages([]);
     setRoundSummary(null);
     setWinner(null);
+    setPendingGameEnd(null);
+    setSummaryHadGameOver(false);
+    setShotgunUsed(0);
+    setVaccineUsed(0);
     setIsUserEliminated(false);
-    setLatentInfectionEvents([]);
+    setRoundHistories([]);
+    roundHistoriesRef.current = [];
+    setDeductionRoundHistory([]);
+    deductionRoundHistoryRef.current = [];
+    setDeductionBoardOpen(false);
     setGameEndingNarration("");
-    pendingInfectionTeamsRef.current = [];
     allianceLatentThisRoundRef.current = false;
 
     const base: Player[] = AI_PLAYERS.map((p) => ({
@@ -867,6 +1173,8 @@ export default function CarrierModePage() {
       color: p.color,
       isAlive: true,
       role: "human",
+      status: "HUMAN",
+      teamId: null,
     }));
     if (userMode === "challenge") {
       base.push({
@@ -875,6 +1183,8 @@ export default function CarrierModePage() {
         color: "#f4f4f5",
         isAlive: true,
         role: "human",
+        status: "HUMAN",
+        teamId: null,
         isUser: true,
       });
     }
@@ -886,7 +1196,10 @@ export default function CarrierModePage() {
     try {
       const res = await postCarrier({
         action: "start",
-        alivePlayers: AI_PLAYERS.map((p) => p.provider),
+        alivePlayers:
+          userMode === "challenge"
+            ? [...AI_PLAYERS.map((p) => p.provider), "user"]
+            : AI_PLAYERS.map((p) => p.provider),
         userMode,
         language: languageRef.current,
         round: 1,
@@ -896,14 +1209,22 @@ export default function CarrierModePage() {
         return;
       }
       let sid = "";
-      let zid = "";
+      let zids: string[] = [];
       let sh = "";
       let vx = "";
       let ann = "";
       await readCarrierSse(res, (ev) => {
         if (ev.type === "start") {
           sid = String(ev.sessionId ?? "");
-          zid = String(ev.zombieId ?? "");
+          if (Array.isArray(ev.zombieIds)) {
+            zids = (ev.zombieIds as unknown[])
+              .filter((x): x is string => typeof x === "string")
+              .slice(0, 4);
+          }
+          if (zids.length < 2 && typeof ev.zombieId === "string" && ev.zombieId) {
+            zids = [ev.zombieId];
+          }
+          zids = [...new Set(zids)];
           sh = String(ev.shotgunHolderId ?? "");
           vx = String(ev.vaccineHolderId ?? "");
           ann = String(ev.announcement ?? "");
@@ -911,37 +1232,48 @@ export default function CarrierModePage() {
       });
       setGameId(sid);
       gameIdRef.current = sid;
-      setZombieId(zid);
-      zombieIdRef.current = zid;
+      setZombieIds(zids);
+      zombieIdsRef.current = zids;
       setShotgunHolderId(sh);
       shotgunHolderRef.current = sh;
       setVaccineHolderId(vx);
       vaccineHolderRef.current = vx;
 
       const initialRoles: Record<string, Role> = {};
-      for (const p of AI_PLAYERS) {
-        initialRoles[p.provider] = p.provider === zid ? "zombie" : "human";
-      }
-      if (userMode === "challenge") {
-        initialRoles.user = zid === "user" ? "zombie" : "human";
+      if (userMode === "blind") {
+        // BLIND: do not infer roles from zombieIds (server omits them). Empty roles → server bootstrap from DB.
+      } else {
+        for (const p of AI_PLAYERS) {
+          initialRoles[p.provider] = zids.includes(p.provider) ? "zombie" : "human";
+        }
+        if (userMode === "challenge") {
+          initialRoles.user = zids.includes("user") ? "zombie" : "human";
+        }
       }
       setRoles(initialRoles);
       rolesRef.current = initialRoles;
 
-      setPlayers((prev) =>
-        prev.map((p) => ({
-          ...p,
-          role: initialRoles[p.provider] ?? "human",
-        }))
-      );
+      setPlayers((prev) => {
+        const next = prev.map((p) => {
+          const role = initialRoles[p.provider] ?? "human";
+          return {
+            ...p,
+            role,
+            status: roleToPlayerStatus(role),
+            teamId: null,
+          };
+        });
+        playersRef.current = next;
+        return next;
+      });
 
       if (userMode === "challenge") {
         setChallengeRoleToast(
-          zid === "user"
-            ? "You are the ZOMBIE. Infiltrate and survive."
-            : "You are HUMAN. Survive the outbreak."
+          zids.includes("user")
+            ? "🧟 당신은 좀비입니다. 들키지 마세요."
+            : "😇 당신은 인간입니다. 생존하세요."
         );
-        window.setTimeout(() => setChallengeRoleToast(null), 5000);
+        window.setTimeout(() => setChallengeRoleToast(null), 8000);
       }
 
       addMessage({
@@ -952,12 +1284,8 @@ export default function CarrierModePage() {
         type: "system",
       });
 
-      const soloTeams: CarrierTeam[] = alivePlayersForApi(
-        playersRef.current,
-        userMode
-      ).map((id) => ({ id: `team_${id}`, members: [id] }));
-      setTeams(soloTeams);
-      teamsRef.current = soloTeams;
+      setTeams([]);
+      teamsRef.current = [];
 
       await beginRound(1);
     } catch {
@@ -984,7 +1312,6 @@ export default function CarrierModePage() {
         const completed = await runActionsStream(sid, r, {
           actionsUserTurnResume: pack,
           userAction: { action: "NONE", target: null },
-          userAllianceRequestText: null,
         });
         actionsUserTurnPausedRef.current = null;
         setUserTurnPauseUi(null);
@@ -1014,29 +1341,53 @@ export default function CarrierModePage() {
 
   const continueNextRound = useCallback(() => {
     if (phase !== "between_rounds") return;
-    const next = currentRoundRef.current + 1;
+    const r = currentRoundRef.current;
+    if (r >= 5 || summaryHadGameOver) {
+      if (pendingGameEnd) {
+        setActionFeed([]);
+        setRoundSummary(null);
+        setPhase("pre_end_aggregate");
+      } else if (summaryHadGameOver) {
+        setActionFeed([]);
+        setRoundSummary(null);
+        setPhase("ended");
+      }
+      return;
+    }
+    const next = r + 1;
     if (next > 5) return;
     void beginRound(next);
-  }, [phase, beginRound]);
+  }, [phase, beginRound, summaryHadGameOver, pendingGameEnd]);
 
   const phaseLabel = useMemo(() => {
     if (phase === "setup" || phase === "starting") return "—";
-    if (phase === "speeches" || phase === "user_speech") return "전반 · 발언";
-    if (phase === "paused_after_speeches") return "전반 완료";
-    if (phase === "actions") return "후반 · 협상";
-    if (phase === "paused_user_alliance") return "동맹 응답";
-    if (phase === "paused_user_action") return "내 행동";
-    if (phase === "summary") return "ROUND SUMMARY";
-    if (phase === "between_rounds") return "CONTINUE";
+    const halfKo = activeHalf === 1 ? "전반" : "후반";
+    if (phase === "speeches" || phase === "user_speech") return `${currentRound}라운드 ${halfKo} · 발언`;
+    if (phase === "paused_after_speeches") return `${currentRound}라운드 전반 완료`;
+    if (phase === "actions") return `${currentRound}라운드 ${halfKo} · 협상`;
+    if (phase === "paused_user_action") return `${currentRound}라운드 · 내 행동`;
+    if (phase === "summary") return `${currentRound}라운드 · ROUND SUMMARY`;
+    if (phase === "between_rounds") return `${currentRound}라운드 · CONTINUE`;
+    if (phase === "pre_end_aggregate") return "최종 집계";
     if (phase === "ended") return "COMPLETE";
     return "—";
-  }, [phase]);
+  }, [phase, currentRound, activeHalf]);
 
-  const soloTeamsInit = useMemo(() => {
-    const ids: string[] = AI_PLAYERS.map((p) => p.provider);
-    if (userMode === "challenge") ids.push("user");
-    return ids;
-  }, [userMode]);
+  const challengeUserActionTargets = useMemo(() => {
+    const alive = alivePlayersForApi(players, userMode);
+    const myTeam = teams.find((t) => t.members.includes("user"));
+    if (userRoundAction === "VACCINE") {
+      const m = myTeam?.members.filter((id) => alive.includes(id)) ?? [];
+      return m.length ? m : alive.includes("user") ? ["user"] : [];
+    }
+    if (userRoundAction === "EXPEL") {
+      return alive.filter((id) => id !== "user");
+    }
+    if (userRoundAction === "SHOTGUN") {
+      return alive.filter((id) => id !== "user");
+    }
+    return [];
+  }, [players, userMode, teams, userRoundAction]);
 
   return (
     <main className={BG}>
@@ -1066,9 +1417,14 @@ export default function CarrierModePage() {
               🦠 CARRIER
             </h2>
             <p className="mt-3 max-w-md text-center text-sm text-zinc-500">
-              Social deduction with hidden infection, alliances, shotgun, and
-              vaccine. Five rounds. Largest faction wins — solos excluded from
-              final judgment.
+              Two hidden zombies; each round the host assigns new two-person teams at
+              random. One human holds three shotgun shots, another three vaccine doses.
+              Actions run in order: shotgun kills immediately, vaccine protects (or cures
+              zombies) this round. Expel is a majority vote tallied after everyone acts
+              (needs 2+ votes; ties expel no one). After votes, humans on a team with a
+              living zombie turn zombie unless vaccinated this round. Up to five rounds;
+              zombies win when their count meets or beats humans among the living, or one
+              side is wiped out.
             </p>
 
             <div className="mt-10 w-full max-w-lg">
@@ -1100,7 +1456,7 @@ export default function CarrierModePage() {
                     id: "god" as const,
                     icon: "👁️",
                     title: "GOD MODE",
-                    desc: "See zombie, shotgun, vaccine, and latent infection flags live.",
+                    desc: "See both zombies, shotgun, vaccine, and latent infection flags live.",
                     active: "ring-2 ring-emerald-400/90 border-emerald-500/40",
                   },
                   {
@@ -1114,7 +1470,7 @@ export default function CarrierModePage() {
                     id: "challenge" as const,
                     icon: "⚔️",
                     title: "CHALLENGE MODE",
-                    desc: "Play as the seventh participant. You may be the zombie.",
+                    desc: "Play as the sixth participant. You may be one of the zombies.",
                     active: "ring-2 ring-rose-500/90 border-rose-500/40",
                   },
                 ] as const
@@ -1187,166 +1543,344 @@ export default function CarrierModePage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-stretch justify-center gap-3 sm:gap-4">
-              {players.map((p) => {
-                const initial = p.name.slice(0, 1).toUpperCase();
-                const speaking = streamingProvider === p.provider;
-                const showZombie = userMode === "god" && p.role === "zombie";
-                const showShot =
-                  userMode === "god" && p.provider === shotgunHolderId && !shotgunUsed;
-                const showVax =
-                  userMode === "god" && p.provider === vaccineHolderId && !vaccineUsed;
-                const selfZombieChallenge =
-                  userMode === "challenge" &&
-                  p.isUser &&
-                  p.role === "zombie" &&
-                  !isUserEliminated;
-                const selfTool =
-                  userMode === "challenge" &&
-                  p.isUser &&
-                  !isUserEliminated &&
-                  (p.provider === shotgunHolderId || p.provider === vaccineHolderId);
-                return (
-                  <div
-                    key={p.provider}
-                    className={`relative flex min-w-[4.5rem] flex-col items-center gap-1.5 rounded-xl border px-2 py-3 ${
-                      p.isUser
-                        ? "border-white/40 bg-white/[0.06]"
-                        : "border-white/10 bg-white/[0.03]"
-                    } ${!p.isAlive ? "opacity-50 grayscale" : ""} `}
-                  >
-                    <div
-                      className={`relative flex h-12 w-12 items-center justify-center rounded-full text-sm font-bold text-white ${
-                        speaking ? "animate-pulse ring-4 ring-emerald-400/80" : "ring-2 ring-white/10"
-                      }`}
-                      style={{ backgroundColor: p.color }}
-                    >
-                      {showZombie || selfZombieChallenge ? (
-                        <span className="pointer-events-none absolute -right-0.5 -top-0.5 z-10 text-[11px] drop-shadow-md">
-                          🦠
-                        </span>
-                      ) : null}
-                      {showShot ? (
-                        <span className="pointer-events-none absolute -left-0.5 -top-0.5 z-10 text-[10px]">
-                          🔫
-                        </span>
-                      ) : null}
-                      {showVax ? (
-                        <span className="pointer-events-none absolute -right-0.5 -bottom-0.5 z-10 text-[10px]">
-                          💉
-                        </span>
-                      ) : null}
-                      {selfTool ? (
-                        <span className="pointer-events-none absolute -left-0.5 -bottom-0.5 z-10 text-[10px]">
-                          {p.provider === shotgunHolderId && !shotgunUsed ? "🔫" : ""}
-                          {p.provider === vaccineHolderId && !vaccineUsed ? "💉" : ""}
-                        </span>
-                      ) : null}
-                      {initial}
-                      {!p.isAlive ? (
-                        <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-lg text-red-500">
-                          ✕
-                        </span>
-                      ) : null}
-                    </div>
-                    <span className="max-w-[5rem] truncate text-center text-[10px] font-semibold text-zinc-200">
-                      {p.name}
-                    </span>
-                    <span
-                      className={`text-[9px] font-bold uppercase ${
-                        p.isAlive ? "text-emerald-400" : "text-red-400"
-                      }`}
-                    >
-                      {p.isAlive ? "Alive" : "Out"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {teams.length > 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                  Teams
-                </h3>
-                <div className="mt-3 space-y-3">
-                  {teams
-                    .filter((t) => t.members.length > 1)
-                    .map((t, idx) => {
-                      const names = t.members
-                        .map((m) => playerByProvider.get(m)?.name ?? m)
-                        .join(" + ");
-                      const rosterKey = [...t.members].sort().join("_");
+            {deductionRoundHistory.length > 0 ? (
+              <div className="mx-auto w-full max-w-2xl rounded-2xl border border-violet-500/35 bg-violet-950/15">
+                <button
+                  type="button"
+                  onClick={() => setDeductionBoardOpen((o) => !o)}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition hover:bg-violet-500/10"
+                >
+                  <span className="text-sm font-bold text-violet-200">
+                    {language === "Korean" ? "📋 추리 보드" : "📋 Deduction Board"}
+                  </span>
+                  <span className="text-xs font-bold text-violet-400 tabular-nums">
+                    {deductionBoardOpen ? "▲" : "▼"}
+                  </span>
+                </button>
+                {deductionBoardOpen ? (
+                  <div className="max-h-[min(50vh,420px)] space-y-3 overflow-y-auto border-t border-violet-500/25 px-4 py-3 text-xs leading-relaxed text-zinc-300">
+                    {deductionRoundHistory.map((rh) => {
+                      const ko = language === "Korean";
+                      const shLine =
+                        rh.shotgunEvents.length > 0
+                          ? rh.shotgunEvents
+                              .map((e) => {
+                                const r =
+                                  e.result === "zombie_killed"
+                                    ? ko
+                                      ? "좀비 제거"
+                                      : "zombie killed"
+                                    : ko
+                                      ? "인간 오사"
+                                      : "human killed";
+                                return `${carrierDisplayNameForProvider(e.shooter, players)} → ${carrierDisplayNameForProvider(e.target, players)} (${r})`;
+                              })
+                              .join("; ")
+                          : ko
+                            ? "샷건 미사용"
+                            : "Shotgun not used";
+                      const vxLine =
+                        rh.vaccineEvents.length > 0
+                          ? rh.vaccineEvents
+                              .map((e) => {
+                                const r =
+                                  e.result === "saved"
+                                    ? ko
+                                      ? "구원/치료"
+                                      : "saved/cured"
+                                    : e.result === "immunized"
+                                      ? ko
+                                        ? "면역 부여"
+                                        : "immunized"
+                                      : ko
+                                        ? "무효"
+                                        : "no effect";
+                                return `${carrierDisplayNameForProvider(e.user, players)} → ${carrierDisplayNameForProvider(e.target, players)} (${r})`;
+                              })
+                              .join("; ")
+                          : ko
+                            ? "백신 미사용"
+                            : "Vaccine not used";
+                      const elimLine =
+                        rh.eliminations?.length
+                          ? rh.eliminations
+                              .map(
+                                (e) =>
+                                  `${carrierDisplayNameForProvider(e.provider, players)} — ${e.reason}`
+                              )
+                              .join("; ")
+                          : ko
+                            ? "없음"
+                            : "None";
                       return (
                         <div
-                          key={`team-${rosterKey}`}
-                          className={`rounded-xl border px-3 py-2 ${
-                            userMode === "god" && t.hasLatentInfection
-                              ? "border-amber-500/50 bg-amber-950/30"
-                              : "border-white/10 bg-black/30"
-                          }`}
+                          key={rh.round}
+                          className="rounded-xl border border-white/10 bg-black/25 p-3 shadow-inner"
                         >
-                          <p className="text-[10px] font-semibold uppercase text-zinc-500">
-                            Team {String.fromCharCode(65 + idx)}: {names}
-                            {userMode === "god" && t.hasLatentInfection ? " · latent" : ""}
+                          <p className="mb-2 font-black uppercase tracking-wider text-violet-300">
+                            {ko ? `라운드 ${rh.round}` : `Round ${rh.round}`}
                           </p>
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {t.members.map((m) => {
-                              const pl = playerByProvider.get(m);
-                              const col =
-                                AI_PLAYERS.find((a) => a.provider === m)?.color ??
-                                (m === "user" ? "#f4f4f5" : "#e4e4e7");
-                              return (
-                                <span
-                                  key={m}
-                                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-                                  style={{ backgroundColor: `${col}55` }}
-                                >
-                                  <span
-                                    className="h-2 w-2 rounded-full"
-                                    style={{ backgroundColor: col }}
-                                  />
-                                  {pl?.name ?? m}
-                                </span>
-                              );
-                            })}
-                          </div>
+                          <section className="mt-2 space-y-1">
+                            <p className="font-bold text-zinc-400">
+                              {ko ? "팀 편성" : "Team history"}
+                            </p>
+                            {rh.teams.map((team, ti) => (
+                              <p key={`${rh.round}-${team.id}-${ti}`} className="pl-2 text-zinc-400">
+                                {ko ? `팀 ${ti + 1}` : `Team ${ti + 1}`}:{" "}
+                                {team.members
+                                  .map((id) => carrierDisplayNameForProvider(id, players))
+                                  .join(", ")}
+                              </p>
+                            ))}
+                          </section>
+                          <section className="mt-2 space-y-1">
+                            <p className="font-bold text-zinc-400">
+                              {ko ? "감염" : "Infection"}
+                            </p>
+                            <p className="pl-2">
+                              {rh.infectionOccurred
+                                ? ko
+                                  ? `⚠️ 감염 발생 (${rh.infectionCount}명 전환)`
+                                  : `⚠️ New infection (${rh.infectionCount} turned)`
+                                : ko
+                                  ? "✅ 감염 없음"
+                                  : "✅ No new infections"}
+                            </p>
+                          </section>
+                          <section className="mt-2 space-y-1">
+                            <p className="font-bold text-zinc-400">
+                              {ko ? "투표" : "Votes"}
+                            </p>
+                            <p className="pl-2">
+                              {summarizeDeductionVotes(rh.votes, players)} →{" "}
+                              {rh.expelResult
+                                ? ko
+                                  ? `${carrierDisplayNameForProvider(rh.expelResult, players)} 추방${
+                                      rh.expelledRole === "zombie"
+                                        ? " — 🧟 좀비였습니다!"
+                                        : rh.expelledRole === "human"
+                                          ? " — 😇 인간이었습니다..."
+                                          : ""
+                                    }`
+                                  : `${carrierDisplayNameForProvider(rh.expelResult, players)} expelled${
+                                      rh.expelledRole === "zombie"
+                                        ? " — was zombie"
+                                        : rh.expelledRole === "human"
+                                          ? " — was human"
+                                          : ""
+                                    }`
+                                : ko
+                                  ? "추방 없음"
+                                  : "No expulsion"}
+                            </p>
+                          </section>
+                          <section className="mt-2 space-y-1">
+                            <p className="font-bold text-zinc-400">
+                              {ko ? "아이템" : "Items"}
+                            </p>
+                            <p className="pl-2">
+                              {shLine}. {vxLine}.
+                            </p>
+                          </section>
+                          <section className="mt-2 space-y-1">
+                            <p className="font-bold text-zinc-400">
+                              {ko ? "제거" : "Eliminations"}
+                            </p>
+                            <p className="pl-2">{elimLine}</p>
+                          </section>
+                          <section className="mt-2 space-y-1">
+                            <p className="font-bold text-zinc-400">
+                              {ko ? "생존자" : "Alive"}
+                            </p>
+                            <p className="pl-2">
+                              {rh.aliveAfter
+                                .map((id) => carrierDisplayNameForProvider(id, players))
+                                .join(", ")}
+                            </p>
+                          </section>
+                          {userMode === "god" &&
+                          (rh.newInfections?.length ||
+                            typeof rh.zombieCountAfter === "number") ? (
+                            <section className="mt-2 space-y-1 border-t border-amber-500/30 pt-2">
+                              <p className="font-bold text-amber-400">
+                                {ko ? "GOD 정보" : "GOD intel"}
+                              </p>
+                              {rh.newInfections?.length ? (
+                                <p className="pl-2 text-amber-200/95">
+                                  {ko ? "이번 라운드 전환: " : "Turned this round: "}
+                                  {rh.newInfections
+                                    .map((id) => carrierDisplayNameForProvider(id, players))
+                                    .join(", ")}
+                                </p>
+                              ) : null}
+                              {typeof rh.zombieCountAfter === "number" &&
+                              typeof rh.humanCountAfter === "number" ? (
+                                <p className="pl-2 text-amber-200/95">
+                                  {ko
+                                    ? `좀비 ${rh.zombieCountAfter} · 인간 ${rh.humanCountAfter}`
+                                    : `Zombies ${rh.zombieCountAfter} · Humans ${rh.humanCountAfter}`}
+                                </p>
+                              ) : null}
+                            </section>
+                          ) : null}
+                          {rh.speeches.length > 0 ? (
+                            <section className="mt-2 space-y-1 border-t border-white/10 pt-2">
+                              <p className="font-bold text-zinc-400">
+                                {ko ? "발언 요약" : "Speech summaries"}
+                              </p>
+                              <ul className="list-inside list-disc space-y-1 pl-1 text-zinc-500">
+                                {rh.speeches.map((s, i) => (
+                                  <li key={`${rh.round}-sp-${i}`}>
+                                    <span className="font-semibold text-zinc-400">{s.name}: </span>
+                                    {s.summary}
+                                  </li>
+                                ))}
+                              </ul>
+                            </section>
+                          ) : null}
                         </div>
                       );
                     })}
-
-                  <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase text-zinc-500">
-                      Solo players
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {teams
-                        .filter((t) => t.members.length === 1)
-                        .flatMap((t) => t.members)
-                        .map((m) => {
-                          const pl = playerByProvider.get(m);
-                          const col =
-                            AI_PLAYERS.find((a) => a.provider === m)?.color ??
-                            (m === "user" ? "#f4f4f5" : "#e4e4e7");
-                          return (
-                            <span
-                              key={m}
-                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-                              style={{ backgroundColor: `${col}55` }}
-                            >
-                              <span
-                                className="h-2 w-2 rounded-full"
-                                style={{ backgroundColor: col }}
-                              />
-                              {pl?.name ?? m}
-                            </span>
-                          );
-                        })}
-                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
             ) : null}
+
+            <div className="flex flex-wrap items-stretch justify-center gap-4 sm:gap-5">
+              {(teams.length > 0 ? teams : [{ id: "pending", members: players.map((x) => x.provider) }]).map(
+                (t, ti) => {
+                  const accent =
+                    TEAM_BORDER_ACCENT_PALETTE[ti % TEAM_BORDER_ACCENT_PALETTE.length] ?? "#64748b";
+                  const showBand = teams.length > 0;
+                  return (
+                    <div
+                      key={`${t.id}-${ti}`}
+                      className={`flex min-w-[8rem] flex-col gap-2 rounded-2xl px-3 py-3 sm:min-w-[9rem] ${
+                        showBand
+                          ? "border-2 bg-white/[0.03] shadow-sm"
+                          : "border border-dashed border-white/15 bg-transparent"
+                      }`}
+                      style={
+                        showBand ? { borderColor: `${accent}cc`, boxShadow: `0 0 0 1px ${accent}22 inset` } : {}
+                      }
+                    >
+                      {showBand ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className="text-[10px] font-black uppercase tracking-wider"
+                            style={{ color: accent }}
+                          >
+                            Team {ti + 1}
+                          </span>
+                          {userMode === "god" && t.hasLatentInfection === true ? (
+                            <span
+                              className="text-[9px] font-bold text-amber-400"
+                              title="Living zombie + human together"
+                            >
+                              잠복
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                          라운드 팀 로딩 중…
+                        </p>
+                      )}
+                      <div className="flex flex-wrap justify-center gap-3">
+                        {t.members.map((mid) => {
+                          const p = playerByProvider.get(mid);
+                          if (!p) return null;
+                          const initial = p.name.slice(0, 1).toUpperCase();
+                          const speaking = streamingProvider === p.provider;
+                          const showGodSecrets = userMode === "god";
+                          const showSelfSecrets = userMode === "challenge" && p.isUser === true;
+                          const showRoleBadges = showGodSecrets || showSelfSecrets;
+                          const showItemBadges = showGodSecrets || showSelfSecrets;
+
+                          const showZombieBadge = showRoleBadges && p.status === "ZOMBIE";
+                          const showShot =
+                            showItemBadges &&
+                            p.provider === shotgunHolderId &&
+                            shotgunUsed < MAX_CARRIER_TOOL_USES;
+                          const showVax =
+                            showItemBadges &&
+                            p.provider === vaccineHolderId &&
+                            vaccineUsed < MAX_CARRIER_TOOL_USES;
+                          const selfTool =
+                            showSelfSecrets &&
+                            p.isUser === true &&
+                            !isUserEliminated &&
+                            (p.provider === shotgunHolderId || p.provider === vaccineHolderId);
+                          return (
+                            <div
+                              key={p.provider}
+                              className={`relative flex min-w-[4.5rem] flex-col items-center gap-1.5 rounded-xl border px-2 py-3 ${
+                                p.isUser
+                                  ? "border-white/40 bg-white/[0.06]"
+                                  : "border-white/10 bg-white/[0.03]"
+                              } ${!p.isAlive ? "opacity-50 grayscale" : ""} `}
+                            >
+                              <div
+                                className={`relative flex h-12 w-12 items-center justify-center rounded-full text-sm font-bold text-white ${
+                                  speaking
+                                    ? "animate-pulse ring-4 ring-emerald-400/80"
+                                    : "ring-2 ring-white/10"
+                                }`}
+                                style={{ backgroundColor: p.color }}
+                              >
+                                {showZombieBadge ? (
+                                  <span className="pointer-events-none absolute -right-1 -top-1 z-10 text-xl drop-shadow-md">
+                                    🧟
+                                  </span>
+                                ) : null}
+                                {showShot ? (
+                                  <span className="pointer-events-none absolute -left-1 -bottom-1 z-10 text-xl drop-shadow-md">
+                                    🎯
+                                  </span>
+                                ) : null}
+                                {showVax ? (
+                                  <span className="pointer-events-none absolute -right-1 -bottom-1 z-10 text-xl drop-shadow-md">
+                                    💉
+                                  </span>
+                                ) : null}
+                                {selfTool ? (
+                                  <span className="pointer-events-none absolute -left-1 -bottom-1 z-10 flex flex-col gap-0.5 text-xl leading-none drop-shadow-md">
+                                    {p.provider === shotgunHolderId &&
+                                    shotgunUsed < MAX_CARRIER_TOOL_USES ? (
+                                      <span>🎯</span>
+                                    ) : null}
+                                    {p.provider === vaccineHolderId &&
+                                    vaccineUsed < MAX_CARRIER_TOOL_USES ? (
+                                      <span>💉</span>
+                                    ) : null}
+                                  </span>
+                                ) : null}
+                                {initial}
+                                {!p.isAlive ? (
+                                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-lg text-red-500">
+                                    ✕
+                                  </span>
+                                ) : null}
+                              </div>
+                              <span className="max-w-[5rem] truncate text-center text-[10px] font-semibold text-zinc-200">
+                                {p.name}
+                              </span>
+                              <span
+                                className={`text-[9px] font-bold uppercase ${
+                                  p.isAlive ? "text-emerald-400" : "text-red-400"
+                                }`}
+                              >
+                                {p.isAlive ? "Alive" : "Out"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
 
             {phase === "user_speech" && userMode === "challenge" ? (
               <div className="rounded-2xl border border-sky-500/40 bg-sky-950/25 p-4">
@@ -1476,47 +2010,22 @@ export default function CarrierModePage() {
                     <span className="font-semibold text-zinc-400">백신</span>{" "}
                     {formatCarrierToolResultKo(latestSummary.vaccineResult)}
                   </p>
-                  <p className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-base text-zinc-300">
-                    <span className="font-semibold text-emerald-200/95">생존</span>
-                    <span className="text-zinc-400">인간</span>
-                    <span className="text-lg font-bold tabular-nums text-white">
-                      {latestSummary.score.humans}
-                    </span>
-                    <span className="text-zinc-500">명</span>
-                    <span className="text-zinc-600">·</span>
-                    <span className="text-zinc-400">좀비</span>
-                    <span className="text-lg font-bold tabular-nums text-white">
-                      {latestSummary.score.zombies}
-                    </span>
-                    <span className="text-zinc-500">명</span>
+                  <p className="mt-3 text-base leading-relaxed text-zinc-300">
+                    {(() => {
+                      const currentDeduction = deductionRoundHistory.find(
+                        (d) => d.round === latestSummary.round
+                      );
+                      const infected = currentDeduction?.infectionOccurred ?? false;
+                      const count = currentDeduction?.infectionCount ?? 0;
+                      const ko = language === "Korean";
+                      if (infected) {
+                        return ko
+                          ? `⚠️ 이번 라운드 감염 발생! (${count}명 전환)`
+                          : `⚠️ Infection this round! (${count} turned)`;
+                      }
+                      return ko ? "✅ 이번 라운드 감염 없음" : "✅ No infection this round";
+                    })()}
                   </p>
-                </div>
-              </div>
-            ) : null}
-
-            {phase === "paused_user_alliance" && alliancePauseUi ? (
-              <div className="rounded-2xl border border-amber-500/40 bg-amber-950/25 p-4">
-                <p className="text-sm text-amber-100">
-                  {playerByProvider.get(alliancePauseUi.pending.requester)?.name ??
-                    alliancePauseUi.pending.requester}
-                  의 동맹 요청
-                </p>
-                <p className="mt-2 text-sm text-zinc-200">{alliancePauseUi.pending.reqText}</p>
-                <div className="mt-4 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void resumeAllianceResponse(true, "좋아요, 함께합시다.")}
-                    className="flex-1 rounded-full bg-emerald-600 py-2 text-sm font-bold text-white"
-                  >
-                    수락
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void resumeAllianceResponse(false, "이번엔 어렵네요.")}
-                    className="flex-1 rounded-full bg-red-600/90 py-2 text-sm font-bold text-white"
-                  >
-                    거절
-                  </button>
                 </div>
               </div>
             ) : null}
@@ -1536,10 +2045,9 @@ export default function CarrierModePage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(
                     [
-                      ["동맹요청", "ALLIANCE_REQUEST"],
                       ["샷건", "SHOTGUN"],
                       ["백신", "VACCINE"],
-                      ["추방", "EXPEL"],
+                      ["추방 투표", "EXPEL"],
                       ["패스", "NONE"],
                     ] as const
                   ).map(([label, a]) => (
@@ -1557,20 +2065,19 @@ export default function CarrierModePage() {
                     </button>
                   ))}
                 </div>
-                {userRoundAction === "ALLIANCE_REQUEST" ? (
-                  <input
-                    type="text"
-                    value={allianceRequestDraft}
-                    onChange={(e) => setAllianceRequestDraft(e.target.value)}
-                    placeholder="동맹 요청 한 줄 (선택)"
-                    className="mt-3 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
-                  />
+                {userRoundAction !== "NONE" ? (
+                  <p className="mt-2 text-[11px] text-zinc-500">
+                    {userRoundAction === "SHOTGUN"
+                      ? "샷건 대상 (본인 제외 생존자)"
+                      : userRoundAction === "VACCINE"
+                        ? "백신 대상 (이번 라운드 같은 팀 + 본인)"
+                        : userRoundAction === "EXPEL"
+                          ? "추방 투표 대상 (생존 플레이어)"
+                          : "대상 선택"}
+                  </p>
                 ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {soloTeamsInit
-                    .filter((id) => alivePlayersForApi(players, userMode).includes(id))
-                    .filter((id) => id !== "user")
-                    .map((id) => (
+                  {challengeUserActionTargets.map((id) => (
                       <button
                         key={id}
                         type="button"
@@ -1604,15 +2111,71 @@ export default function CarrierModePage() {
                   onClick={continueNextRound}
                   className="rounded-full border border-emerald-500/60 bg-emerald-500/15 px-8 py-3 text-sm font-bold uppercase tracking-wider text-emerald-100 transition hover:bg-emerald-500/25"
                 >
-                  {currentRound >= 5 ? "Finish →" : "다음 라운드 →"}
+                  다음 라운드 →
                 </button>
               </div>
             ) : null}
 
-            {phase === "ended" && winner ? (
+            {phase === "pre_end_aggregate" && pendingGameEnd ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+                <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-zinc-900/95 p-8 shadow-2xl">
+                  <h2 className="text-center text-xl font-black text-white sm:text-2xl">
+                    최종 결과 집계 중...
+                  </h2>
+                  <div className="mt-6 space-y-2 text-sm text-zinc-200">
+                    {pendingGameEnd.soloEliminated.length > 0
+                      ? pendingGameEnd.soloEliminated.map((name) => (
+                          <p key={name} className="text-center">
+                            {name}은 혼자 남아 제거되었습니다 ☠️
+                          </p>
+                        ))
+                      : null}
+                  </div>
+                  <div className="mt-8">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                      판정 기준 팀 구성
+                    </h3>
+                    <div className="mt-3 space-y-2 text-sm text-zinc-200">
+                      {pendingGameEnd.teamsAtJudgment
+                        .filter((t) => t.members.length > 1)
+                        .map((t, idx) => {
+                          const names = t.members
+                            .map((m) => carrierDisplayNameForProvider(m, players))
+                            .join(", ");
+                          return (
+                            <p key={`pre-${t.id}-${idx}`}>
+                              Team {String.fromCharCode(65 + idx)} ({t.members.length}명):{" "}
+                              {names}
+                            </p>
+                          );
+                        })}
+                      {pendingGameEnd.teamsAtJudgment.every((t) => t.members.length <= 1) ? (
+                        <p className="text-zinc-500">다인 팀 없음 (전원 솔로)</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingGameEnd(null);
+                      setPhase("ended");
+                    }}
+                    className="mt-10 w-full rounded-full bg-emerald-500 py-4 text-base font-black text-gray-950 shadow-lg shadow-emerald-500/25"
+                  >
+                    최종 결과 확인 →
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {phase === "ended" ? (
               <div
                 className={`fixed inset-0 z-40 flex items-center justify-center p-4 ${
-                  winner === "humans" ? "bg-emerald-950/95" : "bg-red-950/95"
+                  winner === "humans"
+                    ? "bg-emerald-950/95"
+                    : winner === "zombies"
+                      ? "bg-red-950/95"
+                      : "bg-zinc-950/95"
                 }`}
               >
                 <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/10 bg-black/60 p-8 shadow-2xl">
@@ -1623,24 +2186,29 @@ export default function CarrierModePage() {
                   ) : null}
                   <h2
                     className={`text-center text-2xl font-black ${
-                      winner === "humans" ? "text-emerald-300" : "text-red-300"
+                      winner === "humans"
+                        ? "text-emerald-300"
+                        : winner === "zombies"
+                          ? "text-red-300"
+                          : "text-zinc-300"
                     }`}
                   >
-                    {winner === "humans" ? "Humans win" : "Zombies win"}
+                    {winner === "humans"
+                      ? "Humans win"
+                      : winner === "zombies"
+                        ? "Zombies win"
+                        : "Game over"}
                   </h2>
                   <p className="mt-2 text-center text-sm text-zinc-400">
-                    Full reveal — roles at end, original zombie, and infection notes.
+                    Full reveal — roles at end, original zombies, and infection notes.
                   </p>
 
                   <div className="mt-8">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      Original zombie
+                      Original zombies
                     </h3>
                     <p className="mt-2 text-lg font-bold text-white">
-                      {zombieId === "user"
-                        ? "You"
-                        : AI_PLAYERS.find((a) => a.provider === zombieId)?.name ??
-                          zombieId}
+                      {formatCarrierOriginalZombiesLine(zombieIds)}
                     </p>
                   </div>
 
@@ -1659,21 +2227,12 @@ export default function CarrierModePage() {
 
                   <div className="mt-6">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      Infection timeline (hints)
+                      Infection
                     </h3>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-400">
-                      {latentInfectionEvents.length === 0 ? (
-                        <li>No latent waves recorded.</li>
-                      ) : (
-                        latentInfectionEvents.map((e, i) => (
-                          <li key={`${e.round}-${i}-${e.zombieName}`}>
-                            {language === "Korean"
-                              ? `Round ${e.round}: ${e.zombieName}이 ${e.infectedTeamMembers.join(", ")} 팀에 잠입하여 다음 라운드에 감염시켰습니다`
-                              : `Round ${e.round}: ${e.zombieName} infiltrated ${e.infectedTeamMembers.join(", ")} — infection spreads next round.`}
-                          </li>
-                        ))
-                      )}
-                    </ul>
+                    <p className="mt-2 text-xs text-zinc-400">
+                      End-of-round rule: any surviving human who shares a team with a living zombie
+                      becomes a zombie unless they were vaccinated that same round.
+                    </p>
                   </div>
 
                   <button

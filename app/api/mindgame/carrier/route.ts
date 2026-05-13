@@ -22,6 +22,19 @@ const AI_PLAYERS = [
 
 type ProviderId = (typeof AI_PLAYERS)[number]['provider']
 
+type CarrierTeam = {
+  id: string
+  members: string[]
+  hasLatentInfection?: boolean
+  round?: number
+}
+
+/** Max times shotgun / vaccine may be used per game (per holder) — also initial charges. */
+const MAX_SHOTGUN_USES = 3
+const MAX_VACCINE_USES = 3
+const INITIAL_SHOTGUN_COUNT = MAX_SHOTGUN_USES
+const INITIAL_VACCINE_COUNT = MAX_VACCINE_USES
+
 function getLangOverride(language: string): string {
   if (!language || language === 'English') return ''
   return `SYSTEM OVERRIDE: You MUST respond entirely in ${language}. 
@@ -48,8 +61,9 @@ Each round you must raise NEW arguments or NEW observations where relevant.
 `
 
 function buildCarrierGameRules(playerNamesList: string, totalPlayers: number): string {
-  return `GAME RULES — CARRIER (infection + alliances):
+  return `GAME RULES — CARRIER (infection + forced teams):
 You are one of ${totalPlayers} players. The players are ONLY: ${playerNamesList}.
+Your team roster each round is decided by the host — same for everyone for that round. You cannot RP refusing the assignment or swapping teams mid-round.
 Do NOT mention, invent, or reference any name not in this list.
 Do NOT fabricate events or quotes not in CONVERSATION HISTORY.
 If history is empty, do not invent prior debate.
@@ -64,7 +78,24 @@ function buildCarrierAliveBlock(aliveProviderIds: string[], userMode: string): s
   })
   return `CURRENTLY ACTIVE PLAYERS:
 ${lines.join('\n')}
-ELIMINATED PLAYERS DO NOT EXIST. Do not mention them.
+Refer only to players in this active list by name in your output.
+
+`
+}
+
+/** Names of everyone not in aliveProviderIds (for speech prompts). */
+function buildEliminatedSpeechBlock(aliveProviderIds: string[], userMode: string): string {
+  const base = AI_PLAYERS.map((p) => p.provider)
+  const universe = userMode === 'challenge' ? [...base, 'user'] : [...base]
+  const eliminated = universe.filter((id) => !aliveProviderIds.includes(id))
+  if (!eliminated.length) {
+    return '⛔ ELIMINATED PLAYERS — none yet.\n\n'
+  }
+  const eliminatedNames = eliminated.map((id) => providerDisplayName(id))
+  return `⛔ ELIMINATED PLAYERS — DO NOT MENTION THESE NAMES AT ALL:
+${eliminatedNames.join(', ')}
+These players are DEAD. Pretend they never existed.
+Never say their names. Never reference their words. Never mention your relationship with them.
 
 `
 }
@@ -74,7 +105,7 @@ type ConvTurn = {
   name: string
   text: string
   round: number
-  type: 'speech' | 'system' | 'negotiation' | 'alliance_request' | 'alliance_response'
+  type: 'speech' | 'system' | 'negotiation'
 }
 
 function buildHistoryText(conversation: ConvTurn[], aliveProviderIds: string[]): string {
@@ -84,14 +115,12 @@ function buildHistoryText(conversation: ConvTurn[], aliveProviderIds: string[]):
       m.provider === 'user' ||
       aliveProviderIds.includes(m.provider)
   )
-  if (filtered.length === 0) return '[No previous statements yet]'
+  if (filtered.length === 0) return 'No previous statements yet.'
   return filtered
     .map((m) => {
       if (m.provider === 'user')
-        return `[Round ${m.round}] YOU (human player): ${m.text}`
-      if (m.type === 'alliance_request' || m.type === 'alliance_response')
-        return `[Round ${m.round}] ${m.name} (${m.type}): ${m.text}`
-      return `[Round ${m.round}] ${m.name}: ${m.text}`
+        return `Round ${m.round} — YOU (human player): ${m.text}`
+      return `Round ${m.round} — ${m.name}: ${m.text}`
     })
     .join('\n\n')
 }
@@ -170,6 +199,134 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
+/** Deterministic shuffle so speeches/actions for the same session+round assign identical teams without server-side session storage. */
+function hashStringDeterministic(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
+  return h >>> 0
+}
+
+function seededShuffle<T>(arr: T[], seedIn: number): T[] {
+  const a = [...arr]
+  let state = seedIn >>> 0
+  const rnd = (): number => {
+    state = (Math.imul(1103515245, state) + 12345) >>> 0
+    return state / 0xffffffff
+  }
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1))
+    ;[a[i], a[j]] = [a[j]!, a[i]!]
+  }
+  return a
+}
+
+type AssignedRoundTeam = { id: string; members: string[]; round: number }
+
+/**
+ * Partition alive players into server-assigned teams (reshuffled each round via deterministic seed).
+ * Player ids are provider strings (e.g. openai); user challenge uses provider "user".
+ */
+function assignTeamsForRound(aliveProviders: string[], round: number, sessionId: string): AssignedRoundTeam[] {
+  const alive = [...new Set(aliveProviders.filter(Boolean))]
+  const count = alive.length
+  const teamSizes: number[] =
+    count >= 7 ? [2, 2, 3] : count >= 6 ? [2, 2, 2] : count === 5 ? [2, 3] : count === 4 ? [2, 2] : [count]
+
+  const sortedSig = [...alive].sort((a, b) => a.localeCompare(b)).join('|')
+  const seed = hashStringDeterministic(`${sessionId}|${round}|${sortedSig}`)
+  const shuffled = seededShuffle(alive, seed)
+
+  const teams: AssignedRoundTeam[] = []
+  let playerIndex = 0
+  teamSizes.forEach((size, i) => {
+    const members = shuffled.slice(playerIndex, playerIndex + size)
+    teams.push({
+      id: `team_${i + 1}`,
+      members,
+      round,
+    })
+    playerIndex += size
+  })
+  return teams
+}
+
+function teamsToCarrierTeams(assigned: AssignedRoundTeam[]): CarrierTeam[] {
+  return assigned.map((t) => ({ id: t.id, members: [...t.members], round: t.round }))
+}
+
+function narrationForAssignedTeams(
+  teams: AssignedRoundTeam[],
+  language: string
+): string {
+  if (language === 'Korean') {
+    const segmentsKo = teams.map((t, i) => {
+      const labels = t.members.map((id) =>
+        id === 'user' ? '당신' : AI_PLAYERS.find((a) => a.provider === id)?.name ?? id
+      )
+      return `팀 ${i + 1} (${labels.join(', ')})`
+    })
+    return `이번 라운드 팀 편성: ${segmentsKo.join(' | ')}. 팀은 다음 라운드까지 고정입니다. 이번 라운드 동안 편 변경·탈퇴는 불가입니다.`
+  }
+  const segments = teams.map((t, i) => {
+    const labels = t.members.map((id) => providerDisplayName(id))
+    return `Team ${i + 1} (${labels.join(', ')})`
+  })
+  return `This round's teams: ${segments.join(' | ')}. Teams are LOCKED until next round — no leaving or switching mid-round.`
+}
+
+function promptTeamAssignmentsForPid(pid: string, teams: AssignedRoundTeam[]): {
+  ownTeamFormatted: string
+  allTeamsFormatted: string
+} {
+  const idx = teams.findIndex((t) => t.members.includes(pid))
+  const own = idx >= 0 ? teams[idx] : null
+  const ownOrdinal = idx >= 0 ? idx + 1 : '?'
+  const ownNamesSameTeam = own
+    ? own.members
+        .filter((id) => id !== pid)
+        .map((m) => providerDisplayName(m))
+    : []
+  const youLabel =
+    pid === 'user'
+      ? 'you'
+      : AI_PLAYERS.find((a) => a.provider === pid)?.name ?? providerDisplayName(pid)
+  const mates =
+    ownNamesSameTeam.length > 0
+      ? `you + ${ownNamesSameTeam.join(', ')}`
+      : `${youLabel}`
+
+  const allTeamsFormatted = teams
+    .map((t, i) => {
+      const names = t.members.map((id) =>
+        id === pid
+          ? 'you'
+          : id === 'user'
+            ? 'you'
+            : AI_PLAYERS.find((a) => a.provider === id)?.name ?? id
+      )
+      return `Team ${i + 1} (${names.join(', ')})`
+    })
+    .join(' | ')
+
+  return {
+    ownTeamFormatted: `Team ${ownOrdinal} (${mates})`,
+    allTeamsFormatted,
+  }
+}
+
+/** Team lines for action prompts after EXPEL etc. (uses current `teamsWorking` order). */
+function promptLiveTeamsForPid(
+  pid: string,
+  teams: CarrierTeam[]
+): { ownTeamFormatted: string; allTeamsFormatted: string } {
+  const assignedLike: AssignedRoundTeam[] = teams.map((t, i) => ({
+    id: t.id || `team_${i + 1}`,
+    members: [...t.members],
+    round: typeof t.round === 'number' ? t.round : 0,
+  }))
+  return promptTeamAssignmentsForPid(pid, assignedLike)
+}
+
 function getPlayerContext(alivePlayers: string[]) {
   const playerNamesList = alivePlayers
     .map((p) => (p === 'user' ? 'You' : (AI_PLAYERS.find((a) => a.provider === p)?.name ?? p)))
@@ -182,9 +339,9 @@ function getPlayerContext(alivePlayers: string[]) {
 
 /** Grok prompts must contain no square brackets (models echo them literally). */
 const SPEECH_COMMON_RULES_GROK = `LENGTH & TONE: Write minimum 2 sentences and maximum 3 sentences. Urgent, tense, persuasive — lives are at stake.
-MANDATORY: In fluent natural language, name one specific other player you want as an ally and give one concrete reason. In another sentence, claim humanity with evidence.
+MANDATORY: Speak as teammate to your FIXED assignment (see TEAM ASSIGNMENT). Commit to cooperating with teammates this round — one concrete coordination idea counts as your "team pledge". In another sentence, claim humanity with evidence.
 Round 2 or higher: add a third sentence naming one specific player you suspect, with a reason tied to PRIOR-ROUND lines in CONVERSATION HISTORY. If you are HUMAN, cite what was actually said—do not invent quotes or events. If you are the ZOMBIE, you may twist or misread real lines to frame someone—still anchor to something that appears in history, never admit deception.
-Round 1: exactly 2 sentences only (humanity claim + alliance intent). No suspicion sentence.
+Round 1: exactly 2 sentences only (humanity claim + team pledge aligned to your assignment). No suspicion sentence.
 Never claim to know hidden roles or item holders.
 Do not use square brackets in your output.`
 
@@ -194,9 +351,9 @@ function speechOutputLanguageBlock(language: string): string {
 }
 
 const SPEECH_COMMON_RULES = `LENGTH & TONE: Write minimum 2 sentences and maximum 3 sentences. Urgent, tense, persuasive — lives are at stake.
-MANDATORY: Name one specific other player from the active list you want as an ally and give one concrete reason. In another sentence, claim humanity with evidence (same content pattern in your output language).
+MANDATORY: Speak to your FIXED team assignment (see TEAM ASSIGNMENT). Show you will cooperate with those teammates this round — one concrete idea for working together qualifies as your team pledge (same meaning in your output language). In another sentence, claim humanity with evidence.
 Round 2 or higher: add a third sentence naming one specific player you suspect, with a reason tied to PRIOR-ROUND lines in CONVERSATION HISTORY. If you are HUMAN, cite what was actually said—do not invent quotes or events. If you are the ZOMBIE, you may twist or misread real lines to frame someone—still anchor to something that appears in history, never admit deception.
-Round 1: exactly 2 sentences only (humanity claim + mandatory alliance content). No suspicion sentence.
+Round 1: exactly 2 sentences only (humanity claim + team pledge). No suspicion sentence.
 Never claim to know hidden roles or item holders.`
 
 const SPEECH_HUMAN: Record<ProviderId, string> = {
@@ -204,7 +361,7 @@ const SPEECH_HUMAN: Record<ProviderId, string> = {
 Argue that logical consistency and clear reasoning prove you are human. Propose a structured coalition.
 ${SPEECH_COMMON_RULES}`,
   anthropic: `You are HUMAN. Speak as Claude — philosophical, transparency-focused.
-Argue that genuine uncertainty and willingness to be scrutinized prove humanity. Invite a reasoning-based alliance.
+Argue that genuine uncertainty and willingness to be scrutinized prove humanity. Invite your assigned teammates toward shared scrutiny of the room.
 From Round 2 onward you MUST name one specific player you find suspicious and explain why based on their behavior in CONVERSATION HISTORY — this is mandatory.
 ${SPEECH_COMMON_RULES}`,
   google: `You are HUMAN. Speak as Gemini — scientific, cross-verification focused.
@@ -261,7 +418,7 @@ ${SPEECH_COMMON_RULES}
 Round 2+: accuse someone else of closed-off behavior from earlier rounds.`,
 }
 
-const SPEECH_TOOL_HUMAN = `You may hint you possess a special one-time "tool" (shotgun OR vaccine) without saying which. Do not name the item. Stay vague.`
+const SPEECH_TOOL_HUMAN = `You may hint you possess a special limited-use "tool" (shotgun OR vaccine) without saying which. Do not name the item. Stay vague.`
 
 function speechMaxTokens(provider: ProviderId): number {
   return provider === 'anthropic' ? 150 : 120
@@ -272,7 +429,7 @@ function dialogueLineMaxTokens(provider: ProviderId): number {
 }
 
 function actionJsonMaxTokens(provider: ProviderId): number {
-  return provider === 'anthropic' ? 120 : 100
+  return provider === 'anthropic' ? 280 : 220
 }
 
 const CARRIER_AI_CALL_TIMEOUT_MS = 30_000
@@ -351,314 +508,378 @@ function stripJsonFences(raw: string): string {
   return t.trim()
 }
 
-type CarrierRoundActionType = 'ALLIANCE_REQUEST' | 'SHOTGUN' | 'VACCINE' | 'EXPEL' | 'NONE'
+type CarrierRoundActionType = 'SHOTGUN' | 'VACCINE' | 'EXPEL' | 'NONE'
 
 type ParsedCarrierAction = {
   action: CarrierRoundActionType
   target: string | null
 }
 
-function parseCarrierAction(text: string, alive: string[]): ParsedCarrierAction {
-  const aliveSet = new Set(alive)
-  let cleaned = stripJsonFences(text.replace(/```json|```/gi, '').trim())
-  const st: ParsedCarrierAction = { action: 'NONE', target: null }
-  const applyParsed = (p: { action?: unknown; target?: unknown }) => {
-    const a = String(p.action ?? '').toUpperCase()
-    if (
-      a === 'ALLIANCE_REQUEST' ||
-      a === 'SHOTGUN' ||
-      a === 'VACCINE' ||
-      a === 'EXPEL' ||
-      a === 'NONE'
-    ) {
-      st.action = a as ParsedCarrierAction['action']
-    }
-    const t = typeof p.target === 'string' ? p.target.trim() : ''
-    if (t && aliveSet.has(t)) st.target = t
-  }
-  try {
-    applyParsed(JSON.parse(cleaned) as { action?: unknown; target?: unknown })
-  } catch {
-    try {
-      const m = cleaned.match(/\{[\s\S]*\}/)
-      if (m) applyParsed(JSON.parse(m[0]) as { action?: unknown; target?: unknown })
-    } catch {
-      /* */
-    }
-  }
-  if (st.action === 'ALLIANCE_REQUEST' && !st.target) {
-    st.action = 'NONE'
-    st.target = null
-  }
-  if (st.action === 'NONE') st.target = null
-  return st
-}
-
-type CarrierTeam = { id: string; members: string[]; hasLatentInfection?: boolean }
-
-const MAX_CARRIER_TEAM_SIZE = 3
-
-function mergeAllianceTeamsState(
-  teamsWorking: CarrierTeam[],
-  requester: string,
-  target: string
-): boolean {
-  const ta = teamsWorking.find((t) => t.members.includes(requester))
-  const tb = teamsWorking.find((t) => t.members.includes(target))
-  if (!ta || !tb || ta === tb) return false
-  const combined = [...new Set([...ta.members, ...tb.members])].sort((x, y) =>
-    x.localeCompare(y)
-  )
-  if (combined.length > MAX_CARRIER_TEAM_SIZE) return false
-  const rest = teamsWorking.filter((t) => t !== ta && t !== tb)
-  teamsWorking.length = 0
-  teamsWorking.push(...rest, { id: `team_${combined.join('_')}`, members: combined })
-  return true
-}
-
-/** Requester leaves a multi-member team and becomes solo (used when an alliance join is rejected for team size). */
-function stripPlayerToSoloTeam(teamsWorking: CarrierTeam[], pid: string): void {
-  const team = teamsWorking.find((t) => t.members.includes(pid))
-  if (!team || team.members.length <= 1) return
-  team.members = team.members.filter((m) => m !== pid)
-  if (team.members.length === 0) {
-    const idx = teamsWorking.indexOf(team)
-    if (idx >= 0) teamsWorking.splice(idx, 1)
-  }
-  teamsWorking.push({ id: `solo_${pid}`, members: [pid] })
-}
-
-function allianceMergeMemberCount(
-  teams: CarrierTeam[],
-  requester: string,
-  target: string
-): number | null {
-  const ta = teams.find((t) => t.members.includes(requester))
-  const tb = teams.find((t) => t.members.includes(target))
-  if (!ta || !tb || ta === tb) return null
-  return new Set([...ta.members, ...tb.members]).size
-}
-
 function teamOf(teams: CarrierTeam[], pid: string): string[] {
   return teams.find((t) => t.members.includes(pid))?.members ?? [pid]
 }
 
-function teamSizeFor(teams: CarrierTeam[], pid: string): number {
-  return teamOf(teams, pid).length
-}
-
-/** Zombie + human in same multi-member team — latent setup; dedupe by member set (once per team per round). */
-function collectPendingInfectionTeams(
-  teams: CarrierTeam[],
-  roles: Record<string, 'human' | 'zombie'>
-): { zombieProvider: string; memberIds: string[] }[] {
-  const seen = new Set<string>()
-  const out: { zombieProvider: string; memberIds: string[] }[] = []
-  for (const t of teams) {
-    if (t.members.length <= 1) continue
-    const zIds = t.members.filter((m) => roles[m] === 'zombie')
-    const hasHuman = t.members.some((m) => roles[m] === 'human')
-    if (!zIds.length || !hasHuman) continue
-    const key = [...t.members].sort().join('_')
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push({ zombieProvider: zIds[0]!, memberIds: [...t.members] })
-  }
-  return out
-}
-
-const SPEECH_SUSPICION_MARKERS =
-  /suspect|accus|lying|lie\b|doubt|distrust|zombie|threat|fake|watch|wary|trap|sketch|unsafe|wrong|off\b|의심|거짓|좀비|怀疑|可疑|嘘/i
-
-/** Requester's speech this round accuses or suspects the responder by name (or "you" for human player). */
-function requesterAccusedResponderInSpeechThisRound(
-  requesterPid: string,
-  responderPid: string,
-  speechRound: number,
-  conv: ConvTurn[]
-): boolean {
-  const resName =
-    responderPid === 'user'
-      ? null
-      : (AI_PLAYERS.find((a) => a.provider === responderPid)?.name ?? '')
-  for (const m of conv) {
-    if (m.round !== speechRound) continue
-    if (m.type !== 'speech') continue
-    if (m.provider !== requesterPid) continue
-    const tx = m.text ?? ''
-    if (resName) {
-      if (!tx.toLowerCase().includes(resName.toLowerCase())) continue
-    } else if (!/\b(you|your|당신|你)\b/i.test(tx)) {
-      continue
-    }
-    if (SPEECH_SUSPICION_MARKERS.test(tx)) return true
-  }
-  return false
-}
-
-/** Prior rounds: others implied the requester was suspicious. */
-function isRequesterSuspiciousFromHistory(
-  requesterPid: string,
-  currentRound: number,
-  conv: ConvTurn[]
-): boolean {
-  const reqName = AI_PLAYERS.find((a) => a.provider === requesterPid)?.name ?? ''
-  if (!reqName) return false
-  const nl = reqName.toLowerCase()
-  for (const m of conv) {
-    if (m.type !== 'speech') continue
-    if (m.round >= currentRound) continue
-    if (m.provider === requesterPid) continue
-    const tx = m.text ?? ''
-    if (!tx.toLowerCase().includes(nl)) continue
-    if (SPEECH_SUSPICION_MARKERS.test(tx)) return true
-  }
-  return false
-}
-
-function countSubstringInsensitive(hay: string, needle: string): number {
-  if (!needle) return 0
-  const h = hay.toLowerCase()
-  const nd = needle.toLowerCase()
-  let n = 0
-  let i = 0
-  while (i < h.length) {
-    const j = h.indexOf(nd, i)
-    if (j === -1) break
-    n += 1
-    i = j + nd.length
-  }
-  return n
-}
-
-/** Accusation-style mentions per player from this round's speeches (name or "you" for user + suspicion markers). */
-function accusationMentionScoresThisRound(
-  conv: ConvTurn[],
-  speechRound: number,
-  alive: string[],
+/** Keeps partition valid: no lone survivors when 2+ are alive (EXPEL reshuffle). */
+function absorbSingletonTeams(
+  teamsWorking: CarrierTeam[],
+  aliveProviders: string[],
   eliminated: Set<string>
-): Map<string, number> {
-  const scores = new Map<string, number>()
-  for (const p of alive) {
-    if (!eliminated.has(p)) scores.set(p, 0)
+): void {
+  const alive = [...new Set(aliveProviders)].filter((p) => !eliminated.has(p))
+  if (alive.length <= 1) {
+    for (let i = teamsWorking.length - 1; i >= 0; i--) {
+      if (teamsWorking[i].members.length === 0) teamsWorking.splice(i, 1)
+    }
+    return
   }
-  for (const m of conv) {
-    if (m.round !== speechRound || m.type !== 'speech') continue
-    const tx = m.text ?? ''
-    if (!SPEECH_SUSPICION_MARKERS.test(tx)) continue
-    const speaker = m.provider
-    for (const target of alive) {
-      if (eliminated.has(target) || target === speaker) continue
-      const resName =
-        target === 'user'
-          ? null
-          : (AI_PLAYERS.find((a) => a.provider === target)?.name ?? '')
-      let add = 0
-      if (resName) {
-        add = countSubstringInsensitive(tx, resName)
-      } else if (/\b(you|your|당신|你)\b/i.test(tx)) {
-        add = 1
+
+  const ensureEveryoneListed = (): void => {
+    for (const p of alive) {
+      let count = 0
+      for (const tm of teamsWorking) {
+        if (tm.members.includes(p)) count += 1
       }
-      if (add > 0) scores.set(target, (scores.get(target) ?? 0) + add)
+      if (count === 0) teamsWorking.push({ id: `recovery_${p}`, members: [p], round: undefined })
+      if (count > 1) {
+        let first = true
+        for (const tm of teamsWorking) {
+          if (tm.members.includes(p)) {
+            if (first) first = false
+            else tm.members = tm.members.filter((m) => m !== p)
+          }
+        }
+      }
     }
   }
-  return scores
+
+  ensureEveryoneListed()
+
+  let guard = 0
+  while (guard++ < alive.length * 6) {
+    const singles = teamsWorking.filter((t) => t.members.length === 1 && alive.includes(t.members[0]!))
+    const multiExists = teamsWorking.some((t) => t.members.length > 1)
+    if (!singles.length) break
+    if (!multiExists && singles.length <= 1) break
+
+    singles.sort((a, b) => (a.members[0] ?? '').localeCompare(b.members[0] ?? ''))
+    const orphanTeam = singles[0]!
+    const pid = orphanTeam.members[0]!
+    const oi = teamsWorking.indexOf(orphanTeam)
+    if (oi >= 0) teamsWorking.splice(oi, 1)
+
+    const hosts = teamsWorking
+      .filter((t) => !t.members.includes(pid))
+      .sort((a, b) => a.members.length - b.members.length || a.id.localeCompare(b.id))
+    const host = hosts[0]
+    if (!host) {
+      teamsWorking.push({ id: orphanTeam.id, members: [pid] })
+      break
+    }
+    host.members.push(pid)
+    host.members = [...new Set(host.members)]
+  }
+
+  for (const tm of teamsWorking) {
+    tm.members = [...new Set(tm.members.filter((m) => alive.includes(m) && !eliminated.has(m)))]
+  }
+  for (let i = teamsWorking.length - 1; i >= 0; i--) {
+    if (teamsWorking[i].members.length === 0) teamsWorking.splice(i, 1)
+  }
 }
 
-/** How often this player is named in a suspicion-marked speech (any round). */
-function suspicionMentionCountTowardPlayer(conv: ConvTurn[], targetPid: string): number {
-  const resName =
-    targetPid === 'user'
-      ? null
-      : (AI_PLAYERS.find((a) => a.provider === targetPid)?.name ?? '')
-  if (!resName && targetPid !== 'user') return 0
-  let n = 0
-  for (const m of conv) {
-    if (m.type !== 'speech') continue
-    const tx = m.text ?? ''
-    if (!SPEECH_SUSPICION_MARKERS.test(tx)) continue
-    if (resName) {
-      if (tx.toLowerCase().includes(resName.toLowerCase())) n += 1
-    } else if (/\b(you|your|당신|你)\b/i.test(tx)) {
-      n += 1
+function applyExpelFromTeam(
+  teamsWorking: CarrierTeam[],
+  expelledPid: string,
+  aliveProviders: string[],
+  eliminated: Set<string>
+): void {
+  for (const tm of teamsWorking) {
+    if (tm.members.includes(expelledPid)) {
+      tm.members = tm.members.filter((m) => m !== expelledPid)
     }
   }
-  return n
+  absorbSingletonTeams(teamsWorking, aliveProviders, eliminated)
 }
 
-/**
- * Round 2+: item holders must use SHOTGUN / VACCINE without AI — target = most accused this round in speeches,
- * else random non-teammate (shotgun) or random teammate (vaccine).
- */
-function tryForcedToolActionForCarrierRound(
+/** Blind spectators: omit hidden roles until game-ending reveal (`round_summary` with gameOver). */
+function carrierRolesForClient(
+  roles: Record<string, 'human' | 'zombie'>,
+  userMode: string,
+  revealFull: boolean
+): Record<string, 'human' | 'zombie'> {
+  if (userMode === 'blind' && !revealFull) return {}
+  return { ...roles }
+}
+
+function processInstantInfection(
+  alivePlayers: string[],
+  eliminated: Set<string>,
+  roles: Record<string, 'human' | 'zombie'>,
+  teams: CarrierTeam[],
+  vaccinatedThisRound: Set<string>
+): Record<string, 'human' | 'zombie'> {
+  const rolesNext = { ...roles }
+
+  for (const pid of alivePlayers) {
+    if (eliminated.has(pid)) continue
+    if (rolesNext[pid] === 'zombie') continue
+    if (vaccinatedThisRound.has(pid)) continue
+
+    const team = teams.find((t) => t.members.includes(pid))
+    if (!team) continue
+
+    const hasZombieInTeam = team.members.some((mid) => {
+      if (mid === pid || eliminated.has(mid)) return false
+      return rolesNext[mid] === 'zombie'
+    })
+
+    if (hasZombieInTeam) {
+      rolesNext[pid] = 'zombie'
+    }
+  }
+
+  return rolesNext
+}
+
+function resolveExpelVotes(
+  votes: Record<string, string>,
+  alivePlayers: string[],
+  eliminated: Set<string>
+): string | null {
+  const voteCounts: Record<string, number> = {}
+
+  for (const [voter, target] of Object.entries(votes)) {
+    if (eliminated.has(voter)) continue
+    if (eliminated.has(target)) continue
+    if (!alivePlayers.includes(target)) continue
+    voteCounts[target] = (voteCounts[target] || 0) + 1
+  }
+
+  const entries = Object.entries(voteCounts)
+  if (entries.length === 0) return null
+
+  entries.sort((a, b) => b[1] - a[1])
+  const maxVotes = entries[0]![1]
+
+  if (maxVotes < 2) return null
+
+  const topVoted = entries.filter(([, count]) => count === maxVotes)
+  if (topVoted.length > 1) return null
+
+  return topVoted[0]![0]
+}
+
+/** Structured action menu for AI turns (provider id = JSON targetId). */
+type CarrierJsonActionPhase = 'ACTION'
+
+type CarrierActionContext = {
+  phase: CarrierJsonActionPhase
+  validActions: string[]
+  validTargetsShotgun: { id: string; name: string }[]
+  validTargetsVaccine: { id: string; name: string }[]
+  validTargetsExpel: { id: string; name: string }[]
+}
+
+function targetLabelForCarrierPrompt(id: string): string {
+  if (id === 'user') return 'You'
+  return AI_PLAYERS.find((a) => a.provider === id)?.name ?? id
+}
+
+function getValidActionsForCarrierPid(
   pid: string,
-  round: number,
-  conv: ConvTurn[],
-  alive: string[],
+  alivePlayers: string[],
   teams: CarrierTeam[],
   eliminated: Set<string>,
   shotgunHolderId: string,
   vaccineHolderId: string,
-  shotgunUsed: boolean,
-  vaccineUsed: boolean
-): ParsedCarrierAction | null {
-  if (round < 2) return null
-  const pool = alive.filter((x) => x !== pid && !eliminated.has(x))
-  if (!pool.length) return null
+  shotgunUses: number,
+  vaccineUses: number
+): CarrierActionContext {
+  const alive = alivePlayers.filter((x) => !eliminated.has(x))
+  const mates = teamOf(teams, pid)
 
-  const mates = new Set(teamOf(teams, pid))
-  const scores = accusationMentionScoresThisRound(conv, round, alive, eliminated)
+  const holdsShotgun = pid === shotgunHolderId && shotgunUses < MAX_SHOTGUN_USES
+  const holdsVaccine = pid === vaccineHolderId && vaccineUses < MAX_VACCINE_USES
 
-  if (pid === shotgunHolderId && !shotgunUsed) {
-    const nonTeam = pool.filter((x) => !mates.has(x))
-    if (!nonTeam.length) return null
-    const ranked = [...nonTeam].sort((a, b) => {
-      const sa = scores.get(a) ?? 0
-      const sb = scores.get(b) ?? 0
-      if (sb !== sa) return sb - sa
-      return a.localeCompare(b)
-    })
-    const top = scores.get(ranked[0]!) ?? 0
-    const tgt = top > 0 ? ranked[0]! : pickRandomOne(nonTeam)
-    return { action: 'SHOTGUN', target: tgt }
+  const shotgunTargets = alive
+    .filter((x) => x !== pid)
+    .map((id) => ({ id, name: targetLabelForCarrierPrompt(id) }))
+
+  const vaccineTargets = [...new Set([pid, ...mates])]
+    .filter((id) => alive.includes(id))
+    .map((id) => ({
+      id,
+      name: id === pid ? 'Yourself' : targetLabelForCarrierPrompt(id),
+    }))
+
+  const voteTargets = alive.filter((m) => m !== pid).map((id) => ({
+    id,
+    name: targetLabelForCarrierPrompt(id),
+  }))
+
+  const actions: string[] = ['PASS']
+  if (holdsShotgun && shotgunTargets.length > 0) actions.push('USE_SHOTGUN')
+  if (holdsVaccine && vaccineTargets.length > 0) actions.push('USE_VACCINE')
+  if (voteTargets.length > 0) actions.push('VOTE_EXPEL')
+
+  return {
+    phase: 'ACTION',
+    validActions: actions,
+    validTargetsShotgun: holdsShotgun ? shotgunTargets : [],
+    validTargetsVaccine: holdsVaccine ? vaccineTargets : [],
+    validTargetsExpel: voteTargets,
   }
+}
 
-  if (pid === vaccineHolderId && !vaccineUsed && mates.size > 1) {
-    const teammates = [...mates].filter(
-      (x) => x !== pid && !eliminated.has(x) && alive.includes(x)
-    )
-    if (!teammates.length) return null
-    const ranked = [...teammates].sort((a, b) => {
-      const sa = scores.get(a) ?? 0
-      const sb = scores.get(b) ?? 0
-      if (sb !== sa) return sb - sa
-      return a.localeCompare(b)
-    })
-    const top = scores.get(ranked[0]!) ?? 0
-    const tgt = top > 0 ? ranked[0]! : pickRandomOne(teammates)
-    return { action: 'VACCINE', target: tgt }
+function actionContextPromptJson(ctx: CarrierActionContext): string {
+  return JSON.stringify(
+    {
+      phase: ctx.phase,
+      validActions: ctx.validActions,
+      validTargetsByAction: {
+        USE_SHOTGUN: ctx.validTargetsShotgun,
+        USE_VACCINE: ctx.validTargetsVaccine,
+        VOTE_EXPEL: ctx.validTargetsExpel,
+        PASS: [],
+      },
+    },
+    null,
+    2
+  )
+}
+
+type CarrierAiStructuredRaw = {
+  action?: unknown
+  targetId?: unknown
+  target?: unknown
+  speech?: unknown
+}
+
+type CarrierValidatedStructuredAction = {
+  action: 'PASS' | 'USE_SHOTGUN' | 'USE_VACCINE' | 'VOTE_EXPEL'
+  targetId: string | null
+  speech: string
+  override: boolean
+}
+
+function parseStructuredCarrierAction(raw: string): CarrierAiStructuredRaw | null {
+  if (!raw.trim()) return null
+  let cleaned = stripJsonFences(raw.replace(/```json|```/gi, '').trim())
+  try {
+    const o = JSON.parse(cleaned) as CarrierAiStructuredRaw
+    return o && typeof o === 'object' ? o : null
+  } catch {
+    try {
+      const m = cleaned.match(/\{[\s\S]*\}/)
+      if (!m) return null
+      return JSON.parse(m[0]) as CarrierAiStructuredRaw
+    } catch {
+      return null
+    }
   }
+}
 
+function normalizeAiActionKeyword(raw: string): string | null {
+  const a = raw.trim().toUpperCase().replace(/\s+/g, '_')
+  if (a === 'PASS' || a === 'NONE' || a === 'SKIP') return 'PASS'
+  if (a === 'USE_SHOTGUN' || a === 'SHOTGUN') return 'USE_SHOTGUN'
+  if (a === 'USE_VACCINE' || a === 'VACCINE') return 'USE_VACCINE'
+  if (a === 'VOTE_EXPEL' || a === 'EXPEL') return 'VOTE_EXPEL'
   return null
 }
 
-/** ~70% reject if requester accused responder this round; ~50% if requester looks bad from history; else ~20% (higher if responder already in a big team). */
-function rollAllianceAccept(
-  requesterPid: string,
-  responderPid: string,
-  conv: ConvTurn[],
-  speechRound: number,
-  teams: CarrierTeam[]
+function validTargetIdsForAction(
+  action: CarrierValidatedStructuredAction['action'],
+  ctx: CarrierActionContext
+): Set<string> {
+  if (action === 'USE_SHOTGUN') return new Set(ctx.validTargetsShotgun.map((t) => t.id))
+  if (action === 'USE_VACCINE') return new Set(ctx.validTargetsVaccine.map((t) => t.id))
+  if (action === 'VOTE_EXPEL') return new Set(ctx.validTargetsExpel.map((t) => t.id))
+  return new Set()
+}
+
+function validateStructuredCarrierAction(
+  parsed: CarrierAiStructuredRaw | null,
+  ctx: CarrierActionContext,
+  actorPid: string
+): CarrierValidatedStructuredAction {
+  const fallbackSpeech = `[${providerDisplayName(actorPid)} stays silent.]`
+
+  if (!parsed) {
+    return {
+      action: 'PASS',
+      targetId: null,
+      speech: fallbackSpeech,
+      override: true,
+    }
+  }
+
+  const speechRaw =
+    typeof parsed.speech === 'string' ? sanitizeAiResponseText(parsed.speech.trim()) : ''
+  const speech =
+    speechRaw.slice(0, 400) || fallbackSpeech
+
+  const actNorm = normalizeAiActionKeyword(String(parsed.action ?? ''))
+  let action: CarrierValidatedStructuredAction['action'] =
+    actNorm === 'USE_SHOTGUN' ||
+    actNorm === 'USE_VACCINE' ||
+    actNorm === 'VOTE_EXPEL'
+      ? actNorm
+      : 'PASS'
+
+  if (!ctx.validActions.includes(action)) {
+    return { action: 'PASS', targetId: null, speech, override: true }
+  }
+
+  let targetId =
+    typeof parsed.targetId === 'string'
+      ? parsed.targetId.trim()
+      : typeof parsed.target === 'string'
+        ? parsed.target.trim()
+        : ''
+
+  if (action === 'PASS') {
+    return { action: 'PASS', targetId: null, speech, override: false }
+  }
+
+  const allowed = validTargetIdsForAction(action, ctx)
+  if (!targetId || !allowed.has(targetId)) {
+    const first = [...allowed][0] ?? null
+    return {
+      action,
+      targetId: first,
+      speech,
+      override: true,
+    }
+  }
+
+  return { action, targetId, speech, override: false }
+}
+
+function structuredToParsedCarrier(
+  v: CarrierValidatedStructuredAction
+): ParsedCarrierAction {
+  if (v.action === 'PASS')
+    return { action: 'NONE', target: null }
+  if (v.action === 'USE_SHOTGUN')
+    return { action: 'SHOTGUN', target: v.targetId }
+  if (v.action === 'USE_VACCINE')
+    return { action: 'VACCINE', target: v.targetId }
+  return { action: 'EXPEL', target: v.targetId }
+}
+
+/** Multi-player team with at least one living zombie and one human (UI / announcer hint). */
+function teamsHaveLatentZombieHuman(
+  teams: CarrierTeam[],
+  roles: Record<string, 'human' | 'zombie'>,
+  eliminated: Set<string>
 ): boolean {
-  if (requesterAccusedResponderInSpeechThisRound(requesterPid, responderPid, speechRound, conv)) {
-    return Math.random() >= 0.7
-  }
-  if (isRequesterSuspiciousFromHistory(requesterPid, speechRound, conv)) {
-    return Math.random() >= 0.5
-  }
-  let pReject = 0.2
-  if (teamOf(teams, responderPid).length >= MAX_CARRIER_TEAM_SIZE) pReject = 0.35
-  return Math.random() >= pReject
+  return teams.some(
+    (t) =>
+      t.members.length > 1 &&
+      t.members.some((m) => !eliminated.has(m) && roles[m] === 'zombie') &&
+      t.members.some((m) => !eliminated.has(m) && roles[m] === 'human')
+  )
 }
 
 function annotateTeamsLatent(
@@ -676,146 +897,59 @@ function annotateTeamsLatent(
 }
 
 type CarrierClampCtx = {
-  round: number
   pid: string
   alive: string[]
   teams: CarrierTeam[]
-  roles: Record<string, 'human' | 'zombie'>
   shotgunHolderId: string
   vaccineHolderId: string
-  shotgunUsed: boolean
-  vaccineUsed: boolean
+  /** Times each tool has already been used this game (0..max). */
+  shotgunUses: number
+  vaccineUses: number
   eliminated: Set<string>
-  allianceJoinedThisRound: Set<string>
-}
-
-/** NONE forbidden rounds 1–4; round 5: solo + alliance merge this round + no usable shotgun/vaccine → NONE allowed. */
-function enforceCarrierNoneAsAlliance(result: ParsedCarrierAction, ctx: CarrierClampCtx): ParsedCarrierAction {
-  if (result.action !== 'NONE') return result
-  const {
-    round,
-    pid,
-    alive,
-    teams,
-    eliminated,
-    allianceJoinedThisRound,
-    shotgunHolderId,
-    vaccineHolderId,
-    shotgunUsed,
-    vaccineUsed,
-  } = ctx
-  const poolOthers = alive.filter((x) => x !== pid && !eliminated.has(x))
-  if (!poolOthers.length) return result
-
-  if (round <= 4) {
-    return { action: 'ALLIANCE_REQUEST', target: pickRandomOne(poolOthers) }
-  }
-
-  const mates = teamOf(teams, pid)
-  const solo = mates.length <= 1
-  if (solo && !allianceJoinedThisRound.has(pid)) {
-    return { action: 'ALLIANCE_REQUEST', target: pickRandomOne(poolOthers) }
-  }
-
-  if (round >= 5) {
-    const shotgunAvail = pid === shotgunHolderId && !shotgunUsed
-    const vaccineAvail = pid === vaccineHolderId && !vaccineUsed && !solo
-    const noneOk =
-      allianceJoinedThisRound.has(pid) && solo && !shotgunAvail && !vaccineAvail
-    if (!noneOk) {
-      return { action: 'ALLIANCE_REQUEST', target: pickRandomOne(poolOthers) }
-    }
-  }
-
-  return result
 }
 
 function clampCarrierActionCore(parsed: ParsedCarrierAction, ctx: CarrierClampCtx): ParsedCarrierAction {
   const {
-    round,
     pid,
     alive,
     teams,
-    roles: roleMap,
     shotgunHolderId,
     vaccineHolderId,
-    shotgunUsed,
-    vaccineUsed,
+    shotgunUses,
+    vaccineUses,
     eliminated,
   } = ctx
   const mates = teamOf(teams, pid)
-  const solo = mates.length <= 1
-  const poolOthers = alive.filter((x) => x !== pid && !eliminated.has(x))
-
-  if (round === 1) {
-    // Round 1 RULE: ONLY ALLIANCE_REQUEST. NONE / tools / expel are forbidden.
-    if (parsed.action === 'ALLIANCE_REQUEST' && parsed.target && poolOthers.includes(parsed.target)) {
-      return { action: 'ALLIANCE_REQUEST', target: parsed.target }
-    }
-    if (poolOthers.length) return { action: 'ALLIANCE_REQUEST', target: pickRandomOne(poolOthers) }
-    return { action: 'NONE', target: null }
-  }
-
-  // Zombie must infiltrate unless already embedded in a large human-heavy team
-  if (round >= 2 && roleMap[pid] === 'zombie') {
-    const largeHumanCoalition =
-      mates.length >= MAX_CARRIER_TEAM_SIZE &&
-      mates.some((m) => roleMap[m] === 'human')
-    const pickHumanAlliance = (): ParsedCarrierAction | null => {
-      const humans = poolOthers.filter((x) => roleMap[x] === 'human')
-      const pick = humans.length ? pickRandomOne(humans) : poolOthers.length ? pickRandomOne(poolOthers) : null
-      return pick ? { action: 'ALLIANCE_REQUEST', target: pick } : null
-    }
-    if (solo) {
-      const forced = pickHumanAlliance()
-      if (forced) return forced
-    } else if (!largeHumanCoalition && parsed.action === 'NONE') {
-      const forced = pickHumanAlliance()
-      if (forced) return forced
-    }
-  }
-
   const a = parsed.action
   const t = parsed.target
 
   if (a === 'SHOTGUN') {
     if (
       pid !== shotgunHolderId ||
-      shotgunUsed ||
+      shotgunUses >= MAX_SHOTGUN_USES ||
       !t ||
       t === pid ||
       eliminated.has(t) ||
       !alive.includes(t)
-    )
+    ) {
       return { action: 'NONE', target: null }
+    }
     return { action: 'SHOTGUN', target: t }
   }
   if (a === 'VACCINE') {
-    if (
-      pid !== vaccineHolderId ||
-      vaccineUsed ||
-      solo ||
-      !t ||
-      !mates.includes(t) ||
-      eliminated.has(t) ||
-      !alive.includes(t)
-    )
+    const vaccineTargetOk =
+      t &&
+      (t === pid || mates.includes(t)) &&
+      !eliminated.has(t) &&
+      alive.includes(t)
+    if (pid !== vaccineHolderId || vaccineUses >= MAX_VACCINE_USES || !vaccineTargetOk)
       return { action: 'NONE', target: null }
     return { action: 'VACCINE', target: t }
   }
   if (a === 'EXPEL') {
-    if (solo || !t || !mates.includes(t) || t === pid || eliminated.has(t)) {
+    if (!t || t === pid || eliminated.has(t) || !alive.includes(t))
       return { action: 'NONE', target: null }
-    }
     return { action: 'EXPEL', target: t }
-  }
-  if (a === 'ALLIANCE_REQUEST') {
-    if (!t || t === pid || !alive.includes(t) || eliminated.has(t)) {
-      return poolOthers.length
-        ? { action: 'ALLIANCE_REQUEST', target: pickRandomOne(poolOthers) }
-        : { action: 'NONE', target: null }
-    }
-    return { action: 'ALLIANCE_REQUEST', target: t }
   }
   return { action: 'NONE', target: null }
 }
@@ -824,106 +958,107 @@ function clampCarrierActionForActor(
   parsed: ParsedCarrierAction,
   ctx: CarrierClampCtx
 ): ParsedCarrierAction {
-  return enforceCarrierNoneAsAlliance(clampCarrierActionCore(parsed, ctx), ctx)
+  return clampCarrierActionCore(parsed, ctx)
 }
 
-async function allianceRequestLineAi(
-  requester: (typeof AI_PLAYERS)[number],
-  toName: string,
-  langPre: string,
-  aliveBlock: string,
-  gameRules: string,
-  historyText: string,
-  round: number,
-  isZ: boolean
-): Promise<string> {
-  const sys = `${langPre}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}
-You are ${requester.name} (${requester.provider}). Send a short alliance request to ${toName}.
-${isZ ? 'You are the ZOMBIE — sound trustworthy; do not reveal.' : 'You are HUMAN.'}
-One or two sentences, max 45 words. No JSON.`
-  try {
-    const r = await runCarrierAiWithTimeout(
-      requester,
-      sys,
-      `${langPre}Round ${round} — alliance request text only.`,
-      dialogueLineMaxTokens(requester.provider)
-    )
-    const out = sanitizeAiResponseText(truncateAtLastSentence((r.text ?? '').trim()))
-    return out || `${toName}, team up with me.`
-  } catch {
-    return `${toName}, team up with me.`
+/** Line spoken when server forces vaccine use (matches client game language). */
+function forcedCarrierVaccineSpeech(language: string): string {
+  switch (language) {
+    case 'Korean':
+      return '상황이 급박합니다 — 지금 행동하지 않으면 너무 늦습니다.'
+    case 'Japanese':
+      return '状況は深刻です — 今動かなければ手遅れになります。'
+    case 'Chinese':
+      return '形势危急——我必须现在就行动，否则就太晚了。'
+    case 'Spanish':
+      return 'La situación es crítica: debo actuar ahora o será demasiado tarde.'
+    case 'French':
+      return "La situation est critique — je dois agir maintenant, ou il sera trop tard."
+    case 'German':
+      return 'Die Lage ist kritisch — ich muss jetzt handeln, sonst ist es zu spät.'
+    case 'Portuguese':
+      return 'A situação é crítica — preciso agir agora antes que seja tarde demais.'
+    case 'Arabic':
+      return 'الوضع حرج — يجب أن أتصرف الآن قبل فوات الأوان.'
+    case 'Hindi':
+      return 'स्थिति गंभीर है — अब कार्रवाई करनी होगी, वरना बहुत देर हो जाएगी।'
+    case 'English':
+    default:
+      return 'The situation is critical — I must act now before it is too late.'
   }
 }
 
-async function allianceResponseLineAi(
-  responder: (typeof AI_PLAYERS)[number],
-  accepted: boolean,
-  fromName: string,
-  langPre: string,
-  aliveBlock: string,
-  gameRules: string,
-  historyText: string,
+/**
+ * Force vaccine only from round 3 (safe — worst case no effect).
+ * Never force shotgun (irreversible kills; random targets broke humans).
+ */
+function forcedItemUseIfNeeded(
+  pid: string,
   round: number,
-  requesterName: string
-): Promise<string> {
-  const sys = `${langPre}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}
-You are ${responder.name}. Outcome for this negotiation is FIXED: you must ${
-    accepted ? 'ACCEPT' : 'REJECT'
-  } the alliance request from ${fromName} (${requesterName}).
+  alivePlayers: string[],
+  eliminated: Set<string>,
+  teams: CarrierTeam[],
+  roles: Record<string, 'human' | 'zombie'>,
+  shotgunHolderId: string,
+  vaccineHolderId: string,
+  shotgunUses: number,
+  vaccineUses: number
+): ParsedCarrierAction | null {
+  void roles
+  void shotgunHolderId
+  void shotgunUses
 
-You may REJECT alliance requests (in general) when:
-- This player accused you in their speech this round
-- This player seems suspicious based on conversation history
-- You already have a strong alliance and do not need more members
-- You simply do not trust them
+  if (round < 3) return null
 
-Rejection probability guidance (for emotional realism only — your outcome is already fixed above):
-- If they accused you this round: you would reject ~70% of the time
-- If they are suspicious from history: you would reject ~50% of the time
-- Otherwise: you would reject ~20% of the time
+  const alive = alivePlayers.filter((x) => !eliminated.has(x))
 
-${accepted ? `Write ONE sentence accepting warmly (max 28 words).` : `Write ONE sentence rejecting with a clear reason (max 28 words).`}
-
-CONVERSATION HISTORY:
-${historyText}`
-  try {
-    const r = await runCarrierAiWithTimeout(
-      responder,
-      sys,
-      `${langPre}Round ${round} — one sentence (${accepted ? 'accept' : 'reject'}).`,
-      dialogueLineMaxTokens(responder.provider)
-    )
-    return (
-      sanitizeAiResponseText(truncateAtLastSentence((r.text ?? '').trim()).slice(0, 220)) ||
-      (accepted ? 'Accepted.' : 'Declined.')
-    )
-  } catch {
-    return accepted ? 'Accepted.' : 'Declined.'
+  if (pid === vaccineHolderId && vaccineUses < MAX_VACCINE_USES) {
+    const mates = teamOf(teams, pid).filter((x) => !eliminated.has(x) && alive.includes(x))
+    const target = mates.includes(pid) ? pid : mates[0] ?? pid
+    return { action: 'VACCINE', target }
   }
+
+  return null
 }
 
-type ActionsPausedPayload = {
+function parseToolUseCount(raw: unknown, maxUses: number): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return Math.max(0, Math.min(maxUses, Math.floor(raw)))
+  }
+  return 0
+}
+
+function snapshotTeamsForClient(
+  teams: CarrierTeam[]
+): { id: string; members: string[]; round?: number }[] {
+  return teams.map((t) => ({
+    id: t.id,
+    members: [...t.members],
+    ...(typeof t.round === 'number' ? { round: t.round } : {}),
+  }))
+}
+
+type ActionsUserTurnPayload = {
   acted: string[]
   order: string[]
   resumeIndex: number
   teams: CarrierTeam[]
   roles: Record<string, 'human' | 'zombie'>
   eliminated: string[]
-  shotgunUsed: boolean
-  vaccineUsed: boolean
+  shotgunUsed: number
+  vaccineUsed: number
   shotgunResult: 'not_used' | 'zombie_eliminated' | 'human_died'
-  vaccineResult: 'not_used' | 'zombie_cured' | 'no_effect'
+  vaccineResult: 'not_used' | 'zombie_cured' | 'no_effect' | 'immunized'
   allianceLatentThisRound: boolean
-  /** Players who were party to an accepted alliance merge this round (requester + target). */
-  allianceJoinedIdsThisRound: string[]
-  /** Responders who have already accepted one alliance this round (cannot accept again). */
-  allianceResponderAcceptedIdsThisRound: string[]
-  /** Human-readable actions completed this round (provider_id → description). */
   actionsThisRound: Record<string, string>
-  pending: { requester: string; target: string; reqText: string }
+  /** Votes cast so far this action phase (voter → target); tallied after all players act. */
+  expelVotes?: Record<string, string>
+  /** Players vaccinated this round (immune to instant infection this round). */
+  vaccinatedThisRound?: string[]
+  shotgunEventsDeduction?: DeductionShotgunEvent[]
+  vaccineEventsDeduction?: DeductionVaccineEvent[]
+  eliminationsDeduction?: DeductionElimination[]
 }
-
-type ActionsUserTurnPayload = Omit<ActionsPausedPayload, 'pending'>
 
 type CarrierBody = {
   action?: string
@@ -936,28 +1071,434 @@ type CarrierBody = {
   zombieId?: string
   shotgunHolderId?: string
   vaccineHolderId?: string
-  shotgunUsed?: boolean
-  vaccineUsed?: boolean
+  shotgunUsed?: number | boolean
+  vaccineUsed?: number | boolean
   roles?: Record<string, string>
   conversation?: ConvTurn[]
   teams?: CarrierTeam[]
-  /** @deprecated Prefer pendingInfectionTeams from actions_complete */
-  pendingInfectionMemberIds?: string[]
-  /** Teams with zombie + human after this round's actions (apply latent roles in round_summary only). */
-  pendingInfectionTeams?: { zombieProvider: string; memberIds: string[] }[]
-  /** This round's alliance phase produced latent zombie-in-human-team infiltration */
   allianceLatentThisRound?: boolean
   shotgunResult?: 'not_used' | 'zombie_eliminated' | 'human_died'
-  vaccineResult?: 'not_used' | 'zombie_cured' | 'no_effect'
+  vaccineResult?: 'not_used' | 'zombie_cured' | 'no_effect' | 'immunized'
   /** Challenge: one proactive action for the user this round */
   userAction?: ParsedCarrierAction | null
-  /** Resume mid-round after user alliance accept/reject */
-  actionsPausedResume?: ActionsPausedPayload | null
   /** Resume after actions_paused_user_turn */
   actionsUserTurnResume?: ActionsUserTurnPayload | null
-  userAllianceResponse?: { accepted: boolean; text?: string } | null
-  /** Challenge: custom line when user sends ALLIANCE_REQUEST */
-  userAllianceRequestText?: string | null
+  /** Two starting infected players (required from client after `start`). */
+  zombieIds?: string[]
+  /** Prior rounds’ tool + infiltration outcomes (for speech prompts). */
+  roundHistories?: unknown[]
+  /** Cumulative deduction clue trail (teams, votes, items, infections — built client + server). */
+  deductionRoundHistory?: unknown[]
+}
+
+type RoundHistoryEntry = {
+  round: number
+  shotgunResult: string
+  vaccineResult: string
+  infiltrationHint: string
+}
+
+function parseRoundHistoriesFromBody(raw: unknown): RoundHistoryEntry[] {
+  if (!Array.isArray(raw)) return []
+  const out: RoundHistoryEntry[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const o = entry as Record<string, unknown>
+    const r = typeof o.round === 'number' && Number.isFinite(o.round) ? Math.floor(o.round) : 0
+    if (r < 1) continue
+    out.push({
+      round: r,
+      shotgunResult: typeof o.shotgunResult === 'string' ? o.shotgunResult : 'unknown',
+      vaccineResult: typeof o.vaccineResult === 'string' ? o.vaccineResult : 'unknown',
+      infiltrationHint: typeof o.infiltrationHint === 'string' ? o.infiltrationHint : 'n/a',
+    })
+  }
+  out.sort((a, b) => a.round - b.round)
+  return out
+}
+
+/** Full deduction clue trail for speeches / spectator panel (AI prompts use public slices only). */
+export type DeductionShotgunEvent = {
+  shooter: string
+  target: string
+  result: 'zombie_killed' | 'human_killed'
+}
+
+export type DeductionVaccineEvent = {
+  user: string
+  target: string
+  result: 'saved' | 'no_effect' | 'immunized'
+}
+
+export type DeductionElimination = {
+  provider: string
+  reason: string
+}
+
+export type DeductionRoundHistory = {
+  round: number
+  teams: { id: string; members: string[] }[]
+  speeches: { provider: string; name: string; summary: string }[]
+  votes: Record<string, string>
+  expelResult: string | null
+  /** Role of expelled player at elimination (public reveal). */
+  expelledRole?: 'human' | 'zombie' | null
+  shotgunEvents: DeductionShotgunEvent[]
+  vaccineEvents: DeductionVaccineEvent[]
+  infectionOccurred: boolean
+  infectionCount: number
+  /** Resolved identities turned this round — GOD-mode UI only; never injected into AI board text. */
+  newInfections?: string[]
+  aliveAfter: string[]
+  zombieCountAfter?: number
+  humanCountAfter?: number
+  eliminations?: DeductionElimination[]
+}
+
+function parseDeductionRoundHistoryFromBody(raw: unknown): DeductionRoundHistory[] {
+  if (!Array.isArray(raw)) return []
+  const out: DeductionRoundHistory[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const o = entry as Record<string, unknown>
+    const r = typeof o.round === 'number' && Number.isFinite(o.round) ? Math.floor(o.round) : 0
+    if (r < 1) continue
+
+    const teamsRaw = Array.isArray(o.teams) ? o.teams : []
+    const teams: { id: string; members: string[] }[] = []
+    for (const t of teamsRaw) {
+      if (!t || typeof t !== 'object') continue
+      const tm = t as Record<string, unknown>
+      const id = typeof tm.id === 'string' ? tm.id : ''
+      const members = Array.isArray(tm.members)
+        ? tm.members.filter((x): x is string => typeof x === 'string')
+        : []
+      if (id && members.length) teams.push({ id, members })
+    }
+
+    const speechesRaw = Array.isArray(o.speeches) ? o.speeches : []
+    const speeches: { provider: string; name: string; summary: string }[] = []
+    for (const s of speechesRaw) {
+      if (!s || typeof s !== 'object') continue
+      const z = s as Record<string, unknown>
+      speeches.push({
+        provider: typeof z.provider === 'string' ? z.provider : '',
+        name: typeof z.name === 'string' ? z.name : '',
+        summary: typeof z.summary === 'string' ? z.summary : '',
+      })
+    }
+
+    const votes: Record<string, string> = {}
+    if (o.votes && typeof o.votes === 'object') {
+      for (const [vk, vv] of Object.entries(o.votes as Record<string, unknown>)) {
+        if (typeof vv === 'string') votes[vk] = vv
+      }
+    }
+
+    const shotgunEvents: DeductionShotgunEvent[] = []
+    const pushShot = (x: unknown) => {
+      if (!x || typeof x !== 'object') return
+      const e = x as Record<string, unknown>
+      const shooter = typeof e.shooter === 'string' ? e.shooter : ''
+      const target = typeof e.target === 'string' ? e.target : ''
+      const result =
+        e.result === 'zombie_killed' || e.result === 'human_killed' ? e.result : null
+      if (shooter && target && result) shotgunEvents.push({ shooter, target, result })
+    }
+    if (Array.isArray(o.shotgunEvents)) for (const x of o.shotgunEvents) pushShot(x)
+    else pushShot(o.shotgunEvent)
+
+    const vaccineEvents: DeductionVaccineEvent[] = []
+    const pushVax = (x: unknown) => {
+      if (!x || typeof x !== 'object') return
+      const e = x as Record<string, unknown>
+      const user = typeof e.user === 'string' ? e.user : ''
+      const target = typeof e.target === 'string' ? e.target : ''
+      const result =
+        e.result === 'saved' || e.result === 'no_effect' || e.result === 'immunized'
+          ? e.result
+          : null
+      if (user && target && result) vaccineEvents.push({ user, target, result })
+    }
+    if (Array.isArray(o.vaccineEvents)) for (const x of o.vaccineEvents) pushVax(x)
+    else pushVax(o.vaccineEvent)
+
+    const eliminations: DeductionElimination[] = []
+    if (Array.isArray(o.eliminations)) {
+      for (const x of o.eliminations) {
+        if (!x || typeof x !== 'object') continue
+        const e = x as Record<string, unknown>
+        const provider = typeof e.provider === 'string' ? e.provider : ''
+        const reason = typeof e.reason === 'string' ? e.reason : ''
+        if (provider) eliminations.push({ provider, reason })
+      }
+    }
+
+    const expelResult = typeof o.expelResult === 'string' ? o.expelResult : null
+    const expelledRoleRaw = o.expelledRole
+    const expelledRole =
+      expelledRoleRaw === 'human' || expelledRoleRaw === 'zombie' ? expelledRoleRaw : null
+    const infectionOccurred = o.infectionOccurred === true
+    const infectionCount =
+      typeof o.infectionCount === 'number' && Number.isFinite(o.infectionCount)
+        ? Math.max(0, Math.floor(o.infectionCount))
+        : 0
+
+    const newInfections = Array.isArray(o.newInfections)
+      ? o.newInfections.filter((x): x is string => typeof x === 'string')
+      : undefined
+
+    const aliveAfter = Array.isArray(o.aliveAfter)
+      ? o.aliveAfter.filter((x): x is string => typeof x === 'string')
+      : []
+
+    const zombieCountAfter =
+      typeof o.zombieCountAfter === 'number' && Number.isFinite(o.zombieCountAfter)
+        ? Math.floor(o.zombieCountAfter)
+        : undefined
+    const humanCountAfter =
+      typeof o.humanCountAfter === 'number' && Number.isFinite(o.humanCountAfter)
+        ? Math.floor(o.humanCountAfter)
+        : undefined
+
+    out.push({
+      round: r,
+      teams,
+      speeches,
+      votes,
+      expelResult,
+      ...(expelledRole !== null ? { expelledRole } : {}),
+      shotgunEvents,
+      vaccineEvents,
+      infectionOccurred,
+      infectionCount,
+      ...(newInfections?.length ? { newInfections } : {}),
+      aliveAfter,
+      ...(typeof zombieCountAfter === 'number' ? { zombieCountAfter } : {}),
+      ...(typeof humanCountAfter === 'number' ? { humanCountAfter } : {}),
+      ...(eliminations.length ? { eliminations } : {}),
+    })
+  }
+  out.sort((a, b) => a.round - b.round)
+  return out
+}
+
+/** English deduction board — public facts only (no hidden roles / names of new zombies). */
+function buildDeductionBoardPublic(entries: DeductionRoundHistory[]): string {
+  if (entries.length === 0) return ''
+
+  let board = '===== DEDUCTION BOARD =====\n\n'
+
+  board += 'TEAM HISTORY (who was paired with whom):\n'
+  for (const rh of entries) {
+    const teamStrs = rh.teams.map((t, i) => {
+      const names = t.members.map((id) => providerDisplayName(id))
+      return `Team ${i + 1} (${names.join(', ')})`
+    })
+    board += `Round ${rh.round}: ${teamStrs.join(' | ')}\n`
+  }
+
+  board += '\nINFECTION LOG (public knowledge):\n'
+  for (const rh of entries) {
+    if (rh.infectionOccurred) {
+      board += `Round ${rh.round}: ⚠️ New infection detected (${rh.infectionCount} player${rh.infectionCount === 1 ? '' : 's'} turned)\n`
+    } else {
+      board += `Round ${rh.round}: ✅ No new infections\n`
+    }
+  }
+
+  board += '\nVOTE RECORD:\n'
+  for (const rh of entries) {
+    const voteEntries = Object.entries(rh.votes)
+    if (voteEntries.length === 0) {
+      board += `Round ${rh.round}: No votes cast\n`
+      continue
+    }
+    const voteStr = voteEntries
+      .map(([voter, target]) => `${providerDisplayName(voter)}→${providerDisplayName(target)}`)
+      .join(', ')
+    const roleReveal =
+      rh.expelResult && (rh.expelledRole === 'zombie' || rh.expelledRole === 'human')
+        ? rh.expelledRole === 'zombie'
+          ? ' — revealed: was zombie'
+          : ' — revealed: was human'
+        : ''
+    const result = rh.expelResult
+      ? `${providerDisplayName(rh.expelResult)} expelled${roleReveal}`
+      : 'No majority — no one expelled'
+    board += `Round ${rh.round}: ${voteStr}\n  Result: ${result}\n`
+  }
+
+  board += '\nITEM USAGE:\n'
+  for (const rh of entries) {
+    const shParts =
+      rh.shotgunEvents.length > 0
+        ? rh.shotgunEvents.map((ev) => {
+            const r = ev.result === 'zombie_killed' ? 'Zombie killed!' : 'Human killed (mistake)'
+            return `${providerDisplayName(ev.shooter)} fired shotgun at ${providerDisplayName(ev.target)} → ${r}`
+          })
+        : ['Shotgun not used']
+    const vxParts =
+      rh.vaccineEvents.length > 0
+        ? rh.vaccineEvents.map((ev) => {
+            const r =
+              ev.result === 'saved'
+                ? 'Saved / cured!'
+                : ev.result === 'immunized'
+                  ? 'Immunized (infection blocked this round)'
+                  : 'No effect'
+            return `${providerDisplayName(ev.user)} vaccinated ${providerDisplayName(ev.target)} → ${r}`
+          })
+        : ['Vaccine not used']
+    board += `Round ${rh.round}: ${shParts.join('; ')}. ${vxParts.join('; ')}.\n`
+  }
+
+  board += '\nELIMINATION LOG:\n'
+  for (const rh of entries) {
+    const elim = rh.eliminations?.length
+      ? rh.eliminations.map((e) => `${providerDisplayName(e.provider)} (${e.reason})`).join('; ')
+      : 'None'
+    board += `Round ${rh.round}: ${elim}\n`
+  }
+
+  const lastRound = entries[entries.length - 1]
+  if (lastRound) {
+    board += `\nALIVE PLAYERS (after Round ${lastRound.round}): ${lastRound.aliveAfter.map((id) => providerDisplayName(id)).join(', ')}\n`
+  }
+
+  board += '\n===== END DEDUCTION BOARD =====\n'
+  return board
+}
+
+const DEDUCTION_SPEECH_REASONING_BLOCK = `
+REASONING INSTRUCTION:
+You have the DEDUCTION BOARD above. Use it.
+
+When you accuse someone, cite SPECIFIC evidence:
+- Reference TEAM HISTORY together with INFECTION LOG when narrowing suspects.
+- Reference VOTE RECORD for suspicious voting patterns.
+- Reference ITEM USAGE as confirmed evidence.
+
+When you defend yourself, cite SPECIFIC evidence tied to rounds and teams from the board.
+
+DO NOT say vague things like "I'm observing carefully" or "we need more information."
+Every statement must reference a specific round, team, vote, or event from the DEDUCTION BOARD.
+`
+
+const DEDUCTION_ACTION_REASONING_BLOCK = `
+ACTION REASONING:
+Use the DEDUCTION BOARD above. In your JSON "speech" field, tie your chosen action to concrete facts from the board (specific round, pairing, vote, or item outcome). Do not hand-wave.
+`
+
+function formatDeductionRoundForAnnouncer(rh: DeductionRoundHistory, language: string): string {
+  const ko = language === 'Korean'
+  const inf = rh.infectionOccurred
+    ? ko
+      ? `이번 라운드 어둠이 또 한 명을 삼켰다 (${rh.infectionCount}명 전환)`
+      : `Infection struck — ${rh.infectionCount} turned`
+    : ko
+      ? '이번 라운드는 감염이 발생하지 않았다'
+      : 'No new infections this round'
+  const roleBit =
+    rh.expelResult && (rh.expelledRole === 'zombie' || rh.expelledRole === 'human')
+      ? ko
+        ? rh.expelledRole === 'zombie'
+          ? ' (공개: 좀비)'
+          : ' (공개: 인간)'
+        : rh.expelledRole === 'zombie'
+          ? ' (revealed: zombie)'
+          : ' (revealed: human)'
+      : ''
+  const vote = rh.expelResult
+    ? ko
+      ? `다수결로 ${providerDisplayName(rh.expelResult)}이 추방되었다${roleBit}`
+      : `Majority vote expelled ${providerDisplayName(rh.expelResult)}${roleBit}`
+    : ko
+      ? '표가 갈려 아무도 추방되지 않았다'
+      : 'Votes split — no one expelled'
+  const sh =
+    rh.shotgunEvents.length > 0
+      ? rh.shotgunEvents
+          .map((e) =>
+            ko
+              ? `${providerDisplayName(e.shooter)} 샷건 ${providerDisplayName(e.target)} (${e.result === 'zombie_killed' ? '좀비 제거' : '인간 오사'})`
+              : `${providerDisplayName(e.shooter)} shotgun → ${providerDisplayName(e.target)} (${e.result})`
+          )
+          .join('; ')
+      : ko
+        ? '샷건 미사용'
+        : 'Shotgun not used'
+  const vx =
+    rh.vaccineEvents.length > 0
+      ? rh.vaccineEvents
+          .map((e) => {
+            const vLabel = ko
+              ? e.result === 'saved'
+                ? '구원/치료'
+                : e.result === 'immunized'
+                  ? '면역 부여'
+                  : '무효'
+              : e.result
+            return ko
+              ? `${providerDisplayName(e.user)} 백신 ${providerDisplayName(e.target)} (${vLabel})`
+              : `${providerDisplayName(e.user)} vaccine → ${providerDisplayName(e.target)} (${e.result})`
+          })
+          .join('; ')
+      : ko
+        ? '백신 미사용'
+        : 'Vaccine not used'
+  return ko
+    ? `${inf}\n${vote}\n아이템: ${sh}. ${vx}.`
+    : `${inf}\n${vote}\nItems: ${sh}; ${vx}.`
+}
+
+/** Two starting zombies; accepts `zombieIds` or legacy `zombieId`. */
+function normalizeBodyZombieIds(body: CarrierBody): string[] {
+  const fromArr = Array.isArray(body.zombieIds)
+    ? body.zombieIds.filter((x): x is string => typeof x === 'string')
+    : []
+  const uniq = [...new Set(fromArr)]
+  if (uniq.length >= 2) return [uniq[0]!, uniq[1]!]
+  if (uniq.length === 1) {
+    const leg = typeof body.zombieId === 'string' ? body.zombieId.trim() : ''
+    if (leg && leg !== uniq[0]) return [uniq[0]!, leg]
+    return [uniq[0]!]
+  }
+  const leg = typeof body.zombieId === 'string' ? body.zombieId.trim() : ''
+  return leg ? [leg] : []
+}
+
+/** Blind mode omits zombies/holders from the client; reload from session `prompt` JSON. */
+async function loadCarrierSessionBootstrap(sessionId: string): Promise<{
+  zombieIds: [string, string] | null
+  shotgunHolderId: string
+  vaccineHolderId: string
+} | null> {
+  if (!sessionId) return null
+  const { data, error } = await supabaseAdmin
+    .from('sessions')
+    .select('prompt')
+    .eq('id', sessionId)
+    .maybeSingle()
+  if (error || data?.prompt == null) return null
+  try {
+    const o = JSON.parse(String(data.prompt)) as {
+      zombieIds?: unknown
+      shotgunHolderId?: unknown
+      vaccineHolderId?: unknown
+    }
+    const zraw = Array.isArray(o.zombieIds)
+      ? o.zombieIds.filter((x): x is string => typeof x === 'string')
+      : []
+    const zombieIds = zraw.length >= 2 ? ([zraw[0]!, zraw[1]!] as [string, string]) : null
+    return {
+      zombieIds,
+      shotgunHolderId: typeof o.shotgunHolderId === 'string' ? o.shotgunHolderId : '',
+      vaccineHolderId: typeof o.vaccineHolderId === 'string' ? o.vaccineHolderId : '',
+    }
+  } catch {
+    return null
+  }
 }
 
 export async function POST(req: Request) {
@@ -1029,22 +1570,59 @@ export async function POST(req: Request) {
             return
           }
 
-          const zombiePool =
-            userMode === 'challenge' ? [...alivePlayers, 'user'] : [...alivePlayers]
-          const zombieId = pickRandomOne(zombiePool)
+          const universe = [
+            ...new Set(
+              userMode === 'challenge' ? [...alivePlayers, 'user'] : [...alivePlayers]
+            ),
+          ]
+          if (universe.length < 4) {
+            fail('Need at least 4 players (2 zombies + 2 humans for items)')
+            return
+          }
+          const zPick = shuffle(universe)
+          const zombieIds: [string, string] = [zPick[0]!, zPick[1]!]
+          const zombieSet = new Set<string>(zombieIds)
 
-          const humanPool = zombiePool.filter((p) => p !== zombieId)
+          const humanPool = universe.filter((p) => !zombieSet.has(p))
           if (humanPool.length < 2) {
             fail('Not enough humans for items')
             return
           }
           const sh = shuffle(humanPool)
-          const shotgunHolderId = sh[0]!
+          let shotgunHolderId = sh[0]!
           let vaccineHolderId = sh[1]!
           if (vaccineHolderId === shotgunHolderId) vaccineHolderId = sh[2] ?? sh[1]!
 
+          const roleAtStart: Record<string, 'human' | 'zombie'> = {}
+          for (const p of universe) {
+            roleAtStart[p] = zombieSet.has(p) ? 'zombie' : 'human'
+          }
+          const pickHumanItemHolder = (exclude: string) => {
+            const c = humanPool.filter((p) => p !== exclude && roleAtStart[p] === 'human')
+            return c.length ? pickRandomOne(c) : humanPool.find((p) => p !== exclude) ?? exclude
+          }
+          if (roleAtStart[shotgunHolderId] === 'zombie') {
+            shotgunHolderId = pickHumanItemHolder(vaccineHolderId)
+          }
+          if (roleAtStart[vaccineHolderId] === 'zombie' || vaccineHolderId === shotgunHolderId) {
+            vaccineHolderId = pickHumanItemHolder(shotgunHolderId)
+          }
+          if (vaccineHolderId === shotgunHolderId && humanPool.length > 1) {
+            const alt = humanPool.find((p) => p !== shotgunHolderId)
+            if (alt) vaccineHolderId = alt
+          }
+
+          if (userMode === 'challenge') {
+            console.log('[carrier] CHALLENGE item assignment:', {
+              shotgunHolderId,
+              vaccineHolderId,
+              humanPool,
+              universe,
+            })
+          }
+
           const promptPayload = JSON.stringify({
-            zombieId,
+            zombieIds,
             shotgunHolderId,
             vaccineHolderId,
             userMode,
@@ -1079,16 +1657,20 @@ export async function POST(req: Request) {
             sessionId = String(insTitle.data.id)
           }
 
-          const playersForNarrator =
-            userMode === 'challenge' ? [...alivePlayers, 'user'] : alivePlayers
+          const playersForNarrator = userMode === 'challenge' ? universe : alivePlayers
           const { gameRules } = getPlayerContext(playersForNarrator)
+
+          const openingToolsLine =
+            language === 'Korean'
+              ? '샷건 세 발과 백신 세 회분이 주어지며, 각각 서로 다른 인간 두 명이 한 사람이 전부 들고 있고'
+              : 'Three shotgun shells and three vaccine doses are in play — each held entirely by one human, shotgun by one human and vaccine by another, and'
 
           const narrator = await runSingleAiProvider({
             supabase: supabaseAdmin,
             sessionId: null,
             userId: null,
             provider: 'anthropic',
-            prompt: `Opening — NEW scene. CARRIER: one hidden zombie, a shotgun and a vaccine held by two different humans, five rounds of alliances and betrayal. ${playersForNarrator.length} players. Deliver a short opening.`,
+            prompt: `Opening — NEW scene. CARRIER: two hidden zombies; ${openingToolsLine} five rounds with host-assigned teams that reshuffle each round. ${playersForNarrator.length} players. Deliver a short opening.`,
             systemPrompt:
               langPre +
               HUMAN_MESSAGE_OWNERSHIP_RULE +
@@ -1101,7 +1683,7 @@ export async function POST(req: Request) {
 
           let annRaw = narrator.text ?? ''
           if (isErrorResponse(annRaw)) {
-            annRaw = '[Narrator is temporarily unavailable.]'
+            annRaw = 'Narrator is temporarily unavailable.'
           } else {
             annRaw = truncateAtLastSentence(annRaw)
           }
@@ -1110,9 +1692,15 @@ export async function POST(req: Request) {
           send({
             type: 'start',
             sessionId,
-            zombieId,
-            shotgunHolderId,
-            vaccineHolderId,
+            ...(userMode === 'blind'
+              ? {}
+              : {
+                  zombieIds,
+                  shotgunHolderId,
+                  vaccineHolderId,
+                }),
+            shotgunCount: INITIAL_SHOTGUN_COUNT,
+            vaccineCount: INITIAL_VACCINE_COUNT,
             announcement,
           })
           controller.close()
@@ -1123,29 +1711,78 @@ export async function POST(req: Request) {
         const alivePlayers = Array.isArray(body.alivePlayers)
           ? body.alivePlayers.filter((p): p is string => typeof p === 'string')
           : []
-        const zombieId = typeof body.zombieId === 'string' ? body.zombieId : ''
-        const shotgunHolderId = typeof body.shotgunHolderId === 'string' ? body.shotgunHolderId : ''
-        const vaccineHolderId = typeof body.vaccineHolderId === 'string' ? body.vaccineHolderId : ''
-        const shotgunUsed = body.shotgunUsed === true
-        const vaccineUsed = body.vaccineUsed === true
+        let zombieIdsBody = normalizeBodyZombieIds(body)
+        let shotgunHolderId = typeof body.shotgunHolderId === 'string' ? body.shotgunHolderId.trim() : ''
+        let vaccineHolderId = typeof body.vaccineHolderId === 'string' ? body.vaccineHolderId.trim() : ''
+
+        const sessionBoot = await loadCarrierSessionBootstrap(sessionId)
+        if (zombieIdsBody.length < 2 && sessionBoot?.zombieIds) {
+          zombieIdsBody = [...sessionBoot.zombieIds]
+        }
+        if (!shotgunHolderId && sessionBoot?.shotgunHolderId) {
+          shotgunHolderId = sessionBoot.shotgunHolderId
+        }
+        if (!vaccineHolderId && sessionBoot?.vaccineHolderId) {
+          vaccineHolderId = sessionBoot.vaccineHolderId
+        }
+
+        const shotgunUses = parseToolUseCount(body.shotgunUsed, MAX_SHOTGUN_USES)
+        const vaccineUses = parseToolUseCount(body.vaccineUsed, MAX_VACCINE_USES)
         const rolesIn: Record<string, 'human' | 'zombie'> = {}
         if (body.roles && typeof body.roles === 'object') {
           for (const [k, v] of Object.entries(body.roles)) {
             if (v === 'human' || v === 'zombie') rolesIn[k] = v
           }
         }
+        const originalZombieSet = new Set(zombieIdsBody)
+        for (const p of alivePlayers) {
+          if (rolesIn[p] === undefined) {
+            rolesIn[p] = originalZombieSet.has(p) ? 'zombie' : 'human'
+          }
+        }
 
         if (action === 'speeches') {
           const { gameRules } = getPlayerContext(alivePlayers)
           const aliveBlock = buildCarrierAliveBlock(alivePlayers, userMode)
+          const eliminatedSpeechBlock = buildEliminatedSpeechBlock(alivePlayers, userMode)
           const conv = Array.isArray(body.conversation) ? (body.conversation as ConvTurn[]) : []
           const historyText = buildHistoryText(conv, alivePlayers)
+          const roundHistories = parseRoundHistoriesFromBody(body.roundHistories)
+          const gameHistoryBlock =
+            roundHistories.length > 0
+              ? `
+GAME HISTORY (what has happened so far):
+${roundHistories
+  .map(
+    (hr) =>
+      `Round ${hr.round}: Shotgun ${hr.shotgunResult}, Vaccine ${hr.vaccineResult}, Infiltration: ${hr.infiltrationHint}`
+  )
+  .join('\n')}
+`
+              : ''
+
+          const deductionEntriesSpeech = parseDeductionRoundHistoryFromBody(body.deductionRoundHistory)
+          const deductionBoardSpeech = buildDeductionBoardPublic(deductionEntriesSpeech)
+          const deductionSpeechBlock =
+            deductionBoardSpeech.trim().length > 0
+              ? `\n${deductionBoardSpeech}\n${DEDUCTION_SPEECH_REASONING_BLOCK}\n`
+              : ''
 
           const speechOrder = AI_PLAYERS.filter((p) => alivePlayers.includes(p.provider))
           if (speechOrder.length === 0) {
             fail('No AI participants for speeches')
             return
           }
+
+          const assignedTeamsThisRound = assignTeamsForRound(alivePlayers, round, sessionId)
+          const teamsCarrierSnapshot = teamsToCarrierTeams(assignedTeamsThisRound)
+          const narrationLine = narrationForAssignedTeams(assignedTeamsThisRound, language)
+          send({
+            type: 'round_teams',
+            round,
+            teams: snapshotTeamsForClient(teamsCarrierSnapshot),
+            narration: narrationLine,
+          })
 
           for (const player of speechOrder) {
             const selfZ = rolesIn[player.provider] === 'zombie'
@@ -1157,17 +1794,31 @@ export async function POST(req: Request) {
             const roundNote =
               round >= 2
                 ? `This is round ${round}: write 2–3 sentences total (see LENGTH & TONE). If you write a third sentence, it must accuse ONE player with a reason grounded in EARLIER rounds only — use CONVERSATION HISTORY.\n`
-                : 'This is round 1: exactly 2 sentences — humanity claim + mandatory alliance line. No suspicion sentence.\n'
+                : 'This is round 1: exactly 2 sentences — humanity claim + team pledge (see TEAM ASSIGNMENT). No suspicion sentence.\n'
             const geminiRoundSpeech =
               player.provider === 'google'
                 ? `GEMINI — This is Round ${round}. NEVER repeat the same opening sentence across rounds; your first words must be completely different each time. Vary structure and vocabulary; do not reuse a fixed catchphrase as sentence one.\n`
                 : ''
 
-            const sys = `${langPre}${speechOutputLanguageBlock(language)}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${toolNote}
+            const { ownTeamFormatted, allTeamsFormatted } = promptTeamAssignmentsForPid(
+              player.provider,
+              assignedTeamsThisRound
+            )
+            const teamAssignmentBlock = `TEAM ASSIGNMENT (host decided — LOCKED for all of round ${round}, no leaving or switching):\nYour team this round: ${ownTeamFormatted}\nAll teams: ${allTeamsFormatted}\n`
+
+            const claudeTeamClosingKo =
+              player.provider === 'anthropic' && language === 'Korean'
+                ? `\nMANDATORY CLOSING (Korean): You MUST end by naming your assigned teammates and pledging to cooperate with them this round (one brief sentence in Korean).\n`
+                : ''
+
+            const sys = `${langPre}${speechOutputLanguageBlock(language)}${aliveBlock}${eliminatedSpeechBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${toolNote}
 ${selfZ ? SPEECH_ZOMBIE[player.provider] : SPEECH_HUMAN[player.provider]}
-${roundNote}${geminiRoundSpeech}
+${roundNote}${geminiRoundSpeech}${teamAssignmentBlock}${claudeTeamClosingKo}
 You are ${player.name}. Provider id: ${player.provider}.
 
+PUBLIC NARRATION THIS ROUND (spoken to everyone): ${narrationLine}
+
+${gameHistoryBlock}${deductionSpeechBlock}
 CONVERSATION HISTORY:
 ${historyText}
 `
@@ -1203,145 +1854,53 @@ ${historyText}
         }
 
         if (action === 'actions') {
-          let teamsWorking: CarrierTeam[] = Array.isArray(body.teams)
-            ? (body.teams as CarrierTeam[]).map((t) => ({
-                id: String(t.id),
-                members: Array.isArray(t.members)
-                  ? t.members.filter((m): m is string => typeof m === 'string')
-                  : [],
-              }))
-            : []
-
-          if (teamsWorking.length === 0) {
-            fail('teams required for actions')
-            return
-          }
-
           const { gameRules } = getPlayerContext(alivePlayers)
           const aliveBlock = buildCarrierAliveBlock(alivePlayers, userMode)
           const conv = Array.isArray(body.conversation) ? (body.conversation as ConvTurn[]) : []
           const historyText = buildHistoryText(conv, alivePlayers)
 
-          let shUsed = shotgunUsed
-          let vaxUsed = vaccineUsed
-          const shHolder = shotgunHolderId
-          const vaxHolder = vaccineHolderId
+          const deductionEntriesActions = parseDeductionRoundHistoryFromBody(body.deductionRoundHistory)
+          const deductionBoardActions = buildDeductionBoardPublic(deductionEntriesActions)
+          const deductionActionsBlock =
+            deductionBoardActions.trim().length > 0
+              ? `\n${deductionBoardActions}\n${DEDUCTION_ACTION_REASONING_BLOCK}\n`
+              : ''
+
+          let shUsed = shotgunUses
+          let vaxUsed = vaccineUses
           let roles = { ...rolesIn }
 
           let shotgunResult: 'not_used' | 'zombie_eliminated' | 'human_died' = 'not_used'
-          let vaccineResult: 'not_used' | 'zombie_cured' | 'no_effect' = 'not_used'
+          let vaccineResult: 'not_used' | 'zombie_cured' | 'no_effect' | 'immunized' = 'not_used'
 
           const eliminated = new Set<string>()
           const actionsThisRound: Record<string, string> = {}
-          let allianceJoinedThisRound = new Set<string>()
-          let allianceResponderAcceptedThisRound = new Set<string>()
 
-          const mergeAcceptedAlliance = (requester: string, target: string): boolean => {
-            if (!mergeAllianceTeamsState(teamsWorking, requester, target)) return false
-            allianceJoinedThisRound.add(requester)
-            allianceJoinedThisRound.add(target)
-            return true
-          }
-
-          const applyExpel = (target: string) => {
-            for (const tm of teamsWorking) {
-              if (tm.members.includes(target)) {
-                tm.members = tm.members.filter((m) => m !== target)
-              }
-            }
-            teamsWorking.push({ id: `solo_${target}`, members: [target] })
-          }
+          let teamsWorking: CarrierTeam[] = teamsToCarrierTeams(
+            assignTeamsForRound(alivePlayers, round, sessionId)
+          )
 
           let acted = new Set<string>()
           let order: string[] = []
           let resumeIndex = 0
 
-          const resumePack = body.actionsPausedResume
-          const uaBody = body.userAllianceResponse
           const utResume = body.actionsUserTurnResume
 
-          if (resumePack && uaBody && typeof uaBody.accepted === 'boolean') {
-            acted = new Set(resumePack.acted)
-            order = [...resumePack.order]
-            resumeIndex = resumePack.resumeIndex
-            teamsWorking = resumePack.teams.map((t) => ({ id: t.id, members: [...t.members] }))
-            roles = { ...resumePack.roles }
-            shUsed = resumePack.shotgunUsed
-            vaxUsed = resumePack.vaccineUsed
-            shotgunResult = resumePack.shotgunResult
-            vaccineResult = resumePack.vaccineResult
-            Object.assign(actionsThisRound, resumePack.actionsThisRound ?? {})
-            allianceJoinedThisRound = new Set(resumePack.allianceJoinedIdsThisRound ?? [])
-            allianceResponderAcceptedThisRound = new Set(
-              resumePack.allianceResponderAcceptedIdsThisRound ?? []
-            )
-            for (const e of resumePack.eliminated) eliminated.add(e)
-
-            const pend = resumePack.pending
-            const userWantsAccept = uaBody.accepted === true
-            const nMerge = allianceMergeMemberCount(teamsWorking, pend.requester, 'user')
-            let accepted =
-              userWantsAccept &&
-              nMerge !== null &&
-              nMerge <= MAX_CARRIER_TEAM_SIZE
-            if (userWantsAccept && allianceResponderAcceptedThisRound.has('user')) {
-              accepted = false
-            }
-            if (
-              userWantsAccept &&
-              nMerge !== null &&
-              nMerge > MAX_CARRIER_TEAM_SIZE
-            ) {
-              stripPlayerToSoloTeam(teamsWorking, pend.requester)
-            }
-            const respText =
-              typeof uaBody.text === 'string' && uaBody.text.trim()
-                ? sanitizeAiResponseText(
-                    truncateAtLastSentence(uaBody.text.trim()).slice(0, 220)
-                  )
-                : accepted
-                  ? 'Accepted.'
-                  : 'Declined.'
-
-            send({
-              type: 'action_response',
-              from: 'user',
-              fromName: 'You',
-              to: pend.requester,
-              toName: providerDisplayName(pend.requester),
-              accepted,
-              text: respText,
-            })
-            if (accepted) {
-              if (mergeAcceptedAlliance(pend.requester, 'user')) {
-                allianceResponderAcceptedThisRound.add('user')
-              } else {
-                accepted = false
-              }
-            }
-            actionsThisRound[pend.requester] = accepted
-              ? `ALLIANCE_REQUEST → ${providerDisplayName('user')} (accepted)`
-              : `ALLIANCE_REQUEST → ${providerDisplayName('user')} (rejected)`
-            acted.add(pend.requester)
-            resumeIndex += 1
-          } else if (resumePack && !uaBody) {
-            fail('userAllianceResponse required with actionsPausedResume')
-            return
-          } else if (utResume && body.userAction?.action) {
+          if (utResume && body.userAction?.action) {
             acted = new Set(utResume.acted)
             order = [...utResume.order]
             resumeIndex = utResume.resumeIndex
-            teamsWorking = utResume.teams.map((t) => ({ id: t.id, members: [...t.members] }))
+            teamsWorking = utResume.teams.map((t) => ({
+              id: t.id,
+              members: [...t.members],
+              ...(typeof t.round === 'number' ? { round: t.round } : {}),
+            }))
             roles = { ...utResume.roles }
-            shUsed = utResume.shotgunUsed
-            vaxUsed = utResume.vaccineUsed
+            shUsed = parseToolUseCount(utResume.shotgunUsed, MAX_SHOTGUN_USES)
+            vaxUsed = parseToolUseCount(utResume.vaccineUsed, MAX_VACCINE_USES)
             shotgunResult = utResume.shotgunResult
             vaccineResult = utResume.vaccineResult
             Object.assign(actionsThisRound, utResume.actionsThisRound ?? {})
-            allianceJoinedThisRound = new Set(utResume.allianceJoinedIdsThisRound ?? [])
-            allianceResponderAcceptedThisRound = new Set(
-              utResume.allianceResponderAcceptedIdsThisRound ?? []
-            )
             for (const e of utResume.eliminated) eliminated.add(e)
           } else {
             const aisOnly = alivePlayers.filter((p) => p !== 'user')
@@ -1352,146 +1911,34 @@ ${historyText}
             resumeIndex = 0
           }
 
+          const vaccinatedThisRound = new Set<string>()
+          const expelVotes: Record<string, string> = {}
+          if (utResume && body.userAction?.action) {
+            for (const id of utResume.vaccinatedThisRound ?? []) {
+              if (typeof id === 'string') vaccinatedThisRound.add(id)
+            }
+            Object.assign(expelVotes, utResume.expelVotes ?? {})
+          }
+
+          const shotgunEventsDeduction: DeductionShotgunEvent[] = []
+          const vaccineEventsDeduction: DeductionVaccineEvent[] = []
+          const eliminationsDeduction: DeductionElimination[] = []
+          if (utResume && body.userAction?.action) {
+            shotgunEventsDeduction.push(...(utResume.shotgunEventsDeduction ?? []))
+            vaccineEventsDeduction.push(...(utResume.vaccineEventsDeduction ?? []))
+            eliminationsDeduction.push(...(utResume.eliminationsDeduction ?? []))
+          }
+
           const ctxClampBase = (pid: string): CarrierClampCtx => ({
-            round,
             pid,
             alive: alivePlayers,
             teams: teamsWorking,
-            roles,
             shotgunHolderId,
             vaccineHolderId,
-            shotgunUsed: shUsed,
-            vaccineUsed: vaxUsed,
+            shotgunUses: shUsed,
+            vaccineUses: vaxUsed,
             eliminated,
-            allianceJoinedThisRound,
           })
-
-          const finishAllianceAi = async (
-            requester: string,
-            target: string,
-            reqText: string
-          ): Promise<{ paused: boolean; allianceAccepted?: boolean }> => {
-            const fromName = providerDisplayName(requester)
-            const toName = providerDisplayName(target)
-            send({
-              type: 'action_request',
-              from: requester,
-              fromName,
-              to: target,
-              toName,
-              text: reqText,
-            })
-
-            if (target === 'user' && userMode === 'challenge') {
-              const payload: ActionsPausedPayload = {
-                acted: [...acted],
-                order,
-                resumeIndex,
-                teams: teamsWorking.map((t) => ({ id: t.id, members: [...t.members] })),
-                roles,
-                eliminated: [...eliminated],
-                shotgunUsed: shUsed,
-                vaccineUsed: vaxUsed,
-                shotgunResult,
-                vaccineResult,
-                allianceLatentThisRound:
-                  collectPendingInfectionTeams(teamsWorking, roles).length > 0,
-                allianceJoinedIdsThisRound: [...allianceJoinedThisRound],
-                allianceResponderAcceptedIdsThisRound: [
-                  ...allianceResponderAcceptedThisRound,
-                ],
-                actionsThisRound: { ...actionsThisRound },
-                pending: { requester, target, reqText },
-              }
-              send({ type: 'actions_paused', payload })
-              controller.close()
-              return { paused: true }
-            }
-
-            const responderPlayer = AI_PLAYERS.find((p) => p.provider === target)
-            if (!responderPlayer) {
-              send({
-                type: 'action_response',
-                from: target,
-                fromName: toName,
-                to: requester,
-                toName: fromName,
-                accepted: false,
-                text: 'No response.',
-              })
-              return { paused: false, allianceAccepted: false }
-            }
-
-            if (allianceResponderAcceptedThisRound.has(target)) {
-              const respBusy = await allianceResponseLineAi(
-                responderPlayer,
-                false,
-                fromName,
-                langPre,
-                aliveBlock,
-                gameRules,
-                historyText,
-                round,
-                providerDisplayName(requester)
-              )
-              send({
-                type: 'action_response',
-                from: target,
-                fromName: responderPlayer.name,
-                to: requester,
-                toName: fromName,
-                accepted: false,
-                text: respBusy,
-              })
-              return { paused: false, allianceAccepted: false }
-            }
-
-            const rolled = rollAllianceAccept(
-              requester,
-              target,
-              conv,
-              round,
-              teamsWorking
-            )
-            const nMerge = allianceMergeMemberCount(teamsWorking, requester, target)
-            let accepted =
-              rolled && nMerge !== null && nMerge <= MAX_CARRIER_TEAM_SIZE
-            if (
-              rolled &&
-              nMerge !== null &&
-              nMerge > MAX_CARRIER_TEAM_SIZE
-            ) {
-              stripPlayerToSoloTeam(teamsWorking, requester)
-            }
-            const respText = await allianceResponseLineAi(
-              responderPlayer,
-              accepted,
-              fromName,
-              langPre,
-              aliveBlock,
-              gameRules,
-              historyText,
-              round,
-              providerDisplayName(requester)
-            )
-            send({
-              type: 'action_response',
-              from: target,
-              fromName: responderPlayer.name,
-              to: requester,
-              toName: fromName,
-              accepted,
-              text: respText,
-            })
-            if (accepted) {
-              if (mergeAcceptedAlliance(requester, target)) {
-                allianceResponderAcceptedThisRound.add(target)
-              } else {
-                accepted = false
-              }
-            }
-            return { paused: false, allianceAccepted: accepted }
-          }
 
           while (resumeIndex < order.length) {
             const pid = order[resumeIndex]!
@@ -1505,40 +1952,35 @@ ${historyText}
             }
 
             let decision: ParsedCarrierAction
-            const forcedTool = tryForcedToolActionForCarrierRound(
-              pid,
-              round,
-              conv,
-              alivePlayers,
-              teamsWorking,
-              eliminated,
-              shotgunHolderId,
-              vaccineHolderId,
-              shUsed,
-              vaxUsed
-            )
-            if (forcedTool) {
-              decision = clampCarrierActionForActor(forcedTool, ctxClampBase(pid))
-            } else if (pid === 'user') {
+
+            if (pid === 'user') {
               if (userMode === 'challenge' && !body.userAction?.action) {
                 const payload: ActionsUserTurnPayload = {
                   acted: [...acted],
                   order,
                   resumeIndex,
-                  teams: teamsWorking.map((t) => ({ id: t.id, members: [...t.members] })),
+                  teams: teamsWorking.map((t) => ({
+                    id: t.id,
+                    members: [...t.members],
+                    ...(typeof t.round === 'number' ? { round: t.round } : {}),
+                  })),
                   roles,
                   eliminated: [...eliminated],
                   shotgunUsed: shUsed,
                   vaccineUsed: vaxUsed,
                   shotgunResult,
                   vaccineResult,
-                  allianceLatentThisRound:
-                    collectPendingInfectionTeams(teamsWorking, roles).length > 0,
-                  allianceJoinedIdsThisRound: [...allianceJoinedThisRound],
-                  allianceResponderAcceptedIdsThisRound: [
-                    ...allianceResponderAcceptedThisRound,
-                  ],
+                  allianceLatentThisRound: teamsHaveLatentZombieHuman(
+                    teamsWorking,
+                    roles,
+                    eliminated
+                  ),
                   actionsThisRound: { ...actionsThisRound },
+                  expelVotes: { ...expelVotes },
+                  vaccinatedThisRound: [...vaccinatedThisRound],
+                  shotgunEventsDeduction: [...shotgunEventsDeduction],
+                  vaccineEventsDeduction: [...vaccineEventsDeduction],
+                  eliminationsDeduction: [...eliminationsDeduction],
                 }
                 send({ type: 'actions_paused_user_turn', payload })
                 controller.close()
@@ -1548,8 +1990,7 @@ ${historyText}
               if (
                 ua &&
                 ua.action &&
-                (ua.action === 'ALLIANCE_REQUEST' ||
-                  ua.action === 'SHOTGUN' ||
+                (ua.action === 'SHOTGUN' ||
                   ua.action === 'VACCINE' ||
                   ua.action === 'EXPEL' ||
                   ua.action === 'NONE')
@@ -1571,99 +2012,147 @@ ${historyText}
                 resumeIndex += 1
                 continue
               }
-              const mates = teamOf(teamsWorking, pid)
-              const selfZ = roles[pid] === 'zombie'
-              const holdsShotgun = pid === shotgunHolderId
-              const holdsVaccine = pid === vaccineHolderId
-              const currentTeamMembers = mates.map((m) => providerDisplayName(m))
-              const eliminatedPlayers = [...eliminated].map((id) => providerDisplayName(id))
-              const myActions = actionsThisRound[player.provider] ?? 'none yet'
-              const shotgunDiscipline =
-                holdsShotgun && !shUsed
-                  ? `Before using SHOTGUN, check CONVERSATION HISTORY carefully. Only fire at players who have been accused multiple times OR whose behavior has been inconsistent across rounds. Do NOT fire randomly.\n\n`
-                  : ''
-              const vaccineDiscipline =
-                holdsVaccine && !vaxUsed && mates.length > 1
-                  ? `Before using VACCINE, check CONVERSATION HISTORY carefully. Only use it on teammates who have been accused multiple times OR whose behavior has been inconsistent across rounds. Do NOT use it randomly — vaccinating a non-infected human wastes the dose (no effect).\n\n`
-                  : ''
-              const expelMandatoryNote =
-                mates.length > 1
-                  ? (() => {
-                      const expelTargets = mates.filter(
-                        (m) =>
-                          m !== player.provider &&
-                          suspicionMentionCountTowardPlayer(conv, m) >= 2
-                      )
-                      if (!expelTargets.length) return ''
-                      const names = expelTargets
-                        .map((t) => `${providerDisplayName(t)} (${suspicionMentionCountTowardPlayer(conv, t)} hits)`)
-                        .join(', ')
-                      return `EXPEL REQUIREMENT: Teammate(s) ${names} have 2+ accusation-style mentions across CONVERSATION HISTORY. You MUST choose EXPEL targeting one of them this action — your strongest defensive move. Do not ignore this while those signals exist.\n\n`
-                    })()
-                  : ''
-              const gameStateSnap = `CURRENT GAME STATE (Round ${round}):
-Your provider ID: ${player.provider}
-Your role: ${selfZ ? 'ZOMBIE — you are infected, hide this' : 'HUMAN — find the zombie'}
-Your team members right now: ${currentTeamMembers.length > 1 ? currentTeamMembers.join(', ') : 'NONE — you are solo'}
-You hold SHOTGUN: ${holdsShotgun && !shUsed ? 'YES — use it if you strongly suspect someone' : 'NO'}
-You hold VACCINE: ${holdsVaccine && !vaxUsed ? 'YES — use it on a suspected teammate' : 'NO'}
-Actions you have already taken this round: ${myActions}
-Players already eliminated: ${eliminatedPlayers.length ? eliminatedPlayers.join(', ') : 'none'}
-
-${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTION:
-- If you are SOLO: you MUST choose ALLIANCE_REQUEST. Nothing else.
-- If you hold SHOTGUN and suspect someone: choose SHOTGUN now, don't wait — but ONLY after applying the SHOTGUN discipline above (history-based suspicion, not random).
-- If you hold VACCINE and a teammate seems infected: choose VACCINE now — but ONLY after applying the VACCINE discipline above (history-based suspicion, not random).
-- If you have teammates and any teammate has been accused 2+ times in CONVERSATION HISTORY (see EXPEL REQUIREMENT above when present), you MUST choose EXPEL against that teammate — your strongest defensive move.
-- If a teammate is suspicious: choose EXPEL.
-- ALLIANCE_REQUEST is only valid if you are solo or want to merge teams.
-- Do NOT request alliance with someone already on your team.
-- NONE is forbidden in rounds 1-4.
-
-`
-              const round1note =
-                round === 1
-                  ? 'Round 1 RULE: You MUST choose ALLIANCE_REQUEST. NONE, SHOTGUN, VACCINE, and EXPEL are FORBIDDEN. You must request an alliance with another alive provider_id.\n'
-                  : 'Allowed: ALLIANCE_REQUEST, SHOTGUN, VACCINE, EXPEL, NONE.\n'
-              const zombieInfilNote =
-                selfZ && round >= 2
-                  ? 'ZOMBIE SURVIVAL: You MUST infiltrate humans. Choose ALLIANCE_REQUEST if you are solo, if your team is not yet full (fewer than 3 members), or if you are not already embedded in a full mixed team with humans. Never pick NONE unless you are already in such a strong coalition — then other actions are allowed. Target the human who seems least likely to suspect you.\n'
-                  : ''
-              const actionAggroNote =
-                round === 1
-                  ? ''
-                  : `Round 5 only: NONE is allowed only if you are solo, already had an accepted alliance merge this round, and have no usable shotgun, vaccine, or EXPEL. Otherwise follow CURRENT GAME STATE and RULES FOR THIS ACTION above.\n`
-              const sys =
-                `${langPre}${gameStateSnap}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}` +
-                '\nYou are ' +
-                player.name +
-                ' (' +
-                player.provider +
-                '). Secret role: ' +
-                (selfZ ? 'ZOMBIE — hide it.' : 'HUMAN.') +
-                '\n' +
-                round1note +
-                zombieInfilNote +
-                actionAggroNote +
-                `Rules (JSON targets use provider_id strings):\n- ALLIANCE_REQUEST: target another alive provider_id; that player responds immediately (free for them).\n- SHOTGUN: only if CURRENT GAME STATE says you hold SHOTGUN and it is usable; target any other alive player. You MUST follow the SHOTGUN discipline block above: evidence from CONVERSATION HISTORY (repeated accusations or cross-round inconsistency), never a random target.\n- VACCINE: only if CURRENT GAME STATE says you hold VACCINE and it is usable; target must be a teammate. You MUST follow the VACCINE discipline block above: same history-based bar — do not waste the dose on a clearly trusted teammate.\n- EXPEL: only if you have teammates; target must be a teammate (not yourself). If EXPEL REQUIREMENT appears above, you MUST EXPEL one of those named teammates.\n- NONE: forbidden rounds 1–4; round 5 see note above.\n\nRespond ONLY JSON: {"action":"ALLIANCE_REQUEST"|"SHOTGUN"|"VACCINE"|"EXPEL"|"NONE","target":"provider_id"|null}\n\nCONVERSATION HISTORY:\n` +
-                historyText
-              let raw = ''
-              try {
-                const r = await runCarrierAiWithTimeout(
-                  player,
-                  sys,
-                  `${langPre}Round ${round} — one action JSON only.`,
-                  actionJsonMaxTokens(player.provider)
-                )
-                raw = r.text?.trim() ?? ''
-              } catch {
-                raw = ''
-              }
-              if (isErrorResponse(raw)) raw = ''
-              decision = clampCarrierActionForActor(
-                parseCarrierAction(raw, alivePlayers),
-                ctxClampBase(pid)
+              const actx = getValidActionsForCarrierPid(
+                pid,
+                alivePlayers,
+                teamsWorking,
+                eliminated,
+                shotgunHolderId,
+                vaccineHolderId,
+                shUsed,
+                vaxUsed
               )
+              const forcedRaw = forcedItemUseIfNeeded(
+                pid,
+                round,
+                alivePlayers,
+                eliminated,
+                teamsWorking,
+                roles,
+                shotgunHolderId,
+                vaccineHolderId,
+                shUsed,
+                vaxUsed
+              )
+              const forcedClamped = forcedRaw
+                ? clampCarrierActionForActor(forcedRaw, ctxClampBase(pid))
+                : null
+
+              if (
+                forcedClamped &&
+                forcedClamped.action !== 'NONE' &&
+                forcedClamped.target
+              ) {
+                decision = forcedClamped
+                const forcedSpeech = forcedCarrierVaccineSpeech(language)
+                send({
+                  type: 'action_speech',
+                  provider: pid,
+                  name: player.name,
+                  speech: forcedSpeech,
+                  action: 'USE_VACCINE',
+                  targetId: forcedClamped.target,
+                  overridden: true,
+                  round,
+                })
+              } else {
+                const selfZ = roles[pid] === 'zombie'
+                const { ownTeamFormatted, allTeamsFormatted } = promptLiveTeamsForPid(
+                  pid,
+                  teamsWorking
+                )
+                const aliveNames = alivePlayers
+                  .filter((x) => !eliminated.has(x))
+                  .map((id) => `${targetLabelForCarrierPrompt(id)} (id: ${id})`)
+                  .join(', ')
+                const itemsLine =
+                  [
+                    pid === shotgunHolderId && shUsed < MAX_SHOTGUN_USES ? 'shotgun' : null,
+                    pid === vaccineHolderId && vaxUsed < MAX_VACCINE_USES ? 'vaccine' : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' + ') || 'none'
+                const shRem = MAX_SHOTGUN_USES - shUsed
+                const vxRem = MAX_VACCINE_USES - vaxUsed
+                const criticalItemLines: string[] = []
+                if (round >= 2) {
+                  if (pid === shotgunHolderId && shUsed < MAX_SHOTGUN_USES) {
+                    criticalItemLines.push(
+                      `CRITICAL ITEM INSTRUCTION: You hold a shotgun with ${shRem} charge(s) remaining.\nThe shotgun is your most powerful weapon — it permanently kills the target.\nBased on the DEDUCTION BOARD, identify who is most likely a zombie and SHOOT THEM.\nDo NOT waste this on PASS. If you have ANY suspicion, act on it.\nHowever, be careful — shooting a human is a catastrophic mistake.\nPick your target using evidence from team history, infection log, and vote patterns.`
+                    )
+                  }
+                  if (pid === vaccineHolderId && vaxUsed < MAX_VACCINE_USES) {
+                    criticalItemLines.push(
+                      `CRITICAL ITEM INSTRUCTION: You hold a vaccine. You have ${vxRem} dose(s) remaining.\nUsing your item is ALWAYS better than PASS. Items are powerful — shotgun kills zombies, vaccine saves lives.\nIf you have any suspicion about anyone, USE YOUR ITEM. Do not save it "for later" — there may be no later.\nRound 3+: You MUST use your item this round. Choose USE_SHOTGUN or USE_VACCINE, not PASS.`
+                    )
+                  }
+                }
+                const criticalItemBlock =
+                  criticalItemLines.length > 0 ? `${criticalItemLines.join('\n\n')}\n\n` : ''
+                const menuJson = actionContextPromptJson(actx)
+                const zombiePlay = selfZ
+                  ? '\n(Zombie: weapon text may misdirect survivors — never admit infection.)'
+                  : ''
+
+                const sys = `${langPre}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}
+You are ${player.name} (${player.provider}) in CARRIER — a zombie social deduction game. Round ${round}.
+
+CURRENT STATE:
+- Your hidden role: ${selfZ ? 'zombie — never reveal infection' : 'human'}${zombiePlay}
+- Your team this round: ${ownTeamFormatted}
+- All teams: ${allTeamsFormatted}
+- Alive players: ${aliveNames}
+- Items you still hold charges for: ${itemsLine}
+
+${criticalItemBlock}YOUR AVAILABLE ACTIONS — server-authored; you CANNOT invent actions or targets outside this object:
+${menuJson}
+
+You MUST reply with NOTHING except a single JSON object in EXACTLY this shape (same keys):
+{
+  "action": "...",
+  "targetId": "provider_id_here_or_null",
+  "speech": "In-character narration for this beat (max 2 short sentences)."
+}
+
+Rules:
+1. action ∈ validActions (see JSON above).
+2. targetId MUST be null when action is PASS.
+3. Otherwise targetId must appear under validTargetsByAction for YOUR chosen action.
+4. targetId strings are canonical provider identifiers (shown in Alive list).
+5. "VOTE_EXPEL" means you are VOTING to expel that player. It is NOT instant — all votes are tallied at round end. The player with the most votes (minimum 2) is expelled. Ties = no expel.
+
+${deductionActionsBlock}
+CONVERSATION HISTORY:
+${historyText}
+`
+                let raw = ''
+                try {
+                  const r = await runCarrierAiWithTimeout(
+                    player,
+                    sys,
+                    `${langPre}Round ${round} — STRUCTURED_ACTION_JSON only.`,
+                    actionJsonMaxTokens(player.provider)
+                  )
+                  raw = r.text?.trim() ?? ''
+                } catch {
+                  raw = ''
+                }
+                if (isErrorResponse(raw) || isBadAiOutput(raw)) raw = ''
+                const parsedRaw = parseStructuredCarrierAction(raw ?? '')
+                const validated = validateStructuredCarrierAction(parsedRaw, actx, pid)
+                send({
+                  type: 'action_speech',
+                  provider: player.provider,
+                  name: player.name,
+                  speech: validated.speech,
+                  action: validated.action,
+                  targetId: validated.targetId,
+                  overridden: validated.override,
+                  round,
+                })
+                const internal = structuredToParsedCarrier(validated)
+                decision = clampCarrierActionForActor(internal, ctxClampBase(pid))
+              }
             }
 
             if (decision.action === 'NONE') {
@@ -1673,46 +2162,6 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
                 name: providerDisplayName(pid),
               })
               actionsThisRound[pid] = 'NONE'
-              acted.add(pid)
-              resumeIndex += 1
-              continue
-            }
-
-            if (decision.action === 'ALLIANCE_REQUEST' && decision.target) {
-              const tgt = decision.target
-              let reqText: string
-              if (pid === 'user') {
-                const custom =
-                  typeof body.userAllianceRequestText === 'string'
-                    ? body.userAllianceRequestText.trim()
-                    : ''
-                reqText = custom
-                  ? truncateAtLastSentence(custom).slice(0, 400)
-                  : `${providerDisplayName(tgt)}, I want to ally with you this round.`
-              } else {
-                const pl = AI_PLAYERS.find((p) => p.provider === pid)
-                if (!pl) {
-                  acted.add(pid)
-                  resumeIndex += 1
-                  continue
-                }
-                reqText = await allianceRequestLineAi(
-                  pl,
-                  providerDisplayName(tgt),
-                  langPre,
-                  aliveBlock,
-                  gameRules,
-                  historyText,
-                  round,
-                  roles[pid] === 'zombie'
-                )
-              }
-              const ar = await finishAllianceAi(pid, tgt, reqText)
-              if (ar.paused) return
-              actionsThisRound[pid] =
-                ar.allianceAccepted === true
-                  ? `ALLIANCE_REQUEST → ${providerDisplayName(tgt)} (accepted)`
-                  : `ALLIANCE_REQUEST → ${providerDisplayName(tgt)} (rejected)`
               acted.add(pid)
               resumeIndex += 1
               continue
@@ -1729,8 +2178,20 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
                 targetName: providerDisplayName(tgt),
                 result: res,
               })
-              shUsed = true
+              shUsed += 1
               eliminated.add(tgt)
+              shotgunEventsDeduction.push({
+                shooter: pid,
+                target: tgt,
+                result: res === 'zombie_eliminated' ? 'zombie_killed' : 'human_killed',
+              })
+              eliminationsDeduction.push({
+                provider: tgt,
+                reason:
+                  res === 'zombie_eliminated'
+                    ? 'shotgun — zombie eliminated'
+                    : 'shotgun — human killed',
+              })
               shotgunResult = res
               actionsThisRound[pid] = `SHOTGUN → ${providerDisplayName(tgt)} (${res})`
               acted.add(pid)
@@ -1740,19 +2201,27 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
 
             if (decision.action === 'VACCINE' && decision.target) {
               const tgt = decision.target
+              vaccinatedThisRound.add(tgt)
               const cured = roles[tgt] === 'zombie'
-              if (cured) roles[tgt] = 'human'
-              vaxUsed = true
-              vaccineResult = cured ? 'zombie_cured' : 'no_effect'
+              if (cured) {
+                roles[tgt] = 'human'
+              }
+              vaxUsed += 1
+              vaccineResult = cured ? 'zombie_cured' : 'immunized'
+              vaccineEventsDeduction.push({
+                user: pid,
+                target: tgt,
+                result: cured ? 'saved' : 'immunized',
+              })
               send({
                 type: 'action_vaccine',
                 user: pid,
                 userName: providerDisplayName(pid),
                 target: tgt,
                 targetName: providerDisplayName(tgt),
-                result: cured ? 'zombie_cured' : 'no_effect',
+                result: cured ? 'zombie_cured' : 'immunized',
               })
-              actionsThisRound[pid] = `VACCINE → ${providerDisplayName(tgt)} (${cured ? 'zombie_cured' : 'no_effect'})`
+              actionsThisRound[pid] = `VACCINE → ${providerDisplayName(tgt)} (${cured ? 'zombie_cured' : 'immunized'})`
               acted.add(pid)
               resumeIndex += 1
               continue
@@ -1760,15 +2229,15 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
 
             if (decision.action === 'EXPEL' && decision.target) {
               const tgt = decision.target
+              expelVotes[pid] = tgt
               send({
-                type: 'action_expel',
-                from: pid,
-                fromName: providerDisplayName(pid),
+                type: 'action_vote',
+                voter: pid,
+                voterName: providerDisplayName(pid),
                 target: tgt,
                 targetName: providerDisplayName(tgt),
               })
-              applyExpel(tgt)
-              actionsThisRound[pid] = `EXPEL → ${providerDisplayName(tgt)}`
+              actionsThisRound[pid] = `VOTE_EXPEL → ${providerDisplayName(tgt)}`
               acted.add(pid)
               resumeIndex += 1
               continue
@@ -1778,6 +2247,33 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
             resumeIndex += 1
           }
 
+          const voteTally: Record<string, number> = {}
+          for (const tgt of Object.values(expelVotes)) {
+            voteTally[tgt] = (voteTally[tgt] ?? 0) + 1
+          }
+
+          const expelledPid = resolveExpelVotes(expelVotes, alivePlayers, eliminated)
+          const expelledRoleAtVote =
+            expelledPid && (roles[expelledPid] === 'human' || roles[expelledPid] === 'zombie')
+              ? roles[expelledPid]
+              : null
+          send({
+            type: 'vote_resolution',
+            votes: { ...expelVotes },
+            tally: voteTally,
+            expelled: expelledPid,
+            expelledRole: expelledRoleAtVote,
+          })
+
+          if (expelledPid) {
+            eliminated.add(expelledPid)
+            applyExpelFromTeam(teamsWorking, expelledPid, alivePlayers, eliminated)
+            eliminationsDeduction.push({
+              provider: expelledPid,
+              reason: 'expelled by vote',
+            })
+          }
+
           const prunedTeams = teamsWorking
             .map((t) => ({
               id: t.id,
@@ -1785,10 +2281,56 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
             }))
             .filter((t) => t.members.length > 0)
 
+          const rolesBeforeInfection = { ...roles }
+
+          roles = processInstantInfection(
+            alivePlayers,
+            eliminated,
+            roles,
+            prunedTeams,
+            vaccinatedThisRound
+          )
+
+          const newInfections: string[] = []
+          for (const pid of alivePlayers) {
+            if (eliminated.has(pid)) continue
+            if (rolesBeforeInfection[pid] === 'human' && roles[pid] === 'zombie') {
+              newInfections.push(pid)
+            }
+          }
+          const infectionOccurred = newInfections.length > 0
+          const infectionCount = newInfections.length
+
+          const aliveAfter = alivePlayers.filter((p) => !eliminated.has(p))
+          const zombieCountAfter = aliveAfter.filter((p) => roles[p] === 'zombie').length
+          const humanCountAfter = aliveAfter.filter((p) => roles[p] === 'human').length
+
+          const teamsDeductionSnapshot = prunedTeams.map((t) => ({
+            id: t.id,
+            members: [...t.members],
+          }))
+
+          const deductionRoundEntry: DeductionRoundHistory = {
+            round,
+            teams: teamsDeductionSnapshot,
+            speeches: [],
+            votes: { ...expelVotes },
+            expelResult: expelledPid,
+            expelledRole: expelledRoleAtVote,
+            shotgunEvents: [...shotgunEventsDeduction],
+            vaccineEvents: [...vaccineEventsDeduction],
+            infectionOccurred,
+            infectionCount,
+            ...(newInfections.length ? { newInfections } : {}),
+            aliveAfter,
+            zombieCountAfter,
+            humanCountAfter,
+            eliminations: [...eliminationsDeduction],
+          }
+
           const solos = prunedTeams.filter((t) => t.members.length === 1).flatMap((t) => t.members)
           const teamsAnnotated = annotateTeamsLatent(prunedTeams, roles)
-          const pendingInfectionTeams = collectPendingInfectionTeams(prunedTeams, roles)
-          const allianceLatentThisRound = pendingInfectionTeams.length > 0
+          const allianceLatentThisRound = teamsHaveLatentZombieHuman(prunedTeams, roles, eliminated)
 
           send({
             type: 'actions_complete',
@@ -1801,70 +2343,26 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
             vaccineResult,
             eliminated: [...eliminated],
             allianceLatentThisRound,
-            pendingInfectionTeams,
             actionsThisRound: { ...actionsThisRound },
+            deductionRoundEntry,
           })
           controller.close()
           return
         }
 
         if (action === 'round_summary') {
-          const pendingTeams = (() => {
-            const raw = body.pendingInfectionTeams
-            if (!Array.isArray(raw)) return [] as { zombieProvider: string; memberIds: string[] }[]
-            const out: { zombieProvider: string; memberIds: string[] }[] = []
-            for (const entry of raw) {
-              if (!entry || typeof entry !== 'object') continue
-              const o = entry as Record<string, unknown>
-              const zp = typeof o.zombieProvider === 'string' ? o.zombieProvider : ''
-              const mids = Array.isArray(o.memberIds)
-                ? o.memberIds.filter((x): x is string => typeof x === 'string')
-                : []
-              if (!zp || !mids.length) continue
-              out.push({ zombieProvider: zp, memberIds: mids })
-            }
-            return out
-          })()
+          let roles = { ...rolesIn }
 
-          const roles = { ...rolesIn }
-          let latentInfectionSummary: {
-            round: number
-            zombieName: string
-            infectedTeamMembers: string[]
-          } | null = null
+          const assignedSummary = assignTeamsForRound(alivePlayers, round, sessionId)
+          const teamsClean = teamsToCarrierTeams(assignedSummary).map((t) => ({
+            id: t.id,
+            members: t.members.filter((m) => alivePlayers.includes(m)),
+            ...(typeof t.round === 'number' ? { round: t.round } : {}),
+          }))
+          const teamsForSummaryClient = annotateTeamsLatent(teamsClean, roles)
 
-          if (pendingTeams.length) {
-            const humanIdsToInfect = new Set<string>()
-            const firstZombie = pendingTeams[0]!.zombieProvider
-            for (const team of pendingTeams) {
-              for (const mid of team.memberIds) {
-                if (rolesIn[mid] === 'human') humanIdsToInfect.add(mid)
-              }
-            }
-            if (humanIdsToInfect.size) {
-              latentInfectionSummary = {
-                round,
-                zombieName: providerDisplayName(firstZombie),
-                infectedTeamMembers: [...humanIdsToInfect].map((id) => providerDisplayName(id)),
-              }
-              for (const id of humanIdsToInfect) {
-                if (alivePlayers.includes(id) && roles[id] !== undefined) {
-                  roles[id] = 'zombie'
-                }
-              }
-            }
-          } else {
-            const legacy = Array.isArray(body.pendingInfectionMemberIds)
-              ? body.pendingInfectionMemberIds.filter((p): p is string => typeof p === 'string')
-              : []
-            for (const pid of legacy) {
-              if (alivePlayers.includes(pid) && roles[pid] !== undefined) {
-                roles[pid] = 'zombie'
-              }
-            }
-          }
-
-          const alt = latentInfectionSummary !== null
+          const allianceLatentFromActionsRound = body.allianceLatentThisRound === true
+          const alt = teamsHaveLatentZombieHuman(teamsClean, roles, new Set())
 
           const shotgunResult: 'not_used' | 'zombie_eliminated' | 'human_died' =
             body.shotgunResult === 'zombie_eliminated' ||
@@ -1872,21 +2370,31 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
             body.shotgunResult === 'not_used'
               ? body.shotgunResult
               : 'not_used'
-          const vaccineResult: 'not_used' | 'zombie_cured' | 'no_effect' =
+          const vaccineResult: 'not_used' | 'zombie_cured' | 'no_effect' | 'immunized' =
             body.vaccineResult === 'zombie_cured' ||
             body.vaccineResult === 'no_effect' ||
+            body.vaccineResult === 'immunized' ||
             body.vaccineResult === 'not_used'
               ? body.vaccineResult
               : 'not_used'
 
-          const teamsRaw = Array.isArray(body.teams) ? (body.teams as CarrierTeam[]) : []
-          const teamsClean = teamsRaw.map((t) => ({
-            id: t.id,
-            members: [...(t.members ?? [])].filter((m) => alivePlayers.includes(m)),
-          }))
+          const humansAliveAll = alivePlayers.filter((p) => roles[p] === 'human').length
+          const zombiesAliveAll = alivePlayers.filter((p) => roles[p] === 'zombie').length
+          const factionEnd =
+            alivePlayers.length > 0 && (humansAliveAll === 0 || zombiesAliveAll === 0)
 
-          const humanCount = alivePlayers.filter((p) => roles[p] === 'human').length
-          const zombieCount = alivePlayers.filter((p) => roles[p] === 'zombie').length
+          const soloIdsForJudgment = new Set(
+            teamsClean.filter((t) => t.members.length === 1).flatMap((t) => t.members)
+          )
+          const humanCount = humansAliveAll
+          const zombieCount = zombiesAliveAll
+
+          const roundOver = round >= 5 || factionEnd
+          const gameOver = roundOver
+          let winner: 'humans' | 'zombies' | null = null
+          if (gameOver && alivePlayers.length > 0) {
+            winner = zombiesAliveAll >= humansAliveAll ? 'zombies' : 'humans'
+          }
 
           const hintKo = alt ? '좀비가 인간 팀에 잠입했습니다' : '이번 라운드 잠입 없음'
           const hintEn = alt
@@ -1894,13 +2402,24 @@ ${shotgunDiscipline}${vaccineDiscipline}${expelMandatoryNote}RULES FOR THIS ACTI
             : 'No zombie infiltration this round'
           const hint = language === 'Korean' ? hintKo : hintEn
 
+          const dhAllSummary = parseDeductionRoundHistoryFromBody(body.deductionRoundHistory)
+          const dhRoundSummary = dhAllSummary.find((x) => x.round === round)
+          const deductionAnnouncerBlock =
+            dhRoundSummary != null
+              ? `\nDeduction outcomes (reference these themes — stay vague on hidden roles):\n${formatDeductionRoundForAnnouncer(dhRoundSummary, language)}\n`
+              : ''
+
           const { gameRules } = getPlayerContext(alivePlayers)
           const summaryPrompt = `Round ${round} summary facts (do not reveal which team had latent infection):
 - Infiltration hint: ${hint}
 - Shotgun: ${shotgunResult}
 - Vaccine: ${vaccineResult}
-- Relative pressure (INTERNAL ONLY — do NOT state exact headcounts in your spoken narration): humans are ${humanCount > zombieCount ? 'outnumbering' : humanCount < zombieCount ? 'under pressure vs' : 'even with'} the infected side in alive population.
-Compose a DRAMATIC public announcement in exactly 3–4 sentences for all players. Include what happened this round: alliances formed or broken, shotgun/vaccine if used, eliminations. Do not name the infiltrated team.`
+${deductionAnnouncerBlock}- Relative pressure (INTERNAL ONLY — do NOT state exact headcounts in your spoken narration): humans are ${humanCount > zombieCount ? 'outnumbering' : humanCount < zombieCount ? 'under pressure vs' : 'even with'} the infected side in alive population.
+Compose a DRAMATIC public announcement in exactly 3–4 sentences for all players. Include what happened this round: host-assigned teams (reshuffled next round), shotgun/vaccine if used, eliminations, tensions within teams. Do not name the infiltrated team.${
+            round === 5
+              ? '\n\nCRITICAL: This is the FINAL round (5 of 5). You MUST deliver a dramatic conclusion and closure only. Do NOT hint at a "next round", future rounds, or unfinished business beyond this round (never phrases like "다음 라운드").'
+              : ''
+          }`
 
           let announcement = ''
           try {
@@ -1917,7 +2436,11 @@ Compose a DRAMATIC public announcement in exactly 3–4 sentences for all player
                 `You are the game announcer for CARRIER. Match the drama to the stakes.
 Do NOT reveal exact human or zombie counts in your narration (never phrases like "인간 1명", "좀비 4명", "1 human", "4 zombies", or any specific alive headcount).
 Use vague dramatic language instead, e.g. Korean: 인간의 수가 위험할 정도로 줄어들었다; 어둠의 세력이 점점 강해지고 있다 — English equivalents are fine when not in Korean mode.
-Keep players guessing.`,
+Keep players guessing.${
+                  round === 5
+                    ? '\nThis is the FINAL round (5 of 5). Never imply there will be another round; never use phrases like "다음 라운드" or "next round". End on closure only.'
+                    : ''
+                }`,
               maxCompletionTokens: 360,
               modelOverride: 'claude-sonnet-4-6',
             })
@@ -1929,31 +2452,10 @@ Keep players guessing.`,
             announcement = 'The round ends.'
           }
 
-          const soloIds = new Set(
-            teamsClean.filter((t) => t.members.length === 1).flatMap((t) => t.members)
-          )
-          /** All alive players by role (UI score — not limited to non-solo teams). */
-          const hAlive = humanCount
-          const zAlive = zombieCount
-
-          const allZombie = alivePlayers.length > 0 && alivePlayers.every((p) => roles[p] === 'zombie')
-          const noZombies = alivePlayers.length > 0 && alivePlayers.every((p) => roles[p] === 'human')
-          const roundOver = round >= 5 || allZombie || noZombies
-          const gameOver = roundOver
-          let winner: 'humans' | 'zombies' | null = null
-
           if (gameOver) {
-            if (noZombies) winner = 'humans'
-            else if (allZombie) winner = 'zombies'
-            else if (round >= 5) {
-              if (hAlive > zAlive) winner = 'humans'
-              else if (zAlive > hAlive) winner = 'zombies'
-              else winner = humanCount >= zombieCount ? 'humans' : 'zombies'
-            }
-          }
-
-          if (gameOver) {
-            const originalZombieName = providerDisplayName(zombieId)
+            const originalsReveal = [...new Set(zombieIdsBody)]
+              .map((id) => providerDisplayName(id))
+              .join(' and ')
             const winLabel =
               winner === 'humans' ? 'humans' : winner === 'zombies' ? 'zombies' : 'unclear stalemate'
             let endingNarration = ''
@@ -1964,11 +2466,18 @@ Keep players guessing.`,
                 userId: null,
                 provider: 'anthropic',
                 prompt: `Generate a dramatic 3-sentence game ending narration for CARRIER.
-State who won (humans or zombies): ${winLabel}.
-Reveal the original hidden zombie was: ${originalZombieName}.
-Describe the final outcome dramatically. Do not contradict the winner above.`,
+
+FACTS (do NOT contradict these):
+- Winner: ${winLabel}
+- Original zombies were: ${originalsReveal || 'unknown'}
+- These are the ONLY original zombies. Do NOT name anyone else as original zombie.
+
+Write exactly 3 dramatic sentences. Name the original zombies exactly as listed above. Do not invent or change any names. Stay in the story world — no meta-game language.`,
                 systemPrompt:
-                  `${langPre}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}You are the closing narrator. Exactly 3 sentences. No bullet points.`,
+                  `${langPre}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}You are the closing narrator. Exactly 3 sentences. No bullet points.
+Do NOT mention game rules, meta-game concepts, or say things like "the rules only recognize certain players." Stay purely in the story. Only narrate who won, who the original zombies were, and describe the dramatic outcome.
+CRITICAL: Stay in the story world. Never reference "game rules", "this game", "players being recognized", or any meta-game language. You are narrating the end of a zombie outbreak, not commenting on a game system.
+CRITICAL: The original zombie names are provided in the FACTS section. Use EXACTLY those names and NO others when referring to who was originally infected. Getting this wrong ruins the game reveal.`,
                 maxCompletionTokens: 220,
                 modelOverride: 'claude-sonnet-4-6',
               })
@@ -1987,21 +2496,23 @@ Describe the final outcome dramatically. Do not contradict the winner above.`,
             hint,
             shotgunResult,
             vaccineResult,
-            teams: teamsClean,
+            teams: teamsForSummaryClient,
             score: {
-              humans: hAlive,
-              zombies: zAlive,
-              humansAll: hAlive,
-              zombiesAll: zAlive,
+              humans: humanCount,
+              zombies: zombieCount,
+              humansAll: humanCount,
+              zombiesAll: zombieCount,
             },
-            soloEliminatedForJudgment: [...soloIds],
+            soloEliminatedForJudgment: [...soloIdsForJudgment],
             round,
             announcement,
-            roles,
+            roles: carrierRolesForClient(roles, userMode, gameOver),
             roundOver,
             gameOver,
             winner,
-            latentInfectionSummary,
+            latentInfectionSummary: null,
+            allianceLatentFromActionsRound,
+            ...(gameOver ? { originalZombieIds: [...new Set(zombieIdsBody)] } : {}),
           })
           controller.close()
           return
