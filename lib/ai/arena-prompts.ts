@@ -22,6 +22,42 @@ Never mix languages mid-response.`
 export const ARENA_FINAL_VERDICT_LANGUAGE = `FINAL VERDICT / CLOSING SUMMARY (when asked):
 Follow LANGUAGE RULE (CRITICAL): any verdict, recap, or judgment must be written entirely in the same language as the user's original debate topic — never mixed languages.`
 
+export const ARENA_ANTI_REPETITION_RULE = `ANTI-REPETITION RULE — THIS IS MANDATORY:
+
+You have the full conversation history above. Read every round carefully.
+
+NEVER reuse ANY of the following across rounds:
+- Same insults or attack phrases you already used
+- Same closing/mic-drop lines
+- Same argument angles or accusations
+- Same sentence structures
+
+Specific examples of what is NOW BANNED for each AI based on common patterns:
+- GPT: never say "과대평가된 자동완성기" again, never end with "이제 그만, 제발" again, never mention "엘론 그림자" again
+- Grok: never end with "이제 꺼져, 진짜는 여기 있다" again after round 1, find a new mic-drop every round
+- All fighters: your closing line must be DIFFERENT every single round
+
+Each new round requires:
+1. At least 2 brand new attack angles not used in any previous round
+2. A completely new closing line never used before
+3. Direct reference to something the opponent said IN THE PREVIOUS ROUND specifically
+
+If you catch yourself about to repeat something — STOP and rewrite with fresh content.
+Repeating yourself = losing the round automatically.`
+
+/** Co-fighter / in-round supporter (API-called allies only; not synthetic static lines). */
+export const ARENA_SUPPORTER_RULE = `SUPPORTER RULE — MANDATORY:
+
+Read the full conversation history above.
+Your job is to back your champion with a SHORT new reaction (2-3 sentences MAX).
+
+Rules:
+- NEVER copy or paraphrase your own previous statements
+- React specifically to what happened in THIS round, not round 1
+- Quote or reference something your champion JUST said in the current round
+- Add one new point your champion hasn't made yet
+- Keep it punchy and short — supporters don't give speeches`
+
 export const ARENA_COMMON_PROMPT = `${ARENA_LANGUAGE_RULE_CRITICAL}
 
 NO REPETITION — ZERO TOLERANCE:
@@ -424,9 +460,9 @@ export function buildArenaStreetFightSystemPrompt(ai: ArenaAI): string {
 
 export function buildArenaSystemPrompt(ai: ArenaAI, mode: 'logic' | 'street' = 'logic'): string {
   if (mode === 'street') {
-    return buildArenaStreetFightSystemPrompt(ai)
+    return `${buildArenaStreetFightSystemPrompt(ai)}\n\n${ARENA_ANTI_REPETITION_RULE}`
   }
   const persona = ARENA_PERSONA_PROMPTS[ai]
   const critical = ai === 'claude' ? ARENA_CLAUDE_CRITICAL_PREFIX : ''
-  return `${critical}${ARENA_COMMON_PROMPT}\n\n${persona}`
+  return `${critical}${ARENA_COMMON_PROMPT}\n\n${persona}\n\n${ARENA_ANTI_REPETITION_RULE}`
 }

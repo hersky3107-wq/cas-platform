@@ -741,6 +741,10 @@ export default function ArenaPage() {
     topic,
   ]);
 
+  /**
+   * Rounds 7–9: purchase extended bundle once (credit deduction), then sequential API rounds
+   * 7 → 8 → 9 (one NDJSON stream per round). Round 9 completion → Final Verdict (no further Continue).
+   */
   const runFinalRounds789 = useCallback(async () => {
     const t = topic.trim();
     if (!sessionId || !sides.left || !sides.right || !t) return;
