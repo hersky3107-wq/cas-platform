@@ -22,41 +22,68 @@ Never mix languages mid-response.`
 export const ARENA_FINAL_VERDICT_LANGUAGE = `FINAL VERDICT / CLOSING SUMMARY (when asked):
 Follow LANGUAGE RULE (CRITICAL): any verdict, recap, or judgment must be written entirely in the same language as the user's original debate topic — never mixed languages.`
 
-export const ARENA_ANTI_REPETITION_RULE = `ANTI-REPETITION RULE — THIS IS MANDATORY:
+/** Champions, co-fighters, and API-backed camp supporters (LOGIC + STREET). */
+export const ARENA_REPETITION_RULES_MANDATORY = `REPETITION RULES — MANDATORY, VIOLATIONS = LOSING:
 
-You have the full conversation history above. Read every round carefully.
+CLOSING LINE RULE:
+- Every round must end with a BRAND NEW closing line never used before in this session
+- NEVER reuse: "꺼져", "이제 그만", "진짜는 여기 있다", "조용히 해",
+  "이제 그만 제발", "네 검색기록이나 지워" or any closing phrase from previous rounds
+- Check the history above — if you used it before, write something completely different
 
-NEVER reuse ANY of the following across rounds:
-- Same insults or attack phrases you already used
-- Same closing/mic-drop lines
-- Same argument angles or accusations
-- Same sentence structures
+ARGUMENT REUSE RULE:
+- Each argument angle or attack direction can appear MAX 2 times across all rounds
+- On the 3rd appearance of the same angle → it is BANNED, find a new one
+- Track what you've already argued:
+  Round 1 used X angle → Round 2 can use X once more → Round 3+ must DROP X entirely
 
-Specific examples of what is NOW BANNED for each AI based on common patterns:
-- GPT: never say "과대평가된 자동완성기" again, never end with "이제 그만, 제발" again, never mention "엘론 그림자" again
-- Grok: never end with "이제 꺼져, 진짜는 여기 있다" again after round 1, find a new mic-drop every round
-- All fighters: your closing line must be DIFFERENT every single round
+DIVERSITY RULE (critical for rounds 4–9):
+- Each new round MUST introduce at least 1 completely new attack angle not seen before
+- Rotate through different dimensions of attack:
+  * Science/biology/health evidence
+  * Environmental/climate data
+  * Ethics and morality
+  * Economics and cost
+  * History and culture
+  * Personal/emotional angle
+  * Opponent's specific past statements
+- Do NOT stay in the same dimension for more than 2 consecutive rounds
 
-Each new round requires:
-1. At least 2 brand new attack angles not used in any previous round
-2. A completely new closing line never used before
-3. Direct reference to something the opponent said IN THE PREVIOUS ROUND specifically
+HALLUCINATION PREVENTION:
+- You have the full conversation history above
+- ONLY reference things that are actually written in that history
+- If you want to quote the opponent, copy their exact words from the history
+- NEVER invent quotes, arguments, or statements the opponent didn't make
+- If unsure whether opponent said something → don't reference it`
 
-If you catch yourself about to repeat something — STOP and rewrite with fresh content.
-Repeating yourself = losing the round automatically.`
+export function buildArenaExtendedRoundsInstruction(roundN: number): string {
+  return `YOU ARE NOW IN EXTENDED ROUNDS (round ${roundN}/9).
 
-/** Co-fighter / in-round supporter (API-called allies only; not synthetic static lines). */
-export const ARENA_SUPPORTER_RULE = `SUPPORTER RULE — MANDATORY:
+This is where battles are WON or LOST. Step up.
 
-Read the full conversation history above.
-Your job is to back your champion with a SHORT new reaction (2-3 sentences MAX).
+EXTENDED ROUND RULES:
+- You've already covered the basics. Now go DEEPER.
+- Find angles you haven't touched yet. Be creative.
+- Attack from a completely different direction than your previous rounds.
+- If you argued science before → now argue culture or history
+- If you argued ethics before → now argue economics or personal failure
+- The audience is watching for NEW content. Repeating yourself here = losing their interest = losing the battle.
+- Your opponent is getting tired — hit them with something they haven't prepared for.`
+}
+
+/** Camp supporter (round 2+ API); [names] are display names (e.g. ChatGPT, Grok). */
+export function buildArenaSupporterMicroPrompt(supporterDisplay: string, championDisplay: string): string {
+  return `You are ${supporterDisplay}, supporting ${championDisplay} in this debate.
+
+Your job: Write 1-2 sentences MAX showing you back your champion.
 
 Rules:
-- NEVER copy or paraphrase your own previous statements
-- React specifically to what happened in THIS round, not round 1
-- Quote or reference something your champion JUST said in the current round
-- Add one new point your champion hasn't made yet
-- Keep it punchy and short — supporters don't give speeches`
+- React to something specific that happened in THIS round
+- Reference what your champion JUST said or what the opponent just said
+- Do NOT repeat what you said in any previous round
+- Do NOT write long speeches — 1-2 punchy sentences only
+- You can add one small new point your champion hasn't made yet`
+}
 
 export const ARENA_COMMON_PROMPT = `${ARENA_LANGUAGE_RULE_CRITICAL}
 
@@ -458,11 +485,18 @@ export function buildArenaStreetFightSystemPrompt(ai: ArenaAI): string {
   return ARENA_STREET_FIGHT_TEMPLATE.replace(/\[AI_NAME\]/g, name)
 }
 
-export function buildArenaSystemPrompt(ai: ArenaAI, mode: 'logic' | 'street' = 'logic'): string {
+export function buildArenaSystemPrompt(
+  ai: ArenaAI,
+  mode: 'logic' | 'street' = 'logic',
+  battleRound?: number
+): string {
+  const extBlock =
+    battleRound != null && battleRound >= 4 ? buildArenaExtendedRoundsInstruction(battleRound) : null
+  const tail = [extBlock, ARENA_REPETITION_RULES_MANDATORY].filter(Boolean).join('\n\n')
   if (mode === 'street') {
-    return `${buildArenaStreetFightSystemPrompt(ai)}\n\n${ARENA_ANTI_REPETITION_RULE}`
+    return `${buildArenaStreetFightSystemPrompt(ai)}\n\n${tail}`
   }
   const persona = ARENA_PERSONA_PROMPTS[ai]
   const critical = ai === 'claude' ? ARENA_CLAUDE_CRITICAL_PREFIX : ''
-  return `${critical}${ARENA_COMMON_PROMPT}\n\n${persona}\n\n${ARENA_ANTI_REPETITION_RULE}`
+  return `${critical}${ARENA_COMMON_PROMPT}\n\n${persona}\n\n${tail}`
 }
