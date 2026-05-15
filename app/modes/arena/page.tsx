@@ -866,7 +866,7 @@ export default function ArenaPage() {
                   ⚖️
                 </div>
                 <div className="mt-2 text-sm font-bold text-sky-100">LOGIC BATTLE</div>
-                <div className="mt-1 text-xs text-sky-200/80">증거·논리·반박 기반 토론</div>
+                <div className="mt-1 text-xs text-sky-200/80">Evidence · Logic · Counter-argument</div>
               </button>
               <button
                 type="button"
@@ -881,7 +881,7 @@ export default function ArenaPage() {
                   🔥
                 </div>
                 <div className="mt-2 text-sm font-bold text-orange-100">STREET FIGHT</div>
-                <div className="mt-1 text-xs text-orange-200/85">감정·조롱·인신공격 허용</div>
+                <div className="mt-1 text-xs text-orange-200/85">Emotion · Mockery · Personal attacks allowed</div>
               </button>
             </div>
             <textarea
