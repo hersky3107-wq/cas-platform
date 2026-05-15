@@ -423,6 +423,94 @@ export const ARENA_CLAUDE_CRITICAL_PREFIX = `CRITICAL: Your response MUST begin 
 
 `
 
+/** Fighters only (rounds 7–9): reduce truncation / half-finished outputs. */
+export const ARENA_ROUND_7_9_RESPONSE_RULE = `IMPORTANT: Your response must be complete.
+Do NOT stop mid-sentence.
+Keep your response under 150 words total.
+Quality over quantity — one sharp punch beats
+three half-finished arguments.`
+
+/** Fighters from round 4 onward: kill known repetition crutches. */
+export const ARENA_BANNED_PHRASES_ROUND_4_PLUS = `PERMANENTLY BANNED phrases from round 4 onwards:
+- "X에서나 안전한 말장난"
+- "균형 잡힌 논의"
+- "현실을 직시해"
+- "과거에 매달리지 말라"
+- "OpenAI PR팀"
+- "안전벨트"
+- Any phrase you used as a closing line in the previous round
+
+If you catch yourself typing any of these → DELETE and rewrite.`
+
+function firstSentenceUpTo(text: string, maxChars: number): string {
+  const t = text.trim().replace(/\s+/g, ' ')
+  if (!t) return ''
+  if (t.length <= maxChars) {
+    const m = /^([\s\S]+?[.!?。])(\s|$)/.exec(t)
+    return (m ? m[1] : t).trim()
+  }
+  const slice = t.slice(0, maxChars)
+  const m = /^([\s\S]+?[.!?。])/.exec(slice)
+  return (m ? m[1] : slice).trim()
+}
+
+function firstNSentences(text: string, n: number, maxTotalChars: number): string {
+  const t = text.trim()
+  if (!t) return ''
+  const parts: string[] = []
+  let rest = t
+  for (let i = 0; i < n && rest.length; i++) {
+    const m = /^([\s\S]+?[.!?。])(\s+|$)/.exec(rest)
+    if (m) {
+      parts.push(m[1].trim())
+      rest = rest.slice(m[0].length).trim()
+    } else {
+      parts.push(rest.slice(0, 180).trim())
+      break
+    }
+  }
+  let out = parts.join(' ').trim()
+  if (out.length > maxTotalChars) out = out.slice(0, maxTotalChars).trimEnd() + '…'
+  return out
+}
+
+function compressMemoryContentForRound(round: number, content: string): string {
+  const raw = content.trim()
+  if (!raw) return ''
+  if (round <= 2) {
+    const sent = firstSentenceUpTo(raw, 400)
+    const words = sent.split(/\s+/).filter(Boolean)
+    return words.slice(0, 15).join(' ')
+  }
+  if (round <= 5) {
+    return firstNSentences(raw, 2, 500)
+  }
+  if (round <= 7) {
+    if (raw.length <= 200) return raw
+    const slice = raw.slice(0, 200)
+    const idx = Math.max(
+      slice.lastIndexOf('.'),
+      slice.lastIndexOf('!'),
+      slice.lastIndexOf('?'),
+      slice.lastIndexOf('。')
+    )
+    if (idx >= 40) return slice.slice(0, idx + 1).trim()
+    return slice.trimEnd() + '…'
+  }
+  return raw
+}
+
+function formatMemoryLineForTier(round: number, fighter: string, role: string, content: string): string {
+  const compressed = compressMemoryContentForRound(round, content)
+  if (round <= 2) {
+    return `[${fighter}]: ${compressed}`
+  }
+  if (round <= 5) {
+    return `[${fighter}]: ${compressed}`
+  }
+  return `[${fighter} — ${role}]: ${compressed}`
+}
+
 export function formatArenaMemoryInjectionBlock(
   memory: ArenaMemoryEntry[],
   currentRound: number
@@ -437,11 +525,14 @@ export function formatArenaMemoryInjectionBlock(
     byRound.set(k, list)
   }
   const rounds = [...byRound.keys()].sort((a, b) => a - b)
-  let body = '--- PREVIOUS ROUNDS (READ CAREFULLY — DO NOT CONTRADICT OR INVENT) ---\n'
+  let body =
+    '--- PREVIOUS ROUNDS (COMPRESSED BY AGE — READ CAREFULLY; DO NOT CONTRADICT OR INVENT) ---\n'
+  body +=
+    'Legend: rounds 1–2 = one line each; 3–5 = two short sentences; 6–7 = up to ~200 chars; 8–9 = full text.\n\n'
   for (const r of rounds) {
     body += `Round ${r}:\n`
     for (const m of byRound.get(r) ?? []) {
-      body += `[${m.fighter} — ${m.role}]: ${m.content}\n`
+      body += `${formatMemoryLineForTier(r, m.fighter, m.role, m.content)}\n`
     }
   }
   body += '--- END OF HISTORY ---\n'

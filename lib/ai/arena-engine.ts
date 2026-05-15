@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { runSingleAiProvider, type AiProviderName } from '@/lib/ai/router'
 import {
+  ARENA_BANNED_PHRASES_ROUND_4_PLUS,
   ARENA_LANGUAGE_RULE_CRITICAL,
   ARENA_REPETITION_RULES_MANDATORY,
+  ARENA_ROUND_7_9_RESPONSE_RULE,
   buildArenaSupporterMicroPrompt,
   buildArenaSystemPrompt,
   formatArenaMemoryInjectionBlock,
@@ -249,7 +251,13 @@ async function invokeArenaModel(params: {
       : ''
   const baseSystem = isSupporter
     ? supporterStack
-    : buildArenaSystemPrompt(ai, fightMode, roundNumber)
+    : (() => {
+        const guards: string[] = []
+        if (roundNumber >= 7) guards.push(ARENA_ROUND_7_9_RESPONSE_RULE)
+        if (roundNumber >= 4) guards.push(ARENA_BANNED_PHRASES_ROUND_4_PLUS)
+        const g = guards.length ? `\n\n${guards.join('\n\n')}` : ''
+        return `${buildArenaSystemPrompt(ai, fightMode, roundNumber)}${g}`
+      })()
   const systemPrompt = [
     memoryBlock.trim(),
     `${baseSystem}${params.extraSystemPrompt?.trim() ? `\n\n${params.extraSystemPrompt.trim()}` : ''}`,
