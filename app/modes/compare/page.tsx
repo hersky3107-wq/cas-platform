@@ -13,7 +13,11 @@ import {
 import { ChevronLeft } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
 import { creditsPerMessage } from "@/lib/credits";
-import type { AiProviderName, RouterResult } from "@/lib/ai/router";
+import type {
+  AiProviderName,
+  CompareConversationMessage,
+  RouterResult,
+} from "@/lib/ai/router";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -83,6 +87,13 @@ type Turn = {
   /** Set when the first AI result of this turn arrives; used to stagger card visibility. */
   streamAnchorMs?: number;
   responses: CompletedResponse[];
+};
+
+/** Persisted multi-turn context sent to the API (last 10 exchanges). */
+type Message = {
+  role: "user";
+  content: string;
+  aiResponses?: Partial<Record<AiProviderName, string>>;
 };
 
 const CARD_STAGGER_MS = 300;
@@ -314,6 +325,7 @@ export default function CompareModePage() {
   );
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -448,6 +460,16 @@ export default function CompareModePage() {
     ]);
     setInput("");
 
+    const conversationHistory: CompareConversationMessage[] = messages
+      .slice(-10)
+      .map((m) => ({
+        role: "user" as const,
+        content: m.content,
+        aiResponses: m.aiResponses,
+      }));
+
+    const responsesThisTurn: Partial<Record<AiProviderName, string>> = {};
+
     try {
       let resolvedSessionId: string | null = sessionId;
 
@@ -458,6 +480,7 @@ export default function CompareModePage() {
           prompt: text,
           sessionId,
           providers: selectedList,
+          conversationHistory,
         }),
       });
 
@@ -485,6 +508,9 @@ export default function CompareModePage() {
       const applyResult = (r: RouterResult) => {
         const plain =
           r.text != null && !r.error ? stripMarkdownFormatting(r.text) : r.text;
+        const stored =
+          plain ?? (r.error ? `[error] ${r.error}` : "");
+        responsesThisTurn[r.provider] = stored;
         setTurns((prev) =>
           prev.map((t) => {
             if (t.id !== turnId) return t;
@@ -544,6 +570,11 @@ export default function CompareModePage() {
           bestAnswerTimerRef.current = null;
         }, BEST_ANSWER_DELAY_MS);
       }
+
+      setMessages((prev) => [
+        ...prev.slice(-9),
+        { role: "user", content: text, aiResponses: { ...responsesThisTurn } },
+      ]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       setError(msg);
@@ -551,7 +582,7 @@ export default function CompareModePage() {
     } finally {
       setSending(false);
     }
-  }, [input, sending, selectedList, sessionId, router]);
+  }, [input, sending, selectedList, sessionId, messages, router]);
 
   const pickWinner = useCallback(
     async (winner: AiProviderName) => {
@@ -580,6 +611,7 @@ export default function CompareModePage() {
         setBestAnswerVisual(false);
         setEndOpen(false);
         setSessionId(null);
+        setMessages([]);
         setTurns([]);
       } finally {
         setEndSubmitting(false);

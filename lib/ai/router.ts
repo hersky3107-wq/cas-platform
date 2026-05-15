@@ -31,6 +31,36 @@ export type RouterResult = {
   error?: string
 }
 
+/** One user turn in Compare mode; per-provider replies live in aiResponses. */
+export type CompareConversationMessage = {
+  role: 'user'
+  content: string
+  aiResponses?: Partial<Record<AiProviderName, string>>
+}
+
+export type CompareChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/** Last N user turns → chat messages for one provider (includes current user prompt). */
+export function buildCompareChatMessagesForProvider(
+  history: CompareConversationMessage[],
+  provider: AiProviderName,
+  currentPrompt: string
+): CompareChatMessage[] {
+  const out: CompareChatMessage[] = []
+  for (const turn of history.slice(-10)) {
+    const userText = turn.content.trim()
+    if (!userText) continue
+    out.push({ role: 'user', content: userText })
+    const prev = turn.aiResponses?.[provider]?.trim()
+    if (prev) out.push({ role: 'assistant', content: prev })
+  }
+  out.push({ role: 'user', content: currentPrompt.trim() })
+  return out
+}
+
 export const MODEL_BY_PROVIDER: Record<AiProviderName, string> = {
   openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-6',
@@ -172,6 +202,7 @@ async function callOpenAICompatibleChat({
   systemPrompt,
   temperature,
   maxCompletionTokens,
+  chatMessages,
 }: {
   baseUrl: string
   apiKey: string
@@ -180,13 +211,19 @@ async function callOpenAICompatibleChat({
   systemPrompt: string
   temperature?: number
   maxCompletionTokens?: number
+  chatMessages?: CompareChatMessage[]
 }) {
   const payload: Record<string, unknown> = {
     model,
-    messages: [
-      ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-      { role: 'user', content: prompt },
-    ],
+    messages: chatMessages?.length
+      ? [
+          ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+          ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+        ]
+      : [
+          ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+          { role: 'user', content: prompt },
+        ],
   }
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
     payload.temperature = temperature
@@ -231,6 +268,7 @@ async function callAnthropic({
   systemPrompt,
   temperature,
   maxCompletionTokens,
+  chatMessages,
 }: {
   apiKey: string
   model: string
@@ -238,6 +276,7 @@ async function callAnthropic({
   systemPrompt: string
   temperature?: number
   maxCompletionTokens?: number
+  chatMessages?: CompareChatMessage[]
 }) {
   const capped =
     typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0
@@ -247,7 +286,9 @@ async function callAnthropic({
     model,
     max_tokens: capped,
     system: systemPrompt || undefined,
-    messages: [{ role: 'user', content: prompt }],
+    messages: chatMessages?.length
+      ? chatMessages.map((m) => ({ role: m.role, content: m.content }))
+      : [{ role: 'user', content: prompt }],
   }
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
     anthropicBody.temperature = temperature
@@ -319,6 +360,7 @@ async function callGoogleGemini({
   systemPrompt,
   temperature,
   maxCompletionTokens,
+  chatMessages,
 }: {
   apiKey: string
   model: string
@@ -326,24 +368,33 @@ async function callGoogleGemini({
   systemPrompt: string
   temperature?: number
   maxCompletionTokens?: number
+  chatMessages?: CompareChatMessage[]
 }) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model,
   )}:streamGenerateContent?alt=sse`
 
   const geminiBody: Record<string, unknown> = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }],
-      },
-    ],
+    contents: chatMessages?.length
+      ? chatMessages.map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        }))
+      : [
+          {
+            role: 'user',
+            parts: [{ text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }],
+          },
+        ],
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
     ],
+  }
+  if (chatMessages?.length && systemPrompt) {
+    geminiBody.systemInstruction = { parts: [{ text: systemPrompt }] }
   }
   const generationConfig: Record<string, unknown> = {}
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
@@ -458,6 +509,7 @@ async function callProvider({
   systemPrompt,
   temperature,
   maxCompletionTokens,
+  chatMessages,
 }: {
   provider: AiProviderName
   apiKey: string
@@ -467,8 +519,10 @@ async function callProvider({
   systemPrompt: string
   temperature?: number
   maxCompletionTokens?: number
+  chatMessages?: CompareChatMessage[]
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
+  const chatOpts = { chatMessages }
 
   if (provider === 'openai') {
     const { text, usage } = await callOpenAICompatibleChat({
@@ -479,6 +533,7 @@ async function callProvider({
       systemPrompt,
       temperature,
       maxCompletionTokens,
+      ...chatOpts,
     })
     return { model, text, usage }
   }
@@ -492,6 +547,7 @@ async function callProvider({
       systemPrompt,
       temperature,
       maxCompletionTokens,
+      ...chatOpts,
     })
     return { model, text, usage }
   }
@@ -505,6 +561,7 @@ async function callProvider({
       systemPrompt,
       temperature,
       maxCompletionTokens,
+      ...chatOpts,
     })
     return { model, text, usage }
   }
@@ -518,6 +575,7 @@ async function callProvider({
       systemPrompt,
       temperature,
       maxCompletionTokens,
+      ...chatOpts,
     })
     return { model, text, usage }
   }
@@ -530,6 +588,7 @@ async function callProvider({
       systemPrompt,
       temperature,
       maxCompletionTokens,
+      ...chatOpts,
     })
     return { model, text, usage }
   }
@@ -541,6 +600,7 @@ async function callProvider({
     systemPrompt,
     temperature,
     maxCompletionTokens,
+    ...chatOpts,
   })
   return { model, text, usage }
 }
@@ -577,6 +637,8 @@ export type RunSingleProviderParams = {
     storedResponseText: string | null
     aiResponseExtras?: Record<string, unknown>
   }
+  /** Multi-turn Compare: full chat for this provider (system prompt still separate). */
+  chatMessages?: CompareChatMessage[]
 }
 
 async function saveCompareArtifactsRows(
@@ -638,6 +700,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     storedResponseText,
     aiResponseExtras,
     transformPersist,
+    chatMessages,
   } = params
 
   const started = nowMs()
@@ -663,6 +726,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       systemPrompt,
       temperature,
       maxCompletionTokens,
+      chatMessages,
     })
 
     const responseTimeMs = nowMs() - started
@@ -806,6 +870,8 @@ export async function* iterateCompareProviderResults(input: {
   saveCompareArtifacts?: boolean
   temperature?: number
   maxCompletionTokens?: number
+  /** Prior Compare turns (capped to last 10 user exchanges server-side). */
+  conversationHistory?: CompareConversationMessage[]
 }): AsyncGenerator<RouterResult, void, unknown> {
   const providers = uniqueProviders(input.providers)
   const supabase = getAuthedSupabase(input.supabaseAccessToken)
@@ -817,8 +883,14 @@ export async function* iterateCompareProviderResults(input: {
     throw new Error('iterateCompareProviderResults: provide systemPrompt or getSystemPrompt')
   }
 
+  const history = input.conversationHistory?.slice(-10) ?? []
+
   const inflight = new Map(
     providers.map((provider) => {
+      const chatMessages =
+        history.length > 0
+          ? buildCompareChatMessagesForProvider(history, provider, input.prompt)
+          : undefined
       const p = runSingleAiProvider({
         supabase,
         sessionId: input.sessionId,
@@ -830,6 +902,7 @@ export async function* iterateCompareProviderResults(input: {
         saveCompareArtifacts: input.saveCompareArtifacts,
         temperature: input.temperature,
         maxCompletionTokens: input.maxCompletionTokens,
+        chatMessages,
       })
       return [provider, p] as const
     })

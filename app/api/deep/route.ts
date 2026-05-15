@@ -11,10 +11,29 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
 import { deductCreditsBalance } from '@/lib/credits'
 
+type DeepOutputMode = 'brief' | 'standard' | 'report'
+
+const MODE_CREDITS: Record<DeepOutputMode, number> = {
+  brief: 3,
+  standard: 10,
+  report: 30,
+}
+
+const MODE_CORE_TOKENS: Record<DeepOutputMode, number> = {
+  brief: 400,
+  standard: 1500,
+  report: 3000,
+}
+
+const MODE_SUPPORT_TOKENS: Record<DeepOutputMode, number> = {
+  brief: 250,
+  standard: 900,
+  report: 1800,
+}
+
 const ORCHESTRATOR_MODEL = 'claude-sonnet-4-6'
-const DEEP_SESSION_CREDITS = 10
-const CORE_MAX_TOKENS = 1500
-const SUPPORT_MAX_TOKENS = 900
+
+type ManualAssignment = { provider: AiProviderName; angle: string }
 
 /** Fixed order for deterministic repair when the orchestrator repeats a provider. */
 const PROVIDER_ORDER: AiProviderName[] = [
@@ -65,10 +84,59 @@ closing paragraph and stop cleanly.
 NEVER end mid-sentence, mid-paragraph, or mid-list.
 A short complete answer is always better than a long truncated one.`
 
-function systemPromptForPart(priority: 'CORE' | 'SUPPORT', angle: string): string {
+const BRIEF_MODE_BLOCK = `BRIEF MODE — STRICT RULES:
+You have 3 sentences maximum. No exceptions.
+Sentence 1: Your single most important insight on the angle.
+Sentence 2: One concrete example or evidence.
+Sentence 3: One-line conclusion.
+Do NOT write more than 3 sentences under any circumstances.
+Do NOT use bullet points, headers, or lists.
+Stop after your third sentence.
+
+`
+
+const REPORT_MODE_BLOCK = `REPORT MODE — EXHAUSTIVE ANALYSIS REQUIRED:
+This is a full academic report section. You must write extensively.
+Minimum 5 substantial paragraphs.
+Cover every dimension of your assigned angle in depth.
+Include specific examples, data, case studies where relevant.
+Do NOT conclude early. Do NOT summarize prematurely.
+Use your full token allocation completely.
+A short answer in REPORT mode is a failure.
+
+`
+
+const GEMINI_REPORT_MODE_BLOCK = `GEMINI REPORT MODE — CRITICAL:
+You are writing a full academic report section.
+Your response must be EXHAUSTIVE and COMPREHENSIVE.
+You MUST write at least 6 full paragraphs.
+Each paragraph must be substantial (minimum 5 sentences).
+Do NOT conclude early under any circumstances.
+Do NOT write a short summary.
+Keep writing until you have fully covered every aspect 
+of your assigned angle.
+Stopping early is not acceptable in REPORT mode.
+
+`
+
+function systemPromptForPart(
+  priority: 'CORE' | 'SUPPORT',
+  angle: string,
+  outputMode: DeepOutputMode,
+  provider: AiProviderName
+): string {
   const a = angle.trim() || 'Analyze your assigned sub-topic with maximum clarity.'
+  const modePrefix =
+    outputMode === 'brief'
+      ? BRIEF_MODE_BLOCK
+      : outputMode === 'report'
+        ? REPORT_MODE_BLOCK
+        : ''
+  const geminiReportSuffix =
+    outputMode === 'report' && provider === 'google' ? GEMINI_REPORT_MODE_BLOCK : ''
+  const fullPrefix = `${modePrefix}${geminiReportSuffix}`
   if (priority === 'CORE') {
-    return `${LANGUAGE_MIRROR_RULE}
+    return `${fullPrefix}${LANGUAGE_MIRROR_RULE}
 
 Write in flowing prose only. No markdown headers (##, ###).
 No nested bullet lists. Bold sparingly.
@@ -86,7 +154,7 @@ ${AMPLE_SPACE_RULE}
 
 ${RESPONSE_COMPLETION_RULE}`
   }
-  return `${LANGUAGE_MIRROR_RULE}
+  return `${fullPrefix}${LANGUAGE_MIRROR_RULE}
 
 You have 900 tokens total. Write your full analysis in the first 700 tokens,
 then use the remaining 200 to write one complete concluding sentence and stop.
@@ -364,7 +432,42 @@ function subQuestionPrompt(original: string, topic: string) {
 
 function modelForAssignedPart(provider: AiProviderName): string {
   if (provider === 'anthropic') return ANTHROPIC_DEEP_TASK_MODEL
+  if (provider === 'openai') return 'gpt-4.1'
   return MODEL_BY_PROVIDER[provider]
+}
+
+function parseManualAssignments(raw: unknown): ManualAssignment[] | null {
+  if (!Array.isArray(raw) || raw.length !== 6) return null
+  const seen = new Set<AiProviderName>()
+  const out: ManualAssignment[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') return null
+    const o = item as Record<string, unknown>
+    const provider = o.provider
+    const angle = typeof o.angle === 'string' ? o.angle.trim() : ''
+    if (typeof provider !== 'string' || !VALID_PROVIDERS.has(provider as AiProviderName)) {
+      return null
+    }
+    const pid = provider as AiProviderName
+    if (seen.has(pid)) return null
+    seen.add(pid)
+    out.push({ provider: pid, angle })
+  }
+  if (seen.size !== 6) return null
+  return out
+}
+
+function buildPlanFromManualAssignments(
+  assignments: ManualAssignment[]
+): DeepOrchestratorPart[] {
+  return assignments.map((item, i) => ({
+    index: i + 1,
+    topic: item.angle || `${item.provider} perspective`,
+    assigned_provider: item.provider,
+    priority: i < 2 ? 'CORE' : 'SUPPORT',
+    depth: 'deep',
+    angle: item.angle || `Analyze from the ${item.provider} lens.`,
+  }))
 }
 
 function pickWinnerAiName(parts: DeepOrchestratorPart[], byIndex: Map<number, RouterResult>): string {
@@ -464,6 +567,16 @@ export async function POST(req: Request) {
   const token =
     typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
 
+  const outputMode: DeepOutputMode =
+    body.outputMode === 'brief' || body.outputMode === 'report'
+      ? body.outputMode
+      : 'standard'
+
+  const manualAssignments: ManualAssignment[] | null =
+    outputMode !== 'brief' && Array.isArray(body.manualAssignments)
+      ? parseManualAssignments(body.manualAssignments)
+      : null
+
   if (!prompt) {
     return new Response(JSON.stringify({ error: 'prompt is required' }), {
       status: 400,
@@ -485,7 +598,10 @@ export async function POST(req: Request) {
     })
   }
 
-  const cost = DEEP_SESSION_CREDITS
+  const cost = MODE_CREDITS[outputMode]
+  const coreMaxTokens = MODE_CORE_TOKENS[outputMode]
+  const supportMaxTokens = MODE_SUPPORT_TOKENS[outputMode]
+
   const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
   if (!deduct.ok) {
     const insufficient = deduct.reason === 'insufficient'
@@ -532,15 +648,23 @@ export async function POST(req: Request) {
           sessionId,
           creditsRemaining,
           cost,
+          outputMode,
         })
 
         let plan: { parts: DeepOrchestratorPart[]; repairedProviders: boolean }
-        try {
-          plan = await resolveOrchestratorPlan(prompt)
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : 'Orchestrator failed'
-          writeJson({ type: 'error', error: msg })
-          return
+        if (manualAssignments) {
+          plan = {
+            parts: buildPlanFromManualAssignments(manualAssignments),
+            repairedProviders: false,
+          }
+        } else {
+          try {
+            plan = await resolveOrchestratorPlan(prompt)
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : 'Orchestrator failed'
+            writeJson({ type: 'error', error: msg })
+            return
+          }
         }
 
         writeJson({
@@ -560,9 +684,14 @@ export async function POST(req: Request) {
             userId: null,
             provider: part.assigned_provider,
             prompt: subQuestionPrompt(prompt, part.topic),
-            systemPrompt: systemPromptForPart(part.priority, part.angle),
+            systemPrompt: systemPromptForPart(
+              part.priority,
+              part.angle,
+              outputMode,
+              part.assigned_provider
+            ),
             maxCompletionTokens:
-              part.priority === 'CORE' ? CORE_MAX_TOKENS : SUPPORT_MAX_TOKENS,
+              part.priority === 'CORE' ? coreMaxTokens : supportMaxTokens,
             modelOverride: modelForAssignedPart(part.assigned_provider),
           }),
         }))

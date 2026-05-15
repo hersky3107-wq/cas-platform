@@ -150,6 +150,151 @@ function getPlayerContext(alivePlayers: string[], forAttacksVotes = false) {
 
 type ProviderId = (typeof AI_PLAYERS)[number]['provider']
 
+/** Authoritative snapshot for prompts — never infer player status from conversation. */
+type WolfGameState = {
+  alive_players: string[]
+  eliminated_players: Array<{ name: string; round: number; reason: string }>
+  current_round: number
+  /** Display names of wolf AI(s); only inject into wolf players' prompts. */
+  wolf: string
+}
+
+function displayNameForAliveId(providerId: string, userMode: string): string | null {
+  if (providerId === 'user') {
+    return userMode === 'challenge' ? 'YOU (human player)' : null
+  }
+  return AI_PLAYERS.find((a) => a.provider === providerId)?.name ?? null
+}
+
+function buildAliveDisplayNames(
+  aliveProviderIds: string[],
+  userMode: string
+): string[] {
+  const names: string[] = []
+  for (const id of aliveProviderIds) {
+    const n = displayNameForAliveId(id, userMode)
+    if (n) names.push(n)
+  }
+  return names
+}
+
+/**
+ * Builds game_state from request fields only (alivePlayers + round + modes).
+ * Optional client `eliminatedPlayers` overrides inferred round/reason when present.
+ */
+function buildWolfGameState(params: {
+  aliveProviderIds: string[]
+  currentRound: number
+  userMode: string
+  wolfIds: string[]
+  /** When set, use exact elimination metadata instead of inferring from roster diff. */
+  eliminatedOverride?: Array<{ name: string; round: number; reason: string }>
+}): WolfGameState {
+  const { aliveProviderIds, currentRound, userMode, wolfIds, eliminatedOverride } =
+    params
+  const alive_players = buildAliveDisplayNames(aliveProviderIds, userMode)
+
+  const wolf = wolfIds
+    .map((id) => AI_PLAYERS.find((a) => a.provider === id)?.name ?? id)
+    .filter(Boolean)
+    .join(', ')
+
+  if (eliminatedOverride && eliminatedOverride.length > 0) {
+    return {
+      alive_players,
+      eliminated_players: eliminatedOverride.map((e) => ({
+        name: e.name,
+        round: e.round,
+        reason: e.reason || 'voted out',
+      })),
+      current_round: currentRound,
+      wolf,
+    }
+  }
+
+  const eliminated_players: WolfGameState['eliminated_players'] = []
+  const inferredRound = Math.max(1, currentRound - 1)
+
+  for (const p of AI_PLAYERS) {
+    if (!aliveProviderIds.includes(p.provider)) {
+      eliminated_players.push({
+        name: p.name,
+        round: inferredRound,
+        reason: 'voted out',
+      })
+    }
+  }
+  if (userMode === 'challenge' && !aliveProviderIds.includes('user')) {
+    eliminated_players.push({
+      name: 'YOU (human player)',
+      round: inferredRound,
+      reason: 'voted out',
+    })
+  }
+
+  return {
+    alive_players,
+    eliminated_players,
+    current_round: currentRound,
+    wolf,
+  }
+}
+
+/** Top of every system prompt — before language override and all other instructions. */
+function formatGameStateInjectionBlock(
+  state: WolfGameState,
+  opts: { includeWolfSecret: boolean }
+): string {
+  const eliminatedLines =
+    state.eliminated_players.length === 0
+      ? '  (none)'
+      : state.eliminated_players
+          .map((e) => `  - ${e.name}: eliminated Round ${e.round}`)
+          .join('\n')
+
+  let block = `=== CURRENT GAME STATE ===
+Round: ${state.current_round}
+ALIVE players (you may ONLY interact with these): ${state.alive_players.join(', ')}
+ELIMINATED players (NEVER mention or address these): 
+${eliminatedLines}
+YOU ARE STRICTLY FORBIDDEN from referencing eliminated players.
+=========================
+`
+
+  if (opts.includeWolfSecret && state.wolf) {
+    block += `=== CONFIDENTIAL (wolf only) ===
+Your secret wolf role — wolf player(s): ${state.wolf}
+Never reveal this to non-wolf players.
+================================
+`
+  }
+
+  return block
+}
+
+function parseEliminatedPlayersOverride(
+  raw: unknown
+): WolfGameState['eliminated_players'] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const out: WolfGameState['eliminated_players'] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const name = typeof o.name === 'string' ? o.name.trim() : ''
+    const r =
+      typeof o.round === 'number' && Number.isFinite(o.round)
+        ? Math.floor(o.round)
+        : NaN
+    const reason =
+      typeof o.reason === 'string' && o.reason.trim()
+        ? o.reason.trim()
+        : 'voted out'
+    if (!name || !Number.isFinite(r) || r < 1) continue
+    out.push({ name, round: r, reason })
+  }
+  return out.length ? out : undefined
+}
+
 const WOLF_DECLARATION_SURVIVAL = `YOU ARE THE WOLF. Never reveal this.
 
 WOLF SURVIVAL STRATEGY:
@@ -459,6 +604,15 @@ type WolfBody = {
   /** Tiebreaker revote: constrain targets to these provider IDs */
   tiebreaker?: boolean
   tiebreakerCandidateIds?: string[]
+  /**
+   * Optional authoritative elimination log (display names + round + reason).
+   * When omitted, eliminations are inferred from alivePlayers vs full AI roster.
+   */
+  eliminatedPlayers?: Array<{
+    name: string
+    round: number
+    reason?: string
+  }>
 }
 
 export async function POST(req: Request) {
@@ -534,6 +688,9 @@ export async function POST(req: Request) {
           typeof body.round === 'number' && Number.isFinite(body.round)
             ? body.round
             : 1
+        const eliminatedOverride = parseEliminatedPlayersOverride(
+          body.eliminatedPlayers
+        )
 
         if (action === 'start') {
           if (alivePlayers.length === 0) {
@@ -584,6 +741,16 @@ export async function POST(req: Request) {
           }
 
           const { gameRules } = getPlayerContext(playersForNarrator)
+          const narratorGameState = buildWolfGameState({
+            aliveProviderIds: playersForNarrator,
+            currentRound: 1,
+            userMode,
+            wolfIds: assignedWolfIds,
+          })
+          const narratorStatePrefix = formatGameStateInjectionBlock(
+            narratorGameState,
+            { includeWolfSecret: false }
+          )
           const narrator = await runSingleAiProvider({
             supabase: supabaseAdmin,
             sessionId: null,
@@ -591,6 +758,7 @@ export async function POST(req: Request) {
             provider: 'anthropic',
             prompt: `Opening — this is a NEW scene. Make it fresh and vivid. The game begins. ${wolfCount} wolf(ves) are hidden among ${playersForNarrator.length} players. Deliver the opening announcement.`,
             systemPrompt:
+              narratorStatePrefix +
               langPre +
               HUMAN_MESSAGE_OWNERSHIP_RULE +
               gameRules +
@@ -647,7 +815,17 @@ Do not invent fictional players or events. Describe only the tension of the situ
             const persona = isWolf
               ? WOLF_DECLARATION_SURVIVAL
               : DECL_CITIZEN[player.provider]
-            const sys = `${langPre}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${persona}
+            const freshGameState = buildWolfGameState({
+              aliveProviderIds: alivePlayers,
+              currentRound: round,
+              userMode,
+              wolfIds,
+              eliminatedOverride,
+            })
+            const statePrefix = formatGameStateInjectionBlock(freshGameState, {
+              includeWolfSecret: isWolf,
+            })
+            const sys = `${statePrefix}${langPre}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${persona}
 
 CONVERSATION HISTORY: [None yet - this is Round 1]
 
@@ -754,8 +932,18 @@ Never include yourself as a suspect.
               player.provider === 'google'
                 ? GEMINI_ATTACK_STYLE
                 : CITIZEN_VARIED_STRATEGIES
+            const freshGameState = buildWolfGameState({
+              aliveProviderIds: alivePlayers,
+              currentRound: round,
+              userMode,
+              wolfIds,
+              eliminatedOverride,
+            })
+            const statePrefix = formatGameStateInjectionBlock(freshGameState, {
+              includeWolfSecret: isWolf,
+            })
             const sys = isWolf
-              ? `${langPre}${aliveBlock}${ATTACK_TONE_AGGRO_RULE}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${selfBan(player.name, player.provider)}
+              ? `${statePrefix}${langPre}${aliveBlock}${ATTACK_TONE_AGGRO_RULE}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${selfBan(player.name, player.provider)}
 YOU ARE THE WOLF. This is secret. Never reveal it.
 
 CONVERSATION HISTORY:
@@ -770,7 +958,7 @@ Your task this round:
 ${WOLF_ADAPTIVE_STRATEGY}
 ${ATTACK_TONE_GUIDELINES}
 80-130 words. First person.`
-              : `${langPre}${aliveBlock}${ATTACK_TONE_AGGRO_RULE}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${selfBan(player.name, player.provider)}
+              : `${statePrefix}${langPre}${aliveBlock}${ATTACK_TONE_AGGRO_RULE}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${selfBan(player.name, player.provider)}
 You are a CITIZEN. Find the wolf.
 
 CONVERSATION HISTORY:
@@ -921,8 +1109,18 @@ Your own provider ID is '${pid}'. Never target yourself.
             const isWolf = wolfIds.includes(player.provider)
 
             const otherAliveCsv = votePool.join(', ')
+            const freshGameState = buildWolfGameState({
+              aliveProviderIds: alivePlayers,
+              currentRound: round,
+              userMode,
+              wolfIds,
+              eliminatedOverride,
+            })
+            const statePrefix = formatGameStateInjectionBlock(freshGameState, {
+              includeWolfSecret: isWolf,
+            })
             const sys = isWolf
-              ? `${langPre}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${tiebreakerBlock}${voteSelfBan(player.name, player.provider)}
+              ? `${statePrefix}${langPre}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${tiebreakerBlock}${voteSelfBan(player.name, player.provider)}
 YOU ARE THE WOLF.
 
 CONVERSATION HISTORY:
@@ -935,7 +1133,7 @@ Respond with ONLY this JSON (no other text):
 {"target": "provider_id", "reason": "one sentence citing actual conversation evidence"}
 
 target must be one of: ${otherAliveCsv}`
-              : `${langPre}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${tiebreakerBlock}${voteSelfBan(player.name, player.provider)}
+              : `${statePrefix}${langPre}${aliveBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${CRITICAL_NO_REUSE_RESPONSE}${tiebreakerBlock}${voteSelfBan(player.name, player.provider)}
 You are a CITIZEN.
 
 CONVERSATION HISTORY:

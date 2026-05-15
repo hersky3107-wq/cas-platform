@@ -4,20 +4,100 @@ import {
   iterateCompareProviderResults,
   MODEL_BY_PROVIDER,
   type AiProviderName,
+  type CompareConversationMessage,
+  type RouterResult,
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
-import { CUSTOM_SYSTEM_PROMPT, creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
+import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
+
+const ALLOWED_MAX_TOKENS = [300, 700, 2500] as const
+
+const VALID_PROVIDERS = new Set<AiProviderName>([
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'deepseek',
+  'mistral',
+])
 
 function uniqueProviders(providers: AiProviderName[]) {
   return Array.from(new Set(providers)) as AiProviderName[]
 }
 
-function buildCustomModeSystemPrompt(optionalUserText: string): string {
-  const t = optionalUserText.trim().slice(0, 500)
-  if (!t) return CUSTOM_SYSTEM_PROMPT
-  return `${CUSTOM_SYSTEM_PROMPT}\n\nAdditional instructions:\n${t}`
+function parseConversationHistory(raw: unknown): CompareConversationMessage[] {
+  if (!Array.isArray(raw)) return []
+  const out: CompareConversationMessage[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    if (o.role !== 'user') continue
+    const content = typeof o.content === 'string' ? o.content.trim() : ''
+    if (!content) continue
+    const aiResponses: Partial<Record<AiProviderName, string>> = {}
+    if (o.aiResponses && typeof o.aiResponses === 'object') {
+      for (const [k, v] of Object.entries(o.aiResponses as Record<string, unknown>)) {
+        if (VALID_PROVIDERS.has(k as AiProviderName) && typeof v === 'string') {
+          aiResponses[k as AiProviderName] = v
+        }
+      }
+    }
+    out.push({ role: 'user', content, aiResponses })
+  }
+  return out.slice(-10)
+}
+
+function truncateAtLastSentence(text: string): string {
+  if (!text) return text
+  let t = text.trim()
+  if (/[.!?。]$/.test(t)) return t
+  const match = /^[\s\S]*[.!?。]/.exec(t)
+  if (match) {
+    t = match[0].trim()
+  }
+  t = t.replace(/\s*[\n\r]+\s*(\d+\.|[-*#]+)\s*$/, '').trim()
+  return t
+}
+
+function maxCompletionTokensForProvider(
+  provider: AiProviderName,
+  selected: number
+): number {
+  if (provider === 'mistral' && selected === 2500) return 3500
+  return selected
+}
+
+async function* mergeProviderResultStreams(
+  generators: AsyncGenerator<RouterResult, void, unknown>[]
+): AsyncGenerator<RouterResult, void, unknown> {
+  const iterators = generators.map((g) => g[Symbol.asyncIterator]())
+  const inflight = new Map(
+    iterators.map((it, idx) => [
+      idx,
+      it.next().then((r) => ({ idx, r })),
+    ])
+  )
+  while (inflight.size > 0) {
+    const { idx, r } = await Promise.race(inflight.values())
+    inflight.delete(idx)
+    if (r.done) continue
+    yield r.value
+    inflight.set(idx, iterators[idx].next().then((next) => ({ idx, r: next })))
+  }
+}
+
+function parseMaxTokens(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (ALLOWED_MAX_TOKENS.includes(n as (typeof ALLOWED_MAX_TOKENS)[number])) return n
+  return 700
+}
+
+function parseTemperature(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n)) return 0.7
+  return Math.min(1, Math.max(0.1, n))
 }
 
 async function insertUserDebateEntry(supabase: SupabaseClient, sessionId: string, prompt: string) {
@@ -45,10 +125,12 @@ export async function POST(req: Request) {
   const providers = uniqueProviders(providersRaw as AiProviderName[])
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
 
-  const customRaw =
-    typeof body.customSystemPrompt === 'string' ? body.customSystemPrompt.slice(0, 500) : ''
+  const systemPromptText =
+    typeof body.systemPrompt === 'string' ? body.systemPrompt.trim().slice(0, 500) : ''
 
-  const systemPrompt = buildCustomModeSystemPrompt(customRaw)
+  const maxCompletionTokens = parseMaxTokens(body.maxTokens)
+  const temperature = parseTemperature(body.temperature)
+  const conversationHistory = parseConversationHistory(body.conversationHistory)
 
   if (!prompt.trim()) {
     return NextResponse.json({ error: 'prompt is required' }, { status: 400 })
@@ -145,18 +227,44 @@ export async function POST(req: Request) {
           cost,
         })
 
-        const gen = iterateCompareProviderResults({
+        const compareBase = {
           prompt,
-          systemPrompt,
-          providers,
+          getSystemPrompt: () => systemPromptText,
           sessionId,
           supabaseAccessToken: token,
-          saveCompareArtifacts: true,
-          temperature: 0.7,
-          maxCompletionTokens: 900,
-        })
+          saveCompareArtifacts: true as const,
+          temperature,
+          conversationHistory,
+        }
+
+        const nonMistral = providers.filter((p) => p !== 'mistral')
+        const gens: AsyncGenerator<RouterResult, void, unknown>[] = []
+        if (nonMistral.length > 0) {
+          gens.push(
+            iterateCompareProviderResults({
+              ...compareBase,
+              providers: nonMistral,
+              maxCompletionTokens,
+            })
+          )
+        }
+        if (providers.includes('mistral')) {
+          gens.push(
+            iterateCompareProviderResults({
+              ...compareBase,
+              providers: ['mistral'],
+              maxCompletionTokens: maxCompletionTokensForProvider(
+                'mistral',
+                maxCompletionTokens
+              ),
+            })
+          )
+        }
+
+        const gen = mergeProviderResultStreams(gens)
 
         for await (const result of gen) {
+          result.text = truncateAtLastSentence(result.text ?? '')
           writeJson({ type: 'result', result })
         }
 

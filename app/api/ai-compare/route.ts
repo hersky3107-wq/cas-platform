@@ -4,6 +4,7 @@ import {
   iterateCompareProviderResults,
   MODEL_BY_PROVIDER,
   type AiProviderName,
+  type CompareConversationMessage,
 } from '@/lib/ai/router'
 import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
@@ -12,6 +13,37 @@ import { COMPARE_SYSTEM_PROMPT, creditsPerMessage, deductCreditsBalance } from '
 
 function uniqueProviders(providers: AiProviderName[]) {
   return Array.from(new Set(providers)) as AiProviderName[]
+}
+
+const VALID_PROVIDERS = new Set<AiProviderName>([
+  'openai',
+  'anthropic',
+  'google',
+  'xai',
+  'deepseek',
+  'mistral',
+])
+
+function parseConversationHistory(raw: unknown): CompareConversationMessage[] {
+  if (!Array.isArray(raw)) return []
+  const out: CompareConversationMessage[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    if (o.role !== 'user') continue
+    const content = typeof o.content === 'string' ? o.content.trim() : ''
+    if (!content) continue
+    const aiResponses: Partial<Record<AiProviderName, string>> = {}
+    if (o.aiResponses && typeof o.aiResponses === 'object') {
+      for (const [k, v] of Object.entries(o.aiResponses as Record<string, unknown>)) {
+        if (VALID_PROVIDERS.has(k as AiProviderName) && typeof v === 'string') {
+          aiResponses[k as AiProviderName] = v
+        }
+      }
+    }
+    out.push({ role: 'user', content, aiResponses })
+  }
+  return out.slice(-10)
 }
 
 async function insertUserDebateEntry(supabase: SupabaseClient, sessionId: string, prompt: string) {
@@ -38,6 +70,7 @@ export async function POST(req: Request) {
   const providersRaw = Array.isArray(body.providers) ? body.providers : []
   const providers = uniqueProviders(providersRaw as AiProviderName[])
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
+  const conversationHistory = parseConversationHistory(body.conversationHistory)
 
   if (!prompt.trim()) {
     return NextResponse.json({ error: 'prompt is required' }, { status: 400 })
@@ -143,6 +176,7 @@ export async function POST(req: Request) {
           saveCompareArtifacts: true,
           temperature: 0.7,
           maxCompletionTokens: 900,
+          conversationHistory,
         })
 
         for await (const result of gen) {

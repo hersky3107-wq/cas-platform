@@ -7,7 +7,22 @@ import type { AiProviderName, RouterResult } from "@/lib/ai/router";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
-const DEEP_COST_CREDITS = 10;
+type DeepOutputMode = "brief" | "standard" | "report";
+
+const MODE_COST: Record<DeepOutputMode, number> = {
+  brief: 3,
+  standard: 10,
+  report: 30,
+};
+
+const PROVIDER_ORDER: AiProviderName[] = [
+  "openai",
+  "anthropic",
+  "google",
+  "xai",
+  "deepseek",
+  "mistral",
+];
 
 const AI_LABEL: Record<AiProviderName, string> = {
   openai: "ChatGPT",
@@ -112,8 +127,17 @@ function PriorityBadge({ p }: { p: "CORE" | "SUPPORT" }) {
   );
 }
 
+const EMPTY_MANUAL_ANGLES = (): Record<AiProviderName, string> =>
+  Object.fromEntries(PROVIDER_ORDER.map((p) => [p, ""])) as Record<
+    AiProviderName,
+    string
+  >;
+
 export default function DeepModePage() {
   const [input, setInput] = useState("");
+  const [outputMode, setOutputMode] = useState<DeepOutputMode>("standard");
+  const [analysisMode, setAnalysisMode] = useState<"auto" | "manual">("auto");
+  const [manualAngles, setManualAngles] = useState(EMPTY_MANUAL_ANGLES);
   const [sending, setSending] = useState(false);
   const [phase, setPhase] = useState<
     "idle" | "orchestrating" | "running" | "done" | "error"
@@ -168,11 +192,24 @@ export default function DeepModePage() {
     setPartsOut(new Map());
     setPhase("orchestrating");
 
+    const manualAssignments =
+      analysisMode === "manual" &&
+      (outputMode === "standard" || outputMode === "report")
+        ? PROVIDER_ORDER.map((provider) => ({
+            provider,
+            angle: manualAngles[provider].trim(),
+          }))
+        : null;
+
     try {
       const res = await fetch("/api/deep", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt,
+          outputMode,
+          manualAssignments,
+        }),
       });
 
       if (!res.ok) {
@@ -270,7 +307,11 @@ export default function DeepModePage() {
     } finally {
       setSending(false);
     }
-  }, [input, sending]);
+  }, [input, sending, outputMode, analysisMode, manualAngles]);
+
+  const modeCost = MODE_COST[outputMode];
+  const showManualToggle =
+    outputMode === "standard" || outputMode === "report";
 
   const sortedPlan = plan
     ? [...plan].sort((a, b) => a.index - b.index)
@@ -293,7 +334,7 @@ export default function DeepModePage() {
                 DEEP
               </h1>
               <p className="mt-2 text-xs leading-relaxed text-white/52">
-                {DEEP_COST_CREDITS} credits
+                {modeCost} credits
               </p>
               {typeof credits === "number" ? (
                 <p className="mt-2 text-xs text-white/52">
@@ -313,7 +354,125 @@ export default function DeepModePage() {
         </header>
 
         <section className="rounded-3xl bg-white/[0.05] p-6 ring-1 ring-white/10 lg:p-8">
-          <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-white/55">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/55">
+            Output length
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(
+              [
+                {
+                  id: "brief" as const,
+                  title: "BRIEF",
+                  desc: "Quick summary",
+                  credits: MODE_COST.brief,
+                },
+                {
+                  id: "standard" as const,
+                  title: "STANDARD",
+                  desc: "Deep analysis",
+                  credits: MODE_COST.standard,
+                },
+                {
+                  id: "report" as const,
+                  title: "REPORT",
+                  desc: "Full report",
+                  credits: MODE_COST.report,
+                },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                disabled={sending}
+                onClick={() => {
+                  setOutputMode(m.id);
+                  if (m.id === "brief") setAnalysisMode("auto");
+                }}
+                className={`flex min-w-[7.5rem] flex-1 flex-col items-start rounded-2xl border px-3 py-2.5 text-left transition disabled:opacity-45 sm:min-w-[8rem] ${
+                  outputMode === m.id
+                    ? "border-cyan-500/60 bg-cyan-500/15 ring-1 ring-cyan-500/30"
+                    : "border-white/[0.12] bg-black/25 hover:border-white/20"
+                }`}
+              >
+                <span className="text-xs font-bold tracking-wide text-white">
+                  {m.title}
+                </span>
+                <span className="mt-0.5 text-[11px] text-white/55">
+                  {m.desc} · {m.credits} credits
+                </span>
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled
+              className="relative flex min-w-[7.5rem] flex-1 flex-col items-start rounded-2xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-left opacity-50 sm:min-w-[8rem]"
+            >
+              <span className="absolute right-2 top-2 rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white/70">
+                Coming soon
+              </span>
+              <span className="text-xs font-bold tracking-wide text-white/60">
+                THESIS
+              </span>
+              <span className="mt-0.5 text-[11px] text-white/40">
+                Academic depth
+              </span>
+            </button>
+          </div>
+
+          {showManualToggle ? (
+            <div className="mt-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/55">
+                Assignment
+              </p>
+              <div className="mt-2 inline-flex rounded-full bg-black/40 p-0.5 ring-1 ring-white/10">
+                {(["auto", "manual"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    disabled={sending}
+                    onClick={() => setAnalysisMode(mode)}
+                    className={`rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition disabled:opacity-45 ${
+                      analysisMode === mode
+                        ? "bg-cyan-500/90 text-neutral-950"
+                        : "text-white/60 hover:text-white/85"
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {showManualToggle && analysisMode === "manual" ? (
+            <div className="mt-4 space-y-3 rounded-2xl border border-white/[0.1] bg-black/30 p-4">
+              <p className="text-[11px] leading-relaxed text-white/52">
+                Assign a focus for each model (first two become CORE).
+              </p>
+              {PROVIDER_ORDER.map((provider) => (
+                <label key={provider} className="block">
+                  <span className="mb-1.5 flex items-center gap-2">
+                    <AiNameBadge provider={provider} />
+                  </span>
+                  <input
+                    type="text"
+                    value={manualAngles[provider]}
+                    onChange={(e) =>
+                      setManualAngles((prev) => ({
+                        ...prev,
+                        [provider]: e.target.value,
+                      }))
+                    }
+                    disabled={sending}
+                    placeholder={`What should ${AI_LABEL[provider]} focus on?`}
+                    className="w-full rounded-xl border border-white/[0.12] bg-black/35 px-3 py-2 text-sm text-white outline-none placeholder:text-white/36 focus:border-cyan-500/65 focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-55"
+                  />
+                </label>
+              ))}
+            </div>
+          ) : null}
+
+          <label className="mt-6 block text-xs font-semibold uppercase tracking-[0.2em] text-white/55">
             Question / topic
           </label>
           <textarea

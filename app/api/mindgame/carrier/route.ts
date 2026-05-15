@@ -612,12 +612,14 @@ function carrierRolesForClient(
 }
 
 function processInstantInfection(
+  round: number,
   alivePlayers: string[],
   eliminated: Set<string>,
   roles: Record<string, 'human' | 'zombie'>,
   teams: CarrierTeam[],
   vaccinatedThisRound: Set<string>
 ): Record<string, 'human' | 'zombie'> {
+  if (round < 2) return { ...roles }
   const rolesNext = { ...roles }
 
   for (const pid of alivePlayers) {
@@ -630,7 +632,7 @@ function processInstantInfection(
 
     const hasZombieInTeam = team.members.some((mid) => {
       if (mid === pid || eliminated.has(mid)) return false
-      return rolesNext[mid] === 'zombie'
+      return roles[mid] === 'zombie'
     })
 
     if (hasZombieInTeam) {
@@ -963,28 +965,90 @@ function clampCarrierActionForActor(
 
 /** Line spoken when server forces vaccine use (matches client game language). */
 function forcedCarrierVaccineSpeech(language: string): string {
+  const pick = (lines: readonly string[]) => pickRandomOne([...lines])
+
   switch (language) {
     case 'Korean':
-      return '상황이 급박합니다 — 지금 행동하지 않으면 너무 늦습니다.'
+      return pick([
+        '더 이상 망설일 시간이 없다. 지금 써야 한다.',
+        '백신이 아직 있다. 이걸 아끼다간 후회한다.',
+        '지금이 아니면 기회가 없다.',
+        '상황이 급박합니다 — 지금 행동하지 않으면 너무 늦습니다.',
+        '살아남으려면 지금 움직여야 한다.',
+      ])
     case 'Japanese':
-      return '状況は深刻です — 今動かなければ手遅れになります。'
+      return pick([
+        'もう躊躇している暇はない。今使うしかない。',
+        'ワクチンはまだ残っている。温存したら後悔する。',
+        '今動かなければ、次のチャンスはない。',
+        '状況は切迫している — 今動かなければ手遅れだ。',
+        '生き残るなら、今すぐ行動しなければならない。',
+      ])
     case 'Chinese':
-      return '形势危急——我必须现在就行动，否则就太晚了。'
+      return pick([
+        '不能再犹豫了——必须现在就打。',
+        '疫苗还在手里，省着不用只会后悔。',
+        '不是现在，就再也没有机会了。',
+        '局势危急——再不动手就太晚了。',
+        '想活下去，现在就得行动。',
+      ])
     case 'Spanish':
-      return 'La situación es crítica: debo actuar ahora o será demasiado tarde.'
+      return pick([
+        'No hay tiempo para dudar: hay que usarlo ya.',
+        'Aún queda vacuna; guardarla será un arrepentimiento.',
+        'Si no es ahora, quizá no habrá otra oportunidad.',
+        'La situación es crítica — debo actuar ya o será demasiado tarde.',
+        'Para sobrevivir, hay que moverse ahora mismo.',
+      ])
     case 'French':
-      return "La situation est critique — je dois agir maintenant, ou il sera trop tard."
+      return pick([
+        "Il n'y a plus le temps d'hésiter — il faut l'utiliser maintenant.",
+        'Le vaccin est encore là ; le garder serait un regret assuré.',
+        "Ce n'est pas demain qu'il faudra agir : c'est maintenant ou jamais.",
+        'La situation est critique — il faut agir tout de suite, sans quoi il sera trop tard.',
+        'Pour tenir bon, il faut bouger immédiatement.',
+      ])
     case 'German':
-      return 'Die Lage ist kritisch — ich muss jetzt handeln, sonst ist es zu spät.'
+      return pick([
+        'Keine Zeit mehr zum Zögern — jetzt muss es raus.',
+        'Impfstoff ist noch da; sparen bringt nur Reue.',
+        'Wenn nicht jetzt, dann wahrscheinlich nie wieder.',
+        'Die Lage ist kritisch — jetzt handeln oder es ist zu spät.',
+        'Um zu überleben, müssen wir uns sofort bewegen.',
+      ])
     case 'Portuguese':
-      return 'A situação é crítica — preciso agir agora antes que seja tarde demais.'
+      return pick([
+        'Não dá mais para hesitar — preciso usar agora.',
+        'Ainda há vacina; economizar só vai gerar arrependimento.',
+        'Se não for agora, talvez não haja outra chance.',
+        'A situação é crítica — preciso agir já ou será tarde demais.',
+        'Para sobreviver, é preciso agir neste instante.',
+      ])
     case 'Arabic':
-      return 'الوضع حرج — يجب أن أتصرف الآن قبل فوات الأوان.'
+      return pick([
+        'لا وقت للتردد — يجب أن أستخدمها الآن.',
+        'المطعوم ما زال متاحًا؛ إبقاؤه يعني ندمًا لاحقًا.',
+        'إن لم يكن الآن، فربما لا فرصة لاحقة.',
+        'الوضع حرج — يجب التحرك الآن قبل فوات الأوان.',
+        'للبقاء، عليّ أن أتحرّك فورًا.',
+      ])
     case 'Hindi':
-      return 'स्थिति गंभीर है — अब कार्रवाई करनी होगी, वरना बहुत देर हो जाएगी।'
+      return pick([
+        'अब झिझकने का समय नहीं — अभी लगाना होगा।',
+        'टीका अभी बाकी है; बचाकर रखना पछतावा देगा।',
+        'अगर अभी नहीं, तो शायद मौका फिर न मिले।',
+        'स्थिति गंभीर है — अब नहीं चले तो बहुत देर हो जाएगी।',
+        'बचने के लिए अभी हरकत ज़रूरी है।',
+      ])
     case 'English':
     default:
-      return 'The situation is critical — I must act now before it is too late.'
+      return pick([
+        'No more hesitation — I have to use it now.',
+        'The vaccine is still here; hoarding it will only mean regret.',
+        'If not now, there may never be another chance.',
+        'The situation is critical — I must act now before it is too late.',
+        'To survive, I have to move immediately.',
+      ])
   }
 }
 
@@ -1368,6 +1432,86 @@ function buildDeductionBoardPublic(entries: DeductionRoundHistory[]): string {
 
   board += '\n===== END DEDUCTION BOARD =====\n'
   return board
+}
+
+/** English-only system prefix: authoritative facts for AI (no hallucinated player state). */
+function buildCarrierGameStatePromptBlock(
+  round: number,
+  aliveProviderIds: string[],
+  deductionEntries: DeductionRoundHistory[]
+): string {
+  const aliveLine = aliveProviderIds.map((id) => providerDisplayName(id)).join(', ')
+
+  const elimLines: string[] = []
+  const elimSeen = new Set<string>()
+  for (const rh of deductionEntries) {
+    if (rh.expelResult && !elimSeen.has(rh.expelResult)) {
+      const role =
+        rh.expelledRole === 'human' || rh.expelledRole === 'zombie'
+          ? rh.expelledRole
+          : 'unknown'
+      elimLines.push(
+        `  ${providerDisplayName(rh.expelResult)}: eliminated Round ${rh.round} (${role})`
+      )
+      elimSeen.add(rh.expelResult)
+    }
+    for (const ev of rh.shotgunEvents) {
+      if (elimSeen.has(ev.target)) continue
+      const role =
+        ev.result === 'zombie_killed' ? 'zombie' : ev.result === 'human_killed' ? 'human' : 'unknown'
+      elimLines.push(
+        `  ${providerDisplayName(ev.target)}: eliminated Round ${rh.round} (${role})`
+      )
+      elimSeen.add(ev.target)
+    }
+    for (const el of rh.eliminations ?? []) {
+      if (!el.provider || elimSeen.has(el.provider)) continue
+      elimLines.push(
+        `  ${providerDisplayName(el.provider)}: eliminated Round ${rh.round} (${el.reason})`
+      )
+      elimSeen.add(el.provider)
+    }
+  }
+  const elimBlock = elimLines.length > 0 ? elimLines.join('\n') : '  (none)'
+
+  const factLines: string[] = []
+  for (const rh of deductionEntries) {
+    for (const ev of rh.shotgunEvents) {
+      const res =
+        ev.result === 'zombie_killed' ? 'zombie eliminated' : 'human killed (mistake)'
+      factLines.push(
+        `Round ${rh.round}: Shotgun — ${providerDisplayName(ev.shooter)} → ${providerDisplayName(ev.target)} (${res})`
+      )
+    }
+    for (const ev of rh.vaccineEvents) {
+      const res =
+        ev.result === 'saved'
+          ? 'zombie cured / saved'
+          : ev.result === 'immunized'
+            ? 'immunized'
+            : 'no effect'
+      factLines.push(
+        `Round ${rh.round}: Vaccine — ${providerDisplayName(ev.user)} → ${providerDisplayName(ev.target)} (${res})`
+      )
+    }
+    factLines.push(
+      rh.infectionOccurred
+        ? `Round ${rh.round}: Infection — ${rh.infectionCount} confirmed turn(s)`
+        : `Round ${rh.round}: Infection — none`
+    )
+  }
+  const factsBlock = factLines.length > 0 ? factLines.map((l) => `  - ${l}`).join('\n') : '  (none yet)'
+
+  return `=== GAME STATE (Round ${round}) ===
+ALIVE: ${aliveLine}
+ELIMINATED (NEVER reference as alive):
+${elimBlock}
+CONFIRMED PUBLIC FACTS:
+${factsBlock}
+YOU MUST NOT contradict any fact above.
+DO NOT invent events not listed here.
+==============================
+`
 }
 
 const DEDUCTION_SPEECH_REASONING_BLOCK = `
@@ -1768,6 +1912,12 @@ ${roundHistories
               ? `\n${deductionBoardSpeech}\n${DEDUCTION_SPEECH_REASONING_BLOCK}\n`
               : ''
 
+          const gameStatePromptBlock = buildCarrierGameStatePromptBlock(
+            round,
+            alivePlayers,
+            deductionEntriesSpeech
+          )
+
           const speechOrder = AI_PLAYERS.filter((p) => alivePlayers.includes(p.provider))
           if (speechOrder.length === 0) {
             fail('No AI participants for speeches')
@@ -1811,7 +1961,7 @@ ${roundHistories
                 ? `\nMANDATORY CLOSING (Korean): You MUST end by naming your assigned teammates and pledging to cooperate with them this round (one brief sentence in Korean).\n`
                 : ''
 
-            const sys = `${langPre}${speechOutputLanguageBlock(language)}${aliveBlock}${eliminatedSpeechBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${toolNote}
+            const sys = `${gameStatePromptBlock}${langPre}${speechOutputLanguageBlock(language)}${aliveBlock}${eliminatedSpeechBlock}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}${NO_REPEAT_INSTRUCTION}${toolNote}
 ${selfZ ? SPEECH_ZOMBIE[player.provider] : SPEECH_HUMAN[player.provider]}
 ${roundNote}${geminiRoundSpeech}${teamAssignmentBlock}${claudeTeamClosingKo}
 You are ${player.name}. Provider id: ${player.provider}.
@@ -1865,6 +2015,12 @@ ${historyText}
             deductionBoardActions.trim().length > 0
               ? `\n${deductionBoardActions}\n${DEDUCTION_ACTION_REASONING_BLOCK}\n`
               : ''
+
+          const gameStatePromptBlock = buildCarrierGameStatePromptBlock(
+            round,
+            alivePlayers,
+            deductionEntriesActions
+          )
 
           let shUsed = shotgunUses
           let vaxUsed = vaccineUses
@@ -2094,7 +2250,7 @@ ${historyText}
                   ? '\n(Zombie: weapon text may misdirect survivors — never admit infection.)'
                   : ''
 
-                const sys = `${langPre}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}
+                const sys = `${gameStatePromptBlock}${langPre}${HUMAN_MESSAGE_OWNERSHIP_RULE}${gameRules}
 You are ${player.name} (${player.provider}) in CARRIER — a zombie social deduction game. Round ${round}.
 
 CURRENT STATE:
@@ -2257,12 +2413,19 @@ ${historyText}
             expelledPid && (roles[expelledPid] === 'human' || roles[expelledPid] === 'zombie')
               ? roles[expelledPid]
               : null
+          const invalidVoters = Object.keys(expelVotes).filter((v) => eliminated.has(v))
+          const validVoteCount = Object.keys(expelVotes).filter((v) => !eliminated.has(v)).length
+          const expelThresholdMet = expelledPid !== null
+
           send({
             type: 'vote_resolution',
             votes: { ...expelVotes },
             tally: voteTally,
             expelled: expelledPid,
             expelledRole: expelledRoleAtVote,
+            invalidVoters,
+            validVoteCount,
+            expelThresholdMet,
           })
 
           if (expelledPid) {
@@ -2284,6 +2447,7 @@ ${historyText}
           const rolesBeforeInfection = { ...roles }
 
           roles = processInstantInfection(
+            round,
             alivePlayers,
             eliminated,
             roles,

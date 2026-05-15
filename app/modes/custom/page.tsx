@@ -18,7 +18,11 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
 import { creditsPerMessage } from "@/lib/credits";
-import type { AiProviderName, RouterResult } from "@/lib/ai/router";
+import type {
+  AiProviderName,
+  CompareConversationMessage,
+  RouterResult,
+} from "@/lib/ai/router";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -90,15 +94,41 @@ type Turn = {
   responses: CompletedResponse[];
 };
 
+/** Persisted multi-turn context sent to the API (last 10 exchanges). */
+type Message = {
+  role: "user";
+  content: string;
+  aiResponses?: Partial<Record<AiProviderName, string>>;
+};
+
 const CARD_STAGGER_MS = 300;
 const BEST_ANSWER_DELAY_MS = 2000;
 const BEST_ANSWER_ANIM_MS = 320;
 const MAX_CUSTOM_SYSTEM = 500;
 
+const LENGTH_STEPS = [300, 700, 1500] as const;
+type LengthStepIndex = 0 | 1 | 2;
+
+const LENGTH_HINT: Record<LengthStepIndex, string> = {
+  0: "faster · fewer credits",
+  1: "balanced",
+  2: "detailed · more credits",
+};
+
 /** Slider 0–100 → temperature 0.1–1.0 (50 → 0.5). */
 function sliderToTemperature(slider: number): number {
   const s = Math.min(100, Math.max(0, slider));
   return 0.1 + (s / 100) * 0.9;
+}
+
+function lengthStepFromSlider(slider: number): LengthStepIndex {
+  if (slider <= 33) return 0;
+  if (slider <= 66) return 1;
+  return 2;
+}
+
+function sliderFromLengthStep(step: LengthStepIndex): number {
+  return step === 0 ? 0 : step === 1 ? 50 : 100;
 }
 
 const defaultSelected = (): Record<AiProviderName, boolean> => ({
@@ -327,8 +357,10 @@ export default function CustomModePage() {
   const [input, setInput] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [tempSlider, setTempSlider] = useState(50);
+  const [lengthSlider, setLengthSlider] = useState(50);
   const [customSystem, setCustomSystem] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -359,6 +391,13 @@ export default function CustomModePage() {
     () => sliderToTemperature(tempSlider),
     [tempSlider]
   );
+
+  const lengthStep = useMemo(
+    () => lengthStepFromSlider(lengthSlider),
+    [lengthSlider]
+  );
+
+  const maxTokens = LENGTH_STEPS[lengthStep];
 
   const providersInSession = useMemo(() => {
     const s = new Set<AiProviderName>();
@@ -468,8 +507,20 @@ export default function CustomModePage() {
     ]);
     setInput("");
 
+    const conversationHistory: CompareConversationMessage[] = messages
+      .slice(-10)
+      .map((m) => ({
+        role: "user" as const,
+        content: m.content,
+        aiResponses: m.aiResponses,
+      }));
+
+    const responsesThisTurn: Partial<Record<AiProviderName, string>> = {};
+
     try {
       let resolvedSessionId: string | null = sessionId;
+
+      const systemPrompt = advancedOpen ? customSystem.trim() : "";
 
       const res = await fetch("/api/ai-custom", {
         method: "POST",
@@ -479,7 +530,9 @@ export default function CustomModePage() {
           sessionId,
           providers: selectedList,
           temperature,
-          customSystemPrompt: customSystem,
+          systemPrompt,
+          maxTokens,
+          conversationHistory,
         }),
       });
 
@@ -507,6 +560,9 @@ export default function CustomModePage() {
       const applyResult = (r: RouterResult) => {
         const plain =
           r.text != null && !r.error ? stripMarkdownFormatting(r.text) : r.text;
+        const stored =
+          plain ?? (r.error ? `[error] ${r.error}` : "");
+        responsesThisTurn[r.provider] = stored;
         setTurns((prev) =>
           prev.map((t) => {
             if (t.id !== turnId) return t;
@@ -566,6 +622,11 @@ export default function CustomModePage() {
           bestAnswerTimerRef.current = null;
         }, BEST_ANSWER_DELAY_MS);
       }
+
+      setMessages((prev) => [
+        ...prev.slice(-9),
+        { role: "user", content: text, aiResponses: { ...responsesThisTurn } },
+      ]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       setError(msg);
@@ -578,9 +639,12 @@ export default function CustomModePage() {
     sending,
     selectedList,
     sessionId,
+    messages,
     router,
     temperature,
+    advancedOpen,
     customSystem,
+    maxTokens,
   ]);
 
   const pickWinner = useCallback(
@@ -610,6 +674,7 @@ export default function CustomModePage() {
         setBestAnswerVisual(false);
         setEndOpen(false);
         setSessionId(null);
+        setMessages([]);
         setTurns([]);
       } finally {
         setEndSubmitting(false);
@@ -802,6 +867,47 @@ export default function CustomModePage() {
                       className="relative z-20 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/12 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-cyan-400"
                     />
                   </div>
+                </div>
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Response Length
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      {LENGTH_HINT[lengthStep]}
+                    </span>
+                  </div>
+                  <div className="mb-1 flex justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    <span>Short</span>
+                    <span>Long</span>
+                  </div>
+                  <div className="relative px-0.5 pt-0.5">
+                    <div
+                      className="pointer-events-none absolute left-1/3 top-[calc(50%+2px)] z-10 h-4 w-px -translate-x-1/2 bg-white/20"
+                      aria-hidden
+                    />
+                    <div
+                      className="pointer-events-none absolute left-2/3 top-[calc(50%+2px)] z-10 h-4 w-px -translate-x-1/2 bg-white/20"
+                      aria-hidden
+                    />
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={50}
+                      value={lengthSlider}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setLengthSlider(
+                          sliderFromLengthStep(lengthStepFromSlider(v))
+                        );
+                      }}
+                      className="relative z-20 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/12 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-cyan-400"
+                    />
+                  </div>
+                  <p className="mt-1.5 text-center text-[10px] tabular-nums text-slate-600">
+                    {maxTokens} tokens max
+                  </p>
                 </div>
                 <label className="block">
                   <span className="mb-1.5 block text-[11px] text-slate-500">

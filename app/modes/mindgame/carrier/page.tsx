@@ -32,6 +32,460 @@ const LANGUAGE_OPTIONS = [
   "Hindi",
 ];
 
+/** Localized UI strings — use `getCarrierUiPack(language)`; fallback English. */
+type CarrierUiPack = {
+  voteInvalidAlreadyRemoved: string;
+  voteValidSummary: string;
+  voteThresholdMet: string;
+  voteThresholdNotMet: string;
+  voteTwoRequiredNote: string;
+  voteExpelledLine: string;
+  voteNoExpulsionLine: string;
+  wasZombie: string;
+  wasHuman: string;
+  labelEliminated: string;
+  deductionBoardTitle: string;
+  teamHistoryLabel: string;
+  originalZombiesHeading: string;
+  finalRolesHeading: string;
+  finalRevealBlurb: string;
+  roleZombie: string;
+  roleHuman: string;
+  noteCuredZombie: string;
+  noteHumanInfected: string;
+  humansWin: string;
+  zombiesWin: string;
+  gameOver: string;
+  infectionHeading: string;
+  infectionRule: string;
+  playAgain: string;
+  voteCountFmt: string;
+  voteTieJoiner: string;
+  voteSummaryTopOne: string;
+  voteSummaryTopTie: string;
+  voteTieNoExpel: string;
+  voteSummaryNoVotes: string;
+};
+
+const CARRIER_UI_BY_LANG: Record<string, CarrierUiPack> = {
+  English: {
+    voteInvalidAlreadyRemoved: "(invalid — voter already removed)",
+    voteValidSummary: "Valid votes: {n} — expulsion threshold {met}. {two}",
+    voteThresholdMet: "met",
+    voteThresholdNotMet: "not met",
+    voteTwoRequiredNote: "2 votes required for expulsion.",
+    voteExpelledLine: "Tally: {name} expelled ({tally}){role}",
+    voteNoExpulsionLine: "Tally: no expulsion — tie or fewer than 2 votes on top target{tally}",
+    wasZombie: " — was a zombie!",
+    wasHuman: " — was human…",
+    labelEliminated: "eliminated",
+    deductionBoardTitle: "📋 Deduction Board",
+    teamHistoryLabel: "Team history",
+    originalZombiesHeading: "Original zombies (game start)",
+    finalRolesHeading: "Final roles (game end)",
+    finalRevealBlurb: "Full reveal — original zombies vs final roles.",
+    roleZombie: "Zombie",
+    roleHuman: "Human",
+    noteCuredZombie: "cured by vaccine",
+    noteHumanInfected: "infected",
+    humansWin: "Humans win",
+    zombiesWin: "Zombies win",
+    gameOver: "Game over",
+    infectionHeading: "Infection",
+    infectionRule:
+      "End-of-round rule: any surviving human who shares a team with a living zombie becomes a zombie unless they were vaccinated that same round.",
+    voteCountFmt: "{name}: {n}",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne:
+      "Highest valid vote total on one player — {detail}. Expulsion threshold: {met}. {two}",
+    voteSummaryTopTie:
+      "{list} ({tieNote}). Expulsion threshold: {met}. {two}",
+    voteTieNoExpel: "Tie — nobody expelled",
+    voteSummaryNoVotes: "No valid votes toward any target. Expulsion threshold: {met}. {two}",
+    playAgain: "Play again",
+  },
+  Korean: {
+    voteInvalidAlreadyRemoved: "(무효 — 이미 제거됨)",
+    voteValidSummary: "유효표: {n}표 — 추방 기준 {met}. {two}",
+    voteThresholdMet: "달성",
+    voteThresholdNotMet: "미달",
+    voteTwoRequiredNote: "추방에는 최다 득표자에게 유효 2표가 필요합니다.",
+    voteExpelledLine: "집계: {name} 추방 ({tally}){role}",
+    voteNoExpulsionLine: "집계: 추방 없음 — 동표 또는 최다 2표 미만{tally}",
+    wasZombie: " — 🧟 좀비였습니다!",
+    wasHuman: " — 😇 인간이었습니다...",
+    labelEliminated: "제거됨",
+    deductionBoardTitle: "📋 추리 보드",
+    teamHistoryLabel: "팀 편성",
+    originalZombiesHeading: "원래 좀비 (게임 시작 시)",
+    finalRolesHeading: "최종 역할 (게임 종료 시)",
+    finalRevealBlurb: "전체 공개 — 시작 시 좀비와 종료 시 역할.",
+    roleZombie: "좀비",
+    roleHuman: "인간",
+    noteCuredZombie: "백신으로 치료됨",
+    noteHumanInfected: "감염됨",
+    humansWin: "인간 승리",
+    zombiesWin: "좀비 승리",
+    gameOver: "게임 종료",
+    infectionHeading: "감염",
+    infectionRule:
+      "라운드 말 규칙: 살아 있는 좀비와 같은 팀에 남은 인간은, 같은 라운드에 백신을 맞지 않았다면 좀비가 된다.",
+    voteCountFmt: "{name} {n}표",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne: "한 명에게 모인 유효 표가 가장 많음 — {detail}. 추방 기준 {met}. {two}",
+    voteSummaryTopTie: "{list} ({tieNote}). 추방 기준 {met}. {two}",
+    voteTieNoExpel: "동표 — 추방 없음",
+    voteSummaryNoVotes: "유효한 추방 대상 표가 없습니다. 추방 기준 {met}. {two}",
+    playAgain: "다시 하기",
+  },
+  Japanese: {
+    voteInvalidAlreadyRemoved: "(無効 — 投票者は既に脱落)",
+    voteValidSummary: "有効票: {n}票 — 追放条件は{met}。{two}",
+    voteThresholdMet: "達成",
+    voteThresholdNotMet: "未達",
+    voteTwoRequiredNote: "追放には最多得票者へ有効2票が必要です。",
+    voteExpelledLine: "集計: {name} を追放 ({tally}){role}",
+    voteNoExpulsionLine: "集計: 追放なし — 同票または最多2票未満{tally}",
+    wasZombie: " — 🧟 ゾンビでした!",
+    wasHuman: " — 😇 人間でした...",
+    labelEliminated: "脱落",
+    deductionBoardTitle: "📋 推理ボード",
+    teamHistoryLabel: "チーム編成",
+    originalZombiesHeading: "当初のゾンビ（ゲーム開始時）",
+    finalRolesHeading: "最終役職（ゲーム終了時）",
+    finalRevealBlurb: "全公開 — 開始時のゾンビと最終役職。",
+    roleZombie: "ゾンビ",
+    roleHuman: "人間",
+    noteCuredZombie: "ワクチンで治療",
+    noteHumanInfected: "感染",
+    humansWin: "人間の勝利",
+    zombiesWin: "ゾンビの勝利",
+    gameOver: "ゲーム終了",
+    infectionHeading: "感染",
+    infectionRule:
+      "ラウンド終了時のルール: 生存ゾンビと同じチームに残った人間は、そのラウンドにワクチンを打っていなければゾンビになる。",
+    voteCountFmt: "{name} {n}票",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne: "最多の有効票が集まった対象 — {detail}。追放条件は{met}。{two}",
+    voteSummaryTopTie: "{list}（{tieNote}）。追放条件は{met}。{two}",
+    voteTieNoExpel: "同票のため追放なし",
+    voteSummaryNoVotes: "有効な追放票がありません。追放条件は{met}。{two}",
+    playAgain: "もう一度",
+  },
+  Chinese: {
+    voteInvalidAlreadyRemoved: "(无效 — 投票者已被淘汰)",
+    voteValidSummary: "有效票：{n} — 放逐门槛{met}。{two}",
+    voteThresholdMet: "已达成",
+    voteThresholdNotMet: "未达成",
+    voteTwoRequiredNote: "放逐需要最高票者获得至少2张有效票。",
+    voteExpelledLine: "计票：放逐 {name}（{tally}）{role}",
+    voteNoExpulsionLine: "计票：无人放逐 — 平票或最高票不足2票{tally}",
+    wasZombie: " — 🧟 是僵尸!",
+    wasHuman: " — 😇 是人类...",
+    labelEliminated: "已淘汰",
+    deductionBoardTitle: "📋 推理板",
+    teamHistoryLabel: "分队记录",
+    originalZombiesHeading: "初始僵尸（游戏开始时）",
+    finalRolesHeading: "最终身份（游戏结束时）",
+    finalRevealBlurb: "完整公开 — 初始僵尸与最终身份。",
+    roleZombie: "僵尸",
+    roleHuman: "人类",
+    noteCuredZombie: "疫苗治愈",
+    noteHumanInfected: "被感染",
+    humansWin: "人类胜利",
+    zombiesWin: "僵尸胜利",
+    gameOver: "游戏结束",
+    infectionHeading: "感染",
+    infectionRule:
+      "回合结束规则：若幸存人类与仍存活的僵尸同队，且当回合未接种疫苗，则会变为僵尸。",
+    voteCountFmt: "{name} {n}票",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne: "单一目标得票最高（有效票）— {detail}。放逐门槛{met}。{two}",
+    voteSummaryTopTie: "{list}（{tieNote}）。放逐门槛{met}。{two}",
+    voteTieNoExpel: "平票 — 无人放逐",
+    voteSummaryNoVotes: "没有有效的放逐目标票。放逐门槛{met}。{two}",
+    playAgain: "再玩一局",
+  },
+  Spanish: {
+    voteInvalidAlreadyRemoved: "(inválido — votante ya eliminado)",
+    voteValidSummary: "Votos válidos: {n} — umbral de expulsión: {met}. {two}",
+    voteThresholdMet: "cumplido",
+    voteThresholdNotMet: "no cumplido",
+    voteTwoRequiredNote: "Se requieren 2 votos válidos para expulsar al más votado.",
+    voteExpelledLine: "Recuento: expulsión de {name} ({tally}){role}",
+    voteNoExpulsionLine: "Recuento: sin expulsión — empate o menos de 2 votos al tope{tally}",
+    wasZombie: " — ¡era zombie!",
+    wasHuman: " — era humano...",
+    labelEliminated: "eliminado",
+    deductionBoardTitle: "📋 Tablero de deducción",
+    teamHistoryLabel: "Historial de equipos",
+    originalZombiesHeading: "Zombies originales (inicio)",
+    finalRolesHeading: "Roles finales (fin de partida)",
+    finalRevealBlurb: "Revelación completa — zombies iniciales y roles finales.",
+    roleZombie: "Zombie",
+    roleHuman: "Humano",
+    noteCuredZombie: "curado con vacuna",
+    noteHumanInfected: "infectado",
+    humansWin: "Ganan los humanos",
+    zombiesWin: "Ganan los zombies",
+    gameOver: "Fin de la partida",
+    infectionHeading: "Infección",
+    infectionRule:
+      "Al cierre de ronda: un humano vivo que comparte equipo con un zombie vivo se infecta salvo que se vacune en esa misma ronda.",
+    voteCountFmt: "{name}: {n}",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne:
+      "Más votos válidos en un solo jugador — {detail}. Umbral de expulsión: {met}. {two}",
+    voteSummaryTopTie: "{list} ({tieNote}). Umbral de expulsión: {met}. {two}",
+    voteTieNoExpel: "Empate — nadie expulsado",
+    voteSummaryNoVotes: "Sin votos válidos hacia ningún objetivo. Umbral de expulsión: {met}. {two}",
+    playAgain: "Jugar de nuevo",
+  },
+  French: {
+    voteInvalidAlreadyRemoved: "(invalide — votant déjà éliminé)",
+    voteValidSummary: "Votes valides : {n} — seuil d’expulsion : {met}. {two}",
+    voteThresholdMet: "atteint",
+    voteThresholdNotMet: "non atteint",
+    voteTwoRequiredNote: "2 votes valides requis pour expulser le plus voté.",
+    voteExpelledLine: "Dépouillement : expulsion de {name} ({tally}){role}",
+    voteNoExpulsionLine: "Dépouillement : pas d’expulsion — égalité ou moins de 2 votes{tally}",
+    wasZombie: " — c’était un zombie !",
+    wasHuman: " — c’était un humain...",
+    labelEliminated: "éliminé",
+    deductionBoardTitle: "📋 Tableau de déduction",
+    teamHistoryLabel: "Historique des équipes",
+    originalZombiesHeading: "Zombies d’origine (début de partie)",
+    finalRolesHeading: "Rôles finaux (fin de partie)",
+    finalRevealBlurb: "Révélation complète — zombies d’origine et rôles finaux.",
+    roleZombie: "Zombie",
+    roleHuman: "Humain",
+    noteCuredZombie: "guéri par vaccin",
+    noteHumanInfected: "infecté",
+    humansWin: "Victoire des humains",
+    zombiesWin: "Victoire des zombies",
+    gameOver: "Partie terminée",
+    infectionHeading: "Infection",
+    infectionRule:
+      "Fin de manche : tout humain survivant en équipe avec un zombie vivant devient zombie, sauf s’il a été vacciné durant cette même manche.",
+    voteCountFmt: "{name} : {n}",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne:
+      "Plus de votes valides sur un joueur — {detail}. Seuil d’expulsion : {met}. {two}",
+    voteSummaryTopTie: "{list} ({tieNote}). Seuil d’expulsion : {met}. {two}",
+    voteTieNoExpel: "Égalité — personne expulsé",
+    voteSummaryNoVotes: "Aucun vote valide vers une cible. Seuil d’expulsion : {met}. {two}",
+    playAgain: "Rejouer",
+  },
+  German: {
+    voteInvalidAlreadyRemoved: "(ungültig — Wähler bereits ausgeschieden)",
+    voteValidSummary: "Gültige Stimmen: {n} — Ausschlussgrenze: {met}. {two}",
+    voteThresholdMet: "erreicht",
+    voteThresholdNotMet: "nicht erreicht",
+    voteTwoRequiredNote: "Zum Rauswurf des Führenden sind 2 gültige Stimmen nötig.",
+    voteExpelledLine: "Auszählung: {name} rausgewählt ({tally}){role}",
+    voteNoExpulsionLine: "Auszählung: kein Rauswurf — Patt oder weniger als 2 Stimmen{tally}",
+    wasZombie: " — war ein Zombie!",
+    wasHuman: " — war ein Mensch...",
+    labelEliminated: "ausgeschieden",
+    deductionBoardTitle: "📋 Deduktionstafel",
+    teamHistoryLabel: "Teamverlauf",
+    originalZombiesHeading: "Ursprüngliche Zombies (Spielstart)",
+    finalRolesHeading: "Endrollen (Spielende)",
+    finalRevealBlurb: "Volle Aufdeckung — ursprüngliche Zombies und Endrollen.",
+    roleZombie: "Zombie",
+    roleHuman: "Mensch",
+    noteCuredZombie: "durch Impfung geheilt",
+    noteHumanInfected: "infiziert",
+    humansWin: "Menschen gewinnen",
+    zombiesWin: "Zombies gewinnen",
+    gameOver: "Spiel beendet",
+    infectionHeading: "Infektion",
+    infectionRule:
+      "Regel am Rundenende: Überlebende Menschen im Team mit einem lebenden Zombie werden infiziert, sofern sie in derselben Runde nicht geimpft wurden.",
+    voteCountFmt: "{name}: {n}",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne:
+      "Meiste gültige Stimmen auf einen Spieler — {detail}. Ausschlussgrenze: {met}. {two}",
+    voteSummaryTopTie: "{list} ({tieNote}). Ausschlussgrenze: {met}. {two}",
+    voteTieNoExpel: "Gleichstand — niemand raus",
+    voteSummaryNoVotes: "Keine gültigen Stimmen auf ein Ziel. Ausschlussgrenze: {met}. {two}",
+    playAgain: "Nochmal spielen",
+  },
+  Portuguese: {
+    voteInvalidAlreadyRemoved: "(inválido — votante já eliminado)",
+    voteValidSummary: "Votos válidos: {n} — limiar de expulsão: {met}. {two}",
+    voteThresholdMet: "atingido",
+    voteThresholdNotMet: "não atingido",
+    voteTwoRequiredNote: "São necessários 2 votos válidos para expulsar o mais votado.",
+    voteExpelledLine: "Apuração: {name} expulso(a) ({tally}){role}",
+    voteNoExpulsionLine: "Apuração: sem expulsão — empate ou menos de 2 votos no topo{tally}",
+    wasZombie: " — era zumbi!",
+    wasHuman: " — era humano...",
+    labelEliminated: "eliminado",
+    deductionBoardTitle: "📋 Quadro de dedução",
+    teamHistoryLabel: "Histórico de equipes",
+    originalZombiesHeading: "Zumbis originais (início)",
+    finalRolesHeading: "Papéis finais (fim de jogo)",
+    finalRevealBlurb: "Revelação completa — zumbis iniciais e papéis finais.",
+    roleZombie: "Zumbi",
+    roleHuman: "Humano",
+    noteCuredZombie: "curado com vacina",
+    noteHumanInfected: "infectado",
+    humansWin: "Humanos vencem",
+    zombiesWin: "Zumbis vencem",
+    gameOver: "Fim de jogo",
+    infectionHeading: "Infecção",
+    infectionRule:
+      "Regra no fim da rodada: qualquer humano vivo no mesmo time de um zumbi vivo vira zumbi, salvo se for vacinado na mesma rodada.",
+    voteCountFmt: "{name}: {n}",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne:
+      "Mais votos válidos em um jogador — {detail}. Limiar de expulsão: {met}. {two}",
+    voteSummaryTopTie: "{list} ({tieNote}). Limiar de expulsão: {met}. {two}",
+    voteTieNoExpel: "Empate — ninguém expulso",
+    voteSummaryNoVotes: "Sem votos válidos para alvo. Limiar de expulsão: {met}. {two}",
+    playAgain: "Jogar novamente",
+  },
+  Arabic: {
+    voteInvalidAlreadyRemoved: "(غير صالح — الناخب أُزيل مسبقًا)",
+    voteValidSummary: "أصوات صالحة: {n} — عتبة الطرد: {met}. {two}",
+    voteThresholdMet: "متحقق",
+    voteThresholdNotMet: "غير متحقق",
+    voteTwoRequiredNote: "يلزم صوتان صالحان لطرد الأعلى أصواتًا.",
+    voteExpelledLine: "الفرز: طرد {name} ({tally}){role}",
+    voteNoExpulsionLine: "الفرز: لا طرد — تعادل أو أقل من صوتين{tally}",
+    wasZombie: " — كان زومبيًا!",
+    wasHuman: " — كان بشريًا...",
+    labelEliminated: "أُزيل",
+    deductionBoardTitle: "📋 لوحة الاستنتاج",
+    teamHistoryLabel: "سجل الفرق",
+    originalZombiesHeading: "الزومبي الأصليون (بداية اللعبة)",
+    finalRolesHeading: "الأدوار النهائية (نهاية اللعبة)",
+    finalRevealBlurb: "كشف كامل — الزومبي الأصليون والأدوار النهائية.",
+    roleZombie: "زومبي",
+    roleHuman: "بشر",
+    noteCuredZombie: "شُفي بلقاح",
+    noteHumanInfected: "أُصيب",
+    humansWin: "فوز البشر",
+    zombiesWin: "فوز الزومبي",
+    gameOver: "انتهت اللعبة",
+    infectionHeading: "عدوى",
+    infectionRule:
+      "قاعدة نهاية الجولة: أي إنسان حي يشارك فريقًا مع زومبي حي يصبح زومبيًا ما لم يُطعَّم في تلك الجولة نفسها.",
+    voteCountFmt: "{name}: {n}",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne: "أعلى أصوات صالحة على لاعب واحد — {detail}. عتبة الطرد: {met}. {two}",
+    voteSummaryTopTie: "{list} ({tieNote}). عتبة الطرد: {met}. {two}",
+    voteTieNoExpel: "تعادل — لا طرد",
+    voteSummaryNoVotes: "لا أصوات صالحة نحو أي هدف. عتبة الطرد: {met}. {two}",
+    playAgain: "العب مجددًا",
+  },
+  Hindi: {
+    voteInvalidAlreadyRemoved: "(अमान्य — मतदाता पहले ही हट चुका है)",
+    voteValidSummary: "मान्य मत: {n} — निष्कासन सीमा {met}। {two}",
+    voteThresholdMet: "पूरी",
+    voteThresholdNotMet: "अपूर्ण",
+    voteTwoRequiredNote: "निष्कासन के लिए सर्वाधिक वोट पर 2 मान्य मत चाहिए।",
+    voteExpelledLine: "गणना: {name} निष्कासित ({tally}){role}",
+    voteNoExpulsionLine: "गणना: कोई निष्कासन नहीं — बराबरी या 2 से कम वोट{tally}",
+    wasZombie: " — ज़ॉम्बी था!",
+    wasHuman: " — इंसान था...",
+    labelEliminated: "हटाया गया",
+    deductionBoardTitle: "📋 निष्कर्ष बोर्ड",
+    teamHistoryLabel: "टीम इतिहास",
+    originalZombiesHeading: "मूल ज़ॉम्बी (खेल की शुरुआत)",
+    finalRolesHeading: "अंतिम भूमिकाएँ (खेल का अंत)",
+    finalRevealBlurb: "पूर्ण खुलासा — मूल ज़ॉम्बी और अंतिम भूमिकाएँ।",
+    roleZombie: "ज़ॉम्बी",
+    roleHuman: "इंसान",
+    noteCuredZombie: "टीके से ठीक",
+    noteHumanInfected: "संक्रमित",
+    humansWin: "इंसानों की जीत",
+    zombiesWin: "ज़ॉम्बी की जीत",
+    gameOver: "खेल समाप्त",
+    infectionHeading: "संक्रमण",
+    infectionRule:
+      "राउंड समाप्ति नियम: जीवित ज़ॉम्बी के साथ टीम में बचा इंसान, यदि उसी राउंड में टीका न लगवाया हो तो ज़ॉम्बी बन जाता है।",
+    voteCountFmt: "{name}: {n}",
+    voteTieJoiner: " vs ",
+    voteSummaryTopOne:
+      "एक खिलाड़ी पर सबसे अधिक मान्य वोट — {detail}। निष्कासन सीमा {met}। {two}",
+    voteSummaryTopTie: "{list} ({tieNote})। निष्कासन सीमा {met}। {two}",
+    voteTieNoExpel: "बराबरी — कोई निष्कासन नहीं",
+    voteSummaryNoVotes: "किसी लक्ष्य पर कोई मान्य वोट नहीं। निष्कासन सीमा {met}। {two}",
+    playAgain: "फिर से खेलें",
+  },
+};
+
+function getCarrierUiPack(language: string): CarrierUiPack {
+  return CARRIER_UI_BY_LANG[language] ?? CARRIER_UI_BY_LANG.English;
+}
+
+/** Valid votes only; per-target counts — summary shows leader count or tied breakdown. */
+function computeCarrierVoteSummaryLine(
+  pack: CarrierUiPack,
+  allVotes: Record<string, string> | undefined,
+  invalidVoters: Set<string>,
+  playersSnap: Player[],
+  expelMet: boolean
+): string {
+  const metLabel = expelMet ? pack.voteThresholdMet : pack.voteThresholdNotMet;
+  const two = pack.voteTwoRequiredNote;
+  if (!allVotes || Object.keys(allVotes).length === 0) {
+    return pack.voteSummaryNoVotes.replace("{met}", metLabel).replace("{two}", two);
+  }
+  const counts: Record<string, number> = {};
+  for (const [voter, target] of Object.entries(allVotes)) {
+    if (invalidVoters.has(voter)) continue;
+    counts[target] = (counts[target] ?? 0) + 1;
+  }
+  const entries = Object.entries(counts).filter(([, c]) => c > 0);
+  if (entries.length === 0) {
+    return pack.voteSummaryNoVotes.replace("{met}", metLabel).replace("{two}", two);
+  }
+  entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const topN = entries[0]![1];
+  const leaders = entries.filter(([, c]) => c === topN);
+  const fmt = (pid: string, n: number) =>
+    pack.voteCountFmt
+      .replace("{name}", carrierDisplayNameForProvider(pid, playersSnap))
+      .replace("{n}", String(n));
+
+  if (leaders.length === 1) {
+    const [pid, n] = leaders[0]!;
+    return pack.voteSummaryTopOne
+      .replace("{detail}", fmt(pid, n))
+      .replace("{met}", metLabel)
+      .replace("{two}", two);
+  }
+  const list = leaders.map(([pid, n]) => fmt(pid, n)).join(pack.voteTieJoiner);
+  return pack.voteSummaryTopTie
+    .replace("{list}", list)
+    .replace("{tieNote}", pack.voteTieNoExpel)
+    .replace("{met}", metLabel)
+    .replace("{two}", two);
+}
+
+function cumulativeEliminatedThroughRound(
+  fullHistory: DeductionRoundHistory[],
+  throughRound: number
+): Set<string> {
+  const s = new Set<string>();
+  for (const e of fullHistory) {
+    if (e.round > throughRound) continue;
+    if (e.expelResult) s.add(e.expelResult);
+    for (const ev of e.shotgunEvents) {
+      if (ev.result === "zombie_killed" || ev.result === "human_killed") {
+        s.add(ev.target);
+      }
+    }
+    for (const el of e.eliminations ?? []) {
+      if (el.provider) s.add(el.provider);
+    }
+  }
+  return s;
+}
+
 type Phase =
   | "setup"
   | "starting"
@@ -388,6 +842,31 @@ export default function CarrierModePage() {
   }, [language]);
 
   useEffect(() => {
+    if (phase !== "paused_user_action" || !userTurnPauseUi || userMode !== "challenge") {
+      return;
+    }
+    const canShotgun =
+      shotgunHolderId === "user" &&
+      userTurnPauseUi.shotgunUsed < MAX_CARRIER_TOOL_USES;
+    const canVaccine =
+      vaccineHolderId === "user" &&
+      userTurnPauseUi.vaccineUsed < MAX_CARRIER_TOOL_USES;
+    if (userRoundAction === "SHOTGUN" && !canShotgun) {
+      setUserRoundAction("NONE");
+    }
+    if (userRoundAction === "VACCINE" && !canVaccine) {
+      setUserRoundAction("NONE");
+    }
+  }, [
+    phase,
+    userMode,
+    userTurnPauseUi,
+    shotgunHolderId,
+    vaccineHolderId,
+    userRoundAction,
+  ]);
+
+  useEffect(() => {
     playersRef.current = players;
   }, [players]);
   useEffect(() => {
@@ -464,6 +943,26 @@ export default function CarrierModePage() {
     for (const p of players) m.set(p.provider, p);
     return m;
   }, [players]);
+
+  const challengeUserPauseCanShotgun = useMemo(() => {
+    if (phase !== "paused_user_action" || !userTurnPauseUi || userMode !== "challenge") {
+      return false;
+    }
+    return (
+      shotgunHolderId === "user" &&
+      userTurnPauseUi.shotgunUsed < MAX_CARRIER_TOOL_USES
+    );
+  }, [phase, userTurnPauseUi, userMode, shotgunHolderId]);
+
+  const challengeUserPauseCanVaccine = useMemo(() => {
+    if (phase !== "paused_user_action" || !userTurnPauseUi || userMode !== "challenge") {
+      return false;
+    }
+    return (
+      vaccineHolderId === "user" &&
+      userTurnPauseUi.vaccineUsed < MAX_CARRIER_TOOL_USES
+    );
+  }, [phase, userTurnPauseUi, userMode, vaccineHolderId]);
 
   const latestSummary = roundSummary;
 
@@ -676,6 +1175,7 @@ export default function CarrierModePage() {
         );
       }
       if (ev.type === "vote_resolution") {
+        const pack = getCarrierUiPack(languageRef.current);
         const tally = ev.tally as Record<string, number> | undefined;
         const expelled =
           typeof ev.expelled === "string" && ev.expelled.length > 0 ? ev.expelled : null;
@@ -684,7 +1184,6 @@ export default function CarrierModePage() {
             ? ev.expelledRole
             : null;
         const snap = playersRef.current;
-        const koLang = languageRef.current === "Korean";
         const tallyStr =
           tally && typeof tally === "object"
             ? Object.entries(tally)
@@ -694,16 +1193,45 @@ export default function CarrierModePage() {
                 )
                 .join(", ")
             : "";
+        const allVotes = ev.votes as Record<string, string> | undefined;
+        const invalidVoters = new Set(
+          Array.isArray(ev.invalidVoters)
+            ? (ev.invalidVoters as unknown[]).filter((x): x is string => typeof x === "string")
+            : []
+        );
+        const expelMet = ev.expelThresholdMet === true;
+
+        if (allVotes && Object.keys(allVotes).length > 0) {
+          for (const [voter, target] of Object.entries(allVotes)) {
+            const invalid = invalidVoters.has(voter);
+            const vName = carrierDisplayNameForProvider(voter, snap);
+            const tName = carrierDisplayNameForProvider(target, snap);
+            const suffix = invalid ? ` ${pack.voteInvalidAlreadyRemoved}` : "";
+            pushActionLine(`🗳 ${vName} → ${tName}${suffix}`, "neutral", {
+              provider: voter,
+              actionType: "VOTE",
+            });
+          }
+        }
+
+        const summaryLine = computeCarrierVoteSummaryLine(
+          pack,
+          allVotes,
+          invalidVoters,
+          snap,
+          expelMet
+        );
+        pushActionLine(summaryLine, "neutral", {
+          provider: "system",
+          actionType: "vote_validity_summary",
+        });
+
         if (expelled) {
           const roleSuffix =
             expelledRoleEv === "zombie"
-              ? koLang
-                ? " — 🧟 좀비였습니다!"
-                : " — 🧟 Was a zombie!"
+              ? pack.wasZombie
               : expelledRoleEv === "human"
-                ? koLang
-                  ? " — 😇 인간이었습니다..."
-                  : " — 😇 Was human..."
+                ? pack.wasHuman
                 : "";
           const tone: ActionFeedLine["tone"] =
             expelledRoleEv === "zombie"
@@ -711,33 +1239,16 @@ export default function CarrierModePage() {
               : expelledRoleEv === "human"
                 ? "bad"
                 : "neutral";
-          pushActionLine(
-            `📋 집계: ${carrierDisplayNameForProvider(expelled, snap)} 추방 (${tallyStr || "표"})${roleSuffix}`,
-            tone,
-            { provider: expelled, actionType: "vote_out" }
-          );
+          const tallyPart = tallyStr ? tallyStr : "—";
+          const line = pack.voteExpelledLine
+            .replace("{name}", carrierDisplayNameForProvider(expelled, snap))
+            .replace("{tally}", tallyPart)
+            .replace("{role}", roleSuffix);
+          pushActionLine(line, tone, { provider: expelled, actionType: "vote_out" });
         } else {
-          pushActionLine(
-            `📋 집계: 추방 없음 — 동표 또는 최다 2표 미만${tallyStr ? ` (${tallyStr})` : ""}`,
-            "neutral",
-            { provider: "system", actionType: "vote_none" }
-          );
-        }
-
-        const allVotes = ev.votes as Record<string, string> | undefined;
-        if (allVotes && tally && typeof tally === "object") {
-          const tallyTotal = Object.values(tally).reduce((a, b) => a + b, 0);
-          const voteTotal = Object.keys(allVotes).length;
-          if (tallyTotal < voteTotal) {
-            const invalidCount = voteTotal - tallyTotal;
-            const invalidNote = koLang
-              ? `⚠️ ${invalidCount}표 무효 처리 (투표 후 사살된 플레이어)`
-              : `⚠️ ${invalidCount} vote(s) invalidated (voter eliminated after voting)`;
-            pushActionLine(invalidNote, "neutral", {
-              provider: "system",
-              actionType: "vote_invalid_note",
-            });
-          }
+          const tallySuffix = tallyStr ? ` (${tallyStr})` : "";
+          const line = pack.voteNoExpulsionLine.replace("{tally}", tallySuffix);
+          pushActionLine(line, "neutral", { provider: "system", actionType: "vote_none" });
         }
       }
       if (ev.type === "action_none") {
@@ -1551,7 +2062,7 @@ export default function CarrierModePage() {
                   className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition hover:bg-violet-500/10"
                 >
                   <span className="text-sm font-bold text-violet-200">
-                    {language === "Korean" ? "📋 추리 보드" : "📋 Deduction Board"}
+                    {getCarrierUiPack(language).deductionBoardTitle}
                   </span>
                   <span className="text-xs font-bold text-violet-400 tabular-nums">
                     {deductionBoardOpen ? "▲" : "▼"}
@@ -1561,6 +2072,11 @@ export default function CarrierModePage() {
                   <div className="max-h-[min(50vh,420px)] space-y-3 overflow-y-auto border-t border-violet-500/25 px-4 py-3 text-xs leading-relaxed text-zinc-300">
                     {deductionRoundHistory.map((rh) => {
                       const ko = language === "Korean";
+                      const pack = getCarrierUiPack(language);
+                      const cumDead = cumulativeEliminatedThroughRound(
+                        deductionRoundHistory,
+                        rh.round
+                      );
                       const shLine =
                         rh.shotgunEvents.length > 0
                           ? rh.shotgunEvents
@@ -1622,14 +2138,28 @@ export default function CarrierModePage() {
                           </p>
                           <section className="mt-2 space-y-1">
                             <p className="font-bold text-zinc-400">
-                              {ko ? "팀 편성" : "Team history"}
+                              {pack.teamHistoryLabel}
                             </p>
                             {rh.teams.map((team, ti) => (
                               <p key={`${rh.round}-${team.id}-${ti}`} className="pl-2 text-zinc-400">
                                 {ko ? `팀 ${ti + 1}` : `Team ${ti + 1}`}:{" "}
-                                {team.members
-                                  .map((id) => carrierDisplayNameForProvider(id, players))
-                                  .join(", ")}
+                                {team.members.map((mid, midIdx) => (
+                                  <span key={`${rh.round}-${team.id}-m-${mid}`}>
+                                    {midIdx > 0 ? ", " : null}
+                                    {cumDead.has(mid) ? (
+                                      <>
+                                        <del className="opacity-80">
+                                          {carrierDisplayNameForProvider(mid, players)}
+                                        </del>{" "}
+                                        <span className="text-zinc-500">
+                                          ({pack.labelEliminated})
+                                        </span>
+                                      </>
+                                    ) : (
+                                      carrierDisplayNameForProvider(mid, players)
+                                    )}
+                                  </span>
+                                ))}
                               </p>
                             ))}
                           </section>
@@ -2045,10 +2575,14 @@ export default function CarrierModePage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(
                     [
-                      ["샷건", "SHOTGUN"],
-                      ["백신", "VACCINE"],
-                      ["추방 투표", "EXPEL"],
-                      ["패스", "NONE"],
+                      ...(challengeUserPauseCanShotgun
+                        ? ([["샷건", "SHOTGUN" as const]] as const)
+                        : []),
+                      ...(challengeUserPauseCanVaccine
+                        ? ([["백신", "VACCINE" as const]] as const)
+                        : []),
+                      ["추방 투표", "EXPEL" as const],
+                      ["패스", "NONE" as const],
                     ] as const
                   ).map(([label, a]) => (
                     <button
@@ -2179,6 +2713,11 @@ export default function CarrierModePage() {
                 }`}
               >
                 <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/10 bg-black/60 p-8 shadow-2xl">
+                  {(() => {
+                    const pack = getCarrierUiPack(language);
+                    const originalZombieSet = new Set(zombieIds);
+                    return (
+                      <>
                   {gameEndingNarration ? (
                     <p className="mb-6 whitespace-pre-wrap text-center text-sm leading-relaxed text-zinc-100">
                       {gameEndingNarration}
@@ -2194,18 +2733,18 @@ export default function CarrierModePage() {
                     }`}
                   >
                     {winner === "humans"
-                      ? "Humans win"
+                      ? pack.humansWin
                       : winner === "zombies"
-                        ? "Zombies win"
-                        : "Game over"}
+                        ? pack.zombiesWin
+                        : pack.gameOver}
                   </h2>
                   <p className="mt-2 text-center text-sm text-zinc-400">
-                    Full reveal — roles at end, original zombies, and infection notes.
+                    {pack.finalRevealBlurb}
                   </p>
 
                   <div className="mt-8">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      Original zombies
+                      {pack.originalZombiesHeading}
                     </h3>
                     <p className="mt-2 text-lg font-bold text-white">
                       {formatCarrierOriginalZombiesLine(zombieIds)}
@@ -2214,25 +2753,39 @@ export default function CarrierModePage() {
 
                   <div className="mt-6">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      Final roles
+                      {pack.finalRolesHeading}
                     </h3>
                     <ul className="mt-2 space-y-1 text-sm text-zinc-200">
-                      {players.map((p) => (
-                        <li key={p.provider}>
-                          {p.name}: {p.role === "zombie" ? "🦠 Zombie" : "Human"}
-                        </li>
-                      ))}
+                      {players.map((p) => {
+                        const wasOriginalZombie = originalZombieSet.has(p.provider);
+                        if (wasOriginalZombie && p.role === "human") {
+                          return (
+                            <li key={p.provider}>
+                              🧟→😇 {p.name} ({pack.noteCuredZombie})
+                            </li>
+                          );
+                        }
+                        if (!wasOriginalZombie && p.role === "zombie") {
+                          return (
+                            <li key={p.provider}>
+                              😇→🦠 {p.name} ({pack.noteHumanInfected})
+                            </li>
+                          );
+                        }
+                        return (
+                          <li key={p.provider}>
+                            {p.name}: {p.role === "zombie" ? `🦠 ${pack.roleZombie}` : pack.roleHuman}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
 
                   <div className="mt-6">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      Infection
+                      {pack.infectionHeading}
                     </h3>
-                    <p className="mt-2 text-xs text-zinc-400">
-                      End-of-round rule: any surviving human who shares a team with a living zombie
-                      becomes a zombie unless they were vaccinated that same round.
-                    </p>
+                    <p className="mt-2 text-xs text-zinc-400">{pack.infectionRule}</p>
                   </div>
 
                   <button
@@ -2240,8 +2793,11 @@ export default function CarrierModePage() {
                     onClick={resetGame}
                     className="mt-8 w-full rounded-full bg-white py-3 text-sm font-bold text-gray-950"
                   >
-                    Play again
+                    {pack.playAgain}
                   </button>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             ) : null}
