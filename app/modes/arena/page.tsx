@@ -639,15 +639,10 @@ export default function ArenaPage() {
         arenaMemoryRef.current = next;
         return next;
       });
-      if (rn === 9) {
-        queueMicrotask(() => {
-          void goToResultPhase();
-        });
-      }
       if (rn === 2) setAwaitingNextBattleRound(true);
       else setAwaitingNextBattleRound(false);
     },
-    [goToResultPhase]
+    []
   );
 
   const runBattleRound = useCallback(
@@ -743,7 +738,7 @@ export default function ArenaPage() {
 
   /**
    * Rounds 7–9: purchase extended bundle once (credit deduction), then sequential API rounds
-   * 7 → 8 → 9 (one NDJSON stream per round). Round 9 completion → Final Verdict (no further Continue).
+   * 7 → 8 → 9. After round 9, stay on battle view until user clicks "View Final Result ▶".
    */
   const runFinalRounds789 = useCallback(async () => {
     const t = topic.trim();
@@ -822,6 +817,9 @@ export default function ArenaPage() {
 
   const showPostRoundSixEndActions =
     phase === "battle" && maxRound === 6 && !awaitingNextBattleRound && !isLoading;
+
+  const showPostRoundNineViewFinal =
+    phase === "battle" && maxRound === 9 && !awaitingNextBattleRound && !isLoading;
 
   return (
     <div className={BG}>
@@ -1179,6 +1177,21 @@ export default function ArenaPage() {
                     Continue ▶ (rounds 7–9, uses credits)
                   </button>
                 </div>
+              </div>
+            ) : null}
+
+            {showPostRoundNineViewFinal ? (
+              <div className="mt-8 flex flex-col items-center gap-2">
+                <p className="text-center text-sm text-slate-400">
+                  Round 9 is complete. When you are ready, open the final result.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => goToResultPhase()}
+                  className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-500"
+                >
+                  View Final Result ▶
+                </button>
               </div>
             ) : null}
           </div>
