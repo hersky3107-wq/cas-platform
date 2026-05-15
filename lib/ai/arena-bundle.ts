@@ -3,9 +3,17 @@ import { createHmac, timingSafeEqual } from 'crypto'
 /** Rounds 4–6 × (left champ + co-fighter + right champ). */
 export const ARENA_FINAL_BUNDLE_MODEL_CALLS = 9
 
+/** Rounds 7–9 — same call pattern as final bundle. */
+export const ARENA_EXTENDED_BUNDLE_MODEL_CALLS = 9
+
 /** Mirrors `creditsPerMessage` scaling: 4 + 2×callCount. */
 export function arenaFinalBundleCreditCost(): number {
   return 4 + ARENA_FINAL_BUNDLE_MODEL_CALLS * 2
+}
+
+/** Same formula as rounds 4–6 package (second continue). */
+export function arenaExtendedBundleCreditCost(): number {
+  return 4 + ARENA_EXTENDED_BUNDLE_MODEL_CALLS * 2
 }
 
 function arenaBundleSecret(): string {
@@ -29,11 +37,23 @@ export function signArenaFinalBundleToken(opts: { sessionId: string; userId: str
   return `${payload}.${sig}`
 }
 
-/** Verifies bundle token matches session + user (single purchase unlocks rounds 4–6). */
-export function verifyArenaFinalBundleToken(
+export function signArenaExtendedBundleToken(opts: { sessionId: string; userId: string }): string {
+  const payloadObj = {
+    sid: opts.sessionId,
+    uid: opts.userId,
+    k: 'arena_extended_789',
+    v: 1,
+  }
+  const payload = Buffer.from(JSON.stringify(payloadObj), 'utf8').toString('base64url')
+  const sig = createHmac('sha256', arenaBundleSecret()).update(payload).digest('base64url')
+  return `${payload}.${sig}`
+}
+
+function verifyArenaBundleTokenInner(
   raw: string | undefined,
   sessionId: string,
-  userId: string
+  userId: string,
+  expectedKey: string
 ): boolean {
   if (!raw?.includes('.')) return false
   const i = raw.lastIndexOf('.')
@@ -52,8 +72,26 @@ export function verifyArenaFinalBundleToken(
   try {
     const json = Buffer.from(payload, 'base64url').toString('utf8')
     const o = JSON.parse(json) as { sid?: string; uid?: string; k?: string }
-    return o.sid === sessionId && o.uid === userId && o.k === 'arena_final_456'
+    return o.sid === sessionId && o.uid === userId && o.k === expectedKey
   } catch {
     return false
   }
+}
+
+/** Verifies bundle token matches session + user (single purchase unlocks rounds 4–6). */
+export function verifyArenaFinalBundleToken(
+  raw: string | undefined,
+  sessionId: string,
+  userId: string
+): boolean {
+  return verifyArenaBundleTokenInner(raw, sessionId, userId, 'arena_final_456')
+}
+
+/** Verifies extended bundle (purchase unlocks rounds 7–9). */
+export function verifyArenaExtendedBundleToken(
+  raw: string | undefined,
+  sessionId: string,
+  userId: string
+): boolean {
+  return verifyArenaBundleTokenInner(raw, sessionId, userId, 'arena_extended_789')
 }

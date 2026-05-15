@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { runSingleAiProvider, type AiProviderName } from '@/lib/ai/router'
-import { buildArenaSystemPrompt } from '@/lib/ai/arena-prompts'
+import { buildArenaSystemPrompt, formatArenaMemoryInjectionBlock } from '@/lib/ai/arena-prompts'
 import {
   determineSides,
   finalizeArenaVisibleBody,
@@ -9,9 +9,9 @@ import {
   stripInternalTargetingBlock,
   type ParsedArenaTagBlock,
 } from '@/lib/ai/arena-parser'
-import type { ArenaAI, ArenaResponse, ArenaRound } from '@/lib/ai/arena-types'
+import type { ArenaAI, ArenaFightMode, ArenaMemoryEntry, ArenaResponse, ArenaRound } from '@/lib/ai/arena-types'
 
-export type { ArenaAI, ArenaResponse, ArenaRound } from '@/lib/ai/arena-types'
+export type { ArenaAI, ArenaFightMode, ArenaMemoryEntry, ArenaResponse, ArenaRound } from '@/lib/ai/arena-types'
 
 export const ARENA_ORDER: ArenaAI[] = [
   'grok',
@@ -142,9 +142,9 @@ function toArenaResponse(
   }
 }
 
-/** Model calls in one battle round: 3 for rounds with co-fighter (4–6), else champs-only. */
+/** Model calls in one battle round: 3 for rounds with co-fighter (4–9), else champs-only. */
 export function arenaBattleApiCallCount(battleRoundNumber: number): number {
-  return battleRoundNumber >= 4 && battleRoundNumber <= 6 ? 3 : 2
+  return battleRoundNumber >= 4 && battleRoundNumber <= 9 ? 3 : 2
 }
 
 function round1AngleSnippet(r1: ArenaRound, ai: ArenaAI): string {
@@ -240,12 +240,26 @@ async function invokeArenaModel(params: {
   extraSystemPrompt?: string
   /** Plain-speech turns skip structured tag persistence expectations. */
   plainSpeechPersist?: boolean
+  fightMode?: ArenaFightMode
+  arenaMemory?: ArenaMemoryEntry[]
+  /** Current arena round number for memory block footer (e.g. 1 or battle N). */
+  memoryRound?: number
 }): Promise<{ parsed: ParsedArenaTagBlock; raw: string; ms: number; error?: string }> {
   const { ai, userPrompt, ctx, roundNumber, persistTurn, maxTokens, temperature } = params
-  const plainSpeech = params.plainSpeechPersist === true
+  const fightMode: ArenaFightMode = params.fightMode ?? 'logic'
+  const plainSpeech = params.plainSpeechPersist === true || fightMode === 'street'
   const provider = ARENA_TO_PROVIDER[ai]
-  const systemPrompt =
-    `${buildArenaSystemPrompt(ai)}${params.extraSystemPrompt?.trim() ? `\n\n${params.extraSystemPrompt.trim()}` : ''}`
+  const memoryBlock =
+    params.arenaMemory?.length && params.memoryRound != null
+      ? formatArenaMemoryInjectionBlock(params.arenaMemory, params.memoryRound)
+      : ''
+  const baseSystem = buildArenaSystemPrompt(ai, fightMode)
+  const systemPrompt = [
+    memoryBlock.trim(),
+    `${baseSystem}${params.extraSystemPrompt?.trim() ? `\n\n${params.extraSystemPrompt.trim()}` : ''}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 
   try {
     const res = await runSingleAiProvider({
@@ -553,8 +567,11 @@ export async function runArenaRound1(
   selectedAIs: ArenaAI[],
   ctx: ArenaTransportContext,
   onResponse: (response: ArenaResponse) => void,
-  onThinking?: (ai: ArenaAI) => void
+  onThinking?: (ai: ArenaAI) => void,
+  opts?: { fightMode?: ArenaFightMode; arenaMemory?: ArenaMemoryEntry[] }
 ): Promise<ArenaRound> {
+  const fightMode = opts?.fightMode ?? 'logic'
+  const arenaMemory = opts?.arenaMemory ?? []
   const uniq = Array.from(new Set(selectedAIs))
   const shuffledAIs = fisherYatesShuffleAIs(uniq)
   console.log('Shuffled call order:', shuffledAIs)
@@ -576,6 +593,9 @@ export async function runArenaRound1(
       roundNumber: 1,
       persistTurn,
       maxTokens: ai === 'claude' ? 1200 : ai === 'mistral' ? 900 : 600,
+      fightMode,
+      arenaMemory,
+      memoryRound: 1,
     })
 
     let ar: ArenaResponse
@@ -633,10 +653,13 @@ export async function runArenaRound(
   currentSides: { left: ArenaAI; right: ArenaAI },
   ctx: ArenaTransportContext,
   onResponse: (response: ArenaResponse) => void,
-  onThinking?: (ai: ArenaAI) => void
+  onThinking?: (ai: ArenaAI) => void,
+  opts?: { fightMode?: ArenaFightMode; arenaMemory?: ArenaMemoryEntry[] }
 ): Promise<ArenaRound> {
-  if (roundNumber > 6) {
-    throw new Error('Arena is capped at round 6. Start a new session to debate again.')
+  const fightMode = opts?.fightMode ?? 'logic'
+  const arenaMemory = opts?.arenaMemory ?? []
+  if (roundNumber > 9) {
+    throw new Error('Arena is capped at round 9. Start a new session to debate again.')
   }
   const r1 = allPreviousRounds.find((r) => r.roundNumber === 1)
   if (!r1 || !Array.isArray(r1.responses) || r1.responses.length === 0) {
@@ -658,7 +681,7 @@ export async function runArenaRound(
     roundNumber >= 2 ? sliceLastArenaRounds(allPreviousRounds, 4) : allPreviousRounds
   const history = formatArenaHistory(historySourceRounds)
   const coFightSetup =
-    roundNumber >= 4 && roundNumber <= 6 ? pickCoFighterWithFallback(leftSupport, rightSupport) : null
+    roundNumber >= 4 && roundNumber <= 9 ? pickCoFighterWithFallback(leftSupport, rightSupport) : null
   const out: ArenaResponse[] = []
 
   const championUserPrompt = (
@@ -692,7 +715,7 @@ Your opening statement from ROUND 1 (stay consistent; cite yourself if needed):
 ${openingSnippet(r1, ai)}
 
 You are the ${side.toUpperCase()} camp champion (${ai}). ${role}
-${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}Use the mandatory tag block first, then your argument.`
+${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'logic' ? 'Use the mandatory tag block first, then your argument.' : 'Respond in plain aggressive prose (no tag headers).'}`
   }
 
   const championMaxTokens = (ai: ArenaAI): number => {
@@ -753,6 +776,9 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}Use the mandatory t
         maxTokens: maxTok,
         extraSystemPrompt: opts.extraSystemPrompt,
         plainSpeechPersist: opts.plainSpeech === true,
+        fightMode,
+        arenaMemory,
+        memoryRound: roundNumber,
       })
       parsed = result.parsed
       raw = result.raw
@@ -798,7 +824,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}Use the mandatory t
   await pushBattleTurn({
     ai: leftChamp,
     side: 'left',
-    treatAsChampionTag: true,
+    treatAsChampionTag: fightMode === 'logic',
     prompt: championUserPrompt(leftChamp, 'left', '', leftRole),
     maxTok: championMaxTokens(leftChamp),
   })
@@ -853,7 +879,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}Use the mandatory t
   await pushBattleTurn({
     ai: rightChamp,
     side: 'right',
-    treatAsChampionTag: true,
+    treatAsChampionTag: fightMode === 'logic',
     prompt: championUserPrompt(rightChamp, 'right', oppBlockForRight, rightRole, briefForRightCoAlly),
     maxTok: championMaxTokens(rightChamp),
   })

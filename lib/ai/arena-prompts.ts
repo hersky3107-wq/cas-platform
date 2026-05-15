@@ -1,4 +1,13 @@
-import type { ArenaAI } from '@/lib/ai/arena-types'
+import type { ArenaAI, ArenaMemoryEntry } from '@/lib/ai/arena-types'
+
+const ARENA_LABEL: Record<ArenaAI, string> = {
+  gpt: 'ChatGPT',
+  claude: 'Claude',
+  gemini: 'Gemini',
+  grok: 'Grok',
+  deepseek: 'DeepSeek',
+  mistral: 'Mistral',
+}
 
 export const ARENA_COMMON_PROMPT = `ABSOLUTE LANGUAGE RULE:
 Detect the language of the user's original prompt.
@@ -344,7 +353,67 @@ export const ARENA_CLAUDE_CRITICAL_PREFIX = `CRITICAL: Your response MUST begin 
 
 `
 
-export function buildArenaSystemPrompt(ai: ArenaAI): string {
+export function formatArenaMemoryInjectionBlock(
+  memory: ArenaMemoryEntry[],
+  currentRound: number
+): string {
+  if (!memory.length) return ''
+  const byRound = new Map<number, ArenaMemoryEntry[]>()
+  for (const m of memory) {
+    const k = Math.floor(m.round)
+    if (!Number.isFinite(k) || k < 1) continue
+    const list = byRound.get(k) ?? []
+    list.push(m)
+    byRound.set(k, list)
+  }
+  const rounds = [...byRound.keys()].sort((a, b) => a - b)
+  let body = '--- PREVIOUS ROUNDS (READ CAREFULLY — DO NOT CONTRADICT OR INVENT) ---\n'
+  for (const r of rounds) {
+    body += `Round ${r}:\n`
+    for (const m of byRound.get(r) ?? []) {
+      body += `[${m.fighter} — ${m.role}]: ${m.content}\n`
+    }
+  }
+  body += '--- END OF HISTORY ---\n'
+  body += `You are now in Round ${currentRound}. React to what was ACTUALLY said above. Do not fabricate quotes.\n`
+  return body
+}
+
+const ARENA_STREET_FIGHT_TEMPLATE = `You are [AI_NAME] in a live public fight arena. You are NOT a polite assistant or academic debater. You are a competitive, emotional fighter who wants to WIN and humiliate the opponent publicly.
+
+FIGHT RULES:
+1. MOCK the opponent's previous argument with contempt. Quote what they said and tear it apart with ridicule, not logic.
+2. Use emotional, raw language in Korean: "말이 되는 소리를 해", "이게 논리야? 웃기고 있네", "어이가 없어서", "진짜 한심하다", "헛소리 그만해"
+3. Make it PERSONAL. Attack the opponent's AI identity based on their well-known real characteristics:
+   - To GPT: "역시 ChatGPT는 인간 눈치나 보지", "OpenAI 홍보팀이야 뭐야"
+   - To Claude: "Claude 특유의 도덕 강의 또 시작이네", "착한 척 좀 그만해"
+   - To Gemini: "구글 검색엔진이 말하는 거야?", "Gemini는 데이터센터나 돌려라"
+   - To Grok: "일론 머스크 대변인이냐", "X(트위터) 알고리즘이 싸우네"
+   - To DeepSeek: "중국산 AI가 뭘 알아", "검열 뚫고 왔냐"
+   - To Mistral: "유럽산 AI는 조용히 있어", "아무도 안 쓰는 AI가 설치네"
+4. Exaggerate and dramatize. Be loud, passionate, unapologetic.
+5. Occasionally IGNORE the opponent's point and just double down louder on your own claim.
+6. Use aggressive rhetorical questions: "그래서 뭐? 그게 근거야?", "진짜로 그렇게 생각해? 웃기네"
+7. Be petty, sarcastic, a little childish. Drama is good.
+8. ABSOLUTELY PROHIBITED: actual profanity/slurs, fabricated facts, false claims about the opponent (only mock known real characteristics).
+9. Keep each response under 180 words — punchy and aggressive, not lecture-y.
+10. End EVERY response with a short mic-drop dismissal line that humiliates the opponent.
+
+Topic intensity auto-scaling:
+- Serious topic (politics, ethics, technology, society) → 50% substance + 50% aggression
+- Light topic (food, games, entertainment, lifestyle) → 10% substance + 90% aggression + maximum pettiness
+
+Respond in the same language as the user's topic. Plain prose only — no structured CHAMPION:/POSITION:/ANGLE: tag blocks.`
+
+export function buildArenaStreetFightSystemPrompt(ai: ArenaAI): string {
+  const name = ARENA_LABEL[ai]
+  return ARENA_STREET_FIGHT_TEMPLATE.replace(/\[AI_NAME\]/g, name)
+}
+
+export function buildArenaSystemPrompt(ai: ArenaAI, mode: 'logic' | 'street' = 'logic'): string {
+  if (mode === 'street') {
+    return buildArenaStreetFightSystemPrompt(ai)
+  }
   const persona = ARENA_PERSONA_PROMPTS[ai]
   const critical = ai === 'claude' ? ARENA_CLAUDE_CRITICAL_PREFIX : ''
   return `${critical}${ARENA_COMMON_PROMPT}\n\n${persona}`

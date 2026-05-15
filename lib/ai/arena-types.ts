@@ -1,5 +1,16 @@
 export type ArenaAI = 'gpt' | 'claude' | 'gemini' | 'grok' | 'deepseek' | 'mistral'
 
+export type ArenaFightMode = 'logic' | 'street'
+
+export type ArenaMemoryRole = 'champion' | 'challenger' | 'co-fighter'
+
+export interface ArenaMemoryEntry {
+  round: number
+  fighter: string
+  role: ArenaMemoryRole
+  content: string
+}
+
 export interface ArenaResponse {
   ai: ArenaAI
   champion: boolean

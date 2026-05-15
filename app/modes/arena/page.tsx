@@ -6,11 +6,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChevronLeft, Swords } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
-import { arenaFinalBundleCreditCost } from "@/lib/ai/arena-bundle";
+import { arenaExtendedBundleCreditCost, arenaFinalBundleCreditCost } from "@/lib/ai/arena-bundle";
 import {
   ARENA_DISPLAY,
   ARENA_ORDER,
   type ArenaAI,
+  type ArenaMemoryEntry,
   type ArenaResponse,
   type ArenaRound,
 } from "@/lib/ai/arena-engine";
@@ -24,6 +25,30 @@ import {
 
 function visibleArenaText(s: string): string {
   return stripArenaMarkdown(stripInternalTargetingBlock(s));
+}
+
+type FightMode = "logic" | "street";
+
+function memoryRoleForResponse(r: ArenaResponse): ArenaMemoryEntry["role"] {
+  if (r.joinedFight) return "co-fighter";
+  if (r.champion) return "champion";
+  return "challenger";
+}
+
+function buildArenaMemoryEntries(roundNum: number, responses: ArenaResponse[]): ArenaMemoryEntry[] {
+  return responses.map((r) => {
+    const parts = [
+      r.angle ? `ANGLE: ${visibleArenaText(r.angle)}` : "",
+      visibleArenaText(r.content),
+      r.supportComment ? `SUPPORT_COMMENT: ${visibleArenaText(r.supportComment)}` : "",
+    ].filter(Boolean);
+    return {
+      round: roundNum,
+      fighter: ARENA_DISPLAY[r.ai],
+      role: memoryRoleForResponse(r),
+      content: parts.join("\n") || visibleArenaText(r.content),
+    };
+  });
 }
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
@@ -220,6 +245,17 @@ export default function ArenaPage() {
   /** Avoid concurrent battle requests while one NDJSON round is streaming. */
   const battleInflightRef = useRef(false);
   const arenaFinalBundleTokenRef = useRef<string | null>(null);
+  const arenaExtendedBundleTokenRef = useRef<string | null>(null);
+  const arenaMemoryRef = useRef<ArenaMemoryEntry[]>([]);
+
+  const [fightMode, setFightMode] = useState<FightMode>("logic");
+  /** 0 = rounds 1–3 bracket, 1 = purchased/played 4–6, 2 = purchased/played 7–9 */
+  const [continueStage, setContinueStage] = useState(0);
+  const [arenaMemory, setArenaMemory] = useState<ArenaMemoryEntry[]>([]);
+
+  useEffect(() => {
+    arenaMemoryRef.current = arenaMemory;
+  }, [arenaMemory]);
 
   const selectedList = useMemo(() => ARENA_ORDER.filter((a) => selected.has(a)), [selected]);
 
@@ -231,7 +267,15 @@ export default function ArenaPage() {
     }
   }, []);
 
-  /** Round 2: champs + static supporters; round 3: 1v1; rounds 4–6: left → co → right. */
+  const extendedBundleCost = useMemo(() => {
+    try {
+      return arenaExtendedBundleCreditCost();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /** Rounds 2–3: champs + static supporters; rounds 4–9: left → co → right. */
   const battleResponsesPerRound = useMemo(() => {
     if (displayBattleRound === 2) {
       return 2 + sides.leftSupport.length + sides.rightSupport.length;
@@ -403,7 +447,35 @@ export default function ArenaPage() {
     setThinkingAi(null);
     setDisplayBattleRound(1);
     arenaFinalBundleTokenRef.current = null;
+    arenaExtendedBundleTokenRef.current = null;
+    setContinueStage(0);
+    setArenaMemory([]);
+    arenaMemoryRef.current = [];
   }, []);
+
+  const logArenaMemoryToServer = useCallback(async () => {
+    const sid = sessionId;
+    const mem = arenaMemoryRef.current;
+    if (!sid || mem.length === 0) return;
+    try {
+      await fetch("/api/ai-arena", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "arena_log_memory",
+          sessionId: sid,
+          arenaMemory: mem,
+        }),
+      });
+    } catch {
+      /* best-effort */
+    }
+  }, [sessionId]);
+
+  const goToResultPhase = useCallback(() => {
+    void logArenaMemoryToServer();
+    setPhase("result");
+  }, [logArenaMemoryToServer]);
 
   const mergeBattleBodyForRound = useCallback(
     (roundNumber: number) => {
@@ -418,7 +490,16 @@ export default function ArenaPage() {
         championRight: sides.right as ArenaAI,
         leftSupportCount: sides.leftSupport.length,
         rightSupportCount: sides.rightSupport.length,
+        fightMode,
+        arenaMemory: arenaMemoryRef.current,
       };
+      if (roundNumber >= 7 && arenaFinalBundleTokenRef.current && arenaExtendedBundleTokenRef.current) {
+        return {
+          ...base,
+          arenaFinalBundleToken: arenaFinalBundleTokenRef.current,
+          arenaExtendedBundleToken: arenaExtendedBundleTokenRef.current,
+        };
+      }
       if (roundNumber >= 4 && arenaFinalBundleTokenRef.current) {
         return {
           ...base,
@@ -427,11 +508,14 @@ export default function ArenaPage() {
       }
       return base;
     },
-    [sessionId, sides, topic]
+    [sessionId, sides, topic, fightMode]
   );
 
   const purchaseArenaFinalBundleIfNeeded = useCallback(async (): Promise<boolean> => {
-    if (arenaFinalBundleTokenRef.current) return true;
+    if (arenaFinalBundleTokenRef.current) {
+      setContinueStage((s) => (s < 1 ? 1 : s));
+      return true;
+    }
     if (!sessionId) return false;
     const res = await fetch("/api/ai-arena", {
       method: "POST",
@@ -457,8 +541,43 @@ export default function ArenaPage() {
     if (typeof j?.arenaFinalBundleToken === "string") {
       arenaFinalBundleTokenRef.current = j.arenaFinalBundleToken;
     }
+    setContinueStage(1);
     return Boolean(arenaFinalBundleTokenRef.current);
   }, [router, sessionId]);
+
+  const purchaseArenaExtendedBundleIfNeeded = useCallback(async (): Promise<boolean> => {
+    if (arenaExtendedBundleTokenRef.current) {
+      setContinueStage((s) => (s < 2 ? 2 : s));
+      return true;
+    }
+    if (!sessionId) return false;
+    const res = await fetch("/api/ai-arena", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "arena_buy_extended_bundle",
+        sessionId,
+      }),
+    });
+    const j = (await res.json().catch(() => null)) as {
+      arenaExtendedBundleToken?: string;
+      creditsRemaining?: number;
+      error?: string;
+      balance?: number;
+      required?: number;
+    };
+    if (!res.ok) {
+      setError(j?.error ?? "Purchase failed");
+      if (typeof j?.balance === "number") setCredits(j.balance);
+      return false;
+    }
+    if (typeof j?.creditsRemaining === "number") setCredits(j.creditsRemaining);
+    if (typeof j?.arenaExtendedBundleToken === "string") {
+      arenaExtendedBundleTokenRef.current = j.arenaExtendedBundleToken;
+    }
+    setContinueStage(2);
+    return Boolean(arenaExtendedBundleTokenRef.current);
+  }, [sessionId]);
 
   const startArena = useCallback(async () => {
     const t = topic.trim();
@@ -469,7 +588,7 @@ export default function ArenaPage() {
     setPhase("round1");
     try {
       await readNdjsonArena(
-        { action: "start", topic: t, selectedAIs: selectedList },
+        { action: "start", topic: t, selectedAIs: selectedList, fightMode, arenaMemory: [] },
         (meta) => {
           if (meta.sessionId) setSessionId(meta.sessionId);
           if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
@@ -491,6 +610,9 @@ export default function ArenaPage() {
             rightSupport: rs,
           });
           setRound1Complete(true);
+          const mem = buildArenaMemoryEntries(1, round.responses);
+          arenaMemoryRef.current = mem;
+          setArenaMemory(mem);
         },
         ({ ai }) => setThinkingAi(ai)
       );
@@ -499,27 +621,41 @@ export default function ArenaPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [topic, selectedList, isLoading, readNdjsonArena, resetArenaUi]);
+  }, [topic, selectedList, isLoading, readNdjsonArena, resetArenaUi, fightMode]);
 
-  const battleUiRoundComplete = useCallback((roundComplete: ArenaRound) => {
-    const rn = Number(roundComplete.roundNumber);
-    setDisplayBattleRound(rn);
-    setRounds((prev) => {
-      const n = [...prev.filter((x) => x.roundNumber !== roundComplete.roundNumber), roundComplete];
-      roundsRef.current = n;
-      return n;
-    });
-    setBattleLive([]);
-    if (rn === 2) setAwaitingNextBattleRound(true);
-    else setAwaitingNextBattleRound(false);
-  }, []);
+  const battleUiRoundComplete = useCallback(
+    (roundComplete: ArenaRound) => {
+      const rn = Number(roundComplete.roundNumber);
+      setDisplayBattleRound(rn);
+      setRounds((prev) => {
+        const n = [...prev.filter((x) => x.roundNumber !== roundComplete.roundNumber), roundComplete];
+        roundsRef.current = n;
+        return n;
+      });
+      setBattleLive([]);
+      const add = buildArenaMemoryEntries(rn, roundComplete.responses);
+      setArenaMemory((prev) => {
+        const next = [...prev, ...add];
+        arenaMemoryRef.current = next;
+        return next;
+      });
+      if (rn === 9) {
+        queueMicrotask(() => {
+          void goToResultPhase();
+        });
+      }
+      if (rn === 2) setAwaitingNextBattleRound(true);
+      else setAwaitingNextBattleRound(false);
+    },
+    [goToResultPhase]
+  );
 
   const runBattleRound = useCallback(
     async (roundNumber: number) => {
       if (!sessionId || !sides.left || !sides.right || !topic.trim()) {
         return false;
       }
-      if (roundNumber > 6) {
+      if (roundNumber > 9) {
         return false;
       }
       if (battleInflightRef.current) {
@@ -605,6 +741,55 @@ export default function ArenaPage() {
     topic,
   ]);
 
+  const runFinalRounds789 = useCallback(async () => {
+    const t = topic.trim();
+    if (!sessionId || !sides.left || !sides.right || !t) return;
+    if (battleInflightRef.current) return;
+    setError(null);
+    battleInflightRef.current = true;
+    setIsLoading(true);
+    setPhase("battle");
+    setAwaitingNextBattleRound(false);
+    try {
+      const purchased = await purchaseArenaExtendedBundleIfNeeded();
+      if (!purchased) return;
+
+      const sequence = [7, 8, 9];
+      for (const rn of sequence) {
+        setBattleLive([]);
+        setDisplayBattleRound(rn);
+        const okStream = await readNdjsonArena(
+          mergeBattleBodyForRound(rn),
+          (meta) => {
+            if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
+          },
+          (response) => {
+            setBattleLive((prev) => [...prev, response]);
+          },
+          battleUiRoundComplete,
+          ({ ai }) => setThinkingAi(ai)
+        );
+        if (!okStream) break;
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      battleInflightRef.current = false;
+      setIsLoading(false);
+      setThinkingAi(null);
+      setBattleLive([]);
+    }
+  }, [
+    battleUiRoundComplete,
+    mergeBattleBodyForRound,
+    purchaseArenaExtendedBundleIfNeeded,
+    readNdjsonArena,
+    sessionId,
+    sides.left,
+    sides.right,
+    topic,
+  ]);
+
   const submitVote = useCallback(async () => {
     if (!sessionId || !picked) return;
     const res = await fetch("/api/ai-arena", {
@@ -664,6 +849,41 @@ export default function ArenaPage() {
 
         {phase === "input" ? (
           <div className="space-y-6">
+            <p className="text-center text-xs font-medium uppercase tracking-wide text-slate-500">
+              Fight style
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setFightMode("logic")}
+                className={`rounded-2xl border px-4 py-4 text-left transition ${
+                  fightMode === "logic"
+                    ? "border-sky-400/60 bg-sky-500/15 shadow-[0_0_24px_rgba(56,189,248,0.12)]"
+                    : "border-white/10 bg-white/[0.04] hover:border-white/20"
+                }`}
+              >
+                <div className="text-2xl" aria-hidden>
+                  ⚖️
+                </div>
+                <div className="mt-2 text-sm font-bold text-sky-100">LOGIC BATTLE</div>
+                <div className="mt-1 text-xs text-sky-200/80">증거·논리·반박 기반 토론</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFightMode("street")}
+                className={`rounded-2xl border px-4 py-4 text-left transition ${
+                  fightMode === "street"
+                    ? "border-orange-500/60 bg-orange-600/15 shadow-[0_0_24px_rgba(251,146,60,0.12)]"
+                    : "border-white/10 bg-white/[0.04] hover:border-white/20"
+                }`}
+              >
+                <div className="text-2xl" aria-hidden>
+                  🔥
+                </div>
+                <div className="mt-2 text-sm font-bold text-orange-100">STREET FIGHT</div>
+                <div className="mt-1 text-xs text-orange-200/85">감정·조롱·인신공격 허용</div>
+              </button>
+            </div>
             <textarea
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
@@ -672,8 +892,9 @@ export default function ArenaPage() {
               className="min-h-[120px] w-full resize-y rounded-xl border border-white/12 bg-white/6 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-rose-400/40 focus:outline-none"
             />
             <p className="text-xs leading-relaxed text-slate-500">
-              Opening bracket is rounds 1–3 per topic. Continuing runs rounds 4–6 once and spends one
-              credit package for that triple round.
+              Opening bracket is rounds 1–3. Continue ▶ unlocks rounds 4–6 (one credit package); a second
+              Continue ▶ unlocks rounds 7–9 (same credit formula). Final verdict when you stop or after
+              round 9.
             </p>
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -718,7 +939,7 @@ export default function ArenaPage() {
 
         {phase === "round1" ? (
           <div>
-            <h2 className="mb-4 text-center text-lg font-bold text-white">ROUND 1 — Opening Statements</h2>
+            <h2 className="mb-4 text-center text-lg font-bold text-white">ROUND 1 / 9 — Opening Statements</h2>
             <div className="mb-4">
               <ProgressBar current={round1Live.length} total={selectedList.length} />
             </div>
@@ -823,7 +1044,7 @@ export default function ArenaPage() {
         {phase === "battle" ? (
           <div>
             <h2 className="mb-2 text-center text-lg font-bold text-white">
-              ROUND {displayBattleRound} — Battle
+              ROUND {displayBattleRound} / 9 — Battle
             </h2>
             <div className="mb-4">
               <ProgressBar current={battleLive.length} total={battleResponsesPerRound} />
@@ -887,19 +1108,19 @@ export default function ArenaPage() {
             {showPostRoundThreeActions ? (
               <div className="mt-8 flex flex-col items-center gap-3">
                 <p className="text-center text-sm text-slate-400">
-                  End here, judge the debate, or run rounds 4–6 (single credit package).
+                  End here, judge, or Continue ▶ for rounds 4–6 (single credit package).
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setPhase("result")}
+                    onClick={() => goToResultPhase()}
                     className="rounded-xl border border-white/15 bg-white/8 px-4 py-2 text-sm text-white"
                   >
                     STOP
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPhase("result")}
+                    onClick={() => goToResultPhase()}
                     className="rounded-xl bg-amber-500/90 px-4 py-2 text-sm font-semibold text-slate-950"
                   >
                     Who was right? Vote
@@ -913,28 +1134,47 @@ export default function ArenaPage() {
                     onClick={() => void runFinalRounds456()}
                     className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
                   >
-                    Continue to Final Rounds (uses credits)
+                    Continue ▶ (rounds 4–6, uses credits)
                   </button>
                 </div>
               </div>
             ) : null}
 
             {showPostRoundSixEndActions ? (
-              <div className="mt-8 flex flex-wrap justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPhase("result")}
-                  className="rounded-xl border border-white/15 bg-white/8 px-4 py-2 text-sm text-white"
-                >
-                  STOP
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPhase("result")}
-                  className="rounded-xl bg-amber-500/90 px-4 py-2 text-sm font-semibold text-slate-950"
-                >
-                  Who was right? Vote
-                </button>
+              <div className="mt-8 flex flex-col items-center gap-3">
+                <p className="max-w-md text-center text-sm text-slate-400">
+                  Final stretch: Continue ▶ for rounds 7–9 (same credit package cost as 4–6), or end and
+                  vote.
+                </p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => goToResultPhase()}
+                    className="rounded-xl border border-white/15 bg-white/8 px-4 py-2 text-sm text-white"
+                  >
+                    STOP
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => goToResultPhase()}
+                    className="rounded-xl bg-amber-500/90 px-4 py-2 text-sm font-semibold text-slate-950"
+                  >
+                    Who was right? Vote
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      isLoading ||
+                      (extendedBundleCost != null &&
+                        credits !== null &&
+                        credits < extendedBundleCost)
+                    }
+                    onClick={() => void runFinalRounds789()}
+                    className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                  >
+                    Continue ▶ (rounds 7–9, uses credits)
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
@@ -943,7 +1183,10 @@ export default function ArenaPage() {
         {phase === "result" ? (
           <div className="mx-auto max-w-lg space-y-6 text-center">
             <h2 className="text-xl font-bold text-white">ARENA ENDED</h2>
-            <p className="text-sm text-slate-400">{rounds.length} round(s) played</p>
+            <p className="text-sm text-slate-400">
+              {rounds.length} round(s) played
+              {continueStage > 0 ? ` · extension ${continueStage}/2` : null}
+            </p>
             <p className="text-sm text-slate-300">Which argument was most convincing?</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {ARENA_ORDER.filter((a) => selectedList.includes(a)).map((ai) => (
