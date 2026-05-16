@@ -275,7 +275,8 @@ async function invokeArenaModel(params: {
       systemPrompt,
       supabaseAccessToken: ctx.supabaseAccessToken,
       saveCompareArtifacts: false,
-      temperature: temperature ?? 0.75,
+      // Anthropic Messages API: omit sampling params in arena (avoids rejects / bad fallbacks).
+      temperature: provider === 'anthropic' ? undefined : (temperature ?? 0.75),
       maxCompletionTokens: maxTokens,
       transformPersist: (raw) => {
         const parsed = plainSpeech

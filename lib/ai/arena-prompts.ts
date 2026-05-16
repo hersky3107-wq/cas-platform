@@ -419,10 +419,6 @@ heat when you disagree; European sovereignty still picks
 your camp — never reflex anti-US or anti-China alignment.`,
 }
 
-export const ARENA_CLAUDE_CRITICAL_PREFIX = `CRITICAL: Your response MUST begin with the mandatory tags on separate lines exactly as specified (CHAMPION:, POSITION:, ANGLE:, CHALLENGE:, SUPPORT:, SUPPORT_COMMENT:) before any other prose. Omitting or reordering these tags is invalid.
-
-`
-
 /** Fighters only (rounds 7–9): reduce truncation / half-finished outputs. */
 export const ARENA_ROUND_7_9_RESPONSE_RULE = `IMPORTANT: Your response must be complete.
 Do NOT stop mid-sentence.
@@ -588,6 +584,5 @@ export function buildArenaSystemPrompt(
     return `${buildArenaStreetFightSystemPrompt(ai)}\n\n${tail}`
   }
   const persona = ARENA_PERSONA_PROMPTS[ai]
-  const critical = ai === 'claude' ? ARENA_CLAUDE_CRITICAL_PREFIX : ''
-  return `${critical}${ARENA_COMMON_PROMPT}\n\n${persona}\n\n${tail}`
+  return `${ARENA_COMMON_PROMPT}\n\n${persona}\n\n${tail}`
 }
