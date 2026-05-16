@@ -124,11 +124,20 @@ function AiChatBubble({
 
 type Phase = "input" | "perform" | "result";
 
+type StandupSlot = { provider: AiProviderName; standupTurn: 1 | 2 };
+
+type StandupBit = {
+  provider: AiProviderName;
+  text: string;
+  ms: number;
+  standupTurn: 1 | 2;
+};
+
 export default function StandupPage() {
   const [phase, setPhase] = useState<Phase>("input");
   const [topic, setTopic] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [order, setOrder] = useState<AiProviderName[] | null>(null);
+  const [order, setOrder] = useState<StandupSlot[] | null>(null);
   const [index, setIndex] = useState<number>(-1);
   const [provider, setProvider] = useState<AiProviderName | null>(null);
   const [text, setText] = useState<string>("");
@@ -136,7 +145,7 @@ export default function StandupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"Voting" | "Intermission" | null>(null);
-  const [bits, setBits] = useState<Array<{ provider: AiProviderName; text: string; ms: number }>>([]);
+  const [bits, setBits] = useState<StandupBit[]>([]);
   const [revealedCount, setRevealedCount] = useState(0);
   const [scores, setScores] = useState<Record<AiProviderName, number>>(() => ({
     openai: 0,
@@ -176,7 +185,14 @@ export default function StandupPage() {
       const cleaned = sanitizeAiText(j.text ?? "");
       setText(cleaned);
       setMs(typeof j.ms === "number" ? j.ms : 0);
-      setBits([{ provider: j.provider, text: cleaned, ms: typeof j.ms === "number" ? j.ms : 0 }]);
+      setBits([
+        {
+          provider: j.provider,
+          text: cleaned,
+          ms: typeof j.ms === "number" ? j.ms : 0,
+          standupTurn: j.standupTurn === 2 ? 2 : 1,
+        },
+      ]);
       // First AI auto-reveals; reveal button starts from 2nd AI.
       setRevealedCount(1);
       setWinnerRound(null);
@@ -202,7 +218,11 @@ export default function StandupPage() {
     setError(null);
     setLoading(true);
     try {
-      let priorSets = bits.map((b) => ({ provider: b.provider, content: b.text }));
+      let priorSets = bits.map((b) => ({
+        provider: b.provider,
+        content: b.text,
+        standupTurn: b.standupTurn,
+      }));
       for (let i = index; i < order.length - 1; i++) {
         setStatus("Intermission");
         const r = await fetch("/api/stage/comedy/standup", {
@@ -224,13 +244,17 @@ export default function StandupPage() {
         const cleaned = sanitizeAiText(j.text ?? "");
         setText(cleaned);
         setMs(typeof j.ms === "number" ? j.ms : 0);
-        const entry = {
+        const entry: StandupBit = {
           provider: j.provider as AiProviderName,
           text: cleaned,
           ms: typeof j.ms === "number" ? j.ms : 0,
+          standupTurn: j.standupTurn === 2 ? 2 : 1,
         };
         setBits((prev) => [...prev, entry]);
-        priorSets = [...priorSets, { provider: entry.provider, content: entry.text }];
+        priorSets = [
+          ...priorSets,
+          { provider: entry.provider, content: entry.text, standupTurn: entry.standupTurn },
+        ];
       }
       setStatus(null);
     } catch (e: unknown) {
@@ -310,7 +334,7 @@ export default function StandupPage() {
             <span aria-hidden>🎤</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">STAGE — STAND-UP</h1>
-          <p className="mt-2 text-sm text-slate-400">All comedians perform. You judge.</p>
+          <p className="mt-2 text-sm text-slate-400">2 rounds. All comedians twice (Gemini once). You judge.</p>
         </div>
 
         {error ? (
@@ -344,15 +368,25 @@ export default function StandupPage() {
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
               <p className="text-xs uppercase tracking-wide text-slate-500">Progress</p>
               <p className="text-sm text-slate-200">
-                Act {Math.min(actCount || bits.length, bits.length)} / {actCount || bits.length} —{" "}
-                <span className="font-semibold text-white">{AI_LABEL[provider]}</span>
+                Act {Math.min(actCount || bits.length, bits.length)} / {actCount || bits.length}
+                {order?.[index]?.standupTurn
+                  ? ` · Round ${order[index]!.standupTurn}`
+                  : bits[bits.length - 1]?.standupTurn
+                    ? ` · Round ${bits[bits.length - 1]!.standupTurn}`
+                    : ""}{" "}
+                — <span className="font-semibold text-white">{AI_LABEL[provider]}</span>
                 {status ? ` · ${status}` : ""}
                 {loading ? " · loading…" : ""}
               </p>
             </div>
             <div className="flex flex-col gap-3">
               {bits.slice(0, revealedCount).map((b, i) => (
-                <AiChatBubble key={`${b.provider}-${i}`} provider={b.provider} text={b.text} ms={b.ms} />
+                <div key={`${b.provider}-${b.standupTurn}-${i}`} className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                    Round {b.standupTurn} · {AI_LABEL[b.provider]}
+                  </p>
+                  <AiChatBubble provider={b.provider} text={b.text} ms={b.ms} />
+                </div>
               ))}
 
               {revealedCount >= 1 && revealedCount < bits.length ? (
@@ -368,7 +402,7 @@ export default function StandupPage() {
                     <div>
                       <p className="text-sm font-semibold text-white">Reveal next</p>
                       <p className="text-xs text-slate-400">
-                        {AI_LABEL[bits[revealedCount]!.provider]}
+                        Round {bits[revealedCount]!.standupTurn} · {AI_LABEL[bits[revealedCount]!.provider]}
                       </p>
                     </div>
                   </div>

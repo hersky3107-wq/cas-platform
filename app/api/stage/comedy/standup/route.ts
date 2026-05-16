@@ -4,7 +4,7 @@ import { createSupabaseWithToken } from "@/lib/supabase/server-client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { createSupabaseRouteAuthClient } from "@/lib/supabase/route-auth";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits";
-import { MODEL_BY_PROVIDER, type AiProviderName } from "@/lib/ai/router";
+import { MODEL_BY_PROVIDER } from "@/lib/ai/router";
 import {
   buildStandupPerformanceOrder,
   COMEDY_PROVIDERS,
@@ -14,6 +14,7 @@ import {
   type ComedyPriorSet,
   type ComedyProvider,
   type ComedyTransportContext,
+  type StandupPerformanceSlot,
 } from "@/lib/ai/comedy-engine";
 
 type Provider = ComedyProvider;
@@ -61,17 +62,33 @@ function normalizeProvider(raw: unknown): Provider | null {
   return (PROVIDERS as readonly string[]).includes(p) ? p : null;
 }
 
+function normalizeStandupOrder(raw: unknown): StandupPerformanceSlot[] | null {
+  if (!Array.isArray(raw)) return null;
+  const slots: StandupPerformanceSlot[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const provider = normalizeProvider(r.provider);
+    if (!provider) continue;
+    const standupTurn = r.standupTurn === 2 ? 2 : 1;
+    slots.push({ provider, standupTurn });
+  }
+  if (slots.length !== STANDUP_PERFORMANCE_COUNT) return null;
+  return slots;
+}
+
 async function runStandupProvider(params: {
-  provider: Provider;
+  slot: StandupPerformanceSlot;
   topic: string;
   setIndex: number;
   priorSets: ComedyPriorSet[];
   ctx: ComedyTransportContext;
 }): Promise<{ text: string; ms: number }> {
   const line = await produceStandupSet({
-    provider: params.provider,
+    provider: params.slot.provider,
     topic: params.topic,
     setIndex: params.setIndex,
+    standupTurn: params.slot.standupTurn,
     priorSets: params.priorSets,
     ctx: params.ctx,
   });
@@ -177,7 +194,7 @@ export async function POST(req: Request) {
     }
 
     const order = buildStandupPerformanceOrder();
-    const provider = order[0]!;
+    const slot = order[0]!;
     const ctx: ComedyTransportContext = {
       supabase,
       sessionId,
@@ -186,7 +203,7 @@ export async function POST(req: Request) {
     };
 
     const { text, ms } = await runStandupProvider({
-      provider,
+      slot,
       topic,
       setIndex: 0,
       priorSets: [],
@@ -199,12 +216,12 @@ export async function POST(req: Request) {
       {
         session_id: sessionId,
         role: "assistant",
-        ai_name: provider,
+        ai_name: slot.provider,
         message_text: text,
       },
       {
         session_id: sessionId,
-        speaker: provider,
+        speaker: slot.provider,
         content: text,
       }
     );
@@ -216,7 +233,8 @@ export async function POST(req: Request) {
       order,
       creditsRemaining,
       index: 0,
-      provider,
+      provider: slot.provider,
+      standupTurn: slot.standupTurn,
       text: text.normalize("NFC"),
       ms,
     });
@@ -229,18 +247,14 @@ export async function POST(req: Request) {
   if (!sessionId || index < 0 || index >= STANDUP_PERFORMANCE_COUNT - 1) {
     return NextResponse.json({ error: "Invalid sessionId/index" }, { status: 400 });
   }
-  const order: Provider[] = [];
-  for (const x of orderRaw) {
-    const p = normalizeProvider(x);
-    if (p) order.push(p);
-  }
-  if (order.length !== STANDUP_PERFORMANCE_COUNT) {
+  const order = normalizeStandupOrder(orderRaw);
+  if (!order) {
     return NextResponse.json({ error: "Invalid order" }, { status: 400 });
   }
 
   const priorSets = normalizeComedyPriorSets(body.priorSets);
   const nextIndex = index + 1;
-  const provider = order[nextIndex]!;
+  const slot = order[nextIndex]!;
   const ctx: ComedyTransportContext = {
     supabase,
     sessionId,
@@ -249,7 +263,7 @@ export async function POST(req: Request) {
   };
 
   const { text, ms } = await runStandupProvider({
-    provider,
+    slot,
     topic,
     setIndex: nextIndex,
     priorSets,
@@ -262,12 +276,12 @@ export async function POST(req: Request) {
     {
       session_id: sessionId,
       role: "assistant",
-      ai_name: provider,
+      ai_name: slot.provider,
       message_text: text,
     },
     {
       session_id: sessionId,
-      speaker: provider,
+      speaker: slot.provider,
       content: text,
     }
   );
@@ -278,7 +292,8 @@ export async function POST(req: Request) {
     topic,
     order,
     index: nextIndex,
-    provider,
+    provider: slot.provider,
+    standupTurn: slot.standupTurn,
     text: text.normalize("NFC"),
     ms,
   });

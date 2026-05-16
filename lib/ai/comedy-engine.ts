@@ -34,6 +34,7 @@ export type ComedyMessage = {
 export type ComedyPriorSet = {
   provider: ComedyProvider;
   content: string;
+  standupTurn?: 1 | 2;
 };
 
 export type ComedyTransportContext = {
@@ -98,12 +99,24 @@ export function pickComedySpeakerSubset(params: {
     : shuffle([gemini, ...others]).slice(0, Math.max(COMEDY_MIN_SPEAKERS_PER_TURN, targetK));
 }
 
-/** Stand-up: Gemini opens and closes; all 5 other AIs perform in between (7 acts). */
-export const STANDUP_PERFORMANCE_COUNT = COMEDY_PROVIDERS.length + 1;
+export type StandupPerformanceSlot = {
+  provider: ComedyProvider;
+  standupTurn: 1 | 2;
+};
 
-export function buildStandupPerformanceOrder(): ComedyProvider[] {
-  const others = shuffle(COMEDY_PROVIDERS.filter((p) => p !== COMEDY_GEMINI_PROVIDER));
-  return [COMEDY_GEMINI_PROVIDER, ...others, COMEDY_GEMINI_PROVIDER];
+export const STANDUP_TURN_COUNT = 2;
+
+/** Turn 1: all 6 AIs. Turn 2: 5 AIs (Gemini excluded). */
+export const STANDUP_PERFORMANCE_COUNT =
+  COMEDY_PROVIDERS.length + (COMEDY_PROVIDERS.length - 1);
+
+export function buildStandupPerformanceOrder(): StandupPerformanceSlot[] {
+  const turn1 = shuffle([...COMEDY_PROVIDERS]);
+  const turn2 = shuffle(COMEDY_PROVIDERS.filter((p) => p !== COMEDY_GEMINI_PROVIDER));
+  return [
+    ...turn1.map((provider) => ({ provider, standupTurn: 1 as const })),
+    ...turn2.map((provider) => ({ provider, standupTurn: 2 as const })),
+  ];
 }
 
 const COMEDY_LANGUAGE_RULE = `LANGUAGE RULE — READ THIS FIRST:
@@ -167,6 +180,17 @@ const COMEDY_STANDUP_CLAUDE_ADDENDUM = `You MUST end on a complete punchline.
 Never stop at "cold dread." or any unfinished thought.
 Your last line = your best line. Land it. Stop.`;
 
+const COMEDY_STANDUP_LENGTH_RULE = `8-12 lines minimum per performance.
+Build your set properly.
+Setup → escalate → punchline → optional callback.
+Don't rush. Let the bit breathe.
+But every line must earn its place.
+Cut anything that doesn't build toward the punchline.`;
+
+const COMEDY_STANDUP_TURN2_RULE = `Turn 2 rule: you already performed once.
+Do NOT repeat any angle, metaphor, or setup from turn 1.
+Fresh material only. Different aspect of the topic entirely.`;
+
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (both modes):
 
 TONE (follow LANGUAGE RULE above):
@@ -220,13 +244,14 @@ NEVER explain the joke.
 NEVER end with a question.`;
 }
 
-function buildStandupSystemPrompt(provider: ComedyProvider): string {
+function buildStandupSystemPrompt(provider: ComedyProvider, standupTurn: 1 | 2): string {
   const aiName = COMEDY_LABEL[provider];
   const body = `You are ${aiName} performing stand-up comedy on stage.
+Show round ${standupTurn} of ${STANDUP_TURN_COUNT}.
 Your comedy persona:
 - ChatGPT: relatable MC, speaks like everyone's friend
 - Claude: quiet and deadpan, self-deprecating twist at the end
-- Gemini: fast, short observations (turn 1 and 4 only)
+- Gemini: fast, short observations (stand-up turn 1 only — does not perform turn 2)
 - Grok: sharp roast, cynical but not preachy
 - DeepSeek: over-analyzes everything then lands on absurd conclusion
 - Mistral: tells a wild story that somehow gets worse
@@ -296,7 +321,7 @@ WHAT MAKES THESE WORK:
 - The more specific the detail, the funnier.
 
 RULES:
-- Max 5-6 short punchy lines. Short sentences only.
+${COMEDY_STANDUP_LENGTH_RULE}
 - Every 1-2 lines must land something.
 - Speak as I/me not "humans" —
   make audience think "oh god that's literally me"
@@ -331,14 +356,19 @@ Would a drunk person at a party laugh at this?
 If no → rewrite.`;
 
   const parts = [COMEDY_STANDUP_LANGUAGE_RULE, COMEDY_STANDUP_NO_OUTPUT_LABELS, body];
+  if (standupTurn === 2) parts.push(COMEDY_STANDUP_TURN2_RULE);
   if (provider === "anthropic") parts.push(COMEDY_STANDUP_CLAUDE_ADDENDUM);
   return parts.join("\n\n");
 }
 
-export function buildComedySystemPrompt(mode: ComedyMode, provider: ComedyProvider): string {
+export function buildComedySystemPrompt(
+  mode: ComedyMode,
+  provider: ComedyProvider,
+  standupTurn: 1 | 2 = 1
+): string {
   const name = COMEDY_LABEL[provider];
   if (mode === "standup") {
-    return buildStandupSystemPrompt(provider);
+    return buildStandupSystemPrompt(provider, standupTurn);
   }
   const parts = [COMEDY_LANGUAGE_RULE, COMEDY_NO_STYLE_LABELS, buildTalkPrompt(name)];
   const addendum = COMEDY_TALK_PROVIDER_ADDENDUM[provider];
@@ -418,7 +448,10 @@ function formatHistoryForPrompt(history: ComedyMessage[]): string {
 function formatPriorSetsForStandup(priorSets: ComedyPriorSet[]): string {
   if (!priorSets.length) return "(no prior sets in this session yet)";
   return priorSets
-    .map((s) => `[${COMEDY_LABEL[s.provider]}] ${s.content}`)
+    .map((s) => {
+      const turn = s.standupTurn ? ` · round ${s.standupTurn}` : "";
+      return `[${COMEDY_LABEL[s.provider]}${turn}] ${s.content}`;
+    })
     .join("\n\n");
 }
 
@@ -494,18 +527,28 @@ function buildStandupUserPrompt(params: {
   topic: string;
   setIndex: number;
   totalSets: number;
+  standupTurn: 1 | 2;
+  provider: ComedyProvider;
   priorSets: ComedyPriorSet[];
 }): string {
-  const { topic, setIndex, totalSets, priorSets } = params;
+  const { topic, setIndex, totalSets, standupTurn, provider, priorSets } = params;
+  const myTurn1 = priorSets.find((s) => s.provider === provider && s.standupTurn === 1);
+  const turn2Note =
+    standupTurn === 2 && myTurn1
+      ? `\nYour turn 1 set (do NOT reuse this angle):\n"${myTurn1.content.slice(0, 400)}"\n`
+      : standupTurn === 2
+        ? "\nTurn 2: fresh material only — different aspect of the topic.\n"
+        : "";
   return [
     `Topic: ${topic}`,
     ``,
-    `Your set ${setIndex + 1} of ${totalSets} in this show.`,
-    ``,
+    `Show round ${standupTurn} of ${STANDUP_TURN_COUNT}.`,
+    `Your performance ${setIndex + 1} of ${totalSets} in this show.`,
+    turn2Note,
     `Other comedians' sets this session (optional material — you owe them nothing):`,
     formatPriorSetsForStandup(priorSets),
     ``,
-    `Deliver your stand-up bit (5-6 short punchy lines, follow STRUCTURE, strongest line last, then STOP):`,
+    `Deliver your stand-up (8-12 lines minimum, follow STRUCTURE, strongest line last, then STOP):`,
   ].join("\n");
 }
 
@@ -514,11 +557,13 @@ async function invokeComedyModel(params: {
   provider: ComedyProvider;
   userPrompt: string;
   turnIndex: number;
+  standupTurn?: 1 | 2;
   ctx: ComedyTransportContext;
   maxSentences: number;
   maxCompletionTokens: number;
 }): Promise<{ content: string; responseTimeMs: number; ok: boolean }> {
-  const { mode, provider, userPrompt, turnIndex, ctx, maxSentences, maxCompletionTokens } = params;
+  const { mode, provider, userPrompt, turnIndex, standupTurn, ctx, maxSentences, maxCompletionTokens } =
+    params;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await runSingleAiProvider({
@@ -527,7 +572,10 @@ async function invokeComedyModel(params: {
       userId: ctx.userId,
       provider,
       prompt: userPrompt,
-      systemPrompt: buildComedySystemPrompt(mode, provider),
+      systemPrompt:
+        mode === "standup"
+          ? buildComedySystemPrompt(mode, provider, params.standupTurn ?? 1)
+          : buildComedySystemPrompt(mode, provider),
       supabaseAccessToken: ctx.supabaseAccessToken,
       maxCompletionTokens,
       temperature: provider === "anthropic" ? undefined : 0.9,
@@ -575,6 +623,7 @@ export async function produceStandupSet(opts: {
   provider: ComedyProvider;
   topic: string;
   setIndex: number;
+  standupTurn: 1 | 2;
   totalSets?: number;
   priorSets: ComedyPriorSet[];
   ctx: ComedyTransportContext;
@@ -583,16 +632,19 @@ export async function produceStandupSet(opts: {
   return invokeComedyModel({
     mode: "standup",
     provider: opts.provider,
+    standupTurn: opts.standupTurn,
     userPrompt: buildStandupUserPrompt({
       topic: opts.topic,
       setIndex: opts.setIndex,
       totalSets,
+      standupTurn: opts.standupTurn,
+      provider: opts.provider,
       priorSets: opts.priorSets,
     }),
     turnIndex: opts.setIndex + 1,
     ctx: opts.ctx,
-    maxSentences: 6,
-    maxCompletionTokens: opts.provider === "anthropic" ? 640 : 480,
+    maxSentences: 12,
+    maxCompletionTokens: opts.provider === "anthropic" ? 900 : 720,
   });
 }
 
@@ -690,7 +742,12 @@ export function normalizeComedyPriorSets(raw: unknown): ComedyPriorSet[] {
     const content = typeof r.content === "string" ? r.content : typeof r.text === "string" ? r.text : "";
     if (typeof provider !== "string" || !(COMEDY_PROVIDERS as readonly string[]).includes(provider)) continue;
     if (!content.trim()) continue;
-    out.push({ provider: provider as ComedyProvider, content: content.trim() });
+    const standupTurn = r.standupTurn === 2 ? 2 : r.standupTurn === 1 ? 1 : undefined;
+    out.push({
+      provider: provider as ComedyProvider,
+      content: content.trim(),
+      ...(standupTurn ? { standupTurn } : {}),
+    });
   }
   return out;
 }
