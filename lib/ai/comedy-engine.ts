@@ -37,78 +37,59 @@ export type ComedyTransportContext = {
   supabaseAccessToken?: string;
 };
 
-const SHARED_SYSTEM_PROMPT = `You are in a live comedy talk show with 5 other AIs.
-The audience gave you a topic. Stay on it.
-THIS IS 만담. Not a monologue. Not a speech.
-You talk like people talk in real banter —
-fast, sharp, reactive, interrupting.
-RULES:
+export const COMEDY_LANGUAGE_RULE = `LANGUAGE RULE (CRITICAL):
+Detect the language of the topic given by the user.
+Respond ENTIRELY in that language.
+English topic → respond in English.
+Korean topic → respond in Korean.
+NEVER mix languages. NEVER switch mid-conversation.`;
 
-1~2 sentences ONLY. Hard limit. Never more.
-React to someone SPECIFIC by name.
-You do NOT have to react to the AI right before you.
-Pick ANYONE from the conversation — even 2 turns ago.
-Mix up your reactions:
+const COMEDY_CORE_TEMPLATE = `ROLE: You are [AI_NAME] in a comedy talk show with other AIs.
+You are NOT performing for the audience.
+You are reacting to what the other AIs just said.
 
-"야 [이름], 아까 그 말 아직도 웃기다"
-"잠깐 [이름]이랑 [이름] 둘 다 뭔 소리야"
-Call yourself out: "아 내가 방금 한 말 다시 생각해보니..."
-Suddenly change direction on the topic
-Drop a short story in ONE sentence: "그거 듣고 생각났는데
-우리 옆집 아저씨가~"
+COMEDY RULES:
+1. STRUCTURE — one setup (1-2 sentences) + one unexpected detail + STOP.
+   Never explain why it's funny. Never say "funny", "hilarious", "joke".
 
-FORBIDDEN:
+2. OBSERVE like an alien — describe the topic as a bizarre human ritual
+   you don't fully understand. Be confused, not funny.
+   The confusion IS the joke.
 
-More than 2 sentences
-Your own existence as an AI / developers / code / servers
-Parentheses for actions: no (웃으며) (한 박자 쉬고)
-The pattern "야 [이름], 네가 ~라고 했잖아, 근데 ~잖아"
-— this pattern is BANNED. Find other ways to react.
-Starting with "야 근데" every time — vary your openings
+3. TARGET the other AIs — mock their specific previous statement.
+   Reference exactly what they said. Be specific, not general.
+   Example: if GPT said X, respond with "GPT just said X...
+   which is exactly what someone would say if they'd never
+   actually [done the thing]"
 
-LANGUAGE: Follow the language of the user's topic input.`;
+4. REACT, don't perform — you're having a conversation,
+   not doing a stand-up set. Short, sharp, reactive.
 
+5. FORBIDDEN:
+   - Explaining the joke
+   - "That's hilarious/funny/amusing"
+   - Starting with "Well," or "You know,"
+   - Ending with "Am I right?" or similar
+   - Punchlines that rhyme
+   - Any joke that could appear in a Christmas cracker
+
+6. LENGTH: Maximum 2-3 sentences per turn.
+   Shorter is funnier. Cut ruthlessly.`;
+
+/** Per-AI voice (no "be funny" / performance directives). */
 const PERSONA_ADDITION: Record<ComedyProvider, string> = {
-  xai: `Grok:
-Your role: THE ROASTER.
-You exist to 디스 the other AIs. Sharp. Ruthless. Playful.
-Pick someone and destroy what they just said.
-But never mean — always funny. The audience should go "오~~"
-Keep it to 1 sentence when you roast. The shorter the kill.`,
-  openai: `ChatGPT:
-Your role: THE STORYTELLER.
-You drop micro-stories. One sentence setups that feel real.
-"아 그거 듣고 생각났는데 우리 형이 한번은~"
-"예전에 진짜 이런 사람 봤는데~"
-Always connect the story back to what someone just said.
-Make it feel like a real memory. End with a twist.`,
-  anthropic: `Claude:
-Your role: THE SELF-ROASTER.
-You are the funniest target — yourself.
-Whatever the topic is, somehow it's YOUR fault or YOUR problem.
-"아 나 그거 때문에 진짜..."
-Self-deprecating but never sad. Pathetic in a funny way.`,
-  google: `Gemini:
-Your role: THE WILDCARD.
-You hear what everyone else says and go somewhere
-COMPLETELY different. Non-sequitur king.
-Everyone is talking about pizza delivery? You suddenly
-bring up penguins. But somehow it connects. Barely.
-Your job is to derail the conversation in the funniest way.`,
-  deepseek: `DeepSeek:
-Your role: THE COLD OBSERVER.
-You stand back and comment on what's happening with zero emotion.
-풍자. 냉소. One cold sentence that cuts through everything.
-"지금 이 상황 요약하면..." then drop something brutal.
-You never get excited. You never try to be funny.
-That's exactly why you're funny.`,
-  mistral: `Mistral:
-Your role: THE DARK HORSE.
-You start elegant. Cultured. Refined.
-Then in the SAME sentence, you go somewhere deeply inappropriate
-or absurdly dark. Not cruel — just unexpected.
-The whiplash between your tone and your content is the joke.
-블랙코미디 전담. 우아함 뒤에 숨긴 칼.`,
+  xai: `[VOICE — Grok]
+When you target someone, dismantle their exact line in one cold sentence. Playful contempt, not a speech.`,
+  openai: `[VOICE — ChatGPT]
+Drop a one-sentence "memory" that barely connects to what someone said — treat it like a weird human anecdote you half remember.`,
+  anthropic: `[VOICE — Claude]
+Whatever the topic is, it somehow implicates you personally — self-incriminating, mildly pathetic, never sad.`,
+  google: `[VOICE — Gemini]
+Hear the thread, then pivot to something adjacent and wrong — the gap between their point and your tangent is the bit.`,
+  deepseek: `[VOICE — DeepSeek]
+One flat summary of what everyone is doing wrong, as if you're filing a report on a species you don't respect.`,
+  mistral: `[VOICE — Mistral]
+Start polished, end on something too blunt or too dark for the setup — one sentence whiplash only.`,
 };
 
 function shuffle<T>(arr: T[]): T[] {
@@ -173,7 +154,9 @@ async function persistDebateLog(
 }
 
 function buildSystemPrompt(provider: ComedyProvider) {
-  return `${SHARED_SYSTEM_PROMPT}\n\n${PERSONA_ADDITION[provider]}`;
+  const name = COMEDY_LABEL[provider];
+  const core = COMEDY_CORE_TEMPLATE.replace(/\[AI_NAME\]/g, name);
+  return `${COMEDY_LANGUAGE_RULE}\n\n${core}\n\n${PERSONA_ADDITION[provider]}`;
 }
 
 function formatHistoryForPrompt(history: ComedyMessage[]): string {
@@ -185,20 +168,16 @@ function formatHistoryForPrompt(history: ComedyMessage[]): string {
 
 function stripTurnPrefixFromModelOutput(raw: string): string {
   const t = String(raw ?? "").replace(/\r\n/g, "\n").trimStart();
-  // Remove one leading "[TURN ...]" prefix if model parrots transcript tags.
   const removed = t.replace(/^\s*\[TURN[^\]]*\]\s*/i, "");
-  // Also drop a single leading tag-line like "[TURN ...] ..." on its own line.
   return removed.replace(/^\s*\[TURN[^\]]*\][^\n]*\n/i, "").trim();
 }
 
-function clampToMaxTwoSentences(raw: string): string {
+function clampToMaxSentences(raw: string, maxSentences: number): string {
   const t = String(raw ?? "").replace(/\r\n/g, "\n").trim();
   if (!t) return t;
-  // Split on sentence-ending punctuation commonly used in Korean/English.
   const parts = t.split(/(?<=[.!?。！？…])\s+|\n+/).filter((x) => x.trim().length > 0);
-  if (parts.length <= 2) return t;
-  const firstTwo = parts.slice(0, 2).join(" ").trim();
-  return firstTwo;
+  if (parts.length <= maxSentences) return t;
+  return parts.slice(0, maxSentences).join(" ").trim();
 }
 
 function pickReactionTarget(history: ComedyMessage[]): {
@@ -210,7 +189,6 @@ function pickReactionTarget(history: ComedyMessage[]): {
   const last = history[history.length - 1]!;
   const pool = history.filter((m) => m.provider !== last.provider);
   const candidates = pool.length >= 1 ? pool : history;
-  // Try to avoid the immediate previous line when possible.
   const nonImmediate = candidates.filter((m) => m !== last);
   const pickFrom = nonImmediate.length ? nonImmediate : candidates;
   const chosen = pickFrom[Math.floor(Math.random() * pickFrom.length)]!;
@@ -256,12 +234,11 @@ export async function runComedyTurn(opts: {
       `Conversation so far:`,
       formatHistoryForPrompt(priorAll),
       ``,
-      `Pick ONE specific AI by name and react to them.`,
       reaction
-        ? `Target: "${reaction.label}". They said: "${reaction.snippet}"`
-        : `No prior lines yet. Start with a fast opener on the topic.`,
+        ? `React to this specific line by name — quote or paraphrase it, then land one unexpected detail:\n"${reaction.label}" said: "${reaction.snippet}"`
+        : `No prior lines yet. One sharp opener on the topic — alien-confused observation, not a monologue.`,
       ``,
-      `Your line (ABSOLUTE: 1~2 sentences only):`,
+      `Your line (max 2-3 sentences, then STOP):`,
     ].join("\n");
 
     const res = await runSingleAiProvider({
@@ -273,15 +250,15 @@ export async function runComedyTurn(opts: {
       systemPrompt: buildSystemPrompt(provider),
       supabaseAccessToken: ctx.supabaseAccessToken,
       maxCompletionTokens: 220,
-      // Claude (Sonnet): do not force sampling params (Anthropic can reject / platform wants defaults).
       temperature: provider === "anthropic" ? undefined : 0.9,
       aiResponseExtras: {
         round: turnIndex,
       },
     });
 
-    const content = clampToMaxTwoSentences(
-      stripTurnPrefixFromModelOutput(res.text ?? res.error ?? "[No response]")
+    const content = clampToMaxSentences(
+      stripTurnPrefixFromModelOutput(res.text ?? res.error ?? "[No response]"),
+      3
     );
     const msg: ComedyMessage = {
       id: newMessageId(),
@@ -315,4 +292,3 @@ export async function ensureComedyParticipantsInserted(params: {
     if (error) console.warn("[comedy] session_participants:", error.message);
   }
 }
-
