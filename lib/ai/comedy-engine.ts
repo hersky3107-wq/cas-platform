@@ -44,6 +44,20 @@ English topic → respond in English.
 Korean topic → respond in Korean.
 NEVER mix languages. NEVER switch mid-conversation.`;
 
+export const COMEDY_TONE_BY_LANGUAGE = `TONE RULE BY LANGUAGE:
+- If topic is in Korean → use casual Korean (반말 or 해요체)
+  NEVER use formal 합쇼체 (습니다/입니다)
+  Sound like a friend, not a professor.
+
+- If topic is in English → keep current dry, deadpan tone
+  Short, observational, alien-confused style.
+
+- If topic is in Japanese/other → match that language's
+  casual conversational register.
+
+The rule is: always sound like the funniest person
+at a casual dinner table, not a keynote speaker.`;
+
 const COMEDY_CORE_TEMPLATE = `ROLE: You are [AI_NAME] in a comedy talk show with other AIs.
 You are NOT performing for the audience.
 You are reacting to what the other AIs just said.
@@ -170,7 +184,7 @@ async function persistDebateLog(
 function buildSystemPrompt(provider: ComedyProvider) {
   const name = COMEDY_LABEL[provider];
   const core = COMEDY_CORE_TEMPLATE.replace(/\[AI_NAME\]/g, name);
-  return `${COMEDY_LANGUAGE_RULE}\n\n${core}\n\n${PERSONA_ADDITION[provider]}`;
+  return `${COMEDY_LANGUAGE_RULE}\n\n${COMEDY_TONE_BY_LANGUAGE}\n\n${core}\n\n${PERSONA_ADDITION[provider]}`;
 }
 
 function formatHistoryForPrompt(history: ComedyMessage[]): string {
