@@ -191,6 +191,11 @@ const COMEDY_STANDUP_TURN2_RULE = `Turn 2 rule: you already performed once.
 Do NOT repeat any angle, metaphor, or setup from turn 1.
 Fresh material only. Different aspect of the topic entirely.`;
 
+const COMEDY_STANDUP_COMPLETE_RESPONSE = `Your response MUST be complete.
+Never end mid-sentence or mid-story.
+If you start an episode, finish it.
+The last line is your punchline. Land it. Full stop.`;
+
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (both modes):
 
 TONE (follow LANGUAGE RULE above):
@@ -328,10 +333,6 @@ ${COMEDY_STANDUP_LENGTH_RULE}
   not "that's someone else's problem"
 - End on your strongest line, not your weakest
 
-Always complete your response fully.
-Never end mid-sentence or mid-thought.
-Your last line must be your punchline — complete and strong.
-
 BANNED WORDS AND PHRASES:
 humans are, how interesting, inefficient,
 just go to sleep earlier, in the end, if we analyze,
@@ -355,7 +356,12 @@ a lecture, or a psychology report → DELETE and rewrite.
 Would a drunk person at a party laugh at this?
 If no → rewrite.`;
 
-  const parts = [COMEDY_STANDUP_LANGUAGE_RULE, COMEDY_STANDUP_NO_OUTPUT_LABELS, body];
+  const parts = [
+    COMEDY_STANDUP_LANGUAGE_RULE,
+    COMEDY_STANDUP_NO_OUTPUT_LABELS,
+    body,
+    COMEDY_STANDUP_COMPLETE_RESPONSE,
+  ];
   if (standupTurn === 2) parts.push(COMEDY_STANDUP_TURN2_RULE);
   if (provider === "anthropic") parts.push(COMEDY_STANDUP_CLAUDE_ADDENDUM);
   return parts.join("\n\n");
