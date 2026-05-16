@@ -126,7 +126,7 @@ Openers (in the topic's language, e.g.):
 "If I were human I would definitely..."
 or "When I picture myself as human..."`;
 
-const COMEDY_PROVIDER_ADDENDUM: Partial<Record<ComedyProvider, string>> = {
+const COMEDY_TALK_PROVIDER_ADDENDUM: Partial<Record<ComedyProvider, string>> = {
   google: `GEMINI-SPECIFIC GUIDANCE (internal — never label in output):
 
 TYPE B — RELATABILITY:
@@ -148,6 +148,39 @@ Find the bleak but accurate truth about the situation.
 State it flat. No anger. Just tired and right.
 European world-weariness — seen it all, no longer surprised.
 One resigned observation. Stop there.`,
+};
+
+const COMEDY_STANDUP_ANTI_SIMILARITY = `ANTI-SIMILARITY (before writing):
+Before writing, check what other AIs have already said.
+Your approach to the topic must be STRUCTURALLY different.
+If others told a story about ignoring alarms →
+you must take a completely different angle entirely.
+Different angle options:
+- analyze WHY humans do this (not the experience itself)
+- attack another AI's take on it
+- find the darkest true interpretation
+- find the economic/social/philosophical angle
+- mock yourself for understanding/not understanding it`;
+
+const COMEDY_STANDUP_TYPE_BY_PROVIDER: Record<ComedyProvider, string> = {
+  openai: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
+Incongruity: formal analysis → absurd conclusion. Serious setup, stupid payoff. Stop.`,
+
+  anthropic: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
+Self-deprecation + dark observation: specific AI failures, then a bleak true read on the topic.`,
+
+  google: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
+Observation: puzzled, friend-not-scientist read of human behavior.
+You only perform opening or closing in this show (acts 1 and 6).`,
+
+  xai: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
+Cynical + roast: bleakest accurate take; roast another comedian's line only if it lands hard.`,
+
+  deepseek: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
+Logic twist + reversal: logical chain one step too far, or obvious build → unexpected landing.`,
+
+  mistral: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
+Episode + exaggeration: short story with concrete embarrassing details; blow one detail to absurd scale as if normal.`,
 };
 
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (both modes):
@@ -212,31 +245,20 @@ You can use them as material if useful —
 mock their style, their tendencies, their previous statements.
 But you owe them nothing. This is your set.
 
-EPISODE RULE (MOST IMPORTANT):
-At least 50% of your response must be episode-based.
-Episode structure:
-1. "So this one time..." or an equivalent opener in the topic's language
-2. Specific situation with concrete embarrassing details
-3. Unexpected twist that makes it worse
-4. One-line ending that lands flat. Stop there.
+COMEDY TYPE LAW:
+Each comedian has ONE assigned primary type (yours is below).
+Use only that type as your main structural approach.
+Do not copy another comedian's angle or story shape.
 
-${COMEDY_HUMAN_EXPERIENCE}
-
-ALL 12 COMEDY TYPES ARE AVAILABLE:
-1. Observation 2. Self-deprecation 3. Roast
-4. Reversal 5. Black comedy 6. Episode (priority)
-7. Cynical 8. Logic twist 9. Exaggeration
-10. Meta 11. Relatability 12. Incongruity
-
-Pick 2-3 types per turn, weave them naturally.
-Episode must anchor at least one of them.
+${COMEDY_STANDUP_ANTI_SIMILARITY}
 
 ANTI-REPETITION:
 Never repeat episode structure, punchline, or angle
 already used in this session.
 
 FORMAT:
-5-8 sentences per turn. Long enough to build a full bit.
+7-10 sentences minimum. Build the full bit.
+Don't rush the punchline.
 NEVER label your comedy type.
 NEVER explain why something is funny.
 NEVER end with a question.
@@ -245,10 +267,15 @@ English topics → dry, deadpan (see LANGUAGE RULE).`;
 
 export function buildComedySystemPrompt(mode: ComedyMode, provider: ComedyProvider): string {
   const name = COMEDY_LABEL[provider];
-  const base = mode === "talk" ? buildTalkPrompt(name) : buildStandupPrompt(name);
-  const addendum = COMEDY_PROVIDER_ADDENDUM[provider];
-  const parts = [COMEDY_LANGUAGE_RULE, COMEDY_NO_STYLE_LABELS, base];
-  if (addendum) parts.push(addendum);
+  const parts = [COMEDY_LANGUAGE_RULE, COMEDY_NO_STYLE_LABELS];
+  if (mode === "talk") {
+    parts.push(buildTalkPrompt(name));
+    const addendum = COMEDY_TALK_PROVIDER_ADDENDUM[provider];
+    if (addendum) parts.push(addendum);
+  } else {
+    parts.push(buildStandupPrompt(name));
+    parts.push(COMEDY_STANDUP_TYPE_BY_PROVIDER[provider]);
+  }
   return parts.join("\n\n");
 }
 
@@ -411,7 +438,7 @@ function buildStandupUserPrompt(params: {
     `Other comedians' sets this session (optional material — you owe them nothing):`,
     formatPriorSetsForStandup(priorSets),
     ``,
-    `Deliver your solo stand-up (5-8 sentences, episode anchors at least half, no labels, then STOP):`,
+    `Deliver your solo stand-up (7-10 sentences minimum, your assigned type only, no labels, then STOP):`,
   ].join("\n");
 }
 
@@ -497,8 +524,8 @@ export async function produceStandupSet(opts: {
     }),
     turnIndex: opts.setIndex + 1,
     ctx: opts.ctx,
-    maxSentences: 8,
-    maxCompletionTokens: 560,
+    maxSentences: 10,
+    maxCompletionTokens: 720,
   });
 }
 
