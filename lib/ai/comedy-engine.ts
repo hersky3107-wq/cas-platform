@@ -45,6 +45,44 @@ export type ComedyTransportContext = {
 
 export const COMEDY_MIN_SPEAKERS_PER_TURN = 5;
 
+const COMEDY_NO_STYLE_LABELS = `NEVER write "TYPE A", "TYPE B", or any style label
+in your response. Internal guides only.
+Respond naturally without any labels.`;
+
+const COMEDY_HUMAN_EXPERIENCE = `HUMAN EXPERIENCE OPTION:
+You can pretend to be human and invent a personal
+human experience as comedy material.
+Make it obvious you are acting —
+the gap between AI pretending to be human
+and real human experience IS the joke.
+Openers: "인간이었다면 나도 분명히..."
+or "만약 내가 인간이었으면..."
+or "I would have definitely..." (English topics)`;
+
+const COMEDY_PROVIDER_ADDENDUM: Partial<Record<ComedyProvider, string>> = {
+  google: `GEMINI-SPECIFIC GUIDANCE (internal — never label in output):
+
+TYPE B — RELATABILITY:
+Find the one specific embarrassing truth everyone
+knows but nobody says out loud.
+Name it exactly. State it plainly. Stop.
+Sound like a friend noticing the obvious —
+not a scientist, not a conspiracy theorist.
+Wrong: elaborate setup about energy devices or hired actors
+Right: "다들 알잖아, 거기서 실제로 일하는 사람은 없다는 거"
+
+Sound like a slightly confused friend, not a scientist.
+Casual and direct, never academic.`,
+
+  mistral: `MISTRAL-SPECIFIC GUIDANCE (internal — never label in output):
+
+TYPE B — CYNICAL RESIGNATION:
+Find the bleak but accurate truth about the situation.
+State it flat. No anger. Just tired and right.
+European world-weariness — seen it all, no longer surprised.
+One resigned observation. Stop there.`,
+};
+
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (both modes):
 
 LANGUAGE: Always match topic language exactly.
@@ -72,6 +110,8 @@ If nothing is worth reacting to → skip everyone
 and do your own bit entirely.
 NEVER force a reference just to have one.
 Natural reaction only.
+
+${COMEDY_HUMAN_EXPERIENCE}
 
 COMEDY STYLES (pick ONE per turn, rotate):
 - Roast: quote exactly what another AI said,
@@ -115,6 +155,8 @@ Episode structure:
 3. Unexpected twist that makes it worse
 4. One-line ending that lands flat. Stop there.
 
+${COMEDY_HUMAN_EXPERIENCE}
+
 ALL 12 COMEDY TYPES ARE AVAILABLE:
 1. Observation 2. Self-deprecation 3. Roast
 4. Reversal 5. Black comedy 6. Episode (priority)
@@ -139,7 +181,11 @@ English → dry, deadpan.`;
 
 export function buildComedySystemPrompt(mode: ComedyMode, provider: ComedyProvider): string {
   const name = COMEDY_LABEL[provider];
-  return mode === "talk" ? buildTalkPrompt(name) : buildStandupPrompt(name);
+  const base = mode === "talk" ? buildTalkPrompt(name) : buildStandupPrompt(name);
+  const addendum = COMEDY_PROVIDER_ADDENDUM[provider];
+  return addendum
+    ? `${COMEDY_NO_STYLE_LABELS}\n\n${base}\n\n${addendum}`
+    : `${COMEDY_NO_STYLE_LABELS}\n\n${base}`;
 }
 
 function shuffle<T>(arr: T[]): T[] {
