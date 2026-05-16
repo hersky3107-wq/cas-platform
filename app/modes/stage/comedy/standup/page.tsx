@@ -129,7 +129,6 @@ export default function StandupPage() {
   const [topic, setTopic] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [order, setOrder] = useState<AiProviderName[] | null>(null);
-  const [assignedFormats, setAssignedFormats] = useState<Record<AiProviderName, string> | null>(null);
   const [index, setIndex] = useState<number>(-1);
   const [provider, setProvider] = useState<AiProviderName | null>(null);
   const [text, setText] = useState<string>("");
@@ -172,7 +171,6 @@ export default function StandupPage() {
       if (!res.ok || !j?.ok) throw new Error(j?.error ?? "Request failed");
       setSessionId(j.sessionId);
       setOrder(j.order);
-      setAssignedFormats(j.assignedFormats ?? null);
       setIndex(j.index);
       setProvider(j.provider);
       const cleaned = sanitizeAiText(j.text ?? "");
@@ -200,10 +198,11 @@ export default function StandupPage() {
   }, [loading, topic]);
 
   const runRemaining = useCallback(async () => {
-    if (!sessionId || !order || !assignedFormats || loading) return;
+    if (!sessionId || !order || loading) return;
     setError(null);
     setLoading(true);
     try {
+      let priorSets = bits.map((b) => ({ provider: b.provider, content: b.text }));
       for (let i = index; i < order.length - 1; i++) {
         setStatus("Intermission");
         const r = await fetch("/api/stage/comedy/standup", {
@@ -214,7 +213,7 @@ export default function StandupPage() {
             sessionId,
             topic: topic.trim(),
             order,
-            assignedFormats,
+            priorSets,
             index: i,
           }),
         });
@@ -225,10 +224,13 @@ export default function StandupPage() {
         const cleaned = sanitizeAiText(j.text ?? "");
         setText(cleaned);
         setMs(typeof j.ms === "number" ? j.ms : 0);
-        setBits((prev) => [
-          ...prev,
-          { provider: j.provider, text: cleaned, ms: typeof j.ms === "number" ? j.ms : 0 },
-        ]);
+        const entry = {
+          provider: j.provider as AiProviderName,
+          text: cleaned,
+          ms: typeof j.ms === "number" ? j.ms : 0,
+        };
+        setBits((prev) => [...prev, entry]);
+        priorSets = [...priorSets, { provider: entry.provider, content: entry.text }];
       }
       setStatus(null);
     } catch (e: unknown) {
@@ -236,7 +238,7 @@ export default function StandupPage() {
     } finally {
       setLoading(false);
     }
-  }, [index, loading, order, sessionId, topic, assignedFormats]);
+  }, [index, loading, order, sessionId, topic]);
 
   useEffect(() => {
     if (phase !== "perform") return;
@@ -431,7 +433,6 @@ export default function StandupPage() {
                 setPhase("input");
                 setSessionId(null);
                 setOrder(null);
-                setAssignedFormats(null);
                 setIndex(-1);
                 setProvider(null);
                 setText("");
