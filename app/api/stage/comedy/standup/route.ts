@@ -10,6 +10,7 @@ import {
   COMEDY_PROVIDERS,
   normalizeComedyPriorSets,
   produceStandupSet,
+  STANDUP_PERFORMANCE_COUNT,
   type ComedyPriorSet,
   type ComedyProvider,
   type ComedyTransportContext,
@@ -225,7 +226,7 @@ export async function POST(req: Request) {
   const orderRaw = Array.isArray(body.order) ? body.order : [];
   const idxRaw = typeof body.index === "number" ? body.index : Number(body.index);
   const index = Number.isFinite(idxRaw) ? Math.floor(idxRaw) : -1;
-  if (!sessionId || index < 0 || index >= PROVIDERS.length - 1) {
+  if (!sessionId || index < 0 || index >= STANDUP_PERFORMANCE_COUNT - 1) {
     return NextResponse.json({ error: "Invalid sessionId/index" }, { status: 400 });
   }
   const order: Provider[] = [];
@@ -233,7 +234,7 @@ export async function POST(req: Request) {
     const p = normalizeProvider(x);
     if (p) order.push(p);
   }
-  if (order.length !== PROVIDERS.length) {
+  if (order.length !== STANDUP_PERFORMANCE_COUNT) {
     return NextResponse.json({ error: "Invalid order" }, { status: 400 });
   }
 

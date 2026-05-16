@@ -257,8 +257,14 @@ export default function StandupPage() {
     return best;
   }, [scores]);
 
+  const actCount = order?.length ?? 0;
   const showVoting =
-    phase === "perform" && order && index >= 5 && !loading && revealedCount >= 6;
+    phase === "perform" &&
+    order &&
+    actCount > 0 &&
+    index >= actCount - 1 &&
+    !loading &&
+    revealedCount >= actCount;
 
   const submitFinalVote = useCallback(async () => {
     if (!sessionId || !votePick || voteSubmitting) return;
@@ -304,7 +310,7 @@ export default function StandupPage() {
             <span aria-hidden>🎤</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">STAGE — STAND-UP</h1>
-          <p className="mt-2 text-sm text-slate-400">6 AIs try. You judge.</p>
+          <p className="mt-2 text-sm text-slate-400">All comedians perform. You judge.</p>
         </div>
 
         {error ? (
@@ -338,7 +344,7 @@ export default function StandupPage() {
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
               <p className="text-xs uppercase tracking-wide text-slate-500">Progress</p>
               <p className="text-sm text-slate-200">
-                Turn {Math.min(6, bits.length)} / 6 —{" "}
+                Act {Math.min(actCount || bits.length, bits.length)} / {actCount || bits.length} —{" "}
                 <span className="font-semibold text-white">{AI_LABEL[provider]}</span>
                 {status ? ` · ${status}` : ""}
                 {loading ? " · loading…" : ""}

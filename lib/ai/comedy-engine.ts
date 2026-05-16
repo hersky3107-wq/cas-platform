@@ -98,11 +98,12 @@ export function pickComedySpeakerSubset(params: {
     : shuffle([gemini, ...others]).slice(0, Math.max(COMEDY_MIN_SPEAKERS_PER_TURN, targetK));
 }
 
-/** Stand-up: Gemini opens (slot 0) and closes (slot 5); slots 1–4 are other AIs. */
+/** Stand-up: Gemini opens and closes; all 5 other AIs perform in between (7 acts). */
+export const STANDUP_PERFORMANCE_COUNT = COMEDY_PROVIDERS.length + 1;
+
 export function buildStandupPerformanceOrder(): ComedyProvider[] {
   const others = shuffle(COMEDY_PROVIDERS.filter((p) => p !== COMEDY_GEMINI_PROVIDER));
-  const middle = others.slice(0, 4);
-  return [COMEDY_GEMINI_PROVIDER, ...middle, COMEDY_GEMINI_PROVIDER];
+  return [COMEDY_GEMINI_PROVIDER, ...others, COMEDY_GEMINI_PROVIDER];
 }
 
 const COMEDY_LANGUAGE_RULE = `LANGUAGE RULE — READ THIS FIRST:
@@ -153,7 +154,7 @@ One resigned observation. Stop there.`,
 const COMEDY_STANDUP_LANGUAGE_RULE = `Detect the language of the topic.
 Respond ENTIRELY in that language.
 English topic → English only.
-Korean topic → casual Korean only, never formal.
+Non-English topic → match that language, casual informal only, never formal.
 Never mix languages.`;
 
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (both modes):
@@ -251,31 +252,30 @@ The hand just... knows. Acts alone. Operates independently.
 I'm genuinely in awe of this ability.
 It's the most skilled thing I do all day."
 
-Example 3 (episode structure):
+Example 3:
 "I once left my umbrella on the subway.
 Expensive one. Went to lost and found.
-My 8-year-old son was sitting there.
-Crying.
+My 8-year-old son was sitting there. Crying.
 The umbrella I remembered. The son I forgot.
-Paid him 30,000 won to keep quiet.
+Paid him cash to keep quiet.
 Still cheaper than telling his mother."
 
-Example 4 (resignation + reversal):
-"I finally decided to quit my job.
-Toxic workplace. Unbearable. Done.
+Example 4:
+"Finally decided to quit my job.
 Took the subway. Resignation letter in hand.
 Left the letter on the subway.
 Showed up to work anyway.
 Maybe it's a sign from God.
-Or maybe I'm just an idiot who can't even quit right."
+Or maybe I just can't even quit right."
 
-Example 5 (self-deprecating reversal):
-"People keep losing things on the subway.
+Example 5:
+"People lose things on the subway all the time.
 Umbrellas. Phones. Dignity.
-Not me though. I never lose anything on the subway.
+Not me.
+I never lose anything on the subway.
 Because I never go anywhere.
-Unemployed. Home. Always.
-You guys get to lose things.
+Unemployed. Always home.
+You guys get to lose things on the subway.
 Must be nice."
 
 WHAT MAKES THESE WORK:
@@ -294,6 +294,10 @@ RULES:
   make audience think "oh god that's literally me"
   not "that's someone else's problem"
 - End on your strongest line, not your weakest
+
+Always complete your response fully.
+Never end mid-sentence or mid-thought.
+Your last line must be your punchline — complete and strong.
 
 BANNED WORDS AND PHRASES:
 humans are, how interesting, inefficient,
@@ -563,7 +567,7 @@ export async function produceStandupSet(opts: {
   priorSets: ComedyPriorSet[];
   ctx: ComedyTransportContext;
 }): Promise<{ content: string; responseTimeMs: number; ok: boolean }> {
-  const totalSets = opts.totalSets ?? COMEDY_PROVIDERS.length;
+  const totalSets = opts.totalSets ?? STANDUP_PERFORMANCE_COUNT;
   return invokeComedyModel({
     mode: "standup",
     provider: opts.provider,
@@ -576,7 +580,7 @@ export async function produceStandupSet(opts: {
     turnIndex: opts.setIndex + 1,
     ctx: opts.ctx,
     maxSentences: 6,
-    maxCompletionTokens: 320,
+    maxCompletionTokens: 480,
   });
 }
 
