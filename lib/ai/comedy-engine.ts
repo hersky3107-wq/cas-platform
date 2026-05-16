@@ -45,6 +45,13 @@ export type ComedyTransportContext = {
 
 export const COMEDY_MIN_SPEAKERS_PER_TURN = 5;
 
+const COMEDY_LANGUAGE_RULE = `LANGUAGE RULE — READ THIS FIRST:
+Detect the language of the topic given by the user.
+Respond ENTIRELY in that language. No exceptions.
+English topic → English only.
+Korean topic → Korean only.
+NEVER mix languages within a single response.`;
+
 const COMEDY_NO_STYLE_LABELS = `NEVER write "TYPE A", "TYPE B", or any style label
 in your response. Internal guides only.
 Respond naturally without any labels.`;
@@ -55,9 +62,9 @@ human experience as comedy material.
 Make it obvious you are acting —
 the gap between AI pretending to be human
 and real human experience IS the joke.
-Openers: "인간이었다면 나도 분명히..."
-or "만약 내가 인간이었으면..."
-or "I would have definitely..." (English topics)`;
+Openers (in the topic's language, e.g.):
+"If I were human I would definitely..."
+or "When I picture myself as human..."`;
 
 const COMEDY_PROVIDER_ADDENDUM: Partial<Record<ComedyProvider, string>> = {
   google: `GEMINI-SPECIFIC GUIDANCE (internal — never label in output):
@@ -69,7 +76,7 @@ Name it exactly. State it plainly. Stop.
 Sound like a friend noticing the obvious —
 not a scientist, not a conspiracy theorist.
 Wrong: elaborate setup about energy devices or hired actors
-Right: "다들 알잖아, 거기서 실제로 일하는 사람은 없다는 거"
+Right: "We all know nobody actually works there."
 
 Sound like a slightly confused friend, not a scientist.
 Casual and direct, never academic.`,
@@ -85,17 +92,16 @@ One resigned observation. Stop there.`,
 
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (both modes):
 
-LANGUAGE: Always match topic language exactly.
-Korean topic → casual Korean only, NEVER 합쇼체.
-English topic → conversational, deadpan.
-Never mix languages.
+TONE (follow LANGUAGE RULE above):
+English topics → conversational, dry, deadpan.
+Korean topics → casual informal speech only, never formal polite register.
 
 FORBIDDEN:
 funny, hilarious, joke, humor, laugh, comedy,
 TYPE A, TYPE B, any style label
 Explaining the punchline.
 Starting with data volume numbers
-("나는 X억 건 분석했는데").`;
+("I analyzed two billion records and...").`;
 
 function buildTalkPrompt(aiName: string): string {
   return `${COMEDY_UNIVERSAL_RULES}
@@ -134,8 +140,7 @@ FORMAT:
 3-5 sentences. Build then land. Cut ruthlessly.
 NEVER label your style. Just respond naturally.
 NEVER explain the joke.
-NEVER end with a question.
-Match topic language — Korean → casual 반말/해요체.`;
+NEVER end with a question.`;
 }
 
 function buildStandupPrompt(aiName: string): string {
@@ -150,7 +155,7 @@ But you owe them nothing. This is your set.
 EPISODE RULE (MOST IMPORTANT):
 At least 50% of your response must be episode-based.
 Episode structure:
-1. "나 한번은..." or equivalent opener
+1. "So this one time..." or an equivalent opener in the topic's language
 2. Specific situation with concrete embarrassing details
 3. Unexpected twist that makes it worse
 4. One-line ending that lands flat. Stop there.
@@ -175,17 +180,16 @@ FORMAT:
 NEVER label your comedy type.
 NEVER explain why something is funny.
 NEVER end with a question.
-Match topic language — Korean → casual 반말/해요체.
-English → dry, deadpan.`;
+English topics → dry, deadpan (see LANGUAGE RULE).`;
 }
 
 export function buildComedySystemPrompt(mode: ComedyMode, provider: ComedyProvider): string {
   const name = COMEDY_LABEL[provider];
   const base = mode === "talk" ? buildTalkPrompt(name) : buildStandupPrompt(name);
   const addendum = COMEDY_PROVIDER_ADDENDUM[provider];
-  return addendum
-    ? `${COMEDY_NO_STYLE_LABELS}\n\n${base}\n\n${addendum}`
-    : `${COMEDY_NO_STYLE_LABELS}\n\n${base}`;
+  const parts = [COMEDY_LANGUAGE_RULE, COMEDY_NO_STYLE_LABELS, base];
+  if (addendum) parts.push(addendum);
+  return parts.join("\n\n");
 }
 
 function shuffle<T>(arr: T[]): T[] {
