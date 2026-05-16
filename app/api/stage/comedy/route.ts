@@ -5,9 +5,9 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { createSupabaseRouteAuthClient } from "@/lib/supabase/route-auth";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits";
 import {
-  COMEDY_MIN_SPEAKERS_PER_TURN,
   COMEDY_PROVIDERS,
   ensureComedyParticipantsInserted,
+  pickComedySpeakerSubset,
   runComedyTurn,
   type ComedyMessage,
   type ComedyProvider,
@@ -52,15 +52,6 @@ async function insertUserDebateEntry(supabase: SupabaseClient, sessionId: string
   if (b.error) console.warn("[comedy] debate_logs user insert:", b.error.message);
 }
 
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
-}
-
 function normalizeProvidersList(raw: unknown): ComedyProvider[] {
   if (!Array.isArray(raw)) return [];
   const out: ComedyProvider[] = [];
@@ -88,36 +79,6 @@ function normalizeSpeakCounts(raw: unknown): Record<ComedyProvider, number> {
     if (Number.isFinite(n) && n >= 0) base[p] = Math.floor(n);
   }
   return base;
-}
-
-function pickSpeakerSubset(params: {
-  lastTurnSpoke: ComedyProvider[];
-  speakCounts: Record<ComedyProvider, number>;
-}): ComedyProvider[] {
-  const k = COMEDY_MIN_SPEAKERS_PER_TURN + Math.floor(Math.random() * 2); // 5..6
-  const last = new Set(params.lastTurnSpoke);
-  const counts = params.speakCounts;
-
-  const pool = [...COMEDY_PROVIDERS];
-  const chosen: ComedyProvider[] = [];
-  while (chosen.length < k && pool.length) {
-    const weights = pool.map((p) => {
-      const base = 1;
-      const notSpokeLastBoost = last.has(p) ? 1 : 3;
-      const underUsedBoost = 1 + Math.max(0, 3 - Math.min(3, counts[p] ?? 0));
-      return base * notSpokeLastBoost * underUsedBoost;
-    });
-    const total = weights.reduce((a, b) => a + b, 0);
-    let r = Math.random() * total;
-    let idx = 0;
-    for (; idx < pool.length; idx++) {
-      r -= weights[idx]!;
-      if (r <= 0) break;
-    }
-    const picked = pool.splice(Math.min(idx, pool.length - 1), 1)[0]!;
-    chosen.push(picked);
-  }
-  return chosen.length ? chosen : shuffle(COMEDY_PROVIDERS).slice(0, k);
 }
 
 function normalizeProvider(raw: unknown): ComedyProvider | null {
@@ -279,7 +240,11 @@ export async function POST(req: Request) {
           await insertUserDebateEntry(supabase, sessionId, topic);
         }
 
-        const selectedProviders = pickSpeakerSubset({ lastTurnSpoke, speakCounts });
+        const selectedProviders = pickComedySpeakerSubset({
+          turnIndex,
+          lastTurnSpoke,
+          speakCounts,
+        });
         writeJson({ type: "turn_start", turnIndex, totalTurns: 4, selectedProviders });
         const res = await runComedyTurn({
           turnIndex,

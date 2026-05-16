@@ -6,6 +6,7 @@ import { createSupabaseRouteAuthClient } from "@/lib/supabase/route-auth";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits";
 import { MODEL_BY_PROVIDER, type AiProviderName } from "@/lib/ai/router";
 import {
+  buildStandupPerformanceOrder,
   COMEDY_PROVIDERS,
   normalizeComedyPriorSets,
   produceStandupSet,
@@ -17,15 +18,6 @@ import {
 type Provider = ComedyProvider;
 
 const PROVIDERS: Provider[] = [...COMEDY_PROVIDERS];
-
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
-}
 
 async function insertWithFallback(
   supabase: SupabaseClient,
@@ -183,7 +175,7 @@ export async function POST(req: Request) {
       if (error) console.warn("[standup] session_participants:", error.message);
     }
 
-    const order = shuffle(PROVIDERS);
+    const order = buildStandupPerformanceOrder();
     const provider = order[0]!;
     const ctx: ComedyTransportContext = {
       supabase,

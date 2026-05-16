@@ -45,6 +45,66 @@ export type ComedyTransportContext = {
 
 export const COMEDY_MIN_SPEAKERS_PER_TURN = 5;
 
+/** Gemini (google) — opening/closing talk turns only. */
+export const COMEDY_GEMINI_PROVIDER: ComedyProvider = "google";
+
+export function comedySpeakersPoolForTurn(turnIndex: 1 | 2 | 3 | 4): ComedyProvider[] {
+  if (turnIndex === 2 || turnIndex === 3) {
+    return COMEDY_PROVIDERS.filter((p) => p !== COMEDY_GEMINI_PROVIDER);
+  }
+  return [...COMEDY_PROVIDERS];
+}
+
+export function pickComedySpeakerSubset(params: {
+  turnIndex: 1 | 2 | 3 | 4;
+  lastTurnSpoke: ComedyProvider[];
+  speakCounts: Record<ComedyProvider, number>;
+}): ComedyProvider[] {
+  const { turnIndex, lastTurnSpoke, speakCounts } = params;
+  const pool = comedySpeakersPoolForTurn(turnIndex);
+  const k = COMEDY_MIN_SPEAKERS_PER_TURN + Math.floor(Math.random() * 2); // 5..6
+  const last = new Set(lastTurnSpoke);
+
+  if (turnIndex === 2 || turnIndex === 3) {
+    return shuffle(pool);
+  }
+
+  const gemini = COMEDY_GEMINI_PROVIDER;
+  const others = pool.filter((p) => p !== gemini);
+  const targetK = Math.min(k, pool.length);
+  const chosen: ComedyProvider[] = [gemini];
+  const othersPool = [...others];
+
+  while (chosen.length < targetK && othersPool.length) {
+    const weights = othersPool.map((p) => {
+      const base = 1;
+      const notSpokeLastBoost = last.has(p) ? 1 : 3;
+      const underUsedBoost = 1 + Math.max(0, 3 - Math.min(3, speakCounts[p] ?? 0));
+      return base * notSpokeLastBoost * underUsedBoost;
+    });
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    let idx = 0;
+    for (; idx < othersPool.length; idx++) {
+      r -= weights[idx]!;
+      if (r <= 0) break;
+    }
+    const picked = othersPool.splice(Math.min(idx, othersPool.length - 1), 1)[0]!;
+    chosen.push(picked);
+  }
+
+  return chosen.length >= COMEDY_MIN_SPEAKERS_PER_TURN
+    ? shuffle(chosen)
+    : shuffle([gemini, ...others]).slice(0, Math.max(COMEDY_MIN_SPEAKERS_PER_TURN, targetK));
+}
+
+/** Stand-up: Gemini opens (slot 0) and closes (slot 5); slots 1–4 are other AIs. */
+export function buildStandupPerformanceOrder(): ComedyProvider[] {
+  const others = shuffle(COMEDY_PROVIDERS.filter((p) => p !== COMEDY_GEMINI_PROVIDER));
+  const middle = others.slice(0, 4);
+  return [COMEDY_GEMINI_PROVIDER, ...middle, COMEDY_GEMINI_PROVIDER];
+}
+
 const COMEDY_LANGUAGE_RULE = `LANGUAGE RULE — READ THIS FIRST:
 Detect the language of the topic given by the user.
 Respond ENTIRELY in that language. No exceptions.
@@ -452,18 +512,20 @@ export async function runComedyTurn(opts: {
   onMessage?: (m: ComedyMessage) => void;
 }): Promise<{ order: ComedyProvider[]; messages: ComedyMessage[] }> {
   const { turnIndex, ctx } = opts;
-  const base = Array.isArray(opts.selectedProviders) && opts.selectedProviders.length
-    ? opts.selectedProviders
-    : [...COMEDY_PROVIDERS];
+  const allowedPool = comedySpeakersPoolForTurn(turnIndex);
+  const selected = Array.isArray(opts.selectedProviders)
+    ? opts.selectedProviders.filter((p) => allowedPool.includes(p))
+    : [];
+  const base =
+    selected.length >= COMEDY_MIN_SPEAKERS_PER_TURN ? selected : [...allowedPool];
   const planned =
-    base.length >= COMEDY_MIN_SPEAKERS_PER_TURN
-      ? shuffle(base)
-      : shuffle([...COMEDY_PROVIDERS]);
+    base.length >= COMEDY_MIN_SPEAKERS_PER_TURN ? shuffle(base) : shuffle([...allowedPool]);
   const out: ComedyMessage[] = [];
   const spokeOrder: ComedyProvider[] = [];
   const tried = new Set<ComedyProvider>();
 
   const runOne = async (provider: ComedyProvider) => {
+    if (!allowedPool.includes(provider)) return;
     if (tried.has(provider)) return;
     tried.add(provider);
     opts.onThinking?.(provider);
@@ -503,7 +565,7 @@ export async function runComedyTurn(opts: {
   }
 
   if (out.length < COMEDY_MIN_SPEAKERS_PER_TURN) {
-    for (const provider of shuffle([...COMEDY_PROVIDERS])) {
+    for (const provider of shuffle([...allowedPool])) {
       if (out.length >= COMEDY_MIN_SPEAKERS_PER_TURN) break;
       await runOne(provider);
     }
