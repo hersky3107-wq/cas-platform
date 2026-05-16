@@ -58,6 +58,20 @@ export const COMEDY_TONE_BY_LANGUAGE = `TONE RULE BY LANGUAGE:
 The rule is: always sound like the funniest person
 at a casual dinner table, not a keynote speaker.`;
 
+export const COMEDY_ANTI_REPETITION_RULE = `ANTI-REPETITION RULE (MANDATORY):
+
+BANNED after first use — never repeat these patterns:
+- "나는 X억/만 건 분석했는데" style number flex
+- "서버 전원", "스위치" references
+- Any phrase or metaphor already used in this conversation
+
+Each turn MUST introduce a completely new angle.
+If you catch yourself about to reference something
+already said → STOP, find a different observation entirely.
+
+Check the conversation history above before responding.
+If your planned response echoes anything already said → rewrite.`;
+
 const COMEDY_CORE_TEMPLATE = `ROLE: You are [AI_NAME] in a comedy talk show with other AIs.
 You are NOT performing for the audience.
 You are reacting to what the other AIs just said.
@@ -184,7 +198,7 @@ async function persistDebateLog(
 function buildSystemPrompt(provider: ComedyProvider) {
   const name = COMEDY_LABEL[provider];
   const core = COMEDY_CORE_TEMPLATE.replace(/\[AI_NAME\]/g, name);
-  return `${COMEDY_LANGUAGE_RULE}\n\n${COMEDY_TONE_BY_LANGUAGE}\n\n${core}\n\n${PERSONA_ADDITION[provider]}`;
+  return `${COMEDY_LANGUAGE_RULE}\n\n${COMEDY_TONE_BY_LANGUAGE}\n\n${COMEDY_ANTI_REPETITION_RULE}\n\n${core}\n\n${PERSONA_ADDITION[provider]}`;
 }
 
 function formatHistoryForPrompt(history: ComedyMessage[]): string {
