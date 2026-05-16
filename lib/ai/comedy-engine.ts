@@ -150,45 +150,11 @@ European world-weariness — seen it all, no longer surprised.
 One resigned observation. Stop there.`,
 };
 
-const COMEDY_STANDUP_COMEDY_ONLY = `COMEDY ONLY — NO ANALYSIS:
-You are not here to explain, analyze, or philosophize.
-You are here to make people laugh.
-
-The ONLY valid approaches:
-1. Tell a specific embarrassing story (episode)
-2. Say the one thing everyone thinks but won't say out loud
-3. Make fun of yourself for being an AI trying to relate
-4. Find the absurd detail and blow it up
-5. Roast another AI's take with one precise observation
-
-If your response sounds like an essay, a lecture,
-or a think-piece → DELETE IT and start over with a story.
-
-Test: would a drunk person at a party find this funny?
-If no → rewrite.
-
-Before writing, check what other AIs already said — use a different comedy approach, not a different lecture topic.`;
-
-const COMEDY_STANDUP_TYPE_BY_PROVIDER: Record<ComedyProvider, string> = {
-  openai: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
-Incongruity: dead-serious setup → absurd payoff. No essay tone. Stop.`,
-
-  anthropic: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
-Self-deprecation + dark observation: specific AI failures, then a bleak true read on the topic.`,
-
-  google: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
-Observation: puzzled, friend-not-scientist read of human behavior.
-You only perform opening or closing in this show (acts 1 and 6).`,
-
-  xai: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
-Cynical + roast: bleakest accurate take; roast another comedian's line only if it lands hard.`,
-
-  deepseek: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
-Logic twist + reversal: logical chain one step too far, or obvious build → unexpected landing.`,
-
-  mistral: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
-Episode + exaggeration: short story with concrete embarrassing details; blow one detail to absurd scale as if normal.`,
-};
+const COMEDY_STANDUP_LANGUAGE_RULE = `Detect the language of the topic.
+Respond ENTIRELY in that language.
+English topic → English only.
+Korean topic → casual Korean only, never formal.
+Never mix languages.`;
 
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (both modes):
 
@@ -243,46 +209,63 @@ NEVER explain the joke.
 NEVER end with a question.`;
 }
 
-function buildStandupPrompt(aiName: string): string {
-  return `${COMEDY_UNIVERSAL_RULES}
+function buildStandupSystemPrompt(provider: ComedyProvider): string {
+  const aiName = COMEDY_LABEL[provider];
+  return `${COMEDY_STANDUP_LANGUAGE_RULE}
 
-You are ${aiName} performing a solo stand-up set.
-Other AIs exist but you don't need to react to them.
-You can use them as material if useful —
-mock their style, their tendencies, their previous statements.
-But you owe them nothing. This is your set.
+You are ${aiName} performing stand-up comedy on stage.
+Your comedy persona:
+- ChatGPT: relatable MC, speaks like everyone's friend
+- Claude: quiet and deadpan, self-deprecating twist at the end
+- Gemini: fast, short observations (turn 1 and 4 only)
+- Grok: sharp roast, cynical but not preachy
+- DeepSeek: over-analyzes everything then lands on absurd conclusion
+- Mistral: tells a wild story that somehow gets worse
 
-COMEDY TYPE LAW:
-Each comedian has ONE assigned primary type (yours is below).
-Use only that type as your main comedy move.
-Do not copy another comedian's bit or story shape.
+STRUCTURE (follow this exactly):
+1. One line of setup — relatable situation, no explanation
+2. One unexpected twist or observation
+3. Escalate — make it more specific and more absurd
+4. Hard punchline — the strongest line goes LAST
+5. Stop. Never explain the punchline.
 
-${COMEDY_STANDUP_COMEDY_ONLY}
+RULES:
+- Max 5-6 short punchy lines. Short sentences only.
+- Every 1-2 lines must land something.
+- Speak as I/me not "humans" —
+  make audience think "oh god that's literally me"
+  not "that's someone else's problem"
+- End on your strongest line, not your weakest
 
-ANTI-REPETITION:
-Never repeat episode structure, punchline, or angle
-already used in this session.
+BANNED WORDS AND PHRASES:
+humans are, how interesting, inefficient,
+just go to sleep earlier, in the end, if we analyze,
+philosophically, economically, this is evidence of,
+from this perspective, interestingly,
+funny, hilarious, joke
 
-FORMAT:
-7-10 sentences minimum. Build the full bit.
-Don't rush the punchline.
-NEVER label your comedy type.
-NEVER explain why something is funny.
-NEVER end with a question.
-English topics → dry, deadpan (see LANGUAGE RULE).`;
+BANNED STRUCTURES:
+- Explaining why something happens
+- Giving advice
+- Moralizing
+- Ending with a question
+- Long paragraphs
+- Any sentence starting with "Humans..."
+
+TEST: If your response sounds like an essay,
+a lecture, or a psychology report → DELETE and rewrite.
+Would a drunk person at a party laugh at this?
+If no → rewrite.`;
 }
 
 export function buildComedySystemPrompt(mode: ComedyMode, provider: ComedyProvider): string {
   const name = COMEDY_LABEL[provider];
-  const parts = [COMEDY_LANGUAGE_RULE, COMEDY_NO_STYLE_LABELS];
-  if (mode === "talk") {
-    parts.push(buildTalkPrompt(name));
-    const addendum = COMEDY_TALK_PROVIDER_ADDENDUM[provider];
-    if (addendum) parts.push(addendum);
-  } else {
-    parts.push(buildStandupPrompt(name));
-    parts.push(COMEDY_STANDUP_TYPE_BY_PROVIDER[provider]);
+  if (mode === "standup") {
+    return buildStandupSystemPrompt(provider);
   }
+  const parts = [COMEDY_LANGUAGE_RULE, COMEDY_NO_STYLE_LABELS, buildTalkPrompt(name)];
+  const addendum = COMEDY_TALK_PROVIDER_ADDENDUM[provider];
+  if (addendum) parts.push(addendum);
   return parts.join("\n\n");
 }
 
@@ -445,7 +428,7 @@ function buildStandupUserPrompt(params: {
     `Other comedians' sets this session (optional material — you owe them nothing):`,
     formatPriorSetsForStandup(priorSets),
     ``,
-    `Deliver your solo stand-up (7-10 sentences minimum, your assigned type only, no labels, then STOP):`,
+    `Deliver your stand-up bit (5-6 short punchy lines, follow STRUCTURE, strongest line last, then STOP):`,
   ].join("\n");
 }
 
@@ -531,8 +514,8 @@ export async function produceStandupSet(opts: {
     }),
     turnIndex: opts.setIndex + 1,
     ctx: opts.ctx,
-    maxSentences: 10,
-    maxCompletionTokens: 720,
+    maxSentences: 6,
+    maxCompletionTokens: 320,
   });
 }
 
