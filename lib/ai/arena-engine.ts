@@ -3,8 +3,11 @@ import { runSingleAiProvider, type AiProviderName } from '@/lib/ai/router'
 import {
   ARENA_BANNED_PHRASES_ROUND_4_PLUS,
   ARENA_LANGUAGE_RULE_CRITICAL,
+  ARENA_LANGUAGE_RULE_LOGIC_BATTLE,
+  ARENA_REPETITION_RULES_LOGIC_BATTLE,
   ARENA_REPETITION_RULES_MANDATORY,
   ARENA_ROUND_7_9_RESPONSE_RULE,
+  buildArenaFighterRoleLockPrompt,
   buildArenaSupporterMicroPrompt,
   buildArenaSystemPrompt,
   formatArenaMemoryInjectionBlock,
@@ -233,7 +236,10 @@ async function invokeArenaModel(params: {
 }): Promise<{ parsed: ParsedArenaTagBlock; raw: string; ms: number; error?: string }> {
   const { ai, userPrompt, ctx, roundNumber, persistTurn, maxTokens, temperature } = params
   const fightMode: ArenaFightMode = params.fightMode ?? 'logic'
-  const plainSpeech = params.plainSpeechPersist === true || fightMode === 'street'
+  const plainSpeech =
+    params.plainSpeechPersist === true ||
+    fightMode === 'street' ||
+    (fightMode === 'logic' && roundNumber === 1)
   const provider = ARENA_TO_PROVIDER[ai]
   const memoryBlock =
     params.arenaMemory?.length && params.memoryRound != null
@@ -244,9 +250,9 @@ async function invokeArenaModel(params: {
   const supporterStack =
     isSupporter && supporterChamp
       ? [
-          ARENA_LANGUAGE_RULE_CRITICAL,
+          fightMode === 'logic' ? ARENA_LANGUAGE_RULE_LOGIC_BATTLE : ARENA_LANGUAGE_RULE_CRITICAL,
           buildArenaSupporterMicroPrompt(ARENA_DISPLAY[ai], ARENA_DISPLAY[supporterChamp]),
-          ARENA_REPETITION_RULES_MANDATORY,
+          fightMode === 'logic' ? ARENA_REPETITION_RULES_LOGIC_BATTLE : ARENA_REPETITION_RULES_MANDATORY,
         ].join('\n\n')
       : ''
   const baseSystem = isSupporter
@@ -258,7 +264,9 @@ async function invokeArenaModel(params: {
         const g = guards.length ? `\n\n${guards.join('\n\n')}` : ''
         return `${buildArenaSystemPrompt(ai, fightMode, roundNumber)}${g}`
       })()
+  const roleLock = isSupporter ? '' : buildArenaFighterRoleLockPrompt(ai)
   const systemPrompt = [
+    roleLock.trim(),
     memoryBlock.trim(),
     `${baseSystem}${params.extraSystemPrompt?.trim() ? `\n\n${params.extraSystemPrompt.trim()}` : ''}`,
   ]
