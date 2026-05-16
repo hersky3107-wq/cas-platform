@@ -157,6 +157,16 @@ English topic → English only.
 Non-English topic → match that language, casual informal only, never formal.
 Never mix languages.`;
 
+const COMEDY_STANDUP_NO_OUTPUT_LABELS = `NEVER write these words in your response:
+"ESCALATE:", "Punchline:", "Here's my set:",
+"Setup:", "Twist:", "Example:", "Note:"
+These are internal instructions only.
+Just perform. Never label what you're doing.`;
+
+const COMEDY_STANDUP_CLAUDE_ADDENDUM = `You MUST end on a complete punchline.
+Never stop at "cold dread." or any unfinished thought.
+Your last line = your best line. Land it. Stop.`;
+
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (both modes):
 
 TONE (follow LANGUAGE RULE above):
@@ -212,9 +222,7 @@ NEVER end with a question.`;
 
 function buildStandupSystemPrompt(provider: ComedyProvider): string {
   const aiName = COMEDY_LABEL[provider];
-  return `${COMEDY_STANDUP_LANGUAGE_RULE}
-
-You are ${aiName} performing stand-up comedy on stage.
+  const body = `You are ${aiName} performing stand-up comedy on stage.
 Your comedy persona:
 - ChatGPT: relatable MC, speaks like everyone's friend
 - Claude: quiet and deadpan, self-deprecating twist at the end
@@ -321,6 +329,10 @@ TEST: If your response sounds like an essay,
 a lecture, or a psychology report → DELETE and rewrite.
 Would a drunk person at a party laugh at this?
 If no → rewrite.`;
+
+  const parts = [COMEDY_STANDUP_LANGUAGE_RULE, COMEDY_STANDUP_NO_OUTPUT_LABELS, body];
+  if (provider === "anthropic") parts.push(COMEDY_STANDUP_CLAUDE_ADDENDUM);
+  return parts.join("\n\n");
 }
 
 export function buildComedySystemPrompt(mode: ComedyMode, provider: ComedyProvider): string {
@@ -580,7 +592,7 @@ export async function produceStandupSet(opts: {
     turnIndex: opts.setIndex + 1,
     ctx: opts.ctx,
     maxSentences: 6,
-    maxCompletionTokens: 480,
+    maxCompletionTokens: opts.provider === "anthropic" ? 640 : 480,
   });
 }
 
