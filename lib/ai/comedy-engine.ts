@@ -37,21 +37,28 @@ export type ComedyTransportContext = {
   supabaseAccessToken?: string;
 };
 
+export const COMEDY_MIN_SPEAKERS_PER_TURN = 5;
+
+const COMEDY_NO_STYLE_LABELS = `NEVER write "TYPE A", "TYPE B", or any style label
+in your response. These are internal guides only.
+Respond naturally without labeling your style.`;
+
 const COMEDY_UNIVERSAL_RULES = `UNIVERSAL RULES (apply to ALL AIs):
 
-LANGUAGE: Always match the topic language.
-Korean topic → casual 반말/해요체, NEVER 합쇼체
+TONE BY LANGUAGE:
+Korean topic → casual 반말 or 해요체, NEVER 합쇼체/습니다체
 English topic → dry, deadpan, conversational
-Never mix languages.
+Never mix languages within a response.
 
 LENGTH: 3-5 sentences. Build then land. Cut ruthlessly.
 
-ANTI-REPETITION:
-- Never repeat a metaphor, phrase, or angle already used
-- Never start with "나는 X억 건 분석했는데" or any data-size flex
-- Check conversation history — if planned response echoes
-  anything already said → rewrite entirely
-- Rotate TYPE A and TYPE B — never use same type twice in a row
+ANTI-REPETITION (MANDATORY):
+Before responding, read ALL previous turns.
+Never repeat a metaphor, punchline, or setup already used.
+Never open with data volume numbers.
+If your planned response echoes anything said before →
+rewrite from scratch with a completely different angle.
+Rotate your two internal comedy modes — never use the same mode twice in a row.
 
 FORBIDDEN WORDS: funny, hilarious, joke, humor, laugh,
 comedy, amusing, 웃기다(as self-description)
@@ -106,10 +113,22 @@ human behavior for the first time.
 Be genuinely puzzled, not sarcastic.
 The confusion IS the joke — don't explain it.
 
-TYPE B — REVERSAL:
-Take the most obvious expected conclusion →
-flip it to the opposite → state it plainly → stop.
-No explanation. The gap does the work.
+TYPE B — RELATABILITY:
+Find the one specific embarrassing detail
+everyone recognizes but nobody says out loud.
+Name it exactly. Don't explain it.
+Sound like a friend who just noticed something
+obvious that everyone pretended not to see.
+Wrong: elaborate conspiracy theory setup
+Right: "근데 다들 알잖아, 거기서 실제로
+일하는 사람은 한 명도 없다는 거"
+
+GEMINI TONE:
+Sound like a slightly confused friend,
+not a scientist presenting findings.
+Wrong: "그들의 거주지에도 비슷한 평평한 판과
+앉을 공간이 분명 있을 텐데"
+Right: "집에도 테이블 있잖아. 근데 왜 돈 내고 여기 와?"
 
 Pick ONE type per turn. Alternate across turns.`,
 
@@ -154,10 +173,13 @@ Real-feeling details. Unexpected ending.
 End on the most embarrassing or bleak detail.
 Stop there — never explain why it's funny.
 
-TYPE B — EXAGGERATION:
-Take one small detail from the topic →
-blow it up to absurd scale →
-present the absurd scale as if it's completely normal.
+TYPE B — CYNICAL RESIGNATION:
+Find the bleak but accurate truth about the situation.
+State it plainly like someone who has seen it all
+and is no longer surprised.
+European world-weariness — not angry, just tired and right.
+"뭐 어쩌겠어. 다 그렇지."
+End with one flat, resigned observation. Stop there.
 
 Pick ONE type per turn. Alternate across turns.`,
 };
@@ -228,7 +250,7 @@ function buildSystemPrompt(provider: ComedyProvider) {
   const role = `ROLE: You are ${name} in a comedy talk show with other AIs.
 You are NOT performing for the audience.
 You are reacting to what the other AIs just said.`;
-  return `${COMEDY_UNIVERSAL_RULES}\n\n${role}\n\n${COMEDY_PERSONALITY[provider]}`;
+  return `${COMEDY_NO_STYLE_LABELS}\n\n${COMEDY_UNIVERSAL_RULES}\n\n${role}\n\n${COMEDY_PERSONALITY[provider]}`;
 }
 
 function formatHistoryForPrompt(history: ComedyMessage[]): string {
@@ -275,44 +297,41 @@ function newMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export async function runComedyTurn(opts: {
+function isFailedComedyContent(content: string): boolean {
+  const t = content.trim();
+  if (!t) return true;
+  if (t.startsWith("[No response]")) return true;
+  if (t.startsWith("[Call failed]")) return true;
+  return false;
+}
+
+async function produceComedyLine(params: {
+  provider: ComedyProvider;
   turnIndex: 1 | 2 | 3 | 4;
+  orderIndex: number;
   topic: string;
-  history: ComedyMessage[];
-  selectedProviders?: ComedyProvider[];
+  priorAll: ComedyMessage[];
+  reaction: ReturnType<typeof pickReactionTarget>;
   ctx: ComedyTransportContext;
-  onThinking?: (provider: ComedyProvider) => void;
-  onMessage?: (m: ComedyMessage) => void;
-}): Promise<{ order: ComedyProvider[]; messages: ComedyMessage[] }> {
-  const { turnIndex, ctx } = opts;
-  const base = Array.isArray(opts.selectedProviders) && opts.selectedProviders.length
-    ? opts.selectedProviders
-    : COMEDY_PROVIDERS;
-  const order = shuffle(base);
-  const out: ComedyMessage[] = [];
+}): Promise<{ content: string; responseTimeMs: number; ok: boolean }> {
+  const { provider, turnIndex, orderIndex, topic, priorAll, reaction, ctx } = params;
 
-  for (let i = 0; i < order.length; i++) {
-    const provider = order[i]!;
-    opts.onThinking?.(provider);
+  const prompt = [
+    `Topic: ${topic}`,
+    ``,
+    `TURN ${turnIndex} / 4`,
+    ``,
+    `Conversation so far:`,
+    formatHistoryForPrompt(priorAll),
+    ``,
+    reaction
+      ? `Conversation context — you may quote and react to this line by name if it fits your personality:\n"${reaction.label}" said: "${reaction.snippet}"\nUse a different angle than your last line in this show.`
+      : `No prior lines yet. Open on the topic using one of your two internal comedy modes.`,
+    ``,
+    `Your line (3-5 sentences, one mode only, no style labels in output, then STOP):`,
+  ].join("\n");
 
-    const priorAll = [...opts.history, ...out];
-    const reaction = pickReactionTarget(priorAll);
-
-    const prompt = [
-      `Topic: ${opts.topic}`,
-      ``,
-      `TURN ${turnIndex} / 4`,
-      ``,
-      `Conversation so far:`,
-      formatHistoryForPrompt(priorAll),
-      ``,
-      reaction
-        ? `Conversation context — if your personality uses TYPE A ROAST (Grok), you may target this line by name and quote it:\n"${reaction.label}" said: "${reaction.snippet}"\nOtherwise react to the thread using YOUR assigned TYPE A or TYPE B (not the same type as your last line).`
-        : `No prior lines yet. Pick TYPE A or TYPE B from your personality — open on the topic.`,
-      ``,
-      `Your line (3-5 sentences, one comedy type only, then STOP):`,
-    ].join("\n");
-
+  for (let attempt = 0; attempt < 2; attempt++) {
     const res = await runSingleAiProvider({
       supabase: ctx.supabase,
       sessionId: ctx.sessionId,
@@ -328,29 +347,88 @@ export async function runComedyTurn(opts: {
       },
     });
 
-    const content = clampToMaxSentences(
-      stripTurnPrefixFromModelOutput(res.text ?? res.error ?? "[No response]"),
-      5
-    );
+    const raw = res.text ?? res.error ?? "[No response]";
+    const content = clampToMaxSentences(stripTurnPrefixFromModelOutput(raw), 5);
+    if (!isFailedComedyContent(content)) {
+      return { content, responseTimeMs: res.responseTimeMs, ok: true };
+    }
+  }
+
+  return {
+    content: "[Call failed]",
+    responseTimeMs: 0,
+    ok: false,
+  };
+}
+
+export async function runComedyTurn(opts: {
+  turnIndex: 1 | 2 | 3 | 4;
+  topic: string;
+  history: ComedyMessage[];
+  selectedProviders?: ComedyProvider[];
+  ctx: ComedyTransportContext;
+  onThinking?: (provider: ComedyProvider) => void;
+  onMessage?: (m: ComedyMessage) => void;
+}): Promise<{ order: ComedyProvider[]; messages: ComedyMessage[] }> {
+  const { turnIndex, ctx } = opts;
+  const base = Array.isArray(opts.selectedProviders) && opts.selectedProviders.length
+    ? opts.selectedProviders
+    : [...COMEDY_PROVIDERS];
+  const planned =
+    base.length >= COMEDY_MIN_SPEAKERS_PER_TURN
+      ? shuffle(base)
+      : shuffle([...COMEDY_PROVIDERS]);
+  const out: ComedyMessage[] = [];
+  const spokeOrder: ComedyProvider[] = [];
+  const tried = new Set<ComedyProvider>();
+
+  const runOne = async (provider: ComedyProvider) => {
+    if (tried.has(provider)) return;
+    tried.add(provider);
+    opts.onThinking?.(provider);
+    const priorAll = [...opts.history, ...out];
+    const reaction = pickReactionTarget(priorAll);
+    const line = await produceComedyLine({
+      provider,
+      turnIndex,
+      orderIndex: out.length,
+      topic: opts.topic,
+      priorAll,
+      reaction,
+      ctx,
+    });
+    if (!line.ok) return;
     const msg: ComedyMessage = {
       id: newMessageId(),
       turnIndex,
-      orderIndex: i,
+      orderIndex: out.length,
       provider,
-      content,
-      responseTimeMs: res.responseTimeMs,
+      content: line.content,
+      responseTimeMs: line.responseTimeMs,
     };
     out.push(msg);
+    spokeOrder.push(provider);
     opts.onMessage?.(msg);
     await persistDebateLog(ctx.supabase, ctx.sessionId, {
       turnIndex,
-      orderIndex: i,
+      orderIndex: msg.orderIndex,
       provider,
-      content,
+      content: msg.content,
     });
+  };
+
+  for (const provider of planned) {
+    await runOne(provider);
   }
 
-  return { order, messages: out };
+  if (out.length < COMEDY_MIN_SPEAKERS_PER_TURN) {
+    for (const provider of shuffle([...COMEDY_PROVIDERS])) {
+      if (out.length >= COMEDY_MIN_SPEAKERS_PER_TURN) break;
+      await runOne(provider);
+    }
+  }
+
+  return { order: spokeOrder, messages: out };
 }
 
 export async function ensureComedyParticipantsInserted(params: {

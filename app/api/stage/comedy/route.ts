@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { createSupabaseRouteAuthClient } from "@/lib/supabase/route-auth";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits";
 import {
+  COMEDY_MIN_SPEAKERS_PER_TURN,
   COMEDY_PROVIDERS,
   ensureComedyParticipantsInserted,
   runComedyTurn,
@@ -93,7 +94,7 @@ function pickSpeakerSubset(params: {
   lastTurnSpoke: ComedyProvider[];
   speakCounts: Record<ComedyProvider, number>;
 }): ComedyProvider[] {
-  const k = 4 + Math.floor(Math.random() * 3); // 4..6
+  const k = COMEDY_MIN_SPEAKERS_PER_TURN + Math.floor(Math.random() * 2); // 5..6
   const last = new Set(params.lastTurnSpoke);
   const counts = params.speakCounts;
 
