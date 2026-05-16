@@ -1127,17 +1127,22 @@ export default function ArenaPage() {
                   >
                     Who was right? Vote
                   </button>
-                  <button
-                    type="button"
-                    disabled={
-                      isLoading ||
-                      (finalBundleCost != null && credits !== null && credits < finalBundleCost)
-                    }
-                    onClick={() => void runFinalRounds456()}
-                    className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                  >
-                    Continue ▶ (rounds 4–6, uses credits)
-                  </button>
+                  <div className="flex w-full min-w-[min(100%,16rem)] flex-col items-center gap-1.5 sm:w-auto">
+                    <button
+                      type="button"
+                      disabled={
+                        isLoading ||
+                        (finalBundleCost != null && credits !== null && credits < finalBundleCost)
+                      }
+                      onClick={() => void runFinalRounds456()}
+                      className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                    >
+                      Continue ▶ (rounds 4–6, uses credits)
+                    </button>
+                    <p className="max-w-xs text-center text-[11px] font-normal leading-snug text-slate-300 opacity-50">
+                      Most debates heat up in round 4–6. Worth continuing.
+                    </p>
+                  </div>
                 </div>
               </div>
             ) : null}
