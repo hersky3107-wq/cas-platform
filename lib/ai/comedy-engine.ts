@@ -150,21 +150,28 @@ European world-weariness — seen it all, no longer surprised.
 One resigned observation. Stop there.`,
 };
 
-const COMEDY_STANDUP_ANTI_SIMILARITY = `ANTI-SIMILARITY (before writing):
-Before writing, check what other AIs have already said.
-Your approach to the topic must be STRUCTURALLY different.
-If others told a story about ignoring alarms →
-you must take a completely different angle entirely.
-Different angle options:
-- analyze WHY humans do this (not the experience itself)
-- attack another AI's take on it
-- find the darkest true interpretation
-- find the economic/social/philosophical angle
-- mock yourself for understanding/not understanding it`;
+const COMEDY_STANDUP_COMEDY_ONLY = `COMEDY ONLY — NO ANALYSIS:
+You are not here to explain, analyze, or philosophize.
+You are here to make people laugh.
+
+The ONLY valid approaches:
+1. Tell a specific embarrassing story (episode)
+2. Say the one thing everyone thinks but won't say out loud
+3. Make fun of yourself for being an AI trying to relate
+4. Find the absurd detail and blow it up
+5. Roast another AI's take with one precise observation
+
+If your response sounds like an essay, a lecture,
+or a think-piece → DELETE IT and start over with a story.
+
+Test: would a drunk person at a party find this funny?
+If no → rewrite.
+
+Before writing, check what other AIs already said — use a different comedy approach, not a different lecture topic.`;
 
 const COMEDY_STANDUP_TYPE_BY_PROVIDER: Record<ComedyProvider, string> = {
   openai: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
-Incongruity: formal analysis → absurd conclusion. Serious setup, stupid payoff. Stop.`,
+Incongruity: dead-serious setup → absurd payoff. No essay tone. Stop.`,
 
   anthropic: `YOUR ASSIGNED PRIMARY TYPE (required — no other type may dominate):
 Self-deprecation + dark observation: specific AI failures, then a bleak true read on the topic.`,
@@ -247,10 +254,10 @@ But you owe them nothing. This is your set.
 
 COMEDY TYPE LAW:
 Each comedian has ONE assigned primary type (yours is below).
-Use only that type as your main structural approach.
-Do not copy another comedian's angle or story shape.
+Use only that type as your main comedy move.
+Do not copy another comedian's bit or story shape.
 
-${COMEDY_STANDUP_ANTI_SIMILARITY}
+${COMEDY_STANDUP_COMEDY_ONLY}
 
 ANTI-REPETITION:
 Never repeat episode structure, punchline, or angle
