@@ -101,6 +101,37 @@ const AGREE_GREEN = "#10B981";
 
 type Phase = "input" | "round1" | "sides_reveal" | "battle" | "result";
 
+type AiProgressRow = {
+  ai: ArenaAI;
+  status: "pending" | "thinking" | "done";
+  startedAt?: number;
+  durationMs?: number;
+};
+
+function computeBattleSeedAis(
+  roundNumber: number,
+  sides: { left: ArenaAI | null; right: ArenaAI | null; leftSupport: ArenaAI[]; rightSupport: ArenaAI[] },
+  round1: ArenaRound | undefined
+): ArenaAI[] {
+  const L = sides.left;
+  const R = sides.right;
+  if (!L || !R) return [];
+  const leftLineup = round1?.sides?.left?.length ? round1.sides.left : [L];
+  const rightLineup = round1?.sides?.right?.length ? round1.sides.right : [R];
+  const leftSup = leftLineup.filter((a) => a !== L);
+  const rightSup = rightLineup.filter((a) => a !== R);
+  if (roundNumber === 2) {
+    return [L, R, ...leftSup, ...rightSup];
+  }
+  if (roundNumber === 3) {
+    return [L, R];
+  }
+  if (roundNumber >= 4 && roundNumber <= 9) {
+    return [L, R];
+  }
+  return [L, R];
+}
+
 function positionBadgeStyle(position: string): { label: string; color: string } {
   const visible = visibleArenaText(position);
   const p = visible.toUpperCase();
@@ -193,23 +224,59 @@ function ArenaBubble({
   );
 }
 
-function ProgressBar({ current, total }: { current: number; total: number }) {
-  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+function ArenaAiStreamProgress({
+  rows,
+  streamTick,
+}: {
+  rows: AiProgressRow[];
+  /** Bumped while any row is thinking so elapsed time updates. */
+  streamTick: number;
+}) {
+  void streamTick;
+  const now = Date.now();
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-[11px] text-slate-400">
-        <span>Progress</span>
-        <span className="tabular-nums">
-          {current}/{total} AIs responded
-        </span>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-        <div
-          className="h-full rounded-full bg-rose-500/90 transition-all duration-300"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
+    <ul className="space-y-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left">
+      {rows.map((row) => {
+        const name = ARENA_DISPLAY[row.ai];
+        if (row.status === "done") {
+          const sec = (row.durationMs ?? 0) / 1000;
+          return (
+            <li key={row.ai} className="text-[12px] leading-snug text-slate-200">
+              <span className="text-emerald-400" aria-hidden>
+                ✅
+              </span>{" "}
+              <span className="font-medium" style={{ color: ARENA_COLOR[row.ai] }}>
+                {name}
+              </span>
+              <span className="text-slate-400"> — responded ({sec.toFixed(1)}s)</span>
+            </li>
+          );
+        }
+        if (row.status === "thinking") {
+          const elapsed = row.startedAt != null ? Math.max(0, Math.floor((now - row.startedAt) / 1000)) : 0;
+          return (
+            <li key={row.ai} className="text-[12px] leading-snug text-slate-200">
+              <span className="text-amber-400" aria-hidden>
+                ⏳
+              </span>{" "}
+              <span className="font-medium" style={{ color: ARENA_COLOR[row.ai] }}>
+                {name}
+              </span>
+              <span className="text-slate-400"> — thinking… ({elapsed}s elapsed)</span>
+            </li>
+          );
+        }
+        return (
+          <li key={row.ai} className="text-[12px] leading-snug text-slate-500">
+            <span className="text-slate-600" aria-hidden>
+              ○
+            </span>{" "}
+            <span className="font-medium text-slate-500">{name}</span>
+            <span className="text-slate-600"> — waiting…</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -236,7 +303,8 @@ export default function ArenaPage() {
   const [round1Complete, setRound1Complete] = useState(false);
   const [battleLive, setBattleLive] = useState<ArenaResponse[]>([]);
   const [awaitingNextBattleRound, setAwaitingNextBattleRound] = useState(false);
-  const [thinkingAi, setThinkingAi] = useState<ArenaAI | null>(null);
+  const [aiProgressRows, setAiProgressRows] = useState<AiProgressRow[]>([]);
+  const [streamTick, setStreamTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<ArenaAI | null>(null);
   const [voteDone, setVoteDone] = useState(false);
@@ -257,6 +325,12 @@ export default function ArenaPage() {
     arenaMemoryRef.current = arenaMemory;
   }, [arenaMemory]);
 
+  useEffect(() => {
+    if (!isLoading || !aiProgressRows.some((r) => r.status === "thinking")) return undefined;
+    const id = setInterval(() => setStreamTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [isLoading, aiProgressRows]);
+
   const selectedList = useMemo(() => ARENA_ORDER.filter((a) => selected.has(a)), [selected]);
 
   const finalBundleCost = useMemo(() => {
@@ -274,17 +348,6 @@ export default function ArenaPage() {
       return null;
     }
   }, []);
-
-  /** Rounds 2–3: champs + static supporters; rounds 4–9: left → co → right. */
-  const battleResponsesPerRound = useMemo(() => {
-    if (displayBattleRound === 2) {
-      return 2 + sides.leftSupport.length + sides.rightSupport.length;
-    }
-    if (displayBattleRound >= 4) {
-      return 3;
-    }
-    return 2;
-  }, [displayBattleRound, sides.leftSupport.length, sides.rightSupport.length]);
 
   const round1CampCtx = useMemo((): ArenaCampContext => {
     const d = determineSides(round1Live);
@@ -325,7 +388,7 @@ export default function ArenaPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [phase, round1Live, battleLive, rounds, isLoading, round1Complete, awaitingNextBattleRound]);
+  }, [phase, round1Live, battleLive, rounds, isLoading, round1Complete, awaitingNextBattleRound, aiProgressRows]);
 
   const toggleAi = (ai: ArenaAI) => {
     setSelected((prev) => {
@@ -340,6 +403,41 @@ export default function ArenaPage() {
       return next;
     });
   };
+
+  const markResponseProgress = useCallback((r: ArenaResponse) => {
+    setAiProgressRows((prev) => {
+      const idx = prev.findIndex((x) => x.ai === r.ai);
+      if (idx < 0) {
+        return [...prev, { ai: r.ai, status: "done" as const, durationMs: r.responseTimeMs }];
+      }
+      return prev.map((row, i) =>
+        i === idx
+          ? { ...row, status: "done" as const, durationMs: r.responseTimeMs, startedAt: undefined }
+          : row
+      );
+    });
+  }, []);
+
+  const handleArenaThinking = useCallback(({ ai, roundNumber }: { ai: ArenaAI; roundNumber: number }) => {
+    const now = Date.now();
+    setAiProgressRows((prev) => {
+      const idx = prev.findIndex((row) => row.ai === ai);
+      if (idx >= 0) {
+        return prev.map((row, i) => (i === idx ? { ...row, status: "thinking" as const, startedAt: now } : row));
+      }
+      const L = sides.left;
+      const R = sides.right;
+      if (roundNumber >= 4 && roundNumber <= 9 && L != null && R != null && ai !== L && ai !== R) {
+        const rIdx = prev.findIndex((row) => row.ai === R);
+        if (rIdx >= 0) {
+          const copy = [...prev];
+          copy.splice(rIdx, 0, { ai, status: "thinking" as const, startedAt: now });
+          return copy;
+        }
+      }
+      return [...prev, { ai, status: "thinking" as const, startedAt: now }];
+    });
+  }, [sides.left, sides.right]);
 
   const readNdjsonArena = useCallback(
     async (
@@ -406,7 +504,6 @@ export default function ArenaPage() {
           ) {
             const rn = msg.roundNumber;
             flushSync(() => {
-              setThinkingAi(null);
               onResponse(msg.response!, rn);
             });
             await new Promise<void>((resolve) => {
@@ -419,7 +516,6 @@ export default function ArenaPage() {
             const completed = msg.round;
             if (completed) {
               flushSync(() => {
-                setThinkingAi(null);
                 onRound(completed);
               });
               await new Promise<void>((resolve) => {
@@ -444,7 +540,8 @@ export default function ArenaPage() {
     setSessionId(null);
     setSides({ left: null, right: null, leftSupport: [], rightSupport: [] });
     setAwaitingNextBattleRound(false);
-    setThinkingAi(null);
+    setAiProgressRows([]);
+    setStreamTick(0);
     setDisplayBattleRound(1);
     arenaFinalBundleTokenRef.current = null;
     arenaExtendedBundleTokenRef.current = null;
@@ -587,6 +684,9 @@ export default function ArenaPage() {
     resetArenaUi();
     setPhase("round1");
     try {
+      flushSync(() => {
+        setAiProgressRows(selectedList.map((ai) => ({ ai, status: "pending" as const })));
+      });
       await readNdjsonArena(
         { action: "start", topic: t, selectedAIs: selectedList, fightMode, arenaMemory: [] },
         (meta) => {
@@ -594,6 +694,7 @@ export default function ArenaPage() {
           if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
         },
         (response) => {
+          markResponseProgress(response);
           setRound1Live((prev) => [...prev, response]);
         },
         (round) => {
@@ -614,14 +715,14 @@ export default function ArenaPage() {
           arenaMemoryRef.current = mem;
           setArenaMemory(mem);
         },
-        ({ ai }) => setThinkingAi(ai)
+        handleArenaThinking
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setIsLoading(false);
     }
-  }, [topic, selectedList, isLoading, readNdjsonArena, resetArenaUi, fightMode]);
+  }, [topic, selectedList, isLoading, readNdjsonArena, resetArenaUi, fightMode, markResponseProgress, handleArenaThinking]);
 
   const battleUiRoundComplete = useCallback(
     (roundComplete: ArenaRound) => {
@@ -664,16 +765,23 @@ export default function ArenaPage() {
       setDisplayBattleRound(roundNumber);
       setPhase("battle");
       try {
+        const r1 = rounds.find((r) => r.roundNumber === 1);
+        flushSync(() => {
+          setAiProgressRows(
+            computeBattleSeedAis(roundNumber, sides, r1).map((ai) => ({ ai, status: "pending" as const }))
+          );
+        });
         const okStream = await readNdjsonArena(
           mergeBattleBodyForRound(roundNumber),
           (meta) => {
             if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
           },
           (response) => {
+            markResponseProgress(response);
             setBattleLive((prev) => [...prev, response]);
           },
           battleUiRoundComplete,
-          ({ ai }) => setThinkingAi(ai)
+          handleArenaThinking
         );
         return okStream;
       } catch (e: unknown) {
@@ -684,7 +792,7 @@ export default function ArenaPage() {
         setIsLoading(false);
       }
     },
-    [battleUiRoundComplete, mergeBattleBodyForRound, readNdjsonArena, sessionId, sides, topic]
+    [battleUiRoundComplete, mergeBattleBodyForRound, readNdjsonArena, sessionId, sides, topic, rounds, markResponseProgress, handleArenaThinking]
   );
 
   const runFinalRounds456 = useCallback(async () => {
@@ -701,19 +809,26 @@ export default function ArenaPage() {
       if (!purchased) return;
 
       const sequence = [4, 5, 6];
+      const r1 = rounds.find((r) => r.roundNumber === 1);
       for (const rn of sequence) {
         setBattleLive([]);
         setDisplayBattleRound(rn);
+        flushSync(() => {
+          setAiProgressRows(
+            computeBattleSeedAis(rn, sides, r1).map((ai) => ({ ai, status: "pending" as const }))
+          );
+        });
         const okStream = await readNdjsonArena(
           mergeBattleBodyForRound(rn),
           (meta) => {
             if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
           },
           (response) => {
+            markResponseProgress(response);
             setBattleLive((prev) => [...prev, response]);
           },
           battleUiRoundComplete,
-          ({ ai }) => setThinkingAi(ai)
+          handleArenaThinking
         );
         if (!okStream) break;
       }
@@ -722,7 +837,6 @@ export default function ArenaPage() {
     } finally {
       battleInflightRef.current = false;
       setIsLoading(false);
-      setThinkingAi(null);
       setBattleLive([]);
     }
   }, [
@@ -731,9 +845,11 @@ export default function ArenaPage() {
     purchaseArenaFinalBundleIfNeeded,
     readNdjsonArena,
     sessionId,
-    sides.left,
-    sides.right,
+    sides,
     topic,
+    rounds,
+    markResponseProgress,
+    handleArenaThinking,
   ]);
 
   /**
@@ -754,19 +870,26 @@ export default function ArenaPage() {
       if (!purchased) return;
 
       const sequence = [7, 8, 9];
+      const r1 = rounds.find((r) => r.roundNumber === 1);
       for (const rn of sequence) {
         setBattleLive([]);
         setDisplayBattleRound(rn);
+        flushSync(() => {
+          setAiProgressRows(
+            computeBattleSeedAis(rn, sides, r1).map((ai) => ({ ai, status: "pending" as const }))
+          );
+        });
         const okStream = await readNdjsonArena(
           mergeBattleBodyForRound(rn),
           (meta) => {
             if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
           },
           (response) => {
+            markResponseProgress(response);
             setBattleLive((prev) => [...prev, response]);
           },
           battleUiRoundComplete,
-          ({ ai }) => setThinkingAi(ai)
+          handleArenaThinking
         );
         if (!okStream) break;
       }
@@ -775,7 +898,6 @@ export default function ArenaPage() {
     } finally {
       battleInflightRef.current = false;
       setIsLoading(false);
-      setThinkingAi(null);
       setBattleLive([]);
     }
   }, [
@@ -784,9 +906,11 @@ export default function ArenaPage() {
     purchaseArenaExtendedBundleIfNeeded,
     readNdjsonArena,
     sessionId,
-    sides.left,
-    sides.right,
+    sides,
     topic,
+    rounds,
+    markResponseProgress,
+    handleArenaThinking,
   ]);
 
   const submitVote = useCallback(async () => {
@@ -942,16 +1066,10 @@ export default function ArenaPage() {
         {phase === "round1" ? (
           <div>
             <h2 className="mb-4 text-center text-lg font-bold text-white">ROUND 1 / 9 — Opening Statements</h2>
-            <div className="mb-4">
-              <ProgressBar current={round1Live.length} total={selectedList.length} />
-            </div>
-            {thinkingAi && isLoading ? (
-              <p className="mb-3 text-center text-sm text-slate-300">
-                <span className="font-semibold" style={{ color: ARENA_COLOR[thinkingAi] }}>
-                  {ARENA_DISPLAY[thinkingAi]}
-                </span>{" "}
-                is thinking…
-              </p>
+            {isLoading && aiProgressRows.length > 0 ? (
+              <div className="mb-4">
+                <ArenaAiStreamProgress rows={aiProgressRows} streamTick={streamTick} />
+              </div>
             ) : null}
             <div className="flex flex-col gap-3 pr-1">
               {round1Live.map((r) => {
@@ -973,14 +1091,8 @@ export default function ArenaPage() {
                   />
                 );
               })}
-              {isLoading && round1Live.length === 0 ? (
+              {isLoading && round1Live.length === 0 && aiProgressRows.length === 0 ? (
                 <p className="text-center text-sm text-slate-400">Connecting…</p>
-              ) : null}
-              {isLoading && !thinkingAi ? (
-                <div className="flex items-center gap-2 text-sm text-slate-400">
-                  <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-rose-400" />
-                  Waiting for next speaker…
-                </div>
               ) : null}
             </div>
             {round1Complete && !isLoading ? (
@@ -1048,16 +1160,10 @@ export default function ArenaPage() {
             <h2 className="mb-2 text-center text-lg font-bold text-white">
               ROUND {displayBattleRound} / 9 — Battle
             </h2>
-            <div className="mb-4">
-              <ProgressBar current={battleLive.length} total={battleResponsesPerRound} />
-            </div>
-            {thinkingAi && isLoading ? (
-              <p className="mb-3 text-center text-sm text-slate-300">
-                <span className="font-semibold" style={{ color: ARENA_COLOR[thinkingAi] }}>
-                  {ARENA_DISPLAY[thinkingAi]}
-                </span>{" "}
-                is thinking…
-              </p>
+            {isLoading && aiProgressRows.length > 0 ? (
+              <div className="mb-4">
+                <ArenaAiStreamProgress rows={aiProgressRows} streamTick={streamTick} />
+              </div>
             ) : null}
             <div className="flex flex-col gap-4 pr-1">
               {battleRounds.flatMap((br) =>
@@ -1086,7 +1192,7 @@ export default function ArenaPage() {
                   />
                 );
               })}
-              {isLoading ? (
+              {isLoading && aiProgressRows.length === 0 ? (
                 <div className="flex items-center justify-center gap-2 text-sm text-slate-400">
                   <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
                   Battle in progress…
