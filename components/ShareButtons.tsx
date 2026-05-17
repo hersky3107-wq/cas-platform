@@ -15,11 +15,13 @@ export type ShareButtonsProps = {
   title?: string
 }
 
+const PLATFORM_ORDER: SharePlatform[] = ['twitter', 'tiktok', 'kakao', 'whatsapp']
+
 const PLATFORM_LABELS: Record<SharePlatform | 'copy', string> = {
   twitter: 'X',
+  tiktok: 'TikTok',
   kakao: 'KakaoTalk',
   whatsapp: 'WhatsApp',
-  facebook: 'Facebook',
   copy: 'Copy link',
 }
 
@@ -100,18 +102,16 @@ export default function ShareButtons({
             Share
           </button>
           <div className="flex flex-wrap gap-2">
-            {(Object.keys(PLATFORM_LABELS) as Array<SharePlatform | 'copy'>)
-              .filter((k) => k !== 'copy')
-              .map((platform) => (
-                <button
-                  key={platform}
-                  type="button"
-                  onClick={() => openPlatform(platform as SharePlatform)}
-                  className={platformBtnClass}
-                >
-                  {PLATFORM_LABELS[platform as SharePlatform]}
-                </button>
-              ))}
+            {PLATFORM_ORDER.map((platform) => (
+              <button
+                key={platform}
+                type="button"
+                onClick={() => openPlatform(platform)}
+                className={platformBtnClass}
+              >
+                {PLATFORM_LABELS[platform]}
+              </button>
+            ))}
             <button type="button" onClick={() => void copyLink()} className={platformBtnClass}>
               {copyOk ? 'Copied!' : PLATFORM_LABELS.copy}
             </button>
@@ -119,38 +119,17 @@ export default function ShareButtons({
         </div>
       ) : (
         <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => openPlatform('twitter')}
-            className={platformBtnClass}
-            aria-label="Share on X"
-          >
-            {PLATFORM_LABELS.twitter}
-          </button>
-          <button
-            type="button"
-            onClick={() => openPlatform('kakao')}
-            className={platformBtnClass}
-            aria-label="Share on KakaoTalk"
-          >
-            {PLATFORM_LABELS.kakao}
-          </button>
-          <button
-            type="button"
-            onClick={() => openPlatform('whatsapp')}
-            className={platformBtnClass}
-            aria-label="Share on WhatsApp"
-          >
-            {PLATFORM_LABELS.whatsapp}
-          </button>
-          <button
-            type="button"
-            onClick={() => openPlatform('facebook')}
-            className={platformBtnClass}
-            aria-label="Share on Facebook"
-          >
-            {PLATFORM_LABELS.facebook}
-          </button>
+          {PLATFORM_ORDER.map((platform) => (
+            <button
+              key={platform}
+              type="button"
+              onClick={() => openPlatform(platform)}
+              className={platformBtnClass}
+              aria-label={`Share on ${PLATFORM_LABELS[platform]}`}
+            >
+              {PLATFORM_LABELS[platform]}
+            </button>
+          ))}
           <button
             type="button"
             onClick={() => void copyLink()}
