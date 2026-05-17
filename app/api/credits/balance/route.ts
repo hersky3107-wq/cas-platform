@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server'
 import { getCreditsBalance } from '@/lib/credits'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 
 export async function POST(req: Request) {
   try {
-    void (await req.json().catch(() => null)) // body not required; keep API signature stable
-    const supabase = await createSupabaseRouteAuthClient()
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser()
-    if (error || !user) {
+    const missing = missingSupabaseEnv()
+    if (missing) {
+      return NextResponse.json(
+        { error: `Server misconfigured: missing ${missing}` },
+        { status: 503 }
+      )
+    }
+
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null
+    const { user, supabase } = await resolveRouteAuth(req, body ?? undefined)
+    if (!user) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
 

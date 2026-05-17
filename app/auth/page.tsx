@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/db/supabase'
+import { getSiteUrl } from '@/lib/supabase/site-url'
 
 export default function AuthPage() {
   const [email, setEmail] = useState('')
@@ -13,7 +14,7 @@ export default function AuthPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`
+        emailRedirectTo: `${getSiteUrl(typeof window !== 'undefined' ? window.location.origin : undefined)}/auth/callback`
       }
     })
 

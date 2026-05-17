@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName } from "@/lib/ai/router";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -174,10 +175,9 @@ export default function StageComedyPage() {
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/credits/balance", {
+      const res = await authenticatedFetch("/api/credits/balance", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        json: {},
       });
       const j = (await res.json().catch(() => null)) as { balance?: number };
       if (typeof j?.balance === "number") setCredits(j.balance);
@@ -186,10 +186,9 @@ export default function StageComedyPage() {
 
   const readNdjsonTurn = useCallback(
     async (body: Record<string, unknown>) => {
-      const res = await fetch("/api/stage/comedy", {
+      const res = await authenticatedFetch("/api/stage/comedy", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        json: body,
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as { error?: string; balance?: number };

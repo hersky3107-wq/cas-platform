@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { MODEL_BY_PROVIDER, type AiProviderName } from '@/lib/ai/router'
 
 /**
@@ -12,20 +11,12 @@ export async function POST(req: Request) {
     const body = await req.json()
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
     const winner = typeof body.winner === 'string' ? body.winner : ''
-    const token =
-      typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
     if (!sessionId || !winner) {
       return NextResponse.json({ error: 'sessionId and winner are required' }, { status: 400 })
     }
 
-    const supabaseAuth = token
-      ? createSupabaseWithToken(token)
-      : await createSupabaseRouteAuthClient()
+    const { user, error: authErr } = await resolveRouteAuth(req, body)
     const supabase = supabaseAdmin
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabaseAuth.auth.getUser()
     if (authErr || !user) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }

@@ -1,6 +1,7 @@
 'use client'
 
 import './globals.css'
+import { ApiFetchAuth } from '@/app/components/ApiFetchAuth'
 
 export default function RootLayout({
   children,
@@ -9,7 +10,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        <ApiFetchAuth />
+        {children}
+      </body>
     </html>
   )
 }

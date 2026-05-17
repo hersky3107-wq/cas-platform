@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseWithToken } from "@/lib/supabase/server-client";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { createSupabaseRouteAuthClient } from "@/lib/supabase/route-auth";
+import { resolveRouteAuth } from "@/lib/supabase/route-auth";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits";
 import {
   COMEDY_PROVIDERS,
@@ -123,14 +122,9 @@ export async function POST(req: Request) {
   }
 
   const action = typeof body.action === "string" ? body.action : "";
-  const token = typeof body.supabaseAccessToken === "string" ? body.supabaseAccessToken : undefined;
 
-  const supabaseAuth = token ? createSupabaseWithToken(token) : await createSupabaseRouteAuthClient();
+  const { user, error: authErr, accessToken } = await resolveRouteAuth(req, body);
   const supabase = supabaseAdmin;
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser();
   if (authErr || !user) {
     return NextResponse.json({ error: "Invalid session" }, { status: 401 });
   }
@@ -229,7 +223,7 @@ export async function POST(req: Request) {
           supabase,
           sessionId,
           userId: user.id,
-          supabaseAccessToken: token,
+          supabaseAccessToken: accessToken ?? undefined,
         };
 
         if (action === "start") {

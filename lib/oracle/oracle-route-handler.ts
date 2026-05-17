@@ -1,7 +1,6 @@
 import { deductCreditsBalance } from '@/lib/credits'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import type { RouterResult } from '@/lib/ai/router'
 import {
   oracleRunFiveReaders,
@@ -39,14 +38,7 @@ export async function handleOracleNdjson(req: Request, mode: 'fate' | 'astro'): 
     questionRaw ||
     'The person did not ask a specific question; offer a warm, grounded portrait from their birth timing only.'
 
-  const token =
-    typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
-
-  const supabaseAuth = token ? createSupabaseWithToken(token) : await createSupabaseRouteAuthClient()
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
+  const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return jsonResp({ error: 'Invalid session' }, 401)
   }

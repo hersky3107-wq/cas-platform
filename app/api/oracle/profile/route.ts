@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import type { ApproxBirthBand, Gender, OracleBirthProfileV1 } from '@/lib/oracle/types'
 import { oracleProfileLooksComplete } from '@/lib/oracle/profile-guard'
 import { approxBandToMidpointHHMM } from '@/lib/oracle/sijin'
@@ -10,12 +9,8 @@ import { fetchOracleBirthProfileAdmin, oracleV1ToUsersJson } from '@/lib/oracle/
 const COLUMN_HINT_SQL =
   'ALTER TABLE users ADD COLUMN IF NOT EXISTS oracle_birth_profile JSONB;'
 
-export async function GET() {
-  const supabaseAuth = await createSupabaseRouteAuthClient()
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
+export async function GET(req: Request) {
+  const { user, error: authErr } = await resolveRouteAuth(req)
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }
@@ -48,12 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
-  const supabaseAuth = token ? createSupabaseWithToken(token) : await createSupabaseRouteAuthClient()
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
+  const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }
