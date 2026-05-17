@@ -324,6 +324,18 @@ export default function Home() {
         </div>
       </section>
 
+      <footer className="pb-8 text-center text-[10px] text-white/30">
+        <p>
+          Support & Refunds:{" "}
+          <a
+            href="mailto:support@aimani.ai"
+            className="text-white/40 transition-colors hover:text-white/55"
+          >
+            support@aimani.ai
+          </a>
+        </p>
+      </footer>
+
       {modalItem ? (
         <div className="fixed inset-0 z-40 bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-[20px] bg-[#131c35] p-6">

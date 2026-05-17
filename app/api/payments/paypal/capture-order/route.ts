@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { sendPaymentConfirmationEmail } from '@/lib/email/payment-confirmation'
 import { addCreditsBalance, getCreditsBalance } from '@/lib/credits'
 import { getCreditPlan, isCreditPlanId } from '@/lib/payments/credit-plans'
 import {
@@ -109,6 +110,14 @@ export async function POST(req: Request) {
     if (!grant.ok) {
       return NextResponse.json({ error: 'Payment captured but credits could not be added' }, { status: 500 })
     }
+
+    void sendPaymentConfirmationEmail(supabaseAdmin, {
+      userId: user.id,
+      toEmail: user.email,
+      creditsPurchased: plan.credits,
+      totalCredits: grant.balance,
+      transactionId: orderId,
+    })
 
     return NextResponse.json({
       ok: true,
