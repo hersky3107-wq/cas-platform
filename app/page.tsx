@@ -64,16 +64,19 @@ function LobbyCard({
         className={`${iconClass} ${module.status === "coming-soon" ? "opacity-50" : "opacity-100"}`}        
       >
         {module.imageSrc ? (
-          <img
-            src={module.id === "arena" ? "/icons/arena.png" : module.imageSrc}
+          <Image
+            src={module.imageSrc}
             alt={`${module.name} icon`}
+            fill
+            sizes="96px"
+            unoptimized
             style={{
               transformOrigin: "center",
               ...(module.id === "compare"
-                ? ({ width: "100%", height: "100%", objectFit: "contain", transform: "scale(1.2)" } as const)
-                : ({ transform: `scale(${imageScale})` } as const)),
+                ? ({ objectFit: "contain", transform: "scale(1.2)" } as const)
+                : ({ objectFit: "contain", transform: `scale(${imageScale})` } as const)),
             }}
-            className="absolute inset-0 h-full w-full object-contain object-center"
+            className="object-contain object-center"
           />
         ) : (
           <Icon className="h-8 w-8 text-white lg:h-10 lg:w-10" />
