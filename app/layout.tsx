@@ -1,6 +1,7 @@
 'use client'
 
 import './globals.css'
+import { Analytics } from '@vercel/analytics/react'
 import { ApiFetchAuth } from '@/app/components/ApiFetchAuth'
 
 export default function RootLayout({
@@ -25,6 +26,7 @@ export default function RootLayout({
       <body>
         <ApiFetchAuth />
         {children}
+        <Analytics />
       </body>
     </html>
   )
