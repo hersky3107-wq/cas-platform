@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
@@ -631,6 +632,9 @@ export default function DeepModePage() {
                   {synthesis}
                 </p>
               </article>
+            ) : null}
+            {phase === "done" ? (
+              <ShareButtons modeName="DEEP" className="mt-8" />
             ) : null}
           </section>
         ) : null}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName } from "@/lib/ai/router";
@@ -650,6 +651,7 @@ export default function StageComedyPage() {
               ))}
             </div>
 
+            <ShareButtons modeName="STAGE Comedy" className="mt-5" />
             <button
               type="button"
               onClick={() => {
@@ -671,7 +673,7 @@ export default function StageComedyPage() {
                 });
                 setLastTurnSpoke([]);
               }}
-              className="mt-5 w-full rounded-2xl bg-cyan-500 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+              className="mt-3 w-full rounded-2xl bg-cyan-500 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
             >
               Play Again
             </button>

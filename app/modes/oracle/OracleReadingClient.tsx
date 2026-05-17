@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
@@ -440,6 +441,10 @@ export default function OracleReadingClient(props: {
                 {synthText || (phase === "streaming" ? "Composing weave…" : "")}
               </div>
             </article>
+          ) : null}
+
+          {synthText && !sending ? (
+            <ShareButtons modeName={props.title} className="mt-8" />
           ) : null}
         </section>
 

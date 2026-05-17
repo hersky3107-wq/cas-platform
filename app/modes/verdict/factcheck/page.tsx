@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -458,6 +459,9 @@ export default function VerdictFactcheckPage() {
                 </p>
                 <p className="mt-4 text-xs text-slate-400">Based on 6 AI fact-checkers</p>
               </div>
+            ) : null}
+            {finalPanelOpen && finalCounts != null ? (
+              <ShareButtons modeName="PANEL Fact Check" className="mt-4" />
             ) : null}
           </div>
         ) : null}

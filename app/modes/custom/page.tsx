@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -1020,6 +1021,7 @@ export default function CustomModePage() {
                 ))}
               </div>
             )}
+            <ShareButtons modeName="CUSTOM" className="mt-6" />
             <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"

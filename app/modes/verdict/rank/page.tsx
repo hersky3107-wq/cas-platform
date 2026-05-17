@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -472,6 +473,9 @@ export default function VerdictRankPage() {
                   Based on 6 AI judges — Borda Count method
                 </p>
               </div>
+            ) : null}
+            {finalPanelOpen && finalRanking.length > 0 ? (
+              <ShareButtons modeName="PANEL Rank" className="mt-4" />
             ) : null}
           </div>
         ) : null}

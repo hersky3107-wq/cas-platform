@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -526,6 +527,9 @@ export default function VerdictVotePage() {
                   </div>
                 )}
               </div>
+            ) : null}
+            {finalPanelOpen && finalPayload != null ? (
+              <ShareButtons modeName="PANEL Vote" className="mt-4" />
             ) : null}
           </div>
         ) : null}

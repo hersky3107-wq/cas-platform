@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
@@ -474,6 +475,7 @@ export default function StageTalePage() {
             <p className="mt-2 text-sm text-slate-300">
               Winner: <span className="font-semibold text-white">{AI_LABEL[picked]}</span>
             </p>
+            <ShareButtons modeName="STAGE Tale" className="mt-5" />
             <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
               <button
                 type="button"

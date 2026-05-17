@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Gavel } from "lucide-react";
@@ -830,6 +831,9 @@ export default function SuitSessionPage() {
                     </blockquote>
                   ) : null}
                 </div>
+              ) : null}
+              {verdictBlock ? (
+                <ShareButtons modeName="SUIT" className="mx-auto mt-8 max-w-lg" />
               ) : null}
             </>
           ) : null}

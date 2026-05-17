@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -1345,6 +1346,7 @@ export default function ArenaPage() {
             >
               {voteDone ? "Saved" : "Save result"}
             </button>
+            {voteDone ? <ShareButtons modeName="ARENA" className="mt-4 text-left" /> : null}
             <Link href="/" className="inline-block text-sm text-cyan-400 underline">
               Back to lobby
             </Link>

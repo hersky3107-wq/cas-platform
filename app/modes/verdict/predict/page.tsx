@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -452,6 +453,9 @@ export default function VerdictPredictPage() {
                 </div>
                 <p className="mt-4 text-xs text-slate-400">Based on 6 AI forecasters</p>
               </div>
+            ) : null}
+            {finalPanelOpen && average != null ? (
+              <ShareButtons modeName="PANEL Predict" className="mt-4" />
             ) : null}
           </div>
         ) : null}

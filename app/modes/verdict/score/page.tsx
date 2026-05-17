@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -509,6 +510,11 @@ export default function VerdictScorePage() {
                   Based on 4 of 6 AI judges (outliers removed)
                 </p>
               </div>
+            ) : null}
+            {olympicPanelOpen &&
+            olympic != null &&
+            typeof olympic.finalAverage === "number" ? (
+              <ShareButtons modeName="PANEL Score" className="mt-6" />
             ) : null}
           </div>
         ) : null}
