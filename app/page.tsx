@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BookHeart,
+  Coins,
   Footprints,
   Gavel,
   Handshake,
@@ -20,6 +21,8 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { supabase } from "@/lib/db/supabase";
 import {
   activeModules,
   betaModules,
@@ -110,7 +113,38 @@ function LobbyCard({
 export default function Home() {
   const [modalItem, setModalItem] = useState<ModuleConfig | null>(null);
   const [email, setEmail] = useState("");
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCredits() {
+      const { data } = await supabase.auth.getUser();
+      if (cancelled) return;
+      const user = data.user;
+      if (!user) {
+        setLoggedIn(false);
+        setCreditBalance(null);
+        return;
+      }
+      setLoggedIn(true);
+      const res = await authenticatedFetch("/api/credits/balance", {
+        method: "POST",
+        json: {},
+      });
+      const j = (await res.json().catch(() => null)) as { balance?: number };
+      if (!cancelled && typeof j?.balance === "number") {
+        setCreditBalance(j.balance);
+      }
+    }
+
+    void loadCredits();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const mvpModules = useMemo(() => {
     // Explicit order: COMPARE first, CUSTOM last (for MVP).
@@ -127,6 +161,16 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#0a0f1e] text-white">
       <div className="fixed right-3 top-3 z-30 flex items-center gap-2">
+        <Link
+          href="/modes/credits"
+          className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-[#131c35] px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:border-cyan-400/50 hover:bg-[#1a2648]"
+        >
+          <Coins className="h-3.5 w-3.5" aria-hidden />
+          <span>Credits</span>
+          {loggedIn && creditBalance !== null ? (
+            <span className="tabular-nums text-white">{creditBalance}</span>
+          ) : null}
+        </Link>
         <div className="whitespace-nowrap rounded-full bg-[#131c35] px-2 py-1 text-xs text-white">
           First time here?
         </div>
