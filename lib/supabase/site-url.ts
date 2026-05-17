@@ -13,7 +13,13 @@ export function getSiteUrl(fallbackOrigin?: string): string {
 
   if (fallbackOrigin) {
     const normalized = normalizeOrigin(fallbackOrigin)
-    if (normalized.includes('aimani.ai')) return CANONICAL_PRODUCTION_ORIGIN
+    if (normalized.includes('aimani.ai')) {
+      try {
+        return productionOriginForRequest(new URL(normalized).host)
+      } catch {
+        return CANONICAL_PRODUCTION_ORIGIN
+      }
+    }
     return normalized
   }
 
@@ -25,14 +31,18 @@ export function getSiteUrl(fallbackOrigin?: string): string {
 
 export function normalizeOrigin(origin: string): string {
   try {
-    const u = new URL(origin)
-    if (u.hostname === 'www.aimani.ai') {
-      return CANONICAL_PRODUCTION_ORIGIN
-    }
-    return origin.replace(/\/$/, '')
+    return new URL(origin).origin
   } catch {
     return origin.replace(/\/$/, '')
   }
+}
+
+/** Prefer www when Vercel canonical host is www (aimani.ai redirects there at the edge). */
+export function productionOriginForRequest(host: string): string {
+  const h = host.toLowerCase()
+  if (h === 'www.aimani.ai') return 'https://www.aimani.ai'
+  if (h === 'aimani.ai') return CANONICAL_PRODUCTION_ORIGIN
+  return CANONICAL_PRODUCTION_ORIGIN
 }
 
 export function isAllowedAppHost(host: string): boolean {

@@ -4,7 +4,6 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/db/supabase'
 import { finishAuthCallback, parseAuthCallbackParams } from '@/lib/supabase/finish-auth'
-import { getSiteUrl } from '@/lib/supabase/site-url'
 
 function AuthCallbackClient() {
   const router = useRouter()
@@ -35,7 +34,7 @@ function AuthCallbackClient() {
       }
 
       setStatus('Signed in. Redirecting…')
-      router.replace(`${getSiteUrl(window.location.origin)}/`)
+      router.replace('/')
       router.refresh()
     }
 

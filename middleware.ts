@@ -1,12 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import {
-  cookieOptionsForRequest,
-  getSiteUrl,
-  isAllowedAppHost,
-  normalizeOrigin,
-} from '@/lib/supabase/site-url'
+import { cookieOptionsForRequest, isAllowedAppHost } from '@/lib/supabase/site-url'
 
 export async function middleware(request: NextRequest) {
   const host = request.nextUrl.host
@@ -15,12 +10,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
-  if (host.toLowerCase() === 'www.aimani.ai') {
-    const url = request.nextUrl.clone()
-    url.host = 'aimani.ai'
-    url.protocol = 'https:'
-    return NextResponse.redirect(url, 308)
-  }
+  // Do NOT redirect www ↔ apex here. Vercel already redirects aimani.ai → www.aimani.ai;
+  // a www → apex redirect in middleware caused ERR_TOO_MANY_REDIRECTS.
 
   let supabaseResponse = NextResponse.next({ request })
 
@@ -57,10 +48,9 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
+  // Logged-in users: leave /auth for home (same host — no cross-domain redirect)
   if (request.nextUrl.pathname === '/auth' && user) {
-    return NextResponse.redirect(
-      new URL('/', getSiteUrl(normalizeOrigin(request.nextUrl.origin)))
-    )
+    return NextResponse.redirect(new URL('/', request.url))
   }
 
   return supabaseResponse
