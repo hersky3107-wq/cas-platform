@@ -1,16 +1,28 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import {
+  cookieOptionsForRequest,
+  getSiteUrl,
+  isAllowedAppHost,
+  normalizeOrigin,
+} from '@/lib/supabase/site-url'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: { headers: request.headers },
-  })
+  const host = request.nextUrl.host
 
-  // Allow /admin to pass through without special handling.
-  if (request.nextUrl.pathname.startsWith('/admin')) {
-    return response
+  if (!isAllowedAppHost(host)) {
+    return NextResponse.next({ request })
   }
+
+  if (host.toLowerCase() === 'www.aimani.ai') {
+    const url = request.nextUrl.clone()
+    url.host = 'aimani.ai'
+    url.protocol = 'https:'
+    return NextResponse.redirect(url, 308)
+  }
+
+  let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,13 +33,17 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-
-          response = NextResponse.next({ request })
-
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value)
+          })
+          supabaseResponse = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(
+              name,
+              value,
+              cookieOptionsForRequest(request, options)
+            )
+          })
         },
       },
     }
@@ -37,23 +53,21 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const protectedRoutes = ['/modes', '/me', '/settings']
-  const isProtected = protectedRoutes.some((route) =>
-    request.nextUrl.pathname.startsWith(route)
-  )
-
-  // TEMP: auth guard disabled (debugging)
-  // if (isProtected && !user) {
-  //   return NextResponse.redirect(new URL('/auth', request.url))
-  // }
-
-  if (request.nextUrl.pathname === '/auth' && user) {
-    return NextResponse.redirect(new URL('/', request.url))
+  if (request.nextUrl.pathname.startsWith('/admin')) {
+    return supabaseResponse
   }
 
-  return response
+  if (request.nextUrl.pathname === '/auth' && user) {
+    return NextResponse.redirect(
+      new URL('/', getSiteUrl(normalizeOrigin(request.nextUrl.origin)))
+    )
+  }
+
+  return supabaseResponse
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { createSupabaseRouteAuthClient } from "@/lib/supabase/route-auth";
+import { resolveRouteAuth } from "@/lib/supabase/route-auth";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits";
 
 type Genre = "Horror" | "Romance" | "Absurd" | "Sci-Fi" | "Fairy Tale" | "Sad Story";
@@ -61,11 +61,7 @@ function normalizeLanguage(raw: unknown): string | null {
 }
 
 export async function GET(req: Request) {
-  const supabaseAuth = await createSupabaseRouteAuthClient();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser();
+  const { user, error: authErr } = await resolveRouteAuth(req);
   if (authErr || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
   const url = new URL(req.url);
@@ -231,11 +227,7 @@ export async function POST(req: Request) {
 
   const action = typeof body.action === "string" ? body.action : "";
 
-  const supabaseAuth = await createSupabaseRouteAuthClient();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser();
+  const { user, error: authErr } = await resolveRouteAuth(req, body);
   if (authErr || !user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
 
   const supabase = supabaseAdmin;

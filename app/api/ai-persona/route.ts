@@ -5,9 +5,8 @@ import {
   MODEL_BY_PROVIDER,
   type AiProviderName,
 } from '@/lib/ai/router'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 
 const MAX_ROLE_CHARS = 200
@@ -128,14 +127,8 @@ export async function POST(req: Request) {
     assignments.map((a) => [a.provider, a.role])
   ) as Record<AiProviderName, string>
 
-  const supabaseAuth = token
-    ? createSupabaseWithToken(token)
-    : await createSupabaseRouteAuthClient()
+  const { user, error: authErr } = await resolveRouteAuth(req, body)
   const supabase = supabaseAdmin
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }

@@ -6,9 +6,8 @@ import {
   type AiProviderName,
   type RouterResult,
 } from '@/lib/ai/router'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { deductCreditsBalance } from '@/lib/credits'
 
 type DeepOutputMode = 'brief' | 'standard' | 'report'
@@ -584,13 +583,7 @@ export async function POST(req: Request) {
     })
   }
 
-  const supabaseAuth = token
-    ? createSupabaseWithToken(token)
-    : await createSupabaseRouteAuthClient()
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
+  const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return new Response(JSON.stringify({ error: 'Invalid session' }), {
       status: 401,

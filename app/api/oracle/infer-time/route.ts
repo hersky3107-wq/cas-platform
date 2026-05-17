@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { SURVEY_QUESTIONS, SURVEY_SIJIN_ANCHORS, type SurveyAnswersExpected } from '@/lib/oracle/survey-data'
 
 const INF_MODEL = 'claude-sonnet-4-6'
@@ -84,11 +83,7 @@ export async function POST(req: Request) {
   }
 
   const token = typeof body.supabaseAccessToken === 'string' ? body.supabaseAccessToken : undefined
-  const supabaseAuth = token ? createSupabaseWithToken(token) : await createSupabaseRouteAuthClient()
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
+  const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }

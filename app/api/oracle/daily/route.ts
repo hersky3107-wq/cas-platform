@@ -1,7 +1,7 @@
 import { deductCreditsBalance } from '@/lib/credits'
 import type { AiProviderName, RouterResult } from '@/lib/ai/router'
 import { MODEL_BY_PROVIDER, runSingleAiProvider } from '@/lib/ai/router'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { oracleInsertAiResponse, oracleInsertCostLog } from '@/lib/oracle/oracle-db'
 import { oracleGptCompletion } from '@/lib/oracle/openai-gpt'
@@ -85,12 +85,8 @@ async function runAndStore(params: {
   return r
 }
 
-export async function POST() {
-  const supabaseAuth = await createSupabaseRouteAuthClient()
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
+export async function POST(req: Request) {
+  const { user, error: authErr } = await resolveRouteAuth(req)
   if (authErr || !user) return jsonResp({ error: 'Invalid session' }, 401)
 
   const { v1: profile, error: profErr } = await fetchOracleBirthProfileAdmin(user.id)

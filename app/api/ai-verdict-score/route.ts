@@ -5,8 +5,7 @@ import {
   type AiProviderName,
   type RouterResult,
 } from '@/lib/ai/router'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 import {
   VERDICT_SCORE_AI_ORDER,
@@ -65,11 +64,7 @@ export async function POST(req: Request) {
   const systemPrompt = buildVerdictScoreSystemPrompt(scoringCriteria)
   const userLogText = `Scoring criteria: ${scoringCriteria.trim() || '(none)'}\n\n---\n\n${contentToScore}`
 
-  const supabase = token ? createSupabaseWithToken(token) : await createSupabaseRouteAuthClient()
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser()
+  const { user, supabase, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return Response.json({ error: 'Invalid session' }, { status: 401 })
   }

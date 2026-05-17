@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { MODEL_BY_PROVIDER, type AiProviderName } from '@/lib/ai/router'
 import type { SuitClientConfig } from '@/lib/ai/suit-types'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import {
   JUDGE_MODEL_ID,
   runCounselOpponentTurn,
@@ -17,7 +17,6 @@ import type {
   SuitMessage,
   SuitParticipationMode,
 } from '@/lib/ai/suit-types'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
 async function insertWithFallback(
@@ -195,16 +194,9 @@ export async function POST(req: Request) {
     console.log('[api/suit:start] topic_len=', typeof body.topic === 'string' ? body.topic.length : null)
   }
 
-  const supabaseAuth =
-    token
-      ? createSupabaseWithToken(token)
-      : await createSupabaseRouteAuthClient()
+  const { user, error: authErr, accessToken } = await resolveRouteAuth(req, body)
   const supabase = supabaseAdmin
-  const tokenForRouter = token || undefined
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
+  const tokenForRouter = accessToken || token || undefined
   if (authErr || !user) {
     console.log('[api/suit] auth failed:', authErr?.message ?? 'no_user')
     return Response.json({ error: 'Invalid session' }, { status: 401 })

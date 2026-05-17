@@ -1,6 +1,6 @@
 import { deductCreditsBalance } from '@/lib/credits'
 import type { RouterResult } from '@/lib/ai/router'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { oracleInsertAiResponse, oracleInsertCostLog } from '@/lib/oracle/oracle-db'
 import { oracleGptCompletion } from '@/lib/oracle/openai-gpt'
@@ -85,11 +85,7 @@ export async function POST(req: Request) {
     questionRaw ||
     'The person did not ask a specific question; offer a warm, grounded portrait from their birth timing only.'
 
-  const supabaseAuth = await createSupabaseRouteAuthClient()
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
+  const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return jsonResp({ error: 'Invalid session' }, 401)
   }

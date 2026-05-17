@@ -7,9 +7,8 @@ import {
   type CompareConversationMessage,
   type RouterResult,
 } from '@/lib/ai/router'
-import { createSupabaseWithToken } from '@/lib/supabase/server-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { createSupabaseRouteAuthClient } from '@/lib/supabase/route-auth'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
 
 const ALLOWED_MAX_TOKENS = [300, 700, 2500] as const
@@ -139,14 +138,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Select at least one AI' }, { status: 400 })
   }
 
-  const supabaseAuth = token
-    ? createSupabaseWithToken(token)
-    : await createSupabaseRouteAuthClient()
+  const { user, error: authErr } = await resolveRouteAuth(req, body)
   const supabase = supabaseAdmin
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabaseAuth.auth.getUser()
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }
