@@ -32,22 +32,38 @@ export function creditsPerMessage(aiCount: number): number {
   return 4 + aiCount * 2
 }
 
+const CREDITS_TABLES = ['users', 'profiles'] as const
+
+async function readCreditsFromTable(
+  supabase: SupabaseClient,
+  table: (typeof CREDITS_TABLES)[number],
+  userId: string
+): Promise<{ balance: number | null; error: string | null }> {
+  const { data, error } = await supabase.from(table).select('credits').eq('id', userId).maybeSingle()
+
+  if (error) {
+    return { balance: null, error: error.message }
+  }
+
+  return { balance: typeof data?.credits === 'number' ? data.credits : 0, error: null }
+}
+
 /**
- * Reads `profiles.credits` for the user. Returns null if the read fails (e.g. table/column missing),
- * in which case credit enforcement is skipped so local dev still works.
+ * Reads `users.credits` (falls back to `profiles.credits`).
+ * Returns null if both reads fail (credit enforcement skipped in dev).
  */
 export async function getCreditsBalance(
   supabase: SupabaseClient,
   userId: string
 ): Promise<number | null> {
-  const { data, error } = await supabase.from('profiles').select('credits').eq('id', userId).maybeSingle()
+  const users = await readCreditsFromTable(supabase, 'users', userId)
+  if (users.balance !== null) return users.balance
 
-  if (error) {
-    console.warn('[credits] balance read failed:', error.message)
-    return null
-  }
+  const profiles = await readCreditsFromTable(supabase, 'profiles', userId)
+  if (profiles.balance !== null) return profiles.balance
 
-  return typeof data?.credits === 'number' ? data.credits : 0
+  console.warn('[credits] balance read failed:', users.error ?? profiles.error)
+  return null
 }
 
 export type DeductCreditsOutcome =
@@ -67,10 +83,62 @@ export async function deductCreditsBalance(
     return { ok: false, balance, reason: 'insufficient' }
   }
   const next = balance - amount
-  const { error } = await supabase.from('profiles').update({ credits: next }).eq('id', userId)
-  if (error) {
-    console.warn('[credits] deduct failed:', error.message)
-    return { ok: false, balance, reason: 'update_failed' }
+
+  for (const table of CREDITS_TABLES) {
+    const { error } = await supabase.from(table).update({ credits: next }).eq('id', userId)
+    if (!error) {
+      return { ok: true, balance: next }
+    }
+    console.warn(`[credits] deduct on ${table} failed:`, error.message)
   }
+
+  return { ok: false, balance, reason: 'update_failed' }
+}
+
+export type AddCreditsOutcome =
+  | { ok: true; balance: number }
+  | { ok: false; reason: 'read_failed' | 'update_failed' }
+
+/** Grant credits after payment (service role). Updates users + profiles when present. */
+export async function addCreditsBalance(
+  supabase: SupabaseClient,
+  userId: string,
+  amount: number
+): Promise<AddCreditsOutcome> {
+  if (amount < 1) {
+    return { ok: false, reason: 'update_failed' }
+  }
+
+  const current = await getCreditsBalance(supabase, userId)
+  if (current === null) {
+    return { ok: false, reason: 'read_failed' }
+  }
+
+  const next = current + amount
+  let updated = false
+
+  for (const table of CREDITS_TABLES) {
+    const { data: row } = await supabase.from(table).select('id').eq('id', userId).maybeSingle()
+    if (!row) continue
+
+    const { error } = await supabase.from(table).update({ credits: next }).eq('id', userId)
+    if (!error) {
+      updated = true
+    } else {
+      console.warn(`[credits] add on ${table} failed:`, error.message)
+    }
+  }
+
+  if (!updated) {
+    const { error: insertErr } = await supabase
+      .from('users')
+      .upsert({ id: userId, credits: next }, { onConflict: 'id' })
+
+    if (insertErr) {
+      console.warn('[credits] users upsert failed:', insertErr.message)
+      return { ok: false, reason: 'update_failed' }
+    }
+  }
+
   return { ok: true, balance: next }
 }
