@@ -1,21 +1,29 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/db/supabase'
-import { getSiteUrl } from '@/lib/supabase/site-url'
+import { getAuthCallbackUrl } from '@/lib/supabase/auth-urls'
 
-export default function AuthPage() {
+function AuthForm() {
+  const searchParams = useSearchParams()
+  const errorFromUrl = searchParams.get('error')
+
   const [email, setEmail] = useState('')
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(errorFromUrl ?? '')
 
   async function handleLogin() {
-    setMessage('로그인 메일 보내는 중...')
+    setMessage('Sending login email…')
+
+    const emailRedirectTo = getAuthCallbackUrl(
+      typeof window !== 'undefined' ? window.location.origin : undefined
+    )
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${getSiteUrl(typeof window !== 'undefined' ? window.location.origin : undefined)}/auth/callback`
-      }
+        emailRedirectTo,
+      },
     })
 
     if (error) {
@@ -23,16 +31,16 @@ export default function AuthPage() {
       return
     }
 
-    setMessage('이메일을 확인하세요. 로그인 링크가 발송되었습니다.')
+    setMessage('Check your email. Open the link in this same browser to finish signing in.')
   }
 
   return (
     <main style={{ padding: 40 }}>
-      <h1>CAS 로그인</h1>
+      <h1>CAS Login</h1>
 
       <input
         type="email"
-        placeholder="이메일 입력"
+        placeholder="Email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         style={{
@@ -40,15 +48,27 @@ export default function AuthPage() {
           width: 300,
           padding: 10,
           marginTop: 20,
-          marginBottom: 10
+          marginBottom: 10,
         }}
       />
 
-      <button onClick={handleLogin}>
-        이메일 로그인 링크 받기
+      <button type="button" onClick={handleLogin}>
+        Send magic link
       </button>
 
-      <p>{message}</p>
+      {message ? (
+        <p style={{ marginTop: 16, maxWidth: 420, color: errorFromUrl ? '#f87171' : undefined }}>
+          {message}
+        </p>
+      ) : null}
     </main>
+  )
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<main style={{ padding: 40 }}><p>Loading…</p></main>}>
+      <AuthForm />
+    </Suspense>
   )
 }

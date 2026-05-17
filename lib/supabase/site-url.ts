@@ -4,7 +4,7 @@ const LOCAL_HOSTS = new Set(['localhost:3000', '127.0.0.1:3000'])
 
 const PRODUCTION_HOSTS = new Set(['aimani.ai', 'www.aimani.ai'])
 
-const CANONICAL_PRODUCTION_ORIGIN = 'https://aimani.ai'
+export const CANONICAL_PRODUCTION_ORIGIN = 'https://aimani.ai'
 
 /** Canonical app URL for auth redirects (env → production default → Vercel → request → localhost). */
 export function getSiteUrl(fallbackOrigin?: string): string {
@@ -42,15 +42,10 @@ export function isAllowedAppHost(host: string): boolean {
   return false
 }
 
-/** Share auth cookies across www and apex on aimani.ai */
-export function cookieDomainForHost(host: string): string | undefined {
-  const h = host.toLowerCase()
-  if (h === 'aimani.ai' || h === 'www.aimani.ai') {
-    return '.aimani.ai'
-  }
-  return undefined
-}
-
+/**
+ * Cookie options for Supabase auth on route handlers / middleware.
+ * Host-only cookies (no Domain=) — more reliable for magic-link / PKCE on aimani.ai.
+ */
 export function cookieOptionsForRequest(
   request: NextRequest,
   options?: Record<string, unknown>
@@ -62,13 +57,10 @@ export function cookieOptionsForRequest(
     PRODUCTION_HOSTS.has(host) ||
     host.endsWith('.vercel.app')
 
-  const domain = cookieDomainForHost(host)
-
   return {
     ...options,
-    path: '/',
-    sameSite: 'lax' as const,
-    secure,
-    ...(domain ? { domain } : {}),
+    path: typeof options?.path === 'string' ? options.path : '/',
+    sameSite: (options?.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
+    secure: typeof options?.secure === 'boolean' ? options.secure : secure,
   }
 }
