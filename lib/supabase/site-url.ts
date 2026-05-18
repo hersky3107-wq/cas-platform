@@ -61,16 +61,12 @@ export function cookieOptionsForRequest(
   options?: Record<string, unknown>
 ) {
   const host = request.nextUrl.host.toLowerCase()
-  const secure =
-    process.env.NODE_ENV === 'production' ||
-    request.nextUrl.protocol === 'https:' ||
-    PRODUCTION_HOSTS.has(host) ||
-    host.endsWith('.vercel.app')
+  const isProduction = PRODUCTION_HOSTS.has(host) || host.endsWith('.vercel.app')
 
   return {
     ...options,
     path: typeof options?.path === 'string' ? options.path : '/',
-    sameSite: (options?.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
-    secure: typeof options?.secure === 'boolean' ? options.secure : secure,
+    sameSite: isProduction ? 'none' : ((options?.sameSite as 'lax' | 'strict' | 'none') ?? 'lax'),
+    secure: isProduction ? true : (typeof options?.secure === 'boolean' ? options.secure : true),
   }
 }

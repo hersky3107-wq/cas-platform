@@ -53,8 +53,8 @@ export async function createSupabaseRouteAuthClient(request?: Request) {
               cookieStore.set(name, value, {
                 ...options,
                 path: '/',
-                sameSite: 'lax',
-                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'none',
+                secure: true,
               })
             })
           } catch {
