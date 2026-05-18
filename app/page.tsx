@@ -21,6 +21,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import type { User } from "@supabase/supabase-js";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 import { supabase } from "@/lib/db/supabase";
 import {
@@ -41,6 +42,18 @@ const iconMap: Record<string, LucideIcon> = {
   Clapperboard,
   Zap, // fallback for any missing icon mapping
 };
+
+function displayNameForUser(user: User): string {
+  const meta = user.user_metadata as Record<string, unknown> | undefined;
+  const nickname = typeof meta?.nickname === "string" ? meta.nickname.trim() : "";
+  const fullName = typeof meta?.full_name === "string" ? meta.full_name.trim() : "";
+  const name = typeof meta?.name === "string" ? meta.name.trim() : "";
+  if (nickname) return nickname;
+  if (fullName) return fullName;
+  if (name) return name;
+  if (user.email) return user.email;
+  return "Signed in";
+}
 
 function LobbyCard({
   module,
@@ -113,34 +126,42 @@ function LobbyCard({
 export default function Home() {
   const [modalItem, setModalItem] = useState<ModuleConfig | null>(null);
   const [email, setEmail] = useState("");
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [userLabel, setUserLabel] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadCredits() {
+    async function loadSession() {
       const { data } = await supabase.auth.getUser();
       if (cancelled) return;
+
       const user = data.user;
       if (!user) {
-        setLoggedIn(false);
+        setUserLabel(null);
         setCreditBalance(null);
+        setAuthReady(true);
         return;
       }
-      setLoggedIn(true);
+
+      setUserLabel(displayNameForUser(user));
+
       const res = await authenticatedFetch("/api/credits/balance", {
         method: "POST",
         json: {},
       });
       const j = (await res.json().catch(() => null)) as { balance?: number };
-      if (!cancelled && typeof j?.balance === "number") {
-        setCreditBalance(j.balance);
+      if (!cancelled) {
+        if (typeof j?.balance === "number") {
+          setCreditBalance(j.balance);
+        }
+        setAuthReady(true);
       }
     }
 
-    void loadCredits();
+    void loadSession();
     return () => {
       cancelled = true;
     };
@@ -160,17 +181,35 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0a0f1e] text-white">
-      <div className="fixed right-3 top-3 z-30 flex items-center gap-2">
-        <Link
-          href="/modes/credits"
-          className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-[#131c35] px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:border-cyan-400/50 hover:bg-[#1a2648]"
-        >
-          <Coins className="h-3.5 w-3.5" aria-hidden />
-          <span>Credits</span>
-          {loggedIn && creditBalance !== null ? (
-            <span className="tabular-nums text-white">{creditBalance}</span>
-          ) : null}
-        </Link>
+      <header className="fixed right-3 top-3 z-30 flex max-w-[min(100vw-1.5rem,28rem)] items-center justify-end gap-2">
+        {authReady ? (
+          userLabel ? (
+            <>
+              <span
+                className="max-w-[7rem] truncate rounded-full border border-white/10 bg-[#131c35] px-3 py-1.5 text-xs text-white/90 sm:max-w-[9rem]"
+                title={userLabel}
+              >
+                {userLabel}
+              </span>
+              <Link
+                href="/modes/credits"
+                className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-[#131c35] px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:border-cyan-400/50 hover:bg-[#1a2648]"
+              >
+                <Coins className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="tabular-nums text-white">
+                  {creditBalance !== null ? creditBalance : "—"}
+                </span>
+              </Link>
+            </>
+          ) : (
+            <Link
+              href="/auth"
+              className="rounded-full border border-white/12 bg-[#131c35] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-[#1a2648]"
+            >
+              Sign in
+            </Link>
+          )
+        ) : null}
         <div className="whitespace-nowrap rounded-full bg-[#131c35] px-2 py-1 text-xs text-white">
           First time here?
         </div>
@@ -178,11 +217,11 @@ export default function Home() {
           type="button"
           onClick={() => router.push("/about")}
           aria-label="About"
-          className="animate-pulse flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
+          className="animate-pulse flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white"
         >
           <Info className="h-5 w-5" />
         </button>
-      </div>
+      </header>
 
       <section className="mx-auto flex min-h-screen w-full flex-col items-center justify-center px-8 py-16 lg:px-16">
         <div className="w-full max-w-6xl">

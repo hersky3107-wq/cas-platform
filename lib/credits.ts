@@ -24,12 +24,11 @@ export const CUSTOM_SYSTEM_PROMPT = COMPARE_SYSTEM_PROMPT
 /** Same base prompt; persona mode appends role-specific lines in `app/api/ai-persona/route.ts`. */
 export const PERSONA_SYSTEM_PROMPT = COMPARE_SYSTEM_PROMPT
 
-/** 3 AIs = 10, 4 = 12, 5 = 14, 6 = 16 (also n=1→6, n=2→8). */
 export function creditsPerMessage(aiCount: number): number {
   if (aiCount < 1 || aiCount > 6) {
     throw new Error('Select between 1 and 6 AIs.')
   }
-  return 4 + aiCount * 2
+  return aiCount
 }
 
 const CREDITS_TABLES = ['users', 'profiles'] as const
