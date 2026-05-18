@@ -48,8 +48,26 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
-  // Logged-in users: leave /auth for home (same host — no cross-domain redirect)
+  if (!user && request.nextUrl.pathname.startsWith('/modes/')) {
+    const loginUrl = new URL('/auth', request.url)
+    loginUrl.searchParams.set(
+      'redirectTo',
+      `${request.nextUrl.pathname}${request.nextUrl.search}`
+    )
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // Logged-in users: leave /auth (same host — no cross-domain redirect)
   if (request.nextUrl.pathname === '/auth' && user) {
+    const redirectTo = request.nextUrl.searchParams.get('redirectTo')
+    if (
+      redirectTo &&
+      redirectTo.startsWith('/') &&
+      !redirectTo.startsWith('//') &&
+      !redirectTo.includes('://')
+    ) {
+      return NextResponse.redirect(new URL(redirectTo, request.url))
+    }
     return NextResponse.redirect(new URL('/', request.url))
   }
 

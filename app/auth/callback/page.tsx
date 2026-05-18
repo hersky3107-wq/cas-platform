@@ -5,10 +5,19 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/db/supabase'
 import { finishAuthCallback, parseAuthCallbackParams } from '@/lib/supabase/finish-auth'
 
+function safeRedirectPath(path: string | null): string | null {
+  if (!path) return null
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) {
+    return null
+  }
+  return path
+}
+
 function AuthCallbackClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [status, setStatus] = useState('Completing sign in…')
+  const returnPath = safeRedirectPath(searchParams.get('redirectTo')) ?? '/'
 
   useEffect(() => {
     let cancelled = false
@@ -34,7 +43,7 @@ function AuthCallbackClient() {
       }
 
       setStatus('Signed in. Redirecting…')
-      router.replace('/')
+      router.replace(returnPath)
       router.refresh()
     }
 
@@ -42,7 +51,7 @@ function AuthCallbackClient() {
     return () => {
       cancelled = true
     }
-  }, [router, searchParams])
+  }, [router, searchParams, returnPath])
 
   return (
     <main style={{ padding: 40 }}>

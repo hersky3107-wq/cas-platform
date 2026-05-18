@@ -28,18 +28,30 @@ function GoogleIcon({ className }: { className?: string }) {
   )
 }
 
+function safeRedirectPath(path: string | null): string | null {
+  if (!path) return null
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) {
+    return null
+  }
+  return path
+}
+
 function AuthForm() {
   const searchParams = useSearchParams()
   const errorFromUrl = searchParams.get('error')
+  const returnPath = safeRedirectPath(searchParams.get('redirectTo'))
 
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState(errorFromUrl ?? '')
   const [googleLoading, setGoogleLoading] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
 
-  const redirectTo = getAuthCallbackUrl(
+  const authCallbackBase = getAuthCallbackUrl(
     typeof window !== 'undefined' ? window.location.origin : undefined
   )
+  const redirectTo = returnPath
+    ? `${authCallbackBase}?redirectTo=${encodeURIComponent(returnPath)}`
+    : authCallbackBase
 
   async function handleGoogleLogin() {
     setMessage('')
