@@ -9,7 +9,8 @@ import {
 } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
+import { creditsPerMessage } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
 
 const ALLOWED_MAX_TOKENS = [300, 700, 2500] as const
 

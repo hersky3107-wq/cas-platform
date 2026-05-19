@@ -8,7 +8,8 @@ import {
 } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { COMPARE_SYSTEM_PROMPT, creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
+import { COMPARE_SYSTEM_PROMPT, creditsPerMessage } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
 
 function uniqueProviders(providers: AiProviderName[]) {
   return Array.from(new Set(providers)) as AiProviderName[]

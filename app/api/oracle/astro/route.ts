@@ -1,4 +1,4 @@
-import { deductCreditsBalance } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
 import type { RouterResult } from '@/lib/ai/router'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'

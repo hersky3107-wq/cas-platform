@@ -6,7 +6,8 @@ import {
   type RouterResult,
 } from '@/lib/ai/router'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
+import { creditsPerMessage } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
 import {
   VERDICT_FACTCHECK_AI_ORDER,
   buildVerdictFactcheckSystemPrompt,

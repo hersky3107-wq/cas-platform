@@ -1,4 +1,4 @@
-import { deductCreditsBalance } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
 import type { AiProviderName, RouterResult } from '@/lib/ai/router'
 import { runSingleAiProvider, MODEL_BY_PROVIDER } from '@/lib/ai/router'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'

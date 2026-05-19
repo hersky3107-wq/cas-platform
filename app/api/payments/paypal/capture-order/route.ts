@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sendPaymentConfirmationEmail } from '@/lib/email/payment-confirmation'
-import { addCreditsBalance, getCreditsBalance } from '@/lib/credits'
+import { addCreditsBalance, getCreditsBalance } from '@/lib/credits-server'
 import { getCreditPlan, isCreditPlanId } from '@/lib/payments/credit-plans'
 import {
   capturePayPalOrder,

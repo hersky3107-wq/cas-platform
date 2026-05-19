@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveRouteAuth } from "@/lib/supabase/route-auth";
-import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits";
+import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits-server";
 import {
   COMEDY_PROVIDERS,
   ensureComedyParticipantsInserted,

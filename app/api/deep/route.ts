@@ -8,7 +8,7 @@ import {
 } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { deductCreditsBalance } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
 
 type DeepOutputMode = 'brief' | 'standard' | 'report'
 

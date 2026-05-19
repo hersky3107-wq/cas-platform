@@ -22,7 +22,7 @@ import {
 } from '@/lib/ai/arena-bundle'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits'
+import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits-server'
 
 async function insertWithFallback(
   supabase: SupabaseClient,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCreditsBalance } from '@/lib/credits'
+import { getCreditsBalance } from '@/lib/credits-server'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 
 export async function POST(req: Request) {

@@ -7,7 +7,8 @@ import {
 } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { creditsPerMessage, deductCreditsBalance } from '@/lib/credits'
+import { creditsPerMessage } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
 
 const MAX_ROLE_CHARS = 200
 
