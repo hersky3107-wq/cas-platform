@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { ChevronLeft } from "lucide-react";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 
 const AI_PLAYERS = [
   { provider: "openai", name: "ChatGPT", color: "#10A37F" },
@@ -296,11 +297,7 @@ export default function WolfModePage() {
         language,
         round: 1,
       };
-      const res = await fetch("/api/mindgame/wolf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await authenticatedFetch("/api/mindgame/wolf", { method: "POST", json: payload });
       if (!res.ok) {
         addMessage({
           provider: "system",
@@ -393,11 +390,7 @@ export default function WolfModePage() {
         language,
         round,
       };
-      const res = await fetch("/api/mindgame/wolf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await authenticatedFetch("/api/mindgame/wolf", { method: "POST", json: payload });
       if (!res.ok) {
         addMessage({
           provider: "system",
@@ -505,11 +498,7 @@ export default function WolfModePage() {
       if (userMode === "challenge" && uv && !isUserEliminated) {
         payload.userVote = uv;
       }
-      const res = await fetch("/api/mindgame/wolf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await authenticatedFetch("/api/mindgame/wolf", { method: "POST", json: payload });
       if (!res.ok) {
         addMessage({
           provider: "system",
@@ -870,10 +859,9 @@ export default function WolfModePage() {
     messagesRef.current = [];
 
     try {
-      const res = await fetch("/api/mindgame/wolf", {
+      const res = await authenticatedFetch("/api/mindgame/wolf", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        json: {
           action: "start",
           wolfIds: [],
           alivePlayers: AI_PLAYERS.map((p) => p.provider),
@@ -882,7 +870,7 @@ export default function WolfModePage() {
           userMode,
           language,
           round: 1,
-        }),
+        },
       });
       if (!res.ok) {
         setPhase("setup");

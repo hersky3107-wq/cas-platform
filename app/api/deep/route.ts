@@ -8,15 +8,8 @@ import {
 } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
+import { creditsForDeep, type DeepOutputMode } from '@/lib/credits'
 import { deductCreditsBalance } from '@/lib/credits-server'
-
-type DeepOutputMode = 'brief' | 'standard' | 'report'
-
-const MODE_CREDITS: Record<DeepOutputMode, number> = {
-  brief: 3,
-  standard: 10,
-  report: 30,
-}
 
 const MODE_CORE_TOKENS: Record<DeepOutputMode, number> = {
   brief: 400,
@@ -591,7 +584,7 @@ export async function POST(req: Request) {
     })
   }
 
-  const cost = MODE_CREDITS[outputMode]
+  const cost = creditsForDeep(outputMode)
   const coreMaxTokens = MODE_CORE_TOKENS[outputMode]
   const supportMaxTokens = MODE_SUPPORT_TOKENS[outputMode]
 

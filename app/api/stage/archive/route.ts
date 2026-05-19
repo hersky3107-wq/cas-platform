@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveRouteAuth } from "@/lib/supabase/route-auth";
+import { creditsForArchive } from "@/lib/credits";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits-server";
 
 type Genre = "Horror" | "Romance" | "Absurd" | "Sci-Fi" | "Fairy Tale" | "Sad Story";
@@ -233,14 +234,15 @@ export async function POST(req: Request) {
   const supabase = supabaseAdmin;
 
   if (action === "enter") {
-    const deduct = await deductCreditsBalance(supabase, user.id, 1);
+    const archiveCost = creditsForArchive();
+    const deduct = await deductCreditsBalance(supabase, user.id, archiveCost);
     if (!deduct.ok) {
       const insufficient = deduct.reason === "insufficient";
       return NextResponse.json(
         {
           error: insufficient ? "Not enough credits" : "Could not update credits",
           balance: deduct.balance,
-          required: 1,
+          required: archiveCost,
         },
         { status: insufficient ? 402 : 500 }
       );

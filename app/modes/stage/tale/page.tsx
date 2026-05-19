@@ -5,6 +5,7 @@ import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 import type { AiProviderName } from "@/lib/ai/router";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
@@ -124,14 +125,13 @@ export default function StageTalePage() {
     setCompletedOrder([]);
 
     try {
-      const res = await fetch("/api/stage/tale", {
+      const res = await authenticatedFetch("/api/stage/tale", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        json: {
           genre,
           keyword: genre === "Custom" ? keyword : twistOpen ? keyword : "",
           language: language.trim() || "English",
-        }),
+        },
       });
 
       if (!res.ok) {

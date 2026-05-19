@@ -7,7 +7,7 @@ import {
 } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { creditsPerMessage } from '@/lib/credits'
+import { creditsForPanelVote } from '@/lib/credits'
 import { deductCreditsBalance } from '@/lib/credits-server'
 import {
   AI_PROVIDER_LABEL,
@@ -109,13 +109,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid session' }, { status: 401 })
   }
 
-  let cost: number
-  try {
-    cost = creditsPerMessage(providers.length)
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Invalid AI count'
-    return Response.json({ error: msg }, { status: 400 })
-  }
+  const cost = creditsForPanelVote()
 
   const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
   if (!deduct.ok) {

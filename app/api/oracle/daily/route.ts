@@ -1,3 +1,4 @@
+import { creditsForOracleToday } from '@/lib/credits'
 import { deductCreditsBalance } from '@/lib/credits-server'
 import type { AiProviderName, RouterResult } from '@/lib/ai/router'
 import { MODEL_BY_PROVIDER, runSingleAiProvider } from '@/lib/ai/router'
@@ -11,7 +12,7 @@ import { resolveOracleBirth } from '@/lib/oracle/profile-resolver'
 import { geocodeBirthCity } from '@/lib/oracle/geocode'
 import { computeWesternChart } from '@/lib/oracle/western-chart'
 
-const DAILY_COST = 3
+const DAILY_COST = creditsForOracleToday()
 
 type DeckCard = { id: number; name: string; src: string }
 let deckCache: DeckCard[] | null = null

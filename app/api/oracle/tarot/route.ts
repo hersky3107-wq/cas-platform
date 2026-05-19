@@ -1,3 +1,4 @@
+import { creditsForOracleTarot } from '@/lib/credits'
 import { deductCreditsBalance } from '@/lib/credits-server'
 import type { AiProviderName, RouterResult } from '@/lib/ai/router'
 import { runSingleAiProvider, MODEL_BY_PROVIDER } from '@/lib/ai/router'
@@ -12,22 +13,29 @@ import { resolveOracleBirth } from '@/lib/oracle/profile-resolver'
 
 type SpreadKey = 'one' | 'three' | 'five' | 'celtic'
 
+const TAROT_SPREAD_COST = creditsForOracleTarot()
+
 const SPREADS: Record<
   SpreadKey,
   { label: string; count: number; cost: number; positions: string[] }
 > = {
-  one: { label: "Today's Card", count: 1, cost: 3, positions: ["Today's message"] },
-  three: { label: 'Past · Present · Future', count: 3, cost: 6, positions: ['Past', 'Present', 'Future'] },
+  one: { label: "Today's Card", count: 1, cost: TAROT_SPREAD_COST, positions: ["Today's message"] },
+  three: {
+    label: 'Past · Present · Future',
+    count: 3,
+    cost: TAROT_SPREAD_COST,
+    positions: ['Past', 'Present', 'Future'],
+  },
   five: {
     label: 'Five Card Spread',
     count: 5,
-    cost: 10,
+    cost: TAROT_SPREAD_COST,
     positions: ['Situation', 'Obstacle', 'Advice', 'External', 'Outcome'],
   },
   celtic: {
     label: 'Celtic Cross',
     count: 10,
-    cost: 18,
+    cost: TAROT_SPREAD_COST,
     positions: [
       'The Present',
       'The Challenge',

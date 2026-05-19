@@ -10,7 +10,10 @@ export const ORACLE_READER_ORDER: AiProviderName[] = [
   'mistral',
 ]
 
-export const ORACLE_SESSION_COST = 8
+import { creditsForOracleAstrology } from '@/lib/credits'
+
+/** Astrology / fate (saju) session — see `creditsForOracleAstrology`. */
+export const ORACLE_SESSION_COST = creditsForOracleAstrology()
 export const ORACLE_READER_MAX_TOKENS = 600
 export const ORACLE_CLAUDE_MAX_TOKENS = 800
 export const ORACLE_SYNTH_MAX_TOKENS = 1500

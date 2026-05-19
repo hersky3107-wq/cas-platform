@@ -4,6 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
+import { creditsForOracleTarot } from "@/lib/credits";
+
+const TAROT_COST = creditsForOracleTarot();
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -16,10 +19,10 @@ const SPREADS: Array<{
   cost: number;
   count: number;
 }> = [
-  { key: "one", title: "1 card", subtitle: "Today's Card", cost: 3, count: 1 },
-  { key: "three", title: "3 cards", subtitle: "Past · Present · Future", cost: 6, count: 3 },
-  { key: "five", title: "5 cards", subtitle: "Five Card Spread", cost: 10, count: 5 },
-  { key: "celtic", title: "10 cards", subtitle: "Celtic Cross", cost: 18, count: 10 },
+  { key: "one", title: "1 card", subtitle: "Today's Card", cost: TAROT_COST, count: 1 },
+  { key: "three", title: "3 cards", subtitle: "Past · Present · Future", cost: TAROT_COST, count: 3 },
+  { key: "five", title: "5 cards", subtitle: "Five Card Spread", cost: TAROT_COST, count: 5 },
+  { key: "celtic", title: "10 cards", subtitle: "Celtic Cross", cost: TAROT_COST, count: 10 },
 ];
 
 const POSITIONS: Record<SpreadKey, string[]> = {

@@ -1,4 +1,7 @@
 import { runSingleAiProvider, type RouterResult } from '@/lib/ai/router'
+import { creditsForMindgameCareer } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
 const AI_PLAYERS = [
@@ -1683,6 +1686,29 @@ export async function POST(req: Request) {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
+    }
+  }
+
+  if (action === 'start') {
+    const { user, error: authErr } = await resolveRouteAuth(req, body as Record<string, unknown>)
+    if (authErr || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid session' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    const cost = creditsForMindgameCareer()
+    const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
+    if (!deduct.ok) {
+      const insufficient = deduct.reason === 'insufficient'
+      return new Response(
+        JSON.stringify({
+          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+          balance: deduct.balance,
+          required: cost,
+        }),
+        { status: insufficient ? 402 : 500, headers: { 'Content-Type': 'application/json' } }
+      )
     }
   }
 

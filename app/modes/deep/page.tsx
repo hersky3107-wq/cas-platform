@@ -5,15 +5,16 @@ import ShareButtons from "@/components/ShareButtons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
+import { creditsForDeep } from "@/lib/credits";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
 type DeepOutputMode = "brief" | "standard" | "report";
 
 const MODE_COST: Record<DeepOutputMode, number> = {
-  brief: 3,
-  standard: 10,
-  report: 30,
+  brief: creditsForDeep("brief"),
+  standard: creditsForDeep("standard"),
+  report: creditsForDeep("report"),
 };
 
 const PROVIDER_ORDER: AiProviderName[] = [

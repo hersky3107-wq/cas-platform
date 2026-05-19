@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { resolveRouteAuth } from "@/lib/supabase/route-auth";
+import { creditsForTale } from "@/lib/credits";
+import { deductCreditsBalance } from "@/lib/credits-server";
 import { runSingleAiProvider, type AiProviderName } from "@/lib/ai/router";
 
 const TALE_PROVIDERS_IN_ORDER: AiProviderName[] = ["google", "openai", "deepseek", "mistral", "anthropic", "xai"];
@@ -25,7 +28,7 @@ function buildUserPrompt(input: { genre: string; keyword: string }) {
 }
 
 export async function POST(req: Request) {
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
@@ -35,9 +38,27 @@ export async function POST(req: Request) {
   const genre = typeof body.genre === "string" ? body.genre.trim() : "";
   const keyword = typeof body.keyword === "string" ? body.keyword.trim() : "";
   const language = typeof body.language === "string" ? body.language.trim() : "";
-  const userId = typeof body.userId === "string" ? body.userId : null;
 
   if (!genre) return NextResponse.json({ error: "genre is required" }, { status: 400 });
+
+  const { user, error: authErr } = await resolveRouteAuth(req, body);
+  if (authErr || !user) {
+    return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+  }
+
+  const taleCost = creditsForTale();
+  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, taleCost);
+  if (!deduct.ok) {
+    const insufficient = deduct.reason === "insufficient";
+    return NextResponse.json(
+      {
+        error: insufficient ? "Insufficient credits" : "Could not update credits",
+        balance: deduct.balance,
+        required: taleCost,
+      },
+      { status: insufficient ? 402 : 500 }
+    );
+  }
 
   const { data: sessionRow, error: sErr } = await supabaseAdmin
     .from("sessions")
@@ -45,13 +66,15 @@ export async function POST(req: Request) {
       {
         mode: "tale",
         title: `TALE — ${genre}`,
-        user_id: userId,
+        user_id: user.id,
         prompt: keyword,
       },
     ])
     .select()
     .single();
-  if (sErr || !sessionRow?.id) return NextResponse.json({ error: sErr?.message ?? "Could not create session" }, { status: 500 });
+  if (sErr || !sessionRow?.id) {
+    return NextResponse.json({ error: sErr?.message ?? "Could not create session" }, { status: 500 });
+  }
   const sessionId = String(sessionRow.id);
 
   const systemPrompt = buildSystemPrompt({ genre, keyword, language: language || "English" });
@@ -65,8 +88,7 @@ export async function POST(req: Request) {
         for (const provider of TALE_PROVIDERS_IN_ORDER) {
           const maxCompletionTokens = provider === "anthropic" ? 1400 : 1200;
           const r = await runSingleAiProvider({
-            // Avoid router persistence; we will save rows ourselves.
-            supabase: supabaseAdmin as any,
+            supabase: supabaseAdmin as never,
             sessionId: null,
             userId: null,
             provider,
@@ -100,11 +122,9 @@ export async function POST(req: Request) {
             error: r.error,
           });
         }
-
         send({ done: true, sessionId });
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Unknown error";
-        send({ error: msg });
+        send({ type: "error", error: e instanceof Error ? e.message : String(e) });
       } finally {
         controller.close();
       }
@@ -118,4 +138,3 @@ export async function POST(req: Request) {
     },
   });
 }
-

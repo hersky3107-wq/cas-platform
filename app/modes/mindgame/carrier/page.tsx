@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { ChevronLeft } from "lucide-react";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 
 const AI_PLAYERS = [
   { provider: "openai", name: "ChatGPT", color: "#10A37F", model: "gpt-4.1" },
@@ -1009,17 +1010,9 @@ export default function CarrierModePage() {
     currentRoundRef.current = 1;
   }, [stopUserTimer]);
 
-  const postCarrier = useCallback(
-    async (payload: Record<string, unknown>) => {
-      const res = await fetch("/api/mindgame/carrier", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      return res;
-    },
-    []
-  );
+  const postCarrier = useCallback(async (payload: Record<string, unknown>) => {
+    return authenticatedFetch("/api/mindgame/carrier", { method: "POST", json: payload });
+  }, []);
 
   const pushActionLine = useCallback(
     (

@@ -22,6 +22,7 @@ import {
 } from '@/lib/ai/arena-bundle'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
+import { creditsForArenaRound } from '@/lib/credits'
 import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits-server'
 
 async function insertWithFallback(
@@ -353,7 +354,20 @@ export async function POST(req: Request) {
 
     await insertUserDebateEntry(supabase, sessionId, topic)
 
-    const creditsRemaining = await getCreditsBalance(supabase, user.id)
+    const arenaCost = creditsForArenaRound(1)
+    const deductStart = await deductCreditsBalance(supabase, user.id, arenaCost)
+    if (!deductStart.ok) {
+      const insufficient = deductStart.reason === 'insufficient'
+      return Response.json(
+        {
+          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+          balance: deductStart.balance,
+          required: arenaCost,
+        },
+        { status: insufficient ? 402 : 500 }
+      )
+    }
+    const creditsRemaining = deductStart.balance
 
     const enc = new TextEncoder()
     const stream = new ReadableStream({
@@ -368,7 +382,7 @@ export async function POST(req: Request) {
             type: 'meta',
             sessionId,
             creditsRemaining,
-            cost: 0,
+            cost: arenaCost,
             action: 'start',
           })
 
@@ -465,7 +479,26 @@ export async function POST(req: Request) {
     }
   }
 
-  const creditsRemaining = await getCreditsBalance(supabase, user.id)
+  let creditsRemaining: number | null = null
+  let arenaBattleCost = 0
+  if (roundNumber <= 3) {
+    arenaBattleCost = creditsForArenaRound(roundNumber)
+    const deductBattle = await deductCreditsBalance(supabase, user.id, arenaBattleCost)
+    if (!deductBattle.ok) {
+      const insufficient = deductBattle.reason === 'insufficient'
+      return Response.json(
+        {
+          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+          balance: deductBattle.balance,
+          required: arenaBattleCost,
+        },
+        { status: insufficient ? 402 : 500 }
+      )
+    }
+    creditsRemaining = deductBattle.balance
+  } else {
+    creditsRemaining = await getCreditsBalance(supabase, user.id)
+  }
 
   const rounds = normalizeArenaRounds(body.rounds)
   if (rounds.length === 0) {
@@ -495,7 +528,7 @@ export async function POST(req: Request) {
           type: 'meta',
           sessionId,
           creditsRemaining,
-          cost: 0,
+          cost: arenaBattleCost,
           action: 'battle',
           roundNumber,
         })

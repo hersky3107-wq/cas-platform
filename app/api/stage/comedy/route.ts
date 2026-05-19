@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveRouteAuth } from "@/lib/supabase/route-auth";
+import { creditsForComedyTalkTurn } from "@/lib/credits";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits-server";
 import {
   COMEDY_PROVIDERS,
@@ -191,15 +192,16 @@ export async function POST(req: Request) {
 
   await ensureComedyParticipantsInserted({ supabase, sessionId });
 
-  if (action === "turn") {
-    const deduct = await deductCreditsBalance(supabase, user.id, 1);
+  const comedyTurnCost = creditsForComedyTalkTurn();
+  if (action === "start" || action === "turn") {
+    const deduct = await deductCreditsBalance(supabase, user.id, comedyTurnCost);
     if (!deduct.ok) {
       const insufficient = deduct.reason === "insufficient";
       return NextResponse.json(
         {
           error: insufficient ? "Insufficient credits" : "Could not update credits",
           balance: deduct.balance,
-          required: 1,
+          required: comedyTurnCost,
         },
         { status: insufficient ? 402 : 500 }
       );

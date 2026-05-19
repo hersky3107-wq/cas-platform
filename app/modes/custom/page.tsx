@@ -18,7 +18,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
-import { creditsPerMessage } from "@/lib/credits";
+import { creditsForCustom } from "@/lib/credits";
 import type {
   AiProviderName,
   CompareConversationMessage,
@@ -382,7 +382,7 @@ export default function CustomModePage() {
 
   const nextCost = useMemo(() => {
     try {
-      return creditsPerMessage(selectedList.length);
+      return creditsForCustom(selectedList.length);
     } catch {
       return null;
     }

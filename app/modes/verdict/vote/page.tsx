@@ -13,7 +13,7 @@ import {
 } from "react";
 import { ChevronLeft } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
-import { creditsPerMessage } from "@/lib/credits";
+import { creditsForPanelVote } from "@/lib/credits";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
 import {
   AI_PROVIDER_LABEL,
@@ -191,7 +191,7 @@ export default function VerdictVotePage() {
 
   const fixedCost = useMemo(() => {
     try {
-      return creditsPerMessage(VERDICT_VOTE_AI_ORDER.length);
+      return creditsForPanelVote();
     } catch {
       return null;
     }

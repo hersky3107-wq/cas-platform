@@ -9,7 +9,7 @@ import {
 } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { creditsPerMessage } from '@/lib/credits'
+import { creditsForCustom } from '@/lib/credits'
 import { deductCreditsBalance } from '@/lib/credits-server'
 
 const ALLOWED_MAX_TOKENS = [300, 700, 2500] as const
@@ -147,7 +147,7 @@ export async function POST(req: Request) {
 
   let cost: number
   try {
-    cost = creditsPerMessage(providers.length)
+    cost = creditsForCustom(providers.length)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Invalid AI count'
     return NextResponse.json({ error: msg }, { status: 400 })

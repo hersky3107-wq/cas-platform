@@ -17,6 +17,8 @@ import type {
   SuitMessage,
   SuitParticipationMode,
 } from '@/lib/ai/suit-types'
+import { creditsForSuit } from '@/lib/credits'
+import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits-server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
 async function insertWithFallback(
@@ -160,6 +162,49 @@ async function persistSuitVerdictResult(supabase: SupabaseClient, sessionId: str
     } as Record<string, unknown>,
     { session_id: sessionId, winner_ai_name: winning, category: 'suit_verdict' } as Record<string, unknown>
   )
+}
+
+async function ensureSuitCreditsDeducted(
+  supabase: SupabaseClient,
+  userId: string,
+  sessionId: string
+): Promise<
+  | { ok: true; balance: number | null; skipped?: boolean }
+  | { ok: false; balance: number; required: number; reason: 'insufficient' | 'update_failed' }
+> {
+  const { data: paid } = await supabase
+    .from('user_selections')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .eq('category', 'suit_credits_paid')
+    .limit(1)
+    .maybeSingle()
+
+  if (paid?.id) {
+    const balance = await getCreditsBalance(supabase, userId)
+    return { ok: true, balance, skipped: true }
+  }
+
+  const required = creditsForSuit()
+  const deduct = await deductCreditsBalance(supabase, userId, required)
+  if (!deduct.ok) {
+    return { ok: false, balance: deduct.balance, required, reason: deduct.reason }
+  }
+
+  await insertWithFallback(
+    supabase,
+    'user_selections',
+    {
+      session_id: sessionId,
+      user_id: userId,
+      category: 'suit_credits_paid',
+      reason: `paid:${required}`,
+    },
+    { session_id: sessionId, category: 'suit_credits_paid' }
+  )
+
+  return deduct
 }
 
 function createEmitter(
@@ -343,6 +388,18 @@ export async function POST(req: Request) {
     if (!sess || sess.mode !== 'suit') return Response.json({ error: 'bad session' }, { status: 400 })
     const apiKey = anthropicPlatformKey()
     if (!apiKey) return Response.json({ error: 'Judge API missing' }, { status: 500 })
+    const suitPay = await ensureSuitCreditsDeducted(supabase, user.id, sessionId)
+    if (!suitPay.ok) {
+      const insufficient = suitPay.reason === 'insufficient'
+      return Response.json(
+        {
+          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+          balance: suitPay.balance,
+          required: suitPay.required,
+        },
+        { status: insufficient ? 402 : 500 }
+      )
+    }
     const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }
     const messages: SuitMessage[] = []
     await runJudgeCounselOpening(topic, ctx, apiKey, messages)
@@ -460,6 +517,19 @@ export async function POST(req: Request) {
     const { data: sess } = await supabase.from('sessions').select('mode').eq('id', sessionId).maybeSingle()
     if (!sess || sess.mode !== 'suit') return Response.json({ error: 'bad session' }, { status: 400 })
 
+    const suitPay = await ensureSuitCreditsDeducted(supabase, user.id, sessionId)
+    if (!suitPay.ok) {
+      const insufficient = suitPay.reason === 'insufficient'
+      return Response.json(
+        {
+          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+          balance: suitPay.balance,
+          required: suitPay.required,
+        },
+        { status: insufficient ? 402 : 500 }
+      )
+    }
+
     const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }
     const enc = new TextEncoder()
     const stream = new ReadableStream({
@@ -567,6 +637,19 @@ export async function POST(req: Request) {
           sess_mode: sess?.mode ?? null,
         })
         return Response.json({ error: 'bad session' }, { status: 400 })
+      }
+
+      const suitPayStream = await ensureSuitCreditsDeducted(supabase, user.id, sessionId)
+      if (!suitPayStream.ok) {
+        const insufficient = suitPayStream.reason === 'insufficient'
+        return Response.json(
+          {
+            error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+            balance: suitPayStream.balance,
+            required: suitPayStream.required,
+          },
+          { status: insufficient ? 402 : 500 }
+        )
       }
 
       const ctx: SuitTransportContext = {

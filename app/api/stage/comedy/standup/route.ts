@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveRouteAuth } from "@/lib/supabase/route-auth";
+import { creditsForComedyStandup } from "@/lib/credits";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits-server";
 import { MODEL_BY_PROVIDER } from "@/lib/ai/router";
 import {
@@ -159,14 +160,15 @@ export async function POST(req: Request) {
   if (!topic) return NextResponse.json({ error: "topic is required" }, { status: 400 });
 
   if (action === "start") {
-    const deduct = await deductCreditsBalance(supabase, user.id, 3);
+    const standupCost = creditsForComedyStandup();
+    const deduct = await deductCreditsBalance(supabase, user.id, standupCost);
     if (!deduct.ok) {
       const insufficient = deduct.reason === "insufficient";
       return NextResponse.json(
         {
           error: insufficient ? "크레딧이 부족합니다" : "Could not update credits",
           balance: deduct.balance,
-          required: 3,
+          required: standupCost,
         },
         { status: insufficient ? 402 : 500 }
       );
