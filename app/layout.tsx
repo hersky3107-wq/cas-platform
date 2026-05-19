@@ -3,6 +3,7 @@
 import './globals.css'
 import { Analytics } from '@vercel/analytics/react'
 import { ApiFetchAuth } from '@/app/components/ApiFetchAuth'
+import InAppBrowserGuard from '@/components/InAppBrowserGuard'
 
 export default function RootLayout({
   children,
@@ -26,6 +27,7 @@ export default function RootLayout({
       <body>
         <ApiFetchAuth />
         {children}
+        <InAppBrowserGuard />
         <Analytics />
       </body>
     </html>
