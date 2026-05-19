@@ -606,7 +606,10 @@ async function callProvider({
 }
 
 export type RunSingleProviderParams = {
+  /** Client used for DB inserts (use service role on server routes to bypass RLS). */
   supabase: SupabaseClient
+  /** Optional user-scoped client for BYOK reads; defaults to `supabase`. */
+  authSupabase?: SupabaseClient
   sessionId: string | null
   userId: string | null
   provider: AiProviderName
@@ -687,6 +690,7 @@ async function saveCompareArtifactsRows(
 export async function runSingleAiProvider(params: RunSingleProviderParams): Promise<RouterResult> {
   const {
     supabase,
+    authSupabase,
     sessionId,
     userId,
     provider,
@@ -706,10 +710,12 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
   const started = nowMs()
   const model = modelOverride ?? MODEL_BY_PROVIDER[provider]
 
+  const byokClient = authSupabase ?? supabase
+
   try {
     const byok =
       userId && supabaseAccessToken
-        ? await getUserByokKey({ supabase, userId, provider })
+        ? await getUserByokKey({ supabase: byokClient, userId, provider })
         : null
     const platform = getEnvKey(provider)
     const apiKey = byok ?? platform
@@ -867,6 +873,8 @@ export async function* iterateCompareProviderResults(input: {
   providers: AiProviderName[]
   sessionId: string
   supabaseAccessToken?: string
+  /** Service-role client for server-side persistence (bypasses RLS). */
+  persistSupabase?: SupabaseClient
   saveCompareArtifacts?: boolean
   temperature?: number
   maxCompletionTokens?: number
@@ -874,8 +882,9 @@ export async function* iterateCompareProviderResults(input: {
   conversationHistory?: CompareConversationMessage[]
 }): AsyncGenerator<RouterResult, void, unknown> {
   const providers = uniqueProviders(input.providers)
-  const supabase = getAuthedSupabase(input.supabaseAccessToken)
-  const userId = input.supabaseAccessToken ? await getUserIdFromToken(supabase) : null
+  const authSupabase = getAuthedSupabase(input.supabaseAccessToken)
+  const persistSupabase = input.persistSupabase ?? authSupabase
+  const userId = input.supabaseAccessToken ? await getUserIdFromToken(authSupabase) : null
 
   const resolveSystemPrompt = (provider: AiProviderName) => {
     if (input.getSystemPrompt) return input.getSystemPrompt(provider)
@@ -892,7 +901,8 @@ export async function* iterateCompareProviderResults(input: {
           ? buildCompareChatMessagesForProvider(history, provider, input.prompt)
           : undefined
       const p = runSingleAiProvider({
-        supabase,
+        supabase: persistSupabase,
+        authSupabase,
         sessionId: input.sessionId,
         userId,
         provider,
