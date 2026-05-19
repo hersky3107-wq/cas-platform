@@ -66,26 +66,68 @@ export async function copyUrlToClipboard(url: string): Promise<boolean> {
   }
 }
 
-export type OpenInBrowserResult = 'android-intent' | 'ios-redirect' | 'copied' | 'copy-failed'
+/** Open Chrome on Android via hidden anchor click (never assign window.location). */
+export function tryOpenAndroidChromeIntent(): boolean {
+  if (typeof document === 'undefined') return false
 
-/**
- * Android: Chrome intent URL. iOS: same-page navigation. Else: clipboard copy.
- */
+  try {
+    const anchor = document.createElement('a')
+    anchor.href = buildAndroidChromeIntentUrl()
+    anchor.style.display = 'none'
+    anchor.setAttribute('aria-hidden', 'true')
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Force Safari handoff on iOS in-app webviews. */
+export function tryOpenIOSInSafari(): void {
+  if (typeof window === 'undefined') return
+  window.location.href = window.location.href
+}
+
+export type OpenInBrowserResult =
+  | { ok: true; method: 'android-intent' | 'ios-redirect' }
+  | { ok: false; message: string }
+
 export async function openInExternalBrowser(): Promise<OpenInBrowserResult> {
-  if (typeof window === 'undefined') return 'copy-failed'
+  if (typeof window === 'undefined') {
+    return { ok: false, message: 'Unable to open browser.' }
+  }
 
   const url = getCurrentPageUrl()
 
   if (isAndroid()) {
-    window.location.href = buildAndroidChromeIntentUrl()
-    return 'android-intent'
+    const opened = tryOpenAndroidChromeIntent()
+    if (!opened) {
+      await copyUrlToClipboard(url)
+      return {
+        ok: false,
+        message: `Copy this URL and paste it in Chrome: ${url}`,
+      }
+    }
+    return { ok: true, method: 'android-intent' }
   }
 
   if (isIOS()) {
-    window.location.replace(url)
-    return 'ios-redirect'
+    tryOpenIOSInSafari()
+    return { ok: true, method: 'ios-redirect' }
   }
 
   const copied = await copyUrlToClipboard(url)
-  return copied ? 'copied' : 'copy-failed'
+  if (copied) {
+    return {
+      ok: false,
+      message: `Copy this URL and paste it in Chrome: ${url}`,
+    }
+  }
+
+  return {
+    ok: false,
+    message: `Copy this URL and paste it in Chrome: ${url}`,
+  }
 }

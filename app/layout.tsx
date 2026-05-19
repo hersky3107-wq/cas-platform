@@ -25,9 +25,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#0b1020" />
       </head>
       <body>
+        <InAppBrowserGuard />
         <ApiFetchAuth />
         {children}
-        <InAppBrowserGuard />
         <Analytics />
       </body>
     </html>

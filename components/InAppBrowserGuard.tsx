@@ -1,24 +1,61 @@
 'use client'
 
 import Image from 'next/image'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useSyncExternalStore, useState } from 'react'
 import {
   getCurrentPageUrl,
   isInAppBrowser,
   openInExternalBrowser,
 } from '@/lib/inAppBrowser'
 
+function subscribeToInAppDetection() {
+  return () => {}
+}
+
+function getInAppBrowserSnapshot(): boolean {
+  return isInAppBrowser()
+}
+
+function getInAppBrowserServerSnapshot(): boolean {
+  return false
+}
+
 export default function InAppBrowserGuard() {
-  const [blocked, setBlocked] = useState(false)
+  const blocked = useSyncExternalStore(
+    subscribeToInAppDetection,
+    getInAppBrowserSnapshot,
+    getInAppBrowserServerSnapshot
+  )
+
   const [pageUrl, setPageUrl] = useState('')
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
 
-  useEffect(() => {
-    if (!isInAppBrowser()) return
-    setBlocked(true)
+  useLayoutEffect(() => {
+    if (!blocked) return
     setPageUrl(getCurrentPageUrl())
-  }, [])
+  }, [blocked])
+
+  useEffect(() => {
+    if (!blocked) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const blockKeys = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+
+    document.addEventListener('keydown', blockKeys, true)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', blockKeys, true)
+    }
+  }, [blocked])
 
   const handleOpenInBrowser = useCallback(async () => {
     setOpening(true)
@@ -26,10 +63,8 @@ export default function InAppBrowserGuard() {
 
     const result = await openInExternalBrowser()
 
-    if (result === 'copied') {
-      setStatusMessage('URL copied, please paste in your browser')
-    } else if (result === 'copy-failed') {
-      setStatusMessage('Could not copy URL. Please copy the link below manually.')
+    if (!result.ok) {
+      setStatusMessage(result.message)
     }
 
     setOpening(false)
@@ -39,10 +74,11 @@ export default function InAppBrowserGuard() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0b1020] px-5 py-10"
-      role="dialog"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#0b1020] px-5 py-10"
+      role="alertdialog"
       aria-modal="true"
       aria-labelledby="in-app-browser-title"
+      aria-describedby="in-app-browser-desc"
     >
       <div className="w-full max-w-md text-center">
         <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-lg">
@@ -67,7 +103,7 @@ export default function InAppBrowserGuard() {
           For the best experience, please open this page in your browser.
         </h1>
 
-        <p className="mt-3 text-sm leading-relaxed text-slate-400">
+        <p id="in-app-browser-desc" className="mt-3 text-sm leading-relaxed text-slate-400">
           원활한 이용을 위해 외부 브라우저에서 열어주세요.
         </p>
 
@@ -81,7 +117,7 @@ export default function InAppBrowserGuard() {
         </button>
 
         {statusMessage ? (
-          <p className="mt-4 text-sm text-cyan-200/90" role="status">
+          <p className="mt-4 text-sm leading-relaxed text-cyan-200/90" role="status">
             {statusMessage}
           </p>
         ) : null}
@@ -91,7 +127,7 @@ export default function InAppBrowserGuard() {
             Current URL
           </p>
           <p className="mt-2 break-all font-mono text-xs leading-relaxed text-slate-300">
-            {pageUrl}
+            {pageUrl || getCurrentPageUrl()}
           </p>
         </div>
       </div>
