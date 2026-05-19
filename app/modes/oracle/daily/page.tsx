@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
+import { creditsForOracleToday } from "@/lib/credits";
+
+const ORACLE_TODAY_COST = creditsForOracleToday();
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -152,8 +155,18 @@ export default function OracleDailyPage() {
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           Today&apos;s Fortune
         </h1>
+        <p className="mt-3 text-center text-sm text-cyan-200/85">
+          <span className="rounded-full border border-cyan-400/25 bg-cyan-950/30 px-3 py-1 text-xs font-medium tracking-wide text-cyan-100">
+            {ORACLE_TODAY_COST} credits
+          </span>
+        </p>
         <p className="mt-2 text-sm text-slate-300">
           {meta?.today ? fmtDate(meta.today) : ""}
+          {meta?.cost != null ? (
+            <span className="ml-2 text-slate-500">· charged {meta.cost} credits</span>
+          ) : running ? (
+            <span className="ml-2 text-slate-500">· loading…</span>
+          ) : null}
         </p>
 
         {err ? (

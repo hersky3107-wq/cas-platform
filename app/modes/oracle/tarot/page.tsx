@@ -4,13 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
-import { creditsForOracleTarot } from "@/lib/credits";
-
-const TAROT_COST = creditsForOracleTarot();
+import { creditsForOracleTarotSpread, type OracleTarotSpreadKey } from "@/lib/credits";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
-type SpreadKey = "one" | "three" | "five" | "celtic";
+type SpreadKey = OracleTarotSpreadKey;
 
 const SPREADS: Array<{
   key: SpreadKey;
@@ -19,10 +17,34 @@ const SPREADS: Array<{
   cost: number;
   count: number;
 }> = [
-  { key: "one", title: "1 card", subtitle: "Today's Card", cost: TAROT_COST, count: 1 },
-  { key: "three", title: "3 cards", subtitle: "Past · Present · Future", cost: TAROT_COST, count: 3 },
-  { key: "five", title: "5 cards", subtitle: "Five Card Spread", cost: TAROT_COST, count: 5 },
-  { key: "celtic", title: "10 cards", subtitle: "Celtic Cross", cost: TAROT_COST, count: 10 },
+  {
+    key: "one",
+    title: "1 card",
+    subtitle: "Today's Card",
+    cost: creditsForOracleTarotSpread("one"),
+    count: 1,
+  },
+  {
+    key: "three",
+    title: "3 cards",
+    subtitle: "Past · Present · Future",
+    cost: creditsForOracleTarotSpread("three"),
+    count: 3,
+  },
+  {
+    key: "five",
+    title: "5 cards",
+    subtitle: "Five Card Spread",
+    cost: creditsForOracleTarotSpread("five"),
+    count: 5,
+  },
+  {
+    key: "celtic",
+    title: "10 cards",
+    subtitle: "Celtic Cross",
+    cost: creditsForOracleTarotSpread("celtic"),
+    count: 10,
+  },
 ];
 
 const POSITIONS: Record<SpreadKey, string[]> = {

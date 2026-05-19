@@ -8,8 +8,10 @@ import { supabase } from "@/lib/db/supabase";
 import { SUIT_COUNSEL_AI_SELECTOR_CARDS } from "@/lib/ai/suit-prompts";
 import type { SuitClientConfig } from "@/lib/ai/suit-types";
 import type { AiProviderName } from "@/lib/ai/router";
+import { creditsForSuit } from "@/lib/credits";
 
 const STORAGE_KEY = "cas-suit-live";
+const SUIT_SESSION_COST = creditsForSuit();
 
 export type SuitStoredSession = {
   sessionId: string;
@@ -39,6 +41,19 @@ export default function SuitSetupPage() {
   const [counselOpponent, setCounselOpponent] = useState<AiProviderName | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch("/api/credits/balance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const j = (await res.json().catch(() => null)) as { balance?: number };
+      if (typeof j?.balance === "number") setCredits(j.balance);
+    })();
+  }, []);
 
   const flow = useMemo(() => {
     const needsCounselRole = participation === "counsel";
@@ -233,11 +248,28 @@ export default function SuitSetupPage() {
             <Gavel className="h-5 w-5 text-amber-400" />
             <span className="text-sm font-semibold tracking-[0.2em] text-white/90">SUIT</span>
           </div>
-          <span className="w-[88px]" />
+          {credits !== null ? (
+            <span className="rounded-full bg-[#131c35] px-3 py-1.5 text-xs text-slate-200">
+              {credits} credits
+            </span>
+          ) : (
+            <span className="rounded-full bg-[#131c35] px-3 py-1.5 text-xs text-slate-400">
+              Credits —
+            </span>
+          )}
         </div>
       </header>
 
       <div className="mx-auto max-w-2xl space-y-8 px-4 py-10">
+        <p className="text-center text-sm text-amber-200/85">
+          <span className="rounded-full border border-amber-400/25 bg-amber-500/10 px-3 py-1 text-xs font-medium tracking-wide text-amber-100">
+            {SUIT_SESSION_COST} credits per session
+          </span>
+        </p>
+        <p className="-mt-4 text-center text-xs text-white/45">
+          This session uses {SUIT_SESSION_COST} credits when the trial begins.
+        </p>
+
         {error ? (
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             {error}
@@ -542,14 +574,25 @@ export default function SuitSetupPage() {
                 </div>
               ) : null}
             </dl>
+            <p className="text-center text-xs text-amber-200/75">
+              This session uses {SUIT_SESSION_COST} credits.
+            </p>
             <button
               type="button"
-              disabled={starting}
+              disabled={
+                starting ||
+                (credits !== null && credits < SUIT_SESSION_COST)
+              }
               onClick={() => void startSession()}
               className="w-full rounded-2xl bg-gradient-to-r from-amber-500 to-amber-700 py-3.5 text-sm font-semibold text-[#0a0f1e] shadow-lg disabled:opacity-50"
             >
-              {starting ? "Seating the jury…" : "Enter the courtroom"}
+              {starting ? "Seating the jury…" : `Enter the courtroom (${SUIT_SESSION_COST} credits)`}
             </button>
+            {credits !== null && credits < SUIT_SESSION_COST ? (
+              <p className="text-center text-xs text-amber-200/85">
+                You need at least {SUIT_SESSION_COST} credits to begin this trial.
+              </p>
+            ) : null}
           </section>
         ) : null}
 

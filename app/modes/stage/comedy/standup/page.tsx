@@ -5,6 +5,9 @@ import ShareButtons from "@/components/ShareButtons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName } from "@/lib/ai/router";
+import { creditsForComedyStandup } from "@/lib/credits";
+
+const STANDUP_COST = creditsForComedyStandup();
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -336,6 +339,11 @@ export default function StandupPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">STAGE — STAND-UP</h1>
           <p className="mt-2 text-sm text-slate-400">2 rounds. All comedians twice (Gemini once). You judge.</p>
+          <p className="mt-2">
+            <span className="rounded-full border border-cyan-400/25 bg-cyan-950/30 px-3 py-1 text-xs font-medium text-cyan-100">
+              {STANDUP_COST} credits
+            </span>
+          </p>
         </div>
 
         {error ? (
@@ -359,7 +367,7 @@ export default function StandupPage() {
               disabled={!topic.trim() || loading}
               className="mt-4 w-full rounded-2xl bg-cyan-500 py-3 text-sm font-semibold text-slate-950 transition enabled:hover:bg-cyan-400 disabled:opacity-40"
             >
-              Start
+              Start ({STANDUP_COST} credits)
             </button>
           </div>
         ) : null}

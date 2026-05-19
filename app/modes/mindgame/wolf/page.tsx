@@ -10,6 +10,9 @@ import {
 } from "react";
 import { ChevronLeft } from "lucide-react";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { creditsForMindgameWolf } from "@/lib/credits";
+
+const WOLF_SESSION_COST = creditsForMindgameWolf();
 
 const AI_PLAYERS = [
   { provider: "openai", name: "ChatGPT", color: "#10A37F" },
@@ -1225,6 +1228,11 @@ export default function WolfModePage() {
             <h2 className="text-center text-5xl font-black tracking-tight text-white sm:text-6xl">
               🐺 WOLF
             </h2>
+            <p className="mt-4 text-center">
+              <span className="rounded-full border border-amber-400/30 bg-amber-950/30 px-3 py-1 text-xs font-medium text-amber-100">
+                {WOLF_SESSION_COST} credits
+              </span>
+            </p>
             <p className="mt-3 text-center text-sm text-zinc-500">
               One among us is the Wolf.
             </p>
@@ -1364,7 +1372,7 @@ export default function WolfModePage() {
               onClick={() => void startGame()}
               className="mt-12 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 px-12 py-4 text-sm font-bold uppercase tracking-widest text-gray-950 shadow-lg shadow-amber-500/20 disabled:opacity-50"
             >
-              {phase === "starting" ? "Starting…" : "Start game"}
+              {phase === "starting" ? "Starting…" : `Start game (${WOLF_SESSION_COST} credits)`}
             </button>
           </section>
         ) : (

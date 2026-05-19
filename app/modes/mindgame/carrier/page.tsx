@@ -10,6 +10,9 @@ import {
 } from "react";
 import { ChevronLeft } from "lucide-react";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { creditsForMindgameCareer } from "@/lib/credits";
+
+const CARRIER_SESSION_COST = creditsForMindgameCareer();
 
 const AI_PLAYERS = [
   { provider: "openai", name: "ChatGPT", color: "#10A37F", model: "gpt-4.1" },
@@ -1920,6 +1923,11 @@ export default function CarrierModePage() {
             <h2 className="text-center text-5xl font-black tracking-tight text-white sm:text-6xl">
               🦠 CARRIER
             </h2>
+            <p className="mt-4 text-center">
+              <span className="rounded-full border border-emerald-400/30 bg-emerald-950/30 px-3 py-1 text-xs font-medium text-emerald-100">
+                {CARRIER_SESSION_COST} credits
+              </span>
+            </p>
             <p className="mt-3 max-w-md text-center text-sm text-zinc-500">
               Two hidden zombies; each round the host assigns new two-person teams at
               random. One human holds three shotgun shots, another three vaccine doses.
@@ -2020,7 +2028,7 @@ export default function CarrierModePage() {
               onClick={() => void startGame()}
               className="mt-12 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 px-12 py-4 text-sm font-bold uppercase tracking-widest text-gray-950 shadow-lg shadow-emerald-500/20 disabled:opacity-50"
             >
-              {phase === "starting" ? "Starting…" : "Start game"}
+              {phase === "starting" ? "Starting…" : `Start game (${CARRIER_SESSION_COST} credits)`}
             </button>
           </section>
         ) : (

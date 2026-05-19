@@ -90,8 +90,17 @@ export function creditsForTale(): number {
   return 4
 }
 
-export function creditsForOracleTarot(): number {
-  return 4
+export type OracleTarotSpreadKey = 'one' | 'three' | 'five' | 'celtic'
+
+/** Tarot spread cost by card count (one / three / five / celtic). */
+export function creditsForOracleTarotSpread(spread: OracleTarotSpreadKey): number {
+  const costs: Record<OracleTarotSpreadKey, number> = {
+    one: 2,
+    three: 3,
+    five: 4,
+    celtic: 6,
+  }
+  return costs[spread]
 }
 
 export function creditsForOracleAstrology(): number {
@@ -103,7 +112,7 @@ export function creditsForOracleSaju(): number {
 }
 
 export function creditsForOracleToday(): number {
-  return 2
+  return 3
 }
 
 export function creditsForComedyTalkTurn(): number {
