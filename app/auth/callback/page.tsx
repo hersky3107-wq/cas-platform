@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
 import { supabase } from '@/lib/db/supabase'
 import { finishAuthCallback, parseAuthCallbackParams } from '@/lib/supabase/finish-auth'
 
@@ -41,6 +42,13 @@ function AuthCallbackClient() {
       if (typeof window !== 'undefined' && window.location.hash) {
         window.history.replaceState(null, '', window.location.pathname + window.location.search)
       }
+
+      await authenticatedFetch('/api/auth/welcome-credits', {
+        method: 'POST',
+        json: {},
+      }).catch(() => {
+        // Non-blocking: login still succeeds if welcome credits fail
+      })
 
       setStatus('Signed in. Redirecting…')
       router.replace(returnPath)

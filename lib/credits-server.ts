@@ -9,6 +9,119 @@ export type { AddCreditsOutcome, DeductCreditsOutcome } from '@/lib/credits'
 
 const CREDITS_TABLES = ['users', 'profiles'] as const
 
+export const WELCOME_CREDITS_AMOUNT = 30
+
+export type EnsureWelcomeCreditsOutcome =
+  | { granted: true; balance: number }
+  | { granted: false; balance: number | null }
+
+async function readUserCreditsRow(
+  userId: string
+): Promise<{ exists: boolean; credits: number | null }> {
+  const { data: userRow, error } = await supabaseAdmin
+    .from('users')
+    .select('id, credits')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[credits] welcome users read failed:', error.message)
+    return { exists: false, credits: null }
+  }
+
+  if (!userRow) {
+    return { exists: false, credits: null }
+  }
+
+  return {
+    exists: true,
+    credits: typeof userRow.credits === 'number' ? userRow.credits : 0,
+  }
+}
+
+/**
+ * Grants 30 welcome credits once per user (tracked in welcome_credit_grants).
+ * Inserts users row when missing; sets credits when an existing row still has 0.
+ */
+export async function ensureWelcomeCreditsForUser(
+  userId: string,
+  options?: { nickname?: string | null }
+): Promise<EnsureWelcomeCreditsOutcome> {
+  const nickname = options?.nickname?.trim() || null
+
+  const { error: grantError } = await supabaseAdmin.from('welcome_credit_grants').insert({
+    user_id: userId,
+    credits_granted: WELCOME_CREDITS_AMOUNT,
+  })
+
+  if (grantError) {
+    if (grantError.code === '23505') {
+      const balance = await getCreditsBalance(supabaseAdmin, userId)
+      return { granted: false, balance }
+    }
+    console.warn('[credits] welcome grant log failed:', grantError.message)
+    const balance = await getCreditsBalance(supabaseAdmin, userId)
+    return { granted: false, balance }
+  }
+
+  const userRow = await readUserCreditsRow(userId)
+
+  if (userRow.exists && userRow.credits !== null && userRow.credits > 0) {
+    await supabaseAdmin.from('welcome_credit_grants').delete().eq('user_id', userId)
+    return { granted: false, balance: userRow.credits }
+  }
+
+  if (!userRow.exists) {
+    const insertPayload: { id: string; credits: number; nickname?: string } = {
+      id: userId,
+      credits: WELCOME_CREDITS_AMOUNT,
+    }
+    if (nickname) insertPayload.nickname = nickname
+
+    const { error: insertErr } = await supabaseAdmin.from('users').insert(insertPayload)
+    if (insertErr) {
+      console.warn('[credits] welcome users insert failed:', insertErr.message)
+      await supabaseAdmin.from('welcome_credit_grants').delete().eq('user_id', userId)
+      const balance = await getCreditsBalance(supabaseAdmin, userId)
+      return { granted: false, balance }
+    }
+  } else {
+    const updatePayload: { credits: number; nickname?: string } = {
+      credits: WELCOME_CREDITS_AMOUNT,
+    }
+    if (nickname) updatePayload.nickname = nickname
+
+    const { error: updateErr } = await supabaseAdmin
+      .from('users')
+      .update(updatePayload)
+      .eq('id', userId)
+
+    if (updateErr) {
+      console.warn('[credits] welcome users update failed:', updateErr.message)
+      await supabaseAdmin.from('welcome_credit_grants').delete().eq('user_id', userId)
+      const balance = await getCreditsBalance(supabaseAdmin, userId)
+      return { granted: false, balance }
+    }
+
+    const { data: profileRow } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (profileRow) {
+      const profilePayload: { credits: number; nickname?: string } = {
+        credits: WELCOME_CREDITS_AMOUNT,
+      }
+      if (nickname) profilePayload.nickname = nickname
+      await supabaseAdmin.from('profiles').update(profilePayload).eq('id', userId)
+    }
+  }
+
+  const balance = await getCreditsBalance(supabaseAdmin, userId)
+  return { granted: true, balance: balance ?? WELCOME_CREDITS_AMOUNT }
+}
+
 async function isAdminUser(userId: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
   if (error) {
