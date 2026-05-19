@@ -1,4 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '@/lib/supabase/server'
+
+/** Admin account — never deduct credits for this email. */
+export const ADMIN_EMAIL = 'hersky3107@gmail.com'
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false
+  return email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase()
+}
+
+async function isAdminUser(userId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
+  if (error) {
+    console.warn('[credits] admin user lookup failed:', error.message)
+    return false
+  }
+  return isAdminEmail(data.user?.email)
+}
 
 export const COMPARE_SYSTEM_PROMPT = `You are giving a direct, honest answer to a smart person who wants real insight — not a textbook summary.
 
@@ -70,11 +88,16 @@ export type DeductCreditsOutcome =
   | { ok: false; balance: number; reason: 'insufficient' | 'update_failed' }
 
 export async function deductCreditsBalance(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   userId: string,
   amount: number
 ): Promise<DeductCreditsOutcome> {
-  const balance = await getCreditsBalance(supabase, userId)
+  if (await isAdminUser(userId)) {
+    const balance = await getCreditsBalance(supabaseAdmin, userId)
+    return { ok: true, balance, skipped: true }
+  }
+
+  const balance = await getCreditsBalance(supabaseAdmin, userId)
   if (balance === null) {
     return { ok: true, balance: null, skipped: true }
   }
@@ -84,7 +107,7 @@ export async function deductCreditsBalance(
   const next = balance - amount
 
   for (const table of CREDITS_TABLES) {
-    const { error } = await supabase.from(table).update({ credits: next }).eq('id', userId)
+    const { error } = await supabaseAdmin.from(table).update({ credits: next }).eq('id', userId)
     if (!error) {
       return { ok: true, balance: next }
     }
