@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -155,7 +156,7 @@ function FirstTimeModal({
                 ))}
               </ul>
               <p className="text-center text-sm font-medium text-white">
-                Same question. Six minds. Zero agreement guaranteed.
+                Same question. Six minds. Always something to discover.
               </p>
               <p className="text-xs leading-relaxed text-slate-500">
                 Our AI lineup will continue to grow. Agents may also be updated or replaced over time.
@@ -278,15 +279,22 @@ function FirstTimeModal({
   )
 }
 
+function hasSeenFirstTimeHere(): boolean {
+  try {
+    return localStorage.getItem(AIMANI_FIRST_TIME_STORAGE_KEY) !== null
+  } catch {
+    return true
+  }
+}
+
 export function FirstTimeHereProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
+  const autoOpenChecked = useRef(false)
 
   useEffect(() => {
-    try {
-      if (!localStorage.getItem(AIMANI_FIRST_TIME_STORAGE_KEY)) {
-        setOpen(true)
-      }
-    } catch {
+    if (autoOpenChecked.current) return
+    autoOpenChecked.current = true
+    if (!hasSeenFirstTimeHere()) {
       setOpen(true)
     }
   }, [])

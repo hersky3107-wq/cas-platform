@@ -61,17 +61,24 @@ function LobbyCard({
     module.id === "custom"
       ? 1.0
       : module.id === "suit"
-        ? 1.5
+        ? 1.2
         : module.id === "persona"
           ? 1.25
           : module.id === "compare"
             ? 1.1
             : 1.3;
-  const iconClass = `relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px] ${module.imageSrc ? "bg-transparent" : `bg-gradient-to-br ${module.accent}`}`;
+  const iconBg =
+    module.id === "suit"
+      ? `bg-gradient-to-br ${module.accent}`
+      : module.imageSrc
+        ? "bg-transparent"
+        : `bg-gradient-to-br ${module.accent}`;
+  const iconClass = `relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px] ${iconBg}`;
+  const isSuitIcon = module.id === "suit";
   const content = (
     <div className="flex flex-col items-center">
       <div
-        className={`${iconClass} ${module.status === "coming-soon" ? "opacity-50" : "opacity-100"}`}        
+        className={`${iconClass} ${module.status === "coming-soon" ? "opacity-50" : "opacity-100"}`}
       >
         {module.imageSrc ? (
           <Image
@@ -84,9 +91,20 @@ function LobbyCard({
               transformOrigin: "center",
               ...(module.id === "compare"
                 ? ({ objectFit: "contain", transform: "scale(1.2)" } as const)
-                : ({ objectFit: "contain", transform: `scale(${imageScale})` } as const)),
+                : isSuitIcon
+                  ? ({
+                      objectFit: "cover",
+                      width: "100%",
+                      height: "100%",
+                      transform: "scale(1.6)",
+                    } as const)
+                  : ({ objectFit: "contain", transform: `scale(${imageScale})` } as const)),
             }}
-            className="object-contain object-center"
+            className={
+              isSuitIcon
+                ? "absolute inset-0 h-full w-full object-cover object-center"
+                : "object-contain object-center"
+            }
           />
         ) : (
           <Icon className="h-8 w-8 text-white lg:h-10 lg:w-10" />
