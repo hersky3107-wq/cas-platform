@@ -587,6 +587,7 @@ export default function SuitSessionPage() {
 
   const castVote = async (agree: boolean) => {
     if (!pack) return;
+    // SUIT USER VOTE — zero credits (user-contributed pick only; never call deductCreditsBalance here)
     await fetch("/api/suit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -135,6 +135,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid session' }, { status: 401 })
   }
 
+  // ARENA WINNER VOTE — zero credits (user-contributed pick only; never call deductCreditsBalance here).
   if (action === 'vote') {
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
     const chosen = typeof body.chosenAi === 'string' ? body.chosenAi : ''
@@ -354,20 +355,18 @@ export async function POST(req: Request) {
 
     await insertUserDebateEntry(supabase, sessionId, topic)
 
-    const arenaCost = creditsForArenaRound(1)
-    const deductStart = await deductCreditsBalance(supabase, user.id, arenaCost)
-    if (!deductStart.ok) {
-      const insufficient = deductStart.reason === 'insufficient'
+    const arenaCostRound1 = creditsForArenaRound(1)
+    const balanceBeforeRound1 = await getCreditsBalance(supabase, user.id)
+    if (balanceBeforeRound1 !== null && balanceBeforeRound1 < arenaCostRound1) {
       return Response.json(
         {
-          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
-          balance: deductStart.balance,
-          required: arenaCost,
+          error: 'Insufficient credits',
+          balance: balanceBeforeRound1,
+          required: arenaCostRound1,
         },
-        { status: insufficient ? 402 : 500 }
+        { status: 402 }
       )
     }
-    const creditsRemaining = deductStart.balance
 
     const enc = new TextEncoder()
     const stream = new ReadableStream({
@@ -381,8 +380,8 @@ export async function POST(req: Request) {
           writeJson({
             type: 'meta',
             sessionId,
-            creditsRemaining,
-            cost: arenaCost,
+            creditsRemaining: balanceBeforeRound1,
+            cost: arenaCostRound1,
             action: 'start',
           })
 
@@ -405,6 +404,27 @@ export async function POST(req: Request) {
             },
             { fightMode: fightModeForArena, arenaMemory: arenaMemoryForRequest }
           )
+
+          // ARENA CREDIT DEDUCTION - single source of truth (round 1 only; after successful AI)
+          const deductRound1 = await deductCreditsBalance(supabase, user.id, arenaCostRound1)
+          if (deductRound1.ok) {
+            writeJson({
+              type: 'meta',
+              sessionId,
+              creditsRemaining: deductRound1.balance,
+              cost: arenaCostRound1,
+              action: 'start',
+            })
+          } else {
+            console.warn('[arena] post-round1 credit deduct failed:', deductRound1.reason)
+            writeJson({
+              type: 'error',
+              error:
+                deductRound1.reason === 'insufficient'
+                  ? 'Insufficient credits after round completed.'
+                  : 'Could not update credits after round completed.',
+            })
+          }
 
           writeJson({ type: 'arena_round', round: round1 })
           writeJson({ type: 'done' })
@@ -479,25 +499,17 @@ export async function POST(req: Request) {
     }
   }
 
-  let creditsRemaining: number | null = null
-  let arenaBattleCost = 0
-  if (roundNumber <= 3) {
-    arenaBattleCost = creditsForArenaRound(roundNumber)
-    const deductBattle = await deductCreditsBalance(supabase, user.id, arenaBattleCost)
-    if (!deductBattle.ok) {
-      const insufficient = deductBattle.reason === 'insufficient'
-      return Response.json(
-        {
-          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
-          balance: deductBattle.balance,
-          required: arenaBattleCost,
-        },
-        { status: insufficient ? 402 : 500 }
-      )
-    }
-    creditsRemaining = deductBattle.balance
-  } else {
-    creditsRemaining = await getCreditsBalance(supabase, user.id)
+  const arenaBattleCost = roundNumber <= 3 ? creditsForArenaRound(roundNumber) : 0
+  const balanceBeforeBattle = await getCreditsBalance(supabase, user.id)
+  if (roundNumber <= 3 && balanceBeforeBattle !== null && balanceBeforeBattle < arenaBattleCost) {
+    return Response.json(
+      {
+        error: 'Insufficient credits',
+        balance: balanceBeforeBattle,
+        required: arenaBattleCost,
+      },
+      { status: 402 }
+    )
   }
 
   const rounds = normalizeArenaRounds(body.rounds)
@@ -527,7 +539,7 @@ export async function POST(req: Request) {
         writeJson({
           type: 'meta',
           sessionId,
-          creditsRemaining,
+          creditsRemaining: balanceBeforeBattle,
           cost: arenaBattleCost,
           action: 'battle',
           roundNumber,
@@ -554,6 +566,30 @@ export async function POST(req: Request) {
           },
           { fightMode: fightModeForArena, arenaMemory: arenaMemoryForRequest }
         )
+
+        if (roundNumber <= 3 && arenaBattleCost > 0) {
+          // ARENA CREDIT DEDUCTION - single source of truth (paid rounds 2–3 only; round 1 uses `action: 'start'`. After successful AI.)
+          const deductBattle = await deductCreditsBalance(supabase, user.id, arenaBattleCost)
+          if (deductBattle.ok) {
+            writeJson({
+              type: 'meta',
+              sessionId,
+              creditsRemaining: deductBattle.balance,
+              cost: arenaBattleCost,
+              action: 'battle',
+              roundNumber,
+            })
+          } else {
+            console.warn('[arena] post-battle credit deduct failed:', deductBattle.reason)
+            writeJson({
+              type: 'error',
+              error:
+                deductBattle.reason === 'insufficient'
+                  ? 'Insufficient credits after round completed.'
+                  : 'Could not update credits after round completed.',
+            })
+          }
+        }
 
         writeJson({ type: 'arena_round', round })
         writeJson({ type: 'done' })

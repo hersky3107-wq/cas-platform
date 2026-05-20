@@ -1,8 +1,22 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { runSingleAiProvider, type RouterResult } from '@/lib/ai/router'
 import { creditsForMindgameCareer } from '@/lib/credits'
-import { deductCreditsBalance } from '@/lib/credits-server'
+import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits-server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
+
+const MINDGAME_CARRIER_CREDITS_PAID = 'mindgame_carrier_credits_paid'
+
+async function insertMindgameUserSelectionsWithFallback(
+  supabase: SupabaseClient,
+  primary: Record<string, unknown>,
+  fallback: Record<string, unknown>
+) {
+  const a = await supabase.from('user_selections').insert([primary])
+  if (!a.error) return
+  const b = await supabase.from('user_selections').insert([fallback])
+  if (b.error) console.warn('[carrier] user_selections:', b.error.message)
+}
 
 const AI_PLAYERS = [
   { provider: 'openai' as const, name: 'ChatGPT', color: '#10A37F', model: 'gpt-4.1' },
@@ -1648,6 +1662,136 @@ async function loadCarrierSessionBootstrap(sessionId: string): Promise<{
   }
 }
 
+type CarrierStartPrepared = {
+  sessionId: string
+  zombieIds: [string, string]
+  shotgunHolderId: string
+  vaccineHolderId: string
+  userMode: 'god' | 'blind' | 'challenge'
+  playersForNarrator: string[]
+}
+
+/** Creates the session row first so credit idempotency can key on session_id + user_id. */
+async function prepareCarrierStartSessionRow(
+  supabase: SupabaseClient,
+  body: CarrierBody,
+  language: string
+): Promise<{ error: string; status: number } | { ok: true; ctx: CarrierStartPrepared }> {
+  const userMode =
+    body.userMode === 'god' || body.userMode === 'blind' || body.userMode === 'challenge'
+      ? body.userMode
+      : 'blind'
+
+  const alivePlayers = Array.isArray(body.alivePlayers)
+    ? body.alivePlayers.filter((p): p is string => typeof p === 'string')
+    : []
+  if (alivePlayers.length === 0) {
+    return { error: 'alivePlayers required', status: 400 }
+  }
+
+  const universe = [
+    ...new Set(userMode === 'challenge' ? [...alivePlayers, 'user'] : [...alivePlayers]),
+  ]
+  if (universe.length < 4) {
+    return {
+      error: 'Need at least 4 players (2 zombies + 2 humans for items)',
+      status: 400,
+    }
+  }
+  const zPick = shuffle(universe)
+  const zombieIds: [string, string] = [zPick[0]!, zPick[1]!]
+  const zombieSet = new Set<string>(zombieIds)
+
+  const humanPool = universe.filter((p) => !zombieSet.has(p))
+  if (humanPool.length < 2) {
+    return { error: 'Not enough humans for items', status: 400 }
+  }
+  const sh = shuffle(humanPool)
+  let shotgunHolderId = sh[0]!
+  let vaccineHolderId = sh[1]!
+  if (vaccineHolderId === shotgunHolderId) vaccineHolderId = sh[2] ?? sh[1]!
+
+  const roleAtStart: Record<string, 'human' | 'zombie'> = {}
+  for (const p of universe) {
+    roleAtStart[p] = zombieSet.has(p) ? 'zombie' : 'human'
+  }
+  const pickHumanItemHolder = (exclude: string) => {
+    const c = humanPool.filter((p) => p !== exclude && roleAtStart[p] === 'human')
+    return c.length ? pickRandomOne(c) : humanPool.find((p) => p !== exclude) ?? exclude
+  }
+  if (roleAtStart[shotgunHolderId] === 'zombie') {
+    shotgunHolderId = pickHumanItemHolder(vaccineHolderId)
+  }
+  if (roleAtStart[vaccineHolderId] === 'zombie' || vaccineHolderId === shotgunHolderId) {
+    vaccineHolderId = pickHumanItemHolder(shotgunHolderId)
+  }
+  if (vaccineHolderId === shotgunHolderId && humanPool.length > 1) {
+    const alt = humanPool.find((p) => p !== shotgunHolderId)
+    if (alt) vaccineHolderId = alt
+  }
+
+  if (userMode === 'challenge') {
+    console.log('[carrier] CHALLENGE item assignment:', {
+      shotgunHolderId,
+      vaccineHolderId,
+      humanPool,
+      universe,
+    })
+  }
+
+  const promptPayload = JSON.stringify({
+    zombieIds,
+    shotgunHolderId,
+    vaccineHolderId,
+    userMode,
+    language,
+  })
+
+  let sessionId: string
+  const insTitle = await supabase
+    .from('sessions')
+    .insert([
+      {
+        mode: 'carrier',
+        title: 'CARRIER Game',
+        prompt: promptPayload,
+      },
+    ])
+    .select()
+    .single()
+
+  if (insTitle.error || !insTitle.data?.id) {
+    const ins = await supabase
+      .from('sessions')
+      .insert([{ mode: 'carrier', prompt: promptPayload }])
+      .select()
+      .single()
+    if (ins.error || !ins.data?.id) {
+      return {
+        error: ins.error?.message ?? 'Could not create session',
+        status: 500,
+      }
+    }
+    sessionId = String(ins.data.id)
+  } else {
+    sessionId = String(insTitle.data.id)
+  }
+
+  const playersForNarrator = userMode === 'challenge' ? universe : alivePlayers
+
+  return {
+    ok: true,
+    ctx: {
+      sessionId,
+      zombieIds,
+      shotgunHolderId,
+      vaccineHolderId,
+      userMode,
+      playersForNarrator,
+    },
+  }
+}
+
 export async function POST(req: Request) {
   let body: CarrierBody
   try {
@@ -1689,6 +1833,9 @@ export async function POST(req: Request) {
     }
   }
 
+  let carrierStartPrepared: CarrierStartPrepared | null = null
+  let carrierStartBalanceReportUserId: string | null = null
+
   if (action === 'start') {
     const { user, error: authErr } = await resolveRouteAuth(req, body as Record<string, unknown>)
     if (authErr || !user) {
@@ -1697,17 +1844,54 @@ export async function POST(req: Request) {
         headers: { 'Content-Type': 'application/json' },
       })
     }
-    const cost = creditsForMindgameCareer()
-    const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
-    if (!deduct.ok) {
-      const insufficient = deduct.reason === 'insufficient'
-      return new Response(
-        JSON.stringify({
-          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
-          balance: deduct.balance,
-          required: cost,
-        }),
-        { status: insufficient ? 402 : 500, headers: { 'Content-Type': 'application/json' } }
+
+    const prep = await prepareCarrierStartSessionRow(supabaseAdmin, body, language)
+    if ('error' in prep) {
+      return new Response(JSON.stringify({ error: prep.error }), {
+        status: prep.status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    carrierStartPrepared = prep.ctx
+    carrierStartBalanceReportUserId = user.id
+
+    const { data: alreadyPaid } = await supabaseAdmin
+      .from('user_selections')
+      .select('id')
+      .eq('session_id', carrierStartPrepared.sessionId)
+      .eq('user_id', user.id)
+      .eq('category', MINDGAME_CARRIER_CREDITS_PAID)
+      .limit(1)
+      .maybeSingle()
+
+    if (!alreadyPaid?.id) {
+      // CAREER/WOLF CREDIT DEDUCTION - single source of truth, guarded by session marker
+      const cost = creditsForMindgameCareer()
+      const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
+      if (!deduct.ok) {
+        const insufficient = deduct.reason === 'insufficient'
+        return new Response(
+          JSON.stringify({
+            error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+            balance: deduct.balance,
+            required: cost,
+          }),
+          { status: insufficient ? 402 : 500, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      await insertMindgameUserSelectionsWithFallback(
+        supabaseAdmin,
+        {
+          session_id: carrierStartPrepared.sessionId,
+          user_id: user.id,
+          category: MINDGAME_CARRIER_CREDITS_PAID,
+          reason: `paid:${cost}`,
+        },
+        {
+          session_id: carrierStartPrepared.sessionId,
+          user_id: user.id,
+          category: MINDGAME_CARRIER_CREDITS_PAID,
+        }
       )
     }
   }
@@ -1732,102 +1916,19 @@ export async function POST(req: Request) {
           typeof body.round === 'number' && Number.isFinite(body.round) ? body.round : 1
 
         if (action === 'start') {
-          const alivePlayers = Array.isArray(body.alivePlayers)
-            ? body.alivePlayers.filter((p): p is string => typeof p === 'string')
-            : []
-          if (alivePlayers.length === 0) {
-            fail('alivePlayers required')
+          if (!carrierStartPrepared) {
+            fail('Session not prepared')
             return
           }
-
-          const universe = [
-            ...new Set(
-              userMode === 'challenge' ? [...alivePlayers, 'user'] : [...alivePlayers]
-            ),
-          ]
-          if (universe.length < 4) {
-            fail('Need at least 4 players (2 zombies + 2 humans for items)')
-            return
-          }
-          const zPick = shuffle(universe)
-          const zombieIds: [string, string] = [zPick[0]!, zPick[1]!]
-          const zombieSet = new Set<string>(zombieIds)
-
-          const humanPool = universe.filter((p) => !zombieSet.has(p))
-          if (humanPool.length < 2) {
-            fail('Not enough humans for items')
-            return
-          }
-          const sh = shuffle(humanPool)
-          let shotgunHolderId = sh[0]!
-          let vaccineHolderId = sh[1]!
-          if (vaccineHolderId === shotgunHolderId) vaccineHolderId = sh[2] ?? sh[1]!
-
-          const roleAtStart: Record<string, 'human' | 'zombie'> = {}
-          for (const p of universe) {
-            roleAtStart[p] = zombieSet.has(p) ? 'zombie' : 'human'
-          }
-          const pickHumanItemHolder = (exclude: string) => {
-            const c = humanPool.filter((p) => p !== exclude && roleAtStart[p] === 'human')
-            return c.length ? pickRandomOne(c) : humanPool.find((p) => p !== exclude) ?? exclude
-          }
-          if (roleAtStart[shotgunHolderId] === 'zombie') {
-            shotgunHolderId = pickHumanItemHolder(vaccineHolderId)
-          }
-          if (roleAtStart[vaccineHolderId] === 'zombie' || vaccineHolderId === shotgunHolderId) {
-            vaccineHolderId = pickHumanItemHolder(shotgunHolderId)
-          }
-          if (vaccineHolderId === shotgunHolderId && humanPool.length > 1) {
-            const alt = humanPool.find((p) => p !== shotgunHolderId)
-            if (alt) vaccineHolderId = alt
-          }
-
-          if (userMode === 'challenge') {
-            console.log('[carrier] CHALLENGE item assignment:', {
-              shotgunHolderId,
-              vaccineHolderId,
-              humanPool,
-              universe,
-            })
-          }
-
-          const promptPayload = JSON.stringify({
+          const {
+            sessionId,
             zombieIds,
             shotgunHolderId,
             vaccineHolderId,
-            userMode,
-            language,
-          })
+            userMode: startUserMode,
+            playersForNarrator,
+          } = carrierStartPrepared
 
-          let sessionId: string
-          const insTitle = await supabaseAdmin
-            .from('sessions')
-            .insert([
-              {
-                mode: 'carrier',
-                title: 'CARRIER Game',
-                prompt: promptPayload,
-              },
-            ])
-            .select()
-            .single()
-
-          if (insTitle.error || !insTitle.data?.id) {
-            const ins = await supabaseAdmin
-              .from('sessions')
-              .insert([{ mode: 'carrier', prompt: promptPayload }])
-              .select()
-              .single()
-            if (ins.error || !ins.data?.id) {
-              fail(ins.error?.message ?? 'Could not create session')
-              return
-            }
-            sessionId = String(ins.data.id)
-          } else {
-            sessionId = String(insTitle.data.id)
-          }
-
-          const playersForNarrator = userMode === 'challenge' ? universe : alivePlayers
           const { gameRules } = getPlayerContext(playersForNarrator)
 
           const openingToolsLine =
@@ -1859,10 +1960,17 @@ export async function POST(req: Request) {
           }
           const announcement = sanitizeSpeech(annRaw, 'Narrator', 'anthropic', 'start')
 
+          let creditsRemaining: number | undefined
+          if (carrierStartBalanceReportUserId) {
+            const b = await getCreditsBalance(supabaseAdmin, carrierStartBalanceReportUserId)
+            if (typeof b === 'number') creditsRemaining = b
+          }
+
           send({
             type: 'start',
             sessionId,
-            ...(userMode === 'blind'
+            ...(typeof creditsRemaining === 'number' ? { creditsRemaining } : {}),
+            ...(startUserMode === 'blind'
               ? {}
               : {
                   zombieIds,

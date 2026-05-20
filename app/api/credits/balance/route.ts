@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCreditsBalance } from '@/lib/credits-server'
+import { getCreditsBalance, getCreditsDisplayConfig } from '@/lib/credits-server'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 
 export async function POST(req: Request) {
@@ -19,8 +19,13 @@ export async function POST(req: Request) {
     }
 
     const balance = await getCreditsBalance(supabase, user.id)
+    const display = await getCreditsDisplayConfig(user.id)
 
-    return NextResponse.json({ balance })
+    return NextResponse.json({
+      balance,
+      billingMode: display.billingMode,
+      percentCeiling: display.percentCeiling,
+    })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })

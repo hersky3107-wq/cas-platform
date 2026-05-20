@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { useFirstTimeHereOptional } from "@/app/components/FirstTimeHere";
 import { supabase } from "@/lib/db/supabase";
 import {
   activeModules,
@@ -130,6 +131,7 @@ export default function Home() {
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const router = useRouter();
+  const firstTimeHere = useFirstTimeHereOptional();
 
   useEffect(() => {
     let cancelled = false;
@@ -210,9 +212,13 @@ export default function Home() {
             </Link>
           )
         ) : null}
-        <div className="whitespace-nowrap rounded-full bg-[#131c35] px-2 py-1 text-xs text-white">
-          First time here?
-        </div>
+        <button
+          type="button"
+          onClick={() => firstTimeHere?.open()}
+          className="whitespace-nowrap rounded-full border border-white/15 bg-[#131c35] px-3 py-1 text-xs font-medium text-white/90 transition hover:border-cyan-400/40 hover:text-white"
+        >
+          First Time Here
+        </button>
         <button
           type="button"
           onClick={() => router.push("/about")}

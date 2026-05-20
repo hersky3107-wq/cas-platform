@@ -235,3 +235,36 @@ export async function addCreditsBalance(
 
   return { ok: true, balance: next }
 }
+
+export type CreditsBillingMode = 'subscription' | 'pay_as_you_go'
+
+export type CreditsDisplayConfig = {
+  billingMode: CreditsBillingMode
+  percentCeiling: number
+}
+
+/**
+ * Controls credit gauge visibility (subscription vs PAYG) and % denominator for warnings.
+ * Defaults when users row is missing or columns unreadable.
+ */
+export async function getCreditsDisplayConfig(userId: string): Promise<CreditsDisplayConfig> {
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('credits_billing_mode, credits_percent_ceiling')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error || !data) {
+    return { billingMode: 'pay_as_you_go', percentCeiling: 1000 }
+  }
+
+  const rawMode = data.credits_billing_mode as string | undefined
+  const billingMode: CreditsBillingMode =
+    rawMode === 'subscription' ? 'subscription' : 'pay_as_you_go'
+
+  const ceilRaw = data.credits_percent_ceiling
+  const percentCeiling =
+    typeof ceilRaw === 'number' && Number.isFinite(ceilRaw) && ceilRaw >= 1 ? ceilRaw : 1000
+
+  return { billingMode, percentCeiling }
+}

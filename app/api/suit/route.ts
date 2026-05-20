@@ -201,10 +201,29 @@ async function ensureSuitCreditsDeducted(
       category: 'suit_credits_paid',
       reason: `paid:${required}`,
     },
-    { session_id: sessionId, category: 'suit_credits_paid' }
+    // Include user_id so idempotency checks (same user + session) always find this row.
+    { session_id: sessionId, user_id: userId, category: 'suit_credits_paid' }
   )
 
   return deduct
+}
+
+/** Paid opening already ran; do not deduct — used for round / witness / verdict suit_step. */
+async function assertSuitSessionPaid(
+  supabase: SupabaseClient,
+  userId: string,
+  sessionId: string
+): Promise<{ ok: true } | { ok: false }> {
+  const { data: paid } = await supabase
+    .from('user_selections')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .eq('category', 'suit_credits_paid')
+    .limit(1)
+    .maybeSingle()
+
+  return paid?.id ? { ok: true } : { ok: false }
 }
 
 function createEmitter(
@@ -247,6 +266,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid session' }, { status: 401 })
   }
 
+  // SUIT USER VOTE — zero credits (user-contributed pick only; never call deductCreditsBalance here)
   if (action === 'vote') {
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
     const agree = typeof body.agreeJudge === 'boolean' ? body.agreeJudge : null
@@ -517,17 +537,27 @@ export async function POST(req: Request) {
     const { data: sess } = await supabase.from('sessions').select('mode').eq('id', sessionId).maybeSingle()
     if (!sess || sess.mode !== 'suit') return Response.json({ error: 'bad session' }, { status: 400 })
 
-    const suitPay = await ensureSuitCreditsDeducted(supabase, user.id, sessionId)
-    if (!suitPay.ok) {
-      const insufficient = suitPay.reason === 'insufficient'
-      return Response.json(
-        {
-          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
-          balance: suitPay.balance,
-          required: suitPay.required,
-        },
-        { status: insufficient ? 402 : 500 }
-      )
+    if (step === 'opening') {
+      const suitPay = await ensureSuitCreditsDeducted(supabase, user.id, sessionId)
+      if (!suitPay.ok) {
+        const insufficient = suitPay.reason === 'insufficient'
+        return Response.json(
+          {
+            error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+            balance: suitPay.balance,
+            required: suitPay.required,
+          },
+          { status: insufficient ? 402 : 500 }
+        )
+      }
+    } else {
+      const paidOk = await assertSuitSessionPaid(supabase, user.id, sessionId)
+      if (!paidOk.ok) {
+        return Response.json(
+          { error: 'Suit session is not paid. Run the opening step first.' },
+          { status: 402 }
+        )
+      }
     }
 
     const ctx: SuitTransportContext = { supabase, sessionId, userId: user.id, supabaseAccessToken: tokenForRouter }

@@ -58,12 +58,19 @@ export async function POST(req: Request) {
       })
     }
 
-    const capture = await capturePayPalOrder(orderId)
+    let capture: Awaited<ReturnType<typeof capturePayPalOrder>>
+    try {
+      capture = await capturePayPalOrder(orderId)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'PayPal capture failed'
+      console.error('[paypal/capture-order] capture network/API error:', msg)
+      return NextResponse.json({ error: msg }, { status: 500 })
+    }
 
     if (capture.status !== 'COMPLETED') {
       return NextResponse.json(
         { error: `Payment not completed (status: ${capture.status})` },
-        { status: 400 }
+        { status: 402 }
       )
     }
 
@@ -108,7 +115,18 @@ export async function POST(req: Request) {
 
     const grant = await addCreditsBalance(supabaseAdmin, user.id, plan.credits)
     if (!grant.ok) {
-      return NextResponse.json({ error: 'Payment captured but credits could not be added' }, { status: 500 })
+      console.error(
+        '[paypal/capture-order] Payment captured and purchase recorded but addCreditsBalance failed',
+        { orderId, userId: user.id, planId: plan.id }
+      )
+      const balance = await getCreditsBalance(supabaseAdmin, user.id)
+      return NextResponse.json({
+        ok: true,
+        balance: balance ?? 0,
+        creditsAdded: 0,
+        creditsGrantFailed: true,
+        planId: plan.id,
+      })
     }
 
     void sendPaymentConfirmationEmail(supabaseAdmin, {

@@ -1,8 +1,22 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { runSingleAiProvider, type RouterResult } from '@/lib/ai/router'
 import { creditsForMindgameWolf } from '@/lib/credits'
-import { deductCreditsBalance } from '@/lib/credits-server'
+import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits-server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
+
+const MINDGAME_WOLF_CREDITS_PAID = 'mindgame_wolf_credits_paid'
+
+async function insertMindgameUserSelectionsWithFallback(
+  supabase: SupabaseClient,
+  primary: Record<string, unknown>,
+  fallback: Record<string, unknown>
+) {
+  const a = await supabase.from('user_selections').insert([primary])
+  if (!a.error) return
+  const b = await supabase.from('user_selections').insert([fallback])
+  if (b.error) console.warn('[wolf] user_selections:', b.error.message)
+}
 
 const AI_PLAYERS = [
   { provider: 'openai' as const, name: 'ChatGPT', model: 'gpt-4.1' },
@@ -618,6 +632,89 @@ type WolfBody = {
   }>
 }
 
+type WolfStartPrepared = {
+  sessionId: string
+  assignedWolfIds: string[]
+  playersForNarrator: string[]
+  userMode: 'god' | 'blind' | 'challenge'
+  wolfCount: 1 | 2
+}
+
+/** Creates the session row first so credit idempotency can key on session_id + user_id. */
+async function prepareWolfStartSessionRow(
+  supabase: SupabaseClient,
+  body: WolfBody,
+  language: string
+): Promise<{ error: string; status: number } | { ok: true; ctx: WolfStartPrepared }> {
+  const userMode =
+    body.userMode === 'god' ||
+    body.userMode === 'blind' ||
+    body.userMode === 'challenge'
+      ? body.userMode
+      : 'blind'
+  const wolfCount: 1 | 2 = body.wolfCount === 2 ? 2 : 1
+
+  const alivePlayers = Array.isArray(body.alivePlayers)
+    ? body.alivePlayers.filter((p): p is string => typeof p === 'string')
+    : []
+  if (alivePlayers.length === 0) {
+    return { error: 'alivePlayers required', status: 400 }
+  }
+
+  const wolfCandidates =
+    userMode === 'challenge' ? [...alivePlayers, 'user'] : alivePlayers
+  const assignedWolfIds = pickRandomWolvesFromPool(wolfCandidates, wolfCount)
+  const playersForNarrator =
+    userMode === 'challenge' ? [...alivePlayers, 'user'] : alivePlayers
+  const promptPayload = JSON.stringify({
+    wolfIds: assignedWolfIds,
+    wolfCount,
+    userMode,
+    language,
+  })
+
+  let sessionId: string
+  const insTitle = await supabase
+    .from('sessions')
+    .insert([
+      {
+        mode: 'wolf',
+        title: 'WOLF Game',
+        prompt: promptPayload,
+      },
+    ])
+    .select()
+    .single()
+
+  if (insTitle.error || !insTitle.data?.id) {
+    const ins = await supabase
+      .from('sessions')
+      .insert([{ mode: 'wolf', prompt: promptPayload }])
+      .select()
+      .single()
+    if (ins.error || !ins.data?.id) {
+      return {
+        error: ins.error?.message ?? 'Could not create session',
+        status: 500,
+      }
+    }
+    sessionId = String(ins.data.id)
+  } else {
+    sessionId = String(insTitle.data.id)
+  }
+
+  return {
+    ok: true,
+    ctx: {
+      sessionId,
+      assignedWolfIds,
+      playersForNarrator,
+      userMode,
+      wolfCount,
+    },
+  }
+}
+
 export async function POST(req: Request) {
   let body: WolfBody
   try {
@@ -655,6 +752,9 @@ export async function POST(req: Request) {
     }
   }
 
+  let wolfStartPrepared: WolfStartPrepared | null = null
+  let wolfStartBalanceReportUserId: string | null = null
+
   if (action === 'start') {
     const { user, error: authErr } = await resolveRouteAuth(req, body as Record<string, unknown>)
     if (authErr || !user) {
@@ -663,17 +763,54 @@ export async function POST(req: Request) {
         headers: { 'Content-Type': 'application/json' },
       })
     }
-    const cost = creditsForMindgameWolf()
-    const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
-    if (!deduct.ok) {
-      const insufficient = deduct.reason === 'insufficient'
-      return new Response(
-        JSON.stringify({
-          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
-          balance: deduct.balance,
-          required: cost,
-        }),
-        { status: insufficient ? 402 : 500, headers: { 'Content-Type': 'application/json' } }
+
+    const prep = await prepareWolfStartSessionRow(supabaseAdmin, body, language)
+    if ('error' in prep) {
+      return new Response(JSON.stringify({ error: prep.error }), {
+        status: prep.status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    wolfStartPrepared = prep.ctx
+    wolfStartBalanceReportUserId = user.id
+
+    const { data: alreadyPaid } = await supabaseAdmin
+      .from('user_selections')
+      .select('id')
+      .eq('session_id', wolfStartPrepared.sessionId)
+      .eq('user_id', user.id)
+      .eq('category', MINDGAME_WOLF_CREDITS_PAID)
+      .limit(1)
+      .maybeSingle()
+
+    if (!alreadyPaid?.id) {
+      // CAREER/WOLF CREDIT DEDUCTION - single source of truth, guarded by session marker
+      const cost = creditsForMindgameWolf()
+      const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
+      if (!deduct.ok) {
+        const insufficient = deduct.reason === 'insufficient'
+        return new Response(
+          JSON.stringify({
+            error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+            balance: deduct.balance,
+            required: cost,
+          }),
+          { status: insufficient ? 402 : 500, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      await insertMindgameUserSelectionsWithFallback(
+        supabaseAdmin,
+        {
+          session_id: wolfStartPrepared.sessionId,
+          user_id: user.id,
+          category: MINDGAME_WOLF_CREDITS_PAID,
+          reason: `paid:${cost}`,
+        },
+        {
+          session_id: wolfStartPrepared.sessionId,
+          user_id: user.id,
+          category: MINDGAME_WOLF_CREDITS_PAID,
+        }
       )
     }
   }
@@ -719,58 +856,23 @@ export async function POST(req: Request) {
         )
 
         if (action === 'start') {
-          if (alivePlayers.length === 0) {
-            fail('alivePlayers required')
+          if (!wolfStartPrepared) {
+            fail('Session not prepared')
             return
           }
-
-          const wolfCandidates =
-            userMode === 'challenge'
-              ? [...alivePlayers, 'user']
-              : alivePlayers
-          const assignedWolfIds = pickRandomWolvesFromPool(wolfCandidates, wolfCount)
-          const playersForNarrator =
-            userMode === 'challenge' ? [...alivePlayers, 'user'] : alivePlayers
-          const promptPayload = JSON.stringify({
-            wolfIds: assignedWolfIds,
-            wolfCount,
-            userMode,
-            language,
-          })
-
-          let sessionId: string
-          const insTitle = await supabaseAdmin
-            .from('sessions')
-            .insert([
-              {
-                mode: 'wolf',
-                title: 'WOLF Game',
-                prompt: promptPayload,
-              },
-            ])
-            .select()
-            .single()
-
-          if (insTitle.error || !insTitle.data?.id) {
-            const ins = await supabaseAdmin
-              .from('sessions')
-              .insert([{ mode: 'wolf', prompt: promptPayload }])
-              .select()
-              .single()
-            if (ins.error || !ins.data?.id) {
-              fail(ins.error?.message ?? 'Could not create session')
-              return
-            }
-            sessionId = String(ins.data.id)
-          } else {
-            sessionId = String(insTitle.data.id)
-          }
+          const {
+            sessionId,
+            assignedWolfIds,
+            playersForNarrator,
+            userMode: startUserMode,
+            wolfCount: startWolfCount,
+          } = wolfStartPrepared
 
           const { gameRules } = getPlayerContext(playersForNarrator)
           const narratorGameState = buildWolfGameState({
             aliveProviderIds: playersForNarrator,
             currentRound: 1,
-            userMode,
+            userMode: startUserMode,
             wolfIds: assignedWolfIds,
           })
           const narratorStatePrefix = formatGameStateInjectionBlock(
@@ -782,7 +884,7 @@ export async function POST(req: Request) {
             sessionId: null,
             userId: null,
             provider: 'anthropic',
-            prompt: `Opening — this is a NEW scene. Make it fresh and vivid. The game begins. ${wolfCount} wolf(ves) are hidden among ${playersForNarrator.length} players. Deliver the opening announcement.`,
+            prompt: `Opening — this is a NEW scene. Make it fresh and vivid. The game begins. ${startWolfCount} wolf(ves) are hidden among ${playersForNarrator.length} players. Deliver the opening announcement.`,
             systemPrompt:
               narratorStatePrefix +
               langPre +
@@ -810,9 +912,16 @@ Do not invent fictional players or events. Describe only the tension of the situ
             'start announcement'
           )
 
+          let creditsRemaining: number | undefined
+          if (wolfStartBalanceReportUserId) {
+            const b = await getCreditsBalance(supabaseAdmin, wolfStartBalanceReportUserId)
+            if (typeof b === 'number') creditsRemaining = b
+          }
+
           send({
             type: 'start',
             sessionId,
+            ...(typeof creditsRemaining === 'number' ? { creditsRemaining } : {}),
             wolfIds: assignedWolfIds,
             announcement,
           })

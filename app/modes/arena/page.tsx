@@ -915,6 +915,7 @@ export default function ArenaPage() {
   ]);
 
   const submitVote = useCallback(async () => {
+    // Arena winner vote: no credit charge (see /api/ai-arena `action: "vote"`).
     if (!sessionId || !picked) return;
     const res = await fetch("/api/ai-arena", {
       method: "POST",

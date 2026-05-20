@@ -9,6 +9,9 @@ import { CREDIT_PLANS, type CreditPlanId } from '@/lib/payments/credit-plans'
 
 const PLAN_ORDER: CreditPlanId[] = ['starter', 'popular', 'pro']
 
+const PAYMENT_FAILED_MESSAGE = 'Payment failed. Please try again or contact support.'
+const PAYMENT_CANCELLED_MESSAGE = 'Payment cancelled.'
+
 type PayPalButtonsInstance = {
   render: (selector: string | HTMLElement) => Promise<void>
   close?: () => void
@@ -20,6 +23,7 @@ type PayPalSdk = {
     createOrder: () => Promise<string>
     onApprove: (data: { orderID: string }) => Promise<void>
     onError?: (err: unknown) => void
+    onCancel?: (data?: Record<string, unknown>) => void
   }) => PayPalButtonsInstance
 }
 
@@ -40,7 +44,33 @@ function CreditsContent() {
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [paypalReady, setPaypalReady] = useState(false)
   const [paypalError, setPaypalError] = useState<string | null>(null)
+  const [planPaypalMessage, setPlanPaypalMessage] = useState<Partial<Record<CreditPlanId, string>>>(
+    {}
+  )
   const buttonsRendered = useRef(false)
+  const planMessageTimers = useRef<Partial<Record<CreditPlanId, ReturnType<typeof setTimeout>>>>({})
+
+  const clearPlanPaypalTimers = useCallback(() => {
+    for (const id of PLAN_ORDER) {
+      const t = planMessageTimers.current[id]
+      if (t) clearTimeout(t)
+      delete planMessageTimers.current[id]
+    }
+  }, [])
+
+  const flashPlanPaypalMessage = useCallback((planId: CreditPlanId, text: string) => {
+    const prev = planMessageTimers.current[planId]
+    if (prev) clearTimeout(prev)
+    setPlanPaypalMessage((m) => ({ ...m, [planId]: text }))
+    planMessageTimers.current[planId] = setTimeout(() => {
+      setPlanPaypalMessage((m) => {
+        const next = { ...m }
+        delete next[planId]
+        return next
+      })
+      delete planMessageTimers.current[planId]
+    }, 5000)
+  }, [])
 
   const refreshBalance = useCallback(async () => {
     const res = await authenticatedFetch('/api/credits/balance', {
@@ -52,6 +82,12 @@ function CreditsContent() {
       setBalance(j.balance)
     }
   }, [])
+
+  useEffect(() => {
+    return () => {
+      clearPlanPaypalTimers()
+    }
+  }, [clearPlanPaypalTimers])
 
   useEffect(() => {
     let cancelled = false
@@ -79,7 +115,7 @@ function CreditsContent() {
     if (statusParam === 'success') {
       setMessage({ type: 'ok', text: 'Payment approved. Credits are being added to your account.' })
     } else if (statusParam === 'cancelled') {
-      setMessage({ type: 'err', text: 'Payment was cancelled.' })
+      setMessage({ type: 'err', text: PAYMENT_CANCELLED_MESSAGE })
     }
   }, [statusParam])
 
@@ -156,6 +192,8 @@ function CreditsContent() {
           },
           createOrder: async () => {
             setMessage(null)
+            clearPlanPaypalTimers()
+            setPlanPaypalMessage({})
             const res = await authenticatedFetch('/api/payments/paypal/create-order', {
               method: 'POST',
               json: { planId },
@@ -175,10 +213,23 @@ function CreditsContent() {
               ok?: boolean
               balance?: number
               creditsAdded?: number
+              creditsGrantFailed?: boolean
               error?: string
             }
             if (!res.ok) {
-              setMessage({ type: 'err', text: j.error ?? 'Capture failed' })
+              flashPlanPaypalMessage(planId, PAYMENT_FAILED_MESSAGE)
+              return
+            }
+            if (j.creditsGrantFailed) {
+              if (typeof j.balance === 'number') {
+                setBalance(j.balance)
+              } else {
+                await refreshBalance()
+              }
+              setMessage({
+                type: 'ok',
+                text: 'Payment received. If your balance does not update shortly, please contact support.',
+              })
               return
             }
             if (typeof j.balance === 'number') {
@@ -191,9 +242,11 @@ function CreditsContent() {
               text: `Added ${j.creditsAdded ?? plan.credits} credits. Thank you!`,
             })
           },
-          onError: (err) => {
-            const text = err instanceof Error ? err.message : 'PayPal checkout error'
-            setMessage({ type: 'err', text })
+          onError: () => {
+            flashPlanPaypalMessage(planId, PAYMENT_FAILED_MESSAGE)
+          },
+          onCancel: () => {
+            flashPlanPaypalMessage(planId, PAYMENT_CANCELLED_MESSAGE)
           },
         })
         .render(container)
@@ -201,7 +254,7 @@ function CreditsContent() {
           console.warn(`[paypal] render ${planId}`, e)
         })
     }
-  }, [paypalReady, userId, refreshBalance])
+  }, [paypalReady, userId, refreshBalance, flashPlanPaypalMessage, clearPlanPaypalTimers])
 
   if (authLoading) {
     return (
@@ -254,6 +307,7 @@ function CreditsContent() {
           {PLAN_ORDER.map((planId) => {
             const plan = CREDIT_PLANS[planId]
             const highlighted = planId === 'popular'
+            const promo = plan.promoBadge
             return (
               <div
                 key={planId}
@@ -263,9 +317,9 @@ function CreditsContent() {
                     : 'border-white/10 bg-[#131c35]/80'
                 }`}
               >
-                {highlighted ? (
+                {promo ? (
                   <span className="mb-2 w-fit rounded-full bg-cyan-400/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
-                    Best value
+                    {promo}
                   </span>
                 ) : null}
                 <h2 className="text-lg font-semibold">{plan.label}</h2>
@@ -273,8 +327,13 @@ function CreditsContent() {
                   ${plan.priceUsd.replace('.00', '')}
                   <span className="text-base font-normal text-slate-400"> USD</span>
                 </p>
-                <p className="mt-2 text-sm text-slate-300">{plan.credits.toLocaleString()} credits</p>
+                <p className="mt-2 text-sm text-slate-300">{plan.displayCreditsLine}</p>
                 <div className="mt-5 min-h-[45px] flex-1" id={`paypal-button-${planId}`} />
+                {planPaypalMessage[planId] ? (
+                  <p className="mt-2 text-xs text-red-400" role="alert">
+                    {planPaypalMessage[planId]}
+                  </p>
+                ) : null}
                 {!paypalReady && !paypalError ? (
                   <p className="mt-2 text-xs text-slate-500">Loading PayPal…</p>
                 ) : null}

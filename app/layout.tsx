@@ -3,6 +3,8 @@
 import './globals.css'
 import { Analytics } from '@vercel/analytics/react'
 import { ApiFetchAuth } from '@/app/components/ApiFetchAuth'
+import { FirstTimeHereProvider } from '@/app/components/FirstTimeHere'
+import { CreditWarningsRoot } from '@/components/credits/CreditWarningsRoot'
 import InAppBrowserGuard from '@/components/InAppBrowserGuard'
 
 export default function RootLayout({
@@ -26,8 +28,12 @@ export default function RootLayout({
       </head>
       <body>
         <InAppBrowserGuard />
-        <ApiFetchAuth />
-        {children}
+        <CreditWarningsRoot>
+          <FirstTimeHereProvider>
+            <ApiFetchAuth />
+            {children}
+          </FirstTimeHereProvider>
+        </CreditWarningsRoot>
         <Analytics />
       </body>
     </html>
