@@ -92,7 +92,7 @@ function LobbyCard({
               ...(module.id === "compare"
                 ? ({ objectFit: "contain", transform: "scale(1.2)" } as const)
                 : isSuitIcon
-                  ? ({ objectFit: "cover", transform: "scale(1.6)" } as const)
+                  ? ({ objectFit: "cover", transform: "scale(1.9)" } as const)
                   : ({ objectFit: "contain", transform: `scale(${imageScale})` } as const)),
             }}
             className={
