@@ -92,18 +92,11 @@ function LobbyCard({
               ...(module.id === "compare"
                 ? ({ objectFit: "contain", transform: "scale(1.2)" } as const)
                 : isSuitIcon
-                  ? ({
-                      objectFit: "cover",
-                      width: "100%",
-                      height: "100%",
-                      transform: "scale(1.6)",
-                    } as const)
+                  ? ({ objectFit: "cover", transform: "scale(1.6)" } as const)
                   : ({ objectFit: "contain", transform: `scale(${imageScale})` } as const)),
             }}
             className={
-              isSuitIcon
-                ? "absolute inset-0 h-full w-full object-cover object-center"
-                : "object-contain object-center"
+              isSuitIcon ? "object-cover object-center" : "object-contain object-center"
             }
           />
         ) : (
