@@ -3,7 +3,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   BookHeart,
   Coins,
@@ -11,8 +10,6 @@ import {
   Gavel,
   Handshake,
   Globe,
-  Info,
-  Lock,
   Sparkles,
   Sword,
   Table2,
@@ -25,11 +22,7 @@ import type { User } from "@supabase/supabase-js";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 import { useFirstTimeHereOptional } from "@/app/components/FirstTimeHere";
 import { supabase } from "@/lib/db/supabase";
-import {
-  activeModules,
-  betaModules,
-  type ModuleConfig,
-} from "@/lib/modules/config";
+import { activeModules, type ModuleConfig } from "@/lib/modules/config";
 
 const iconMap: Record<string, LucideIcon> = {
   Globe,
@@ -130,7 +123,6 @@ export default function Home() {
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const router = useRouter();
   const firstTimeHere = useFirstTimeHereOptional();
 
   useEffect(() => {
@@ -219,152 +211,105 @@ export default function Home() {
         >
           First Time Here
         </button>
-        <button
-          type="button"
-          onClick={() => router.push("/about")}
-          aria-label="About"
-          className="animate-pulse flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white"
-        >
-          <Info className="h-5 w-5" />
-        </button>
       </header>
 
       <section className="mx-auto flex min-h-screen w-full flex-col items-center justify-center px-8 py-16 lg:px-16">
         <div className="w-full max-w-6xl">
-          <div className="mb-12">
-            <p className="mb-4 text-center text-[11px] font-medium uppercase tracking-[0.24em] text-white/55">
-              BETA
-            </p>
-            <div className="grid justify-items-center grid-cols-4 gap-6 sm:grid-cols-5 md:grid-cols-6 lg:gap-8">
-              {mvpModules.map((module) => (
-                <LobbyCard
-                  key={module.id}
-                  module={module}
-                  onComingSoon={setModalItem}
-                />
-              ))}
-              {[
-                {
-                  id: "deep",
-                  src: "/icons/deep.png",
-                  label: "DEEP",
-                },
-                {
-                  id: "oracle",
-                  src: "/icons/oracle.png",
-                  label: "ORACLE",
-                },
-                {
-                  id: "mindgame",
-                  src: "/icons/mindgame.png",
-                  label: "MINDGAME",
-                },
-                {
-                  id: "council",
-                  src: "/icons/council.png",
-                  label: "COUNCIL",
-                },
-              ].map((m) => {
-                const tile = (
-                  <div className="flex flex-col items-center">
-                    <div className="relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl bg-white/5 shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px]">
-                      <Image
-                        src={m.src}
-                        alt={m.label}
-                        fill
-                        sizes="96px"
-                        className="absolute inset-0 h-full w-full object-contain object-center"
-                        style={
-                          m.id === "oracle"
-                            ? { filter: "brightness(0.75)" }
-                            : m.id === "council"
-                              ? { filter: "brightness(1.3)" }
-                              : undefined
-                        }
-                      />
-                    </div>
-                    <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
-                      {m.label}
-                    </span>
-                  </div>
-                );
-
-                if (m.id === "deep") {
-                  return (
-                    <Link
-                      key={m.id}
-                      href="/modes/deep"
-                      className="flex items-center justify-center"
-                    >
-                      {tile}
-                    </Link>
-                  );
-                }
-
-                if (m.id === "oracle") {
-                  return (
-                    <Link
-                      key={m.id}
-                      href="/modes/oracle"
-                      className="flex items-center justify-center"
-                    >
-                      {tile}
-                    </Link>
-                  );
-                }
-
-                if (m.id === "mindgame") {
-                  return (
-                    <Link
-                      key={m.id}
-                      href="/modes/mindgame"
-                      className="flex items-center justify-center"
-                    >
-                      {tile}
-                    </Link>
-                  );
-                }
-
-                return (
-                  <div key={m.id} className="flex items-center justify-center">
-                    {tile}
-                  </div>
-                );
-              })}
-              <Link href="/modes/stage" className="flex items-center justify-center">
+          <div className="grid justify-items-center grid-cols-4 gap-6 sm:grid-cols-5 md:grid-cols-6 lg:gap-8">
+            {mvpModules.map((module) => (
+              <LobbyCard
+                key={module.id}
+                module={module}
+                onComingSoon={setModalItem}
+              />
+            ))}
+            {[
+              {
+                id: "deep",
+                src: "/icons/deep.png",
+                label: "DEEP",
+              },
+              {
+                id: "oracle",
+                src: "/icons/oracle.png",
+                label: "ORACLE",
+              },
+              {
+                id: "mindgame",
+                src: "/icons/mindgame.png",
+                label: "MINDGAME",
+              },
+            ].map((m) => {
+              const tile = (
                 <div className="flex flex-col items-center">
-                  <div
-                    className={`relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px] bg-gradient-to-br from-indigo-400 to-sky-600`}
-                  >
+                  <div className="relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl bg-white/5 shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px]">
                     <Image
-                      src="/icons/stage.png"
-                      alt="STAGE"
+                      src={m.src}
+                      alt={m.label}
                       fill
                       sizes="96px"
                       className="absolute inset-0 h-full w-full object-contain object-center"
+                      style={m.id === "oracle" ? { filter: "brightness(0.75)" } : undefined}
                     />
                   </div>
                   <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
-                    STAGE
+                    {m.label}
                   </span>
                 </div>
-              </Link>
-            </div>
-          </div>
+              );
 
-          <div>
-            <p className="mb-4 text-center text-[11px] font-medium uppercase tracking-[0.24em] text-white/55">
-              Version 1.0
-            </p>
-            <div className="grid justify-items-center grid-cols-4 gap-6 sm:grid-cols-5 md:grid-cols-6 lg:gap-8">
-              {betaModules.map((module) => (
-                <LobbyCard
-                  key={module.id}
-                  module={module}
-                  onComingSoon={setModalItem}
-                />
-              ))}
-            </div>
+              if (m.id === "deep") {
+                return (
+                  <Link
+                    key={m.id}
+                    href="/modes/deep"
+                    className="flex items-center justify-center"
+                  >
+                    {tile}
+                  </Link>
+                );
+              }
+
+              if (m.id === "oracle") {
+                return (
+                  <Link
+                    key={m.id}
+                    href="/modes/oracle"
+                    className="flex items-center justify-center"
+                  >
+                    {tile}
+                  </Link>
+                );
+              }
+
+              return (
+                <Link
+                  key={m.id}
+                  href="/modes/mindgame"
+                  className="flex items-center justify-center"
+                >
+                  {tile}
+                </Link>
+              );
+            })}
+            <Link href="/modes/stage" className="flex items-center justify-center">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px] bg-gradient-to-br from-indigo-400 to-sky-600`}
+                >
+                  <Image
+                    src="/icons/stage.png"
+                    alt="STAGE"
+                    fill
+                    sizes="96px"
+                    className="absolute inset-0 h-full w-full object-contain object-center"
+                  />
+                </div>
+                <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
+                  STAGE
+                </span>
+              </div>
+            </Link>
           </div>
         </div>
       </section>

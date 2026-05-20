@@ -312,14 +312,6 @@ export function FirstTimeHereProvider({ children }: { children: ReactNode }) {
     <FirstTimeCtx.Provider value={value}>
       {children}
       <FirstTimeModal open={open} onDismiss={dismiss} />
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-[85] flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-[#131c35] text-lg font-bold text-white shadow-lg ring-1 ring-cyan-500/25 transition hover:bg-[#1a2648]"
-        aria-label="First Time Here — open onboarding"
-      >
-        ?
-      </button>
     </FirstTimeCtx.Provider>
   )
 }
