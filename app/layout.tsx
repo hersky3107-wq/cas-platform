@@ -3,6 +3,7 @@
 import './globals.css'
 import { Analytics } from '@vercel/analytics/react'
 import { ApiFetchAuth } from '@/app/components/ApiFetchAuth'
+import AnnouncementBanner from '@/app/components/AnnouncementBanner'
 import { FirstTimeHereProvider } from '@/app/components/FirstTimeHere'
 import { CreditWarningsRoot } from '@/components/credits/CreditWarningsRoot'
 import InAppBrowserGuard from '@/components/InAppBrowserGuard'
@@ -27,6 +28,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#0b1020" />
       </head>
       <body>
+        <AnnouncementBanner />
         <InAppBrowserGuard />
         <CreditWarningsRoot>
           <FirstTimeHereProvider>

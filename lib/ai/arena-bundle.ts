@@ -6,14 +6,14 @@ export const ARENA_FINAL_BUNDLE_MODEL_CALLS = 9
 /** Rounds 7–9 — same call pattern as final bundle. */
 export const ARENA_EXTENDED_BUNDLE_MODEL_CALLS = 9
 
-/** Mirrors `creditsPerMessage` scaling: 4 + 2×callCount. */
+/** Flat unlock cost for rounds 4–6 (one purchase per session). */
 export function arenaFinalBundleCreditCost(): number {
-  return 4 + ARENA_FINAL_BUNDLE_MODEL_CALLS * 2
+  return 6
 }
 
-/** Same formula as rounds 4–6 package (second continue). */
+/** Flat unlock cost for rounds 7–9 (second continue; requires final bundle). */
 export function arenaExtendedBundleCreditCost(): number {
-  return 4 + ARENA_EXTENDED_BUNDLE_MODEL_CALLS * 2
+  return 6
 }
 
 function arenaBundleSecret(): string {

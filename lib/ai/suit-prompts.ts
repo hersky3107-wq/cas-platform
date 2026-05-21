@@ -14,44 +14,44 @@ export const SUIT_COUNSEL_AI_SELECTOR_CARDS: SuitCounselSelectorCard[] = [
   {
     provider: 'anthropic',
     nameEn: 'Claude',
-    epithetKo: '원칙의 칼',
-    taglineKo: '원칙과 논리만으로 상대 논증을 분해한다.',
-    blurbKo: '냉정·학술적 톤. 감정 어필은 논리적 무효로 조각낸다.',
+    epithetKo: 'Blade of Principle',
+    taglineKo: 'Dismantles arguments with pure logic and principle.',
+    blurbKo: 'Cold, academic tone. Emotional appeals are shredded as logically void.',
   },
   {
     provider: 'openai',
     nameEn: 'GPT',
-    epithetKo: '증거의 설계자',
-    taglineKo: '사실과 선례로 상대를 포위한다.',
-    blurbKo: '정중하지만 굴하지 않는다. 숫자·사례·출처로 반박한다.',
+    epithetKo: 'Architect of Evidence',
+    taglineKo: 'Surrounds the opposition with facts and precedent.',
+    blurbKo: 'Polite but relentless. Counters with numbers, cases, and sources.',
   },
   {
     provider: 'xai',
     nameEn: 'Grok',
-    epithetKo: '독설 파괴자',
-    taglineKo: '허점만 찾는다.',
-    blurbKo: '공격적이고 냉소적. 법정 분위기째로 흔든다.',
+    epithetKo: 'Vicious Destroyer',
+    taglineKo: 'Only hunts for weaknesses.',
+    blurbKo: 'Aggressive and cynical. Destabilizes the courtroom atmosphere.',
   },
   {
     provider: 'google',
     nameEn: 'Gemini',
-    epithetKo: '중재의 달인',
-    taglineKo: '합리적일수록 승리에 가깝다.',
-    blurbKo: '차분·사실 기반. 필요할 때 가장 정밀한 한 방을 날린다.',
+    epithetKo: 'Master of Balance',
+    taglineKo: 'The more rational, the closer to victory.',
+    blurbKo: 'Calm and fact-based. Delivers the most precise blow when needed.',
   },
   {
     provider: 'deepseek',
     nameEn: 'DeepSeek',
-    epithetKo: '냉혹한 전략가',
-    taglineKo: '문장이 아니라 구조를 무너뜨린다.',
-    blurbKo: '감정 없이 시스템적으로. 단기 반박이 아닌 장기 설계.',
+    epithetKo: 'Cold Strategist',
+    taglineKo: 'Dismantles structure, not just sentences.',
+    blurbKo: 'Systematic and emotionless. Long-game design, not short-term rebuttals.',
   },
   {
     provider: 'mistral',
     nameEn: 'Mistral',
-    epithetKo: '독립 지성',
-    taglineKo: '남들이 보지 못한 각도를 꺼낸다.',
-    blurbKo: '우아하고 예리하다. 소음 대신 지성으로 압도한다.',
+    epithetKo: 'Independent Intellect',
+    taglineKo: 'Finds angles no one else sees.',
+    blurbKo: 'Elegant and sharp. Dominates with intellect, not noise.',
   },
 ]
 
@@ -298,6 +298,15 @@ Do not label your responses with round names or role names in brackets. Just spe
 Maximum ${maxWords} words per submission.`
 }
 
+const SUIT_COUNSEL_LEGAL_ARGUMENT_INSTRUCTIONS = `When making legal arguments:
+- Cite specific statutes, directives, or regulations with article numbers 
+  (e.g. Article 14(2)(b) of EU General Food Law Regulation 178/2002)
+- Reference case law with full citation format: 
+  case name, court, year (e.g. Case C-192/01, Commission v Denmark, ECJ, 2003)
+- Structure every argument as: Claim → Legal basis → Evidence → Anticipated rebuttal
+- Prioritize jurisdiction-specific law relevant to the case topic
+- If no specific law applies, cite general legal principles with their source`
+
 /** Full system prompt: SUIT persona + role injection + role lock + language law */
 export function buildCounselSystemPrompt(
   provider: AiProviderName,
@@ -322,7 +331,11 @@ ${tail}
 
 ---
 
-${LANGUAGE_LAW_FULL}`
+${LANGUAGE_LAW_FULL}
+
+---
+
+${SUIT_COUNSEL_LEGAL_ARGUMENT_INSTRUCTIONS}`
 }
 
 /** Counsel-mode: prepend when the opponent is AI vs human filer (same personas apply). */

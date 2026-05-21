@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName } from "@/lib/ai/router";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { creditsForComedyTalkTurn } from "@/lib/credits";
+
+const TALK_TURN_COST = creditsForComedyTalkTurn();
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -480,11 +483,7 @@ export default function StageComedyPage() {
           <div className="text-right">
             <p className="text-xs uppercase tracking-wide text-slate-500">Credits</p>
             <p className="text-sm text-slate-200">
-              {credits !== null ? (
-                <span className="tabular-nums">{credits}</span>
-              ) : (
-                <span className="text-slate-500">—</span>
-              )}
+              <span className="tabular-nums">{TALK_TURN_COST} credits per turn</span>
             </p>
           </div>
         </div>

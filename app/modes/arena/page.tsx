@@ -286,9 +286,6 @@ export default function ArenaPage() {
   const [credits, setCredits] = useState<number | null>(null);
   const [phase, setPhase] = useState<Phase>("input");
   const [topic, setTopic] = useState("");
-  const [selected, setSelected] = useState<Set<ArenaAI>>(
-    () => new Set<ArenaAI>(["grok", "gpt", "gemini", "deepseek", "mistral", "claude"])
-  );
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [rounds, setRounds] = useState<ArenaRound[]>([]);
   /** API battle round number (2 = first battle after openings). */
@@ -332,7 +329,8 @@ export default function ArenaPage() {
     return () => clearInterval(id);
   }, [isLoading, aiProgressRows]);
 
-  const selectedList = useMemo(() => ARENA_ORDER.filter((a) => selected.has(a)), [selected]);
+  /** Lobby always sends all six AIs; selection UI is display-only. */
+  const selectedList = useMemo(() => [...ARENA_ORDER], []);
 
   const finalBundleCost = useMemo(() => {
     try {
@@ -390,20 +388,6 @@ export default function ArenaPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [phase, round1Live, battleLive, rounds, isLoading, round1Complete, awaitingNextBattleRound, aiProgressRows]);
-
-  const toggleAi = (ai: ArenaAI) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(ai)) {
-        if (next.size <= 3) return prev;
-        next.delete(ai);
-      } else {
-        if (next.size >= 6) return prev;
-        next.add(ai);
-      }
-      return next;
-    });
-  };
 
   const markResponseProgress = useCallback((r: ArenaResponse) => {
     setAiProgressRows((prev) => {
@@ -679,7 +663,7 @@ export default function ArenaPage() {
 
   const startArena = useCallback(async () => {
     const t = topic.trim();
-    if (selectedList.length < 3 || selectedList.length > 6 || !t || isLoading) return;
+    if (!t || isLoading) return;
     setError(null);
     setIsLoading(true);
     resetArenaUi();
@@ -1020,44 +1004,29 @@ export default function ArenaPage() {
               className="min-h-[120px] w-full resize-y rounded-xl border border-white/12 bg-white/6 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-rose-400/40 focus:outline-none"
             />
             <p className="text-xs leading-relaxed text-slate-500">
-              Opening bracket is rounds 1–3. Continue ▶ unlocks rounds 4–6 (one credit package); a second
-              Continue ▶ unlocks rounds 7–9 (same credit formula). Final verdict when you stop or after
-              round 9.
+              Term 1 (Rounds 1–3): 6 credits · Continue ▶ Term 2 (Rounds 4–6): +6 credits · Continue ▶ Term 3
+              (Rounds 7–9): +6 credits · Full game total: 18 credits
             </p>
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                Select 3–6 AIs ({selectedList.length} selected)
-              </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {ARENA_ORDER.map((ai) => {
-                  const on = selected.has(ai);
-                  return (
-                    <label
-                      key={ai}
-                      className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition ${
-                        on ? "border-white/25 bg-white/10" : "border-white/10 bg-white/[0.04] opacity-70"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() => toggleAi(ai)}
-                        className="sr-only"
-                      />
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: ARENA_COLOR[ai] }}
-                      />
-                      <span className="font-medium text-white">{ARENA_DISPLAY[ai]}</span>
-                    </label>
-                  );
-                })}
+                {ARENA_ORDER.map((ai) => (
+                  <div
+                    key={ai}
+                    className="flex cursor-default items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 py-2.5 text-sm pointer-events-none opacity-70"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: ARENA_COLOR[ai] }}
+                    />
+                    <span className="font-medium text-white">{ARENA_DISPLAY[ai]}</span>
+                  </div>
+                ))}
               </div>
             </div>
             <button
               type="button"
               onClick={() => void startArena()}
-              disabled={isLoading || !topic.trim() || selectedList.length < 3}
+              disabled={isLoading || !topic.trim()}
               className="w-full rounded-2xl bg-rose-500 py-3 text-sm font-semibold text-white transition enabled:hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-40"
             >
               START ARENA

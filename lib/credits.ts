@@ -47,19 +47,19 @@ export function creditsForCustom(aiCount: number): number {
 
 /** Panel (Verdict) modes — fixed cost per run. */
 export function creditsForPanelScore(): number {
-  return 2
+  return 6
 }
 export function creditsForPanelVote(): number {
-  return 2
+  return 5
 }
 export function creditsForPanelRank(): number {
-  return 2
+  return 6
 }
 export function creditsForPanelPredict(): number {
-  return 3
+  return 6
 }
 export function creditsForPanelFactcheck(): number {
-  return 3
+  return 7
 }
 export function creditsForPanelVerdict(): number {
   return 3
@@ -116,11 +116,11 @@ export function creditsForOracleToday(): number {
 }
 
 export function creditsForComedyTalkTurn(): number {
-  return 1
+  return 2
 }
 
 export function creditsForComedyStandup(): number {
-  return 2
+  return 3
 }
 
 export function creditsForMindgameCareer(): number {

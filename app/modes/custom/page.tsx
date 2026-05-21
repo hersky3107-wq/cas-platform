@@ -719,7 +719,7 @@ export default function CustomModePage() {
           Your rules. Your AIs.
         </h1>
         <p className="mx-auto mb-8 max-w-xl text-center text-xs text-slate-400 sm:text-sm">
-          Two prompts. One slider. Infinite ways to ask.
+          Pick your AIs, set the rules, and ask your way.
         </p>
 
         {error ? (

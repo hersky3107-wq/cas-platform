@@ -133,7 +133,14 @@ function FirstTimeModal({
                 Every AI thinks differently. GPT is precise. Claude is thoughtful. Gemini is fast. Grok is
                 blunt. DeepSeek surprises you. Mistral challenges everyone. We built AIMANI because the
                 real intelligence doesn&apos;t come from one answer — it comes from the friction between all
-                of them. Ask. Compare. Watch them fight, collaborate, and surprise you. Decide for yourself.
+                of them.
+              </p>
+              <p className="text-sm leading-relaxed text-slate-300">
+                Research consistently shows that multiple perspectives outperform any single expert. Same
+                goes for AI.
+              </p>
+              <p className="text-sm leading-relaxed text-slate-300">
+                Ask. Compare. Watch them fight, collaborate, and surprise you. Decide for yourself.
               </p>
               <p className="text-center text-sm font-semibold text-white">
                 AIMANI — Where AI meets AI.
