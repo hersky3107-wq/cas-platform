@@ -2,40 +2,76 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-/** Update this text when you have a new announcement. */
-const ANNOUNCEMENT_TEXT =
-  'AIMANI is now live. More modes and features coming soon. Thank you for being here.'
+type AnnouncementPayload = {
+  text: string
+  version: string
+}
 
-/** Bump version (v1 → v2 → …) when ANNOUNCEMENT_TEXT changes so everyone sees the new banner. */
-const ANNOUNCEMENT_DISMISS_KEY = 'announcement_dismissed_v1'
+function dismissKeyForVersion(version: string): string {
+  return `announcement_dismissed_${version}`
+}
 
-function isDismissed(): boolean {
+function isDismissed(version: string): boolean {
   try {
-    return localStorage.getItem(ANNOUNCEMENT_DISMISS_KEY) === '1'
+    return localStorage.getItem(dismissKeyForVersion(version)) === '1'
   } catch {
     return false
   }
 }
 
 export default function AnnouncementBanner() {
+  const [announcement, setAnnouncement] = useState<AnnouncementPayload | null>(null)
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    if (!isDismissed()) {
-      setVisible(true)
+    let mounted = true
+
+    const loadAnnouncement = async () => {
+      try {
+        const res = await fetch('/api/announcement', { cache: 'no-store' })
+        if (!mounted) return
+        if (!res.ok) return
+
+        const j = (await res.json().catch(() => null)) as {
+          text?: string | null
+          version?: string | null
+          error?: string
+        }
+        if (!mounted) return
+        if (!j?.text || !j?.version) return
+
+        const payload = { text: String(j.text), version: String(j.version) }
+        setAnnouncement(payload)
+        if (!isDismissed(payload.version)) {
+          setVisible(true)
+        }
+      } catch {
+        /* fail silently — no banner */
+      }
+    }
+
+    const deferId = window.setTimeout(() => {
+      if (!mounted) return
+      void loadAnnouncement()
+    }, 0)
+
+    return () => {
+      mounted = false
+      window.clearTimeout(deferId)
     }
   }, [])
 
   const dismiss = useCallback(() => {
+    if (!announcement) return
     try {
-      localStorage.setItem(ANNOUNCEMENT_DISMISS_KEY, '1')
+      localStorage.setItem(dismissKeyForVersion(announcement.version), '1')
     } catch {
       /* ignore */
     }
     setVisible(false)
-  }, [])
+  }, [announcement])
 
-  if (!visible) return null
+  if (!visible || !announcement?.text) return null
 
   return (
     <div
@@ -44,7 +80,7 @@ export default function AnnouncementBanner() {
       className="flex w-full items-center gap-3 bg-[#0b1020] px-4 py-2.5 text-white"
     >
       <p className="min-w-0 flex-1 text-center text-sm leading-snug sm:text-left">
-        {ANNOUNCEMENT_TEXT}
+        {announcement.text}
       </p>
       <button
         type="button"

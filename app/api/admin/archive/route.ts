@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin/require-admin";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 type Genre = "Horror" | "Romance" | "Absurd" | "Sci-Fi" | "Fairy Tale" | "Sad Story";
@@ -19,6 +20,9 @@ function normalizeLanguage(raw: unknown): string {
 }
 
 export async function GET(req: Request) {
+  const forbidden = await requireAdmin(req);
+  if (forbidden) return forbidden;
+
   const url = new URL(req.url);
   const genreFilter = url.searchParams.get("genre")?.trim() || "";
 
@@ -126,6 +130,9 @@ export async function GET(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const forbidden = await requireAdmin(req);
+  if (forbidden) return forbidden;
+
   let body: any;
   try {
     body = await req.json();
@@ -158,6 +165,9 @@ export async function DELETE(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  const forbidden = await requireAdmin(req);
+  if (forbidden) return forbidden;
+
   let body: any;
   try {
     body = await req.json();

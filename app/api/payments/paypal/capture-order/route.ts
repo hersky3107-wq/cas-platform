@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { sendAdminPaymentAlertEmail } from '@/lib/email/admin-payment-alert'
 import { sendPaymentConfirmationEmail } from '@/lib/email/payment-confirmation'
 import { addCreditsBalance, getCreditsBalance } from '@/lib/credits-server'
 import { getCreditPlan, isCreditPlanId } from '@/lib/payments/credit-plans'
@@ -129,12 +130,23 @@ export async function POST(req: Request) {
       })
     }
 
+    const purchasedAt = new Date()
+
     void sendPaymentConfirmationEmail(supabaseAdmin, {
       userId: user.id,
       toEmail: user.email,
       creditsPurchased: plan.credits,
       totalCredits: grant.balance,
       transactionId: orderId,
+      purchasedAt,
+    })
+
+    void sendAdminPaymentAlertEmail({
+      userEmail: user.email ?? 'unknown',
+      creditsPurchased: plan.credits,
+      amountUsd: Number(plan.priceUsd),
+      purchasedAt,
+      paypalOrderId: orderId,
     })
 
     return NextResponse.json({

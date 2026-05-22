@@ -20,6 +20,46 @@ type AdminStory = {
   pinned: boolean;
 };
 
+type AdminStats = {
+  overview: {
+    totalUsers: number;
+    newUsersToday: number;
+    totalSessions: number;
+    sessionsToday: number;
+  };
+  moduleUsage: { mode: string; count: number }[];
+  maxModuleCount: number;
+  credits: {
+    totalCreditsIssued: number;
+    paypalPurchaseCount: number;
+    revenueEstimateUsd: number;
+  };
+  recentSignups: {
+    id: string;
+    email: string;
+    created_at: string;
+    credits: number;
+  }[];
+};
+
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
+      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-bold tabular-nums text-white">{value}</p>
+    </div>
+  );
+}
+
+function formatSignupDate(iso: string): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
 export default function AdminPage() {
   const [authState, setAuthState] = useState<"checking" | "denied" | "allowed">("checking");
   const [tab, setTab] = useState<(GenreTab | "Custom")>("All");
@@ -27,6 +67,15 @@ export default function AdminPage() {
   const [actionBusy, setActionBusy] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [stories, setStories] = useState<AdminStory[]>([]);
+
+  const [dashLoading, setDashLoading] = useState(false);
+  const [dashError, setDashError] = useState<string | null>(null);
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [announcementText, setAnnouncementText] = useState("");
+  const [announcementVersion, setAnnouncementVersion] = useState("v1");
+  const [announcementDraft, setAnnouncementDraft] = useState("");
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
+  const [announcementMsg, setAnnouncementMsg] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -40,10 +89,42 @@ export default function AdminPage() {
   useEffect(() => {
     if (authState !== "allowed") return;
     void (async () => {
+      setDashLoading(true);
+      setDashError(null);
+      try {
+        const [statsRes, annRes] = await Promise.all([
+          fetch("/api/admin/stats", { method: "GET", credentials: "include" }),
+          fetch("/api/admin/announcement", { method: "GET", credentials: "include" }),
+        ]);
+        const statsJson = (await statsRes.json().catch(() => null)) as AdminStats & { error?: string };
+        if (!statsRes.ok) throw new Error(statsJson?.error ?? "Stats request failed");
+        setStats(statsJson as AdminStats);
+
+        const annJson = (await annRes.json().catch(() => null)) as {
+          text?: string;
+          version?: string;
+          error?: string;
+        };
+        if (annRes.ok && annJson?.text) {
+          setAnnouncementText(annJson.text);
+          setAnnouncementDraft(annJson.text);
+          if (annJson.version) setAnnouncementVersion(annJson.version);
+        }
+      } catch (e: unknown) {
+        setDashError(e instanceof Error ? e.message : "Unknown error");
+      } finally {
+        setDashLoading(false);
+      }
+    })();
+  }, [authState]);
+
+  useEffect(() => {
+    if (authState !== "allowed") return;
+    void (async () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/admin/archive`, { method: "GET" });
+        const res = await fetch(`/api/admin/archive`, { method: "GET", credentials: "include" });
         const j = (await res.json().catch(() => null)) as { stories?: AdminStory[]; error?: string };
         if (!res.ok) throw new Error(j?.error ?? "Request failed");
         setStories(Array.isArray(j?.stories) ? j.stories : []);
@@ -79,6 +160,38 @@ export default function AdminPage() {
 
   const setBusy = (sessionId: string, v: boolean) => setActionBusy((p) => ({ ...p, [sessionId]: v }));
 
+  async function saveAnnouncement() {
+    const text = announcementDraft.trim();
+    if (!text) return;
+    setAnnouncementSaving(true);
+    setAnnouncementMsg(null);
+    try {
+      const res = await fetch("/api/admin/announcement", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const j = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        text?: string;
+        version?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(j?.error ?? "Save failed");
+      if (j.text) {
+        setAnnouncementText(j.text);
+        setAnnouncementDraft(j.text);
+      }
+      if (j.version) setAnnouncementVersion(j.version);
+      setAnnouncementMsg(`Saved (${j.version ?? announcementVersion}). Users will see the new banner.`);
+    } catch (e: unknown) {
+      setAnnouncementMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setAnnouncementSaving(false);
+    }
+  }
+
   async function togglePin(story: AdminStory) {
     if (actionBusy[story.session_id]) return;
     setBusy(story.session_id, true);
@@ -87,6 +200,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/archive", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ session_id: story.session_id, pinned: !story.pinned }),
       });
       const j = (await res.json().catch(() => null)) as { ok?: boolean; pinned?: boolean; error?: string };
@@ -111,6 +225,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/archive", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ session_id: story.session_id }),
       });
       const j = (await res.json().catch(() => null)) as { ok?: boolean; error?: string };
@@ -143,86 +258,239 @@ export default function AdminPage() {
     );
   }
 
+  const maxMod = stats?.maxModuleCount ?? 1;
+
   return (
     <main className="min-h-screen bg-[#0a0f1e] px-4 py-10 text-white">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight">ARCHIVE ADMIN</h1>
+      <div className="mx-auto max-w-6xl space-y-10">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">ADMIN DASHBOARD</h1>
+          <p className="mt-1 text-sm text-slate-400">Overview, credits, signups, and site announcement.</p>
         </div>
 
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-          {GENRE_TABS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
-                tab === t ? "border-cyan-300 bg-cyan-500/15 text-white" : "border-white/12 bg-white/5 text-slate-200"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {error ? (
-          <div className="mb-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-            {error}
+        {dashError ? (
+          <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+            {dashError}
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
-          <div className="grid grid-cols-12 gap-2 border-b border-white/10 px-4 py-3 text-xs font-semibold text-slate-300">
-            <div className="col-span-2">Genre</div>
-            <div className="col-span-2">AI</div>
-            <div className="col-span-4">Story</div>
-            <div className="col-span-1 text-right">Votes</div>
-            <div className="col-span-3 text-right">Actions</div>
+        {dashLoading ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center text-sm text-slate-300">
+            Loading dashboard…
+          </div>
+        ) : stats ? (
+          <>
+            <section>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Overview</h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatCard label="Total users" value={stats.overview.totalUsers} />
+                <StatCard label="New users today" value={stats.overview.newUsersToday} />
+                <StatCard label="Total sessions" value={stats.overview.totalSessions} />
+                <StatCard label="Sessions today" value={stats.overview.sessionsToday} />
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+                Module usage (last 7 days)
+              </h2>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
+                {stats.moduleUsage.length === 0 ? (
+                  <p className="text-sm text-slate-400">No sessions in the last 7 days.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {stats.moduleUsage.map((row) => (
+                      <li key={row.mode}>
+                        <div className="mb-1 flex justify-between text-sm">
+                          <span className="font-medium text-white">{row.mode}</span>
+                          <span className="tabular-nums text-slate-300">{row.count}</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-cyan-500/70"
+                            style={{ width: `${Math.max(4, (row.count / maxMod) * 100)}%` }}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Credits</h2>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <StatCard label="Total credits (users sum)" value={stats.credits.totalCreditsIssued} />
+                <StatCard label="PayPal purchases" value={stats.credits.paypalPurchaseCount} />
+                <StatCard
+                  label="Revenue estimate (USD)"
+                  value={`$${stats.credits.revenueEstimateUsd.toFixed(2)}`}
+                />
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+                Recent signups
+              </h2>
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+                <div className="grid grid-cols-12 gap-2 border-b border-white/10 px-4 py-3 text-xs font-semibold text-slate-300">
+                  <div className="col-span-5">Email</div>
+                  <div className="col-span-4">Created</div>
+                  <div className="col-span-3 text-right">Credits</div>
+                </div>
+                {stats.recentSignups.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-sm text-slate-400">No users yet.</div>
+                ) : (
+                  <div className="divide-y divide-white/8">
+                    {stats.recentSignups.map((u) => (
+                      <div key={u.id} className="grid grid-cols-12 gap-2 px-4 py-3 text-sm">
+                        <div className="col-span-5 truncate text-slate-100">{u.email}</div>
+                        <div className="col-span-4 text-slate-400">{formatSignupDate(u.created_at)}</div>
+                        <div className="col-span-3 text-right tabular-nums text-slate-200">{u.credits}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+                Payment alerts
+              </h2>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-sm text-slate-300">
+                <p>
+                  New PayPal purchases send an email to{" "}
+                  <span className="text-cyan-300">{OWNER_EMAIL}</span> via Resend when{" "}
+                  <code className="text-xs text-slate-400">RESEND_API_KEY</code> is set (subject: &quot;AIMANI:
+                  New Payment Received&quot;).
+                </p>
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+                Announcement banner
+              </h2>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
+                <p className="mb-2 text-xs text-slate-500">
+                  Live version: <span className="text-cyan-300">{announcementVersion}</span>
+                </p>
+                {announcementText ? (
+                  <p className="mb-4 rounded-xl border border-white/10 bg-[#0b1020] px-3 py-2 text-sm text-slate-200">
+                    {announcementText}
+                  </p>
+                ) : null}
+                <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Banner text
+                </label>
+                <textarea
+                  value={announcementDraft}
+                  onChange={(e) => setAnnouncementDraft(e.target.value)}
+                  rows={3}
+                  className="mt-2 w-full resize-y rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400/40 focus:outline-none"
+                />
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void saveAnnouncement()}
+                    disabled={announcementSaving || !announcementDraft.trim()}
+                    className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+                  >
+                    {announcementSaving ? "Saving…" : "Save"}
+                  </button>
+                  {announcementMsg ? (
+                    <span className="text-xs text-slate-400">{announcementMsg}</span>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Saving bumps the version so users who dismissed an older banner will see the new text.
+                </p>
+              </div>
+            </section>
+          </>
+        ) : null}
+
+        <section className="border-t border-white/10 pt-10">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold tracking-tight">ARCHIVE ADMIN</h2>
           </div>
 
-          {loading ? (
-            <div className="px-4 py-10 text-center text-sm text-slate-300">Loading…</div>
-          ) : sorted.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-slate-300">No archived stories.</div>
-          ) : (
-            <div className="divide-y divide-white/8">
-              {sorted.map((s) => (
-                <div key={s.session_id} className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm">
-                  <div className="col-span-2">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-white/12 bg-white/5 px-2 py-1 text-xs text-slate-200">
-                      {s.genre}
-                    </span>
-                  </div>
-                  <div className="col-span-2 font-semibold text-white">{s.ai_name}</div>
-                  <div className="col-span-4 truncate text-slate-100">{String(s.story_preview ?? "").slice(0, 60)}</div>
-                  <div className="col-span-1 text-right tabular-nums text-slate-200">{s.vote_count ?? 0}</div>
-                  <div className="col-span-3 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void togglePin(s)}
-                      disabled={actionBusy[s.session_id]}
-                      className="rounded-xl border border-white/12 bg-white/6 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/8 disabled:opacity-50"
-                      title={s.pinned ? "Unpin" : "Pin"}
-                    >
-                      📌 {s.pinned ? "Unpin" : "Pin"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteStory(s)}
-                      disabled={actionBusy[s.session_id]}
-                      className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-100 hover:bg-rose-500/15 disabled:opacity-50"
-                      title="Delete"
-                    >
-                      🗑️ Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
+          <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+            {GENRE_TABS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                  tab === t ? "border-cyan-300 bg-cyan-500/15 text-white" : "border-white/12 bg-white/5 text-slate-200"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {error ? (
+            <div className="mb-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              {error}
             </div>
-          )}
-        </div>
+          ) : null}
+
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+            <div className="grid grid-cols-12 gap-2 border-b border-white/10 px-4 py-3 text-xs font-semibold text-slate-300">
+              <div className="col-span-2">Genre</div>
+              <div className="col-span-2">AI</div>
+              <div className="col-span-4">Story</div>
+              <div className="col-span-1 text-right">Votes</div>
+              <div className="col-span-3 text-right">Actions</div>
+            </div>
+
+            {loading ? (
+              <div className="px-4 py-10 text-center text-sm text-slate-300">Loading…</div>
+            ) : sorted.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-slate-300">No archived stories.</div>
+            ) : (
+              <div className="divide-y divide-white/8">
+                {sorted.map((s) => (
+                  <div key={s.session_id} className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm">
+                    <div className="col-span-2">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-white/12 bg-white/5 px-2 py-1 text-xs text-slate-200">
+                        {s.genre}
+                      </span>
+                    </div>
+                    <div className="col-span-2 font-semibold text-white">{s.ai_name}</div>
+                    <div className="col-span-4 truncate text-slate-100">{String(s.story_preview ?? "").slice(0, 60)}</div>
+                    <div className="col-span-1 text-right tabular-nums text-slate-200">{s.vote_count ?? 0}</div>
+                    <div className="col-span-3 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void togglePin(s)}
+                        disabled={actionBusy[s.session_id]}
+                        className="rounded-xl border border-white/12 bg-white/6 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/8 disabled:opacity-50"
+                        title={s.pinned ? "Unpin" : "Pin"}
+                      >
+                        📌 {s.pinned ? "Unpin" : "Pin"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void deleteStory(s)}
+                        disabled={actionBusy[s.session_id]}
+                        className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-100 hover:bg-rose-500/15 disabled:opacity-50"
+                        title="Delete"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
 }
-
