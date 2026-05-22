@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
 import ShareButtons from "@/components/ShareButtons";
+import { deepHelpContent } from "@/lib/help-modal/deep-content";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
@@ -321,6 +323,7 @@ export default function DeepModePage() {
 
   return (
     <main className={BG}>
+      <HelpModal content={deepHelpContent} />
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-10 sm:px-6 lg:max-w-4xl lg:py-14">
         <header className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">

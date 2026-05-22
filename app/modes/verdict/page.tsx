@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
+import { verdictHelpContent } from "@/lib/help-modal/verdict-content";
 import { ChevronLeft, Star, ThumbsDown, ThumbsUp, Trophy } from "lucide-react";
 
 const submodes = [
@@ -63,6 +65,7 @@ const submodes = [
 export default function VerdictPage() {
   return (
     <main className="min-h-screen bg-[#0a0f1e] px-4 py-12 text-white">
+      <HelpModal content={verdictHelpContent} />
       <div className="mx-auto w-full max-w-3xl">
         <Link
           href="/"

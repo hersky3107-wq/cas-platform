@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
+import { archiveHelpContent } from "@/lib/help-modal/archive-content";
 import { ChevronLeft, ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AiProviderName } from "@/lib/ai/router";
@@ -189,6 +191,7 @@ export default function StageArchivePage() {
 
   return (
     <div className={BG}>
+      <HelpModal content={archiveHelpContent} />
       <header className="fixed left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-white/8 bg-[#0a0f1e]/95 px-3 py-2.5 backdrop-blur-md sm:px-4">
         <Link
           href="/modes/stage"

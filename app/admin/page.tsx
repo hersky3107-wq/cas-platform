@@ -9,6 +9,15 @@ type GenreTab = "All" | "Horror" | "Romance" | "Absurd" | "Sci-Fi" | "Fairy Tale
 const GENRE_TABS: (GenreTab | "Custom")[] = ["All", "Horror", "Romance", "Absurd", "Sci-Fi", "Fairy Tale", "Sad Story", "Custom"];
 const STANDARD_GENRES = ["Horror", "Romance", "Absurd", "Sci-Fi", "Fairy Tale", "Sad Story"] as const;
 
+const API_BALANCE_LINKS = [
+  { name: "ChatGPT (OpenAI)", href: "https://platform.openai.com/settings/organization/billing/overview" },
+  { name: "Claude (Anthropic)", href: "https://console.anthropic.com/settings/billing" },
+  { name: "Gemini (Google)", href: "https://console.cloud.google.com/billing" },
+  { name: "Grok (xAI)", href: "https://console.x.ai/" },
+  { name: "DeepSeek", href: "https://platform.deepseek.com/usage" },
+  { name: "Mistral", href: "https://console.mistral.ai/billing/" },
+] as const;
+
 type AdminStory = {
   session_id: string;
   genre: string;
@@ -327,6 +336,29 @@ export default function AdminPage() {
                   label="Revenue estimate (USD)"
                   value={`$${stats.credits.revenueEstimateUsd.toFixed(2)}`}
                 />
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">
+                API BALANCE
+              </h2>
+              <p className="mb-3 text-sm text-slate-500">
+                Click to check each provider&apos;s dashboard directly.
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {API_BALANCE_LINKS.map((item) => (
+                  <a
+                    key={item.name}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 transition hover:border-cyan-400/35 hover:bg-white/[0.07]"
+                  >
+                    <span className="font-semibold text-white">{item.name}</span>
+                    <span className="mt-2 text-sm text-cyan-300">Check Balance →</span>
+                  </a>
+                ))}
               </div>
             </section>
 

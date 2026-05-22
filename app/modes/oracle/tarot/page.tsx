@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
+import { oracleTarotHelpContent } from "@/lib/help-modal/oracle-tarot-content";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { creditsForOracleTarotSpread, type OracleTarotSpreadKey } from "@/lib/credits";
@@ -407,6 +409,7 @@ export default function OracleTarotPage() {
 
   return (
     <main className={BG}>
+      <HelpModal content={oracleTarotHelpContent} />
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 pb-28 pt-8 sm:px-8 lg:pb-24">
         <div className="mb-8 flex flex-wrap items-center gap-3">
           <Link

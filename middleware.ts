@@ -48,7 +48,11 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
-  if (!user && request.nextUrl.pathname.startsWith('/modes/')) {
+  if (
+    !user &&
+    (request.nextUrl.pathname.startsWith('/modes/') ||
+      request.nextUrl.pathname.startsWith('/settings'))
+  ) {
     const loginUrl = new URL('/auth', request.url)
     loginUrl.searchParams.set(
       'redirectTo',

@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
 import ShareButtons from "@/components/ShareButtons";
+import { verdictScoreHelpContent } from "@/lib/help-modal/verdict-score-content";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -417,6 +419,7 @@ export default function VerdictScorePage() {
 
   return (
     <div className={BG}>
+      <HelpModal content={verdictScoreHelpContent} />
       <header className="fixed left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-white/8 bg-[#0a0f1e]/95 px-3 py-2.5 backdrop-blur-md sm:px-4">
         <Link
           href="/modes/verdict"

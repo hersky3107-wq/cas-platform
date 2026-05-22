@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
+import { oracleDailyHelpContent } from "@/lib/help-modal/oracle-daily-content";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
@@ -137,6 +139,7 @@ export default function OracleDailyPage() {
 
   return (
     <main className={BG}>
+      <HelpModal content={oracleDailyHelpContent} />
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 pb-28 pt-8 sm:px-8 lg:pb-24">
         <div className="mb-8 flex flex-wrap items-center gap-3">
           <Link

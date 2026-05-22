@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import HelpModal from "@/components/HelpModal";
 import type { OracleBirthProfileV1 } from "@/lib/oracle/types";
+import { oracleFateHelpContent } from "@/lib/help-modal/oracle-fate-content";
 import OracleReadingClient from "../OracleReadingClient";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
@@ -43,16 +45,23 @@ export default function OracleFatePage() {
   }, [router]);
 
   if (!ready)
-    return <main className={BG} aria-busy="true" />;
+    return (
+      <main className={BG} aria-busy="true">
+        <HelpModal content={oracleFateHelpContent} />
+      </main>
+    );
 
   return (
-    <OracleReadingClient
+    <>
+      <HelpModal content={oracleFateHelpContent} />
+      <OracleReadingClient
       apiPath="/api/oracle/fate"
       title="Fate circle"
       blurb="Eastern pillar reading from your stored birth sketch. Claude · Gemini · Grok · DeepSeek · Mistral answer in prose, then gpt‑4.1 weaves them."
       {...(oracleProfile
         ? { skipProfileGate: true as const, oracleBirthProfile: oracleProfile }
         : {})}
-    />
+      />
+    </>
   );
 }

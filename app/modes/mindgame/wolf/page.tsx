@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
+import { wolfHelpContent } from "@/lib/help-modal/wolf-content";
 import {
   useCallback,
   useEffect,
@@ -1203,6 +1205,7 @@ export default function WolfModePage() {
 
   return (
     <main className={BG}>
+      <HelpModal content={wolfHelpContent} />
       <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-8 sm:px-6 lg:py-12">
         <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">

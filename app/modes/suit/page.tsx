@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
+import { suitHelpContent } from "@/lib/help-modal/suit-content";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Gavel } from "lucide-react";
@@ -235,6 +237,7 @@ export default function SuitSetupPage() {
 
   return (
     <main className="min-h-screen bg-[#0a0f1e] pb-24 text-white">
+      <HelpModal content={suitHelpContent} />
       <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0a0f1e]/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
           <Link

@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import HelpModal from "@/components/HelpModal";
+import { oracleHelpContent } from "@/lib/help-modal/oracle-content";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Sparkles } from "lucide-react";
@@ -43,6 +45,7 @@ export default function OracleLandingPage() {
 
   return (
     <main className={BG}>
+      <HelpModal content={oracleHelpContent} />
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-5 pb-32 pt-10 sm:px-8">
         <Link
           href="/"
