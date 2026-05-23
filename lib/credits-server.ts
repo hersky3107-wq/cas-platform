@@ -238,6 +238,53 @@ export async function addCreditsBalance(
 
 export type CreditsBillingMode = 'subscription' | 'pay_as_you_go'
 
+/** Set credits to an exact amount (subscription renewals / activation). */
+export async function setCreditsBalance(
+  userId: string,
+  amount: number,
+  billingMode: CreditsBillingMode = 'subscription'
+): Promise<AddCreditsOutcome> {
+  if (amount < 0 || !Number.isFinite(amount)) {
+    return { ok: false, reason: 'update_failed' }
+  }
+
+  const next = Math.floor(amount)
+  let updated = false
+
+  for (const table of CREDITS_TABLES) {
+    const { data: row } = await supabaseAdmin.from(table).select('id').eq('id', userId).maybeSingle()
+    if (!row) continue
+
+    const payload: { credits: number; credits_billing_mode?: CreditsBillingMode } = {
+      credits: next,
+    }
+    if (table === 'users') {
+      payload.credits_billing_mode = billingMode
+    }
+
+    const { error } = await supabaseAdmin.from(table).update(payload).eq('id', userId)
+    if (!error) {
+      updated = true
+    } else {
+      console.warn(`[credits] set on ${table} failed:`, error.message)
+    }
+  }
+
+  if (!updated) {
+    const { error: insertErr } = await supabaseAdmin.from('users').upsert(
+      { id: userId, credits: next, credits_billing_mode: billingMode },
+      { onConflict: 'id' }
+    )
+
+    if (insertErr) {
+      console.warn('[credits] users upsert (set) failed:', insertErr.message)
+      return { ok: false, reason: 'update_failed' }
+    }
+  }
+
+  return { ok: true, balance: next }
+}
+
 export type CreditsDisplayConfig = {
   billingMode: CreditsBillingMode
   percentCeiling: number
