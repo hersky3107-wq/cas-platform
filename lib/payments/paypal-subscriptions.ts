@@ -14,11 +14,24 @@ export type PayPalSubscription = {
   status: PayPalSubscriptionStatus | string
   plan_id?: string
   custom_id?: string
+  billing_info?: {
+    next_billing_time?: string
+    last_payment?: { time?: string; amount?: { currency_code?: string; value?: string } }
+  }
   subscriber?: {
     email_address?: string
     name?: { given_name?: string; surname?: string }
   }
   links?: { href: string; rel: string; method: string }[]
+}
+
+export function nextBillingTimeFromPayPalSubscription(
+  sub: PayPalSubscription
+): string | null {
+  const raw = sub.billing_info?.next_billing_time
+  if (!raw || typeof raw !== 'string') return null
+  const d = new Date(raw)
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
 }
 
 type PayPalErrorBody = {
@@ -119,6 +132,16 @@ export async function getPayPalSubscription(subscriptionId: string): Promise<Pay
   return paypalJson<PayPalSubscription>(
     `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`,
     { method: 'GET' }
+  )
+}
+
+export async function cancelPayPalSubscription(subscriptionId: string): Promise<void> {
+  await paypalJson<unknown>(
+    `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'Customer requested cancellation' }),
+    }
   )
 }
 

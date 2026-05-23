@@ -3,6 +3,7 @@ import { missingPayPalServerEnv } from '@/lib/payments/paypal'
 import {
   activatePayPalSubscription,
   getPayPalSubscription,
+  nextBillingTimeFromPayPalSubscription,
   parseSubscriptionCustomId,
 } from '@/lib/payments/paypal-subscriptions'
 import { activateSubscriptionForUser } from '@/lib/payments/subscription-db'
@@ -95,6 +96,7 @@ export async function POST(req: Request) {
       paypalSubscriptionId: subscriptionId,
       planType,
       email: user.email ?? null,
+      currentPeriodEnd: nextBillingTimeFromPayPalSubscription(sub),
     })
 
     if (!result.ok) {

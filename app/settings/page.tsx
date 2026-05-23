@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { SubscriptionSection } from '@/components/settings/SubscriptionSection'
 import { supabase } from '@/lib/db/supabase'
 
 const PROVIDERS = [
@@ -204,6 +205,8 @@ export default function SettingsPage() {
             above (empty fields are not stored).
           </p>
         </div>
+
+        <SubscriptionSection userId={userId} authLoading={authLoading} />
       </div>
     </main>
   )
