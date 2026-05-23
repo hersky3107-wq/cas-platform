@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { CreditPlanId } from '@/lib/payments/credit-plans'
+import { TOPUP_PLAN_ID } from '@/lib/payments/topup'
 
 export async function isPayPalOrderRecorded(
   supabase: SupabaseClient,
@@ -24,7 +24,7 @@ export async function recordPayPalPurchase(
   row: {
     paypalOrderId: string
     userId: string
-    planId: CreditPlanId
+    planId: string
     creditsGranted: number
     amountUsd: number
   }
@@ -48,4 +48,22 @@ export async function recordPayPalPurchase(
   }
 
   return { ok: true }
+}
+
+export async function recordPayPalTopUpPurchase(
+  supabase: SupabaseClient,
+  row: {
+    paypalOrderId: string
+    userId: string
+    creditsGranted: number
+    amountUsd: number
+  }
+): Promise<{ ok: true } | { ok: false; duplicate: boolean }> {
+  return recordPayPalPurchase(supabase, {
+    paypalOrderId: row.paypalOrderId,
+    userId: row.userId,
+    planId: TOPUP_PLAN_ID,
+    creditsGranted: row.creditsGranted,
+    amountUsd: row.amountUsd,
+  })
 }

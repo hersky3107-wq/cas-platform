@@ -15,7 +15,7 @@ import type { SubscriptionPlanType } from '@/lib/payments/subscription-plans'
 
 type CreditActionModalProps = {
   tier: 2 | 3
-  billingMode: 'subscription' | 'pay_as_you_go'
+  billingMode: 'subscription' | 'pay_as_you_go' | 'topup'
   activePlanType: SubscriptionPlanType | null
   subscriptionLoading: boolean
   topUpAmount: number

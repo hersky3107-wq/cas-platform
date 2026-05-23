@@ -25,7 +25,7 @@ import {
 } from '@/lib/payments/subscription-plans'
 import { supabase } from '@/lib/db/supabase'
 
-type CreditsBillingMode = 'subscription' | 'pay_as_you_go'
+type CreditsBillingMode = 'subscription' | 'pay_as_you_go' | 'topup'
 
 const PAYMENTS_PATH = '/modes/credits'
 const TIER2_SESSION_KEY = 'credit_tier2_session_ok'
@@ -145,7 +145,11 @@ export function CreditWarningsRoot({ children }: { children: ReactNode }) {
     if (typeof j?.balance === 'number' && Number.isFinite(j.balance)) {
       setBalance(j.balance)
     }
-    if (j?.billingMode === 'subscription' || j?.billingMode === 'pay_as_you_go') {
+    if (
+      j?.billingMode === 'subscription' ||
+      j?.billingMode === 'pay_as_you_go' ||
+      j?.billingMode === 'topup'
+    ) {
       setBillingMode(j.billingMode)
     }
     if (typeof j?.percentCeiling === 'number' && Number.isFinite(j.percentCeiling) && j.percentCeiling >= 1) {
@@ -384,7 +388,10 @@ export function CreditWarningsRoot({ children }: { children: ReactNode }) {
   )
 
   const showPaygGauge =
-    signedIn && billingMode === 'pay_as_you_go' && balance !== null && !isCreditTier3Zero(balance)
+    signedIn &&
+    (billingMode === 'pay_as_you_go' || billingMode === 'topup') &&
+    balance !== null &&
+    !isCreditTier3Zero(balance)
 
   return (
     <CreditWarningsContext.Provider value={ctxValue}>

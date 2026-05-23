@@ -1,14 +1,35 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
+import {
+  creditsFromTopUpUsd,
+  TOP_UP_DEFAULT_USD,
+  TOP_UP_MAX_USD,
+  TOP_UP_MIN_USD,
+  TOP_UP_STEP_USD,
+} from '@/lib/credits-warning-modal-config'
+import { parseTopUpAmountParam } from '@/lib/payments/topup'
 import { supabase } from '@/lib/db/supabase'
 import {
   isSubscriptionPlanType,
   type SubscriptionPlanType,
 } from '@/lib/payments/subscription-plans'
+
+function snapTopUpAmount(value: number): number {
+  const snapped = Math.round(value / TOP_UP_STEP_USD) * TOP_UP_STEP_USD
+  return Math.min(TOP_UP_MAX_USD, Math.max(TOP_UP_MIN_USD, snapped))
+}
 
 const SUBSCRIPTION_ORDER: SubscriptionPlanType[] = ['light', 'standard', 'pro']
 
@@ -33,6 +54,8 @@ const SUBSCRIPTION_PLAN_LABEL: Record<SubscriptionPlanType, string> = {
 
 const SUBSCRIPTION_CANCELLED_MESSAGE = 'Subscription cancelled.'
 const SUBSCRIPTION_SUCCESS_MESSAGE = 'Your monthly plan is active. Thank you!'
+const TOPUP_CANCELLED_MESSAGE = 'Top-up payment cancelled.'
+const TOPUP_SUCCESS_MESSAGE = 'Top-up complete. Credits have been added to your account.'
 
 function SectionHeader({
   id,
@@ -74,6 +97,7 @@ function CreditsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const subscriptionParam = searchParams.get('subscription')
+  const topupParam = searchParams.get('topup')
 
   const [authLoading, setAuthLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
@@ -86,7 +110,16 @@ function CreditsContent() {
   const [subscribingPlanType, setSubscribingPlanType] = useState<SubscriptionPlanType | null>(
     null
   )
+  const [topUpAmount, setTopUpAmount] = useState(TOP_UP_DEFAULT_USD)
+  const [topUpPaying, setTopUpPaying] = useState(false)
+  const [topUpCapturing, setTopUpCapturing] = useState(false)
   const subscriptionReturnHandled = useRef(false)
+  const topupReturnHandled = useRef(false)
+  const topUpSectionRef = useRef<HTMLElement | null>(null)
+
+  const topUpFromUrl = useMemo(() => parseTopUpAmountParam(topupParam), [topupParam])
+  const showTopUpSection =
+    topupParam !== 'success' && topupParam !== 'cancel' && topUpFromUrl !== null
 
   const refreshBalance = useCallback(async () => {
     const res = await authenticatedFetch('/api/credits/balance', {
@@ -119,6 +152,39 @@ function CreditsContent() {
       setActiveSubscription(null)
     }
   }, [])
+
+  useEffect(() => {
+    if (topUpFromUrl !== null) {
+      setTopUpAmount(topUpFromUrl)
+    }
+  }, [topUpFromUrl])
+
+  useEffect(() => {
+    if (!showTopUpSection || !topUpSectionRef.current) return
+    topUpSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [showTopUpSection, authLoading])
+
+  const handleTopUpPay = useCallback(async () => {
+    setTopUpPaying(true)
+    setMessage(null)
+    try {
+      const res = await authenticatedFetch('/api/paypal/create-topup', {
+        method: 'POST',
+        json: { amountUSD: topUpAmount },
+      })
+      const j = (await res.json()) as { approvalUrl?: string; error?: string }
+      if (!res.ok || !j.approvalUrl) {
+        throw new Error(j.error ?? 'Could not start top-up payment')
+      }
+      window.location.href = j.approvalUrl
+    } catch (e) {
+      setTopUpPaying(false)
+      setMessage({
+        type: 'err',
+        text: e instanceof Error ? e.message : 'Could not start top-up payment',
+      })
+    }
+  }, [topUpAmount])
 
   const handleSubscribe = useCallback(async (planType: SubscriptionPlanType) => {
     setSubscribingPlanType(planType)
@@ -166,7 +232,66 @@ function CreditsContent() {
   }, [router, refreshBalance, fetchSubscriptionStatus])
 
   useEffect(() => {
+    if (!userId || topupReturnHandled.current) return
+
+    if (topupParam === 'cancel') {
+      topupReturnHandled.current = true
+      setMessage({ type: 'err', text: TOPUP_CANCELLED_MESSAGE })
+      router.replace('/modes/credits')
+      return
+    }
+
+    if (topupParam !== 'success') return
+
+    const amountUSD = parseTopUpAmountParam(searchParams.get('amount'))
+    const orderID =
+      searchParams.get('token')?.trim() || searchParams.get('orderID')?.trim() || ''
+
+    if (amountUSD === null || !orderID) return
+
+    topupReturnHandled.current = true
+    setTopUpCapturing(true)
+
+    void (async () => {
+      try {
+        const res = await authenticatedFetch('/api/paypal/capture-topup', {
+          method: 'POST',
+          json: { orderID, amountUSD },
+        })
+        const j = (await res.json()) as {
+          success?: boolean
+          creditsAdded?: number
+          balance?: number
+          error?: string
+        }
+        if (!res.ok || !j.success) {
+          setMessage({
+            type: 'err',
+            text: j.error ?? 'Could not complete top-up payment',
+          })
+        } else {
+          if (typeof j.balance === 'number') {
+            setBalance(j.balance)
+          } else {
+            await refreshBalance()
+          }
+          setMessage({
+            type: 'ok',
+            text: `Added ${j.creditsAdded ?? creditsFromTopUpUsd(amountUSD)} credits. ${TOPUP_SUCCESS_MESSAGE}`,
+          })
+        }
+      } catch {
+        setMessage({ type: 'err', text: 'Could not complete top-up payment' })
+      } finally {
+        setTopUpCapturing(false)
+        router.replace('/modes/credits')
+      }
+    })()
+  }, [userId, topupParam, searchParams, router, refreshBalance])
+
+  useEffect(() => {
     if (!userId || subscriptionReturnHandled.current) return
+    if (topupParam === 'success' || topupParam === 'cancel') return
 
     if (subscriptionParam === 'cancel') {
       subscriptionReturnHandled.current = true
@@ -225,7 +350,10 @@ function CreditsContent() {
     router,
     refreshBalance,
     fetchSubscriptionStatus,
+    topupParam,
   ])
+
+  const topUpCredits = creditsFromTopUpUsd(topUpAmount)
 
   if (authLoading) {
     return (
@@ -261,6 +389,12 @@ function CreditsContent() {
           </p>
         </div>
 
+        {topUpCapturing ? (
+          <p className="mt-4 text-sm text-cyan-300" role="status">
+            Confirming your top-up payment…
+          </p>
+        ) : null}
+
         {message ? (
           <p
             className={`mt-4 text-sm ${message.type === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}
@@ -268,6 +402,62 @@ function CreditsContent() {
           >
             {message.text}
           </p>
+        ) : null}
+
+        {showTopUpSection ? (
+          <section
+            ref={topUpSectionRef}
+            className="mt-10 rounded-[20px] border border-emerald-500/30 bg-[#131c35] p-6 shadow-[0_0_32px_rgba(16,185,129,0.08)]"
+            aria-labelledby="topup-payment-heading"
+          >
+            <h2 id="topup-payment-heading" className="text-xl font-semibold text-white">
+              Instant top-up
+            </h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Top up{' '}
+              <span className="font-semibold tabular-nums text-white">
+                {topUpCredits.toLocaleString()}
+              </span>{' '}
+              credits for{' '}
+              <span className="font-semibold tabular-nums text-white">${topUpAmount}</span>
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Valid for 90 days · one-time PayPal payment</p>
+
+            <div className="mt-6 space-y-3">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <label htmlFor="credits-topup-slider" className="text-slate-300">
+                  Adjust amount
+                </label>
+                <span className="tabular-nums text-slate-400">
+                  {creditsFromTopUpUsd(topUpAmount).toLocaleString()} credits
+                </span>
+              </div>
+              <input
+                id="credits-topup-slider"
+                type="range"
+                min={TOP_UP_MIN_USD}
+                max={TOP_UP_MAX_USD}
+                step={TOP_UP_STEP_USD}
+                value={topUpAmount}
+                onChange={(e) => setTopUpAmount(snapTopUpAmount(Number(e.target.value)))}
+                className="w-full accent-emerald-500"
+              />
+              <div className="flex justify-between text-xs tabular-nums text-slate-500">
+                <span>${TOP_UP_MIN_USD}</span>
+                <span className="font-medium text-slate-300">${topUpAmount}</span>
+                <span>${TOP_UP_MAX_USD}</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleTopUpPay()}
+              disabled={topUpPaying}
+              className="mt-6 w-full rounded-xl bg-[#0070ba] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {topUpPaying ? 'Redirecting to PayPal…' : `Pay $${topUpAmount} with PayPal`}
+            </button>
+          </section>
         ) : null}
 
         <section className="mt-12" aria-labelledby="monthly-plans-heading">

@@ -236,7 +236,7 @@ export async function addCreditsBalance(
   return { ok: true, balance: next }
 }
 
-export type CreditsBillingMode = 'subscription' | 'pay_as_you_go'
+export type CreditsBillingMode = 'subscription' | 'pay_as_you_go' | 'topup'
 
 /** Set credits to an exact amount (subscription renewals / activation). */
 export async function setCreditsBalance(
@@ -307,7 +307,11 @@ export async function getCreditsDisplayConfig(userId: string): Promise<CreditsDi
 
   const rawMode = data.credits_billing_mode as string | undefined
   const billingMode: CreditsBillingMode =
-    rawMode === 'subscription' ? 'subscription' : 'pay_as_you_go'
+    rawMode === 'subscription'
+      ? 'subscription'
+      : rawMode === 'topup'
+        ? 'topup'
+        : 'pay_as_you_go'
 
   const ceilRaw = data.credits_percent_ceiling
   const percentCeiling =
