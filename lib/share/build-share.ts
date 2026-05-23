@@ -13,8 +13,18 @@ export function buildShareText(modeName: string): string {
   return `I just tried ${modeName} on AIMANI.ai! Check it out: ${SHARE_SITE_URL}`
 }
 
+/** Explicit url, else current page (client), else site homepage (SSR). */
+export function resolveShareUrl(url?: string): string {
+  const trimmed = url?.trim()
+  const raw =
+    trimmed ||
+    (typeof window !== 'undefined' ? window.location.href : '') ||
+    SHARE_SITE_URL
+  return raw.replace(/\/$/, '') || SHARE_SITE_URL
+}
+
 export function buildSharePayload(modeName: string, url?: string): SharePayload {
-  const shareUrl = (url ?? SHARE_SITE_URL).replace(/\/$/, '') || SHARE_SITE_URL
+  const shareUrl = resolveShareUrl(url)
   const text = buildShareText(modeName)
   const combined = text
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import {
   buildSharePayload,
   prefersNativeShare,
@@ -15,11 +16,12 @@ export type ShareButtonsProps = {
   title?: string
 }
 
-const PLATFORM_ORDER: SharePlatform[] = ['twitter', 'tiktok', 'kakao', 'whatsapp']
+const PLATFORM_ORDER = ['twitter', 'kakao', 'whatsapp'] as const satisfies readonly SharePlatform[]
 
-const PLATFORM_LABELS: Record<SharePlatform | 'copy', string> = {
+type VisibleSharePlatform = (typeof PLATFORM_ORDER)[number]
+
+const PLATFORM_LABELS: Record<VisibleSharePlatform | 'copy', string> = {
   twitter: 'X',
-  tiktok: 'TikTok',
   kakao: 'KakaoTalk',
   whatsapp: 'WhatsApp',
   copy: 'Copy link',
@@ -31,7 +33,12 @@ export default function ShareButtons({
   className = '',
   title = 'Share your session',
 }: ShareButtonsProps) {
-  const payload = useMemo(() => buildSharePayload(modeName, url), [modeName, url])
+  const pathname = usePathname()
+  const payload = useMemo(() => {
+    const pageUrl =
+      url ?? (typeof window !== 'undefined' ? window.location.href : undefined)
+    return buildSharePayload(modeName, pageUrl)
+  }, [modeName, url, pathname])
   const [copyOk, setCopyOk] = useState(false)
   const [kakaoHint, setKakaoHint] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -55,7 +62,7 @@ export default function ShareButtons({
   }, [payload])
 
   const openPlatform = useCallback(
-    (platform: SharePlatform) => {
+    (platform: VisibleSharePlatform) => {
       setStatus(null)
       if (platform === 'kakao') {
         shareViaKakaoTalk(payload)
