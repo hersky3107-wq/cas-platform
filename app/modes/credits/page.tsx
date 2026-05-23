@@ -14,11 +14,15 @@ const SUBSCRIPTION_ORDER: SubscriptionPlanType[] = ['light', 'standard', 'pro']
 
 const SUBSCRIPTION_PLANS: Record<
   SubscriptionPlanType,
-  { label: string; priceUsd: string }
+  { label: string; priceUsd: string; creditsLine: string }
 > = {
-  light: { label: 'Light', priceUsd: '10' },
-  standard: { label: 'Standard', priceUsd: '19' },
-  pro: { label: 'Pro', priceUsd: '38' },
+  light: { label: 'Light', priceUsd: '10', creditsLine: '200 credits/mo' },
+  standard: {
+    label: 'Standard',
+    priceUsd: '19',
+    creditsLine: '380 credits + 20 FREE',
+  },
+  pro: { label: 'Pro', priceUsd: '38', creditsLine: '760 credits + 90 FREE' },
 }
 
 const SUBSCRIPTION_PLAN_LABEL: Record<SubscriptionPlanType, string> = {
@@ -297,6 +301,7 @@ function CreditsContent() {
                     ${plan.priceUsd}
                     <span className="text-lg font-semibold text-slate-400">/mo</span>
                   </p>
+                  <p className="mt-2 text-sm text-slate-300">{plan.creditsLine}</p>
                   <div className="mt-auto pt-6">
                     {isActive ? (
                       <button
@@ -339,10 +344,8 @@ function CreditsContent() {
           </h2>
           <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-slate-400">
             <li>Monthly plan credits are used first</li>
-            <li>Top-up credits activate when monthly credits run out</li>
             <li>Monthly credits reset each billing cycle (no rollover)</li>
-            <li>Top-up credits expire 90 days after purchase</li>
-            <li>Cancel your plan anytime from account settings</li>
+            <li>Instant top-up available when monthly credits run out</li>
           </ul>
         </section>
       </div>
