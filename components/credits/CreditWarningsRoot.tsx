@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   createContext,
@@ -12,6 +11,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { CreditActionModal, TOP_UP_DEFAULT_USD } from '@/components/credits/CreditActionModal'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
 import {
   creditsPercentFull,
@@ -19,6 +19,10 @@ import {
   isCreditTier2Low,
   isCreditTier3Zero,
 } from '@/lib/credits-warning-tiers'
+import {
+  isSubscriptionPlanType,
+  type SubscriptionPlanType,
+} from '@/lib/payments/subscription-plans'
 import { supabase } from '@/lib/db/supabase'
 
 type CreditsBillingMode = 'subscription' | 'pay_as_you_go'
@@ -110,6 +114,11 @@ export function CreditWarningsRoot({ children }: { children: ReactNode }) {
   const [tier1Banner, setTier1Banner] = useState(false)
   const [tier2Modal, setTier2Modal] = useState(false)
   const [tier3Modal, setTier3Modal] = useState(false)
+  const [activePlanType, setActivePlanType] = useState<SubscriptionPlanType | null>(null)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false)
+  const [topUpAmount, setTopUpAmount] = useState(TOP_UP_DEFAULT_USD)
+  const [upgradingPlanType, setUpgradingPlanType] = useState<SubscriptionPlanType | null>(null)
+  const [upgradeError, setUpgradeError] = useState<string | null>(null)
 
   const tier1TimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevPathRef = useRef<string | null>(null)
@@ -298,6 +307,55 @@ export function CreditWarningsRoot({ children }: { children: ReactNode }) {
     }
   }, [pathname, signedIn, balance, percentCeiling, maybeShowTier1AfterModule])
 
+  const fetchSubscriptionForModal = useCallback(async () => {
+    setSubscriptionLoading(true)
+    setActivePlanType(null)
+    try {
+      const res = await authenticatedFetch('/api/paypal/subscription-status', {
+        method: 'GET',
+      })
+      const j = (await res.json().catch(() => null)) as {
+        subscription?: { planType?: string; status?: string } | null
+      } | null
+      if (
+        res.ok &&
+        j?.subscription?.status === 'active' &&
+        isSubscriptionPlanType(j.subscription.planType)
+      ) {
+        setActivePlanType(j.subscription.planType)
+      }
+    } finally {
+      setSubscriptionLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!tier2Modal && !tier3Modal) return
+    setTopUpAmount(TOP_UP_DEFAULT_USD)
+    setUpgradeError(null)
+    setUpgradingPlanType(null)
+    void fetchSubscriptionForModal()
+  }, [tier2Modal, tier3Modal, fetchSubscriptionForModal])
+
+  const handleUpgrade = useCallback(async (planType: SubscriptionPlanType) => {
+    setUpgradingPlanType(planType)
+    setUpgradeError(null)
+    try {
+      const res = await authenticatedFetch('/api/paypal/create-subscription', {
+        method: 'POST',
+        json: { planType },
+      })
+      const j = (await res.json()) as { approvalUrl?: string; error?: string }
+      if (!res.ok || !j.approvalUrl) {
+        throw new Error(j.error ?? 'Could not start upgrade')
+      }
+      window.location.href = j.approvalUrl
+    } catch (e) {
+      setUpgradingPlanType(null)
+      setUpgradeError(e instanceof Error ? e.message : 'Could not start upgrade')
+    }
+  }, [])
+
   const dismissTier2Later = useCallback(() => {
     tier2DismissedRef.current = true
     try {
@@ -364,57 +422,37 @@ export function CreditWarningsRoot({ children }: { children: ReactNode }) {
         </div>
       ) : null}
 
-      {/* Tier 2 */}
       {tier2Modal ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]">
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="max-w-md rounded-2xl bg-zinc-950 p-6 text-zinc-50 shadow-2xl ring-1 ring-white/10"
-          >
-            <p className="mb-6 text-center text-base leading-relaxed">
-              You&apos;re almost out of credits. Top up now?
-            </p>
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Link
-                href={PAYMENTS_PATH}
-                className="rounded-xl bg-emerald-600 px-5 py-3 text-center text-sm font-medium text-white hover:bg-emerald-500"
-              >
-                Top Up
-              </Link>
-              <button
-                type="button"
-                onClick={dismissTier2Later}
-                className="rounded-xl bg-white/10 px-5 py-3 text-sm font-medium text-zinc-100 hover:bg-white/15"
-              >
-                Later
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreditActionModal
+          tier={2}
+          billingMode={billingMode}
+          activePlanType={activePlanType}
+          subscriptionLoading={subscriptionLoading}
+          topUpAmount={topUpAmount}
+          onTopUpAmountChange={setTopUpAmount}
+          upgradingPlanType={upgradingPlanType}
+          upgradeError={upgradeError}
+          onUpgrade={(planType) => void handleUpgrade(planType)}
+          onTopUpInitiated={() => {
+            tier2DismissedRef.current = true
+          }}
+          onDismissLater={dismissTier2Later}
+        />
       ) : null}
 
-      {/* Tier 3 — blocking */}
       {tier3Modal ? (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="max-w-md rounded-2xl bg-zinc-950 p-6 text-zinc-50 shadow-2xl ring-1 ring-white/10"
-          >
-            <p className="mb-6 text-center text-base leading-relaxed">
-              You&apos;re out of credits. Please top up to continue.
-            </p>
-            <div className="flex justify-center">
-              <Link
-                href={PAYMENTS_PATH}
-                className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-medium text-white hover:bg-emerald-500"
-              >
-                Top Up
-              </Link>
-            </div>
-          </div>
-        </div>
+        <CreditActionModal
+          tier={3}
+          billingMode={billingMode}
+          activePlanType={activePlanType}
+          subscriptionLoading={subscriptionLoading}
+          topUpAmount={topUpAmount}
+          onTopUpAmountChange={setTopUpAmount}
+          upgradingPlanType={upgradingPlanType}
+          upgradeError={upgradeError}
+          onUpgrade={(planType) => void handleUpgrade(planType)}
+          onTopUpInitiated={() => {}}
+        />
       ) : null}
     </CreditWarningsContext.Provider>
   )
