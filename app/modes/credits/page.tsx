@@ -19,6 +19,7 @@ import {
   TOP_UP_MIN_USD,
   TOP_UP_STEP_USD,
 } from '@/lib/credits-warning-modal-config'
+import { formatSubscriptionPeriodEnd } from '@/lib/payments/subscription-display'
 import { parseTopUpAmountParam } from '@/lib/payments/topup'
 import { supabase } from '@/lib/db/supabase'
 import {
@@ -54,6 +55,8 @@ const SUBSCRIPTION_PLAN_LABEL: Record<SubscriptionPlanType, string> = {
 
 const SUBSCRIPTION_CANCELLED_MESSAGE = 'Subscription cancelled.'
 const SUBSCRIPTION_SUCCESS_MESSAGE = 'Your monthly plan is active. Thank you!'
+const SUBSCRIPTION_CANCEL_CONFIRM_MESSAGE =
+  'Are you sure you want to cancel? Your credits will remain until end of billing cycle.'
 const TOPUP_CANCELLED_MESSAGE = 'Top-up payment cancelled.'
 const TOPUP_SUCCESS_MESSAGE = 'Top-up complete. Credits have been added to your account.'
 
@@ -106,7 +109,10 @@ function CreditsContent() {
   const [activeSubscription, setActiveSubscription] = useState<{
     planType: SubscriptionPlanType
     status: string
+    currentPeriodEnd: string | null
   } | null>(null)
+  const [cancellingSubscription, setCancellingSubscription] = useState(false)
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null)
   const [subscribingPlanType, setSubscribingPlanType] = useState<SubscriptionPlanType | null>(
     null
   )
@@ -137,7 +143,11 @@ function CreditsContent() {
       method: 'GET',
     })
     const j = (await res.json().catch(() => null)) as {
-      subscription?: { planType?: string; status?: string } | null
+      subscription?: {
+        planType?: string
+        status?: string
+        currentPeriodEnd?: string | null
+      } | null
       error?: string
     }
     if (!res.ok) return
@@ -147,11 +157,48 @@ function CreditsContent() {
       sub.status === 'active' &&
       isSubscriptionPlanType(sub.planType)
     ) {
-      setActiveSubscription({ planType: sub.planType, status: sub.status })
+      setActiveSubscription({
+        planType: sub.planType,
+        status: sub.status,
+        currentPeriodEnd: sub.currentPeriodEnd ?? null,
+      })
     } else {
       setActiveSubscription(null)
     }
   }, [])
+
+  const handleCancelSubscription = useCallback(async () => {
+    if (!activeSubscription || cancellingSubscription) return
+    if (!window.confirm(SUBSCRIPTION_CANCEL_CONFIRM_MESSAGE)) return
+
+    setCancellingSubscription(true)
+    setCancelNotice(null)
+    try {
+      const res = await authenticatedFetch('/api/paypal/cancel-subscription', {
+        method: 'POST',
+        json: {},
+      })
+      const j = (await res.json()) as {
+        success?: boolean
+        creditsValidUntil?: string | null
+        error?: string
+      }
+      if (!res.ok || !j.success) {
+        setCancelNotice(j.error ?? 'Could not cancel subscription.')
+        return
+      }
+      const until =
+        formatSubscriptionPeriodEnd(j.creditsValidUntil) ??
+        formatSubscriptionPeriodEnd(activeSubscription.currentPeriodEnd) ??
+        'the end of your billing cycle'
+      setCancelNotice(`Subscription cancelled. Credits valid until ${until}.`)
+      setActiveSubscription(null)
+    } catch {
+      setCancelNotice('Could not cancel subscription.')
+    } finally {
+      setCancellingSubscription(false)
+    }
+  }, [activeSubscription, cancellingSubscription])
 
   useEffect(() => {
     if (topUpFromUrl !== null) {
@@ -538,6 +585,27 @@ function CreditsContent() {
             <li>Instant top-up available when monthly credits run out</li>
           </ul>
         </section>
+
+        {activeSubscription?.status === 'active' ? (
+          <div className="mt-16 border-t border-white/[0.06] pt-6 text-center">
+            <p className="text-xs font-normal text-zinc-400">
+              Current plan: {SUBSCRIPTION_PLAN_LABEL[activeSubscription.planType]}
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleCancelSubscription()}
+              disabled={cancellingSubscription}
+              className="mt-2 text-xs font-normal text-zinc-500 underline-offset-2 hover:text-zinc-400 hover:underline disabled:opacity-50"
+            >
+              {cancellingSubscription ? 'Cancelling…' : 'Cancel Subscription'}
+            </button>
+            {cancelNotice ? (
+              <p className="mt-2 text-xs font-normal text-zinc-400" role="status">
+                {cancelNotice}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </main>
   )

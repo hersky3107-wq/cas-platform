@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { SubscriptionSection } from '@/components/settings/SubscriptionSection'
+import { useRouter } from 'next/navigation'
+import { isAdminEmail } from '@/lib/credits'
 import { supabase } from '@/lib/db/supabase'
 
 const PROVIDERS = [
@@ -17,9 +18,11 @@ const PROVIDERS = [
 type ProviderId = (typeof PROVIDERS)[number]['id']
 
 export default function SettingsPage() {
+  const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [email, setEmail] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [adminAllowed, setAdminAllowed] = useState(false)
   const [keys, setKeys] = useState<Record<ProviderId, string>>(() =>
     Object.fromEntries(PROVIDERS.map((p) => [p.id, ''])) as Record<ProviderId, string>
   )
@@ -33,26 +36,40 @@ export default function SettingsPage() {
       const { data } = await supabase.auth.getUser()
       if (cancelled) return
       const u = data.user
+      const userEmail = u?.email ?? null
+
+      if (!isAdminEmail(userEmail)) {
+        router.replace('/modes')
+        return
+      }
+
+      setAdminAllowed(true)
       setUserId(u?.id ?? null)
-      setEmail(u?.email ?? null)
+      setEmail(userEmail)
       setAuthLoading(false)
     }
 
-    syncAuth()
+    void syncAuth()
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user
+      const userEmail = u?.email ?? null
+      if (!isAdminEmail(userEmail)) {
+        router.replace('/modes')
+        return
+      }
+      setAdminAllowed(true)
       setUserId(u?.id ?? null)
-      setEmail(u?.email ?? null)
+      setEmail(userEmail)
     })
 
     return () => {
       cancelled = true
       subscription.unsubscribe()
     }
-  }, [])
+  }, [router])
 
   const updateKey = useCallback((id: ProviderId, value: string) => {
     setKeys((prev) => ({ ...prev, [id]: value }))
@@ -130,6 +147,14 @@ export default function SettingsPage() {
     }
   }, [userId, keys])
 
+  if (authLoading || !adminAllowed) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
+        <p className="text-sm">Loading…</p>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-lg px-4 py-12 sm:px-6">
@@ -205,8 +230,6 @@ export default function SettingsPage() {
             above (empty fields are not stored).
           </p>
         </div>
-
-        <SubscriptionSection userId={userId} authLoading={authLoading} />
       </div>
     </main>
   )
