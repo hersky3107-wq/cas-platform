@@ -1,6 +1,12 @@
 export const SHARE_SITE_URL = 'https://aimani.ai'
 
-export type SharePlatform = 'twitter' | 'tiktok' | 'kakao' | 'whatsapp'
+export type SharePlatform =
+  | 'twitter'
+  | 'tiktok'
+  | 'kakao'
+  | 'whatsapp'
+  | 'reddit'
+  | 'threads'
 
 export type SharePayload = {
   text: string
@@ -37,6 +43,8 @@ export function buildSharePayload(modeName: string, url?: string): SharePayload 
       tiktok: `https://www.tiktok.com/share?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(text)}`,
       kakao: shareUrl,
       whatsapp: `https://wa.me/?text=${encodeURIComponent(combined)}`,
+      reddit: `https://reddit.com/submit?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(text)}`,
+      threads: `https://threads.net/intent/post?text=${encodeURIComponent(text)}`,
     },
   }
 }

@@ -16,7 +16,13 @@ export type ShareButtonsProps = {
   title?: string
 }
 
-const PLATFORM_ORDER = ['twitter', 'kakao', 'whatsapp'] as const satisfies readonly SharePlatform[]
+const PLATFORM_ORDER = [
+  'twitter',
+  'kakao',
+  'whatsapp',
+  'reddit',
+  'threads',
+] as const satisfies readonly SharePlatform[]
 
 type VisibleSharePlatform = (typeof PLATFORM_ORDER)[number]
 
@@ -24,7 +30,30 @@ const PLATFORM_LABELS: Record<VisibleSharePlatform | 'copy', string> = {
   twitter: 'X',
   kakao: 'KakaoTalk',
   whatsapp: 'WhatsApp',
+  reddit: 'Reddit',
+  threads: 'Threads',
   copy: 'Copy link',
+}
+
+function CopyLinkButton({
+  copyOk,
+  onCopy,
+  className,
+}: {
+  copyOk: boolean
+  onCopy: () => void
+  className: string
+}) {
+  return (
+    <div className="flex w-full min-w-[7rem] flex-col items-start sm:w-auto">
+      <button type="button" onClick={onCopy} className={className} aria-label="Copy link">
+        {copyOk ? 'Copied!' : PLATFORM_LABELS.copy}
+      </button>
+      <p className="mt-1 max-w-[14rem] text-xs italic text-zinc-500">
+        TikTok / Instagram / Discord — copy link and paste
+      </p>
+    </div>
+  )
 }
 
 export default function ShareButtons({
@@ -119,13 +148,15 @@ export default function ShareButtons({
                 {PLATFORM_LABELS[platform]}
               </button>
             ))}
-            <button type="button" onClick={() => void copyLink()} className={platformBtnClass}>
-              {copyOk ? 'Copied!' : PLATFORM_LABELS.copy}
-            </button>
+            <CopyLinkButton
+              copyOk={copyOk}
+              onCopy={() => void copyLink()}
+              className={platformBtnClass}
+            />
           </div>
         </div>
       ) : (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap items-start gap-2">
           {PLATFORM_ORDER.map((platform) => (
             <button
               key={platform}
@@ -137,14 +168,11 @@ export default function ShareButtons({
               {PLATFORM_LABELS[platform]}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => void copyLink()}
+          <CopyLinkButton
+            copyOk={copyOk}
+            onCopy={() => void copyLink()}
             className={platformBtnClass}
-            aria-label="Copy link"
-          >
-            {copyOk ? 'Copied!' : PLATFORM_LABELS.copy}
-          </button>
+          />
         </div>
       )}
 
