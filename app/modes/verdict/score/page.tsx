@@ -17,6 +17,8 @@ import { ChevronLeft, SlidersHorizontal } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
 import { creditsForPanelScore } from "@/lib/credits";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { PUBLIC_SHARE_BASE, type PanelSessionResponse } from "@/lib/panel/session-types";
 import {
   VERDICT_SCORE_AI_ORDER,
   parseVerdictScoreResponse,
@@ -59,6 +61,15 @@ function stripMarkdownFormatting(raw: string): string {
   t = t.replace(/^-\s*/gm, "");
   t = t.replace(/\n{3,}/g, "\n\n");
   return t.trim();
+}
+
+function aiNameForProvider(provider: AiProviderName): string {
+  if (provider === "openai") return "ChatGPT";
+  if (provider === "anthropic") return "Claude";
+  if (provider === "google") return "Gemini";
+  if (provider === "xai") return "Grok";
+  if (provider === "deepseek") return "DeepSeek";
+  return "Mistral";
 }
 
 type ScoreRow = {
@@ -224,6 +235,13 @@ export default function VerdictScorePage() {
   const [olympic, setOlympic] = useState<OlympicPayload | null>(null);
   const [showOlympicStyle, setShowOlympicStyle] = useState(false);
   const [olympicPanelOpen, setOlympicPanelOpen] = useState(false);
+  const [panelSessionId, setPanelSessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [savingSession, setSavingSession] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [goPublicLoading, setGoPublicLoading] = useState(false);
+  const [goPublicDone, setGoPublicDone] = useState(false);
+  const [goPublicError, setGoPublicError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const olympicTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstResultRef = useRef(true);
@@ -417,6 +435,82 @@ export default function VerdictScorePage() {
     }
   }, [content, criteria, sending, sessionId, router]);
 
+  const savePanelSession = useCallback(async () => {
+    if (panelSessionId || shareId) return;
+    if (!content.trim()) return;
+    if (responses.length < 1) return;
+    setSavingSession(true);
+    setSaveFailed(false);
+    try {
+      const payloadResponses: PanelSessionResponse[] = responses.map((r) => ({
+        ai_name: aiNameForProvider(r.provider),
+        content:
+          r.error
+            ? null
+            : typeof r.score === "number" && r.review
+              ? `Score: ${r.score}\n\n${r.review}`
+              : r.review
+                ? r.review
+                : null,
+      }));
+
+      const res = await authenticatedFetch("/api/panel/save-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          panel_type: "score",
+          question: content.trim(),
+          responses: payloadResponses,
+        }),
+      });
+      const j = (await res.json().catch(() => null)) as
+        | { id?: string; share_id?: string; error?: string }
+        | null;
+      if (!res.ok) {
+        setSaveFailed(true);
+        console.log("[panel/score] save-session error:", j?.error ?? res.status);
+        return;
+      }
+      if (typeof j?.id === "string") setPanelSessionId(j.id);
+      if (typeof j?.share_id === "string") setShareId(j.share_id);
+    } catch (e: unknown) {
+      console.log("[panel/score] save-session error:", e instanceof Error ? e.message : e);
+      setSaveFailed(true);
+    } finally {
+      setSavingSession(false);
+    }
+  }, [panelSessionId, shareId, content, responses]);
+
+  useEffect(() => {
+    if (!olympicPanelOpen || olympic == null || typeof olympic.finalAverage !== "number") return;
+    if (panelSessionId || shareId || savingSession) return;
+    void savePanelSession();
+  }, [olympicPanelOpen, olympic, panelSessionId, shareId, savingSession, savePanelSession]);
+
+  const handleGoPublic = useCallback(async () => {
+    if (!panelSessionId) return;
+    setGoPublicError(null);
+    setGoPublicLoading(true);
+    try {
+      const res = await authenticatedFetch("/api/panel/go-public", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: panelSessionId }),
+      });
+      const j = (await res.json().catch(() => null)) as { share_id?: string; error?: string } | null;
+      if (!res.ok) {
+        setGoPublicError(typeof j?.error === "string" ? j.error : "Could not publish session");
+        return;
+      }
+      setGoPublicDone(true);
+      if (typeof j?.share_id === "string") setShareId(j.share_id);
+    } catch (e: unknown) {
+      setGoPublicError(e instanceof Error ? e.message : "Could not publish session");
+    } finally {
+      setGoPublicLoading(false);
+    }
+  }, [panelSessionId]);
+
   return (
     <div className={BG}>
       <HelpModal content={verdictScoreHelpContent} />
@@ -438,13 +532,6 @@ export default function VerdictScorePage() {
               Credits unavailable
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => resetRound()}
-            className="rounded-full border border-white/15 bg-white/8 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/14"
-          >
-            New score
-          </button>
         </div>
       </header>
 
@@ -517,7 +604,55 @@ export default function VerdictScorePage() {
             {olympicPanelOpen &&
             olympic != null &&
             typeof olympic.finalAverage === "number" ? (
-              <ShareButtons modeName="PANEL Score" className="mt-6" />
+              <>
+                {shareId ? (
+                  <ShareButtons
+                    modeName="PANEL Score"
+                    className="mt-6"
+                    url={`${PUBLIC_SHARE_BASE}/${shareId}`}
+                  />
+                ) : (
+                  <p className="mt-6 text-xs text-slate-500">
+                    {saveFailed ? "Could not save session for sharing." : "Saving session…"}
+                  </p>
+                )}
+
+                <div className="mt-4 rounded-xl border border-white/12 bg-[#1a2438]/90 p-3">
+                  {saveFailed ? (
+                    <p className="text-sm text-slate-400">Could not save session</p>
+                  ) : goPublicDone ? (
+                    <div className="text-sm">
+                      <p className="font-medium text-slate-200">✅ Indexed!</p>
+                      <p className="mt-1 text-slate-400">aimani.ai/share/{shareId}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-white">
+                        <span className="mr-1.5" aria-hidden>
+                          🔍
+                        </span>
+                        Put this on Google
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                        Let search engines find this session · No personal info shared
+                      </p>
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          onClick={() => void handleGoPublic()}
+                          disabled={goPublicLoading || !panelSessionId}
+                          className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.25)] transition hover:bg-cyan-400 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {goPublicLoading ? "Publishing…" : "Go Public"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {goPublicError ? (
+                  <p className="mt-2 text-xs text-amber-300/90">{goPublicError}</p>
+                ) : null}
+              </>
             ) : null}
           </div>
         ) : null}

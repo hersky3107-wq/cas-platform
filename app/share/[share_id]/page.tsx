@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { parseCompareResponses } from '@/lib/compare/session-types'
 import { parsePersonaResponses } from '@/lib/persona/session-types'
 import { parseCustomResponses } from '@/lib/custom/session-types'
+import { parsePanelResponses } from '@/lib/panel/session-types'
 import { PUBLIC_SHARE_BASE } from '@/lib/compare/session-types'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
@@ -11,11 +12,12 @@ type PageProps = {
 }
 
 type ShareSession = {
-  kind: 'compare' | 'persona' | 'custom'
+  kind: 'compare' | 'persona' | 'custom' | 'panel'
   question: string
-  responses: ReturnType<typeof parseCompareResponses>
+  responses: { ai_name: string; content: string | null }[]
   voted_ai: string | null
   is_public: boolean
+  panel_type?: string
 }
 
 async function loadFromCompare(shareId: string): Promise<ShareSession | null> {
@@ -81,6 +83,28 @@ async function loadFromCustom(shareId: string): Promise<ShareSession | null> {
   }
 }
 
+async function loadFromPanel(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('panel_sessions')
+    .select('panel_type, question, responses, is_public')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] panel_sessions lookup:', error.message)
+    return null
+  }
+
+  return {
+    kind: 'panel',
+    panel_type: typeof data.panel_type === 'string' ? data.panel_type : '',
+    question: data.question,
+    responses: parsePanelResponses(data.responses),
+    voted_ai: null,
+    is_public: Boolean(data.is_public),
+  }
+}
+
 async function loadSession(shareId: string): Promise<ShareSession | null> {
   const id = shareId.trim()
   if (!id) return null
@@ -91,7 +115,10 @@ async function loadSession(shareId: string): Promise<ShareSession | null> {
   const persona = await loadFromPersona(id)
   if (persona) return persona
 
-  return loadFromCustom(id)
+  const custom = await loadFromCustom(id)
+  if (custom) return custom
+
+  return loadFromPanel(id)
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -110,6 +137,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       ? 'AI Persona'
       : session.kind === 'custom'
         ? 'AI Custom'
+        : session.kind === 'panel'
+          ? `AI Panel (${session.panel_type || 'session'})`
         : 'AI Compare'
   const title = `${label}: "${session.question.slice(0, 60)}${session.question.length > 60 ? '…' : ''}" — AIMANI`
 
@@ -118,6 +147,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       ? `See how different AI personas answered this question on AIMANI.`
       : session.kind === 'custom'
         ? `See how multiple AIs answered with your custom rules on AIMANI.`
+        : session.kind === 'panel'
+          ? `See how multiple AIs responded in this AIMANI Panel session.`
         : `See how ChatGPT, Claude, Gemini, Grok, DeepSeek and Mistral answered this question on AIMANI.`
 
   return {
@@ -151,6 +182,8 @@ export default async function SharePage({ params }: PageProps) {
       ? 'AI Persona Session'
       : session.kind === 'custom'
         ? 'AI Custom Session'
+        : session.kind === 'panel'
+          ? `AI Panel Session — ${session.panel_type || 'panel'}`
         : 'AI Compare Session'
 
   return (

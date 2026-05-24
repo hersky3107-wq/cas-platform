@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 import {
   buildSharePayload,
   prefersNativeShare,
-  shareViaKakaoTalk,
   type SharePlatform,
 } from '@/lib/share/build-share'
 
@@ -18,7 +17,6 @@ export type ShareButtonsProps = {
 
 const PLATFORM_ORDER = [
   'twitter',
-  'kakao',
   'whatsapp',
   'reddit',
   'threads',
@@ -28,7 +26,6 @@ type VisibleSharePlatform = (typeof PLATFORM_ORDER)[number]
 
 const PLATFORM_LABELS: Record<VisibleSharePlatform | 'copy', string> = {
   twitter: 'X',
-  kakao: 'KakaoTalk',
   whatsapp: 'WhatsApp',
   reddit: 'Reddit',
   threads: 'Threads',
@@ -50,7 +47,7 @@ function CopyLinkButton({
         {copyOk ? 'Copied!' : PLATFORM_LABELS.copy}
       </button>
       <p className="mt-1 max-w-[14rem] text-xs italic text-zinc-500">
-        TikTok / Instagram / Discord — copy link and paste
+        KakaoTalk / TikTok / Instagram / Discord — copy link and paste
       </p>
     </div>
   )
@@ -69,7 +66,6 @@ export default function ShareButtons({
     return buildSharePayload(modeName, pageUrl)
   }, [modeName, url, pathname])
   const [copyOk, setCopyOk] = useState(false)
-  const [kakaoHint, setKakaoHint] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
 
   const useNative = prefersNativeShare()
@@ -93,14 +89,6 @@ export default function ShareButtons({
   const openPlatform = useCallback(
     (platform: VisibleSharePlatform) => {
       setStatus(null)
-      if (platform === 'kakao') {
-        shareViaKakaoTalk(payload)
-        if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-          setKakaoHint(true)
-          window.setTimeout(() => setKakaoHint(false), 3000)
-        }
-        return
-      }
       window.open(payload.platformUrls[platform], '_blank', 'noopener,noreferrer,width=600,height=720')
     },
     [payload]
@@ -176,11 +164,6 @@ export default function ShareButtons({
         </div>
       )}
 
-      {kakaoHint ? (
-        <p className="mt-2 text-xs text-slate-400">
-          Link copied — paste into KakaoTalk on desktop.
-        </p>
-      ) : null}
       {status ? <p className="mt-2 text-xs text-amber-300/90">{status}</p> : null}
     </div>
   )
