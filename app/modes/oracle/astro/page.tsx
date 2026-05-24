@@ -8,6 +8,7 @@ export default function OracleAstroPage() {
       <HelpModal content={oracleAstroHelpContent} />
       <OracleReadingClient
       apiPath="/api/oracle/astro"
+      oracleType="horoscope"
       title="Western sky"
       blurb="We resolve your birthplace, cast tropical Sun · Moon · Ascendant locally, then the same council of readers writes in ordinary language—not jargon."
       />

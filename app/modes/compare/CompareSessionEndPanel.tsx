@@ -46,6 +46,8 @@ type CompareSessionEndPanelProps = {
   onDone: () => void
   /** Defaults to /api/compare/go-public */
   goPublicPath?: string
+  /** When true, hides the Go Public block entirely */
+  hideGoPublic?: boolean
 }
 
 export function CompareSessionEndPanel({
@@ -57,6 +59,7 @@ export function CompareSessionEndPanel({
   onResolveShareUrl,
   onDone,
   goPublicPath = '/api/compare/go-public',
+  hideGoPublic = false,
 }: CompareSessionEndPanelProps) {
   const [goPublicDone, setGoPublicDone] = useState(false)
   const [goPublicLoading, setGoPublicLoading] = useState(false)
@@ -206,38 +209,40 @@ export function CompareSessionEndPanel({
         </button>
       </div>
 
-      <div className="mt-4 rounded-xl border border-white/12 bg-[#1a2438]/90 p-3">
-        {saveFailed ? (
-          <p className="text-sm text-slate-400">Could not save session</p>
-        ) : goPublicDone ? (
-          <div className="text-sm">
-            <p className="font-medium text-slate-200">✅ Indexed!</p>
-            <p className="mt-1 text-slate-400">aimani.ai/share/{shareId}</p>
-          </div>
-        ) : (
-          <>
-            <p className="text-sm font-bold text-white">
-              <span className="mr-1.5" aria-hidden>
-                🔍
-              </span>
-              Put this on Google
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
-              Let search engines find this debate · No personal info shared
-            </p>
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => void handleGoPublic()}
-                disabled={goPublicLoading || !compareSessionId}
-                className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.25)] transition hover:bg-cyan-400 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {goPublicLoading ? 'Publishing…' : 'Go Public'}
-              </button>
+      {!hideGoPublic ? (
+        <div className="mt-4 rounded-xl border border-white/12 bg-[#1a2438]/90 p-3">
+          {saveFailed ? (
+            <p className="text-sm text-slate-400">Could not save session</p>
+          ) : goPublicDone ? (
+            <div className="text-sm">
+              <p className="font-medium text-slate-200">✅ Indexed!</p>
+              <p className="mt-1 text-slate-400">aimani.ai/share/{shareId}</p>
             </div>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              <p className="text-sm font-bold text-white">
+                <span className="mr-1.5" aria-hidden>
+                  🔍
+                </span>
+                Put this on Google
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                Let search engines find this debate · No personal info shared
+              </p>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => void handleGoPublic()}
+                  disabled={goPublicLoading || !compareSessionId}
+                  className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.25)] transition hover:bg-cyan-400 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {goPublicLoading ? 'Publishing…' : 'Go Public'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
       {error ? <p className="mt-2 text-xs text-amber-300/90">{error}</p> : null}
     </div>
   )

@@ -5,6 +5,10 @@ import { parsePersonaResponses } from '@/lib/persona/session-types'
 import { parseCustomResponses } from '@/lib/custom/session-types'
 import { parsePanelResponses } from '@/lib/panel/session-types'
 import { parseDeepResponses } from '@/lib/deep/session-types'
+import { parseComedyResponses } from '@/lib/comedy/session-types'
+import { parseTaleResponses } from '@/lib/tale/session-types'
+import { parseOracleResponses } from '@/lib/oracle/session-types'
+import { parseSuitResponses } from '@/lib/suit/session-types'
 import { PUBLIC_SHARE_BASE } from '@/lib/compare/session-types'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
@@ -13,13 +17,15 @@ type PageProps = {
 }
 
 type ShareSession = {
-  kind: 'compare' | 'persona' | 'custom' | 'panel' | 'deep'
+  kind: 'compare' | 'persona' | 'custom' | 'panel' | 'deep' | 'comedy' | 'tale' | 'oracle' | 'suit'
   question: string
   responses: { ai_name: string; content: string | null }[]
   voted_ai: string | null
   is_public: boolean
   panel_type?: string
   deep_type?: string
+  comedy_type?: string
+  oracle_type?: string
 }
 
 async function loadFromCompare(shareId: string): Promise<ShareSession | null> {
@@ -129,6 +135,92 @@ async function loadFromDeep(shareId: string): Promise<ShareSession | null> {
   }
 }
 
+async function loadFromComedy(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('comedy_sessions')
+    .select('comedy_type, question, responses, voted_ai, is_public')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] comedy_sessions lookup:', error.message)
+    return null
+  }
+
+  return {
+    kind: 'comedy',
+    comedy_type: typeof data.comedy_type === 'string' ? data.comedy_type : '',
+    question: data.question,
+    responses: parseComedyResponses(data.responses),
+    voted_ai: typeof data.voted_ai === 'string' ? data.voted_ai : null,
+    is_public: Boolean(data.is_public),
+  }
+}
+
+async function loadFromTale(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('tale_sessions')
+    .select('question, responses, voted_ai, is_public')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] tale_sessions lookup:', error.message)
+    return null
+  }
+
+  return {
+    kind: 'tale',
+    question: data.question,
+    responses: parseTaleResponses(data.responses),
+    voted_ai: typeof data.voted_ai === 'string' ? data.voted_ai : null,
+    is_public: Boolean(data.is_public),
+  }
+}
+
+async function loadFromOracle(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('oracle_sessions')
+    .select('oracle_type, question, responses, voted_ai, is_public')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] oracle_sessions lookup:', error.message)
+    return null
+  }
+
+  return {
+    kind: 'oracle',
+    oracle_type: typeof data.oracle_type === 'string' ? data.oracle_type : '',
+    question: data.question,
+    responses: parseOracleResponses(data.responses),
+    voted_ai: typeof data.voted_ai === 'string' ? data.voted_ai : null,
+    is_public: Boolean(data.is_public),
+  }
+}
+
+async function loadFromSuit(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('suit_sessions')
+    .select('question, responses, is_public')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] suit_sessions lookup:', error.message)
+    return null
+  }
+
+  return {
+    kind: 'suit',
+    question: data.question,
+    responses: parseSuitResponses(data.responses),
+    voted_ai: null,
+    is_public: Boolean(data.is_public),
+  }
+}
+
 async function loadSession(shareId: string): Promise<ShareSession | null> {
   const id = shareId.trim()
   if (!id) return null
@@ -145,7 +237,19 @@ async function loadSession(shareId: string): Promise<ShareSession | null> {
   const panel = await loadFromPanel(id)
   if (panel) return panel
 
-  return loadFromDeep(id)
+  const deep = await loadFromDeep(id)
+  if (deep) return deep
+
+  const comedy = await loadFromComedy(id)
+  if (comedy) return comedy
+
+  const tale = await loadFromTale(id)
+  if (tale) return tale
+
+  const oracle = await loadFromOracle(id)
+  if (oracle) return oracle
+
+  return loadFromSuit(id)
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -168,6 +272,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
           ? `AI Panel (${session.panel_type || 'session'})`
           : session.kind === 'deep'
             ? `AI Deep Research (${session.deep_type || 'session'})`
+            : session.kind === 'comedy'
+              ? `AI Comedy (${session.comedy_type || 'session'})`
+              : session.kind === 'tale'
+                ? 'AI Tale'
+                : session.kind === 'oracle'
+                  ? `AI Oracle (${session.oracle_type || 'session'})`
+                  : session.kind === 'suit'
+                    ? 'AI SUIT'
         : 'AI Compare'
   const title = `${label}: "${session.question.slice(0, 60)}${session.question.length > 60 ? '…' : ''}" — AIMANI`
 
@@ -180,6 +292,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
           ? `See how multiple AIs responded in this AIMANI Panel session.`
           : session.kind === 'deep'
             ? `See this multi-perspective AI deep research session on AIMANI.`
+            : session.kind === 'comedy'
+              ? `See this AI comedy session on AIMANI.`
+              : session.kind === 'tale'
+                ? `See these AI-generated stories on AIMANI.`
+                : session.kind === 'oracle'
+                  ? `See this AI Oracle session on AIMANI.`
+                  : session.kind === 'suit'
+                    ? `See this AI SUIT legal session on AIMANI.`
         : `See how ChatGPT, Claude, Gemini, Grok, DeepSeek and Mistral answered this question on AIMANI.`
 
   return {
@@ -217,6 +337,14 @@ export default async function SharePage({ params }: PageProps) {
           ? `AI Panel Session — ${session.panel_type || 'panel'}`
           : session.kind === 'deep'
             ? `AI Deep Research Session — ${session.deep_type || 'deep'}`
+            : session.kind === 'comedy'
+              ? `AI Comedy Session — ${session.comedy_type || 'comedy'}`
+              : session.kind === 'tale'
+                ? 'AI Tale Session'
+                : session.kind === 'oracle'
+                  ? `AI Oracle Session — ${session.oracle_type || 'oracle'}`
+                  : session.kind === 'suit'
+                    ? 'AI SUIT Legal Session'
         : 'AI Compare Session'
 
   return (

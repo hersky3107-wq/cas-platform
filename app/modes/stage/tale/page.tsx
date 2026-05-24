@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import HelpModal from "@/components/HelpModal";
-import ShareButtons from "@/components/ShareButtons";
+import { CompareSessionEndPanel } from "@/app/modes/compare/CompareSessionEndPanel";
 import { taleHelpContent } from "@/lib/help-modal/tale-content";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { PUBLIC_SHARE_BASE } from "@/lib/compare/session-types";
+import type { TaleSessionResponse } from "@/lib/tale/session-types";
 import type { AiProviderName } from "@/lib/ai/router";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
@@ -41,6 +43,46 @@ const AI_LABEL: Record<AiProviderName, string> = {
 };
 
 const GEMINI_LETTER_COLORS = ["#4285F4", "#EA4335", "#FBBC05", "#34A853", "#4285F4", "#EA4335"] as const;
+
+const AI_ACCENT: Record<AiProviderName, string> = {
+  openai: "#10A37F",
+  anthropic: "#D97757",
+  google: "#4285F4",
+  xai: "#718096",
+  deepseek: "#4D6BFE",
+  mistral: "#FF7000",
+};
+
+const BEST_ANSWER_DELAY_MS = 2000;
+
+type SaveTaleSessionResult =
+  | { ok: true; id: string; share_id: string }
+  | { ok: false; error: string };
+
+function buildTaleQuestion(
+  genre: string,
+  keyword: string,
+  language: string
+): string {
+  const twist = keyword.trim();
+  const lang = language.trim() || "English";
+  return twist ? `${genre} · ${twist} (${lang})` : `${genre} (${lang})`;
+}
+
+function buildTaleResponses(
+  stories: Partial<Record<AiProviderName, TaleStory>>
+): TaleSessionResponse[] {
+  const rows: TaleSessionResponse[] = [];
+  for (const p of AI_ORDER) {
+    const row = stories[p];
+    if (!row?.story && !row?.error) continue;
+    rows.push({
+      ai_name: AI_LABEL[p],
+      content: row.error ? null : row.story?.trim() ? row.story : null,
+    });
+  }
+  return rows;
+}
 
 function AiNameBadge({ provider }: { provider: AiProviderName }) {
   const base = "inline-flex rounded-lg px-2.5 py-0.5 text-sm font-bold";
@@ -86,13 +128,25 @@ export default function StageTalePage() {
   const [stories, setStories] = useState<Partial<Record<AiProviderName, TaleStory>>>({});
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [picked, setPicked] = useState<AiProviderName | null>(null);
+  const [taleSessionId, setTaleSessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [sessionEndPanel, setSessionEndPanel] = useState<{ votedAi: string | null } | null>(
+    null
+  );
+  const [sessionEndVisual, setSessionEndVisual] = useState(false);
+  const [sessionEndSaveFailed, setSessionEndSaveFailed] = useState(false);
+  const [bestAnswerPanel, setBestAnswerPanel] = useState<{ providers: AiProviderName[] } | null>(
+    null
+  );
+  const [bestAnswerVisual, setBestAnswerVisual] = useState(false);
   const [showVoting, setShowVoting] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
   const [readyMap, setReadyMap] = useState<Partial<Record<AiProviderName, boolean>>>({});
   const [completedOrder, setCompletedOrder] = useState<AiProviderName[]>([]);
+  const taleSaveScheduledRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const voteRef = useRef<HTMLDivElement>(null);
+  const bestAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -110,6 +164,177 @@ export default function StageTalePage() {
     return AI_ORDER.every((p) => stories[p]?.story || stories[p]?.error);
   }, [stories]);
 
+  const taleQuestion = useMemo(() => {
+    if (!genre) return "";
+    return buildTaleQuestion(genre, genre === "Custom" ? keyword : twistOpen ? keyword : "", language);
+  }, [genre, keyword, language, twistOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (bestAnswerTimerRef.current != null) clearTimeout(bestAnswerTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!bestAnswerPanel) {
+      setBestAnswerVisual(false);
+      return;
+    }
+    setBestAnswerVisual(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setBestAnswerVisual(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [bestAnswerPanel]);
+
+  useEffect(() => {
+    if (!sessionEndPanel) {
+      setSessionEndVisual(false);
+      return;
+    }
+    setSessionEndVisual(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setSessionEndVisual(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [sessionEndPanel]);
+
+  const markSessionSaveFailed = useCallback((reason: string) => {
+    console.log("[tale] save-session error:", reason);
+    setSessionEndSaveFailed(true);
+  }, []);
+
+  const saveTaleSession = useCallback(
+    async (question: string, responses: TaleSessionResponse[]): Promise<SaveTaleSessionResult> => {
+      if (responses.length < 1) return { ok: false, error: "empty responses" };
+      try {
+        const res = await authenticatedFetch("/api/tale/save-session", {
+          method: "POST",
+          json: { question, responses },
+        });
+        const j = (await res.json().catch(() => null)) as {
+          id?: string;
+          share_id?: string;
+          error?: string;
+        };
+        if (!res.ok || !j.id || !j.share_id) {
+          return { ok: false, error: j?.error ?? `HTTP ${res.status}` };
+        }
+        setTaleSessionId(j.id);
+        setShareId(j.share_id);
+        setSessionEndSaveFailed(false);
+        return { ok: true, id: j.id, share_id: j.share_id };
+      } catch (e: unknown) {
+        return { ok: false, error: e instanceof Error ? e.message : "network error" };
+      }
+    },
+    []
+  );
+
+  const dismissSessionPanels = useCallback(() => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setSessionEndPanel(null);
+    setSessionEndVisual(false);
+    setSessionEndSaveFailed(false);
+    setBestAnswerPanel(null);
+    setBestAnswerVisual(false);
+  }, []);
+
+  const showSessionEndAfterVote = useCallback((votedAi: string | null) => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setBestAnswerPanel(null);
+    setBestAnswerVisual(false);
+    setSessionEndSaveFailed(false);
+    setSessionEndPanel({ votedAi });
+  }, []);
+
+  const submitBestAnswerPick = useCallback(
+    async (provider: AiProviderName) => {
+      if (!sessionId) return;
+      setError(null);
+      const votedLabel = AI_LABEL[provider];
+      showSessionEndAfterVote(votedLabel);
+      try {
+        let sessionIdForVote = taleSessionId;
+        if (!sessionIdForVote) {
+          const saved = await saveTaleSession(taleQuestion, buildTaleResponses(stories));
+          if (!saved.ok) markSessionSaveFailed(saved.error);
+          else sessionIdForVote = saved.id;
+        }
+        if (sessionIdForVote) {
+          const res = await authenticatedFetch("/api/tale/save-session", {
+            method: "PATCH",
+            json: { session_id: sessionIdForVote, voted_ai: votedLabel },
+          });
+          if (!res.ok) {
+            const j = (await res.json().catch(() => null)) as { error?: string };
+            setError(j?.error ?? "Could not save vote");
+          }
+        }
+        await fetch("/api/stage/tale/select", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, selectedProvider: provider }),
+        });
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Unknown error");
+      }
+    },
+    [
+      sessionId,
+      taleSessionId,
+      showSessionEndAfterVote,
+      taleQuestion,
+      stories,
+      saveTaleSession,
+      markSessionSaveFailed,
+    ]
+  );
+
+  const skipBestAnswer = useCallback(() => {
+    showSessionEndAfterVote(null);
+    if (!taleSessionId) {
+      void saveTaleSession(taleQuestion, buildTaleResponses(stories)).then((saved) => {
+        if (!saved.ok) markSessionSaveFailed(saved.error);
+      });
+    }
+  }, [showSessionEndAfterVote, taleSessionId, taleQuestion, stories, saveTaleSession, markSessionSaveFailed]);
+
+  const resolveShareUrlForShare = useCallback(async (): Promise<string | null> => {
+    if (shareId) return `${PUBLIC_SHARE_BASE}/${shareId}`;
+    const saved = await saveTaleSession(taleQuestion, buildTaleResponses(stories));
+    if (!saved.ok) return null;
+    return `${PUBLIC_SHARE_BASE}/${saved.share_id}`;
+  }, [shareId, taleQuestion, stories, saveTaleSession]);
+
+  const showSessionEndPreparing =
+    Boolean(sessionEndPanel) && !(taleSessionId && shareId) && !sessionEndSaveFailed;
+  const showSessionEndPanel =
+    Boolean(sessionEndPanel) &&
+    (Boolean(taleSessionId && shareId) || sessionEndSaveFailed);
+
+  useEffect(() => {
+    if (!allDone || step !== "review" || !showVoting) return;
+    if (taleSaveScheduledRef.current) return;
+    if (!taleQuestion.trim()) return;
+    taleSaveScheduledRef.current = true;
+    void (async () => {
+      const saved = await saveTaleSession(taleQuestion, buildTaleResponses(stories));
+      if (!saved.ok) markSessionSaveFailed(saved.error);
+      if (bestAnswerTimerRef.current != null) clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = setTimeout(() => {
+        setBestAnswerPanel({ providers: AI_ORDER });
+        bestAnswerTimerRef.current = null;
+      }, BEST_ANSWER_DELAY_MS);
+    })();
+  }, [allDone, step, showVoting, taleQuestion, stories, saveTaleSession, markSessionSaveFailed]);
+
   const generateStories = useCallback(async () => {
     if (!genre || generating) return;
     if (genre === "Custom" && !keyword.trim()) {
@@ -117,9 +342,12 @@ export default function StageTalePage() {
       return;
     }
     setError(null);
+    dismissSessionPanels();
+    setTaleSessionId(null);
+    setShareId(null);
+    taleSaveScheduledRef.current = false;
     setGenerating(true);
     setStep("generating");
-    setPicked(null);
     setStories({});
     setShowVoting(false);
     setReadyCount(0);
@@ -217,40 +445,11 @@ export default function StageTalePage() {
     } finally {
       setGenerating(false);
     }
-  }, [genre, generating, keyword, language, twistOpen]);
+  }, [genre, generating, keyword, language, twistOpen, dismissSessionPanels]);
 
   useEffect(() => {
     if (step === "generating" && allDone && !generating) setStep("review");
   }, [allDone, generating, step]);
-
-  // no-op cleanup needed for streaming; fetch is tied to user action
-
-  const pickWinner = useCallback(
-    async (provider: AiProviderName) => {
-      if (!sessionId) return;
-      setPicked(provider);
-      setError(null);
-      try {
-        const res = await fetch("/api/stage/tale/select", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            selectedProvider: provider,
-          }),
-        });
-        if (!res.ok) {
-          const j = (await res.json().catch(() => null)) as { error?: string };
-          setError(j?.error ?? "Could not save selection");
-          return;
-        }
-        setStep("saved");
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Unknown error");
-      }
-    },
-    [sessionId]
-  );
 
   return (
     <div className={BG}>
@@ -443,24 +642,47 @@ export default function StageTalePage() {
               </div>
             ) : null}
 
-            {step === "review" && showVoting ? (
+            {step === "review" && showVoting && bestAnswerPanel && !sessionEndPanel ? (
               <div ref={voteRef} className="space-y-4 pt-4">
                 <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
-                  <h2 className="text-lg font-semibold text-white">Which story was the best?</h2>
-                  <p className="mt-2 text-sm text-slate-400">Pick one AI. We’ll save it to Archive.</p>
-                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {AI_ORDER.map((p) => (
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold text-white sm:text-base">
+                      Which AI answered best?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={skipBestAnswer}
+                      className="shrink-0 text-sm text-slate-400 underline-offset-4 transition hover:text-white hover:underline"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                  <p className="mb-4 text-sm text-slate-400">
+                    Pick one AI. Your choice is saved to Archive when you vote.
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {bestAnswerPanel.providers.map((p) => (
                       <button
                         key={p}
                         type="button"
-                        onClick={() => void pickWinner(p)}
-                        className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                          picked === p
-                            ? "border-cyan-300 bg-cyan-500/15 text-white"
-                            : "border-white/12 bg-white/6 text-slate-200"
-                        }`}
+                        title={AI_LABEL[p]}
+                        onClick={() => void submitBestAnswerPick(p)}
+                        className={[
+                          "inline-flex h-9 w-24 min-w-[96px] max-w-[96px] shrink-0 items-center justify-center overflow-hidden rounded-xl px-1 text-sm font-semibold text-white transition hover:opacity-90 box-border",
+                          p === "xai" ? "border-2 border-white bg-black" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        style={{
+                          backgroundColor:
+                            p === "google"
+                              ? "#4285F4"
+                              : p === "xai"
+                                ? "#000000"
+                                : AI_ACCENT[p],
+                        }}
                       >
-                        {AI_LABEL[p]}
+                        <span className="min-w-0 truncate text-center">{AI_LABEL[p]}</span>
                       </button>
                     ))}
                   </div>
@@ -468,42 +690,65 @@ export default function StageTalePage() {
               </div>
             ) : null}
 
+            {sessionEndPanel ? (
+              <div className="pt-4">
+                {showSessionEndPreparing ? (
+                  <div className="rounded-2xl border border-white/10 bg-[#121a2e] p-4">
+                    {sessionEndPanel.votedAi ? (
+                      <p className="text-sm text-slate-200">
+                        🏆 {sessionEndPanel.votedAi} answered best
+                      </p>
+                    ) : null}
+                    <p className="mt-3 text-sm text-slate-400">Preparing share options…</p>
+                  </div>
+                ) : null}
+                {showSessionEndPanel ? (
+                  <CompareSessionEndPanel
+                    votedAi={sessionEndPanel.votedAi}
+                    compareSessionId={taleSessionId ?? ""}
+                    shareId={shareId ?? ""}
+                    visible={sessionEndVisual}
+                    saveFailed={sessionEndSaveFailed}
+                    onResolveShareUrl={resolveShareUrlForShare}
+                    onDone={dismissSessionPanels}
+                    goPublicPath="/api/tale/go-public"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+
             <div ref={bottomRef} />
           </div>
         ) : null}
 
-        {step === "saved" && picked ? (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
-            <p className="text-lg font-semibold text-white">Saved to Archive ✓</p>
-            <p className="mt-2 text-sm text-slate-300">
-              Winner: <span className="font-semibold text-white">{AI_LABEL[picked]}</span>
-            </p>
-            <ShareButtons modeName="STAGE Tale" className="mt-5" />
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setStep("genre");
-                  setGenre(null);
-                  setKeyword("");
-                  setTwistOpen(false);
-                  setSessionId(null);
-                  setStories({});
-                  setPicked(null);
-                  setError(null);
-                }}
-                className="rounded-xl bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
-              >
-                Try Another Genre
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push("/modes/stage/archive")}
-                className="rounded-xl border border-white/12 bg-white/6 px-5 py-2 text-sm font-semibold text-white hover:bg-white/8"
-              >
-                View Archive
-              </button>
-            </div>
+        {sessionEndPanel ? (
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <button
+              type="button"
+              onClick={() => {
+                dismissSessionPanels();
+                setStep("genre");
+                setGenre(null);
+                setKeyword("");
+                setTwistOpen(false);
+                setSessionId(null);
+                setStories({});
+                setError(null);
+                taleSaveScheduledRef.current = false;
+                setTaleSessionId(null);
+                setShareId(null);
+              }}
+              className="rounded-xl bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+            >
+              Try Another Genre
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/modes/stage/archive")}
+              className="rounded-xl border border-white/12 bg-white/6 px-5 py-2 text-sm font-semibold text-white hover:bg-white/8"
+            >
+              View Archive
+            </button>
           </div>
         ) : null}
       </main>

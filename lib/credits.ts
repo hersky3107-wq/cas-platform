@@ -120,7 +120,7 @@ export function creditsForComedyTalkTurn(): number {
 }
 
 export function creditsForComedyStandup(): number {
-  return 3
+  return 5
 }
 
 export function creditsForMindgameCareer(): number {

@@ -4,9 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import HelpModal from "@/components/HelpModal";
 import { oracleTarotHelpContent } from "@/lib/help-modal/oracle-tarot-content";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { creditsForOracleTarotSpread, type OracleTarotSpreadKey } from "@/lib/credits";
+import { OracleSessionEndFlow } from "../OracleSessionEndFlow";
+import type { OracleSessionResponse } from "@/lib/oracle/session-types";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -267,9 +269,37 @@ export default function OracleTarotPage() {
   const [readersOut, setReadersOut] = useState<Map<ReaderSlot, string>>(new Map());
   const [synth, setSynth] = useState<string | null>(null);
   const [drawn, setDrawn] = useState<Array<{ position: string; card: DeckCard }>>([]);
+  const [readingKey, setReadingKey] = useState(0);
 
   const needCount = spread ? POSITIONS[spread].length : 0;
   const canRead = spread && pickedIds.length === needCount && !!sessionId && !running;
+
+  const readingComplete =
+    phase === "reading" &&
+    !running &&
+    READER_ORDER.every((slot) => {
+      const t = readersOut.get(slot);
+      return typeof t === "string" && t.length > 0;
+    });
+
+  const tarotQuestion = useMemo(() => {
+    const q = question.trim();
+    if (q) return q;
+    const spreadMeta = SPREADS.find((s) => s.key === spread);
+    return spreadMeta ? `Tarot — ${spreadMeta.title}` : "Tarot reading";
+  }, [question, spread]);
+
+  const getTarotResponses = useCallback((): OracleSessionResponse[] => {
+    return READER_ORDER.map((slot) => ({
+      ai_name: AI_LABEL[slot],
+      content: readersOut.get(slot) ?? null,
+    }));
+  }, [readersOut]);
+
+  const tarotVoteLabels = useMemo(
+    () => READER_ORDER.map((slot) => AI_LABEL[slot]),
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -327,6 +357,7 @@ export default function OracleTarotPage() {
     if (!deck) return;
     if (pickedIds.length !== needCount) return;
 
+    setReadingKey((k) => k + 1);
     setRunning(true);
     setError(null);
     setReadersOut(new Map());
@@ -632,6 +663,17 @@ export default function OracleTarotPage() {
                 </article>
               ) : null}
             </div>
+
+            {readingComplete ? (
+              <OracleSessionEndFlow
+                key={readingKey}
+                oracleType="tarot"
+                question={tarotQuestion}
+                allDone={readingComplete}
+                getResponses={getTarotResponses}
+                voteLabels={tarotVoteLabels}
+              />
+            ) : null}
           </section>
         ) : null}
       </div>

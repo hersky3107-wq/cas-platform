@@ -4,10 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import HelpModal from "@/components/HelpModal";
 import { oracleDailyHelpContent } from "@/lib/help-modal/oracle-daily-content";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { creditsForOracleToday } from "@/lib/credits";
+import { OracleSessionEndFlow } from "../OracleSessionEndFlow";
+import type { OracleSessionResponse } from "@/lib/oracle/session-types";
 
 const ORACLE_TODAY_COST = creditsForOracleToday();
 
@@ -137,6 +139,34 @@ export default function OracleDailyPage() {
     return () => { cancelled = true; };
   }, []);
 
+  const dailyReaderSlots = ["deepseek", "google", "anthropic"] as const;
+  const dailyComplete =
+    !running &&
+    !err &&
+    dailyReaderSlots.every((slot) => {
+      const t = readers.get(slot);
+      return typeof t === "string" && t.length > 0;
+    }) &&
+    typeof synth === "string" &&
+    synth.length > 0;
+
+  const dailyQuestion = useMemo(() => {
+    if (meta?.today) return `Today's Fortune — ${fmtDate(meta.today)}`;
+    return "Today's Fortune";
+  }, [meta?.today]);
+
+  const getDailyResponses = useCallback((): OracleSessionResponse[] => {
+    return dailyReaderSlots.map((slot) => ({
+      ai_name: AI_LABEL[slot],
+      content: readers.get(slot) ?? null,
+    }));
+  }, [readers]);
+
+  const dailyVoteLabels = useMemo(
+    () => dailyReaderSlots.map((slot) => AI_LABEL[slot]),
+    [],
+  );
+
   return (
     <main className={BG}>
       <HelpModal content={oracleDailyHelpContent} />
@@ -232,6 +262,16 @@ export default function OracleDailyPage() {
                 {synth ?? (running ? "Composing weave…" : "")}
               </div>
             </article>
+          ) : null}
+
+          {dailyComplete ? (
+            <OracleSessionEndFlow
+              oracleType="horoscope"
+              question={dailyQuestion}
+              allDone={dailyComplete}
+              getResponses={getDailyResponses}
+              voteLabels={dailyVoteLabels}
+            />
           ) : null}
         </section>
       </div>

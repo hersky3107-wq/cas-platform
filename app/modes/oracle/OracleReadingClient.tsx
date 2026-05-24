@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { OracleSessionEndFlow } from "./OracleSessionEndFlow";
+import type { OracleSessionResponse } from "@/lib/oracle/session-types";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
 import type { OracleBirthProfileV1 } from "@/lib/oracle/types";
@@ -126,6 +127,7 @@ type NdLine = NdMeta | NdReader | NdSynth | NdError | NdDone | { type: string };
 
 export default function OracleReadingClient(props: {
   apiPath: string;
+  oracleType: "saju" | "horoscope" | "tarot";
   title: string;
   blurb: string;
   /** When true, parent already verified a complete birth profile (e.g. Fate page). */
@@ -149,6 +151,7 @@ export default function OracleReadingClient(props: {
   const [phase, setPhase] = useState<"idle" | "streaming" | "done" | "error">(
     "idle",
   );
+  const [readingKey, setReadingKey] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -182,6 +185,7 @@ export default function OracleReadingClient(props: {
   }, [router, props.skipProfileGate]);
 
   const run = useCallback(async () => {
+    setReadingKey((k) => k + 1);
     setSending(true);
     setError(null);
     setReadersOut(new Map());
@@ -286,6 +290,24 @@ export default function OracleReadingClient(props: {
 
   const readerOrder =
     props.apiPath === "/api/oracle/fate" ? READER_ORDER_FATE : READER_ORDER_ASTRO;
+
+  const allReadersDone =
+    phase === "done" &&
+    !sending &&
+    readerOrder.every((slot) => readersOut.has(slot));
+
+  const getResponses = useCallback((): OracleSessionResponse[] => {
+    return readerOrder.map((slot) => {
+      const r = readersOut.get(slot);
+      const content = r?.text ?? (r?.error ? r.error : null);
+      return { ai_name: AI_LABEL[slot], content };
+    });
+  }, [readerOrder, readersOut]);
+
+  const voteLabels = useMemo(
+    () => readerOrder.map((slot) => AI_LABEL[slot]),
+    [readerOrder],
+  );
 
   return (
     <main className={BG}>
@@ -443,8 +465,15 @@ export default function OracleReadingClient(props: {
             </article>
           ) : null}
 
-          {synthText && !sending ? (
-            <ShareButtons modeName={props.title} className="mt-8" />
+          {allReadersDone ? (
+            <OracleSessionEndFlow
+              key={readingKey}
+              oracleType={props.oracleType}
+              question={question.trim() || props.title}
+              allDone={allReadersDone}
+              getResponses={getResponses}
+              voteLabels={voteLabels}
+            />
           ) : null}
         </section>
 

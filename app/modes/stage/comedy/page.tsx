@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import HelpModal from "@/components/HelpModal";
-import ShareButtons from "@/components/ShareButtons";
+import { CompareSessionEndPanel } from "@/app/modes/compare/CompareSessionEndPanel";
 import { comedyHelpContent } from "@/lib/help-modal/comedy-content";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName } from "@/lib/ai/router";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { PUBLIC_SHARE_BASE } from "@/lib/compare/session-types";
+import type { ComedySessionResponse } from "@/lib/comedy/session-types";
 import { creditsForComedyTalkTurn } from "@/lib/credits";
 
 const TALK_TURN_COST = creditsForComedyTalkTurn();
@@ -41,6 +43,21 @@ const GEMINI_LETTER_COLORS = [
   "#EA4335",
 ] as const;
 
+const AI_ACCENT: Record<AiProviderName, string> = {
+  openai: "#10A37F",
+  anthropic: "#D97757",
+  google: "#4285F4",
+  xai: "#718096",
+  deepseek: "#4D6BFE",
+  mistral: "#FF7000",
+};
+
+const BEST_ANSWER_DELAY_MS = 2000;
+
+type SaveComedySessionResult =
+  | { ok: true; id: string; share_id: string }
+  | { ok: false; error: string };
+
 type ComedyMessage = {
   id: string;
   turnIndex: number;
@@ -57,6 +74,15 @@ type TalkTurn = {
   messages: ComedyMessage[];
   completed: boolean;
 };
+
+function buildTalkResponses(turns: TalkTurn[]): ComedySessionResponse[] {
+  return turns.flatMap((t) =>
+    t.messages.map((m) => ({
+      ai_name: `${AI_LABEL[m.provider]} (Turn ${m.turnIndex})`,
+      content: m.content?.trim() ? m.content : null,
+    }))
+  );
+}
 
 function wordsForTypewriter(s: string): string[] {
   if (!s) return [];
@@ -157,8 +183,17 @@ export default function StageComedyPage() {
   const [thinking, setThinking] = useState<AiProviderName | null>(null);
   const [turns, setTurns] = useState<TalkTurn[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [picked, setPicked] = useState<AiProviderName | null>(null);
-  const [voteSubmitting, setVoteSubmitting] = useState(false);
+  const [comedySessionId, setComedySessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [sessionEndPanel, setSessionEndPanel] = useState<{ votedAi: string | null } | null>(
+    null
+  );
+  const [sessionEndVisual, setSessionEndVisual] = useState(false);
+  const [sessionEndSaveFailed, setSessionEndSaveFailed] = useState(false);
+  const [bestAnswerPanel, setBestAnswerPanel] = useState<{ providers: AiProviderName[] } | null>(
+    null
+  );
+  const [bestAnswerVisual, setBestAnswerVisual] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [continueSubmitting, setContinueSubmitting] = useState(false);
   const [topic, setTopic] = useState("");
@@ -172,6 +207,7 @@ export default function StageComedyPage() {
   });
   const [lastTurnSpoke, setLastTurnSpoke] = useState<AiProviderName[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const bestAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -189,6 +225,180 @@ export default function StageComedyPage() {
       if (typeof j?.balance === "number") setCredits(j.balance);
     })();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (bestAnswerTimerRef.current != null) clearTimeout(bestAnswerTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!bestAnswerPanel) {
+      setBestAnswerVisual(false);
+      return;
+    }
+    setBestAnswerVisual(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setBestAnswerVisual(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [bestAnswerPanel]);
+
+  useEffect(() => {
+    if (!sessionEndPanel) {
+      setSessionEndVisual(false);
+      return;
+    }
+    setSessionEndVisual(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setSessionEndVisual(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [sessionEndPanel]);
+
+  const markSessionSaveFailed = useCallback((reason: string) => {
+    console.log("[comedy/talk] save-session error:", reason);
+    setSessionEndSaveFailed(true);
+  }, []);
+
+  const saveComedyTalkSession = useCallback(
+    async (question: string, responses: ComedySessionResponse[]): Promise<SaveComedySessionResult> => {
+      if (responses.length < 1) {
+        return { ok: false, error: "empty responses" };
+      }
+      try {
+        const res = await authenticatedFetch("/api/comedy/save-session", {
+          method: "POST",
+          json: {
+            comedy_type: "talk",
+            question,
+            responses,
+          },
+        });
+        const j = (await res.json().catch(() => null)) as {
+          id?: string;
+          share_id?: string;
+          error?: string;
+        };
+        if (!res.ok || !j.id || !j.share_id) {
+          const err = j?.error ?? `HTTP ${res.status}`;
+          console.log("[comedy/talk] save-session error:", err);
+          return { ok: false, error: err };
+        }
+        setComedySessionId(j.id);
+        setShareId(j.share_id);
+        setSessionEndSaveFailed(false);
+        return { ok: true, id: j.id, share_id: j.share_id };
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : "network error";
+        console.log("[comedy/talk] save-session error:", err);
+        return { ok: false, error: err };
+      }
+    },
+    []
+  );
+
+  const dismissSessionPanels = useCallback(() => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setSessionEndPanel(null);
+    setSessionEndVisual(false);
+    setSessionEndSaveFailed(false);
+    setBestAnswerPanel(null);
+    setBestAnswerVisual(false);
+  }, []);
+
+  const showSessionEndAfterVote = useCallback((votedAi: string | null) => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setBestAnswerPanel(null);
+    setBestAnswerVisual(false);
+    setSessionEndSaveFailed(false);
+    setSessionEndPanel({ votedAi });
+  }, []);
+
+  const scheduleBestAnswerPanel = useCallback(
+    (turnsSnapshot: TalkTurn[], spoke: AiProviderName[]) => {
+      if (spoke.length < 1) return;
+      const q = topic.trim();
+      if (!q) return;
+      void (async () => {
+        const saved = await saveComedyTalkSession(q, buildTalkResponses(turnsSnapshot));
+        if (!saved.ok) markSessionSaveFailed(saved.error);
+        if (bestAnswerTimerRef.current != null) clearTimeout(bestAnswerTimerRef.current);
+        bestAnswerTimerRef.current = setTimeout(() => {
+          setBestAnswerPanel({ providers: spoke });
+          bestAnswerTimerRef.current = null;
+        }, BEST_ANSWER_DELAY_MS);
+      })();
+    },
+    [topic, saveComedyTalkSession, markSessionSaveFailed]
+  );
+
+  const submitBestAnswerPick = useCallback(
+    async (provider: AiProviderName) => {
+      setError(null);
+      const votedLabel = AI_LABEL[provider];
+      showSessionEndAfterVote(votedLabel);
+      try {
+        let sessionIdForVote = comedySessionId;
+        if (!sessionIdForVote) {
+          const saved = await saveComedyTalkSession(topic.trim(), buildTalkResponses(turns));
+          if (!saved.ok) {
+            markSessionSaveFailed(saved.error);
+          } else {
+            sessionIdForVote = saved.id;
+          }
+        }
+        if (sessionIdForVote) {
+          const res = await authenticatedFetch("/api/comedy/save-session", {
+            method: "PATCH",
+            json: { session_id: sessionIdForVote, voted_ai: votedLabel },
+          });
+          if (!res.ok) {
+            const j = (await res.json().catch(() => null)) as { error?: string };
+            setError(j?.error ?? "Could not save vote");
+          }
+        }
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Unknown error");
+      }
+    },
+    [
+      comedySessionId,
+      showSessionEndAfterVote,
+      turns,
+      topic,
+      saveComedyTalkSession,
+      markSessionSaveFailed,
+    ]
+  );
+
+  const skipBestAnswer = useCallback(() => {
+    showSessionEndAfterVote(null);
+    if (!comedySessionId) {
+      void saveComedyTalkSession(topic.trim(), buildTalkResponses(turns)).then((saved) => {
+        if (!saved.ok) markSessionSaveFailed(saved.error);
+      });
+    }
+  }, [showSessionEndAfterVote, comedySessionId, turns, topic, saveComedyTalkSession, markSessionSaveFailed]);
+
+  const resolveShareUrlForShare = useCallback(async (): Promise<string | null> => {
+    if (shareId) return `${PUBLIC_SHARE_BASE}/${shareId}`;
+    const saved = await saveComedyTalkSession(topic.trim(), buildTalkResponses(turns));
+    if (!saved.ok) return null;
+    return `${PUBLIC_SHARE_BASE}/${saved.share_id}`;
+  }, [shareId, turns, topic, saveComedyTalkSession]);
+
+  const showSessionEndPreparing =
+    Boolean(sessionEndPanel) && !(comedySessionId && shareId) && !sessionEndSaveFailed;
+  const showSessionEndPanel =
+    Boolean(sessionEndPanel) &&
+    (Boolean(comedySessionId && shareId) || sessionEndSaveFailed);
 
   const readNdjsonTurn = useCallback(
     async (body: Record<string, unknown>) => {
@@ -262,13 +472,22 @@ export default function StageComedyPage() {
             const doneTurn = typeof msg.turnIndex === "number" ? msg.turnIndex : null;
             const spoke = Array.isArray(msg.spoke) ? (msg.spoke as AiProviderName[]) : [];
             if (doneTurn != null) {
-              setTurns((prev) =>
-                prev.map((t) =>
+              setTurns((prev) => {
+                const next = prev.map((t) =>
                   t.turnIndex === doneTurn
                     ? { ...t, spokeProviders: spoke, completed: true }
                     : t
-                )
-              );
+                );
+                if (doneTurn >= totalTurns) {
+                  const allProviders = [
+                    ...new Set(next.flatMap((t) => t.messages.map((m) => m.provider))),
+                  ] as AiProviderName[];
+                  if (allProviders.length > 0) {
+                    scheduleBestAnswerPanel(next, allProviders);
+                  }
+                }
+                return next;
+              });
               setLastTurnSpoke(spoke);
               setSpeakCounts((prev) => {
                 const next = { ...prev };
@@ -278,12 +497,11 @@ export default function StageComedyPage() {
                 return next;
               });
             }
-            if (doneTurn >= 4) setPhase("voting");
-            else setPhase("between");
+            setPhase("between");
           }
           if (msg.type === "show_done") {
             setThinking(null);
-            setPhase("voting");
+            setPhase("between");
           }
           if (msg.type === "error" && typeof msg.error === "string") {
             throw new Error(msg.error);
@@ -291,7 +509,7 @@ export default function StageComedyPage() {
         }
       }
     },
-    []
+    [scheduleBestAnswerPanel]
   );
 
   const startShow = useCallback(async () => {
@@ -301,7 +519,9 @@ export default function StageComedyPage() {
       return;
     }
     setError(null);
-    setPicked(null);
+    dismissSessionPanels();
+    setComedySessionId(null);
+    setShareId(null);
     setSessionId(null);
     setTurnIndex(1);
     setThinking(null);
@@ -323,14 +543,12 @@ export default function StageComedyPage() {
       setError(e instanceof Error ? e.message : "Unknown error");
       setPhase("idle");
     }
-  }, [readNdjsonTurn, topic]);
+  }, [readNdjsonTurn, topic, dismissSessionPanels]);
 
   const continueTurn = useCallback(async () => {
     if (!sessionId || continueSubmitting) return;
-    if (turnIndex >= 4) {
-      setPhase("voting");
-      return;
-    }
+    if (turnIndex >= 4) return;
+    dismissSessionPanels();
     setContinueSubmitting(true);
     setError(null);
     setPhase("running");
@@ -352,40 +570,26 @@ export default function StageComedyPage() {
     } finally {
       setContinueSubmitting(false);
     }
-  }, [sessionId, continueSubmitting, turnIndex, readNdjsonTurn, turns, topic, speakCounts, lastTurnSpoke]);
+  }, [
+    sessionId,
+    continueSubmitting,
+    turnIndex,
+    readNdjsonTurn,
+    turns,
+    topic,
+    speakCounts,
+    lastTurnSpoke,
+    dismissSessionPanels,
+  ]);
 
   const exitToVote = useCallback(() => {
     setThinking(null);
-    setPhase("voting");
-  }, []);
-
-  const vote = useCallback(async () => {
-    if (!sessionId || !picked || voteSubmitting) return;
-    setVoteSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/stage/comedy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "vote",
-          sessionId,
-          votedAiProvider: picked,
-        }),
-      });
-      const j = (await res.json().catch(() => null)) as { ok?: boolean; winner?: AiProviderName; error?: string };
-      if (!res.ok || !j?.ok) {
-        setError(j?.error ?? "Vote failed");
-        return;
-      }
-      setPhase("result");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setVoteSubmitting(false);
-    }
-  }, [picked, sessionId, voteSubmitting]);
-  const winner = useMemo(() => picked ?? null, [picked]);
+    setPhase("between");
+    const providers = [
+      ...new Set(turns.flatMap((t) => t.messages.map((m) => m.provider))),
+    ] as AiProviderName[];
+    if (providers.length > 0) scheduleBestAnswerPanel(turns, providers);
+  }, [turns, scheduleBestAnswerPanel]);
 
   const selectScreen = (
     <div className={BG}>
@@ -514,11 +718,7 @@ export default function StageComedyPage() {
                     ? "Ready"
                     : phase === "between"
                       ? "Intermission"
-                      : phase === "voting"
-                        ? "Voting"
-                        : phase === "result"
-                          ? "Result"
-                          : "Running"}
+                      : "Running"}
                 </p>
               </div>
               {phase === "between" ? (
@@ -603,116 +803,133 @@ export default function StageComedyPage() {
           </div>
         ) : null}
 
-        {phase === "voting" ? (
-          <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-            <h2 className="text-lg font-semibold text-white">Who was funniest?</h2>
-            <p className="mt-2 text-sm text-slate-400">Pick one. We’ll save your vote.</p>
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {AI_ORDER.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPicked(p)}
-                  className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                    picked === p ? "border-cyan-300 bg-cyan-500/15 text-white" : "border-white/12 bg-white/6 text-slate-200"
-                  }`}
-                >
-                  {AI_LABEL[p]}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              disabled={!picked || voteSubmitting}
-              onClick={() => void vote()}
-              className="mt-4 w-full rounded-2xl bg-rose-500 py-3 text-sm font-semibold text-white disabled:opacity-40"
-            >
-              {voteSubmitting ? "Saving…" : "Vote"}
-            </button>
-          </div>
-        ) : null}
-
-        {phase === "result" ? (
-          <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-            <h2 className="text-lg font-semibold text-white">Results</h2>
-            {winner ? (
-              <p className="mt-2 text-sm text-slate-300">
-                1st Place: <span className="font-semibold text-white">{AI_LABEL[winner]}</span>
-              </p>
-            ) : null}
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {AI_ORDER.map((p) => (
-                <div
-                  key={p}
-                  className={`rounded-xl border px-3 py-2 ${
-                    winner === p ? "border-amber-400 bg-amber-500/10" : "border-white/10 bg-white/[0.03]"
-                  }`}
-                >
-                  <span className="text-sm font-semibold text-slate-200">{AI_LABEL[p]}</span>
-                </div>
-              ))}
-            </div>
-
-            <ShareButtons modeName="STAGE Comedy" className="mt-5" />
-            <button
-              type="button"
-              onClick={() => {
-                setPhase("idle");
-                setSessionId(null);
-                setTurnIndex(1);
-                setThinking(null);
-                setPicked(null);
-                setError(null);
-                setContinueSubmitting(false);
-                setTurns([]);
-                setSpeakCounts({
-                  openai: 0,
-                  anthropic: 0,
-                  google: 0,
-                  xai: 0,
-                  deepseek: 0,
-                  mistral: 0,
-                });
-                setLastTurnSpoke([]);
-              }}
-              className="mt-3 w-full rounded-2xl bg-cyan-500 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
-            >
-              Play Again
-            </button>
-          </div>
-        ) : null}
       </main>
 
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-[#0a0f1e]/98 backdrop-blur-md">
-        <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-wide text-slate-500">
-                {phase === "between" ? "Intermission" : phase === "voting" ? "Voting" : "Controls"}
-              </p>
-              <p className="truncate text-sm text-slate-300">
-                Continue (+1 credit) or Exit &amp; Vote
-              </p>
+        <div className="relative mx-auto max-w-3xl overflow-visible">
+          {bestAnswerPanel && !sessionEndPanel ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-full z-40 px-3 pb-2 sm:px-4">
+              <div
+                className={[
+                  "pointer-events-auto mx-auto max-w-3xl border-t border-white/20 pt-6 transition-transform duration-300 ease-out",
+                  bestAnswerVisual ? "translate-y-0" : "translate-y-full",
+                ].join(" ")}
+              >
+                <div className="rounded-t-2xl bg-[#1a2235] px-4 py-3 shadow-[0_-12px_40px_rgba(0,0,0,0.5)]">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold text-white sm:text-base">
+                      Which AI answered best?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={skipBestAnswer}
+                      className="shrink-0 text-sm text-slate-400 underline-offset-4 transition hover:text-white hover:underline"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {bestAnswerPanel.providers.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        title={AI_LABEL[p]}
+                        onClick={() => void submitBestAnswerPick(p)}
+                        className={[
+                          "inline-flex h-9 w-24 min-w-[96px] max-w-[96px] shrink-0 items-center justify-center overflow-hidden rounded-xl px-1 text-sm font-semibold text-white transition hover:opacity-90 box-border",
+                          p === "xai" ? "border-2 border-white bg-black" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        style={{
+                          backgroundColor:
+                            p === "google"
+                              ? "#4285F4"
+                              : p === "xai"
+                                ? "#000000"
+                                : AI_ACCENT[p],
+                        }}
+                      >
+                        <span className="min-w-0 truncate text-center">{AI_LABEL[p]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex shrink-0 gap-2">
-              {phase !== "voting" && phase !== "result" ? (
+          ) : null}
+          {sessionEndPanel ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-full z-40 px-3 pb-2 sm:px-4">
+              <div className="pointer-events-auto mx-auto max-w-3xl">
+                {showSessionEndPreparing ? (
+                  <div
+                    className={[
+                      "mt-4 rounded-2xl border border-white/10 bg-[#121a2e] p-4 shadow-[0_-8px_32px_rgba(0,0,0,0.45)] transition-all duration-300 ease-out",
+                      sessionEndVisual
+                        ? "translate-y-0 opacity-100"
+                        : "translate-y-2 opacity-0",
+                    ].join(" ")}
+                  >
+                    {sessionEndPanel.votedAi ? (
+                      <p className="text-sm text-slate-200">
+                        🏆 {sessionEndPanel.votedAi} answered best
+                      </p>
+                    ) : null}
+                    <p className="mt-3 text-sm text-slate-400">Preparing share options…</p>
+                  </div>
+                ) : null}
+                {showSessionEndPanel ? (
+                  <CompareSessionEndPanel
+                    votedAi={sessionEndPanel.votedAi}
+                    compareSessionId={comedySessionId ?? ""}
+                    shareId={shareId ?? ""}
+                    visible={sessionEndVisual}
+                    saveFailed={sessionEndSaveFailed}
+                    onResolveShareUrl={resolveShareUrlForShare}
+                    onDone={dismissSessionPanels}
+                    goPublicPath="/api/comedy/go-public"
+                  />
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          <div className="px-3 py-3 sm:px-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-slate-500">
+                  {phase === "between" ? "Intermission" : "Controls"}
+                </p>
+                <p className="truncate text-sm text-slate-300">
+                  Continue (+1 credit) or Exit &amp; Vote
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
                 <button
                   type="button"
-                  disabled={continueSubmitting || phase !== "between" || turnIndex >= 4}
+                  disabled={
+                    continueSubmitting ||
+                    phase !== "between" ||
+                    turnIndex >= 4 ||
+                    Boolean(sessionEndPanel)
+                  }
                   onClick={() => void continueTurn()}
                   className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40"
                 >
                   Continue (+1 credit)
                 </button>
-              ) : null}
-              <button
-                type="button"
-                disabled={continueSubmitting || (phase !== "between" && phase !== "running")}
-                onClick={() => exitToVote()}
-                className="rounded-xl border border-white/15 bg-white/8 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-              >
-                Exit &amp; Vote
-              </button>
+                <button
+                  type="button"
+                  disabled={
+                    continueSubmitting ||
+                    (phase !== "between" && phase !== "running") ||
+                    Boolean(sessionEndPanel)
+                  }
+                  onClick={() => exitToVote()}
+                  className="rounded-xl border border-white/15 bg-white/8 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  Exit &amp; Vote
+                </button>
+              </div>
             </div>
           </div>
         </div>

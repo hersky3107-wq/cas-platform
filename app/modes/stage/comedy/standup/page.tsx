@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import ShareButtons from "@/components/ShareButtons";
+import { CompareSessionEndPanel } from "@/app/modes/compare/CompareSessionEndPanel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName } from "@/lib/ai/router";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { PUBLIC_SHARE_BASE } from "@/lib/compare/session-types";
+import type { ComedySessionResponse } from "@/lib/comedy/session-types";
 import { creditsForComedyStandup } from "@/lib/credits";
 
 const STANDUP_COST = creditsForComedyStandup();
@@ -22,6 +25,21 @@ const AI_LABEL: Record<AiProviderName, string> = {
 };
 
 const GEMINI_LETTER_COLORS = ["#4285F4", "#EA4335", "#FBBC05", "#34A853", "#4285F4", "#EA4335"] as const;
+
+const AI_ACCENT: Record<AiProviderName, string> = {
+  openai: "#10A37F",
+  anthropic: "#D97757",
+  google: "#4285F4",
+  xai: "#718096",
+  deepseek: "#4D6BFE",
+  mistral: "#FF7000",
+};
+
+const BEST_ANSWER_DELAY_MS = 2000;
+
+type SaveComedySessionResult =
+  | { ok: true; id: string; share_id: string }
+  | { ok: false; error: string };
 
 function wordsForTypewriter(s: string): string[] {
   if (!s) return [];
@@ -137,6 +155,13 @@ type StandupBit = {
   standupTurn: 1 | 2;
 };
 
+function buildStandupResponses(bits: StandupBit[]): ComedySessionResponse[] {
+  return bits.map((b) => ({
+    ai_name: `${AI_LABEL[b.provider]} (Round ${b.standupTurn})`,
+    content: b.text?.trim() ? b.text : null,
+  }));
+}
+
 export default function StandupPage() {
   const [phase, setPhase] = useState<Phase>("input");
   const [topic, setTopic] = useState("");
@@ -159,20 +184,179 @@ export default function StandupPage() {
     deepseek: 0,
     mistral: 0,
   }));
-  const [winnerRound, setWinnerRound] = useState<{ provider: AiProviderName | null } | null>(null);
-  const [votePick, setVotePick] = useState<AiProviderName | null>(null);
-  const [voteSubmitting, setVoteSubmitting] = useState(false);
+  const [comedySessionId, setComedySessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [sessionEndPanel, setSessionEndPanel] = useState<{ votedAi: string | null } | null>(
+    null
+  );
+  const [sessionEndVisual, setSessionEndVisual] = useState(false);
+  const [sessionEndSaveFailed, setSessionEndSaveFailed] = useState(false);
+  const [bestAnswerPanel, setBestAnswerPanel] = useState<{ providers: AiProviderName[] } | null>(
+    null
+  );
+  const [bestAnswerVisual, setBestAnswerVisual] = useState(false);
+  const standupVoteScheduledRef = useRef(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const bestAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [phase, provider, text, loading]);
+
+  useEffect(() => {
+    return () => {
+      if (bestAnswerTimerRef.current != null) clearTimeout(bestAnswerTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!bestAnswerPanel) {
+      setBestAnswerVisual(false);
+      return;
+    }
+    setBestAnswerVisual(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setBestAnswerVisual(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [bestAnswerPanel]);
+
+  useEffect(() => {
+    if (!sessionEndPanel) {
+      setSessionEndVisual(false);
+      return;
+    }
+    setSessionEndVisual(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setSessionEndVisual(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [sessionEndPanel]);
+
+  const markSessionSaveFailed = useCallback((reason: string) => {
+    console.log("[comedy/standup] save-session error:", reason);
+    setSessionEndSaveFailed(true);
+  }, []);
+
+  const saveStandupSession = useCallback(
+    async (question: string, responses: ComedySessionResponse[]): Promise<SaveComedySessionResult> => {
+      if (responses.length < 1) return { ok: false, error: "empty responses" };
+      try {
+        const res = await authenticatedFetch("/api/comedy/save-session", {
+          method: "POST",
+          json: { comedy_type: "standup", question, responses },
+        });
+        const j = (await res.json().catch(() => null)) as {
+          id?: string;
+          share_id?: string;
+          error?: string;
+        };
+        if (!res.ok || !j.id || !j.share_id) {
+          const err = j?.error ?? `HTTP ${res.status}`;
+          return { ok: false, error: err };
+        }
+        setComedySessionId(j.id);
+        setShareId(j.share_id);
+        setSessionEndSaveFailed(false);
+        return { ok: true, id: j.id, share_id: j.share_id };
+      } catch (e: unknown) {
+        return { ok: false, error: e instanceof Error ? e.message : "network error" };
+      }
+    },
+    []
+  );
+
+  const dismissSessionPanels = useCallback(() => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setSessionEndPanel(null);
+    setSessionEndVisual(false);
+    setSessionEndSaveFailed(false);
+    setBestAnswerPanel(null);
+    setBestAnswerVisual(false);
+  }, []);
+
+  const showSessionEndAfterVote = useCallback((votedAi: string | null) => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setBestAnswerPanel(null);
+    setBestAnswerVisual(false);
+    setSessionEndSaveFailed(false);
+    setSessionEndPanel({ votedAi });
+  }, []);
+
+  const submitBestAnswerPick = useCallback(
+    async (provider: AiProviderName) => {
+      setError(null);
+      const votedLabel = AI_LABEL[provider];
+      showSessionEndAfterVote(votedLabel);
+      try {
+        let sessionIdForVote = comedySessionId;
+        if (!sessionIdForVote) {
+          const saved = await saveStandupSession(topic.trim(), buildStandupResponses(bits));
+          if (!saved.ok) markSessionSaveFailed(saved.error);
+          else sessionIdForVote = saved.id;
+        }
+        if (sessionIdForVote) {
+          const res = await authenticatedFetch("/api/comedy/save-session", {
+            method: "PATCH",
+            json: { session_id: sessionIdForVote, voted_ai: votedLabel },
+          });
+          if (!res.ok) {
+            const j = (await res.json().catch(() => null)) as { error?: string };
+            setError(j?.error ?? "Could not save vote");
+          }
+        }
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Unknown error");
+      }
+    },
+    [
+      comedySessionId,
+      showSessionEndAfterVote,
+      topic,
+      bits,
+      saveStandupSession,
+      markSessionSaveFailed,
+    ]
+  );
+
+  const skipBestAnswer = useCallback(() => {
+    showSessionEndAfterVote(null);
+    if (!comedySessionId) {
+      void saveStandupSession(topic.trim(), buildStandupResponses(bits)).then((saved) => {
+        if (!saved.ok) markSessionSaveFailed(saved.error);
+      });
+    }
+  }, [showSessionEndAfterVote, comedySessionId, topic, bits, saveStandupSession, markSessionSaveFailed]);
+
+  const resolveShareUrlForShare = useCallback(async (): Promise<string | null> => {
+    if (shareId) return `${PUBLIC_SHARE_BASE}/${shareId}`;
+    const saved = await saveStandupSession(topic.trim(), buildStandupResponses(bits));
+    if (!saved.ok) return null;
+    return `${PUBLIC_SHARE_BASE}/${saved.share_id}`;
+  }, [shareId, topic, bits, saveStandupSession]);
+
+  const showSessionEndPreparing =
+    Boolean(sessionEndPanel) && !(comedySessionId && shareId) && !sessionEndSaveFailed;
+  const showSessionEndPanel =
+    Boolean(sessionEndPanel) &&
+    (Boolean(comedySessionId && shareId) || sessionEndSaveFailed);
 
   const start = useCallback(async () => {
     const t = topic.trim();
     if (!t || loading) return;
     setError(null);
     setStatus(null);
+    dismissSessionPanels();
+    setComedySessionId(null);
+    setShareId(null);
+    standupVoteScheduledRef.current = false;
     setLoading(true);
     try {
       const res = await fetch("/api/stage/comedy/standup", {
@@ -199,8 +383,6 @@ export default function StandupPage() {
       ]);
       // First AI auto-reveals; reveal button starts from 2nd AI.
       setRevealedCount(1);
-      setWinnerRound(null);
-      setVotePick(null);
       setScores({
         openai: 0,
         anthropic: 0,
@@ -215,7 +397,7 @@ export default function StandupPage() {
     } finally {
       setLoading(false);
     }
-  }, [loading, topic]);
+  }, [loading, topic, dismissSessionPanels]);
 
   const runRemaining = useCallback(async () => {
     if (!sessionId || !order || loading) return;
@@ -292,32 +474,25 @@ export default function StandupPage() {
     actCount > 0 &&
     index >= actCount - 1 &&
     !loading &&
-    revealedCount >= actCount;
+    revealedCount >= actCount &&
+    !sessionEndPanel;
 
-  const submitFinalVote = useCallback(async () => {
-    if (!sessionId || !votePick || voteSubmitting) return;
-    setVoteSubmitting(true);
-    setError(null);
-    // Immediately show results screen (never blank), then fill counts when ready.
-    setWinnerRound({ provider: votePick });
-    setPhase("result");
-    try {
-      const res = await fetch("/api/stage/comedy/standup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "vote", sessionId, provider: votePick }),
-      });
-      const j = (await res.json().catch(() => null)) as any;
-      if (!res.ok || !j?.ok) throw new Error(j?.error ?? "Vote failed");
-      if (typeof j?.winner === "string") {
-        setWinnerRound({ provider: j.winner as AiProviderName });
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setVoteSubmitting(false);
-    }
-  }, [sessionId, votePick, voteSubmitting]);
+  useEffect(() => {
+    if (!showVoting || standupVoteScheduledRef.current) return;
+    if (bits.length < 1) return;
+    const q = topic.trim();
+    if (!q) return;
+    standupVoteScheduledRef.current = true;
+    void (async () => {
+      const saved = await saveStandupSession(q, buildStandupResponses(bits));
+      if (!saved.ok) markSessionSaveFailed(saved.error);
+      if (bestAnswerTimerRef.current != null) clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = setTimeout(() => {
+        setBestAnswerPanel({ providers: AI_ORDER });
+        bestAnswerTimerRef.current = null;
+      }, BEST_ANSWER_DELAY_MS);
+    })();
+  }, [showVoting, bits, topic, saveStandupSession, markSessionSaveFailed]);
 
   return (
     <div className={BG}>
@@ -419,89 +594,101 @@ export default function StandupPage() {
                 </button>
               ) : null}
             </div>
-            {showVoting ? (
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-                <h2 className="text-lg font-semibold text-white">Who was funniest?</h2>
-                <p className="mt-2 text-sm text-slate-400">Pick one comedian.</p>
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {AI_ORDER.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setVotePick(p)}
-                      className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                        votePick === p
-                          ? "border-cyan-300 bg-cyan-500/15 text-white"
-                          : "border-white/12 bg-white/6 text-slate-200"
-                      }`}
-                    >
-                      {AI_LABEL[p]}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  disabled={!votePick || voteSubmitting}
-                  onClick={() => void submitFinalVote()}
-                  className="mt-4 w-full rounded-2xl bg-rose-500 py-3 text-sm font-semibold text-white disabled:opacity-40"
-                >
-                  {voteSubmitting ? "Saving…" : "Vote"}
-                </button>
-              </div>
-            ) : null}
             <div ref={bottomRef} />
           </div>
         ) : null}
-
-        {phase === "result" ? (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-            <h2 className="text-lg font-semibold text-white">Results</h2>
-            {winnerRound?.provider ? (
-              <p className="mt-2 text-sm text-slate-300">
-                1st Place:{" "}
-                <span className="font-semibold text-white">{AI_LABEL[winnerRound.provider]}</span>
-              </p>
-            ) : null}
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {AI_ORDER.map((p) => (
-                <div
-                  key={p}
-                  className={`rounded-xl border px-3 py-2 ${
-                    winnerRound?.provider === p
-                      ? "border-amber-400 bg-amber-500/10"
-                      : "border-white/10 bg-white/[0.03]"
-                  }`}
-                >
-                  <span className="text-sm font-semibold text-slate-200">{AI_LABEL[p]}</span>
-                </div>
-              ))}
-            </div>
-            <ShareButtons modeName="STAGE Stand-up" className="mt-5" />
-            <button
-              type="button"
-              onClick={() => {
-                setPhase("input");
-                setSessionId(null);
-                setOrder(null);
-                setIndex(-1);
-                setProvider(null);
-                setText("");
-                setMs(0);
-                setError(null);
-                setBits([]);
-                setRevealedCount(0);
-                setStatus(null);
-                setWinnerRound(null);
-                setVotePick(null);
-                setVoteSubmitting(false);
-              }}
-              className="mt-3 w-full rounded-2xl bg-cyan-500 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
-            >
-              Play Again
-            </button>
-          </div>
-        ) : null}
       </main>
+
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-[#0a0f1e]/98 backdrop-blur-md">
+        <div className="relative mx-auto max-w-3xl overflow-visible">
+          {bestAnswerPanel && !sessionEndPanel ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-full z-40 px-3 pb-2 sm:px-4">
+              <div
+                className={[
+                  "pointer-events-auto mx-auto max-w-3xl border-t border-white/20 pt-6 transition-transform duration-300 ease-out",
+                  bestAnswerVisual ? "translate-y-0" : "translate-y-full",
+                ].join(" ")}
+              >
+                <div className="rounded-t-2xl bg-[#1a2235] px-4 py-3 shadow-[0_-12px_40px_rgba(0,0,0,0.5)]">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold text-white sm:text-base">
+                      Which AI answered best?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={skipBestAnswer}
+                      className="shrink-0 text-sm text-slate-400 underline-offset-4 transition hover:text-white hover:underline"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {bestAnswerPanel.providers.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        title={AI_LABEL[p]}
+                        onClick={() => void submitBestAnswerPick(p)}
+                        className={[
+                          "inline-flex h-9 w-24 min-w-[96px] max-w-[96px] shrink-0 items-center justify-center overflow-hidden rounded-xl px-1 text-sm font-semibold text-white transition hover:opacity-90 box-border",
+                          p === "xai" ? "border-2 border-white bg-black" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        style={{
+                          backgroundColor:
+                            p === "google"
+                              ? "#4285F4"
+                              : p === "xai"
+                                ? "#000000"
+                                : AI_ACCENT[p],
+                        }}
+                      >
+                        <span className="min-w-0 truncate text-center">{AI_LABEL[p]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {sessionEndPanel ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-full z-40 px-3 pb-2 sm:px-4">
+              <div className="pointer-events-auto mx-auto max-w-3xl">
+                {showSessionEndPreparing ? (
+                  <div
+                    className={[
+                      "mt-4 rounded-2xl border border-white/10 bg-[#121a2e] p-4 shadow-[0_-8px_32px_rgba(0,0,0,0.45)] transition-all duration-300 ease-out",
+                      sessionEndVisual
+                        ? "translate-y-0 opacity-100"
+                        : "translate-y-2 opacity-0",
+                    ].join(" ")}
+                  >
+                    {sessionEndPanel.votedAi ? (
+                      <p className="text-sm text-slate-200">
+                        🏆 {sessionEndPanel.votedAi} answered best
+                      </p>
+                    ) : null}
+                    <p className="mt-3 text-sm text-slate-400">Preparing share options…</p>
+                  </div>
+                ) : null}
+                {showSessionEndPanel ? (
+                  <CompareSessionEndPanel
+                    votedAi={sessionEndPanel.votedAi}
+                    compareSessionId={comedySessionId ?? ""}
+                    shareId={shareId ?? ""}
+                    visible={sessionEndVisual}
+                    saveFailed={sessionEndSaveFailed}
+                    onResolveShareUrl={resolveShareUrlForShare}
+                    onDone={dismissSessionPanels}
+                    goPublicPath="/api/comedy/go-public"
+                  />
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

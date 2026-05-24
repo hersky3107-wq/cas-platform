@@ -4,6 +4,9 @@ import Link from "next/link";
 import ShareButtons from "@/components/ShareButtons";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { PUBLIC_SHARE_BASE } from "@/lib/compare/session-types";
+import type { SuitSessionResponse } from "@/lib/suit/session-types";
 import { ChevronLeft, Gavel } from "lucide-react";
 import { supabase } from "@/lib/db/supabase";
 import { suitCounselSelectorMeta } from "@/lib/ai/suit-prompts";
@@ -204,6 +207,14 @@ export default function SuitSessionPage() {
   const [completedRound, setCompletedRound] = useState(0);
   const [openingDone, setOpeningDone] = useState(false);
   const [verdictRequesting, setVerdictRequesting] = useState(false);
+  const [suitSessionId, setSuitSessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [savingSession, setSavingSession] = useState(false);
+  const [goPublicDone, setGoPublicDone] = useState(false);
+  const [goPublicLoading, setGoPublicLoading] = useState(false);
+  const [goPublicError, setGoPublicError] = useState<string | null>(null);
+  const suitSaveScheduledRef = useRef(false);
 
   /** Counsel */
   const [counselExchange, setCounselExchange] = useState(0);
@@ -606,6 +617,80 @@ export default function SuitSessionPage() {
   };
 
   const verdictBlock = verdictText ?? messages.find((x) => x.phase === "verdict")?.content ?? null;
+  const sessionComplete = Boolean(verdictBlock) && !loading && !verdictRequesting;
+
+  const buildSuitSessionResponses = useCallback((): SuitSessionResponse[] => {
+    if (!verdictBlock) return [];
+    const rows: SuitSessionResponse[] = [];
+    for (const m of messages) {
+      if (m.provider === "opus_judge" && m.phase === "verdict") continue;
+      rows.push({ ai_name: m.displayName, content: m.content });
+    }
+    rows.push({ ai_name: "Court (Claude Judge)", content: verdictBlock });
+    return rows;
+  }, [messages, verdictBlock]);
+
+  const saveSuitSession = useCallback(async () => {
+    if (!pack || suitSessionId || shareId) return;
+    const question = pack.topic.trim();
+    if (!question) return;
+    const responses = buildSuitSessionResponses();
+    if (responses.length < 1) return;
+    setSavingSession(true);
+    setSaveFailed(false);
+    try {
+      const res = await authenticatedFetch("/api/suit/save-session", {
+        method: "POST",
+        json: { question, responses },
+      });
+      const j = (await res.json().catch(() => null)) as
+        | { id?: string; share_id?: string; error?: string }
+        | null;
+      if (!res.ok) {
+        setSaveFailed(true);
+        console.log("[suit] save-session error:", j?.error ?? res.status);
+        return;
+      }
+      if (typeof j?.id === "string") setSuitSessionId(j.id);
+      if (typeof j?.share_id === "string") setShareId(j.share_id);
+    } catch (e: unknown) {
+      console.log("[suit] save-session error:", e instanceof Error ? e.message : e);
+      setSaveFailed(true);
+    } finally {
+      setSavingSession(false);
+    }
+  }, [pack, suitSessionId, shareId, buildSuitSessionResponses]);
+
+  useEffect(() => {
+    if (!sessionComplete) return;
+    if (suitSaveScheduledRef.current) return;
+    if (suitSessionId || shareId || savingSession) return;
+    suitSaveScheduledRef.current = true;
+    void saveSuitSession();
+  }, [sessionComplete, suitSessionId, shareId, savingSession, saveSuitSession]);
+
+  const handleGoPublic = useCallback(async () => {
+    if (!suitSessionId) return;
+    setGoPublicError(null);
+    setGoPublicLoading(true);
+    try {
+      const res = await authenticatedFetch("/api/suit/go-public", {
+        method: "POST",
+        json: { session_id: suitSessionId },
+      });
+      const j = (await res.json().catch(() => null)) as { share_id?: string; error?: string } | null;
+      if (!res.ok) {
+        setGoPublicError(typeof j?.error === "string" ? j.error : "Could not publish session");
+        return;
+      }
+      setGoPublicDone(true);
+      if (typeof j?.share_id === "string") setShareId(j.share_id);
+    } catch (e: unknown) {
+      setGoPublicError(e instanceof Error ? e.message : "Could not publish session");
+    } finally {
+      setGoPublicLoading(false);
+    }
+  }, [suitSessionId]);
   const counselWon = useMemo(() => {
     if (!pack || pack.participationMode !== "counsel" || !verdictBlock) return null;
     const userAssign = pack.assignments.find((x) => x.provider === "user");
@@ -833,8 +918,58 @@ export default function SuitSessionPage() {
                   ) : null}
                 </div>
               ) : null}
-              {verdictBlock ? (
-                <ShareButtons modeName="SUIT" className="mx-auto mt-8 max-w-lg" />
+              {sessionComplete ? (
+                <div className="mx-auto mt-8 max-w-lg">
+                  {shareId ? (
+                    <ShareButtons
+                      modeName="SUIT"
+                      className="mt-0"
+                      url={`${PUBLIC_SHARE_BASE}/${shareId}`}
+                    />
+                  ) : (
+                    <p className="text-center text-xs text-slate-500">
+                      {saveFailed
+                        ? "Could not save session for sharing."
+                        : "Saving session…"}
+                    </p>
+                  )}
+
+                  <div className="mt-4 rounded-xl border border-white/12 bg-[#1a2438]/90 p-3">
+                    {saveFailed ? (
+                      <p className="text-sm text-slate-400">Could not save session</p>
+                    ) : goPublicDone ? (
+                      <div className="text-sm">
+                        <p className="font-medium text-slate-200">✅ Indexed!</p>
+                        <p className="mt-1 text-slate-400">aimani.ai/share/{shareId}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold text-white">
+                          <span className="mr-1.5" aria-hidden>
+                            🔍
+                          </span>
+                          Put this on Google
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                          Let search engines find this session · No personal info shared
+                        </p>
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            onClick={() => void handleGoPublic()}
+                            disabled={goPublicLoading || !suitSessionId}
+                            className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.25)] transition hover:bg-cyan-400 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {goPublicLoading ? "Publishing…" : "Go Public"}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {goPublicError ? (
+                    <p className="mt-2 text-center text-xs text-amber-300/90">{goPublicError}</p>
+                  ) : null}
+                </div>
               ) : null}
             </>
           ) : null}

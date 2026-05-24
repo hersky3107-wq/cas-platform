@@ -56,6 +56,7 @@ export default function OracleFatePage() {
       <HelpModal content={oracleFateHelpContent} />
       <OracleReadingClient
       apiPath="/api/oracle/fate"
+      oracleType="saju"
       title="Fate circle"
       blurb="Eastern pillar reading from your stored birth sketch. Claude · Gemini · Grok · DeepSeek · Mistral answer in prose, then gpt‑4.1 weaves them."
       {...(oracleProfile
