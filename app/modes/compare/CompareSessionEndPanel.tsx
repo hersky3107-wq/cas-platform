@@ -203,24 +203,36 @@ export function CompareSessionEndPanel({
         </button>
       </div>
 
-      <div className="mt-4 rounded-xl border border-white/15 bg-transparent px-4 py-3 text-sm text-slate-300">
+      <div className="mt-4 rounded-xl border border-white/12 bg-[#1a2438]/90 p-3">
         {saveFailed ? (
-          <p className="text-slate-400">Could not save session</p>
+          <p className="text-sm text-slate-400">Could not save session</p>
         ) : goPublicDone ? (
-          <span>✅ Indexed! aimani.ai/share/{shareId}</span>
+          <div className="text-sm">
+            <p className="font-medium text-slate-200">✅ Indexed!</p>
+            <p className="mt-1 text-slate-400">aimani.ai/share/{shareId}</p>
+          </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => void handleGoPublic()}
-            disabled={goPublicLoading || !compareSessionId}
-            className="w-full text-left transition hover:text-white disabled:opacity-70"
-          >
-            <span className="mr-1">🌐</span>
-            {goPublicLoading ? 'Publishing…' : 'Go Public'}
-            <span className="mt-1 block text-xs text-slate-500">
-              Let search engines find this session · No personal info shared
-            </span>
-          </button>
+          <>
+            <p className="text-sm font-bold text-white">
+              <span className="mr-1.5" aria-hidden>
+                🔍
+              </span>
+              Put this on Google
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              Let search engines find this debate · No personal info shared
+            </p>
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => void handleGoPublic()}
+                disabled={goPublicLoading || !compareSessionId}
+                className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.25)] transition hover:bg-cyan-400 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {goPublicLoading ? 'Publishing…' : 'Go Public'}
+              </button>
+            </div>
+          </>
         )}
       </div>
       {error ? <p className="mt-2 text-xs text-amber-300/90">{error}</p> : null}
