@@ -26,6 +26,10 @@ export default function RootLayout({
         />
         <meta name="apple-mobile-web-app-title" content="AIMANI" />
         <meta name="theme-color" content="#0b1020" />
+        <meta
+          name="google-site-verification"
+          content="8k-wO6mSk6PjlWP18amCIjacryQ3t3IEU0QyqHM7OqY"
+        />
       </head>
       <body>
         <AnnouncementBanner />
