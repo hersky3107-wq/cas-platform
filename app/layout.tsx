@@ -1,5 +1,4 @@
-'use client'
-
+import type { Metadata } from 'next'
 import './globals.css'
 import { Analytics } from '@vercel/analytics/react'
 import { ApiFetchAuth } from '@/app/components/ApiFetchAuth'
@@ -7,6 +6,12 @@ import AnnouncementBanner from '@/app/components/AnnouncementBanner'
 import { FirstTimeHereProvider } from '@/app/components/FirstTimeHere'
 import { CreditWarningsRoot } from '@/components/credits/CreditWarningsRoot'
 import InAppBrowserGuard from '@/components/InAppBrowserGuard'
+
+export const metadata: Metadata = {
+  verification: {
+    google: '8k-wO6mSk6PjlWP18amCIjacryQ3t3IEU0QyqHM7OqY',
+  },
+}
 
 export default function RootLayout({
   children,
