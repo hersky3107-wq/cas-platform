@@ -390,7 +390,7 @@ export default function VerdictRankPage() {
         content: r.error
           ? null
           : r.lines.length > 0
-            ? r.lines.map((line) => `${line.position}. ${line.itemLabel}`).join("\n")
+            ? r.lines.map((line) => `${line.rank}. ${line.item}`).join("\n")
             : null,
       }));
 
