@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import HelpModal from "@/components/HelpModal";
-import ShareButtons from "@/components/ShareButtons";
 import { customHelpContent } from "@/lib/help-modal/custom-content";
-import { useRouter } from "next/navigation";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { PUBLIC_SHARE_BASE } from "@/lib/compare/session-types";
+import { CompareSessionEndPanel } from "@/app/modes/compare/CompareSessionEndPanel";
 import {
   useCallback,
   useEffect,
@@ -106,8 +107,11 @@ type Message = {
 
 const CARD_STAGGER_MS = 300;
 const BEST_ANSWER_DELAY_MS = 2000;
-const BEST_ANSWER_ANIM_MS = 320;
 const MAX_CUSTOM_SYSTEM = 500;
+
+type SaveCustomSessionResult =
+  | { ok: true; id: string; share_id: string }
+  | { ok: false; error: string };
 
 const LENGTH_STEPS = [300, 700, 1500] as const;
 type LengthStepIndex = 0 | 1 | 2;
@@ -352,7 +356,6 @@ function StaggeredAiChatBubble({
 }
 
 export default function CustomModePage() {
-  const router = useRouter();
   const [credits, setCredits] = useState<number | null>(null);
   const [selected, setSelected] = useState<Record<AiProviderName, boolean>>(
     defaultSelected
@@ -367,10 +370,16 @@ export default function CustomModePage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [endOpen, setEndOpen] = useState(false);
-  const [endSubmitting, setEndSubmitting] = useState(false);
+  const [customSessionId, setCustomSessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [sessionEndPanel, setSessionEndPanel] = useState<{ votedAi: string | null } | null>(
+    null
+  );
+  const [sessionEndVisual, setSessionEndVisual] = useState(false);
+  const [sessionEndSaveFailed, setSessionEndSaveFailed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const bestAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetEpochRef = useRef(0);
   const [bestAnswerPanel, setBestAnswerPanel] = useState<{
     sessionId: string;
     providers: AiProviderName[];
@@ -401,16 +410,6 @@ export default function CustomModePage() {
   );
 
   const maxTokens = LENGTH_STEPS[lengthStep];
-
-  const providersInSession = useMemo(() => {
-    const s = new Set<AiProviderName>();
-    for (const t of turns) {
-      for (const r of t.responses) {
-        s.add(r.provider);
-      }
-    }
-    return Array.from(s);
-  }, [turns]);
 
   useEffect(() => {
     (async () => {
@@ -448,38 +447,186 @@ export default function CustomModePage() {
     return () => cancelAnimationFrame(id);
   }, [bestAnswerPanel]);
 
-  const closeBestAnswerPanel = useCallback(() => {
+  useEffect(() => {
+    if (!sessionEndPanel) {
+      setSessionEndVisual(false);
+      return;
+    }
+    setSessionEndVisual(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setSessionEndVisual(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [sessionEndPanel]);
+
+  const markSessionSaveFailed = useCallback((reason: string) => {
+    console.log("[custom] save-session error:", reason);
+    setSessionEndSaveFailed(true);
+  }, []);
+
+  const saveCustomSession = useCallback(
+    async (
+      question: string,
+      responses: CompletedResponse[]
+    ): Promise<SaveCustomSessionResult> => {
+      const epoch = resetEpochRef.current;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        console.log("[custom] save-session error: not signed in");
+        return { ok: false, error: "not signed in" };
+      }
+
+      const payload = responses.map((r) => ({
+        ai_name: AI_LABEL[r.provider],
+        content: r.error ? null : r.text,
+      }));
+
+      if (payload.length === 0) {
+        console.log("[custom] save-session error: empty responses");
+        return { ok: false, error: "empty responses" };
+      }
+
+      try {
+        const res = await authenticatedFetch("/api/custom/save-session", {
+          method: "POST",
+          json: {
+            user_id: user.id,
+            question,
+            responses: payload,
+          },
+        });
+        const j = (await res.json().catch(() => null)) as {
+          id?: string;
+          share_id?: string;
+          error?: string;
+        };
+        if (!res.ok || !j.id || !j.share_id) {
+          const err = j?.error ?? `HTTP ${res.status}`;
+          console.log("[custom] save-session error:", err);
+          return { ok: false, error: err };
+        }
+        console.log("[custom] save-session success:", j.id, j.share_id);
+        if (epoch !== resetEpochRef.current) {
+          return { ok: false, error: "session reset" };
+        }
+        setCustomSessionId(j.id);
+        setShareId(j.share_id);
+        setSessionEndSaveFailed(false);
+        return { ok: true, id: j.id, share_id: j.share_id };
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : "network error";
+        console.log("[custom] save-session error:", err);
+        return { ok: false, error: err };
+      }
+    },
+    []
+  );
+
+  const dismissSessionPanels = useCallback(() => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setSessionEndPanel(null);
+    setSessionEndVisual(false);
+    setSessionEndSaveFailed(false);
+    setBestAnswerPanel(null);
     setBestAnswerVisual(false);
-    window.setTimeout(() => {
-      setBestAnswerPanel(null);
-    }, BEST_ANSWER_ANIM_MS);
+  }, []);
+
+  const showSessionEndAfterVote = useCallback((votedAi: string | null) => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setBestAnswerPanel(null);
+    setBestAnswerVisual(false);
+    setSessionEndSaveFailed(false);
+    setSessionEndPanel({ votedAi });
   }, []);
 
   const submitBestAnswerPick = useCallback(
     async (provider: AiProviderName) => {
-      if (!bestAnswerPanel?.sessionId) return;
       setError(null);
+      const votedLabel = AI_LABEL[provider];
+      showSessionEndAfterVote(votedLabel);
+
       try {
-        const res = await fetch("/api/compare/user-selection", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: bestAnswerPanel.sessionId,
-            selectedProvider: provider,
-          }),
-        });
-        if (!res.ok) {
-          const j = (await res.json().catch(() => null)) as { error?: string };
-          setError(j?.error ?? "Could not save selection");
-          return;
+        let sessionIdForVote = customSessionId;
+        if (!sessionIdForVote) {
+          const lastTurn = turns[turns.length - 1];
+          if (lastTurn?.responses.length) {
+            const saved = await saveCustomSession(
+              lastTurn.userText,
+              lastTurn.responses
+            );
+            if (!saved.ok) {
+              markSessionSaveFailed(saved.error);
+            } else {
+              sessionIdForVote = saved.id;
+            }
+          }
         }
-        closeBestAnswerPanel();
+
+        if (sessionIdForVote) {
+          const res = await authenticatedFetch("/api/custom/save-session", {
+            method: "PATCH",
+            json: {
+              session_id: sessionIdForVote,
+              voted_ai: votedLabel,
+            },
+          });
+          if (!res.ok) {
+            const j = (await res.json().catch(() => null)) as { error?: string };
+            setError(j?.error ?? "Could not save vote");
+          }
+        }
+
+        if (bestAnswerPanel?.sessionId) {
+          await fetch("/api/compare/user-selection", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: bestAnswerPanel.sessionId,
+              selectedProvider: provider,
+            }),
+          });
+        }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Unknown error");
       }
     },
-    [bestAnswerPanel, router, closeBestAnswerPanel]
+    [
+      customSessionId,
+      bestAnswerPanel,
+      showSessionEndAfterVote,
+      turns,
+      saveCustomSession,
+      markSessionSaveFailed,
+    ]
   );
+
+  const skipBestAnswer = useCallback(() => {
+    showSessionEndAfterVote(null);
+    if (!customSessionId) {
+      const lastTurn = turns[turns.length - 1];
+      if (lastTurn?.responses.length) {
+        void saveCustomSession(lastTurn.userText, lastTurn.responses).then((saved) => {
+          if (!saved.ok) markSessionSaveFailed(saved.error);
+        });
+      } else {
+        markSessionSaveFailed("no responses to save");
+      }
+    }
+  }, [
+    showSessionEndAfterVote,
+    customSessionId,
+    turns,
+    saveCustomSession,
+    markSessionSaveFailed,
+  ]);
 
   const toggleAi = useCallback((id: AiProviderName) => {
     setSelected((s) => ({ ...s, [id]: !s[id] }));
@@ -504,11 +651,16 @@ export default function CustomModePage() {
     }
     setBestAnswerPanel(null);
     setBestAnswerVisual(false);
+    setSessionEndPanel(null);
+    setSessionEndVisual(false);
+    setSessionEndSaveFailed(false);
     setTurns((prev) => [
       ...prev,
       { id: turnId, userText: text, responses: [] },
     ]);
     setInput("");
+
+    const providerOutcomes: Partial<Record<AiProviderName, CompletedResponse>> = {};
 
     const conversationHistory: CompareConversationMessage[] = messages
       .slice(-10)
@@ -566,18 +718,25 @@ export default function CustomModePage() {
         const stored =
           plain ?? (r.error ? `[error] ${r.error}` : "");
         responsesThisTurn[r.provider] = stored;
+        providerOutcomes[r.provider] = {
+          provider: r.provider,
+          text: r.error ? null : plain,
+          ms: r.responseTimeMs,
+          error: r.error,
+        };
         setTurns((prev) =>
           prev.map((t) => {
             if (t.id !== turnId) return t;
-            const firstOfTurn = t.responses.length === 0;
+            const withoutProvider = t.responses.filter((res) => res.provider !== r.provider);
+            const firstOfTurn = withoutProvider.length === 0;
             return {
               ...t,
               ...(firstOfTurn ? { streamAnchorMs: Date.now() } : {}),
               responses: [
-                ...t.responses,
+                ...withoutProvider,
                 {
                   provider: r.provider,
-                  text: plain,
+                  text: r.error ? null : plain,
                   ms: r.responseTimeMs,
                   error: r.error,
                 },
@@ -616,6 +775,17 @@ export default function CustomModePage() {
         }
       }
 
+      const responsesForSave: CompletedResponse[] = roundProviders.map((p) => {
+        const outcome = providerOutcomes[p];
+        if (outcome) return outcome;
+        return { provider: p, text: null, ms: 0 };
+      });
+
+      const saved = await saveCustomSession(text, responsesForSave);
+      if (!saved.ok) {
+        console.log("[custom] save-session after stream:", saved.error);
+      }
+
       if (resolvedSessionId && roundProviders.length > 0) {
         bestAnswerTimerRef.current = setTimeout(() => {
           setBestAnswerPanel({
@@ -643,48 +813,54 @@ export default function CustomModePage() {
     selectedList,
     sessionId,
     messages,
-    router,
     temperature,
     advancedOpen,
     customSystem,
     maxTokens,
+    saveCustomSession,
   ]);
 
-  const pickWinner = useCallback(
-    async (winner: AiProviderName) => {
-      if (!sessionId) return;
-      setEndSubmitting(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/compare/end", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            winner,
-          }),
-        });
-        if (!res.ok) {
-          const j = (await res.json().catch(() => null)) as { error?: string };
-          setError(j?.error ?? "Could not save selection");
-          return;
-        }
-        if (bestAnswerTimerRef.current != null) {
-          clearTimeout(bestAnswerTimerRef.current);
-          bestAnswerTimerRef.current = null;
-        }
-        setBestAnswerPanel(null);
-        setBestAnswerVisual(false);
-        setEndOpen(false);
-        setSessionId(null);
-        setMessages([]);
-        setTurns([]);
-      } finally {
-        setEndSubmitting(false);
-      }
-    },
-    [sessionId, router]
-  );
+  const resolveShareUrlForShare = useCallback(async (): Promise<string | null> => {
+    if (shareId) {
+      return `${PUBLIC_SHARE_BASE}/${shareId}`;
+    }
+    const lastTurn = turns[turns.length - 1];
+    if (!lastTurn?.responses.length) {
+      return null;
+    }
+    const saved = await saveCustomSession(lastTurn.userText, lastTurn.responses);
+    if (!saved.ok) {
+      console.log("[custom] save-session for share:", saved.error);
+      return null;
+    }
+    return `${PUBLIC_SHARE_BASE}/${saved.share_id}`;
+  }, [shareId, turns, saveCustomSession]);
+
+  const retrySaveForEndPanel = useCallback(async () => {
+    if (customSessionId && shareId) return;
+    const lastTurn = turns[turns.length - 1];
+    if (!lastTurn?.responses.length) {
+      markSessionSaveFailed("no responses to save");
+      return;
+    }
+    const saved = await saveCustomSession(lastTurn.userText, lastTurn.responses);
+    if (!saved.ok) {
+      markSessionSaveFailed(saved.error);
+    }
+  }, [customSessionId, shareId, turns, saveCustomSession, markSessionSaveFailed]);
+
+  useEffect(() => {
+    if (!sessionEndPanel || (customSessionId && shareId)) return;
+    void retrySaveForEndPanel();
+  }, [sessionEndPanel, customSessionId, shareId, retrySaveForEndPanel]);
+
+  const showSessionEndPreparing =
+    Boolean(sessionEndPanel) &&
+    !sessionEndSaveFailed &&
+    !(customSessionId && shareId);
+  const showSessionEndPanel =
+    Boolean(sessionEndPanel) &&
+    (Boolean(customSessionId && shareId) || sessionEndSaveFailed);
 
   return (
     <div className={BG}>
@@ -707,13 +883,6 @@ export default function CustomModePage() {
               Credits unavailable
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => setEndOpen(true)}
-            className="rounded-full border border-rose-400/40 bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-100 transition hover:bg-rose-500/25"
-          >
-            End Session
-          </button>
         </div>
       </header>
 
@@ -760,7 +929,7 @@ export default function CustomModePage() {
 
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-[#0a0f1e]/98 backdrop-blur-md">
         <div className="relative mx-auto max-w-3xl overflow-visible">
-          {bestAnswerPanel ? (
+          {bestAnswerPanel && !sessionEndPanel ? (
             <div className="pointer-events-none absolute inset-x-0 bottom-full z-40 px-3 pb-2 sm:px-4">
               <div
                 className={[
@@ -775,7 +944,7 @@ export default function CustomModePage() {
                     </p>
                     <button
                       type="button"
-                      onClick={() => closeBestAnswerPanel()}
+                      onClick={skipBestAnswer}
                       className="shrink-0 text-sm text-slate-400 underline-offset-4 transition hover:text-white hover:underline"
                     >
                       Skip
@@ -810,6 +979,41 @@ export default function CustomModePage() {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          ) : null}
+          {sessionEndPanel ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-full z-40 px-3 pb-2 sm:px-4">
+              <div className="pointer-events-auto mx-auto max-w-3xl">
+                {showSessionEndPreparing ? (
+                  <div
+                    className={[
+                      "mt-4 rounded-2xl border border-white/10 bg-[#121a2e] p-4 transition-all duration-300 ease-out",
+                      sessionEndVisual
+                        ? "translate-y-0 opacity-100"
+                        : "translate-y-2 opacity-0",
+                    ].join(" ")}
+                  >
+                    {sessionEndPanel.votedAi ? (
+                      <p className="text-sm text-slate-200">
+                        🏆 {sessionEndPanel.votedAi} answered best
+                      </p>
+                    ) : null}
+                    <p className="mt-3 text-sm text-slate-400">Preparing share options…</p>
+                  </div>
+                ) : null}
+                {showSessionEndPanel ? (
+                  <CompareSessionEndPanel
+                    votedAi={sessionEndPanel.votedAi}
+                    compareSessionId={customSessionId ?? ""}
+                    shareId={shareId ?? ""}
+                    visible={sessionEndVisual}
+                    saveFailed={sessionEndSaveFailed}
+                    onResolveShareUrl={resolveShareUrlForShare}
+                    onDone={dismissSessionPanels}
+                    goPublicPath="/api/custom/go-public"
+                  />
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -975,68 +1179,6 @@ export default function CustomModePage() {
         </div>
       </div>
 
-      {endOpen ? (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center">
-          <div
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#131c35] p-6 shadow-2xl"
-            role="dialog"
-            aria-modal
-            aria-labelledby="compare-end-title"
-          >
-            <h2
-              id="compare-end-title"
-              className="text-lg font-semibold text-white"
-            >
-              Which AI gave the best answer overall?
-            </h2>
-            <p className="mt-2 text-sm text-slate-400">
-              Your choice is saved to help improve the platform.
-            </p>
-            {providersInSession.length === 0 ? (
-              <p className="mt-4 text-sm text-amber-200/90">
-                Run at least one comparison in this session first.
-              </p>
-            ) : (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {providersInSession.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    disabled={endSubmitting || !sessionId}
-                    onClick={() => void pickWinner(p)}
-                    className={[
-                      "rounded-xl px-4 py-2 text-sm font-semibold text-white transition enabled:hover:opacity-90 disabled:opacity-40",
-                      p === "xai" ? "border border-white bg-black" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    style={{
-                      backgroundColor:
-                        p === "google"
-                          ? "#4285F4"
-                          : p === "xai"
-                            ? "#000000"
-                            : AI_ACCENT[p],
-                    }}
-                  >
-                    {AI_LABEL[p]}
-                  </button>
-                ))}
-              </div>
-            )}
-            <ShareButtons modeName="CUSTOM" className="mt-6" />
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEndOpen(false)}
-                className="rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-white/8"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import HelpModal from "@/components/HelpModal";
-import ShareButtons from "@/components/ShareButtons";
 import { personaHelpContent } from "@/lib/help-modal/persona-content";
-import { useRouter } from "next/navigation";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { PUBLIC_SHARE_BASE } from "@/lib/compare/session-types";
+import { CompareSessionEndPanel } from "@/app/modes/compare/CompareSessionEndPanel";
 import {
   useCallback,
   useEffect,
@@ -156,7 +157,10 @@ type Turn = {
 
 const CARD_STAGGER_MS = 300;
 const BEST_ANSWER_DELAY_MS = 2000;
-const BEST_ANSWER_ANIM_MS = 320;
+
+type SavePersonaSessionResult =
+  | { ok: true; id: string; share_id: string }
+  | { ok: false; error: string };
 
 function wordsForTypewriter(s: string): string[] {
   if (!s) return [];
@@ -314,7 +318,6 @@ function StaggeredAiChatBubble({
 }
 
 export default function PersonaModePage() {
-  const router = useRouter();
   const [credits, setCredits] = useState<number | null>(null);
   const [rows, setRows] = useState<PersonaRow[]>([]);
   const [input, setInput] = useState("");
@@ -322,13 +325,19 @@ export default function PersonaModePage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [endOpen, setEndOpen] = useState(false);
-  const [endSubmitting, setEndSubmitting] = useState(false);
+  const [personaSessionId, setPersonaSessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [sessionEndPanel, setSessionEndPanel] = useState<{ votedAi: string | null } | null>(
+    null
+  );
+  const [sessionEndVisual, setSessionEndVisual] = useState(false);
+  const [sessionEndSaveFailed, setSessionEndSaveFailed] = useState(false);
   const chatMainRef = useRef<HTMLElement>(null);
   const footerStackRef = useRef<HTMLDivElement>(null);
   /** Clears docked footer + safe-area height from scrollable chat. */
   const [bottomStackPx, setBottomStackPx] = useState(320);
   const bestAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetEpochRef = useRef(0);
   const [bestAnswerPanel, setBestAnswerPanel] = useState<{
     sessionId: string;
     providers: AiProviderName[];
@@ -381,16 +390,6 @@ export default function PersonaModePage() {
       return null;
     }
   }, [readyAssignments.length]);
-
-  const providersInSession = useMemo(() => {
-    const s = new Set<AiProviderName>();
-    for (const t of turns) {
-      for (const r of t.responses) {
-        s.add(r.provider);
-      }
-    }
-    return Array.from(s);
-  }, [turns]);
 
   useEffect(() => {
     void (async () => {
@@ -465,38 +464,186 @@ export default function PersonaModePage() {
     return () => cancelAnimationFrame(id);
   }, [bestAnswerPanel]);
 
-  const closeBestAnswerPanel = useCallback(() => {
+  useEffect(() => {
+    if (!sessionEndPanel) {
+      setSessionEndVisual(false);
+      return;
+    }
+    setSessionEndVisual(false);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setSessionEndVisual(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [sessionEndPanel]);
+
+  const markSessionSaveFailed = useCallback((reason: string) => {
+    console.log("[persona] save-session error:", reason);
+    setSessionEndSaveFailed(true);
+  }, []);
+
+  const savePersonaSession = useCallback(
+    async (
+      question: string,
+      responses: CompletedResponse[]
+    ): Promise<SavePersonaSessionResult> => {
+      const epoch = resetEpochRef.current;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        console.log("[persona] save-session error: not signed in");
+        return { ok: false, error: "not signed in" };
+      }
+
+      const payload = responses.map((r) => ({
+        ai_name: AI_LABEL[r.provider],
+        content: r.error ? null : r.text,
+      }));
+
+      if (payload.length === 0) {
+        console.log("[persona] save-session error: empty responses");
+        return { ok: false, error: "empty responses" };
+      }
+
+      try {
+        const res = await authenticatedFetch("/api/persona/save-session", {
+          method: "POST",
+          json: {
+            user_id: user.id,
+            question,
+            responses: payload,
+          },
+        });
+        const j = (await res.json().catch(() => null)) as {
+          id?: string;
+          share_id?: string;
+          error?: string;
+        };
+        if (!res.ok || !j.id || !j.share_id) {
+          const err = j?.error ?? `HTTP ${res.status}`;
+          console.log("[persona] save-session error:", err);
+          return { ok: false, error: err };
+        }
+        console.log("[persona] save-session success:", j.id, j.share_id);
+        if (epoch !== resetEpochRef.current) {
+          return { ok: false, error: "session reset" };
+        }
+        setPersonaSessionId(j.id);
+        setShareId(j.share_id);
+        setSessionEndSaveFailed(false);
+        return { ok: true, id: j.id, share_id: j.share_id };
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : "network error";
+        console.log("[persona] save-session error:", err);
+        return { ok: false, error: err };
+      }
+    },
+    []
+  );
+
+  const dismissSessionPanels = useCallback(() => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setSessionEndPanel(null);
+    setSessionEndVisual(false);
+    setSessionEndSaveFailed(false);
+    setBestAnswerPanel(null);
     setBestAnswerVisual(false);
-    window.setTimeout(() => {
-      setBestAnswerPanel(null);
-    }, BEST_ANSWER_ANIM_MS);
+  }, []);
+
+  const showSessionEndAfterVote = useCallback((votedAi: string | null) => {
+    if (bestAnswerTimerRef.current != null) {
+      clearTimeout(bestAnswerTimerRef.current);
+      bestAnswerTimerRef.current = null;
+    }
+    setBestAnswerPanel(null);
+    setBestAnswerVisual(false);
+    setSessionEndSaveFailed(false);
+    setSessionEndPanel({ votedAi });
   }, []);
 
   const submitBestAnswerPick = useCallback(
     async (provider: AiProviderName) => {
-      if (!bestAnswerPanel?.sessionId) return;
       setError(null);
+      const votedLabel = AI_LABEL[provider];
+      showSessionEndAfterVote(votedLabel);
+
       try {
-        const res = await fetch("/api/compare/user-selection", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: bestAnswerPanel.sessionId,
-            selectedProvider: provider,
-          }),
-        });
-        if (!res.ok) {
-          const j = (await res.json().catch(() => null)) as { error?: string };
-          setError(j?.error ?? "Could not save selection");
-          return;
+        let sessionIdForVote = personaSessionId;
+        if (!sessionIdForVote) {
+          const lastTurn = turns[turns.length - 1];
+          if (lastTurn?.responses.length) {
+            const saved = await savePersonaSession(
+              lastTurn.userText,
+              lastTurn.responses
+            );
+            if (!saved.ok) {
+              markSessionSaveFailed(saved.error);
+            } else {
+              sessionIdForVote = saved.id;
+            }
+          }
         }
-        closeBestAnswerPanel();
+
+        if (sessionIdForVote) {
+          const res = await authenticatedFetch("/api/persona/save-session", {
+            method: "PATCH",
+            json: {
+              session_id: sessionIdForVote,
+              voted_ai: votedLabel,
+            },
+          });
+          if (!res.ok) {
+            const j = (await res.json().catch(() => null)) as { error?: string };
+            setError(j?.error ?? "Could not save vote");
+          }
+        }
+
+        if (bestAnswerPanel?.sessionId) {
+          await fetch("/api/compare/user-selection", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: bestAnswerPanel.sessionId,
+              selectedProvider: provider,
+            }),
+          });
+        }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Unknown error");
       }
     },
-    [bestAnswerPanel, router, closeBestAnswerPanel]
+    [
+      personaSessionId,
+      bestAnswerPanel,
+      showSessionEndAfterVote,
+      turns,
+      savePersonaSession,
+      markSessionSaveFailed,
+    ]
   );
+
+  const skipBestAnswer = useCallback(() => {
+    showSessionEndAfterVote(null);
+    if (!personaSessionId) {
+      const lastTurn = turns[turns.length - 1];
+      if (lastTurn?.responses.length) {
+        void savePersonaSession(lastTurn.userText, lastTurn.responses).then((saved) => {
+          if (!saved.ok) markSessionSaveFailed(saved.error);
+        });
+      } else {
+        markSessionSaveFailed("no responses to save");
+      }
+    }
+  }, [
+    showSessionEndAfterVote,
+    personaSessionId,
+    turns,
+    savePersonaSession,
+    markSessionSaveFailed,
+  ]);
 
   const addRow = useCallback(() => {
     setRows((prev) => {
@@ -532,8 +679,13 @@ export default function PersonaModePage() {
     }
     setBestAnswerPanel(null);
     setBestAnswerVisual(false);
+    setSessionEndPanel(null);
+    setSessionEndVisual(false);
+    setSessionEndSaveFailed(false);
     setTurns((prev) => [...prev, { id: turnId, userText: text, responses: [] }]);
     setInput("");
+
+    const providerOutcomes: Partial<Record<AiProviderName, CompletedResponse>> = {};
 
     try {
       let resolvedSessionId: string | null = sessionId;
@@ -572,18 +724,25 @@ export default function PersonaModePage() {
       const applyResult = (r: RouterResult) => {
         const plain =
           r.text != null && !r.error ? stripMarkdownFormatting(r.text) : r.text;
+        providerOutcomes[r.provider] = {
+          provider: r.provider,
+          text: r.error ? null : plain,
+          ms: r.responseTimeMs,
+          error: r.error,
+        };
         setTurns((prev) =>
           prev.map((t) => {
             if (t.id !== turnId) return t;
-            const firstOfTurn = t.responses.length === 0;
+            const withoutProvider = t.responses.filter((res) => res.provider !== r.provider);
+            const firstOfTurn = withoutProvider.length === 0;
             return {
               ...t,
               ...(firstOfTurn ? { streamAnchorMs: Date.now() } : {}),
               responses: [
-                ...t.responses,
+                ...withoutProvider,
                 {
                   provider: r.provider,
-                  text: plain,
+                  text: r.error ? null : plain,
                   ms: r.responseTimeMs,
                   error: r.error,
                 },
@@ -628,6 +787,17 @@ export default function PersonaModePage() {
         }
       }
 
+      const responsesForSave: CompletedResponse[] = roundProviders.map((p) => {
+        const outcome = providerOutcomes[p];
+        if (outcome) return outcome;
+        return { provider: p, text: null, ms: 0 };
+      });
+
+      const saved = await savePersonaSession(text, responsesForSave);
+      if (!saved.ok) {
+        console.log("[persona] save-session after stream:", saved.error);
+      }
+
       if (resolvedSessionId && roundProviders.length > 0) {
         bestAnswerTimerRef.current = setTimeout(() => {
           setBestAnswerPanel({
@@ -651,44 +821,50 @@ export default function PersonaModePage() {
     assignmentsPayload,
     providerList,
     sessionId,
-    router,
+    savePersonaSession,
   ]);
 
-  const pickWinner = useCallback(
-    async (winner: AiProviderName) => {
-      if (!sessionId) return;
-      setEndSubmitting(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/compare/end", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            winner,
-          }),
-        });
-        if (!res.ok) {
-          const j = (await res.json().catch(() => null)) as { error?: string };
-          setError(j?.error ?? "Could not save selection");
-          return;
-        }
-        if (bestAnswerTimerRef.current != null) {
-          clearTimeout(bestAnswerTimerRef.current);
-          bestAnswerTimerRef.current = null;
-        }
-        setBestAnswerPanel(null);
-        setBestAnswerVisual(false);
-        setEndOpen(false);
-        setSessionId(null);
-        setTurns([]);
-        setRows([]);
-      } finally {
-        setEndSubmitting(false);
-      }
-    },
-    [sessionId, router]
-  );
+  const resolveShareUrlForShare = useCallback(async (): Promise<string | null> => {
+    if (shareId) {
+      return `${PUBLIC_SHARE_BASE}/${shareId}`;
+    }
+    const lastTurn = turns[turns.length - 1];
+    if (!lastTurn?.responses.length) {
+      return null;
+    }
+    const saved = await savePersonaSession(lastTurn.userText, lastTurn.responses);
+    if (!saved.ok) {
+      console.log("[persona] save-session for share:", saved.error);
+      return null;
+    }
+    return `${PUBLIC_SHARE_BASE}/${saved.share_id}`;
+  }, [shareId, turns, savePersonaSession]);
+
+  const retrySaveForEndPanel = useCallback(async () => {
+    if (personaSessionId && shareId) return;
+    const lastTurn = turns[turns.length - 1];
+    if (!lastTurn?.responses.length) {
+      markSessionSaveFailed("no responses to save");
+      return;
+    }
+    const saved = await savePersonaSession(lastTurn.userText, lastTurn.responses);
+    if (!saved.ok) {
+      markSessionSaveFailed(saved.error);
+    }
+  }, [personaSessionId, shareId, turns, savePersonaSession, markSessionSaveFailed]);
+
+  useEffect(() => {
+    if (!sessionEndPanel || (personaSessionId && shareId)) return;
+    void retrySaveForEndPanel();
+  }, [sessionEndPanel, personaSessionId, shareId, retrySaveForEndPanel]);
+
+  const showSessionEndPreparing =
+    Boolean(sessionEndPanel) &&
+    !sessionEndSaveFailed &&
+    !(personaSessionId && shareId);
+  const showSessionEndPanel =
+    Boolean(sessionEndPanel) &&
+    (Boolean(personaSessionId && shareId) || sessionEndSaveFailed);
 
   const canAddRow = rows.length < MAX_ROWS;
   const selectBase =
@@ -718,13 +894,6 @@ export default function PersonaModePage() {
               Credits unavailable
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => setEndOpen(true)}
-            className="rounded-full border border-rose-400/40 bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-100 transition hover:bg-rose-500/25"
-          >
-            End Session
-          </button>
         </div>
       </header>
 
@@ -781,7 +950,7 @@ export default function PersonaModePage() {
         ref={footerStackRef}
         className="fixed inset-x-0 bottom-0 z-30 flex flex-col border-t border-white/10 bg-[#0a0f1e]/98 shadow-[0_-10px_40px_rgba(0,0,0,0.45)] backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)]"
       >
-          {bestAnswerPanel ? (
+          {bestAnswerPanel && !sessionEndPanel ? (
             <div
               className={[
                 "overflow-hidden border-b border-white/10 bg-[#1a2235]/95 transition-[max-height] duration-300 ease-out",
@@ -798,7 +967,7 @@ export default function PersonaModePage() {
                   </p>
                   <button
                     type="button"
-                    onClick={() => closeBestAnswerPanel()}
+                    onClick={skipBestAnswer}
                     className="shrink-0 text-sm text-slate-400 underline-offset-4 transition hover:text-white hover:underline"
                   >
                     Skip
@@ -832,6 +1001,42 @@ export default function PersonaModePage() {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          ) : null}
+
+          {sessionEndPanel ? (
+            <div className="border-b border-white/10 bg-[#1a2235]/95 px-3 py-3 sm:px-4">
+              <div className="mx-auto w-full max-w-3xl">
+                {showSessionEndPreparing ? (
+                  <div
+                    className={[
+                      "rounded-2xl border border-white/10 bg-[#121a2e] p-4 transition-all duration-300 ease-out",
+                      sessionEndVisual
+                        ? "translate-y-0 opacity-100"
+                        : "translate-y-2 opacity-0",
+                    ].join(" ")}
+                  >
+                    {sessionEndPanel.votedAi ? (
+                      <p className="text-sm text-slate-200">
+                        🏆 {sessionEndPanel.votedAi} answered best
+                      </p>
+                    ) : null}
+                    <p className="mt-3 text-sm text-slate-400">Preparing share options…</p>
+                  </div>
+                ) : null}
+                {showSessionEndPanel ? (
+                  <CompareSessionEndPanel
+                    votedAi={sessionEndPanel.votedAi}
+                    compareSessionId={personaSessionId ?? ""}
+                    shareId={shareId ?? ""}
+                    visible={sessionEndVisual}
+                    saveFailed={sessionEndSaveFailed}
+                    onResolveShareUrl={resolveShareUrlForShare}
+                    onDone={dismissSessionPanels}
+                    goPublicPath="/api/persona/go-public"
+                  />
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -1101,65 +1306,6 @@ export default function PersonaModePage() {
           </div>
       </div>
 
-      {endOpen ? (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center">
-          <div
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#131c35] p-6 shadow-2xl"
-            role="dialog"
-            aria-modal
-            aria-labelledby="persona-end-title"
-          >
-            <h2 id="persona-end-title" className="text-lg font-semibold text-white">
-              Which AI gave the best answer overall?
-            </h2>
-            <p className="mt-2 text-sm text-slate-400">
-              Your choice is saved to help improve the platform.
-            </p>
-            {providersInSession.length === 0 ? (
-              <p className="mt-4 text-sm text-amber-200/90">
-                Run at least one comparison in this session first.
-              </p>
-            ) : (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {providersInSession.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    disabled={endSubmitting || !sessionId}
-                    onClick={() => void pickWinner(p)}
-                    className={[
-                      "rounded-xl px-4 py-2 text-sm font-semibold text-white transition enabled:hover:opacity-90 disabled:opacity-40",
-                      p === "xai" ? "border border-white bg-black" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    style={{
-                      backgroundColor:
-                        p === "google"
-                          ? "#4285F4"
-                          : p === "xai"
-                            ? "#000000"
-                            : AI_ACCENT[p],
-                    }}
-                  >
-                    {AI_LABEL[p]}
-                  </button>
-                ))}
-              </div>
-            )}
-            <ShareButtons modeName="PERSONA" className="mt-6" />
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEndOpen(false)}
-                className="rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-white/8"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

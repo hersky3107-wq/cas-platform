@@ -44,6 +44,8 @@ type CompareSessionEndPanelProps = {
   saveFailed?: boolean
   onResolveShareUrl: () => Promise<string | null>
   onDone: () => void
+  /** Defaults to /api/compare/go-public */
+  goPublicPath?: string
 }
 
 export function CompareSessionEndPanel({
@@ -54,6 +56,7 @@ export function CompareSessionEndPanel({
   saveFailed = false,
   onResolveShareUrl,
   onDone,
+  goPublicPath = '/api/compare/go-public',
 }: CompareSessionEndPanelProps) {
   const [goPublicDone, setGoPublicDone] = useState(false)
   const [goPublicLoading, setGoPublicLoading] = useState(false)
@@ -123,7 +126,7 @@ export function CompareSessionEndPanel({
     setGoPublicLoading(true)
     setError(null)
     try {
-      const res = await authenticatedFetch('/api/compare/go-public', {
+      const res = await authenticatedFetch(goPublicPath, {
         method: 'POST',
         json: { session_id: compareSessionId },
       })
@@ -138,7 +141,7 @@ export function CompareSessionEndPanel({
     } finally {
       setGoPublicLoading(false)
     }
-  }, [compareSessionId, goPublicDone, goPublicLoading, saveFailed])
+  }, [compareSessionId, goPublicDone, goPublicLoading, saveFailed, goPublicPath])
 
   const pillClass =
     'inline-flex items-center justify-center rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-white/10 disabled:opacity-50'

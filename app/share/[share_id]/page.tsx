@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { parseCompareResponses } from '@/lib/compare/session-types'
+import { parsePersonaResponses } from '@/lib/persona/session-types'
+import { parseCustomResponses } from '@/lib/custom/session-types'
 import { PUBLIC_SHARE_BASE } from '@/lib/compare/session-types'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
@@ -9,20 +11,18 @@ type PageProps = {
 }
 
 type ShareSession = {
+  kind: 'compare' | 'persona' | 'custom'
   question: string
   responses: ReturnType<typeof parseCompareResponses>
   voted_ai: string | null
   is_public: boolean
 }
 
-async function loadSession(shareId: string): Promise<ShareSession | null> {
-  const id = shareId.trim()
-  if (!id) return null
-
+async function loadFromCompare(shareId: string): Promise<ShareSession | null> {
   const { data, error } = await supabaseAdmin
     .from('compare_sessions')
     .select('question, responses, voted_ai, is_public')
-    .eq('share_id', id)
+    .eq('share_id', shareId)
     .maybeSingle()
 
   if (error || !data) {
@@ -31,11 +31,67 @@ async function loadSession(shareId: string): Promise<ShareSession | null> {
   }
 
   return {
+    kind: 'compare',
     question: data.question,
     responses: parseCompareResponses(data.responses),
     voted_ai: typeof data.voted_ai === 'string' ? data.voted_ai : null,
     is_public: Boolean(data.is_public),
   }
+}
+
+async function loadFromPersona(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('persona_sessions')
+    .select('question, responses, voted_ai, is_public')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] persona_sessions lookup:', error.message)
+    return null
+  }
+
+  return {
+    kind: 'persona',
+    question: data.question,
+    responses: parsePersonaResponses(data.responses),
+    voted_ai: typeof data.voted_ai === 'string' ? data.voted_ai : null,
+    is_public: Boolean(data.is_public),
+  }
+}
+
+async function loadFromCustom(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('custom_sessions')
+    .select('question, responses, voted_ai, is_public')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] custom_sessions lookup:', error.message)
+    return null
+  }
+
+  return {
+    kind: 'custom',
+    question: data.question,
+    responses: parseCustomResponses(data.responses),
+    voted_ai: typeof data.voted_ai === 'string' ? data.voted_ai : null,
+    is_public: Boolean(data.is_public),
+  }
+}
+
+async function loadSession(shareId: string): Promise<ShareSession | null> {
+  const id = shareId.trim()
+  if (!id) return null
+
+  const compare = await loadFromCompare(id)
+  if (compare) return compare
+
+  const persona = await loadFromPersona(id)
+  if (persona) return persona
+
+  return loadFromCustom(id)
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -49,13 +105,26 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     }
   }
 
-  const title = `AI Compare: "${session.question.slice(0, 60)}${session.question.length > 60 ? '…' : ''}" — AIMANI`
+  const label =
+    session.kind === 'persona'
+      ? 'AI Persona'
+      : session.kind === 'custom'
+        ? 'AI Custom'
+        : 'AI Compare'
+  const title = `${label}: "${session.question.slice(0, 60)}${session.question.length > 60 ? '…' : ''}" — AIMANI`
+
+  const description =
+    session.kind === 'persona'
+      ? `See how different AI personas answered this question on AIMANI.`
+      : session.kind === 'custom'
+        ? `See how multiple AIs answered with your custom rules on AIMANI.`
+        : `See how ChatGPT, Claude, Gemini, Grok, DeepSeek and Mistral answered this question on AIMANI.`
 
   return {
     title,
-    description: `See how ChatGPT, Claude, Gemini, Grok, DeepSeek and Mistral answered this question on AIMANI.`,
+    description,
     openGraph: {
-      title: 'AI Compare — AIMANI',
+      title: `${label} — AIMANI`,
       description: session.question.slice(0, 150),
       url: `${PUBLIC_SHARE_BASE}/${share_id}`,
     },
@@ -77,13 +146,20 @@ export default async function SharePage({ params }: PageProps) {
     )
   }
 
+  const heading =
+    session.kind === 'persona'
+      ? 'AI Persona Session'
+      : session.kind === 'custom'
+        ? 'AI Custom Session'
+        : 'AI Compare Session'
+
   return (
     <main className="min-h-screen bg-[#0a0f1e] px-4 py-12 text-white">
       <div className="mx-auto max-w-3xl">
         <p className="text-xs font-medium uppercase tracking-[0.24em] text-cyan-300/85">
           AIMANI
         </p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">AI Compare Session</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{heading}</h1>
 
         <div className="mt-8 rounded-2xl border border-cyan-400/25 bg-[#131c35] px-5 py-4">
           <p className="text-sm leading-relaxed text-slate-100">{session.question}</p>
