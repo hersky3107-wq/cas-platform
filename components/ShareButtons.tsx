@@ -97,13 +97,13 @@ export default function ShareButtons({
   const copyLink = useCallback(async () => {
     setStatus(null)
     try {
-      await navigator.clipboard.writeText(payload.copyText)
+      await navigator.clipboard.writeText(payload.url)
       setCopyOk(true)
       window.setTimeout(() => setCopyOk(false), 2200)
     } catch {
       setStatus('Could not copy link')
     }
-  }, [payload.copyText])
+  }, [payload.url])
 
   const platformBtnClass =
     'inline-flex items-center justify-center rounded-xl border border-white/12 bg-white/5 px-3 py-2 text-xs font-semibold text-white transition hover:border-white/25 hover:bg-white/10'

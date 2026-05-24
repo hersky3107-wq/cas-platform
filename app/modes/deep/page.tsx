@@ -7,7 +7,9 @@ import { deepHelpContent } from "@/lib/help-modal/deep-content";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
+import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 import { creditsForDeep } from "@/lib/credits";
+import { PUBLIC_SHARE_BASE, type DeepSessionResponse } from "@/lib/deep/session-types";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -160,6 +162,13 @@ export default function DeepModePage() {
   const [synthesis, setSynthesis] = useState("");
   const [credits, setCredits] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deepSessionId, setDeepSessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [savingSession, setSavingSession] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [goPublicLoading, setGoPublicLoading] = useState(false);
+  const [goPublicDone, setGoPublicDone] = useState(false);
+  const [goPublicError, setGoPublicError] = useState<string | null>(null);
   /** Visible in React state; ref avoids double-invoke / timer cleared by overlapping effects. */
   const [deepUxToastVisible, setDeepUxToastVisible] = useState(false);
   const deepUxToastOnceRef = useRef(false);
@@ -194,6 +203,11 @@ export default function DeepModePage() {
     setSynthesis("");
     setPlan(null);
     setPartsOut(new Map());
+    setDeepSessionId(null);
+    setShareId(null);
+    setSaveFailed(false);
+    setGoPublicDone(false);
+    setGoPublicError(null);
     setPhase("orchestrating");
 
     const manualAssignments =
@@ -312,6 +326,109 @@ export default function DeepModePage() {
       setSending(false);
     }
   }, [input, sending, outputMode, analysisMode, manualAngles]);
+
+  const buildSessionResponses = useCallback((): DeepSessionResponse[] => {
+    if (!plan?.length) return [];
+    const rows: DeepSessionResponse[] = [...plan]
+      .sort((a, b) => a.index - b.index)
+      .map((p) => {
+        const got = partsOut.get(p.index);
+        const label = AI_LABEL[p.assigned_provider];
+        const angle = (got?.part.angle ?? p.angle ?? "").trim();
+        const header = `${p.priority} · Part ${p.index}: ${p.topic}`;
+        if (got?.result.error) {
+          return { ai_name: `${label} (${p.priority})`, content: null };
+        }
+        const text = got?.result.text?.trim();
+        if (!text) {
+          return { ai_name: `${label} (${p.priority})`, content: null };
+        }
+        const angleLine = angle ? `\nAngle: ${angle}` : "";
+        return {
+          ai_name: `${label} (${p.priority})`,
+          content: `${header}${angleLine}\n\n${text}`,
+        };
+      });
+    if (synthesis.trim()) {
+      rows.push({ ai_name: "Synthesis", content: synthesis.trim() });
+    }
+    return rows;
+  }, [plan, partsOut, synthesis]);
+
+  const saveDeepSession = useCallback(async () => {
+    if (deepSessionId || shareId) return;
+    const question = input.trim();
+    if (!question) return;
+    const responses = buildSessionResponses();
+    if (responses.length < 1) return;
+    setSavingSession(true);
+    setSaveFailed(false);
+    try {
+      const res = await authenticatedFetch("/api/deep/save-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deep_type: outputMode,
+          question,
+          responses,
+        }),
+      });
+      const j = (await res.json().catch(() => null)) as
+        | { id?: string; share_id?: string; error?: string }
+        | null;
+      if (!res.ok) {
+        setSaveFailed(true);
+        console.log("[deep] save-session error:", j?.error ?? res.status);
+        return;
+      }
+      if (typeof j?.id === "string") setDeepSessionId(j.id);
+      if (typeof j?.share_id === "string") setShareId(j.share_id);
+    } catch (e: unknown) {
+      console.log("[deep] save-session error:", e instanceof Error ? e.message : e);
+      setSaveFailed(true);
+    } finally {
+      setSavingSession(false);
+    }
+  }, [deepSessionId, shareId, input, outputMode, buildSessionResponses]);
+
+  useEffect(() => {
+    if (phase !== "done" || !plan?.length) return;
+    if (partsOut.size < plan.length) return;
+    if (deepSessionId || shareId || savingSession) return;
+    void saveDeepSession();
+  }, [
+    phase,
+    plan,
+    partsOut.size,
+    deepSessionId,
+    shareId,
+    savingSession,
+    saveDeepSession,
+  ]);
+
+  const handleGoPublic = useCallback(async () => {
+    if (!deepSessionId) return;
+    setGoPublicError(null);
+    setGoPublicLoading(true);
+    try {
+      const res = await authenticatedFetch("/api/deep/go-public", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: deepSessionId }),
+      });
+      const j = (await res.json().catch(() => null)) as { share_id?: string; error?: string } | null;
+      if (!res.ok) {
+        setGoPublicError(typeof j?.error === "string" ? j.error : "Could not publish session");
+        return;
+      }
+      setGoPublicDone(true);
+      if (typeof j?.share_id === "string") setShareId(j.share_id);
+    } catch (e: unknown) {
+      setGoPublicError(e instanceof Error ? e.message : "Could not publish session");
+    } finally {
+      setGoPublicLoading(false);
+    }
+  }, [deepSessionId]);
 
   const modeCost = MODE_COST[outputMode];
   const showManualToggle =
@@ -638,7 +755,55 @@ export default function DeepModePage() {
               </article>
             ) : null}
             {phase === "done" ? (
-              <ShareButtons modeName="DEEP" className="mt-8" />
+              <>
+                {shareId ? (
+                  <ShareButtons
+                    modeName="DEEP"
+                    className="mt-8"
+                    url={`${PUBLIC_SHARE_BASE}/${shareId}`}
+                  />
+                ) : (
+                  <p className="mt-8 text-xs text-slate-500">
+                    {saveFailed ? "Could not save session for sharing." : "Saving session…"}
+                  </p>
+                )}
+
+                <div className="mt-4 rounded-xl border border-white/12 bg-[#1a2438]/90 p-3">
+                  {saveFailed ? (
+                    <p className="text-sm text-slate-400">Could not save session</p>
+                  ) : goPublicDone ? (
+                    <div className="text-sm">
+                      <p className="font-medium text-slate-200">✅ Indexed!</p>
+                      <p className="mt-1 text-slate-400">aimani.ai/share/{shareId}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-white">
+                        <span className="mr-1.5" aria-hidden>
+                          🔍
+                        </span>
+                        Put this on Google
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                        Let search engines find this session · No personal info shared
+                      </p>
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          onClick={() => void handleGoPublic()}
+                          disabled={goPublicLoading || !deepSessionId}
+                          className="inline-flex items-center justify-center rounded-full bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.25)] transition hover:bg-cyan-400 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {goPublicLoading ? "Publishing…" : "Go Public"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {goPublicError ? (
+                  <p className="mt-2 text-xs text-amber-300/90">{goPublicError}</p>
+                ) : null}
+              </>
             ) : null}
           </section>
         ) : null}
