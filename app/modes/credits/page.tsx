@@ -113,6 +113,7 @@ function CreditsContent() {
   } | null>(null)
   const [cancellingSubscription, setCancellingSubscription] = useState(false)
   const [cancelNotice, setCancelNotice] = useState<string | null>(null)
+  const [showKoPayPalNotice, setShowKoPayPalNotice] = useState(false)
   const [subscribingPlanType, setSubscribingPlanType] = useState<SubscriptionPlanType | null>(
     null
   )
@@ -205,6 +206,11 @@ function CreditsContent() {
       setTopUpAmount(topUpFromUrl)
     }
   }, [topUpFromUrl])
+
+  useEffect(() => {
+    const lang = navigator.language?.toLowerCase() ?? ''
+    setShowKoPayPalNotice(lang.startsWith('ko'))
+  }, [])
 
   useEffect(() => {
     if (!showTopUpSection || !topUpSectionRef.current) return
@@ -563,6 +569,13 @@ function CreditsContent() {
               )
             })}
           </div>
+
+          {showKoPayPalNotice ? (
+            <p className="mt-4 text-xs text-zinc-400">
+              Korean PayPal accounts cannot be used for payment. Please select &apos;Pay with
+              Debit or Credit Card&apos; instead.
+            </p>
+          ) : null}
 
           <div className="mt-5">
             <InfoCallout>
