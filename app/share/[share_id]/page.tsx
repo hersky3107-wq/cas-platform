@@ -9,6 +9,10 @@ import { parseComedyResponses } from '@/lib/comedy/session-types'
 import { parseTaleResponses } from '@/lib/tale/session-types'
 import { parseOracleResponses } from '@/lib/oracle/session-types'
 import { parseSuitResponses } from '@/lib/suit/session-types'
+import {
+  parseArenaShareRoundRows,
+  type ArenaShareRoundRow,
+} from '@/lib/arena/session-types'
 import { PUBLIC_SHARE_BASE } from '@/lib/compare/session-types'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
@@ -17,7 +21,17 @@ type PageProps = {
 }
 
 type ShareSession = {
-  kind: 'compare' | 'persona' | 'custom' | 'panel' | 'deep' | 'comedy' | 'tale' | 'oracle' | 'suit'
+  kind:
+    | 'compare'
+    | 'persona'
+    | 'custom'
+    | 'panel'
+    | 'deep'
+    | 'comedy'
+    | 'tale'
+    | 'oracle'
+    | 'suit'
+    | 'arena'
   question: string
   responses: { ai_name: string; content: string | null }[]
   voted_ai: string | null
@@ -26,6 +40,18 @@ type ShareSession = {
   deep_type?: string
   comedy_type?: string
   oracle_type?: string
+  turn_number?: number
+  arena_rounds?: ArenaShareRoundRow[]
+}
+
+function groupArenaRoundsByNumber(rows: ArenaShareRoundRow[]): [number, ArenaShareRoundRow[]][] {
+  const byRound = new Map<number, ArenaShareRoundRow[]>()
+  for (const row of rows) {
+    const list = byRound.get(row.round_number) ?? []
+    list.push(row)
+    byRound.set(row.round_number, list)
+  }
+  return [...byRound.entries()].sort((a, b) => a[0] - b[0])
 }
 
 async function loadFromCompare(shareId: string): Promise<ShareSession | null> {
@@ -221,6 +247,35 @@ async function loadFromSuit(shareId: string): Promise<ShareSession | null> {
   }
 }
 
+async function loadFromArena(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('arena_sessions')
+    .select('topic, turn_number, rounds, is_public')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] arena_sessions lookup:', error.message)
+    return null
+  }
+
+  const arena_rounds = parseArenaShareRoundRows(data.rounds)
+  const turn_number =
+    typeof data.turn_number === 'number' && Number.isFinite(data.turn_number)
+      ? data.turn_number
+      : 1
+
+  return {
+    kind: 'arena',
+    question: data.topic,
+    turn_number,
+    arena_rounds,
+    responses: arena_rounds.map((r) => ({ ai_name: r.ai_name, content: r.content })),
+    voted_ai: null,
+    is_public: Boolean(data.is_public),
+  }
+}
+
 async function loadSession(shareId: string): Promise<ShareSession | null> {
   const id = shareId.trim()
   if (!id) return null
@@ -249,7 +304,10 @@ async function loadSession(shareId: string): Promise<ShareSession | null> {
   const oracle = await loadFromOracle(id)
   if (oracle) return oracle
 
-  return loadFromSuit(id)
+  const suit = await loadFromSuit(id)
+  if (suit) return suit
+
+  return loadFromArena(id)
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -280,6 +338,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
                   ? `AI Oracle (${session.oracle_type || 'session'})`
                   : session.kind === 'suit'
                     ? 'AI SUIT'
+                    : session.kind === 'arena'
+                      ? `AI Arena (Turn ${session.turn_number ?? '?'})`
         : 'AI Compare'
   const title = `${label}: "${session.question.slice(0, 60)}${session.question.length > 60 ? '…' : ''}" — AIMANI`
 
@@ -300,6 +360,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
                   ? `See this AI Oracle session on AIMANI.`
                   : session.kind === 'suit'
                     ? `See this AI SUIT legal session on AIMANI.`
+                    : session.kind === 'arena'
+                      ? `See this AI Arena battle turn on AIMANI.`
         : `See how ChatGPT, Claude, Gemini, Grok, DeepSeek and Mistral answered this question on AIMANI.`
 
   return {
@@ -345,6 +407,8 @@ export default async function SharePage({ params }: PageProps) {
                   ? `AI Oracle Session — ${session.oracle_type || 'oracle'}`
                   : session.kind === 'suit'
                     ? 'AI SUIT Legal Session'
+                    : session.kind === 'arena'
+                      ? `AI Arena Battle — Turn ${session.turn_number ?? '?'}`
         : 'AI Compare Session'
 
   return (
@@ -360,23 +424,50 @@ export default async function SharePage({ params }: PageProps) {
         </div>
 
         <div className="mt-8 flex flex-col gap-5">
-          {session.responses.map((r, idx) => (
-            <article
-              key={`${r.ai_name}-${idx}`}
-              className="rounded-2xl border border-white/10 bg-[#131c35]/80 p-5"
-            >
-              <span className="inline-flex rounded-lg bg-white/10 px-2.5 py-0.5 text-sm font-bold text-white">
-                {r.ai_name}
-              </span>
-              {r.content ? (
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
-                  {r.content}
-                </p>
-              ) : (
-                <p className="mt-3 text-sm text-slate-500">No response</p>
-              )}
-            </article>
-          ))}
+          {session.kind === 'arena' && session.arena_rounds?.length ? (
+            groupArenaRoundsByNumber(session.arena_rounds).map(([roundNum, rows]) => (
+              <section key={`round-${roundNum}`} className="space-y-3">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-300/90">
+                  Round {roundNum}
+                </h2>
+                {rows.map((r, idx) => (
+                  <article
+                    key={`${roundNum}-${r.ai_name}-${idx}`}
+                    className="rounded-2xl border border-white/10 bg-[#131c35]/80 p-5"
+                  >
+                    <span className="inline-flex rounded-lg bg-white/10 px-2.5 py-0.5 text-sm font-bold text-white">
+                      {r.ai_name}
+                    </span>
+                    {r.content ? (
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+                        {r.content}
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-500">No response</p>
+                    )}
+                  </article>
+                ))}
+              </section>
+            ))
+          ) : (
+            session.responses.map((r, idx) => (
+              <article
+                key={`${r.ai_name}-${idx}`}
+                className="rounded-2xl border border-white/10 bg-[#131c35]/80 p-5"
+              >
+                <span className="inline-flex rounded-lg bg-white/10 px-2.5 py-0.5 text-sm font-bold text-white">
+                  {r.ai_name}
+                </span>
+                {r.content ? (
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+                    {r.content}
+                  </p>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-500">No response</p>
+                )}
+              </article>
+            ))
+          )}
         </div>
 
         {session.voted_ai ? (

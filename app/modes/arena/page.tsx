@@ -25,6 +25,8 @@ import {
   stripArenaMarkdown,
   stripInternalTargetingBlock,
 } from "@/lib/ai/arena-parser";
+import { buildArenaTurnRoundRows } from "@/lib/arena/build-turn-rounds";
+import { ArenaTurnEndShare } from "./ArenaTurnEndShare";
 
 function visibleArenaText(s: string): string {
   return stripArenaMarkdown(stripInternalTargetingBlock(s));
@@ -933,6 +935,19 @@ export default function ArenaPage() {
   const showPostRoundNineViewFinal =
     phase === "battle" && maxRound === 9 && !awaitingNextBattleRound && !isLoading;
 
+  const turn1ShareRows = useMemo(
+    () => buildArenaTurnRoundRows(rounds, 1, ARENA_DISPLAY, visibleArenaText),
+    [rounds]
+  );
+  const turn2ShareRows = useMemo(
+    () => buildArenaTurnRoundRows(rounds, 2, ARENA_DISPLAY, visibleArenaText),
+    [rounds]
+  );
+  const turn3ShareRows = useMemo(
+    () => buildArenaTurnRoundRows(rounds, 3, ARENA_DISPLAY, visibleArenaText),
+    [rounds]
+  );
+
   return (
     <div className={BG}>
       <HelpModal content={arenaHelpContent} />
@@ -1224,6 +1239,13 @@ export default function ArenaPage() {
                     </p>
                   </div>
                 </div>
+                <ArenaTurnEndShare
+                  key={`${sessionId ?? "arena"}-turn-1`}
+                  active={showPostRoundThreeActions}
+                  topic={topic}
+                  turnNumber={1}
+                  rounds={turn1ShareRows}
+                />
               </div>
             ) : null}
 
@@ -1262,6 +1284,13 @@ export default function ArenaPage() {
                     Continue ▶ (rounds 7–9, uses credits)
                   </button>
                 </div>
+                <ArenaTurnEndShare
+                  key={`${sessionId ?? "arena"}-turn-2`}
+                  active={showPostRoundSixEndActions}
+                  topic={topic}
+                  turnNumber={2}
+                  rounds={turn2ShareRows}
+                />
               </div>
             ) : null}
 
@@ -1277,6 +1306,13 @@ export default function ArenaPage() {
                 >
                   Vote ▶ Who won?
                 </button>
+                <ArenaTurnEndShare
+                  key={`${sessionId ?? "arena"}-turn-3`}
+                  active={showPostRoundNineViewFinal}
+                  topic={topic}
+                  turnNumber={3}
+                  rounds={turn3ShareRows}
+                />
               </div>
             ) : null}
           </div>
