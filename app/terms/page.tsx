@@ -41,7 +41,8 @@ export default function TermsPage() {
         <section className="space-y-2 text-slate-300">
           <h2 className="text-lg font-semibold text-white">4. Payments</h2>
           <p className="text-sm leading-relaxed">
-            All payments are processed via PayPal. Prices are displayed in USD. AIMANI reserves the right
+            All payments are processed via our payment partners, including PayPal and Lemon Squeezy. Prices
+            are displayed in USD. AIMANI reserves the right
             to change pricing at any time with reasonable notice.
           </p>
         </section>

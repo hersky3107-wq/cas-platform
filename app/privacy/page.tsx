@@ -14,8 +14,9 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold text-white">1. Information We Collect</h2>
           <p className="text-sm leading-relaxed">
             Account information: email address, display name. Usage data: modules used, prompts submitted,
-            AI responses received. Payment data: transaction records via PayPal (we do not store card
-            details). Technical data: IP address, browser type, device information.
+            AI responses received. Payment data: transaction records via our payment partners including
+            PayPal and Lemon Squeezy (we do not store card details). Technical data: IP address, browser
+            type, device information.
           </p>
         </section>
 
@@ -40,7 +41,8 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold text-white">4. Third-Party Services</h2>
           <p className="text-sm leading-relaxed">
             AIMANI uses the following third-party services: Supabase (database and authentication), PayPal
-            (payment processing), OpenAI, Anthropic, Google, xAI, DeepSeek, Mistral (AI response generation
+            and Lemon Squeezy (payment processing), OpenAI, Anthropic, Google, xAI,
+            DeepSeek, Mistral (AI response generation
             — your prompts are transmitted to these providers to generate responses), Vercel (hosting), Resend
             (email). Each provider operates under their own privacy policy.
           </p>

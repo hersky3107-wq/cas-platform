@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import {
   createContext,
   useCallback,
@@ -46,6 +45,234 @@ const SLIDE_MODULES: string[] = [
   'Stage — Creative performances by AI. | Comedy Talk: AI tiki-taka banter, talk shows, and stand-up comedy | TALE: AI storytelling — Horror, Romance, Absurd, Sci-Fi, Fairy Tale, Sad Story and more | Archive: A vault of AI creative works',
 ]
 
+type SlideId = number | 'terms' | 'privacy' | 'refund'
+
+const ONBOARDING_SLIDE_COUNT = 5
+const LAST_ONBOARDING_SLIDE = 4
+
+function isOnboardingSlide(slide: SlideId): slide is number {
+  return typeof slide === 'number'
+}
+
+function PolicySection({
+  title,
+  children,
+}: {
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section className="space-y-2 text-slate-300">
+      <h3 className="text-base font-semibold text-white">{title}</h3>
+      <div className="text-sm leading-relaxed">{children}</div>
+    </section>
+  )
+}
+
+function TermsPolicyContent() {
+  return (
+    <div className="space-y-6 text-slate-200">
+      <p className="text-sm text-slate-400">Last updated: May 2026</p>
+      <h2 className="text-2xl font-semibold text-white">Terms of Service</h2>
+      <PolicySection title="1. Acceptance of Terms">
+        <p>
+          By accessing or using AIMANI, you agree to be bound by these Terms of Service. If you do not agree,
+          do not use the Service.
+        </p>
+      </PolicySection>
+      <PolicySection title="2. Eligibility">
+        <p>
+          You must be at least 14 years old to use the Service. Users under 18 require parental or guardian
+          consent for paid transactions.
+        </p>
+      </PolicySection>
+      <PolicySection title="3. Credits System">
+        <p>
+          Credits are the in-service currency used to access AIMANI modules. Subscription credits reset monthly
+          with no rollover. Pay-as-you-go credits are valid for 3 months from the date of purchase and roll over
+          within that period. Credits cannot be transferred to other users or exchanged for cash. Credit
+          consumption varies depending on the selected AI model, module, prompt length, and response length.
+          Estimated credit usage will be displayed before execution when possible. Subscription credits are
+          consumed first, followed by pay-as-you-go credits.
+        </p>
+      </PolicySection>
+      <PolicySection title="4. Payments">
+        <p>
+          All payments are processed via our payment partners, including PayPal and Lemon Squeezy. Prices are
+          displayed in USD. AIMANI reserves the right to change pricing at any time with reasonable notice.
+        </p>
+      </PolicySection>
+      <PolicySection title="5. Refunds">
+        <p>Please refer to our Refund Policy for full details.</p>
+      </PolicySection>
+      <PolicySection title="6. AI Disclaimer">
+        <p>
+          AIMANI provides AI-generated content for informational and entertainment purposes only. AI responses
+          do not constitute legal, medical, financial, tax, or psychological professional advice. We do not
+          guarantee the accuracy, completeness, or reliability of any AI response. AIMANI is not liable for
+          decisions made based on AI-generated content.
+        </p>
+      </PolicySection>
+      <PolicySection title="7. Service Availability">
+        <p>
+          AIMANI uses third-party AI providers. Your prompts and AI responses are transmitted to third-party
+          AI providers (OpenAI, Anthropic, Google, xAI, DeepSeek, Mistral) to generate responses. We are not
+          responsible for interruptions, errors, or discontinuation of specific AI models due to provider-side
+          issues. No refunds will be issued for such interruptions.
+        </p>
+      </PolicySection>
+      <PolicySection title="8. Prohibited Use">
+        <p>
+          You agree not to: use the Service for illegal purposes, attempt to manipulate or reverse-engineer the
+          platform, create multiple accounts to abuse free credits, use the Service to generate harmful or
+          illegal content.
+        </p>
+      </PolicySection>
+      <PolicySection title="9. Account Suspension">
+        <p>
+          AIMANI reserves the right to suspend or terminate accounts found in violation of these Terms,
+          including forfeiture of unused credits.
+        </p>
+      </PolicySection>
+      <PolicySection title="10. Changes to Terms">
+        <p>
+          We may update these Terms at any time. Continued use of the Service constitutes acceptance of the
+          updated Terms.
+        </p>
+      </PolicySection>
+      <PolicySection title="11. Contact">
+        <p>hersky3107@gmail.com</p>
+      </PolicySection>
+    </div>
+  )
+}
+
+function PrivacyPolicyContent() {
+  return (
+    <div className="space-y-6 text-slate-200">
+      <p className="text-sm text-slate-400">Last updated: May 2026</p>
+      <h2 className="text-2xl font-semibold text-white">Privacy Policy</h2>
+      <PolicySection title="1. Information We Collect">
+        <p>
+          Account information: email address, display name. Usage data: modules used, prompts submitted, AI
+          responses received. Payment data: transaction records via PayPal (we do not store card details).
+          Technical data: IP address, browser type, device information.
+        </p>
+      </PolicySection>
+      <PolicySection title="2. How We Use Your Information">
+        <p>
+          To provide and improve the Service. To process payments and manage credits. To send service-related
+          emails. To analyze usage patterns and improve AI module performance. To maintain platform security
+          and prevent abuse.
+        </p>
+      </PolicySection>
+      <PolicySection title="3. Data Storage">
+        <p>
+          Your data is stored securely via Supabase (PostgreSQL). We implement industry-standard security
+          measures to protect your information.
+        </p>
+      </PolicySection>
+      <PolicySection title="4. Third-Party Services">
+        <p>
+          AIMANI uses the following third-party services: Supabase (database and authentication), PayPal
+          (payment processing), Lemon Squeezy (payment processing), OpenAI, Anthropic, Google, xAI, DeepSeek,
+          Mistral (AI response generation — your prompts are transmitted to these providers to generate
+          responses), Vercel (hosting), Resend (email). Each provider operates under their own privacy policy.
+        </p>
+      </PolicySection>
+      <PolicySection title="5. Data Sharing">
+        <p>
+          We do not sell your personal data. We do not share your data with third parties except as required to
+          operate the Service or comply with legal obligations.
+        </p>
+      </PolicySection>
+      <PolicySection title="6. Your Rights">
+        <p>
+          You have the right to access your personal data, request deletion of your account and data, and opt
+          out of non-essential communications. Contact: hersky3107@gmail.com
+        </p>
+      </PolicySection>
+      <PolicySection title="7. Cookies">
+        <p>
+          AIMANI uses essential cookies for authentication and session management. No advertising cookies are
+          used.
+        </p>
+      </PolicySection>
+      <PolicySection title="8. Children&apos;s Privacy">
+        <p>
+          AIMANI is not intended for children under 14. We do not knowingly collect data from children under 14
+          without parental consent.
+        </p>
+      </PolicySection>
+      <PolicySection title="9. Changes">
+        <p>
+          We may update this Privacy Policy at any time. We will notify users of significant changes via email
+          or in-service notice.
+        </p>
+      </PolicySection>
+      <PolicySection title="10. Contact">
+        <p>hersky3107@gmail.com</p>
+      </PolicySection>
+    </div>
+  )
+}
+
+function RefundPolicyContent() {
+  return (
+    <div className="space-y-6 text-slate-200">
+      <p className="text-sm text-slate-400">Last updated: May 2026</p>
+      <h2 className="text-2xl font-semibold text-white">Refund Policy</h2>
+      <PolicySection title="1. General Policy">
+        <p>
+          All purchases of credits are final and non-refundable once credits have been used, except where required
+          by applicable law or in cases of payment error, duplicate charge, or failure to deliver purchased
+          credits.
+        </p>
+      </PolicySection>
+      <PolicySection title="2. Exception — New Users">
+        <p>
+          If you are a new user and have not used any credits, you may request a full refund within 24 hours of
+          your first purchase by contacting hersky3107@gmail.com. For users in the EU or UK, digital content
+          withdrawal rights may apply. By completing a purchase and using credits, you acknowledge that digital
+          content delivery has begun and you waive your right of withdrawal to the extent permitted by
+          applicable law.
+        </p>
+      </PolicySection>
+      <PolicySection title="3. Non-Refundable Cases">
+        <p>
+          The following are not eligible for refunds except where required by applicable law: partially used
+          credit packages, subscription credits (monthly reset, no rollover), credits lost due to account
+          suspension for Terms of Service violations, service interruptions caused by third-party AI provider
+          issues.
+        </p>
+      </PolicySection>
+      <PolicySection title="4. Payment Errors">
+        <p>
+          If you were charged incorrectly, experienced a duplicate charge, or purchased credits were not
+          delivered to your account, contact us immediately at hersky3107@gmail.com. We will investigate and
+          resolve within 3 business days. These cases are eligible for refund regardless of the general policy
+          above.
+        </p>
+      </PolicySection>
+      <PolicySection title="5. Subscription Cancellation">
+        <p>
+          Cancelling a subscription stops future billing. Credits remaining at cancellation are available until
+          the end of the current billing period and will not be refunded.
+        </p>
+      </PolicySection>
+      <PolicySection title="6. Process">
+        <p>
+          To request a refund, email hersky3107@gmail.com with: your account email, date of purchase, amount
+          charged, and reason for request. We aim to respond within 24 hours.
+        </p>
+      </PolicySection>
+      <PolicySection title="7. Changes">
+        <p>AIMANI reserves the right to update this Refund Policy at any time.</p>
+      </PolicySection>
+    </div>
+  )
+}
+
 function SlideDots({ active, total }: { active: number; total: number }) {
   return (
     <div className="flex justify-center gap-2 pt-2" role="tablist" aria-label="Onboarding slides">
@@ -69,9 +296,14 @@ function FirstTimeModal({
   open: boolean
   onDismiss: () => void
 }) {
-  const [slide, setSlide] = useState(0)
-  const total = 5
-  const lastSlide = slide === total - 1
+  const [slide, setSlide] = useState<SlideId>(0)
+  const onPolicySlide = !isOnboardingSlide(slide)
+  const onboardingIndex = isOnboardingSlide(slide) ? slide : LAST_ONBOARDING_SLIDE
+  const lastSlide = onboardingIndex === LAST_ONBOARDING_SLIDE
+
+  const backToSetup = useCallback(() => {
+    setSlide(LAST_ONBOARDING_SLIDE)
+  }, [])
 
   useEffect(() => {
     if (open) setSlide(0)
@@ -80,20 +312,23 @@ function FirstTimeModal({
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onDismiss()
+      if (e.key !== 'Escape') return
+      if (onPolicySlide) {
+        backToSetup()
+        return
       }
+      onDismiss()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onDismiss])
+  }, [open, onDismiss, onPolicySlide, backToSetup])
 
   const goNext = useCallback(() => {
-    setSlide((s) => Math.min(total - 1, s + 1))
-  }, [total])
+    setSlide((s) => (isOnboardingSlide(s) ? Math.min(LAST_ONBOARDING_SLIDE, s + 1) : s))
+  }, [])
 
   const goPrev = useCallback(() => {
-    setSlide((s) => Math.max(0, s - 1))
+    setSlide((s) => (isOnboardingSlide(s) ? Math.max(0, s - 1) : s))
   }, [])
 
   if (!open) return null
@@ -106,15 +341,17 @@ function FirstTimeModal({
       aria-labelledby="first-time-heading"
     >
       <div className="relative flex max-h-[min(90vh,800px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-[#0f1629] shadow-2xl ring-1 ring-white/10">
-        <div className="flex items-center justify-end gap-2 border-b border-white/10 px-4 py-3">
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/10 hover:text-white"
-          >
-            Skip
-          </button>
-        </div>
+        {!onPolicySlide ? (
+          <div className="flex items-center justify-end gap-2 border-b border-white/10 px-4 py-3">
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/10 hover:text-white"
+            >
+              Skip
+            </button>
+          </div>
+        ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {/* Slide 1 */}
@@ -232,55 +469,107 @@ function FirstTimeModal({
               </p>
               <p className="text-xs leading-relaxed text-slate-400">
                 By using AIMANI, you agree to our{' '}
-                <Link href="/terms" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200">
+                <button
+                  type="button"
+                  onClick={() => setSlide('terms')}
+                  className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200"
+                >
                   Terms of Service
-                </Link>{' '}
+                </button>{' '}
                 /{' '}
-                <Link
-                  href="/privacy"
+                <button
+                  type="button"
+                  onClick={() => setSlide('privacy')}
                   className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200"
                 >
                   Privacy Policy
-                </Link>{' '}
+                </button>{' '}
                 /{' '}
-                <Link href="/refund" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200">
+                <button
+                  type="button"
+                  onClick={() => setSlide('refund')}
+                  className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200"
+                >
                   Refund Policy
-                </Link>
+                </button>
               </p>
+            </div>
+          ) : null}
+
+          {slide === 'terms' ? (
+            <div className="space-y-4 text-slate-200">
+              <button
+                type="button"
+                onClick={backToSetup}
+                className="text-sm font-medium text-cyan-300 hover:text-cyan-200"
+              >
+                ← Back to setup
+              </button>
+              <TermsPolicyContent />
+            </div>
+          ) : null}
+
+          {slide === 'privacy' ? (
+            <div className="space-y-4 text-slate-200">
+              <button
+                type="button"
+                onClick={backToSetup}
+                className="text-sm font-medium text-cyan-300 hover:text-cyan-200"
+              >
+                ← Back to setup
+              </button>
+              <PrivacyPolicyContent />
+            </div>
+          ) : null}
+
+          {slide === 'refund' ? (
+            <div className="space-y-4 text-slate-200">
+              <button
+                type="button"
+                onClick={backToSetup}
+                className="text-sm font-medium text-cyan-300 hover:text-cyan-200"
+              >
+                ← Back to setup
+              </button>
+              <RefundPolicyContent />
             </div>
           ) : null}
         </div>
 
-        <SlideDots active={slide} total={total} />
+        {!onPolicySlide ? (
+          <SlideDots active={onboardingIndex} total={ONBOARDING_SLIDE_COUNT} />
+        ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-5 py-4">
-          <button
-            type="button"
-            onClick={goPrev}
-            disabled={slide === 0}
-            className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 disabled:pointer-events-none disabled:opacity-30"
-          >
-            Previous
-          </button>
-
-          {!lastSlide ? (
+        {!onPolicySlide ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-5 py-4">
             <button
               type="button"
-              onClick={goNext}
-              className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500"
+              onClick={goPrev}
+              disabled={onboardingIndex === 0}
+              className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 disabled:pointer-events-none disabled:opacity-30"
             >
-              Next
+              Previous
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-            >
-              Get Started
-            </button>
-          )}
-        </div>
+
+            {!lastSlide ? (
+              <button
+                type="button"
+                onClick={goNext}
+                className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500"
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+              >
+                Get Started
+              </button>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   )
