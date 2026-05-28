@@ -4,25 +4,14 @@ import { getSiteUrl } from '@/lib/supabase/site-url'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { isSubscriptionPlanType, type SubscriptionPlanType } from '@/lib/payments/subscription-plans'
 
-type PolarProduct = {
-  id: string
-  name: string
-}
-
-function planEnvKey(planType: SubscriptionPlanType): string {
-  if (planType === 'light') return 'POLAR_PRODUCT_ID_LIGHT'
-  if (planType === 'standard') return 'POLAR_PRODUCT_ID_STANDARD'
-  return 'POLAR_PRODUCT_ID_PRO'
-}
-
-function findProductForPlan(planType: SubscriptionPlanType, products: PolarProduct[]): PolarProduct | null {
-  const id = process.env[planEnvKey(planType)]?.trim() || ''
-  if (!id) return null
-  return products.find((p) => p.id === id) ?? null
-}
-
 export async function POST(req: Request) {
   try {
+    console.log('[polar/env]', {
+      LIGHT: process.env.POLAR_PRODUCT_ID_LIGHT,
+      STANDARD: process.env.POLAR_PRODUCT_ID_STANDARD,
+      PRO: process.env.POLAR_PRODUCT_ID_PRO,
+    })
+
     const missingSb = missingSupabaseEnv()
     if (missingSb) {
       return NextResponse.json(
@@ -55,35 +44,25 @@ export async function POST(req: Request) {
     const origin = req.headers.get('origin') ?? undefined
     const siteUrl = getSiteUrl(origin)
 
-    // Fetch products from Polar and match to the requested plan type.
-    // Polar SDK v2 returns a PageIterator here, so we must iterate it.
-    const productsIter = await polarClient.products.list({})
-    const products: PolarProduct[] = []
-    for await (const product of productsIter as AsyncIterable<PolarProduct>) {
-      if (product && typeof product.id === 'string' && typeof product.name === 'string') {
-        products.push({ id: product.id, name: product.name })
-      }
+    const productIds = {
+      light: process.env['POLAR_PRODUCT_ID_LIGHT'] ?? '',
+      standard: process.env['POLAR_PRODUCT_ID_STANDARD'] ?? '',
+      pro: process.env['POLAR_PRODUCT_ID_PRO'] ?? '',
     }
-    console.log(
-      '[polar/products] available:',
-      products.map((p) => `${p.name} (${p.id})`).join(' | ')
-    )
-    const product = findProductForPlan(planType, products)
-    if (!product) {
+
+    const productId = productIds[planType]
+    if (!productId) {
       return NextResponse.json(
-        { error: `Polar product not found for planType: ${planType} (missing ${planEnvKey(planType)}?)` },
+        { error: `Missing product ID for plan: ${planType}` },
         { status: 500 }
       )
     }
 
     const checkout = await polarClient.checkouts.create({
-      products: [product.id],
+      products: [productId],
       successUrl: `${siteUrl}/modes/credits?checkout_id={CHECKOUT_ID}&planType=${planType}&provider=polar`,
       customerEmail: user.email,
-      metadata: {
-        user_id: user.id,
-        plan_type: planType,
-      },
+      metadata: { user_id: user.id, plan_type: planType },
     })
 
     return NextResponse.json({ checkoutUrl: checkout.url })
