@@ -1,7 +1,12 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { NextResponse } from 'next/server'
-import { activateSubscriptionForUser, updateSubscriptionStatusByPaypalId, upsertSubscriptionRow } from '@/lib/payments/subscription-db'
-import { isSubscriptionPlanType, type SubscriptionPlanType } from '@/lib/payments/subscription-plans'
+import { supabaseAdmin } from '@/lib/supabase/server'
+import { setCreditsBalance } from '@/lib/credits-server'
+import {
+  creditsForSubscriptionPlan,
+  isSubscriptionPlanType,
+  type SubscriptionPlanType,
+} from '@/lib/payments/subscription-plans'
 import { applyTopUpCredits } from '@/lib/payments/topup-credits'
 import { creditsFromTopUpUsd } from '@/lib/credits-warning-modal-config'
 import { missingSupabaseEnv } from '@/lib/supabase/route-auth'
@@ -123,6 +128,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true })
       }
 
+      const currentPeriodStartRaw =
+        asString((dataObj as any).current_period_start) ??
+        asString((dataObj as any).currentPeriodStart) ??
+        asString((dataObj as any).started_at) ??
+        asString((dataObj as any).startedAt) ??
+        null
+
       const currentPeriodEndRaw =
         asString((dataObj as any).current_period_end) ??
         asString((dataObj as any).currentPeriodEnd) ??
@@ -130,16 +142,35 @@ export async function POST(req: Request) {
         asString((dataObj as any).endsAt) ??
         null
 
-      const result = await activateSubscriptionForUser({
-        userId,
-        paypalSubscriptionId: `polar:${subscriptionId}`,
-        planType,
-        email: null,
-        currentPeriodEnd: currentPeriodEndRaw,
-      })
+      const now = new Date().toISOString()
+      const creditsPerCycle = creditsForSubscriptionPlan(planType)
 
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: 500 })
+      const { error: upsertErr } = await supabaseAdmin
+        .from('subscriptions')
+        .upsert(
+          {
+            user_id: userId,
+            paypal_subscription_id: `polar:${subscriptionId}`,
+            plan_type: planType,
+            status: 'active',
+            current_period_start: currentPeriodStartRaw,
+            current_period_end: currentPeriodEndRaw,
+            credits_per_cycle: creditsPerCycle,
+            updated_at: now,
+          },
+          { onConflict: 'user_id' }
+        )
+
+      if (upsertErr) {
+        return NextResponse.json({ error: upsertErr.message }, { status: 500 })
+      }
+
+      const creditsSet = await setCreditsBalance(userId, creditsPerCycle, 'subscription')
+      if (!creditsSet.ok) {
+        return NextResponse.json(
+          { error: creditsSet.reason ?? 'Could not apply subscription credits' },
+          { status: 500 }
+        )
       }
 
       return NextResponse.json({ ok: true })
@@ -153,9 +184,13 @@ export async function POST(req: Request) {
 
       if (!subscriptionId) return NextResponse.json({ ok: true })
 
-      const updated = await updateSubscriptionStatusByPaypalId(`polar:${subscriptionId}`, 'cancelled')
-      if (!updated.ok) {
-        // If not found, accept anyway to avoid retries.
+      const { error } = await supabaseAdmin
+        .from('subscriptions')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('paypal_subscription_id', `polar:${subscriptionId}`)
+
+      if (error) {
+        // Accept anyway to avoid retries during testing.
         return NextResponse.json({ ok: true })
       }
       return NextResponse.json({ ok: true })
@@ -184,18 +219,6 @@ export async function POST(req: Request) {
       const applied = await applyTopUpCredits(userId, creditsToAdd)
       if (!applied.ok) {
         return NextResponse.json({ error: applied.reason }, { status: 500 })
-      }
-
-      // Record a subscription row as "pending" only if metadata asked for it (avoid clobbering PayPal).
-      const planType = parsePlanTypeFromMeta(meta)
-      const subscriptionId = asString((dataObj as any).subscription_id)
-      if (planType && subscriptionId) {
-        await upsertSubscriptionRow({
-          userId,
-          paypalSubscriptionId: `polar:${subscriptionId}`,
-          planType,
-          status: 'pending',
-        })
       }
 
       return NextResponse.json({ ok: true })
