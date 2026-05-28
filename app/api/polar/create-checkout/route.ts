@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     }
 
     const checkout = await polarClient.checkouts.create({
-      productId: product.id,
+      products: [product.id],
       successUrl: `${siteUrl}/modes/credits?subscription=success&planType=${planType}&provider=polar`,
       cancelUrl: `${siteUrl}/modes/credits?subscription=cancel&provider=polar`,
       metadata: {
