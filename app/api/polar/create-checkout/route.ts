@@ -9,24 +9,16 @@ type PolarProduct = {
   name: string
 }
 
-const PLAN_NAME_HINTS: Record<SubscriptionPlanType, string[]> = {
-  light: ['AIMANI Credits Light', 'Light'],
-  standard: ['AIMANI Credits Standard', 'Standard'],
-  pro: ['AIMANI Credits Pro', 'Pro'],
+function planEnvKey(planType: SubscriptionPlanType): string {
+  if (planType === 'light') return 'POLAR_PRODUCT_ID_LIGHT'
+  if (planType === 'standard') return 'POLAR_PRODUCT_ID_STANDARD'
+  return 'POLAR_PRODUCT_ID_PRO'
 }
 
 function findProductForPlan(planType: SubscriptionPlanType, products: PolarProduct[]): PolarProduct | null {
-  const hints = PLAN_NAME_HINTS[planType]
-  const normalized = (s: string) => s.trim().toLowerCase()
-  for (const hint of hints) {
-    const hit = products.find((p) => normalized(p.name) === normalized(hint))
-    if (hit) return hit
-  }
-  for (const hint of hints) {
-    const hit = products.find((p) => normalized(p.name).includes(normalized(hint)))
-    if (hit) return hit
-  }
-  return null
+  const id = process.env[planEnvKey(planType)]?.trim() || ''
+  if (!id) return null
+  return products.find((p) => p.id === id) ?? null
 }
 
 export async function POST(req: Request) {
@@ -72,10 +64,14 @@ export async function POST(req: Request) {
         products.push({ id: product.id, name: product.name })
       }
     }
+    console.log(
+      '[polar/products] available:',
+      products.map((p) => `${p.name} (${p.id})`).join(' | ')
+    )
     const product = findProductForPlan(planType, products)
     if (!product) {
       return NextResponse.json(
-        { error: `Polar product not found for planType: ${planType}` },
+        { error: `Polar product not found for planType: ${planType} (missing ${planEnvKey(planType)}?)` },
         { status: 500 }
       )
     }
