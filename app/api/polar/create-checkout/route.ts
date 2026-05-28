@@ -82,26 +82,15 @@ export async function POST(req: Request) {
 
     const checkout = await polarClient.checkouts.create({
       products: [product.id],
-      successUrl: `${siteUrl}/modes/credits?subscription=success&planType=${planType}&provider=polar`,
-      cancelUrl: `${siteUrl}/modes/credits?subscription=cancel&provider=polar`,
+      successUrl: `${siteUrl}/modes/credits?checkout_id={CHECKOUT_ID}&planType=${planType}&provider=polar`,
+      customerEmail: user.email,
       metadata: {
         user_id: user.id,
         plan_type: planType,
       },
-      customerEmail: user.email ?? undefined,
     })
 
-    const checkoutUrl =
-      (checkout as any)?.url ??
-      (checkout as any)?.checkoutUrl ??
-      (checkout as any)?.checkout_url ??
-      null
-
-    if (!checkoutUrl || typeof checkoutUrl !== 'string') {
-      return NextResponse.json({ error: 'Could not create Polar checkout' }, { status: 500 })
-    }
-
-    return NextResponse.json({ checkoutUrl })
+    return NextResponse.json({ checkoutUrl: checkout.url })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     console.error('[polar/create-checkout]', msg)
