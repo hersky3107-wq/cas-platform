@@ -117,6 +117,8 @@ function CreditsContent() {
   const [subscribingPlanType, setSubscribingPlanType] = useState<SubscriptionPlanType | null>(
     null
   )
+  const [subscribingPolarPlanType, setSubscribingPolarPlanType] =
+    useState<SubscriptionPlanType | null>(null)
   const [topUpAmount, setTopUpAmount] = useState(TOP_UP_DEFAULT_USD)
   const [topUpPaying, setTopUpPaying] = useState(false)
   const [topUpCapturing, setTopUpCapturing] = useState(false)
@@ -257,6 +259,28 @@ function CreditsContent() {
       setMessage({
         type: 'err',
         text: e instanceof Error ? e.message : 'Could not start subscription',
+      })
+    }
+  }, [])
+
+  const handlePolarSubscribe = useCallback(async (planType: SubscriptionPlanType) => {
+    setSubscribingPolarPlanType(planType)
+    setMessage(null)
+    try {
+      const res = await authenticatedFetch('/api/polar/create-checkout', {
+        method: 'POST',
+        json: { planType },
+      })
+      const j = (await res.json()) as { checkoutUrl?: string; error?: string }
+      if (!res.ok || !j.checkoutUrl) {
+        throw new Error(j.error ?? 'Could not start Polar checkout')
+      }
+      window.location.href = j.checkoutUrl
+    } catch (e) {
+      setSubscribingPolarPlanType(null)
+      setMessage({
+        type: 'err',
+        text: e instanceof Error ? e.message : 'Could not start Polar checkout',
       })
     }
   }, [])
@@ -528,6 +552,7 @@ function CreditsContent() {
                 activeSubscription?.status === 'active' &&
                 activeSubscription.planType === planType
               const isLoading = subscribingPlanType === planType
+              const isPolarLoading = subscribingPolarPlanType === planType
 
               return (
                 <div
@@ -555,27 +580,30 @@ function CreditsContent() {
                         Current plan
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => void handleSubscribe(planType)}
-                        disabled={subscribingPlanType !== null}
-                        className="w-full rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isLoading ? 'Redirecting…' : 'Subscribe'}
-                      </button>
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleSubscribe(planType)}
+                          disabled={subscribingPlanType !== null}
+                          className="w-full rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isLoading ? 'Redirecting…' : 'Subscribe'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handlePolarSubscribe(planType)}
+                          disabled={subscribingPolarPlanType !== null}
+                          className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isPolarLoading ? 'Redirecting…' : 'Pay with Card (Polar)'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
               )
             })}
           </div>
-
-          {showKoPayPalNotice ? (
-            <p className="mt-4 text-xs text-zinc-400">
-              Korean PayPal accounts cannot be used for payment. Please select &apos;Pay with
-              Debit or Credit Card&apos; instead.
-            </p>
-          ) : null}
 
           <p className="mt-2 text-center text-xs text-zinc-500">
             한국 PayPal 계정은 국내 정책상 자국 서비스 결제가 제한됩니다. 한국 카드는 Polar 결제를 이용해주세요.
