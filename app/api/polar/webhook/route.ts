@@ -120,9 +120,16 @@ export async function POST(req: Request) {
         asString((dataObj as any).subscription_id) ??
         asString((dataObj as any).subscriptionId)
 
-      const meta = (dataObj.metadata ?? (dataObj as any).meta ?? null) as unknown
+      const meta = (
+        dataObj.metadata ??
+        (dataObj as any).meta ??
+        (dataObj as any).checkout?.metadata ??
+        null
+      ) as unknown
       const userId = parseUserIdFromMeta(meta)
       const planType = parsePlanTypeFromMeta(meta)
+      console.log('[polar/webhook] meta:', JSON.stringify(meta))
+      console.log('[polar/webhook] userId:', userId, 'planType:', planType)
 
       if (!subscriptionId || !userId || !planType) {
         return NextResponse.json({ ok: true })
