@@ -577,6 +577,11 @@ function CreditsContent() {
             </p>
           ) : null}
 
+          <p className="mt-2 text-center text-xs text-zinc-500">
+            한국 PayPal 계정은 국내 정책상 자국 서비스 결제가 제한됩니다. 한국 카드는 Polar 결제를 이용해주세요.
+            Contact: hersky3107@gmail.com
+          </p>
+
           <div className="mt-5">
             <InfoCallout>
               <span className="font-medium text-slate-300">How monthly credits work:</span>{' '}
