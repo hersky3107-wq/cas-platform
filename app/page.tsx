@@ -178,10 +178,9 @@ export default function Home() {
     const persona = activeModules.find((m) => m.id === "persona")!;
     const verdict = activeModules.find((m) => m.id === "verdict")!;
     const arena = activeModules.find((m) => m.id === "arena")!;
-    const suit = activeModules.find((m) => m.id === "suit")!;
     const custom = activeModules.find((m) => m.id === "custom")!;
 
-    return [compare, persona, verdict, arena, suit, custom];
+    return [compare, persona, verdict, arena, custom];
   }, []);
 
   return (

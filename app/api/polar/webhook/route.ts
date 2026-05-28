@@ -119,6 +119,7 @@ export async function POST(req: Request) {
         asString(dataObj.id) ??
         asString((dataObj as any).subscription_id) ??
         asString((dataObj as any).subscriptionId)
+      console.log('[polar/webhook] subscriptionId:', subscriptionId)
 
       const meta = (
         dataObj.metadata ??
