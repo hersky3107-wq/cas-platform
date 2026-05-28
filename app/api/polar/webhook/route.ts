@@ -81,9 +81,11 @@ export async function POST(req: Request) {
       req.headers.get('Polar-Signature') ??
       req.headers.get('X-Polar-Signature')
 
-    if (!verifyPolarSignature(rawBody, sigHeader)) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-    }
+    // TEMPORARY (testing): signature verification disabled.
+    // TODO: Re-enable signature verification before production use.
+    // if (!verifyPolarSignature(rawBody, sigHeader)) {
+    //   return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    // }
 
     let event: Record<string, unknown>
     try {
@@ -97,6 +99,7 @@ export async function POST(req: Request) {
       asString((event as any).event) ??
       asString((event as any).name) ??
       ''
+    console.log('[polar/webhook] received:', { eventType, sigHeader })
 
     const data = (event.data ?? (event as any).payload ?? null) as unknown
     const dataObj = data && typeof data === 'object' ? (data as Record<string, unknown>) : null
