@@ -64,9 +64,14 @@ export async function POST(req: Request) {
     const siteUrl = getSiteUrl(origin)
 
     // Fetch products from Polar and match to the requested plan type.
-    // SDK shape can vary; we only depend on id/name from each product.
-    const productsRes = await polarClient.products.list({})
-    const products = (productsRes?.items ?? productsRes?.data ?? []) as unknown as PolarProduct[]
+    // Polar SDK v2 returns a PageIterator here, so we must iterate it.
+    const productsIter = await polarClient.products.list({})
+    const products: PolarProduct[] = []
+    for await (const product of productsIter as AsyncIterable<PolarProduct>) {
+      if (product && typeof product.id === 'string' && typeof product.name === 'string') {
+        products.push({ id: product.id, name: product.name })
+      }
+    }
     const product = findProductForPlan(planType, products)
     if (!product) {
       return NextResponse.json(
