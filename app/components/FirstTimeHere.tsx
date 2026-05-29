@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -575,25 +574,8 @@ function FirstTimeModal({
   )
 }
 
-function hasSeenFirstTimeHere(): boolean {
-  try {
-    return localStorage.getItem(AIMANI_FIRST_TIME_STORAGE_KEY) !== null
-  } catch {
-    return true
-  }
-}
-
 export function FirstTimeHereProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
-  const autoOpenChecked = useRef(false)
-
-  useEffect(() => {
-    if (autoOpenChecked.current) return
-    autoOpenChecked.current = true
-    if (!hasSeenFirstTimeHere()) {
-      setOpen(true)
-    }
-  }, [])
 
   const markSeen = useCallback(() => {
     try {

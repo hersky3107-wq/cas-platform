@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Analytics } from '@vercel/analytics/react'
 import { ApiFetchAuth } from '@/app/components/ApiFetchAuth'
-import AnnouncementBanner from '@/app/components/AnnouncementBanner'
 import { FirstTimeHereProvider } from '@/app/components/FirstTimeHere'
 import { CreditWarningsRoot } from '@/components/credits/CreditWarningsRoot'
 import InAppBrowserGuard from '@/components/InAppBrowserGuard'
@@ -37,7 +36,6 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <AnnouncementBanner />
         <InAppBrowserGuard />
         <CreditWarningsRoot>
           <FirstTimeHereProvider>

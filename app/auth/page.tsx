@@ -148,6 +148,21 @@ function AuthForm() {
           {emailLoading ? 'Sending…' : 'Send magic link'}
         </button>
 
+        <p className="mt-4 text-center text-xs text-slate-500">
+          By signing in, you agree to our{' '}
+          <a href="/terms" className="underline hover:text-slate-300">
+            Terms of Service
+          </a>
+          {' / '}
+          <a href="/privacy" className="underline hover:text-slate-300">
+            Privacy Policy
+          </a>
+          {' / '}
+          <a href="/refund" className="underline hover:text-slate-300">
+            Refund Policy
+          </a>
+        </p>
+
         {message ? (
           <p
             className={`mt-4 text-sm leading-relaxed ${isError ? 'text-red-400' : 'text-slate-300'}`}
