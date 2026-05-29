@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookHeart,
   Coins,
@@ -129,12 +130,34 @@ function LobbyCard({
 }
 
 export default function Home() {
+  const router = useRouter();
   const [modalItem, setModalItem] = useState<ModuleConfig | null>(null);
   const [email, setEmail] = useState("");
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const firstTimeHere = useFirstTimeHereOptional();
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [userMenuOpen]);
+
+  async function handleSignOut() {
+    setUserMenuOpen(false);
+    await supabase.auth.signOut();
+    router.push("/auth");
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -189,12 +212,33 @@ export default function Home() {
         {authReady ? (
           userLabel ? (
             <>
-              <span
-                className="max-w-[7rem] truncate rounded-full border border-white/10 bg-[#131c35] px-3 py-1.5 text-xs text-white/90 sm:max-w-[9rem]"
-                title={userLabel}
-              >
-                {userLabel}
-              </span>
+              <div ref={userMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setUserMenuOpen((open) => !open)}
+                  className="max-w-[7rem] truncate rounded-full border border-white/10 bg-[#131c35] px-3 py-1.5 text-xs text-white/90 sm:max-w-[9rem]"
+                  title={userLabel}
+                  aria-expanded={userMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  {userLabel}
+                </button>
+                {userMenuOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full z-40 mt-1 min-w-[8rem] rounded-xl border border-white/10 bg-[#131c35] py-1 shadow-lg"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void handleSignOut()}
+                      className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-white/5"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <Link
                 href="/modes/credits"
                 className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-[#131c35] px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:border-cyan-400/50 hover:bg-[#1a2648]"
