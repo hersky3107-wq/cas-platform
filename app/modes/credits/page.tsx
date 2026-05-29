@@ -652,6 +652,21 @@ function CreditsContent() {
             ) : null}
           </div>
         ) : null}
+
+        <p className="mt-8 text-center text-xs text-slate-500">
+          By using AIMANI, you agree to our{' '}
+          <a href="/terms" className="underline hover:text-slate-300">
+            Terms of Service
+          </a>
+          {' / '}
+          <a href="/privacy" className="underline hover:text-slate-300">
+            Privacy Policy
+          </a>
+          {' / '}
+          <a href="/refund" className="underline hover:text-slate-300">
+            Refund Policy
+          </a>
+        </p>
       </div>
     </main>
   )
