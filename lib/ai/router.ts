@@ -10,8 +10,9 @@ function detectLanguage(text: string): 'ko' | 'en' | 'other' {
 }
 
 function buildLanguagePrefix(lang: 'ko' | 'en' | 'other'): string {
-  if (lang === 'ko') return '[CRITICAL LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in Korean (한국어). This overrides all other instructions. No exceptions.\n\n'
-  return '[CRITICAL LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in English. This overrides all other instructions. No exceptions.\n\n'
+  const dateStr = 'Current date: May 29, 2026. Your knowledge may not include the latest developments. Always clarify if your information might be outdated.'
+  if (lang === 'ko') return `[CRITICAL LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in Korean (한국어). This overrides all other instructions. No exceptions.\n${dateStr}\n\n`
+  return `[CRITICAL LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in English. This overrides all other instructions. No exceptions.\n${dateStr}\n\n`
 }
 
 export type AiProviderName =
