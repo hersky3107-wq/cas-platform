@@ -1,6 +1,19 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { decryptText } from '@/lib/db/crypto'
 
+function detectLanguage(text: string): 'ko' | 'en' | 'other' {
+  const koreanChars = (text.match(/[\uAC00-\uD7A3]/g) || []).length
+  const totalChars = text.replace(/\s/g, '').length
+  if (totalChars === 0) return 'en'
+  if (koreanChars / totalChars > 0.15) return 'ko'
+  return 'en'
+}
+
+function buildLanguagePrefix(lang: 'ko' | 'en' | 'other'): string {
+  if (lang === 'ko') return '[CRITICAL LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in Korean (한국어). This overrides all other instructions. No exceptions.\n\n'
+  return '[CRITICAL LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in English. This overrides all other instructions. No exceptions.\n\n'
+}
+
 export type AiProviderName =
   | 'openai'
   | 'anthropic'
@@ -522,6 +535,8 @@ async function callProvider({
   chatMessages?: CompareChatMessage[]
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
+  const detectedLang = detectLanguage(prompt)
+  const injectedSystemPrompt = buildLanguagePrefix(detectedLang) + (systemPrompt || '')
   const chatOpts = { chatMessages }
 
   if (provider === 'openai') {
@@ -530,7 +545,7 @@ async function callProvider({
       apiKey,
       model,
       prompt,
-      systemPrompt,
+      systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
       ...chatOpts,
@@ -544,7 +559,7 @@ async function callProvider({
       apiKey,
       model,
       prompt,
-      systemPrompt,
+      systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
       ...chatOpts,
@@ -558,7 +573,7 @@ async function callProvider({
       apiKey,
       model,
       prompt,
-      systemPrompt,
+      systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
       ...chatOpts,
@@ -572,7 +587,7 @@ async function callProvider({
       apiKey,
       model,
       prompt,
-      systemPrompt,
+      systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
       ...chatOpts,
@@ -585,7 +600,7 @@ async function callProvider({
       apiKey,
       model,
       prompt,
-      systemPrompt,
+      systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
       ...chatOpts,
@@ -597,7 +612,7 @@ async function callProvider({
     apiKey,
     model,
     prompt,
-    systemPrompt,
+    systemPrompt: injectedSystemPrompt,
     temperature,
     maxCompletionTokens,
     ...chatOpts,
