@@ -22,13 +22,31 @@ export function useFirstTimeHereOptional(): FirstTimeControls | null {
   return useContext(FirstTimeCtx)
 }
 
-const SLIDE_AI_LINES: string[] = [
-  '🇺🇸 ChatGPT — OpenAI. CEO Sam Altman. The AI that started the revolution. The most widely used AI in the world. Altman is one of Silicon Valley\'s most famous — and most controversial — CEOs.',
-  '🇺🇸 Claude — Anthropic. CEO Dario Amodei. Built by researchers who left OpenAI over safety concerns. Dario Amodei and Sam Altman have publicly clashed — at a summit with India\'s Prime Minister, the two reportedly refused to shake hands for a group photo. Two CEOs. One industry. Zero agreement.',
-  '🇺🇸 Gemini — Google DeepMind. The company that literally invented the transformer technology behind all modern AI — yet got blindsided by ChatGPT. Google declared an internal emergency and came back swinging. Now deeply embedded across Android and all Google services.',
-  '🇺🇸 Grok — xAI. CEO Elon Musk. The man behind Tesla, SpaceX, and X. Co-founded OpenAI with Sam Altman in 2015 — then walked away. Eventually sued Altman, claiming he betrayed their shared mission of building AI for humanity. A jury ruled against Musk just days ago. He\'s already vowed to appeal. The most unfiltered AI in the game. The most anti-OpenAI voice in the room.',
-  '🇫🇷 Mistral — Mistral AI. Paris, France. Europe\'s answer to American AI dominance. Built to reflect European values, European regulation, and European independence. Not Silicon Valley. Not Beijing. Paris.',
-  '🇨🇳 DeepSeek — DeepSeek AI. Hangzhou, China. Founder Liang Wenfeng. A hedge fund built an AI — and shocked the world. Burst onto the scene in early 2025 and crashed U.S. tech stocks overnight. OpenAI accused them of stealing its technology. DeepSeek denied it. The U.S.-China AI war has a face now.',
+const SLIDE_AI_LINES: { heading: string; body: string }[] = [
+  {
+    heading: '🇺🇸 ChatGPT — OpenAI.',
+    body: 'The AI that brought generative AI into the mainstream. One of the most widely used and recognized AI systems in the world. Behind it is OpenAI, the company that turned AI from a research topic into a global consumer revolution.',
+  },
+  {
+    heading: '🇺🇸 Claude — Anthropic.',
+    body: 'Built by researchers who left OpenAI and founded Anthropic with a strong focus on AI safety, reliability, and careful reasoning. Anthropic and OpenAI are often seen as two of the most important — and philosophically different — forces in the AI industry.',
+  },
+  {
+    heading: '🇺🇸 Gemini — Google DeepMind.',
+    body: 'Backed by Google DeepMind, the research legacy behind the Transformer architecture that powers modern large language models. Google came back aggressively — and Gemini is now deeply connected across Google\'s ecosystem, from Android to Search and productivity tools.',
+  },
+  {
+    heading: '🇺🇸 Grok — xAI.',
+    body: 'Created by Elon Musk\'s xAI. Musk co-founded OpenAI in 2015 before eventually parting ways with the organization. Since then, his disagreements with OpenAI have become one of the most visible rivalries in the AI world. Grok is known for a more direct, unconventional, and anti-establishment style compared with many mainstream AI assistants.',
+  },
+  {
+    heading: '🇫🇷 Mistral — Mistral AI.',
+    body: 'Paris, France. One of Europe\'s strongest answers to American AI dominance. Built around European values, European regulation, and European technological independence. Not Silicon Valley. Not Beijing. Paris.',
+  },
+  {
+    heading: '🇨🇳 DeepSeek — DeepSeek AI.',
+    body: 'Hangzhou, China. Founded by Liang Wenfeng, with roots connected to quantitative finance and hedge-fund-style engineering. DeepSeek\'s rapid rise in early 2025 shocked the global AI industry and triggered a major reaction across U.S. technology markets. Its emergence intensified debate around AI efficiency, training methods, and the growing U.S.–China AI rivalry.',
+  },
 ]
 
 const SLIDE_MODULES: string[] = [
@@ -391,19 +409,23 @@ function FirstTimeModal({
           {slide === 1 ? (
             <div className="space-y-4 text-slate-200">
               <h2 id="first-time-heading" className="text-center text-xl font-semibold text-white">
-                Six AIs. Six countries. Six agendas.
+                Six AIs. Six origins. Six perspectives.
               </h2>
-              <ul className="space-y-3 text-sm leading-relaxed text-slate-300">
-                {SLIDE_AI_LINES.map((line, idx) => (
-                  <li key={idx}>{line}</li>
+              <div className="space-y-4 text-sm leading-relaxed text-slate-300">
+                {SLIDE_AI_LINES.map((entry, idx) => (
+                  <div key={idx}>
+                    <p className="font-medium text-slate-200">{entry.heading}</p>
+                    <p className="mt-1">{entry.body}</p>
+                  </div>
                 ))}
-              </ul>
+              </div>
               <p className="text-center text-sm font-medium text-white">
-                Same question. Six minds. Always something to discover.
+                Same question. Six models. Six ways of thinking. Always something to discover.
               </p>
               <p className="text-xs leading-relaxed text-slate-500">
-                Our AI lineup will continue to grow. Agents may also be updated or replaced over time.
-                Thank you for your understanding.
+                Our AI lineup will continue to grow. Models, agents, and availability may also be updated,
+                replaced, or removed over time depending on performance, access, policies, and service
+                conditions. Thank you for your understanding.
               </p>
             </div>
           ) : null}
