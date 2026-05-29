@@ -28,12 +28,10 @@ const AI_PLAYERS = [
 ]
 
 function getLangOverride(language: string): string {
-  if (!language || language === 'English') return ''
-  return `SYSTEM OVERRIDE: You MUST respond entirely in ${language}. 
-Do NOT use any English words or phrases. 
-Translate everything into ${language}. This is absolute. No exceptions.
-
-`
+  if (!language || language === 'English') {
+    return `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in English. This overrides ALL other instructions. No exceptions.\nCurrent date: May 29, 2026. Use the most up-to-date information available.\n\n`
+  }
+  return `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in ${language}. Do NOT use any English words or phrases. This overrides ALL other instructions. No exceptions.\nCurrent date: May 29, 2026. Use the most up-to-date information available.\n\n`
 }
 
 const NO_REPEAT_INSTRUCTION = `IMPORTANT: Your response must be DIFFERENT from any previous response you have given. Do not repeat phrases you used in earlier rounds.

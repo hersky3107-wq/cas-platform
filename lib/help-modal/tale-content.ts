@@ -6,13 +6,13 @@ export const taleHelpContent: HelpModalContent = {
 Choose a genre and 6 AIs each write a completely different short story. Same genre, 6 entirely different takes.
 
 Available genres:
-- Horror (공포): Sleep with the lights on.
-- Romance (로맨스): Hearts, mistakes, and longing.
-- Absurd (황당): Logic left the building.
-- Sci-Fi (SF): The future is weirder than you think.
-- Fairy Tale (동화): Old stories, new twists.
-- Sad Story (슬픈 이야기): Beautiful and devastating.
-- Custom (직접 설정): Your genre. Your rules.
+- Horror: Sleep with the lights on.
+- Romance: Hearts, mistakes, and longing.
+- Absurd: Logic left the building.
+- Sci-Fi: The future is weirder than you think.
+- Fairy Tale: Old stories, new twists.
+- Sad Story: Beautiful and devastating.
+- Custom: Your genre. Your rules.
 
 Before generating:
 - Select your story language — type any language (Korean, Japanese, Spanish, French...)

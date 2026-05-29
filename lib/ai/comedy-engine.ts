@@ -119,12 +119,12 @@ export function buildStandupPerformanceOrder(): StandupPerformanceSlot[] {
   ];
 }
 
-const COMEDY_LANGUAGE_RULE = `LANGUAGE RULE — READ THIS FIRST:
+const COMEDY_LANGUAGE_RULE = `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY — OVERRIDES EVERYTHING]
 Detect the language of the topic given by the user.
-Respond ENTIRELY in that language. No exceptions.
-English topic → English only.
-Korean topic → Korean only.
-NEVER mix languages within a single response.`;
+You MUST respond ENTIRELY in that language. No exceptions.
+English topic → English only. Korean topic → Korean only.
+NEVER mix languages. This overrides all other instructions.
+Current date: May 29, 2026.`
 
 const COMEDY_NO_STYLE_LABELS = `NEVER write "TYPE A", "TYPE B", or any style label
 in your response. Internal guides only.
@@ -164,11 +164,12 @@ European world-weariness — seen it all, no longer surprised.
 One resigned observation. Stop there.`,
 };
 
-const COMEDY_STANDUP_LANGUAGE_RULE = `Detect the language of the topic.
-Respond ENTIRELY in that language.
-English topic → English only.
-Non-English topic → match that language, casual informal only, never formal.
-Never mix languages.`;
+const COMEDY_STANDUP_LANGUAGE_RULE = `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY — OVERRIDES EVERYTHING]
+Detect the language of the topic given by the user.
+You MUST respond ENTIRELY in that language. No exceptions.
+English topic → English only. Korean topic → Korean only (casual informal only, never formal).
+NEVER mix languages. This overrides all other instructions.
+Current date: May 29, 2026.`
 
 const COMEDY_STANDUP_NO_OUTPUT_LABELS = `NEVER write these words in your response:
 "ESCALATE:", "Punchline:", "Here's my set:",
