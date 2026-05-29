@@ -144,13 +144,14 @@ export async function POST(req: Request) {
 
   const todayIso = new Date().toISOString().split('T')[0]
   const languageInstruction = questionRaw && questionRaw.trim().length > 0
-    ? `CRITICAL: The user asked their question in English. 
-     You MUST respond in English only. 
-     Birth city or origin does NOT affect the response language.
-     English only, no exceptions.`
-    : `The user did not type a question. 
-     Use the birth city language as default.
-     Seoul → Korean, Tokyo → Japanese, etc.`
+    ? `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY]
+You MUST respond ONLY in ${detectedLang}. This overrides ALL other instructions.
+Every single sentence must be in ${detectedLang}. No exceptions.
+Current date: May 29, 2026.`
+    : `The user did not type a question.
+Use the birth city language as default.
+Seoul → Korean, Tokyo → Japanese, etc.
+Current date: May 29, 2026.`
 
   const geo = await geocodeBirthCity(profile.birth_city)
   if (!geo) {

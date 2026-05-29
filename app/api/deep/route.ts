@@ -48,12 +48,12 @@ type DeepOrchestratorPart = {
   angle: string
 }
 
-const LANGUAGE_MIRROR_RULE = `CRITICAL — LANGUAGE RULE (absolute priority):
-Detect the language of the user's original question.
-Write your ENTIRE response in that exact language from first word to last word.
-Korean question → 100% Korean response. English question → 100% English response.
-This rule applies to EVERY sentence including your conclusion.
-Switching language at any point is a critical violation. No exceptions.`
+const LANGUAGE_MIRROR_RULE = `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY — OVERRIDES EVERYTHING]
+You MUST detect the language of the user's original question and respond ONLY in that language.
+Korean question = Korean response. English question = English response.
+This rule overrides ALL other instructions. Every single sentence must be in the detected language.
+Violating this rule is not acceptable under any circumstances.
+Current date: May 29, 2026. Use the most up-to-date information available.`
 
 const PROSE_STYLE_RULE = `Write in flowing prose paragraphs.
 Do NOT use markdown headers (##, ###).
@@ -503,7 +503,7 @@ async function runSynthesis(
     })
     .join('\n\n---\n\n')
 
-  const systemPrompt = `You are a master synthesizer. You have received six different AI perspectives on a single question. Your job is to write a final synthesis that:
+  const systemPrompt = `[ABSOLUTE LANGUAGE RULE] You MUST write your synthesis in the exact same language as the original question. Korean question = Korean synthesis. English question = English synthesis. No exceptions.\n\nYou are a master synthesizer. You have received six different AI perspectives on a single question. Your job is to write a final synthesis that:
 1. Identifies the strongest points of agreement across the responses
 2. Highlights the sharpest points of disagreement or tension
 3. Offers your own integrative conclusion that goes beyond any single perspective
