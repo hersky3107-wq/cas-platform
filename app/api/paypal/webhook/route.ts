@@ -117,8 +117,7 @@ export async function POST(req: Request) {
     })
 
     if (!verified) {
-      console.warn('[paypal/webhook] Signature verification failed - BYPASS ACTIVE FOR TESTING')
-      // TEMP: bypass for testing only - MUST be restored before production
+      return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 })
     }
 
     const eventType = event.event_type ?? ''
