@@ -110,6 +110,7 @@ function CreditsContent() {
     planType: SubscriptionPlanType
     status: string
     currentPeriodEnd: string | null
+    subscriptionId: string | null
   } | null>(null)
   const [cancellingSubscription, setCancellingSubscription] = useState(false)
   const [cancelNotice, setCancelNotice] = useState<string | null>(null)
@@ -150,6 +151,7 @@ function CreditsContent() {
         planType?: string
         status?: string
         currentPeriodEnd?: string | null
+        subscriptionId?: string | null
       } | null
       error?: string
     }
@@ -164,6 +166,7 @@ function CreditsContent() {
         planType: sub.planType,
         status: sub.status,
         currentPeriodEnd: sub.currentPeriodEnd ?? null,
+        subscriptionId: sub.subscriptionId ?? null,
       })
     } else {
       setActiveSubscription(null)
@@ -177,7 +180,11 @@ function CreditsContent() {
     setCancellingSubscription(true)
     setCancelNotice(null)
     try {
-      const res = await authenticatedFetch('/api/paypal/cancel-subscription', {
+      const isPolar = activeSubscription.subscriptionId?.startsWith('polar:') ?? false
+      const cancelEndpoint = isPolar
+        ? '/api/polar/cancel-subscription'
+        : '/api/paypal/cancel-subscription'
+      const res = await authenticatedFetch(cancelEndpoint, {
         method: 'POST',
         json: {},
       })

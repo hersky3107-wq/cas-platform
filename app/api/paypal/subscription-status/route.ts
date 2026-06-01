@@ -28,6 +28,7 @@ export async function GET(req: Request) {
         planType: row.plan_type,
         status: row.status,
         paypalSubscriptionId: row.paypal_subscription_id,
+        subscriptionId: row.paypal_subscription_id,
         currentPeriodEnd: row.current_period_end ?? null,
       },
     })
