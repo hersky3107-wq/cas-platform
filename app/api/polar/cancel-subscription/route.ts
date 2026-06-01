@@ -34,7 +34,10 @@ export async function POST(req: Request) {
 
     const polarSubscriptionId = row.paypal_subscription_id.replace('polar:', '')
 
-    await polarClient.subscriptions.cancel({ id: polarSubscriptionId })
+    await polarClient.subscriptions.update({
+      id: polarSubscriptionId,
+      subscriptionUpdate: { cancelAtPeriodEnd: true },
+    })
 
     await supabaseAdmin
       .from('subscriptions')
