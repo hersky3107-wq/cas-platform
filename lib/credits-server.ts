@@ -260,6 +260,9 @@ export async function setCreditsBalance(
     }
     if (table === 'users') {
       payload.credits_billing_mode = billingMode
+      if (billingMode === 'subscription') {
+        (payload as Record<string, unknown>).credits_percent_ceiling = next
+      }
     }
 
     const { error } = await supabaseAdmin.from(table).update(payload).eq('id', userId)
@@ -272,7 +275,7 @@ export async function setCreditsBalance(
 
   if (!updated) {
     const { error: insertErr } = await supabaseAdmin.from('users').upsert(
-      { id: userId, credits: next, credits_billing_mode: billingMode },
+      { id: userId, credits: next, credits_billing_mode: billingMode, ...(billingMode === 'subscription' ? { credits_percent_ceiling: next } : {}) },
       { onConflict: 'id' }
     )
 
