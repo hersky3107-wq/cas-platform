@@ -874,7 +874,7 @@ export default function PersonaModePage() {
   const rolesEditorOpen = turns.length === 0 || rolesSectionExpanded;
 
   return (
-    <div className={`flex min-h-[100dvh] flex-col ${BG}`}>
+    <div className={`flex h-[100dvh] flex-col ${BG}`}>
       <HelpModal content={personaHelpContent} />
       <header className="fixed left-0 right-0 top-0 z-20 flex shrink-0 items-center justify-between border-b border-white/8 bg-[#0a0f1e]/95 px-3 py-2.5 backdrop-blur-md sm:px-4">
         <Link
@@ -901,8 +901,8 @@ export default function PersonaModePage() {
         <main
           ref={chatMainRef}
           style={{
-            scrollPaddingBottom: bottomStackPx + 16,
-            paddingBottom: bottomStackPx + 24,
+            scrollPaddingBottom: Math.max(200, bottomStackPx + 16),
+            paddingBottom: Math.max(200, bottomStackPx + 24),
           }}
           className="mx-auto min-h-0 w-full max-w-3xl flex-1 overflow-y-auto overscroll-y-contain px-3 pt-2 sm:px-4"
         >
