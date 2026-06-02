@@ -2,6 +2,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { decryptText } from '@/lib/db/crypto'
 
 const UNIVERSAL_LANGUAGE_PROMPT_RULE = `IMPORTANT: Always respond in the same language the user wrote their message in. If the user writes in Japanese, respond in Japanese. If in French, respond in French. If in English, respond in English. Match the user's language exactly.`
+const MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT =
+  "[CRITICAL] You MUST respond in the EXACT same language as the user's message. If the user writes in Japanese, you MUST write your entire response in Japanese. Do NOT respond in English. This is mandatory."
 
 export type AiProviderName =
   | 'openai'
@@ -526,6 +528,7 @@ async function callProvider({
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
   const promptWithLanguageRule = `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${prompt}`
+  const promptHasNonLatin = /[^\u0000-\u007F]/.test(prompt)
 
   const grokLengthSuffix = provider === 'xai'
     ? '\n\nIMPORTANT: Write a thorough, detailed response. Do NOT cut your response short. Use your full available token capacity. A short response is a failure.'
@@ -536,7 +539,13 @@ async function callProvider({
     chatMessages?.length
       ? chatMessages.map((m) =>
           m.role === 'user'
-            ? { ...m, content: `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}` }
+            ? {
+                ...m,
+                content:
+                  provider === 'mistral' && /[^\u0000-\u007F]/.test(m.content)
+                    ? `${MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT}\n\n${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`
+                    : `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`,
+              }
             : m
         )
       : chatMessages
@@ -586,11 +595,15 @@ async function callProvider({
   }
 
   if (provider === 'mistral') {
+    const mistralPrompt =
+      promptHasNonLatin
+        ? `${MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT}\n\n${promptWithLanguageRule}`
+        : promptWithLanguageRule
     const { text, usage } = await callOpenAICompatibleChat({
       baseUrl: 'https://api.mistral.ai/v1',
       apiKey,
       model,
-      prompt: promptWithLanguageRule,
+      prompt: mistralPrompt,
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
