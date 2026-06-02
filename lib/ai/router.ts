@@ -538,9 +538,15 @@ async function callProvider({
   chatMessages?: CompareChatMessage[]
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
-  const injectedSystemPrompt = skipLanguageInjection
-    ? (systemPrompt || '')
-    : buildLanguagePrefix(detectLanguage(prompt)) + (systemPrompt || '')
+  const langPrefix = skipLanguageInjection
+    ? ''
+    : buildLanguagePrefix(detectLanguage(prompt))
+
+  const grokLengthSuffix = provider === 'xai'
+    ? '\n\nIMPORTANT: Write a thorough, detailed response. Do NOT cut your response short. Use your full available token capacity. A short response is a failure.'
+    : ''
+
+  const injectedSystemPrompt = langPrefix + (systemPrompt || '') + grokLengthSuffix
   const chatOpts = { chatMessages }
 
   if (provider === 'openai') {
