@@ -435,6 +435,7 @@ export function CreditWarningsRoot({ children }: { children: ReactNode }) {
           billingMode={billingMode}
           activePlanType={activePlanType}
           subscriptionLoading={subscriptionLoading}
+          creditsBalance={balance}
           topUpAmount={topUpAmount}
           onTopUpAmountChange={setTopUpAmount}
           upgradingPlanType={upgradingPlanType}
@@ -453,6 +454,7 @@ export function CreditWarningsRoot({ children }: { children: ReactNode }) {
           billingMode={billingMode}
           activePlanType={activePlanType}
           subscriptionLoading={subscriptionLoading}
+          creditsBalance={balance}
           topUpAmount={topUpAmount}
           onTopUpAmountChange={setTopUpAmount}
           upgradingPlanType={upgradingPlanType}

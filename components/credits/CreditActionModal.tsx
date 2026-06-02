@@ -18,6 +18,7 @@ type CreditActionModalProps = {
   billingMode: 'subscription' | 'pay_as_you_go' | 'topup'
   activePlanType: SubscriptionPlanType | null
   subscriptionLoading: boolean
+  creditsBalance: number | null
   topUpAmount: number
   onTopUpAmountChange: (amount: number) => void
   upgradingPlanType: SubscriptionPlanType | null
@@ -37,6 +38,7 @@ export function CreditActionModal({
   billingMode,
   activePlanType,
   subscriptionLoading,
+  creditsBalance,
   topUpAmount,
   onTopUpAmountChange,
   upgradingPlanType,
@@ -46,6 +48,8 @@ export function CreditActionModal({
   onDismissLater,
 }: CreditActionModalProps) {
   const isTier3 = tier === 3
+  const showContinueAnyway =
+    creditsBalance !== null && creditsBalance <= 10 && !isTier3
   const zClass = isTier3 ? 'z-[110]' : 'z-[100]'
   const backdropClass = isTier3 ? 'bg-black/80 backdrop-blur-sm' : 'bg-black/70 backdrop-blur-[2px]'
 
@@ -115,7 +119,15 @@ export function CreditActionModal({
           >
             Top Up ${topUpAmount}
           </Link>
-          {!isTier3 && onDismissLater ? (
+          {showContinueAnyway && onDismissLater ? (
+            <button
+              type="button"
+              onClick={onDismissLater}
+              className="mt-2 text-center text-xs text-zinc-500 hover:text-zinc-400 cursor-pointer underline-offset-2 hover:underline"
+            >
+              Continue anyway →
+            </button>
+          ) : !isTier3 && onDismissLater ? (
             <button
               type="button"
               onClick={onDismissLater}
