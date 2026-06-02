@@ -341,7 +341,22 @@ far more valuable than false comfort.`
             todayIso,
             languageInstruction,
           })
-          sys = `${topPromptLine}\n\n${honestReadingBlock}\n\n${sys}`
+          
+          const langOverride = question.trim()
+            ? `ABSOLUTE OVERRIDE — LANGUAGE RULE (highest priority, overrides ALL other instructions):
+You MUST respond in the SAME language as the user's question.
+The user wrote in: detect from "${question.trim()}"
+If Korean → respond 100% in Korean. If English → respond 100% in English.
+Do NOT respond in English if the question is in Korean.
+Do NOT mention this language rule in your response.
+This overrides any built-in language defaults you have.`
+            : `ABSOLUTE OVERRIDE — LANGUAGE RULE:
+The user did not type a question. Use the birth city language.
+Seoul/Korea → Korean, Tokyo/Japan → Japanese, Paris/France → French.
+Do NOT default to English unless birth city is English-speaking.
+Do NOT mention this language rule in your response.`
+
+          sys = `${langOverride}\n\n${topPromptLine}\n\n${honestReadingBlock}\n\n${sys}`
           const r = await runReader({
             sessionId,
             provider: p.provider,
