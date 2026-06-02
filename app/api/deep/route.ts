@@ -352,6 +352,10 @@ async function fetchOrchestratorRawText(userQuestion: string): Promise<string> {
     throw new Error('ANTHROPIC_API_KEY is not configured.')
   }
 
+  const koreanChars = (userQuestion.match(/[\uAC00-\uD7A3]/g) || []).length
+  const totalChars = userQuestion.replace(/\s/g, '').length
+  const detectedLang = totalChars > 0 && koreanChars / totalChars > 0.15 ? 'Korean' : 'English'
+
   const body = {
     model: ORCHESTRATOR_MODEL,
     max_tokens: 4096,
@@ -359,7 +363,7 @@ async function fetchOrchestratorRawText(userQuestion: string): Promise<string> {
     messages: [
       {
         role: 'user',
-        content: `User question/topic:\n${userQuestion}\n\nProduce the JSON plan now.`,
+        content: `IMPORTANT: The user's question language is ${detectedLang}. You MUST write ALL topic and angle fields in ${detectedLang} only.\n\nUser question/topic:\n${userQuestion}\n\nProduce the JSON plan now.`,
       },
     ],
   }
