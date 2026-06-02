@@ -218,6 +218,7 @@ async function invokeArenaModel(params: {
   ai: ArenaAI
   userPrompt: string
   ctx: ArenaTransportContext
+  arenaLanguageOverride?: string
   roundNumber: number
   persistTurn: number
   maxTokens: number
@@ -266,6 +267,7 @@ async function invokeArenaModel(params: {
       })()
   const roleLock = isSupporter ? '' : buildArenaFighterRoleLockPrompt(ai)
   const systemPrompt = [
+    params.arenaLanguageOverride?.trim(),
     roleLock.trim(),
     memoryBlock.trim(),
     `${baseSystem}${params.extraSystemPrompt?.trim() ? `\n\n${params.extraSystemPrompt.trim()}` : ''}`,
@@ -586,6 +588,11 @@ export async function runArenaRound1(
 ): Promise<ArenaRound> {
   const fightMode = opts?.fightMode ?? 'logic'
   const arenaMemory = opts?.arenaMemory ?? []
+  const hasKorean = /[\uAC00-\uD7AF]/.test(userPrompt)
+  const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF]/.test(userPrompt)
+  const hasChinese = /[\u4E00-\u9FFF]/.test(userPrompt) && !hasJapanese && !hasKorean
+  const topicLanguage = hasKorean ? 'Korean' : hasJapanese ? 'Japanese' : hasChinese ? 'Chinese' : 'English'
+  const arenaLanguageOverride = `[ABSOLUTE LANGUAGE OVERRIDE] The debate topic is written in ${topicLanguage}. You MUST write your ENTIRE response in ${topicLanguage}. This overrides all other language instructions. No exceptions.`
   const uniq = Array.from(new Set(selectedAIs))
   const shuffledAIs = fisherYatesShuffleAIs(uniq)
   console.log('Shuffled call order:', shuffledAIs)
@@ -604,6 +611,7 @@ export async function runArenaRound1(
       ai,
       userPrompt: block,
       ctx,
+      arenaLanguageOverride,
       roundNumber: 1,
       persistTurn,
       maxTokens: ai === 'claude' ? 1500 : ai === 'mistral' ? 1100 : 750,
@@ -672,6 +680,11 @@ export async function runArenaRound(
 ): Promise<ArenaRound> {
   const fightMode = opts?.fightMode ?? 'logic'
   const arenaMemory = opts?.arenaMemory ?? []
+  const hasKorean = /[\uAC00-\uD7AF]/.test(userPrompt)
+  const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF]/.test(userPrompt)
+  const hasChinese = /[\u4E00-\u9FFF]/.test(userPrompt) && !hasJapanese && !hasKorean
+  const topicLanguage = hasKorean ? 'Korean' : hasJapanese ? 'Japanese' : hasChinese ? 'Chinese' : 'English'
+  const arenaLanguageOverride = `[ABSOLUTE LANGUAGE OVERRIDE] The debate topic is written in ${topicLanguage}. You MUST write your ENTIRE response in ${topicLanguage}. This overrides all other language instructions. No exceptions.`
   if (roundNumber > 9) {
     throw new Error('Arena is capped at round 9. Start a new session to debate again.')
   }
@@ -751,6 +764,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
       ai,
       userPrompt: promptText,
       ctx,
+      arenaLanguageOverride,
       roundNumber,
       persistTurn,
       maxTokens: ai === 'claude' ? 220 : 180,
@@ -836,6 +850,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
         ai,
         userPrompt: prompt,
         ctx,
+        arenaLanguageOverride,
         roundNumber,
         persistTurn,
         maxTokens: maxTok,
