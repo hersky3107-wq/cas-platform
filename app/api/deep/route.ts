@@ -128,9 +128,9 @@ function systemPromptForPart(
     outputMode === 'report' && provider === 'google' ? GEMINI_REPORT_MODE_BLOCK : ''
   const fullPrefix = `${modePrefix}${geminiReportSuffix}`
   if (priority === 'CORE') {
-    return `${fullPrefix}${LANGUAGE_MIRROR_RULE}
+    return `${LANGUAGE_MIRROR_RULE}
 
-Write in flowing prose only. No markdown headers (##, ###).
+${fullPrefix}Write in flowing prose only. No markdown headers (##, ###).
 No nested bullet lists. Bold sparingly.
 STOP RULE — READ FIRST:
 You have exactly 1500 tokens. At 1200 tokens you MUST stop your current thought,
@@ -146,9 +146,9 @@ ${AMPLE_SPACE_RULE}
 
 ${RESPONSE_COMPLETION_RULE}`
   }
-  return `${fullPrefix}${LANGUAGE_MIRROR_RULE}
+  return `${LANGUAGE_MIRROR_RULE}
 
-You have 900 tokens total. Write your full analysis in the first 700 tokens,
+${fullPrefix}You have 900 tokens total. Write your full analysis in the first 700 tokens,
 then use the remaining 200 to write one complete concluding sentence and stop.
 Never end mid-sentence or mid-word. Pace yourself from the start.
 
@@ -679,6 +679,7 @@ export async function POST(req: Request) {
             maxCompletionTokens:
               part.priority === 'CORE' ? coreMaxTokens : supportMaxTokens,
             modelOverride: modelForAssignedPart(part.assigned_provider),
+            skipLanguageInjection: true,
           }),
         }))
 

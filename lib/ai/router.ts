@@ -521,6 +521,7 @@ async function callProvider({
   model: modelParam,
   prompt,
   systemPrompt,
+  skipLanguageInjection,
   temperature,
   maxCompletionTokens,
   chatMessages,
@@ -531,13 +532,15 @@ async function callProvider({
   model?: string
   prompt: string
   systemPrompt: string
+  skipLanguageInjection?: boolean
   temperature?: number
   maxCompletionTokens?: number
   chatMessages?: CompareChatMessage[]
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
-  const detectedLang = detectLanguage(prompt)
-  const injectedSystemPrompt = buildLanguagePrefix(detectedLang) + (systemPrompt || '')
+  const injectedSystemPrompt = skipLanguageInjection
+    ? (systemPrompt || '')
+    : buildLanguagePrefix(detectLanguage(prompt)) + (systemPrompt || '')
   const chatOpts = { chatMessages }
 
   if (provider === 'openai') {
@@ -632,6 +635,7 @@ export type RunSingleProviderParams = {
   prompt: string
   systemPrompt: string
   supabaseAccessToken?: string
+  skipLanguageInjection?: boolean
   /** Extra Day-2 rows for compare mode: scores + debate_logs assistant entries */
   saveCompareArtifacts?: boolean
   /** Sampling temperature (e.g. 0.1–1); omit for provider defaults */
@@ -713,6 +717,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     prompt,
     systemPrompt,
     supabaseAccessToken,
+    skipLanguageInjection,
     saveCompareArtifacts,
     temperature,
     maxCompletionTokens,
@@ -746,6 +751,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       model,
       prompt,
       systemPrompt,
+      skipLanguageInjection,
       temperature,
       maxCompletionTokens,
       chatMessages,
