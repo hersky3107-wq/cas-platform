@@ -16,28 +16,41 @@ function requiredPolarWebhookEnv(): string | null {
   return null
 }
 
-function verifyPolarSignature(rawBody: string, signatureHeader: string | null): boolean {
+function verifyPolarSignature(rawBody: string, req: Request): boolean {
   const secret = process.env.POLAR_WEBHOOK_SECRET
   if (!secret) return false
-  if (!signatureHeader) return false
 
-  // Accept common header formats: "sha256=...", or raw hex.
-  const sig = signatureHeader.includes('=')
-    ? signatureHeader.split('=')[1]?.trim() ?? ''
-    : signatureHeader.trim()
+  const sigHeader = req.headers.get('webhook-signature')
+  const msgId = req.headers.get('webhook-id')
+  const timestamp = req.headers.get('webhook-timestamp')
 
-  if (!sig) return false
+  if (!sigHeader || !msgId || !timestamp) return false
 
-  const computedHex = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex')
+  // Strip prefix (polar_whs_ or whsec_) and base64-decode the secret
+  const secretClean = secret.replace(/^(polar_whs_|whsec_)/, '')
+  const secretBytes = Buffer.from(secretClean, 'base64')
 
-  try {
-    const a = Buffer.from(sig, 'hex')
-    const b = Buffer.from(computedHex, 'hex')
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
+  // Svix signed content = msgId.timestamp.body
+  const signedContent = `${msgId}.${timestamp}.${rawBody}`
+  const computed = createHmac('sha256', secretBytes)
+    .update(signedContent, 'utf8')
+    .digest('base64')
+
+  // sigHeader format: "v1,<base64sig>" — may have multiple comma-separated sigs
+  const signatures = sigHeader.split(' ')
+  for (const sig of signatures) {
+    const parts = sig.split(',')
+    if (parts.length < 2) continue
+    const sigBase64 = parts.slice(1).join(',')
+    try {
+      const a = Buffer.from(sigBase64, 'base64')
+      const b = Buffer.from(computed, 'base64')
+      if (a.length === b.length && timingSafeEqual(a, b)) return true
+    } catch {
+      continue
+    }
   }
+  return false
 }
 
 function asString(v: unknown): string | null {
@@ -80,23 +93,8 @@ export async function POST(req: Request) {
     }
 
     const rawBody = await req.text()
-    const sigHeader =
-      req.headers.get('webhook-signature') ??
-      req.headers.get('Webhook-Signature') ??
-      req.headers.get('polar-signature') ??
-      req.headers.get('x-polar-signature') ??
-      req.headers.get('Polar-Signature') ??
-      req.headers.get('X-Polar-Signature')
-
-    console.log('[polar/webhook] all sig headers:', {
-      'webhook-signature': req.headers.get('webhook-signature'),
-      'polar-signature': req.headers.get('polar-signature'),
-      'x-polar-signature': req.headers.get('x-polar-signature'),
-    })
-
-    if (!verifyPolarSignature(rawBody, sigHeader)) {
+    if (!verifyPolarSignature(rawBody, req)) {
       console.error('[polar/webhook] Signature verification failed', {
-        sigHeader,
         hasSecret: !!process.env.POLAR_WEBHOOK_SECRET,
       })
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
@@ -114,7 +112,7 @@ export async function POST(req: Request) {
       asString((event as any).event) ??
       asString((event as any).name) ??
       ''
-    console.log('[polar/webhook] received:', { eventType, sigHeader })
+    console.log('[polar/webhook] received:', { eventType })
 
     const data = (event.data ?? (event as any).payload ?? null) as unknown
     const dataObj = data && typeof data === 'object' ? (data as Record<string, unknown>) : null
