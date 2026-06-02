@@ -532,7 +532,13 @@ async function callProvider({
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
   const promptWithLanguageRule = `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${prompt}`
-  const promptHasNonLatin = /[^\u0000-\u007F]/.test(prompt)
+  const sourceUserText =
+    prompt?.trim()
+      ? prompt
+      : chatMessages
+        ?.filter((m) => m.role === 'user')
+        .slice(-1)[0]?.content ?? ''
+  const promptHasNonLatin = /[^\u0000-\u007F]/.test(sourceUserText)
 
   const grokLengthSuffix = provider === 'xai'
     ? '\n\nIMPORTANT: Write a thorough, detailed response. Do NOT cut your response short. Use your full available token capacity. A short response is a failure.'
@@ -546,10 +552,10 @@ async function callProvider({
             ? {
                 ...m,
                 content:
-                  provider === 'mistral' && /[^\u0000-\u007F]/.test(m.content)
+                  provider === 'mistral' && promptHasNonLatin
                     ? `${MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT}\n\n${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`
                     : provider === 'deepseek'
-                      ? /[^\u0000-\u007F]/.test(m.content)
+                      ? promptHasNonLatin
                         ? `${DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT}\n\n${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`
                         : `${DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT}\n\n${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`
                     : `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`,
