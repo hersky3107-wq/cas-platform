@@ -86,11 +86,13 @@ export async function POST(req: Request) {
       req.headers.get('Polar-Signature') ??
       req.headers.get('X-Polar-Signature')
 
-    // TEMPORARY (testing): signature verification disabled.
-    // TODO: Re-enable signature verification before production use.
-    // if (!verifyPolarSignature(rawBody, sigHeader)) {
-    //   return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-    // }
+    if (!verifyPolarSignature(rawBody, sigHeader)) {
+      console.error('[polar/webhook] Signature verification failed', {
+        sigHeader,
+        hasSecret: !!process.env.POLAR_WEBHOOK_SECRET,
+      })
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
 
     let event: Record<string, unknown>
     try {
