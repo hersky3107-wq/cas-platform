@@ -161,6 +161,7 @@ export default function DeepModePage() {
   const [winner, setWinner] = useState<string | null>(null);
   const [synthesis, setSynthesis] = useState("");
   const [credits, setCredits] = useState<number | null>(null);
+  const [mobileWarningDismissed, setMobileWarningDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deepSessionId, setDeepSessionId] = useState<string | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
@@ -468,6 +469,22 @@ export default function DeepModePage() {
             />
           </div>
         </header>
+
+        {phase === "idle" && !mobileWarningDismissed ? (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 md:hidden">
+            <p className="leading-relaxed">
+              ⚠️ DEEP works best on PC or Wi-Fi. Mobile data may cause interruptions during report generation.
+            </p>
+            <button
+              type="button"
+              onClick={() => setMobileWarningDismissed(true)}
+              className="shrink-0 rounded-lg px-2 py-1 text-xs text-amber-200/80 hover:bg-white/10 hover:text-amber-100"
+              aria-label="Dismiss warning"
+            >
+              ✕
+            </button>
+          </div>
+        ) : null}
 
         <section className="rounded-3xl bg-white/[0.05] p-6 ring-1 ring-white/10 lg:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/55">

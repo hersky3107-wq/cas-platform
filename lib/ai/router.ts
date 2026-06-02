@@ -363,6 +363,22 @@ type GeminiUsageMeta = {
   totalTokenCount?: number
 }
 
+function isChatGptSafetyRefusal(text: string | null): boolean {
+  if (!text) return false
+  const t = text.trim().toLowerCase()
+  const hasSorry =
+    t.includes("i'm sorry") ||
+    t.includes('i am sorry') ||
+    t.includes('i’m sorry')
+  if (!hasSorry) return false
+  const hasRefusal =
+    t.includes("i can't assist") ||
+    t.includes('i cannot assist') ||
+    t.includes("i can't help") ||
+    t.includes('i cannot help')
+  return hasRefusal
+}
+
 /** Text from one Gemini GenerateContentResponse (REST shape: candidates[].content.parts[].text — not OpenAI delta.content). */
 function extractGeminiResponseText(obj: unknown): string {
   if (!obj || typeof obj !== 'object') return ''
@@ -590,7 +606,7 @@ async function callProvider({
   const chatOpts = { chatMessages: injectedChatMessages }
 
   if (provider === 'openai') {
-    const { text, usage } = await callOpenAICompatibleChat({
+    const first = await callOpenAICompatibleChat({
       provider,
       baseUrl: 'https://api.openai.com/v1',
       apiKey,
@@ -601,7 +617,33 @@ async function callProvider({
       maxCompletionTokens,
       ...chatOpts,
     })
-    return { model, text, usage }
+    if (!isChatGptSafetyRefusal(first.text)) {
+      return { model, text: first.text, usage: first.usage }
+    }
+
+    const second = await callOpenAICompatibleChat({
+      provider,
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey,
+      model,
+      prompt: promptWithLanguageRule,
+      systemPrompt: injectedSystemPrompt,
+      temperature,
+      maxCompletionTokens,
+      ...chatOpts,
+    })
+
+    if (isChatGptSafetyRefusal(second.text)) {
+      return {
+        model,
+        text:
+          `[ChatGPT Safety Filter] This response was blocked by ChatGPT's built-in content policy, not by AIMANI. ` +
+          (first.text ?? ''),
+        usage: first.usage,
+      }
+    }
+
+    return { model, text: second.text, usage: second.usage }
   }
 
   if (provider === 'xai') {

@@ -967,9 +967,9 @@ export default function ArenaPage() {
 
       <main className="mx-auto max-w-3xl px-3 pb-40 pt-16 sm:px-4">
         {phase === "input" && !mobileWarningDismissed ? (
-          <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 md:hidden">
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 md:hidden">
             <p className="leading-relaxed">
-              ⚠️ Arena runs 9 rounds with 6 AIs — for the best experience, use a desktop browser or a stable Wi-Fi connection.
+              ⚠️ Arena works best on PC or Wi-Fi. Mobile data often causes disconnections during long battles.
             </p>
             <button
               type="button"
