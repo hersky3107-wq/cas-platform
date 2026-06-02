@@ -1,19 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { decryptText } from '@/lib/db/crypto'
 
-function detectLanguage(text: string): 'ko' | 'en' | 'other' {
-  const koreanChars = (text.match(/[\uAC00-\uD7A3]/g) || []).length
-  const totalChars = text.replace(/\s/g, '').length
-  if (totalChars === 0) return 'en'
-  if (koreanChars / totalChars > 0.15) return 'ko'
-  return 'en'
-}
-
-function buildLanguagePrefix(lang: 'ko' | 'en' | 'other'): string {
-  const dateStr = 'Current date: May 29, 2026. Your knowledge may not include the latest developments. Always clarify if your information might be outdated.'
-  if (lang === 'ko') return `[CRITICAL LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in Korean (한국어). This overrides all other instructions. No exceptions.\n${dateStr}\n\n`
-  return `[CRITICAL LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in English. This overrides all other instructions. No exceptions.\n${dateStr}\n\n`
-}
+const UNIVERSAL_LANGUAGE_PROMPT_RULE = `IMPORTANT: Always respond in the same language the user wrote their message in. If the user writes in Japanese, respond in Japanese. If in French, respond in French. If in English, respond in English. Match the user's language exactly.`
 
 export type AiProviderName =
   | 'openai'
@@ -521,7 +509,6 @@ async function callProvider({
   model: modelParam,
   prompt,
   systemPrompt,
-  skipLanguageInjection,
   temperature,
   maxCompletionTokens,
   chatMessages,
@@ -538,23 +525,30 @@ async function callProvider({
   chatMessages?: CompareChatMessage[]
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
-  const langPrefix = skipLanguageInjection
-    ? ''
-    : buildLanguagePrefix(detectLanguage(prompt))
+  const promptWithLanguageRule = `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${prompt}`
 
   const grokLengthSuffix = provider === 'xai'
     ? '\n\nIMPORTANT: Write a thorough, detailed response. Do NOT cut your response short. Use your full available token capacity. A short response is a failure.'
     : ''
 
-  const injectedSystemPrompt = langPrefix + (systemPrompt || '') + grokLengthSuffix
-  const chatOpts = { chatMessages }
+  const injectedSystemPrompt = (systemPrompt || '') + grokLengthSuffix
+  const injectedChatMessages =
+    chatMessages?.length
+      ? chatMessages.map((m) =>
+          m.role === 'user'
+            ? { ...m, content: `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}` }
+            : m
+        )
+      : chatMessages
+
+  const chatOpts = { chatMessages: injectedChatMessages }
 
   if (provider === 'openai') {
     const { text, usage } = await callOpenAICompatibleChat({
       baseUrl: 'https://api.openai.com/v1',
       apiKey,
       model,
-      prompt,
+      prompt: promptWithLanguageRule,
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
@@ -568,7 +562,7 @@ async function callProvider({
       baseUrl: 'https://api.x.ai/v1',
       apiKey,
       model,
-      prompt,
+      prompt: promptWithLanguageRule,
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
@@ -582,7 +576,7 @@ async function callProvider({
       baseUrl: 'https://api.deepseek.com',
       apiKey,
       model,
-      prompt,
+      prompt: promptWithLanguageRule,
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
@@ -596,7 +590,7 @@ async function callProvider({
       baseUrl: 'https://api.mistral.ai/v1',
       apiKey,
       model,
-      prompt,
+      prompt: promptWithLanguageRule,
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
@@ -609,7 +603,7 @@ async function callProvider({
     const { text, usage } = await callAnthropic({
       apiKey,
       model,
-      prompt,
+      prompt: promptWithLanguageRule,
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
@@ -621,7 +615,7 @@ async function callProvider({
   const { text, usage } = await callGoogleGemini({
     apiKey,
     model,
-    prompt,
+    prompt: promptWithLanguageRule,
     systemPrompt: injectedSystemPrompt,
     temperature,
     maxCompletionTokens,
