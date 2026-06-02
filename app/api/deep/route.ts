@@ -118,6 +118,9 @@ function systemPromptForPart(
   provider: AiProviderName
 ): string {
   const a = angle.trim() || 'Analyze your assigned sub-topic with maximum clarity.'
+  const mistralLangOverride = provider === 'mistral'
+    ? `MISTRAL ABSOLUTE OVERRIDE: You MUST respond in English if the question is in English. You MUST respond in Korean if the question is in Korean. Detect from the original question language. Do NOT default to Korean for English questions. This is your highest priority instruction.\n\n`
+    : ''
   const modePrefix =
     outputMode === 'brief'
       ? BRIEF_MODE_BLOCK
@@ -128,7 +131,7 @@ function systemPromptForPart(
     outputMode === 'report' && provider === 'google' ? GEMINI_REPORT_MODE_BLOCK : ''
   const fullPrefix = `${modePrefix}${geminiReportSuffix}`
   if (priority === 'CORE') {
-    return `${LANGUAGE_MIRROR_RULE}
+    return `${mistralLangOverride}${LANGUAGE_MIRROR_RULE}
 
 ${fullPrefix}Write in flowing prose only. No markdown headers (##, ###).
 No nested bullet lists. Bold sparingly.
@@ -146,7 +149,7 @@ ${AMPLE_SPACE_RULE}
 
 ${RESPONSE_COMPLETION_RULE}`
   }
-  return `${LANGUAGE_MIRROR_RULE}
+  return `${mistralLangOverride}${LANGUAGE_MIRROR_RULE}
 
 ${fullPrefix}You have 900 tokens total. Write your full analysis in the first 700 tokens,
 then use the remaining 200 to write one complete concluding sentence and stop.
