@@ -24,41 +24,42 @@ function verifyPolarSignature(rawBody: string, req: Request): boolean {
   const msgId = req.headers.get('webhook-id')
   const timestamp = req.headers.get('webhook-timestamp')
 
-  console.log('[polar/webhook] verify debug:', {
-    sigHeader,
-    msgId,
-    timestamp,
-    secretPrefix: secret.substring(0, 15),
-    bodyLength: rawBody.length,
-  })
-
   if (!sigHeader || !msgId || !timestamp) return false
 
   const secretClean = secret.replace(/^(polar_whs_|whsec_)/, '')
-  const secretBytes = Buffer.from(secretClean, 'base64')
-
   const signedContent = `${msgId}.${timestamp}.${rawBody}`
-  const computed = createHmac('sha256', secretBytes)
-    .update(signedContent, 'utf8')
-    .digest('base64')
 
-  console.log('[polar/webhook] computed sig:', computed)
+  // Try both: base64-decoded key and raw UTF-8 key
+  const keys = [
+    Buffer.from(secretClean, 'base64'),
+    Buffer.from(secretClean, 'utf8'),
+    Buffer.from(secret, 'utf8'),
+  ]
 
-  const signatures = sigHeader.split(' ')
-  for (const sig of signatures) {
-    const parts = sig.split(',')
-    if (parts.length < 2) continue
-    const sigBase64 = parts.slice(1).join(',')
-    console.log('[polar/webhook] comparing:', { received: sigBase64, computed })
-    try {
-      const a = Buffer.from(sigBase64, 'base64')
-      const b = Buffer.from(computed, 'base64')
-      if (a.length === b.length && timingSafeEqual(a, b)) return true
-    } catch (e) {
-      console.error('[polar/webhook] compare error:', e)
-      continue
+  for (const key of keys) {
+    const computed = createHmac('sha256', key)
+      .update(signedContent, 'utf8')
+      .digest('base64')
+
+    const signatures = sigHeader.split(' ')
+    for (const sig of signatures) {
+      const parts = sig.split(',')
+      if (parts.length < 2) continue
+      const sigBase64 = parts.slice(1).join(',')
+      try {
+        const a = Buffer.from(sigBase64, 'base64')
+        const b = Buffer.from(computed, 'base64')
+        if (a.length === b.length && timingSafeEqual(a, b)) {
+          console.log('[polar/webhook] Signature verified successfully')
+          return true
+        }
+      } catch {
+        continue
+      }
     }
   }
+
+  console.error('[polar/webhook] Signature verification failed { hasSecret: true }')
   return false
 }
 
