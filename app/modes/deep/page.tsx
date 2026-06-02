@@ -458,12 +458,6 @@ export default function DeepModePage() {
               <p className="mt-2 text-xs leading-relaxed text-white/52">
                 {modeCost} credits
               </p>
-              {typeof credits === "number" ? (
-                <p className="mt-2 text-xs text-white/52">
-                  Your balance:{" "}
-                  <span className="tabular-nums text-white/72">{credits}</span>
-                </p>
-              ) : null}
             </div>
           </div>
           <div className="relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.45)] sm:h-[92px] sm:w-[92px]">
