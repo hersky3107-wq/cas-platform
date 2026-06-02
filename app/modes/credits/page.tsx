@@ -122,6 +122,7 @@ function CreditsContent() {
     useState<SubscriptionPlanType | null>(null)
   const [topUpAmount, setTopUpAmount] = useState(TOP_UP_DEFAULT_USD)
   const [topUpPaying, setTopUpPaying] = useState(false)
+  const [topUpPolarPaying, setTopUpPolarPaying] = useState(false)
   const [topUpCapturing, setTopUpCapturing] = useState(false)
   const subscriptionReturnHandled = useRef(false)
   const topupReturnHandled = useRef(false)
@@ -245,6 +246,28 @@ function CreditsContent() {
       setMessage({
         type: 'err',
         text: e instanceof Error ? e.message : 'Could not start top-up payment',
+      })
+    }
+  }, [topUpAmount])
+
+  const handlePolarTopUpPay = useCallback(async () => {
+    setTopUpPolarPaying(true)
+    setMessage(null)
+    try {
+      const res = await authenticatedFetch('/api/polar/create-topup', {
+        method: 'POST',
+        json: { amountUSD: topUpAmount },
+      })
+      const j = (await res.json()) as { checkoutUrl?: string; error?: string }
+      if (!res.ok || !j.checkoutUrl) {
+        throw new Error(j.error ?? 'Could not start Polar top-up')
+      }
+      window.location.href = j.checkoutUrl
+    } catch (e) {
+      setTopUpPolarPaying(false)
+      setMessage({
+        type: 'err',
+        text: e instanceof Error ? e.message : 'Could not start Polar top-up',
       })
     }
   }, [topUpAmount])
@@ -534,14 +557,24 @@ function CreditsContent() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void handleTopUpPay()}
-              disabled={topUpPaying}
-              className="mt-6 w-full rounded-xl bg-[#0070ba] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {topUpPaying ? 'Redirecting to PayPal…' : `Pay $${topUpAmount} with PayPal`}
-            </button>
+            <div className="mt-6 space-y-2">
+              <button
+                type="button"
+                onClick={() => void handleTopUpPay()}
+                disabled={topUpPaying || topUpPolarPaying}
+                className="w-full rounded-xl bg-[#0070ba] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {topUpPaying ? 'Redirecting to PayPal…' : `Pay $${topUpAmount} with PayPal`}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handlePolarTopUpPay()}
+                disabled={topUpPaying || topUpPolarPaying}
+                className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {topUpPolarPaying ? 'Redirecting…' : `Pay $${topUpAmount} with Card (Polar)`}
+              </button>
+            </div>
           </section>
         ) : null}
 
