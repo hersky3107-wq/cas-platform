@@ -158,7 +158,6 @@ function CreditsContent() {
     }
     if (!res.ok) return
     const sub = j.subscription
-    console.log('[debug] subscription response:', JSON.stringify(sub))
     if (
       sub &&
       sub.status === 'active' &&
