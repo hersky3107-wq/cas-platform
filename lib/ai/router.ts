@@ -4,6 +4,10 @@ import { decryptText } from '@/lib/db/crypto'
 const UNIVERSAL_LANGUAGE_PROMPT_RULE = `IMPORTANT: Always respond in the same language the user wrote their message in. If the user writes in Japanese, respond in Japanese. If in French, respond in French. If in English, respond in English. Match the user's language exactly.`
 const MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT =
   "[CRITICAL] You MUST respond in the EXACT same language as the user's message. If the user writes in Japanese, you MUST write your entire response in Japanese. Do NOT respond in English. This is mandatory."
+const DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT =
+  '[CRITICAL] You MUST respond in English. Do NOT respond in any other language. This is mandatory.'
+const DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT =
+  "[CRITICAL] You MUST respond in the EXACT same language as the user's message. Match the language exactly. This is mandatory."
 
 export type AiProviderName =
   | 'openai'
@@ -544,6 +548,10 @@ async function callProvider({
                 content:
                   provider === 'mistral' && /[^\u0000-\u007F]/.test(m.content)
                     ? `${MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT}\n\n${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`
+                    : provider === 'deepseek'
+                      ? /[^\u0000-\u007F]/.test(m.content)
+                        ? `${DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT}\n\n${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`
+                        : `${DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT}\n\n${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`
                     : `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${m.content}`,
               }
             : m
@@ -581,11 +589,15 @@ async function callProvider({
   }
 
   if (provider === 'deepseek') {
+    const deepseekPrompt =
+      promptHasNonLatin
+        ? `${DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT}\n\n${promptWithLanguageRule}`
+        : `${DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT}\n\n${promptWithLanguageRule}`
     const { text, usage } = await callOpenAICompatibleChat({
       baseUrl: 'https://api.deepseek.com',
       apiKey,
       model,
-      prompt: promptWithLanguageRule,
+      prompt: deepseekPrompt,
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
