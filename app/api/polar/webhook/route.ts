@@ -81,10 +81,18 @@ export async function POST(req: Request) {
 
     const rawBody = await req.text()
     const sigHeader =
+      req.headers.get('webhook-signature') ??
+      req.headers.get('Webhook-Signature') ??
       req.headers.get('polar-signature') ??
       req.headers.get('x-polar-signature') ??
       req.headers.get('Polar-Signature') ??
       req.headers.get('X-Polar-Signature')
+
+    console.log('[polar/webhook] all sig headers:', {
+      'webhook-signature': req.headers.get('webhook-signature'),
+      'polar-signature': req.headers.get('polar-signature'),
+      'x-polar-signature': req.headers.get('x-polar-signature'),
+    })
 
     if (!verifyPolarSignature(rawBody, sigHeader)) {
       console.error('[polar/webhook] Signature verification failed', {
