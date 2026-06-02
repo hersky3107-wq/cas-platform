@@ -24,29 +24,38 @@ function verifyPolarSignature(rawBody: string, req: Request): boolean {
   const msgId = req.headers.get('webhook-id')
   const timestamp = req.headers.get('webhook-timestamp')
 
+  console.log('[polar/webhook] verify debug:', {
+    sigHeader,
+    msgId,
+    timestamp,
+    secretPrefix: secret.substring(0, 15),
+    bodyLength: rawBody.length,
+  })
+
   if (!sigHeader || !msgId || !timestamp) return false
 
-  // Strip prefix (polar_whs_ or whsec_) and base64-decode the secret
   const secretClean = secret.replace(/^(polar_whs_|whsec_)/, '')
   const secretBytes = Buffer.from(secretClean, 'base64')
 
-  // Svix signed content = msgId.timestamp.body
   const signedContent = `${msgId}.${timestamp}.${rawBody}`
   const computed = createHmac('sha256', secretBytes)
     .update(signedContent, 'utf8')
     .digest('base64')
 
-  // sigHeader format: "v1,<base64sig>" — may have multiple comma-separated sigs
+  console.log('[polar/webhook] computed sig:', computed)
+
   const signatures = sigHeader.split(' ')
   for (const sig of signatures) {
     const parts = sig.split(',')
     if (parts.length < 2) continue
     const sigBase64 = parts.slice(1).join(',')
+    console.log('[polar/webhook] comparing:', { received: sigBase64, computed })
     try {
       const a = Buffer.from(sigBase64, 'base64')
       const b = Buffer.from(computed, 'base64')
       if (a.length === b.length && timingSafeEqual(a, b)) return true
-    } catch {
+    } catch (e) {
+      console.error('[polar/webhook] compare error:', e)
       continue
     }
   }
