@@ -605,7 +605,7 @@ export async function runArenaRound1(
       ctx,
       roundNumber: 1,
       persistTurn,
-      maxTokens: ai === 'claude' ? 1200 : ai === 'mistral' ? 900 : 600,
+      maxTokens: ai === 'claude' ? 1500 : ai === 'mistral' ? 1100 : 750,
       fightMode,
       arenaMemory,
       memoryRound: 1,
@@ -732,9 +732,9 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
   }
 
   const championMaxTokens = (ai: ArenaAI): number => {
-    if (ai === 'claude') return 1200
-    if (ai === 'mistral') return 900
-    return 650
+    if (ai === 'claude') return 1500
+    if (ai === 'mistral') return 1100
+    return 800
   }
 
   const emitSupporterApi = async (ai: ArenaAI, champ: ArenaAI, side: 'left' | 'right') => {
