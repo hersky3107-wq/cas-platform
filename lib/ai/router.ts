@@ -202,7 +202,25 @@ function normalizeTokens({
   return { promptTokens: pt, completionTokens: ct, totalTokens: tt }
 }
 
+async function fetchWithRetry(
+  provider: AiProviderName,
+  input: RequestInfo | URL,
+  init: RequestInit
+): Promise<Response> {
+  try {
+    return await fetch(input, init)
+  } catch (e: unknown) {
+    const name = typeof e === 'object' && e ? (e as { name?: unknown }).name : null
+    const retryable = e instanceof TypeError || name === 'AbortError'
+    if (!retryable) throw e
+    console.log('[router] Retrying AI call after network error:', provider)
+    await new Promise((r) => setTimeout(r, 2000))
+    return await fetch(input, init)
+  }
+}
+
 async function callOpenAICompatibleChat({
+  provider,
   baseUrl,
   apiKey,
   model,
@@ -212,6 +230,7 @@ async function callOpenAICompatibleChat({
   maxCompletionTokens,
   chatMessages,
 }: {
+  provider: AiProviderName
   baseUrl: string
   apiKey: string
   model: string
@@ -240,7 +259,7 @@ async function callOpenAICompatibleChat({
     payload.max_tokens = maxCompletionTokens
   }
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await fetchWithRetry(provider, `${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -270,6 +289,7 @@ async function callOpenAICompatibleChat({
 }
 
 async function callAnthropic({
+  provider,
   apiKey,
   model,
   prompt,
@@ -278,6 +298,7 @@ async function callAnthropic({
   maxCompletionTokens,
   chatMessages,
 }: {
+  provider: AiProviderName
   apiKey: string
   model: string
   prompt: string
@@ -302,7 +323,7 @@ async function callAnthropic({
     anthropicBody.temperature = temperature
   }
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithRetry(provider, 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -362,6 +383,7 @@ function extractGeminiResponseText(obj: unknown): string {
 }
 
 async function callGoogleGemini({
+  provider,
   apiKey,
   model,
   prompt,
@@ -370,6 +392,7 @@ async function callGoogleGemini({
   maxCompletionTokens,
   chatMessages,
 }: {
+  provider: AiProviderName
   apiKey: string
   model: string
   prompt: string
@@ -418,7 +441,7 @@ async function callGoogleGemini({
     thinkingConfig: { thinkingBudget: 0 },
   }
 
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(provider, url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -568,6 +591,7 @@ async function callProvider({
 
   if (provider === 'openai') {
     const { text, usage } = await callOpenAICompatibleChat({
+      provider,
       baseUrl: 'https://api.openai.com/v1',
       apiKey,
       model,
@@ -582,6 +606,7 @@ async function callProvider({
 
   if (provider === 'xai') {
     const { text, usage } = await callOpenAICompatibleChat({
+      provider,
       baseUrl: 'https://api.x.ai/v1',
       apiKey,
       model,
@@ -600,6 +625,7 @@ async function callProvider({
         ? `${DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT}\n\n${promptWithLanguageRule}`
         : `${DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT}\n\n${promptWithLanguageRule}`
     const { text, usage } = await callOpenAICompatibleChat({
+      provider,
       baseUrl: 'https://api.deepseek.com',
       apiKey,
       model,
@@ -618,6 +644,7 @@ async function callProvider({
         ? `${MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT}\n\n${promptWithLanguageRule}`
         : promptWithLanguageRule
     const { text, usage } = await callOpenAICompatibleChat({
+      provider,
       baseUrl: 'https://api.mistral.ai/v1',
       apiKey,
       model,
@@ -632,6 +659,7 @@ async function callProvider({
 
   if (provider === 'anthropic') {
     const { text, usage } = await callAnthropic({
+      provider,
       apiKey,
       model,
       prompt: promptWithLanguageRule,
@@ -644,6 +672,7 @@ async function callProvider({
   }
 
   const { text, usage } = await callGoogleGemini({
+    provider,
     apiKey,
     model,
     prompt: promptWithLanguageRule,

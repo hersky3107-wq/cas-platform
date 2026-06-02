@@ -289,6 +289,7 @@ export default function ArenaPage() {
   const router = useRouter();
   const [credits, setCredits] = useState<number | null>(null);
   const [phase, setPhase] = useState<Phase>("input");
+  const [mobileWarningDismissed, setMobileWarningDismissed] = useState(false);
   const [topic, setTopic] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [rounds, setRounds] = useState<ArenaRound[]>([]);
@@ -965,6 +966,21 @@ export default function ArenaPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-3 pb-40 pt-16 sm:px-4">
+        {phase === "input" && !mobileWarningDismissed ? (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 md:hidden">
+            <p className="leading-relaxed">
+              ⚠️ Arena runs 9 rounds with 6 AIs — for the best experience, use a desktop browser or a stable Wi-Fi connection.
+            </p>
+            <button
+              type="button"
+              onClick={() => setMobileWarningDismissed(true)}
+              className="shrink-0 rounded-lg px-2 py-1 text-xs text-amber-200/80 hover:bg-white/10 hover:text-amber-100"
+              aria-label="Dismiss warning"
+            >
+              ✕
+            </button>
+          </div>
+        ) : null}
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <Swords className="h-10 w-10 text-rose-400" aria-hidden />
           <h1 className="text-2xl font-bold tracking-tight text-white">ARENA</h1>
