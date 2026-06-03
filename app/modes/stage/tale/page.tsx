@@ -458,16 +458,11 @@ export default function StageTalePage() {
         <button
           type="button"
           onClick={() => {
-            // Explicit navigation: avoid router.back() (may fail with no history).
-            if (step === "genre") {
-              router.push("/modes/stage");
-              return;
-            }
             if (step === "twist") {
-              setStep("genre"); // in-page view change
+              setStep("genre");
               return;
             }
-            router.push("/modes/stage/tale");
+            router.push("/modes/stage");
           }}
           className="inline-flex items-center gap-1.5 rounded-full bg-white/8 px-3 py-2 text-sm text-white/90 transition hover:bg-white/14"
         >
