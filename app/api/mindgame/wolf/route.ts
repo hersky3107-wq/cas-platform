@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { runSingleAiProvider, type RouterResult } from '@/lib/ai/router'
+import { detectOraclePromptLanguage } from '@/lib/oracle/oracle-language'
 import { creditsForMindgameWolf } from '@/lib/credits'
 import { deductCreditsBalance, getCreditsBalance } from '@/lib/credits-server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
@@ -27,11 +28,29 @@ const AI_PLAYERS = [
   { provider: 'mistral' as const, name: 'Mistral', model: 'mistral-large-latest' },
 ]
 
-function getLangOverride(language: string): string {
-  if (!language || language === 'English') {
-    return `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in English. This overrides ALL other instructions. No exceptions.\nCurrent date: May 29, 2026. Use the most up-to-date information available.\n\n`
+type WolfCjkLanguage = 'Korean' | 'Japanese' | 'Chinese'
+
+const WOLF_LANGUAGE_NAME_TO_CJK: Record<string, WolfCjkLanguage> = {
+  korean: 'Korean',
+  japanese: 'Japanese',
+  chinese: 'Chinese',
+}
+
+/** Session language from game setup only — not from AI conversation history. */
+function resolveWolfSessionLanguage(languageSource: string): WolfCjkLanguage | null {
+  const raw = languageSource.trim()
+  if (!raw) return null
+  const fromText = detectOraclePromptLanguage(raw)
+  if (fromText) return fromText
+  return WOLF_LANGUAGE_NAME_TO_CJK[raw.toLowerCase()] ?? null
+}
+
+function buildWolfLanguagePrefix(languageSource: string): string {
+  const lang = resolveWolfSessionLanguage(languageSource)
+  if (lang) {
+    return `[ABSOLUTE LANGUAGE OVERRIDE] The user's input is written in ${lang}. You MUST write your ENTIRE response in ${lang}. This overrides all other language instructions. No exceptions.\n\n`
   }
-  return `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY]\nYou MUST respond ONLY in ${language}. Do NOT use any English words or phrases. This overrides ALL other instructions. No exceptions.\nCurrent date: May 29, 2026. Use the most up-to-date information available.\n\n`
+  return `You MUST respond in English for the entire session, regardless of what other AIs say.\n\n`
 }
 
 const NO_REPEAT_INSTRUCTION = `IMPORTANT: Your response must be DIFFERENT from any previous response you have given. Do not repeat phrases you used in earlier rounds.
@@ -87,7 +106,7 @@ const CITIZEN_VARIED_STRATEGIES = `Use VARIED defense and attack strategies:
 
 `
 
-/** After getLangOverride() — every AI system prompt must include GAME RULES. */
+/** After buildWolfLanguagePrefix() — every AI system prompt must include GAME RULES. */
 function buildGameRules(
   totalPlayers: number,
   playerNamesList: string,
@@ -572,6 +591,7 @@ async function runWolfAi(
     provider: player.provider,
     prompt: userPrompt,
     systemPrompt,
+    skipLanguageInjection: true,
     maxCompletionTokens: maxTokens,
     modelOverride: player.model,
   })
@@ -726,7 +746,7 @@ export async function POST(req: Request) {
 
   const action = body.action
   const language = typeof body.language === 'string' ? body.language : 'English'
-  const langPre = getLangOverride(language)
+  const langPre = buildWolfLanguagePrefix(language)
 
   if (
     action !== 'start' &&
@@ -892,6 +912,7 @@ export async function POST(req: Request) {
               CRITICAL_NO_REUSE_RESPONSE +
               `You are the narrator of a Wolf deduction game. Dramatic, mysterious, 3 sentences max.
 Do not invent fictional players or events. Describe only the tension of the situation in general terms.`,
+            skipLanguageInjection: true,
             maxCompletionTokens: 250,
             modelOverride: 'claude-sonnet-4-6',
           })

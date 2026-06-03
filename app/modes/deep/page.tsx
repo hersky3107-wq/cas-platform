@@ -470,6 +470,10 @@ export default function DeepModePage() {
           </div>
         </header>
 
+        <p className="mb-4 px-3 py-2 text-center text-xs leading-relaxed text-slate-400 md:hidden">
+          📱 On mobile, keep your screen on and stay in this tab — switching apps may interrupt loading. A smoother mobile experience is on the way.
+        </p>
+
         <section className="rounded-3xl bg-white/[0.05] p-6 ring-1 ring-white/10 lg:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/55">
             Output length

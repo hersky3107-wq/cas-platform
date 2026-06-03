@@ -967,15 +967,15 @@ export default function ArenaPage() {
 
       <main className="mx-auto max-w-3xl px-3 pb-40 pt-16 sm:px-4">
         {phase === "input" && !mobileWarningDismissed ? (
-          <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 md:hidden">
-            <p className="leading-relaxed">
-              ⚠️ Arena works best on PC or Wi-Fi. Mobile data often causes disconnections during long battles.
+          <div className="relative mb-4 px-3 py-2 text-center md:hidden">
+            <p className="text-xs leading-relaxed text-slate-400">
+              📱 On mobile, keep your screen on and stay in this tab — switching apps may interrupt loading. A smoother mobile experience is on the way.
             </p>
             <button
               type="button"
               onClick={() => setMobileWarningDismissed(true)}
-              className="shrink-0 rounded-lg px-2 py-1 text-xs text-amber-200/80 hover:bg-white/10 hover:text-amber-100"
-              aria-label="Dismiss warning"
+              className="absolute right-1 top-1 px-1 text-xs text-slate-500"
+              aria-label="Dismiss"
             >
               ✕
             </button>
