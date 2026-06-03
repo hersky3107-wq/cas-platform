@@ -135,6 +135,10 @@ export async function POST(req: Request) {
 
   const languageInstruction = languageInstructionFrom(rb.birthCity)
   const birthDataLine = `date ${profile.dob}; local time approx. ${rb.timeHHMM}; city ${rb.birthCity}; gender ${rb.genderLabel}`
+  const oracleLanguageLocale = {
+    acceptLanguage: req.headers.get('accept-language'),
+    userMetadata: user.user_metadata as Record<string, unknown> | undefined,
+  }
 
   const deduct = await deductCreditsBalance(supabaseAdmin, user.id, DAILY_COST, 'oracle_daily')
   if (!deduct.ok) {
@@ -173,6 +177,7 @@ export async function POST(req: Request) {
         })
 
         const languageSourceText = rb.birthCity
+        const languageLocale = oracleLanguageLocale
         const deepseekSys = applyOracleLanguageToSystemPrompt(
           `You are reading today's fortune through Eastern astrology (사주/일진).
 Birth data: ${birthDataLine}
@@ -189,7 +194,8 @@ Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
 Maximum 700 tokens. Complete your response fully.
 Never end mid-sentence.`,
-          languageSourceText
+          languageSourceText,
+          languageLocale
         )
 
         const geminiSys = applyOracleLanguageToSystemPrompt(
@@ -208,7 +214,8 @@ Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
 Maximum 700 tokens. Complete your response fully.
 Never end mid-sentence.`,
-          languageSourceText
+          languageSourceText,
+          languageLocale
         )
 
         const claudeSys = applyOracleLanguageToSystemPrompt(
@@ -227,7 +234,8 @@ Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
 Maximum 700 tokens. Complete your response fully.
 Never end mid-sentence.`,
-          languageSourceText
+          languageSourceText,
+          languageLocale
         )
 
         const userPrompt = 'Write the reading now.'
@@ -285,7 +293,8 @@ CRITICAL:
           model: 'gpt-4.1',
           systemPrompt: applyOracleLanguageToSystemPrompt(
             'You are a warm daily fortune writer. Follow the user instructions exactly.',
-            languageSourceText
+            languageSourceText,
+            languageLocale
           ),
           userPrompt: synthPrompt,
           maxTokens: 1000,
