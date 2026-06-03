@@ -16,6 +16,7 @@ import {
   type ComponentProps,
 } from "react";
 import { ChevronLeft, Minus, Plus } from "lucide-react";
+import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
 import { supabase } from "@/lib/db/supabase";
 import { creditsPerMessage } from "@/lib/credits";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
@@ -884,17 +885,7 @@ export default function PersonaModePage() {
           <ChevronLeft className="h-4 w-4" />
           Back
         </Link>
-        <div className="flex items-center gap-2">
-          {credits !== null ? (
-            <span className="rounded-full bg-[#131c35] px-3 py-1.5 text-xs text-slate-200">
-              {credits} credits
-            </span>
-          ) : (
-            <span className="rounded-full bg-[#131c35] px-3 py-1.5 text-xs text-slate-400">
-              Credits unavailable
-            </span>
-          )}
-        </div>
+        <ModuleCreditsLink />
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col pt-14">

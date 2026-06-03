@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookHeart,
-  Coins,
   Footprints,
   Gavel,
   Handshake,
@@ -21,7 +20,7 @@ import {
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { useFirstTimeHereOptional } from "@/app/components/FirstTimeHere";
-import { useCreditWarnings } from "@/components/credits/CreditWarningsRoot";
+import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
 import { supabase } from "@/lib/db/supabase";
 import { activeModules, type ModuleConfig } from "@/lib/modules/config";
 
@@ -135,7 +134,6 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const creditWarnings = useCreditWarnings();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const firstTimeHere = useFirstTimeHereOptional();
@@ -185,11 +183,6 @@ export default function Home() {
     };
   }, []);
 
-  const hideLobbyCreditBalance =
-    creditWarnings?.billingMode === "subscription" ||
-    creditWarnings?.billingMode === "pay_as_you_go" ||
-    creditWarnings?.billingMode === "topup";
-
   const mvpModules = useMemo(() => {
     // Explicit order: COMPARE first, CUSTOM last (for MVP).
     const compare = activeModules.find((m) => m.id === "compare")!;
@@ -234,20 +227,7 @@ export default function Home() {
                   </div>
                 ) : null}
               </div>
-              <Link
-                href="/modes/credits"
-                aria-label="Credits"
-                className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-[#131c35] px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:border-cyan-400/50 hover:bg-[#1a2648]"
-              >
-                <Coins className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                {!hideLobbyCreditBalance ? (
-                  <span className="tabular-nums text-white">
-                    {creditWarnings?.balance !== null && creditWarnings?.balance !== undefined
-                      ? creditWarnings.balance
-                      : "—"}
-                  </span>
-                ) : null}
-              </Link>
+              <ModuleCreditsLink />
             </>
           ) : (
             <Link

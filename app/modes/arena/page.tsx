@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChevronLeft, Swords } from "lucide-react";
+import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
 import { supabase } from "@/lib/db/supabase";
 import { arenaExtendedBundleCreditCost, arenaFinalBundleCreditCost } from "@/lib/ai/arena-bundle";
 import {
@@ -960,9 +961,7 @@ export default function ArenaPage() {
           <ChevronLeft className="h-4 w-4" />
           Lobby
         </Link>
-        {credits !== null ? (
-          <span className="rounded-full bg-[#131c35] px-3 py-1.5 text-xs text-slate-200">{credits} credits</span>
-        ) : null}
+        <ModuleCreditsLink />
       </header>
 
       <main className="mx-auto max-w-3xl px-3 pb-40 pt-16 sm:px-4">

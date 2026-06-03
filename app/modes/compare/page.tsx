@@ -15,6 +15,7 @@ import {
   type ComponentProps,
 } from "react";
 import { ChevronLeft } from "lucide-react";
+import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
 import { supabase } from "@/lib/db/supabase";
 import { creditsPerMessage } from "@/lib/credits";
 import type {
@@ -904,17 +905,7 @@ export default function CompareModePage() {
           <ChevronLeft className="h-4 w-4" />
           Back
         </Link>
-        <div className="flex items-center gap-2">
-          {credits !== null ? (
-            <span className="rounded-full bg-[#131c35] px-3 py-1.5 text-xs text-slate-200">
-              {credits} credits
-            </span>
-          ) : (
-            <span className="rounded-full bg-[#131c35] px-3 py-1.5 text-xs text-slate-400">
-              Credits unavailable
-            </span>
-          )}
-        </div>
+        <ModuleCreditsLink />
       </header>
 
       <main className="mx-auto max-w-3xl px-3 pb-80 pt-16 sm:px-4">
