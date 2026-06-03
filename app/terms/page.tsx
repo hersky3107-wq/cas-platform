@@ -103,6 +103,10 @@ export default function TermsPage() {
           <h2 className="text-lg font-semibold text-white">11. Contact</h2>
           <p className="text-sm leading-relaxed">support@aimani.ai</p>
         </section>
+
+        <p className="text-sm leading-relaxed text-slate-400">
+          AIMANI is operated by an independent developer based outside the United States. Response times may vary due to time zone differences.
+        </p>
       </div>
     </main>
   )

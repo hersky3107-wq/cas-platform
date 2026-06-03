@@ -473,7 +473,7 @@ function FirstTimeModal({
                 Something wrong? We&apos;re here.
               </h2>
               <p className="text-sm leading-relaxed text-slate-300">
-                Bug, error, payment issue, refund request — whatever it is, reach out. We respond fast.
+                We respond fast. For urgent payment issues, expect a response within a few hours — though time zones may cause slight delays. AIMANI is an independently operated platform run by a small team outside the United States.
               </p>
               <p className="text-center text-sm">
                 <a

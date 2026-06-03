@@ -72,6 +72,10 @@ export default function RefundPage() {
             AIMANI reserves the right to update this Refund Policy at any time.
           </p>
         </section>
+
+        <p className="text-sm leading-relaxed text-slate-400">
+          AIMANI is operated by an independent developer based outside the United States. Response times may vary due to time zone differences.
+        </p>
       </div>
     </main>
   )
