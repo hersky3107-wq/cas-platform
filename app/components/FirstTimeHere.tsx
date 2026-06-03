@@ -484,8 +484,7 @@ function FirstTimeModal({
                 </a>
               </p>
               <p className="text-sm leading-relaxed text-slate-300">
-                We take every message seriously. If something broke, we want to know. If you were charged and
-                shouldn&apos;t have been, we&apos;ll make it right.
+                We take every message seriously. If something broke, we want to know. If you believe you were charged incorrectly, please contact us. We&apos;ll review it promptly and, if an incorrect charge is confirmed, we&apos;ll make it right in accordance with our Refund Policy.
               </p>
               <p className="text-sm leading-relaxed text-slate-300">
                 📱 Add AIMANI to your home screen for the best experience. On mobile: tap Share → Add to Home Screen. On desktop: use your browser&apos;s install option if available. Only install AIMANI from the official website (aimani.ai).
