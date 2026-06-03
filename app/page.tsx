@@ -370,6 +370,21 @@ export default function Home() {
         </p>
       </footer>
 
+      <div className="flex justify-center pb-8">
+        <a
+          href="https://theresanaiforthat.com/ai/aimani-ai-tools/?ref=featured&v=11090500"
+          target="_blank"
+          rel="nofollow"
+        >
+          <img
+            width={300}
+            src="https://media.theresanaiforthat.com/featured-on-taaft.png?width=600"
+            alt=""
+            className="opacity-30 transition-opacity hover:opacity-70"
+          />
+        </a>
+      </div>
+
       {modalItem ? (
         <div className="fixed inset-0 z-40 bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-[20px] bg-[#131c35] p-6">
