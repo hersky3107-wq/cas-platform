@@ -9,8 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-
-export const AIMANI_FIRST_TIME_STORAGE_KEY = 'aimani_first_time_seen'
+import { supabase } from '@/lib/db/supabase'
 
 type FirstTimeControls = {
   open: () => void
@@ -609,11 +608,13 @@ export function FirstTimeHereProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
 
   const markSeen = useCallback(() => {
-    try {
-      localStorage.setItem(AIMANI_FIRST_TIME_STORAGE_KEY, '1')
-    } catch {
-      /* ignore */
-    }
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase.from('users').update({ show_onboarding: false }).eq('id', user.id)
+    })()
     setOpen(false)
   }, [])
 

@@ -172,8 +172,18 @@ export default function Home() {
       }
 
       setUserLabel(displayNameForUser(user));
+
+      const { data: profile } = await supabase
+        .from("users")
+        .select("show_onboarding")
+        .eq("id", user.id)
+        .maybeSingle();
+
       if (!cancelled) {
         setAuthReady(true);
+        if (profile?.show_onboarding === true) {
+          firstTimeHere?.open();
+        }
       }
     }
 
@@ -181,7 +191,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [firstTimeHere]);
 
   const mvpModules = useMemo(() => {
     // Explicit order: COMPARE first, CUSTOM last (for MVP).
