@@ -4,13 +4,16 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveRouteAuth } from "@/lib/supabase/route-auth";
 import { creditsForComedyStandup } from "@/lib/credits";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits-server";
-import { MODEL_BY_PROVIDER } from "@/lib/ai/router";
+import { MODEL_BY_PROVIDER, runSingleAiProvider } from "@/lib/ai/router";
 import {
+  buildComedySystemPrompt,
+  buildComedyTalkLanguagePrefix,
   buildStandupPerformanceOrder,
+  COMEDY_LABEL,
   COMEDY_PROVIDERS,
   normalizeComedyPriorSets,
-  produceStandupSet,
   STANDUP_PERFORMANCE_COUNT,
+  STANDUP_TURN_COUNT,
   type ComedyPriorSet,
   type ComedyProvider,
   type ComedyTransportContext,
@@ -77,23 +80,117 @@ function normalizeStandupOrder(raw: unknown): StandupPerformanceSlot[] | null {
   return slots;
 }
 
+function formatPriorSetsForStandup(priorSets: ComedyPriorSet[]): string {
+  if (!priorSets.length) return "(no prior sets in this session yet)";
+  return priorSets
+    .map((s) => {
+      const turn = s.standupTurn ? ` · round ${s.standupTurn}` : "";
+      return `[${COMEDY_LABEL[s.provider]}${turn}] ${s.content}`;
+    })
+    .join("\n\n");
+}
+
+function buildStandupUserPrompt(params: {
+  topic: string;
+  setIndex: number;
+  totalSets: number;
+  standupTurn: 1 | 2;
+  provider: ComedyProvider;
+  priorSets: ComedyPriorSet[];
+}): string {
+  const { topic, setIndex, totalSets, standupTurn, provider, priorSets } = params;
+  const myTurn1 = priorSets.find((s) => s.provider === provider && s.standupTurn === 1);
+  const turn2Note =
+    standupTurn === 2 && myTurn1
+      ? `\nYour turn 1 set (do NOT reuse this angle):\n"${myTurn1.content.slice(0, 400)}"\n`
+      : standupTurn === 2
+        ? "\nTurn 2: fresh material only — different aspect of the topic.\n"
+        : "";
+  return [
+    `Topic: ${topic}`,
+    ``,
+    `Show round ${standupTurn} of ${STANDUP_TURN_COUNT}.`,
+    `Your performance ${setIndex + 1} of ${totalSets} in this show.`,
+    turn2Note,
+    `Other comedians' sets this session (optional material — you owe them nothing):`,
+    formatPriorSetsForStandup(priorSets),
+    ``,
+    `Deliver your stand-up (8-12 lines minimum, follow STRUCTURE, strongest line last, then STOP):`,
+  ].join("\n");
+}
+
+function stripTurnPrefixFromModelOutput(raw: string): string {
+  const t = String(raw ?? "").replace(/\r\n/g, "\n").trimStart();
+  const removed = t.replace(/^\s*\[TURN[^\]]*\]\s*/i, "");
+  return removed.replace(/^\s*\[TURN[^\]]*\][^\n]*\n/i, "").trim();
+}
+
+function clampToMaxSentences(raw: string, maxSentences: number): string {
+  const t = String(raw ?? "").replace(/\r\n/g, "\n").trim();
+  if (!t) return t;
+  const parts = t.split(/(?<=[.!?。！？…])\s+|\n+/).filter((x) => x.trim().length > 0);
+  if (parts.length <= maxSentences) return t;
+  return parts.slice(0, maxSentences).join(" ").trim();
+}
+
+function isFailedStandupContent(content: string): boolean {
+  const t = content.trim();
+  if (!t) return true;
+  if (t.startsWith("[No response]")) return true;
+  if (t.startsWith("[Call failed]")) return true;
+  return false;
+}
+
 async function runStandupProvider(params: {
   slot: StandupPerformanceSlot;
   topic: string;
   setIndex: number;
   priorSets: ComedyPriorSet[];
   ctx: ComedyTransportContext;
+  standupLanguagePrefix: string;
 }): Promise<{ text: string; ms: number }> {
-  const line = await produceStandupSet({
-    provider: params.slot.provider,
-    topic: params.topic,
-    setIndex: params.setIndex,
-    standupTurn: params.slot.standupTurn,
-    priorSets: params.priorSets,
-    ctx: params.ctx,
+  const { slot, topic, setIndex, priorSets, ctx, standupLanguagePrefix } = params;
+  const provider = slot.provider;
+  const standupTurn = slot.standupTurn;
+  const baseSystemPrompt = buildComedySystemPrompt("standup", provider, standupTurn);
+  const systemPrompt = `${standupLanguagePrefix}${baseSystemPrompt}`;
+  const userPrompt = buildStandupUserPrompt({
+    topic,
+    setIndex,
+    totalSets: STANDUP_PERFORMANCE_COUNT,
+    standupTurn,
+    provider,
+    priorSets,
   });
-  const text = line.ok ? line.content : line.content;
-  return { text, ms: line.responseTimeMs };
+  const maxCompletionTokens = provider === "anthropic" ? 900 : 720;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await runSingleAiProvider({
+      supabase: ctx.supabase,
+      sessionId: ctx.sessionId,
+      userId: ctx.userId,
+      provider,
+      prompt: userPrompt,
+      systemPrompt,
+      skipLanguageInjection: true,
+      supabaseAccessToken: ctx.supabaseAccessToken,
+      maxCompletionTokens,
+      temperature: provider === "anthropic" ? undefined : 0.9,
+      modelOverride: MODEL_BY_PROVIDER[provider],
+      aiResponseExtras: {
+        round: setIndex + 1,
+        comedy_mode: "standup",
+      },
+    });
+
+    const raw = res.text ?? res.error ?? "[No response]";
+    const content = clampToMaxSentences(stripTurnPrefixFromModelOutput(raw), 12);
+    if (!isFailedStandupContent(content)) {
+      return { text: content, ms: res.responseTimeMs };
+    }
+  }
+
+  return { text: "[Call failed]", ms: 0 };
 }
 
 export async function POST(req: Request) {
@@ -187,6 +284,7 @@ export async function POST(req: Request) {
 
     const order = buildStandupPerformanceOrder();
     const slot = order[0]!;
+    const standupLanguagePrefix = buildComedyTalkLanguagePrefix(topic);
     const ctx: ComedyTransportContext = {
       supabase,
       sessionId,
@@ -200,6 +298,7 @@ export async function POST(req: Request) {
       setIndex: 0,
       priorSets: [],
       ctx,
+      standupLanguagePrefix,
     });
 
     await insertWithFallback(
@@ -247,6 +346,7 @@ export async function POST(req: Request) {
   const priorSets = normalizeComedyPriorSets(body.priorSets);
   const nextIndex = index + 1;
   const slot = order[nextIndex]!;
+  const standupLanguagePrefix = buildComedyTalkLanguagePrefix(topic);
   const ctx: ComedyTransportContext = {
     supabase,
     sessionId,
@@ -260,6 +360,7 @@ export async function POST(req: Request) {
     setIndex: nextIndex,
     priorSets,
     ctx,
+    standupLanguagePrefix,
   });
 
   await insertWithFallback(
