@@ -126,7 +126,7 @@ export async function POST(req: Request) {
     'Complete your response naturally before stopping.',
   ].join('\n')
 
-  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, ORACLE_SESSION_COST)
+  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, ORACLE_SESSION_COST, 'oracle_fate')
   if (!deduct.ok) {
     const insufficient = deduct.reason === 'insufficient'
     return jsonResp(

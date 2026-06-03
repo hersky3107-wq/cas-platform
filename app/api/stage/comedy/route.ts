@@ -194,7 +194,7 @@ export async function POST(req: Request) {
 
   const comedyTurnCost = creditsForComedyTalkTurn();
   if (action === "start" || action === "turn") {
-    const deduct = await deductCreditsBalance(supabase, user.id, comedyTurnCost);
+    const deduct = await deductCreditsBalance(supabase, user.id, comedyTurnCost, 'stage_comedy');
     if (!deduct.ok) {
       const insufficient = deduct.reason === "insufficient";
       return NextResponse.json(

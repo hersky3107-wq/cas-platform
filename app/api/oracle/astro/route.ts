@@ -186,7 +186,7 @@ Current date: May 29, 2026.`
     `Ascendant / rising (${chart.ascLongitudeDeg.toFixed(2)}° ecliptic): ${chart.risingSign}`,
   ].join('\n')
 
-  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, ORACLE_SESSION_COST)
+  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, ORACLE_SESSION_COST, 'oracle_astro')
   if (!deduct.ok) {
     const insufficient = deduct.reason === 'insufficient'
     return jsonResp(

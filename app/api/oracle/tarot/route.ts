@@ -225,7 +225,7 @@ export async function POST(req: Request) {
   const s = SPREADS[spread]
 
   if (stage === 'start') {
-    const deduct = await deductCreditsBalance(supabaseAdmin, user.id, s.cost)
+    const deduct = await deductCreditsBalance(supabaseAdmin, user.id, s.cost, 'oracle_tarot')
     if (!deduct.ok) {
       const insufficient = deduct.reason === 'insufficient'
       return jsonResp(

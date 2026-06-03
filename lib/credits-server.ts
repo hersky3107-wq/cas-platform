@@ -162,10 +162,30 @@ export async function getCreditsBalance(
   return null
 }
 
+async function insertCreditLog(
+  userId: string,
+  module: string,
+  amount: number,
+  balanceBefore: number,
+  balanceAfter: number
+): Promise<void> {
+  const { error } = await supabaseAdmin.from('credit_logs').insert({
+    user_id: userId,
+    module,
+    amount,
+    balance_before: balanceBefore,
+    balance_after: balanceAfter,
+  })
+  if (error) {
+    console.warn('[credits] credit_logs insert failed:', error.message)
+  }
+}
+
 export async function deductCreditsBalance(
   _supabase: SupabaseClient,
   userId: string,
-  amount: number
+  amount: number,
+  moduleName: string
 ): Promise<DeductCreditsOutcome> {
   if (await isAdminUser(userId)) {
     const balance = await getCreditsBalance(supabaseAdmin, userId)
@@ -184,6 +204,7 @@ export async function deductCreditsBalance(
   for (const table of CREDITS_TABLES) {
     const { error } = await supabaseAdmin.from(table).update({ credits: next }).eq('id', userId)
     if (!error) {
+      void insertCreditLog(userId, moduleName, amount, balance, next)
       return { ok: true, balance: next }
     }
     console.warn(`[credits] deduct on ${table} failed:`, error.message)

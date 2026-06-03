@@ -161,7 +161,7 @@ export async function POST(req: Request) {
 
   if (action === "start") {
     const standupCost = creditsForComedyStandup();
-    const deduct = await deductCreditsBalance(supabase, user.id, standupCost);
+    const deduct = await deductCreditsBalance(supabase, user.id, standupCost, 'stage_standup');
     if (!deduct.ok) {
       const insufficient = deduct.reason === "insufficient";
       return NextResponse.json(

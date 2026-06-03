@@ -235,7 +235,7 @@ export async function POST(req: Request) {
 
   if (action === "enter") {
     const archiveCost = creditsForArchive();
-    const deduct = await deductCreditsBalance(supabase, user.id, archiveCost);
+    const deduct = await deductCreditsBalance(supabase, user.id, archiveCost, 'stage_archive');
     if (!deduct.ok) {
       const insufficient = deduct.reason === "insufficient";
       return NextResponse.json(

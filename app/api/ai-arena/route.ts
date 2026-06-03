@@ -196,7 +196,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Invalid session' }, { status: 400 })
     }
     const amount = arenaFinalBundleCreditCost()
-    const deduct = await deductCreditsBalance(supabase, user.id, amount)
+    const deduct = await deductCreditsBalance(supabase, user.id, amount, 'arena_final_bundle')
     if (!deduct.ok) {
       const insufficient = deduct.reason === 'insufficient'
       return Response.json(
@@ -230,7 +230,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Invalid session' }, { status: 400 })
     }
     const amount = arenaExtendedBundleCreditCost()
-    const deductEx = await deductCreditsBalance(supabase, user.id, amount)
+    const deductEx = await deductCreditsBalance(supabase, user.id, amount, 'arena_extended_bundle')
     if (!deductEx.ok) {
       const insufficient = deductEx.reason === 'insufficient'
       return Response.json(
@@ -406,7 +406,7 @@ export async function POST(req: Request) {
           )
 
           // ARENA CREDIT DEDUCTION - single source of truth (round 1 only; after successful AI)
-          const deductRound1 = await deductCreditsBalance(supabase, user.id, arenaCostRound1)
+          const deductRound1 = await deductCreditsBalance(supabase, user.id, arenaCostRound1, 'arena_round1')
           if (deductRound1.ok) {
             writeJson({
               type: 'meta',
@@ -569,7 +569,7 @@ export async function POST(req: Request) {
 
         if (roundNumber <= 3 && arenaBattleCost > 0) {
           // ARENA CREDIT DEDUCTION - single source of truth (paid rounds 2–3 only; round 1 uses `action: 'start'`. After successful AI.)
-          const deductBattle = await deductCreditsBalance(supabase, user.id, arenaBattleCost)
+          const deductBattle = await deductCreditsBalance(supabase, user.id, arenaBattleCost, 'arena_battle')
           if (deductBattle.ok) {
             writeJson({
               type: 'meta',

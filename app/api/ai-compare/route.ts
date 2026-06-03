@@ -93,7 +93,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg }, { status: 400 })
   }
 
-  const deduct = await deductCreditsBalance(supabase, user.id, cost)
+  const deduct = await deductCreditsBalance(supabase, user.id, cost, 'compare')
   if (!deduct.ok) {
     const insufficient = deduct.reason === 'insufficient'
     return NextResponse.json(

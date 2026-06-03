@@ -187,7 +187,7 @@ async function ensureSuitCreditsDeducted(
   }
 
   const required = creditsForSuit()
-  const deduct = await deductCreditsBalance(supabase, userId, required)
+  const deduct = await deductCreditsBalance(supabase, userId, required, 'suit')
   if (!deduct.ok) {
     return { ok: false, balance: deduct.balance, required, reason: deduct.reason }
   }

@@ -1868,7 +1868,7 @@ export async function POST(req: Request) {
     if (!alreadyPaid?.id) {
       // CAREER/WOLF CREDIT DEDUCTION - single source of truth, guarded by session marker
       const cost = creditsForMindgameCareer()
-      const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
+      const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost, 'mindgame_carrier')
       if (!deduct.ok) {
         const insufficient = deduct.reason === 'insufficient'
         return new Response(

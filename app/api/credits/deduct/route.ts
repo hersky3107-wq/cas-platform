@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
 
-    const deduct = await deductCreditsBalance(supabaseAdmin, user.id, amount)
+    const deduct = await deductCreditsBalance(supabaseAdmin, user.id, amount, 'api_deduct')
     if (!deduct.ok) {
       const insufficient = deduct.reason === 'insufficient'
       return NextResponse.json(

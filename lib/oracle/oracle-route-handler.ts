@@ -130,7 +130,7 @@ export async function handleOracleNdjson(req: Request, mode: 'fate' | 'astro'): 
     }
   }
 
-  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, ORACLE_SESSION_COST)
+  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, ORACLE_SESSION_COST, `oracle_${mode}`)
   if (!deduct.ok) {
     const insufficient = deduct.reason === 'insufficient'
     return jsonResp(

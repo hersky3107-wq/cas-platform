@@ -134,7 +134,7 @@ export async function POST(req: Request) {
   const languageInstruction = languageInstructionFrom(rb.birthCity)
   const birthDataLine = `date ${profile.dob}; local time approx. ${rb.timeHHMM}; city ${rb.birthCity}; gender ${rb.genderLabel}`
 
-  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, DAILY_COST)
+  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, DAILY_COST, 'oracle_daily')
   if (!deduct.ok) {
     const insufficient = deduct.reason === 'insufficient'
     return jsonResp(

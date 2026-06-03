@@ -595,7 +595,7 @@ export async function POST(req: Request) {
   const coreMaxTokens = MODE_CORE_TOKENS[outputMode]
   const supportMaxTokens = MODE_SUPPORT_TOKENS[outputMode]
 
-  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
+  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost, 'deep')
   if (!deduct.ok) {
     const insufficient = deduct.reason === 'insufficient'
     return new Response(

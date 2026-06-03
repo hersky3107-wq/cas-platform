@@ -72,7 +72,7 @@ export async function POST(req: Request) {
 
   const cost = creditsForPanelPredict()
 
-  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost)
+  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost, 'panel_predict')
   if (!deduct.ok) {
     const insufficient = deduct.reason === 'insufficient'
     return Response.json(

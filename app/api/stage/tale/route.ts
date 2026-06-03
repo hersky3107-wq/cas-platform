@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   }
 
   const taleCost = creditsForTale();
-  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, taleCost);
+  const deduct = await deductCreditsBalance(supabaseAdmin, user.id, taleCost, 'stage_tale');
   if (!deduct.ok) {
     const insufficient = deduct.reason === "insufficient";
     return NextResponse.json(
