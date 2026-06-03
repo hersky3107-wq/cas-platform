@@ -472,9 +472,6 @@ function FirstTimeModal({
               <h2 id="first-time-heading" className="text-center text-xl font-semibold text-white">
                 Something wrong? We&apos;re here.
               </h2>
-              <p className="text-sm leading-relaxed text-slate-300">
-                We respond fast. For urgent payment issues, expect a response within a few hours — though time zones may cause slight delays. AIMANI is an independently operated platform run by a small team outside the United States.
-              </p>
               <p className="text-center text-sm">
                 <a
                   href="mailto:support@aimani.ai"
@@ -487,13 +484,16 @@ function FirstTimeModal({
                 We take every message seriously. If something broke, we want to know. If you believe you were charged incorrectly, please contact us. We&apos;ll review it promptly and, if an incorrect charge is confirmed, we&apos;ll make it right in accordance with our Refund Policy.
               </p>
               <p className="text-sm leading-relaxed text-slate-300">
-                📱 Add AIMANI to your home screen for the best experience. On mobile: tap Share → Add to Home Screen. On desktop: use your browser&apos;s install option if available. Only install AIMANI from the official website (aimani.ai).
+                📱 Install AIMANI as an app (PWA) — no app store needed. On mobile: tap Share → Add to Home Screen. On desktop: click the install icon in your browser&apos;s address bar. Your own AIMANI icon, directly on your screen. Only install from the official website (aimani.ai).
               </p>
               <p className="text-center text-xs text-slate-500">
                 ✏️ The AIMANI app icon was hand-drawn by the creator.
               </p>
               <p className="text-xs leading-relaxed text-slate-400">
                 ⚠️ AI responses are generated automatically and may contain inaccuracies, outdated information, or errors. AIMANI does not guarantee the accuracy of any AI output. Always verify critical information through authoritative sources before acting on it.
+              </p>
+              <p className="text-center text-xs leading-relaxed text-slate-600">
+                We respond fast. For urgent payment issues, expect a response within a few hours — though time zones may cause slight delays. AIMANI is an independently operated platform run by a small team outside the United States.
               </p>
               <p className="text-xs leading-relaxed text-slate-400">
                 By using AIMANI, you agree to our{' '}

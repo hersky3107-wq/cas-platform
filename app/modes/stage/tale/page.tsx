@@ -475,10 +475,6 @@ export default function StageTalePage() {
       </header>
 
       <main className="mx-auto max-w-4xl px-3 pb-16 pt-16 sm:px-4">
-        <p className="mb-4 px-3 py-2 text-center text-xs leading-relaxed text-slate-400 md:hidden">
-          📱 On mobile, keep your screen on and stay in this tab — switching apps may interrupt loading. A smoother mobile experience is on the way.
-        </p>
-
         <div className="mb-8 text-center">
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/8 text-2xl">
             <span aria-hidden>📖</span>
@@ -750,6 +746,10 @@ export default function StageTalePage() {
             </button>
           </div>
         ) : null}
+
+        <p className="mt-8 px-3 py-2 text-center text-xs leading-relaxed text-slate-600 md:hidden">
+          📱 On mobile, keep your screen on and stay in this tab — switching apps may interrupt loading. A smoother mobile experience is on the way.
+        </p>
       </main>
 
       {step === "generating" ? (
