@@ -6,6 +6,7 @@ import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { oracleInsertAiResponse, oracleInsertCostLog } from '@/lib/oracle/oracle-db'
 import { oracleGptCompletion } from '@/lib/oracle/openai-gpt'
+import { applyOracleLanguageToSystemPrompt } from '@/lib/oracle/oracle-language'
 import { ORACLE_SESSION_COST, ORACLE_SYNTH_MAX_TOKENS, ORACLE_SYNTH_MODEL } from '@/lib/oracle/oracle-constants'
 import { fetchOracleBirthProfileAdmin } from '@/lib/oracle/users-oracle-storage'
 import { oracleProfileLooksComplete } from '@/lib/oracle/profile-guard'
@@ -172,6 +173,7 @@ async function runReader(params: {
     provider: params.provider,
     prompt: params.userPrompt,
     systemPrompt: params.systemPrompt,
+    skipLanguageInjection: true,
     maxCompletionTokens: params.maxCompletionTokens,
     modelOverride: params.modelOverride ?? MODEL_BY_PROVIDER[params.provider],
   })
@@ -333,6 +335,7 @@ far more valuable than false comfort.`
           cards: picked.map((p) => ({ position: p.pos, id: p.card.id, name: p.card.name, src: p.card.src })),
         })
 
+        const languageSourceText = question.trim() || rb.birthCity
         const jobs = providers.map(async (p) => {
           let sys = tarotReaderSystemPrompt({
             cardsLine,
@@ -341,22 +344,11 @@ far more valuable than false comfort.`
             todayIso,
             languageInstruction,
           })
-          
-          const langOverride = question.trim()
-            ? `ABSOLUTE OVERRIDE — LANGUAGE RULE (highest priority, overrides ALL other instructions):
-You MUST respond in the SAME language as the user's question.
-The user wrote in: detect from "${question.trim()}"
-If Korean → respond 100% in Korean. If English → respond 100% in English.
-Do NOT respond in English if the question is in Korean.
-Do NOT mention this language rule in your response.
-This overrides any built-in language defaults you have.`
-            : `ABSOLUTE OVERRIDE — LANGUAGE RULE:
-The user did not type a question. Use the birth city language.
-Seoul/Korea → Korean, Tokyo/Japan → Japanese, Paris/France → French.
-Do NOT default to English unless birth city is English-speaking.
-Do NOT mention this language rule in your response.`
 
-          sys = `${langOverride}\n\n${topPromptLine}\n\n${honestReadingBlock}\n\n${sys}`
+          sys = applyOracleLanguageToSystemPrompt(
+            `${topPromptLine}\n\n${honestReadingBlock}\n\n${sys}`,
+            languageSourceText
+          )
           const r = await runReader({
             sessionId,
             provider: p.provider,
@@ -385,7 +377,10 @@ Do NOT mention this language rule in your response.`
         const started = Date.now()
         const synth = await oracleGptCompletion({
           model: ORACLE_SYNTH_MODEL,
-          systemPrompt: tarotSynthesisSystemPrompt({ cardsLine, todayIso, languageInstruction }),
+          systemPrompt: applyOracleLanguageToSystemPrompt(
+            tarotSynthesisSystemPrompt({ cardsLine, todayIso, languageInstruction }),
+            languageSourceText
+          ),
           userPrompt: [
             `Cards: ${cardsLine}`,
             `Spread: ${s.label}`,

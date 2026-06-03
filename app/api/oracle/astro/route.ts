@@ -12,6 +12,7 @@ import { westernReaderSystemPrompt } from '@/lib/oracle/oracle-prompts'
 import { fetchOracleBirthProfileAdmin } from '@/lib/oracle/users-oracle-storage'
 import { geocodeBirthCity } from '@/lib/oracle/geocode'
 import { computeWesternChart } from '@/lib/oracle/western-chart'
+import { applyOracleLanguageToSystemPrompt } from '@/lib/oracle/oracle-language'
 
 function jsonResp(obj: unknown, status: number): Response {
   return new Response(JSON.stringify(obj), {
@@ -20,38 +21,12 @@ function jsonResp(obj: unknown, status: number): Response {
   })
 }
 
-const ASTRO_SYSTEM_LANGUAGE_FIRST_LINE = `Detect the language of the user's question and respond entirely in that language. No exceptions. Do not switch to English even if your system instructions are in English.`
-
-const ASTRO_SYSTEM_LANGUAGE_RULE = `CRITICAL — LANGUAGE RULE (absolute priority):
-Detect the language of the user's original question or input.
-Write your ENTIRE response in that exact language from first word to last word.
-Korean input → 100% Korean response. English input → 100% English response.
-This rule applies to every sentence. No exceptions.`
-
-function astroSystemLanguageOverride(detectedLang: string): string {
-  return `SYSTEM OVERRIDE: You MUST respond in ${detectedLang} only. 
-Do NOT mix in any English words, phrases, or terms — not even technical terms, 
-planet names, or astrological terms. 
-Translate everything into ${detectedLang}. 
-This is absolute. No exceptions.`
-}
-
 function astroSynthesisSystemPromptExact(params: {
   birthDataLine: string
   currentDateIso: string
   languageInstruction: string
-  detectedLang: string
 }): string {
-  return `${astroSystemLanguageOverride(params.detectedLang)}
-
-${ASTRO_SYSTEM_LANGUAGE_FIRST_LINE}
-
-${ASTRO_SYSTEM_LANGUAGE_RULE}
-
-${params.languageInstruction}
-This overrides everything else. Follow it strictly.
-
-You are a warm fortune reader who has just received readings 
+  return `You are a warm fortune reader who has just received readings 
 from four other AI readers: Claude, Gemini, Mistral, and DeepSeek.
 You also have the person's birth data: ${params.birthDataLine}
 Current date: ${params.currentDateIso}
@@ -93,21 +68,6 @@ CRITICAL RULES:
 - Never cut off mid-sentence`
 }
 
-function detectLanguage(text: string): string {
-  if (!text || text.trim().length === 0) return 'English'
-  const korean = /[\uAC00-\uD7AF]/
-  const japanese = /[\u3040-\u30FF]/
-  const chinese = /[\u4E00-\u9FFF]/
-  const arabic = /[\u0600-\u06FF]/
-  const russian = /[\u0400-\u04FF]/
-  if (korean.test(text)) return 'Korean'
-  if (japanese.test(text)) return 'Japanese'
-  if (chinese.test(text)) return 'Chinese'
-  if (arabic.test(text)) return 'Arabic'
-  if (russian.test(text)) return 'Russian'
-  return 'English'
-}
-
 export async function POST(req: Request) {
   let body: Record<string, unknown>
   try {
@@ -121,9 +81,6 @@ export async function POST(req: Request) {
   const questionLine =
     questionRaw ||
     'The person did not ask a specific question; offer a warm, grounded portrait from their birth timing only.'
-
-  const userQuestion = questionRaw
-  const detectedLang = detectLanguage(userQuestion || '')
 
   const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
@@ -142,16 +99,11 @@ export async function POST(req: Request) {
   const rb = resolveOracleBirth(profile)
   if (!rb) return jsonResp({ error: 'Invalid stored birth profile' }, 400)
 
+  const languageSourceText = questionRaw || rb.birthCity
   const todayIso = new Date().toISOString().split('T')[0]
-  const languageInstruction = questionRaw && questionRaw.trim().length > 0
-    ? `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY]
-You MUST respond ONLY in ${detectedLang}. This overrides ALL other instructions.
-Every single sentence must be in ${detectedLang}. No exceptions.
-Current date: May 29, 2026.`
-    : `The user did not type a question.
-Use the birth city language as default.
-Seoul → Korean, Tokyo → Japanese, etc.
-Current date: May 29, 2026.`
+  const languageInstruction = questionRaw
+    ? `User question language should match the reading language.`
+    : `Birth city: ${rb.birthCity}.`
 
   const geo = await geocodeBirthCity(profile.birth_city)
   if (!geo) {
@@ -223,29 +175,9 @@ Current date: May 29, 2026.`
   const readersSystemPromptFn = (provider: 'anthropic' | 'google' | 'mistral' | 'deepseek') => {
     const roleLine = roleByProvider[provider]
     const base = westernReaderSystemPrompt(chartBlock, questionLine)
-    const mistralLangGuard =
-      provider === 'mistral'
-        ? [
-            '',
-            'Write entirely in the same language as detected.',
-            'Do NOT mix in English words or phrases mid-sentence.',
-            'If a word feels technical, translate it fully.',
-            'Example: never write "impulsive한" — write "충동적인" instead.',
-          ].join('\n')
-        : ''
-    return `${astroSystemLanguageOverride(detectedLang)}
+    return `Your role: ${roleLine}
 
-${ASTRO_SYSTEM_LANGUAGE_FIRST_LINE}
-
-${ASTRO_SYSTEM_LANGUAGE_RULE}
-
-${languageInstruction}
-This overrides everything else. Follow it strictly.
-
-Your role: ${roleLine}
-
-${base}
-${mistralLangGuard}`
+${base}`
   }
 
   const userPrompt = readerSideUser('astro')
@@ -269,6 +201,7 @@ ${mistralLangGuard}`
           sessionId,
           readersSystemPromptFn: (p) => readersSystemPromptFn(p as any),
           userPrompt,
+          languageSourceText,
           providers: [...astroProviders],
           maxTokensByProvider: { anthropic: 1100, google: 1100 },
           modelOverrideByProvider: { anthropic: 'claude-sonnet-4-6' },
@@ -306,12 +239,14 @@ ${mistralLangGuard}`
           ].join('\n')
           const o = await oracleGptCompletion({
             model: ORACLE_SYNTH_MODEL,
-            systemPrompt: astroSynthesisSystemPromptExact({
-              birthDataLine: birthDataLine,
-              currentDateIso: todayIso,
-              languageInstruction,
-              detectedLang,
-            }),
+            systemPrompt: applyOracleLanguageToSystemPrompt(
+              astroSynthesisSystemPromptExact({
+                birthDataLine: birthDataLine,
+                currentDateIso: todayIso,
+                languageInstruction,
+              }),
+              languageSourceText
+            ),
             userPrompt: userPayload,
             maxTokens: ORACLE_SYNTH_MAX_TOKENS,
           })

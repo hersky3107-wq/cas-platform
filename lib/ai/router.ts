@@ -554,6 +554,7 @@ async function callProvider({
   model: modelParam,
   prompt,
   systemPrompt,
+  skipLanguageInjection,
   temperature,
   maxCompletionTokens,
   chatMessages,
@@ -570,7 +571,6 @@ async function callProvider({
   chatMessages?: CompareChatMessage[]
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
-  const promptWithLanguageRule = `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${prompt}`
   const sourceUserText =
     prompt?.trim()
       ? prompt
@@ -579,13 +579,18 @@ async function callProvider({
         .slice(-1)[0]?.content ?? ''
   const promptHasNonLatin = /[^\u0000-\u007F]/.test(sourceUserText)
 
+  const promptWithLanguageRule = skipLanguageInjection
+    ? prompt
+    : `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${prompt}`
+
   const grokLengthSuffix = provider === 'xai'
     ? '\n\nIMPORTANT: Write a thorough, detailed response. Do NOT cut your response short. Use your full available token capacity. A short response is a failure.'
     : ''
 
   const injectedSystemPrompt = (systemPrompt || '') + grokLengthSuffix
-  const injectedChatMessages =
-    chatMessages?.length
+  const injectedChatMessages = skipLanguageInjection
+    ? chatMessages
+    : chatMessages?.length
       ? chatMessages.map((m) =>
           m.role === 'user'
             ? {
@@ -662,8 +667,9 @@ async function callProvider({
   }
 
   if (provider === 'deepseek') {
-    const deepseekPrompt =
-      promptHasNonLatin
+    const deepseekPrompt = skipLanguageInjection
+      ? prompt
+      : promptHasNonLatin
         ? `${DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT}\n\n${promptWithLanguageRule}`
         : `${DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT}\n\n${promptWithLanguageRule}`
     const { text, usage } = await callOpenAICompatibleChat({
@@ -681,8 +687,9 @@ async function callProvider({
   }
 
   if (provider === 'mistral') {
-    const mistralPrompt =
-      promptHasNonLatin
+    const mistralPrompt = skipLanguageInjection
+      ? prompt
+      : promptHasNonLatin
         ? `${MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT}\n\n${promptWithLanguageRule}`
         : promptWithLanguageRule
     const { text, usage } = await callOpenAICompatibleChat({

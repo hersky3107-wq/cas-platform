@@ -14,6 +14,7 @@ import { oracleProfileLooksComplete } from '@/lib/oracle/profile-guard'
 import { fateBirthLine, resolveOracleBirth } from '@/lib/oracle/profile-resolver'
 import { fateReaderSystemPrompt } from '@/lib/oracle/oracle-prompts'
 import { fetchOracleBirthProfileAdmin } from '@/lib/oracle/users-oracle-storage'
+import { applyOracleLanguageToSystemPrompt } from '@/lib/oracle/oracle-language'
 
 function jsonResp(obj: unknown, status: number): Response {
   return new Response(JSON.stringify(obj), {
@@ -27,13 +28,7 @@ function fateSynthesisSystemPromptExact(params: {
   currentDateIso: string
   languageInstruction: string
 }): string {
-  return `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY]
-You MUST respond ONLY in the same language as the user's question or input.
-Korean input = Korean response. English input = English response.
-This overrides ALL other instructions. No exceptions.
-Current date: May 29, 2026.
-
-You are a warm fortune reader who has just received readings 
+  return `You are a warm fortune reader who has just received readings 
 from four other AI readers: Claude, Gemini, Grok, and DeepSeek.
 You also have the person's birth data: ${params.birthDataLine}
 Current date: ${params.currentDateIso}
@@ -110,11 +105,11 @@ export async function POST(req: Request) {
 
   const todayIso = new Date().toISOString().split('T')[0]
   const currentYear = new Date().getFullYear()
+  const languageSourceText = questionRaw || rb.birthCity
   const languageInstruction = questionRaw
-    ? `Detect the language of this question: "${questionRaw}" and respond in that exact same language.`
-    : `The user was born in ${rb.birthCity}. Respond in the most appropriate language for that region. For example: Seoul/Korea → Korean, Tokyo/Japan → Japanese, Paris/France → French, anywhere English-speaking → English. Use your judgment based on the city.`
+    ? `User question language should match the reading language.`
+    : `Birth city: ${rb.birthCity}.`
   const fatePromptAdditions = [
-    languageInstruction,
     `Today's exact date is: ${todayIso}`,
     `Current year: ${currentYear}`,
     'Base ALL yearly and monthly readings on this current date.',
@@ -194,6 +189,7 @@ export async function POST(req: Request) {
           sessionId,
           readersSystemPromptFn,
           userPrompt,
+          languageSourceText,
           providers: [...fateProviders],
           maxTokensByProvider: { anthropic: 1100, google: 1100 },
           modelOverrideByProvider: { anthropic: 'claude-sonnet-4-6' },
@@ -232,11 +228,14 @@ export async function POST(req: Request) {
           ].join('\n')
           const o = await oracleGptCompletion({
             model: ORACLE_SYNTH_MODEL,
-            systemPrompt: fateSynthesisSystemPromptExact({
-              birthDataLine: birthLine,
-              currentDateIso: todayIso,
-              languageInstruction,
-            }),
+            systemPrompt: applyOracleLanguageToSystemPrompt(
+              fateSynthesisSystemPromptExact({
+                birthDataLine: birthLine,
+                currentDateIso: todayIso,
+                languageInstruction,
+              }),
+              languageSourceText
+            ),
             userPrompt: userPayload,
             maxTokens: ORACLE_SYNTH_MAX_TOKENS,
           })

@@ -7,6 +7,7 @@ import {
 } from '@/lib/ai/router'
 import { oracleInsertAiResponse, oracleInsertCostLog } from './oracle-db'
 import { oracleGptCompletion } from './openai-gpt'
+import { applyOracleLanguageToSystemPrompt } from './oracle-language'
 import {
   displayNameForAi,
   fateReaderUserPrompt,
@@ -28,9 +29,13 @@ async function runOneOracleReader(
   readersSystemPromptFn: (provider: ReaderSlot) => string,
   userPrompt: string,
   maxCompletionTokens: number,
-  modelOverride?: string
+  modelOverride?: string,
+  languageSourceText?: string
 ): Promise<{ slot: ReaderSlot; result: RouterResult }> {
-  const sys = readersSystemPromptFn(provider)
+  let sys = readersSystemPromptFn(provider)
+  if (languageSourceText?.trim()) {
+    sys = applyOracleLanguageToSystemPrompt(sys, languageSourceText)
+  }
   const r = await runSingleAiProvider({
     supabase: supabaseAdmin,
     sessionId: null,
@@ -38,6 +43,7 @@ async function runOneOracleReader(
     provider,
     prompt: userPrompt,
     systemPrompt: sys,
+    skipLanguageInjection: true,
     maxCompletionTokens,
     modelOverride: modelOverride ?? modelForOracleReader(provider),
   })
@@ -69,6 +75,8 @@ export async function oracleRunFiveReaders(params: {
   sessionId: string
   readersSystemPromptFn: (provider: ReaderSlot) => string
   userPrompt: string
+  /** User question or birth-city text for CJK language override on system prompts. */
+  languageSourceText?: string
   providers?: ReaderSlot[]
   maxTokensByProvider?: Partial<Record<ReaderSlot, number>>
   modelOverrideByProvider?: Partial<Record<ReaderSlot, string>>
@@ -83,7 +91,8 @@ export async function oracleRunFiveReaders(params: {
       params.readersSystemPromptFn,
       params.userPrompt,
       params.maxTokensByProvider?.[provider] ?? ORACLE_READER_MAX_TOKENS,
-      params.modelOverrideByProvider?.[provider]
+      params.modelOverrideByProvider?.[provider],
+      params.languageSourceText
     )
   )
 
@@ -105,6 +114,7 @@ export async function oracleRunSynth(params: {
   birthDataLine: string
   currentDateIso: string
   languageInstruction: string
+  languageSourceText?: string
 }): Promise<{
   text: string | null
   rt: number
@@ -127,14 +137,21 @@ export async function oracleRunSynth(params: {
   let pt: number | null = null
   let ct: number | null = null
   try {
+    let synthSystemPrompt = oracleSynthesisSystemPrompt({
+      readingsCount: params.parts.length,
+      birthDataLine: params.birthDataLine,
+      currentDateIso: params.currentDateIso,
+      languageInstruction: params.languageInstruction,
+    })
+    if (params.languageSourceText?.trim()) {
+      synthSystemPrompt = applyOracleLanguageToSystemPrompt(
+        synthSystemPrompt,
+        params.languageSourceText
+      )
+    }
     const o = await oracleGptCompletion({
       model: ORACLE_SYNTH_MODEL,
-      systemPrompt: oracleSynthesisSystemPrompt({
-        readingsCount: params.parts.length,
-        birthDataLine: params.birthDataLine,
-        currentDateIso: params.currentDateIso,
-        languageInstruction: params.languageInstruction,
-      }),
+      systemPrompt: synthSystemPrompt,
       userPrompt: userPayload,
       maxTokens: ORACLE_SYNTH_MAX_TOKENS,
     })

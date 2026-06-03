@@ -64,11 +64,11 @@ export async function handleOracleNdjson(req: Request, mode: 'fate' | 'astro'): 
 
   const todayIso = new Date().toISOString().split('T')[0]
   const currentYear = new Date().getFullYear()
+  const languageSourceText = questionRaw || rb.birthCity
   const languageInstruction = questionRaw
-    ? `Detect the language of this question: "${questionRaw}" and respond in that exact same language.`
-    : `The user was born in ${rb.birthCity}. Respond in the most appropriate language for that region. For example: Seoul/Korea → Korean, Tokyo/Japan → Japanese, Paris/France → French, anywhere English-speaking → English. Use your judgment based on the city.`
+    ? `User question language should match the reading language.`
+    : `Birth city: ${rb.birthCity}.`
   const fatePromptAdditions = [
-    languageInstruction,
     `Today's exact date is: ${todayIso}`,
     `Current year: ${currentYear}`,
     'Base ALL yearly and monthly readings on this current date.',
@@ -165,14 +165,13 @@ export async function handleOracleNdjson(req: Request, mode: 'fate' | 'astro'): 
 
   const birthLine = fateBirthLine(rb)
   const readersPromptFn = (provider: 'anthropic' | 'google' | 'xai' | 'deepseek' | 'mistral' | 'openai') => {
-    const base =
+    let base =
       mode === 'fate'
         ? fateReaderSystemPrompt(birthLine, questionLine)
         : westernReaderSystemPrompt(westernBlock!, questionLine)
-    if (mode !== 'fate') return base
 
-    if (provider === 'anthropic') {
-      return [
+    if (mode === 'fate' && provider === 'anthropic') {
+      base = [
         'Before you begin, decide your closing sentence first.',
         'Keep that conclusion in mind as you write.',
         'Write in flowing prose. No nested lists or heavy headers.',
@@ -184,9 +183,11 @@ export async function handleOracleNdjson(req: Request, mode: 'fate' | 'astro'): 
         '',
         fatePromptAdditions,
       ].join('\n')
+    } else if (mode === 'fate') {
+      base = `${base}\n\n${fatePromptAdditions}`
     }
 
-    return `${base}\n\n${fatePromptAdditions}`
+    return base
   }
 
   const userPrompt = readerSideUser(mode)
@@ -216,6 +217,7 @@ export async function handleOracleNdjson(req: Request, mode: 'fate' | 'astro'): 
           sessionId,
           readersSystemPromptFn: (provider) => readersPromptFn(provider),
           userPrompt,
+          languageSourceText,
           ...(mode === 'fate'
             ? {
                 providers: [...fateProviders],
@@ -263,6 +265,7 @@ export async function handleOracleNdjson(req: Request, mode: 'fate' | 'astro'): 
           birthDataLine: birthLine,
           currentDateIso: todayIso,
           languageInstruction,
+          languageSourceText,
         })
 
         writeJson({

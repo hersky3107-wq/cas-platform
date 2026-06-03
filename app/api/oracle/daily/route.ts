@@ -6,6 +6,7 @@ import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { oracleInsertAiResponse, oracleInsertCostLog } from '@/lib/oracle/oracle-db'
 import { oracleGptCompletion } from '@/lib/oracle/openai-gpt'
+import { applyOracleLanguageToSystemPrompt } from '@/lib/oracle/oracle-language'
 import { fetchOracleBirthProfileAdmin } from '@/lib/oracle/users-oracle-storage'
 import { oracleProfileLooksComplete } from '@/lib/oracle/profile-guard'
 import { resolveOracleBirth } from '@/lib/oracle/profile-resolver'
@@ -62,6 +63,7 @@ async function runAndStore(params: {
     provider: params.provider,
     prompt: params.userPrompt,
     systemPrompt: params.systemPrompt,
+    skipLanguageInjection: true,
     maxCompletionTokens: params.maxTokens,
     modelOverride: params.modelOverride ?? MODEL_BY_PROVIDER[params.provider],
   })
@@ -170,13 +172,9 @@ export async function POST(req: Request) {
           western_chart: { sunSign: natal.sunSign, moonSign: natal.moonSign, risingSign: natal.risingSign },
         })
 
-        const deepseekSys = `Detect the language of the user's birth city and respond in that language.
-If birth city is in Korea → respond in Korean.
-If birth city is in Japan → respond in Japanese.
-If birth city is in an English-speaking country → respond in English.
-Do NOT respond in English if the birth city is Korean.
-This instruction overrides everything else.
-You are reading today's fortune through Eastern astrology (사주/일진).
+        const languageSourceText = rb.birthCity
+        const deepseekSys = applyOracleLanguageToSystemPrompt(
+          `You are reading today's fortune through Eastern astrology (사주/일진).
 Birth data: ${birthDataLine}
 Today's date: ${today}
 
@@ -190,9 +188,12 @@ Honest reading — if today's energy is difficult, say so clearly.
 Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
 Maximum 700 tokens. Complete your response fully.
-Never end mid-sentence.`
+Never end mid-sentence.`,
+          languageSourceText
+        )
 
-        const geminiSys = `You are reading today's fortune through Western astrology.
+        const geminiSys = applyOracleLanguageToSystemPrompt(
+          `You are reading today's fortune through Western astrology.
 Birth data: ${birthDataLine}
 Sun sign: ${natal.sunSign} Moon sign: ${natal.moonSign} Rising: ${natal.risingSign}
 Today's date: ${today}
@@ -206,9 +207,12 @@ Honest reading — if today's transits are challenging, say so clearly.
 Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
 Maximum 700 tokens. Complete your response fully.
-Never end mid-sentence.`
+Never end mid-sentence.`,
+          languageSourceText
+        )
 
-        const claudeSys = `You are reading today's fortune through a single tarot card.
+        const claudeSys = applyOracleLanguageToSystemPrompt(
+          `You are reading today's fortune through a single tarot card.
 Card drawn: ${card.name}
 Birth data: ${birthDataLine}
 Today's date: ${today}
@@ -222,7 +226,9 @@ Then give practical advice for navigating today with this energy.
 Warm, simple language. No jargon.
 Flowing prose only. No bullet points. No headers.
 Maximum 700 tokens. Complete your response fully.
-Never end mid-sentence.`
+Never end mid-sentence.`,
+          languageSourceText
+        )
 
         const userPrompt = 'Write the reading now.'
 
@@ -277,7 +283,10 @@ CRITICAL:
         const started = Date.now()
         const synth = await oracleGptCompletion({
           model: 'gpt-4.1',
-          systemPrompt: 'You are a warm daily fortune writer. Follow the user instructions exactly.',
+          systemPrompt: applyOracleLanguageToSystemPrompt(
+            'You are a warm daily fortune writer. Follow the user instructions exactly.',
+            languageSourceText
+          ),
           userPrompt: synthPrompt,
           maxTokens: 1000,
         })
