@@ -17,6 +17,7 @@ import {
 } from "react";
 import { ChevronLeft, Minus, Plus } from "lucide-react";
 import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
+import DisclaimerText from "@/components/ui/DisclaimerText";
 import { supabase } from "@/lib/db/supabase";
 import { creditsPerMessage } from "@/lib/credits";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
@@ -1293,6 +1294,7 @@ export default function PersonaModePage() {
                     : "Up to six AIs"}
                 </p>
               )}
+              <DisclaimerText />
             </div>
           </div>
       </div>

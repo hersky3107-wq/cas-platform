@@ -15,6 +15,7 @@ import {
 } from "react";
 import { ChevronLeft } from "lucide-react";
 import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
+import DisclaimerText from "@/components/ui/DisclaimerText";
 import { supabase } from "@/lib/db/supabase";
 import { creditsForPanelPredict } from "@/lib/credits";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
@@ -619,6 +620,7 @@ OR 'How likely is it that I get this job if I apply?'`}
             <p className="text-left text-[11px] tabular-nums text-slate-500">
               All 6 AIs · {fixedCost ?? "—"} credits
             </p>
+            <DisclaimerText />
           </div>
         </div>
       </div>

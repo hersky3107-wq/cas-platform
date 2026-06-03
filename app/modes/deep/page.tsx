@@ -9,6 +9,7 @@ import { ChevronLeft } from "lucide-react";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 import { creditsForDeep } from "@/lib/credits";
+import DisclaimerText from "@/components/ui/DisclaimerText";
 import { PUBLIC_SHARE_BASE, type DeepSessionResponse } from "@/lib/deep/session-types";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
@@ -626,6 +627,7 @@ export default function DeepModePage() {
           {error ? (
             <p className="mt-4 text-sm text-rose-300/95">{error}</p>
           ) : null}
+          <DisclaimerText />
         </section>
 
         {winner && phase === "done" ? (

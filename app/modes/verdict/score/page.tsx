@@ -15,6 +15,7 @@ import {
 } from "react";
 import { ChevronLeft, SlidersHorizontal } from "lucide-react";
 import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
+import DisclaimerText from "@/components/ui/DisclaimerText";
 import { supabase } from "@/lib/db/supabase";
 import { creditsForPanelScore } from "@/lib/credits";
 import type { AiProviderName, RouterResult } from "@/lib/ai/router";
@@ -710,6 +711,7 @@ an idea, a thought. Up to one A4 page works best.`}
             <p className="text-left text-[11px] tabular-nums text-slate-500">
               All 6 AIs · {fixedCost ?? "—"} credits
             </p>
+            <DisclaimerText />
           </div>
         </div>
       </div>

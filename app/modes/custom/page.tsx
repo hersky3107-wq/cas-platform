@@ -21,6 +21,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
+import DisclaimerText from "@/components/ui/DisclaimerText";
 import { supabase } from "@/lib/db/supabase";
 import { creditsForCustom } from "@/lib/credits";
 import type {
@@ -1165,6 +1166,7 @@ export default function CustomModePage() {
                     }`
                   : "Select 1–6 AIs"}
               </p>
+              <DisclaimerText />
             </div>
           </div>
         </div>

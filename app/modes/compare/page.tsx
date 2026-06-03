@@ -16,6 +16,7 @@ import {
 } from "react";
 import { ChevronLeft } from "lucide-react";
 import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
+import DisclaimerText from "@/components/ui/DisclaimerText";
 import { supabase } from "@/lib/db/supabase";
 import { creditsPerMessage } from "@/lib/credits";
 import type {
@@ -1093,6 +1094,7 @@ export default function CompareModePage() {
                   }`
                 : "Select 1–6 AIs"}
             </p>
+            <DisclaimerText />
           </div>
         </div>
       </div>

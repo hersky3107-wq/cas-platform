@@ -54,7 +54,6 @@ const SLIDE_MODULES: string[] = [
   'Persona — Assign a role or character to each AI. Get answers from different perspectives, viewpoints, and professional expertise.',
   'Panel — AIs score, vote, rank, predict, and fact-check. Five tools, one conclusion. | Score: See it rated and scored | Vote: The AIs cast their votes. What will they choose? | Rank: All 6 AIs ranked in order | Predict: Probability and outcome prediction | Fact Check: Truth vs. fiction',
   'Arena — 6 AIs battle over your topic. Logic Battle or Street Fight — pure AI combat, two ways.',
-  'SUIT — A full courtroom drama. AI lawyers argue. An AI judge delivers the verdict. Watch the trial unfold.',
   'Custom — When you don\'t need the complexity. Ask one or two AIs simply and quickly — almost like a search engine. Or go deep with full system prompt control for power users.',
   'DEEP — Depth and volume no other AI can match. From a quick brief to a full report.',
   'Oracle — Daily fortune, tarot, astrology and more. 6 AIs each read your future differently. No birth time needed. A full fortune experience without the price tag.',
@@ -399,6 +398,12 @@ function FirstTimeModal({
               <p className="text-center text-sm font-semibold text-white">
                 AIMANI — Where AI meets AI.
               </p>
+              <p className="text-center text-base font-semibold text-white">
+                One question. Six minds. Zero consensus.
+              </p>
+              <p className="text-xs leading-relaxed text-slate-500">
+                Most AI tools give you a result. AIMANI gives you the full picture — the process, the friction, the disagreement, the narrative, and the collective intelligence behind every answer. That&apos;s the difference.
+              </p>
               <p className="text-center text-sm text-emerald-300/95">
                 🎁 You&apos;ve received 30 free credits to get started. No card required.
               </p>
@@ -421,6 +426,9 @@ function FirstTimeModal({
               </div>
               <p className="text-center text-sm font-medium text-white">
                 Same question. Six models. Six ways of thinking. Always something to discover.
+              </p>
+              <p className="text-center text-xs text-slate-500">
+                AIMANI is an independent platform that connects multiple AI model providers. We are not affiliated with, endorsed by, or officially partnered with OpenAI, Anthropic, Google, xAI, Mistral AI, DeepSeek, or any other provider. All names and trademarks belong to their respective owners.
               </p>
               <p className="text-xs leading-relaxed text-slate-500">
                 Our AI lineup will continue to grow. Models, agents, and availability may also be updated,
@@ -481,12 +489,13 @@ function FirstTimeModal({
                 shouldn&apos;t have been, we&apos;ll make it right.
               </p>
               <p className="text-sm leading-relaxed text-slate-300">
-                📱 Install AIMANI on your home screen for the fastest experience. On mobile: tap Share → Add
-                to Home Screen. On desktop: click the install icon in your browser address bar.
+                📱 Add AIMANI to your home screen for the best experience. On mobile: tap Share → Add to Home Screen. On desktop: use your browser&apos;s install option if available. Only install AIMANI from the official website (aimani.ai).
               </p>
-              <p className="text-sm leading-relaxed text-amber-200/95">
-                ⚠️ If your antivirus shows a warning during PWA installation, it&apos;s safe to proceed. This is
-                common with PWA apps in Korea and some regions. Tap Allow to continue.
+              <p className="text-center text-xs text-slate-500">
+                ✏️ The AIMANI app icon was hand-drawn by the creator.
+              </p>
+              <p className="text-xs leading-relaxed text-slate-400">
+                ⚠️ AI responses are generated automatically and may contain inaccuracies, outdated information, or errors. AIMANI does not guarantee the accuracy of any AI output. Always verify critical information through authoritative sources before acting on it.
               </p>
               <p className="text-xs leading-relaxed text-slate-400">
                 By using AIMANI, you agree to our{' '}

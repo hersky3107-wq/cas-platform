@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChevronLeft, Swords } from "lucide-react";
 import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
+import DisclaimerText from "@/components/ui/DisclaimerText";
 import { supabase } from "@/lib/db/supabase";
 import { arenaExtendedBundleCreditCost, arenaFinalBundleCreditCost } from "@/lib/ai/arena-bundle";
 import {
@@ -1064,6 +1065,7 @@ export default function ArenaPage() {
             >
               START ARENA
             </button>
+            <DisclaimerText />
           </div>
         ) : null}
 
