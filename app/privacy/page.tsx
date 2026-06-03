@@ -60,7 +60,7 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold text-white">6. Your Rights</h2>
           <p className="text-sm leading-relaxed">
             You have the right to access your personal data, request deletion of your account and data, and
-            opt out of non-essential communications. Contact: hersky3107@gmail.com
+            opt out of non-essential communications. Contact: support@aimani.ai
           </p>
         </section>
 
@@ -90,7 +90,7 @@ export default function PrivacyPage() {
 
         <section className="space-y-2 text-slate-300">
           <h2 className="text-lg font-semibold text-white">10. Contact</h2>
-          <p className="text-sm leading-relaxed">hersky3107@gmail.com</p>
+          <p className="text-sm leading-relaxed">support@aimani.ai</p>
         </section>
       </div>
     </main>

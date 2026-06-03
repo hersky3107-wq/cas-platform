@@ -156,7 +156,7 @@ function TermsPolicyContent() {
         </p>
       </PolicySection>
       <PolicySection title="11. Contact">
-        <p>hersky3107@gmail.com</p>
+        <p>support@aimani.ai</p>
       </PolicySection>
     </div>
   )
@@ -204,7 +204,7 @@ function PrivacyPolicyContent() {
       <PolicySection title="6. Your Rights">
         <p>
           You have the right to access your personal data, request deletion of your account and data, and opt
-          out of non-essential communications. Contact: hersky3107@gmail.com
+          out of non-essential communications. Contact: support@aimani.ai
         </p>
       </PolicySection>
       <PolicySection title="7. Cookies">
@@ -226,7 +226,7 @@ function PrivacyPolicyContent() {
         </p>
       </PolicySection>
       <PolicySection title="10. Contact">
-        <p>hersky3107@gmail.com</p>
+        <p>support@aimani.ai</p>
       </PolicySection>
     </div>
   )
@@ -247,7 +247,7 @@ function RefundPolicyContent() {
       <PolicySection title="2. Exception — New Users">
         <p>
           If you are a new user and have not used any credits, you may request a full refund within 24 hours of
-          your first purchase by contacting hersky3107@gmail.com. For users in the EU or UK, digital content
+          your first purchase by contacting support@aimani.ai. For users in the EU or UK, digital content
           withdrawal rights may apply. By completing a purchase and using credits, you acknowledge that digital
           content delivery has begun and you waive your right of withdrawal to the extent permitted by
           applicable law.
@@ -264,7 +264,7 @@ function RefundPolicyContent() {
       <PolicySection title="4. Payment Errors">
         <p>
           If you were charged incorrectly, experienced a duplicate charge, or purchased credits were not
-          delivered to your account, contact us immediately at hersky3107@gmail.com. We will investigate and
+          delivered to your account, contact us immediately at support@aimani.ai. We will investigate and
           resolve within 3 business days. These cases are eligible for refund regardless of the general policy
           above.
         </p>
@@ -277,7 +277,7 @@ function RefundPolicyContent() {
       </PolicySection>
       <PolicySection title="6. Process">
         <p>
-          To request a refund, email hersky3107@gmail.com with: your account email, date of purchase, amount
+          To request a refund, email support@aimani.ai with: your account email, date of purchase, amount
           charged, and reason for request. We aim to respond within 24 hours.
         </p>
       </PolicySection>
@@ -477,10 +477,10 @@ function FirstTimeModal({
               </p>
               <p className="text-center text-sm">
                 <a
-                  href="mailto:hersky3107@gmail.com"
+                  href="mailto:support@aimani.ai"
                   className="font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-200"
                 >
-                  hersky3107@gmail.com
+                  support@aimani.ai
                 </a>
               </p>
               <p className="text-sm leading-relaxed text-slate-300">

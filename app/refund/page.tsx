@@ -23,7 +23,7 @@ export default function RefundPage() {
           <h2 className="text-lg font-semibold text-white">2. Exception — New Users</h2>
           <p className="text-sm leading-relaxed">
             If you are a new user and have not used any credits, you may request a full refund within 24
-            hours of your first purchase by contacting hersky3107@gmail.com. For users in the EU or UK,
+            hours of your first purchase by contacting support@aimani.ai. For users in the EU or UK,
             digital content withdrawal rights may apply. By completing a purchase and using credits, you
             acknowledge that digital content delivery has begun and you waive your right of withdrawal to
             the extent permitted by applicable law.
@@ -44,7 +44,7 @@ export default function RefundPage() {
           <h2 className="text-lg font-semibold text-white">4. Payment Errors</h2>
           <p className="text-sm leading-relaxed">
             If you were charged incorrectly, experienced a duplicate charge, or purchased credits were not
-            delivered to your account, contact us immediately at hersky3107@gmail.com. We will investigate
+            delivered to your account, contact us immediately at support@aimani.ai. We will investigate
             and resolve within 3 business days. These cases are eligible for refund regardless of the
             general policy above.
           </p>
@@ -61,7 +61,7 @@ export default function RefundPage() {
         <section className="space-y-2 text-slate-300">
           <h2 className="text-lg font-semibold text-white">6. Process</h2>
           <p className="text-sm leading-relaxed">
-            To request a refund, email hersky3107@gmail.com with: your account email, date of purchase,
+            To request a refund, email support@aimani.ai with: your account email, date of purchase,
             amount charged, and reason for request. We aim to respond within 24 hours.
           </p>
         </section>

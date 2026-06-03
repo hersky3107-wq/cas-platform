@@ -101,7 +101,7 @@ export default function TermsPage() {
 
         <section className="space-y-2 text-slate-300">
           <h2 className="text-lg font-semibold text-white">11. Contact</h2>
-          <p className="text-sm leading-relaxed">hersky3107@gmail.com</p>
+          <p className="text-sm leading-relaxed">support@aimani.ai</p>
         </section>
       </div>
     </main>
