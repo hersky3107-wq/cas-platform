@@ -687,24 +687,56 @@ const TEAM_BORDER_ACCENT_PALETTE = [
   "#fcd34d",
 ] as const;
 
-/** API `result` strings → Korean labels for action feed (접종/발사). */
-function formatCarrierToolResultKo(result: unknown): string {
+/** API `result` strings → English labels for action feed. */
+function formatCarrierToolResult(result: unknown): string {
   const r = String(result ?? "");
   switch (r) {
     case "human_died":
-      return "인간이었습니다 (낭비)";
+      return "Target was human (wasted)";
     case "no_effect":
-      return "인간이었습니다 (효과 없음)";
+      return "Target was human (no effect)";
     case "immunized":
-      return "면역 부여 (이번 라운드 감염 방지)";
+      return "Immunity granted (infection blocked this round)";
     case "zombie_eliminated":
-      return "좀비 제거 성공!";
+    case "zombie_killed":
+      return "Zombie eliminated!";
     case "zombie_cured":
-      return "좀비 치료 성공!";
+    case "saved":
+      return "Zombie cured!";
     case "not_used":
-      return "미사용";
+      return "unused";
     default:
       return r;
+  }
+}
+
+function formatCarrierShotgunSummary(result: unknown): string {
+  const r = String(result ?? "");
+  switch (r) {
+    case "zombie_eliminated":
+    case "zombie_killed":
+      return "Shotgun: Zombie eliminated!";
+    case "human_died":
+      return "Shotgun: Target was human (wasted)";
+    case "not_used":
+      return "Shotgun unused";
+    default:
+      return `Shotgun: ${formatCarrierToolResult(result)}`;
+  }
+}
+
+function formatCarrierVaccineSummary(result: unknown): string {
+  const r = String(result ?? "");
+  switch (r) {
+    case "immunized":
+      return "Vaccine: Immunity granted (infection blocked this round)";
+    case "zombie_cured":
+    case "saved":
+      return "Vaccine: Immunity granted";
+    case "not_used":
+      return "Vaccine unused";
+    default:
+      return `Vaccine: ${formatCarrierToolResult(result)}`;
   }
 }
 
@@ -1119,7 +1151,7 @@ export default function CarrierModePage() {
         const sp = typeof ev.speech === "string" ? ev.speech.trim() : "";
         if (sp) {
           const act = typeof ev.action === "string" ? ev.action : "";
-          const ov = ev.overridden === true ? " (서버 수정)" : "";
+          const ov = ev.overridden === true ? " (server override)" : "";
           pushActionLine(
             `🎭 ${fromn(ev.name)}: ${sp}${act ? ` [${act}]` : ""}${ov}`,
             "neutral",
@@ -1129,14 +1161,14 @@ export default function CarrierModePage() {
       }
       if (ev.type === "action_shotgun") {
         pushActionLine(
-          `🔫 ${fromn(ev.shooterName)} → ${fromn(ev.targetName)}: 발사! ${formatCarrierToolResultKo(ev.result)}`,
+          `🔫 ${fromn(ev.shooterName)} → ${fromn(ev.targetName)}: Shot fired! ${formatCarrierToolResult(ev.result)}`,
           "neutral",
           { provider: String(ev.shooter ?? "unknown"), actionType: "SHOTGUN" }
         );
       }
       if (ev.type === "action_vaccine") {
         pushActionLine(
-          `💉 ${fromn(ev.userName)} → ${fromn(ev.targetName)}: 접종! ${formatCarrierToolResultKo(ev.result)}`,
+          `💉 ${fromn(ev.userName)} → ${fromn(ev.targetName)}: Vaccinated! ${formatCarrierToolResult(ev.result)}`,
           "neutral",
           { provider: String(ev.user ?? "unknown"), actionType: "VACCINE" }
         );
@@ -1167,7 +1199,7 @@ export default function CarrierModePage() {
       }
       if (ev.type === "action_vote") {
         pushActionLine(
-          `🗳 ${fromn(ev.voterName)} → ${fromn(ev.targetName)}: 추방 투표`,
+          `🗳 ${fromn(ev.voterName)} → ${fromn(ev.targetName)}: Vote to expel`,
           "neutral",
           { provider: String(ev.voter ?? "unknown"), actionType: "VOTE" }
         );
@@ -1250,7 +1282,7 @@ export default function CarrierModePage() {
         }
       }
       if (ev.type === "action_none") {
-        pushActionLine(`⏸ ${fromn(ev.name)}: 이번 라운드 행동 없음`, "neutral", {
+        pushActionLine(`⏸ ${fromn(ev.name)}: No action this round`, "neutral", {
           provider: String(ev.provider ?? "unknown"),
           actionType: "NONE",
         });
@@ -1649,7 +1681,7 @@ export default function CarrierModePage() {
       addMessage({
         provider: "system",
         name: "System",
-        text: `Round ${round} — 전반: 발언.`,
+        text: `Round ${round} — First Half: Statements.`,
         round,
         type: "system",
       });
@@ -1779,8 +1811,8 @@ export default function CarrierModePage() {
       if (userMode === "challenge") {
         setChallengeRoleToast(
           zids.includes("user")
-            ? "🧟 당신은 좀비입니다. 들키지 마세요."
-            : "😇 당신은 인간입니다. 생존하세요."
+            ? "🧟 You are a zombie. Don't get caught."
+            : "😇 You are human. Survive."
         );
         window.setTimeout(() => setChallengeRoleToast(null), 8000);
       }
@@ -1870,14 +1902,19 @@ export default function CarrierModePage() {
 
   const phaseLabel = useMemo(() => {
     if (phase === "setup" || phase === "starting") return "—";
-    const halfKo = activeHalf === 1 ? "전반" : "후반";
-    if (phase === "speeches" || phase === "user_speech") return `${currentRound}라운드 ${halfKo} · 발언`;
-    if (phase === "paused_after_speeches") return `${currentRound}라운드 전반 완료`;
-    if (phase === "actions") return `${currentRound}라운드 ${halfKo} · 협상`;
-    if (phase === "paused_user_action") return `${currentRound}라운드 · 내 행동`;
-    if (phase === "summary") return `${currentRound}라운드 · ROUND SUMMARY`;
-    if (phase === "between_rounds") return `${currentRound}라운드 · CONTINUE`;
-    if (phase === "pre_end_aggregate") return "최종 집계";
+    if (phase === "speeches" || phase === "user_speech") {
+      return `Round ${currentRound} — ${activeHalf === 1 ? "First Half: Statements" : "Second Half: Statements"}`;
+    }
+    if (phase === "paused_after_speeches") {
+      return `Round ${currentRound} — First Half Complete`;
+    }
+    if (phase === "actions") {
+      return `Round ${currentRound} — Second Half: Actions`;
+    }
+    if (phase === "paused_user_action") return `Round ${currentRound} — Your Action`;
+    if (phase === "summary") return `Round ${currentRound} — Round Summary`;
+    if (phase === "between_rounds") return `Round ${currentRound} — Continue`;
+    if (phase === "pre_end_aggregate") return "Calculating final results...";
     if (phase === "ended") return "COMPLETE";
     return "—";
   }, [phase, currentRound, activeHalf]);
@@ -2311,13 +2348,13 @@ export default function CarrierModePage() {
                               className="text-[9px] font-bold text-amber-400"
                               title="Living zombie + human together"
                             >
-                              잠복
+                              Latent
                             </span>
                           ) : null}
                         </div>
                       ) : (
                         <p className="text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                          라운드 팀 로딩 중…
+                          Loading round teams…
                         </p>
                       )}
                       <div className="flex flex-wrap justify-center gap-3">
@@ -2419,7 +2456,7 @@ export default function CarrierModePage() {
             {phase === "user_speech" && userMode === "challenge" ? (
               <div className="rounded-2xl border border-sky-500/40 bg-sky-950/25 p-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-sky-200">당신의 연설 (45초)</h3>
+                  <h3 className="text-sm font-bold text-sky-200">Your speech (45s)</h3>
                   <span
                     className={`text-2xl font-black tabular-nums ${
                       userTimer < 10 ? "text-red-500" : "text-white"
@@ -2433,14 +2470,14 @@ export default function CarrierModePage() {
                   onChange={(e) => setUserInput(e.target.value)}
                   className="mt-3 w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white placeholder:text-zinc-600"
                   rows={3}
-                  placeholder="이번 라운드 발언을 입력하세요…"
+                  placeholder="Enter your statement for this round…"
                 />
                 <button
                   type="button"
                   onClick={submitUserSpeech}
                   className="mt-3 w-full rounded-full bg-sky-500 py-2 text-xs font-bold uppercase tracking-wider text-gray-950"
                 >
-                  제출
+                  Submit
                 </button>
               </div>
             ) : null}
@@ -2455,7 +2492,7 @@ export default function CarrierModePage() {
                   }}
                   className="rounded-full border border-emerald-500/60 bg-emerald-500/15 px-8 py-3 text-sm font-bold tracking-wider text-emerald-100 transition hover:bg-emerald-500/25"
                 >
-                  후반 협상 시작 →
+                  Start Second Half →
                 </button>
               </div>
             ) : null}
@@ -2467,7 +2504,7 @@ export default function CarrierModePage() {
               {activeHalf === 2 ? (
                 <div className="space-y-2">
                   {actionFeed.length === 0 ? (
-                    <p className="text-center text-sm text-zinc-500">행동 로그 대기 중…</p>
+                    <p className="text-center text-sm text-zinc-500">Waiting for action log...</p>
                   ) : (
                     actionFeed.map((line) => (
                       <p
@@ -2538,11 +2575,9 @@ export default function CarrierModePage() {
                     {latestSummary.announcement}
                   </p>
                   <p className="mt-3 text-base leading-relaxed text-zinc-300">
-                    <span className="font-semibold text-zinc-400">샷건</span>{" "}
-                    {formatCarrierToolResultKo(latestSummary.shotgunResult)}
+                    {formatCarrierShotgunSummary(latestSummary.shotgunResult)}
                     <span className="text-zinc-600"> · </span>
-                    <span className="font-semibold text-zinc-400">백신</span>{" "}
-                    {formatCarrierToolResultKo(latestSummary.vaccineResult)}
+                    {formatCarrierVaccineSummary(latestSummary.vaccineResult)}
                   </p>
                   <p className="mt-3 text-base leading-relaxed text-zinc-300">
                     {(() => {
@@ -2551,13 +2586,10 @@ export default function CarrierModePage() {
                       );
                       const infected = currentDeduction?.infectionOccurred ?? false;
                       const count = currentDeduction?.infectionCount ?? 0;
-                      const ko = language === "Korean";
                       if (infected) {
-                        return ko
-                          ? `⚠️ 이번 라운드 감염 발생! (${count}명 전환)`
-                          : `⚠️ Infection this round! (${count} turned)`;
+                        return `⚠️ Infection this round! (${count} player${count === 1 ? "" : "s"} turned)`;
                       }
-                      return ko ? "✅ 이번 라운드 감염 없음" : "✅ No infection this round";
+                      return "✅ No infection this round";
                     })()}
                   </p>
                 </div>
@@ -2567,7 +2599,7 @@ export default function CarrierModePage() {
             {phase === "paused_user_action" && userTurnPauseUi ? (
               <div className="rounded-2xl border border-rose-500/40 bg-rose-950/25 p-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-rose-200">내 행동 (45초)</h3>
+                  <h3 className="text-sm font-bold text-rose-200">Your action (45s)</h3>
                   <span
                     className={`text-2xl font-black tabular-nums ${
                       userTimer < 10 ? "text-red-500" : "text-white"
@@ -2580,13 +2612,13 @@ export default function CarrierModePage() {
                   {(
                     [
                       ...(challengeUserPauseCanShotgun
-                        ? ([["샷건", "SHOTGUN" as const]] as const)
+                        ? ([["Shotgun", "SHOTGUN" as const]] as const)
                         : []),
                       ...(challengeUserPauseCanVaccine
-                        ? ([["백신", "VACCINE" as const]] as const)
+                        ? ([["Vaccine", "VACCINE" as const]] as const)
                         : []),
-                      ["추방 투표", "EXPEL" as const],
-                      ["패스", "NONE" as const],
+                      ["Vote to Expel", "EXPEL" as const],
+                      ["Pass", "NONE" as const],
                     ] as const
                   ).map(([label, a]) => (
                     <button
@@ -2606,12 +2638,12 @@ export default function CarrierModePage() {
                 {userRoundAction !== "NONE" ? (
                   <p className="mt-2 text-[11px] text-zinc-500">
                     {userRoundAction === "SHOTGUN"
-                      ? "샷건 대상 (본인 제외 생존자)"
+                      ? "Shotgun target (alive players except you)"
                       : userRoundAction === "VACCINE"
-                        ? "백신 대상 (이번 라운드 같은 팀 + 본인)"
+                        ? "Vaccine target (same team this round + you)"
                         : userRoundAction === "EXPEL"
-                          ? "추방 투표 대상 (생존 플레이어)"
-                          : "대상 선택"}
+                          ? "Vote to expel target (alive players)"
+                          : "Select target"}
                   </p>
                 ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -2637,7 +2669,7 @@ export default function CarrierModePage() {
                   onClick={() => void submitUserRoundAction()}
                   className="mt-4 w-full rounded-full bg-rose-500 py-2 text-xs font-bold uppercase tracking-wider text-gray-950"
                 >
-                  행동 확정
+                  Confirm action
                 </button>
               </div>
             ) : null}
@@ -2649,7 +2681,7 @@ export default function CarrierModePage() {
                   onClick={continueNextRound}
                   className="rounded-full border border-emerald-500/60 bg-emerald-500/15 px-8 py-3 text-sm font-bold uppercase tracking-wider text-emerald-100 transition hover:bg-emerald-500/25"
                 >
-                  다음 라운드 →
+                  Next Round →
                 </button>
               </div>
             ) : null}
@@ -2658,20 +2690,20 @@ export default function CarrierModePage() {
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
                 <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-zinc-900/95 p-8 shadow-2xl">
                   <h2 className="text-center text-xl font-black text-white sm:text-2xl">
-                    최종 결과 집계 중...
+                    Calculating final results...
                   </h2>
                   <div className="mt-6 space-y-2 text-sm text-zinc-200">
                     {pendingGameEnd.soloEliminated.length > 0
                       ? pendingGameEnd.soloEliminated.map((name) => (
                           <p key={name} className="text-center">
-                            {name}은 혼자 남아 제거되었습니다 ☠️
+                            {name} was eliminated for being alone on a team ☠️
                           </p>
                         ))
                       : null}
                   </div>
                   <div className="mt-8">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      판정 기준 팀 구성
+                      Final team composition
                     </h3>
                     <div className="mt-3 space-y-2 text-sm text-zinc-200">
                       {pendingGameEnd.teamsAtJudgment
@@ -2682,13 +2714,14 @@ export default function CarrierModePage() {
                             .join(", ");
                           return (
                             <p key={`pre-${t.id}-${idx}`}>
-                              Team {String.fromCharCode(65 + idx)} ({t.members.length}명):{" "}
+                              Team {String.fromCharCode(65 + idx)} ({t.members.length} player
+                              {t.members.length === 1 ? "" : "s"}):{" "}
                               {names}
                             </p>
                           );
                         })}
                       {pendingGameEnd.teamsAtJudgment.every((t) => t.members.length <= 1) ? (
-                        <p className="text-zinc-500">다인 팀 없음 (전원 솔로)</p>
+                        <p className="text-zinc-500">No multi-player teams (everyone solo)</p>
                       ) : null}
                     </div>
                   </div>
@@ -2700,7 +2733,7 @@ export default function CarrierModePage() {
                     }}
                     className="mt-10 w-full rounded-full bg-emerald-500 py-4 text-base font-black text-gray-950 shadow-lg shadow-emerald-500/25"
                   >
-                    최종 결과 확인 →
+                    View Final Results →
                   </button>
                 </div>
               </div>

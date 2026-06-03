@@ -7,6 +7,26 @@ import { runSingleAiProvider, type AiProviderName } from "@/lib/ai/router";
 
 const TALE_PROVIDERS_IN_ORDER: AiProviderName[] = ["google", "openai", "deepseek", "mistral", "anthropic", "xai"];
 
+/** English language names → native labels (non-CJK storyLanguage field). */
+const TALE_NON_CJK_LANGUAGE_NAMES: Record<string, string> = {
+  korean: "Korean / 한국어",
+  japanese: "Japanese / 日本語",
+  french: "French / français",
+  spanish: "Spanish / español",
+  german: "German / Deutsch",
+};
+
+function hasCjkScript(text: string): boolean {
+  return /[\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/.test(text);
+}
+
+function resolveTaleMappedLanguage(language: string): string | null {
+  const raw = language.trim();
+  if (!raw || /^english$/i.test(raw)) return null;
+  if (hasCjkScript(raw)) return null;
+  return TALE_NON_CJK_LANGUAGE_NAMES[raw.toLowerCase()] ?? null;
+}
+
 function buildSystemPrompt(input: { genre: string; keyword: string; language: string }) {
   const genre = input.genre.trim();
   const keyword = input.keyword.trim();
@@ -18,6 +38,13 @@ LENGTH: 400~550 words.
 Strong opening line. Clear narrative arc. Surprising ending.
 Never include word counts or meta-text.
 Complete the story fully - never cut off mid-sentence.`;
+}
+
+function buildDeepSeekSystemPrompt(input: { genre: string; keyword: string; language: string }) {
+  const base = buildSystemPrompt(input);
+  const mapped = resolveTaleMappedLanguage(input.language);
+  if (!mapped) return base;
+  return `${base}\nYou MUST respond entirely in ${mapped}. Do not use English under any circumstances.`;
 }
 
 function buildUserPrompt(input: { genre: string; keyword: string }) {
@@ -77,7 +104,7 @@ export async function POST(req: Request) {
   }
   const sessionId = String(sessionRow.id);
 
-  const systemPrompt = buildSystemPrompt({ genre, keyword, language: language || "English" });
+  const storyLanguage = language || "English";
   const prompt = buildUserPrompt({ genre, keyword });
 
   const enc = new TextEncoder();
@@ -87,6 +114,12 @@ export async function POST(req: Request) {
       try {
         for (const provider of TALE_PROVIDERS_IN_ORDER) {
           const maxCompletionTokens = provider === "anthropic" ? 1400 : 1200;
+          const talePromptInput = { genre, keyword, language: storyLanguage };
+          const systemPrompt =
+            provider === "deepseek"
+              ? buildDeepSeekSystemPrompt(talePromptInput)
+              : buildSystemPrompt(talePromptInput);
+          const deepseekMappedLanguage = resolveTaleMappedLanguage(storyLanguage);
           const r = await runSingleAiProvider({
             supabase: supabaseAdmin as never,
             sessionId: null,
@@ -94,6 +127,7 @@ export async function POST(req: Request) {
             provider,
             prompt,
             systemPrompt,
+            skipLanguageInjection: provider === "deepseek" && deepseekMappedLanguage !== null,
             maxCompletionTokens,
           });
 
@@ -105,7 +139,7 @@ export async function POST(req: Request) {
             response_time_ms: r.responseTimeMs,
             token_input: r.promptTokens,
             token_output: r.completionTokens,
-            tale_language: language || "English",
+            tale_language: storyLanguage,
           };
           const { error: insErr } = await supabaseAdmin.from("ai_responses").insert([row]);
           if (insErr) {
