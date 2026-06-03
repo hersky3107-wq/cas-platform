@@ -6,6 +6,7 @@ import { creditsForComedyTalkTurn } from "@/lib/credits";
 import { deductCreditsBalance, getCreditsBalance } from "@/lib/credits-server";
 import {
   COMEDY_PROVIDERS,
+  buildComedyTalkLanguagePrefix,
   ensureComedyParticipantsInserted,
   pickComedySpeakerSubset,
   runComedyTurn,
@@ -241,6 +242,7 @@ export async function POST(req: Request) {
           lastTurnSpoke,
           speakCounts,
         });
+        const talkLanguagePrefix = buildComedyTalkLanguagePrefix(topic);
         writeJson({ type: "turn_start", turnIndex, totalTurns: 4, selectedProviders });
         const res = await runComedyTurn({
           turnIndex,
@@ -248,6 +250,7 @@ export async function POST(req: Request) {
           history,
           selectedProviders,
           ctx,
+          talkLanguagePrefix,
           onThinking: (provider) => {
             writeJson({ type: "thinking", turnIndex, provider });
           },

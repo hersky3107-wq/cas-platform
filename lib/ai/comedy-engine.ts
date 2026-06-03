@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MODEL_BY_PROVIDER, runSingleAiProvider, type AiProviderName } from "@/lib/ai/router";
+import { detectOraclePromptLanguage } from "@/lib/oracle/oracle-language";
 
 export type ComedyProvider = AiProviderName;
 export type ComedyMode = "talk" | "standup";
@@ -119,12 +120,14 @@ export function buildStandupPerformanceOrder(): StandupPerformanceSlot[] {
   ];
 }
 
-const COMEDY_LANGUAGE_RULE = `[ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY — OVERRIDES EVERYTHING]
-Detect the language of the topic given by the user.
-You MUST respond ENTIRELY in that language. No exceptions.
-English topic → English only. Korean topic → Korean only.
-NEVER mix languages. This overrides all other instructions.
-Current date: May 29, 2026.`
+/** Comedy Talk only — detect from the session topic string (not chat history). */
+export function buildComedyTalkLanguagePrefix(topic: string): string {
+  const lang = detectOraclePromptLanguage(topic.trim());
+  if (lang) {
+    return `[ABSOLUTE LANGUAGE OVERRIDE] The user's input is written in ${lang}. You MUST write your ENTIRE response in ${lang}. This overrides all other language instructions. No exceptions.\n\n`;
+  }
+  return `You MUST respond in English for the entire session, regardless of what other AIs say.\n\n`;
+}
 
 const COMEDY_NO_STYLE_LABELS = `NEVER write "TYPE A", "TYPE B", or any style label
 in your response. Internal guides only.
@@ -377,7 +380,7 @@ export function buildComedySystemPrompt(
   if (mode === "standup") {
     return buildStandupSystemPrompt(provider, standupTurn);
   }
-  const parts = [COMEDY_LANGUAGE_RULE, COMEDY_NO_STYLE_LABELS, buildTalkPrompt(name)];
+  const parts = [COMEDY_NO_STYLE_LABELS, buildTalkPrompt(name)];
   const addendum = COMEDY_TALK_PROVIDER_ADDENDUM[provider];
   if (addendum) parts.push(addendum);
   return parts.join("\n\n");
@@ -568,9 +571,19 @@ async function invokeComedyModel(params: {
   ctx: ComedyTransportContext;
   maxSentences: number;
   maxCompletionTokens: number;
+  talkLanguagePrefix?: string;
 }): Promise<{ content: string; responseTimeMs: number; ok: boolean }> {
   const { mode, provider, userPrompt, turnIndex, standupTurn, ctx, maxSentences, maxCompletionTokens } =
     params;
+
+  const baseSystemPrompt =
+    mode === "standup"
+      ? buildComedySystemPrompt(mode, provider, params.standupTurn ?? 1)
+      : buildComedySystemPrompt(mode, provider);
+  const systemPrompt =
+    mode === "talk" && params.talkLanguagePrefix
+      ? `${params.talkLanguagePrefix}${baseSystemPrompt}`
+      : baseSystemPrompt;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await runSingleAiProvider({
@@ -579,10 +592,8 @@ async function invokeComedyModel(params: {
       userId: ctx.userId,
       provider,
       prompt: userPrompt,
-      systemPrompt:
-        mode === "standup"
-          ? buildComedySystemPrompt(mode, provider, params.standupTurn ?? 1)
-          : buildComedySystemPrompt(mode, provider),
+      systemPrompt,
+      skipLanguageInjection: mode === "talk",
       supabaseAccessToken: ctx.supabaseAccessToken,
       maxCompletionTokens,
       temperature: provider === "anthropic" ? undefined : 0.9,
@@ -609,6 +620,7 @@ async function produceComedyLine(params: {
   priorAll: ComedyMessage[];
   reaction: ReturnType<typeof pickReactionTarget>;
   ctx: ComedyTransportContext;
+  talkLanguagePrefix: string;
 }): Promise<{ content: string; responseTimeMs: number; ok: boolean }> {
   return invokeComedyModel({
     mode: "talk",
@@ -621,6 +633,7 @@ async function produceComedyLine(params: {
     }),
     turnIndex: params.turnIndex,
     ctx: params.ctx,
+    talkLanguagePrefix: params.talkLanguagePrefix,
     maxSentences: 5,
     maxCompletionTokens: 380,
   });
@@ -661,10 +674,11 @@ export async function runComedyTurn(opts: {
   history: ComedyMessage[];
   selectedProviders?: ComedyProvider[];
   ctx: ComedyTransportContext;
+  talkLanguagePrefix: string;
   onThinking?: (provider: ComedyProvider) => void;
   onMessage?: (m: ComedyMessage) => void;
 }): Promise<{ order: ComedyProvider[]; messages: ComedyMessage[] }> {
-  const { turnIndex, ctx } = opts;
+  const { turnIndex, ctx, talkLanguagePrefix } = opts;
   const allowedPool = comedySpeakersPoolForTurn(turnIndex);
   const selected = Array.isArray(opts.selectedProviders)
     ? opts.selectedProviders.filter((p) => allowedPool.includes(p))
@@ -691,6 +705,7 @@ export async function runComedyTurn(opts: {
       priorAll,
       reaction,
       ctx,
+      talkLanguagePrefix,
     });
     if (!line.ok) return;
     const msg: ComedyMessage = {
