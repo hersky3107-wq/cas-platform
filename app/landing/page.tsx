@@ -9,7 +9,7 @@ const MODULES = [
   {
     emoji: "🎭",
     name: "Persona",
-    desc: "Assign each AI a role. Six experts. One question.",
+    desc: "Assign each AI a role — same question, six completely different perspectives and personalities.",
   },
   {
     emoji: "⚖️",
@@ -76,6 +76,9 @@ export default function LandingPage() {
           </span>{" "}
           Zero consensus.
         </h1>
+        <p className="mt-4 text-xl font-bold text-white sm:text-2xl">
+          Stop asking one AI. Ask all of them.
+        </p>
         <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">
           Ask anything. Watch ChatGPT, Claude, Gemini, Grok, DeepSeek, and Mistral respond,
           disagree, and fight it out — live.
@@ -110,6 +113,23 @@ export default function LandingPage() {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="relative mx-auto max-w-3xl px-6 py-16 text-center sm:px-8">
+        <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          Not your average AI platform.
+        </h2>
+        <ul className="mx-auto mt-10 max-w-2xl space-y-6 text-base leading-relaxed text-slate-300 sm:text-lg">
+          <li>
+            Nine modules spanning analysis, entertainment, games, and creative storytelling —
+            and growing every 10 days.
+          </li>
+          <li>
+            Six AIs with distinct personalities, debating each other by name. The friction is the
+            product.
+          </li>
+          <li>Built to feel alive. Not another white box with a chat window.</li>
+        </ul>
       </section>
 
       {/* Philosophy */}
