@@ -29,15 +29,23 @@ function AuthCallbackClient() {
         typeof window !== 'undefined' ? window.location.hash : ''
       )
 
-      const result = await finishAuthCallback(supabase, params, window.location.hash)
+      let session = (await supabase.auth.getSession()).data.session
+
+      if (!session) {
+        const result = await finishAuthCallback(supabase, params, window.location.hash)
+        if (cancelled) return
+        session = (await supabase.auth.getSession()).data.session
+        if (!session) {
+          const message = result.ok
+            ? 'Sign-in completed but no session was found. Please try again.'
+            : result.message
+          setStatus(message)
+          router.replace(`/auth?error=${encodeURIComponent(message)}`)
+          return
+        }
+      }
 
       if (cancelled) return
-
-      if (!result.ok) {
-        setStatus(result.message)
-        router.replace(`/auth?error=${encodeURIComponent(result.message)}`)
-        return
-      }
 
       if (typeof window !== 'undefined' && window.location.hash) {
         window.history.replaceState(null, '', window.location.pathname + window.location.search)
