@@ -116,7 +116,7 @@ export async function createPayPalOrder(params: {
         {
           reference_id: params.plan.id,
           custom_id: params.userId,
-          description: `CAS Platform — ${params.plan.description}`,
+          description: `AIMANI — ${params.plan.description}`,
           amount: {
             currency_code: 'USD',
             value: params.plan.priceUsd,
@@ -124,7 +124,7 @@ export async function createPayPalOrder(params: {
         },
       ],
       application_context: {
-        brand_name: 'CAS Platform',
+        brand_name: 'AIMANI',
         user_action: 'PAY_NOW',
         return_url: `${siteUrl}/modes/credits?status=success`,
         cancel_url: `${siteUrl}/modes/credits?status=cancelled`,
