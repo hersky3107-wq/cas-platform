@@ -52,8 +52,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/landing', request.url))
   }
 
-  if (request.nextUrl.pathname === '/landing' && user) {
-    return NextResponse.redirect(new URL('/', request.url))
+  if (request.nextUrl.pathname.startsWith('/landing')) {
+    if (user) {
+      return NextResponse.redirect(new URL('/', request.url))
+    }
+    return supabaseResponse
   }
 
   if (
