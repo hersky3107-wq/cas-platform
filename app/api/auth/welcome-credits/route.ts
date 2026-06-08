@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server'
 import { ensureWelcomeCreditsForUser } from '@/lib/credits-server'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
+import { supabaseAdmin } from '@/lib/supabase/server'
+
+function detectLocaleFromHeader(acceptLanguage: string): string {
+  const lang = acceptLanguage.toLowerCase()
+  if (lang.includes('ko')) return 'ko'
+  if (lang.includes('ja')) return 'ja'
+  if (lang.includes('zh-tw') || lang.includes('zh-hk')) return 'zh-TW'
+  if (lang.includes('fr')) return 'fr'
+  if (lang.includes('ar')) return 'ar'
+  return 'en'
+}
 
 function nicknameFromMetadata(metadata: Record<string, unknown> | undefined): string | null {
   if (!metadata) return null
@@ -50,6 +61,16 @@ export async function POST(req: Request) {
     }
 
     const result = await ensureWelcomeCreditsForUser(user.id, { nickname })
+
+    const acceptLanguage = req.headers.get('accept-language') ?? ''
+    const detectedLocale = detectLocaleFromHeader(acceptLanguage)
+    if (detectedLocale !== 'en') {
+      await supabaseAdmin
+        .from('users')
+        .update({ ui_locale: detectedLocale })
+        .eq('id', user.id)
+        .is('ui_locale', null)
+    }
 
     return NextResponse.json({
       ok: true,

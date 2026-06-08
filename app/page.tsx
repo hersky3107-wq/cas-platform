@@ -23,6 +23,91 @@ import { useFirstTimeHereOptional } from "@/app/components/FirstTimeHere";
 import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
 import { supabase } from "@/lib/db/supabase";
 import { activeModules, type ModuleConfig } from "@/lib/modules/config";
+import { isModuleHidden } from "@/lib/modules/visibility";
+
+const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
+  en: {
+    compare: "6 answers. One question.",
+    persona: "6 roles. 6 perspectives.",
+    panel: "Score, vote, rank, predict.",
+    arena: "9-round AI battle.",
+    custom: "Your rules. Your depth.",
+    deep: "6 AIs · Deep analysis · Full report.",
+    oracle: "Fortune. Tarot. Astrology.",
+    mindgame: "Deceive. Survive. Win.",
+    stage: "AI banter, comedy & diverse stories.",
+  },
+  ko: {
+    compare: "6개의 답. 하나의 질문.",
+    persona: "6가지 역할. 6가지 시각.",
+    panel: "점수·투표·순위·예측.",
+    arena: "9라운드 AI 배틀.",
+    custom: "당신의 규칙. 당신의 깊이.",
+    deep: "AI들의 심층 분석 · 완전한 보고서.",
+    oracle: "운세. 타로. 점성술.",
+    mindgame: "속여라. 살아남아라. 이겨라.",
+    stage: "AI들의 만담 · 코미디 · 다양한 장르의 이야기.",
+  },
+  ja: {
+    compare: "6つの答え。1つの質問。",
+    persona: "6つの役割。6つの視点。",
+    panel: "評価・投票・ランク・予測。",
+    arena: "9ラウンドのAI対決。",
+    custom: "あなたのルール。あなたの深さ。",
+    deep: "AIたちの深層分析・完全なレポート。",
+    oracle: "運勢。タロット。占星術。",
+    mindgame: "騙せ。生き残れ。勝て。",
+    stage: "AIの漫才・コメディ・多彩な物語。",
+  },
+  "zh-TW": {
+    compare: "六個答案。一個問題。",
+    persona: "六個角色。六個視角。",
+    panel: "評分、投票、排名、預測。",
+    arena: "9回合AI對決。",
+    custom: "你的規則。你的深度。",
+    deep: "AI深度分析・完整報告。",
+    oracle: "運勢。塔羅。星座。",
+    mindgame: "欺騙。生存。獲勝。",
+    stage: "AI相聲・喜劇・多元故事。",
+  },
+  fr: {
+    compare: "6 réponses. 1 question.",
+    persona: "6 rôles. 6 perspectives.",
+    panel: "Score, vote, rang, prédit.",
+    arena: "Bataille IA en 9 rounds.",
+    custom: "Vos règles. Votre profondeur.",
+    deep: "AI · Analyse approfondie · Rapport complet.",
+    oracle: "Fortune. Tarot. Astrologie.",
+    mindgame: "Trompe. Survie. Victoire.",
+    stage: "AI · Comédie · Joutes verbales · Histoires.",
+  },
+  ar: {
+    compare: "٦ إجابات. سؤال واحد.",
+    persona: "٦ أدوار. ٦ وجهات نظر.",
+    panel: "تقييم، تصويت، ترتيب، تنبؤ.",
+    arena: "معركة ذكاء اصطناعي ٩ جولات.",
+    custom: "قواعدك. عمقك.",
+    deep: "تحليل معمّق للذكاء الاصطناعي · تقرير كامل.",
+    mindgame: "اخدع. انجُ. انتصر.",
+    stage: "AI · كوميديا · قصص · عروض متنوعة.",
+  },
+}
+
+function getLobbyLocale(): string {
+  if (typeof navigator === "undefined") return "en";
+  const lang = navigator.language.toLowerCase();
+  if (lang.startsWith("ko")) return "ko";
+  if (lang.startsWith("ja")) return "ja";
+  if (lang.startsWith("zh-tw") || lang.startsWith("zh-hk") || lang.includes("hant")) return "zh-TW";
+  if (lang.startsWith("fr")) return "fr";
+  if (lang.startsWith("ar")) return "ar";
+  return "en";
+}
+
+function useLobbyLocale(userProfile: any): string {
+  if (userProfile?.ui_locale) return userProfile.ui_locale;
+  return getLobbyLocale();
+}
 
 const iconMap: Record<string, LucideIcon> = {
   Globe,
@@ -52,9 +137,11 @@ function displayNameForUser(user: User): string {
 function LobbyCard({
   module,
   onComingSoon,
+  subtitle,
 }: {
   module: ModuleConfig;
   onComingSoon: (item: ModuleConfig) => void;
+  subtitle?: string;
 }) {
   const Icon = iconMap[module.icon] ?? Zap;
   const imageScale =
@@ -106,6 +193,11 @@ function LobbyCard({
       <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
         {module.id === "verdict" ? "PANEL" : module.name}
       </span>
+      {subtitle ? (
+        <p className="mt-0.5 text-[10px] text-slate-500 text-center leading-tight px-1">
+          {subtitle}
+        </p>
+      ) : null}
     </div>
   );
 
@@ -135,6 +227,7 @@ export default function Home() {
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const firstTimeHere = useFirstTimeHereOptional();
 
@@ -173,15 +266,16 @@ export default function Home() {
 
       setUserLabel(displayNameForUser(user));
 
-      const { data: profile } = await supabase
+      const { data: profileData } = await supabase
         .from("users")
-        .select("show_onboarding")
+        .select("show_onboarding, ui_locale")
         .eq("id", user.id)
         .maybeSingle();
 
       if (!cancelled) {
+        setProfile(profileData as Record<string, unknown> | null);
         setAuthReady(true);
-        if (profile?.show_onboarding === true) {
+        if (profileData?.show_onboarding === true) {
           firstTimeHere?.open();
         }
       }
@@ -192,6 +286,8 @@ export default function Home() {
       cancelled = true;
     };
   }, [firstTimeHere]);
+
+  const lobbyLocale = useLobbyLocale(profile)
 
   const mvpModules = useMemo(() => {
     // Explicit order: COMPARE first, CUSTOM last (for MVP).
@@ -248,13 +344,16 @@ export default function Home() {
             </Link>
           )
         ) : null}
-        <button
-          type="button"
-          onClick={() => firstTimeHere?.open()}
-          className="whitespace-nowrap rounded-full border border-white/15 bg-[#131c35] px-3 py-1 text-xs font-medium text-white/90 transition hover:border-cyan-400/40 hover:text-white"
-        >
-          📋 AIMANI Guide
-        </button>
+        <span className="relative inline-flex">
+          <span className="absolute inset-0 rounded-lg bg-cyan-400/40 animate-ping" />
+          <button
+            type="button"
+            onClick={() => firstTimeHere?.open()}
+            className="relative rounded-lg bg-cyan-500/20 border border-cyan-400/60 px-3 py-1.5 text-xs font-semibold text-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.3)] transition hover:bg-cyan-500/30 hover:text-cyan-200"
+          >
+            📋 AIMANI Guide
+          </button>
+        </span>
       </header>
 
       <section className="mx-auto flex min-h-screen w-full flex-col items-center justify-center px-8 py-16 lg:px-16">
@@ -265,6 +364,7 @@ export default function Home() {
                 key={module.id}
                 module={module}
                 onComingSoon={setModalItem}
+                subtitle={LOBBY_SUBTITLES[lobbyLocale]?.[module.id === "verdict" ? "panel" : module.id] ?? ""}
               />
             ))}
             {[
@@ -299,6 +399,9 @@ export default function Home() {
                   <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
                     {m.label}
                   </span>
+                  <p className="mt-0.5 text-[10px] text-slate-500 text-center leading-tight px-1">
+                    {LOBBY_SUBTITLES[lobbyLocale]?.[m.id] ?? ""}
+                  </p>
                 </div>
               );
 
@@ -315,6 +418,7 @@ export default function Home() {
               }
 
               if (m.id === "oracle") {
+                if (isModuleHidden("oracle", lobbyLocale)) return null;
                 return (
                   <Link
                     key={m.id}
@@ -352,6 +456,9 @@ export default function Home() {
                 <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
                   STAGE
                 </span>
+                <p className="mt-0.5 text-[10px] text-slate-500 text-center leading-tight px-1">
+                  {LOBBY_SUBTITLES[lobbyLocale]?.["stage"] ?? ""}
+                </p>
               </div>
             </Link>
           </div>
