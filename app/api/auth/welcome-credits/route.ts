@@ -30,7 +30,15 @@ export async function POST(req: Request) {
       body = null
     }
 
-    const { user, error: authErr } = await resolveRouteAuth(req, body ?? undefined)
+    const authHeader = req.headers.get('authorization')
+    const bearerToken =
+      authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined
+    const authBody: Record<string, unknown> = { ...(body ?? {}) }
+    if (bearerToken) {
+      authBody.supabaseAccessToken = bearerToken
+    }
+
+    const { user, error: authErr } = await resolveRouteAuth(req, authBody)
     if (authErr || !user) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }

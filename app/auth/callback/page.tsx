@@ -54,9 +54,10 @@ function AuthCallbackClient() {
       await authenticatedFetch('/api/auth/welcome-credits', {
         method: 'POST',
         json: {},
-      }).catch(() => {
-        // Non-blocking: login still succeeds if welcome credits fail
-      })
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      }).catch((err) => console.error('[welcome-credits]', err))
 
       setStatus('Signed in. Redirecting…')
       router.replace(returnPath)
