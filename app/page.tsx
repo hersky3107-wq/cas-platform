@@ -253,7 +253,7 @@ export default function Home() {
           onClick={() => firstTimeHere?.open()}
           className="whitespace-nowrap rounded-full border border-white/15 bg-[#131c35] px-3 py-1 text-xs font-medium text-white/90 transition hover:border-cyan-400/40 hover:text-white"
         >
-          First Time Here
+          📋 AIMANI Guide
         </button>
       </header>
 

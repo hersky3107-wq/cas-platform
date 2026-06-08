@@ -142,7 +142,10 @@ function FirstTimeModal({
       aria-modal="true"
       aria-labelledby="first-time-heading"
     >
-      <div className="relative flex max-h-[min(90vh,800px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-[#0f1629] shadow-2xl ring-1 ring-white/10">
+      <div
+          dir={locale === 'ar' ? 'rtl' : 'ltr'}
+          className="relative flex max-h-[min(90vh,800px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-[#0f1629] shadow-2xl ring-1 ring-white/10"
+        >
         {!onPolicySlide ? (
           <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
             <div className="flex items-center gap-0.5 overflow-x-auto">
