@@ -56,7 +56,7 @@ const SLIDE_MODULES: string[] = [
   'Custom — When you don\'t need the complexity. Ask one or two AIs simply and quickly — almost like a search engine. Or go deep with full system prompt control for power users.',
   'DEEP — Depth and volume no other AI can match. From a quick brief to a full report.',
   'Oracle — Daily fortune, tarot, astrology and more. 6 AIs each read your future differently. No birth time needed. A full fortune experience without the price tag.',
-  'Mindgame — AIs deceive and betray each other. Who can you trust? | Career: A zombie infection is spreading among the AIs. More humans than zombies means victory. Find the infected and stop the spread! | Wolf: Who is the wolf hiding among the AIs?',
+  'Mindgame — AIs deceive and betray each other. Who can you trust? | Carrier: A zombie infection is spreading among the AIs. More humans than zombies means victory. Find the infected and stop the spread! | Wolf: Who is the wolf hiding among the AIs?',
   'Stage — Creative performances by AI. | Comedy Talk: AI tiki-taka banter, talk shows, and stand-up comedy | TALE: AI storytelling — Horror, Romance, Absurd, Sci-Fi, Fairy Tale, Sad Story and more | Archive: A vault of AI creative works',
 ]
 
@@ -113,7 +113,7 @@ function TermsPolicyContent() {
       </PolicySection>
       <PolicySection title="4. Payments">
         <p>
-          All payments are processed via our payment partners, including PayPal and Lemon Squeezy. Prices are
+          All payments are processed via our payment partners, including PayPal and Polar. Prices are
           displayed in USD. AIMANI reserves the right to change pricing at any time with reasonable notice.
         </p>
       </PolicySection>
@@ -190,7 +190,7 @@ function PrivacyPolicyContent() {
       <PolicySection title="4. Third-Party Services">
         <p>
           AIMANI uses the following third-party services: Supabase (database and authentication), PayPal
-          (payment processing), Lemon Squeezy (payment processing), OpenAI, Anthropic, Google, xAI, DeepSeek,
+          (payment processing), Polar (payment processing), OpenAI, Anthropic, Google, xAI, DeepSeek,
           Mistral (AI response generation — your prompts are transmitted to these providers to generate
           responses), Vercel (hosting), Resend (email). Each provider operates under their own privacy policy.
         </p>
@@ -458,7 +458,7 @@ function FirstTimeModal({
                 AIMANI never stops growing.
               </h2>
               <p className="text-sm leading-relaxed text-slate-300">
-                New modules drop on the 1st, 10th, and 20th of every month. Creative, unexpected, and wildly
+                New modules keep coming. Creative, unexpected, and wildly
                 different ways to experience AI — we keep finding them. Bookmark it. Come back. Something new
                 is always waiting.
               </p>
