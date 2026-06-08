@@ -46,7 +46,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     deep: "AI들의 심층 분석 · 완전한 보고서.",
     oracle: "운세. 타로. 점성술.",
     mindgame: "속여라. 살아남아라. 이겨라.",
-    stage: "AI들의 만담 · 코미디 · 다양한 장르의 이야기.",
+    stage: "만담 · 코미디 · 다양한 이야기.",
   },
   ja: {
     compare: "6つの答え。1つの質問。",
@@ -345,7 +345,7 @@ export default function Home() {
           )
         ) : null}
         <span className="relative inline-flex">
-          <span className="absolute inset-0 rounded-lg bg-cyan-400/40 animate-ping" />
+          <span className="absolute inset-0 rounded-lg bg-cyan-400/40 animate-ping pointer-events-none" />
           <button
             type="button"
             onClick={() => firstTimeHere?.open()}
