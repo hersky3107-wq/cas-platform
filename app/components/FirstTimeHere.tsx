@@ -179,9 +179,11 @@ function FirstTimeModal({
           {/* Slide 1 */}
           {slide === 0 ? (
             <div className="space-y-4 text-slate-200">
-              <p className="text-center text-[11px] leading-relaxed text-amber-200/90">
-                {content.slide0.chromeNote}
-              </p>
+              {locale === 'en' ? (
+                <p className="text-center text-[11px] leading-relaxed text-amber-200/90">
+                  {content.slide0.chromeNote}
+                </p>
+              ) : null}
               <h2 id="first-time-heading" className="text-center text-xl font-semibold text-white">
                 {content.slide0.title}
               </h2>
