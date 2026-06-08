@@ -10,13 +10,16 @@ export default function LandingPage({ content, locale }: Props) {
   const { hero, modules, useCases, pitch, philosophy, finalCta, footer } = content;
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#0a0f1e] text-white">
+    <main
+      dir={locale === "ar" ? "rtl" : "ltr"}
+      className="relative min-h-screen overflow-hidden bg-[#0a0f1e] text-white"
+    >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(34,211,238,0.12),transparent)]" aria-hidden />
       <div className="pointer-events-none absolute -right-32 top-1/3 h-96 w-96 rounded-full bg-violet-600/10 blur-3xl" aria-hidden />
       <div className="pointer-events-none absolute -left-24 bottom-1/4 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl" aria-hidden />
 
       {/* Language Switcher — fixed top-right */}
-      <div className="fixed top-3 right-3 z-50 sm:top-4 sm:right-4">
+      <div className={`fixed top-3 z-50 sm:top-4 ${locale === "ar" ? "left-3 sm:left-4" : "right-3 sm:right-4"}`}>
         <div className="flex items-center gap-0.5 rounded-full border border-white/[0.12] bg-black/60 px-1.5 py-1 backdrop-blur-md">
           {LANGUAGE_OPTIONS.map((lang, i) => (
             <span key={lang.code} className="flex items-center">

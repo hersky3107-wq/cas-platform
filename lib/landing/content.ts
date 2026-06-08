@@ -1,4 +1,4 @@
-export type Locale = "en" | "ko" | "ja" | "zh-TW";
+export type Locale = "en" | "ko" | "ja" | "zh-TW" | "fr" | "ar";
 
 export interface ModuleItem {
   emoji: string;
@@ -288,6 +288,133 @@ export const landingContent: Record<Locale, LandingContent> = {
       disclaimer: "AIMANI是一個連接多個AI提供商的獨立平台，與OpenAI、Anthropic、Google、xAI、Mistral AI及DeepSeek無從屬關係。",
     },
   },
+
+  fr: {
+    meta: {
+      title: "AIMANI — Une question. Six intelligences IA.",
+      description: "Comparez ChatGPT, Claude, Gemini, Grok, DeepSeek et Mistral côte à côte. 30 crédits gratuits. Sans carte bancaire.",
+    },
+    hero: {
+      brand: "AIMANI",
+      headlinePre: "Une question.",
+      headlineAccent: "Six intelligences IA.",
+      headlinePost: "Zéro consensus.",
+      subheadline: "Arrêtez de demander à une seule IA. Demandez-leur à toutes.",
+      body: "Posez n'importe quelle question. Regardez ChatGPT, Claude, Gemini, Grok, DeepSeek et Mistral répondre, diverger et s'affronter — en direct.",
+      practical: "Que vous rédigiez un rapport, preniez une décision ou soyez simplement curieux — six perspectives valent mieux qu'une.",
+      cta: "Essayer AIMANI gratuitement — Sans carte bancaire",
+    },
+    modules: {
+      sectionTitle: "Neuf façons de vivre l'intelligence collective des IA",
+      sectionSub: "De nouveaux modules arrivent bientôt.",
+      items: [
+        { emoji: "🗣️", name: "Compare", desc: "Même question. Six réponses. Voyez où elles convergent et où elles divergent." },
+        { emoji: "🎭", name: "Persona", desc: "Assignez un rôle à chaque IA — même question, six perspectives et personnalités totalement différentes." },
+        { emoji: "⚖️", name: "Panel", desc: "Les IA notent, votent, classent, prédisent et vérifient les faits." },
+        { emoji: "⚔️", name: "Arena", desc: "Bataille IA en 9 rounds. Combat logique ou affrontement brut. Sans arbitre." },
+        { emoji: "🔧", name: "Custom", desc: "Questions rapides ou prompts système approfondis. Vous contrôlez la profondeur." },
+        { emoji: "🔬", name: "DEEP", desc: "Six analyses parallèles + un rapport de synthèse." },
+        { emoji: "🔮", name: "Oracle", desc: "Six IA lisent votre avenir. Tarot, astrologie, lecture quotidienne." },
+        { emoji: "🧠", name: "Mindgame", desc: "Les IA se trompent mutuellement. Infection zombie. Jeu du loup." },
+        { emoji: "🎬", name: "Stage", desc: "Spectacles de comédie IA, one-man-shows et narration." },
+      ],
+    },
+    useCases: {
+      sectionTitle: "Utile au travail. Fun en dehors.",
+      items: [
+        { emoji: "✍️", title: "Rédiger un e-mail important", desc: "Comparez six versions côte à côte. Prenez la meilleure phrase de chacune." },
+        { emoji: "📊", title: "Analyser une grande décision", desc: "Lancez DEEP. Six analyses parallèles, un rapport de synthèse." },
+        { emoji: "🎯", title: "Bloqué sur un problème au travail", desc: "Obtenez six angles d'approche. L'un d'eux voit toujours ce que vous avez manqué." },
+        { emoji: "🔍", title: "Vérifier une information", desc: "Six IA votent. Détectez l'hallucination avant qu'elle vous coûte cher." },
+        { emoji: "🎲", title: "Vendredi soir, rien à faire", desc: "Regardez-les débattre, se moquer et lire votre avenir." },
+        { emoji: "🃏", title: "Tuer le temps dans les transports", desc: "Jouez au loup contre cinq IA qui vous mentiront en face." },
+      ],
+    },
+    pitch: {
+      title: "Pas votre plateforme IA habituelle.",
+      bullets: [
+        "Neuf modules couvrant analyse, divertissement, jeux et narration créative — et d'autres arrivent.",
+        "Six IA aux personnalités distinctes, débattant entre elles par leur nom. La friction, c'est le produit.",
+        "Conçu pour sembler vivant. Pas une autre boîte blanche avec une fenêtre de chat.",
+        "Utilisez-le pour de vrai — comparaison, recherche approfondie, vérification, rédaction. Ou pas. Comme vous voulez.",
+      ],
+    },
+    philosophy: {
+      main: "La plupart des outils IA vous donnent un résultat. AIMANI vous donne la vue d'ensemble — le processus, la friction, le désaccord et l'intelligence collective derrière chaque réponse.",
+      emphasis: "Pour ce qui compte vraiment. Ou juste pour le fun.",
+      closing: "Une question. Six esprits. La réponse vit quelque part au milieu.",
+    },
+    finalCta: { offer: "🎁 30 crédits gratuits. Sans carte bancaire.", button: "Commencer gratuitement" },
+    footer: {
+      terms: "Conditions d'utilisation",
+      privacy: "Politique de confidentialité",
+      refund: "Politique de remboursement",
+      disclaimer: "AIMANI est une plateforme indépendante connectant plusieurs fournisseurs d'IA. Non affiliée à OpenAI, Anthropic, Google, xAI, Mistral AI ou DeepSeek.",
+    },
+  },
+
+  ar: {
+    meta: {
+      title: "AIMANI — سؤال واحد. ستة عقول ذكاء اصطناعي.",
+      description: "قارن بين ChatGPT وClaude وGemini وGrok وDeepSeek وMistral جنباً إلى جنب. 30 رصيداً مجاناً. لا حاجة لبطاقة.",
+    },
+    hero: {
+      brand: "AIMANI",
+      headlinePre: "سؤال واحد.",
+      headlineAccent: "ستة عقول ذكاء اصطناعي.",
+      headlinePost: "لا توافق.",
+      subheadline: "توقف عن السؤال لذكاء اصطناعي واحد. اسأل جميعهم.",
+      body: "اسأل أي شيء. شاهد ChatGPT وClaude وGemini وGrok وDeepSeek وMistral يجيبون ويختلفون ويتنافسون — مباشرةً.",
+      practical: "سواء كنت تكتب تقريراً أو تتخذ قراراً أو مجرد فضولي — ستة وجهات نظر تتفوق على واحدة.",
+      cta: "جرّب AIMANI مجاناً — لا حاجة لبطاقة",
+    },
+    modules: {
+      sectionTitle: "تسع طرق لتجربة الذكاء الجماعي للذكاء الاصطناعي",
+      sectionSub: "المزيد من الوحدات قادمة قريباً.",
+      items: [
+        { emoji: "🗣️", name: "Compare", desc: "نفس السؤال. ستة إجابات. انظر أين يتفقون وأين يختلفون." },
+        { emoji: "🎭", name: "Persona", desc: "امنح كل ذكاء اصطناعي دوراً — نفس السؤال، ست وجهات نظر وشخصيات مختلفة تماماً." },
+        { emoji: "⚖️", name: "Panel", desc: "تُقيّم الذكاءات الاصطناعية وتصوّت وترتّب وتتنبأ وتتحقق من الحقائق." },
+        { emoji: "⚔️", name: "Arena", desc: "معركة ذكاء اصطناعي من 9 جولات. منطق أو مواجهة. بلا حكم." },
+        { emoji: "🔧", name: "Custom", desc: "أسئلة سريعة أو تعليمات متعمقة. أنت تتحكم في العمق." },
+        { emoji: "🔬", name: "DEEP", desc: "ست تحليلات متوازية + تقرير تركيبي واحد." },
+        { emoji: "🧠", name: "Mindgame", desc: "تخدع الذكاءات الاصطناعية بعضها. عدوى الزومبي. لعبة الذئب." },
+        { emoji: "🎬", name: "Stage", desc: "عروض كوميدية وستاند أب وسرد قصصي بالذكاء الاصطناعي." },
+      ],
+    },
+    useCases: {
+      sectionTitle: "مفيد في العمل. ممتع في أوقات الفراغ.",
+      items: [
+        { emoji: "✍️", title: "كتابة بريد إلكتروني مهم", desc: "قارن ست نسخ جنباً إلى جنب. اختر أفضل جملة من كل منها." },
+        { emoji: "📊", title: "البحث في قرار مهم", desc: "شغّل DEEP. ست تحليلات متوازية، تقرير تركيبي واحد." },
+        { emoji: "🎯", title: "عالق في مشكلة بالعمل", desc: "احصل على ست زوايا. إحداها ترى دائماً ما فاتك." },
+        { emoji: "🔍", title: "التحقق من معلومة", desc: "ست ذكاءات اصطناعية تصوّت. اكتشف الهلوسة قبل أن تكلفك." },
+        { emoji: "🎲", title: "ليلة الجمعة، لا شيء للفعل", desc: "شاهدهم يتجادلون ويتنافسون." },
+        { emoji: "🃏", title: "قضاء وقت في التنقل", desc: "العب لعبة الذئب ضد خمسة ذكاءات اصطناعية ستكذب عليك." },
+      ],
+    },
+    pitch: {
+      title: "ليست منصة الذكاء الاصطناعي المعتادة.",
+      bullets: [
+        "تسع وحدات تشمل التحليل والترفيه والألعاب والسرد الإبداعي — والمزيد قادم.",
+        "ستة ذكاءات اصطناعية بشخصيات مميزة تتناقش بأسمائها. الاحتكاك هو المنتج.",
+        "مصمم ليبدو حياً. ليس مجرد صندوق أبيض بنافذة دردشة.",
+        "استخدمه للعمل الحقيقي — مقارنة وبحث عميق وتدقيق وصياغة. أو لا. الخيار لك.",
+      ],
+    },
+    philosophy: {
+      main: "معظم أدوات الذكاء الاصطناعي تعطيك نتيجة. AIMANI يعطيك الصورة الكاملة — العملية والاحتكاك والخلاف والذكاء الجماعي وراء كل إجابة.",
+      emphasis: "للعمل المهم. أو لمجرد المتعة.",
+      closing: "سؤال واحد. ستة عقول. الإجابة في مكان ما بالمنتصف.",
+    },
+    finalCta: { offer: "🎁 30 رصيداً مجاناً. لا حاجة لبطاقة.", button: "ابدأ مجاناً" },
+    footer: {
+      terms: "شروط الخدمة",
+      privacy: "سياسة الخصوصية",
+      refund: "سياسة الاسترداد",
+      disclaimer: "AIMANI منصة مستقلة تربط بين مزودي الذكاء الاصطناعي. غير تابعة لـ OpenAI أو Anthropic أو Google أو xAI أو Mistral AI أو DeepSeek.",
+    },
+  },
 };
 
 export const LANGUAGE_OPTIONS: { code: Locale; label: string; href: string }[] = [
@@ -295,4 +422,6 @@ export const LANGUAGE_OPTIONS: { code: Locale; label: string; href: string }[] =
   { code: "ko", label: "한국어", href: "/landing/ko" },
   { code: "ja", label: "日本語", href: "/landing/ja" },
   { code: "zh-TW", label: "繁體中文", href: "/landing/zh-TW" },
+  { code: "fr", label: "Français", href: "/landing/fr" },
+  { code: "ar", label: "العربية", href: "/landing/ar" },
 ];

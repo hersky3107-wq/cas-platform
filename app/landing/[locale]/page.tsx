@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import LandingPage from "@/components/landing/LandingPage";
 import { landingContent, Locale } from "@/lib/landing/content";
 
-const VALID_LOCALES: Locale[] = ["ko", "ja", "zh-TW"];
+const VALID_LOCALES: Locale[] = ["ko", "ja", "zh-TW", "fr", "ar"];
 
 interface PageProps {
   params: Promise<{ locale: string }>;
