@@ -1082,3 +1082,325 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sequential (mobile-resilient) battle path for rounds 2–9.
+// Mirrors runArenaRound's turn structure but runs ONE turn per call so the
+// client can issue short requests. runArenaRound is left untouched as the
+// streaming fallback; the small inline prompt pieces are duplicated here.
+// ---------------------------------------------------------------------------
+
+export type ArenaTurnSlot =
+  | 'champion-left'
+  | 'champion-right'
+  | 'cofighter-left'
+  | 'cofighter-right'
+  | 'supporter-left'
+  | 'supporter-right'
+
+export type ArenaTurnDescriptor = {
+  ai: ArenaAI
+  slot: ArenaTurnSlot
+}
+
+/**
+ * Compute the ordered turn plan for a battle round, INCLUDING the (random)
+ * co-fighter selection for rounds 4–9. Call this once per round (server-side,
+ * on the first AI request) so the order — including co-fighter identity/side —
+ * is fixed and shared with the client. Mirrors runArenaRound's turn ordering.
+ */
+export function planArenaRound(
+  roundNumber: number,
+  currentSides: { left: ArenaAI; right: ArenaAI },
+  allPreviousRounds: ArenaRound[]
+): ArenaTurnDescriptor[] {
+  const r1 = allPreviousRounds.find((r) => r.roundNumber === 1)
+  const leftChamp = currentSides.left
+  const rightChamp = currentSides.right
+  const leftSideList = Array.isArray(r1?.sides?.left) ? r1!.sides.left : [leftChamp]
+  const rightSideList = Array.isArray(r1?.sides?.right) ? r1!.sides.right : [rightChamp]
+  const leftSupport = leftSideList.filter((a) => a !== leftChamp)
+  const rightSupport = rightSideList.filter((a) => a !== rightChamp)
+
+  const plan: ArenaTurnDescriptor[] = [{ ai: leftChamp, slot: 'champion-left' }]
+
+  const coFightSetup =
+    roundNumber >= 4 && roundNumber <= 9 ? pickCoFighterWithFallback(leftSupport, rightSupport) : null
+  if (coFightSetup) {
+    plan.push({
+      ai: coFightSetup.ai,
+      slot: coFightSetup.side === 'left' ? 'cofighter-left' : 'cofighter-right',
+    })
+  }
+
+  plan.push({ ai: rightChamp, slot: 'champion-right' })
+
+  if (roundNumber === 2) {
+    for (const s of leftSupport) plan.push({ ai: s, slot: 'supporter-left' })
+    for (const s of rightSupport) plan.push({ ai: s, slot: 'supporter-right' })
+  }
+
+  return plan
+}
+
+/**
+ * Run exactly ONE battle turn (rounds 2–9). `collectedThisRound` holds the
+ * responses already produced this round (champion(s)/co-fighter) so cross-turn
+ * prompts can be rebuilt. Side/champion assembly is done by assembleArenaRound
+ * once all turns are collected.
+ */
+export async function runArenaRoundSingleAi(
+  turn: ArenaTurnDescriptor,
+  roundNumber: number,
+  userPrompt: string,
+  allPreviousRounds: ArenaRound[],
+  currentSides: { left: ArenaAI; right: ArenaAI },
+  collectedThisRound: ArenaResponse[],
+  ctx: ArenaTransportContext,
+  opts?: { fightMode?: ArenaFightMode; arenaMemory?: ArenaMemoryEntry[] }
+): Promise<ArenaResponse> {
+  const fightMode = opts?.fightMode ?? 'logic'
+  const arenaMemory = opts?.arenaMemory ?? []
+  const arenaLanguageOverride = arenaTopicLanguageOverride(userPrompt)
+
+  if (roundNumber > 9) {
+    throw new Error('Arena is capped at round 9. Start a new session to debate again.')
+  }
+  const r1 = allPreviousRounds.find((r) => r.roundNumber === 1)
+  if (!r1 || !Array.isArray(r1.responses) || r1.responses.length === 0) {
+    throw new Error('Arena battle requires a completed round 1 with responses.')
+  }
+  const leftChamp = currentSides.left
+  const rightChamp = currentSides.right
+  if (!leftChamp || !rightChamp) {
+    throw new Error('Arena battle requires both left and right champions.')
+  }
+
+  const leftSideList = Array.isArray(r1.sides?.left) ? r1.sides.left : []
+  const rightSideList = Array.isArray(r1.sides?.right) ? r1.sides.right : []
+  const historySourceRounds =
+    roundNumber >= 2 ? sliceLastArenaRounds(allPreviousRounds, 4) : allPreviousRounds
+  const history = formatArenaHistory(historySourceRounds)
+  const persistTurn = collectedThisRound.length + 1
+  const { ai } = turn
+
+  // Duplicated inline pieces from runArenaRound (kept identical).
+  const championUserPrompt = (
+    cAi: ArenaAI,
+    side: 'left' | 'right',
+    opposingChampionLatest: string,
+    role: string,
+    trailingNotes?: string
+  ) => {
+    const showOpposing = opposingChampionLatest.trim().length > 0 && side === 'right'
+    const oppBlock = showOpposing
+      ? `\nOpposing champion's latest argument in THIS battle round:\n"""\n${opposingChampionLatest.slice(0, 3500)}\n"""\n`
+      : ''
+    const antiRepeatBlock =
+      roundNumber >= 3
+        ? `\n\n=== YOUR PRIOR CHAMPION ANGLES (do NOT reuse) ===\n${priorChampionAngleSummary(cAi, allPreviousRounds, roundNumber)}\n\nYou have already argued in previous battle rounds.\nHere is what you already stated as your ANGLE (above).\nDo NOT use any of these arguments, framings, statistics, countries, or years again.\nFind completely different evidence this round.\n`
+        : ''
+    const roleBrief =
+      roundNumber >= 2
+        ? `${debateRoleBriefingBlock(cAi, side, r1, leftSideList, rightSideList)}\n\n---\n\n`
+        : ''
+    return `${roleBrief}Recent debate transcript (latest ${Math.min(4, historySourceRounds.length)} rounds):
+
+${history}
+
+User topic:
+${userPrompt}
+${oppBlock}
+${antiRepeatBlock}
+Your opening statement from ROUND 1 (stay consistent; cite yourself if needed):
+${openingSnippet(r1, cAi)}
+
+You are the ${side.toUpperCase()} camp champion (${cAi}). ${role}
+${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'logic' ? 'Use the mandatory tag block first, then your argument.' : 'Respond in plain aggressive prose (no tag headers).'}`
+  }
+
+  const championMaxTokens = (a: ArenaAI): number => {
+    if (a === 'claude') return 1500
+    if (a === 'mistral') return 1100
+    return 800
+  }
+
+  let prompt: string
+  let side: ArenaResponse['side'] = 'neutral'
+  let treatAsChampionTag = false
+  let maxTok = 800
+  let extraSystemPrompt: string | undefined
+  let plainSpeech = false
+  let joinedFight = false
+  let role: 'fighter' | 'supporter' = 'fighter'
+  let supporterChampion: ArenaAI | undefined
+
+  if (turn.slot === 'champion-left') {
+    side = 'left'
+    treatAsChampionTag = fightMode === 'logic'
+    maxTok = championMaxTokens(ai)
+    prompt = championUserPrompt(ai, 'left', '', 'Press your camp case against the opposing champion.')
+  } else if (turn.slot === 'champion-right') {
+    side = 'right'
+    treatAsChampionTag = fightMode === 'logic'
+    maxTok = championMaxTokens(ai)
+    const lastLeftChampTurn = collectedThisRound.find((r) => r.ai === leftChamp)?.content ?? ''
+    const coResp = collectedThisRound.find((r) => r.joinedFight)
+    let oppBlockForRight = lastLeftChampTurn
+    let briefForRightCoAlly = ''
+    if (coResp) {
+      if (coResp.side === 'left') {
+        oppBlockForRight = `${lastLeftChampTurn}\n\n---\n\nSame-exchange ally (${ARENA_DISPLAY[coResp.ai]}):\n${coResp.content}`
+      } else {
+        briefForRightCoAlly = `Your co-fighter (${ARENA_DISPLAY[coResp.ai]}) just spoke before you:\n"""\n${coResp.content.trim().slice(0, 2800)}\n"""\nBuild on them; dismantle (${ARENA_DISPLAY[leftChamp]}) above.`
+      }
+    }
+    prompt = championUserPrompt(ai, 'right', oppBlockForRight, 'Rebut the left champion directly.', briefForRightCoAlly)
+  } else if (turn.slot === 'cofighter-left') {
+    side = 'left'
+    plainSpeech = true
+    joinedFight = true
+    maxTok = coFighterMaxTokens(ai)
+    extraSystemPrompt = coFighterJoinSystemAddition(leftChamp, ai)
+    const lastLeftChampTurn = collectedThisRound.find((r) => r.ai === leftChamp)?.content ?? ''
+    prompt = buildCoFighterUserPrompt({
+      history,
+      userPrompt,
+      champ: leftChamp,
+      oppChamp: rightChamp,
+      champTurnThisRound: lastLeftChampTurn,
+      oppChampTurnThisRound: null,
+    })
+  } else if (turn.slot === 'cofighter-right') {
+    side = 'right'
+    plainSpeech = true
+    joinedFight = true
+    maxTok = coFighterMaxTokens(ai)
+    extraSystemPrompt = `${coFighterJoinSystemAddition(rightChamp, ai)}\n${coFighterBeforeChampionAddon(rightChamp)}`
+    const lastLeftChampTurn = collectedThisRound.find((r) => r.ai === leftChamp)?.content ?? ''
+    prompt = buildCoFighterBeforeChampionPrompt({
+      history,
+      userPrompt,
+      championYouSupport: rightChamp,
+      opposingChampion: leftChamp,
+      opposingChampionJustSaid: lastLeftChampTurn,
+    })
+  } else {
+    // supporter-left | supporter-right (round 2 camp supporters)
+    side = turn.slot === 'supporter-left' ? 'left' : 'right'
+    const champ = side === 'left' ? leftChamp : rightChamp
+    role = 'supporter'
+    supporterChampion = champ
+    plainSpeech = true
+    maxTok = ai === 'claude' ? 220 : 180
+    const leftTxt = collectedThisRound.find((r) => r.ai === leftChamp)?.content?.trim() ?? ''
+    const rightTxt = collectedThisRound.find((r) => r.ai === rightChamp)?.content?.trim() ?? ''
+    prompt = `User topic:\n${userPrompt}\n\nTHIS ROUND (Round ${roundNumber}) — full champion exchange in this round:\n\n${ARENA_DISPLAY[leftChamp]}:\n"""\n${leftTxt.slice(0, 2800)}\n"""\n\n${ARENA_DISPLAY[rightChamp]}:\n"""\n${rightTxt.slice(0, 2800)}\n"""\n\nYou are ${ARENA_DISPLAY[ai]}, publicly backing ${ARENA_DISPLAY[champ]}. Respond with 1-2 sentences only — react to THIS round above.`
+  }
+
+  const { parsed, raw, ms, error } = await invokeArenaModel({
+    ai,
+    userPrompt: prompt,
+    ctx,
+    arenaLanguageOverride,
+    roundNumber,
+    persistTurn,
+    maxTokens: maxTok,
+    extraSystemPrompt,
+    plainSpeechPersist: plainSpeech,
+    fightMode,
+    arenaMemory,
+    memoryRound: roundNumber,
+    role,
+    supporterChampion,
+  })
+
+  const isSupporter = role === 'supporter' && supporterChampion != null
+  let ar: ArenaResponse
+  if (error) {
+    ar = errorArenaResponse(ai, error, ms)
+    ar.side = side
+    if (isSupporter && supporterChampion) {
+      ar.support = supporterChampion
+      ar.position = `AGREE_WITH_${supporterChampion}`
+    }
+    await saveArenaDebateLog(ctx.supabase, ctx.sessionId, {
+      round: roundNumber,
+      turn: persistTurn,
+      arenaAi: ai,
+      provider: ARENA_TO_PROVIDER[ai],
+      content: ar.content,
+      tags: parseArenaResponse(''),
+      rawSnippet: error,
+    })
+  } else if (isSupporter && supporterChampion) {
+    const bodyTxt = clipSupporterBody(parsed.content)
+    ar = {
+      ai,
+      champion: false,
+      position: `AGREE_WITH_${supporterChampion}`,
+      angle: '',
+      challenge: null,
+      support: supporterChampion,
+      supportComment: null,
+      content: bodyTxt,
+      responseTimeMs: ms,
+      side,
+    }
+    const tags: ParsedArenaTagBlock = {
+      champion: false,
+      position: ar.position,
+      angle: '',
+      challenge: null,
+      support: supporterChampion,
+      supportComment: null,
+      content: ar.content,
+    }
+    await saveArenaDebateLog(ctx.supabase, ctx.sessionId, {
+      round: roundNumber,
+      turn: persistTurn,
+      arenaAi: ai,
+      provider: ARENA_TO_PROVIDER[ai],
+      content: ar.content,
+      tags,
+      rawSnippet: raw,
+    })
+  } else {
+    const championFlag = treatAsChampionTag && !plainSpeech ? parsed.champion : false
+    ar = toArenaResponse(ai, parsed, ms, side, championFlag, joinedFight === true)
+    await saveArenaDebateLog(ctx.supabase, ctx.sessionId, {
+      round: roundNumber,
+      turn: persistTurn,
+      arenaAi: ai,
+      provider: ARENA_TO_PROVIDER[ai],
+      content: ar.content,
+      tags: parsed,
+      rawSnippet: raw,
+    })
+  }
+  return ar
+}
+
+/** Assemble a complete battle ArenaRound (sides/champions carried from round 1). */
+export function assembleArenaRound(
+  roundNumber: number,
+  collected: ArenaResponse[],
+  currentSides: { left: ArenaAI; right: ArenaAI },
+  allPreviousRounds: ArenaRound[]
+): ArenaRound {
+  const r1 = allPreviousRounds.find((r) => r.roundNumber === 1)
+  const leftSideList = Array.isArray(r1?.sides?.left) ? r1!.sides.left : []
+  const rightSideList = Array.isArray(r1?.sides?.right) ? r1!.sides.right : []
+  return {
+    roundNumber,
+    responses: collected,
+    sides: {
+      left: leftSideList.length ? leftSideList : [currentSides.left],
+      right: rightSideList.length ? rightSideList : [currentSides.right],
+    },
+    champion: {
+      left: r1?.champion?.left ?? currentSides.left,
+      right: r1?.champion?.right ?? currentSides.right,
+    },
+  }
+}

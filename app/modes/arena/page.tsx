@@ -536,10 +536,12 @@ export default function ArenaPage() {
   );
 
   /**
-   * Mobile-resilient Round 1: one short request per AI instead of a single long stream.
-   * Same callback signature as readNdjsonArena so callers swap cleanly. Each AI retries
-   * up to 3 times (1s/2s/3s backoff); session id + prior responses flow forward between calls.
-   * Round assembly (sides/champions) + credit deduction happen server-side on the last AI.
+   * Mobile-resilient sequential path: one short request per AI instead of a single long
+   * stream. Same callback signature as readNdjsonArena so callers swap cleanly. Each AI
+   * retries up to 3 times (1s/2s/3s backoff); session id + prior responses flow forward.
+   * Round 1: client shuffles the AI order. Rounds 2–9: the server returns a turn plan
+   * (incl. the random co-fighter) on the first AI and the client follows it. Round assembly
+   * + credit deduction happen server-side on the last AI.
    */
   const runArenaRoundSequential = useCallback(
     async (
@@ -554,11 +556,166 @@ export default function ArenaPage() {
       const memory = Array.isArray(body.arenaMemory)
         ? (body.arenaMemory as ArenaMemoryEntry[])
         : [];
+      const roundNumber = typeof body.roundNumber === "number" ? body.roundNumber : 1;
+      const MAX_ATTEMPTS = 4; // initial + 3 retries
+
+      type TurnDescriptor = { ai: ArenaAI; slot: string };
+      type SingleAiResult = {
+        ok?: boolean;
+        response?: ArenaResponse;
+        round?: ArenaRound;
+        turnPlan?: TurnDescriptor[];
+        meta?: { sessionId?: string; creditsRemaining?: number };
+        error?: string;
+        balance?: number;
+      };
+
+      // Shared retry wrapper. Returns the parsed result, "abort" on 402, or null on failure.
+      const postWithRetry = async (
+        reqBody: Record<string, unknown>
+      ): Promise<SingleAiResult | "abort" | null> => {
+        let lastErr = "";
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          try {
+            const res = await fetch("/api/ai-arena", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(reqBody),
+            });
+            if (res.status === 402) {
+              const j = (await res.json().catch(() => null)) as { error?: string; balance?: number };
+              setError(j?.error ?? "Insufficient credits");
+              if (typeof j?.balance === "number") setCredits(j.balance);
+              return "abort";
+            }
+            if (!res.ok) {
+              lastErr = `Request failed (${res.status})`;
+              if (attempt < MAX_ATTEMPTS) {
+                await new Promise((r) => setTimeout(r, attempt * 1000));
+                continue;
+              }
+              setError(lastErr);
+              return null;
+            }
+            const data = (await res.json().catch(() => null)) as SingleAiResult | null;
+            if (!data || data.ok !== true || !data.response) {
+              lastErr = data?.error ?? "Malformed response";
+              if (attempt < MAX_ATTEMPTS) {
+                await new Promise((r) => setTimeout(r, attempt * 1000));
+                continue;
+              }
+              setError(lastErr);
+              return null;
+            }
+            return data;
+          } catch (e: unknown) {
+            lastErr = e instanceof Error ? e.message : "Network error";
+            if (attempt < MAX_ATTEMPTS) {
+              await new Promise((r) => setTimeout(r, attempt * 1000));
+              continue;
+            }
+            setError(lastErr);
+            return null;
+          }
+        }
+        setError(lastErr || "Request failed");
+        return null;
+      };
+
+      const applyResult = (
+        result: SingleAiResult,
+        rn: number,
+        setSid: (s: string) => void
+      ) => {
+        if (result.meta) {
+          if (result.meta.sessionId) setSid(result.meta.sessionId);
+          onMeta(result.meta);
+        }
+        const resp = result.response!;
+        flushSync(() => {
+          onResponse(resp, rn);
+        });
+        return resp;
+      };
+
+      // ---- Rounds 2–9: follow the server-computed turn plan ----
+      if (roundNumber >= 2) {
+        const championLeft = body.championLeft as ArenaAI;
+        const championRight = body.championRight as ArenaAI;
+        const rounds = Array.isArray(body.rounds) ? body.rounds : [];
+        const tokens: Record<string, unknown> = {};
+        if (typeof body.arenaFinalBundleToken === "string") {
+          tokens.arenaFinalBundleToken = body.arenaFinalBundleToken;
+        }
+        if (typeof body.arenaExtendedBundleToken === "string") {
+          tokens.arenaExtendedBundleToken = body.arenaExtendedBundleToken;
+        }
+        let sid: string | null = typeof body.sessionId === "string" ? body.sessionId : null;
+        const collected: ArenaResponse[] = [];
+
+        const battleReq = (turn: TurnDescriptor, isFirst: boolean, isLast: boolean) => ({
+          action: "single-ai-response",
+          aiName: turn.ai,
+          slot: turn.slot,
+          roundNumber,
+          topic: topicStr,
+          fightMode: fightModeStr,
+          arenaMemory: memory,
+          sessionId: sid ?? undefined,
+          sides: { left: championLeft, right: championRight },
+          rounds,
+          priorResponses: collected,
+          isFirstAiInRound: isFirst,
+          isLastAiInRound: isLast,
+          ...tokens,
+        });
+
+        // First turn is always the left champion; the response carries the full plan.
+        onThinking?.({ ai: championLeft, roundNumber });
+        const firstTurn: TurnDescriptor = { ai: championLeft, slot: "champion-left" };
+        const firstRes = await postWithRetry(battleReq(firstTurn, true, false));
+        if (firstRes === "abort" || !firstRes || !firstRes.response) return false;
+
+        const plan =
+          firstRes.turnPlan && firstRes.turnPlan.length > 0
+            ? firstRes.turnPlan
+            : [firstTurn, { ai: championRight, slot: "champion-right" }];
+
+        const firstResp = applyResult(firstRes, roundNumber, (s) => (sid = s));
+        collected.push(firstResp);
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+        if (firstRes.round) {
+          flushSync(() => {
+            onRound(firstRes.round!);
+          });
+        }
+
+        for (let i = 1; i < plan.length; i++) {
+          const turn = plan[i]!;
+          const isLast = i === plan.length - 1;
+          onThinking?.({ ai: turn.ai, roundNumber });
+          const res = await postWithRetry(battleReq(turn, false, isLast));
+          if (res === "abort" || !res || !res.response) return false;
+          const resp = applyResult(res, roundNumber, (s) => (sid = s));
+          collected.push(resp);
+          await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve());
+          });
+          if (res.round) {
+            flushSync(() => {
+              onRound(res.round!);
+            });
+          }
+        }
+        return true;
+      }
+
+      // ---- Round 1: independent shuffled AIs ----
       const selected = Array.isArray(body.selectedAIs)
         ? (body.selectedAIs as ArenaAI[])
         : [...ARENA_ORDER];
-
-      // Client-side shuffle preserves the random call order the server used to do.
       const order = [...selected];
       for (let i = order.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -567,7 +724,6 @@ export default function ArenaPage() {
 
       const collected: ArenaResponse[] = [];
       let sid: string | null = typeof body.sessionId === "string" ? body.sessionId : null;
-      const MAX_ATTEMPTS = 4; // initial + 3 retries
 
       for (let i = 0; i < order.length; i++) {
         const ai = order[i]!;
@@ -589,83 +745,17 @@ export default function ArenaPage() {
           priorResponses: collected,
         };
 
-        type SingleAiResult = {
-          ok?: boolean;
-          response?: ArenaResponse;
-          round?: ArenaRound;
-          meta?: { sessionId?: string; creditsRemaining?: number };
-          error?: string;
-          balance?: number;
-        };
+        const result = await postWithRetry(reqBody);
+        if (result === "abort" || !result || !result.response) return false;
 
-        let result: SingleAiResult | null = null;
-        let lastErr = "";
-        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-          try {
-            const res = await fetch("/api/ai-arena", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(reqBody),
-            });
-            if (res.status === 402) {
-              const j = (await res.json().catch(() => null)) as { error?: string; balance?: number };
-              setError(j?.error ?? "Insufficient credits");
-              if (typeof j?.balance === "number") setCredits(j.balance);
-              return false;
-            }
-            if (!res.ok) {
-              lastErr = `Request failed (${res.status})`;
-              if (attempt < MAX_ATTEMPTS) {
-                await new Promise((r) => setTimeout(r, attempt * 1000));
-                continue;
-              }
-              setError(lastErr);
-              return false;
-            }
-            const data = (await res.json().catch(() => null)) as SingleAiResult | null;
-            if (!data || data.ok !== true || !data.response) {
-              lastErr = data?.error ?? "Malformed response";
-              if (attempt < MAX_ATTEMPTS) {
-                await new Promise((r) => setTimeout(r, attempt * 1000));
-                continue;
-              }
-              setError(lastErr);
-              return false;
-            }
-            result = data;
-            break;
-          } catch (e: unknown) {
-            lastErr = e instanceof Error ? e.message : "Network error";
-            if (attempt < MAX_ATTEMPTS) {
-              await new Promise((r) => setTimeout(r, attempt * 1000));
-              continue;
-            }
-            setError(lastErr);
-            return false;
-          }
-        }
-
-        if (!result || !result.response) {
-          setError(lastErr || "Request failed");
-          return false;
-        }
-
-        const resp = result.response;
-        const roundFinal = result.round;
-        if (result.meta) {
-          if (result.meta.sessionId) sid = result.meta.sessionId;
-          onMeta(result.meta);
-        }
-        flushSync(() => {
-          onResponse(resp, 1);
-        });
+        const resp = applyResult(result, 1, (s) => (sid = s));
         collected.push(resp);
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => resolve());
         });
-        if (roundFinal) {
+        if (result.round) {
           flushSync(() => {
-            onRound(roundFinal);
+            onRound(result.round!);
           });
         }
       }
@@ -914,7 +1004,7 @@ export default function ArenaPage() {
             computeBattleSeedAis(roundNumber, sides, r1).map((ai) => ({ ai, status: "pending" as const }))
           );
         });
-        const okStream = await readNdjsonArena(
+        const okStream = await runArenaRoundSequential(
           mergeBattleBodyForRound(roundNumber),
           (meta) => {
             if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
@@ -935,7 +1025,7 @@ export default function ArenaPage() {
         setIsLoading(false);
       }
     },
-    [battleUiRoundComplete, mergeBattleBodyForRound, readNdjsonArena, sessionId, sides, topic, rounds, markResponseProgress, handleArenaThinking]
+    [battleUiRoundComplete, mergeBattleBodyForRound, runArenaRoundSequential, sessionId, sides, topic, rounds, markResponseProgress, handleArenaThinking]
   );
 
   const runFinalRounds456 = useCallback(async () => {
@@ -961,7 +1051,7 @@ export default function ArenaPage() {
             computeBattleSeedAis(rn, sides, r1).map((ai) => ({ ai, status: "pending" as const }))
           );
         });
-        const okStream = await readNdjsonArena(
+        const okStream = await runArenaRoundSequential(
           mergeBattleBodyForRound(rn),
           (meta) => {
             if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
@@ -986,7 +1076,7 @@ export default function ArenaPage() {
     battleUiRoundComplete,
     mergeBattleBodyForRound,
     purchaseArenaFinalBundleIfNeeded,
-    readNdjsonArena,
+    runArenaRoundSequential,
     sessionId,
     sides,
     topic,
@@ -1022,7 +1112,7 @@ export default function ArenaPage() {
             computeBattleSeedAis(rn, sides, r1).map((ai) => ({ ai, status: "pending" as const }))
           );
         });
-        const okStream = await readNdjsonArena(
+        const okStream = await runArenaRoundSequential(
           mergeBattleBodyForRound(rn),
           (meta) => {
             if (typeof meta.creditsRemaining === "number") setCredits(meta.creditsRemaining);
@@ -1047,7 +1137,7 @@ export default function ArenaPage() {
     battleUiRoundComplete,
     mergeBattleBodyForRound,
     purchaseArenaExtendedBundleIfNeeded,
-    readNdjsonArena,
+    runArenaRoundSequential,
     sessionId,
     sides,
     topic,

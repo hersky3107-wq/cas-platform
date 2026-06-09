@@ -2,17 +2,22 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { MODEL_BY_PROVIDER } from '@/lib/ai/router'
 import {
   ARENA_TO_PROVIDER,
+  assembleArenaRound,
   assembleArenaRound1,
+  planArenaRound,
   resetArenaTurnCounter,
   runArenaRound,
   runArenaRound1,
   runArenaRound1SingleAi,
+  runArenaRoundSingleAi,
   type ArenaAI,
   type ArenaFightMode,
   type ArenaMemoryEntry,
   type ArenaResponse,
   type ArenaRound,
   type ArenaTransportContext,
+  type ArenaTurnDescriptor,
+  type ArenaTurnSlot,
 } from '@/lib/ai/arena-engine'
 import {
   arenaExtendedBundleCreditCost,
@@ -287,7 +292,7 @@ export async function POST(req: Request) {
     return Response.json({ ok: true })
   }
 
-  // SINGLE-AI sequential path (mobile-resilient). Round 1 only; battle rounds stay on streaming.
+  // SINGLE-AI sequential path (mobile-resilient). Rounds 1–9: one short request per AI.
   if (action === 'single-ai-response') {
     const aiRaw = typeof body.aiName === 'string' ? body.aiName : ''
     if (!(ARENA_AI_LIST as string[]).includes(aiRaw)) {
@@ -296,11 +301,188 @@ export async function POST(req: Request) {
     const ai = aiRaw as ArenaAI
     const roundNumber =
       typeof body.roundNumber === 'number' ? Math.floor(body.roundNumber) : 1
-    if (roundNumber !== 1) {
+    if (roundNumber < 1 || roundNumber > 9) {
       return Response.json(
-        { ok: false, error: 'single-ai-response currently supports round 1 only' },
+        { ok: false, error: 'roundNumber must be between 1 and 9' },
         { status: 400 }
       )
+    }
+
+    // ---- Rounds 2–9: battle turns. Turn plan (incl. random co-fighter) is computed
+    // once on the first AI and returned; the client follows it for the rest of the round. ----
+    if (roundNumber >= 2) {
+      const slotRaw = typeof body.slot === 'string' ? body.slot : ''
+      const VALID_SLOTS = [
+        'champion-left',
+        'champion-right',
+        'cofighter-left',
+        'cofighter-right',
+        'supporter-left',
+        'supporter-right',
+      ]
+      const isFirstB = body.isFirstAiInRound === true
+      const isLastB = body.isLastAiInRound === true
+      if (!isFirstB && !VALID_SLOTS.includes(slotRaw)) {
+        return Response.json({ ok: false, error: 'Invalid slot' }, { status: 400 })
+      }
+      const topicB = typeof body.topic === 'string' ? body.topic.trim() : ''
+      if (!topicB) {
+        return Response.json({ ok: false, error: 'topic is required' }, { status: 400 })
+      }
+      const fightModeB = parseFightMode(body.fightMode)
+      const arenaMemoryB = parseArenaMemory(body.arenaMemory)
+      const priorResponsesB = Array.isArray(body.priorResponses)
+        ? (body.priorResponses as ArenaResponse[])
+        : []
+      const roundsB = normalizeArenaRounds(body.rounds)
+      if (roundsB.length === 0) {
+        return Response.json({ ok: false, error: 'rounds payload is required' }, { status: 400 })
+      }
+      const sidesRaw = (body.sides ?? {}) as { left?: string; right?: string }
+      const leftRaw = typeof sidesRaw.left === 'string' ? sidesRaw.left : ''
+      const rightRaw = typeof sidesRaw.right === 'string' ? sidesRaw.right : ''
+      if (
+        !(ARENA_AI_LIST as string[]).includes(leftRaw) ||
+        !(ARENA_AI_LIST as string[]).includes(rightRaw)
+      ) {
+        return Response.json(
+          { ok: false, error: 'sides.left and sides.right must be valid arena AIs' },
+          { status: 400 }
+        )
+      }
+      const currentSides = { left: leftRaw as ArenaAI, right: rightRaw as ArenaAI }
+
+      const sidB = typeof body.sessionId === 'string' ? body.sessionId : ''
+      if (!sidB) {
+        return Response.json({ ok: false, error: 'sessionId is required' }, { status: 400 })
+      }
+      const { data: existingB, error: exErrB } = await supabase
+        .from('sessions')
+        .select('id, mode')
+        .eq('id', sidB)
+        .maybeSingle()
+      if (exErrB || !existingB || existingB.mode !== 'arena') {
+        return Response.json({ ok: false, error: 'Invalid session' }, { status: 400 })
+      }
+      const sessionIdB = existingB.id
+
+      const battleCost = roundNumber <= 3 ? creditsForArenaRound(roundNumber) : 0
+      let firstMetaB: { sessionId: string; creditsRemaining: number } | undefined
+
+      if (isFirstB) {
+        // Bundle-token gating — identical to the streaming "battle" action.
+        const finalTok =
+          typeof body.arenaFinalBundleToken === 'string' ? body.arenaFinalBundleToken : ''
+        const extTok =
+          typeof body.arenaExtendedBundleToken === 'string' ? body.arenaExtendedBundleToken : ''
+        if (roundNumber >= 4) {
+          if (!verifyArenaFinalBundleToken(finalTok, sessionIdB, user.id)) {
+            return Response.json(
+              {
+                ok: false,
+                error: 'Final rounds require purchasing rounds 4–6 (Continue to Final Rounds).',
+              },
+              { status: 402 }
+            )
+          }
+        }
+        if (roundNumber >= 7) {
+          if (!verifyArenaFinalBundleToken(finalTok, sessionIdB, user.id)) {
+            return Response.json(
+              { ok: false, error: 'Rounds 7–9 require the rounds 4–6 credit package first.' },
+              { status: 402 }
+            )
+          }
+          if (!verifyArenaExtendedBundleToken(extTok, sessionIdB, user.id)) {
+            return Response.json(
+              { ok: false, error: 'Rounds 7–9 require purchasing the extension (Continue ▶).' },
+              { status: 402 }
+            )
+          }
+        }
+        // Balance gate for paid rounds (2–3) — deduction happens after success on the last AI.
+        if (battleCost > 0) {
+          const balanceBeforeB = await getCreditsBalance(supabase, user.id)
+          if (balanceBeforeB !== null && balanceBeforeB < battleCost) {
+            return Response.json(
+              {
+                ok: false,
+                error: 'Insufficient credits',
+                balance: balanceBeforeB,
+                required: battleCost,
+              },
+              { status: 402 }
+            )
+          }
+          firstMetaB = { sessionId: sessionIdB, creditsRemaining: balanceBeforeB ?? 0 }
+        }
+        await insertUserDebateEntry(supabase, sessionIdB, `[arena round ${roundNumber}] ${topicB}`)
+      }
+
+      const ctxB: ArenaTransportContext = {
+        supabase,
+        sessionId: sessionIdB,
+        userId: user.id,
+        supabaseAccessToken: token ?? undefined,
+      }
+
+      let turnPlanB: ArenaTurnDescriptor[] | undefined
+      let turnB: ArenaTurnDescriptor
+      if (isFirstB) {
+        turnPlanB = planArenaRound(roundNumber, currentSides, roundsB)
+        turnB = turnPlanB[0]!
+      } else {
+        turnB = { ai, slot: slotRaw as ArenaTurnSlot }
+      }
+
+      let responseB: ArenaResponse
+      try {
+        responseB = await runArenaRoundSingleAi(
+          turnB,
+          roundNumber,
+          topicB,
+          roundsB,
+          currentSides,
+          priorResponsesB,
+          ctxB,
+          { fightMode: fightModeB, arenaMemory: arenaMemoryB }
+        )
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Unknown error'
+        return Response.json({ ok: false, error: msg }, { status: 500 })
+      }
+
+      let roundB: ArenaRound | undefined
+      let creditsRemainingB: number | undefined
+      if (isLastB) {
+        roundB = assembleArenaRound(
+          roundNumber,
+          [...priorResponsesB, responseB],
+          currentSides,
+          roundsB
+        )
+        // ARENA CREDIT DEDUCTION (battle rounds 2–3) — once per round, after success.
+        if (battleCost > 0) {
+          const deductB = await deductCreditsBalance(supabase, user.id, battleCost, 'arena_battle')
+          if (deductB.ok) creditsRemainingB = deductB.balance ?? undefined
+          else console.warn('[arena] battle sequential credit deduct failed:', deductB.reason)
+        }
+      }
+
+      const metaB: { sessionId?: string; creditsRemaining?: number } = {}
+      if (firstMetaB) {
+        metaB.sessionId = firstMetaB.sessionId
+        metaB.creditsRemaining = firstMetaB.creditsRemaining
+      }
+      if (creditsRemainingB != null) metaB.creditsRemaining = creditsRemainingB
+
+      return Response.json({
+        ok: true,
+        response: responseB,
+        round: roundB,
+        turnPlan: turnPlanB,
+        meta: Object.keys(metaB).length ? metaB : undefined,
+      })
     }
     const topic = typeof body.topic === 'string' ? body.topic.trim() : ''
     if (!topic) {
