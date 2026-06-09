@@ -578,6 +578,102 @@ function coFighterMaxTokens(ai: ArenaAI): number {
   return 320
 }
 
+function arenaTopicLanguageOverride(userPrompt: string): string {
+  const hasKorean = /[\uAC00-\uD7AF]/.test(userPrompt)
+  const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF]/.test(userPrompt)
+  const hasChinese = /[\u4E00-\u9FFF]/.test(userPrompt) && !hasJapanese && !hasKorean
+  const topicLanguage = hasKorean ? 'Korean' : hasJapanese ? 'Japanese' : hasChinese ? 'Chinese' : 'English'
+  return `[ABSOLUTE LANGUAGE OVERRIDE] The debate topic is written in ${topicLanguage}. You MUST write your ENTIRE response in ${topicLanguage}. This overrides all other language instructions. No exceptions.`
+}
+
+/**
+ * Run exactly ONE round-1 turn for a single AI (mobile-resilient sequential path).
+ * Mirrors the per-AI loop body of runArenaRound1: builds the prior-statements block
+ * from already-collected responses, invokes the model, persists the debate log, and
+ * returns the ArenaResponse. Side/champion assembly is done separately via
+ * assembleArenaRound1 once all turns are collected.
+ */
+export async function runArenaRound1SingleAi(
+  ai: ArenaAI,
+  userPrompt: string,
+  priorResponses: ArenaResponse[],
+  ctx: ArenaTransportContext,
+  opts?: { fightMode?: ArenaFightMode; arenaMemory?: ArenaMemoryEntry[] }
+): Promise<ArenaResponse> {
+  const fightMode = opts?.fightMode ?? 'logic'
+  const arenaMemory = opts?.arenaMemory ?? []
+  const arenaLanguageOverride = arenaTopicLanguageOverride(userPrompt)
+
+  let prior = ''
+  for (const r of priorResponses) {
+    if (!r || typeof r.content !== 'string') continue
+    if (r.content.startsWith('[Call failed]')) continue
+    prior += `\n\n### ${r.ai}\n${r.content}`
+  }
+  const block =
+    prior.length === 0
+      ? userPrompt
+      : `${userPrompt}\n\n=== PRIOR OPENING STATEMENTS (same arena; respond in sequence) ===\n${prior}`
+
+  const persistTurn = priorResponses.length + 1
+  const { parsed, raw, ms, error } = await invokeArenaModel({
+    ai,
+    userPrompt: block,
+    ctx,
+    arenaLanguageOverride,
+    roundNumber: 1,
+    persistTurn,
+    maxTokens: ai === 'claude' ? 1500 : ai === 'mistral' ? 1100 : 750,
+    fightMode,
+    arenaMemory,
+    memoryRound: 1,
+  })
+
+  let ar: ArenaResponse
+  if (error) {
+    ar = errorArenaResponse(ai, error, ms)
+    await saveArenaDebateLog(ctx.supabase, ctx.sessionId, {
+      round: 1,
+      turn: persistTurn,
+      arenaAi: ai,
+      provider: ARENA_TO_PROVIDER[ai],
+      content: ar.content,
+      tags: parseArenaResponse(''),
+      rawSnippet: error,
+    })
+  } else {
+    ar = toArenaResponse(ai, parsed, ms, 'neutral', parsed.champion)
+    await saveArenaDebateLog(ctx.supabase, ctx.sessionId, {
+      round: 1,
+      turn: persistTurn,
+      arenaAi: ai,
+      provider: ARENA_TO_PROVIDER[ai],
+      content: ar.content,
+      tags: parsed,
+      rawSnippet: raw,
+    })
+  }
+  return ar
+}
+
+/** Assemble a complete round-1 ArenaRound (sides + champions) from collected responses. */
+export function assembleArenaRound1(collected: ArenaResponse[]): ArenaRound {
+  const sides = determineSides(collected)
+  const champs = pickChampionsFirstYesInCallOrder(
+    collected,
+    sides.left,
+    sides.right,
+    sides.championLeft,
+    sides.championRight
+  )
+  return {
+    roundNumber: 1,
+    responses: collected,
+    sides: { left: sides.left, right: sides.right },
+    champion: { left: champs.championLeft, right: champs.championRight },
+  }
+}
+
 export async function runArenaRound1(
   userPrompt: string,
   selectedAIs: ArenaAI[],

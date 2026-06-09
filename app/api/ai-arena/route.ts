@@ -2,9 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { MODEL_BY_PROVIDER } from '@/lib/ai/router'
 import {
   ARENA_TO_PROVIDER,
+  assembleArenaRound1,
   resetArenaTurnCounter,
   runArenaRound,
   runArenaRound1,
+  runArenaRound1SingleAi,
   type ArenaAI,
   type ArenaFightMode,
   type ArenaMemoryEntry,
@@ -283,6 +285,147 @@ export async function POST(req: Request) {
       console.warn('[arena] debate_logs memory:', insMem.primaryError, insMem.fallbackError)
     }
     return Response.json({ ok: true })
+  }
+
+  // SINGLE-AI sequential path (mobile-resilient). Round 1 only; battle rounds stay on streaming.
+  if (action === 'single-ai-response') {
+    const aiRaw = typeof body.aiName === 'string' ? body.aiName : ''
+    if (!(ARENA_AI_LIST as string[]).includes(aiRaw)) {
+      return Response.json({ ok: false, error: 'Invalid aiName' }, { status: 400 })
+    }
+    const ai = aiRaw as ArenaAI
+    const roundNumber =
+      typeof body.roundNumber === 'number' ? Math.floor(body.roundNumber) : 1
+    if (roundNumber !== 1) {
+      return Response.json(
+        { ok: false, error: 'single-ai-response currently supports round 1 only' },
+        { status: 400 }
+      )
+    }
+    const topic = typeof body.topic === 'string' ? body.topic.trim() : ''
+    if (!topic) {
+      return Response.json({ ok: false, error: 'topic is required' }, { status: 400 })
+    }
+    const fightMode = parseFightMode(body.fightMode)
+    const arenaMemory = parseArenaMemory(body.arenaMemory)
+    const priorResponses = Array.isArray(body.priorResponses)
+      ? (body.priorResponses as ArenaResponse[])
+      : []
+    const selectedAIs = parseArenaAiList(body.selectedAIs)
+    const isFirst = body.isFirstAiInRound === true
+    const isLast = body.isLastAiInRound === true
+    const cost = creditsForArenaRound(1)
+
+    let sessionId: string
+    let firstMeta: { sessionId: string; creditsRemaining: number } | undefined
+
+    if (isFirst) {
+      if (selectedAIs.length < 3 || selectedAIs.length > 6) {
+        return Response.json({ ok: false, error: 'Select between 3 and 6 AIs' }, { status: 400 })
+      }
+      // Balance gate only — deduction happens after the round succeeds (on the last AI).
+      const balanceBefore = await getCreditsBalance(supabase, user.id)
+      if (balanceBefore !== null && balanceBefore < cost) {
+        return Response.json(
+          { ok: false, error: 'Insufficient credits', balance: balanceBefore, required: cost },
+          { status: 402 }
+        )
+      }
+      const sessionIdIn = typeof body.sessionId === 'string' ? body.sessionId : null
+      if (!sessionIdIn) {
+        const ins = await supabase
+          .from('sessions')
+          .insert([{ mode: 'arena', prompt: topic }])
+          .select()
+          .single()
+        if (ins.error || !ins.data?.id) {
+          return Response.json(
+            { ok: false, error: ins.error?.message ?? 'Could not start session' },
+            { status: 500 }
+          )
+        }
+        sessionId = ins.data.id
+        for (const a of selectedAIs) {
+          const p = ARENA_TO_PROVIDER[a]
+          const { error: pe } = await supabase.from('session_participants').insert([
+            {
+              session_id: sessionId,
+              ai_name: p,
+              model_name: MODEL_BY_PROVIDER[p],
+            },
+          ])
+          if (pe) console.warn('[arena] session_participants:', pe.message)
+        }
+      } else {
+        const { data: existing, error: exErr } = await supabase
+          .from('sessions')
+          .select('id, mode')
+          .eq('id', sessionIdIn)
+          .maybeSingle()
+        if (exErr || !existing || existing.mode !== 'arena') {
+          return Response.json({ ok: false, error: 'Invalid session' }, { status: 400 })
+        }
+        sessionId = existing.id
+      }
+      await insertUserDebateEntry(supabase, sessionId, topic)
+      firstMeta = { sessionId, creditsRemaining: balanceBefore ?? 0 }
+    } else {
+      const sid = typeof body.sessionId === 'string' ? body.sessionId : ''
+      if (!sid) {
+        return Response.json({ ok: false, error: 'sessionId is required' }, { status: 400 })
+      }
+      const { data: existing, error: exErr } = await supabase
+        .from('sessions')
+        .select('id, mode')
+        .eq('id', sid)
+        .maybeSingle()
+      if (exErr || !existing || existing.mode !== 'arena') {
+        return Response.json({ ok: false, error: 'Invalid session' }, { status: 400 })
+      }
+      sessionId = existing.id
+    }
+
+    const ctx: ArenaTransportContext = {
+      supabase,
+      sessionId,
+      userId: user.id,
+      supabaseAccessToken: token ?? undefined,
+    }
+
+    let response: ArenaResponse
+    try {
+      response = await runArenaRound1SingleAi(ai, topic, priorResponses, ctx, {
+        fightMode,
+        arenaMemory,
+      })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error'
+      return Response.json({ ok: false, error: msg }, { status: 500 })
+    }
+
+    let round: ArenaRound | undefined
+    let creditsRemaining: number | undefined
+    if (isLast) {
+      round = assembleArenaRound1([...priorResponses, response])
+      // ARENA CREDIT DEDUCTION (round 1, sequential path) — single source of truth, after success.
+      const deduct = await deductCreditsBalance(supabase, user.id, cost, 'arena_round1')
+      if (deduct.ok) creditsRemaining = deduct.balance ?? undefined
+      else console.warn('[arena] round1 sequential credit deduct failed:', deduct.reason)
+    }
+
+    const meta: { sessionId?: string; creditsRemaining?: number } = {}
+    if (firstMeta) {
+      meta.sessionId = firstMeta.sessionId
+      meta.creditsRemaining = firstMeta.creditsRemaining
+    }
+    if (creditsRemaining != null) meta.creditsRemaining = creditsRemaining
+
+    return Response.json({
+      ok: true,
+      response,
+      round,
+      meta: Object.keys(meta).length ? meta : undefined,
+    })
   }
 
   if (action !== 'start' && action !== 'battle') {

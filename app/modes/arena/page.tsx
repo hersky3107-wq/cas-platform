@@ -396,6 +396,18 @@ export default function ArenaPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [phase, round1Live, battleLive, rounds, isLoading, round1Complete, awaitingNextBattleRound, aiProgressRows]);
 
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && isLoading) {
+        // Sequential requests auto-retry — no action needed.
+        // But clear any stale error that was shown while the screen was off.
+        setError(null);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [isLoading]);
+
   const markResponseProgress = useCallback((r: ArenaResponse) => {
     setAiProgressRows((prev) => {
       const idx = prev.findIndex((x) => x.ai === r.ai);
@@ -521,6 +533,145 @@ export default function ArenaPage() {
       return true;
     },
     [router]
+  );
+
+  /**
+   * Mobile-resilient Round 1: one short request per AI instead of a single long stream.
+   * Same callback signature as readNdjsonArena so callers swap cleanly. Each AI retries
+   * up to 3 times (1s/2s/3s backoff); session id + prior responses flow forward between calls.
+   * Round assembly (sides/champions) + credit deduction happen server-side on the last AI.
+   */
+  const runArenaRoundSequential = useCallback(
+    async (
+      body: Record<string, unknown>,
+      onMeta: (m: { sessionId?: string; creditsRemaining?: number }) => void,
+      onResponse: (r: ArenaResponse, roundNumber: number) => void,
+      onRound: (r: ArenaRound) => void,
+      onThinking?: (payload: { ai: ArenaAI; roundNumber: number }) => void
+    ): Promise<boolean> => {
+      const topicStr = typeof body.topic === "string" ? body.topic : "";
+      const fightModeStr = typeof body.fightMode === "string" ? body.fightMode : "logic";
+      const memory = Array.isArray(body.arenaMemory)
+        ? (body.arenaMemory as ArenaMemoryEntry[])
+        : [];
+      const selected = Array.isArray(body.selectedAIs)
+        ? (body.selectedAIs as ArenaAI[])
+        : [...ARENA_ORDER];
+
+      // Client-side shuffle preserves the random call order the server used to do.
+      const order = [...selected];
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j]!, order[i]!];
+      }
+
+      const collected: ArenaResponse[] = [];
+      let sid: string | null = typeof body.sessionId === "string" ? body.sessionId : null;
+      const MAX_ATTEMPTS = 4; // initial + 3 retries
+
+      for (let i = 0; i < order.length; i++) {
+        const ai = order[i]!;
+        const isFirst = i === 0;
+        const isLast = i === order.length - 1;
+        onThinking?.({ ai, roundNumber: 1 });
+
+        const reqBody = {
+          action: "single-ai-response",
+          aiName: ai,
+          topic: topicStr,
+          roundNumber: 1,
+          fightMode: fightModeStr,
+          arenaMemory: memory,
+          selectedAIs: selected,
+          isFirstAiInRound: isFirst,
+          isLastAiInRound: isLast,
+          sessionId: sid ?? undefined,
+          priorResponses: collected,
+        };
+
+        type SingleAiResult = {
+          ok?: boolean;
+          response?: ArenaResponse;
+          round?: ArenaRound;
+          meta?: { sessionId?: string; creditsRemaining?: number };
+          error?: string;
+          balance?: number;
+        };
+
+        let result: SingleAiResult | null = null;
+        let lastErr = "";
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          try {
+            const res = await fetch("/api/ai-arena", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(reqBody),
+            });
+            if (res.status === 402) {
+              const j = (await res.json().catch(() => null)) as { error?: string; balance?: number };
+              setError(j?.error ?? "Insufficient credits");
+              if (typeof j?.balance === "number") setCredits(j.balance);
+              return false;
+            }
+            if (!res.ok) {
+              lastErr = `Request failed (${res.status})`;
+              if (attempt < MAX_ATTEMPTS) {
+                await new Promise((r) => setTimeout(r, attempt * 1000));
+                continue;
+              }
+              setError(lastErr);
+              return false;
+            }
+            const data = (await res.json().catch(() => null)) as SingleAiResult | null;
+            if (!data || data.ok !== true || !data.response) {
+              lastErr = data?.error ?? "Malformed response";
+              if (attempt < MAX_ATTEMPTS) {
+                await new Promise((r) => setTimeout(r, attempt * 1000));
+                continue;
+              }
+              setError(lastErr);
+              return false;
+            }
+            result = data;
+            break;
+          } catch (e: unknown) {
+            lastErr = e instanceof Error ? e.message : "Network error";
+            if (attempt < MAX_ATTEMPTS) {
+              await new Promise((r) => setTimeout(r, attempt * 1000));
+              continue;
+            }
+            setError(lastErr);
+            return false;
+          }
+        }
+
+        if (!result || !result.response) {
+          setError(lastErr || "Request failed");
+          return false;
+        }
+
+        const resp = result.response;
+        const roundFinal = result.round;
+        if (result.meta) {
+          if (result.meta.sessionId) sid = result.meta.sessionId;
+          onMeta(result.meta);
+        }
+        flushSync(() => {
+          onResponse(resp, 1);
+        });
+        collected.push(resp);
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+        if (roundFinal) {
+          flushSync(() => {
+            onRound(roundFinal);
+          });
+        }
+      }
+      return true;
+    },
+    []
   );
 
   const resetArenaUi = useCallback(() => {
@@ -679,7 +830,7 @@ export default function ArenaPage() {
       flushSync(() => {
         setAiProgressRows(selectedList.map((ai) => ({ ai, status: "pending" as const })));
       });
-      await readNdjsonArena(
+      await runArenaRoundSequential(
         { action: "start", topic: t, selectedAIs: selectedList, fightMode, arenaMemory: [] },
         (meta) => {
           if (meta.sessionId) setSessionId(meta.sessionId);
@@ -714,7 +865,7 @@ export default function ArenaPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [topic, selectedList, isLoading, readNdjsonArena, resetArenaUi, fightMode, markResponseProgress, handleArenaThinking]);
+  }, [topic, selectedList, isLoading, runArenaRoundSequential, resetArenaUi, fightMode, markResponseProgress, handleArenaThinking]);
 
   const battleUiRoundComplete = useCallback(
     (roundComplete: ArenaRound) => {
