@@ -65,7 +65,7 @@ const ARENA_COLOR: Record<ArenaAI, string> = {
   gpt: "#10A37F",
   claude: "#D97757",
   gemini: "#4285F4",
-  grok: "#000000",
+  grok: "#E5E7EB",
   deepseek: "#4D6BFE",
   mistral: "#FF7000",
 };

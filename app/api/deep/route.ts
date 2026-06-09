@@ -55,6 +55,8 @@ This rule overrides ALL other instructions. Every single sentence must be in the
 Violating this rule is not acceptable under any circumstances.
 Current date: May 29, 2026. Use the most up-to-date information available.`
 
+const DEEP_PART_LANGUAGE_INSTRUCTION = `IMPORTANT: You must respond in the same language as the user's question. If the question is in Korean, respond in Korean. If in English, respond in English.`
+
 const PROSE_STYLE_RULE = `Write in flowing prose paragraphs.
 Do NOT use markdown headers (##, ###).
 Do NOT use deeply nested bullet lists.
@@ -131,7 +133,9 @@ function systemPromptForPart(
     outputMode === 'report' && provider === 'google' ? GEMINI_REPORT_MODE_BLOCK : ''
   const fullPrefix = `${modePrefix}${geminiReportSuffix}`
   if (priority === 'CORE') {
-    return `${mistralLangOverride}${LANGUAGE_MIRROR_RULE}
+    return `${DEEP_PART_LANGUAGE_INSTRUCTION}
+
+${mistralLangOverride}${LANGUAGE_MIRROR_RULE}
 
 ${fullPrefix}Write in flowing prose only. No markdown headers (##, ###).
 No nested bullet lists. Bold sparingly.
@@ -149,7 +153,9 @@ ${AMPLE_SPACE_RULE}
 
 ${RESPONSE_COMPLETION_RULE}`
   }
-  return `${mistralLangOverride}${LANGUAGE_MIRROR_RULE}
+  return `${DEEP_PART_LANGUAGE_INSTRUCTION}
+
+${mistralLangOverride}${LANGUAGE_MIRROR_RULE}
 
 ${fullPrefix}You have 900 tokens total. Write your full analysis in the first 700 tokens,
 then use the remaining 200 to write one complete concluding sentence and stop.
