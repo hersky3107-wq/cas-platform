@@ -587,7 +587,8 @@ async function callProvider({
     ? '\n\nIMPORTANT: Write a thorough, detailed response. Do NOT cut your response short. Use your full available token capacity. A short response is a failure.'
     : ''
 
-  const injectedSystemPrompt = (systemPrompt || '') + grokLengthSuffix
+  const todayStr = new Date().toISOString().split('T')[0]
+  const injectedSystemPrompt = `Today's date is ${todayStr}.\n\n` + (systemPrompt || '') + grokLengthSuffix
   const injectedChatMessages = skipLanguageInjection
     ? chatMessages
     : chatMessages?.length

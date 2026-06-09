@@ -359,10 +359,11 @@ async function fetchOrchestratorRawText(userQuestion: string): Promise<string> {
   const totalChars = userQuestion.replace(/\s/g, '').length
   const detectedLang = totalChars > 0 && koreanChars / totalChars > 0.15 ? 'Korean' : 'English'
 
+  const todayStr = new Date().toISOString().split('T')[0]
   const body = {
     model: ORCHESTRATOR_MODEL,
     max_tokens: 4096,
-    system: ORCHESTRATOR_SYSTEM,
+    system: `Today's date is ${todayStr}.\n\n${ORCHESTRATOR_SYSTEM}`,
     messages: [
       {
         role: 'user',
@@ -522,6 +523,7 @@ Rules:
 - Maximum 400 words.
 - End with a complete sentence. Never cut off mid-sentence.`
 
+  const todayStr = new Date().toISOString().split('T')[0]
   const userMessage = `Original question: ${originalQuestion}\n\nSix AI perspectives:\n\n${responseSummary}\n\nWrite your synthesis now.`
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -534,7 +536,7 @@ Rules:
       model: 'gpt-4.1',
       max_tokens: 1500,
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: `Today's date is ${todayStr}.\n\n${systemPrompt}` },
         { role: 'user', content: userMessage },
       ],
     }),
@@ -549,6 +551,51 @@ Rules:
     choices?: Array<{ message?: { content?: string } }>
   }
   return json.choices?.[0]?.message?.content ?? ''
+}
+
+function parseSinglePart(raw: unknown): DeepOrchestratorPart | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const index = typeof o.index === 'number' ? o.index : NaN
+  const provider = o.assigned_provider
+  if (!Number.isFinite(index)) return null
+  if (typeof provider !== 'string' || !VALID_PROVIDERS.has(provider as AiProviderName)) {
+    return null
+  }
+  return {
+    index,
+    topic: typeof o.topic === 'string' ? o.topic : '',
+    assigned_provider: provider as AiProviderName,
+    priority: o.priority === 'CORE' ? 'CORE' : 'SUPPORT',
+    depth: typeof o.depth === 'string' ? o.depth : 'deep',
+    angle: typeof o.angle === 'string' ? o.angle : '',
+  }
+}
+
+function parsePartsArray(raw: unknown): DeepOrchestratorPart[] | null {
+  if (!Array.isArray(raw)) return null
+  const out: DeepOrchestratorPart[] = []
+  for (const item of raw) {
+    const p = parseSinglePart(item)
+    if (!p) return null
+    out.push(p)
+  }
+  return out
+}
+
+function parseResultsByIndex(raw: unknown): Map<number, RouterResult> {
+  const map = new Map<number, RouterResult>()
+  if (!Array.isArray(raw)) return map
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const index = typeof o.index === 'number' ? o.index : NaN
+    const result = o.result
+    if (Number.isFinite(index) && result && typeof result === 'object') {
+      map.set(index, result as RouterResult)
+    }
+  }
+  return map
 }
 
 export async function POST(req: Request) {
@@ -594,6 +641,209 @@ export async function POST(req: Request) {
   const cost = creditsForDeep(outputMode)
   const coreMaxTokens = MODE_CORE_TOKENS[outputMode]
   const supportMaxTokens = MODE_SUPPORT_TOKENS[outputMode]
+
+  const action = typeof body.action === 'string' ? body.action : ''
+
+  // ---- Sequential transport (mobile-resilient): one short request per AI part. ----
+  // Mirrors the streaming flow below but split into independent short requests so a
+  // backgrounded/locked mobile screen only loses (and retries) a single part.
+  if (action === 'single-part') {
+    const isFirst = body.isFirst === true
+
+    // First request: deduct credits (once), create session, build the plan.
+    if (isFirst) {
+      const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost, 'deep')
+      if (!deduct.ok) {
+        const insufficient = deduct.reason === 'insufficient'
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: insufficient
+              ? `This session requires ${cost} credits. You currently have ${deduct.balance}. Top up credits to continue.`
+              : 'Could not update credits. Please try again.',
+            balance: deduct.balance,
+            required: cost,
+          }),
+          { status: insufficient ? 402 : 500, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      const creditsRemaining = deduct.balance
+
+      const ins = await supabaseAdmin
+        .from('sessions')
+        .insert([{ mode: 'deep', prompt }])
+        .select()
+        .single()
+      if (ins.error || !ins.data?.id) {
+        return new Response(
+          JSON.stringify({ ok: false, error: ins.error?.message ?? 'Could not start session' }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      const sessionId = String(ins.data.id)
+      await insertUserDebateEntry(supabaseAdmin, sessionId, prompt)
+
+      let parts: DeepOrchestratorPart[]
+      let repairedProviders = false
+      if (manualAssignments) {
+        parts = buildPlanFromManualAssignments(manualAssignments)
+      } else {
+        try {
+          const resolved = await resolveOrchestratorPlan(prompt)
+          parts = resolved.parts
+          repairedProviders = resolved.repairedProviders
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Orchestrator failed'
+          return new Response(
+            JSON.stringify({ ok: false, error: msg }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+          )
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          meta: { sessionId, creditsRemaining, cost, outputMode },
+          plan: parts,
+          repairedProviders,
+        }),
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Subsequent requests: run exactly one assigned part (no credit deduction).
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+    const part = parseSinglePart(body.part)
+    if (!sessionId) {
+      return new Response(JSON.stringify({ ok: false, error: 'sessionId is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (!part) {
+      return new Response(JSON.stringify({ ok: false, error: 'Invalid part' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    try {
+      const r = await runSingleAiProvider({
+        supabase: supabaseAdmin,
+        sessionId: null,
+        userId: null,
+        provider: part.assigned_provider,
+        prompt: subQuestionPrompt(prompt, part.topic),
+        systemPrompt: systemPromptForPart(
+          part.priority,
+          part.angle,
+          outputMode,
+          part.assigned_provider
+        ),
+        maxCompletionTokens: part.priority === 'CORE' ? coreMaxTokens : supportMaxTokens,
+        modelOverride: modelForAssignedPart(part.assigned_provider),
+        skipLanguageInjection: true,
+      })
+
+      const storedAnswer = r.text ?? (r.error ? `[error] ${r.error}` : null)
+      const primaryRow: Record<string, unknown> = {
+        session_id: sessionId,
+        ai_name: part.assigned_provider,
+        target_ai_name: part.assigned_provider,
+        model_name: r.model,
+        response_text: storedAnswer,
+        response_time_ms: r.responseTimeMs,
+        token_input: r.promptTokens,
+        token_output: r.completionTokens,
+        error_text: r.error ?? null,
+      }
+      const fallbackRow: Record<string, unknown> = {
+        session_id: sessionId,
+        ai_name: part.assigned_provider,
+        target_ai_name: part.assigned_provider,
+        model_name: r.model,
+        response_text: storedAnswer,
+        response_time_ms: r.responseTimeMs,
+        prompt_tokens: r.promptTokens,
+        completion_tokens: r.completionTokens,
+      }
+      await insertRowsWithFallback('ai_responses', primaryRow, fallbackRow)
+
+      await insertRowsWithFallback(
+        'model_cost_logs',
+        {
+          session_id: sessionId,
+          ai_name: part.assigned_provider,
+          model_name: r.model,
+          prompt_tokens: r.promptTokens,
+          completion_tokens: r.completionTokens,
+          total_tokens: r.totalTokens,
+          response_time_ms: r.responseTimeMs,
+          cost_usd: 0,
+          error_text: r.error ?? null,
+        },
+        {
+          session_id: sessionId,
+          model_name: r.model,
+          total_tokens: r.totalTokens,
+        }
+      )
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          part_result: {
+            index: part.index,
+            part,
+            result: { ...r, text: r.text ? truncateAtLastSentence(r.text) : r.text },
+          },
+        }),
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Part failed'
+      return new Response(JSON.stringify({ ok: false, error: msg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }
+
+  // ---- Synthesis: runs once after all parts complete (no credit deduction). ----
+  if (action === 'synthesize') {
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+    const parts = parsePartsArray(body.parts)
+    const byIndex = parseResultsByIndex(body.results)
+    if (!parts || parts.length === 0) {
+      return new Response(JSON.stringify({ ok: false, error: 'parts are required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const winner = pickWinnerAiName(parts, byIndex)
+    if (sessionId) {
+      await insertRowsWithFallback(
+        'session_results',
+        { session_id: sessionId, winner_ai_name: winner, category: 'deep' },
+        { session_id: sessionId, winner_ai_name: winner }
+      )
+    }
+
+    let synthesisText = ''
+    try {
+      synthesisText = await runSynthesis(prompt, parts, byIndex)
+      synthesisText = truncateAtLastSentence(synthesisText)
+    } catch (e) {
+      console.warn('[deep] synthesis failed:', e)
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, synthesis: synthesisText, winner_ai_name: winner }),
+      { headers: { 'Content-Type': 'application/json' } }
+    )
+  }
 
   const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost, 'deep')
   if (!deduct.ok) {

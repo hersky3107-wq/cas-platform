@@ -127,8 +127,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: INF_MODEL,
         max_tokens: 512,
-        system:
-          'You assign traditional Korean shi-chen (2-hour pillars) cautiously using survey correlations. Reply JSON only.',
+        system: `Today's date is ${new Date().toISOString().split('T')[0]}.\n\nYou assign traditional Korean shi-chen (2-hour pillars) cautiously using survey correlations. Reply JSON only.`,
         messages: [{ role: 'user', content: prompt }],
       }),
     })

@@ -260,7 +260,7 @@ async function invokeArenaModel(params: {
     ? supporterStack
     : (() => {
         const guards: string[] = []
-        if (roundNumber >= 7) guards.push(ARENA_ROUND_7_9_RESPONSE_RULE)
+        guards.push(ARENA_ROUND_7_9_RESPONSE_RULE)
         if (roundNumber >= 4) guards.push(ARENA_BANNED_PHRASES_ROUND_4_PLUS)
         const g = guards.length ? `\n\n${guards.join('\n\n')}` : ''
         return `${buildArenaSystemPrompt(ai, fightMode, roundNumber)}${g}`
@@ -572,10 +572,29 @@ function coFighterBeforeChampionAddon(championAi: ArenaAI): string {
   return `PLACEMENT: You speak BEFORE ${ARENA_DISPLAY[championAi]} this round — one strike only, tee them up, no overlap with their headline.`
 }
 
-function coFighterMaxTokens(ai: ArenaAI): number {
-  if (ai === 'claude') return 400
-  if (ai === 'mistral') return 380
-  return 320
+function coFighterMaxTokens(ai: ArenaAI, userPrompt: string): number {
+  const base = ai === 'claude' ? 400 : ai === 'mistral' ? 380 : 320
+  return arenaIsCjkPrompt(userPrompt) ? Math.round(base * 1.5) : base
+}
+
+/**
+ * CJK languages (ko/ja/zh) tokenize far less efficiently than English, so responses
+ * hit the output cap and get cut off mid-sentence. Raise the caps for CJK prompts.
+ */
+function arenaIsCjkPrompt(userPrompt: string): boolean {
+  return /[\uAC00-\uD7AF\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(userPrompt)
+}
+
+function arenaChampionMaxTokens(ai: ArenaAI, userPrompt: string, fallback: number): number {
+  const cjk = arenaIsCjkPrompt(userPrompt)
+  if (ai === 'claude') return cjk ? 2700 : 1500
+  if (ai === 'mistral') return cjk ? 2000 : 1100
+  return fallback
+}
+
+function arenaSupporterMaxTokens(ai: ArenaAI, userPrompt: string): number {
+  const base = ai === 'claude' ? 220 : 180
+  return arenaIsCjkPrompt(userPrompt) ? Math.round(base * 1.5) : base
 }
 
 function arenaTopicLanguageOverride(userPrompt: string): string {
@@ -623,7 +642,7 @@ export async function runArenaRound1SingleAi(
     arenaLanguageOverride,
     roundNumber: 1,
     persistTurn,
-    maxTokens: ai === 'claude' ? 1500 : ai === 'mistral' ? 1100 : 750,
+    maxTokens: arenaChampionMaxTokens(ai, userPrompt, 750),
     fightMode,
     arenaMemory,
     memoryRound: 1,
@@ -710,7 +729,7 @@ export async function runArenaRound1(
       arenaLanguageOverride,
       roundNumber: 1,
       persistTurn,
-      maxTokens: ai === 'claude' ? 1500 : ai === 'mistral' ? 1100 : 750,
+      maxTokens: arenaChampionMaxTokens(ai, userPrompt, 750),
       fightMode,
       arenaMemory,
       memoryRound: 1,
@@ -841,11 +860,8 @@ You are the ${side.toUpperCase()} camp champion (${ai}). ${role}
 ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'logic' ? 'Use the mandatory tag block first, then your argument.' : 'Respond in plain aggressive prose (no tag headers).'}`
   }
 
-  const championMaxTokens = (ai: ArenaAI): number => {
-    if (ai === 'claude') return 1500
-    if (ai === 'mistral') return 1100
-    return 800
-  }
+  const championMaxTokens = (ai: ArenaAI): number =>
+    arenaChampionMaxTokens(ai, userPrompt, 800)
 
   const emitSupporterApi = async (ai: ArenaAI, champ: ArenaAI, side: 'left' | 'right') => {
     onThinking?.(ai)
@@ -863,7 +879,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
       arenaLanguageOverride,
       roundNumber,
       persistTurn,
-      maxTokens: ai === 'claude' ? 220 : 180,
+      maxTokens: arenaSupporterMaxTokens(ai, userPrompt),
       fightMode,
       arenaMemory,
       memoryRound: roundNumber,
@@ -1023,7 +1039,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
           champTurnThisRound: lastLeftChampTurn,
           oppChampTurnThisRound: null,
         }),
-        maxTok: coFighterMaxTokens(coFightSetup.ai),
+        maxTok: coFighterMaxTokens(coFightSetup.ai, userPrompt),
         extraSystemPrompt: coFighterJoinSystemAddition(leftChamp, coFightSetup.ai),
         plainSpeech: true,
         joinedFight: true,
@@ -1042,7 +1058,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
           opposingChampion: leftChamp,
           opposingChampionJustSaid: lastLeftChampTurn,
         }),
-        maxTok: coFighterMaxTokens(coFightSetup.ai),
+        maxTok: coFighterMaxTokens(coFightSetup.ai, userPrompt),
         extraSystemPrompt: `${coFighterJoinSystemAddition(rightChamp, coFightSetup.ai)}\n${coFighterBeforeChampionAddon(rightChamp)}`,
         plainSpeech: true,
         joinedFight: true,
@@ -1219,11 +1235,8 @@ You are the ${side.toUpperCase()} camp champion (${cAi}). ${role}
 ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'logic' ? 'Use the mandatory tag block first, then your argument.' : 'Respond in plain aggressive prose (no tag headers).'}`
   }
 
-  const championMaxTokens = (a: ArenaAI): number => {
-    if (a === 'claude') return 1500
-    if (a === 'mistral') return 1100
-    return 800
-  }
+  const championMaxTokens = (a: ArenaAI): number =>
+    arenaChampionMaxTokens(a, userPrompt, 800)
 
   let prompt: string
   let side: ArenaResponse['side'] = 'neutral'
@@ -1260,7 +1273,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
     side = 'left'
     plainSpeech = true
     joinedFight = true
-    maxTok = coFighterMaxTokens(ai)
+    maxTok = coFighterMaxTokens(ai, userPrompt)
     extraSystemPrompt = coFighterJoinSystemAddition(leftChamp, ai)
     const lastLeftChampTurn = collectedThisRound.find((r) => r.ai === leftChamp)?.content ?? ''
     prompt = buildCoFighterUserPrompt({
@@ -1275,7 +1288,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
     side = 'right'
     plainSpeech = true
     joinedFight = true
-    maxTok = coFighterMaxTokens(ai)
+    maxTok = coFighterMaxTokens(ai, userPrompt)
     extraSystemPrompt = `${coFighterJoinSystemAddition(rightChamp, ai)}\n${coFighterBeforeChampionAddon(rightChamp)}`
     const lastLeftChampTurn = collectedThisRound.find((r) => r.ai === leftChamp)?.content ?? ''
     prompt = buildCoFighterBeforeChampionPrompt({
@@ -1292,7 +1305,7 @@ ${trailingNotes?.trim() ? `${trailingNotes.trim()}\n\n` : ''}${fightMode === 'lo
     role = 'supporter'
     supporterChampion = champ
     plainSpeech = true
-    maxTok = ai === 'claude' ? 220 : 180
+    maxTok = arenaSupporterMaxTokens(ai, userPrompt)
     const leftTxt = collectedThisRound.find((r) => r.ai === leftChamp)?.content?.trim() ?? ''
     const rightTxt = collectedThisRound.find((r) => r.ai === rightChamp)?.content?.trim() ?? ''
     prompt = `User topic:\n${userPrompt}\n\nTHIS ROUND (Round ${roundNumber}) — full champion exchange in this round:\n\n${ARENA_DISPLAY[leftChamp]}:\n"""\n${leftTxt.slice(0, 2800)}\n"""\n\n${ARENA_DISPLAY[rightChamp]}:\n"""\n${rightTxt.slice(0, 2800)}\n"""\n\nYou are ${ARENA_DISPLAY[ai]}, publicly backing ${ARENA_DISPLAY[champ]}. Respond with 1-2 sentences only — react to THIS round above.`

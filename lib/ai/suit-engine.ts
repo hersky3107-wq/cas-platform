@@ -248,10 +248,11 @@ export async function runJudgeOpus47(params: {
   error?: string
 }> {
   const started = Date.now()
+  const todayStr = new Date().toISOString().split('T')[0]
   const body: Record<string, unknown> = {
     model: JUDGE_MODEL_ID,
     max_tokens: 1024,
-    system: params.systemPrompt,
+    system: `Today's date is ${todayStr}.\n\n${params.systemPrompt}`,
     messages: [{ role: 'user', content: params.userPrompt }],
   }
 

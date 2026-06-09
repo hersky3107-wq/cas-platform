@@ -404,6 +404,16 @@ export default function CompareModePage() {
     return () => cancelAnimationFrame(id);
   }, [bestAnswerPanel]);
 
+  // When the vote panel becomes visible, scroll so the last responses sit ABOVE
+  // it (the extra <main> bottom padding gives the room) instead of being covered.
+  useEffect(() => {
+    if (!bestAnswerVisual) return;
+    const id = requestAnimationFrame(() => {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [bestAnswerVisual]);
+
   useEffect(() => {
     if (!sessionEndPanel) {
       setSessionEndVisual(false);
@@ -909,7 +919,11 @@ export default function CompareModePage() {
         <ModuleCreditsLink />
       </header>
 
-      <main className="mx-auto max-w-3xl px-3 pb-80 pt-16 sm:px-4">
+      <main
+        className={`mx-auto max-w-3xl px-3 pt-16 sm:px-4 ${
+          bestAnswerPanel ? "pb-[32rem]" : "pb-80"
+        }`}
+      >
         <h1 className="mb-3 text-center text-xl font-bold leading-snug text-white sm:text-2xl">
           Same question. Different minds.
         </h1>
@@ -968,9 +982,9 @@ export default function CompareModePage() {
                     <button
                       type="button"
                       onClick={skipBestAnswer}
-                      className="shrink-0 text-sm text-slate-400 underline-offset-4 transition hover:text-white hover:underline"
+                      className="shrink-0 rounded-lg border border-white/20 bg-white/5 px-3 py-1 text-sm text-slate-300 transition hover:bg-white/10 hover:text-white"
                     >
-                      Skip
+                      Vote later
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-2">

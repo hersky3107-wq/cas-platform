@@ -17,6 +17,9 @@ export async function oracleGptCompletion({
     throw new Error('OPENAI_API_KEY is not configured.')
   }
 
+  const todayStr = new Date().toISOString().split('T')[0]
+  const datedSystemPrompt = `Today's date is ${todayStr}.\n\n${systemPrompt}`
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -26,7 +29,7 @@ export async function oracleGptCompletion({
     body: JSON.stringify({
       model,
       messages: [
-        ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+        { role: 'system', content: datedSystemPrompt },
         { role: 'user', content: userPrompt },
       ],
       max_tokens: maxTokens,

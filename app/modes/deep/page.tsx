@@ -194,7 +194,10 @@ export default function DeepModePage() {
     })();
   }, []);
 
-  const runAnalyze = useCallback(async () => {
+  // Legacy single long-stream path. Kept as an unused fallback (mobile screen
+  // lock / backgrounding can kill the stream mid-run), superseded by
+  // runDeepSequential below. Do not delete.
+  const runDeepStreaming = useCallback(async () => {
     const prompt = input.trim();
     if (!prompt || sending) return;
 
@@ -327,6 +330,181 @@ export default function DeepModePage() {
       setSending(false);
     }
   }, [input, sending, outputMode, analysisMode, manualAngles]);
+
+  // Mobile-resilient transport: one short request per AI part instead of a single
+  // 45-90s stream. An interrupted part is retried individually; the run survives.
+  const runDeepSequential = useCallback(
+    async (
+      prompt: string,
+      manualAssignments: { provider: AiProviderName; angle: string }[] | null
+    ) => {
+      const post = (payload: Record<string, unknown>) =>
+        fetch("/api/deep", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      const delay = (ms: number) =>
+        new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+      // 1. Setup: deduct credits (once), create session, build the plan.
+      const firstRes = await post({
+        action: "single-part",
+        isFirst: true,
+        prompt,
+        outputMode,
+        manualAssignments,
+      });
+      const firstData = (await firstRes.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        balance?: number;
+        meta?: { sessionId?: string; creditsRemaining?: number };
+        plan?: DeepPart[];
+      } | null;
+
+      if (!firstRes.ok || !firstData?.ok || !Array.isArray(firstData.plan)) {
+        setError(firstData?.error ?? "Request failed");
+        if (typeof firstData?.balance === "number") setCredits(firstData.balance);
+        setPhase("error");
+        return;
+      }
+
+      const sessionId = firstData.meta?.sessionId ?? "";
+      if (typeof firstData.meta?.creditsRemaining === "number") {
+        setCredits(firstData.meta.creditsRemaining);
+      }
+      const planParts = firstData.plan;
+      setPlan(planParts);
+      setPhase("running");
+
+      // 2. Run each part sequentially; retry an interrupted part up to 2x.
+      const collected: { index: number; result: RouterResult }[] = [];
+      for (const part of planParts) {
+        let success = false;
+        let lastErr = "";
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const r = await post({
+              action: "single-part",
+              isFirst: false,
+              sessionId,
+              prompt,
+              part,
+              outputMode,
+            });
+            const data = (await r.json().catch(() => null)) as {
+              ok?: boolean;
+              error?: string;
+              part_result?: {
+                index: number;
+                part: DeepPart;
+                result: RouterResult;
+              };
+            } | null;
+
+            if (!r.ok || !data?.ok || !data.part_result?.result) {
+              lastErr = data?.error ?? `Request failed (${r.status})`;
+              if (attempt < 3) {
+                await delay(attempt * 2000);
+                continue;
+              }
+              break;
+            }
+
+            const pr = data.part_result;
+            setPartsOut((prev) => {
+              const next = new Map(prev);
+              next.set(pr.index, { part: pr.part, result: pr.result });
+              return next;
+            });
+            collected.push({ index: pr.index, result: pr.result });
+            success = true;
+            break;
+          } catch (e: unknown) {
+            lastErr = e instanceof Error ? e.message : "Network error";
+            if (attempt < 3) {
+              await delay(attempt * 2000);
+              continue;
+            }
+          }
+        }
+        if (!success) {
+          setError(lastErr || "A part failed to complete");
+          setPhase("error");
+          return;
+        }
+      }
+
+      // 3. Synthesis after all parts complete (best-effort).
+      try {
+        const sRes = await post({
+          action: "synthesize",
+          sessionId,
+          prompt,
+          parts: planParts,
+          results: collected,
+        });
+        const sData = (await sRes.json().catch(() => null)) as {
+          ok?: boolean;
+          synthesis?: string;
+          winner_ai_name?: string;
+        } | null;
+        if (sRes.ok && sData?.ok) {
+          if (sData.winner_ai_name) setWinner(sData.winner_ai_name);
+          setSynthesis(sData.synthesis ?? "");
+        }
+      } catch (e) {
+        console.warn("[deep] synthesis failed:", e);
+      }
+
+      setPhase("done");
+    },
+    [outputMode]
+  );
+
+  const runAnalyze = useCallback(async () => {
+    const prompt = input.trim();
+    if (!prompt || sending) return;
+
+    setSending(true);
+    setError(null);
+    setWinner(null);
+    setSynthesis("");
+    setPlan(null);
+    setPartsOut(new Map());
+    setDeepSessionId(null);
+    setShareId(null);
+    setSaveFailed(false);
+    setGoPublicDone(false);
+    setGoPublicError(null);
+    setPhase("orchestrating");
+
+    const manualAssignments =
+      analysisMode === "manual" &&
+      (outputMode === "standard" || outputMode === "report")
+        ? PROVIDER_ORDER.map((provider) => ({
+            provider,
+            angle: manualAngles[provider].trim(),
+          }))
+        : null;
+
+    try {
+      await runDeepSequential(prompt, manualAssignments);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+      setPhase("error");
+    } finally {
+      setSending(false);
+    }
+  }, [
+    input,
+    sending,
+    outputMode,
+    analysisMode,
+    manualAngles,
+    runDeepSequential,
+  ]);
 
   const buildSessionResponses = useCallback((): DeepSessionResponse[] => {
     if (!plan?.length) return [];
