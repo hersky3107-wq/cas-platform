@@ -72,7 +72,7 @@ export function buildCompareChatMessagesForProvider(
 export const MODEL_BY_PROVIDER: Record<AiProviderName, string> = {
   openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-6',
-  google: 'gemini-2.5-flash',
+  google: 'gemini-3.5-flash',
   xai: 'grok-3',
   deepseek: 'deepseek-chat',
   mistral: 'mistral-large-latest',

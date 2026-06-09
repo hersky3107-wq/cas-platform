@@ -19,7 +19,7 @@ const CARRIER_SESSION_COST = creditsForMindgameCareer();
 const AI_PLAYERS = [
   { provider: "openai", name: "ChatGPT", color: "#10A37F", model: "gpt-4.1" },
   { provider: "anthropic", name: "Claude", color: "#D97757", model: "claude-sonnet-4-6" },
-  { provider: "google", name: "Gemini", color: "#4285F4", model: "gemini-2.5-flash" },
+  { provider: "google", name: "Gemini", color: "#4285F4", model: "gemini-3.5-flash" },
   { provider: "xai", name: "Grok", color: "#1A1A1A", model: "grok-3" },
   { provider: "deepseek", name: "DeepSeek", color: "#4D6BFE", model: "deepseek-chat" },
   { provider: "mistral", name: "Mistral", color: "#FF7000", model: "mistral-large-latest" },

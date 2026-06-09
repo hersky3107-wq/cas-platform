@@ -26,7 +26,7 @@ const AI_PLAYERS = [
     color: '#D97757',
     model: 'claude-sonnet-4-6',
   },
-  { provider: 'google' as const, name: 'Gemini', color: '#4285F4', model: 'gemini-2.5-flash' },
+  { provider: 'google' as const, name: 'Gemini', color: '#4285F4', model: 'gemini-3.5-flash' },
   { provider: 'xai' as const, name: 'Grok', color: '#1A1A1A', model: 'grok-3' },
   { provider: 'deepseek' as const, name: 'DeepSeek', color: '#4D6BFE', model: 'deepseek-chat' },
   {

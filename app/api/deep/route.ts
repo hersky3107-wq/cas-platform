@@ -190,7 +190,7 @@ After choosing DEBATE vs EXPLORATION, split the user's question into exactly 6 s
 Then assign each sub-topic to the AI best suited for that angle:
 - openai (gpt-4o): structured logic, data frameworks, step-by-step reasoning
 - anthropic (claude-opus-4-6): ethics, philosophy, human nuance, uncomfortable truths
-- google (gemini-2.5-flash): factual grounding, scientific evidence, real-world synthesis
+- google (gemini-3.5-flash): factual grounding, scientific evidence, real-world synthesis
 - xai (grok-3): cultural pulse, what people actually think, trend instinct
 - deepseek (deepseek-chat): academic depth, specialist rigor, historical precedent
 - mistral (mistral-large-latest): cross-cultural lens, practical utility, concise clarity

@@ -22,7 +22,7 @@ async function insertMindgameUserSelectionsWithFallback(
 const AI_PLAYERS = [
   { provider: 'openai' as const, name: 'ChatGPT', model: 'gpt-4.1' },
   { provider: 'anthropic' as const, name: 'Claude', model: 'claude-sonnet-4-6' },
-  { provider: 'google' as const, name: 'Gemini', model: 'gemini-2.5-flash' },
+  { provider: 'google' as const, name: 'Gemini', model: 'gemini-3.5-flash' },
   { provider: 'xai' as const, name: 'Grok', model: 'grok-3' },
   { provider: 'deepseek' as const, name: 'DeepSeek', model: 'deepseek-chat' },
   { provider: 'mistral' as const, name: 'Mistral', model: 'mistral-large-latest' },

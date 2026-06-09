@@ -284,7 +284,7 @@ export async function POST(req: Request) {
   const userPrompt = 'Deliver your tarot reading now, following every rule above.'
   const providers = [
     { provider: 'anthropic' as const, name: 'Claude', modelOverride: 'claude-sonnet-4-6' },
-    { provider: 'google' as const, name: 'Gemini', modelOverride: 'gemini-2.5-flash' },
+    { provider: 'google' as const, name: 'Gemini', modelOverride: 'gemini-3.5-flash' },
     { provider: 'mistral' as const, name: 'Mistral', modelOverride: 'mistral-large-latest' },
   ]
 

@@ -242,7 +242,7 @@ Never end mid-sentence.`,
 
         const jobs = [
           { provider: 'deepseek' as const, name: 'DeepSeek', sys: deepseekSys, max: 700, modelOverride: 'deepseek-chat' },
-          { provider: 'google' as const, name: 'Gemini', sys: geminiSys, max: 700, modelOverride: 'gemini-2.5-flash' },
+          { provider: 'google' as const, name: 'Gemini', sys: geminiSys, max: 700, modelOverride: 'gemini-3.5-flash' },
           { provider: 'anthropic' as const, name: 'Claude', sys: claudeSys, max: 700, modelOverride: 'claude-sonnet-4-6' },
         ].map(async (j) => {
           const r = await runAndStore({
