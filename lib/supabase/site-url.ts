@@ -6,27 +6,12 @@ const PRODUCTION_HOSTS = new Set(['aimani.ai', 'www.aimani.ai'])
 
 export const CANONICAL_PRODUCTION_ORIGIN = 'https://aimani.ai'
 
-/** Canonical app URL for auth redirects (env → production default → Vercel → request → localhost). */
-export function getSiteUrl(fallbackOrigin?: string): string {
-  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, '')
-  if (fromEnv) return fromEnv
-
-  if (fallbackOrigin) {
-    const normalized = normalizeOrigin(fallbackOrigin)
-    if (normalized.includes('aimani.ai')) {
-      try {
-        return productionOriginForRequest(new URL(normalized).host)
-      } catch {
-        return CANONICAL_PRODUCTION_ORIGIN
-      }
-    }
-    return normalized
-  }
-
-  const vercel = process.env.VERCEL_URL?.trim()
-  if (vercel) return `https://${vercel.replace(/^https?:\/\//, '')}`
-
-  return 'http://localhost:3000'
+/** Canonical app URL for auth redirects (explicit origin → browser origin → env → production default). */
+export function getSiteUrl(origin?: string): string {
+  if (origin) return origin
+  if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL
+  return 'https://www.aimani.ai'
 }
 
 export function normalizeOrigin(origin: string): string {

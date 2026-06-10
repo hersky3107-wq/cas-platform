@@ -33,6 +33,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     arena: "9-round AI battle.",
     custom: "Your rules. Your depth.",
     deep: "6 AIs · Deep analysis · Full report.",
+    synod: "AI minds deliberate to reach the best consensus.",
     oracle: "Fortune. Tarot. Astrology.",
     mindgame: "Deceive. Survive. Win.",
     stage: "AI banter, comedy & diverse stories.",
@@ -44,6 +45,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     arena: "9라운드 AI 배틀.",
     custom: "당신의 규칙. 당신의 깊이.",
     deep: "AI들의 심층 분석 · 완전한 보고서.",
+    synod: "AI들이 토론해 최선의 합의에 도달한다.",
     oracle: "운세. 타로. 점성술.",
     mindgame: "속여라. 살아남아라. 이겨라.",
     stage: "만담 · 코미디 · 다양한 이야기.",
@@ -55,6 +57,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     arena: "9ラウンドのAI対決。",
     custom: "あなたのルール。あなたの深さ。",
     deep: "AIたちの深層分析・完全なレポート。",
+    synod: "AIたちが熟議し、最善の合意へ。",
     oracle: "運勢。タロット。占星術。",
     mindgame: "騙せ。生き残れ。勝て。",
     stage: "AIの漫才・コメディ・多彩な物語。",
@@ -66,6 +69,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     arena: "9回合AI對決。",
     custom: "你的規則。你的深度。",
     deep: "AI深度分析・完整報告。",
+    synod: "AI們深入商議，達成最佳共識。",
     oracle: "運勢。塔羅。星座。",
     mindgame: "欺騙。生存。獲勝。",
     stage: "AI相聲・喜劇・多元故事。",
@@ -77,6 +81,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     arena: "Bataille IA en 9 rounds.",
     custom: "Vos règles. Votre profondeur.",
     deep: "AI · Analyse approfondie · Rapport complet.",
+    synod: "Les IA délibèrent pour le meilleur consensus.",
     oracle: "Fortune. Tarot. Astrologie.",
     mindgame: "Trompe. Survie. Victoire.",
     stage: "AI · Comédie · Joutes verbales · Histoires.",
@@ -88,6 +93,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     arena: "معركة ذكاء اصطناعي ٩ جولات.",
     custom: "قواعدك. عمقك.",
     deep: "تحليل معمّق للذكاء الاصطناعي · تقرير كامل.",
+    synod: "عقول الذكاء الاصطناعي تتداول للوصول إلى أفضل توافق.",
     mindgame: "اخدع. انجُ. انتصر.",
     stage: "AI · كوميديا · قصص · عروض متنوعة.",
   },
@@ -374,6 +380,12 @@ export default function Home() {
                 label: "DEEP",
               },
               {
+                // Brand name — never translated. Global module (no visibility gating).
+                id: "synod",
+                src: "/icons/synod.png",
+                label: "SYNOD",
+              },
+              {
                 id: "oracle",
                 src: "/icons/oracle.png",
                 label: "ORACLE",
@@ -410,6 +422,18 @@ export default function Home() {
                   <Link
                     key={m.id}
                     href="/modes/deep"
+                    className="flex items-center justify-center"
+                  >
+                    {tile}
+                  </Link>
+                );
+              }
+
+              if (m.id === "synod") {
+                return (
+                  <Link
+                    key={m.id}
+                    href="/modes/synod"
                     className="flex items-center justify-center"
                   >
                     {tile}

@@ -256,7 +256,14 @@ async function callOpenAICompatibleChat({
     payload.temperature = temperature
   }
   if (typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0) {
-    payload.max_tokens = maxCompletionTokens
+    // OpenAI's newer models (gpt-5.x) reject `max_tokens`; `max_completion_tokens`
+    // is accepted by gpt-4o/gpt-4.1/gpt-5.x. xai/deepseek/mistral still require
+    // `max_tokens` on their OpenAI-compatible APIs.
+    if (provider === 'openai') {
+      payload.max_completion_tokens = maxCompletionTokens
+    } else {
+      payload.max_tokens = maxCompletionTokens
+    }
   }
 
   const res = await fetchWithRetry(provider, `${baseUrl}/chat/completions`, {
