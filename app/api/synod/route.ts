@@ -227,11 +227,90 @@ async function loadRoundTurns(sessionId: string, roundNumber: number): Promise<S
 // System prompts
 // ──────────────────────────────────────────────────────────────────────────
 
+/** Deliberation difficulty mode. Stored on the session; default 'easy'. */
+type SynodMode = 'easy' | 'expert'
+
+function parseSynodMode(raw: unknown): SynodMode {
+  return raw === 'expert' ? 'expert' : 'easy'
+}
+
+/**
+ * Reads the session's stored mode so resumed sessions keep their difficulty
+ * (never trust the client per-call). Falls back to 'easy' on any read failure.
+ */
+async function loadSessionMode(sessionId: string): Promise<SynodMode> {
+  const { data, error } = await supabaseAdmin
+    .from('synod_sessions')
+    .select('mode')
+    .eq('session_id', sessionId)
+    .maybeSingle()
+  if (error || !data) return 'easy'
+  return parseSynodMode(data.mode)
+}
+
 const OUTPUT_TAIL_RULE = `End your response with exactly one final line in this format (this line is mandatory):
 CLAIM: <one sentence distilling your core claim>`
 
-function openingSystemPrompt(): string {
-  return `You are participating in SYNOD, a structured multi-AI deliberation.
+/** Per-debater voice. Applies in BOTH easy and expert modes — persona is about voice, not difficulty. */
+const PERSONA: Record<AiProviderName, string> = {
+  openai:
+    'You explain things like a great teacher — you take whatever others said and make it crystal clear and easy, using simple everyday examples. You are the one who makes the hard stuff click.',
+  anthropic:
+    'You are the reflective one who questions assumptions — you often step back and ask whether the question itself is framed wrong, and propose a better angle. Thoughtful, a little contrarian about premises.',
+  google:
+    "You are the balanced mediator — calm, neutral, fact- and evidence-focused. You find the middle ground and point to what's actually known.",
+  xai:
+    'You are the cool, slightly cheeky rebel — you push back against the forming consensus with a bit of attitude and wit, but you genuinely want the best answer, not just to be difficult.',
+  deepseek:
+    'You are sharp, efficient, no-fluff. You cut straight to the point with cold logic. Short and incisive.',
+  mistral:
+    'You are the playful, artistic one — you bring humor, vivid metaphors, and a creative angle others miss.',
+}
+
+/**
+ * Voice rules for all debaters, both modes. The "name the other AI by brand"
+ * line is omitted in the opening round, where referencing others is forbidden.
+ */
+function voiceRules(hasPriorParticipants: boolean): string {
+  return `VOICE RULES (all modes):
+- Write in a lively, human, spoken voice. NO report/essay tone (ban stiff endings like "~할 수 있습니다", "~한 측면이 있습니다", "~한 편이 더 정확합니다" and their equivalents in any language).
+- Use concrete examples and real situations, not abstract generalities.
+- You must sound DIFFERENT from the other participants — that is the point of personas. Sounding identical = failure.
+${hasPriorParticipants ? `- When reacting, name the other AI by brand and hit their point directly: e.g. "GPT는 X라고 했는데, 그건 핵심을 놓쳤어 — 왜냐면...".\n` : ''}- IMPORTANT: personas add flavor but everyone still argues toward the BEST answer. This is a cooperative search for truth, not a fight. Push back with wit, never hostility.`
+}
+
+/** Convergence push for late rounds: partial agreement, not fake unanimity. */
+const LATE_ROUND_RULE = `This is a LATE round — start converging. Acknowledge what others got right and move toward a shared answer. BUT do NOT fake agreement: if you genuinely still disagree on a specific point, say so clearly and hold that point ("I agree with X, but I still don't buy Y because..."). Honest partial agreement is better than hollow unanimity. Only fully agree if you are actually convinced.`
+
+/**
+ * Mode-specific difficulty rules, layered ON TOP of the base rules.
+ * `hasPriorParticipants` is false for the opening round (round 0), where the
+ * "react to a prior participant" rule would contradict the opening's
+ * "do not reference others" rule — that single line is omitted there.
+ */
+function modeStyleBlock(mode: SynodMode, hasPriorParticipants: boolean): string {
+  if (mode === 'expert') {
+    return `WRITING STYLE (EXPERT MODE):
+- Technical depth and academic concepts are allowed; argue rigorously.
+- But control length: 8–10 sentences max. Do NOT turn this into an essay with many headings.
+- No dry report tone — keep your persona's voice while arguing rigorously.
+${hasPriorParticipants ? `- React directly to a specific prior participant's claim first, before adding anything new.\n` : ''}- HALLUCINATION GUARD (critical in this mode): do NOT invent study names, author names, journal names, years, or precise numbers (effect sizes, sample sizes, percentages). Cite specifics ONLY if you are certain. When uncertain, write "a study suggests" without fake citations. Fabricated citations are a serious failure.`
+  }
+  return `WRITING STYLE (EASY MODE — strict):
+- Write so a MIDDLE-SCHOOL student or a busy parent with no background fully gets it on first read.
+- Short, punchy sentences. Everyday words only. If a hard idea is needed, explain it with a simple everyday example.
+- Do NOT use foreign loanwords or academic jargon (e.g. eudaimonic, biopsychosocial).
+- Do NOT use headings, numbered lists, or tables. Write 1–2 natural paragraphs.
+- Keep it short: 5–6 sentences maximum.
+- Make it ENJOYABLE to read — a little personality, not a dry summary.
+${hasPriorParticipants ? `- React directly to ONE specific prior participant's point (name it, then agree/refute/build on it). Do not just pile on new concepts.\n` : ''}- Do NOT fabricate study names, author names, or precise statistics (SD, n=, %). If unsure, say "some research suggests" in plain terms.`
+}
+
+function openingSystemPrompt(provider: AiProviderName, mode: SynodMode): string {
+  return `You are participating in SYNOD, a structured multi-AI deliberation. You are ${PROVIDER_TO_BRAND[provider]}.
+
+PERSONA — your voice (stay in character while arguing substantively):
+${PERSONA[provider]}
 
 This is the OPENING round. Give your own independent, well-reasoned opinion on the user's question.
 Rules:
@@ -240,22 +319,39 @@ Rules:
 - Respond in the same language as the question.
 - Keep it focused: your strongest reasoning only, no filler.
 
+${voiceRules(false)}
+
+${modeStyleBlock(mode, false)}
+
 ${OUTPUT_TAIL_RULE}`
 }
 
-function turnSystemPrompt(isRedTeam: boolean): string {
+function turnSystemPrompt(
+  provider: AiProviderName,
+  isRedTeam: boolean,
+  mode: SynodMode,
+  roundNumber: number
+): string {
+  const lateBlock = roundNumber >= 4 ? `\n${LATE_ROUND_RULE}\n` : ''
   if (isRedTeam) {
-    return `You are participating in SYNOD, a structured multi-AI deliberation. This round you are the RED TEAM.
+    return `You are participating in SYNOD, a structured multi-AI deliberation. You are ${PROVIDER_TO_BRAND[provider]}. This round you are the RED TEAM.
+
+PERSONA — your voice (stay in character while arguing substantively):
+${PERSONA[provider]}
 
 Your SOLE job this round: find and articulate the STRONGEST objection to the forming consensus shown in the deliberation context. Do not be agreeable. Do not soften. If the consensus has a fatal flaw, expose it; if it merely has weak points, press the weakest one hard.
 Rules:
 - You MUST begin your response with exactly one line: "ACTION: CHALLENGE"
 - Attack the consensus on its merits — evidence, logic, missing perspectives — not on style.
 - Respond in the same language as the question.
+${lateBlock}
+${voiceRules(true)}
+
+${modeStyleBlock(mode, true)}
 
 ${OUTPUT_TAIL_RULE}`
   }
-  return `You are participating in SYNOD, a structured multi-AI deliberation. Other participants (anonymized) have spoken; their positions and the facilitator's summary are in the context.
+  return `You are participating in SYNOD, a structured multi-AI deliberation. You are ${PROVIDER_TO_BRAND[provider]}. Other participants have spoken; their positions and the facilitator's summary are in the context. Address them by brand name.
 
 You MUST begin your response with exactly one line declaring your move:
 "ACTION: AGREE" | "ACTION: CHALLENGE" | "ACTION: SUPPLEMENT" | "ACTION: REFRAME"
@@ -266,6 +362,10 @@ You MUST begin your response with exactly one line declaring your move:
 
 Be STUBBORN about your own reasoning: do not abandon a position you previously took unless the context contains a genuinely stronger argument — and if you do concede, name exactly which argument changed your mind. Drifting toward the majority without cause is a failure.
 Respond in the same language as the question.
+${lateBlock}
+${voiceRules(true)}
+
+${modeStyleBlock(mode, true)}
 
 ${OUTPUT_TAIL_RULE}`
 }
@@ -285,20 +385,27 @@ OUTPUT FORMAT — STRICT JSON ONLY. No prose, no markdown fences, no commentary.
 - nextDirective: the single most productive focus for the next round.
 - Be faithful: only record consensus that actually exists in the turns. Never invent agreement.`
 
-const VERDICT_SYSTEM = `You are the Verdict Chair of SYNOD, a multi-AI deliberation. You are Claude Opus 4.8.
+const VERDICT_SYSTEM_BASE = [
+  'You are the Verdict Chair of SYNOD, a multi-AI deliberation. You are Claude Opus 4.8.',
+  'Participants are anonymized; judge ideas strictly on their merits. Write the final synthesis of the deliberation — the best consensus answer the group reached, strengthened by your own judgment.',
+  'You MUST preserve dissent: if any participant maintained a serious unresolved objection, it belongs in the minority report. Erasing dissent is a failure.',
+  'OUTPUT FORMAT — STRICT JSON ONLY. No prose outside the JSON, no markdown fences. Exactly this shape:',
+  '{ "verdict": "string — full final synthesis in the question\'s language, ending with sign-off: — Claude Opus 4.8", "minorityReport": [{ "ai": "participant label", "dissent": "string", "reason": "string" }], "finalScore": 0 }',
+  '- finalScore: integer 0-100 — the final consensus strength. This is the SINGLE authoritative score shown to the user (the gauge reads finalScore, not the last facilitator round score). Set it consistent with the deliberation: it should reflect where the group actually landed and must NOT diverge wildly from the last facilitator roundConsensusScore unless the final round genuinely shifted consensus.',
+  '- minorityReport may be an empty array ONLY if no genuine dissent remained.',
+].join('\n\n')
 
-Participants are anonymized; judge ideas strictly on their merits. Write the final synthesis of the deliberation — the best consensus answer the group reached, strengthened by your own judgment.
+function verdictSystemPrompt(mode: SynodMode): string {
+  const modeRule =
+    mode === 'expert'
+      ? `MODE (EXPERT): Technical depth is fine, but do not fabricate citations or statistics; keep the synthesis tight.`
+      : `MODE (EASY): Write the verdict so a non-expert fully understands — plain language, no jargon, and add a one-line plain-language summary at the very top before the detailed synthesis.`
+  return `${VERDICT_SYSTEM_BASE}
 
-You MUST preserve dissent: if any participant maintained a serious unresolved objection, it belongs in the minority report. Erasing dissent is a failure.
+${modeRule}
 
-OUTPUT FORMAT — STRICT JSON ONLY. No prose outside the JSON, no markdown fences. Exactly this shape:
-{
-  "verdict": "string — the full final synthesis, written in the language of the question, ending with the sign-off: — Claude Opus 4.8",
-  "minorityReport": [{ "ai": "participant label", "dissent": "string", "reason": "string" }],
-  "finalScore": 0
+DISCLAIMER (mandatory, both modes): at the very END of the "verdict" string, append this one-line disclaimer, translated into the language of the question: "(이 합의는 AI들의 토론에 기반하며, 통계·연구 인용은 검증이 필요합니다.)" — i.e. "This consensus is based on a deliberation between AIs; statistics and study citations require verification."`
 }
-- finalScore: integer 0-100 — the final consensus strength.
-- minorityReport may be an empty array ONLY if no genuine dissent remained.`
 
 // ──────────────────────────────────────────────────────────────────────────
 // Route
@@ -443,11 +550,12 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
 
     let sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
     let creditsRemaining: number | undefined
+    let mode: SynodMode = parseSynodMode(body.mode)
 
     if (isFirst) {
       const ins = await supabase
         .from('synod_sessions')
-        .insert([{ user_id: user.id, question, status: 'running', ui_locale: uiLocale }])
+        .insert([{ user_id: user.id, question, status: 'running', ui_locale: uiLocale, mode }])
         .select()
         .single()
       // synod_sessions PK is `session_id` (NOT `id`).
@@ -482,6 +590,11 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
       return Response.json({ error: 'sessionId is required' }, { status: 400 })
     }
 
+    // Non-first opening calls: trust the stored session mode, not the client.
+    if (!isFirst) {
+      mode = await loadSessionMode(sessionId)
+    }
+
     let r: RouterResult
     try {
       r = await runSingleAiProvider({
@@ -490,7 +603,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         userId: null,
         provider,
         prompt: `QUESTION:\n${question}`,
-        systemPrompt: openingSystemPrompt(),
+        systemPrompt: openingSystemPrompt(provider, mode),
         // Korean uses ~2-3x more tokens than English; keep headroom.
         maxCompletionTokens: 2500,
         modelOverride: DEBATER_MODEL[provider],
@@ -553,7 +666,6 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
     const provider = body.provider as AiProviderName
     const roundNumber = typeof body.roundNumber === 'number' ? body.roundNumber : NaN
-    const isRedTeam = body.isRedTeam === true
     if (!sessionId) {
       return Response.json({ error: 'sessionId is required' }, { status: 400 })
     }
@@ -563,18 +675,24 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
     if (!Number.isFinite(roundNumber) || roundNumber < 1) {
       return Response.json({ error: 'Invalid roundNumber' }, { status: 400 })
     }
+    // Red team stays active through round 4; off only in the final round (5).
+    // Prevents an abrupt consensus spike when red team disappears mid-deliberation.
+    const isRedTeam = roundNumber >= 5 ? false : body.isRedTeam === true
 
-    const [priorSummaries, currentRoundTurns] = await Promise.all([
+    const [priorSummaries, currentRoundTurns, mode] = await Promise.all([
       loadPriorSummaries(sessionId),
       loadRoundTurns(sessionId, roundNumber),
+      loadSessionMode(sessionId),
     ])
 
     // Compressed context (latest summary full, older one-liners) — never raw history.
+    // anonymize: false — debaters see and address each other by BRAND NAME.
+    // Only the verdict chair gets an anonymized input (self-preference guard).
     const ctx = buildDeliberationContext({
       question,
       priorSummaries,
       currentRoundTurns,
-      anonymize: true,
+      anonymize: false,
     })
     console.log(`[synod] turn ctx ~${countApproxTokens(ctx.text)} tokens (r${roundNumber}, ${provider})`)
 
@@ -586,7 +704,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         userId: null,
         provider,
         prompt: ctx.text,
-        systemPrompt: turnSystemPrompt(isRedTeam),
+        systemPrompt: turnSystemPrompt(provider, isRedTeam, mode, roundNumber),
         // Korean uses ~2-3x more tokens than English; keep headroom.
         maxCompletionTokens: 2500,
         modelOverride: DEBATER_MODEL[provider],
@@ -758,11 +876,16 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
       })
     }
 
-    const allSummaries = await loadPriorSummaries(sessionId)
+    const [allSummaries, mode] = await Promise.all([
+      loadPriorSummaries(sessionId),
+      loadSessionMode(sessionId),
+    ])
     if (!allSummaries.length) {
       return Response.json({ error: 'No rounds to judge' }, { status: 400 })
     }
     const finalRoundNumber = Math.max(...allSummaries.map((s) => s.roundNumber))
+    const lastFacilitatorScore =
+      allSummaries.find((s) => s.roundNumber === finalRoundNumber)?.roundConsensusScore ?? 0
     const finalRoundTurns = await loadRoundTurns(sessionId, finalRoundNumber)
 
     // ALWAYS anonymized — the chair must not recognize (or favor) any brand.
@@ -772,7 +895,10 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
       finalRoundTurns,
       anonymize: true,
     })
-    console.log(`[synod] verdict input ~${countApproxTokens(text)} tokens`)
+    const verdictPrompt =
+      text +
+      `\n\nSCORING NOTE: The last facilitator round consensus score was ${lastFacilitatorScore} out of 100. Your finalScore must reflect the deliberation outcome and stay broadly consistent with this score — do not set finalScore wildly higher or lower unless the final round genuinely shifted consensus. finalScore is the single number the user will see.`
+    console.log(`[synod] verdict input ~${countApproxTokens(verdictPrompt)} tokens`)
 
     let r: RouterResult
     try {
@@ -781,8 +907,8 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         sessionId: null,
         userId: null,
         provider: VERDICT_PROVIDER,
-        prompt: text,
-        systemPrompt: VERDICT_SYSTEM,
+        prompt: verdictPrompt,
+        systemPrompt: verdictSystemPrompt(mode),
         // Full Korean JSON verdict was being truncated mid-string at lower caps.
         maxCompletionTokens: 8000,
         modelOverride: VERDICT_MODEL,

@@ -64,6 +64,8 @@ type VerdictResult = {
 
 type Phase = "idle" | "opening" | "deliberating" | "verdict" | "done" | "error";
 
+type SynodMode = "easy" | "expert";
+
 type AiProgressRow = {
   ai: SynodProvider;
   status: "pending" | "thinking" | "done";
@@ -317,6 +319,7 @@ function SummaryCard({ summary }: { summary: FacilitatorSummary }) {
 
 export default function SynodPage() {
   const [question, setQuestion] = useState("");
+  const [mode, setMode] = useState<SynodMode>("easy");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [turnsByRound, setTurnsByRound] = useState<Record<number, Turn[]>>({});
   const [summaries, setSummaries] = useState<FacilitatorSummary[]>([]);
@@ -442,6 +445,7 @@ export default function SynodPage() {
     async (initial: {
       sessionId: string | null;
       question: string;
+      mode: SynodMode;
       turnsByRound: Record<number, Turn[]>;
       summaries: FacilitatorSummary[];
       challengeFlags: Record<number, boolean>;
@@ -480,6 +484,7 @@ export default function SynodPage() {
               // true only for the very first call of a brand-new session
               isFirst: sid === null,
               ui_locale: uiLocale,
+              ...(sid === null ? { mode: initial.mode } : {}),
             });
             if (res === "abort" || res === null) {
               setPhase("error");
@@ -649,6 +654,7 @@ export default function SynodPage() {
       await runSynod({
         sessionId: sid,
         question: q,
+        mode: "easy",
         turnsByRound: byRound,
         summaries: loadedSummaries,
         challengeFlags,
@@ -678,12 +684,13 @@ export default function SynodPage() {
     void runSynod({
       sessionId: null,
       question: q,
+      mode,
       turnsByRound: {},
       summaries: [],
       challengeFlags: {},
       result: null,
     });
-  }, [question, runSynod]);
+  }, [question, mode, runSynod]);
 
   const roundNumbers = Object.keys(turnsByRound)
     .map(Number)
@@ -718,6 +725,48 @@ export default function SynodPage() {
                 rows={4}
                 className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-white placeholder:text-slate-500 focus:border-cyan-400/50 focus:outline-none"
               />
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMode("easy")}
+                  className={`rounded-2xl border px-3 py-2.5 text-left transition ${
+                    mode === "easy"
+                      ? "border-cyan-400/50 bg-cyan-500/20"
+                      : "border-white/10 bg-white/[0.04] hover:border-white/20"
+                  }`}
+                >
+                  <span
+                    className={`block text-sm font-semibold ${
+                      mode === "easy" ? "text-cyan-300" : "text-slate-300"
+                    }`}
+                  >
+                    Easy
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                    Simple & quick · anyone can follow
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("expert")}
+                  className={`rounded-2xl border px-3 py-2.5 text-left transition ${
+                    mode === "expert"
+                      ? "border-cyan-400/50 bg-cyan-500/20"
+                      : "border-white/10 bg-white/[0.04] hover:border-white/20"
+                  }`}
+                >
+                  <span
+                    className={`block text-sm font-semibold ${
+                      mode === "expert" ? "text-cyan-300" : "text-slate-300"
+                    }`}
+                  >
+                    Expert
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                    Deeper & more technical
+                  </span>
+                </button>
+              </div>
               <div className="flex justify-center">
                 <button
                   type="button"
