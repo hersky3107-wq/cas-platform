@@ -16,9 +16,6 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { deductCreditsBalance } from '@/lib/credits-server'
 
-// TODO: move to lib/credits.ts (creditsForSynod) once SYNOD pricing is finalized.
-const SYNOD_CREDITS = 25
-
 const VALID_PROVIDERS = new Set<AiProviderName>([
   'openai',
   'anthropic',
@@ -568,8 +565,10 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
       }
       sessionId = String(ins.data.session_id)
 
+      const synodCredits = mode === 'expert' ? 25 : 20
+
       // SYNOD CREDIT DEDUCTION — once per session, on the first opening call.
-      const deduct = await deductCreditsBalance(supabase, user.id, SYNOD_CREDITS, 'synod_session')
+      const deduct = await deductCreditsBalance(supabase, user.id, synodCredits, 'synod_session')
       if (!deduct.ok) {
         console.error('[SYNOD] credit deduct failed:', deduct)
         const insufficient = deduct.reason === 'insufficient'
@@ -577,7 +576,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
           {
             error: insufficient ? 'Insufficient credits' : 'Could not update credits',
             balance: deduct.balance,
-            required: SYNOD_CREDITS,
+            required: synodCredits,
           },
           { status: insufficient ? 402 : 500 }
         )
