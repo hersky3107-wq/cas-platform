@@ -5,6 +5,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChevronLeft } from "lucide-react";
 import type { FacilitatorSummary } from "@/lib/synod/build-memory";
+import {
+  getSynodUiPack,
+  localizeActionTag,
+  resolveSynodLocale,
+  type SynodLocale,
+  type SynodUiPack,
+} from "@/lib/synod/ui-labels";
+import {
+  AI_COLORS,
+  BRAND,
+  DEBATERS,
+  isSynodProvider,
+  type SynodProvider,
+} from "@/lib/synod/debaters";
+import { SynodSessionEndPanel } from "./SynodSessionEndPanel";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -12,31 +27,6 @@ const BG = "min-h-screen bg-[#0a0f1e] text-white";
 const CONSENSUS_THRESHOLD = 85;
 /** Hard cap on deliberation rounds (opening round 0 excluded). */
 const MAX_ROUNDS = 5;
-
-type SynodProvider = "openai" | "anthropic" | "google" | "xai" | "deepseek" | "mistral";
-
-/** Debater order: chatgpt, claude, gemini, grok, deepseek, mistral — as the
- * provider keys /api/synod expects. */
-const DEBATERS: SynodProvider[] = ["openai", "anthropic", "google", "xai", "deepseek", "mistral"];
-
-const BRAND: Record<SynodProvider, string> = {
-  openai: "ChatGPT",
-  anthropic: "Claude",
-  google: "Gemini",
-  xai: "Grok",
-  deepseek: "DeepSeek",
-  mistral: "Mistral",
-};
-
-/** Brand colors (mirrors Arena's palette; xai light gray for dark bg). */
-const AI_COLORS: Record<SynodProvider, string> = {
-  openai: "#10A37F",
-  anthropic: "#D97757",
-  google: "#4285F4",
-  xai: "#E5E7EB",
-  deepseek: "#4D6BFE",
-  mistral: "#FF7000",
-};
 
 /** Semantic chip styling per action tag. */
 const TAG_STYLES: Record<string, string> = {
@@ -79,6 +69,7 @@ type SynodApiResult = {
   error?: string;
   balance?: number;
   sessionId?: string;
+  shareId?: string;
   creditsRemaining?: number;
   turn?: {
     roundNumber: number;
@@ -98,6 +89,7 @@ type SynodApiResult = {
     status: string;
     totalRounds: number;
     consensusScore: number | null;
+    shareId?: string;
   };
   turns?: {
     roundNumber: number;
@@ -111,19 +103,17 @@ type SynodApiResult = {
   rounds?: { roundNumber: number; summary: FacilitatorSummary; challengeMissing: boolean }[];
 };
 
-function isSynodProvider(s: string): s is SynodProvider {
-  return (DEBATERS as string[]).includes(s);
-}
-
 /** Sticky 0-100 consensus gauge; shows finalScore once the session is done. */
 function ConsensusGauge({
   score,
   finalScore,
   done,
+  t,
 }: {
   score: number | null;
   finalScore: number | null;
   done: boolean;
+  t: SynodUiPack;
 }) {
   const shown = done && finalScore != null ? finalScore : score;
   const pct = Math.max(0, Math.min(100, shown ?? 0));
@@ -132,7 +122,7 @@ function ConsensusGauge({
       <div className="flex items-end justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-            {done ? "Final score" : "Consensus"}
+            {done ? t.finalScore : t.consensus}
           </p>
           <p className="text-3xl font-bold tracking-tight text-white">
             {shown ?? "—"}
@@ -156,7 +146,7 @@ function ConsensusGauge({
           className="absolute -translate-x-1/2 text-[9px] uppercase tracking-wide text-slate-500"
           style={{ left: `${CONSENSUS_THRESHOLD}%` }}
         >
-          threshold
+          {t.threshold}
         </span>
       </div>
     </div>
@@ -216,8 +206,17 @@ function SynodAiProgress({ rows, streamTick }: { rows: AiProgressRow[]; streamTi
   );
 }
 
-function TurnCard({ turn }: { turn: Turn }) {
+function TurnCard({
+  turn,
+  t,
+  locale,
+}: {
+  turn: Turn;
+  t: SynodUiPack;
+  locale: SynodLocale;
+}) {
   const color = AI_COLORS[turn.ai];
+  // Keep TAG_STYLES keyed on the original English enum so colors still work.
   const tagClass = turn.actionTag ? TAG_STYLES[turn.actionTag] : undefined;
   return (
     <div
@@ -239,12 +238,12 @@ function TurnCard({ turn }: { turn: Turn }) {
           <span
             className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tagClass}`}
           >
-            {turn.actionTag}
+            {turn.actionTag ? localizeActionTag(turn.actionTag, locale) : null}
           </span>
         ) : null}
         {turn.isRedTeam ? (
           <span className="rounded-md border border-amber-400/50 bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-            RED TEAM
+            {t.redTeam}
           </span>
         ) : null}
       </div>
@@ -253,27 +252,29 @@ function TurnCard({ turn }: { turn: Turn }) {
       ) : null}
       <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{turn.content}</p>
       {typeof turn.ms === "number" ? (
-        <p className="mt-2 text-right text-[10px] text-slate-500">{turn.ms} ms</p>
+        <p className="mt-2 text-right text-[10px] text-slate-500">
+          {turn.ms} {t.ms}
+        </p>
       ) : null}
     </div>
   );
 }
 
-function SummaryCard({ summary }: { summary: FacilitatorSummary }) {
+function SummaryCard({ summary, t }: { summary: FacilitatorSummary; t: SynodUiPack }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5">
       <div className="mb-3 flex items-center gap-2">
         <span className="rounded-md border border-cyan-400/50 bg-cyan-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300">
-          Facilitator
+          {t.facilitator}
         </span>
         <span className="text-xs text-slate-400">
-          consensus {summary.roundConsensusScore}/100
+          {t.consensusInline} {summary.roundConsensusScore}/100
         </span>
       </div>
       <div className="space-y-3">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-300/80">
-            Consensus
+            {t.consensusHeading}
           </p>
           {summary.consensusPoints.length ? (
             <ul className="mt-1 space-y-1">
@@ -287,12 +288,12 @@ function SummaryCard({ summary }: { summary: FacilitatorSummary }) {
               ))}
             </ul>
           ) : (
-            <p className="mt-1 text-sm text-slate-500">None yet.</p>
+            <p className="mt-1 text-sm text-slate-500">{t.noneYet}</p>
           )}
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-300/80">
-            Open Issues
+            {t.openIssues}
           </p>
           {summary.openIssues.length ? (
             <ul className="mt-1 space-y-1">
@@ -303,12 +304,12 @@ function SummaryCard({ summary }: { summary: FacilitatorSummary }) {
               ))}
             </ul>
           ) : (
-            <p className="mt-1 text-sm text-slate-500">None.</p>
+            <p className="mt-1 text-sm text-slate-500">{t.none}</p>
           )}
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-cyan-300/80">
-            Next
+            {t.next}
           </p>
           <p className="mt-1 text-sm leading-relaxed text-slate-300">{summary.nextDirective}</p>
         </div>
@@ -321,6 +322,8 @@ export default function SynodPage() {
   const [question, setQuestion] = useState("");
   const [mode, setMode] = useState<SynodMode>("easy");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [votedAi, setVotedAi] = useState<string | null>(null);
   const [turnsByRound, setTurnsByRound] = useState<Record<number, Turn[]>>({});
   const [summaries, setSummaries] = useState<FacilitatorSummary[]>([]);
   const [result, setResult] = useState<VerdictResult | null>(null);
@@ -329,8 +332,25 @@ export default function SynodPage() {
   const [consensusScore, setConsensusScore] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [streamTick, setStreamTick] = useState(0);
+  // Hydration-safe locale: server and first client render both use 'en'
+  // (navigator is unavailable on the server). After mount — and whenever the
+  // question changes — we resolve the real locale from the question script with
+  // navigator.language as fallback, then re-render with the translated pack.
+  const [locale, setLocale] = useState<SynodLocale>("en");
   /** Prevents a concurrent second loop (mount-resume vs Start click). */
   const runningRef = useRef(false);
+
+  useEffect(() => {
+    const uiLocale = typeof navigator !== "undefined" ? navigator.language : null;
+    setLocale(resolveSynodLocale(question, uiLocale));
+  }, [question]);
+
+  const t = getSynodUiPack(locale);
+  const isRtl = locale === "ar";
+  // Keep the latest pack reachable from async callbacks without churning their
+  // useCallback dependency arrays.
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const isLoading = phase === "opening" || phase === "deliberating" || phase === "verdict";
 
@@ -357,11 +377,11 @@ export default function SynodPage() {
           });
           if (res.status === 402) {
             const j = (await res.json().catch(() => null)) as { error?: string; balance?: number };
-            setError(j?.error ?? "Insufficient credits");
+            setError(j?.error ?? tRef.current.insufficientCredits);
             return "abort";
           }
           if (!res.ok) {
-            lastErr = `Request failed (${res.status})`;
+            lastErr = tRef.current.requestFailed(res.status);
             if (attempt < MAX_ATTEMPTS) {
               await new Promise((r) => setTimeout(r, attempt * 1000));
               continue;
@@ -371,7 +391,7 @@ export default function SynodPage() {
           }
           const data = (await res.json().catch(() => null)) as SynodApiResult | null;
           if (!data || data.ok !== true) {
-            lastErr = data?.error ?? "Malformed response";
+            lastErr = data?.error ?? tRef.current.malformedResponse;
             if (attempt < MAX_ATTEMPTS) {
               await new Promise((r) => setTimeout(r, attempt * 1000));
               continue;
@@ -381,7 +401,7 @@ export default function SynodPage() {
           }
           return data;
         } catch (e: unknown) {
-          lastErr = e instanceof Error ? e.message : "Network error";
+          lastErr = e instanceof Error ? e.message : tRef.current.networkError;
           if (attempt < MAX_ATTEMPTS) {
             await new Promise((r) => setTimeout(r, attempt * 1000));
             continue;
@@ -390,7 +410,7 @@ export default function SynodPage() {
           return null;
         }
       }
-      setError(lastErr || "Request failed");
+      setError(lastErr || tRef.current.requestFailed(0));
       return null;
     },
     []
@@ -493,6 +513,7 @@ export default function SynodPage() {
             if (res.sessionId && !sid) {
               sid = res.sessionId;
               setSessionId(sid);
+              if (res.shareId) setShareId(res.shareId);
               // Persist in the URL so leaving + returning can resume this session.
               window.history.replaceState(null, "", `?session=${encodeURIComponent(sid)}`);
             }
@@ -512,7 +533,7 @@ export default function SynodPage() {
         }
 
         if (!sid) {
-          setError("No session id");
+          setError(tRef.current.noSessionId);
           setPhase("error");
           return;
         }
@@ -638,6 +659,7 @@ export default function SynodPage() {
       const loadedResult = res.result ?? null;
 
       setSessionId(sid);
+      if (res.session?.shareId) setShareId(res.session.shareId);
       setQuestion(q);
       setTurnsByRound(byRound);
       setSummaries(loadedSummaries);
@@ -697,7 +719,7 @@ export default function SynodPage() {
     .sort((a, b) => a - b);
 
   return (
-    <main className={BG}>
+    <main className={BG} dir={isRtl ? "rtl" : "ltr"}>
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-8 sm:px-6 sm:py-10">
         <header className="mb-6 flex items-start gap-3">
           <Link
@@ -710,7 +732,7 @@ export default function SynodPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">SYNOD</h1>
             <p className="mt-1 text-sm leading-relaxed text-slate-300">
-              Six AIs deliberate in series toward the best consensus answer.
+              {t.headerTagline}
             </p>
           </div>
         </header>
@@ -718,10 +740,27 @@ export default function SynodPage() {
         {phase === "idle" ? (
           <div className="flex flex-1 flex-col items-center justify-center">
             <div className="w-full max-w-xl space-y-4">
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+                  {t.examplesLabel}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {t.examples.map((q, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setQuestion(q)}
+                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Ask a question worth deliberating…"
+                placeholder={t.placeholder}
                 rows={4}
                 className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-white placeholder:text-slate-500 focus:border-cyan-400/50 focus:outline-none"
               />
@@ -740,10 +779,10 @@ export default function SynodPage() {
                       mode === "easy" ? "text-cyan-300" : "text-slate-300"
                     }`}
                   >
-                    Easy
+                    {t.easy}
                   </span>
                   <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
-                    Simple & quick · anyone can follow
+                    {t.easyDesc}
                   </span>
                 </button>
                 <button
@@ -760,10 +799,10 @@ export default function SynodPage() {
                       mode === "expert" ? "text-cyan-300" : "text-slate-300"
                     }`}
                   >
-                    Expert
+                    {t.expert}
                   </span>
                   <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
-                    Deeper & more technical
+                    {t.expertDesc}
                   </span>
                 </button>
               </div>
@@ -774,7 +813,7 @@ export default function SynodPage() {
                   disabled={!question.trim()}
                   className="rounded-2xl border border-cyan-400/50 bg-cyan-500/20 px-6 py-3 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Convene the Synod
+                  {t.convene}
                 </button>
               </div>
             </div>
@@ -785,13 +824,14 @@ export default function SynodPage() {
               score={consensusScore}
               finalScore={result?.finalScore ?? null}
               done={phase === "done"}
+              t={t}
             />
 
             {error ? (
               <div className="mb-4 rounded-2xl border border-rose-400/50 bg-rose-500/20 px-4 py-3 text-sm leading-relaxed text-rose-200">
                 {error}
                 {phase === "error" ? (
-                  <span className="text-rose-300/90"> Progress saved — reload to resume.</span>
+                  <span className="text-rose-300/90"> {t.progressSaved}</span>
                 ) : null}
               </div>
             ) : null}
@@ -804,17 +844,17 @@ export default function SynodPage() {
               <div className="mb-6">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                   {phase === "opening"
-                    ? "Opening statements"
+                    ? t.openingStatements
                     : phase === "verdict"
-                      ? "Verdict chair deliberating…"
-                      : "Deliberating"}
+                      ? t.verdictDeliberating
+                      : t.deliberating}
                 </p>
                 <SynodAiProgress rows={aiProgressRows} streamTick={streamTick} />
               </div>
             ) : null}
             {phase === "verdict" ? (
               <p className="mb-6 text-sm leading-relaxed text-slate-400">
-                Claude Opus 4.8 is writing the verdict…
+                {t.verdictWriting}
               </p>
             ) : null}
 
@@ -825,7 +865,7 @@ export default function SynodPage() {
                   <section key={rn}>
                     <div className="mb-3 flex items-center gap-2">
                       <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">
-                        {rn === 0 ? "Opening" : `Round ${rn}`}
+                        {rn === 0 ? t.opening : t.round(rn)}
                       </h2>
                       {summary ? (
                         <span className="rounded-md border border-cyan-400/50 bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold text-cyan-300">
@@ -834,10 +874,15 @@ export default function SynodPage() {
                       ) : null}
                     </div>
                     <div className="space-y-3">
-                      {(turnsByRound[rn] ?? []).map((t, i) => (
-                        <TurnCard key={`${rn}-${t.ai}-${i}`} turn={t} />
+                      {(turnsByRound[rn] ?? []).map((turn, i) => (
+                        <TurnCard
+                          key={`${rn}-${turn.ai}-${i}`}
+                          turn={turn}
+                          t={t}
+                          locale={locale}
+                        />
                       ))}
-                      {summary ? <SummaryCard summary={summary} /> : null}
+                      {summary ? <SummaryCard summary={summary} t={t} /> : null}
                     </div>
                   </section>
                 );
@@ -846,7 +891,7 @@ export default function SynodPage() {
               {result ? (
                 <section className="rounded-2xl border border-cyan-400/50 bg-white/[0.06] px-4 py-4 sm:px-5">
                   <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-cyan-300">
-                    Final Synthesis — Claude Opus 4.8
+                    {t.finalSynthesis}
                   </h2>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-300">
                     {result.verdict}
@@ -854,7 +899,7 @@ export default function SynodPage() {
                   {result.minorityReport.length ? (
                     <div className="mt-4 rounded-2xl border border-amber-400/50 bg-amber-500/10 px-4 py-3">
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-amber-300">
-                        Minority Report
+                        {t.minorityReport}
                       </p>
                       <ul className="space-y-2">
                         {result.minorityReport.map((m, i) => (
@@ -870,6 +915,17 @@ export default function SynodPage() {
                     </div>
                   ) : null}
                 </section>
+              ) : null}
+
+              {phase === "done" && result && sessionId ? (
+                <SynodSessionEndPanel
+                  sessionId={sessionId}
+                  shareId={shareId}
+                  t={t}
+                  locale={locale}
+                  votedAi={votedAi}
+                  onVoted={setVotedAi}
+                />
               ) : null}
             </div>
           </>

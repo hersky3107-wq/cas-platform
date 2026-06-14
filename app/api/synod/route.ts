@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto'
 import {
   MODEL_BY_PROVIDER,
   runSingleAiProvider,
@@ -12,9 +13,18 @@ import {
   type FacilitatorSummary,
   type SynodTurn,
 } from '@/lib/synod/build-memory'
+import {
+  assembleSynodSession,
+  coerceFacilitatorSummary,
+} from '@/lib/synod/share-load'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { deductCreditsBalance } from '@/lib/credits-server'
+
+// Inlined to match the Compare/DEEP/Arena convention (no shared helper exists).
+function newShareId(): string {
+  return randomBytes(12).toString('hex')
+}
 
 const VALID_PROVIDERS = new Set<AiProviderName>([
   'openai',
@@ -115,52 +125,6 @@ function cleanVerdictFallbackText(raw: string): string {
     return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim()
   }
   return text
-}
-
-function coerceFacilitatorSummary(
-  obj: Record<string, unknown>,
-  roundNumber: number
-): FacilitatorSummary | null {
-  const consensusRaw = Array.isArray(obj.consensusPoints) ? obj.consensusPoints : null
-  const issuesRaw = Array.isArray(obj.openIssues) ? obj.openIssues : null
-  const score = Number(obj.roundConsensusScore)
-  const directive = typeof obj.nextDirective === 'string' ? obj.nextDirective : ''
-  if (!consensusRaw || !issuesRaw || !Number.isFinite(score)) return null
-
-  const consensusPoints: FacilitatorSummary['consensusPoints'] = []
-  for (const item of consensusRaw) {
-    if (!item || typeof item !== 'object') continue
-    const o = item as Record<string, unknown>
-    if (typeof o.point !== 'string') continue
-    const agreedBy = Array.isArray(o.agreedBy)
-      ? o.agreedBy.filter((x): x is string => typeof x === 'string')
-      : []
-    consensusPoints.push({ point: o.point, agreedBy })
-  }
-
-  const openIssues: FacilitatorSummary['openIssues'] = []
-  for (const item of issuesRaw) {
-    if (!item || typeof item !== 'object') continue
-    const o = item as Record<string, unknown>
-    if (typeof o.issue !== 'string') continue
-    const positions = Array.isArray(o.positions)
-      ? o.positions
-          .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
-          .map((p) => ({
-            ai: typeof p.ai === 'string' ? p.ai : 'unknown',
-            stance: typeof p.stance === 'string' ? p.stance : '',
-          }))
-      : []
-    openIssues.push({ issue: o.issue, positions })
-  }
-
-  return {
-    roundNumber,
-    consensusPoints,
-    openIssues,
-    roundConsensusScore: Math.max(0, Math.min(100, Math.round(score))),
-    nextDirective: directive,
-  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -450,7 +414,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
 
     const { data: sess, error: sessErr } = await supabase
       .from('synod_sessions')
-      .select('session_id, user_id, question, status, total_rounds, consensus_score')
+      .select('session_id, user_id, question, status, total_rounds, consensus_score, share_id')
       .eq('session_id', sessionId)
       .maybeSingle()
     if (sessErr || !sess) {
@@ -481,40 +445,11 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         .maybeSingle(),
     ])
 
-    const turns = (turnsRes.data ?? []).map((row) => ({
-      roundNumber: Number(row.round_number),
-      ai: String(row.ai_name),
-      actionTag: typeof row.action_tag === 'string' ? row.action_tag : null,
-      claim: typeof row.claim === 'string' ? row.claim : null,
-      content: String(row.content ?? ''),
-      isRedTeam: row.is_red_team === true,
-      ms: typeof row.ms === 'number' ? row.ms : null,
-    }))
-
-    const rounds = (roundsRes.data ?? [])
-      .map((row) => {
-        const summary = coerceFacilitatorSummary(
-          {
-            consensusPoints: row.consensus_points,
-            openIssues: row.open_issues,
-            roundConsensusScore: row.round_consensus_score,
-            nextDirective: row.next_directive,
-          },
-          Number(row.round_number)
-        )
-        if (!summary) return null
-        return { roundNumber: summary.roundNumber, summary, challengeMissing: row.challenge_missing === true }
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null)
-
-    const resultRow = resultRes.data
-    const result = resultRow
-      ? {
-          verdict: String(resultRow.verdict ?? ''),
-          minorityReport: Array.isArray(resultRow.minority_report) ? resultRow.minority_report : [],
-          finalScore: typeof resultRow.final_score === 'number' ? resultRow.final_score : 0,
-        }
-      : null
+    const { turns, rounds, result } = assembleSynodSession({
+      turnsRows: turnsRes.data,
+      roundsRows: roundsRes.data,
+      resultRow: resultRes.data,
+    })
 
     return Response.json({
       ok: true,
@@ -524,11 +459,42 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         status: String(sess.status ?? 'running'),
         totalRounds: typeof sess.total_rounds === 'number' ? sess.total_rounds : 0,
         consensusScore: typeof sess.consensus_score === 'number' ? sess.consensus_score : null,
+        shareId: String(sess.share_id ?? ''),
       },
       turns,
       rounds,
       result,
     })
+  }
+
+  // ---- ACTION: vote — user's "which AI did best" pick. No question, no credits.
+  // voted_ai is a provider key (matches synod_turns.ai_name), owner-gated. ----
+  if (action === 'vote') {
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+    const votedAi = typeof body.voted_ai === 'string' ? body.voted_ai : ''
+    if (!sessionId || !votedAi) {
+      return Response.json({ error: 'sessionId and voted_ai are required' }, { status: 400 })
+    }
+    if (!VALID_PROVIDERS.has(votedAi as AiProviderName)) {
+      return Response.json({ error: 'Invalid voted_ai' }, { status: 400 })
+    }
+
+    const { data, error } = await supabase
+      .from('synod_sessions')
+      .update({ voted_ai: votedAi })
+      .eq('session_id', sessionId)
+      .eq('user_id', user.id)
+      .select('session_id')
+      .maybeSingle()
+    if (error) {
+      console.error('[SYNOD vote] update failed:', error)
+      return Response.json({ ok: false, error: error.message }, { status: 500 })
+    }
+    if (!data) {
+      return Response.json({ error: 'Session not found' }, { status: 404 })
+    }
+
+    return Response.json({ ok: true, voted_ai: votedAi })
   }
 
   const question = typeof body.question === 'string' ? body.question.trim() : ''
@@ -546,13 +512,23 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
     const uiLocale = typeof body.ui_locale === 'string' ? body.ui_locale : null
 
     let sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
+    let shareId: string | undefined
     let creditsRemaining: number | undefined
     let mode: SynodMode = parseSynodMode(body.mode)
 
     if (isFirst) {
       const ins = await supabase
         .from('synod_sessions')
-        .insert([{ user_id: user.id, question, status: 'running', ui_locale: uiLocale, mode }])
+        .insert([
+          {
+            user_id: user.id,
+            question,
+            status: 'running',
+            ui_locale: uiLocale,
+            mode,
+            share_id: newShareId(),
+          },
+        ])
         .select()
         .single()
       // synod_sessions PK is `session_id` (NOT `id`).
@@ -564,6 +540,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         )
       }
       sessionId = String(ins.data.session_id)
+      shareId = typeof ins.data.share_id === 'string' ? ins.data.share_id : undefined
 
       const synodCredits = mode === 'expert' ? 25 : 20
 
@@ -657,7 +634,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
       isRedTeam: false,
       ms: r.responseTimeMs,
     }
-    return Response.json({ ok: true, sessionId, creditsRemaining, turn })
+    return Response.json({ ok: true, sessionId, shareId, creditsRemaining, turn })
   }
 
   // ---- ACTION 2: turn — one debater's serial deliberation turn. ----
