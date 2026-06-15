@@ -4,11 +4,17 @@ import { useCallback, useEffect, useState } from 'react'
 
 export const HELP_LANG_STORAGE_KEY = 'aimani_help_lang'
 
-export type HelpLang = 'EN' | 'KO' | 'JA' | 'ES' | 'FR' | 'PT'
+/** All supported help languages. The original 6 are required in HelpModalContent;
+ *  ZH-TW and AR are optional — existing content files need no edits. */
+export type HelpLang = 'EN' | 'KO' | 'JA' | 'ZH-TW' | 'FR' | 'AR' | 'ES' | 'PT'
 
-const HELP_LANGS: HelpLang[] = ['EN', 'KO', 'JA', 'ES', 'FR', 'PT']
+const HELP_LANGS: HelpLang[] = ['EN', 'KO', 'JA', 'ZH-TW', 'FR', 'AR', 'ES', 'PT']
 
-export type HelpModalContent = Record<HelpLang, string>
+/** Original 6 keys are required so existing content files compile unchanged.
+ *  ZH-TW and AR are optional — modules that don't provide them simply omit them. */
+export type HelpModalContent =
+  Record<'EN' | 'KO' | 'JA' | 'ES' | 'FR' | 'PT', string> &
+  Partial<Record<'ZH-TW' | 'AR', string>>
 
 export interface HelpModalProps {
   content: HelpModalContent
@@ -37,12 +43,19 @@ function writeStoredHelpLang(lang: HelpLang): void {
   }
 }
 
+const RTL_LANGS: ReadonlySet<HelpLang> = new Set<HelpLang>(['AR'])
+
 export default function HelpModal({ content, buttonClassName = '' }: HelpModalProps) {
   const [open, setOpen] = useState(false)
   const [lang, setLang] = useState<HelpLang>('EN')
 
+  // Tabs: only show languages present in the passed content object.
+  const availableLangs = HELP_LANGS.filter((l) => content[l] != null)
+
   useEffect(() => {
-    setLang(readStoredHelpLang())
+    const stored = readStoredHelpLang()
+    // If stored lang has no content for this module, fall back to EN.
+    setLang(content[stored] != null ? stored : 'EN')
   }, [])
 
   useEffect(() => {
@@ -60,6 +73,8 @@ export default function HelpModal({ content, buttonClassName = '' }: HelpModalPr
   }, [])
 
   const close = useCallback(() => setOpen(false), [])
+
+  const isRtl = RTL_LANGS.has(lang)
 
   return (
     <>
@@ -110,7 +125,7 @@ export default function HelpModal({ content, buttonClassName = '' }: HelpModalPr
               role="tablist"
               aria-label="Help language"
             >
-              {HELP_LANGS.map((code) => (
+              {availableLangs.map((code) => (
                 <button
                   key={code}
                   type="button"
@@ -129,7 +144,10 @@ export default function HelpModal({ content, buttonClassName = '' }: HelpModalPr
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+              <p
+                dir={isRtl ? 'rtl' : 'ltr'}
+                className={`whitespace-pre-wrap text-sm leading-relaxed text-slate-200${isRtl ? ' text-right' : ''}`}
+              >
                 {content[lang]}
               </p>
             </div>

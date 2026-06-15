@@ -17,6 +17,7 @@ import {
   assembleSynodSession,
   coerceFacilitatorSummary,
 } from '@/lib/synod/share-load'
+import { detectPromptLanguage } from '@/lib/synod/prompt-language'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { deductCreditsBalance } from '@/lib/credits-server'
@@ -127,6 +128,28 @@ function cleanVerdictFallbackText(raw: string): string {
   return text
 }
 
+/**
+ * Replaces EVERY anonymized "Participant X" label anywhere inside a free-text
+ * string with its real brand name, using the SAME labelMap that anonymized the
+ * verdict input (labelMap maps "Participant A" → "ChatGPT", etc.).
+ *
+ * The verdict chair sees debaters anonymized, so it may reference them by label
+ * not just in the author field but inside the dissent/reason explanation text.
+ * Longer labels are replaced first so a shorter label can't partially match a
+ * longer one (e.g. "Participant 2" vs "Participant 27"). Uses split/join so the
+ * labels are treated as literals (no regex-escaping needed).
+ */
+function deAnonymizeText(text: string, labelMap: Record<string, string>): string {
+  if (!text) return text
+  let out = text
+  const labels = Object.keys(labelMap).sort((a, b) => b.length - a.length)
+  for (const label of labels) {
+    if (!label) continue
+    out = out.split(label).join(labelMap[label]!)
+  }
+  return out
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // DB loaders (synod_rounds / synod_turns → pure types)
 // ──────────────────────────────────────────────────────────────────────────
@@ -232,12 +255,22 @@ const PERSONA: Record<AiProviderName, string> = {
  * Voice rules for all debaters, both modes. The "name the other AI by brand"
  * line is omitted in the opening round, where referencing others is forbidden.
  */
-function voiceRules(hasPriorParticipants: boolean): string {
+function voiceRules(hasPriorParticipants: boolean, isKorean: boolean): string {
+  // Korean stiff-ending examples are only injected for Korean questions; for other
+  // languages we describe the rule generically so we don't nudge the model toward Korean.
+  const stiffRule = isKorean
+    ? `- Write in a lively, human, spoken voice. NO report/essay tone (ban stiff endings like "~할 수 있습니다", "~한 측면이 있습니다", "~한 편이 더 정확합니다").`
+    : `- Write in a lively, human, spoken voice. NO report/essay tone — avoid stiff, formal textbook phrasing and bureaucratic sentence endings in the question's own language.`
+  const reactRule = hasPriorParticipants
+    ? isKorean
+      ? `- When reacting, name the other AI by brand and hit their point directly: e.g. "GPT는 X라고 했는데, 그건 핵심을 놓쳤어 — 왜냐면...".\n`
+      : `- When reacting, name the other AI by brand and hit their point directly (e.g. "GPT said X, but that misses the core because…").\n`
+    : ''
   return `VOICE RULES (all modes):
-- Write in a lively, human, spoken voice. NO report/essay tone (ban stiff endings like "~할 수 있습니다", "~한 측면이 있습니다", "~한 편이 더 정확합니다" and their equivalents in any language).
+${stiffRule}
 - Use concrete examples and real situations, not abstract generalities.
 - You must sound DIFFERENT from the other participants — that is the point of personas. Sounding identical = failure.
-${hasPriorParticipants ? `- When reacting, name the other AI by brand and hit their point directly: e.g. "GPT는 X라고 했는데, 그건 핵심을 놓쳤어 — 왜냐면...".\n` : ''}- IMPORTANT: personas add flavor but everyone still argues toward the BEST answer. This is a cooperative search for truth, not a fight. Push back with wit, never hostility.`
+${reactRule}- IMPORTANT: personas add flavor but everyone still argues toward the BEST answer. This is a cooperative search for truth, not a fight. Push back with wit, never hostility.`
 }
 
 /** Convergence push for late rounds: partial agreement, not fake unanimity. */
@@ -267,7 +300,12 @@ ${hasPriorParticipants ? `- React directly to a specific prior participant's cla
 ${hasPriorParticipants ? `- React directly to ONE specific prior participant's point (name it, then agree/refute/build on it). Do not just pile on new concepts.\n` : ''}- Do NOT fabricate study names, author names, or precise statistics (SD, n=, %). If unsure, say "some research suggests" in plain terms.`
 }
 
-function openingSystemPrompt(provider: AiProviderName, mode: SynodMode): string {
+function openingSystemPrompt(
+  provider: AiProviderName,
+  mode: SynodMode,
+  languageInstruction: string,
+  isKorean: boolean
+): string {
   return `You are participating in SYNOD, a structured multi-AI deliberation. You are ${PROVIDER_TO_BRAND[provider]}.
 
 PERSONA — your voice (stay in character while arguing substantively):
@@ -280,18 +318,22 @@ Rules:
 - Respond in the same language as the question.
 - Keep it focused: your strongest reasoning only, no filler.
 
-${voiceRules(false)}
+${voiceRules(false, isKorean)}
 
 ${modeStyleBlock(mode, false)}
 
-${OUTPUT_TAIL_RULE}`
+${OUTPUT_TAIL_RULE}
+
+${languageInstruction}`
 }
 
 function turnSystemPrompt(
   provider: AiProviderName,
   isRedTeam: boolean,
   mode: SynodMode,
-  roundNumber: number
+  roundNumber: number,
+  languageInstruction: string,
+  isKorean: boolean
 ): string {
   const lateBlock = roundNumber >= 4 ? `\n${LATE_ROUND_RULE}\n` : ''
   if (isRedTeam) {
@@ -306,11 +348,13 @@ Rules:
 - Attack the consensus on its merits — evidence, logic, missing perspectives — not on style.
 - Respond in the same language as the question.
 ${lateBlock}
-${voiceRules(true)}
+${voiceRules(true, isKorean)}
 
 ${modeStyleBlock(mode, true)}
 
-${OUTPUT_TAIL_RULE}`
+${OUTPUT_TAIL_RULE}
+
+${languageInstruction}`
   }
   return `You are participating in SYNOD, a structured multi-AI deliberation. You are ${PROVIDER_TO_BRAND[provider]}. Other participants have spoken; their positions and the facilitator's summary are in the context. Address them by brand name.
 
@@ -324,11 +368,13 @@ You MUST begin your response with exactly one line declaring your move:
 Be STUBBORN about your own reasoning: do not abandon a position you previously took unless the context contains a genuinely stronger argument — and if you do concede, name exactly which argument changed your mind. Drifting toward the majority without cause is a failure.
 Respond in the same language as the question.
 ${lateBlock}
-${voiceRules(true)}
+${voiceRules(true, isKorean)}
 
 ${modeStyleBlock(mode, true)}
 
-${OUTPUT_TAIL_RULE}`
+${OUTPUT_TAIL_RULE}
+
+${languageInstruction}`
 }
 
 const FACILITATOR_SYSTEM = `You are the neutral Facilitator of SYNOD, a multi-AI deliberation. You never argue a position yourself.
@@ -346,6 +392,19 @@ OUTPUT FORMAT — STRICT JSON ONLY. No prose, no markdown fences, no commentary.
 - nextDirective: the single most productive focus for the next round.
 - Be faithful: only record consensus that actually exists in the turns. Never invent agreement.`
 
+/**
+ * Facilitator system prompt with the language rule appended. The facilitator had
+ * NO language rule before — its JSON string VALUES (point/issue/stance/directive
+ * text) must be in the question's language, even though the JSON FIELD NAMES stay
+ * English exactly as the schema specifies.
+ */
+function facilitatorSystemPrompt(languageInstruction: string): string {
+  return `${FACILITATOR_SYSTEM}
+
+${languageInstruction}
+NOTE: This language rule applies to the STRING VALUES inside the JSON (e.g. each "point", "issue", "stance", "nextDirective"). The JSON FIELD NAMES must stay in English exactly as specified above.`
+}
+
 const VERDICT_SYSTEM_BASE = [
   'You are the Verdict Chair of SYNOD, a multi-AI deliberation. You are Claude Opus 4.8.',
   'Participants are anonymized; judge ideas strictly on their merits. Write the final synthesis of the deliberation — the best consensus answer the group reached, strengthened by your own judgment.',
@@ -356,7 +415,7 @@ const VERDICT_SYSTEM_BASE = [
   '- minorityReport may be an empty array ONLY if no genuine dissent remained.',
 ].join('\n\n')
 
-function verdictSystemPrompt(mode: SynodMode): string {
+function verdictSystemPrompt(mode: SynodMode, languageInstruction: string): string {
   const modeRule =
     mode === 'expert'
       ? `MODE (EXPERT): Technical depth is fine, but do not fabricate citations or statistics; keep the synthesis tight.`
@@ -365,7 +424,10 @@ function verdictSystemPrompt(mode: SynodMode): string {
 
 ${modeRule}
 
-DISCLAIMER (mandatory, both modes): at the very END of the "verdict" string, append this one-line disclaimer, translated into the language of the question: "(이 합의는 AI들의 토론에 기반하며, 통계·연구 인용은 검증이 필요합니다.)" — i.e. "This consensus is based on a deliberation between AIs; statistics and study citations require verification."`
+DISCLAIMER (mandatory, both modes): at the very END of the "verdict" string, append this one-line disclaimer, translated into the language of the question: "(이 합의는 AI들의 토론에 기반하며, 통계·연구 인용은 검증이 필요합니다.)" — i.e. "This consensus is based on a deliberation between AIs; statistics and study citations require verification."
+
+${languageInstruction}
+NOTE: This language rule applies to the "verdict" string and all "dissent"/"reason" string VALUES. The JSON FIELD NAMES stay in English, and the sign-off "— Claude Opus 4.8" stays exactly as written.`
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -571,6 +633,8 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
       mode = await loadSessionMode(sessionId)
     }
 
+    const lang = detectPromptLanguage(question, uiLocale)
+
     let r: RouterResult
     try {
       r = await runSingleAiProvider({
@@ -579,7 +643,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         userId: null,
         provider,
         prompt: `QUESTION:\n${question}`,
-        systemPrompt: openingSystemPrompt(provider, mode),
+        systemPrompt: openingSystemPrompt(provider, mode, lang.instruction, lang.code === 'ko'),
         // Korean uses ~2-3x more tokens than English; keep headroom.
         maxCompletionTokens: 2500,
         modelOverride: DEBATER_MODEL[provider],
@@ -672,6 +736,11 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
     })
     console.log(`[synod] turn ctx ~${countApproxTokens(ctx.text)} tokens (r${roundNumber}, ${provider})`)
 
+    const lang = detectPromptLanguage(
+      question,
+      typeof body.ui_locale === 'string' ? body.ui_locale : null
+    )
+
     let r: RouterResult
     try {
       r = await runSingleAiProvider({
@@ -680,7 +749,14 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         userId: null,
         provider,
         prompt: ctx.text,
-        systemPrompt: turnSystemPrompt(provider, isRedTeam, mode, roundNumber),
+        systemPrompt: turnSystemPrompt(
+          provider,
+          isRedTeam,
+          mode,
+          roundNumber,
+          lang.instruction,
+          lang.code === 'ko'
+        ),
         // Korean uses ~2-3x more tokens than English; keep headroom.
         maxCompletionTokens: 2500,
         modelOverride: DEBATER_MODEL[provider],
@@ -759,6 +835,11 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
     })
     console.log(`[synod] facilitate input ~${countApproxTokens(input)} tokens (r${roundNumber})`)
 
+    const lang = detectPromptLanguage(
+      question,
+      typeof body.ui_locale === 'string' ? body.ui_locale : null
+    )
+
     let r: RouterResult
     try {
       r = await runSingleAiProvider({
@@ -767,7 +848,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         userId: null,
         provider: FACILITATOR_PROVIDER,
         prompt: input,
-        systemPrompt: FACILITATOR_SYSTEM,
+        systemPrompt: facilitatorSystemPrompt(lang.instruction),
         // Structured JSON summary; Korean stances need extra room.
         maxCompletionTokens: 4000,
         modelOverride: FACILITATOR_MODEL,
@@ -876,6 +957,11 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
       `\n\nSCORING NOTE: The last facilitator round consensus score was ${lastFacilitatorScore} out of 100. Your finalScore must reflect the deliberation outcome and stay broadly consistent with this score — do not set finalScore wildly higher or lower unless the final round genuinely shifted consensus. finalScore is the single number the user will see.`
     console.log(`[synod] verdict input ~${countApproxTokens(verdictPrompt)} tokens`)
 
+    const lang = detectPromptLanguage(
+      question,
+      typeof body.ui_locale === 'string' ? body.ui_locale : null
+    )
+
     let r: RouterResult
     try {
       r = await runSingleAiProvider({
@@ -884,7 +970,7 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         userId: null,
         provider: VERDICT_PROVIDER,
         prompt: verdictPrompt,
-        systemPrompt: verdictSystemPrompt(mode),
+        systemPrompt: verdictSystemPrompt(mode, lang.instruction),
         // Full Korean JSON verdict was being truncated mid-string at lower caps.
         maxCompletionTokens: 8000,
         modelOverride: VERDICT_MODEL,
@@ -923,15 +1009,20 @@ async function handleSynodPost(req: Request, body: Record<string, unknown>): Pro
         ? Math.max(0, Math.min(100, Math.round(finalScoreRaw)))
         : 0
 
-      // De-anonymize minority report labels ("Participant A" → real name) before saving.
+      // De-anonymize the minority report fully ("Participant A" → real name) before
+      // saving. The chair may reference participants by anonymized label not just in
+      // the author field but inside the dissent/reason body text, so EVERY field is
+      // run through deAnonymizeText using the same labelMap as the verdict input.
       const minorityReport = (Array.isArray(parsed.minorityReport) ? parsed.minorityReport : [])
         .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object')
         .map((m) => {
           const label = typeof m.ai === 'string' ? m.ai : ''
+          const dissent = typeof m.dissent === 'string' ? m.dissent : ''
+          const reason = typeof m.reason === 'string' ? m.reason : ''
           return {
-            ai: labelMap[label] ?? label,
-            dissent: typeof m.dissent === 'string' ? m.dissent : '',
-            reason: typeof m.reason === 'string' ? m.reason : '',
+            ai: deAnonymizeText(labelMap[label] ?? label, labelMap),
+            dissent: deAnonymizeText(dissent, labelMap),
+            reason: deAnonymizeText(reason, labelMap),
           }
         })
 

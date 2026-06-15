@@ -20,6 +20,8 @@ import {
   type SynodProvider,
 } from "@/lib/synod/debaters";
 import { SynodSessionEndPanel } from "./SynodSessionEndPanel";
+import HelpModal from "@/components/HelpModal";
+import { synodHelpContent } from "@/lib/help-modal/synod-content";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -720,6 +722,7 @@ export default function SynodPage() {
 
   return (
     <main className={BG} dir={isRtl ? "rtl" : "ltr"}>
+      <HelpModal content={synodHelpContent} />
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-8 sm:px-6 sm:py-10">
         <header className="mb-6 flex items-start gap-3">
           <Link
