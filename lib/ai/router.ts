@@ -414,6 +414,7 @@ async function callGoogleGemini({
   temperature,
   maxCompletionTokens,
   chatMessages,
+  allowGeminiThinking,
 }: {
   provider: AiProviderName
   apiKey: string
@@ -423,6 +424,14 @@ async function callGoogleGemini({
   temperature?: number
   maxCompletionTokens?: number
   chatMessages?: CompareChatMessage[]
+  /**
+   * When true, do NOT force thinkingBudget:0. Reasoning-required models
+   * (e.g. gemini-3.1-pro-preview) reject budget 0 ("only works in thinking
+   * mode"), so we omit thinkingConfig and let the model use its default
+   * thinking mode. Default (false/undefined) keeps thinkingBudget:0 for
+   * flash models so thinking tokens don't eat the budget.
+   */
+  allowGeminiThinking?: boolean
 }) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model,
@@ -459,10 +468,12 @@ async function callGoogleGemini({
       ? maxCompletionTokens
       : 8192
 
-  geminiBody.generationConfig = {
-    ...generationConfig,
-    thinkingConfig: { thinkingBudget: 0 },
-  }
+  geminiBody.generationConfig = allowGeminiThinking
+    ? generationConfig
+    : {
+        ...generationConfig,
+        thinkingConfig: { thinkingBudget: 0 },
+      }
 
   const res = await fetchWithRetry(provider, url, {
     method: 'POST',
@@ -565,6 +576,7 @@ async function callProvider({
   temperature,
   maxCompletionTokens,
   chatMessages,
+  allowGeminiThinking,
 }: {
   provider: AiProviderName
   apiKey: string
@@ -576,6 +588,8 @@ async function callProvider({
   temperature?: number
   maxCompletionTokens?: number
   chatMessages?: CompareChatMessage[]
+  /** Forwarded to callGoogleGemini; ignored by non-google providers. */
+  allowGeminiThinking?: boolean
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
   const sourceUserText =
@@ -736,6 +750,7 @@ async function callProvider({
     systemPrompt: injectedSystemPrompt,
     temperature,
     maxCompletionTokens,
+    allowGeminiThinking,
     ...chatOpts,
   })
   return { model, text, usage }
@@ -779,6 +794,12 @@ export type RunSingleProviderParams = {
   }
   /** Multi-turn Compare: full chat for this provider (system prompt still separate). */
   chatMessages?: CompareChatMessage[]
+  /**
+   * When true, Gemini calls skip the thinkingBudget:0 override so reasoning-required
+   * models (e.g. gemini-3.1-pro-preview) run in their default thinking mode.
+   * Default (undefined/false) keeps thinkingBudget:0. Ignored by non-google providers.
+   */
+  allowGeminiThinking?: boolean
 }
 
 async function saveCompareArtifactsRows(
@@ -843,6 +864,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     aiResponseExtras,
     transformPersist,
     chatMessages,
+    allowGeminiThinking,
   } = params
 
   const started = nowMs()
@@ -872,6 +894,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       temperature,
       maxCompletionTokens,
       chatMessages,
+      allowGeminiThinking,
     })
 
     const responseTimeMs = nowMs() - started
