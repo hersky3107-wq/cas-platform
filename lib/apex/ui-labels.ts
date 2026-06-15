@@ -28,6 +28,18 @@ export type ApexUiPack = {
   malformedResponse: string
   networkError: string
   requestFailedGeneric: string
+  // ── Session-end panel (vote / share / go-public) ──
+  votePrompt: string
+  voteThanks: string
+  shareHeading: string
+  shareTweet: string
+  copyLink: string
+  copied: string
+  goPublicHeading: string
+  goPublicSubtext: string
+  goPublicButton: string
+  publishing: string
+  published: string
 }
 
 export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
@@ -56,6 +68,17 @@ export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
     malformedResponse: "Malformed response",
     networkError: "Network error",
     requestFailedGeneric: "Request failed",
+    votePrompt: "Which AI did best?",
+    voteThanks: "Thanks for voting!",
+    shareHeading: "Share this APEX answer",
+    shareTweet: "Check out this APEX multi-AI answer on AIMANI!",
+    copyLink: "Copy link",
+    copied: "Copied!",
+    goPublicHeading: "Put this on Google",
+    goPublicSubtext: "Let search engines find this APEX answer · No personal info shared",
+    goPublicButton: "Go Public",
+    publishing: "Publishing…",
+    published: "Indexed!",
   },
   ko: {
     headerTagline: "세계 최신·최강 AI 모델이 하나의 질문에 함께 답합니다.",
@@ -82,6 +105,17 @@ export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
     malformedResponse: "잘못된 응답",
     networkError: "네트워크 오류",
     requestFailedGeneric: "요청 실패",
+    votePrompt: "어떤 AI가 가장 잘했나요?",
+    voteThanks: "투표해 주셔서 감사합니다!",
+    shareHeading: "이 APEX 답변 공유하기",
+    shareTweet: "AIMANI에서 이 APEX 멀티 AI 답변을 확인해 보세요!",
+    copyLink: "링크 복사",
+    copied: "복사됨!",
+    goPublicHeading: "검색에 노출하기",
+    goPublicSubtext: "검색엔진이 이 APEX 답변을 찾을 수 있게 합니다 · 개인정보는 공유되지 않습니다",
+    goPublicButton: "공개하기",
+    publishing: "게시 중…",
+    published: "등록됨!",
   },
   ja: {
     headerTagline: "世界最新・最強のAIモデルが、一つの問いに揃って答えます。",
@@ -108,6 +142,17 @@ export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
     malformedResponse: "不正な応答",
     networkError: "ネットワークエラー",
     requestFailedGeneric: "リクエスト失敗",
+    votePrompt: "どのAIが最も優れていましたか？",
+    voteThanks: "投票ありがとうございます！",
+    shareHeading: "このAPEX回答を共有",
+    shareTweet: "AIMANIでこのAPEXマルチAI回答をチェック！",
+    copyLink: "リンクをコピー",
+    copied: "コピーしました！",
+    goPublicHeading: "検索に表示する",
+    goPublicSubtext: "検索エンジンがこのAPEX回答を見つけられるようにします · 個人情報は共有されません",
+    goPublicButton: "公開する",
+    publishing: "公開中…",
+    published: "登録されました！",
   },
   'zh-TW': {
     headerTagline: "全球最新最強的 AI 模型，一同回答同一個問題。",
@@ -134,6 +179,17 @@ export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
     malformedResponse: "回應格式錯誤",
     networkError: "網路錯誤",
     requestFailedGeneric: "請求失敗",
+    votePrompt: "哪個 AI 表現最好？",
+    voteThanks: "感謝您的投票！",
+    shareHeading: "分享這則 APEX 回答",
+    shareTweet: "來 AIMANI 看看這則 APEX 多 AI 回答！",
+    copyLink: "複製連結",
+    copied: "已複製！",
+    goPublicHeading: "讓搜尋引擎收錄",
+    goPublicSubtext: "讓搜尋引擎找到這則 APEX 回答 · 不會分享個人資訊",
+    goPublicButton: "公開",
+    publishing: "發布中…",
+    published: "已收錄！",
   },
   fr: {
     headerTagline: "Les IA les plus récentes et puissantes — réunies, sur une seule question.",
@@ -160,6 +216,17 @@ export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
     malformedResponse: "Réponse mal formée",
     networkError: "Erreur réseau",
     requestFailedGeneric: "Échec de la requête",
+    votePrompt: "Quelle IA a été la meilleure ?",
+    voteThanks: "Merci d\u2019avoir voté !",
+    shareHeading: "Partager cette réponse APEX",
+    shareTweet: "Découvrez cette réponse multi-IA APEX sur AIMANI !",
+    copyLink: "Copier le lien",
+    copied: "Copié !",
+    goPublicHeading: "Indexer sur Google",
+    goPublicSubtext: "Permettre aux moteurs de recherche de trouver cette réponse APEX · Aucune info personnelle partagée",
+    goPublicButton: "Rendre public",
+    publishing: "Publication…",
+    published: "Indexé !",
   },
   ar: {
     headerTagline: "أحدث وأقوى نماذج الذكاء الاصطناعي — معاً، على سؤال واحد.",
@@ -186,6 +253,17 @@ export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
     malformedResponse: "استجابة غير صالحة",
     networkError: "خطأ في الشبكة",
     requestFailedGeneric: "فشل الطلب",
+    votePrompt: "أي ذكاء اصطناعي كان الأفضل؟",
+    voteThanks: "شكراً لتصويتك!",
+    shareHeading: "شارك إجابة APEX هذه",
+    shareTweet: "شاهد إجابة APEX متعددة النماذج على AIMANI!",
+    copyLink: "نسخ الرابط",
+    copied: "تم النسخ!",
+    goPublicHeading: "اجعله ظاهراً في البحث",
+    goPublicSubtext: "دع محركات البحث تجد إجابة APEX هذه · لا تتم مشاركة أي معلومات شخصية",
+    goPublicButton: "نشر للعامة",
+    publishing: "جارٍ النشر…",
+    published: "تم الفهرسة!",
   },
   es: {
     headerTagline: "Los modelos de IA más nuevos y potentes — juntos, en una sola pregunta.",
@@ -212,6 +290,17 @@ export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
     malformedResponse: "Respuesta mal formada",
     networkError: "Error de red",
     requestFailedGeneric: "Error en la solicitud",
+    votePrompt: "¿Qué IA lo hizo mejor?",
+    voteThanks: "¡Gracias por votar!",
+    shareHeading: "Compartir esta respuesta APEX",
+    shareTweet: "¡Mira esta respuesta multi-IA APEX en AIMANI!",
+    copyLink: "Copiar enlace",
+    copied: "¡Copiado!",
+    goPublicHeading: "Indexar en Google",
+    goPublicSubtext: "Deja que los buscadores encuentren esta respuesta APEX · No se comparte información personal",
+    goPublicButton: "Hacer público",
+    publishing: "Publicando…",
+    published: "¡Indexado!",
   },
   pt: {
     headerTagline: "Os modelos de IA mais novos e potentes — juntos, numa só pergunta.",
@@ -238,6 +327,17 @@ export const APEX_UI: Record<SynodLocale, ApexUiPack> = {
     malformedResponse: "Resposta malformada",
     networkError: "Erro de rede",
     requestFailedGeneric: "Falha no pedido",
+    votePrompt: "Qual IA se saiu melhor?",
+    voteThanks: "Obrigado por votar!",
+    shareHeading: "Compartilhar esta resposta APEX",
+    shareTweet: "Veja esta resposta multi-IA APEX no AIMANI!",
+    copyLink: "Copiar link",
+    copied: "Copiado!",
+    goPublicHeading: "Indexar no Google",
+    goPublicSubtext: "Deixe os buscadores encontrarem esta resposta APEX · Nenhuma informação pessoal é compartilhada",
+    goPublicButton: "Tornar público",
+    publishing: "Publicando…",
+    published: "Indexado!",
   },
 }
 

@@ -21,6 +21,7 @@ import {
   type SynodLoadTurn,
   type SynodResult,
 } from '@/lib/synod/share-load'
+import { assembleApexSession, type ApexLoadTurn } from '@/lib/apex/share-load'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
 type PageProps = {
@@ -40,6 +41,7 @@ type ShareSession = {
     | 'suit'
     | 'arena'
     | 'synod'
+    | 'apex'
   question: string
   responses: { ai_name: string; content: string | null }[]
   voted_ai: string | null
@@ -54,6 +56,8 @@ type ShareSession = {
   synod_rounds?: SynodLoadRound[]
   synod_result?: SynodResult | null
   consensus_score?: number | null
+  apex_turns?: ApexLoadTurn[]
+  apex_synthesis?: string | null
 }
 
 function groupArenaRoundsByNumber(rows: ArenaShareRoundRow[]): [number, ArenaShareRoundRow[]][] {
@@ -82,6 +86,10 @@ function synodBrandName(providerKey: string): string {
 
 function synodRoundLabel(roundNumber: number): string {
   return roundNumber === 0 ? 'Opening' : `Round ${roundNumber}`
+}
+
+function apexBrandName(providerKey: string): string {
+  return isSynodProvider(providerKey) ? BRAND[providerKey] : providerKey
 }
 
 async function loadFromCompare(shareId: string): Promise<ShareSession | null> {
@@ -360,6 +368,49 @@ async function loadFromSynod(shareId: string): Promise<ShareSession | null> {
   }
 }
 
+async function loadFromApex(shareId: string): Promise<ShareSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from('apex_sessions')
+    .select('session_id, question, voted_ai, is_public, share_id')
+    .eq('share_id', shareId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) console.warn('[share] apex_sessions lookup:', error.message)
+    return null
+  }
+
+  const sessionId = String(data.session_id)
+
+  const [turnsRes, resultRes] = await Promise.all([
+    supabaseAdmin
+      .from('apex_turns')
+      .select('ai_name, model_id, content, ms, created_at')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true }),
+    supabaseAdmin
+      .from('apex_results')
+      .select('synthesis')
+      .eq('session_id', sessionId)
+      .maybeSingle(),
+  ])
+
+  const { turns, synthesis } = assembleApexSession({
+    turnsRows: turnsRes.data,
+    resultRow: resultRes.data,
+  })
+
+  return {
+    kind: 'apex',
+    question: String(data.question ?? ''),
+    voted_ai: typeof data.voted_ai === 'string' ? data.voted_ai : null,
+    apex_turns: turns,
+    apex_synthesis: synthesis,
+    responses: [],
+    is_public: Boolean(data.is_public),
+  }
+}
+
 async function loadSession(shareId: string): Promise<ShareSession | null> {
   const id = shareId.trim()
   if (!id) return null
@@ -394,6 +445,9 @@ async function loadSession(shareId: string): Promise<ShareSession | null> {
   const synod = await loadFromSynod(id)
   if (synod) return synod
 
+  const apex = await loadFromApex(id)
+  if (apex) return apex
+
   return loadFromArena(id)
 }
 
@@ -427,8 +481,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
                     ? 'AI SUIT'
                     : session.kind === 'synod'
                       ? 'AI SYNOD Debate'
-                      : session.kind === 'arena'
-                        ? `AI Arena (Turn ${session.turn_number ?? '?'})`
+                      : session.kind === 'apex'
+                        ? 'AI APEX'
+                        : session.kind === 'arena'
+                          ? `AI Arena (Turn ${session.turn_number ?? '?'})`
         : 'AI Compare'
   const title = `${label}: "${session.question.slice(0, 60)}${session.question.length > 60 ? '…' : ''}" — AIMANI`
 
@@ -451,8 +507,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
                     ? `See this AI SUIT legal session on AIMANI.`
                     : session.kind === 'synod'
                       ? `See this multi-AI SYNOD deliberation on AIMANI.`
-                      : session.kind === 'arena'
-                        ? `See this AI Arena battle turn on AIMANI.`
+                      : session.kind === 'apex'
+                        ? `See this premium APEX multi-AI answer on AIMANI.`
+                        : session.kind === 'arena'
+                          ? `See this AI Arena battle turn on AIMANI.`
         : `See how ChatGPT, Claude, Gemini, Grok, DeepSeek and Mistral answered this question on AIMANI.`
 
   return {
@@ -500,12 +558,16 @@ export default async function SharePage({ params }: PageProps) {
                     ? 'AI SUIT Legal Session'
                     : session.kind === 'synod'
                       ? 'SYNOD'
-                      : session.kind === 'arena'
-                        ? `AI Arena Battle — Turn ${session.turn_number ?? '?'}`
+                      : session.kind === 'apex'
+                        ? 'APEX'
+                        : session.kind === 'arena'
+                          ? `AI Arena Battle — Turn ${session.turn_number ?? '?'}`
         : 'AI Compare Session'
 
   const votedLabel =
-    session.kind === 'synod' && session.voted_ai && isSynodProvider(session.voted_ai)
+    (session.kind === 'synod' || session.kind === 'apex') &&
+    session.voted_ai &&
+    isSynodProvider(session.voted_ai)
       ? BRAND[session.voted_ai]
       : session.voted_ai
 
@@ -659,6 +721,38 @@ export default async function SharePage({ params }: PageProps) {
                       </ul>
                     </article>
                   ) : null}
+                </section>
+              ) : null}
+            </>
+          ) : session.kind === 'apex' && session.apex_turns?.length ? (
+            <>
+              {session.apex_turns.map((turn, idx) => (
+                <article
+                  key={`apex-${turn.ai}-${idx}`}
+                  className="rounded-2xl border border-white/10 bg-[#131c35]/80 p-5"
+                >
+                  <span className="inline-flex rounded-lg bg-white/10 px-2.5 py-0.5 text-sm font-bold text-white">
+                    {apexBrandName(turn.ai)}
+                  </span>
+                  {turn.content ? (
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+                      {turn.content}
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-sm text-slate-500">No response</p>
+                  )}
+                </article>
+              ))}
+              {session.apex_synthesis ? (
+                <section className="space-y-3">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300/90">
+                    APEX Synthesis
+                  </h2>
+                  <article className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-5">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+                      {session.apex_synthesis}
+                    </p>
+                  </article>
                 </section>
               ) : null}
             </>

@@ -17,6 +17,7 @@ import {
 } from "@/lib/apex/config";
 import HelpModal from "@/components/HelpModal";
 import { apexHelpContent } from "@/lib/help-modal/apex-content";
+import { ApexSessionEndPanel } from "@/components/ApexSessionEndPanel";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
@@ -269,9 +270,6 @@ export default function ApexPage() {
     }
   }, [question, locale, postWithRetry, fetchDebater]);
 
-  void votedAi;
-  void setVotedAi;
-  void shareId;
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -459,8 +457,14 @@ export default function ApexPage() {
                 ) : null}
 
                 {phase === "done" && sessionId && synthesis ? (
-                  // TODO: <ApexSessionEndPanel ... /> — built next as a separate step.
-                  null
+                  <ApexSessionEndPanel
+                    sessionId={sessionId}
+                    shareId={shareId}
+                    t={t}
+                    locale={locale}
+                    votedAi={votedAi}
+                    onVoted={setVotedAi}
+                  />
                 ) : null}
               </>
             ) : null}
