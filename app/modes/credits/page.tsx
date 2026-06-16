@@ -11,14 +11,26 @@ import {
 } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
+import {
+  TOP_UP_MAX_USD,
+  TOP_UP_MIN_USD,
+  TOP_UP_STEP_USD,
+} from '@/lib/credits-warning-modal-config'
 import { formatSubscriptionPeriodEnd } from '@/lib/payments/subscription-display'
 import { creditsForTopUpUsd, parseTopUpAmountParam } from '@/lib/payments/topup'
-import { ONE_TIME_TIERS } from '@/lib/payments/credit-plans'
 import { supabase } from '@/lib/db/supabase'
 import {
   isSubscriptionPlanType,
   type SubscriptionPlanType,
 } from '@/lib/payments/subscription-plans'
+
+/** Fixed sub-$10 "Try It" amount shown as a standalone card above the slider. */
+const TRY_IT_USD = 8
+
+function snapTopUpAmount(value: number): number {
+  const snapped = Math.round(value / TOP_UP_STEP_USD) * TOP_UP_STEP_USD
+  return Math.min(TOP_UP_MAX_USD, Math.max(TOP_UP_MIN_USD, snapped))
+}
 
 const SUBSCRIPTION_ORDER: SubscriptionPlanType[] = ['light', 'standard', 'pro']
 
@@ -108,6 +120,7 @@ function CreditsContent() {
   )
   const [subscribingPolarPlanType, setSubscribingPolarPlanType] =
     useState<SubscriptionPlanType | null>(null)
+  const [topUpAmount, setTopUpAmount] = useState(TOP_UP_MIN_USD)
   const [topUpPayingUsd, setTopUpPayingUsd] = useState<number | null>(null)
   const [topUpPolarPayingUsd, setTopUpPolarPayingUsd] = useState<number | null>(null)
   const [topUpCapturing, setTopUpCapturing] = useState(false)
@@ -198,13 +211,14 @@ function CreditsContent() {
     setShowKoPayPalNotice(lang.startsWith('ko'))
   }, [])
 
-  const handleTopUpPay = useCallback(async (amountUSD: number) => {
-    setTopUpPayingUsd(amountUSD)
+  const handleTopUpPay = useCallback(async (amountUSD?: number) => {
+    const amount = amountUSD ?? topUpAmount
+    setTopUpPayingUsd(amount)
     setMessage(null)
     try {
       const res = await authenticatedFetch('/api/paypal/create-topup', {
         method: 'POST',
-        json: { amountUSD },
+        json: { amountUSD: amount },
       })
       const j = (await res.json()) as { approvalUrl?: string; error?: string }
       if (!res.ok || !j.approvalUrl) {
@@ -218,15 +232,16 @@ function CreditsContent() {
         text: e instanceof Error ? e.message : 'Could not start top-up payment',
       })
     }
-  }, [])
+  }, [topUpAmount])
 
-  const handlePolarTopUpPay = useCallback(async (amountUSD: number) => {
-    setTopUpPolarPayingUsd(amountUSD)
+  const handlePolarTopUpPay = useCallback(async (amountUSD?: number) => {
+    const amount = amountUSD ?? topUpAmount
+    setTopUpPolarPayingUsd(amount)
     setMessage(null)
     try {
       const res = await authenticatedFetch('/api/polar/create-topup', {
         method: 'POST',
-        json: { amountUSD },
+        json: { amountUSD: amount },
       })
       const j = (await res.json()) as { checkoutUrl?: string; error?: string }
       if (!res.ok || !j.checkoutUrl) {
@@ -240,7 +255,7 @@ function CreditsContent() {
         text: e instanceof Error ? e.message : 'Could not start Polar top-up',
       })
     }
-  }, [])
+  }, [topUpAmount])
 
   const handleSubscribe = useCallback(async (planType: SubscriptionPlanType) => {
     setSubscribingPlanType(planType)
@@ -432,6 +447,8 @@ function CreditsContent() {
   ])
 
   const topUpBusy = topUpPayingUsd !== null || topUpPolarPayingUsd !== null
+  const tryItCredits = creditsForTopUpUsd(TRY_IT_USD)
+  const sliderCredits = creditsForTopUpUsd(topUpAmount)
 
   if (authLoading) {
     return (
@@ -563,63 +580,99 @@ function CreditsContent() {
           </div>
         </section>
 
-        <section className="mt-12" aria-labelledby="one-time-credits-heading">
-          <h2
-            id="one-time-credits-heading"
-            className="text-sm font-medium uppercase tracking-widest text-slate-500"
-          >
-            One-time Credits — no expiry on unused credits
+        <section className="mt-12" aria-labelledby="tryit-heading">
+          <h2 id="tryit-heading" className="sr-only">
+            One-time credits
           </h2>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            {ONE_TIME_TIERS.map((tier) => {
-              const isTryIt = tier.id === 'try_it'
-              const payPalLoading = topUpPayingUsd === tier.usd
-              const polarLoading = topUpPolarPayingUsd === tier.usd
+          <div className="rounded-[20px] border border-amber-400/40 bg-[#131c35] p-5 shadow-[0_0_28px_rgba(251,191,36,0.12)] sm:max-w-md">
+            <span className="mb-2 inline-block w-fit rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+              Try It
+            </span>
+            <h3 className="text-lg font-semibold">Try It</h3>
+            <p className="mt-2 text-sm text-slate-300">
+              <span className="text-2xl font-bold tabular-nums text-white">
+                {tryItCredits.toLocaleString()} credits
+              </span>
+              <span className="text-slate-400"> · ${TRY_IT_USD} one-time</span>
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => void handleTopUpPay(TRY_IT_USD)}
+                disabled={topUpBusy}
+                className="w-full rounded-xl bg-[#0070ba] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {topUpPayingUsd === TRY_IT_USD ? 'Redirecting…' : `Pay $${TRY_IT_USD} with PayPal`}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handlePolarTopUpPay(TRY_IT_USD)}
+                disabled={topUpBusy}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {topUpPolarPayingUsd === TRY_IT_USD ? 'Redirecting…' : 'Pay with Card (Polar)'}
+              </button>
+            </div>
+          </div>
 
-              return (
-                <div
-                  key={tier.id}
-                  className={`flex flex-col rounded-2xl border bg-[#0f1629]/60 p-4 ${
-                    isTryIt ? 'border-white/15' : 'border-white/[0.06]'
-                  }`}
-                >
-                  {tier.label ? (
-                    <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                      {tier.label}
-                    </p>
-                  ) : null}
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-white">
-                    {tier.credits.toLocaleString()}
-                    <span className="ml-1.5 text-sm font-normal text-slate-400">credits</span>
-                  </p>
-                  <p className="mt-1 text-sm tabular-nums text-slate-300">${tier.usd}</p>
-                  {tier.bonus ? (
-                    <p className="mt-1 text-xs font-medium text-emerald-400">
-                      +{tier.bonus}% bonus
-                    </p>
-                  ) : null}
-                  <div className="mt-auto space-y-2 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => void handleTopUpPay(tier.usd)}
-                      disabled={topUpBusy}
-                      className="w-full rounded-xl bg-[#0070ba] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {payPalLoading ? 'Redirecting…' : `Pay $${tier.usd} with PayPal`}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handlePolarTopUpPay(tier.usd)}
-                      disabled={topUpBusy}
-                      className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {polarLoading ? 'Redirecting…' : 'Pay with Card (Polar)'}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
+          <div className="mt-6 rounded-2xl border border-white/[0.06] bg-[#0f1629]/60 p-5">
+            <h3 className="text-sm font-medium uppercase tracking-widest text-slate-500">
+              Add credits
+            </h3>
+            <p className="mt-2 text-sm text-slate-400">
+              <span className="font-semibold tabular-nums text-slate-200">
+                {sliderCredits.toLocaleString()}
+              </span>{' '}
+              credits for{' '}
+              <span className="font-semibold tabular-nums text-slate-200">${topUpAmount}</span>
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Valid for 90 days · one-time payment</p>
+
+            <div className="mt-5 space-y-3">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <label htmlFor="credits-topup-slider" className="text-slate-400">
+                  Adjust amount
+                </label>
+                <span className="tabular-nums text-slate-500">
+                  {sliderCredits.toLocaleString()} credits
+                </span>
+              </div>
+              <input
+                id="credits-topup-slider"
+                type="range"
+                min={TOP_UP_MIN_USD}
+                max={TOP_UP_MAX_USD}
+                step={TOP_UP_STEP_USD}
+                value={topUpAmount}
+                onChange={(e) => setTopUpAmount(snapTopUpAmount(Number(e.target.value)))}
+                className="w-full accent-slate-500"
+              />
+              <div className="flex justify-between text-xs tabular-nums text-slate-500">
+                <span>${TOP_UP_MIN_USD}</span>
+                <span className="font-medium text-slate-400">${topUpAmount}</span>
+                <span>${TOP_UP_MAX_USD}</span>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              <button
+                type="button"
+                onClick={() => void handleTopUpPay()}
+                disabled={topUpBusy}
+                className="w-full rounded-xl bg-[#0070ba] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {topUpPayingUsd === topUpAmount ? 'Redirecting…' : `Pay $${topUpAmount} with PayPal`}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handlePolarTopUpPay()}
+                disabled={topUpBusy}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {topUpPolarPayingUsd === topUpAmount ? 'Redirecting…' : 'Pay with Card (Polar)'}
+              </button>
+            </div>
           </div>
         </section>
 

@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     const amountUSD = body.amountUSD
     if (!isValidTopUpAmountUsd(amountUSD)) {
       return NextResponse.json(
-        { error: 'amountUSD must be one of the preset top-up tiers (8, 10, 20, 50, 100, 300)' },
+        { error: 'amountUSD must be $8 or a $10 increment from $10 to $300' },
         { status: 400 }
       )
     }
