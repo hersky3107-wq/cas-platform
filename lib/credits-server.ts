@@ -162,6 +162,38 @@ export async function getCreditsBalance(
   return null
 }
 
+/** Reads the tracked topup (PAYG) portion from users. Returns 0 if missing/unreadable. */
+async function readTopupCredits(userId: string): Promise<number> {
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('topup_credits')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error || !data) return 0
+
+  const raw = (data as { topup_credits?: unknown }).topup_credits
+  return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0
+}
+
+/**
+ * Best-effort write of the topup portion to all credits tables.
+ * Errors (e.g. column missing on profiles) are logged and ignored so the
+ * authoritative `credits` column is never blocked by topup bookkeeping.
+ */
+async function writeTopupCredits(userId: string, value: number): Promise<void> {
+  const next = Math.max(0, Math.floor(value))
+  for (const table of CREDITS_TABLES) {
+    const { error } = await supabaseAdmin
+      .from(table)
+      .update({ topup_credits: next })
+      .eq('id', userId)
+    if (error) {
+      console.warn(`[credits] topup_credits set on ${table} failed:`, error.message)
+    }
+  }
+}
+
 async function insertCreditLog(
   userId: string,
   module: string,
@@ -201,10 +233,16 @@ export async function deductCreditsBalance(
   }
   const next = balance - amount
 
+  // Subscription credits are consumed first; topup is preserved as long as
+  // possible. MIN keeps the invariant without relying on credits_percent_ceiling.
+  const topupBefore = await readTopupCredits(userId)
+  const nextTopup = Math.min(topupBefore, next)
+
   for (const table of CREDITS_TABLES) {
     const { error } = await supabaseAdmin.from(table).update({ credits: next }).eq('id', userId)
     if (!error) {
       void insertCreditLog(userId, moduleName, amount, balance, next)
+      await writeTopupCredits(userId, nextTopup)
       return { ok: true, balance: next }
     }
     console.warn(`[credits] deduct on ${table} failed:`, error.message)
@@ -254,6 +292,10 @@ export async function addCreditsBalance(
     }
   }
 
+  // Track the purchased amount as topup (PAYG) so subscription renewals preserve it.
+  const topupBefore = await readTopupCredits(userId)
+  await writeTopupCredits(userId, topupBefore + amount)
+
   return { ok: true, balance: next }
 }
 
@@ -270,6 +312,13 @@ export async function setCreditsBalance(
   }
 
   const next = Math.floor(amount)
+
+  // On subscription renewal/activation, preserve separately-purchased topup
+  // credits: total balance = plan allowance + existing topup. The ceiling stays
+  // at the plan allowance (subscription portion only) and topup_credits is left
+  // untouched here.
+  const preservedTopup = billingMode === 'subscription' ? await readTopupCredits(userId) : 0
+  const finalCredits = next + preservedTopup
   let updated = false
 
   for (const table of CREDITS_TABLES) {
@@ -277,7 +326,7 @@ export async function setCreditsBalance(
     if (!row) continue
 
     const payload: { credits: number; credits_billing_mode?: CreditsBillingMode } = {
-      credits: next,
+      credits: finalCredits,
     }
     if (table === 'users') {
       payload.credits_billing_mode = billingMode
@@ -296,7 +345,7 @@ export async function setCreditsBalance(
 
   if (!updated) {
     const { error: insertErr } = await supabaseAdmin.from('users').upsert(
-      { id: userId, credits: next, credits_billing_mode: billingMode, ...(billingMode === 'subscription' ? { credits_percent_ceiling: next } : {}) },
+      { id: userId, credits: finalCredits, credits_billing_mode: billingMode, ...(billingMode === 'subscription' ? { credits_percent_ceiling: next } : {}) },
       { onConflict: 'id' }
     )
 
@@ -306,7 +355,7 @@ export async function setCreditsBalance(
     }
   }
 
-  return { ok: true, balance: next }
+  return { ok: true, balance: finalCredits }
 }
 
 export type CreditsDisplayConfig = {
