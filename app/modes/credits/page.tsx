@@ -585,93 +585,95 @@ function CreditsContent() {
             One-time credits
           </h2>
 
-          <div className="rounded-[20px] border border-amber-400/40 bg-[#131c35] p-5 shadow-[0_0_28px_rgba(251,191,36,0.12)] sm:max-w-md">
-            <span className="mb-2 inline-block w-fit rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
-              Try It
-            </span>
-            <h3 className="text-lg font-semibold">Try It</h3>
-            <p className="mt-2 text-sm text-slate-300">
-              <span className="text-2xl font-bold tabular-nums text-white">
-                {tryItCredits.toLocaleString()} credits
+          <div className="mt-6 grid gap-5 sm:grid-cols-2">
+            <div className="rounded-[20px] border border-amber-400/40 bg-[#131c35] p-4 shadow-[0_0_28px_rgba(251,191,36,0.12)]">
+              <span className="mb-2 inline-block w-fit rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                Try It
               </span>
-              <span className="text-slate-400"> · ${TRY_IT_USD} one-time</span>
-            </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => void handleTopUpPay(TRY_IT_USD)}
-                disabled={topUpBusy}
-                className="w-full rounded-xl bg-[#0070ba] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {topUpPayingUsd === TRY_IT_USD ? 'Redirecting…' : `Pay $${TRY_IT_USD} with PayPal`}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handlePolarTopUpPay(TRY_IT_USD)}
-                disabled={topUpBusy}
-                className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {topUpPolarPayingUsd === TRY_IT_USD ? 'Redirecting…' : 'Pay with Card (Polar)'}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-white/[0.06] bg-[#0f1629]/60 p-5">
-            <h3 className="text-sm font-medium uppercase tracking-widest text-slate-500">
-              Add credits
-            </h3>
-            <p className="mt-2 text-sm text-slate-400">
-              <span className="font-semibold tabular-nums text-slate-200">
-                {sliderCredits.toLocaleString()}
-              </span>{' '}
-              credits for{' '}
-              <span className="font-semibold tabular-nums text-slate-200">${topUpAmount}</span>
-            </p>
-            <p className="mt-1 text-xs text-slate-500">Valid for 90 days · one-time payment</p>
-
-            <div className="mt-5 space-y-3">
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <label htmlFor="credits-topup-slider" className="text-slate-400">
-                  Adjust amount
-                </label>
-                <span className="tabular-nums text-slate-500">
-                  {sliderCredits.toLocaleString()} credits
+              <h3 className="text-lg font-semibold">Try It</h3>
+              <p className="mt-2 text-sm text-slate-300">
+                <span className="text-xl font-bold tabular-nums text-white">
+                  {tryItCredits.toLocaleString()} credits
                 </span>
-              </div>
-              <input
-                id="credits-topup-slider"
-                type="range"
-                min={TOP_UP_MIN_USD}
-                max={TOP_UP_MAX_USD}
-                step={TOP_UP_STEP_USD}
-                value={topUpAmount}
-                onChange={(e) => setTopUpAmount(snapTopUpAmount(Number(e.target.value)))}
-                className="w-full accent-slate-500"
-              />
-              <div className="flex justify-between text-xs tabular-nums text-slate-500">
-                <span>${TOP_UP_MIN_USD}</span>
-                <span className="font-medium text-slate-400">${topUpAmount}</span>
-                <span>${TOP_UP_MAX_USD}</span>
+                <span className="text-slate-400"> · ${TRY_IT_USD} one-time</span>
+              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => void handleTopUpPay(TRY_IT_USD)}
+                  disabled={topUpBusy}
+                  className="w-full rounded-xl bg-[#0070ba] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {topUpPayingUsd === TRY_IT_USD ? 'Redirecting…' : `Pay $${TRY_IT_USD} with PayPal`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handlePolarTopUpPay(TRY_IT_USD)}
+                  disabled={topUpBusy}
+                  className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {topUpPolarPayingUsd === TRY_IT_USD ? 'Redirecting…' : 'Pay with Card (Polar)'}
+                </button>
               </div>
             </div>
 
-            <div className="mt-5 space-y-2">
-              <button
-                type="button"
-                onClick={() => void handleTopUpPay()}
-                disabled={topUpBusy}
-                className="w-full rounded-xl bg-[#0070ba] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {topUpPayingUsd === topUpAmount ? 'Redirecting…' : `Pay $${topUpAmount} with PayPal`}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handlePolarTopUpPay()}
-                disabled={topUpBusy}
-                className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {topUpPolarPayingUsd === topUpAmount ? 'Redirecting…' : 'Pay with Card (Polar)'}
-              </button>
+            <div className="rounded-2xl border border-white/[0.06] bg-[#0f1629]/60 p-4">
+              <h3 className="text-sm font-medium uppercase tracking-widest text-slate-500">
+                Add credits
+              </h3>
+              <p className="mt-2 text-sm text-slate-400">
+                <span className="font-semibold tabular-nums text-slate-200">
+                  {sliderCredits.toLocaleString()}
+                </span>{' '}
+                credits for{' '}
+                <span className="font-semibold tabular-nums text-slate-200">${topUpAmount}</span>
+              </p>
+              <p className="mt-1 text-xs text-slate-500">Valid for 90 days · one-time payment</p>
+
+              <div className="mt-5 space-y-3">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <label htmlFor="credits-topup-slider" className="text-slate-400">
+                    Adjust amount
+                  </label>
+                  <span className="tabular-nums text-slate-500">
+                    {sliderCredits.toLocaleString()} credits
+                  </span>
+                </div>
+                <input
+                  id="credits-topup-slider"
+                  type="range"
+                  min={TOP_UP_MIN_USD}
+                  max={TOP_UP_MAX_USD}
+                  step={TOP_UP_STEP_USD}
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(snapTopUpAmount(Number(e.target.value)))}
+                  className="w-full accent-slate-500"
+                />
+                <div className="flex justify-between text-xs tabular-nums text-slate-500">
+                  <span>${TOP_UP_MIN_USD}</span>
+                  <span className="font-medium text-slate-400">${topUpAmount}</span>
+                  <span>${TOP_UP_MAX_USD}</span>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => void handleTopUpPay()}
+                  disabled={topUpBusy}
+                  className="w-full rounded-xl bg-[#0070ba] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {topUpPayingUsd === topUpAmount ? 'Redirecting…' : `Pay $${topUpAmount} with PayPal`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handlePolarTopUpPay()}
+                  disabled={topUpBusy}
+                  className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {topUpPolarPayingUsd === topUpAmount ? 'Redirecting…' : 'Pay with Card (Polar)'}
+                </button>
+              </div>
             </div>
           </div>
         </section>
