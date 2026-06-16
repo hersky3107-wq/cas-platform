@@ -23,6 +23,11 @@ import {
   isSubscriptionPlanType,
   type SubscriptionPlanType,
 } from '@/lib/payments/subscription-plans'
+import {
+  creditsContent,
+  detectCreditsLocale,
+  type CreditsLocale,
+} from '@/lib/credits/content'
 
 /** Fixed sub-$10 "Try It" amount shown as a standalone card above the slider. */
 const TRY_IT_USD = 8
@@ -52,13 +57,6 @@ const SUBSCRIPTION_PLAN_LABEL: Record<SubscriptionPlanType, string> = {
   standard: 'Standard',
   pro: 'Pro',
 }
-
-const SUBSCRIPTION_CANCELLED_MESSAGE = 'Subscription cancelled.'
-const SUBSCRIPTION_SUCCESS_MESSAGE = 'Your monthly plan is active. Thank you!'
-const SUBSCRIPTION_CANCEL_CONFIRM_MESSAGE =
-  'Are you sure you want to cancel? Your credits will remain until end of billing cycle.'
-const TOPUP_CANCELLED_MESSAGE = 'Top-up payment cancelled.'
-const TOPUP_SUCCESS_MESSAGE = 'Top-up complete. Credits have been added to your account.'
 
 function SectionHeader({
   id,
@@ -102,6 +100,11 @@ function CreditsContent() {
   const subscriptionParam = searchParams.get('subscription')
   const topupParam = searchParams.get('topup')
 
+  const [locale, setLocale] = useState<CreditsLocale>('en')
+  useEffect(() => { setLocale(detectCreditsLocale()) }, [])
+  const t = creditsContent[locale]
+  const isRtl = locale === 'ar'
+
   const [authLoading, setAuthLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [balance, setBalance] = useState<number | null>(null)
@@ -114,7 +117,6 @@ function CreditsContent() {
   } | null>(null)
   const [cancellingSubscription, setCancellingSubscription] = useState(false)
   const [cancelNotice, setCancelNotice] = useState<string | null>(null)
-  const [showKoPayPalNotice, setShowKoPayPalNotice] = useState(false)
   const [subscribingPlanType, setSubscribingPlanType] = useState<SubscriptionPlanType | null>(
     null
   )
@@ -171,7 +173,7 @@ function CreditsContent() {
 
   const handleCancelSubscription = useCallback(async () => {
     if (!activeSubscription || cancellingSubscription) return
-    if (!window.confirm(SUBSCRIPTION_CANCEL_CONFIRM_MESSAGE)) return
+    if (!window.confirm(t.messages.cancelConfirm)) return
 
     setCancellingSubscription(true)
     setCancelNotice(null)
@@ -190,7 +192,7 @@ function CreditsContent() {
         error?: string
       }
       if (!res.ok || !j.success) {
-        setCancelNotice(j.error ?? 'Could not cancel subscription.')
+        setCancelNotice(j.error ?? t.messages.couldNotCancel)
         return
       }
       const until =
@@ -200,16 +202,11 @@ function CreditsContent() {
       setCancelNotice(`Subscription cancelled. Credits valid until ${until}.`)
       setActiveSubscription(null)
     } catch {
-      setCancelNotice('Could not cancel subscription.')
+      setCancelNotice(t.messages.couldNotCancel)
     } finally {
       setCancellingSubscription(false)
     }
-  }, [activeSubscription, cancellingSubscription])
-
-  useEffect(() => {
-    const lang = navigator.language?.toLowerCase() ?? ''
-    setShowKoPayPalNotice(lang.startsWith('ko'))
-  }, [])
+  }, [activeSubscription, cancellingSubscription, t])
 
   const handleTopUpPay = useCallback(async (amountUSD?: number) => {
     const amount = amountUSD ?? topUpAmount
@@ -329,7 +326,7 @@ function CreditsContent() {
 
     if (topupParam === 'cancel') {
       topupReturnHandled.current = true
-      setMessage({ type: 'err', text: TOPUP_CANCELLED_MESSAGE })
+      setMessage({ type: 'err', text: t.messages.topupCancelled })
       router.replace('/modes/credits')
       return
     }
@@ -370,7 +367,7 @@ function CreditsContent() {
           }
           setMessage({
             type: 'ok',
-            text: `Added ${j.creditsAdded ?? creditsForTopUpUsd(amountUSD)} credits. ${TOPUP_SUCCESS_MESSAGE}`,
+            text: `${j.creditsAdded ?? creditsForTopUpUsd(amountUSD)} ${t.messages.addedCredits}`,
           })
         }
       } catch {
@@ -380,7 +377,7 @@ function CreditsContent() {
         router.replace('/modes/credits')
       }
     })()
-  }, [userId, topupParam, searchParams, router, refreshBalance])
+  }, [userId, topupParam, searchParams, router, refreshBalance, t])
 
   useEffect(() => {
     if (!userId || subscriptionReturnHandled.current) return
@@ -388,7 +385,7 @@ function CreditsContent() {
 
     if (subscriptionParam === 'cancel') {
       subscriptionReturnHandled.current = true
-      setMessage({ type: 'err', text: SUBSCRIPTION_CANCELLED_MESSAGE })
+      setMessage({ type: 'err', text: t.messages.subscriptionCancelled })
       router.replace('/modes/credits')
       return
     }
@@ -427,7 +424,7 @@ function CreditsContent() {
           } else {
             await refreshBalance()
           }
-          setMessage({ type: 'ok', text: SUBSCRIPTION_SUCCESS_MESSAGE })
+          setMessage({ type: 'ok', text: t.messages.subscriptionSuccess })
           await fetchSubscriptionStatus()
         }
       } catch {
@@ -444,6 +441,7 @@ function CreditsContent() {
     refreshBalance,
     fetchSubscriptionStatus,
     topupParam,
+    t,
   ])
 
   const topUpBusy = topUpPayingUsd !== null || topUpPolarPayingUsd !== null
@@ -453,40 +451,40 @@ function CreditsContent() {
   if (authLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0a0f1e] text-slate-400">
-        <p>Loading…</p>
+        <p>{t.messages.loading}</p>
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0f1e] px-4 py-10 text-white">
+    <main className="min-h-screen bg-[#0a0f1e] px-4 py-10 text-white" dir={isRtl ? 'rtl' : 'ltr'}>
       <div className="mx-auto max-w-4xl">
         <Link
           href="/"
           className="text-sm text-cyan-300/90 hover:text-cyan-200"
         >
-          ← Back to lobby
+          {t.back}
         </Link>
 
         <p className="mt-6 text-xs font-medium uppercase tracking-[0.24em] text-cyan-300/85">
-          Billing
+          {t.billing}
         </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Credits</h1>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">{t.title}</h1>
         <p className="mt-2 max-w-xl text-slate-400">
-          Subscribe for monthly credits. Use credits across Compare, Arena, Oracle, and other modes.
+          {t.subtitle}
         </p>
 
         <div className="mt-8 rounded-[20px] border border-white/10 bg-[#131c35] px-6 py-5">
-          <p className="text-sm text-slate-400">Current balance</p>
+          <p className="text-sm text-slate-400">{t.balance.label}</p>
           <p className="mt-1 text-4xl font-semibold tabular-nums text-white">
             {balance === null ? '—' : balance.toLocaleString()}
-            <span className="ml-2 text-lg font-normal text-slate-400">credits</span>
+            <span className="ml-2 text-lg font-normal text-slate-400">{t.balance.unit}</span>
           </p>
         </div>
 
         {topUpCapturing ? (
           <p className="mt-4 text-sm text-cyan-300" role="status">
-            Confirming your top-up payment…
+            {t.messages.confirmingTopup}
           </p>
         ) : null}
 
@@ -502,8 +500,8 @@ function CreditsContent() {
         <section className="mt-12" aria-labelledby="monthly-plans-heading">
           <SectionHeader
             id="monthly-plans-heading"
-            title="Monthly Plans"
-            subtitle="Auto-renews each month. Unused credits expire at end of billing cycle."
+            title={t.monthly.title}
+            subtitle={t.monthly.subtitle}
           />
 
           <div className="mt-6 grid gap-5 sm:grid-cols-3">
@@ -523,7 +521,7 @@ function CreditsContent() {
                 >
                   {isActive ? (
                     <span className="mb-2 w-fit rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
-                      Current plan · {SUBSCRIPTION_PLAN_LABEL[planType]}
+                      {t.monthly.currentPlanBadge} {SUBSCRIPTION_PLAN_LABEL[planType]}
                     </span>
                   ) : null}
                   <h3 className="text-lg font-semibold">{plan.label}</h3>
@@ -539,7 +537,7 @@ function CreditsContent() {
                         disabled
                         className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-400"
                       >
-                        Current plan
+                        {t.monthly.currentPlanBtn}
                       </button>
                     ) : (
                       <div className="space-y-2">
@@ -549,7 +547,7 @@ function CreditsContent() {
                           disabled={subscribingPlanType !== null}
                           className="w-full rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {isLoading ? 'Redirecting…' : 'Subscribe'}
+                          {isLoading ? t.monthly.redirectingBtn : t.monthly.subscribeBtn}
                         </button>
                         <button
                           type="button"
@@ -557,7 +555,7 @@ function CreditsContent() {
                           disabled={subscribingPolarPlanType !== null}
                           className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {isPolarLoading ? 'Redirecting…' : 'Pay with Card (Polar)'}
+                          {isPolarLoading ? t.monthly.redirectingBtn : t.monthly.cardBtn}
                         </button>
                       </div>
                     )}
@@ -567,15 +565,16 @@ function CreditsContent() {
             })}
           </div>
 
-          <p className="mt-2 text-center text-xs text-zinc-500">
-            한국 PayPal 계정은 국내 정책상 자국 서비스 결제가 제한됩니다. 한국 카드는 Polar 결제를 이용해주세요.
-            Contact: support@aimani.ai
-          </p>
+          {t.monthly.koPaypalNotice !== null ? (
+            <p className="mt-2 text-center text-xs text-zinc-500">
+              {t.monthly.koPaypalNotice}
+            </p>
+          ) : null}
 
           <div className="mt-5">
             <InfoCallout>
-              <span className="font-medium text-slate-300">How monthly credits work:</span>{' '}
-              Credits reset every billing cycle. Unused credits do not roll over. Cancel anytime.
+              <span className="font-medium text-slate-300">{t.monthly.howItWorks}</span>{' '}
+              {t.monthly.howItWorksDetail}
             </InfoCallout>
           </div>
         </section>
@@ -588,14 +587,14 @@ function CreditsContent() {
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <div className="rounded-[20px] border border-amber-400/40 bg-[#131c35] p-4 shadow-[0_0_28px_rgba(251,191,36,0.12)]">
               <span className="mb-2 inline-block w-fit rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
-                Try It
+                {t.tryIt.badge}
               </span>
-              <h3 className="text-lg font-semibold">Try It</h3>
+              <h3 className="text-lg font-semibold">{t.tryIt.title}</h3>
               <p className="mt-2 text-sm text-slate-300">
                 <span className="text-xl font-bold tabular-nums text-white">
-                  {tryItCredits.toLocaleString()} credits
+                  {tryItCredits.toLocaleString()} {t.balance.unit}
                 </span>
-                <span className="text-slate-400"> · ${TRY_IT_USD} one-time</span>
+                <span className="text-slate-400"> · {t.tryIt.oneTime}</span>
               </p>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <button
@@ -604,7 +603,7 @@ function CreditsContent() {
                   disabled={topUpBusy}
                   className="w-full rounded-xl bg-[#0070ba] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {topUpPayingUsd === TRY_IT_USD ? 'Redirecting…' : `Pay $${TRY_IT_USD} with PayPal`}
+                  {topUpPayingUsd === TRY_IT_USD ? t.monthly.redirectingBtn : t.tryIt.paypalBtn}
                 </button>
                 <button
                   type="button"
@@ -612,31 +611,31 @@ function CreditsContent() {
                   disabled={topUpBusy}
                   className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {topUpPolarPayingUsd === TRY_IT_USD ? 'Redirecting…' : 'Pay with Card (Polar)'}
+                  {topUpPolarPayingUsd === TRY_IT_USD ? t.monthly.redirectingBtn : t.tryIt.cardBtn}
                 </button>
               </div>
             </div>
 
             <div className="rounded-2xl border border-white/[0.06] bg-[#0f1629]/60 p-4">
               <h3 className="text-sm font-medium uppercase tracking-widest text-slate-500">
-                Add credits
+                {t.addCredits.title}
               </h3>
               <p className="mt-2 text-sm text-slate-400">
                 <span className="font-semibold tabular-nums text-slate-200">
                   {sliderCredits.toLocaleString()}
                 </span>{' '}
-                credits for{' '}
+                {t.addCredits.creditsFor}{' '}
                 <span className="font-semibold tabular-nums text-slate-200">${topUpAmount}</span>
               </p>
-              <p className="mt-1 text-xs text-slate-500">Valid for 90 days · one-time payment</p>
+              <p className="mt-1 text-xs text-slate-500">{t.addCredits.validity}</p>
 
               <div className="mt-5 space-y-3">
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <label htmlFor="credits-topup-slider" className="text-slate-400">
-                    Adjust amount
+                    {t.addCredits.adjustLabel}
                   </label>
                   <span className="tabular-nums text-slate-500">
-                    {sliderCredits.toLocaleString()} credits
+                    {sliderCredits.toLocaleString()} {t.addCredits.creditsUnit}
                   </span>
                 </div>
                 <input
@@ -663,7 +662,9 @@ function CreditsContent() {
                   disabled={topUpBusy}
                   className="w-full rounded-xl bg-[#0070ba] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {topUpPayingUsd === topUpAmount ? 'Redirecting…' : `Pay $${topUpAmount} with PayPal`}
+                  {topUpPayingUsd === topUpAmount
+                    ? t.monthly.redirectingBtn
+                    : `${t.addCredits.paypalBtn} $${topUpAmount}`}
                 </button>
                 <button
                   type="button"
@@ -671,7 +672,9 @@ function CreditsContent() {
                   disabled={topUpBusy}
                   className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {topUpPolarPayingUsd === topUpAmount ? 'Redirecting…' : 'Pay with Card (Polar)'}
+                  {topUpPolarPayingUsd === topUpAmount
+                    ? t.monthly.redirectingBtn
+                    : t.addCredits.cardBtn}
                 </button>
               </div>
             </div>
@@ -683,19 +686,19 @@ function CreditsContent() {
           aria-labelledby="credit-policy-heading"
         >
           <h2 id="credit-policy-heading" className="text-base font-semibold text-white">
-            How credits work
+            {t.howCreditsWork.title}
           </h2>
           <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-slate-400">
-            <li>Monthly plan credits are used first</li>
-            <li>Monthly credits reset each billing cycle (no rollover)</li>
-            <li>Instant top-up available when monthly credits run out</li>
+            <li>{t.howCreditsWork.bullet1}</li>
+            <li>{t.howCreditsWork.bullet2}</li>
+            <li>{t.howCreditsWork.bullet3}</li>
           </ul>
         </section>
 
         {activeSubscription?.status === 'active' ? (
           <div className="mt-16 border-t border-white/[0.06] pt-6 text-center">
             <p className="text-xs font-normal text-zinc-400">
-              Current plan: {SUBSCRIPTION_PLAN_LABEL[activeSubscription.planType]}
+              {t.cancel.currentPlanLabel} {SUBSCRIPTION_PLAN_LABEL[activeSubscription.planType]}
             </p>
             <button
               type="button"
@@ -703,7 +706,7 @@ function CreditsContent() {
               disabled={cancellingSubscription}
               className="mt-2 text-xs font-normal text-zinc-500 underline-offset-2 hover:text-zinc-400 hover:underline disabled:opacity-50"
             >
-              {cancellingSubscription ? 'Cancelling…' : 'Cancel Subscription'}
+              {cancellingSubscription ? t.cancel.cancellingBtn : t.cancel.cancelBtn}
             </button>
             {cancelNotice ? (
               <p className="mt-2 text-xs font-normal text-zinc-400" role="status">
@@ -714,18 +717,19 @@ function CreditsContent() {
         ) : null}
 
         <p className="mt-8 text-center text-xs text-slate-500">
-          By using AIMANI, you agree to our{' '}
+          {t.footer.prefix}{' '}
           <a href="/terms" className="underline hover:text-slate-300">
-            Terms of Service
+            {t.footer.terms}
           </a>
-          {' / '}
+          {t.footer.sep}
           <a href="/privacy" className="underline hover:text-slate-300">
-            Privacy Policy
+            {t.footer.privacy}
           </a>
-          {' / '}
+          {t.footer.sep}
           <a href="/refund" className="underline hover:text-slate-300">
-            Refund Policy
+            {t.footer.refund}
           </a>
+          {t.footer.suffix}
         </p>
       </div>
     </main>
