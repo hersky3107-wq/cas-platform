@@ -22,6 +22,7 @@ const MODAL_LANGUAGES: { code: FirstTimeLocale; label: string }[] = [
   { code: 'ja', label: '日本語' },
   { code: 'zh-TW', label: '繁中' },
   { code: 'fr', label: 'Français' },
+  { code: 'es', label: 'Español' },
   { code: 'ar', label: 'العربية' },
 ]
 

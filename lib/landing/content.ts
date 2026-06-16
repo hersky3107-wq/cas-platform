@@ -1,4 +1,4 @@
-export type Locale = "en" | "ko" | "ja" | "zh-TW" | "fr" | "ar";
+export type Locale = "en" | "ko" | "ja" | "zh-TW" | "fr" | "ar" | "es";
 
 export interface ModuleItem {
   emoji: string;
@@ -415,6 +415,70 @@ export const landingContent: Record<Locale, LandingContent> = {
       disclaimer: "AIMANI منصة مستقلة تربط بين مزودي الذكاء الاصطناعي. غير تابعة لـ OpenAI أو Anthropic أو Google أو xAI أو Mistral AI أو DeepSeek.",
     },
   },
+
+  es: {
+    meta: {
+      title: "AIMANI — Una pregunta. Seis mentes IA.",
+      description: "Compara ChatGPT, Claude, Gemini, Grok, DeepSeek y Mistral uno al lado del otro. 30 créditos gratis. Sin tarjeta.",
+    },
+    hero: {
+      brand: "AIMANI",
+      headlinePre: "Una pregunta.",
+      headlineAccent: "Seis mentes IA.",
+      headlinePost: "Cero consenso.",
+      subheadline: "Deja de preguntarle a una IA. Empieza a comparar todas.",
+      body: "Pregunta cualquier cosa. Mira cómo ChatGPT, Claude, Gemini, Grok, DeepSeek y Mistral responden, discrepan y se enfrentan — en vivo.",
+      practical: "Ya sea que estés redactando un informe, tomando una decisión o simplemente tengas curiosidad — seis perspectivas superan a una.",
+      cta: "Prueba AIMANI gratis — Sin tarjeta",
+    },
+    modules: {
+      sectionTitle: "Nueve formas de vivir la inteligencia colectiva de la IA",
+      sectionSub: "Nuevos módulos en camino. Muy pronto.",
+      items: [
+        { emoji: "🗣️", name: "Compare", desc: "La misma pregunta. Seis respuestas. Ve dónde coinciden y dónde chocan." },
+        { emoji: "🎭", name: "Persona", desc: "Asigna un rol a cada IA — misma pregunta, seis perspectivas y personalidades completamente distintas." },
+        { emoji: "⚖️", name: "Panel", desc: "Las IAs puntúan, votan, clasifican, predicen y verifican hechos." },
+        { emoji: "⚔️", name: "Arena", desc: "Batalla de IA en 9 rondas. Combate lógico o pelea sin reglas. Sin árbitro." },
+        { emoji: "🔧", name: "Custom", desc: "Preguntas rápidas o system prompts profundos. Tú controlas la profundidad." },
+        { emoji: "🔬", name: "DEEP", desc: "Seis análisis en paralelo + un informe de síntesis." },
+        { emoji: "🔮", name: "Oracle", desc: "Seis IAs leen tu futuro. Tarot, astrología, lectura diaria." },
+        { emoji: "🧠", name: "Mindgame", desc: "Las IAs se engañan entre sí. Infección zombie. Juego del lobo." },
+        { emoji: "🎬", name: "Stage", desc: "Espectáculos de comedia IA, monólogos y narración creativa." },
+      ],
+    },
+    useCases: {
+      sectionTitle: "Útil cuando trabajas. Divertido cuando no.",
+      items: [
+        { emoji: "✍️", title: "Redactando un correo importante", desc: "Compara seis versiones una al lado de la otra. Elige la mejor frase de cada una." },
+        { emoji: "📊", title: "Investigando una decisión importante", desc: "Ejecuta DEEP. Seis análisis en paralelo, un informe de síntesis." },
+        { emoji: "🎯", title: "Atascado en un problema laboral", desc: "Obtén seis ángulos. Uno de ellos siempre ve lo que te has perdido." },
+        { emoji: "🔍", title: "Verificando una afirmación", desc: "Seis IAs votan. Detecta la alucinación antes de que te cueste caro." },
+        { emoji: "🎲", title: "Viernes por la noche, sin planes", desc: "Míralos debatir, burlarse entre ellos o leerte el futuro." },
+        { emoji: "🃏", title: "Matando el tiempo en el transporte", desc: "Juega al lobo contra cinco IAs que te mentirán a la cara." },
+      ],
+    },
+    pitch: {
+      title: "No es tu plataforma de IA habitual.",
+      bullets: [
+        "Nueve módulos que abarcan análisis, entretenimiento, juegos y narrativa creativa — y hay más en camino.",
+        "Seis IAs con personalidades distintas, debatiendo entre sí por nombre. La fricción es el producto.",
+        "Diseñado para sentirse vivo. No otra caja blanca con una ventana de chat.",
+        "Úsalo para trabajo real — comparación, investigación profunda, verificación, redacción. O no. Como quieras.",
+      ],
+    },
+    philosophy: {
+      main: "La mayoría de las herramientas de IA te dan un resultado. AIMANI te da el panorama completo — el proceso, la fricción, el desacuerdo y la inteligencia colectiva detrás de cada respuesta.",
+      emphasis: "Para el trabajo que importa. O simplemente por diversión.",
+      closing: "Una pregunta. Seis mentes. La respuesta está en algún punto intermedio.",
+    },
+    finalCta: { offer: "🎁 30 créditos gratis. Sin tarjeta.", button: "Comenzar gratis" },
+    footer: {
+      terms: "Términos de servicio",
+      privacy: "Política de privacidad",
+      refund: "Política de reembolso",
+      disclaimer: "AIMANI es una plataforma independiente que conecta múltiples proveedores de IA. No está afiliada con OpenAI, Anthropic, Google, xAI, Mistral AI ni DeepSeek.",
+    },
+  },
 };
 
 export const LANGUAGE_OPTIONS: { code: Locale; label: string; href: string }[] = [
@@ -424,4 +488,5 @@ export const LANGUAGE_OPTIONS: { code: Locale; label: string; href: string }[] =
   { code: "zh-TW", label: "繁體中文", href: "/landing/zh-TW" },
   { code: "fr", label: "Français", href: "/landing/fr" },
   { code: "ar", label: "العربية", href: "/landing/ar" },
+  { code: "es", label: "Español", href: "/landing/es" },
 ];

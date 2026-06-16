@@ -103,6 +103,17 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     mindgame: "اخدع. انجُ. انتصر.",
     stage: "AI · كوميديا · قصص · عروض متنوعة.",
   },
+  es: {
+    compare: "6 respuestas. Una pregunta.",
+    persona: "6 roles. 6 perspectivas.",
+    panel: "Puntúa, vota, clasifica, predice.",
+    arena: "Batalla de IA en 9 rondas.",
+    custom: "Tus reglas. Tu profundidad.",
+    deep: "Análisis profundo de IA · Informe completo.",
+    oracle: "Fortuna. Tarot. Astrología.",
+    mindgame: "Engaña. Sobrevive. Gana.",
+    stage: "IA · Comedia · Historias diversas.",
+  },
 }
 
 function getLobbyLocale(): string {
@@ -113,6 +124,7 @@ function getLobbyLocale(): string {
   if (lang.startsWith("zh-tw") || lang.startsWith("zh-hk") || lang.includes("hant")) return "zh-TW";
   if (lang.startsWith("fr")) return "fr";
   if (lang.startsWith("ar")) return "ar";
+  if (lang.startsWith("es")) return "es";
   return "en";
 }
 

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import LandingPage from "@/components/landing/LandingPage";
 import { landingContent, Locale } from "@/lib/landing/content";
 
-const VALID_LOCALES: Locale[] = ["ko", "ja", "zh-TW", "fr", "ar"];
+const VALID_LOCALES: Locale[] = ["ko", "ja", "zh-TW", "fr", "ar", "es"];
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -26,6 +26,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         ko: "https://aimani.ai/landing/ko",
         ja: "https://aimani.ai/landing/ja",
         "zh-TW": "https://aimani.ai/landing/zh-TW",
+        fr: "https://aimani.ai/landing/fr",
+        ar: "https://aimani.ai/landing/ar",
+        es: "https://aimani.ai/landing/es",
       },
     },
   };

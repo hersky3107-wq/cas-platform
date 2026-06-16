@@ -15,6 +15,7 @@ export const metadata: Metadata = {
       "zh-TW": "https://aimani.ai/landing/zh-TW",
       fr: "https://aimani.ai/landing/fr",
       ar: "https://aimani.ai/landing/ar",
+      es: "https://aimani.ai/landing/es",
     },
   },
 };

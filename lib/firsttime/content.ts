@@ -1,4 +1,4 @@
-export type FirstTimeLocale = 'en' | 'ja' | 'ko' | 'zh-TW' | 'fr' | 'ar'
+export type FirstTimeLocale = 'en' | 'ja' | 'ko' | 'zh-TW' | 'fr' | 'ar' | 'es'
 
 export interface FirstTimeNav {
   skip: string
@@ -96,6 +96,7 @@ export function detectFirstTimeLocale(): FirstTimeLocale {
   if (lang.startsWith('zh-tw') || lang.startsWith('zh-hk') || lang.includes('hant')) return 'zh-TW'
   if (lang.startsWith('fr')) return 'fr'
   if (lang.startsWith('ar')) return 'ar'
+  if (lang.startsWith('es')) return 'es'
   return 'en'
 }
 
@@ -910,6 +911,142 @@ export const firstTimeContent: Record<FirstTimeLocale, FirstTimeContent> = {
           { title: '5. إلغاء الاشتراك', body: 'يؤدي إلغاء الاشتراك إلى إيقاف الفواتير المستقبلية. الأرصدة المتبقية عند الإلغاء متاحة حتى نهاية فترة الفوترة الحالية ولن يتم ردها.' },
           { title: '6. الإجراءات', body: 'لطلب الاسترداد، أرسل بريداً إلكترونياً إلى support@aimani.ai مع: بريدك الإلكتروني للحساب، تاريخ الشراء، المبلغ المحصّل، وسبب الطلب. نهدف إلى الرد خلال 24 ساعة.' },
           { title: '7. التغييرات', body: 'يحتفظ AIMANI بالحق في تحديث سياسة الاسترداد هذه في أي وقت.' },
+        ],
+      },
+    },
+  },
+
+  es: {
+    nav: {
+      skip: 'Omitir',
+      previous: 'Anterior',
+      next: 'Siguiente',
+      getStarted: 'Comenzar',
+      backToSetup: '← Volver',
+    },
+    slide0: {
+      chromeNote: 'Para una mejor experiencia en español, usa la función de traducción automática integrada de Chrome.',
+      title: 'Teníamos una pregunta simple.',
+      subtitle: '¿Por qué solo hablamos con una IA a la vez?',
+      body1: 'Cada IA piensa diferente. GPT es preciso. Claude es reflexivo. Gemini es rápido. Grok es directo. DeepSeek te sorprende. Mistral lo desafía todo. Creamos AIMANI porque la verdadera inteligencia no viene de una sola respuesta — viene de la fricción entre todas ellas.',
+      body2: 'La investigación demuestra constantemente que múltiples perspectivas superan a cualquier experto individual. Lo mismo ocurre con la IA.',
+      body3: 'Pregunta. Compara. Obsérvalas pelear, colaborar y sorprenderte. Decide por ti mismo.',
+      tagline: 'AIMANI — Donde la IA se encuentra con la IA.',
+      headline: 'Una pregunta. Seis mentes. Cero consenso.',
+      description: 'La mayoría de las herramientas de IA te dan un resultado. AIMANI te da el panorama completo — el proceso, la fricción, el desacuerdo, la narrativa y la inteligencia colectiva detrás de cada respuesta. Esa es la diferencia.',
+      credits: '🎁 Has recibido 30 créditos gratis para empezar. Sin tarjeta.',
+    },
+    slide1: {
+      title: 'Seis IAs. Seis orígenes. Seis perspectivas.',
+      ais: [
+        {
+          heading: '🇺🇸 ChatGPT — OpenAI.',
+          body: 'La IA que llevó la inteligencia artificial generativa al gran público. Uno de los sistemas de IA más utilizados y reconocidos del mundo. Detrás está OpenAI — la empresa que transformó la IA de un tema de investigación a una revolución global de consumo.',
+        },
+        {
+          heading: '🇺🇸 Claude — Anthropic.',
+          body: 'Creado por Anthropic, fundada por investigadores que dejaron OpenAI, con un fuerte enfoque en seguridad, fiabilidad y razonamiento cuidadoso de la IA. Anthropic y OpenAI se consideran frecuentemente las dos fuerzas más importantes — y filosóficamente diferentes — de la industria de la IA.',
+        },
+        {
+          heading: '🇺🇸 Gemini — Google DeepMind.',
+          body: 'Respaldado por Google DeepMind, el legado de investigación detrás de la arquitectura Transformer que impulsa los grandes modelos de lenguaje modernos. Google ha regresado con fuerza — y Gemini ahora está profundamente integrado en el ecosistema de Google, desde Android hasta Search y herramientas de productividad.',
+        },
+        {
+          heading: '🇺🇸 Grok — xAI.',
+          body: 'Creado por xAI de Elon Musk. Musk cofundó OpenAI en 2015 antes de separarse finalmente de la organización. Desde entonces, sus desacuerdos con OpenAI se han convertido en una de las rivalidades más visibles del mundo de la IA. Grok es conocido por un estilo más directo, no convencional y anti-establishment en comparación con muchos asistentes de IA convencionales.',
+        },
+        {
+          heading: '🇫🇷 Mistral — Mistral AI.',
+          body: 'París, Francia. Una de las respuestas más sólidas de Europa al dominio estadounidense de la IA. Construido alrededor de los valores europeos, la regulación europea y la independencia tecnológica europea. No es Silicon Valley. No es Pekín. Es París.',
+        },
+        {
+          heading: '🇨🇳 DeepSeek — DeepSeek AI.',
+          body: 'Hangzhou, China. Fundado por Liang Wenfeng, con raíces en las finanzas cuantitativas y la ingeniería al estilo de los fondos de cobertura. El rápido ascenso de DeepSeek a principios de 2025 sacudió la industria global de la IA y provocó una gran reacción en los mercados tecnológicos estadounidenses. Su aparición intensificó el debate sobre la eficiencia de la IA, los métodos de entrenamiento y la creciente rivalidad sino-estadounidense en este campo.',
+        },
+      ],
+      closing: 'La misma pregunta. Seis modelos. Seis formas de pensar. Siempre algo nuevo que descubrir.',
+      disclaimer: 'AIMANI es una plataforma independiente que conecta múltiples proveedores de modelos de IA. No estamos afiliados, respaldados ni somos socios oficiales de OpenAI, Anthropic, Google, xAI, Mistral AI, DeepSeek ni de ningún otro proveedor. Todos los nombres y marcas pertenecen a sus respectivos propietarios.',
+      lineup: 'Nuestra selección de IA seguirá creciendo. Los modelos y su disponibilidad pueden actualizarse, reemplazarse o eliminarse según el rendimiento, el acceso, las políticas y las condiciones del servicio. Gracias por tu comprensión.',
+    },
+    slide2: {
+      title: 'Todos los módulos. Una sola plataforma.',
+      modules: [
+        'Compare — Haz la misma pregunta a los 6 IAs a la vez. Puedes elegir qué IAs incluir — respuestas iguales o completamente diferentes, compruébalo tú mismo.',
+        'Persona — Asigna un rol o personaje a cada IA. Obtén respuestas desde diferentes perspectivas, puntos de vista y conocimientos profesionales.',
+        'Panel — Las IAs puntúan, votan, clasifican, predicen y verifican hechos. Cinco herramientas, una conclusión. | Score: Ve evaluaciones y puntuaciones | Vote: Las IAs votan. ¿Qué elegirán? | Rank: Los 6 IAs en orden | Predict: Predicción de probabilidad y resultados | Fact Check: Verdad vs. ficción',
+        'Arena — 6 IAs compiten por tu tema. Batalla lógica o combate callejero — pura confrontación de IA, de dos maneras.',
+        'Custom — Cuando no necesitas complejidad. Pregunta a uno o dos IAs de forma rápida y sencilla — casi como un motor de búsqueda. O profundiza con control total del prompt del sistema para usuarios avanzados.',
+        'DEEP — Profundidad y volumen que ningún otro IA puede igualar. Desde un breve resumen hasta un informe completo.',
+        'Oracle — Fortuna diaria, tarot, astrología y más. 6 IAs leen tu futuro cada uno a su manera. Sin necesidad de hora de nacimiento. Una experiencia de adivinación completa sin el precio.',
+        'Mindgame — Las IAs se engañan y traicionan entre sí. ¿A quién puedes confiar? | Carrier: Una infección zombie se propaga entre las IAs. Más humanos que zombies significa victoria. ¡Encuentra a los infectados y detén la propagación! | Wolf: ¿Quién es el lobo oculto entre las IAs?',
+        'Stage — Actuaciones creativas de IA. | Comedy Talk: Banter tiki-taka de IA, talk shows y stand-up | TALE: Narración de IA — Horror, Romance, Absurdo, Ciencia ficción, Cuento de hadas, Historia triste y más | Archive: Un cofre de obras creativas de IA',
+      ],
+    },
+    slide3: {
+      title: 'AIMANI nunca deja de crecer.',
+      body: 'Nuevos módulos llegan constantemente. Formas creativas, inesperadas y radicalmente diferentes de experimentar la IA — seguimos encontrándolas. Márcalo como favorito. Vuelve. Siempre hay algo nuevo esperando.',
+      closing: 'Las IAs aún tienen mucho que decir.',
+    },
+    slide4: {
+      title: '¿Algo no va bien? Estamos aquí.',
+      body1: 'Tomamos cada mensaje en serio. Si algo está roto, queremos saberlo. Si crees que te cobraron incorrectamente, contáctanos. Lo revisaremos rápidamente y, si se confirma un cobro incorrecto, lo gestionaremos según nuestra política de reembolso.',
+      pwa: '📱 Instala AIMANI como aplicación (PWA) — sin tienda de apps. Móvil: toca Compartir → Añadir a pantalla de inicio. Escritorio: haz clic en el ícono de instalación en la barra de direcciones del navegador. Tu propio ícono de AIMANI directamente en tu pantalla. Solo instala desde el sitio oficial (aimani.ai).',
+      handdrawn: '✏️ El ícono de la aplicación AIMANI fue dibujado a mano por el fundador.',
+      aiwarning: '⚠️ Las respuestas de IA se generan automáticamente y pueden contener inexactitudes, información desactualizada o errores. AIMANI no garantiza la exactitud de ningún resultado de IA. Siempre verifica la información crítica con fuentes autorizadas antes de actuar.',
+      response: 'Respondemos rápido. Para problemas urgentes de pago, espera respuesta en pocas horas — aunque las diferencias horarias pueden causar ligeros retrasos. AIMANI es una plataforma gestionada de forma independiente por un pequeño equipo fuera de los Estados Unidos.',
+      legalPrefix: 'Al usar AIMANI, aceptas nuestros ',
+      legalTerms: 'Términos de servicio',
+      legalSep1: ' / ',
+      legalPrivacy: 'Política de privacidad',
+      legalSep2: ' / ',
+      legalRefund: 'Política de reembolso',
+      legalSuffix: '',
+    },
+    policies: {
+      terms: {
+        lastUpdated: 'Última actualización: mayo de 2026',
+        title: 'Términos de servicio',
+        sections: [
+          { title: '1. Aceptación de los términos', body: 'Al acceder o utilizar AIMANI, aceptas estar sujeto a estos Términos de servicio. Si no estás de acuerdo, no uses el Servicio.' },
+          { title: '2. Elegibilidad', body: 'Debes tener al menos 14 años para usar el Servicio. Los usuarios menores de 18 años requieren el consentimiento de los padres o tutores legales para transacciones de pago.' },
+          { title: '3. Sistema de créditos', body: 'Los créditos son la moneda interna utilizada para acceder a los módulos de AIMANI. Los créditos de suscripción se reinician mensualmente sin acumulación. Los créditos de pago por uso son válidos por 3 meses desde la fecha de compra y se acumulan dentro de ese período. Los créditos no pueden transferirse a otros usuarios ni canjearse por dinero. El consumo de créditos varía según el modelo de IA seleccionado, el módulo, la longitud del prompt y la longitud de la respuesta. Los créditos de suscripción se consumen primero, seguidos de los créditos de pago por uso.' },
+          { title: '4. Pagos', body: 'Todos los pagos se procesan a través de nuestros socios de pago, incluidos PayPal y Polar. Los precios se muestran en USD. AIMANI se reserva el derecho de cambiar los precios en cualquier momento con un aviso razonable.' },
+          { title: '5. Reembolsos', body: 'Consulta nuestra Política de reembolso para todos los detalles.' },
+          { title: '6. Descargo de responsabilidad de IA', body: 'AIMANI proporciona contenido generado por IA solo con fines informativos y de entretenimiento. Las respuestas de IA no constituyen asesoramiento legal, médico, financiero, fiscal o psicológico profesional. No garantizamos la exactitud, integridad o fiabilidad de ninguna respuesta de IA. AIMANI no es responsable de las decisiones tomadas en base al contenido generado por IA.' },
+          { title: '7. Disponibilidad del servicio', body: 'AIMANI usa proveedores de IA de terceros. Tus prompts y respuestas de IA se transmiten a proveedores de IA de terceros (OpenAI, Anthropic, Google, xAI, DeepSeek, Mistral) para generar respuestas. No somos responsables de interrupciones, errores o cancelaciones de modelos de IA específicos debidos a problemas del proveedor. No se emitirán reembolsos por dichas interrupciones.' },
+          { title: '8. Uso prohibido', body: 'Aceptas no: usar el Servicio para fines ilegales, intentar manipular o aplicar ingeniería inversa a la plataforma, crear múltiples cuentas para abusar de los créditos gratuitos, usar el Servicio para generar contenido dañino o ilegal.' },
+          { title: '9. Suspensión de cuenta', body: 'AIMANI se reserva el derecho de suspender o cancelar cuentas que se encuentren en violación de estos Términos, incluida la confiscación de créditos no utilizados.' },
+          { title: '10. Cambios en los términos', body: 'Podemos actualizar estos Términos en cualquier momento. El uso continuado del Servicio constituye la aceptación de los Términos actualizados.' },
+          { title: '11. Contacto', body: 'support@aimani.ai' },
+        ],
+      },
+      privacy: {
+        lastUpdated: 'Última actualización: mayo de 2026',
+        title: 'Política de privacidad',
+        sections: [
+          { title: '1. Información que recopilamos', body: 'Información de cuenta: dirección de correo electrónico, nombre para mostrar. Datos de uso: módulos utilizados, prompts enviados, respuestas de IA recibidas. Datos de pago: registros de transacciones a través de PayPal (no almacenamos datos de tarjetas). Datos técnicos: dirección IP, tipo de navegador, información del dispositivo.' },
+          { title: '2. Cómo usamos tu información', body: 'Para proporcionar y mejorar el Servicio. Para procesar pagos y gestionar créditos. Para enviar correos electrónicos relacionados con el servicio. Para analizar patrones de uso y mejorar el rendimiento de los módulos de IA. Para mantener la seguridad de la plataforma y prevenir abusos.' },
+          { title: '3. Almacenamiento de datos', body: 'Tus datos se almacenan de forma segura a través de Supabase (PostgreSQL). Implementamos medidas de seguridad estándar de la industria para proteger tu información.' },
+          { title: '4. Servicios de terceros', body: 'AIMANI utiliza los siguientes servicios de terceros: Supabase (base de datos y autenticación), PayPal (procesamiento de pagos), Polar (procesamiento de pagos), OpenAI, Anthropic, Google, xAI, DeepSeek, Mistral (generación de respuestas de IA — tus prompts se transmiten a estos proveedores para generar respuestas), Vercel (alojamiento), Resend (correo electrónico). Cada proveedor opera bajo su propia política de privacidad.' },
+          { title: '5. Compartir datos', body: 'No vendemos tus datos personales. No compartimos tus datos con terceros excepto cuando sea necesario para operar el Servicio o cumplir con obligaciones legales.' },
+          { title: '6. Tus derechos', body: 'Tienes derecho a acceder a tus datos personales, solicitar la eliminación de tu cuenta y datos, y optar por no recibir comunicaciones no esenciales. Contacto: support@aimani.ai' },
+          { title: '7. Cookies', body: 'AIMANI utiliza cookies esenciales para la autenticación y la gestión de sesiones. No se utilizan cookies publicitarias.' },
+          { title: '8. Privacidad de menores', body: 'AIMANI no está dirigido a menores de 14 años. No recopilamos deliberadamente datos de menores de 14 años sin el consentimiento de los padres.' },
+          { title: '9. Cambios', body: 'Podemos actualizar esta Política de privacidad en cualquier momento. Notificaremos a los usuarios sobre cambios importantes por correo electrónico o mediante notificación en el servicio.' },
+          { title: '10. Contacto', body: 'support@aimani.ai' },
+        ],
+      },
+      refund: {
+        lastUpdated: 'Última actualización: mayo de 2026',
+        title: 'Política de reembolso',
+        sections: [
+          { title: '1. Política general', body: 'Todas las compras de créditos son definitivas y no reembolsables una vez utilizados los créditos, excepto cuando lo exija la ley aplicable o en casos de error de pago, cobro duplicado o no entrega de los créditos comprados.' },
+          { title: '2. Excepción — Nuevos usuarios', body: 'Si eres un nuevo usuario y no has utilizado ningún crédito, puedes solicitar un reembolso completo dentro de las 24 horas posteriores a tu primera compra contactando a support@aimani.ai. Los usuarios de la UE o el Reino Unido pueden tener derechos de desistimiento del contenido digital. Al completar una compra y usar créditos, reconoces que la entrega del contenido digital ha comenzado y renuncias a tu derecho de desistimiento en la medida permitida por la ley aplicable.' },
+          { title: '3. Casos no reembolsables', body: 'Excepto cuando lo exija la ley aplicable, los siguientes casos no son elegibles para reembolso: paquetes de créditos parcialmente utilizados, créditos de suscripción (reinicio mensual, sin acumulación), créditos perdidos debido a la suspensión de cuenta por violación de los Términos de servicio, interrupciones del servicio causadas por problemas del proveedor de IA de terceros.' },
+          { title: '4. Errores de pago', body: 'Si se te cobró incorrectamente, se produjo un cobro duplicado o los créditos comprados no se entregaron en tu cuenta, contáctanos inmediatamente en support@aimani.ai. Investigaremos y resolveremos en 3 días hábiles. Estos casos son elegibles para reembolso independientemente de la política general anterior.' },
+          { title: '5. Cancelación de suscripción', body: 'Cancelar una suscripción detiene la facturación futura. Los créditos restantes al momento de la cancelación están disponibles hasta el final del período de facturación actual y no serán reembolsados.' },
+          { title: '6. Proceso', body: 'Para solicitar un reembolso, envía un correo electrónico a support@aimani.ai con: tu correo electrónico de cuenta, fecha de compra, monto cobrado y motivo de la solicitud. Nuestro objetivo es responder en 24 horas.' },
+          { title: '7. Cambios', body: 'AIMANI se reserva el derecho de actualizar esta Política de reembolso en cualquier momento.' },
         ],
       },
     },

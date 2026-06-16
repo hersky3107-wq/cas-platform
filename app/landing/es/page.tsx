@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import LandingPage from "@/components/landing/LandingPage";
 import { landingContent } from "@/lib/landing/content";
 
-const c = landingContent.ar;
+const c = landingContent.es;
 
 export const metadata: Metadata = {
   title: c.meta.title,
@@ -20,6 +20,6 @@ export const metadata: Metadata = {
   },
 };
 
-export default function LandingAR() {
-  return <LandingPage content={c} locale="ar" />;
+export default function LandingES() {
+  return <LandingPage content={c} locale="es" />;
 }
