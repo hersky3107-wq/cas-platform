@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { polarClient } from '@/lib/payments/polar'
 import { getSiteUrl } from '@/lib/supabase/site-url'
+import { creditsForTopUpUsd, isValidTopUpAmountUsd } from '@/lib/payments/topup'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 
 export async function POST(req: Request) {
@@ -29,10 +30,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
 
-    const amountUSD = typeof body.amountUSD === 'number' ? body.amountUSD : null
-    if (!amountUSD || amountUSD < 10) {
-      return NextResponse.json({ error: 'amountUSD must be at least 10' }, { status: 400 })
+    const amountUSD = body.amountUSD
+    if (!isValidTopUpAmountUsd(amountUSD)) {
+      return NextResponse.json(
+        { error: 'amountUSD must be one of the preset top-up tiers (8, 10, 20, 50, 100, 300)' },
+        { status: 400 }
+      )
     }
+
+    const topupCredits = creditsForTopUpUsd(amountUSD)
 
     const origin = req.headers.get('origin') ?? undefined
     const siteUrl = getSiteUrl(origin)
@@ -41,7 +47,7 @@ export async function POST(req: Request) {
       products: [process.env.POLAR_PRODUCT_ID_TOPUP!],
       successUrl: `${siteUrl}/modes/credits?topup=success&amount=${amountUSD}&provider=polar`,
       customerEmail: user.email,
-      metadata: { user_id: user.id, amount_usd: amountUSD },
+      metadata: { user_id: user.id, amount_usd: amountUSD, topup_credits: topupCredits },
     })
 
     return NextResponse.json({ checkoutUrl: checkout.url })

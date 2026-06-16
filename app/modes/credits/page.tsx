@@ -5,32 +5,20 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
-import {
-  creditsFromTopUpUsd,
-  TOP_UP_DEFAULT_USD,
-  TOP_UP_MAX_USD,
-  TOP_UP_MIN_USD,
-  TOP_UP_STEP_USD,
-} from '@/lib/credits-warning-modal-config'
 import { formatSubscriptionPeriodEnd } from '@/lib/payments/subscription-display'
-import { parseTopUpAmountParam } from '@/lib/payments/topup'
+import { creditsForTopUpUsd, parseTopUpAmountParam } from '@/lib/payments/topup'
+import { ONE_TIME_TIERS } from '@/lib/payments/credit-plans'
 import { supabase } from '@/lib/db/supabase'
 import {
   isSubscriptionPlanType,
   type SubscriptionPlanType,
 } from '@/lib/payments/subscription-plans'
-
-function snapTopUpAmount(value: number): number {
-  const snapped = Math.round(value / TOP_UP_STEP_USD) * TOP_UP_STEP_USD
-  return Math.min(TOP_UP_MAX_USD, Math.max(TOP_UP_MIN_USD, snapped))
-}
 
 const SUBSCRIPTION_ORDER: SubscriptionPlanType[] = ['light', 'standard', 'pro']
 
@@ -120,17 +108,11 @@ function CreditsContent() {
   )
   const [subscribingPolarPlanType, setSubscribingPolarPlanType] =
     useState<SubscriptionPlanType | null>(null)
-  const [topUpAmount, setTopUpAmount] = useState(TOP_UP_DEFAULT_USD)
-  const [topUpPaying, setTopUpPaying] = useState(false)
-  const [topUpPolarPaying, setTopUpPolarPaying] = useState(false)
+  const [topUpPayingUsd, setTopUpPayingUsd] = useState<number | null>(null)
+  const [topUpPolarPayingUsd, setTopUpPolarPayingUsd] = useState<number | null>(null)
   const [topUpCapturing, setTopUpCapturing] = useState(false)
   const subscriptionReturnHandled = useRef(false)
   const topupReturnHandled = useRef(false)
-  const topUpSectionRef = useRef<HTMLElement | null>(null)
-
-  const topUpFromUrl = useMemo(() => parseTopUpAmountParam(topupParam), [topupParam])
-  const showTopUpSection =
-    topupParam !== 'success' && topupParam !== 'cancel' && topUpFromUrl !== null
 
   const refreshBalance = useCallback(async () => {
     const res = await authenticatedFetch('/api/credits/balance', {
@@ -212,28 +194,17 @@ function CreditsContent() {
   }, [activeSubscription, cancellingSubscription])
 
   useEffect(() => {
-    if (topUpFromUrl !== null) {
-      setTopUpAmount(topUpFromUrl)
-    }
-  }, [topUpFromUrl])
-
-  useEffect(() => {
     const lang = navigator.language?.toLowerCase() ?? ''
     setShowKoPayPalNotice(lang.startsWith('ko'))
   }, [])
 
-  useEffect(() => {
-    if (!showTopUpSection || !topUpSectionRef.current) return
-    topUpSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [showTopUpSection, authLoading])
-
-  const handleTopUpPay = useCallback(async () => {
-    setTopUpPaying(true)
+  const handleTopUpPay = useCallback(async (amountUSD: number) => {
+    setTopUpPayingUsd(amountUSD)
     setMessage(null)
     try {
       const res = await authenticatedFetch('/api/paypal/create-topup', {
         method: 'POST',
-        json: { amountUSD: topUpAmount },
+        json: { amountUSD },
       })
       const j = (await res.json()) as { approvalUrl?: string; error?: string }
       if (!res.ok || !j.approvalUrl) {
@@ -241,21 +212,21 @@ function CreditsContent() {
       }
       window.location.href = j.approvalUrl
     } catch (e) {
-      setTopUpPaying(false)
+      setTopUpPayingUsd(null)
       setMessage({
         type: 'err',
         text: e instanceof Error ? e.message : 'Could not start top-up payment',
       })
     }
-  }, [topUpAmount])
+  }, [])
 
-  const handlePolarTopUpPay = useCallback(async () => {
-    setTopUpPolarPaying(true)
+  const handlePolarTopUpPay = useCallback(async (amountUSD: number) => {
+    setTopUpPolarPayingUsd(amountUSD)
     setMessage(null)
     try {
       const res = await authenticatedFetch('/api/polar/create-topup', {
         method: 'POST',
-        json: { amountUSD: topUpAmount },
+        json: { amountUSD },
       })
       const j = (await res.json()) as { checkoutUrl?: string; error?: string }
       if (!res.ok || !j.checkoutUrl) {
@@ -263,13 +234,13 @@ function CreditsContent() {
       }
       window.location.href = j.checkoutUrl
     } catch (e) {
-      setTopUpPolarPaying(false)
+      setTopUpPolarPayingUsd(null)
       setMessage({
         type: 'err',
         text: e instanceof Error ? e.message : 'Could not start Polar top-up',
       })
     }
-  }, [topUpAmount])
+  }, [])
 
   const handleSubscribe = useCallback(async (planType: SubscriptionPlanType) => {
     setSubscribingPlanType(planType)
@@ -384,7 +355,7 @@ function CreditsContent() {
           }
           setMessage({
             type: 'ok',
-            text: `Added ${j.creditsAdded ?? creditsFromTopUpUsd(amountUSD)} credits. ${TOPUP_SUCCESS_MESSAGE}`,
+            text: `Added ${j.creditsAdded ?? creditsForTopUpUsd(amountUSD)} credits. ${TOPUP_SUCCESS_MESSAGE}`,
           })
         }
       } catch {
@@ -460,7 +431,7 @@ function CreditsContent() {
     topupParam,
   ])
 
-  const topUpCredits = creditsFromTopUpUsd(topUpAmount)
+  const topUpBusy = topUpPayingUsd !== null || topUpPolarPayingUsd !== null
 
   if (authLoading) {
     return (
@@ -509,72 +480,6 @@ function CreditsContent() {
           >
             {message.text}
           </p>
-        ) : null}
-
-        {showTopUpSection ? (
-          <section
-            ref={topUpSectionRef}
-            className="mt-10 rounded-[20px] border border-emerald-500/30 bg-[#131c35] p-6 shadow-[0_0_32px_rgba(16,185,129,0.08)]"
-            aria-labelledby="topup-payment-heading"
-          >
-            <h2 id="topup-payment-heading" className="text-xl font-semibold text-white">
-              Instant top-up
-            </h2>
-            <p className="mt-2 text-sm text-slate-300">
-              Top up{' '}
-              <span className="font-semibold tabular-nums text-white">
-                {topUpCredits.toLocaleString()}
-              </span>{' '}
-              credits for{' '}
-              <span className="font-semibold tabular-nums text-white">${topUpAmount}</span>
-            </p>
-            <p className="mt-1 text-xs text-slate-500">Valid for 90 days · one-time PayPal payment</p>
-
-            <div className="mt-6 space-y-3">
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <label htmlFor="credits-topup-slider" className="text-slate-300">
-                  Adjust amount
-                </label>
-                <span className="tabular-nums text-slate-400">
-                  {creditsFromTopUpUsd(topUpAmount).toLocaleString()} credits
-                </span>
-              </div>
-              <input
-                id="credits-topup-slider"
-                type="range"
-                min={TOP_UP_MIN_USD}
-                max={TOP_UP_MAX_USD}
-                step={TOP_UP_STEP_USD}
-                value={topUpAmount}
-                onChange={(e) => setTopUpAmount(snapTopUpAmount(Number(e.target.value)))}
-                className="w-full accent-emerald-500"
-              />
-              <div className="flex justify-between text-xs tabular-nums text-slate-500">
-                <span>${TOP_UP_MIN_USD}</span>
-                <span className="font-medium text-slate-300">${topUpAmount}</span>
-                <span>${TOP_UP_MAX_USD}</span>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-2">
-              <button
-                type="button"
-                onClick={() => void handleTopUpPay()}
-                disabled={topUpPaying || topUpPolarPaying}
-                className="w-full rounded-xl bg-[#0070ba] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {topUpPaying ? 'Redirecting to PayPal…' : `Pay $${topUpAmount} with PayPal`}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handlePolarTopUpPay()}
-                disabled={topUpPaying || topUpPolarPaying}
-                className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {topUpPolarPaying ? 'Redirecting…' : `Pay $${topUpAmount} with Card (Polar)`}
-              </button>
-            </div>
-          </section>
         ) : null}
 
         <section className="mt-12" aria-labelledby="monthly-plans-heading">
@@ -655,6 +560,66 @@ function CreditsContent() {
               <span className="font-medium text-slate-300">How monthly credits work:</span>{' '}
               Credits reset every billing cycle. Unused credits do not roll over. Cancel anytime.
             </InfoCallout>
+          </div>
+        </section>
+
+        <section className="mt-12" aria-labelledby="one-time-credits-heading">
+          <h2
+            id="one-time-credits-heading"
+            className="text-sm font-medium uppercase tracking-widest text-slate-500"
+          >
+            One-time Credits — no expiry on unused credits
+          </h2>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            {ONE_TIME_TIERS.map((tier) => {
+              const isTryIt = tier.id === 'try_it'
+              const payPalLoading = topUpPayingUsd === tier.usd
+              const polarLoading = topUpPolarPayingUsd === tier.usd
+
+              return (
+                <div
+                  key={tier.id}
+                  className={`flex flex-col rounded-2xl border bg-[#0f1629]/60 p-4 ${
+                    isTryIt ? 'border-white/15' : 'border-white/[0.06]'
+                  }`}
+                >
+                  {tier.label ? (
+                    <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                      {tier.label}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-2xl font-semibold tabular-nums text-white">
+                    {tier.credits.toLocaleString()}
+                    <span className="ml-1.5 text-sm font-normal text-slate-400">credits</span>
+                  </p>
+                  <p className="mt-1 text-sm tabular-nums text-slate-300">${tier.usd}</p>
+                  {tier.bonus ? (
+                    <p className="mt-1 text-xs font-medium text-emerald-400">
+                      +{tier.bonus}% bonus
+                    </p>
+                  ) : null}
+                  <div className="mt-auto space-y-2 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => void handleTopUpPay(tier.usd)}
+                      disabled={topUpBusy}
+                      className="w-full rounded-xl bg-[#0070ba] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {payPalLoading ? 'Redirecting…' : `Pay $${tier.usd} with PayPal`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handlePolarTopUpPay(tier.usd)}
+                      disabled={topUpBusy}
+                      className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {polarLoading ? 'Redirecting…' : 'Pay with Card (Polar)'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </section>
 

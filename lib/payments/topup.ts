@@ -1,18 +1,13 @@
-import {
-  TOP_UP_MAX_USD,
-  TOP_UP_MIN_USD,
-  TOP_UP_STEP_USD,
-  TOP_UP_USD_PER_CREDIT,
-  creditsFromTopUpUsd,
-} from '@/lib/credits-warning-modal-config'
+import { TOP_UP_USD_PER_CREDIT } from '@/lib/credits-warning-modal-config'
+import { getOneTimeTierByUsd } from '@/lib/payments/credit-plans'
 
 export const TOPUP_PLAN_ID = 'topup'
 
+/** Valid top-up amounts are the preset one-time tiers (see ONE_TIME_TIERS). */
 export function isValidTopUpAmountUsd(value: unknown): value is number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return false
   if (!Number.isInteger(value)) return false
-  if (value < TOP_UP_MIN_USD || value > TOP_UP_MAX_USD) return false
-  return value % TOP_UP_STEP_USD === 0
+  return getOneTimeTierByUsd(value) !== null
 }
 
 export function parseTopUpAmountParam(raw: string | null): number | null {
@@ -21,8 +16,10 @@ export function parseTopUpAmountParam(raw: string | null): number | null {
   return isValidTopUpAmountUsd(n) ? n : null
 }
 
+/** Credits granted for a top-up amount, taken from the matching tier. */
 export function creditsForTopUpUsd(amountUsd: number): number {
-  return creditsFromTopUpUsd(amountUsd)
+  const tier = getOneTimeTierByUsd(amountUsd)
+  return tier ? tier.credits : 0
 }
 
 export function formatTopUpUsdForPayPal(amountUsd: number): string {
