@@ -1,8 +1,11 @@
 import 'server-only'
 
 import { extractCsv } from '@/lib/extract/adapters/csv'
+import { extractDocx } from '@/lib/extract/adapters/docx'
+import { extractHwpx } from '@/lib/extract/adapters/hwpx'
 import { extractPdf } from '@/lib/extract/adapters/pdf'
 import { extractUrl } from '@/lib/extract/adapters/url'
+import { extractXlsx } from '@/lib/extract/adapters/xlsx'
 import { extractXml } from '@/lib/extract/adapters/xml'
 import type { ExtractedContent, ExtractInput } from '@/lib/extract/types'
 
@@ -39,6 +42,12 @@ export async function extract(input: ExtractInput): Promise<ExtractedContent> {
       return extractPdf(input)
     case 'csv':
       return extractCsv(input)
+    case 'docx':
+      return extractDocx(input)
+    case 'xlsx':
+      return extractXlsx(input)
+    case 'hwpx':
+      return extractHwpx(input)
     case 'json-api':
       return notImplemented(input)
     default:

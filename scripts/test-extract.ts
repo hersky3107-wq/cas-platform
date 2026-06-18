@@ -146,6 +146,36 @@ async function main() {
   })
   printResult('type: xml resultCode 30 (expect ok: false)', xmlErr)
 
+  // Test 9: DOCX — missing file (expect ok: false, no throw)
+  // Manual real-file test:
+  //   const r = await extract({ type: 'docx', value: './scripts/sample.docx' })
+  //   printResult('type: docx — real file', r)
+  const docxMissing = await extract({
+    type: 'docx',
+    value: '/tmp/does-not-exist-12345.docx',
+  })
+  printResult('type: docx — missing file (expect ok: false)', docxMissing)
+
+  // Test 10: XLSX — missing file (expect ok: false, no throw)
+  // Manual real-file test:
+  //   const r = await extract({ type: 'xlsx', value: './scripts/sample.xlsx' })
+  //   printResult('type: xlsx — real file', r)
+  const xlsxMissing = await extract({
+    type: 'xlsx',
+    value: '/tmp/does-not-exist-12345.xlsx',
+  })
+  printResult('type: xlsx — missing file (expect ok: false)', xlsxMissing)
+
+  // Test 11: HWPX — missing file (expect ok: false, no throw)
+  // Manual real-file test (modern XML-based HWPX only; legacy binary .hwp is rejected):
+  //   const r = await extract({ type: 'hwpx', value: './scripts/sample.hwpx' })
+  //   printResult('type: hwpx — real file', r)
+  const hwpxMissing = await extract({
+    type: 'hwpx',
+    value: '/tmp/does-not-exist-12345.hwpx',
+  })
+  printResult('type: hwpx — missing file (expect ok: false)', hwpxMissing)
+
   console.log(`\n${'─'.repeat(60)}`)
   console.log('Done.')
 }

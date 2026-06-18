@@ -6,7 +6,15 @@
  * (`ExtractedContent`). Adapters never throw; failures are returned as data.
  */
 
-export type SourceType = 'url' | 'pdf' | 'csv' | 'xml' | 'json-api'
+export type SourceType =
+  | 'url'
+  | 'pdf'
+  | 'csv'
+  | 'xml'
+  | 'json-api'
+  | 'docx'
+  | 'xlsx'
+  | 'hwpx'
 
 export interface ExtractInput {
   type: SourceType
