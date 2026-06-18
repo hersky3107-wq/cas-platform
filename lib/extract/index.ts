@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { extractPdf } from '@/lib/extract/adapters/pdf'
 import { extractUrl } from '@/lib/extract/adapters/url'
 import { extractXml } from '@/lib/extract/adapters/xml'
 import type { ExtractedContent, ExtractInput } from '@/lib/extract/types'
@@ -34,6 +35,7 @@ export async function extract(input: ExtractInput): Promise<ExtractedContent> {
     case 'xml':
       return extractXml(input)
     case 'pdf':
+      return extractPdf(input)
     case 'csv':
     case 'json-api':
       return notImplemented(input)

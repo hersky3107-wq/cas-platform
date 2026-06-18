@@ -42,12 +42,21 @@ async function main() {
   })
   printResult('https://this-domain-does-not-exist-12345.com (expect ok: false)', broken)
 
-  // Test 3: unimplemented adapter type (expect ok: false, no throw)
-  const pdf = await extract({
+  // Test 3: PDF — file not found (expect ok: false, no throw)
+  // The adapter now dispatches to extractPdf. A missing path must return
+  // ok:false with a clear error rather than throwing.
+  const pdfMissing = await extract({
     type: 'pdf',
-    value: '/tmp/fake.pdf',
+    value: '/tmp/does-not-exist-12345.pdf',
   })
-  printResult('type: pdf (expect ok: false, not implemented)', pdf)
+  printResult('type: pdf — missing file (expect ok: false)', pdfMissing)
+
+  // Manual real-PDF test (not automated — requires an actual file):
+  //   copy any PDF to scripts/ then run:
+  //   $env:NODE_PATH=".\scripts\stubs"; npx tsx scripts/test-extract.ts
+  //   and temporarily add:
+  //     const real = await extract({ type: 'pdf', value: './scripts/sample.pdf' })
+  //     printResult('type: pdf — real file', real)
 
   // Test 4: XML with resultCode 00 (KPX-style power data, expect ok: true)
   const sampleXmlOk = `<?xml version="1.0" encoding="UTF-8"?>
