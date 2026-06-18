@@ -8,6 +8,14 @@ import { extract } from '@/lib/extract'
 
 const PREVIEW_LENGTH = 500
 
+// Paste your KPX openapi.kpx.or.kr service key here to run the live json-api test.
+// Leave as-is to see the graceful error path (auth/resultCode failure handled, no throw).
+const SERVICE_KEY = 'PASTE_SERVICE_KEY_HERE'
+
+// KPX Jeju 5-minute supply (solar/wind) — verified endpoint, returns XML.
+const KPX_JEJU_URL =
+  `https://openapi.kpx.or.kr/openapi/chejusukub5mToday/getChejuSukub5mToday?serviceKey=${encodeURIComponent(SERVICE_KEY)}`
+
 function printResult(label: string, result: Awaited<ReturnType<typeof extract>>) {
   console.log(`\n${'─'.repeat(60)}`)
   console.log(`TEST: ${label}`)
@@ -175,6 +183,20 @@ async function main() {
     value: '/tmp/does-not-exist-12345.hwpx',
   })
   printResult('type: hwpx — missing file (expect ok: false)', hwpxMissing)
+
+  // Test 12: JSON-API live — KPX Jeju power data.
+  // With a valid SERVICE_KEY: shows real solar/wind data as a table.
+  // With the placeholder: shows the graceful error (auth/resultCode), no throw.
+  const kpx = await extract({
+    type: 'json-api',
+    value: KPX_JEJU_URL,
+    meta: {
+      format: 'xml',
+      title: 'KPX Jeju Power',
+      sourceLabel: 'kpx-jeju',
+    },
+  })
+  printResult('type: json-api KPX Jeju (live — needs SERVICE_KEY)', kpx)
 
   console.log(`\n${'─'.repeat(60)}`)
   console.log('Done.')
