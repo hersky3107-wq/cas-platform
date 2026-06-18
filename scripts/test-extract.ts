@@ -49,6 +49,65 @@ async function main() {
   })
   printResult('type: pdf (expect ok: false, not implemented)', pdf)
 
+  // Test 4: XML with resultCode 00 (KPX-style power data, expect ok: true)
+  const sampleXmlOk = `<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <header>
+    <resultCode>00</resultCode>
+    <resultMsg>OK</resultMsg>
+  </header>
+  <body>
+    <items>
+      <item>
+        <baseDatetime>20260618120000</baseDatetime>
+        <suppAbility>1014.0</suppAbility>
+        <currPwrTot>625.0</currPwrTot>
+        <renewPwrTot>101.17</renewPwrTot>
+        <renewPwrSolar>0</renewPwrSolar>
+        <renewPwrWind>89.19</renewPwrWind>
+      </item>
+      <item>
+        <baseDatetime>20260618120500</baseDatetime>
+        <suppAbility>1020.5</suppAbility>
+        <currPwrTot>630.2</currPwrTot>
+        <renewPwrTot>105.40</renewPwrTot>
+        <renewPwrSolar>2.1</renewPwrSolar>
+        <renewPwrWind>90.05</renewPwrWind>
+      </item>
+      <item>
+        <baseDatetime>20260618121000</baseDatetime>
+        <suppAbility>1009.8</suppAbility>
+        <currPwrTot>618.7</currPwrTot>
+        <renewPwrTot>98.60</renewPwrTot>
+        <renewPwrSolar>1.4</renewPwrSolar>
+        <renewPwrWind>85.30</renewPwrWind>
+      </item>
+    </items>
+  </body>
+</response>`
+  const xmlOk = await extract({
+    type: 'xml',
+    value: sampleXmlOk,
+    meta: { title: 'KPX Power Supply', sourceLabel: 'kpx-sample.xml' },
+  })
+  printResult('type: xml resultCode 00 (expect ok: true)', xmlOk)
+
+  // Test 5: XML with non-00 resultCode (dead/unregistered key, expect ok: false)
+  const sampleXmlErr = `<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <header>
+    <resultCode>30</resultCode>
+    <resultMsg>SERVICE KEY IS NOT REGISTERED ERROR</resultMsg>
+  </header>
+  <body></body>
+</response>`
+  const xmlErr = await extract({
+    type: 'xml',
+    value: sampleXmlErr,
+    meta: { sourceLabel: 'kpx-bad-key.xml' },
+  })
+  printResult('type: xml resultCode 30 (expect ok: false)', xmlErr)
+
   console.log(`\n${'─'.repeat(60)}`)
   console.log('Done.')
 }

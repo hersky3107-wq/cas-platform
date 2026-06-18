@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { extractUrl } from '@/lib/extract/adapters/url'
+import { extractXml } from '@/lib/extract/adapters/xml'
 import type { ExtractedContent, ExtractInput } from '@/lib/extract/types'
 
 export type { ExtractedContent, ExtractInput, SourceType } from '@/lib/extract/types'
@@ -30,9 +31,10 @@ export async function extract(input: ExtractInput): Promise<ExtractedContent> {
   switch (input.type) {
     case 'url':
       return extractUrl(input)
+    case 'xml':
+      return extractXml(input)
     case 'pdf':
     case 'csv':
-    case 'xml':
     case 'json-api':
       return notImplemented(input)
     default:
