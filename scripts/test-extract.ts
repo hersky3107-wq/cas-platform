@@ -58,7 +58,36 @@ async function main() {
   //     const real = await extract({ type: 'pdf', value: './scripts/sample.pdf' })
   //     printResult('type: pdf — real file', real)
 
-  // Test 4: XML with resultCode 00 (KPX-style power data, expect ok: true)
+  // Test 4: CSV raw — standard comma-delimited with header (expect ok: true)
+  const sampleCsv = `datetime,supply_mw,demand_mw,renewable_mw,solar_mw,wind_mw
+2026-06-18 12:00,1014.0,625.0,101.2,0.0,89.2
+2026-06-18 12:05,1020.5,630.2,105.4,2.1,90.1
+2026-06-18 12:10,1009.8,618.7,98.6,1.4,85.3`
+  const csvOk = await extract({
+    type: 'csv',
+    value: sampleCsv,
+    meta: { raw: true, title: 'KPX Power Data', sourceLabel: 'kpx-power.csv' },
+  })
+  printResult('type: csv raw comma (expect ok: true)', csvOk)
+
+  // Test 5: CSV raw — tab-delimited (TSV) (expect ok: true)
+  const sampleTsv = `station\ttemp_c\thumidity\twind_kph\nJeju Airport\t24.5\t72\t15.3\nSeogwipo\t25.1\t78\t12.7\nHalla Summit\t14.2\t90\t31.8`
+  const tsvOk = await extract({
+    type: 'csv',
+    value: sampleTsv,
+    meta: { raw: true, sourceLabel: 'jeju-weather.tsv' },
+  })
+  printResult('type: csv raw tab-delimited/TSV (expect ok: true)', tsvOk)
+
+  // Test 6: CSV raw — empty content (expect ok: false)
+  const csvEmpty = await extract({
+    type: 'csv',
+    value: '   ',
+    meta: { raw: true },
+  })
+  printResult('type: csv raw empty (expect ok: false)', csvEmpty)
+
+  // Test 7: XML with resultCode 00 (KPX-style power data, expect ok: true)
   const sampleXmlOk = `<?xml version="1.0" encoding="UTF-8"?>
 <response>
   <header>
