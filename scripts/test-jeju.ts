@@ -44,6 +44,27 @@ async function main() {
     console.log('--- end preview ---')
   }
 
+  const kamisKeys = !!process.env.KAMIS_CERT_KEY && !!process.env.KAMIS_CERT_ID
+  console.log(`\nKAMIS_CERT_KEY + KAMIS_CERT_ID present: ${kamisKeys}`)
+
+  console.log(`\n${'─'.repeat(60)}`)
+  console.log('Fetching: kamis-jeju-products (Jeju-filtered)')
+  console.log('─'.repeat(60))
+
+  const kamis = await fetchJejuSource('kamis-jeju-products')
+  console.log('ok:        ', kamis.ok)
+  console.log('title:     ', kamis.title)
+  console.log('sourceLabel:', kamis.sourceLabel)
+  console.log('text.length:', kamis.text.length)
+  console.log('truncated: ', kamis.truncated)
+  if (!kamis.ok) {
+    console.log('error:     ', kamis.error)
+  } else {
+    console.log(`\n--- first 800 chars ---`)
+    console.log(kamis.text.slice(0, 800))
+    console.log('--- end preview ---')
+  }
+
   console.log(`\n${'─'.repeat(60)}`)
   console.log('Done.')
 }
