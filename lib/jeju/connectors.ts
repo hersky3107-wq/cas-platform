@@ -48,7 +48,28 @@ export interface JejuSource {
    * `error` string (e.g. when the API's nested resultCode signals failure).
    */
   render?: (rawJson: unknown) => { text: string } | { error: string }
+  /**
+   * Optional fully-custom fetch path for sources that must call MORE THAN ONE
+   * upstream endpoint and merge them (e.g. 중기예보 = 중기기온 + 중기육상예보).
+   * When present (and `format === 'json'`), `fetchJejuSource` delegates the
+   * ENTIRE fetch+render to this function; `buildUrl` is then only a nominal
+   * "primary" endpoint (kept for listing/debugging), and `render`/`filter` are
+   * ignored. Returns rendered `text` or an `error` string. Must never throw.
+   */
+  fetchCustom?: () => Promise<{ text: string } | { error: string }>
 }
+
+/**
+ * KMA 중기예보 region codes for Jeju. These DIFFER between the two sub-APIs:
+ *   - 중기기온(getMidTa) uses a station-like code (제주: 11G00201).
+ *   - 중기육상예보(getMidLandFcst) uses a broader land region (제주도: 11G00000).
+ *
+ * ⚠️ NOT fully verified — if a live test returns resultCode '03' (NODATA) or an
+ * empty item, the codes are likely wrong; correct them HERE (single source of
+ * truth for both the URL builders and any future caller).
+ */
+export const JEJU_MIDTA_REGID = '11G00201'
+export const JEJU_MIDLAND_REGID = '11G00000'
 
 /**
  * Jeju product allowlist for the KAMIS price feed. Matched as a substring
@@ -217,6 +238,199 @@ function renderKmaWeather(rawJson: unknown): { text: string } | { error: string 
 }
 
 /**
+ * Computes the KMA 중기예보 announcement time (tmFc) in KST.
+ *
+ * 중기예보 is published twice daily at 06:00 and 18:00. The 06:00 release is
+ * usable from ~07:00, so: if the current KST hour >= 7 use TODAY 0600, otherwise
+ * use YESTERDAY 1800. Returns the string formatted YYYYMMDD0600 / YYYYMMDD1800.
+ */
+function kmaMidTmFc(now: Date = new Date()): string {
+  // Korea is UTC+9, no DST. Shift from epoch to avoid host-timezone issues.
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  const year = kst.getUTCFullYear()
+  const month = kst.getUTCMonth()
+  const day = kst.getUTCDate()
+  const hour = kst.getUTCHours()
+  const pad = (n: number) => String(n).padStart(2, '0')
+
+  if (hour >= 7) {
+    return `${year}${pad(month + 1)}${pad(day)}0600`
+  }
+  // Yesterday 18:00 — rebuild via UTC math to handle month/year rollover.
+  const y = new Date(Date.UTC(year, month, day) - 24 * 60 * 60 * 1000)
+  return `${y.getUTCFullYear()}${pad(y.getUTCMonth() + 1)}${pad(y.getUTCDate())}1800`
+}
+
+/** Builds the 중기기온(getMidTa) request URL for the given tmFc. */
+function buildMidTaUrl(tmFc: string): string {
+  // Shares the data.go.kr key with KPX (DATA_GO_KR_KEY override → KPX fallback).
+  const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+  const params = new URLSearchParams({
+    serviceKey: key,
+    dataType: 'JSON',
+    regId: JEJU_MIDTA_REGID,
+    tmFc,
+    numOfRows: '10',
+    pageNo: '1',
+  })
+  return `https://apis.data.go.kr/1360000/MidFcstInfoService/getMidTa?${params.toString()}`
+}
+
+/** Builds the 중기육상예보(getMidLandFcst) request URL for the given tmFc. */
+function buildMidLandUrl(tmFc: string): string {
+  const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+  const params = new URLSearchParams({
+    serviceKey: key,
+    dataType: 'JSON',
+    regId: JEJU_MIDLAND_REGID,
+    tmFc,
+    numOfRows: '10',
+    pageNo: '1',
+  })
+  return `https://apis.data.go.kr/1360000/MidFcstInfoService/getMidLandFcst?${params.toString()}`
+}
+
+/**
+ * Extracts the single forecast item from a 중기예보 response after checking the
+ * nested response.header.resultCode ('00' = success). Both sub-APIs share this
+ * envelope shape; the item is normally a single object (occasionally an array).
+ */
+function extractMidItem(
+  parsed: unknown
+): { ok: true; item: Record<string, unknown> } | { ok: false; error: string } {
+  if (!parsed || typeof parsed !== 'object') {
+    return { ok: false, error: 'Unexpected response shape' }
+  }
+  const response = (parsed as Record<string, unknown>).response
+  if (!response || typeof response !== 'object') {
+    return { ok: false, error: 'Missing response in payload' }
+  }
+  const resp = response as Record<string, unknown>
+
+  const header =
+    resp.header && typeof resp.header === 'object' ? (resp.header as Record<string, unknown>) : null
+  const resultCode = header ? header.resultCode : undefined
+  const resultMsg = header && typeof header.resultMsg === 'string' ? header.resultMsg : ''
+  const code =
+    typeof resultCode === 'string' || typeof resultCode === 'number' ? String(resultCode) : ''
+  if (code !== '00') {
+    return { ok: false, error: `resultCode ${code || 'missing'}${resultMsg ? `: ${resultMsg}` : ''}` }
+  }
+
+  const body =
+    resp.body && typeof resp.body === 'object' ? (resp.body as Record<string, unknown>) : null
+  const itemsContainer =
+    body && body.items && typeof body.items === 'object'
+      ? (body.items as Record<string, unknown>)
+      : null
+  const itemRaw = itemsContainer ? itemsContainer.item : null
+  const item = Array.isArray(itemRaw)
+    ? (itemRaw[0] as Record<string, unknown> | undefined) ?? null
+    : itemRaw && typeof itemRaw === 'object'
+      ? (itemRaw as Record<string, unknown>)
+      : null
+  if (!item) {
+    return { ok: false, error: 'No forecast item in response' }
+  }
+  return { ok: true, item }
+}
+
+/**
+ * Merges the 중기기온 item (taMin/taMax for days 3–10) and the 중기육상예보 item
+ * (wf/rnSt for days 3–10; days 3–7 split into Am/Pm) into per-day Korean lines
+ * like "3일후: 최저22℃/최고28℃, 흐림, 강수확률 30%". Tolerates either item being
+ * null (renders whatever is available).
+ */
+function renderMidtermLines(
+  taItem: Record<string, unknown> | null,
+  landItem: Record<string, unknown> | null
+): string[] {
+  const get = (item: Record<string, unknown> | null, key: string): string => {
+    if (!item) return ''
+    const v = item[key]
+    return v === null || v === undefined ? '' : String(v).trim()
+  }
+
+  const lines: string[] = []
+  for (let n = 3; n <= 10; n++) {
+    const min = get(taItem, `taMin${n}`)
+    const max = get(taItem, `taMax${n}`)
+    const tempPart = min || max ? `최저${min || '?'}℃/최고${max || '?'}℃` : ''
+
+    let wxPart = ''
+    let rainPart = ''
+    if (n <= 7) {
+      // Days 3–7 are split into AM/PM.
+      const wfAm = get(landItem, `wf${n}Am`)
+      const wfPm = get(landItem, `wf${n}Pm`)
+      const rnAm = get(landItem, `rnSt${n}Am`)
+      const rnPm = get(landItem, `rnSt${n}Pm`)
+      if (wfAm || wfPm) {
+        wxPart = wfAm === wfPm ? wfAm : `오전 ${wfAm || '?'}/오후 ${wfPm || '?'}`
+      }
+      if (rnAm || rnPm) {
+        rainPart =
+          rnAm === rnPm
+            ? `강수확률 ${rnAm}%`
+            : `강수확률 오전 ${rnAm || '?'}%/오후 ${rnPm || '?'}%`
+      }
+    } else {
+      // Days 8–10 are single values.
+      const wf = get(landItem, `wf${n}`)
+      const rn = get(landItem, `rnSt${n}`)
+      wxPart = wf
+      rainPart = rn ? `강수확률 ${rn}%` : ''
+    }
+
+    const parts = [tempPart, wxPart, rainPart].filter((p) => p)
+    lines.push(`${n}일후: ${parts.length ? parts.join(', ') : '데이터 없음'}`)
+  }
+  return lines
+}
+
+/**
+ * Dedicated dual-API fetch path for 중기예보: fetches both getMidTa and
+ * getMidLandFcst in parallel, checks each resultCode, and renders a combined
+ * Korean 11-day outlook. If ONE sub-API fails, still renders the other with a
+ * note. Total failure → `error`. Never throws.
+ */
+async function fetchKmaMidterm(): Promise<{ text: string } | { error: string }> {
+  const tmFc = kmaMidTmFc()
+
+  const [taRes, landRes] = await Promise.all([
+    fetchJsonAt(buildMidTaUrl(tmFc)),
+    fetchJsonAt(buildMidLandUrl(tmFc)),
+  ])
+
+  const ta = taRes.ok
+    ? extractMidItem(taRes.parsed)
+    : ({ ok: false, error: taRes.error } as const)
+  const land = landRes.ok
+    ? extractMidItem(landRes.parsed)
+    : ({ ok: false, error: landRes.error } as const)
+
+  const taItem = ta.ok ? ta.item : null
+  const landItem = land.ok ? land.item : null
+
+  if (!taItem && !landItem) {
+    const taErr = ta.ok ? '' : ta.error
+    const landErr = land.ok ? '' : land.error
+    return {
+      error: `중기기온(getMidTa) 실패: ${taErr}; 중기육상예보(getMidLandFcst) 실패: ${landErr}`,
+    }
+  }
+
+  const notes: string[] = []
+  if (!taItem) notes.push(`※ 중기기온(getMidTa) 수집 실패: ${ta.ok ? '' : ta.error}`)
+  if (!landItem) notes.push(`※ 중기육상예보(getMidLandFcst) 수집 실패: ${land.ok ? '' : land.error}`)
+
+  const lines = renderMidtermLines(taItem, landItem)
+  const headerLine = `제주 중기예보 (발표시각: ${tmFc}, 기온 regId ${JEJU_MIDTA_REGID} / 육상 regId ${JEJU_MIDLAND_REGID})`
+  const text = [headerLine, ...notes, '', ...lines].join('\n')
+  return { text }
+}
+
+/**
  * Registered Jeju data sources.
  *
  * To add a source: append a `JejuSource` entry below. `buildUrl` should read any
@@ -278,6 +492,17 @@ const JEJU_SOURCES: readonly JejuSource[] = [
       return `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?${params.toString()}`
     },
     render: renderKmaWeather,
+  },
+
+  {
+    id: 'kma-jeju-midterm',
+    label: 'KMA Jeju 11-day Outlook (중기예보)',
+    format: 'json',
+    modes: ['governance', 'resident'],
+    // Nominal "primary" endpoint (used for listing/debugging only). The real
+    // work happens in `fetchCustom`, which calls BOTH getMidTa + getMidLandFcst.
+    buildUrl: () => buildMidTaUrl(kmaMidTmFc()),
+    fetchCustom: fetchKmaMidterm,
   },
 
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────
@@ -369,21 +594,18 @@ function okResult(sourceLabel: string, title: string | null, fullText: string): 
 }
 
 /**
- * Shared network fetch + JSON parse used by the dedicated source paths. Kept
- * inside this module (rather than threaded into `extract`) so the generic
- * extract layer stays unaware of Jeju-specific trimming/rendering. Never throws.
+ * Low-level: fetch + JSON-parse a single URL with timeout. Returns the parsed
+ * value or a plain error string. Never throws. Used directly by multi-endpoint
+ * paths (e.g. 중기예보) and indirectly by `fetchAndParseJson` (single-source).
  */
-async function fetchAndParseJson(
-  source: JejuSource
-): Promise<{ ok: true; parsed: unknown } | { ok: false; result: ExtractedContent }> {
-  const sourceLabel = source.id
-  const title = source.label
-
+async function fetchJsonAt(
+  rawUrl: string
+): Promise<{ ok: true; parsed: unknown } | { ok: false; error: string }> {
   let url: URL
   try {
-    url = new URL(source.buildUrl())
+    url = new URL(rawUrl)
   } catch {
-    return { ok: false, result: failResult(sourceLabel, title, `Invalid URL for source: ${source.id}`) }
+    return { ok: false, error: 'Invalid URL' }
   }
 
   const controller = new AbortController()
@@ -404,23 +626,16 @@ async function fetchAndParseJson(
     const aborted = e instanceof Error && e.name === 'AbortError'
     return {
       ok: false,
-      result: failResult(
-        sourceLabel,
-        title,
-        aborted
-          ? `Request timed out after ${FETCH_TIMEOUT_MS}ms`
-          : `Network error: ${e instanceof Error ? e.message : 'unknown error'}`
-      ),
+      error: aborted
+        ? `Request timed out after ${FETCH_TIMEOUT_MS}ms`
+        : `Network error: ${e instanceof Error ? e.message : 'unknown error'}`,
     }
   } finally {
     clearTimeout(timeout)
   }
 
   if (!res.ok) {
-    return {
-      ok: false,
-      result: failResult(sourceLabel, title, `Fetch failed: HTTP ${res.status} ${res.statusText}`.trim()),
-    }
+    return { ok: false, error: `Fetch failed: HTTP ${res.status} ${res.statusText}`.trim() }
   }
 
   let raw: string
@@ -429,16 +644,12 @@ async function fetchAndParseJson(
   } catch (e: unknown) {
     return {
       ok: false,
-      result: failResult(
-        sourceLabel,
-        title,
-        `Could not read response body: ${e instanceof Error ? e.message : 'unknown error'}`
-      ),
+      error: `Could not read response body: ${e instanceof Error ? e.message : 'unknown error'}`,
     }
   }
 
   if (raw.trim() === '') {
-    return { ok: false, result: failResult(sourceLabel, title, 'Empty response body') }
+    return { ok: false, error: 'Empty response body' }
   }
 
   try {
@@ -446,13 +657,26 @@ async function fetchAndParseJson(
   } catch (e: unknown) {
     return {
       ok: false,
-      result: failResult(
-        sourceLabel,
-        title,
-        `JSON parse error: ${e instanceof Error ? e.message : 'unknown error'}`
-      ),
+      error: `JSON parse error: ${e instanceof Error ? e.message : 'unknown error'}`,
     }
   }
+}
+
+/**
+ * Shared single-source fetch + JSON parse used by the dedicated source paths.
+ * Builds the URL from `source.buildUrl()` and delegates to `fetchJsonAt`, then
+ * maps any error to a standard ExtractedContent. Kept inside this module (rather
+ * than threaded into `extract`) so the generic extract layer stays unaware of
+ * Jeju-specific trimming/rendering. Never throws.
+ */
+async function fetchAndParseJson(
+  source: JejuSource
+): Promise<{ ok: true; parsed: unknown } | { ok: false; result: ExtractedContent }> {
+  const r = await fetchJsonAt(source.buildUrl())
+  if (!r.ok) {
+    return { ok: false, result: failResult(source.id, source.label, r.error) }
+  }
+  return { ok: true, parsed: r.parsed }
 }
 
 /**
@@ -526,6 +750,29 @@ async function fetchRenderedJson(source: JejuSource): Promise<ExtractedContent> 
 }
 
 /**
+ * Dedicated path for sources that declare a fully-custom `fetchCustom` (e.g. the
+ * dual-API 중기예보). Delegates the entire fetch+merge to the source, then wraps
+ * the rendered text / error into a standard ExtractedContent. Never throws even
+ * if the custom function does.
+ */
+async function fetchCustomJson(source: JejuSource): Promise<ExtractedContent> {
+  let rendered: { text: string } | { error: string }
+  try {
+    rendered = await source.fetchCustom!()
+  } catch (e: unknown) {
+    return failResult(
+      source.id,
+      source.label,
+      `Custom fetch failed: ${e instanceof Error ? e.message : 'unknown error'}`
+    )
+  }
+  if ('error' in rendered) {
+    return failResult(source.id, source.label, rendered.error)
+  }
+  return okResult(source.id, source.label, rendered.text)
+}
+
+/**
  * Fetches a registered Jeju source by id.
  *
  * Sources with a `render` or `filter` (and `format === 'json'`) use a dedicated
@@ -540,6 +787,10 @@ export async function fetchJejuSource(id: string): Promise<ExtractedContent> {
   const source = getJejuSource(id)
   if (!source) {
     return failResult(id, null, `unknown Jeju source: ${id}`)
+  }
+
+  if (source.format === 'json' && source.fetchCustom) {
+    return fetchCustomJson(source)
   }
 
   if (source.format === 'json' && source.render) {

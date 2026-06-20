@@ -84,6 +84,24 @@ async function main() {
   }
 
   console.log(`\n${'─'.repeat(60)}`)
+  console.log('Fetching: kma-jeju-midterm (dual-API: getMidTa + getMidLandFcst)')
+  console.log('─'.repeat(60))
+
+  const mid = await fetchJejuSource('kma-jeju-midterm')
+  console.log('ok:        ', mid.ok)
+  console.log('title:     ', mid.title)
+  console.log('sourceLabel:', mid.sourceLabel)
+  console.log('text.length:', mid.text.length)
+  console.log('truncated: ', mid.truncated)
+  if (!mid.ok) {
+    console.log('error:     ', mid.error)
+  } else {
+    console.log(`\n--- first 600 chars ---`)
+    console.log(mid.text.slice(0, 600))
+    console.log('--- end preview ---')
+  }
+
+  console.log(`\n${'─'.repeat(60)}`)
   console.log('Done.')
 }
 
