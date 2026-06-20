@@ -38,6 +38,16 @@ export interface JejuSource {
    * Receives the parsed response JSON and returns a trimmed JSON value.
    */
   filter?: (rawJson: unknown) => unknown
+  /**
+   * Optional custom renderer. When present (and `format === 'json'`), the source
+   * is fetched + rendered inside this module via this function instead of going
+   * through `extract`. Used for APIs whose success check and output shape are
+   * bespoke (e.g. KMA weather: nested resultCode + cryptic category codes).
+   *
+   * Receives the parsed response JSON and returns either rendered `text` or an
+   * `error` string (e.g. when the API's nested resultCode signals failure).
+   */
+  render?: (rawJson: unknown) => { text: string } | { error: string }
 }
 
 /**
@@ -79,6 +89,134 @@ function filterKamisJejuItems(rawJson: unknown): unknown {
 }
 
 /**
+ * Computes the KMA 초단기실황 base_date/base_time at call time.
+ *
+ * 초단기실황 publishes hourly at HH00 and is available ~40min later, so if the
+ * current Korea-time minute is < 45 we step back one hour (handling the midnight
+ * date rollover). Returns { baseDate: 'YYYYMMDD', baseTime: 'HH00' }.
+ */
+function kmaBaseDateTime(now: Date = new Date()): { baseDate: string; baseTime: string } {
+  // Korea is UTC+9, with no DST. Shift from epoch to avoid host-timezone issues.
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  let year = kst.getUTCFullYear()
+  let month = kst.getUTCMonth()
+  let day = kst.getUTCDate()
+  let hour = kst.getUTCHours()
+  const minute = kst.getUTCMinutes()
+
+  if (minute < 45) {
+    // Step back one hour; rebuild via UTC math to handle midnight/month rollover.
+    const stepped = new Date(Date.UTC(year, month, day, hour, 0, 0) - 60 * 60 * 1000)
+    year = stepped.getUTCFullYear()
+    month = stepped.getUTCMonth()
+    day = stepped.getUTCDate()
+    hour = stepped.getUTCHours()
+  }
+
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const baseDate = `${year}${pad(month + 1)}${pad(day)}`
+  const baseTime = `${pad(hour)}00`
+  return { baseDate, baseTime }
+}
+
+/** KMA short-term observation category codes → Korean label + unit. */
+const KMA_CATEGORY_LABELS: Record<string, { label: string; unit: string }> = {
+  T1H: { label: '기온', unit: '℃' },
+  RN1: { label: '1시간 강수량', unit: 'mm' },
+  REH: { label: '습도', unit: '%' },
+  WSD: { label: '풍속', unit: 'm/s' },
+  VEC: { label: '풍향', unit: '°' },
+  PTY: { label: '강수형태', unit: '' },
+  UUU: { label: '동서바람성분', unit: 'm/s' },
+  VVV: { label: '남북바람성분', unit: 'm/s' },
+}
+
+/** PTY (강수형태) code → Korean description. */
+const KMA_PTY_LABELS: Record<string, string> = {
+  '0': '없음',
+  '1': '비',
+  '2': '비/눈',
+  '3': '눈',
+  '5': '빗방울',
+  '6': '빗방울눈날림',
+  '7': '눈날림',
+}
+
+/**
+ * Renders KMA 초단기실황 JSON into a clean, AI-readable Korean summary.
+ * Checks the nested response.header.resultCode ('00' = success).
+ */
+function renderKmaWeather(rawJson: unknown): { text: string } | { error: string } {
+  if (!rawJson || typeof rawJson !== 'object') {
+    return { error: 'Unexpected KMA response shape' }
+  }
+
+  const response = (rawJson as Record<string, unknown>).response
+  if (!response || typeof response !== 'object') {
+    return { error: 'Missing response in KMA payload' }
+  }
+  const resp = response as Record<string, unknown>
+
+  const header =
+    resp.header && typeof resp.header === 'object' ? (resp.header as Record<string, unknown>) : null
+  const resultCode = header ? header.resultCode : undefined
+  const resultMsg = header && typeof header.resultMsg === 'string' ? header.resultMsg : ''
+  const code = typeof resultCode === 'string' || typeof resultCode === 'number' ? String(resultCode) : ''
+
+  if (code !== '00') {
+    return { error: `KMA resultCode ${code || 'missing'}${resultMsg ? `: ${resultMsg}` : ''}` }
+  }
+
+  const body =
+    resp.body && typeof resp.body === 'object' ? (resp.body as Record<string, unknown>) : null
+  const itemsContainer =
+    body && body.items && typeof body.items === 'object'
+      ? (body.items as Record<string, unknown>)
+      : null
+  const itemRaw = itemsContainer ? itemsContainer.item : null
+  const items: Record<string, unknown>[] = Array.isArray(itemRaw)
+    ? (itemRaw as Record<string, unknown>[])
+    : itemRaw && typeof itemRaw === 'object'
+      ? [itemRaw as Record<string, unknown>]
+      : []
+
+  if (items.length === 0) {
+    return { error: 'No observation items in KMA response' }
+  }
+
+  let baseDate = ''
+  let baseTime = ''
+  const readings: string[] = []
+  for (const item of items) {
+    const category = typeof item.category === 'string' ? item.category : ''
+    const value = item.obsrValue
+    if (typeof item.baseDate === 'string') baseDate = item.baseDate
+    if (typeof item.baseTime === 'string') baseTime = item.baseTime
+    if (!category) continue
+
+    const meta = KMA_CATEGORY_LABELS[category]
+    const valueStr = value === null || value === undefined ? '' : String(value)
+
+    if (category === 'PTY') {
+      const desc = KMA_PTY_LABELS[valueStr] ?? valueStr
+      readings.push(`${meta?.label ?? category}: ${desc}`)
+    } else if (meta) {
+      readings.push(`${meta.label}: ${valueStr}${meta.unit}`)
+    } else {
+      readings.push(`${category}: ${valueStr}`)
+    }
+  }
+
+  if (readings.length === 0) {
+    return { error: 'No recognizable readings in KMA response' }
+  }
+
+  const when = baseDate && baseTime ? `${baseDate} ${baseTime}` : ''
+  const headerLine = `제주시 초단기실황${when ? ` (관측: ${when})` : ''}`
+  return { text: `${headerLine}\n${readings.join(', ')}` }
+}
+
+/**
  * Registered Jeju data sources.
  *
  * To add a source: append a `JejuSource` entry below. `buildUrl` should read any
@@ -117,13 +255,34 @@ const JEJU_SOURCES: readonly JejuSource[] = [
     filter: filterKamisJejuItems,
   },
 
+  {
+    id: 'kma-jeju-weather',
+    label: 'KMA Jeju Short-term Weather (초단기실황)',
+    format: 'json',
+    modes: ['governance', 'resident', 'tourist'],
+    buildUrl: () => {
+      // Shares the data.go.kr key with KPX. DATA_GO_KR_KEY can override later
+      // if the keys ever diverge; defaults to KPX_SERVICE_KEY today.
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const { baseDate, baseTime } = kmaBaseDateTime()
+      const params = new URLSearchParams({
+        serviceKey: key,
+        dataType: 'JSON',
+        base_date: baseDate,
+        base_time: baseTime,
+        nx: '52',
+        ny: '38',
+        numOfRows: '100',
+        pageNo: '1',
+      })
+      return `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?${params.toString()}`
+    },
+    render: renderKmaWeather,
+  },
+
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────
   // Add each as a JejuSource entry following the patterns above. Read the
   // service key from process.env; pick the correct `format`; set `modes`.
-  //
-  // TODO: 기상청 (KMA) — Jeju weather / forecast
-  //   env: KMA_SERVICE_KEY
-  //   format: 'xml' ; modes: ['governance','resident','tourist']
   //
   // TODO: 제주 traffic — real-time road/traffic conditions
   //   env: JEJU_TRAFFIC_SERVICE_KEY
@@ -195,22 +354,36 @@ function rowsToTable(rows: Record<string, unknown>[]): string {
   return [header, divider, ...body].join('\n')
 }
 
+/** Wraps rendered text into a standard ExtractedContent (applies truncation). */
+function okResult(sourceLabel: string, title: string | null, fullText: string): ExtractedContent {
+  const truncated = fullText.length > MAX_TEXT_LENGTH
+  return {
+    sourceType: 'json-api',
+    title,
+    text: truncated ? fullText.slice(0, MAX_TEXT_LENGTH) : fullText,
+    fetchedAt: new Date().toISOString(),
+    sourceLabel,
+    truncated,
+    ok: true,
+  }
+}
+
 /**
- * Dedicated fetch + filter + render path for JSON sources that declare a
- * `filter`. Kept inside this module (rather than threaded into `extract`) so the
- * generic extract layer stays unaware of Jeju-specific trimming. Still returns a
- * standard ExtractedContent and never throws.
+ * Shared network fetch + JSON parse used by the dedicated source paths. Kept
+ * inside this module (rather than threaded into `extract`) so the generic
+ * extract layer stays unaware of Jeju-specific trimming/rendering. Never throws.
  */
-async function fetchFilteredJson(source: JejuSource): Promise<ExtractedContent> {
+async function fetchAndParseJson(
+  source: JejuSource
+): Promise<{ ok: true; parsed: unknown } | { ok: false; result: ExtractedContent }> {
   const sourceLabel = source.id
   const title = source.label
-  const fetchedAt = new Date().toISOString()
 
   let url: URL
   try {
     url = new URL(source.buildUrl())
   } catch {
-    return failResult(sourceLabel, title, `Invalid URL for source: ${source.id}`)
+    return { ok: false, result: failResult(sourceLabel, title, `Invalid URL for source: ${source.id}`) }
   }
 
   const controller = new AbortController()
@@ -229,46 +402,70 @@ async function fetchFilteredJson(source: JejuSource): Promise<ExtractedContent> 
     })
   } catch (e: unknown) {
     const aborted = e instanceof Error && e.name === 'AbortError'
-    return failResult(
-      sourceLabel,
-      title,
-      aborted
-        ? `Request timed out after ${FETCH_TIMEOUT_MS}ms`
-        : `Network error: ${e instanceof Error ? e.message : 'unknown error'}`
-    )
+    return {
+      ok: false,
+      result: failResult(
+        sourceLabel,
+        title,
+        aborted
+          ? `Request timed out after ${FETCH_TIMEOUT_MS}ms`
+          : `Network error: ${e instanceof Error ? e.message : 'unknown error'}`
+      ),
+    }
   } finally {
     clearTimeout(timeout)
   }
 
   if (!res.ok) {
-    return failResult(sourceLabel, title, `Fetch failed: HTTP ${res.status} ${res.statusText}`.trim())
+    return {
+      ok: false,
+      result: failResult(sourceLabel, title, `Fetch failed: HTTP ${res.status} ${res.statusText}`.trim()),
+    }
   }
 
   let raw: string
   try {
     raw = await res.text()
   } catch (e: unknown) {
-    return failResult(
-      sourceLabel,
-      title,
-      `Could not read response body: ${e instanceof Error ? e.message : 'unknown error'}`
-    )
+    return {
+      ok: false,
+      result: failResult(
+        sourceLabel,
+        title,
+        `Could not read response body: ${e instanceof Error ? e.message : 'unknown error'}`
+      ),
+    }
   }
 
   if (raw.trim() === '') {
-    return failResult(sourceLabel, title, 'Empty response body')
+    return { ok: false, result: failResult(sourceLabel, title, 'Empty response body') }
   }
 
-  let parsed: unknown
   try {
-    parsed = JSON.parse(raw)
+    return { ok: true, parsed: JSON.parse(raw) }
   } catch (e: unknown) {
-    return failResult(
-      sourceLabel,
-      title,
-      `JSON parse error: ${e instanceof Error ? e.message : 'unknown error'}`
-    )
+    return {
+      ok: false,
+      result: failResult(
+        sourceLabel,
+        title,
+        `JSON parse error: ${e instanceof Error ? e.message : 'unknown error'}`
+      ),
+    }
   }
+}
+
+/**
+ * Dedicated path for JSON sources that declare a `filter`: fetch, check the
+ * KAMIS-style top-level error_code, apply the filter, render as a table.
+ */
+async function fetchFilteredJson(source: JejuSource): Promise<ExtractedContent> {
+  const sourceLabel = source.id
+  const title = source.label
+
+  const fetched = await fetchAndParseJson(source)
+  if (!fetched.ok) return fetched.result
+  const parsed = fetched.parsed
 
   // KAMIS surfaces auth/quota problems via error_code (success is "000").
   const errorCode =
@@ -291,37 +488,49 @@ async function fetchFilteredJson(source: JejuSource): Promise<ExtractedContent> 
         ? (filtered as Record<string, unknown>[])
         : null
 
+  if (rows && rows.length === 0) {
+    return failResult(sourceLabel, title, 'No matching items after Jeju filter')
+  }
+
   let fullText: string
   if (rows && rows.length > 0) {
     fullText = rowsToTable(rows)
-  } else if (rows && rows.length === 0) {
-    return failResult(sourceLabel, title, 'No matching items after Jeju filter')
   } else {
     try {
       fullText = JSON.stringify(filtered, null, 2).trim()
     } catch {
-      fullText = raw.trim()
+      fullText = String(filtered)
     }
   }
 
-  const truncated = fullText.length > MAX_TEXT_LENGTH
-  return {
-    sourceType: 'json-api',
-    title,
-    text: truncated ? fullText.slice(0, MAX_TEXT_LENGTH) : fullText,
-    fetchedAt,
-    sourceLabel,
-    truncated,
-    ok: true,
+  return okResult(sourceLabel, title, fullText)
+}
+
+/**
+ * Dedicated path for JSON sources that declare a custom `render`: fetch, then
+ * delegate success-check + formatting to the source's renderer (e.g. KMA's
+ * nested resultCode + category-code mapping).
+ */
+async function fetchRenderedJson(source: JejuSource): Promise<ExtractedContent> {
+  const sourceLabel = source.id
+  const title = source.label
+
+  const fetched = await fetchAndParseJson(source)
+  if (!fetched.ok) return fetched.result
+
+  const rendered = source.render!(fetched.parsed)
+  if ('error' in rendered) {
+    return failResult(sourceLabel, title, rendered.error)
   }
+  return okResult(sourceLabel, title, rendered.text)
 }
 
 /**
  * Fetches a registered Jeju source by id.
  *
- * Sources WITHOUT a `filter` go through the shared `extract` json-api adapter.
- * Sources WITH a `filter` use a dedicated fetch+filter+render path in this
- * module (so `extract` stays generic and Jeju-agnostic).
+ * Sources with a `render` or `filter` (and `format === 'json'`) use a dedicated
+ * fetch+format path in this module (so `extract` stays generic and
+ * Jeju-agnostic). All others go through the shared `extract` json-api adapter.
  *
  * Never throws: an unknown id or any fetch/parse failure comes back as an
  * `ExtractedContent` with `ok: false` (including Korean public-API resultCode /
@@ -333,7 +542,11 @@ export async function fetchJejuSource(id: string): Promise<ExtractedContent> {
     return failResult(id, null, `unknown Jeju source: ${id}`)
   }
 
-  if (source.filter && source.format === 'json') {
+  if (source.format === 'json' && source.render) {
+    return fetchRenderedJson(source)
+  }
+
+  if (source.format === 'json' && source.filter) {
     return fetchFilteredJson(source)
   }
 

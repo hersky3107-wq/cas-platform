@@ -66,6 +66,24 @@ async function main() {
   }
 
   console.log(`\n${'─'.repeat(60)}`)
+  console.log('Fetching: kma-jeju-weather (shares KPX_SERVICE_KEY)')
+  console.log('─'.repeat(60))
+
+  const kma = await fetchJejuSource('kma-jeju-weather')
+  console.log('ok:        ', kma.ok)
+  console.log('title:     ', kma.title)
+  console.log('sourceLabel:', kma.sourceLabel)
+  console.log('text.length:', kma.text.length)
+  console.log('truncated: ', kma.truncated)
+  if (!kma.ok) {
+    console.log('error:     ', kma.error)
+  } else {
+    console.log(`\n--- first ${PREVIEW_LENGTH} chars ---`)
+    console.log(kma.text.slice(0, PREVIEW_LENGTH))
+    console.log('--- end preview ---')
+  }
+
+  console.log(`\n${'─'.repeat(60)}`)
   console.log('Done.')
 }
 
