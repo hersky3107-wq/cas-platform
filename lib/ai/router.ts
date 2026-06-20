@@ -9,6 +9,11 @@ const DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT =
 const DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT =
   "[CRITICAL] You MUST respond in the EXACT same language as the user's message. Match the language exactly. This is mandatory."
 
+/**
+ * The core provider set. This is the default 6-AI roster every mode renders and
+ * compares. Exhaustive `Record<AiProviderName, …>` maps across the app rely on
+ * this staying exactly six — do NOT add opt-in providers here.
+ */
 export type AiProviderName =
   | 'openai'
   | 'anthropic'
@@ -16,6 +21,17 @@ export type AiProviderName =
   | 'xai'
   | 'deepseek'
   | 'mistral'
+
+/**
+ * OPT-IN ONLY providers (cost control). These are deliberately kept OUT of
+ * `AiProviderName` so they never leak into any default set or selectable-UI map.
+ *
+ * Perplexity search billing comes out of our platform credit, so a caller must
+ * explicitly pass `'perplexity'` / `'meta'` to `runSingleAiProvider`
+ * (or another router entry typed to `ExtendedAiProviderName`) to invoke them.
+ * No code iterates provider keys to auto-include them, so they stay opt-in.
+ */
+export type ExtendedAiProviderName = AiProviderName | 'perplexity' | 'meta'
 
 export type RouterInput = {
   prompt: string
@@ -29,6 +45,11 @@ export type RouterInput = {
 }
 
 export type RouterResult = {
+  // Stays core-6: every Compare/Verdict consumer maps results into core-keyed
+  // structures. runSingleAiProvider can be invoked with an opt-in provider, but
+  // those callers don't read `.provider` back as a typed value (see the cast in
+  // runSingleAiProvider's return). Keeping this core-only avoids rippling the
+  // ExtendedAiProviderName widening into ~10 consumer files.
   provider: AiProviderName
   model: string
   text: string | null
@@ -69,13 +90,18 @@ export function buildCompareChatMessagesForProvider(
   return out
 }
 
-export const MODEL_BY_PROVIDER: Record<AiProviderName, string> = {
+export const MODEL_BY_PROVIDER: Record<ExtendedAiProviderName, string> = {
   openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-6',
   google: 'gemini-3.5-flash',
   xai: 'grok-3',
   deepseek: 'deepseek-chat',
   mistral: 'mistral-large-latest',
+  // OPT-IN ONLY (cost control): present so the router CAN call them, but keyed
+  // off ExtendedAiProviderName so they never appear in core-6 maps/UI. No code
+  // iterates these keys to auto-include providers, so listing them is safe.
+  perplexity: 'sonar',
+  meta: 'llama-3.3-70b-versatile',
 }
 
 /** Model used when an Anthropic task is routed for maximum depth (DEEP mode orchestration output). */
@@ -89,7 +115,7 @@ function nowMs() {
   return Date.now()
 }
 
-function getEnvKey(provider: AiProviderName) {
+function getEnvKey(provider: ExtendedAiProviderName) {
   const direct =
     provider === 'openai'
       ? process.env.OPENAI_API_KEY
@@ -101,7 +127,11 @@ function getEnvKey(provider: AiProviderName) {
             ? process.env.XAI_API_KEY
             : provider === 'deepseek'
               ? process.env.DEEPSEEK_API_KEY
-              : process.env.MISTRAL_API_KEY
+              : provider === 'perplexity'
+                ? process.env.PERPLEXITY_API_KEY
+                : provider === 'meta'
+                  ? process.env.GROQ_API_KEY
+                  : process.env.MISTRAL_API_KEY
 
   const fallback =
     provider === 'google'
@@ -162,7 +192,7 @@ async function getUserByokKey({
 }: {
   supabase: SupabaseClient
   userId: string
-  provider: AiProviderName
+  provider: ExtendedAiProviderName
 }) {
   const { data, error } = await supabase
     .from('user_api_keys')
@@ -203,7 +233,7 @@ function normalizeTokens({
 }
 
 async function fetchWithRetry(
-  provider: AiProviderName,
+  provider: ExtendedAiProviderName,
   input: RequestInfo | URL,
   init: RequestInit
 ): Promise<Response> {
@@ -230,7 +260,7 @@ async function callOpenAICompatibleChat({
   maxCompletionTokens,
   chatMessages,
 }: {
-  provider: AiProviderName
+  provider: ExtendedAiProviderName
   baseUrl: string
   apiKey: string
   model: string
@@ -305,7 +335,7 @@ async function callAnthropic({
   maxCompletionTokens,
   chatMessages,
 }: {
-  provider: AiProviderName
+  provider: ExtendedAiProviderName
   apiKey: string
   model: string
   prompt: string
@@ -416,7 +446,7 @@ async function callGoogleGemini({
   chatMessages,
   allowGeminiThinking,
 }: {
-  provider: AiProviderName
+  provider: ExtendedAiProviderName
   apiKey: string
   model: string
   prompt: string
@@ -578,7 +608,7 @@ async function callProvider({
   chatMessages,
   allowGeminiThinking,
 }: {
-  provider: AiProviderName
+  provider: ExtendedAiProviderName
   apiKey: string
   /** Defaults to MODEL_BY_PROVIDER[provider]. */
   model?: string
@@ -688,6 +718,36 @@ async function callProvider({
     return { model, text, usage }
   }
 
+  if (provider === 'perplexity') {
+    const { text, usage } = await callOpenAICompatibleChat({
+      provider,
+      baseUrl: 'https://api.perplexity.ai',
+      apiKey,
+      model,
+      prompt: promptWithLanguageRule,
+      systemPrompt: injectedSystemPrompt,
+      temperature,
+      maxCompletionTokens,
+      ...chatOpts,
+    })
+    return { model, text, usage }
+  }
+
+  if (provider === 'meta') {
+    const { text, usage } = await callOpenAICompatibleChat({
+      provider,
+      baseUrl: 'https://api.groq.com/openai/v1',
+      apiKey,
+      model,
+      prompt: promptWithLanguageRule,
+      systemPrompt: injectedSystemPrompt,
+      temperature,
+      maxCompletionTokens,
+      ...chatOpts,
+    })
+    return { model, text, usage }
+  }
+
   if (provider === 'deepseek') {
     const deepseekPrompt = skipLanguageInjection
       ? prompt
@@ -763,7 +823,7 @@ export type RunSingleProviderParams = {
   authSupabase?: SupabaseClient
   sessionId: string | null
   userId: string | null
-  provider: AiProviderName
+  provider: ExtendedAiProviderName
   prompt: string
   systemPrompt: string
   supabaseAccessToken?: string
@@ -805,7 +865,7 @@ export type RunSingleProviderParams = {
 async function saveCompareArtifactsRows(
   supabase: SupabaseClient,
   sessionId: string,
-  provider: AiProviderName,
+  provider: ExtendedAiProviderName,
   text: string | null,
   responseTimeMs: number,
   errorText?: string | null
@@ -954,7 +1014,9 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     }
 
     return {
-      provider,
+      // Runtime value is the exact provider passed in (core or opt-in). Cast to
+      // keep RouterResult core-typed; opt-in callers don't consume `.provider`.
+      provider: provider as AiProviderName,
       model,
       text,
       responseTimeMs,
@@ -1014,7 +1076,8 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     }
 
     return {
-      provider,
+      // See note on the success-path return above: cast keeps RouterResult core.
+      provider: provider as AiProviderName,
       model,
       text: null,
       responseTimeMs,
