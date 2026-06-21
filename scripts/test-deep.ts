@@ -14,7 +14,7 @@ import {
   planJejuMeeting,
   summarizeAvailableData,
   runJejuDeepThroughAnalysis,
-  runJejuDeepFull,
+  runJejuDeepWithDebate,
   type JejuMeetingPlan,
 } from '@/lib/jeju/deep'
 
@@ -93,13 +93,13 @@ async function main() {
     }
   }
 
-  // ── PIECE 2.5 + 2.7: full pipeline (search → revise) ──────────────────────
+  // ── PIECE 2.5 + 2.7 + 3: full pipeline (search → revise → DEBATE) ─────────
   console.log(`\n\n${'█'.repeat(70)}`)
-  console.log('FULL DEEP RUN (orchestrate → analyze → search → REVISE)')
+  console.log('FULL DEEP RUN (orchestrate → analyze → search → revise → DEBATE)')
   console.log(`Q: ${deepQuestion}`)
   console.log('█'.repeat(70))
 
-  const full = await runJejuDeepFull({ question: deepQuestion })
+  const full = await runJejuDeepWithDebate({ question: deepQuestion })
   console.log('\noverall ok:        ', full.ok)
   console.log('analyses:          ', full.analyses.length, '(ok:', full.analyses.filter((a) => a.ok).length, ')')
 
@@ -143,6 +143,32 @@ async function main() {
     }
     console.log('[1차]   ', r.firstPass ?? '(없음)')
     console.log('\n[갱신]  ', r.revised ?? '(없음)')
+  }
+
+  // ── PIECE 3: the debate round — do they actually clash or just agree? ─────
+  const okRebuttals = full.debate.filter((d) => d.ok)
+  const engaged = okRebuttals.filter((d) => d.targetRoleLabels.length > 0).length
+  console.log(`\n\n${'═'.repeat(70)}`)
+  console.log(`DEBATE ROUND (rebuttals) — ${engaged}/${okRebuttals.length} experts named a target to push back on`)
+  console.log('═'.repeat(70))
+
+  // Heuristic sycophancy sniff: rebuttal text that reads like pure agreement.
+  const agreeRe = /(동의합니다|좋은 지적|이견이 없|모두 동의|전적으로 공감)/
+
+  for (const d of full.debate) {
+    console.log(`\n${'─'.repeat(70)}`)
+    console.log(`${d.roleLabel}  →  ${d.provider}${d.isRedTeam ? '  [RED TEAM]' : ''}`)
+    console.log(`ok: ${d.ok}`)
+    if (!d.ok) {
+      console.log('error:', d.error)
+      continue
+    }
+    console.log(`반박 대상: ${d.targetRoleLabels.join(', ') || '(없음 — 대상 미지정)'}`)
+    const looksLikeChorus =
+      d.targetRoleLabels.length === 0 || (d.rebuttal != null && agreeRe.test(d.rebuttal))
+    if (looksLikeChorus) console.log('⚠️  CHORUS RISK: 반박이 아니라 동의처럼 보임 — 확인 필요')
+    console.log('─'.repeat(70))
+    console.log(d.rebuttal ?? '(없음)')
   }
 
   console.log(`\n${'═'.repeat(70)}`)

@@ -1253,3 +1253,284 @@ export async function runJejuDeepFull(params?: {
     }
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PIECE 3 — the DEBATE round (beat 3: visible debate).
+//
+// Each expert has a search-informed revised analysis but has never confronted
+// the others. Now every expert reads the OTHERS' analyses and must push back —
+// surfacing REAL disagreement, not a politeness chorus. This is ONE rebuttal
+// round; re-rebuttal and "summon a missing expert" are LATER pieces.
+//
+// ⚠️ ANTI-SYCOPHANCY: AI debaters default to "좋은 지적입니다, 동의합니다", which
+// kills the debate. The prompt FORCES each expert to find a genuine point of
+// disagreement (even partial) and argue it from their own domain. Mere agreement
+// is a failure of their job.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Token budget for one rebuttal (matches revision headroom). */
+const DEBATE_MAX_TOKENS = 1200
+
+/** One expert's rebuttal against the other experts' revised analyses. */
+export type JejuRebuttal = {
+  roleId: string
+  roleLabel: string
+  provider: ExtendedAiProviderName
+  isRedTeam: boolean
+  ok: boolean
+  /** Whom they pushed back against (role labels). */
+  targetRoleLabels: string[]
+  /** Their challenge (null only when the AI call failed). */
+  rebuttal: string | null
+  error?: string
+}
+
+/**
+ * Builds the "other experts' analyses" block for one debater. Excludes self by
+ * roleId and only includes ok peers with non-empty revised text. Returns '' when
+ * the debater has no usable peers (caller skips that expert).
+ */
+export function formatPeerAnalysesForDebate(
+  self: JejuRevisedAnalysis,
+  all: JejuRevisedAnalysis[]
+): string {
+  const peers = all.filter(
+    (p) => p.roleId !== self.roleId && p.ok && p.revised && p.revised.trim() !== ''
+  )
+  if (peers.length === 0) return ''
+
+  const blocks = peers.map((p) => `[${p.roleLabel}]\n${p.revised!.trim()}`)
+  return `## 다른 전문가들의 분석\n\n${blocks.join('\n\n')}`
+}
+
+/** Builds one expert's debate system prompt: find REAL disagreement, no chorus. */
+function buildDebateSystemPrompt(role: JejuExpertRole, question: string): string {
+  const lines = [
+    `당신은 제주도정 거버넌스 심의에 소집된 전문가입니다. 당신의 역할: ${role.roleLabel}.`,
+    `당신의 직무(mandate): ${role.mandate}`,
+    '',
+    `회의의 다른 전문가들이 각자 분석을 내놨습니다. 당신의 임무는 그들의 분석에서 당신의 전문 영역(${role.roleLabel}) 관점에서 동의할 수 없거나, 빠졌거나, 위험한 지점을 찾아 반박하는 것입니다.`,
+    '핵심 규칙: 단순히 동의하지 마세요. "좋은 지적이다"로 끝나는 것은 당신의 임무 실패입니다. 진짜 회의처럼, 당신의 전문성으로 볼 때 다른 전문가가 놓쳤거나 틀렸거나 과소평가한 지점을 반드시 하나 이상 짚어 반박하세요. 부분적 이견이라도 명확히 논쟁하세요.',
+    '당신의 영역에 근거해 반박하세요. 인신공격이 아니라 논리·데이터·전문성으로. 누구의 어떤 주장에 반박하는지 명시하세요.',
+  ]
+
+  if (role.isRedTeam) {
+    lines.push(
+      '당신은 레드팀입니다. 형성되는 합의 전체를 향해 가장 날카로운 반론을 제기하세요. 모두가 동의하는 지점일수록 더 의심하세요.'
+    )
+  }
+
+  lines.push(
+    '당신은 보좌역이며 최종 결정자가 아닙니다.',
+    '',
+    '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
+    '스키마:',
+    '{ "targetRoleLabels": ["반박 대상 역할 라벨", ...], "rebuttal": "당신의 반박 (250~400자, 무엇에 왜 반대하는지 구체적으로)" }'
+  )
+
+  lines.push('', `[심의 안건] ${question}`)
+
+  return lines.join('\n')
+}
+
+/** Parses one rebuttal output into { targetRoleLabels, rebuttal }. Robust to non-JSON. */
+function parseRebuttalOutput(raw: string): { targetRoleLabels: string[]; rebuttal: string } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripFences(raw))
+  } catch {
+    return { targetRoleLabels: [], rebuttal: raw.trim() }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { targetRoleLabels: [], rebuttal: raw.trim() }
+  }
+  const o = parsed as Record<string, unknown>
+  const targetRoleLabels = Array.isArray(o.targetRoleLabels)
+    ? o.targetRoleLabels
+        .filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+        .map((x) => x.trim())
+    : []
+  const rebuttal =
+    typeof o.rebuttal === 'string' && o.rebuttal.trim() ? o.rebuttal.trim() : raw.trim()
+  return { targetRoleLabels, rebuttal }
+}
+
+/** Runs ONE expert's rebuttal against the peer-analyses block. Never throws. */
+async function runOneRebuttal(
+  self: JejuRevisedAnalysis,
+  role: JejuExpertRole,
+  question: string,
+  peerBlock: string
+): Promise<JejuRebuttal> {
+  const base = {
+    roleId: self.roleId,
+    roleLabel: self.roleLabel,
+    provider: self.provider,
+    isRedTeam: self.isRedTeam,
+  }
+
+  const userPrompt = [
+    '[거버넌스 질문]',
+    question,
+    '',
+    '[당신의 분석]',
+    self.revised ?? '(분석 없음)',
+    '',
+    peerBlock,
+    '',
+    '위 다른 전문가들의 분석을 검토하고, 당신의 영역에서 동의할 수 없는 지점을 반박하세요. 스키마에 맞는 순수 JSON만 출력하세요.',
+  ].join('\n')
+
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: role.provider,
+      prompt: userPrompt,
+      systemPrompt: buildDebateSystemPrompt(role, question),
+      maxCompletionTokens: DEBATE_MAX_TOKENS,
+    })
+  } catch (e: unknown) {
+    return {
+      ...base,
+      ok: false,
+      targetRoleLabels: [],
+      rebuttal: null,
+      error: `토론 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+
+  if (r.error || !r.text) {
+    return {
+      ...base,
+      ok: false,
+      targetRoleLabels: [],
+      rebuttal: null,
+      error: r.error ?? '전문가가 빈 반박 응답을 반환했습니다.',
+    }
+  }
+
+  const { targetRoleLabels, rebuttal } = parseRebuttalOutput(r.text)
+  return { ...base, ok: true, targetRoleLabels, rebuttal }
+}
+
+/**
+ * PIECE 3 — every expert challenges the others' revised analyses IN PARALLEL.
+ *
+ * Each debater gets the OTHER experts' analyses (self excluded) and is pushed to
+ * surface a real point of disagreement (anti-sycophancy prompt). An expert with
+ * no usable peers is skipped (ok:false + note). A failed revision can't debate.
+ * Never throws — a rejected rebuttal becomes an ok:false entry.
+ */
+export async function runDebateRound(params: {
+  question: string
+  roles: JejuExpertRole[]
+  revised: JejuRevisedAnalysis[]
+}): Promise<JejuRebuttal[]> {
+  const { question, roles, revised } = params
+  const rolesById = new Map(roles.map((role) => [role.roleId, role]))
+
+  const settled = await Promise.allSettled(
+    revised.map((self) => {
+      // A failed revision has no analysis to defend or debate from.
+      if (!self.ok || !self.revised || self.revised.trim() === '') {
+        const carried: JejuRebuttal = {
+          roleId: self.roleId,
+          roleLabel: self.roleLabel,
+          provider: self.provider,
+          isRedTeam: self.isRedTeam,
+          ok: false,
+          targetRoleLabels: [],
+          rebuttal: null,
+          error: self.error ?? '유효한 분석이 없어 토론에 참여할 수 없습니다.',
+        }
+        return Promise.resolve(carried)
+      }
+
+      const peerBlock = formatPeerAnalysesForDebate(self, revised)
+      if (peerBlock === '') {
+        const carried: JejuRebuttal = {
+          roleId: self.roleId,
+          roleLabel: self.roleLabel,
+          provider: self.provider,
+          isRedTeam: self.isRedTeam,
+          ok: false,
+          targetRoleLabels: [],
+          rebuttal: null,
+          error: '반박할 다른 전문가 분석이 없습니다(단독 분석).',
+        }
+        return Promise.resolve(carried)
+      }
+
+      const role =
+        rolesById.get(self.roleId) ??
+        ({
+          roleId: self.roleId,
+          roleLabel: self.roleLabel,
+          mandate: self.roleLabel,
+          provider: self.provider,
+          ...(self.isRedTeam ? { isRedTeam: true } : {}),
+        } as JejuExpertRole)
+      return runOneRebuttal(self, role, question, peerBlock)
+    })
+  )
+
+  return settled.map((res, i) => {
+    if (res.status === 'fulfilled') return res.value
+    const self = revised[i]!
+    return {
+      roleId: self.roleId,
+      roleLabel: self.roleLabel,
+      provider: self.provider,
+      isRedTeam: self.isRedTeam,
+      ok: false,
+      targetRoleLabels: [],
+      rebuttal: null,
+      error: res.reason instanceof Error ? res.reason.message : 'rebuttal rejected',
+    }
+  })
+}
+
+/** Full DEEP result through the debate round (beats 1 + 2 + 2.5 + 2.7 + 3). */
+export type JejuDeepWithDebate = JejuDeepFull & {
+  /** One rebuttal round: each expert challenges the others. */
+  debate: JejuRebuttal[]
+}
+
+/**
+ * Orchestrates the full DEEP pipeline through the debate round:
+ *   runJejuDeepFull → runDebateRound.
+ *
+ * The debate is ENRICHMENT: its failure does NOT fail the run; ok mirrors the
+ * analysis stage. Never throws; on a thrown error returns ok:false with whatever
+ * partial data exists.
+ */
+export async function runJejuDeepWithDebate(params?: {
+  question?: string
+  orchestratorProvider?: string
+}): Promise<JejuDeepWithDebate> {
+  const fullStage = await runJejuDeepFull(params)
+
+  const baseline: JejuDeepWithDebate = { ...fullStage, debate: [] }
+
+  // Nothing usable upstream → no debate.
+  if (!fullStage.ok) return baseline
+
+  try {
+    const debate = await runDebateRound({
+      question: fullStage.question,
+      roles: fullStage.plan.roles,
+      revised: fullStage.revised,
+    })
+    return { ...baseline, debate }
+  } catch (e: unknown) {
+    // Debate is enrichment — keep the (ok) earlier stages, note the error.
+    return {
+      ...baseline,
+      debate: [],
+      error: `토론 단계 실패(이전 결과는 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+}
