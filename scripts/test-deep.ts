@@ -14,6 +14,7 @@ import {
   planJejuMeeting,
   summarizeAvailableData,
   runJejuDeepThroughAnalysis,
+  runJejuDeepThroughSearch,
   type JejuMeetingPlan,
 } from '@/lib/jeju/deep'
 
@@ -90,6 +91,42 @@ async function main() {
     } else {
       console.log('\nsearch requests: (없음)')
     }
+  }
+
+  // ── PIECE 2.5: full run through Perplexity search execution ───────────────
+  console.log(`\n\n${'█'.repeat(70)}`)
+  console.log('FULL DEEP RUN + SEARCH (merge requests → execute via Perplexity)')
+  console.log(`Q: ${deepQuestion}`)
+  console.log('█'.repeat(70))
+
+  const withSearch = await runJejuDeepThroughSearch({ question: deepQuestion })
+  console.log('\noverall ok:        ', withSearch.ok)
+  console.log('analyses:          ', withSearch.analyses.length, '(ok:', withSearch.analyses.filter((a) => a.ok).length, ')')
+
+  const rawRequestCount = withSearch.analyses
+    .filter((a) => a.ok)
+    .reduce((sum, a) => sum + a.searchRequests.length, 0)
+  console.log('raw search requests (pre-merge):', rawRequestCount)
+  console.log('merged searches executed:       ', withSearch.searches.length, `(cap: 5)`)
+  console.log('dropped beyond cap:             ', withSearch.droppedSearchCount)
+  if (withSearch.error) console.log('error:             ', withSearch.error)
+
+  if (withSearch.searches.length > 5) {
+    console.log('\n⚠️  CAP VIOLATION: more than 5 Perplexity calls were executed!')
+  } else {
+    console.log(`\n✓ cap respected: ${withSearch.searches.length} ≤ 5 Perplexity calls`)
+  }
+
+  for (const s of withSearch.searches) {
+    console.log(`\n${'─'.repeat(70)}`)
+    console.log(`🔍 "${s.query}"   (ok: ${s.ok})`)
+    console.log(`   requestedBy: ${s.requestedBy.join(', ') || '(미상)'}`)
+    console.log('─'.repeat(70))
+    if (!s.ok) {
+      console.log('error:', s.error)
+      continue
+    }
+    console.log(s.result)
   }
 
   console.log(`\n${'═'.repeat(70)}`)

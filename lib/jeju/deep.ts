@@ -658,3 +658,297 @@ export async function runJejuDeepThroughAnalysis(params?: {
     }
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PIECE 2.5 — actually EXECUTE the experts' search requests via Perplexity.
+//
+// Piece 2 only CAPTURED what each expert still needed. Here we (1) collect every
+// request, (2) MERGE near-duplicates so we never pay for the same search twice,
+// (3) execute up to a HARD CAP of MAX_SEARCHES real-time searches via Perplexity,
+// (4) return the results for a later piece to feed back into a 2nd-pass analysis.
+//
+// ⚠️ COST CONTROL: Perplexity search billing comes out of our platform credit.
+// The dedup/merge step and the MAX_SEARCHES cap are MANDATORY — do not exceed.
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hard cap on Perplexity calls per DEEP run. Each call costs real money from our
+ * platform credit, so this ceiling is a non-negotiable cost control. The merge
+ * step targets ≤ this many queries; executeJejuSearches enforces it again
+ * defensively.
+ */
+const MAX_SEARCHES = 5
+
+/** Token budgets for the (cheap) merge call and each Perplexity search summary. */
+const MERGE_MAX_TOKENS = 800
+const SEARCH_MAX_TOKENS = 700
+
+/** One executed (post-merge) search and its Perplexity result. */
+export type JejuExecutedSearch = {
+  /** The (possibly merged) query actually run. */
+  query: string
+  /** roleLabels that wanted this query (post-merge). */
+  requestedBy: string[]
+  ok: boolean
+  /** Perplexity's answer text (null when the call failed). */
+  result: string | null
+  error?: string
+}
+
+/** A merged search topic: one query + the roles that asked for it. */
+type MergedSearch = { query: string; requestedBy: string[] }
+
+/** Flattened raw request (one per expert ask), tagged with the asking role. */
+type TaggedRequest = { roleLabel: string; query: string; reason: string }
+
+/** Collects every search request from ok analyses, tagged with its roleLabel. */
+function collectRequests(analyses: JejuRoleAnalysis[]): TaggedRequest[] {
+  const out: TaggedRequest[] = []
+  for (const a of analyses) {
+    if (!a.ok) continue
+    for (const sr of a.searchRequests) {
+      out.push({ roleLabel: a.roleLabel, query: sr.query, reason: sr.reason })
+    }
+  }
+  return out
+}
+
+/**
+ * Fallback merge (no AI / AI returned junk): dedupe raw requests by exact query
+ * string (case-insensitive trim), union the requesting roles, then truncate to
+ * MAX_SEARCHES. droppedCount = distinct topics beyond the cap.
+ */
+function fallbackMerge(requests: TaggedRequest[]): {
+  merged: MergedSearch[]
+  droppedCount: number
+} {
+  const byQuery = new Map<string, MergedSearch>()
+  for (const r of requests) {
+    const key = r.query.trim().toLowerCase()
+    if (!key) continue
+    const existing = byQuery.get(key)
+    if (existing) {
+      if (!existing.requestedBy.includes(r.roleLabel)) existing.requestedBy.push(r.roleLabel)
+    } else {
+      byQuery.set(key, { query: r.query.trim(), requestedBy: [r.roleLabel] })
+    }
+  }
+  const all = [...byQuery.values()]
+  const merged = all.slice(0, MAX_SEARCHES)
+  return { merged, droppedCount: Math.max(0, all.length - merged.length) }
+}
+
+/** Validates one merged entry from the merge AI; returns null if unusable. */
+function normalizeMerged(raw: unknown): MergedSearch | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const query = typeof o.query === 'string' ? o.query.trim() : ''
+  if (!query) return null
+  const requestedBy = Array.isArray(o.requestedBy)
+    ? o.requestedBy.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map((x) => x.trim())
+    : []
+  return { query, requestedBy }
+}
+
+/** Merge-AI system prompt: group similar requests, ≤MAX_SEARCHES, raw JSON only. */
+function buildMergeSystemPrompt(): string {
+  return [
+    '당신은 제주도정 거버넌스 심의의 검색 요청을 정리하는 조정자입니다.',
+    '여러 전문가가 외부 정보 검색을 요청했습니다. 당신의 임무:',
+    '- 의미가 비슷한 요청들을 하나의 통합 검색어로 묶으세요(중복 검색 비용 방지).',
+    '- 검색어는 간결하고 검색에 적합하게 다듬으세요.',
+    '- 각 통합 검색어에 대해 그것을 요청한 전문가 역할(roleLabel)들을 보존하세요.',
+    `- 통합 결과는 최대 ${MAX_SEARCHES}개까지만. 서로 다른 주제가 ${MAX_SEARCHES}개를 넘으면,`,
+    '  의사결정에 가장 중요한 것 위주로 남기고 나머지는 버리세요.',
+    '',
+    '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
+    '스키마:',
+    '{ "merged": [ { "query": "통합 검색어", "requestedBy": ["역할A","역할B"] } ] }',
+  ].join('\n')
+}
+
+/**
+ * Collects all experts' search requests and merges near-duplicates into at most
+ * MAX_SEARCHES queries (cost control). Uses a cheap anthropic call to group
+ * semantically; falls back to exact-query dedup + truncation if that call fails
+ * or returns junk. Returns the merged list + how many distinct topics were
+ * dropped beyond the cap (for later UI transparency). Never throws.
+ */
+export async function mergeSearchRequests(params: {
+  analyses: JejuRoleAnalysis[]
+}): Promise<{ merged: MergedSearch[]; droppedCount: number }> {
+  const requests = collectRequests(params.analyses)
+  if (requests.length === 0) return { merged: [], droppedCount: 0 }
+
+  const userPrompt = [
+    '[검색 요청 목록]',
+    ...requests.map(
+      (r, i) => `${i + 1}. (요청자: ${r.roleLabel}) 검색어: ${r.query} / 이유: ${r.reason}`
+    ),
+    '',
+    `위 요청들을 의미별로 통합하여 최대 ${MAX_SEARCHES}개의 검색어로 정리하세요. 스키마에 맞는 순수 JSON만 출력하세요.`,
+  ].join('\n')
+
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: 'anthropic',
+      prompt: userPrompt,
+      systemPrompt: buildMergeSystemPrompt(),
+      maxCompletionTokens: MERGE_MAX_TOKENS,
+    })
+  } catch {
+    return fallbackMerge(requests)
+  }
+
+  if (r.error || !r.text) return fallbackMerge(requests)
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripFences(r.text))
+  } catch {
+    return fallbackMerge(requests)
+  }
+  if (!parsed || typeof parsed !== 'object') return fallbackMerge(requests)
+
+  const rawMerged = (parsed as Record<string, unknown>).merged
+  if (!Array.isArray(rawMerged) || rawMerged.length === 0) return fallbackMerge(requests)
+
+  const normalized: MergedSearch[] = []
+  for (const m of rawMerged) {
+    const nm = normalizeMerged(m)
+    if (nm) normalized.push(nm)
+  }
+  if (normalized.length === 0) return fallbackMerge(requests)
+
+  // Enforce the cap even if the AI ignored it; count distinct topics dropped.
+  const capped = normalized.slice(0, MAX_SEARCHES)
+  const droppedCount = Math.max(0, normalized.length - capped.length)
+  return { merged: capped, droppedCount }
+}
+
+/** Perplexity search-specialist system prompt (concise Korean summary + sources). */
+function buildSearchSystemPrompt(): string {
+  return '당신은 제주도정 거버넌스 심의를 지원하는 검색 전문가입니다. 주어진 질의에 대해 최신·신뢰할 수 있는 외부 정보를 찾아 핵심만 간결하게(200~350자) 한국어로 요약하세요. 출처가 있으면 함께 제시하세요. 추측하지 말고, 찾은 정보가 없으면 없다고 하세요.'
+}
+
+/** Runs ONE Perplexity search. Never throws. */
+async function runOneSearch(item: MergedSearch): Promise<JejuExecutedSearch> {
+  const base = { query: item.query, requestedBy: item.requestedBy }
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: 'perplexity',
+      prompt: item.query,
+      systemPrompt: buildSearchSystemPrompt(),
+      maxCompletionTokens: SEARCH_MAX_TOKENS,
+    })
+  } catch (e: unknown) {
+    return {
+      ...base,
+      ok: false,
+      result: null,
+      error: `검색 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+
+  if (r.error || !r.text) {
+    return { ...base, ok: false, result: null, error: r.error ?? '검색 결과가 비어 있습니다.' }
+  }
+  return { ...base, ok: true, result: r.text }
+}
+
+/**
+ * Executes the merged searches via Perplexity IN PARALLEL.
+ *
+ * ⚠️ COST CONTROL: only the first MAX_SEARCHES entries are run (defensive — merge
+ * already caps). Each is a real Perplexity call billed to platform credit.
+ * Never throws; a rejected/empty search becomes an ok:false entry.
+ */
+export async function executeJejuSearches(params: {
+  merged: MergedSearch[]
+}): Promise<JejuExecutedSearch[]> {
+  const toRun = params.merged.slice(0, MAX_SEARCHES)
+  if (toRun.length === 0) return []
+
+  const settled = await Promise.allSettled(toRun.map((item) => runOneSearch(item)))
+
+  return settled.map((res, i) => {
+    if (res.status === 'fulfilled') return res.value
+    const item = toRun[i]!
+    return {
+      query: item.query,
+      requestedBy: item.requestedBy,
+      ok: false,
+      result: null,
+      error: res.reason instanceof Error ? res.reason.message : 'search rejected',
+    }
+  })
+}
+
+/** Full DEEP result through the search-execution stage (beats 1 + 2 + 2.5). */
+export type JejuDeepThroughSearch = {
+  ok: boolean
+  question: string
+  snapshot: JejuSnapshot
+  context: string
+  plan: JejuMeetingPlan
+  analyses: JejuRoleAnalysis[]
+  searches: JejuExecutedSearch[]
+  /** Distinct search topics dropped beyond MAX_SEARCHES (transparency). */
+  droppedSearchCount: number
+  error?: string
+}
+
+/**
+ * Orchestrates beats 1 + 2 + 2.5 end-to-end:
+ *   runJejuDeepThroughAnalysis → mergeSearchRequests → executeJejuSearches.
+ *
+ * Searches are ENRICHMENT: a failed/empty search stage does NOT fail the run.
+ * ok mirrors the analysis stage (≥1 ok analysis). Never throws; on a thrown
+ * error returns ok:false with whatever partial data exists.
+ */
+export async function runJejuDeepThroughSearch(params?: {
+  question?: string
+  orchestratorProvider?: string
+}): Promise<JejuDeepThroughSearch> {
+  const analysisStage = await runJejuDeepThroughAnalysis(params)
+
+  const baseline: JejuDeepThroughSearch = {
+    ok: analysisStage.ok,
+    question: analysisStage.question,
+    snapshot: analysisStage.snapshot,
+    context: analysisStage.context,
+    plan: analysisStage.plan,
+    analyses: analysisStage.analyses,
+    searches: [],
+    droppedSearchCount: 0,
+    ...(analysisStage.error ? { error: analysisStage.error } : {}),
+  }
+
+  // If the analysis stage produced nothing usable, there's nothing to search for.
+  if (!analysisStage.ok) return baseline
+
+  try {
+    const { merged, droppedCount } = await mergeSearchRequests({ analyses: analysisStage.analyses })
+    if (merged.length === 0) {
+      return { ...baseline, searches: [], droppedSearchCount: droppedCount }
+    }
+    const searches = await executeJejuSearches({ merged })
+    return { ...baseline, searches, droppedSearchCount: droppedCount }
+  } catch (e: unknown) {
+    // Search is enrichment — keep the (ok) analysis result, note the search error.
+    return {
+      ...baseline,
+      searches: [],
+      droppedSearchCount: 0,
+      error: `검색 실행 실패(분석 결과는 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+}
