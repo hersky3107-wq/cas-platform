@@ -43,3 +43,6 @@ next-env.d.ts
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# local test-capture output (never commit)
+scripts/last-deep-run.txt

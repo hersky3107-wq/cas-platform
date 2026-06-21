@@ -14,7 +14,7 @@ import {
   planJejuMeeting,
   summarizeAvailableData,
   runJejuDeepThroughAnalysis,
-  runJejuDeepOneConvergenceRound,
+  runJejuDeepThroughDeliberation,
   type JejuMeetingPlan,
 } from '@/lib/jeju/deep'
 
@@ -93,13 +93,13 @@ async function main() {
     }
   }
 
-  // ── PIECE 2.5 + 2.7 + 3 + 3.5: full pipeline (search → revise → debate → CONVERGE) ─
+  // ── PIECE 2.5 + 2.7 + 3 + 3.5 + 3.6: full pipeline (… → DELIBERATE N rounds) ─
   console.log(`\n\n${'█'.repeat(70)}`)
-  console.log('FULL DEEP RUN (orchestrate → analyze → search → revise → debate → CONVERGE)')
+  console.log('FULL DEEP RUN (orchestrate → analyze → search → revise → debate → DELIBERATE)')
   console.log(`Q: ${deepQuestion}`)
   console.log('█'.repeat(70))
 
-  const full = await runJejuDeepOneConvergenceRound({ question: deepQuestion })
+  const full = await runJejuDeepThroughDeliberation({ question: deepQuestion })
   console.log('\noverall ok:        ', full.ok)
   console.log('analyses:          ', full.analyses.length, '(ok:', full.analyses.filter((a) => a.ok).length, ')')
 
@@ -171,50 +171,35 @@ async function main() {
     console.log(d.rebuttal ?? '(없음)')
   }
 
-  // ── PIECE 3.5: ONE convergence round — concede AND hold, partial consensus? ─
-  const round = full.round1
-  const okTurns = round.turns.filter((t) => t.ok)
-  const bothCount = okTurns.filter(
-    (t) => t.concedes && t.concedes.trim() !== '' && t.holds && t.holds.trim() !== ''
-  ).length
+  // ── PIECE 3.6: looped deliberation — does consensus CLIMB across rounds? ───
+  const delib = full.deliberation
   console.log(`\n\n${'═'.repeat(70)}`)
-  console.log(`CONVERGENCE ROUND ${round.roundNumber} — ${bothCount}/${okTurns.length} experts BOTH conceded AND held`)
-  console.log(`consensus score: ${round.consensusScore === -1 ? '측정 불가 (-1)' : round.consensusScore + ' / 100'}`)
+  console.log('DELIBERATION (looped convergence rounds)')
   console.log('═'.repeat(70))
-  if (round.error) console.log('round error:', round.error)
 
-  for (const t of round.turns) {
-    console.log(`\n${'─'.repeat(70)}`)
-    console.log(`${t.roleLabel}  →  ${t.provider}${t.isRedTeam ? '  [RED TEAM]' : ''}`)
-    console.log(`ok: ${t.ok}`)
-    if (!t.ok) {
-      console.log('error:', t.error)
-      continue
-    }
-    const hasConcede = !!(t.concedes && t.concedes.trim() !== '')
-    const hasHold = !!(t.holds && t.holds.trim() !== '')
-    const health =
-      hasConcede && hasHold
-        ? '✓ 건강한 중간 (수용+견지 모두)'
-        : hasConcede
-          ? '⚠️ 수용만 (성급한 합의 위험)'
-          : hasHold
-            ? '⚠️ 견지만 (고집 위험)'
-            : '⚠️ 수용·견지 모두 없음'
-    console.log(`판정: ${health}`)
-    console.log('─'.repeat(70))
-    console.log('[입장] ', t.position ?? '(없음)')
-    console.log('[수용] ', hasConcede ? t.concedes : '(없음)')
-    console.log('[견지] ', hasHold ? t.holds : '(없음)')
+  // The headline: per-round score progression (should climb, e.g. 45 → 62 → 78).
+  console.log('\n[라운드별 합의 점수 진행]')
+  let prev: number | null = null
+  for (const r of delib.rounds) {
+    const score = r.consensusScore === -1 ? '측정불가' : `${r.consensusScore}`
+    const delta = prev != null && r.consensusScore !== -1 ? ` (Δ${r.consensusScore - prev >= 0 ? '+' : ''}${r.consensusScore - prev})` : ''
+    const oneLine = (r.summary || '(요약 없음)').replace(/\s+/g, ' ').slice(0, 90)
+    console.log(`  R${r.roundNumber}: ${score}/100${delta}  — ${oneLine}`)
+    if (r.consensusScore !== -1) prev = r.consensusScore
   }
 
+  console.log(`\nroundsRun:     ${delib.roundsRun}`)
+  console.log(`stoppedReason: ${delib.stoppedReason}`)
+  console.log(`finalScore:    ${delib.finalScore === -1 ? '측정 불가 (-1)' : delib.finalScore + ' / 100'}`)
+  if (delib.error) console.log(`error:         ${delib.error}`)
+
   console.log(`\n${'═'.repeat(70)}`)
-  console.log('합의된 지점 (agreedPoints):')
-  for (const p of round.agreedPoints) console.log(`  • ${p}`)
-  console.log('\n쟁점 (contestedPoints):')
-  for (const p of round.contestedPoints) console.log(`  • ${p}`)
-  console.log('\n[라운드 요약]')
-  console.log(round.summary || '(없음)')
+  console.log('최종 합의된 지점 (agreedPoints):')
+  for (const p of delib.agreedPoints) console.log(`  • ${p}`)
+  console.log('\n최종 잔존 쟁점 (contestedPoints → 소수의견 후보):')
+  for (const p of delib.contestedPoints) console.log(`  • ${p}`)
+  console.log('\n[최종 라운드 요약]')
+  console.log(delib.summary || '(없음)')
 
   console.log(`\n${'═'.repeat(70)}`)
   console.log('Done.')

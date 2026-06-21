@@ -2022,3 +2022,192 @@ export async function runJejuDeepOneConvergenceRound(params?: {
     }
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PIECE 3.6 — LOOP the convergence round so consensus climbs gradually.
+//
+// One round landed at ~62 (facts converged, policy still split). A real
+// intellectual-consensus body needs several exchanges to climb (e.g. 45→62→78→
+// 85). But we must control cost/time and avoid pointless rounds, so we loop with
+// SMART STOPPING: enough rounds to genuinely converge, stop early when consensus
+// is high (target) OR when it stalls (no meaningful gain).
+// ════════════════════════════════════════════════════════════════════════════
+
+/** A real deliberation needs at least a few exchanges — never stop before this (no premature peace). */
+const MIN_CONVERGENCE_ROUNDS = 3
+/** Hard cap on rounds (cost/time control). */
+const MAX_CONVERGENCE_ROUNDS = 5
+/** Stop early once consensus reaches this score. */
+const CONSENSUS_TARGET = 85
+/** After the minimum, if a round's gain drops below this, stop — nothing more to squeeze. */
+const STALL_DELTA = 4
+
+/** Why the deliberation loop stopped. */
+export type JejuDeliberationStopReason = 'target_reached' | 'stalled' | 'max_rounds' | 'error'
+
+/** A full multi-round deliberation: every round + the final converged state. */
+export type JejuDeliberation = {
+  /** Every round in order. */
+  rounds: JejuRoundResult[]
+  /** Consensus after the last round run. */
+  finalScore: number
+  roundsRun: number
+  stoppedReason: JejuDeliberationStopReason
+  /** From the final round. */
+  agreedPoints: string[]
+  /** From the final round (→ minority-report seeds). */
+  contestedPoints: string[]
+  /** Final round's summary. */
+  summary: string
+  ok: boolean
+  error?: string
+}
+
+/** Builds the final JejuDeliberation from the rounds run so far + a stop reason. */
+function buildDeliberationResult(
+  rounds: JejuRoundResult[],
+  stoppedReason: JejuDeliberationStopReason,
+  error?: string
+): JejuDeliberation {
+  const last = rounds.length > 0 ? rounds[rounds.length - 1]! : undefined
+  const ok = rounds.some((r) => r.ok && r.consensusScore !== CONSENSUS_SCORE_UNAVAILABLE)
+  return {
+    rounds,
+    finalScore: last ? last.consensusScore : CONSENSUS_SCORE_UNAVAILABLE,
+    roundsRun: rounds.length,
+    stoppedReason,
+    agreedPoints: last ? last.agreedPoints : [],
+    contestedPoints: last ? last.contestedPoints : [],
+    summary: last ? last.summary : '',
+    ok,
+    ...(error ? { error } : {}),
+  }
+}
+
+/**
+ * PIECE 3.6 — loops runDeliberationRound until consensus converges, stalls, or
+ * hits the round cap. Round 1 is seeded from the revised analyses; each later
+ * round feeds on the previous round's turns.
+ *
+ * Stopping (evaluated only AFTER a completed round):
+ *   - round failed OR score unmeasurable (-1) → stop 'error' (keep prior rounds)
+ *   - at/after MIN_CONVERGENCE_ROUNDS:
+ *       score >= CONSENSUS_TARGET            → stop 'target_reached'
+ *       gain since prev round < STALL_DELTA  → stop 'stalled'
+ *   - roundNumber >= maxRounds               → stop 'max_rounds'
+ * The MINIMUM is enforced: never stop before MIN_CONVERGENCE_ROUNDS even if an
+ * early round scores high (prevents premature "peace!"). Never throws.
+ */
+export async function runDeliberation(params: {
+  question: string
+  roles: JejuExpertRole[]
+  seedAnalyses: JejuRevisedAnalysis[]
+  maxRounds?: number
+}): Promise<JejuDeliberation> {
+  const { question, roles, seedAnalyses } = params
+  const maxRounds = Math.max(
+    MIN_CONVERGENCE_ROUNDS,
+    Math.min(MAX_CONVERGENCE_ROUNDS, params.maxRounds ?? MAX_CONVERGENCE_ROUNDS)
+  )
+
+  const rounds: JejuRoundResult[] = []
+
+  try {
+    for (let roundNumber = 1; roundNumber <= maxRounds; roundNumber++) {
+      const priorTurns = roundNumber > 1 ? rounds[rounds.length - 1]!.turns : []
+      const round = await runDeliberationRound({
+        question,
+        roles,
+        roundNumber,
+        priorTurns,
+        ...(roundNumber === 1 ? { seedAnalyses } : {}),
+      })
+      rounds.push(round)
+
+      // A broken round (no valid turns or unmeasurable score) ends the loop.
+      if (!round.ok || round.consensusScore === CONSENSUS_SCORE_UNAVAILABLE) {
+        return buildDeliberationResult(rounds, 'error', round.error ?? '라운드 측정 실패로 토론을 중단합니다.')
+      }
+
+      // Enforce the minimum — no early stop before a real deliberation has happened.
+      if (roundNumber >= MIN_CONVERGENCE_ROUNDS) {
+        if (round.consensusScore >= CONSENSUS_TARGET) {
+          return buildDeliberationResult(rounds, 'target_reached')
+        }
+        const prevScore = rounds[rounds.length - 2]?.consensusScore ?? round.consensusScore
+        if (round.consensusScore - prevScore < STALL_DELTA) {
+          return buildDeliberationResult(rounds, 'stalled')
+        }
+      }
+
+      if (roundNumber >= maxRounds) {
+        return buildDeliberationResult(rounds, 'max_rounds')
+      }
+    }
+
+    // Loop exhausted the cap without an earlier explicit stop.
+    return buildDeliberationResult(rounds, 'max_rounds')
+  } catch (e: unknown) {
+    return buildDeliberationResult(
+      rounds,
+      'error',
+      `토론 루프 실패: ${e instanceof Error ? e.message : 'unknown error'}`
+    )
+  }
+}
+
+/** Full DEEP result through the multi-round deliberation (beats 1–3.6). */
+export type JejuDeepThroughDeliberation = JejuDeepWithDebate & {
+  /** The looped multi-round deliberation result. */
+  deliberation: JejuDeliberation
+}
+
+/**
+ * Orchestrates the full DEEP pipeline through the looped deliberation:
+ *   runJejuDeepWithDebate → runDeliberation(seeded from revised).
+ *
+ * The deliberation is the core, but its failure shouldn't crash the pipeline;
+ * ok mirrors the analysis stage. Never throws; partial data on error.
+ */
+export async function runJejuDeepThroughDeliberation(params?: {
+  question?: string
+  orchestratorProvider?: string
+  maxRounds?: number
+}): Promise<JejuDeepThroughDeliberation> {
+  const debateStage = await runJejuDeepWithDebate(params)
+
+  const emptyDeliberation: JejuDeliberation = {
+    rounds: [],
+    finalScore: CONSENSUS_SCORE_UNAVAILABLE,
+    roundsRun: 0,
+    stoppedReason: 'error',
+    agreedPoints: [],
+    contestedPoints: [],
+    summary: '',
+    ok: false,
+    error: '상위 단계가 유효하지 않아 토론을 건너뜁니다.',
+  }
+
+  const baseline: JejuDeepThroughDeliberation = { ...debateStage, deliberation: emptyDeliberation }
+
+  // Nothing usable upstream → no deliberation.
+  if (!debateStage.ok) return baseline
+
+  try {
+    const deliberation = await runDeliberation({
+      question: debateStage.question,
+      roles: debateStage.plan.roles,
+      seedAnalyses: debateStage.revised,
+      ...(params?.maxRounds !== undefined ? { maxRounds: params.maxRounds } : {}),
+    })
+    return { ...baseline, deliberation }
+  } catch (e: unknown) {
+    return {
+      ...baseline,
+      deliberation: {
+        ...emptyDeliberation,
+        error: `토론 단계 실패(이전 결과는 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
+      },
+    }
+  }
+}
