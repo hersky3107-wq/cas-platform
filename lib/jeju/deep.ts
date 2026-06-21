@@ -2211,3 +2211,429 @@ export async function runJejuDeepThroughDeliberation(params?: {
     }
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PIECE 4 — the CHAIR's final judgment (beat 4: the one-page verdict).
+//
+// The most important piece. The chair is a JUDGE, not a summarizer. It reads the
+// WHOLE case file (collection → analyses → search → revisions → debate →
+// convergence) and renders a responsible final ruling that officials will act on.
+//
+// ⚠️ The chair carries real responsibility:
+//   • Strongest available model — provider 'anthropic' (Claude Opus 4.8, current
+//     top model). Documented here so the choice is intentional, not incidental.
+//   • It reads the FULL deliberation, not a digest.
+//   • CONSENSUS-WEIGHTED: high consensus → confirm & sharpen; low consensus
+//     (esp. < 70) → the chair must TAKE RESPONSIBILITY and rule like a court,
+//     not hide behind "the experts disagreed". Lower consensus = heavier duty.
+//   • It stays an ADVISOR — the disclaimer makes the human official the decider.
+// ════════════════════════════════════════════════════════════════════════════
+
+// A full one-pager verdict has SIX sections; the judgment alone can run long, so
+// give generous headroom — too small truncates before the 마이너리티 리포트 (the
+// dissent) is ever written, which is exactly the section officials must not lose.
+// (Even so, a verbose judge can overflow, so renderChairVerdict ALSO reconstructs
+// the 마이너리티 리포트 from the deliberation's contestedPoints as a fallback.)
+const VERDICT_MAX_TOKENS = 6000
+
+/** The default disclaimer appended when the chair omits its own 참고 사항 section. */
+const DEFAULT_DISCLAIMER =
+  '본 판단은 AI 다중 분석·토론에 기반한 보좌 의견입니다. 전적으로 신뢰하지 마시고 참고 자료로 활용하시되, 최종 정책 결정과 책임은 담당 공무원에게 있습니다.'
+
+/** The chair's final, structured verdict — the deliverable officials read. */
+export type JejuVerdict = {
+  ok: boolean
+  /** The chair's final ruling + reasoning (the heart). */
+  judgment: string | null
+  /** Brief: what data was collected (beat 1). */
+  beat1Summary: string | null
+  /** Brief: what the experts analyzed + searched (beat 2). */
+  beat2Summary: string | null
+  /** Proper summary: how the debate/convergence went (beat 3). */
+  beat3Summary: string | null
+  /** The honestly-preserved dissent (English label, Korean content). */
+  minorityReport: string | null
+  /** Carried from the deliberation. */
+  consensusScore: number
+  /** The "참고용, 최종판단은 사람" note. */
+  disclaimer: string
+  provider: string
+  error?: string
+}
+
+/** Builds the chair (judge) system prompt; instruction weight scales with (low) consensus. */
+function buildChairSystemPrompt(consensusScore: number): string {
+  const lines = [
+    '당신은 제주도정 거버넌스 심의의 최종 의장(chair)이자 판결자입니다.',
+    '당신은 단순 요약가가 아니라, 법원의 재판관에 가까운 역할입니다. 수집된 데이터, 전문가들의 분석과 조사, 그리고 여러 라운드의 토론·합의 과정을 모두 읽고, 가장 최적이며 확실한 최종 판단을 책임지고 내려야 합니다. 당신의 판단에 따라 공무원이 실제로 정책을 집행합니다.',
+  ]
+
+  // Consensus-weighted responsibility: the lower the score, the heavier the duty.
+  if (consensusScore >= CONSENSUS_TARGET) {
+    lines.push(
+      `전문가들의 합의도는 ${consensusScore}점으로 높습니다. 전문가들이 대체로 합의했으므로, 그 합의를 확정하고 날카롭게 다듬으십시오.`
+    )
+  } else if (consensusScore < 70 && consensusScore >= 0) {
+    lines.push(
+      `전문가들이 완전히 합의하지 못했습니다(합의도 ${consensusScore}점, 70점 미만). 바로 이럴 때 당신의 판단이 가장 중요합니다. "전문가들이 갈렸다"로 회피하는 것은 직무 유기입니다. 흩어진 근거들을 저울질하여, 당신이 방어할 수 있는 가장 타당하고 확실한 단일 결론을 책임지고 판결하십시오. 모호한 양비론이 아니라, 공무원이 곧바로 집행할 수 있는 분명한 방향을 제시해야 합니다.`
+    )
+  } else {
+    lines.push(
+      `전문가들이 완전히 합의하지 못했습니다(합의도 ${consensusScore === CONSENSUS_SCORE_UNAVAILABLE ? '측정 불가' : consensusScore + '점'}). 바로 이럴 때 당신의 판단이 가장 중요합니다. "전문가들이 갈렸다"로 회피하지 말고, 근거를 들어 가장 타당한 결론을 책임지고 판결하십시오.`
+    )
+  }
+
+  lines.push(
+    '',
+    '아래 구조를 정확히 따르되, 각 절은 한국어 산문으로 작성하십시오. 각 절은 반드시 "## " 머리말로 시작하세요.',
+    '분량 배분(중요): "## 최종 판단"에 가장 큰 비중을 두되, 요약 절(수집 데이터/전문가 분석·조사/토론·합의 과정)은 각각 핵심만 간결하게 쓰고, 반드시 마지막 "## 마이너리티 리포트"와 "## 참고 사항"까지 빠짐없이 작성하십시오. 중간에서 분량이 소진되어 소수의견이 누락되는 일이 없도록 하십시오.',
+    '',
+    '## 최종 판단',
+    '당신의 결론(판결)과 그 이유. 이 심의의 가장 중요한 부분입니다. 결단력 있고 방어 가능하게, 공무원이 집행할 수 있는 분명한 방향으로 쓰십시오.',
+    '',
+    '## 수집 데이터 요약',
+    '이 판단의 근거가 된 데이터를 간결하게(beat 1).',
+    '',
+    '## 전문가 분석·조사 요약',
+    '전문가들이 무엇을 검토했고 외부 조사가 무엇을 더했는지 간결하게(beat 2).',
+    '',
+    '## 토론·합의 과정',
+    '토론이 어떻게 수렴했는지에 대한 제대로 된 요약(beat 3). 합의 점수, 어디에 안착했고 왜 그랬는지 설명하십시오.',
+    '',
+    '## 마이너리티 리포트',
+    '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하여, 무엇이 합의되지 못했는지 공무원이 분명히 알 수 있게 하십시오.',
+    '',
+    '## 참고 사항',
+    DEFAULT_DISCLAIMER,
+    '',
+    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 데이터 부재로 해소되지 못한 쟁점은 그렇다고 솔직히 밝히십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
+  )
+
+  return lines.join('\n')
+}
+
+/** Renders the per-round deliberation transcript into a Korean block for the chair. */
+function formatDeliberationForChair(deliberation: JejuDeliberation): string {
+  const blocks: string[] = []
+  for (const round of deliberation.rounds) {
+    const scoreLabel =
+      round.consensusScore === CONSENSUS_SCORE_UNAVAILABLE ? '측정 불가' : `${round.consensusScore}점`
+    const turnLines = round.turns
+      .filter((t) => t.ok && t.position && t.position.trim() !== '')
+      .map((t) => {
+        const tag = t.isRedTeam ? ' [레드팀]' : ''
+        const parts = [`- [${t.roleLabel}]${tag} 입장: ${t.position!.trim()}`]
+        if (t.concedes && t.concedes.trim() !== '') parts.push(`  수용: ${t.concedes.trim()}`)
+        if (t.holds && t.holds.trim() !== '') parts.push(`  견지: ${t.holds.trim()}`)
+        return parts.join('\n')
+      })
+    blocks.push(
+      [`### 라운드 ${round.roundNumber} (합의도 ${scoreLabel})`, ...turnLines].join('\n')
+    )
+  }
+
+  const tail = [
+    '### 최종 수렴 상태',
+    `합의 점수: ${deliberation.finalScore === CONSENSUS_SCORE_UNAVAILABLE ? '측정 불가' : deliberation.finalScore + '점'} (${deliberation.roundsRun}개 라운드, 종료사유: ${deliberation.stoppedReason})`,
+    deliberation.agreedPoints.length > 0
+      ? `합의된 지점:\n${deliberation.agreedPoints.map((p) => `  • ${p}`).join('\n')}`
+      : '합의된 지점: (없음)',
+    deliberation.contestedPoints.length > 0
+      ? `잔존 쟁점:\n${deliberation.contestedPoints.map((p) => `  • ${p}`).join('\n')}`
+      : '잔존 쟁점: (없음)',
+    deliberation.summary ? `최종 요약: ${deliberation.summary}` : '',
+  ]
+    .filter((s) => s !== '')
+    .join('\n')
+
+  return [...blocks, tail].join('\n\n')
+}
+
+/** Renders revised analyses + their first-pass into a Korean block for the chair. */
+function formatAnalysesForChair(revised: JejuRevisedAnalysis[]): string {
+  const usable = revised.filter((r) => r.ok && r.revised && r.revised.trim() !== '')
+  if (usable.length === 0) return '(유효한 전문가 분석 없음)'
+  return usable
+    .map((r) => {
+      const tag = r.isRedTeam ? ' [레드팀]' : ''
+      return `[${r.roleLabel}]${tag} (${r.provider})\n${r.revised!.trim()}`
+    })
+    .join('\n\n')
+}
+
+/** Renders executed searches into a Korean block for the chair. */
+function formatSearchesForChair(searches: JejuExecutedSearch[]): string {
+  const usable = searches.filter((s) => s.ok && s.result && s.result.trim() !== '')
+  if (usable.length === 0) return '(외부 조사 결과 없음)'
+  return usable.map((s, i) => `[조사${i + 1}] ${s.query}\n${s.result!.trim()}`).join('\n\n')
+}
+
+/** Renders the debate rebuttals into a Korean block for the chair. */
+function formatRebuttalsForChair(rebuttals: JejuRebuttal[]): string {
+  const usable = rebuttals.filter((d) => d.ok && d.rebuttal && d.rebuttal.trim() !== '')
+  if (usable.length === 0) return '(반박 없음)'
+  return usable
+    .map((d) => {
+      const tag = d.isRedTeam ? ' [레드팀]' : ''
+      const targets = d.targetRoleLabels.length > 0 ? d.targetRoleLabels.join(', ') : '(대상 미지정)'
+      return `[${d.roleLabel}]${tag} → ${targets}\n${d.rebuttal!.trim()}`
+    })
+    .join('\n\n')
+}
+
+/** Maps a section heading to its JejuVerdict field. Returns null for unknown headings. */
+function chairSectionField(
+  heading: string
+): 'judgment' | 'beat1Summary' | 'beat2Summary' | 'beat3Summary' | 'minorityReport' | 'disclaimer' | null {
+  const h = heading.trim().toLowerCase()
+  if (h.includes('최종 판단') || h.includes('최종판단')) return 'judgment'
+  if (h.includes('수집 데이터') || h.includes('수집데이터')) return 'beat1Summary'
+  if (h.includes('전문가 분석') || h.includes('분석·조사') || h.includes('분석/조사')) return 'beat2Summary'
+  if (h.includes('토론') || h.includes('합의 과정') || h.includes('합의과정')) return 'beat3Summary'
+  if (h.includes('minority') || h.includes('마이너리티')) return 'minorityReport'
+  if (h.includes('참고')) return 'disclaimer'
+  return null
+}
+
+/**
+ * Splits the chair's "## "-delimited prose into the labeled sections. Robust: an
+ * unrecognized heading is ignored; if NOTHING maps, the caller falls back to
+ * putting the whole text in `judgment` (output is never lost).
+ */
+function parseChairOutput(text: string): {
+  judgment: string | null
+  beat1Summary: string | null
+  beat2Summary: string | null
+  beat3Summary: string | null
+  minorityReport: string | null
+  disclaimer: string | null
+  matchedAny: boolean
+} {
+  const result = {
+    judgment: null as string | null,
+    beat1Summary: null as string | null,
+    beat2Summary: null as string | null,
+    beat3Summary: null as string | null,
+    minorityReport: null as string | null,
+    disclaimer: null as string | null,
+    matchedAny: false,
+  }
+
+  // Split on lines beginning with "## " (section headings).
+  const parts = text.split(/^\s*##\s+/m)
+  for (const part of parts) {
+    if (part.trim() === '') continue
+    const nl = part.indexOf('\n')
+    if (nl === -1) continue // heading with no body
+    const heading = part.slice(0, nl)
+    const body = part.slice(nl + 1).trim()
+    const field = chairSectionField(heading)
+    if (!field || body === '') continue
+    result[field] = body
+    result.matchedAny = true
+  }
+
+  return result
+}
+
+/**
+ * Reconstructs a 마이너리티 리포트 from the deliberation's surviving contestedPoints.
+ * Used when the chair omits or truncates the section — the unresolved dissent must
+ * never be lost. Returns null only when there is genuinely no residual dissent.
+ */
+function fallbackMinorityReport(deliberation: JejuDeliberation): string | null {
+  if (deliberation.contestedPoints.length === 0) return null
+  return [
+    '(토론 기록에서 자동 보존된 잔존 쟁점 — 의장 판결문에 명시되지 않아 합의 미도달 항목을 복원함)',
+    '',
+    '다음 쟁점들은 다수 라운드의 토론 종료 시점까지 합의에 이르지 못한 채 남았습니다:',
+    ...deliberation.contestedPoints.map((p) => `• ${p}`),
+  ].join('\n')
+}
+
+/**
+ * PIECE 4 — the chair reads the WHOLE case file and renders the final verdict.
+ *
+ * Feeds the strongest model (anthropic / Claude Opus) the question, the collected
+ * data (via buildBriefingContext), the revised role analyses, the searched-in
+ * facts, the debate rebuttals, and the full per-round deliberation transcript +
+ * final convergence state. The system prompt scales the chair's responsibility to
+ * the (in)completeness of consensus. The prose output is split into labeled
+ * sections; if splitting finds nothing, the whole text is kept as `judgment`
+ * (output is never lost). Never throws.
+ */
+export async function renderChairVerdict(params: {
+  question: string
+  snapshot: JejuSnapshot
+  analyses: JejuRoleAnalysis[]
+  searches: JejuExecutedSearch[]
+  revised: JejuRevisedAnalysis[]
+  rebuttals: JejuRebuttal[]
+  deliberation: JejuDeliberation
+}): Promise<JejuVerdict> {
+  const { question, snapshot, searches, revised, rebuttals, deliberation } = params
+  const consensusScore = deliberation.finalScore
+
+  const base = {
+    consensusScore,
+    disclaimer: DEFAULT_DISCLAIMER,
+    provider: 'anthropic',
+  }
+
+  const contextBlock = [
+    '# 심의 안건',
+    question,
+    '',
+    '# 1. 수집 데이터 (beat 1)',
+    buildBriefingContext(snapshot),
+    '',
+    '# 2. 전문가 분석 (조사 반영 후 갱신본, beat 2)',
+    formatAnalysesForChair(revised),
+    '',
+    '# 2.5 외부 조사 결과 (beat 2.5)',
+    formatSearchesForChair(searches),
+    '',
+    '# 3. 토론 — 반박 (beat 3)',
+    formatRebuttalsForChair(rebuttals),
+    '',
+    '# 3.5 토론 — 다중 라운드 수렴 (beat 3.5/3.6)',
+    formatDeliberationForChair(deliberation),
+    '',
+    '# 당신의 임무',
+    '위 전체 심의 자료(case file)를 모두 읽고, 의장으로서 최종 판단을 구조에 맞춰 작성하십시오.',
+  ].join('\n')
+
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: 'anthropic',
+      prompt: contextBlock,
+      systemPrompt: buildChairSystemPrompt(consensusScore),
+      maxCompletionTokens: VERDICT_MAX_TOKENS,
+    })
+  } catch (e: unknown) {
+    return {
+      ...base,
+      ok: false,
+      judgment: null,
+      beat1Summary: null,
+      beat2Summary: null,
+      beat3Summary: null,
+      minorityReport: null,
+      error: `의장 판결 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+
+  if (r.error || !r.text) {
+    return {
+      ...base,
+      ok: false,
+      judgment: null,
+      beat1Summary: null,
+      beat2Summary: null,
+      beat3Summary: null,
+      minorityReport: null,
+      error: r.error ?? '의장이 빈 판결을 반환했습니다.',
+    }
+  }
+
+  const parsed = parseChairOutput(r.text)
+
+  // If section-splitting found nothing, never lose the output — keep it whole.
+  // Still reconstruct the 마이너리티 리포트 from the deliberation so dissent survives.
+  if (!parsed.matchedAny) {
+    return {
+      ...base,
+      ok: true,
+      judgment: r.text.trim(),
+      beat1Summary: null,
+      beat2Summary: null,
+      beat3Summary: null,
+      minorityReport: fallbackMinorityReport(deliberation),
+    }
+  }
+
+  // The chair sometimes truncates before (or skips) the 마이너리티 리포트; if so,
+  // rebuild it from the surviving contestedPoints so officials never lose dissent.
+  const minorityReport =
+    parsed.minorityReport && parsed.minorityReport.trim() !== ''
+      ? parsed.minorityReport
+      : fallbackMinorityReport(deliberation)
+
+  return {
+    ...base,
+    ok: true,
+    judgment: parsed.judgment,
+    beat1Summary: parsed.beat1Summary,
+    beat2Summary: parsed.beat2Summary,
+    beat3Summary: parsed.beat3Summary,
+    minorityReport,
+    // Prefer the chair's own 참고 사항 if present; otherwise the default.
+    disclaimer: parsed.disclaimer ?? DEFAULT_DISCLAIMER,
+  }
+}
+
+/** The complete 4-beat DEEP result: deliberation + the chair's final verdict. */
+export type JejuDeepComplete = JejuDeepThroughDeliberation & {
+  /** The chair's final one-page verdict — the deliverable. */
+  verdict: JejuVerdict
+}
+
+/**
+ * Beats 1–4 COMPLETE — the full DEEP pipeline end to end:
+ *   runJejuDeepThroughDeliberation → renderChairVerdict.
+ *
+ * The verdict is the deliverable, so ok mirrors the verdict's ok. The chair still
+ * renders even on partial upstream data (it judges what exists). Never throws;
+ * partial data on error.
+ */
+export async function runJejuDeepComplete(params?: {
+  question?: string
+  orchestratorProvider?: string
+  maxRounds?: number
+}): Promise<JejuDeepComplete> {
+  const deliberationStage = await runJejuDeepThroughDeliberation(params)
+
+  const emptyVerdict: JejuVerdict = {
+    ok: false,
+    judgment: null,
+    beat1Summary: null,
+    beat2Summary: null,
+    beat3Summary: null,
+    minorityReport: null,
+    consensusScore: deliberationStage.deliberation.finalScore,
+    disclaimer: DEFAULT_DISCLAIMER,
+    provider: 'anthropic',
+    error: '상위 단계가 유효하지 않아 의장 판결을 건너뜁니다.',
+  }
+
+  // Nothing usable upstream → no verdict (officials get the honest failure).
+  if (!deliberationStage.ok) {
+    return { ...deliberationStage, ok: false, verdict: emptyVerdict }
+  }
+
+  try {
+    const verdict = await renderChairVerdict({
+      question: deliberationStage.question,
+      snapshot: deliberationStage.snapshot,
+      analyses: deliberationStage.analyses,
+      searches: deliberationStage.searches,
+      revised: deliberationStage.revised,
+      rebuttals: deliberationStage.debate,
+      deliberation: deliberationStage.deliberation,
+    })
+    return { ...deliberationStage, ok: verdict.ok, verdict }
+  } catch (e: unknown) {
+    return {
+      ...deliberationStage,
+      ok: false,
+      verdict: {
+        ...emptyVerdict,
+        error: `의장 판결 실패(이전 결과는 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
+      },
+    }
+  }
+}

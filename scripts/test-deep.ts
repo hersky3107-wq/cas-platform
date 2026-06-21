@@ -14,7 +14,7 @@ import {
   planJejuMeeting,
   summarizeAvailableData,
   runJejuDeepThroughAnalysis,
-  runJejuDeepThroughDeliberation,
+  runJejuDeepComplete,
   type JejuMeetingPlan,
 } from '@/lib/jeju/deep'
 
@@ -93,13 +93,13 @@ async function main() {
     }
   }
 
-  // ── PIECE 2.5 + 2.7 + 3 + 3.5 + 3.6: full pipeline (… → DELIBERATE N rounds) ─
+  // ── BEATS 1–4 COMPLETE: full pipeline (… → DELIBERATE → CHAIR VERDICT) ────
   console.log(`\n\n${'█'.repeat(70)}`)
-  console.log('FULL DEEP RUN (orchestrate → analyze → search → revise → debate → DELIBERATE)')
+  console.log('FULL DEEP RUN (orchestrate → analyze → search → revise → debate → deliberate → VERDICT)')
   console.log(`Q: ${deepQuestion}`)
   console.log('█'.repeat(70))
 
-  const full = await runJejuDeepThroughDeliberation({ question: deepQuestion })
+  const full = await runJejuDeepComplete({ question: deepQuestion })
   console.log('\noverall ok:        ', full.ok)
   console.log('analyses:          ', full.analyses.length, '(ok:', full.analyses.filter((a) => a.ok).length, ')')
 
@@ -200,6 +200,37 @@ async function main() {
   for (const p of delib.contestedPoints) console.log(`  • ${p}`)
   console.log('\n[최종 라운드 요약]')
   console.log(delib.summary || '(없음)')
+
+  // ── BEAT 4: the chair's one-page verdict — the deliverable an official reads ─
+  const v = full.verdict
+  console.log(`\n\n${'█'.repeat(70)}`)
+  console.log('의장(CHAIR) 최종 판결 — 1페이지 결재 문서')
+  console.log(`provider: ${v.provider} | consensus: ${v.consensusScore === -1 ? '측정 불가' : v.consensusScore + '/100'} | ok: ${v.ok}`)
+  console.log('█'.repeat(70))
+  if (!v.ok) {
+    console.log('error:', v.error)
+  } else {
+    console.log('\n## 최종 판단')
+    console.log(v.judgment ?? '(없음)')
+    console.log('\n## 수집 데이터 요약 (beat 1)')
+    console.log(v.beat1Summary ?? '(없음)')
+    console.log('\n## 전문가 분석·조사 요약 (beat 2)')
+    console.log(v.beat2Summary ?? '(없음)')
+    console.log('\n## 토론·합의 과정 (beat 3)')
+    console.log(v.beat3Summary ?? '(없음)')
+    console.log('\n## 마이너리티 리포트')
+    console.log(v.minorityReport ?? '(없음)')
+    console.log('\n## 참고 사항')
+    console.log(v.disclaimer)
+
+    // Quick judgment-quality sniff: decisive ruling, not a wishy-washy punt.
+    const punt = /(전문가들이 갈렸|판단하기 어렵|결정할 수 없|알 수 없)/
+    if (v.judgment && punt.test(v.judgment)) {
+      console.log('\n⚠️  PUNT RISK: 판결이 결단을 회피한 듯 보임 — 확인 필요')
+    } else if (v.judgment) {
+      console.log('\n✓ 결단력 있는 판결로 보임 (회피 표현 미검출)')
+    }
+  }
 
   console.log(`\n${'═'.repeat(70)}`)
   console.log('Done.')
