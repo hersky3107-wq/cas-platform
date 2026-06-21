@@ -1,0 +1,62 @@
+/**
+ * Manual smoke-test for the Jeju DEEP orchestrator (lib/jeju/deep.ts, piece 1).
+ *
+ * Proves the convened lineup CHANGES per question — the core of the AX vision.
+ * Calls summarizeAvailableData() once, then planJejuMeeting() for three very
+ * different questions and prints each lineup + rationale.
+ *
+ * Requires the data-source keys + ANTHROPIC_API_KEY in .env.local. Makes 3
+ * orchestrator (Claude) calls — cheap. Run from project root:
+ *   $env:NODE_PATH=".\scripts\stubs"; npx tsx --env-file=.env.local scripts/test-deep.ts
+ */
+
+import { planJejuMeeting, summarizeAvailableData, type JejuMeetingPlan } from '@/lib/jeju/deep'
+
+const QUESTIONS = [
+  '제주 잉여 재생에너지를 전기차 충전 인프라로 흡수하는 방안의 타당성은?',
+  '여름 성수기 관광객 급증에 대비한 교통·환경 대책은?',
+  '월동무 과잉생산으로 인한 가격 폭락 위험과 대응 방안은?',
+]
+
+function printPlan(plan: JejuMeetingPlan) {
+  console.log('ok:          ', plan.ok)
+  console.log('searchNeeded:', plan.searchNeeded)
+  if (!plan.ok) {
+    console.log('error:       ', plan.error)
+    return
+  }
+  console.log(`convened ${plan.roles.length} roles:`)
+  for (const role of plan.roles) {
+    const flag = role.isRedTeam ? '  [RED TEAM]' : ''
+    console.log(`  • ${role.roleLabel}  →  ${role.provider}${flag}`)
+    console.log(`      ${role.mandate}`)
+  }
+  console.log(`\nrationale: ${plan.rationale}`)
+}
+
+async function main() {
+  console.log('Jeju DEEP — meeting orchestrator smoke test\n')
+
+  console.log(`${'─'.repeat(70)}`)
+  console.log('Available data (orchestrator context):')
+  console.log('─'.repeat(70))
+  const dataSummary = await summarizeAvailableData()
+  console.log(dataSummary)
+
+  for (let i = 0; i < QUESTIONS.length; i++) {
+    const q = QUESTIONS[i]!
+    console.log(`\n${'═'.repeat(70)}`)
+    console.log(`QUESTION ${i + 1}: ${q}`)
+    console.log('═'.repeat(70))
+    const plan = await planJejuMeeting({ question: q, availableDataSummary: dataSummary })
+    printPlan(plan)
+  }
+
+  console.log(`\n${'═'.repeat(70)}`)
+  console.log('Done.')
+}
+
+main().catch((err) => {
+  console.error('Uncaught error (this should not happen):', err)
+  process.exit(1)
+})
