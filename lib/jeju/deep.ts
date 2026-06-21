@@ -952,3 +952,304 @@ export async function runJejuDeepThroughSearch(params?: {
     }
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PIECE 2.7 — experts REVISE their analysis after seeing the search results.
+//
+// This closes beat 2's loop: piece 2 = first-pass + "what I still need", piece
+// 2.5 = went and looked it up, piece 2.7 = everyone reads the findings and
+// updates their view. The search results are SHARED meeting material — documents
+// placed on the table that EVERY expert reads, not just the one who asked. This
+// is what makes them working experts rather than one-shot reasoners.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Token budget for a revised analysis (slightly more than first-pass headroom). */
+const REVISION_MAX_TOKENS = 1200
+
+/** One expert's analysis before and after seeing the shared search results. */
+export type JejuRevisedAnalysis = {
+  roleId: string
+  roleLabel: string
+  provider: ExtendedAiProviderName
+  isRedTeam: boolean
+  ok: boolean
+  /** Carried over from piece 2 analysis. */
+  firstPass: string | null
+  /** Updated analysis after reading the search results. */
+  revised: string | null
+  /** Did the expert actually update their view in light of the new info? */
+  changed: boolean
+  error?: string
+}
+
+/**
+ * Builds the shared "documents on the table" block from successful searches.
+ * Only ok searches with non-empty result are included. Returns '' when there is
+ * nothing to share (so the caller can skip the revision round entirely).
+ */
+export function formatSearchResultsForExperts(searches: JejuExecutedSearch[]): string {
+  const usable = searches.filter((s) => s.ok && s.result && s.result.trim() !== '')
+  if (usable.length === 0) return ''
+
+  const blocks = usable.map((s, i) => `[검색${i + 1}] ${s.query}\n${s.result!.trim()}`)
+  return `## 회의 공용 조사 자료 (검색 결과)\n\n${blocks.join('\n\n')}`
+}
+
+/** Builds one expert's revision system prompt: re-read shared findings, update or hold. */
+function buildRevisionSystemPrompt(role: JejuExpertRole, question: string): string {
+  const lines = [
+    `당신은 제주도정 거버넌스 심의에 소집된 전문가입니다. 당신의 역할: ${role.roleLabel}.`,
+    `당신의 직무(mandate): ${role.mandate}`,
+    '',
+    '당신은 1차 분석을 이미 제출했습니다. 이제 회의 공용 조사 자료(검색 결과)가 추가되었습니다.',
+    `이 새 정보를 검토하여, 당신의 전문 영역(${role.roleLabel}) 관점에서 분석을 갱신하세요. 새 정보가 당신의 판단을 바꾸면 솔직히 반영하고(수치·근거 인용), 바꾸지 않으면 기존 입장을 유지하되 그 이유를 밝히세요.`,
+    `여전히 당신의 영역(${role.roleLabel})에만 집중하고, 데이터·조사자료에 근거하세요. 추측 금지.`,
+  ]
+
+  if (role.isRedTeam) {
+    lines.push(
+      '당신은 레드팀입니다. 새 정보로 무장하여 통념·합의의 허점과 숨은 비용, 실패 가능성을 계속 적극적으로 공격하세요. 조사 자료가 약점을 드러내면 더 날카롭게 지적하세요.'
+    )
+  }
+
+  lines.push(
+    '당신은 보좌역이며 최종 결정자가 아닙니다.',
+    '',
+    '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
+    '스키마:',
+    '{ "revised": "갱신된 분석 (250~400자)", "changed": true 또는 false }',
+    'changed는 새 정보가 당신의 판단을 실질적으로 바꿨을 때만 true. 입장 유지 시 false.'
+  )
+
+  lines.push('', `[심의 안건] ${question}`)
+
+  return lines.join('\n')
+}
+
+/** Parses one expert's revision output into { revised, changed }. Robust to non-JSON. */
+function parseRevisionOutput(raw: string): { revised: string; changed: boolean } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripFences(raw))
+  } catch {
+    // Non-JSON but non-empty text → assume they said something new.
+    return { revised: raw.trim(), changed: true }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { revised: raw.trim(), changed: true }
+  }
+  const o = parsed as Record<string, unknown>
+  const revised = typeof o.revised === 'string' && o.revised.trim() ? o.revised.trim() : raw.trim()
+  const changed = o.changed === true
+  return { revised, changed }
+}
+
+/** Runs ONE expert's revision pass against the shared search block. Never throws. */
+async function runOneRevision(
+  analysis: JejuRoleAnalysis,
+  role: JejuExpertRole,
+  question: string,
+  sharedSearchBlock: string
+): Promise<JejuRevisedAnalysis> {
+  const base = {
+    roleId: analysis.roleId,
+    roleLabel: analysis.roleLabel,
+    provider: analysis.provider,
+    isRedTeam: analysis.isRedTeam,
+    firstPass: analysis.analysis,
+  }
+
+  const userPrompt = [
+    '[거버넌스 질문]',
+    question,
+    '',
+    '[당신의 1차 분석]',
+    analysis.analysis ?? '(1차 분석 없음)',
+    '',
+    sharedSearchBlock,
+    '',
+    '위 조사 자료를 반영해 당신의 분석을 갱신하세요. 스키마에 맞는 순수 JSON만 출력하세요.',
+  ].join('\n')
+
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: role.provider,
+      prompt: userPrompt,
+      systemPrompt: buildRevisionSystemPrompt(role, question),
+      maxCompletionTokens: REVISION_MAX_TOKENS,
+    })
+  } catch (e: unknown) {
+    // Carry the first-pass through so we never lose a usable analysis.
+    return {
+      ...base,
+      ok: false,
+      revised: null,
+      changed: false,
+      error: `갱신 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+
+  if (r.error || !r.text) {
+    return {
+      ...base,
+      ok: false,
+      revised: null,
+      changed: false,
+      error: r.error ?? '전문가가 빈 갱신 응답을 반환했습니다.',
+    }
+  }
+
+  const { revised, changed } = parseRevisionOutput(r.text)
+  return { ...base, ok: true, revised, changed }
+}
+
+/**
+ * PIECE 2.7 — every expert revises after reading ALL search results.
+ *
+ * The shared search block is built ONCE and handed to every convened expert
+ * (shared meeting material). If no search succeeded (empty block), the AI round
+ * is SKIPPED entirely — each expert's first-pass carries through as the revised
+ * (changed:false) to avoid pointless cost. Otherwise experts whose first-pass
+ * was ok run their revision IN PARALLEL; a failed first-pass carries through as
+ * ok:false with no revision attempted. Never throws.
+ */
+export async function reviseExpertAnalyses(params: {
+  question: string
+  roles: JejuExpertRole[]
+  analyses: JejuRoleAnalysis[]
+  searches: JejuExecutedSearch[]
+}): Promise<JejuRevisedAnalysis[]> {
+  const { question, roles, analyses, searches } = params
+  const rolesById = new Map(roles.map((role) => [role.roleId, role]))
+  const sharedSearchBlock = formatSearchResultsForExperts(searches)
+
+  // No new info → don't pay for a revision round; first-pass IS the revised view.
+  if (sharedSearchBlock === '') {
+    return analyses.map((a) => ({
+      roleId: a.roleId,
+      roleLabel: a.roleLabel,
+      provider: a.provider,
+      isRedTeam: a.isRedTeam,
+      ok: a.ok,
+      firstPass: a.analysis,
+      revised: a.analysis,
+      changed: false,
+      ...(a.ok ? {} : { error: a.error ?? '1차 분석이 유효하지 않습니다.' }),
+    }))
+  }
+
+  const settled = await Promise.allSettled(
+    analyses.map((a) => {
+      // A failed first-pass can't be meaningfully revised — carry it through.
+      if (!a.ok) {
+        const carried: JejuRevisedAnalysis = {
+          roleId: a.roleId,
+          roleLabel: a.roleLabel,
+          provider: a.provider,
+          isRedTeam: a.isRedTeam,
+          ok: false,
+          firstPass: a.analysis,
+          revised: null,
+          changed: false,
+          error: a.error ?? '1차 분석 실패로 갱신을 건너뜁니다.',
+        }
+        return Promise.resolve(carried)
+      }
+      // Match role by roleId; fall back to the analysis's own provider/label.
+      const role =
+        rolesById.get(a.roleId) ??
+        ({
+          roleId: a.roleId,
+          roleLabel: a.roleLabel,
+          mandate: a.roleLabel,
+          provider: a.provider,
+          ...(a.isRedTeam ? { isRedTeam: true } : {}),
+        } as JejuExpertRole)
+      return runOneRevision(a, role, question, sharedSearchBlock)
+    })
+  )
+
+  return settled.map((res, i) => {
+    if (res.status === 'fulfilled') return res.value
+    const a = analyses[i]!
+    return {
+      roleId: a.roleId,
+      roleLabel: a.roleLabel,
+      provider: a.provider,
+      isRedTeam: a.isRedTeam,
+      ok: false,
+      firstPass: a.analysis,
+      revised: null,
+      changed: false,
+      error: res.reason instanceof Error ? res.reason.message : 'revision rejected',
+    }
+  })
+}
+
+/** Full DEEP result through the revision stage (beats 1 + 2 + 2.5 + 2.7). */
+export type JejuDeepFull = {
+  ok: boolean
+  question: string
+  snapshot: JejuSnapshot
+  context: string
+  plan: JejuMeetingPlan
+  /** First-pass analyses. */
+  analyses: JejuRoleAnalysis[]
+  searches: JejuExecutedSearch[]
+  droppedSearchCount: number
+  /** Revised analyses after reading the shared search results. */
+  revised: JejuRevisedAnalysis[]
+  error?: string
+}
+
+/**
+ * Orchestrates the full DEEP pipeline through revision:
+ *   runJejuDeepThroughSearch → reviseExpertAnalyses.
+ *
+ * Revision is ENRICHMENT: its failure does NOT fail the run; ok mirrors the
+ * analysis stage. Never throws; on a thrown error returns ok:false with whatever
+ * partial data exists.
+ */
+export async function runJejuDeepFull(params?: {
+  question?: string
+  orchestratorProvider?: string
+}): Promise<JejuDeepFull> {
+  const searchStage = await runJejuDeepThroughSearch(params)
+
+  const baseline: JejuDeepFull = {
+    ok: searchStage.ok,
+    question: searchStage.question,
+    snapshot: searchStage.snapshot,
+    context: searchStage.context,
+    plan: searchStage.plan,
+    analyses: searchStage.analyses,
+    searches: searchStage.searches,
+    droppedSearchCount: searchStage.droppedSearchCount,
+    revised: [],
+    ...(searchStage.error ? { error: searchStage.error } : {}),
+  }
+
+  // Nothing usable upstream → nothing to revise.
+  if (!searchStage.ok) return baseline
+
+  try {
+    const revised = await reviseExpertAnalyses({
+      question: searchStage.question,
+      roles: searchStage.plan.roles,
+      analyses: searchStage.analyses,
+      searches: searchStage.searches,
+    })
+    return { ...baseline, revised }
+  } catch (e: unknown) {
+    // Revision is enrichment — keep the (ok) earlier stages, note the error.
+    return {
+      ...baseline,
+      revised: [],
+      error: `갱신 단계 실패(이전 결과는 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+}

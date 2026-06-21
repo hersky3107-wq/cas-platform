@@ -14,7 +14,7 @@ import {
   planJejuMeeting,
   summarizeAvailableData,
   runJejuDeepThroughAnalysis,
-  runJejuDeepThroughSearch,
+  runJejuDeepFull,
   type JejuMeetingPlan,
 } from '@/lib/jeju/deep'
 
@@ -93,40 +93,56 @@ async function main() {
     }
   }
 
-  // ── PIECE 2.5: full run through Perplexity search execution ───────────────
+  // ── PIECE 2.5 + 2.7: full pipeline (search → revise) ──────────────────────
   console.log(`\n\n${'█'.repeat(70)}`)
-  console.log('FULL DEEP RUN + SEARCH (merge requests → execute via Perplexity)')
+  console.log('FULL DEEP RUN (orchestrate → analyze → search → REVISE)')
   console.log(`Q: ${deepQuestion}`)
   console.log('█'.repeat(70))
 
-  const withSearch = await runJejuDeepThroughSearch({ question: deepQuestion })
-  console.log('\noverall ok:        ', withSearch.ok)
-  console.log('analyses:          ', withSearch.analyses.length, '(ok:', withSearch.analyses.filter((a) => a.ok).length, ')')
+  const full = await runJejuDeepFull({ question: deepQuestion })
+  console.log('\noverall ok:        ', full.ok)
+  console.log('analyses:          ', full.analyses.length, '(ok:', full.analyses.filter((a) => a.ok).length, ')')
 
-  const rawRequestCount = withSearch.analyses
+  const rawRequestCount = full.analyses
     .filter((a) => a.ok)
     .reduce((sum, a) => sum + a.searchRequests.length, 0)
   console.log('raw search requests (pre-merge):', rawRequestCount)
-  console.log('merged searches executed:       ', withSearch.searches.length, `(cap: 5)`)
-  console.log('dropped beyond cap:             ', withSearch.droppedSearchCount)
-  if (withSearch.error) console.log('error:             ', withSearch.error)
+  console.log('merged searches executed:       ', full.searches.length, `(cap: 5)`)
+  console.log('dropped beyond cap:             ', full.droppedSearchCount)
+  if (full.error) console.log('error:             ', full.error)
 
-  if (withSearch.searches.length > 5) {
+  if (full.searches.length > 5) {
     console.log('\n⚠️  CAP VIOLATION: more than 5 Perplexity calls were executed!')
   } else {
-    console.log(`\n✓ cap respected: ${withSearch.searches.length} ≤ 5 Perplexity calls`)
+    console.log(`\n✓ cap respected: ${full.searches.length} ≤ 5 Perplexity calls`)
   }
 
-  for (const s of withSearch.searches) {
-    console.log(`\n${'─'.repeat(70)}`)
-    console.log(`🔍 "${s.query}"   (ok: ${s.ok})`)
+  console.log(`\n${'═'.repeat(70)}`)
+  console.log('SHARED RESEARCH MATERIAL (search results placed on the table)')
+  console.log('═'.repeat(70))
+  for (const s of full.searches) {
+    console.log(`\n🔍 "${s.query}"   (ok: ${s.ok})`)
     console.log(`   requestedBy: ${s.requestedBy.join(', ') || '(미상)'}`)
+    console.log(s.ok ? s.result : `   error: ${s.error}`)
+  }
+
+  // ── Revision comparison: who changed their mind after the research? ───────
+  const changedCount = full.revised.filter((r) => r.changed).length
+  console.log(`\n\n${'═'.repeat(70)}`)
+  console.log(`REVISED ANALYSES (after search) — ${changedCount}/${full.revised.length} experts changed view`)
+  console.log('═'.repeat(70))
+
+  for (const r of full.revised) {
+    console.log(`\n${'─'.repeat(70)}`)
+    console.log(`${r.roleLabel}  →  ${r.provider}${r.isRedTeam ? '  [RED TEAM]' : ''}`)
+    console.log(`ok: ${r.ok} | changed: ${r.changed ? '✓ YES' : '— no'}`)
     console.log('─'.repeat(70))
-    if (!s.ok) {
-      console.log('error:', s.error)
+    if (!r.ok) {
+      console.log('error:', r.error)
       continue
     }
-    console.log(s.result)
+    console.log('[1차]   ', r.firstPass ?? '(없음)')
+    console.log('\n[갱신]  ', r.revised ?? '(없음)')
   }
 
   console.log(`\n${'═'.repeat(70)}`)
