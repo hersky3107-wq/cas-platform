@@ -14,7 +14,7 @@ import {
   planJejuMeeting,
   summarizeAvailableData,
   runJejuDeepThroughAnalysis,
-  runJejuDeepWithDebate,
+  runJejuDeepOneConvergenceRound,
   type JejuMeetingPlan,
 } from '@/lib/jeju/deep'
 
@@ -93,13 +93,13 @@ async function main() {
     }
   }
 
-  // ── PIECE 2.5 + 2.7 + 3: full pipeline (search → revise → DEBATE) ─────────
+  // ── PIECE 2.5 + 2.7 + 3 + 3.5: full pipeline (search → revise → debate → CONVERGE) ─
   console.log(`\n\n${'█'.repeat(70)}`)
-  console.log('FULL DEEP RUN (orchestrate → analyze → search → revise → DEBATE)')
+  console.log('FULL DEEP RUN (orchestrate → analyze → search → revise → debate → CONVERGE)')
   console.log(`Q: ${deepQuestion}`)
   console.log('█'.repeat(70))
 
-  const full = await runJejuDeepWithDebate({ question: deepQuestion })
+  const full = await runJejuDeepOneConvergenceRound({ question: deepQuestion })
   console.log('\noverall ok:        ', full.ok)
   console.log('analyses:          ', full.analyses.length, '(ok:', full.analyses.filter((a) => a.ok).length, ')')
 
@@ -170,6 +170,51 @@ async function main() {
     console.log('─'.repeat(70))
     console.log(d.rebuttal ?? '(없음)')
   }
+
+  // ── PIECE 3.5: ONE convergence round — concede AND hold, partial consensus? ─
+  const round = full.round1
+  const okTurns = round.turns.filter((t) => t.ok)
+  const bothCount = okTurns.filter(
+    (t) => t.concedes && t.concedes.trim() !== '' && t.holds && t.holds.trim() !== ''
+  ).length
+  console.log(`\n\n${'═'.repeat(70)}`)
+  console.log(`CONVERGENCE ROUND ${round.roundNumber} — ${bothCount}/${okTurns.length} experts BOTH conceded AND held`)
+  console.log(`consensus score: ${round.consensusScore === -1 ? '측정 불가 (-1)' : round.consensusScore + ' / 100'}`)
+  console.log('═'.repeat(70))
+  if (round.error) console.log('round error:', round.error)
+
+  for (const t of round.turns) {
+    console.log(`\n${'─'.repeat(70)}`)
+    console.log(`${t.roleLabel}  →  ${t.provider}${t.isRedTeam ? '  [RED TEAM]' : ''}`)
+    console.log(`ok: ${t.ok}`)
+    if (!t.ok) {
+      console.log('error:', t.error)
+      continue
+    }
+    const hasConcede = !!(t.concedes && t.concedes.trim() !== '')
+    const hasHold = !!(t.holds && t.holds.trim() !== '')
+    const health =
+      hasConcede && hasHold
+        ? '✓ 건강한 중간 (수용+견지 모두)'
+        : hasConcede
+          ? '⚠️ 수용만 (성급한 합의 위험)'
+          : hasHold
+            ? '⚠️ 견지만 (고집 위험)'
+            : '⚠️ 수용·견지 모두 없음'
+    console.log(`판정: ${health}`)
+    console.log('─'.repeat(70))
+    console.log('[입장] ', t.position ?? '(없음)')
+    console.log('[수용] ', hasConcede ? t.concedes : '(없음)')
+    console.log('[견지] ', hasHold ? t.holds : '(없음)')
+  }
+
+  console.log(`\n${'═'.repeat(70)}`)
+  console.log('합의된 지점 (agreedPoints):')
+  for (const p of round.agreedPoints) console.log(`  • ${p}`)
+  console.log('\n쟁점 (contestedPoints):')
+  for (const p of round.contestedPoints) console.log(`  • ${p}`)
+  console.log('\n[라운드 요약]')
+  console.log(round.summary || '(없음)')
 
   console.log(`\n${'═'.repeat(70)}`)
   console.log('Done.')

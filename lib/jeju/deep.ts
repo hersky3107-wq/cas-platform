@@ -1534,3 +1534,491 @@ export async function runJejuDeepWithDebate(params?: {
     }
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PIECE 3.5 — ONE deliberation round (rebuttal AND convergence at once).
+//
+// The democratic intellectual-consensus mechanism. NOT instant agreement
+// ("everyone's right, peace!"), NOT endless division ("everyone's wrong, only I
+// am right") — but a round where each expert pushes back on what they STILL
+// disagree with WHILE conceding what they now accept, so consensus climbs
+// gradually (e.g. 30→60→85) across rounds. This piece is ONE round, designed to
+// be looped N times later: it takes the prior round's state and returns this
+// round's state, plus a measured consensus score.
+//
+// ⚠️ BALANCE: a round must avoid BOTH failure modes — premature "peace!" and
+// stubborn "everyone's wrong". The prompt forces each expert to do (a) hold
+// genuine disagreement where their domain/data warrants and (b) honestly concede
+// earned points, simultaneously.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Token budgets for a deliberation turn and the consensus-measuring call. */
+const DELIBERATION_MAX_TOKENS = 1200
+// Korean summary + two point-lists need headroom; too small truncates the JSON
+// mid-string and forces the -1 sentinel. 2000 leaves comfortable room.
+const CONSENSUS_MAX_TOKENS = 2000
+
+/** Sentinel consensus score used when the measuring call fails (never fabricate). */
+const CONSENSUS_SCORE_UNAVAILABLE = -1
+
+/** One expert's turn in a deliberation round: updated position + concede/hold split. */
+export type JejuDeliberationTurn = {
+  roleId: string
+  roleLabel: string
+  provider: ExtendedAiProviderName
+  isRedTeam: boolean
+  ok: boolean
+  /** Their updated position THIS round. */
+  position: string | null
+  /** What they now accept from others (may be empty string). */
+  concedes: string | null
+  /** What they still contest, and why. */
+  holds: string | null
+  error?: string
+}
+
+/** The outcome of one deliberation round, including a measured consensus score. */
+export type JejuRoundResult = {
+  roundNumber: number
+  turns: JejuDeliberationTurn[]
+  /** 0-100 measured AFTER this round; CONSENSUS_SCORE_UNAVAILABLE (-1) if unmeasurable. */
+  consensusScore: number
+  agreedPoints: string[]
+  contestedPoints: string[]
+  /** Korean: where the meeting stands after this round. */
+  summary: string
+  ok: boolean
+  error?: string
+}
+
+/** Builds a Korean block of the prior round's turns (position/concedes/holds). */
+export function formatPriorRound(turns: JejuDeliberationTurn[]): string {
+  const usable = turns.filter((t) => t.ok && t.position && t.position.trim() !== '')
+  if (usable.length === 0) return ''
+
+  const blocks = usable.map((t) => {
+    const tag = t.isRedTeam ? ' [레드팀]' : ''
+    const lines = [`[${t.roleLabel}]${tag}`, `입장: ${t.position!.trim()}`]
+    if (t.concedes && t.concedes.trim() !== '') lines.push(`수용: ${t.concedes.trim()}`)
+    if (t.holds && t.holds.trim() !== '') lines.push(`견지: ${t.holds.trim()}`)
+    return lines.join('\n')
+  })
+  return blocks.join('\n\n')
+}
+
+/** Builds the round-1 seed block from each expert's revised (search-informed) analysis. */
+function formatSeedAnalyses(seed: JejuRevisedAnalysis[]): string {
+  const usable = seed.filter((s) => s.ok && s.revised && s.revised.trim() !== '')
+  if (usable.length === 0) return ''
+
+  const blocks = usable.map((s) => {
+    const tag = s.isRedTeam ? ' [레드팀]' : ''
+    return `[${s.roleLabel}]${tag}\n입장: ${s.revised!.trim()}`
+  })
+  return blocks.join('\n\n')
+}
+
+/** Builds one expert's deliberation system prompt: hold AND concede, gradual convergence. */
+function buildDeliberationSystemPrompt(
+  role: JejuExpertRole,
+  question: string,
+  roundNumber: number
+): string {
+  const lines = [
+    `당신은 제주도정 거버넌스 심의에 소집된 전문가입니다. 당신의 역할: ${role.roleLabel}.`,
+    `당신의 직무(mandate): ${role.mandate}`,
+    '',
+    `이것은 ${roundNumber}번째 토론 라운드입니다. 직전 라운드에서 전문가들이 낸 입장을 검토하고, 당신의 입장을 갱신하세요.`,
+    '두 가지를 동시에 하세요. (1) 당신의 전문 영역·데이터로 볼 때 여전히 동의할 수 없는 지점은 분명히 반박하며 지키세요 — 성급하게 "모두 옳다"고 양보하지 마세요. (2) 동시에, 토론을 통해 타당하다고 인정하게 된 지점은 정직하게 받아들이세요 — "모두 틀렸고 나만 맞다"는 고집도 금물입니다. 진짜 합의는 라운드를 거치며 조금씩 쌓이는 것입니다.',
+    `반드시 당신의 전문 영역(${role.roleLabel})과 제공된 데이터·조사자료에 근거하세요. 추측 금지.`,
+  ]
+
+  if (role.isRedTeam) {
+    lines.push(
+      '당신은 레드팀입니다. 근거 약한 다수 합의는 계속 견제하되, 라운드를 거치며 정말 타당해진 합의는 인정할 수 있습니다.'
+    )
+  }
+
+  lines.push(
+    '당신은 보좌역이며 최종 결정자가 아닙니다.',
+    '',
+    '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
+    '스키마:',
+    '{ "position": "이번 라운드 당신의 갱신된 입장 (150~300자)", "concedes": "이번에 받아들이는 점 (없으면 빈 문자열)", "holds": "여전히 지키며 반박하는 점과 이유" }'
+  )
+
+  lines.push('', `[심의 안건] ${question}`)
+
+  return lines.join('\n')
+}
+
+/** Parses one deliberation turn output into { position, concedes, holds }. Robust to non-JSON. */
+function parseDeliberationOutput(raw: string): {
+  position: string
+  concedes: string
+  holds: string
+} {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripFences(raw))
+  } catch {
+    // Non-JSON but non-empty text → treat the whole thing as the position.
+    return { position: raw.trim(), concedes: '', holds: '' }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { position: raw.trim(), concedes: '', holds: '' }
+  }
+  const o = parsed as Record<string, unknown>
+  const position =
+    typeof o.position === 'string' && o.position.trim() ? o.position.trim() : raw.trim()
+  const concedes = typeof o.concedes === 'string' ? o.concedes.trim() : ''
+  const holds = typeof o.holds === 'string' ? o.holds.trim() : ''
+  return { position, concedes, holds }
+}
+
+/** Runs ONE expert's deliberation turn against the prior-round context. Never throws. */
+async function runOneDeliberationTurn(
+  role: JejuExpertRole,
+  question: string,
+  roundNumber: number,
+  ownPrior: string,
+  peerContext: string
+): Promise<JejuDeliberationTurn> {
+  const base = {
+    roleId: role.roleId,
+    roleLabel: role.roleLabel,
+    provider: role.provider,
+    isRedTeam: role.isRedTeam === true,
+  }
+
+  const userPrompt = [
+    '[거버넌스 질문]',
+    question,
+    '',
+    '[당신의 직전 입장]',
+    ownPrior || '(직전 입장 없음)',
+    '',
+    roundNumber <= 1
+      ? '## 직전 라운드 전문가 입장 (1차 수렴 라운드 — 각자의 조사 반영 분석에서 출발)'
+      : '## 직전 라운드 전문가 입장',
+    peerContext,
+    '',
+    '위 입장들을 검토하고, 받아들일 점은 받아들이고 지킬 점은 반박하며 당신의 입장을 갱신하세요. 스키마에 맞는 순수 JSON만 출력하세요.',
+  ].join('\n')
+
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: role.provider,
+      prompt: userPrompt,
+      systemPrompt: buildDeliberationSystemPrompt(role, question, roundNumber),
+      maxCompletionTokens: DELIBERATION_MAX_TOKENS,
+    })
+  } catch (e: unknown) {
+    return {
+      ...base,
+      ok: false,
+      position: null,
+      concedes: null,
+      holds: null,
+      error: `토론 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+
+  if (r.error || !r.text) {
+    return {
+      ...base,
+      ok: false,
+      position: null,
+      concedes: null,
+      holds: null,
+      error: r.error ?? '전문가가 빈 토론 응답을 반환했습니다.',
+    }
+  }
+
+  const { position, concedes, holds } = parseDeliberationOutput(r.text)
+  return { ...base, ok: true, position, concedes, holds }
+}
+
+/** Builds the consensus-measuring system prompt (one anthropic call per round). */
+function buildConsensusSystemPrompt(): string {
+  return [
+    '당신은 제주도정 거버넌스 심의의 합의 수준을 측정하는 중립 분석가입니다.',
+    '여러 전문가가 이번 토론 라운드에서 낸 입장(position)·수용(concedes)·견지(holds)를 받습니다.',
+    '이들이 이번 라운드에서 얼마나 수렴했는지 0~100점으로 평가하세요.',
+    '- 서로 겹치는 수용(concedes)이 많고, 강하게 충돌하는 견지(holds)가 적을수록 높은 점수.',
+    '- 모두 한목소리(완전 합의)면 100에 가깝게, 모두 평행선(전면 대립)이면 0에 가깝게.',
+    '- 부분 수렴(일부 합의 + 일부 쟁점 잔존)은 중간대(예: 40~75).',
+    '추측으로 점수를 부풀리지 말고, 실제 입장 텍스트에 근거해 측정하세요.',
+    'agreedPoints·contestedPoints는 각각 핵심만 3~5개의 짧은 항목으로, summary는 3~4문장으로 간결하게 작성해 JSON이 잘리지 않게 하세요.',
+    '',
+    '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 코드펜스나 설명 없이 순수 JSON만.',
+    '스키마:',
+    '{ "score": 0~100 정수, "agreedPoints": ["합의된 핵심 지점", ...], "contestedPoints": ["여전히 쟁점인 지점", ...], "summary": "이번 라운드 후 회의 상태 한 문단(한국어)" }',
+  ].join('\n')
+}
+
+/** Clamps a raw number into the inclusive 0-100 integer range. */
+function clampScore(n: number): number {
+  if (!Number.isFinite(n)) return CONSENSUS_SCORE_UNAVAILABLE
+  return Math.max(0, Math.min(100, Math.round(n)))
+}
+
+/** Measures consensus across this round's turns via one anthropic call. Never throws. */
+async function measureConsensus(turns: JejuDeliberationTurn[]): Promise<{
+  consensusScore: number
+  agreedPoints: string[]
+  contestedPoints: string[]
+  summary: string
+  ok: boolean
+  error?: string
+}> {
+  const usable = turns.filter((t) => t.ok && t.position && t.position.trim() !== '')
+  if (usable.length === 0) {
+    return {
+      consensusScore: CONSENSUS_SCORE_UNAVAILABLE,
+      agreedPoints: [],
+      contestedPoints: [],
+      summary: '',
+      ok: false,
+      error: '측정할 유효한 입장이 없습니다.',
+    }
+  }
+
+  const userPrompt = [
+    '[이번 라운드 전문가 입장]',
+    ...usable.map((t) => {
+      const tag = t.isRedTeam ? ' [레드팀]' : ''
+      const parts = [`[${t.roleLabel}]${tag}`, `입장: ${t.position!.trim()}`]
+      if (t.concedes && t.concedes.trim() !== '') parts.push(`수용: ${t.concedes.trim()}`)
+      if (t.holds && t.holds.trim() !== '') parts.push(`견지: ${t.holds.trim()}`)
+      return parts.join('\n')
+    }),
+    '',
+    '위 입장들의 수렴 정도를 측정하여 스키마에 맞는 순수 JSON만 출력하세요.',
+  ].join('\n')
+
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: 'anthropic',
+      prompt: userPrompt,
+      systemPrompt: buildConsensusSystemPrompt(),
+      maxCompletionTokens: CONSENSUS_MAX_TOKENS,
+    })
+  } catch (e: unknown) {
+    return {
+      consensusScore: CONSENSUS_SCORE_UNAVAILABLE,
+      agreedPoints: [],
+      contestedPoints: [],
+      summary: '',
+      ok: false,
+      error: `합의 측정 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+
+  if (r.error || !r.text) {
+    return {
+      consensusScore: CONSENSUS_SCORE_UNAVAILABLE,
+      agreedPoints: [],
+      contestedPoints: [],
+      summary: '',
+      ok: false,
+      error: r.error ?? '합의 측정이 빈 응답을 반환했습니다.',
+    }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripFences(r.text))
+  } catch {
+    return {
+      consensusScore: CONSENSUS_SCORE_UNAVAILABLE,
+      agreedPoints: [],
+      contestedPoints: [],
+      summary: '',
+      ok: false,
+      error: '합의 측정 JSON 파싱 실패.',
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return {
+      consensusScore: CONSENSUS_SCORE_UNAVAILABLE,
+      agreedPoints: [],
+      contestedPoints: [],
+      summary: '',
+      ok: false,
+      error: '합의 측정 출력이 객체가 아닙니다.',
+    }
+  }
+
+  const o = parsed as Record<string, unknown>
+  const consensusScore = typeof o.score === 'number' ? clampScore(o.score) : CONSENSUS_SCORE_UNAVAILABLE
+  const agreedPoints = Array.isArray(o.agreedPoints)
+    ? o.agreedPoints.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map((x) => x.trim())
+    : []
+  const contestedPoints = Array.isArray(o.contestedPoints)
+    ? o.contestedPoints.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map((x) => x.trim())
+    : []
+  const summary = typeof o.summary === 'string' ? o.summary.trim() : ''
+
+  return {
+    consensusScore,
+    agreedPoints,
+    contestedPoints,
+    summary,
+    ok: consensusScore !== CONSENSUS_SCORE_UNAVAILABLE,
+    ...(consensusScore === CONSENSUS_SCORE_UNAVAILABLE ? { error: '합의 점수를 측정하지 못했습니다.' } : {}),
+  }
+}
+
+/**
+ * PIECE 3.5 — runs ONE deliberation round (rebuttal + convergence) and measures
+ * the resulting consensus. Designed to be LOOPED: pass priorTurns from the last
+ * round, or [] + seedAnalyses for the first convergence round.
+ *
+ * Each expert runs IN PARALLEL with the balance prompt (hold AND concede). After
+ * collecting turns, ONE anthropic call measures convergence. Never throws; if the
+ * measuring call fails, turns are still returned with consensusScore = -1
+ * (sentinel — we never fabricate a score).
+ */
+export async function runDeliberationRound(params: {
+  question: string
+  roles: JejuExpertRole[]
+  roundNumber: number
+  priorTurns: JejuDeliberationTurn[]
+  seedAnalyses?: JejuRevisedAnalysis[]
+}): Promise<JejuRoundResult> {
+  const { question, roles, roundNumber, priorTurns, seedAnalyses } = params
+
+  // The shared peer context: prior round's turns, or (round 1) the seed analyses.
+  const peerContext =
+    priorTurns.length > 0
+      ? formatPriorRound(priorTurns)
+      : formatSeedAnalyses(seedAnalyses ?? [])
+
+  if (peerContext.trim() === '') {
+    return {
+      roundNumber,
+      turns: [],
+      consensusScore: CONSENSUS_SCORE_UNAVAILABLE,
+      agreedPoints: [],
+      contestedPoints: [],
+      summary: '',
+      ok: false,
+      error: '토론을 시작할 직전 입장(또는 시드 분석)이 없습니다.',
+    }
+  }
+
+  // Per-role lookup of their own prior position, to anchor "your last position".
+  const priorByRoleId = new Map(priorTurns.map((t) => [t.roleId, t]))
+  const seedByRoleId = new Map((seedAnalyses ?? []).map((s) => [s.roleId, s]))
+
+  const settled = await Promise.allSettled(
+    roles.map((role) => {
+      const prior = priorByRoleId.get(role.roleId)
+      const seed = seedByRoleId.get(role.roleId)
+      const ownPrior =
+        prior && prior.ok && prior.position
+          ? prior.position
+          : seed && seed.ok && seed.revised
+            ? seed.revised
+            : ''
+      return runOneDeliberationTurn(role, question, roundNumber, ownPrior, peerContext)
+    })
+  )
+
+  const turns: JejuDeliberationTurn[] = settled.map((res, i) => {
+    if (res.status === 'fulfilled') return res.value
+    const role = roles[i]!
+    return {
+      roleId: role.roleId,
+      roleLabel: role.roleLabel,
+      provider: role.provider,
+      isRedTeam: role.isRedTeam === true,
+      ok: false,
+      position: null,
+      concedes: null,
+      holds: null,
+      error: res.reason instanceof Error ? res.reason.message : 'deliberation rejected',
+    }
+  })
+
+  const consensus = await measureConsensus(turns)
+  const anyTurnOk = turns.some((t) => t.ok)
+
+  return {
+    roundNumber,
+    turns,
+    consensusScore: consensus.consensusScore,
+    agreedPoints: consensus.agreedPoints,
+    contestedPoints: consensus.contestedPoints,
+    summary: consensus.summary,
+    ok: anyTurnOk,
+    ...(anyTurnOk ? {} : { error: '유효한 토론 발언이 하나도 없습니다.' }),
+  }
+}
+
+/** Full DEEP result through ONE convergence round (beats 1 + 2 + 2.5 + 2.7 + 3 + 3.5). */
+export type JejuDeepOneConvergenceRound = JejuDeepWithDebate & {
+  /** The first convergence round's result. */
+  round1: JejuRoundResult
+}
+
+/**
+ * Orchestrates the full DEEP pipeline through ONE convergence round:
+ *   runJejuDeepWithDebate → runDeliberationRound(round 1, seeded from revised).
+ *
+ * This proves a SINGLE round works before a later piece loops it. The debate
+ * (piece 3) informs experts implicitly via their revised analyses; round 1 is
+ * where they begin trading concessions. ok mirrors the analysis stage; the round
+ * is enrichment. Never throws; partial data on error.
+ */
+export async function runJejuDeepOneConvergenceRound(params?: {
+  question?: string
+  orchestratorProvider?: string
+}): Promise<JejuDeepOneConvergenceRound> {
+  const debateStage = await runJejuDeepWithDebate(params)
+
+  const emptyRound: JejuRoundResult = {
+    roundNumber: 1,
+    turns: [],
+    consensusScore: CONSENSUS_SCORE_UNAVAILABLE,
+    agreedPoints: [],
+    contestedPoints: [],
+    summary: '',
+    ok: false,
+    error: '상위 단계가 유효하지 않아 수렴 라운드를 건너뜁니다.',
+  }
+
+  const baseline: JejuDeepOneConvergenceRound = { ...debateStage, round1: emptyRound }
+
+  // Nothing usable upstream → no convergence round.
+  if (!debateStage.ok) return baseline
+
+  try {
+    const round1 = await runDeliberationRound({
+      question: debateStage.question,
+      roles: debateStage.plan.roles,
+      roundNumber: 1,
+      priorTurns: [],
+      seedAnalyses: debateStage.revised,
+    })
+    return { ...baseline, round1 }
+  } catch (e: unknown) {
+    // Convergence round is enrichment — keep the earlier stages, note the error.
+    return {
+      ...baseline,
+      round1: {
+        ...emptyRound,
+        error: `수렴 라운드 실패(이전 결과는 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
+      },
+    }
+  }
+}
