@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-import { gatherJejuSnapshot } from '@/lib/jeju/brief'
+import { gatherJejuSnapshot, buildBriefingContext, type JejuSnapshot } from '@/lib/jeju/brief'
 import {
   runSingleAiProvider,
   MODEL_BY_PROVIDER,
@@ -368,5 +368,293 @@ export async function planJejuMeeting(params: {
     rationale,
     searchNeeded,
     raw,
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PIECE 2 — convened experts run their first-pass analysis + flag what they
+// still need looked up (beat 2, agentic search-request capture).
+//
+// Each role from piece 1's plan runs IN PARALLEL: it produces (a) a data-grounded
+// first-pass analysis in its own lane AND (b) optional search requests (what
+// external info it still needs + why). We only CAPTURE the requests here — a
+// LATER piece executes them via Perplexity and feeds results back for a 2nd pass.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** One thing an expert still needs looked up externally. */
+export type JejuSearchRequest = {
+  /** The actual search query (Korean or mixed). */
+  query: string
+  /** Korean: why this expert needs it. */
+  reason: string
+}
+
+/** One expert's first-pass analysis result + their search requests. */
+export type JejuRoleAnalysis = {
+  roleId: string
+  roleLabel: string
+  provider: ExtendedAiProviderName
+  isRedTeam: boolean
+  ok: boolean
+  /** First-pass analysis text (null only when the AI call failed). */
+  analysis: string | null
+  /** What the expert still needs looked up (may be empty). */
+  searchRequests: JejuSearchRequest[]
+  error?: string
+}
+
+/** Room for a Korean first-pass analysis + a small search-requests JSON. */
+const ANALYSIS_MAX_TOKENS = 1500
+
+/** Hard cap on search requests captured per expert (prompt also instructs ≤2). */
+const MAX_SEARCH_REQUESTS = 2
+
+/** Builds one convened expert's system prompt: stay in lane, be data-grounded, may request lookups. */
+function buildAnalystSystemPrompt(role: JejuExpertRole, question: string): string {
+  const lines = [
+    `당신은 제주도정 거버넌스 심의에 소집된 전문가입니다. 당신의 역할: ${role.roleLabel}.`,
+    `당신의 직무(mandate): ${role.mandate}`,
+    '',
+    `핵심 규칙: 오직 당신의 전문 영역(${role.roleLabel}) 관점에서만 분석하세요. 다른 전문가 영역을 침범하거나 일반적 종합 의견을 내지 마세요. 당신만의 고유한 시각·우려·발견을 제시하는 것이 임무입니다.`,
+    '반드시 제공된 [수집 데이터]에 근거하세요. 데이터에 없는 수치는 지어내지 마세요.',
+    '진짜 전문가처럼 일하세요. 주어진 데이터만으로 판단이 부족하거나, 더 확인해야 할 외부 정보(최신 통계, 타지역 사례, 정부 정책, 법령, 시장 동향 등)가 있으면, 추측으로 메우지 말고 "검색 요청"으로 명시하세요. 무엇을, 왜 찾아야 하는지 구체적으로.',
+  ]
+
+  if (role.isRedTeam) {
+    lines.push(
+      '당신은 레드팀입니다. 통념적·관행적 접근의 허점, 숨은 비용, 실패 가능성을 적극 지적하세요. 동의가 아니라 비판이 임무입니다.'
+    )
+  }
+
+  lines.push(
+    '당신은 보좌역이며 최종 결정자가 아닙니다.',
+    '',
+    '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
+    '스키마:',
+    '{ "analysis": "당신의 1차 분석 (250~400자, 데이터 근거)", "searchRequests": [ { "query": "검색어", "reason": "왜 필요한지" } ] }',
+    'searchRequests는 정말 더 알아봐야 할 게 있을 때만. 없으면 빈 배열 []. 최대 2개까지만.'
+  )
+
+  // `question` is included so the lane rule is anchored to the actual agenda.
+  lines.push('', `[심의 안건] ${question}`)
+
+  return lines.join('\n')
+}
+
+/** Validates + caps a raw searchRequests array; drops entries missing query/reason. */
+function normalizeSearchRequests(raw: unknown): JejuSearchRequest[] {
+  if (!Array.isArray(raw)) return []
+  const out: JejuSearchRequest[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const query = typeof o.query === 'string' ? o.query.trim() : ''
+    const reason = typeof o.reason === 'string' ? o.reason.trim() : ''
+    if (!query || !reason) continue
+    out.push({ query, reason })
+    if (out.length >= MAX_SEARCH_REQUESTS) break
+  }
+  return out
+}
+
+/**
+ * Parses one expert's model output into { analysis, searchRequests }.
+ *
+ * On clean JSON: pulls analysis (string) + validated searchRequests. On parse
+ * FAILURE but non-empty text: treats the whole raw text as the analysis with no
+ * search requests — so a JSON hiccup never loses a usable analysis.
+ */
+function parseExpertOutput(raw: string): { analysis: string; searchRequests: JejuSearchRequest[] } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripFences(raw))
+  } catch {
+    return { analysis: raw.trim(), searchRequests: [] }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { analysis: raw.trim(), searchRequests: [] }
+  }
+  const o = parsed as Record<string, unknown>
+  const analysis = typeof o.analysis === 'string' && o.analysis.trim() ? o.analysis.trim() : raw.trim()
+  return { analysis, searchRequests: normalizeSearchRequests(o.searchRequests) }
+}
+
+/** Runs ONE convened expert's first-pass analysis. Never throws. */
+async function runOneExpert(
+  role: JejuExpertRole,
+  question: string,
+  context: string
+): Promise<JejuRoleAnalysis> {
+  const isRedTeam = role.isRedTeam === true
+  const base = {
+    roleId: role.roleId,
+    roleLabel: role.roleLabel,
+    provider: role.provider,
+    isRedTeam,
+  }
+
+  const userPrompt = [
+    '[거버넌스 질문]',
+    question,
+    '',
+    '[수집 데이터]',
+    context,
+    '',
+    '[당신의 역할]',
+    `${role.roleLabel}로서 위 데이터를 분석하고, 더 필요한 정보가 있으면 검색 요청하세요. 스키마에 맞는 순수 JSON만 출력하세요.`,
+  ].join('\n')
+
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: role.provider,
+      prompt: userPrompt,
+      systemPrompt: buildAnalystSystemPrompt(role, question),
+      maxCompletionTokens: ANALYSIS_MAX_TOKENS,
+    })
+  } catch (e: unknown) {
+    return {
+      ...base,
+      ok: false,
+      analysis: null,
+      searchRequests: [],
+      error: `전문가 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+
+  if (r.error || !r.text) {
+    return {
+      ...base,
+      ok: false,
+      analysis: null,
+      searchRequests: [],
+      error: r.error ?? '전문가가 빈 응답을 반환했습니다.',
+    }
+  }
+
+  const { analysis, searchRequests } = parseExpertOutput(r.text)
+  return { ...base, ok: true, analysis, searchRequests }
+}
+
+/**
+ * PIECE 2 — runs ALL convened experts' first-pass analyses IN PARALLEL.
+ *
+ * Each expert gets the FULL data context (buildBriefingContext output) so its
+ * analysis is data-grounded, stays in its lane, and may flag search requests for
+ * what's genuinely missing. Search requests are CAPTURED only (not executed).
+ * Never throws — a rejected expert becomes an ok:false analysis entry.
+ */
+export async function runExpertAnalyses(params: {
+  question: string
+  roles: JejuExpertRole[]
+  context: string
+}): Promise<JejuRoleAnalysis[]> {
+  const { question, roles, context } = params
+
+  const settled = await Promise.allSettled(
+    roles.map((role) => runOneExpert(role, question, context))
+  )
+
+  return settled.map((res, i) => {
+    if (res.status === 'fulfilled') return res.value
+    const role = roles[i]!
+    return {
+      roleId: role.roleId,
+      roleLabel: role.roleLabel,
+      provider: role.provider,
+      isRedTeam: role.isRedTeam === true,
+      ok: false,
+      analysis: null,
+      searchRequests: [],
+      error: res.reason instanceof Error ? res.reason.message : 'analysis rejected',
+    }
+  })
+}
+
+/** Full DEEP result through the first-pass analysis stage (beats 1 + 2). */
+export type JejuDeepThroughAnalysis = {
+  ok: boolean
+  question: string
+  snapshot: JejuSnapshot
+  context: string
+  plan: JejuMeetingPlan
+  analyses: JejuRoleAnalysis[]
+  error?: string
+}
+
+/** Default question for the daily/general DEEP run (senior-official path). */
+const DEFAULT_DEEP_QUESTION = '오늘의 제주 거버넌스 종합 분석'
+
+/**
+ * Orchestrates beats 1 + 2 end-to-end:
+ *   gatherJejuSnapshot → buildBriefingContext → summarizeAvailableData →
+ *   planJejuMeeting → runExpertAnalyses (when the plan is ok).
+ *
+ * ok = plan.ok && at least one analysis ok. Never throws; on any thrown error
+ * returns ok:false with whatever partial data was gathered.
+ */
+export async function runJejuDeepThroughAnalysis(params?: {
+  question?: string
+  orchestratorProvider?: string
+}): Promise<JejuDeepThroughAnalysis> {
+  const question = params?.question?.trim() || DEFAULT_DEEP_QUESTION
+
+  // Empty defaults so a partial failure can still return meaningful structure.
+  let snapshot: JejuSnapshot = { ok: false, sources: [] }
+  let context = ''
+  let plan: JejuMeetingPlan = {
+    ok: false,
+    question,
+    roles: [],
+    rationale: '',
+    searchNeeded: false,
+  }
+
+  try {
+    snapshot = await gatherJejuSnapshot()
+    context = buildBriefingContext(snapshot)
+    const availableDataSummary = await summarizeAvailableData()
+    plan = await planJejuMeeting({
+      question,
+      availableDataSummary,
+      provider: params?.orchestratorProvider,
+    })
+
+    if (!plan.ok) {
+      return {
+        ok: false,
+        question,
+        snapshot,
+        context,
+        plan,
+        analyses: [],
+        error: plan.error ?? '회의 소집(orchestration)에 실패했습니다.',
+      }
+    }
+
+    const analyses = await runExpertAnalyses({ question, roles: plan.roles, context })
+    const ok = plan.ok && analyses.some((a) => a.ok)
+    return {
+      ok,
+      question,
+      snapshot,
+      context,
+      plan,
+      analyses,
+      ...(ok ? {} : { error: '유효한 전문가 분석이 하나도 없습니다.' }),
+    }
+  } catch (e: unknown) {
+    return {
+      ok: false,
+      question,
+      snapshot,
+      context,
+      plan,
+      analyses: [],
+      error: `DEEP 분석 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
   }
 }

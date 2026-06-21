@@ -10,7 +10,12 @@
  *   $env:NODE_PATH=".\scripts\stubs"; npx tsx --env-file=.env.local scripts/test-deep.ts
  */
 
-import { planJejuMeeting, summarizeAvailableData, type JejuMeetingPlan } from '@/lib/jeju/deep'
+import {
+  planJejuMeeting,
+  summarizeAvailableData,
+  runJejuDeepThroughAnalysis,
+  type JejuMeetingPlan,
+} from '@/lib/jeju/deep'
 
 const QUESTIONS = [
   '제주 잉여 재생에너지를 전기차 충전 인프라로 흡수하는 방안의 타당성은?',
@@ -50,6 +55,41 @@ async function main() {
     console.log('═'.repeat(70))
     const plan = await planJejuMeeting({ question: q, availableDataSummary: dataSummary })
     printPlan(plan)
+  }
+
+  // ── PIECE 2: full run through first-pass expert analyses ──────────────────
+  const deepQuestion = '제주 잉여 재생에너지를 전기차 충전 인프라로 흡수하는 방안의 타당성은?'
+  console.log(`\n\n${'█'.repeat(70)}`)
+  console.log('FULL DEEP RUN (orchestrate → expert first-pass analyses)')
+  console.log(`Q: ${deepQuestion}`)
+  console.log('█'.repeat(70))
+
+  const deep = await runJejuDeepThroughAnalysis({ question: deepQuestion })
+  console.log('\noverall ok:  ', deep.ok)
+  console.log('plan ok:     ', deep.plan.ok, '| roles:', deep.plan.roles.length, '| searchNeeded:', deep.plan.searchNeeded)
+  console.log('context size:', deep.context.length, 'chars')
+  if (deep.error) console.log('error:       ', deep.error)
+
+  for (const a of deep.analyses) {
+    console.log(`\n${'─'.repeat(70)}`)
+    const flag = a.isRedTeam ? '  [RED TEAM]' : ''
+    console.log(`${a.roleLabel}  →  ${a.provider}${flag}   (ok: ${a.ok})`)
+    console.log('─'.repeat(70))
+    if (!a.ok) {
+      console.log('error:', a.error)
+      continue
+    }
+    console.log('analysis:')
+    console.log(a.analysis)
+    if (a.searchRequests.length) {
+      console.log('\nsearch requests:')
+      for (const sr of a.searchRequests) {
+        console.log(`  🔍 "${sr.query}"`)
+        console.log(`      이유: ${sr.reason}`)
+      }
+    } else {
+      console.log('\nsearch requests: (없음)')
+    }
   }
 
   console.log(`\n${'═'.repeat(70)}`)
