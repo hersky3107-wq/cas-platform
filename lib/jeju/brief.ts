@@ -39,11 +39,12 @@ import {
  *   pipeline is identical.
  */
 
-/** The three governance-axis sources: energy, agriculture/marine, climate. */
+/** The four governance-axis sources: energy, agriculture/marine, climate, forecast. */
 const GOVERNANCE_SOURCE_IDS = [
   'kpx-jeju-power',
   'kamis-jeju-products',
   'kma-jeju-weather',
+  'kma-jeju-midterm',
 ] as const
 
 /** Korean section header per source id, used by buildBriefingContext. */
@@ -51,6 +52,7 @@ const SECTION_HEADER_BY_ID: Record<string, string> = {
   'kpx-jeju-power': '## 제주 전력 현황 (KPX)',
   'kamis-jeju-products': '## 제주 농수산물 가격 (KAMIS)',
   'kma-jeju-weather': '## 제주 기상 현황 (KMA)',
+  'kma-jeju-midterm': '## 제주 중기예보 11일 전망 (KMA)',
 }
 
 /** Effective question used when no specific question is supplied (daily path). */
