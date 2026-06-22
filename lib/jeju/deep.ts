@@ -2299,8 +2299,13 @@ export type JejuVerdict = {
  * a concise result — a short 최종 판단, a short 토론·합의 과정 note, the
  * 마이너리티 리포트 (still REQUIRED), and 참고 사항 — skipping the long
  * beat1/beat2 data/analysis summaries.
+ *
+ * When `hasVote` is true, a ballot is being shown to the chair as ADVISORY
+ * context; an extra instruction tells the chair it is not bound by the vote and
+ * must justify any departure from it. The chair stays the decider — influence is
+ * via the prompt only.
  */
-function buildChairSystemPrompt(consensusScore: number, brief = false): string {
+function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote = false): string {
   const lines = [
     '당신은 제주도정 거버넌스 심의의 최종 의장(chair)이자 판결자입니다.',
     '당신은 단순 요약가가 아니라, 법원의 재판관에 가까운 역할입니다. 수집된 데이터, 전문가들의 분석과 조사, 그리고 여러 라운드의 토론·합의 과정을 모두 읽고, 가장 최적이며 확실한 최종 판단을 책임지고 내려야 합니다. 당신의 판단에 따라 공무원이 실제로 정책을 집행합니다.',
@@ -2318,6 +2323,18 @@ function buildChairSystemPrompt(consensusScore: number, brief = false): string {
   } else {
     lines.push(
       `전문가들이 완전히 합의하지 못했습니다(합의도 ${consensusScore === CONSENSUS_SCORE_UNAVAILABLE ? '측정 불가' : consensusScore + '점'}). 바로 이럴 때 당신의 판단이 가장 중요합니다. "전문가들이 갈렸다"로 회피하지 말고, 근거를 들어 가장 타당한 결론을 책임지고 판결하십시오.`
+    )
+  }
+
+  // Advisory vote: shown only when a ballot accompanies this verdict. The chair is
+  // told the vote is non-binding and must justify any departure from it.
+  if (hasVote) {
+    lines.push(
+      '',
+      '이 안건에는 심의체 전원의 표결 결과가 참고 자료로 함께 제공됩니다. 다음을 명심하십시오.',
+      '표결 결과는 참고 자료일 뿐, 절대적 구속력이 없습니다.',
+      '당신은 재판관입니다. 다수결을 맹종하지 마십시오. 표결과 다른 판단을 내릴 수 있으며, 그럴 경우 반드시 그 이유를 "## 최종 판단"에 분명히 밝히십시오.',
+      '표결이 찬성 다수라 해서 무비판적으로 추인하지 마십시오. 반대·기권에 담긴 근거(특히 마이너리티 리포트와 합의도)를 함께 저울질하여 판단하십시오.'
     )
   }
 
@@ -2410,6 +2427,27 @@ function formatDeliberationForChair(deliberation: JejuDeliberation): string {
     .join('\n')
 
   return [...blocks, tail].join('\n\n')
+}
+
+/** Korean label for a ballot choice, used when showing the vote to the chair. */
+function voteChoiceLabel(choice: JejuVoteChoice): string {
+  return choice === 'approve' ? '찬성' : choice === 'oppose' ? '반대' : '기권'
+}
+
+/**
+ * Renders the motion ballot into a Korean block for the chair (advisory context):
+ * the tally line plus each cast ballot's brand label, choice, and short reason.
+ * Only ok, choice-bearing votes are listed.
+ */
+function formatVoteForChair(vote: JejuVoteResult): string {
+  const lines = [vote.summary]
+  for (const v of vote.votes) {
+    if (!v.ok || v.choice == null) continue
+    const label = JEJU_VOTE_BRAND_LABEL[v.provider]
+    const reason = v.reason && v.reason.trim() !== '' ? ` — ${v.reason.trim()}` : ''
+    lines.push(`- ${label}: ${voteChoiceLabel(v.choice)}${reason}`)
+  }
+  return lines.join('\n')
 }
 
 /** Renders revised analyses + their first-pass into a Korean block for the chair. */
@@ -2535,10 +2573,20 @@ export async function renderChairVerdict(params: {
   deliberation: JejuDeliberation
   /** High-consensus short-circuit: render a concise verdict (minority report still kept). */
   brief?: boolean
+  /** A motion ballot to show the chair as ADVISORY context (non-binding). */
+  vote?: JejuVoteResult
 }): Promise<JejuVerdict> {
-  const { question, snapshot, searches, revised, rebuttals, deliberation } = params
+  const { question, snapshot, searches, revised, rebuttals, deliberation, vote } = params
   const brief = params.brief === true
   const consensusScore = deliberation.finalScore
+
+  // Single source of truth: the chair is shown the ballot AND told it's advisory
+  // only when there's a real, parseable vote with at least one cast ballot. This
+  // keeps the context block and the system-prompt instruction in lockstep.
+  const hasVote =
+    vote != null &&
+    vote.ok &&
+    vote.approveCount + vote.opposeCount + vote.abstainCount > 0
 
   const base = {
     consensusScore,
@@ -2546,7 +2594,7 @@ export async function renderChairVerdict(params: {
     provider: 'anthropic',
   }
 
-  const contextBlock = [
+  const contextParts = [
     '# 심의 안건',
     question,
     '',
@@ -2564,10 +2612,21 @@ export async function renderChairVerdict(params: {
     '',
     '# 3.5 토론 — 다중 라운드 수렴 (beat 3.5/3.6)',
     formatDeliberationForChair(deliberation),
+  ]
+
+  // Advisory ballot block — placed AFTER the deliberation, BEFORE the task. Only
+  // when a real vote happened (see hasVote); otherwise nothing is appended.
+  if (hasVote) {
+    contextParts.push('', '# 표결 결과 (참고용)', formatVoteForChair(vote!))
+  }
+
+  contextParts.push(
     '',
     '# 당신의 임무',
-    '위 전체 심의 자료(case file)를 모두 읽고, 의장으로서 최종 판단을 구조에 맞춰 작성하십시오.',
-  ].join('\n')
+    '위 전체 심의 자료(case file)를 모두 읽고, 의장으로서 최종 판단을 구조에 맞춰 작성하십시오.'
+  )
+
+  const contextBlock = contextParts.join('\n')
 
   let r
   try {
@@ -2577,7 +2636,7 @@ export async function renderChairVerdict(params: {
       userId: null,
       provider: 'anthropic',
       prompt: contextBlock,
-      systemPrompt: buildChairSystemPrompt(consensusScore, brief),
+      systemPrompt: buildChairSystemPrompt(consensusScore, brief, hasVote),
       maxCompletionTokens: VERDICT_MAX_TOKENS,
     })
   } catch (e: unknown) {
@@ -3204,6 +3263,8 @@ export async function runJejuDeepCompleteWithVote(params?: {
       rebuttals: deliberationStage.debate,
       deliberation: deliberationStage.deliberation,
       brief,
+      // The motion vote (if any) ran first; show it to the chair as advisory context.
+      vote,
     })
 
     return { ...deliberationStage, ok: verdict.ok, verdict, vote }
