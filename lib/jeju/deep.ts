@@ -2291,6 +2291,8 @@ export type JejuVerdict = {
   beat3Summary: string | null
   /** The honestly-preserved dissent (English label, Korean content). */
   minorityReport: string | null
+  /** Qualitative press/media reception risk — set ONLY when the case file contains media analysis; otherwise null. */
+  mediaRisk: string | null
   /** Carried from the deliberation. */
   consensusScore: number
   /** The "참고용, 최종판단은 사람" note. */
@@ -2385,6 +2387,9 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
     '',
     '## 토론·합의 과정',
     '토론이 어떻게 수렴했는지에 대한 제대로 된 요약(beat 3). 합의 점수, 어디에 안착했고 왜 그랬는지 설명하십시오.',
+    '',
+    '## 언론 리스크',
+    '심의 자료에 언론 분석이 포함된 경우에만 이 절을 작성하라. 이 정책을 발표·집행할 때 예상되는 언론 보도 논조와 반복될 가능성이 있는 쟁점·우려, 그리고 그로 인한 평판·소통 리스크를 정성적으로 서술하라. 정량 수치(지지율 등)를 지어내지 말 것. 심의 자료에 언론 분석이 전혀 없으면 이 절 자체를 생략하라(없는 반응을 지어내지 말 것).',
     '',
     '## 마이너리티 리포트',
     '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하여, 무엇이 합의되지 못했는지 공무원이 분명히 알 수 있게 하십시오.',
@@ -2491,11 +2496,21 @@ function formatRebuttalsForChair(rebuttals: JejuRebuttal[]): string {
 /** Maps a section heading to its JejuVerdict field. Returns null for unknown headings. */
 function chairSectionField(
   heading: string
-): 'judgment' | 'beat1Summary' | 'beat2Summary' | 'beat3Summary' | 'minorityReport' | 'disclaimer' | null {
+):
+  | 'judgment'
+  | 'beat1Summary'
+  | 'beat2Summary'
+  | 'beat3Summary'
+  | 'mediaRisk'
+  | 'minorityReport'
+  | 'disclaimer'
+  | null {
   const h = heading.trim().toLowerCase()
   if (h.includes('최종 판단') || h.includes('최종판단')) return 'judgment'
   if (h.includes('수집 데이터') || h.includes('수집데이터')) return 'beat1Summary'
   if (h.includes('전문가 분석') || h.includes('분석·조사') || h.includes('분석/조사')) return 'beat2Summary'
+  // Check 언론 리스크 BEFORE the 토론/합의 matcher so it never gets swallowed.
+  if (h.includes('언론 리스크') || h.includes('언론리스크')) return 'mediaRisk'
   if (h.includes('토론') || h.includes('합의 과정') || h.includes('합의과정')) return 'beat3Summary'
   if (h.includes('minority') || h.includes('마이너리티')) return 'minorityReport'
   if (h.includes('참고')) return 'disclaimer'
@@ -2512,6 +2527,7 @@ function parseChairOutput(text: string): {
   beat1Summary: string | null
   beat2Summary: string | null
   beat3Summary: string | null
+  mediaRisk: string | null
   minorityReport: string | null
   disclaimer: string | null
   matchedAny: boolean
@@ -2521,6 +2537,7 @@ function parseChairOutput(text: string): {
     beat1Summary: null as string | null,
     beat2Summary: null as string | null,
     beat3Summary: null as string | null,
+    mediaRisk: null as string | null,
     minorityReport: null as string | null,
     disclaimer: null as string | null,
     matchedAny: false,
@@ -2653,6 +2670,7 @@ export async function renderChairVerdict(params: {
       beat1Summary: null,
       beat2Summary: null,
       beat3Summary: null,
+      mediaRisk: null,
       minorityReport: null,
       error: `의장 판결 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
     }
@@ -2666,6 +2684,7 @@ export async function renderChairVerdict(params: {
       beat1Summary: null,
       beat2Summary: null,
       beat3Summary: null,
+      mediaRisk: null,
       minorityReport: null,
       error: r.error ?? '의장이 빈 판결을 반환했습니다.',
     }
@@ -2683,6 +2702,7 @@ export async function renderChairVerdict(params: {
       beat1Summary: null,
       beat2Summary: null,
       beat3Summary: null,
+      mediaRisk: null,
       minorityReport: fallbackMinorityReport(deliberation),
     }
   }
@@ -2701,6 +2721,8 @@ export async function renderChairVerdict(params: {
     beat1Summary: parsed.beat1Summary,
     beat2Summary: parsed.beat2Summary,
     beat3Summary: parsed.beat3Summary,
+    // Optional: null when absent (brief mode, or chair omitted it). No reconstruction.
+    mediaRisk: parsed.mediaRisk,
     minorityReport,
     // Prefer the chair's own 참고 사항 if present; otherwise the default.
     disclaimer: parsed.disclaimer ?? DEFAULT_DISCLAIMER,
@@ -2734,6 +2756,7 @@ export async function runJejuDeepComplete(params?: {
     beat1Summary: null,
     beat2Summary: null,
     beat3Summary: null,
+    mediaRisk: null,
     minorityReport: null,
     consensusScore: deliberationStage.deliberation.finalScore,
     disclaimer: DEFAULT_DISCLAIMER,
@@ -3215,6 +3238,7 @@ export async function runJejuDeepCompleteWithVote(params?: {
     beat1Summary: null,
     beat2Summary: null,
     beat3Summary: null,
+    mediaRisk: null,
     minorityReport: null,
     consensusScore: finalScore,
     disclaimer: DEFAULT_DISCLAIMER,
