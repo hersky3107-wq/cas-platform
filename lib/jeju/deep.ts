@@ -2065,6 +2065,15 @@ const CONSENSUS_TARGET = 85
 /** After the minimum, if a round's gain drops below this, stop — nothing more to squeeze. */
 const STALL_DELTA = 4
 
+/**
+ * Consensus at/above this score is treated as "high enough that there is little
+ * left to adjudicate": the chair writes a SHORT verdict and NO vote is held.
+ * Below it (on a binary question) the body votes. Numerically equal to
+ * CONSENSUS_TARGET today, but a SEPARATE concern (voting/brief-mode gate, not the
+ * deliberation stop target) — kept independent on purpose so the two can diverge.
+ */
+const CONSENSUS_VOTE_THRESHOLD = 85
+
 /** Why the deliberation loop stopped. */
 export type JejuDeliberationStopReason = 'target_reached' | 'stalled' | 'max_rounds' | 'error'
 
@@ -2284,8 +2293,14 @@ export type JejuVerdict = {
   error?: string
 }
 
-/** Builds the chair (judge) system prompt; instruction weight scales with (low) consensus. */
-function buildChairSystemPrompt(consensusScore: number): string {
+/**
+ * Builds the chair (judge) system prompt; instruction weight scales with (low)
+ * consensus. When `brief` is true (high-consensus short-circuit) the chair writes
+ * a concise result — a short 최종 판단, a short 토론·합의 과정 note, the
+ * 마이너리티 리포트 (still REQUIRED), and 참고 사항 — skipping the long
+ * beat1/beat2 data/analysis summaries.
+ */
+function buildChairSystemPrompt(consensusScore: number, brief = false): string {
   const lines = [
     '당신은 제주도정 거버넌스 심의의 최종 의장(chair)이자 판결자입니다.',
     '당신은 단순 요약가가 아니라, 법원의 재판관에 가까운 역할입니다. 수집된 데이터, 전문가들의 분석과 조사, 그리고 여러 라운드의 토론·합의 과정을 모두 읽고, 가장 최적이며 확실한 최종 판단을 책임지고 내려야 합니다. 당신의 판단에 따라 공무원이 실제로 정책을 집행합니다.',
@@ -2304,6 +2319,31 @@ function buildChairSystemPrompt(consensusScore: number): string {
     lines.push(
       `전문가들이 완전히 합의하지 못했습니다(합의도 ${consensusScore === CONSENSUS_SCORE_UNAVAILABLE ? '측정 불가' : consensusScore + '점'}). 바로 이럴 때 당신의 판단이 가장 중요합니다. "전문가들이 갈렸다"로 회피하지 말고, 근거를 들어 가장 타당한 결론을 책임지고 판결하십시오.`
     )
+  }
+
+  if (brief) {
+    // High-consensus short-circuit: concise output, but the minority report is
+    // STILL required and must never be dropped.
+    lines.push(
+      '',
+      '전문가 합의도가 높아 길게 판결할 필요가 없습니다. 아래 구조를 정확히 따르되 간결하게 작성하십시오. 각 절은 반드시 "## " 머리말로 시작하세요. 수집 데이터 요약과 전문가 분석·조사 요약 절은 생략합니다.',
+      '중요: 분량을 줄이더라도 "## 마이너리티 리포트"는 절대 생략하지 마십시오. 합의도가 높아도 끝까지 남은 소수·반대 의견은 반드시 보존해야 합니다.',
+      '',
+      '## 최종 판단',
+      '당신의 결론(판결)과 핵심 이유를 간결하게. 합의를 확정하고 날카롭게 다듬되, 공무원이 집행할 수 있는 분명한 방향으로 쓰십시오.',
+      '',
+      '## 토론·합의 과정',
+      '토론이 어떻게 수렴했는지 짧게(합의 점수와 안착 지점 위주).',
+      '',
+      '## 마이너리티 리포트',
+      '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하십시오. 없으면 없다고 분명히 쓰십시오.',
+      '',
+      '## 참고 사항',
+      DEFAULT_DISCLAIMER,
+      '',
+      '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
+    )
+    return lines.join('\n')
   }
 
   lines.push(
@@ -2493,8 +2533,11 @@ export async function renderChairVerdict(params: {
   revised: JejuRevisedAnalysis[]
   rebuttals: JejuRebuttal[]
   deliberation: JejuDeliberation
+  /** High-consensus short-circuit: render a concise verdict (minority report still kept). */
+  brief?: boolean
 }): Promise<JejuVerdict> {
   const { question, snapshot, searches, revised, rebuttals, deliberation } = params
+  const brief = params.brief === true
   const consensusScore = deliberation.finalScore
 
   const base = {
@@ -2534,7 +2577,7 @@ export async function renderChairVerdict(params: {
       userId: null,
       provider: 'anthropic',
       prompt: contextBlock,
-      systemPrompt: buildChairSystemPrompt(consensusScore),
+      systemPrompt: buildChairSystemPrompt(consensusScore, brief),
       maxCompletionTokens: VERDICT_MAX_TOKENS,
     })
   } catch (e: unknown) {
@@ -2742,8 +2785,33 @@ export type JejuVoteResult = {
 /** Tokens for a vote call — short: one choice line + a 1–2 sentence reason. */
 const VOTE_MAX_TOKENS = 400
 
-/** Builds the Korean system prompt for a voting member of the deliberation body. */
-function buildVoteSystemPrompt(): string {
+/** What the ballot is cast on: a chair ruling ('verdict') or the motion itself ('motion'). */
+type JejuVoteMode = 'verdict' | 'motion'
+
+/**
+ * Builds the Korean system prompt for a voting member of the deliberation body.
+ *   - 'verdict': vote on whether to endorse the chair's 최종 판단.
+ *   - 'motion':  vote on the official's original proposition (the motion) itself,
+ *                cast BEFORE any chair ruling exists.
+ */
+function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict'): string {
+  if (mode === 'motion') {
+    return [
+      '당신은 제주도정 거버넌스 심의체의 표결 위원입니다. 전문가 심의를 거친 정책 안건(동의안)이 표결에 부쳐졌습니다. 당신은 이 안건을 제주도가 정책으로 채택·실행하는 데 찬성하는지 표결합니다.',
+      '안건의 문구는 공무원이 제출한 원안 그대로입니다. 문구의 의미를 바꾸지 말고, 그 제안 자체에 대해 표결하십시오.',
+      '오직 정책적 타당성만 보고 판단하세요. 어느 AI가 잘했는지 평가하는 것이 아닙니다.',
+      '',
+      '선택지: 찬성(이 안건을 정책으로 채택·실행해도 좋다) / 반대(채택·실행해서는 안 된다) / 기권(당신의 전문 영역 밖이거나 근거가 부족해 판단을 보류한다)',
+      '안건뿐 아니라, 심의에서 끝까지 해소되지 않은 쟁점과 전문가 합의도 점수도 함께 검토하세요. 미해결 쟁점이 당신의 전문 영역에서 중대하다고 보면 반대하거나 기권하십시오. 당신의 영역 밖이거나 근거가 부족하면 기권하십시오. 그럴듯해 보인다는 이유만으로 무조건 찬성하지 마세요 — 정직하게 표결하는 것이 임무입니다.',
+      '중요: 안건이 "조건을 붙여 단계적으로 추진하자"는 식의 균형 잡힌 방향이라도, 그 전제 조건(예: 핵심 데이터 확보, 경제성 검증, 제도 정비)이 아직 충족되지 않았다면, 방향에 공감하더라도 "지금 채택·실행"에는 반대하는 것이 정당합니다.',
+      '당신이 이 심의 과정에서 견지했던 입장을 기억하세요. 토론에서 비판적이었다면 그 비판이 해소되었는지 스스로 점검하고, 해소되지 않았다면 반대 또는 기권하십시오. 입장을 바꿨다면 왜 바꿨는지 이유에 쓰세요.',
+      '',
+      '출력 형식(반드시 정확히 두 줄):',
+      '표결: 찬성 또는 표결: 반대 또는 표결: 기권',
+      '이유: [1~2문장, 한국어, 구체적으로]',
+    ].join('\n')
+  }
+
   return [
     '당신은 제주도정 거버넌스 심의체의 표결 위원입니다. 의장(chair)이 최종 판단을 내렸습니다. 당신은 이 판단을 제주도가 정책으로 채택하는 데 찬성하는지 표결합니다.',
     '오직 정책적 타당성만 보고 판단하세요. 어느 AI가 잘했는지 평가하는 것이 아닙니다.',
@@ -2781,55 +2849,78 @@ function parseVoteResponse(text: string | null): {
 }
 
 /**
- * Builds the voter's user prompt: question + chair's ruling + minority report
- * (if any) + consensus score (if known). Voters who see only the polished ruling
- * tend to rubber-stamp; exposing the unresolved dissent and the consensus level
- * lets them cast an informed ballot.
+ * Builds the voter's user prompt: the proposition to vote on + the unresolved
+ * issues + the consensus score (if known). Voters who see only a polished
+ * proposition tend to rubber-stamp; exposing the unresolved dissent and the
+ * consensus level lets them cast an informed ballot.
+ *
+ *   - 'verdict' mode: proposition is the chair's 최종 판단; `unresolvedIssues` is
+ *     the chair's minority report.
+ *   - 'motion' mode: proposition is the official's original question (verbatim);
+ *     `unresolvedIssues` is the deliberation's contested points.
  */
-function buildVoteUserPrompt(
-  question: string,
-  judgment: string,
-  minorityReport?: string | null,
+function buildVoteUserPrompt(params: {
+  mode: JejuVoteMode
+  question: string
+  proposition: string
+  unresolvedIssues?: string | null
   consensusScore?: number
-): string {
-  const parts: string[] = [
-    '# 심의 안건',
-    question,
-    '',
-    '# 의장의 최종 판단 (표결 대상)',
-    judgment,
-  ]
+}): string {
+  const { mode, question, proposition, unresolvedIssues, consensusScore } = params
+
+  const parts: string[] =
+    mode === 'motion'
+      ? [
+          '# 표결 대상 안건 (이 제안을 제주도가 정책으로 채택·실행할지 표결합니다 — 원안 그대로)',
+          proposition,
+        ]
+      : [
+          '# 심의 안건',
+          question,
+          '',
+          '# 의장의 최종 판단 (표결 대상)',
+          proposition,
+        ]
 
   if (typeof consensusScore === 'number' && consensusScore >= 0) {
     parts.push(
       '',
       `## 전문가 합의도: ${consensusScore}/100`,
-      consensusScore < 85
-        ? `(주의: 합의도가 85점 미만으로, 전문가들이 완전히 수렴하지 못했습니다. 합의도 ${consensusScore}점.)`
+      consensusScore < CONSENSUS_VOTE_THRESHOLD
+        ? `(주의: 합의도가 ${CONSENSUS_VOTE_THRESHOLD}점 미만으로, 전문가들이 완전히 수렴하지 못했습니다. 합의도 ${consensusScore}점.)`
         : `(전문가들이 충분히 합의했습니다.)`
     )
   }
 
-  if (minorityReport && minorityReport.trim() !== '') {
+  if (unresolvedIssues && unresolvedIssues.trim() !== '') {
     parts.push(
       '',
       '## 끝까지 해소되지 않은 쟁점 (이것들이 당신 영역에서 중대하다면 반대/기권의 근거입니다)',
-      minorityReport.trim()
+      unresolvedIssues.trim()
     )
   }
 
   parts.push(
     '',
     '# 당신의 임무',
-    '위 의장의 최종 판단, 전문가 합의도, 그리고 끝까지 해소되지 않은 쟁점을 모두 검토한 후 정책적 타당성만 보고 표결하십시오. 형식에 맞춰 정확히 두 줄로만 답하십시오.'
+    mode === 'motion'
+      ? '위 안건, 전문가 합의도, 그리고 끝까지 해소되지 않은 쟁점을 모두 검토한 후, 이 안건을 제주도가 정책으로 채택·실행하는 것에 대해 정책적 타당성만 보고 표결하십시오. 형식에 맞춰 정확히 두 줄로만 답하십시오.'
+      : '위 의장의 최종 판단, 전문가 합의도, 그리고 끝까지 해소되지 않은 쟁점을 모두 검토한 후 정책적 타당성만 보고 표결하십시오. 형식에 맞춰 정확히 두 줄로만 답하십시오.'
   )
 
   return parts.join('\n')
 }
 
-/** Casts ONE provider's vote on the chair's ruling. Never throws. */
+/** Renders the deliberation's contested points into the "unresolved issues" block for a motion vote. */
+function formatContestedForVote(contestedPoints: string[]): string | null {
+  if (contestedPoints.length === 0) return null
+  return contestedPoints.map((p) => `• ${p}`).join('\n')
+}
+
+/** Casts ONE provider's vote on the given proposition. Never throws. */
 async function runOneVote(
   provider: ExtendedAiProviderName,
+  systemPrompt: string,
   userPrompt: string
 ): Promise<JejuVote> {
   let r
@@ -2840,7 +2931,7 @@ async function runOneVote(
       userId: null,
       provider,
       prompt: userPrompt,
-      systemPrompt: buildVoteSystemPrompt(),
+      systemPrompt,
       maxCompletionTokens: VOTE_MAX_TOKENS,
     })
   } catch (e: unknown) {
@@ -2878,23 +2969,12 @@ async function runOneVote(
 }
 
 /**
- * PIECE 5 — the closing ballot. Asks ALL 8 panel providers, in parallel, whether
- * they endorse the chair's verdict (찬성/반대/기권 + reason).
- *
- * The proposition is the chair's 최종 판단, so this can only run once a concrete
- * ruling exists; with no judgment it returns ok:false (you can't vote on
- * nothing). Abstain is a first-class, honest option. Abstains never tip the
- * outcome — only 찬성 vs 반대 do. Never throws.
+ * A clearly "not applicable / no ballot" result, with a Korean reason in
+ * `summary`, so the UI can tell "no vote happened" from "vote failed" (both
+ * ok:false, but the summary explains which).
  */
-export async function runJejuVote(params: {
-  verdict: JejuVerdict
-  question: string
-  minorityReport?: string | null
-  consensusScore?: number
-}): Promise<JejuVoteResult> {
-  const { verdict, question, minorityReport, consensusScore } = params
-
-  const empty = (summary: string): JejuVoteResult => ({
+function emptyVoteResult(summary: string): JejuVoteResult {
+  return {
     votes: [],
     approveCount: 0,
     opposeCount: 0,
@@ -2905,22 +2985,17 @@ export async function runJejuVote(params: {
     outcome: 'divided',
     ok: false,
     summary,
-  })
-
-  // Can't vote on nothing — needs a concrete ruling to endorse or reject.
-  if (!verdict.ok || !verdict.judgment || verdict.judgment.trim() === '') {
-    return empty('표결할 의장 판단이 없어 표결을 건너뜁니다.')
   }
+}
 
-  const userPrompt = buildVoteUserPrompt(
-    question,
-    verdict.judgment.trim(),
-    minorityReport,
-    consensusScore
-  )
-
+/**
+ * Shared ballot engine: runs ALL 8 panel providers IN PARALLEL on a prepared
+ * system+user prompt, then tallies. Abstain never tips the outcome — only 찬성 vs
+ * 반대 do. ok = at least one parseable vote landed. Never throws.
+ */
+async function runPanelBallot(systemPrompt: string, userPrompt: string): Promise<JejuVoteResult> {
   const settled = await Promise.allSettled(
-    JEJU_VOTE_PANEL.map((p) => runOneVote(p, userPrompt))
+    JEJU_VOTE_PANEL.map((p) => runOneVote(p, systemPrompt, userPrompt))
   )
 
   const votes: JejuVote[] = settled.map((s, i) => {
@@ -2960,7 +3035,6 @@ export async function runJejuVote(params: {
     outcome === 'approved' ? '다수 승인' : outcome === 'rejected' ? '다수 반대' : '찬반 동수'
   const summary = `찬성 ${approveCount} · 반대 ${opposeCount} · 기권 ${abstainCount} — ${outcomeLabel}`
 
-  // ok = at least one parseable vote landed.
   const ok = approveCount + opposeCount + abstainCount > 0
 
   return {
@@ -2977,6 +3051,68 @@ export async function runJejuVote(params: {
   }
 }
 
+/**
+ * PIECE 5 — the closing ballot. Asks ALL 8 panel providers whether they endorse
+ * the chair's verdict (찬성/반대/기권 + reason).
+ *
+ * The proposition is the chair's 최종 판단, so this can only run once a concrete
+ * ruling exists; with no judgment it returns ok:false (you can't vote on
+ * nothing). Abstain is a first-class, honest option. Abstains never tip the
+ * outcome — only 찬성 vs 반대 do. Never throws.
+ */
+export async function runJejuVote(params: {
+  verdict: JejuVerdict
+  question: string
+  minorityReport?: string | null
+  consensusScore?: number
+}): Promise<JejuVoteResult> {
+  const { verdict, question, minorityReport, consensusScore } = params
+
+  // Can't vote on nothing — needs a concrete ruling to endorse or reject.
+  if (!verdict.ok || !verdict.judgment || verdict.judgment.trim() === '') {
+    return emptyVoteResult('표결할 의장 판단이 없어 표결을 건너뜁니다.')
+  }
+
+  const systemPrompt = buildVoteSystemPrompt('verdict')
+  const userPrompt = buildVoteUserPrompt({
+    mode: 'verdict',
+    question,
+    proposition: verdict.judgment.trim(),
+    unresolvedIssues: minorityReport,
+    consensusScore,
+  })
+
+  return runPanelBallot(systemPrompt, userPrompt)
+}
+
+/**
+ * PIECE 5 (motion variant) — the body votes on the MOTION itself, i.e. the
+ * official's original question taken verbatim as the proposition, cast BEFORE the
+ * chair speaks. Voters see the deliberation's contested points (as the unresolved
+ * issues) and its final consensus score. Abstain never tips the outcome. Never
+ * throws.
+ */
+export async function runJejuMotionVote(params: {
+  question: string
+  deliberation: JejuDeliberation
+}): Promise<JejuVoteResult> {
+  const question = params.question?.trim() ?? ''
+  if (!question) {
+    return emptyVoteResult('표결할 안건이 없어 표결을 건너뜁니다.')
+  }
+
+  const systemPrompt = buildVoteSystemPrompt('motion')
+  const userPrompt = buildVoteUserPrompt({
+    mode: 'motion',
+    question,
+    proposition: question,
+    unresolvedIssues: formatContestedForVote(params.deliberation.contestedPoints),
+    consensusScore: params.deliberation.finalScore,
+  })
+
+  return runPanelBallot(systemPrompt, userPrompt)
+}
+
 /** The full DEEP result plus the closing ballot on the chair's verdict. */
 export type JejuDeepCompleteWithVote = JejuDeepComplete & {
   /** The whole body's closing ballot on the chair's ruling. */
@@ -2984,43 +3120,102 @@ export type JejuDeepCompleteWithVote = JejuDeepComplete & {
 }
 
 /**
- * The COMPLETE governance pipeline: runs the full DEEP run (beats 1–4, ending in
- * the chair's verdict) and then the closing ballot (piece 5) on that verdict.
+ * The COMPLETE governance pipeline with the voting branch, following the 2x2 rule:
  *
- * The verdict is the deliverable, so `ok` mirrors it; the vote is the closing
- * ballot layered on top (a failed/empty vote does not invalidate a valid
- * ruling). Never throws; returns partial data on error.
+ *   - binary  + consensus <  CONSENSUS_VOTE_THRESHOLD → vote on the MOTION FIRST,
+ *       then the chair renders its FULL verdict. (verdict + real vote)
+ *   - binary  + consensus >= CONSENSUS_VOTE_THRESHOLD → NO vote; chair renders a
+ *       SHORT (brief) verdict — consensus is high, little to adjudicate.
+ *   - openEnded (any score)                          → NO vote; chair renders its
+ *       normal verdict (brief if high-consensus, full otherwise).
+ *
+ * An unmeasurable score (-1) is treated as NOT high-consensus → for a binary
+ * question that means NO vote + FULL verdict (the safe path: never show a vote we
+ * can't justify). The no-vote cases return a clearly not-applicable JejuVoteResult
+ * (ok:false, counts 0, Korean summary stating WHY). Never throws; partial data on
+ * error.
  */
 export async function runJejuDeepCompleteWithVote(params?: {
   question?: string
   orchestratorProvider?: string
   maxRounds?: number
 }): Promise<JejuDeepCompleteWithVote> {
-  const complete = await runJejuDeepComplete(params)
+  const deliberationStage = await runJejuDeepThroughDeliberation(params)
+  const finalScore = deliberationStage.deliberation.finalScore
+  const questionType = deliberationStage.plan.questionType
+
+  const emptyVerdict: JejuVerdict = {
+    ok: false,
+    judgment: null,
+    beat1Summary: null,
+    beat2Summary: null,
+    beat3Summary: null,
+    minorityReport: null,
+    consensusScore: finalScore,
+    disclaimer: DEFAULT_DISCLAIMER,
+    provider: 'anthropic',
+    error: '상위 단계가 유효하지 않아 의장 판결을 건너뜁니다.',
+  }
+
+  // Nothing usable upstream → no verdict, no vote.
+  if (!deliberationStage.ok) {
+    return {
+      ...deliberationStage,
+      ok: false,
+      verdict: emptyVerdict,
+      vote: emptyVoteResult('상위 단계가 유효하지 않아 표결을 생략했습니다.'),
+    }
+  }
+
+  // The 2x2 decision rule. An unmeasurable score (-1) is NOT high-consensus.
+  const measurable = finalScore >= 0
+  const highConsensus = measurable && finalScore >= CONSENSUS_VOTE_THRESHOLD
+  const doVote = questionType === 'binary' && measurable && finalScore < CONSENSUS_VOTE_THRESHOLD
+  const brief = highConsensus
+
+  // Reason shown when no ballot is held (so the UI distinguishes "no vote" cases).
+  const noVoteSummary =
+    questionType !== 'binary'
+      ? '개방형 질문으로 표결 생략'
+      : !measurable
+        ? '합의도 측정 불가로 표결 생략(안전 경로)'
+        : highConsensus
+          ? `${CONSENSUS_VOTE_THRESHOLD}점 이상 합의로 표결 생략`
+          : '표결 생략'
+
+  // In the doVote path the motion vote runs BEFORE the chair, so keep whatever
+  // ballot we gathered even if the chair render later fails.
+  let vote: JejuVoteResult = emptyVoteResult(noVoteSummary)
 
   try {
-    const vote = await runJejuVote({
-      verdict: complete.verdict,
-      question: complete.question,
-      minorityReport: complete.verdict.minorityReport,
-      consensusScore: complete.verdict.consensusScore,
+    if (doVote) {
+      vote = await runJejuMotionVote({
+        question: deliberationStage.question,
+        deliberation: deliberationStage.deliberation,
+      })
+    }
+
+    const verdict = await renderChairVerdict({
+      question: deliberationStage.question,
+      snapshot: deliberationStage.snapshot,
+      analyses: deliberationStage.analyses,
+      searches: deliberationStage.searches,
+      revised: deliberationStage.revised,
+      rebuttals: deliberationStage.debate,
+      deliberation: deliberationStage.deliberation,
+      brief,
     })
-    return { ...complete, vote }
+
+    return { ...deliberationStage, ok: verdict.ok, verdict, vote }
   } catch (e: unknown) {
     return {
-      ...complete,
-      vote: {
-        votes: [],
-        approveCount: 0,
-        opposeCount: 0,
-        abstainCount: 0,
-        approveProviders: [],
-        opposeProviders: [],
-        abstainProviders: [],
-        outcome: 'divided',
-        ok: false,
-        summary: `표결 실패(판결은 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
+      ...deliberationStage,
+      ok: false,
+      verdict: {
+        ...emptyVerdict,
+        error: `의장 판결 실패(이전 결과는 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
       },
+      vote,
     }
   }
 }
