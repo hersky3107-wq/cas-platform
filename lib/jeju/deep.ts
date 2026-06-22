@@ -66,6 +66,14 @@ export type JejuMeetingPlan = {
   roles: JejuExpertRole[]
   /** Korean: why this particular lineup fits the question. */
   rationale: string
+  /**
+   * Whether the question is a yes/no proposition the official wants approved or
+   * rejected ('binary' / 찬반형) or an exploratory how/what question with no
+   * single yes/no answer ('openEnded' / 개방형). Defaults to 'openEnded' when
+   * ambiguous or unparseable. Classified by the orchestrator in its existing
+   * call (adds NO extra AI call). Consumed by a later voting-branch step.
+   */
+  questionType: 'binary' | 'openEnded'
   /** True when the question needs current external info beyond our internal data. */
   searchNeeded: boolean
   /** Raw model output, kept for debugging/transparency. */
@@ -155,6 +163,10 @@ function buildOrchestratorSystemPrompt(): string {
     '    가급적 xai 또는 anthropic에 배정하세요.',
     '(c) searchNeeded: 이 질문이 우리 내부 데이터를 넘어서는 최신 외부 정보를 필요로 하면 true.',
     '    true인 경우 perplexity를 맡는 실시간 검색 역할을 반드시 포함하세요.',
+    '(d) questionType: 이 질문의 유형을 분류하세요.',
+    '    - "binary": 공무원이 찬성/반대로 답할 수 있는 명확한 정책 명제 (예: "X를 도입해야 하는가?").',
+    '    - "openEnded": 단일 찬반으로 답할 수 없는 탐색적·개방형 질문 (예: "잉여 전기를 어떻게 활용해야 하는가?").',
+    '    애매하면 반드시 "openEnded"로 분류하세요.',
     '',
     'AI 브랜드 강점표:',
     brandList,
@@ -168,7 +180,8 @@ function buildOrchestratorSystemPrompt(): string {
     '    ...',
     '  ],',
     '  "rationale": "string(한국어 — 이 라인업이 왜 이 질문에 적합한지)",',
-    '  "searchNeeded": true 또는 false',
+    '  "searchNeeded": true 또는 false,',
+    '  "questionType": "binary" 또는 "openEnded"',
     '}',
     'provider 값은 반드시 강점표의 키(openai, anthropic, google, xai, deepseek, mistral, perplexity, meta) 중 하나여야 합니다.',
   ].join('\n')
@@ -214,6 +227,7 @@ function fallbackPlan(question: string, raw: string | undefined, note: string): 
       },
     ],
     rationale: `(기본 라인업) ${note}`,
+    questionType: 'openEnded',
     searchNeeded: false,
     raw,
   }
@@ -276,6 +290,7 @@ export async function planJejuMeeting(params: {
       question,
       roles: [],
       rationale: '',
+      questionType: 'openEnded',
       searchNeeded: false,
       error: '질문이 비어 있습니다.',
     }
@@ -308,6 +323,7 @@ export async function planJejuMeeting(params: {
       question,
       roles: [],
       rationale: '',
+      questionType: 'openEnded',
       searchNeeded: false,
       error: `오케스트레이터 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
     }
@@ -319,6 +335,7 @@ export async function planJejuMeeting(params: {
       question,
       roles: [],
       rationale: '',
+      questionType: 'openEnded',
       searchNeeded: false,
       error: r.error ?? '오케스트레이터가 빈 응답을 반환했습니다.',
     }
@@ -361,11 +378,16 @@ export async function planJejuMeeting(params: {
 
   const searchNeeded = obj.searchNeeded === true
 
+  // Accept ONLY the exact strings; anything else defaults to the safe 'openEnded'.
+  const questionType: 'binary' | 'openEnded' =
+    obj.questionType === 'binary' ? 'binary' : 'openEnded'
+
   return {
     ok: true,
     question,
     roles: normalized,
     rationale,
+    questionType,
     searchNeeded,
     raw,
   }
@@ -610,6 +632,7 @@ export async function runJejuDeepThroughAnalysis(params?: {
     question,
     roles: [],
     rationale: '',
+    questionType: 'openEnded',
     searchNeeded: false,
   }
 
@@ -2633,6 +2656,370 @@ export async function runJejuDeepComplete(params?: {
       verdict: {
         ...emptyVerdict,
         error: `의장 판결 실패(이전 결과는 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
+      },
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PIECE 5 — the democratic final ballot.
+//
+// After the chair renders its verdict (piece 4), the WHOLE deliberation body
+// votes on whether to endorse that ruling for the province to act on. This is a
+// POLICY vote on a concrete proposition (the chair's 최종 판단), not an
+// "which AI did best" evaluation — and it can only happen once a ruling exists.
+//
+// Differences from the existing (binary) Panel Vote module, by design:
+//   - JEJU-specific and isolated (does NOT import or reuse lib/verdict-vote).
+//   - Options are 찬성 / 반대 / 기권 (approve / oppose / ABSTAIN). Abstain is
+//     essential for governance honesty: a provider whose domain is distant, or
+//     who finds the evidence insufficient, abstains rather than guessing.
+//   - ALL 8 providers vote — the full panel, regardless of who was convened for
+//     the debate. The debate used the dynamically-convened roles; the closing
+//     ballot is the whole body's.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The full panel that casts the closing ballot — every provider, not just the
+ * convened debate roles. This is the whole body's final vote.
+ */
+const JEJU_VOTE_PANEL: ExtendedAiProviderName[] = [
+  'anthropic',
+  'openai',
+  'google',
+  'xai',
+  'deepseek',
+  'mistral',
+  'perplexity',
+  'meta',
+]
+
+/**
+ * Brand labels for the vote panel. Kept local (small map) so lib/jeju stays
+ * self-contained and portable — we do NOT reach into SYNOD or other modules.
+ */
+const JEJU_VOTE_BRAND_LABEL: Record<ExtendedAiProviderName, string> = {
+  anthropic: 'Claude',
+  openai: 'ChatGPT',
+  google: 'Gemini',
+  xai: 'Grok',
+  deepseek: 'DeepSeek',
+  mistral: 'Mistral',
+  perplexity: 'Perplexity',
+  meta: 'Llama',
+}
+
+/** A single provider's ballot choice on the chair's ruling. */
+export type JejuVoteChoice = 'approve' | 'oppose' | 'abstain'
+
+/** One provider's vote on the chair's verdict. */
+export type JejuVote = {
+  provider: ExtendedAiProviderName
+  ok: boolean
+  choice: JejuVoteChoice | null
+  /** 1–2 sentence Korean reason. */
+  reason: string | null
+  error?: string
+}
+
+/** The tallied result of the closing ballot. */
+export type JejuVoteResult = {
+  votes: JejuVote[]
+  approveCount: number
+  opposeCount: number
+  abstainCount: number
+  /** Brand labels, e.g. ['Claude', 'ChatGPT']. */
+  approveProviders: string[]
+  opposeProviders: string[]
+  abstainProviders: string[]
+  /** approved if approve>oppose; rejected if oppose>approve; divided if equal. Abstains never tip it. */
+  outcome: 'approved' | 'rejected' | 'divided'
+  ok: boolean
+  /** Korean one-liner, e.g. '찬성 5 · 반대 2 · 기권 1 — 다수 승인'. */
+  summary: string
+}
+
+/** Tokens for a vote call — short: one choice line + a 1–2 sentence reason. */
+const VOTE_MAX_TOKENS = 400
+
+/** Builds the Korean system prompt for a voting member of the deliberation body. */
+function buildVoteSystemPrompt(): string {
+  return [
+    '당신은 제주도정 거버넌스 심의체의 표결 위원입니다. 의장(chair)이 최종 판단을 내렸습니다. 당신은 이 판단을 제주도가 정책으로 채택하는 데 찬성하는지 표결합니다.',
+    '오직 정책적 타당성만 보고 판단하세요. 어느 AI가 잘했는지 평가하는 것이 아닙니다.',
+    '',
+    '선택지: 찬성(이 판단을 정책으로 채택해도 좋다) / 반대(채택해서는 안 된다) / 기권(당신의 전문 영역 밖이거나 근거가 부족해 판단을 보류한다)',
+    '의장의 판단뿐 아니라, 끝까지 해소되지 않은 쟁점(마이너리티 리포트)과 전문가 합의도 점수도 함께 검토하세요. 미해결 쟁점이 당신의 전문 영역에서 중대하다고 보면 반대하거나 기권하십시오. 당신의 영역 밖이거나 근거가 부족하면 기권하십시오. 잘 다듬어진 결론이라고 무조건 찬성하지 마세요 — 정직하게 표결하는 것이 임무입니다.',
+    '중요: 의장이 "조건을 붙여 단계적으로 추진하자"는 식의 균형 잡힌 방향을 제시하더라도, 그 전제 조건(예: 핵심 데이터 확보, 경제성 검증, 제도 정비)이 아직 충족되지 않았다면, 방향에 공감하더라도 "지금 추진"에는 반대하는 것이 정당합니다. 방향이 그럴듯하다는 이유만으로 찬성하지 마세요.',
+    '당신이 이 심의 과정에서 견지했던 입장을 기억하세요. 토론에서 비판적이었다면 그 비판이 해소되었는지 스스로 점검하고, 해소되지 않았다면 반대 또는 기권하십시오. 입장을 바꿨다면 왜 바꿨는지 이유에 쓰세요.',
+    '',
+    '출력 형식(반드시 정확히 두 줄):',
+    '표결: 찬성 또는 표결: 반대 또는 표결: 기권',
+    '이유: [1~2문장, 한국어, 구체적으로]',
+  ].join('\n')
+}
+
+/** Maps a parsed Korean choice token to a JejuVoteChoice. */
+function parseVoteChoice(raw: string): JejuVoteChoice | null {
+  if (raw === '찬성') return 'approve'
+  if (raw === '반대') return 'oppose'
+  if (raw === '기권') return 'abstain'
+  return null
+}
+
+/** Parses a vote response into { choice, reason }. Unparseable → choice:null. */
+function parseVoteResponse(text: string | null): {
+  choice: JejuVoteChoice | null
+  reason: string | null
+} {
+  if (!text) return { choice: null, reason: null }
+  const cMatch = text.match(/표결:\s*(찬성|반대|기권)/)
+  const choice = cMatch ? parseVoteChoice(cMatch[1]!) : null
+  const rMatch = text.match(/이유:\s*([\s\S]+)/)
+  const reason = rMatch ? rMatch[1]!.trim() : null
+  return { choice, reason }
+}
+
+/**
+ * Builds the voter's user prompt: question + chair's ruling + minority report
+ * (if any) + consensus score (if known). Voters who see only the polished ruling
+ * tend to rubber-stamp; exposing the unresolved dissent and the consensus level
+ * lets them cast an informed ballot.
+ */
+function buildVoteUserPrompt(
+  question: string,
+  judgment: string,
+  minorityReport?: string | null,
+  consensusScore?: number
+): string {
+  const parts: string[] = [
+    '# 심의 안건',
+    question,
+    '',
+    '# 의장의 최종 판단 (표결 대상)',
+    judgment,
+  ]
+
+  if (typeof consensusScore === 'number' && consensusScore >= 0) {
+    parts.push(
+      '',
+      `## 전문가 합의도: ${consensusScore}/100`,
+      consensusScore < 85
+        ? `(주의: 합의도가 85점 미만으로, 전문가들이 완전히 수렴하지 못했습니다. 합의도 ${consensusScore}점.)`
+        : `(전문가들이 충분히 합의했습니다.)`
+    )
+  }
+
+  if (minorityReport && minorityReport.trim() !== '') {
+    parts.push(
+      '',
+      '## 끝까지 해소되지 않은 쟁점 (이것들이 당신 영역에서 중대하다면 반대/기권의 근거입니다)',
+      minorityReport.trim()
+    )
+  }
+
+  parts.push(
+    '',
+    '# 당신의 임무',
+    '위 의장의 최종 판단, 전문가 합의도, 그리고 끝까지 해소되지 않은 쟁점을 모두 검토한 후 정책적 타당성만 보고 표결하십시오. 형식에 맞춰 정확히 두 줄로만 답하십시오.'
+  )
+
+  return parts.join('\n')
+}
+
+/** Casts ONE provider's vote on the chair's ruling. Never throws. */
+async function runOneVote(
+  provider: ExtendedAiProviderName,
+  userPrompt: string
+): Promise<JejuVote> {
+  let r
+  try {
+    r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider,
+      prompt: userPrompt,
+      systemPrompt: buildVoteSystemPrompt(),
+      maxCompletionTokens: VOTE_MAX_TOKENS,
+    })
+  } catch (e: unknown) {
+    return {
+      provider,
+      ok: false,
+      choice: null,
+      reason: null,
+      error: `표결 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+
+  if (r.error || !r.text) {
+    return {
+      provider,
+      ok: false,
+      choice: null,
+      reason: null,
+      error: r.error ?? '표결 응답이 비어 있습니다.',
+    }
+  }
+
+  const { choice, reason } = parseVoteResponse(r.text)
+  if (choice == null) {
+    return {
+      provider,
+      ok: false,
+      choice: null,
+      reason,
+      error: '표결을 해석할 수 없습니다(형식 불일치).',
+    }
+  }
+
+  return { provider, ok: true, choice, reason }
+}
+
+/**
+ * PIECE 5 — the closing ballot. Asks ALL 8 panel providers, in parallel, whether
+ * they endorse the chair's verdict (찬성/반대/기권 + reason).
+ *
+ * The proposition is the chair's 최종 판단, so this can only run once a concrete
+ * ruling exists; with no judgment it returns ok:false (you can't vote on
+ * nothing). Abstain is a first-class, honest option. Abstains never tip the
+ * outcome — only 찬성 vs 반대 do. Never throws.
+ */
+export async function runJejuVote(params: {
+  verdict: JejuVerdict
+  question: string
+  minorityReport?: string | null
+  consensusScore?: number
+}): Promise<JejuVoteResult> {
+  const { verdict, question, minorityReport, consensusScore } = params
+
+  const empty = (summary: string): JejuVoteResult => ({
+    votes: [],
+    approveCount: 0,
+    opposeCount: 0,
+    abstainCount: 0,
+    approveProviders: [],
+    opposeProviders: [],
+    abstainProviders: [],
+    outcome: 'divided',
+    ok: false,
+    summary,
+  })
+
+  // Can't vote on nothing — needs a concrete ruling to endorse or reject.
+  if (!verdict.ok || !verdict.judgment || verdict.judgment.trim() === '') {
+    return empty('표결할 의장 판단이 없어 표결을 건너뜁니다.')
+  }
+
+  const userPrompt = buildVoteUserPrompt(
+    question,
+    verdict.judgment.trim(),
+    minorityReport,
+    consensusScore
+  )
+
+  const settled = await Promise.allSettled(
+    JEJU_VOTE_PANEL.map((p) => runOneVote(p, userPrompt))
+  )
+
+  const votes: JejuVote[] = settled.map((s, i) => {
+    const provider = JEJU_VOTE_PANEL[i]!
+    if (s.status === 'fulfilled') return s.value
+    return {
+      provider,
+      ok: false,
+      choice: null,
+      reason: null,
+      error: `표결 처리 실패: ${s.reason instanceof Error ? s.reason.message : 'unknown error'}`,
+    }
+  })
+
+  const approveProviders: string[] = []
+  const opposeProviders: string[] = []
+  const abstainProviders: string[] = []
+
+  for (const v of votes) {
+    if (!v.ok || v.choice == null) continue
+    const label = JEJU_VOTE_BRAND_LABEL[v.provider]
+    if (v.choice === 'approve') approveProviders.push(label)
+    else if (v.choice === 'oppose') opposeProviders.push(label)
+    else if (v.choice === 'abstain') abstainProviders.push(label)
+  }
+
+  const approveCount = approveProviders.length
+  const opposeCount = opposeProviders.length
+  const abstainCount = abstainProviders.length
+
+  let outcome: 'approved' | 'rejected' | 'divided'
+  if (approveCount > opposeCount) outcome = 'approved'
+  else if (opposeCount > approveCount) outcome = 'rejected'
+  else outcome = 'divided'
+
+  const outcomeLabel =
+    outcome === 'approved' ? '다수 승인' : outcome === 'rejected' ? '다수 반대' : '찬반 동수'
+  const summary = `찬성 ${approveCount} · 반대 ${opposeCount} · 기권 ${abstainCount} — ${outcomeLabel}`
+
+  // ok = at least one parseable vote landed.
+  const ok = approveCount + opposeCount + abstainCount > 0
+
+  return {
+    votes,
+    approveCount,
+    opposeCount,
+    abstainCount,
+    approveProviders,
+    opposeProviders,
+    abstainProviders,
+    outcome,
+    ok,
+    summary,
+  }
+}
+
+/** The full DEEP result plus the closing ballot on the chair's verdict. */
+export type JejuDeepCompleteWithVote = JejuDeepComplete & {
+  /** The whole body's closing ballot on the chair's ruling. */
+  vote: JejuVoteResult
+}
+
+/**
+ * The COMPLETE governance pipeline: runs the full DEEP run (beats 1–4, ending in
+ * the chair's verdict) and then the closing ballot (piece 5) on that verdict.
+ *
+ * The verdict is the deliverable, so `ok` mirrors it; the vote is the closing
+ * ballot layered on top (a failed/empty vote does not invalidate a valid
+ * ruling). Never throws; returns partial data on error.
+ */
+export async function runJejuDeepCompleteWithVote(params?: {
+  question?: string
+  orchestratorProvider?: string
+  maxRounds?: number
+}): Promise<JejuDeepCompleteWithVote> {
+  const complete = await runJejuDeepComplete(params)
+
+  try {
+    const vote = await runJejuVote({
+      verdict: complete.verdict,
+      question: complete.question,
+      minorityReport: complete.verdict.minorityReport,
+      consensusScore: complete.verdict.consensusScore,
+    })
+    return { ...complete, vote }
+  } catch (e: unknown) {
+    return {
+      ...complete,
+      vote: {
+        votes: [],
+        approveCount: 0,
+        opposeCount: 0,
+        abstainCount: 0,
+        approveProviders: [],
+        opposeProviders: [],
+        abstainProviders: [],
+        outcome: 'divided',
+        ok: false,
+        summary: `표결 실패(판결은 유효): ${e instanceof Error ? e.message : 'unknown error'}`,
       },
     }
   }
