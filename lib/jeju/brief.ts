@@ -45,6 +45,8 @@ const GOVERNANCE_SOURCE_IDS = [
   'kamis-jeju-products',
   'kma-jeju-weather',
   'kma-jeju-midterm',
+  'kpx-jeju-smp',
+  'kma-jeju-warning',
 ] as const
 
 /** Korean section header per source id, used by buildBriefingContext. */
@@ -53,6 +55,8 @@ const SECTION_HEADER_BY_ID: Record<string, string> = {
   'kamis-jeju-products': '## 제주 농수산물 가격 (KAMIS)',
   'kma-jeju-weather': '## 제주 기상 현황 (KMA)',
   'kma-jeju-midterm': '## 제주 중기예보 11일 전망 (KMA)',
+  'kpx-jeju-smp': '## 제주 계통한계가격·수요예측 (KPX SMP)',
+  'kma-jeju-warning': '## 제주 기상특보 (KMA)',
 }
 
 /** Effective question used when no specific question is supplied (daily path). */

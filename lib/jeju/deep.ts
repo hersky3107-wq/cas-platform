@@ -124,6 +124,8 @@ export async function summarizeAvailableData(): Promise<string> {
     'kamis-jeju-products': '제주 농수산물 도·소매 가격 (양배추·갈치 등)',
     'kma-jeju-weather': '제주시 초단기 기상 실황 (기온·강수·바람)',
     'kma-jeju-midterm': '중기예보 11일 전망 (일별 최저/최고기온·강수확률)',
+    'kpx-jeju-smp': '제주 시간별 계통한계가격(SMP, 원/kWh) 및 수요예측',
+    'kma-jeju-warning': '제주 발효 중 기상특보 (호우·강풍·태풍 등; 없으면 "없음")',
   }
 
   let snapshot

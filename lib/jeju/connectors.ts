@@ -430,6 +430,163 @@ async function fetchKmaMidterm(): Promise<{ text: string } | { error: string }> 
   return { text }
 }
 
+/** YYYYMMDD in KST (no hour stepping) — for date-stamped data.go.kr params. */
+function kstYmd(now: Date = new Date()): string {
+  // Korea is UTC+9, no DST. Shift from epoch to avoid host-timezone issues.
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${kst.getUTCFullYear()}${pad(kst.getUTCMonth() + 1)}${pad(kst.getUTCDate())}`
+}
+
+/** Parses a JSON number or numeric string; returns null when not a finite number. */
+function parseNum(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+/**
+ * Shared data.go.kr envelope reader for the standard 1360000 / B552115 shape:
+ * response.header.{resultCode,resultMsg} + response.body.items.item[]. Returns
+ * the raw resultCode/resultMsg and the normalized item list (single-object →
+ * one-element array) WITHOUT judging the code, so each renderer decides whether
+ * a given code (e.g. '03' NODATA) is an error or a benign empty result.
+ */
+function readDataGoKrEnvelope(
+  rawJson: unknown
+): { ok: true; code: string; msg: string; items: Record<string, unknown>[] } | { ok: false; error: string } {
+  if (!rawJson || typeof rawJson !== 'object') {
+    return { ok: false, error: 'Unexpected response shape' }
+  }
+  const response = (rawJson as Record<string, unknown>).response
+  if (!response || typeof response !== 'object') {
+    return { ok: false, error: 'Missing response in payload' }
+  }
+  const resp = response as Record<string, unknown>
+
+  const header =
+    resp.header && typeof resp.header === 'object' ? (resp.header as Record<string, unknown>) : null
+  const resultCode = header ? header.resultCode : undefined
+  const resultMsg = header && typeof header.resultMsg === 'string' ? header.resultMsg : ''
+  const code =
+    typeof resultCode === 'string' || typeof resultCode === 'number' ? String(resultCode) : ''
+
+  const body =
+    resp.body && typeof resp.body === 'object' ? (resp.body as Record<string, unknown>) : null
+  const itemsContainer =
+    body && body.items && typeof body.items === 'object'
+      ? (body.items as Record<string, unknown>)
+      : null
+  const itemRaw = itemsContainer ? itemsContainer.item : null
+  const items: Record<string, unknown>[] = Array.isArray(itemRaw)
+    ? (itemRaw as Record<string, unknown>[])
+    : itemRaw && typeof itemRaw === 'object'
+      ? [itemRaw as Record<string, unknown>]
+      : []
+
+  return { ok: true, code, msg: resultMsg, items }
+}
+
+/**
+ * Renders the KPX SMP + demand-forecast JSON for JEJU only. Checks the nested
+ * resultCode ('00' = success), keeps only areaName === '제주' items, and renders
+ * a compact Korean summary (min/max/avg SMP, peak hour, hourly series).
+ *
+ * HONESTY: Jeju SMP frequently equals the mainland value here because the HVDC
+ * interconnection couples the two markets. Values are presented as-is; the header
+ * warns the reader NOT to treat them as uniquely Jeju-determined.
+ */
+function renderJejuSmp(rawJson: unknown): { text: string } | { error: string } {
+  const env = readDataGoKrEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  if (env.code !== '00') {
+    return { error: `resultCode ${env.code || 'missing'}${env.msg ? `: ${env.msg}` : ''}` }
+  }
+
+  const jeju = env.items.filter((it) => String(it.areaName ?? '').trim() === '제주')
+  if (jeju.length === 0) {
+    return { error: '제주(areaName=제주) SMP 항목이 없습니다.' }
+  }
+
+  // Sort by hour (1–24) and collect (hour, smp, jlfd) rows.
+  const rows = jeju
+    .map((it) => ({
+      hour: parseNum(it.hour),
+      smp: parseNum(it.smp),
+      jlfd: parseNum(it.jlfd),
+    }))
+    .filter((r) => r.hour !== null)
+    .sort((a, b) => (a.hour ?? 0) - (b.hour ?? 0))
+
+  const smps = rows.map((r) => r.smp).filter((v): v is number => v !== null)
+  const date = String(jeju[0]?.date ?? kstYmd()).trim()
+
+  const headerLine =
+    `제주 계통한계가격(SMP)·수요예측 — ${date} 기준` +
+    '\n※ 주의: 제주 SMP는 HVDC 연계로 육지값과 동일한 경우가 많음. 제주 계통 고유값으로 단정하지 말고 사실 그대로 참고할 것.'
+
+  let summaryLine = '제주 계통한계가격(SMP, 원/kWh): (수치 없음)'
+  if (smps.length > 0) {
+    const min = Math.min(...smps)
+    const max = Math.max(...smps)
+    const avg = smps.reduce((s, v) => s + v, 0) / smps.length
+    const peak = rows.find((r) => r.smp === max)
+    const round = (n: number) => Math.round(n * 100) / 100
+    summaryLine =
+      `제주 계통한계가격(SMP, 원/kWh) 최저 ${round(min)} / 최고 ${round(max)} / 평균 ${round(avg)}` +
+      (peak?.hour != null ? ` · 최고가 시간대 ${peak.hour}시` : '')
+  }
+
+  const hourLines = rows.map((r) => {
+    const parts: string[] = []
+    parts.push(
+      `제주 계통한계가격(SMP, 원/kWh) ${r.smp != null ? r.smp : '?'}`
+    )
+    if (r.jlfd != null) parts.push(`제주 수요예측(KPX 추정) ${r.jlfd}`)
+    return `${String(r.hour).padStart(2, '0')}시: ${parts.join(', ')}`
+  })
+
+  return { text: [headerLine, '', summaryLine, '', ...hourLines].join('\n') }
+}
+
+/**
+ * Renders the KMA 기상특보(getWthrWrnList) JSON for Jeju (stnId=184). Checks the
+ * nested resultCode; treats '00' as success and '03' (NODATA) as a benign
+ * no-warning case. ZERO items is NOT an error — it renders the standard
+ * "현재 발효 중인 기상특보 없음" line. Otherwise lists warning titles, newest first.
+ */
+function renderJejuWarning(rawJson: unknown): { text: string } | { error: string } {
+  const env = readDataGoKrEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  // '03' = NODATA is the API's "no rows" signal — a normal no-warning state.
+  if (env.code !== '00' && env.code !== '03') {
+    return { error: `resultCode ${env.code || 'missing'}${env.msg ? `: ${env.msg}` : ''}` }
+  }
+
+  if (env.items.length === 0) {
+    return { text: '제주 기상특보: 현재 발효 중인 기상특보 없음' }
+  }
+
+  // Newest first by tmFc (발표시각, numeric).
+  const sorted = [...env.items].sort((a, b) => (parseNum(b.tmFc) ?? 0) - (parseNum(a.tmFc) ?? 0))
+  const lines = sorted
+    .map((it) => {
+      const title = typeof it.title === 'string' ? it.title.trim() : ''
+      const tmFc = parseNum(it.tmFc)
+      if (!title) return ''
+      return tmFc != null ? `- (${tmFc}) ${title}` : `- ${title}`
+    })
+    .filter((l) => l !== '')
+
+  if (lines.length === 0) {
+    return { text: '제주 기상특보: 현재 발효 중인 기상특보 없음' }
+  }
+  return { text: ['제주 기상특보 (최근 발표순)', ...lines].join('\n') }
+}
+
 /**
  * Registered Jeju data sources.
  *
@@ -503,6 +660,46 @@ const JEJU_SOURCES: readonly JejuSource[] = [
     // work happens in `fetchCustom`, which calls BOTH getMidTa + getMidLandFcst.
     buildUrl: () => buildMidTaUrl(kmaMidTmFc()),
     fetchCustom: fetchKmaMidterm,
+  },
+
+  {
+    id: 'kpx-jeju-smp',
+    label: 'KPX Jeju SMP & Demand Forecast (계통한계가격·수요예측)',
+    format: 'json',
+    modes: ['governance', 'resident'],
+    buildUrl: () => {
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({
+        serviceKey: key,
+        pageNo: '1',
+        numOfRows: '48',
+        dataType: 'JSON',
+        // NOTE: this endpoint's date param is `date` (the 발전원별 API uses
+        // `baseDate`); `date` is what the probe confirmed working.
+        date: kstYmd(),
+      })
+      return `https://apis.data.go.kr/B552115/SmpWithForecastDemand/getSmpWithForecastDemand?${params.toString()}`
+    },
+    render: renderJejuSmp,
+  },
+
+  {
+    id: 'kma-jeju-warning',
+    label: 'KMA Jeju Weather Warnings (기상특보)',
+    format: 'json',
+    modes: ['governance', 'resident', 'tourist'],
+    buildUrl: () => {
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({
+        ServiceKey: key,
+        pageNo: '1',
+        numOfRows: '20',
+        dataType: 'JSON',
+        stnId: '184', // 184 = 제주
+      })
+      return `https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrWrnList?${params.toString()}`
+    },
+    render: renderJejuWarning,
   },
 
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────
