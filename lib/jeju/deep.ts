@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-import { gatherJejuSnapshot, buildBriefingContext, type JejuSnapshot } from '@/lib/jeju/brief'
+import { gatherJejuSnapshot, buildBriefingContext, JEJU_STANDING_ECONOMY_CONTEXT, type JejuSnapshot } from '@/lib/jeju/brief'
 import {
   runSingleAiProvider,
   MODEL_BY_PROVIDER,
@@ -145,7 +145,8 @@ export async function summarizeAvailableData(): Promise<string> {
     const cap = CAPABILITY_BY_ID[s.id] ?? s.label
     return `- ${s.label}: ${status} — ${cap}`
   })
-  return lines.length ? lines.join('\n') : '(등록된 데이터 소스 없음)'
+  const dataLines = lines.length ? lines.join('\n') : '(등록된 데이터 소스 없음)'
+  return `${JEJU_STANDING_ECONOMY_CONTEXT}\n\n${dataLines}`
 }
 
 /** The orchestrator (회의 소집 책임자) system prompt. */

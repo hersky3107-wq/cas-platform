@@ -72,6 +72,14 @@ const SECTION_HEADER_BY_ID: Record<string, string> = {
 /** Effective question used when no specific question is supplied (daily path). */
 const DEFAULT_DAILY_QUESTION = '오늘의 제주 거버넌스 브리핑'
 
+/**
+ * Standing Jeju economy context — injected into every briefing (LITE + DEEP).
+ * Covers 반도체 (no public API → search for updates), 관광, 감귤 so orchestrator
+ * and experts treat semiconductor as a top export pillar despite no dedicated source.
+ */
+export const JEJU_STANDING_ECONOMY_CONTEXT =
+  '제주 3대 핵심 산업: ① 반도체(제주 수출 1위 품목, 전체 수출의 50% 이상 — 제주반도체㈜ 글로벌 스타팹리스, 5G IoT·전장용 저전력 메모리. 단 생산 통계 공공API는 없으므로 반도체 관련 사안은 검색(Perplexity)으로 최신 수출·실적 동향을 확인할 것) ② 관광(외국인 연 190만·중국 의존 72%, 내국인 연 1186만) ③ 감귤(농업 상징).'
+
 /** Korean uses ~2-3x more tokens than English; one page needs headroom. */
 const BRIEFING_MAX_TOKENS = 4000
 
@@ -162,6 +170,7 @@ export function buildBriefingContext(snapshot: JejuSnapshot): string {
   }
 
   const parts: string[] = []
+  parts.push(`## 제주 핵심 산업 맥락 (상시)\n${JEJU_STANDING_ECONOMY_CONTEXT}`)
   parts.push(sections.length ? sections.join('\n\n') : '(수집된 데이터가 없습니다.)')
   if (failed.length) {
     parts.push(`## 수집 실패 소스 (데이터 일부 누락)\n${failed.join('\n')}`)

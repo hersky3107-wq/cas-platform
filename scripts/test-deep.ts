@@ -1,242 +1,153 @@
 /**
- * Manual smoke-test for the Jeju DEEP orchestrator (lib/jeju/deep.ts, piece 1).
+ * End-to-end verification for the Jeju DEEP pipeline (lib/jeju/deep.ts).
  *
- * Proves the convened lineup CHANGES per question — the core of the AX vision.
- * Calls summarizeAvailableData() once, then planJejuMeeting() for three very
- * different questions and prints each lineup + rationale.
+ * Tests a multi-pillar diversification question (관광·반도체·감귤 + 재생에너지·EV·1차산업)
+ * to verify orchestration, search, deliberation, vote, and chair verdict end-to-end.
  *
- * Requires the data-source keys + ANTHROPIC_API_KEY in .env.local. Makes 3
- * orchestrator (Claude) calls — cheap. Run from project root:
+ * Run from project root:
  *   $env:NODE_PATH=".\scripts\stubs"; npx tsx --env-file=.env.local scripts/test-deep.ts
  */
 
-import {
-  planJejuMeeting,
-  summarizeAvailableData,
-  runJejuDeepThroughAnalysis,
-  runJejuDeepComplete,
-  type JejuMeetingPlan,
-} from '@/lib/jeju/deep'
+import { runJejuDeepCompleteWithVote } from '@/lib/jeju/deep'
 
-const QUESTIONS = [
-  '제주 잉여 재생에너지를 전기차 충전 인프라로 흡수하는 방안의 타당성은?',
-  '여름 성수기 관광객 급증에 대비한 교통·환경 대책은?',
-  '월동무 과잉생산으로 인한 가격 폭락 위험과 대응 방안은?',
-]
+const QUESTION =
+  '제주가 관광·반도체·감귤 중심 경제 구조에서 벗어나 지속가능한 산업 다각화를 이루려면, 재생에너지 전환·전기차 인프라·1차산업 경쟁력을 어떻게 함께 끌고 가야 하는가?'
 
-function printPlan(plan: JejuMeetingPlan) {
-  console.log('ok:          ', plan.ok)
-  console.log('searchNeeded:', plan.searchNeeded)
-  if (!plan.ok) {
-    console.log('error:       ', plan.error)
-    return
-  }
-  console.log(`convened ${plan.roles.length} roles:`)
-  for (const role of plan.roles) {
-    const flag = role.isRedTeam ? '  [RED TEAM]' : ''
-    console.log(`  • ${role.roleLabel}  →  ${role.provider}${flag}`)
-    console.log(`      ${role.mandate}`)
-  }
-  console.log(`\nrationale: ${plan.rationale}`)
+const CHOICE_LABEL: Record<string, string> = {
+  approve: '찬성 ✅',
+  oppose: '반대 ❌',
+  abstain: '기권 ⚪',
+}
+
+function sep(char = '─') {
+  return char.repeat(70)
 }
 
 async function main() {
-  console.log('Jeju DEEP — meeting orchestrator smoke test\n')
+  console.log(sep('═'))
+  console.log('Jeju DEEP — end-to-end verification')
+  console.log(`Q: ${QUESTION}`)
+  console.log(sep('═'))
 
-  console.log(`${'─'.repeat(70)}`)
-  console.log('Available data (orchestrator context):')
-  console.log('─'.repeat(70))
-  const dataSummary = await summarizeAvailableData()
-  console.log(dataSummary)
+  const start = Date.now()
+  let full: Awaited<ReturnType<typeof runJejuDeepCompleteWithVote>>
 
-  for (let i = 0; i < QUESTIONS.length; i++) {
-    const q = QUESTIONS[i]!
-    console.log(`\n${'═'.repeat(70)}`)
-    console.log(`QUESTION ${i + 1}: ${q}`)
-    console.log('═'.repeat(70))
-    const plan = await planJejuMeeting({ question: q, availableDataSummary: dataSummary })
-    printPlan(plan)
+  try {
+    full = await runJejuDeepCompleteWithVote({ question: QUESTION })
+  } catch (err: unknown) {
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1)
+    console.error(`\nFATAL (uncaught) after ${elapsed}s:`, err)
+    process.exit(1)
   }
 
-  // ── PIECE 2: full run through first-pass expert analyses ──────────────────
-  const deepQuestion = '제주 잉여 재생에너지를 전기차 충전 인프라로 흡수하는 방안의 타당성은?'
-  console.log(`\n\n${'█'.repeat(70)}`)
-  console.log('FULL DEEP RUN (orchestrate → expert first-pass analyses)')
-  console.log(`Q: ${deepQuestion}`)
-  console.log('█'.repeat(70))
+  const elapsed = ((Date.now() - start) / 1000).toFixed(1)
 
-  const deep = await runJejuDeepThroughAnalysis({ question: deepQuestion })
-  console.log('\noverall ok:  ', deep.ok)
-  console.log('plan ok:     ', deep.plan.ok, '| roles:', deep.plan.roles.length, '| searchNeeded:', deep.plan.searchNeeded)
-  console.log('context size:', deep.context.length, 'chars')
-  if (deep.error) console.log('error:       ', deep.error)
-
-  for (const a of deep.analyses) {
-    console.log(`\n${'─'.repeat(70)}`)
-    const flag = a.isRedTeam ? '  [RED TEAM]' : ''
-    console.log(`${a.roleLabel}  →  ${a.provider}${flag}   (ok: ${a.ok})`)
-    console.log('─'.repeat(70))
-    if (!a.ok) {
-      console.log('error:', a.error)
-      continue
-    }
-    console.log('analysis:')
-    console.log(a.analysis)
-    if (a.searchRequests.length) {
-      console.log('\nsearch requests:')
-      for (const sr of a.searchRequests) {
-        console.log(`  🔍 "${sr.query}"`)
-        console.log(`      이유: ${sr.reason}`)
-      }
-    } else {
-      console.log('\nsearch requests: (없음)')
-    }
+  if (full.error) {
+    console.log(`\n⚠️  pipeline error: ${full.error}`)
   }
 
-  // ── BEATS 1–4 COMPLETE: full pipeline (… → DELIBERATE → CHAIR VERDICT) ────
-  console.log(`\n\n${'█'.repeat(70)}`)
-  console.log('FULL DEEP RUN (orchestrate → analyze → search → revise → debate → deliberate → VERDICT)')
-  console.log(`Q: ${deepQuestion}`)
-  console.log('█'.repeat(70))
+  // ── VERIFICATION DUMP ─────────────────────────────────────────────────────
+  console.log(`\n${sep('█')}`)
+  console.log('VERIFICATION DUMP')
+  console.log(`overall ok: ${full.ok}  |  ⏱  ${elapsed}초`)
+  console.log(sep('█'))
 
-  const full = await runJejuDeepComplete({ question: deepQuestion })
-  console.log('\noverall ok:        ', full.ok)
-  console.log('analyses:          ', full.analyses.length, '(ok:', full.analyses.filter((a) => a.ok).length, ')')
-
-  const rawRequestCount = full.analyses
-    .filter((a) => a.ok)
-    .reduce((sum, a) => sum + a.searchRequests.length, 0)
-  console.log('raw search requests (pre-merge):', rawRequestCount)
-  console.log('merged searches executed:       ', full.searches.length, `(cap: 5)`)
-  console.log('dropped beyond cap:             ', full.droppedSearchCount)
-  if (full.error) console.log('error:             ', full.error)
-
-  if (full.searches.length > 5) {
-    console.log('\n⚠️  CAP VIOLATION: more than 5 Perplexity calls were executed!')
+  // 1. plan.questionType
+  console.log(`\n[1] plan.questionType: ${full.plan.questionType}`)
+  if (full.plan.questionType === 'binary') {
+    console.log('    ✓ binary — 2x2 vote branch eligible')
   } else {
-    console.log(`\n✓ cap respected: ${full.searches.length} ≤ 5 Perplexity calls`)
+    console.log('    ⚠️  NOT binary — 2x2 vote branch will not fire')
   }
 
-  console.log(`\n${'═'.repeat(70)}`)
-  console.log('SHARED RESEARCH MATERIAL (search results placed on the table)')
-  console.log('═'.repeat(70))
+  // 2. Convened roles
+  console.log(`\n[2] CONVENED ROLES (${full.plan.roles.length}개):`)
+  let pressAnalystFound = false
+  for (const r of full.plan.roles) {
+    const flags = r.isRedTeam ? '  [레드팀]' : ''
+    console.log(`    • ${r.roleLabel}  →  ${r.provider}${flags}`)
+    if (r.roleLabel.includes('언론')) pressAnalystFound = true
+  }
+  if (pressAnalystFound) {
+    console.log('    ✓ 언론 분석가 소집됨')
+  } else {
+    console.log('    ℹ️  언론 분석가 미소집')
+  }
+
+  // 3. Searches
+  console.log(`\n[3] SEARCHES EXECUTED (${full.searches.length}개):`)
   for (const s of full.searches) {
-    console.log(`\n🔍 "${s.query}"   (ok: ${s.ok})`)
-    console.log(`   requestedBy: ${s.requestedBy.join(', ') || '(미상)'}`)
-    console.log(s.ok ? s.result : `   error: ${s.error}`)
+    const ok = s.ok ? '✓' : '✗'
+    const by = s.requestedBy.join(', ') || '?'
+    console.log(`    [${ok}] "${s.query}"`)
+    console.log(`         requestedBy: ${by}`)
+  }
+  if (full.searches.length === 0) {
+    console.log('    (검색 없음)')
   }
 
-  // ── Revision comparison: who changed their mind after the research? ───────
-  const changedCount = full.revised.filter((r) => r.changed).length
-  console.log(`\n\n${'═'.repeat(70)}`)
-  console.log(`REVISED ANALYSES (after search) — ${changedCount}/${full.revised.length} experts changed view`)
-  console.log('═'.repeat(70))
-
-  for (const r of full.revised) {
-    console.log(`\n${'─'.repeat(70)}`)
-    console.log(`${r.roleLabel}  →  ${r.provider}${r.isRedTeam ? '  [RED TEAM]' : ''}`)
-    console.log(`ok: ${r.ok} | changed: ${r.changed ? '✓ YES' : '— no'}`)
-    console.log('─'.repeat(70))
-    if (!r.ok) {
-      console.log('error:', r.error)
-      continue
-    }
-    console.log('[1차]   ', r.firstPass ?? '(없음)')
-    console.log('\n[갱신]  ', r.revised ?? '(없음)')
-  }
-
-  // ── PIECE 3: the debate round — do they actually clash or just agree? ─────
-  const okRebuttals = full.debate.filter((d) => d.ok)
-  const engaged = okRebuttals.filter((d) => d.targetRoleLabels.length > 0).length
-  console.log(`\n\n${'═'.repeat(70)}`)
-  console.log(`DEBATE ROUND (rebuttals) — ${engaged}/${okRebuttals.length} experts named a target to push back on`)
-  console.log('═'.repeat(70))
-
-  // Heuristic sycophancy sniff: rebuttal text that reads like pure agreement.
-  const agreeRe = /(동의합니다|좋은 지적|이견이 없|모두 동의|전적으로 공감)/
-
-  for (const d of full.debate) {
-    console.log(`\n${'─'.repeat(70)}`)
-    console.log(`${d.roleLabel}  →  ${d.provider}${d.isRedTeam ? '  [RED TEAM]' : ''}`)
-    console.log(`ok: ${d.ok}`)
-    if (!d.ok) {
-      console.log('error:', d.error)
-      continue
-    }
-    console.log(`반박 대상: ${d.targetRoleLabels.join(', ') || '(없음 — 대상 미지정)'}`)
-    const looksLikeChorus =
-      d.targetRoleLabels.length === 0 || (d.rebuttal != null && agreeRe.test(d.rebuttal))
-    if (looksLikeChorus) console.log('⚠️  CHORUS RISK: 반박이 아니라 동의처럼 보임 — 확인 필요')
-    console.log('─'.repeat(70))
-    console.log(d.rebuttal ?? '(없음)')
-  }
-
-  // ── PIECE 3.6: looped deliberation — does consensus CLIMB across rounds? ───
+  // 4. Deliberation headline
   const delib = full.deliberation
-  console.log(`\n\n${'═'.repeat(70)}`)
-  console.log('DELIBERATION (looped convergence rounds)')
-  console.log('═'.repeat(70))
+  console.log('\n[4] DELIBERATION:')
+  console.log(`    finalScore:    ${delib.finalScore === -1 ? '측정 불가 (-1)' : delib.finalScore + ' / 100'}`)
+  console.log(`    roundsRun:     ${delib.roundsRun}`)
+  console.log(`    stoppedReason: ${delib.stoppedReason}`)
 
-  // The headline: per-round score progression (should climb, e.g. 45 → 62 → 78).
-  console.log('\n[라운드별 합의 점수 진행]')
-  let prev: number | null = null
-  for (const r of delib.rounds) {
-    const score = r.consensusScore === -1 ? '측정불가' : `${r.consensusScore}`
-    const delta = prev != null && r.consensusScore !== -1 ? ` (Δ${r.consensusScore - prev >= 0 ? '+' : ''}${r.consensusScore - prev})` : ''
-    const oneLine = (r.summary || '(요약 없음)').replace(/\s+/g, ' ').slice(0, 90)
-    console.log(`  R${r.roundNumber}: ${score}/100${delta}  — ${oneLine}`)
-    if (r.consensusScore !== -1) prev = r.consensusScore
-  }
-
-  console.log(`\nroundsRun:     ${delib.roundsRun}`)
-  console.log(`stoppedReason: ${delib.stoppedReason}`)
-  console.log(`finalScore:    ${delib.finalScore === -1 ? '측정 불가 (-1)' : delib.finalScore + ' / 100'}`)
-  if (delib.error) console.log(`error:         ${delib.error}`)
-
-  console.log(`\n${'═'.repeat(70)}`)
-  console.log('최종 합의된 지점 (agreedPoints):')
-  for (const p of delib.agreedPoints) console.log(`  • ${p}`)
-  console.log('\n최종 잔존 쟁점 (contestedPoints → 소수의견 후보):')
-  for (const p of delib.contestedPoints) console.log(`  • ${p}`)
-  console.log('\n[최종 라운드 요약]')
-  console.log(delib.summary || '(없음)')
-
-  // ── BEAT 4: the chair's one-page verdict — the deliverable an official reads ─
-  const v = full.verdict
-  console.log(`\n\n${'█'.repeat(70)}`)
-  console.log('의장(CHAIR) 최종 판결 — 1페이지 결재 문서')
-  console.log(`provider: ${v.provider} | consensus: ${v.consensusScore === -1 ? '측정 불가' : v.consensusScore + '/100'} | ok: ${v.ok}`)
-  console.log('█'.repeat(70))
-  if (!v.ok) {
-    console.log('error:', v.error)
-  } else {
-    console.log('\n## 최종 판단')
-    console.log(v.judgment ?? '(없음)')
-    console.log('\n## 수집 데이터 요약 (beat 1)')
-    console.log(v.beat1Summary ?? '(없음)')
-    console.log('\n## 전문가 분석·조사 요약 (beat 2)')
-    console.log(v.beat2Summary ?? '(없음)')
-    console.log('\n## 토론·합의 과정 (beat 3)')
-    console.log(v.beat3Summary ?? '(없음)')
-    console.log('\n## 마이너리티 리포트')
-    console.log(v.minorityReport ?? '(없음)')
-    console.log('\n## 참고 사항')
-    console.log(v.disclaimer)
-
-    // Quick judgment-quality sniff: decisive ruling, not a wishy-washy punt.
-    const punt = /(전문가들이 갈렸|판단하기 어렵|결정할 수 없|알 수 없)/
-    if (v.judgment && punt.test(v.judgment)) {
-      console.log('\n⚠️  PUNT RISK: 판결이 결단을 회피한 듯 보임 — 확인 필요')
-    } else if (v.judgment) {
-      console.log('\n✓ 결단력 있는 판결로 보임 (회피 표현 미검출)')
+  // 5. Vote
+  const vote = full.vote
+  console.log('\n[5] VOTE:')
+  console.log(`    summary: ${vote.summary}`)
+  if (vote.ok && vote.votes.some((bv) => bv.choice != null)) {
+    for (const bv of vote.votes) {
+      if (!bv.ok || bv.choice == null) continue
+      const choiceLabel = CHOICE_LABEL[bv.choice] ?? bv.choice
+      const reason = bv.reason ? `  — ${bv.reason.trim().slice(0, 100)}` : ''
+      console.log(`    • ${bv.provider}  →  ${choiceLabel}${reason}`)
     }
+    console.log(
+      `    tally: 찬성 ${vote.approveCount} / 반대 ${vote.opposeCount} / 기권 ${vote.abstainCount}  |  outcome: ${vote.outcome}`
+    )
+  } else {
+    console.log('    (표결 없음 — 위 summary 참조)')
   }
 
-  console.log(`\n${'═'.repeat(70)}`)
-  console.log('Done.')
+  // 6. verdict.mediaRisk
+  const v = full.verdict
+  console.log('\n[6] verdict.mediaRisk (언론 리스크):')
+  if (v.mediaRisk && v.mediaRisk.trim() !== '') {
+    console.log(v.mediaRisk)
+    console.log('    ✓ 언론 리스크 절 생성됨')
+  } else {
+    console.log('    null — 언론 분석가 미소집 또는 의장이 절 생략')
+  }
+
+  // 7. verdict.minorityReport
+  console.log('\n[7] verdict.minorityReport:')
+  if (v.minorityReport && v.minorityReport.trim() !== '') {
+    console.log(v.minorityReport)
+  } else {
+    console.log('    null (소수의견 없음)')
+  }
+
+  // 8. verdict.judgment
+  console.log('\n[8] verdict.judgment:')
+  if (v.judgment && v.judgment.trim() !== '') {
+    console.log(v.judgment)
+    const punt = /(전문가들이 갈렸|판단하기 어렵|결정할 수 없|알 수 없)/
+    if (punt.test(v.judgment)) {
+      console.log('\n    ⚠️  PUNT RISK: 판결이 결단을 회피한 듯 보임')
+    } else {
+      console.log('\n    ✓ 결단력 있는 판결로 보임')
+    }
+  } else {
+    console.log('    null (판결 없음)')
+  }
+
+  console.log(`\n${sep('═')}`)
+  console.log(`Done. (${elapsed}초)`)
 }
 
 main().catch((err) => {
-  console.error('Uncaught error (this should not happen):', err)
+  console.error('Uncaught error:', err)
   process.exit(1)
 })
