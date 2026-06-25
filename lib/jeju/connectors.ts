@@ -553,6 +553,138 @@ function renderJejuSmp(rawJson: unknown): { text: string } | { error: string } {
 }
 
 /**
+ * Reads the odcloud envelope: { currentCount, matchCount, page, perPage, totalCount, data:[] }.
+ * Success = HTTP 200 + data array present — there is no resultCode field.
+ * Returns the data rows directly (each row has Korean field names).
+ */
+function readOdcloudEnvelope(rawJson: unknown): {
+  ok: true
+  totalCount: number | null
+  rows: Record<string, unknown>[]
+} | { ok: false; error: string } {
+  if (!rawJson || typeof rawJson !== 'object') {
+    return { ok: false, error: '응답 형식 오류 (non-object)' }
+  }
+  const root = rawJson as Record<string, unknown>
+  const dataRaw = root.data
+  if (!Array.isArray(dataRaw)) {
+    return { ok: false, error: 'odcloud 응답에 data 배열 없음' }
+  }
+  const totalCountRaw = root.totalCount
+  const totalCount =
+    typeof totalCountRaw === 'number'
+      ? totalCountRaw
+      : typeof totalCountRaw === 'string' && totalCountRaw.trim() !== ''
+        ? Number(totalCountRaw)
+        : null
+  return { ok: true, totalCount, rows: dataRaw as Record<string, unknown>[] }
+}
+
+const CITRUS_VARIETIES: readonly string[] = [
+  '노지 온주밀감',
+  '하우스 온주밀감',
+  '월동 온주밀감',
+  '노지 만감류',
+  '하우스 만감류',
+] as const
+
+/**
+ * Renders the odcloud 품종별감귤생산현황 dataset into a compact Korean summary.
+ * Rows come as pairs: 면적(ha) + 생산량(톤) per year × variety. Focuses on:
+ *   - Latest year (2023) production by variety
+ *   - 5-year trend of 노지 온주밀감 (dominant variety)
+ *   - Annual total 감귤 생산량 across varieties for last 5 years
+ * HONESTY: notes that these are confirmed final statistics (익년 확정 기준).
+ */
+function renderJejuCitrus(rawJson: unknown): { text: string } | { error: string } {
+  const env = readOdcloudEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  if (env.rows.length === 0) return { error: '제주 감귤 생산현황 데이터 없음 (빈 응답)' }
+
+  const num = (v: unknown): number | null => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
+    }
+    return null
+  }
+
+  // Partition rows into production (생산량) and area (면적) by year.
+  type YearData = {
+    year: number
+    production: Partial<Record<string, number>>
+    area: Partial<Record<string, number>>
+  }
+  const byYear = new Map<number, YearData>()
+
+  for (const row of env.rows) {
+    const yearRaw = row['연도별']
+    const year = num(yearRaw)
+    if (year === null) continue
+
+    const gubun = typeof row['구분'] === 'string' ? row['구분'].trim() : ''
+    const isProduction = gubun.includes('생산량')
+
+    if (!byYear.has(year)) {
+      byYear.set(year, { year, production: {}, area: {} })
+    }
+    const entry = byYear.get(year)!
+    const target = isProduction ? entry.production : entry.area
+
+    for (const variety of CITRUS_VARIETIES) {
+      const v = num(row[variety])
+      if (v !== null) target[variety] = v
+    }
+  }
+
+  const sortedYears = Array.from(byYear.keys()).sort((a, b) => b - a)
+  if (sortedYears.length === 0) return { error: '연도 데이터 파싱 실패' }
+
+  const latestYear = sortedYears[0]!
+  const trendYears = sortedYears.slice(0, 5).reverse() // oldest→newest for trend display
+
+  const header =
+    `제주 품종별 감귤 생산현황 (출처: odcloud 15010584, 데이터기준일자 2024-12-31)` +
+    `\n※ 확정 통계 최신=2023년산 (당해년산은 다음해 확정)`
+
+  // Latest year production summary
+  const latestEntry = byYear.get(latestYear)!
+  const latestLines: string[] = [`\n[${latestYear}년산 품종별 생산량]`]
+  let latestTotal = 0
+  for (const variety of CITRUS_VARIETIES) {
+    const v = latestEntry.production[variety]
+    if (v !== undefined) {
+      latestLines.push(`  ${variety}: ${v.toLocaleString()}톤`)
+      latestTotal += v
+    }
+  }
+  if (latestTotal > 0) {
+    latestLines.push(`  합계: ${latestTotal.toLocaleString()}톤`)
+  }
+
+  // 5-year trend for 노지 온주밀감 (dominant)
+  const trendLines: string[] = ['\n[노지 온주밀감 생산량 추세 (최근 5년)]']
+  for (const yr of trendYears) {
+    const v = byYear.get(yr)?.production['노지 온주밀감']
+    trendLines.push(`  ${yr}년: ${v !== undefined ? `${v.toLocaleString()}톤` : '(없음)'}`)
+  }
+
+  // Annual total for last 5 years
+  const totalLines: string[] = ['\n[연도별 감귤 총 생산량 (최근 5년)]']
+  for (const yr of trendYears) {
+    const entry = byYear.get(yr)
+    if (!entry) continue
+    const total = CITRUS_VARIETIES.reduce((s, k) => s + (entry.production[k] ?? 0), 0)
+    totalLines.push(`  ${yr}년: ${total > 0 ? `${total.toLocaleString()}톤` : '(없음)'}`)
+  }
+
+  return {
+    text: [header, ...latestLines, ...trendLines, ...totalLines].join('\n'),
+  }
+}
+
+/**
  * Reads the FLAT data.go.kr envelope used by B552584/pbnstFstChrgrChgcpcyInfo APIs:
  * { header:{resultCode,resultMsg}, body:{items:[...], totalCount, ...} }.
  * Unlike readDataGoKrEnvelope this does NOT expect a nested `response` wrapper.
@@ -930,6 +1062,26 @@ const JEJU_SOURCES: readonly JejuSource[] = [
       return `https://apis.data.go.kr/B552584/pbnstFstChrgrChgcpcyInfo/getYrMnChgcpcyInfo?${params.toString()}`
     },
     fetchCustom: fetchKecoEvCharger,
+  },
+
+  {
+    id: 'jeju-citrus-production',
+    label: 'Jeju Citrus Production by Variety (품종별감귤생산현황)',
+    format: 'json',
+    modes: ['governance', 'resident'],
+    buildUrl: () => {
+      // odcloud system (api.odcloud.kr), NOT apis.data.go.kr. Auth via serviceKey
+      // query param (Authorization header also works but query is simpler).
+      // perPage=50 fetches all 32 rows (16 years × 2 metrics) in one request.
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({
+        page: '1',
+        perPage: '50',
+        serviceKey: key,
+      })
+      return `https://api.odcloud.kr/api/15010584/v1/uddi:eba2a3ef-a809-4516-854b-94a342fd2af1?${params.toString()}`
+    },
+    render: renderJejuCitrus,
   },
 
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────
