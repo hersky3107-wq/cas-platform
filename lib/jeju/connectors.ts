@@ -553,6 +553,215 @@ function renderJejuSmp(rawJson: unknown): { text: string } | { error: string } {
 }
 
 /**
+ * Reads the FLAT data.go.kr envelope used by B552584/pbnstFstChrgrChgcpcyInfo APIs:
+ * { header:{resultCode,resultMsg}, body:{items:[...], totalCount, ...} }.
+ * Unlike readDataGoKrEnvelope this does NOT expect a nested `response` wrapper.
+ * resultCode "200" (this API's success code) or "00" are both treated as success.
+ */
+function readFlatDataGoKrEnvelope(rawJson: unknown): {
+  ok: true
+  code: string
+  msg: string
+  totalCount: number | null
+  items: Record<string, unknown>[]
+} | { ok: false; error: string } {
+  if (!rawJson || typeof rawJson !== 'object') {
+    return { ok: false, error: '응답 형식 오류 (non-object)' }
+  }
+  const root = rawJson as Record<string, unknown>
+  const header =
+    root.header && typeof root.header === 'object' ? (root.header as Record<string, unknown>) : null
+  if (!header) {
+    return { ok: false, error: 'Missing header in flat response' }
+  }
+  const resultCodeRaw = header.resultCode
+  const code =
+    typeof resultCodeRaw === 'string' || typeof resultCodeRaw === 'number'
+      ? String(resultCodeRaw)
+      : ''
+  const msg = typeof header.resultMsg === 'string' ? header.resultMsg : ''
+
+  const body =
+    root.body && typeof root.body === 'object' ? (root.body as Record<string, unknown>) : null
+  const totalCountRaw = body?.totalCount
+  const totalCount =
+    typeof totalCountRaw === 'number'
+      ? totalCountRaw
+      : typeof totalCountRaw === 'string' && totalCountRaw.trim() !== ''
+        ? Number(totalCountRaw)
+        : null
+
+  const itemsRaw = body?.items
+  let items: Record<string, unknown>[] = []
+  if (Array.isArray(itemsRaw)) {
+    items = itemsRaw as Record<string, unknown>[]
+  } else if (itemsRaw && typeof itemsRaw === 'object') {
+    const container = itemsRaw as Record<string, unknown>
+    const itemNested = container.item
+    items = Array.isArray(itemNested)
+      ? (itemNested as Record<string, unknown>[])
+      : itemNested && typeof itemNested === 'object'
+        ? [itemNested as Record<string, unknown>]
+        : []
+  }
+
+  return { ok: true, code, msg, totalCount, items }
+}
+
+/**
+ * Core aggregation for KECO EV charger data. Receives the combined item array
+ * (possibly spanning multiple pages), totalCount from the API, and a pageNote
+ * string describing how many pages were fetched vs requested (for honesty header).
+ * Never throws.
+ */
+function aggregateKecoEvChargerItems(
+  items: Record<string, unknown>[],
+  totalCount: number | null,
+  pageNote: string
+): { text: string } | { error: string } {
+  if (items.length === 0) {
+    return { error: '제주 전기차 충전기 데이터 없음 (빈 응답)' }
+  }
+
+  const fetchedCount = items.length
+  const sampleNote =
+    totalCount != null && totalCount > fetchedCount
+      ? `표본 약 ${fetchedCount.toLocaleString()}건 (전체 ${totalCount.toLocaleString()}건 중)`
+      : `${fetchedCount.toLocaleString()}건`
+
+  const stationSet = new Set<string>()
+  const sggCounts: Record<string, number> = {}
+  const frmCounts: Record<string, number> = {}
+  const capacities: number[] = []
+  const yrCounts: Record<string, number> = {}
+
+  for (const item of items) {
+    const stationId = typeof item.chgstnId === 'string' ? item.chgstnId.trim() : ''
+    if (stationId) stationSet.add(stationId)
+
+    const sgg = typeof item.sggNm === 'string' ? item.sggNm.trim() : '(미상)'
+    sggCounts[sgg] = (sggCounts[sgg] ?? 0) + 1
+
+    const frm = typeof item.chrgrFrm === 'string' ? item.chrgrFrm.trim() : '(미상)'
+    frmCounts[frm] = (frmCounts[frm] ?? 0) + 1
+
+    const cpct = parseNum(item.chrgrCpct)
+    if (cpct != null) capacities.push(cpct)
+
+    const yr = typeof item.rlvtYr === 'string' ? item.rlvtYr.trim() : ''
+    if (yr) yrCounts[yr] = (yrCounts[yr] ?? 0) + 1
+  }
+
+  const headerLine =
+    `제주 전기차 충전 인프라 현황` +
+    ` (출처: 환경부/KECO getYrMnChgcpcyInfo, rgnNm=제주특별자치도, ${pageNote})`
+
+  const countLine = `수신 건수: ${sampleNote}`
+  const stationLine = `고유 충전소 수: ${stationSet.size.toLocaleString()}개소`
+
+  const sggSorted = Object.entries(sggCounts).sort((a, b) => b[1] - a[1])
+  const sggLine = `시군구별 분포: ${sggSorted.map(([k, v]) => `${k} ${v}건`).join(', ')}`
+
+  const frmSorted = Object.entries(frmCounts).sort((a, b) => b[1] - a[1])
+  const frmTop = frmSorted.slice(0, 5)
+  const frmLine =
+    `충전 방식 분포: ${frmTop.map(([k, v]) => `${k} ${v}건`).join(', ')}` +
+    (frmSorted.length > 5 ? ` (외 ${frmSorted.length - 5}종)` : '')
+
+  let capacityLine = '충전기 용량: (데이터 없음)'
+  if (capacities.length > 0) {
+    const avg = capacities.reduce((s, v) => s + v, 0) / capacities.length
+    const max = Math.max(...capacities)
+    capacityLine = `충전기 용량: 평균 ${Math.round(avg)}kW, 최대 ${max}kW`
+  }
+
+  const yrSorted = Object.entries(yrCounts)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .slice(0, 8)
+  const yrLine =
+    `설치연도 분포: ${yrSorted.map(([k, v]) => `${k}년 ${v}건`).join(', ')}` +
+    (Object.keys(yrCounts).length > 8 ? ' …' : '')
+
+  return {
+    text: [headerLine, '', countLine, stationLine, sggLine, frmLine, capacityLine, yrLine].join(
+      '\n'
+    ),
+  }
+}
+
+/**
+ * Multi-page custom fetcher for KECO EV charger data.
+ *
+ * The API hard-caps numOfRows at 100. We fetch pages 1–5 sequentially (500 rows
+ * total) with rgnNm=제주특별자치도. Pages are fetched one at a time to avoid
+ * hammering the government server. If any individual page fails (network error OR
+ * a non-200 resultCode) it is silently skipped and the remaining pages are still
+ * used. Zero successful pages → returns an error. Never throws.
+ */
+async function fetchKecoEvCharger(): Promise<{ text: string } | { error: string }> {
+  const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+  const baseParams = {
+    serviceKey: key,
+    returnType: 'JSON',
+    numOfRows: '100',
+    rgnNm: '제주특별자치도',
+  }
+  const PAGES_REQUESTED = 5
+
+  const combined: Record<string, unknown>[] = []
+  let totalCount: number | null = null
+  let pagesSucceeded = 0
+  const errors: string[] = []
+
+  for (let page = 1; page <= PAGES_REQUESTED; page++) {
+    const params = new URLSearchParams({ ...baseParams, pageNo: String(page) })
+    const url = `https://apis.data.go.kr/B552584/pbnstFstChrgrChgcpcyInfo/getYrMnChgcpcyInfo?${params.toString()}`
+
+    const res = await fetchJsonAt(url)
+    if (!res.ok) {
+      errors.push(`page ${page}: ${res.error}`)
+      continue
+    }
+
+    const env = readFlatDataGoKrEnvelope(res.parsed)
+    if (!env.ok) {
+      errors.push(`page ${page}: ${env.error}`)
+      continue
+    }
+    if (env.code !== '200' && env.code !== '00') {
+      errors.push(`page ${page}: resultCode ${env.code}${env.msg ? ` (${env.msg})` : ''}`)
+      continue
+    }
+
+    // Capture totalCount from the first successful page.
+    if (totalCount === null && env.totalCount !== null) {
+      totalCount = env.totalCount
+    }
+
+    combined.push(...env.items)
+    pagesSucceeded++
+
+    // Stop early if we've already collected all available rows.
+    if (totalCount !== null && combined.length >= totalCount) {
+      break
+    }
+  }
+
+  if (pagesSucceeded === 0) {
+    return {
+      error: `KECO EV charger: 모든 페이지 수집 실패 — ${errors.join('; ')}`,
+    }
+  }
+
+  const pageNote =
+    pagesSucceeded < PAGES_REQUESTED
+      ? `${PAGES_REQUESTED}페이지 요청 중 ${pagesSucceeded}페이지 성공`
+      : `${PAGES_REQUESTED}페이지 수집`
+
+  return aggregateKecoEvChargerItems(combined, totalCount, pageNote)
+}
+
+/**
  * Renders the KMA 기상특보(getWthrWrnList) JSON for Jeju (stnId=184). Checks the
  * nested resultCode; treats '00' as success and '03' (NODATA) as a benign
  * no-warning case. ZERO items is NOT an error — it renders the standard
@@ -700,6 +909,27 @@ const JEJU_SOURCES: readonly JejuSource[] = [
       return `https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrWrnList?${params.toString()}`
     },
     render: renderJejuWarning,
+  },
+
+  {
+    id: 'keco-jeju-evcharger',
+    label: 'KECO Jeju EV Charger Infrastructure (전기차 충전 인프라)',
+    format: 'json',
+    modes: ['governance', 'resident'],
+    // Nominal primary URL (page 1 only, for listing/debugging). The actual fetch
+    // uses fetchCustom which pages through 1–5 (numOfRows=100 is the API hard max).
+    buildUrl: () => {
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({
+        serviceKey: key,
+        returnType: 'JSON',
+        numOfRows: '100',
+        pageNo: '1',
+        rgnNm: '제주특별자치도',
+      })
+      return `https://apis.data.go.kr/B552584/pbnstFstChrgrChgcpcyInfo/getYrMnChgcpcyInfo?${params.toString()}`
+    },
+    fetchCustom: fetchKecoEvCharger,
   },
 
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────
