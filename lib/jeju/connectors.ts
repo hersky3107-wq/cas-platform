@@ -850,6 +850,225 @@ function renderJejuCargo(rawJson: unknown): { text: string } | { error: string }
   }
 }
 
+const FOREIGN_NATIONALITIES: readonly string[] = [
+  '일본',
+  '중국',
+  '대만',
+  '홍콩',
+  '미국',
+  '싱가폴',
+  '태국',
+  '말레이시아',
+  '인도네시아',
+  '베트남',
+  '아시아 기타',
+  '서구 기타',
+] as const
+
+const DOMESTIC_TRAVEL_FIELDS: readonly string[] = [
+  '행태별(개별여행)',
+  '행태별(부분패키지)',
+  '행태별(패키지)',
+] as const
+
+const DOMESTIC_PURPOSE_FIELDS: readonly string[] = [
+  '목적별(휴양및관람)',
+  '목적별(레저스포츠)',
+  '목적별(친지방문)',
+  '목적별(회의및업무)',
+  '목적별(교육여행)',
+  '목적별(기타방문)',
+] as const
+
+function odcloudNum(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : 0
+  }
+  return 0
+}
+
+function checkMissingKeys(
+  actualKeys: string[],
+  expectedKeys: readonly string[],
+  maxMissing = 3
+): string | null {
+  const missing = expectedKeys.filter((k) => !actualKeys.includes(k))
+  if (missing.length > maxMissing) {
+    return `예상 필드가 많이 없음 (실제 키: ${actualKeys.join(', ')}) — 누락: ${missing.join(', ')}`
+  }
+  return null
+}
+
+function inferDataYear(monthValues: string[]): number | null {
+  const years = monthValues
+    .map((ym) => parseInt(ym.slice(0, 4), 10))
+    .filter((y) => Number.isFinite(y))
+  if (years.length === 0) return null
+  return Math.max(...years)
+}
+
+/**
+ * Renders odcloud 제주 외국인 관광객 (국적별 월별) into a compact Korean summary.
+ * Rows: { 해당연월, 일본/중국/... (numeric visitor counts) }.
+ */
+function renderJejuForeignTourists(rawJson: unknown): { text: string } | { error: string } {
+  const env = readOdcloudEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  if (env.rows.length === 0) return { error: '제주 외국인 관광객 데이터 없음 (빈 응답)' }
+
+  const actualKeys = Object.keys(env.rows[0]!)
+  const keyErr = checkMissingKeys(actualKeys, ['해당연월', ...FOREIGN_NATIONALITIES])
+  if (keyErr) return { error: keyErr }
+
+  const annualByNat: Record<string, number> = {}
+  for (const nat of FOREIGN_NATIONALITIES) annualByNat[nat] = 0
+
+  const monthlyRows: { month: string; byNat: Record<string, number>; total: number }[] = []
+
+  for (const row of env.rows) {
+    const month = typeof row['해당연월'] === 'string' ? row['해당연월'].trim() : ''
+    if (!month) continue
+
+    const byNat: Record<string, number> = {}
+    let rowTotal = 0
+    for (const nat of FOREIGN_NATIONALITIES) {
+      const v = odcloudNum(row[nat])
+      byNat[nat] = v
+      annualByNat[nat] = (annualByNat[nat] ?? 0) + v
+      rowTotal += v
+    }
+    monthlyRows.push({ month, byNat, total: rowTotal })
+  }
+
+  if (monthlyRows.length === 0) return { error: '월별 데이터 파싱 실패' }
+
+  const dataYear = inferDataYear(monthlyRows.map((r) => r.month)) ?? 2024
+  const annualTotal = Object.values(annualByNat).reduce((s, v) => s + v, 0)
+
+  const ranked = FOREIGN_NATIONALITIES.map((nat) => ({
+    nat,
+    total: annualByNat[nat] ?? 0,
+    share: annualTotal > 0 ? ((annualByNat[nat] ?? 0) / annualTotal) * 100 : 0,
+  }))
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  const latest = [...monthlyRows].sort((a, b) => a.month.localeCompare(b.month)).at(-1)!
+  const latestRanked = FOREIGN_NATIONALITIES.map((nat) => ({
+    nat,
+    total: latest.byNat[nat] ?? 0,
+  }))
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5)
+
+  const chinaShare = ranked.find((r) => r.nat === '중국')?.share ?? 0
+
+  const header =
+    `제주 외국인 관광객 현황 (출처: odcloud 15061970, 데이터 기준 연도 ${dataYear}년)` +
+    `\n※ 월별 국적별 입도객 수; ${dataYear}년 연간 합계 기준`
+
+  const totalLine = `\n연간 외국인 관광객 합계: ${annualTotal.toLocaleString()}명`
+
+  const rankLines = [`\n[국적별 연간 순위 (상위 ${Math.min(5, ranked.length)})]`]
+  for (const { nat, total, share } of ranked.slice(0, 5)) {
+    rankLines.push(`  ${nat}: ${total.toLocaleString()}명 (${share.toFixed(1)}%)`)
+  }
+
+  const chinaNote =
+    chinaShare >= 40
+      ? `\n※ 중국 비중 ${chinaShare.toFixed(1)}% — 외국인 관광 수요가 중국에 크게 의존하는 구조 (사실 기록)`
+      : ''
+
+  const latestLines = [`\n[최신 월 ${latest.month} — 상위 국적]`]
+  for (const { nat, total } of latestRanked) {
+    latestLines.push(`  ${nat}: ${total.toLocaleString()}명`)
+  }
+  latestLines.push(`  해당월 합계: ${latest.total.toLocaleString()}명`)
+
+  return {
+    text: [header, totalLine, ...rankLines, chinaNote, ...latestLines].filter((l) => l !== '').join('\n'),
+  }
+}
+
+/**
+ * Renders odcloud 제주 내국인 관광객 (형태·목적별 월별) into a compact Korean summary.
+ * Rows: { 구분연월, 행태별(...), 목적별(...) }.
+ */
+function renderJejuDomesticTourists(rawJson: unknown): { text: string } | { error: string } {
+  const env = readOdcloudEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  if (env.rows.length === 0) return { error: '제주 내국인 관광객 데이터 없음 (빈 응답)' }
+
+  const actualKeys = Object.keys(env.rows[0]!)
+  const keyErr = checkMissingKeys(actualKeys, ['구분연월', ...DOMESTIC_TRAVEL_FIELDS, ...DOMESTIC_PURPOSE_FIELDS])
+  if (keyErr) return { error: keyErr }
+
+  const travelAnnual: Record<string, number> = {}
+  const purposeAnnual: Record<string, number> = {}
+  for (const f of DOMESTIC_TRAVEL_FIELDS) travelAnnual[f] = 0
+  for (const f of DOMESTIC_PURPOSE_FIELDS) purposeAnnual[f] = 0
+
+  const months: string[] = []
+
+  for (const row of env.rows) {
+    const month = typeof row['구분연월'] === 'string' ? row['구분연월'].trim() : ''
+    if (!month) continue
+    months.push(month)
+
+    for (const f of DOMESTIC_TRAVEL_FIELDS) {
+      travelAnnual[f] = (travelAnnual[f] ?? 0) + odcloudNum(row[f])
+    }
+    for (const f of DOMESTIC_PURPOSE_FIELDS) {
+      purposeAnnual[f] = (purposeAnnual[f] ?? 0) + odcloudNum(row[f])
+    }
+  }
+
+  if (months.length === 0) return { error: '월별 데이터 파싱 실패' }
+
+  const dataYear = inferDataYear(months) ?? 2024
+  const annualTotal = DOMESTIC_TRAVEL_FIELDS.reduce((s, f) => s + (travelAnnual[f] ?? 0), 0)
+
+  const travelRanked = DOMESTIC_TRAVEL_FIELDS.map((f) => ({
+    label: f.replace('행태별(', '').replace(')', ''),
+    total: travelAnnual[f] ?? 0,
+    share: annualTotal > 0 ? ((travelAnnual[f] ?? 0) / annualTotal) * 100 : 0,
+  }))
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  const purposeTotal = DOMESTIC_PURPOSE_FIELDS.reduce((s, f) => s + (purposeAnnual[f] ?? 0), 0)
+  const purposeRanked = DOMESTIC_PURPOSE_FIELDS.map((f) => ({
+    label: f.replace('목적별(', '').replace(')', ''),
+    total: purposeAnnual[f] ?? 0,
+    share: purposeTotal > 0 ? ((purposeAnnual[f] ?? 0) / purposeTotal) * 100 : 0,
+  }))
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  const header =
+    `제주 내국인 관광객 현황 (출처: odcloud 3083546, 데이터 기준 연도 ${dataYear}년)` +
+    `\n※ 월별 형태·목적별 입도객 수; ${dataYear}년 연간 합계 기준`
+
+  const totalLine = `\n연간 내국인 관광객 합계(행태별 합): ${annualTotal.toLocaleString()}명`
+
+  const travelLines = ['\n[여행 형태별 (연간)]']
+  for (const { label, total, share } of travelRanked) {
+    travelLines.push(`  ${label}: ${total.toLocaleString()}명 (${share.toFixed(1)}%)`)
+  }
+
+  const purposeLines = ['\n[방문 목적별 (연간)]']
+  for (const { label, total, share } of purposeRanked) {
+    purposeLines.push(`  ${label}: ${total.toLocaleString()}명 (${share.toFixed(1)}%)`)
+  }
+
+  return {
+    text: [header, totalLine, ...travelLines, ...purposeLines].join('\n'),
+  }
+}
+
 /**
  * Reads the FLAT data.go.kr envelope used by B552584/pbnstFstChrgrChgcpcyInfo APIs:
  * { header:{resultCode,resultMsg}, body:{items:[...], totalCount, ...} }.
@@ -1266,6 +1485,40 @@ const JEJU_SOURCES: readonly JejuSource[] = [
       return `https://api.odcloud.kr/api/15056447/v1/uddi:1d9ca1d7-0576-4145-9567-fd4038aa3648?${params.toString()}`
     },
     render: renderJejuCargo,
+  },
+
+  {
+    id: 'jeju-foreign-tourists',
+    label: 'Jeju Foreign Tourists by Nationality (외국인 관광객)',
+    format: 'json',
+    modes: ['governance', 'tourist'],
+    buildUrl: () => {
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({
+        page: '1',
+        perPage: '20',
+        serviceKey: key,
+      })
+      return `https://api.odcloud.kr/api/15061970/v1/uddi:a9a0b107-db41-4adc-a489-dcba0e474986?${params.toString()}`
+    },
+    render: renderJejuForeignTourists,
+  },
+
+  {
+    id: 'jeju-domestic-tourists',
+    label: 'Jeju Domestic Tourists by Type/Purpose (내국인 관광객)',
+    format: 'json',
+    modes: ['governance', 'resident'],
+    buildUrl: () => {
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({
+        page: '1',
+        perPage: '20',
+        serviceKey: key,
+      })
+      return `https://api.odcloud.kr/api/3083546/v1/uddi:7ef5b5b5-e00d-490f-8624-bb2d543d0904?${params.toString()}`
+    },
+    render: renderJejuDomesticTourists,
   },
 
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────

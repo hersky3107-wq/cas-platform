@@ -21,6 +21,8 @@ const EXPECTED_IDS = [
   'keco-jeju-evcharger',
   'jeju-citrus-production',
   'jeju-cargo-throughput',
+  'jeju-foreign-tourists',
+  'jeju-domestic-tourists',
 ] as const
 
 function sep(char = '─') {

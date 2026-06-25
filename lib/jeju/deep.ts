@@ -129,6 +129,8 @@ export async function summarizeAvailableData(): Promise<string> {
     'keco-jeju-evcharger': '제주 전기차 충전기 분포·용량·방식 (인프라 현황)',
     'jeju-citrus-production': '제주 품종별 감귤 생산량·추세 (확정통계, 최신 2023년산)',
     'jeju-cargo-throughput': '제주 항만별 화물 물동량 (입출항 품목·물류 추세)',
+    'jeju-foreign-tourists': '제주 외국인 관광객 국적별 현황 (관광 수요·국가별 의존도)',
+    'jeju-domestic-tourists': '제주 내국인 관광객 형태·목적별 현황',
   }
 
   let snapshot

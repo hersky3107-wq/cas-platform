@@ -50,6 +50,8 @@ const GOVERNANCE_SOURCE_IDS = [
   'keco-jeju-evcharger',
   'jeju-citrus-production',
   'jeju-cargo-throughput',
+  'jeju-foreign-tourists',
+  'jeju-domestic-tourists',
 ] as const
 
 /** Korean section header per source id, used by buildBriefingContext. */
@@ -63,6 +65,8 @@ const SECTION_HEADER_BY_ID: Record<string, string> = {
   'keco-jeju-evcharger': '## 제주 전기차 충전 인프라 (환경부/KECO)',
   'jeju-citrus-production': '## 제주 감귤 생산현황',
   'jeju-cargo-throughput': '## 제주 항만 물동량',
+  'jeju-foreign-tourists': '## 제주 외국인 관광객 현황',
+  'jeju-domestic-tourists': '## 제주 내국인 관광객 현황',
 }
 
 /** Effective question used when no specific question is supplied (daily path). */
