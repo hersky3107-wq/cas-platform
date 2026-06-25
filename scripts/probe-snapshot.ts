@@ -20,6 +20,7 @@ const EXPECTED_IDS = [
   'kma-jeju-warning',
   'keco-jeju-evcharger',
   'jeju-citrus-production',
+  'jeju-cargo-throughput',
 ] as const
 
 function sep(char = '─') {

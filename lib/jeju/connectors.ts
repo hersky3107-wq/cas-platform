@@ -684,6 +684,172 @@ function renderJejuCitrus(rawJson: unknown): { text: string } | { error: string 
   }
 }
 
+// Inbound (입항) commodity field names — confirmed by live probe 2025-05-14.
+const CARGO_INBOUND_FIELDS: readonly string[] = [
+  '입항 유류(톤)',
+  '입항 시멘트(톤)',
+  '입항 철재(톤)',
+  '입항 모래(톤)',
+  '입항 자갈(톤)',
+  '입항 비료(톤)',
+  '입항 목재(톤)',
+  '입항 기타(톤)',
+] as const
+
+// Outbound (출항) commodity field names.
+const CARGO_OUTBOUND_FIELDS: readonly string[] = [
+  '출항 감귤채소(톤)',
+  '출항 기타(톤)',
+] as const
+
+/**
+ * Renders the odcloud 제주 항만 화물물동량 dataset into a compact Korean summary.
+ * Each row: { 구분(무역항/연안항), 상세(항만명), 해당연월(YYYY-MM), 데이터기준일자,
+ *             입항 유류(톤)/시멘트(톤)/.../기타(톤), 출항 감귤채소(톤)/기타(톤) }.
+ * 600 rows = 6 ports × 100 months. Summarises:
+ *   - Latest available year: per-port totals (inbound / outbound).
+ *   - Inbound commodity breakdown for the latest year (all ports combined).
+ *   - 출항 감귤채소 annual trend (last 5 years, all ports combined).
+ *   - Annual total throughput trend (last 5 years).
+ * DEFENSIVE: if expected keys are absent, lists the actual keys found instead of failing.
+ */
+function renderJejuCargo(rawJson: unknown): { text: string } | { error: string } {
+  const env = readOdcloudEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  if (env.rows.length === 0) return { error: '제주 항만 물동량 데이터 없음 (빈 응답)' }
+
+  const num = (v: unknown): number => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v)
+      return Number.isFinite(n) ? n : 0
+    }
+    return 0
+  }
+
+  // Defensive check: verify expected key set against actual keys.
+  const actualKeys = Object.keys(env.rows[0]!)
+  const expectedKeys = ['상세', '해당연월', ...CARGO_INBOUND_FIELDS, ...CARGO_OUTBOUND_FIELDS]
+  const missingKeys = expectedKeys.filter((k) => !actualKeys.includes(k))
+  if (missingKeys.length > 3) {
+    return {
+      error:
+        `예상 필드가 많이 없음 (실제 키: ${actualKeys.join(', ')})` +
+        ` — 누락 필드: ${missingKeys.join(', ')}`,
+    }
+  }
+
+  // Parse rows into { year → port → { inbound: Record<field,number>, outbound: Record<field,number> } }.
+  type PortData = {
+    inbound: Record<string, number>
+    outbound: Record<string, number>
+  }
+  const byYear = new Map<number, Map<string, PortData>>()
+  let baseDateNote = ''
+
+  for (const row of env.rows) {
+    const ym = typeof row['해당연월'] === 'string' ? row['해당연월'].trim() : ''
+    if (!ym) continue
+    const year = parseInt(ym.slice(0, 4), 10)
+    if (!Number.isFinite(year)) continue
+
+    const port = typeof row['상세'] === 'string' ? row['상세'].trim() : '(미상)'
+    if (!baseDateNote && typeof row['데이터기준일자'] === 'string') {
+      baseDateNote = row['데이터기준일자'].trim()
+    }
+
+    if (!byYear.has(year)) byYear.set(year, new Map())
+    const portMap = byYear.get(year)!
+    if (!portMap.has(port)) portMap.set(port, { inbound: {}, outbound: {} })
+    const portData = portMap.get(port)!
+
+    for (const f of CARGO_INBOUND_FIELDS) {
+      portData.inbound[f] = (portData.inbound[f] ?? 0) + num(row[f])
+    }
+    for (const f of CARGO_OUTBOUND_FIELDS) {
+      portData.outbound[f] = (portData.outbound[f] ?? 0) + num(row[f])
+    }
+  }
+
+  const sortedYears = Array.from(byYear.keys()).sort((a, b) => b - a)
+  if (sortedYears.length === 0) return { error: '연도 파싱 실패' }
+
+  const latestYear = sortedYears[0]!
+  const trendYears = sortedYears.slice(0, 5).reverse()
+
+  const header =
+    `제주 항만 화물 물동량 (출처: odcloud 15056447, 데이터기준일자 ${baseDateNote || '미상'})` +
+    `\n※ 6개 항만(제주항·서귀포항·애월항·한림항·성산포항·화순항) 월별 누계 기준`
+
+  // Latest year: per-port summary
+  const latestPortMap = byYear.get(latestYear)!
+  const portLines: string[] = [`\n[${latestYear}년 항만별 물동량]`]
+  const inboundTotalByField: Record<string, number> = {}
+  let grandInbound = 0
+  let grandOutbound = 0
+
+  for (const [port, data] of Array.from(latestPortMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+    const inTotal = Object.values(data.inbound).reduce((s, v) => s + v, 0)
+    const outTotal = Object.values(data.outbound).reduce((s, v) => s + v, 0)
+    portLines.push(`  ${port}: 입항 ${inTotal.toLocaleString()}톤 / 출항 ${outTotal.toLocaleString()}톤`)
+    grandInbound += inTotal
+    grandOutbound += outTotal
+    for (const f of CARGO_INBOUND_FIELDS) {
+      inboundTotalByField[f] = (inboundTotalByField[f] ?? 0) + (data.inbound[f] ?? 0)
+    }
+  }
+  portLines.push(`  전체합계: 입항 ${grandInbound.toLocaleString()}톤 / 출항 ${grandOutbound.toLocaleString()}톤`)
+
+  // Inbound commodity breakdown for latest year (all ports)
+  const commodityLines: string[] = [`\n[${latestYear}년 입항 품목별 (전 항만 합계)]`]
+  const commoditySorted = CARGO_INBOUND_FIELDS
+    .map((f) => ({ label: f.replace('입항 ', '').replace('(톤)', ''), val: inboundTotalByField[f] ?? 0 }))
+    .sort((a, b) => b.val - a.val)
+  for (const { label, val } of commoditySorted) {
+    if (val > 0) commodityLines.push(`  ${label}: ${val.toLocaleString()}톤`)
+  }
+
+  // 출항 감귤채소 annual trend (last 5 years)
+  const citrusField = '출항 감귤채소(톤)'
+  const citrusTrendLines: string[] = ['\n[출항 감귤채소 연간 합계 (최근 5년)]']
+  for (const yr of trendYears) {
+    let yrTotal = 0
+    for (const data of (byYear.get(yr) ?? new Map()).values()) {
+      yrTotal += data.outbound[citrusField] ?? 0
+    }
+    citrusTrendLines.push(`  ${yr}년: ${yrTotal > 0 ? `${yrTotal.toLocaleString()}톤` : '(없음)'}`)
+  }
+
+  // Annual total throughput trend
+  const throughputLines: string[] = ['\n[연간 총 물동량 추세 (최근 5년, 입항+출항)]']
+  for (const yr of trendYears) {
+    let total = 0
+    for (const data of (byYear.get(yr) ?? new Map()).values()) {
+      total += (Object.values(data.inbound) as number[]).reduce((s: number, v: number) => s + v, 0)
+      total += (Object.values(data.outbound) as number[]).reduce((s: number, v: number) => s + v, 0)
+    }
+    throughputLines.push(`  ${yr}년: ${total > 0 ? `${total.toLocaleString()}톤` : '(없음)'}`)
+  }
+
+  // Partial-year note: if latestYear data seems incomplete (< 12 months per port).
+  const firstPortMonths = env.rows.filter((r) =>
+    typeof r['상세'] === 'string' &&
+    r['상세'] === Array.from(latestPortMap.keys())[0] &&
+    typeof r['해당연월'] === 'string' &&
+    (r['해당연월'] as string).startsWith(String(latestYear))
+  ).length
+  const partialNote =
+    firstPortMonths > 0 && firstPortMonths < 12
+      ? `\n※ ${latestYear}년은 ${firstPortMonths}개월치만 수집됨 (연간 합계 아님)`
+      : ''
+
+  return {
+    text: [header, partialNote, ...portLines, ...commodityLines, ...citrusTrendLines, ...throughputLines]
+      .filter((l) => l !== '')
+      .join('\n'),
+  }
+}
+
 /**
  * Reads the FLAT data.go.kr envelope used by B552584/pbnstFstChrgrChgcpcyInfo APIs:
  * { header:{resultCode,resultMsg}, body:{items:[...], totalCount, ...} }.
@@ -1082,6 +1248,24 @@ const JEJU_SOURCES: readonly JejuSource[] = [
       return `https://api.odcloud.kr/api/15010584/v1/uddi:eba2a3ef-a809-4516-854b-94a342fd2af1?${params.toString()}`
     },
     render: renderJejuCitrus,
+  },
+
+  {
+    id: 'jeju-cargo-throughput',
+    label: 'Jeju Port Cargo Throughput (항만 화물 물동량)',
+    format: 'json',
+    modes: ['governance'],
+    buildUrl: () => {
+      // odcloud system. perPage=600 fetches all rows (6 ports × 100 months) in one call.
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({
+        page: '1',
+        perPage: '600',
+        serviceKey: key,
+      })
+      return `https://api.odcloud.kr/api/15056447/v1/uddi:1d9ca1d7-0576-4145-9567-fd4038aa3648?${params.toString()}`
+    },
+    render: renderJejuCargo,
   },
 
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────

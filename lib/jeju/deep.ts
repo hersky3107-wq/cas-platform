@@ -128,6 +128,7 @@ export async function summarizeAvailableData(): Promise<string> {
     'kma-jeju-warning': '제주 발효 중 기상특보 (호우·강풍·태풍 등; 없으면 "없음")',
     'keco-jeju-evcharger': '제주 전기차 충전기 분포·용량·방식 (인프라 현황)',
     'jeju-citrus-production': '제주 품종별 감귤 생산량·추세 (확정통계, 최신 2023년산)',
+    'jeju-cargo-throughput': '제주 항만별 화물 물동량 (입출항 품목·물류 추세)',
   }
 
   let snapshot
