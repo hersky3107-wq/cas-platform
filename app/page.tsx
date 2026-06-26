@@ -38,6 +38,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     oracle: "Fortune. Tarot. Astrology.",
     mindgame: "Deceive. Survive. Win.",
     stage: "AI banter, comedy & diverse stories.",
+    jeju: "Jeju governance · tourism · residents.",
   },
   ko: {
     compare: "6개의 답. 하나의 질문.",
@@ -51,6 +52,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     oracle: "운세. 타로. 점성술.",
     mindgame: "속여라. 살아남아라. 이겨라.",
     stage: "만담 · 코미디 · 다양한 이야기.",
+    jeju: "제주 거버넌스 · 관광 · 도민",
   },
   ja: {
     compare: "6つの答え。1つの質問。",
@@ -64,6 +66,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     oracle: "運勢。タロット。占星術。",
     mindgame: "騙せ。生き残れ。勝て。",
     stage: "AIの漫才・コメディ・多彩な物語。",
+    jeju: "済州ガバナンス・観光・住民",
   },
   "zh-TW": {
     compare: "六個答案。一個問題。",
@@ -77,6 +80,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     oracle: "運勢。塔羅。星座。",
     mindgame: "欺騙。生存。獲勝。",
     stage: "AI相聲・喜劇・多元故事。",
+    jeju: "濟州治理 · 觀光 · 居民",
   },
   fr: {
     compare: "6 réponses. 1 question.",
@@ -90,6 +94,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     oracle: "Fortune. Tarot. Astrologie.",
     mindgame: "Trompe. Survie. Victoire.",
     stage: "AI · Comédie · Joutes verbales · Histoires.",
+    jeju: "Gouvernance Jeju · tourisme · résidents",
   },
   ar: {
     compare: "٦ إجابات. سؤال واحد.",
@@ -102,6 +107,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     apex: "أحدث وأقوى نماذج الذكاء الاصطناعي معاً",
     mindgame: "اخدع. انجُ. انتصر.",
     stage: "AI · كوميديا · قصص · عروض متنوعة.",
+    jeju: "حوكمة جيجو · سياحة · سكان",
   },
   es: {
     compare: "6 respuestas. Una pregunta.",
@@ -113,6 +119,7 @@ const LOBBY_SUBTITLES: Record<string, Record<string, string>> = {
     oracle: "Fortuna. Tarot. Astrología.",
     mindgame: "Engaña. Sobrevive. Gana.",
     stage: "IA · Comedia · Historias diversas.",
+    jeju: "Gobernanza Jeju · turismo · residentes",
   },
 }
 
@@ -524,6 +531,21 @@ export default function Home() {
                 </span>
                 <p className="mt-0.5 text-[10px] text-slate-500 text-center leading-tight px-1">
                   {LOBBY_SUBTITLES[lobbyLocale]?.["stage"] ?? ""}
+                </p>
+              </div>
+            </Link>
+            <Link href="/jeju" className="flex items-center justify-center">
+              <div className="flex flex-col items-center">
+                <div className="relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-amber-600/90 to-teal-700 shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px]">
+                  <span className="text-lg font-black tracking-tight text-white lg:text-xl">
+                    濟
+                  </span>
+                </div>
+                <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
+                  JEJU
+                </span>
+                <p className="mt-0.5 text-[10px] text-slate-500 text-center leading-tight px-1">
+                  {LOBBY_SUBTITLES[lobbyLocale]?.["jeju"] ?? ""}
                 </p>
               </div>
             </Link>
