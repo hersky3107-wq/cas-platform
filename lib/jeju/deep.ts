@@ -2089,6 +2089,22 @@ const STALL_DELTA = 4
  */
 const CONSENSUS_VOTE_THRESHOLD = 85
 
+/**
+ * ADDITIVE (no behavior change): surfaces the module-private deliberation/vote
+ * tuning constants so an EXTERNAL chunked orchestrator (e.g. a per-round polling
+ * API route) can replicate runDeliberation's stop logic and the 2x2 vote rule
+ * faithfully without duplicating magic numbers. Nothing here alters how the
+ * engine runs in-process; it only re-exports the existing values.
+ */
+export const JEJU_DEEP_DELIBERATION_TUNING = {
+  MIN_CONVERGENCE_ROUNDS,
+  MAX_CONVERGENCE_ROUNDS,
+  CONSENSUS_TARGET,
+  STALL_DELTA,
+  CONSENSUS_SCORE_UNAVAILABLE,
+  CONSENSUS_VOTE_THRESHOLD,
+} as const
+
 /** Why the deliberation loop stopped. */
 export type JejuDeliberationStopReason = 'target_reached' | 'stalled' | 'max_rounds' | 'error'
 

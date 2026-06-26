@@ -10,6 +10,23 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Jeju section tokens — MUST live in the Tailwind entry so the bg-jeju-* /
+     text-jeju-* / border-jeju-* utilities are actually generated. (Previously
+     in app/jeju/jeju-theme.css, imported via JS — Tailwind v4 never processed
+     its @theme there, so the utilities didn't exist and pages fell back to the
+     white body background.) The actual values come from the
+     [data-jeju-theme='…'] blocks below, scoped to the Jeju subtree. */
+  --color-jeju-bg: var(--jeju-bg);
+  --color-jeju-bg-elevated: var(--jeju-bg-elevated);
+  --color-jeju-fg: var(--jeju-fg);
+  --color-jeju-fg-muted: var(--jeju-fg-muted);
+  --color-jeju-accent: var(--jeju-accent);
+  --color-jeju-accent-secondary: var(--jeju-accent-secondary);
+  --color-jeju-accent-soft: var(--jeju-accent-soft);
+  --color-jeju-border: var(--jeju-border);
+  --color-jeju-tile-bg: var(--jeju-tile-bg);
+  --color-jeju-tile-hover: var(--jeju-tile-hover);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -17,6 +34,73 @@
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+/* ── Jeju per-mode theme tokens (scope with data-jeju-theme on a wrapper) ──── */
+[data-jeju-theme='governance'] {
+  --jeju-bg: #0a0f1e;
+  --jeju-bg-elevated: #131c35;
+  --jeju-fg: #f1f5f9;
+  --jeju-fg-muted: #94a3b8;
+  --jeju-accent: #d4a853;
+  --jeju-accent-secondary: #b8860b;
+  --jeju-accent-soft: rgba(212, 168, 83, 0.14);
+  --jeju-border: rgba(212, 168, 83, 0.22);
+  --jeju-tile-bg: rgba(255, 255, 255, 0.05);
+  --jeju-tile-hover: rgba(212, 168, 83, 0.1);
+  --jeju-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  --jeju-radius: 1rem;
+  --jeju-text-base: 1rem;
+  --jeju-text-lg: 1.125rem;
+  --jeju-text-xl: 1.375rem;
+  --jeju-tile-size: 5.5rem;
+  --jeju-tile-size-lg: 7rem;
+  --jeju-gap: 1.75rem;
+  --jeju-tap-min: 3rem;
+}
+
+[data-jeju-theme='tourist'] {
+  --jeju-bg: #eef3f1;
+  --jeju-bg-elevated: #ffffff;
+  --jeju-fg: #2d3436;
+  --jeju-fg-muted: #5c6b6a;
+  --jeju-accent: #2a9d8f;
+  --jeju-accent-secondary: #e09f3e;
+  --jeju-accent-soft: rgba(42, 157, 143, 0.12);
+  --jeju-border: rgba(45, 52, 54, 0.14);
+  --jeju-tile-bg: #ffffff;
+  --jeju-tile-hover: rgba(42, 157, 143, 0.08);
+  --jeju-shadow: 0 4px 18px rgba(45, 52, 54, 0.1);
+  --jeju-radius: 1rem;
+  --jeju-text-base: 1rem;
+  --jeju-text-lg: 1.125rem;
+  --jeju-text-xl: 1.375rem;
+  --jeju-tile-size: 5.5rem;
+  --jeju-tile-size-lg: 7rem;
+  --jeju-gap: 1.75rem;
+  --jeju-tap-min: 3rem;
+}
+
+[data-jeju-theme='resident'] {
+  --jeju-bg: #ffffff;
+  --jeju-bg-elevated: #f5f5f5;
+  --jeju-fg: #000000;
+  --jeju-fg-muted: #1a1a1a;
+  --jeju-accent: #0047ab;
+  --jeju-accent-secondary: #0047ab;
+  --jeju-accent-soft: #e8eef8;
+  --jeju-border: #000000;
+  --jeju-tile-bg: #ffffff;
+  --jeju-tile-hover: #e8eef8;
+  --jeju-shadow: none;
+  --jeju-radius: 0.75rem;
+  --jeju-text-base: 1.25rem;
+  --jeju-text-lg: 1.5rem;
+  --jeju-text-xl: 1.875rem;
+  --jeju-tile-size: 6.5rem;
+  --jeju-tile-size-lg: 8rem;
+  --jeju-gap: 2rem;
+  --jeju-tap-min: 3.5rem;
 }
 
 body {
