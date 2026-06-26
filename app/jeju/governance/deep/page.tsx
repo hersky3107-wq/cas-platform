@@ -437,6 +437,77 @@ function VoteSection({ vote, t }: { vote: VoteResult; t: Ui }) {
   )
 }
 
+// ── Category presets ──────────────────────────────────────────────────────────
+
+const CATEGORY_PRESETS = [
+  {
+    id: 'energy',
+    icon: '🔋',
+    label: '에너지·계통',
+    question: '제주 전력 수급과 SMP 추이를 볼 때, 지금 가장 시급한 에너지 현안과 대응 우선순위는 무엇인가?',
+  },
+  {
+    id: 'agriculture',
+    icon: '🌾',
+    label: '농수산·감귤',
+    question: '최근 감귤 생산·시세와 농수산 물류 여건을 볼 때, 제주도가 지금 주목해야 할 농수산 현안은 무엇인가?',
+  },
+  {
+    id: 'tourism',
+    icon: '🏝',
+    label: '관광',
+    question: '현재 내·외국인 관광객 동향과 수용 여건을 볼 때, 제주 관광정책에서 지금 가장 시급한 현안은 무엇인가?',
+  },
+  {
+    id: 'climate',
+    icon: '🌦',
+    label: '기후·재난',
+    question: '현재 기상 특보와 기후 여건을 볼 때, 제주도가 지금 대비해야 할 재난·안전 현안은 무엇인가?',
+  },
+  {
+    id: 'livelihood',
+    icon: '💰',
+    label: '물가·민생',
+    question: '최근 제주 주요 생활물가 동향을 볼 때, 지금 가장 시급한 민생·물가 현안과 대응 방향은 무엇인가?',
+  },
+  {
+    id: 'industry',
+    icon: '🏭',
+    label: '산업·수출',
+    question: '제주 수출 구조(반도체 등)와 산업 여건을 볼 때, 지금 주목해야 할 산업·수출 현안은 무엇인가?',
+  },
+  {
+    id: 'logistics',
+    icon: '🚢',
+    label: '물류·교통',
+    question: '제주 항만 물동량과 교통 여건을 볼 때, 지금 가장 시급한 물류·교통 현안과 대응 우선순위는 무엇인가?',
+  },
+  {
+    id: 'environment',
+    icon: '♻️',
+    label: '환경·자원순환',
+    question: '제주의 환경·자원순환 여건을 볼 때, 지금 도정이 주목해야 할 환경 현안과 대응 우선순위는 무엇인가?',
+  },
+  {
+    id: 'construction',
+    icon: '🏗',
+    label: '건설·주택',
+    question: '제주 건설 경기와 주택·부동산 여건을 볼 때, 지금 가장 시급한 건설·주택 현안과 대응 방향은 무엇인가?',
+  },
+  {
+    id: 'welfare',
+    icon: '👵',
+    label: '복지·보건',
+    question: '제주 도민의 복지·보건 여건을 볼 때, 지금 가장 시급한 복지·보건 현안과 대응 방향은 무엇인가?',
+  },
+  {
+    id: 'media',
+    icon: '📰',
+    label: '언론·여론',
+    question: '최근 제주 주요 현안에 대한 언론 보도 논조와 쟁점은 무엇이며, 도정이 유의해야 할 여론 리스크는 무엇인가?',
+  },
+] as const
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function JejuGovernanceDeepPage() {
@@ -513,8 +584,8 @@ export default function JejuGovernanceDeepPage() {
     runningRef.current = false
   }, [])
 
-  const runDeep = useCallback(async () => {
-    const q = question.trim()
+  const runDeep = useCallback(async (overrideQ?: string) => {
+    const q = (overrideQ ?? question).trim()
     if (!q || runningRef.current) return
     runningRef.current = true
 
@@ -600,6 +671,11 @@ export default function JejuGovernanceDeepPage() {
     }
   }, [question, postWithRetry, stop])
 
+  const startWithPreset = useCallback((preset: string) => {
+    setQuestion(preset)
+    runDeep(preset)
+  }, [runDeep])
+
   const isRunning = stage !== 'idle' && stage !== 'done' && stage !== 'error'
   const pressAnalystConvened = roles.some((r) => r.roleLabel.includes('언론'))
   const showProcess = stage !== 'idle'
@@ -612,8 +688,34 @@ export default function JejuGovernanceDeepPage() {
       backHref="/jeju/governance"
       backLabel={t.backToGovernance}
     >
-      {/* Input */}
+      {/* Category preset grid — department quick-launch */}
+      <div className="mb-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
+          부서·현안 바로 심의
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          {CATEGORY_PRESETS.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              disabled={isRunning}
+              onClick={() => startWithPreset(cat.question)}
+              className="group flex flex-col items-center gap-2 rounded-2xl border border-jeju-border bg-jeju-tile-bg px-3 py-4 text-center transition hover:border-jeju-accent/60 hover:bg-jeju-tile-hover disabled:pointer-events-none disabled:opacity-40"
+            >
+              <span className="text-3xl leading-none" aria-hidden>{cat.icon}</span>
+              <span className="text-[13px] font-semibold leading-tight text-jeju-fg group-hover:text-jeju-accent">
+                {cat.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Free-prompt input — for custom questions */}
       <div className="mb-6 flex flex-col gap-3">
+        <p className="text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
+          직접 질문 입력
+        </p>
         <textarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
@@ -626,7 +728,7 @@ export default function JejuGovernanceDeepPage() {
           <button
             type="button"
             disabled={isRunning || !question.trim()}
-            onClick={runDeep}
+            onClick={() => runDeep()}
             className="inline-flex min-h-[2.75rem] items-center gap-2 rounded-xl bg-jeju-accent px-6 py-2.5 text-sm font-bold text-black shadow-[var(--jeju-shadow)] transition hover:opacity-90 disabled:opacity-40"
           >
             <PlayCircle className={`h-4 w-4 ${isRunning ? 'animate-pulse' : ''}`} aria-hidden />
