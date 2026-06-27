@@ -144,6 +144,83 @@ export type JejuUiPack = {
   deepCollapse: string
   deepExpand: string
   deepWaiting: string
+  /** Deliberate (Mode B — 찬반 심의) page */
+  deliberateTitle: string
+  deliberateDesc: string
+  deliberateStartBtn: string
+  deliberateQuestionPlaceholder: string
+  deliberateRunningHint: (debaterCount: number, voterCount: number) => string
+  deliberateStageStart: string
+  deliberateStageReport: string
+  deliberateStageOpen: string
+  deliberateStageTurn: string
+  deliberateStageFacilitate: string
+  deliberateStageVote: string
+  deliberateStageVerdict: string
+  deliberateReportHeading: string
+  deliberateLeadAnalysisHeading: string
+  deliberateSearchesUsedHeading: string
+  deliberateRosterHeading: string
+  deliberateDebaterLabel: string
+  deliberateDebateHeading: string
+  deliberateOpeningHeading: string
+  deliberateRoundLabel: (n: number, score: number) => string
+  deliberateActionTagLabel: string
+  deliberateClaimLabel: string
+  deliberateNextDirectiveLabel: string
+  deliberateAgreePointsLabel: string
+  deliberateOpenIssuesLabel: string
+  deliberateFacilitatorScore: string
+  deliberateConsensusProgressionHeading: string
+  deliberateRedTeamBadge: string
+  deliberateSearchSpecialist: string
+  deliberateSearchSpecialistDesc: string
+  deliberateSearchByline: string
+  deliberateVoteAllPanel: (voterCount: number) => string
+  /** Brief (Mode A — 개방형 라이트) page */
+  briefTitle: string
+  briefDesc: string
+  briefStartBtn: string
+  briefQuestionPlaceholder: string
+  briefRunningHint: (analystCount: number) => string
+  briefStageStart: string
+  briefStageOrchestrate: string
+  briefStagePreReport: string
+  briefStageAnalyses: string
+  briefStageSynthesize: string
+  briefSynthesisHeading: string
+  briefRecommendHeading: string
+  briefReportHeading: string
+  briefLeadAnalysisHeading: string
+  briefSearchesHeading: string
+  briefRosterHeading: string
+  briefAnalysesHeading: string
+  briefSubQuestionLabel: string
+  briefDoubledBadge: string
+  briefSearchSpecialist: string
+  briefSearchSpecialistDesc: string
+  briefSearchByline: string
+  briefNoSynthesis: string
+  briefMandateLabel: string
+  briefPromptSectionLabel: string
+  briefDiagnosticSectionLabel: string
+  /** Diagnostic (진단형 — 카테고리 빠른 브리핑) page */
+  diagnosticTitle: string
+  diagnosticDesc: string
+  diagnosticCategoryHeading: string
+  diagnosticCustomHeading: string
+  diagnosticCustomPlaceholder: string
+  diagnosticRunBtn: string
+  diagnosticRunningHint: string
+  diagnosticStageStart: string
+  diagnosticStageSearch: string
+  diagnosticStageStatus: string
+  diagnosticStageIssues: string
+  diagnosticStatusHeading: string
+  diagnosticIssuesHeading: string
+  diagnosticSearchesHeading: string
+  diagnosticSearchByline: string
+  diagnosticNoResult: string
 }
 
 const KO: JejuUiPack = {
@@ -285,6 +362,91 @@ const KO: JejuUiPack = {
   deepCollapse: '접기',
   deepExpand: '펼치기',
   deepWaiting: '대기 중…',
+  // Deliberate page (Mode B — 찬반 심의)
+  deliberateTitle: '찬반 심의',
+  deliberateDesc: 'SYNOD 토론 · 합의도 수렴 · 의장 판결',
+  deliberateStartBtn: '심의 시작',
+  deliberateQuestionPlaceholder: '찬반을 따질 정책 안건을 입력하세요. (예: 제주 렌터카 총량제 강화)',
+  deliberateRunningHint: (debaterCount, voterCount) =>
+    debaterCount > 0
+      ? `${debaterCount}개 AI가 토론하고, 퍼플렉시티를 포함한 ${voterCount}개 AI가 표결합니다. 총 4–8분 소요됩니다.`
+      : 'AI 심의체가 순서대로 토론하고 표결합니다. 총 4–8분 소요됩니다.',
+  deliberateStageStart: '데이터 수집·소집 중…',
+  deliberateStageReport: '사전 분석 리포트 작성 중…',
+  deliberateStageOpen: '개회 발언 중…',
+  deliberateStageTurn: '토론 라운드 진행 중…',
+  deliberateStageFacilitate: '라운드 정리 중…',
+  deliberateStageVote: '표결 중…',
+  deliberateStageVerdict: '의장 판결 작성 중…',
+  deliberateReportHeading: '사전 분석 리포트',
+  deliberateLeadAnalysisHeading: '수석 분석가 1차 분석',
+  deliberateSearchesUsedHeading: '보완 검색 결과',
+  deliberateRosterHeading: '토론 브랜드',
+  deliberateDebaterLabel: '토론자',
+  deliberateDebateHeading: '토론 경과',
+  deliberateOpeningHeading: '개회 발언 (라운드 0)',
+  deliberateRoundLabel: (n: number, score: number) => `라운드 ${n} — 합의도 ${score >= 0 ? `${score}점` : '—'}`,
+  deliberateActionTagLabel: '행동',
+  deliberateClaimLabel: '핵심 주장',
+  deliberateNextDirectiveLabel: '다음 라운드 지침',
+  deliberateAgreePointsLabel: '합의된 지점',
+  deliberateOpenIssuesLabel: '미합의 쟁점',
+  deliberateFacilitatorScore: '합의도',
+  deliberateConsensusProgressionHeading: '라운드별 합의도 추이',
+  deliberateRedTeamBadge: '논리 검증',
+  deliberateSearchSpecialist: '실시간 검색·언론 동향 담당 (Perplexity)',
+  deliberateSearchSpecialistDesc:
+    '패널 전체를 대신해 웹 검색과 언론 보도 동향을 전담 조사합니다. 토론에는 참여하지 않지만, 수집한 근거는 사전 분석 리포트와 최종 표결에 반영됩니다.',
+  deliberateSearchByline: 'Perplexity가 패널을 대신해 수행한 실시간 검색',
+  deliberateVoteAllPanel: (voterCount) => `심의체 전원(${voterCount}) 표결`,
+  // Brief (개방형 라이트) page
+  briefTitle: '개방형 브리핑',
+  briefDesc: '상황 분석 · 병렬 전문가 검토 · 권고안 제시 (토론·표결 없음)',
+  briefStartBtn: '브리핑 시작',
+  briefQuestionPlaceholder:
+    '개방형 질문을 입력하세요. (예: 에너지·계통 분야에서 지금 가장 시급한 현안은?)',
+  briefRunningHint: (analystCount) =>
+    `${analystCount}개 AI가 병렬 분석하고, Opus가 통합 권고안을 작성합니다. 총 3–5분 소요됩니다.`,
+  briefStageStart: '데이터 수집',
+  briefStageOrchestrate: '분석 배치',
+  briefStagePreReport: '상황 브리핑',
+  briefStageAnalyses: '병렬 분석',
+  briefStageSynthesize: '통합 권고',
+  briefSynthesisHeading: '통합 브리핑 · 권고안',
+  briefRecommendHeading: '★ 권고 (추천안 · B안 · C안)',
+  briefReportHeading: '사전 상황 브리핑',
+  briefLeadAnalysisHeading: '수석 분석가 1차 검토',
+  briefSearchesHeading: 'Perplexity 검색 결과',
+  briefRosterHeading: '분석 좌석 배치',
+  briefAnalysesHeading: 'AI 병렬 분석',
+  briefSubQuestionLabel: '분석 과제',
+  briefDoubledBadge: '중점 각도',
+  briefSearchSpecialist: '실시간 검색·언론 동향 담당 (Perplexity)',
+  briefSearchSpecialistDesc:
+    '토론에는 참여하지 않으며, 패널 전체를 위해 최신 외부 정보·언론 동향을 검색·수집합니다.',
+  briefSearchByline: 'Perplexity가 패널을 대신해 수행한 실시간 검색',
+  briefNoSynthesis: '통합 브리핑을 생성하지 못했습니다.',
+  briefMandateLabel: '직무',
+  briefPromptSectionLabel: '구체적인 현안을 질문하세요 — 7개 AI 심층 분석',
+  briefDiagnosticSectionLabel: '또는 분야별 빠른 진단',
+  // Diagnostic (진단형) page
+  diagnosticTitle: '진단 브리핑',
+  diagnosticDesc: '분야별 오늘의 현황 + 가장 시급한 현안 (토론·표결 없음)',
+  diagnosticCategoryHeading: '분야 선택',
+  diagnosticCustomHeading: '직접 질문',
+  diagnosticCustomPlaceholder: '특정 현안을 직접 질문하세요. (예: 오늘 제주 전력 수급 현황은?)',
+  diagnosticRunBtn: '진단 시작',
+  diagnosticRunningHint:
+    'Perplexity 검색 후, 데이터 분석가(현황)와 진단가(시급 사안)가 차례로 작성합니다. 약 1분 소요됩니다.',
+  diagnosticStageStart: '데이터 수집',
+  diagnosticStageSearch: '실시간 검색',
+  diagnosticStageStatus: '오늘의 현황',
+  diagnosticStageIssues: '시급 사안 진단',
+  diagnosticStatusHeading: '오늘의 현황',
+  diagnosticIssuesHeading: '가장 시급·중요한 사안',
+  diagnosticSearchesHeading: 'Perplexity 검색 결과',
+  diagnosticSearchByline: 'Perplexity가 수행한 실시간 검색',
+  diagnosticNoResult: '진단 결과를 생성하지 못했습니다.',
 }
 
 // TODO(i18n): translate — non-Korean locales stub to Korean until copy is ready.

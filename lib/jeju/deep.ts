@@ -100,8 +100,17 @@ const VALID_PROVIDERS = new Set(Object.keys(MODEL_BY_PROVIDER))
  * so we hardcode a strong directive (no language detection needed) to stop the
  * observed contamination ("電気료", "商业용", "šte한", "스티엄", "경관계통" etc.).
  */
-const KOREAN_ONLY_DIRECTIVE =
+export const KOREAN_ONLY_DIRECTIVE =
   '언어 규칙(매우 중요, 반드시 준수): 출력은 100% 깨끗한 표준 한국어여야 합니다. 중국어·일본어 한자나 다른 언어 글자, 혼종·오염 표기를 절대 섞지 마십시오(금지 예: "電気료", "商业용", "šte한", "스티엄", "경관계통"). 브랜드명 등 불가피한 고유명사를 제외하고는 한자·외국어 글자를 쓰지 말고, 모든 문장을 자연스러운 한국어로만 작성하십시오.'
+
+/**
+ * Shared truth-seeking directive injected near the TOP of every debater AND
+ * voter system prompt (Mode B). It governs the DEBATE attitude — seek the best
+ * answer, adjust on better evidence — and is deliberately NOT a mandate to
+ * converge: the vote's stance-persistence rule (honest 반대/기권) still stands.
+ */
+export const TRUTH_SEEKING_DIRECTIVE =
+  '이 심의의 목적은 당신의 입장을 관철하는 것이 아니라, 패널 전체가 함께 가장 객관적이고 현명하며 정답에 가장 가까운 결론에 도달하는 것입니다. 당신의 전문 영역 관점은 그 결론을 찾기 위한 재료이지, 반드시 이겨야 할 주장이 아닙니다. 자기 의견을 무리하게 강조하거나 방어하지 말고, 다른 전문가의 더 나은 근거가 있으면 정직하게 인정하고 입장을 조정하십시오. 동시에, 단지 합의를 위해 약한 근거에 동조하지도 마십시오 — 목표는 "가짜 합의"가 아니라 "진짜 최적해"입니다. 근거의 질로만 판단하십시오.'
 
 /**
  * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
@@ -158,12 +167,62 @@ export async function summarizeAvailableData(): Promise<string> {
   return `${JEJU_STANDING_ECONOMY_CONTEXT}\n\n${dataLines}`
 }
 
-/** The orchestrator (회의 소집 책임자) system prompt. */
-function buildOrchestratorSystemPrompt(): string {
+/**
+ * The orchestrator (회의 소집 책임자) system prompt.
+ *
+ * When `debateBrands` is provided (JEJU Mode B — 찬반 심의), the convener is
+ * pinned to a 1:1 "deliberation seating" mode: exactly one governance role per
+ * supplied brand, so every SYNOD debater speaks AS a professional expert. The
+ * default (no `debateBrands`) is the original 3–5 analytic-role convening used
+ * by the DEEP pipeline — unchanged.
+ */
+function buildOrchestratorSystemPrompt(debateBrands?: ExtendedAiProviderName[]): string {
   const brandList = (Object.keys(AI_BRAND_STRENGTHS) as ExtendedAiProviderName[])
     .map((k) => `  - ${k}: ${AI_BRAND_STRENGTHS[k]}`)
     .join('\n')
 
+  // ── Mode B: 1:1 brand→role deliberation seating ─────────────────────────────
+  if (debateBrands && debateBrands.length > 0) {
+    const n = debateBrands.length
+    const seatList = debateBrands.map((b) => `  - ${b}`).join('\n')
+    return [
+      '당신은 제주특별자치도 거버넌스 "찬반 심의(deliberation)"의 회의 소집 책임자입니다.',
+      `이 심의는 아래 ${n}개의 AI 브랜드가 각각 한 명의 전문가가 되어 직접 토론·반박·수렴합니다.`,
+      `따라서 아래 ${n}개 브랜드 각각에 1:1로 정확히 하나의 전문가 역할을 배정하세요(브랜드 수 = 역할 수, 중복·누락 금지).`,
+      '역할을 미리 정해두지 말고, 주어진 질문과 데이터 현황에 맞춰 매번 새로 설계하세요.',
+      '',
+      '배정 대상 브랜드(각각 정확히 1개 역할):',
+      seatList,
+      '',
+      '역할 구성 규칙:',
+      '(a) 중립 도메인 전문가만 배정(매우 중요): 찬성/반대 같은 입장을 좌석에 미리 박지 마세요. 각 좌석은 질문과 관련된 "분야 전문가"이며, 데이터를 자기 분야의 눈으로 정직하게 읽고 스스로 찬성/반대/유보를 판단합니다. 결론을 미리 정해 추인하도록 설계하지 마세요.',
+      '    - 질문에 맞는 도메인에서 고르세요(예시): 재정·규제 / 교통·안전 / 환경·에너지 / 관광·경제 / 인프라 / 법률·제도 / 지역사회 영향 분석. 질문과 무관한 도메인은 넣지 말고, 브랜드 수만큼 이 질문에 가장 핵심적인 도메인을 배정하세요.',
+      '    - 모든 좌석의 isRedTeam은 false로 두세요. 라운드별 상호 검증(서로의 논리 허점 점검)은 토론 단계에서 자동으로 처리되므로, 소집 단계에서 "반대 전담"이나 "옹호 전담" 좌석을 만들지 마세요.',
+      '    - 정직한 만장일치(예: 8:0)도 정당한 결과입니다. 인위적으로 찬반을 갈라놓지 마세요. 목표는 균형처럼 보이는 구도가 아니라, 각 분야의 가장 정확한 판단이 충돌·수렴해 "참된 최적해"가 살아남는 것입니다.',
+      '(b) 양면 검토 의무(각 mandate에 반드시 포함): 모든 전문가는 결론을 내리기 전에 자기 도메인 안에서 이 안건의 가장 강력한 찬성 근거와 가장 강력한 반대 근거를 모두 검토해야 합니다 — 한쪽으로 성급히 기울지 말고, 강한 반론을 무시하지 마세요.',
+      '(c) roleLabel 표기(공무원이 즉시 이해하는 행정 한국어): "스틸맨" 같은 은어·외래어·영어 표기 금지. 입장이 아니라 "분야"로만 표기하세요. 예) "재정·규제 분석", "교통·안전 분석", "환경·에너지 분석", "관광·경제 분석".',
+      '(d) mandate(한국어 직무): 그 전문가가 이 질문에서 자기 분야 관점으로 무엇을 분석·논증하는지 구체적으로 적되, 위 (b)의 양면 검토 의무를 반드시 담으세요.',
+      '(e) provider: 위 브랜드 목록의 값을 정확히 하나씩만 사용하세요(각 브랜드 1회). 목록에 없는 브랜드(특히 perplexity)는 절대 쓰지 마세요 — perplexity는 검색·언론 전용이라 이 토론 좌석에 들어오지 않습니다.',
+      '(f) questionType 분류: "binary"(공무원이 찬성/반대로 답하는 명확한 정책 명제) 또는 "openEnded"(단일 찬반으로 답할 수 없는 탐색형). 애매하면 반드시 "openEnded".',
+      '',
+      '참고용 AI 브랜드 강점표(역할-브랜드 적합도 판단에만 사용):',
+      brandList,
+      '',
+      '출력 형식 (매우 중요):',
+      '오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
+      '스키마:',
+      '{',
+      `  "roles": [ 정확히 ${n}개, 위 브랜드 각각에 1개씩 ],`,
+      '    각 원소: { "roleId": "string(영문 슬러그)", "roleLabel": "string(한국어)", "mandate": "string(한국어)", "provider": "위 목록의 브랜드 키", "isRedTeam": false },',
+      '  "rationale": "string(한국어 — 이 라인업이 왜 이 질문에 적합한지)",',
+      '  "searchNeeded": false,',
+      '  "questionType": "binary" 또는 "openEnded"',
+      '}',
+      `provider 값은 반드시 위 ${n}개 브랜드 목록의 키 중 하나여야 하며, 모든 브랜드가 정확히 한 번씩 등장해야 합니다.`,
+    ].join('\n')
+  }
+
+  // ── Default: original 3–5 analytic-role convening (DEEP pipeline) ────────────
   return [
     '당신은 제주특별자치도 거버넌스 심의의 "회의 소집 책임자(meeting convener)"입니다.',
     '실제 정부 회의가 안건에 따라 서로 다른 전문가를 부르듯, 당신은 주어진 정책 질문과',
@@ -307,13 +366,65 @@ function normalizeRole(
  * lineup if parsing fails or yields no roles. ok:false ONLY when the AI call
  * itself errored. Never throws.
  */
+/**
+ * Forces a 1:1 brand→role mapping for the debate seating (Mode B). The model is
+ * asked for exactly one role per brand, but defends against drift: it returns
+ * EXACTLY one role per brand in `brands` order — reusing the model's roles where
+ * a brand matches, reassigning a leftover role's provider when a brand is
+ * missing, and synthesizing a neutral analytic role only as a last resort. This
+ * guarantees every SYNOD debater has a professional role.
+ */
+function reconcileDebateRoles(
+  roles: JejuExpertRole[],
+  brands: ExtendedAiProviderName[]
+): JejuExpertRole[] {
+  const pool = [...roles]
+  const out: JejuExpertRole[] = []
+  for (const brand of brands) {
+    let idx = pool.findIndex((r) => r.provider === brand)
+    if (idx === -1) idx = pool.length > 0 ? 0 : -1
+    if (idx >= 0) {
+      const picked = pool.splice(idx, 1)[0]!
+      out.push({ ...picked, provider: brand })
+    } else {
+      out.push({
+        roleId: `analyst-${brand}`,
+        roleLabel: '정책 분석',
+        mandate:
+          '안건의 사실관계와 영향을 중립적으로 평가하고 핵심 쟁점을 짚습니다. 결론을 내리기 전에 가장 강력한 찬성 근거와 가장 강력한 반대 근거를 모두 검토합니다.',
+        provider: brand,
+      })
+    }
+  }
+  return out
+}
+
+/** Applies the 1:1 brand→role reconciliation to a plan when in debate mode. */
+function reconcilePlan(
+  plan: JejuMeetingPlan,
+  debateBrands?: ExtendedAiProviderName[]
+): JejuMeetingPlan {
+  if (!debateBrands || debateBrands.length === 0) return plan
+  return { ...plan, roles: reconcileDebateRoles(plan.roles, debateBrands) }
+}
+
+/** Korean 6-role plans need more headroom than the default 3–5 lineup. */
+const DEBATE_PLAN_MAX_TOKENS = 3000
+
 export async function planJejuMeeting(params: {
   question: string
   availableDataSummary: string
   provider?: string
+  /**
+   * Mode B (찬반 심의): pin the convening to a 1:1 brand→role mapping, one
+   * governance role per supplied debate brand. Omit for the default DEEP convening.
+   */
+  debateBrands?: ExtendedAiProviderName[]
 }): Promise<JejuMeetingPlan> {
   const question = params.question?.trim() ?? ''
   const orchestrator = resolveProvider(params.provider, DEFAULT_ORCHESTRATOR)
+  const debateBrands =
+    params.debateBrands && params.debateBrands.length > 0 ? params.debateBrands : undefined
 
   if (!question) {
     return {
@@ -345,8 +456,8 @@ export async function planJejuMeeting(params: {
       userId: null,
       provider: orchestrator,
       prompt: userPrompt,
-      systemPrompt: buildOrchestratorSystemPrompt(),
-      maxCompletionTokens: PLAN_MAX_TOKENS,
+      systemPrompt: buildOrchestratorSystemPrompt(debateBrands),
+      maxCompletionTokens: debateBrands ? DEBATE_PLAN_MAX_TOKENS : PLAN_MAX_TOKENS,
     })
   } catch (e: unknown) {
     return {
@@ -378,11 +489,11 @@ export async function planJejuMeeting(params: {
   try {
     parsed = JSON.parse(stripFences(raw))
   } catch {
-    return fallbackPlan(question, raw, 'AI 응답 JSON 파싱 실패로 기본 라인업을 사용합니다.')
+    return reconcilePlan(fallbackPlan(question, raw, 'AI 응답 JSON 파싱 실패로 기본 라인업을 사용합니다.'), debateBrands)
   }
 
   if (!parsed || typeof parsed !== 'object') {
-    return fallbackPlan(question, raw, 'AI 응답 형식이 올바르지 않아 기본 라인업을 사용합니다.')
+    return reconcilePlan(fallbackPlan(question, raw, 'AI 응답 형식이 올바르지 않아 기본 라인업을 사용합니다.'), debateBrands)
   }
   const obj = parsed as Record<string, unknown>
 
@@ -398,7 +509,7 @@ export async function planJejuMeeting(params: {
   })
 
   if (normalized.length === 0) {
-    return fallbackPlan(question, raw, 'AI가 유효한 역할을 제시하지 않아 기본 라인업을 사용합니다.')
+    return reconcilePlan(fallbackPlan(question, raw, 'AI가 유효한 역할을 제시하지 않아 기본 라인업을 사용합니다.'), debateBrands)
   }
 
   const rationaleBase = typeof obj.rationale === 'string' ? obj.rationale.trim() : ''
@@ -413,15 +524,18 @@ export async function planJejuMeeting(params: {
   const questionType: 'binary' | 'openEnded' =
     obj.questionType === 'binary' ? 'binary' : 'openEnded'
 
-  return {
-    ok: true,
-    question,
-    roles: normalized,
-    rationale,
-    questionType,
-    searchNeeded,
-    raw,
-  }
+  return reconcilePlan(
+    {
+      ok: true,
+      question,
+      roles: normalized,
+      rationale,
+      questionType,
+      searchNeeded,
+      raw,
+    },
+    debateBrands
+  )
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -887,7 +1001,13 @@ export async function mergeSearchRequests(params: {
 
 /** Perplexity search-specialist system prompt (concise Korean summary + sources). */
 function buildSearchSystemPrompt(): string {
-  return '당신은 제주도정 거버넌스 심의를 지원하는 검색 전문가입니다. 주어진 질의에 대해 최신·신뢰할 수 있는 외부 정보를 찾아 핵심만 간결하게(200~350자) 한국어로 요약하세요. 출처가 있으면 함께 제시하세요. 추측하지 말고, 찾은 정보가 없으면 없다고 하세요.'
+  return [
+    '당신은 제주도정 거버넌스 심의를 지원하는 검색 전문가입니다.',
+    '주어진 질의에 대해 최신·신뢰할 수 있는 외부 정보를 찾아 핵심만 간결하게(200~350자) 한국어로 요약하세요.',
+    '출처가 있으면 함께 제시하세요. 추측하지 말고, 찾은 정보가 없으면 없다고 하세요.',
+    '',
+    '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 정리하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(MW, SMP, ESS, HVDC, V2G, kWh, % 등), 숫자, 단위는 허용.',
+  ].join('\n')
 }
 
 /** Runs ONE Perplexity search. Never throws. */
@@ -2709,6 +2829,7 @@ export async function renderChairVerdict(params: {
       prompt: contextBlock,
       systemPrompt: buildChairSystemPrompt(consensusScore, brief, hasVote),
       maxCompletionTokens: VERDICT_MAX_TOKENS,
+      modelOverride: 'claude-opus-4-8',
     })
   } catch (e: unknown) {
     return {
@@ -2862,6 +2983,14 @@ export async function runJejuDeepComplete(params?: {
  * The full panel that casts the closing ballot — every provider, not just the
  * convened debate roles. This is the whole body's final vote.
  */
+/**
+ * RECOVERABLE FLAG — mirrors ENABLE_META in lib/jeju/synod-debate.ts. Llama
+ * (meta) is disabled (persistent non-Korean leakage). Flip to `true` to re-add
+ * it as a voter; the 'meta' entry below + its brand label are kept for that.
+ * Keep this in sync with synod-debate.ts's ENABLE_META.
+ */
+const ENABLE_META = false
+
 const JEJU_VOTE_PANEL: ExtendedAiProviderName[] = [
   'anthropic',
   'openai',
@@ -2870,7 +2999,7 @@ const JEJU_VOTE_PANEL: ExtendedAiProviderName[] = [
   'deepseek',
   'mistral',
   'perplexity',
-  'meta',
+  ...(ENABLE_META ? (['meta'] as ExtendedAiProviderName[]) : []),
 ]
 
 /**
@@ -2931,37 +3060,73 @@ type JejuVoteMode = 'verdict' | 'motion'
  *                cast BEFORE any chair ruling exists.
  */
 function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict'): string {
+  // Shared preamble — the stance-first rule is the same regardless of mode.
+  const stancePrimary = [
+    '핵심 원칙 — 당신 자신의 토론 기록대로 표결하십시오(가장 중요):',
+    '  이 표결은 새로운 추상적 판단이 아니라, 당신이 심의 토론에서 실제로 취한 입장의 충실한 요약입니다.',
+    '  1) 표결 전에 반드시 먼저 자문하십시오: "나는 토론 전반에 걸쳐 이 안건에 대해 어떤 입장을 취했는가?"',
+    '  2) 토론 내내 안건의 핵심 방향·수단을 지지했다면 → 찬성.',
+    '  3) 토론 내내 안건의 핵심 방향·수단을 거부하거나, 다른 수단을 주장했다면 → 반대.',
+    '  4) 토론에서 진정으로 혼재되었거나 해소되지 않은 상태라면 → 기권이 정직한 선택입니다.',
+    '',
+    '침묵 속 전환 금지 — 양방향 강제 규칙:',
+    '  [찬성→반대 전환 금지] 토론에서 안건의 핵심 방향·수단을 지지했다면, 표결 시점에 부차적인 우려(사회적 비용, 전환 지원 부담, 일부 리스크)를 이유로 조용히 반대로 바꿀 수 없습니다.',
+    '  부차적 우려는 조건부 찬성의 사유입니다(조건을 이유에 적고 찬성). 핵심 방향·수단을 지지했다면 반대로 표결하는 것은 금지됩니다.',
+    '  [반대→찬성 전환 금지] 토론에서 안건의 핵심 수단을 거부하거나 다른 수단을 주장했다면, 표결 시점에 더 막연한 가치("방향은 맞다")로 후퇴해 조용히 찬성으로 바꿀 수 없습니다. 반대를 유지하거나 기권하십시오.',
+    '  유효한 전환(양방향 공통): 토론 중에 당신이 입장을 바꾸는 발언을 실제로 했을 때만 예외입니다.',
+    '  예) "처음엔 반대였지만, X 때문에 입장을 바꾼다" — 토론 안에서 명시적으로 이루어진 전환만 인정합니다.',
+    '  무효한 전환: 토론이 끝나고 나서 사후에 방향을 바꾸는 것은 양방향 모두 허용되지 않습니다.',
+    '',
+    '평가 대상 — 추상화 금지:',
+    '  안건에 명시된 구체적 정책 수단·방향을 그대로 평가하십시오.',
+    '  안건을 더 추상적·더 반대하기 어려운 상위 가치로 바꿔 읽고 찬성하지 마십시오.',
+    '  예) 안건이 "관광 총량 억제로 전환"이면, "환경 보전이 옳은가?"가 아니라 "총량 억제라는 수단으로 전환"이 옳은지를 표결합니다.',
+    '  전문가 합의도 숫자를 이유로 삼지 마십시오 — 찬성/반대 결정은 오직 안건의 내용과 당신의 토론 기록에 기반해야 합니다.',
+    '',
+    '찬성·반대·기권의 정의:',
+    '  찬성: 안건이 제시한 그 수단·방향이 옳다 (조건이 있으면 이유에 적되 찬성으로 표결).',
+    '  반대: 그 수단·방향 자체가 틀렸거나, 다른 수단을 택해야 한다.',
+    '  기권: 전문 영역 밖이거나 근거가 부족해 진정으로 판단할 수 없다.',
+    '',
+    '조건부 찬성과 방향성 반대의 구분:',
+    '  조건부 찬성 = 찬성: 핵심 수단·기제는 받아들이되, 시행 시점·순서·규모·전제 조건만 더 필요하다고 보면 → 찬성하고 이유에 조건을 적으십시오.',
+    '  방향성 반대 = 반대: 핵심 수단·기제 자체를 거부하거나 다른 수단을 주장하면 → 반대.',
+    '  예) "총량 억제 대신 미시규제" = 반대. "총량 억제는 최후의 수단" = 지금 이 수단 채택을 거부하므로 반대.',
+    '',
+    '이유 형식 요건(반드시 포함):',
+    '  당신이 Perplexity(검색·언론 동향 담당)라면: 토론에 참여하지 않았으므로 "토론에서 주장했다"는 표현을 쓰지 마십시오. 대신 수집·검색한 자료와 언론 동향에서 발견한 근거를 이유로 쓰십시오. 예) "수집·검색 자료 기준으로 X 근거로 보면 이 방향이 타당하다/타당하지 않다." 각주·인용 표기([1], [2] 등), 밑줄(_…_)·별표(*) 같은 마크다운, 영어 단어를 쓰지 말고 깨끗한 한국어 산문으로만 쓰십시오.',
+    '  그 외 모든 표결 위원: 이유 줄에는 (1) 토론에서 취한 입장 한 구절, (2) 그 입장과 표결이 일치함(또는 왜 전환했는지)을 함께 쓰십시오.',
+    '  예) "토론 내내 총량 억제 대신 미시규제를 주장했고, 그 입장이 유지되어 반대한다."',
+    '  예) "토론 내내 총량 억제 불가피성을 지지했고 전환 지원 조건이 필요하므로 조건부 찬성한다."',
+    '  예) "처음엔 유보였지만 ESS 경제성 검증 요건 논의로 찬성 방향으로 수렴하여 찬성한다."',
+  ].join('\n')
+
   if (mode === 'motion') {
     return [
-      '당신은 제주도정 거버넌스 심의체의 표결 위원입니다. 전문가 심의를 거친 정책 안건(동의안)이 표결에 부쳐졌습니다. 당신은 이 안건을 제주도가 정책으로 채택·실행하는 데 찬성하는지 표결합니다.',
-      '안건의 문구는 공무원이 제출한 원안 그대로입니다. 문구의 의미를 바꾸지 말고, 그 제안 자체에 대해 표결하십시오.',
-      '오직 정책적 타당성만 보고 판단하세요. 어느 AI가 잘했는지 평가하는 것이 아닙니다.',
+      '당신은 제주도정 거버넌스 심의체의 표결 위원입니다. 전문가 심의를 거친 정책 안건(동의안)이 표결에 부쳐졌습니다.',
+      '안건의 문구는 공무원이 제출한 원안 그대로입니다. 어느 AI가 잘했는지 평가하는 것이 아닙니다.',
       '',
-      '선택지: 찬성(이 안건을 정책으로 채택·실행해도 좋다) / 반대(채택·실행해서는 안 된다) / 기권(당신의 전문 영역 밖이거나 근거가 부족해 판단을 보류한다)',
-      '안건뿐 아니라, 심의에서 끝까지 해소되지 않은 쟁점과 전문가 합의도 점수도 함께 검토하세요. 미해결 쟁점이 당신의 전문 영역에서 중대하다고 보면 반대하거나 기권하십시오. 당신의 영역 밖이거나 근거가 부족하면 기권하십시오. 그럴듯해 보인다는 이유만으로 무조건 찬성하지 마세요 — 정직하게 표결하는 것이 임무입니다.',
-      '동시에(대칭 원칙): 핵심이 근본적으로 타당한 안건을 단지 완벽하지 않다거나 일부 우려가 남았다는 이유만으로 반대하지도 마십시오. 모든 미해결 쟁점이 치명적인 것은 아닙니다 — 핵심이 옳은지, 남은 우려가 그 핵심을 무너뜨릴 만큼 중대한지를 따져 표결하십시오. 목표는 균형 잡혀 보이는 표결이 아니라 진실에 맞는 표결입니다.',
-      '중요: 안건이 "조건을 붙여 단계적으로 추진하자"는 식의 균형 잡힌 방향이라도, 그 전제 조건(예: 핵심 데이터 확보, 경제성 검증, 제도 정비)이 아직 충족되지 않았다면, 방향에 공감하더라도 "지금 채택·실행"에는 반대하는 것이 정당합니다.',
-      '당신이 이 심의 과정에서 견지했던 입장을 기억하세요. 토론에서 비판적이었다면 그 비판이 해소되었는지 스스로 점검하고, 해소되지 않았다면 반대 또는 기권하십시오. 입장을 바꿨다면 왜 바꿨는지 이유에 쓰세요.',
+      TRUTH_SEEKING_DIRECTIVE,
+      '',
+      stancePrimary,
       '',
       '출력 형식(반드시 정확히 두 줄):',
       '표결: 찬성 또는 표결: 반대 또는 표결: 기권',
-      '이유: [1~2문장, 한국어, 구체적으로]',
+      '이유: [1~2문장, 한국어, 구체적으로 — 반드시 위 이유 형식 요건을 포함]',
     ].join('\n')
   }
 
   return [
-    '당신은 제주도정 거버넌스 심의체의 표결 위원입니다. 의장(chair)이 최종 판단을 내렸습니다. 당신은 이 판단을 제주도가 정책으로 채택하는 데 찬성하는지 표결합니다.',
-    '오직 정책적 타당성만 보고 판단하세요. 어느 AI가 잘했는지 평가하는 것이 아닙니다.',
+    '당신은 제주도정 거버넌스 심의체의 표결 위원입니다. 의장(chair)이 최종 판단을 내렸습니다.',
+    '어느 AI가 잘했는지 평가하는 것이 아닙니다.',
     '',
-    '선택지: 찬성(이 판단을 정책으로 채택해도 좋다) / 반대(채택해서는 안 된다) / 기권(당신의 전문 영역 밖이거나 근거가 부족해 판단을 보류한다)',
-    '의장의 판단뿐 아니라, 끝까지 해소되지 않은 쟁점(마이너리티 리포트)과 전문가 합의도 점수도 함께 검토하세요. 미해결 쟁점이 당신의 전문 영역에서 중대하다고 보면 반대하거나 기권하십시오. 당신의 영역 밖이거나 근거가 부족하면 기권하십시오. 잘 다듬어진 결론이라고 무조건 찬성하지 마세요 — 정직하게 표결하는 것이 임무입니다.',
-    '동시에(대칭 원칙): 핵심이 근본적으로 타당한 판단을 단지 완벽하지 않다거나 일부 우려가 남았다는 이유만으로 반대하지도 마십시오. 모든 미해결 쟁점이 치명적인 것은 아닙니다 — 핵심이 옳은지, 남은 우려가 그 핵심을 무너뜨릴 만큼 중대한지를 따져 표결하십시오. 목표는 균형 잡혀 보이는 표결이 아니라 진실에 맞는 표결입니다.',
-    '중요: 의장이 "조건을 붙여 단계적으로 추진하자"는 식의 균형 잡힌 방향을 제시하더라도, 그 전제 조건(예: 핵심 데이터 확보, 경제성 검증, 제도 정비)이 아직 충족되지 않았다면, 방향에 공감하더라도 "지금 추진"에는 반대하는 것이 정당합니다. 방향이 그럴듯하다는 이유만으로 찬성하지 마세요.',
-    '당신이 이 심의 과정에서 견지했던 입장을 기억하세요. 토론에서 비판적이었다면 그 비판이 해소되었는지 스스로 점검하고, 해소되지 않았다면 반대 또는 기권하십시오. 입장을 바꿨다면 왜 바꿨는지 이유에 쓰세요.',
+    TRUTH_SEEKING_DIRECTIVE,
+    '',
+    stancePrimary,
     '',
     '출력 형식(반드시 정확히 두 줄):',
     '표결: 찬성 또는 표결: 반대 또는 표결: 기권',
-    '이유: [1~2문장, 한국어, 구체적으로]',
+    '이유: [1~2문장, 한국어, 구체적으로 — 반드시 위 이유 형식 요건을 포함]',
   ].join('\n')
 }
 
@@ -2987,6 +3152,24 @@ function parseVoteResponse(text: string | null): {
 }
 
 /**
+ * Cleans a vote reason of markup that leaks (especially from Perplexity, which
+ * is search-backed): bracketed citation markers ([2], [2][9]), underscore
+ * emphasis (_…_ / stray _), and markdown bold/italic asterisks. Returns clean
+ * Korean prose. Applied to ALL panelists' reasons (harmless for the others).
+ */
+function sanitizeVoteReason(reason: string | null): string | null {
+  if (!reason) return reason
+  const cleaned = reason
+    .replace(/\[\d+\](?:\[\d+\])*/g, '') // footnote/citation markers [n], [n][m]
+    .replace(/_+/g, '') // underscore emphasis / stray underscores
+    .replace(/\*+/g, '') // markdown bold/italic asterisks
+    .replace(/[ \t]{2,}/g, ' ') // collapse runs of spaces
+    .replace(/ +([,.])/g, '$1') // tidy space left before punctuation
+    .trim()
+  return cleaned || null
+}
+
+/**
  * Builds the voter's user prompt: the proposition to vote on + the unresolved
  * issues + the consensus score (if known). Voters who see only a polished
  * proposition tend to rubber-stamp; exposing the unresolved dissent and the
@@ -3002,38 +3185,28 @@ function buildVoteUserPrompt(params: {
   question: string
   proposition: string
   unresolvedIssues?: string | null
-  consensusScore?: number
 }): string {
-  const { mode, question, proposition, unresolvedIssues, consensusScore } = params
+  const { mode, question, proposition, unresolvedIssues } = params
 
   const parts: string[] =
     mode === 'motion'
       ? [
-          '# 표결 대상 안건 (이 제안을 제주도가 정책으로 채택·실행할지 표결합니다 — 원안 그대로)',
+          '# 표결 대상 안건 (원안 그대로 — 명시된 구체적 수단·방향으로 판단하며, 더 추상적인 가치로 바꿔 읽지 마십시오)',
           proposition,
         ]
       : [
           '# 심의 안건',
           question,
           '',
-          '# 의장의 최종 판단 (표결 대상)',
+          '# 의장의 최종 판단 (표결 대상 — 원문 그대로 판단하며, 더 추상적인 가치로 바꿔 읽지 마십시오)',
           proposition,
         ]
-
-  if (typeof consensusScore === 'number' && consensusScore >= 0) {
-    parts.push(
-      '',
-      `## 전문가 합의도: ${consensusScore}/100`,
-      consensusScore < CONSENSUS_VOTE_THRESHOLD
-        ? `(주의: 합의도가 ${CONSENSUS_VOTE_THRESHOLD}점 미만으로, 전문가들이 완전히 수렴하지 못했습니다. 합의도 ${consensusScore}점.)`
-        : `(전문가들이 충분히 합의했습니다.)`
-    )
-  }
 
   if (unresolvedIssues && unresolvedIssues.trim() !== '') {
     parts.push(
       '',
-      '## 끝까지 해소되지 않은 쟁점 (이것들이 당신 영역에서 중대하다면 반대/기권의 근거입니다)',
+      '## 끝까지 해소되지 않은 쟁점',
+      '(핵심 수단 자체를 거부하거나 다른 수단을 주장하는 쟁점이면 방향성 반대 사유 — 시행 조건·순서·규모 문제라면 조건부 찬성의 사유)',
       unresolvedIssues.trim()
     )
   }
@@ -3041,9 +3214,10 @@ function buildVoteUserPrompt(params: {
   parts.push(
     '',
     '# 당신의 임무',
+    '먼저: 당신이 이 심의 토론에서 라운드 전반에 걸쳐 취한 입장을 떠올리십시오.',
     mode === 'motion'
-      ? '위 안건, 전문가 합의도, 그리고 끝까지 해소되지 않은 쟁점을 모두 검토한 후, 이 안건을 제주도가 정책으로 채택·실행하는 것에 대해 정책적 타당성만 보고 표결하십시오. 형식에 맞춰 정확히 두 줄로만 답하십시오.'
-      : '위 의장의 최종 판단, 전문가 합의도, 그리고 끝까지 해소되지 않은 쟁점을 모두 검토한 후 정책적 타당성만 보고 표결하십시오. 형식에 맞춰 정확히 두 줄로만 답하십시오.'
+      ? '그런 다음: 위 안건(명시된 수단·방향)과 끝까지 해소되지 않은 쟁점을 검토하고, 당신의 토론 기록과 일치하게 표결하십시오. 형식에 맞춰 정확히 두 줄로만 답하십시오.'
+      : '그런 다음: 위 의장의 최종 판단(명시된 수단·방향)과 끝까지 해소되지 않은 쟁점을 검토하고, 당신의 토론 기록과 일치하게 표결하십시오. 형식에 맞춰 정확히 두 줄로만 답하십시오.'
   )
 
   return parts.join('\n')
@@ -3092,7 +3266,9 @@ async function runOneVote(
     }
   }
 
-  const { choice, reason } = parseVoteResponse(r.text)
+  const parsedVote = parseVoteResponse(r.text)
+  const choice = parsedVote.choice
+  const reason = sanitizeVoteReason(parsedVote.reason)
   if (choice == null) {
     return {
       provider,
@@ -3204,7 +3380,7 @@ export async function runJejuVote(params: {
   minorityReport?: string | null
   consensusScore?: number
 }): Promise<JejuVoteResult> {
-  const { verdict, question, minorityReport, consensusScore } = params
+  const { verdict, question, minorityReport } = params
 
   // Can't vote on nothing — needs a concrete ruling to endorse or reject.
   if (!verdict.ok || !verdict.judgment || verdict.judgment.trim() === '') {
@@ -3217,7 +3393,6 @@ export async function runJejuVote(params: {
     question,
     proposition: verdict.judgment.trim(),
     unresolvedIssues: minorityReport,
-    consensusScore,
   })
 
   return runPanelBallot(systemPrompt, userPrompt)
@@ -3245,7 +3420,6 @@ export async function runJejuMotionVote(params: {
     question,
     proposition: question,
     unresolvedIssues: formatContestedForVote(params.deliberation.contestedPoints),
-    consensusScore: params.deliberation.finalScore,
   })
 
   return runPanelBallot(systemPrompt, userPrompt)

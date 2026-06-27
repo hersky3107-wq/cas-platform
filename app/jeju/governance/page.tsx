@@ -19,14 +19,14 @@ export default function JejuGovernancePage() {
     >
       <JejuTileGrid columns={3}>
         <JejuTile
-          href="/jeju/governance/deep"
+          href="/jeju/governance/deliberate"
           icon={Layers}
           label={t.deepTitle}
           description={t.deepDesc}
           theme="governance"
         />
         <JejuTile
-          href="/jeju/governance/lite"
+          href="/jeju/governance/brief"
           icon={FileSearch}
           label={t.liteTitle}
           description={t.liteDesc}

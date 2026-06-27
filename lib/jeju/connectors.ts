@@ -1549,6 +1549,41 @@ export function listJejuSources(
 const MAX_TEXT_LENGTH = 20_000
 const FETCH_TIMEOUT_MS = 10_000
 
+/**
+ * KPX-only fetch resilience. The KPX/data.go.kr endpoints are intermittently
+ * flaky under load (observed: kpx-jeju-power → HTTP 500, kpx-jeju-smp → 10s
+ * timeout) while being perfectly healthy minutes later. These two sources get a
+ * longer timeout + a couple of retries with backoff so a transient hiccup does
+ * not blank out the brief. NOTHING here changes parsing or the snapshot shape —
+ * only the fetch attempt count/timeout for these two ids. All other connectors
+ * keep the default 10s / no-retry behavior.
+ */
+const KPX_SOURCE_IDS: ReadonlySet<string> = new Set(['kpx-jeju-power', 'kpx-jeju-smp'])
+const KPX_FETCH_TIMEOUT_MS = 28_000
+/** Backoff before retry 1 and retry 2 (2 retries ⇒ up to 3 attempts total). */
+const KPX_RETRY_DELAYS_MS = [1_000, 3_000]
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Per-fetch resilience options. Omitted fields fall back to legacy behavior. */
+type FetchResilience = {
+  timeoutMs?: number
+  /** Number of RETRIES (extra attempts) on HTTP 5xx / timeout / network error. */
+  retries?: number
+  /** Backoff before each retry; index i is used before retry i+1. */
+  retryDelaysMs?: number[]
+}
+
+/** Resilience opts for a given source id — KPX gets retries, everyone else legacy. */
+function resilienceForSource(id: string): FetchResilience | undefined {
+  if (KPX_SOURCE_IDS.has(id)) {
+    return { timeoutMs: KPX_FETCH_TIMEOUT_MS, retries: 2, retryDelaysMs: KPX_RETRY_DELAYS_MS }
+  }
+  return undefined
+}
+
 /** Builds a failed ExtractedContent without throwing. */
 function failResult(sourceLabel: string, title: string | null, error: string): ExtractedContent {
   return {
@@ -1614,18 +1649,19 @@ function okResult(sourceLabel: string, title: string | null, fullText: string): 
  * value or a plain error string. Never throws. Used directly by multi-endpoint
  * paths (e.g. 중기예보) and indirectly by `fetchAndParseJson` (single-source).
  */
-async function fetchJsonAt(
-  rawUrl: string
-): Promise<{ ok: true; parsed: unknown } | { ok: false; error: string }> {
-  let url: URL
-  try {
-    url = new URL(rawUrl)
-  } catch {
-    return { ok: false, error: 'Invalid URL' }
-  }
-
+/**
+ * ONE fetch+parse attempt. `retryable` marks failures worth re-trying (HTTP 5xx,
+ * timeout, network) vs. terminal ones (bad URL, empty body, JSON parse) that a
+ * retry can't fix. Parsing logic is unchanged from the original single-shot fn.
+ */
+async function fetchJsonOnce(
+  url: URL,
+  timeoutMs: number
+): Promise<
+  { ok: true; parsed: unknown } | { ok: false; error: string; retryable: boolean }
+> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
   let res: Response
   try {
@@ -1642,8 +1678,9 @@ async function fetchJsonAt(
     const aborted = e instanceof Error && e.name === 'AbortError'
     return {
       ok: false,
+      retryable: true,
       error: aborted
-        ? `Request timed out after ${FETCH_TIMEOUT_MS}ms`
+        ? `Request timed out after ${timeoutMs}ms`
         : `Network error: ${e instanceof Error ? e.message : 'unknown error'}`,
     }
   } finally {
@@ -1651,7 +1688,12 @@ async function fetchJsonAt(
   }
 
   if (!res.ok) {
-    return { ok: false, error: `Fetch failed: HTTP ${res.status} ${res.statusText}`.trim() }
+    // Server errors (5xx) are transient and worth retrying; 4xx are not.
+    return {
+      ok: false,
+      retryable: res.status >= 500,
+      error: `Fetch failed: HTTP ${res.status} ${res.statusText}`.trim(),
+    }
   }
 
   let raw: string
@@ -1660,12 +1702,13 @@ async function fetchJsonAt(
   } catch (e: unknown) {
     return {
       ok: false,
+      retryable: false,
       error: `Could not read response body: ${e instanceof Error ? e.message : 'unknown error'}`,
     }
   }
 
   if (raw.trim() === '') {
-    return { ok: false, error: 'Empty response body' }
+    return { ok: false, retryable: false, error: 'Empty response body' }
   }
 
   try {
@@ -1673,9 +1716,49 @@ async function fetchJsonAt(
   } catch (e: unknown) {
     return {
       ok: false,
+      retryable: false,
       error: `JSON parse error: ${e instanceof Error ? e.message : 'unknown error'}`,
     }
   }
+}
+
+async function fetchJsonAt(
+  rawUrl: string,
+  resilience?: FetchResilience
+): Promise<{ ok: true; parsed: unknown } | { ok: false; error: string }> {
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    return { ok: false, error: 'Invalid URL' }
+  }
+
+  const timeoutMs = resilience?.timeoutMs ?? FETCH_TIMEOUT_MS
+  const retries = resilience?.retries ?? 0
+  const delays = resilience?.retryDelaysMs ?? []
+
+  let last: { ok: false; error: string; retryable: boolean } = {
+    ok: false,
+    error: 'not attempted',
+    retryable: false,
+  }
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const r = await fetchJsonOnce(url, timeoutMs)
+    if (r.ok) return r
+    last = r
+    if (!r.retryable || attempt === retries) break
+    const delay = delays[attempt] ?? delays[delays.length - 1] ?? 1_000
+    await sleep(delay)
+  }
+
+  if (retries > 0) {
+    const endpoint = rawUrl.split('?')[0]
+    console.warn(
+      `[jeju-connectors] fetch gave up after ${retries + 1} attempt(s): ${endpoint} → ${last.error}`
+    )
+  }
+  return { ok: false, error: last.error }
 }
 
 /**
@@ -1688,7 +1771,7 @@ async function fetchJsonAt(
 async function fetchAndParseJson(
   source: JejuSource
 ): Promise<{ ok: true; parsed: unknown } | { ok: false; result: ExtractedContent }> {
-  const r = await fetchJsonAt(source.buildUrl())
+  const r = await fetchJsonAt(source.buildUrl(), resilienceForSource(source.id))
   if (!r.ok) {
     return { ok: false, result: failResult(source.id, source.label, r.error) }
   }
@@ -1817,13 +1900,34 @@ export async function fetchJejuSource(id: string): Promise<ExtractedContent> {
     return fetchFilteredJson(source)
   }
 
-  return extract({
-    type: 'json-api',
+  // Generic extract path (e.g. kpx-jeju-power XML). The shared `extract` module
+  // owns its own fetch/timeout and must NOT be modified, so KPX resilience here
+  // is a retry-on-failure wrapper only: re-run the SAME extract call (identical
+  // parsing/shape) on a transient failure, with backoff. Non-KPX sources keep
+  // the original single-shot behavior.
+  const extractInput = {
+    type: 'json-api' as const,
     value: source.buildUrl(),
     meta: {
       format: source.format,
       title: source.label,
       sourceLabel: source.id,
     },
-  })
+  }
+
+  if (KPX_SOURCE_IDS.has(source.id)) {
+    let result = await extract(extractInput)
+    for (let i = 0; !result.ok && i < KPX_RETRY_DELAYS_MS.length; i++) {
+      await sleep(KPX_RETRY_DELAYS_MS[i]!)
+      result = await extract(extractInput)
+    }
+    if (!result.ok) {
+      console.warn(
+        `[jeju-connectors] ${source.id} extract failed after ${KPX_RETRY_DELAYS_MS.length + 1} attempt(s): ${result.error ?? 'unknown error'}`
+      )
+    }
+    return result
+  }
+
+  return extract(extractInput)
 }
