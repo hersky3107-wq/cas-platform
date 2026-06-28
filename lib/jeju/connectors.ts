@@ -2033,3 +2033,233 @@ export async function fetchJejuSource(id: string): Promise<ExtractedContent> {
 
   return extract(extractInput)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VisitJeju structured helper (for the tourist photo-card UI)
+//
+// This is a DIRECT helper, intentionally NOT a JEJU_SOURCES registry entry: the
+// registry path returns a pre-rendered text summary (renderVisitJejuAttractions,
+// left untouched), whereas the tourist UI needs structured objects with image
+// URLs + coordinates. Both call the same live API; this one just maps the raw
+// items into typed records instead of a string.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A single VisitJeju place, structured for UI rendering (photo cards). */
+export interface VisitJejuPlace {
+  contentsId: string
+  /** contentscd.value, e.g. c1=관광지 c2=쇼핑 c4=음식점 c5=축제/행사 c6=테마여행. */
+  categoryCode: string
+  /** contentscd.label, e.g. '관광지'. */
+  categoryLabel: string
+  title: string
+  /** `${region1cd.label}·${region2cd.label}` when both present, else one, else ''. */
+  region: string
+  address: string
+  introduction: string
+  tags: string[]
+  lat: number | null
+  lng: number | null
+  imageUrl: string | null
+  thumbnailUrl: string | null
+}
+
+/** Default category mix fetched when no categories are supplied. */
+const VISITJEJU_DEFAULT_CATEGORIES: readonly string[] = ['c1', 'c4', 'c5', 'c2']
+const VISITJEJU_DEFAULT_PER_CATEGORY = 8
+const VISITJEJU_SEARCHLIST = 'https://api.visitjeju.net/vsjApi/contents/searchList'
+
+/** Reads `.label` from a {value,label,refId} VisitJeju code object; '' when absent. */
+function visitJejuCodeLabel(v: unknown): string {
+  if (v && typeof v === 'object') {
+    const label = (v as Record<string, unknown>).label
+    if (typeof label === 'string') return label.trim()
+  }
+  return ''
+}
+
+/** Reads `.value` from a {value,label,refId} VisitJeju code object; '' when absent. */
+function visitJejuCodeValue(v: unknown): string {
+  if (v && typeof v === 'object') {
+    const value = (v as Record<string, unknown>).value
+    if (typeof value === 'string') return value.trim()
+  }
+  return ''
+}
+
+/** Coerces a value to a finite number, or null when missing/NaN. */
+function visitJejuNum(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+/** Maps one raw VisitJeju item into a typed VisitJejuPlace. */
+function mapVisitJejuItem(item: Record<string, unknown>): VisitJejuPlace {
+  const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+
+  const region1 = visitJejuCodeLabel(item.region1cd)
+  const region2 = visitJejuCodeLabel(item.region2cd)
+  const region = [region1, region2].filter((r) => r !== '').join('·')
+
+  const tags = str(item.tag)
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t !== '')
+    .slice(0, 5)
+
+  // repPhoto.photoid.{imgpath, thumbnailpath} — every level can be missing/null.
+  let imageUrl: string | null = null
+  let thumbnailUrl: string | null = null
+  const repPhoto = item.repPhoto
+  if (repPhoto && typeof repPhoto === 'object') {
+    const photoid = (repPhoto as Record<string, unknown>).photoid
+    if (photoid && typeof photoid === 'object') {
+      const p = photoid as Record<string, unknown>
+      imageUrl = typeof p.imgpath === 'string' && p.imgpath.trim() !== '' ? p.imgpath : null
+      thumbnailUrl =
+        typeof p.thumbnailpath === 'string' && p.thumbnailpath.trim() !== '' ? p.thumbnailpath : null
+    }
+  }
+
+  return {
+    contentsId: str(item.contentsid),
+    categoryCode: visitJejuCodeValue(item.contentscd),
+    categoryLabel: visitJejuCodeLabel(item.contentscd),
+    title: str(item.title) || '(제목 없음)',
+    region,
+    address: str(item.address) || str(item.roadaddress),
+    introduction: str(item.introduction),
+    tags,
+    lat: visitJejuNum(item.latitude),
+    lng: visitJejuNum(item.longitude),
+    imageUrl,
+    thumbnailUrl,
+  }
+}
+
+/** Pulls the flat `items` array out of a parsed VisitJeju response. */
+function visitJejuItems(parsed: unknown): Record<string, unknown>[] {
+  if (!parsed || typeof parsed !== 'object') return []
+  const items = (parsed as Record<string, unknown>).items
+  return Array.isArray(items) ? (items as Record<string, unknown>[]) : []
+}
+
+/** Reads the flat `totalCount` from a parsed VisitJeju response (0 when absent). */
+function visitJejuTotalCount(parsed: unknown): number {
+  if (!parsed || typeof parsed !== 'object') return 0
+  const n = Number((parsed as Record<string, unknown>).totalCount ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+/** Builds a searchList URL with apiKey + locale + page (+ optional category/numOfRows). */
+function buildVisitJejuUrl(opts: { category?: string; perPage: number }): string {
+  const key = process.env.VISITJEJU_API_KEY ?? ''
+  const params = new URLSearchParams({
+    apiKey: key,
+    locale: 'kr',
+    page: '1',
+    // searchList paginates by `pageSize`; `numOfRows` is sent too for safety as
+    // the guide is inconsistent about the row-count param name.
+    pageSize: String(opts.perPage),
+    numOfRows: String(opts.perPage),
+  })
+  if (opts.category) params.set('category', opts.category)
+  return `${VISITJEJU_SEARCHLIST}?${params.toString()}`
+}
+
+/**
+ * Fetches STRUCTURED VisitJeju places (with image URLs + coordinates) for the
+ * tourist UI. Unlike the `visitjeju-attractions` registry source (which returns
+ * a text summary), this returns typed `VisitJejuPlace[]`.
+ *
+ * Diversification: page 1 of the raw API is dominated by 축제/행사 (c5), which
+ * makes the card grid monotonous. So by default we fetch each category value
+ * SEPARATELY (c1 관광지, c4 음식점, c5 축제/행사, c2 쇼핑) via the `category`
+ * query param and merge — `perCategory` items from each (default 8 ⇒ ~32 mixed).
+ *
+ * The `category` param DOES filter server-side — confirmed by live test
+ * 2026-06-28: category=c1/c4/c5/c2 returned a clean 8/8/8/8 split. The merge
+ * step also buckets items by `contentscd.value` and caps each bucket at
+ * `perCategory`, so even if the server ever ignored `category` the result would
+ * still come back balanced (defensive fallback path).
+ *
+ * Never throws. All-fail ⇒ { ok: false, error }; partial success ⇒ ok:true.
+ */
+export async function fetchVisitJejuPlaces(options?: {
+  categories?: string[]
+  perCategory?: number
+}): Promise<
+  | { ok: true; places: VisitJejuPlace[]; totalCount: number }
+  | { ok: false; error: string }
+> {
+  if (!process.env.VISITJEJU_API_KEY) {
+    return { ok: false, error: 'VisitJeju API 키가 설정되지 않았습니다 (VISITJEJU_API_KEY).' }
+  }
+
+  const categories =
+    options?.categories && options.categories.length > 0
+      ? options.categories
+      : [...VISITJEJU_DEFAULT_CATEGORIES]
+  const perCategory =
+    options?.perCategory && options.perCategory > 0
+      ? options.perCategory
+      : VISITJEJU_DEFAULT_PER_CATEGORY
+
+  // 4 small parallel calls, one per category value.
+  const settled = await Promise.all(
+    categories.map(async (category) => {
+      const url = buildVisitJejuUrl({ category, perPage: perCategory })
+      const r = await fetchJsonAt(url)
+      if (!r.ok) return { category, ok: false as const, error: r.error }
+      return {
+        category,
+        ok: true as const,
+        items: visitJejuItems(r.parsed),
+        totalCount: visitJejuTotalCount(r.parsed),
+      }
+    })
+  )
+
+  const succeeded = settled.filter((s): s is Extract<typeof s, { ok: true }> => s.ok)
+  if (succeeded.length === 0) {
+    const firstError = settled.find((s) => !s.ok)
+    const detail = firstError && !firstError.ok ? `: ${firstError.error}` : ''
+    return { ok: false, error: `VisitJeju 데이터를 불러오지 못했습니다${detail}` }
+  }
+
+  // Map + bucket by category, capping each bucket at perCategory. This produces a
+  // balanced mix whether or not the server actually honored the `category` param
+  // (if it ignored it, every response is c5-heavy but bucketing still rebalances).
+  const buckets = new Map<string, VisitJejuPlace[]>()
+  const seen = new Set<string>()
+  let totalCount = 0
+
+  for (const s of succeeded) {
+    totalCount = Math.max(totalCount, s.totalCount)
+    for (const raw of s.items) {
+      const place = mapVisitJejuItem(raw)
+      if (place.contentsId && seen.has(place.contentsId)) continue
+      if (place.contentsId) seen.add(place.contentsId)
+      const key = place.categoryCode || 'etc'
+      const bucket = buckets.get(key) ?? []
+      if (bucket.length >= perCategory) continue
+      bucket.push(place)
+      buckets.set(key, bucket)
+    }
+  }
+
+  // Interleave buckets round-robin so the grid alternates categories instead of
+  // showing all of one type before the next.
+  const ordered: VisitJejuPlace[] = []
+  const lists = Array.from(buckets.values())
+  for (let i = 0; lists.some((l) => i < l.length); i++) {
+    for (const list of lists) {
+      if (i < list.length) ordered.push(list[i]!)
+    }
+  }
+
+  return { ok: true, places: ordered, totalCount: totalCount || ordered.length }
+}
