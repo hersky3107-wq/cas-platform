@@ -1,5 +1,7 @@
 import { fetchVisitJejuPlaces, type VisitJejuPlace } from '@/lib/jeju/connectors'
 import { PlaceCard } from './place-card'
+import { SearchPanel } from './search-panel'
+import { DISPLAY_LABEL } from './category-labels'
 
 // Always fetch fresh; VisitJeju 축제/행사 listings rotate frequently.
 export const dynamic = 'force-dynamic'
@@ -33,15 +35,6 @@ const BUCKET_TARGETS: Record<string, number> = {
   c2: 2, // 쇼핑
   c5: 2, // 축제
   c6: 1, // 테마 (bonus if available)
-}
-
-/** Friendly display label shown on cards, keyed by API categoryCode. */
-const DISPLAY_LABEL: Record<string, string> = {
-  c1: '가볼 곳',
-  c4: '맛집',
-  c2: '쇼핑',
-  c5: '축제',
-  c6: '테마',
 }
 
 function isDenied(place: VisitJejuPlace): boolean {
@@ -127,14 +120,6 @@ function curate(raw: VisitJejuPlace[]): Array<{ place: VisitJejuPlace; displayLa
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
 
-const CATEGORY_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = [
-  { emoji: '🌸', label: '지금 꽃', bg: '#FFE0EC', fg: '#D6336C' },
-  { emoji: '🎪', label: '이번 주 축제', bg: '#D9F6FA', fg: '#00707A' },
-  { emoji: '☔', label: '비 와도 좋은 곳', bg: '#E3F0FF', fg: '#1C6DD0' },
-  { emoji: '🗺️', label: '코스 짜줘', bg: '#FFF1D6', fg: '#FF8C42' },
-  { emoji: '⛴️', label: '우도 배편', bg: '#E0FBF2', fg: '#0A8F6E' },
-]
-
 /** Soft inline-SVG motifs — let the background breathe. */
 function TouristMotifs() {
   return (
@@ -215,32 +200,8 @@ export default async function JejuTouristHomePage() {
           </span>
         </header>
 
-        {/* 2. Search input (visual only) */}
-        <div className="mt-5">
-          <div className="flex items-center gap-2 rounded-[18px] bg-white px-4 py-3.5 shadow-[0_12px_30px_-14px_rgba(0,112,122,0.55)] ring-1 ring-[#00A8B5]/15">
-            <span className="text-xl" aria-hidden>🔍</span>
-            <input
-              type="text"
-              disabled
-              placeholder="제주에서 뭐 하고 싶으세요?"
-              className="w-full cursor-default bg-transparent text-[15px] font-medium text-[#0A2B30] placeholder:text-[#00A8B5]/60 focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* 3. Category chips (visual only) */}
-        <div className="mt-4 flex flex-wrap gap-2">
-          {CATEGORY_CHIPS.map((chip) => (
-            <span
-              key={chip.label}
-              className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm"
-              style={{ backgroundColor: chip.bg, color: chip.fg }}
-            >
-              <span aria-hidden>{chip.emoji}</span>
-              {chip.label}
-            </span>
-          ))}
-        </div>
+        {/* 2. Search input + chips + AI recommendation results (client component) */}
+        <SearchPanel />
 
         {/* 4. Section header */}
         <div className="mt-10 flex items-end justify-between">
