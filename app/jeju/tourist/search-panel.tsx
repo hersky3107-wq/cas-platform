@@ -6,10 +6,12 @@ import type { VisitJejuPlace } from '@/lib/jeju/connectors'
 import type { LocalGem } from '@/lib/jeju/tourist-local'
 import type { FestivalItem } from '@/lib/jeju/tourist-festivals'
 import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
+import type { IslandInfo } from '@/lib/jeju/tourist-ferry'
 import { PlaceCard } from './place-card'
 import { LocalGemCard } from './local-gem-card'
 import { FestivalCard } from './festival-card'
 import { SeasonalCard } from './seasonal-card'
+import { IslandCard } from './island-card'
 import { displayLabelForPlace } from './category-labels'
 
 type RecommendResult =
@@ -24,6 +26,10 @@ type FestivalResult =
 
 type SeasonalResult =
   | { ok: true; sights: SeasonalItem[] }
+  | { ok: false; error: string }
+
+type IslandResult =
+  | { ok: true; islands: IslandInfo[] }
   | { ok: false; error: string }
 
 /** Base mixed-category query for the "관광객은 잘 모르는" chip. */
@@ -44,12 +50,10 @@ const LOCAL_VARIATION_SUFFIXES = [
 const RAINY_QUERY =
   '비 오는 날에도 좋은 제주의 제대로 된 실내 명소를 우선 추천: 미술관·박물관·전시관·뮤지엄·아쿠아리움·실내 테마공간 위주. 동네 소규모 공방·원데이클래스·게임장 같은 곳은 가급적 제외하고, 비 와도 충분히 즐길 만한 규모 있는 실내 명소 위주로.'
 
-/** Static chips (visual only) shown alongside the functional chips. */
-const STATIC_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = [
-  { emoji: '⛴️', label: '우도 배편', bg: '#E0FBF2', fg: '#0A8F6E' },
-]
+/** Static chips (visual only) — all remaining chips are now functional. */
+const STATIC_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = []
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands'
 
 export function SearchPanel() {
   const [query, setQuery] = useState('')
@@ -60,6 +64,7 @@ export function SearchPanel() {
   const [gems, setGems] = useState<LocalGem[] | null>(null)
   const [festivals, setFestivals] = useState<FestivalItem[] | null>(null)
   const [sights, setSights] = useState<SeasonalItem[] | null>(null)
+  const [islands, setIslands] = useState<IslandInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const variationIdx = useRef(0)
 
@@ -69,6 +74,7 @@ export function SearchPanel() {
     setGems(null)
     setFestivals(null)
     setSights(null)
+    setIslands(null)
     setError(null)
   }
 
@@ -215,6 +221,33 @@ export function SearchPanel() {
     }
   }
 
+  // Jeju ferry-accessible islands overview (sonar), fired by the chip.
+  async function runIslands() {
+    if (loading) return
+
+    setLoading(true)
+    setMode('islands')
+    resetResults()
+
+    try {
+      const res = await fetch('/api/jeju/tourist-ferry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const data = (await res.json()) as IslandResult
+      if (data.ok) {
+        setIslands(data.islands)
+      } else {
+        setError(data.error || '섬 여행 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+      }
+    } catch {
+      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const canSubmit = query.trim() !== '' && !loading
   const loadingMsg =
     mode === 'local'
@@ -225,7 +258,9 @@ export function SearchPanel() {
           ? '지금 제주 풍경 살펴보는 중…'
           : mode === 'rainy'
             ? '비 와도 좋은 곳 찾는 중…'
-            : '제주를 살펴보는 중…'
+            : mode === 'islands'
+              ? '제주 섬 여행 정보 찾는 중…'
+              : '제주를 살펴보는 중…'
 
   return (
     <div>
@@ -295,6 +330,16 @@ export function SearchPanel() {
         >
           <span aria-hidden>☔</span>
           비 와도 좋은 곳
+        </button>
+        <button
+          type="button"
+          onClick={runIslands}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+          style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}
+        >
+          <span aria-hidden>⛴️</span>
+          섬 여행
         </button>
         {STATIC_CHIPS.map((chip) => (
           <span
@@ -411,6 +456,23 @@ export function SearchPanel() {
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {sights.map((sight, idx) => (
               <SeasonalCard key={`${idx}-${sight.name}`} sight={sight} idx={idx} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Jeju ferry-accessible islands (web-sourced via sonar) */}
+      {!loading && mode === 'islands' && islands && islands.length > 0 && (
+        <section className="mt-6">
+          <h3 className="text-base font-extrabold tracking-tight text-[#1D4ED8]">
+            ⛴️ 배 타고 가는 제주 섬
+          </h3>
+          <p className="mt-1.5 rounded-[14px] bg-[#DBEAFE] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1D4ED8]">
+            🌐 웹에서 찾은 정보예요 · 시간표·요금은 자주 바뀌니 방문 전 운항사 확인 필수
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {islands.map((island, idx) => (
+              <IslandCard key={`${idx}-${island.name}`} island={island} idx={idx} />
             ))}
           </div>
         </section>
