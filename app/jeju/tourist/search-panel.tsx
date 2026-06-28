@@ -4,8 +4,12 @@ import { useState, useRef } from 'react'
 import { Search, Loader2 } from 'lucide-react'
 import type { VisitJejuPlace } from '@/lib/jeju/connectors'
 import type { LocalGem } from '@/lib/jeju/tourist-local'
+import type { FestivalItem } from '@/lib/jeju/tourist-festivals'
+import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
 import { PlaceCard } from './place-card'
 import { LocalGemCard } from './local-gem-card'
+import { FestivalCard } from './festival-card'
+import { SeasonalCard } from './seasonal-card'
 import { displayLabelForPlace } from './category-labels'
 
 type RecommendResult =
@@ -13,6 +17,14 @@ type RecommendResult =
   | { ok: false; error: string }
 
 type LocalResult = { ok: true; gems: LocalGem[] } | { ok: false; error: string }
+
+type FestivalResult =
+  | { ok: true; festivals: FestivalItem[] }
+  | { ok: false; error: string }
+
+type SeasonalResult =
+  | { ok: true; sights: SeasonalItem[] }
+  | { ok: false; error: string }
 
 /** Base mixed-category query for the "관광객은 잘 모르는" chip. */
 const LOCAL_BASE_QUERY =
@@ -28,15 +40,13 @@ const LOCAL_VARIATION_SUFFIXES = [
   ' (덜 알려진 곳 위주로 색다르게)',
 ]
 
-/** Static chips (visual only) shown alongside the one functional local chip. */
+/** Static chips (visual only) shown alongside the functional chips. */
 const STATIC_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = [
-  { emoji: '🌸', label: '지금 꽃', bg: '#FFE0EC', fg: '#D6336C' },
-  { emoji: '🎪', label: '이번 주 축제', bg: '#D9F6FA', fg: '#00707A' },
   { emoji: '☔', label: '비 와도 좋은 곳', bg: '#E3F0FF', fg: '#1C6DD0' },
   { emoji: '⛴️', label: '우도 배편', bg: '#E0FBF2', fg: '#0A8F6E' },
 ]
 
-type Mode = 'search' | 'local'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal'
 
 export function SearchPanel() {
   const [query, setQuery] = useState('')
@@ -45,6 +55,8 @@ export function SearchPanel() {
   const [intro, setIntro] = useState<string | null>(null)
   const [results, setResults] = useState<VisitJejuPlace[] | null>(null)
   const [gems, setGems] = useState<LocalGem[] | null>(null)
+  const [festivals, setFestivals] = useState<FestivalItem[] | null>(null)
+  const [sights, setSights] = useState<SeasonalItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const variationIdx = useRef(0)
 
@@ -52,6 +64,8 @@ export function SearchPanel() {
     setIntro(null)
     setResults(null)
     setGems(null)
+    setFestivals(null)
+    setSights(null)
     setError(null)
   }
 
@@ -116,8 +130,69 @@ export function SearchPanel() {
     }
   }
 
+  // Current/upcoming festivals (VisitJeju c5 + AI date filter), fired by the chip.
+  async function runFestivals() {
+    if (loading) return
+
+    setLoading(true)
+    setMode('festival')
+    resetResults()
+
+    try {
+      const res = await fetch('/api/jeju/tourist-festivals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const data = (await res.json()) as FestivalResult
+      if (data.ok) {
+        setFestivals(data.festivals)
+      } else {
+        setError(data.error || '축제 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+      }
+    } catch {
+      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Current seasonal sights (sonar, date-aware), fired by the chip.
+  async function runSeasonal() {
+    if (loading) return
+
+    setLoading(true)
+    setMode('seasonal')
+    resetResults()
+
+    try {
+      const res = await fetch('/api/jeju/tourist-seasonal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const data = (await res.json()) as SeasonalResult
+      if (data.ok) {
+        setSights(data.sights)
+      } else {
+        setError(data.error || '제주 풍경 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+      }
+    } catch {
+      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const canSubmit = query.trim() !== '' && !loading
-  const loadingMsg = mode === 'local' ? '제주 구석구석 찾아보는 중…' : '제주를 살펴보는 중…'
+  const loadingMsg =
+    mode === 'local'
+      ? '제주 구석구석 찾아보는 중…'
+      : mode === 'festival'
+        ? '지금 열리는 축제 찾는 중…'
+        : mode === 'seasonal'
+          ? '지금 제주 풍경 살펴보는 중…'
+          : '제주를 살펴보는 중…'
 
   return (
     <div>
@@ -157,6 +232,26 @@ export function SearchPanel() {
         >
           <span aria-hidden>👀</span>
           관광객은 잘 모르는
+        </button>
+        <button
+          type="button"
+          onClick={runFestivals}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+          style={{ backgroundColor: '#D9F6FA', color: '#00707A' }}
+        >
+          <span aria-hidden>🎪</span>
+          이번 주 축제
+        </button>
+        <button
+          type="button"
+          onClick={runSeasonal}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+          style={{ backgroundColor: '#FCE4EC', color: '#C2185B' }}
+        >
+          <span aria-hidden>🌸</span>
+          지금 제주 풍경
         </button>
         {STATIC_CHIPS.map((chip) => (
           <span
@@ -218,6 +313,40 @@ export function SearchPanel() {
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {gems.map((gem, i) => (
               <LocalGemCard key={`${gem.name}-${i}`} gem={gem} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Current/upcoming festivals (web-sourced via sonar, AI date-filtered) */}
+      {!loading && mode === 'festival' && festivals && festivals.length > 0 && (
+        <section className="mt-6">
+          <h3 className="text-base font-extrabold tracking-tight text-[#00707A]">
+            🎪 이번 주 제주 축제
+          </h3>
+          <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
+            🌐 웹에서 찾은 실시간 정보예요 · 행사 일정은 변동될 수 있으니 방문 전 확인하세요
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {festivals.map((festival, idx) => (
+              <FestivalCard key={`${idx}-${festival.name}`} festival={festival} idx={idx} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Current seasonal sights (web-sourced via sonar, date-aware) */}
+      {!loading && mode === 'seasonal' && sights && sights.length > 0 && (
+        <section className="mt-6">
+          <h3 className="text-base font-extrabold tracking-tight text-[#C2185B]">
+            🌸 지금 제주 풍경
+          </h3>
+          <p className="mt-1.5 rounded-[14px] bg-[#FCE4EC] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#C2185B]">
+            🌐 웹에서 찾은 실시간 정보예요 · 현장 상황은 변동될 수 있어요
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {sights.map((sight, idx) => (
+              <SeasonalCard key={`${idx}-${sight.name}`} sight={sight} idx={idx} />
             ))}
           </div>
         </section>
