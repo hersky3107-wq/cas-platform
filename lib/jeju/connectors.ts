@@ -2057,6 +2057,8 @@ export interface VisitJejuPlace {
   address: string
   introduction: string
   tags: string[]
+  /** Original comma/space-separated `tag` string, kept raw for client-side text search. */
+  rawTags: string
   lat: number | null
   lng: number | null
   imageUrl: string | null
@@ -2104,7 +2106,8 @@ function mapVisitJejuItem(item: Record<string, unknown>): VisitJejuPlace {
   const region2 = visitJejuCodeLabel(item.region2cd)
   const region = [region1, region2].filter((r) => r !== '').join('·')
 
-  const tags = str(item.tag)
+  const rawTags = str(item.tag)
+  const tags = rawTags
     .split(',')
     .map((t) => t.trim())
     .filter((t) => t !== '')
@@ -2133,6 +2136,7 @@ function mapVisitJejuItem(item: Record<string, unknown>): VisitJejuPlace {
     address: str(item.address) || str(item.roadaddress),
     introduction: str(item.introduction),
     tags,
+    rawTags,
     lat: visitJejuNum(item.latitude),
     lng: visitJejuNum(item.longitude),
     imageUrl,
@@ -2154,13 +2158,20 @@ function visitJejuTotalCount(parsed: unknown): number {
   return Number.isFinite(n) ? n : 0
 }
 
-/** Builds a searchList URL with apiKey + locale + page (+ optional category/numOfRows). */
-function buildVisitJejuUrl(opts: { category?: string; perPage: number }): string {
+/**
+ * Builds a searchList URL with apiKey + locale + page (+ optional category/numOfRows).
+ *
+ * ⚠️ FIREWALL: VisitJeju's web firewall returns an HTML "blocked" page (not JSON)
+ * when raw Korean characters appear in query params. Keep every param ASCII-only
+ * (category=c1, page=1). Korean keyword filtering is done CLIENT-SIDE on fetched
+ * data (filterPlacesByQuery), never via the API.
+ */
+function buildVisitJejuUrl(opts: { category?: string; perPage: number; page?: number }): string {
   const key = process.env.VISITJEJU_API_KEY ?? ''
   const params = new URLSearchParams({
     apiKey: key,
     locale: 'kr',
-    page: '1',
+    page: String(opts.page ?? 1),
     // searchList paginates by `pageSize`; `numOfRows` is sent too for safety as
     // the guide is inconsistent about the row-count param name.
     pageSize: String(opts.perPage),
@@ -2262,4 +2273,123 @@ export async function fetchVisitJejuPlaces(options?: {
   }
 
   return { ok: true, places: ordered, totalCount: totalCount || ordered.length }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VisitJeju LARGER POOL + client-side keyword filter (tourist recommendation)
+//
+// WHY: searchList does NOT support keyword search — title=/keyword=/tag= params
+// are ignored and it always returns the full 5,724-row set (confirmed live). It
+// DOES support category filtering (category=c1/c4/c5/c2/c6) and pagination
+// (page=1..N, pageSize=100). So to get a query-relevant set we build a LARGER
+// pool by paging per category, then match keywords CLIENT-SIDE against the
+// already-fetched text. (API params stay ASCII-only; see buildVisitJejuUrl.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Categories pooled by default: 관광지/음식점/축제/쇼핑/테마여행. */
+const VISITJEJU_POOL_CATEGORIES: readonly string[] = ['c1', 'c4', 'c5', 'c2', 'c6']
+/** Pages fetched per category by default (pageSize 100 ⇒ up to ~300/category). */
+const VISITJEJU_POOL_PAGES_PER_CATEGORY = 3
+/** searchList hard max rows per page. */
+const VISITJEJU_POOL_PAGE_SIZE = 100
+
+/**
+ * Builds a LARGE deduped pool of VisitJeju places by paging across categories.
+ *
+ * For each category, fetches pages 1..pagesPerCategory (ASCII params only) via
+ * the shared fetchJsonAt helper. All page requests run in parallel; results are
+ * mapped via the shared mapVisitJejuItem and deduped by contentsId across every
+ * page/category. Never throws — on total failure returns [].
+ */
+export async function fetchVisitJejuPool(options?: {
+  categories?: string[]
+  pagesPerCategory?: number
+}): Promise<VisitJejuPlace[]> {
+  try {
+    if (!process.env.VISITJEJU_API_KEY) return []
+
+    const categories =
+      options?.categories && options.categories.length > 0
+        ? options.categories
+        : [...VISITJEJU_POOL_CATEGORIES]
+    const pagesPerCategory =
+      options?.pagesPerCategory && options.pagesPerCategory > 0
+        ? options.pagesPerCategory
+        : VISITJEJU_POOL_PAGES_PER_CATEGORY
+
+    // One request descriptor per (category, page) — fired in parallel.
+    const requests: Array<{ category: string; page: number }> = []
+    for (const category of categories) {
+      for (let page = 1; page <= pagesPerCategory; page++) {
+        requests.push({ category, page })
+      }
+    }
+
+    const settled = await Promise.all(
+      requests.map(async ({ category, page }) => {
+        const url = buildVisitJejuUrl({ category, page, perPage: VISITJEJU_POOL_PAGE_SIZE })
+        const r = await fetchJsonAt(url)
+        return r.ok ? visitJejuItems(r.parsed) : []
+      })
+    )
+
+    const seen = new Set<string>()
+    const pool: VisitJejuPlace[] = []
+    for (const items of settled) {
+      for (const raw of items) {
+        const place = mapVisitJejuItem(raw)
+        if (place.contentsId) {
+          if (seen.has(place.contentsId)) continue
+          seen.add(place.contentsId)
+        }
+        pool.push(place)
+      }
+    }
+    return pool
+  } catch {
+    return []
+  }
+}
+
+/** Pool freshness window — 6 hours. */
+const VISITJEJU_POOL_TTL_MS = 6 * 60 * 60 * 1000
+
+/**
+ * In-memory pool cache. NOTE: this is per-server-instance memory only (resets on
+ * cold start / redeploy and is not shared across instances) — fine for the demo.
+ * A persistent/shared cache (e.g. KV or DB-backed) is a later optimization.
+ */
+let _poolCache: { at: number; places: VisitJejuPlace[] } | null = null
+
+/** Returns the cached pool when younger than the TTL, else refetches and caches. */
+export async function getVisitJejuPool(): Promise<VisitJejuPlace[]> {
+  const now = Date.now()
+  if (_poolCache && now - _poolCache.at < VISITJEJU_POOL_TTL_MS) {
+    return _poolCache.places
+  }
+  const places = await fetchVisitJejuPool()
+  // Only cache a non-empty result so a transient total failure doesn't pin [].
+  if (places.length > 0) {
+    _poolCache = { at: now, places }
+  }
+  return places
+}
+
+/**
+ * Client-side stand-in for the missing keyword-search API. Keeps a place when
+ * ANY keyword appears (case-insensitive substring) in its
+ * title + rawTags + introduction + categoryLabel + region. Order preserved.
+ * Returns [] when nothing matches (caller decides any fallback).
+ */
+export function filterPlacesByQuery(
+  places: VisitJejuPlace[],
+  keywords: string[]
+): VisitJejuPlace[] {
+  const needles = keywords.map((k) => k.trim().toLowerCase()).filter((k) => k !== '')
+  if (needles.length === 0) return []
+
+  return places.filter((p) => {
+    const haystack = `${p.title} ${p.rawTags} ${p.introduction} ${p.categoryLabel} ${p.region}`.toLowerCase()
+    return needles.some((n) => haystack.includes(n))
+  })
 }
