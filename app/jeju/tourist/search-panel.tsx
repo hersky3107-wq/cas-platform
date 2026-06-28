@@ -40,13 +40,16 @@ const LOCAL_VARIATION_SUFFIXES = [
   ' (덜 알려진 곳 위주로 색다르게)',
 ]
 
+/** Fixed query for the "비 와도 좋은 곳" chip — VisitJeju indoor-focus. */
+const RAINY_QUERY =
+  '비 오는 날에도 좋은 제주의 제대로 된 실내 명소를 우선 추천: 미술관·박물관·전시관·뮤지엄·아쿠아리움·실내 테마공간 위주. 동네 소규모 공방·원데이클래스·게임장 같은 곳은 가급적 제외하고, 비 와도 충분히 즐길 만한 규모 있는 실내 명소 위주로.'
+
 /** Static chips (visual only) shown alongside the functional chips. */
 const STATIC_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = [
-  { emoji: '☔', label: '비 와도 좋은 곳', bg: '#E3F0FF', fg: '#1C6DD0' },
   { emoji: '⛴️', label: '우도 배편', bg: '#E0FBF2', fg: '#0A8F6E' },
 ]
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy'
 
 export function SearchPanel() {
   const [query, setQuery] = useState('')
@@ -184,6 +187,34 @@ export function SearchPanel() {
     }
   }
 
+  // Rainy-day indoor places (VisitJeju flow with fixed query), fired by the chip.
+  async function runRainy() {
+    if (loading) return
+
+    setLoading(true)
+    setMode('rainy')
+    resetResults()
+
+    try {
+      const res = await fetch('/api/jeju/tourist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: RAINY_QUERY }),
+      })
+      const data = (await res.json()) as RecommendResult
+      if (data.ok) {
+        setIntro(data.intro)
+        setResults(data.recommendations)
+      } else {
+        setError(data.error || '추천을 불러오지 못했어요. 다시 시도해 주세요.')
+      }
+    } catch {
+      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const canSubmit = query.trim() !== '' && !loading
   const loadingMsg =
     mode === 'local'
@@ -192,7 +223,9 @@ export function SearchPanel() {
         ? '지금 열리는 축제 찾는 중…'
         : mode === 'seasonal'
           ? '지금 제주 풍경 살펴보는 중…'
-          : '제주를 살펴보는 중…'
+          : mode === 'rainy'
+            ? '비 와도 좋은 곳 찾는 중…'
+            : '제주를 살펴보는 중…'
 
   return (
     <div>
@@ -253,6 +286,16 @@ export function SearchPanel() {
           <span aria-hidden>🌸</span>
           지금 제주 풍경
         </button>
+        <button
+          type="button"
+          onClick={runRainy}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+          style={{ backgroundColor: '#E3F0FF', color: '#1C6DD0' }}
+        >
+          <span aria-hidden>☔</span>
+          비 와도 좋은 곳
+        </button>
         {STATIC_CHIPS.map((chip) => (
           <span
             key={chip.label}
@@ -289,6 +332,27 @@ export function SearchPanel() {
               {intro}
             </p>
           )}
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {results.map((place) => (
+              <PlaceCard
+                key={place.contentsId}
+                place={place}
+                displayLabel={displayLabelForPlace(place)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Rainy-day indoor places (VisitJeju, official data) */}
+      {!loading && mode === 'rainy' && results && results.length > 0 && (
+        <section className="mt-6">
+          <h3 className="text-base font-extrabold tracking-tight text-[#1C6DD0]">
+            ☔ 비 와도 좋은 곳
+          </h3>
+          <p className="mt-1.5 rounded-[14px] bg-[#E3F0FF] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1C6DD0]">
+            비짓제주 공식 정보 기반
+          </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {results.map((place) => (
               <PlaceCard
