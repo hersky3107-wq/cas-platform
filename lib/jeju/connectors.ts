@@ -1314,6 +1314,88 @@ function renderJejuWarning(rawJson: unknown): { text: string } | { error: string
 }
 
 /**
+ * Renders the VisitJeju 관광지 검색 API (searchList) into a compact Korean summary.
+ *
+ * ⚠️ This API does NOT match the other Jeju sources' envelopes:
+ *   - NOT wrapped in `response.body` (unlike KMA/data.go.kr → readDataGoKrEnvelope).
+ *   - NOT a `data[]` array (unlike odcloud → readOdcloudEnvelope).
+ *   - FLAT shape: { result, resultMessage, totalCount, resultCount, pageSize,
+ *     pageCount, currentPage, items: [...] }.
+ *
+ * Success is judged by DATA, not the result code (the official guide is
+ * internally inconsistent: spec table says "00", the live server returns "200").
+ * LIVE = totalCount > 0 AND Array.isArray(items) AND items.length > 0.
+ *
+ * Each item (Korean values): title, contentscd.label (분류), address, roadaddress,
+ * introduction (간단소개), tag (쉼표구분), latitude/longitude (테마여행 entries may be
+ * null), region1cd.label (시), region2cd.label (구역).
+ */
+function renderVisitJejuAttractions(rawJson: unknown): { text: string } | { error: string } {
+  if (!rawJson || typeof rawJson !== 'object') {
+    return { error: 'VisitJeju 관광지: 응답 형식 오류 (객체 아님)' }
+  }
+  const obj = rawJson as Record<string, unknown>
+
+  const totalCount = Number(obj.totalCount ?? 0)
+  const items = Array.isArray(obj.items) ? (obj.items as Record<string, unknown>[]) : null
+
+  if (!Number.isFinite(totalCount) || totalCount <= 0 || !items || items.length === 0) {
+    return { error: `VisitJeju 관광지: 데이터 없음 (totalCount=${obj.totalCount ?? '없음'}, items=${items ? items.length : '없음'})` }
+  }
+
+  // Reads `.label` from a {value,label,refId} code object; '' when absent.
+  const codeLabel = (v: unknown): string => {
+    if (v && typeof v === 'object') {
+      const label = (v as Record<string, unknown>).label
+      if (typeof label === 'string') return label.trim()
+    }
+    return ''
+  }
+  const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+  const numOrNull = (v: unknown): number | null => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
+    }
+    return null
+  }
+
+  const RENDER_CAP = 100
+  const rendered = items.slice(0, RENDER_CAP)
+
+  const lines = rendered
+    .map((item) => {
+      const title = str(item.title) || '(제목 없음)'
+      const category = codeLabel(item.contentscd) || '미분류'
+      const region1 = codeLabel(item.region1cd)
+      const region2 = codeLabel(item.region2cd)
+      const region = [region1, region2].filter((r) => r !== '').join('·')
+
+      const parts: string[] = [`- [${category}] ${title}${region ? ` (${region})` : ''}`]
+
+      const tag = str(item.tag)
+      if (tag) parts.push(`태그: ${tag}`)
+
+      const lat = numOrNull(item.latitude)
+      const lng = numOrNull(item.longitude)
+      if (lat !== null && lng !== null) parts.push(`좌표: ${lat},${lng}`)
+
+      const intro = str(item.introduction)
+      if (intro) parts.push(`소개: ${intro.length > 60 ? `${intro.slice(0, 60)}…` : intro}`)
+
+      return parts.join(' | ')
+    })
+    .filter((l) => l !== '')
+
+  const header =
+    `VisitJeju 관광지·맛집·축제 검색 (출처: api.visitjeju.net, 전체 ${totalCount.toLocaleString()}건` +
+    `${rendered.length < totalCount ? `, 상위 ${rendered.length}건 표시` : ''})`
+
+  return { text: [header, ...lines].join('\n') }
+}
+
+/**
  * Registered Jeju data sources.
  *
  * To add a source: append a `JejuSource` entry below. `buildUrl` should read any
@@ -1519,6 +1601,26 @@ const JEJU_SOURCES: readonly JejuSource[] = [
       return `https://api.odcloud.kr/api/3083546/v1/uddi:7ef5b5b5-e00d-490f-8624-bb2d543d0904?${params.toString()}`
     },
     render: renderJejuDomesticTourists,
+  },
+
+  {
+    id: 'visitjeju-attractions',
+    label: 'VisitJeju Tourist Attractions (비짓제주 관광지·맛집·축제)',
+    format: 'json',
+    modes: ['tourist'],
+    buildUrl: () => {
+      // Dedicated key (NOT the data.go.kr / KPX shared key). MUST be https://:
+      // the official guide PDF lists http:// but the live server silently drops
+      // http requests. Auth param is `apiKey` (capital K) + locale=kr.
+      const key = process.env.VISITJEJU_API_KEY ?? ''
+      const params = new URLSearchParams({
+        apiKey: key,
+        locale: 'kr',
+        page: '1',
+      })
+      return `https://api.visitjeju.net/vsjApi/contents/searchList?${params.toString()}`
+    },
+    render: renderVisitJejuAttractions,
   },
 
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────
