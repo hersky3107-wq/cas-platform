@@ -2063,6 +2063,10 @@ export interface VisitJejuPlace {
   lng: number | null
   imageUrl: string | null
   thumbnailUrl: string | null
+  /** Phone number when VisitJeju provides one (raw phoneno/tel), else undefined. */
+  phone?: string
+  /** Opening hours / usage time when present (raw usetime/opentime), else undefined. */
+  openingHours?: string
 }
 
 /** Default category mix fetched when no categories are supplied. */
@@ -2127,6 +2131,14 @@ function mapVisitJejuItem(item: Record<string, unknown>): VisitJejuPlace {
     }
   }
 
+  // Phone / opening hours are NOT always present in searchList items. The guide
+  // mentions tel/usetime; probe several plausible field names and keep the first
+  // non-empty one. Absent ⇒ undefined (callers treat that as "no info").
+  const phone =
+    str(item.phoneno) || str(item.tel) || str(item.phone) || str(item.telephone) || undefined
+  const openingHours =
+    str(item.usetime) || str(item.opentime) || str(item.businesshour) || str(item.playtime) || undefined
+
   return {
     contentsId: str(item.contentsid),
     categoryCode: visitJejuCodeValue(item.contentscd),
@@ -2141,6 +2153,8 @@ function mapVisitJejuItem(item: Record<string, unknown>): VisitJejuPlace {
     lng: visitJejuNum(item.longitude),
     imageUrl,
     thumbnailUrl,
+    phone,
+    openingHours,
   }
 }
 

@@ -14,10 +14,35 @@ import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
 const HEADER_BG = '#FCE4EC' // soft rose-pink — distinct from other card types
 const ICON_COLOR = '#C2185B'
 
-export function SeasonalCard({ sight, idx }: { sight: SeasonalItem; idx: number }) {
+export function SeasonalCard({
+  sight,
+  idx,
+  onSelect,
+}: {
+  sight: SeasonalItem
+  idx: number
+  onSelect?: () => void
+}) {
   void idx // used as key in parent
   return (
-    <article className="flex flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_8px_28px_-10px_rgba(0,112,122,0.35)] ring-1 ring-[#00A8B5]/10 transition-transform duration-200 hover:-translate-y-1 hover:shadow-[0_16px_36px_-10px_rgba(0,112,122,0.5)]">
+    <article
+      onClick={onSelect}
+      onKeyDown={
+        onSelect
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect()
+              }
+            }
+          : undefined
+      }
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      className={`flex flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_8px_28px_-10px_rgba(0,112,122,0.35)] ring-1 ring-[#00A8B5]/10 transition-transform duration-200 hover:-translate-y-1 hover:shadow-[0_16px_36px_-10px_rgba(0,112,122,0.5)] ${
+        onSelect ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8B5]' : ''
+      }`}
+    >
       {/* Illustration header band */}
       <div
         className="flex h-24 items-center justify-center"

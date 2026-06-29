@@ -4,15 +4,21 @@ import { useState, useRef } from 'react'
 import { Search, Loader2 } from 'lucide-react'
 import type { VisitJejuPlace } from '@/lib/jeju/connectors'
 import type { LocalGem } from '@/lib/jeju/tourist-local'
-import type { FestivalItem } from '@/lib/jeju/tourist-festivals'
 import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
 import type { IslandInfo } from '@/lib/jeju/tourist-ferry'
 import { PlaceCard } from './place-card'
 import { LocalGemCard } from './local-gem-card'
-import { FestivalCard } from './festival-card'
 import { SeasonalCard } from './seasonal-card'
 import { IslandCard } from './island-card'
 import { CoursePanel } from './course-panel'
+import { PlaceDetailModal } from './place-detail-modal'
+import {
+  type PlaceDetail,
+  detailFromVisitJeju,
+  detailFromLocalGem,
+  detailFromSeasonal,
+  detailFromIsland,
+} from './place-detail'
 import { displayLabelForPlace } from './category-labels'
 
 type RecommendResult =
@@ -22,7 +28,7 @@ type RecommendResult =
 type LocalResult = { ok: true; gems: LocalGem[] } | { ok: false; error: string }
 
 type FestivalResult =
-  | { ok: true; festivals: FestivalItem[] }
+  | { ok: true; festivals: VisitJejuPlace[] }
   | { ok: false; error: string }
 
 type SeasonalResult =
@@ -63,10 +69,11 @@ export function SearchPanel() {
   const [intro, setIntro] = useState<string | null>(null)
   const [results, setResults] = useState<VisitJejuPlace[] | null>(null)
   const [gems, setGems] = useState<LocalGem[] | null>(null)
-  const [festivals, setFestivals] = useState<FestivalItem[] | null>(null)
+  const [festivals, setFestivals] = useState<VisitJejuPlace[] | null>(null)
   const [sights, setSights] = useState<SeasonalItem[] | null>(null)
   const [islands, setIslands] = useState<IslandInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [detail, setDetail] = useState<PlaceDetail | null>(null)
   const variationIdx = useRef(0)
 
   function resetResults() {
@@ -140,7 +147,7 @@ export function SearchPanel() {
     }
   }
 
-  // Current/upcoming festivals (VisitJeju c5 + AI date filter), fired by the chip.
+  // Jeju festivals/events (VisitJeju c5, official data), fired by the chip.
   async function runFestivals() {
     if (loading) return
 
@@ -411,6 +418,7 @@ export function SearchPanel() {
                 key={place.contentsId}
                 place={place}
                 displayLabel={displayLabelForPlace(place)}
+                onSelect={() => setDetail(detailFromVisitJeju(place, displayLabelForPlace(place)))}
               />
             ))}
           </div>
@@ -432,6 +440,7 @@ export function SearchPanel() {
                 key={place.contentsId}
                 place={place}
                 displayLabel={displayLabelForPlace(place)}
+                onSelect={() => setDetail(detailFromVisitJeju(place, displayLabelForPlace(place)))}
               />
             ))}
           </div>
@@ -449,24 +458,33 @@ export function SearchPanel() {
           </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {gems.map((gem, i) => (
-              <LocalGemCard key={`${gem.name}-${i}`} gem={gem} />
+              <LocalGemCard
+                key={`${gem.name}-${i}`}
+                gem={gem}
+                onSelect={() => setDetail(detailFromLocalGem(gem))}
+              />
             ))}
           </div>
         </section>
       )}
 
-      {/* Current/upcoming festivals (web-sourced via sonar, AI date-filtered) */}
+      {/* Jeju festivals/events (VisitJeju c5, official data with coords) */}
       {!loading && mode === 'festival' && festivals && festivals.length > 0 && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#00707A]">
-            🎪 이번 주 제주 축제
+            🎪 제주 축제·공연·전시
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
-            🌐 웹에서 찾은 실시간 정보예요 · 행사 일정은 변동될 수 있으니 방문 전 확인하세요
+            제주에서 열리는 축제·공연·전시예요 · 정확한 일정은 확인하세요
           </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {festivals.map((festival, idx) => (
-              <FestivalCard key={`${idx}-${festival.name}`} festival={festival} idx={idx} />
+            {festivals.map((place) => (
+              <PlaceCard
+                key={place.contentsId}
+                place={place}
+                displayLabel={displayLabelForPlace(place)}
+                onSelect={() => setDetail(detailFromVisitJeju(place, displayLabelForPlace(place)))}
+              />
             ))}
           </div>
         </section>
@@ -483,7 +501,12 @@ export function SearchPanel() {
           </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {sights.map((sight, idx) => (
-              <SeasonalCard key={`${idx}-${sight.name}`} sight={sight} idx={idx} />
+              <SeasonalCard
+                key={`${idx}-${sight.name}`}
+                sight={sight}
+                idx={idx}
+                onSelect={() => setDetail(detailFromSeasonal(sight))}
+              />
             ))}
           </div>
         </section>
@@ -500,11 +523,19 @@ export function SearchPanel() {
           </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {islands.map((island, idx) => (
-              <IslandCard key={`${idx}-${island.name}`} island={island} idx={idx} />
+              <IslandCard
+                key={`${idx}-${island.name}`}
+                island={island}
+                idx={idx}
+                onSelect={() => setDetail(detailFromIsland(island))}
+              />
             ))}
           </div>
         </section>
       )}
+
+      {/* Shared detail modal (bottom-sheet on mobile, centered on desktop) */}
+      <PlaceDetailModal detail={detail} onClose={() => setDetail(null)} />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { fetchVisitJejuPlaces, type VisitJejuPlace } from '@/lib/jeju/connectors'
-import { PlaceCard } from './place-card'
+import { FeaturedGrid } from './featured-grid'
 import { SearchPanel } from './search-panel'
 import { DISPLAY_LABEL } from './category-labels'
 
@@ -212,15 +212,7 @@ export default async function JejuTouristHomePage() {
         </div>
 
         {/* 5. Curated illustrated cards — 2 cols mobile, 3 cols desktop */}
-        {curated.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {curated.map(({ place, displayLabel }) => (
-              <PlaceCard key={place.contentsId} place={place} displayLabel={displayLabel} />
-            ))}
-          </div>
-        )}
+        {curated.length === 0 ? <EmptyState /> : <FeaturedGrid items={curated} />}
 
         {/* Source attribution */}
         <p className="mt-6 text-center text-[11px] text-[#00707A]/60">
