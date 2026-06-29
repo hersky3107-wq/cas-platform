@@ -41,8 +41,12 @@ import { getAttractionsByField, NATURE_FIELDS, CULTURE_FIELDS } from '@/lib/jeju
 const COMPOSE_PROVIDER: ExtendedAiProviderName = 'anthropic'
 const LOCAL_ACTIVE_PROVIDER: ExtendedAiProviderName = 'perplexity'
 
-/** 4 structured courses × ~6 stops each with Korean descriptions need room. */
-const COMPOSE_MAX_TOKENS = 5000
+/**
+ * 4 structured courses × ~5-6 stops each with Korean descriptions.
+ * 4200 tokens: richer than the trimmed 3500 without returning to the 5000 that
+ * pushed compose past 45 s. Target compose time ~50-65 s.
+ */
+const COMPOSE_MAX_TOKENS = 4200
 /** Mode 1 (맞춤 코스): 2 detailed, situation-tailored courses. */
 const CUSTOM_COMPOSE_MAX_TOKENS = 3500
 /** Mode 1 returns at most this many tailored courses. */
@@ -50,17 +54,21 @@ const CUSTOM_MAX_COURSES = 2
 /** Local/active sonar supplement — a dozen places with short descriptions. */
 const LOCAL_ACTIVE_MAX_TOKENS = 1200
 
-/** Cap VisitJeju candidates so the compose prompt stays a sane size. */
-const MAX_POOL_CANDIDATES = 90
+/**
+ * Cap VisitJeju candidates so the compose prompt stays a sane size.
+ * Middle-ground (70 + 22 + 14 ≈ 106): more variety than the over-trimmed 80
+ * that hurt quality, lighter than the 130 that timed out.
+ */
+const MAX_POOL_CANDIDATES = 70
 /** Category-balanced fallback sample size when the keyword filter finds nothing. */
 const FALLBACK_SAMPLE_SIZE = 70
 /** Max web (sonar) candidates merged into the bank. */
-const MAX_WEB_CANDIDATES = 16
+const MAX_WEB_CANDIDATES = 14
 /**
  * Max official attraction candidates (nature/culture/oreum) merged into bank.
  * Round-robin sampled across 분야 so the model sees field variety.
  */
-const MAX_ATTR_CANDIDATES = 24
+const MAX_ATTR_CANDIDATES = 22
 
 const GENERIC_FAIL = '코스를 만들지 못했어요. 다시 시도해 주세요.'
 
@@ -318,7 +326,7 @@ function buildCandidateList(candidates: Candidate[]): string {
 }
 
 function buildComposeSystemPrompt(duration: '반나절' | '하루'): string {
-  const stopsHint = duration === '반나절' ? '3~4곳' : '5~7곳'
+  const stopsHint = duration === '반나절' ? '3~4곳' : '5~6곳'
   return [
     '당신은 제주 여행 코스를 설계하는 전문 플래너입니다.',
     '아래 후보 장소 목록만을 사용해, 성격이 분명히 다른 4개의 하루 코스를 설계하세요.',
@@ -334,6 +342,8 @@ function buildComposeSystemPrompt(duration: '반나절' | '하루'): string {
     '- 각 스톱에 timing(예: "오전", "점심", "오후", "저녁")을 넣어 하루 흐름이 자연스럽게 이어지게 하세요. 식사 시간대에는 가능하면 맛집/카페를 배치하세요.',
     '- 각 스톱에 durationHint(예: "1~2시간")와 짧은 description(왜 이 코스에 들어가는지)을 넣으세요.',
     '- concept: 그 코스가 어떤 하루인지 1~2문장으로 분명히 설명하세요. 4개 코스의 concept이 서로 확실히 달라야 합니다.',
+    '- 각 스톱의 분류(category)는 반드시 한국어 단어로만 표기하세요 (예: 해변·오름·카페·맛집·관광지·체험·숲길·해안·전시·염전). 영어나 알 수 없는 문자를 쓰지 마세요.',
+    '- 코스 스톱 선택 기준: 실제 방문 가치가 있는 명소·자연·오름·체험·맛집·카페·박물관·전시공간을 우선하세요. "개점식", "그랜드오픈", "○○ 행사 개막" 같은 일회성 상업 이벤트, 면세점 오픈 행사, 단순 상업시설은 여행 코스 스톱으로 적합하지 않으니 절대 포함하지 마세요. {공식} 표시 자연·문화·오름 후보를 적극 활용하세요.',
     '',
     '엄수 규칙(anti-hallucination):',
     '- 반드시 후보 목록에 있는 장소만 사용하세요. 목록에 없는 장소를 절대 지어내지 마세요.',
@@ -371,6 +381,31 @@ function buildComposeUserPrompt(
 
 const VALID_IDS: ReadonlySet<string> = new Set(['A', 'B', 'C', 'D'])
 
+/** Default category when candidate label is missing or garbled (e.g. Latin "szen"). */
+const DEFAULT_STOP_CATEGORY = '관광지'
+
+/**
+ * Ensures every stop category shown in the UI is a clean Korean label.
+ * Candidate banks (VisitJeju, odcloud, sonar) occasionally carry Latin/garbled values.
+ */
+function sanitizeStopCategory(category: string | null, candidate: Candidate): string {
+  const trimmed = category?.trim() ?? ''
+  const hasHangul = /[\uAC00-\uD7A3]/.test(trimmed)
+  const hasLatin = /[A-Za-z]/.test(trimmed)
+  if (trimmed && hasHangul && !hasLatin) return trimmed
+
+  const hay = `${candidate.name} ${trimmed}`
+  if (/오름/.test(hay)) return '오름'
+  if (/맛집|음식|식당|횟집/.test(hay)) return '맛집'
+  if (/카페|커피|베이커리/.test(hay)) return '카페'
+  if (/염전/.test(hay)) return '염전'
+  if (/해변|바다|해안/.test(hay)) return '해변'
+  if (/숲|트레일|둘레|올레|산책/.test(hay)) return '숲길'
+  if (/박물관|미술|전시|문화|유적/.test(hay)) return '전시'
+  if (/체험|스포츠|다이빙|서핑/.test(hay)) return '체험'
+  return DEFAULT_STOP_CATEGORY
+}
+
 /** Builds validated CourseStops from raw AI stops, mapping indices to candidates. */
 function buildStops(rawStops: unknown, candidates: Candidate[]): CourseStop[] {
   if (!Array.isArray(rawStops)) return []
@@ -390,7 +425,7 @@ function buildStops(rawStops: unknown, candidates: Candidate[]): CourseStop[] {
       order,
       name: cand.name,
       timing: toStrOrNull(o.timing),
-      category: cand.category,
+      category: sanitizeStopCategory(cand.category, cand),
       description: typeof o.description === 'string' ? o.description.trim() : '',
       durationHint: toStrOrNull(o.durationHint),
       source: cand.source,
@@ -471,10 +506,15 @@ export async function generateCourses({
       prompt: buildComposeUserPrompt(trimmedQuery, dur, trimmedArea, buildCandidateList(candidates)),
       systemPrompt: buildComposeSystemPrompt(dur),
       maxCompletionTokens: COMPOSE_MAX_TOKENS,
-      timeoutMs: 45_000,
+      timeoutMs: 75_000,
     })
 
     if (r.error || !r.text || !r.text.trim()) {
+      // Compose timeout (AbortError) surfaces here as r.error — log so it's diagnosable.
+      console.error(
+        '[tourist-course] generateCourses compose failed:',
+        r.error ?? 'empty compose response'
+      )
       return { ok: false, error: GENERIC_FAIL }
     }
 
@@ -522,7 +562,9 @@ export async function generateCourses({
     courses.sort((a, b) => a.id.localeCompare(b.id))
 
     return { ok: true, courses }
-  } catch {
+  } catch (e) {
+    const err = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+    console.error('[tourist-course] generateCourses failed:', err)
     return { ok: false, error: GENERIC_FAIL }
   }
 }
@@ -571,7 +613,7 @@ function deriveSituationKeywords(query: string, companion?: string, ageGroup?: s
 }
 
 function buildCustomComposeSystemPrompt(duration: '반나절' | '하루'): string {
-  const stopsHint = duration === '반나절' ? '3~4곳' : '5~7곳'
+  const stopsHint = duration === '반나절' ? '3~4곳' : '5~6곳'
   return [
     '당신은 사용자의 "상황"을 깊이 이해하고 그에 꼭 맞는 제주 여행 코스를 설계하는 전문 플래너입니다.',
     '아래 후보 장소 목록만을 사용해, 사용자 상황에 가장 잘 맞는 서로 다른 2개의 맞춤 코스를 설계하세요.',
@@ -591,6 +633,8 @@ function buildCustomComposeSystemPrompt(duration: '반나절' | '하루'): strin
     '- theme: 고정된 이름이 아니라, 이 사용자 상황에 어울리는 코스 이름을 직접 지으세요.',
     '- concept: 이 코스가 왜 이 상황에 잘 맞는지 1~2문장으로 설명하세요. 두 코스의 concept은 서로 분명히 달라야 합니다.',
     '- note: 상황에 도움이 되는 한 줄(예: 휠체어 접근/유아 편의/주차 등)을 넣으면 좋습니다. 없으면 null.',
+    '- 각 스톱의 분류(category)는 반드시 한국어 단어로만 표기하세요 (예: 해변·오름·카페·맛집·관광지·체험·숲길·해안·전시·염전). 영어나 알 수 없는 문자를 쓰지 마세요.',
+    '- 코스 스톱 선택 기준: 실제 방문 가치가 있는 명소·자연·오름·체험·맛집·카페·박물관을 우선하세요. "개점식", "그랜드오픈", "○○ 행사 개막" 같은 일회성 상업 이벤트나 면세점 오픈 행사는 여행 코스 스톱으로 절대 포함하지 마세요.',
     '',
     '엄수 규칙(anti-hallucination):',
     '- 반드시 후보 목록에 있는 장소만 사용하세요. 목록에 없는 장소를 절대 지어내지 마세요.',
@@ -712,10 +756,17 @@ export async function generateCustomCourses(params: {
       ),
       systemPrompt: buildCustomComposeSystemPrompt(dur),
       maxCompletionTokens: CUSTOM_COMPOSE_MAX_TOKENS,
-      timeoutMs: 45_000,
+      timeoutMs: 75_000,
     })
 
-    if (r.error || !r.text || !r.text.trim()) return { ok: false, error: GENERIC_FAIL }
+    if (r.error || !r.text || !r.text.trim()) {
+      // Compose timeout (AbortError) surfaces here as r.error — log so it's diagnosable.
+      console.error(
+        '[tourist-course] generateCustomCourses compose failed:',
+        r.error ?? 'empty compose response'
+      )
+      return { ok: false, error: GENERIC_FAIL }
+    }
 
     let parsed: unknown
     try {
@@ -752,7 +803,9 @@ export async function generateCustomCourses(params: {
     if (courses.length === 0) return { ok: false, error: GENERIC_FAIL }
 
     return { ok: true, courses }
-  } catch {
+  } catch (e) {
+    const err = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+    console.error('[tourist-course] generateCustomCourses failed:', err)
     return { ok: false, error: GENERIC_FAIL }
   }
 }

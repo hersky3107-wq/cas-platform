@@ -29,6 +29,18 @@ const GENERIC_FAIL = '섬 여행 정보를 불러오지 못했어요. 다시 시
  * Info about a single ferry-accessible Jeju island. `source` is always 'web'
  * (set in code). Ferry schedules/fares change often — caution always notes this.
  */
+export interface FerryLink {
+  label: string
+  url: string
+}
+
+export interface IslandFerryData {
+  /** Verified booking / schedule links. Empty array for islands with no online booking. */
+  links: FerryLink[]
+  /** Verified terminal + booking note — always shown on the card. */
+  note: string
+}
+
 export interface IslandInfo {
   name: string
   charm: string
@@ -38,7 +50,39 @@ export interface IslandInfo {
   duration: string | null
   fareNote: string | null
   caution: string | null
+  /** Verified static ferry data — overrides sonar terminal/phone when present. */
+  ferryInfo: IslandFerryData | null
   source: 'web'
+}
+
+/**
+ * Verified static ferry data keyed by island name.
+ * URLs and terminal info manually verified — do NOT modify without re-verification.
+ */
+export const ISLAND_FERRY_DATA: Record<string, IslandFerryData> = {
+  '우도': {
+    links: [{ label: '우도 도항선 운항시간 (공식)', url: 'http://udoship.com' }],
+    note: '성산항 종합여객터미널 출발 · 온라인 예매 불가, 현장 발권만 (신분증 지참) · ☎ 064-782-5671 · 약 15분, 약 30분 간격\n※ 공식 사이트가 http 연결이라 브라우저에서 \'안전하지 않음\' 안내가 나올 수 있어요.',
+  },
+  '가파도': {
+    links: [{ label: '가파도 여객선 예매', url: 'https://wonderfulis.co.kr' }],
+    note: '운진항(모슬포 남항) 출발 · ☎ 064-794-5490',
+  },
+  '마라도': {
+    links: [
+      { label: '마라도 여객선 (송악산항)', url: 'https://songakferry.com' },
+      { label: '마라도+가파도 (운진항)', url: 'https://wonderfulis.co.kr' },
+    ],
+    note: '송악산항(마라도 전용) 또는 운진항(마라도+가파도) 출발\n항구별 예약 분리 · ☎ 송악산 064-794-6661',
+  },
+  '추자도': {
+    links: [{ label: '추자도 여객선 정보', url: 'http://jeju.ferry.or.kr' }],
+    note: '제주항 출발 · 운항사·시간 변동 잦으니 공식채널/한국해운조합 확인',
+  },
+  '비양도': {
+    links: [],
+    note: '한림항에서 도선 운항 · 별도 예매 사이트 없음, 전화 문의 권장',
+  },
 }
 
 function noDbSupabase(): SupabaseClient {
@@ -150,6 +194,7 @@ export async function getJejuIslandsInfo({
         duration: toStrOrNull(o.duration),
         fareNote: toStrOrNull(o.fareNote),
         caution: toStrOrNull(o.caution),
+        ferryInfo: ISLAND_FERRY_DATA[name] ?? null,
         source: 'web',
       })
     }

@@ -179,14 +179,17 @@ export function detailFromIsland(island: IslandInfo): PlaceDetail {
   if (island.departurePoint) infoRows.push({ label: '출발', value: island.departurePoint })
   if (island.duration) infoRows.push({ label: '소요시간', value: island.duration })
   if (island.fareNote) infoRows.push({ label: '요금', value: island.fareNote })
-  if (island.terminal) infoRows.push({ label: '터미널', value: island.terminal })
+  // Only show sonar-generated terminal when no verified static data exists
+  if (island.terminal && !island.ferryInfo) infoRows.push({ label: '터미널', value: island.terminal })
+  if (island.ferryInfo) infoRows.push({ label: '예매·정보', value: island.ferryInfo.note })
   const mq = buildWebMapQuery(island.name)
   // Islands are always concrete places.
   const mapTarget = isConcretePlaceName(island.name) ? mq : null
   return {
     title: island.name,
     description: island.charm || undefined,
-    phone: island.phone || undefined,
+    // Prefer verified static phone from note; skip unreliable sonar phone
+    phone: island.ferryInfo ? undefined : (island.phone || undefined),
     caution: island.caution || undefined,
     infoRows: infoRows.length > 0 ? infoRows : undefined,
     sourceLabel: '웹에서 찾은 정보',

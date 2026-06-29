@@ -1,7 +1,7 @@
 import { generateCourses, generateCustomCourses } from '@/lib/jeju/tourist-course'
 
 export const runtime = 'nodejs'
-export const maxDuration = 90
+export const maxDuration = 120
 
 // TODO: credit/auth gating before public launch
 
@@ -10,7 +10,8 @@ export const maxDuration = 90
 // POST body supports two modes:
 //   mode === 'custom'   → generateCustomCourses(...) (Mode 1: 2 situation-tailored)
 //   default/'standard'  → generateCourses({ query, duration, area }) (Mode 2: 4 themed)
-// This does pool + sonar + sonnet, so maxDuration is generous (90s).
+// This does pool + sonar + sonnet, so maxDuration is generous (120s):
+// sonar (≤30s, non-fatal) + compose (≤75s timeout) needs headroom under Vercel.
 // The engine uses its own noDbSupabase() (sessionId/userId null), so this route
 // needs no Supabase. NO import from app/api/synod/* or any AIMANI credit path.
 // ─────────────────────────────────────────────────────────────────────────────

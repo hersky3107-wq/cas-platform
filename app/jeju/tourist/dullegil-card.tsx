@@ -2,7 +2,7 @@ import { Mountain, Ruler, ArrowRight, ExternalLink } from 'lucide-react'
 import type { DullegilCourse } from '@/lib/jeju/hallasan-dullegil'
 import { tintForOlle } from './card-visuals'
 
-const OFFICIAL_URL = 'https://www.hallasan.go.kr'
+const OFFICIAL_URL = 'http://hallatrail.or.kr'
 
 export function DullegilCard({ course }: { course: DullegilCourse }) {
   const { bg, iconColor } = tintForOlle(course.name)

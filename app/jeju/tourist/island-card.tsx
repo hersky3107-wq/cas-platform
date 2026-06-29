@@ -1,4 +1,4 @@
-import { MapPin, Clock, Banknote, Building2, Phone } from 'lucide-react'
+import { MapPin, Clock, Banknote, Building2, Phone, ExternalLink } from 'lucide-react'
 import type { IslandInfo } from '@/lib/jeju/tourist-ferry'
 import { iconForIsland, tintFor } from './card-visuals'
 
@@ -76,18 +76,40 @@ export function IslandCard({
           </p>
         )}
 
-        {island.terminal && (
+        {island.terminal && !island.ferryInfo && (
           <p className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
             <Building2 size={11} strokeWidth={2.5} aria-hidden />
             {island.terminal}
           </p>
         )}
 
-        {island.phone && (
+        {island.phone && !island.ferryInfo && (
           <p className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
             <Phone size={11} strokeWidth={2.5} aria-hidden />
             {island.phone}
           </p>
+        )}
+
+        {/* Verified ferry booking links + terminal note */}
+        {island.ferryInfo && (
+          <div className="mt-0.5 flex flex-col gap-1.5">
+            {island.ferryInfo.links.map((link) => (
+              <a
+                key={link.url}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#E6F6FA] px-2.5 py-1.5 text-[11px] font-bold text-[#006E7A] transition-colors hover:bg-[#CCF0F6]"
+              >
+                <ExternalLink size={10} strokeWidth={2.5} aria-hidden />
+                {link.label}
+              </a>
+            ))}
+            <p className="whitespace-pre-line rounded-lg bg-[#F0F9FC] px-2.5 py-1.5 text-[10px] font-medium leading-relaxed text-slate-500">
+              {island.ferryInfo.note}
+            </p>
+          </div>
         )}
 
         {island.caution && (

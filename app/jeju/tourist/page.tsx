@@ -120,97 +120,137 @@ function curate(raw: VisitJejuPlace[]): Array<{ place: VisitJejuPlace; displayLa
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
 
-/** Subtle Jeju sunrise scene — Seongsan Ilchulbong silhouette + soft glow + faint flower dots.
- *  Pure CSS/SVG, no image files. All elements at very low opacity so content stays primary. */
+/** Jeju sunrise scene — Seongsan Ilchulbong + sea with waves + sun + visible flower accents.
+ *  Pure CSS/SVG, no image files. Scenery lives in the bottom ~38 vh so upper content stays clear. */
 function JejuScenery() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-      {/* Extra warm horizon glow — reinforces the sunrise gradient */}
+      {/* Warm horizon glow — radiates up from the waterline */}
       <div
         className="absolute inset-x-0 bottom-0"
         style={{
-          height: '50%',
+          height: '52%',
           background:
-            'linear-gradient(to top, rgba(255,208,112,0.14) 0%, rgba(255,228,168,0.07) 42%, transparent 100%)',
+            'linear-gradient(to top, rgba(255,192,88,0.22) 0%, rgba(255,216,140,0.11) 38%, transparent 100%)',
         }}
       />
 
-      {/* ── Scene SVG: sun disc · sea · Seongsan Ilchulbong silhouette ── */}
+      {/* ── Full scene SVG ───────────────────────────────────────────────────── */}
       <svg
         className="absolute bottom-0 left-0 w-full"
-        viewBox="0 0 1000 220"
+        viewBox="0 0 1000 245"
         preserveAspectRatio="none"
-        style={{ height: 'clamp(130px, 34vh, 275px)' }}
+        style={{ height: 'clamp(150px, 38vh, 300px)' }}
       >
-        {/* Soft sun disc — partially occluded by the peak (sunrise behind mountain) */}
-        <circle cx="548" cy="20" r="46" fill="#FFD070" fillOpacity="0.28" />
-        <circle cx="548" cy="20" r="30" fill="#FFE898" fillOpacity="0.20" />
+        <defs>
+          {/* Canola — 5-petal, golden yellow */}
+          <g id="fl-canola">
+            <circle cx="0"     cy="-4.5" r="2.8" fill="#F5C518" />
+            <circle cx="4.28"  cy="-1.39" r="2.8" fill="#F5C518" />
+            <circle cx="2.64"  cy="3.64"  r="2.8" fill="#F5C518" />
+            <circle cx="-2.64" cy="3.64"  r="2.8" fill="#F5C518" />
+            <circle cx="-4.28" cy="-1.39" r="2.8" fill="#F5C518" />
+            <circle cx="0"     cy="0"     r="2.0" fill="#FFE055" />
+          </g>
+          {/* Camellia — 5-petal, warm red */}
+          <g id="fl-camellia">
+            <circle cx="0"     cy="-5.2"  r="3.5" fill="#E8405A" />
+            <circle cx="4.95"  cy="-1.60" r="3.5" fill="#E8405A" />
+            <circle cx="3.06"  cy="4.21"  r="3.5" fill="#E8405A" />
+            <circle cx="-3.06" cy="4.21"  r="3.5" fill="#E8405A" />
+            <circle cx="-4.95" cy="-1.60" r="3.5" fill="#E8405A" />
+            <circle cx="0"     cy="0"     r="2.2" fill="#FF7A90" />
+          </g>
+          {/* Cherry blossom — 5-petal, soft pink */}
+          <g id="fl-cherry">
+            <circle cx="0"     cy="-3.8"  r="2.2" fill="#F8C0D0" />
+            <circle cx="3.62"  cy="-1.17" r="2.2" fill="#F8C0D0" />
+            <circle cx="2.24"  cy="3.07"  r="2.2" fill="#F8C0D0" />
+            <circle cx="-2.24" cy="3.07"  r="2.2" fill="#F8C0D0" />
+            <circle cx="-3.62" cy="-1.17" r="2.2" fill="#F8C0D0" />
+            <circle cx="0"     cy="0"     r="1.5" fill="#FDE8F0" />
+          </g>
+        </defs>
 
-        {/* Sea surface band */}
-        <rect x="0" y="194" width="1000" height="26" fill="#9ACCD8" fillOpacity="0.16" />
+        {/* ── Sun: outer halo → mid ring → bright core ── */}
+        <circle cx="548" cy="26" r="80" fill="#FFE0A8" fillOpacity="0.14" />
+        <circle cx="548" cy="26" r="54" fill="#FFD070" fillOpacity="0.30" />
+        <circle cx="548" cy="26" r="36" fill="#FFE898" fillOpacity="0.40" />
 
-        {/* Seongsan Ilchulbong — broad tuff-cone dome rising from the sea.
-            Wide low dome with gentle symmetric slopes; peak centred slightly right
-            so it reads as a landmark rather than just a hill. */}
+        {/* ── Sea ── */}
+        <rect x="0" y="188" width="1000" height="57" fill="#9ACCD8" fillOpacity="0.30" />
+        <rect x="0" y="210" width="1000" height="35" fill="#7AB8C8" fillOpacity="0.18" />
+
+        {/* ── Seongsan Ilchulbong silhouette ── */}
         <path
           d="
-            M 0 195
-            L 182 195
-            C 245 195 298 190 340 182
-            C 388 172 430 149 464 118
-            C 490 93 511 67 527 51
-            C 536 40 542 35 548 33
-            C 554 35 560 40 569 51
-            C 585 69 606 97 632 124
-            C 666 156 702 177 738 188
-            C 770 194 818 196 876 195
-            L 1000 195
-            L 1000 220 L 0 220 Z
+            M 0 190
+            L 180 190
+            C 244 190 298 185 340 177
+            C 388 167 430 144 464 113
+            C 490 88 511 62 527 46
+            C 536 35 542 30 548 28
+            C 554 30 560 35 569 46
+            C 585 64 606 92 632 119
+            C 666 151 702 172 738 183
+            C 770 189 818 191 876 190
+            L 1000 190
+            L 1000 245 L 0 245 Z
           "
           fill="#1C3840"
-          fillOpacity="0.19"
+          fillOpacity="0.22"
         />
-
-        {/* Subtle inner core for depth — very slightly darker centre */}
+        {/* Inner core — subtle depth shadow */}
         <path
           d="
-            M 430 195
-            C 448 178 470 152 492 122
-            C 510 97 526 73 538 55
-            C 543 44 547 38 550 36
-            C 553 38 557 44 562 55
-            C 573 74 590 101 612 128
-            C 640 160 668 183 695 193
+            M 432 190
+            C 450 173 472 147 494 117
+            C 512 92 528 68 540 50
+            C 544 39 548 33 550 31
+            C 552 33 556 39 560 50
+            C 572 69 590 96 612 123
+            C 640 155 668 178 695 188
             Z
           "
           fill="#12303A"
-          fillOpacity="0.13"
+          fillOpacity="0.15"
         />
 
-        {/* Sea-horizon shimmer line */}
-        <line x1="0" y1="195" x2="1000" y2="195" stroke="#8EC8D8" strokeOpacity="0.20" strokeWidth="1.5" />
-      </svg>
+        {/* ── Wave lines ── */}
+        <path
+          d="M 0 191 Q 125 187 250 191 Q 375 195 500 191 Q 625 187 750 191 Q 875 195 1000 191"
+          stroke="#B8DCE5" strokeOpacity="0.55" strokeWidth="1.5" fill="none"
+        />
+        <path
+          d="M 0 201 Q 100 198 200 201 Q 300 204 400 201 Q 500 198 600 201 Q 700 204 800 201 Q 900 198 1000 201"
+          stroke="#A4CEDE" strokeOpacity="0.38" strokeWidth="1.2" fill="none"
+        />
+        <path
+          d="M 0 211 Q 160 208 320 211 Q 480 214 640 211 Q 800 208 1000 211"
+          stroke="#96C4D4" strokeOpacity="0.28" strokeWidth="1.0" fill="none"
+        />
 
-      {/* ── Faint flower accent dots: canola-yellow + camellia-red ── */}
-      {/* Left cluster */}
-      <div className="absolute" style={{ bottom: '8%', left: '7%' }}>
-        <div className="absolute h-2 w-2 rounded-full bg-[#F5D020]" style={{ opacity: 0.20 }} />
-        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#F5D020]" style={{ opacity: 0.16, top: '10px', left: '14px' }} />
-        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#E8405A]" style={{ opacity: 0.13, top: '3px', left: '24px' }} />
-        <div className="absolute h-1 w-1 rounded-full bg-[#F5D020]" style={{ opacity: 0.17, top: '17px', left: '6px' }} />
-      </div>
-      {/* Right cluster */}
-      <div className="absolute" style={{ bottom: '10%', right: '11%' }}>
-        <div className="absolute h-2 w-2 rounded-full bg-[#E8405A]" style={{ opacity: 0.12 }} />
-        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#F5D020]" style={{ opacity: 0.19, top: '7px', left: '13px' }} />
-        <div className="absolute h-1 w-1 rounded-full bg-[#F5D020]" style={{ opacity: 0.16, top: '16px', left: '4px' }} />
-        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#E8405A]" style={{ opacity: 0.11, top: '9px', left: '22px' }} />
-      </div>
-      {/* Centre-bottom scatter */}
-      <div className="absolute" style={{ bottom: '6%', left: '44%' }}>
-        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#F5D020]" style={{ opacity: 0.15 }} />
-        <div className="absolute h-1 w-1 rounded-full bg-[#E8405A]" style={{ opacity: 0.11, top: '9px', left: '10px' }} />
-      </div>
+        {/* ── Flowers: drawn last so they sit in front of everything ── */}
+        {/* Left shore */}
+        <use href="#fl-canola"   transform="translate(30,  222)" opacity="0.55" />
+        <use href="#fl-camellia" transform="translate(70,  217)" opacity="0.48" />
+        <use href="#fl-cherry"   transform="translate(112, 225)" opacity="0.52" />
+        <use href="#fl-canola"   transform="translate(158, 220)" opacity="0.50" />
+        <use href="#fl-cherry"   transform="translate(206, 226)" opacity="0.46" />
+        <use href="#fl-camellia" transform="translate(255, 218)" opacity="0.44" />
+        <use href="#fl-canola"   transform="translate(304, 224)" opacity="0.40" />
+        {/* Near mountain base — slightly softer since partially "behind" the scene */}
+        <use href="#fl-cherry"   transform="translate(388, 229)" opacity="0.36" />
+        <use href="#fl-canola"   transform="translate(620, 228)" opacity="0.36" />
+        {/* Right shore */}
+        <use href="#fl-camellia" transform="translate(694, 220)" opacity="0.42" />
+        <use href="#fl-cherry"   transform="translate(740, 226)" opacity="0.48" />
+        <use href="#fl-canola"   transform="translate(786, 219)" opacity="0.52" />
+        <use href="#fl-camellia" transform="translate(834, 224)" opacity="0.46" />
+        <use href="#fl-cherry"   transform="translate(882, 220)" opacity="0.50" />
+        <use href="#fl-canola"   transform="translate(930, 226)" opacity="0.54" />
+        <use href="#fl-camellia" transform="translate(970, 218)" opacity="0.44" />
+      </svg>
     </div>
   )
 }

@@ -612,7 +612,7 @@ export function SearchPanel() {
               {intro}
             </p>
           )}
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {results.map((place) => (
               <PlaceCard
                 key={place.contentsId}
@@ -634,7 +634,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#E3F0FF] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1C6DD0]">
             비짓제주 공식 정보 기반
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {results.map((place) => (
               <PlaceCard
                 key={place.contentsId}
@@ -656,7 +656,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#F2EFFC] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#5B3EA8]">
             공식 자연·문화 명소 + 현지인 추천을 섞어 보여드려요 · 웹 정보는 방문 전 확인하세요
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {gems.map((gem, i) => (
               <LocalGemCard
                 key={`${gem.name}-${i}`}
@@ -677,7 +677,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
             공식 채널 기준 진행 중·예정 행사예요 · 날짜·장소는 방문 전 확인하세요
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {festivalData.events.map((event, i) => (
               <FestivalEventCard
                 key={`${event.name}-${i}`}
@@ -698,7 +698,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
             비짓제주 공식 행사 목록이에요 · 정확한 일정은 방문 전 확인하세요
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {festivalData.festivals.map((place) => (
               <PlaceCard
                 key={place.contentsId}
@@ -720,7 +720,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#FCE4EC] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#C2185B]">
             🌐 웹에서 찾은 실시간 정보예요 · 현장 상황은 변동될 수 있어요
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {sights.map((sight, idx) => (
               <SeasonalCard
                 key={`${idx}-${sight.name}`}
@@ -742,7 +742,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#DBEAFE] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1D4ED8]">
             🌐 웹에서 찾은 정보예요 · 시간표·요금은 자주 바뀌니 방문 전 운항사 확인 필수
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {islands.map((island, idx) => (
               <IslandCard
                 key={`${idx}-${island.name}`}
@@ -764,7 +764,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#FDE8D8] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#C05621]">
             제주의 오름을 소개해요 · 출처: 제주특별자치도 공공데이터 · 탐방 전 현장 상황을 확인하세요
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {oreumList.map((place) => (
               <PlaceCard
                 key={place.contentsId}
@@ -786,7 +786,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
             한라산 국립공원을 한 바퀴 도는 8개 코스예요 · 출처: 제주특별자치도 · 제주데이터허브 (2021 기준)
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {getDullegil().map((course) => (
               <DullegilCard key={course.name} course={course} />
             ))}
@@ -803,7 +803,7 @@ export function SearchPanel() {
           <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
             사단법인 제주올레 공식 코스 정보예요 · 출처: 제주올레 + 공공데이터포털
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {olleCourses.map((course) => (
               <OlleCard key={`${course.courseNo}-${course.name}`} course={course} />
             ))}
