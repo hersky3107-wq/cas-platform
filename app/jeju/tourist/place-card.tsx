@@ -1,44 +1,6 @@
-import {
-  Mountain,
-  UtensilsCrossed,
-  ShoppingBag,
-  PartyPopper,
-  Compass,
-  MapPin,
-  type LucideIcon,
-} from 'lucide-react'
+import { MapPin } from 'lucide-react'
 import type { VisitJejuPlace } from '@/lib/jeju/connectors'
-
-type CategoryStyle = {
-  /** Pastel background for the illustration header band. */
-  headerBg: string
-  /** Deep-tone icon color (on the pastel bg). */
-  iconColor: string
-  Icon: LucideIcon
-}
-
-/**
- * Keyed by the FRIENDLY display label (e.g. "가볼 곳", "맛집") that the page
- * passes in — NOT by the raw API categoryLabel — so the card is decoupled from
- * API naming quirks.
- */
-const CARD_STYLES: Record<string, CategoryStyle> = {
-  '가볼 곳': { headerBg: '#CCEEF4', iconColor: '#006B78', Icon: Mountain },
-  맛집: { headerBg: '#FFD4B0', iconColor: '#B84A00', Icon: UtensilsCrossed },
-  쇼핑: { headerBg: '#FFE89E', iconColor: '#8A5900', Icon: ShoppingBag },
-  축제: { headerBg: '#FFD0DD', iconColor: '#A0204A', Icon: PartyPopper },
-  테마: { headerBg: '#C4F0E4', iconColor: '#0A6B4E', Icon: Compass },
-}
-
-const DEFAULT_STYLE: CategoryStyle = {
-  headerBg: '#E4F4F8',
-  iconColor: '#006B78',
-  Icon: MapPin,
-}
-
-function styleFor(label: string): CategoryStyle {
-  return CARD_STYLES[label] ?? DEFAULT_STYLE
-}
+import { iconForPlace, tintFor } from './card-visuals'
 
 export function PlaceCard({
   place,
@@ -49,7 +11,8 @@ export function PlaceCard({
   displayLabel: string
   onSelect?: () => void
 }) {
-  const { headerBg, iconColor, Icon } = styleFor(displayLabel)
+  const Icon = iconForPlace(place, displayLabel)
+  const { bg, iconColor } = tintFor(place.title)
 
   return (
     <article
@@ -70,10 +33,10 @@ export function PlaceCard({
         onSelect ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8B5]' : ''
       }`}
     >
-      {/* Illustration header band */}
+      {/* Illustration header band — color derived from title hash */}
       <div
         className="flex h-24 items-center justify-center"
-        style={{ backgroundColor: headerBg }}
+        style={{ backgroundColor: bg }}
       >
         <Icon size={40} strokeWidth={1.5} color={iconColor} aria-hidden />
       </div>
@@ -83,7 +46,7 @@ export function PlaceCard({
         {/* Category badge */}
         <span
           className="self-start rounded-full px-2.5 py-0.5 text-[10px] font-bold"
-          style={{ backgroundColor: headerBg, color: iconColor }}
+          style={{ backgroundColor: bg, color: iconColor }}
         >
           {displayLabel}
         </span>

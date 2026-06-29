@@ -1,19 +1,6 @@
-import { Ship, MapPin, Clock, Banknote, Building2, Phone } from 'lucide-react'
+import { MapPin, Clock, Banknote, Building2, Phone } from 'lucide-react'
 import type { IslandInfo } from '@/lib/jeju/tourist-ferry'
-
-/**
- * Card for a Jeju ferry-accessible island (from Perplexity sonar).
- * Mirrors FestivalCard / SeasonalCard style for visual consistency:
- *   - same rounded corners, shadow, hover lift
- *   - soft ocean-blue header band (distinct from other card types)
- *   - Ship icon — fits the ferry/island context perfectly
- *   - charm line is the hero info (why this island is worth the trip)
- *   - departure / duration / fare rows for quick ferry reference
- *   - soft-amber ⚠️ caution (schedule/fare verification reminder)
- *   - no per-card web badge — the section-level note covers it
- */
-const HEADER_BG = '#DBEAFE' // soft ocean-blue
-const ICON_COLOR = '#1D4ED8'
+import { iconForIsland, tintFor } from './card-visuals'
 
 export function IslandCard({
   island,
@@ -25,6 +12,9 @@ export function IslandCard({
   onSelect?: () => void
 }) {
   void idx // used as key in parent
+  const Icon = iconForIsland(island.name, island.charm)
+  const { bg, iconColor } = tintFor(island.name)
+
   return (
     <article
       onClick={onSelect}
@@ -44,22 +34,23 @@ export function IslandCard({
         onSelect ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8B5]' : ''
       }`}
     >
-      {/* Illustration header band */}
       <div
         className="flex h-24 items-center justify-center"
-        style={{ backgroundColor: HEADER_BG }}
+        style={{ backgroundColor: bg }}
       >
-        <Ship size={40} strokeWidth={1.5} color={ICON_COLOR} aria-hidden />
+        <Icon size={40} strokeWidth={1.5} color={iconColor} aria-hidden />
       </div>
 
-      {/* Content body */}
       <div className="flex flex-1 flex-col gap-2 p-4">
         <h3 className="text-[15px] font-extrabold leading-snug text-[#0A2B30]">
           {island.name}
         </h3>
 
         {island.charm && (
-          <p className="rounded-lg bg-[#DBEAFE] px-2 py-1 text-[11px] font-bold leading-snug text-[#1D4ED8]">
+          <p
+            className="rounded-lg px-2 py-1 text-[11px] font-bold leading-snug"
+            style={{ backgroundColor: bg, color: iconColor }}
+          >
             {island.charm}
           </p>
         )}

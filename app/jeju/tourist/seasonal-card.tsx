@@ -1,18 +1,6 @@
 import { Flower2, MapPin } from 'lucide-react'
 import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
-
-/**
- * Card for a web-sourced seasonal Jeju sight (from Perplexity sonar).
- * Mirrors FestivalCard / LocalGemCard style for visual consistency:
- *   - same rounded corners, shadow, hover lift
- *   - soft rose-pink header band (distinct from teal festivals and lavender local gems)
- *   - Flower2 icon — covers flowers, foliage, seasonal natural scenes
- *   - 🌸 season_hint line is the hero info (why it's worth visiting RIGHT NOW)
- *   - soft-amber ⚠️ caution when present
- *   - no per-card web badge — the section-level note covers it
- */
-const HEADER_BG = '#FCE4EC' // soft rose-pink — distinct from other card types
-const ICON_COLOR = '#C2185B'
+import { iconForSeasonal, tintFor } from './card-visuals'
 
 export function SeasonalCard({
   sight,
@@ -24,6 +12,9 @@ export function SeasonalCard({
   onSelect?: () => void
 }) {
   void idx // used as key in parent
+  const Icon = iconForSeasonal(sight.name, sight.season_hint, sight.description)
+  const { bg, iconColor } = tintFor(sight.name)
+
   return (
     <article
       onClick={onSelect}
@@ -43,22 +34,23 @@ export function SeasonalCard({
         onSelect ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00A8B5]' : ''
       }`}
     >
-      {/* Illustration header band */}
       <div
         className="flex h-24 items-center justify-center"
-        style={{ backgroundColor: HEADER_BG }}
+        style={{ backgroundColor: bg }}
       >
-        <Flower2 size={40} strokeWidth={1.5} color={ICON_COLOR} aria-hidden />
+        <Icon size={40} strokeWidth={1.5} color={iconColor} aria-hidden />
       </div>
 
-      {/* Content body */}
       <div className="flex flex-1 flex-col gap-2 p-4">
         <h3 className="line-clamp-2 text-[14px] font-extrabold leading-snug text-[#0A2B30]">
           {sight.name}
         </h3>
 
         {sight.season_hint && (
-          <p className="flex items-center gap-1 rounded-lg bg-[#FCE4EC] px-2 py-1 text-[11px] font-bold text-[#C2185B]">
+          <p
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold"
+            style={{ backgroundColor: bg, color: iconColor }}
+          >
             <Flower2 size={11} strokeWidth={2.5} aria-hidden />
             {sight.season_hint}
           </p>

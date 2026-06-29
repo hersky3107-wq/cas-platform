@@ -45,6 +45,10 @@ type OlleResult =
   | { ok: true; courses: OlleCourseView[] }
   | { ok: false; error: string }
 
+type OreumResult =
+  | { ok: true; oreum: VisitJejuPlace[] }
+  | { ok: false; error: string }
+
 /** Base mixed-category query for the "관광객은 잘 모르는" chip. */
 const LOCAL_BASE_QUERY =
   '관광객이 잘 모르는 제주의 좋은 장소를 종류별로 골고루: 잘 알려지지 않은 자연 명소(폭포·오름·해변·숲), 전시·박물관·문화공간, 현지인 카페, 로컬 맛집을 고르게 섞어서 추천. 맛집·카페로 치우치지 말고 자연·문화 명소를 충분히 포함.'
@@ -66,7 +70,7 @@ const RAINY_QUERY =
 /** Static chips (visual only) — all remaining chips are now functional. */
 const STATIC_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = []
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'course'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course'
 
 export function SearchPanel() {
   const [query, setQuery] = useState('')
@@ -79,6 +83,7 @@ export function SearchPanel() {
   const [sights, setSights] = useState<SeasonalItem[] | null>(null)
   const [islands, setIslands] = useState<IslandInfo[] | null>(null)
   const [olleCourses, setOlleCourses] = useState<OlleCourseView[] | null>(null)
+  const [oreumList, setOreumList] = useState<VisitJejuPlace[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [detail, setDetail] = useState<PlaceDetail | null>(null)
   const variationIdx = useRef(0)
@@ -91,6 +96,7 @@ export function SearchPanel() {
     setSights(null)
     setIslands(null)
     setOlleCourses(null)
+    setOreumList(null)
     setError(null)
   }
 
@@ -287,6 +293,29 @@ export function SearchPanel() {
     }
   }
 
+  // Oreum (volcanic cones) from official public data, fired by the chip.
+  async function runOreum() {
+    if (loading) return
+
+    setLoading(true)
+    setMode('oreum')
+    resetResults()
+
+    try {
+      const res = await fetch('/api/jeju/tourist-oreum')
+      const data = (await res.json()) as OreumResult
+      if (data.ok) {
+        setOreumList(data.oreum)
+      } else {
+        setError(data.error || '오름 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+      }
+    } catch {
+      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // AI 여행 코스 — opens the dedicated input panel (no immediate fetch).
   function openCourse() {
     if (loading) return
@@ -308,7 +337,9 @@ export function SearchPanel() {
               ? '제주 섬 여행 정보 찾는 중…'
               : mode === 'olle'
                 ? '올레길 코스 불러오는 중…'
-                : '제주를 살펴보는 중…'
+                : mode === 'oreum'
+                  ? '오름 정보 불러오는 중…'
+                  : '제주를 살펴보는 중…'
 
   return (
     <div>
@@ -415,6 +446,16 @@ export function SearchPanel() {
         >
           <span aria-hidden>🥾</span>
           올레길
+        </button>
+        <button
+          type="button"
+          onClick={runOreum}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+          style={{ backgroundColor: '#FDE8D8', color: '#C05621' }}
+        >
+          <span aria-hidden>🌋</span>
+          오름
         </button>
         {STATIC_CHIPS.map((chip) => (
           <span
@@ -571,6 +612,28 @@ export function SearchPanel() {
                 island={island}
                 idx={idx}
                 onSelect={() => setDetail(detailFromIsland(island))}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Jeju oreum (volcanic cones) from official public data */}
+      {!loading && mode === 'oreum' && oreumList && oreumList.length > 0 && (
+        <section className="mt-6">
+          <h3 className="text-base font-extrabold tracking-tight text-[#C05621]">
+            🌋 제주 오름
+          </h3>
+          <p className="mt-1.5 rounded-[14px] bg-[#FDE8D8] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#C05621]">
+            제주의 오름을 소개해요 · 출처: 제주특별자치도 공공데이터 · 탐방 전 현장 상황을 확인하세요
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {oreumList.map((place) => (
+              <PlaceCard
+                key={place.contentsId}
+                place={place}
+                displayLabel="오름"
+                onSelect={() => setDetail(detailFromVisitJeju(place, '오름'))}
               />
             ))}
           </div>
