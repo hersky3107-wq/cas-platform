@@ -344,7 +344,7 @@ export function SearchPanel() {
               : mode === 'olle'
                 ? '올레길 코스 불러오는 중…'
                 : mode === 'oreum'
-                  ? '오름 정보 불러오는 중…'
+                  ? '오름·한라산 정보 불러오는 중…'
                   : '제주를 살펴보는 중…'
 
   return (
@@ -460,8 +460,8 @@ export function SearchPanel() {
           className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
           style={{ backgroundColor: '#FDE8D8', color: '#C05621' }}
         >
-          <span aria-hidden>🌋</span>
-          오름
+          <span aria-hidden>🏔</span>
+          오름·한라산
         </button>
         {STATIC_CHIPS.map((chip) => (
           <span
@@ -667,6 +667,23 @@ export function SearchPanel() {
         </section>
       )}
 
+      {/* Hallasan Dullegil — static 8 courses, shown alongside Oreum */}
+      {!loading && mode === 'oreum' && (
+        <section className="mt-8">
+          <h3 className="text-base font-extrabold tracking-tight text-[#1A7A46]">
+            🏔 한라산 둘레길
+          </h3>
+          <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
+            한라산 국립공원을 한 바퀴 도는 8개 코스예요 · 출처: 제주특별자치도 · 제주데이터허브 (2021 기준)
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {getDullegil().map((course) => (
+              <DullegilCard key={course.name} course={course} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Jeju Olle trail courses (odcloud public data) */}
       {!loading && mode === 'olle' && olleCourses && olleCourses.length > 0 && (
         <section className="mt-6">
@@ -679,23 +696,6 @@ export function SearchPanel() {
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {olleCourses.map((course) => (
               <OlleCard key={`${course.courseNo}-${course.name}`} course={course} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Hallasan Dullegil — static 8 courses, shown alongside Olle */}
-      {!loading && mode === 'olle' && (
-        <section className="mt-8">
-          <h3 className="text-base font-extrabold tracking-tight text-[#1A7A46]">
-            🏔 한라산 둘레길
-          </h3>
-          <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
-            한라산 국립공원을 한 바퀴 도는 8개 코스예요 · 출처: 제주특별자치도 · 제주데이터허브 (2021 기준)
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {getDullegil().map((course) => (
-              <DullegilCard key={course.name} course={course} />
             ))}
           </div>
         </section>
