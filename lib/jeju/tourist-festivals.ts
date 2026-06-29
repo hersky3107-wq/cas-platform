@@ -188,6 +188,7 @@ export async function getCurrentFestivals({
       prompt: buildUserPrompt(today),
       systemPrompt: buildSystemPrompt(),
       maxCompletionTokens: FESTIVAL_MAX_TOKENS,
+      timeoutMs: 30_000,
     })
 
     if (!r.error && r.text?.trim()) {

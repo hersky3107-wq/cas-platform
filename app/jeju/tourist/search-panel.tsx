@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { Search, Loader2 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Search, Loader2, RefreshCw } from 'lucide-react'
 import type { VisitJejuPlace } from '@/lib/jeju/connectors'
 import type { LocalGem } from '@/lib/jeju/tourist-local'
 import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
@@ -56,8 +56,7 @@ type OreumResult =
   | { ok: false; error: string }
 
 /** Base mixed-category query for the "관광객은 잘 모르는" chip. */
-const LOCAL_BASE_QUERY =
-  '관광객이 잘 모르는 제주의 좋은 장소를 종류별로 골고루: 잘 알려지지 않은 자연 명소(폭포·오름·해변·숲), 전시·박물관·문화공간, 현지인 카페, 로컬 맛집을 고르게 섞어서 추천. 맛집·카페로 치우치지 말고 자연·문화 명소를 충분히 포함.'
+const LOCAL_BASE_QUERY = '관광객이 잘 모르는 제주의 좋은 장소를 종류별로 골고루: 잘 알려지지 않은 자연 명소(폭포·오름·해변·숲), 전시·박물관·문화공간, 현지인 카페, 로컬 맛집을 고르게 섞어서 추천. 맛집·카페로 치우치지 말고 자연·문화 명소를 충분히 포함.'
 
 /** Area/angle suffixes rotated on each tap to diversify results. */
 const LOCAL_VARIATION_SUFFIXES = [
@@ -76,6 +75,33 @@ const RAINY_QUERY =
 /** Static chips (visual only) — all remaining chips are now functional. */
 const STATIC_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = []
 
+// ── Loading UX constants ──────────────────────────────────────────────────────
+
+/** Client-side AbortController timeout (ms). Generous: only kills truly dead connections. */
+const FETCH_TIMEOUT: Record<string, number> = {
+  sonar: 70_000,   // sonar chips: 70s (above 60s maxDuration)
+  course: 100_000, // course: 100s (above 90s maxDuration)
+  cached: 25_000,  // olle/oreum: 25s (fast cached GET)
+}
+
+/** Per-mode reassuring messages shown while loading (rotate every ~6s). */
+const LOADING_MSGS: Record<string, string[]> = {
+  local:    ['제주 구석구석 살펴보는 중 🌿', '좋은 곳을 고르는 중이에요', '거의 다 됐어요 ✨'],
+  festival: ['지금 열리는 행사를 찾고 있어요 🎪', '공식 채널을 확인하는 중이에요', '거의 다 됐어요 ✨'],
+  seasonal: ['지금 제주 풍경을 살펴보는 중 🌸', '이 시기에 특별한 곳을 고르고 있어요', '거의 다 됐어요 ✨'],
+  rainy:    ['비 와도 좋은 곳을 찾고 있어요 ☔', '실내 명소를 골라보는 중이에요', '거의 다 됐어요 ✨'],
+  islands:  ['제주 섬 정보를 모으는 중 🌊', '배편·섬 매력을 정리하는 중이에요', '거의 다 됐어요 ✨'],
+  olle:     ['올레길 코스 불러오는 중 🥾'],
+  oreum:    ['오름·한라산 정보 불러오는 중 🏔'],
+  search:   ['제주를 살펴보는 중 🔍', '좋은 곳을 찾고 있어요'],
+  course:   [
+    '제주 여행 코스를 짜는 중이에요 🗺',
+    '명소를 조합하고 있어요',
+    '최적 동선을 확인하는 중이에요',
+    '거의 다 됐어요 ✨',
+  ],
+}
+
 type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course'
 
 export function SearchPanel() {
@@ -93,6 +119,17 @@ export function SearchPanel() {
   const [error, setError] = useState<string | null>(null)
   const [detail, setDetail] = useState<PlaceDetail | null>(null)
   const variationIdx = useRef(0)
+  const [timedOut, setTimedOut] = useState(false)
+  const [msgIdx, setMsgIdx] = useState(0)
+  const retryFnRef = useRef<(() => void) | null>(null)
+
+  // Rotate loading messages every 6 s while a fetch is in flight.
+  useEffect(() => {
+    if (!loading) return
+    setMsgIdx(0)
+    const id = setInterval(() => setMsgIdx((n) => n + 1), 6_000)
+    return () => clearInterval(id)
+  }, [loading])
 
   function resetResults() {
     setIntro(null)
@@ -104,6 +141,7 @@ export function SearchPanel() {
     setOlleCourses(null)
     setOreumList(null)
     setError(null)
+    setTimedOut(false)
   }
 
   // Free-text recommendation (VisitJeju flow).
@@ -115,11 +153,16 @@ export function SearchPanel() {
     setMode('search')
     resetResults()
 
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
+    retryFnRef.current = runSearch
+
     try {
       const res = await fetch('/api/jeju/tourist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q }),
+        signal: ctrl.signal,
       })
       const data = (await res.json()) as RecommendResult
       if (data.ok) {
@@ -128,9 +171,12 @@ export function SearchPanel() {
       } else {
         setError(data.error || '추천을 불러오지 못했어요. 다시 시도해 주세요.')
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -148,11 +194,16 @@ export function SearchPanel() {
     setMode('local')
     resetResults()
 
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
+    retryFnRef.current = runLocal
+
     try {
       const res = await fetch('/api/jeju/tourist-local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q }),
+        signal: ctrl.signal,
       })
       const data = (await res.json()) as LocalResult
       if (data.ok) {
@@ -160,9 +211,12 @@ export function SearchPanel() {
       } else {
         setError(data.error || '추천을 불러오지 못했어요. 다시 시도해 주세요.')
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -175,11 +229,16 @@ export function SearchPanel() {
     setMode('festival')
     resetResults()
 
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
+    retryFnRef.current = runFestivals
+
     try {
       const res = await fetch('/api/jeju/tourist-festivals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
+        signal: ctrl.signal,
       })
       const data = (await res.json()) as FestivalResult
       if (data.ok) {
@@ -187,9 +246,12 @@ export function SearchPanel() {
       } else {
         setError(data.error || '축제 정보를 불러오지 못했어요. 다시 시도해 주세요.')
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -202,11 +264,16 @@ export function SearchPanel() {
     setMode('seasonal')
     resetResults()
 
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
+    retryFnRef.current = runSeasonal
+
     try {
       const res = await fetch('/api/jeju/tourist-seasonal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
+        signal: ctrl.signal,
       })
       const data = (await res.json()) as SeasonalResult
       if (data.ok) {
@@ -214,9 +281,12 @@ export function SearchPanel() {
       } else {
         setError(data.error || '제주 풍경 정보를 불러오지 못했어요. 다시 시도해 주세요.')
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -229,11 +299,16 @@ export function SearchPanel() {
     setMode('rainy')
     resetResults()
 
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
+    retryFnRef.current = runRainy
+
     try {
       const res = await fetch('/api/jeju/tourist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: RAINY_QUERY }),
+        signal: ctrl.signal,
       })
       const data = (await res.json()) as RecommendResult
       if (data.ok) {
@@ -242,9 +317,12 @@ export function SearchPanel() {
       } else {
         setError(data.error || '추천을 불러오지 못했어요. 다시 시도해 주세요.')
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -257,11 +335,16 @@ export function SearchPanel() {
     setMode('islands')
     resetResults()
 
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
+    retryFnRef.current = runIslands
+
     try {
       const res = await fetch('/api/jeju/tourist-ferry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
+        signal: ctrl.signal,
       })
       const data = (await res.json()) as IslandResult
       if (data.ok) {
@@ -269,9 +352,12 @@ export function SearchPanel() {
       } else {
         setError(data.error || '섬 여행 정보를 불러오지 못했어요. 다시 시도해 주세요.')
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -284,17 +370,24 @@ export function SearchPanel() {
     setMode('olle')
     resetResults()
 
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.cached)
+    retryFnRef.current = runOlle
+
     try {
-      const res = await fetch('/api/jeju/tourist-olle')
+      const res = await fetch('/api/jeju/tourist-olle', { signal: ctrl.signal })
       const data = (await res.json()) as OlleResult
       if (data.ok) {
         setOlleCourses(data.courses)
       } else {
         setError(data.error || '올레길 정보를 불러오지 못했어요. 다시 시도해 주세요.')
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -307,17 +400,24 @@ export function SearchPanel() {
     setMode('oreum')
     resetResults()
 
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.cached)
+    retryFnRef.current = runOreum
+
     try {
-      const res = await fetch('/api/jeju/tourist-oreum')
+      const res = await fetch('/api/jeju/tourist-oreum', { signal: ctrl.signal })
       const data = (await res.json()) as OreumResult
       if (data.ok) {
         setOreumList(data.oreum)
       } else {
         setError(data.error || '오름 정보를 불러오지 못했어요. 다시 시도해 주세요.')
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -330,22 +430,10 @@ export function SearchPanel() {
   }
 
   const canSubmit = query.trim() !== '' && !loading
-  const loadingMsg =
-    mode === 'local'
-      ? '제주 구석구석 찾아보는 중…'
-      : mode === 'festival'
-        ? '지금 열리는 축제 찾는 중…'
-        : mode === 'seasonal'
-          ? '지금 제주 풍경 살펴보는 중…'
-          : mode === 'rainy'
-            ? '비 와도 좋은 곳 찾는 중…'
-            : mode === 'islands'
-              ? '제주 섬 여행 정보 찾는 중…'
-              : mode === 'olle'
-                ? '올레길 코스 불러오는 중…'
-                : mode === 'oreum'
-                  ? '오름·한라산 정보 불러오는 중…'
-                  : '제주를 살펴보는 중…'
+
+  // Derive the current rotating message for the active mode.
+  const msgArr = LOADING_MSGS[mode] ?? LOADING_MSGS.search
+  const currentLoadingMsg = msgArr[msgIdx % msgArr.length]
 
   return (
     <div>
@@ -475,16 +563,38 @@ export function SearchPanel() {
         ))}
       </div>
 
-      {/* Loading state */}
+      {/* Loading state — spinning + rotating reassurance */}
       {loading && (
-        <div className="mt-6 flex flex-col items-center gap-2 rounded-[20px] bg-white/70 p-8 text-center backdrop-blur">
+        <div className="mt-6 flex flex-col items-center gap-3 rounded-[20px] bg-white/70 p-8 text-center backdrop-blur">
           <Loader2 size={28} className="animate-spin text-[#00A8B5]" aria-hidden />
-          <p className="text-sm font-semibold text-[#00707A]">{loadingMsg}</p>
+          <p
+            key={currentLoadingMsg}
+            className="text-sm font-semibold text-[#00707A] transition-opacity duration-500"
+          >
+            {currentLoadingMsg}
+          </p>
+        </div>
+      )}
+
+      {/* Timed-out soft retry — only for truly dead connections, never scary */}
+      {!loading && timedOut && (
+        <div className="mt-6 flex flex-col items-center gap-3 rounded-[20px] bg-white/80 px-6 py-6 text-center shadow-sm backdrop-blur">
+          <p className="text-sm font-semibold text-[#00707A]">
+            조금 더 오래 걸리고 있어요. 다시 시도할까요?
+          </p>
+          <button
+            type="button"
+            onClick={() => retryFnRef.current?.()}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#00A8B5] px-5 py-2 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+          >
+            <RefreshCw size={14} aria-hidden />
+            다시 시도
+          </button>
         </div>
       )}
 
       {/* Inline error (friendly, not a dump) */}
-      {!loading && error && (
+      {!loading && !timedOut && error && (
         <div className="mt-6 flex items-center gap-2 rounded-[18px] bg-[#FFF3DC] px-4 py-3.5 text-sm font-semibold text-[#B84A00]">
           <span aria-hidden>🍊</span>
           {error}

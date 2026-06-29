@@ -209,6 +209,7 @@ async function fetchLocalActivePlaces(query: string, area?: string): Promise<Can
       prompt: buildLocalActiveUserPrompt(query),
       systemPrompt: buildLocalActiveSystemPrompt(area),
       maxCompletionTokens: LOCAL_ACTIVE_MAX_TOKENS,
+      timeoutMs: 30_000,
     })
 
     if (r.error || !r.text || !r.text.trim()) return []
@@ -470,6 +471,7 @@ export async function generateCourses({
       prompt: buildComposeUserPrompt(trimmedQuery, dur, trimmedArea, buildCandidateList(candidates)),
       systemPrompt: buildComposeSystemPrompt(dur),
       maxCompletionTokens: COMPOSE_MAX_TOKENS,
+      timeoutMs: 45_000,
     })
 
     if (r.error || !r.text || !r.text.trim()) {
@@ -710,6 +712,7 @@ export async function generateCustomCourses(params: {
       ),
       systemPrompt: buildCustomComposeSystemPrompt(dur),
       maxCompletionTokens: CUSTOM_COMPOSE_MAX_TOKENS,
+      timeoutMs: 45_000,
     })
 
     if (r.error || !r.text || !r.text.trim()) return { ok: false, error: GENERIC_FAIL }

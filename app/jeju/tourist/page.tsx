@@ -120,39 +120,97 @@ function curate(raw: VisitJejuPlace[]): Array<{ place: VisitJejuPlace; displayLa
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
 
-/** Soft inline-SVG motifs — let the background breathe. */
-function TouristMotifs() {
+/** Subtle Jeju sunrise scene — Seongsan Ilchulbong silhouette + soft glow + faint flower dots.
+ *  Pure CSS/SVG, no image files. All elements at very low opacity so content stays primary. */
+function JejuScenery() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+      {/* Extra warm horizon glow — reinforces the sunrise gradient */}
+      <div
+        className="absolute inset-x-0 bottom-0"
+        style={{
+          height: '50%',
+          background:
+            'linear-gradient(to top, rgba(255,208,112,0.14) 0%, rgba(255,228,168,0.07) 42%, transparent 100%)',
+        }}
+      />
+
+      {/* ── Scene SVG: sun disc · sea · Seongsan Ilchulbong silhouette ── */}
       <svg
-        className="absolute -top-1 left-0 w-full opacity-60"
-        viewBox="0 0 1440 120"
+        className="absolute bottom-0 left-0 w-full"
+        viewBox="0 0 1000 220"
         preserveAspectRatio="none"
-        fill="none"
+        style={{ height: 'clamp(130px, 34vh, 275px)' }}
       >
+        {/* Soft sun disc — partially occluded by the peak (sunrise behind mountain) */}
+        <circle cx="548" cy="20" r="46" fill="#FFD070" fillOpacity="0.28" />
+        <circle cx="548" cy="20" r="30" fill="#FFE898" fillOpacity="0.20" />
+
+        {/* Sea surface band */}
+        <rect x="0" y="194" width="1000" height="26" fill="#9ACCD8" fillOpacity="0.16" />
+
+        {/* Seongsan Ilchulbong — broad tuff-cone dome rising from the sea.
+            Wide low dome with gentle symmetric slopes; peak centred slightly right
+            so it reads as a landmark rather than just a hill. */}
         <path
-          d="M0 60 C 240 110 480 10 720 50 C 960 90 1200 20 1440 60 L1440 0 L0 0 Z"
-          fill="#FFFFFF"
-          fillOpacity="0.35"
+          d="
+            M 0 195
+            L 182 195
+            C 245 195 298 190 340 182
+            C 388 172 430 149 464 118
+            C 490 93 511 67 527 51
+            C 536 40 542 35 548 33
+            C 554 35 560 40 569 51
+            C 585 69 606 97 632 124
+            C 666 156 702 177 738 188
+            C 770 194 818 196 876 195
+            L 1000 195
+            L 1000 220 L 0 220 Z
+          "
+          fill="#1C3840"
+          fillOpacity="0.19"
         />
+
+        {/* Subtle inner core for depth — very slightly darker centre */}
+        <path
+          d="
+            M 430 195
+            C 448 178 470 152 492 122
+            C 510 97 526 73 538 55
+            C 543 44 547 38 550 36
+            C 553 38 557 44 562 55
+            C 573 74 590 101 612 128
+            C 640 160 668 183 695 193
+            Z
+          "
+          fill="#12303A"
+          fillOpacity="0.13"
+        />
+
+        {/* Sea-horizon shimmer line */}
+        <line x1="0" y1="195" x2="1000" y2="195" stroke="#8EC8D8" strokeOpacity="0.20" strokeWidth="1.5" />
       </svg>
-      <div className="absolute right-6 top-24 h-24 w-24 rounded-full bg-[#FF8C42] opacity-15 blur-[2px]" />
-      <div className="absolute right-20 top-40 h-12 w-12 rounded-full bg-[#FFD23F] opacity-25" />
-      <div className="absolute -left-6 top-52 h-28 w-28 rounded-full bg-[#00A8B5] opacity-10" />
-      <svg className="absolute left-8 top-[30%] w-40 opacity-50" viewBox="0 0 200 80" fill="#FFFFFF">
-        <ellipse cx="60" cy="50" rx="46" ry="26" />
-        <ellipse cx="110" cy="44" rx="40" ry="30" />
-        <ellipse cx="150" cy="52" rx="34" ry="22" />
-      </svg>
-      <svg
-        className="absolute right-10 top-[58%] w-32 opacity-40"
-        viewBox="0 0 200 80"
-        fill="#FFFFFF"
-      >
-        <ellipse cx="60" cy="50" rx="46" ry="26" />
-        <ellipse cx="110" cy="44" rx="40" ry="30" />
-        <ellipse cx="150" cy="52" rx="34" ry="22" />
-      </svg>
+
+      {/* ── Faint flower accent dots: canola-yellow + camellia-red ── */}
+      {/* Left cluster */}
+      <div className="absolute" style={{ bottom: '8%', left: '7%' }}>
+        <div className="absolute h-2 w-2 rounded-full bg-[#F5D020]" style={{ opacity: 0.20 }} />
+        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#F5D020]" style={{ opacity: 0.16, top: '10px', left: '14px' }} />
+        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#E8405A]" style={{ opacity: 0.13, top: '3px', left: '24px' }} />
+        <div className="absolute h-1 w-1 rounded-full bg-[#F5D020]" style={{ opacity: 0.17, top: '17px', left: '6px' }} />
+      </div>
+      {/* Right cluster */}
+      <div className="absolute" style={{ bottom: '10%', right: '11%' }}>
+        <div className="absolute h-2 w-2 rounded-full bg-[#E8405A]" style={{ opacity: 0.12 }} />
+        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#F5D020]" style={{ opacity: 0.19, top: '7px', left: '13px' }} />
+        <div className="absolute h-1 w-1 rounded-full bg-[#F5D020]" style={{ opacity: 0.16, top: '16px', left: '4px' }} />
+        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#E8405A]" style={{ opacity: 0.11, top: '9px', left: '22px' }} />
+      </div>
+      {/* Centre-bottom scatter */}
+      <div className="absolute" style={{ bottom: '6%', left: '44%' }}>
+        <div className="absolute h-1.5 w-1.5 rounded-full bg-[#F5D020]" style={{ opacity: 0.15 }} />
+        <div className="absolute h-1 w-1 rounded-full bg-[#E8405A]" style={{ opacity: 0.11, top: '9px', left: '10px' }} />
+      </div>
     </div>
   )
 }
@@ -177,8 +235,14 @@ export default async function JejuTouristHomePage() {
   const curated = curate(raw)
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#7FD8E8] via-[#CFF3F8] to-[#E8FAFC] text-[#0A2B30]">
-      <TouristMotifs />
+    <main
+      className="relative min-h-screen overflow-hidden text-[#0A2B30]"
+      style={{
+        background:
+          'linear-gradient(to bottom, #7FD8E8 0%, #BCE8F2 40%, #D8EEF4 65%, #F0E4CC 100%)',
+      }}
+    >
+      <JejuScenery />
 
       <div className="relative mx-auto w-full max-w-3xl px-4 pb-16 pt-6">
         {/* 1. Top bar */}

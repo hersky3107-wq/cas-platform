@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, Loader2, Wand2 } from 'lucide-react'
+import { Sparkles, Loader2, Wand2, RefreshCw } from 'lucide-react'
 import type { Course, CourseId } from '@/lib/jeju/tourist-course'
 import { CourseTimeline } from './course-timeline'
 
@@ -59,6 +59,7 @@ export function CoursePanel() {
   const [resultMode, setResultMode] = useState<PanelMode>('custom')
   const [activeTab, setActiveTab] = useState<CourseId>('A')
   const [error, setError] = useState<string | null>(null)
+  const [timedOut, setTimedOut] = useState(false)
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Cycle the loading sub-message while generating.
@@ -105,6 +106,7 @@ export function CoursePanel() {
     setResultMode(mode)
     setCourses(null)
     setError(null)
+    setTimedOut(false)
 
     const body: Record<string, unknown> = {
       mode: mode === 'custom' ? 'custom' : 'standard',
@@ -119,11 +121,15 @@ export function CoursePanel() {
       if (Number.isFinite(n) && n > 0) body.groupSize = n
     }
 
+    const ctrl = new AbortController()
+    const fetchTimer = setTimeout(() => ctrl.abort(), 100_000)
+
     try {
       const res = await fetch('/api/jeju/tourist-course', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: ctrl.signal,
       })
       const data = (await res.json()) as CourseResult
       if (data.ok && data.courses.length > 0) {
@@ -134,9 +140,14 @@ export function CoursePanel() {
           (data as { error?: string }).error || '코스를 만들지 못했어요. 다시 시도해 주세요.'
         )
       }
-    } catch {
-      setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') {
+        setTimedOut(true)
+      } else {
+        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+      }
     } finally {
+      clearTimeout(fetchTimer)
       setLoading(false)
     }
   }
@@ -342,7 +353,23 @@ export function CoursePanel() {
       )}
 
       {/* Error */}
-      {!loading && error && (
+      {!loading && timedOut && (
+        <div className="mt-5 flex flex-col items-center gap-3 rounded-[20px] bg-white/80 px-6 py-6 text-center shadow-sm backdrop-blur">
+          <p className="text-sm font-semibold text-[#00707A]">
+            조금 더 오래 걸리고 있어요. 다시 시도할까요?
+          </p>
+          <button
+            type="button"
+            onClick={runCourse}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#00A8B5] px-5 py-2 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+          >
+            <RefreshCw size={14} aria-hidden />
+            다시 시도
+          </button>
+        </div>
+      )}
+
+      {!loading && !timedOut && error && (
         <div className="mt-5 flex items-center gap-2 rounded-[18px] bg-[#FFF3DC] px-4 py-3.5 text-sm font-semibold text-[#B84A00]">
           <span aria-hidden>🍊</span>
           {error}

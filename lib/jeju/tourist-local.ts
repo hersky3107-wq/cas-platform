@@ -239,6 +239,7 @@ export async function findLocalGems({
         prompt: buildUserPrompt(trimmed, today),
         systemPrompt: buildSystemPrompt(today),
         maxCompletionTokens: LOCAL_MAX_TOKENS,
+        timeoutMs: 30_000,
       }),
       fetchOfficialGems(today),
     ])

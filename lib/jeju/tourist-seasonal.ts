@@ -123,6 +123,7 @@ export async function getSeasonalSights({
       prompt: buildUserPrompt(today),
       systemPrompt: buildSystemPrompt(today),
       maxCompletionTokens: SEASONAL_MAX_TOKENS,
+      timeoutMs: 30_000,
     })
 
     if (r.error || !r.text || !r.text.trim()) {

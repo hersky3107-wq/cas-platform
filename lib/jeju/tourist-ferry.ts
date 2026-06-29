@@ -112,6 +112,7 @@ export async function getJejuIslandsInfo({
       prompt: buildUserPrompt(today),
       systemPrompt: buildSystemPrompt(today),
       maxCompletionTokens: FERRY_MAX_TOKENS,
+      timeoutMs: 30_000,
     })
 
     if (r.error || !r.text || !r.text.trim()) {
