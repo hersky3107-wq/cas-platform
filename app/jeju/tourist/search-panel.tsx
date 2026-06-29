@@ -12,6 +12,7 @@ import { LocalGemCard } from './local-gem-card'
 import { FestivalCard } from './festival-card'
 import { SeasonalCard } from './seasonal-card'
 import { IslandCard } from './island-card'
+import { CoursePanel } from './course-panel'
 import { displayLabelForPlace } from './category-labels'
 
 type RecommendResult =
@@ -53,7 +54,7 @@ const RAINY_QUERY =
 /** Static chips (visual only) — all remaining chips are now functional. */
 const STATIC_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = []
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'course'
 
 export function SearchPanel() {
   const [query, setQuery] = useState('')
@@ -248,6 +249,13 @@ export function SearchPanel() {
     }
   }
 
+  // AI 여행 코스 — opens the dedicated input panel (no immediate fetch).
+  function openCourse() {
+    if (loading) return
+    setMode('course')
+    resetResults()
+  }
+
   const canSubmit = query.trim() !== '' && !loading
   const loadingMsg =
     mode === 'local'
@@ -289,8 +297,25 @@ export function SearchPanel() {
         </div>
       </div>
 
+      {/* Signature feature — AI 여행 코스 (its own row, chip-style but distinct) */}
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={openCourse}
+          disabled={loading}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
+            mode === 'course'
+              ? 'bg-[#0A2B30] text-white'
+              : 'bg-[#0A2B30]/90 text-white'
+          }`}
+        >
+          <span aria-hidden>🗺️</span>
+          AI 여행 코스 짜기
+        </button>
+      </div>
+
       {/* Chips: one functional local chip + static placeholders */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={runLocal}
@@ -368,6 +393,9 @@ export function SearchPanel() {
           {error}
         </div>
       )}
+
+      {/* AI 여행 코스 — self-contained input + loading + tabs + timeline */}
+      {mode === 'course' && <CoursePanel />}
 
       {/* Free-text recommendation results (VisitJeju) */}
       {!loading && mode === 'search' && results && results.length > 0 && (

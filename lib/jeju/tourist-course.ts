@@ -40,8 +40,12 @@ import {
 const COMPOSE_PROVIDER: ExtendedAiProviderName = 'anthropic'
 const LOCAL_ACTIVE_PROVIDER: ExtendedAiProviderName = 'perplexity'
 
-/** 4 structured courses need room. */
-const COMPOSE_MAX_TOKENS = 2500
+/** 4 structured courses × ~6 stops each with Korean descriptions need room. */
+const COMPOSE_MAX_TOKENS = 5000
+/** Mode 1 (맞춤 코스): 2 detailed, situation-tailored courses. */
+const CUSTOM_COMPOSE_MAX_TOKENS = 3500
+/** Mode 1 returns at most this many tailored courses. */
+const CUSTOM_MAX_COURSES = 2
 /** Local/active sonar supplement — a dozen places with short descriptions. */
 const LOCAL_ACTIVE_MAX_TOKENS = 1200
 
@@ -452,6 +456,232 @@ export async function generateCourses({
 
     // Stable A→B→C→D ordering regardless of the order the AI emitted them.
     courses.sort((a, b) => a.id.localeCompare(b.id))
+
+    return { ok: true, courses }
+  } catch {
+    return { ok: false, error: GENERIC_FAIL }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODE 1 — 맞춤 코스 (situation-tailored). ADDITIVE: shares the entire data
+// pipeline with generateCourses (pool + filter + sonar + index-stable bank +
+// buildStops anti-hallucination). The ONLY difference is the compose step:
+// ONE sonnet call analyzes the user's situation (동행/연령/인원/자유요청) and
+// returns exactly up to 2 courses that are BOTH appropriate for that situation
+// (e.g. never a hiking course for 휠체어·어르신).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Situation-driven keyword expansion so the candidate bank actually CONTAINS
+ * suitable places before the composer ever runs. The composer can only choose
+ * from the bank, so for accessibility/elderly/kids we widen the pool filter with
+ * gentle/flat/indoor-leaning keywords. (Pure additive — only adds candidates.)
+ */
+function deriveSituationKeywords(query: string, companion?: string, ageGroup?: string): string[] {
+  const hay = `${query} ${companion ?? ''} ${ageGroup ?? ''}`
+  const extra: string[] = []
+
+  const ELDERLY = /휠체어|어르신|노약자|거동|부모님|시니어|할머니|할아버지|연세|고령|50대 이상/
+  const KIDS = /아이|아기|유모차|어린이|키즈|아동|초등|유아|가족/
+  const FOOD = /맛집|미식|먹거리|음식|식도락/
+  const CAFE = /카페|커피|디저트|베이커리/
+  const PHOTO = /사진|포토|인생샷|감성/
+  const NATURE = /자연|풍경|바다|해변|숲|정원|힐링/
+  const CULTURE = /미술|박물|전시|문화|역사|예술/
+
+  if (ELDERLY.test(hay)) {
+    // Flat / easy / indoor-leaning options that won't strand mobility-limited guests.
+    extra.push('정원', '수목원', '박물관', '미술관', '전시', '카페', '공원', '산책', '해안도로', '실내')
+  }
+  if (KIDS.test(hay)) {
+    extra.push('체험', '박물관', '아쿠아리움', '동물', '테마', '공원', '카페', '실내')
+  }
+  if (FOOD.test(hay)) extra.push('맛집', '음식', '시장')
+  if (CAFE.test(hay)) extra.push('카페', '디저트', '베이커리')
+  if (PHOTO.test(hay)) extra.push('전망', '풍경', '정원', '해안')
+  if (NATURE.test(hay)) extra.push('자연', '해변', '숲', '정원', '오름')
+  if (CULTURE.test(hay)) extra.push('미술관', '박물관', '전시', '문화')
+
+  return extra
+}
+
+function buildCustomComposeSystemPrompt(duration: '반나절' | '하루'): string {
+  const stopsHint = duration === '반나절' ? '3~4곳' : '5~7곳'
+  return [
+    '당신은 사용자의 "상황"을 깊이 이해하고 그에 꼭 맞는 제주 여행 코스를 설계하는 전문 플래너입니다.',
+    '아래 후보 장소 목록만을 사용해, 사용자 상황에 가장 잘 맞는 서로 다른 2개의 맞춤 코스를 설계하세요.',
+    '',
+    '상황 분석(가장 중요):',
+    '- 사용자의 상황과 요청을 종합적으로 분석해서, 그 상황에 가장 잘 맞는 서로 다른 2개의 맞춤 코스를 짜세요.',
+    '- 동행/연령/인원/자유 요청을 모두 고려하세요. 상황에 부적합한 코스는 절대 만들지 마세요.',
+    '  · 예: 어르신·휠체어 이용자에게 등산·오름·격한 액티비티 코스를 주지 말 것. 평탄하고 편한 동선, 실내·정원·전망 좋은 곳 위주로.',
+    '  · 예: 아이 동반이면 안전하고 편한 동선, 체험·실내·공원 등 아이가 즐길 수 있는 곳 위주로.',
+    '  · 예: 특정 취향(사진·카페·미식·자연 등)이 분명하면 그 취향을 코스의 중심으로 삼으세요.',
+    '- 2개 코스는 서로 다른 매력으로 구성하되, 둘 다 사용자 상황에 적합해야 합니다.',
+    '',
+    '코스 구성 품질(단순 나열이 아니라 "하루의 흐름"):',
+    `- 각 코스는 ${stopsHint} 정도의 스톱으로 구성하고, 방문 순서(order)를 1부터 매기세요.`,
+    '- 각 스톱에 timing("오전"→"점심"→"오후"→"저녁")을 넣어 하루 흐름이 자연스럽게 이어지게 하세요. 식사 시간대에는 가능하면 맛집/카페를 배치하세요.',
+    '- 각 스톱에 durationHint(예: "1~2시간")와 짧은 description(이 상황에 왜 좋은지)을 넣으세요.',
+    '- theme: 고정된 이름이 아니라, 이 사용자 상황에 어울리는 코스 이름을 직접 지으세요.',
+    '- concept: 이 코스가 왜 이 상황에 잘 맞는지 1~2문장으로 설명하세요. 두 코스의 concept은 서로 분명히 달라야 합니다.',
+    '- note: 상황에 도움이 되는 한 줄(예: 휠체어 접근/유아 편의/주차 등)을 넣으면 좋습니다. 없으면 null.',
+    '',
+    '엄수 규칙(anti-hallucination):',
+    '- 반드시 후보 목록에 있는 장소만 사용하세요. 목록에 없는 장소를 절대 지어내지 마세요.',
+    '- 각 스톱은 후보 목록의 index(번호)로만 지정하세요. 존재하지 않는 번호는 절대 사용하지 마세요.',
+    '- 같은 코스 안에서 같은 장소를 중복하지 마세요.',
+    '- 상황에 맞는 후보가 부족하면 무리하게 채우지 말고 스톱을 적게 구성하세요. 부적합한 장소를 억지로 넣지 마세요.',
+    '- 반드시 한국어로만 작성하세요.',
+    '',
+    '출력 형식(엄수): 아래 형태의 JSON 객체 하나만 출력하세요. JSON 외의 설명·마크다운·인사말은 절대 출력하지 마세요.',
+    '{ "courses": [ { "theme": "<상황에 맞는 코스 이름>", "concept": "<1~2문장 컨셉>", "note": "<참고 한 줄 또는 null>", "stops": [ { "index": <후보 번호 정수>, "order": 1, "timing": "오전", "durationHint": "1~2시간", "description": "<한 줄>" } ] } ] }',
+  ].join('\n')
+}
+
+function buildCustomComposeUserPrompt(
+  params: {
+    query: string
+    duration: '반나절' | '하루'
+    area?: string
+    companion?: string
+    ageGroup?: string
+    groupSize?: number
+  },
+  candidateList: string
+): string {
+  const { query, duration, area, companion, ageGroup, groupSize } = params
+  return [
+    '[사용자 상황]',
+    `- 자유 요청: ${query || '(특별한 요청 없음 — 무난하게 좋은 코스)'}`,
+    companion ? `- 동행: ${companion}` : '',
+    ageGroup ? `- 연령대: ${ageGroup}` : '',
+    typeof groupSize === 'number' && groupSize > 0 ? `- 인원: ${groupSize}명` : '',
+    `- 코스 길이: ${duration}`,
+    area ? `- 희망 지역: ${area}` : '',
+    '',
+    '[후보 장소 목록]',
+    candidateList,
+    '',
+    '위 상황을 종합 분석하여, 이 사용자에게 가장 잘 맞는 서로 다른 2개의 맞춤 코스를 후보 목록만 사용해 JSON으로만 설계하세요. 상황에 부적합한 코스(예: 어르신/휠체어에 등산)는 절대 만들지 마세요.',
+  ]
+    .filter((s) => s !== '')
+    .join('\n')
+}
+
+export async function generateCustomCourses(params: {
+  query: string
+  duration?: '반나절' | '하루'
+  area?: string
+  companion?: string
+  ageGroup?: string
+  groupSize?: number
+}): Promise<{ ok: true; courses: Course[] } | { ok: false; error: string }> {
+  try {
+    const trimmedQuery = (params.query ?? '').trim()
+    const dur: '반나절' | '하루' = params.duration === '반나절' ? '반나절' : '하루'
+    const trimmedArea = params.area?.trim() || undefined
+    const companion = params.companion?.trim() || undefined
+    const ageGroup = params.ageGroup?.trim() || undefined
+    const groupSize =
+      typeof params.groupSize === 'number' && params.groupSize > 0 ? params.groupSize : undefined
+
+    // 1. VisitJeju pool (same source/fallback as generateCourses).
+    let pool = await getVisitJejuPool()
+    if (pool.length === 0) {
+      const fallback = await fetchVisitJejuPlaces()
+      pool = fallback.ok ? fallback.places : []
+    }
+    if (pool.length === 0) return { ok: false, error: GENERIC_FAIL }
+
+    // 2. Candidate bank — widen the filter with situation keywords so suitable
+    //    (gentle/flat/indoor) candidates are actually present for the composer.
+    const baseKeywords = deriveKeywords(trimmedQuery, trimmedArea)
+    const situationKeywords = deriveSituationKeywords(trimmedQuery, companion, ageGroup)
+    const keywords = Array.from(new Set([...baseKeywords, ...situationKeywords]))
+
+    let poolCandidates = keywords.length > 0 ? filterPlacesByQuery(pool, keywords) : []
+    if (poolCandidates.length < FALLBACK_SAMPLE_SIZE) {
+      const sample = balancedSample(pool, FALLBACK_SAMPLE_SIZE)
+      const seenIds = new Set(poolCandidates.map((p) => p.contentsId))
+      for (const p of sample) {
+        if (p.contentsId && seenIds.has(p.contentsId)) continue
+        if (p.contentsId) seenIds.add(p.contentsId)
+        poolCandidates.push(p)
+        if (poolCandidates.length >= MAX_POOL_CANDIDATES) break
+      }
+    }
+    if (poolCandidates.length > MAX_POOL_CANDIDATES) {
+      poolCandidates = poolCandidates.slice(0, MAX_POOL_CANDIDATES)
+    }
+
+    const visitJejuCandidates: Candidate[] = poolCandidates.map((p) => ({
+      name: p.title,
+      category: p.categoryLabel || null,
+      region: p.region || null,
+      source: 'visitjeju',
+    }))
+
+    // 3. Sonar supplement — bias the query with the situation so it surfaces
+    //    relevant local/gentle/active places (non-fatal on failure).
+    const sonarQuery = [trimmedQuery || '제주 여행 코스', companion, ageGroup]
+      .filter(Boolean)
+      .join(' ')
+    const webCandidates = await fetchLocalActivePlaces(sonarQuery, trimmedArea)
+
+    const candidates: Candidate[] = [...visitJejuCandidates, ...webCandidates]
+    if (candidates.length === 0) return { ok: false, error: GENERIC_FAIL }
+
+    // 4. Compose exactly up to 2 situation-tailored courses (sonnet, index-only).
+    const r = await runSingleAiProvider({
+      supabase: noDbSupabase(),
+      sessionId: null,
+      userId: null,
+      provider: COMPOSE_PROVIDER,
+      prompt: buildCustomComposeUserPrompt(
+        { query: trimmedQuery, duration: dur, area: trimmedArea, companion, ageGroup, groupSize },
+        buildCandidateList(candidates)
+      ),
+      systemPrompt: buildCustomComposeSystemPrompt(dur),
+      maxCompletionTokens: CUSTOM_COMPOSE_MAX_TOKENS,
+    })
+
+    if (r.error || !r.text || !r.text.trim()) return { ok: false, error: GENERIC_FAIL }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(extractJsonObject(r.text))
+    } catch {
+      return { ok: false, error: GENERIC_FAIL }
+    }
+    if (!parsed || typeof parsed !== 'object') return { ok: false, error: GENERIC_FAIL }
+
+    const rawCourses = (parsed as Record<string, unknown>).courses
+    if (!Array.isArray(rawCourses)) return { ok: false, error: GENERIC_FAIL }
+
+    // Custom mode has no fixed A/B/C/D personalities — assign sequential ids in
+    // code (the AI supplies theme/concept/stops only).
+    const idSequence: CourseId[] = ['A', 'B', 'C', 'D']
+    const courses: Course[] = []
+    for (const item of rawCourses) {
+      if (courses.length >= CUSTOM_MAX_COURSES) break
+      if (!item || typeof item !== 'object') continue
+      const o = item as Record<string, unknown>
+
+      const stops = buildStops(o.stops, candidates)
+      if (stops.length === 0) continue // unusable without valid stops
+
+      courses.push({
+        id: idSequence[courses.length]!,
+        theme: typeof o.theme === 'string' ? o.theme.trim() : '',
+        concept: typeof o.concept === 'string' ? o.concept.trim() : '',
+        stops,
+        note: toStrOrNull(o.note),
+      })
+    }
+
+    if (courses.length === 0) return { ok: false, error: GENERIC_FAIL }
 
     return { ok: true, courses }
   } catch {
