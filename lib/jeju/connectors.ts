@@ -2407,3 +2407,107 @@ export function filterPlacesByQuery(
     return needles.some((n) => haystack.includes(n))
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JEJU OLLE TRAIL (올레코스)
+// Source: odcloud 15043496 — 제주 올레코스 현황 (공공데이터포털)
+// Auth: same DATA_GO_KR_KEY ?? KPX_SERVICE_KEY serviceKey pattern as other odcloud.
+// Verified: 29 courses, fields: 코스별·코스명·거리·소요시간정보·시종점정보.
+// No coordinates in this dataset (that is fine for now).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OLLE_ENDPOINT =
+  'https://api.odcloud.kr/api/15043496/v1/uddi:4fc81f72-5343-4349-93f0-bda60947a923'
+
+/** A single Jeju Olle trail course as returned by the odcloud dataset. */
+export interface OlleCourse {
+  /** 코스별 — e.g. "1코스", "1-1코스" */
+  courseNo: string
+  /** 코스명 — e.g. "시흥-광치기" */
+  name: string
+  /** 거리 — e.g. "15.1km" */
+  distance: string
+  /** 소요시간정보 — e.g. "4~5시간" */
+  duration: string
+  /** 시종점정보 — e.g. "시흥리정류장-광치기해변" */
+  startEnd: string
+}
+
+/** Safe string coercer: trims and returns '' when absent/null. */
+function olleStr(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : ''
+}
+
+/**
+ * Fetches all Jeju Olle trail courses from odcloud. Never throws — returns []
+ * on any network/parse failure. Mirrors the jeju-citrus odcloud fetch pattern.
+ */
+export async function fetchOlleCourses(): Promise<OlleCourse[]> {
+  try {
+    const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+    if (!key) return []
+
+    const params = new URLSearchParams({
+      page: '1',
+      perPage: '50', // totalCount is 29 — 50 fetches everything in one call
+      serviceKey: key,
+    })
+    const url = `${OLLE_ENDPOINT}?${params.toString()}`
+
+    const ctrl = new AbortController()
+    const timeout = setTimeout(() => ctrl.abort(), 15_000)
+    let rawJson: unknown
+    try {
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) return []
+      rawJson = await res.json()
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    const env = readOdcloudEnvelope(rawJson)
+    if (!env.ok) return []
+
+    const courses: OlleCourse[] = []
+    for (const row of env.rows) {
+      const courseNo = olleStr(row['코스별'])
+      const name = olleStr(row['코스명'])
+      if (!courseNo && !name) continue // skip completely empty rows
+      courses.push({
+        courseNo,
+        name,
+        distance: olleStr(row['거리']),
+        duration: olleStr(row['소요시간정보']),
+        startEnd: olleStr(row['시종점정보']),
+      })
+    }
+    return courses
+  } catch {
+    return []
+  }
+}
+
+/** Cache freshness — 6 hours (same as VisitJeju pool). */
+const OLLE_TTL_MS = 6 * 60 * 60 * 1000
+
+/**
+ * In-memory cache for Olle courses. Per-server-instance only (resets on cold
+ * start/redeploy); fine for tourist-mode usage. Only caches non-empty results.
+ */
+let _olleCourseCache: { at: number; courses: OlleCourse[] } | null = null
+
+/** Returns cached Olle courses when younger than the TTL, else refetches. */
+export async function getOlleCourses(): Promise<OlleCourse[]> {
+  const now = Date.now()
+  if (_olleCourseCache && now - _olleCourseCache.at < OLLE_TTL_MS) {
+    return _olleCourseCache.courses
+  }
+  const courses = await fetchOlleCourses()
+  if (courses.length > 0) {
+    _olleCourseCache = { at: now, courses }
+  }
+  return courses
+}
