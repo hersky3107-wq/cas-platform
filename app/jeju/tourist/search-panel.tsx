@@ -7,11 +7,14 @@ import type { LocalGem } from '@/lib/jeju/tourist-local'
 import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
 import type { IslandInfo } from '@/lib/jeju/tourist-ferry'
 import type { OlleCourseView } from '@/lib/jeju/tourist-olle'
+import type { FestivalEvent } from '@/lib/jeju/tourist-festivals'
 import { PlaceCard } from './place-card'
 import { LocalGemCard } from './local-gem-card'
 import { SeasonalCard } from './seasonal-card'
 import { IslandCard } from './island-card'
 import { OlleCard } from './olle-card'
+import { DullegilCard } from './dullegil-card'
+import { FestivalEventCard } from './festival-event-card'
 import { CoursePanel } from './course-panel'
 import { PlaceDetailModal } from './place-detail-modal'
 import {
@@ -20,8 +23,10 @@ import {
   detailFromLocalGem,
   detailFromSeasonal,
   detailFromIsland,
+  detailFromFestivalEvent,
 } from './place-detail'
 import { displayLabelForPlace } from './category-labels'
+import { getDullegil } from '@/lib/jeju/hallasan-dullegil'
 
 type RecommendResult =
   | { ok: true; intro: string; recommendations: VisitJejuPlace[] }
@@ -30,7 +35,8 @@ type RecommendResult =
 type LocalResult = { ok: true; gems: LocalGem[] } | { ok: false; error: string }
 
 type FestivalResult =
-  | { ok: true; festivals: VisitJejuPlace[] }
+  | { ok: true; type: 'sonar'; events: FestivalEvent[] }
+  | { ok: true; type: 'fallback'; festivals: VisitJejuPlace[] }
   | { ok: false; error: string }
 
 type SeasonalResult =
@@ -79,7 +85,7 @@ export function SearchPanel() {
   const [intro, setIntro] = useState<string | null>(null)
   const [results, setResults] = useState<VisitJejuPlace[] | null>(null)
   const [gems, setGems] = useState<LocalGem[] | null>(null)
-  const [festivals, setFestivals] = useState<VisitJejuPlace[] | null>(null)
+  const [festivalData, setFestivalData] = useState<FestivalResult | null>(null)
   const [sights, setSights] = useState<SeasonalItem[] | null>(null)
   const [islands, setIslands] = useState<IslandInfo[] | null>(null)
   const [olleCourses, setOlleCourses] = useState<OlleCourseView[] | null>(null)
@@ -92,7 +98,7 @@ export function SearchPanel() {
     setIntro(null)
     setResults(null)
     setGems(null)
-    setFestivals(null)
+    setFestivalData(null)
     setSights(null)
     setIslands(null)
     setOlleCourses(null)
@@ -161,7 +167,7 @@ export function SearchPanel() {
     }
   }
 
-  // Jeju festivals/events (VisitJeju c5, official data), fired by the chip.
+  // Jeju festivals/events — sonar (currently-running/upcoming) with c5 fallback.
   async function runFestivals() {
     if (loading) return
 
@@ -177,7 +183,7 @@ export function SearchPanel() {
       })
       const data = (await res.json()) as FestivalResult
       if (data.ok) {
-        setFestivals(data.festivals)
+        setFestivalData(data)
       } else {
         setError(data.error || '축제 정보를 불러오지 못했어요. 다시 시도해 주세요.')
       }
@@ -552,17 +558,38 @@ export function SearchPanel() {
         </section>
       )}
 
-      {/* Jeju festivals/events (VisitJeju c5, official data with coords) */}
-      {!loading && mode === 'festival' && festivals && festivals.length > 0 && (
+      {/* Jeju festivals/events — sonar-sourced (currently running/upcoming) */}
+      {!loading && mode === 'festival' && festivalData?.ok && festivalData.type === 'sonar' && (
+        <section className="mt-6">
+          <h3 className="text-base font-extrabold tracking-tight text-[#00707A]">
+            🎪 지금 제주 축제·공연
+          </h3>
+          <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
+            공식 채널 기준 진행 중·예정 행사예요 · 날짜·장소는 방문 전 확인하세요
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {festivalData.events.map((event, i) => (
+              <FestivalEventCard
+                key={`${event.name}-${i}`}
+                event={event}
+                onSelect={() => setDetail(detailFromFestivalEvent(event))}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Jeju festivals/events — c5 fallback (general festival listing, no live dates) */}
+      {!loading && mode === 'festival' && festivalData?.ok && festivalData.type === 'fallback' && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#00707A]">
             🎪 제주 축제·공연·전시
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
-            제주에서 열리는 축제·공연·전시예요 · 정확한 일정은 확인하세요
+            비짓제주 공식 행사 목록이에요 · 정확한 일정은 방문 전 확인하세요
           </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {festivals.map((place) => (
+            {festivalData.festivals.map((place) => (
               <PlaceCard
                 key={place.contentsId}
                 place={place}
@@ -652,6 +679,23 @@ export function SearchPanel() {
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {olleCourses.map((course) => (
               <OlleCard key={`${course.courseNo}-${course.name}`} course={course} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Hallasan Dullegil — static 8 courses, shown alongside Olle */}
+      {!loading && mode === 'olle' && (
+        <section className="mt-8">
+          <h3 className="text-base font-extrabold tracking-tight text-[#1A7A46]">
+            🏔 한라산 둘레길
+          </h3>
+          <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
+            한라산 국립공원을 한 바퀴 도는 8개 코스예요 · 출처: 제주특별자치도 · 제주데이터허브 (2021 기준)
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {getDullegil().map((course) => (
+              <DullegilCard key={course.name} course={course} />
             ))}
           </div>
         </section>

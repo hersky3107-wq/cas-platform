@@ -2,6 +2,7 @@ import type { VisitJejuPlace } from '@/lib/jeju/connectors'
 import type { LocalGem } from '@/lib/jeju/tourist-local'
 import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
 import type { IslandInfo } from '@/lib/jeju/tourist-ferry'
+import type { FestivalEvent } from '@/lib/jeju/tourist-festivals'
 
 /**
  * Normalized detail shape so ONE modal can render every card type
@@ -192,6 +193,32 @@ export function detailFromIsland(island: IslandInfo): PlaceDetail {
     isWeb: true,
     mapQuery: mq,
     mapTarget,
+  }
+}
+
+export function detailFromFestivalEvent(event: FestivalEvent): PlaceDetail {
+  const infoRows: { label: string; value: string }[] = []
+  infoRows.push({ label: '기간', value: `${event.startDate} ~ ${event.endDate}` })
+  if (event.venue) infoRows.push({ label: '장소', value: event.venue })
+
+  // Prefer venue for map search when it looks concrete; fall back to event name.
+  const mapSeed =
+    event.venue && isConcretePlaceName(event.venue) ? event.venue : event.name
+  const mq = buildWebMapQuery(mapSeed)
+  const mapTarget = isConcretePlaceName(mapSeed) ? mq : null
+
+  return {
+    title: event.name,
+    subtitle: event.venue || undefined,
+    description: event.intro || undefined,
+    infoRows,
+    sourceLabel: '공식 채널 기준 웹 검색 정보',
+    isWeb: true,
+    mapQuery: mq,
+    mapTarget,
+    mapNote: mapTarget
+      ? '장소 검색은 참고용이에요 · 방문 전 공식 채널에서 확인하세요'
+      : '특정 장소가 지정되지 않은 행사예요',
   }
 }
 
