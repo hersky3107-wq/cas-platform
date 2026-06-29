@@ -41,7 +41,7 @@ type IslandResult =
 
 /** Base mixed-category query for the "관광객은 잘 모르는" chip. */
 const LOCAL_BASE_QUERY =
-  '관광객이 잘 모르는 제주의 좋은 장소를 종류별로 골고루: 로컬 맛집, 현지인 카페, 잘 알려지지 않은 자연 명소, 전시·박물관·문화공간을 섞어서 추천'
+  '관광객이 잘 모르는 제주의 좋은 장소를 종류별로 골고루: 잘 알려지지 않은 자연 명소(폭포·오름·해변·숲), 전시·박물관·문화공간, 현지인 카페, 로컬 맛집을 고르게 섞어서 추천. 맛집·카페로 치우치지 말고 자연·문화 명소를 충분히 포함.'
 
 /** Area/angle suffixes rotated on each tap to diversify results. */
 const LOCAL_VARIATION_SUFFIXES = [
