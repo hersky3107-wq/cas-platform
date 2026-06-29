@@ -122,6 +122,23 @@ export function detailFromVisitJeju(place: VisitJejuPlace, displayLabel: string)
 }
 
 export function detailFromLocalGem(gem: LocalGem): PlaceDetail {
+  // Official attractions carry real coordinates → treat like VisitJeju (accurate pin).
+  if (gem.source === 'official' && gem.lat != null && gem.lng != null) {
+    const mq = buildVisitJejuFallbackQuery(gem.name)
+    return {
+      title: gem.name,
+      subtitle: gem.area || undefined,
+      description: gem.description || undefined,
+      tags: gem.tags.length > 0 ? gem.tags : undefined,
+      lat: gem.lat,
+      lng: gem.lng,
+      sourceLabel: '제주특별자치도 공식 관광지',
+      isWeb: false,
+      mapQuery: mq,
+      mapTarget: mq,
+    }
+  }
+  // Web/sonar item — soft search, no guaranteed coords.
   const mq = buildWebMapQuery(gem.name)
   const mapTarget = isConcretePlaceName(gem.name) ? mq : null
   return {

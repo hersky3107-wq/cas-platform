@@ -490,14 +490,14 @@ export function SearchPanel() {
         </section>
       )}
 
-      {/* Local "hidden gems" results (web-sourced) */}
+      {/* Local "hidden gems" results (official nature/culture + sonar local blend) */}
       {!loading && mode === 'local' && gems && gems.length > 0 && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#6B4FB8]">
             👀 관광객은 잘 모르는 제주
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#F2EFFC] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#5B3EA8]">
-            🌐 웹에서 찾은 정보예요 · 공식 등록 정보가 아니니 방문 전 확인하세요
+            공식 자연·문화 명소 + 현지인 추천을 섞어 보여드려요 · 웹 정보는 방문 전 확인하세요
           </p>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {gems.map((gem, i) => (

@@ -9,6 +9,7 @@ import {
   filterPlacesByQuery,
   type VisitJejuPlace,
 } from '@/lib/jeju/connectors'
+import { getAttractionsByField, NATURE_FIELDS, CULTURE_FIELDS } from '@/lib/jeju/attraction-utils'
 
 /**
  * Jeju TOURIST mode — AI 여행 코스 추천 engine (Jeju's signature feature).
@@ -55,6 +56,11 @@ const MAX_POOL_CANDIDATES = 90
 const FALLBACK_SAMPLE_SIZE = 70
 /** Max web (sonar) candidates merged into the bank. */
 const MAX_WEB_CANDIDATES = 16
+/**
+ * Max official attraction candidates (nature/culture/oreum) merged into bank.
+ * Round-robin sampled across 분야 so the model sees field variety.
+ */
+const MAX_ATTR_CANDIDATES = 24
 
 const GENERIC_FAIL = '코스를 만들지 못했어요. 다시 시도해 주세요.'
 
@@ -238,6 +244,60 @@ async function fetchLocalActivePlaces(query: string, area?: string): Promise<Can
   }
 }
 
+// ── Attractions supplement: official odcloud data (1046 items, all with coords) ─
+
+/**
+ * Extracts the 시/군 portion from a Korean road address.
+ * "제주특별자치도 서귀포시 1100로 1555" → "서귀포시"
+ */
+function extractRegionFromAddress(address: string): string | null {
+  if (!address) return null
+  const m = address.match(/제주(?:특별자치도)?\s+([^\s]+(?:시|군))/)
+  return m ? (m[1] ?? null) : null
+}
+
+/**
+ * Pulls a diverse, field-balanced set of official attractions for the compose
+ * model. Round-robins across 분야 buckets so every type (자연/오름/문화/etc)
+ * gets representation. Non-fatal — returns [] on any failure.
+ */
+async function fetchAttractionCandidates(area?: string): Promise<Candidate[]> {
+  try {
+    const fields = [...NATURE_FIELDS, ...CULTURE_FIELDS]
+    // Fetch generously then round-robin to MAX_ATTR_CANDIDATES for diversity.
+    const all = await getAttractionsByField(fields, { region: area, limit: 400 })
+    if (all.length === 0) return []
+
+    // Round-robin by 분야 so each field gets representation.
+    const buckets = new Map<string, typeof all>()
+    for (const a of all) {
+      const key = a.field || 'etc'
+      const arr = buckets.get(key) ?? []
+      arr.push(a)
+      buckets.set(key, arr)
+    }
+    const lists = Array.from(buckets.values())
+    const sampled: typeof all = []
+    for (let i = 0; sampled.length < MAX_ATTR_CANDIDATES && lists.some((l) => i < l.length); i++) {
+      for (const list of lists) {
+        if (i < list.length) {
+          sampled.push(list[i]!)
+          if (sampled.length >= MAX_ATTR_CANDIDATES) break
+        }
+      }
+    }
+
+    return sampled.map((a) => ({
+      name: a.name,
+      category: a.field || null,
+      region: extractRegionFromAddress(a.roadAddress),
+      source: 'visitjeju' as const,
+    }))
+  } catch {
+    return []
+  }
+}
+
 // ── Compose: one sonnet call builds the 4 courses ─────────────────────────────
 
 /** One compact line per candidate the composer may reference by index. */
@@ -279,6 +339,7 @@ function buildComposeSystemPrompt(duration: '반나절' | '하루'): string {
     '- 각 스톱은 후보 목록의 index(번호)로만 지정하세요. 존재하지 않는 번호는 절대 사용하지 마세요.',
     '- 같은 코스 안에서 같은 장소를 중복하지 마세요.',
     '- 어떤 코스에 잘 맞는 후보가 너무 적으면 무리하게 채우지 말고, 그 코스는 적게 구성하거나 생략해도 됩니다(억지로 끼워맞추지 마세요). 가능하면 4개를 모두 만드세요.',
+    '- {공식} 표시 후보는 좌표가 확인된 실제 관광지·오름·문화유적입니다. 가능하면 비슷한 지역 장소들을 연결해 동선을 자연스럽게 구성하세요.',
     '- 반드시 한국어로만 작성하세요.',
     '',
     '출력 형식(엄수): 아래 형태의 JSON 객체 하나만 출력하세요. JSON 외의 설명·마크다운·인사말은 절대 출력하지 마세요.',
@@ -389,14 +450,15 @@ export async function generateCourses({
       source: 'visitjeju',
     }))
 
-    // 3. Sonar supplement for local-hidden + active places (non-fatal on failure).
-    const webCandidates = await fetchLocalActivePlaces(
-      trimmedQuery || '제주 여행 코스',
-      trimmedArea
-    )
+    // 3. Parallel: official attractions (nature/culture/oreum, all coord-verified)
+    //    + sonar supplement for local-hidden + active places. Both non-fatal.
+    const [attrCandidates, webCandidates] = await Promise.all([
+      fetchAttractionCandidates(trimmedArea),
+      fetchLocalActivePlaces(trimmedQuery || '제주 여행 코스', trimmedArea),
+    ])
 
-    // Unified, index-stable candidate bank: VisitJeju first, then web.
-    const candidates: Candidate[] = [...visitJejuCandidates, ...webCandidates]
+    // Unified, index-stable candidate bank: VisitJeju → attractions → web.
+    const candidates: Candidate[] = [...visitJejuCandidates, ...attrCandidates, ...webCandidates]
     if (candidates.length === 0) return { ok: false, error: GENERIC_FAIL }
 
     // 4. Compose the 4 courses (sonnet) — index-only, anti-hallucination.
@@ -623,14 +685,17 @@ export async function generateCustomCourses(params: {
       source: 'visitjeju',
     }))
 
-    // 3. Sonar supplement — bias the query with the situation so it surfaces
-    //    relevant local/gentle/active places (non-fatal on failure).
+    // 3. Parallel: official attractions + sonar (biased toward the situation).
+    //    Both non-fatal. Attractions grounded on real coord-verified data.
     const sonarQuery = [trimmedQuery || '제주 여행 코스', companion, ageGroup]
       .filter(Boolean)
       .join(' ')
-    const webCandidates = await fetchLocalActivePlaces(sonarQuery, trimmedArea)
+    const [attrCandidates, webCandidates] = await Promise.all([
+      fetchAttractionCandidates(trimmedArea),
+      fetchLocalActivePlaces(sonarQuery, trimmedArea),
+    ])
 
-    const candidates: Candidate[] = [...visitJejuCandidates, ...webCandidates]
+    const candidates: Candidate[] = [...visitJejuCandidates, ...attrCandidates, ...webCandidates]
     if (candidates.length === 0) return { ok: false, error: GENERIC_FAIL }
 
     // 4. Compose exactly up to 2 situation-tailored courses (sonnet, index-only).

@@ -2511,3 +2511,141 @@ export async function getOlleCourses(): Promise<OlleCourse[]> {
   }
   return courses
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JEJU OFFICIAL TOURIST ATTRACTIONS (제주 관광지데이터)
+// Source: odcloud 15111742 — 제주 관광지데이터 (공공데이터포털)
+// Verified: 1046 attractions, all with lat/lng coordinates, 데이터기준일자 2025-12-31.
+// Auth: same DATA_GO_KR_KEY ?? KPX_SERVICE_KEY serviceKey pattern.
+// Fields: 관광지명·분야·구분·소개·주소·위도·경도·전화·주차 등 18개.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ATTRACTIONS_ENDPOINT =
+  'https://api.odcloud.kr/api/15111742/v1/uddi:735137ac-cee5-42f5-9119-a8b6c9f784dc'
+
+export interface JejuAttraction {
+  /** 관광지명 */
+  name: string
+  /** 관광지 분야 — e.g. "자연", "문화", "오름" */
+  field: string
+  /** 관광지 구분 — e.g. "관광지", "관광특구" */
+  category: string
+  /** 관광지소개 */
+  intro: string
+  /** 소재지도로명주소 */
+  roadAddress: string
+  /** 소재지지번주소 */
+  jibunAddress: string
+  /** 위도 (WGS-84) */
+  lat: number
+  /** 경도 (WGS-84) */
+  lng: number
+  /** 관리기관전화번호 */
+  phone: string | null
+  /** 주차가능수 */
+  parking: number | null
+}
+
+/** Coerces a raw value to a finite float, or null. */
+function toFloat(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = parseFloat(v)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+/** Coerces a raw value to a trimmed non-empty string, or ''. */
+function attrStr(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : ''
+}
+
+/** Coerces to a positive integer or null (for parking count). */
+function toIntOrNull(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return Math.round(v)
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = parseInt(v, 10)
+    return Number.isFinite(n) && n >= 0 ? n : null
+  }
+  return null
+}
+
+/**
+ * Fetches all Jeju official tourist attractions from odcloud.
+ * perPage=1100 fetches all ~1046 items in one call.
+ * Skips items with missing/invalid lat or lng — only real-coord entries returned.
+ * Never throws — returns [] on any failure.
+ */
+export async function fetchJejuAttractions(): Promise<JejuAttraction[]> {
+  try {
+    const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+    if (!key) return []
+
+    const params = new URLSearchParams({
+      page: '1',
+      perPage: '1100',
+      serviceKey: key,
+    })
+    const url = `${ATTRACTIONS_ENDPOINT}?${params.toString()}`
+
+    const ctrl = new AbortController()
+    const timeout = setTimeout(() => ctrl.abort(), 20_000)
+    let rawJson: unknown
+    try {
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) return []
+      rawJson = await res.json()
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    const env = readOdcloudEnvelope(rawJson)
+    if (!env.ok) return []
+
+    const attractions: JejuAttraction[] = []
+    for (const row of env.rows) {
+      const lat = toFloat(row['위도'])
+      const lng = toFloat(row['경도'])
+      // Skip items without valid coordinates — they can't be mapped.
+      if (lat === null || lng === null) continue
+
+      attractions.push({
+        name: attrStr(row['관광지명']),
+        field: attrStr(row['관광지 분야']),
+        category: attrStr(row['관광지 구분']),
+        intro: attrStr(row['관광지소개']),
+        roadAddress: attrStr(row['소재지도로명주소']),
+        jibunAddress: attrStr(row['소재지지번주소']),
+        lat,
+        lng,
+        phone: attrStr(row['관리기관전화번호']) || null,
+        parking: toIntOrNull(row['주차가능수']),
+      })
+    }
+    return attractions
+  } catch {
+    return []
+  }
+}
+
+/** Cache freshness — 6 hours (same as VisitJeju pool and Olle). */
+const ATTRACTIONS_TTL_MS = 6 * 60 * 60 * 1000
+
+let _attractionsCache: { at: number; items: JejuAttraction[] } | null = null
+
+/** Returns cached attractions when younger than the TTL, else refetches. */
+export async function getJejuAttractions(): Promise<JejuAttraction[]> {
+  const now = Date.now()
+  if (_attractionsCache && now - _attractionsCache.at < ATTRACTIONS_TTL_MS) {
+    return _attractionsCache.items
+  }
+  const items = await fetchJejuAttractions()
+  if (items.length > 0) {
+    _attractionsCache = { at: now, items }
+  }
+  return items
+}

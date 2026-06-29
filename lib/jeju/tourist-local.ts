@@ -3,37 +3,36 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
-import { getVisitJejuPool } from '@/lib/jeju/connectors'
+import { getVisitJejuPool, type JejuAttraction } from '@/lib/jeju/connectors'
+import { getAttractionsByField, NATURE_FIELDS, CULTURE_FIELDS } from '@/lib/jeju/attraction-utils'
 
 /**
- * Jeju TOURIST mode — Perplexity (sonar) LOCAL-GEMS supplement.
+ * Jeju TOURIST mode — "관광객은 잘 모르는" local-gems feature.
  *
- * DESIGN CONSTRAINTS (same isolation discipline as lib/jeju/mediawatch.ts):
- *   - 'server-only'. One runSingleAiProvider call with sessionId:null + userId:null
- *     (NO credit/DB logging, no BYOK reads — noDbSupabase() is never dereferenced).
- *   - MUST NOT import app/api/synod/* or any AIMANI compare/credit session runner.
+ * DATA STRATEGY (blend to defeat sonar's food/cafe web bias):
+ *   1. Sonar (Perplexity) — keeps its strength: local 맛집·카페·hidden spots.
+ *      Ask for 4-5 items (fewer so food doesn't flood).
+ *   2. Official attractions (odcloud 15111742) — GUARANTEED nature/culture/oreum
+ *      with real coords. 3 자연·오름 + 2 문화·예술 sampled from 514+ real spots.
+ *   3. Blend: dedupe by name, interleave official ↔ sonar for a true mix.
  *
- * Returns good Jeju spots that locals value but tourists often skip — from a
- * real-time web search, broadened beyond food (카페·자연·명소·체험). Targets the
- * "well-documented but off the typical tourist route" zone (e.g. 엉또폭포, 원앙폭포)
- * rather than truly-obscure places, which have little web data and make sonar
- * hallucinate. Every gem is source:'web'; each is ALSO cross-checked against the
- * official VisitJeju pool to set a `verified` trust flag. Never throws.
+ * ISOLATION: 'server-only', sessionId/userId null, noDbSupabase() never used for I/O.
+ * Never throws.
  */
 
-/** Perplexity sonar — real-time web retrieval. Default model (sonar), no override. */
 const LOCAL_PROVIDER: ExtendedAiProviderName = 'perplexity'
 
-/** Room for 4–8 gems with descriptions + cautions in token-dense Korean. */
-const LOCAL_MAX_TOKENS = 1300
+/** Tokens for 4-5 sonar gems (less than before — official supplements). */
+const LOCAL_MAX_TOKENS = 900
 
 const GENERIC_FAIL = '주변 정보를 불러오지 못했어요. 다시 시도해 주세요.'
 
 /**
- * A local spot found via web search, shaped to merge with place cards.
- *   - `source` is always 'web' (every gem came from sonar).
- *   - `verified` is the trust signal: true when the gem's name matches a place
- *     in the official VisitJeju pool, false when it's web-only/unconfirmed.
+ * A local spot to show in the chip results.
+ *   source:'web'      — came from sonar; no guaranteed coords.
+ *   source:'official' — came from official odcloud attractions; lat/lng always present.
+ *   verified          — name matches the VisitJeju pool (both web and official can be true).
+ *   lat/lng           — always set for source:'official'; always absent for source:'web'.
  */
 export interface LocalGem {
   name: string
@@ -41,20 +40,16 @@ export interface LocalGem {
   description: string
   tags: string[]
   caution: string | null
-  source: 'web'
+  source: 'web' | 'official'
   verified: boolean
+  lat?: number
+  lng?: number
 }
 
-/**
- * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
- * With sessionId:null + userId:null the router does NO DB inserts and NO BYOK
- * reads, so this client is never dereferenced for I/O. Mirrors mediawatch.ts.
- */
 function noDbSupabase(): SupabaseClient {
   return createClient('http://localhost', 'tourist-local-no-db') as unknown as SupabaseClient
 }
 
-/** Strips ``` / ```json fences, then extracts the first {...} object substring. */
 function extractJsonObject(raw: string): string {
   let text = raw.trim()
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)(?:```|$)/i)
@@ -69,11 +64,8 @@ function buildSystemPrompt(today: string): string {
   return [
     '당신은 제주 현지 사정에 밝은 로컬 여행 안내자입니다.',
     `오늘은 ${today} 입니다. 반드시 최신(가능하면 최근 1년 이내) 정보를 우선해서 찾아주세요.`,
-    '현지인이 아끼지만 관광객은 잘 모르거나 일반 관광 코스에서 빠지는 제주의 좋은 장소 4~8곳을 추천하세요.',
-    '자연(폭포·오름·해변·숲), 전시·박물관·문화공간, 체험, 카페, 맛집을 고르게 섞어 주세요.',
-    '웹에는 맛집·카페 정보가 많아 그쪽으로 쏠리기 쉬우니, 의식적으로 자연·문화·체험 장소도 균형 있게 포함하세요.',
-    '질문에 특정 종류(맛집/카페/전시 등)가 명시되면 그 종류 위주로, 명시가 없으면 자연 명소·문화공간·카페·맛집을 골고루 섞어주세요.',
-    '여러 종류를 섞어달라는 요청이면, 예: 자연 명소 2~3, 맛집 2, 카페 1~2, 전시/박물관/문화공간 1~2. 어느 한 종류(자연이든 맛집이든)에 치우치지 말고 고르게 섞으세요.',
+    '현지인이 아끼지만 관광객은 잘 모르거나 일반 관광 코스에서 빠지는 제주의 로컬 장소 4~5곳을 추천하세요.',
+    '별도로 공식 자연·문화 명소를 이미 제공하므로, 여기서는 로컬 맛집·카페·작은 박물관·체험·숨은 문화공간 위주로 찾아주세요.',
     '알려져 있지만 관광객이 잘 들르지 않는 곳도 좋습니다 — 예: 엉또폭포(비 온 뒤에만 물이 흐름), 원앙폭포.',
     '',
     '엄수 규칙(매우 중요):',
@@ -95,20 +87,14 @@ function buildUserPrompt(query: string, today: string): string {
     '[사용자 요청]',
     query,
     '',
-    `오늘(${today}) 기준 최신 정보로, 위 요청에 맞는 제주의 좋은 장소(맛집·카페·자연·명소·체험 등) 4~8곳을 찾아 JSON으로만 답하세요. 관광객이 잘 모르거나 코스에서 빠지지만 검증 가능한 실재 장소 위주로 골라 주세요.`,
+    `오늘(${today}) 기준 최신 정보로, 위 요청에 맞는 제주의 로컬 장소(맛집·카페·체험·숨은 문화공간 등) 4~5곳을 찾아 JSON으로만 답하세요. 관광객이 잘 모르거나 코스에서 빠지지만 검증 가능한 실재 장소 위주로 골라 주세요.`,
   ].join('\n')
 }
 
-/** Normalizes a place name for matching: lowercased, all whitespace stripped. */
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '')
 }
 
-/**
- * Cross-checks gem names against the official VisitJeju pool. A gem is verified
- * when its normalized name (len >= 2) is a substring of a pool title or vice
- * versa. Pool fetch failure is non-fatal — all gems stay verified:false.
- */
 async function buildVerifier(): Promise<(name: string) => boolean> {
   let poolNames: string[] = []
   try {
@@ -117,7 +103,6 @@ async function buildVerifier(): Promise<(name: string) => boolean> {
   } catch {
     poolNames = []
   }
-
   return (name: string): boolean => {
     const n = normalizeName(name)
     if (n.length < 2 || poolNames.length === 0) return false
@@ -125,7 +110,6 @@ async function buildVerifier(): Promise<(name: string) => boolean> {
   }
 }
 
-/** Coerces an unknown into a clean tags array (strings, trimmed, deduped-ish, capped). */
 function toTags(v: unknown): string[] {
   if (!Array.isArray(v)) return []
   return v
@@ -135,11 +119,103 @@ function toTags(v: unknown): string[] {
     .slice(0, 5)
 }
 
-/** Coerces an unknown into a trimmed string, or null when empty/absent. */
 function toStrOrNull(v: unknown): string | null {
   if (typeof v !== 'string') return null
   const s = v.trim()
   return s !== '' && s.toLowerCase() !== 'null' ? s : null
+}
+
+/**
+ * Extracts a short area string from a Korean road address.
+ * "제주특별자치도 서귀포시 안덕면 사계남로…" → "서귀포시 안덕면"
+ */
+function extractAreaFromAddress(address: string): string | null {
+  if (!address) return null
+  const m = address.match(/제주(?:특별자치도)?\s+([^\s]+(?:시|군))(?:\s+([^\s]+(?:읍|면|동|리)))?/)
+  if (!m) return null
+  const city = m[1] ?? ''
+  const district = m[2] ?? ''
+  return district ? `${city} ${district}` : city
+}
+
+/** Maps a JejuAttraction to LocalGem (source:'official', coords always present). */
+function attractionToGem(a: JejuAttraction): LocalGem {
+  const intro = a.intro.trim()
+  return {
+    name: a.name,
+    area: extractAreaFromAddress(a.roadAddress),
+    description: intro.length > 100 ? `${intro.slice(0, 97)}…` : intro,
+    tags: [a.field, ...(a.category && a.category !== a.field ? [a.category] : [])].filter(Boolean),
+    caution: null,
+    source: 'official',
+    verified: true,
+    lat: a.lat,
+    lng: a.lng,
+  }
+}
+
+/**
+ * Simple hash of a string for daily seed rotation.
+ * Different days → different starting offset in the attraction list.
+ */
+function dailySeed(s: string): number {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) {
+    h = Math.imul(h, 33) ^ s.charCodeAt(i)
+  }
+  return Math.abs(h)
+}
+
+/**
+ * Fetches 3 자연/오름 + 2 문화/예술 official attractions, rotated daily.
+ * Never throws — returns [] on any failure.
+ */
+async function fetchOfficialGems(today: string): Promise<LocalGem[]> {
+  try {
+    const seed = dailySeed(today)
+
+    const [naturePool, culturePool] = await Promise.all([
+      getAttractionsByField([...NATURE_FIELDS], { limit: 400 }),
+      getAttractionsByField([...CULTURE_FIELDS], { limit: 400 }),
+    ])
+
+    // Rotate starting position daily so the same 3 items don't always show.
+    const pickN = (pool: JejuAttraction[], count: number): JejuAttraction[] => {
+      if (pool.length === 0) return []
+      const offset = seed % pool.length
+      const rotated = [...pool.slice(offset), ...pool.slice(0, offset)]
+      return rotated.slice(0, count)
+    }
+
+    const naturePicks = pickN(naturePool, 3)
+    const culturePicks = pickN(culturePool, 2)
+
+    return [...naturePicks, ...culturePicks].map(attractionToGem)
+  } catch {
+    return []
+  }
+}
+
+/** Blends official + sonar gems: dedupes by name, interleaves, caps at 9. */
+function blendGems(official: LocalGem[], sonar: LocalGem[]): LocalGem[] {
+  const offNames = new Set(official.map((g) => normalizeName(g.name)))
+
+  // Dedupe sonar: drop items whose name matches an official gem.
+  const dedupedSonar = sonar.filter((g) => {
+    const n = normalizeName(g.name)
+    return !offNames.has(n) && !official.some(
+      (o) => normalizeName(o.name).includes(n) || n.includes(normalizeName(o.name))
+    )
+  })
+
+  // Interleave: official[0], sonar[0], official[1], sonar[1], ...
+  const result: LocalGem[] = []
+  const maxLen = Math.max(official.length, dedupedSonar.length)
+  for (let i = 0; i < maxLen && result.length < 9; i++) {
+    if (i < official.length) result.push(official[i]!)
+    if (result.length < 9 && i < dedupedSonar.length) result.push(dedupedSonar[i]!)
+  }
+  return result
 }
 
 export async function findLocalGems({
@@ -153,56 +229,52 @@ export async function findLocalGems({
     const trimmed = query?.trim()
     if (!trimmed) return { ok: false, error: GENERIC_FAIL }
 
-    const r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
-      provider: LOCAL_PROVIDER,
-      prompt: buildUserPrompt(trimmed, today),
-      systemPrompt: buildSystemPrompt(today),
-      maxCompletionTokens: LOCAL_MAX_TOKENS,
-    })
+    // Run sonar + official attractions in parallel.
+    const [sonarResult, officialGems] = await Promise.all([
+      runSingleAiProvider({
+        supabase: noDbSupabase(),
+        sessionId: null,
+        userId: null,
+        provider: LOCAL_PROVIDER,
+        prompt: buildUserPrompt(trimmed, today),
+        systemPrompt: buildSystemPrompt(today),
+        maxCompletionTokens: LOCAL_MAX_TOKENS,
+      }),
+      fetchOfficialGems(today),
+    ])
 
-    if (r.error || !r.text || !r.text.trim()) {
-      return { ok: false, error: GENERIC_FAIL }
+    // Parse sonar output (non-fatal — official gems alone are still useful).
+    let sonarGems: LocalGem[] = []
+    if (!sonarResult.error && sonarResult.text?.trim()) {
+      try {
+        const parsed = JSON.parse(extractJsonObject(sonarResult.text)) as unknown
+        if (parsed && typeof parsed === 'object') {
+          const rawGems = (parsed as Record<string, unknown>).gems
+          if (Array.isArray(rawGems)) {
+            const isVerified = await buildVerifier()
+            for (const item of rawGems) {
+              if (!item || typeof item !== 'object') continue
+              const o = item as Record<string, unknown>
+              const name = typeof o.name === 'string' ? o.name.trim() : ''
+              if (!name) continue
+              sonarGems.push({
+                name,
+                area: toStrOrNull(o.area),
+                description: typeof o.description === 'string' ? o.description.trim() : '',
+                tags: toTags(o.tags),
+                caution: toStrOrNull(o.caution),
+                source: 'web',
+                verified: isVerified(name),
+              })
+            }
+          }
+        }
+      } catch {
+        // sonar parse failed — official gems still shown
+      }
     }
 
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(extractJsonObject(r.text))
-    } catch {
-      return { ok: false, error: GENERIC_FAIL }
-    }
-    if (!parsed || typeof parsed !== 'object') {
-      return { ok: false, error: GENERIC_FAIL }
-    }
-
-    const rawGems = (parsed as Record<string, unknown>).gems
-    if (!Array.isArray(rawGems)) {
-      return { ok: false, error: GENERIC_FAIL }
-    }
-
-    // Cross-check names against the official VisitJeju pool (fetched once).
-    const isVerified = await buildVerifier()
-
-    const gems: LocalGem[] = []
-    for (const item of rawGems) {
-      if (!item || typeof item !== 'object') continue
-      const o = item as Record<string, unknown>
-      const name = typeof o.name === 'string' ? o.name.trim() : ''
-      if (!name) continue // a gem with no name is unusable
-      gems.push({
-        name,
-        area: toStrOrNull(o.area),
-        description: typeof o.description === 'string' ? o.description.trim() : '',
-        tags: toTags(o.tags),
-        caution: toStrOrNull(o.caution),
-        // source is set in CODE for every gem — never requested from the model.
-        source: 'web',
-        // verified: true when this place exists in the official VisitJeju DB.
-        verified: isVerified(name),
-      })
-    }
+    const gems = blendGems(officialGems, sonarGems)
 
     if (gems.length === 0) {
       return { ok: false, error: GENERIC_FAIL }
