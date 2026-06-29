@@ -835,6 +835,14 @@ export type RunSingleProviderParams = {
   /** When set (e.g. 300), caps completion length via each provider API. */
   maxCompletionTokens?: number
   /**
+   * When set, the `callProvider` call is raced against this timeout (ms).
+   * If the timeout fires first, a synthetic AbortError is thrown so callers
+   * can fall through to their own fallback/error path.
+   * Intentionally absent from DEEP/Arena callers — only tourist-mode engines
+   * that have their own fallback logic should pass this.
+   */
+  timeoutMs?: number
+  /**
    * Overrides the default model for this provider (e.g. DEEP mode: Anthropic uses Opus for assigned parts).
    */
   modelOverride?: string
@@ -944,7 +952,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       throw new Error(`Missing API key for ${provider}. Set env var or save BYOK in user_api_keys.`)
     }
 
-    const { text, usage } = await callProvider({
+    const providerCallPromise = callProvider({
       provider,
       apiKey,
       model,
@@ -956,6 +964,19 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       chatMessages,
       allowGeminiThinking,
     })
+
+    const { text, usage } = params.timeoutMs && params.timeoutMs > 0
+      ? await Promise.race([
+          providerCallPromise,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => {
+              const e = new Error(`Tourist sonar timeout after ${params.timeoutMs}ms`)
+              e.name = 'AbortError'
+              reject(e)
+            }, params.timeoutMs)
+          ),
+        ])
+      : await providerCallPromise
 
     const responseTimeMs = nowMs() - started
     let textForRow = text
