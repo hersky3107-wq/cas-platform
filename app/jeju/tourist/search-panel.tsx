@@ -16,6 +16,7 @@ import { OlleCard } from './olle-card'
 import { DullegilCard } from './dullegil-card'
 import { FestivalEventCard } from './festival-event-card'
 import { CoursePanel } from './course-panel'
+import { BusPanel } from './bus-panel'
 import { PlaceDetailModal } from './place-detail-modal'
 import {
   type PlaceDetail,
@@ -85,7 +86,7 @@ const FETCH_TIMEOUT: Record<string, number> = {
   cached: 25_000,  // olle/oreum: 25s (fast cached GET)
 }
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus'
 
 export function SearchPanel() {
   const { t } = useTouristUi()
@@ -413,6 +414,13 @@ export function SearchPanel() {
     resetResults()
   }
 
+  // 🚌 Bus — opens the dedicated bus panel (self-contained, no immediate fetch).
+  function openBus() {
+    if (loading) return
+    setMode('bus')
+    resetResults()
+  }
+
   const canSubmit = query.trim() !== '' && !loading
 
   // Derive the current rotating message for the active mode (localized).
@@ -426,6 +434,7 @@ export function SearchPanel() {
     olle: t.loadOlle,
     oreum: t.loadOreum,
     course: t.loadCourse,
+    bus: [t.busLoadNearby],
   }
   const msgArr = LOADING_MSGS[mode] ?? t.loadSearch
   const currentLoadingMsg = msgArr[msgIdx % msgArr.length]
@@ -457,8 +466,8 @@ export function SearchPanel() {
         </div>
       </div>
 
-      {/* Signature feature — AI 여행 코스 (its own row, chip-style but distinct) */}
-      <div className="mt-4">
+      {/* Signature features — AI 여행 코스 + 🚌 버스 (own row, chip-style but distinct) */}
+      <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={openCourse}
@@ -471,6 +480,19 @@ export function SearchPanel() {
         >
           <span aria-hidden>🗺️</span>
           {t.chipCourse}
+        </button>
+        <button
+          type="button"
+          onClick={openBus}
+          disabled={loading}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
+            mode === 'bus'
+              ? 'bg-[#0A2B30] text-white'
+              : 'bg-[#0A2B30]/90 text-white'
+          }`}
+        >
+          <span aria-hidden>🚌</span>
+          {t.chipBus}
         </button>
       </div>
 
@@ -596,6 +618,9 @@ export function SearchPanel() {
 
       {/* AI 여행 코스 — self-contained input + loading + tabs + timeline */}
       {mode === 'course' && <CoursePanel />}
+
+      {/* 🚌 버스 — self-contained nearby-stations + arrivals + route lookup */}
+      {mode === 'bus' && <BusPanel />}
 
       {/* Free-text recommendation results (VisitJeju) */}
       {!loading && mode === 'search' && results && results.length > 0 && (

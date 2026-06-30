@@ -153,6 +153,42 @@ export type TouristUiPack = {
   mapNaver: string
   mapKakao: string
 
+  // ── Bus (🚌) feature ──
+  chipBus: string
+  busHeading: string
+  busTabNearby: string
+  busTabRoute: string
+  busUseLocation: string
+  busLocating: string
+  busLocationHelp: string
+  busPresetLabel: string
+  busSelectStationHint: string
+  busNoStations: string
+  busArrivalsTitle: string
+  busNoArrivals: string
+  busRefresh: string
+  busBackToStations: string
+  busMinPrefix: string
+  busMinUnit: string
+  busArrivingSoon: string
+  busStopsUnit: string
+  busLowFloor: string
+  busDistanceUnit: string
+  busRoutePlaceholder: string
+  busRouteSearch: string
+  busRouteStopsTitle: string
+  busRouteNotFound: string
+  busMapView: string
+  busErr: string
+  busLoadNearby: string
+  busLoadArrivals: string
+  busLoadRoute: string
+  anchorAirport: string
+  anchorJejuCity: string
+  anchorSeogwipoCity: string
+  anchorSeongsan: string
+  anchorJungmun: string
+
   // ── Featured (server page) ──
   featuredHeading: string
   featuredBadge: string
@@ -294,6 +330,41 @@ const KO: TouristUiPack = {
   mapVerifyNote: '정확한 위치·운영정보는 지도/공식 채널에서 확인하세요.',
   mapNaver: '네이버',
   mapKakao: '카카오',
+
+  chipBus: '버스 정보',
+  busHeading: '🚌 제주 버스',
+  busTabNearby: '내 주변 버스',
+  busTabRoute: '버스 번호로 찾기',
+  busUseLocation: '현재 위치로 정류장 찾기',
+  busLocating: '현재 위치를 확인하는 중…',
+  busLocationHelp: '위치를 사용할 수 없으면 아래 주요 지점을 선택하세요.',
+  busPresetLabel: '또는 주요 지점에서 찾기',
+  busSelectStationHint: '정류장을 선택하면 실시간 도착 정보를 보여드려요.',
+  busNoStations: '주변에서 정류장을 찾지 못했어요.',
+  busArrivalsTitle: '실시간 도착 정보',
+  busNoArrivals: '곧 도착하는 버스가 없어요. (운행 시간이 아닐 수 있어요)',
+  busRefresh: '새로고침',
+  busBackToStations: '정류장 목록으로',
+  busMinPrefix: '약 ',
+  busMinUnit: '분 후',
+  busArrivingSoon: '곧 도착',
+  busStopsUnit: '정거장 전',
+  busLowFloor: '저상버스',
+  busDistanceUnit: 'm',
+  busRoutePlaceholder: '버스 번호 입력 (예: 600)',
+  busRouteSearch: '찾기',
+  busRouteStopsTitle: '이 버스가 가는 정류장',
+  busRouteNotFound: '해당 번호의 버스를 찾지 못했어요. 번호를 확인해 주세요.',
+  busMapView: '지도',
+  busErr: '버스 정보를 불러오지 못했어요. 다시 시도해 주세요.',
+  busLoadNearby: '주변 정류장을 찾고 있어요 🚌',
+  busLoadArrivals: '도착 정보를 확인하는 중이에요',
+  busLoadRoute: '버스 노선을 확인하는 중이에요',
+  anchorAirport: '제주공항',
+  anchorJejuCity: '제주시청',
+  anchorSeogwipoCity: '서귀포시청',
+  anchorSeongsan: '성산일출봉 입구',
+  anchorJungmun: '중문관광단지',
 
   featuredHeading: '지금 뜨는 제주',
   featuredBadge: '실시간 비짓제주',
@@ -437,6 +508,41 @@ const EN: TouristUiPack = {
   mapNaver: 'Naver',
   mapKakao: 'Kakao',
 
+  chipBus: 'Bus Info',
+  busHeading: '🚌 Jeju Bus',
+  busTabNearby: 'Buses Near Me',
+  busTabRoute: 'Find by Bus Number',
+  busUseLocation: 'Find stops near my location',
+  busLocating: 'Getting your location…',
+  busLocationHelp: "If location isn't available, pick a key spot below.",
+  busPresetLabel: 'Or find from a key spot',
+  busSelectStationHint: 'Pick a stop to see real-time arrivals.',
+  busNoStations: "Couldn't find any stops nearby.",
+  busArrivalsTitle: 'Real-time arrivals',
+  busNoArrivals: 'No buses arriving soon. (May be outside service hours)',
+  busRefresh: 'Refresh',
+  busBackToStations: 'Back to stops',
+  busMinPrefix: '~',
+  busMinUnit: ' min',
+  busArrivingSoon: 'Arriving soon',
+  busStopsUnit: ' stops away',
+  busLowFloor: 'Low-floor',
+  busDistanceUnit: 'm',
+  busRoutePlaceholder: 'Enter bus number (e.g. 600)',
+  busRouteSearch: 'Search',
+  busRouteStopsTitle: 'Stops on this route',
+  busRouteNotFound: "Couldn't find that bus number. Please check it.",
+  busMapView: 'Map',
+  busErr: "Couldn't load bus info. Please try again.",
+  busLoadNearby: 'Finding stops near you 🚌',
+  busLoadArrivals: 'Checking arrivals',
+  busLoadRoute: 'Checking the bus route',
+  anchorAirport: 'Jeju Airport',
+  anchorJejuCity: 'Jeju City Hall',
+  anchorSeogwipoCity: 'Seogwipo City Hall',
+  anchorSeongsan: 'Seongsan Ilchulbong',
+  anchorJungmun: 'Jungmun Resort',
+
   featuredHeading: 'Trending in Jeju',
   featuredBadge: 'Live · VisitJeju',
   emptyTitle: "Couldn't load Jeju info right now.",
@@ -578,6 +684,41 @@ const JA: TouristUiPack = {
   mapVerifyNote: '正確な位置・営業情報は地図／公式チャンネルでご確認ください。',
   mapNaver: 'NAVER',
   mapKakao: 'カカオ',
+
+  chipBus: 'バス情報',
+  busHeading: '🚌 済州バス',
+  busTabNearby: '周辺のバス',
+  busTabRoute: 'バス番号で探す',
+  busUseLocation: '現在地から停留所を探す',
+  busLocating: '現在地を確認中…',
+  busLocationHelp: '位置情報が使えない場合は、下の主要スポットを選んでください。',
+  busPresetLabel: 'または主要スポットから探す',
+  busSelectStationHint: '停留所を選ぶと、リアルタイムの到着情報を表示します。',
+  busNoStations: '周辺に停留所が見つかりませんでした。',
+  busArrivalsTitle: 'リアルタイム到着情報',
+  busNoArrivals: 'まもなく到着するバスはありません。（運行時間外の可能性があります）',
+  busRefresh: '更新',
+  busBackToStations: '停留所一覧へ',
+  busMinPrefix: '約',
+  busMinUnit: '分後',
+  busArrivingSoon: 'まもなく到着',
+  busStopsUnit: '停留所前',
+  busLowFloor: 'ノンステップ',
+  busDistanceUnit: 'm',
+  busRoutePlaceholder: 'バス番号を入力（例：600）',
+  busRouteSearch: '検索',
+  busRouteStopsTitle: 'このバスが通る停留所',
+  busRouteNotFound: 'その番号のバスが見つかりませんでした。番号をご確認ください。',
+  busMapView: '地図',
+  busErr: 'バス情報を読み込めませんでした。もう一度お試しください。',
+  busLoadNearby: '周辺の停留所を探しています 🚌',
+  busLoadArrivals: '到着情報を確認中',
+  busLoadRoute: 'バス路線を確認中',
+  anchorAirport: '済州空港',
+  anchorJejuCity: '済州市庁',
+  anchorSeogwipoCity: '西帰浦市庁',
+  anchorSeongsan: '城山日出峰 入口',
+  anchorJungmun: '中文観光団地',
 
   featuredHeading: '今の済州の話題',
   featuredBadge: 'リアルタイム · VisitJeju',
@@ -721,6 +862,41 @@ const ZH_TW: TouristUiPack = {
   mapNaver: 'Naver',
   mapKakao: 'Kakao',
 
+  chipBus: '公車資訊',
+  busHeading: '🚌 濟州公車',
+  busTabNearby: '附近的公車',
+  busTabRoute: '用公車號碼查詢',
+  busUseLocation: '用目前位置尋找站牌',
+  busLocating: '正在取得目前位置…',
+  busLocationHelp: '若無法使用定位，請選擇下方主要地點。',
+  busPresetLabel: '或從主要地點尋找',
+  busSelectStationHint: '選擇站牌即可查看即時到站資訊。',
+  busNoStations: '附近找不到站牌。',
+  busArrivalsTitle: '即時到站資訊',
+  busNoArrivals: '近期沒有公車進站。（可能非營運時間）',
+  busRefresh: '重新整理',
+  busBackToStations: '回到站牌清單',
+  busMinPrefix: '約',
+  busMinUnit: '分鐘後',
+  busArrivingSoon: '即將到站',
+  busStopsUnit: '站前',
+  busLowFloor: '低底盤',
+  busDistanceUnit: '公尺',
+  busRoutePlaceholder: '輸入公車號碼（例：600）',
+  busRouteSearch: '查詢',
+  busRouteStopsTitle: '這班公車行經的站牌',
+  busRouteNotFound: '找不到該號碼的公車，請確認號碼。',
+  busMapView: '地圖',
+  busErr: '無法載入公車資訊，請再試一次。',
+  busLoadNearby: '正在尋找附近站牌 🚌',
+  busLoadArrivals: '確認到站資訊中',
+  busLoadRoute: '確認公車路線中',
+  anchorAirport: '濟州機場',
+  anchorJejuCity: '濟州市廳',
+  anchorSeogwipoCity: '西歸浦市廳',
+  anchorSeongsan: '城山日出峰 入口',
+  anchorJungmun: '中文觀光園區',
+
   featuredHeading: '濟州正夯',
   featuredBadge: '即時 · VisitJeju',
   emptyTitle: '目前無法載入濟州資訊。',
@@ -862,6 +1038,41 @@ const ZH_CN: TouristUiPack = {
   mapVerifyNote: '确切位置・营业信息请于地图／官方渠道确认。',
   mapNaver: 'Naver',
   mapKakao: 'Kakao',
+
+  chipBus: '公交信息',
+  busHeading: '🚌 济州公交',
+  busTabNearby: '附近的公交',
+  busTabRoute: '用公交号码查询',
+  busUseLocation: '用当前位置查找站点',
+  busLocating: '正在获取当前位置…',
+  busLocationHelp: '若无法使用定位，请选择下方主要地点。',
+  busPresetLabel: '或从主要地点查找',
+  busSelectStationHint: '选择站点即可查看实时到站信息。',
+  busNoStations: '附近找不到站点。',
+  busArrivalsTitle: '实时到站信息',
+  busNoArrivals: '近期没有公交进站。（可能非运营时间）',
+  busRefresh: '刷新',
+  busBackToStations: '返回站点列表',
+  busMinPrefix: '约',
+  busMinUnit: '分钟后',
+  busArrivingSoon: '即将到站',
+  busStopsUnit: '站前',
+  busLowFloor: '低地板',
+  busDistanceUnit: '米',
+  busRoutePlaceholder: '输入公交号码（例：600）',
+  busRouteSearch: '查询',
+  busRouteStopsTitle: '这班公交经过的站点',
+  busRouteNotFound: '找不到该号码的公交，请确认号码。',
+  busMapView: '地图',
+  busErr: '无法加载公交信息，请再试一次。',
+  busLoadNearby: '正在查找附近站点 🚌',
+  busLoadArrivals: '确认到站信息中',
+  busLoadRoute: '确认公交路线中',
+  anchorAirport: '济州机场',
+  anchorJejuCity: '济州市厅',
+  anchorSeogwipoCity: '西归浦市厅',
+  anchorSeongsan: '城山日出峰 入口',
+  anchorJungmun: '中文观光园区',
 
   featuredHeading: '济州正热',
   featuredBadge: '实时 · VisitJeju',
