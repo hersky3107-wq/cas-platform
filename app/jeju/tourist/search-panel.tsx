@@ -27,6 +27,7 @@ import {
 } from './place-detail'
 import { displayLabelForPlace } from './category-labels'
 import { getDullegil } from '@/lib/jeju/hallasan-dullegil'
+import { useTouristUi } from '@/components/jeju/useTouristUi'
 
 type RecommendResult =
   | { ok: true; intro: string; recommendations: VisitJejuPlace[] }
@@ -105,6 +106,7 @@ const LOADING_MSGS: Record<string, string[]> = {
 type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course'
 
 export function SearchPanel() {
+  const { t } = useTouristUi()
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<Mode>('search')
@@ -448,7 +450,7 @@ export function SearchPanel() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') runSearch()
             }}
-            placeholder="제주에서 뭐 하고 싶으세요?"
+            placeholder={t.searchPlaceholder}
             className="w-full bg-transparent text-[15px] font-medium text-[#0A2B30] placeholder:text-[#00A8B5]/60 focus:outline-none"
           />
           <button
@@ -457,7 +459,7 @@ export function SearchPanel() {
             disabled={!canSubmit}
             className="shrink-0 rounded-full bg-[#00A8B5] px-4 py-1.5 text-sm font-bold text-white shadow-sm transition-opacity disabled:opacity-40"
           >
-            찾기
+            {t.searchButton}
           </button>
         </div>
       </div>
@@ -475,7 +477,7 @@ export function SearchPanel() {
           }`}
         >
           <span aria-hidden>🗺️</span>
-          AI 여행 코스 짜기
+          {t.chipCourse}
         </button>
       </div>
 
@@ -489,7 +491,7 @@ export function SearchPanel() {
           style={{ backgroundColor: '#EDE7FB', color: '#6B4FB8' }}
         >
           <span aria-hidden>👀</span>
-          관광객은 잘 모르는
+          {t.chipLocal}
         </button>
         <button
           type="button"
@@ -499,7 +501,7 @@ export function SearchPanel() {
           style={{ backgroundColor: '#D9F6FA', color: '#00707A' }}
         >
           <span aria-hidden>🎪</span>
-          이번 주 축제
+          {t.chipFestival}
         </button>
         <button
           type="button"
@@ -509,7 +511,7 @@ export function SearchPanel() {
           style={{ backgroundColor: '#FCE4EC', color: '#C2185B' }}
         >
           <span aria-hidden>🌸</span>
-          지금 제주 풍경
+          {t.chipSeasonal}
         </button>
         <button
           type="button"
@@ -519,7 +521,7 @@ export function SearchPanel() {
           style={{ backgroundColor: '#E3F0FF', color: '#1C6DD0' }}
         >
           <span aria-hidden>☔</span>
-          비 와도 좋은 곳
+          {t.chipRainy}
         </button>
         <button
           type="button"
@@ -529,7 +531,7 @@ export function SearchPanel() {
           style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}
         >
           <span aria-hidden>⛴️</span>
-          섬 여행
+          {t.chipIslands}
         </button>
         <button
           type="button"
@@ -539,7 +541,7 @@ export function SearchPanel() {
           style={{ backgroundColor: '#D1F2E1', color: '#1A7A46' }}
         >
           <span aria-hidden>🥾</span>
-          올레길
+          {t.chipOlle}
         </button>
         <button
           type="button"
@@ -549,7 +551,7 @@ export function SearchPanel() {
           style={{ backgroundColor: '#FDE8D8', color: '#C05621' }}
         >
           <span aria-hidden>🏔</span>
-          오름·한라산
+          {t.chipOreum}
         </button>
         {STATIC_CHIPS.map((chip) => (
           <span
@@ -629,7 +631,7 @@ export function SearchPanel() {
       {!loading && mode === 'rainy' && results && results.length > 0 && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#1C6DD0]">
-            ☔ 비 와도 좋은 곳
+            {t.headingRainy}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#E3F0FF] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1C6DD0]">
             비짓제주 공식 정보 기반
@@ -651,7 +653,7 @@ export function SearchPanel() {
       {!loading && mode === 'local' && gems && gems.length > 0 && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#6B4FB8]">
-            👀 관광객은 잘 모르는 제주
+            {t.headingLocal}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#F2EFFC] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#5B3EA8]">
             공식 자연·문화 명소 + 현지인 추천을 섞어 보여드려요 · 웹 정보는 방문 전 확인하세요
@@ -672,7 +674,7 @@ export function SearchPanel() {
       {!loading && mode === 'festival' && festivalData?.ok && festivalData.type === 'sonar' && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#00707A]">
-            🎪 지금 제주 축제·공연
+            {t.headingFestivalSonar}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
             공식 채널 기준 진행 중·예정 행사예요 · 날짜·장소는 방문 전 확인하세요
@@ -693,7 +695,7 @@ export function SearchPanel() {
       {!loading && mode === 'festival' && festivalData?.ok && festivalData.type === 'fallback' && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#00707A]">
-            🎪 제주 축제·공연·전시
+            {t.headingFestivalFallback}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
             비짓제주 공식 행사 목록이에요 · 정확한 일정은 방문 전 확인하세요
@@ -715,7 +717,7 @@ export function SearchPanel() {
       {!loading && mode === 'seasonal' && sights && sights.length > 0 && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#C2185B]">
-            🌸 지금 제주 풍경
+            {t.headingSeasonal}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#FCE4EC] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#C2185B]">
             🌐 웹에서 찾은 실시간 정보예요 · 현장 상황은 변동될 수 있어요
@@ -737,7 +739,7 @@ export function SearchPanel() {
       {!loading && mode === 'islands' && islands && islands.length > 0 && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#1D4ED8]">
-            ⛴️ 배 타고 가는 제주 섬
+            {t.headingIslands}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#DBEAFE] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1D4ED8]">
             🌐 웹에서 찾은 정보예요 · 시간표·요금은 자주 바뀌니 방문 전 운항사 확인 필수
@@ -759,7 +761,7 @@ export function SearchPanel() {
       {!loading && mode === 'oreum' && oreumList && oreumList.length > 0 && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#C05621]">
-            🌋 제주 오름
+            {t.headingOreum}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#FDE8D8] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#C05621]">
             제주의 오름을 소개해요 · 출처: 제주특별자치도 공공데이터 · 탐방 전 현장 상황을 확인하세요
@@ -781,7 +783,7 @@ export function SearchPanel() {
       {!loading && mode === 'oreum' && (
         <section className="mt-8">
           <h3 className="text-base font-extrabold tracking-tight text-[#1A7A46]">
-            🏔 한라산 둘레길
+            {t.headingDullegil}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
             한라산 국립공원을 한 바퀴 도는 8개 코스예요 · 출처: 제주특별자치도 · 제주데이터허브 (2021 기준)
@@ -798,7 +800,7 @@ export function SearchPanel() {
       {!loading && mode === 'olle' && olleCourses && olleCourses.length > 0 && (
         <section className="mt-6">
           <h3 className="text-base font-extrabold tracking-tight text-[#1A7A46]">
-            🥾 제주 올레길
+            {t.headingOlle}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
             사단법인 제주올레 공식 코스 정보예요 · 출처: 제주올레 + 공공데이터포털

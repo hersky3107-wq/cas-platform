@@ -1,6 +1,6 @@
 /** JEJU UI strings — use `getJejuUiPack(locale)`; Korean-primary fallback. */
 
-export const JEJU_LOCALES = ['ko', 'en', 'ja', 'zh-TW', 'fr', 'ar', 'es'] as const
+export const JEJU_LOCALES = ['ko', 'en', 'ja', 'zh-TW', 'zh-CN', 'fr', 'ar', 'es'] as const
 
 export type JejuLocale = (typeof JEJU_LOCALES)[number]
 
@@ -457,6 +457,7 @@ export const JEJU_UI: Record<JejuLocale, JejuUiPack> = {
   en: STUB,
   ja: STUB,
   'zh-TW': STUB,
+  'zh-CN': STUB,
   fr: STUB,
   ar: STUB,
   es: STUB,
@@ -479,6 +480,8 @@ export function normalizeJejuUiLocale(uiLocale: string | null | undefined): Jeju
 
   if (raw.startsWith('ko')) return 'ko'
   if (raw.startsWith('ja')) return 'ja'
+  // Simplified Chinese must be detected BEFORE the generic zh→zh-TW fallback.
+  if (raw.startsWith('zh-cn') || raw.startsWith('zh-sg') || raw.includes('hans')) return 'zh-CN'
   if (raw.startsWith('zh-tw') || raw.startsWith('zh-hk') || raw.includes('hant')) return 'zh-TW'
   if (raw.startsWith('zh')) return 'zh-TW'
   if (raw.startsWith('fr')) return 'fr'

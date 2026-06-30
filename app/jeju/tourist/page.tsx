@@ -1,6 +1,7 @@
 import { fetchVisitJejuPlaces, type VisitJejuPlace } from '@/lib/jeju/connectors'
 import { FeaturedGrid } from './featured-grid'
 import { SearchPanel } from './search-panel'
+import { LanguageToggle } from './language-toggle'
 import { DISPLAY_LABEL } from './category-labels'
 
 // Always fetch fresh; VisitJeju 축제/행사 listings rotate frequently.
@@ -285,11 +286,11 @@ export default async function JejuTouristHomePage() {
       <JejuScenery />
 
       <div className="relative mx-auto w-full max-w-3xl px-4 pb-16 pt-6">
-        {/* 1. Top bar */}
-        <header className="flex items-center justify-between gap-3">
+        {/* 1. Top bar — stacks on mobile so all 5 language pills have room */}
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div className="flex items-center gap-2">
             <span
-              className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#00A8B5] text-xl text-white shadow-[0_6px_16px_-4px_rgba(0,168,181,0.7)]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#00A8B5] text-xl text-white shadow-[0_6px_16px_-4px_rgba(0,168,181,0.7)]"
               aria-hidden
             >
               🧭
@@ -298,10 +299,7 @@ export default async function JejuTouristHomePage() {
               제주 AI 여행 안내
             </h1>
           </div>
-          <span className="flex items-center gap-1 rounded-full bg-white/85 px-3 py-1.5 text-xs font-bold text-[#00707A] shadow-sm backdrop-blur">
-            <span aria-hidden>🌥️</span>
-            제주시 18° 흐림
-          </span>
+          <LanguageToggle />
         </header>
 
         {/* 2. Search input + chips + AI recommendation results (client component) */}
