@@ -1,4 +1,5 @@
 import { getCurrentFestivals } from '@/lib/jeju/tourist-festivals'
+import { normalizeAiLocale } from '@/lib/jeju/ai-locale'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -13,12 +14,20 @@ export const maxDuration = 60
 // NO import from app/api/synod/* or any AIMANI credit path.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function POST(): Promise<Response> {
+export async function POST(req: Request): Promise<Response> {
+  let body: Record<string, unknown> = {}
+  try {
+    body = await req.json()
+  } catch {
+    // empty body tolerated; defaults applied below
+  }
+
   // Compute today's real date server-side so the date filter is accurate.
   const today = new Date().toISOString().slice(0, 10)
+  const locale = normalizeAiLocale(body.locale)
 
   try {
-    const result = await getCurrentFestivals({ today })
+    const result = await getCurrentFestivals({ today, locale })
     return Response.json(result)
   } catch (e: unknown) {
     const error = e instanceof Error ? e.message : 'Internal error'

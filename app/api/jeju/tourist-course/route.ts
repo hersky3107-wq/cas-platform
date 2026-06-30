@@ -1,4 +1,5 @@
 import { generateCourses, generateCustomCourses } from '@/lib/jeju/tourist-course'
+import { normalizeAiLocale } from '@/lib/jeju/ai-locale'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -28,6 +29,7 @@ export async function POST(req: Request): Promise<Response> {
   const duration =
     body.duration === '반나절' || body.duration === '하루' ? body.duration : undefined
   const area = typeof body.area === 'string' && body.area.trim() ? body.area.trim() : undefined
+  const locale = normalizeAiLocale(body.locale)
 
   try {
     if (body.mode === 'custom') {
@@ -51,11 +53,12 @@ export async function POST(req: Request): Promise<Response> {
         companion,
         ageGroup,
         groupSize,
+        locale,
       })
       return Response.json(result)
     }
 
-    const result = await generateCourses({ query, duration, area })
+    const result = await generateCourses({ query, duration, area, locale })
     return Response.json(result)
   } catch (e: unknown) {
     const error = e instanceof Error ? e.message : 'Internal error'

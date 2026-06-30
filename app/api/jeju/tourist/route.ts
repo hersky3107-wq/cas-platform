@@ -1,4 +1,5 @@
 import { recommendJejuPlaces } from '@/lib/jeju/tourist-recommend'
+import { normalizeAiLocale } from '@/lib/jeju/ai-locale'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -29,8 +30,10 @@ export async function POST(req: Request): Promise<Response> {
     )
   }
 
+  const locale = normalizeAiLocale(body.locale)
+
   try {
-    const result = await recommendJejuPlaces({ query })
+    const result = await recommendJejuPlaces({ query, locale })
     return Response.json(result)
   } catch (e: unknown) {
     const error = e instanceof Error ? e.message : 'Internal error'

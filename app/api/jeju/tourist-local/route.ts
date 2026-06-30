@@ -1,4 +1,5 @@
 import { findLocalGems } from '@/lib/jeju/tourist-local'
+import { normalizeAiLocale } from '@/lib/jeju/ai-locale'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -32,9 +33,10 @@ export async function POST(req: Request): Promise<Response> {
 
   // Inject today's real date so Perplexity prioritises recent info.
   const today = new Date().toISOString().slice(0, 10)
+  const locale = normalizeAiLocale(body.locale)
 
   try {
-    const result = await findLocalGems({ query, today })
+    const result = await findLocalGems({ query, today, locale })
     return Response.json(result)
   } catch (e: unknown) {
     const error = e instanceof Error ? e.message : 'Internal error'
