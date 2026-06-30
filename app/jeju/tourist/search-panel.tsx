@@ -25,7 +25,7 @@ import {
   detailFromIsland,
   detailFromFestivalEvent,
 } from './place-detail'
-import { displayLabelForPlace } from './category-labels'
+import { localizedDisplayLabel } from './category-labels'
 import { getDullegil } from '@/lib/jeju/hallasan-dullegil'
 import { useTouristUi } from '@/components/jeju/useTouristUi'
 
@@ -83,24 +83,6 @@ const FETCH_TIMEOUT: Record<string, number> = {
   sonar: 70_000,   // sonar chips: 70s (above 60s maxDuration)
   course: 100_000, // course: 100s (above 90s maxDuration)
   cached: 25_000,  // olle/oreum: 25s (fast cached GET)
-}
-
-/** Per-mode reassuring messages shown while loading (rotate every ~6s). */
-const LOADING_MSGS: Record<string, string[]> = {
-  local:    ['제주 구석구석 살펴보는 중 🌿', '좋은 곳을 고르는 중이에요', '거의 다 됐어요 ✨'],
-  festival: ['지금 열리는 행사를 찾고 있어요 🎪', '공식 채널을 확인하는 중이에요', '거의 다 됐어요 ✨'],
-  seasonal: ['지금 제주 풍경을 살펴보는 중 🌸', '이 시기에 특별한 곳을 고르고 있어요', '거의 다 됐어요 ✨'],
-  rainy:    ['비 와도 좋은 곳을 찾고 있어요 ☔', '실내 명소를 골라보는 중이에요', '거의 다 됐어요 ✨'],
-  islands:  ['제주 섬 정보를 모으는 중 🌊', '배편·섬 매력을 정리하는 중이에요', '거의 다 됐어요 ✨'],
-  olle:     ['올레길 코스 불러오는 중 🥾'],
-  oreum:    ['오름·한라산 정보 불러오는 중 🏔'],
-  search:   ['제주를 살펴보는 중 🔍', '좋은 곳을 찾고 있어요'],
-  course:   [
-    '제주 여행 코스를 짜는 중이에요 🗺',
-    '명소를 조합하고 있어요',
-    '최적 동선을 확인하는 중이에요',
-    '거의 다 됐어요 ✨',
-  ],
 }
 
 type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course'
@@ -171,11 +153,11 @@ export function SearchPanel() {
         setIntro(data.intro)
         setResults(data.recommendations)
       } else {
-        setError(data.error || '추천을 불러오지 못했어요. 다시 시도해 주세요.')
+        setError(data.error || t.errRecommend)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(timer)
@@ -211,11 +193,11 @@ export function SearchPanel() {
       if (data.ok) {
         setGems(data.gems)
       } else {
-        setError(data.error || '추천을 불러오지 못했어요. 다시 시도해 주세요.')
+        setError(data.error || t.errRecommend)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(timer)
@@ -246,11 +228,11 @@ export function SearchPanel() {
       if (data.ok) {
         setFestivalData(data)
       } else {
-        setError(data.error || '축제 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+        setError(data.error || t.errFestival)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(timer)
@@ -281,11 +263,11 @@ export function SearchPanel() {
       if (data.ok) {
         setSights(data.sights)
       } else {
-        setError(data.error || '제주 풍경 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+        setError(data.error || t.errSeasonal)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(timer)
@@ -317,11 +299,11 @@ export function SearchPanel() {
         setIntro(data.intro)
         setResults(data.recommendations)
       } else {
-        setError(data.error || '추천을 불러오지 못했어요. 다시 시도해 주세요.')
+        setError(data.error || t.errRecommend)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(timer)
@@ -352,11 +334,11 @@ export function SearchPanel() {
       if (data.ok) {
         setIslands(data.islands)
       } else {
-        setError(data.error || '섬 여행 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+        setError(data.error || t.errIslands)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(timer)
@@ -382,11 +364,11 @@ export function SearchPanel() {
       if (data.ok) {
         setOlleCourses(data.courses)
       } else {
-        setError(data.error || '올레길 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+        setError(data.error || t.errOlle)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(timer)
@@ -412,11 +394,11 @@ export function SearchPanel() {
       if (data.ok) {
         setOreumList(data.oreum)
       } else {
-        setError(data.error || '오름 정보를 불러오지 못했어요. 다시 시도해 주세요.')
+        setError(data.error || t.errOreum)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') { setTimedOut(true) } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(timer)
@@ -433,8 +415,19 @@ export function SearchPanel() {
 
   const canSubmit = query.trim() !== '' && !loading
 
-  // Derive the current rotating message for the active mode.
-  const msgArr = LOADING_MSGS[mode] ?? LOADING_MSGS.search
+  // Derive the current rotating message for the active mode (localized).
+  const LOADING_MSGS: Record<Mode, string[]> = {
+    search: t.loadSearch,
+    local: t.loadLocal,
+    festival: t.loadFestival,
+    seasonal: t.loadSeasonal,
+    rainy: t.loadRainy,
+    islands: t.loadIslands,
+    olle: t.loadOlle,
+    oreum: t.loadOreum,
+    course: t.loadCourse,
+  }
+  const msgArr = LOADING_MSGS[mode] ?? t.loadSearch
   const currentLoadingMsg = msgArr[msgIdx % msgArr.length]
 
   return (
@@ -581,16 +574,14 @@ export function SearchPanel() {
       {/* Timed-out soft retry — only for truly dead connections, never scary */}
       {!loading && timedOut && (
         <div className="mt-6 flex flex-col items-center gap-3 rounded-[20px] bg-white/80 px-6 py-6 text-center shadow-sm backdrop-blur">
-          <p className="text-sm font-semibold text-[#00707A]">
-            조금 더 오래 걸리고 있어요. 다시 시도할까요?
-          </p>
+          <p className="text-sm font-semibold text-[#00707A]">{t.retryMessage}</p>
           <button
             type="button"
             onClick={() => retryFnRef.current?.()}
             className="inline-flex items-center gap-1.5 rounded-full bg-[#00A8B5] px-5 py-2 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90"
           >
             <RefreshCw size={14} aria-hidden />
-            다시 시도
+            {t.retryButton}
           </button>
         </div>
       )}
@@ -619,8 +610,8 @@ export function SearchPanel() {
               <PlaceCard
                 key={place.contentsId}
                 place={place}
-                displayLabel={displayLabelForPlace(place)}
-                onSelect={() => setDetail(detailFromVisitJeju(place, displayLabelForPlace(place)))}
+                displayLabel={localizedDisplayLabel(place, t)}
+                onSelect={() => setDetail(detailFromVisitJeju(place, localizedDisplayLabel(place, t)))}
               />
             ))}
           </div>
@@ -634,15 +625,15 @@ export function SearchPanel() {
             {t.headingRainy}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#E3F0FF] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1C6DD0]">
-            비짓제주 공식 정보 기반
+            {t.noteRainy}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {results.map((place) => (
               <PlaceCard
                 key={place.contentsId}
                 place={place}
-                displayLabel={displayLabelForPlace(place)}
-                onSelect={() => setDetail(detailFromVisitJeju(place, displayLabelForPlace(place)))}
+                displayLabel={localizedDisplayLabel(place, t)}
+                onSelect={() => setDetail(detailFromVisitJeju(place, localizedDisplayLabel(place, t)))}
               />
             ))}
           </div>
@@ -656,7 +647,7 @@ export function SearchPanel() {
             {t.headingLocal}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#F2EFFC] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#5B3EA8]">
-            공식 자연·문화 명소 + 현지인 추천을 섞어 보여드려요 · 웹 정보는 방문 전 확인하세요
+            {t.noteLocal}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {gems.map((gem, i) => (
@@ -677,7 +668,7 @@ export function SearchPanel() {
             {t.headingFestivalSonar}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
-            공식 채널 기준 진행 중·예정 행사예요 · 날짜·장소는 방문 전 확인하세요
+            {t.noteFestivalSonar}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {festivalData.events.map((event, i) => (
@@ -698,15 +689,15 @@ export function SearchPanel() {
             {t.headingFestivalFallback}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D4F5F0] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#00707A]">
-            비짓제주 공식 행사 목록이에요 · 정확한 일정은 방문 전 확인하세요
+            {t.noteFestivalFallback}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {festivalData.festivals.map((place) => (
               <PlaceCard
                 key={place.contentsId}
                 place={place}
-                displayLabel={displayLabelForPlace(place)}
-                onSelect={() => setDetail(detailFromVisitJeju(place, displayLabelForPlace(place)))}
+                displayLabel={localizedDisplayLabel(place, t)}
+                onSelect={() => setDetail(detailFromVisitJeju(place, localizedDisplayLabel(place, t)))}
               />
             ))}
           </div>
@@ -720,7 +711,7 @@ export function SearchPanel() {
             {t.headingSeasonal}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#FCE4EC] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#C2185B]">
-            🌐 웹에서 찾은 실시간 정보예요 · 현장 상황은 변동될 수 있어요
+            {t.noteSeasonal}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {sights.map((sight, idx) => (
@@ -742,7 +733,7 @@ export function SearchPanel() {
             {t.headingIslands}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#DBEAFE] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1D4ED8]">
-            🌐 웹에서 찾은 정보예요 · 시간표·요금은 자주 바뀌니 방문 전 운항사 확인 필수
+            {t.noteIslands}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {islands.map((island, idx) => (
@@ -764,15 +755,15 @@ export function SearchPanel() {
             {t.headingOreum}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#FDE8D8] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#C05621]">
-            제주의 오름을 소개해요 · 출처: 제주특별자치도 공공데이터 · 탐방 전 현장 상황을 확인하세요
+            {t.noteOreum}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {oreumList.map((place) => (
               <PlaceCard
                 key={place.contentsId}
                 place={place}
-                displayLabel="오름"
-                onSelect={() => setDetail(detailFromVisitJeju(place, '오름'))}
+                displayLabel={t.catOreum}
+                onSelect={() => setDetail(detailFromVisitJeju(place, t.catOreum))}
               />
             ))}
           </div>
@@ -786,7 +777,7 @@ export function SearchPanel() {
             {t.headingDullegil}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
-            한라산 국립공원을 한 바퀴 도는 8개 코스예요 · 출처: 제주특별자치도 · 제주데이터허브 (2021 기준)
+            {t.noteDullegil}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {getDullegil().map((course) => (
@@ -803,7 +794,7 @@ export function SearchPanel() {
             {t.headingOlle}
           </h3>
           <p className="mt-1.5 rounded-[14px] bg-[#D1F2E1] px-3.5 py-2.5 text-[12px] font-semibold leading-relaxed text-[#1A7A46]">
-            사단법인 제주올레 공식 코스 정보예요 · 출처: 제주올레 + 공공데이터포털
+            {t.noteOlle}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {olleCourses.map((course) => (

@@ -1,5 +1,7 @@
 import { MapPin, Clock } from 'lucide-react'
 import type { Course, CourseStop } from '@/lib/jeju/tourist-course'
+import type { TouristUiPack } from '@/lib/jeju/tourist-labels'
+import { useTouristUi } from '@/components/jeju/useTouristUi'
 
 /**
  * Course detail — a vertical timeline that reads as a day's JOURNEY
@@ -23,30 +25,32 @@ type TimingStyle = {
   emoji: string
 }
 
-const DEFAULT_TIMING: TimingStyle = {
-  dot: '#00A8B5',
-  badgeBg: '#D9F6FA',
-  text: '#00707A',
-  label: '일정',
-  emoji: '🧭',
+/**
+ * Match by substring so minor wording variants still color correctly.
+ * Time-of-day labels are localized (the underlying AI timing text stays KO for
+ * now); an unrecognized timing falls back to the generic "schedule" label.
+ */
+function timingStyle(timing: string | null, t: TouristUiPack): TimingStyle {
+  const raw = timing ?? ''
+  if (raw.includes('오전') || raw.includes('아침'))
+    return { dot: '#F5A623', badgeBg: '#FFF1D6', text: '#B8740A', label: t.timeMorning, emoji: '🌅' }
+  if (raw.includes('점심'))
+    return { dot: '#6BBF4F', badgeBg: '#E8F6E0', text: '#3E8E2F', label: t.timeLunch, emoji: '🍽️' }
+  if (raw.includes('오후'))
+    return { dot: '#2196F3', badgeBg: '#E3F2FD', text: '#1565C0', label: t.timeAfternoon, emoji: '☀️' }
+  if (raw.includes('저녁') || raw.includes('밤') || raw.includes('야간'))
+    return { dot: '#7E57C2', badgeBg: '#EDE7F6', text: '#5E35B1', label: t.timeEvening, emoji: '🌇' }
+  return {
+    dot: '#00A8B5',
+    badgeBg: '#D9F6FA',
+    text: '#00707A',
+    label: timing || t.timeDefault,
+    emoji: '🧭',
+  }
 }
 
-/** Match by substring so minor wording variants still color correctly. */
-function timingStyle(timing: string | null): TimingStyle {
-  const t = timing ?? ''
-  if (t.includes('오전') || t.includes('아침'))
-    return { dot: '#F5A623', badgeBg: '#FFF1D6', text: '#B8740A', label: timing || '오전', emoji: '🌅' }
-  if (t.includes('점심'))
-    return { dot: '#6BBF4F', badgeBg: '#E8F6E0', text: '#3E8E2F', label: timing || '점심', emoji: '🍽️' }
-  if (t.includes('오후'))
-    return { dot: '#2196F3', badgeBg: '#E3F2FD', text: '#1565C0', label: timing || '오후', emoji: '☀️' }
-  if (t.includes('저녁') || t.includes('밤') || t.includes('야간'))
-    return { dot: '#7E57C2', badgeBg: '#EDE7F6', text: '#5E35B1', label: timing || '저녁', emoji: '🌇' }
-  return timing ? { ...DEFAULT_TIMING, label: timing } : DEFAULT_TIMING
-}
-
-function StopRow({ stop }: { stop: CourseStop }) {
-  const ts = timingStyle(stop.timing)
+function StopRow({ stop, t }: { stop: CourseStop; t: TouristUiPack }) {
+  const ts = timingStyle(stop.timing, t)
   return (
     <li className="relative flex gap-3.5 pb-5 last:pb-0 sm:gap-4">
       {/* Numbered timing node (sits on top of the connecting line) */}
@@ -90,9 +94,9 @@ function StopRow({ stop }: { stop: CourseStop }) {
           )}
           <span
             className="text-[10px] font-semibold text-slate-400"
-            title={stop.source === 'web' ? '웹에서 보완한 정보' : '비짓제주 공식 정보'}
+            title={stop.source === 'web' ? t.srcWebTitle : t.srcOfficialTitle}
           >
-            {stop.source === 'web' ? '🌐 웹 보완' : '📋 공식'}
+            {stop.source === 'web' ? t.srcWeb : t.srcOfficial}
           </span>
         </div>
 
@@ -106,6 +110,7 @@ function StopRow({ stop }: { stop: CourseStop }) {
 }
 
 export function CourseTimeline({ course }: { course: Course }) {
+  const { t } = useTouristUi()
   return (
     <div>
       {/* concept pitch — the "why this course" */}
@@ -127,7 +132,7 @@ export function CourseTimeline({ course }: { course: Course }) {
           />
         )}
         {course.stops.map((stop, i) => (
-          <StopRow key={`${course.id}-${stop.order}-${i}`} stop={stop} />
+          <StopRow key={`${course.id}-${stop.order}-${i}`} stop={stop} t={t} />
         ))}
       </ol>
 
@@ -141,7 +146,7 @@ export function CourseTimeline({ course }: { course: Course }) {
 
       {/* honest footer */}
       <p className="mt-4 text-center text-[11px] leading-relaxed text-slate-400">
-        AI가 공공데이터·웹 정보로 구성한 추천 코스예요 · 운영시간·휴무는 방문 전 확인하세요
+        {t.courseDisclaimer}
       </p>
     </div>
   )

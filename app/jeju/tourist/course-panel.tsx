@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Sparkles, Loader2, Wand2, RefreshCw } from 'lucide-react'
 import type { Course, CourseId } from '@/lib/jeju/tourist-course'
+import type { TouristUiPack } from '@/lib/jeju/tourist-labels'
+import { useTouristUi } from '@/components/jeju/useTouristUi'
 import { CourseTimeline } from './course-timeline'
 
 type CourseResult = { ok: true; courses: Course[] } | { ok: false; error: string }
@@ -10,37 +12,67 @@ type CourseResult = { ok: true; courses: Course[] } | { ok: false; error: string
 type Duration = '반나절' | '하루'
 type PanelMode = 'custom' | 'standard'
 
+// Values are sent to the API and must stay Korean; only the displayed label is
+// localized via the maps below.
 const AREAS = ['상관없음', '제주시', '서귀포', '동부', '서부'] as const
 type Area = (typeof AREAS)[number]
 
 const COMPANIONS = ['가족', '친구', '혼자', '단체'] as const
 const AGE_GROUPS = ['20대', '30대', '40대', '50대 이상', '혼합'] as const
 
-/** Mode 2 tab labels — fixed personalities per course id. */
-const STANDARD_TAB_META: Record<CourseId, { label: string; emoji: string }> = {
-  A: { label: '알찬 인기', emoji: '✨' },
-  B: { label: '느긋한 힐링', emoji: '🌿' },
-  C: { label: '로컬 탐방', emoji: '🧭' },
-  D: { label: '액티브', emoji: '🤿' },
+/** Emoji per standard course id (labels are localized at render time). */
+const STANDARD_TAB_EMOJI: Record<CourseId, string> = {
+  A: '✨',
+  B: '🌿',
+  C: '🧭',
+  D: '🤿',
 }
 
-/** Reassuring sub-messages cycled during the ~15-25s generation wait. */
-const LOADING_STEPS: Record<PanelMode, string[]> = {
-  custom: [
-    'AI가 상황을 꼼꼼히 분석하고 있어요…',
-    '딱 맞는 장소들을 고르고 있어요…',
-    '편안한 동선과 시간 흐름을 짜는 중이에요…',
-    '거의 다 됐어요, 조금만 기다려 주세요…',
-  ],
-  standard: [
-    'AI가 4가지 코스를 구상하고 있어요…',
-    '공공데이터에서 멋진 장소를 고르고 있어요…',
-    '하루의 동선과 시간 흐름을 짜는 중이에요…',
-    '거의 다 됐어요, 조금만 기다려 주세요…',
-  ],
+/** Korean value → localized label resolvers (values stay KO for the API). */
+function durationLabel(d: Duration, t: TouristUiPack): string {
+  return d === '반나절' ? t.durationHalf : t.durationFull
+}
+function areaLabel(a: Area, t: TouristUiPack): string {
+  const map: Record<Area, string> = {
+    상관없음: t.areaAny,
+    제주시: t.areaJejuCity,
+    서귀포: t.areaSeogwipo,
+    동부: t.areaEast,
+    서부: t.areaWest,
+  }
+  return map[a]
+}
+function companionLabel(c: string, t: TouristUiPack): string {
+  const map: Record<string, string> = {
+    가족: t.compFamily,
+    친구: t.compFriends,
+    혼자: t.compSolo,
+    단체: t.compGroup,
+  }
+  return map[c] ?? c
+}
+function ageLabel(g: string, t: TouristUiPack): string {
+  const map: Record<string, string> = {
+    '20대': t.age20,
+    '30대': t.age30,
+    '40대': t.age40,
+    '50대 이상': t.age50plus,
+    혼합: t.ageMixed,
+  }
+  return map[g] ?? g
+}
+function standardTabLabel(id: CourseId, t: TouristUiPack): string {
+  const map: Record<CourseId, string> = {
+    A: t.tabPopular,
+    B: t.tabHealing,
+    C: t.tabLocal,
+    D: t.tabActive,
+  }
+  return map[id]
 }
 
 export function CoursePanel() {
+  const { t } = useTouristUi()
   const [panelMode, setPanelMode] = useState<PanelMode>('custom')
 
   // Shared inputs
@@ -62,12 +94,14 @@ export function CoursePanel() {
   const [timedOut, setTimedOut] = useState(false)
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const loadingSteps = resultMode === 'custom' ? t.loadCourseCustom : t.loadCourseStandard
+
   // Cycle the loading sub-message while generating.
   useEffect(() => {
     if (loading) {
       setStepIdx(0)
       stepTimer.current = setInterval(() => {
-        setStepIdx((i) => (i + 1) % LOADING_STEPS[resultMode].length)
+        setStepIdx((i) => (i + 1) % loadingSteps.length)
       }, 4500)
     } else if (stepTimer.current) {
       clearInterval(stepTimer.current)
@@ -79,7 +113,7 @@ export function CoursePanel() {
         stepTimer.current = null
       }
     }
-  }, [loading, resultMode])
+  }, [loading, loadingSteps])
 
   function switchPanelMode(next: PanelMode) {
     if (next === panelMode) return
@@ -136,15 +170,13 @@ export function CoursePanel() {
         setCourses(data.courses)
         setActiveTab(data.courses[0].id)
       } else {
-        setError(
-          (data as { error?: string }).error || '코스를 만들지 못했어요. 다시 시도해 주세요.'
-        )
+        setError((data as { error?: string }).error || t.courseErrFail)
       }
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') {
         setTimedOut(true)
       } else {
-        setError('연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.')
+        setError(t.errConnection)
       }
     } finally {
       clearTimeout(fetchTimer)
@@ -165,14 +197,14 @@ export function CoursePanel() {
             {
               key: 'custom' as PanelMode,
               emoji: '✏️',
-              title: '맞춤 코스',
-              sub: '상황·취향 알려주면 딱 맞는 코스 2개',
+              title: t.courseModeCustomTitle,
+              sub: t.courseModeCustomSub,
             },
             {
               key: 'standard' as PanelMode,
               emoji: '✨',
-              title: '추천 코스',
-              sub: '✨알찬 · 🌿힐링 · 🧭로컬 · 🤿액티브',
+              title: t.courseModeStandardTitle,
+              sub: t.courseModeStandardSub,
             },
           ]).map((opt) => {
             const selected = panelMode === opt.key
@@ -210,14 +242,14 @@ export function CoursePanel() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             rows={3}
-            placeholder="원하는 여행이나 고려할 점을 자유롭게 적어주세요 — 예: 어르신·휠체어 동반, 아이와 함께, 감성 사진 카페 위주, 미식 여행 등"
+            placeholder={t.coursePlaceholder}
             className="mt-4 w-full resize-none rounded-[16px] bg-white px-4 py-3 text-[14px] font-medium leading-relaxed text-[#0A2B30] placeholder:text-[#00A8B5]/55 shadow-sm ring-1 ring-[#00A8B5]/10 focus:outline-none focus:ring-2 focus:ring-[#00A8B5]/40"
           />
         )}
 
         {/* duration toggle (both modes) */}
         <div className="mt-3">
-          <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">여행 길이</p>
+          <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">{t.courseDuration}</p>
           <div className="inline-flex rounded-full bg-white/70 p-1 shadow-sm ring-1 ring-[#00A8B5]/10">
             {(['반나절', '하루'] as Duration[]).map((d) => (
               <button
@@ -230,7 +262,7 @@ export function CoursePanel() {
                     : 'text-[#00707A] hover:bg-white'
                 }`}
               >
-                {d}
+                {durationLabel(d, t)}
               </button>
             ))}
           </div>
@@ -238,7 +270,7 @@ export function CoursePanel() {
 
         {/* area selector (both modes) */}
         <div className="mt-3">
-          <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">지역 (선택)</p>
+          <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">{t.courseArea}</p>
           <div className="flex flex-wrap gap-1.5">
             {AREAS.map((a) => (
               <button
@@ -251,7 +283,7 @@ export function CoursePanel() {
                     : 'bg-white/70 text-[#5B3EA8] ring-1 ring-[#6B4FB8]/15 hover:bg-white'
                 }`}
               >
-                {a}
+                {areaLabel(a, t)}
               </button>
             ))}
           </div>
@@ -261,7 +293,7 @@ export function CoursePanel() {
         {isCustom && (
           <>
             <div className="mt-3">
-              <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">동행 (선택)</p>
+              <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">{t.courseCompanion}</p>
               <div className="flex flex-wrap gap-1.5">
                 {COMPANIONS.map((c) => (
                   <button
@@ -274,14 +306,14 @@ export function CoursePanel() {
                         : 'bg-white/70 text-[#00707A] ring-1 ring-[#00A8B5]/15 hover:bg-white'
                     }`}
                   >
-                    {c}
+                    {companionLabel(c, t)}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="mt-3">
-              <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">연령대 (선택)</p>
+              <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">{t.courseAge}</p>
               <div className="flex flex-wrap gap-1.5">
                 {AGE_GROUPS.map((g) => (
                   <button
@@ -294,14 +326,14 @@ export function CoursePanel() {
                         : 'bg-white/70 text-[#00707A] ring-1 ring-[#00A8B5]/15 hover:bg-white'
                     }`}
                   >
-                    {g}
+                    {ageLabel(g, t)}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="mt-3">
-              <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">인원 (선택)</p>
+              <p className="mb-1.5 text-[11px] font-bold text-[#5A7176]">{t.courseGroupSize}</p>
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
@@ -309,10 +341,10 @@ export function CoursePanel() {
                   inputMode="numeric"
                   value={groupSize}
                   onChange={(e) => setGroupSize(e.target.value)}
-                  placeholder="예: 4"
+                  placeholder={t.groupSizePlaceholder}
                   className="w-24 rounded-full bg-white px-3.5 py-1.5 text-[13px] font-bold text-[#0A2B30] placeholder:text-[#00A8B5]/45 shadow-sm ring-1 ring-[#00A8B5]/10 focus:outline-none focus:ring-2 focus:ring-[#00A8B5]/40"
                 />
-                <span className="text-[12px] font-semibold text-[#5A7176]">명</span>
+                <span className="text-[12px] font-semibold text-[#5A7176]">{t.groupSizeUnit}</span>
               </div>
             </div>
           </>
@@ -330,7 +362,11 @@ export function CoursePanel() {
           ) : (
             <Wand2 size={18} aria-hidden />
           )}
-          {loading ? '코스 짜는 중…' : isCustom ? '맞춤 코스 짜기' : '추천 코스 짜기'}
+          {loading
+            ? t.courseSubmitLoading
+            : isCustom
+              ? t.courseSubmitCustom
+              : t.courseSubmitStandard}
         </button>
       </div>
 
@@ -344,10 +380,10 @@ export function CoursePanel() {
             </span>
           </div>
           <p className="text-[14px] font-bold text-[#00707A]">
-            {LOADING_STEPS[resultMode][stepIdx]}
+            {loadingSteps[stepIdx % loadingSteps.length]}
           </p>
           <p className="text-[11px] font-medium text-slate-400">
-            좋은 코스를 위해 15~25초 정도 걸려요
+            {t.courseLoadingNote}
           </p>
         </div>
       )}
@@ -355,16 +391,14 @@ export function CoursePanel() {
       {/* Error */}
       {!loading && timedOut && (
         <div className="mt-5 flex flex-col items-center gap-3 rounded-[20px] bg-white/80 px-6 py-6 text-center shadow-sm backdrop-blur">
-          <p className="text-sm font-semibold text-[#00707A]">
-            조금 더 오래 걸리고 있어요. 다시 시도할까요?
-          </p>
+          <p className="text-sm font-semibold text-[#00707A]">{t.retryMessage}</p>
           <button
             type="button"
             onClick={runCourse}
             className="inline-flex items-center gap-1.5 rounded-full bg-[#00A8B5] px-5 py-2 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90"
           >
             <RefreshCw size={14} aria-hidden />
-            다시 시도
+            {t.retryButton}
           </button>
         </div>
       )}
@@ -383,8 +417,8 @@ export function CoursePanel() {
           <div className="flex flex-wrap gap-2">
             {courses.map((c, i) => {
               const selected = c.id === active.id
-              const meta = STANDARD_TAB_META[c.id]
-              const label = resultMode === 'custom' ? c.theme : meta?.label ?? c.theme
+              const label =
+                resultMode === 'custom' ? c.theme : standardTabLabel(c.id, t) ?? c.theme
               return (
                 <button
                   key={c.id}
@@ -397,7 +431,7 @@ export function CoursePanel() {
                   }`}
                 >
                   <span aria-hidden>
-                    {resultMode === 'custom' ? `${i + 1}` : meta?.emoji}
+                    {resultMode === 'custom' ? `${i + 1}` : STANDARD_TAB_EMOJI[c.id]}
                   </span>
                   <span className="truncate">{label}</span>
                 </button>

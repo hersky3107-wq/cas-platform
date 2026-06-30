@@ -16,6 +16,7 @@ import {
   naverMapsUrl,
   kakaoMapsUrl,
 } from './place-detail'
+import { useTouristUi } from '@/components/jeju/useTouristUi'
 
 /**
  * Detail modal — bottom-sheet on mobile (slides up from bottom, rounded top,
@@ -34,6 +35,7 @@ export function PlaceDetailModal({
   detail: PlaceDetail | null
   onClose: () => void
 }) {
+  const { t } = useTouristUi()
   const [show, setShow] = useState(false)
   // Touch drag-to-dismiss state for the mobile sheet.
   const [dragY, setDragY] = useState(0)
@@ -105,7 +107,7 @@ export function PlaceDetailModal({
       {/* Backdrop */}
       <button
         type="button"
-        aria-label="닫기"
+        aria-label={t.modalClose}
         onClick={handleClose}
         className={`absolute inset-0 bg-[#0A2B30]/45 backdrop-blur-[2px] transition-opacity duration-200 ${
           show ? 'opacity-100' : 'opacity-0'
@@ -133,7 +135,7 @@ export function PlaceDetailModal({
         <button
           type="button"
           onClick={handleClose}
-          aria-label="닫기"
+          aria-label={t.modalClose}
           className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/85 text-[#0A2B30] shadow-sm ring-1 ring-[#00A8B5]/15 backdrop-blur transition-colors hover:bg-white"
         >
           <X size={18} strokeWidth={2.5} aria-hidden />
@@ -236,11 +238,11 @@ export function PlaceDetailModal({
                 <>
                   <p className="mb-2 flex items-center gap-1.5 text-[12px] font-extrabold text-[#0A2B30]">
                     <MapIcon size={14} strokeWidth={2.5} className="text-[#00A8B5]" aria-hidden />
-                    {d.isWeb ? '지도에서 검색해보기 (참고)' : '지도에서 보기 · 길찾기'}
+                    {d.isWeb ? t.mapSearchWeb : t.mapViewDirections}
                   </p>
                   {d.isWeb && (
                     <p className="mb-2 text-[11px] leading-relaxed text-slate-400">
-                      정확한 위치는 검색 결과를 확인하세요. 행사·캠페인은 특정 장소가 없을 수 있어요.
+                      {t.mapWebNote}
                     </p>
                   )}
                   <div className="grid grid-cols-3 gap-2">
@@ -259,7 +261,7 @@ export function PlaceDetailModal({
                       rel="noopener noreferrer"
                       className="flex items-center justify-center gap-1 rounded-[12px] bg-[#03C75A] px-2 py-2.5 text-[12px] font-bold text-white shadow-sm transition-opacity hover:opacity-90"
                     >
-                      네이버
+                      {t.mapNaver}
                       <ExternalLink size={11} strokeWidth={2.5} aria-hidden />
                     </a>
                     <a
@@ -268,7 +270,7 @@ export function PlaceDetailModal({
                       rel="noopener noreferrer"
                       className="flex items-center justify-center gap-1 rounded-[12px] bg-[#FEE500] px-2 py-2.5 text-[12px] font-bold text-[#3C1E1E] shadow-sm transition-opacity hover:opacity-90"
                     >
-                      카카오
+                      {t.mapKakao}
                       <ExternalLink size={11} strokeWidth={2.5} aria-hidden />
                     </a>
                   </div>
@@ -276,7 +278,7 @@ export function PlaceDetailModal({
               ) : (
                 <p className="flex items-start gap-1.5 rounded-[12px] bg-slate-50 px-3 py-2.5 text-[12px] font-medium leading-relaxed text-slate-500">
                   <Info size={13} strokeWidth={2.5} className="mt-0.5 shrink-0 text-slate-400" aria-hidden />
-                  {d.mapNote ?? '이 항목은 특정 장소가 지정되지 않았어요 (여러 장소·기간 진행 또는 캠페인).'}
+                  {d.mapNote ?? t.mapNoLocation}
                 </p>
               )}
             </div>
@@ -287,7 +289,7 @@ export function PlaceDetailModal({
           {d.isWeb && showMapButtons && (
             <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-400">
               <Info size={12} strokeWidth={2.5} className="mt-0.5 shrink-0" aria-hidden />
-              정확한 위치·운영정보는 지도/공식 채널에서 확인하세요.
+              {t.mapVerifyNote}
             </p>
           )}
 
