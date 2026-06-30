@@ -17,6 +17,7 @@ import { DullegilCard } from './dullegil-card'
 import { FestivalEventCard } from './festival-event-card'
 import { CoursePanel } from './course-panel'
 import { BusPanel } from './bus-panel'
+import { TravelHelpPanel } from './travel-help-panel'
 import { PlaceDetailModal } from './place-detail-modal'
 import {
   type PlaceDetail,
@@ -86,7 +87,7 @@ const FETCH_TIMEOUT: Record<string, number> = {
   cached: 25_000,  // olle/oreum: 25s (fast cached GET)
 }
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus' | 'help'
 
 export function SearchPanel() {
   const { t, locale } = useTouristUi()
@@ -421,6 +422,13 @@ export function SearchPanel() {
     resetResults()
   }
 
+  // 🆘 Travel Help — opens the foreigner help panel (self-contained).
+  function openHelp() {
+    if (loading) return
+    setMode('help')
+    resetResults()
+  }
+
   const canSubmit = query.trim() !== '' && !loading
 
   // Derive the current rotating message for the active mode (localized).
@@ -435,6 +443,7 @@ export function SearchPanel() {
     oreum: t.loadOreum,
     course: t.loadCourse,
     bus: [t.busLoadNearby],
+    help: [t.helpExchangeLoading],
   }
   const msgArr = LOADING_MSGS[mode] ?? t.loadSearch
   const currentLoadingMsg = msgArr[msgIdx % msgArr.length]
@@ -493,6 +502,19 @@ export function SearchPanel() {
         >
           <span aria-hidden>🚌</span>
           {t.chipBus}
+        </button>
+        <button
+          type="button"
+          onClick={openHelp}
+          disabled={loading}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
+            mode === 'help'
+              ? 'bg-[#0A2B30] text-white'
+              : 'bg-[#0A2B30]/90 text-white'
+          }`}
+        >
+          <span aria-hidden>🆘</span>
+          {t.chipTravelHelp}
         </button>
       </div>
 
@@ -621,6 +643,9 @@ export function SearchPanel() {
 
       {/* 🚌 버스 — self-contained nearby-stations + arrivals + route lookup */}
       {mode === 'bus' && <BusPanel />}
+
+      {/* 🆘 여행 도움 — exchange rates + emergency + consulates + tips */}
+      {mode === 'help' && <TravelHelpPanel onOpenBus={openBus} />}
 
       {/* Free-text recommendation results (VisitJeju) */}
       {!loading && mode === 'search' && results && results.length > 0 && (

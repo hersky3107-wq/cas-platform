@@ -211,6 +211,52 @@ export type TouristUiPack = {
   anchorSeongsan: string
   anchorJungmun: string
 
+  // ── Travel Help (🆘) feature — most useful for foreign visitors ──
+  chipTravelHelp: string
+  helpHeading: string
+  helpExchangeTitle: string
+  helpExchangeNote: string
+  helpExchangeAsOf: string
+  helpExchangeError: string
+  helpExchangeLoading: string
+  helpEmergencyTitle: string
+  helpTapToCall: string
+  helpPolice: string
+  helpFire: string
+  helpMedical: string
+  helpTravelHotline: string
+  helpTravelHotlineNote: string
+  helpConsulateTitle: string
+  helpConsulateChina: string
+  helpConsulateJapan: string
+  helpOfficialSite: string
+  helpViewMap: string
+  helpAroundTitle: string
+  helpMapsNote: string
+  helpTaxiTitle: string
+  helpTaxiNote: string
+  helpTaxiAirport: string
+  helpTaxiCity: string
+  helpTaxiJungmun: string
+  helpTaxiSeongsan: string
+  helpTaxiTerminal: string
+  helpTaxiSeogwipo: string
+  helpTaxiHamdeok: string
+  helpTaxiAewol: string
+  helpTaxiHyeopjae: string
+  helpTaxiUdo: string
+  helpTaxiHallasan: string
+  helpTaxiDongmun: string
+  helpTaxiFrom: string
+  helpTaxiTo: string
+  helpTaxiEstimatedFare: string
+  helpTaxiSelectPrompt: string
+  helpTaxiSamePoint: string
+  helpTaxiDisclaimer: string
+  helpBusLink: string
+  helpPaymentTitle: string
+  helpPaymentBody: string
+
   // ── Featured (server page) ──
   featuredHeading: string
   featuredBadge: string
@@ -411,6 +457,53 @@ const KO: TouristUiPack = {
   emptyTitle: '지금 제주 정보를 불러오지 못했어요.',
   emptySubtitle: '잠시 후 다시 시도해 주세요.',
   sourceAttribution: '정보·이미지 출처: 비짓제주(제주관광공사)',
+
+  chipTravelHelp: '여행 도움',
+  helpHeading: '🆘 여행 도움',
+  helpExchangeTitle: '실시간 환율',
+  helpExchangeNote: '참고용 환율이에요. 실제 환전 시 금액은 다를 수 있어요.',
+  helpExchangeAsOf: '기준일',
+  helpExchangeError: '환율 정보를 불러오지 못했어요.',
+  helpExchangeLoading: '환율을 불러오는 중...',
+  helpEmergencyTitle: '긴급 연락처',
+  helpTapToCall: '탭하여 전화',
+  helpPolice: '경찰',
+  helpFire: '소방·구급',
+  helpMedical: '응급의료 상담',
+  helpTravelHotline: '관광통역 안내',
+  helpTravelHotlineNote: '24시간 · 다국어 통역',
+  helpConsulateTitle: '영사관',
+  helpConsulateChina: '주제주 중국 총영사관',
+  helpConsulateJapan: '주제주 일본 총영사관',
+  helpOfficialSite: '공식 사이트',
+  helpViewMap: '지도 보기',
+  helpAroundTitle: '이동 팁',
+  helpMapsNote: '카카오·네이버 지도는 외국인이 쓰기 어려워요. 길찾기는 구글 지도를 이용하세요.',
+  helpTaxiTitle: '택시 요금 (대략)',
+  helpTaxiNote: '미터기 사용을 요청하세요. 앱 결제는 외국인에게 안 될 수 있어요. 아래 금액은 대략적인 참고용이에요.',
+  helpTaxiAirport: '제주공항',
+  helpTaxiCity: '제주 시내',
+  helpTaxiJungmun: '중문',
+  helpTaxiSeongsan: '성산',
+  helpTaxiTerminal: '제주버스터미널',
+  helpTaxiSeogwipo: '서귀포 시내',
+  helpTaxiHamdeok: '함덕해수욕장',
+  helpTaxiAewol: '애월',
+  helpTaxiHyeopjae: '협재해수욕장',
+  helpTaxiUdo: '우도선착장(성산항)',
+  helpTaxiHallasan: '한라산(성판악)',
+  helpTaxiDongmun: '동문시장',
+  helpTaxiFrom: '출발',
+  helpTaxiTo: '도착',
+  helpTaxiEstimatedFare: '예상 요금',
+  helpTaxiSelectPrompt: '출발지와 도착지를 선택하면 예상 요금을 보여드려요.',
+  helpTaxiSamePoint: '출발지와 도착지가 같아요.',
+  helpTaxiDisclaimer:
+    '대략적인 예상 요금입니다 (중형택시 기준, 도로상황·심야할증 제외). 심야(23:00–04:00)에는 20% 할증되고, 통행료·공항 이용료 등이 추가될 수 있어요. 실제 요금은 다를 수 있어요.',
+  helpBusLink: '🚌 버스 정보 보기',
+  helpPaymentTitle: '결제 팁',
+  helpPaymentBody:
+    '카카오페이·네이버페이·배민은 한국 전화번호·계좌 없이 쓰기 어려워요. 현금과 해외 카드(Visa·Mastercard)를 함께 준비하세요. 편의점·대형마트는 해외 카드가 되지만, 작은 동네 가게는 현금만 받을 수 있어요.',
 }
 
 // ── English — KO fallback + high-value overrides ───────────────────────────────
@@ -607,6 +700,54 @@ const EN: TouristUiPack = {
   emptyTitle: "Couldn't load Jeju info right now.",
   emptySubtitle: 'Please try again shortly.',
   sourceAttribution: 'Info & images: VisitJeju (Jeju Tourism Organization)',
+
+  chipTravelHelp: 'Travel Help',
+  helpHeading: '🆘 Travel Help',
+  helpExchangeTitle: 'Live Exchange Rates',
+  helpExchangeNote: 'Reference rates only. Actual exchange amounts may differ.',
+  helpExchangeAsOf: 'As of',
+  helpExchangeError: "Couldn't load exchange rates.",
+  helpExchangeLoading: 'Loading exchange rates...',
+  helpEmergencyTitle: 'Emergency Numbers',
+  helpTapToCall: 'Tap to call',
+  helpPolice: 'Police',
+  helpFire: 'Fire & Ambulance',
+  helpMedical: 'Emergency Medical Info',
+  helpTravelHotline: 'Korea Travel Hotline',
+  helpTravelHotlineNote: '24h · multilingual interpretation',
+  helpConsulateTitle: 'Consulates',
+  helpConsulateChina: 'Chinese Consulate-General in Jeju',
+  helpConsulateJapan: 'Japanese Consulate-General in Jeju',
+  helpOfficialSite: 'Official site',
+  helpViewMap: 'View on map',
+  helpAroundTitle: 'Getting Around',
+  helpMapsNote: 'Kakao/Naver Maps are hard for foreign visitors. Use Google Maps for directions.',
+  helpTaxiTitle: 'Taxi Fares (approximate)',
+  helpTaxiNote:
+    'Ask the driver to use the meter. App-based payment may not work for foreigners. Amounts below are rough references only.',
+  helpTaxiAirport: 'Jeju Airport',
+  helpTaxiCity: 'Jeju City',
+  helpTaxiJungmun: 'Jungmun',
+  helpTaxiSeongsan: 'Seongsan',
+  helpTaxiTerminal: 'Jeju Bus Terminal',
+  helpTaxiSeogwipo: 'Seogwipo City',
+  helpTaxiHamdeok: 'Hamdeok Beach',
+  helpTaxiAewol: 'Aewol',
+  helpTaxiHyeopjae: 'Hyeopjae Beach',
+  helpTaxiUdo: 'Udo Ferry (Seongsan Port)',
+  helpTaxiHallasan: 'Hallasan (Seongpanak)',
+  helpTaxiDongmun: 'Dongmun Market',
+  helpTaxiFrom: 'From',
+  helpTaxiTo: 'To',
+  helpTaxiEstimatedFare: 'Estimated fare',
+  helpTaxiSelectPrompt: 'Pick a start and destination to see an estimated fare.',
+  helpTaxiSamePoint: 'Start and destination are the same.',
+  helpTaxiDisclaimer:
+    'Rough estimate only (mid-size taxi; excludes traffic and late-night surcharge). A 20% surcharge applies late at night (23:00–04:00), and tolls or airport fees may be added. Actual fare may differ.',
+  helpBusLink: '🚌 Open Bus Info',
+  helpPaymentTitle: 'Payment Tips',
+  helpPaymentBody:
+    'KakaoPay, Naver Pay, and Baemin are hard to use without a Korean phone number or bank account. Carry cash plus an international card (Visa/Mastercard). Convenience stores and large marts accept foreign cards, but small local shops may be cash-only.',
 }
 
 // ── Japanese — KO fallback + high-value overrides ──────────────────────────────
@@ -803,6 +944,54 @@ const JA: TouristUiPack = {
   emptyTitle: '今、済州の情報を読み込めませんでした。',
   emptySubtitle: 'しばらくしてからもう一度お試しください。',
   sourceAttribution: '情報・画像出典：VisitJeju（済州観光公社）',
+
+  chipTravelHelp: 'トラベルヘルプ',
+  helpHeading: '🆘 トラベルヘルプ',
+  helpExchangeTitle: 'リアルタイム為替レート',
+  helpExchangeNote: '参考レートです。実際の両替金額とは異なる場合があります。',
+  helpExchangeAsOf: '基準日',
+  helpExchangeError: '為替レートを読み込めませんでした。',
+  helpExchangeLoading: '為替レートを読み込み中...',
+  helpEmergencyTitle: '緊急連絡先',
+  helpTapToCall: 'タップして発信',
+  helpPolice: '警察',
+  helpFire: '消防・救急',
+  helpMedical: '救急医療相談',
+  helpTravelHotline: '観光通訳案内ホットライン',
+  helpTravelHotlineNote: '24時間・多言語通訳',
+  helpConsulateTitle: '領事館',
+  helpConsulateChina: '在済州中国総領事館',
+  helpConsulateJapan: '在済州日本国総領事館',
+  helpOfficialSite: '公式サイト',
+  helpViewMap: '地図で見る',
+  helpAroundTitle: '移動のヒント',
+  helpMapsNote: 'カカオ・ネイバーマップは外国人には使いにくいです。道案内にはGoogleマップをご利用ください。',
+  helpTaxiTitle: 'タクシー料金（目安）',
+  helpTaxiNote:
+    'メーターの使用をお願いしましょう。アプリ決済は外国人には使えない場合があります。以下の金額はあくまで目安です。',
+  helpTaxiAirport: '済州空港',
+  helpTaxiCity: '済州市内',
+  helpTaxiJungmun: '中文（チュンムン）',
+  helpTaxiSeongsan: '城山（ソンサン）',
+  helpTaxiTerminal: '済州バスターミナル',
+  helpTaxiSeogwipo: '西帰浦市内',
+  helpTaxiHamdeok: '咸徳海水浴場',
+  helpTaxiAewol: '涯月（エウォル）',
+  helpTaxiHyeopjae: '挾才海水浴場',
+  helpTaxiUdo: '牛島フェリー乗り場（城山港）',
+  helpTaxiHallasan: '漢拏山（城板岳）',
+  helpTaxiDongmun: '東門市場',
+  helpTaxiFrom: '出発',
+  helpTaxiTo: '到着',
+  helpTaxiEstimatedFare: '予想料金',
+  helpTaxiSelectPrompt: '出発地と到着地を選ぶと予想料金を表示します。',
+  helpTaxiSamePoint: '出発地と到着地が同じです。',
+  helpTaxiDisclaimer:
+    'あくまで目安の料金です（中型タクシー基準、道路状況・深夜割増は除く）。深夜（23:00〜04:00）は20％割増となり、通行料や空港利用料などが加算される場合があります。実際の料金とは異なる場合があります。',
+  helpBusLink: '🚌 バス情報を見る',
+  helpPaymentTitle: '支払いのヒント',
+  helpPaymentBody:
+    'カカオペイ・ネイバーペイ・出前館は韓国の電話番号や銀行口座がないと使いにくいです。現金と海外カード（Visa／Mastercard）の両方を用意しましょう。コンビニや大型マートでは海外カードが使えますが、小さな地元の店は現金のみの場合があります。',
 }
 
 // ── Traditional Chinese — KO fallback + high-value overrides ───────────────────
@@ -998,6 +1187,54 @@ const ZH_TW: TouristUiPack = {
   emptyTitle: '目前無法載入濟州資訊。',
   emptySubtitle: '請稍後再試。',
   sourceAttribution: '資訊・圖片來源：VisitJeju（濟州觀光公社）',
+
+  chipTravelHelp: '旅遊協助',
+  helpHeading: '🆘 旅遊協助',
+  helpExchangeTitle: '即時匯率',
+  helpExchangeNote: '僅供參考的匯率，實際兌換金額可能有所不同。',
+  helpExchangeAsOf: '基準日',
+  helpExchangeError: '無法載入匯率資訊。',
+  helpExchangeLoading: '正在載入匯率...',
+  helpEmergencyTitle: '緊急聯絡電話',
+  helpTapToCall: '點擊撥打',
+  helpPolice: '警察',
+  helpFire: '消防・救護',
+  helpMedical: '緊急醫療諮詢',
+  helpTravelHotline: '韓國旅遊諮詢熱線',
+  helpTravelHotlineNote: '24小時・多語言口譯',
+  helpConsulateTitle: '領事館',
+  helpConsulateChina: '中國駐濟州總領事館',
+  helpConsulateJapan: '日本駐濟州總領事館',
+  helpOfficialSite: '官方網站',
+  helpViewMap: '在地圖上查看',
+  helpAroundTitle: '交通提示',
+  helpMapsNote: 'Kakao／Naver 地圖對外國旅客較難使用，導航請改用 Google 地圖。',
+  helpTaxiTitle: '計程車車資（約略）',
+  helpTaxiNote:
+    '請司機使用跳表計費。App 付款對外國人可能無法使用。以下金額僅供大略參考。',
+  helpTaxiAirport: '濟州機場',
+  helpTaxiCity: '濟州市區',
+  helpTaxiJungmun: '中文觀光區',
+  helpTaxiSeongsan: '城山',
+  helpTaxiTerminal: '濟州巴士客運站',
+  helpTaxiSeogwipo: '西歸浦市區',
+  helpTaxiHamdeok: '咸德海水浴場',
+  helpTaxiAewol: '涯月',
+  helpTaxiHyeopjae: '挾才海水浴場',
+  helpTaxiUdo: '牛島渡輪碼頭（城山港）',
+  helpTaxiHallasan: '漢拏山（城板岳）',
+  helpTaxiDongmun: '東門市場',
+  helpTaxiFrom: '出發',
+  helpTaxiTo: '抵達',
+  helpTaxiEstimatedFare: '預估車資',
+  helpTaxiSelectPrompt: '選擇出發地與目的地即可顯示預估車資。',
+  helpTaxiSamePoint: '出發地與目的地相同。',
+  helpTaxiDisclaimer:
+    '僅為大略預估車資（以中型計程車為準，不含道路狀況與深夜加成）。深夜（23:00–04:00）加收 20%，並可能加收過路費或機場使用費。實際車資可能有所不同。',
+  helpBusLink: '🚌 查看公車資訊',
+  helpPaymentTitle: '付款提示',
+  helpPaymentBody:
+    'KakaoPay、Naver Pay 與外送 App 在沒有韓國電話號碼或銀行帳戶時較難使用。請同時準備現金與國際信用卡（Visa／Mastercard）。便利商店與大型賣場可使用外國信用卡，但小型在地商店可能僅收現金。',
 }
 
 // ── Simplified Chinese — KO fallback + high-value overrides ────────────────────
@@ -1193,6 +1430,54 @@ const ZH_CN: TouristUiPack = {
   emptyTitle: '目前无法加载济州信息。',
   emptySubtitle: '请稍后再试。',
   sourceAttribution: '信息・图片来源：VisitJeju（济州观光公社）',
+
+  chipTravelHelp: '旅游帮助',
+  helpHeading: '🆘 旅游帮助',
+  helpExchangeTitle: '实时汇率',
+  helpExchangeNote: '仅供参考的汇率，实际兑换金额可能有所不同。',
+  helpExchangeAsOf: '基准日',
+  helpExchangeError: '无法加载汇率信息。',
+  helpExchangeLoading: '正在加载汇率...',
+  helpEmergencyTitle: '紧急联络电话',
+  helpTapToCall: '点击拨打',
+  helpPolice: '警察',
+  helpFire: '消防・急救',
+  helpMedical: '急救医疗咨询',
+  helpTravelHotline: '韩国旅游咨询热线',
+  helpTravelHotlineNote: '24小时・多语言口译',
+  helpConsulateTitle: '领事馆',
+  helpConsulateChina: '中国驻济州总领事馆',
+  helpConsulateJapan: '日本驻济州总领事馆',
+  helpOfficialSite: '官方网站',
+  helpViewMap: '在地图上查看',
+  helpAroundTitle: '出行提示',
+  helpMapsNote: 'Kakao／Naver 地图对外国游客较难使用，导航请改用 Google 地图。',
+  helpTaxiTitle: '出租车费用（大约）',
+  helpTaxiNote:
+    '请司机使用计价表。App 付款对外国人可能无法使用。以下金额仅供大致参考。',
+  helpTaxiAirport: '济州机场',
+  helpTaxiCity: '济州市区',
+  helpTaxiJungmun: '中文旅游区',
+  helpTaxiSeongsan: '城山',
+  helpTaxiTerminal: '济州巴士客运站',
+  helpTaxiSeogwipo: '西归浦市区',
+  helpTaxiHamdeok: '咸德海水浴场',
+  helpTaxiAewol: '涯月',
+  helpTaxiHyeopjae: '挟才海水浴场',
+  helpTaxiUdo: '牛岛渡轮码头（城山港）',
+  helpTaxiHallasan: '汉拿山（城板岳）',
+  helpTaxiDongmun: '东门市场',
+  helpTaxiFrom: '出发',
+  helpTaxiTo: '到达',
+  helpTaxiEstimatedFare: '预估车费',
+  helpTaxiSelectPrompt: '选择出发地与目的地即可显示预估车费。',
+  helpTaxiSamePoint: '出发地与目的地相同。',
+  helpTaxiDisclaimer:
+    '仅为大致预估车费（以中型出租车为准，不含道路状况与深夜加成）。深夜（23:00–04:00）加收 20%，并可能加收过路费或机场使用费。实际车费可能有所不同。',
+  helpBusLink: '🚌 查看公交信息',
+  helpPaymentTitle: '支付提示',
+  helpPaymentBody:
+    'KakaoPay、Naver Pay 和外卖 App 在没有韩国电话号码或银行账户时较难使用。请同时准备现金和国际信用卡（Visa／Mastercard）。便利店和大型超市可使用外国信用卡，但小型本地店铺可能仅收现金。',
 }
 
 export const TOURIST_UI: Record<TouristLocale, TouristUiPack> = {
