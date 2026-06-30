@@ -1,7 +1,7 @@
 import { fetchVisitJejuPlaces, type VisitJejuPlace } from '@/lib/jeju/connectors'
 import { FeaturedGrid } from './featured-grid'
 import { SearchPanel } from './search-panel'
-import { LanguageToggle } from './language-toggle'
+import { TouristHeader } from './tourist-header'
 import { DISPLAY_LABEL } from './category-labels'
 
 // Always fetch fresh; VisitJeju 축제/행사 listings rotate frequently.
@@ -286,21 +286,8 @@ export default async function JejuTouristHomePage() {
       <JejuScenery />
 
       <div className="relative mx-auto w-full max-w-3xl px-4 pb-16 pt-6">
-        {/* 1. Top bar — stacks on mobile so all 5 language pills have room */}
-        <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <div className="flex items-center gap-2">
-            <span
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#00A8B5] text-xl text-white shadow-[0_6px_16px_-4px_rgba(0,168,181,0.7)]"
-              aria-hidden
-            >
-              🧭
-            </span>
-            <h1 className="text-lg font-extrabold tracking-tight text-[#00707A]">
-              제주 AI 여행 안내
-            </h1>
-          </div>
-          <LanguageToggle />
-        </header>
+        {/* 1. Top bar — live clock, translated title, date, weather + language toggle */}
+        <TouristHeader />
 
         {/* 2. Search input + chips + AI recommendation results (client component) */}
         <SearchPanel />

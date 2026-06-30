@@ -76,9 +76,6 @@ const LOCAL_VARIATION_SUFFIXES = [
 const RAINY_QUERY =
   '비 오는 날에도 좋은 제주의 제대로 된 실내 명소를 우선 추천: 미술관·박물관·전시관·뮤지엄·아쿠아리움·실내 테마공간 위주. 동네 소규모 공방·원데이클래스·게임장 같은 곳은 가급적 제외하고, 비 와도 충분히 즐길 만한 규모 있는 실내 명소 위주로.'
 
-/** Static chips (visual only) — all remaining chips are now functional. */
-const STATIC_CHIPS: Array<{ emoji: string; label: string; bg: string; fg: string }> = []
-
 // ── Loading UX constants ──────────────────────────────────────────────────────
 
 /** Client-side AbortController timeout (ms). Generous: only kills truly dead connections. */
@@ -457,6 +454,25 @@ export function SearchPanel() {
   const msgArr = LOADING_MSGS[mode] ?? t.loadSearch
   const currentLoadingMsg = msgArr[msgIdx % msgArr.length]
 
+  // Core content chips (Korean-first audience) — uniform soft pill style.
+  const contentChips: Array<{ mode: Mode; emoji: string; label: string; onClick: () => void }> = [
+    { mode: 'local', emoji: '👀', label: t.chipLocal, onClick: runLocal },
+    { mode: 'festival', emoji: '🎪', label: t.chipFestival, onClick: runFestivals },
+    { mode: 'seasonal', emoji: '🌸', label: t.chipSeasonal, onClick: runSeasonal },
+    { mode: 'rainy', emoji: '☔', label: t.chipRainy, onClick: runRainy },
+    { mode: 'islands', emoji: '⛴️', label: t.chipIslands, onClick: runIslands },
+    { mode: 'olle', emoji: '🥾', label: t.chipOlle, onClick: runOlle },
+    { mode: 'oreum', emoji: '🏔', label: t.chipOreum, onClick: runOreum },
+    { mode: 'bus', emoji: '🚌', label: t.chipBus, onClick: openBus },
+  ]
+
+  // Foreigner-oriented chips — distinct accent group, placed last. Labels carry
+  // their own 🌐 marker so they read as one "for foreign visitors" set.
+  const foreignerChips: Array<{ mode: Mode; label: string; onClick: () => void }> = [
+    { mode: 'help', label: t.chipTravelHelp, onClick: openHelp },
+    { mode: 'comingsoon', label: t.chipComingSoon, onClick: openComingSoon },
+  ]
+
   return (
     <div>
       {/* Search input — functional (free-text → VisitJeju flow) */}
@@ -484,144 +500,64 @@ export function SearchPanel() {
         </div>
       </div>
 
-      {/* Signature features — AI 여행 코스 + 🚌 버스 (own row, chip-style but distinct) */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* Hero — AI 여행 코스: the flagship action, visually dominant */}
+      <div className="mt-5">
         <button
           type="button"
           onClick={openCourse}
           disabled={loading}
-          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
-            mode === 'course'
-              ? 'bg-[#0A2B30] text-white'
-              : 'bg-[#0A2B30]/90 text-white'
+          className={`flex w-full items-center justify-center gap-2 rounded-[18px] bg-gradient-to-r from-[#00A8B5] to-[#0A2B30] px-5 py-3.5 text-[15px] font-extrabold text-white shadow-[0_14px_30px_-12px_rgba(0,112,122,0.85)] transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
+            mode === 'course' ? 'ring-2 ring-[#0A2B30] ring-offset-2 ring-offset-transparent' : ''
           }`}
         >
           <span aria-hidden>🗺️</span>
           {t.chipCourse}
         </button>
-        <button
-          type="button"
-          onClick={openBus}
-          disabled={loading}
-          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
-            mode === 'bus'
-              ? 'bg-[#0A2B30] text-white'
-              : 'bg-[#0A2B30]/90 text-white'
-          }`}
-        >
-          <span aria-hidden>🚌</span>
-          {t.chipBus}
-        </button>
-        <button
-          type="button"
-          onClick={openHelp}
-          disabled={loading}
-          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
-            mode === 'help'
-              ? 'bg-[#0A2B30] text-white'
-              : 'bg-[#0A2B30]/90 text-white'
-          }`}
-        >
-          <span aria-hidden>🆘</span>
-          {t.chipTravelHelp}
-        </button>
-        <button
-          type="button"
-          onClick={openComingSoon}
-          disabled={loading}
-          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
-            mode === 'comingsoon'
-              ? 'bg-[#0A2B30] text-white'
-              : 'bg-[#0A2B30]/90 text-white'
-          }`}
-        >
-          <span aria-hidden>🌉</span>
-          {t.chipComingSoon}
-        </button>
       </div>
 
-      {/* Chips: one functional local chip + static placeholders */}
+      {/* Core content chips — uniform soft pill style, one coherent palette */}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={runLocal}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
-          style={{ backgroundColor: '#EDE7FB', color: '#6B4FB8' }}
-        >
-          <span aria-hidden>👀</span>
-          {t.chipLocal}
-        </button>
-        <button
-          type="button"
-          onClick={runFestivals}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
-          style={{ backgroundColor: '#D9F6FA', color: '#00707A' }}
-        >
-          <span aria-hidden>🎪</span>
-          {t.chipFestival}
-        </button>
-        <button
-          type="button"
-          onClick={runSeasonal}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
-          style={{ backgroundColor: '#FCE4EC', color: '#C2185B' }}
-        >
-          <span aria-hidden>🌸</span>
-          {t.chipSeasonal}
-        </button>
-        <button
-          type="button"
-          onClick={runRainy}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
-          style={{ backgroundColor: '#E3F0FF', color: '#1C6DD0' }}
-        >
-          <span aria-hidden>☔</span>
-          {t.chipRainy}
-        </button>
-        <button
-          type="button"
-          onClick={runIslands}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
-          style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}
-        >
-          <span aria-hidden>⛴️</span>
-          {t.chipIslands}
-        </button>
-        <button
-          type="button"
-          onClick={runOlle}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
-          style={{ backgroundColor: '#D1F2E1', color: '#1A7A46' }}
-        >
-          <span aria-hidden>🥾</span>
-          {t.chipOlle}
-        </button>
-        <button
-          type="button"
-          onClick={runOreum}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50"
-          style={{ backgroundColor: '#FDE8D8', color: '#C05621' }}
-        >
-          <span aria-hidden>🏔</span>
-          {t.chipOreum}
-        </button>
-        {STATIC_CHIPS.map((chip) => (
-          <span
-            key={chip.label}
-            className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm"
-            style={{ backgroundColor: chip.bg, color: chip.fg }}
-          >
-            <span aria-hidden>{chip.emoji}</span>
-            {chip.label}
-          </span>
-        ))}
+        {contentChips.map((chip) => {
+          const active = mode === chip.mode
+          return (
+            <button
+              key={chip.mode}
+              type="button"
+              onClick={chip.onClick}
+              disabled={loading}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm ring-1 transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
+                active
+                  ? 'bg-[#00A8B5] text-white ring-[#00A8B5]'
+                  : 'bg-white/85 text-[#00707A] ring-[#00A8B5]/25 hover:ring-[#00A8B5]/50'
+              }`}
+            >
+              <span aria-hidden>{chip.emoji}</span>
+              {chip.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Foreigner chips — distinct warm accent, grouped together at the end */}
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        {foreignerChips.map((chip) => {
+          const active = mode === chip.mode
+          return (
+            <button
+              key={chip.mode}
+              type="button"
+              onClick={chip.onClick}
+              disabled={loading}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold shadow-sm ring-1 transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
+                active
+                  ? 'bg-[#B84A00] text-white ring-[#B84A00]'
+                  : 'bg-[#FFF3DC] text-[#B84A00] ring-[#E8A85C]/45 hover:ring-[#E8A85C]/80'
+              }`}
+            >
+              {chip.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Loading state — spinning + rotating reassurance */}

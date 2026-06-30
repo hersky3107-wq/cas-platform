@@ -286,6 +286,16 @@ export type TouristUiPack = {
   csProposalNeedsBank: string
   csProposalClosing: string
 
+  // ── Header weather (Jeju City live conditions) ──
+  wxClear: string
+  wxPartlyCloudy: string
+  wxCloudy: string
+  wxFog: string
+  wxDrizzle: string
+  wxRain: string
+  wxSnow: string
+  wxThunder: string
+
   // ── Featured (server page) ──
   featuredHeading: string
   featuredBadge: string
@@ -307,12 +317,12 @@ const KO: TouristUiPack = {
   chipLocal: '관광객은 잘 모르는',
   chipFestival: '이번 주 축제',
   chipSeasonal: '지금 제주 풍경',
-  chipRainy: '비 와도 좋은 곳',
+  chipRainy: '날씨 궂어도 좋은 곳',
   chipIslands: '섬 여행',
   chipOlle: '올레길',
   chipOreum: '오름·한라산',
 
-  headingRainy: '☔ 비 와도 좋은 곳',
+  headingRainy: '☔ 날씨 궂어도 좋은 곳',
   headingLocal: '👀 관광객은 잘 모르는 제주',
   headingFestivalSonar: '🎪 지금 제주 축제·공연',
   headingFestivalFallback: '🎪 제주 축제·공연·전시',
@@ -487,7 +497,7 @@ const KO: TouristUiPack = {
   emptySubtitle: '잠시 후 다시 시도해 주세요.',
   sourceAttribution: '정보·이미지 출처: 비짓제주(제주관광공사)',
 
-  chipTravelHelp: '여행 도움',
+  chipTravelHelp: '🌐 외국인 여행 도움',
   helpHeading: '🆘 여행 도움',
   helpExchangeTitle: '실시간 환율',
   helpExchangeNote: '참고용 환율이에요. 실제 환전 시 금액은 다를 수 있어요.',
@@ -534,7 +544,7 @@ const KO: TouristUiPack = {
   helpPaymentBody:
     '카카오페이·네이버페이·배민은 한국 전화번호·계좌 없이 쓰기 어려워요. 현금과 해외 카드(Visa·Mastercard)를 함께 준비하세요. 편의점·대형마트는 해외 카드가 되지만, 작은 동네 가게는 현금만 받을 수 있어요.',
 
-  chipComingSoon: '준비 중',
+  chipComingSoon: '🌐 외국인 대행 서비스',
   csHeading: '🌉 AX JEJU가 그리는 다음 단계',
   csBetaBadge: 'BETA · 준비 중',
   csIntroTitle: '외국인은 스마트폰이 있어도 한국에서 막힙니다',
@@ -565,6 +575,15 @@ const KO: TouristUiPack = {
   csProposalNeedsBank: '은행 · 금융규제',
   csProposalClosing:
     '글로벌 관광 허브 제주, 그리고 데이터 댐 비전과 맞닿아 있는 방향입니다. 지금은 제안이지만, 제주에서 먼저 시작할 수 있다고 믿어요.',
+
+  wxClear: '맑음',
+  wxPartlyCloudy: '구름 조금',
+  wxCloudy: '흐림',
+  wxFog: '안개',
+  wxDrizzle: '이슬비',
+  wxRain: '비',
+  wxSnow: '눈',
+  wxThunder: '천둥번개',
 }
 
 // ── English — KO fallback + high-value overrides ───────────────────────────────
@@ -582,12 +601,12 @@ const EN: TouristUiPack = {
   chipLocal: 'Hidden Local Spots',
   chipFestival: "This Week's Festivals",
   chipSeasonal: 'Jeju Right Now',
-  chipRainy: 'Great Even in Rain',
+  chipRainy: 'Great in Any Weather',
   chipIslands: 'Island Trips',
   chipOlle: 'Olle Trails',
   chipOreum: 'Oreum & Hallasan',
 
-  headingRainy: '☔ Great Even in the Rain',
+  headingRainy: '☔ Great in Any Weather',
   headingLocal: '👀 Jeju Only Locals Know',
   headingFestivalSonar: '🎪 Jeju Festivals & Shows Now',
   headingFestivalFallback: '🎪 Jeju Festivals · Shows · Exhibits',
@@ -762,7 +781,7 @@ const EN: TouristUiPack = {
   emptySubtitle: 'Please try again shortly.',
   sourceAttribution: 'Info & images: VisitJeju (Jeju Tourism Organization)',
 
-  chipTravelHelp: 'Travel Help',
+  chipTravelHelp: '🌐 Travel Help (Foreign Visitors)',
   helpHeading: '🆘 Travel Help',
   helpExchangeTitle: 'Live Exchange Rates',
   helpExchangeNote: 'Reference rates only. Actual exchange amounts may differ.',
@@ -810,7 +829,7 @@ const EN: TouristUiPack = {
   helpPaymentBody:
     'KakaoPay, Naver Pay, and Baemin are hard to use without a Korean phone number or bank account. Carry cash plus an international card (Visa/Mastercard). Convenience stores and large marts accept foreign cards, but small local shops may be cash-only.',
 
-  chipComingSoon: 'Coming Soon',
+  chipComingSoon: '🌐 Foreigner Concierge (Planned)',
   csHeading: "🌉 What AX JEJU Is Building Next",
   csBetaBadge: 'BETA · Coming Soon',
   csIntroTitle: 'Even with a smartphone, foreigners hit walls in Korea',
@@ -841,6 +860,15 @@ const EN: TouristUiPack = {
   csProposalNeedsBank: 'Banks · financial regulation',
   csProposalClosing:
     'It aligns with Jeju as a global tourism hub and with the data-dam vision. It\u2019s a proposal for now \u2014 but we believe it can start in Jeju first.',
+
+  wxClear: 'Clear',
+  wxPartlyCloudy: 'Partly cloudy',
+  wxCloudy: 'Cloudy',
+  wxFog: 'Fog',
+  wxDrizzle: 'Drizzle',
+  wxRain: 'Rain',
+  wxSnow: 'Snow',
+  wxThunder: 'Thunderstorm',
 }
 
 // ── Japanese — KO fallback + high-value overrides ──────────────────────────────
@@ -858,12 +886,12 @@ const JA: TouristUiPack = {
   chipLocal: '地元の人だけが知る',
   chipFestival: '今週のお祭り',
   chipSeasonal: '今の済州の風景',
-  chipRainy: '雨でも楽しめる',
+  chipRainy: '悪天候でも楽しめる',
   chipIslands: '島めぐり',
   chipOlle: 'オルレギル',
   chipOreum: 'オルム・漢拏山',
 
-  headingRainy: '☔ 雨でも楽しめる場所',
+  headingRainy: '☔ 悪天候でも楽しめる場所',
   headingLocal: '👀 地元の人が知る済州',
   headingFestivalSonar: '🎪 今の済州フェス・公演',
   headingFestivalFallback: '🎪 済州フェス・公演・展示',
@@ -1038,7 +1066,7 @@ const JA: TouristUiPack = {
   emptySubtitle: 'しばらくしてからもう一度お試しください。',
   sourceAttribution: '情報・画像出典：VisitJeju（済州観光公社）',
 
-  chipTravelHelp: 'トラベルヘルプ',
+  chipTravelHelp: '🌐 外国人トラベルヘルプ',
   helpHeading: '🆘 トラベルヘルプ',
   helpExchangeTitle: 'リアルタイム為替レート',
   helpExchangeNote: '参考レートです。実際の両替金額とは異なる場合があります。',
@@ -1086,7 +1114,7 @@ const JA: TouristUiPack = {
   helpPaymentBody:
     'カカオペイ・ネイバーペイ・出前館は韓国の電話番号や銀行口座がないと使いにくいです。現金と海外カード（Visa／Mastercard）の両方を用意しましょう。コンビニや大型マートでは海外カードが使えますが、小さな地元の店は現金のみの場合があります。',
 
-  chipComingSoon: '準備中',
+  chipComingSoon: '🌐 外国人代行サービス',
   csHeading: '🌉 AX JEJU が描く次のステップ',
   csBetaBadge: 'BETA・準備中',
   csIntroTitle: 'スマホがあっても、外国人は韓国で行き詰まります',
@@ -1117,6 +1145,15 @@ const JA: TouristUiPack = {
   csProposalNeedsBank: '銀行・金融規制',
   csProposalClosing:
     'グローバル観光ハブ済州、そしてデータダム構想ともつながる方向性です。今はまだ提案ですが、済州から先に始められると信じています。',
+
+  wxClear: '晴れ',
+  wxPartlyCloudy: '所により曇り',
+  wxCloudy: '曇り',
+  wxFog: '霧',
+  wxDrizzle: '霧雨',
+  wxRain: '雨',
+  wxSnow: '雪',
+  wxThunder: '雷雨',
 }
 
 // ── Traditional Chinese — KO fallback + high-value overrides ───────────────────
@@ -1133,12 +1170,12 @@ const ZH_TW: TouristUiPack = {
   chipLocal: '在地人才知道',
   chipFestival: '本週慶典',
   chipSeasonal: '此刻濟州風景',
-  chipRainy: '雨天也很棒',
+  chipRainy: '壞天氣也好玩',
   chipIslands: '跳島之旅',
   chipOlle: '偶來小路',
   chipOreum: '小火山·漢拏山',
 
-  headingRainy: '☔ 雨天也很棒的地方',
+  headingRainy: '☔ 壞天氣也好玩的地方',
   headingLocal: '👀 在地人才知道的濟州',
   headingFestivalSonar: '🎪 此刻濟州慶典·演出',
   headingFestivalFallback: '🎪 濟州慶典·演出·展覽',
@@ -1313,7 +1350,7 @@ const ZH_TW: TouristUiPack = {
   emptySubtitle: '請稍後再試。',
   sourceAttribution: '資訊・圖片來源：VisitJeju（濟州觀光公社）',
 
-  chipTravelHelp: '旅遊協助',
+  chipTravelHelp: '🌐 外國旅客協助',
   helpHeading: '🆘 旅遊協助',
   helpExchangeTitle: '即時匯率',
   helpExchangeNote: '僅供參考的匯率，實際兌換金額可能有所不同。',
@@ -1361,7 +1398,7 @@ const ZH_TW: TouristUiPack = {
   helpPaymentBody:
     'KakaoPay、Naver Pay 與外送 App 在沒有韓國電話號碼或銀行帳戶時較難使用。請同時準備現金與國際信用卡（Visa／Mastercard）。便利商店與大型賣場可使用外國信用卡，但小型在地商店可能僅收現金。',
 
-  chipComingSoon: '即將推出',
+  chipComingSoon: '🌐 外國旅客代辦服務',
   csHeading: '🌉 AX JEJU 擘劃的下一步',
   csBetaBadge: 'BETA · 籌備中',
   csIntroTitle: '就算有智慧型手機，外國人在韓國仍處處碰壁',
@@ -1392,6 +1429,15 @@ const ZH_TW: TouristUiPack = {
   csProposalNeedsBank: '銀行 · 金融法規',
   csProposalClosing:
     '這與濟州作為全球觀光樞紐，以及資料水庫願景的方向相互呼應。目前雖是提案，但我們相信可以先從濟州開始。',
+
+  wxClear: '晴',
+  wxPartlyCloudy: '局部多雲',
+  wxCloudy: '陰天',
+  wxFog: '霧',
+  wxDrizzle: '毛毛雨',
+  wxRain: '雨',
+  wxSnow: '雪',
+  wxThunder: '雷雨',
 }
 
 // ── Simplified Chinese — KO fallback + high-value overrides ────────────────────
@@ -1408,12 +1454,12 @@ const ZH_CN: TouristUiPack = {
   chipLocal: '当地人才知道',
   chipFestival: '本周庆典',
   chipSeasonal: '此刻济州风景',
-  chipRainy: '雨天也很棒',
+  chipRainy: '坏天气也好玩',
   chipIslands: '跳岛之旅',
   chipOlle: '偶来小路',
   chipOreum: '小火山·汉拿山',
 
-  headingRainy: '☔ 雨天也很棒的地方',
+  headingRainy: '☔ 坏天气也好玩的地方',
   headingLocal: '👀 当地人才知道的济州',
   headingFestivalSonar: '🎪 此刻济州庆典·演出',
   headingFestivalFallback: '🎪 济州庆典·演出·展览',
@@ -1588,7 +1634,7 @@ const ZH_CN: TouristUiPack = {
   emptySubtitle: '请稍后再试。',
   sourceAttribution: '信息・图片来源：VisitJeju（济州观光公社）',
 
-  chipTravelHelp: '旅游帮助',
+  chipTravelHelp: '🌐 外国旅客帮助',
   helpHeading: '🆘 旅游帮助',
   helpExchangeTitle: '实时汇率',
   helpExchangeNote: '仅供参考的汇率，实际兑换金额可能有所不同。',
@@ -1636,7 +1682,7 @@ const ZH_CN: TouristUiPack = {
   helpPaymentBody:
     'KakaoPay、Naver Pay 和外卖 App 在没有韩国电话号码或银行账户时较难使用。请同时准备现金和国际信用卡（Visa／Mastercard）。便利店和大型超市可使用外国信用卡，但小型本地店铺可能仅收现金。',
 
-  chipComingSoon: '即将推出',
+  chipComingSoon: '🌐 外国旅客代办服务',
   csHeading: '🌉 AX JEJU 擘画的下一步',
   csBetaBadge: 'BETA · 筹备中',
   csIntroTitle: '就算有智能手机，外国人在韩国仍处处碰壁',
@@ -1667,6 +1713,15 @@ const ZH_CN: TouristUiPack = {
   csProposalNeedsBank: '银行 · 金融监管',
   csProposalClosing:
     '这与济州作为全球旅游枢纽，以及数据水库愿景的方向相互呼应。目前虽是提案，但我们相信可以先从济州开始。',
+
+  wxClear: '晴',
+  wxPartlyCloudy: '局部多云',
+  wxCloudy: '阴天',
+  wxFog: '雾',
+  wxDrizzle: '毛毛雨',
+  wxRain: '雨',
+  wxSnow: '雪',
+  wxThunder: '雷雨',
 }
 
 export const TOURIST_UI: Record<TouristLocale, TouristUiPack> = {
