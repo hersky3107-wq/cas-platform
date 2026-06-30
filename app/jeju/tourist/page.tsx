@@ -8,19 +8,24 @@ import {
 import { FeaturedGrid } from './featured-grid'
 import { SearchPanel } from './search-panel'
 import { TouristHeader } from './tourist-header'
-import { DISPLAY_LABEL } from './category-labels'
 
 // Always fetch fresh; featured subset is re-sampled every request from the cached pool.
 export const dynamic = 'force-dynamic'
 
 const CURATED_COUNT = 8
 
+/**
+ * Server-renders the Korean (kr) featured sample. Non-Korean UI locales re-fetch
+ * a localized + re-sampled set client-side (see FeaturedGrid) — the server can't
+ * know the client locale (it lives in localStorage), so kr is the initial paint.
+ */
 async function loadFeaturedPlaces(): Promise<VisitJejuPlace[]> {
-  let pool = await getVisitJejuPool()
+  let pool = await getVisitJejuPool('kr')
   if (pool.length === 0) {
     const fallback = await fetchVisitJejuPlaces({
       perCategory: 20,
       categories: ['c1', 'c4', 'c5', 'c2', 'c6'],
+      locale: 'kr',
     })
     pool = fallback.ok ? fallback.places : []
   }
@@ -28,15 +33,6 @@ async function loadFeaturedPlaces(): Promise<VisitJejuPlace[]> {
     count: CURATED_COUNT,
     bucketTargets: FEATURED_BUCKET_TARGETS,
   })
-}
-
-function toFeaturedItems(
-  places: VisitJejuPlace[]
-): Array<{ place: VisitJejuPlace; displayLabel: string }> {
-  return places.map((place) => ({
-    place,
-    displayLabel: DISPLAY_LABEL[place.categoryCode] ?? place.categoryLabel,
-  }))
 }
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
@@ -191,8 +187,7 @@ function EmptyState() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function JejuTouristHomePage() {
-  const picks = await loadFeaturedPlaces()
-  const curated = toFeaturedItems(picks)
+  const picks = (await loadFeaturedPlaces()) ?? []
 
   return (
     <main
@@ -220,7 +215,7 @@ export default async function JejuTouristHomePage() {
         </div>
 
         {/* 5. Curated illustrated cards — 2 cols mobile, 3 cols desktop */}
-        {curated.length === 0 ? <EmptyState /> : <FeaturedGrid items={curated} />}
+        {picks.length === 0 ? <EmptyState /> : <FeaturedGrid initialItems={picks} />}
 
         {/* Source attribution */}
         <p className="mt-6 text-center text-[11px] text-[#00707A]/60">

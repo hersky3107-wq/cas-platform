@@ -2173,18 +2173,52 @@ function visitJejuTotalCount(parsed: unknown): number {
 }
 
 /**
+ * VisitJeju API `locale` codes — the API serves natively multilingual content.
+ * Confirmed live (2026-06): kr / en / jp / cn (Simplified) / zh (Traditional) / my.
+ */
+export type VisitJejuLocale = 'kr' | 'en' | 'jp' | 'cn' | 'zh'
+
+/**
+ * Maps our TouristLocale → VisitJeju's locale code. Anything unknown (incl. 'ko')
+ * falls back to 'kr', so Korean behaves exactly as before.
+ */
+export function toVisitJejuLocale(locale: string | null | undefined): VisitJejuLocale {
+  switch (locale) {
+    case 'en':
+      return 'en'
+    case 'ja':
+      return 'jp'
+    case 'zh-TW':
+      return 'zh' // Traditional Chinese
+    case 'zh-CN':
+      return 'cn' // Simplified Chinese
+    case 'ko':
+    default:
+      return 'kr'
+  }
+}
+
+/**
  * Builds a searchList URL with apiKey + locale + page (+ optional category/numOfRows).
+ *
+ * `locale` selects VisitJeju's native multilingual content (default 'kr'); the
+ * API returns localized title/address/introduction/tags for the chosen language.
  *
  * ⚠️ FIREWALL: VisitJeju's web firewall returns an HTML "blocked" page (not JSON)
  * when raw Korean characters appear in query params. Keep every param ASCII-only
- * (category=c1, page=1). Korean keyword filtering is done CLIENT-SIDE on fetched
- * data (filterPlacesByQuery), never via the API.
+ * (category=c1, page=1, locale=en). Korean keyword filtering is done CLIENT-SIDE
+ * on fetched data (filterPlacesByQuery), never via the API.
  */
-function buildVisitJejuUrl(opts: { category?: string; perPage: number; page?: number }): string {
+function buildVisitJejuUrl(opts: {
+  category?: string
+  perPage: number
+  page?: number
+  locale?: VisitJejuLocale
+}): string {
   const key = process.env.VISITJEJU_API_KEY ?? ''
   const params = new URLSearchParams({
     apiKey: key,
-    locale: 'kr',
+    locale: opts.locale ?? 'kr',
     page: String(opts.page ?? 1),
     // searchList paginates by `pageSize`; `numOfRows` is sent too for safety as
     // the guide is inconsistent about the row-count param name.
@@ -2216,6 +2250,7 @@ function buildVisitJejuUrl(opts: { category?: string; perPage: number; page?: nu
 export async function fetchVisitJejuPlaces(options?: {
   categories?: string[]
   perCategory?: number
+  locale?: VisitJejuLocale
 }): Promise<
   | { ok: true; places: VisitJejuPlace[]; totalCount: number }
   | { ok: false; error: string }
@@ -2232,11 +2267,12 @@ export async function fetchVisitJejuPlaces(options?: {
     options?.perCategory && options.perCategory > 0
       ? options.perCategory
       : VISITJEJU_DEFAULT_PER_CATEGORY
+  const locale = options?.locale ?? 'kr'
 
   // 4 small parallel calls, one per category value.
   const settled = await Promise.all(
     categories.map(async (category) => {
-      const url = buildVisitJejuUrl({ category, perPage: perCategory })
+      const url = buildVisitJejuUrl({ category, perPage: perCategory, locale })
       const r = await fetchJsonAt(url)
       if (!r.ok) return { category, ok: false as const, error: r.error }
       return {
@@ -2318,6 +2354,7 @@ const VISITJEJU_POOL_PAGE_SIZE = 100
 export async function fetchVisitJejuPool(options?: {
   categories?: string[]
   pagesPerCategory?: number
+  locale?: VisitJejuLocale
 }): Promise<VisitJejuPlace[]> {
   try {
     if (!process.env.VISITJEJU_API_KEY) return []
@@ -2330,6 +2367,7 @@ export async function fetchVisitJejuPool(options?: {
       options?.pagesPerCategory && options.pagesPerCategory > 0
         ? options.pagesPerCategory
         : VISITJEJU_POOL_PAGES_PER_CATEGORY
+    const locale = options?.locale ?? 'kr'
 
     // One request descriptor per (category, page) — fired in parallel.
     const requests: Array<{ category: string; page: number }> = []
@@ -2341,7 +2379,7 @@ export async function fetchVisitJejuPool(options?: {
 
     const settled = await Promise.all(
       requests.map(async ({ category, page }) => {
-        const url = buildVisitJejuUrl({ category, page, perPage: VISITJEJU_POOL_PAGE_SIZE })
+        const url = buildVisitJejuUrl({ category, page, perPage: VISITJEJU_POOL_PAGE_SIZE, locale })
         const r = await fetchJsonAt(url)
         return r.ok ? visitJejuItems(r.parsed) : []
       })
@@ -2369,22 +2407,29 @@ export async function fetchVisitJejuPool(options?: {
 const VISITJEJU_POOL_TTL_MS = 6 * 60 * 60 * 1000
 
 /**
- * In-memory pool cache. NOTE: this is per-server-instance memory only (resets on
- * cold start / redeploy and is not shared across instances) — fine for the demo.
- * A persistent/shared cache (e.g. KV or DB-backed) is a later optimization.
+ * In-memory pool cache, keyed PER LOCALE so languages never mix. NOTE: this is
+ * per-server-instance memory only (resets on cold start / redeploy and is not
+ * shared across instances) — fine for the demo. A persistent/shared cache (e.g.
+ * KV or DB-backed) is a later optimization.
  */
-let _poolCache: { at: number; places: VisitJejuPlace[] } | null = null
+const _poolCacheByLocale = new Map<VisitJejuLocale, { at: number; places: VisitJejuPlace[] }>()
 
-/** Returns the cached pool when younger than the TTL, else refetches and caches. */
-export async function getVisitJejuPool(): Promise<VisitJejuPlace[]> {
+/**
+ * Returns the cached pool for the given VisitJeju locale when younger than the
+ * TTL, else refetches and caches it. Defaults to 'kr' (Korean — unchanged).
+ */
+export async function getVisitJejuPool(
+  locale: VisitJejuLocale = 'kr'
+): Promise<VisitJejuPlace[]> {
   const now = Date.now()
-  if (_poolCache && now - _poolCache.at < VISITJEJU_POOL_TTL_MS) {
-    return _poolCache.places
+  const cached = _poolCacheByLocale.get(locale)
+  if (cached && now - cached.at < VISITJEJU_POOL_TTL_MS) {
+    return cached.places
   }
-  const places = await fetchVisitJejuPool()
+  const places = await fetchVisitJejuPool({ locale })
   // Only cache a non-empty result so a transient total failure doesn't pin [].
   if (places.length > 0) {
-    _poolCache = { at: now, places }
+    _poolCacheByLocale.set(locale, { at: now, places })
   }
   return places
 }
