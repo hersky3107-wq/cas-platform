@@ -2,7 +2,6 @@ import 'server-only'
 
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { PDFParse } from 'pdf-parse'
 import type { ExtractedContent, ExtractInput } from '@/lib/extract/types'
 
 const MAX_TEXT_LENGTH = 20_000
@@ -61,14 +60,19 @@ export async function extractPdf(input: ExtractInput): Promise<ExtractedContent>
     return fail(sourceLabel, `Could not read file: ${msg}`)
   }
 
-  // Parse the PDF.
-  let textResult: Awaited<ReturnType<InstanceType<typeof PDFParse>['getText']>>
-  let infoResult: Awaited<ReturnType<InstanceType<typeof PDFParse>['getInfo']>> | null = null
+  // Parse the PDF — pdf-parse (pdfjs-dist) is loaded only when extraction runs.
+  let fullText = ''
+  let metaTitle: string | null = null
   try {
+    const { PDFParse } = await import('pdf-parse')
     const parser = new PDFParse({ data: new Uint8Array(buffer) })
-    textResult = await parser.getText()
+    const textResult = await parser.getText()
+    fullText = (textResult.text ?? '').replace(/\r/g, '').trim()
     try {
-      infoResult = await parser.getInfo()
+      const infoResult = await parser.getInfo()
+      if (typeof infoResult?.info?.Title === 'string' && infoResult.info.Title.trim()) {
+        metaTitle = infoResult.info.Title.trim()
+      }
     } catch {
       // Info is optional — ignore failures here.
     }
@@ -81,8 +85,6 @@ export async function extractPdf(input: ExtractInput): Promise<ExtractedContent>
     return fail(sourceLabel, `PDF parse error: ${msg}`)
   }
 
-  const fullText = (textResult.text ?? '').replace(/\r/g, '').trim()
-
   // Detect scanned/image-based PDFs that yield no usable text.
   if (fullText.length < MIN_EXTRACTABLE_CHARS) {
     return fail(
@@ -92,10 +94,6 @@ export async function extractPdf(input: ExtractInput): Promise<ExtractedContent>
   }
 
   // Best-effort title: PDF metadata title → filename without extension.
-  const metaTitle: string | null =
-    typeof infoResult?.info?.Title === 'string' && infoResult.info.Title.trim()
-      ? infoResult.info.Title.trim()
-      : null
   const title =
     metaTitle ?? (path.basename(filePath, path.extname(filePath)).trim() || null)
 

@@ -4,7 +4,6 @@ import { extractCsv } from '@/lib/extract/adapters/csv'
 import { extractDocx } from '@/lib/extract/adapters/docx'
 import { extractHwpx } from '@/lib/extract/adapters/hwpx'
 import { extractJsonApi } from '@/lib/extract/adapters/jsonApi'
-import { extractPdf } from '@/lib/extract/adapters/pdf'
 import { extractUrl } from '@/lib/extract/adapters/url'
 import { extractXlsx } from '@/lib/extract/adapters/xlsx'
 import { extractXml } from '@/lib/extract/adapters/xml'
@@ -40,7 +39,9 @@ export async function extract(input: ExtractInput): Promise<ExtractedContent> {
     case 'xml':
       return extractXml(input)
     case 'pdf':
-      return extractPdf(input)
+      // pdf-parse → pdfjs-dist references DOMMatrix at module load; defer import
+      // so SSR routes that only need json-api/url never evaluate the PDF stack.
+      return (await import('@/lib/extract/adapters/pdf')).extractPdf(input)
     case 'csv':
       return extractCsv(input)
     case 'docx':
