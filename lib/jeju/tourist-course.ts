@@ -10,6 +10,13 @@ import {
   type VisitJejuPlace,
 } from '@/lib/jeju/connectors'
 import { getAttractionsByField, NATURE_FIELDS, CULTURE_FIELDS } from '@/lib/jeju/attraction-utils'
+import {
+  languageDirective,
+  languageReminder,
+  sonarLanguageDirective,
+  warnIfWrongLanguage,
+  type AiLocale,
+} from '@/lib/jeju/ai-locale'
 
 /**
  * Jeju TOURIST mode — AI 여행 코스 추천 engine (Jeju's signature feature).
@@ -168,8 +175,12 @@ function balancedSample(pool: VisitJejuPlace[], size: number): VisitJejuPlace[] 
 
 // ── Sonar supplement: local-hidden + active/marine/trail places ───────────────
 
-function buildLocalActiveSystemPrompt(area?: string): string {
+function buildLocalActiveSystemPrompt(area: string | undefined, locale: AiLocale): string {
   return [
+    // Forceful language rule FIRST (sandwiched with a reminder at the end).
+    languageDirective(locale),
+    sonarLanguageDirective(locale),
+    '',
     '당신은 제주 현지 사정에 밝은 여행 안내자입니다.',
     '여행 코스 구성에 쓸 "실재하는" 제주 장소를 찾아 JSON으로만 답하세요.',
     area ? `가능하면 "${area}" 인근 위주로 찾아 주세요.` : '',
@@ -181,10 +192,14 @@ function buildLocalActiveSystemPrompt(area?: string): string {
     '엄수 규칙:',
     '- 웹에서 실제로 확인되는 실재 장소만 포함하세요. 이름·위치가 불확실하면 빼세요. 지어내지 마세요.',
     '- 반드시 제주특별자치도 안의 장소만 포함하세요. 제주 밖(육지)은 절대 포함하지 마세요.',
-    '- 반드시 한국어로만 작성하세요.',
     '',
     '출력 형식(엄수): 아래 형태의 JSON 객체 하나만 출력하세요. JSON 외의 설명·마크다운은 절대 출력하지 마세요.',
-    '{ "places": [ { "name": "<장소명>", "category": "<종류(맛집/카페/오름/해양스포츠/트래킹 등), 모르면 null>", "area": "<지역, 모르면 null>", "description": "<한 줄 한국어 소개>" } ] }',
+    'TOKEN EXCEPTION — these specific fields stay Korean, everything else follows the language rule above:',
+    '- "name" 필드: 고유명사이므로 한국어 원문 유지(언어 규칙대로 괄호 안 로마자/번역 병기).',
+    '- "category" 필드: 내부 분류 키이므로 항상 한국어 단어 하나로만 적으세요 (맛집·카페·오름·해변·체험·트래킹 등). 절대 번역하지 마세요.',
+    '- "area"·"description": 반드시 출력 언어로 작성하세요.',
+    '{ "places": [ { "name": "<place name (Korean kept)>", "category": "<Korean category keyword, or null>", "area": "<area in the output language, or null>", "description": "<one-line intro in the output language>" } ] }',
+    languageReminder(locale),
   ]
     .filter((s) => s !== '')
     .join('\n')
@@ -207,7 +222,11 @@ function buildLocalActiveUserPrompt(query: string): string {
  * enrich Course D and a dedicated trail course — plug that source in at this point
  * and merge its results into the returned candidate list.
  */
-async function fetchLocalActivePlaces(query: string, area?: string): Promise<Candidate[]> {
+async function fetchLocalActivePlaces(
+  query: string,
+  area: string | undefined,
+  locale: AiLocale
+): Promise<Candidate[]> {
   try {
     const r = await runSingleAiProvider({
       supabase: noDbSupabase(),
@@ -215,7 +234,7 @@ async function fetchLocalActivePlaces(query: string, area?: string): Promise<Can
       userId: null,
       provider: LOCAL_ACTIVE_PROVIDER,
       prompt: buildLocalActiveUserPrompt(query),
-      systemPrompt: buildLocalActiveSystemPrompt(area),
+      systemPrompt: buildLocalActiveSystemPrompt(area, locale),
       maxCompletionTokens: LOCAL_ACTIVE_MAX_TOKENS,
       timeoutMs: 30_000,
     })
@@ -325,9 +344,12 @@ function buildCandidateList(candidates: Candidate[]): string {
     .join('\n')
 }
 
-function buildComposeSystemPrompt(duration: '반나절' | '하루'): string {
+function buildComposeSystemPrompt(duration: '반나절' | '하루', locale: AiLocale): string {
   const stopsHint = duration === '반나절' ? '3~4곳' : '5~6곳'
   return [
+    // Forceful language rule FIRST (sandwiched with a reminder at the end).
+    languageDirective(locale),
+    '',
     '당신은 제주 여행 코스를 설계하는 전문 플래너입니다.',
     '아래 후보 장소 목록만을 사용해, 성격이 분명히 다른 4개의 하루 코스를 설계하세요.',
     '',
@@ -339,11 +361,15 @@ function buildComposeSystemPrompt(duration: '반나절' | '하루'): string {
     '',
     '코스 구성 품질(중요 — 단순 나열이 아니라 "흐름"이 있어야 함):',
     `- 각 코스는 ${stopsHint} 정도의 스톱으로 구성하고, 방문 순서(order)를 1부터 매기세요.`,
-    '- 각 스톱에 timing(예: "오전", "점심", "오후", "저녁")을 넣어 하루 흐름이 자연스럽게 이어지게 하세요. 식사 시간대에는 가능하면 맛집/카페를 배치하세요.',
+    '- 각 스톱에 timing을 넣어 하루 흐름이 자연스럽게 이어지게 하세요. 식사 시간대에는 가능하면 맛집/카페를 배치하세요.',
     '- 각 스톱에 durationHint(예: "1~2시간")와 짧은 description(왜 이 코스에 들어가는지)을 넣으세요.',
     '- concept: 그 코스가 어떤 하루인지 1~2문장으로 분명히 설명하세요. 4개 코스의 concept이 서로 확실히 달라야 합니다.',
-    '- 각 스톱의 분류(category)는 반드시 한국어 단어로만 표기하세요 (예: 해변·오름·카페·맛집·관광지·체험·숲길·해안·전시·염전). 영어나 알 수 없는 문자를 쓰지 마세요.',
     '- 코스 스톱 선택 기준: 실제 방문 가치가 있는 명소·자연·오름·체험·맛집·카페·박물관·전시공간을 우선하세요. "개점식", "그랜드오픈", "○○ 행사 개막" 같은 일회성 상업 이벤트, 면세점 오픈 행사, 단순 상업시설은 여행 코스 스톱으로 적합하지 않으니 절대 포함하지 마세요. {공식} 표시 자연·문화·오름 후보를 적극 활용하세요.',
+    '',
+    'TOKEN EXCEPTION — only these stay Korean, everything else follows the language rule at the top:',
+    '- "timing" 필드는 내부 표시 키이므로 항상 "오전"·"점심"·"오후"·"저녁" 중 하나의 한국어로만 적으세요(번역 금지). 화면에는 사용자 언어로 자동 변환됩니다.',
+    '- 후보 장소의 고유명사(이름)는 한국어 원문을 유지하세요(언어 규칙대로 괄호 병기).',
+    '- theme·concept·note·description·durationHint 등 나머지 모든 텍스트는 반드시 출력 언어로 작성하세요.',
     '',
     '엄수 규칙(anti-hallucination):',
     '- 반드시 후보 목록에 있는 장소만 사용하세요. 목록에 없는 장소를 절대 지어내지 마세요.',
@@ -351,11 +377,13 @@ function buildComposeSystemPrompt(duration: '반나절' | '하루'): string {
     '- 같은 코스 안에서 같은 장소를 중복하지 마세요.',
     '- 어떤 코스에 잘 맞는 후보가 너무 적으면 무리하게 채우지 말고, 그 코스는 적게 구성하거나 생략해도 됩니다(억지로 끼워맞추지 마세요). 가능하면 4개를 모두 만드세요.',
     '- {공식} 표시 후보는 좌표가 확인된 실제 관광지·오름·문화유적입니다. 가능하면 비슷한 지역 장소들을 연결해 동선을 자연스럽게 구성하세요.',
-    '- 반드시 한국어로만 작성하세요.',
     '',
     '출력 형식(엄수): 아래 형태의 JSON 객체 하나만 출력하세요. JSON 외의 설명·마크다운·인사말은 절대 출력하지 마세요.',
-    '{ "courses": [ { "id": "A", "theme": "<짧은 코스 이름>", "concept": "<1~2문장 컨셉>", "note": "<참고 한 줄 또는 null>", "stops": [ { "index": <후보 번호 정수>, "order": 1, "timing": "오전", "durationHint": "1~2시간", "description": "<한 줄>" } ] } ] }',
-  ].join('\n')
+    '{ "courses": [ { "id": "A", "theme": "<short course name in the output language>", "concept": "<1-2 sentence concept in the output language>", "note": "<one-line note in the output language, or null>", "stops": [ { "index": <integer candidate number>, "order": 1, "timing": "오전", "durationHint": "<duration in the output language, e.g. 1-2 hours>", "description": "<one line in the output language>" } ] } ] }',
+    languageReminder(locale),
+  ]
+    .filter((s) => s !== '')
+    .join('\n')
 }
 
 function buildComposeUserPrompt(
@@ -443,10 +471,12 @@ export async function generateCourses({
   query,
   duration,
   area,
+  locale = 'ko',
 }: {
   query: string
   duration?: '반나절' | '하루'
   area?: string
+  locale?: AiLocale
 }): Promise<{ ok: true; courses: Course[] } | { ok: false; error: string }> {
   try {
     const trimmedQuery = (query ?? '').trim()
@@ -490,7 +520,7 @@ export async function generateCourses({
     //    + sonar supplement for local-hidden + active places. Both non-fatal.
     const [attrCandidates, webCandidates] = await Promise.all([
       fetchAttractionCandidates(trimmedArea),
-      fetchLocalActivePlaces(trimmedQuery || '제주 여행 코스', trimmedArea),
+      fetchLocalActivePlaces(trimmedQuery || '제주 여행 코스', trimmedArea, locale),
     ])
 
     // Unified, index-stable candidate bank: VisitJeju → attractions → web.
@@ -504,7 +534,7 @@ export async function generateCourses({
       userId: null,
       provider: COMPOSE_PROVIDER,
       prompt: buildComposeUserPrompt(trimmedQuery, dur, trimmedArea, buildCandidateList(candidates)),
-      systemPrompt: buildComposeSystemPrompt(dur),
+      systemPrompt: buildComposeSystemPrompt(dur, locale),
       maxCompletionTokens: COMPOSE_MAX_TOKENS,
       timeoutMs: 75_000,
     })
@@ -517,6 +547,8 @@ export async function generateCourses({
       )
       return { ok: false, error: GENERIC_FAIL }
     }
+
+    warnIfWrongLanguage(r.text, locale, 'tourist-course/standard')
 
     let parsed: unknown
     try {
@@ -612,9 +644,12 @@ function deriveSituationKeywords(query: string, companion?: string, ageGroup?: s
   return extra
 }
 
-function buildCustomComposeSystemPrompt(duration: '반나절' | '하루'): string {
+function buildCustomComposeSystemPrompt(duration: '반나절' | '하루', locale: AiLocale): string {
   const stopsHint = duration === '반나절' ? '3~4곳' : '5~6곳'
   return [
+    // Forceful language rule FIRST (sandwiched with a reminder at the end).
+    languageDirective(locale),
+    '',
     '당신은 사용자의 "상황"을 깊이 이해하고 그에 꼭 맞는 제주 여행 코스를 설계하는 전문 플래너입니다.',
     '아래 후보 장소 목록만을 사용해, 사용자 상황에 가장 잘 맞는 서로 다른 2개의 맞춤 코스를 설계하세요.',
     '',
@@ -628,24 +663,30 @@ function buildCustomComposeSystemPrompt(duration: '반나절' | '하루'): strin
     '',
     '코스 구성 품질(단순 나열이 아니라 "하루의 흐름"):',
     `- 각 코스는 ${stopsHint} 정도의 스톱으로 구성하고, 방문 순서(order)를 1부터 매기세요.`,
-    '- 각 스톱에 timing("오전"→"점심"→"오후"→"저녁")을 넣어 하루 흐름이 자연스럽게 이어지게 하세요. 식사 시간대에는 가능하면 맛집/카페를 배치하세요.',
+    '- 각 스톱에 timing을 넣어 하루 흐름이 자연스럽게 이어지게 하세요. 식사 시간대에는 가능하면 맛집/카페를 배치하세요.',
     '- 각 스톱에 durationHint(예: "1~2시간")와 짧은 description(이 상황에 왜 좋은지)을 넣으세요.',
     '- theme: 고정된 이름이 아니라, 이 사용자 상황에 어울리는 코스 이름을 직접 지으세요.',
     '- concept: 이 코스가 왜 이 상황에 잘 맞는지 1~2문장으로 설명하세요. 두 코스의 concept은 서로 분명히 달라야 합니다.',
     '- note: 상황에 도움이 되는 한 줄(예: 휠체어 접근/유아 편의/주차 등)을 넣으면 좋습니다. 없으면 null.',
-    '- 각 스톱의 분류(category)는 반드시 한국어 단어로만 표기하세요 (예: 해변·오름·카페·맛집·관광지·체험·숲길·해안·전시·염전). 영어나 알 수 없는 문자를 쓰지 마세요.',
     '- 코스 스톱 선택 기준: 실제 방문 가치가 있는 명소·자연·오름·체험·맛집·카페·박물관을 우선하세요. "개점식", "그랜드오픈", "○○ 행사 개막" 같은 일회성 상업 이벤트나 면세점 오픈 행사는 여행 코스 스톱으로 절대 포함하지 마세요.',
+    '',
+    'TOKEN EXCEPTION — only these stay Korean, everything else follows the language rule at the top:',
+    '- "timing" 필드는 내부 표시 키이므로 항상 "오전"·"점심"·"오후"·"저녁" 중 하나의 한국어로만 적으세요(번역 금지). 화면에는 사용자 언어로 자동 변환됩니다.',
+    '- 후보 장소의 고유명사(이름)는 한국어 원문을 유지하세요(언어 규칙대로 괄호 병기).',
+    '- theme·concept·note·description·durationHint 등 나머지 모든 텍스트는 반드시 출력 언어로 작성하세요.',
     '',
     '엄수 규칙(anti-hallucination):',
     '- 반드시 후보 목록에 있는 장소만 사용하세요. 목록에 없는 장소를 절대 지어내지 마세요.',
     '- 각 스톱은 후보 목록의 index(번호)로만 지정하세요. 존재하지 않는 번호는 절대 사용하지 마세요.',
     '- 같은 코스 안에서 같은 장소를 중복하지 마세요.',
     '- 상황에 맞는 후보가 부족하면 무리하게 채우지 말고 스톱을 적게 구성하세요. 부적합한 장소를 억지로 넣지 마세요.',
-    '- 반드시 한국어로만 작성하세요.',
     '',
     '출력 형식(엄수): 아래 형태의 JSON 객체 하나만 출력하세요. JSON 외의 설명·마크다운·인사말은 절대 출력하지 마세요.',
-    '{ "courses": [ { "theme": "<상황에 맞는 코스 이름>", "concept": "<1~2문장 컨셉>", "note": "<참고 한 줄 또는 null>", "stops": [ { "index": <후보 번호 정수>, "order": 1, "timing": "오전", "durationHint": "1~2시간", "description": "<한 줄>" } ] } ] }',
-  ].join('\n')
+    '{ "courses": [ { "theme": "<situation-fit course name in the output language>", "concept": "<1-2 sentence concept in the output language>", "note": "<one-line note in the output language, or null>", "stops": [ { "index": <integer candidate number>, "order": 1, "timing": "오전", "durationHint": "<duration in the output language, e.g. 1-2 hours>", "description": "<one line in the output language>" } ] } ] }',
+    languageReminder(locale),
+  ]
+    .filter((s) => s !== '')
+    .join('\n')
 }
 
 function buildCustomComposeUserPrompt(
@@ -685,7 +726,9 @@ export async function generateCustomCourses(params: {
   companion?: string
   ageGroup?: string
   groupSize?: number
+  locale?: AiLocale
 }): Promise<{ ok: true; courses: Course[] } | { ok: false; error: string }> {
+  const locale: AiLocale = params.locale ?? 'ko'
   try {
     const trimmedQuery = (params.query ?? '').trim()
     const dur: '반나절' | '하루' = params.duration === '반나절' ? '반나절' : '하루'
@@ -738,7 +781,7 @@ export async function generateCustomCourses(params: {
       .join(' ')
     const [attrCandidates, webCandidates] = await Promise.all([
       fetchAttractionCandidates(trimmedArea),
-      fetchLocalActivePlaces(sonarQuery, trimmedArea),
+      fetchLocalActivePlaces(sonarQuery, trimmedArea, locale),
     ])
 
     const candidates: Candidate[] = [...visitJejuCandidates, ...attrCandidates, ...webCandidates]
@@ -754,7 +797,7 @@ export async function generateCustomCourses(params: {
         { query: trimmedQuery, duration: dur, area: trimmedArea, companion, ageGroup, groupSize },
         buildCandidateList(candidates)
       ),
-      systemPrompt: buildCustomComposeSystemPrompt(dur),
+      systemPrompt: buildCustomComposeSystemPrompt(dur, locale),
       maxCompletionTokens: CUSTOM_COMPOSE_MAX_TOKENS,
       timeoutMs: 75_000,
     })
@@ -767,6 +810,8 @@ export async function generateCustomCourses(params: {
       )
       return { ok: false, error: GENERIC_FAIL }
     }
+
+    warnIfWrongLanguage(r.text, locale, 'tourist-course/custom')
 
     let parsed: unknown
     try {

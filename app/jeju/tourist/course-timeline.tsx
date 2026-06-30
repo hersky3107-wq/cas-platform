@@ -1,7 +1,8 @@
 import { MapPin, Clock } from 'lucide-react'
 import type { Course, CourseStop } from '@/lib/jeju/tourist-course'
-import type { TouristUiPack } from '@/lib/jeju/tourist-labels'
+import type { TouristLocale, TouristUiPack } from '@/lib/jeju/tourist-labels'
 import { useTouristUi } from '@/components/jeju/useTouristUi'
+import { localizeCourseCategory } from './category-labels'
 
 /**
  * Course detail — a vertical timeline that reads as a day's JOURNEY
@@ -49,8 +50,17 @@ function timingStyle(timing: string | null, t: TouristUiPack): TimingStyle {
   }
 }
 
-function StopRow({ stop, t }: { stop: CourseStop; t: TouristUiPack }) {
+function StopRow({
+  stop,
+  t,
+  locale,
+}: {
+  stop: CourseStop
+  t: TouristUiPack
+  locale: TouristLocale
+}) {
   const ts = timingStyle(stop.timing, t)
+  const categoryLabel = localizeCourseCategory(stop.category, locale, t)
   return (
     <li className="relative flex gap-3.5 pb-5 last:pb-0 sm:gap-4">
       {/* Numbered timing node (sits on top of the connecting line) */}
@@ -86,10 +96,10 @@ function StopRow({ stop, t }: { stop: CourseStop; t: TouristUiPack }) {
           {stop.name}
         </h4>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {stop.category && (
+          {categoryLabel && (
             <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#00A8B5]">
               <MapPin size={11} strokeWidth={2.5} aria-hidden />
-              {stop.category}
+              {categoryLabel}
             </span>
           )}
           <span
@@ -110,7 +120,7 @@ function StopRow({ stop, t }: { stop: CourseStop; t: TouristUiPack }) {
 }
 
 export function CourseTimeline({ course }: { course: Course }) {
-  const { t } = useTouristUi()
+  const { t, locale } = useTouristUi()
   return (
     <div>
       {/* concept pitch — the "why this course" */}
@@ -132,7 +142,7 @@ export function CourseTimeline({ course }: { course: Course }) {
           />
         )}
         {course.stops.map((stop, i) => (
-          <StopRow key={`${course.id}-${stop.order}-${i}`} stop={stop} t={t} />
+          <StopRow key={`${course.id}-${stop.order}-${i}`} stop={stop} t={t} locale={locale} />
         ))}
       </ol>
 

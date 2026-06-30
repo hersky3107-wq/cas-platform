@@ -72,7 +72,7 @@ function standardTabLabel(id: CourseId, t: TouristUiPack): string {
 }
 
 export function CoursePanel() {
-  const { t } = useTouristUi()
+  const { t, locale } = useTouristUi()
   const [panelMode, setPanelMode] = useState<PanelMode>('custom')
 
   // Shared inputs
@@ -147,6 +147,7 @@ export function CoursePanel() {
       query: query.trim(),
       duration,
       area: area === '상관없음' ? undefined : area,
+      locale,
     }
     if (mode === 'custom') {
       if (companion) body.companion = companion

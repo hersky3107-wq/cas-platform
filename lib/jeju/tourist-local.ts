@@ -5,6 +5,14 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
 import { getVisitJejuPool, type JejuAttraction } from '@/lib/jeju/connectors'
 import { getAttractionsByField, NATURE_FIELDS, CULTURE_FIELDS } from '@/lib/jeju/attraction-utils'
+import {
+  languageDirective,
+  languageReminder,
+  sonarLanguageDirective,
+  warnIfWrongLanguage,
+  type AiLocale,
+} from '@/lib/jeju/ai-locale'
+import { translateCardFields } from '@/lib/jeju/translate-cards'
 
 /**
  * Jeju TOURIST mode — "관광객은 잘 모르는" local-gems feature.
@@ -60,35 +68,85 @@ function extractJsonObject(raw: string): string {
   return start !== -1 && end > start ? text.slice(start, end + 1) : text
 }
 
-function buildSystemPrompt(today: string): string {
+function buildSystemPrompt(today: string, locale: AiLocale): string {
+  // The caution field carries example VALUES; for non-ko we neutralize the quoted
+  // Korean so sonar doesn't mirror them into Korean output. ko stays byte-identical.
+  const cautionLine =
+    locale === 'ko'
+      ? '- caution에는 방문에 도움되는 사실 기반 실용 정보만 적으세요 (예: 운영시간 변동 가능, 주차 어려움, 예약 권장, 도로 좁음, 위치 찾기 어려움). 특정 업소를 "광고·협찬·홍보성일 수 있다"거나 신뢰성을 의심하는 표현은 절대 쓰지 마세요. 추측성·부정적 평가 금지. 적을 실용 정보가 없으면 caution은 null로 두세요.'
+      : '- caution에는 방문에 도움되는 사실 기반 실용 정보만 적으세요. 반드시 출력 언어로 작성하세요 (e.g. hours may vary, parking is hard, reservation recommended, narrow road, tricky to find). 특정 업소를 의심하는 표현·추측성·부정적 평가는 금지. 적을 실용 정보가 없으면 caution은 null로 두세요. 한국어 예시를 그대로 베끼지 마세요.'
   return [
+    // Forceful language rule FIRST (sandwiched with a reminder at the end).
+    languageDirective(locale),
+    sonarLanguageDirective(locale),
+    '',
     '당신은 제주 현지 사정에 밝은 로컬 여행 안내자입니다.',
     `오늘은 ${today} 입니다. 반드시 최신(가능하면 최근 1년 이내) 정보를 우선해서 찾아주세요.`,
     '현지인이 아끼지만 관광객은 잘 모르거나 일반 관광 코스에서 빠지는 제주의 로컬 장소 4~5곳을 추천하세요.',
     '별도로 공식 자연·문화 명소를 이미 제공하므로, 여기서는 로컬 맛집·카페·작은 박물관·체험·숨은 문화공간 위주로 찾아주세요.',
-    '알려져 있지만 관광객이 잘 들르지 않는 곳도 좋습니다 — 예: 엉또폭포(비 온 뒤에만 물이 흐름), 원앙폭포.',
+    '알려져 있지만 관광객이 잘 들르지 않는 곳도 좋습니다 — 예: 엉또폭포, 원앙폭포.',
     '',
     '엄수 규칙(매우 중요):',
-    '- 반드시 한국어로만 작성하세요. 외국어(아랍어·영어 등)를 절대 섞지 마세요.',
     '- 정보가 거의 없는 무명 장소를 억지로 만들어내지 마세요. 웹에 실제 정보가 있는, 검증 가능한 실재 장소만 추천하세요.',
     '- 이름·위치가 확실하지 않으면 포함하지 마세요.',
-    `- ${today} 기준으로 최신 정보를 우선하세요. 오래된(1년 이상 전) 정보로 의심되면 caution에 "정보가 오래됐을 수 있음"을 명시하세요.`,
+    `- ${today} 기준으로 최신 정보를 우선하세요. 오래된(1년 이상 전) 정보로 의심되면 caution에 그 사실을 명시하세요.`,
     '- 폐업·이전 가능성이 있으면 caution에 명시하세요.',
     '- 위치가 불확실하면 caution에 솔직히 적으세요.',
-    '- caution에는 방문에 도움되는 사실 기반 실용 정보만 적으세요 (예: 운영시간 변동 가능, 주차 어려움, 예약 권장, 도로 좁음, 위치 찾기 어려움). 특정 업소를 "광고·협찬·홍보성일 수 있다"거나 신뢰성을 의심하는 표현은 절대 쓰지 마세요. 추측성·부정적 평가 금지. 적을 실용 정보가 없으면 caution은 null로 두세요.',
+    cautionLine,
     '',
     '출력 형식(엄수): 아래 형태의 JSON 객체 하나만 출력하세요. JSON 외의 설명·마크다운·인사말·각주는 절대 출력하지 마세요.',
-    '{ "gems": [ { "name": "<장소명>", "area": "<지역(예: 제주시 한림, 서귀포 성산), 모르면 null>", "description": "<한 줄 한국어 소개>", "tags": ["<짧은 키워드>", "..."], "caution": "<솔직한 주의사항 또는 null>" } ] }',
-  ].join('\n')
+    'name 필드는 고유명사이므로 위 언어 규칙대로 한국어 원문을 유지하고, area·description·tags·caution 등 나머지 모든 텍스트는 반드시 출력 언어로 작성하세요.',
+    '{ "gems": [ { "name": "<place name>", "area": "<area or null>", "description": "<one-line intro, written in the output language>", "tags": ["<short keyword in the output language>", "..."], "caution": "<honest caution in the output language, or null>" } ] }',
+    languageReminder(locale),
+  ]
+    .filter((s) => s !== '')
+    .join('\n')
 }
 
-function buildUserPrompt(query: string, today: string): string {
-  return [
-    '[사용자 요청]',
-    query,
-    '',
-    `오늘(${today}) 기준 최신 정보로, 위 요청에 맞는 제주의 로컬 장소(맛집·카페·체험·숨은 문화공간 등) 4~5곳을 찾아 JSON으로만 답하세요. 관광객이 잘 모르거나 코스에서 빠지지만 검증 가능한 실재 장소 위주로 골라 주세요.`,
-  ].join('\n')
+/**
+ * The USER turn — sonar weights its language heavily, so for non-Korean locales we
+ * write the request IN THE TARGET LANGUAGE (the strongest lever for compliance).
+ * ko stays byte-identical to the original.
+ */
+function buildUserPrompt(query: string, today: string, locale: AiLocale): string {
+  switch (locale) {
+    case 'en':
+      return [
+        '[User request]',
+        query,
+        '',
+        `Based on the latest information as of ${today}, find 4-5 local spots in Jeju (restaurants, cafés, experiences, hidden cultural spaces) that match the request above. Prefer verifiable, real places that tourists tend to miss or that fall outside the usual courses. Respond in JSON only, and write everything in English (keep Korean proper nouns with romanization).`,
+      ].join('\n')
+    case 'ja':
+      return [
+        '[ユーザーのリクエスト]',
+        query,
+        '',
+        `${today}時点の最新情報をもとに、上記リクエストに合う済州のローカルスポット（グルメ・カフェ・体験・隠れた文化空間など）を4〜5か所探してください。観光客があまり知らない、または通常のコースから外れるが実在し確認できる場所を優先してください。JSONのみで回答し、すべて日本語で書いてください（韓国語の固有名詞は読み仮名付きで残す）。`,
+      ].join('\n')
+    case 'zh-TW':
+      return [
+        '[使用者請求]',
+        query,
+        '',
+        `請根據${today}的最新資訊，找出符合上述請求的濟州在地景點（美食、咖啡廳、體驗、隱藏文化空間等）4〜5處。優先選擇觀光客較不知道、或不在一般行程內但真實可查證的地方。僅以 JSON 回覆，且全部以繁體中文書寫（韓文專有名詞保留並附拼音）。`,
+      ].join('\n')
+    case 'zh-CN':
+      return [
+        '[用户请求]',
+        query,
+        '',
+        `请根据${today}的最新信息，找出符合上述请求的济州在地景点（美食、咖啡馆、体验、隐藏文化空间等）4〜5处。优先选择游客较不知道、或不在一般行程内但真实可查证的地方。仅以 JSON 回复，且全部以简体中文书写（韩文专有名词保留并附拼音）。`,
+      ].join('\n')
+    case 'ko':
+    default:
+      return [
+        '[사용자 요청]',
+        query,
+        '',
+        `오늘(${today}) 기준 최신 정보로, 위 요청에 맞는 제주의 로컬 장소(맛집·카페·체험·숨은 문화공간 등) 4~5곳을 찾아 JSON으로만 답하세요. 관광객이 잘 모르거나 코스에서 빠지지만 검증 가능한 실재 장소 위주로 골라 주세요.`,
+      ].join('\n')
+  }
 }
 
 function normalizeName(name: string): string {
@@ -221,9 +279,11 @@ function blendGems(official: LocalGem[], sonar: LocalGem[]): LocalGem[] {
 export async function findLocalGems({
   query,
   today,
+  locale = 'ko',
 }: {
   query: string
   today: string
+  locale?: AiLocale
 }): Promise<{ ok: true; gems: LocalGem[] } | { ok: false; error: string }> {
   try {
     const trimmed = query?.trim()
@@ -236,8 +296,8 @@ export async function findLocalGems({
         sessionId: null,
         userId: null,
         provider: LOCAL_PROVIDER,
-        prompt: buildUserPrompt(trimmed, today),
-        systemPrompt: buildSystemPrompt(today),
+        prompt: buildUserPrompt(trimmed, today, locale),
+        systemPrompt: buildSystemPrompt(today, locale),
         maxCompletionTokens: LOCAL_MAX_TOKENS,
         timeoutMs: 30_000,
       }),
@@ -247,6 +307,7 @@ export async function findLocalGems({
     // Parse sonar output (non-fatal — official gems alone are still useful).
     let sonarGems: LocalGem[] = []
     if (!sonarResult.error && sonarResult.text?.trim()) {
+      warnIfWrongLanguage(sonarResult.text, locale, 'tourist-local')
       try {
         const parsed = JSON.parse(extractJsonObject(sonarResult.text)) as unknown
         if (parsed && typeof parsed === 'object') {
@@ -281,7 +342,12 @@ export async function findLocalGems({
       return { ok: false, error: GENERIC_FAIL }
     }
 
-    return { ok: true, gems }
+    // Single translation gate covering ALL card text (official + sonar) for non-ko
+    // locales. Official gems carry raw Korean odcloud text; sonar gems may leak
+    // Korean — both pass through here. Proper-noun `name` is intentionally excluded.
+    const localizedGems = await translateCardFields(gems, locale, ['description', 'caution', 'area'])
+
+    return { ok: true, gems: localizedGems }
   } catch {
     return { ok: false, error: GENERIC_FAIL }
   }

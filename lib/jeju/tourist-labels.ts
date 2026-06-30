@@ -22,6 +22,9 @@ export type TouristUiPack = {
   // ── Page header ──
   pageTitle: string
 
+  // ── Browser-translate hint (shown under the language toggle for non-ko) ──
+  browserHint: string
+
   // ── Search box ──
   searchPlaceholder: string
   searchButton: string
@@ -89,6 +92,20 @@ export type TouristUiPack = {
   catFestival: string
   catTheme: string
   catOreum: string
+
+  // ── Course stop categories (timeline) — server emits stable KO keys; the
+  //    client localizes the DISPLAY here so we never depend on the AI for these. ──
+  ccAttraction: string
+  ccRestaurant: string
+  ccCafe: string
+  ccBeach: string
+  ccCoast: string
+  ccForest: string
+  ccExhibit: string
+  ccExperience: string
+  ccSaltFarm: string
+  ccPark: string
+  ccMarket: string
 
   // ── Course form (course-panel) ──
   courseModeCustomTitle: string
@@ -206,6 +223,7 @@ export type TouristUiPack = {
 
 const KO: TouristUiPack = {
   pageTitle: '제주 AI 여행 안내',
+  browserHint: '',
 
   searchPlaceholder: '제주에서 뭐 하고 싶으세요?',
   searchButton: '찾기',
@@ -265,6 +283,18 @@ const KO: TouristUiPack = {
   catFestival: '축제',
   catTheme: '테마',
   catOreum: '오름',
+
+  ccAttraction: '관광지',
+  ccRestaurant: '맛집',
+  ccCafe: '카페',
+  ccBeach: '해변',
+  ccCoast: '해안',
+  ccForest: '숲길',
+  ccExhibit: '전시',
+  ccExperience: '체험',
+  ccSaltFarm: '염전',
+  ccPark: '공원',
+  ccMarket: '시장',
 
   courseModeCustomTitle: '맞춤 코스',
   courseModeCustomSub: '상황·취향 알려주면 딱 맞는 코스 2개',
@@ -388,6 +418,8 @@ const KO: TouristUiPack = {
 const EN: TouristUiPack = {
   ...KO,
   pageTitle: 'Jeju AI Travel Guide',
+  browserHint:
+    "Tip: For the most accurate experience, you can also use your browser's translate feature (Chrome/Safari).",
 
   searchPlaceholder: 'What do you want to do in Jeju?',
   searchButton: 'Search',
@@ -447,6 +479,18 @@ const EN: TouristUiPack = {
   catFestival: 'Festival',
   catTheme: 'Theme',
   catOreum: 'Oreum',
+
+  ccAttraction: 'Attraction',
+  ccRestaurant: 'Restaurant',
+  ccCafe: 'Café',
+  ccBeach: 'Beach',
+  ccCoast: 'Coast',
+  ccForest: 'Forest trail',
+  ccExhibit: 'Exhibit',
+  ccExperience: 'Experience',
+  ccSaltFarm: 'Salt farm',
+  ccPark: 'Park',
+  ccMarket: 'Market',
 
   courseModeCustomTitle: 'Tailored Course',
   courseModeCustomSub: 'Tell us your situation — get 2 perfect courses',
@@ -570,6 +614,8 @@ const EN: TouristUiPack = {
 const JA: TouristUiPack = {
   ...KO,
   pageTitle: '済州 AI 旅行ガイド',
+  browserHint:
+    'ヒント：より正確に表示するには、ブラウザの翻訳機能（Chrome/Safari）もご利用いただけます。',
 
   searchPlaceholder: '済州で何をしたいですか？',
   searchButton: '検索',
@@ -629,6 +675,18 @@ const JA: TouristUiPack = {
   catFestival: 'お祭り',
   catTheme: 'テーマ',
   catOreum: 'オルム',
+
+  ccAttraction: '観光地',
+  ccRestaurant: 'グルメ',
+  ccCafe: 'カフェ',
+  ccBeach: 'ビーチ',
+  ccCoast: '海岸',
+  ccForest: '森の小道',
+  ccExhibit: '展示',
+  ccExperience: '体験',
+  ccSaltFarm: '塩田',
+  ccPark: '公園',
+  ccMarket: '市場',
 
   courseModeCustomTitle: 'カスタムコース',
   courseModeCustomSub: '状況・好みを教えると、ぴったりのコース2つ',
@@ -752,6 +810,7 @@ const JA: TouristUiPack = {
 const ZH_TW: TouristUiPack = {
   ...KO,
   pageTitle: '濟州 AI 旅遊指南',
+  browserHint: '提示：為獲得最準確的體驗，您也可以使用瀏覽器的翻譯功能（Chrome/Safari）。',
 
   searchPlaceholder: '想在濟州做什麼？',
   searchButton: '搜尋',
@@ -811,6 +870,18 @@ const ZH_TW: TouristUiPack = {
   catFestival: '慶典',
   catTheme: '主題',
   catOreum: '小火山',
+
+  ccAttraction: '景點',
+  ccRestaurant: '美食',
+  ccCafe: '咖啡廳',
+  ccBeach: '海灘',
+  ccCoast: '海岸',
+  ccForest: '林間步道',
+  ccExhibit: '展覽',
+  ccExperience: '體驗',
+  ccSaltFarm: '鹽田',
+  ccPark: '公園',
+  ccMarket: '市場',
 
   courseModeCustomTitle: '客製行程',
   courseModeCustomSub: '告訴我們情況・喜好，給你 2 條最合適的行程',
@@ -934,6 +1005,7 @@ const ZH_TW: TouristUiPack = {
 const ZH_CN: TouristUiPack = {
   ...KO,
   pageTitle: '济州 AI 旅游指南',
+  browserHint: '提示：为获得最准确的体验，您还可以使用浏览器的翻译功能（Chrome/Safari）。',
 
   searchPlaceholder: '想在济州做什么？',
   searchButton: '搜索',
@@ -993,6 +1065,18 @@ const ZH_CN: TouristUiPack = {
   catFestival: '庆典',
   catTheme: '主题',
   catOreum: '小火山',
+
+  ccAttraction: '景点',
+  ccRestaurant: '美食',
+  ccCafe: '咖啡馆',
+  ccBeach: '海滩',
+  ccCoast: '海岸',
+  ccForest: '林间步道',
+  ccExhibit: '展览',
+  ccExperience: '体验',
+  ccSaltFarm: '盐田',
+  ccPark: '公园',
+  ccMarket: '市场',
 
   courseModeCustomTitle: '定制行程',
   courseModeCustomSub: '告诉我们情况・喜好，给你 2 条最合适的行程',

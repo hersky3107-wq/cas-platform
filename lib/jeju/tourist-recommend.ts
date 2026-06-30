@@ -9,6 +9,12 @@ import {
   filterPlacesByQuery,
   type VisitJejuPlace,
 } from '@/lib/jeju/connectors'
+import {
+  languageDirective,
+  languageReminder,
+  warnIfWrongLanguage,
+  type AiLocale,
+} from '@/lib/jeju/ai-locale'
 
 /**
  * Jeju TOURIST mode — free-text place recommendation engine.
@@ -190,8 +196,11 @@ function buildCandidateList(places: VisitJejuPlace[]): string {
     .join('\n')
 }
 
-function buildSelectionSystemPrompt(): string {
+function buildSelectionSystemPrompt(locale: AiLocale): string {
   return [
+    // Forceful language rule FIRST (sandwiched with a reminder at the end).
+    languageDirective(locale),
+    '',
     '당신은 제주 여행을 안내하는 친근한 컨시어지입니다.',
     '사용자의 요청을 듣고, 아래에 제공되는 후보 장소 목록 중에서 요청의 의도에 정말로 잘 맞는 곳을 골라 추천합니다.',
     '',
@@ -204,8 +213,29 @@ function buildSelectionSystemPrompt(): string {
     '- 도움이 된다면 솔직한 주의사항(예: 성수기 웨이팅, 유료 입장)을 intro에 짧게 덧붙여도 좋습니다. 단, 없는 단점을 지어내지 마세요.',
     '',
     '출력 형식(엄수): 아래 형태의 JSON 객체 하나만 출력하세요. JSON 외의 설명·마크다운·인사말은 절대 출력하지 마세요.',
-    '{ "intro": "<선택한 장소들을 따뜻하게 요약하는 한국어 한 문장>", "picks": [<후보 목록의 인덱스 정수 배열>] }',
-  ].join('\n')
+    'intro는 반드시 출력 언어로 작성하세요. 장소 고유명사가 들어가면 위 언어 규칙대로 한국어 원문을 유지하세요.',
+    '{ "intro": "<one warm sentence summarizing the picks, in the output language>", "picks": [<integer indices from the candidate list>] }',
+    languageReminder(locale),
+  ]
+    .filter((s) => s !== '')
+    .join('\n')
+}
+
+/** Locale-aware fallback for the concierge intro line (used when the model omits one). */
+function fallbackIntro(locale: AiLocale): string {
+  switch (locale) {
+    case 'en':
+      return "Here are some spots that suit the Jeju trip you're looking for."
+    case 'ja':
+      return 'ご希望の済州旅行にぴったりの場所を選んでみました。'
+    case 'zh-TW':
+      return '為您挑選了幾個適合這趟濟州行程的地方。'
+    case 'zh-CN':
+      return '为您挑选了几个适合这趟济州行程的地方。'
+    case 'ko':
+    default:
+      return '요청하신 제주 여행에 어울리는 곳들을 골라봤어요.'
+  }
 }
 
 function buildSelectionUserPrompt(query: string, candidateList: string): string {
@@ -222,7 +252,13 @@ function buildSelectionUserPrompt(query: string, candidateList: string): string 
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export async function recommendJejuPlaces({ query }: { query: string }): Promise<
+export async function recommendJejuPlaces({
+  query,
+  locale = 'ko',
+}: {
+  query: string
+  locale?: AiLocale
+}): Promise<
   | { ok: true; intro: string; recommendations: VisitJejuPlace[] }
   | { ok: false; error: string }
 > {
@@ -259,7 +295,7 @@ export async function recommendJejuPlaces({ query }: { query: string }): Promise
       userId: null,
       provider: SELECTION_PROVIDER,
       prompt: buildSelectionUserPrompt(trimmed, buildCandidateList(candidates)),
-      systemPrompt: buildSelectionSystemPrompt(),
+      systemPrompt: buildSelectionSystemPrompt(locale),
       maxCompletionTokens: SELECTION_MAX_TOKENS,
     })
 
@@ -279,6 +315,7 @@ export async function recommendJejuPlaces({ query }: { query: string }): Promise
 
     const obj = parsed as Record<string, unknown>
     const intro = typeof obj.intro === 'string' ? obj.intro.trim() : ''
+    if (intro) warnIfWrongLanguage(intro, locale, 'tourist-recommend')
     const picksRaw = Array.isArray(obj.picks) ? obj.picks : []
 
     // Map indices back to real places; drop out-of-range/duplicate (defensive
@@ -299,7 +336,7 @@ export async function recommendJejuPlaces({ query }: { query: string }): Promise
 
     return {
       ok: true,
-      intro: intro || '요청하신 제주 여행에 어울리는 곳들을 골라봤어요.',
+      intro: intro || fallbackIntro(locale),
       recommendations,
     }
   } catch {

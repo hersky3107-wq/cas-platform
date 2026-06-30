@@ -89,7 +89,7 @@ const FETCH_TIMEOUT: Record<string, number> = {
 type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus'
 
 export function SearchPanel() {
-  const { t } = useTouristUi()
+  const { t, locale } = useTouristUi()
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<Mode>('search')
@@ -146,7 +146,7 @@ export function SearchPanel() {
       const res = await fetch('/api/jeju/tourist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q }),
+        body: JSON.stringify({ query: q, locale }),
         signal: ctrl.signal,
       })
       const data = (await res.json()) as RecommendResult
@@ -187,7 +187,7 @@ export function SearchPanel() {
       const res = await fetch('/api/jeju/tourist-local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q }),
+        body: JSON.stringify({ query: q, locale }),
         signal: ctrl.signal,
       })
       const data = (await res.json()) as LocalResult
@@ -222,7 +222,7 @@ export function SearchPanel() {
       const res = await fetch('/api/jeju/tourist-festivals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify({ locale }),
         signal: ctrl.signal,
       })
       const data = (await res.json()) as FestivalResult
@@ -257,7 +257,7 @@ export function SearchPanel() {
       const res = await fetch('/api/jeju/tourist-seasonal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify({ locale }),
         signal: ctrl.signal,
       })
       const data = (await res.json()) as SeasonalResult
@@ -292,7 +292,7 @@ export function SearchPanel() {
       const res = await fetch('/api/jeju/tourist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: RAINY_QUERY }),
+        body: JSON.stringify({ query: RAINY_QUERY, locale }),
         signal: ctrl.signal,
       })
       const data = (await res.json()) as RecommendResult

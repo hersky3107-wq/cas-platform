@@ -3,6 +3,14 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
 import { getVisitJejuPool, type VisitJejuPlace } from '@/lib/jeju/connectors'
+import {
+  languageDirective,
+  languageReminder,
+  sonarLanguageDirective,
+  warnIfWrongLanguage,
+  type AiLocale,
+} from '@/lib/jeju/ai-locale'
+import { translateCardFields } from '@/lib/jeju/translate-cards'
 
 /**
  * Jeju TOURIST mode — festivals/events chip.
@@ -78,8 +86,12 @@ function isDateStr(v: unknown): v is string {
 
 // ── Sonar prompt ──────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(locale: AiLocale): string {
   return [
+    // Forceful language rule FIRST (sandwiched with a reminder at the end).
+    languageDirective(locale),
+    sonarLanguageDirective(locale),
+    '',
     '당신은 제주도 공식 행사 정보를 찾아주는 도우미입니다.',
     '규칙(반드시 준수):',
     '- 반드시 시작일과 종료일이 명확한 실제 행사만. 날짜를 모르면 포함하지 마세요.',
@@ -88,11 +100,14 @@ function buildSystemPrompt(): string {
     '- 추측하거나 지어내지 마세요. 공식 채널에서 확인 가능한 것만.',
     '- 날짜 형식: 반드시 YYYY-MM-DD.',
     '- venue는 구체적인 장소명(예: 서귀포예술의전당, 제주돌문화공원). 명확하지 않으면 null.',
-    '- 반드시 한국어로만 작성.',
     '',
     '출력: JSON 배열만. 예시: [{"name":"...","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD","venue":"...","intro":"..."}]',
+    'name·venue는 고유명사이므로 위 언어 규칙대로 한국어 원문을 유지하되, intro(소개) 텍스트는 반드시 출력 언어로 작성하세요. 날짜는 YYYY-MM-DD 형식 그대로.',
     '없으면 빈 배열 []. JSON 외의 설명·마크다운·인사말은 절대 출력하지 마세요.',
-  ].join('\n')
+    languageReminder(locale),
+  ]
+    .filter((s) => s !== '')
+    .join('\n')
 }
 
 function buildUserPrompt(today: string): string {
@@ -176,8 +191,10 @@ async function c5Fallback(today: string): Promise<VisitJejuPlace[]> {
  */
 export async function getCurrentFestivals({
   today,
+  locale = 'ko',
 }: {
   today: string
+  locale?: AiLocale
 }): Promise<FestivalResult> {
   try {
     const r = await runSingleAiProvider({
@@ -186,12 +203,13 @@ export async function getCurrentFestivals({
       userId: null,
       provider: FESTIVAL_PROVIDER,
       prompt: buildUserPrompt(today),
-      systemPrompt: buildSystemPrompt(),
+      systemPrompt: buildSystemPrompt(locale),
       maxCompletionTokens: FESTIVAL_MAX_TOKENS,
       timeoutMs: 30_000,
     })
 
     if (!r.error && r.text?.trim()) {
+      warnIfWrongLanguage(r.text, locale, 'tourist-festivals')
       try {
         const parsed = JSON.parse(extractJsonArray(r.text)) as unknown
         if (Array.isArray(parsed)) {
@@ -217,7 +235,9 @@ export async function getCurrentFestivals({
           }
           events.sort((a, b) => a.startDate.localeCompare(b.startDate))
           if (events.length > 0) {
-            return { ok: true, type: 'sonar', events }
+            // Translation gate: sonar `intro` is free text — translate for non-ko.
+            const localizedEvents = await translateCardFields(events, locale, ['intro'])
+            return { ok: true, type: 'sonar', events: localizedEvents }
           }
         }
       } catch {
@@ -225,10 +245,12 @@ export async function getCurrentFestivals({
       }
     }
 
-    // Sonar returned empty or failed → c5 fallback
+    // Sonar returned empty or failed → c5 fallback (VisitJeju c5 introduction is
+    // free-text Korean — pass it through the same gate for non-ko locales).
     const fallback = await c5Fallback(today)
     if (fallback.length > 0) {
-      return { ok: true, type: 'fallback', festivals: fallback }
+      const localizedFallback = await translateCardFields(fallback, locale, ['introduction'])
+      return { ok: true, type: 'fallback', festivals: localizedFallback }
     }
     return { ok: false, error: '축제 정보를 불러오지 못했어요. 다시 시도해 주세요.' }
   } catch {
