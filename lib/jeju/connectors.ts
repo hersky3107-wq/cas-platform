@@ -2389,6 +2389,128 @@ export async function getVisitJejuPool(): Promise<VisitJejuPlace[]> {
   return places
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Featured "지금 뜨는 제주" — random sample from the larger pool
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Substring denylist for featured picks (case-insensitive title + tags). */
+const FEATURED_DENYLIST: readonly string[] = [
+  '스쿠버',
+  '다이빙',
+  '족욕',
+  '스파',
+  '운송',
+  '고속',
+  '렌터카',
+  '클래스',
+  '공방',
+]
+
+/** Default per-category targets for the 8-card featured grid. */
+export const FEATURED_BUCKET_TARGETS: Record<string, number> = {
+  c1: 2, // 가볼 곳
+  c4: 2, // 맛집
+  c2: 2, // 쇼핑
+  c5: 2, // 축제
+  c6: 1, // 테마
+}
+
+function fisherYatesShuffle<T>(arr: readonly T[]): T[] {
+  const out = [...arr]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i]!, out[j]!] = [out[j]!, out[i]!]
+  }
+  return out
+}
+
+function featuredIsDenied(place: VisitJejuPlace, denylist: readonly string[]): boolean {
+  const haystack = `${place.title} ${place.tags.join(' ')}`.toLowerCase()
+  return denylist.some((kw) => haystack.includes(kw))
+}
+
+/** True when the title STARTS with a year before 2026 (stale festival listings). */
+function featuredIsPastYearEvent(place: VisitJejuPlace): boolean {
+  const m = place.title.match(/^(20\d{2})/)
+  if (!m) return false
+  return parseInt(m[1]!, 10) < 2026
+}
+
+/**
+ * Randomly samples a balanced featured set from a large VisitJeju pool.
+ * The pool may be cached; sampling runs on every call so each page load varies.
+ * Category spread is preserved via per-bucket targets; picks within each bucket are shuffled.
+ */
+export function pickFeaturedVisitJejuPlaces(
+  raw: VisitJejuPlace[],
+  options?: {
+    count?: number
+    bucketTargets?: Record<string, number>
+    denylist?: readonly string[]
+  }
+): VisitJejuPlace[] {
+  const count = options?.count ?? 8
+  const bucketTargets = options?.bucketTargets ?? FEATURED_BUCKET_TARGETS
+  const denylist = options?.denylist ?? FEATURED_DENYLIST
+
+  const allowed = raw.filter((p) => !featuredIsDenied(p, denylist))
+  const byCategory = new Map<string, VisitJejuPlace[]>()
+  for (const p of allowed) {
+    const code = p.categoryCode
+    if (!(code in bucketTargets)) continue
+    const list = byCategory.get(code) ?? []
+    list.push(p)
+    byCategory.set(code, list)
+  }
+
+  const buckets: Record<string, VisitJejuPlace[]> = {}
+  for (const code of Object.keys(bucketTargets)) buckets[code] = []
+
+  const pickedIds = new Set<string>()
+
+  const takeFrom = (candidates: VisitJejuPlace[], code: string, n: number) => {
+    let taken = 0
+    for (const p of fisherYatesShuffle(candidates)) {
+      if (taken >= n) break
+      if (pickedIds.has(p.contentsId)) continue
+      buckets[code]!.push(p)
+      pickedIds.add(p.contentsId)
+      taken++
+    }
+  }
+
+  for (const [code, target] of Object.entries(bucketTargets)) {
+    const all = byCategory.get(code) ?? []
+    const primary = all.filter((p) => !featuredIsPastYearEvent(p))
+    const deprio = all.filter((p) => featuredIsPastYearEvent(p))
+    takeFrom(primary, code, target)
+    const got = buckets[code]!.length
+    if (got < target) takeFrom(deprio, code, target - got)
+  }
+
+  const lists = Object.entries(buckets)
+    .filter(([, arr]) => arr.length > 0)
+    .map(([, arr]) => arr)
+
+  const ordered: VisitJejuPlace[] = []
+  for (let i = 0; lists.some((l) => i < l.length); i++) {
+    for (const list of lists) {
+      if (i < list.length) ordered.push(list[i]!)
+    }
+  }
+
+  if (ordered.length < count) {
+    const rest = fisherYatesShuffle(allowed.filter((p) => !pickedIds.has(p.contentsId)))
+    for (const p of rest) {
+      if (ordered.length >= count) break
+      ordered.push(p)
+      pickedIds.add(p.contentsId)
+    }
+  }
+
+  return ordered.slice(0, count)
+}
+
 /**
  * Client-side stand-in for the missing keyword-search API. Keeps a place when
  * ANY keyword appears (case-insensitive substring) in its

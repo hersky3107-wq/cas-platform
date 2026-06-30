@@ -1,122 +1,42 @@
-import { fetchVisitJejuPlaces, type VisitJejuPlace } from '@/lib/jeju/connectors'
+import {
+  fetchVisitJejuPlaces,
+  getVisitJejuPool,
+  pickFeaturedVisitJejuPlaces,
+  FEATURED_BUCKET_TARGETS,
+  type VisitJejuPlace,
+} from '@/lib/jeju/connectors'
 import { FeaturedGrid } from './featured-grid'
 import { SearchPanel } from './search-panel'
 import { TouristHeader } from './tourist-header'
 import { DISPLAY_LABEL } from './category-labels'
 
-// Always fetch fresh; VisitJeju 축제/행사 listings rotate frequently.
+// Always fetch fresh; featured subset is re-sampled every request from the cached pool.
 export const dynamic = 'force-dynamic'
 
-// ─── Curation constants ───────────────────────────────────────────────────────
-
-/**
- * Substring denylist (case-insensitive). Drops places whose title OR tag string
- * contains any of these — catches private service businesses that VisitJeju
- * miscategorises under 관광지 (e.g. scuba shops, foot-spas, transport companies).
- */
-const DENYLIST = [
-  '스쿠버',
-  '다이빙',
-  '족욕',
-  '스파',
-  '운송',
-  '고속',
-  '렌터카',
-  '클래스',
-  '공방',
-]
-
-/** Target number of curated picks shown in "지금 뜨는 제주". */
 const CURATED_COUNT = 8
 
-/** Per-bucket target sizes: [관광지, 음식점, 쇼핑, 축제] */
-const BUCKET_TARGETS: Record<string, number> = {
-  c1: 2, // 가볼 곳
-  c4: 2, // 맛집
-  c2: 2, // 쇼핑
-  c5: 2, // 축제
-  c6: 1, // 테마 (bonus if available)
+async function loadFeaturedPlaces(): Promise<VisitJejuPlace[]> {
+  let pool = await getVisitJejuPool()
+  if (pool.length === 0) {
+    const fallback = await fetchVisitJejuPlaces({
+      perCategory: 20,
+      categories: ['c1', 'c4', 'c5', 'c2', 'c6'],
+    })
+    pool = fallback.ok ? fallback.places : []
+  }
+  return pickFeaturedVisitJejuPlaces(pool, {
+    count: CURATED_COUNT,
+    bucketTargets: FEATURED_BUCKET_TARGETS,
+  })
 }
 
-function isDenied(place: VisitJejuPlace): boolean {
-  const haystack = `${place.title} ${place.tags.join(' ')}`.toLowerCase()
-  return DENYLIST.some((kw) => haystack.includes(kw))
-}
-
-/** Returns true when the title STARTS with a year that is before 2026. */
-function isPastYearEvent(place: VisitJejuPlace): boolean {
-  const m = place.title.match(/^(20\d{2})/)
-  if (!m) return false
-  return parseInt(m[1]!, 10) < 2026
-}
-
-/**
- * Curate the raw ~32 balanced places down to CURATED_COUNT well-rounded picks:
- *  1. Drop denylist matches entirely.
- *  2. Separate remaining into primary (non-past-year) and deprioritised (past-year).
- *  3. Fill per-bucket targets from primary first, then deprioritised as top-up.
- *  4. If total < CURATED_COUNT after filling targets, backfill from leftovers.
- */
-function curate(raw: VisitJejuPlace[]): Array<{ place: VisitJejuPlace; displayLabel: string }> {
-  const allowed = raw.filter((p) => !isDenied(p))
-  const primary = allowed.filter((p) => !isPastYearEvent(p))
-  const deprio = allowed.filter((p) => isPastYearEvent(p))
-
-  // Fill buckets from primary, then deprio as top-up.
-  const buckets: Record<string, VisitJejuPlace[]> = {}
-  for (const code of Object.keys(BUCKET_TARGETS)) buckets[code] = []
-
-  const leftovers: VisitJejuPlace[] = []
-
-  for (const pool of [primary, deprio]) {
-    for (const p of pool) {
-      const code = p.categoryCode
-      const target = BUCKET_TARGETS[code]
-      if (target !== undefined) {
-        const bucket = buckets[code]!
-        if (bucket.length < target) {
-          bucket.push(p)
-        } else {
-          leftovers.push(p)
-        }
-      } else {
-        leftovers.push(p)
-      }
-    }
-  }
-
-  // Interleave buckets round-robin for visual variety.
-  const lists = Object.entries(buckets)
-    .filter(([, arr]) => arr.length > 0)
-    .map(([code, arr]) => ({ code, arr }))
-
-  const ordered: Array<{ place: VisitJejuPlace; displayLabel: string }> = []
-  for (let i = 0; lists.some((l) => i < l.arr.length); i++) {
-    for (const { code, arr } of lists) {
-      if (i < arr.length) {
-        ordered.push({
-          place: arr[i]!,
-          displayLabel: DISPLAY_LABEL[code] ?? code,
-        })
-      }
-    }
-  }
-
-  // Backfill with leftovers (not denied, not yet picked) up to CURATED_COUNT.
-  if (ordered.length < CURATED_COUNT) {
-    const pickedIds = new Set(ordered.map((o) => o.place.contentsId))
-    for (const p of leftovers) {
-      if (ordered.length >= CURATED_COUNT) break
-      if (!pickedIds.has(p.contentsId)) {
-        ordered.push({
-          place: p,
-          displayLabel: DISPLAY_LABEL[p.categoryCode] ?? p.categoryLabel,
-        })
-      }
-    }
-  }
-
-  return ordered.slice(0, CURATED_COUNT)
+function toFeaturedItems(
+  places: VisitJejuPlace[]
+): Array<{ place: VisitJejuPlace; displayLabel: string }> {
+  return places.map((place) => ({
+    place,
+    displayLabel: DISPLAY_LABEL[place.categoryCode] ?? place.categoryLabel,
+  }))
 }
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
@@ -271,9 +191,8 @@ function EmptyState() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function JejuTouristHomePage() {
-  const result = await fetchVisitJejuPlaces()
-  const raw: VisitJejuPlace[] = result.ok ? result.places : []
-  const curated = curate(raw)
+  const picks = await loadFeaturedPlaces()
+  const curated = toFeaturedItems(picks)
 
   return (
     <main
