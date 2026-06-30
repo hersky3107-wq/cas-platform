@@ -18,6 +18,7 @@ import { FestivalEventCard } from './festival-event-card'
 import { CoursePanel } from './course-panel'
 import { BusPanel } from './bus-panel'
 import { TravelHelpPanel } from './travel-help-panel'
+import { ComingSoonPanel } from './coming-soon-panel'
 import { PlaceDetailModal } from './place-detail-modal'
 import {
   type PlaceDetail,
@@ -87,7 +88,7 @@ const FETCH_TIMEOUT: Record<string, number> = {
   cached: 25_000,  // olle/oreum: 25s (fast cached GET)
 }
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus' | 'help'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus' | 'help' | 'comingsoon'
 
 export function SearchPanel() {
   const { t, locale } = useTouristUi()
@@ -429,6 +430,13 @@ export function SearchPanel() {
     resetResults()
   }
 
+  // 🌉 Coming Soon — opens the non-functional vision/proposal panel.
+  function openComingSoon() {
+    if (loading) return
+    setMode('comingsoon')
+    resetResults()
+  }
+
   const canSubmit = query.trim() !== '' && !loading
 
   // Derive the current rotating message for the active mode (localized).
@@ -444,6 +452,7 @@ export function SearchPanel() {
     course: t.loadCourse,
     bus: [t.busLoadNearby],
     help: [t.helpExchangeLoading],
+    comingsoon: [t.csHeading],
   }
   const msgArr = LOADING_MSGS[mode] ?? t.loadSearch
   const currentLoadingMsg = msgArr[msgIdx % msgArr.length]
@@ -515,6 +524,19 @@ export function SearchPanel() {
         >
           <span aria-hidden>🆘</span>
           {t.chipTravelHelp}
+        </button>
+        <button
+          type="button"
+          onClick={openComingSoon}
+          disabled={loading}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[14px] font-extrabold shadow-sm transition-transform hover:-translate-y-0.5 disabled:opacity-50 ${
+            mode === 'comingsoon'
+              ? 'bg-[#0A2B30] text-white'
+              : 'bg-[#0A2B30]/90 text-white'
+          }`}
+        >
+          <span aria-hidden>🌉</span>
+          {t.chipComingSoon}
         </button>
       </div>
 
@@ -646,6 +668,9 @@ export function SearchPanel() {
 
       {/* 🆘 여행 도움 — exchange rates + emergency + consulates + tips */}
       {mode === 'help' && <TravelHelpPanel onOpenBus={openBus} />}
+
+      {/* 🌉 준비 중 — non-functional vision/policy-proposal showcase */}
+      {mode === 'comingsoon' && <ComingSoonPanel />}
 
       {/* Free-text recommendation results (VisitJeju) */}
       {!loading && mode === 'search' && results && results.length > 0 && (

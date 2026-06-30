@@ -257,6 +257,35 @@ export type TouristUiPack = {
   helpPaymentTitle: string
   helpPaymentBody: string
 
+  // ── Coming Soon / Vision (🌉) — non-functional policy-proposal showcase ──
+  chipComingSoon: string
+  csHeading: string
+  csBetaBadge: string
+  csIntroTitle: string
+  csIntroBody: string
+  csBlockedTitle: string
+  csBlockRideTitle: string
+  csBlockRideBody: string
+  csBlockFoodTitle: string
+  csBlockFoodBody: string
+  csBlockPayTitle: string
+  csBlockPayBody: string
+  csBlockQrTitle: string
+  csBlockQrBody: string
+  csBlockBookingTitle: string
+  csBlockBookingBody: string
+  csProposalLabel: string
+  csProposalTitle: string
+  csProposalBody: string
+  csProposalRoleBody: string
+  csProposalNeedsTitle: string
+  csProposalNeedsGov: string
+  csProposalNeedsLaw: string
+  csProposalNeedsTelecom: string
+  csProposalNeedsCard: string
+  csProposalNeedsBank: string
+  csProposalClosing: string
+
   // ── Featured (server page) ──
   featuredHeading: string
   featuredBadge: string
@@ -504,6 +533,38 @@ const KO: TouristUiPack = {
   helpPaymentTitle: '결제 팁',
   helpPaymentBody:
     '카카오페이·네이버페이·배민은 한국 전화번호·계좌 없이 쓰기 어려워요. 현금과 해외 카드(Visa·Mastercard)를 함께 준비하세요. 편의점·대형마트는 해외 카드가 되지만, 작은 동네 가게는 현금만 받을 수 있어요.',
+
+  chipComingSoon: '준비 중',
+  csHeading: '🌉 AX JEJU가 그리는 다음 단계',
+  csBetaBadge: 'BETA · 준비 중',
+  csIntroTitle: '외국인은 스마트폰이 있어도 한국에서 막힙니다',
+  csIntroBody:
+    '한국에서는 휴대폰 번호가 사실상 신분증 역할을 해요. 본인인증이 한국 통신사 번호에 묶여 있어서, 한국 번호나 등록이 없는 단기 방문객은 대부분의 앱에 가입조차 못 합니다. 손에 든 스마트폰이 정작 가장 필요한 순간에 무용지물이 되는 거죠.',
+  csBlockedTitle: '지금 막혀 있는 것들',
+  csBlockRideTitle: '택시 호출 (카카오택시)',
+  csBlockRideBody: '호출은 되지만 자동결제는 한국 발급 카드가 필요해요. 결국 매번 기사님께 직접 결제해야 합니다.',
+  csBlockFoodTitle: '음식 배달 (배민·요기요·쿠팡이츠)',
+  csBlockFoodBody: '메뉴가 한국어뿐이고, 해외 카드는 자주 거절되며, 가입에 한국 전화번호가 필요해요.',
+  csBlockPayTitle: '간편결제 (네이버페이·토스·카카오페이)',
+  csBlockPayBody: '한국 번호 기반 본인인증이 필수라, 한국 통신사가 없는 외국인은 등록 자체가 안 돼요.',
+  csBlockQrTitle: 'Apple Pay · Google Pay · QR',
+  csBlockQrBody: 'POS에서 인식되지 않는 경우가 많고, QR 결제는 일부 시장·면세점에서만 제한적으로 돼요.',
+  csBlockBookingTitle: '예약 (공연·식당·KTX)',
+  csBlockBookingBody: '대부분 한국 전화번호를 요구해서, 방문객이 직접 예약하기 어려워요.',
+  csProposalLabel: '제안',
+  csProposalTitle: "제주도가 앞장서서 '외국인–한국서비스 연결 레이어'를 만든다면?",
+  csProposalBody:
+    '통신사·카드사·은행·정부가 함께, 여권이나 외국 카드만으로 한국 앱과 결제에 즉시 연결되는 다리를 놓는다면 어떨까요? AX JEJU가 그 중개(브로커) 역할을 기술로 구현하는 파트너가 되겠습니다.',
+  csProposalRoleBody:
+    'AX JEJU는 여권/외국 카드 ↔ 한국 앱·결제를 잇는 오케스트레이션·브리지 기술을 맡습니다. 한 회사의 앱으로 끝나는 일이 아니라, 민관이 함께 만드는 공공 인프라예요.',
+  csProposalNeedsTitle: '함께 풀어야 할 것들',
+  csProposalNeedsGov: '제주도청 · 행정',
+  csProposalNeedsLaw: '국회 · 입법 (본인인증법)',
+  csProposalNeedsTelecom: '통신사',
+  csProposalNeedsCard: '카드사',
+  csProposalNeedsBank: '은행 · 금융규제',
+  csProposalClosing:
+    '글로벌 관광 허브 제주, 그리고 데이터 댐 비전과 맞닿아 있는 방향입니다. 지금은 제안이지만, 제주에서 먼저 시작할 수 있다고 믿어요.',
 }
 
 // ── English — KO fallback + high-value overrides ───────────────────────────────
@@ -748,6 +809,38 @@ const EN: TouristUiPack = {
   helpPaymentTitle: 'Payment Tips',
   helpPaymentBody:
     'KakaoPay, Naver Pay, and Baemin are hard to use without a Korean phone number or bank account. Carry cash plus an international card (Visa/Mastercard). Convenience stores and large marts accept foreign cards, but small local shops may be cash-only.',
+
+  chipComingSoon: 'Coming Soon',
+  csHeading: "🌉 What AX JEJU Is Building Next",
+  csBetaBadge: 'BETA · Coming Soon',
+  csIntroTitle: 'Even with a smartphone, foreigners hit walls in Korea',
+  csIntroBody:
+    'In Korea, a mobile phone number works as de-facto ID. Identity verification is tied to a Korean carrier number, so short-term visitors without a Korean number or registration often can\u2019t even sign up for most apps. The phone in your hand becomes useless exactly when you need it most.',
+  csBlockedTitle: "What\u2019s Blocked Today",
+  csBlockRideTitle: 'Ride-hailing (KakaoTaxi)',
+  csBlockRideBody: 'You can hail a ride, but auto-payment needs a Korea-issued card \u2014 so you must pay the driver manually every time.',
+  csBlockFoodTitle: 'Food delivery (Baemin / Yogiyo / Coupang Eats)',
+  csBlockFoodBody: 'Korean-only menus, foreign cards often rejected, and a Korean phone number required just to sign up.',
+  csBlockPayTitle: 'Simple pay (Naver Pay / Toss / KakaoPay)',
+  csBlockPayBody: 'These require Korean-phone identity verification, so foreigners without a Korean carrier can\u2019t register at all.',
+  csBlockQrTitle: 'Apple Pay / Google Pay / QR',
+  csBlockQrBody: 'Often not recognized at the POS, and QR payment works only at limited markets and duty-free shops.',
+  csBlockBookingTitle: 'Booking (shows, restaurants, KTX)',
+  csBlockBookingBody: 'Most require a Korean phone number, making it hard for visitors to book on their own.',
+  csProposalLabel: 'THE PROPOSAL',
+  csProposalTitle: "What if Jeju led the way and built a \u2018foreigner-to-Korean-service connection layer\u2019?",
+  csProposalBody:
+    'Imagine telecoms, card companies, banks, and government building a bridge that connects you to Korean apps and payments instantly \u2014 using just your passport or a foreign card. AX JEJU would be the partner that implements that broker role in technology.',
+  csProposalRoleBody:
+    'AX JEJU takes on the orchestration and bridge technology linking passport / foreign card \u2194 Korean apps & payments. This isn\u2019t one company\u2019s app \u2014 it\u2019s public infrastructure built by the public and private sectors together.',
+  csProposalNeedsTitle: 'What it takes \u2014 together',
+  csProposalNeedsGov: 'Jeju Province · administration',
+  csProposalNeedsLaw: 'National Assembly · legislation (ID-verification law)',
+  csProposalNeedsTelecom: 'Telecom carriers',
+  csProposalNeedsCard: 'Card companies',
+  csProposalNeedsBank: 'Banks · financial regulation',
+  csProposalClosing:
+    'It aligns with Jeju as a global tourism hub and with the data-dam vision. It\u2019s a proposal for now \u2014 but we believe it can start in Jeju first.',
 }
 
 // ── Japanese — KO fallback + high-value overrides ──────────────────────────────
@@ -992,6 +1085,38 @@ const JA: TouristUiPack = {
   helpPaymentTitle: '支払いのヒント',
   helpPaymentBody:
     'カカオペイ・ネイバーペイ・出前館は韓国の電話番号や銀行口座がないと使いにくいです。現金と海外カード（Visa／Mastercard）の両方を用意しましょう。コンビニや大型マートでは海外カードが使えますが、小さな地元の店は現金のみの場合があります。',
+
+  chipComingSoon: '準備中',
+  csHeading: '🌉 AX JEJU が描く次のステップ',
+  csBetaBadge: 'BETA・準備中',
+  csIntroTitle: 'スマホがあっても、外国人は韓国で行き詰まります',
+  csIntroBody:
+    '韓国では携帯電話番号が事実上の身分証として機能します。本人認証が韓国の通信会社の番号に紐づいているため、韓国の番号や登録のない短期滞在者は、ほとんどのアプリに登録すらできません。手にしたスマホが、最も必要なときに役に立たなくなるのです。',
+  csBlockedTitle: '今、ふさがれていること',
+  csBlockRideTitle: 'タクシー配車（カカオタクシー）',
+  csBlockRideBody: '配車はできても自動決済には韓国発行のカードが必要で、結局は毎回ドライバーに直接支払うことになります。',
+  csBlockFoodTitle: 'フードデリバリー（出前館・ヨギヨ・クーパンイーツ）',
+  csBlockFoodBody: 'メニューは韓国語のみ、海外カードはよく拒否され、登録には韓国の電話番号が必要です。',
+  csBlockPayTitle: '簡単決済（ネイバーペイ・トス・カカオペイ）',
+  csBlockPayBody: '韓国の番号による本人認証が必須のため、韓国の通信会社を持たない外国人は登録自体ができません。',
+  csBlockQrTitle: 'Apple Pay・Google Pay・QR',
+  csBlockQrBody: 'POSで認識されないことが多く、QR決済は一部の市場や免税店でしか使えません。',
+  csBlockBookingTitle: '予約（公演・レストラン・KTX）',
+  csBlockBookingBody: 'ほとんどが韓国の電話番号を求めるため、旅行者が自分で予約するのは困難です。',
+  csProposalLabel: '提案',
+  csProposalTitle: '済州が先頭に立って「外国人と韓国サービスをつなぐレイヤー」を作るとしたら？',
+  csProposalBody:
+    '通信会社・カード会社・銀行・政府が手を組み、パスポートや海外カードだけで韓国のアプリや決済に即座につながる橋を架けるとしたら？ AX JEJU がその仲介（ブローカー）役を技術で実装するパートナーになります。',
+  csProposalRoleBody:
+    'AX JEJU は、パスポート／海外カード ↔ 韓国アプリ・決済をつなぐオーケストレーション／ブリッジ技術を担います。一社のアプリで終わる話ではなく、官民が共に作る公共インフラです。',
+  csProposalNeedsTitle: '一緒に解決すべきこと',
+  csProposalNeedsGov: '済州道庁・行政',
+  csProposalNeedsLaw: '国会・立法（本人認証法）',
+  csProposalNeedsTelecom: '通信会社',
+  csProposalNeedsCard: 'カード会社',
+  csProposalNeedsBank: '銀行・金融規制',
+  csProposalClosing:
+    'グローバル観光ハブ済州、そしてデータダム構想ともつながる方向性です。今はまだ提案ですが、済州から先に始められると信じています。',
 }
 
 // ── Traditional Chinese — KO fallback + high-value overrides ───────────────────
@@ -1235,6 +1360,38 @@ const ZH_TW: TouristUiPack = {
   helpPaymentTitle: '付款提示',
   helpPaymentBody:
     'KakaoPay、Naver Pay 與外送 App 在沒有韓國電話號碼或銀行帳戶時較難使用。請同時準備現金與國際信用卡（Visa／Mastercard）。便利商店與大型賣場可使用外國信用卡，但小型在地商店可能僅收現金。',
+
+  chipComingSoon: '即將推出',
+  csHeading: '🌉 AX JEJU 擘劃的下一步',
+  csBetaBadge: 'BETA · 籌備中',
+  csIntroTitle: '就算有智慧型手機，外國人在韓國仍處處碰壁',
+  csIntroBody:
+    '在韓國，手機號碼實際上等同於身分證。由於身分驗證綁定韓國電信號碼，沒有韓國號碼或登錄的短期旅客，往往連大多數 App 都無法註冊。手上的手機，偏偏在最需要時派不上用場。',
+  csBlockedTitle: '目前被卡住的事',
+  csBlockRideTitle: '叫車（KakaoTaxi）',
+  csBlockRideBody: '雖然能叫車，但自動付款需要韓國發行的信用卡，結果每次都得直接付現給司機。',
+  csBlockFoodTitle: '外送（Baemin／Yogiyo／Coupang Eats）',
+  csBlockFoodBody: '菜單僅有韓文，外國信用卡常被拒絕，且註冊需要韓國電話號碼。',
+  csBlockPayTitle: '行動支付（Naver Pay／Toss／KakaoPay）',
+  csBlockPayBody: '必須以韓國號碼進行身分驗證，沒有韓國電信門號的外國人根本無法註冊。',
+  csBlockQrTitle: 'Apple Pay／Google Pay／QR',
+  csBlockQrBody: 'POS 機常無法辨識，QR 付款僅在部分市場與免稅店才能使用。',
+  csBlockBookingTitle: '預訂（表演、餐廳、KTX）',
+  csBlockBookingBody: '多數都要求韓國電話號碼，旅客很難自行預訂。',
+  csProposalLabel: '提案',
+  csProposalTitle: '如果由濟州率先打造「外國人–韓國服務連接層」呢？',
+  csProposalBody:
+    '若電信業者、信用卡公司、銀行與政府攜手，搭起一座只需護照或外國信用卡就能即時連上韓國 App 與支付的橋樑，會如何？AX JEJU 願成為以技術實現此中介（橋接）角色的夥伴。',
+  csProposalRoleBody:
+    'AX JEJU 負責串接護照／外國信用卡 ↔ 韓國 App・支付的整合與橋接技術。這不是單一公司的 App，而是由公私部門共同打造的公共基礎建設。',
+  csProposalNeedsTitle: '需要共同解決的事',
+  csProposalNeedsGov: '濟州道廳 · 行政',
+  csProposalNeedsLaw: '國會 · 立法（身分驗證法）',
+  csProposalNeedsTelecom: '電信業者',
+  csProposalNeedsCard: '信用卡公司',
+  csProposalNeedsBank: '銀行 · 金融法規',
+  csProposalClosing:
+    '這與濟州作為全球觀光樞紐，以及資料水庫願景的方向相互呼應。目前雖是提案，但我們相信可以先從濟州開始。',
 }
 
 // ── Simplified Chinese — KO fallback + high-value overrides ────────────────────
@@ -1478,6 +1635,38 @@ const ZH_CN: TouristUiPack = {
   helpPaymentTitle: '支付提示',
   helpPaymentBody:
     'KakaoPay、Naver Pay 和外卖 App 在没有韩国电话号码或银行账户时较难使用。请同时准备现金和国际信用卡（Visa／Mastercard）。便利店和大型超市可使用外国信用卡，但小型本地店铺可能仅收现金。',
+
+  chipComingSoon: '即将推出',
+  csHeading: '🌉 AX JEJU 擘画的下一步',
+  csBetaBadge: 'BETA · 筹备中',
+  csIntroTitle: '就算有智能手机，外国人在韩国仍处处碰壁',
+  csIntroBody:
+    '在韩国，手机号码实际上等同于身份证。由于身份验证绑定韩国电信号码，没有韩国号码或登记的短期旅客，往往连大多数 App 都无法注册。手上的手机，偏偏在最需要时派不上用场。',
+  csBlockedTitle: '目前被卡住的事',
+  csBlockRideTitle: '叫车（KakaoTaxi）',
+  csBlockRideBody: '虽然能叫车，但自动付款需要韩国发行的银行卡，结果每次都得直接付现金给司机。',
+  csBlockFoodTitle: '外卖（Baemin／Yogiyo／Coupang Eats）',
+  csBlockFoodBody: '菜单仅有韩文，外国银行卡常被拒绝，且注册需要韩国电话号码。',
+  csBlockPayTitle: '移动支付（Naver Pay／Toss／KakaoPay）',
+  csBlockPayBody: '必须以韩国号码进行身份验证，没有韩国电信号码的外国人根本无法注册。',
+  csBlockQrTitle: 'Apple Pay／Google Pay／QR',
+  csBlockQrBody: 'POS 机常无法识别，QR 付款仅在部分市场与免税店才能使用。',
+  csBlockBookingTitle: '预订（演出、餐厅、KTX）',
+  csBlockBookingBody: '多数都要求韩国电话号码，旅客很难自行预订。',
+  csProposalLabel: '提案',
+  csProposalTitle: '如果由济州率先打造“外国人–韩国服务连接层”呢？',
+  csProposalBody:
+    '若电信运营商、银行卡公司、银行与政府携手，搭起一座只需护照或外国银行卡就能即时连上韩国 App 与支付的桥梁，会如何？AX JEJU 愿成为以技术实现这一中介（桥接）角色的伙伴。',
+  csProposalRoleBody:
+    'AX JEJU 负责串接护照／外国银行卡 ↔ 韩国 App・支付的整合与桥接技术。这不是单一公司的 App，而是由公私部门共同打造的公共基础设施。',
+  csProposalNeedsTitle: '需要共同解决的事',
+  csProposalNeedsGov: '济州道厅 · 行政',
+  csProposalNeedsLaw: '国会 · 立法（身份验证法）',
+  csProposalNeedsTelecom: '电信运营商',
+  csProposalNeedsCard: '银行卡公司',
+  csProposalNeedsBank: '银行 · 金融监管',
+  csProposalClosing:
+    '这与济州作为全球旅游枢纽，以及数据水库愿景的方向相互呼应。目前虽是提案，但我们相信可以先从济州开始。',
 }
 
 export const TOURIST_UI: Record<TouristLocale, TouristUiPack> = {
