@@ -17,6 +17,7 @@ import { DullegilCard } from './dullegil-card'
 import { FestivalEventCard } from './festival-event-card'
 import { CoursePanel } from './course-panel'
 import { BusPanel } from './bus-panel'
+import { WeatherPanel } from './weather-panel'
 import { TravelHelpPanel } from './travel-help-panel'
 import { ComingSoonPanel } from './coming-soon-panel'
 import { PlaceDetailModal } from './place-detail-modal'
@@ -85,7 +86,7 @@ const FETCH_TIMEOUT: Record<string, number> = {
   cached: 25_000,  // olle/oreum: 25s (fast cached GET)
 }
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus' | 'help' | 'comingsoon'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus' | 'weather' | 'help' | 'comingsoon'
 
 export function SearchPanel() {
   const { t, locale } = useTouristUi()
@@ -420,6 +421,13 @@ export function SearchPanel() {
     resetResults()
   }
 
+  // 🌦️ Weather — opens the multi-region forecast panel (self-contained).
+  function openWeather() {
+    if (loading) return
+    setMode('weather')
+    resetResults()
+  }
+
   // 🆘 Travel Help — opens the foreigner help panel (self-contained).
   function openHelp() {
     if (loading) return
@@ -448,6 +456,7 @@ export function SearchPanel() {
     oreum: t.loadOreum,
     course: t.loadCourse,
     bus: [t.busLoadNearby],
+    weather: [t.wLoading],
     help: [t.helpExchangeLoading],
     comingsoon: [t.csHeading],
   }
@@ -459,6 +468,7 @@ export function SearchPanel() {
     { mode: 'local', emoji: '👀', label: t.chipLocal, onClick: runLocal },
     { mode: 'festival', emoji: '🎪', label: t.chipFestival, onClick: runFestivals },
     { mode: 'seasonal', emoji: '🌸', label: t.chipSeasonal, onClick: runSeasonal },
+    { mode: 'weather', emoji: '🌦️', label: t.chipWeather, onClick: openWeather },
     { mode: 'rainy', emoji: '☔', label: t.chipRainy, onClick: runRainy },
     { mode: 'islands', emoji: '⛴️', label: t.chipIslands, onClick: runIslands },
     { mode: 'olle', emoji: '🥾', label: t.chipOlle, onClick: runOlle },
@@ -601,6 +611,9 @@ export function SearchPanel() {
 
       {/* 🚌 버스 — self-contained nearby-stations + arrivals + route lookup */}
       {mode === 'bus' && <BusPanel />}
+
+      {/* 🌦️ 날씨 — self-contained multi-region multi-day forecast */}
+      {mode === 'weather' && <WeatherPanel />}
 
       {/* 🆘 여행 도움 — exchange rates + emergency + consulates + tips */}
       {mode === 'help' && <TravelHelpPanel onOpenBus={openBus} />}

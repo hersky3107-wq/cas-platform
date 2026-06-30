@@ -296,6 +296,26 @@ export type TouristUiPack = {
   wxSnow: string
   wxThunder: string
 
+  // ── Weather panel (🌦️ multi-region forecast) ──
+  chipWeather: string
+  /** Short weekday names indexed by Date.getDay() (0 = Sunday). */
+  weekdayShort: string[]
+  wHeading: string
+  wRegionJejuCity: string
+  wRegionSeogwipo: string
+  wRegionEast: string
+  wRegionWest: string
+  wRegionHallasan: string
+  wToday: string
+  wHallasanNote: string
+  wPrecip: string
+  wWind: string
+  wWindUnit: string
+  wShowMore: string
+  wShowLess: string
+  wLoading: string
+  wError: string
+
   // ── Featured (server page) ──
   featuredHeading: string
   featuredBadge: string
@@ -584,6 +604,25 @@ const KO: TouristUiPack = {
   wxRain: '비',
   wxSnow: '눈',
   wxThunder: '천둥번개',
+
+  chipWeather: '날씨',
+  weekdayShort: ['일', '월', '화', '수', '목', '금', '토'],
+  wHeading: '지역별 날씨 예보',
+  wRegionJejuCity: '제주시',
+  wRegionSeogwipo: '서귀포',
+  wRegionEast: '동부(성산)',
+  wRegionWest: '서부(한림·대정)',
+  wRegionHallasan: '한라산',
+  wToday: '오늘',
+  wHallasanNote:
+    '한라산은 해안보다 기온이 낮고 바람이 강합니다. 등산 시 보온·방풍 준비를 꼭 챙기세요.',
+  wPrecip: '강수',
+  wWind: '바람',
+  wWindUnit: 'km/h',
+  wShowMore: '7일 예보 보기',
+  wShowLess: '간단히 보기',
+  wLoading: '날씨 예보를 불러오는 중…',
+  wError: '날씨 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
 }
 
 // ── English — KO fallback + high-value overrides ───────────────────────────────
@@ -869,6 +908,25 @@ const EN: TouristUiPack = {
   wxRain: 'Rain',
   wxSnow: 'Snow',
   wxThunder: 'Thunderstorm',
+
+  chipWeather: 'Weather',
+  weekdayShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  wHeading: 'Weather Forecast by Region',
+  wRegionJejuCity: 'Jeju City',
+  wRegionSeogwipo: 'Seogwipo',
+  wRegionEast: 'East (Seongsan)',
+  wRegionWest: 'West (Hallim·Daejeong)',
+  wRegionHallasan: 'Mt. Hallasan',
+  wToday: 'Today',
+  wHallasanNote:
+    'Mt. Hallasan is colder and windier than the coast. Bring warm, windproof layers if you plan to hike.',
+  wPrecip: 'Precip.',
+  wWind: 'Wind',
+  wWindUnit: 'km/h',
+  wShowMore: 'Show 7-day forecast',
+  wShowLess: 'Show less',
+  wLoading: 'Loading the weather forecast…',
+  wError: "Couldn't load the weather. Please try again shortly.",
 }
 
 // ── Japanese — KO fallback + high-value overrides ──────────────────────────────
@@ -1154,6 +1212,25 @@ const JA: TouristUiPack = {
   wxRain: '雨',
   wxSnow: '雪',
   wxThunder: '雷雨',
+
+  chipWeather: '天気',
+  weekdayShort: ['日', '月', '火', '水', '木', '金', '土'],
+  wHeading: '地域別の天気予報',
+  wRegionJejuCity: '済州市',
+  wRegionSeogwipo: '西帰浦',
+  wRegionEast: '東部（城山）',
+  wRegionWest: '西部（翰林・大静）',
+  wRegionHallasan: '漢拏山',
+  wToday: '今日',
+  wHallasanNote:
+    '漢拏山は海岸より気温が低く風が強いです。登山の際は防寒・防風の準備をお忘れなく。',
+  wPrecip: '降水',
+  wWind: '風',
+  wWindUnit: 'km/h',
+  wShowMore: '7日間の予報を見る',
+  wShowLess: '簡単に表示',
+  wLoading: '天気予報を読み込み中…',
+  wError: '天気情報を取得できませんでした。しばらくしてからもう一度お試しください。',
 }
 
 // ── Traditional Chinese — KO fallback + high-value overrides ───────────────────
@@ -1438,6 +1515,24 @@ const ZH_TW: TouristUiPack = {
   wxRain: '雨',
   wxSnow: '雪',
   wxThunder: '雷雨',
+
+  chipWeather: '天氣',
+  weekdayShort: ['週日', '週一', '週二', '週三', '週四', '週五', '週六'],
+  wHeading: '各地區天氣預報',
+  wRegionJejuCity: '濟州市',
+  wRegionSeogwipo: '西歸浦',
+  wRegionEast: '東部（城山）',
+  wRegionWest: '西部（翰林・大靜）',
+  wRegionHallasan: '漢拏山',
+  wToday: '今天',
+  wHallasanNote: '漢拏山氣溫比海岸低、風更強。登山時請務必準備保暖與防風衣物。',
+  wPrecip: '降雨',
+  wWind: '風',
+  wWindUnit: 'km/h',
+  wShowMore: '查看 7 天預報',
+  wShowLess: '收合',
+  wLoading: '正在載入天氣預報…',
+  wError: '無法載入天氣資訊，請稍後再試。',
 }
 
 // ── Simplified Chinese — KO fallback + high-value overrides ────────────────────
@@ -1722,6 +1817,24 @@ const ZH_CN: TouristUiPack = {
   wxRain: '雨',
   wxSnow: '雪',
   wxThunder: '雷雨',
+
+  chipWeather: '天气',
+  weekdayShort: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
+  wHeading: '各地区天气预报',
+  wRegionJejuCity: '济州市',
+  wRegionSeogwipo: '西归浦',
+  wRegionEast: '东部（城山）',
+  wRegionWest: '西部（翰林・大静）',
+  wRegionHallasan: '汉拿山',
+  wToday: '今天',
+  wHallasanNote: '汉拿山气温比海岸低、风更大。登山时请务必准备保暖与防风衣物。',
+  wPrecip: '降雨',
+  wWind: '风',
+  wWindUnit: 'km/h',
+  wShowMore: '查看 7 天预报',
+  wShowLess: '收起',
+  wLoading: '正在加载天气预报…',
+  wError: '无法加载天气信息，请稍后再试。',
 }
 
 export const TOURIST_UI: Record<TouristLocale, TouristUiPack> = {
