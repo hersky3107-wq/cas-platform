@@ -22,16 +22,41 @@ type RouteResult = { ok: true; data: BusRoute } | { ok: false; error: string }
 type Tab = 'nearby' | 'route'
 
 /** Preset Jeju anchor points — GPS fallback so the feature works without geolocation. */
-const ANCHORS: Array<{ key: 'anchorAirport' | 'anchorJejuCity' | 'anchorSeogwipoCity' | 'anchorSeongsan' | 'anchorJungmun'; lat: number; lng: number }> = [
-  { key: 'anchorAirport', lat: 33.5063, lng: 126.4929 },
-  { key: 'anchorJejuCity', lat: 33.4996, lng: 126.5312 },
-  { key: 'anchorSeogwipoCity', lat: 33.2542, lng: 126.56 },
-  { key: 'anchorSeongsan', lat: 33.4587, lng: 126.9425 },
-  { key: 'anchorJungmun', lat: 33.2496, lng: 126.4116 },
+const ANCHORS: Array<{
+  key:
+    | 'anchorAirport'
+    | 'anchorJejuCity'
+    | 'anchorJejuTerminal'
+    | 'anchorDongmun'
+    | 'anchorSeogwipoCity'
+    | 'anchorWorldcup'
+    | 'anchorHamdeok'
+    | 'anchorAewol'
+    | 'anchorSeongsan'
+    | 'anchorJungmun'
+  lat: number
+  lng: number
+}> = [
+  { key: 'anchorAirport',      lat: 33.5063, lng: 126.4929 },
+  { key: 'anchorJejuCity',     lat: 33.4996, lng: 126.5312 },
+  { key: 'anchorJejuTerminal', lat: 33.4996, lng: 126.5135 },
+  { key: 'anchorDongmun',      lat: 33.5125, lng: 126.5267 },
+  { key: 'anchorSeogwipoCity', lat: 33.2542, lng: 126.5600 },
+  { key: 'anchorWorldcup',     lat: 33.2491, lng: 126.5091 },
+  { key: 'anchorHamdeok',      lat: 33.5435, lng: 126.6694 },
+  { key: 'anchorAewol',        lat: 33.4628, lng: 126.3097 },
+  { key: 'anchorSeongsan',     lat: 33.4587, lng: 126.9425 },
+  { key: 'anchorJungmun',      lat: 33.2496, lng: 126.4116 },
 ]
 
-function googleMapsUrl(lat: number, lng: number): string {
-  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+/**
+ * Google Maps deep-link combining stop name + coordinates.
+ * Name gives Maps context (shows the place label); coords anchor it precisely.
+ * Foreigners can also see the location pin without reading Korean.
+ */
+function googleMapsUrl(stopName: string, lat: number, lng: number): string {
+  const query = encodeURIComponent(`${stopName} ${lat},${lng}`)
+  return `https://www.google.com/maps/search/?api=1&query=${query}`
 }
 
 export function BusPanel() {
@@ -409,7 +434,7 @@ export function BusPanel() {
                     </span>
                     {Number.isFinite(stop.lat) && Number.isFinite(stop.lng) && stop.lat !== 0 && (
                       <a
-                        href={googleMapsUrl(stop.lat, stop.lng)}
+                        href={googleMapsUrl(stop.nodeNm, stop.lat, stop.lng)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#F0FAFB] px-2.5 py-1 text-[11px] font-bold text-[#00707A] transition-opacity hover:opacity-80"

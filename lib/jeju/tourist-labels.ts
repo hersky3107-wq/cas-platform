@@ -185,7 +185,12 @@ export type TouristUiPack = {
   busLoadRoute: string
   anchorAirport: string
   anchorJejuCity: string
+  anchorJejuTerminal: string
+  anchorDongmun: string
   anchorSeogwipoCity: string
+  anchorWorldcup: string
+  anchorHamdeok: string
+  anchorAewol: string
   anchorSeongsan: string
   anchorJungmun: string
 
@@ -362,7 +367,12 @@ const KO: TouristUiPack = {
   busLoadRoute: '버스 노선을 확인하는 중이에요',
   anchorAirport: '제주공항',
   anchorJejuCity: '제주시청',
+  anchorJejuTerminal: '제주버스터미널',
+  anchorDongmun: '동문시장',
   anchorSeogwipoCity: '서귀포시청',
+  anchorWorldcup: '제주월드컵경기장',
+  anchorHamdeok: '함덕해수욕장',
+  anchorAewol: '애월',
   anchorSeongsan: '성산일출봉 입구',
   anchorJungmun: '중문관광단지',
 
@@ -539,7 +549,12 @@ const EN: TouristUiPack = {
   busLoadRoute: 'Checking the bus route',
   anchorAirport: 'Jeju Airport',
   anchorJejuCity: 'Jeju City Hall',
+  anchorJejuTerminal: 'Jeju Bus Terminal',
+  anchorDongmun: 'Dongmun Market',
   anchorSeogwipoCity: 'Seogwipo City Hall',
+  anchorWorldcup: 'Jeju World Cup Stadium',
+  anchorHamdeok: 'Hamdeok Beach',
+  anchorAewol: 'Aewol',
   anchorSeongsan: 'Seongsan Ilchulbong',
   anchorJungmun: 'Jungmun Resort',
 
@@ -716,7 +731,12 @@ const JA: TouristUiPack = {
   busLoadRoute: 'バス路線を確認中',
   anchorAirport: '済州空港',
   anchorJejuCity: '済州市庁',
+  anchorJejuTerminal: '済州バスターミナル',
+  anchorDongmun: '東門市場',
   anchorSeogwipoCity: '西帰浦市庁',
+  anchorWorldcup: '済州ワールドカップスタジアム',
+  anchorHamdeok: '咸徳海水浴場',
+  anchorAewol: '涯月',
   anchorSeongsan: '城山日出峰 入口',
   anchorJungmun: '中文観光団地',
 
@@ -893,7 +913,12 @@ const ZH_TW: TouristUiPack = {
   busLoadRoute: '確認公車路線中',
   anchorAirport: '濟州機場',
   anchorJejuCity: '濟州市廳',
+  anchorJejuTerminal: '濟州公車總站',
+  anchorDongmun: '東門市場',
   anchorSeogwipoCity: '西歸浦市廳',
+  anchorWorldcup: '濟州世界盃體育場',
+  anchorHamdeok: '咸德海水浴場',
+  anchorAewol: '涯月',
   anchorSeongsan: '城山日出峰 入口',
   anchorJungmun: '中文觀光園區',
 
@@ -1070,7 +1095,12 @@ const ZH_CN: TouristUiPack = {
   busLoadRoute: '确认公交路线中',
   anchorAirport: '济州机场',
   anchorJejuCity: '济州市厅',
+  anchorJejuTerminal: '济州公交总站',
+  anchorDongmun: '东门市场',
   anchorSeogwipoCity: '西归浦市厅',
+  anchorWorldcup: '济州世界杯体育场',
+  anchorHamdeok: '咸德海水浴场',
+  anchorAewol: '涯月',
   anchorSeongsan: '城山日出峰 入口',
   anchorJungmun: '中文观光园区',
 
