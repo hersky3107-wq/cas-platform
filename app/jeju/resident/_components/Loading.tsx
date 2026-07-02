@@ -39,15 +39,22 @@ export function ResidentLoading({
   const [stepIndex, setStepIndex] = useState(0)
   const [dotCount, setDotCount] = useState(0)
   const [progress, setProgress] = useState(0)
+  /** Detected after mount — never read window during render (SSR-safe). */
+  const [reducedMotion, setReducedMotion] = useState(false)
   const hasNarrated = useRef(false)
-  const reducedMotion =
-    typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false
 
   const progressDurationMs = steps.length * intervalMs
   const progressCap = 90
   const reducedMotionProgress = 40
+
+  // Client-only: reduced-motion preference (must not run during SSR/first paint).
+  useEffect(() => {
+    try {
+      setReducedMotion(window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+    } catch {
+      setReducedMotion(false)
+    }
+  }, [])
 
   // Advance through steps (hold on last step until unmount)
   useEffect(() => {

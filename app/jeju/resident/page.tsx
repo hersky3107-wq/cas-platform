@@ -32,7 +32,7 @@ const C = {
 const GRID_CARDS: { emoji: string; label: string; href?: string }[] = [
   { emoji: '🏥', label: '병원·약 찾기', href: '/jeju/resident/medical' },
   { emoji: '🚌', label: '버스·교통' },
-  { emoji: '📰', label: '오늘의 소식' },
+  { emoji: '📰', label: '오늘의 소식', href: '/jeju/resident/news' },
   { emoji: '📄', label: '고지서·문서 읽기', href: '/jeju/resident/photo?mode=document' },
   { emoji: '🛡️', label: '수상한 문자 확인', href: '/jeju/resident/photo?mode=phishing' },
   { emoji: '🖥️', label: '무인기계 도움', href: '/jeju/resident/photo?mode=kiosk' },
