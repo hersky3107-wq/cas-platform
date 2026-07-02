@@ -30,6 +30,8 @@ const C = {
 // ── Grid card data ─────────────────────────────────────────────────────────────
 
 const GRID_CARDS: { emoji: string; label: string; href?: string }[] = [
+  { emoji: '🧠', label: '오늘의 뇌 운동', href: '/jeju/resident/brain' },
+  { emoji: '📅', label: '오늘 날짜·날씨', href: '/jeju/resident/today' },
   { emoji: '🏥', label: '병원·약 찾기', href: '/jeju/resident/medical' },
   { emoji: '🚌', label: '버스·교통', href: '/jeju/resident/bus' },
   { emoji: '📰', label: '오늘의 소식', href: '/jeju/resident/news' },
