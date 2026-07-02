@@ -30,7 +30,7 @@ const C = {
 // ── Grid card data ─────────────────────────────────────────────────────────────
 
 const GRID_CARDS: { emoji: string; label: string; href?: string }[] = [
-  { emoji: '🏥', label: '병원·약 찾기' },
+  { emoji: '🏥', label: '병원·약 찾기', href: '/jeju/resident/medical' },
   { emoji: '🚌', label: '버스·교통' },
   { emoji: '📰', label: '오늘의 소식' },
   { emoji: '📄', label: '고지서·문서 읽기', href: '/jeju/resident/photo?mode=document' },
