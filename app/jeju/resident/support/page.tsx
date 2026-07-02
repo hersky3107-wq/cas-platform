@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 // Type-only import — erased at build time, so no server code enters the client bundle.
 import type { WelfareProfile } from '@/lib/jeju/welfare'
@@ -196,16 +197,14 @@ export default function ResidentSupportPage() {
     }
   }, [micSupported, listening, stopSpeaking])
 
+  const router = useRouter()
+
   // ── Flow actions ───────────────────────────────────────────────────────────
 
-  const restart = useCallback(() => {
+  const goHome = useCallback(() => {
     stopSpeaking()
-    setAnswers({ ...EMPTY_PROFILE })
-    setFreeText('')
-    setResults([])
-    setQIndex(0)
-    setPhase('intro')
-  }, [stopSpeaking])
+    router.push('/jeju/resident')
+  }, [router, stopSpeaking])
 
   const startFlow = useCallback(() => {
     stopSpeaking()
@@ -310,7 +309,7 @@ export default function ResidentSupportPage() {
             type="button"
             className="wf-ctrl"
             style={styles.ctrlBtn}
-            onClick={restart}
+            onClick={goHome}
             aria-label="처음으로 돌아가기"
           >
             <span aria-hidden>↩</span> 처음으로
@@ -543,7 +542,7 @@ export default function ResidentSupportPage() {
               </div>
             )}
 
-            <button type="button" className="wf-primary" style={styles.primaryBtn} onClick={restart}>
+            <button type="button" className="wf-primary" style={styles.primaryBtn} onClick={goHome}>
               처음으로
             </button>
           </section>
