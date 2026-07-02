@@ -4,11 +4,13 @@ import { NextResponse } from 'next/server'
  * Stateless multimodal "photo helper" for the resident mode.
  *
  * PRIVACY / SAFETY (non-negotiable):
- *  - The image and the result are processed ONCE and NEVER persisted.
+ *  - The image/text and the result are processed ONCE and NEVER persisted.
  *    No DB write, no file save, no logging of image bytes or extracted content.
  *  - The model is instructed to omit all personal identifiers from output.
  *
- * POST body: { image: string (base64 or data URL), mediaType?: string, mode: PhotoMode }
+ * POST body:
+ *   Image path (all modes):  { image: string (base64 or data URL), mediaType?: string, mode: PhotoMode }
+ *   Text path (phishing only): { text: string, mode: 'phishing' }
  */
 
 export const runtime = 'nodejs'
@@ -26,8 +28,8 @@ const ALLOWED_MEDIA = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const PRIVACY_RULES = `
 [개인정보·안전 규칙 — 반드시 지킬 것]
 - 출력에 사람 이름, 주민등록번호, 상세 주소, 전화번호, 병명·진단명·질병코드 등 개인 식별 정보를 절대 포함하지 마세요. 보이면 무시하고 생략하세요.
-- 사진 속 내용에만 근거하세요. 보이지 않는 것은 추측하지 마세요.
-- 사진이 흐릿하거나 글자를 읽을 수 없으면 정확히 이 JSON만 출력하세요:
+- 제공된 내용에만 근거하세요. 보이지/적혀있지 않는 것은 추측하지 마세요.
+- 내용이 흐릿하거나 글자를 읽을 수 없으면 정확히 이 JSON만 출력하세요:
   {"unreadable": true, "message": "사진이 잘 안 보여요. 밝은 곳에서 다시 찍어주세요."}
 - 마크다운, 코드블록, 설명 없이 순수 JSON만 출력하세요. 모든 값은 한국어로, 어르신이 이해하기 쉬운 말로 작성하세요.`
 
@@ -48,7 +50,7 @@ ${PRIVACY_RULES}
 }
 규칙: 금액이나 날짜가 흐릿하거나 불명확하면 그 필드는 null로 두고, mainAction에서 '금액이 잘 안 보이니 다시 확인하세요'처럼 솔직히 말하세요. 절대 추측하지 마세요.`,
 
-  phishing: `당신은 어르신을 보이스피싱·스미싱으로부터 보호하는 도우미입니다. 사진 속 문자메시지/메신저/화면을 보고 아래 JSON만 출력하세요.
+  phishing: `당신은 어르신을 보이스피싱·스미싱으로부터 보호하는 도우미입니다. 아래 문자메시지/메신저/화면 내용을 보고 아래 JSON만 출력하세요.
 ${PRIVACY_RULES}
 
 출력 JSON 스키마:
@@ -98,6 +100,80 @@ function parseImage(raw: string): { data: string; mediaType: string } | null {
   return { mediaType: 'image/jpeg', data: raw }
 }
 
+// ── Text-only path (phishing mode) ───────────────────────────────────────────────
+
+async function runTextAnalysis(textContent: string, mode: PhotoMode, apiKey: string): Promise<Response> {
+  const system = MODE_PROMPTS[mode]
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 900,
+        system,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `다음 문자 내용을 분석하고 지시대로 JSON만 출력하세요:\n\n"""\n${textContent.slice(0, 3000)}\n"""`,
+              },
+            ],
+          },
+        ],
+      }),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error(`[photo-analyze/text] anthropic http ${res.status}`)
+      return NextResponse.json(
+        { error: 'Analysis failed', detail: `http-${res.status}: ${errText.slice(0, 200)}` },
+        { status: 502 }
+      )
+    }
+
+    const json = (await res.json()) as {
+      content?: Array<{ type: string; text: string }>
+      error?: { message: string }
+    }
+    if (json.error) throw new Error(json.error.message)
+
+    const responseText = json.content?.find((b) => b.type === 'text')?.text ?? ''
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      return NextResponse.json({
+        unreadable: true,
+        message: '내용을 확인하지 못했어요. 다시 시도해 주세요.',
+      })
+    }
+
+    let result: Record<string, unknown>
+    try {
+      result = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+    } catch {
+      return NextResponse.json({
+        unreadable: true,
+        message: '내용을 확인하지 못했어요. 다시 시도해 주세요.',
+      })
+    }
+
+    return NextResponse.json({ mode, ...result })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('[photo-analyze/text] error:', message)
+    return NextResponse.json({ error: 'Analysis failed', detail: message }, { status: 500 })
+  }
+}
+
+// ── Main handler ─────────────────────────────────────────────────────────────────
+
 export async function POST(req: Request) {
   let body: Record<string, unknown>
   try {
@@ -111,6 +187,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid mode' }, { status: 400 })
   }
 
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return NextResponse.json({ error: 'Server not configured' }, { status: 500 })
+  }
+
+  // Phishing mode: accept plain text instead of an image.
+  const textInput = mode === 'phishing' && typeof body.text === 'string' ? body.text.trim() : ''
+  if (textInput) {
+    return runTextAnalysis(textInput, mode, apiKey)
+  }
+
+  // Image path — required for all modes when no text provided.
   const rawImage = typeof body.image === 'string' ? body.image : ''
   if (!rawImage) {
     return NextResponse.json({ error: 'Missing image' }, { status: 400 })
@@ -124,11 +212,6 @@ export async function POST(req: Request) {
   // Honor an explicit mediaType if the client sent a bare base64 blob.
   let mediaType = typeof body.mediaType === 'string' ? body.mediaType : parsed.mediaType
   if (!ALLOWED_MEDIA.includes(mediaType)) mediaType = 'image/jpeg'
-
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    return NextResponse.json({ error: 'Server not configured' }, { status: 500 })
-  }
 
   const system = MODE_PROMPTS[mode]
 
@@ -194,7 +277,6 @@ export async function POST(req: Request) {
       })
     }
 
-    // Return the mode alongside so the client can render the right layout.
     // NOTE: nothing here is persisted — the parsed image is dropped when this
     // function returns and the response is sent.
     return NextResponse.json({ mode, ...result })
