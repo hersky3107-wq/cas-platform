@@ -374,6 +374,21 @@ export default function MedicalPage() {
                 </span>
                 <span style={styles.menuArrow} aria-hidden>→</span>
               </button>
+
+              <button
+                type="button"
+                className="md-card md-card-live"
+                style={{ ...styles.menuCard, ...styles.menuCardEmergency }}
+                onClick={() => { stopSpeaking(); router.push('/jeju/resident/emergency') }}
+                aria-label="긴급·상담 전화 — 119, 112, 상담 번호, 가족, 주민센터"
+              >
+                <span style={styles.menuEmoji} aria-hidden>🆘</span>
+                <span style={styles.menuText}>
+                  <span style={styles.menuTitle}>긴급·상담 전화</span>
+                  <span style={styles.menuSub}>119·112·상담·가족·주민센터 번호를 한곳에 모았어요.</span>
+                </span>
+                <span style={styles.menuArrow} aria-hidden>→</span>
+              </button>
             </div>
 
             {toastMsg && <div role="status" aria-live="polite" style={styles.toast}>{toastMsg}</div>}
@@ -740,6 +755,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '18px 20px', cursor: 'pointer', textAlign: 'left', width: '100%',
   },
   menuCardLive: { border: `3px solid ${C.sea}` },
+  menuCardEmergency: { border: `3px solid ${C.warnBorder}`, background: '#FFF7F6' },
   menuEmoji: { fontSize: 42, lineHeight: 1, flexShrink: 0 },
   menuText: { display: 'flex', flexDirection: 'column', gap: 4, flex: 1 },
   menuTitle: { fontSize: 26, fontWeight: 900, color: C.ink, lineHeight: 1.25 },

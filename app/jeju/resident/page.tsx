@@ -7,7 +7,7 @@
  * Hero card navigates to /jeju/resident/support; grid cards show 준비중 inline.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 // ── Theme (identical to support/page.tsx) ─────────────────────────────────────
@@ -46,6 +46,12 @@ export default function ResidentHomePage() {
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [toastTimer, setToastTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
 
+  // Emergency 119 — two-gate state
+  // null = closed; 'confirm' = Gate 1 "정말?"; 'countdown' = Gate 2 timer
+  const [sosPhase, setSosPhase] = useState<null | 'confirm' | 'countdown'>(null)
+  const [countdown, setCountdown] = useState(5)
+  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
   useEffect(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       setTtsSupported(true)
@@ -75,9 +81,76 @@ export default function ResidentHomePage() {
       if (ttsSupported && typeof window !== 'undefined') {
         try { window.speechSynthesis.cancel() } catch { /* no-op */ }
       }
+      if (countdownTimer.current) clearInterval(countdownTimer.current)
     },
     [ttsSupported]
   )
+
+  // ── Emergency 119 — two-gate flow ───────────────────────────────────────────
+
+  const clearTimer = useCallback(() => {
+    if (countdownTimer.current) {
+      clearInterval(countdownTimer.current)
+      countdownTimer.current = null
+    }
+  }, [])
+
+  // Tap "🚨 긴급 도움" → Gate 1 confirm overlay
+  const startEmergency = useCallback(() => {
+    speak('119에 전화하시겠어요? 예 또는 아니요를 누르세요.')
+    setSosPhase('confirm')
+  }, [speak])
+
+  // Gate 1 "아니요" → close, nothing happens
+  const confirmNo = useCallback(() => {
+    setSosPhase(null)
+  }, [])
+
+  // Gate 1 "예" → Gate 2 countdown (5 s)
+  const confirmYes = useCallback(() => {
+    speak('5초 뒤에 119에 전화합니다. 취소하려면 취소를 누르세요.')
+    setCountdown(5)
+    setSosPhase('countdown')
+  }, [speak])
+
+  // "취소" during countdown → abort
+  const cancelEmergency = useCallback(() => {
+    clearTimer()
+    setSosPhase(null)
+    speak('취소되었습니다.')
+  }, [clearTimer, speak])
+
+  // "지금 바로 전화" — dial without waiting
+  const dialNow = useCallback(() => {
+    clearTimer()
+    setSosPhase(null)
+    if (typeof window !== 'undefined') {
+      try { window.speechSynthesis.cancel() } catch { /* no-op */ }
+      window.location.href = 'tel:119'
+    }
+  }, [clearTimer])
+
+  // Run the countdown interval while in 'countdown' phase
+  useEffect(() => {
+    if (sosPhase !== 'countdown') return
+    clearTimer()
+    countdownTimer.current = setInterval(() => {
+      setCountdown((n) => Math.max(0, n - 1))
+    }, 1000)
+    return clearTimer
+  }, [sosPhase]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When countdown hits 0, place the call
+  useEffect(() => {
+    if (sosPhase === 'countdown' && countdown === 0) {
+      clearTimer()
+      setSosPhase(null)
+      if (typeof window !== 'undefined') {
+        try { window.speechSynthesis.cancel() } catch { /* no-op */ }
+        window.location.href = 'tel:119'
+      }
+    }
+  }, [countdown, sosPhase, clearTimer])
 
   // ── Toast for 준비중 cards ─────────────────────────────────────────────────
 
@@ -130,6 +203,19 @@ export default function ResidentHomePage() {
           <h1 style={styles.h1}>제주 어르신 도우미</h1>
           <p style={styles.lead}>필요한 도움을 골라보세요.</p>
         </header>
+
+        {/* Two-gate emergency — top priority, above everything */}
+        <button
+          type="button"
+          className="rh-sos"
+          style={styles.sosBtn}
+          onClick={startEmergency}
+          aria-label="긴급 도움 — 119에 전화할 때 누르세요"
+        >
+          <span style={styles.sosEmoji} aria-hidden>🚨</span>
+          <span style={styles.sosText}>긴급 도움</span>
+          <span style={styles.sosSub}>119가 필요할 때 누르세요</span>
+        </button>
 
         {/* Hero card — LIVE */}
         <button
@@ -188,6 +274,64 @@ export default function ResidentHomePage() {
           </div>
         )}
       </main>
+
+      {/* Gate 1 — Confirm intent */}
+      {sosPhase === 'confirm' && (
+        <div style={styles.sosOverlay} role="alertdialog" aria-modal="true" aria-label="119 전화 확인">
+          <p style={styles.sosOverlayTitle}>정말 119에<br />전화할까요?</p>
+          <div style={styles.sosGateRow}>
+            {/* "예" — smaller but very clear */}
+            <button
+              type="button"
+              className="rh-confirm-yes"
+              style={styles.sosYesBtn}
+              onClick={confirmYes}
+              aria-label="예, 119에 전화하기"
+            >
+              예
+            </button>
+            {/* "아니요" — large / easy to hit, the safe default */}
+            <button
+              type="button"
+              className="rh-cancel"
+              style={styles.sosNoBtn}
+              onClick={confirmNo}
+              aria-label="아니요, 취소하기"
+            >
+              아니요
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Gate 2 — 5-second countdown */}
+      {sosPhase === 'countdown' && (
+        <div style={styles.sosOverlay} role="alertdialog" aria-modal="true" aria-label="119 전화 카운트다운">
+          <p style={styles.sosOverlayTitle}>119에 전화합니다</p>
+          <div style={styles.sosCount} aria-live="assertive" aria-atomic="true">{countdown}</div>
+          <p style={styles.sosOverlayHint}>잠시 후 전화가 걸려요</p>
+          {/* "지금 바로 전화" — secondary, for those who don't want to wait */}
+          <button
+            type="button"
+            className="rh-confirm-yes"
+            style={styles.sosDialNowBtn}
+            onClick={dialNow}
+            aria-label="지금 바로 119 전화하기"
+          >
+            지금 바로 전화
+          </button>
+          {/* 취소 — biggest, most forgiving tap target */}
+          <button
+            type="button"
+            className="rh-cancel"
+            style={styles.sosCancelBtn}
+            onClick={cancelEmergency}
+            aria-label="전화 취소하기"
+          >
+            취소
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -258,6 +402,122 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     textAlign: 'center',
     lineHeight: 1.5,
+  },
+  // One-touch 119 button (home)
+  sosBtn: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    width: '100%',
+    minHeight: 96,
+    background: '#C0392B',
+    border: '4px solid #8A241A',
+    borderRadius: 20,
+    cursor: 'pointer',
+    padding: '14px 18px',
+    boxShadow: '0 8px 26px rgba(192,57,43,0.40)',
+    boxSizing: 'border-box',
+  },
+  sosEmoji: { fontSize: 40, lineHeight: 1 },
+  sosText: { fontSize: 36, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.1 },
+  sosSub: { fontSize: 20, fontWeight: 700, color: '#FFE3DE', lineHeight: 1.2 },
+  // Overlays — shared outer container
+  sosOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 1000,
+    background: '#8A241A',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    padding: '32px 20px',
+    boxSizing: 'border-box',
+  },
+  sosOverlayTitle: {
+    fontSize: 44,
+    fontWeight: 900,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    margin: 0,
+    lineHeight: 1.25,
+  },
+  // Gate 1 — 예 / 아니요 row
+  sosGateRow: {
+    display: 'flex',
+    gap: 16,
+    width: '100%',
+    maxWidth: 540,
+  },
+  // "예" button — clearly visible but not the largest
+  sosYesBtn: {
+    flex: 1,
+    minHeight: 110,
+    background: '#FFFFFF',
+    color: '#8A241A',
+    border: '5px solid #FFFFFF',
+    borderRadius: 20,
+    fontSize: 42,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
+  // "아니요" / "취소" — dominant, full width, tallest
+  sosNoBtn: {
+    flex: 2,
+    minHeight: 110,
+    background: '#FFE3DE',
+    color: '#8A241A',
+    border: '5px solid #FFFFFF',
+    borderRadius: 20,
+    fontSize: 42,
+    fontWeight: 900,
+    cursor: 'pointer',
+    boxShadow: '0 8px 28px rgba(0,0,0,0.25)',
+  },
+  // Gate 2 — countdown number
+  sosCount: {
+    fontSize: 160,
+    fontWeight: 900,
+    color: '#FFFFFF',
+    lineHeight: 1,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  sosOverlayHint: {
+    fontSize: 24,
+    fontWeight: 700,
+    color: '#FFE3DE',
+    textAlign: 'center',
+    margin: 0,
+  },
+  // Gate 2 — "지금 바로 전화" secondary button
+  sosDialNowBtn: {
+    width: '100%',
+    maxWidth: 520,
+    minHeight: 80,
+    background: 'rgba(255,255,255,0.18)',
+    color: '#FFFFFF',
+    border: '3px solid rgba(255,255,255,0.60)',
+    borderRadius: 18,
+    fontSize: 28,
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  // Gate 2 — "취소" — the biggest, safest target
+  sosCancelBtn: {
+    width: '100%',
+    maxWidth: 520,
+    minHeight: 140,
+    background: '#FFFFFF',
+    color: '#8A241A',
+    border: '5px solid #FFFFFF',
+    borderRadius: 24,
+    fontSize: 56,
+    fontWeight: 900,
+    cursor: 'pointer',
+    boxShadow: '0 8px 28px rgba(0,0,0,0.30)',
   },
   // Hero card
   hero: {
@@ -385,23 +645,33 @@ const styles: Record<string, React.CSSProperties> = {
 const GLOBAL_CSS = `
   .rh-hero:focus-visible,
   .rh-card:focus-visible,
-  .rh-ctrl:focus-visible {
+  .rh-ctrl:focus-visible,
+  .rh-sos:focus-visible,
+  .rh-cancel:focus-visible,
+  .rh-confirm-yes:focus-visible {
     outline: 5px solid ${C.focus};
     outline-offset: 3px;
   }
+  .rh-cancel:focus-visible, .rh-confirm-yes:focus-visible { outline-color: #FFD400; }
   .rh-hero:hover { background: ${C.seaStrong}; }
   .rh-card:hover { background: #E2ECF0; border-color: ${C.sea}; }
   .rh-card-live:hover { background: #EAF4F8; }
-  .rh-hero, .rh-card, .rh-ctrl {
-    transition: background 0.12s ease, transform 0.07s ease;
+  .rh-sos:hover { background: #A93226; }
+  .rh-cancel:hover { filter: brightness(0.94); }
+  .rh-confirm-yes:hover { filter: brightness(0.94); }
+  .rh-hero, .rh-card, .rh-ctrl, .rh-sos, .rh-cancel, .rh-confirm-yes {
+    transition: background 0.12s ease, transform 0.07s ease, filter 0.12s ease;
     -webkit-tap-highlight-color: transparent;
   }
   .rh-hero:active { transform: scale(0.985); }
   .rh-card:active { transform: scale(0.97); }
+  .rh-sos:active { transform: scale(0.98); }
+  .rh-cancel:active, .rh-confirm-yes:active { transform: scale(0.97); }
   @media (prefers-reduced-motion: reduce) {
-    .rh-hero, .rh-card, .rh-ctrl {
+    .rh-hero, .rh-card, .rh-ctrl, .rh-sos, .rh-cancel, .rh-confirm-yes {
       transition: none !important;
       transform: none !important;
+      filter: none !important;
     }
   }
   @media (max-width: 400px) {
