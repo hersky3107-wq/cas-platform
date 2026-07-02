@@ -29,13 +29,13 @@ const C = {
 
 // ── Grid card data ─────────────────────────────────────────────────────────────
 
-const GRID_CARDS = [
+const GRID_CARDS: { emoji: string; label: string; href?: string }[] = [
   { emoji: '🏥', label: '병원·약 찾기' },
   { emoji: '🚌', label: '버스·교통' },
   { emoji: '📰', label: '오늘의 소식' },
-  { emoji: '📄', label: '고지서·문서 읽기' },
-  { emoji: '🛡️', label: '수상한 문자 확인' },
-  { emoji: '🖥️', label: '무인기계 도움' },
+  { emoji: '📄', label: '고지서·문서 읽기', href: '/jeju/resident/photo?mode=document' },
+  { emoji: '🛡️', label: '수상한 문자 확인', href: '/jeju/resident/photo?mode=phishing' },
+  { emoji: '🖥️', label: '무인기계 도움', href: '/jeju/resident/photo?mode=kiosk' },
 ]
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -95,6 +95,16 @@ export default function ResidentHomePage() {
   const homeNarration =
     '제주 어르신 도우미입니다. 필요한 도움을 골라보세요. 나에게 맞는 복지 찾기를 누르면 시작할 수 있어요.'
 
+  const goTo = useCallback(
+    (href: string) => {
+      if (ttsSupported && typeof window !== 'undefined') {
+        try { window.speechSynthesis.cancel() } catch { /* no-op */ }
+      }
+      router.push(href)
+    },
+    [router, ttsSupported]
+  )
+
   return (
     <div style={styles.root}>
       <style>{GLOBAL_CSS}</style>
@@ -145,23 +155,26 @@ export default function ResidentHomePage() {
         {/* Peek label */}
         <p style={styles.gridHint} aria-hidden>더 많은 메뉴</p>
 
-        {/* Grid of 준비중 cards */}
+        {/* Grid of feature cards — live (photo modes) or 준비중 */}
         <div style={styles.grid} role="list">
-          {GRID_CARDS.map(({ emoji, label }) => (
-            <button
-              key={label}
-              type="button"
-              role="listitem"
-              className="rh-card"
-              style={styles.card}
-              onClick={() => showToast(label)}
-              aria-label={`${label} — 준비 중`}
-            >
-              <span style={styles.cardEmoji} aria-hidden>{emoji}</span>
-              <span style={styles.cardLabel}>{label}</span>
-              <span style={styles.badge} aria-hidden>준비중</span>
-            </button>
-          ))}
+          {GRID_CARDS.map(({ emoji, label, href }) => {
+            const live = Boolean(href)
+            return (
+              <button
+                key={label}
+                type="button"
+                role="listitem"
+                className={live ? 'rh-card rh-card-live' : 'rh-card'}
+                style={live ? { ...styles.card, ...styles.cardLive } : styles.card}
+                onClick={() => (href ? goTo(href) : showToast(label))}
+                aria-label={live ? label : `${label} — 준비 중`}
+              >
+                <span style={styles.cardEmoji} aria-hidden>{emoji}</span>
+                <span style={live ? { ...styles.cardLabel, ...styles.cardLabelLive } : styles.cardLabel}>{label}</span>
+                {!live && <span style={styles.badge} aria-hidden>준비중</span>}
+              </button>
+            )
+          })}
         </div>
 
         {/* Toast */}
@@ -329,6 +342,13 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     lineHeight: 1.3,
   },
+  cardLive: {
+    background: C.surface,
+    border: `3px solid ${C.sea}`,
+  },
+  cardLabelLive: {
+    color: C.ink,
+  },
   badge: {
     position: 'absolute',
     top: 10,
@@ -371,6 +391,7 @@ const GLOBAL_CSS = `
   }
   .rh-hero:hover { background: ${C.seaStrong}; }
   .rh-card:hover { background: #E2ECF0; border-color: ${C.sea}; }
+  .rh-card-live:hover { background: #EAF4F8; }
   .rh-hero, .rh-card, .rh-ctrl {
     transition: background 0.12s ease, transform 0.07s ease;
     -webkit-tap-highlight-color: transparent;
