@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronDown, ChevronUp, Newspaper } from 'lucide-react'
 import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { DeliberateSection } from '@/app/motie/governance/deliberate/page'
@@ -52,8 +53,6 @@ export default function JejuGovernanceUnifiedPage() {
       theme="governance"
       title="통합 심의"
       tagline={t.governancePickerTagline}
-      backHref="/motie/governance"
-      backLabel={t.backToGovernance}
     >
       <div className="flex flex-col gap-6">
         {/* Section 1 — 찬반형 심의 */}
@@ -70,6 +69,17 @@ export default function JejuGovernanceUnifiedPage() {
         <UnifiedSection title={t.hubDiagnosticTitle} explainer={t.hubDiagnosticDesc}>
           <DiagnosticSection />
         </UnifiedSection>
+
+        {/* 언론 동향 — separate engine, subtle footer link */}
+        <div className="flex items-center justify-center border-t border-jeju-border pt-4">
+          <Link
+            href="/motie/governance/media"
+            className="flex items-center gap-1.5 text-xs text-jeju-fg-muted transition-colors hover:text-jeju-accent"
+          >
+            <Newspaper className="h-3.5 w-3.5" aria-hidden />
+            {t.hubMediaTitle}
+          </Link>
+        </div>
       </div>
     </JejuThemeShell>
   )

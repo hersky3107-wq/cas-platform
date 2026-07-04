@@ -151,6 +151,9 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
   const gapLine = isTrade
     ? '- 내부 데이터만으로 부족한 부분, 즉 최신 외부 정보(현지 시장·수요 동향, 관세·인증·라벨링 규제, 무역구제(반덤핑 등) 동향, 경쟁·바이어·유통, 환율 흐름 등)가 필요한 지점을 명확히 짚고, 추측으로 메우지 말고 "검색 요청"으로 선언하세요.'
     : '- 내부 데이터만으로 부족한 부분, 즉 최신 외부 정보(국제 유가·가스 가격, 지정학·수급 정세, 정부 에너지 정책, 국제기구 전망 등)가 필요한 지점을 명확히 짚고, 추측으로 메우지 말고 "검색 요청"으로 선언하세요.'
+  const searchRequestClosingLine = isTrade
+    ? 'searchRequests에는 의사결정에 정말 중요한 검색만 담되, 위 [수출참모 필수] 규칙에 따라 대상국 현지 언론·규제 검색은 반드시 최소 1건 포함하세요(빈 배열 금지).'
+    : 'searchRequests는 정말 더 알아봐야 할 게 있을 때만. 없으면 빈 배열 [].'
   return [
     leadAnalystPersonaLine(councilMode),
     '제공된 [수집 데이터]를 정밀하게 읽고, 이 질문에 답하기 위한 1차 분석을 수행하세요.',
@@ -159,6 +162,11 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
     '- 확보된 데이터가 실제로 무엇을 말하는지 정리하세요(수치는 데이터에 있는 값만 사용, 지어내지 말 것).',
     gapLine,
     '검색 요청은 의사결정에 정말 중요한 것 위주로, 무엇을 왜 찾아야 하는지 구체적으로.',
+    ...(isTrade
+      ? [
+          '- [수출참모 필수] 이 질문의 수출 대상국과 품목을 파악해, 반드시 최소 1건은 "해당 대상국의 현지 언론·뉴스 및 최신 수입/규제 동향(해당 품목 기준)"을 확인하는 검색을 searchRequests에 포함하세요. 예: "<대상국> <품목> 현지 언론 수입규제 인증 최신". 대상국·품목이 여러 개면 핵심 1~2개에 집중하세요. 이 검색은 선택이 아니라 필수입니다.',
+        ]
+      : []),
     ...(isTrade ? ['', TRADE_ANALYST_DIRECTIVE] : ['', WARROOM_ANALYST_DIRECTIVE]),
     '',
     KOREAN_ONLY_DIRECTIVE,
@@ -166,7 +174,7 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
     '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
     '스키마:',
     '{ "analysis": "1차 분석 (핵심 하위질문 + 데이터가 말하는 것 + 공백, 400~700자)", "searchRequests": [ { "query": "검색어", "reason": "왜 필요한지" } ] }',
-    'searchRequests는 정말 더 알아봐야 할 게 있을 때만. 없으면 빈 배열 [].',
+    searchRequestClosingLine,
   ].join('\n')
 }
 
@@ -316,10 +324,10 @@ export async function generateJejuPreReport(params: {
       searchRequests,
     }
     try {
-      const { merged, droppedCount } = await mergeSearchRequests({ analyses: [leadAsRole] })
+      const { merged, droppedCount } = await mergeSearchRequests({ analyses: [leadAsRole], councilMode })
       droppedSearchCount = droppedCount
       if (merged.length > 0) {
-        searches = await executeJejuSearches({ merged })
+        searches = await executeJejuSearches({ merged, councilMode })
       }
     } catch {
       // Search is enrichment; the report can still be written from internal data.

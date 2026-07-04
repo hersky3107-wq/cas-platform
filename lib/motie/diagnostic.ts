@@ -33,6 +33,96 @@ function noDbSupabase(): SupabaseClient {
   return createClient('http://localhost', 'diagnostic-no-db') as unknown as SupabaseClient
 }
 
+// ── Transient-failure retry wrapper ───────────────────────────────────────────
+// A single transient upstream hiccup (503 / connection reset / timeout /
+// overloaded / 429) or an empty response can wipe a stage's result mid-demo.
+// We retry up to 3 attempts with a short linear backoff. Non-transient errors
+// (400/401/invalid request, etc.) return immediately — no point retrying those.
+
+const RETRY_MAX_ATTEMPTS = 3
+const RETRY_BACKOFF_MS = 1200
+
+function retryDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isTransientAiError(msg: string | null | undefined): boolean {
+  if (!msg) return false
+  const m = msg.toLowerCase()
+  return (
+    m.includes('503') ||
+    m.includes('service unavailable') ||
+    m.includes('upstream connect') ||
+    m.includes('connection termination') ||
+    m.includes('reset') ||
+    m.includes('timeout') ||
+    m.includes('econnreset') ||
+    m.includes('overloaded') ||
+    m.includes('429')
+  )
+}
+
+type RetryOutcome = {
+  /** Non-empty text on success; null otherwise. */
+  text: string | null
+  /** true when the response was OK (no error + non-blank text). */
+  ok: boolean
+  /** How the call failed (when !ok). 'threw' = exception was raised. */
+  errorKind: 'none' | 'error' | 'empty' | 'threw'
+  /** r.error string, or the thrown message. null for empty-response failures. */
+  errorMessage: string | null
+  /** true when at least one retry was attempted before the final outcome. */
+  retried: boolean
+}
+
+/**
+ * Wraps runSingleAiProvider with transient-failure retries. Preserves the
+ * caller's ability to build the exact same DiagnosticPart error messages —
+ * it only reports WHAT happened, never formats the user-facing string.
+ */
+async function runAiWithRetry(
+  params: Parameters<typeof runSingleAiProvider>[0]
+): Promise<RetryOutcome> {
+  let retried = false
+  let lastKind: 'error' | 'empty' | 'threw' = 'empty'
+  let lastMessage: string | null = null
+
+  for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
+    let transient = false
+    try {
+      const r = await runSingleAiProvider(params)
+      if (!r.error && r.text?.trim()) {
+        return { text: r.text, ok: true, errorKind: 'none', errorMessage: null, retried }
+      }
+      if (r.error) {
+        lastKind = 'error'
+        lastMessage = r.error
+        transient = isTransientAiError(r.error)
+      } else {
+        // Empty/blank text with no explicit error — treat as transient.
+        lastKind = 'empty'
+        lastMessage = null
+        transient = true
+      }
+      if (!transient) {
+        return { text: null, ok: false, errorKind: lastKind, errorMessage: lastMessage, retried }
+      }
+    } catch (e: unknown) {
+      // A thrown network error is always treated as transient.
+      lastKind = 'threw'
+      lastMessage = e instanceof Error ? e.message : 'unknown error'
+      transient = true
+    }
+
+    if (attempt < RETRY_MAX_ATTEMPTS) {
+      retried = true
+      await retryDelay(RETRY_BACKOFF_MS * attempt)
+    }
+  }
+
+  return { text: null, ok: false, errorKind: lastKind, errorMessage: lastMessage, retried: true }
+}
+
 /**
  * Strips CJK ideographs + leaked markdown/citation markup, leaving clean Korean
  * prose. Combines the CJK-strip (cf. brief page sanitizeCjk) and the
@@ -167,24 +257,24 @@ export async function runDiagnosticStatus(params: {
     '위 자료로 이 분야의 "오늘의 현황"을 정리하세요.',
   ].join('\n')
 
-  try {
-    const r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
-      provider: STATUS_PROVIDER,
-      prompt: userPrompt,
-      systemPrompt: buildStatusSystemPrompt(councilMode),
-      maxCompletionTokens: STATUS_MAX_TOKENS,
-      modelOverride: STATUS_MODEL,
-    })
-    if (r.error || !r.text?.trim()) {
-      return { ...base, error: r.error ?? '현황 분석이 빈 응답을 반환했습니다.' }
-    }
+  const r = await runAiWithRetry({
+    supabase: noDbSupabase(),
+    sessionId: null,
+    userId: null,
+    provider: STATUS_PROVIDER,
+    prompt: userPrompt,
+    systemPrompt: buildStatusSystemPrompt(councilMode),
+    maxCompletionTokens: STATUS_MAX_TOKENS,
+    modelOverride: STATUS_MODEL,
+  })
+  if (r.ok) {
     return { ...base, ok: true, text: sanitizeDiagnosticText(r.text) }
-  } catch (e: unknown) {
-    return { ...base, error: `현황 분석 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}` }
   }
+  const err =
+    r.errorKind === 'threw'
+      ? `현황 분석 호출 실패: ${r.errorMessage ?? 'unknown error'}`
+      : (r.errorMessage ?? '현황 분석이 빈 응답을 반환했습니다.')
+  return { ...base, error: r.retried ? `${err} (재시도 후 실패)` : err }
 }
 
 // ── Step 3: AI② 현안 진단가 (Opus) — 가장 시급·중요 사안 ───────────────────────
@@ -242,22 +332,22 @@ export async function runDiagnosticIssues(params: {
     '위 자료로 "가장 시급하고 중요한 사안"을 진단하세요.',
   ].join('\n')
 
-  try {
-    const r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
-      provider: ISSUES_PROVIDER,
-      prompt: userPrompt,
-      systemPrompt: buildIssuesSystemPrompt(councilMode),
-      maxCompletionTokens: ISSUES_MAX_TOKENS,
-      modelOverride: ISSUES_MODEL,
-    })
-    if (r.error || !r.text?.trim()) {
-      return { ...base, error: r.error ?? '현안 진단이 빈 응답을 반환했습니다.' }
-    }
+  const r = await runAiWithRetry({
+    supabase: noDbSupabase(),
+    sessionId: null,
+    userId: null,
+    provider: ISSUES_PROVIDER,
+    prompt: userPrompt,
+    systemPrompt: buildIssuesSystemPrompt(councilMode),
+    maxCompletionTokens: ISSUES_MAX_TOKENS,
+    modelOverride: ISSUES_MODEL,
+  })
+  if (r.ok) {
     return { ...base, ok: true, text: sanitizeDiagnosticText(r.text) }
-  } catch (e: unknown) {
-    return { ...base, error: `현안 진단 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}` }
   }
+  const err =
+    r.errorKind === 'threw'
+      ? `현안 진단 호출 실패: ${r.errorMessage ?? 'unknown error'}`
+      : (r.errorMessage ?? '현안 진단이 빈 응답을 반환했습니다.')
+  return { ...base, error: r.retried ? `${err} (재시도 후 실패)` : err }
 }
