@@ -581,9 +581,9 @@ function VerdictBlock({
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Section (reusable body — no shell/back-link; used by page + unified) ──────
 
-export default function JejuGovernanceDeliberatePage() {
+export function DeliberateSection() {
   const { t } = useJejuUi()
 
   const [question, setQuestion] = useState('')
@@ -844,13 +844,7 @@ export default function JejuGovernanceDeliberatePage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <JejuThemeShell
-      theme="governance"
-      title={t.deliberateTitle}
-      tagline={t.deliberateDesc}
-      backHref="/motie/governance"
-      backLabel={t.backToGovernance}
-    >
+    <>
       {/* Input */}
       <div className="mb-6 flex flex-col gap-3">
         <p className="text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
@@ -1110,6 +1104,24 @@ export default function JejuGovernanceDeliberatePage() {
           )}
         </div>
       )}
+    </>
+  )
+}
+
+// ── Main page (standalone route — wraps the section in its own shell) ─────────
+
+export default function JejuGovernanceDeliberatePage() {
+  const { t } = useJejuUi()
+
+  return (
+    <JejuThemeShell
+      theme="governance"
+      title={t.deliberateTitle}
+      tagline={t.deliberateDesc}
+      backHref="/motie/governance"
+      backLabel={t.backToGovernance}
+    >
+      <DeliberateSection />
     </JejuThemeShell>
   )
 }

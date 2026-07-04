@@ -26,6 +26,15 @@ export type JejuUiPack = {
   liteDesc: string
   mediaTitle: string
   mediaDesc: string
+  /** Governance hub tile labels (correct, hub-scoped; separate from page headers) */
+  hubDeliberateTitle: string
+  hubDeliberateDesc: string
+  hubBriefTitle: string
+  hubBriefDesc: string
+  hubDiagnosticTitle: string
+  hubDiagnosticDesc: string
+  hubMediaTitle: string
+  hubMediaDesc: string
   /** Tourist sub-picker */
   touristPickerTitle: string
   touristPickerTagline: string
@@ -249,6 +258,15 @@ const KO: JejuUiPack = {
   liteDesc: '실시간 데이터 · AI 브리핑',
   mediaTitle: '언론 동향',
   mediaDesc: '매스컴 논조 · 지역·전국 비교',
+  // Governance hub tiles — correct labels for the 4-mode launcher
+  hubDeliberateTitle: '찬반형 심의',
+  hubDeliberateDesc: 'AI들이 찬성·반대로 나뉘어 토론하고 표결·판결까지 내리는 심층 심의.',
+  hubBriefTitle: '개방형 브리핑',
+  hubBriefDesc: '여러 AI가 서로 다른 관점으로 분석해 종합 브리핑을 만드는 열린 진단.',
+  hubDiagnosticTitle: '진단형 스캔',
+  hubDiagnosticDesc: '분야를 선택하면 현황과 가장 시급한 현안을 빠르게 진단.',
+  hubMediaTitle: '언론 동향',
+  hubMediaDesc: '관련 뉴스·현지 언론을 자동 수집해 여론 흐름을 포착.',
   touristPickerTitle: '관광객',
   touristPickerTagline: '내국인 · 외국인 안내',
   domesticTitle: '내국인',

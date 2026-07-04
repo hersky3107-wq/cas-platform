@@ -103,6 +103,50 @@
   --jeju-tap-min: 3.5rem;
 }
 
+[data-jeju-theme='trade'] {
+  --jeju-bg: #0a1420;
+  --jeju-bg-elevated: #0f2133;
+  --jeju-fg: #f1f5f9;
+  --jeju-fg-muted: #94a3b8;
+  --jeju-accent: #38bdf8;
+  --jeju-accent-secondary: #0ea5e9;
+  --jeju-accent-soft: rgba(56, 189, 248, 0.14);
+  --jeju-border: rgba(56, 189, 248, 0.22);
+  --jeju-tile-bg: rgba(255, 255, 255, 0.05);
+  --jeju-tile-hover: rgba(56, 189, 248, 0.10);
+  --jeju-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  --jeju-radius: 1rem;
+  --jeju-text-base: 1rem;
+  --jeju-text-lg: 1.125rem;
+  --jeju-text-xl: 1.375rem;
+  --jeju-tile-size: 5.5rem;
+  --jeju-tile-size-lg: 7rem;
+  --jeju-gap: 1.75rem;
+  --jeju-tap-min: 3rem;
+}
+
+[data-jeju-theme='warroom'] {
+  --jeju-bg: #0b1020;
+  --jeju-bg-elevated: #141d33;
+  --jeju-fg: #f1f5f9;
+  --jeju-fg-muted: #94a3b8;
+  --jeju-accent: #f5b544;
+  --jeju-accent-secondary: #d97706;
+  --jeju-accent-soft: rgba(245, 181, 68, 0.14);
+  --jeju-border: rgba(245, 181, 68, 0.22);
+  --jeju-tile-bg: rgba(255, 255, 255, 0.05);
+  --jeju-tile-hover: rgba(245, 181, 68, 0.10);
+  --jeju-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  --jeju-radius: 1rem;
+  --jeju-text-base: 1rem;
+  --jeju-text-lg: 1.125rem;
+  --jeju-text-xl: 1.375rem;
+  --jeju-tile-size: 5.5rem;
+  --jeju-tile-size-lg: 7rem;
+  --jeju-gap: 1.75rem;
+  --jeju-tap-min: 3rem;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

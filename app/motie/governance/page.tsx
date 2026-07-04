@@ -1,6 +1,6 @@
 'use client'
 
-import { FileSearch, Layers, Newspaper } from 'lucide-react'
+import { Activity, FileSearch, Layers, Newspaper } from 'lucide-react'
 import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { JejuTile } from '@/components/motie/JejuTile'
 import { JejuTileGrid } from '@/components/motie/JejuTileGrid'
@@ -15,26 +15,33 @@ export default function JejuGovernancePage() {
       title={t.governancePickerTitle}
       tagline={t.governancePickerTagline}
     >
-      <JejuTileGrid columns={3}>
+      <JejuTileGrid columns={2}>
         <JejuTile
           href="/motie/governance/deliberate"
           icon={Layers}
-          label={t.deepTitle}
-          description={t.deepDesc}
+          label={t.hubDeliberateTitle}
+          description={t.hubDeliberateDesc}
           theme="governance"
         />
         <JejuTile
           href="/motie/governance/brief"
           icon={FileSearch}
-          label={t.liteTitle}
-          description={t.liteDesc}
+          label={t.hubBriefTitle}
+          description={t.hubBriefDesc}
+          theme="governance"
+        />
+        <JejuTile
+          href="/motie/governance/diagnostic"
+          icon={Activity}
+          label={t.hubDiagnosticTitle}
+          description={t.hubDiagnosticDesc}
           theme="governance"
         />
         <JejuTile
           href="/motie/governance/media"
           icon={Newspaper}
-          label={t.mediaTitle}
-          description={t.mediaDesc}
+          label={t.hubMediaTitle}
+          description={t.hubMediaDesc}
           theme="governance"
         />
       </JejuTileGrid>

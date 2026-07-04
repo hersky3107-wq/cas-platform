@@ -5,6 +5,7 @@ import { ChevronLeft } from 'lucide-react'
 import type { JejuThemeId } from '@/lib/motie/ui-labels'
 import { useJejuUi } from './useJejuUi'
 import { MotieModeBand } from './MotieModeBand'
+import { useMotieMode } from './mode-context'
 
 type JejuThemeShellProps = {
   theme: JejuThemeId
@@ -26,9 +27,15 @@ export function JejuThemeShell({
   const { t } = useJejuUi()
   const isResident = theme === 'resident'
 
+  // For governance pages, the effective theme follows councilMode so the
+  // trade/warroom CSS palettes apply. The MotieModeContext default ('trade')
+  // is always defined, so this is safe even without an explicit provider.
+  const { mode } = useMotieMode()
+  const effectiveTheme: string = theme === 'governance' ? mode : theme
+
   return (
     <div
-      data-jeju-theme={theme}
+      data-jeju-theme={effectiveTheme}
       className="min-h-screen bg-jeju-bg text-jeju-fg"
       style={{ fontSize: 'var(--jeju-text-base)' }}
     >
