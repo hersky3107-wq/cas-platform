@@ -88,6 +88,28 @@ const LEAD_ANALYSIS_MAX_TOKENS = 1800
 const REPORT_MAX_TOKENS = 8000
 
 /**
+ * Overall Perplexity ceiling for this pre-report stage. Mirrors deep.ts's
+ * MAX_SEARCHES (kept in sync manually — deep.ts's copy is module-private). For
+ * TRADE, the 2 forced searches (규제·인증 + 현지 언론·여론) always run and the
+ * merged lead-analyst searches are trimmed to fill the rest (2 + up to 6 = 8).
+ */
+const MAX_SEARCHES_TOTAL = 8
+
+/** Today's date in KST (Asia/Seoul). Inlined; deep.ts's helper is not exported. */
+function todayKST(): string {
+  try {
+    return new Intl.DateTimeFormat('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+  } catch {
+    return new Date().toISOString().slice(0, 10)
+  }
+}
+
+/**
  * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
  * With sessionId:null + userId:null the router does NO DB inserts and NO BYOK
  * reads, so this client is never dereferenced for I/O. Mirrors the local pattern
@@ -152,7 +174,7 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
     ? '- 내부 데이터만으로 부족한 부분, 즉 최신 외부 정보(현지 시장·수요 동향, 관세·인증·라벨링 규제, 무역구제(반덤핑 등) 동향, 경쟁·바이어·유통, 환율 흐름 등)가 필요한 지점을 명확히 짚고, 추측으로 메우지 말고 "검색 요청"으로 선언하세요.'
     : '- 내부 데이터만으로 부족한 부분, 즉 최신 외부 정보(국제 유가·가스 가격, 지정학·수급 정세, 정부 에너지 정책, 국제기구 전망 등)가 필요한 지점을 명확히 짚고, 추측으로 메우지 말고 "검색 요청"으로 선언하세요.'
   const searchRequestClosingLine = isTrade
-    ? 'searchRequests에는 의사결정에 정말 중요한 검색만 담되, 위 [수출참모 필수] 규칙에 따라 대상국 현지 언론·규제 검색은 반드시 최소 1건 포함하세요(빈 배열 금지).'
+    ? 'searchRequests에는 실제로 더 필요한 검색(경쟁사·가격·특정 이슈 등)만 담으세요. 대상국 규제·인증과 현지 언론·여론은 시스템이 자동 수행하므로 중복 선언하지 마세요. 추가 검색이 없으면 빈 배열 []도 가능합니다.'
     : 'searchRequests는 정말 더 알아봐야 할 게 있을 때만. 없으면 빈 배열 [].'
   return [
     leadAnalystPersonaLine(councilMode),
@@ -164,7 +186,7 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
     '검색 요청은 의사결정에 정말 중요한 것 위주로, 무엇을 왜 찾아야 하는지 구체적으로.',
     ...(isTrade
       ? [
-          '- [수출참모 필수] 이 질문의 수출 대상국과 품목을 파악해, 반드시 최소 1건은 "해당 대상국의 현지 언론·뉴스 및 최신 수입/규제 동향(해당 품목 기준)"을 확인하는 검색을 searchRequests에 포함하세요. 예: "<대상국> <품목> 현지 언론 수입규제 인증 최신". 대상국·품목이 여러 개면 핵심 1~2개에 집중하세요. 이 검색은 선택이 아니라 필수입니다.',
+          '- 대상국 규제·인증 검색과 현지 언론·여론 검색은 시스템이 자동으로 수행하므로 중복 선언하지 말고, 그 외에 실제로 더 필요한 검색(경쟁사·가격·특정 이슈 등)만 searchRequests에 declare하세요.',
         ]
       : []),
     ...(isTrade ? ['', TRADE_ANALYST_DIRECTIVE] : ['', WARROOM_ANALYST_DIRECTIVE]),
@@ -182,8 +204,8 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
 function reportSectionList(mode: JejuPreReportMode, councilMode: JejuCouncilMode): string {
   const isTrade = councilMode === 'trade'
   const section2 = isTrade
-    ? '2. 데이터가 말하는 것: 확보된 정량·정성 데이터의 해석. 각 수치·사실마다 반드시 출처(KOTRA 국가정보, KOTRA 상품DB, 한국수출입은행 환율, 관세·통계 등)와 데이터 시점(언제 기준인지)을 괄호로 함께 명시하세요. 예: "관세율 OO% (출처: KOTRA 국가정보)". 출처·시점을 밝힐 수 없는 수치는 쓰지 말고, 근거 없는 추론·전망에는 [AI 추정]/[확인 필요]를 붙이세요. 각 데이터 포인트는 1~2줄로 간결하게, 중복 없이.'
-    : '2. 데이터가 말하는 것: 확보된 정량·정성 데이터의 해석. 각 수치·사실마다 반드시 출처(오피넷 유가, 가스공사 LNG 수입, 검색 등)와 데이터 시점(언제 기준인지)을 괄호로 함께 명시하세요. 예: "휘발유 전국 평균 OO원/L (출처: 오피넷, 오늘 기준)". 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마세요. 출처·시점을 밝힐 수 없는 수치는 쓰지 말고, 근거 없는 추론·전망에는 [AI 추정]/[확인 필요]를 붙이세요. 각 데이터 포인트는 1~2줄로 간결하게, 중복 없이.'
+    ? '2. 데이터가 말하는 것: 확보된 정량·정성 데이터의 해석. 각 수치·사실마다 반드시 출처(KOTRA 국가정보, KOTRA 상품DB, 한국수출입은행 환율, 관세·통계 등)와 데이터 시점(언제 기준인지)을 괄호로 함께 명시하세요. 예: "관세율 OO% (출처: KOTRA 국가정보)". 출처·시점을 밝힐 수 없는 수치는 쓰지 말고, 근거 없는 추론·전망에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만 — 반복 확인 필요 사항은 마지막 "쟁점·불확실성" 섹션에 통합). 각 데이터 포인트는 1~2줄로 간결하게, 중복 없이.'
+    : '2. 데이터가 말하는 것: 확보된 정량·정성 데이터의 해석. 각 수치·사실마다 반드시 출처(오피넷 유가, 가스공사 LNG 수입, 검색 등)와 데이터 시점(언제 기준인지)을 괄호로 함께 명시하세요. 예: "휘발유 전국 평균 OO원/L (출처: 오피넷, 오늘 기준)". 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마세요. 출처·시점을 밝힐 수 없는 수치는 쓰지 말고, 근거 없는 추론·전망에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만 — 반복 확인 필요 사항은 마지막 "쟁점·불확실성" 섹션에 통합). 각 데이터 포인트는 1~2줄로 간결하게, 중복 없이.'
   const shared = [
     '1. 핵심 현안: 가장 중요한 메시지 3~5줄로 요약.',
     section2,
@@ -313,6 +335,37 @@ export async function generateJejuPreReport(params: {
   // existing mergeSearchRequests path can group/cap its requests unchanged.
   let searches: JejuExecutedSearch[] = []
   let droppedSearchCount = 0
+
+  // TRADE guarantee: the 수출참모 panel's differentiator is cross-checking the
+  // target country's REGULATION and its LOCAL PRESS/OPINION as TWO distinct
+  // lenses. Prompt-only enforcement failed because the merge AI collapses the
+  // two "similar" requests into one. So for trade we build them deterministically
+  // in code (the question embeds the target country/product — no parsing needed)
+  // and run them OUTSIDE the merge path so they always execute, un-collapsed, and
+  // appear in `searches` (UI + report/synthesis). warroom keeps the normal path.
+  const isTrade = councilMode === 'trade'
+  const forcedTradeSearches: { query: string; requestedBy: string[] }[] = isTrade
+    ? [
+        {
+          query: `[오늘: ${todayKST()}] ${question} 대상국 수입규제 인증 라벨링 통관 최신`,
+          requestedBy: ['수출참모(필수: 규제·인증)'],
+        },
+        {
+          query: `[오늘: ${todayKST()}] ${question} — 대상국 현지(자국) 언론·매체 보도와 현지 소비자 반응·SNS 여론. 한국 언론·블로그가 아닌 해당 국가 현지 매체·현지어 기사 기준. local news consumer sentiment (target country domestic media)`,
+          requestedBy: ['수출참모(필수: 대상국 현지 자국 매체·여론 — 한국 소스 아님)'],
+        },
+      ]
+    : []
+
+  if (forcedTradeSearches.length > 0) {
+    // Run the two guaranteed trade searches directly — bypass merge-collapse.
+    try {
+      searches = await executeJejuSearches({ merged: forcedTradeSearches, councilMode })
+    } catch {
+      // Guaranteed searches are best-effort; never block the report.
+    }
+  }
+
   if (searchRequests.length > 0) {
     const leadAsRole: JejuRoleAnalysis = {
       roleId: 'lead-analyst',
@@ -325,9 +378,14 @@ export async function generateJejuPreReport(params: {
     }
     try {
       const { merged, droppedCount } = await mergeSearchRequests({ analyses: [leadAsRole], councilMode })
-      droppedSearchCount = droppedCount
-      if (merged.length > 0) {
-        searches = await executeJejuSearches({ merged, councilMode })
+      // Reserve slots for the forced trade searches; trim MERGED (tail), never
+      // the forced two, so the total respects MAX_SEARCHES_TOTAL.
+      const remainingSlots = Math.max(0, MAX_SEARCHES_TOTAL - forcedTradeSearches.length)
+      const mergedToRun = merged.slice(0, remainingSlots)
+      droppedSearchCount = droppedCount + Math.max(0, merged.length - mergedToRun.length)
+      if (mergedToRun.length > 0) {
+        const mergedResults = await executeJejuSearches({ merged: mergedToRun, councilMode })
+        searches = [...searches, ...mergedResults]
       }
     } catch {
       // Search is enrichment; the report can still be written from internal data.

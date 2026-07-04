@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
-import { ChevronDown, ChevronUp, PlayCircle, MessageSquare, Search } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect, RefObject } from 'react'
+import { ChevronDown, ChevronUp, Loader2, PlayCircle, MessageSquare, Search } from 'lucide-react'
 import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useMotieMode } from '@/components/motie/mode-context'
 import { useJejuUi } from '@/components/motie/useJejuUi'
@@ -206,6 +206,71 @@ function Section({
       </button>
       {open && <div className="border-t border-jeju-border px-5 py-4">{children}</div>}
     </section>
+  )
+}
+
+// ── Elapsed-timer hook + running banner ──────────────────────────────────────
+
+function useElapsedTimer(running: boolean): string {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0)
+      return
+    }
+    startRef.current = Date.now()
+    const id = setInterval(() => {
+      if (startRef.current !== null) {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [running])
+  const m = Math.floor(elapsed / 60)
+  const s = elapsed % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+const DELIBERATE_STAGE_LABELS: Partial<Record<StageKey, (t: Ui) => string>> = {
+  start: (t) => t.deliberateStageStart,
+  report: (t) => t.deliberateStageReport,
+  open: (t) => t.deliberateStageOpen,
+  turn: (t) => t.deliberateStageTurn,
+  facilitate: (t) => t.deliberateStageFacilitate,
+  vote: (t) => t.deliberateStageVote,
+  verdict: (t) => t.deliberateStageVerdict,
+}
+
+function DeliberateRunningBanner({
+  stage,
+  elapsed,
+  t,
+  bannerRef,
+}: {
+  stage: StageKey
+  elapsed: string
+  t: Ui
+  bannerRef: RefObject<HTMLDivElement | null>
+}) {
+  const stageLabel = DELIBERATE_STAGE_LABELS[stage]?.(t) ?? '처리 중'
+  return (
+    <div
+      ref={bannerRef}
+      className="sticky top-2 z-10 mb-6 rounded-xl border-2 border-jeju-accent bg-jeju-accent/15 px-6 py-5 shadow-[0_4px_20px_rgba(0,0,0,0.35)]"
+    >
+      <div className="flex items-center gap-3">
+        <Loader2 className="h-6 w-6 shrink-0 animate-spin text-jeju-accent" aria-hidden />
+        <p className="text-base font-bold text-jeju-fg">AI가 분석 중입니다 — 잠시만 기다려 주세요</p>
+        <span className="ml-auto font-mono text-xl font-extrabold tabular-nums text-jeju-accent">
+          {elapsed}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-semibold text-jeju-accent">{stageLabel}</p>
+      <p className="mt-1 text-xs text-jeju-fg-muted">
+        다중 AI 심층 분석은 보통 3~5분 걸립니다. 정상 작동 중이니 창을 닫지 말고 기다려 주세요.
+      </p>
+    </div>
   )
 }
 
@@ -831,7 +896,15 @@ export function DeliberateSection() {
   // ── Derived values ──────────────────────────────────────────────────────────
 
   const isRunning = stage !== 'idle' && stage !== 'done' && stage !== 'error'
+  const elapsed = useElapsedTimer(isRunning)
   const showProcess = stage !== 'idle'
+
+  const bannerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (isRunning) {
+      bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [isRunning])
 
   // All debate rounds in order (opening = round 1 via openingTurns, subsequent via roundTurns map)
   const allRoundNumbers = Array.from(
@@ -880,6 +953,9 @@ export function DeliberateSection() {
           </div>
         </div>
       </div>
+
+      {/* Running banner — prominent status while engine works */}
+      {isRunning && <DeliberateRunningBanner stage={stage} elapsed={elapsed} t={t} bannerRef={bannerRef} />}
 
       {/* Progress strip */}
       {showProcess && (

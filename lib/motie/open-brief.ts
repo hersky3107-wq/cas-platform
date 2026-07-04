@@ -3,6 +3,7 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
+import { MOTIE_FLAGSHIP_BY_PROVIDER } from '@/lib/motie/models'
 import type { JejuCouncilMode } from '@/lib/motie/brief'
 import {
   KOREAN_ONLY_DIRECTIVE,
@@ -58,9 +59,10 @@ const PLAN_MAX_TOKENS = 3000
 /**
  * Per-analyst token cap. Target output is a fuller ~900–1300 Korean characters
  * (two sections). Completeness beats brevity — a full 1300자 is better than a
- * cut-off 700자 — so 3000 gives generous headroom and analyses never truncate.
+ * cut-off 700자 — so this gives generous headroom and analyses never truncate.
+ * Raised 3000 → 4000 for B2G depth (flagship analysts, cost not a concern).
  */
-const ANALYSIS_MAX_TOKENS = 3000
+const ANALYSIS_MAX_TOKENS = 4000
 const SYNTHESIS_MAX_TOKENS = 5000
 
 /** Brand display names for orchestrator prompts (product names, not company-only). */
@@ -476,6 +478,11 @@ function buildAnalystSystemPrompt(role: JejuOpenAnalysisRole, councilMode: JejuC
     '- 이것은 토론이 아닙니다. 다른 AI를 반박하거나 이름을 부르며 논쟁하지 마세요.',
     '- CLAIM/ACTION 같은 토론 태그를 쓰지 마세요.',
     '- 제공된 [상황 브리핑]과 [수집 데이터]에 근거하세요. 없는 수치는 지어내지 마세요.',
+    ...(isTrade
+      ? [
+          '- 당신의 렌즈가 경쟁·현지언론·여론 계열이라면, [실시간 검색 결과]의 현지 언론·여론 조사 내용을 반드시 활용해 구체적으로 인용하세요(현지 매체명, 소비자 반응, 트렌드 등). 그 블록에 실제로 관련 내용이 없을 때만 "데이터 없음"이라고 하세요.',
+        ]
+      : []),
     '',
     '출력 형식 (총 900~1300자, 두 섹션만):',
     '## 핵심 발견',
@@ -494,12 +501,24 @@ function buildAnalystSystemPrompt(role: JejuOpenAnalysisRole, councilMode: JejuC
   ].join('\n')
 }
 
+/** Renders the pre-report's executed Perplexity searches for the analysts. */
+function formatSearchesForAnalysts(searches: JejuExecutedSearch[] | undefined): string[] {
+  const ok = (searches ?? []).filter((s) => s.ok && s.result && s.result.trim() !== '')
+  if (ok.length === 0) return []
+  return [
+    '',
+    '[실시간 검색 결과 — 현지 언론·여론·규제]',
+    ...ok.map((s, i) => `${i + 1}. 검색어: ${s.query}\n결과: ${s.result!.trim()}`),
+  ]
+}
+
 function buildAnalystUserPrompt(params: {
   question: string
   role: JejuOpenAnalysisRole
   briefing: string
   context: string
   councilMode: JejuCouncilMode
+  searches?: JejuExecutedSearch[]
 }): string {
   return [
     `[${userQuestionLabel(params.councilMode)}]`,
@@ -510,6 +529,7 @@ function buildAnalystUserPrompt(params: {
     '',
     '[상황 브리핑 — 모든 분석가가 공유하는 사실 기반]',
     params.briefing.trim(),
+    ...formatSearchesForAnalysts(params.searches),
     '',
     '[수집 데이터 원문]',
     params.context.trim(),
@@ -524,6 +544,7 @@ async function runOneOpenAnalysis(params: {
   briefing: string
   context: string
   councilMode: JejuCouncilMode
+  searches?: JejuExecutedSearch[]
 }): Promise<JejuOpenAnalysis> {
   const { role } = params
   const base: JejuOpenAnalysis = {
@@ -545,6 +566,7 @@ async function runOneOpenAnalysis(params: {
       prompt: buildAnalystUserPrompt(params),
       systemPrompt: buildAnalystSystemPrompt(role, params.councilMode),
       maxCompletionTokens: ANALYSIS_MAX_TOKENS,
+      modelOverride: MOTIE_FLAGSHIP_BY_PROVIDER[role.provider] ?? undefined,
     })
     if (r.error || !r.text?.trim()) {
       return { ...base, error: r.error ?? '분석 응답이 비어 있습니다.' }
@@ -568,6 +590,8 @@ export async function runJejuOpenAnalyses(params: {
   briefing: string
   context: string
   councilMode?: JejuCouncilMode
+  /** Pre-report Perplexity results (현지 언론·여론·규제) shared with every analyst. */
+  searches?: JejuExecutedSearch[]
 }): Promise<JejuOpenAnalysis[]> {
   const councilMode: JejuCouncilMode = params.councilMode === 'warroom' ? 'warroom' : 'trade'
   const roles = params.plan.roles.length > 0 ? params.plan.roles : fallbackOpenPlan(params.question, councilMode).roles
@@ -579,6 +603,7 @@ export async function runJejuOpenAnalyses(params: {
         briefing: params.briefing,
         context: params.context,
         councilMode,
+        searches: params.searches,
       })
     )
   )
@@ -622,14 +647,14 @@ function buildSynthesisSystemPrompt(councilMode: JejuCouncilMode): string {
         '   - 의장 추천안 1개: "★ 추천안(A안)" — 진입 / 보류 / 조건부 추진 중 하나를 고르고, 그 근거와 트레이드오프를 명시.',
         '   - 대안 B안 1개: "B안" — 다른 실행 선택지(진입/보류/조건부 추진)와 트레이드오프.',
         '   - 대안 C안 1개: "C안" — 또 다른 실행 선택지와 트레이드오프.',
-        '   - 수출기업이 A/B/C 중 선택할 수 있게 각 안의 장단·전제 조건·리스크를 분명히. 근거 없는 시점·전망 판단에는 [AI 추정]/[확인 필요]를 붙이세요.',
+        '   - 수출기업이 A/B/C 중 선택할 수 있게 각 안의 장단·전제 조건·리스크를 분명히. 근거 없는 시점·전망 판단에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만).',
       ]
     : [
         '4) ★권고 (자원·에너지 정책 판단)',
         '   - 의장 추천안 1개: "★ 추천안(A안)" — 수급 안정 / 수입처 다변화 필요 / 비상대응 등 정책 방향 중 하나를 고르고, 그 근거와 트레이드오프를 명시.',
         '   - 대안 B안 1개: "B안" — 다른 정책 방향·우선순위·트레이드오프.',
         '   - 대안 C안 1개: "C안" — 또 다른 정책 방향·선택지·트레이드오프.',
-        '   - 정책결정자가 A/B/C 중 선택할 수 있게 각 안의 장단·전제 조건·리스크를 분명히. 근거 없는 전망·인과 판단에는 [AI 추정]/[확인 필요]를 붙이세요.',
+        '   - 정책결정자가 A/B/C 중 선택할 수 있게 각 안의 장단·전제 조건·리스크를 분명히. 근거 없는 전망·인과 판단에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만).',
       ]
   return [
     ...synthesisPersonaLines(councilMode),

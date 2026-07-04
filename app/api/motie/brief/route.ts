@@ -238,6 +238,7 @@ export async function POST(req: Request): Promise<Response> {
         briefing: state.report,
         context: state.context,
         councilMode: state.councilMode,
+        searches: state.reportSearches,
       })
 
       const next: BriefState = { ...state, analyses }

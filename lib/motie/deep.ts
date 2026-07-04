@@ -944,7 +944,7 @@ export async function runJejuDeepThroughAnalysis(params?: {
  * step targets ≤ this many queries; executeJejuSearches enforces it again
  * defensively.
  */
-const MAX_SEARCHES = 5
+const MAX_SEARCHES = 8
 
 /** Token budgets for the (cheap) merge call and each Perplexity search summary. */
 const MERGE_MAX_TOKENS = 800
@@ -1107,7 +1107,10 @@ export async function mergeSearchRequests(params: {
 function buildSearchSystemPrompt(councilMode: JejuCouncilMode = 'warroom'): string {
   const isTrade = councilMode === 'trade'
   const persona = isTrade
-    ? '당신은 수출참모 패널을 지원하는 검색 전문가입니다. 특히 대상국 현지 시장·경쟁·규제·현지언론 동향을 우선 확인하세요.'
+    ? [
+        '당신은 수출참모 패널을 지원하는 검색 전문가입니다. 특히 대상국 현지 시장·경쟁·규제·현지언론 동향을 우선 확인하세요.',
+        '현지 언론·여론 검색 시, 한국에서 작성된 자료(한국 블로그·한국 언론)가 아니라 대상국 현지(자국) 매체와 현지 소비자의 실제 반응을 우선 확인하고, 가능하면 현지어 소스를 인용하세요.',
+      ].join('\n')
     : '당신은 자원·에너지 안보 정책 심의를 지원하는 검색 전문가입니다. 특히 국제 유가·가스 가격, 지정학·수급 정세 등 최신 동향을 우선 확인하세요.'
   const langRule = isTrade
     ? '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 정리하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(HS코드, FTA, USD, VAT 등), 숫자, 단위는 허용.'

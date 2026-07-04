@@ -18,6 +18,7 @@ import {
   type JejuVoteResult,
 } from '@/lib/motie/deep'
 import { generateJejuPreReport } from '@/lib/motie/pre-report'
+import { MOTIE_FLAGSHIP_BY_PROVIDER } from '@/lib/motie/models'
 import {
   SYNOD_DEBATERS,
   PROVIDER_TO_BRAND,
@@ -69,9 +70,12 @@ const {
 
 const TABLE = 'motie_deep_sessions'
 
-/** Completion caps — Korean needs headroom; turns are 8–10 sentences. */
-const OPENING_MAX_TOKENS = 1100
-const TURN_MAX_TOKENS = 1100
+/**
+ * Completion caps — Korean needs headroom; turns are 8–10 sentences.
+ * Raised 1100 → 1600 for B2G depth (flagship debaters, cost not a concern).
+ */
+const OPENING_MAX_TOKENS = 1600
+const TURN_MAX_TOKENS = 1600
 /**
  * The facilitator emits a structured JSON summary of ALL 6 debaters' turns
  * (consensusPoints + per-issue positions + nextDirective), in Korean. Korean +
@@ -162,6 +166,7 @@ async function callProvider(params: {
   systemPrompt: string
   prompt: string
   maxCompletionTokens: number
+  modelOverride?: string
 }): Promise<{ text: string | null; error?: string | null }> {
   const r = await runSingleAiProvider({
     supabase: supabaseAdmin,
@@ -171,6 +176,7 @@ async function callProvider(params: {
     prompt: params.prompt,
     systemPrompt: params.systemPrompt,
     maxCompletionTokens: params.maxCompletionTokens,
+    modelOverride: params.modelOverride,
   })
   return { text: r.text, error: r.error }
 }
@@ -479,6 +485,7 @@ export async function POST(req: Request): Promise<Response> {
             systemPrompt: openingSystemPrompt(provider, roleForProvider(state.plan, provider)),
             prompt: userPrompt,
             maxCompletionTokens: OPENING_MAX_TOKENS,
+            modelOverride: MOTIE_FLAGSHIP_BY_PROVIDER[provider] ?? undefined,
           })
           return { provider, text }
         })
@@ -553,6 +560,7 @@ export async function POST(req: Request): Promise<Response> {
           systemPrompt: turnSystemPrompt(provider, isRedTeam, roundNumber, roleForProvider(state.plan, provider)),
           prompt: userPrompt,
           maxCompletionTokens: TURN_MAX_TOKENS,
+          modelOverride: MOTIE_FLAGSHIP_BY_PROVIDER[provider] ?? undefined,
         })
         if (!text || !text.trim()) continue
         const a = parseActionTag(text)

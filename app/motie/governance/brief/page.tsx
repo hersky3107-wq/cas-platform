@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
-import { ChevronDown, ChevronUp, PlayCircle, Search } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect, RefObject } from 'react'
+import { ChevronDown, ChevronUp, Loader2, PlayCircle, Search } from 'lucide-react'
 import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useMotieMode } from '@/components/motie/mode-context'
 import { useJejuUi } from '@/components/motie/useJejuUi'
@@ -252,6 +252,68 @@ function ProgressStripBase({
   )
 }
 
+// ── Elapsed-timer hook + running banner ──────────────────────────────────────
+
+function useElapsedTimer(running: boolean): string {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0)
+      return
+    }
+    startRef.current = Date.now()
+    const id = setInterval(() => {
+      if (startRef.current !== null) {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [running])
+  const m = Math.floor(elapsed / 60)
+  const s = elapsed % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+const BRIEF_STAGE_LABELS: Partial<Record<BriefStageKey, string>> = {
+  start: '데이터 수집 중',
+  orchestrate: '분석가 배치 중',
+  'pre-report': '상황 브리핑 작성 중',
+  analyses: '6개 AI 병렬 분석 중',
+  synthesize: '통합 권고 작성 중',
+}
+
+function BriefRunningBanner({
+  stage,
+  elapsed,
+  bannerRef,
+}: {
+  stage: BriefStageKey
+  elapsed: string
+  bannerRef: RefObject<HTMLDivElement | null>
+}) {
+  return (
+    <div
+      ref={bannerRef}
+      className="sticky top-2 z-10 rounded-xl border-2 border-jeju-accent bg-jeju-accent/15 px-6 py-5 shadow-[0_4px_20px_rgba(0,0,0,0.35)]"
+    >
+      <div className="flex items-center gap-3">
+        <Loader2 className="h-6 w-6 shrink-0 animate-spin text-jeju-accent" aria-hidden />
+        <p className="text-base font-bold text-jeju-fg">AI가 분석 중입니다 — 잠시만 기다려 주세요</p>
+        <span className="ml-auto font-mono text-xl font-extrabold tabular-nums text-jeju-accent">
+          {elapsed}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-semibold text-jeju-accent">
+        {BRIEF_STAGE_LABELS[stage] ?? '처리 중'}
+      </p>
+      <p className="mt-1 text-xs text-jeju-fg-muted">
+        다중 AI 심층 분석은 보통 3~5분 걸립니다. 정상 작동 중이니 창을 닫지 말고 기다려 주세요.
+      </p>
+    </div>
+  )
+}
+
 // ── Brief result pieces ───────────────────────────────────────────────────────
 
 function SynthesisBlock({ synthesis, t }: { synthesis: string; t: Ui }) {
@@ -268,7 +330,15 @@ function SynthesisBlock({ synthesis, t }: { synthesis: string; t: Ui }) {
   )
 }
 
-function AnalysisCard({ analysis, t }: { analysis: OpenAnalysis; t: Ui }) {
+function AnalysisCard({
+  analysis,
+  t,
+  isSearchCard = false,
+}: {
+  analysis: OpenAnalysis
+  t: Ui
+  isSearchCard?: boolean
+}) {
   return (
     <div className="rounded-xl bg-jeju-tile-bg px-4 py-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -278,6 +348,12 @@ function AnalysisCard({ analysis, t }: { analysis: OpenAnalysis; t: Ui }) {
         <span className="rounded-md bg-jeju-bg px-1.5 py-0.5 text-[10px] text-jeju-fg-muted">
           {analysis.roleLabel}
         </span>
+        {isSearchCard && (
+          <span className="inline-flex items-center gap-1 rounded-md bg-jeju-bg px-1.5 py-0.5 text-[10px] font-semibold text-jeju-accent">
+            <Search className="h-2.5 w-2.5" aria-hidden />
+            실시간 검색
+          </span>
+        )}
         {analysis.isDoubledAngle && (
           <span className="rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
             {t.briefDoubledBadge}
@@ -458,9 +534,37 @@ export function BriefSection() {
   )
 
   const briefRunning = briefStage !== 'idle' && briefStage !== 'done' && briefStage !== 'error'
+  const elapsed = useElapsedTimer(briefRunning)
   const running = briefRunning
 
+  const bannerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (briefRunning) {
+      bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [briefRunning])
+
   const hasBriefResult = roles.length > 0 || report || analyses.length > 0
+
+  // Synthetic 7th card (trade only): surface the forced Perplexity 현지 언론·여론
+  // search as a briefing card alongside the 6 analysts. Render-only — the
+  // analyses state array is never mutated and no extra AI call is made.
+  const localOpinionSearch =
+    councilMode === 'trade'
+      ? searches.find((s) => s.query.includes('현지 언론') || s.query.includes('여론'))
+      : undefined
+  const perplexityOpinionCard: OpenAnalysis | null = localOpinionSearch
+    ? {
+        roleId: 'perplexity-local-opinion',
+        roleLabel: '현지 언론·여론 조사',
+        provider: 'perplexity',
+        subQuestion: localOpinionSearch.query.replace(/^\[오늘:[^\]]*\]\s*/, ''),
+        isDoubledAngle: false,
+        ok: localOpinionSearch.ok,
+        analysis: localOpinionSearch.result,
+        ...(localOpinionSearch.ok ? {} : { error: localOpinionSearch.error }),
+      }
+    : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -490,6 +594,9 @@ export function BriefSection() {
           )}
         </div>
       </div>
+
+      {/* Running banner — prominent status while engine works */}
+      {briefRunning && <BriefRunningBanner stage={briefStage} elapsed={elapsed} bannerRef={bannerRef} />}
 
       {/* Progress */}
       {briefStage !== 'idle' && <BriefProgressStrip stage={briefStage} t={t} />}
@@ -578,13 +685,16 @@ export function BriefSection() {
             </Section>
           )}
 
-          {/* Parallel analyses */}
+          {/* Parallel analyses (+ synthetic Perplexity local-opinion card for trade) */}
           {analyses.length > 0 && (
             <Section title={t.briefAnalysesHeading} defaultOpen={!synthesis} t={t}>
               <div className="flex flex-col gap-3">
                 {analyses.map((a, i) => (
                   <AnalysisCard key={i} analysis={a} t={t} />
                 ))}
+                {perplexityOpinionCard && (
+                  <AnalysisCard analysis={perplexityOpinionCard} t={t} isSearchCard />
+                )}
               </div>
             </Section>
           )}

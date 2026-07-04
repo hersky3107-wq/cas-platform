@@ -444,7 +444,7 @@ const KO: JejuUiPack = {
   briefQuestionPlaceholder:
     '개방형 질문을 입력하세요. (예: 에너지·계통 분야에서 지금 가장 시급한 현안은?)',
   briefRunningHint: (analystCount) =>
-    `${analystCount}개 AI가 병렬 분석하고, Opus가 통합 권고안을 작성합니다. 총 3–5분 소요됩니다.`,
+    `${analystCount}개 AI가 각자 다른 관점으로 병렬 분석하고, 실시간 검색 AI가 현지 언론·규제를 조사하며, 최고급 통합 AI가 종합 권고안을 작성합니다. 총 3~5분 소요됩니다.`,
   briefStageStart: '데이터 수집',
   briefStageOrchestrate: '분석 배치',
   briefStagePreReport: '상황 브리핑',
