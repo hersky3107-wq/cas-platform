@@ -89,8 +89,11 @@ export async function POST(req: Request): Promise<Response> {
   // ── ACTION: start — snapshot + context ───────────────────────────────────────
   if (action === 'start') {
     try {
+      const councilMode: 'trade' | 'warroom' =
+        body.councilMode === 'warroom' ? 'warroom' : 'trade'
+
       const categoryId = typeof body.categoryId === 'string' ? body.categoryId.trim() : ''
-      const category = categoryId ? getDiagnosticCategory(categoryId) : undefined
+      const category = categoryId ? getDiagnosticCategory(categoryId, councilMode) : undefined
 
       // Question: explicit free-text wins; else the category preset.
       const rawQuestion = typeof body.question === 'string' ? body.question.trim() : ''
@@ -98,8 +101,6 @@ export async function POST(req: Request): Promise<Response> {
       if (!question) return fail('start', '질문 또는 카테고리가 필요합니다.', 400)
 
       const searchSeed = category?.searchSeed ?? question
-      const councilMode: 'trade' | 'warroom' =
-        body.councilMode === 'warroom' ? 'warroom' : 'trade'
 
       const snapshot = await gatherJejuSnapshot(councilMode)
       const context = buildBriefingContext(snapshot, councilMode)

@@ -16,7 +16,7 @@ import {
   WARROOM_ANALYST_DIRECTIVE,
 } from '@/lib/motie/persona'
 export type { DiagnosticCategory } from '@/lib/motie/diagnostic-categories'
-export { DIAGNOSTIC_CATEGORIES, getDiagnosticCategory } from '@/lib/motie/diagnostic-categories'
+export { getDiagnosticCategories, getDiagnosticCategory } from '@/lib/motie/diagnostic-categories'
 
 // ── Models + caps ─────────────────────────────────────────────────────────────
 
@@ -60,6 +60,17 @@ export function sanitizeDiagnosticText(text: string | null | undefined): string 
   return cleaned || null
 }
 
+// ── KST date helper (computed per-call, never at module load) ─────────────────
+
+function kstYmd(): string {
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date())
+}
+
 // ── Step 1: Perplexity status search (reuse executeJejuSearches) ──────────────
 
 /**
@@ -71,8 +82,10 @@ export async function runDiagnosticSearch(params: {
   question: string
   searchSeed?: string
 }): Promise<JejuExecutedSearch[]> {
-  const seed = params.searchSeed?.trim() || params.question.trim()
-  if (!seed) return []
+  const rawSeed = params.searchSeed?.trim() || params.question.trim()
+  if (!rawSeed) return []
+  const todayKST = kstYmd()
+  const seed = `[오늘: ${todayKST} 기준] ${rawSeed} 최신 현황 (가능한 한 최근 1~2주 이내 자료 우선, 오래된 자료는 시점을 명시)`
   const merged = [{ query: seed, requestedBy: ['진단 분석가'] }]
   const results = await executeJejuSearches({ merged })
   return results.map((r) => ({
@@ -105,11 +118,13 @@ export type DiagnosticPart = {
 
 function buildStatusSystemPrompt(councilMode: JejuCouncilMode): string {
   const isTrade = councilMode === 'trade'
+  const todayKST = kstYmd()
   const sourceExample = isTrade
     ? '- 모든 수치·사실에는 출처와 시점을 괄호로 병기하세요. 예: "(출처: KOTRA 국가정보)".'
     : '- 모든 수치·사실에는 출처와 시점을 괄호로 병기하세요. 예: "(출처: 오피넷, 오늘 기준)". 오피넷 유가는 현재 현황, 가스공사 LNG 수입은 과거 구조 배경으로 구분하세요.'
   return [
     diagnosticStatusPersonaLine(councilMode),
+    `오늘 날짜: ${todayKST}. 이 시점을 기준으로 "현재/최근"을 판단하라.`,
     '주어진 [수집 데이터]와 [외부 검색 결과]를 읽고, 이 분야의 "오늘의 현황"을 객관적으로 정리하세요.',
     ...(isTrade ? ['', TRADE_ANALYST_DIRECTIVE] : ['', WARROOM_ANALYST_DIRECTIVE]),
     '',
@@ -119,6 +134,8 @@ function buildStatusSystemPrompt(councilMode: JejuCouncilMode): string {
     '- 데이터에 없는 값은 지어내지 말고, 없으면 없다고 밝히세요.',
     '- 판단·권고·우선순위는 쓰지 마세요(그건 다음 단계 담당). 오직 현황만.',
     '- 길이: 한국어 500~900자, 문장 중간에 끊지 말고 완결하세요.',
+    '- 검색 결과에 시점이 불명확하거나 과거(예: 몇 달 전, 지난해) 자료로 보이면, 그 사실을 "[시점 불명]" 또는 "[과거 자료]"로 표기하고 현재 상황으로 단정하지 마라.',
+    '- 검색 결과나 데이터에 없는 수치·사건을 지어내지 마라. 확인되지 않으면 "[확인 필요]"로 표기하라.',
     '',
     KOREAN_ONLY_DIRECTIVE,
   ].join('\n')
@@ -174,8 +191,10 @@ export async function runDiagnosticStatus(params: {
 
 function buildIssuesSystemPrompt(councilMode: JejuCouncilMode): string {
   const isTrade = councilMode === 'trade'
+  const todayKST = kstYmd()
   return [
     diagnosticIssuesPersonaLine(councilMode),
+    `오늘 날짜: ${todayKST}. 이 시점을 기준으로 "현재/최근"을 판단하라.`,
     '주어진 [수집 데이터], [외부 검색 결과], 그리고 [오늘의 현황](데이터 분석가가 정리한 객관적 현황)을 읽고,',
     '이 분야에서 "지금 가장 시급하고 중요한 사안"을 진단하세요.',
     ...(isTrade ? ['', TRADE_ANALYST_DIRECTIVE] : ['', WARROOM_ANALYST_DIRECTIVE]),
@@ -186,6 +205,8 @@ function buildIssuesSystemPrompt(councilMode: JejuCouncilMode): string {
     '- 우선순위가 여러 개면 가장 중요한 것부터 1, 2, 3로 제시하세요(최대 3개).',
     '- 찬반 표결·합의도·A/B/C 대안 같은 형식은 쓰지 마세요. 이것은 진단 브리핑입니다.',
     '- 길이: 한국어 400~800자, 문장 중간에 끊지 말고 완결하세요.',
+    '- 검색 결과에 시점이 불명확하거나 과거(예: 몇 달 전, 지난해) 자료로 보이면, 그 사실을 "[시점 불명]" 또는 "[과거 자료]"로 표기하고 현재 상황으로 단정하지 마라.',
+    '- 검색 결과나 데이터에 없는 수치·사건을 지어내지 마라. 확인되지 않으면 "[확인 필요]"로 표기하라.',
     '',
     KOREAN_ONLY_DIRECTIVE,
   ].join('\n')

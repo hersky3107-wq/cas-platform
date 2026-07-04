@@ -13,7 +13,7 @@ import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useMotieMode } from '@/components/motie/mode-context'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { aiProductNameWithGloss } from '@/components/motie/aiProviderLabel'
-import { DIAGNOSTIC_CATEGORIES } from '@/lib/motie/diagnostic-categories'
+import { getDiagnosticCategories } from '@/lib/motie/diagnostic-categories'
 
 // ── Local types (shape-compatible with the brief + diagnostic routes) ─────────
 
@@ -398,6 +398,7 @@ export default function JejuGovernanceBriefPage() {
   const { mode: councilMode } = useMotieMode()
   const councilModeRef = useRef(councilMode)
   councilModeRef.current = councilMode
+  const categories = getDiagnosticCategories(councilMode)
 
   // ── Brief (prompt) state ──
   const [question, setQuestion] = useState('')
@@ -664,7 +665,7 @@ export default function JejuGovernanceBriefPage() {
             {t.briefDiagnosticSectionLabel}
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            {DIAGNOSTIC_CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <button
                 key={c.id}
                 type="button"

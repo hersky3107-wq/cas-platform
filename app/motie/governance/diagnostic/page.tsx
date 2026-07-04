@@ -6,7 +6,7 @@ import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useMotieMode } from '@/components/motie/mode-context'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { aiProductNameWithGloss } from '@/components/motie/aiProviderLabel'
-import { DIAGNOSTIC_CATEGORIES } from '@/lib/motie/diagnostic-categories'
+import { getDiagnosticCategories } from '@/lib/motie/diagnostic-categories'
 
 // ── Local types (shape-compatible with app/api/jeju/diagnostic/route.ts) ──────
 
@@ -172,6 +172,7 @@ export default function JejuGovernanceDiagnosticPage() {
   const { mode: councilMode } = useMotieMode()
   const councilModeRef = useRef(councilMode)
   councilModeRef.current = councilMode
+  const categories = getDiagnosticCategories(councilMode)
 
   const postWithRetry = useCallback(
     async (reqBody: Record<string, unknown>): Promise<DiagnosticApiResult | null> => {
@@ -309,25 +310,39 @@ export default function JejuGovernanceDiagnosticPage() {
             {t.diagnosticCategoryHeading}
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            {DIAGNOSTIC_CATEGORIES.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                disabled={running}
-                onClick={() => runDiagnostic({ categoryId: c.id })}
-                className={`flex flex-col items-center gap-1 rounded-xl border px-3 py-3 text-center text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                  activeCategory === c.id
-                    ? 'border-jeju-accent bg-jeju-accent/15 text-jeju-accent'
-                    : 'border-jeju-border bg-jeju-tile-bg text-jeju-fg hover:bg-jeju-tile-hover'
-                }`}
-              >
-                <span className="text-xl leading-none" aria-hidden>
-                  {c.emoji}
-                </span>
-                {c.label}
-              </button>
-            ))}
+            {categories.map((c) => {
+              const badge =
+                c.backing === 'data'
+                  ? { icon: '🟢', label: '공공데이터', cls: 'text-emerald-400/80' }
+                  : c.backing === 'hybrid'
+                    ? { icon: '🟡', label: '일부 데이터', cls: 'text-amber-400/80' }
+                    : { icon: '🔍', label: '검색 기반', cls: 'text-jeju-fg-muted' }
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={running}
+                  onClick={() => runDiagnostic({ categoryId: c.id })}
+                  className={`flex flex-col items-center gap-1 rounded-xl border px-3 py-3 text-center text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                    activeCategory === c.id
+                      ? 'border-jeju-accent bg-jeju-accent/15 text-jeju-accent'
+                      : 'border-jeju-border bg-jeju-tile-bg text-jeju-fg hover:bg-jeju-tile-hover'
+                  }`}
+                >
+                  <span className="text-xl leading-none" aria-hidden>
+                    {c.emoji}
+                  </span>
+                  {c.label}
+                  <span className={`text-[10px] font-normal leading-none ${badge.cls}`}>
+                    {badge.icon} {badge.label}
+                  </span>
+                </button>
+              )
+            })}
           </div>
+          <p className="mt-3 text-[10px] text-jeju-fg-muted">
+            🟢 공공데이터 연동 · 🟡 일부 데이터 · 🔍 검색 기반 — 각 분야가 무엇을 근거로 진단하는지 표시합니다.
+          </p>
 
           {/* Free-text question */}
           <p className="mb-2 mt-5 text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
