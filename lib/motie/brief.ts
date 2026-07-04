@@ -65,8 +65,16 @@ const GOVERNANCE_SOURCE_IDS = [
 /** TRADE mode (수출참모) sources — KOTRA 국가정보 + 상품DB + 환율. */
 const TRADE_SOURCE_IDS = ['kotra-nation-info', 'kotra-product-db', 'koreaexim-fx'] as const
 
-/** WARROOM mode (자원·에너지 워룸) sources — 오피넷 유가 + 가스공사 대륙별 LNG 수입. */
-const WARROOM_SOURCE_IDS = ['opinet-fuel-prices', 'kogas-lng-imports'] as const
+/**
+ * WARROOM mode (자원·에너지 워룸) sources — live 오피넷 유가 + 육지 SMP·전력수급 +
+ * 전국 발전원별 발전량, with 가스공사 대륙별 LNG 수입 LAST (structural background).
+ */
+const WARROOM_SOURCE_IDS = [
+  'opinet-fuel-prices',
+  'kpx-mainland-smp',
+  'kpx-gen-mix',
+  'kogas-lng-imports',
+] as const
 
 /**
  * Resolves the source-id list for a given council mode. 'trade' → KOTRA/FX;
@@ -95,6 +103,8 @@ const SECTION_HEADER_BY_ID: Record<string, string> = {
   'koreaexim-fx': '## 원화 환율 (한국수출입은행)',
   // WARROOM mode (자원·에너지 워룸) sources
   'opinet-fuel-prices': '## 전국 평균 유가 (한국석유공사 오피넷)',
+  'kpx-mainland-smp': '## 육지 SMP·전력수급 (한국전력거래소)',
+  'kpx-gen-mix': '## 전국 발전원별 발전량 (한국전력거래소)',
   'kogas-lng-imports': '## 대륙별 LNG 수입 현황 (한국가스공사)',
 }
 

@@ -172,6 +172,8 @@ export async function summarizeAvailableData(
     'koreaexim-fx': '원화 환율 (한국수출입은행, 주요 통화 KRW 기준)',
     // WARROOM mode (자원·에너지 워룸)
     'opinet-fuel-prices': '전국 평균 유가 (오피넷, 실시간 원/L·추이) — 현재 유가 동향용',
+    'kpx-mainland-smp': '육지 계통한계가격(SMP)과 시간대별 전력 수요예측 — 육지 전력시장 가격·수급 현황 진단에 사용.',
+    'kpx-gen-mix': '전국 발전원별 발전량(원자력·유연탄·가스·신재생·수력·양수·유류·국내탄·태양광, 순간출력 MW) — 에너지원 구성·원전/석탄/신재생 비중 진단에 사용.',
     'kogas-lng-imports': '대륙별 LNG 수입 구조 (가스공사, 기준 시점 과거일 수 있음) — 수입처 의존도·다변화 배경용',
   }
 

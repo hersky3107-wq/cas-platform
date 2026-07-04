@@ -554,6 +554,128 @@ function renderJejuSmp(rawJson: unknown): { text: string } | { error: string } {
 }
 
 /**
+ * Renders the KPX SMP + demand-forecast JSON for MAINLAND (육지) only — the
+ * warroom variant. Identical shape to renderJejuSmp but filters areaName === '육지'
+ * instead of '제주', so the national resource/energy panel sees the mainland
+ * market. kpx-jeju-smp is left untouched.
+ */
+function renderMainlandSmp(rawJson: unknown): { text: string } | { error: string } {
+  const env = readDataGoKrEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  if (env.code !== '00') {
+    return { error: `resultCode ${env.code || 'missing'}${env.msg ? `: ${env.msg}` : ''}` }
+  }
+
+  const mainland = env.items.filter((it) => String(it.areaName ?? '').trim() === '육지')
+  if (mainland.length === 0) {
+    return { error: '육지(areaName=육지) SMP 항목이 없습니다.' }
+  }
+
+  const rows = mainland
+    .map((it) => ({
+      hour: parseNum(it.hour),
+      smp: parseNum(it.smp),
+      slfd: parseNum(it.slfd),
+    }))
+    .filter((r) => r.hour !== null)
+    .sort((a, b) => (a.hour ?? 0) - (b.hour ?? 0))
+
+  const smps = rows.map((r) => r.smp).filter((v): v is number => v !== null)
+  const date = String(mainland[0]?.date ?? kstYmd()).trim()
+
+  const headerLine = `육지 계통한계가격(SMP)·수요예측 — ${date} 기준 (출처: 한국전력거래소/data.go.kr, 육지 계통)`
+
+  let summaryLine = '육지 계통한계가격(SMP, 원/kWh): (수치 없음)'
+  if (smps.length > 0) {
+    const min = Math.min(...smps)
+    const max = Math.max(...smps)
+    const avg = smps.reduce((s, v) => s + v, 0) / smps.length
+    const peak = rows.find((r) => r.smp === max)
+    const round = (n: number) => Math.round(n * 100) / 100
+    summaryLine =
+      `육지 계통한계가격(SMP, 원/kWh) 최저 ${round(min)} / 최고 ${round(max)} / 평균 ${round(avg)}` +
+      (peak?.hour != null ? ` · 최고가 시간대 ${peak.hour}시` : '')
+  }
+
+  const hourLines = rows.map((r) => {
+    const parts: string[] = []
+    parts.push(`육지 계통한계가격(SMP, 원/kWh) ${r.smp != null ? r.smp : '?'}`)
+    if (r.slfd != null) parts.push(`육지 수요예측(KPX 추정) ${r.slfd}`)
+    return `${String(r.hour).padStart(2, '0')}시: ${parts.join(', ')}`
+  })
+
+  return { text: [headerLine, '', summaryLine, '', ...hourLines].join('\n') }
+}
+
+/** KPX 발전원별 발전량(계통기준) fuel columns → Korean names (fuelPwr1..9). */
+const KPX_GEN_FUELS: ReadonlyArray<{ key: string; ko: string }> = [
+  { key: 'fuelPwr1', ko: '수력' },
+  { key: 'fuelPwr2', ko: '유류' },
+  { key: 'fuelPwr3', ko: '유연탄' },
+  { key: 'fuelPwr4', ko: '원자력' },
+  { key: 'fuelPwr5', ko: '양수' },
+  { key: 'fuelPwr6', ko: '가스' },
+  { key: 'fuelPwr7', ko: '국내탄' },
+  { key: 'fuelPwr8', ko: '신재생' },
+  { key: 'fuelPwr9', ko: '태양광' },
+]
+
+/** Formats YYYYMMDDHHmmss → 'YYYY-MM-DD HH:mm'. Returns the raw string on miss. */
+function fmtKpxDatetime(raw: unknown): string {
+  const s = String(raw ?? '').trim()
+  return /^\d{14}$/.test(s)
+    ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(8, 10)}:${s.slice(10, 12)}`
+    : s
+}
+
+/**
+ * Renders the KPX 발전원별 발전량(계통기준) JSON — nationwide (육지+제주 결합).
+ * Takes the LATEST baseDatetime row and renders each fuel's instantaneous output
+ * (MW) with its % share of fuelPwrTot, sorted desc. Skips zero fuels. Values are
+ * 순간출력(MW), NOT cumulative MWh.
+ */
+function renderGenMix(rawJson: unknown): { text: string } | { error: string } {
+  const env = readDataGoKrEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  if (env.code !== '00') {
+    return { error: `resultCode ${env.code || 'missing'}${env.msg ? `: ${env.msg}` : ''}` }
+  }
+  if (env.items.length === 0) {
+    return { error: '발전원별 발전량 항목이 없습니다 (빈 응답).' }
+  }
+
+  // Pick the latest 5-min slot by max baseDatetime.
+  const latest = env.items.reduce((best, it) => {
+    const a = String(it.baseDatetime ?? '').trim()
+    const b = String(best.baseDatetime ?? '').trim()
+    return a > b ? it : best
+  }, env.items[0]!)
+
+  const total = parseNum(latest.fuelPwrTot)
+  const fuels = KPX_GEN_FUELS.map(({ key, ko }) => ({ ko, mw: parseNum(latest[key]) }))
+    .filter((f): f is { ko: string; mw: number } => f.mw !== null && f.mw > 0)
+    .sort((a, b) => b.mw - a.mw)
+
+  if (fuels.length === 0) {
+    return { error: '발전원별 발전량: 유효한 발전원 수치가 없습니다.' }
+  }
+
+  const when = fmtKpxDatetime(latest.baseDatetime)
+  const round = (n: number) => Math.round(n * 100) / 100
+  const header = `전국 발전원별 발전량 (출처: 한국전력거래소/data.go.kr, 육지+제주 계통, 순간출력 MW, 기준시각 ${when})`
+  const note = '※ 수치는 순간출력(MW)이며 누적 발전량(MWh)이 아님.'
+  const totalLine =
+    total != null && total > 0 ? `합계: ${round(total).toLocaleString()} MW` : '합계: (수치 없음)'
+
+  const lines = fuels.map((f) => {
+    const share = total != null && total > 0 ? ` (${((f.mw / total) * 100).toFixed(1)}%)` : ''
+    return `- ${f.ko}: ${round(f.mw).toLocaleString()} MW${share}`
+  })
+
+  return { text: [header, note, '', totalLine, ...lines].join('\n') }
+}
+
+/**
  * Reads the odcloud envelope: { currentCount, matchCount, page, perPage, totalCount, data:[] }.
  * Success = HTTP 200 + data array present — there is no resultCode field.
  * Returns the data rows directly (each row has Korean field names).
@@ -2274,6 +2396,45 @@ const JEJU_SOURCES: readonly JejuSource[] = [
   },
 
   {
+    id: 'kpx-mainland-smp',
+    label: 'KPX 육지 SMP (계통한계가격·수요예측)',
+    format: 'json',
+    modes: ['warroom'],
+    // Same endpoint/params as kpx-jeju-smp; renderMainlandSmp filters areaName==='육지'.
+    buildUrl: () => {
+      const key = dataGoKrKey()
+      const params = new URLSearchParams({
+        serviceKey: key,
+        pageNo: '1',
+        numOfRows: '48',
+        dataType: 'JSON',
+        date: kstYmd(),
+      })
+      return `https://apis.data.go.kr/B552115/SmpWithForecastDemand/getSmpWithForecastDemand?${params.toString()}`
+    },
+    render: renderMainlandSmp,
+  },
+
+  {
+    id: 'kpx-gen-mix',
+    label: 'KPX 전국 발전원별 발전량 (계통기준)',
+    format: 'json',
+    modes: ['warroom'],
+    buildUrl: () => {
+      const key = dataGoKrKey()
+      const params = new URLSearchParams({
+        serviceKey: key,
+        pageNo: '1',
+        numOfRows: '300',
+        dataType: 'JSON',
+        baseDate: kstYmd(),
+      })
+      return `https://apis.data.go.kr/B552115/PwrAmountByGen/getPwrAmountByGen?${params.toString()}`
+    },
+    render: renderGenMix,
+  },
+
+  {
     id: 'kogas-lng-imports',
     label: '가스공사 대륙별 LNG 수입 현황',
     format: 'json',
@@ -2322,7 +2483,12 @@ const FETCH_TIMEOUT_MS = 10_000
  * only the fetch attempt count/timeout for these two ids. All other connectors
  * keep the default 10s / no-retry behavior.
  */
-const KPX_SOURCE_IDS: ReadonlySet<string> = new Set(['kpx-jeju-power', 'kpx-jeju-smp'])
+const KPX_SOURCE_IDS: ReadonlySet<string> = new Set([
+  'kpx-jeju-power',
+  'kpx-jeju-smp',
+  'kpx-mainland-smp',
+  'kpx-gen-mix',
+])
 const KPX_FETCH_TIMEOUT_MS = 28_000
 /** Backoff before retry 1 and retry 2 (2 retries ⇒ up to 3 attempts total). */
 const KPX_RETRY_DELAYS_MS = [1_000, 3_000]
