@@ -5,6 +5,8 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { DeliberateSection } from '@/app/motie/governance/deliberate/page'
+import { BriefSection } from '@/app/motie/governance/brief/page'
+import { DiagnosticSection } from '@/app/motie/governance/diagnostic/page'
 
 // ── Local collapsible section wrapper (heading + 어미 설명 + body) ────────────
 
@@ -59,9 +61,15 @@ export default function JejuGovernanceUnifiedPage() {
           <DeliberateSection />
         </UnifiedSection>
 
-        {/* B-2 PLACEHOLDER — 개방형 브리핑 section goes here (BriefSection). Not implemented yet. */}
+        {/* Section 2 — 개방형 브리핑 (open-brief engine only; no embedded diagnostic) */}
+        <UnifiedSection title={t.hubBriefTitle} explainer={t.hubBriefDesc}>
+          <BriefSection />
+        </UnifiedSection>
 
-        {/* B-3 PLACEHOLDER — 진단형 스캔 section goes here (DiagnosticSection). Not implemented yet. */}
+        {/* Section 3 — 진단형 스캔 (standalone diagnostic engine with backing badges + legend) */}
+        <UnifiedSection title={t.hubDiagnosticTitle} explainer={t.hubDiagnosticDesc}>
+          <DiagnosticSection />
+        </UnifiedSection>
       </div>
     </JejuThemeShell>
   )

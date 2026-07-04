@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { polarClient } from '@/lib/payments/polar'
+import { getPolarClient } from '@/lib/payments/polar'
 import { getSiteUrl } from '@/lib/supabase/site-url'
 import { creditsForTopUpUsd, isValidTopUpAmountUsd } from '@/lib/payments/topup'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
@@ -43,7 +43,9 @@ export async function POST(req: Request) {
     const origin = req.headers.get('origin') ?? undefined
     const siteUrl = getSiteUrl(origin)
 
-    const checkout = await polarClient.checkouts.create({
+    const polar = getPolarClient()
+
+    const checkout = await polar.checkouts.create({
       products: [process.env.POLAR_PRODUCT_ID_TOPUP!],
       successUrl: `${siteUrl}/modes/credits?topup=success&amount=${amountUSD}&provider=polar`,
       customerEmail: user.email,

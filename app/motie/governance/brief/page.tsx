@@ -1,21 +1,13 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import {
-  ChevronDown,
-  ChevronUp,
-  PlayCircle,
-  Search,
-  Activity,
-  AlertTriangle,
-} from 'lucide-react'
+import { ChevronDown, ChevronUp, PlayCircle, Search } from 'lucide-react'
 import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useMotieMode } from '@/components/motie/mode-context'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { aiProductNameWithGloss } from '@/components/motie/aiProviderLabel'
-import { getDiagnosticCategories } from '@/lib/motie/diagnostic-categories'
 
-// ── Local types (shape-compatible with the brief + diagnostic routes) ─────────
+// ── Local types (shape-compatible with the brief route) ───────────────────────
 
 type RoleInfo = {
   roleId: string
@@ -68,32 +60,6 @@ type BriefApiResult = {
   completedCount?: number
 }
 
-/** One diagnostic part (AI① 현황 / AI② 시급사안). */
-type DiagnosticPart = {
-  ok: boolean
-  text: string | null
-  provider: string
-  model: string
-  error?: string
-}
-
-type DiagnosticApiResult = {
-  ok: boolean
-  stage?: string
-  sessionId?: string
-  nextAction?: string
-  done?: boolean
-  error?: string
-  question?: string
-  categoryId?: string | null
-  searches?: ExecutedSearch[]
-  status?: DiagnosticPart
-  issues?: DiagnosticPart
-}
-
-/** Which engine produced the currently-displayed result. */
-type ResultMode = 'none' | 'brief' | 'diagnostic'
-
 type BriefStageKey =
   | 'idle'
   | 'start'
@@ -103,8 +69,6 @@ type BriefStageKey =
   | 'synthesize'
   | 'done'
   | 'error'
-
-type DiagStageKey = 'idle' | 'start' | 'search' | 'status' | 'issues' | 'done' | 'error'
 
 type Ui = ReturnType<typeof useJejuUi>['t']
 
@@ -249,21 +213,6 @@ function BriefProgressStrip({ stage, t }: { stage: BriefStageKey; t: Ui }) {
   return <ProgressStripBase steps={steps} activeIdx={BRIEF_STAGE_ORDER.indexOf(stage)} />
 }
 
-// ── Diagnostic progress strip ─────────────────────────────────────────────────
-
-const DIAG_STAGE_ORDER: DiagStageKey[] = ['start', 'search', 'status', 'issues', 'done']
-
-function DiagProgressStrip({ stage, t }: { stage: DiagStageKey; t: Ui }) {
-  const steps: { key: DiagStageKey; label: string }[] = [
-    { key: 'start', label: t.diagnosticStageStart },
-    { key: 'search', label: t.diagnosticStageSearch },
-    { key: 'status', label: t.diagnosticStageStatus },
-    { key: 'issues', label: t.diagnosticStageIssues },
-    { key: 'done', label: t.deepStageDone },
-  ]
-  return <ProgressStripBase steps={steps} activeIdx={DIAG_STAGE_ORDER.indexOf(stage)} />
-}
-
 function ProgressStripBase({
   steps,
   activeIdx,
@@ -348,57 +297,19 @@ function AnalysisCard({ analysis, t }: { analysis: OpenAnalysis; t: Ui }) {
   )
 }
 
-// ── Diagnostic result piece ───────────────────────────────────────────────────
+// ── Section (reusable body — open-brief only; no shell/back-link, no diagnostic) ──
 
-function PartCard({
-  heading,
-  icon,
-  part,
-  t,
-}: {
-  heading: string
-  icon: React.ReactNode
-  part: DiagnosticPart
-  t: Ui
-}) {
-  return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-jeju-accent/40 bg-gradient-to-b from-jeju-bg-elevated to-jeju-bg px-6 py-5 shadow-[var(--jeju-shadow)]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-jeju-border pb-3">
-        <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-jeju-accent">
-          {icon}
-          {heading}
-        </span>
-        {part.provider && (
-          <span className="text-xs text-jeju-fg-muted">
-            {aiProductNameWithGloss(part.provider)}
-          </span>
-        )}
-      </div>
-      {part.ok ? (
-        <Prose text={part.text} />
-      ) : (
-        <p className="text-xs text-rose-300">{part.error ?? t.diagnosticNoResult}</p>
-      )}
-    </div>
-  )
-}
-
-// ── Page ────────────────────────────────────────────────────────────────────
-
-export default function JejuGovernanceBriefPage() {
+export function BriefSection() {
   const { t } = useJejuUi()
 
-  const [mode, setMode] = useState<ResultMode>('none')
   const [error, setError] = useState<string | null>(null)
   const [failedStage, setFailedStage] = useState<string | null>(null)
   const runningRef = useRef(false)
 
   // AX COUNCIL mode — read via ref so the retry helper always sends the latest.
-  // (aliased to councilMode: this page already has a local `mode` UI state.)
   const { mode: councilMode } = useMotieMode()
   const councilModeRef = useRef(councilMode)
   councilModeRef.current = councilMode
-  const categories = getDiagnosticCategories(councilMode)
 
   // ── Brief (prompt) state ──
   const [question, setQuestion] = useState('')
@@ -412,14 +323,7 @@ export default function JejuGovernanceBriefPage() {
   const [analyses, setAnalyses] = useState<OpenAnalysis[]>([])
   const [synthesis, setSynthesis] = useState<string | null>(null)
 
-  // ── Diagnostic (category) state ──
-  const [diagStage, setDiagStage] = useState<DiagStageKey>('idle')
-  const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const [diagSearches, setDiagSearches] = useState<ExecutedSearch[]>([])
-  const [diagStatus, setDiagStatus] = useState<DiagnosticPart | null>(null)
-  const [diagIssues, setDiagIssues] = useState<DiagnosticPart | null>(null)
-
-  // ── Shared request helper (per-endpoint) ──
+  // ── Shared request helper ──
   const requestWithRetry = useCallback(
     async (endpoint: string, reqBody: Record<string, unknown>): Promise<unknown> => {
       const MAX_ATTEMPTS = 4
@@ -482,9 +386,6 @@ export default function JejuGovernanceBriefPage() {
     setSearches([])
     setAnalyses([])
     setSynthesis(null)
-    setDiagSearches([])
-    setDiagStatus(null)
-    setDiagIssues(null)
   }, [])
 
   // ── PROMPT mode → 7-AI brief engine ──
@@ -495,9 +396,6 @@ export default function JejuGovernanceBriefPage() {
 
       runningRef.current = true
       resetAll()
-      setMode('brief')
-      setActiveCategory(null)
-      setDiagStage('idle')
       setBriefStage('start')
 
       const post = (body: Record<string, unknown>) =>
@@ -559,69 +457,147 @@ export default function JejuGovernanceBriefPage() {
     [question, requestWithRetry, resetAll, t.briefNoSynthesis]
   )
 
-  // ── DIAGNOSTIC mode → 2-AI quick brief (category preset) ──
-  const runDiagnostic = useCallback(
-    async (categoryId: string) => {
-      if (runningRef.current) return
-
-      runningRef.current = true
-      resetAll()
-      setMode('diagnostic')
-      setActiveCategory(categoryId)
-      setBriefStage('idle')
-      setDiagStage('start')
-
-      const post = (body: Record<string, unknown>) =>
-        requestWithRetry('/api/motie/diagnostic', body) as Promise<DiagnosticApiResult | null>
-      const failDiag = (stageName: string, msg: string) => {
-        setError(msg)
-        setFailedStage(stageName)
-        setDiagStage('error')
-        runningRef.current = false
-      }
-
-      const startRes = await post({ action: 'start', categoryId })
-      if (!startRes?.ok || !startRes.sessionId) {
-        failDiag('start', startRes?.error ?? '데이터 수집 단계 실패')
-        return
-      }
-      const sessionId = startRes.sessionId
-      setDiagStage('search')
-
-      const searchRes = await post({ action: 'search', sessionId })
-      if (searchRes?.searches) setDiagSearches(searchRes.searches)
-      if (!searchRes?.ok) {
-        failDiag('search', searchRes?.error ?? '검색 단계 실패')
-        return
-      }
-      setDiagStage('status')
-
-      const statusRes = await post({ action: 'status', sessionId })
-      if (statusRes?.status) setDiagStatus(statusRes.status)
-      if (!statusRes?.ok) {
-        failDiag('status', statusRes?.error ?? '현황 분석 실패')
-        return
-      }
-      setDiagStage('issues')
-
-      const issuesRes = await post({ action: 'issues', sessionId })
-      if (issuesRes?.issues) setDiagIssues(issuesRes.issues)
-      if (!issuesRes?.ok) {
-        failDiag('issues', issuesRes?.error ?? '현안 진단 실패')
-        return
-      }
-
-      setDiagStage('done')
-      runningRef.current = false
-    },
-    [requestWithRetry, resetAll]
-  )
-
   const briefRunning = briefStage !== 'idle' && briefStage !== 'done' && briefStage !== 'error'
-  const diagRunning = diagStage !== 'idle' && diagStage !== 'done' && diagStage !== 'error'
-  const running = briefRunning || diagRunning
+  const running = briefRunning
 
-  const hasBriefResult = mode === 'brief' && (roles.length > 0 || report || analyses.length > 0)
+  const hasBriefResult = roles.length > 0 || report || analyses.length > 0
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Free-text prompt → 7-AI brief */}
+      <div className="rounded-2xl border border-jeju-accent/40 bg-jeju-bg-elevated p-6 shadow-[var(--jeju-shadow)]">
+        <p className="mb-3 text-sm font-bold text-jeju-fg">{t.briefPromptSectionLabel}</p>
+        <textarea
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder={t.briefQuestionPlaceholder}
+          rows={3}
+          disabled={running}
+          className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-base text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"
+        />
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => runBrief()}
+            disabled={running || !question.trim()}
+            className="inline-flex items-center gap-2 rounded-xl bg-jeju-accent px-6 py-3 text-sm font-bold text-jeju-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <PlayCircle className="h-4 w-4" aria-hidden />
+            {t.briefStartBtn}
+          </button>
+          {briefRunning && (
+            <p className="text-xs text-jeju-fg-muted">{t.briefRunningHint(analystCount)}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Progress */}
+      {briefStage !== 'idle' && <BriefProgressStrip stage={briefStage} t={t} />}
+
+      {/* Error */}
+      {error && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <span className="font-semibold">{t.errorHeading}</span>
+          {failedStage && ` (${failedStage})`}: {error}
+        </div>
+      )}
+
+      {/* ── BRIEF result renderer ── */}
+      {synthesis && <SynthesisBlock synthesis={synthesis} t={t} />}
+
+      {hasBriefResult && (
+        <div className="flex flex-col gap-4">
+          {/* Roster */}
+          {roles.length > 0 && (
+            <Section title={t.briefRosterHeading} defaultOpen={!synthesis} t={t}>
+              {rationale && (
+                <p className="mb-3 text-xs leading-relaxed text-jeju-fg-muted">{rationale}</p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {roles.map((r) => (
+                  <span
+                    key={r.roleId}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-jeju-border bg-jeju-tile-bg px-3 py-1.5 text-xs"
+                  >
+                    <span className="font-semibold text-jeju-fg">
+                      {aiProductNameWithGloss(r.provider ?? '')}
+                    </span>
+                    <span className="text-jeju-fg-muted">{r.roleLabel}</span>
+                    {r.isDoubledAngle && (
+                      <span className="rounded bg-amber-500/20 px-1 text-[9px] font-bold text-amber-300">
+                        {t.briefDoubledBadge}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-4 flex items-start gap-2 rounded-xl border border-jeju-accent/30 bg-jeju-bg px-4 py-3">
+                <Search className="mt-0.5 h-4 w-4 shrink-0 text-jeju-accent" aria-hidden />
+                <div>
+                  <p className="text-sm font-semibold text-jeju-fg">{t.briefSearchSpecialist}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-jeju-fg-muted">
+                    {t.briefSearchSpecialistDesc}
+                  </p>
+                </div>
+              </div>
+            </Section>
+          )}
+
+          {/* Pre-report briefing */}
+          {report && (
+            <Section title={t.briefReportHeading} defaultOpen={!synthesis} t={t}>
+              <Prose text={report} />
+              {leadAnalysis && (
+                <details className="mt-4 rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-jeju-fg-muted">
+                    {t.briefLeadAnalysisHeading}
+                  </summary>
+                  <div className="mt-2">
+                    <Prose text={cleanLeadAnalysis(leadAnalysis)} />
+                  </div>
+                </details>
+              )}
+              {searches.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-semibold text-jeju-fg-muted">
+                    {t.briefSearchesHeading}
+                  </p>
+                  <p className="mb-2 text-[10px] italic text-jeju-fg-muted">
+                    {t.briefSearchByline}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {searches.map((s, i) => (
+                      <div key={i} className="rounded-lg bg-jeju-tile-bg px-3 py-2 text-xs">
+                        <p className="font-semibold text-jeju-accent">{s.query}</p>
+                        <Prose text={s.ok ? sanitizeCjk(s.result) : `(실패: ${s.error})`} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Section>
+          )}
+
+          {/* Parallel analyses */}
+          {analyses.length > 0 && (
+            <Section title={t.briefAnalysesHeading} defaultOpen={!synthesis} t={t}>
+              <div className="flex flex-col gap-3">
+                {analyses.map((a, i) => (
+                  <AnalysisCard key={i} analysis={a} t={t} />
+                ))}
+              </div>
+            </Section>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main page (standalone route — wraps the section in its own shell) ─────────
+
+export default function JejuGovernanceBriefPage() {
+  const { t } = useJejuUi()
 
   return (
     <JejuThemeShell
@@ -631,205 +607,7 @@ export default function JejuGovernanceBriefPage() {
       backHref="/motie/governance"
       backLabel={t.backToGovernance}
     >
-      <div className="flex flex-col gap-6">
-        {/* TOP (primary): free-text prompt → 7-AI brief */}
-        <div className="rounded-2xl border border-jeju-accent/40 bg-jeju-bg-elevated p-6 shadow-[var(--jeju-shadow)]">
-          <p className="mb-3 text-sm font-bold text-jeju-fg">{t.briefPromptSectionLabel}</p>
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder={t.briefQuestionPlaceholder}
-            rows={3}
-            disabled={running}
-            className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-base text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"
-          />
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => runBrief()}
-              disabled={running || !question.trim()}
-              className="inline-flex items-center gap-2 rounded-xl bg-jeju-accent px-6 py-3 text-sm font-bold text-jeju-bg hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <PlayCircle className="h-4 w-4" aria-hidden />
-              {t.briefStartBtn}
-            </button>
-            {briefRunning && (
-              <p className="text-xs text-jeju-fg-muted">{t.briefRunningHint(analystCount)}</p>
-            )}
-          </div>
-        </div>
-
-        {/* BELOW (secondary): category grid → 2-AI diagnostic */}
-        <div className="rounded-2xl border border-jeju-border bg-jeju-bg-elevated p-5 shadow-[var(--jeju-shadow)]">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
-            {t.briefDiagnosticSectionLabel}
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                disabled={running}
-                onClick={() => runDiagnostic(c.id)}
-                className={`flex flex-col items-center gap-1 rounded-xl border px-3 py-3 text-center text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                  activeCategory === c.id
-                    ? 'border-jeju-accent bg-jeju-accent/15 text-jeju-accent'
-                    : 'border-jeju-border bg-jeju-tile-bg text-jeju-fg hover:bg-jeju-tile-hover'
-                }`}
-              >
-                <span className="text-xl leading-none" aria-hidden>
-                  {c.emoji}
-                </span>
-                {c.label}
-              </button>
-            ))}
-          </div>
-          {diagRunning && (
-            <p className="mt-3 text-xs text-jeju-fg-muted">{t.diagnosticRunningHint}</p>
-          )}
-        </div>
-
-        {/* Progress (whichever engine is running/ran) */}
-        {mode === 'brief' && briefStage !== 'idle' && (
-          <BriefProgressStrip stage={briefStage} t={t} />
-        )}
-        {mode === 'diagnostic' && diagStage !== 'idle' && (
-          <DiagProgressStrip stage={diagStage} t={t} />
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-            <span className="font-semibold">{t.errorHeading}</span>
-            {failedStage && ` (${failedStage})`}: {error}
-          </div>
-        )}
-
-        {/* ── BRIEF result renderer ── */}
-        {mode === 'brief' && synthesis && <SynthesisBlock synthesis={synthesis} t={t} />}
-
-        {hasBriefResult && (
-          <div className="flex flex-col gap-4">
-            {/* Roster */}
-            {roles.length > 0 && (
-              <Section title={t.briefRosterHeading} defaultOpen={!synthesis} t={t}>
-                {rationale && (
-                  <p className="mb-3 text-xs leading-relaxed text-jeju-fg-muted">{rationale}</p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {roles.map((r) => (
-                    <span
-                      key={r.roleId}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-jeju-border bg-jeju-tile-bg px-3 py-1.5 text-xs"
-                    >
-                      <span className="font-semibold text-jeju-fg">
-                        {aiProductNameWithGloss(r.provider ?? '')}
-                      </span>
-                      <span className="text-jeju-fg-muted">{r.roleLabel}</span>
-                      {r.isDoubledAngle && (
-                        <span className="rounded bg-amber-500/20 px-1 text-[9px] font-bold text-amber-300">
-                          {t.briefDoubledBadge}
-                        </span>
-                      )}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-4 flex items-start gap-2 rounded-xl border border-jeju-accent/30 bg-jeju-bg px-4 py-3">
-                  <Search className="mt-0.5 h-4 w-4 shrink-0 text-jeju-accent" aria-hidden />
-                  <div>
-                    <p className="text-sm font-semibold text-jeju-fg">{t.briefSearchSpecialist}</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-jeju-fg-muted">
-                      {t.briefSearchSpecialistDesc}
-                    </p>
-                  </div>
-                </div>
-              </Section>
-            )}
-
-            {/* Pre-report briefing */}
-            {report && (
-              <Section title={t.briefReportHeading} defaultOpen={!synthesis} t={t}>
-                <Prose text={report} />
-                {leadAnalysis && (
-                  <details className="mt-4 rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-jeju-fg-muted">
-                      {t.briefLeadAnalysisHeading}
-                    </summary>
-                    <div className="mt-2">
-                      <Prose text={cleanLeadAnalysis(leadAnalysis)} />
-                    </div>
-                  </details>
-                )}
-                {searches.length > 0 && (
-                  <div className="mt-4">
-                    <p className="mb-2 text-xs font-semibold text-jeju-fg-muted">
-                      {t.briefSearchesHeading}
-                    </p>
-                    <p className="mb-2 text-[10px] italic text-jeju-fg-muted">
-                      {t.briefSearchByline}
-                    </p>
-                    <div className="flex flex-col gap-2">
-                      {searches.map((s, i) => (
-                        <div key={i} className="rounded-lg bg-jeju-tile-bg px-3 py-2 text-xs">
-                          <p className="font-semibold text-jeju-accent">{s.query}</p>
-                          <Prose text={s.ok ? sanitizeCjk(s.result) : `(실패: ${s.error})`} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Section>
-            )}
-
-            {/* Parallel analyses */}
-            {analyses.length > 0 && (
-              <Section title={t.briefAnalysesHeading} defaultOpen={!synthesis} t={t}>
-                <div className="flex flex-col gap-3">
-                  {analyses.map((a, i) => (
-                    <AnalysisCard key={i} analysis={a} t={t} />
-                  ))}
-                </div>
-              </Section>
-            )}
-          </div>
-        )}
-
-        {/* ── DIAGNOSTIC result renderer ── */}
-        {mode === 'diagnostic' && diagStatus && (
-          <PartCard
-            heading={t.diagnosticStatusHeading}
-            icon={<Activity className="h-4 w-4" aria-hidden />}
-            part={diagStatus}
-            t={t}
-          />
-        )}
-        {mode === 'diagnostic' && diagIssues && (
-          <PartCard
-            heading={t.diagnosticIssuesHeading}
-            icon={<AlertTriangle className="h-4 w-4" aria-hidden />}
-            part={diagIssues}
-            t={t}
-          />
-        )}
-        {mode === 'diagnostic' && diagSearches.length > 0 && (
-          <Section title={t.diagnosticSearchesHeading} defaultOpen={!diagStatus} t={t}>
-            <p className="mb-2 text-[10px] italic text-jeju-fg-muted">
-              {t.diagnosticSearchByline}
-            </p>
-            <div className="flex flex-col gap-2">
-              {diagSearches.map((s, i) => (
-                <div key={i} className="rounded-lg bg-jeju-tile-bg px-3 py-2 text-xs">
-                  <p className="flex items-center gap-1.5 font-semibold text-jeju-accent">
-                    <Search className="h-3 w-3" aria-hidden />
-                    {s.query}
-                  </p>
-                  <Prose text={s.ok ? s.result : `(실패: ${s.error})`} />
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
-      </div>
+      <BriefSection />
     </JejuThemeShell>
   )
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { polarClient } from '@/lib/payments/polar'
+import { getPolarClient } from '@/lib/payments/polar'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 
@@ -34,7 +34,9 @@ export async function POST(req: Request) {
 
     const polarSubscriptionId = row.paypal_subscription_id.replace('polar:', '')
 
-    await polarClient.subscriptions.update({
+    const polar = getPolarClient()
+
+    await polar.subscriptions.update({
       id: polarSubscriptionId,
       subscriptionUpdate: { cancelAtPeriodEnd: true },
     })

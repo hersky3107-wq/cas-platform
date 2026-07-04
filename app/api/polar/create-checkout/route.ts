@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { polarClient } from '@/lib/payments/polar'
+import { getPolarClient } from '@/lib/payments/polar'
 import { getSiteUrl } from '@/lib/supabase/site-url'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { isSubscriptionPlanType, type SubscriptionPlanType } from '@/lib/payments/subscription-plans'
@@ -58,7 +58,9 @@ export async function POST(req: Request) {
       )
     }
 
-    const checkout = await polarClient.checkouts.create({
+    const polar = getPolarClient()
+
+    const checkout = await polar.checkouts.create({
       products: [productId],
       successUrl: `${siteUrl}/modes/credits?checkout_id={CHECKOUT_ID}&planType=${planType}&provider=polar`,
       customerEmail: user.email,

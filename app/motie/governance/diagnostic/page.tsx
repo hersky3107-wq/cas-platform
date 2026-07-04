@@ -153,7 +153,9 @@ function PartCard({
   )
 }
 
-export default function JejuGovernanceDiagnosticPage() {
+// ── Section (reusable body — no shell/back-link; used by page + unified) ──────
+
+export function DiagnosticSection() {
   const { t } = useJejuUi()
 
   const [question, setQuestion] = useState('')
@@ -296,15 +298,8 @@ export default function JejuGovernanceDiagnosticPage() {
   const running = stage !== 'idle' && stage !== 'done' && stage !== 'error'
 
   return (
-    <JejuThemeShell
-      theme="governance"
-      title={t.diagnosticTitle}
-      tagline={t.diagnosticDesc}
-      backHref="/motie/governance"
-      backLabel={t.backToGovernance}
-    >
-      <div className="flex flex-col gap-6">
-        {/* Category buttons */}
+    <div className="flex flex-col gap-6">
+      {/* Category buttons */}
         <div className="rounded-2xl border border-jeju-border bg-jeju-bg-elevated p-5 shadow-[var(--jeju-shadow)]">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
             {t.diagnosticCategoryHeading}
@@ -416,7 +411,24 @@ export default function JejuGovernanceDiagnosticPage() {
             </div>
           </Section>
         )}
-      </div>
+    </div>
+  )
+}
+
+// ── Main page (standalone route — wraps the section in its own shell) ─────────
+
+export default function JejuGovernanceDiagnosticPage() {
+  const { t } = useJejuUi()
+
+  return (
+    <JejuThemeShell
+      theme="governance"
+      title={t.diagnosticTitle}
+      tagline={t.diagnosticDesc}
+      backHref="/motie/governance"
+      backLabel={t.backToGovernance}
+    >
+      <DiagnosticSection />
     </JejuThemeShell>
   )
 }
