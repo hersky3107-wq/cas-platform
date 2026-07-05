@@ -383,7 +383,11 @@ export async function POST(req: Request): Promise<Response> {
         snapshot,
         context,
         plan,
-        questionType: plan.questionType,
+        // 찬반형 flow: mode is ground truth, not LLM text-inference. Entering this
+        // route IS the 찬반형 choice (only caller passing debateBrands); open-ended
+        // has its own brief route. Force binary so the ballot always runs when
+        // consensus < 85. plan.questionType is left untouched on the plan object.
+        questionType: 'binary',
       }
 
       const ins = await supabaseAdmin
@@ -412,7 +416,8 @@ export async function POST(req: Request): Promise<Response> {
         stage: 'start',
         sessionId,
         nextAction: 'report',
-        questionType: plan.questionType,
+        // Mirror the forced state value so the client badge matches engine behavior.
+        questionType: state.questionType,
         // The orchestrator's roster (for transparency); Mode B debate itself runs
         // the 6 SYNOD reasoning brands below, not these analytic seats.
         roles: plan.roles.map((r) => ({
