@@ -106,6 +106,7 @@ type DeliberateApiResult = {
   stoppedReason?: string
   // vote
   voted?: boolean
+  voteSkipReason?: 'none' | 'open_ended' | 'unmeasurable' | 'high_consensus'
   vote?: VoteResult
   // verdict
   verdict?: Verdict
@@ -173,6 +174,17 @@ function Prose({ text }: { text: string | null | undefined }) {
   if (!text || !text.trim())
     return <p className="text-xs italic text-jeju-fg-muted">(내용 없음)</p>
   return <p className="whitespace-pre-wrap text-sm leading-7 text-jeju-fg">{text}</p>
+}
+
+// Notice text for a skipped ballot. Never references the runtime consensus as a
+// "target": the high-consensus branch hardcodes the fixed 85 threshold, and the
+// open-ended branch makes no convergence claim (open-ended has no pro/con vote).
+function voteSkipNotice(reason: 'none' | 'open_ended' | 'unmeasurable' | 'high_consensus'): string {
+  if (reason === 'high_consensus')
+    return '합의도가 85점 이상으로 강하게 수렴하여 표결을 생략하고 의장 판결로 이행합니다.'
+  if (reason === 'open_ended')
+    return '개방형 심의는 진영 표결 없이 병렬 분석을 종합해 의장 권고로 이행합니다.'
+  return '이번 심의는 진영 표결 없이 의장 판결로 이행합니다.'
 }
 
 // ── Collapsible section ───────────────────────────────────────────────────────
@@ -534,6 +546,7 @@ function VerdictBlock({
   verdict,
   vote,
   voteSkipped,
+  voteSkipReason,
   consensusScore,
   stoppedReason,
   t,
@@ -541,6 +554,7 @@ function VerdictBlock({
   verdict: Verdict
   vote: VoteResult | null
   voteSkipped: boolean
+  voteSkipReason: 'none' | 'open_ended' | 'unmeasurable' | 'high_consensus'
   consensusScore: number
   stoppedReason: string
   t: Ui
@@ -667,12 +681,12 @@ function VerdictBlock({
         </div>
       )}
 
-      {/* FIX 2: high-consensus skip notice */}
+      {/* Ballot-skip notice — reason-aware; never prints the runtime consensus as a target */}
       {voteSkipped && (!vote || !vote.ok || vote.votes.length === 0) && (
         <div className="rounded-lg border border-jeju-accent/25 bg-jeju-accent/8 px-4 py-3">
           <p className="text-xs text-jeju-fg-muted">
             <span className="mr-1 font-semibold text-jeju-accent">표결 생략</span>
-            합의도가 목표치({consensusScore}점)에 도달하여 표결을 생략했습니다 — 패널이 충분히 수렴한 사안으로, 별도 표결 없이 의장 판결로 이행합니다.
+            {voteSkipNotice(voteSkipReason)}
           </p>
         </div>
       )}
@@ -708,8 +722,11 @@ export function DeliberateSection() {
   const [vote, setVote] = useState<VoteResult | null>(null)
   const [consensusScore, setConsensusScore] = useState(-1)
   const [stoppedReason, setStoppedReason] = useState('max_rounds')
-  // true when the vote stage ran but skipped the ballot (binary + consensus ≥ threshold, or open-ended)
+  // true when the vote stage ran but skipped the ballot; the reason drives the notice text
   const [voteSkipped, setVoteSkipped] = useState(false)
+  const [voteSkipReason, setVoteSkipReason] = useState<
+    'none' | 'open_ended' | 'unmeasurable' | 'high_consensus'
+  >('none')
 
   const runningRef = useRef(false)
 
@@ -805,6 +822,7 @@ export function DeliberateSection() {
       setConsensusScore(-1)
       setStoppedReason('max_rounds')
       setVoteSkipped(false)
+      setVoteSkipReason('none')
 
       try {
         // ── start ────────────────────────────────────────────────────────────
@@ -902,7 +920,10 @@ export function DeliberateSection() {
         const voteRes = await postWithRetry({ action: 'vote', sessionId })
         if (!voteRes) { runningRef.current = false; return }
         if (voteRes.vote) setVote(voteRes.vote)
-        if (voteRes.voted === false) setVoteSkipped(true)
+        if (voteRes.voted === false) {
+          setVoteSkipped(true)
+          setVoteSkipReason(voteRes.voteSkipReason ?? 'high_consensus')
+        }
         if (!voteRes.ok) {
           stop(voteRes.stage ?? 'vote', voteRes.error ?? '표결 실패')
           return
@@ -1025,6 +1046,7 @@ export function DeliberateSection() {
             verdict={verdict}
             vote={vote}
             voteSkipped={voteSkipped}
+            voteSkipReason={voteSkipReason}
             consensusScore={consensusScore}
             stoppedReason={stoppedReason}
             t={t}
@@ -1240,7 +1262,7 @@ export function DeliberateSection() {
               <div className="rounded-lg border border-jeju-accent/25 bg-jeju-accent/8 px-4 py-3">
                 <p className="text-xs text-jeju-fg-muted">
                   <span className="mr-1 font-semibold text-jeju-accent">표결 생략</span>
-                  합의도가 목표치({consensusScore}점)에 도달하여 표결을 생략했습니다 — 패널이 충분히 수렴한 사안으로, 별도 표결 없이 의장 판결로 이행합니다.
+                  {voteSkipNotice(voteSkipReason)}
                 </p>
               </div>
             </Section>

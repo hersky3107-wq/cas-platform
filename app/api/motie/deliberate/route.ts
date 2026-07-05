@@ -716,6 +716,18 @@ export async function POST(req: Request): Promise<Response> {
               ? `${CONSENSUS_VOTE_THRESHOLD}점 이상 합의로 표결 생략`
               : '표결 생략'
 
+      // Machine-readable skip reason so the client renders an accurate notice
+      // (never re-using the runtime consensus as a "target"). Additive; the
+      // doVote gate itself is unchanged (binary + measurable + <85 → vote).
+      const voteSkipReason: 'none' | 'open_ended' | 'unmeasurable' | 'high_consensus' =
+        doVote
+          ? 'none'
+          : questionType !== 'binary'
+            ? 'open_ended'
+            : !measurable
+              ? 'unmeasurable'
+              : 'high_consensus'
+
       let vote: JejuVoteResult = emptyVote(noVoteSummary)
       if (doVote) {
         vote = await runJejuMotionVote({ question: state.question, deliberation })
@@ -729,6 +741,7 @@ export async function POST(req: Request): Promise<Response> {
         sessionId,
         nextAction: 'verdict',
         voted: doVote,
+        voteSkipReason,
         vote,
         consensusScore: finalScore,
       })
