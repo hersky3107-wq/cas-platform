@@ -167,7 +167,9 @@ export type JejuUiPack = {
   deliberateTitle: string
   deliberateDesc: string
   deliberateStartBtn: string
-  deliberateQuestionPlaceholder: string
+  deliberateQuestionPlaceholderTrade: string
+  deliberateQuestionPlaceholderWarroom: string
+  deliberateQuestionHelper: string
   deliberateRunningHint: (debaterCount: number, voterCount: number) => string
   deliberateStageStart: string
   deliberateStageReport: string
@@ -200,7 +202,8 @@ export type JejuUiPack = {
   briefTitle: string
   briefDesc: string
   briefStartBtn: string
-  briefQuestionPlaceholder: string
+  briefQuestionPlaceholderTrade: string
+  briefQuestionPlaceholderWarroom: string
   briefRunningHint: (analystCount: number) => string
   briefStageStart: string
   briefStageOrchestrate: string
@@ -228,7 +231,9 @@ export type JejuUiPack = {
   diagnosticDesc: string
   diagnosticCategoryHeading: string
   diagnosticCustomHeading: string
-  diagnosticCustomPlaceholder: string
+  diagnosticCustomPlaceholderTrade: string
+  diagnosticCustomPlaceholderWarroom: string
+  diagnosticCustomHelper: string
   diagnosticRunBtn: string
   diagnosticRunningHint: string
   diagnosticStageStart: string
@@ -261,9 +266,11 @@ const KO: JejuUiPack = {
   mediaDesc: '매스컴 논조 · 지역·전국 비교',
   // Governance hub tiles — correct labels for the 4-mode launcher
   hubDeliberateTitle: '찬반형 심의',
-  hubDeliberateDesc: 'AI들이 찬성·반대로 나뉘어 토론하고 표결·판결까지 내리는 심층 심의.',
+  hubDeliberateDesc:
+    '7개 AI가 찬성·반대로 나뉘어 토론하고 민주적으로 표결하며, 소수의견까지 보존해 의장이 판결하는 심층 심의.',
   hubBriefTitle: '개방형 브리핑',
-  hubBriefDesc: '여러 AI가 서로 다른 관점으로 분석해 종합 브리핑을 만드는 열린 진단.',
+  hubBriefDesc:
+    '여러 AI가 서로 다른 전문 분야와 관점으로 분석해 종합 브리핑을 만드는 열린 진단.',
   hubDiagnosticTitle: '진단형 스캔',
   hubDiagnosticDesc: '분야를 선택하면 현황과 가장 시급한 현안을 빠르게 진단.',
   hubMediaTitle: '언론 동향',
@@ -298,9 +305,9 @@ const KO: JejuUiPack = {
   modeWarroom: '자원·에너지 워룸',
   modeWarroomEn: 'Resource War-Room',
   tradeCopy:
-    '기업 수출 현장을 위한 정밀 참모 — 현지 언론과 리스크를 교차 검증해 정확도 높은 실행 정보를 제공합니다.',
+    '기업 수출 현장을 위한 정밀 참모 — 현지 언론과 리스크를 교차 검증해 정확도 높은 실행 정보를 제공합니다. · 실시간 공공데이터와 누적 데이터 기반',
   warroomCopy:
-    '자원·에너지 안보를 위한 집단지성 워룸 — 다중 AI가 토론하고 표결하며, 소버린 AI 의장이 판결합니다.',
+    '자원·에너지 안보를 위한 집단지성 워룸 — 다중 AI가 토론하고 표결하며, 소버린 AI 의장이 판결합니다. · 실시간 공공데이터와 누적 데이터 기반',
   // Shared result layout
   evidenceShow: '근거 보기',
   evidenceHide: '근거 닫기',
@@ -406,7 +413,12 @@ const KO: JejuUiPack = {
   deliberateTitle: '찬반 심의',
   deliberateDesc: 'SYNOD 토론 · 합의도 수렴 · 의장 판결',
   deliberateStartBtn: '심의 시작',
-  deliberateQuestionPlaceholder: '찬반을 따질 정책 안건을 입력하세요. (예: 제주 렌터카 총량제 강화)',
+  deliberateQuestionPlaceholderTrade:
+    '찬반을 따질 정책 안건을 입력하세요. (예: 미국의 관세 인상에 대응해 대미 수출 비중을 줄이고 신흥시장으로 다변화해야 하는가?)',
+  deliberateQuestionPlaceholderWarroom:
+    '찬반을 따질 정책 안건을 입력하세요. (예: 여름철 전력 수급 안정을 위해 노후 석탄화력 조기폐지를 1년 늦춰야 하는가?)',
+  deliberateQuestionHelper:
+    '찬성과 반대가 나뉠 수 있는 문장을 입력해주세요. (\'~해야 하는가?\'처럼 예/아니오로 답할 수 있는 형태)',
   deliberateRunningHint: (debaterCount, voterCount) =>
     debaterCount > 0
       ? `${debaterCount}개 AI가 토론하고, 퍼플렉시티를 포함한 ${voterCount}개 AI가 표결합니다. 보통 8~11분 소요됩니다.`
@@ -443,8 +455,10 @@ const KO: JejuUiPack = {
   briefTitle: '개방형 브리핑',
   briefDesc: '상황 분석 · 병렬 전문가 검토 · 권고안 제시 (토론·표결 없음)',
   briefStartBtn: '브리핑 시작',
-  briefQuestionPlaceholder:
-    '개방형 질문을 입력하세요. (예: 에너지·계통 분야에서 지금 가장 시급한 현안은?)',
+  briefQuestionPlaceholderTrade:
+    '개방형 질문을 입력하세요. (예: 지금 우리 수출기업이 당면한 가장 시급한 통상 리스크는?)',
+  briefQuestionPlaceholderWarroom:
+    '개방형 질문을 입력하세요. (예: 지금 국내 전력 수급·에너지 안보에서 가장 시급한 현안은?)',
   briefRunningHint: (analystCount) =>
     `${analystCount}개 AI가 각자 다른 관점으로 병렬 분석하고, 실시간 검색 AI가 현지 언론·규제를 조사하며, 최고급 통합 AI가 종합 권고안을 작성합니다. 총 3~5분 소요됩니다.`,
   briefStageStart: '데이터 수집',
@@ -474,7 +488,12 @@ const KO: JejuUiPack = {
   diagnosticDesc: '분야별 오늘의 현황 + 가장 시급한 현안 (토론·표결 없음)',
   diagnosticCategoryHeading: '분야 선택',
   diagnosticCustomHeading: '직접 질문',
-  diagnosticCustomPlaceholder: '특정 현안을 직접 질문하세요. (예: 오늘 제주 전력 수급 현황은?)',
+  diagnosticCustomPlaceholderTrade:
+    '특정 현안을 직접 질문하세요. (예: 반도체 대중 수출규제가 지금 우리 기업에 미치는 영향은?)',
+  diagnosticCustomPlaceholderWarroom:
+    '특정 현안을 직접 질문하세요. (예: 지금 국내 전력 수급에서 가장 시급한 현안은?)',
+  diagnosticCustomHelper:
+    '위 분야에 없거나 더 구체적인 현안을 직접 질문하시려면 여기에 입력하세요. (분야 버튼을 누르면 해당 분야의 프리셋 질문이 실행됩니다.)',
   diagnosticRunBtn: '진단 시작',
   diagnosticRunningHint:
     'Perplexity 검색 후, 데이터 분석가(현황)와 진단가(시급 사안)가 차례로 작성합니다. 약 1분 소요됩니다.',

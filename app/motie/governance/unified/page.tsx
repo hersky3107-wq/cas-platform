@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { ChevronDown, ChevronUp, Newspaper } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { DeliberateSection } from '@/app/motie/governance/deliberate/page'
@@ -15,23 +14,41 @@ function UnifiedSection({
   title,
   explainer,
   defaultOpen = true,
+  variant = 'default',
   children,
 }: {
   title: string
   explainer: string
   defaultOpen?: boolean
+  /** primary = 찬반형 — visually dominant (70% product weight) */
+  variant?: 'default' | 'primary'
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  const isPrimary = variant === 'primary'
   return (
-    <section className="rounded-2xl border border-jeju-border bg-jeju-bg-elevated shadow-[var(--jeju-shadow)]">
+    <section
+      className={
+        isPrimary
+          ? 'rounded-2xl border-2 border-jeju-accent/55 bg-jeju-bg-elevated shadow-[var(--jeju-shadow)] ring-1 ring-jeju-accent/15'
+          : 'rounded-2xl border border-jeju-border bg-jeju-bg-elevated shadow-[var(--jeju-shadow)]'
+      }
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left"
       >
         <span className="flex flex-col gap-1">
-          <span className="text-sm font-bold text-jeju-fg">{title}</span>
+          <span
+            className={
+              isPrimary
+                ? 'text-base font-extrabold tracking-tight text-jeju-fg'
+                : 'text-sm font-bold text-jeju-fg'
+            }
+          >
+            {title}
+          </span>
           <span className="text-xs leading-relaxed text-jeju-fg-muted">{explainer}</span>
         </span>
         <span className="mt-0.5 shrink-0 text-jeju-fg-muted" aria-hidden>
@@ -55,8 +72,12 @@ export default function JejuGovernanceUnifiedPage() {
       tagline={t.governancePickerTagline}
     >
       <div className="flex flex-col gap-6">
-        {/* Section 1 — 찬반형 심의 */}
-        <UnifiedSection title={t.hubDeliberateTitle} explainer={t.hubDeliberateDesc}>
+        {/* Section 1 — 찬반형 심의 (primary product — visually dominant) */}
+        <UnifiedSection
+          title={t.hubDeliberateTitle}
+          explainer={t.hubDeliberateDesc}
+          variant="primary"
+        >
           <DeliberateSection />
         </UnifiedSection>
 
@@ -69,17 +90,6 @@ export default function JejuGovernanceUnifiedPage() {
         <UnifiedSection title={t.hubDiagnosticTitle} explainer={t.hubDiagnosticDesc}>
           <DiagnosticSection />
         </UnifiedSection>
-
-        {/* 언론 동향 — separate engine, subtle footer link */}
-        <div className="flex items-center justify-center border-t border-jeju-border pt-4">
-          <Link
-            href="/motie/governance/media"
-            className="flex items-center gap-1.5 text-xs text-jeju-fg-muted transition-colors hover:text-jeju-accent"
-          >
-            <Newspaper className="h-3.5 w-3.5" aria-hidden />
-            {t.hubMediaTitle}
-          </Link>
-        </div>
       </div>
     </JejuThemeShell>
   )

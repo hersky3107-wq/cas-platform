@@ -412,13 +412,15 @@ export function DiagnosticSection() {
           <p className="mb-2 mt-5 text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
             {t.diagnosticCustomHeading}
           </p>
-          <p className="mb-2 text-[11px] text-jeju-fg-muted">
-            위 분야에 없는 특정 현안은 여기에 직접 질문하세요. (분야 버튼을 누르면 해당 분야의 프리셋 질문이 실행됩니다.)
-          </p>
+          <p className="mb-2 text-[11px] text-jeju-fg-muted">{t.diagnosticCustomHelper}</p>
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder={t.diagnosticCustomPlaceholder}
+            placeholder={
+              councilMode === 'trade'
+                ? t.diagnosticCustomPlaceholderTrade
+                : t.diagnosticCustomPlaceholderWarroom
+            }
             rows={2}
             disabled={running}
             className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-sm text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"

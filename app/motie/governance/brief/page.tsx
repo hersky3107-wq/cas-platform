@@ -574,7 +574,11 @@ export function BriefSection() {
         <textarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder={t.briefQuestionPlaceholder}
+          placeholder={
+            councilMode === 'trade'
+              ? t.briefQuestionPlaceholderTrade
+              : t.briefQuestionPlaceholderWarroom
+          }
           rows={3}
           disabled={running}
           className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-base text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"

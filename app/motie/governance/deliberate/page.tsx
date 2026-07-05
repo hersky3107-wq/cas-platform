@@ -982,13 +982,18 @@ export function DeliberateSection() {
         <p className="text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
           찬반 안건 입력
         </p>
+        <p className="text-[11px] leading-relaxed text-jeju-fg-muted">{t.deliberateQuestionHelper}</p>
         <textarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder={t.deliberateQuestionPlaceholder}
+          placeholder={
+            councilMode === 'trade'
+              ? t.deliberateQuestionPlaceholderTrade
+              : t.deliberateQuestionPlaceholderWarroom
+          }
           disabled={isRunning}
           rows={3}
-          className="w-full resize-none rounded-xl border border-jeju-border bg-jeju-bg-elevated px-4 py-3 text-sm text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none disabled:opacity-50"
+          className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-base text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"
         />
         <div className="flex items-center justify-between gap-3">
           {questionType && (
