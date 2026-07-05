@@ -11,6 +11,8 @@ import { TouristHeader } from './tourist-header'
 
 // Always fetch fresh; featured subset is re-sampled every request from the cached pool.
 export const dynamic = 'force-dynamic'
+// Give enough headroom for 15s-timeout pool fetch + fallback + 1s wait + one retry.
+export const maxDuration = 60
 
 const CURATED_COUNT = 8
 
@@ -29,10 +31,28 @@ async function loadFeaturedPlaces(): Promise<VisitJejuPlace[]> {
     })
     pool = fallback.ok ? fallback.places : []
   }
-  return pickFeaturedVisitJejuPlaces(pool, {
+  const picks = pickFeaturedVisitJejuPlaces(pool, {
     count: CURATED_COUNT,
     bucketTargets: FEATURED_BUCKET_TARGETS,
   })
+
+  // Both pool and fallback returned nothing — VisitJeju had a transient blip.
+  // Retry fetchVisitJejuPlaces once after a short delay before giving up.
+  if (picks.length === 0) {
+    await new Promise<void>((r) => setTimeout(r, 1_000))
+    const retry = await fetchVisitJejuPlaces({
+      perCategory: 20,
+      categories: ['c1', 'c4', 'c5', 'c2', 'c6'],
+      locale: 'kr',
+    })
+    const retryPool = retry.ok ? retry.places : []
+    return pickFeaturedVisitJejuPlaces(retryPool, {
+      count: CURATED_COUNT,
+      bucketTargets: FEATURED_BUCKET_TARGETS,
+    })
+  }
+
+  return picks
 }
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────

@@ -9,8 +9,26 @@ import { CourseTimeline } from './course-timeline'
 
 type CourseResult = { ok: true; courses: Course[] } | { ok: false; error: string }
 
+/** Kick-off + poll response shapes (mirror the tourist-course route). */
+type KickoffResult = { ok: true; jobId: string } | { ok: false; error?: string }
+type PollResult =
+  | { ok: true; status: 'pending' }
+  | { ok: true; status: 'done'; result: CourseResult }
+  | { ok: true; status: 'error'; error?: string }
+  | { ok: false; error?: string }
+
 type Duration = '반나절' | '하루'
 type PanelMode = 'custom' | 'standard'
+
+/** Poll cadence + ceiling. Polling survives backgrounding: a phone that sleeps
+ *  mid-generation resumes polling on foreground and the persisted job is picked
+ *  up, so a dropped connection no longer loses the result. */
+const POLL_INTERVAL_MS = 3_000
+const MAX_POLL_MS = 180_000
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 // Values are sent to the API and must stay Korean; only the displayed label is
 // localized via the maps below.
@@ -93,6 +111,8 @@ export function CoursePanel() {
   const [error, setError] = useState<string | null>(null)
   const [timedOut, setTimedOut] = useState(false)
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Monotonic run id — invalidates any stale poll loop when a new run starts.
+  const runIdRef = useRef(0)
 
   const loadingSteps = resultMode === 'custom' ? t.loadCourseCustom : t.loadCourseStandard
 
@@ -132,10 +152,21 @@ export function CoursePanel() {
     set(current === value ? null : value)
   }
 
+  /** Applies a finished CourseResult to the UI (shared by all completion paths). */
+  function applyResult(data: CourseResult) {
+    if (data.ok && data.courses.length > 0) {
+      setCourses(data.courses)
+      setActiveTab(data.courses[0].id)
+    } else {
+      setError((data as { error?: string }).error || t.courseErrFail)
+    }
+  }
+
   async function runCourse() {
     if (loading) return
 
     const mode = panelMode
+    const runId = ++runIdRef.current
     setLoading(true)
     setResultMode(mode)
     setCourses(null)
@@ -156,32 +187,59 @@ export function CoursePanel() {
       if (Number.isFinite(n) && n > 0) body.groupSize = n
     }
 
-    const ctrl = new AbortController()
-    const fetchTimer = setTimeout(() => ctrl.abort(), 100_000)
-
     try {
-      const res = await fetch('/api/jeju/tourist-course', {
+      // 1. Kick off the job — returns a jobId in <200ms (compute runs server-side).
+      const kickRes = await fetch('/api/jeju/tourist-course', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: ctrl.signal,
       })
-      const data = (await res.json()) as CourseResult
-      if (data.ok && data.courses.length > 0) {
-        setCourses(data.courses)
-        setActiveTab(data.courses[0].id)
-      } else {
-        setError((data as { error?: string }).error || t.courseErrFail)
+      const kick = (await kickRes.json()) as KickoffResult
+      if (!kick.ok || !kick.jobId) {
+        if (runId === runIdRef.current) {
+          setError((kick as { error?: string }).error || t.courseErrFail)
+        }
+        return
       }
-    } catch (e) {
-      if ((e as { name?: string }).name === 'AbortError') {
-        setTimedOut(true)
-      } else {
-        setError(t.errConnection)
+      const jobId = kick.jobId
+
+      // 2. Poll for the persisted result. Transient poll failures (e.g. connection
+      //    dropped while the phone is backgrounded) are ignored so the next poll
+      //    recovers — the result lives in the job row, not the connection.
+      const startedAt = Date.now()
+      while (Date.now() - startedAt < MAX_POLL_MS) {
+        await delay(POLL_INTERVAL_MS)
+        if (runId !== runIdRef.current) return // superseded by a newer run
+
+        let poll: PollResult | null = null
+        try {
+          const pollRes = await fetch(
+            `/api/jeju/tourist-course?jobId=${encodeURIComponent(jobId)}`,
+            { cache: 'no-store' }
+          )
+          poll = (await pollRes.json()) as PollResult
+        } catch {
+          continue // network hiccup / backgrounded — retry on the next tick
+        }
+        if (runId !== runIdRef.current) return
+
+        if (!poll.ok) continue // transient (e.g. 404 before the row is visible)
+        if (poll.status === 'pending') continue
+        if (poll.status === 'error') {
+          setError(poll.error || t.courseErrFail)
+          return
+        }
+        // status === 'done'
+        applyResult(poll.result)
+        return
       }
+
+      // Exceeded the poll ceiling — offer a retry (same UX as the old timeout).
+      if (runId === runIdRef.current) setTimedOut(true)
+    } catch {
+      if (runId === runIdRef.current) setError(t.errConnection)
     } finally {
-      clearTimeout(fetchTimer)
-      setLoading(false)
+      if (runId === runIdRef.current) setLoading(false)
     }
   }
 

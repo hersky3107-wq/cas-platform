@@ -86,6 +86,34 @@ const FETCH_TIMEOUT: Record<string, number> = {
   cached: 25_000,  // olle/oreum: 25s (fast cached GET)
 }
 
+/**
+ * fetch() that transparently retries ONCE (~1s later) on any network or timeout
+ * failure. The loading spinner stays active during the retry — no error is shown
+ * until both attempts have failed. The second failure is re-thrown so the caller
+ * can surface the right error (AbortError → timedOut, otherwise errConnection).
+ */
+async function fetchWithOneRetry(
+  url: string,
+  opts: { method?: string; headers?: Record<string, string>; body?: string },
+  timeoutMs: number
+): Promise<Response> {
+  const attempt = async (): Promise<Response> => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+    try {
+      return await fetch(url, { ...opts, signal: ctrl.signal })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  try {
+    return await attempt()
+  } catch {
+    await new Promise<void>((r) => setTimeout(r, 1_000))
+    return attempt() // second attempt — throws on failure, caught by caller
+  }
+}
+
 type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus' | 'weather' | 'help' | 'comingsoon'
 
 export function SearchPanel() {
@@ -137,18 +165,14 @@ export function SearchPanel() {
     setLoading(true)
     setMode('search')
     resetResults()
-
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
     retryFnRef.current = runSearch
 
     try {
-      const res = await fetch('/api/jeju/tourist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q, locale }),
-        signal: ctrl.signal,
-      })
+      const res = await fetchWithOneRetry(
+        '/api/jeju/tourist',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, locale }) },
+        FETCH_TIMEOUT.sonar
+      )
       const data = (await res.json()) as RecommendResult
       if (data.ok) {
         setIntro(data.intro)
@@ -161,7 +185,6 @@ export function SearchPanel() {
         setError(t.errConnection)
       }
     } finally {
-      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -178,18 +201,14 @@ export function SearchPanel() {
     setLoading(true)
     setMode('local')
     resetResults()
-
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
     retryFnRef.current = runLocal
 
     try {
-      const res = await fetch('/api/jeju/tourist-local', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q, locale }),
-        signal: ctrl.signal,
-      })
+      const res = await fetchWithOneRetry(
+        '/api/jeju/tourist-local',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, locale }) },
+        FETCH_TIMEOUT.sonar
+      )
       const data = (await res.json()) as LocalResult
       if (data.ok) {
         setGems(data.gems)
@@ -201,7 +220,6 @@ export function SearchPanel() {
         setError(t.errConnection)
       }
     } finally {
-      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -213,18 +231,14 @@ export function SearchPanel() {
     setLoading(true)
     setMode('festival')
     resetResults()
-
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
     retryFnRef.current = runFestivals
 
     try {
-      const res = await fetch('/api/jeju/tourist-festivals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locale }),
-        signal: ctrl.signal,
-      })
+      const res = await fetchWithOneRetry(
+        '/api/jeju/tourist-festivals',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locale }) },
+        FETCH_TIMEOUT.sonar
+      )
       const data = (await res.json()) as FestivalResult
       if (data.ok) {
         setFestivalData(data)
@@ -236,7 +250,6 @@ export function SearchPanel() {
         setError(t.errConnection)
       }
     } finally {
-      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -248,18 +261,14 @@ export function SearchPanel() {
     setLoading(true)
     setMode('seasonal')
     resetResults()
-
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
     retryFnRef.current = runSeasonal
 
     try {
-      const res = await fetch('/api/jeju/tourist-seasonal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locale }),
-        signal: ctrl.signal,
-      })
+      const res = await fetchWithOneRetry(
+        '/api/jeju/tourist-seasonal',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locale }) },
+        FETCH_TIMEOUT.sonar
+      )
       const data = (await res.json()) as SeasonalResult
       if (data.ok) {
         setSights(data.sights)
@@ -271,7 +280,6 @@ export function SearchPanel() {
         setError(t.errConnection)
       }
     } finally {
-      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -283,18 +291,14 @@ export function SearchPanel() {
     setLoading(true)
     setMode('rainy')
     resetResults()
-
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
     retryFnRef.current = runRainy
 
     try {
-      const res = await fetch('/api/jeju/tourist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: RAINY_QUERY, locale }),
-        signal: ctrl.signal,
-      })
+      const res = await fetchWithOneRetry(
+        '/api/jeju/tourist',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: RAINY_QUERY, locale }) },
+        FETCH_TIMEOUT.sonar
+      )
       const data = (await res.json()) as RecommendResult
       if (data.ok) {
         setIntro(data.intro)
@@ -307,7 +311,6 @@ export function SearchPanel() {
         setError(t.errConnection)
       }
     } finally {
-      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -319,18 +322,14 @@ export function SearchPanel() {
     setLoading(true)
     setMode('islands')
     resetResults()
-
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.sonar)
     retryFnRef.current = runIslands
 
     try {
-      const res = await fetch('/api/jeju/tourist-ferry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-        signal: ctrl.signal,
-      })
+      const res = await fetchWithOneRetry(
+        '/api/jeju/tourist-ferry',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+        FETCH_TIMEOUT.sonar
+      )
       const data = (await res.json()) as IslandResult
       if (data.ok) {
         setIslands(data.islands)
@@ -342,7 +341,6 @@ export function SearchPanel() {
         setError(t.errConnection)
       }
     } finally {
-      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -354,13 +352,10 @@ export function SearchPanel() {
     setLoading(true)
     setMode('olle')
     resetResults()
-
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.cached)
     retryFnRef.current = runOlle
 
     try {
-      const res = await fetch('/api/jeju/tourist-olle', { signal: ctrl.signal })
+      const res = await fetchWithOneRetry('/api/jeju/tourist-olle', {}, FETCH_TIMEOUT.cached)
       const data = (await res.json()) as OlleResult
       if (data.ok) {
         setOlleCourses(data.courses)
@@ -372,7 +367,6 @@ export function SearchPanel() {
         setError(t.errConnection)
       }
     } finally {
-      clearTimeout(timer)
       setLoading(false)
     }
   }
@@ -384,13 +378,10 @@ export function SearchPanel() {
     setLoading(true)
     setMode('oreum')
     resetResults()
-
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT.cached)
     retryFnRef.current = runOreum
 
     try {
-      const res = await fetch('/api/jeju/tourist-oreum', { signal: ctrl.signal })
+      const res = await fetchWithOneRetry('/api/jeju/tourist-oreum', {}, FETCH_TIMEOUT.cached)
       const data = (await res.json()) as OreumResult
       if (data.ok) {
         setOreumList(data.oreum)
@@ -402,7 +393,6 @@ export function SearchPanel() {
         setError(t.errConnection)
       }
     } finally {
-      clearTimeout(timer)
       setLoading(false)
     }
   }

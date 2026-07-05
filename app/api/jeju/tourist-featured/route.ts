@@ -9,7 +9,8 @@ import {
 import { normalizeAiLocale } from '@/lib/jeju/ai-locale'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+// Give headroom for 15s-timeout pool fetch + fallback + 1s wait + one retry (worst-case ~46s).
+export const maxDuration = 60
 
 // ─────────────────────────────────────────────────────────────────────────────
 // JEJU "지금 뜨는 제주" featured section — locale-aware random sample.
@@ -40,10 +41,25 @@ export async function POST(req: Request): Promise<Response> {
     pool = fallback.ok ? fallback.places : []
   }
 
-  const places: VisitJejuPlace[] = pickFeaturedVisitJejuPlaces(pool, {
+  let places: VisitJejuPlace[] = pickFeaturedVisitJejuPlaces(pool, {
     count: FEATURED_COUNT,
     bucketTargets: FEATURED_BUCKET_TARGETS,
   })
+
+  // Both pool and fallback returned nothing — retry once after a short delay.
+  if (places.length === 0) {
+    await new Promise<void>((r) => setTimeout(r, 1_000))
+    const retry = await fetchVisitJejuPlaces({
+      perCategory: 20,
+      categories: ['c1', 'c4', 'c5', 'c2', 'c6'],
+      locale: vjLocale,
+    })
+    const retryPool = retry.ok ? retry.places : []
+    places = pickFeaturedVisitJejuPlaces(retryPool, {
+      count: FEATURED_COUNT,
+      bucketTargets: FEATURED_BUCKET_TARGETS,
+    })
+  }
 
   return Response.json({ ok: true, places })
 }
