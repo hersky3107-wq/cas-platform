@@ -55,9 +55,11 @@ type VoteEntry = {
 type VoteResult = {
   votes: VoteEntry[]
   approveCount: number
+  conditionalCount: number
   opposeCount: number
   abstainCount: number
   approveProviders: string[]
+  conditionalProviders: string[]
   opposeProviders: string[]
   abstainProviders: string[]
   outcome: string
@@ -66,6 +68,7 @@ type VoteResult = {
 }
 
 type Verdict = {
+  keyIssues: string | null
   judgment: string | null
   beat1Summary: string | null
   beat2Summary: string | null
@@ -268,7 +271,7 @@ function DeliberateRunningBanner({
       </div>
       <p className="mt-2 text-sm font-semibold text-jeju-accent">{stageLabel}</p>
       <p className="mt-1 text-xs text-jeju-fg-muted">
-        다중 AI 심층 분석은 보통 3~5분 걸립니다. 정상 작동 중이니 창을 닫지 말고 기다려 주세요.
+        다중 AI 심층 토론·표결은 보통 8~11분 걸립니다. 정상 작동 중이니 창을 닫지 말고 기다려 주세요.
       </p>
     </div>
   )
@@ -530,17 +533,22 @@ function RoundAccordion({
 function VerdictBlock({
   verdict,
   vote,
+  voteSkipped,
   consensusScore,
   stoppedReason,
   t,
 }: {
   verdict: Verdict
   vote: VoteResult | null
+  voteSkipped: boolean
   consensusScore: number
   stoppedReason: string
   t: Ui
 }) {
   const sections: { heading: string; content: string | null }[] = [
+    ...(verdict.keyIssues
+      ? [{ heading: t.deepKeyIssuesHeading, content: verdict.keyIssues }]
+      : []),
     { heading: t.deepJudgmentHeading, content: verdict.judgment },
     { heading: t.deepBeat3Heading, content: verdict.beat3Summary },
     { heading: t.deepBeat1Heading, content: verdict.beat1Summary },
@@ -601,9 +609,16 @@ function VerdictBlock({
               {t.deliberateVoteAllPanel(vote.votes.length)}
             </span>
           </div>
-          <p className="mb-3 text-xs text-jeju-fg-muted">
-            찬성 {vote.approveCount} · 반대 {vote.opposeCount} · 기권{' '}
-            {vote.abstainCount} —{' '}
+          {/* FIX 1: flex-wrap so long tally line doesn't overflow on narrow cards */}
+          <p className="mb-3 flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs text-jeju-fg-muted">
+            <span>찬성 {vote.approveCount}</span>
+            <span>·</span>
+            <span>조건부 찬성 {vote.conditionalCount}</span>
+            <span>·</span>
+            <span>기권 {vote.abstainCount}</span>
+            <span>·</span>
+            <span>반대 {vote.opposeCount}</span>
+            <span>—</span>
             <span
               className={
                 vote.outcome === 'approved'
@@ -620,26 +635,45 @@ function VerdictBlock({
             {vote.votes.map((v, i) => (
               <div
                 key={i}
-                className="flex flex-wrap gap-2 border-b border-jeju-border/50 pb-2 text-xs last:border-0"
+                className="flex flex-wrap gap-x-2 gap-y-1 border-b border-jeju-border/50 pb-2 text-xs last:border-0"
               >
                 <span className="w-32 shrink-0 font-semibold text-jeju-fg">
                   {aiProductNameWithGloss(v.provider)}
                 </span>
+                {/* FIX 1: whitespace-nowrap + min-w so '조건부 찬성' never clips */}
                 <span
-                  className={`w-10 shrink-0 font-bold ${
+                  className={`min-w-[5rem] shrink-0 whitespace-nowrap font-bold ${
                     v.choice === 'approve'
                       ? 'text-emerald-300'
-                      : v.choice === 'oppose'
-                        ? 'text-rose-300'
-                        : 'text-amber-300'
+                      : v.choice === 'conditional'
+                        ? 'text-sky-300'
+                        : v.choice === 'oppose'
+                          ? 'text-rose-300'
+                          : 'text-amber-300'
                   }`}
                 >
-                  {v.choice === 'approve' ? '찬성' : v.choice === 'oppose' ? '반대' : '기권'}
+                  {v.choice === 'approve'
+                    ? '찬성'
+                    : v.choice === 'conditional'
+                      ? '조건부 찬성'
+                      : v.choice === 'oppose'
+                        ? '반대'
+                        : '기권'}
                 </span>
                 <span className="flex-1 leading-relaxed text-jeju-fg-muted">{v.reason}</span>
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* FIX 2: high-consensus skip notice */}
+      {voteSkipped && (!vote || !vote.ok || vote.votes.length === 0) && (
+        <div className="rounded-lg border border-jeju-accent/25 bg-jeju-accent/8 px-4 py-3">
+          <p className="text-xs text-jeju-fg-muted">
+            <span className="mr-1 font-semibold text-jeju-accent">표결 생략</span>
+            합의도가 목표치({consensusScore}점)에 도달하여 표결을 생략했습니다 — 패널이 충분히 수렴한 사안으로, 별도 표결 없이 의장 판결로 이행합니다.
+          </p>
         </div>
       )}
     </div>
@@ -674,6 +708,8 @@ export function DeliberateSection() {
   const [vote, setVote] = useState<VoteResult | null>(null)
   const [consensusScore, setConsensusScore] = useState(-1)
   const [stoppedReason, setStoppedReason] = useState('max_rounds')
+  // true when the vote stage ran but skipped the ballot (binary + consensus ≥ threshold, or open-ended)
+  const [voteSkipped, setVoteSkipped] = useState(false)
 
   const runningRef = useRef(false)
 
@@ -768,6 +804,7 @@ export function DeliberateSection() {
       setVote(null)
       setConsensusScore(-1)
       setStoppedReason('max_rounds')
+      setVoteSkipped(false)
 
       try {
         // ── start ────────────────────────────────────────────────────────────
@@ -865,6 +902,7 @@ export function DeliberateSection() {
         const voteRes = await postWithRetry({ action: 'vote', sessionId })
         if (!voteRes) { runningRef.current = false; return }
         if (voteRes.vote) setVote(voteRes.vote)
+        if (voteRes.voted === false) setVoteSkipped(true)
         if (!voteRes.ok) {
           stop(voteRes.stage ?? 'vote', voteRes.error ?? '표결 실패')
           return
@@ -986,6 +1024,7 @@ export function DeliberateSection() {
           <VerdictBlock
             verdict={verdict}
             vote={vote}
+            voteSkipped={voteSkipped}
             consensusScore={consensusScore}
             stoppedReason={stoppedReason}
             t={t}
@@ -1135,9 +1174,16 @@ export function DeliberateSection() {
                   {t.deliberateVoteAllPanel(vote.votes.length)}
                 </span>
               </p>
-              <p className="mb-3 text-xs text-jeju-fg-muted">
-                찬성 {vote.approveCount} · 반대 {vote.opposeCount} · 기권{' '}
-                {vote.abstainCount} —{' '}
+              {/* FIX 1: flex-wrap so long tally line doesn't overflow on narrow cards */}
+              <p className="mb-3 flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs text-jeju-fg-muted">
+                <span>찬성 {vote.approveCount}</span>
+                <span>·</span>
+                <span>조건부 찬성 {vote.conditionalCount}</span>
+                <span>·</span>
+                <span>기권 {vote.abstainCount}</span>
+                <span>·</span>
+                <span>반대 {vote.opposeCount}</span>
+                <span>—</span>
                 <span
                   className={
                     vote.outcome === 'approved'
@@ -1154,27 +1200,48 @@ export function DeliberateSection() {
                 {vote.votes.map((v, i) => (
                   <div
                     key={i}
-                    className="flex flex-wrap gap-2 border-b border-jeju-border/50 pb-2 text-xs last:border-0"
+                    className="flex flex-wrap gap-x-2 gap-y-1 border-b border-jeju-border/50 pb-2 text-xs last:border-0"
                   >
                     <span className="w-32 shrink-0 font-semibold text-jeju-fg">
                       {aiProductNameWithGloss(v.provider)}
                     </span>
+                    {/* FIX 1: whitespace-nowrap + min-w so '조건부 찬성' never clips */}
                     <span
-                      className={`w-10 shrink-0 font-bold ${
+                      className={`min-w-[5rem] shrink-0 whitespace-nowrap font-bold ${
                         v.choice === 'approve'
                           ? 'text-emerald-300'
-                          : v.choice === 'oppose'
-                            ? 'text-rose-300'
-                            : 'text-amber-300'
+                          : v.choice === 'conditional'
+                            ? 'text-sky-300'
+                            : v.choice === 'oppose'
+                              ? 'text-rose-300'
+                              : 'text-amber-300'
                       }`}
                     >
-                      {v.choice === 'approve' ? '찬성' : v.choice === 'oppose' ? '반대' : '기권'}
+                      {v.choice === 'approve'
+                        ? '찬성'
+                        : v.choice === 'conditional'
+                          ? '조건부 찬성'
+                          : v.choice === 'oppose'
+                            ? '반대'
+                            : '기권'}
                     </span>
                     <span className="flex-1 leading-relaxed text-jeju-fg-muted">
                       {v.reason}
                     </span>
                   </div>
                 ))}
+              </div>
+            </Section>
+          )}
+
+          {/* FIX 2: show skip notice when ballot was skipped (e.g. high consensus) */}
+          {voteSkipped && (!vote || !vote.ok || vote.votes.length === 0) && (
+            <Section title={t.deepVoteHeading} t={t}>
+              <div className="rounded-lg border border-jeju-accent/25 bg-jeju-accent/8 px-4 py-3">
+                <p className="text-xs text-jeju-fg-muted">
+                  <span className="mr-1 font-semibold text-jeju-accent">표결 생략</span>
+                  합의도가 목표치({consensusScore}점)에 도달하여 표결을 생략했습니다 — 패널이 충분히 수렴한 사안으로, 별도 표결 없이 의장 판결로 이행합니다.
+                </p>
               </div>
             </Section>
           )}

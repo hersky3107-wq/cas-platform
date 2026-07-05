@@ -233,9 +233,9 @@ function buildOrchestratorSystemPrompt(
       seatLine,
       '',
       '역할 구성 규칙:',
-      '(a) 수출 실무에 밀착한 도메인 전문가로 구성하세요(예시): 시장·수요 분석 / 관세·인증·수입규제 / 물류·통관 / 가격·마진·환리스크 / 현지 유통·바이어·채널 / 경쟁·현지언론 동향. 질문과 무관한 도메인은 넣지 마세요.',
-      '(b) 각 역할은 결론을 내리기 전에 자기 도메인에서 가장 강력한 진입 근거와 가장 강력한 리스크·반대 근거를 모두 검토해야 합니다.',
-      '(c) roleLabel 표기: 수출기업 실무자가 즉시 이해하는 한국어(예: "시장·수요 분석", "관세·인증·규제", "가격·환리스크"). 은어·영어 표기 금지. 입장이 아니라 "분야"로만 표기하세요.',
+      '(a) 이 패널은 수출 현안에 대한 관계부처·유관기관 합동 심의를 재현합니다. 좌석을 실제 대한민국 정부 부처·기관(및 업계 대표)의 관점으로 구성하세요. 권장 라인업(6석): 산업통상자원부(통상·무역정책), 기획재정부(관세·재정), 외교부(통상외교·대외관계), 중소벤처기업부(중소·중견 수출기업 지원), 관세청(통관·원산지·관세행정), 업계(수출기업 대표). 질문 성격상 특정 부처가 부적합하면 다른 실재 부처·기관(예: 식품의약품안전처, 특허청, KOTRA)으로 대체하되, 반드시 실재하는 기관명만 쓰고 "수출부" 같은 가공의 부처는 절대 만들지 마세요.',
+      '(b) 각 역할은 결론을 내리기 전에 자기 소관에서 가장 강력한 진입 근거와 가장 강력한 리스크·반대 근거를 모두 검토해야 합니다.',
+      '(c) roleLabel 표기: 위 실재 부처·기관명에 괄호로 담당 분야를 붙여 쓰세요(예: "산업통상자원부(통상·무역정책)", "관세청(통관·관세)", "업계(수출기업 대표)"). 은어·영어 표기 금지. 입장(찬/반)이 아니라 소속·분야로만 표기하세요.',
       '(d) mandate(한국어 직무): 그 참모가 이 질문에서 무엇을 분석·논증하는지 구체적으로. 위 (b)의 양면 검토 의무를 담으세요.',
       '(e) provider: 아래 브랜드 목록의 값을 사용하세요. perplexity는 검색·현지언론 전용이라 토론 좌석에는 배정하지 마세요(검색/언론 역할에만).',
       '(f) questionType 분류: "binary"(진입/보류처럼 찬반으로 답하는 명제) 또는 "openEnded"(탐색형). 애매하면 "openEnded".',
@@ -275,11 +275,11 @@ function buildOrchestratorSystemPrompt(
       '',
       '역할 구성 규칙:',
       '(a) 중립 도메인 전문가만 배정(매우 중요): 찬성/반대 같은 입장을 좌석에 미리 박지 마세요. 각 좌석은 질문과 관련된 "분야 전문가"이며, 데이터를 자기 분야의 눈으로 정직하게 읽고 스스로 찬성/반대/유보를 판단합니다. 결론을 미리 정해 추인하도록 설계하지 마세요.',
-      '    - 질문에 맞는 도메인에서 고르세요(예시): 에너지 수급·안보 / 유가·가격 / 국제정세·지정학 / 산업 영향 / 물가·거시 / 수입처 다변화·공급망 / 법·제도 분석. 질문과 무관한 도메인은 넣지 말고, 브랜드 수만큼 이 질문에 가장 핵심적인 도메인을 배정하세요.',
+      '    - 이 심의는 자원·에너지 안보 현안에 대한 관계부처·유관기관 합동 심의를 재현합니다. 좌석을 실제 대한민국 정부 부처·기관(및 업계 대표)의 관점으로 구성하세요. 권장 라인업(6석): 산업통상자원부(에너지·자원정책), 기획재정부(재정·물가), 환경부(탄소·환경규제), 외교부(자원외교·대외관계), 한국전력·에너지 공기업(전력·수급 실무), 업계(에너지 수요기업 대표). 질문 성격상 특정 부처가 부적합하면 다른 실재 부처·기관(예: 원자력안전위원회, 한국가스공사, 한국석유공사)으로 대체하되, 반드시 실재하는 기관명만 쓰고 "재정부" 같은 가공의 부처는 절대 만들지 마세요. 브랜드 수만큼 이 질문에 가장 핵심적인 부처·기관을 배정하세요.',
       '    - 모든 좌석의 isRedTeam은 false로 두세요. 라운드별 상호 검증(서로의 논리 허점 점검)은 토론 단계에서 자동으로 처리되므로, 소집 단계에서 "반대 전담"이나 "옹호 전담" 좌석을 만들지 마세요.',
       '    - 정직한 만장일치(예: 8:0)도 정당한 결과입니다. 인위적으로 찬반을 갈라놓지 마세요. 목표는 균형처럼 보이는 구도가 아니라, 각 분야의 가장 정확한 판단이 충돌·수렴해 "참된 최적해"가 살아남는 것입니다.',
       '(b) 양면 검토 의무(각 mandate에 반드시 포함): 모든 전문가는 결론을 내리기 전에 자기 도메인 안에서 이 안건의 가장 강력한 찬성 근거와 가장 강력한 반대 근거를 모두 검토해야 합니다 — 한쪽으로 성급히 기울지 말고, 강한 반론을 무시하지 마세요.',
-      '(c) roleLabel 표기(정책결정자가 즉시 이해하는 한국어): "스틸맨" 같은 은어·외래어·영어 표기 금지. 입장이 아니라 "분야"로만 표기하세요. 예) "에너지 수급·안보", "유가·가격", "국제정세·지정학", "산업 영향".',
+      '(c) roleLabel 표기(정책결정자가 즉시 이해하는 한국어): 위 실재 부처·기관명에 괄호로 담당 분야를 붙여 쓰세요. "스틸맨" 같은 은어·외래어·영어 표기 금지. 입장(찬/반)이 아니라 소속·분야로만 표기하세요. 예) "산업통상자원부(에너지·자원정책)", "환경부(탄소·환경규제)", "한국전력·에너지 공기업(전력·수급 실무)", "업계(에너지 수요기업 대표)".',
       '(d) mandate(한국어 직무): 그 전문가가 이 질문에서 자기 분야 관점으로 무엇을 분석·논증하는지 구체적으로 적되, 위 (b)의 양면 검토 의무를 반드시 담으세요.',
       '(e) provider: 위 브랜드 목록의 값을 정확히 하나씩만 사용하세요(각 브랜드 1회). 목록에 없는 브랜드(특히 perplexity)는 절대 쓰지 마세요 — perplexity는 검색·언론 전용이라 이 토론 좌석에 들어오지 않습니다.',
       '(f) questionType 분류: "binary"(정책결정자가 찬성/반대로 답하는 명확한 정책 명제) 또는 "openEnded"(단일 찬반으로 답할 수 없는 탐색형). 애매하면 반드시 "openEnded".',
@@ -2612,9 +2612,23 @@ const VERDICT_MAX_TOKENS = 6000
  */
 const DEFAULT_DISCLAIMER = disclaimerFor('warroom')
 
+/**
+ * Strengthened 소수의견(마이너리티 리포트) instruction — a key differentiator: dissent
+ * is preserved substantively, not as a formality. Requires (1) who dissented + why,
+ * (2) a steelmanned strongest counter-argument, (3) what evidence/condition would flip
+ * the majority; ≥3–4 sentences; never empty even on near-unanimous votes.
+ */
+const MINORITY_REPORT_INSTRUCTION_TRADE =
+  '이 절은 형식적으로 채우지 말고 실질적으로 쓰십시오. 반드시 (1) 어느 관점·부처(좌석)가 왜 이견을 냈는지 명시하고, (2) 그 반대 측이 제시한 가장 강력한 논거를 스틸맨(steelman)하여 공정하게 서술하며(무시·폄하 금지), (3) 어떤 근거·조건이 확인되면 다수 판단이 바뀔 수 있는지 적으십시오. 최소 3~4문장 이상으로 쓰십시오. 표결이 거의 만장일치였더라도 "이견 없음"으로 비우지 말고, 토론 중 제기된 가장 중요한 유보·리스크 하나를 반드시 짚어 기업이 놓치지 않게 하십시오. 제목은 그대로 두고 내용은 한국어로 쓰십시오.'
+
+const MINORITY_REPORT_INSTRUCTION_WARROOM =
+  '이 절은 형식적으로 채우지 말고 실질적으로 쓰십시오. 반드시 (1) 어느 관점·부처(좌석)가 왜 이견을 냈는지 명시하고, (2) 그 반대 측이 제시한 가장 강력한 논거를 스틸맨(steelman)하여 공정하게 서술하며(무시·폄하 금지), (3) 어떤 근거·조건이 확인되면 다수 판단이 바뀔 수 있는지 적으십시오. 최소 3~4문장 이상으로 쓰십시오. 표결이 거의 만장일치였더라도 "이견 없음"으로 비우지 말고, 토론 중 제기된 가장 중요한 유보·리스크 하나를 반드시 짚어 정책결정자가 놓치지 않게 하십시오. 제목은 그대로 두고 내용은 한국어로 쓰십시오.'
+
 /** The chair's final, structured verdict — the deliverable officials read. */
 export type JejuVerdict = {
   ok: boolean
+  /** 3-line summary of the KEY CONTESTED AXES, shown ABOVE the verdict so a judge grasps the debate at a glance. */
+  keyIssues: string | null
   /** The chair's final ruling + reasoning (the heart). */
   judgment: string | null
   /** Brief: what data was collected (beat 1). */
@@ -2674,7 +2688,8 @@ function buildTradeChairSystemPrompt(consensusScore: number, brief: boolean, has
     lines.push(
       '',
       '이 안건에는 참모 패널 전원의 표결 결과가 참고 자료로 함께 제공됩니다.',
-      '표결 결과는 참고 자료일 뿐, 절대적 구속력이 없습니다. 다수결을 맹종하지 말고, 표결과 다른 판단을 내릴 수 있으며 그럴 경우 그 이유를 "## 최종 판단"에 분명히 밝히십시오.'
+      '표결 결과는 참고 자료일 뿐, 절대적 구속력이 없습니다. 다수결을 맹종하지 말고, 표결과 다른 판단을 내릴 수 있으며 그럴 경우 그 이유를 "## 최종 판단"에 분명히 밝히십시오.',
+      '표결은 4가지입니다(찬성 / 조건부 찬성 / 기권 / 반대). "조건부 찬성"이 많다는 것은 방향에는 합의하되 세부 조건·전제가 필요하다는 뜻이므로, 이를 반대나 불합의로 읽지 마십시오 — 오히려 "방향 합의 + 조건부 추진"으로 판단하고, 표결 이유에 제시된 조건들을 최종 판단의 실행 조건으로 통합하십시오.'
     )
   }
 
@@ -2685,7 +2700,10 @@ function buildTradeChairSystemPrompt(consensusScore: number, brief: boolean, has
     lines.push(
       '',
       '참모 합의도가 높아 길게 판결할 필요가 없습니다. 아래 구조를 정확히 따르되 간결하게 작성하십시오. 각 절은 반드시 "## " 머리말로 시작하세요. 수집 데이터 요약과 참모 분석·조사 요약 절은 생략합니다.',
-      '중요: 분량을 줄이더라도 "## 마이너리티 리포트"는 절대 생략하지 마십시오.',
+      '중요: 분량을 줄이더라도 "## 소수의견 (마이너리티 리포트)"는 절대 생략하지 마십시오.',
+      '',
+      '## 핵심 쟁점 (3줄 요약)',
+      '출력을 반드시 이 절로 시작하십시오. 서론·머리말 없이, 이 심의에서 의견이 갈린 핵심 축을 정확히 3줄(각 줄 "- "로 시작하는 한 문장)로 요약하십시오. 예: 시장 기회 vs 규제·인증 장벽, 조기 진입 속도 vs 리스크 신중론, 단기 매출 vs 장기 브랜드. 3줄을 넘기지 마십시오.',
       '',
       '## 최종 판단',
       '당신의 결론(진입/보류/조건부 추진 등)과 핵심 이유를 간결하게. 기업이 실행할 수 있는 분명한 방향으로 쓰되, 추정·전망에는 [AI 추정]을 붙이십시오.',
@@ -2693,13 +2711,13 @@ function buildTradeChairSystemPrompt(consensusScore: number, brief: boolean, has
       '## 토론·합의 과정',
       '참모 논의가 어떻게 수렴했는지 짧게(합의 점수와 안착 지점 위주).',
       '',
-      '## 마이너리티 리포트',
-      '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하십시오. 없으면 없다고 분명히 쓰십시오.',
+      '## 소수의견 (마이너리티 리포트)',
+      MINORITY_REPORT_INSTRUCTION_TRADE,
       '',
       '## 참고 사항',
       TRADE_DISCLAIMER,
       '',
-      '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 공식 데이터와 [AI 추정]을 구분하고, 자료에 없는 사실을 지어내지 마십시오.'
+      '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 공식 데이터와 [AI 추정]을 구분하고, 자료에 없는 사실을 지어내지 마십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오.'
     )
     return lines.join('\n')
   }
@@ -2707,7 +2725,10 @@ function buildTradeChairSystemPrompt(consensusScore: number, brief: boolean, has
   lines.push(
     '',
     '아래 구조를 정확히 따르되, 각 절은 한국어 산문으로 작성하십시오. 각 절은 반드시 "## " 머리말로 시작하세요.',
-    '분량 배분(중요): "## 최종 판단"에 가장 큰 비중을 두되, 요약 절은 각각 핵심만 간결하게 쓰고, 반드시 마지막 "## 마이너리티 리포트"와 "## 참고 사항"까지 빠짐없이 작성하십시오.',
+    '분량 배분(중요): "## 최종 판단"에 가장 큰 비중을 두되, 요약 절은 각각 핵심만 간결하게 쓰고, 반드시 마지막 "## 소수의견 (마이너리티 리포트)"와 "## 참고 사항"까지 빠짐없이 작성하십시오.',
+    '',
+    '## 핵심 쟁점 (3줄 요약)',
+    '출력을 반드시 이 절로 시작하십시오. 서론·머리말 없이, 이 심의에서 의견이 갈린 핵심 축을 정확히 3줄(각 줄 "- "로 시작하는 한 문장)로 요약하십시오. 예: 시장 기회 vs 규제·인증 장벽, 조기 진입 속도 vs 리스크 신중론, 단기 매출 vs 장기 브랜드. 3줄을 넘기지 마십시오.',
     '',
     '## 최종 판단',
     '당신의 결론(진입/보류/조건부 추진 등)과 그 이유. 이 판단의 가장 중요한 부분입니다. 결단력 있고 방어 가능하게, 기업이 실행할 수 있는 분명한 방향으로 쓰되, 추정·전망·타이밍 판단에는 반드시 [AI 추정]을 붙이십시오.',
@@ -2724,13 +2745,13 @@ function buildTradeChairSystemPrompt(consensusScore: number, brief: boolean, has
     '## 현지 리스크',
     '심의 자료에 현지 시장·언론·경쟁 분석이 포함된 경우에만 이 절을 작성하라. 진입 시 예상되는 현지 시장·규제·평판 리스크를 정성적으로 서술하라. 정량 수치를 지어내지 말 것. 관련 분석이 전혀 없으면 이 절을 생략하라.',
     '',
-    '## 마이너리티 리포트',
-    '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하여, 무엇이 합의되지 못했는지 기업이 분명히 알 수 있게 하십시오.',
+    '## 소수의견 (마이너리티 리포트)',
+    MINORITY_REPORT_INSTRUCTION_TRADE,
     '',
     '## 참고 사항',
     TRADE_DISCLAIMER,
     '',
-    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 공식 데이터와 [AI 추정]을 구분하고, 자료에 없는 사실을 지어내지 마십시오. "수입규제 없음" 같은 표현은 금지하며, 무역구제 조치 미확인과 등록·라벨링 규제를 구분해 서술하십시오.'
+    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 공식 데이터와 [AI 추정]을 구분하고, 자료에 없는 사실을 지어내지 마십시오. "수입규제 없음" 같은 표현은 금지하며, 무역구제 조치 미확인과 등록·라벨링 규제를 구분해 서술하십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오.'
   )
 
   return lines.join('\n')
@@ -2774,7 +2795,8 @@ function buildChairSystemPrompt(
       '이 안건에는 심의체 전원의 표결 결과가 참고 자료로 함께 제공됩니다. 다음을 명심하십시오.',
       '표결 결과는 참고 자료일 뿐, 절대적 구속력이 없습니다.',
       '당신은 재판관입니다. 다수결을 맹종하지 마십시오. 표결과 다른 판단을 내릴 수 있으며, 그럴 경우 반드시 그 이유를 "## 최종 판단"에 분명히 밝히십시오.',
-      '표결이 찬성 다수라 해서 무비판적으로 추인하지 마십시오. 반대·기권에 담긴 근거(특히 마이너리티 리포트와 합의도)를 함께 저울질하여 판단하십시오.'
+      '표결이 찬성 다수라 해서 무비판적으로 추인하지 마십시오. 반대·기권에 담긴 근거(특히 마이너리티 리포트와 합의도)를 함께 저울질하여 판단하십시오.',
+      '표결은 4가지입니다(찬성 / 조건부 찬성 / 기권 / 반대). "조건부 찬성"이 많다는 것은 방향에는 합의하되 세부 조건·전제가 필요하다는 뜻이므로, 이를 반대나 불합의로 읽지 마십시오 — 오히려 "방향 합의 + 조건부 추진"으로 판단하고, 표결 이유에 제시된 조건들을 최종 판단의 실행 조건으로 통합하십시오.'
     )
   }
 
@@ -2784,7 +2806,10 @@ function buildChairSystemPrompt(
     lines.push(
       '',
       '전문가 합의도가 높아 길게 판결할 필요가 없습니다. 아래 구조를 정확히 따르되 간결하게 작성하십시오. 각 절은 반드시 "## " 머리말로 시작하세요. 수집 데이터 요약과 전문가 분석·조사 요약 절은 생략합니다.',
-      '중요: 분량을 줄이더라도 "## 마이너리티 리포트"는 절대 생략하지 마십시오. 합의도가 높아도 끝까지 남은 소수·반대 의견은 반드시 보존해야 합니다.',
+      '중요: 분량을 줄이더라도 "## 소수의견 (마이너리티 리포트)"는 절대 생략하지 마십시오. 합의도가 높아도 끝까지 남은 소수·반대 의견은 반드시 보존해야 합니다.',
+      '',
+      '## 핵심 쟁점 (3줄 요약)',
+      '출력을 반드시 이 절로 시작하십시오. 서론·머리말 없이, 이 심의에서 의견이 갈린 핵심 축을 정확히 3줄(각 줄 "- "로 시작하는 한 문장)로 요약하십시오. 예: 예산 vs 규제 우선순위, 추진 속도 vs 신중론, 단기 효과 vs 장기 리스크. 3줄을 넘기지 마십시오.',
       '',
       '## 최종 판단',
       '당신의 자원·에너지 정책 판단(예: 수급 안정 / 수입처 다변화 필요 / 비상대응 등)과 핵심 이유를 간결하게. 합의를 확정하고 날카롭게 다듬되, 정책결정자가 대응할 수 있는 분명한 방향으로 쓰십시오. 추정·전망에는 [AI 추정]을 붙이십시오.',
@@ -2792,13 +2817,13 @@ function buildChairSystemPrompt(
       '## 토론·합의 과정',
       '토론이 어떻게 수렴했는지 짧게(합의 점수와 안착 지점 위주).',
       '',
-      '## 마이너리티 리포트',
-      '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하십시오. 없으면 없다고 분명히 쓰십시오.',
+      '## 소수의견 (마이너리티 리포트)',
+      MINORITY_REPORT_INSTRUCTION_WARROOM,
       '',
       '## 참고 사항',
       WARROOM_DISCLAIMER,
       '',
-      '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
+      '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
     )
     return lines.join('\n')
   }
@@ -2806,7 +2831,10 @@ function buildChairSystemPrompt(
   lines.push(
     '',
     '아래 구조를 정확히 따르되, 각 절은 한국어 산문으로 작성하십시오. 각 절은 반드시 "## " 머리말로 시작하세요.',
-    '분량 배분(중요): "## 최종 판단"에 가장 큰 비중을 두되, 요약 절(수집 데이터/전문가 분석·조사/토론·합의 과정)은 각각 핵심만 간결하게 쓰고, 반드시 마지막 "## 마이너리티 리포트"와 "## 참고 사항"까지 빠짐없이 작성하십시오. 중간에서 분량이 소진되어 소수의견이 누락되는 일이 없도록 하십시오.',
+    '분량 배분(중요): "## 최종 판단"에 가장 큰 비중을 두되, 요약 절(수집 데이터/전문가 분석·조사/토론·합의 과정)은 각각 핵심만 간결하게 쓰고, 반드시 마지막 "## 소수의견 (마이너리티 리포트)"와 "## 참고 사항"까지 빠짐없이 작성하십시오. 중간에서 분량이 소진되어 소수의견이 누락되는 일이 없도록 하십시오.',
+    '',
+    '## 핵심 쟁점 (3줄 요약)',
+    '출력을 반드시 이 절로 시작하십시오. 서론·머리말 없이, 이 심의에서 의견이 갈린 핵심 축을 정확히 3줄(각 줄 "- "로 시작하는 한 문장)로 요약하십시오. 예: 예산 vs 규제 우선순위, 추진 속도 vs 신중론, 단기 효과 vs 장기 리스크. 3줄을 넘기지 마십시오.',
     '',
     '## 최종 판단',
     '당신의 자원·에너지 정책 판단(예: 수급 안정 / 수입처 다변화 필요 / 비상대응 등)과 그 이유. 이 심의의 가장 중요한 부분입니다. 결단력 있고 방어 가능하게, 정책결정자가 대응할 수 있는 분명한 방향으로 쓰되, 추정·전망에는 반드시 [AI 추정]을 붙이십시오.',
@@ -2823,13 +2851,13 @@ function buildChairSystemPrompt(
     '## 언론 리스크',
     '심의 자료에 언론 분석이 포함된 경우에만 이 절을 작성하라. 이 정책을 발표·집행할 때 예상되는 언론 보도 논조와 반복될 가능성이 있는 쟁점·우려, 그리고 그로 인한 평판·소통 리스크를 정성적으로 서술하라. 정량 수치(지지율 등)를 지어내지 말 것. 심의 자료에 언론 분석이 전혀 없으면 이 절 자체를 생략하라(없는 반응을 지어내지 말 것).',
     '',
-    '## 마이너리티 리포트',
-    '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하여, 무엇이 합의되지 못했는지 정책결정자가 분명히 알 수 있게 하십시오.',
+    '## 소수의견 (마이너리티 리포트)',
+    MINORITY_REPORT_INSTRUCTION_WARROOM,
     '',
     '## 참고 사항',
     WARROOM_DISCLAIMER,
     '',
-    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 데이터 부재로 해소되지 못한 쟁점은 그렇다고 솔직히 밝히십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
+    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 데이터 부재로 해소되지 못한 쟁점은 그렇다고 솔직히 밝히십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
   )
 
   return lines.join('\n')
@@ -2874,7 +2902,13 @@ function formatDeliberationForChair(deliberation: JejuDeliberation): string {
 
 /** Korean label for a ballot choice, used when showing the vote to the chair. */
 function voteChoiceLabel(choice: JejuVoteChoice): string {
-  return choice === 'approve' ? '찬성' : choice === 'oppose' ? '반대' : '기권'
+  return choice === 'approve'
+    ? '찬성'
+    : choice === 'conditional'
+      ? '조건부 찬성'
+      : choice === 'oppose'
+        ? '반대'
+        : '기권'
 }
 
 /**
@@ -2929,6 +2963,7 @@ function formatRebuttalsForChair(rebuttals: JejuRebuttal[]): string {
 function chairSectionField(
   heading: string
 ):
+  | 'keyIssues'
   | 'judgment'
   | 'beat1Summary'
   | 'beat2Summary'
@@ -2938,6 +2973,7 @@ function chairSectionField(
   | 'disclaimer'
   | null {
   const h = heading.trim().toLowerCase()
+  if (h.includes('핵심 쟁점') || h.includes('핵심쟁점')) return 'keyIssues'
   if (h.includes('최종 판단') || h.includes('최종판단')) return 'judgment'
   if (h.includes('수집 데이터') || h.includes('수집데이터')) return 'beat1Summary'
   if (h.includes('전문가 분석') || h.includes('분석·조사') || h.includes('분석/조사')) return 'beat2Summary'
@@ -2955,6 +2991,7 @@ function chairSectionField(
  * putting the whole text in `judgment` (output is never lost).
  */
 function parseChairOutput(text: string): {
+  keyIssues: string | null
   judgment: string | null
   beat1Summary: string | null
   beat2Summary: string | null
@@ -2965,6 +3002,7 @@ function parseChairOutput(text: string): {
   matchedAny: boolean
 } {
   const result = {
+    keyIssues: null as string | null,
     judgment: null as string | null,
     beat1Summary: null as string | null,
     beat2Summary: null as string | null,
@@ -3044,9 +3082,10 @@ export async function renderChairVerdict(params: {
   const hasVote =
     vote != null &&
     vote.ok &&
-    vote.approveCount + vote.opposeCount + vote.abstainCount > 0
+    vote.approveCount + vote.conditionalCount + vote.opposeCount + vote.abstainCount > 0
 
   const base = {
+    keyIssues: null as string | null,
     consensusScore,
     disclaimer: disclaimerFor(councilMode),
     provider: 'anthropic',
@@ -3153,6 +3192,7 @@ export async function renderChairVerdict(params: {
   return {
     ...base,
     ok: true,
+    keyIssues: parsed.keyIssues,
     judgment: parsed.judgment,
     beat1Summary: parsed.beat1Summary,
     beat2Summary: parsed.beat2Summary,
@@ -3188,6 +3228,7 @@ export async function runJejuDeepComplete(params?: {
 
   const emptyVerdict: JejuVerdict = {
     ok: false,
+    keyIssues: null,
     judgment: null,
     beat1Summary: null,
     beat2Summary: null,
@@ -3285,7 +3326,7 @@ const JEJU_VOTE_BRAND_LABEL: Record<ExtendedAiProviderName, string> = {
 }
 
 /** A single provider's ballot choice on the chair's ruling. */
-export type JejuVoteChoice = 'approve' | 'oppose' | 'abstain'
+export type JejuVoteChoice = 'approve' | 'conditional' | 'oppose' | 'abstain'
 
 /** One provider's vote on the chair's verdict. */
 export type JejuVote = {
@@ -3301,16 +3342,19 @@ export type JejuVote = {
 export type JejuVoteResult = {
   votes: JejuVote[]
   approveCount: number
+  /** 조건부 찬성 — directional agreement WITH conditions. Counted separately, never merged into approve/abstain. */
+  conditionalCount: number
   opposeCount: number
   abstainCount: number
   /** Brand labels, e.g. ['Claude', 'ChatGPT']. */
   approveProviders: string[]
+  conditionalProviders: string[]
   opposeProviders: string[]
   abstainProviders: string[]
-  /** approved if approve>oppose; rejected if oppose>approve; divided if equal. Abstains never tip it. */
+  /** approved if (approve+conditional)>oppose; rejected if oppose>(approve+conditional); divided if equal. 조건부 찬성 is directional agreement so it counts on the yes side; abstains never tip it. */
   outcome: 'approved' | 'rejected' | 'divided'
   ok: boolean
-  /** Korean one-liner, e.g. '찬성 5 · 반대 2 · 기권 1 — 다수 승인'. */
+  /** Korean one-liner, e.g. '찬성 4 · 조건부 찬성 2 · 기권 1 · 반대 1 — 다수 승인'. */
   summary: string
 }
 
@@ -3332,13 +3376,14 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: Jeju
     '핵심 원칙 — 당신 자신의 토론 기록대로 표결하십시오(가장 중요):',
     '  이 표결은 새로운 추상적 판단이 아니라, 당신이 심의 토론에서 실제로 취한 입장의 충실한 요약입니다.',
     '  1) 표결 전에 반드시 먼저 자문하십시오: "나는 토론 전반에 걸쳐 이 안건에 대해 어떤 입장을 취했는가?"',
-    '  2) 토론 내내 안건의 핵심 방향·수단을 지지했다면 → 찬성.',
-    '  3) 토론 내내 안건의 핵심 방향·수단을 거부하거나, 다른 수단을 주장했다면 → 반대.',
-    '  4) 토론에서 진정으로 혼재되었거나 해소되지 않은 상태라면 → 기권이 정직한 선택입니다.',
+    '  2) 토론 내내 안건의 핵심 방향·수단을 조건 없이 지지했다면 → 찬성.',
+    '  3) 큰 방향·핵심 수단에는 동의하나 세부 조건·전제(시점·순서·규모·보완장치)가 반드시 필요하다면 → 조건부 찬성. 그 조건을 이유에 명시하십시오.',
+    '  4) 토론 내내 안건의 핵심 방향·수단을 거부하거나, 다른 수단을 주장했다면 → 반대.',
+    '  5) 토론에서 진정으로 혼재되었거나 해소되지 않은 상태라면 → 기권이 정직한 선택입니다.',
     '',
     '침묵 속 전환 금지 — 양방향 강제 규칙:',
     '  [찬성→반대 전환 금지] 토론에서 안건의 핵심 방향·수단을 지지했다면, 표결 시점에 부차적인 우려(사회적 비용, 전환 지원 부담, 일부 리스크)를 이유로 조용히 반대로 바꿀 수 없습니다.',
-    '  부차적 우려는 조건부 찬성의 사유입니다(조건을 이유에 적고 찬성). 핵심 방향·수단을 지지했다면 반대로 표결하는 것은 금지됩니다.',
+    '  부차적 우려는 조건부 찬성의 사유입니다(조건을 이유에 적고 "조건부 찬성"을 선택). 핵심 방향·수단을 지지했다면 반대로 표결하는 것은 금지됩니다.',
     '  [반대→찬성 전환 금지] 토론에서 안건의 핵심 수단을 거부하거나 다른 수단을 주장했다면, 표결 시점에 더 막연한 가치("방향은 맞다")로 후퇴해 조용히 찬성으로 바꿀 수 없습니다. 반대를 유지하거나 기권하십시오.',
     '  유효한 전환(양방향 공통): 토론 중에 당신이 입장을 바꾸는 발언을 실제로 했을 때만 예외입니다.',
     '  예) "처음엔 반대였지만, X 때문에 입장을 바꾼다" — 토론 안에서 명시적으로 이루어진 전환만 인정합니다.',
@@ -3350,13 +3395,14 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: Jeju
     '  예) 안건이 "LNG 수입처 다변화 확대"이면, "에너지 안보가 중요한가?"가 아니라 "수입처 다변화 확대라는 수단"이 옳은지를 표결합니다.',
     '  전문가 합의도 숫자를 이유로 삼지 마십시오 — 찬성/반대 결정은 오직 안건의 내용과 당신의 토론 기록에 기반해야 합니다.',
     '',
-    '찬성·반대·기권의 정의:',
-    '  찬성: 안건이 제시한 그 수단·방향이 옳다 (조건이 있으면 이유에 적되 찬성으로 표결).',
+    '찬성·조건부 찬성·기권·반대의 정의:',
+    '  찬성: 안건이 제시한 그 수단·방향이 옳고, 별도의 전제 조건 없이 지금 그대로 추진해도 좋다.',
+    '  조건부 찬성: 큰 방향·핵심 수단에는 동의하나, 시행 시점·순서·규모·보완장치 등 세부 조건·전제가 충족되어야 한다 → 이 옵션을 선택하고 그 조건을 이유에 반드시 명시하십시오. (찬성이나 기권으로 뭉뚱그리지 마십시오.)',
     '  반대: 그 수단·방향 자체가 틀렸거나, 다른 수단을 택해야 한다.',
     '  기권: 전문 영역 밖이거나 근거가 부족해 진정으로 판단할 수 없다.',
     '',
     '조건부 찬성과 방향성 반대의 구분:',
-    '  조건부 찬성 = 찬성: 핵심 수단·기제는 받아들이되, 시행 시점·순서·규모·전제 조건만 더 필요하다고 보면 → 찬성하고 이유에 조건을 적으십시오.',
+    '  조건부 찬성: 핵심 수단·기제는 받아들이되 시행 시점·순서·규모·전제 조건만 더 필요하다고 보면 → "조건부 찬성"을 선택하고 이유에 조건을 적으십시오.',
     '  방향성 반대 = 반대: 핵심 수단·기제 자체를 거부하거나 다른 수단을 주장하면 → 반대.',
     '  예) "총량 억제 대신 미시규제" = 반대. "총량 억제는 최후의 수단" = 지금 이 수단 채택을 거부하므로 반대.',
     '',
@@ -3384,7 +3430,7 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: Jeju
       stancePrimary,
       '',
       '출력 형식(반드시 정확히 두 줄):',
-      '표결: 찬성 또는 표결: 반대 또는 표결: 기권',
+      '표결: 찬성 / 표결: 조건부 찬성 / 표결: 반대 / 표결: 기권 중 하나를 정확히 그 표기 그대로 쓰십시오. (큰 방향에는 동의하나 세부 조건·전제가 필요하면 "표결: 조건부 찬성"을 선택하고 그 조건을 이유에 명시)',
       '이유: [1~2문장, 한국어, 구체적으로 — 반드시 위 이유 형식 요건을 포함]',
     ].join('\n')
   }
@@ -3400,13 +3446,14 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: Jeju
     stancePrimary,
     '',
     '출력 형식(반드시 정확히 두 줄):',
-    '표결: 찬성 또는 표결: 반대 또는 표결: 기권',
+    '표결: 찬성 / 표결: 조건부 찬성 / 표결: 반대 / 표결: 기권 중 하나를 정확히 그 표기 그대로 쓰십시오. (큰 방향에는 동의하나 세부 조건·전제가 필요하면 "표결: 조건부 찬성"을 선택하고 그 조건을 이유에 명시)',
     '이유: [1~2문장, 한국어, 구체적으로 — 반드시 위 이유 형식 요건을 포함]',
   ].join('\n')
 }
 
 /** Maps a parsed Korean choice token to a JejuVoteChoice. */
 function parseVoteChoice(raw: string): JejuVoteChoice | null {
+  if (raw === '조건부 찬성') return 'conditional'
   if (raw === '찬성') return 'approve'
   if (raw === '반대') return 'oppose'
   if (raw === '기권') return 'abstain'
@@ -3419,7 +3466,8 @@ function parseVoteResponse(text: string | null): {
   reason: string | null
 } {
   if (!text) return { choice: null, reason: null }
-  const cMatch = text.match(/표결:\s*(찬성|반대|기권)/)
+  // 조건부 찬성 MUST precede 찬성 in the alternation so it is not truncated to 찬성.
+  const cMatch = text.match(/표결:\s*(조건부 찬성|찬성|반대|기권)/)
   const choice = cMatch ? parseVoteChoice(cMatch[1]!) : null
   const rMatch = text.match(/이유:\s*([\s\S]+)/)
   const reason = rMatch ? rMatch[1]!.trim() : null
@@ -3566,9 +3614,11 @@ function emptyVoteResult(summary: string): JejuVoteResult {
   return {
     votes: [],
     approveCount: 0,
+    conditionalCount: 0,
     opposeCount: 0,
     abstainCount: 0,
     approveProviders: [],
+    conditionalProviders: [],
     opposeProviders: [],
     abstainProviders: [],
     outcome: 'divided',
@@ -3600,6 +3650,7 @@ async function runPanelBallot(systemPrompt: string, userPrompt: string): Promise
   })
 
   const approveProviders: string[] = []
+  const conditionalProviders: string[] = []
   const opposeProviders: string[] = []
   const abstainProviders: string[] = []
 
@@ -3607,31 +3658,39 @@ async function runPanelBallot(systemPrompt: string, userPrompt: string): Promise
     if (!v.ok || v.choice == null) continue
     const label = JEJU_VOTE_BRAND_LABEL[v.provider]
     if (v.choice === 'approve') approveProviders.push(label)
+    else if (v.choice === 'conditional') conditionalProviders.push(label)
     else if (v.choice === 'oppose') opposeProviders.push(label)
     else if (v.choice === 'abstain') abstainProviders.push(label)
   }
 
   const approveCount = approveProviders.length
+  const conditionalCount = conditionalProviders.length
   const opposeCount = opposeProviders.length
   const abstainCount = abstainProviders.length
 
+  // 조건부 찬성 is directional agreement (with conditions), so it counts on the
+  // YES side when determining the outcome direction — but it is tallied and
+  // displayed as its own category, never merged into 찬성.
+  const yesSide = approveCount + conditionalCount
   let outcome: 'approved' | 'rejected' | 'divided'
-  if (approveCount > opposeCount) outcome = 'approved'
-  else if (opposeCount > approveCount) outcome = 'rejected'
+  if (yesSide > opposeCount) outcome = 'approved'
+  else if (opposeCount > yesSide) outcome = 'rejected'
   else outcome = 'divided'
 
   const outcomeLabel =
     outcome === 'approved' ? '다수 승인' : outcome === 'rejected' ? '다수 반대' : '찬반 동수'
-  const summary = `찬성 ${approveCount} · 반대 ${opposeCount} · 기권 ${abstainCount} — ${outcomeLabel}`
+  const summary = `찬성 ${approveCount} · 조건부 찬성 ${conditionalCount} · 기권 ${abstainCount} · 반대 ${opposeCount} — ${outcomeLabel}`
 
-  const ok = approveCount + opposeCount + abstainCount > 0
+  const ok = approveCount + conditionalCount + opposeCount + abstainCount > 0
 
   return {
     votes,
     approveCount,
+    conditionalCount,
     opposeCount,
     abstainCount,
     approveProviders,
+    conditionalProviders,
     opposeProviders,
     abstainProviders,
     outcome,
@@ -3737,6 +3796,7 @@ export async function runJejuDeepCompleteWithVote(params?: {
 
   const emptyVerdict: JejuVerdict = {
     ok: false,
+    keyIssues: null,
     judgment: null,
     beat1Summary: null,
     beat2Summary: null,

@@ -117,6 +117,7 @@ export type JejuUiPack = {
   deepRoundScoreLabel: string
   deepStoppedReason: (r: string) => string
   deepVerdictHeading: string
+  deepKeyIssuesHeading: string
   deepJudgmentHeading: string
   deepBeat1Heading: string
   deepBeat2Heading: string
@@ -351,11 +352,12 @@ const KO: JejuUiPack = {
     return '오류로 종료'
   },
   deepVerdictHeading: '의장 판결',
+  deepKeyIssuesHeading: '핵심 쟁점 (3줄 요약)',
   deepJudgmentHeading: '최종 판단',
   deepBeat1Heading: '수집 데이터 요약',
   deepBeat2Heading: '전문가 분석·조사 요약',
   deepBeat3Heading: '토론·합의 과정',
-  deepMinorityHeading: '마이너리티 리포트',
+  deepMinorityHeading: '소수의견 (마이너리티 리포트)',
   deepMediaRiskHeading: '언론 수용 위험',
   deepDisclaimerHeading: '참고 사항',
   deepConsensusLabel: '최종 합의도',
@@ -407,8 +409,8 @@ const KO: JejuUiPack = {
   deliberateQuestionPlaceholder: '찬반을 따질 정책 안건을 입력하세요. (예: 제주 렌터카 총량제 강화)',
   deliberateRunningHint: (debaterCount, voterCount) =>
     debaterCount > 0
-      ? `${debaterCount}개 AI가 토론하고, 퍼플렉시티를 포함한 ${voterCount}개 AI가 표결합니다. 총 4–8분 소요됩니다.`
-      : 'AI 심의체가 순서대로 토론하고 표결합니다. 총 4–8분 소요됩니다.',
+      ? `${debaterCount}개 AI가 토론하고, 퍼플렉시티를 포함한 ${voterCount}개 AI가 표결합니다. 보통 8~11분 소요됩니다.`
+      : 'AI 심의체가 순서대로 토론하고 표결합니다. 보통 8~11분 소요됩니다.',
   deliberateStageStart: '데이터 수집·소집 중…',
   deliberateStageReport: '사전 분석 리포트 작성 중…',
   deliberateStageOpen: '개회 발언 중…',

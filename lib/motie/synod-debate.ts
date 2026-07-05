@@ -343,7 +343,8 @@ function modeStyleBlock(hasPriorParticipants: boolean): string {
 - Technical depth and academic concepts are allowed; argue rigorously.
 - But control length: 8–10 sentences max. Do NOT turn this into an essay with many headings.
 - No dry report tone — keep your persona's voice while arguing rigorously.
-${hasPriorParticipants ? `- React directly to a specific prior participant's claim first, before adding anything new.\n` : ''}- HALLUCINATION GUARD (critical in this mode): do NOT invent study names, author names, journal names, years, or precise numbers (effect sizes, sample sizes, percentages). Cite specifics ONLY if you are certain. When uncertain, write "a study suggests" without fake citations. Fabricated citations are a serious failure.`
+${hasPriorParticipants ? `- React directly to a specific prior participant's claim first, before adding anything new.\n` : ''}- HALLUCINATION GUARD (critical in this mode): do NOT invent study names, author names, journal names, years, or precise numbers (effect sizes, sample sizes, percentages). Cite specifics ONLY if you are certain. When uncertain, write "a study suggests" without fake citations. Fabricated citations are a serious failure.
+- 구체 예산 규모·기간·수치를 단정하지 마십시오. 출처 없는 숫자는 "[추정]"으로 표기하거나 "상당 규모"처럼 정성적으로 표현하고, 검색 결과·공공데이터에 실제 근거가 있을 때만 구체 수치를 제시하십시오.`
 }
 
 /**
