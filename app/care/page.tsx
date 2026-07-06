@@ -41,6 +41,7 @@ const GRID_CARDS: { emoji: string; label: string; href?: string }[] = [
   { emoji: '📅', label: '오늘 날짜·날씨', href: '/care/today' },
   { emoji: '🏥', label: '병원·약 찾기', href: '/care/medical' },
   { emoji: '📰', label: '오늘의 소식', href: '/care/news' },
+  { emoji: '📖', label: '이야기 · 좋은 말', href: '/care/tale' },
   { emoji: '📄', label: '고지서·문서 읽기', href: '/care/photo?mode=document' },
   { emoji: '🛡️', label: '수상한 문자 확인', href: '/care/photo?mode=phishing' },
   { emoji: '🖥️', label: '무인기계 도움', href: '/care/photo?mode=kiosk' },

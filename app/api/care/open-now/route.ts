@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { coreName, findInHira } from '@/lib/care/hira-match'
 import { searchHospitals, searchPharmacies, type MedicalFacility } from '@/lib/care/hira'
 import { askPerplexity } from '@/lib/jeju/resident-search'
 
@@ -109,32 +110,6 @@ async function extractPlaces(pplxText: string, apiKey: string): Promise<Extracte
   }
 }
 
-// ── HIRA fuzzy match (same logic as symptom route) ───────────────────────────
-
-function coreName(s: string): string {
-  return s
-    .replace(/의료법인|사회복지법인|재단법인|재단|\(.*?\)|\s+|·|,|\./g, '')
-    .toLowerCase()
-}
-
-function findInHira(name: string, hira: MedicalFacility[]): MedicalFacility | null {
-  const target = coreName(name)
-  if (target.length < 2) return null
-  let best: MedicalFacility | null = null
-  let bestLen = Infinity
-  for (const h of hira) {
-    const hc = coreName(h.name)
-    if (hc.length < 2) continue
-    if (hc === target || hc.includes(target) || target.includes(hc)) {
-      if (hc.length < bestLen) {
-        best = h
-        bestLen = hc.length
-      }
-    }
-  }
-  return best
-}
-
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
@@ -201,7 +176,7 @@ export async function POST(req: Request) {
   const seen = new Set<string>()
 
   for (const place of extracted) {
-    const match = findInHira(place.name, hira)
+    const match = findInHira(place.name, hira, { areaHint: place.area || area })
     if (match) {
       const key = coreName(match.name)
       if (seen.has(key)) continue

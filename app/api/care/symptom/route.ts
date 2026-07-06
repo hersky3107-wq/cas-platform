@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { coreName, findInHira } from '@/lib/care/hira-match'
 import { searchHospitals, type MedicalFacility } from '@/lib/care/hira'
 import { askPerplexity } from '@/lib/jeju/resident-search'
 
@@ -159,34 +160,6 @@ async function extractClinics(pplxText: string, apiKey: string): Promise<Extract
   }
 }
 
-// ── 5) Cross-reference clinic names against HIRA facts ─────────────────────────
-
-/** Strip corporate noise + spaces/punctuation for fuzzy name matching. */
-function coreName(s: string): string {
-  return s
-    .replace(/의료법인|사회복지법인|재단법인|재단|\(.*?\)|\s+|·|,|\./g, '')
-    .toLowerCase()
-}
-
-function findInHira(clinicName: string, hira: MedicalFacility[]): MedicalFacility | null {
-  const target = coreName(clinicName)
-  if (target.length < 2) return null
-  // Prefer exact-ish containment both ways; pick the shortest HIRA name that matches.
-  let best: MedicalFacility | null = null
-  let bestLen = Infinity
-  for (const h of hira) {
-    const hc = coreName(h.name)
-    if (hc.length < 2) continue
-    if (hc === target || hc.includes(target) || target.includes(hc)) {
-      if (hc.length < bestLen) {
-        best = h
-        bestLen = hc.length
-      }
-    }
-  }
-  return best
-}
-
 /** Tier rank for ordering (clinics first). */
 function tierRank(type: string | null | undefined): number {
   const t = type ?? ''
@@ -268,7 +241,7 @@ export async function POST(req: Request) {
   const seen = new Set<string>()
 
   for (const clinic of extracted) {
-    const match = findInHira(clinic.name, hira)
+    const match = findInHira(clinic.name, hira, { areaHint: clinic.area })
     if (match) {
       const key = coreName(match.name)
       if (seen.has(key)) continue
