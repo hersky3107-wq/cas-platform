@@ -7,7 +7,7 @@
  *   - Gated on the one-time 거주지 설정: if no residence is saved we send the
  *     user to /care/setup first. Once set, the current residence shows as a
  *     small "○○ 기준 · 바꾸기" chip that returns to setup.
- *   - Neutral national name ("어르신 도우미"); 버스·교통 card excluded.
+ *   - App name "동반자" (어르신을 위한 착한 AX); 버스·교통 card excluded.
  *
  * Accessibility-first, same palette + TTS pattern as support/page.tsx.
  * Hero card navigates to /care/support; grid cards show 준비중 inline.
@@ -190,7 +190,7 @@ export default function ResidentHomePage() {
   )
 
   const homeNarration =
-    '어르신 도우미입니다. 필요한 도움을 골라보세요. 나에게 맞는 복지 찾기를 누르면 시작할 수 있어요. 말벗 안부에서 오늘 하루 이야기도 나눌 수 있어요.'
+    '동반자입니다. 어르신을 위한 착한 에이엑스. 필요한 도움을 골라보세요. 나에게 맞는 복지 찾기를 누르면 시작할 수 있어요. 말벗 안부에서 오늘 하루 이야기도 나눌 수 있어요.'
 
   const goTo = useCallback(
     (href: string) => {
@@ -244,7 +244,8 @@ export default function ResidentHomePage() {
       <main style={styles.frame}>
         {/* Heading */}
         <header style={styles.header}>
-          <h1 style={styles.h1}>어르신 도우미</h1>
+          <h1 style={styles.h1}>동반자</h1>
+          <p style={styles.subtitle}>어르신을 위한 착한 AX</p>
           <p style={styles.lead}>필요한 도움을 골라보세요.</p>
         </header>
 
@@ -471,6 +472,14 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     textAlign: 'center',
     lineHeight: 1.25,
+  },
+  subtitle: {
+    fontSize: 24,
+    fontWeight: 800,
+    color: C.sea,
+    margin: 0,
+    textAlign: 'center',
+    lineHeight: 1.35,
   },
   lead: {
     fontSize: 22,
