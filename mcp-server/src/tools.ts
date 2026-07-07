@@ -19,16 +19,142 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
 import { getJson, postJson } from './http.js';
-import { COURSE_POLL_BUDGET_MS, COURSE_POLL_INTERVAL_MS } from './config.js';
+import { APP_BASE_URL, COURSE_POLL_BUDGET_MS, COURSE_POLL_INTERVAL_MS } from './config.js';
 import { getJejuWeather } from './weather.js';
+
+type AiLocale = 'ko' | 'en' | 'ja' | 'zh-TW' | 'zh-CN';
+
+/** Max items we include from a list before capping (we report the true total). */
+const LIST_CAP = 10;
 
 // ── MCP content helpers ─────────────────────────────────────────────────────
 
-/** Success content: a human-readable summary line + the raw JSON payload. */
-function ok(payload: unknown, summary?: string): CallToolResult {
-  const json = JSON.stringify(payload, null, 2);
-  const text = summary ? `${summary}\n\n${json}` : json;
-  return { content: [{ type: 'text', text }] };
+/**
+ * Localized "go to the full web app" footer. This turns each tool response into
+ * a teaser that funnels the user to the full service (full list, map, richer
+ * detail). One clean line, appended once at the very end of every success reply.
+ */
+function webLink(locale: AiLocale): string {
+  const url = `${APP_BASE_URL}/jeju/tourist`;
+  switch (locale) {
+    case 'en':
+      return `👉 See the full list, map, and details in the Jeju AI Travel Guide: ${url}`;
+    case 'ja':
+      return `👉 全リスト・地図・詳細は済州AI旅行ガイドでご確認ください: ${url}`;
+    case 'zh-TW':
+      return `👉 完整清單、地圖與詳細資訊請見濟州 AI 旅遊指南：${url}`;
+    case 'zh-CN':
+      return `👉 完整列表、地图和详细信息请见济州 AI 旅游指南：${url}`;
+    case 'ko':
+    default:
+      return `👉 전체 목록·지도·상세 정보는 제주 AI 여행 안내에서 확인하세요: ${url}`;
+  }
+}
+
+/**
+ * Localized hand-off shown when a course isn't ready within the 40s budget.
+ * MCP can't hold a long connection (Kakao drops past ~1-2 min) and re-checking by
+ * jobId across turns is unreliable, so we nudge the user to EITHER the web app
+ * (guaranteed full result) OR a more specific request (custom mode returns fast).
+ */
+function courseHandoff(locale: AiLocale): string {
+  const url = `${APP_BASE_URL}/jeju/tourist`;
+  switch (locale) {
+    case 'en':
+      return (
+        `Jeju travel courses take about 1–2 minutes because the AI designs several ` +
+        `courses at once. To see the full courses right now, use the "Jeju AI Travel ` +
+        `Guide" web app: ${url} (the "AI 여행 코스 짜기" button at the top). Or, if you ` +
+        `give a specific request like "a one-day course with kids" or "a half-day cafe ` +
+        `course in Seogwipo", I can create it right here.`
+      );
+    case 'ja':
+      return (
+        `済州の旅行コースはAIが複数のコースを同時に作成するため、1〜2分ほどかかります。` +
+        `今すぐ全コースを見るには「済州AI旅行ガイド」ウェブでご確認ください: ${url} ` +
+        `（上部の「AI 여행 코스 짜기」ボタン）。または「子どもと一日コース」「西帰浦の半日カフェ` +
+        `コース」のように具体的にご希望を伝えていただければ、ここですぐに作成します。`
+      );
+    case 'zh-TW':
+      return (
+        `濟州旅遊路線因為 AI 會同時規劃多條路線，大約需要 1～2 分鐘。若想立即查看完整路線，` +
+        `請前往「濟州 AI 旅遊指南」網站：${url}（點選上方的「AI 여행 코스 짜기」按鈕）。` +
+        `或者，只要提出「和孩子的一日路線」「西歸浦半日咖啡路線」等具體需求，我就能在這裡直接為您規劃。`
+      );
+    case 'zh-CN':
+      return (
+        `济州旅游路线因为 AI 会同时规划多条路线，大约需要 1～2 分钟。若想立即查看完整路线，` +
+        `请前往“济州 AI 旅游指南”网站：${url}（点击上方的“AI 여행 코스 짜기”按钮）。` +
+        `或者，只要提出“和孩子的一日路线”“西归浦半日咖啡路线”等具体需求，我就能在这里直接为您规划。`
+      );
+    case 'ko':
+    default:
+      return (
+        `제주 여행 코스는 AI가 여러 코스를 동시에 짜느라 1~2분 정도 걸립니다. ` +
+        `지금 바로 전체 코스를 보시려면 '제주 AI 여행 안내' 웹에서 확인하세요: ${url} ` +
+        `(상단 'AI 여행 코스 짜기' 버튼). 또는 '아이랑 하루 코스', '서귀포 반나절 카페 코스'처럼 ` +
+        `구체적으로 요청하시면 여기서 바로 짜드립니다.`
+      );
+  }
+}
+
+/** Localized "showing N of M" note — an explicit count instead of a vague cutoff. */
+function countNote(total: number, shown: number, locale: AiLocale): string {
+  const capped = shown < total;
+  switch (locale) {
+    case 'en':
+      return capped ? `Showing ${shown} of ${total}.` : `${total} result${total === 1 ? '' : 's'}.`;
+    case 'ja':
+      return capped ? `全${total}件中${shown}件を表示します。` : `全${total}件。`;
+    case 'zh-TW':
+      return capped ? `共 ${total} 筆，顯示 ${shown} 筆。` : `共 ${total} 筆。`;
+    case 'zh-CN':
+      return capped ? `共 ${total} 条，显示 ${shown} 条。` : `共 ${total} 条。`;
+    case 'ko':
+    default:
+      return capped ? `총 ${total}곳 중 ${shown}곳을 보여드려요.` : `총 ${total}곳입니다.`;
+  }
+}
+
+/**
+ * Success content: an optional summary line + the raw JSON payload + a localized
+ * web-app link. The link is always appended so every tool acts as a teaser.
+ */
+function ok(payload: unknown, summary?: string, locale: AiLocale = 'ko'): CallToolResult {
+  const parts: string[] = [];
+  if (summary) parts.push(summary);
+  parts.push(JSON.stringify(payload, null, 2));
+  parts.push(webLink(locale));
+  return { content: [{ type: 'text', text: parts.join('\n\n') }] };
+}
+
+/**
+ * Success content for LIST-returning tools. Finds the list field, includes ALL
+ * items up to LIST_CAP (never pre-truncated below that), and reports the TRUE
+ * total ("총 15곳 중 10곳") instead of a vague "이 외에도…". Non-list payloads
+ * fall back to plain ok(). Preserves sibling fields (e.g. `intro`).
+ */
+function okList(
+  data: unknown,
+  listKeys: string[],
+  headlineKo: string,
+  locale: AiLocale = 'ko',
+): CallToolResult {
+  if (!data || typeof data !== 'object') return ok(data, headlineKo, locale);
+  const obj = data as Record<string, unknown>;
+  const key = listKeys.find((k) => Array.isArray(obj[k]));
+  if (!key) return ok(data, headlineKo, locale);
+
+  const list = obj[key] as unknown[];
+  const total = list.length;
+  const shown = Math.min(total, LIST_CAP);
+  const capped: Record<string, unknown> = { ...obj, [key]: list.slice(0, LIST_CAP) };
+
+  // Keep the Korean flavour headline only for ko; other locales get the neutral
+  // count note + localized link (no Korean/English language mixing).
+  const headline = locale === 'ko' ? headlineKo : '';
+  const summary = [headline, countNote(total, shown, locale)].filter(Boolean).join(' ');
+  return ok(capped, summary, locale);
 }
 
 /** Error content: clearly flagged so the model can relay/retry gracefully. */
@@ -166,16 +292,20 @@ export function registerTools(server: McpServer): void {
           return ok(
             { jobId, status: 'done', courses: outcome.courses },
             `제주 여행 코스가 준비되었습니다 (${outcome.courses.length}개 코스).`,
+            args.locale,
           );
         }
         if (outcome.kind === 'error') return fail(outcome.message);
         // 'pending' or 'transient' → keep polling within budget
       }
 
-      // Not done in time — hand back the jobId for check_jeju_course.
+      // Not done in time — standard mode is slow and jobId re-check across turns is
+      // unreliable, so hand off to the web app or a more specific request instead
+      // of asking the user to poll by jobId.
       return ok(
-        { jobId, status: 'pending' },
-        `코스를 준비 중입니다. 약 1-2분 소요됩니다. 잠시 후 check_jeju_course 도구로 다시 확인해 주세요. jobId: ${jobId}`,
+        { jobId, status: 'pending', webApp: `${APP_BASE_URL}/jeju/tourist` },
+        courseHandoff(args.locale),
+        args.locale,
       );
     },
   );
@@ -240,7 +370,7 @@ export function registerTools(server: McpServer): void {
       if (!res.ok) return fail(res.error);
       const e = bodyError(res.data);
       if (e) return fail(e);
-      return ok(res.data, '제주 숨은 로컬 명소를 찾았습니다.');
+      return okList(res.data, ['gems'], '제주 숨은 로컬 명소를 찾았습니다.', args.locale);
     },
   );
 
@@ -260,7 +390,7 @@ export function registerTools(server: McpServer): void {
       if (!res.ok) return fail(res.error);
       const e = bodyError(res.data);
       if (e) return fail(e);
-      return ok(res.data, '지금 제주의 계절 명소입니다.');
+      return okList(res.data, ['sights'], '지금 제주의 계절 명소입니다.', args.locale);
     },
   );
 
@@ -279,7 +409,8 @@ export function registerTools(server: McpServer): void {
       if (!res.ok) return fail(res.error);
       const e = bodyError(res.data);
       if (e) return fail(e);
-      return ok(res.data, '제주의 축제·행사 정보입니다.');
+      // Response is a union: { type:'sonar', events[] } | { type:'fallback', festivals[] }.
+      return okList(res.data, ['events', 'festivals'], '제주의 축제·행사 정보입니다.', args.locale);
     },
   );
 
@@ -299,7 +430,7 @@ export function registerTools(server: McpServer): void {
       if (!res.ok) return fail(res.error);
       const e = bodyError(res.data);
       if (e) return fail(e);
-      return ok(res.data, '지금 뜨는 제주 명소입니다.');
+      return okList(res.data, ['places'], '지금 뜨는 제주 명소입니다.', args.locale);
     },
   );
 
@@ -320,7 +451,7 @@ export function registerTools(server: McpServer): void {
       if (!res.ok) return fail(res.error);
       const e = bodyError(res.data);
       if (e) return fail(e);
-      return ok(res.data, '비 와도 좋은 제주 실내 명소입니다.');
+      return okList(res.data, ['recommendations'], '비 와도 좋은 제주 실내 명소입니다.', args.locale);
     },
   );
 
@@ -342,7 +473,7 @@ export function registerTools(server: McpServer): void {
       if (!res.ok) return fail(res.error);
       const e = bodyError(res.data);
       if (e) return fail(e);
-      return ok(res.data, '제주 섬 여행(배편) 정보입니다.');
+      return okList(res.data, ['islands'], '제주 섬 여행(배편) 정보입니다.');
     },
   );
 
@@ -362,7 +493,7 @@ export function registerTools(server: McpServer): void {
       if (!res.ok) return fail(res.error);
       const e = bodyError(res.data);
       if (e) return fail(e);
-      return ok(res.data, '제주 올레길 코스 목록입니다.');
+      return okList(res.data, ['courses'], '제주 올레길 코스 목록입니다.');
     },
   );
 
@@ -382,7 +513,7 @@ export function registerTools(server: McpServer): void {
       if (!res.ok) return fail(res.error);
       const e = bodyError(res.data);
       if (e) return fail(e);
-      return ok(res.data, '제주 오름·한라산 트레킹 정보입니다.');
+      return okList(res.data, ['oreum'], '제주 오름·한라산 트레킹 정보입니다.');
     },
   );
 
