@@ -45,6 +45,54 @@ const localeSchema = z
   .default('ko')
   .describe("Output language for AI-generated content. One of ko|en|ja|zh-TW|zh-CN. Default 'ko'.");
 
+/**
+ * Fixed query for the "비 와도 좋은 곳" (rainy-day) chip — copied verbatim from the
+ * web app (app/jeju/tourist/search-panel.tsx RAINY_QUERY) so the MCP tool returns
+ * the same indoor-focused results. Proxies POST /api/jeju/tourist.
+ */
+const RAINY_QUERY =
+  '비 오는 날에도 좋은 제주의 제대로 된 실내 명소를 우선 추천: 미술관·박물관·전시관·뮤지엄·아쿠아리움·실내 테마공간 위주. 동네 소규모 공방·원데이클래스·게임장 같은 곳은 가급적 제외하고, 비 와도 충분히 즐길 만한 규모 있는 실내 명소 위주로.';
+
+/** Shape of the tourist-course poll (GET ?jobId=). */
+interface CoursePoll {
+  ok?: boolean;
+  status?: 'pending' | 'done' | 'error';
+  result?: { ok?: boolean; courses?: unknown[]; error?: string };
+  error?: string;
+}
+
+/**
+ * Poll a course job once. Returns a discriminated outcome the caller maps to
+ * MCP content: 'done' with courses, 'error', 'pending', or a transient miss.
+ */
+async function pollCourseOnce(
+  jobId: string,
+): Promise<
+  | { kind: 'done'; courses: unknown[] }
+  | { kind: 'error'; message: string }
+  | { kind: 'pending' }
+  | { kind: 'transient' }
+> {
+  const poll = await getJson<CoursePoll>(
+    `/api/jeju/tourist-course?jobId=${encodeURIComponent(jobId)}`,
+  );
+  if (!poll.ok) return { kind: 'transient' };
+  // Job not found (HTTP 404 → body { ok:false, error }) is a terminal error.
+  if (poll.data?.ok === false) {
+    return { kind: 'error', message: poll.data?.error ?? '작업을 찾을 수 없습니다.' };
+  }
+  const status = poll.data?.status;
+  if (status === 'done') {
+    const result = poll.data?.result;
+    if (result?.ok) return { kind: 'done', courses: result.courses ?? [] };
+    return { kind: 'error', message: result?.error ?? '코스를 만들지 못했어요. 다시 시도해 주세요.' };
+  }
+  if (status === 'error') {
+    return { kind: 'error', message: poll.data?.error ?? '코스를 만들지 못했어요. 다시 시도해 주세요.' };
+  }
+  return { kind: 'pending' };
+}
+
 // Reusable body-check: many routes return { ok: false, error } with HTTP 200.
 function bodyError(data: unknown): string | null {
   if (data && typeof data === 'object' && 'ok' in data && (data as { ok?: unknown }).ok === false) {
@@ -67,10 +115,10 @@ export function registerTools(server: McpServer): void {
       description:
         'Generate an AI-designed multi-stop Jeju (제주도) travel itinerary/course. ' +
         'Use for requests like "plan my Jeju trip", "make a one-day Jeju course", ' +
-        '"제주 여행 코스 짜줘". This starts a background job and polls until the ' +
-        'courses are ready (can take up to ~2 minutes), returning the finished ' +
-        'itinerary in a single call. If it takes too long, it returns a jobId to ' +
-        'check again later.',
+        '"제주 여행 코스 짜줘". This starts a background job and waits up to ~40s. ' +
+        'If the courses are ready it returns the finished itinerary; otherwise it ' +
+        'returns a jobId and a message asking the user to check again shortly — ' +
+        'then call check_jeju_course with that jobId to retrieve the result.',
       inputSchema: {
         mode: z
           .enum(['standard', 'custom'])
@@ -109,38 +157,62 @@ export function registerTools(server: McpServer): void {
       const jobId = start.data?.jobId;
       if (!jobId) return fail('작업 ID(jobId)를 받지 못했습니다.');
 
-      // Poll until done/error or the budget is exhausted.
+      // Poll only up to the short budget (~40s) so the tool call stays snappy.
       const deadline = Date.now() + COURSE_POLL_BUDGET_MS;
       while (Date.now() < deadline) {
         await sleep(COURSE_POLL_INTERVAL_MS);
-        const poll = await getJson<{
-          ok?: boolean;
-          status?: 'pending' | 'done' | 'error';
-          result?: { ok?: boolean; courses?: unknown[]; error?: string };
-          error?: string;
-        }>(`/api/jeju/tourist-course?jobId=${encodeURIComponent(jobId)}`);
-
-        if (!poll.ok) continue; // transient poll failure → keep trying within budget
-        const status = poll.data?.status;
-        if (status === 'done') {
-          const result = poll.data?.result;
-          if (result?.ok) {
-            return ok(
-              { jobId, courses: result.courses ?? [] },
-              `제주 여행 코스가 준비되었습니다 (${result.courses?.length ?? 0}개 코스).`,
-            );
-          }
-          return fail(result?.error ?? '코스를 만들지 못했어요. 다시 시도해 주세요.');
+        const outcome = await pollCourseOnce(jobId);
+        if (outcome.kind === 'done') {
+          return ok(
+            { jobId, status: 'done', courses: outcome.courses },
+            `제주 여행 코스가 준비되었습니다 (${outcome.courses.length}개 코스).`,
+          );
         }
-        if (status === 'error') {
-          return fail(poll.data?.error ?? '코스를 만들지 못했어요. 다시 시도해 주세요.');
-        }
-        // status === 'pending' → keep polling
+        if (outcome.kind === 'error') return fail(outcome.message);
+        // 'pending' or 'transient' → keep polling within budget
       }
 
+      // Not done in time — hand back the jobId for check_jeju_course.
       return ok(
         { jobId, status: 'pending' },
-        '코스 생성이 아직 진행 중입니다. 잠시 후 이 jobId로 다시 확인해 주세요 (아래 jobId 사용).',
+        `코스를 준비 중입니다. 약 1-2분 소요됩니다. 잠시 후 check_jeju_course 도구로 다시 확인해 주세요. jobId: ${jobId}`,
+      );
+    },
+  );
+
+  // 1b. check_jeju_course — retrieve a started course by jobId. ─────────────────
+  server.registerTool(
+    'check_jeju_course',
+    {
+      title: 'Check a Jeju course job by jobId',
+      description:
+        'Retrieve the result of a Jeju travel course that was started by ' +
+        'plan_jeju_course but was not ready yet. Pass the jobId returned earlier. ' +
+        'Returns the finished courses if ready, or a "still preparing" message if ' +
+        'not done yet ("아직 준비 중"). Use when the user asks to check their course ' +
+        'again ("코스 다 됐어?", "아까 그 코스 확인해줘").',
+      inputSchema: {
+        jobId: z
+          .string()
+          .min(1)
+          .describe('The jobId returned by plan_jeju_course when the course was not ready.'),
+      },
+    },
+    async (args): Promise<CallToolResult> => {
+      const outcome = await pollCourseOnce(args.jobId);
+      if (outcome.kind === 'done') {
+        return ok(
+          { jobId: args.jobId, status: 'done', courses: outcome.courses },
+          `제주 여행 코스가 준비되었습니다 (${outcome.courses.length}개 코스).`,
+        );
+      }
+      if (outcome.kind === 'error') return fail(outcome.message);
+      if (outcome.kind === 'transient') {
+        return fail('작업 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+      return ok(
+        { jobId: args.jobId, status: 'pending' },
+        '아직 코스를 준비 중입니다. 잠시 후 다시 확인해 주세요.',
       );
     },
   );
@@ -228,6 +300,89 @@ export function registerTools(server: McpServer): void {
       const e = bodyError(res.data);
       if (e) return fail(e);
       return ok(res.data, '지금 뜨는 제주 명소입니다.');
+    },
+  );
+
+  // 5b. get_rainy_day_spots — POST /api/jeju/tourist (fixed rainy query) ────────
+  server.registerTool(
+    'get_rainy_day_spots',
+    {
+      title: 'Get rainy-day / indoor Jeju spots',
+      description:
+        'Recommend Jeju places that are good even in bad weather — indoor ' +
+        'attractions like museums, art galleries, aquariums, and indoor themed ' +
+        'spaces. Use for "비 오는 날 갈 곳", "날씨 궂어도 좋은 곳", "실내 관광지", ' +
+        '"rainy day in Jeju", "indoor things to do in Jeju".',
+      inputSchema: { locale: localeSchema },
+    },
+    async (args): Promise<CallToolResult> => {
+      const res = await postJson('/api/jeju/tourist', { query: RAINY_QUERY, locale: args.locale });
+      if (!res.ok) return fail(res.error);
+      const e = bodyError(res.data);
+      if (e) return fail(e);
+      return ok(res.data, '비 와도 좋은 제주 실내 명소입니다.');
+    },
+  );
+
+  // 5c. get_jeju_islands — POST /api/jeju/tourist-ferry ─────────────────────────
+  server.registerTool(
+    'get_jeju_islands',
+    {
+      title: 'Get Jeju ferry island day-trips',
+      description:
+        'Get info on Jeju\'s ferry-accessible islands for day trips ' +
+        '(우도/가파도/마라도/추자도/비양도): charm, departure point, terminal, ferry ' +
+        'duration, and booking notes. Use for "제주 섬 여행", "우도 어떻게 가", ' +
+        '"island trip from Jeju".',
+      inputSchema: {},
+    },
+    async (): Promise<CallToolResult> => {
+      // Route takes no body; POST with an empty object.
+      const res = await postJson('/api/jeju/tourist-ferry', {});
+      if (!res.ok) return fail(res.error);
+      const e = bodyError(res.data);
+      if (e) return fail(e);
+      return ok(res.data, '제주 섬 여행(배편) 정보입니다.');
+    },
+  );
+
+  // 5d. get_olle_trails — GET /api/jeju/tourist-olle ────────────────────────────
+  server.registerTool(
+    'get_olle_trails',
+    {
+      title: 'Get Jeju Olle trail courses',
+      description:
+        'Get the list of Jeju Olle (올레길) walking trail courses with distance, ' +
+        'estimated duration, start/end points, and official links. Use for ' +
+        '"올레길", "제주 걷기 코스", "Jeju Olle trail".',
+      inputSchema: {},
+    },
+    async (): Promise<CallToolResult> => {
+      const res = await getJson('/api/jeju/tourist-olle');
+      if (!res.ok) return fail(res.error);
+      const e = bodyError(res.data);
+      if (e) return fail(e);
+      return ok(res.data, '제주 올레길 코스 목록입니다.');
+    },
+  );
+
+  // 5e. get_oreum_hallasan — GET /api/jeju/tourist-oreum ────────────────────────
+  server.registerTool(
+    'get_oreum_hallasan',
+    {
+      title: 'Get Jeju oreum (volcanic cones) & Hallasan',
+      description:
+        'Get a rotating selection of Jeju oreum (오름, volcanic cones) with ' +
+        'location and description — good for hiking and Hallasan-area trails. ' +
+        'Use for "오름", "한라산 둘레길", "제주 등산/트레킹", "oreum to hike".',
+      inputSchema: {},
+    },
+    async (): Promise<CallToolResult> => {
+      const res = await getJson('/api/jeju/tourist-oreum');
+      if (!res.ok) return fail(res.error);
+      const e = bodyError(res.data);
+      if (e) return fail(e);
+      return ok(res.data, '제주 오름·한라산 트레킹 정보입니다.');
     },
   );
 

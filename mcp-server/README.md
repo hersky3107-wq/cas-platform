@@ -13,16 +13,23 @@ It is a **pure tool server**: it runs **no LLM**. Every tool is a thin proxy tha
 
 | Tool | Proxies | Purpose |
 |------|---------|---------|
-| `plan_jeju_course` | `POST /api/jeju/tourist-course` (start + poll) | AI travel course; starts an async job and polls until done (~up to 2 min) |
+| `plan_jeju_course` | `POST /api/jeju/tourist-course` (start + poll ~40s) | AI travel course; starts an async job, waits up to ~40s. Returns finished courses, or a `jobId` + "preparing" message to check via `check_jeju_course` |
+| `check_jeju_course` | `GET /api/jeju/tourist-course?jobId=` | Retrieve a started course by `jobId` (ready → courses; not yet → "still preparing") |
 | `find_hidden_spots` | `POST /api/jeju/tourist-local` | Hidden local gems for a query |
 | `get_jeju_seasonal` | `POST /api/jeju/tourist-seasonal` | What's special in Jeju right now |
 | `get_jeju_festivals` | `POST /api/jeju/tourist-festivals` | Current festivals & events |
 | `get_jeju_trending` | `POST /api/jeju/tourist-featured` | Trending / featured places |
+| `get_rainy_day_spots` | `POST /api/jeju/tourist` (indoor query) | Rainy-day / indoor spots (museums, aquariums, galleries) |
+| `get_jeju_islands` | `POST /api/jeju/tourist-ferry` | Ferry island day-trips (우도/가파도/마라도/추자도/비양도) |
+| `get_olle_trails` | `GET /api/jeju/tourist-olle` | Jeju Olle walking trail courses |
+| `get_oreum_hallasan` | `GET /api/jeju/tourist-oreum` | Oreum (volcanic cones) & Hallasan-area trails |
 | `find_nearby_bus_stops` | `POST /api/jeju/bus/nearby` | Bus stops near a coordinate |
 | `get_bus_arrivals` | `POST /api/jeju/bus/arrivals` | Real-time arrivals at a stop (by `nodeId`) |
 | `search_bus_route` | `POST /api/jeju/bus/route` | Bus route by number → ordered stops |
 | `get_exchange_rates` | `GET /api/jeju/exchange` | KRW rates (USD/CNY/JPY/EUR/HKD/TWD) |
 | `get_jeju_weather` | Open-Meteo (direct) | 3–7 day forecast for 5 Jeju regions |
+
+> **Not exposed:** the "외국인 대행 서비스 / Coming Soon" panel is a non-functional vision/policy-proposal display and is intentionally **not** an MCP tool. Only real, working features are exposed.
 
 Tools that accept `locale` support `ko | en | ja | zh-TW | zh-CN` (default `ko`).
 
