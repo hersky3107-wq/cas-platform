@@ -38,21 +38,21 @@ function webLink(locale: AiLocale): string {
   const url = `${APP_BASE_URL}/jeju/tourist`;
   switch (locale) {
     case 'en':
-      return `👉 See the full list, map, and details in the Jeju AI Travel Guide: ${url}`;
+      return `👉 Full list & map in the Jeju AI Travel Guide: ${url}`;
     case 'ja':
-      return `👉 全リスト・地図・詳細は済州AI旅行ガイドでご確認ください: ${url}`;
+      return `👉 全リスト・地図は済州AI旅行ガイドで: ${url}`;
     case 'zh-TW':
-      return `👉 完整清單、地圖與詳細資訊請見濟州 AI 旅遊指南：${url}`;
+      return `👉 完整清單與地圖請見濟州 AI 旅遊指南：${url}`;
     case 'zh-CN':
-      return `👉 完整列表、地图和详细信息请见济州 AI 旅游指南：${url}`;
+      return `👉 完整列表与地图请见济州 AI 旅游指南：${url}`;
     case 'ko':
     default:
-      return `👉 전체 목록·지도·상세 정보는 제주 AI 여행 안내에서 확인하세요: ${url}`;
+      return `👉 전체 목록·지도는 제주 AI 여행 안내: ${url}`;
   }
 }
 
 /**
- * Localized hand-off shown when a course isn't ready within the 40s budget.
+ * Localized hand-off shown when a course isn't ready within the poll budget (~55s).
  * MCP can't hold a long connection (Kakao drops past ~1-2 min) and re-checking by
  * jobId across turns is unreliable, so we nudge the user to EITHER the web app
  * (guaranteed full result) OR a more specific request (custom mode returns fast).
@@ -128,11 +128,95 @@ function ok(payload: unknown, summary?: string, locale: AiLocale = 'ko'): CallTo
   return { content: [{ type: 'text', text: parts.join('\n\n') }] };
 }
 
+// ── List-item formatting helpers ─────────────────────────────────────────────
+
+function str(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+/** First non-empty string among the given keys. */
+function firstStr(obj: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    const s = str(obj[k]);
+    if (s) return s;
+  }
+  return '';
+}
+
+/** A link is "ours" (the homepage funnel) — never repeat it per item. */
+function isHomepageLink(url: string): boolean {
+  return url.includes('/jeju/tourist') || url === APP_BASE_URL || url.startsWith(`${APP_BASE_URL}/jeju`);
+}
+
+/** Collapse whitespace and trim to a single clean line. */
+function oneLine(s: string, max = 140): string {
+  const flat = s.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+}
+
 /**
- * Success content for LIST-returning tools. Finds the list field, includes ALL
- * items up to LIST_CAP (never pre-truncated below that), and reports the TRUE
- * total ("총 15곳 중 10곳") instead of a vague "이 외에도…". Non-list payloads
- * fall back to plain ok(). Preserves sibling fields (e.g. `intro`).
+ * Format ONE list item into clean, consistent lines:
+ *   "N. {name} ({area})"
+ *   "   {one-line description}"
+ *   "   {facts · joined}"          (distance/duration/route/date-range, when present)
+ *   "   🔗 {label} {url}"          (ONLY genuine external links — official trail /
+ *                                    ferry booking — never our homepage)
+ * No per-item homepage link, no dangling markdown, no doubled links.
+ */
+function formatItem(raw: unknown, index: number): string {
+  if (!raw || typeof raw !== 'object') return `${index + 1}. ${String(raw)}`;
+  const o = raw as Record<string, unknown>;
+
+  const courseNo = str(o.courseNo);
+  const base = firstStr(o, ['name', 'title']);
+  const name = [courseNo, base].filter(Boolean).join(' ') || '(정보 없음)';
+  const area = firstStr(o, ['area', 'region', 'venue', 'departurePoint']);
+  const desc = firstStr(o, [
+    'description',
+    'introduction',
+    'intro',
+    'charm',
+    'season_hint',
+    'oneLineSummary',
+  ]);
+
+  // Facts that carry no language-specific label (safe across locales).
+  const facts: string[] = [];
+  for (const k of ['distance', 'duration', 'startEnd']) {
+    const v = str(o[k]);
+    if (v) facts.push(v);
+  }
+  const sd = str(o.startDate);
+  const ed = str(o.endDate);
+  if (sd || ed) facts.push([sd, ed].filter(Boolean).join(' ~ '));
+
+  // Keep genuinely useful EXTERNAL links (not our homepage).
+  const links: string[] = [];
+  const official = str(o.officialUrl);
+  if (official && !isHomepageLink(official)) links.push(official);
+  const ferryInfo = o.ferryInfo as { links?: unknown } | null | undefined;
+  if (ferryInfo && typeof ferryInfo === 'object' && Array.isArray(ferryInfo.links)) {
+    for (const l of ferryInfo.links) {
+      if (!l || typeof l !== 'object') continue;
+      const url = str((l as Record<string, unknown>).url);
+      const label = str((l as Record<string, unknown>).label);
+      if (url && !isHomepageLink(url)) links.push(label ? `${label} ${url}` : url);
+    }
+  }
+
+  const lines: string[] = [`${index + 1}. ${name}${area ? ` (${area})` : ''}`];
+  if (desc) lines.push(`   ${oneLine(desc)}`);
+  if (facts.length) lines.push(`   ${facts.join(' · ')}`);
+  for (const link of links) lines.push(`   🔗 ${link}`);
+  return lines.join('\n');
+}
+
+/**
+ * Success content for LIST-returning tools. Formats items into clean text
+ * (name / area / one-line description + genuine external links), includes all
+ * items up to LIST_CAP, reports the TRUE total ("총 15곳 중 10곳"), and appends
+ * exactly ONE localized web footer at the end. No raw JSON, no per-item homepage
+ * link. Non-list payloads fall back to plain ok().
  */
 function okList(
   data: unknown,
@@ -148,13 +232,21 @@ function okList(
   const list = obj[key] as unknown[];
   const total = list.length;
   const shown = Math.min(total, LIST_CAP);
-  const capped: Record<string, unknown> = { ...obj, [key]: list.slice(0, LIST_CAP) };
+  const items = list.slice(0, LIST_CAP);
 
-  // Keep the Korean flavour headline only for ko; other locales get the neutral
-  // count note + localized link (no Korean/English language mixing).
+  const blocks: string[] = [];
+  // Headline (ko only, to avoid language mixing) + accurate count.
   const headline = locale === 'ko' ? headlineKo : '';
-  const summary = [headline, countNote(total, shown, locale)].filter(Boolean).join(' ');
-  return ok(capped, summary, locale);
+  const head = [headline, countNote(total, shown, locale)].filter(Boolean).join(' ');
+  if (head) blocks.push(head);
+  // Optional AI intro (e.g. tourist recommend) as a lead line.
+  const intro = str(obj.intro);
+  if (intro) blocks.push(oneLine(intro, 300));
+
+  const body = items.map((it, i) => formatItem(it, i)).join('\n');
+  blocks.push(body);
+  blocks.push(webLink(locale));
+  return { content: [{ type: 'text', text: blocks.join('\n\n') }] };
 }
 
 /** Error content: clearly flagged so the model can relay/retry gracefully. */
@@ -241,7 +333,7 @@ export function registerTools(server: McpServer): void {
       description:
         'Generate an AI-designed multi-stop Jeju (제주도) travel itinerary/course. ' +
         'Use for requests like "plan my Jeju trip", "make a one-day Jeju course", ' +
-        '"제주 여행 코스 짜줘". This starts a background job and waits up to ~40s. ' +
+        '"제주 여행 코스 짜줘". This starts a background job and waits up to ~55s. ' +
         'If the courses are ready it returns the finished itinerary; otherwise it ' +
         'returns a jobId and a message asking the user to check again shortly — ' +
         'then call check_jeju_course with that jobId to retrieve the result.',
@@ -283,7 +375,7 @@ export function registerTools(server: McpServer): void {
       const jobId = start.data?.jobId;
       if (!jobId) return fail('작업 ID(jobId)를 받지 못했습니다.');
 
-      // Poll only up to the short budget (~40s) so the tool call stays snappy.
+      // Poll only up to the short budget (~55s) so the tool call stays snappy.
       const deadline = Date.now() + COURSE_POLL_BUDGET_MS;
       while (Date.now() < deadline) {
         await sleep(COURSE_POLL_INTERVAL_MS);
