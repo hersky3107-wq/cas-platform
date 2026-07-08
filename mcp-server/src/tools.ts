@@ -320,6 +320,24 @@ function bodyError(data: unknown): string | null {
   return null;
 }
 
+/** Service name every tool description must carry (Kakao PlayMCP review rule). */
+const SERVICE_NAME = '제주 AI 여행 안내';
+
+/**
+ * Standard MCP tool annotations for our tools. Every tool is a READ-ONLY data
+ * fetch that proxies a live external API, so: read-only, non-destructive,
+ * idempotent, and open-world. `title` is a human-readable Korean label.
+ */
+function readOnlyAnnotations(title: string) {
+  return {
+    title,
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  } as const;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Registration
 // ─────────────────────────────────────────────────────────────────────────────
@@ -330,7 +348,9 @@ export function registerTools(server: McpServer): void {
     'plan_jeju_course',
     {
       title: 'Plan a Jeju travel course (AI)',
+      annotations: readOnlyAnnotations('제주 AI 여행 코스 짜기'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Generate an AI-designed multi-stop Jeju (제주도) travel itinerary/course. ' +
         'Use for requests like "plan my Jeju trip", "make a one-day Jeju course", ' +
         '"제주 여행 코스 짜줘". This starts a background job and waits up to ~55s. ' +
@@ -407,7 +427,9 @@ export function registerTools(server: McpServer): void {
     'check_jeju_course',
     {
       title: 'Check a Jeju course job by jobId',
+      annotations: readOnlyAnnotations('제주 AI 여행 코스 확인'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Retrieve the result of a Jeju travel course that was started by ' +
         'plan_jeju_course but was not ready yet. Pass the jobId returned earlier. ' +
         'Returns the finished courses if ready, or a "still preparing" message if ' +
@@ -444,7 +466,9 @@ export function registerTools(server: McpServer): void {
     'find_hidden_spots',
     {
       title: 'Find hidden local Jeju spots',
+      annotations: readOnlyAnnotations('제주 숨은 로컬 명소 찾기'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Find lesser-known, local-favorite Jeju spots (hidden gems, "관광객은 잘 모르는" ' +
         'places, local restaurants/cafes/nature) matching a query. Use for ' +
         '"hidden gems in Jeju", "제주 로컬 맛집", "숨은 명소".',
@@ -471,7 +495,9 @@ export function registerTools(server: McpServer): void {
     'get_jeju_seasonal',
     {
       title: 'Get seasonal Jeju highlights (right now)',
+      annotations: readOnlyAnnotations('지금 제주 계절 명소'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get what is special in Jeju RIGHT NOW for the current season (seasonal ' +
         'sights, flowers, seasonal activities). Use for "지금 제주 가볼 만한 곳", ' +
         '"what\'s in season in Jeju now".',
@@ -491,7 +517,9 @@ export function registerTools(server: McpServer): void {
     'get_jeju_festivals',
     {
       title: 'Get current Jeju festivals & events',
+      annotations: readOnlyAnnotations('제주 축제·행사 조회'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get festivals and events happening in Jeju now / soon. Use for ' +
         '"제주 축제", "events in Jeju this month".',
       inputSchema: { locale: localeSchema },
@@ -511,7 +539,9 @@ export function registerTools(server: McpServer): void {
     'get_jeju_trending',
     {
       title: 'Get trending / featured Jeju places',
+      annotations: readOnlyAnnotations('지금 뜨는 제주 명소'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get a curated set of currently trending / featured Jeju places ("지금 뜨는 ' +
         '제주"). Good default when the user wants popular recommendations without ' +
         'a specific query.',
@@ -531,7 +561,9 @@ export function registerTools(server: McpServer): void {
     'get_rainy_day_spots',
     {
       title: 'Get rainy-day / indoor Jeju spots',
+      annotations: readOnlyAnnotations('비 오는 날 제주 실내 명소'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Recommend Jeju places that are good even in bad weather — indoor ' +
         'attractions like museums, art galleries, aquariums, and indoor themed ' +
         'spaces. Use for "비 오는 날 갈 곳", "날씨 궂어도 좋은 곳", "실내 관광지", ' +
@@ -552,7 +584,9 @@ export function registerTools(server: McpServer): void {
     'get_jeju_islands',
     {
       title: 'Get Jeju ferry island day-trips',
+      annotations: readOnlyAnnotations('제주 섬 여행(배편)'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get info on Jeju\'s ferry-accessible islands for day trips ' +
         '(우도/가파도/마라도/추자도/비양도): charm, departure point, terminal, ferry ' +
         'duration, and booking notes. Use for "제주 섬 여행", "우도 어떻게 가", ' +
@@ -574,7 +608,9 @@ export function registerTools(server: McpServer): void {
     'get_olle_trails',
     {
       title: 'Get Jeju Olle trail courses',
+      annotations: readOnlyAnnotations('제주 올레길 코스'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get the list of Jeju Olle (올레길) walking trail courses with distance, ' +
         'estimated duration, start/end points, and official links. Use for ' +
         '"올레길", "제주 걷기 코스", "Jeju Olle trail".',
@@ -594,7 +630,9 @@ export function registerTools(server: McpServer): void {
     'get_oreum_hallasan',
     {
       title: 'Get Jeju oreum (volcanic cones) & Hallasan',
+      annotations: readOnlyAnnotations('제주 오름·한라산 트레킹'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get a rotating selection of Jeju oreum (오름, volcanic cones) with ' +
         'location and description — good for hiking and Hallasan-area trails. ' +
         'Use for "오름", "한라산 둘레길", "제주 등산/트레킹", "oreum to hike".',
@@ -614,7 +652,9 @@ export function registerTools(server: McpServer): void {
     'find_nearby_bus_stops',
     {
       title: 'Find nearby Jeju bus stops',
+      annotations: readOnlyAnnotations('제주 가까운 버스 정류장 찾기'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Find Jeju public bus stops near a coordinate (latitude/longitude). ' +
         'Returns stations with their nodeId, which you can pass to get_bus_arrivals. ' +
         'Use for "가까운 버스 정류장", "bus stops near me" (with coordinates).',
@@ -637,7 +677,9 @@ export function registerTools(server: McpServer): void {
     'get_bus_arrivals',
     {
       title: 'Get real-time Jeju bus arrivals',
+      annotations: readOnlyAnnotations('제주 실시간 버스 도착 정보'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get real-time bus arrival info for a specific Jeju bus stop, identified ' +
         'by its nodeId (get one from find_nearby_bus_stops). An empty list means ' +
         'no imminent bus. Use for "버스 언제 와?", "next bus at this stop".',
@@ -662,7 +704,9 @@ export function registerTools(server: McpServer): void {
     'search_bus_route',
     {
       title: 'Search a Jeju bus route by number',
+      annotations: readOnlyAnnotations('제주 버스 노선 검색'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Look up a Jeju bus route by its number and get the ordered list of stops. ' +
         'Use for "몇 번 버스 노선", "where does bus 600 go".',
       inputSchema: {
@@ -689,7 +733,9 @@ export function registerTools(server: McpServer): void {
     'get_exchange_rates',
     {
       title: 'Get exchange rates for Jeju visitors',
+      annotations: readOnlyAnnotations('제주 방문객 환율 조회'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get current KRW exchange rates for currencies relevant to Jeju visitors ' +
         '(USD, CNY, JPY, EUR, HKD, TWD). Use for "환율", "exchange rate", ' +
         '"how much is my currency in won".',
@@ -709,7 +755,9 @@ export function registerTools(server: McpServer): void {
     'get_jeju_weather',
     {
       title: 'Get Jeju weather forecast (5 regions)',
+      annotations: readOnlyAnnotations('제주 날씨 조회'),
       description:
+        `[${SERVICE_NAME}] ` +
         'Get the daily weather forecast for the 5 Jeju regions (제주시/서귀포/동부/' +
         '서부/한라산): weather condition, max/min temperature, and precipitation ' +
         'probability. Use for "제주 날씨", "will it rain in Jeju", trip weather planning.',
