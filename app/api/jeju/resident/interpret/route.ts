@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import type { WelfareProfile } from '@/lib/jeju/welfare'
+import type { WelfareProfile } from '@/lib/care/welfare'
 
 export const runtime = 'nodejs'
 

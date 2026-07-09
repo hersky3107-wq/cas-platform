@@ -350,7 +350,7 @@ export default function JejuChatPage() {
                 type="button"
                 className="jc-ctrl"
                 style={S.retryBtn}
-                onClick={() => { setError(null); void sendMessage(input || bubbles.at(-2)?.msg.content ?? '') }}
+                onClick={() => { setError(null); void sendMessage(input || (bubbles.at(-2)?.msg.content ?? '')) }}
               >
                 다시 시도
               </button>

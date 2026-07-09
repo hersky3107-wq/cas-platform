@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 // Type-only import — erased at build time, so no server code enters the client bundle.
-import type { WelfareProfile } from '@/lib/jeju/welfare'
+import type { WelfareProfile } from '@/lib/care/welfare'
 
 // ── Result shape (mirrors the welfare-match API) ───────────────────────────────
 
