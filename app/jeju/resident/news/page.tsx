@@ -1,20 +1,25 @@
 'use client'
 
 /**
- * 오늘의 소식 — daily elderly-friendly news for resident mode.
+ * 오늘의 소식 — Jeju resident local-news briefing chip.
  *
- * Loads the cached/generated news from /api/jeju/resident/news, then presents
- * it for LISTENING first: a big "전체 읽어주기" reads the whole broadcast in
- * order (national by section, then Jeju), plus per-item 🔊 buttons.
+ * Data: GET /api/domin/news (cached daily Perplexity briefing, Jeju-only,
+ * resident-life categories, last 3 days).
  *
- * Accessibility: large text (≥20/24/32), high contrast, TTS ko-KR with
- * cancel-before-speak, reduced-motion (via ResidentLoading), focus-visible,
- * persistent 처음으로 bar. No localStorage.
+ * Layout:
+ *   - Category-grouped article cards (headline, summary, why, source, asOf)
+ *   - 🔍 검색 provenance line
+ *   - 🔊 읽어주기 (ko-KR): reads headlines + summaries in order
+ *   - Source credit
+ *
+ * Accessibility mirrors weather/transport chips: ≥20px body, ≥48px targets,
+ * ko-KR TTS. Korean-first hardcoded strings; adult reading level.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ResidentLoading } from '@/app/jeju/resident/_components/Loading'
+
+// ── Design tokens (resident palette) ─────────────────────────────────────────
 
 const C = {
   bg: '#E8F2F5',
@@ -24,324 +29,291 @@ const C = {
   sea: '#0A5C7A',
   seaStrong: '#07445B',
   focus: '#C2410C',
-  muted: '#6B7A88',
-  warnBg: '#FDECEC',
-  warnBorder: '#C0392B',
-  warnInk: '#8A241A',
+  mutedBg: '#F0F4F6',
+  mutedBorder: '#B7CDD6',
+  mutedInk: '#4A6070',
 }
 
-const SECTION_ORDER = ['정치', '경제', '사회', '국제', '문화·예술', '스포츠'] as const
-type SectionName = (typeof SECTION_ORDER)[number]
+const CATEGORY_ORDER = [
+  '생활·물가',
+  '교통·공항',
+  '날씨·재난·안전',
+  '행사·축제',
+  '복지·행정',
+  '부동산·개발',
+] as const
 
-interface NationalItem {
-  section: SectionName
-  title: string
+// ── API types ─────────────────────────────────────────────────────────────────
+
+interface NewsItem {
+  category: string
+  headline: string
   summary: string
+  why: string
+  source: string | null
+  asOf: string | null
 }
-interface JejuItem {
-  title: string
-  summary: string
+
+interface ContextMeta {
+  source: string
+  retrievedAt: string
+  asOf: string | null
 }
-interface NewsData {
-  error: boolean
-  message?: string
-  freshLabel?: string
-  national?: NationalItem[]
-  jeju?: JejuItem[]
-  sources?: string[]
-  generated_at?: string | null
+
+interface NewsPayload {
+  ok: true
+  briefing: NewsItem[]
+  contextMeta: ContextMeta
+  freshnessNote: string
+  updatedAt: string
+  errors: string[]
+  fromCache?: boolean
 }
+
+type NewsResult = NewsPayload | { ok: false; error: string }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtRetrieval(meta: ContextMeta): string {
+  const date = meta.retrievedAt.slice(0, 10)
+  return meta.asOf
+    ? `🔍 검색 · ${meta.asOf} 기준 · ${date} 조회`
+    : `🔍 검색 · ${date} 조회`
+}
+
+function fmtAsOf(ymd: string | null): string {
+  if (!ymd) return ''
+  const m = ymd.match(/(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return ymd
+  return `${Number(m[2])}월 ${Number(m[3])}일`
+}
+
+function groupByCategory(items: NewsItem[]): Map<string, NewsItem[]> {
+  const map = new Map<string, NewsItem[]>()
+  for (const cat of CATEGORY_ORDER) map.set(cat, [])
+  for (const it of items) {
+    const list = map.get(it.category) ?? []
+    list.push(it)
+    map.set(it.category, list)
+  }
+  return map
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function NewsPage() {
   const router = useRouter()
-
-  const [data, setData] = useState<NewsData | null>(null)
+  const [data, setData] = useState<NewsPayload | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [ttsSupported, setTtsSupported] = useState(false)
   const [speaking, setSpeaking] = useState(false)
-  const [sourcesOpen, setSourcesOpen] = useState(false)
-  const queueRef = useRef<string[]>([])
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) setTtsSupported(true)
   }, [])
 
-  // ── Fetch news ────────────────────────────────────────────────────────────
+  useEffect(
+    () => () => {
+      abortRef.current?.abort()
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel() } catch { /* no-op */ }
+      }
+    },
+    [],
+  )
 
-  const load = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     setLoading(true)
-    setData(null)
+    setFetchError(null)
     try {
-      const res = await fetch('/api/jeju/resident/news', { method: 'GET' })
-      const json = (await res.json()) as NewsData
-      setData(json)
-    } catch {
-      setData({ error: true, message: '지금은 소식을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.' })
+      const res = await fetch('/api/domin/news', {
+        signal: ctrl.signal,
+        cache: 'no-store',
+      })
+      const json = (await res.json()) as NewsResult
+      if (!json.ok) {
+        setFetchError((json as { ok: false; error: string }).error)
+        setData(null)
+      } else {
+        setData(json as NewsPayload)
+      }
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') return
+      setFetchError('소식을 불러오지 못했어요. 잠시 후 다시 해주세요.')
+      setData(null)
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => {
-    load()
-  }, [load])
-
-  // ── TTS ────────────────────────────────────────────────────────────────────
+  useEffect(() => { void fetchData() }, [fetchData])
 
   const stopSpeaking = useCallback(() => {
-    queueRef.current = []
-    setSpeaking(false)
-    if (ttsSupported && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try { window.speechSynthesis.cancel() } catch { /* no-op */ }
     }
-  }, [ttsSupported])
-
-  useEffect(() => () => stopSpeaking(), [stopSpeaking])
-
-  // Speak a single line (cancels anything in progress).
-  const speakOne = useCallback(
-    (text: string) => {
-      if (!ttsSupported || typeof window === 'undefined' || !text) return
-      stopSpeaking()
-      try {
-        const u = new SpeechSynthesisUtterance(text)
-        u.lang = 'ko-KR'
-        u.rate = 0.92
-        window.speechSynthesis.speak(u)
-      } catch {
-        /* no-op */
-      }
-    },
-    [ttsSupported, stopSpeaking]
-  )
-
-  // Speak a whole queue in order (radio broadcast).
-  const speakQueue = useCallback(
-    (lines: string[]) => {
-      if (!ttsSupported || typeof window === 'undefined' || lines.length === 0) return
-      stopSpeaking()
-      queueRef.current = [...lines]
-      setSpeaking(true)
-
-      const speakNext = () => {
-        const next = queueRef.current.shift()
-        if (next === undefined) {
-          setSpeaking(false)
-          return
-        }
-        try {
-          const u = new SpeechSynthesisUtterance(next)
-          u.lang = 'ko-KR'
-          u.rate = 0.92
-          // onend advances the queue; when stopSpeaking empties it, this ends.
-          u.onend = () => speakNext()
-          u.onerror = () => setSpeaking(false)
-          window.speechSynthesis.speak(u)
-        } catch {
-          setSpeaking(false)
-        }
-      }
-      speakNext()
-    },
-    [ttsSupported, stopSpeaking]
-  )
-
-  // Build the full broadcast script in reading order.
-  const buildFullScript = useCallback((d: NewsData): string[] => {
-    const lines: string[] = []
-    lines.push(`오늘의 소식입니다. ${d.freshLabel ?? ''}`)
-    const national = d.national ?? []
-    if (national.length > 0) {
-      lines.push('먼저 전국 소식입니다.')
-      for (const section of SECTION_ORDER) {
-        const items = national.filter((it) => it.section === section)
-        if (items.length === 0) continue
-        lines.push(`${section} 소식입니다.`)
-        items.forEach((it) => lines.push(`${it.title}. ${it.summary}`))
-      }
-    }
-    const jeju = d.jeju ?? []
-    if (jeju.length > 0) {
-      lines.push('다음은 제주 소식입니다.')
-      jeju.forEach((it) => lines.push(`${it.title}. ${it.summary}`))
-    }
-    lines.push('오늘의 소식을 마칩니다.')
-    return lines.filter((l) => l.trim().length > 0)
+    setSpeaking(false)
   }, [])
 
-  const goHome = useCallback(() => {
+  const buildTts = useCallback((d: NewsPayload): string => {
+    const parts: string[] = ['제주 오늘의 소식입니다.']
+    for (const it of d.briefing) {
+      parts.push(`${it.headline}. ${it.summary}`)
+    }
+    if (d.briefing.length === 0) parts.push('최근 소식이 없습니다.')
+    return parts.join(' ')
+  }, [])
+
+  const onSpeak = useCallback(() => {
+    if (speaking) { stopSpeaking(); return }
+    if (!data || typeof window === 'undefined') return
+    try {
+      window.speechSynthesis.cancel()
+      setSpeaking(true)
+      const u = new SpeechSynthesisUtterance(buildTts(data))
+      u.lang = 'ko-KR'; u.rate = 0.9
+      u.onend = () => setSpeaking(false)
+      u.onerror = () => setSpeaking(false)
+      window.speechSynthesis.speak(u)
+    } catch { setSpeaking(false) }
+  }, [speaking, data, buildTts, stopSpeaking])
+
+  const speakItem = useCallback((it: NewsItem) => {
     stopSpeaking()
-    router.push('/jeju/resident')
-  }, [router, stopSpeaking])
+    if (typeof window === 'undefined' || !ttsSupported) return
+    try {
+      const u = new SpeechSynthesisUtterance(`${it.headline}. ${it.summary}`)
+      u.lang = 'ko-KR'; u.rate = 0.9
+      window.speechSynthesis.speak(u)
+    } catch { /* no-op */ }
+  }, [ttsSupported, stopSpeaking])
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  const national = data?.national ?? []
-  const jeju = data?.jeju ?? []
-  const hasContent = !data?.error && (national.length > 0 || jeju.length > 0)
+  const grouped = data ? groupByCategory(data.briefing) : null
+  const hasItems = (data?.briefing.length ?? 0) > 0
 
   return (
-    <div style={styles.root}>
+    <div style={S.root}>
       <style>{GLOBAL_CSS}</style>
 
-      <main style={styles.frame}>
-        {/* Persistent top bar */}
-        <div style={styles.topBar}>
-          <button type="button" className="nw-ctrl" style={styles.ctrlBtn} onClick={goHome} aria-label="처음으로 돌아가기">
-            <span aria-hidden>↩</span> 처음으로
-          </button>
-          {speaking && (
-            <button type="button" className="nw-ctrl" style={{ ...styles.ctrlBtn, borderColor: C.warnBorder, color: C.warnInk }} onClick={stopSpeaking} aria-label="읽기 멈추기">
-              <span aria-hidden>⏹</span> 그만 읽기
-            </button>
-          )}
-        </div>
+      <div style={S.topBar}>
+        <button type="button" className="rn-back" style={S.backBtn}
+          onClick={() => { stopSpeaking(); router.back() }} aria-label="뒤로 가기">
+          ← 뒤로
+        </button>
+        <h1 style={S.pageTitle}>📰 오늘의 소식</h1>
+        <button type="button" className="rn-ctrl" style={S.refreshBtn}
+          onClick={() => { stopSpeaking(); void fetchData() }}
+          aria-label="새로 고침" disabled={loading}>
+          {loading ? '⏳' : '🔄'}
+        </button>
+      </div>
 
-        <header style={styles.header}>
-          <span style={styles.headerEmoji} aria-hidden>📰</span>
-          <h1 style={styles.h1}>오늘의 소식</h1>
-          {data?.freshLabel && !data.error && <p style={styles.fresh}>{data.freshLabel}</p>}
-        </header>
-
-        {/* Loading (generation only; cache hits return fast) */}
+      <div style={S.body}>
         {loading && (
-          <ResidentLoading
-            steps={['오늘 소식을 모으고 있어요', '쉬운 말로 정리하고 있어요']}
-            ttsSupported={ttsSupported}
-          />
+          <div style={S.loadingBox} aria-live="polite" aria-busy="true">
+            <span style={{ fontSize: 48 }} aria-hidden>⏳</span>
+            <p style={S.loadingText}>제주 소식 불러오는 중…</p>
+            <p style={S.loadingHint}>처음 불러올 때는 10~20초 걸릴 수 있어요</p>
+          </div>
         )}
 
-        {/* Error */}
-        {!loading && data?.error && (
-          <section style={styles.errorCard}>
-            <span style={styles.errorEmoji} aria-hidden>😥</span>
-            <p style={styles.errorText}>{data.message ?? '지금은 소식을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'}</p>
-            <div style={styles.errorBtnRow}>
-              <button type="button" className="nw-primary" style={styles.primaryBtn} onClick={load}>
-                <span aria-hidden>🔄</span> 다시 시도
-              </button>
-              {ttsSupported && (
-                <button type="button" className="nw-read" style={styles.readBtn} onClick={() => speakOne(data.message ?? '지금은 소식을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')}>
-                  <span aria-hidden>🔊</span> 읽어주기
-                </button>
+        {!loading && fetchError && (
+          <div style={S.errorBox} role="alert">
+            <p style={S.errorText}>⚠ {fetchError}</p>
+            <button type="button" className="rn-ctrl" style={S.retryBtn}
+              onClick={() => void fetchData()}>다시 시도</button>
+          </div>
+        )}
+
+        {!loading && data && (
+          <>
+            {/* Freshness + cache hint */}
+            <div style={S.metaBar}>
+              <p style={S.freshness}>{data.freshnessNote}</p>
+              {data.fromCache && (
+                <span style={S.cacheBadge} aria-label="오늘 저장된 소식">오늘 정리본</span>
               )}
             </div>
-          </section>
-        )}
 
-        {/* Content */}
-        {!loading && hasContent && (
-          <>
-            {/* Primary: read the whole broadcast */}
-            {ttsSupported && (
-              <button
-                type="button"
-                className="nw-readall"
-                style={styles.readAllBtn}
-                onClick={() => (speaking ? stopSpeaking() : data && speakQueue(buildFullScript(data)))}
-                aria-label={speaking ? '읽기 멈추기' : '오늘 소식 전체 읽어주기'}
-              >
-                <span aria-hidden>{speaking ? '⏹' : '🔊'}</span>
-                {speaking ? ' 그만 읽기' : ' 전체 읽어주기'}
-              </button>
-            )}
-
-            {/* 전국 소식 */}
-            {national.length > 0 && (
-              <section style={styles.sectionWrap} aria-label="전국 소식">
-                <h2 style={styles.sectionHeading}>전국 소식</h2>
-                {SECTION_ORDER.map((section) => {
-                  const items = national.filter((it) => it.section === section)
-                  if (items.length === 0) return null
-                  return (
-                    <div key={section} style={styles.groupWrap}>
-                      <h3 style={styles.groupLabel}>{section}</h3>
+            {!hasItems ? (
+              <div style={S.card}>
+                <p style={S.empty}>최근 3일 안에 제주 관련 소식이 없어요.</p>
+              </div>
+            ) : (
+              CATEGORY_ORDER.map((cat) => {
+                const items = grouped?.get(cat) ?? []
+                if (items.length === 0) return null
+                return (
+                  <section key={cat} style={S.card} aria-label={`${cat} 소식`}>
+                    <h2 style={S.categoryTitle}>{cat}</h2>
+                    <div style={S.itemList}>
                       {items.map((it, i) => (
-                        <article key={`${section}-${i}`} style={styles.newsCard}>
-                          <div style={styles.newsCardHead}>
-                            <h4 style={styles.newsTitle}>{it.title}</h4>
+                        <article key={`${cat}-${i}`} style={S.item}>
+                          <div style={S.itemHead}>
+                            <h3 style={S.headline}>{it.headline}</h3>
                             {ttsSupported && (
-                              <button
-                                type="button"
-                                className="nw-item-read"
-                                style={styles.itemReadBtn}
-                                onClick={() => speakOne(`${it.title}. ${it.summary}`)}
-                                aria-label={`${it.title} 읽어주기`}
-                              >
-                                <span aria-hidden>🔊</span>
+                              <button type="button" className="rn-item-tts" style={S.itemTtsBtn}
+                                onClick={() => speakItem(it)}
+                                aria-label={`${it.headline} 읽어주기`}>
+                                🔊
                               </button>
                             )}
                           </div>
-                          <p style={styles.newsSummary}>{it.summary}</p>
+                          <p style={S.summary}>{it.summary}</p>
+                          {it.why && (
+                            <p style={S.why}>
+                              <span style={S.whyLabel}>왜 중요한가</span> {it.why}
+                            </p>
+                          )}
+                          <div style={S.itemMeta}>
+                            {it.source && <span style={S.sourceTag}>{it.source}</span>}
+                            {it.asOf && <span style={S.dateTag}>{fmtAsOf(it.asOf)}</span>}
+                          </div>
                         </article>
                       ))}
                     </div>
-                  )
-                })}
-              </section>
+                  </section>
+                )
+              })
             )}
 
-            {/* 제주 소식 */}
-            {jeju.length > 0 && (
-              <section style={styles.sectionWrap} aria-label="제주 소식">
-                <h2 style={{ ...styles.sectionHeading, color: C.seaStrong }}>제주 소식</h2>
-                {jeju.map((it, i) => (
-                  <article key={`jeju-${i}`} style={{ ...styles.newsCard, borderColor: C.sea }}>
-                    <div style={styles.newsCardHead}>
-                      <h4 style={styles.newsTitle}>{it.title}</h4>
-                      {ttsSupported && (
-                        <button
-                          type="button"
-                          className="nw-item-read"
-                          style={styles.itemReadBtn}
-                          onClick={() => speakOne(`${it.title}. ${it.summary}`)}
-                          aria-label={`${it.title} 읽어주기`}
-                        >
-                          <span aria-hidden>🔊</span>
-                        </button>
-                      )}
-                    </div>
-                    <p style={styles.newsSummary}>{it.summary}</p>
-                  </article>
-                ))}
-              </section>
-            )}
-
-            {/* Sources */}
-            {(data?.sources ?? []).length > 0 && (
-              <div style={styles.sourceWrap}>
-                <button
-                  type="button"
-                  className="nw-source-toggle"
-                  style={styles.sourceToggle}
-                  onClick={() => setSourcesOpen((o) => !o)}
-                  aria-expanded={sourcesOpen}
-                >
-                  {sourcesOpen ? '▲ 소식 출처 닫기' : '이 소식은 어디서 왔나요? ▾'}
+            {/* Provenance + TTS + source */}
+            <div style={S.bottomRow}>
+              {ttsSupported && hasItems && (
+                <button type="button" className="rn-ctrl" style={S.ttsBtn}
+                  onClick={onSpeak}
+                  aria-label={speaking ? '읽기 중단' : '전체 읽어주기'}>
+                  <span aria-hidden>{speaking ? '⏹' : '🔊'}</span>
+                  {speaking ? ' 중단' : ' 전체 읽어주기'}
                 </button>
-                {sourcesOpen && (
-                  <div style={styles.sourceList}>
-                    {(data?.sources ?? []).slice(0, 12).map((s, i) => (
-                      <a key={i} href={s} target="_blank" rel="noopener noreferrer" style={styles.sourceLink}>
-                        {s}
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+              <p style={S.provenance}>{fmtRetrieval(data.contextMeta)}</p>
+              <p style={S.sourceCredit}>자료: 🔍 검색 (제주 지역·전국지 제주 보도)</p>
+            </div>
 
-            <p style={styles.footNote}>소식은 하루 두 번, 오전과 저녁에 새로 정리해 드려요.</p>
+            {data.errors.length > 0 && (
+              <details style={S.errDetails}>
+                <summary style={S.errSummary}>⚠ 일부 처리 중 문제가 있었어요</summary>
+                <ul style={S.errList}>
+                  {data.errors.map((e, i) => <li key={i} style={S.errItem}>{e}</li>)}
+                </ul>
+              </details>
+            )}
           </>
         )}
-      </main>
+      </div>
     </div>
   )
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles: Record<string, React.CSSProperties> = {
+const S: Record<string, React.CSSProperties> = {
   root: {
     minHeight: '100dvh',
     background: C.bg,
@@ -349,101 +321,309 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily:
       "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
     display: 'flex',
-    justifyContent: 'center',
-    padding: '0 16px 40px',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '0 0 48px',
     boxSizing: 'border-box',
   },
-  frame: { width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 18 },
   topBar: {
-    display: 'flex', justifyContent: 'space-between', gap: 12,
-    position: 'sticky', top: 0, background: C.bg, paddingTop: 10, paddingBottom: 8, zIndex: 5,
+    width: '100%',
+    maxWidth: 640,
+    display: 'flex',
+    alignItems: 'center',
+    position: 'sticky',
+    top: 0,
+    background: C.bg,
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingLeft: 16,
+    paddingRight: 16,
+    zIndex: 5,
+    gap: 10,
+    boxSizing: 'border-box',
   },
-  ctrlBtn: {
-    flex: 1, minHeight: 58, fontSize: 21, fontWeight: 700, color: C.ink,
-    background: C.surface, border: `3px solid ${C.ink}`, borderRadius: 14, cursor: 'pointer', padding: '6px 12px',
+  backBtn: {
+    minHeight: 48,
+    fontSize: 20,
+    fontWeight: 700,
+    color: C.sea,
+    background: C.surface,
+    border: `2px solid ${C.sea}`,
+    borderRadius: 12,
+    cursor: 'pointer',
+    padding: '6px 16px',
+    whiteSpace: 'nowrap',
   },
-  header: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 },
-  headerEmoji: { fontSize: 46, lineHeight: 1 },
-  h1: { fontSize: 34, fontWeight: 900, color: C.ink, margin: 0, textAlign: 'center', lineHeight: 1.25 },
-  fresh: {
-    fontSize: 20, fontWeight: 700, color: C.sea, margin: 0, textAlign: 'center',
-    background: '#D8ECF2', borderRadius: 10, padding: '6px 16px',
+  pageTitle: {
+    flex: 1,
+    fontSize: 26,
+    fontWeight: 900,
+    color: C.ink,
+    margin: 0,
+    textAlign: 'center',
+    lineHeight: 1.2,
   },
-  // read-all
-  readAllBtn: {
-    width: '100%', minHeight: 84, fontSize: 30, fontWeight: 900, color: '#FFFFFF', background: C.sea,
-    border: 'none', borderRadius: 18, cursor: 'pointer', padding: '12px 20px',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-    boxShadow: '0 6px 20px rgba(10,92,122,0.28)',
+  refreshBtn: {
+    minHeight: 48,
+    minWidth: 48,
+    fontSize: 22,
+    fontWeight: 700,
+    color: C.sea,
+    background: C.surface,
+    border: `2px solid ${C.sea}`,
+    borderRadius: 12,
+    cursor: 'pointer',
+    padding: '6px 10px',
   },
-  // sections
-  sectionWrap: { display: 'flex', flexDirection: 'column', gap: 14 },
-  sectionHeading: { fontSize: 28, fontWeight: 900, color: C.ink, margin: '4px 0 0' },
-  groupWrap: { display: 'flex', flexDirection: 'column', gap: 10 },
-  groupLabel: {
-    fontSize: 22, fontWeight: 900, color: '#FFFFFF', background: C.sea,
-    borderRadius: 10, padding: '6px 16px', margin: '6px 0 2px', alignSelf: 'flex-start',
+  body: {
+    width: '100%',
+    maxWidth: 640,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    padding: '4px 16px 0',
+    boxSizing: 'border-box',
   },
-  newsCard: {
-    display: 'block', background: C.surface, border: `2px solid #CBD9E1`, borderRadius: 16,
-    padding: '18px 18px', boxShadow: '0 3px 12px rgba(15,34,51,0.06)',
+  loadingBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+    padding: '48px 0',
   },
-  newsCardHead: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  newsTitle: { fontSize: 25, fontWeight: 900, color: C.ink, lineHeight: 1.35, margin: 0, wordBreak: 'keep-all', flex: 1 },
-  itemReadBtn: {
-    flexShrink: 0, width: 56, height: 56, fontSize: 24, color: C.sea, background: '#EAF4F8',
-    border: `2px solid ${C.sea}`, borderRadius: 12, cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  loadingText: {
+    fontSize: 22,
+    fontWeight: 700,
+    color: C.inkSoft,
+    margin: 0,
   },
-  newsSummary: { fontSize: 21, lineHeight: 1.6, color: C.inkSoft, margin: '10px 0 0', wordBreak: 'keep-all' },
-  // sources
-  sourceWrap: { display: 'flex', flexDirection: 'column', gap: 0 },
-  sourceToggle: {
-    alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer',
-    fontSize: 18, fontWeight: 700, color: C.muted, padding: '8px 4px',
-    textDecoration: 'underline', textUnderlineOffset: 3,
+  loadingHint: {
+    fontSize: 17,
+    color: C.mutedInk,
+    margin: 0,
   },
-  sourceList: {
-    display: 'flex', flexDirection: 'column', gap: 6,
-    background: '#F0F5F8', borderRadius: 12, padding: '14px 16px', marginTop: 6,
+  errorBox: {
+    background: '#FEF2F2',
+    border: '2px solid #FCA5A5',
+    borderRadius: 16,
+    padding: '20px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
   },
-  sourceLink: { fontSize: 16, color: C.sea, wordBreak: 'break-all', lineHeight: 1.5 },
-  footNote: { fontSize: 18, color: C.muted, textAlign: 'center', margin: 0, lineHeight: 1.5 },
-  // primary / read buttons (error card)
-  primaryBtn: {
-    minHeight: 72, fontSize: 24, fontWeight: 800, color: '#FFFFFF', background: C.sea,
-    border: 'none', borderRadius: 16, cursor: 'pointer', padding: '12px 24px',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+  errorText: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: '#B91C1C',
+    margin: 0,
   },
-  readBtn: {
-    minHeight: 72, fontSize: 22, fontWeight: 700, color: C.sea, background: '#FFFFFF',
-    border: `3px solid ${C.sea}`, borderRadius: 14, cursor: 'pointer', padding: '10px 24px',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+  retryBtn: {
+    minHeight: 48,
+    fontSize: 20,
+    fontWeight: 700,
+    color: C.sea,
+    background: C.surface,
+    border: `2px solid ${C.sea}`,
+    borderRadius: 12,
+    cursor: 'pointer',
+    padding: '8px 22px',
+    alignSelf: 'flex-start',
   },
-  // error card
-  errorCard: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
-    background: C.warnBg, border: `3px solid ${C.warnBorder}`, borderRadius: 20, padding: '28px 22px',
+  metaBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
   },
-  errorEmoji: { fontSize: 54, lineHeight: 1 },
-  errorText: { fontSize: 24, fontWeight: 800, color: C.warnInk, textAlign: 'center', lineHeight: 1.5, margin: 0 },
-  errorBtnRow: { display: 'flex', flexDirection: 'column', gap: 12, width: '100%', alignItems: 'stretch' },
+  freshness: {
+    fontSize: 17,
+    fontWeight: 600,
+    color: C.sea,
+    margin: 0,
+    background: '#D8ECF2',
+    borderRadius: 10,
+    padding: '6px 14px',
+  },
+  cacheBadge: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: C.mutedInk,
+    background: C.mutedBg,
+    border: `1.5px solid ${C.mutedBorder}`,
+    borderRadius: 8,
+    padding: '4px 10px',
+  },
+  card: {
+    background: C.surface,
+    border: `2px solid ${C.mutedBorder}`,
+    borderRadius: 18,
+    padding: '18px 16px 14px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  categoryTitle: {
+    fontSize: 22,
+    fontWeight: 900,
+    color: C.seaStrong,
+    margin: 0,
+    paddingBottom: 4,
+    borderBottom: `2px solid ${C.mutedBorder}`,
+  },
+  itemList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+  },
+  item: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    paddingBottom: 14,
+    borderBottom: `1px solid ${C.mutedBg}`,
+  },
+  itemHead: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  headline: {
+    flex: 1,
+    fontSize: 21,
+    fontWeight: 800,
+    color: C.ink,
+    margin: 0,
+    lineHeight: 1.4,
+    wordBreak: 'keep-all',
+  },
+  itemTtsBtn: {
+    flexShrink: 0,
+    width: 48,
+    height: 48,
+    fontSize: 22,
+    color: C.sea,
+    background: '#EAF4F8',
+    border: `2px solid ${C.sea}`,
+    borderRadius: 12,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summary: {
+    fontSize: 19,
+    lineHeight: 1.65,
+    color: C.inkSoft,
+    margin: 0,
+    wordBreak: 'keep-all',
+  },
+  why: {
+    fontSize: 17,
+    lineHeight: 1.55,
+    color: C.mutedInk,
+    margin: 0,
+    background: C.mutedBg,
+    borderRadius: 10,
+    padding: '10px 12px',
+  },
+  whyLabel: {
+    fontWeight: 800,
+    color: C.sea,
+    marginRight: 6,
+  },
+  itemMeta: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  sourceTag: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: C.sea,
+    background: '#EAF4F8',
+    borderRadius: 8,
+    padding: '3px 10px',
+  },
+  dateTag: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: C.mutedInk,
+  },
+  empty: {
+    fontSize: 20,
+    color: C.mutedInk,
+    margin: 0,
+    padding: '8px 0',
+  },
+  bottomRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  ttsBtn: {
+    minHeight: 54,
+    fontSize: 21,
+    fontWeight: 700,
+    color: C.sea,
+    background: C.surface,
+    border: `3px solid ${C.sea}`,
+    borderRadius: 14,
+    cursor: 'pointer',
+    padding: '6px 22px',
+    alignSelf: 'flex-start',
+  },
+  provenance: {
+    fontSize: 15,
+    color: C.mutedInk,
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  sourceCredit: {
+    fontSize: 15,
+    color: C.mutedInk,
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  errDetails: {
+    background: '#FFFBEB',
+    border: '1.5px solid #FCD34D',
+    borderRadius: 12,
+    padding: '10px 14px',
+  },
+  errSummary: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#92400E',
+    cursor: 'pointer',
+  },
+  errList: {
+    margin: '8px 0 0 16px',
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  errItem: {
+    fontSize: 14,
+    color: C.mutedInk,
+    lineHeight: 1.5,
+  },
 }
 
 const GLOBAL_CSS = `
-  .nw-ctrl:focus-visible, .nw-readall:focus-visible, .nw-read:focus-visible,
-  .nw-primary:focus-visible, .nw-item-read:focus-visible, .nw-source-toggle:focus-visible {
-    outline: 5px solid ${C.focus}; outline-offset: 3px;
+  .rn-back:focus-visible, .rn-ctrl:focus-visible, .rn-item-tts:focus-visible {
+    outline: 5px solid ${C.focus};
+    outline-offset: 3px;
   }
-  .nw-readall:hover, .nw-primary:hover { background: ${C.seaStrong}; }
-  .nw-item-read:hover { background: #DCEEF3; }
-  .nw-ctrl, .nw-readall, .nw-read, .nw-primary, .nw-item-read {
-    transition: transform 0.08s ease, background 0.15s ease; -webkit-tap-highlight-color: transparent;
+  .rn-back:hover, .rn-ctrl:hover { background: #EAF4F8; }
+  .rn-item-tts:hover { background: #DCEEF3; }
+  .rn-back, .rn-ctrl, .rn-item-tts {
+    transition: background 0.12s ease, transform 0.07s ease;
+    -webkit-tap-highlight-color: transparent;
   }
-  .nw-readall:active, .nw-primary:active, .nw-item-read:active, .nw-ctrl:active { transform: scale(0.98); }
+  .rn-back:active, .rn-ctrl:active, .rn-item-tts:active { transform: scale(0.97); }
   @media (prefers-reduced-motion: reduce) {
-    .nw-ctrl, .nw-readall, .nw-read, .nw-primary, .nw-item-read {
-      transition: none !important; transform: none !important;
-    }
+    .rn-back, .rn-ctrl, .rn-item-tts { transition: none !important; transform: none !important; }
   }
 `
