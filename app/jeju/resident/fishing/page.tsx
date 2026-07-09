@@ -309,7 +309,7 @@ export default function FishingPage() {
           type="button"
           className="rf-back"
           style={S.backBtn}
-          onClick={() => { stopSpeaking(); router.back() }}
+          onClick={() => { stopSpeaking(); router.push('/jeju/resident/general') }}
           aria-label="뒤로 가기"
         >
           ← 뒤로

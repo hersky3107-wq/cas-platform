@@ -343,7 +343,7 @@ export default function HaenyeoPage() {
           style={S.backBtn}
           onClick={() => {
             stopSpeaking()
-            router.back()
+            router.push('/jeju/resident/general')
           }}
           aria-label="뒤로 가기"
         >

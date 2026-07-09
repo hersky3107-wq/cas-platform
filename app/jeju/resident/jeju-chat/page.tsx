@@ -237,7 +237,7 @@ export default function JejuChatPage() {
           type="button"
           className="jc-back"
           style={S.backBtn}
-          onClick={() => router.back()}
+          onClick={() => router.push('/jeju/resident/general')}
           aria-label="뒤로 가기"
         >
           ← 뒤로

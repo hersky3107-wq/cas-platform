@@ -193,7 +193,7 @@ export default function PricesPage() {
       {/* Top bar */}
       <div style={S.topBar}>
         <button type="button" className="rp-back" style={S.backBtn}
-          onClick={() => { stopSpeaking(); router.back() }} aria-label="뒤로 가기">
+          onClick={() => { stopSpeaking(); router.push('/jeju/resident/general') }} aria-label="뒤로 가기">
           ← 뒤로
         </button>
         <h1 style={S.pageTitle}>💰 물가·생활</h1>

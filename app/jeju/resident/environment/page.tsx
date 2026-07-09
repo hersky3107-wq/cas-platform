@@ -224,7 +224,7 @@ export default function EnvironmentPage() {
       {/* Top bar */}
       <div style={S.topBar}>
         <button type="button" className="env-back" style={S.backBtn}
-          onClick={() => router.back()} aria-label="뒤로 가기">
+          onClick={() => router.push('/jeju/resident/general')} aria-label="뒤로 가기">
           ← 뒤로
         </button>
         <h1 style={S.pageTitle}>♻️ 배출·환경</h1>

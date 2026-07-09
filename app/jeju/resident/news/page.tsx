@@ -202,7 +202,7 @@ export default function NewsPage() {
 
       <div style={S.topBar}>
         <button type="button" className="rn-back" style={S.backBtn}
-          onClick={() => { stopSpeaking(); router.back() }} aria-label="뒤로 가기">
+          onClick={() => { stopSpeaking(); router.push('/jeju/resident/general') }} aria-label="뒤로 가기">
           ← 뒤로
         </button>
         <h1 style={S.pageTitle}>📰 오늘의 소식</h1>

@@ -166,7 +166,7 @@ export default function WelfarePage() {
       {/* Top bar */}
       <div style={S.topBar}>
         <button type="button" className="wf-back" style={S.backBtn}
-          onClick={() => router.back()} aria-label="뒤로 가기">← 뒤로</button>
+          onClick={() => router.push('/jeju/resident/general')} aria-label="뒤로 가기">← 뒤로</button>
         <h1 style={S.pageTitle}>🏥 복지·행정</h1>
         <div style={{ minWidth: 44 }} />
       </div>
