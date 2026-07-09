@@ -1,0 +1,2 @@
+# Standalone Kakao PlayMCP server — runs separately, not part of the Next.js/Vercel build.
+mcp-server/
