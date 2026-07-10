@@ -93,9 +93,53 @@ function fmtRetrieval(meta: ContextMeta): string {
     : `🔍 검색 · ${date} 조회`
 }
 
-// Strip unit sub-labels like "(냉장)(大)" for display — keep the main name
+// KAMIS item_name is "{base}/{descriptor}", where descriptor is the ACTUAL
+// differentiator between duplicate-looking base names — origin, storage,
+// size grade, or cut (e.g. "갈치/국산(냉장)(中)" vs "갈치/국산(냉동)(大)",
+// "돼지/삼겹살" vs "돼지/목심"). Compress it into a short mobile-friendly
+// suffix instead of discarding it (which is what caused "갈치 갈치 갈치…").
+const GRADE_KO: Record<string, string> = { 大: '대', 中: '중', 小: '소' }
+
+function shortDescriptor(descriptorRaw: string): string {
+  let d = descriptorRaw.replace(/국산/g, '').trim()
+
+  const importMatch = d.match(/수입산?/)
+  if (importMatch) d = d.replace(importMatch[0], '')
+
+  const storageMatch = d.match(/냉장|냉동/)
+  if (storageMatch) d = d.replace(storageMatch[0], '')
+
+  const gradeMatch = d.match(/[大中小]/)
+  if (gradeMatch) d = d.replace(gradeMatch[0], '')
+
+  // Whatever text remains after pulling out the recognized markers (e.g. a
+  // cut name like 삼겹살, or a leftover qualifier) — strip stray parens/
+  // extra whitespace, keep the rest as-is (already short Korean words).
+  const leftover = d.replace(/[()（）]/g, '').replace(/\s+/g, ' ').trim()
+
+  const markers: string[] = []
+  if (importMatch) markers.push('수입')
+  if (storageMatch) markers.push(storageMatch[0])
+  if (gradeMatch) markers.push(GRADE_KO[gradeMatch[0]])
+  const marker = markers.join('·')
+
+  if (marker && leftover) return `${marker} ${leftover}`
+  return marker || leftover
+}
+
 function shortName(full: string): string {
-  return full.split('/')[0]?.trim() ?? full
+  const slashIdx = full.indexOf('/')
+  if (slashIdx === -1) return full.trim()
+
+  const base = full.slice(0, slashIdx).trim()
+  const descriptor = full.slice(slashIdx + 1).trim()
+  if (!descriptor) return base || full.trim()
+
+  // "수입 돼지고기" → keep just "수입" (the origin marker), drop the
+  // redundant base noun — matches how the descriptor-only cut name reads.
+  const labelBase = base.startsWith('수입') ? '수입' : base
+  const shortDesc = shortDescriptor(descriptor)
+  return shortDesc ? `${labelBase} ${shortDesc}` : labelBase
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
