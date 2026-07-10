@@ -1,8 +1,14 @@
-import { MapPin, Clock } from 'lucide-react'
+import { MapPin, Clock, Map as MapIcon, ExternalLink, Info } from 'lucide-react'
 import type { Course, CourseStop } from '@/lib/jeju/tourist-course'
 import type { TouristLocale, TouristUiPack } from '@/lib/jeju/tourist-labels'
 import { useTouristUi } from '@/components/jeju/useTouristUi'
 import { localizeCourseCategory } from './category-labels'
+import {
+  detailFromCourseStop,
+  googleMapsUrl,
+  naverMapsUrl,
+  kakaoMapsUrl,
+} from './place-detail'
 
 /**
  * Course detail — a vertical timeline that reads as a day's JOURNEY
@@ -114,6 +120,59 @@ function StopRow({
         {stop.description && (
           <p className="mt-2 text-[12px] leading-relaxed text-[#4A5C5F]">{stop.description}</p>
         )}
+
+        {/* Map links — same 3-link UI as the place detail modal.
+            Course stops have no coords, so this always uses name search. */}
+        <div className="mt-3">
+          {(() => {
+            const d = detailFromCourseStop(stop)
+            if (d.mapTarget === null) {
+              return (
+                <p className="flex items-start gap-1.5 rounded-[12px] bg-slate-50 px-3 py-2 text-[11px] font-medium leading-relaxed text-slate-500">
+                  <Info size={12} strokeWidth={2.5} className="mt-0.5 shrink-0 text-slate-400" aria-hidden />
+                  {t.mapNoLocation}
+                </p>
+              )
+            }
+            return (
+              <>
+                <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-extrabold text-[#0A2B30]">
+                  <MapIcon size={12} strokeWidth={2.5} className="text-[#00A8B5]" aria-hidden />
+                  {t.mapSearchWeb}
+                </p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <a
+                    href={googleMapsUrl(d)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1 rounded-[10px] bg-[#00A8B5] px-1.5 py-2 text-[11px] font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+                  >
+                    Google
+                    <ExternalLink size={10} strokeWidth={2.5} aria-hidden />
+                  </a>
+                  <a
+                    href={naverMapsUrl(d)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1 rounded-[10px] bg-[#03C75A] px-1.5 py-2 text-[11px] font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+                  >
+                    {t.mapNaver}
+                    <ExternalLink size={10} strokeWidth={2.5} aria-hidden />
+                  </a>
+                  <a
+                    href={kakaoMapsUrl(d)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1 rounded-[10px] bg-[#FEE500] px-1.5 py-2 text-[11px] font-bold text-[#3C1E1E] shadow-sm transition-opacity hover:opacity-90"
+                  >
+                    {t.mapKakao}
+                    <ExternalLink size={10} strokeWidth={2.5} aria-hidden />
+                  </a>
+                </div>
+              </>
+            )
+          })()}
+        </div>
       </div>
     </li>
   )

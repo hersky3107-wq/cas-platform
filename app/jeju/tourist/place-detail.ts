@@ -3,6 +3,7 @@ import type { LocalGem } from '@/lib/jeju/tourist-local'
 import type { SeasonalItem } from '@/lib/jeju/tourist-seasonal'
 import type { IslandInfo } from '@/lib/jeju/tourist-ferry'
 import type { FestivalEvent } from '@/lib/jeju/tourist-festivals'
+import type { CourseStop } from '@/lib/jeju/tourist-course'
 
 /**
  * Normalized detail shape so ONE modal can render every card type
@@ -222,6 +223,25 @@ export function detailFromFestivalEvent(event: FestivalEvent): PlaceDetail {
     mapNote: mapTarget
       ? '장소 검색은 참고용이에요 · 방문 전 공식 채널에서 확인하세요'
       : '특정 장소가 지정되지 않은 행사예요',
+  }
+}
+
+/**
+ * Course-stop → PlaceDetail. Course stops carry NO coordinates (the composer
+ * only emits names + indices), so this always takes the name-search branch of
+ * the URL builders. Reuses the same cleanName/buildWebMapQuery/isConcretePlaceName
+ * pipeline as the other web/sonar items so map links behave identically.
+ */
+export function detailFromCourseStop(stop: CourseStop): PlaceDetail {
+  const mq = buildWebMapQuery(stop.name)
+  const mapTarget = isConcretePlaceName(stop.name) ? mq : null
+  return {
+    title: stop.name,
+    description: stop.description || undefined,
+    sourceLabel: stop.source === 'web' ? '웹에서 찾은 정보' : '비짓제주(제주관광공사) 공식 정보',
+    isWeb: true,
+    mapQuery: mq,
+    mapTarget,
   }
 }
 
