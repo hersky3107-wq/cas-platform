@@ -1,7 +1,8 @@
 import { getFisheryPrice } from '@/lib/jeju/fishery'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+// 40s (was 30s) — upstream timeout is now 15s w/ 1 retry (~31s worst case).
+export const maxDuration = 40
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED Jeju fishery-price data — 도민 일반 mode 농수산 chip.

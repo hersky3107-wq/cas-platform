@@ -1,7 +1,9 @@
 import { matchSubsidies, type MatchInput } from '@/lib/jeju/welfare'
 
 export const runtime = 'nodejs'
-export const maxDuration = 45
+// 60s (was 45s) — upstream timeout is now 15s w/ 1 retry; matchSubsidies fans
+// out gov24 + Perplexity in parallel, then one AI match call.
+export const maxDuration = 60
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 도민(resident) 복지·행정 — 지원금 찾기 (user-condition subsidy match).

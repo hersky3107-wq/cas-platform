@@ -55,7 +55,10 @@ const FLIGHT_OP   = `${TAGO_BASE}/DmstcFlightNvgInfo/GetFlightOpratInfoList`
 const SHIP_PORT_LIST = `${TAGO_BASE}/DmstcShipNvgInfo/GetPortList`
 const SHIP_OP = `${TAGO_BASE}/DmstcShipNvgInfo/GetShipOpratInfoList`
 
-const TIMEOUT_MS = 10_000
+/** 15s (was 10s) — mobile networks add latency on top of upstream response time. */
+const TIMEOUT_MS = 15_000
+/** Backoff before the single automatic retry on a transient failure. */
+const RETRY_DELAY_MS = 500
 const BODY_SNIPPET = 300
 const PERPLEXITY_PROVIDER: ExtendedAiProviderName = 'perplexity'
 const CONTEXT_MAX_TOKENS = 400
@@ -201,7 +204,7 @@ type TagoEnvelope = {
  * network error / timeout / XML error envelope / non-'00'-non-empty resultCode.
  * NODATA (03/04) is a SUCCESS with an empty array.
  */
-async function fetchTago(label: string, url: string): Promise<Record<string, unknown>[]> {
+async function fetchTagoAttempt(label: string, url: string): Promise<Record<string, unknown>[]> {
   logUrl(label, url)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
@@ -256,6 +259,30 @@ async function fetchTago(label: string, url: string): Promise<Record<string, unk
     throw e instanceof Error ? e : new Error(String(e))
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/** Timeout / network-abort / 5xx are transient — worth one retry. 4xx never is. */
+function isRetryableFetchError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  if (e.name === 'TypeError') return true
+  if (/^Timeout after \d+ms$/.test(e.message)) return true
+  if (/^HTTP 5\d\d\b/.test(e.message)) return true
+  return false
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** fetchTagoAttempt + ONE automatic retry (after a short backoff) on transient failures. */
+async function fetchTago(label: string, url: string): Promise<Record<string, unknown>[]> {
+  try {
+    return await fetchTagoAttempt(label, url)
+  } catch (e: unknown) {
+    if (!isRetryableFetchError(e)) throw e
+    await sleep(RETRY_DELAY_MS)
+    return await fetchTagoAttempt(label, url)
   }
 }
 

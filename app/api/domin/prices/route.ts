@@ -1,7 +1,8 @@
 import { getPrices } from '@/lib/jeju/prices'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+// 40s (was 30s) — upstream timeout is now 15s w/ 1 retry (~31s worst case).
+export const maxDuration = 40
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Jeju daily prices — 도민(resident) mode 물가·생활 chip.

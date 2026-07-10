@@ -1,7 +1,9 @@
 import { getEvents } from '@/lib/jeju/events'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+// 45s (was 30s) — culture-XML pages fetch sequentially (up to 5 pages) before
+// Perplexity enrichment; cached per KST day, so this only bites the first hit.
+export const maxDuration = 45
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Jeju 축제·행사 (events, RESIDENT lens) — 도민(resident) mode.

@@ -14,7 +14,8 @@ import 'server-only'
  *     functions exclusively from API routes / server code.
  *   - Every function returns BusResult<T> ({ ok, data } | { ok, error }) and
  *     NEVER throws — a hung/erroring TAGO call degrades gracefully.
- *   - ~10s AbortController timeout per upstream call.
+ *   - ~15s AbortController timeout per upstream call, with ONE automatic
+ *     retry (short backoff) on timeout/network-abort/5xx. 4xx is never retried.
  *   - Normalizes TAGO quirks: single-object-instead-of-array (wrapped), and
  *     XML error envelopes returned even when _type=json is requested.
  *   - Station names embed route context (e.g. "제주국제공항(600번)"); we keep the
@@ -23,7 +24,10 @@ import 'server-only'
 
 const BASE = 'http://apis.data.go.kr/1613000'
 const CITY_CODE = '39' // 제주도 — single code for the whole island
-const TIMEOUT_MS = 10_000
+/** 15s (was 10s) — mobile networks add latency on top of upstream response time. */
+const TIMEOUT_MS = 15_000
+/** Backoff before the single automatic retry on a transient failure. */
+const RETRY_DELAY_MS = 500
 
 // ── Result + domain types ─────────────────────────────────────────────────────
 
@@ -109,17 +113,22 @@ type TagoEnvelope = {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /**
- * Fetch a TAGO operation and return its normalized item array.
- * Returns { ok:false } on network error, timeout, XML error envelope, or a
- * non-'00' resultCode. An empty result set is a SUCCESS with an empty array.
+ * Single attempt at a TAGO operation. Returns its normalized item array as
+ * { ok:false } on network error, timeout, XML error envelope, or a non-'00'
+ * resultCode (empty result set is a SUCCESS with an empty array), plus a
+ * `retryable` flag (timeout / network-abort / 5xx — never 4xx or app errors).
  */
-async function tagoFetch<T>(
+async function tagoFetchAttempt<T>(
   path: string,
   params: Record<string, string | number>
-): Promise<BusResult<T[]>> {
+): Promise<{ result: BusResult<T[]>; retryable: boolean }> {
   const key = serviceKey()
-  if (!key) return { ok: false, error: 'Bus API key not configured' }
+  if (!key) return { result: { ok: false, error: 'Bus API key not configured' }, retryable: false }
 
   const qs = new URLSearchParams({
     serviceKey: key,
@@ -138,7 +147,10 @@ async function tagoFetch<T>(
 
     if (!res.ok) {
       console.error(`[bus] HTTP ${res.status} for ${masked(url)}`)
-      return { ok: false, error: `Bus API error (HTTP ${res.status})` }
+      return {
+        result: { ok: false, error: `Bus API error (HTTP ${res.status})` },
+        retryable: res.status >= 500,
+      }
     }
 
     // TAGO sometimes returns an XML error envelope even with _type=json.
@@ -149,7 +161,7 @@ async function tagoFetch<T>(
       console.error(
         `[bus] XML error envelope (code=${codeMatch?.[1] ?? '?'}, msg=${msgMatch?.[1] ?? '?'}) for ${masked(url)}`
       )
-      return { ok: false, error: 'Bus API returned an error' }
+      return { result: { ok: false, error: 'Bus API returned an error' }, retryable: false }
     }
 
     let json: TagoEnvelope
@@ -157,27 +169,45 @@ async function tagoFetch<T>(
       json = JSON.parse(text) as TagoEnvelope
     } catch {
       console.error(`[bus] Unparseable response for ${masked(url)}: ${text.slice(0, 200)}`)
-      return { ok: false, error: 'Bus API returned an unexpected response' }
+      return { result: { ok: false, error: 'Bus API returned an unexpected response' }, retryable: false }
     }
 
     const header = json.response?.header
     if (header?.resultCode && header.resultCode !== '00') {
       // resultCode 03 / NODATA_ERROR = empty (valid), not a failure.
-      if (header.resultCode === '03') return { ok: true, data: [] }
+      if (header.resultCode === '03') return { result: { ok: true, data: [] }, retryable: false }
       console.error(`[bus] resultCode=${header.resultCode} (${header.resultMsg ?? ''}) for ${masked(url)}`)
-      return { ok: false, error: header.resultMsg || 'Bus API error' }
+      return { result: { ok: false, error: header.resultMsg || 'Bus API error' }, retryable: false }
     }
 
     const rawItems = json.response?.body?.items
     const item = rawItems && typeof rawItems === 'object' ? rawItems.item : undefined
-    return { ok: true, data: asArray<T>(item) }
+    return { result: { ok: true, data: asArray<T>(item) }, retryable: false }
   } catch (e) {
     const aborted = (e as { name?: string })?.name === 'AbortError'
     console.error(`[bus] ${aborted ? 'timeout' : 'fetch error'} for ${masked(url)}`)
-    return { ok: false, error: aborted ? 'Bus API timed out' : 'Bus API request failed' }
+    return {
+      result: { ok: false, error: aborted ? 'Bus API timed out' : 'Bus API request failed' },
+      retryable: true,
+    }
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * tagoFetchAttempt + ONE automatic retry (after a short backoff) on transient
+ * failures (timeout / network abort / 5xx). Never throws.
+ */
+async function tagoFetch<T>(
+  path: string,
+  params: Record<string, string | number>
+): Promise<BusResult<T[]>> {
+  const first = await tagoFetchAttempt<T>(path, params)
+  if (first.result.ok || !first.retryable) return first.result
+  await sleep(RETRY_DELAY_MS)
+  const second = await tagoFetchAttempt<T>(path, params)
+  return second.result
 }
 
 // ── Distance helper (haversine, meters) ────────────────────────────────────────

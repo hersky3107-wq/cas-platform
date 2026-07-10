@@ -43,7 +43,10 @@ const KAMIS_URL = (() => {
   return `http://www.kamis.or.kr/service/price/xml.do?${params.toString()}`
 })
 
-const TIMEOUT_MS = 10_000
+/** 15s (was 10s) — mobile networks add latency on top of upstream response time. */
+const TIMEOUT_MS = 15_000
+/** Backoff before the single automatic retry on a transient failure. */
+const RETRY_DELAY_MS = 500
 const BODY_SNIPPET = 300
 const PERPLEXITY_PROVIDER: ExtendedAiProviderName = 'perplexity'
 const CONTEXT_MAX_TOKENS = 450
@@ -190,7 +193,15 @@ function toItem(row: Record<string, unknown>): PriceItem | null {
 
 // ── KAMIS fetch ───────────────────────────────────────────────────────────────
 
-async function fetchKamis(errors: string[]): Promise<PriceItem[]> {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+type KamisAttempt =
+  | { ok: true; items: PriceItem[] }
+  | { ok: false; message: string; retryable: boolean }
+
+async function fetchKamisAttempt(): Promise<KamisAttempt> {
   const url = KAMIS_URL()
   console.log('[prices] kamis →', redactKey(url))
   const controller = new AbortController()
@@ -199,21 +210,26 @@ async function fetchKamis(errors: string[]): Promise<PriceItem[]> {
     const res = await fetch(url, { method: 'GET', signal: controller.signal, redirect: 'follow' })
     const bodyText = await res.text()
     if (!res.ok) {
-      errors.push(`kamis: HTTP ${res.status} — ${bodyText.slice(0, BODY_SNIPPET)}`)
-      return []
+      return {
+        ok: false,
+        message: `HTTP ${res.status} — ${bodyText.slice(0, BODY_SNIPPET)}`,
+        retryable: res.status >= 500,
+      }
     }
     let parsed: unknown
     try {
       parsed = JSON.parse(bodyText)
     } catch {
-      errors.push(`kamis: JSON parse failed — ${bodyText.slice(0, BODY_SNIPPET)}`)
-      return []
+      return {
+        ok: false,
+        message: `JSON parse failed — ${bodyText.slice(0, BODY_SNIPPET)}`,
+        retryable: false,
+      }
     }
     const obj = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
     const errorCode = obj?.error_code
     if (typeof errorCode === 'string' && errorCode.trim() !== '' && errorCode.trim() !== '000') {
-      errors.push(`kamis: error_code ${errorCode}`)
-      return []
+      return { ok: false, message: `error_code ${errorCode}`, retryable: false }
     }
     const filtered = filterKamisJejuItems(parsed)
     const filteredObj = filtered && typeof filtered === 'object' ? (filtered as Record<string, unknown>) : null
@@ -222,18 +238,28 @@ async function fetchKamis(errors: string[]): Promise<PriceItem[]> {
       : []
     const items = rows.map(toItem).filter((it): it is PriceItem => it !== null)
     console.log(`[prices] kamis rows: ${rows.length} total → ${items.length} items after normalize`)
-    return items
+    return { ok: true, items }
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    if (msg === 'AbortError' || msg.includes('abort')) {
-      errors.push(`kamis: timeout (${TIMEOUT_MS}ms)`)
-    } else {
-      errors.push(`kamis: ${msg}`)
-    }
-    return []
+    const aborted = e instanceof Error && e.name === 'AbortError'
+    const msg = aborted ? `timeout (${TIMEOUT_MS}ms)` : e instanceof Error ? e.message : String(e)
+    // Network-level failures (fetch throwing TypeError) are transient too.
+    const networkError = e instanceof Error && e.name === 'TypeError'
+    return { ok: false, message: msg, retryable: aborted || networkError }
   } finally {
     clearTimeout(timer)
   }
+}
+
+/** fetchKamisAttempt + ONE automatic retry (after a short backoff) on transient failures. */
+async function fetchKamis(errors: string[]): Promise<PriceItem[]> {
+  let attempt = await fetchKamisAttempt()
+  if (!attempt.ok && attempt.retryable) {
+    await sleep(RETRY_DELAY_MS)
+    attempt = await fetchKamisAttempt()
+  }
+  if (attempt.ok) return attempt.items
+  errors.push(`kamis: ${attempt.message}`)
+  return []
 }
 
 // ── Perplexity enrichment ────────────────────────────────────────────────────

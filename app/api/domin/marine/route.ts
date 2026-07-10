@@ -1,7 +1,9 @@
 import { getMarineData } from '@/lib/jeju/marine'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+// 45s (was 30s) — upstream per-call timeout is now 15s w/ 1 retry (~31s worst
+// per section); Promise.allSettled sections run concurrently, so this covers it.
+export const maxDuration = 45
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED Jeju marine data — 도민 일반 mode.

@@ -1,7 +1,10 @@
 import { getTransport, type TransportType } from '@/lib/jeju/transport'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+// 60s (was 30s) — bus runs sequentially before airport/ferry/context, and
+// airport/ferry each resolve a list THEN fan out; with the 15s timeout + 1
+// retry per call this multi-stage flow needs more headroom than a single call.
+export const maxDuration = 60
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED Jeju transport — 도민(resident) mode.

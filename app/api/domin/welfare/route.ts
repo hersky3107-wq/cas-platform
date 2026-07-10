@@ -1,7 +1,9 @@
 import { getWelfare } from '@/lib/jeju/welfare'
 
 export const runtime = 'nodejs'
-export const maxDuration = 45
+// 60s (was 45s) — upstream timeout is now 15s w/ 1 retry; cached per KST day
+// so this only bites the first hit.
+export const maxDuration = 60
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 도민(resident) 복지·행정 — 마감 임박 공고 (deadline-soon calendar).

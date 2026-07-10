@@ -37,7 +37,11 @@ const SONNET_MODEL = 'claude-sonnet-4-6'
 const SONNET_PROVIDER: ExtendedAiProviderName = 'anthropic'
 const PERPLEXITY_PROVIDER: ExtendedAiProviderName = 'perplexity'
 
-const ROUTE_TIMEOUT_MS = 12_000
+// NOTE on retries: callSonnet()/runSingleAiProvider() already retry once (short
+// backoff) on timeout/network-abort via lib/ai/router.ts's fetchWithRetry — no
+// extra retry needed here. ROUTE_TIMEOUT_MS bumped 12s→15s (was the tightest of
+// the three) for consistency with the other resident-general upstream timeouts.
+const ROUTE_TIMEOUT_MS = 15_000
 const REPLY_TIMEOUT_MS = 25_000
 const SEARCH_TIMEOUT_MS = 18_000
 const MAX_HISTORY = 12

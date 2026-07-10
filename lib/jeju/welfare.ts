@@ -35,7 +35,10 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const GOV24_BASE = 'https://api.odcloud.kr/api/gov24/v3'
-const TIMEOUT_MS = 10_000
+/** 15s (was 10s) — mobile networks add latency on top of upstream response time. */
+const TIMEOUT_MS = 15_000
+/** Backoff before the single automatic retry on a transient failure. */
+const RETRY_DELAY_MS = 500
 const PERPLEXITY_TIMEOUT_MS = 20_000
 const BODY_SNIPPET = 300
 const PERPLEXITY_PROVIDER: ExtendedAiProviderName = 'perplexity'
@@ -250,7 +253,7 @@ interface OdcloudEnvelope {
   totalCount?: number
 }
 
-async function fetchJson(url: string): Promise<OdcloudEnvelope> {
+async function fetchJsonAttempt(url: string): Promise<OdcloudEnvelope> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
@@ -280,6 +283,30 @@ async function fetchJson(url: string): Promise<OdcloudEnvelope> {
     throw e instanceof Error ? e : new Error(String(e))
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/** Timeout / network-abort / 5xx are transient — worth one retry. 4xx and odcloud `code<0` never are. */
+function isRetryableFetchError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  if (e.name === 'TypeError') return true
+  if (/^Timeout after \d+ms$/.test(e.message)) return true
+  if (/^HTTP 5\d\d\b/.test(e.message)) return true
+  return false
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** fetchJsonAttempt + ONE automatic retry (after a short backoff) on transient failures. */
+async function fetchJson(url: string): Promise<OdcloudEnvelope> {
+  try {
+    return await fetchJsonAttempt(url)
+  } catch (e: unknown) {
+    if (!isRetryableFetchError(e)) throw e
+    await sleep(RETRY_DELAY_MS)
+    return await fetchJsonAttempt(url)
   }
 }
 

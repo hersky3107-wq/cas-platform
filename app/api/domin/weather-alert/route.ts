@@ -1,7 +1,9 @@
 import { getWeatherAlert } from '@/lib/jeju/weather-alert'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+// 45s (was 30s) — upstream per-call timeout is now 15s w/ 1 retry; give headroom
+// for the short/mid-forecast + warnings sections.
+export const maxDuration = 45
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED Jeju weather & disaster alert — 도민(resident) mode.

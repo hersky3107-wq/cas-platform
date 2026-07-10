@@ -1,7 +1,9 @@
 import { getGuide, GUIDE_TOPICS } from '@/lib/jeju/welfare'
 
 export const runtime = 'nodejs'
-export const maxDuration = 45
+// 60s (was 45s) — upstream timeout is now 15s w/ 1 retry; cached per topic/day
+// so this only bites the first hit.
+export const maxDuration = 60
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 도민(resident) 복지·행정 — 민원 안내 (admin how-to, button-driven).

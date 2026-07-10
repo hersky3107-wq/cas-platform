@@ -36,7 +36,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CULTURE_BASE = 'https://apis.data.go.kr/B553457/cultureinfo'
-const TIMEOUT_MS = 10_000
+/** 15s (was 10s) — mobile networks add latency on top of upstream response time. */
+const TIMEOUT_MS = 15_000
+/** Backoff before the single automatic retry on a transient failure. */
+const RETRY_DELAY_MS = 500
 const PERPLEXITY_TIMEOUT_MS = 20_000
 const BODY_SNIPPET = 300
 const WINDOW_DAYS = 14
@@ -212,7 +215,7 @@ function toGroup(realm: string, hint?: string): EventGroup {
 
 // ── XML fetch ─────────────────────────────────────────────────────────────────
 
-async function fetchXml(url: string): Promise<Record<string, unknown>> {
+async function fetchXmlAttempt(url: string): Promise<Record<string, unknown>> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
@@ -244,6 +247,30 @@ async function fetchXml(url: string): Promise<Record<string, unknown>> {
     throw e instanceof Error ? e : new Error(String(e))
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/** Timeout / network-abort / 5xx are transient — worth one retry. 4xx never is. */
+function isRetryableFetchError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  if (e.name === 'TypeError') return true
+  if (/^Timeout after \d+ms$/.test(e.message)) return true
+  if (/^HTTP 5\d\d\b/.test(e.message)) return true
+  return false
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** fetchXmlAttempt + ONE automatic retry (after a short backoff) on transient failures. */
+async function fetchXml(url: string): Promise<Record<string, unknown>> {
+  try {
+    return await fetchXmlAttempt(url)
+  } catch (e: unknown) {
+    if (!isRetryableFetchError(e)) throw e
+    await sleep(RETRY_DELAY_MS)
+    return await fetchXmlAttempt(url)
   }
 }
 

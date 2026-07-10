@@ -20,7 +20,10 @@ import 'server-only'
 
 const BEACH_BASE = 'https://apis.data.go.kr/1360000/BeachInfoservice'
 const WARN_URL = 'https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrWrnList'
-const TIMEOUT_MS = 10_000
+/** 15s (was 10s) — mobile networks add latency on top of upstream response time. */
+const TIMEOUT_MS = 15_000
+/** Backoff before the single automatic retry on a transient failure. */
+const RETRY_DELAY_MS = 500
 /** Max chars of upstream response body surfaced in errors[] on failure. */
 const BODY_SNIPPET = 300
 /** Default: 이호테우 — central Jeju coastal point (beachNum 348). */
@@ -166,7 +169,7 @@ function readEnvelope(raw: unknown): Record<string, unknown>[] {
   return asArray<Record<string, unknown>>(itemsContainer ? itemsContainer.item : null)
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchJsonAttempt(url: string): Promise<unknown> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
@@ -204,6 +207,30 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
+/** Timeout / network-abort / 5xx are transient — worth one retry. 4xx never is. */
+function isRetryableFetchError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  if (e.name === 'TypeError') return true
+  if (/^Timeout after \d+ms$/.test(e.message)) return true
+  if (/^HTTP 5\d\d\b/.test(e.message)) return true
+  return false
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** fetchJsonAttempt + ONE automatic retry (after a short backoff) on transient failures. */
+async function fetchJson(url: string): Promise<unknown> {
+  try {
+    return await fetchJsonAttempt(url)
+  } catch (e: unknown) {
+    if (!isRetryableFetchError(e)) throw e
+    await sleep(RETRY_DELAY_MS)
+    return await fetchJsonAttempt(url)
+  }
+}
+
 /** KST YYYYMMDD + village-forecast base_time (02/05/08/11/14/17/20/23). */
 function kstBase(): { ymd: string; hm: string } {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000)
@@ -215,6 +242,14 @@ function kstBase(): { ymd: string; hm: string } {
   return { ymd, hm: `${pad(slot)}00` }
 }
 
+/**
+ * BeachInfoservice param names per the official KMA apihub spec — NOT
+ * consistent across ops, so callers must pass the exact case-sensitive keys:
+ *   getTideInfoBeach:   base_date (lowercase b)
+ *   getSunInfoBeach:    Base_date (CAPITAL B — differs from tide!)
+ *   getVilageFcstBeach: base_date + base_time (lowercase, confirmed working)
+ * All ops use beach_num (snake_case) — NOT beachNum/beachnum.
+ */
 function beachUrl(
   op: string,
   beachNum: string,
@@ -223,8 +258,7 @@ function beachUrl(
 ): string {
   const params = new URLSearchParams({
     serviceKey: key,
-    beachNum,
-    beach_num: beachNum, // some ops accept snake_case
+    beach_num: beachNum,
     pageNo: '1',
     numOfRows: '40',
     dataType: 'JSON',
@@ -449,8 +483,11 @@ export async function getMarineData(spot?: string | null): Promise<MarineResult>
       op: string
       extra?: Record<string, string>
     }> = [
-      { label: 'tide', op: 'getTideInfoBeach' },
-      { label: 'sun', op: 'getSunInfoBeach' },
+      // Lowercase base_date — confirmed via official apihub example.
+      { label: 'tide', op: 'getTideInfoBeach', extra: { base_date: ymd } },
+      // CAPITAL-B Base_date — getSunInfoBeach is inconsistent with the other
+      // ops; sending base_date (lowercase) here is what caused resultCode 11.
+      { label: 'sun', op: 'getSunInfoBeach', extra: { Base_date: ymd } },
       {
         label: 'forecast',
         op: 'getVilageFcstBeach',
