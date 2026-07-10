@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -286,14 +287,7 @@ export default function EventsPage() {
             </div>
 
             {/* Non-fatal errors */}
-            {data.errors.length > 0 && (
-              <details style={S.errDetails}>
-                <summary style={S.errSummary}>⚠ 일부 정보를 불러오지 못했어요</summary>
-                <ul style={S.errList}>
-                  {data.errors.map((e, i) => <li key={i} style={S.errItem}>{e}</li>)}
-                </ul>
-              </details>
-            )}
+            <FriendlyErrors errors={data.errors} />
           </>
         )}
       </div>

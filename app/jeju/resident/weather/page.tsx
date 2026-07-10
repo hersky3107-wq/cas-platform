@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 
 // ── Design tokens (resident palette) ─────────────────────────────────────────
 
@@ -384,11 +385,7 @@ export default function WeatherPage() {
             )}
 
             {/* partial errors notice */}
-            {data.errors.length > 0 && (
-              <p style={S.partialNotice} role="note">
-                일부 자료 미제공 (베타) — {data.errors.length}개 오류
-              </p>
-            )}
+            <FriendlyErrors errors={data.errors} />
           </>
         )}
 
@@ -446,7 +443,7 @@ const S: Record<string, React.CSSProperties> = {
 
   chipRow: { display: 'flex', gap: 10 },
   chip: {
-    background: C.surface, border: `2px solid ${C.mutedBorder}`,
+    background: C.surface, borderWidth: 2, borderStyle: 'solid', borderColor: C.mutedBorder,
     borderRadius: 24, color: C.mutedInk,
     fontSize: 18, fontWeight: 700, padding: '10px 20px', minHeight: 48, cursor: 'pointer',
     transition: 'opacity 0.15s',

@@ -8,7 +8,7 @@ import 'server-only'
  * THREE parts:
  *   1. 미세먼지 — 한국환경공단_에어코리아 대기오염 현황 (시도별 실시간, 제주).
  *        PM10 / PM2.5 값 + 등급 + 경보(있으면). data.go.kr key (KPX fallback).
- *   2. 클린하우스/재활용도움센터 — STATIC seed asset (lib/jeju/data/cleanhouse.json).
+ *   2. 클린하우스/재활용도움센터 — STATIC asset (lib/jeju/data/cleanhouse.json, data.go.kr official CSV).
  *        Optional lat/lng → nearest N (haversine); default grouped by 읍면동.
  *   3. 배출요일제 / 분리배출 Q&A — Perplexity (no formal 요일제 API):
  *        ALWAYS-ON enrichment (context) + POST /ask (one call per question).
@@ -37,7 +37,7 @@ const BODY_SNIPPET = 300
 const PERPLEXITY_PROVIDER: ExtendedAiProviderName = 'perplexity'
 const CONTEXT_MAX_TOKENS = 500
 const ASK_MAX_TOKENS = 500
-const FRESHNESS_NOTE = '에어코리아 실시간 + 클린하우스 위치(표본) + 🔍 검색'
+const FRESHNESS_NOTE = '제주시 실시간 위치 + 서귀포시 주소 목록 (공식 데이터) + 🔍 검색'
 
 // AirKorea grade code → Korean label
 const GRADE_LABEL: Record<string, string> = {
@@ -63,12 +63,13 @@ export interface CleanCenter {
   name: string
   dong: string
   address: string
-  lat: number
-  lng: number
+  landmark: string | null
+  lat: number | null
+  lng: number | null
   items: string[]
   hours: string
   type: string
-  /** present only when lat/lng provided */
+  /** present only when user lat/lng given and center has coords */
   distanceKm?: number
 }
 
@@ -274,16 +275,24 @@ interface RawCenter {
   name: string
   dong: string
   address: string
-  lat: number
-  lng: number
+  landmark?: string | null
+  lat: number | null
+  lng: number | null
   items: string[]
   hours: string
   type: string
 }
 
+function hasValidCoords(c: CleanCenter): c is CleanCenter & { lat: number; lng: number } {
+  return c.lat != null && c.lng != null && Number.isFinite(c.lat) && Number.isFinite(c.lng)
+}
+
 function allCenters(): CleanCenter[] {
   const raw = (cleanhouseData as { centers?: RawCenter[] }).centers ?? []
-  return raw.map((c) => ({ ...c }))
+  return raw.map((c) => ({
+    ...c,
+    landmark: c.landmark ?? null,
+  }))
 }
 
 function buildCenters(opts: EnvironmentOptions): CentersResult {
@@ -293,13 +302,17 @@ function buildCenters(opts: EnvironmentOptions): CentersResult {
   if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
     const limit = opts.limit && opts.limit > 0 ? opts.limit : 6
     const nearest = centers
-      .map((c) => ({ ...c, distanceKm: Math.round(haversineKm(lat, lng, c.lat, c.lng) * 10) / 10 }))
+      .filter(hasValidCoords)
+      .map((c) => ({
+        ...c,
+        distanceKm: Math.round(haversineKm(lat, lng, c.lat, c.lng) * 10) / 10,
+      }))
       .sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0))
       .slice(0, limit)
     return { nearest }
   }
 
-  // Default: group by 읍면동
+  // Default: group by 읍면동 (includes address-only Seogwipo entries)
   const byDong: Record<string, CleanCenter[]> = {}
   for (const c of centers) {
     ;(byDong[c.dong] ??= []).push(c)

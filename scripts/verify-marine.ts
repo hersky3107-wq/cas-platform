@@ -55,10 +55,13 @@ function summarize(payload: unknown): void {
   console.log('wave       :', p.wave == null ? 'null' : p.wave)
   console.log('waterTempC :', p.waterTempC)
   console.log('sun        :', p.sun)
-  console.log(
-    'warnings   :',
-    Array.isArray(p.warnings) ? `${(p.warnings as unknown[]).length} item(s)` : p.warnings,
-  )
+  const warns = Array.isArray(p.warnings) ? (p.warnings as Record<string, unknown>[]) : []
+  console.log(`warnings   : ${warns.length} item(s) (de-duplicated by type+level+area)`)
+  if (warns.length > 0) {
+    warns.forEach((w, i) => {
+      console.log(`  [${i + 1}] ${w.type}${w.level}  area=${w.area}  issuedAt=${w.issuedAt}`)
+    })
+  }
   console.log('errors     :', p.errors)
   console.log('updatedAt  :', p.updatedAt)
 }

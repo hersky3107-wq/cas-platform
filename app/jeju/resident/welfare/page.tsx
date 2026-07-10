@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -402,12 +403,7 @@ function BottomRow({ meta, freshness, disclaimer, errors }: {
       {freshness && <p style={S.freshnessNote}>{freshness}</p>}
       <p style={S.sourceCredit}>자료: 보조금24 + 🔍 검색</p>
       <p style={S.disclaimerText}>⚠ {disclaimer}</p>
-      {errors.length > 0 && (
-        <details style={S.errDetails}>
-          <summary style={S.errSummary}>⚠ 일부 정보를 불러오지 못했어요</summary>
-          <ul style={S.errList}>{errors.map((e, i) => <li key={i} style={S.errItem}>{e}</li>)}</ul>
-        </details>
-      )}
+      <FriendlyErrors errors={errors} />
     </div>
   )
 }
@@ -464,7 +460,8 @@ const S: Record<string, React.CSSProperties> = {
   },
   tabBtn: {
     flex: 1, minHeight: 44, fontSize: 13, fontWeight: 700, color: C.mutedInk,
-    background: 'transparent', border: 'none', borderBottom: '3px solid transparent',
+    background: 'transparent', border: 'none',
+    borderBottomWidth: 3, borderBottomStyle: 'solid', borderBottomColor: 'transparent',
     cursor: 'pointer', padding: '8px 6px', transition: 'color 0.12s, border-color 0.12s',
   },
   tabBtnActive: { color: C.sea, borderBottomColor: C.sea },
@@ -492,7 +489,7 @@ const S: Record<string, React.CSSProperties> = {
     borderRadius: 10, padding: '8px 11px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
   },
   chipRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  chip: { fontSize: 13, fontWeight: 700, color: C.sea, background: C.seaLight, border: `1.5px solid ${C.mutedBorder}`, borderRadius: 20, padding: '4px 12px', cursor: 'pointer' },
+  chip: { fontSize: 13, fontWeight: 700, color: C.sea, background: C.seaLight, borderWidth: '1.5px', borderStyle: 'solid', borderColor: C.mutedBorder, borderRadius: 20, padding: '4px 12px', cursor: 'pointer' },
   chipActive: { background: C.sea, color: '#fff', borderColor: C.sea },
   searchBtn: {
     minHeight: 44, fontSize: 16, fontWeight: 700, color: '#fff', background: C.sea,

@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -61,12 +62,19 @@ interface CleanCenter {
   name: string
   dong: string
   address: string
-  lat: number
-  lng: number
+  landmark: string | null
+  lat: number | null
+  lng: number | null
   items: string[]
   hours: string
   type: string
   distanceKm?: number
+}
+
+/** Primary line: landmark for Seogwipo-style; full name for Jeju-style (dong + landmark). */
+function centerTitle(c: CleanCenter): string {
+  if (c.name && c.landmark && c.name !== c.landmark && c.name.startsWith(c.dong)) return c.name
+  return c.landmark?.trim() || c.name?.trim() || c.address
 }
 
 interface ContextMeta {
@@ -360,12 +368,15 @@ export default function EnvironmentPage() {
                   {centersList.map((c, i) => (
                     <div key={i} role="listitem" style={S.centerRow}>
                       <div style={S.centerTopRow}>
-                        <span style={S.centerName}>{c.name}</span>
+                        <span style={S.centerName}>{centerTitle(c)}</span>
                         <span style={c.type === '재활용도움센터' ? S.typeBadgeRecycle : S.typeBadgeClean}>
                           {c.type}
                         </span>
                       </div>
-                      <p style={S.centerAddr}>{c.dong} · {c.address}</p>
+                      <p style={S.centerDong}>{c.dong}</p>
+                      {c.address && c.address !== centerTitle(c) && (
+                        <p style={S.centerAddrSecondary}>주소: {c.address}</p>
+                      )}
                       <p style={S.centerHours}>⏰ {c.hours}</p>
                       {c.distanceKm != null && (
                         <p style={S.centerDist}>📏 {c.distanceKm}km</p>
@@ -390,14 +401,7 @@ export default function EnvironmentPage() {
             </div>
 
             {/* Non-fatal errors */}
-            {data.errors.length > 0 && (
-              <details style={S.errDetails}>
-                <summary style={S.errSummary}>⚠ 일부 정보를 불러오지 못했어요</summary>
-                <ul style={S.errList}>
-                  {data.errors.map((e, i) => <li key={i} style={S.errItem}>{e}</li>)}
-                </ul>
-              </details>
-            )}
+                <FriendlyErrors errors={data.errors} />
           </>
         )}
       </div>
@@ -674,7 +678,7 @@ const S: Record<string, React.CSSProperties> = {
     gap: 8,
     flexWrap: 'wrap',
   },
-  centerName: { fontSize: 15, fontWeight: 700, color: C.ink },
+  centerName: { fontSize: 16, fontWeight: 800, color: C.ink, lineHeight: 1.35 },
   typeBadgeRecycle: {
     fontSize: 11,
     fontWeight: 700,
@@ -695,7 +699,8 @@ const S: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap',
     flexShrink: 0,
   },
-  centerAddr: { fontSize: 13, color: C.inkSoft, margin: 0 },
+  centerDong: { fontSize: 13, fontWeight: 600, color: C.sea, margin: 0 },
+  centerAddrSecondary: { fontSize: 12, color: C.mutedInk, margin: 0, lineHeight: 1.45 },
   centerHours: { fontSize: 13, color: C.mutedInk, margin: 0 },
   centerDist: { fontSize: 13, color: C.sea, fontWeight: 700, margin: 0 },
   itemChips: {

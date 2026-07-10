@@ -370,16 +370,22 @@ function parseWarnings(items: Record<string, unknown>[]): MarineWarning[] {
       issuedAt: formatIssuedAt(it.tmFc),
     })
   }
-  // Newest first
+  console.log(`[marine] warnings raw: ${out.length} parsed from ${items.length} API rows`)
+  // Newest first — ensures the first occurrence per key is the most recent issuedAt.
   out.sort((a, b) => (a.issuedAt < b.issuedAt ? 1 : a.issuedAt > b.issuedAt ? -1 : 0))
-  // Dedupe identical type+level+issuedAt
+  // Dedupe by (type + level + area): KMA re-announces the same warning multiple times
+  // with different tmFc/tmSeq values. Keying on issuedAt would keep every re-announcement
+  // as a separate entry, causing "풍랑주의보, 풍랑주의보, 풍랑주의보" duplicates.
+  // We keep the FIRST (= most recent) occurrence per logical warning identity.
   const seen = new Set<string>()
-  return out.filter((w) => {
-    const k = `${w.type}|${w.level}|${w.issuedAt}`
+  const deduped = out.filter((w) => {
+    const k = `${w.type}|${w.level}|${w.area}`
     if (seen.has(k)) return false
     seen.add(k)
     return true
   })
+  console.log(`[marine] warnings deduped: ${deduped.length} distinct (type+level+area)`)
+  return deduped
 }
 
 /**
@@ -393,7 +399,7 @@ export async function fetchJejuWeatherWarnings(keyOverride?: string): Promise<Ma
   const params = new URLSearchParams({
     serviceKey: key,
     pageNo: '1',
-    numOfRows: '30',
+    numOfRows: '100',
     dataType: 'JSON',
     stnId: '184', // 제주
   })

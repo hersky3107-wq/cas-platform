@@ -583,7 +583,9 @@ const S: Record<string, React.CSSProperties> = {
   chipRow: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   chip: {
     background: C.surface,
-    border: `2px solid ${C.mutedBorder}`,
+    borderWidth: 2,
+    borderStyle: 'solid',
+    borderColor: C.mutedBorder,
     borderRadius: 24,
     color: C.mutedInk,
     fontSize: 18,

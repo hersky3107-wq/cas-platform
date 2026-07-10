@@ -26,6 +26,7 @@ import {
   useState,
 } from 'react'
 import { useRouter } from 'next/navigation'
+import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -102,14 +103,157 @@ function fmtProvenance(meta: ContextMeta): string {
     : `🔍 검색 · ${date} 조회`
 }
 
-/** Render plain text with line-breaks → JSX (no markdown parser needed here) */
-function renderText(text: string): React.ReactNode {
-  return text.split('\n').map((line, i, arr) => (
-    <span key={i}>
-      {line}
-      {i < arr.length - 1 && <br />}
-    </span>
-  ))
+/** Inline markdown: **bold**, *italic*, `code` → React nodes (no dangerouslySetInnerHTML). */
+function renderInline(text: string, prefix: string): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  // Matches **bold**, *italic*, `code` in one pass
+  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`([^`\n]+)`)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let k = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    if (m[0].startsWith('**'))
+      out.push(<strong key={`${prefix}b${k++}`}>{m[2]}</strong>)
+    else if (m[0].startsWith('*'))
+      out.push(<em key={`${prefix}i${k++}`}>{m[3]}</em>)
+    else
+      out.push(
+        <code key={`${prefix}c${k++}`} style={{ background: '#EEF2F5', borderRadius: 4, padding: '1px 5px', fontSize: '0.9em', fontFamily: 'monospace' }}>
+          {m[4]}
+        </code>,
+      )
+    last = m.index + m[0].length
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+
+/**
+ * Minimal safe markdown renderer — no dangerouslySetInnerHTML.
+ * Handles: ## headings, - bullets, | tables |, **bold**, *italic*, `code`.
+ */
+function renderMarkdown(text: string): React.ReactNode {
+  const raw = text.split('\n')
+
+  // Categorize each line
+  type Parsed =
+    | { k: 'h1' | 'h2' | 'h3'; body: string }
+    | { k: 'li'; body: string }
+    | { k: 'tr'; cells: string[] }
+    | { k: 'sep' }   // table separator | --- | --- |
+    | { k: 'hr' }
+    | { k: 'blank' }
+    | { k: 'p'; body: string }
+
+  const parsed: Parsed[] = raw.map((line) => {
+    const l = line.trimEnd()
+    if (!l.trim()) return { k: 'blank' } as Parsed
+    const h3 = l.match(/^###\s+(.+)/); if (h3) return { k: 'h3', body: h3[1] } as Parsed
+    const h2 = l.match(/^##\s+(.+)/);  if (h2) return { k: 'h2', body: h2[1] } as Parsed
+    const h1 = l.match(/^#\s+(.+)/);   if (h1) return { k: 'h1', body: h1[1] } as Parsed
+    const li = l.match(/^[-*+]\s+(.+)/) ?? l.match(/^\d+[.)]\s+(.+)/)
+    if (li) return { k: 'li', body: li[1] } as Parsed
+    if (l.startsWith('|') && l.endsWith('|')) {
+      const cells = l.slice(1, -1).split('|').map((c) => c.trim())
+      if (cells.every((c) => /^[-:\s]+$/.test(c))) return { k: 'sep' } as Parsed
+      return { k: 'tr', cells } as Parsed
+    }
+    if (/^[-*_]{3,}$/.test(l.trim())) return { k: 'hr' } as Parsed
+    return { k: 'p', body: l } as Parsed
+  })
+
+  const nodes: React.ReactNode[] = []
+  let i = 0
+  while (i < parsed.length) {
+    const p = parsed[i]
+
+    if (p.k === 'blank') { i++; continue }
+
+    if (p.k === 'hr') {
+      nodes.push(<hr key={`hr${i}`} style={{ border: 'none', borderTop: `1px solid ${C.mutedBorder}`, margin: '8px 0' }} />)
+      i++; continue
+    }
+
+    if (p.k === 'h1' || p.k === 'h2' || p.k === 'h3') {
+      const sz = p.k === 'h1' ? 17 : p.k === 'h2' ? 16 : 15
+      const mt = p.k === 'h1' ? 12 : 8
+      nodes.push(
+        <div key={`h${i}`} style={{ fontSize: sz, fontWeight: 800, color: C.seaStrong, marginTop: mt, marginBottom: 2, lineHeight: 1.4 }}>
+          {renderInline(p.body, `h${i}-`)}
+        </div>,
+      )
+      i++; continue
+    }
+
+    if (p.k === 'li') {
+      const items: string[] = []
+      while (i < parsed.length && parsed[i].k === 'li') {
+        items.push((parsed[i] as { k: 'li'; body: string }).body)
+        i++
+      }
+      nodes.push(
+        <ul key={`ul${i}`} style={{ margin: '4px 0', paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {items.map((item, j) => (
+            <li key={j} style={{ fontSize: 15, lineHeight: 1.6, color: C.ink }}>
+              {renderInline(item, `li${i}-${j}-`)}
+            </li>
+          ))}
+        </ul>,
+      )
+      continue
+    }
+
+    if (p.k === 'tr') {
+      const rows: string[][] = []
+      let isFirst = true
+      while (i < parsed.length && (parsed[i].k === 'tr' || parsed[i].k === 'sep')) {
+        if (parsed[i].k === 'tr') rows.push((parsed[i] as { k: 'tr'; cells: string[] }).cells)
+        i++
+      }
+      nodes.push(
+        <div key={`tbl${i}`} style={{ overflowX: 'auto', margin: '4px 0' }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
+            <tbody>
+              {rows.map((cells, ri) => {
+                const isHeader = isFirst && ri === 0
+                isFirst = false
+                return (
+                  <tr key={ri} style={{ background: isHeader ? C.seaLight : ri % 2 === 0 ? C.surface : C.mutedBg }}>
+                    {cells.map((cell, ci) => (
+                      <td key={ci} style={{ border: `1px solid ${C.mutedBorder}`, padding: '4px 8px', whiteSpace: 'nowrap', fontWeight: isHeader ? 700 : 400 }}>
+                        {renderInline(cell, `td${i}-${ri}-${ci}-`)}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>,
+      )
+      continue
+    }
+
+    // Paragraph: collect consecutive 'p' lines
+    const lines: string[] = []
+    while (i < parsed.length && parsed[i].k === 'p') {
+      lines.push((parsed[i] as { k: 'p'; body: string }).body)
+      i++
+    }
+    const inlines: React.ReactNode[] = []
+    lines.forEach((ln, li2) => {
+      if (li2 > 0) inlines.push(<br key={`br${i}-${li2}`} />)
+      inlines.push(...renderInline(ln, `p${i}-${li2}-`))
+    })
+    nodes.push(
+      <p key={`p${i}`} style={{ margin: '3px 0', fontSize: 15, lineHeight: 1.65, color: C.ink, wordBreak: 'keep-all', overflowWrap: 'anywhere' }}>
+        {inlines}
+      </p>,
+    )
+  }
+
+  return <>{nodes}</>
 }
 
 // ── Example prompts ───────────────────────────────────────────────────────────
@@ -283,8 +427,8 @@ export default function JejuChatPage() {
               <div style={S.userBubble}>{msg.content}</div>
             ) : (
               <div style={S.aiBubble}>
-                {/* Reply text */}
-                <p style={S.aiText}>{renderText(msg.content)}</p>
+                {/* Reply text — rendered as markdown */}
+                <div style={S.aiText}>{renderMarkdown(msg.content)}</div>
 
                 {/* Search-deep raw block */}
                 {ai?.searchRaw && (
@@ -296,30 +440,20 @@ export default function JejuChatPage() {
                   </details>
                 )}
 
-                {/* Provenance */}
-                {ai?.contextMeta && (
+                {/* Provenance (search/cache) OR route badge (internal only) — never both */}
+                {ai?.contextMeta ? (
                   <p style={S.provenance}>{fmtProvenance(ai.contextMeta)}</p>
-                )}
-
-                {/* Route badge */}
-                {ai && (
+                ) : ai && (
                   <div style={S.badgeRow}>
                     <span style={S.routeBadge}>
-                      {ai.usedSearch ? '🔍' : ai.routedVia === 'cache' ? '📦' : '🧠'}{' '}
+                      {ai.routedVia === 'cache' ? '📦' : '🧠'}{' '}
                       {routeLabel(ai.routedVia)}
                     </span>
-                    {ai.errors.length > 0 && (
-                      <details style={S.errDetails}>
-                        <summary style={S.errSummary}>⚠</summary>
-                        <ul style={S.errList}>
-                          {ai.errors.map((e, i) => (
-                            <li key={i} style={S.errItem}>{e}</li>
-                          ))}
-                        </ul>
-                      </details>
-                    )}
                   </div>
                 )}
+
+                {/* Per-bubble errors */}
+                {ai && <FriendlyErrors errors={ai.errors} />}
               </div>
             )}
           </div>
@@ -548,10 +682,11 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 15,
     lineHeight: 1.65,
     color: C.ink,
-    margin: 0,
     wordBreak: 'keep-all',
     overflowWrap: 'anywhere',
-    whiteSpace: 'pre-wrap',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
   },
 
   // Loading

@@ -23,6 +23,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 
 // ── Design tokens (resident palette) ─────────────────────────────────────────
 
@@ -607,14 +608,7 @@ export default function HaenyeoPage() {
             )}
 
             {/* ── Partial-data notice ───────────────────────────────── */}
-            {data.errors.length > 0 && (
-              <p style={S.partialNotice} role="note">
-                일부 자료 미제공 (베타){' '}
-                <span style={{ fontWeight: 400, fontSize: 14 }}>
-                  — BeachInfoservice 활용신청 필요
-                </span>
-              </p>
-            )}
+            <FriendlyErrors errors={data.errors} />
           </>
         )}
 
@@ -703,7 +697,9 @@ const S: Record<string, React.CSSProperties> = {
   },
   spotBtn: {
     background: C.surface,
-    border: `2px solid ${C.mutedBorder}`,
+    borderWidth: 2,
+    borderStyle: 'solid',
+    borderColor: C.mutedBorder,
     borderRadius: 24,
     color: C.mutedInk,
     fontSize: 18,

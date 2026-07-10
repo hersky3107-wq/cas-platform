@@ -636,17 +636,10 @@ export async function chatJeju(opts: ChatOptions): Promise<ChatResult> {
       errors,
     })
 
-    // Append provenance line for search-derived replies
-    const provenance = contextMeta.asOf
-      ? `🔍 검색 · ${contextMeta.asOf} 기준 · ${contextMeta.retrievedAt.slice(0, 10)} 조회`
-      : `🔍 검색 · ${contextMeta.retrievedAt.slice(0, 10)} 조회`
-    const replyWithProv = reply.includes('🔍 검색')
-      ? reply
-      : `${reply}\n\n${provenance}`
-
+    // Provenance is surfaced by the frontend via contextMeta — do not embed in reply text.
     return {
       ok: true,
-      reply: replyWithProv,
+      reply,
       usedSearch: true,
       searchRaw: deep && searchRaw ? searchRaw : null,
       contextMeta,

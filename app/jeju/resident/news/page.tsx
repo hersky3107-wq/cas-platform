@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 
 // ── Design tokens (resident palette) ─────────────────────────────────────────
 
@@ -297,12 +298,7 @@ export default function NewsPage() {
             </div>
 
             {data.errors.length > 0 && (
-              <details style={S.errDetails}>
-                <summary style={S.errSummary}>⚠ 일부 처리 중 문제가 있었어요</summary>
-                <ul style={S.errList}>
-                  {data.errors.map((e, i) => <li key={i} style={S.errItem}>{e}</li>)}
-                </ul>
-              </details>
+              <FriendlyErrors errors={data.errors} />
             )}
           </>
         )}
