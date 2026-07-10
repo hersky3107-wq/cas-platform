@@ -18,11 +18,11 @@
 import { useEffect, useRef, useState } from 'react'
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  sea: '#0A5C7A',
-  inkSoft: '#33475B',
+  ink: '#12263A',
+  sea: '#0E4E8A',
+  inkSoft: '#3C4C60',
 }
 
 interface ResidentLoadingProps {
@@ -130,7 +130,7 @@ export function ResidentLoading({
               className="rl-dot"
               style={{
                 ...ld.dot,
-                background: i < dotCount ? C.sea : '#C5D9E2',
+                background: i < dotCount ? C.sea : '#BFD9F5',
                 transform: i < dotCount ? 'scale(1.25)' : 'scale(1)',
               }}
             />
@@ -213,7 +213,7 @@ const ld: Record<string, React.CSSProperties> = {
   barTrack: {
     width: '100%',
     height: 12,
-    background: '#C5D9E2',
+    background: '#BFD9F5',
     borderRadius: 8,
     overflow: 'hidden',
   },

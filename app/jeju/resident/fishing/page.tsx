@@ -27,20 +27,20 @@ import { ResidentLoading } from '../_components/Loading'
 // ── Design tokens (resident palette — identical to haenyeo) ──────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
   red: '#B91C1C',
   redBg: '#FEF2F2',
   redBorder: '#FCA5A5',
-  yellow: '#92400E',
+  yellow: '#8A3F04',
   yellowBg: '#FFFBEB',
   yellowBorder: '#FCD34D',
   green: '#14532D',
@@ -130,7 +130,7 @@ function fmtDate(iso: string): string {
 
 const VERDICT_STYLE: Record<Verdict, { color: string; bg: string; border: string; emoji: string }> = {
   '나가도 좋음': { color: C.green, bg: C.greenBg, border: C.greenBorder, emoji: '🟢' },
-  '주의': { color: '#B45309', bg: C.yellowBg, border: C.yellowBorder, emoji: '🟡' },
+  '주의': { color: '#C25A10', bg: C.yellowBg, border: C.yellowBorder, emoji: '🟡' },
   '오늘은 접자': { color: C.red, bg: C.redBg, border: C.redBorder, emoji: '🔴' },
 }
 
@@ -522,7 +522,7 @@ export default function FishingPage() {
 const GLOBAL_CSS = `
   .rf-back:focus-visible, .rf-chip:focus-visible, .rf-go:focus-visible,
   .rf-tts:focus-visible, .rf-retry:focus-visible {
-    outline: 4px solid #C2410C; outline-offset: 3px;
+    outline: 4px solid #E8590C; outline-offset: 3px;
   }
   .rf-chip:hover:not(:disabled) { opacity: 0.85; }
   .rf-go:hover { filter: brightness(0.94); }
@@ -714,8 +714,8 @@ const S: Record<string, React.CSSProperties> = {
   provenance: {
     fontSize: 15,
     fontWeight: 700,
-    color: '#225567',
-    background: '#D1E8EE',
+    color: '#0A3A66',
+    background: '#FCE6C6',
     borderRadius: 8,
     padding: '5px 10px',
     margin: '2px 0 0',

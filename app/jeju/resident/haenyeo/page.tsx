@@ -28,23 +28,23 @@ import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 // ── Design tokens (resident palette) ─────────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
-  badgeBg: '#D1E8EE',
-  badgeInk: '#225567',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
+  badgeBg: '#FCE6C6',
+  badgeInk: '#0A3A66',
   // Signal colours
   red: '#B91C1C',
   redBg: '#FEF2F2',
   redBorder: '#FCA5A5',
-  yellow: '#92400E',
+  yellow: '#8A3F04',
   yellowBg: '#FFFBEB',
   yellowBorder: '#FCD34D',
   green: '#14532D',
@@ -626,7 +626,7 @@ const GLOBAL_CSS = `
   .rh-spot:focus-visible,
   .rh-tts:focus-visible,
   .rh-btn:focus-visible {
-    outline: 4px solid #C2410C;
+    outline: 4px solid #E8590C;
     outline-offset: 3px;
   }
   .rh-spot:hover { opacity: 0.85; }
@@ -923,7 +923,7 @@ const S: Record<string, React.CSSProperties> = {
   sunsetTime: {
     fontSize: 48,
     fontWeight: 900,
-    color: '#C2410C',
+    color: '#E8590C',
     margin: 0,
     fontVariantNumeric: 'tabular-nums',
     letterSpacing: '-0.02em',

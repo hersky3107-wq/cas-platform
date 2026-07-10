@@ -31,24 +31,24 @@ import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  seaLight: '#E0F3F8',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
-  userBubble: '#0A5C7A',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  seaLight: '#DCEAFB',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
+  userBubble: '#0E4E8A',
   userBubbleText: '#FFFFFF',
   aiBubble: '#FFFFFF',
-  aiBubbleText: '#0F2233',
-  searchBg: '#F0F9FF',
+  aiBubbleText: '#12263A',
+  searchBg: '#EAF2FB',
   searchBorder: '#BAE6FD',
-  searchInk: '#0369A1',
+  searchInk: '#0E4E8A',
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ function renderInline(text: string, prefix: string): React.ReactNode[] {
       out.push(<em key={`${prefix}i${k++}`}>{m[3]}</em>)
     else
       out.push(
-        <code key={`${prefix}c${k++}`} style={{ background: '#EEF2F5', borderRadius: 4, padding: '1px 5px', fontSize: '0.9em', fontFamily: 'monospace' }}>
+        <code key={`${prefix}c${k++}`} style={{ background: '#EDF1FA', borderRadius: 4, padding: '1px 5px', fontSize: '0.9em', fontFamily: 'monospace' }}>
           {m[4]}
         </code>,
       )
@@ -789,7 +789,7 @@ const S: Record<string, React.CSSProperties> = {
   errDetails: { marginTop: 2 },
   errSummary: {
     fontSize: 12,
-    color: '#92400E',
+    color: '#8A3F04',
     cursor: 'pointer',
     fontWeight: 700,
   },
@@ -859,8 +859,8 @@ const GLOBAL_CSS = `
     outline: 3px solid ${C.focus};
     outline-offset: 2px;
   }
-  .jc-back:hover { background: #EAF4F8; }
-  .jc-example:hover { background: #C8E8F0; border-color: ${C.sea}; }
+  .jc-back:hover { background: #EAF2FB; }
+  .jc-example:hover { background: #BFD9F5; border-color: ${C.sea}; }
   .jc-send:not(:disabled):hover { background: ${C.seaStrong}; }
   .jc-input:focus {
     border-color: ${C.sea};

@@ -13,20 +13,21 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { residentHome } from '@/app/jeju/resident/_lib/origin'
 
 // ── Theme ──────────────────────────────────────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  warnBg: '#FDECEC',
-  warnBorder: '#C0392B',
-  warnInk: '#8A241A',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  warnBg: '#FCE8E6',
+  warnBorder: '#B91C1C',
+  warnInk: '#7F1D1D',
   cautionBg: '#FEF6E4',
   cautionBorder: '#B7791F',
 }
@@ -41,9 +42,9 @@ const MODE_META: Record<PhotoMode, { emoji: string; title: string; hint: string 
 }
 
 const RISK_COLORS: Record<string, { bg: string; border: string; ink: string }> = {
-  높음: { bg: '#FDECEC', border: '#C0392B', ink: '#8A241A' },
+  높음: { bg: '#FCE8E6', border: '#B91C1C', ink: '#7F1D1D' },
   의심: { bg: '#FEF6E4', border: '#B7791F', ink: '#7A5410' },
-  확인불가: { bg: '#ECF1F4', border: '#54708A', ink: '#33475B' },
+  확인불가: { bg: '#F5EAD6', border: '#5E5A50', ink: '#3C4C60' },
 }
 
 // ── Help guide (phishing) ──────────────────────────────────────────────────────
@@ -244,7 +245,7 @@ function PhotoHelper() {
 
   const goHome = useCallback(() => {
     stopSpeaking()
-    router.push('/jeju/resident')
+    router.push(residentHome())
   }, [router, stopSpeaking])
 
   // ── Build narration for results ───────────────────────────────────────────
@@ -618,7 +619,7 @@ const styles: Record<string, React.CSSProperties> = {
   lead: { fontSize: 22, lineHeight: 1.6, color: C.inkSoft, margin: 0, textAlign: 'center' },
   privacy: {
     fontSize: 19, lineHeight: 1.5, color: C.sea, fontWeight: 700, margin: 0, textAlign: 'center',
-    background: '#DCEEF3', border: `2px solid ${C.sea}`, borderRadius: 12, padding: '10px 14px',
+    background: '#DCEAFB', border: `2px solid ${C.sea}`, borderRadius: 12, padding: '10px 14px',
   },
   errorLine: { fontSize: 20, color: C.warnInk, fontWeight: 700, margin: 0, textAlign: 'center' },
   primaryBtn: {
@@ -637,18 +638,18 @@ const styles: Record<string, React.CSSProperties> = {
   },
   spinner: {
     alignSelf: 'center', width: 60, height: 60, borderRadius: '50%',
-    border: '8px solid #CDE1E8', borderTopColor: C.sea,
+    border: '8px solid #CFE3FA', borderTopColor: C.sea,
   },
   loadingText: { fontSize: 28, fontWeight: 800, color: C.ink, margin: 0, textAlign: 'center' },
   unreadableText: { fontSize: 26, fontWeight: 800, lineHeight: 1.5, color: C.ink, margin: 0, textAlign: 'center' },
   heroLine: {
     fontSize: 30, fontWeight: 900, lineHeight: 1.4, color: C.ink, margin: 0,
-    background: '#D4EDF5', border: `3px solid ${C.sea}`, borderRadius: 16, padding: '18px 18px',
+    background: '#CFE3FA', border: `3px solid ${C.sea}`, borderRadius: 16, padding: '18px 18px',
   },
   factRow: { display: 'flex', gap: 12, flexWrap: 'wrap' },
   factChip: {
     flex: 1, minWidth: 140, display: 'flex', flexDirection: 'column', gap: 4,
-    background: '#F4F9FB', border: `2px solid ${C.sea}`, borderRadius: 14, padding: '12px 14px',
+    background: '#FCFAF4', border: `2px solid ${C.sea}`, borderRadius: 14, padding: '12px 14px',
   },
   factLabel: { fontSize: 18, fontWeight: 800, color: C.sea },
   factValue: { fontSize: 26, fontWeight: 800, color: C.ink },
@@ -682,24 +683,24 @@ const styles: Record<string, React.CSSProperties> = {
   sectionHead: { display: 'flex', alignItems: 'center', paddingTop: 4 },
   sectionLabel: { fontSize: 23, fontWeight: 900, color: C.sea },
   sectionDivider: {
-    height: 2, background: '#C8DDE6', borderRadius: 2, margin: '6px 0',
+    height: 2, background: '#BFD9F5', borderRadius: 2, margin: '6px 0',
   },
   textareaLabel: { fontSize: 21, fontWeight: 800, color: C.ink },
   textarea: {
     fontSize: 22, lineHeight: 1.6, color: C.ink,
-    background: '#FAFCFD', border: `3px solid ${C.sea}`, borderRadius: 14,
+    background: '#FDFBF6', border: `3px solid ${C.sea}`, borderRadius: 14,
     padding: '14px 16px', resize: 'vertical', minHeight: 148,
     fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif",
     width: '100%', boxSizing: 'border-box',
   },
   clipboardBtn: {
     minHeight: 66, fontSize: 22, fontWeight: 700, color: C.sea,
-    background: '#EAF4F8', border: `2px solid ${C.sea}`, borderRadius: 14, cursor: 'pointer',
+    background: '#EAF2FB', border: `2px solid ${C.sea}`, borderRadius: 14, cursor: 'pointer',
     padding: '10px 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
   },
   // phishing guide
   guideCard: {
-    background: '#F0F7FA', borderRadius: 20, padding: '24px 22px',
+    background: '#FAF6EE', borderRadius: 20, padding: '24px 22px',
     border: `2px solid ${C.sea}`, display: 'flex', flexDirection: 'column', gap: 18,
   },
   guideHeader: { display: 'flex', flexDirection: 'column', gap: 12 },
@@ -708,7 +709,7 @@ const styles: Record<string, React.CSSProperties> = {
   guideItem: { display: 'flex', gap: 14, alignItems: 'flex-start' },
   guideNum: {
     fontSize: 20, fontWeight: 900, color: C.sea,
-    background: '#DCEEF3', borderRadius: '50%',
+    background: '#DCEAFB', borderRadius: '50%',
     width: 36, height: 36, minWidth: 36, minHeight: 36,
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
@@ -724,7 +725,7 @@ const GLOBAL_CSS = `
   .ph-textarea:focus-visible { outline: 5px solid ${C.focus}; outline-offset: 2px; }
   .ph-primary:hover:not(:disabled) { background: ${C.seaStrong}; }
   .ph-primary:disabled { cursor: not-allowed !important; }
-  .ph-clipboard:hover { background: #D4EAF3; }
+  .ph-clipboard:hover { background: #CFE3FA; }
   .ph-primary, .ph-secondary, .ph-ctrl, .ph-read, .ph-clipboard {
     transition: transform 0.08s ease, background 0.15s ease; -webkit-tap-highlight-color: transparent;
   }

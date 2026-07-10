@@ -21,19 +21,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ResidentLoading } from '@/app/jeju/resident/_components/Loading'
 import type { BusStation, BusArrival, BusRoute } from '@/lib/jeju/bus'
+import { residentHome } from '@/app/jeju/resident/_lib/origin'
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  muted: '#6B7A88',
-  warnBg: '#FDECEC',
-  warnBorder: '#C0392B',
-  warnInk: '#8A241A',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  muted: '#5E5A50',
+  warnBg: '#FCE8E6',
+  warnBorder: '#B91C1C',
+  warnInk: '#7F1D1D',
   lowBg: '#E4F3E6',
   lowBorder: '#2E7D32',
   lowInk: '#1B5E20',
@@ -268,7 +269,7 @@ export default function ResidentBusPage() {
   const goHome = useCallback(() => {
     stopSpeaking()
     clearRefresh()
-    router.push('/jeju/resident')
+    router.push(residentHome())
   }, [router, stopSpeaking, clearRefresh])
 
   const backToEntry = useCallback(() => {
@@ -662,7 +663,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   heroEmoji: { fontSize: 60, lineHeight: 1 },
   heroTitle: { fontSize: 40, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.15 },
-  heroSub: { fontSize: 22, fontWeight: 600, color: '#C8E8F0', textAlign: 'center', lineHeight: 1.5 },
+  heroSub: { fontSize: 22, fontWeight: 600, color: '#BFD9F5', textAlign: 'center', lineHeight: 1.5 },
   secondaryBtn: {
     display: 'flex', alignItems: 'center', gap: 16, width: '100%', minHeight: 100,
     background: C.surface, border: `3px solid ${C.sea}`, borderRadius: 18, padding: '18px 20px',
@@ -700,7 +701,7 @@ const styles: Record<string, React.CSSProperties> = {
   stationBtnRow: { display: 'flex', gap: 10, flexWrap: 'wrap' },
   busList: { display: 'flex', flexDirection: 'column', gap: 14 },
   busCard: {
-    display: 'block', background: C.surface, border: `2px solid #CBD9E1`, borderRadius: 16,
+    display: 'block', background: C.surface, border: `2px solid #E0D2B4`, borderRadius: 16,
     padding: '18px 20px', boxShadow: '0 3px 12px rgba(15,34,51,0.06)',
   },
   busCardTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
@@ -718,7 +719,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cardReadBtn: {
     marginTop: 14, width: '100%', minHeight: 56, fontSize: 20, fontWeight: 700, color: C.sea,
-    background: '#EAF4F8', border: `2px solid ${C.sea}`, borderRadius: 12, cursor: 'pointer',
+    background: '#EAF2FB', border: `2px solid ${C.sea}`, borderRadius: 12, cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
   },
   // other stations
@@ -726,10 +727,10 @@ const styles: Record<string, React.CSSProperties> = {
   otherHeading: { fontSize: 24, fontWeight: 900, color: C.ink, margin: '6px 0 0' },
   stationBtn: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-    width: '100%', minHeight: 68, background: C.surface, border: `2px solid #CBD9E1`,
+    width: '100%', minHeight: 68, background: C.surface, border: `2px solid #E0D2B4`,
     borderRadius: 14, padding: '12px 20px', cursor: 'pointer', textAlign: 'left', boxSizing: 'border-box',
   },
-  stationBtnOn: { border: `3px solid ${C.sea}`, background: '#EAF4F8' },
+  stationBtnOn: { border: `3px solid ${C.sea}`, background: '#EAF2FB' },
   stationBtnName: { fontSize: 23, fontWeight: 800, color: C.ink, wordBreak: 'keep-all' },
   stationBtnDist: { fontSize: 19, fontWeight: 700, color: C.muted, flexShrink: 0 },
   stationBtnArrow: { fontSize: 26, fontWeight: 900, color: C.sea, flexShrink: 0 },
@@ -755,14 +756,14 @@ const styles: Record<string, React.CSSProperties> = {
   // tabs (detail)
   tabRow: { display: 'flex', gap: 12 },
   tabBtn: {
-    flex: 1, minHeight: 72, fontSize: 21, fontWeight: 800, color: C.sea, background: '#EAF4F8',
+    flex: 1, minHeight: 72, fontSize: 21, fontWeight: 800, color: C.sea, background: '#EAF2FB',
     border: `2px solid ${C.sea}`, borderRadius: 14, cursor: 'pointer', padding: '8px 10px',
   },
   tabBtnOn: { background: C.sea, color: '#FFFFFF' },
   // route search
   routeInputRow: { display: 'flex', gap: 12 },
   routeInput: {
-    flex: 1, fontSize: 26, fontWeight: 800, color: C.ink, background: '#FAFCFD',
+    flex: 1, fontSize: 26, fontWeight: 800, color: C.ink, background: '#FDFBF6',
     border: `3px solid ${C.sea}`, borderRadius: 14, padding: '12px 16px', minHeight: 68,
     boxSizing: 'border-box', textAlign: 'center',
     fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif",
@@ -775,21 +776,21 @@ const styles: Record<string, React.CSSProperties> = {
   errorLine: { fontSize: 21, color: C.warnInk, fontWeight: 700, margin: 0, textAlign: 'center' },
   routeWrap: { display: 'flex', flexDirection: 'column', gap: 12 },
   routeHead: { display: 'flex', alignItems: 'center', gap: 12 },
-  routeType: { fontSize: 20, fontWeight: 800, color: C.sea, background: '#EAF4F8', borderRadius: 10, padding: '4px 14px' },
+  routeType: { fontSize: 20, fontWeight: 800, color: C.sea, background: '#EAF2FB', borderRadius: 10, padding: '4px 14px' },
   routeEnds: { fontSize: 21, fontWeight: 700, color: C.inkSoft, margin: 0, lineHeight: 1.5, wordBreak: 'keep-all' },
   stopOl: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 },
   stopItem: {
     display: 'flex', alignItems: 'center', gap: 12, background: C.surface,
-    border: `2px solid #CBD9E1`, borderRadius: 12, padding: '12px 16px',
+    border: `2px solid #E0D2B4`, borderRadius: 12, padding: '12px 16px',
   },
   stopSeq: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    width: 40, height: 40, borderRadius: '50%', background: '#E7F3F7',
+    width: 40, height: 40, borderRadius: '50%', background: '#EAF2FB',
     fontSize: 19, fontWeight: 900, color: C.sea,
   },
   stopName: { fontSize: 22, fontWeight: 700, color: C.ink, flex: 1, wordBreak: 'keep-all', lineHeight: 1.35 },
   mapLink: {
-    fontSize: 18, fontWeight: 800, color: C.sea, background: '#EAF4F8', borderRadius: 10,
+    fontSize: 18, fontWeight: 800, color: C.sea, background: '#EAF2FB', borderRadius: 10,
     padding: '8px 14px', textDecoration: 'none', flexShrink: 0,
   },
 }
@@ -802,7 +803,7 @@ const GLOBAL_CSS = `
   }
   .bs-input:focus { outline: 4px solid ${C.sea}; outline-offset: 0; border-color: ${C.seaStrong} !important; }
   .bs-hero:hover, .bs-primary:hover, .bs-kind:hover { background: ${C.seaStrong}; }
-  .bs-secondary:hover, .bs-station:hover { background: #EAF4F8; }
+  .bs-secondary:hover, .bs-station:hover { background: #EAF2FB; }
   .bs-ctrl, .bs-read, .bs-primary, .bs-secondary, .bs-hero, .bs-station, .bs-kind {
     transition: transform 0.08s ease, background 0.15s ease; -webkit-tap-highlight-color: transparent;
   }

@@ -18,24 +18,24 @@ import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  seaLight: '#D8ECF2',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  seaLight: '#CFE3FA',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
   green: '#166534',
   greenBg: '#DCFCE7',
-  orange: '#C2410C',
+  orange: '#E8590C',
   orangeBg: '#FFEDD5',
   blue: '#1D4ED8',
   blueBg: '#DBEAFE',
-  warn: '#92400E',
+  warn: '#8A3F04',
   warnBg: '#FEF3C7',
 }
 
@@ -504,7 +504,7 @@ const S: Record<string, React.CSSProperties> = {
   subsidyTop: { display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' },
   subsidyName: { flex: 1, fontSize: 15, fontWeight: 700, color: C.ink, lineHeight: 1.4, wordBreak: 'keep-all' },
   srcBadge24: { fontSize: 11, fontWeight: 700, color: C.blue, background: C.blueBg, borderRadius: 6, padding: '2px 7px', flexShrink: 0, whiteSpace: 'nowrap' },
-  srcBadgeSearch: { fontSize: 11, fontWeight: 700, color: '#0369A1', background: '#F0F9FF', borderRadius: 6, padding: '2px 7px', flexShrink: 0, whiteSpace: 'nowrap' },
+  srcBadgeSearch: { fontSize: 11, fontWeight: 700, color: '#0E4E8A', background: '#EAF2FB', borderRadius: 6, padding: '2px 7px', flexShrink: 0, whiteSpace: 'nowrap' },
   subsidyMeta: { fontSize: 13, color: C.inkSoft, margin: 0, lineHeight: 1.5 },
   dBadge: { display: 'inline-block', fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '1px 7px', marginLeft: 8 },
   dBadgeSafe: { color: C.green, background: C.greenBg },
@@ -535,7 +535,7 @@ const S: Record<string, React.CSSProperties> = {
   sourceCredit: { fontSize: 12, color: C.mutedInk, margin: 0 },
   disclaimerText: { fontSize: 12, color: C.warn, background: C.warnBg, borderRadius: 8, padding: '6px 10px', margin: 0, lineHeight: 1.5 },
   errDetails: { background: '#FFFBEB', border: '1.5px solid #FCD34D', borderRadius: 10, padding: '6px 10px' },
-  errSummary: { fontSize: 13, fontWeight: 700, color: '#92400E', cursor: 'pointer' },
+  errSummary: { fontSize: 13, fontWeight: 700, color: '#8A3F04', cursor: 'pointer' },
   errList: { margin: '4px 0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 2 },
   errItem: { fontSize: 12, color: C.mutedInk, lineHeight: 1.4 },
 }
@@ -545,10 +545,10 @@ const GLOBAL_CSS = `
   .wf-chip:focus-visible, .wf-topic:focus-visible {
     outline: 3px solid ${C.focus}; outline-offset: 2px;
   }
-  .wf-back:hover, .wf-ctrl:hover { background: #EAF4F8; }
+  .wf-back:hover, .wf-ctrl:hover { background: #EAF2FB; }
   .wf-tab:hover { color: ${C.sea}; }
-  .wf-chip:hover { background: #C8E8F0; }
-  .wf-topic:hover { background: #C8E8F0; border-color: ${C.sea}; }
+  .wf-chip:hover { background: #BFD9F5; }
+  .wf-topic:hover { background: #BFD9F5; border-color: ${C.sea}; }
   .wf-input:focus { border-color: ${C.sea}; box-shadow: 0 0 0 3px ${C.sea}20; }
   .wf-back, .wf-ctrl, .wf-tab, .wf-chip, .wf-topic {
     transition: background 0.1s, color 0.1s, border-color 0.1s;

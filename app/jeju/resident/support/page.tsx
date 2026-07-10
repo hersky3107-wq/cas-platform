@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 
 // Type-only import — erased at build time, so no server code enters the client bundle.
 import type { WelfareProfile } from '@/lib/care/welfare'
+import { residentHome } from '@/app/jeju/resident/_lib/origin'
 
 // ── Result shape (mirrors the welfare-match API) ───────────────────────────────
 
@@ -58,15 +59,15 @@ type Phase = 'intro' | 'question' | 'freetext' | 'loading' | 'results'
 // ── Theme (high-contrast, Jeju-sea accent) ─────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233', // deep navy — AAA on light
-  inkSoft: '#33475B',
-  sea: '#0A5C7A', // deep sea accent
-  seaStrong: '#07445B',
-  yesBg: '#0A5C7A',
-  line: '#0F2233',
-  focus: '#C2410C', // strong amber-orange focus ring
+  ink: '#12263A', // deep navy — AAA on light
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A', // deep sea accent
+  seaStrong: '#0A3A66',
+  yesBg: '#0E4E8A',
+  line: '#12263A',
+  focus: '#E8590C', // strong amber-orange focus ring
 }
 
 export default function ResidentSupportPage() {
@@ -203,7 +204,7 @@ export default function ResidentSupportPage() {
 
   const goHome = useCallback(() => {
     stopSpeaking()
-    router.push('/jeju/resident')
+    router.push(residentHome())
   }, [router, stopSpeaking])
 
   const startFlow = useCallback(() => {
@@ -572,7 +573,7 @@ function ProgressDots({ total, current }: { total: number; current: number }) {
           aria-hidden
           style={{
             ...styles.dot,
-            background: i <= current ? C.sea : '#B7CDD6',
+            background: i <= current ? C.sea : '#D9C6A2',
             transform: i === current ? 'scale(1.25)' : 'scale(1)',
           }}
         />
@@ -674,7 +675,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 20,
     lineHeight: 1.6,
     color: C.ink,
-    background: '#DCEEF3',
+    background: '#DCEAFB',
     border: `2px solid ${C.sea}`,
     borderRadius: 14,
     padding: '14px 16px',
@@ -729,7 +730,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   answerMaybe: {
     color: C.ink,
-    background: '#EAEFF2',
+    background: '#EDF1FA',
     border: `3px solid ${C.inkSoft}`,
   },
   backBtn: {
@@ -801,7 +802,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 26,
     fontWeight: 700,
     color: C.ink,
-    background: '#EAEFF2',
+    background: '#EDF1FA',
     border: `3px solid ${C.inkSoft}`,
     borderRadius: 16,
     cursor: 'pointer',
@@ -812,7 +813,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 64,
     height: 64,
     borderRadius: '50%',
-    border: `8px solid #CDE1E8`,
+    border: `8px solid #CFE3FA`,
     borderTopColor: C.sea,
   },
   cardList: {
@@ -824,7 +825,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 20,
   },
   card: {
-    background: '#F4F9FB',
+    background: '#FCFAF4',
     border: `3px solid ${C.sea}`,
     borderRadius: 18,
     padding: '22px 20px',
@@ -879,7 +880,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     lineHeight: 1.45,
     color: C.ink,
-    background: '#D4EDF5',
+    background: '#CFE3FA',
     border: `2px solid ${C.sea}`,
     borderRadius: 12,
     padding: '12px 16px',

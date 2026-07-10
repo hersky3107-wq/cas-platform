@@ -25,22 +25,22 @@ import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
   // Dust grade colours
   gradeGood: '#166534',
   gradeGoodBg: '#DCFCE7',
   gradeMid: '#1E40AF',
   gradeMidBg: '#DBEAFE',
-  gradeBad: '#C2410C',
+  gradeBad: '#E8590C',
   gradeBadBg: '#FFEDD5',
   gradeVbad: '#991B1B',
   gradeVbadBg: '#FEE2E2',
@@ -632,7 +632,7 @@ const S: Record<string, React.CSSProperties> = {
   qaWait: { fontSize: 14, color: C.mutedInk, margin: 0, fontStyle: 'italic' },
   qaError: { fontSize: 14, color: '#B91C1C', margin: 0, fontWeight: 700 },
   qaAnswer: {
-    background: '#F0F9FF',
+    background: '#EAF2FB',
     border: '1.5px solid #BAE6FD',
     borderRadius: 12,
     padding: '10px 12px',
@@ -727,7 +727,7 @@ const S: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     padding: '8px 12px',
   },
-  errSummary: { fontSize: 14, fontWeight: 700, color: '#92400E', cursor: 'pointer' },
+  errSummary: { fontSize: 14, fontWeight: 700, color: '#8A3F04', cursor: 'pointer' },
   errList: { margin: '6px 0 0 14px', padding: 0, display: 'flex', flexDirection: 'column', gap: 3 },
   errItem: { fontSize: 13, color: C.mutedInk, lineHeight: 1.5 },
 }
@@ -737,7 +737,7 @@ const GLOBAL_CSS = `
     outline: 4px solid ${C.focus};
     outline-offset: 3px;
   }
-  .env-back:hover, .env-ctrl:hover { background: #EAF4F8; }
+  .env-back:hover, .env-ctrl:hover { background: #EAF2FB; }
   .env-back, .env-ctrl {
     transition: background 0.12s ease, transform 0.07s ease;
     -webkit-tap-highlight-color: transparent;

@@ -19,20 +19,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
+import { GENERAL_HOME, residentHome } from '@/app/jeju/resident/_lib/origin'
 
 // ── Design tokens (resident palette) ─────────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
 }
 
 const CATEGORY_ORDER = [
@@ -203,7 +204,7 @@ export default function NewsPage() {
 
       <div style={S.topBar}>
         <button type="button" className="rn-back" style={S.backBtn}
-          onClick={() => { stopSpeaking(); router.push('/jeju/resident/general') }} aria-label="뒤로 가기">
+          onClick={() => { stopSpeaking(); router.push(residentHome(GENERAL_HOME)) }} aria-label="뒤로 가기">
           ← 뒤로
         </button>
         <h1 style={S.pageTitle}>📰 오늘의 소식</h1>
@@ -436,7 +437,7 @@ const S: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     color: C.sea,
     margin: 0,
-    background: '#D8ECF2',
+    background: '#CFE3FA',
     borderRadius: 10,
     padding: '6px 14px',
   },
@@ -498,7 +499,7 @@ const S: Record<string, React.CSSProperties> = {
     height: 48,
     fontSize: 22,
     color: C.sea,
-    background: '#EAF4F8',
+    background: '#EAF2FB',
     border: `2px solid ${C.sea}`,
     borderRadius: 12,
     cursor: 'pointer',
@@ -537,7 +538,7 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 700,
     color: C.sea,
-    background: '#EAF4F8',
+    background: '#EAF2FB',
     borderRadius: 8,
     padding: '3px 10px',
   },
@@ -590,7 +591,7 @@ const S: Record<string, React.CSSProperties> = {
   errSummary: {
     fontSize: 16,
     fontWeight: 700,
-    color: '#92400E',
+    color: '#8A3F04',
     cursor: 'pointer',
   },
   errList: {
@@ -612,8 +613,8 @@ const GLOBAL_CSS = `
     outline: 5px solid ${C.focus};
     outline-offset: 3px;
   }
-  .rn-back:hover, .rn-ctrl:hover { background: #EAF4F8; }
-  .rn-item-tts:hover { background: #DCEEF3; }
+  .rn-back:hover, .rn-ctrl:hover { background: #EAF2FB; }
+  .rn-item-tts:hover { background: #DCEAFB; }
   .rn-back, .rn-ctrl, .rn-item-tts {
     transition: background 0.12s ease, transform 0.07s ease;
     -webkit-tap-highlight-color: transparent;

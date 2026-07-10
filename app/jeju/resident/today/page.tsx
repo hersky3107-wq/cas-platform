@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Solar } from 'lunar-javascript'
+import { residentHome } from '@/app/jeju/resident/_lib/origin'
 import {
   getJejuForecast,
   mapWeatherCode,
@@ -51,13 +52,13 @@ const WEEKDAY_KO = ['일요일', '월요일', '화요일', '수요일', '목요�
 const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토']
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
   todayBg: '#E4F3E6',
   todayBorder: '#2E7D32',
   warmBg: '#FFF6DE',
@@ -147,6 +148,10 @@ function buildCalendar(year: number, month: number): (number | null)[][] {
 
 export default function TodayPage() {
   const router = useRouter()
+  const goSeniorAwareHome = useCallback(() => {
+    try { window.speechSynthesis?.cancel() } catch { /* */ }
+    router.push(residentHome())
+  }, [router])
 
   // ── Client-side hydration gate ────────────────────────────────────────────
   // Clock & date must not run on SSR (window-free). Render a stable placeholder
@@ -267,7 +272,7 @@ export default function TodayPage() {
       <main style={styles.frame}>
         {/* Top bar */}
         <div style={styles.topBar}>
-          <button type="button" className="td-ctrl" style={styles.ctrlBtn} onClick={() => { try { window.speechSynthesis?.cancel() } catch { /* */ } router.push('/jeju/resident') }} aria-label="처음으로 돌아가기">
+          <button type="button" className="td-ctrl" style={styles.ctrlBtn} onClick={goSeniorAwareHome} aria-label="처음으로 돌아가기">
             <span aria-hidden>↩</span> 처음으로
           </button>
           {ttsSupported && (
@@ -565,7 +570,7 @@ const styles: Record<string, React.CSSProperties> = {
   regionRow: { display: 'flex', flexWrap: 'wrap', gap: 10 },
   regionBtn: {
     minHeight: 54, fontSize: 19, fontWeight: 700, color: C.sea,
-    background: '#F0F8FB', border: `2px solid ${C.sea}`, borderRadius: 28,
+    background: '#FAF6EE', border: `2px solid ${C.sea}`, borderRadius: 28,
     cursor: 'pointer', padding: '8px 18px',
   },
   regionBtnOn: {
@@ -574,7 +579,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   // Today summary
   todaySummary: {
-    background: '#EDF6F9', borderRadius: 18, padding: '20px 20px',
+    background: '#EAF2FB', borderRadius: 18, padding: '20px 20px',
     display: 'flex', alignItems: 'center', gap: 18,
     border: `2px solid ${C.sea}`,
   },
@@ -585,7 +590,7 @@ const styles: Record<string, React.CSSProperties> = {
   todayExtra: { fontSize: 21, fontWeight: 700, color: C.inkSoft, margin: 0 },
 
   hallasanNote: {
-    fontSize: 19, fontWeight: 600, color: '#1C5B8F', lineHeight: 1.5,
+    fontSize: 19, fontWeight: 600, color: '#0E4E8A', lineHeight: 1.5,
     background: '#EAF2FB', borderRadius: 14, padding: '12px 16px', margin: 0,
   },
 
@@ -596,7 +601,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
   },
   forecastCard: {
-    background: '#F5FAFC', border: `2px solid #C8E4EE`, borderRadius: 16,
+    background: '#FCFAF4', border: `2px solid #BFD9F5`, borderRadius: 16,
     padding: '14px 8px', display: 'flex', flexDirection: 'column',
     alignItems: 'center', gap: 5, textAlign: 'center',
   },

@@ -23,28 +23,28 @@ import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 // ── Design tokens (resident palette — identical to weather/haenyeo) ───────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
   // status colours
   green: '#14532D',
   greenBg: '#F0FDF4',
   greenBorder: '#86EFAC',
-  yellow: '#92400E',
+  yellow: '#8A3F04',
   yellowBg: '#FFFBEB',
   yellowBorder: '#FCD34D',
   red: '#B91C1C',
   redBg: '#FEF2F2',
   redBorder: '#FCA5A5',
-  blue: '#1E3A5F',
-  blueBg: '#EFF6FF',
+  blue: '#0A3A66',
+  blueBg: '#EAF2FB',
   blueBorder: '#93C5FD',
 }
 
@@ -564,8 +564,8 @@ const S: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
   },
   lowFloorBadge: {
-    background: '#E0F2FE',
-    color: '#0369A1',
+    background: '#DCEAFB',
+    color: '#0E4E8A',
     fontSize: 14,
     fontWeight: 700,
     borderRadius: 8,
@@ -773,9 +773,9 @@ const GLOBAL_CSS = `
     outline: 5px solid ${C.focus};
     outline-offset: 3px;
   }
-  .rt-back:hover { background: #EAF4F8; }
-  .rt-ctrl:hover { background: #EAF4F8; }
-  .rt-tab:hover { background: #E2ECF0; }
+  .rt-back:hover { background: #EAF2FB; }
+  .rt-ctrl:hover { background: #EAF2FB; }
+  .rt-tab:hover { background: #EAF2FB; }
   .rt-back, .rt-ctrl, .rt-tab {
     transition: background 0.12s ease, transform 0.07s ease;
     -webkit-tap-highlight-color: transparent;

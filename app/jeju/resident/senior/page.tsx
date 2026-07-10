@@ -3,8 +3,11 @@
 /**
  * 어르신 도민 mode home — "제주 어르신 도우미"
  *
- * Accessibility-first: large text, TTS, two-gate 119, hero → support flow.
- * Senior-only chips (general chips live under /jeju/resident/general).
+ * Layout deliberately differs from care's "3 stacked hero banners + grid":
+ *   - Compact sticky 긴급 strip at the top (always visible, not a hero card)
+ *   - Uniform 2-col tile grid for ALL features (복지·말벗 included as equal tiles)
+ *
+ * Accessibility-first: large text, TTS, two-gate 119.
  */
 
 import Link from 'next/link'
@@ -12,29 +15,37 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
-  badgeBg: '#D1E8EE',
-  badgeInk: '#225567',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
+  badgeBg: '#FCE6C6',
+  badgeInk: '#0A3A66',
 }
 
-const GRID_CARDS: { emoji: string; label: string; href: string }[] = [
-  { emoji: '🧠', label: '오늘의 뇌 운동', href: '/jeju/resident/brain' },
-  { emoji: '📅', label: '오늘 날짜·날씨', href: '/jeju/resident/today' },
-  { emoji: '🏥', label: '병원·약 찾기', href: '/jeju/resident/medical' },
-  { emoji: '📰', label: '오늘의 소식', href: '/jeju/resident/news' },
-  { emoji: '📖', label: '이야기 · 좋은 말', href: '/jeju/resident/tale' },
-  { emoji: '📄', label: '고지서·문서 읽기', href: '/jeju/resident/photo?mode=document' },
-  { emoji: '🛡️', label: '수상한 문자 확인', href: '/jeju/resident/photo?mode=phishing' },
-  { emoji: '🖥️', label: '무인기계 도움', href: '/jeju/resident/photo?mode=kiosk' },
+/**
+ * Uniform tiles. Icons deliberately differ from care's set (🧠📅🏥📰📖📄🛡️🖥️)
+ * so the home doesn't look like the same app. `?from=senior` makes shared
+ * feature pages return here on "처음으로".
+ */
+const TILES: { emoji: string; label: string; href: string; ariaLabel?: string }[] = [
+  { emoji: '🤝', label: '나에게 맞는 복지 찾기', href: '/jeju/resident/support?from=senior', ariaLabel: '나에게 맞는 복지 찾기 — 시작하기' },
+  { emoji: '🗣️', label: '말벗·안부', href: '/jeju/resident/companion', ariaLabel: '말벗, 안부 — 오늘 하루 이야기 나누기' },
+  { emoji: '🧩', label: '오늘의 뇌 운동', href: '/jeju/resident/brain?from=senior' },
+  { emoji: '☀️', label: '오늘 날짜·날씨', href: '/jeju/resident/today?from=senior' },
+  { emoji: '🩺', label: '병원·약 찾기', href: '/jeju/resident/medical?from=senior' },
+  { emoji: '🚌', label: '버스·교통', href: '/jeju/resident/bus?from=senior' },
+  { emoji: '📻', label: '오늘의 소식', href: '/jeju/resident/news-senior' },
+  { emoji: '📕', label: '이야기 · 좋은 말', href: '/jeju/resident/tale' },
+  { emoji: '🧾', label: '고지서·문서 읽기', href: '/jeju/resident/photo?mode=document&from=senior' },
+  { emoji: '🔒', label: '수상한 문자 확인', href: '/jeju/resident/photo?mode=phishing&from=senior' },
+  { emoji: '🏧', label: '무인기계 도움', href: '/jeju/resident/photo?mode=kiosk&from=senior' },
 ]
 
 export default function JejuResidentSeniorPage() {
@@ -132,7 +143,7 @@ export default function JejuResidentSeniorPage() {
   }, [countdown, sosPhase, clearTimer])
 
   const homeNarration =
-    '제주 어르신 도우미입니다. 필요한 도움을 골라보세요. 나에게 맞는 복지 찾기를 누르면 시작할 수 있어요.'
+    '혼저 옵서. 제주 어르신 도우미우다. 필요한 걸 골릅서. 위쪽 빨간 줄은 긴급 도움이고, 아래 칸에서 복지·말벗·병원 등 메뉴를 고르면 됩니다.'
 
   const goTo = useCallback(
     (href: string) => {
@@ -147,6 +158,21 @@ export default function JejuResidentSeniorPage() {
   return (
     <div style={styles.root}>
       <style>{GLOBAL_CSS}</style>
+
+      {/* Compact sticky 긴급 strip — always visible, NOT a hero card */}
+      <div style={styles.sosStripWrap}>
+        <button
+          type="button"
+          className="rh-sos"
+          style={styles.sosStrip}
+          onClick={startEmergency}
+          aria-label="긴급 도움 — 119에 전화할 때 누르세요"
+        >
+          <span style={styles.sosStripEmoji} aria-hidden>🚨</span>
+          <span style={styles.sosStripText}>긴급 도움 · 119</span>
+          <span style={styles.sosStripHint}>필요할 때 누르세요</span>
+        </button>
+      </div>
 
       <div style={styles.topBar}>
         <Link href="/jeju/resident" style={styles.backLink} aria-label="도민 홈으로">
@@ -168,71 +194,23 @@ export default function JejuResidentSeniorPage() {
       <main style={styles.frame}>
         <header style={styles.header}>
           <h1 style={styles.h1}>제주 어르신 도우미</h1>
-          <p style={styles.lead}>필요한 도움을 골라보세요.</p>
+          <p style={styles.lead}>혼저 옵서. 필요한 걸 골릅서.</p>
         </header>
 
-        <button
-          type="button"
-          className="rh-sos"
-          style={styles.sosBtn}
-          onClick={startEmergency}
-          aria-label="긴급 도움 — 119에 전화할 때 누르세요"
-        >
-          <span style={styles.sosEmoji} aria-hidden>🚨</span>
-          <span style={styles.sosText}>긴급 도움</span>
-          <span style={styles.sosSub}>119가 필요할 때 누르세요</span>
-        </button>
-
-        <button
-          type="button"
-          className="rh-hero"
-          style={styles.hero}
-          onClick={() => {
-            if (ttsSupported && typeof window !== 'undefined') {
-              try { window.speechSynthesis.cancel() } catch { /* no-op */ }
-            }
-            router.push('/jeju/resident/support')
-          }}
-          aria-label="나에게 맞는 복지 찾기 — 시작하기"
-        >
-          <span style={styles.heroEmoji} aria-hidden>🏠</span>
-          <span style={styles.heroLabel}>나에게 맞는 복지 찾기</span>
-          <span style={styles.heroSub}>
-            몇 가지 질문에 답하면<br />받을 수 있는 복지를 찾아드려요.
-          </span>
-          <span style={styles.heroArrow} aria-hidden>→</span>
-        </button>
-
-        <button
-          type="button"
-          className="rh-companion"
-          style={styles.companionCard}
-          onClick={() => goTo('/jeju/resident/companion')}
-          aria-label="말벗, 안부 — 오늘 하루 이야기 나누기"
-        >
-          <span style={styles.companionEmoji} aria-hidden>💬</span>
-          <span style={styles.companionTextWrap}>
-            <span style={styles.companionLabel}>말벗·안부</span>
-            <span style={styles.companionSub}>오늘 하루, 이야기 나눠요</span>
-          </span>
-          <span style={styles.companionArrow} aria-hidden>→</span>
-        </button>
-
-        <p style={styles.gridHint} aria-hidden>더 많은 메뉴</p>
-
+        {/* Uniform 2-col tile grid — every feature same size, no stacked banners */}
         <div style={styles.grid} role="list">
-          {GRID_CARDS.map(({ emoji, label, href }) => (
+          {TILES.map(({ emoji, label, href, ariaLabel }) => (
             <button
               key={label}
               type="button"
               role="listitem"
-              className="rh-card rh-card-live"
-              style={{ ...styles.card, ...styles.cardLive }}
+              className="rh-tile"
+              style={styles.tile}
               onClick={() => goTo(href)}
-              aria-label={label}
+              aria-label={ariaLabel ?? label}
             >
-              <span style={styles.cardEmoji} aria-hidden>{emoji}</span>
-              <span style={{ ...styles.cardLabel, ...styles.cardLabelLive }}>{label}</span>
+              <span style={styles.tileEmoji} aria-hidden>{emoji}</span>
+              <span style={styles.tileLabel}>{label}</span>
             </button>
           ))}
         </div>
@@ -282,16 +260,40 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0 16px 40px',
     boxSizing: 'border-box',
   },
+  sosStripWrap: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+    width: '100vw',
+    marginLeft: 'calc(50% - 50vw)',
+    marginRight: 'calc(50% - 50vw)',
+  },
+  sosStrip: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    width: '100%',
+    minHeight: 56,
+    background: '#B91C1C',
+    border: 'none',
+    borderBottom: '3px solid #7F1D1D',
+    borderRadius: 0,
+    cursor: 'pointer',
+    padding: '10px 16px',
+    boxSizing: 'border-box',
+  },
+  sosStripEmoji: { fontSize: 26, lineHeight: 1 },
+  sosStripText: { fontSize: 24, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.1 },
+  sosStripHint: { fontSize: 16, fontWeight: 700, color: '#FEE2E2', lineHeight: 1.2 },
   topBar: {
     width: '100%',
     maxWidth: 640,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    position: 'sticky',
-    top: 0,
-    background: C.bg,
-    paddingTop: 10,
+    paddingTop: 12,
     paddingBottom: 8,
     zIndex: 5,
   },
@@ -313,34 +315,39 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     padding: '6px 20px',
   },
-  frame: { width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 16 },
-  header: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, paddingBottom: 4 },
+  frame: { width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 18 },
+  header: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, paddingBottom: 2 },
   h1: { fontSize: 38, fontWeight: 900, color: C.ink, margin: 0, textAlign: 'center', lineHeight: 1.25 },
   lead: { fontSize: 22, color: C.inkSoft, margin: 0, textAlign: 'center', lineHeight: 1.5 },
-  sosBtn: {
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 },
+  tile: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
-    width: '100%',
-    minHeight: 96,
-    background: '#C0392B',
-    border: '4px solid #8A241A',
-    borderRadius: 20,
+    gap: 10,
+    minHeight: 128,
+    background: C.surface,
+    border: `3px solid ${C.sea}`,
+    borderRadius: 18,
     cursor: 'pointer',
-    padding: '14px 18px',
-    boxShadow: '0 8px 26px rgba(192,57,43,0.40)',
+    padding: '20px 12px',
     boxSizing: 'border-box',
+    boxShadow: '0 2px 0 rgba(14,78,138,0.12)',
   },
-  sosEmoji: { fontSize: 40, lineHeight: 1 },
-  sosText: { fontSize: 36, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.1 },
-  sosSub: { fontSize: 20, fontWeight: 700, color: '#FFE3DE', lineHeight: 1.2 },
+  tileEmoji: { fontSize: 42, lineHeight: 1 },
+  tileLabel: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: C.ink,
+    textAlign: 'center',
+    lineHeight: 1.3,
+  },
   sosOverlay: {
     position: 'fixed',
     inset: 0,
     zIndex: 1000,
-    background: '#8A241A',
+    background: '#7F1D1D',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -355,7 +362,7 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     minHeight: 110,
     background: '#FFFFFF',
-    color: '#8A241A',
+    color: '#7F1D1D',
     border: '5px solid #FFFFFF',
     borderRadius: 20,
     fontSize: 42,
@@ -365,8 +372,8 @@ const styles: Record<string, React.CSSProperties> = {
   sosNoBtn: {
     flex: 2,
     minHeight: 110,
-    background: '#FFE3DE',
-    color: '#8A241A',
+    background: '#FEE2E2',
+    color: '#7F1D1D',
     border: '5px solid #FFFFFF',
     borderRadius: 20,
     fontSize: 42,
@@ -375,7 +382,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 8px 28px rgba(0,0,0,0.25)',
   },
   sosCount: { fontSize: 160, fontWeight: 900, color: '#FFFFFF', lineHeight: 1, fontVariantNumeric: 'tabular-nums' },
-  sosOverlayHint: { fontSize: 24, fontWeight: 700, color: '#FFE3DE', textAlign: 'center', margin: 0 },
+  sosOverlayHint: { fontSize: 24, fontWeight: 700, color: '#FEE2E2', textAlign: 'center', margin: 0 },
   sosDialNowBtn: {
     width: '100%',
     maxWidth: 520,
@@ -393,7 +400,7 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 520,
     minHeight: 140,
     background: '#FFFFFF',
-    color: '#8A241A',
+    color: '#7F1D1D',
     border: '5px solid #FFFFFF',
     borderRadius: 24,
     fontSize: 56,
@@ -401,82 +408,10 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     boxShadow: '0 8px 28px rgba(0,0,0,0.30)',
   },
-  hero: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 8,
-    width: '100%',
-    minHeight: 160,
-    background: C.sea,
-    border: 'none',
-    borderRadius: 22,
-    padding: '24px 24px 20px',
-    cursor: 'pointer',
-    position: 'relative',
-    boxShadow: '0 8px 28px rgba(10,92,122,0.28)',
-    textAlign: 'left',
-    boxSizing: 'border-box',
-  },
-  heroEmoji: { fontSize: 48, lineHeight: 1 },
-  heroLabel: { fontSize: 32, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.25 },
-  heroSub: { fontSize: 21, color: '#C8E8F0', lineHeight: 1.55 },
-  heroArrow: { position: 'absolute', right: 22, top: '50%', transform: 'translateY(-50%)', fontSize: 32, color: '#FFFFFF', opacity: 0.75 },
-  companionCard: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14,
-    width: '100%',
-    minHeight: 96,
-    background: '#B45309',
-    border: '4px solid #92400E',
-    borderRadius: 20,
-    padding: '16px 20px',
-    cursor: 'pointer',
-    textAlign: 'left',
-    boxSizing: 'border-box',
-    boxShadow: '0 8px 26px rgba(180,83,9,0.30)',
-  },
-  companionEmoji: { fontSize: 44, lineHeight: 1, flexShrink: 0 },
-  companionTextWrap: { display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 },
-  companionLabel: { fontSize: 30, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.2 },
-  companionSub: { fontSize: 20, fontWeight: 700, color: '#FDE8CC', lineHeight: 1.3 },
-  companionArrow: { fontSize: 30, color: '#FFFFFF', opacity: 0.75, flexShrink: 0 },
-  gridHint: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: C.mutedInk,
-    textAlign: 'center',
-    margin: '4px 0 0',
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
-  },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 },
-  card: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    minHeight: 110,
-    background: C.mutedBg,
-    border: `2px solid ${C.mutedBorder}`,
-    borderRadius: 18,
-    cursor: 'pointer',
-    padding: '18px 12px',
-    position: 'relative',
-    boxSizing: 'border-box',
-  },
-  cardEmoji: { fontSize: 38, lineHeight: 1 },
-  cardLabel: { fontSize: 22, fontWeight: 800, color: C.mutedInk, textAlign: 'center', lineHeight: 1.3 },
-  cardLive: { background: C.surface, border: `3px solid ${C.sea}` },
-  cardLabelLive: { color: C.ink },
 }
 
 const GLOBAL_CSS = `
-  .rh-hero:focus-visible,
-  .rh-companion:focus-visible,
-  .rh-card:focus-visible,
+  .rh-tile:focus-visible,
   .rh-ctrl:focus-visible,
   .rh-sos:focus-visible,
   .rh-cancel:focus-visible,
@@ -485,18 +420,14 @@ const GLOBAL_CSS = `
     outline-offset: 3px;
   }
   .rh-cancel:focus-visible, .rh-confirm-yes:focus-visible { outline-color: #FFD400; }
-  .rh-hero:hover { background: ${C.seaStrong}; }
-  .rh-companion:hover { background: #92400E; }
-  .rh-card-live:hover { background: #EAF4F8; }
-  .rh-sos:hover { background: #A93226; }
+  .rh-tile:hover { background: #EAF2FB; border-color: ${C.seaStrong}; }
+  .rh-sos:hover { background: #991B1B; }
   .rh-cancel:hover, .rh-confirm-yes:hover { filter: brightness(0.94); }
-  .rh-hero, .rh-companion, .rh-card, .rh-ctrl, .rh-sos, .rh-cancel, .rh-confirm-yes {
-    transition: background 0.12s ease, transform 0.07s ease, filter 0.12s ease;
+  .rh-tile, .rh-ctrl, .rh-sos, .rh-cancel, .rh-confirm-yes {
+    transition: background 0.12s ease, transform 0.07s ease, filter 0.12s ease, border-color 0.12s ease;
     -webkit-tap-highlight-color: transparent;
   }
-  .rh-hero:active { transform: scale(0.985); }
-  .rh-companion:active { transform: scale(0.985); }
-  .rh-card:active { transform: scale(0.97); }
-  .rh-sos:active { transform: scale(0.98); }
+  .rh-tile:active { transform: scale(0.97); }
+  .rh-sos:active { transform: scale(0.99); }
   .rh-cancel:active, .rh-confirm-yes:active { transform: scale(0.97); }
 `

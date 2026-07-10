@@ -17,16 +17,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ResidentLoading } from '@/app/jeju/resident/_components/Loading'
+import { residentHome, withSeniorOrigin } from '@/app/jeju/resident/_lib/origin'
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  muted: '#6B7A88',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  muted: '#5E5A50',
   okBg: '#E4F3E6',
   okBorder: '#2E7D32',
   okInk: '#1B5E20',
@@ -238,7 +239,7 @@ export default function BrainPage() {
 
   const goHome = useCallback(() => {
     stopSpeaking()
-    router.push('/jeju/resident')
+    router.push(residentHome())
   }, [router, stopSpeaking])
 
   const speakQuestion = useCallback(() => {
@@ -309,7 +310,7 @@ export default function BrainPage() {
               type="button"
               className="br-alt"
               style={styles.altBtn}
-              onClick={() => { stopSpeaking(); router.push('/jeju/resident/brain/memory') }}
+              onClick={() => { stopSpeaking(); router.push(withSeniorOrigin('/jeju/resident/brain/memory')) }}
               aria-label="그림 짝 맞추기 놀이하기"
             >
               <span style={styles.altEmoji} aria-hidden>🃏</span>
@@ -341,7 +342,7 @@ export default function BrainPage() {
               <span style={styles.progressText}>{index + 1} / {questions.length}</span>
               <div style={styles.dotsRow} aria-hidden>
                 {questions.map((_, i) => (
-                  <span key={i} style={{ ...styles.dot, background: i <= index ? C.sea : '#C5D9E2' }} />
+                  <span key={i} style={{ ...styles.dot, background: i <= index ? C.sea : '#BFD9F5' }} />
                 ))}
               </div>
             </div>
@@ -503,7 +504,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 22, fontWeight: 800, color: C.warmInk, textAlign: 'center', lineHeight: 1.5,
     background: C.warmBg, border: `3px solid ${C.warmBorder}`, borderRadius: 16, padding: '16px 18px',
   },
-  errorLine: { fontSize: 21, color: '#8A241A', fontWeight: 700, margin: 0, textAlign: 'center' },
+  errorLine: { fontSize: 21, color: '#7F1D1D', fontWeight: 700, margin: 0, textAlign: 'center' },
   startBtn: {
     minHeight: 84, fontSize: 30, fontWeight: 900, color: '#FFFFFF', background: C.sea,
     border: 'none', borderRadius: 18, cursor: 'pointer', padding: '12px 24px',
@@ -516,7 +517,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
   },
   readBtnSmall: {
-    alignSelf: 'flex-start', minHeight: 52, fontSize: 20, fontWeight: 700, color: C.sea, background: '#EAF4F8',
+    alignSelf: 'flex-start', minHeight: 52, fontSize: 20, fontWeight: 700, color: C.sea, background: '#EAF2FB',
     border: `2px solid ${C.sea}`, borderRadius: 12, cursor: 'pointer', padding: '6px 18px',
     display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 12,
   },
@@ -547,18 +548,18 @@ const styles: Record<string, React.CSSProperties> = {
   choiceList: { display: 'flex', flexDirection: 'column', gap: 12 },
   choiceBtn: {
     display: 'flex', alignItems: 'center', gap: 14, width: '100%', minHeight: 72,
-    background: C.surface, border: `2px solid #CBD9E1`, borderRadius: 16, padding: '14px 18px',
+    background: C.surface, border: `2px solid #E0D2B4`, borderRadius: 16, padding: '14px 18px',
     cursor: 'pointer', textAlign: 'left', boxSizing: 'border-box',
   },
   choiceNum: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    width: 44, height: 44, borderRadius: '50%', background: '#E7F3F7', color: C.sea,
+    width: 44, height: 44, borderRadius: '50%', background: '#EAF2FB', color: C.sea,
     fontSize: 22, fontWeight: 900,
   },
   choiceText: { fontSize: 25, fontWeight: 800, color: C.ink, flex: 1, wordBreak: 'keep-all', lineHeight: 1.35 },
   choiceMark: { fontSize: 30, fontWeight: 900, color: C.okBorder, flexShrink: 0 },
   choiceCorrect: { background: C.okBg, border: `4px solid ${C.okBorder}` },
-  choiceWrong: { background: '#FDECEC', border: `4px solid #C0392B` },
+  choiceWrong: { background: '#FCE8E6', border: `4px solid #B91C1C` },
   choiceDim: { opacity: 0.55 },
   // feedback
   feedbackOk: {
@@ -588,7 +589,7 @@ const styles: Record<string, React.CSSProperties> = {
   levelRow: { display: 'flex', gap: 12 },
   levelBtn: {
     flex: 1, minHeight: 90, display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', gap: 4, background: '#F0F5F8', border: `3px solid #CBD9E1`,
+    justifyContent: 'center', gap: 4, background: '#EFF4FB', border: `3px solid #E0D2B4`,
     borderRadius: 18, cursor: 'pointer', padding: '12px 6px',
   },
   levelBtnOn: { background: C.sea, border: `3px solid ${C.seaStrong}` },
@@ -613,10 +614,10 @@ const GLOBAL_CSS = `
     outline: 5px solid ${C.focus}; outline-offset: 3px;
   }
   .br-primary:hover { background: ${C.seaStrong}; }
-  .br-choice:hover:not(:disabled) { background: #EAF4F8; border-color: ${C.sea}; }
+  .br-choice:hover:not(:disabled) { background: #EAF2FB; border-color: ${C.sea}; }
   .br-choice:disabled { cursor: default; }
-  .br-level:hover { background: #DCEEF3; }
-  .br-alt:hover { background: #EAF4F8; }
+  .br-level:hover { background: #DCEAFB; }
+  .br-alt:hover { background: #EAF2FB; }
   .br-ctrl, .br-read, .br-primary, .br-choice, .br-level, .br-alt {
     transition: transform 0.08s ease, background 0.15s ease; -webkit-tap-highlight-color: transparent;
   }

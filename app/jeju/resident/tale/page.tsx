@@ -24,17 +24,17 @@ import { useRouter } from 'next/navigation'
 import { ResidentLoading } from '@/app/jeju/resident/_components/Loading'
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  muted: '#6B7A88',
-  warnBg: '#FDECEC',
-  warnBorder: '#C0392B',
-  warnInk: '#8A241A',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  muted: '#5E5A50',
+  warnBg: '#FCE8E6',
+  warnBorder: '#B91C1C',
+  warnInk: '#7F1D1D',
 }
 
 // ── Kinds ────────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ const KIND_META: KindMeta[] = [
   { kind: 'health', emoji: '🌿', label: '오늘의 건강 이야기', sub: '뭐가 어디에 좋은지', color: '#2F6B4F', colorStrong: '#245640', bg: '#E9F5EE', readAll: true },
   { kind: 'reminisce', emoji: '💭', label: '그 시절 회상', sub: '옛날 그 시절을 떠올려요', color: '#7A5B0A', colorStrong: '#634A08', bg: '#FBF3DE', readAll: false },
   { kind: 'wisdom', emoji: '🌸', label: '오늘의 좋은 말', sub: '하루에 힘이 되는 말', color: '#9A3E63', colorStrong: '#7C314F', bg: '#FBEAF1', readAll: false },
-  { kind: 'jeju', emoji: '🌊', label: '제주 이야기', sub: '설화·역사·우리 섬 삶', color: '#0A5C7A', colorStrong: '#07445B', bg: '#E4F1F6', readAll: true },
+  { kind: 'jeju', emoji: '🌊', label: '제주 이야기', sub: '설화·역사·우리 섬 삶', color: '#0E4E8A', colorStrong: '#0A3A66', bg: '#DCEAFB', readAll: true },
 ]
 
 function metaOf(kind: Kind): KindMeta {
@@ -500,7 +500,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   // item card
   card: {
-    display: 'block', background: C.surface, border: '2px solid #CBD9E1', borderRadius: 18,
+    display: 'block', background: C.surface, border: '2px solid #E0D2B4', borderRadius: 18,
     padding: '20px 20px 22px', boxShadow: '0 3px 12px rgba(15,34,51,0.06)',
   },
   cardHead: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
@@ -519,7 +519,7 @@ const styles: Record<string, React.CSSProperties> = {
   qList: { margin: '14px 0 0', padding: '0 0 0 4px', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 },
   qItem: {
     fontSize: 21, lineHeight: 1.6, color: C.seaStrong, fontWeight: 700, wordBreak: 'keep-all',
-    background: '#F0F5F8', borderRadius: 12, padding: '12px 16px',
+    background: '#EFF4FB', borderRadius: 12, padding: '12px 16px',
   },
   noteText: {
     fontSize: 18, lineHeight: 1.55, color: C.inkSoft, margin: '16px 0 0', wordBreak: 'keep-all',
@@ -553,7 +553,7 @@ const GLOBAL_CSS = `
   }
   .tl-card:hover { filter: brightness(0.97); }
   .tl-readall:hover, .tl-primary:hover { filter: brightness(0.94); }
-  .tl-item-read:hover { background: #F0F5F8; }
+  .tl-item-read:hover { background: #EFF4FB; }
   .tl-card:active, .tl-readall:active, .tl-item-read:active, .tl-ctrl:active, .tl-primary:active {
     transform: scale(0.98);
   }

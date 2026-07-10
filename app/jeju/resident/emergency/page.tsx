@@ -19,22 +19,23 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { residentHome, withSeniorOrigin } from '@/app/jeju/resident/_lib/origin'
 
 // ── Theme (shared with medical/photo pages) ────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  muted: '#6B7A88',
-  warnBg: '#FDECEC',
-  warnBorder: '#C0392B',
-  warnInk: '#8A241A',
-  calmBg: '#EAF4F8',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  muted: '#5E5A50',
+  warnBg: '#FCE8E6',
+  warnBorder: '#B91C1C',
+  warnInk: '#7F1D1D',
+  calmBg: '#EAF2FB',
 }
 
 // ── Public numbers ─────────────────────────────────────────────────────────────
@@ -163,12 +164,12 @@ export default function EmergencyPage() {
 
   const goHome = useCallback(() => {
     stopSpeaking()
-    router.push('/jeju/resident')
+    router.push(residentHome())
   }, [router, stopSpeaking])
 
   const goMedical = useCallback(() => {
     stopSpeaking()
-    router.push('/jeju/resident/medical')
+    router.push(withSeniorOrigin('/jeju/resident/medical'))
   }, [router, stopSpeaking])
 
   const backToMain = useCallback(() => {
@@ -531,7 +532,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   helpNote: {
     fontSize: 19, lineHeight: 1.55, color: C.inkSoft, margin: 0,
-    background: '#F0F5F8', borderRadius: 12, padding: '12px 14px',
+    background: '#EFF4FB', borderRadius: 12, padding: '12px 14px',
   },
   // card / inputs
   card: {
@@ -542,7 +543,7 @@ const styles: Record<string, React.CSSProperties> = {
   inputLabel: { fontSize: 21, fontWeight: 800, color: C.ink, margin: '4px 0 -4px' },
   input: {
     fontSize: 24, lineHeight: 1.4, color: C.ink,
-    background: '#FAFCFD', border: `3px solid ${C.sea}`, borderRadius: 14,
+    background: '#FDFBF6', border: `3px solid ${C.sea}`, borderRadius: 14,
     padding: '14px 16px', width: '100%', boxSizing: 'border-box', minHeight: 64,
     fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif",
   },

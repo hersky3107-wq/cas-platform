@@ -15,21 +15,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ResidentLoading } from '@/app/jeju/resident/_components/Loading'
+import { residentHome, withSeniorOrigin } from '@/app/jeju/resident/_lib/origin'
 
 // ── Theme (shared with photo/support pages) ────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  muted: '#6B7A88',
-  warnBg: '#FDECEC',
-  warnBorder: '#C0392B',
-  warnInk: '#8A241A',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  muted: '#5E5A50',
+  warnBg: '#FCE8E6',
+  warnBorder: '#B91C1C',
+  warnInk: '#7F1D1D',
 }
 
 type View = 'menu' | 'symptom' | 'open-now'
@@ -177,7 +178,7 @@ export default function MedicalPage() {
 
   const goHome = useCallback(() => {
     stopSpeaking()
-    router.push('/jeju/resident')
+    router.push(residentHome())
   }, [router, stopSpeaking])
 
   const backToMenu = useCallback(() => {
@@ -334,7 +335,7 @@ export default function MedicalPage() {
                 type="button"
                 className="md-card md-card-live"
                 style={{ ...styles.menuCard, ...styles.menuCardLive }}
-                onClick={() => { stopSpeaking(); router.push('/jeju/resident/photo?mode=medicine') }}
+                onClick={() => { stopSpeaking(); router.push(withSeniorOrigin('/jeju/resident/photo?mode=medicine')) }}
                 aria-label="약 알아보기 — 약봉투나 약통을 사진으로 확인"
               >
                 <span style={styles.menuEmoji} aria-hidden>💊</span>
@@ -379,7 +380,7 @@ export default function MedicalPage() {
                 type="button"
                 className="md-card md-card-live"
                 style={{ ...styles.menuCard, ...styles.menuCardEmergency }}
-                onClick={() => { stopSpeaking(); router.push('/jeju/resident/emergency') }}
+                onClick={() => { stopSpeaking(); router.push(withSeniorOrigin('/jeju/resident/emergency')) }}
                 aria-label="긴급·상담 전화 — 119, 112, 상담 번호, 가족, 주민센터"
               >
                 <span style={styles.menuEmoji} aria-hidden>🆘</span>
@@ -751,7 +752,7 @@ const styles: Record<string, React.CSSProperties> = {
   menuList: { display: 'flex', flexDirection: 'column', gap: 16 },
   menuCard: {
     position: 'relative', display: 'flex', alignItems: 'center', gap: 16,
-    minHeight: 108, background: C.surface, border: `2px solid #CBD9E1`, borderRadius: 18,
+    minHeight: 108, background: C.surface, border: `2px solid #E0D2B4`, borderRadius: 18,
     padding: '18px 20px', cursor: 'pointer', textAlign: 'left', width: '100%',
   },
   menuCardLive: { border: `3px solid ${C.sea}` },
@@ -763,7 +764,7 @@ const styles: Record<string, React.CSSProperties> = {
   menuArrow: { fontSize: 30, fontWeight: 900, color: C.sea, flexShrink: 0 },
   badge: {
     position: 'absolute', top: 10, right: 12, fontSize: 15, fontWeight: 800, color: C.muted,
-    background: '#EDF1F4', border: `1px solid ${C.muted}`, borderRadius: 8, padding: '2px 8px',
+    background: '#EDF1FA', border: `1px solid ${C.muted}`, borderRadius: 8, padding: '2px 8px',
   },
   card: {
     background: C.surface, borderRadius: 20, padding: '24px 22px 28px',
@@ -774,14 +775,14 @@ const styles: Record<string, React.CSSProperties> = {
   errorLine: { fontSize: 20, color: C.warnInk, fontWeight: 700, margin: 0, textAlign: 'center' },
   textarea: {
     fontSize: 22, lineHeight: 1.6, color: C.ink,
-    background: '#FAFCFD', border: `3px solid ${C.sea}`, borderRadius: 14,
+    background: '#FDFBF6', border: `3px solid ${C.sea}`, borderRadius: 14,
     padding: '14px 16px', resize: 'vertical', minHeight: 120,
     fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif",
     width: '100%', boxSizing: 'border-box',
   },
   micBtn: {
     minHeight: 66, fontSize: 22, fontWeight: 700, color: C.sea,
-    background: '#EAF4F8', border: `2px solid ${C.sea}`, borderRadius: 14, cursor: 'pointer',
+    background: '#EAF2FB', border: `2px solid ${C.sea}`, borderRadius: 14, cursor: 'pointer',
     padding: '10px 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
   },
   micBtnOn: { background: C.sea, color: '#FFFFFF' },
@@ -798,21 +799,21 @@ const styles: Record<string, React.CSSProperties> = {
   // department
   deptBanner: {
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-    background: '#D4EDF5', border: `3px solid ${C.sea}`, borderRadius: 16, padding: '18px 16px',
+    background: '#CFE3FA', border: `3px solid ${C.sea}`, borderRadius: 16, padding: '18px 16px',
   },
   deptLabel: { fontSize: 20, fontWeight: 800, color: C.sea },
   deptValue: { fontSize: 40, fontWeight: 900, color: C.ink, lineHeight: 1.1 },
   advice: { fontSize: 21, lineHeight: 1.65, color: C.inkSoft, margin: 0 },
   tierNote: {
     fontSize: 20, lineHeight: 1.6, color: C.seaStrong, fontWeight: 700, margin: 0,
-    background: '#DCEEF3', border: `2px solid ${C.sea}`, borderRadius: 12, padding: '12px 14px',
+    background: '#DCEAFB', border: `2px solid ${C.sea}`, borderRadius: 12, padding: '12px 14px',
   },
   // hospital list
   hospitalList: { display: 'flex', flexDirection: 'column', gap: 16 },
   listHeading: { fontSize: 24, fontWeight: 900, color: C.ink, margin: '4px 0 0' },
   hospitalCard: {
     display: 'block',
-    background: C.surface, border: `2px solid #CBD9E1`, borderRadius: 16, padding: '20px 20px',
+    background: C.surface, border: `2px solid #E0D2B4`, borderRadius: 16, padding: '20px 20px',
     boxShadow: '0 3px 12px rgba(15,34,51,0.06)',
   },
   hospitalName: {
@@ -837,7 +838,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   telUnknown: {
     display: 'block', textAlign: 'center', fontSize: 18, fontWeight: 700, color: C.muted,
-    background: '#F0F3F5', borderRadius: 12, padding: '14px 16px',
+    background: '#FAF6EE', borderRadius: 12, padding: '14px 16px',
   },
   // emergency
   emergencyCard: {
@@ -855,7 +856,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sourceList: {
     display: 'flex', flexDirection: 'column', gap: 6,
-    background: '#F0F5F8', borderRadius: 12, padding: '14px 16px', marginTop: 6,
+    background: '#EFF4FB', borderRadius: 12, padding: '14px 16px', marginTop: 6,
   },
   sourceLink: { fontSize: 16, color: C.sea, wordBreak: 'break-all', lineHeight: 1.5 },
   disclaimer: {
@@ -887,7 +888,7 @@ const styles: Record<string, React.CSSProperties> = {
   kindRow: { display: 'flex', gap: 14 },
   kindBtn: {
     flex: 1, minHeight: 90, fontSize: 30, fontWeight: 900,
-    color: C.ink, background: '#F0F5F8', border: `3px solid #CBD9E1`,
+    color: C.ink, background: '#EFF4FB', border: `3px solid #E0D2B4`,
     borderRadius: 18, cursor: 'pointer', display: 'flex', flexDirection: 'column' as const,
     alignItems: 'center', justifyContent: 'center', gap: 8,
   },
@@ -896,14 +897,14 @@ const styles: Record<string, React.CSSProperties> = {
   areaRow: { display: 'flex', gap: 10 },
   areaBtn: {
     flex: 1, minHeight: 58, fontSize: 20, fontWeight: 800,
-    color: C.sea, background: '#EAF4F8', border: `2px solid ${C.sea}`,
+    color: C.sea, background: '#EAF2FB', border: `2px solid ${C.sea}`,
     borderRadius: 14, cursor: 'pointer',
   },
   areaBtnOn: { background: C.sea, color: '#FFFFFF' },
   // hours note badge inside hospital card
   hoursNote: {
     display: 'inline-block', fontSize: 17, fontWeight: 800, color: C.seaStrong,
-    background: '#D4EDF5', border: `2px solid ${C.sea}`, borderRadius: 8,
+    background: '#CFE3FA', border: `2px solid ${C.sea}`, borderRadius: 8,
     padding: '3px 10px', marginBottom: 6,
   },
 }
@@ -918,7 +919,7 @@ const GLOBAL_CSS = `
   .md-textarea:focus-visible { outline: 5px solid ${C.focus}; outline-offset: 2px; }
   .md-primary:hover:not(:disabled) { background: ${C.seaStrong}; }
   .md-primary:disabled { cursor: not-allowed !important; }
-  .md-card-live:hover { background: #EAF4F8; }
+  .md-card-live:hover { background: #EAF2FB; }
   .md-card:hover { border-color: ${C.sea}; }
   .md-primary, .md-ctrl, .md-read, .md-card, .md-mic, .md-call, .md-kind, .md-area {
     transition: transform 0.08s ease, background 0.15s ease; -webkit-tap-highlight-color: transparent;

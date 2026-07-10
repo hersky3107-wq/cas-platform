@@ -17,21 +17,21 @@ import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
   up: '#B91C1C',
   upBg: '#FEF2F2',
   down: '#1D4ED8',
-  downBg: '#EFF6FF',
-  neutral: '#374151',
+  downBg: '#EAF2FB',
+  neutral: '#3C4C60',
 }
 
 // ── API types ─────────────────────────────────────────────────────────────────
@@ -423,12 +423,12 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 700,
     color: C.sea,
-    background: '#D8ECF2',
+    background: '#CFE3FA',
     borderRadius: 8,
     padding: '4px 10px',
   },
   lowConfBadge: {
-    color: '#92400E',
+    color: '#8A3F04',
     background: '#FEF3C7',
   },
   // Card wrapper (groups)
@@ -544,7 +544,7 @@ const S: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     padding: '8px 12px',
   },
-  errSummary: { fontSize: 14, fontWeight: 700, color: '#92400E', cursor: 'pointer' },
+  errSummary: { fontSize: 14, fontWeight: 700, color: '#8A3F04', cursor: 'pointer' },
   errList: { margin: '6px 0 0 14px', padding: 0, display: 'flex', flexDirection: 'column', gap: 3 },
   errItem: { fontSize: 13, color: C.mutedInk, lineHeight: 1.5 },
 }
@@ -554,7 +554,7 @@ const GLOBAL_CSS = `
     outline: 4px solid ${C.focus};
     outline-offset: 3px;
   }
-  .rp-back:hover, .rp-ctrl:hover { background: #EAF4F8; }
+  .rp-back:hover, .rp-ctrl:hover { background: #EAF2FB; }
   .rp-back, .rp-ctrl {
     transition: background 0.12s ease, transform 0.07s ease;
     -webkit-tap-highlight-color: transparent;

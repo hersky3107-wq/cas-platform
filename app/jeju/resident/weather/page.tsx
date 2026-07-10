@@ -24,20 +24,20 @@ import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 // ── Design tokens (resident palette) ─────────────────────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  mutedBg: '#F0F4F6',
-  mutedBorder: '#B7CDD6',
-  mutedInk: '#4A6070',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  mutedBg: '#F5EAD6',
+  mutedBorder: '#D9C6A2',
+  mutedInk: '#4E5568',
   red: '#B91C1C',
   redBg: '#FEF2F2',
   redBorder: '#FCA5A5',
-  yellow: '#92400E',
+  yellow: '#8A3F04',
   yellowBg: '#FFFBEB',
   yellowBorder: '#FCD34D',
   green: '#14532D',
@@ -399,7 +399,7 @@ export default function WeatherPage() {
 
 const GLOBAL_CSS = `
   .rw-back:focus-visible, .rw-chip:focus-visible, .rw-tts:focus-visible,
-  .rw-btn:focus-visible { outline: 4px solid #C2410C; outline-offset: 3px; }
+  .rw-btn:focus-visible { outline: 4px solid #E8590C; outline-offset: 3px; }
   .rw-chip:hover:not(:disabled) { opacity: 0.85; }
   .rw-tts:hover { filter: brightness(0.92); }
   .rw-back:hover { opacity: 0.80; }
@@ -488,7 +488,7 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 16, fontWeight: 900, padding: '4px 12px',
     borderRadius: 8, whiteSpace: 'nowrap', flexShrink: 0,
   },
-  cautionType: { fontSize: 22, fontWeight: 800, color: '#92400E', flex: 1 },
+  cautionType: { fontSize: 22, fontWeight: 800, color: '#8A3F04', flex: 1 },
   warnArea: { fontSize: 16, fontWeight: 600, color: C.mutedInk, whiteSpace: 'nowrap' },
   noWarnRow: {
     display: 'flex', alignItems: 'center', gap: 8,
@@ -553,8 +553,8 @@ const S: Record<string, React.CSSProperties> = {
   },
   contextText: { fontSize: 18, fontWeight: 500, color: C.inkSoft, margin: 0, lineHeight: 1.65 },
   provenance: {
-    fontSize: 14, fontWeight: 700, color: '#225567',
-    background: '#D1E8EE', borderRadius: 8,
+    fontSize: 14, fontWeight: 700, color: '#0A3A66',
+    background: '#FCE6C6', borderRadius: 8,
     padding: '5px 10px', margin: 0, alignSelf: 'flex-start',
   },
 

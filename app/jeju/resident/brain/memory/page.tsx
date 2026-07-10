@@ -13,15 +13,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { residentHome, withSeniorOrigin } from '@/app/jeju/resident/_lib/origin'
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
   okBg: '#E4F3E6',
   okBorder: '#2E7D32',
   okInk: '#1B5E20',
@@ -184,12 +185,12 @@ export default function MemoryGamePage() {
 
   const goHome = useCallback(() => {
     stopSpeaking()
-    router.push('/jeju/resident')
+    router.push(residentHome())
   }, [router, stopSpeaking])
 
   const goBrain = useCallback(() => {
     stopSpeaking()
-    router.push('/jeju/resident/brain')
+    router.push(withSeniorOrigin('/jeju/resident/brain'))
   }, [router, stopSpeaking])
 
   const backToSelect = useCallback(() => {
@@ -406,7 +407,7 @@ const GLOBAL_CSS = `
     outline: 5px solid ${C.focus}; outline-offset: 3px;
   }
   .mg-primary:hover { background: ${C.seaStrong}; }
-  .mg-size:hover { background: #EAF4F8; }
+  .mg-size:hover { background: #EAF2FB; }
   .mg-card { transition: background 0.25s ease, transform 0.25s ease; -webkit-tap-highlight-color: transparent; }
   .mg-card:active:not(:disabled) { transform: scale(0.96); }
   .mg-card-static { transition: none !important; transform: none !important; }

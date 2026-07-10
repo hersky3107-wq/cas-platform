@@ -55,21 +55,21 @@ import { useRouter } from 'next/navigation'
 // ── Theme (matches Jeju resident senior mode palette) ──────────────────────────
 
 const C = {
-  bg: '#E8F2F5',
+  bg: '#FBF4E6',
   surface: '#FFFFFF',
-  ink: '#0F2233',
-  inkSoft: '#33475B',
-  sea: '#0A5C7A',
-  seaStrong: '#07445B',
-  focus: '#C2410C',
-  muted: '#6B7A88',
-  warm: '#B45309', // companion accent (warm amber)
-  warmBg: '#FEF3E2',
+  ink: '#12263A',
+  inkSoft: '#3C4C60',
+  sea: '#0E4E8A',
+  seaStrong: '#0A3A66',
+  focus: '#E8590C',
+  muted: '#5E5A50',
+  warm: '#C25A10', // companion accent (warm amber)
+  warmBg: '#FDEBD2',
   warmBorder: '#D97706',
-  warnBg: '#FDECEC',
-  warnBorder: '#C0392B',
-  warnInk: '#8A241A',
-  calmBg: '#EAF4F8',
+  warnBg: '#FCE8E6',
+  warnBorder: '#B91C1C',
+  warnInk: '#7F1D1D',
+  calmBg: '#EAF2FB',
 }
 
 // ── Crisis / support phone numbers ─────────────────────────────────────────────
@@ -860,7 +860,7 @@ export default function JejuResidentCompanionPage() {
               <span style={styles.headerEmoji} aria-hidden>💬</span>
               <h1 style={styles.h1}>말벗·안부</h1>
               <p style={styles.lead}>
-                안녕하세요! 오늘도 만나서 반가워요.<br />
+                혼저 옵서! 오늘도 만나난 반갑수다.<br />
                 하루 안부 다섯 가지만 여쭤볼게요.
               </p>
             </header>
@@ -873,7 +873,7 @@ export default function JejuResidentCompanionPage() {
                   aria-hidden
                   style={{
                     ...styles.dot,
-                    background: i < stepIdx ? C.sea : i === stepIdx ? C.warm : '#C7D6DD',
+                    background: i < stepIdx ? C.sea : i === stepIdx ? C.warm : '#C9D8EA',
                   }}
                 />
               ))}
@@ -1185,14 +1185,14 @@ const styles: Record<string, React.CSSProperties> = {
   // 119 — orange-red, distinct from the deep-red 109 button, level-3 only.
   crisisCall119: {
     display: 'flex', alignItems: 'center', gap: 14,
-    minHeight: 96, background: '#D05A00', border: '4px solid #9A3E00',
+    minHeight: 96, background: '#E8590C', border: '4px solid #8A3F04',
     borderRadius: 18, padding: '14px 18px', textDecoration: 'none',
     boxShadow: '0 4px 14px rgba(208,90,0,0.35)',
   },
   crisisCallEmoji: { fontSize: 36, lineHeight: 1, flexShrink: 0 },
   crisisCallTextWrap: { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 },
   crisisCallTitle: { fontSize: 26, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.2 },
-  crisisCallSub: { fontSize: 19, fontWeight: 700, color: '#FFE3DE', lineHeight: 1.3 },
+  crisisCallSub: { fontSize: 19, fontWeight: 700, color: '#FEE2E2', lineHeight: 1.3 },
   crisisCallNum: { fontSize: 34, fontWeight: 900, color: '#FFFFFF', flexShrink: 0 },
   crisisFamilyBtn: {
     width: '100%', minHeight: 76, fontSize: 24, fontWeight: 900, color: '#FFFFFF',
@@ -1250,7 +1250,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   textInput: {
     fontSize: 24, lineHeight: 1.5, color: C.ink,
-    background: '#FAFCFD', border: `3px solid ${C.sea}`, borderRadius: 14,
+    background: '#FDFBF6', border: `3px solid ${C.sea}`, borderRadius: 14,
     padding: '14px 16px', width: '100%', boxSizing: 'border-box', minHeight: 72,
     resize: 'none',
     fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif",
@@ -1276,7 +1276,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   familyNote: {
     fontSize: 18, lineHeight: 1.5, color: C.inkSoft, margin: 0,
-    background: '#F0F5F8', borderRadius: 12, padding: '10px 14px',
+    background: '#EFF4FB', borderRadius: 12, padding: '10px 14px',
   },
   // inline family-number form (daily + crisis)
   familyForm: {
@@ -1303,7 +1303,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   familyFormInput: {
     fontSize: 24, lineHeight: 1.4, color: C.ink,
-    background: '#FAFCFD', border: `3px solid ${C.sea}`, borderRadius: 14,
+    background: '#FDFBF6', border: `3px solid ${C.sea}`, borderRadius: 14,
     padding: '14px 16px', width: '100%', boxSizing: 'border-box', minHeight: 64,
     fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif",
   },
@@ -1314,7 +1314,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   familyFormCancelBtn: {
     minHeight: 64, fontSize: 20, fontWeight: 700, color: C.inkSoft,
-    background: '#F0F5F8', border: `2px solid ${C.muted}`, borderRadius: 14,
+    background: '#EFF4FB', border: `2px solid ${C.muted}`, borderRadius: 14,
     cursor: 'pointer', padding: '0 18px',
   },
   familyFormHint: {
@@ -1349,9 +1349,9 @@ const GLOBAL_CSS = `
     outline: 5px solid ${C.focus}; outline-offset: 3px;
   }
   .cp-input:focus, .cp-family-input:focus { outline: 4px solid ${C.sea}; outline-offset: 0; }
-  .cp-opt:hover { background: #D8ECF3; }
+  .cp-opt:hover { background: #CFE3FA; }
   .cp-send:hover:not(:disabled) { background: ${C.seaStrong}; }
-  .cp-mic:hover { background: #EAF4F8; }
+  .cp-mic:hover { background: #EAF2FB; }
   .cp-family:hover { filter: brightness(0.96); }
   .cp-crisis-call:hover { filter: brightness(0.96); }
   .cp-ctrl, .cp-opt, .cp-skip, .cp-mic, .cp-send, .cp-replay, .cp-family,
