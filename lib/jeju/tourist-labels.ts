@@ -169,6 +169,8 @@ export type TouristUiPack = {
   mapVerifyNote: string
   mapNaver: string
   mapKakao: string
+  /** Short hint above course-stop map links: locate place + directions inside map app. */
+  mapHelperHint: string
 
   // ── Bus (🚌) feature ──
   chipBus: string
@@ -470,6 +472,7 @@ const KO: TouristUiPack = {
   mapVerifyNote: '정확한 위치·운영정보는 지도/공식 채널에서 확인하세요.',
   mapNaver: '네이버',
   mapKakao: '카카오',
+  mapHelperHint: '🧭 지도앱에서 위치 확인·길찾기',
 
   chipBus: '버스 정보',
   busHeading: '🚌 제주 버스',
@@ -773,6 +776,7 @@ const EN: TouristUiPack = {
   mapVerifyNote: 'Confirm exact location & hours on the map / official channels.',
   mapNaver: 'Naver',
   mapKakao: 'Kakao',
+  mapHelperHint: '🧭 Locate & get directions in your map app',
 
   chipBus: 'Bus Info',
   busHeading: '🚌 Jeju Bus',
@@ -1077,6 +1081,7 @@ const JA: TouristUiPack = {
   mapVerifyNote: '正確な位置・営業情報は地図／公式チャンネルでご確認ください。',
   mapNaver: 'NAVER',
   mapKakao: 'カカオ',
+  mapHelperHint: '🧭 地図アプリで位置確認・ルート検索',
 
   chipBus: 'バス情報',
   busHeading: '🚌 済州バス',
@@ -1380,6 +1385,7 @@ const ZH_TW: TouristUiPack = {
   mapVerifyNote: '確切位置・營業資訊請於地圖／官方管道確認。',
   mapNaver: 'Naver',
   mapKakao: 'Kakao',
+  mapHelperHint: '🧭 在地圖App查看位置・規劃路線',
 
   chipBus: '公車資訊',
   busHeading: '🚌 濟州公車',
@@ -1682,6 +1688,7 @@ const ZH_CN: TouristUiPack = {
   mapVerifyNote: '确切位置・营业信息请于地图／官方渠道确认。',
   mapNaver: 'Naver',
   mapKakao: 'Kakao',
+  mapHelperHint: '🧭 在地图App查看位置・规划路线',
 
   chipBus: '公交信息',
   busHeading: '🚌 济州公交',

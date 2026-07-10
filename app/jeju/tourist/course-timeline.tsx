@@ -140,6 +140,9 @@ function StopRow({
                   <MapIcon size={12} strokeWidth={2.5} className="text-[#00A8B5]" aria-hidden />
                   {t.mapSearchWeb}
                 </p>
+                <p className="mb-1.5 text-[11px] leading-relaxed text-slate-400">
+                  {t.mapHelperHint}
+                </p>
                 <div className="grid grid-cols-3 gap-1.5">
                   <a
                     href={googleMapsUrl(d)}
