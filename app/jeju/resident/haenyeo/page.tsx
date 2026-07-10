@@ -4,14 +4,19 @@
  * 해녀 물질 안전 — Haenyeo safety chip for 도민 일반 mode.
  *
  * Target: 40–60s working / apprentice haenyeo. LOW digital literacy.
- * Korean-only (no i18n hook). Read-only dashboard — no AI call.
+ * Korean-only (no i18n hook). Read-only dashboard.
  *
- * Data: GET /api/domin/marine?spot=... (BeachInfoservice + WthrWrnInfoService)
+ * Data: GET /api/domin/haenyeo-safety?spot=... (lib/jeju/haenyeo-marine.ts)
+ *   - wave/일몰/특보 pass through from the SHARED lib/jeju/marine.ts (unmodified)
+ *   - 수온/조석(물때)/조류 come from KHOA (국립해양조사원), NEW in this feature
  *
- * Signal light logic
- *   RED    : 풍랑/태풍/폭풍해일 경보 active  OR  파고 ≥ 2.0m  OR  수온 ≤ 12°C
- *   YELLOW : 주의보 active                  OR  파고 1.0–2.0m OR  수온 12–15°C
- *   GREEN  : none of the above
+ * Signal light — TWO SEPARATE LAYERS (do not confuse them):
+ *   LAYER 1 (code, server-side, in haenyeo-marine.ts computeVerdict): the
+ *     ONLY thing that decides the 🔴/🟡/🟢 dot. This page just renders
+ *     data.verdict.color/reasons — it never recomputes the verdict itself.
+ *   LAYER 2 (AI explanation, data.aiExplanation): Perplexity explaining
+ *     LAYER 1's already-decided verdict in elderly-friendly Korean. Pure
+ *     enrichment — if it's missing, the verdict + numbers still render.
  *
  * Accessibility
  *   - Font sizes ≥ 20px body, ≥ 32px headings (larger than tourist cards)
@@ -50,6 +55,9 @@ const C = {
   green: '#14532D',
   greenBg: '#F0FDF4',
   greenBorder: '#86EFAC',
+  ai: '#5B21B6',
+  aiBg: '#F5F3FF',
+  aiBorder: '#DDD6FE',
 }
 
 // ── Spot chips ────────────────────────────────────────────────────────────────
@@ -63,133 +71,93 @@ const SPOTS = [
   { label: '신양', value: '신양섭지' },
 ]
 
-// ── Marine API types ──────────────────────────────────────────────────────────
+// ── API types (mirrors lib/jeju/haenyeo-marine.ts — that module is server-only,
+//    so its types are re-declared here rather than imported) ─────────────────
 
-interface TideEvent { time: string; level: number | null }
 interface MarineWarning { type: string; level: string; area: string; issuedAt: string }
+interface KhoaTideEvent { time: string; levelCm: number | null; kind: 'high' | 'low'; label: string }
+interface KhoaCurrentPoint { time: string; dir: string | null; speedCmS: number | null }
+interface KhoaCurrentInfo {
+  hourly: KhoaCurrentPoint[]
+  nowSpeedCmS: number | null
+  nowDir: string | null
+  maxSpeedCmS: number | null
+  stationName: string | null
+}
+interface KhoaWaterTemp { tempC: number | null; observedAt: string | null; stationName: string | null }
+type SignalColor = 'red' | 'yellow' | 'green'
+interface SafetyVerdict { color: SignalColor; reasons: string[] }
+interface AiMeta { source: '검색'; retrievedAt: string; asOf: string | null }
 
-interface MarineData {
+interface HaenyeoData {
   ok: true
   spot: string
   beachNum: string
-  tide: { lowTides: TideEvent[]; highTides: TideEvent[] } | null
   wave: { heightM: number | null } | null
-  waterTempC: number | null
   sun: { sunrise: string | null; sunset: string | null } | null
   warnings: MarineWarning[]
+  waterTemp: KhoaWaterTemp | null
+  waterTempStationLabel: string | null
+  tideEvents: KhoaTideEvent[] | null
+  tideStationLabel: string | null
+  current: KhoaCurrentInfo | null
+  currentStationLabel: string | null
+  verdict: SafetyVerdict
+  aiExplanation: string | null
+  aiMeta: AiMeta | null
   updatedAt: string
   errors: string[]
 }
 
-type MarineResult = MarineData | { ok: false; error: string }
+type HaenyeoResult = HaenyeoData | { ok: false; error: string }
 
-// ── Signal light computation ──────────────────────────────────────────────────
+// ── Verdict display mapping (LAYER 1's color is server-decided; this is ONLY
+//    the Korean copy for each color, not a re-judgment) ──────────────────────
 
-type SignalColor = 'red' | 'yellow' | 'green'
-
-interface Signal {
-  color: SignalColor
-  headline: string
-  reasons: string[]
+const VERDICT_HEADLINE: Record<SignalColor, string> = {
+  red: '오늘은 물질하기 위험해요',
+  yellow: '오늘은 물질에 주의가 필요해요',
+  green: '오늘 물질 괜찮아요',
 }
 
-function computeSignal(data: MarineData): Signal {
-  const reasons: string[] = []
-  let redDanger = false
-  let yellowCaution = false
+const SIGNAL_STYLE: Record<SignalColor, { dot: string; bg: string; border: string; label: string }> = {
+  red: { dot: C.red, bg: C.redBg, border: C.redBorder, label: '위험' },
+  yellow: { dot: '#D97706', bg: C.yellowBg, border: C.yellowBorder, label: '주의' },
+  green: { dot: '#15803D', bg: C.greenBg, border: C.greenBorder, label: '괜찮음' },
+}
 
-  // Check 경보 (경보 = alarm / watch vs 주의보 = advisory)
-  const dangerWarnings = data.warnings.filter(
-    (w) =>
-      w.level === '경보' &&
-      (w.type.includes('풍랑') ||
-        w.type.includes('태풍') ||
-        w.type.includes('폭풍해일') ||
-        w.type.includes('강풍')),
-  )
-  const cautionWarnings = data.warnings.filter(
-    (w) =>
-      w.level === '주의보' &&
-      (w.type.includes('풍랑') ||
-        w.type.includes('태풍') ||
-        w.type.includes('폭풍해일') ||
-        w.type.includes('강풍')),
-  )
+/** Display-only word for 물살 strength — mirrors the 30/50cm/s tiers used by
+ *  the server verdict, but this is just UI copy, not a safety decision. */
+function currentSpeedWord(speedCmS: number | null): string | null {
+  if (speedCmS == null) return null
+  if (speedCmS < 30) return '약함'
+  if (speedCmS < 50) return '다소 강함'
+  return '매우 강함'
+}
 
-  if (dangerWarnings.length > 0) {
-    redDanger = true
-    reasons.push(`${dangerWarnings.map((w) => `${w.type}${w.level}`).join(', ')}가 있어요`)
-  }
-  if (cautionWarnings.length > 0 && !redDanger) {
-    yellowCaution = true
-    reasons.push(`${cautionWarnings.map((w) => `${w.type}${w.level}`).join(', ')}가 있어요`)
-  }
-
-  // Wave height
-  const wh = data.wave?.heightM
-  if (wh != null) {
-    if (wh >= 2.0) {
-      redDanger = true
-      reasons.push(`파도 높이 ${wh.toFixed(1)}m — 너무 높아요`)
-    } else if (wh >= 1.0) {
-      yellowCaution = true
-      reasons.push(`파도 높이 ${wh.toFixed(1)}m — 조심하세요`)
-    }
-  }
-
-  // Water temperature
-  const wt = data.waterTempC
-  if (wt != null) {
-    if (wt <= 12) {
-      redDanger = true
-      reasons.push(`수온 ${wt}°C — 매우 차가워요`)
-    } else if (wt <= 15) {
-      yellowCaution = true
-      reasons.push(`수온 ${wt}°C — 물이 차요`)
-    }
-  }
-
-  if (redDanger) {
-    return {
-      color: 'red',
-      headline: '오늘은 물질하기 위험해요',
-      reasons: reasons.length > 0 ? reasons : ['기상 상태를 확인해 주세요'],
-    }
-  }
-  if (yellowCaution) {
-    return {
-      color: 'yellow',
-      headline: '오늘은 물질에 주의가 필요해요',
-      reasons: reasons.length > 0 ? reasons : ['기상 상태를 확인해 주세요'],
-    }
-  }
-  return {
-    color: 'green',
-    headline: '오늘 물질 괜찮아요',
-    reasons: ['특별한 위험 신호 없어요'],
-  }
+function fmtProvenance(meta: AiMeta): string {
+  const date = meta.retrievedAt.slice(0, 10)
+  return meta.asOf ? `🔍 검색 · ${meta.asOf} 기준 · ${date} 조회` : `🔍 검색 · ${date} 조회`
 }
 
 // ── TTS text builder ─────────────────────────────────────────────────────────
 
-function buildTtsText(signal: Signal, data: MarineData): string {
-  const parts: string[] = [`해녀 물질 안전 정보입니다.`, signal.headline + '.']
-  if (signal.reasons.length > 0) parts.push(signal.reasons.join('. ') + '.')
-  if (data.tide) {
-    const low = data.tide.lowTides[0]
-    if (low) parts.push(`오늘 첫 간조 시간은 ${low.time}입니다.`)
-  }
+function buildTtsText(data: HaenyeoData): string {
+  const parts: string[] = ['해녀 물질 안전 정보입니다.', VERDICT_HEADLINE[data.verdict.color] + '.']
+  if (data.verdict.reasons.length > 0) parts.push(data.verdict.reasons.join('. ') + '.')
+  const firstLow = data.tideEvents?.find((e) => e.kind === 'low')
+  if (firstLow) parts.push(`오늘 간조 시간은 ${firstLow.time}입니다.`)
   if (data.sun?.sunset) parts.push(`일몰 시각은 ${data.sun.sunset}입니다. 해가 지기 전에 나오세요.`)
-  if (data.waterTempC != null && data.waterTempC <= 15) {
-    parts.push(`수온이 ${data.waterTempC}도입니다. 저체온 조심하세요.`)
+  if (data.waterTemp?.tempC != null && data.waterTemp.tempC < 20) {
+    parts.push(`수온이 ${data.waterTemp.tempC}도입니다. 저체온 조심하세요.`)
   }
+  if (data.aiExplanation) parts.push(data.aiExplanation)
   return parts.join(' ')
 }
 
 // ── Format helpers ────────────────────────────────────────────────────────────
 
 function fmtTime(raw: string): string {
-  // Handles: "0425", "04:25", "04:25:00+09:00", etc.
   const clean = raw.replace(/^.*T/, '').replace(/[+Z].*$/, '').replace(/^(\d{4})$/, '$1').trim()
   if (/^\d{4}$/.test(clean)) return `${clean.slice(0, 2)}:${clean.slice(2)}`
   if (/^\d{2}:\d{2}/.test(clean)) return clean.slice(0, 5)
@@ -201,7 +169,7 @@ function fmtTime(raw: string): string {
 export default function HaenyeoPage() {
   const router = useRouter()
   const [spot, setSpot] = useState(SPOTS[0].value)
-  const [data, setData] = useState<MarineData | null>(null)
+  const [data, setData] = useState<HaenyeoData | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [ttsSupported, setTtsSupported] = useState(false)
@@ -214,7 +182,6 @@ export default function HaenyeoPage() {
     }
   }, [])
 
-  // Cancel TTS when leaving
   useEffect(
     () => () => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -237,15 +204,15 @@ export default function HaenyeoPage() {
     setFetchError(null)
     try {
       const res = await fetch(
-        `/api/domin/marine?spot=${encodeURIComponent(targetSpot)}`,
+        `/api/domin/haenyeo-safety?spot=${encodeURIComponent(targetSpot)}`,
         { signal: ctrl.signal, cache: 'no-store' },
       )
-      const json = (await res.json()) as MarineResult
+      const json = (await res.json()) as HaenyeoResult
       if (!json.ok) {
         setFetchError((json as { ok: false; error: string }).error)
         setData(null)
       } else {
-        setData(json as MarineData)
+        setData(json as HaenyeoData)
         setFetchError(null)
       }
     } catch (e: unknown) {
@@ -291,16 +258,14 @@ export default function HaenyeoPage() {
     }
   }, [])
 
-  const signal = data ? computeSignal(data) : null
-
   const onSpeak = useCallback(() => {
     if (speaking) {
       stopSpeaking()
       return
     }
-    if (!data || !signal) return
-    speak(buildTtsText(signal, data))
-  }, [speaking, data, signal, speak, stopSpeaking])
+    if (!data) return
+    speak(buildTtsText(data))
+  }, [speaking, data, speak, stopSpeaking])
 
   const onSpotChange = useCallback(
     (s: string) => {
@@ -312,25 +277,35 @@ export default function HaenyeoPage() {
 
   // ── Derived UI data ─────────────────────────────────────────────────────────
 
-  const signalStyle = signal
-    ? {
-        red: { dot: C.red, bg: C.redBg, border: C.redBorder, label: '위험' },
-        yellow: { dot: '#D97706', bg: C.yellowBg, border: C.yellowBorder, label: '주의' },
-        green: { dot: '#15803D', bg: C.greenBg, border: C.greenBorder, label: '괜찮음' },
-      }[signal.color]
-    : null
+  const verdict = data?.verdict ?? null
+  const signalStyle = verdict ? SIGNAL_STYLE[verdict.color] : null
 
-  const todayLowTides = data?.tide?.lowTides?.slice(0, 4) ?? []
-  const todayHighTides = data?.tide?.highTides?.slice(0, 4) ?? []
   const sunset = data?.sun?.sunset
-  const waterTemp = data?.waterTempC ?? null   // explicit null, never 0
-  const waveH = data?.wave?.heightM ?? null    // explicit null, never 0
+  const waveH = data?.wave?.heightM ?? null
 
-  const tempCold = waterTemp !== null && waterTemp <= 15
-  const tempVeryCold = waterTemp !== null && waterTemp <= 12
+  const waterTemp = data?.waterTemp ?? null
+  const tempC = waterTemp?.tempC ?? null
+  const tempCold = tempC !== null && tempC < 20 // matches server's COLD_WATER_C tier
+  const showWaterTempCard = waterTemp !== null
 
-  // True when neither numeric source is available yet (BeachInfoservice pending)
-  const numericMissing = waveH === null && waterTemp === null
+  const tideEvents = data?.tideEvents ?? []
+  const showTideCard = tideEvents.length > 0
+  const lowTideEvents = tideEvents.filter((e) => e.kind === 'low')
+  const highTideEvents = tideEvents.filter((e) => e.kind === 'high')
+
+  const current = data?.current ?? null
+  const showCurrentCard = current !== null
+  const currentWord = current ? currentSpeedWord(current.nowSpeedCmS ?? current.maxSpeedCmS) : null
+  const currentMaxWord = current ? currentSpeedWord(current.maxSpeedCmS) : null
+  const currentWillStrengthen =
+    current != null &&
+    current.maxSpeedCmS != null &&
+    current.nowSpeedCmS != null &&
+    current.maxSpeedCmS > current.nowSpeedCmS + 5
+
+  // True when the core numeric sources are all missing — the verdict then
+  // leans only on 특보 (or defaults green), so we say so honestly.
+  const numericMissing = waveH === null && tempC === null && current?.nowSpeedCmS == null
 
   return (
     <div style={S.root}>
@@ -398,9 +373,9 @@ export default function HaenyeoPage() {
         )}
 
         {/* ── Main content ────────────────────────────────────────────────── */}
-        {!loading && data && signal && signalStyle && (
+        {!loading && data && verdict && signalStyle && (
           <>
-            {/* ── Signal light ──────────────────────────────────────────── */}
+            {/* ── Signal light (LAYER 1 — code-decided, never AI) ─────────── */}
             <section
               style={{ ...S.signalCard, background: signalStyle.bg, borderColor: signalStyle.border }}
               aria-label={`안전 신호: ${signalStyle.label}`}
@@ -416,24 +391,22 @@ export default function HaenyeoPage() {
                     {signalStyle.label}
                   </p>
                   <p style={{ ...S.signalHeadline, color: C.ink }}>
-                    {signal.headline}
+                    {VERDICT_HEADLINE[verdict.color]}
                   </p>
                 </div>
               </div>
-              {signal.reasons.map((r) => (
+              {verdict.reasons.map((r) => (
                 <p key={r} style={{ ...S.signalReason, color: C.inkSoft }}>
                   • {r}
                 </p>
               ))}
 
-              {/* ── Numeric-data missing note ──────────────────────── */}
               {numericMissing && (
                 <p style={S.numericNote} role="note">
-                  ※ 파도·수온 정보를 불러오지 못했어요 — 특보 기준으로만 안내 중
+                  ※ 파도·수온·물살 정보를 불러오지 못했어요 — 특보 기준으로만 안내 중
                 </p>
               )}
 
-              {/* ── TTS button ────────────────────────────────────────── */}
               {ttsSupported && (
                 <button
                   type="button"
@@ -448,51 +421,62 @@ export default function HaenyeoPage() {
               )}
             </section>
 
+            {/* ── AI 해석 (LAYER 2 — explains the verdict above, never overrides it) ── */}
+            {data.aiExplanation && (
+              <section style={S.aiCard} aria-label="오늘 물질 조건 해설">
+                <h2 style={S.aiTitle}>
+                  <span aria-hidden>💬</span> 오늘 물질 조건 해설
+                </h2>
+                <p style={S.aiText}>{data.aiExplanation}</p>
+                {data.aiMeta && <p style={S.aiMetaText}>{fmtProvenance(data.aiMeta)}</p>}
+              </section>
+            )}
+
             {/* ── Data cards ──────────────────────────────────────────── */}
             <div style={S.cardGrid}>
-              {/* 물때 card */}
-              <section style={S.dataCard} aria-label="물때 정보">
-                <h2 style={S.cardTitle}>
-                  <span aria-hidden>🌊</span> 물때
-                </h2>
-
-                {todayLowTides.length === 0 && todayHighTides.length === 0 ? (
-                  <p style={S.noData}>정보 없음</p>
-                ) : (
+              {/* 물때 card (KHOA 조석) */}
+              {showTideCard && (
+                <section style={S.dataCard} aria-label="물때 정보">
+                  <h2 style={S.cardTitle}>
+                    <span aria-hidden>🌊</span> 물때
+                  </h2>
                   <>
-                    {todayLowTides.length > 0 && (
+                    {lowTideEvents.length > 0 && (
                       <div style={S.tideGroup}>
                         <p style={S.tideTypeLabel}>
                           간조 <span style={S.tideHint}>(물질 좋은 시간)</span>
                         </p>
-                        {todayLowTides.map((t, i) => (
+                        {lowTideEvents.map((t, i) => (
                           <div key={i} style={S.tideRowLow}>
-                            <span style={S.tideTimeLow}>{fmtTime(t.time)}</span>
-                            {t.level != null && (
-                              <span style={S.tideLevelLow}>{t.level}cm</span>
+                            <span style={S.tideTimeLow}>{t.time}</span>
+                            {t.levelCm != null && (
+                              <span style={S.tideLevelLow}>{t.levelCm}cm</span>
                             )}
                           </div>
                         ))}
                       </div>
                     )}
-                    {todayHighTides.length > 0 && (
+                    {highTideEvents.length > 0 && (
                       <div style={S.tideGroup}>
                         <p style={S.tideTypeLabelMuted}>만조</p>
-                        {todayHighTides.map((t, i) => (
+                        {highTideEvents.map((t, i) => (
                           <div key={i} style={S.tideRowHigh}>
-                            <span style={S.tideTimeHigh}>{fmtTime(t.time)}</span>
-                            {t.level != null && (
-                              <span style={S.tideLevelHigh}>{t.level}cm</span>
+                            <span style={S.tideTimeHigh}>{t.time}</span>
+                            {t.levelCm != null && (
+                              <span style={S.tideLevelHigh}>{t.levelCm}cm</span>
                             )}
                           </div>
                         ))}
                       </div>
                     )}
                   </>
-                )}
-              </section>
+                  {data.tideStationLabel && (
+                    <p style={S.stationNote}>{data.tideStationLabel}</p>
+                  )}
+                </section>
+              )}
 
-              {/* 일몰 card */}
+              {/* 일몰 card (local suncalc — unchanged) */}
               <section style={S.dataCard} aria-label="일몰 시각">
                 <h2 style={S.cardTitle}>
                   <span aria-hidden>🌅</span> 일몰
@@ -507,47 +491,67 @@ export default function HaenyeoPage() {
                 )}
               </section>
 
-              {/* 수온 card */}
-              <section
-                style={
-                  tempVeryCold
-                    ? { ...S.dataCard, borderColor: C.red, background: '#FFF5F5' }
-                    : tempCold
+              {/* 수온 card (KHOA 수온) */}
+              {showWaterTempCard && (
+                <section
+                  style={
+                    tempCold
                       ? { ...S.dataCard, borderColor: C.yellowBorder, background: C.yellowBg }
                       : S.dataCard
-                }
-                aria-label="수온"
-              >
-                <h2 style={S.cardTitle}>
-                  <span aria-hidden>🌡️</span> 수온
-                </h2>
-                {waterTemp != null ? (
-                  <>
-                    <p
-                      style={{
-                        ...S.tempValue,
-                        color: tempVeryCold ? C.red : tempCold ? C.yellow : C.sea,
-                      }}
-                    >
-                      {waterTemp}°C
+                  }
+                  aria-label="수온"
+                >
+                  <h2 style={S.cardTitle}>
+                    <span aria-hidden>🌡️</span> 수온
+                  </h2>
+                  <p style={{ ...S.tempValue, color: tempCold ? C.yellow : C.sea }}>
+                    {tempC}°C
+                  </p>
+                  {tempCold && (
+                    <p style={{ ...S.tempWarning, color: C.yellow }}>
+                      물이 차요{'\n'}저체온 조심하세요
                     </p>
-                    {tempVeryCold && (
-                      <p style={{ ...S.tempWarning, color: C.red }}>
-                        물이 매우 차요{'\n'}저체온 위험!
-                      </p>
-                    )}
-                    {!tempVeryCold && tempCold && (
-                      <p style={{ ...S.tempWarning, color: C.yellow }}>
-                        물이 차요{'\n'}저체온 조심하세요
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p style={S.noData}>정보 없음</p>
-                )}
-              </section>
+                  )}
+                  {data.waterTempStationLabel && (
+                    <p style={S.stationNote}>{data.waterTempStationLabel}</p>
+                  )}
+                </section>
+              )}
 
-              {/* 파고 card */}
+              {/* 조류(물살) card (KHOA 조류) — harbor/channel-based reference value */}
+              {showCurrentCard && current && (
+                <section style={S.dataCard} aria-label="물살(조류)">
+                  <h2 style={S.cardTitle}>
+                    <span aria-hidden>🌀</span> 물살
+                  </h2>
+                  <p
+                    style={{
+                      ...S.currentWord,
+                      color:
+                        currentWord === '매우 강함'
+                          ? C.red
+                          : currentWord === '다소 강함'
+                            ? C.yellow
+                            : C.sea,
+                    }}
+                  >
+                    {currentWord ?? '정보 없음'}
+                  </p>
+                  {current.nowDir && (
+                    <p style={S.currentSub}>{current.nowDir}쪽으로 흐름</p>
+                  )}
+                  {currentWillStrengthen && (
+                    <p style={{ ...S.tempWarning, color: C.yellow }}>
+                      오늘 중 물살이{'\n'}{currentMaxWord}까지 강해질 수 있어요
+                    </p>
+                  )}
+                  {data.currentStationLabel && (
+                    <p style={S.stationNote}>{data.currentStationLabel}</p>
+                  )}
+                </section>
+              )}
+
+              {/* 파고 card — sourced from shared marine.ts wave logic, unchanged */}
               <section style={S.dataCard} aria-label="파도 높이">
                 <h2 style={S.cardTitle}>
                   <span aria-hidden>🌊</span> 파도
@@ -558,15 +562,15 @@ export default function HaenyeoPage() {
                       style={{
                         ...S.tempValue,
                         color:
-                          waveH >= 2.0 ? C.red : waveH >= 1.0 ? C.yellow : C.sea,
+                          waveH >= 1.5 ? C.red : waveH >= 1.0 ? C.yellow : C.sea,
                       }}
                     >
                       {waveH.toFixed(1)}m
                     </p>
-                    {waveH >= 2.0 && (
+                    {waveH >= 1.5 && (
                       <p style={{ ...S.tempWarning, color: C.red }}>입수 위험</p>
                     )}
-                    {waveH >= 1.0 && waveH < 2.0 && (
+                    {waveH >= 1.0 && waveH < 1.5 && (
                       <p style={{ ...S.tempWarning, color: C.yellow }}>주의</p>
                     )}
                   </>
@@ -833,6 +837,39 @@ const S: Record<string, React.CSSProperties> = {
     outline: `3px solid ${C.focus}`,
   },
 
+  // AI 해석 card (LAYER 2)
+  aiCard: {
+    background: C.aiBg,
+    border: `2px solid ${C.aiBorder}`,
+    borderRadius: 20,
+    padding: '18px 18px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  aiTitle: {
+    fontSize: 20,
+    fontWeight: 900,
+    color: C.ai,
+    margin: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  aiText: {
+    fontSize: 19,
+    fontWeight: 600,
+    color: C.ink,
+    margin: 0,
+    lineHeight: 1.6,
+  },
+  aiMetaText: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: C.mutedInk,
+    margin: 0,
+  },
+
   // Data card grid
   cardGrid: {
     display: 'grid',
@@ -955,6 +992,29 @@ const S: Record<string, React.CSSProperties> = {
     whiteSpace: 'pre-line',
   },
 
+  // Current (조류) word display
+  currentWord: {
+    fontSize: 32,
+    fontWeight: 900,
+    margin: 0,
+    lineHeight: 1.15,
+  },
+  currentSub: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: C.inkSoft,
+    margin: 0,
+  },
+
+  // Station attribution note (수온/물때/조류 cards)
+  stationNote: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: C.mutedInk,
+    margin: '4px 0 0',
+    lineHeight: 1.4,
+  },
+
   // No data
   noData: {
     fontSize: 18,
@@ -963,7 +1023,7 @@ const S: Record<string, React.CSSProperties> = {
     fontWeight: 600,
   },
 
-  // Numeric-data missing note (shown under signal when wave/waterTemp unavailable)
+  // Numeric-data missing note (shown under signal when wave/waterTemp/current unavailable)
   numericNote: {
     fontSize: 16,
     fontWeight: 600,

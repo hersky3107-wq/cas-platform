@@ -99,6 +99,20 @@ interface FisherySummary {
 }
 interface ContextMeta { source: string; retrievedAt: string; asOf: string | null }
 
+// ── Marine display extras (mirror lib/jeju/haenyeo-marine.ts — DISPLAY ONLY,
+//    fetched separately from /api/domin/marine-extras; NEVER sent to the
+//    verdict/decision pipeline, which stays exactly as returned by the job) ──
+interface KhoaTideEvent { time: string; levelCm: number | null; kind: 'high' | 'low'; label: string }
+interface KhoaWaterTemp { tempC: number | null; observedAt: string | null; stationName: string | null }
+interface MarineExtras {
+  ok?: boolean
+  waterTemp: KhoaWaterTemp | null
+  waterTempStationLabel: string | null
+  tideEvents: KhoaTideEvent[] | null
+  tideStationLabel: string | null
+  errors: string[]
+}
+
 interface DecisionPayload {
   ok: true
   species: string
@@ -148,10 +162,14 @@ export default function FishingPage() {
   const [errMsg, setErrMsg] = useState<string | null>(null)
   const [ttsSupported, setTtsSupported] = useState(false)
   const [speaking, setSpeaking] = useState(false)
+  // DISPLAY-ONLY 수온/간조 (KHOA) — fetched independently of the decision job;
+  // never merged into `result`, so it can never reach the verdict pipeline.
+  const [marineExtras, setMarineExtras] = useState<MarineExtras | null>(null)
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const elapsedTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const extrasAbortRef = useRef<AbortController | null>(null)
   const activeJob = useRef<string | null>(null)
 
   useEffect(() => {
@@ -174,6 +192,7 @@ export default function FishingPage() {
     () => () => {
       stopTimers()
       abortRef.current?.abort()
+      extrasAbortRef.current?.abort()
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try { window.speechSynthesis.cancel() } catch { /* no-op */ }
       }
@@ -181,17 +200,38 @@ export default function FishingPage() {
     [stopTimers],
   )
 
+  // Fires AFTER the decision result is in — reuses lib/jeju/haenyeo-marine.ts's
+  // KHOA fetchers via /api/domin/marine-extras, mapped by the SAME resolved
+  // spot the decision used. Silent on failure: the fact grid just keeps
+  // showing "정보 없음" for that field, exactly as before this feature.
+  const fetchMarineExtras = useCallback(async (targetSpot: string) => {
+    extrasAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    extrasAbortRef.current = ctrl
+    try {
+      const res = await fetch(
+        `/api/domin/marine-extras?spot=${encodeURIComponent(targetSpot)}`,
+        { signal: ctrl.signal, cache: 'no-store' },
+      )
+      const json = (await res.json()) as MarineExtras
+      if (json.ok) setMarineExtras(json)
+    } catch {
+      /* display-only enrichment — silent failure keeps "정보 없음" fallback */
+    }
+  }, [])
+
   const finishWithResult = useCallback((payload: DecisionResult) => {
     stopTimers()
     activeJob.current = null
     if (payload.ok) {
       setResult(payload)
       setPhase('done')
+      void fetchMarineExtras(payload.spot)
     } else {
       setErrMsg(payload.error || '조업 판단을 만들지 못했어요.')
       setPhase('error')
     }
-  }, [stopTimers])
+  }, [stopTimers, fetchMarineExtras])
 
   const poll = useCallback(
     async (jobId: string) => {
@@ -227,9 +267,11 @@ export default function FishingPage() {
     stopSpeaking()
     stopTimers()
     abortRef.current?.abort()
+    extrasAbortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
     setResult(null)
+    setMarineExtras(null)
     setErrMsg(null)
     setElapsed(0)
     setPhase('polling')
@@ -298,6 +340,28 @@ export default function FishingPage() {
       ? `🔍 검색 · ${meta.asOf} 기준`
       : `🔍 검색 · ${fmtDate(meta.retrievedAt)} 조회`
     : null
+
+  // DISPLAY-ONLY 수온/간조 — sourced from marineExtras (KHOA), NOT from
+  // result.marine (which stays whatever the decision job computed/used).
+  const waterTempExtra = marineExtras?.waterTemp ?? null
+  const lowTideExtra = marineExtras?.tideEvents?.filter((e) => e.kind === 'low') ?? []
+  const waterTempText = waterTempExtra?.tempC != null ? `${waterTempExtra.tempC}°C` : '정보 없음'
+  const tideText =
+    lowTideExtra.length > 0 ? lowTideExtra.slice(0, 2).map((t) => t.time).join(', ') : '정보 없음'
+  const waterTempNote = waterTempExtra ? marineExtras?.waterTempStationLabel ?? null : null
+  const tideNote = lowTideExtra.length > 0 ? marineExtras?.tideStationLabel ?? null : null
+
+  // Honest "missing" note: drop 수온/물때 from the OLD marine.missing (which
+  // reflects the still-unchanged decision pipeline's own source) since those
+  // two fields are now displayed from marineExtras instead — re-add only if
+  // the NEW source ALSO came up empty for that specific field.
+  const missingAdjusted = result
+    ? [
+        ...result.marine.missing.filter((m) => m !== '수온' && m !== '물때'),
+        ...(waterTempExtra ? [] : ['수온']),
+        ...(lowTideExtra.length > 0 ? [] : ['물때']),
+      ]
+    : []
 
   return (
     <div style={S.root}>
@@ -459,19 +523,19 @@ export default function FishingPage() {
                     {result.marine.waveHeightM != null ? `${result.marine.waveHeightM.toFixed(1)}m` : '정보 없음'}
                   </span>
                 </div>
-                <div style={S.fact}>
-                  <span style={S.factK}>수온</span>
-                  <span style={S.factV}>
-                    {result.marine.waterTempC != null ? `${result.marine.waterTempC}°C` : '정보 없음'}
-                  </span>
+                <div style={S.factCol}>
+                  <div style={S.factRow}>
+                    <span style={S.factK}>수온</span>
+                    <span style={S.factV}>{waterTempText}</span>
+                  </div>
+                  {waterTempNote && <span style={S.factNote}>{waterTempNote}</span>}
                 </div>
-                <div style={S.fact}>
-                  <span style={S.factK}>간조</span>
-                  <span style={S.factV}>
-                    {result.marine.lowTides.length > 0
-                      ? result.marine.lowTides.slice(0, 2).map((t) => fmtTime(t.time)).join(', ')
-                      : '정보 없음'}
-                  </span>
+                <div style={S.factCol}>
+                  <div style={S.factRow}>
+                    <span style={S.factK}>간조</span>
+                    <span style={S.factV}>{tideText}</span>
+                  </div>
+                  {tideNote && <span style={S.factNote}>{tideNote}</span>}
                 </div>
                 <div style={S.fact}>
                   <span style={S.factK}>일몰</span>
@@ -501,9 +565,9 @@ export default function FishingPage() {
                 </div>
               )}
 
-              {result.marine.missing.length > 0 && (
+              {missingAdjusted.length > 0 && (
                 <p style={S.honestNote} role="note">
-                  ※ {result.marine.missing.join('·')} 정보를 불러오지 못했어요 — 있는 자료로만 판단했어요.
+                  ※ {missingAdjusted.join('·')} 정보를 불러오지 못했어요 — 있는 자료로만 판단했어요.
                 </p>
               )}
             </section>
@@ -735,6 +799,18 @@ const S: Record<string, React.CSSProperties> = {
   },
   factK: { fontSize: 16, fontWeight: 700, color: C.mutedInk },
   factV: { fontSize: 20, fontWeight: 800, color: C.ink, fontVariantNumeric: 'tabular-nums' },
+
+  // Fact cells that also carry a station attribution note (수온/간조)
+  factCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    background: C.mutedBg,
+    borderRadius: 12,
+    padding: '10px 14px',
+  },
+  factRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
+  factNote: { fontSize: 12, fontWeight: 600, color: C.mutedInk, lineHeight: 1.3 },
 
   warnList: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   warnBadge: {

@@ -46,6 +46,8 @@ interface PriceItem {
   yearAgo: number | null
   direction: 0 | 1 | null
   changePct: number | null
+  /** Upper bound of an AI-estimated price range (Perplexity fallback only). */
+  priceHighEstimate?: number | null
 }
 
 interface PriceGroups {
@@ -248,26 +250,32 @@ export default function PricesPage() {
                       {items.map((it, i) => {
                         const isUp = it.direction === 1
                         const isDown = it.direction === 0
+                        const hasRange = it.priceHighEstimate != null && it.priceHighEstimate !== it.retailPrice
                         return (
-                          <div key={i} role="listitem" style={S.itemRow}>
-                            <div style={S.itemLeft}>
-                              <span style={S.itemName}>{shortName(it.itemName)}</span>
-                              <span style={S.itemUnit}>{it.unit}</span>
+                          <div key={i} role="listitem" style={S.itemRowWrap}>
+                            <div style={S.itemRow}>
+                              <div style={S.itemLeft}>
+                                <span style={S.itemName}>{shortName(it.itemName)}</span>
+                                <span style={S.itemUnit}>{it.unit}</span>
+                              </div>
+                              <span style={S.itemPrice}>{fmtPrice(it.retailPrice)}</span>
+                              {(isUp || isDown) ? (
+                                <span style={{
+                                  ...S.changeBadge,
+                                  background: isUp ? C.upBg : C.downBg,
+                                  color: isUp ? C.up : C.down,
+                                }}>
+                                  {isUp ? '▲' : '▼'}
+                                  {it.changePct != null
+                                    ? ` ${Math.abs(it.changePct)}%`
+                                    : ''}
+                                </span>
+                              ) : (
+                                <span style={{ ...S.changeBadge, background: C.mutedBg, color: C.mutedInk }}>─</span>
+                              )}
                             </div>
-                            <span style={S.itemPrice}>{fmtPrice(it.retailPrice)}</span>
-                            {(isUp || isDown) ? (
-                              <span style={{
-                                ...S.changeBadge,
-                                background: isUp ? C.upBg : C.downBg,
-                                color: isUp ? C.up : C.down,
-                              }}>
-                                {isUp ? '▲' : '▼'}
-                                {it.changePct != null
-                                  ? ` ${Math.abs(it.changePct)}%`
-                                  : ''}
-                              </span>
-                            ) : (
-                              <span style={{ ...S.changeBadge, background: C.mutedBg, color: C.mutedInk }}>─</span>
+                            {hasRange && (
+                              <p style={S.priceRangeHint}>~상한 {fmtPrice(it.priceHighEstimate ?? null)}</p>
                             )}
                           </div>
                         )
@@ -454,13 +462,22 @@ const S: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: 4,
   },
+  itemRowWrap: {
+    borderBottom: `1px solid ${C.mutedBg}`,
+    padding: '2px 0',
+  },
   itemRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
     minHeight: 36,
-    padding: '4px 2px',
-    borderBottom: `1px solid ${C.mutedBg}`,
+    padding: '2px 2px',
+  },
+  priceRangeHint: {
+    fontSize: 12,
+    color: C.mutedInk,
+    margin: '0 2px 4px',
+    textAlign: 'right',
   },
   itemLeft: {
     flex: 1,

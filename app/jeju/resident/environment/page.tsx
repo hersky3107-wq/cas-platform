@@ -8,7 +8,8 @@
  *   POST /api/domin/environment/ask { question } → 분리배출 Q&A answer
  *
  * Layout (top to bottom):
- *   1. 🌫️ 오늘 미세먼지 — PM10/PM2.5 + grade badge. null → "정보 없음 (준비 중)"
+ *   1. 🌫️ 오늘 대기질 — 종합 신호등(khai) + PM10/PM2.5 + 오존, grade badges.
+ *        null → card hidden entirely (same principle as haenyeo's tide card)
  *   2. 🗑️ 분리배출 요일제·방법 요약 — Perplexity context + provenance
  *   3. 💬 분리배출 Q&A — text input → POST /ask → answer + provenance
  *   4. 📍 가까운 클린하우스·재활용도움센터 — byDong list or nearest-sorted
@@ -49,13 +50,19 @@ const C = {
 // ── API types ─────────────────────────────────────────────────────────────────
 
 interface DustInfo {
+  khai: number | null
+  khaiGrade: string | null
   pm10: number | null
   pm10Grade: string | null
   pm25: number | null
   pm25Grade: string | null
+  o3: number | null
+  o3Grade: string | null
   alert: string | null
   station: string | null
+  stationLabel: string | null
   measuredAt: string | null
+  asOf: string | null
 }
 
 interface CleanCenter {
@@ -264,30 +271,46 @@ export default function EnvironmentPage() {
 
         {!loading && data && (
           <>
-            {/* ── 1. 미세먼지 ─────────────────────────────────────────────── */}
-            <section style={S.card} aria-label="오늘 미세먼지">
-              <h2 style={S.sectionTitle}>🌫️ 오늘 미세먼지</h2>
-              {data.dust ? (
-                <>
-                  <div style={S.dustRow}>
-                    <DustCell label="미세먼지 PM10" value={data.dust.pm10} grade={data.dust.pm10Grade} unit="㎍/㎥" />
-                    <DustCell label="초미세먼지 PM2.5" value={data.dust.pm25} grade={data.dust.pm25Grade} unit="㎍/㎥" />
+            {/* ── 1. 미세먼지 — hidden entirely when the AirKorea call fails ── */}
+            {data.dust && (
+              <section style={S.card} aria-label="오늘 대기질">
+                <h2 style={S.sectionTitle}>🌫️ 오늘 대기질</h2>
+
+                {/* 종합 신호등: khaiValue + khaiGrade */}
+                {data.dust.khai != null && (
+                  <div
+                    style={{ ...S.signalRow, ...gradeStyle(data.dust.khaiGrade) }}
+                    role="img"
+                    aria-label={`종합 대기질 신호등: ${data.dust.khaiGrade ?? '정보 없음'}`}
+                  >
+                    <span style={S.signalLabel}>종합 신호등</span>
+                    <span style={S.signalGrade}>{data.dust.khaiGrade ?? '—'}</span>
+                    <span style={S.signalValue}>지수 {data.dust.khai}</span>
                   </div>
-                  {data.dust.alert && (
-                    <p style={S.dustAlert}>⚠ 경보: {data.dust.alert}</p>
-                  )}
-                  {(data.dust.station || data.dust.measuredAt) && (
-                    <p style={S.dustMeta}>
-                      {data.dust.station ? `측정소: ${data.dust.station}` : ''}
-                      {data.dust.station && data.dust.measuredAt ? ' · ' : ''}
-                      {data.dust.measuredAt ? `측정: ${data.dust.measuredAt}` : ''}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <p style={S.empty}>정보 없음 (에어코리아 데이터 준비 중)</p>
-              )}
-            </section>
+                )}
+
+                <div style={S.dustRow}>
+                  <DustCell label="미세먼지 PM10" value={data.dust.pm10} grade={data.dust.pm10Grade} unit="㎍/㎥" />
+                  <DustCell label="초미세먼지 PM2.5" value={data.dust.pm25} grade={data.dust.pm25Grade} unit="㎍/㎥" />
+                </div>
+
+                {/* 오존 — separate card, Jeju summer 오존주의보 relevance */}
+                <div style={S.ozoneCard}>
+                  <DustCell label="오존 O₃" value={data.dust.o3} grade={data.dust.o3Grade} unit="ppm" />
+                </div>
+
+                {data.dust.alert && (
+                  <p style={S.dustAlert}>⚠ 경보: {data.dust.alert}</p>
+                )}
+                {(data.dust.stationLabel || data.dust.asOf) && (
+                  <p style={S.dustMeta}>
+                    {data.dust.stationLabel ?? ''}
+                    {data.dust.stationLabel && data.dust.asOf ? ' · ' : ''}
+                    {data.dust.asOf ?? ''}
+                  </p>
+                )}
+              </section>
+            )}
 
             {/* ── 2. 분리배출 요일제·방법 요약 ─────────────────────────────── */}
             {data.context ? (
@@ -554,10 +577,27 @@ const S: Record<string, React.CSSProperties> = {
   },
   empty: { fontSize: 15, color: C.mutedInk, margin: 0 },
   // Dust
+  signalRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: 8,
+    borderRadius: 12,
+    padding: '10px 14px',
+    marginBottom: 10,
+  },
+  signalLabel: { fontSize: 13, fontWeight: 700 },
+  signalGrade: { fontSize: 20, fontWeight: 900 },
+  signalValue: { fontSize: 13, fontWeight: 600, opacity: 0.85 },
   dustRow: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: 10,
+  },
+  ozoneCard: {
+    marginTop: 10,
+    display: 'grid',
+    gridTemplateColumns: '1fr',
   },
   dustCell: {
     background: C.mutedBg,

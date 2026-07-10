@@ -7,7 +7,9 @@ import 'server-only'
  *
  * THREE parts:
  *   1. 미세먼지 — 한국환경공단_에어코리아 대기오염 현황 (시도별 실시간, 제주).
- *        PM10 / PM2.5 값 + 등급 + 경보(있으면). data.go.kr key (KPX fallback).
+ *        khai(종합) / PM10 / PM2.5 / O3 값 + 등급 + 경보(있으면). data.go.kr key (KPX fallback).
+ *        Representative station: 연동 (제주시청 area) — 통신장애 dead stations
+ *        (e.g. 제주항/이도동/고산리) are filtered out before picking one.
  *   2. 클린하우스/재활용도움센터 — STATIC asset (lib/jeju/data/cleanhouse.json, data.go.kr official CSV).
  *        Optional lat/lng → nearest N (haversine); default grouped by 읍면동.
  *   3. 배출요일제 / 분리배출 Q&A — Perplexity (no formal 요일제 API):
@@ -27,10 +29,12 @@ import {
   type ContextMeta,
 } from '@/lib/jeju/fishery'
 import cleanhouseData from '@/lib/jeju/data/cleanhouse.json'
+import { recordDebug, type DebugSink } from '@/lib/jeju/debug-capture'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const AIRKOREA_BASE = 'https://apis.data.go.kr/B552584/ArpltnInqireSvc'
+// NOTE: was 'ArpltnInqireSvc' (missing "Info") — that typo caused the HTTP 500.
+const AIRKOREA_BASE = 'https://apis.data.go.kr/B552584/ArpltnInforInqireSvc'
 const AIRKOREA_SIDO_OP = `${AIRKOREA_BASE}/getCtprvnRltmMesureDnsty`
 /** 15s (was 10s) — mobile networks add latency on top of upstream response time. */
 const TIMEOUT_MS = 15_000
@@ -53,13 +57,23 @@ const GRADE_LABEL: Record<string, string> = {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface DustInfo {
+  /** 통합대기환경지수 (종합 신호등 기준) + Korean grade label. */
+  khai: number | null
+  khaiGrade: string | null
   pm10: number | null
   pm10Grade: string | null
   pm25: number | null
   pm25Grade: string | null
+  /** 오존 (ppm) — separate card, relevant for Jeju summer 오존주의보. */
+  o3: number | null
+  o3Grade: string | null
   alert: string | null
   station: string | null
+  /** Human label for the representative station, e.g. "제주시 연동 관측소 기준". */
+  stationLabel: string | null
   measuredAt: string | null
+  /** dataTime formatted as "2026-07-10 21:00 기준" for direct display. */
+  asOf: string | null
 }
 
 export interface CleanCenter {
@@ -181,9 +195,14 @@ interface AirEnvelope {
   }
 }
 
-async function fetchJsonAttempt(url: string): Promise<unknown> {
+async function fetchJsonAttempt(
+  url: string,
+  debugSink?: DebugSink,
+  debugLabel = 'fetch',
+): Promise<unknown> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  let debugRecorded = false
   try {
     const res = await fetch(url, {
       method: 'GET',
@@ -193,6 +212,15 @@ async function fetchJsonAttempt(url: string): Promise<unknown> {
       cache: 'no-store',
     })
     const text = await res.text()
+    if (debugSink?.enabled) {
+      recordDebug(debugSink, {
+        label: debugLabel,
+        url: redact(url),
+        status: res.status,
+        bodySnippet: text.slice(0, 1500),
+      })
+      debugRecorded = true
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status} — ${bodySnippet(text)}`)
     const trimmed = text.trim()
     if (trimmed.startsWith('<')) throw new Error(`XML/error body — ${bodySnippet(trimmed)}`)
@@ -202,6 +230,15 @@ async function fetchJsonAttempt(url: string): Promise<unknown> {
       throw new Error(`Non-JSON body — ${bodySnippet(trimmed)}`)
     }
   } catch (e: unknown) {
+    if (debugSink?.enabled && !debugRecorded) {
+      const msg =
+        e instanceof Error && e.name === 'AbortError'
+          ? `Timeout after ${TIMEOUT_MS}ms`
+          : e instanceof Error
+            ? e.message
+            : String(e)
+      recordDebug(debugSink, { label: debugLabel, url: redact(url), status: null, bodySnippet: '', error: msg })
+    }
     if (e instanceof Error && e.name === 'AbortError') throw new Error(`Timeout after ${TIMEOUT_MS}ms`)
     throw e instanceof Error ? e : new Error(String(e))
   } finally {
@@ -223,29 +260,58 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** fetchJsonAttempt + ONE automatic retry (after a short backoff) on transient failures. */
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchJson(url: string, debugSink?: DebugSink, debugLabel = 'fetch'): Promise<unknown> {
   try {
-    return await fetchJsonAttempt(url)
+    return await fetchJsonAttempt(url, debugSink, debugLabel)
   } catch (e: unknown) {
     if (!isRetryableFetchError(e)) throw e
     await sleep(RETRY_DELAY_MS)
-    return await fetchJsonAttempt(url)
+    return await fetchJsonAttempt(url, debugSink, `${debugLabel}-retry`)
   }
 }
 
 /**
- * Pick a representative 제주 station reading. AirKorea returns per-station rows;
- * we prefer 제주시청/노형/이도 area, else the first row that carries PM values.
+ * 통신장애 (down) stations report pm10Value/khaiValue as the literal string
+ * "-" and their *Flag fields as "통신장애" — e.g. 제주항, 이도동, 고산리 in
+ * live test data. These must be excluded before picking a representative
+ * station, never shown as if they were real zero/low readings.
  */
-function pickStation(items: Record<string, unknown>[]): Record<string, unknown> | null {
-  const withPm = items.filter((it) => parseNum(it.pm10Value) != null || parseNum(it.pm25Value) != null)
-  const pool = withPm.length ? withPm : items
-  if (pool.length === 0) return null
-  const preferred = pool.find((it) => /이도|노형|연동|제주시/.test(str(it.stationName)))
-  return preferred ?? pool[0]
+function isDeadStation(it: Record<string, unknown>): boolean {
+  if (str(it.pm10Value) === '-' || str(it.khaiValue) === '-') return true
+  const flags = [it.pm10Flag, it.pm25Flag, it.o3Flag, it.no2Flag, it.so2Flag, it.coFlag]
+  return flags.some((f) => str(f) === '통신장애')
 }
 
-async function fetchDust(errors: string[]): Promise<DustInfo | null> {
+/**
+ * Pick a representative 제주 station reading. 연동 (제주시청 area, 도시대기
+ * 측정망) is the primary display station. Falls back to another live
+ * station only if 연동 itself is down — never falls back to a dead one.
+ */
+function pickStation(items: Record<string, unknown>[]): Record<string, unknown> | null {
+  const alive = items.filter((it) => !isDeadStation(it))
+  if (alive.length === 0) return null
+  const preferred = alive.find((it) => str(it.stationName) === '연동')
+  return preferred ?? alive[0]
+}
+
+/** Station name → display label. 연동 gets its dedicated 제주시 label per spec. */
+function stationLabel(name: string | null): string | null {
+  if (!name) return null
+  if (name === '연동') return '제주시 연동 관측소 기준'
+  return `${name} 관측소 기준`
+}
+
+/** "2026-07-10 21:00" → "2026-07-10 21:00 기준". */
+function asOfLabel(dataTime: string | null): string | null {
+  return dataTime ? `${dataTime} 기준` : null
+}
+
+function gradeLabel(code: unknown): string | null {
+  const c = str(code)
+  return c ? GRADE_LABEL[c] ?? null : null
+}
+
+async function fetchDust(errors: string[], debugSink?: DebugSink): Promise<DustInfo | null> {
   const key = serviceKey()
   if (!key) {
     errors.push('dust: no service key')
@@ -261,8 +327,29 @@ async function fetchDust(errors: string[]): Promise<DustInfo | null> {
   })
   const url = `${AIRKOREA_SIDO_OP}?${params.toString()}`
   console.log('[environment] dust →', redact(url))
+  // Diagnostic-only: surface the full redacted URL + an explicit breakdown of
+  // the params we care about (endpoint path, returnType, ver, sidoName,
+  // encoding) BEFORE the fetch even runs, so a 500 still gives us this.
+  if (debugSink?.enabled) {
+    recordDebug(debugSink, {
+      label: 'airkorea-dust-request',
+      url: redact(url),
+      status: null,
+      bodySnippet: JSON.stringify({
+        endpoint: AIRKOREA_SIDO_OP,
+        returnType: params.get('returnType'),
+        hasReturnType: params.has('returnType'),
+        ver: params.get('ver'),
+        hasVer: params.has('ver'),
+        sidoName: params.get('sidoName'),
+        sidoNameEncoded: encodeURIComponent(params.get('sidoName') ?? ''),
+        numOfRows: params.get('numOfRows'),
+        pageNo: params.get('pageNo'),
+      }),
+    })
+  }
   try {
-    const raw = (await fetchJson(url)) as AirEnvelope
+    const raw = (await fetchJson(url, debugSink, 'airkorea-dust')) as AirEnvelope
     const header = raw.response?.header
     const code = str(header?.resultCode)
     if (code && code !== '00') {
@@ -277,18 +364,30 @@ async function fetchDust(errors: string[]): Promise<DustInfo | null> {
       errors.push('dust: no station data')
       return null
     }
+    const khai = parseNum(st.khaiValue)
     const pm10 = parseNum(st.pm10Value)
     const pm25 = parseNum(st.pm25Value)
-    const pm10Grade = GRADE_LABEL[str(st.pm10Grade1h) || str(st.pm10Grade)] ?? null
-    const pm25Grade = GRADE_LABEL[str(st.pm25Grade1h) || str(st.pm25Grade)] ?? null
+    const o3 = parseNum(st.o3Value)
+    const khaiGrade = gradeLabel(st.khaiGrade)
+    const pm10Grade = gradeLabel(st.pm10Grade1h) ?? gradeLabel(st.pm10Grade)
+    const pm25Grade = gradeLabel(st.pm25Grade1h) ?? gradeLabel(st.pm25Grade)
+    const o3Grade = gradeLabel(st.o3Grade)
+    const stationName = str(st.stationName) || null
+    const dataTime = str(st.dataTime) || null
     return {
+      khai,
+      khaiGrade,
       pm10,
       pm10Grade,
       pm25,
       pm25Grade,
+      o3,
+      o3Grade,
       alert: null, // 경보 filled separately below if available
-      station: str(st.stationName) || null,
-      measuredAt: str(st.dataTime) || null,
+      station: stationName,
+      stationLabel: stationLabel(stationName),
+      measuredAt: dataTime,
+      asOf: asOfLabel(dataTime),
     }
   } catch (e: unknown) {
     errors.push(`dust: ${e instanceof Error ? e.message : String(e)}`)
@@ -438,11 +537,14 @@ export async function askEnvironment(question: string): Promise<AskResult> {
  * Fetch Jeju environment snapshot: 미세먼지 + 클린하우스 위치 + 배출 안내(Perplexity).
  * Never throws; sections degrade to null / [] with errors[] entries.
  */
-export async function getEnvironment(opts: EnvironmentOptions = {}): Promise<EnvironmentResult> {
+export async function getEnvironment(
+  opts: EnvironmentOptions = {},
+  debugSink?: DebugSink,
+): Promise<EnvironmentResult> {
   const errors: string[] = []
 
   const [dustSettled, contextSettled] = await Promise.allSettled([
-    fetchDust(errors),
+    fetchDust(errors, debugSink),
     fetchContext(errors),
   ])
 

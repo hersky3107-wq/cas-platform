@@ -1,5 +1,9 @@
 import 'server-only'
 
+import { getTimes as getSunTimes } from 'suncalc'
+
+import { recordDebug, type DebugSink } from '@/lib/jeju/debug-capture'
+
 /**
  * SHARED Jeju marine data layer — generic infrastructure for 도민 일반 mode.
  * Consumed by the Haenyeo (해녀) safety chip and the 농수산 fishing-decision
@@ -7,7 +11,10 @@ import 'server-only'
  *
  * Upstream (data.go.kr):
  *   1. 기상청 해수욕장 날씨 (BeachInfoservice) —
- *        getTideInfoBeach / getSunInfoBeach / getVilageFcstBeach (WAV → wave)
+ *        getTideInfoBeach / getVilageFcstBeach (WAV → wave)
+ *      NOTE: getSunInfoBeach was DROPPED — it returns useless ":" placeholders.
+ *      일몰/일출 is now a LOCAL astronomical calc (suncalc) from the spot's
+ *      lat/lng + today's date (KST) — always real, no upstream dependency.
  *   2. 기상청 기상특보 (WthrWrnInfoService/getWthrWrnList) — Jeju sea warnings
  *
  * Auth: JEJU_DATAGO_KEY (preferred) → DATA_GO_KR_KEY → KPX_SERVICE_KEY.
@@ -68,6 +75,25 @@ export function resolveBeachNum(spot: string | null | undefined): string {
   return alias ?? DEFAULT_BEACH_NUM
 }
 
+// ── Spot coordinates (for local sunrise/sunset calc) ──────────────────────────
+
+/**
+ * lat/lng per beachNum — feeds the local suncalc computation below. Verified
+ * against public beach-info listings (data.go.kr / VisitJeju / official beach
+ * notice pages). Jeju is small enough that sunrise/sunset varies by only a
+ * couple of minutes island-wide, so these don't need survey-grade precision.
+ */
+const BEACH_COORDS: Record<string, { lat: number; lng: number }> = {
+  '348': { lat: 33.4973, lng: 126.4518 }, // 이호테우
+  '352': { lat: 33.5439, lng: 126.6684 }, // 함덕(서우봉)
+  '346': { lat: 33.3934, lng: 126.2397 }, // 협재
+  '337': { lat: 33.2451, lng: 126.4124 }, // 중문색달
+  '342': { lat: 33.3263, lng: 126.8376 }, // 표선
+  '341': { lat: 33.4352, lng: 126.9232 }, // 신양섭지
+}
+/** Fallback center point for any beachNum without explicit coords above. */
+const JEJU_CENTER = { lat: 33.38, lng: 126.55 }
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface TideEvent {
@@ -103,6 +129,14 @@ export interface MarinePayload {
   tide: TideInfo | null
   wave: WaveInfo | null
   waterTempC: number | null
+  /**
+   * 'ok' — waterTempC has a real reading.
+   * 'no-buoy' — the upstream call SUCCEEDED (resultCode 00) but carries no
+   *   water-temp field for this spot (no buoy there) — waterTempC is null but
+   *   this is NOT a failure; UI should say so, not show a generic error.
+   * 'unavailable' — the call itself FAILED (network/HTTP/parse error).
+   */
+  waterTempStatus: 'ok' | 'no-buoy' | 'unavailable'
   sun: SunInfo | null
   warnings: MarineWarning[]
   updatedAt: string
@@ -169,9 +203,24 @@ function readEnvelope(raw: unknown): Record<string, unknown>[] {
   return asArray<Record<string, unknown>>(itemsContainer ? itemsContainer.item : null)
 }
 
-async function fetchJsonAttempt(url: string): Promise<unknown> {
+/** Diagnostic-only helper — pulls resultCode out of the envelope without throwing. */
+function extractResultCode(raw: unknown): string {
+  if (!raw || typeof raw !== 'object') return ''
+  const response = (raw as Record<string, unknown>).response
+  if (!response || typeof response !== 'object') return ''
+  const header = (response as Record<string, unknown>).header
+  if (!header || typeof header !== 'object') return ''
+  return str((header as Record<string, unknown>).resultCode)
+}
+
+async function fetchJsonAttempt(
+  url: string,
+  debugSink?: DebugSink,
+  debugLabel = 'fetch',
+): Promise<unknown> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  let debugRecorded = false
   try {
     const res = await fetch(url, {
       method: 'GET',
@@ -184,6 +233,15 @@ async function fetchJsonAttempt(url: string): Promise<unknown> {
       cache: 'no-store',
     })
     const text = await res.text()
+    if (debugSink?.enabled) {
+      recordDebug(debugSink, {
+        label: debugLabel,
+        url: url.replace(/serviceKey=[^&]+/, 'serviceKey=***'),
+        status: res.status,
+        bodySnippet: text.slice(0, 1500),
+      })
+      debugRecorded = true
+    }
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} — ${bodySnippet(text)}`)
     }
@@ -198,6 +256,21 @@ async function fetchJsonAttempt(url: string): Promise<unknown> {
       throw new Error(`Non-JSON body — ${bodySnippet(trimmed)}`)
     }
   } catch (e: unknown) {
+    if (debugSink?.enabled && !debugRecorded) {
+      const msg =
+        e instanceof Error && e.name === 'AbortError'
+          ? `Timeout after ${TIMEOUT_MS}ms`
+          : e instanceof Error
+            ? e.message
+            : String(e)
+      recordDebug(debugSink, {
+        label: debugLabel,
+        url: url.replace(/serviceKey=[^&]+/, 'serviceKey=***'),
+        status: null,
+        bodySnippet: '',
+        error: msg,
+      })
+    }
     if (e instanceof Error && e.name === 'AbortError') {
       throw new Error(`Timeout after ${TIMEOUT_MS}ms`)
     }
@@ -221,13 +294,13 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** fetchJsonAttempt + ONE automatic retry (after a short backoff) on transient failures. */
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchJson(url: string, debugSink?: DebugSink, debugLabel = 'fetch'): Promise<unknown> {
   try {
-    return await fetchJsonAttempt(url)
+    return await fetchJsonAttempt(url, debugSink, debugLabel)
   } catch (e: unknown) {
     if (!isRetryableFetchError(e)) throw e
     await sleep(RETRY_DELAY_MS)
-    return await fetchJsonAttempt(url)
+    return await fetchJsonAttempt(url, debugSink, `${debugLabel}-retry`)
   }
 }
 
@@ -246,7 +319,6 @@ function kstBase(): { ymd: string; hm: string } {
  * BeachInfoservice param names per the official KMA apihub spec — NOT
  * consistent across ops, so callers must pass the exact case-sensitive keys:
  *   getTideInfoBeach:   base_date (lowercase b)
- *   getSunInfoBeach:    Base_date (CAPITAL B — differs from tide!)
  *   getVilageFcstBeach: base_date + base_time (lowercase, confirmed working)
  * All ops use beach_num (snake_case) — NOT beachNum/beachnum.
  */
@@ -340,11 +412,27 @@ function parseWaterTemp(items: Record<string, unknown>[]): number | null {
   return null
 }
 
-function parseSun(items: Record<string, unknown>[]): SunInfo {
-  const first = items[0] ?? {}
-  return {
-    sunrise: str(first.sunrise || first.sunRise || first.sunriseTime || first.sr) || null,
-    sunset: str(first.sunset || first.sunSet || first.sunsetTime || first.ss) || null,
+/** UTC Date → "HH:mm" in KST. Returns null on an invalid/missing Date. */
+function fmtKstHm(d: Date | undefined | null): string | null {
+  if (!d || Number.isNaN(d.getTime())) return null
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}`
+}
+
+/**
+ * LOCAL sunrise/sunset for a beach spot — replaces the KHOA getSunInfoBeach
+ * call, which returns useless ":" placeholders. Astronomically computed via
+ * suncalc (never hand-rolled — this feeds a safety message), so it's always
+ * real and never depends on an upstream service. Never throws.
+ */
+function computeSunLocal(beachNum: string): SunInfo {
+  const { lat, lng } = BEACH_COORDS[beachNum] ?? JEJU_CENTER
+  try {
+    const times = getSunTimes(new Date(), lat, lng)
+    return { sunrise: fmtKstHm(times.sunrise), sunset: fmtKstHm(times.sunset) }
+  } catch {
+    return { sunrise: null, sunset: null }
   }
 }
 
@@ -450,7 +538,7 @@ export async function fetchJejuWeatherWarnings(keyOverride?: string): Promise<Ma
  * Beach weather (4 BeachInfoservice ops) and warnings run in parallel via
  * Promise.allSettled; individual section failures become null + errors[].
  */
-export async function getMarineData(spot?: string | null): Promise<MarineResult> {
+export async function getMarineData(spot?: string | null, debugSink?: DebugSink): Promise<MarineResult> {
   const key = serviceKey()
   if (!key) {
     return {
@@ -466,28 +554,26 @@ export async function getMarineData(spot?: string | null): Promise<MarineResult>
     tide: TideInfo | null
     wave: WaveInfo | null
     waterTempC: number | null
-    sun: SunInfo | null
+    waterTempStatus: 'ok' | 'no-buoy' | 'unavailable'
     beachErrors: string[]
   }
 
-  async function fetchBeachBundle(): Promise<BeachBundle> {
+  async function fetchBeachBundle(debugSink?: DebugSink): Promise<BeachBundle> {
     const beachErrors: string[] = []
     const { ymd, hm } = kstBase()
 
     // Confirmed BeachInfoservice op names (403 without approval = path exists):
-    //   getTideInfoBeach, getSunInfoBeach, getUltraSrtFcstBeach, getVilageFcstBeach
+    //   getTideInfoBeach, getUltraSrtFcstBeach, getVilageFcstBeach
+    // getSunInfoBeach was DROPPED (see computeSunLocal — useless ":" placeholders).
     // Wave height often lives in village-forecast category=WAV; dedicated 파고/수온
     // ops were not discoverable via 403 probing, so we also parse the forecast.
     const jobs: Array<{
-      label: 'tide' | 'sun' | 'forecast'
+      label: 'tide' | 'forecast'
       op: string
       extra?: Record<string, string>
     }> = [
       // Lowercase base_date — confirmed via official apihub example.
       { label: 'tide', op: 'getTideInfoBeach', extra: { base_date: ymd } },
-      // CAPITAL-B Base_date — getSunInfoBeach is inconsistent with the other
-      // ops; sending base_date (lowercase) here is what caused resultCode 11.
-      { label: 'sun', op: 'getSunInfoBeach', extra: { Base_date: ymd } },
       {
         label: 'forecast',
         op: 'getVilageFcstBeach',
@@ -502,7 +588,24 @@ export async function getMarineData(spot?: string | null): Promise<MarineResult>
           `[marine] ${label} →`,
           url.replace(/serviceKey=[^&]+/, 'serviceKey=***'),
         )
-        const raw = await fetchJson(url)
+        // NOTE: 'forecast' (getVilageFcstBeach) feeds both 수온 (waterTemp) and
+        // 파고 (wave) from the same upstream call — they cannot be split further.
+        const raw = await fetchJson(url, debugSink, label)
+        // Tide diagnosis (task-scoped, additive-only — no parsing change):
+        // surface obs code + resultCode explicitly, ahead of readEnvelope's
+        // validation, so a bad resultCode is visible even though it also
+        // throws below (which is caught + logged into beachErrors as before).
+        if (label === 'tide' && debugSink?.enabled) {
+          recordDebug(debugSink, {
+            label: 'tide-meta',
+            url: url.replace(/serviceKey=[^&]+/, 'serviceKey=***'),
+            status: 200,
+            bodySnippet: JSON.stringify({
+              beach_num: beachNum,
+              resultCode: extractResultCode(raw),
+            }),
+          })
+        }
         const items = readEnvelope(raw)
         return { label, items }
       }),
@@ -511,7 +614,7 @@ export async function getMarineData(spot?: string | null): Promise<MarineResult>
     let tide: TideInfo | null = null
     let wave: WaveInfo | null = null
     let waterTempC: number | null = null
-    let sun: SunInfo | null = null
+    let waterTempStatus: 'ok' | 'no-buoy' | 'unavailable' = 'unavailable'
 
     settled.forEach((r, i) => {
       const label = jobs[i].label
@@ -524,36 +627,38 @@ export async function getMarineData(spot?: string | null): Promise<MarineResult>
       const { items } = r.value
       try {
         if (label === 'tide') tide = parseTide(items)
-        else if (label === 'sun') sun = parseSun(items)
         else if (label === 'forecast') {
           wave = parseWave(items)
-          // Water temp is rarely in village forecast; keep null if absent.
+          // Water temp is rarely in village forecast; keep null if absent —
+          // that's a "no buoy at this spot" case, not a fetch failure.
           waterTempC = parseWaterTemp(items)
+          waterTempStatus = waterTempC != null ? 'ok' : 'no-buoy'
         }
       } catch (e: unknown) {
         beachErrors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`)
       }
     })
 
-    return { tide, wave, waterTempC, sun, beachErrors }
+    return { tide, wave, waterTempC, waterTempStatus, beachErrors }
   }
 
   const [beachSettled, warnSettled] = await Promise.allSettled([
-    fetchBeachBundle(),
+    fetchBeachBundle(debugSink),
+    // 특보 (warnings) call intentionally NOT instrumented — out of scope.
     fetchJejuWeatherWarnings(key),
   ])
 
   let tide: TideInfo | null = null
   let wave: WaveInfo | null = null
   let waterTempC: number | null = null
-  let sun: SunInfo | null = null
+  let waterTempStatus: 'ok' | 'no-buoy' | 'unavailable' = 'unavailable'
   let warnings: MarineWarning[] = []
 
   if (beachSettled.status === 'fulfilled') {
     tide = beachSettled.value.tide
     wave = beachSettled.value.wave
     waterTempC = beachSettled.value.waterTempC
-    sun = beachSettled.value.sun
+    waterTempStatus = beachSettled.value.waterTempStatus
     errors.push(...beachSettled.value.beachErrors)
   } else {
     errors.push(
@@ -569,6 +674,9 @@ export async function getMarineData(spot?: string | null): Promise<MarineResult>
     )
   }
 
+  // Sunrise/sunset is a pure local calc (no network) — always succeeds.
+  const sun = computeSunLocal(beachNum)
+
   return {
     ok: true,
     spot: spot?.trim() || '이호테우',
@@ -576,6 +684,7 @@ export async function getMarineData(spot?: string | null): Promise<MarineResult>
     tide,
     wave,
     waterTempC,
+    waterTempStatus,
     sun,
     warnings,
     updatedAt: new Date().toISOString(),
