@@ -6,7 +6,6 @@ import { useJejuUi } from '@/components/jeju/useJejuUi'
 
 /** 일반 도민 mode — 10 live data chips (adult density). */
 const CHIPS = [
-  { emoji: '🌊', label: '해녀 물질안전', href: '/jeju/resident/haenyeo' },
   { emoji: '🎣', label: '오늘 조업', href: '/jeju/resident/fishing' },
   { emoji: '🌦', label: '날씨·재난', href: '/jeju/resident/weather' },
   { emoji: '🚌', label: '교통', href: '/jeju/resident/transport' },
@@ -16,6 +15,7 @@ const CHIPS = [
   { emoji: '♻️', label: '배출·환경', href: '/jeju/resident/environment' },
   { emoji: '🤖', label: '제주 AI', href: '/jeju/resident/jeju-chat' },
   { emoji: '🏥', label: '복지·행정', href: '/jeju/resident/welfare' },
+  { emoji: '🌊', label: '해녀 물질안전', href: '/jeju/resident/haenyeo' },
 ] as const
 
 export default function JejuResidentGeneralPage() {

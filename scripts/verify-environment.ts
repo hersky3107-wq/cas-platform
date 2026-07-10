@@ -69,12 +69,14 @@ function summarize(p: unknown): void {
   console.log('ok         :', data.ok)
   console.log('errors     :', data.errors)
 
-  console.log('\n── 미세먼지 (dust) ──')
+  console.log('\n── 대기질 (dust) ──')
   if (dust) {
+    console.log(`  종합   : ${dust.khai ?? '─'} (${dust.khaiGrade ?? '─'})`)
     console.log(`  PM10  : ${dust.pm10 ?? '─'} (${dust.pm10Grade ?? '─'})`)
     console.log(`  PM2.5 : ${dust.pm25 ?? '─'} (${dust.pm25Grade ?? '─'})`)
+    console.log(`  오존   : ${dust.o3 ?? '─'} (${dust.o3Grade ?? '─'})`)
     console.log(`  경보   : ${dust.alert ?? '없음'}`)
-    console.log(`  측정소 : ${dust.station ?? '─'} / ${dust.measuredAt ?? '─'}`)
+    console.log(`  측정소 : ${dust.stationLabel ?? dust.station ?? '─'} / ${dust.asOf ?? dust.measuredAt ?? '─'}`)
   } else {
     console.log('  (정보 없음)')
   }
