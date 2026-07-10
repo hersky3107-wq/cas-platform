@@ -563,7 +563,12 @@ function buildAiSystemPrompt(): string {
  *  as script contamination from the model and disqualifies the whole response,
  *  since a half-Korean half-foreign sentence is worse for elderly readers than
  *  no AI text at all (LAYER 1's verdict + raw numbers still render either way). */
-function hasForeignScriptContamination(text: string): boolean {
+/**
+ * Exported so OTHER chips' Perplexity-enrichment text (e.g. the prices chip's
+ * 생활물가 요약) can reuse the same non-Korean-script contamination check
+ * instead of duplicating it — matches this module's own AI-explanation gate.
+ */
+export function hasForeignScriptContamination(text: string): boolean {
   const stripped = text.replace(
     /[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\s0-9.,~%()°※·\-!?"'…:/]/g,
     '',

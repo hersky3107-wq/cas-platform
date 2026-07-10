@@ -29,6 +29,7 @@ import {
   type ContextMeta,
 } from '@/lib/jeju/fishery'
 import { recordDebug, type DebugSink } from '@/lib/jeju/debug-capture'
+import { hasForeignScriptContamination } from '@/lib/jeju/haenyeo-marine'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -174,6 +175,64 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
 }
 
+// ── 생활물가 요약 sanitization ─────────────────────────────────────────────────
+
+const SUMMARY_FALLBACK = '오늘은 상세 요약을 불러오지 못했어요.'
+
+/**
+ * Sentence fragments carrying AI meta-commentary about search limitations
+ * ("검색 결과에는 …이 없으며", "확인할 수 없습니다" etc.) rather than actual
+ * price info — these leak into the summary because the model narrates its
+ * own search process instead of just answering. Dropped, not shown to users.
+ */
+const META_COMMENTARY_PATTERNS: RegExp[] = [
+  /검색\s*결과(에는?|가)?[^.!?다]*?(없|부족|포함되지)/,
+  /확인(이|할)?\s*(수\s*없|불가능|어렵)/,
+  /(자료|정보|데이터)가?\s*(제공되지|제시되지)\s*않/,
+  /찾을\s*수\s*없/,
+  /(직접\s*확인해야|보도를\s*확인)/,
+]
+
+/**
+ * Cleans 생활물가 요약 text beyond the generic cleanPerplexityText():
+ *   - strips markdown emphasis/headers/code fences (**, *, #, `, __)
+ *   - un-mangles underscore-joined tokens (e.g. "장바구니_n_가격") into spaced
+ *     words, then drops any resulting stray single-letter fragments
+ *   - drops whole sentences that are AI meta-commentary about search limits
+ *     (※-prefixed or matching META_COMMENTARY_PATTERNS) instead of price info
+ *   - as a final gate, reuses the SAME non-Korean-script contamination check
+ *     the haenyeo chip uses (lib/jeju/haenyeo-marine.ts) — any leftover stray
+ *     Latin/foreign tokens (e.g. "today", "domestic", "Va") reject the WHOLE
+ *     text rather than risk showing a half-garbled sentence.
+ * Falls back to an honest one-liner when nothing usable survives.
+ */
+function sanitizePricesSummary(raw: string): string {
+  let t = raw
+    .replace(/```[\s\S]*?```/g, ' ') // code fences (rare, but strip fully)
+    .replace(/\*\*/g, '')
+    .replace(/[*_`]/g, ' ') // remaining markdown emphasis/underscore joins → spaces
+    .replace(/^#+\s*/gm, '')
+
+  // Drop meta-commentary sentences (splitting on actual sentence-end
+  // punctuation only — NOT on bare "다", which would corrupt common
+  // mid-sentence words like 다소/다만/다양 that happen to start with it).
+  const sentences = t.split(/(?<=[.!?\n])\s*/).filter(Boolean)
+  const kept = sentences.filter((s) => {
+    const trimmed = s.trim()
+    if (!trimmed) return false
+    if (trimmed.startsWith('※')) return false
+    return !META_COMMENTARY_PATTERNS.some((re) => re.test(trimmed))
+  })
+  t = kept.join(' ').replace(/\s{2,}/g, ' ').trim()
+
+  // Drop now-isolated single-letter fragments left behind by the underscore
+  // un-mangling (e.g. "장바구니 n 가격" → "장바구니 가격").
+  t = t.replace(/(^|\s)[A-Za-z](?=\s|$)/g, ' ').replace(/\s{2,}/g, ' ').trim()
+
+  if (t.length < 10 || hasForeignScriptContamination(t)) return SUMMARY_FALLBACK
+  return t
+}
+
 // ── Raw KAMIS row → PriceItem ─────────────────────────────────────────────────
 
 function toItem(row: Record<string, unknown>): PriceItem | null {
@@ -184,8 +243,16 @@ function toItem(row: Record<string, unknown>): PriceItem | null {
   if (!JEJU_KAMIS_ITEMS.some((k) => itemName.includes(k))) return null
 
   const unit = str(row.unit)
-  // cls: "소매" (dpr1 = retail) or "도매" (dpr1 = wholesale)
-  const cls = str(row.cls_nm) || str(row.clsNm) || str(row.cls) || ''
+  // cls: "소매" (dpr1 = retail) or "도매" (dpr1 = wholesale).
+  // KAMIS's actual field is product_cls_name (code "01"=소매/"02"=도매) —
+  // cls_nm/clsNm/cls never appear in the real response, so those lookups
+  // always fell through to '' (display layer had no 소매/도매 signal at all).
+  const cls =
+    str(row.product_cls_name) ||
+    str(row.cls_nm) ||
+    str(row.clsNm) ||
+    str(row.cls) ||
+    (str(row.product_cls_code) === '01' ? '소매' : str(row.product_cls_code) === '02' ? '도매' : '')
 
   const dpr1 = parsePrice(row.dpr1) // 전일 (current reference)
   const dpr2 = parsePrice(row.dpr2) // 1일 전
@@ -300,17 +367,22 @@ async function fetchKamis(errors: string[], debugSink?: DebugSink): Promise<Pric
 
 // ── Perplexity enrichment ────────────────────────────────────────────────────
 
-async function fetchContext(errors: string[]): Promise<{ text: string; meta: ContextMeta }> {
+async function fetchContext(errors: string[], debugSink?: DebugSink): Promise<{ text: string; meta: ContextMeta }> {
   const today = kstTodayIso()
   const retrievedAt = kstNowIso()
   const systemPrompt =
     `오늘은 ${today}입니다. 가장 최신 정보 위주로, 가능하면 오늘·최근 1주일 자료를 우선하라. ` +
-    '당신은 제주 생활물가 분석 도우미입니다. 한국어로만, 군더더기 없이 3~4문장으로 답하세요. ' +
+    '당신은 제주 생활물가 분석 도우미입니다. 순수 한국어로만, 군더더기 없이 딱 2~3문장으로 답하세요. ' +
     '인용 번호([1][3] 등)를 쓰지 말고, 한자·중문·일문 문장부호(。「」 등)를 쓰지 마세요. ' +
+    '마크다운 서식(**, *, #, 코드블록, 밑줄 강조 등)을 절대 쓰지 말고 순수 텍스트 문장만 쓰세요. ' +
+    '영어 단어를 섞지 말고 모든 단어를 한글로 쓰세요. ' +
+    '검색 결과가 부족하거나 확인이 안 됐다는 메타 설명(예: "검색 결과에는 없으며", "확인할 수 없습니다")을 ' +
+    '절대 쓰지 말고, 그런 경우 아는 사실만 짧게 말하거나 다른 근거로 대체하세요. ' +
     '장바구니 품목(채소·수산물·육류 등)의 가격 오름세·내림세와 그 이유를 사실 위주로 요약하세요.'
   const prompt =
-    `제주 오늘(${today}) 장바구니 물가·생활물가 특이사항을 알려주세요. ` +
-    '감귤, 갈치, 채소류 등 도민이 많이 사는 품목 위주로 뭐가 오르고 내렸는지, 이유도 간단히 설명해 주세요.'
+    `제주 오늘(${today}) 장바구니 물가·생활물가 특이사항을 2~3문장으로만 알려주세요. ` +
+    '감귤, 갈치, 채소류 등 도민이 많이 사는 품목 위주로 뭐가 오르고 내렸는지, 이유도 간단히 설명해 주세요. ' +
+    '검색이 부족했다는 설명 없이, 아는 사실만 담백하게 말해 주세요.'
   try {
     const r = await runSingleAiProvider({
       supabase: noDbSupabase(),
@@ -327,7 +399,15 @@ async function fetchContext(errors: string[]): Promise<{ text: string; meta: Con
       errors.push(`context: ${r.error || 'empty'}`)
       return { text: '', meta: { source: '검색', retrievedAt, asOf: null } }
     }
-    const text = cleanPerplexityText(r.text)
+    const text = sanitizePricesSummary(cleanPerplexityText(r.text))
+    if (debugSink?.enabled) {
+      recordDebug(debugSink, {
+        label: 'perplexity-context-raw-vs-sanitized',
+        url: 'perplexity://prices-context (runSingleAiProvider)',
+        status: 200,
+        bodySnippet: JSON.stringify({ raw: r.text.slice(0, 1500), sanitized: text }).slice(0, 2000),
+      })
+    }
     return { text, meta: { source: '검색', retrievedAt, asOf: extractAsOf(text) } }
   } catch (e: unknown) {
     errors.push(`context: ${e instanceof Error ? e.message : String(e)}`)
@@ -535,7 +615,7 @@ export async function getPrices(debugSink?: DebugSink, forceFallback = false): P
   // Run KAMIS and context enrichment in parallel (skip KAMIS when force-fallback).
   const [kamisSettled, contextSettled] = await Promise.allSettled([
     forceFallback ? Promise.resolve<PriceItem[]>([]) : fetchKamis(errors, debugSink),
-    fetchContext(errors),
+    fetchContext(errors, debugSink),
   ])
 
   let items: PriceItem[] = []

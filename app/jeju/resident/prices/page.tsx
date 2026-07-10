@@ -10,7 +10,7 @@
  * haenyeo/weather chips. Mirrors transport chip tone.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
 
@@ -142,6 +142,46 @@ function shortName(full: string): string {
   return shortDesc ? `${labelBase} ${shortDesc}` : labelBase
 }
 
+// ── 소매/도매 filter (display-only) ────────────────────────────────────────────
+//
+// KAMIS mixes 소매(retail) and 도매(wholesale) rows under the SAME base item
+// name (sometimes even the same item_name string, e.g. "당근/무세척" appears
+// as both a 1kg 소매 row and a 20kg 도매 row) — so grouping/filtering must key
+// off the real cls field (fixed upstream in lib/jeju/prices.ts's toItem),
+// never off item_name text alone.
+//
+// Rule: within each base-name group, show 소매 rows only IF the group has at
+// least one; otherwise (도매-only groups, e.g. 피마늘) keep all rows and tag
+// them so the exception is visible.
+interface DisplayPriceItem extends PriceItem {
+  wholesaleTag?: boolean
+}
+
+function baseNameOf(itemName: string): string {
+  const i = itemName.indexOf('/')
+  return i === -1 ? itemName.trim() : itemName.slice(0, i).trim()
+}
+
+function filterRetailPreferred(items: PriceItem[]): DisplayPriceItem[] {
+  const groupHasRetail = new Map<string, boolean>()
+  for (const it of items) {
+    if (it.cls.includes('소매')) groupHasRetail.set(baseNameOf(it.itemName), true)
+  }
+
+  const result: DisplayPriceItem[] = []
+  for (const it of items) {
+    const base = baseNameOf(it.itemName)
+    if (groupHasRetail.get(base)) {
+      if (it.cls.includes('소매')) result.push(it) // drop the 도매 sibling row
+    } else {
+      // No 소매 row anywhere in this base group (e.g. 피마늘) — keep every
+      // row rather than silently dropping the item, and flag the 도매 ones.
+      result.push({ ...it, wholesaleTag: it.cls.includes('도매') })
+    }
+  }
+  return result
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PricesPage() {
@@ -200,10 +240,19 @@ export default function PricesPage() {
     setSpeaking(false)
   }, [])
 
+  // 소매-preferred, 도매-only-exceptions-tagged view of each group (display
+  // only — data.groups itself is untouched, straight from the API).
+  const filteredGroups = useMemo(() => {
+    if (!data) return null
+    const out: Record<keyof PriceGroups, DisplayPriceItem[]> = { 농산물: [], 수산물: [], 가공축산: [] }
+    for (const group of GROUP_ORDER) out[group] = filterRetailPreferred(data.groups[group] ?? [])
+    return out
+  }, [data])
+
   const buildTts = useCallback((d: PricesPayload): string => {
     const parts: string[] = ['제주 생활물가 안내입니다.']
     for (const group of GROUP_ORDER) {
-      const items = d.groups[group]
+      const items = filteredGroups?.[group] ?? d.groups[group]
       if (!items?.length) continue
       parts.push(`${group} 시세입니다.`)
       for (const it of items.slice(0, 3)) {
@@ -213,7 +262,7 @@ export default function PricesPage() {
     }
     if (d.context) parts.push(`생활물가 요약: ${d.context}`)
     return parts.join(' ')
-  }, [])
+  }, [filteredGroups])
 
   const onSpeak = useCallback(() => {
     if (speaking) { stopSpeaking(); return }
@@ -229,8 +278,8 @@ export default function PricesPage() {
     } catch { setSpeaking(false) }
   }, [speaking, data, buildTts, stopSpeaking])
 
-  const totalItems = data
-    ? GROUP_ORDER.reduce((s, g) => s + (data.groups[g]?.length ?? 0), 0)
+  const totalItems = filteredGroups
+    ? GROUP_ORDER.reduce((s, g) => s + (filteredGroups[g]?.length ?? 0), 0)
     : 0
 
   return (
@@ -280,10 +329,11 @@ export default function PricesPage() {
                 <span style={{ ...S.metaBadge, ...S.lowConfBadge }}>참고용 (추정치)</span>
               )}
             </div>
+            <p style={S.retailNote}>소매가 기준</p>
 
             {/* Three groups */}
             {GROUP_ORDER.map((group) => {
-              const items = data.groups[group] ?? []
+              const items = filteredGroups?.[group] ?? []
               return (
                 <section key={group} style={S.card} aria-label={`${group} 시세`}>
                   <h2 style={S.groupTitle}>{group}</h2>
@@ -300,6 +350,7 @@ export default function PricesPage() {
                             <div style={S.itemRow}>
                               <div style={S.itemLeft}>
                                 <span style={S.itemName}>{shortName(it.itemName)}</span>
+                                {it.wholesaleTag && <span style={S.wholesaleBadge}>도매</span>}
                                 <span style={S.itemUnit}>{it.unit}</span>
                               </div>
                               <span style={S.itemPrice}>{fmtPrice(it.retailPrice)}</span>
@@ -483,6 +534,12 @@ const S: Record<string, React.CSSProperties> = {
     color: '#8A3F04',
     background: '#FEF3C7',
   },
+  retailNote: {
+    fontSize: 12,
+    color: C.mutedInk,
+    margin: '-4px 0 0',
+    lineHeight: 1.4,
+  },
   // Card wrapper (groups)
   card: {
     background: C.surface,
@@ -542,6 +599,16 @@ const S: Record<string, React.CSSProperties> = {
   itemUnit: {
     fontSize: 12,
     color: C.mutedInk,
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  },
+  wholesaleBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#8A3F04',
+    background: '#FEF3C7',
+    borderRadius: 5,
+    padding: '1px 6px',
     whiteSpace: 'nowrap',
     flexShrink: 0,
   },
