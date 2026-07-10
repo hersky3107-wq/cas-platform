@@ -1,8 +1,11 @@
 /**
  * Throwaway verify — calls GET /api/domin/news TWICE and prints:
  *   - each item's asOf (article date) + source
- *   - total item count + oldest asOf (must be within last 3 KST days)
+ *   - total item count + per-category counts + oldest asOf
+ *     (must be within last 3 KST days)
  *   - cache hit vs perplexity fetch on the second call
+ *   - a neutrality heuristic scan of 정치·도정 items (flags evaluative
+ *     wording for manual review — does not replace human judgment)
  *
  * Prefers a running Next.js dev server (NEXT_BASE_URL, default
  * http://localhost:3000). Falls back to calling getNews() directly.
@@ -79,6 +82,29 @@ function daysAgo(ymd: string, todayYmd: string): number | null {
   return Math.round((b - a) / (24 * 60 * 60 * 1000))
 }
 
+/**
+ * Heuristic-only neutrality scan for 정치·도정 items: flags evaluative /
+ * advocacy wording (판단·평가·옹호 표현) so a human can double-check. This is
+ * NOT a substitute for reading the items — Perplexity/Claude wording nuance
+ * can slip past a keyword list either way.
+ */
+const EVALUATIVE_WORDS = [
+  '잘했다', '잘한', '옳다', '옳은', '실패', '무능', '훌륭', '뛰어난',
+  '최악', '최고', '어리석', '부당', '정당하다', '올바른', '그르다',
+  '비판받아야', '환영할', '유감스럽', '충격적', '경악',
+]
+
+function scanNeutrality(briefing: Record<string, unknown>[]): { headline: string; hits: string[] }[] {
+  const flagged: { headline: string; hits: string[] }[] = []
+  for (const it of briefing) {
+    if (String(it.category ?? '') !== '정치·도정') continue
+    const text = `${it.headline ?? ''} ${it.summary ?? ''} ${it.why ?? ''}`
+    const hits = EVALUATIVE_WORDS.filter((w) => text.includes(w))
+    if (hits.length > 0) flagged.push({ headline: String(it.headline ?? ''), hits })
+  }
+  return flagged
+}
+
 function summarize(label: string, p: Record<string, unknown>): void {
   const briefing = Array.isArray(p.briefing) ? (p.briefing as Record<string, unknown>[]) : []
   const meta = (p.contextMeta ?? {}) as Record<string, unknown>
@@ -89,13 +115,21 @@ function summarize(label: string, p: Record<string, unknown>): void {
 
   console.log(`\n══ ${label} ══`)
   console.log(fromCache ? '→ CACHE HIT' : '→ PERPLEXITY FETCH')
-  console.log('ok         :', p.ok)
-  console.log('fromCache  :', fromCache)
-  console.log('items      :', briefing.length)
-  console.log('oldest asOf:', oldest ?? '(none)', oldest ? `(${daysAgo(oldest, today)}d ago)` : '')
-  console.log('newest asOf:', newest ?? '(none)')
-  console.log('freshness  :', p.freshnessNote)
-  console.log('errors     :', p.errors)
+  console.log('ok           :', p.ok)
+  console.log('fromCache    :', fromCache)
+  console.log('TOTAL items  :', briefing.length)
+  console.log('oldest asOf  :', oldest ?? '(none)', oldest ? `(${daysAgo(oldest, today)}d ago)` : '')
+  console.log('newest asOf  :', newest ?? '(none)')
+  console.log('freshness    :', p.freshnessNote)
+  console.log('errors       :', p.errors)
+
+  const oldestAge = oldest ? daysAgo(oldest, today) : null
+  const recencyOk = briefing.length === 0 || (oldestAge !== null && oldestAge >= 0 && oldestAge <= 3)
+  console.log(
+    'oldest ≤3d   :',
+    recencyOk ? 'PASS' : 'FAIL',
+    oldestAge !== null ? `(oldest is ${oldestAge}d old)` : '(no items)'
+  )
 
   console.log('\n── contextMeta ──')
   console.log('source      :', meta.source)
@@ -135,8 +169,21 @@ function summarize(label: string, p: Record<string, unknown>): void {
     console.log(`  summary  : ${String(it.summary ?? '').slice(0, 160)}${String(it.summary ?? '').length > 160 ? '…' : ''}`)
   }
 
-  console.log('\n── category counts ──')
+  console.log('\n── per-category counts ──')
   for (const [cat, n] of byCat) console.log(`  ${cat}: ${n}`)
+
+  const flagged = scanNeutrality(briefing)
+  console.log('\n── 정치·도정 neutrality scan (heuristic — verify by eye) ──')
+  const politicalCount = byCat.get('정치·도정') ?? 0
+  console.log(`정치·도정 items: ${politicalCount}`)
+  if (politicalCount === 0) {
+    console.log('(none this run — nothing to check)')
+  } else if (flagged.length === 0) {
+    console.log('no evaluative keywords detected — PASS (still read items manually)')
+  } else {
+    console.log(`⚠ ${flagged.length} item(s) contain possible evaluative wording — review:`)
+    for (const f of flagged) console.log(`  - "${f.headline}" → matched: ${f.hits.join(', ')}`)
+  }
 }
 
 async function main(): Promise<void> {
