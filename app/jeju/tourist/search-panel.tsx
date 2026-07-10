@@ -20,6 +20,7 @@ import { BusPanel } from './bus-panel'
 import { WeatherPanel } from './weather-panel'
 import { TravelHelpPanel } from './travel-help-panel'
 import { ComingSoonPanel } from './coming-soon-panel'
+import { ShoppingPanel } from './shopping-panel'
 import { PlaceDetailModal } from './place-detail-modal'
 import {
   type PlaceDetail,
@@ -114,7 +115,7 @@ async function fetchWithOneRetry(
   }
 }
 
-type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus' | 'weather' | 'help' | 'comingsoon'
+type Mode = 'search' | 'local' | 'festival' | 'seasonal' | 'rainy' | 'islands' | 'olle' | 'oreum' | 'course' | 'bus' | 'weather' | 'help' | 'shopping' | 'comingsoon'
 
 export function SearchPanel() {
   const { t, locale } = useTouristUi()
@@ -425,6 +426,13 @@ export function SearchPanel() {
     resetResults()
   }
 
+  // 🛍 Shopping — opens the merged shopping list panel (self-contained fetch).
+  function openShopping() {
+    if (loading) return
+    setMode('shopping')
+    resetResults()
+  }
+
   // 🌉 Coming Soon — opens the non-functional vision/proposal panel.
   function openComingSoon() {
     if (loading) return
@@ -448,6 +456,7 @@ export function SearchPanel() {
     bus: [t.busLoadNearby],
     weather: [t.wLoading],
     help: [t.helpExchangeLoading],
+    shopping: t.loadShopping,
     comingsoon: [t.csHeading],
   }
   const msgArr = LOADING_MSGS[mode] ?? t.loadSearch
@@ -470,6 +479,7 @@ export function SearchPanel() {
   // their own 🌐 marker so they read as one "for foreign visitors" set.
   const foreignerChips: Array<{ mode: Mode; label: string; onClick: () => void }> = [
     { mode: 'help', label: t.chipTravelHelp, onClick: openHelp },
+    { mode: 'shopping', label: t.chipShopping, onClick: openShopping },
     { mode: 'comingsoon', label: t.chipComingSoon, onClick: openComingSoon },
   ]
 
@@ -607,6 +617,9 @@ export function SearchPanel() {
 
       {/* 🆘 여행 도움 — exchange rates + emergency + consulates + tips */}
       {mode === 'help' && <TravelHelpPanel onOpenBus={openBus} />}
+
+      {/* 🛍 쇼핑 — merged duty-free + markets + general shops (self-contained fetch) */}
+      {mode === 'shopping' && <ShoppingPanel />}
 
       {/* 🌉 준비 중 — non-functional vision/policy-proposal showcase */}
       {mode === 'comingsoon' && <ComingSoonPanel />}

@@ -259,6 +259,23 @@ export type TouristUiPack = {
   helpPaymentTitle: string
   helpPaymentBody: string
 
+  // ── Shopping (🛍) — foreigner-facing merged shopping list (static + VisitJeju c2) ──
+  chipShopping: string
+  shoppingHeading: string
+  shoppingNote: string
+  shoppingDutyFree: string
+  shoppingMarketsMalls: string
+  shoppingMoreShops: string
+  /** Short pill label on JDC sponsor cards. */
+  shoppingJdcBadgeLabel: string
+  /** One-line public-interest caption under JDC sponsor cards. */
+  shoppingJdcBadge: string
+  /** Usage-condition wrapper label (e.g. "이용 조건"). */
+  shoppingUsageLabel: string
+  shoppingShowMore: string
+  loadShopping: string[]
+  errShopping: string
+
   // ── Coming Soon / Vision (🌉) — non-functional policy-proposal showcase ──
   chipComingSoon: string
   csHeading: string
@@ -567,6 +584,21 @@ const KO: TouristUiPack = {
   helpPaymentBody:
     '카카오페이·네이버페이·배민은 한국 전화번호·계좌 없이 쓰기 어려워요. 현금과 해외 카드(Visa·Mastercard)를 함께 준비하세요. 편의점·대형마트는 해외 카드가 되지만, 작은 동네 가게는 현금만 받을 수 있어요.',
 
+  chipShopping: '🌐 쇼핑',
+  shoppingHeading: '🛍 제주 쇼핑',
+  shoppingNote:
+    '면세점·전통시장·쇼핑몰을 한곳에. 출처: 제주관광공사 비짓제주 + 직접 확인 정리. 영업시간·입점 브랜드는 자주 바뀌니 방문 전 확인하세요.',
+  shoppingDutyFree: '면세점 Duty-Free',
+  shoppingMarketsMalls: '전통시장·쇼핑몰 Markets & Malls',
+  shoppingMoreShops: '일반 쇼핑 More Shops',
+  shoppingJdcBadgeLabel: '공익 면세점',
+  shoppingJdcBadge:
+    '제주국제자유도시 조성 재원으로 재투자되는 공익 면세점이에요.',
+  shoppingUsageLabel: '이용 조건',
+  shoppingShowMore: '더 보기',
+  loadShopping: ['제주 쇼핑 정보를 모으는 중 🛍', '면세점·시장을 정리하는 중이에요', '거의 다 됐어요 ✨'],
+  errShopping: '쇼핑 정보를 불러오지 못했어요. 다시 시도해 주세요.',
+
   chipComingSoon: '🌐 외국인 대행 서비스',
   csHeading: '🌉 AX JEJU가 그리는 다음 단계',
   csBetaBadge: 'BETA · 준비 중',
@@ -871,6 +903,21 @@ const EN: TouristUiPack = {
   helpPaymentTitle: 'Payment Tips',
   helpPaymentBody:
     'KakaoPay, Naver Pay, and Baemin are hard to use without a Korean phone number or bank account. Carry cash plus an international card (Visa/Mastercard). Convenience stores and large marts accept foreign cards, but small local shops may be cash-only.',
+
+  chipShopping: '🌐 Shopping',
+  shoppingHeading: '🛍 Jeju Shopping',
+  shoppingNote:
+    'Duty-free, traditional markets and malls in one place. Source: VisitJeju (Jeju Tourism Organization) + manually verified entries. Hours and brands change often — please check before visiting.',
+  shoppingDutyFree: 'Duty-Free',
+  shoppingMarketsMalls: 'Markets & Malls',
+  shoppingMoreShops: 'More Shops',
+  shoppingJdcBadgeLabel: 'Public-Interest Duty Free',
+  shoppingJdcBadge:
+    'A public-interest duty-free store whose revenue is reinvested into developing the Jeju Free International City.',
+  shoppingUsageLabel: 'Usage',
+  shoppingShowMore: 'Show more',
+  loadShopping: ['Gathering Jeju shopping info 🛍', 'Sorting duty-free & markets', 'Almost there ✨'],
+  errShopping: "Couldn't load shopping info. Please try again.",
 
   chipComingSoon: '🌐 Foreigner Concierge (Planned)',
   csHeading: "🌉 What AX JEJU Is Building Next",
@@ -1177,6 +1224,21 @@ const JA: TouristUiPack = {
   helpPaymentBody:
     'カカオペイ・ネイバーペイ・出前館は韓国の電話番号や銀行口座がないと使いにくいです。現金と海外カード（Visa／Mastercard）の両方を用意しましょう。コンビニや大型マートでは海外カードが使えますが、小さな地元の店は現金のみの場合があります。',
 
+  chipShopping: '🌐 ショッピング',
+  shoppingHeading: '🛍 済州ショッピング',
+  shoppingNote:
+    '免税店・伝統市場・ショッピングモールを一覧に。出典：済州観光公社ビジュッ済州＋直接確認した情報。営業時間や入店ブランドは変動しやすいため、訪問前にご確認ください。',
+  shoppingDutyFree: '免税店 Duty-Free',
+  shoppingMarketsMalls: '伝統市場・ショッピングモール Markets & Malls',
+  shoppingMoreShops: 'その他の店舗 More Shops',
+  shoppingJdcBadgeLabel: '公益免税店',
+  shoppingJdcBadge:
+    '済州国際自由都市の造成財源として再投資される公益免税店です。',
+  shoppingUsageLabel: '利用条件',
+  shoppingShowMore: 'もっと見る',
+  loadShopping: ['済州のショッピング情報を集めています 🛍', '免税店・市場を整理中', 'もうすぐです ✨'],
+  errShopping: 'ショッピング情報を読み込めませんでした。もう一度お試しください。',
+
   chipComingSoon: '🌐 外国人代行サービス',
   csHeading: '🌉 AX JEJU が描く次のステップ',
   csBetaBadge: 'BETA・準備中',
@@ -1481,6 +1543,21 @@ const ZH_TW: TouristUiPack = {
   helpPaymentBody:
     'KakaoPay、Naver Pay 與外送 App 在沒有韓國電話號碼或銀行帳戶時較難使用。請同時準備現金與國際信用卡（Visa／Mastercard）。便利商店與大型賣場可使用外國信用卡，但小型在地商店可能僅收現金。',
 
+  chipShopping: '🌐 購物',
+  shoppingHeading: '🛍 濟州購物',
+  shoppingNote:
+    '免稅店、傳統市場與購物商場一次整理。來源：濟州觀光公社 VisitJeju＋人工核實資料。營業時間與進駐品牌經常變動，請於前往前再次確認。',
+  shoppingDutyFree: '免稅店 Duty-Free',
+  shoppingMarketsMalls: '傳統市場・購物商場 Markets & Malls',
+  shoppingMoreShops: '其他店家 More Shops',
+  shoppingJdcBadgeLabel: '公益免稅店',
+  shoppingJdcBadge:
+    '收益再投資於濟州國際自由城市建設的公益免稅店。',
+  shoppingUsageLabel: '使用條件',
+  shoppingShowMore: '看更多',
+  loadShopping: ['正在整理濟州購物資訊 🛍', '整理免稅店與市場中', '快好了 ✨'],
+  errShopping: '無法載入購物資訊，請再試一次。',
+
   chipComingSoon: '🌐 外國旅客代辦服務',
   csHeading: '🌉 AX JEJU 擘劃的下一步',
   csBetaBadge: 'BETA · 籌備中',
@@ -1783,6 +1860,21 @@ const ZH_CN: TouristUiPack = {
   helpPaymentTitle: '支付提示',
   helpPaymentBody:
     'KakaoPay、Naver Pay 和外卖 App 在没有韩国电话号码或银行账户时较难使用。请同时准备现金和国际信用卡（Visa／Mastercard）。便利店和大型超市可使用外国信用卡，但小型本地店铺可能仅收现金。',
+
+  chipShopping: '🌐 购物',
+  shoppingHeading: '🛍 济州购物',
+  shoppingNote:
+    '免税店、传统市场与购物商场一次整理。来源：济州观光公社 VisitJeju＋人工核实资料。营业时间与入驻品牌经常变动，请于前往前再次确认。',
+  shoppingDutyFree: '免税店 Duty-Free',
+  shoppingMarketsMalls: '传统市场・购物商场 Markets & Malls',
+  shoppingMoreShops: '其他店铺 More Shops',
+  shoppingJdcBadgeLabel: '公益免税店',
+  shoppingJdcBadge:
+    '收益再投资于济州国际自由城市建设的公益免税店。',
+  shoppingUsageLabel: '使用条件',
+  shoppingShowMore: '查看更多',
+  loadShopping: ['正在整理济州购物信息 🛍', '整理免税店与市场中', '快好了 ✨'],
+  errShopping: '无法加载购物信息，请再试一次。',
 
   chipComingSoon: '🌐 外国旅客代办服务',
   csHeading: '🌉 AX JEJU 擘画的下一步',

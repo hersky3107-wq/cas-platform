@@ -245,6 +245,41 @@ export function detailFromCourseStop(stop: CourseStop): PlaceDetail {
   }
 }
 
+/**
+ * Shopping item → PlaceDetail. Accepts a structural shape (the route's
+ * ShoppingItem satisfies it) so this helper stays decoupled from the route
+ * module. Static landmarks carry verified coords → coord-pin branch. VisitJeju
+ * c2 items usually carry coords too. When coords are absent, the URL builders
+ * fall back to the cleaned name + "제주" search. `mapTarget` is null only when
+ * the name is non-specific (e.g. an area-wide entry), matching the web pattern.
+ */
+export function detailFromShopping(item: {
+  name: string
+  address?: string | null
+  phone?: string | null
+  lat?: number | null
+  lng?: number | null
+  source?: string
+}): PlaceDetail {
+  const hasCoords = item.lat != null && item.lng != null
+  const mq = buildVisitJejuFallbackQuery(item.name)
+  const mapTarget = hasCoords || isConcretePlaceName(item.name) ? mq : null
+  return {
+    title: item.name,
+    address: item.address || undefined,
+    phone: item.phone || undefined,
+    lat: item.lat ?? null,
+    lng: item.lng ?? null,
+    sourceLabel:
+      item.source === 'static'
+        ? '직접 확인한 정보'
+        : '비짓제주(제주관광공사) 공식 정보',
+    isWeb: false,
+    mapQuery: mq,
+    mapTarget,
+  }
+}
+
 // ── Map-link builders ─────────────────────────────────────────────────────────
 
 /**
@@ -258,21 +293,41 @@ export function googleMapsUrl(detail: PlaceDetail): string {
 }
 
 /**
- * Naver Maps: coord form when lat/lng present, else clean name search.
- * Naver v5 search URL: /v5/search/{query} — confirmed working for place names.
+ * Naver Maps: coordinate-pin form when lat/lng present, else clean name search.
+ *
+ * The `/v5/search/{query}` path is a plain TEXT search — the `c=` param only
+ * recenters the viewport, it does NOT relocate the marker (confirmed: Naver's
+ * own troubleshooting docs state coordinate search and address/text search can
+ * place the marker at different points). So when the query text is a
+ * parenthesized/brand name that Naver's index doesn't match cleanly, the
+ * marker can land on the wrong result even though the view is centered right.
+ *
+ * Fix: when coords exist, search by the COORDINATES THEMSELVES ("lat, lng")
+ * instead of the name — Naver Map natively supports 좌표 검색 (coordinate
+ * search) as a first-class query type and drops the marker at that exact
+ * point, independent of the place's name/brand text.
  */
 export function naverMapsUrl(detail: PlaceDetail): string {
   if (detail.lat != null && detail.lng != null) {
-    // Naver map flyto: opens at exact coords with a pin.
-    return `https://map.naver.com/v5/search/${encodeURIComponent(detail.mapQuery)}?c=${detail.lng},${detail.lat},15,0,0,0,dh`
+    const coordQuery = `${detail.lat}, ${detail.lng}`
+    return `https://map.naver.com/v5/search/${encodeURIComponent(coordQuery)}?c=${detail.lng},${detail.lat},15,0,0,0,dh`
   }
   return `https://map.naver.com/v5/search/${encodeURIComponent(detail.mapQuery)}`
 }
 
 /**
- * Kakao Maps: clean name search (Kakao's coord-query form requires a developer
- * app key; the simple q= search always works without one).
+ * Kakao Maps: coordinate-pin form when lat/lng present, else clean name search.
+ *
+ * Kakao's officially documented no-API-key "지도 바로가기" URL scheme is
+ * `/link/map/{name},{lat},{lng}` (see apis.map.kakao.com/web/guide/#bigmapurl) —
+ * this drops a pin at the EXACT coordinate with `name` as a label, unlike the
+ * plain `?q=` search which is text-only and can mismatch on parenthesized or
+ * brand-heavy names.
  */
 export function kakaoMapsUrl(detail: PlaceDetail): string {
+  if (detail.lat != null && detail.lng != null) {
+    const label = (detail.title || detail.mapQuery).replace(/,/g, ' ')
+    return `https://map.kakao.com/link/map/${encodeURIComponent(label)},${detail.lat},${detail.lng}`
+  }
   return `https://map.kakao.com/?q=${encodeURIComponent(detail.mapQuery)}`
 }
