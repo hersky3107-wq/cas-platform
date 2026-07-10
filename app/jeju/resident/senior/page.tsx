@@ -31,6 +31,7 @@ const GRID_CARDS: { emoji: string; label: string; href: string }[] = [
   { emoji: '📅', label: '오늘 날짜·날씨', href: '/jeju/resident/today' },
   { emoji: '🏥', label: '병원·약 찾기', href: '/jeju/resident/medical' },
   { emoji: '📰', label: '오늘의 소식', href: '/jeju/resident/news' },
+  { emoji: '📖', label: '이야기 · 좋은 말', href: '/jeju/resident/tale' },
   { emoji: '📄', label: '고지서·문서 읽기', href: '/jeju/resident/photo?mode=document' },
   { emoji: '🛡️', label: '수상한 문자 확인', href: '/jeju/resident/photo?mode=phishing' },
   { emoji: '🖥️', label: '무인기계 도움', href: '/jeju/resident/photo?mode=kiosk' },
@@ -200,6 +201,21 @@ export default function JejuResidentSeniorPage() {
             몇 가지 질문에 답하면<br />받을 수 있는 복지를 찾아드려요.
           </span>
           <span style={styles.heroArrow} aria-hidden>→</span>
+        </button>
+
+        <button
+          type="button"
+          className="rh-companion"
+          style={styles.companionCard}
+          onClick={() => goTo('/jeju/resident/companion')}
+          aria-label="말벗, 안부 — 오늘 하루 이야기 나누기"
+        >
+          <span style={styles.companionEmoji} aria-hidden>💬</span>
+          <span style={styles.companionTextWrap}>
+            <span style={styles.companionLabel}>말벗·안부</span>
+            <span style={styles.companionSub}>오늘 하루, 이야기 나눠요</span>
+          </span>
+          <span style={styles.companionArrow} aria-hidden>→</span>
         </button>
 
         <p style={styles.gridHint} aria-hidden>더 많은 메뉴</p>
@@ -406,6 +422,26 @@ const styles: Record<string, React.CSSProperties> = {
   heroLabel: { fontSize: 32, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.25 },
   heroSub: { fontSize: 21, color: '#C8E8F0', lineHeight: 1.55 },
   heroArrow: { position: 'absolute', right: 22, top: '50%', transform: 'translateY(-50%)', fontSize: 32, color: '#FFFFFF', opacity: 0.75 },
+  companionCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    width: '100%',
+    minHeight: 96,
+    background: '#B45309',
+    border: '4px solid #92400E',
+    borderRadius: 20,
+    padding: '16px 20px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    boxSizing: 'border-box',
+    boxShadow: '0 8px 26px rgba(180,83,9,0.30)',
+  },
+  companionEmoji: { fontSize: 44, lineHeight: 1, flexShrink: 0 },
+  companionTextWrap: { display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 },
+  companionLabel: { fontSize: 30, fontWeight: 900, color: '#FFFFFF', lineHeight: 1.2 },
+  companionSub: { fontSize: 20, fontWeight: 700, color: '#FDE8CC', lineHeight: 1.3 },
+  companionArrow: { fontSize: 30, color: '#FFFFFF', opacity: 0.75, flexShrink: 0 },
   gridHint: {
     fontSize: 18,
     fontWeight: 700,
@@ -439,6 +475,7 @@ const styles: Record<string, React.CSSProperties> = {
 
 const GLOBAL_CSS = `
   .rh-hero:focus-visible,
+  .rh-companion:focus-visible,
   .rh-card:focus-visible,
   .rh-ctrl:focus-visible,
   .rh-sos:focus-visible,
@@ -449,14 +486,16 @@ const GLOBAL_CSS = `
   }
   .rh-cancel:focus-visible, .rh-confirm-yes:focus-visible { outline-color: #FFD400; }
   .rh-hero:hover { background: ${C.seaStrong}; }
+  .rh-companion:hover { background: #92400E; }
   .rh-card-live:hover { background: #EAF4F8; }
   .rh-sos:hover { background: #A93226; }
   .rh-cancel:hover, .rh-confirm-yes:hover { filter: brightness(0.94); }
-  .rh-hero, .rh-card, .rh-ctrl, .rh-sos, .rh-cancel, .rh-confirm-yes {
+  .rh-hero, .rh-companion, .rh-card, .rh-ctrl, .rh-sos, .rh-cancel, .rh-confirm-yes {
     transition: background 0.12s ease, transform 0.07s ease, filter 0.12s ease;
     -webkit-tap-highlight-color: transparent;
   }
   .rh-hero:active { transform: scale(0.985); }
+  .rh-companion:active { transform: scale(0.985); }
   .rh-card:active { transform: scale(0.97); }
   .rh-sos:active { transform: scale(0.98); }
   .rh-cancel:active, .rh-confirm-yes:active { transform: scale(0.97); }
