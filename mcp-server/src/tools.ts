@@ -585,34 +585,39 @@ export function registerTools(server: McpServer): void {
     },
   );
 
-  // 5f. get_jeju_shopping — GET /api/tourist/shopping (NOTE: /api/tourist/, not /api/jeju/) ─
-  server.registerTool(
-    'get_jeju_shopping',
-    {
-      title: 'Get Jeju shopping & markets',
-      annotations: readOnlyAnnotations('제주 쇼핑·시장 안내'),
-      description:
-        `[${SERVICE_NAME}] ` +
-        'Get Jeju shopping and markets — duty-free shops, traditional markets ' +
-        '(오일장/동문시장), malls, and local shops. Useful for both foreign and ' +
-        'domestic visitors. Use for "제주 쇼핑", "제주 면세점", "제주 전통시장", ' +
-        '"제주 오일장", "where to shop in Jeju", "Jeju duty free".',
-      inputSchema: { locale: localeSchema },
-    },
-    async (args): Promise<CallToolResult> => {
-      const locale = args.locale ?? 'ko';
-      const res = await getJson<{ items?: unknown[] }>(
-        `/api/tourist/shopping?locale=${encodeURIComponent(locale)}`,
-      );
-      if (!res.ok) return fail(res.error);
-      // This route has NO {ok:true/false} wrapper — check `items` directly.
-      const items = Array.isArray(res.data?.items) ? res.data!.items! : [];
-      if (items.length === 0) {
-        return fail('제주 쇼핑·시장 정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.');
-      }
-      return okShopping(items, locale);
-    },
-  );
+  // 5f. get_jeju_shopping — TEMPORARILY DISABLED ────────────────────────────────
+  // The API (/api/tourist/shopping) works fine (confirmed in browser), but the
+  // deployed Kakao environment fails on this tool's MCP-side response handling.
+  // Commented out (not deleted) so it can be fixed and re-registered after
+  // passing review. Do NOT re-enable without re-verifying against Kakao.
+  //
+  // server.registerTool(
+  //   'get_jeju_shopping',
+  //   {
+  //     title: 'Get Jeju shopping & markets',
+  //     annotations: readOnlyAnnotations('제주 쇼핑·시장 안내'),
+  //     description:
+  //       `[${SERVICE_NAME}] ` +
+  //       'Get Jeju shopping and markets — duty-free shops, traditional markets ' +
+  //       '(오일장/동문시장), malls, and local shops. Useful for both foreign and ' +
+  //       'domestic visitors. Use for "제주 쇼핑", "제주 면세점", "제주 전통시장", ' +
+  //       '"제주 오일장", "where to shop in Jeju", "Jeju duty free".',
+  //     inputSchema: { locale: localeSchema },
+  //   },
+  //   async (args): Promise<CallToolResult> => {
+  //     const locale = args.locale ?? 'ko';
+  //     const res = await getJson<{ items?: unknown[] }>(
+  //       `/api/tourist/shopping?locale=${encodeURIComponent(locale)}`,
+  //     );
+  //     if (!res.ok) return fail(res.error);
+  //     // This route has NO {ok:true/false} wrapper — check `items` directly.
+  //     const items = Array.isArray(res.data?.items) ? res.data!.items! : [];
+  //     if (items.length === 0) {
+  //       return fail('제주 쇼핑·시장 정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  //     }
+  //     return okShopping(items, locale);
+  //   },
+  // );
 
   // 6a. find_nearby_bus_stops — POST /api/jeju/bus/nearby ───────────────────────
   server.registerTool(
