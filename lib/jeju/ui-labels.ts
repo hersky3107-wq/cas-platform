@@ -222,6 +222,20 @@ export type JejuUiPack = {
   diagnosticSearchesHeading: string
   diagnosticSearchByline: string
   diagnosticNoResult: string
+  /** Archive (심의 기록) page */
+  archiveTitle: string
+  archiveDesc: string
+  archiveLoadingMsg: string
+  archiveEmptyMsg: string
+  archiveErrorMsg: string
+  archiveModeDeliberate: string
+  archiveModeDiagnostic: string
+  archiveModeBrief: string
+  archiveModeOther: string
+  archiveDateLabel: string
+  archiveVoteSummaryLabel: string
+  archiveExpandBtn: string
+  archiveCollapseBtn: string
 }
 
 const KO: JejuUiPack = {
@@ -449,6 +463,20 @@ const KO: JejuUiPack = {
   diagnosticSearchesHeading: 'Perplexity 검색 결과',
   diagnosticSearchByline: 'Perplexity가 수행한 실시간 검색',
   diagnosticNoResult: '진단 결과를 생성하지 못했습니다.',
+  // Archive page
+  archiveTitle: '심의 기록',
+  archiveDesc: '완료된 심의 · 진단 · 브리핑 기록',
+  archiveLoadingMsg: '기록을 불러오는 중…',
+  archiveEmptyMsg: '아직 기록된 심의가 없습니다.',
+  archiveErrorMsg: '기록을 불러오지 못했습니다.',
+  archiveModeDeliberate: '찬반',
+  archiveModeDiagnostic: '진단',
+  archiveModeBrief: '개방',
+  archiveModeOther: '기타',
+  archiveDateLabel: '기록일',
+  archiveVoteSummaryLabel: '표결 결과',
+  archiveExpandBtn: '자세히 보기',
+  archiveCollapseBtn: '접기',
 }
 
 // TODO(i18n): translate — non-Korean locales stub to Korean until copy is ready.

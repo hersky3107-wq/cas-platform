@@ -1,6 +1,6 @@
 'use client'
 
-import { FileSearch, Layers, Newspaper } from 'lucide-react'
+import { Archive, FileSearch, Layers, Newspaper } from 'lucide-react'
 import { JejuThemeShell } from '@/components/jeju/JejuThemeShell'
 import { JejuTile } from '@/components/jeju/JejuTile'
 import { JejuTileGrid } from '@/components/jeju/JejuTileGrid'
@@ -37,6 +37,13 @@ export default function JejuGovernancePage() {
           icon={Newspaper}
           label={t.mediaTitle}
           description={t.mediaDesc}
+          theme="governance"
+        />
+        <JejuTile
+          href="/jeju/governance/archive"
+          icon={Archive}
+          label={t.archiveTitle}
+          description={t.archiveDesc}
           theme="governance"
         />
       </JejuTileGrid>
