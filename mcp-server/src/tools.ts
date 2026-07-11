@@ -233,6 +233,65 @@ function fail(message: string): CallToolResult {
   return { content: [{ type: 'text', text: `ERROR: ${message}` }], isError: true };
 }
 
+// ── Shopping-item formatting (GET /api/tourist/shopping — no {ok} wrapper) ───
+
+type ShoppingCategory = 'dutyfree' | 'market' | 'mall' | 'shop';
+
+const SHOPPING_CATEGORY_LABEL: Record<AiLocale, Record<ShoppingCategory, string>> = {
+  ko: { dutyfree: '면세점', market: '시장', mall: '쇼핑몰', shop: '상점' },
+  en: { dutyfree: 'Duty-free', market: 'Market', mall: 'Mall', shop: 'Shop' },
+  ja: { dutyfree: '免税店', market: '市場', mall: 'モール', shop: '店舗' },
+  'zh-TW': { dutyfree: '免稅店', market: '市場', mall: '購物中心', shop: '商店' },
+  'zh-CN': { dutyfree: '免税店', market: '市场', mall: '购物中心', shop: '商店' },
+};
+
+function isShoppingCategory(v: string): v is ShoppingCategory {
+  return v === 'dutyfree' || v === 'market' || v === 'mall' || v === 'shop';
+}
+
+/**
+ * Format ONE shopping item: "N. {name} [{localized category}]" + address +
+ * note + phone/homepage (kept — these are genuinely useful contact links).
+ */
+function formatShoppingItem(raw: unknown, index: number, locale: AiLocale): string {
+  if (!raw || typeof raw !== 'object') return `${index + 1}. ${String(raw)}`;
+  const o = raw as Record<string, unknown>;
+
+  const name = str(o.name) || '(정보 없음)';
+  const categoryRaw = str(o.category);
+  const labels = SHOPPING_CATEGORY_LABEL[locale] ?? SHOPPING_CATEGORY_LABEL.ko;
+  const category = isShoppingCategory(categoryRaw) ? labels[categoryRaw] : categoryRaw;
+  const sponsor = o.sponsor === true;
+  const address = str(o.address);
+  const note = str(o.note);
+  const phone = str(o.phone);
+  const homepage = str(o.homepage);
+
+  const lines: string[] = [
+    `${index + 1}. ${name}${category ? ` [${category}]` : ''}${sponsor ? ' ⭐' : ''}`,
+  ];
+  if (address) lines.push(`   ${address}`);
+  if (note) lines.push(`   ${oneLine(note)}`);
+  const contact: string[] = [];
+  if (phone) contact.push(`☎ ${phone}`);
+  if (homepage) contact.push(`🔗 ${homepage}`);
+  if (contact.length) lines.push(`   ${contact.join(' · ')}`);
+  return lines.join('\n');
+}
+
+/** Success content for the shopping list — same shape/footer contract as okList. */
+function okShopping(items: unknown[], locale: AiLocale): CallToolResult {
+  const total = items.length;
+  const shown = Math.min(total, LIST_CAP);
+  const capped = items.slice(0, LIST_CAP);
+
+  const headline = locale === 'ko' ? '제주 쇼핑·시장 정보입니다.' : '';
+  const head = [headline, countNote(total, shown, locale)].filter(Boolean).join(' ');
+  const body = capped.map((it, i) => formatShoppingItem(it, i, locale)).join('\n');
+  const text = [head, body, webLink(locale)].filter(Boolean).join('\n\n');
+  return { content: [{ type: 'text', text }] };
+}
+
 const localeSchema = z
   .enum(['ko', 'en', 'ja', 'zh-TW', 'zh-CN'])
   .default('ko')
@@ -523,6 +582,35 @@ export function registerTools(server: McpServer): void {
       const e = bodyError(res.data);
       if (e) return fail(e);
       return okList(res.data, ['oreum'], '제주 오름·한라산 트레킹 정보입니다.');
+    },
+  );
+
+  // 5f. get_jeju_shopping — GET /api/tourist/shopping (NOTE: /api/tourist/, not /api/jeju/) ─
+  server.registerTool(
+    'get_jeju_shopping',
+    {
+      title: 'Get Jeju shopping & markets',
+      annotations: readOnlyAnnotations('제주 쇼핑·시장 안내'),
+      description:
+        `[${SERVICE_NAME}] ` +
+        'Get Jeju shopping and markets — duty-free shops, traditional markets ' +
+        '(오일장/동문시장), malls, and local shops. Useful for both foreign and ' +
+        'domestic visitors. Use for "제주 쇼핑", "제주 면세점", "제주 전통시장", ' +
+        '"제주 오일장", "where to shop in Jeju", "Jeju duty free".',
+      inputSchema: { locale: localeSchema },
+    },
+    async (args): Promise<CallToolResult> => {
+      const locale = args.locale ?? 'ko';
+      const res = await getJson<{ items?: unknown[] }>(
+        `/api/tourist/shopping?locale=${encodeURIComponent(locale)}`,
+      );
+      if (!res.ok) return fail(res.error);
+      // This route has NO {ok:true/false} wrapper — check `items` directly.
+      const items = Array.isArray(res.data?.items) ? res.data!.items! : [];
+      if (items.length === 0) {
+        return fail('제주 쇼핑·시장 정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+      return okShopping(items, locale);
     },
   );
 
