@@ -7,6 +7,7 @@ import {
   executeJejuSearches,
   KOREAN_ONLY_DIRECTIVE,
   TAG_DISCIPLINE_DIRECTIVE,
+  CROSS_DOMAIN_DIRECTIVE,
   type JejuExecutedSearch,
 } from '@/lib/jeju/deep'
 export type { DiagnosticCategory } from '@/lib/jeju/diagnostic-categories'
@@ -219,6 +220,7 @@ function buildStatusSystemPrompt(): string {
     '',
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
+    CROSS_DOMAIN_DIRECTIVE,
   ].join('\n')
 }
 
@@ -286,6 +288,7 @@ function buildIssuesSystemPrompt(): string {
     '',
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
+    CROSS_DOMAIN_DIRECTIVE,
   ].join('\n')
 }
 

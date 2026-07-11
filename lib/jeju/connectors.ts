@@ -1395,6 +1395,316 @@ function renderVisitJejuAttractions(rawJson: unknown): { text: string } | { erro
   return { text: [header, ...lines].join('\n') }
 }
 
+// ── GOVERNANCE-ONLY pure-data connectors (no Perplexity) ──────────────────────
+// These four are deliberately standalone: they do NOT import environment.ts /
+// fishery.ts / welfare.ts / haenyeo-marine.ts, because those modules bundle
+// Perplexity enrichment calls that must never fire for a plain governance
+// snapshot fetch. Each connector hits a raw data.go.kr (or odcloud) endpoint
+// directly and renders only what the JSON actually contains.
+
+// ── 1. AirKorea 대기오염 (시도별 실시간 측정정보) ───────────────────────────────
+
+const AIRKOREA_SIDO_URL = 'https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty'
+
+const AIRKOREA_GRADE_LABEL: Record<string, string> = {
+  '1': '좋음',
+  '2': '보통',
+  '3': '나쁨',
+  '4': '매우나쁨',
+}
+
+function airKoreaGradeLabel(code: unknown): string | null {
+  const c = String(code ?? '').trim()
+  return c ? AIRKOREA_GRADE_LABEL[c] ?? null : null
+}
+
+/** 통신장애(dead) station rows report pm10Value/khaiValue as '-' — must be excluded. */
+function isDeadAirKoreaStation(it: Record<string, unknown>): boolean {
+  const pm10 = String(it.pm10Value ?? '').trim()
+  const khai = String(it.khaiValue ?? '').trim()
+  return pm10 === '-' || khai === '-'
+}
+
+/**
+ * Renders the AirKorea 시도별 실시간 측정정보 JSON for 제주. Prefers the 연동
+ * station (제주시청 인근); falls back to any other live station if 연동 is
+ * reporting a 통신장애 row.
+ */
+function renderAirKoreaJejuDust(rawJson: unknown): { text: string } | { error: string } {
+  if (!rawJson || typeof rawJson !== 'object') return { error: 'Unexpected AirKorea response shape' }
+  const response = (rawJson as Record<string, unknown>).response
+  if (!response || typeof response !== 'object') return { error: 'Missing response in AirKorea payload' }
+  const resp = response as Record<string, unknown>
+  const header = resp.header && typeof resp.header === 'object' ? (resp.header as Record<string, unknown>) : null
+  const code = header ? String(header.resultCode ?? '').trim() : ''
+  if (code && code !== '00') {
+    return { error: `AirKorea resultCode ${code || 'missing'}${header?.resultMsg ? `: ${header.resultMsg}` : ''}` }
+  }
+  const body = resp.body && typeof resp.body === 'object' ? (resp.body as Record<string, unknown>) : null
+  const itemsRaw = body?.items
+  const items = Array.isArray(itemsRaw) ? (itemsRaw as Record<string, unknown>[]) : []
+  if (items.length === 0) return { error: 'No station items in AirKorea response' }
+
+  const alive = items.filter((it) => !isDeadAirKoreaStation(it))
+  if (alive.length === 0) return { error: 'All Jeju stations report 통신장애 (no live reading)' }
+  const station = alive.find((it) => String(it.stationName ?? '').trim() === '연동') ?? alive[0]!
+
+  const khai = parseNum(station.khaiValue)
+  const pm10 = parseNum(station.pm10Value)
+  const pm25 = parseNum(station.pm25Value)
+  const o3 = parseNum(station.o3Value)
+  const stationName = String(station.stationName ?? '').trim() || '(미상)'
+  const dataTime = String(station.dataTime ?? '').trim()
+
+  const lines = [
+    `제주 대기질 (AirKorea, ${stationName} 관측소${dataTime ? `, ${dataTime} 기준` : ''})`,
+    `통합대기환경지수: ${khai ?? '?'} (${airKoreaGradeLabel(station.khaiGrade) ?? '—'})`,
+    `미세먼지(PM10): ${pm10 ?? '?'}㎍/㎥ (${airKoreaGradeLabel(station.pm10Grade1h) ?? airKoreaGradeLabel(station.pm10Grade) ?? '—'})`,
+    `초미세먼지(PM2.5): ${pm25 ?? '?'}㎍/㎥ (${airKoreaGradeLabel(station.pm25Grade1h) ?? airKoreaGradeLabel(station.pm25Grade) ?? '—'})`,
+    `오존(O3): ${o3 ?? '?'}ppm (${airKoreaGradeLabel(station.o3Grade) ?? '—'})`,
+  ]
+  return { text: lines.join('\n') }
+}
+
+// ── 2. 수산물 위판 시세 (갈치·고등어·옥돔) ──────────────────────────────────────
+
+const FISHERY_AGG_URL = 'https://apis.data.go.kr/1192000/select0050List/getselect0050List'
+const FISHERY_SPECIES: readonly string[] = ['갈치', '고등어', '옥돔']
+const FISHERY_JEJU_KEYWORDS: readonly string[] = [
+  '제주',
+  '서귀포',
+  '성산',
+  '한림',
+  '추자',
+  '모슬포',
+  '표선',
+  '애월',
+  '조천',
+  '남원',
+]
+
+function fisheryCandidateDt(daysAgo: number): string {
+  return kstYmd(new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000))
+}
+
+function fisheryAggUrl(key: string, baseDt: string, species: string): string {
+  const params = new URLSearchParams({
+    serviceKey: key,
+    numOfRows: '100',
+    pageNo: '1',
+    type: 'json',
+    baseDt,
+    mprcStdCodeNm: species,
+  })
+  return `${FISHERY_AGG_URL}?${params.toString()}`
+}
+
+/** 1192000 envelope: { responseJson: { header, body: { item: [] } } } (or `response`/`responseXml`). */
+function readFisheryEnvelope(
+  rawJson: unknown
+): { ok: true; code: string; msg: string; items: Record<string, unknown>[] } | { ok: false; error: string } {
+  if (!rawJson || typeof rawJson !== 'object') return { ok: false, error: 'Unexpected response shape' }
+  const root = rawJson as Record<string, unknown>
+  const response = root.responseJson ?? root.response ?? root.responseXml
+  if (!response || typeof response !== 'object') return { ok: false, error: 'Missing response envelope' }
+  const resp = response as Record<string, unknown>
+  const header = resp.header && typeof resp.header === 'object' ? (resp.header as Record<string, unknown>) : null
+  const code = header ? String(header.resultCode ?? '').trim() : ''
+  const msg = header && typeof header.resultMsg === 'string' ? header.resultMsg : ''
+  const body = resp.body && typeof resp.body === 'object' ? (resp.body as Record<string, unknown>) : null
+  const itemRaw = body?.item
+  const items = Array.isArray(itemRaw)
+    ? (itemRaw as Record<string, unknown>[])
+    : itemRaw && typeof itemRaw === 'object'
+      ? [itemRaw as Record<string, unknown>]
+      : []
+  return { ok: true, code, msg, items }
+}
+
+function isFisheryJejuRow(it: Record<string, unknown>): boolean {
+  const hay = [it.csmtmktNm, it.mxtrNm, it.addr].map((v) => String(v ?? '')).join(' ')
+  return FISHERY_JEJU_KEYWORDS.some((k) => hay.includes(k))
+}
+
+/**
+ * Fetches Jeju 위판 시세 for a fixed 3-species roster (갈치/고등어/옥돔),
+ * backfilling up to 3 days per species (D+1 settlement lag means "yesterday"
+ * is sometimes still empty). Pure data.go.kr — deliberately does NOT call
+ * fishery.ts's `getFisheryPrice`, which fires a Perplexity fallback.
+ */
+async function fetchJejuFisheryAuction(): Promise<{ text: string } | { error: string }> {
+  const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+  if (!key) return { error: 'DATA_GO_KR_KEY / KPX_SERVICE_KEY not set' }
+
+  const lines: string[] = []
+  let anyOk = false
+
+  for (const species of FISHERY_SPECIES) {
+    let found: { date: string; avg: number; high: number | null; low: number | null; market: string | null } | null =
+      null
+    for (let d = 1; d <= 3 && !found; d++) {
+      const baseDt = fisheryCandidateDt(d)
+      const res = await fetchJsonAt(fisheryAggUrl(key, baseDt, species))
+      if (!res.ok) continue
+      const env = readFisheryEnvelope(res.parsed)
+      if (!env.ok) continue
+      if (env.code && !['00', '0', '03'].includes(env.code)) continue
+      const jejuRows = env.items.filter(isFisheryJejuRow)
+      const priced = jejuRows
+        .map((it) => ({
+          high: parseNum(it.hghpc),
+          low: parseNum(it.lprc),
+          market: String(it.csmtmktNm ?? it.mxtrNm ?? '').trim() || null,
+        }))
+        .filter((r) => (r.high != null && r.high > 0) || (r.low != null && r.low > 0))
+      if (priced.length === 0) continue
+      const highs = priced.map((r) => r.high).filter((n): n is number => n != null)
+      const lows = priced.map((r) => r.low).filter((n): n is number => n != null)
+      const avg = Math.round(
+        [...highs, ...lows].reduce((s, v) => s + v, 0) / Math.max(1, highs.length + lows.length)
+      )
+      found = {
+        date: `${baseDt.slice(0, 4)}-${baseDt.slice(4, 6)}-${baseDt.slice(6, 8)}`,
+        avg,
+        high: highs.length ? Math.max(...highs) : null,
+        low: lows.length ? Math.min(...lows) : null,
+        market: priced.find((r) => r.market)?.market ?? null,
+      }
+    }
+    if (found) {
+      anyOk = true
+      lines.push(
+        `${species}: 평균 ${found.avg.toLocaleString()}원/kg (고 ${found.high?.toLocaleString() ?? '?'} / 저 ${found.low?.toLocaleString() ?? '?'}) — ${found.date}, ${found.market ?? '위판장 미상'}`
+      )
+    } else {
+      lines.push(`${species}: 데이터 없음 (최근 3일 내 제주 위판 기록 없음 — D+1 정산 지연 가능)`)
+    }
+  }
+
+  if (!anyOk) return { error: '3개 어종 모두 최근 3일 내 제주 위판 데이터 없음' }
+  return { text: ['제주 수산물 위판 시세 (해양수산부, 위판장 원산지 집계)', ...lines].join('\n') }
+}
+
+// ── 3. 보조금24 복지서비스 목록 (raw list sample, no AI matching) ────────────────
+
+const WELFARE_SAMPLE_SIZE = 18
+
+function renderJejuWelfareServices(rawJson: unknown): { text: string } | { error: string } {
+  const env = readOdcloudEnvelope(rawJson)
+  if (!env.ok) return { error: env.error }
+  if (env.rows.length === 0) return { error: '보조금24 서비스 목록 데이터 없음 (빈 응답)' }
+
+  const pick = (row: Record<string, unknown>, keys: string[]): string => {
+    for (const k of keys) {
+      const v = row[k]
+      if (v !== undefined && v !== null && String(v).trim()) return String(v).trim()
+    }
+    return ''
+  }
+
+  const sample = env.rows.slice(0, WELFARE_SAMPLE_SIZE)
+  const lines = sample
+    .map((row) => {
+      const name = pick(row, ['서비스명'])
+      if (!name) return ''
+      const org = pick(row, ['소관기관명', '부서명']) || '(미상)'
+      const target = pick(row, ['지원대상']) || '(미상)'
+      const deadline = pick(row, ['신청기한']) || '(미상)'
+      const targetShort = target.length > 40 ? `${target.slice(0, 40)}…` : target
+      return `- ${name} | 기관: ${org} | 대상: ${targetShort} | 기한: ${deadline}`
+    })
+    .filter((l) => l !== '')
+
+  const header =
+    `전국 복지서비스(보조금24) 표본 ${sample.length}건 (출처: 행안부 보조금24 v3 serviceList, 전체 ${env.totalCount?.toLocaleString() ?? '?'}건 중 표본)` +
+    `\n※ 전국 목록이며 원본에 지역 필터 필드가 없음 — 제주 한정 여부·개별 자격·기한은 소관기관 확인 필요.`
+
+  return { text: [header, ...lines].join('\n') }
+}
+
+// ── 4. 조위관측소 실측 수온 (제주·서귀포·성산포) ────────────────────────────────
+
+const KHOA_WATERTEMP_URL = 'https://apis.data.go.kr/1192136/surveyWaterTemp/GetSurveyWaterTempApiService'
+const KHOA_WATERTEMP_STATIONS: readonly { obsCode: string; label: string }[] = [
+  { obsCode: 'DT_0004', label: '제주' },
+  { obsCode: 'DT_0010', label: '서귀포' },
+  { obsCode: 'DT_0022', label: '성산포' },
+]
+
+function khoaWatertempUrl(key: string, obsCode: string, ymd: string): string {
+  const params = new URLSearchParams({
+    serviceKey: key,
+    obsCode,
+    reqDate: ymd,
+    min: '60',
+    type: 'json',
+    numOfRows: '100',
+    pageNo: '1',
+  })
+  return `${KHOA_WATERTEMP_URL}?${params.toString()}`
+}
+
+/** KHOA envelope: ROOT-level header/body (no `response` wrapper), items nested at body.items.item. */
+interface KhoaWatertempEnvelope {
+  header?: { resultCode?: string; resultMsg?: string }
+  body?: { items?: { item?: unknown } }
+}
+
+function readKhoaWatertempItems(raw: unknown): Record<string, unknown>[] {
+  if (!raw || typeof raw !== 'object') return []
+  const item = (raw as KhoaWatertempEnvelope).body?.items?.item
+  return Array.isArray(item) ? (item as Record<string, unknown>[]) : item && typeof item === 'object' ? [item as Record<string, unknown>] : []
+}
+
+function khoaWatertempCode(raw: unknown): string {
+  if (!raw || typeof raw !== 'object') return ''
+  return String((raw as KhoaWatertempEnvelope).header?.resultCode ?? '').trim()
+}
+
+/**
+ * Fetches KHOA 실측 수온 for 제주/서귀포/성산포 조위관측소 and merges into one
+ * Korean summary. Pure data.go.kr — deliberately does NOT call
+ * haenyeo-marine.ts's `getMarineDisplayExtras` (which sits alongside a
+ * wave/tide/safety-verdict pipeline), just the raw water-temp reading.
+ */
+async function fetchJejuKhoaWaterTemp(): Promise<{ text: string } | { error: string }> {
+  const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+  if (!key) return { error: 'DATA_GO_KR_KEY / KPX_SERVICE_KEY not set' }
+
+  const ymd = kstYmd()
+  const results = await Promise.all(
+    KHOA_WATERTEMP_STATIONS.map(async ({ obsCode, label }) => {
+      const res = await fetchJsonAt(khoaWatertempUrl(key, obsCode, ymd))
+      if (!res.ok) return { label, error: res.error }
+      const code = khoaWatertempCode(res.parsed)
+      if (code && code !== '00') return { label, error: `resultCode ${code}` }
+      const items = readKhoaWatertempItems(res.parsed)
+      if (items.length === 0) return { label, error: 'no rows' }
+      const latest = [...items].sort((a, b) =>
+        String(b.obsrvnDt ?? '').localeCompare(String(a.obsrvnDt ?? ''))
+      )[0]!
+      const tempC = parseNum(latest.wtem)
+      if (tempC == null) return { label, error: 'no wtem value' }
+      const obsrvnDt = String(latest.obsrvnDt ?? '').trim()
+      const hm = obsrvnDt.match(/(\d{1,2}):(\d{2})/)
+      return { label, tempC, time: hm ? `${hm[1].padStart(2, '0')}:${hm[2]}` : obsrvnDt }
+    })
+  )
+
+  const okLines = results
+    .filter((r): r is { label: string; tempC: number; time: string } => 'tempC' in r)
+    .map((r) => `${r.label}: ${r.tempC}°C (${r.time} 관측)`)
+  const failLines = results
+    .filter((r): r is { label: string; error: string } => 'error' in r)
+    .map((r) => `${r.label}: 수집 실패 (${r.error})`)
+
+  if (okLines.length === 0) {
+    return { error: `모든 관측소 수온 수집 실패 — ${failLines.join('; ')}` }
+  }
+
+  return { text: ['제주 연안 실측 수온 (KHOA 조위관측소)', ...okLines, ...failLines].join('\n') }
+}
+
 /**
  * Registered Jeju data sources.
  *
@@ -1621,6 +1931,65 @@ const JEJU_SOURCES: readonly JejuSource[] = [
       return `https://api.visitjeju.net/vsjApi/contents/searchList?${params.toString()}`
     },
     render: renderVisitJejuAttractions,
+  },
+
+  // ── GOVERNANCE-ONLY pure-data connectors (added for cross-domain briefing) ──
+  // modes:['governance'] keeps these invisible to tourist/resident (see
+  // listJejuSources' mode filter). No Perplexity anywhere below.
+
+  {
+    id: 'airkorea-jeju-airquality',
+    label: 'AirKorea Jeju Air Quality (대기오염 현황)',
+    format: 'json',
+    modes: ['governance'],
+    buildUrl: () => {
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({
+        serviceKey: key,
+        returnType: 'json',
+        numOfRows: '100',
+        pageNo: '1',
+        sidoName: '제주',
+        ver: '1.3',
+      })
+      return `${AIRKOREA_SIDO_URL}?${params.toString()}`
+    },
+    render: renderAirKoreaJejuDust,
+  },
+
+  {
+    id: 'jeju-fishery-auction',
+    label: 'Jeju Fishery Auction Prices (위판 시세: 갈치·고등어·옥돔)',
+    format: 'json',
+    modes: ['governance'],
+    // Real work happens in `fetchCustom`, which loops 3 species × up to 3 days.
+    buildUrl: () =>
+      fisheryAggUrl(process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? '', fisheryCandidateDt(1), '갈치'),
+    fetchCustom: fetchJejuFisheryAuction,
+  },
+
+  {
+    id: 'jeju-welfare-services',
+    label: 'Gov24 Welfare Services Sample (보조금24 복지서비스 목록)',
+    format: 'json',
+    modes: ['governance'],
+    buildUrl: () => {
+      const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
+      const params = new URLSearchParams({ page: '1', perPage: '200', serviceKey: key })
+      return `https://api.odcloud.kr/api/gov24/v3/serviceList?${params.toString()}`
+    },
+    render: renderJejuWelfareServices,
+  },
+
+  {
+    id: 'khoa-jeju-watertemp',
+    label: 'KHOA Jeju Coastal Water Temperature (조위관측소 실측 수온)',
+    format: 'json',
+    modes: ['governance'],
+    // Real work happens in `fetchCustom`, which merges 3 station calls.
+    buildUrl: () =>
+      khoaWatertempUrl(process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? '', 'DT_0004', kstYmd()),
+    fetchCustom: fetchJejuKhoaWaterTemp,
   },
 
   // ── Registry slots for upcoming sources (NOT yet implemented) ─────────────

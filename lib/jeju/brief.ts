@@ -3,6 +3,7 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { fetchJejuSource } from '@/lib/jeju/connectors'
+import { CROSS_DOMAIN_DIRECTIVE } from '@/lib/jeju/prompt-directives'
 import {
   runSingleAiProvider,
   MODEL_BY_PROVIDER,
@@ -52,6 +53,10 @@ const GOVERNANCE_SOURCE_IDS = [
   'jeju-cargo-throughput',
   'jeju-foreign-tourists',
   'jeju-domestic-tourists',
+  'airkorea-jeju-airquality',
+  'jeju-fishery-auction',
+  'jeju-welfare-services',
+  'khoa-jeju-watertemp',
 ] as const
 
 /** Korean section header per source id, used by buildBriefingContext. */
@@ -67,6 +72,10 @@ const SECTION_HEADER_BY_ID: Record<string, string> = {
   'jeju-cargo-throughput': '## 제주 항만 물동량',
   'jeju-foreign-tourists': '## 제주 외국인 관광객 현황',
   'jeju-domestic-tourists': '## 제주 내국인 관광객 현황',
+  'airkorea-jeju-airquality': '## 대기질(에어코리아)',
+  'jeju-fishery-auction': '## 수산물 위판 시세',
+  'jeju-welfare-services': '## 복지서비스 현황',
+  'khoa-jeju-watertemp': '## 연안 수온(KHOA)',
 }
 
 /** Effective question used when no specific question is supplied (daily path). */
@@ -197,6 +206,8 @@ function buildSystemPrompt(): string {
     '2. 분석: 축 간 연결 관계와 현황·예측. 데이터가 서로 어떻게 영향을 주고받는지 설명.',
     '3. 추천: 실행 가능한 구체적 제언.',
     '4. 참고: 데이터 시점·출처, 그리고 수집에 실패했거나 누락된 소스를 명시.',
+    '',
+    CROSS_DOMAIN_DIRECTIVE,
     '',
     '규칙(엄수):',
     '- 오직 제공된 데이터에만 근거하세요. 데이터에 없는 수치를 절대 지어내지 마세요.',

@@ -3,6 +3,7 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { gatherJejuSnapshot, buildBriefingContext, JEJU_STANDING_ECONOMY_CONTEXT, type JejuSnapshot } from '@/lib/jeju/brief'
+import { CROSS_DOMAIN_DIRECTIVE } from '@/lib/jeju/prompt-directives'
 import {
   runSingleAiProvider,
   MODEL_BY_PROVIDER,
@@ -122,6 +123,16 @@ export const TRUTH_SEEKING_DIRECTIVE =
  */
 export const TAG_DISCIPLINE_DIRECTIVE =
   '태그 절제(중요): [AI 추정]·[확인 필요]·[시점 불명]·[과거 자료] 같은 꺾쇠 태그는 신뢰도·시점 표기를 위한 장치이지 장식이 아닙니다. 남발하지 마십시오. (1) 같은 불확실성을 문단마다 반복 표기하지 말고, 중요한 판단·수치에 처음 등장할 때 1회만 태그하십시오. (2) 반복되는 확인 필요·시점 불명 사항은 개별 문장마다 달지 말고 마지막에 한데 모아 정리하십시오. (3) 출처가 명시된 확실한 공식 데이터에는 태그를 붙이지 마십시오. 한 문단에 꺾쇠 태그가 3회 이상이면 과도하니 통합·정리하십시오. 이모지·장식 기호도 전문 분석 톤에 어울리지 않으니 쓰지 마십시오.'
+
+/**
+ * Shared cross-domain analysis directive (with spurious-correlation guard).
+ * Injected alongside KOREAN_ONLY_DIRECTIVE / TAG_DISCIPLINE_DIRECTIVE into LITE
+ * briefing, diagnostic status/issues, and deliberate analyst/revision/debate/
+ * deliberation/chair system prompts so all governance modes stay consistent.
+ * Defined in prompt-directives.ts (leaf module) to avoid brief↔deep cycles;
+ * re-exported here so callers that already import from deep keep one surface.
+ */
+export { CROSS_DOMAIN_DIRECTIVE }
 
 /**
  * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
@@ -598,6 +609,7 @@ function buildAnalystSystemPrompt(role: JejuExpertRole, question: string): strin
     '진짜 전문가처럼 일하세요. 주어진 데이터만으로 판단이 부족하거나, 더 확인해야 할 외부 정보(최신 통계, 타지역 사례, 정부 정책, 법령, 시장 동향 등)가 있으면, 추측으로 메우지 말고 "검색 요청"으로 명시하세요. 무엇을, 왜 찾아야 하는지 구체적으로.',
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
+    CROSS_DOMAIN_DIRECTIVE,
   ]
 
   if (role.isRedTeam) {
@@ -1193,6 +1205,7 @@ function buildRevisionSystemPrompt(role: JejuExpertRole, question: string): stri
     `여전히 당신의 영역(${role.roleLabel})에만 집중하고, 데이터·조사자료에 근거하세요. 추측 금지.`,
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
+    CROSS_DOMAIN_DIRECTIVE,
   ]
 
   if (role.isRedTeam) {
@@ -1503,6 +1516,7 @@ function buildDebateSystemPrompt(role: JejuExpertRole, question: string): string
     '당신의 영역에 근거해 반박하세요. 인신공격이 아니라 논리·데이터·전문성으로. 누구의 어떤 주장에 반박하는지 명시하세요.',
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
+    CROSS_DOMAIN_DIRECTIVE,
   ]
 
   if (role.isRedTeam) {
@@ -1827,6 +1841,7 @@ function buildDeliberationSystemPrompt(
     '논쟁은 구체적이고 직접적이어야 합니다(상대 전문가의 실제 주장에 밀착). 다만 인신공격은 금지하고, 행정 심의에 어울리는 정중하고 전문적인 어조를 유지하세요. 일반론적 재진술이 아니라, 근거로 획득한 구체적 이견이어야 합니다.',
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
+    CROSS_DOMAIN_DIRECTIVE,
   ]
 
   if (role.isRedTeam) {
@@ -2562,6 +2577,8 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
       '## 참고 사항',
       DEFAULT_DISCLAIMER,
       '',
+      CROSS_DOMAIN_DIRECTIVE,
+      '',
       '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
     )
     return lines.join('\n')
@@ -2595,6 +2612,8 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
     '',
     '## 참고 사항',
     DEFAULT_DISCLAIMER,
+    '',
+    CROSS_DOMAIN_DIRECTIVE,
     '',
     '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 데이터 부재로 해소되지 못한 쟁점은 그렇다고 솔직히 밝히십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
   )
