@@ -1,8 +1,11 @@
 /**
  * Tool registry for the Jeju MCP server.
  *
- * Every tool is a THIN PROXY over an existing deployed Next.js API route
- * (server-to-server, no auth — those routes have none). No LLM runs here.
+ * Most tools are THIN PROXIES over existing deployed Next.js API routes
+ * (server-to-server, no auth). plan_jeju_course is an exception: it assembles a
+ * lightweight day-course INSIDE this server (featured/seasonal pools + curated
+ * fallback) and deliberately does NOT call /api/jeju/tourist-course (too slow
+ * for Kakao PlayMCP). No LLM runs here.
  *
  * Robustness contract for every tool:
  *   - Zod-validate inputs (the SDK enforces the shape; we also normalize).
@@ -19,8 +22,9 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
 import { getJson, postJson } from './http.js';
-import { APP_BASE_URL, COURSE_POLL_BUDGET_MS, COURSE_POLL_INTERVAL_MS } from './config.js';
+import { APP_BASE_URL } from './config.js';
 import { getJejuWeather } from './weather.js';
+import { formatCourseText, planLightweightCourse } from './course.js';
 
 type AiLocale = 'ko' | 'en' | 'ja' | 'zh-TW' | 'zh-CN';
 
@@ -52,49 +56,24 @@ function webLink(locale: AiLocale): string {
 }
 
 /**
- * Localized hand-off shown when a course isn't ready within the poll budget (~55s).
- * MCP can't hold a long connection (Kakao drops past ~1-2 min) and re-checking by
- * jobId across turns is unreliable, so we nudge the user to EITHER the web app
- * (guaranteed full result) OR a more specific request (custom mode returns fast).
+ * Footer specifically for the lightweight course tool — points users to the
+ * full AI-personalized course planner on the web (which we deliberately do NOT
+ * call from MCP, to stay under Kakao's timeout).
  */
-function courseHandoff(locale: AiLocale): string {
+function courseWebFooter(locale: AiLocale): string {
   const url = `${APP_BASE_URL}/jeju/tourist`;
   switch (locale) {
     case 'en':
-      return (
-        `Jeju travel courses take about 1–2 minutes because the AI designs several ` +
-        `courses at once. To see the full courses right now, use the "Jeju AI Travel ` +
-        `Guide" web app: ${url} (the "AI 여행 코스 짜기" button at the top). Or, if you ` +
-        `give a specific request like "a one-day course with kids" or "a half-day cafe ` +
-        `course in Seogwipo", I can create it right here.`
-      );
+      return `👉 Full AI-personalized courses: ${url}`;
     case 'ja':
-      return (
-        `済州の旅行コースはAIが複数のコースを同時に作成するため、1〜2分ほどかかります。` +
-        `今すぐ全コースを見るには「済州AI旅行ガイド」ウェブでご確認ください: ${url} ` +
-        `（上部の「AI 여행 코스 짜기」ボタン）。または「子どもと一日コース」「西帰浦の半日カフェ` +
-        `コース」のように具体的にご希望を伝えていただければ、ここですぐに作成します。`
-      );
+      return `👉 本格AIパーソナライズコースはこちら: ${url}`;
     case 'zh-TW':
-      return (
-        `濟州旅遊路線因為 AI 會同時規劃多條路線，大約需要 1～2 分鐘。若想立即查看完整路線，` +
-        `請前往「濟州 AI 旅遊指南」網站：${url}（點選上方的「AI 여행 코스 짜기」按鈕）。` +
-        `或者，只要提出「和孩子的一日路線」「西歸浦半日咖啡路線」等具體需求，我就能在這裡直接為您規劃。`
-      );
+      return `👉 完整 AI 個人化路線請見：${url}`;
     case 'zh-CN':
-      return (
-        `济州旅游路线因为 AI 会同时规划多条路线，大约需要 1～2 分钟。若想立即查看完整路线，` +
-        `请前往“济州 AI 旅游指南”网站：${url}（点击上方的“AI 여행 코스 짜기”按钮）。` +
-        `或者，只要提出“和孩子的一日路线”“西归浦半日咖啡路线”等具体需求，我就能在这里直接为您规划。`
-      );
+      return `👉 完整 AI 个性化路线请见：${url}`;
     case 'ko':
     default:
-      return (
-        `제주 여행 코스는 AI가 여러 코스를 동시에 짜느라 1~2분 정도 걸립니다. ` +
-        `지금 바로 전체 코스를 보시려면 '제주 AI 여행 안내' 웹에서 확인하세요: ${url} ` +
-        `(상단 'AI 여행 코스 짜기' 버튼). 또는 '아이랑 하루 코스', '서귀포 반나절 카페 코스'처럼 ` +
-        `구체적으로 요청하시면 여기서 바로 짜드립니다.`
-      );
+      return `👉 풀 AI 맞춤 코스는 웹에서: ${url}`;
   }
 }
 
@@ -254,10 +233,6 @@ function fail(message: string): CallToolResult {
   return { content: [{ type: 'text', text: `ERROR: ${message}` }], isError: true };
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 const localeSchema = z
   .enum(['ko', 'en', 'ja', 'zh-TW', 'zh-CN'])
   .default('ko')
@@ -270,46 +245,6 @@ const localeSchema = z
  */
 const RAINY_QUERY =
   '비 오는 날에도 좋은 제주의 제대로 된 실내 명소를 우선 추천: 미술관·박물관·전시관·뮤지엄·아쿠아리움·실내 테마공간 위주. 동네 소규모 공방·원데이클래스·게임장 같은 곳은 가급적 제외하고, 비 와도 충분히 즐길 만한 규모 있는 실내 명소 위주로.';
-
-/** Shape of the tourist-course poll (GET ?jobId=). */
-interface CoursePoll {
-  ok?: boolean;
-  status?: 'pending' | 'done' | 'error';
-  result?: { ok?: boolean; courses?: unknown[]; error?: string };
-  error?: string;
-}
-
-/**
- * Poll a course job once. Returns a discriminated outcome the caller maps to
- * MCP content: 'done' with courses, 'error', 'pending', or a transient miss.
- */
-async function pollCourseOnce(
-  jobId: string,
-): Promise<
-  | { kind: 'done'; courses: unknown[] }
-  | { kind: 'error'; message: string }
-  | { kind: 'pending' }
-  | { kind: 'transient' }
-> {
-  const poll = await getJson<CoursePoll>(
-    `/api/jeju/tourist-course?jobId=${encodeURIComponent(jobId)}`,
-  );
-  if (!poll.ok) return { kind: 'transient' };
-  // Job not found (HTTP 404 → body { ok:false, error }) is a terminal error.
-  if (poll.data?.ok === false) {
-    return { kind: 'error', message: poll.data?.error ?? '작업을 찾을 수 없습니다.' };
-  }
-  const status = poll.data?.status;
-  if (status === 'done') {
-    const result = poll.data?.result;
-    if (result?.ok) return { kind: 'done', courses: result.courses ?? [] };
-    return { kind: 'error', message: result?.error ?? '코스를 만들지 못했어요. 다시 시도해 주세요.' };
-  }
-  if (status === 'error') {
-    return { kind: 'error', message: poll.data?.error ?? '코스를 만들지 못했어요. 다시 시도해 주세요.' };
-  }
-  return { kind: 'pending' };
-}
 
 // Reusable body-check: many routes return { ok: false, error } with HTTP 200.
 function bodyError(data: unknown): string | null {
@@ -343,26 +278,25 @@ function readOnlyAnnotations(title: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function registerTools(server: McpServer): void {
-  // 1. plan_jeju_course — async job: START then POLL until done. ───────────────
+  // 1. plan_jeju_course — lightweight in-MCP day course (NO web tourist-course). ─
   server.registerTool(
     'plan_jeju_course',
     {
-      title: 'Plan a Jeju travel course (AI)',
-      annotations: readOnlyAnnotations('제주 AI 여행 코스 짜기'),
+      title: 'Plan a Jeju travel course',
+      annotations: readOnlyAnnotations('제주 여행 코스 짜기'),
       description:
         `[${SERVICE_NAME}] ` +
-        'Generate an AI-designed multi-stop Jeju (제주도) travel itinerary/course. ' +
-        'Use for requests like "plan my Jeju trip", "make a one-day Jeju course", ' +
-        '"제주 여행 코스 짜줘". This starts a background job and waits up to ~55s. ' +
-        'If the courses are ready it returns the finished itinerary; otherwise it ' +
-        'returns a jobId and a message asking the user to check again shortly — ' +
-        'then call check_jeju_course with that jobId to retrieve the result.',
+        'Generate a lightweight Jeju (제주도) day itinerary / travel course with ' +
+        '4–6 real stops (morning/lunch/afternoon/evening). Use for "plan my Jeju trip", ' +
+        '"make a one-day Jeju course", "제주 여행 코스 짜줘". Returns in one call ' +
+        '(~seconds). For a richer full AI-personalized multi-course plan, the web ' +
+        'app at /jeju/tourist is linked in the response footer.',
       inputSchema: {
         mode: z
           .enum(['standard', 'custom'])
           .default('standard')
           .describe(
-            "'standard' = 4 themed day-courses. 'custom' = up to 2 courses tailored to companion/ageGroup/groupSize.",
+            "Accepted for compatibility. Both modes return one lightweight day-course; 'custom' uses companion/ageGroup/groupSize as soft preferences.",
           ),
         query: z
           .string()
@@ -372,92 +306,37 @@ export function registerTools(server: McpServer): void {
         duration: z
           .enum(['반나절', '하루'])
           .optional()
-          .describe("Trip length: '반나절' (half day) or '하루' (full day)."),
+          .describe("Trip length: '반나절' (half day, ~4 stops) or '하루' (full day, ~5 stops). Default '하루'."),
         area: z.string().max(100).optional().describe('Preferred Jeju area/region to focus on.'),
         companion: z
           .string()
           .max(100)
           .optional()
-          .describe('custom mode only: who is traveling, e.g. "부모님", "친구".'),
-        ageGroup: z.string().max(100).optional().describe('custom mode only: age group, e.g. "60대".'),
-        groupSize: z.number().int().positive().max(100).optional().describe('custom mode only: number of people.'),
+          .describe('Who is traveling, e.g. "부모님", "친구" (soft preference).'),
+        ageGroup: z.string().max(100).optional().describe('Age group, e.g. "60대" (soft preference).'),
+        groupSize: z.number().int().positive().max(100).optional().describe('Number of people (soft preference).'),
         locale: localeSchema,
       },
     },
     async (args): Promise<CallToolResult> => {
-      const start = await postJson<{ ok?: boolean; jobId?: string; error?: string }>(
-        '/api/jeju/tourist-course',
-        args,
-      );
-      if (!start.ok) return fail(start.error);
-      const startErr = bodyError(start.data);
-      if (startErr) return fail(startErr);
-      const jobId = start.data?.jobId;
-      if (!jobId) return fail('작업 ID(jobId)를 받지 못했습니다.');
+      const locale = args.locale ?? 'ko';
+      const result = await planLightweightCourse({
+        duration: args.duration,
+        area: args.area,
+        query: args.query,
+        locale,
+        companion: args.companion,
+        ageGroup: args.ageGroup,
+        groupSize: args.groupSize,
+      });
+      if (!result.ok) return fail(result.error);
 
-      // Poll only up to the short budget (~55s) so the tool call stays snappy.
-      const deadline = Date.now() + COURSE_POLL_BUDGET_MS;
-      while (Date.now() < deadline) {
-        await sleep(COURSE_POLL_INTERVAL_MS);
-        const outcome = await pollCourseOnce(jobId);
-        if (outcome.kind === 'done') {
-          return ok(
-            { jobId, status: 'done', courses: outcome.courses },
-            `제주 여행 코스가 준비되었습니다 (${outcome.courses.length}개 코스).`,
-            args.locale,
-          );
-        }
-        if (outcome.kind === 'error') return fail(outcome.message);
-        // 'pending' or 'transient' → keep polling within budget
-      }
-
-      // Not done in time — standard mode is slow and jobId re-check across turns is
-      // unreliable, so hand off to the web app or a more specific request instead
-      // of asking the user to poll by jobId.
-      return ok(
-        { jobId, status: 'pending', webApp: `${APP_BASE_URL}/jeju/tourist` },
-        courseHandoff(args.locale),
-        args.locale,
-      );
-    },
-  );
-
-  // 1b. check_jeju_course — retrieve a started course by jobId. ─────────────────
-  server.registerTool(
-    'check_jeju_course',
-    {
-      title: 'Check a Jeju course job by jobId',
-      annotations: readOnlyAnnotations('제주 AI 여행 코스 확인'),
-      description:
-        `[${SERVICE_NAME}] ` +
-        'Retrieve the result of a Jeju travel course that was started by ' +
-        'plan_jeju_course but was not ready yet. Pass the jobId returned earlier. ' +
-        'Returns the finished courses if ready, or a "still preparing" message if ' +
-        'not done yet ("아직 준비 중"). Use when the user asks to check their course ' +
-        'again ("코스 다 됐어?", "아까 그 코스 확인해줘").',
-      inputSchema: {
-        jobId: z
-          .string()
-          .min(1)
-          .describe('The jobId returned by plan_jeju_course when the course was not ready.'),
-      },
-    },
-    async (args): Promise<CallToolResult> => {
-      const outcome = await pollCourseOnce(args.jobId);
-      if (outcome.kind === 'done') {
-        return ok(
-          { jobId: args.jobId, status: 'done', courses: outcome.courses },
-          `제주 여행 코스가 준비되었습니다 (${outcome.courses.length}개 코스).`,
-        );
-      }
-      if (outcome.kind === 'error') return fail(outcome.message);
-      if (outcome.kind === 'transient') {
-        return fail('작업 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-      }
-      return ok(
-        { jobId: args.jobId, status: 'pending' },
-        '아직 코스를 준비 중입니다. 잠시 후 다시 확인해 주세요.',
-      );
+      const text = [
+        formatCourseText(result.course),
+        '',
+        courseWebFooter(locale),
+      ].join('\n');
+      return { content: [{ type: 'text', text }] };
     },
   );
 

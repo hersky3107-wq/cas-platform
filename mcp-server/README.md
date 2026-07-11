@@ -11,10 +11,9 @@ It is a **pure tool server**: it runs **no LLM**. Every tool is a thin proxy tha
 
 ## Tools
 
-| Tool | Proxies | Purpose |
-|------|---------|---------|
-| `plan_jeju_course` | `POST /api/jeju/tourist-course` (start + poll ~40s) | AI travel course; starts an async job, waits up to ~40s. Returns finished courses, or a `jobId` + "preparing" message to check via `check_jeju_course` |
-| `check_jeju_course` | `GET /api/jeju/tourist-course?jobId=` | Retrieve a started course by `jobId` (ready → courses; not yet → "still preparing") |
+| Tool | Proxies / source | Purpose |
+|------|------------------|---------|
+| `plan_jeju_course` | **In-MCP lightweight assembler** (featured + seasonal pools; no `/tourist-course`) | Fast 4–6 stop day course in one call (~seconds). Web footer links the full AI planner |
 | `find_hidden_spots` | `POST /api/jeju/tourist-local` | Hidden local gems for a query |
 | `get_jeju_seasonal` | `POST /api/jeju/tourist-seasonal` | What's special in Jeju right now |
 | `get_jeju_festivals` | `POST /api/jeju/tourist-festivals` | Current festivals & events |
@@ -28,6 +27,8 @@ It is a **pure tool server**: it runs **no LLM**. Every tool is a thin proxy tha
 | `search_bus_route` | `POST /api/jeju/bus/route` | Bus route by number → ordered stops |
 | `get_exchange_rates` | `GET /api/jeju/exchange` | KRW rates (USD/CNY/JPY/EUR/HKD/TWD) |
 | `get_jeju_weather` | Open-Meteo (direct) | 3–7 day forecast for 5 Jeju regions |
+
+> **14 tools.** `check_jeju_course` was removed — the lightweight course returns in one call (no jobId/polling). The heavy web `/api/jeju/tourist-course` engine is intentionally **not** called from MCP (Kakao timeout).
 
 > **Not exposed:** the "외국인 대행 서비스 / Coming Soon" panel is a non-functional vision/policy-proposal display and is intentionally **not** an MCP tool. Only real, working features are exposed.
 
@@ -108,5 +109,5 @@ curl http://localhost:3000/health
 ## Notes
 
 - **No auth:** the proxied `/api/jeju/*` routes currently require no auth, so the server calls them directly. There is no rate limiting here — add one at the gateway if needed before public exposure.
-- **Robustness:** every tool wraps fetch with a ~15s timeout (course polling longer) and never throws; upstream errors (including HTTP 200 with `{ ok: false }`) are returned as clear error content.
+- **Robustness:** every tool wraps fetch with a ~15s timeout (lightweight course pool fetches ~8s) and never throws; upstream errors (including HTTP 200 with `{ ok: false }`) are returned as clear error content.
 - **Stateless:** a fresh MCP server + transport is created per request, so replicas scale horizontally without sticky sessions.
