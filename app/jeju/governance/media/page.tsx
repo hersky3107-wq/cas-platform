@@ -25,6 +25,7 @@ type JejuMediaWatch = {
   nationalVsLocal: string | null
   summary: string | null
   error?: string
+  fromCache?: boolean
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────────
@@ -230,6 +231,11 @@ export default function JejuGovernanceMediaPage() {
         {result?.date && (
           <p className="text-xs text-jeju-fg-muted">
             {t.mediaDateLabel}: {result.date}
+            {result.fromCache && (
+              <span className="ml-2 rounded-full bg-jeju-accent/15 px-2 py-0.5 text-[10px] font-semibold text-jeju-accent">
+                캐시됨
+              </span>
+            )}
           </p>
         )}
       </div>

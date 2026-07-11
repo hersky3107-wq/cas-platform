@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
-import { ChevronDown, ChevronUp, PlayCircle, MessageSquare, Search } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect, type RefObject } from 'react'
+import { ChevronDown, ChevronUp, PlayCircle, MessageSquare, Search, Loader2 } from 'lucide-react'
 import { JejuThemeShell } from '@/components/jeju/JejuThemeShell'
 import { useJejuUi } from '@/components/jeju/useJejuUi'
 import { aiProductName, aiProductNameWithGloss } from '@/components/jeju/aiProviderLabel'
@@ -54,17 +54,21 @@ type VoteEntry = {
 type VoteResult = {
   votes: VoteEntry[]
   approveCount: number
+  conditionalCount: number
   opposeCount: number
   abstainCount: number
   approveProviders: string[]
+  conditionalProviders: string[]
   opposeProviders: string[]
   abstainProviders: string[]
   outcome: string
+  outcomeLabel: string
   ok: boolean
   summary: string
 }
 
 type Verdict = {
+  keyIssues: string | null
   judgment: string | null
   beat1Summary: string | null
   beat2Summary: string | null
@@ -266,6 +270,71 @@ function ProgressStrip({ stage, t }: { stage: StageKey; t: Ui }) {
   )
 }
 
+// ── Elapsed-timer hook + running banner (ported from motie's governance UI) ──
+
+function useElapsedTimer(running: boolean): string {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0)
+      return
+    }
+    startRef.current = Date.now()
+    const id = setInterval(() => {
+      if (startRef.current !== null) {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [running])
+  const m = Math.floor(elapsed / 60)
+  const s = elapsed % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function DeliberateRunningBanner({
+  stage,
+  elapsed,
+  t,
+  bannerRef,
+}: {
+  stage: StageKey
+  elapsed: string
+  t: Ui
+  bannerRef: RefObject<HTMLDivElement | null>
+}) {
+  const labelMap: Partial<Record<StageKey, string>> = {
+    start: t.deliberateStageStart,
+    report: t.deliberateStageReport,
+    open: t.deliberateStageOpen,
+    turn: t.deliberateStageTurn,
+    facilitate: t.deliberateStageFacilitate,
+    vote: t.deliberateStageVote,
+    verdict: t.deliberateStageVerdict,
+  }
+  return (
+    <div
+      ref={bannerRef}
+      className="sticky top-2 z-10 rounded-xl border-2 border-jeju-accent bg-jeju-accent/15 px-6 py-5 shadow-[0_4px_20px_rgba(0,0,0,0.35)]"
+    >
+      <div className="flex items-center gap-3">
+        <Loader2 className="h-6 w-6 shrink-0 animate-spin text-jeju-accent" aria-hidden />
+        <p className="text-base font-bold text-jeju-fg">AI가 심의 중입니다 — 잠시만 기다려 주세요</p>
+        <span className="ml-auto font-mono text-xl font-extrabold tabular-nums text-jeju-accent">
+          {elapsed}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-semibold text-jeju-accent">
+        {labelMap[stage] ?? t.deepStageDone}
+      </p>
+      <p className="mt-1 text-xs text-jeju-fg-muted">
+        다중 AI 심의는 보통 수 분 걸립니다. 정상 작동 중이니 창을 닫지 말고 기다려 주세요.
+      </p>
+    </div>
+  )
+}
+
 // ── Consensus trajectory: labeled chips + bar chart (no naked bars) ────────────
 
 type RoundScore = { roundNumber: number; score: number }
@@ -461,20 +530,41 @@ function RoundAccordion({
 
 // ── Verdict block (pinned at top once done) ───────────────────────────────────
 
+// Mirrors lib/jeju/deep.ts CONSENSUS_VOTE_THRESHOLD (server-only, can't import).
+// The route emits `voted: boolean` + `consensusScore: number`, so the page can
+// detect a high-consensus skip without a route change.
+const CONSENSUS_VOTE_THRESHOLD = 85
+
+/**
+ * Banner text for a ballot skipped because consensus converged strongly.
+ * Matches motie's deliberate-page wording. Mentions the fixed 85 threshold
+ * (never the runtime score as a "target") and appends the actual score.
+ */
+function voteSkipNotice(consensusScore: number): string {
+  const base =
+    '합의도가 85점 이상으로 강하게 수렴하여 표결을 생략하고 의장 판결로 이행합니다.'
+  return consensusScore >= 0 ? `${base} (이번 심의 합의도: ${consensusScore}점)` : base
+}
+
 function VerdictBlock({
   verdict,
   vote,
+  voted,
+  questionType,
   consensusScore,
   stoppedReason,
   t,
 }: {
   verdict: Verdict
   vote: VoteResult | null
+  voted: boolean | null
+  questionType: string | null
   consensusScore: number
   stoppedReason: string
   t: Ui
 }) {
   const sections: { heading: string; content: string | null }[] = [
+    ...(verdict.keyIssues ? [{ heading: t.deepKeyIssuesHeading, content: verdict.keyIssues }] : []),
     { heading: t.deepJudgmentHeading, content: verdict.judgment },
     { heading: t.deepBeat3Heading, content: verdict.beat3Summary },
     { heading: t.deepBeat1Heading, content: verdict.beat1Summary },
@@ -535,9 +625,15 @@ function VerdictBlock({
               {t.deliberateVoteAllPanel(vote.votes.length)}
             </span>
           </div>
-          <p className="mb-3 text-xs text-jeju-fg-muted">
-            찬성 {vote.approveCount} · 반대 {vote.opposeCount} · 기권{' '}
-            {vote.abstainCount} —{' '}
+          <p className="mb-3 flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs text-jeju-fg-muted">
+            <span>찬성 {vote.approveCount}</span>
+            <span>·</span>
+            <span>조건부 찬성 {vote.conditionalCount}</span>
+            <span>·</span>
+            <span>기권 {vote.abstainCount}</span>
+            <span>·</span>
+            <span>반대 {vote.opposeCount}</span>
+            <span>—</span>
             <span
               className={
                 vote.outcome === 'approved'
@@ -547,28 +643,36 @@ function VerdictBlock({
                     : 'text-amber-300'
               }
             >
-              {t.deepVoteOutcome(vote.outcome)}
+              {vote.outcomeLabel || t.deepVoteOutcome(vote.outcome)}
             </span>
           </p>
           <div className="flex flex-col gap-2">
             {vote.votes.map((v, i) => (
               <div
                 key={i}
-                className="flex flex-wrap gap-2 border-b border-jeju-border/50 pb-2 text-xs last:border-0"
+                className="flex flex-wrap gap-x-2 gap-y-1 border-b border-jeju-border/50 pb-2 text-xs last:border-0"
               >
                 <span className="w-32 shrink-0 font-semibold text-jeju-fg">
                   {aiProductNameWithGloss(v.provider)}
                 </span>
                 <span
-                  className={`w-10 shrink-0 font-bold ${
+                  className={`min-w-[5rem] shrink-0 whitespace-nowrap font-bold ${
                     v.choice === 'approve'
                       ? 'text-emerald-300'
-                      : v.choice === 'oppose'
-                        ? 'text-rose-300'
-                        : 'text-amber-300'
+                      : v.choice === 'conditional'
+                        ? 'text-sky-300'
+                        : v.choice === 'oppose'
+                          ? 'text-rose-300'
+                          : 'text-amber-300'
                   }`}
                 >
-                  {v.choice === 'approve' ? '찬성' : v.choice === 'oppose' ? '반대' : '기권'}
+                  {v.choice === 'approve'
+                    ? '찬성'
+                    : v.choice === 'conditional'
+                      ? '조건부 찬성'
+                      : v.choice === 'oppose'
+                        ? '반대'
+                        : '기권'}
                 </span>
                 <span className="flex-1 leading-relaxed text-jeju-fg-muted">{v.reason}</span>
               </div>
@@ -576,6 +680,22 @@ function VerdictBlock({
           </div>
         </div>
       )}
+
+      {/* Ballot-skip notice — shown ONLY when the panel vote was skipped because
+          consensus converged strongly (≥85 on a binary question). Never shown
+          when a vote actually fired (voted === true) or for open-ended /
+          unmeasurable skips (different reasons, no banner here). */}
+      {voted === false &&
+        questionType === 'binary' &&
+        consensusScore >= CONSENSUS_VOTE_THRESHOLD &&
+        (!vote || !vote.ok || vote.votes.length === 0) && (
+          <div className="rounded-lg border border-jeju-accent/25 bg-jeju-accent/8 px-4 py-3">
+            <p className="text-xs text-jeju-fg-muted">
+              <span className="mr-1 font-semibold text-jeju-accent">표결 생략</span>
+              {voteSkipNotice(consensusScore)}
+            </p>
+          </div>
+        )}
     </div>
   )
 }
@@ -608,6 +728,9 @@ export default function JejuGovernanceDeliberatePage() {
   const [vote, setVote] = useState<VoteResult | null>(null)
   const [consensusScore, setConsensusScore] = useState(-1)
   const [stoppedReason, setStoppedReason] = useState('max_rounds')
+  // null = vote stage not yet reached; true = ballot fired; false = ballot skipped
+  // (e.g. consensus ≥ 85 on a binary question). Drives the skip-notice banner.
+  const [voted, setVoted] = useState<boolean | null>(null)
 
   const runningRef = useRef(false)
 
@@ -697,6 +820,7 @@ export default function JejuGovernanceDeliberatePage() {
       setVote(null)
       setConsensusScore(-1)
       setStoppedReason('max_rounds')
+      setVoted(null)
 
       try {
         // ── start ────────────────────────────────────────────────────────────
@@ -794,6 +918,7 @@ export default function JejuGovernanceDeliberatePage() {
         const voteRes = await postWithRetry({ action: 'vote', sessionId })
         if (!voteRes) { runningRef.current = false; return }
         if (voteRes.vote) setVote(voteRes.vote)
+        if (typeof voteRes.voted === 'boolean') setVoted(voteRes.voted)
         if (!voteRes.ok) {
           stop(voteRes.stage ?? 'vote', voteRes.error ?? '표결 실패')
           return
@@ -826,6 +951,14 @@ export default function JejuGovernanceDeliberatePage() {
 
   const isRunning = stage !== 'idle' && stage !== 'done' && stage !== 'error'
   const showProcess = stage !== 'idle'
+  const elapsed = useElapsedTimer(isRunning)
+
+  const bannerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (isRunning) {
+      bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [isRunning])
 
   // All debate rounds in order (opening = round 1 via openingTurns, subsequent via roundTurns map)
   const allRoundNumbers = Array.from(
@@ -881,6 +1014,11 @@ export default function JejuGovernanceDeliberatePage() {
         </div>
       </div>
 
+      {/* Running banner — prominent status while engine works */}
+      {isRunning && (
+        <DeliberateRunningBanner stage={stage} elapsed={elapsed} t={t} bannerRef={bannerRef} />
+      )}
+
       {/* Progress strip */}
       {showProcess && (
         <div className="mb-6 rounded-xl border border-jeju-border bg-jeju-bg-elevated px-5 py-4">
@@ -910,6 +1048,8 @@ export default function JejuGovernanceDeliberatePage() {
           <VerdictBlock
             verdict={verdict}
             vote={vote}
+            voted={voted}
+            questionType={questionType}
             consensusScore={consensusScore}
             stoppedReason={stoppedReason}
             t={t}
@@ -1059,9 +1199,15 @@ export default function JejuGovernanceDeliberatePage() {
                   {t.deliberateVoteAllPanel(vote.votes.length)}
                 </span>
               </p>
-              <p className="mb-3 text-xs text-jeju-fg-muted">
-                찬성 {vote.approveCount} · 반대 {vote.opposeCount} · 기권{' '}
-                {vote.abstainCount} —{' '}
+              <p className="mb-3 flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs text-jeju-fg-muted">
+                <span>찬성 {vote.approveCount}</span>
+                <span>·</span>
+                <span>조건부 찬성 {vote.conditionalCount}</span>
+                <span>·</span>
+                <span>기권 {vote.abstainCount}</span>
+                <span>·</span>
+                <span>반대 {vote.opposeCount}</span>
+                <span>—</span>
                 <span
                   className={
                     vote.outcome === 'approved'
@@ -1071,28 +1217,36 @@ export default function JejuGovernanceDeliberatePage() {
                         : 'text-amber-300'
                   }
                 >
-                  {t.deepVoteOutcome(vote.outcome)}
+                  {vote.outcomeLabel || t.deepVoteOutcome(vote.outcome)}
                 </span>
               </p>
               <div className="flex flex-col gap-2">
                 {vote.votes.map((v, i) => (
                   <div
                     key={i}
-                    className="flex flex-wrap gap-2 border-b border-jeju-border/50 pb-2 text-xs last:border-0"
+                    className="flex flex-wrap gap-x-2 gap-y-1 border-b border-jeju-border/50 pb-2 text-xs last:border-0"
                   >
                     <span className="w-32 shrink-0 font-semibold text-jeju-fg">
                       {aiProductNameWithGloss(v.provider)}
                     </span>
                     <span
-                      className={`w-10 shrink-0 font-bold ${
+                      className={`min-w-[5rem] shrink-0 whitespace-nowrap font-bold ${
                         v.choice === 'approve'
                           ? 'text-emerald-300'
-                          : v.choice === 'oppose'
-                            ? 'text-rose-300'
-                            : 'text-amber-300'
+                          : v.choice === 'conditional'
+                            ? 'text-sky-300'
+                            : v.choice === 'oppose'
+                              ? 'text-rose-300'
+                              : 'text-amber-300'
                       }`}
                     >
-                      {v.choice === 'approve' ? '찬성' : v.choice === 'oppose' ? '반대' : '기권'}
+                      {v.choice === 'approve'
+                        ? '찬성'
+                        : v.choice === 'conditional'
+                          ? '조건부 찬성'
+                          : v.choice === 'oppose'
+                            ? '반대'
+                            : '기권'}
                     </span>
                     <span className="flex-1 leading-relaxed text-jeju-fg-muted">
                       {v.reason}
@@ -1102,6 +1256,24 @@ export default function JejuGovernanceDeliberatePage() {
               </div>
             </Section>
           )}
+
+          {/* 6b. Ballot-skip notice — shown ONLY when the panel vote was skipped
+              because consensus converged strongly (≥85 on a binary question).
+              Never shown when a vote actually fired. Mirrors the notice pinned in
+              VerdictBlock above so the skip is visible in the live process flow too. */}
+          {voted === false &&
+            questionType === 'binary' &&
+            consensusScore >= CONSENSUS_VOTE_THRESHOLD &&
+            (!vote || !vote.ok || vote.votes.length === 0) && (
+              <Section title={t.deepVoteHeading} t={t}>
+                <div className="rounded-lg border border-jeju-accent/25 bg-jeju-accent/8 px-4 py-3">
+                  <p className="text-xs text-jeju-fg-muted">
+                    <span className="mr-1 font-semibold text-jeju-accent">표결 생략</span>
+                    {voteSkipNotice(consensusScore)}
+                  </p>
+                </div>
+              </Section>
+            )}
         </div>
       )}
     </JejuThemeShell>

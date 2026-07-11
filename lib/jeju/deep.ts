@@ -113,6 +113,17 @@ export const TRUTH_SEEKING_DIRECTIVE =
   '이 심의의 목적은 당신의 입장을 관철하는 것이 아니라, 패널 전체가 함께 가장 객관적이고 현명하며 정답에 가장 가까운 결론에 도달하는 것입니다. 당신의 전문 영역 관점은 그 결론을 찾기 위한 재료이지, 반드시 이겨야 할 주장이 아닙니다. 자기 의견을 무리하게 강조하거나 방어하지 말고, 다른 전문가의 더 나은 근거가 있으면 정직하게 인정하고 입장을 조정하십시오. 동시에, 단지 합의를 위해 약한 근거에 동조하지도 마십시오 — 목표는 "가짜 합의"가 아니라 "진짜 최적해"입니다. 근거의 질로만 판단하십시오.'
 
 /**
+ * Shared tag-discipline directive, injected alongside KOREAN_ONLY_DIRECTIVE
+ * into every governance analysis / debate / diagnostic system prompt. Stops
+ * the AI from dressing output up with bracket-tag salad, emoji, or decorative
+ * markers so responses read as professional analysis. Mirrors motie's 태그 절제
+ * rule, generalised to the bracket-tags jeju actually uses
+ * ([AI 추정]/[확인 필요]/[시점 불명]/[과거 자료]) and stripped of council-mode framing.
+ */
+export const TAG_DISCIPLINE_DIRECTIVE =
+  '태그 절제(중요): [AI 추정]·[확인 필요]·[시점 불명]·[과거 자료] 같은 꺾쇠 태그는 신뢰도·시점 표기를 위한 장치이지 장식이 아닙니다. 남발하지 마십시오. (1) 같은 불확실성을 문단마다 반복 표기하지 말고, 중요한 판단·수치에 처음 등장할 때 1회만 태그하십시오. (2) 반복되는 확인 필요·시점 불명 사항은 개별 문장마다 달지 말고 마지막에 한데 모아 정리하십시오. (3) 출처가 명시된 확실한 공식 데이터에는 태그를 붙이지 마십시오. 한 문단에 꺾쇠 태그가 3회 이상이면 과도하니 통합·정리하십시오. 이모지·장식 기호도 전문 분석 톤에 어울리지 않으니 쓰지 마십시오.'
+
+/**
  * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
  * Mirrors brief.ts's noDbSupabase pattern (not exported there, so replicated
  * locally): with sessionId:null + userId:null the router does NO DB inserts and
@@ -586,6 +597,7 @@ function buildAnalystSystemPrompt(role: JejuExpertRole, question: string): strin
     '반드시 제공된 [수집 데이터]에 근거하세요. 데이터에 없는 수치는 지어내지 마세요.',
     '진짜 전문가처럼 일하세요. 주어진 데이터만으로 판단이 부족하거나, 더 확인해야 할 외부 정보(최신 통계, 타지역 사례, 정부 정책, 법령, 시장 동향 등)가 있으면, 추측으로 메우지 말고 "검색 요청"으로 명시하세요. 무엇을, 왜 찾아야 하는지 구체적으로.',
     KOREAN_ONLY_DIRECTIVE,
+    TAG_DISCIPLINE_DIRECTIVE,
   ]
 
   if (role.isRedTeam) {
@@ -1180,6 +1192,7 @@ function buildRevisionSystemPrompt(role: JejuExpertRole, question: string): stri
     `이 새 정보를 검토하여, 당신의 전문 영역(${role.roleLabel}) 관점에서 분석을 갱신하세요. 새 정보가 당신의 판단을 바꾸면 솔직히 반영하고(수치·근거 인용), 바꾸지 않으면 기존 입장을 유지하되 그 이유를 밝히세요.`,
     `여전히 당신의 영역(${role.roleLabel})에만 집중하고, 데이터·조사자료에 근거하세요. 추측 금지.`,
     KOREAN_ONLY_DIRECTIVE,
+    TAG_DISCIPLINE_DIRECTIVE,
   ]
 
   if (role.isRedTeam) {
@@ -1489,6 +1502,7 @@ function buildDebateSystemPrompt(role: JejuExpertRole, question: string): string
     '핵심 규칙: 단순히 동의하지 마세요. "좋은 지적이다"로 끝나는 것은 당신의 임무 실패입니다. 진짜 회의처럼, 당신의 전문성으로 볼 때 다른 전문가가 놓쳤거나 틀렸거나 과소평가한 지점을 반드시 하나 이상 짚어 반박하세요. 부분적 이견이라도 명확히 논쟁하세요.',
     '당신의 영역에 근거해 반박하세요. 인신공격이 아니라 논리·데이터·전문성으로. 누구의 어떤 주장에 반박하는지 명시하세요.',
     KOREAN_ONLY_DIRECTIVE,
+    TAG_DISCIPLINE_DIRECTIVE,
   ]
 
   if (role.isRedTeam) {
@@ -1812,6 +1826,7 @@ function buildDeliberationSystemPrompt(
     '진전 의무(반복 금지): 직전 라운드에서 쓴 견지(hold) 문단을 그대로 되풀이하지 마십시오. 매 라운드는 반드시 움직여야 합니다 — 무언가를 양보하거나, 논거를 더 날카롭게 다듬거나, 새로운 구체적 반론을 제시하세요. 입장이 변하지 않았다면, 최소한 논증을 한 단계 더 진전시키거나 "어떤 새로운 근거가 제시되면 내 입장이 바뀌는지"를 분명히 밝히세요.',
     '논쟁은 구체적이고 직접적이어야 합니다(상대 전문가의 실제 주장에 밀착). 다만 인신공격은 금지하고, 행정 심의에 어울리는 정중하고 전문적인 어조를 유지하세요. 일반론적 재진술이 아니라, 근거로 획득한 구체적 이견이어야 합니다.',
     KOREAN_ONLY_DIRECTIVE,
+    TAG_DISCIPLINE_DIRECTIVE,
   ]
 
   if (role.isRedTeam) {
@@ -2446,9 +2461,19 @@ const VERDICT_MAX_TOKENS = 6000
 const DEFAULT_DISCLAIMER =
   '본 판단은 AI 다중 분석·토론에 기반한 보좌 의견입니다. 전적으로 신뢰하지 마시고 참고 자료로 활용하시되, 최종 정책 결정과 책임은 담당 공무원에게 있습니다.'
 
+/**
+ * The 마이너리티 리포트 instruction — demands the dissent be steelmanned, not
+ * merely noted. Shared verbatim by the brief and full chair prompts so the bar
+ * never drops when the short-circuit fires.
+ */
+const MINORITY_REPORT_INSTRUCTION =
+  '이 절은 형식적으로 채우지 말고 실질적으로 쓰십시오. 반드시 (1) 어느 전문가(좌석)가 왜 이견을 냈는지 명시하고, (2) 그 반대 측이 제시한 가장 강력한 논거를 스틸맨(steelman)하여 공정하게 서술하며(무시·폄하 금지), (3) 어떤 근거·조건이 확인되면 다수 판단이 바뀔 수 있는지 적으십시오. 최소 3~4문장 이상으로 쓰십시오. 합의도가 높거나 표결이 거의 일치했더라도 "이견 없음"으로 비우지 마십시오 — 토론 중 조금이라도 갈린 지점이 있었다면 위 (1)~(3)에 따라 반드시 서술하십시오. 진정으로 아무 이견도 없었을 때만 그렇다고 짧게 밝히되, 이를 작업을 피하기 위한 손쉬운 도피처로 쓰지 마십시오. 제목은 그대로 두고 내용은 한국어로 쓰십시오.'
+
 /** The chair's final, structured verdict — the deliverable officials read. */
 export type JejuVerdict = {
   ok: boolean
+  /** 3-line summary of the KEY CONTESTED AXES, shown ABOVE the verdict so a reader grasps the debate at a glance. */
+  keyIssues: string | null
   /** The chair's final ruling + reasoning (the heart). */
   judgment: string | null
   /** Brief: what data was collected (beat 1). */
@@ -2522,6 +2547,9 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
       '전문가 합의도가 높아 길게 판결할 필요가 없습니다. 아래 구조를 정확히 따르되 간결하게 작성하십시오. 각 절은 반드시 "## " 머리말로 시작하세요. 수집 데이터 요약과 전문가 분석·조사 요약 절은 생략합니다.',
       '중요: 분량을 줄이더라도 "## 마이너리티 리포트"는 절대 생략하지 마십시오. 합의도가 높아도 끝까지 남은 소수·반대 의견은 반드시 보존해야 합니다.',
       '',
+      '## 핵심 쟁점 (3줄 요약)',
+      '출력을 반드시 이 절로 시작하십시오. 서론·머리말 없이, 이 심의에서 전문가들의 의견이 갈린 핵심 축을 정확히 3줄(각 줄 "- "로 시작하는 한 문장)로 요약하십시오. 일반적 요약이 아니라 실제로 대립한 쟁점만 쓰십시오. 예: 총량 억제 vs 미시규제, 시행 속도 vs 리스크 신중론, 단기 효과 vs 장기 부담. 3줄을 넘기지 마십시오.',
+      '',
       '## 최종 판단',
       '당신의 결론(판결)과 핵심 이유를 간결하게. 합의를 확정하고 날카롭게 다듬되, 공무원이 집행할 수 있는 분명한 방향으로 쓰십시오.',
       '',
@@ -2529,7 +2557,7 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
       '토론이 어떻게 수렴했는지 짧게(합의 점수와 안착 지점 위주).',
       '',
       '## 마이너리티 리포트',
-      '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하십시오. 없으면 없다고 분명히 쓰십시오.',
+      MINORITY_REPORT_INSTRUCTION,
       '',
       '## 참고 사항',
       DEFAULT_DISCLAIMER,
@@ -2543,6 +2571,9 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
     '',
     '아래 구조를 정확히 따르되, 각 절은 한국어 산문으로 작성하십시오. 각 절은 반드시 "## " 머리말로 시작하세요.',
     '분량 배분(중요): "## 최종 판단"에 가장 큰 비중을 두되, 요약 절(수집 데이터/전문가 분석·조사/토론·합의 과정)은 각각 핵심만 간결하게 쓰고, 반드시 마지막 "## 마이너리티 리포트"와 "## 참고 사항"까지 빠짐없이 작성하십시오. 중간에서 분량이 소진되어 소수의견이 누락되는 일이 없도록 하십시오.',
+    '',
+    '## 핵심 쟁점 (3줄 요약)',
+    '출력을 반드시 이 절로 시작하십시오. 서론·머리말 없이, 이 심의에서 전문가들의 의견이 갈린 핵심 축을 정확히 3줄(각 줄 "- "로 시작하는 한 문장)로 요약하십시오. 일반적 요약이 아니라 실제로 대립한 쟁점만 쓰십시오. 예: 총량 억제 vs 미시규제, 시행 속도 vs 리스크 신중론, 단기 효과 vs 장기 부담. 3줄을 넘기지 마십시오.',
     '',
     '## 최종 판단',
     '당신의 결론(판결)과 그 이유. 이 심의의 가장 중요한 부분입니다. 결단력 있고 방어 가능하게, 공무원이 집행할 수 있는 분명한 방향으로 쓰십시오.',
@@ -2560,7 +2591,7 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
     '심의 자료에 언론 분석이 포함된 경우에만 이 절을 작성하라. 이 정책을 발표·집행할 때 예상되는 언론 보도 논조와 반복될 가능성이 있는 쟁점·우려, 그리고 그로 인한 평판·소통 리스크를 정성적으로 서술하라. 정량 수치(지지율 등)를 지어내지 말 것. 심의 자료에 언론 분석이 전혀 없으면 이 절 자체를 생략하라(없는 반응을 지어내지 말 것).',
     '',
     '## 마이너리티 리포트',
-    '이 제목은 그대로 두되, 내용은 한국어로 쓰십시오. 끝까지 해소되지 않은 소수·반대 의견을 공정하게 서술하여, 무엇이 합의되지 못했는지 공무원이 분명히 알 수 있게 하십시오.',
+    MINORITY_REPORT_INSTRUCTION,
     '',
     '## 참고 사항',
     DEFAULT_DISCLAIMER,
@@ -2610,7 +2641,13 @@ function formatDeliberationForChair(deliberation: JejuDeliberation): string {
 
 /** Korean label for a ballot choice, used when showing the vote to the chair. */
 function voteChoiceLabel(choice: JejuVoteChoice): string {
-  return choice === 'approve' ? '찬성' : choice === 'oppose' ? '반대' : '기권'
+  return choice === 'approve'
+    ? '찬성'
+    : choice === 'conditional'
+      ? '조건부 찬성'
+      : choice === 'oppose'
+        ? '반대'
+        : '기권'
 }
 
 /**
@@ -2665,6 +2702,7 @@ function formatRebuttalsForChair(rebuttals: JejuRebuttal[]): string {
 function chairSectionField(
   heading: string
 ):
+  | 'keyIssues'
   | 'judgment'
   | 'beat1Summary'
   | 'beat2Summary'
@@ -2674,6 +2712,7 @@ function chairSectionField(
   | 'disclaimer'
   | null {
   const h = heading.trim().toLowerCase()
+  if (h.includes('핵심 쟁점') || h.includes('핵심쟁점')) return 'keyIssues'
   if (h.includes('최종 판단') || h.includes('최종판단')) return 'judgment'
   if (h.includes('수집 데이터') || h.includes('수집데이터')) return 'beat1Summary'
   if (h.includes('전문가 분석') || h.includes('분석·조사') || h.includes('분석/조사')) return 'beat2Summary'
@@ -2691,6 +2730,7 @@ function chairSectionField(
  * putting the whole text in `judgment` (output is never lost).
  */
 function parseChairOutput(text: string): {
+  keyIssues: string | null
   judgment: string | null
   beat1Summary: string | null
   beat2Summary: string | null
@@ -2701,6 +2741,7 @@ function parseChairOutput(text: string): {
   matchedAny: boolean
 } {
   const result = {
+    keyIssues: null as string | null,
     judgment: null as string | null,
     beat1Summary: null as string | null,
     beat2Summary: null as string | null,
@@ -2777,7 +2818,7 @@ export async function renderChairVerdict(params: {
   const hasVote =
     vote != null &&
     vote.ok &&
-    vote.approveCount + vote.opposeCount + vote.abstainCount > 0
+    vote.approveCount + vote.conditionalCount + vote.opposeCount + vote.abstainCount > 0
 
   const base = {
     consensusScore,
@@ -2835,6 +2876,7 @@ export async function renderChairVerdict(params: {
     return {
       ...base,
       ok: false,
+      keyIssues: null,
       judgment: null,
       beat1Summary: null,
       beat2Summary: null,
@@ -2849,6 +2891,7 @@ export async function renderChairVerdict(params: {
     return {
       ...base,
       ok: false,
+      keyIssues: null,
       judgment: null,
       beat1Summary: null,
       beat2Summary: null,
@@ -2867,6 +2910,7 @@ export async function renderChairVerdict(params: {
     return {
       ...base,
       ok: true,
+      keyIssues: null,
       judgment: r.text.trim(),
       beat1Summary: null,
       beat2Summary: null,
@@ -2886,11 +2930,12 @@ export async function renderChairVerdict(params: {
   return {
     ...base,
     ok: true,
+    // Optional: null when absent (brief mode, or chair omitted it). No reconstruction.
+    keyIssues: parsed.keyIssues,
     judgment: parsed.judgment,
     beat1Summary: parsed.beat1Summary,
     beat2Summary: parsed.beat2Summary,
     beat3Summary: parsed.beat3Summary,
-    // Optional: null when absent (brief mode, or chair omitted it). No reconstruction.
     mediaRisk: parsed.mediaRisk,
     minorityReport,
     // Prefer the chair's own 참고 사항 if present; otherwise the default.
@@ -2921,6 +2966,7 @@ export async function runJejuDeepComplete(params?: {
 
   const emptyVerdict: JejuVerdict = {
     ok: false,
+    keyIssues: null,
     judgment: null,
     beat1Summary: null,
     beat2Summary: null,
@@ -3018,7 +3064,7 @@ const JEJU_VOTE_BRAND_LABEL: Record<ExtendedAiProviderName, string> = {
 }
 
 /** A single provider's ballot choice on the chair's ruling. */
-export type JejuVoteChoice = 'approve' | 'oppose' | 'abstain'
+export type JejuVoteChoice = 'approve' | 'conditional' | 'oppose' | 'abstain'
 
 /** One provider's vote on the chair's verdict. */
 export type JejuVote = {
@@ -3034,16 +3080,27 @@ export type JejuVote = {
 export type JejuVoteResult = {
   votes: JejuVote[]
   approveCount: number
+  /** 조건부 찬성 — directional agreement WITH conditions. Counted separately, never merged into approve/abstain. */
+  conditionalCount: number
   opposeCount: number
   abstainCount: number
   /** Brand labels, e.g. ['Claude', 'ChatGPT']. */
   approveProviders: string[]
+  conditionalProviders: string[]
   opposeProviders: string[]
   abstainProviders: string[]
-  /** approved if approve>oppose; rejected if oppose>approve; divided if equal. Abstains never tip it. */
+  /**
+   * approved if (approve+conditional)>oppose; rejected if oppose>(approve+conditional);
+   * divided if equal. 조건부 찬성 counts on the yes side; abstains never tip it.
+   */
   outcome: 'approved' | 'rejected' | 'divided'
+  /**
+   * Korean display label parallel to `outcome` (does not overload the enum):
+   * 가결 / 조건부 가결 / 부결 / 의견 분분.
+   */
+  outcomeLabel: string
   ok: boolean
-  /** Korean one-liner, e.g. '찬성 5 · 반대 2 · 기권 1 — 다수 승인'. */
+  /** Korean one-liner, e.g. '찬성 4 · 조건부 찬성 2 · 기권 1 · 반대 1 — 조건부 가결'. */
   summary: string
 }
 
@@ -3065,13 +3122,14 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict'): string {
     '핵심 원칙 — 당신 자신의 토론 기록대로 표결하십시오(가장 중요):',
     '  이 표결은 새로운 추상적 판단이 아니라, 당신이 심의 토론에서 실제로 취한 입장의 충실한 요약입니다.',
     '  1) 표결 전에 반드시 먼저 자문하십시오: "나는 토론 전반에 걸쳐 이 안건에 대해 어떤 입장을 취했는가?"',
-    '  2) 토론 내내 안건의 핵심 방향·수단을 지지했다면 → 찬성.',
-    '  3) 토론 내내 안건의 핵심 방향·수단을 거부하거나, 다른 수단을 주장했다면 → 반대.',
-    '  4) 토론에서 진정으로 혼재되었거나 해소되지 않은 상태라면 → 기권이 정직한 선택입니다.',
+    '  2) 토론 내내 안건의 핵심 방향·수단을 지지했다면(사소한 유보가 있더라도) → 찬성.',
+    '  3) 큰 방향·핵심 수단에는 동의하나, 그 전제가 충족되지 않으면 정책이 실패하거나 심각한 부작용이 날 "중대하고 차단적인(blocking)" 조건이 있다면 → 조건부 찬성. 단순한 실행 디테일·통상적 보완사항 수준이면 조건부 찬성이 아니라 찬성입니다.',
+    '  4) 토론 내내 안건의 핵심 방향·수단을 거부하거나, 다른 수단을 주장했다면 → 반대.',
+    '  5) 토론에서 진정으로 혼재되었거나 해소되지 않은 상태라면 → 기권이 정직한 선택입니다.',
     '',
     '침묵 속 전환 금지 — 양방향 강제 규칙:',
     '  [찬성→반대 전환 금지] 토론에서 안건의 핵심 방향·수단을 지지했다면, 표결 시점에 부차적인 우려(사회적 비용, 전환 지원 부담, 일부 리스크)를 이유로 조용히 반대로 바꿀 수 없습니다.',
-    '  부차적 우려는 조건부 찬성의 사유입니다(조건을 이유에 적고 찬성). 핵심 방향·수단을 지지했다면 반대로 표결하는 것은 금지됩니다.',
+    '  부차적(사소한) 우려만으로는 반대로 바꿀 수 없으며, 그 우려가 정책 성패를 가르는 중대 조건이면 조건부 찬성, 통상적 수준이면 찬성입니다.',
     '  [반대→찬성 전환 금지] 토론에서 안건의 핵심 수단을 거부하거나 다른 수단을 주장했다면, 표결 시점에 더 막연한 가치("방향은 맞다")로 후퇴해 조용히 찬성으로 바꿀 수 없습니다. 반대를 유지하거나 기권하십시오.',
     '  유효한 전환(양방향 공통): 토론 중에 당신이 입장을 바꾸는 발언을 실제로 했을 때만 예외입니다.',
     '  예) "처음엔 반대였지만, X 때문에 입장을 바꾼다" — 토론 안에서 명시적으로 이루어진 전환만 인정합니다.',
@@ -3083,21 +3141,25 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict'): string {
     '  예) 안건이 "관광 총량 억제로 전환"이면, "환경 보전이 옳은가?"가 아니라 "총량 억제라는 수단으로 전환"이 옳은지를 표결합니다.',
     '  전문가 합의도 숫자를 이유로 삼지 마십시오 — 찬성/반대 결정은 오직 안건의 내용과 당신의 토론 기록에 기반해야 합니다.',
     '',
-    '찬성·반대·기권의 정의:',
-    '  찬성: 안건이 제시한 그 수단·방향이 옳다 (조건이 있으면 이유에 적되 찬성으로 표결).',
+    '찬성·조건부 찬성·기권·반대의 정의:',
+    '  찬성: 안건이 제시한 그 수단·방향이 옳다. 사소한 유보나 통상적 보완 의견이 있어도 핵심 수단에 동의하면 찬성입니다.',
+    '  조건부 찬성: 큰 방향·핵심 수단에는 동의하나, 그 조건이 충족되지 않으면 정책이 실패하거나 심각한 부작용이 나는 "중대하고 차단적인(blocking)" 전제일 때만 선택하십시오. 단순한 실행 디테일·통상적 보완사항·있으면 좋은 수준의 우려는 조건부 찬성이 아니라 찬성입니다. 조건부 찬성을 선택하면 그 조건을 이유에 반드시 명시하십시오.',
     '  반대: 그 수단·방향 자체가 틀렸거나, 다른 수단을 택해야 한다.',
     '  기권: 전문 영역 밖이거나 근거가 부족해 진정으로 판단할 수 없다.',
     '',
-    '조건부 찬성과 방향성 반대의 구분:',
-    '  조건부 찬성 = 찬성: 핵심 수단·기제는 받아들이되, 시행 시점·순서·규모·전제 조건만 더 필요하다고 보면 → 찬성하고 이유에 조건을 적으십시오.',
-    '  방향성 반대 = 반대: 핵심 수단·기제 자체를 거부하거나 다른 수단을 주장하면 → 반대.',
-    '  예) "총량 억제 대신 미시규제" = 반대. "총량 억제는 최후의 수단" = 지금 이 수단 채택을 거부하므로 반대.',
+    '찬성 vs 조건부 찬성 판별 기준(핵심):',
+    '  → 조건부 찬성은 "이 조건이 없으면 지지를 철회할 정도"의 전제에만 쓰십시오.',
+    '  → 사소하거나 통상적인 실행 조건(일반적 모니터링, 점진적 시행, 관례적 보완장치 등)을 이유로 조건부 찬성을 남발하지 마십시오 — 그 수준이면 찬성입니다.',
+    '  → 조건부 찬성과 방향성 반대의 구분: 핵심 수단·기제 자체를 받아들이되 차단적 전제만 있으면 → 조건부 찬성. 핵심 수단·기제 자체를 거부하거나 다른 수단을 주장하면 → 반대.',
+    '  예) "총량 억제 대신 미시규제" = 반대. "총량 억제는 최후의 수단" = 이 수단 채택 거부이므로 반대.',
+    '  예) "총량 억제 불가피하나, 법적 위임 근거 없이는 집행이 불가능하므로 입법 선행이 전제" = 차단적 조건 → 조건부 찬성.',
     '',
     '이유 형식 요건(반드시 포함):',
     '  당신이 Perplexity(검색·언론 동향 담당)라면: 토론에 참여하지 않았으므로 "토론에서 주장했다"는 표현을 쓰지 마십시오. 대신 수집·검색한 자료와 언론 동향에서 발견한 근거를 이유로 쓰십시오. 예) "수집·검색 자료 기준으로 X 근거로 보면 이 방향이 타당하다/타당하지 않다." 각주·인용 표기([1], [2] 등), 밑줄(_…_)·별표(*) 같은 마크다운, 영어 단어를 쓰지 말고 깨끗한 한국어 산문으로만 쓰십시오.',
     '  그 외 모든 표결 위원: 이유 줄에는 (1) 토론에서 취한 입장 한 구절, (2) 그 입장과 표결이 일치함(또는 왜 전환했는지)을 함께 쓰십시오.',
     '  예) "토론 내내 총량 억제 대신 미시규제를 주장했고, 그 입장이 유지되어 반대한다."',
-    '  예) "토론 내내 총량 억제 불가피성을 지지했고 전환 지원 조건이 필요하므로 조건부 찬성한다."',
+    '  예) "총량 억제 불가피성을 지지했으나 입법 없이는 집행 불가라는 차단적 전제를 일관되게 강조했으므로 조건부 찬성한다."',
+    '  예) "핵심 수단에 전적으로 동의하며, 일부 보완장치를 언급했으나 그 수준은 통상적 실행 조건이므로 찬성한다."',
     '  예) "처음엔 유보였지만 ESS 경제성 검증 요건 논의로 찬성 방향으로 수렴하여 찬성한다."',
   ].join('\n')
 
@@ -3111,7 +3173,7 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict'): string {
       stancePrimary,
       '',
       '출력 형식(반드시 정확히 두 줄):',
-      '표결: 찬성 또는 표결: 반대 또는 표결: 기권',
+      '표결: 찬성 / 표결: 조건부 찬성 / 표결: 반대 / 표결: 기권 중 하나를 정확히 그 표기 그대로 쓰십시오. (큰 방향에는 동의하나 세부 조건·전제가 필요하면 "표결: 조건부 찬성"을 선택하고 그 조건을 이유에 명시)',
       '이유: [1~2문장, 한국어, 구체적으로 — 반드시 위 이유 형식 요건을 포함]',
     ].join('\n')
   }
@@ -3125,13 +3187,14 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict'): string {
     stancePrimary,
     '',
     '출력 형식(반드시 정확히 두 줄):',
-    '표결: 찬성 또는 표결: 반대 또는 표결: 기권',
+    '표결: 찬성 / 표결: 조건부 찬성 / 표결: 반대 / 표결: 기권 중 하나를 정확히 그 표기 그대로 쓰십시오. (큰 방향에는 동의하나 세부 조건·전제가 필요하면 "표결: 조건부 찬성"을 선택하고 그 조건을 이유에 명시)',
     '이유: [1~2문장, 한국어, 구체적으로 — 반드시 위 이유 형식 요건을 포함]',
   ].join('\n')
 }
 
 /** Maps a parsed Korean choice token to a JejuVoteChoice. */
 function parseVoteChoice(raw: string): JejuVoteChoice | null {
+  if (raw === '조건부 찬성') return 'conditional'
   if (raw === '찬성') return 'approve'
   if (raw === '반대') return 'oppose'
   if (raw === '기권') return 'abstain'
@@ -3144,7 +3207,8 @@ function parseVoteResponse(text: string | null): {
   reason: string | null
 } {
   if (!text) return { choice: null, reason: null }
-  const cMatch = text.match(/표결:\s*(찬성|반대|기권)/)
+  // 조건부 찬성 MUST precede 찬성 in the alternation so it is not truncated to 찬성.
+  const cMatch = text.match(/표결:\s*(조건부 찬성|찬성|반대|기권)/)
   const choice = cMatch ? parseVoteChoice(cMatch[1]!) : null
   const rMatch = text.match(/이유:\s*([\s\S]+)/)
   const reason = rMatch ? rMatch[1]!.trim() : null
@@ -3291,12 +3355,15 @@ function emptyVoteResult(summary: string): JejuVoteResult {
   return {
     votes: [],
     approveCount: 0,
+    conditionalCount: 0,
     opposeCount: 0,
     abstainCount: 0,
     approveProviders: [],
+    conditionalProviders: [],
     opposeProviders: [],
     abstainProviders: [],
     outcome: 'divided',
+    outcomeLabel: '',
     ok: false,
     summary,
   }
@@ -3304,8 +3371,8 @@ function emptyVoteResult(summary: string): JejuVoteResult {
 
 /**
  * Shared ballot engine: runs ALL 8 panel providers IN PARALLEL on a prepared
- * system+user prompt, then tallies. Abstain never tips the outcome — only 찬성 vs
- * 반대 do. ok = at least one parseable vote landed. Never throws.
+ * system+user prompt, then tallies. Abstain never tips the outcome — only
+ * (찬성+조건부 찬성) vs 반대 do. ok = at least one parseable vote landed. Never throws.
  */
 async function runPanelBallot(systemPrompt: string, userPrompt: string): Promise<JejuVoteResult> {
   const settled = await Promise.allSettled(
@@ -3325,6 +3392,7 @@ async function runPanelBallot(systemPrompt: string, userPrompt: string): Promise
   })
 
   const approveProviders: string[] = []
+  const conditionalProviders: string[] = []
   const opposeProviders: string[] = []
   const abstainProviders: string[] = []
 
@@ -3332,34 +3400,50 @@ async function runPanelBallot(systemPrompt: string, userPrompt: string): Promise
     if (!v.ok || v.choice == null) continue
     const label = JEJU_VOTE_BRAND_LABEL[v.provider]
     if (v.choice === 'approve') approveProviders.push(label)
+    else if (v.choice === 'conditional') conditionalProviders.push(label)
     else if (v.choice === 'oppose') opposeProviders.push(label)
     else if (v.choice === 'abstain') abstainProviders.push(label)
   }
 
   const approveCount = approveProviders.length
+  const conditionalCount = conditionalProviders.length
   const opposeCount = opposeProviders.length
   const abstainCount = abstainProviders.length
 
+  // 조건부 찬성 is directional agreement (with conditions), so it counts on the
+  // YES side when determining the outcome direction — but it is tallied and
+  // displayed as its own category, never merged into 찬성.
+  const passVotes = approveCount + conditionalCount
   let outcome: 'approved' | 'rejected' | 'divided'
-  if (approveCount > opposeCount) outcome = 'approved'
-  else if (opposeCount > approveCount) outcome = 'rejected'
+  if (passVotes > opposeCount) outcome = 'approved'
+  else if (opposeCount > passVotes) outcome = 'rejected'
   else outcome = 'divided'
 
+  // Parallel display label — do not overload the outcome enum.
   const outcomeLabel =
-    outcome === 'approved' ? '다수 승인' : outcome === 'rejected' ? '다수 반대' : '찬반 동수'
-  const summary = `찬성 ${approveCount} · 반대 ${opposeCount} · 기권 ${abstainCount} — ${outcomeLabel}`
+    outcome === 'approved'
+      ? conditionalCount > 0
+        ? '조건부 가결'
+        : '가결'
+      : outcome === 'rejected'
+        ? '부결'
+        : '의견 분분'
+  const summary = `찬성 ${approveCount} · 조건부 찬성 ${conditionalCount} · 기권 ${abstainCount} · 반대 ${opposeCount} — ${outcomeLabel}`
 
-  const ok = approveCount + opposeCount + abstainCount > 0
+  const ok = approveCount + conditionalCount + opposeCount + abstainCount > 0
 
   return {
     votes,
     approveCount,
+    conditionalCount,
     opposeCount,
     abstainCount,
     approveProviders,
+    conditionalProviders,
     opposeProviders,
     abstainProviders,
     outcome,
+    outcomeLabel,
     ok,
     summary,
   }
@@ -3458,6 +3542,7 @@ export async function runJejuDeepCompleteWithVote(params?: {
 
   const emptyVerdict: JejuVerdict = {
     ok: false,
+    keyIssues: null,
     judgment: null,
     beat1Summary: null,
     beat2Summary: null,

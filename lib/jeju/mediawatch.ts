@@ -7,6 +7,7 @@ import {
   MODEL_BY_PROVIDER,
   type ExtendedAiProviderName,
 } from '@/lib/ai/router'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 /**
  * Jeju "매스컴" (media watch) module — a structured daily media briefing.
@@ -149,6 +150,8 @@ export type JejuMediaWatch = {
   /** Short top-of-page synthesis summary. */
   summary: string | null
   error?: string
+  /** True when this response was served from jeju_media_cache (same KST day). */
+  fromCache?: boolean
 }
 
 /**
@@ -485,5 +488,134 @@ export async function runJejuMediaWatch(params?: {
     minorIssues: pickString(parsed, 'minorIssues'),
     nationalVsLocal: pickString(parsed, 'nationalVsLocal'),
     summary: pickString(parsed, 'summary'),
+  }
+}
+
+// ── Daily cache (jeju_media_cache) ──────────────────────────────────────────────
+//
+// Ports the lib/jeju/news.ts getNews/readCache/writeCache shape (COPIED, not
+// imported — this module stays self-contained/liftable). First caller of a KST
+// day (per mode) runs the full fan-out above; every later caller that day —
+// including the governance page's auto-load on mount — reads this cache
+// instead of re-running 10 Perplexity + 1 Anthropic call.
+
+const MEDIA_CACHE_TABLE = 'jeju_media_cache'
+
+/** KST calendar day as YYYY-MM-DD — the cache key's date component. Distinct
+ * from todayKST() above, which returns a Korean display string for prompts. */
+function kstDateKey(): string {
+  const now = new Date()
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())}`
+}
+
+/** One digest per KST day PER MODE — governance/resident never collide even
+ * though they share this engine (mirrors welfare's `date:guide:topic` key). */
+function mediaCacheKey(mode: JejuMediaWatchMode, dateKey: string): string {
+  return `${dateKey}:${mode}`
+}
+
+/** In-process race guard (same Node isolate) — coalesces concurrent first-hits
+ * of a KST day onto one fan-out, same as news.ts/events.ts/welfare.ts. */
+const mediaInflight = new Map<string, Promise<JejuMediaWatch>>()
+
+async function readMediaCache(cacheKey: string): Promise<JejuMediaWatch | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from(MEDIA_CACHE_TABLE)
+      .select('payload')
+      .eq('cache_date', cacheKey)
+      .maybeSingle()
+    if (error) {
+      console.warn('[mediawatch] cache read:', error.message)
+      return null
+    }
+    if (!data?.payload || typeof data.payload !== 'object') return null
+    const payload = data.payload as JejuMediaWatch
+    if (!payload.ok) return null
+    return { ...payload, fromCache: true }
+  } catch (e: unknown) {
+    console.warn('[mediawatch] cache read threw:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
+/**
+ * Insert-if-absent on cache_date. On unique conflict (race), re-read the
+ * winner's row so both callers converge on one payload / one fan-out bill.
+ * Mirrors news.ts's writeCache 23505-handling exactly.
+ */
+async function writeMediaCache(cacheKey: string, payload: JejuMediaWatch): Promise<JejuMediaWatch> {
+  try {
+    const { error } = await supabaseAdmin.from(MEDIA_CACHE_TABLE).insert({
+      cache_date: cacheKey,
+      payload: { ...payload, fromCache: false },
+    })
+    if (!error) return payload
+
+    // 23505 = unique_violation — another request won the race.
+    const isConflict = error.code === '23505' || /duplicate|unique/i.test(error.message)
+    if (isConflict) {
+      console.log('[mediawatch] cache race — re-reading winner for', cacheKey)
+      const winner = await readMediaCache(cacheKey)
+      if (winner) return winner
+    } else {
+      console.warn('[mediawatch] cache write:', error.message)
+    }
+  } catch (e: unknown) {
+    console.warn('[mediawatch] cache write threw:', e instanceof Error ? e.message : e)
+  }
+  return payload
+}
+
+export interface GetMediaDigestOptions {
+  mode?: JejuMediaWatchMode
+  /** Bypass the daily cache (admin/testing) — gate this in the caller/route,
+   * same as domin news' NEWS_CACHE_FORCE_KEY does for app/api/domin/news. */
+  force?: boolean
+}
+
+/**
+ * Fetch the daily Jeju governance media-watch digest.
+ * First request of a KST day (per mode) → full fan-out (10 Perplexity + 1
+ * Anthropic via runJejuMediaWatch) → cache in jeju_media_cache. Later requests
+ * the same day → cache hit (no AI calls). A failed (ok:false) run is never
+ * cached, so the next caller gets a fresh attempt instead of a stuck failure.
+ * Never throws.
+ */
+export async function getMediaDigest(opts: GetMediaDigestOptions = {}): Promise<JejuMediaWatch> {
+  const mode: JejuMediaWatchMode = opts.mode === 'resident' ? 'resident' : 'governance'
+  const dateKey = kstDateKey()
+  const cacheKey = mediaCacheKey(mode, dateKey)
+  const force = Boolean(opts.force)
+
+  if (!force) {
+    const cached = await readMediaCache(cacheKey)
+    if (cached) {
+      console.log('[mediawatch] cache hit', cacheKey)
+      return cached
+    }
+  } else {
+    console.log('[mediawatch] force bypass cache', cacheKey)
+  }
+
+  const existing = mediaInflight.get(cacheKey)
+  if (existing && !force) {
+    console.log('[mediawatch] awaiting in-flight fetch', cacheKey)
+    return existing
+  }
+
+  const work = (async (): Promise<JejuMediaWatch> => {
+    const fresh = await runJejuMediaWatch({ mode })
+    if (force || !fresh.ok) return { ...fresh, fromCache: false }
+    return writeMediaCache(cacheKey, fresh)
+  })()
+
+  if (!force) mediaInflight.set(cacheKey, work)
+  try {
+    return await work
+  } finally {
+    if (!force) mediaInflight.delete(cacheKey)
   }
 }

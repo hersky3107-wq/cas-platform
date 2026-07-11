@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
-import { ChevronDown, ChevronUp, PlayCircle, Search, Activity, AlertTriangle } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect, type RefObject } from 'react'
+import { ChevronDown, ChevronUp, PlayCircle, Search, Activity, AlertTriangle, Loader2 } from 'lucide-react'
 import { JejuThemeShell } from '@/components/jeju/JejuThemeShell'
 import { useJejuUi } from '@/components/jeju/useJejuUi'
 import { aiProductNameWithGloss } from '@/components/jeju/aiProviderLabel'
@@ -122,6 +122,66 @@ function ProgressStrip({ stage, t }: { stage: StageKey; t: Ui }) {
         )
       })}
     </ol>
+  )
+}
+
+// ── Elapsed-timer hook + running banner (ported from motie's governance UI) ──
+
+function useElapsedTimer(running: boolean): string {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0)
+      return
+    }
+    startRef.current = Date.now()
+    const id = setInterval(() => {
+      if (startRef.current !== null) {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [running])
+  const m = Math.floor(elapsed / 60)
+  const s = elapsed % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function DiagnosticRunningBanner({
+  stage,
+  elapsed,
+  t,
+  bannerRef,
+}: {
+  stage: StageKey
+  elapsed: string
+  t: Ui
+  bannerRef: RefObject<HTMLDivElement | null>
+}) {
+  const labelMap: Partial<Record<StageKey, string>> = {
+    start: t.diagnosticStageStart,
+    search: t.diagnosticStageSearch,
+    status: t.diagnosticStageStatus,
+    issues: t.diagnosticStageIssues,
+  }
+  return (
+    <div
+      ref={bannerRef}
+      className="sticky top-2 z-10 rounded-xl border-2 border-jeju-accent bg-jeju-accent/15 px-6 py-5 shadow-[0_4px_20px_rgba(0,0,0,0.35)]"
+    >
+      <div className="flex items-center gap-3">
+        <Loader2 className="h-6 w-6 shrink-0 animate-spin text-jeju-accent" aria-hidden />
+        <p className="text-base font-bold text-jeju-fg">AI가 분석 중입니다 — 잠시만 기다려 주세요</p>
+        <span className="ml-auto font-mono text-xl font-extrabold tabular-nums text-jeju-accent">
+          {elapsed}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-semibold text-jeju-accent">
+        {labelMap[stage] ?? t.diagnosticRunningHint}
+      </p>
+      <p className="mt-1 text-xs text-jeju-fg-muted">{t.diagnosticRunningHint}</p>
+    </div>
   )
 }
 
@@ -287,6 +347,14 @@ export default function JejuGovernanceDiagnosticPage() {
   )
 
   const running = stage !== 'idle' && stage !== 'done' && stage !== 'error'
+  const elapsed = useElapsedTimer(running)
+
+  const bannerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (running) {
+      bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [running])
 
   return (
     <JejuThemeShell
@@ -348,6 +416,9 @@ export default function JejuGovernanceDiagnosticPage() {
             {running && <p className="text-xs text-jeju-fg-muted">{t.diagnosticRunningHint}</p>}
           </div>
         </div>
+
+        {/* Running banner — prominent status while engine works */}
+        {running && <DiagnosticRunningBanner stage={stage} elapsed={elapsed} t={t} bannerRef={bannerRef} />}
 
         {/* Progress */}
         {stage !== 'idle' && <ProgressStrip stage={stage} t={t} />}

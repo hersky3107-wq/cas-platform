@@ -99,6 +99,7 @@ export type JejuUiPack = {
   deepRoundScoreLabel: string
   deepStoppedReason: (r: string) => string
   deepVerdictHeading: string
+  deepKeyIssuesHeading: string
   deepJudgmentHeading: string
   deepBeat1Heading: string
   deepBeat2Heading: string
@@ -313,6 +314,7 @@ const KO: JejuUiPack = {
     return '오류로 종료'
   },
   deepVerdictHeading: '의장 판결',
+  deepKeyIssuesHeading: '핵심 쟁점',
   deepJudgmentHeading: '최종 판단',
   deepBeat1Heading: '수집 데이터 요약',
   deepBeat2Heading: '전문가 분석·조사 요약',

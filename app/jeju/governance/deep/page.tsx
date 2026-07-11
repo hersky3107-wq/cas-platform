@@ -90,17 +90,21 @@ type VoteEntry = {
 type VoteResult = {
   votes: VoteEntry[]
   approveCount: number
+  conditionalCount: number
   opposeCount: number
   abstainCount: number
   approveProviders: string[]
+  conditionalProviders: string[]
   opposeProviders: string[]
   abstainProviders: string[]
   outcome: string
+  outcomeLabel: string
   ok: boolean
   summary: string
 }
 
 type Verdict = {
+  keyIssues: string | null
   judgment: string | null
   beat1Summary: string | null
   beat2Summary: string | null
@@ -345,6 +349,7 @@ function VerdictBlock({
   t: Ui
 }) {
   const sections: { heading: string; content: string | null }[] = [
+    ...(verdict.keyIssues ? [{ heading: t.deepKeyIssuesHeading, content: verdict.keyIssues }] : []),
     { heading: t.deepJudgmentHeading, content: verdict.judgment },
     { heading: t.deepBeat3Heading, content: verdict.beat3Summary },
     { heading: t.deepBeat1Heading, content: verdict.beat1Summary },
@@ -393,10 +398,17 @@ function VerdictBlock({
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
             {t.deepVoteHeading}
           </h3>
-          <p className="mb-2 text-xs text-jeju-fg-muted">
-            찬성 {vote.approveCount} · 반대 {vote.opposeCount} · 기권 {vote.abstainCount} —{' '}
+          <p className="mb-2 flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs text-jeju-fg-muted">
+            <span>찬성 {vote.approveCount}</span>
+            <span>·</span>
+            <span>조건부 찬성 {vote.conditionalCount}</span>
+            <span>·</span>
+            <span>기권 {vote.abstainCount}</span>
+            <span>·</span>
+            <span>반대 {vote.opposeCount}</span>
+            <span>—</span>
             <span className={vote.outcome === 'approved' ? 'text-emerald-300' : vote.outcome === 'rejected' ? 'text-rose-300' : 'text-amber-300'}>
-              {t.deepVoteOutcome(vote.outcome)}
+              {vote.outcomeLabel || t.deepVoteOutcome(vote.outcome)}
             </span>
           </p>
         </div>
@@ -410,24 +422,43 @@ function VerdictBlock({
 function VoteSection({ vote, t }: { vote: VoteResult; t: Ui }) {
   return (
     <Section title={t.deepVoteHeading} t={t}>
-      <p className="mb-3 text-xs text-jeju-fg-muted">
-        찬성 {vote.approveCount} · 반대 {vote.opposeCount} · 기권 {vote.abstainCount} —{' '}
+      <p className="mb-3 flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs text-jeju-fg-muted">
+        <span>찬성 {vote.approveCount}</span>
+        <span>·</span>
+        <span>조건부 찬성 {vote.conditionalCount}</span>
+        <span>·</span>
+        <span>기권 {vote.abstainCount}</span>
+        <span>·</span>
+        <span>반대 {vote.opposeCount}</span>
+        <span>—</span>
         <span className={vote.outcome === 'approved' ? 'text-emerald-300' : vote.outcome === 'rejected' ? 'text-rose-300' : 'text-amber-300'}>
-          {t.deepVoteOutcome(vote.outcome)}
+          {vote.outcomeLabel || t.deepVoteOutcome(vote.outcome)}
         </span>
       </p>
       <div className="flex flex-col gap-2">
         {vote.votes.map((v, i) => (
-          <div key={i} className="flex flex-wrap gap-2 border-b border-jeju-border/50 pb-2 text-xs last:border-0">
+          <div key={i} className="flex flex-wrap gap-x-2 gap-y-1 border-b border-jeju-border/50 pb-2 text-xs last:border-0">
             <span className="w-28 shrink-0 font-semibold text-jeju-fg">
               {aiProductNameWithGloss(v.provider)}
             </span>
             <span
-              className={`w-10 shrink-0 font-bold ${
-                v.choice === 'approve' ? 'text-emerald-300' : v.choice === 'oppose' ? 'text-rose-300' : 'text-amber-300'
+              className={`min-w-[5rem] shrink-0 whitespace-nowrap font-bold ${
+                v.choice === 'approve'
+                  ? 'text-emerald-300'
+                  : v.choice === 'conditional'
+                    ? 'text-sky-300'
+                    : v.choice === 'oppose'
+                      ? 'text-rose-300'
+                      : 'text-amber-300'
               }`}
             >
-              {v.choice === 'approve' ? '찬성' : v.choice === 'oppose' ? '반대' : '기권'}
+              {v.choice === 'approve'
+                ? '찬성'
+                : v.choice === 'conditional'
+                  ? '조건부 찬성'
+                  : v.choice === 'oppose'
+                    ? '반대'
+                    : '기권'}
             </span>
             <span className="flex-1 leading-relaxed text-jeju-fg-muted">{v.reason}</span>
           </div>

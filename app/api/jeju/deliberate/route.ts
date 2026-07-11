@@ -321,12 +321,15 @@ function emptyVote(summary: string): JejuVoteResult {
   return {
     votes: [],
     approveCount: 0,
+    conditionalCount: 0,
     opposeCount: 0,
     abstainCount: 0,
     approveProviders: [],
+    conditionalProviders: [],
     opposeProviders: [],
     abstainProviders: [],
     outcome: 'divided',
+    outcomeLabel: '',
     ok: false,
     summary,
   }
@@ -776,6 +779,7 @@ export async function POST(req: Request): Promise<Response> {
         questionType,
         consensusScore: verdict.consensusScore,
         verdict: {
+          keyIssues: verdict.keyIssues,
           judgment: verdict.judgment,
           beat1Summary: verdict.beat1Summary,
           beat2Summary: verdict.beat2Summary,

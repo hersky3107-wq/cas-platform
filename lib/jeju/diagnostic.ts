@@ -6,6 +6,7 @@ import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/route
 import {
   executeJejuSearches,
   KOREAN_ONLY_DIRECTIVE,
+  TAG_DISCIPLINE_DIRECTIVE,
   type JejuExecutedSearch,
 } from '@/lib/jeju/deep'
 export type { DiagnosticCategory } from '@/lib/jeju/diagnostic-categories'
@@ -24,6 +25,112 @@ const ISSUES_MAX_TOKENS = 2500
 
 function noDbSupabase(): SupabaseClient {
   return createClient('http://localhost', 'diagnostic-no-db') as unknown as SupabaseClient
+}
+
+// ── Transient-failure retry wrapper ───────────────────────────────────────────
+// A single transient upstream hiccup (503 / connection reset / timeout /
+// overloaded / 429) or an empty response can wipe a stage's result mid-demo.
+// We retry up to 3 attempts with a short linear backoff. Non-transient errors
+// (400/401/invalid request, etc.) return immediately — no point retrying those.
+
+const RETRY_MAX_ATTEMPTS = 3
+const RETRY_BACKOFF_MS = 1200
+
+function retryDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isTransientAiError(msg: string | null | undefined): boolean {
+  if (!msg) return false
+  const m = msg.toLowerCase()
+  return (
+    m.includes('503') ||
+    m.includes('service unavailable') ||
+    m.includes('upstream connect') ||
+    m.includes('connection termination') ||
+    m.includes('reset') ||
+    m.includes('timeout') ||
+    m.includes('econnreset') ||
+    m.includes('overloaded') ||
+    m.includes('429')
+  )
+}
+
+type RetryOutcome = {
+  /** Non-empty text on success; null otherwise. */
+  text: string | null
+  /** true when the response was OK (no error + non-blank text). */
+  ok: boolean
+  /** How the call failed (when !ok). 'threw' = exception was raised. */
+  errorKind: 'none' | 'error' | 'empty' | 'threw'
+  /** r.error string, or the thrown message. null for empty-response failures. */
+  errorMessage: string | null
+  /** true when at least one retry was attempted before the final outcome. */
+  retried: boolean
+}
+
+/**
+ * Wraps runSingleAiProvider with transient-failure retries. Preserves the
+ * caller's ability to build the exact same DiagnosticPart error messages —
+ * it only reports WHAT happened, never formats the user-facing string.
+ */
+async function runAiWithRetry(
+  params: Parameters<typeof runSingleAiProvider>[0]
+): Promise<RetryOutcome> {
+  let retried = false
+  let lastKind: 'error' | 'empty' | 'threw' = 'empty'
+  let lastMessage: string | null = null
+
+  for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
+    let transient = false
+    try {
+      const r = await runSingleAiProvider(params)
+      if (!r.error && r.text?.trim()) {
+        return { text: r.text, ok: true, errorKind: 'none', errorMessage: null, retried }
+      }
+      if (r.error) {
+        lastKind = 'error'
+        lastMessage = r.error
+        transient = isTransientAiError(r.error)
+      } else {
+        // Empty/blank text with no explicit error — treat as transient.
+        lastKind = 'empty'
+        lastMessage = null
+        transient = true
+      }
+      if (!transient) {
+        return { text: null, ok: false, errorKind: lastKind, errorMessage: lastMessage, retried }
+      }
+    } catch (e: unknown) {
+      // A thrown network error is always treated as transient.
+      lastKind = 'threw'
+      lastMessage = e instanceof Error ? e.message : 'unknown error'
+      transient = true
+    }
+
+    if (attempt < RETRY_MAX_ATTEMPTS) {
+      retried = true
+      await retryDelay(RETRY_BACKOFF_MS * attempt)
+    }
+  }
+
+  return { text: null, ok: false, errorKind: lastKind, errorMessage: lastMessage, retried: true }
+}
+
+// ── KST date helper (computed per-call, never at module load) ─────────────────
+
+/** Today's date in KST as YYYY-MM-DD, for the "[오늘: ... 기준]" prompt anchor. */
+function todayKST(): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+  } catch {
+    return new Date().toISOString().slice(0, 10)
+  }
 }
 
 /**
@@ -99,6 +206,7 @@ export type DiagnosticPart = {
 function buildStatusSystemPrompt(): string {
   return [
     '당신은 제주특별자치도정을 보좌하는 데이터 분석가입니다.',
+    `[오늘: ${todayKST()} 기준] 이 시점을 기준으로 "현재/최근"을 판단하라.`,
     '주어진 [수집 데이터]와 [외부 검색 결과]를 읽고, 이 분야의 "오늘의 현황"을 객관적으로 정리하세요.',
     '',
     '작성 규칙:',
@@ -107,8 +215,10 @@ function buildStatusSystemPrompt(): string {
     '- 데이터에 없는 값은 지어내지 말고, 없으면 없다고 밝히세요.',
     '- 판단·권고·우선순위는 쓰지 마세요(그건 다음 단계 담당). 오직 현황만.',
     '- 길이: 한국어 500~900자, 문장 중간에 끊지 말고 완결하세요.',
+    '- 검색 결과에 시점이 불명확하거나 과거(예: 몇 달 전, 지난해) 자료로 보이면, 그 사실을 "[시점 불명]" 또는 "[과거 자료]"로 표기하고 현재 상황으로 단정하지 마라.',
     '',
     KOREAN_ONLY_DIRECTIVE,
+    TAG_DISCIPLINE_DIRECTIVE,
   ].join('\n')
 }
 
@@ -137,7 +247,7 @@ export async function runDiagnosticStatus(params: {
   ].join('\n')
 
   try {
-    const r = await runSingleAiProvider({
+    const r = await runAiWithRetry({
       supabase: noDbSupabase(),
       sessionId: null,
       userId: null,
@@ -147,8 +257,9 @@ export async function runDiagnosticStatus(params: {
       maxCompletionTokens: STATUS_MAX_TOKENS,
       modelOverride: STATUS_MODEL,
     })
-    if (r.error || !r.text?.trim()) {
-      return { ...base, error: r.error ?? '현황 분석이 빈 응답을 반환했습니다.' }
+    if (!r.ok) {
+      const err = r.errorMessage ?? '현황 분석이 빈 응답을 반환했습니다.'
+      return { ...base, error: r.retried ? `${err} (재시도 후 실패)` : err }
     }
     return { ...base, ok: true, text: sanitizeDiagnosticText(r.text) }
   } catch (e: unknown) {
@@ -161,6 +272,7 @@ export async function runDiagnosticStatus(params: {
 function buildIssuesSystemPrompt(): string {
   return [
     '당신은 제주특별자치도정을 보좌하는 현안 진단가입니다.',
+    `[오늘: ${todayKST()} 기준] 이 시점을 기준으로 "현재/최근"을 판단하라.`,
     '주어진 [수집 데이터], [외부 검색 결과], 그리고 [오늘의 현황](데이터 분석가가 정리한 객관적 현황)을 읽고,',
     '이 분야에서 "지금 가장 시급하고 중요한 사안"을 진단하세요.',
     '',
@@ -170,8 +282,10 @@ function buildIssuesSystemPrompt(): string {
     '- 우선순위가 여러 개면 가장 중요한 것부터 1, 2, 3로 제시하세요(최대 3개).',
     '- 찬반 표결·합의도·A/B/C 대안 같은 형식은 쓰지 마세요. 이것은 진단 브리핑입니다.',
     '- 길이: 한국어 400~800자, 문장 중간에 끊지 말고 완결하세요.',
+    '- 검색 결과에 시점이 불명확하거나 과거(예: 몇 달 전, 지난해) 자료로 보이면, 그 사실을 "[시점 불명]" 또는 "[과거 자료]"로 표기하고 현재 상황으로 단정하지 마라.',
     '',
     KOREAN_ONLY_DIRECTIVE,
+    TAG_DISCIPLINE_DIRECTIVE,
   ].join('\n')
 }
 
@@ -204,7 +318,7 @@ export async function runDiagnosticIssues(params: {
   ].join('\n')
 
   try {
-    const r = await runSingleAiProvider({
+    const r = await runAiWithRetry({
       supabase: noDbSupabase(),
       sessionId: null,
       userId: null,
@@ -214,8 +328,9 @@ export async function runDiagnosticIssues(params: {
       maxCompletionTokens: ISSUES_MAX_TOKENS,
       modelOverride: ISSUES_MODEL,
     })
-    if (r.error || !r.text?.trim()) {
-      return { ...base, error: r.error ?? '현안 진단이 빈 응답을 반환했습니다.' }
+    if (!r.ok) {
+      const err = r.errorMessage ?? '현안 진단이 빈 응답을 반환했습니다.'
+      return { ...base, error: r.retried ? `${err} (재시도 후 실패)` : err }
     }
     return { ...base, ok: true, text: sanitizeDiagnosticText(r.text) }
   } catch (e: unknown) {

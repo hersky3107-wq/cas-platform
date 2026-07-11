@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect, type RefObject } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -8,6 +8,7 @@ import {
   Search,
   Activity,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react'
 import { JejuThemeShell } from '@/components/jeju/JejuThemeShell'
 import { useJejuUi } from '@/components/jeju/useJejuUi'
@@ -299,6 +300,65 @@ function ProgressStripBase({
         )
       })}
     </ol>
+  )
+}
+
+// ── Elapsed-timer hook + running banner (ported from motie's governance UI) ──
+
+function useElapsedTimer(running: boolean): string {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0)
+      return
+    }
+    startRef.current = Date.now()
+    const id = setInterval(() => {
+      if (startRef.current !== null) {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [running])
+  const m = Math.floor(elapsed / 60)
+  const s = elapsed % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+/**
+ * One banner covers BOTH engines (brief + diagnostic). The active engine's
+ * stage label is resolved by the caller and passed in, so the banner stays
+ * engine-agnostic. `kind` switches the headline + hint between the two flows.
+ */
+function BriefRunningBanner({
+  headline,
+  stageLabel,
+  hint,
+  elapsed,
+  bannerRef,
+}: {
+  headline: string
+  stageLabel: string
+  hint: string
+  elapsed: string
+  bannerRef: RefObject<HTMLDivElement | null>
+}) {
+  return (
+    <div
+      ref={bannerRef}
+      className="sticky top-2 z-10 rounded-xl border-2 border-jeju-accent bg-jeju-accent/15 px-6 py-5 shadow-[0_4px_20px_rgba(0,0,0,0.35)]"
+    >
+      <div className="flex items-center gap-3">
+        <Loader2 className="h-6 w-6 shrink-0 animate-spin text-jeju-accent" aria-hidden />
+        <p className="text-base font-bold text-jeju-fg">{headline}</p>
+        <span className="ml-auto font-mono text-xl font-extrabold tabular-nums text-jeju-accent">
+          {elapsed}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-semibold text-jeju-accent">{stageLabel}</p>
+      <p className="mt-1 text-xs text-jeju-fg-muted">{hint}</p>
+    </div>
   )
 }
 
@@ -612,6 +672,40 @@ export default function JejuGovernanceBriefPage() {
   const briefRunning = briefStage !== 'idle' && briefStage !== 'done' && briefStage !== 'error'
   const diagRunning = diagStage !== 'idle' && diagStage !== 'done' && diagStage !== 'error'
   const running = briefRunning || diagRunning
+  const elapsed = useElapsedTimer(running)
+
+  // Resolve the active engine's stage label + banner copy. Brief takes priority
+  // (it's the primary flow on this page); diagnostic fills in when it's the one
+  // running. Both reuse the existing i18n stage labels — no new strings added.
+  const briefStageLabels: Partial<Record<BriefStageKey, string>> = {
+    start: t.briefStageStart,
+    orchestrate: t.briefStageOrchestrate,
+    'pre-report': t.briefStagePreReport,
+    analyses: t.briefStageAnalyses,
+    synthesize: t.briefStageSynthesize,
+  }
+  const diagStageLabels: Partial<Record<DiagStageKey, string>> = {
+    start: t.diagnosticStageStart,
+    search: t.diagnosticStageSearch,
+    status: t.diagnosticStageStatus,
+    issues: t.diagnosticStageIssues,
+  }
+  const bannerHeadline = briefRunning
+    ? 'AI가 분석 중입니다 — 잠시만 기다려 주세요'
+    : 'AI가 진단 중입니다 — 잠시만 기다려 주세요'
+  const bannerStageLabel = briefRunning
+    ? (briefStageLabels[briefStage] ?? t.deepStageDone)
+    : (diagStageLabels[diagStage] ?? t.deepStageDone)
+  const bannerHint = briefRunning
+    ? '다중 AI 심층 분석은 보통 3~5분 걸립니다. 정상 작동 중이니 창을 닫지 말고 기다려 주세요.'
+    : 'AI 진단은 보통 40초 내외 걸립니다. 창을 닫지 말고 기다려 주세요.'
+
+  const bannerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (running) {
+      bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [running])
 
   const hasBriefResult = mode === 'brief' && (roles.length > 0 || report || analyses.length > 0)
 
@@ -680,6 +774,17 @@ export default function JejuGovernanceBriefPage() {
             <p className="mt-3 text-xs text-jeju-fg-muted">{t.diagnosticRunningHint}</p>
           )}
         </div>
+
+        {/* Running banner — prominent status while either engine works */}
+        {running && (
+          <BriefRunningBanner
+            headline={bannerHeadline}
+            stageLabel={bannerStageLabel}
+            hint={bannerHint}
+            elapsed={elapsed}
+            bannerRef={bannerRef}
+          />
+        )}
 
         {/* Progress (whichever engine is running/ran) */}
         {mode === 'brief' && briefStage !== 'idle' && (
