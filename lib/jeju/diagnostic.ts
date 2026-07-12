@@ -9,6 +9,7 @@ import {
   TAG_DISCIPLINE_DIRECTIVE,
   CROSS_DOMAIN_DIRECTIVE,
   CASE_CITATION_DISCIPLINE,
+  BANDWAGON_RESISTANCE,
   type JejuExecutedSearch,
 } from '@/lib/jeju/deep'
 export type { DiagnosticCategory } from '@/lib/jeju/diagnostic-categories'
@@ -223,6 +224,7 @@ function buildStatusSystemPrompt(): string {
     TAG_DISCIPLINE_DIRECTIVE,
     CROSS_DOMAIN_DIRECTIVE,
     CASE_CITATION_DISCIPLINE,
+    BANDWAGON_RESISTANCE,
   ].join('\n')
 }
 
@@ -292,6 +294,7 @@ function buildIssuesSystemPrompt(): string {
     TAG_DISCIPLINE_DIRECTIVE,
     CROSS_DOMAIN_DIRECTIVE,
     CASE_CITATION_DISCIPLINE,
+    BANDWAGON_RESISTANCE,
   ].join('\n')
 }
 
