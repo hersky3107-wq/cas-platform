@@ -534,21 +534,9 @@ export default function Home() {
                 </p>
               </div>
             </Link>
-            <Link href="/jeju" className="flex items-center justify-center">
-              <div className="flex flex-col items-center">
-                <div className="relative flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-amber-600/90 to-teal-700 shadow-[0_6px_20px_rgba(0,0,0,0.35)] lg:h-[96px] lg:w-[96px]">
-                  <span className="text-lg font-black tracking-tight text-white lg:text-xl">
-                    濟
-                  </span>
-                </div>
-                <span className="mt-1.5 text-center text-[11px] leading-[1.15] text-white">
-                  JEJU
-                </span>
-                <p className="mt-0.5 text-[10px] text-slate-500 text-center leading-tight px-1">
-                  {LOBBY_SUBTITLES[lobbyLocale]?.["jeju"] ?? ""}
-                </p>
-              </div>
-            </Link>
+            {/* Jeju tile intentionally omitted from the public lobby — /jeju is
+                reachable by direct URL only (governance demo for judges). The
+                route itself is untouched; see app/jeju/page.tsx. */}
           </div>
         </div>
       </section>

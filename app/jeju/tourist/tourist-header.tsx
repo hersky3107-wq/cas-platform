@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MapPin } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronLeft, MapPin } from 'lucide-react'
 import type { TouristLocale, TouristUiPack } from '@/lib/jeju/tourist-labels'
+import { useJejuUi } from '@/components/jeju/useJejuUi'
 import { useTouristUi } from '@/components/jeju/useTouristUi'
 import { LanguageToggle } from './language-toggle'
 
@@ -135,6 +137,7 @@ function AnalogClock({ date }: { date: Date }) {
 
 export function TouristHeader() {
   const { t, locale } = useTouristUi()
+  const { t: jejuT } = useJejuUi()
   const [now, setNow] = useState<Date | null>(null)
   const [weather, setWeather] = useState<Weather | null>(null)
 
@@ -176,7 +179,17 @@ export function TouristHeader() {
   }, [])
 
   return (
-    <header className="flex flex-col gap-3">
+    // data-jeju-theme so the back link can reuse JejuThemeShell's accent/hover tokens
+    // (same pattern as governance / resident screens) without inventing new styles.
+    <header data-jeju-theme="tourist" className="flex flex-col gap-3">
+      <Link
+        href="/jeju"
+        className="inline-flex min-h-[var(--jeju-tap-min)] items-center gap-1 self-start rounded-lg px-3 text-sm font-semibold text-jeju-accent transition hover:bg-jeju-tile-hover"
+      >
+        <ChevronLeft className="h-5 w-5" aria-hidden />
+        {jejuT.backToJejuLobby}
+      </Link>
+
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="flex items-center gap-3">
           {now ? (

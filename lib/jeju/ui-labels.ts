@@ -243,7 +243,7 @@ export type JejuUiPack = {
 }
 
 const KO: JejuUiPack = {
-  lobbyTitle: '제주',
+  lobbyTitle: 'AX 제주',
   lobbyTagline: '거버넌스 · 관광 · 도민 — 모드를 선택하세요',
   modeGovernance: '거버넌스',
   modeGovernanceDesc: '정책 심의 · 데이터 · 언론',
