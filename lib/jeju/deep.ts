@@ -3,7 +3,7 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { gatherJejuSnapshot, buildBriefingContext, JEJU_STANDING_ECONOMY_CONTEXT, type JejuSnapshot } from '@/lib/jeju/brief'
-import { CROSS_DOMAIN_DIRECTIVE } from '@/lib/jeju/prompt-directives'
+import { CROSS_DOMAIN_DIRECTIVE, CASE_CITATION_DISCIPLINE } from '@/lib/jeju/prompt-directives'
 import {
   runSingleAiProvider,
   MODEL_BY_PROVIDER,
@@ -133,6 +133,16 @@ export const TAG_DISCIPLINE_DIRECTIVE =
  * re-exported here so callers that already import from deep keep one surface.
  */
 export { CROSS_DOMAIN_DIRECTIVE }
+
+/**
+ * Shared case-citation discipline directive — stops fabricated court case
+ * numbers while keeping legal reasoning at the principle/statute/doctrine
+ * level. Injected alongside TAG_DISCIPLINE_DIRECTIVE / CROSS_DOMAIN_DIRECTIVE
+ * into the same deliberate analyst/revision/debate/deliberation/chair and
+ * diagnostic status/issues system prompts. Defined in prompt-directives.ts;
+ * re-exported here for the same reason as CROSS_DOMAIN_DIRECTIVE above.
+ */
+export { CASE_CITATION_DISCIPLINE }
 
 /**
  * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
@@ -610,6 +620,7 @@ function buildAnalystSystemPrompt(role: JejuExpertRole, question: string): strin
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
     CROSS_DOMAIN_DIRECTIVE,
+    CASE_CITATION_DISCIPLINE,
   ]
 
   if (role.isRedTeam) {
@@ -1206,6 +1217,7 @@ function buildRevisionSystemPrompt(role: JejuExpertRole, question: string): stri
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
     CROSS_DOMAIN_DIRECTIVE,
+    CASE_CITATION_DISCIPLINE,
   ]
 
   if (role.isRedTeam) {
@@ -1517,6 +1529,7 @@ function buildDebateSystemPrompt(role: JejuExpertRole, question: string): string
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
     CROSS_DOMAIN_DIRECTIVE,
+    CASE_CITATION_DISCIPLINE,
   ]
 
   if (role.isRedTeam) {
@@ -1842,6 +1855,7 @@ function buildDeliberationSystemPrompt(
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
     CROSS_DOMAIN_DIRECTIVE,
+    CASE_CITATION_DISCIPLINE,
   ]
 
   if (role.isRedTeam) {
@@ -2579,6 +2593,8 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
       '',
       CROSS_DOMAIN_DIRECTIVE,
       '',
+      CASE_CITATION_DISCIPLINE,
+      '',
       '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
     )
     return lines.join('\n')
@@ -2614,6 +2630,8 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
     DEFAULT_DISCLAIMER,
     '',
     CROSS_DOMAIN_DIRECTIVE,
+    '',
+    CASE_CITATION_DISCIPLINE,
     '',
     '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 데이터 부재로 해소되지 못한 쟁점은 그렇다고 솔직히 밝히십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
   )
