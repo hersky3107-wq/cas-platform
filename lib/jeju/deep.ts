@@ -3,7 +3,13 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { gatherJejuSnapshot, buildBriefingContext, JEJU_STANDING_ECONOMY_CONTEXT, type JejuSnapshot } from '@/lib/jeju/brief'
-import { CROSS_DOMAIN_DIRECTIVE, CASE_CITATION_DISCIPLINE, BANDWAGON_RESISTANCE, DATA_GAP_DISCIPLINE } from '@/lib/jeju/prompt-directives'
+import {
+  CROSS_DOMAIN_DIRECTIVE,
+  CASE_CITATION_DISCIPLINE,
+  BANDWAGON_RESISTANCE,
+  DATA_GAP_DISCIPLINE,
+  RECENCY_GUARD_DIRECTIVE,
+} from '@/lib/jeju/prompt-directives'
 import {
   runSingleAiProvider,
   MODEL_BY_PROVIDER,
@@ -165,6 +171,15 @@ export { BANDWAGON_RESISTANCE }
  * CROSS_DOMAIN_DIRECTIVE above.
  */
 export { DATA_GAP_DISCIPLINE }
+
+/**
+ * Shared search-recency guard — forces the Perplexity search specialist (and
+ * every downstream prompt that reads its raw output) to date-stamp findings and
+ * tag anything ~3+ months old as "[과거 자료]" instead of silently presenting it
+ * as today's status. Defined in prompt-directives.ts; re-exported here for the
+ * same reason as CROSS_DOMAIN_DIRECTIVE above.
+ */
+export { RECENCY_GUARD_DIRECTIVE }
 
 /**
  * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
@@ -1058,12 +1073,38 @@ export async function mergeSearchRequests(params: {
   return { merged: capped, droppedCount }
 }
 
-/** Perplexity search-specialist system prompt (concise Korean summary + sources). */
+/**
+ * Today's date in KST as YYYY-MM-DD, for the search-recency anchor line.
+ * Computed per-call, never at module load. Mirrors the equivalent private
+ * helper already used in diagnostic.ts / mediawatch.ts.
+ */
+function todayKSTForSearch(): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+  } catch {
+    return new Date().toISOString().slice(0, 10)
+  }
+}
+
+/**
+ * Perplexity search-specialist system prompt (concise Korean summary + sources).
+ * Anchored to today's KST date + RECENCY_GUARD_DIRECTIVE so the search itself
+ * dates/tags stale findings (e.g. off-season citrus prices from months ago)
+ * instead of leaving that entirely to downstream consumers.
+ */
 function buildSearchSystemPrompt(): string {
   return [
     '당신은 제주도정 거버넌스 심의를 지원하는 검색 전문가입니다.',
+    `오늘은 ${todayKSTForSearch()}(한국 표준시)입니다.`,
     '주어진 질의에 대해 최신·신뢰할 수 있는 외부 정보를 찾아 핵심만 간결하게(200~350자) 한국어로 요약하세요.',
     '출처가 있으면 함께 제시하세요. 추측하지 말고, 찾은 정보가 없으면 없다고 하세요.',
+    '',
+    RECENCY_GUARD_DIRECTIVE,
     '',
     '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 정리하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(MW, SMP, ESS, HVDC, V2G, kWh, % 등), 숫자, 단위는 허용.',
   ].join('\n')

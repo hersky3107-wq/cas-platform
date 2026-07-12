@@ -22,8 +22,10 @@ export type JejuUiPack = {
   governancePickerTagline: string
   deepTitle: string
   deepDesc: string
+  deepSubDesc: string
   liteTitle: string
   liteDesc: string
+  liteSubDesc: string
   mediaTitle: string
   mediaDesc: string
   /** Tourist sub-picker */
@@ -250,11 +252,13 @@ const KO: JejuUiPack = {
   modeResident: '도민',
   modeResidentDesc: '생활 · 실무 · 쉬운 도우미',
   governancePickerTitle: '거버넌스',
-  governancePickerTagline: '심층 심의 · 빠른 조회 · 언론 동향',
+  governancePickerTagline: '심층 심의 · 현안 브리핑 · 언론 동향 · 기록',
   deepTitle: '심층 심의',
   deepDesc: '다중 AI 전문가 심의 · 의장 판결',
-  liteTitle: '빠른 조회',
+  deepSubDesc: '다중 AI 토론·표결·소수의견·의장 판결',
+  liteTitle: '현안 브리핑',
   liteDesc: '실시간 데이터 · AI 브리핑',
+  liteSubDesc: '7개 AI 심층 분석 · 분야별 즉시 진단',
   mediaTitle: '언론 동향',
   mediaDesc: '매스컴 논조 · 지역·전국 비교',
   touristPickerTitle: '관광객',
@@ -470,7 +474,7 @@ const KO: JejuUiPack = {
   diagnosticSearchByline: 'Perplexity가 수행한 실시간 검색',
   diagnosticNoResult: '진단 결과를 생성하지 못했습니다.',
   // Archive page
-  archiveTitle: '심의 기록',
+  archiveTitle: '기록',
   archiveDesc: '완료된 심의 · 진단 · 브리핑 기록',
   archiveLoadingMsg: '기록을 불러오는 중…',
   archiveEmptyMsg: '아직 기록된 심의가 없습니다.',

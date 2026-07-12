@@ -13,7 +13,7 @@ import {
   DATA_GAP_DISCIPLINE,
   type JejuExecutedSearch,
 } from '@/lib/jeju/deep'
-import { DIAGNOSTIC_SIGNAL_FOCUS } from '@/lib/jeju/prompt-directives'
+import { DIAGNOSTIC_SIGNAL_FOCUS, RECENCY_GUARD_DIRECTIVE } from '@/lib/jeju/prompt-directives'
 export type { DiagnosticCategory } from '@/lib/jeju/diagnostic-categories'
 export { DIAGNOSTIC_CATEGORIES, getDiagnosticCategory } from '@/lib/jeju/diagnostic-categories'
 
@@ -220,7 +220,6 @@ function buildStatusSystemPrompt(): string {
     '- 데이터에 없는 값은 지어내지 말고, 없으면 없다고 밝히세요.',
     '- 판단·권고·우선순위는 쓰지 마세요(그건 다음 단계 담당). 오직 현황만.',
     '- 길이: 한국어 500~900자, 문장 중간에 끊지 말고 완결하세요.',
-    '- 검색 결과에 시점이 불명확하거나 과거(예: 몇 달 전, 지난해) 자료로 보이면, 그 사실을 "[시점 불명]" 또는 "[과거 자료]"로 표기하고 현재 상황으로 단정하지 마라.',
     '',
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
@@ -228,6 +227,7 @@ function buildStatusSystemPrompt(): string {
     CASE_CITATION_DISCIPLINE,
     BANDWAGON_RESISTANCE,
     DATA_GAP_DISCIPLINE,
+    RECENCY_GUARD_DIRECTIVE,
   ].join('\n')
 }
 
@@ -291,7 +291,6 @@ function buildIssuesSystemPrompt(): string {
     '- 우선순위가 여러 개면 가장 중요한 것부터 1, 2, 3로 제시하세요(최대 3개).',
     '- 찬반 표결·합의도·A/B/C 대안 같은 형식은 쓰지 마세요. 이것은 진단 브리핑입니다.',
     '- 길이: 한국어 400~800자, 문장 중간에 끊지 말고 완결하세요.',
-    '- 검색 결과에 시점이 불명확하거나 과거(예: 몇 달 전, 지난해) 자료로 보이면, 그 사실을 "[시점 불명]" 또는 "[과거 자료]"로 표기하고 현재 상황으로 단정하지 마라.',
     '',
     KOREAN_ONLY_DIRECTIVE,
     TAG_DISCIPLINE_DIRECTIVE,
@@ -300,6 +299,7 @@ function buildIssuesSystemPrompt(): string {
     BANDWAGON_RESISTANCE,
     DATA_GAP_DISCIPLINE,
     DIAGNOSTIC_SIGNAL_FOCUS,
+    RECENCY_GUARD_DIRECTIVE,
   ].join('\n')
 }
 

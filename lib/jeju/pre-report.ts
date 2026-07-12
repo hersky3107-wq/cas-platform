@@ -8,6 +8,7 @@ import {
   mergeSearchRequests,
   executeJejuSearches,
   KOREAN_ONLY_DIRECTIVE,
+  RECENCY_GUARD_DIRECTIVE,
   type JejuRoleAnalysis,
   type JejuSearchRequest,
   type JejuExecutedSearch,
@@ -86,6 +87,24 @@ const REPORT_MAX_TOKENS = 8000
  */
 function noDbSupabase(): SupabaseClient {
   return createClient('http://localhost', 'pre-report-no-db') as unknown as SupabaseClient
+}
+
+/**
+ * Today's date in KST as YYYY-MM-DD, for the report writer's recency anchor.
+ * Computed per-call, never at module load. Mirrors the equivalent private
+ * helper in deep.ts / diagnostic.ts / mediawatch.ts.
+ */
+function todayKST(): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+  } catch {
+    return new Date().toISOString().slice(0, 10)
+  }
 }
 
 /** Strips ``` / ```json fences and returns the inner JSON-ish text. */
@@ -175,6 +194,7 @@ function reportSectionList(mode: JejuPreReportMode): string {
 function buildReportWriterSystemPrompt(mode: JejuPreReportMode, sourceHint: string): string {
   return [
     '당신은 제주특별자치도정을 보좌하는 수석 거버넌스 데이터 분석가입니다.',
+    `[오늘: ${todayKST()} 기준] 이 시점을 기준으로 "현재/최근"을 판단하라.`,
     '당신은 의사결정자가 아니라 보좌역입니다 — 최종 결정은 사람이 내립니다.',
     '제공된 [수집 데이터]와 [외부 조사 결과]를 근거로, 한 편의 길고 구조적인 한국어 거버넌스 분석 리포트를 작성하세요.',
     '이 리포트는 이후 여러 AI 전문가가 읽고 토론·판단하는 기초 자료가 됩니다. 따라서 정확하고, 근거가 분명하며, 출처가 투명해야 합니다.',
@@ -185,6 +205,8 @@ function buildReportWriterSystemPrompt(mode: JejuPreReportMode, sourceHint: stri
     '데이터 출처 표기(매우 중요, 반드시 준수): 이 리포트의 가치는 "어떤 데이터를 근거로 했는가"를 투명하게 보여주는 데 있습니다. 모든 수치와 사실에는 출처 기관/데이터명과 시점을 반드시 병기하세요. 출처를 숨기거나 뭉뚱그리지 마세요.',
     sourceHint ? `참고로, 이번에 확보된 내부 데이터 출처는 다음과 같습니다(가능하면 이 명칭으로 인용): ${sourceHint}` : '',
     '데이터에 없는 수치는 절대 지어내지 마세요. 데이터가 없거나 누락된 부분은 그 사실을 솔직히 밝히세요.',
+    '',
+    RECENCY_GUARD_DIRECTIVE,
     '',
     KOREAN_ONLY_DIRECTIVE,
     '',

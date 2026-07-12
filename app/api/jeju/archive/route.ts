@@ -4,10 +4,11 @@ export const runtime = 'nodejs'
 export const maxDuration = 30
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Read-only archive of completed governance sessions (jeju_deep_sessions).
+// Read-only(-ish) archive of completed governance sessions (jeju_deep_sessions).
 // Serves a showcase list of past 찬반(deliberate) / 진단(diagnostic) /
-// 개방(brief) runs. Does NOT write to the table — that stays owned by
-// app/api/jeju/deliberate|diagnostic|brief/route.ts.
+// 개방(brief) runs. Does NOT write RESULT data to the table — that stays owned
+// by app/api/jeju/deliberate|diagnostic|brief/route.ts. The one exception is
+// the retention purge below (DELETE only, never INSERT/UPDATE).
 //
 // `state` is an opaque JSONB blob whose shape differs per mode (there is no
 // stored `mode` column), so the mode is inferred here from which
@@ -19,6 +20,36 @@ export const maxDuration = 30
 // deliberate, so those rows are also labeled 찬반 — they're the same family
 // of chair-verdict deliberation.)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Rows older than this (by created_at) are purged on every archive GET. */
+const ARCHIVE_RETENTION_DAYS = 90
+
+/**
+ * Deletes jeju_deep_sessions rows whose created_at is older than the retention
+ * window (lightweight in-request purge — no cron dependency). `created_at` is
+ * the column this table's schema (20260626000001_jeju_deep_sessions.sql) sets
+ * on insert and never touches again, and is the same column the GET below
+ * already orders/displays by — so "older than 90 days" means "created more
+ * than 90 days ago", not "last updated more than 90 days ago" (updated_at).
+ *
+ * Best-effort only: never throws. A delete failure is logged and swallowed so
+ * the archive list below still renders even if the purge itself fails.
+ */
+async function purgeOldArchiveRows(): Promise<void> {
+  try {
+    const cutoffIso = new Date(Date.now() - ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString()
+    const { error } = await supabaseAdmin
+      .from('jeju_deep_sessions')
+      .delete()
+      .lt('created_at', cutoffIso)
+
+    if (error) {
+      console.warn('[jeju-archive] retention purge failed:', error.message)
+    }
+  } catch (e: unknown) {
+    console.warn('[jeju-archive] retention purge threw:', e instanceof Error ? e.message : e)
+  }
+}
 
 export type JejuArchiveMode = 'deliberate' | 'diagnostic' | 'brief' | 'other'
 
@@ -128,6 +159,11 @@ function rowToEntry(row: RawRow): JejuArchiveEntry | null {
 }
 
 export async function GET(): Promise<Response> {
+  // Purge before listing so a freshly-crossed-90-day row never shows up in the
+  // response it's about to be deleted from. Failure here must never block the
+  // list below (see purgeOldArchiveRows' own try/catch).
+  await purgeOldArchiveRows()
+
   try {
     const { data, error } = await supabaseAdmin
       .from('jeju_deep_sessions')

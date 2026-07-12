@@ -57,3 +57,18 @@ export const DATA_GAP_DISCIPLINE =
  */
 export const DIAGNOSTIC_SIGNAL_FOCUS =
   '진단 신호 우선 규율:\n단순 현황 나열이 아니라, 이 분야에서 지금 가장 주목할 위험·기회 신호를 우선순위로 짚어라. 각 신호에 심각도(높음/중간/낮음)를 표시하고, 담당 공무원이 당장 확인해야 할 것을 맨 위에 둬라. 반드시 데이터가 실제로 뒷받침하는 신호만 제시하라. 근거 없는 위기 조장·과장은 금지한다.'
+
+/**
+ * Search-recency guard. Perplexity search results have no built-in freshness
+ * signal — a stale result (e.g. citrus prices from months ago) can otherwise get
+ * stated as today's fact. This directive forces explicit dating + tagging of old
+ * material, and forbids presenting an old value as current just because it's the
+ * only value available (honesty over false-freshness). The caller MUST also
+ * inject the actual `[오늘: YYYY-MM-DD 기준]` KST anchor line alongside this
+ * directive — the directive alone has no date to compare against. Injected at
+ * every site that runs OR directly consumes a raw Perplexity search result
+ * (deep.ts's search-specialist prompt, diagnostic.ts status/issues, and
+ * pre-report.ts's report-writer prompt for the brief).
+ */
+export const RECENCY_GUARD_DIRECTIVE =
+  '[검색 최신성 가드]\n- 오늘 날짜(KST)를 기준으로, 검색 결과에는 각 정보의 시점(날짜)을 반드시 표기하라.\n- 오늘 기준 약 3개월 이상 지난 자료는 반드시 "[과거 자료]"로 태그하라.\n- \'오늘의 현황\'·\'현재 시세\' 등 현재를 말할 때, 최신 자료가 없으면 과거 자료로 단정하지 마라. "최신 시세 미확인(비출하기 등 사유)"처럼 정직하게 밝히고, 과거 값은 참고로만 제시하라.\n- 계절 품목(감귤 등)은 비출하기에 최신 시세가 없을 수 있음을 감안하라. 없는 것을 억지로 최신인 양 제시하지 마라.'
