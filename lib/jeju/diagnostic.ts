@@ -10,8 +10,10 @@ import {
   CROSS_DOMAIN_DIRECTIVE,
   CASE_CITATION_DISCIPLINE,
   BANDWAGON_RESISTANCE,
+  DATA_GAP_DISCIPLINE,
   type JejuExecutedSearch,
 } from '@/lib/jeju/deep'
+import { DIAGNOSTIC_SIGNAL_FOCUS } from '@/lib/jeju/prompt-directives'
 export type { DiagnosticCategory } from '@/lib/jeju/diagnostic-categories'
 export { DIAGNOSTIC_CATEGORIES, getDiagnosticCategory } from '@/lib/jeju/diagnostic-categories'
 
@@ -225,6 +227,7 @@ function buildStatusSystemPrompt(): string {
     CROSS_DOMAIN_DIRECTIVE,
     CASE_CITATION_DISCIPLINE,
     BANDWAGON_RESISTANCE,
+    DATA_GAP_DISCIPLINE,
   ].join('\n')
 }
 
@@ -295,6 +298,8 @@ function buildIssuesSystemPrompt(): string {
     CROSS_DOMAIN_DIRECTIVE,
     CASE_CITATION_DISCIPLINE,
     BANDWAGON_RESISTANCE,
+    DATA_GAP_DISCIPLINE,
+    DIAGNOSTIC_SIGNAL_FOCUS,
   ].join('\n')
 }
 

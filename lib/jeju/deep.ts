@@ -3,7 +3,7 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { gatherJejuSnapshot, buildBriefingContext, JEJU_STANDING_ECONOMY_CONTEXT, type JejuSnapshot } from '@/lib/jeju/brief'
-import { CROSS_DOMAIN_DIRECTIVE, CASE_CITATION_DISCIPLINE, BANDWAGON_RESISTANCE } from '@/lib/jeju/prompt-directives'
+import { CROSS_DOMAIN_DIRECTIVE, CASE_CITATION_DISCIPLINE, BANDWAGON_RESISTANCE, DATA_GAP_DISCIPLINE } from '@/lib/jeju/prompt-directives'
 import {
   runSingleAiProvider,
   MODEL_BY_PROVIDER,
@@ -154,6 +154,17 @@ export { CASE_CITATION_DISCIPLINE }
  * here for the same reason as CROSS_DOMAIN_DIRECTIVE above.
  */
 export { BANDWAGON_RESISTANCE }
+
+/**
+ * Shared data-gap narration discipline — keeps the briefing judgment-first
+ * instead of repeating "데이터 부재/미검증" every paragraph, collecting real
+ * limitations once at the end. Injected alongside CASE_CITATION_DISCIPLINE /
+ * BANDWAGON_RESISTANCE into the same deliberate analyst/revision/debate/
+ * deliberation/chair and diagnostic status/issues system prompts. Defined in
+ * prompt-directives.ts; re-exported here for the same reason as
+ * CROSS_DOMAIN_DIRECTIVE above.
+ */
+export { DATA_GAP_DISCIPLINE }
 
 /**
  * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
@@ -633,6 +644,7 @@ function buildAnalystSystemPrompt(role: JejuExpertRole, question: string): strin
     CROSS_DOMAIN_DIRECTIVE,
     CASE_CITATION_DISCIPLINE,
     BANDWAGON_RESISTANCE,
+    DATA_GAP_DISCIPLINE,
   ]
 
   if (role.isRedTeam) {
@@ -1231,6 +1243,7 @@ function buildRevisionSystemPrompt(role: JejuExpertRole, question: string): stri
     CROSS_DOMAIN_DIRECTIVE,
     CASE_CITATION_DISCIPLINE,
     BANDWAGON_RESISTANCE,
+    DATA_GAP_DISCIPLINE,
   ]
 
   if (role.isRedTeam) {
@@ -1544,6 +1557,7 @@ function buildDebateSystemPrompt(role: JejuExpertRole, question: string): string
     CROSS_DOMAIN_DIRECTIVE,
     CASE_CITATION_DISCIPLINE,
     BANDWAGON_RESISTANCE,
+    DATA_GAP_DISCIPLINE,
   ]
 
   if (role.isRedTeam) {
@@ -1871,6 +1885,7 @@ function buildDeliberationSystemPrompt(
     CROSS_DOMAIN_DIRECTIVE,
     CASE_CITATION_DISCIPLINE,
     BANDWAGON_RESISTANCE,
+    DATA_GAP_DISCIPLINE,
   ]
 
   if (role.isRedTeam) {
@@ -2612,6 +2627,8 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
       '',
       BANDWAGON_RESISTANCE,
       '',
+      DATA_GAP_DISCIPLINE,
+      '',
       '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
     )
     return lines.join('\n')
@@ -2651,6 +2668,8 @@ function buildChairSystemPrompt(consensusScore: number, brief = false, hasVote =
     CASE_CITATION_DISCIPLINE,
     '',
     BANDWAGON_RESISTANCE,
+    '',
+    DATA_GAP_DISCIPLINE,
     '',
     '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 데이터 부재로 해소되지 못한 쟁점은 그렇다고 솔직히 밝히십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
   )

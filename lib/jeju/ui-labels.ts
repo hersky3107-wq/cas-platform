@@ -178,7 +178,7 @@ export type JejuUiPack = {
   deliberateSearchSpecialistDesc: string
   deliberateSearchByline: string
   deliberateVoteAllPanel: (voterCount: number) => string
-  /** Brief (Mode A — 개방형 라이트) page */
+  /** Brief (Mode A — 개방형) page */
   briefTitle: string
   briefDesc: string
   briefStartBtn: string
@@ -205,6 +205,8 @@ export type JejuUiPack = {
   briefMandateLabel: string
   briefPromptSectionLabel: string
   briefDiagnosticSectionLabel: string
+  /** One-line explainer above the diagnostic category grid on the brief page. */
+  briefDiagnosticExplain: string
   /** Diagnostic (진단형 — 카테고리 빠른 브리핑) page */
   diagnosticTitle: string
   diagnosticDesc: string
@@ -415,14 +417,16 @@ const KO: JejuUiPack = {
     '패널 전체를 대신해 웹 검색과 언론 보도 동향을 전담 조사합니다. 토론에는 참여하지 않지만, 수집한 근거는 사전 분석 리포트와 최종 표결에 반영됩니다.',
   deliberateSearchByline: 'Perplexity가 패널을 대신해 수행한 실시간 검색',
   deliberateVoteAllPanel: (voterCount) => `심의체 전원(${voterCount}) 표결`,
-  // Brief (개방형 라이트) page
+  // Brief (개방형) page
   briefTitle: '개방형 브리핑',
-  briefDesc: '상황 분석 · 병렬 전문가 검토 · 권고안 제시 (토론·표결 없음)',
+  briefDesc:
+    '7개 AI 병렬 심층 분석 · 추천안+대안(A·B·C) · 단일 브리핑 (다자 토론·표결 과정 없이)',
   briefStartBtn: '브리핑 시작',
   briefQuestionPlaceholder:
     '개방형 질문을 입력하세요. (예: 에너지·계통 분야에서 지금 가장 시급한 현안은?)',
-  briefRunningHint: (analystCount) =>
-    `${analystCount}개 AI가 병렬 분석하고, Opus가 통합 권고안을 작성합니다. 총 3–5분 소요됩니다.`,
+  // analystCount kept for call-site compat; display is fixed at 7 (incl. Perplexity).
+  briefRunningHint: (_analystCount) =>
+    '7개 AI가 병렬 분석하고, Claude가 통합 권고안을 작성합니다. 보통 6~8분 소요됩니다.',
   briefStageStart: '데이터 수집',
   briefStageOrchestrate: '분석 배치',
   briefStagePreReport: '상황 브리핑',
@@ -433,10 +437,10 @@ const KO: JejuUiPack = {
   briefReportHeading: '사전 상황 브리핑',
   briefLeadAnalysisHeading: '수석 분석가 1차 검토',
   briefSearchesHeading: 'Perplexity 검색 결과',
-  briefRosterHeading: '분석 좌석 배치',
+  briefRosterHeading: '분석 팀 구성',
   briefAnalysesHeading: 'AI 병렬 분석',
   briefSubQuestionLabel: '분석 과제',
-  briefDoubledBadge: '중점 각도',
+  briefDoubledBadge: '중점 분석',
   briefSearchSpecialist: '실시간 검색·언론 동향 담당 (Perplexity)',
   briefSearchSpecialistDesc:
     '토론에는 참여하지 않으며, 패널 전체를 위해 최신 외부 정보·언론 동향을 검색·수집합니다.',
@@ -444,7 +448,9 @@ const KO: JejuUiPack = {
   briefNoSynthesis: '통합 브리핑을 생성하지 못했습니다.',
   briefMandateLabel: '직무',
   briefPromptSectionLabel: '구체적인 현안을 질문하세요 — 7개 AI 심층 분석',
-  briefDiagnosticSectionLabel: '또는 분야별 빠른 진단',
+  briefDiagnosticSectionLabel: '분야별 빠른 진단',
+  briefDiagnosticExplain:
+    '분야를 누르면 질문 없이 즉시 진단 — 해당 분야의 공공데이터를 7개 AI가 현황과 위험 신호로 요약합니다. (개방형처럼 A·B·C 권고까지 가지 않는 빠른 현황 파악용)',
   // Diagnostic (진단형) page
   diagnosticTitle: '진단 브리핑',
   diagnosticDesc: '분야별 오늘의 현황 + 가장 시급한 현안 (토론·표결 없음)',

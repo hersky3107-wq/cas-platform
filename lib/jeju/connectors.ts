@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { XMLParser } from 'fast-xml-parser'
+
 import { extract, type ExtractedContent } from '@/lib/extract'
 
 /**
@@ -1070,37 +1072,49 @@ function renderJejuDomesticTourists(rawJson: unknown): { text: string } | { erro
 }
 
 /**
- * Reads the FLAT data.go.kr envelope used by B552584/pbnstFstChrgrChgcpcyInfo APIs:
- * { header:{resultCode,resultMsg}, body:{items:[...], totalCount, ...} }.
- * Unlike readDataGoKrEnvelope this does NOT expect a nested `response` wrapper.
- * resultCode "200" (this API's success code) or "00" are both treated as success.
+ * Dedicated timeout for the KECO EV-charger XML call (own AbortController, not
+ * fetchJsonAt). Measured live: this endpoint's fixed backend overhead is ~25–36s
+ * regardless of numOfRows (10 rows ≈24.8s, 20 rows ≈35.7s, 100 rows ≈32.5s) — it
+ * is simply a slow government API, not broken. 45s gives headroom above the
+ * observed range while still guaranteeing the call can never hang indefinitely.
  */
-function readFlatDataGoKrEnvelope(rawJson: unknown): {
+const KECO_EVCHARGER_TIMEOUT_MS = 45_000
+
+/** Mirrors the parser config used elsewhere in lib/jeju for data.go.kr XML (events.ts, hira.ts). */
+const KECO_XML_PARSER = new XMLParser({ ignoreAttributes: false, parseTagValue: true, isArray: () => false })
+
+/**
+ * Reads the XML envelope for B552584/EvCharger/getChargerInfo (already parsed by
+ * KECO_XML_PARSER): response > header{resultCode,resultMsg,totalCount,pageNo,
+ * numOfRows} / body{items:{item}}. NOTE: unlike the generic data.go.kr envelope
+ * (readDataGoKrEnvelope), this API nests totalCount inside <header>, not <body>
+ * — confirmed against a live response. `parseTagValue` coerces numeric-looking
+ * text (e.g. "00") to a number, so callers should compare `code` against both
+ * string forms. Never throws.
+ */
+function readKecoEvChargerXmlEnvelope(parsed: Record<string, unknown>): {
   ok: true
   code: string
   msg: string
   totalCount: number | null
   items: Record<string, unknown>[]
 } | { ok: false; error: string } {
-  if (!rawJson || typeof rawJson !== 'object') {
-    return { ok: false, error: '응답 형식 오류 (non-object)' }
+  const response =
+    parsed.response && typeof parsed.response === 'object'
+      ? (parsed.response as Record<string, unknown>)
+      : null
+  if (!response) {
+    return { ok: false, error: 'Missing <response> in XML payload' }
   }
-  const root = rawJson as Record<string, unknown>
-  const header =
-    root.header && typeof root.header === 'object' ? (root.header as Record<string, unknown>) : null
-  if (!header) {
-    return { ok: false, error: 'Missing header in flat response' }
-  }
-  const resultCodeRaw = header.resultCode
-  const code =
-    typeof resultCodeRaw === 'string' || typeof resultCodeRaw === 'number'
-      ? String(resultCodeRaw)
-      : ''
-  const msg = typeof header.resultMsg === 'string' ? header.resultMsg : ''
 
-  const body =
-    root.body && typeof root.body === 'object' ? (root.body as Record<string, unknown>) : null
-  const totalCountRaw = body?.totalCount
+  const header =
+    response.header && typeof response.header === 'object'
+      ? (response.header as Record<string, unknown>)
+      : null
+  const code = header?.resultCode != null ? String(header.resultCode) : ''
+  const msg = header && typeof header.resultMsg === 'string' ? header.resultMsg : ''
+
+  const totalCountRaw = header?.totalCount
   const totalCount =
     typeof totalCountRaw === 'number'
       ? totalCountRaw
@@ -1108,13 +1122,15 @@ function readFlatDataGoKrEnvelope(rawJson: unknown): {
         ? Number(totalCountRaw)
         : null
 
+  const body =
+    response.body && typeof response.body === 'object'
+      ? (response.body as Record<string, unknown>)
+      : null
+
   const itemsRaw = body?.items
   let items: Record<string, unknown>[] = []
-  if (Array.isArray(itemsRaw)) {
-    items = itemsRaw as Record<string, unknown>[]
-  } else if (itemsRaw && typeof itemsRaw === 'object') {
-    const container = itemsRaw as Record<string, unknown>
-    const itemNested = container.item
+  if (itemsRaw && typeof itemsRaw === 'object') {
+    const itemNested = (itemsRaw as Record<string, unknown>).item
     items = Array.isArray(itemNested)
       ? (itemNested as Record<string, unknown>[])
       : itemNested && typeof itemNested === 'object'
@@ -1126,156 +1142,156 @@ function readFlatDataGoKrEnvelope(rawJson: unknown): {
 }
 
 /**
- * Core aggregation for KECO EV charger data. Receives the combined item array
- * (possibly spanning multiple pages), totalCount from the API, and a pageNote
- * string describing how many pages were fetched vs requested (for honesty header).
- * Never throws.
+ * Core aggregation for KECO EV charger data. `items` is the single page fetched
+ * (up to 100 rows); `totalCount` comes from the API's <totalCount> header field.
+ * Breakdown by chgerType/stat is necessarily a sample-based estimate (we do not
+ * page through all 8000+ rows) — the header line says so explicitly. Never throws.
  */
 function aggregateKecoEvChargerItems(
   items: Record<string, unknown>[],
-  totalCount: number | null,
-  pageNote: string
+  totalCount: number | null
 ): { text: string } | { error: string } {
   if (items.length === 0) {
     return { error: '제주 전기차 충전기 데이터 없음 (빈 응답)' }
   }
 
-  const fetchedCount = items.length
-  const sampleNote =
-    totalCount != null && totalCount > fetchedCount
-      ? `표본 약 ${fetchedCount.toLocaleString()}건 (전체 ${totalCount.toLocaleString()}건 중)`
-      : `${fetchedCount.toLocaleString()}건`
+  const sampleCount = items.length
+  const countLine =
+    totalCount != null
+      ? totalCount > sampleCount
+        ? `총 ${totalCount.toLocaleString()}대 (표본 ${sampleCount.toLocaleString()}대 기준 아래 분포 추정)`
+        : `총 ${totalCount.toLocaleString()}대`
+      : `수신 ${sampleCount.toLocaleString()}대 (전체 대수 미확인)`
 
-  const stationSet = new Set<string>()
-  const sggCounts: Record<string, number> = {}
-  const frmCounts: Record<string, number> = {}
-  const capacities: number[] = []
-  const yrCounts: Record<string, number> = {}
+  let fastCount = 0
+  let slowCount = 0
+  let unknownTypeCount = 0
+  let availableCount = 0
+  let maintenanceCount = 0
+  let otherStatCount = 0
+  const outputs: number[] = []
 
   for (const item of items) {
-    const stationId = typeof item.chgstnId === 'string' ? item.chgstnId.trim() : ''
-    if (stationId) stationSet.add(stationId)
+    // parseTagValue coerces "02" → 2 (drops the leading zero), so compare
+    // numerically rather than against the zero-padded string codes.
+    const chgerType = parseNum(item.chgerType)
+    // KECO 코드: 2 = AC완속. 그 외 유효 코드(1/3~9 등)는 DC/급속 계열로 집계.
+    if (chgerType == null) unknownTypeCount++
+    else if (chgerType === 2) slowCount++
+    else fastCount++
 
-    const sgg = typeof item.sggNm === 'string' ? item.sggNm.trim() : '(미상)'
-    sggCounts[sgg] = (sggCounts[sgg] ?? 0) + 1
+    const stat = parseNum(item.stat)
+    if (stat === 2) availableCount++
+    else if (stat === 9) maintenanceCount++
+    else otherStatCount++
 
-    const frm = typeof item.chrgrFrm === 'string' ? item.chrgrFrm.trim() : '(미상)'
-    frmCounts[frm] = (frmCounts[frm] ?? 0) + 1
-
-    const cpct = parseNum(item.chrgrCpct)
-    if (cpct != null) capacities.push(cpct)
-
-    const yr = typeof item.rlvtYr === 'string' ? item.rlvtYr.trim() : ''
-    if (yr) yrCounts[yr] = (yrCounts[yr] ?? 0) + 1
+    const output = parseNum(item.output)
+    if (output != null) outputs.push(output)
   }
 
-  const headerLine =
-    `제주 전기차 충전 인프라 현황` +
-    ` (출처: 환경부/KECO getYrMnChgcpcyInfo, rgnNm=제주특별자치도, ${pageNote})`
+  const typeLine =
+    `충전방식(표본): 급속(DC 계열) ${fastCount}건 · 완속(AC) ${slowCount}건` +
+    (unknownTypeCount > 0 ? ` · 미상 ${unknownTypeCount}건` : '')
+  const statLine = `가동상태(표본): 사용가능 ${availableCount}건 · 점검 ${maintenanceCount}건 · 기타/미확인 ${otherStatCount}건`
 
-  const countLine = `수신 건수: ${sampleNote}`
-  const stationLine = `고유 충전소 수: ${stationSet.size.toLocaleString()}개소`
-
-  const sggSorted = Object.entries(sggCounts).sort((a, b) => b[1] - a[1])
-  const sggLine = `시군구별 분포: ${sggSorted.map(([k, v]) => `${k} ${v}건`).join(', ')}`
-
-  const frmSorted = Object.entries(frmCounts).sort((a, b) => b[1] - a[1])
-  const frmTop = frmSorted.slice(0, 5)
-  const frmLine =
-    `충전 방식 분포: ${frmTop.map(([k, v]) => `${k} ${v}건`).join(', ')}` +
-    (frmSorted.length > 5 ? ` (외 ${frmSorted.length - 5}종)` : '')
-
-  let capacityLine = '충전기 용량: (데이터 없음)'
-  if (capacities.length > 0) {
-    const avg = capacities.reduce((s, v) => s + v, 0) / capacities.length
-    const max = Math.max(...capacities)
-    capacityLine = `충전기 용량: 평균 ${Math.round(avg)}kW, 최대 ${max}kW`
+  let outputLine = '충전 용량: (데이터 없음)'
+  if (outputs.length > 0) {
+    const avg = outputs.reduce((s, v) => s + v, 0) / outputs.length
+    const max = Math.max(...outputs)
+    outputLine = `충전 용량(표본): 평균 ${avg.toFixed(1)}kW, 최대 ${max}kW`
   }
 
-  const yrSorted = Object.entries(yrCounts)
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .slice(0, 8)
-  const yrLine =
-    `설치연도 분포: ${yrSorted.map(([k, v]) => `${k}년 ${v}건`).join(', ')}` +
-    (Object.keys(yrCounts).length > 8 ? ' …' : '')
+  const headerLine = '제주 전기차 충전기 현황 (출처: 환경부/KECO EvCharger.getChargerInfo, zcode=50)'
 
   return {
-    text: [headerLine, '', countLine, stationLine, sggLine, frmLine, capacityLine, yrLine].join(
-      '\n'
-    ),
+    text: [headerLine, '', countLine, typeLine, statLine, outputLine].join('\n'),
   }
 }
 
 /**
- * Multi-page custom fetcher for KECO EV charger data.
+ * Custom fetcher for KECO EV charger data (B552584/EvCharger/getChargerInfo).
  *
- * The API hard-caps numOfRows at 100. We fetch pages 1–5 sequentially (500 rows
- * total) with rgnNm=제주특별자치도. Pages are fetched one at a time to avoid
- * hammering the government server. If any individual page fails (network error OR
- * a non-200 resultCode) it is silently skipped and the remaining pages are still
- * used. Zero successful pages → returns an error. Never throws.
+ * This is the verified, subscribed endpoint (totalCount 8647 for Jeju as of
+ * verification) — it replaces pbnstFstChrgrChgcpcyInfo/getYrMnChgcpcyInfo, which
+ * was NOT subscribed and hung/timed out on every call. Response is XML, not
+ * JSON: response>header (resultCode/resultMsg/totalCount) and
+ * response>body>items>item. This backend is also just genuinely slow — live
+ * calls measured ~25–36s regardless of numOfRows — hence the generous timeout.
+ *
+ * Single page (up to 100 rows, the API's hard cap) is enough: governance only
+ * needs the aggregate counts (total + a breakdown), not a full row dump. Own
+ * timeout (KECO_EVCHARGER_TIMEOUT_MS, via AbortController — deliberately not
+ * fetchJsonAt, which assumes JSON) so a slow upstream can never stall the rest
+ * of the briefing indefinitely.
+ * Never throws; any failure comes back as a plain { error } string.
  */
 async function fetchKecoEvCharger(): Promise<{ text: string } | { error: string }> {
   const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
-  const baseParams = {
+  const params = new URLSearchParams({
     serviceKey: key,
-    returnType: 'JSON',
+    pageNo: '1',
     numOfRows: '100',
-    rgnNm: '제주특별자치도',
-  }
-  const PAGES_REQUESTED = 5
+    zcode: '50', // 50 = 제주특별자치도
+    returnType: 'XML',
+  })
+  const url = `https://apis.data.go.kr/B552584/EvCharger/getChargerInfo?${params.toString()}`
 
-  const combined: Record<string, unknown>[] = []
-  let totalCount: number | null = null
-  let pagesSucceeded = 0
-  const errors: string[] = []
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), KECO_EVCHARGER_TIMEOUT_MS)
 
-  for (let page = 1; page <= PAGES_REQUESTED; page++) {
-    const params = new URLSearchParams({ ...baseParams, pageNo: String(page) })
-    const url = `https://apis.data.go.kr/B552584/pbnstFstChrgrChgcpcyInfo/getYrMnChgcpcyInfo?${params.toString()}`
-
-    const res = await fetchJsonAt(url)
+  let raw: string
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; AIMANI-Extractor/1.0)',
+        Accept: 'application/xml,text/xml,*/*;q=0.8',
+      },
+      cache: 'no-store',
+    })
     if (!res.ok) {
-      errors.push(`page ${page}: ${res.error}`)
-      continue
+      return { error: `KECO EV charger: HTTP ${res.status} ${res.statusText}`.trim() }
     }
-
-    const env = readFlatDataGoKrEnvelope(res.parsed)
-    if (!env.ok) {
-      errors.push(`page ${page}: ${env.error}`)
-      continue
-    }
-    if (env.code !== '200' && env.code !== '00') {
-      errors.push(`page ${page}: resultCode ${env.code}${env.msg ? ` (${env.msg})` : ''}`)
-      continue
-    }
-
-    // Capture totalCount from the first successful page.
-    if (totalCount === null && env.totalCount !== null) {
-      totalCount = env.totalCount
-    }
-
-    combined.push(...env.items)
-    pagesSucceeded++
-
-    // Stop early if we've already collected all available rows.
-    if (totalCount !== null && combined.length >= totalCount) {
-      break
-    }
-  }
-
-  if (pagesSucceeded === 0) {
+    raw = await res.text()
+  } catch (e: unknown) {
+    const aborted = e instanceof Error && e.name === 'AbortError'
     return {
-      error: `KECO EV charger: 모든 페이지 수집 실패 — ${errors.join('; ')}`,
+      error: aborted
+        ? `KECO EV charger: 요청 시간 초과 (${KECO_EVCHARGER_TIMEOUT_MS}ms)`
+        : `KECO EV charger: 네트워크 오류 — ${e instanceof Error ? e.message : 'unknown error'}`,
     }
+  } finally {
+    clearTimeout(timeout)
   }
 
-  const pageNote =
-    pagesSucceeded < PAGES_REQUESTED
-      ? `${PAGES_REQUESTED}페이지 요청 중 ${pagesSucceeded}페이지 성공`
-      : `${PAGES_REQUESTED}페이지 수집`
+  const trimmed = raw.trim()
+  if (trimmed === '') {
+    return { error: 'KECO EV charger: 빈 응답' }
+  }
+  if (!trimmed.startsWith('<')) {
+    return { error: `KECO EV charger: XML이 아닌 응답 — ${trimmed.slice(0, 200)}` }
+  }
 
-  return aggregateKecoEvChargerItems(combined, totalCount, pageNote)
+  let parsedXml: Record<string, unknown>
+  try {
+    parsedXml = KECO_XML_PARSER.parse(trimmed) as Record<string, unknown>
+  } catch (e: unknown) {
+    return { error: `KECO EV charger: XML 파싱 실패 — ${e instanceof Error ? e.message : 'unknown error'}` }
+  }
+
+  const env = readKecoEvChargerXmlEnvelope(parsedXml)
+  if (!env.ok) {
+    return { error: `KECO EV charger: ${env.error}` }
+  }
+  // parseTagValue coerces "00" → 0, so accept the numeric-collapsed form too.
+  const SUCCESS_CODES = new Set(['00', '0'])
+  if (!SUCCESS_CODES.has(env.code)) {
+    return { error: `KECO EV charger: resultCode ${env.code || 'missing'}${env.msg ? ` (${env.msg})` : ''}` }
+  }
+
+  return aggregateKecoEvChargerItems(env.items, env.totalCount)
 }
 
 /**
@@ -1823,20 +1839,24 @@ const JEJU_SOURCES: readonly JejuSource[] = [
   {
     id: 'keco-jeju-evcharger',
     label: 'KECO Jeju EV Charger Infrastructure (전기차 충전 인프라)',
+    // NOTE: 'json' here only selects the fetchCustom routing path in
+    // fetchJejuSource (format === 'json' && fetchCustom) — it is NOT the actual
+    // wire format. The real response is XML, parsed by hand inside fetchCustom.
     format: 'json',
     modes: ['governance', 'resident'],
-    // Nominal primary URL (page 1 only, for listing/debugging). The actual fetch
-    // uses fetchCustom which pages through 1–5 (numOfRows=100 is the API hard max).
+    // Nominal URL (for listing/debugging only). The actual fetch happens in
+    // fetchCustom, which also parses the XML body and summarizes it — see there
+    // for why this endpoint (not pbnstFstChrgrChgcpcyInfo) is the correct one.
     buildUrl: () => {
       const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
       const params = new URLSearchParams({
         serviceKey: key,
-        returnType: 'JSON',
-        numOfRows: '100',
         pageNo: '1',
-        rgnNm: '제주특별자치도',
+        numOfRows: '100',
+        zcode: '50', // 50 = 제주특별자치도
+        returnType: 'XML',
       })
-      return `https://apis.data.go.kr/B552584/pbnstFstChrgrChgcpcyInfo/getYrMnChgcpcyInfo?${params.toString()}`
+      return `https://apis.data.go.kr/B552584/EvCharger/getChargerInfo?${params.toString()}`
     },
     fetchCustom: fetchKecoEvCharger,
   },

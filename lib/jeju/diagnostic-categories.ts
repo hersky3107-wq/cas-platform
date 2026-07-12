@@ -20,7 +20,7 @@ export type DiagnosticCategory = {
   dataBacked: boolean
 }
 
-/** 10 governance categories (no 언론·여론 — that is the separate media mode). */
+/** 9 governance categories (교육·건설·주택 removed — no reliable data source). */
 export const DIAGNOSTIC_CATEGORIES: DiagnosticCategory[] = [
   {
     id: 'energy',
@@ -79,14 +79,6 @@ export const DIAGNOSTIC_CATEGORIES: DiagnosticCategory[] = [
     dataBacked: true,
   },
   {
-    id: 'construction',
-    emoji: '🏗',
-    label: '건설·주택',
-    presetQuestion: '오늘 제주 건설·주택 현황과 가장 시급한 현안은?',
-    searchSeed: '제주 건설 경기 주택 부동산 분양 최신 동향',
-    dataBacked: false,
-  },
-  {
     id: 'environment',
     emoji: '♻️',
     label: '환경·자원순환',
@@ -95,12 +87,12 @@ export const DIAGNOSTIC_CATEGORIES: DiagnosticCategory[] = [
     dataBacked: false,
   },
   {
-    id: 'education',
-    emoji: '🎓',
-    label: '교육',
-    presetQuestion: '오늘 제주 교육 현황과 가장 시급한 현안은?',
-    searchSeed: '제주 교육 학교 학생 정책 최신 동향',
-    dataBacked: false,
+    id: 'welfare',
+    emoji: '👵',
+    label: '복지·보건',
+    presetQuestion: '오늘 제주 복지·보건 현황과 가장 시급한 현안은?',
+    searchSeed: '제주 복지 보건 의료 보조금 지원정책 최신 동향',
+    dataBacked: true,
   },
 ]
 

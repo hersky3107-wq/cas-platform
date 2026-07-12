@@ -94,6 +94,24 @@ type DiagnosticApiResult = {
 /** Which engine produced the currently-displayed result. */
 type ResultMode = 'none' | 'brief' | 'diagnostic'
 
+/**
+ * Strip orchestrator machine jargon from the roster rationale so users see plain
+ * Korean (e.g. "반도체를 2명이 중점 분석") instead of "primary로 두 좌석에 배치".
+ */
+function humanizeRosterRationale(raw: string): string {
+  return raw
+    .replace(/\bprimary\s*angle\b/gi, '중점 분야')
+    .replace(/\bas\s+primary\b/gi, '중점으로')
+    .replace(/\bprimary(?:로|에|를|을|의|인)?/gi, '중점')
+    .replace(/좌석/g, '분석가')
+    .replace(/배치하([였었는게])/g, '배정하$1')
+    .replace(/배치/g, '배정')
+    .replace(/두\s*분석가에\s*배정/g, '2명이 중점 분석')
+    .replace(/중점\s*중점/g, '중점')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 type BriefStageKey =
   | 'idle'
   | 'start'
@@ -455,7 +473,7 @@ export default function JejuGovernanceBriefPage() {
   // ── Brief (prompt) state ──
   const [question, setQuestion] = useState('')
   const [briefStage, setBriefStage] = useState<BriefStageKey>('idle')
-  const [analystCount, setAnalystCount] = useState(6)
+  const [analystCount, setAnalystCount] = useState(7)
   const [roles, setRoles] = useState<RoleInfo[]>([])
   const [rationale, setRationale] = useState<string | null>(null)
   const [report, setReport] = useState<string | null>(null)
@@ -697,7 +715,7 @@ export default function JejuGovernanceBriefPage() {
     ? (briefStageLabels[briefStage] ?? t.deepStageDone)
     : (diagStageLabels[diagStage] ?? t.deepStageDone)
   const bannerHint = briefRunning
-    ? '다중 AI 심층 분석은 보통 3~5분 걸립니다. 정상 작동 중이니 창을 닫지 말고 기다려 주세요.'
+    ? '다중 AI 심층 분석은 보통 6~8분 걸립니다. 정상 작동 중이니 창을 닫지 말고 기다려 주세요.'
     : 'AI 진단은 보통 40초 내외 걸립니다. 창을 닫지 말고 기다려 주세요.'
 
   const bannerRef = useRef<HTMLDivElement | null>(null)
@@ -717,9 +735,9 @@ export default function JejuGovernanceBriefPage() {
       backHref="/jeju/governance"
       backLabel={t.backToGovernance}
     >
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-10">
         {/* TOP (primary): free-text prompt → 7-AI brief */}
-        <div className="rounded-2xl border border-jeju-accent/40 bg-jeju-bg-elevated p-6 shadow-[var(--jeju-shadow)]">
+        <div className="rounded-2xl border border-jeju-accent/40 bg-jeju-bg-elevated p-6 shadow-[var(--jeju-shadow)] sm:p-7">
           <p className="mb-3 text-sm font-bold text-jeju-fg">{t.briefPromptSectionLabel}</p>
           <textarea
             value={question}
@@ -745,25 +763,35 @@ export default function JejuGovernanceBriefPage() {
           </div>
         </div>
 
-        {/* BELOW (secondary): category grid → 2-AI diagnostic */}
-        <div className="rounded-2xl border border-jeju-border bg-jeju-bg-elevated p-5 shadow-[var(--jeju-shadow)]">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
+        {/* Divider — marks diagnostic as a separate, secondary tool */}
+        <div className="flex items-center gap-3" role="separator" aria-label="또는">
+          <div className="h-px flex-1 bg-jeju-border/50" />
+          <span className="shrink-0 text-[11px] tracking-widest text-jeju-fg-muted">─── 또는 ───</span>
+          <div className="h-px flex-1 bg-jeju-border/50" />
+        </div>
+
+        {/* BELOW (secondary): category grid → diagnostic — visually lighter */}
+        <div className="rounded-xl border border-jeju-border/40 bg-jeju-bg/40 px-4 py-4">
+          <p className="mb-1.5 text-[11px] font-medium tracking-wide text-jeju-fg-muted">
             {t.briefDiagnosticSectionLabel}
           </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <p className="mb-3 text-[12px] leading-relaxed text-jeju-fg-muted/90">
+            {t.briefDiagnosticExplain}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
             {DIAGNOSTIC_CATEGORIES.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 disabled={running}
                 onClick={() => runDiagnostic(c.id)}
-                className={`flex flex-col items-center gap-1 rounded-xl border px-3 py-3 text-center text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`flex flex-col items-center gap-0.5 rounded-lg border px-2.5 py-2 text-center text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
                   activeCategory === c.id
-                    ? 'border-jeju-accent bg-jeju-accent/15 text-jeju-accent'
-                    : 'border-jeju-border bg-jeju-tile-bg text-jeju-fg hover:bg-jeju-tile-hover'
+                    ? 'border-jeju-accent/70 bg-jeju-accent/10 text-jeju-accent'
+                    : 'border-jeju-border/40 bg-transparent text-jeju-fg-muted hover:border-jeju-border hover:text-jeju-fg'
                 }`}
               >
-                <span className="text-xl leading-none" aria-hidden>
+                <span className="text-base leading-none opacity-80" aria-hidden>
                   {c.emoji}
                 </span>
                 {c.label}
@@ -811,7 +839,9 @@ export default function JejuGovernanceBriefPage() {
             {roles.length > 0 && (
               <Section title={t.briefRosterHeading} defaultOpen={!synthesis} t={t}>
                 {rationale && (
-                  <p className="mb-3 text-xs leading-relaxed text-jeju-fg-muted">{rationale}</p>
+                  <p className="mb-3 text-xs leading-relaxed text-jeju-fg-muted">
+                    {humanizeRosterRationale(rationale)}
+                  </p>
                 )}
                 <div className="flex flex-wrap gap-2">
                   {roles.map((r) => (
