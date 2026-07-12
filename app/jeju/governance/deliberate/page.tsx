@@ -535,6 +535,16 @@ function RoundAccordion({
 // detect a high-consensus skip without a route change.
 const CONSENSUS_VOTE_THRESHOLD = 85
 
+// Tappable example topics shown under the question textarea. Tapping one fills
+// the existing `question` state — no parallel state, no API call.
+const DELIBERATE_EXAMPLE_TOPICS: readonly string[] = [
+  '환경보전분담금(입도세)을 도입해야 하는가?',
+  '렌터카 총량제를 더 강화해야 하는가?',
+  '재생에너지 출력제한(감발) 보상을 도가 부담해야 하는가?',
+  '제주는 그린 AI 데이터센터를 유치해야 하는가?',
+  '지하수 취수 총량 상한을 더 낮춰야 하는가?',
+] as const
+
 /**
  * Banner text for a ballot skipped because consensus converged strongly.
  * Matches motie's deliberate-page wording. Mentions the fixed 85 threshold
@@ -991,6 +1001,20 @@ export default function JejuGovernanceDeliberatePage() {
           rows={3}
           className="w-full resize-none rounded-xl border border-jeju-border bg-jeju-bg-elevated px-4 py-3 text-sm text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none disabled:opacity-50"
         />
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="text-[11px] text-jeju-fg-muted">예시:</span>
+          {DELIBERATE_EXAMPLE_TOPICS.map((topic) => (
+            <button
+              key={topic}
+              type="button"
+              disabled={isRunning}
+              onClick={() => setQuestion(topic)}
+              className="rounded-full border border-jeju-border/50 px-2.5 py-0.5 text-[13px] leading-snug text-jeju-fg-muted transition hover:text-jeju-fg hover:border-jeju-border disabled:opacity-40 disabled:hover:text-jeju-fg-muted disabled:hover:border-jeju-border/50"
+            >
+              {topic}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center justify-between gap-3">
           {questionType && (
             <span className="rounded-full bg-jeju-tile-bg px-3 py-1 text-xs font-semibold text-jeju-fg-muted">

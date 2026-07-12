@@ -380,13 +380,13 @@ const KO: JejuUiPack = {
   deepWaiting: '대기 중…',
   // Deliberate page (Mode B — 찬반 심의)
   deliberateTitle: '찬반 심의',
-  deliberateDesc: 'SYNOD 토론 · 합의도 수렴 · 의장 판결',
+  deliberateDesc: '다중 AI 토론 · 표결 · 합의 수렴 · 소수의견 · 의장 판결',
   deliberateStartBtn: '심의 시작',
   deliberateQuestionPlaceholder: '찬반을 따질 정책 안건을 입력하세요. (예: 제주 렌터카 총량제 강화)',
   deliberateRunningHint: (debaterCount, voterCount) =>
     debaterCount > 0
-      ? `${debaterCount}개 AI가 토론하고, 퍼플렉시티를 포함한 ${voterCount}개 AI가 표결합니다. 총 4–8분 소요됩니다.`
-      : 'AI 심의체가 순서대로 토론하고 표결합니다. 총 4–8분 소요됩니다.',
+      ? `${debaterCount}개 AI가 토론하고, 퍼플렉시티를 포함한 ${voterCount}개 AI가 표결합니다. 보통 8~12분 소요됩니다.`
+      : 'AI 심의체가 순서대로 토론하고 표결합니다. 보통 8~12분 소요됩니다.',
   deliberateStageStart: '데이터 수집·소집 중…',
   deliberateStageReport: '사전 분석 리포트 작성 중…',
   deliberateStageOpen: '개회 발언 중…',
