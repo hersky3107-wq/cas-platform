@@ -15,7 +15,7 @@ export const maxDuration = 60
 // Accepts three supplement kinds and returns ONE normalized FestivalSupplement:
 //   - paste : { kind:'paste', text }               → text passes through (capped)
 //   - url   : { kind:'url',   url }                → extract({ type:'url', value:url })
-//   - file  : multipart upload (pdf/docx/xlsx)     → save temp → extract() → delete temp
+//   - file  : multipart upload (pdf/docx/xlsx/hwpx) → save temp → extract() → delete temp
 //
 // ISOLATION: festival-only route. Reads shared infra (lib/extract). Never touches
 // MOTIE/Jeju. The raw upload is NOT persisted — only the normalized text + a
@@ -30,11 +30,18 @@ export const maxDuration = 60
 /** Hard cap on paste/extracted text length forwarded to the pipeline. */
 const MAX_TEXT_LENGTH = 20_000
 
-/** Accepted file extensions (HWP/HWPX deliberately excluded per spec). */
+/**
+ * Accepted file extensions. hwpx (modern XML-based 한글 문서, a zip archive)
+ * IS supported — lib/extract/adapters/hwpx.ts parses it. Only the LEGACY
+ * binary .hwp format is excluded: it's an OLE compound file, not a zip, and
+ * has no adapter here (extractHwpx explicitly rejects it if mislabeled as
+ * .hwpx). Users on old 한글 versions must convert to hwpx/pdf first.
+ */
 const ACCEPTED_FILE_EXT: Record<string, SourceType> = {
   '.pdf': 'pdf',
   '.docx': 'docx',
   '.xlsx': 'xlsx',
+  '.hwpx': 'hwpx',
 }
 
 function json(body: unknown, status = 200): Response {
@@ -109,8 +116,8 @@ async function handleJson(body: Record<string, unknown>): Promise<Response> {
 }
 
 /**
- * Multipart POST path for file uploads (pdf/docx/xlsx). Saves to a temp dir,
- * runs extract(), then deletes the temp file regardless of success/failure.
+ * Multipart POST path for file uploads (pdf/docx/xlsx/hwpx). Saves to a temp
+ * dir, runs extract(), then deletes the temp file regardless of success/failure.
  */
 async function handleFile(form: FormData): Promise<Response> {
   const file = form.get('file')
@@ -121,7 +128,7 @@ async function handleFile(form: FormData): Promise<Response> {
   const sourceType = ACCEPTED_FILE_EXT[ext]
   if (!sourceType) {
     return fail(
-      `지원하지 않는 파일 형식입니다(${ext || '확장자 없음'}). pdf, docx, xlsx만 지원합니다.`
+      `지원하지 않는 파일 형식입니다(${ext || '확장자 없음'}). pdf, docx, xlsx, hwpx(구 hwp 제외)만 지원합니다.`
     )
   }
 

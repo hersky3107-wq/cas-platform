@@ -231,8 +231,23 @@ function normalize(s: string): string {
   return s.trim().toLowerCase()
 }
 
-/** Finds the best match for `token` among `entries`, or null. Exact → stripped-suffix fallback. */
-function matchArea(token: string, entries: AreaEntry[], suffixes: readonly string[]): AreaEntry | null {
+/**
+ * Finds the best match for `token` among `entries`, or null.
+ * Exact → stripped-suffix fallback → (optionally) containment.
+ *
+ * `allowContainment` defaults to true for the normal single-list lookups
+ * (sido list, or one sido's sigungu list) where the candidate pool is small
+ * and naming drift is the main risk. It is disabled during the nationwide
+ * bare-sigungu scan (findSigunguAcrossAllSido) where the candidate pool is
+ * every sigungu in the country — containment there risks false positives
+ * (e.g. a short substring matching an unrelated region).
+ */
+function matchArea(
+  token: string,
+  entries: AreaEntry[],
+  suffixes: readonly string[],
+  allowContainment = true
+): AreaEntry | null {
   const t = normalize(token)
   const exact = entries.find((e) => normalize(e.name) === t)
   if (exact) return exact
@@ -241,11 +256,43 @@ function matchArea(token: string, entries: AreaEntry[], suffixes: readonly strin
   const strippedMatch = entries.find((e) => normalize(stripSuffix(e.name, suffixes)) === tStripped)
   if (strippedMatch) return strippedMatch
 
+  if (!allowContainment) return null
+
   // Fallback: containment (handles minor naming drift either direction).
   const contains = entries.find(
     (e) => normalize(e.name).includes(tStripped) || tStripped.includes(normalize(e.name))
   )
   return contains ?? null
+}
+
+/** True when `token` ends with a 시/군/구 suffix (and isn't just the bare suffix itself). */
+function looksLikeSigungu(token: string): boolean {
+  return SIGUNGU_SUFFIXES.some((suf) => token.length > suf.length && token.endsWith(suf))
+}
+
+/**
+ * Nationwide bare-sigungu resolver: scans EVERY 시/도's 시/군/구 list to find
+ * `token` (e.g. "경주시", "전주시", "여수시") without a 시/도 prefix. Fetches
+ * all sigungu lists in parallel (each individually cached by fetchSigunguList,
+ * so repeat lookups — including subsequent bare-sigungu calls — are free).
+ * Uses strict matching (no containment) since the candidate pool spans the
+ * whole country. Returns the first match plus whether more than one 시/도
+ * had a same-named 시/군/구 (e.g. 고성군 exists in both 강원도 and 경상남도).
+ */
+async function findSigunguAcrossAllSido(
+  token: string,
+  sidoList: readonly AreaEntry[]
+): Promise<{ sido: AreaEntry; sigungu: AreaEntry; ambiguous: boolean } | null> {
+  const sigunguLists = await Promise.all(sidoList.map((sido) => fetchSigunguList(sido.code)))
+
+  const matches: { sido: AreaEntry; sigungu: AreaEntry }[] = []
+  for (let i = 0; i < sidoList.length; i++) {
+    const match = matchArea(token, sigunguLists[i], SIGUNGU_SUFFIXES, false)
+    if (match) matches.push({ sido: sidoList[i], sigungu: match })
+  }
+
+  if (matches.length === 0) return null
+  return { sido: matches[0].sido, sigungu: matches[0].sigungu, ambiguous: matches.length > 1 }
 }
 
 export type FestivalRegionResolution = {
@@ -258,11 +305,17 @@ export type FestivalRegionResolution = {
 }
 
 /**
- * Resolves a free-text region string (e.g. "제주특별자치도 서귀포시") into
- * TourAPI's legacy areaCode/sigunguCode pair via areaCode2. Never throws.
- * - Sido unresolved → { ok: false } (caller should not fall back to an
- *   unfiltered nationwide search — that defeats "competing festivals in THIS
- *   region").
+ * Resolves a free-text region string into TourAPI's legacy
+ * areaCode/sigunguCode pair via areaCode2. Never throws. Two input shapes:
+ * - "시/도 시/군/구" (e.g. "제주특별자치도 서귀포시") — the normal path.
+ * - Bare 시/군/구 only (e.g. "경주시", "전주시", "여수시"), no 시/도 prefix —
+ *   when the first token doesn't match any 시/도, and it looks like a
+ *   시/군/구 name, this scans every 시/도's 시/군/구 list nationwide to find
+ *   its parent province (see findSigunguAcrossAllSido).
+ *
+ * - Sido unresolved (and no bare-sigungu match either) → { ok: false }
+ *   (caller should not fall back to an unfiltered nationwide search — that
+ *   defeats "competing festivals in THIS region").
  * - Sido resolved but sigungu unresolved → { ok: true, sigunguCode: null }
  *   (province-level scope is still meaningful).
  */
@@ -290,6 +343,24 @@ export async function resolveFestivalRegion(regionRaw: string): Promise<Festival
 
   const sido = matchArea(sidoToken, sidoList, SIDO_SUFFIXES)
   if (!sido) {
+    // Bare 시/군/구 fallback (no 시/도 prefix, e.g. "경주시") — only when
+    // there's exactly one token (nothing left over to be a sigungu name) and
+    // it looks like a 시/군/구. Scans nationwide for its parent province.
+    if (!sigunguToken && looksLikeSigungu(sidoToken)) {
+      const found = await findSigunguAcrossAllSido(sidoToken, sidoList)
+      if (found) {
+        return {
+          ok: true,
+          areaCode: found.sido.code,
+          areaName: found.sido.name,
+          sigunguCode: found.sigungu.code,
+          sigunguName: found.sigungu.name,
+          ...(found.ambiguous
+            ? { note: `동명 시/군/구가 여러 시/도에 존재 — ${found.sido.name} ${found.sigungu.name}을 사용` }
+            : {}),
+        }
+      }
+    }
     return {
       ok: false,
       areaCode: null,

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import {
   buildExampleFestivalPlan,
+  buildExampleFestivalPlan2,
   validateFestivalPlan,
   FESTIVAL_VENUE_TYPE_LABELS,
   FESTIVAL_HEADLINER_LABELS,
@@ -49,7 +50,9 @@ import {
 // The deliberate route then drives the chunked stages (scoring → benchmark →
 // open → turn ↔ facilitate → rescoring → converge → verdict). This page only handles the
 // start + a live progress strip; a follow-up page can render the per-stage
-// results. "예시로 채우기" fills buildExampleFestivalPlan() for testing.
+// results. "예시 1/2" fill buildExampleFestivalPlan()/buildExampleFestivalPlan2()
+// for testing — two DIFFERENT regions (제주 / 경주) to make clear this is a
+// nationwide tool, not Jeju-only.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EMPTY_PLAN: FestivalPlan = {
@@ -341,8 +344,8 @@ export default function FestivalPage() {
     })
 
   // ── "예시로 채우기" ─────────────────────────────────────────────────────────
-  const fillExample = () => {
-    setPlan(buildExampleFestivalPlan())
+  const fillExample = (variant: 1 | 2) => {
+    setPlan(variant === 1 ? buildExampleFestivalPlan() : buildExampleFestivalPlan2())
     setErrors([])
   }
 
@@ -447,11 +450,16 @@ export default function FestivalPage() {
           <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
             <Sparkles className="h-3.5 w-3.5" /> 축제 흥행 예측 · 다중 AI 심의
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-stone-900">축제 기획안 흥행 예측</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-stone-900">
+            축제 흥행 예측 · 성공을 위한 기획 보완 진단
+          </h1>
           <p className="mt-1.5 text-sm leading-relaxed text-stone-600">
             기획 담당자(주최측)를 위한 축제 성공 가능성 분석입니다. 8명의 AI 조사관이 흥행 가능성을
-            조사·토론하고, 의장이 최종 전망을 제시합니다. 선택 항목을 비우면 예측의 불확실성이
-            커집니다 — 비워둔 항목은 &ldquo;미입력&rdquo;으로 표시되어 점수에 반영됩니다.
+            조사·토론하여 흥행 점수·확률을 제시하는 데서 멈추지 않고, 무엇을 더하고·고치고·빼야
+            성공 확률이 올라가는지 구체적인 보완 처방(A/B/C)까지 제시합니다. &ldquo;조건부
+            추진&rdquo; 판정이 나온 경우에도 어떤 조건을 채우면 되는지 알 수 있도록 설계되었습니다.
+            선택 항목을 비우면 예측의 불확실성이 커집니다 — 비워둔 항목은 &ldquo;미입력&rdquo;으로
+            표시되어 점수에 반영됩니다.
           </p>
         </header>
 
@@ -459,10 +467,17 @@ export default function FestivalPage() {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={fillExample}
+            onClick={() => fillExample(1)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition hover:border-emerald-400 hover:bg-emerald-50"
           >
-            <Sparkles className="h-3.5 w-3.5" /> 예시로 채우기
+            <Sparkles className="h-3.5 w-3.5" /> 예시 1 (제주)
+          </button>
+          <button
+            type="button"
+            onClick={() => fillExample(2)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition hover:border-emerald-400 hover:bg-emerald-50"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> 예시 2 (경주)
           </button>
           <button
             type="button"
@@ -694,8 +709,8 @@ export default function FestivalPage() {
 
             {/* File */}
             <div>
-              <FieldLabel hint="pdf, docx, xlsx (hwp 제외). 최대 10MB.">파일 업로드</FieldLabel>
-              <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx" onChange={onFileChange} disabled={extractBusy} className="block w-full text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-emerald-700 hover:file:bg-emerald-100" />
+              <FieldLabel hint="pdf, docx, xlsx, hwpx (구 hwp 제외). 최대 10MB.">파일 업로드</FieldLabel>
+              <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.hwpx" onChange={onFileChange} disabled={extractBusy} className="block w-full text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-emerald-700 hover:file:bg-emerald-100" />
             </div>
 
             {extractError && <p className="text-xs text-rose-600">{extractError}</p>}

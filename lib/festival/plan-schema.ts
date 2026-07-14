@@ -260,12 +260,18 @@ export function validateFestivalPlan(plan: FestivalPlan): string[] {
   return errors
 }
 
-// ── "예시로 채우기" stub (kept for testing / the form button) ────────────────
+// ── "예시로 채우기" stubs (kept for testing / the form buttons) ──────────────
+//
+// Two examples on purpose: this is a NATIONWIDE tool, not Jeju-only. Example 1
+// stays on Jeju (매칭 for lib/festival/connectors.ts's original test region);
+// Example 2 uses a different region (경주, 경상북도) so the region resolver
+// (areaCode2-based, see lib/festival/connectors.ts) and TourAPI benchmark path
+// are visibly exercised outside Jeju too.
 
 /**
- * A fully-filled example plan, role-neutral, used by the "예시로 채우기" button.
- * The pipeline's buildStubFestivalPlan() returns this exact object so the
- * stub-driven engine test path and the form-driven path share one shape.
+ * A fully-filled example plan, role-neutral, used by the "예시 1 (제주)"
+ * button. The pipeline's buildStubFestivalPlan() returns this exact object so
+ * the stub-driven engine test path and the form-driven path share one shape.
  */
 export function buildExampleFestivalPlan(): FestivalPlan {
   return {
@@ -308,6 +314,56 @@ export function buildExampleFestivalPlan(): FestivalPlan {
       promoStart: '행사 90일 전',
       novelty: '미디어아트 점등 루트 2개 신규 추가, 재방문 시 감귤 디저트 쿠폰',
       foreignVisitorPlan: '영어·중국어 안내판, 주요 결제 다언어 키오스크 3대, 동선 다언어 표지',
+    },
+  }
+}
+
+/**
+ * A second example plan in a DIFFERENT region (경상북도 경주시, non-Jeju), used
+ * by the "예시 2 (경주)" button — demonstrates that the tool and its region
+ * resolver / TourAPI benchmark connector are nationwide, not Jeju-only.
+ */
+export function buildExampleFestivalPlan2(): FestivalPlan {
+  return {
+    block1: {
+      name: '경주 첨성대 별빛축제',
+      region: '경상북도 경주시',
+      dateStart: '2026-10-02',
+      dateEnd: '2026-10-11',
+      venueType: 'outdoor',
+      festivalType: '전통·야간경관·체험',
+      edition: 3,
+    },
+    block2: {
+      totalBudget: '총 18억 원 (도비 6억, 시비 8억, 협찬·입장수익 4억 목표)',
+      visitorTarget: '10일간 15만 명',
+      budgetSplit: { program: 40, safety: 20, promo: 20, operation: 20 },
+    },
+    block3: {
+      corePrograms: [
+        '첨성대·동궁과 월지 야간 경관조명',
+        '신라 전통복식 체험·포토존',
+        '황리단길 연계 야시장',
+        '주말 드론 라이트쇼',
+      ],
+      hasHeadliner: 'yes',
+      hasRainBackup: 'yes',
+    },
+    block4: {
+      primaryAudience: '20~30대 커플·가족 단위 + 수도권 당일치기 관광객 + 외국인 개별관광객(FIT)',
+      transitAccess: 'KTX 신경주역 연계 셔틀버스, 경주역 도보 15분, 전용 주차 500면',
+      lodgingTourism: '보문관광단지·황리단길 숙박 밀집지역 인접, 불국사·동궁원 연계 관광 코스 제공',
+    },
+    block5: {
+      peakCrowd: '주말 야간 피크 8천 명',
+      hasSafetyPlan: 'yes',
+      entryMode: 'free',
+    },
+    block6: {
+      promoChannels: 'SNS 숏폼 챌린지, 여행 인플루언서 10팀, KTX 연계 배너 광고',
+      promoStart: '행사 60일 전',
+      novelty: '드론 라이트쇼 신규 도입, 3회차 연속 개최에 따른 재방문 프로모션 강화',
+      foreignVisitorPlan: '영어·일본어·중국어 안내 리플릿, 주요 부스 QR 다국어 통역 연결',
     },
   }
 }
