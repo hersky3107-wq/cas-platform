@@ -45,6 +45,10 @@ import {
   type FestivalFacilitatorSummary,
   type FestivalDebateSeatVoice,
 } from '@/lib/festival/debate'
+import {
+  searchFestivalOfficial,
+  formatOfficialFestivalsForPrompt,
+} from '@/lib/festival/connectors'
 
 /**
  * FESTIVAL success-forecast pipeline —
@@ -59,7 +63,19 @@ import {
  * Stages:
  *   (a) investigate — split into two POSTs so neither exceeds ~250s:
  *         runFestivalScoring   → 7 scoring LLMs, each a 0–100 1차 점수 (전문분야 진단)
- *         runFestivalBenchmark → Perplexity facts only, NO score, NO debate
+ *         runFestivalBenchmark → 2-step fact anchor, NO score, NO debate:
+ *           step 1: lib/festival/connectors.ts searchFestivalOfficial() —
+ *                   [공식 데이터] TourAPI official PAST comparable festivals in
+ *                   the same region (past ~2yr window, NOT the plan's own
+ *                   future dates — TourAPI has no record of not-yet-held
+ *                   events), ranked by 축제유형 keyword overlap + seasonal
+ *                   (month) proximity to the plan's dates (fact anchor,
+ *                   existence-level).
+ *           step 2: Perplexity — [웹 검색] real-world outcomes (visitors,
+ *                   controversies, bagaji, success/failure) of THOSE named
+ *                   past official festivals specifically, not a from-scratch
+ *                   open-ended search. Falls back to an open search only if
+ *                   step 1 found no official comparable.
  *   (b) debate      — runFestivalOpen + runFestivalRound + runFestivalFacilitate,
  *                     6 merged debate seats, SYNOD-style, 3–5 rounds, red-team rotation
  *   (c) rescoring   — runFestivalRescoring: each of the 7 re-scores 0–100 after
@@ -154,11 +170,22 @@ export type FestivalRescore = {
   error?: string
 }
 
-/** The Perplexity benchmark/competitive-environment facts (no score). */
+/**
+ * Benchmark/competitive-environment facts (no score). Combines two
+ * provenance-tagged layers: [공식 데이터] TourAPI searchFestival2 (official
+ * existence of comparable festivals in the same region+period) and
+ * [웹 검색] Perplexity (their actual real-world outcomes). `facts` is the
+ * combined, ready-to-render text; the `official*` fields are additive
+ * structured data for future UI use.
+ */
 export type FestivalBenchmark = {
   ok: boolean
   facts: string | null
   error?: string
+  officialOk: boolean
+  officialCount: number
+  /** True when sigungu query was empty and results came from wider 시/도 scope. */
+  fallbackUsed: boolean
 }
 
 export type FestivalConfidence = 'high' | 'medium' | 'low'
@@ -534,19 +561,68 @@ export async function runFestivalScoring(
   )
 }
 
-/** Investigate — Perplexity benchmark/competitive-environment facts (NO score). */
+/**
+ * Investigate — 2-step benchmark/competitive-environment fact anchor (NO score).
+ *
+ * Step 1 (fact anchor): searchFestivalOfficial() — TourAPI's OFFICIAL list of
+ * PAST comparable festivals in the same region (past ~2yr window, ranked by
+ * festival-type + seasonal match to the plan — NOT the plan's own future
+ * dates, which TourAPI cannot have a record of yet). Deterministic, not an
+ * LLM call; tagged [공식 데이터] in the output.
+ *
+ * Step 2 (real outcomes): Perplexity is given THOSE specific official names
+ * and asked to find their actual performance/reputation — not an open-ended
+ * from-scratch search. If step 1 found nothing official (unresolved region,
+ * API error, or a genuinely empty official list), Perplexity falls back to an
+ * open search for similar/competing festivals, clearly noted as such. Tagged
+ * [웹 검색] in the output.
+ *
+ * This combination — official existence + real outcomes — is what lets the
+ * verdict stage catch overstatement (e.g. "plan projects 250k visitors but the
+ * only official comparable in the area actually drew 30k").
+ */
 export async function runFestivalBenchmark(
   plan: FestivalPlan,
   supplements?: FestivalSupplement[]
 ): Promise<FestivalBenchmark> {
   const planContext = buildFestivalPlanContext(plan, supplements)
+
+  const official = await searchFestivalOfficial({
+    region: plan.block1.region,
+    dateStart: plan.block1.dateStart,
+    dateEnd: plan.block1.dateEnd,
+    festivalType: plan.block1.festivalType,
+  })
+  const officialBlock = formatOfficialFestivalsForPrompt(official)
+  const officialOk = official.ok
+  const officialCount = official.ok ? official.events.length : 0
+  const fallbackUsed = official.ok ? official.fallbackUsed : false
+
   const persona = FESTIVAL_SEARCH_INVESTIGATOR
-  const userPrompt = [
-    '[축제 기획안]',
-    planContext,
-    '',
-    '위 축제와 유사·경쟁하는 축제들의 사실을 조사하여 구조화해 제시하십시오. 점수나 개최 권고는 하지 마십시오.',
-  ].join('\n')
+  const namedTitles = officialOk && official.ok ? official.events.map((e) => e.title) : []
+
+  const userPrompt =
+    namedTitles.length > 0
+      ? [
+          '[축제 기획안]',
+          planContext,
+          '',
+          '[공식 데이터 — 이미 확보됨, 재검색 금지]',
+          officialBlock,
+          '',
+          '위 목록은 한국관광공사 TourAPI에서 조회한 공식 데이터입니다. 목록 자체의 존재 여부나 진위를 재검색하지 마십시오.',
+          '당신의 임무: 위에 나열된 각 축제의 "실제 성과·평판"을 조사하십시오 — 방문객 수, 논란(바가지 등), 성공/실패 여부, 언론 보도. 목록에 없는 축제를 새로 찾지 마십시오.',
+          '각 축제별로 항목을 나누어 제시하고, 출처·시점을 명시하며, 확인되지 않은 것은 [확인 필요]로 표시하십시오.',
+        ].join('\n')
+      : [
+          '[축제 기획안]',
+          planContext,
+          '',
+          '[공식 데이터]',
+          officialBlock,
+          '',
+          'TourAPI에서 해당 지역·기간의 공식 비교 축제를 찾지 못했습니다. 이 경우에 한해 위 축제와 유사·경쟁하는 축제들을 폭넓게 검색하여 사실을 조사하십시오. 점수나 개최 권고는 하지 마십시오.',
+        ].join('\n')
 
   const { text, error } = await callProvider({
     provider: persona.provider as ExtendedAiProviderName,
@@ -556,9 +632,30 @@ export async function runFestivalBenchmark(
   })
 
   if (error || !text || !text.trim()) {
-    return { ok: false, facts: null, error: error ?? '벤치마크 조사가 빈 응답을 반환했습니다.' }
+    // Official step may still be useful on its own even if Perplexity failed.
+    if (officialOk) {
+      return {
+        ok: true,
+        facts: [officialBlock, '', `[웹 검색 — Perplexity] 조사 실패: ${error ?? '빈 응답'}`].join('\n'),
+        officialOk,
+        officialCount,
+        fallbackUsed,
+      }
+    }
+    return {
+      ok: false,
+      facts: null,
+      error: error ?? '벤치마크 조사가 빈 응답을 반환했습니다.',
+      officialOk,
+      officialCount,
+      fallbackUsed,
+    }
   }
-  return { ok: true, facts: text.trim() }
+
+  const facts = [officialBlock, '', '[웹 검색 — Perplexity] 위 공식 목록(또는 유사 축제)의 실제 성과·평판:', text.trim()].join(
+    '\n'
+  )
+  return { ok: true, facts, officialOk, officialCount, fallbackUsed }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
