@@ -40,6 +40,9 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 // FESTIVAL success-forecast — input form (festival-only, no MOTIE/Jeju import).
 //
+// PUBLIC STANDALONE DEMO (competition): no login, no credits, no lobby/back nav.
+// Accessible only by direct URL (www.aimani.ai/festival) — not linked from lobby.
+//
 // Audience: BOTH local-government planners AND private festival operators /
 // agencies (B2G + B2B). Copy stays role-neutral ("주최측", "기획 담당자") — never
 // assumes a public official. Because operators have an incentive to oversell,

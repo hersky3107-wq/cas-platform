@@ -10,6 +10,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
+  const pathname = request.nextUrl.pathname
+
+  // Public competition demo — /festival + /api/festival/* require no login and
+  // bypass all auth redirects. Credit gating does not apply to these routes.
+  if (
+    pathname === '/festival' ||
+    pathname.startsWith('/festival/') ||
+    pathname.startsWith('/api/festival/')
+  ) {
+    return NextResponse.next({ request })
+  }
+
   // Do NOT redirect www ↔ apex here. Vercel already redirects aimani.ai → www.aimani.ai;
   // a www → apex redirect in middleware caused ERR_TOO_MANY_REDIRECTS.
 

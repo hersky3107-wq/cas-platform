@@ -12,6 +12,8 @@ export const maxDuration = 60
 // ─────────────────────────────────────────────────────────────────────────────
 // FESTIVAL manual-supplement extraction route.
 //
+// PUBLIC DEMO (competition): no login required, no credit check/deduction.
+//
 // Accepts three supplement kinds and returns ONE normalized FestivalSupplement:
 //   - paste : { kind:'paste', text }               → text passes through (capped)
 //   - url   : { kind:'url',   url }                → extract({ type:'url', value:url })

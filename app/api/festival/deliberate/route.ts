@@ -37,6 +37,10 @@ export const maxDuration = 300
 // ─────────────────────────────────────────────────────────────────────────────
 // FESTIVAL success-forecast — chunked/polling deliberation route.
 //
+// PUBLIC DEMO (competition): no login required, no credit check/deduction.
+// Anyone with the URL can run a full deliberation; session rows are created
+// via supabaseAdmin (service role), not tied to a user account.
+//
 // ISOLATION INVARIANT (non-negotiable):
 //   - State lives in its OWN table `festival_sessions` — NEVER motie_deep_sessions
 //     or jeju_deep_sessions. Festival never reads/writes MOTIE/Jeju session rows.
