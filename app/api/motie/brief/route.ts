@@ -11,6 +11,7 @@ import {
   type JejuOpenAnalysis,
   type JejuOpenBriefSynthesis,
 } from '@/lib/motie/open-brief'
+import { sanitizeMotieSupplements, type MotieSupplement } from '@/lib/motie/supplements'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -47,6 +48,8 @@ type BriefState = {
   droppedSearchCount?: number
   analyses?: JejuOpenAnalysis[]
   synthesis?: JejuOpenBriefSynthesis
+  /** User-submitted paste-text supplements — optional, text-only this step. */
+  supplements?: MotieSupplement[]
 }
 
 type Stage = 'start' | 'orchestrate' | 'pre-report' | 'analyses' | 'synthesize' | 'done'
@@ -106,6 +109,7 @@ export async function POST(req: Request): Promise<Response> {
       const snapshot = await gatherJejuSnapshot(councilMode)
       const context = buildBriefingContext(snapshot, councilMode)
       const availableDataSummary = await summarizeAvailableData(councilMode)
+      const supplements = sanitizeMotieSupplements(body.supplements)
 
       const state: BriefState = {
         question,
@@ -113,6 +117,7 @@ export async function POST(req: Request): Promise<Response> {
         snapshot,
         context,
         availableDataSummary,
+        ...(supplements ? { supplements } : {}),
       }
 
       const ins = await supabaseAdmin
@@ -239,6 +244,7 @@ export async function POST(req: Request): Promise<Response> {
         context: state.context,
         councilMode: state.councilMode,
         searches: state.reportSearches,
+        supplements: state.supplements,
       })
 
       const next: BriefState = { ...state, analyses }
@@ -274,6 +280,7 @@ export async function POST(req: Request): Promise<Response> {
         analyses: state.analyses,
         searches: state.reportSearches,
         councilMode: state.councilMode,
+        supplements: state.supplements,
       })
 
       const next: BriefState = { ...state, synthesis }

@@ -14,11 +14,14 @@ const PRODUCT: Record<string, { name: string; gloss?: string }> = {
   mistral: { name: 'Mistral', gloss: '미스트랄' },
   perplexity: { name: 'Perplexity', gloss: '퍼플렉시티' },
   meta: { name: 'Llama', gloss: '라마' },
+  solar: { name: 'Solar', gloss: '업스테이지' },
+  exaone: { name: 'EXAONE', gloss: 'LG' },
 }
 
 /**
  * The canonical display label, format "개발사 영문 (제품 한글)".
  * meta is intentionally product-name-first — "Llama (메타)".
+ * solar/exaone follow the same "English brand (gloss)" shape used by the roster.
  */
 const LABEL: Record<string, string> = {
   openai: 'OpenAI (챗지피티)',
@@ -29,6 +32,8 @@ const LABEL: Record<string, string> = {
   mistral: 'Mistral (미스트랄)',
   meta: 'Llama (메타)',
   perplexity: 'Perplexity (퍼플렉시티)',
+  solar: 'Solar (업스테이지)',
+  exaone: 'EXAONE (LG)',
 }
 
 /**
@@ -44,6 +49,8 @@ const BRAND_ALIAS: Record<string, string> = {
   Mistral: 'mistral',
   Llama: 'meta',
   Perplexity: 'perplexity',
+  Solar: 'solar',
+  EXAONE: 'exaone',
 }
 
 function normalize(provider: string): string {

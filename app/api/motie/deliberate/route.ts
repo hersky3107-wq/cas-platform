@@ -19,6 +19,7 @@ import {
 } from '@/lib/motie/deep'
 import { generateJejuPreReport } from '@/lib/motie/pre-report'
 import { MOTIE_FLAGSHIP_BY_PROVIDER } from '@/lib/motie/models'
+import { isMotieLocalProvider, callMotieLocalProvider } from '@/lib/motie/local-providers'
 import {
   SYNOD_DEBATERS,
   PROVIDER_TO_BRAND,
@@ -168,6 +169,18 @@ async function callProvider(params: {
   maxCompletionTokens: number
   modelOverride?: string
 }): Promise<{ text: string | null; error?: string | null }> {
+  // MOTIE-LOCAL providers (call-capability only — not yet reachable via any
+  // seat/debater/vote array; see lib/motie/local-providers.ts). Everything
+  // below this check is the pre-existing runSingleAiProvider path, unchanged.
+  if (isMotieLocalProvider(params.provider)) {
+    return callMotieLocalProvider({
+      provider: params.provider,
+      systemPrompt: params.systemPrompt,
+      userPrompt: params.prompt,
+      maxCompletionTokens: params.maxCompletionTokens,
+    })
+  }
+
   const r = await runSingleAiProvider({
     supabase: supabaseAdmin,
     sessionId: null,

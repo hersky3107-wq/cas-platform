@@ -4,6 +4,12 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
 import { MOTIE_FLAGSHIP_BY_PROVIDER } from '@/lib/motie/models'
+import {
+  isMotieLocalProvider,
+  callMotieLocalProvider,
+  type MotieOpenProvider,
+} from '@/lib/motie/local-providers'
+import { buildMotieSupplementBlock, type MotieSupplement } from '@/lib/motie/supplements'
 import type { JejuCouncilMode } from '@/lib/motie/brief'
 import {
   KOREAN_ONLY_DIRECTIVE,
@@ -27,7 +33,7 @@ import {
  * JEJU open-ended (라이트) governance briefing — Mode A engine.
  *
  * Pipeline: snapshot → orchestrate (neutral lenses, 1 doubled angle) → shared
- * pre-report (briefing mode, caller-supplied) → 6 parallel single-pass analyses
+ * pre-report (briefing mode, caller-supplied) → 8 parallel single-pass analyses
  * (NO debate/vote/consensus) → Opus synthesis (추천안 + B·C 대안).
  *
  * Fully isolated from lib/jeju/synod-debate.ts and the deliberate route.
@@ -39,14 +45,22 @@ import {
 /** How many analytical angles get a second AI (importance-weighted doubling). */
 export const OPEN_BRIEF_DOUBLED_ANGLE_COUNT = 1
 
-/** Six reasoning brands for open-mode parallel analysis. Meta intentionally excluded. */
-export const OPEN_BRIEF_ANALYSTS: ExtendedAiProviderName[] = [
+/**
+ * Eight reasoning brands for open-mode parallel analysis: the 6 shared
+ * router.ts providers plus 'solar'/'exaone' (MOTIE-LOCAL, called via
+ * lib/motie/local-providers.ts — never routed through lib/ai/router.ts).
+ * Meta intentionally excluded. Consumers read `.length`, never a hardcoded
+ * count — see buildOpenOrchestratorSystemPrompt / fallbackOpenPlan below.
+ */
+export const OPEN_BRIEF_ANALYSTS: MotieOpenProvider[] = [
   'openai',
   'anthropic',
   'google',
   'xai',
   'deepseek',
   'mistral',
+  'solar',
+  'exaone',
 ]
 
 const VALID_ANALYSTS = new Set<string>(OPEN_BRIEF_ANALYSTS)
@@ -60,9 +74,11 @@ const PLAN_MAX_TOKENS = 3000
  * Per-analyst token cap. Target output is a fuller ~900–1300 Korean characters
  * (two sections). Completeness beats brevity — a full 1300자 is better than a
  * cut-off 700자 — so this gives generous headroom and analyses never truncate.
- * Raised 3000 → 4000 for B2G depth (flagship analysts, cost not a concern).
+ * Raised 3000 → 4000 → 8000 for B2G depth (all 8 seats, cost not a concern).
+ * deepseek-v4-pro thinking tokens also count against this budget, so 8000
+ * keeps final `content` from being squeezed short.
  */
-const ANALYSIS_MAX_TOKENS = 4000
+const ANALYSIS_MAX_TOKENS = 8000
 const SYNTHESIS_MAX_TOKENS = 5000
 
 /** Brand display names for orchestrator prompts (product names, not company-only). */
@@ -73,6 +89,8 @@ const BRAND_LABEL: Record<string, string> = {
   xai: 'Grok',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
+  solar: 'Solar (업스테이지)',
+  exaone: 'EXAONE (LG)',
 }
 
 function noDbSupabase(): SupabaseClient {
@@ -100,7 +118,7 @@ export type JejuOpenAnalysisRole = {
   mandate: string
   /** The specific sub-question this AI examines within its angle. */
   subQuestion: string
-  provider: ExtendedAiProviderName
+  provider: MotieOpenProvider
   /** True when this seat covers the importance-doubled primary angle. */
   isDoubledAngle: boolean
   /** Shared id linking the two AIs on the doubled angle (if any). */
@@ -123,7 +141,7 @@ export type JejuOpenMeetingPlan = {
 export type JejuOpenAnalysis = {
   roleId: string
   roleLabel: string
-  provider: ExtendedAiProviderName
+  provider: MotieOpenProvider
   subQuestion: string
   isDoubledAngle: boolean
   ok: boolean
@@ -152,11 +170,11 @@ function buildOpenOrchestratorSystemPrompt(councilMode: JejuCouncilMode): string
     '- 역할은 반드시 중립적 "분야·관점 분석"입니다. 찬성/반대/옹호/레드팀/비판자 같은 입장 배정 금지.',
     '- 각 AI는 자신의 전문 렌즈로 데이터를 읽고, 솔직하게 분석합니다. 8:0 찬성도 8:0 반대도 강요하지 않습니다.',
     '- Perplexity는 검색 전용이며 분석 좌석에 배정하지 마세요.',
-    `- 사용 가능한 6개 추론 AI(각각 정확히 1회만 배정):\n${brands}`,
+    `- 사용 가능한 ${OPEN_BRIEF_ANALYSTS.length}개 추론 AI(각각 정확히 1회만 배정):\n${brands}`,
     '',
     `중요도 가중 배치(고정 규칙): 이번 주제에서 가장 중요한 분석 각도 1개(primaryAngleId)를 고르고,`,
     `그 각도에 서로 다른 subQuestion을 가진 AI 2개를 배정하세요(약간 다른 하위 질문으로 깊이를 확보).`,
-    `나머지 4개 각도에는 AI 1개씩 배정합니다. 총 배정 수 = 6.`,
+    `나머지 ${OPEN_BRIEF_ANALYSTS.length - OPEN_BRIEF_DOUBLED_ANGLE_COUNT * 2}개 각도에는 AI 1개씩 배정합니다. 총 배정 수 = ${OPEN_BRIEF_ANALYSTS.length}.`,
     '',
     openRoleLabelHintLine(councilMode),
     '- mandate: 이 좌석이 무엇을, 왜 봐야 하는지 1~2문장.',
@@ -177,13 +195,13 @@ function buildOpenOrchestratorSystemPrompt(councilMode: JejuCouncilMode): string
     '      "roleLabel": "행정 한국어 역할명",',
     '      "mandate": "직무 설명",',
     '      "subQuestion": "이 AI의 구체적 분석 과제",',
-    '      "provider": "openai|anthropic|google|xai|deepseek|mistral 중 하나",',
+    `      "provider": "${OPEN_BRIEF_ANALYSTS.join('|')} 중 하나",`,
     '      "isDoubledAngle": true/false,',
     '      "doubledGroupId": "primary 각도 id 또는 null"',
     '    }',
     '  ]',
     '}',
-    'assignments는 정확히 6개. provider는 6개 브랜드 각 1회만.',
+    `assignments는 정확히 ${OPEN_BRIEF_ANALYSTS.length}개. provider는 ${OPEN_BRIEF_ANALYSTS.length}개 브랜드 각 1회만.`,
   ].join('\n')
 }
 
@@ -234,6 +252,20 @@ function fallbackOpenPlan(question: string, councilMode: JejuCouncilMode = 'warr
         subQuestion: '산업·물가에 미치는 직접적 영향은?',
         isDoubledAngle: false,
       },
+      {
+        roleId: 'domestic-industry-response',
+        roleLabel: '국내 산업·수요업계 대응',
+        mandate: '국내 수요업계·산업 현장의 대응 여력과 실행 가능성을 점검합니다.',
+        subQuestion: '국내 산업계는 이 사안에 실제로 대응할 여력이 있는가?',
+        isDoubledAngle: false,
+      },
+      {
+        roleId: 'local-government-response',
+        roleLabel: '지자체·행정 대응체계',
+        mandate: '지자체·관계기관의 행정 대응 체계와 실행 여건을 점검합니다.',
+        subQuestion: '지자체·행정 대응 체계는 충분히 준비되어 있는가?',
+        isDoubledAngle: false,
+      },
     ]
     const warroomRoles: JejuOpenAnalysisRole[] = warroomDefaults.map((d, i) => ({
       ...d,
@@ -243,7 +275,7 @@ function fallbackOpenPlan(question: string, councilMode: JejuCouncilMode = 'warr
       ok: true,
       question,
       roles: warroomRoles,
-      rationale: '오케스트레이터 JSON 파싱 실패 — 기본 6좌석(핵심 각도 2명 + 에너지 4분야 1명)으로 대체했습니다.',
+      rationale: `오케스트레이터 JSON 파싱 실패 — 기본 ${OPEN_BRIEF_ANALYSTS.length}좌석(핵심 각도 2명 + 에너지·대응 6분야 1명)으로 대체했습니다.`,
       primaryAngleId: 'primary',
       searchNeeded: true,
     }
@@ -293,6 +325,20 @@ function fallbackOpenPlan(question: string, councilMode: JejuCouncilMode = 'warr
       subQuestion: '외부 동향·타지역 사례가 시사하는 바는?',
       isDoubledAngle: false,
     },
+    {
+      roleId: 'export-support-programs',
+      roleLabel: '정부 지원·인증 제도',
+      mandate: '수출 지원사업·인증 등 국내 제도의 활용 가능성을 점검합니다.',
+      subQuestion: '이 사안과 관련해 활용 가능한 국내 지원·인증 제도는 무엇인가?',
+      isDoubledAngle: false,
+    },
+    {
+      roleId: 'domestic-supply-chain',
+      roleLabel: '국내 공급망·조달',
+      mandate: '원자재·부품 조달과 국내 생산·물류 여건을 점검합니다.',
+      subQuestion: '국내 공급망·조달 관점에서 실행 가능성은?',
+      isDoubledAngle: false,
+    },
   ]
   const roles: JejuOpenAnalysisRole[] = defaults.map((d, i) => ({
     ...d,
@@ -302,7 +348,7 @@ function fallbackOpenPlan(question: string, councilMode: JejuCouncilMode = 'warr
     ok: true,
     question,
     roles,
-    rationale: '오케스트레이터 JSON 파싱 실패 — 기본 6좌석(핵심 각도 2명 + 4분야 1명)으로 대체했습니다.',
+    rationale: `오케스트레이터 JSON 파싱 실패 — 기본 ${OPEN_BRIEF_ANALYSTS.length}좌석(핵심 각도 2명 + 6분야 1명)으로 대체했습니다.`,
     primaryAngleId: 'primary',
     searchNeeded: true,
   }
@@ -349,7 +395,7 @@ function parseOpenPlan(raw: string, question: string, councilMode: JejuCouncilMo
       roleLabel,
       mandate,
       subQuestion,
-      provider: provider as ExtendedAiProviderName,
+      provider: provider as MotieOpenProvider,
       isDoubledAngle: a.isDoubledAngle === true,
       doubledGroupId:
         typeof a.doubledGroupId === 'string' && a.doubledGroupId.trim()
@@ -365,7 +411,7 @@ function parseOpenPlan(raw: string, question: string, councilMode: JejuCouncilMo
       raw,
       rationale: rationale || fb.rationale,
       searchNeeded: searchNeeded || fb.searchNeeded,
-      error: `오케스트레이터가 ${roles.length}개 좌석만 배정 — 6개 필요, 기본 배치로 대체`,
+      error: `오케스트레이터가 ${roles.length}개 좌석만 배정 — ${OPEN_BRIEF_ANALYSTS.length}개 필요, 기본 배치로 대체`,
     }
   }
 
@@ -386,8 +432,9 @@ function parseOpenPlan(raw: string, question: string, councilMode: JejuCouncilMo
 }
 
 /**
- * Open-mode orchestrator: assigns 6 reasoning AIs to neutral analytical lenses.
- * Exactly one angle is importance-doubled (2 AIs, different subQuestions).
+ * Open-mode orchestrator: assigns OPEN_BRIEF_ANALYSTS.length (currently 8)
+ * reasoning AIs to neutral analytical lenses. Exactly one angle is
+ * importance-doubled (2 AIs, different subQuestions).
  * Does NOT modify planJejuMeeting in deep.ts.
  */
 export async function planJejuOpenMeeting(params: {
@@ -416,7 +463,7 @@ export async function planJejuOpenMeeting(params: {
     '[현재 확보된 실시간 데이터 현황]',
     params.availableDataSummary || '(가용 데이터 정보 없음)',
     '',
-    '위 질문과 데이터에 맞춰 6개 AI 분석 좌석을 배정하세요. 스키마에 맞는 순수 JSON만 출력하세요.',
+    `위 질문과 데이터에 맞춰 ${OPEN_BRIEF_ANALYSTS.length}개 AI 분석 좌석을 배정하세요. 스키마에 맞는 순수 JSON만 출력하세요.`,
   ].join('\n')
 
   let r
@@ -519,6 +566,8 @@ function buildAnalystUserPrompt(params: {
   context: string
   councilMode: JejuCouncilMode
   searches?: JejuExecutedSearch[]
+  /** User-submitted paste-text supplements — untrusted reference data only. */
+  supplements?: MotieSupplement[]
 }): string {
   return [
     `[${userQuestionLabel(params.councilMode)}]`,
@@ -533,6 +582,9 @@ function buildAnalystUserPrompt(params: {
     '',
     '[수집 데이터 원문]',
     params.context.trim(),
+    ...(params.supplements && params.supplements.length > 0
+      ? [buildMotieSupplementBlock(params.supplements)]
+      : []),
     '',
     '위 브리핑과 데이터를 바탕으로, 당신의 렌즈에서 한 번만 분석하세요.',
   ].join('\n')
@@ -545,6 +597,7 @@ async function runOneOpenAnalysis(params: {
   context: string
   councilMode: JejuCouncilMode
   searches?: JejuExecutedSearch[]
+  supplements?: MotieSupplement[]
 }): Promise<JejuOpenAnalysis> {
   const { role } = params
   const base: JejuOpenAnalysis = {
@@ -555,6 +608,30 @@ async function runOneOpenAnalysis(params: {
     isDoubledAngle: role.isDoubledAngle,
     ok: false,
     analysis: null,
+  }
+
+  // MOTIE-LOCAL providers (call-capability only — role.provider can never
+  // actually be 'solar'/'exaone' yet since OPEN_BRIEF_ANALYSTS/VALID_ANALYSTS
+  // are unchanged; this branch is wired for a later step). Everything below
+  // is the pre-existing runSingleAiProvider path, unchanged.
+  if (isMotieLocalProvider(role.provider)) {
+    try {
+      const { text, error } = await callMotieLocalProvider({
+        provider: role.provider,
+        systemPrompt: buildAnalystSystemPrompt(role, params.councilMode),
+        userPrompt: buildAnalystUserPrompt(params),
+        maxCompletionTokens: ANALYSIS_MAX_TOKENS,
+      })
+      if (error || !text?.trim()) {
+        return { ...base, error: error ?? '분석 응답이 비어 있습니다.' }
+      }
+      return { ...base, ok: true, analysis: text.trim() }
+    } catch (e: unknown) {
+      return {
+        ...base,
+        error: `분석 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+      }
+    }
   }
 
   try {
@@ -581,8 +658,9 @@ async function runOneOpenAnalysis(params: {
 }
 
 /**
- * Runs all 6 open-mode analysts IN PARALLEL — one single-pass analysis each.
- * No debate rounds, no rebuttal, no vote.
+ * Runs all OPEN_BRIEF_ANALYSTS.length (currently 8) open-mode analysts IN
+ * PARALLEL — one single-pass analysis each. No debate rounds, no rebuttal,
+ * no vote.
  */
 export async function runJejuOpenAnalyses(params: {
   question: string
@@ -592,6 +670,8 @@ export async function runJejuOpenAnalyses(params: {
   councilMode?: JejuCouncilMode
   /** Pre-report Perplexity results (현지 언론·여론·규제) shared with every analyst. */
   searches?: JejuExecutedSearch[]
+  /** User-submitted paste-text supplements — untrusted reference data only. */
+  supplements?: MotieSupplement[]
 }): Promise<JejuOpenAnalysis[]> {
   const councilMode: JejuCouncilMode = params.councilMode === 'warroom' ? 'warroom' : 'trade'
   const roles = params.plan.roles.length > 0 ? params.plan.roles : fallbackOpenPlan(params.question, councilMode).roles
@@ -604,6 +684,7 @@ export async function runJejuOpenAnalyses(params: {
         context: params.context,
         councilMode,
         searches: params.searches,
+        supplements: params.supplements,
       })
     )
   )
@@ -668,7 +749,7 @@ function buildSynthesisSystemPrompt(councilMode: JejuCouncilMode): string {
     '   - 3~5줄. 지금 무엇이 가장 중요한지, 한눈에.',
     '',
     '2) 분야별 현황',
-    '   - 6개 분석을 통합·정리. 데이터 출처·시점을 인라인으로 유지.',
+    `   - ${OPEN_BRIEF_ANALYSTS.length}개 분석을 통합·정리. 데이터 출처·시점을 인라인으로 유지.`,
     '',
     '3) 가장 시급한 쟁점 (우선순위)',
     '   - 무엇을 먼저 다뤄야 하는지, 근거와 함께 우선순위.',
@@ -690,6 +771,8 @@ function buildSynthesisUserPrompt(params: {
   analyses: JejuOpenAnalysis[]
   searches?: JejuExecutedSearch[]
   councilMode: JejuCouncilMode
+  /** User-submitted paste-text supplements — untrusted reference data only. */
+  supplements?: MotieSupplement[]
 }): string {
   const searchBlock =
     params.searches && params.searches.length > 0
@@ -711,8 +794,11 @@ function buildSynthesisUserPrompt(params: {
     '[Perplexity 검색 결과]',
     searchBlock,
     '',
-    '[6개 AI 병렬 분석]',
+    `[${OPEN_BRIEF_ANALYSTS.length}개 AI 병렬 분석]`,
     formatAnalysesBlock(params.analyses),
+    ...(params.supplements && params.supplements.length > 0
+      ? [buildMotieSupplementBlock(params.supplements)]
+      : []),
     '',
     '위 자료를 통합하여 5개 섹션 구조의 최종 브리핑을 작성하세요.',
   ].join('\n')
@@ -727,6 +813,9 @@ export async function synthesizeJejuOpenBrief(params: {
   analyses: JejuOpenAnalysis[]
   searches?: JejuExecutedSearch[]
   councilMode?: JejuCouncilMode
+  /** User-submitted paste-text supplements — untrusted reference data only. Reaches the
+   * FINAL synthesis (not just the parallel analysts) so the verdict also sees user material. */
+  supplements?: MotieSupplement[]
 }): Promise<JejuOpenBriefSynthesis> {
   const councilMode: JejuCouncilMode = params.councilMode === 'warroom' ? 'warroom' : 'trade'
   const question = params.question?.trim() ?? ''
