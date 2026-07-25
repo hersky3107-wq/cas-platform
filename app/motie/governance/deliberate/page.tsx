@@ -6,6 +6,8 @@ import { JejuThemeShell } from '@/components/motie/JejuThemeShell'
 import { useMotieMode } from '@/components/motie/mode-context'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { aiProductName, aiProductNameWithGloss } from '@/components/motie/aiProviderLabel'
+import { SupplementCard } from '@/app/motie/governance/_components/SupplementCard'
+import type { MotieSupplement } from '@/lib/motie/supplements'
 
 // ── Local types (shape-compatible with app/api/jeju/deliberate/route.ts) ──────
 
@@ -728,6 +730,17 @@ export function DeliberateSection() {
     'none' | 'open_ended' | 'unmeasurable' | 'high_consensus'
   >('none')
 
+  // ── 첨부·추가 자료 (선택) — paste + file-upload supplements ──
+  // Sent once with `start`; the route persists them in session state and injects
+  // them into every debater's prompt and the chair's case file.
+  const [supplements, setSupplements] = useState<MotieSupplement[]>([])
+  const addSupplement = useCallback((supplement: MotieSupplement) => {
+    setSupplements((prev) => [...prev, supplement])
+  }, [])
+  const removeSupplement = useCallback((index: number) => {
+    setSupplements((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
   const runningRef = useRef(false)
 
   // AX COUNCIL mode — read via ref so the retry helper always sends the latest.
@@ -826,7 +839,11 @@ export function DeliberateSection() {
 
       try {
         // ── start ────────────────────────────────────────────────────────────
-        const startRes = await postWithRetry({ action: 'start', question: q })
+        const startRes = await postWithRetry({
+          action: 'start',
+          question: q,
+          ...(supplements.length > 0 ? { supplements } : {}),
+        })
         if (!startRes) { runningRef.current = false; return }
         if (startRes.roles) setOrchestratorRoles(startRes.roles)
         if (startRes.debaters) setDebaters(startRes.debaters)
@@ -949,7 +966,7 @@ export function DeliberateSection() {
         runningRef.current = false
       }
     },
-    [question, postWithRetry, stop, vote]
+    [question, postWithRetry, stop, vote, supplements]
   )
 
   // ── Derived values ──────────────────────────────────────────────────────────
@@ -1016,6 +1033,29 @@ export function DeliberateSection() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* 첨부·추가 자료 (선택) — same card + same /api/motie/extract path as 개방형 */}
+      <div className="mb-6">
+        <Section
+          title="첨부·추가 자료 (선택)"
+          badge={
+            supplements.length > 0 ? (
+              <span className="rounded-md bg-jeju-accent/20 px-1.5 py-0.5 text-[10px] font-bold text-jeju-accent">
+                {supplements.length}
+              </span>
+            ) : undefined
+          }
+          defaultOpen={false}
+          t={t}
+        >
+          <SupplementCard
+            supplements={supplements}
+            onAdd={addSupplement}
+            onRemove={removeSupplement}
+            disabled={isRunning}
+          />
+        </Section>
       </div>
 
       {/* Running banner — prominent status while engine works */}

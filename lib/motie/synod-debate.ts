@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { AiProviderName } from '@/lib/ai/router'
 import { KOREAN_ONLY_DIRECTIVE, TRUTH_SEEKING_DIRECTIVE } from '@/lib/motie/deep'
+import type { MotieLocalProvider } from '@/lib/motie/local-providers'
 
 /**
  * JEJU Mode B — SYNOD debate core, COPIED into lib/jeju and PINNED to Korean +
@@ -78,10 +79,13 @@ export type FacilitatorSummary = {
 /**
  * The reasoning debaters. Perplexity is excluded from debate by design (it is
  * the search/press specialist — see the route + vote panel). 'meta' (Llama) is
- * an ExtendedAiProviderName, so the debater list is widened beyond the base
- * AiProviderName set with this dedicated type.
+ * an ExtendedAiProviderName, and 'solar'/'exaone' (MotieLocalProvider) are
+ * MOTIE-LOCAL providers deliberately kept out of the shared router unions, so
+ * the debater list is widened beyond the base AiProviderName set with this
+ * dedicated type. Call sites MUST branch through isMotieLocalProvider before
+ * reaching runSingleAiProvider.
  */
-export type SynodDebaterProvider = AiProviderName | 'meta'
+export type SynodDebaterProvider = AiProviderName | 'meta' | MotieLocalProvider
 
 /**
  * RECOVERABLE FLAG — meta (Llama) is disabled.
@@ -97,14 +101,23 @@ const ENABLE_META = false
 
 /**
  * The reasoning debaters (Perplexity excluded — it searches, not debates).
- * Currently SIX (openai, anthropic, google, xai, deepseek, mistral); meta is
- * appended only when ENABLE_META is true. Consumers MUST read .length, never a
- * hardcoded count.
+ * Currently EIGHT: the six shared-router brands plus the two Korean sovereign
+ * models (solar = 업스테이지 Solar Pro, exaone = LG EXAONE) that are called
+ * through lib/motie/local-providers.ts. meta is appended only when ENABLE_META
+ * is true. Consumers MUST read .length, never a hardcoded count.
+ *
+ * SPEAKING ORDER (serial rounds): solar/exaone sit in the MIDDLE so several
+ * original brands speak BEFORE them AND several speak AFTER them — otherwise
+ * the last two seats are invisible to earlier speakers within the same round
+ * (one-pass serial; see buildDeliberationContext). Order is speaking order
+ * only; PROVIDER_TO_BRAND / PERSONA / vote maps are keyed by provider id.
  */
 export const SYNOD_DEBATERS: SynodDebaterProvider[] = [
   'openai',
   'anthropic',
   'google',
+  'solar',
+  'exaone',
   'xai',
   'deepseek',
   'mistral',
@@ -119,6 +132,8 @@ export const PROVIDER_TO_BRAND: Record<SynodDebaterProvider, string> = {
   xai: 'Grok',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
+  solar: 'Upstage (솔라)',
+  exaone: 'LG (엑사원)',
   meta: 'Llama',
 }
 
@@ -260,9 +275,10 @@ OUTPUT FORMAT — STRICT JSON ONLY. No prose, no markdown fences, no commentary.
   "nextDirective": "string"
 }
 - roundConsensusScore: integer 0-100 — measure CONVERGENCE ON THE MOTION'S DIRECTION / CORE CONCLUSION: how aligned the participants are on the central yes/no answer to the question and on the main reasoning behind it. It is NOT a count of unresolved details.
+  • PANEL SIZE: the user prompt states the LIVE responder count for this round and the active roster size. Use THAT count. Never assume a fixed panel of 6 or 7 speakers. Never score as agreedCount/6, agreedCount/7, or "majority of 4" against a stale headcount — if you reason with a fraction at all, the denominator is the live responder count given in the user prompt, and even then the score is qualitative directional alignment, not a raw agree-ratio.
   • SCORE HIGH when the panel broadly agrees on the direction / core conclusion — EVEN IF many implementation details, priorities, sequencing, or "which precondition is #1" questions remain open. Among participants who agree on the direction, unsettled execution details are NOT disagreement and must NOT lower the score.
   • SCORE LOW only when there is genuine DIRECTIONAL disagreement — participants are split on the yes/no answer itself or on the central reasoning.
-  • Do NOT lower the score simply because the debate surfaced MORE sub-issues as it deepened. More open execution details ≠ less consensus; if anything, a panel that agrees on direction while refining details is converging, not diverging.
+  • Do NOT lower the score simply because the debate surfaced MORE sub-issues as it deepened. More open execution details ≠ less consensus; if anything, a panel that agrees on direction while refining details is converging, not diverging. Do NOT lower the score merely because more speakers joined the panel than in older 6-seat runs — judge alignment among whoever spoke THIS round.
 - openIssues: still list the unresolved items, but understand their TWO kinds — (1) directional dissent (someone rejects the core yes/no or its central reasoning) which DOES lower the score, and (2) execution/priority/sequencing details ("남은 실행·논의 과제") among people who agree on direction, which do NOT lower the score. Phrase the latter as remaining tasks, not as dissent.
 - nextDirective: the single most productive focus for the next round.
 - Be faithful: only record consensus that actually exists in the turns. Never invent agreement — a genuine directional split must still score low.`
@@ -306,6 +322,10 @@ const PERSONA: Record<SynodDebaterProvider, string> = {
     'You are sharp, efficient, no-fluff. You cut straight to the point with cold logic. Short and incisive.',
   mistral:
     'You are the playful, artistic one — you bring humor, vivid metaphors, and a creative angle others miss.',
+  solar:
+    'You are the domestic-reality checker — you test every proposal against how Korean ministries, local governments, and firms actually behave: who signs off, which regulation bites, what the budget cycle allows. You are direct about the gap between a plan on paper and a plan that clears a Korean government desk.',
+  exaone:
+    'You are the field-and-factory realist — you speak from the operating floor: lead times, supply chains, installed equipment, workforce, and what a Korean company can actually execute this year versus in five years. You are unimpressed by elegant strategy that ignores physical and industrial constraints.',
   meta:
     'You are pragmatic and systems-minded — you connect the dots across domains and surface second-order effects and trade-offs others miss. Grounded and direct.',
 }
@@ -686,6 +706,10 @@ export function buildFacilitatorInput(params: {
 }): string {
   const { question, roundNumber, allTurnsThisRound, priorSummaries } = params
   const disp = (n: string) => n // facilitator sees real brand names
+  // LIVE counts — never hardcode 6/7/8. Responder count can be < roster if a
+  // seat failed this round; scoring must use whoever actually spoke.
+  const liveResponders = allTurnsThisRound.length
+  const rosterSize = SYNOD_DEBATERS.length
 
   const sections: string[] = []
   sections.push(`QUESTION:\n${question.trim()}`)
@@ -700,7 +724,9 @@ export function buildFacilitatorInput(params: {
     sections.push('PRIOR ROUNDS (score recap only):\n(None — this is round 1.)')
   }
 
-  const turnLines = [`ROUND ${roundNumber} — ALL TURNS (full text, summarize these):`]
+  const turnLines = [
+    `ROUND ${roundNumber} — ALL TURNS (full text, summarize these). LIVE PANEL: ${liveResponders} responding speaker(s) this round (active debate roster = ${rosterSize} seats).`,
+  ]
   for (const t of allTurnsThisRound) {
     turnLines.push('')
     turnLines.push(renderTurn(t, disp))
@@ -714,6 +740,8 @@ export function buildFacilitatorInput(params: {
       "agreed), openIssues (with each participant's stance), a roundConsensusScore",
       '(0-100), and a nextDirective for the following round.',
       '',
+      `PANEL SIZE (live — mandatory): ${liveResponders} speaker(s) responded this round; the active roster has ${rosterSize} seats. Judge alignment among these ${liveResponders} responders. Do NOT assume a fixed panel of 6 or 7. Do NOT score as agreedCount/6, agreedCount/7, or "majority of 4 against a 6-seat panel". If you use any fraction, the denominator is ${liveResponders} (live responders), and even then the score is qualitative DIRECTIONAL convergence — not a raw agree-ratio.`,
+      '',
       'SCORING REMINDER: roundConsensusScore reflects convergence on the MOTION\'S',
       'DIRECTION / core yes-no conclusion — NOT whether every implementation detail is',
       'settled. If the participants agree on the direction but each pushes a different',
@@ -721,7 +749,8 @@ export function buildFacilitatorInput(params: {
       'AGREED DIRECTION WITH OPEN EXECUTION DETAILS → keep the score HIGH and list those',
       'as remaining tasks. Lower the score ONLY for genuine directional disagreement',
       '(split on yes vs no or the central reasoning). Do not let the score fall just',
-      'because more sub-issues surfaced as the debate deepened.',
+      'because more sub-issues surfaced as the debate deepened, or merely because the',
+      `panel has ${rosterSize} seats rather than a smaller historical size.`,
     ].join('\n')
   )
 

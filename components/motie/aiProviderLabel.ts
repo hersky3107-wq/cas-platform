@@ -14,14 +14,15 @@ const PRODUCT: Record<string, { name: string; gloss?: string }> = {
   mistral: { name: 'Mistral', gloss: '미스트랄' },
   perplexity: { name: 'Perplexity', gloss: '퍼플렉시티' },
   meta: { name: 'Llama', gloss: '라마' },
-  solar: { name: 'Solar', gloss: '업스테이지' },
-  exaone: { name: 'EXAONE', gloss: 'LG' },
+  solar: { name: 'Solar', gloss: '솔라' },
+  exaone: { name: 'EXAONE', gloss: '엑사원' },
 }
 
 /**
  * The canonical display label, format "개발사 영문 (제품 한글)".
  * meta is intentionally product-name-first — "Llama (메타)".
- * solar/exaone follow the same "English brand (gloss)" shape used by the roster.
+ * solar/exaone now follow the SAME "영문회사 (한글제품)" shape as the other 6
+ * (was previously product-first/wrong order — "Solar (업스테이지)" — fixed).
  */
 const LABEL: Record<string, string> = {
   openai: 'OpenAI (챗지피티)',
@@ -32,8 +33,8 @@ const LABEL: Record<string, string> = {
   mistral: 'Mistral (미스트랄)',
   meta: 'Llama (메타)',
   perplexity: 'Perplexity (퍼플렉시티)',
-  solar: 'Solar (업스테이지)',
-  exaone: 'EXAONE (LG)',
+  solar: 'Upstage (솔라)',
+  exaone: 'LG (엑사원)',
 }
 
 /**
@@ -49,6 +50,12 @@ const BRAND_ALIAS: Record<string, string> = {
   Mistral: 'mistral',
   Llama: 'meta',
   Perplexity: 'perplexity',
+  // Current brand tag emitted by PROVIDER_TO_BRAND / JEJU_VOTE_BRAND_LABEL /
+  // BRAND_LABEL — the unified "영문회사 (한글제품)" label.
+  'Upstage (솔라)': 'solar',
+  'LG (엑사원)': 'exaone',
+  // Legacy aliases kept so already-persisted sessions (turns/votes stored with
+  // the old bare-name tag before this label unification) still resolve.
   Solar: 'solar',
   EXAONE: 'exaone',
 }

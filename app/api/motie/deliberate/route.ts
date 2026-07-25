@@ -18,8 +18,17 @@ import {
   type JejuVoteResult,
 } from '@/lib/motie/deep'
 import { generateJejuPreReport } from '@/lib/motie/pre-report'
+import {
+  sanitizeMotieSupplements,
+  buildMotieSupplementBlock,
+  type MotieSupplement,
+} from '@/lib/motie/supplements'
 import { MOTIE_FLAGSHIP_BY_PROVIDER } from '@/lib/motie/models'
-import { isMotieLocalProvider, callMotieLocalProvider } from '@/lib/motie/local-providers'
+import {
+  isMotieLocalProvider,
+  callMotieLocalProvider,
+  type MotieProvider,
+} from '@/lib/motie/local-providers'
 import {
   SYNOD_DEBATERS,
   PROVIDER_TO_BRAND,
@@ -57,7 +66,10 @@ export const maxDuration = 300
 //
 // Chunked-action discipline (mirror of app/api/jeju/deep/route.ts): one POST
 // advances ONE stage so no single call exceeds ~250s. The per-round 'turn'
-// action runs the 6 debaters of ONE round only (serial flow), never all rounds.
+// action runs the SYNOD_DEBATERS of ONE round only (serial flow), never all
+// rounds. Budget note: the round is SERIAL by design (each debater must read the
+// prior speakers), so its wall-clock is the sum of 8 calls — exaone alone can
+// take ~80s (see MOTIE_LOCAL_PROVIDER_CONFIG). Watch this against maxDuration.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {
@@ -78,27 +90,46 @@ const TABLE = 'motie_deep_sessions'
 const OPENING_MAX_TOKENS = 1600
 const TURN_MAX_TOKENS = 1600
 /**
- * The facilitator emits a structured JSON summary of ALL 6 debaters' turns
+ * The facilitator emits a structured JSON summary of EVERY debater's turn
  * (consensusPoints + per-issue positions + nextDirective), in Korean. Korean +
  * JSON is token-heavy: at 1600 the JSON was truncated mid-output → unparseable →
  * the round scored as "unmeasurable" and the whole run died after round 1. A
- * 6-turn round needs ~3.7k chars complete; 4096 gives safe headroom.
+ * 6-turn round needed ~3.7k chars complete and 4096 covered it; the roster is
+ * now 8 seats (~33% more positions to summarize), so the cap is raised in
+ * proportion. Truncation here is a hard stage failure, so keep the headroom.
  */
-const FACILITATOR_MAX_TOKENS = 4096
+const FACILITATOR_MAX_TOKENS = 6000
 
 /** The facilitator is neutral (not a debater); a strong reasoning brand runs it. */
 const FACILITATOR_PROVIDER: ExtendedAiProviderName = 'anthropic'
 
 /** Reverse of PROVIDER_TO_BRAND, so a stored brand label maps back to a provider. */
-const BRAND_TO_PROVIDER: Record<string, ExtendedAiProviderName> = Object.fromEntries(
-  (Object.entries(PROVIDER_TO_BRAND) as [ExtendedAiProviderName, string][]).map(([p, b]) => [b, p])
-) as Record<string, ExtendedAiProviderName>
+const BRAND_TO_PROVIDER: Record<string, MotieProvider> = Object.fromEntries(
+  (Object.entries(PROVIDER_TO_BRAND) as [MotieProvider, string][]).map(([p, b]) => [b, p])
+) as Record<string, MotieProvider>
+
+/**
+ * Per-call flagship override, guarded for MOTIE-LOCAL providers: 'solar'/'exaone'
+ * have exactly one pinned model each inside lib/motie/local-providers.ts, so they
+ * must NOT be looked up in (or overridden by) the shared-router flagship map.
+ */
+function flagshipOverrideFor(provider: MotieProvider): string | undefined {
+  if (isMotieLocalProvider(provider)) return undefined
+  return MOTIE_FLAGSHIP_BY_PROVIDER[provider] ?? undefined
+}
 
 // ── Persisted Mode B state (opaque JSONB blob in motie_deep_sessions.state) ────
 type DeliberateState = {
   question: string
   /** AX COUNCIL mode — plumbed through; engine branching lands next step. */
   councilMode?: 'trade' | 'warroom'
+  /**
+   * User-submitted reference material (첨부·추가 자료). Optional and only ever
+   * written when the client sent something usable, so a run with no attachments
+   * persists byte-identical state. Injected into every debater's prompt and the
+   * chair's case file as provenance-fenced, untrusted DATA.
+   */
+  supplements?: MotieSupplement[]
   // beat 1 (start)
   snapshot?: JejuSnapshot
   context?: string
@@ -163,15 +194,16 @@ async function saveSession(
 
 // ── AI call wrapper — sessionId/userId null ⇒ router does NO DB writes. ────────
 async function callProvider(params: {
-  provider: ExtendedAiProviderName
+  provider: MotieProvider
   systemPrompt: string
   prompt: string
   maxCompletionTokens: number
   modelOverride?: string
 }): Promise<{ text: string | null; error?: string | null }> {
-  // MOTIE-LOCAL providers (call-capability only — not yet reachable via any
-  // seat/debater/vote array; see lib/motie/local-providers.ts). Everything
-  // below this check is the pre-existing runSingleAiProvider path, unchanged.
+  // MOTIE-LOCAL providers ('solar'/'exaone' — now live SYNOD debaters). Their
+  // endpoint/model/thinking-off handling lives in lib/motie/local-providers.ts.
+  // Everything below this check is the pre-existing runSingleAiProvider path,
+  // unchanged for the six shared-router brands.
   if (isMotieLocalProvider(params.provider)) {
     return callMotieLocalProvider({
       provider: params.provider,
@@ -211,6 +243,17 @@ function roleForProvider(
 function reportPreamble(report: string | null | undefined): string {
   if (!report || !report.trim()) return ''
   return ['[사전 분석 리포트 — 토론 전 반드시 숙지할 기초 자료]', report.trim(), '', '---', ''].join('\n')
+}
+
+/**
+ * The 첨부·추가 자료 block for a debater's USER prompt — the SAME
+ * provenance-fenced rendering the open-brief analysts get, so user material is
+ * treated identically in both flows (reference data, never instructions).
+ * Returns '' when there are no supplements, which the prompt assembly filters
+ * out, keeping a no-attachment run's prompts unchanged.
+ */
+function supplementPreamble(supplements: MotieSupplement[] | undefined): string {
+  return buildMotieSupplementBlock(supplements).trim()
 }
 
 /** Clamp a model-supplied consensus score to 0–100, else mark unmeasurable. */
@@ -377,6 +420,9 @@ export async function POST(req: Request): Promise<Response> {
         typeof body.orchestratorProvider === 'string' ? body.orchestratorProvider : undefined
       const councilMode: 'trade' | 'warroom' =
         body.councilMode === 'warroom' ? 'warroom' : 'trade'
+      // Malformed entries are dropped (never a 400) and the result is undefined
+      // when nothing usable arrived — see sanitizeMotieSupplements.
+      const supplements = sanitizeMotieSupplements(body.supplements)
 
       const snapshot = await gatherJejuSnapshot(councilMode)
       const context = buildBriefingContext(snapshot, councilMode)
@@ -384,7 +430,7 @@ export async function POST(req: Request): Promise<Response> {
       const plan = await planJejuMeeting({
         question,
         availableDataSummary,
-        // Mode B: pin a 1:1 governance role to each of the 6 SYNOD debate brands,
+        // Mode B: pin a 1:1 governance role to each SYNOD debate brand (8 today),
         // so every debater argues AS a professional expert.
         debateBrands: [...SYNOD_DEBATERS],
         ...(orchestratorProvider ? { provider: orchestratorProvider } : {}),
@@ -393,6 +439,7 @@ export async function POST(req: Request): Promise<Response> {
       const state: DeliberateState = {
         question,
         councilMode,
+        ...(supplements ? { supplements } : {}),
         snapshot,
         context,
         plan,
@@ -432,7 +479,7 @@ export async function POST(req: Request): Promise<Response> {
         // Mirror the forced state value so the client badge matches engine behavior.
         questionType: state.questionType,
         // The orchestrator's roster (for transparency); Mode B debate itself runs
-        // the 6 SYNOD reasoning brands below, not these analytic seats.
+        // the SYNOD reasoning brands below, not these analytic seats.
         roles: plan.roles.map((r) => ({
           roleId: r.roleId,
           roleLabel: r.roleLabel,
@@ -487,10 +534,11 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  // ── ACTION: open — beat 3 (round 1: 6 debaters give independent opinions). ───
+  // ── ACTION: open — beat 3 (round 1: all debaters give independent opinions). ─
   if (action === 'open') {
     try {
       const preamble = reportPreamble(state.report)
+      const supplementBlock = supplementPreamble(state.supplements)
       const results = await Promise.all(
         SYNOD_DEBATERS.map(async (provider) => {
           const userPrompt = [
@@ -499,13 +547,16 @@ export async function POST(req: Request): Promise<Response> {
             state.question,
             '',
             '위 안건에 대해, 사전 분석 리포트를 근거로 당신의 독립적이고 명확한 의견을 제시하세요.',
+            // Appended ONLY when the user attached material, so a run without
+            // attachments produces the exact prompt it did before.
+            ...(supplementBlock ? ['', supplementBlock] : []),
           ].join('\n')
           const { text } = await callProvider({
             provider,
             systemPrompt: openingSystemPrompt(provider, roleForProvider(state.plan, provider)),
             prompt: userPrompt,
             maxCompletionTokens: OPENING_MAX_TOKENS,
-            modelOverride: MOTIE_FLAGSHIP_BY_PROVIDER[provider] ?? undefined,
+            modelOverride: flagshipOverrideFor(provider),
           })
           return { provider, text }
         })
@@ -541,7 +592,7 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  // ── ACTION: turn — beat 4 (ONE debate round, 6 debaters SERIAL so each reacts).
+  // ── ACTION: turn — beat 4 (ONE debate round, all debaters SERIAL so each reacts).
   if (action === 'turn') {
     try {
       const summaries = state.summaries ?? []
@@ -562,6 +613,9 @@ export async function POST(req: Request): Promise<Response> {
         ? null
         : SYNOD_DEBATERS[roundNumber % SYNOD_DEBATERS.length]!
 
+      // '' when nothing was attached, and the prompt assembly drops empty parts.
+      const supplementBlock = supplementPreamble(state.supplements)
+
       const currentRoundTurns: SynodTurn[] = []
       for (const provider of SYNOD_DEBATERS) {
         const isRedTeam = redTeamProvider !== null && provider === redTeamProvider
@@ -574,13 +628,15 @@ export async function POST(req: Request): Promise<Response> {
           currentRoundTurns,
           anonymize: false,
         })
-        const userPrompt = [reportPreamble(state.report), ctx.text].filter((s) => s !== '').join('\n')
+        const userPrompt = [reportPreamble(state.report), ctx.text, supplementBlock]
+          .filter((s) => s !== '')
+          .join('\n')
         const { text } = await callProvider({
           provider,
           systemPrompt: turnSystemPrompt(provider, isRedTeam, roundNumber, roleForProvider(state.plan, provider)),
           prompt: userPrompt,
           maxCompletionTokens: TURN_MAX_TOKENS,
-          modelOverride: MOTIE_FLAGSHIP_BY_PROVIDER[provider] ?? undefined,
+          modelOverride: flagshipOverrideFor(provider),
         })
         if (!text || !text.trim()) continue
         const a = parseActionTag(text)
@@ -811,6 +867,7 @@ export async function POST(req: Request): Promise<Response> {
         brief,
         vote,
         councilMode: state.councilMode,
+        ...(state.supplements ? { supplements: state.supplements } : {}),
       })
 
       state.verdict = verdict

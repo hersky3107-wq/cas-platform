@@ -89,8 +89,8 @@ const BRAND_LABEL: Record<string, string> = {
   xai: 'Grok',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
-  solar: 'Solar (업스테이지)',
-  exaone: 'EXAONE (LG)',
+  solar: 'Upstage (솔라)',
+  exaone: 'LG (엑사원)',
 }
 
 function noDbSupabase(): SupabaseClient {

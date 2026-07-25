@@ -26,13 +26,17 @@ import type { ExtendedAiProviderName } from '@/lib/ai/router'
 export type MotieLocalProvider = 'solar' | 'exaone'
 
 /**
- * Widened provider id for MOTIE's PARALLEL open-brief path ONLY (the serial
- * SYNOD debate / vote panel / persona maps are a separate later step and stay
- * on plain `ExtendedAiProviderName` until then). This union is local to
- * lib/motie/ — lib/ai/router.ts's `ExtendedAiProviderName` itself is never
- * widened, so nothing outside motie (jeju's own copies included) is affected.
+ * Widened provider id used across MOTIE's own paths — the PARALLEL open-brief
+ * analysts AND the SERIAL SYNOD debate / vote panel / persona maps. This union
+ * is local to lib/motie/: lib/ai/router.ts's `ExtendedAiProviderName` itself is
+ * never widened, so nothing outside motie (jeju's own copies included) is
+ * affected. Any call site that receives a MotieProvider must branch through
+ * `isMotieLocalProvider` before reaching runSingleAiProvider.
  */
-export type MotieOpenProvider = ExtendedAiProviderName | MotieLocalProvider
+export type MotieProvider = ExtendedAiProviderName | MotieLocalProvider
+
+/** Original name of {@link MotieProvider}, kept for the open-brief call sites. */
+export type MotieOpenProvider = MotieProvider
 
 type MotieLocalProviderConfig = {
   baseUrl: string
