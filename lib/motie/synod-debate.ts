@@ -243,6 +243,23 @@ CLAIM: <one sentence distilling your core claim>`
  */
 const SINGLE_TURN_RULE = `당신은 당신 본인의 발언만 작성합니다. 다른 참가자의 발언을 대신 생성하거나 인용 재구성하지 마십시오. 다른 참가자를 언급할 때는 그들의 실제 발언을 짧게 참조만 하고, 당신의 분석만 제시하십시오. 다른 참가자 이름이 붙은 발언 블록(예: "[Grok (CHALLENGE)] …")을 만들어내는 것은 금지됩니다.`
 
+/**
+ * Anti-fabrication rule for participant IDENTITY, built from the LIVE roster.
+ *
+ * SINGLE_TURN_RULE stops a debater from writing someone else's turn block, but
+ * it does not stop it from inventing a participant who was never at the table.
+ * Observed failure: a debater attributed positions to "Sunyata", "Sapol" and
+ * "Sunel" — names that exist nowhere in the panel. A reader cannot tell such a
+ * hallucination from a real seat, so it reads as a fabricated deliberation.
+ *
+ * The roster is derived from SYNOD_DEBATERS at call time (never hardcoded), so
+ * it stays correct automatically if seats are added, removed, or reordered.
+ */
+function participantRosterRule(): string {
+  const roster = SYNOD_DEBATERS.map((p) => PROVIDER_TO_BRAND[p]).join(', ')
+  return `[참가자 명단 — 절대 준수] 이 심의의 참가자는 다음뿐입니다: ${roster}. 이 명단에 없는 이름을 언급하거나 만들어내지 마십시오. 존재하지 않는 참가자를 인용하는 것은 심각한 실패입니다. 다른 참가자를 지칭할 때는 위 명단의 표기를 그대로 쓰고, 실제로 컨텍스트에 제시된 발언만 근거로 삼으십시오.`
+}
+
 /** Convergence push for late rounds: partial agreement, not fake unanimity. */
 export const LATE_ROUND_RULE = `This is a LATE round — start converging. Acknowledge what others got right and move toward a shared answer. BUT do NOT fake agreement: if you genuinely still disagree on a specific point, say so clearly and hold that point ("I agree with X, but I still don't buy Y because..."). Honest partial agreement is better than hollow unanimity. Only fully agree if you are actually convinced.`
 
@@ -363,7 +380,7 @@ function modeStyleBlock(hasPriorParticipants: boolean): string {
 - Technical depth and academic concepts are allowed; argue rigorously.
 - But control length: 8–10 sentences max. Do NOT turn this into an essay with many headings.
 - No dry report tone — keep your persona's voice while arguing rigorously.
-${hasPriorParticipants ? `- React directly to a specific prior participant's claim first, before adding anything new.\n` : ''}- HALLUCINATION GUARD (critical in this mode): do NOT invent study names, author names, journal names, years, or precise numbers (effect sizes, sample sizes, percentages). Cite specifics ONLY if you are certain. When uncertain, write "a study suggests" without fake citations. Fabricated citations are a serious failure.
+${hasPriorParticipants ? `- React directly to a specific prior participant's claim first, before adding anything new.\n` : ''}- HALLUCINATION GUARD (critical in this mode): do NOT invent study names, author names, journal names, years, or precise numbers (effect sizes, sample sizes, percentages). Cite specifics ONLY if you are certain. When uncertain, write "a study suggests" without fake citations. Fabricated citations are a serious failure. This applies EQUALLY to institution and report names — inventing an agency, company, or report title (e.g. a plausible-sounding "OO Petro 2025 보고서", "OOGC 정기 보고서") is the same class of failure as a fabricated study citation; name a source only if it genuinely exists.
 - 구체 예산 규모·기간·수치를 단정하지 마십시오. 출처 없는 숫자는 "[추정]"으로 표기하거나 "상당 규모"처럼 정성적으로 표현하고, 검색 결과·공공데이터에 실제 근거가 있을 때만 구체 수치를 제시하십시오.`
 }
 
@@ -410,6 +427,7 @@ Rules:
 - Take a clear position. Hedging on every point is a failure.
 - Respond in the same language as the question.
 - Keep it focused: your strongest reasoning only, no filler.
+${participantRosterRule()}
 
 ${voiceRules(false)}
 
@@ -451,6 +469,7 @@ Rules:
 - Target the reasoning on its merits — evidence, logic, blind spots — never the style, and never a conclusion you feel you "should" reach.
 - Respond in the same language as the question.
 ${SINGLE_TURN_RULE}
+${participantRosterRule()}
 ${lateBlock}
 ${voiceRules(true)}
 
@@ -476,6 +495,7 @@ You MUST begin your response with exactly one line declaring your move:
 Decide 찬성/반대/유보 honestly from the data and your domain — do not perform a side. Be STUBBORN about your own reasoning: do not abandon a position you previously took unless the context contains a genuinely stronger argument — and if you do concede, name exactly which argument changed your mind. Drifting toward the majority without cause is a failure; so is clinging to a position the evidence has refuted.
 Respond in the same language as the question.
 ${SINGLE_TURN_RULE}
+${participantRosterRule()}
 ${lateBlock}
 ${voiceRules(true)}
 

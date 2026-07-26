@@ -103,10 +103,20 @@ const FACILITATOR_MAX_TOKENS = 6000
 /** The facilitator is neutral (not a debater); a strong reasoning brand runs it. */
 const FACILITATOR_PROVIDER: ExtendedAiProviderName = 'anthropic'
 
-/** Reverse of PROVIDER_TO_BRAND, so a stored brand label maps back to a provider. */
-const BRAND_TO_PROVIDER: Record<string, MotieProvider> = Object.fromEntries(
-  (Object.entries(PROVIDER_TO_BRAND) as [MotieProvider, string][]).map(([p, b]) => [b, p])
-) as Record<string, MotieProvider>
+/**
+ * Reverse of PROVIDER_TO_BRAND, so a stored brand label maps back to a
+ * provider. Legacy aliases below cover sessions started before the label
+ * unification (which stored the bare brand tag). Any brand NOT found here is
+ * resolved by resolveBrandToProvider() to null, never to a guessed provider —
+ * see that function's doc for why a silent default would be unsafe.
+ */
+const BRAND_TO_PROVIDER: Record<string, MotieProvider> = {
+  ...(Object.fromEntries(
+    (Object.entries(PROVIDER_TO_BRAND) as [MotieProvider, string][]).map(([p, b]) => [b, p])
+  ) as Record<string, MotieProvider>),
+  Solar: 'solar',
+  EXAONE: 'exaone',
+}
 
 /**
  * Per-call flagship override, guarded for MOTIE-LOCAL providers: 'solar'/'exaone'
@@ -319,6 +329,31 @@ function parseFacilitatorSummary(raw: string, roundNumber: number): FacilitatorS
 
 // ── SYNOD debate state → JEJU chair input adapters (glue, not engine logic) ────
 
+/**
+ * Resolves a stored SYNOD brand tag (e.g. 'ChatGPT', legacy 'Solar') to its
+ * MotieProvider. Returns null — NEVER a guessed/default provider — when the
+ * brand is unrecognized, and warns so the mismatch is visible in logs.
+ *
+ * Rationale (do not "fix" this by adding a fallback provider): the resolved
+ * value is later used to attribute a debate turn to a voter as THEIR OWN
+ * record in the ballot prompt (buildVoterTranscript in deep.ts). Defaulting
+ * an unmatched brand to some provider would silently inject one AI's
+ * statements into a DIFFERENT AI's own-record context — that is strictly
+ * worse than showing that voter no record at all, which is what returning
+ * null achieves (the turn's `provider` field ends up undefined and is
+ * excluded from every voter's transcript, see JejuDeliberationTurn's doc).
+ */
+function resolveBrandToProvider(brand: string): MotieProvider | null {
+  const resolved = BRAND_TO_PROVIDER[brand]
+  if (!resolved) {
+    console.warn(
+      `[motie/deliberate] Unrecognized debate brand "${brand}" — cannot attribute this turn to a known provider. It will be excluded from every voter's own-record ballot context (fail-safe, not defaulted).`
+    )
+    return null
+  }
+  return resolved
+}
+
 /** Maps the SYNOD turns + facilitator summaries into a JEJU JejuDeliberation. */
 function buildModeBDeliberation(
   turns: SynodTurn[],
@@ -328,16 +363,25 @@ function buildModeBDeliberation(
   const rounds: JejuRoundResult[] = summaries.map((s) => {
     const roundTurns: JejuDeliberationTurn[] = turns
       .filter((t) => t.roundNumber === s.roundNumber && t.content.trim() !== '')
-      .map((t) => ({
-        roleId: BRAND_TO_PROVIDER[t.aiName] ?? t.aiName,
-        roleLabel: t.aiName,
-        provider: BRAND_TO_PROVIDER[t.aiName] ?? 'anthropic',
-        isRedTeam: t.isRedTeam === true,
-        ok: true,
-        position: t.content.trim(),
-        concedes: null,
-        holds: null,
-      }))
+      .map((t) => {
+        const resolvedProvider = resolveBrandToProvider(t.aiName)
+        return {
+          roleId: resolvedProvider ?? t.aiName,
+          roleLabel: t.aiName,
+          // Omitted (not defaulted) when unresolved — see resolveBrandToProvider.
+          ...(resolvedProvider ? { provider: resolvedProvider } : {}),
+          isRedTeam: t.isRedTeam === true,
+          ok: true,
+          position: t.content.trim(),
+          concedes: null,
+          holds: null,
+          // Carried so the ballot can show each voter its OWN record verbatim
+          // (buildVoterTranscript in deep.ts). Dropping them here would leave the
+          // vote's stance-consistency rule with nothing to check against.
+          ...(t.actionTag ? { actionTag: t.actionTag } : {}),
+          ...(t.claim ? { claim: t.claim } : {}),
+        }
+      })
     return {
       roundNumber: s.roundNumber,
       turns: roundTurns,

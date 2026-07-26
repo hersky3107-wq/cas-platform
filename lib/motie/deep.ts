@@ -1926,7 +1926,20 @@ const CONSENSUS_SCORE_UNAVAILABLE = -1
 export type JejuDeliberationTurn = {
   roleId: string
   roleLabel: string
-  provider: MotieProvider
+  /**
+   * OPTIONAL by design: the in-process deliberation engine always knows the
+   * real provider, but the serial 찬반형 adapter (buildModeBDeliberation in
+   * the deliberate route) resolves it from a stored brand-name string and
+   * that lookup can fail (e.g. an old session's pre-label-unification brand
+   * tag it doesn't recognize). Injecting one AI's statements into ANOTHER
+   * voter's own-record context would be worse than showing that voter no
+   * record at all — so an unresolved brand must produce `undefined` here,
+   * NEVER a guessed/default provider. buildVoterTranscript below relies on
+   * this: `turn.provider !== provider` is true whenever provider is
+   * undefined, so an unattributed turn is silently excluded from EVERY
+   * voter's transcript, not misattributed to any of them.
+   */
+  provider?: MotieProvider
   isRedTeam: boolean
   ok: boolean
   /** Their updated position THIS round. */
@@ -1935,6 +1948,14 @@ export type JejuDeliberationTurn = {
   concedes: string | null
   /** What they still contest, and why. */
   holds: string | null
+  /**
+   * SYNOD action tag for this turn ('AGREE' | 'CHALLENGE' | 'SUPPLEMENT' |
+   * 'REFRAME'). Only the serial 찬반형 flow produces it; optional so the
+   * in-process deliberation engine (which has no action tags) is unaffected.
+   */
+  actionTag?: string
+  /** The speaker's own one-sentence CLAIM line, when the turn carried one. */
+  claim?: string
   error?: string
 }
 
@@ -3567,8 +3588,10 @@ function buildVoteUserPrompt(params: {
   question: string
   proposition: string
   unresolvedIssues?: string | null
+  /** THIS voter's own turns (see buildVoterTranscript). Omitted → prompt unchanged. */
+  ownTranscript?: string | null
 }): string {
-  const { mode, question, proposition, unresolvedIssues } = params
+  const { mode, question, proposition, unresolvedIssues, ownTranscript } = params
 
   const parts: string[] =
     mode === 'motion'
@@ -3593,6 +3616,12 @@ function buildVoteUserPrompt(params: {
     )
   }
 
+  // The voter's own record, so "당신의 토론 기록과 일치하게 표결하십시오" refers to
+  // material actually in context rather than to unavailable memory.
+  if (ownTranscript && ownTranscript.trim() !== '') {
+    parts.push('', ownTranscript.trim())
+  }
+
   parts.push(
     '',
     '# 당신의 임무',
@@ -3609,6 +3638,94 @@ function buildVoteUserPrompt(params: {
 function formatContestedForVote(contestedPoints: string[]): string | null {
   if (contestedPoints.length === 0) return null
   return contestedPoints.map((p) => `• ${p}`).join('\n')
+}
+
+/**
+ * Per-voter transcript budget (characters of turn BODY text, per voter).
+ *
+ * WHY THIS EXISTS: the ballot system prompt orders each panelist to vote
+ * "당신 자신의 토론 기록대로" — but a ballot is a FRESH call that carries no
+ * debate history, so without this the model is asked to recall a stance it
+ * cannot see. Each voter therefore gets ITS OWN turns injected.
+ *
+ * The whole panel votes in parallel, so the budget is deliberately tight. A
+ * round is NEVER dropped: the budget is split across however many turns the
+ * voter has, and long bodies are truncated instead.
+ */
+const VOTE_TRANSCRIPT_MAX_CHARS = 2800
+
+/** Floor per turn, so a long debate still leaves each round legible. */
+const VOTE_TRANSCRIPT_MIN_TURN_CHARS = 320
+
+/** Truncates one turn body to `budget`, marking the cut so nothing reads as complete. */
+function truncateTurnBody(body: string, budget: number): string {
+  if (body.length <= budget) return body
+  return `${body.slice(0, budget).trimEnd()} …(이하 생략)`
+}
+
+/**
+ * Renders ONE voter's own statements from the deliberation, in round order,
+ * with its ACTION tag and CLAIM line when present.
+ *
+ * Returns null when this provider has no ATTRIBUTABLE turns. Two distinct
+ * cases fall into this bucket, both intentional:
+ *   1) Perplexity — search-only, never debates. Its prompt then stays as it
+ *      was, and the system prompt's existing instruction (vote from your
+ *      collected search/press findings, do not claim to have argued) still
+ *      governs it.
+ *   2) FAIL-SAFE degradation — a turn whose `provider` came back `undefined`
+ *      (the route's brand→provider lookup didn't recognize it) is excluded
+ *      here via `turn.provider !== provider`, since `undefined` never
+ *      strictly-equals any real provider string. Such a turn is therefore
+ *      invisible to EVERY voter's transcript, not misattributed to any of
+ *      them. If that exclusion drains a voter down to zero turns, this
+ *      function returns null exactly as it would for a genuine no-turns
+ *      case, and the caller falls back to the pre-fix prompt (no own-record
+ *      section) for that voter only — silent misattribution must be
+ *      impossible, and showing no record beats showing the WRONG one.
+ */
+function buildVoterTranscript(
+  deliberation: JejuDeliberation | undefined,
+  provider: MotieProvider
+): string | null {
+  if (!deliberation || deliberation.rounds.length === 0) return null
+
+  const own: { roundNumber: number; turn: JejuDeliberationTurn }[] = []
+  const ordered = [...deliberation.rounds].sort((a, b) => a.roundNumber - b.roundNumber)
+  for (const round of ordered) {
+    for (const turn of round.turns) {
+      // turn.provider is undefined for any turn the route couldn't attribute
+      // to a real brand — this comparison is false for it against every
+      // provider, so it never lands in anyone's transcript. See the type's
+      // doc comment on JejuDeliberationTurn.provider for the full rationale.
+      if (turn.provider !== provider || !turn.ok) continue
+      const hasBody = (turn.position ?? '').trim() !== ''
+      const hasClaim = (turn.claim ?? '').trim() !== ''
+      if (!hasBody && !hasClaim) continue
+      own.push({ roundNumber: round.roundNumber, turn })
+    }
+  }
+  if (own.length === 0) return null
+
+  // Split the budget across the voter's turns so every round survives.
+  const perTurn = Math.max(
+    VOTE_TRANSCRIPT_MIN_TURN_CHARS,
+    Math.floor(VOTE_TRANSCRIPT_MAX_CHARS / own.length)
+  )
+
+  const lines: string[] = ['# 당신이 이 심의에서 실제로 한 발언 (라운드 순)']
+  for (const { roundNumber, turn } of own) {
+    const tag = turn.actionTag ? ` (ACTION: ${turn.actionTag})` : ''
+    const stressTester = turn.isRedTeam ? ' [이 라운드 검증 반론 담당]' : ''
+    lines.push('', `[라운드 ${roundNumber}]${tag}${stressTester}`)
+    const claim = (turn.claim ?? '').trim()
+    if (claim) lines.push(`핵심 주장: ${claim}`)
+    const body = (turn.position ?? '').trim()
+    if (body) lines.push(truncateTurnBody(body, perTurn))
+  }
+  lines.push('', '위 발언이 당신의 토론 기록입니다. 이 기록과 일치하게 표결하십시오.')
+
+  return lines.join('\n')
 }
 
 /** Casts ONE provider's vote on the given proposition. Never throws. */
@@ -3687,14 +3804,20 @@ function emptyVoteResult(summary: string): JejuVoteResult {
 
 /**
  * Shared ballot engine: runs EVERY JEJU_VOTE_PANEL provider IN PARALLEL on a
- * prepared system+user prompt, then tallies. The tally is derived purely from
- * the returned ballots (array lengths), so it scales with the panel size with no
- * hardcoded divisor. Abstain never tips the outcome — only 찬성 vs 반대 do.
+ * shared system prompt and a PER-VOTER user prompt, then tallies. The user
+ * prompt is built per provider so each panelist can be shown its OWN debate
+ * record; callers with nothing voter-specific simply ignore the argument.
+ * The tally is derived purely from the returned ballots (array lengths), so it
+ * scales with the panel size with no hardcoded divisor. Abstain never tips the
+ * outcome — only 찬성 vs 반대 do.
  * ok = at least one parseable vote landed. Never throws.
  */
-async function runPanelBallot(systemPrompt: string, userPrompt: string): Promise<JejuVoteResult> {
+async function runPanelBallot(
+  systemPrompt: string,
+  userPromptFor: (provider: MotieProvider) => string
+): Promise<JejuVoteResult> {
   const settled = await Promise.allSettled(
-    JEJU_VOTE_PANEL.map((p) => runOneVote(p, systemPrompt, userPrompt))
+    JEJU_VOTE_PANEL.map((p) => runOneVote(p, systemPrompt, userPromptFor(p)))
   )
 
   const votes: JejuVote[] = settled.map((s, i) => {
@@ -3784,6 +3907,8 @@ export async function runJejuVote(params: {
   }
 
   const systemPrompt = buildVoteSystemPrompt('verdict', councilMode)
+  // No deliberation is passed to this variant, so every voter gets the same
+  // prompt exactly as before.
   const userPrompt = buildVoteUserPrompt({
     mode: 'verdict',
     question,
@@ -3791,7 +3916,7 @@ export async function runJejuVote(params: {
     unresolvedIssues: minorityReport,
   })
 
-  return runPanelBallot(systemPrompt, userPrompt)
+  return runPanelBallot(systemPrompt, () => userPrompt)
 }
 
 /**
@@ -3813,14 +3938,21 @@ export async function runJejuMotionVote(params: {
   }
 
   const systemPrompt = buildVoteSystemPrompt('motion', councilMode)
-  const userPrompt = buildVoteUserPrompt({
-    mode: 'motion',
-    question,
-    proposition: question,
-    unresolvedIssues: formatContestedForVote(params.deliberation.contestedPoints),
-  })
+  const unresolvedIssues = formatContestedForVote(params.deliberation.contestedPoints)
 
-  return runPanelBallot(systemPrompt, userPrompt)
+  // PER-VOTER prompt: identical shared content + that provider's own turns, so
+  // the stance-consistency rule in the system prompt has real material to check
+  // against. A provider with no turns (Perplexity) gets the shared content only.
+  const userPromptFor = (provider: MotieProvider): string =>
+    buildVoteUserPrompt({
+      mode: 'motion',
+      question,
+      proposition: question,
+      unresolvedIssues,
+      ownTranscript: buildVoterTranscript(params.deliberation, provider),
+    })
+
+  return runPanelBallot(systemPrompt, userPromptFor)
 }
 
 /** The full DEEP result plus the closing ballot on the chair's verdict. */
