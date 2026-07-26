@@ -50,13 +50,17 @@ const BRAND_ALIAS: Record<string, string> = {
   Mistral: 'mistral',
   Llama: 'meta',
   Perplexity: 'perplexity',
-  // Current brand tag emitted by PROVIDER_TO_BRAND / JEJU_VOTE_BRAND_LABEL /
-  // BRAND_LABEL — the unified "영문회사 (한글제품)" label.
+  // In-debate address names (PROVIDER_TO_BRAND) are bare PRODUCT names ('Solar',
+  // 'EXAONE'), so the debate-turn tag differs from the display label. Aliasing
+  // every historical form here is what keeps the turn card showing
+  // 'Upstage (솔라)' / 'LG (엑사원)' like every other seat — no display label
+  // below is changed by these entries.
+  Solar: 'solar',
+  'Upstage Solar': 'solar',
+  // Vote-table / analyst-card tag (JEJU_VOTE_BRAND_LABEL, open-brief BRAND_LABEL).
   'Upstage (솔라)': 'solar',
   'LG (엑사원)': 'exaone',
-  // Legacy aliases kept so already-persisted sessions (turns/votes stored with
-  // the old bare-name tag before this label unification) still resolve.
-  Solar: 'solar',
+  // Legacy alias — same bare tag, kept explicit for clarity.
   EXAONE: 'exaone',
 }
 

@@ -29,6 +29,7 @@ import {
   callMotieLocalProvider,
   type MotieProvider,
 } from '@/lib/motie/local-providers'
+import { callMotieDeepseekChat } from '@/lib/motie/deepseek-chat'
 import {
   SYNOD_DEBATERS,
   PROVIDER_TO_BRAND,
@@ -41,6 +42,7 @@ import {
   parseActionTag,
   safeParseJson,
   type SynodTurn,
+  type SynodDebaterProvider,
   type FacilitatorSummary,
   type DebaterRole,
 } from '@/lib/motie/synod-debate'
@@ -105,10 +107,15 @@ const FACILITATOR_PROVIDER: ExtendedAiProviderName = 'anthropic'
 
 /**
  * Reverse of PROVIDER_TO_BRAND, so a stored brand label maps back to a
- * provider. Legacy aliases below cover sessions started before the label
- * unification (which stored the bare brand tag). Any brand NOT found here is
- * resolved by resolveBrandToProvider() to null, never to a guessed provider —
- * see that function's doc for why a silent default would be unsafe.
+ * provider. Sessions persist the brand STRING in their turns, so every form
+ * solar/exaone have ever been addressed by must keep resolving — a run started
+ * before a rename would otherwise lose those seats' turn attribution mid-flight.
+ * Aliases, oldest first: the original bare tags ('Solar', 'EXAONE'), then the
+ * in-debate forms used before this rename ('Upstage Solar'), then the display
+ * labels briefly used here during the UI label unification ('Upstage (솔라)',
+ * 'LG (엑사원)'). Any brand NOT found is resolved by resolveBrandToProvider()
+ * to null, never to a guessed provider — see that function's doc for why a
+ * silent default would be unsafe.
  */
 const BRAND_TO_PROVIDER: Record<string, MotieProvider> = {
   ...(Object.fromEntries(
@@ -116,6 +123,9 @@ const BRAND_TO_PROVIDER: Record<string, MotieProvider> = {
   ) as Record<string, MotieProvider>),
   Solar: 'solar',
   EXAONE: 'exaone',
+  'Upstage Solar': 'solar',
+  'Upstage (솔라)': 'solar',
+  'LG (엑사원)': 'exaone',
 }
 
 /**
@@ -223,6 +233,21 @@ async function callProvider(params: {
     })
   }
 
+  // DeepSeek V4 runs with thinking ON by default and bills those reasoning
+  // tokens against the SAME completion budget as the answer, so a debate turn
+  // capped at TURN_MAX_TOKENS came back truncated mid-sentence (and, as the
+  // prompt grew each round, empty). The shared router has no way to send
+  // DeepSeek's thinking toggle, so debate statements go through a motie-local
+  // call that disables thinking and floors the budget. See lib/motie/deepseek-chat.ts.
+  if (params.provider === 'deepseek') {
+    return callMotieDeepseekChat({
+      systemPrompt: params.systemPrompt,
+      userPrompt: params.prompt,
+      maxCompletionTokens: params.maxCompletionTokens,
+      ...(params.modelOverride ? { model: params.modelOverride } : {}),
+    })
+  }
+
   const r = await runSingleAiProvider({
     supabase: supabaseAdmin,
     sessionId: null,
@@ -234,6 +259,74 @@ async function callProvider(params: {
     modelOverride: params.modelOverride,
   })
   return { text: r.text, error: r.error }
+}
+
+/**
+ * One debate statement, retried ONCE, and never allowed to vanish.
+ *
+ * The previous loops did `const { text } = await callProvider(...)` and then
+ * `if (!text) continue` — the `error` field was destructured away, nothing was
+ * logged, and the seat simply produced no turn. A dropped panelist was then
+ * indistinguishable from one that never existed (observed live: DeepSeek was
+ * absent from rounds 3-5 with no error anywhere). Callers now get an explicit
+ * reason and emit {@link noResponseTurn} instead of skipping.
+ */
+async function callDebateStatement(params: {
+  provider: MotieProvider
+  systemPrompt: string
+  prompt: string
+  maxCompletionTokens: number
+  modelOverride?: string
+  roundNumber: number
+}): Promise<{ text: string | null; error: string | null }> {
+  const attempt = async (): Promise<{ text: string | null; error?: string | null }> => {
+    try {
+      return await callProvider(params)
+    } catch (e: unknown) {
+      // Both callProvider branches already turn throws into an `error` field;
+      // this guards any future path so one seat can never kill the round.
+      return { text: null, error: e instanceof Error ? e.message : 'unknown error' }
+    }
+  }
+
+  const first = await attempt()
+  if (first.text && first.text.trim()) return { text: first.text, error: null }
+
+  const firstReason = first.error || '빈 응답'
+  console.warn(
+    `[motie/deliberate] round ${params.roundNumber} — ${params.provider} gave no usable statement (${firstReason}); retrying once.`
+  )
+
+  const second = await attempt()
+  if (second.text && second.text.trim()) return { text: second.text, error: null }
+
+  const reason = second.error || firstReason
+  console.warn(
+    `[motie/deliberate] round ${params.roundNumber} — ${params.provider} failed twice (${reason}); emitting a visible placeholder turn.`
+  )
+  return { text: null, error: reason }
+}
+
+/**
+ * A visible stand-in for a seat that produced nothing. Carries no actionTag and
+ * no claim, and is flagged `failed` so downstream consumers exclude it from
+ * anything that reads a turn as a position (see SynodTurn.failed).
+ */
+function noResponseTurn(params: {
+  /** A debate seat specifically — PROVIDER_TO_BRAND only covers the roster. */
+  provider: SynodDebaterProvider
+  roundNumber: number
+  isRedTeam: boolean
+  reason: string
+}): SynodTurn {
+  const brand = PROVIDER_TO_BRAND[params.provider]
+  return {
+    roundNumber: params.roundNumber,
+    aiName: brand,
+    content: `⚠️ ${brand} 좌석은 이번 라운드에 응답하지 않았습니다 (사유: ${params.reason}). 재시도 후에도 발언을 받지 못해, 이 좌석의 이번 라운드 입장은 기록되지 않았습니다.`,
+    isRedTeam: params.isRedTeam,
+    failed: true,
+  }
 }
 
 /**
@@ -362,7 +455,11 @@ function buildModeBDeliberation(
 ): JejuDeliberation {
   const rounds: JejuRoundResult[] = summaries.map((s) => {
     const roundTurns: JejuDeliberationTurn[] = turns
-      .filter((t) => t.roundNumber === s.roundNumber && t.content.trim() !== '')
+      // Placeholder turns for seats that did not respond are dropped here on
+      // purpose: the chair's case file and each voter's own-record transcript
+      // both read a turn as a POSITION, and "이 좌석은 응답하지 않았습니다" is
+      // not one. The absence stays visible in the debate transcript itself.
+      .filter((t) => t.roundNumber === s.roundNumber && !t.failed && t.content.trim() !== '')
       .map((t) => {
         const resolvedProvider = resolveBrandToProvider(t.aiName)
         return {
@@ -595,20 +692,31 @@ export async function POST(req: Request): Promise<Response> {
             // attachments produces the exact prompt it did before.
             ...(supplementBlock ? ['', supplementBlock] : []),
           ].join('\n')
-          const { text } = await callProvider({
+          const { text, error } = await callDebateStatement({
             provider,
             systemPrompt: openingSystemPrompt(provider, roleForProvider(state.plan, provider)),
             prompt: userPrompt,
             maxCompletionTokens: OPENING_MAX_TOKENS,
             modelOverride: flagshipOverrideFor(provider),
+            roundNumber: 1,
           })
-          return { provider, text }
+          return { provider, text, error }
         })
       )
 
       const turns: SynodTurn[] = []
-      for (const { provider, text } of results) {
-        if (!text || !text.trim()) continue
+      for (const { provider, text, error } of results) {
+        if (!text || !text.trim()) {
+          turns.push(
+            noResponseTurn({
+              provider,
+              roundNumber: 1,
+              isRedTeam: false,
+              reason: error || '빈 응답',
+            })
+          )
+          continue
+        }
         const a = parseActionTag(text)
         const c = parseClaim(a.content)
         turns.push({
@@ -624,7 +732,9 @@ export async function POST(req: Request): Promise<Response> {
       state.turns = turns
       await saveSession(sessionId, state, 'open', 'running')
       return json({
-        ok: turns.length > 0,
+        // Placeholders always fill the array now, so `ok` asks whether anyone
+        // ACTUALLY spoke rather than whether the array is non-empty.
+        ok: turns.some((t) => !t.failed),
         stage: 'open',
         sessionId,
         roundNumber: 1,
@@ -675,14 +785,20 @@ export async function POST(req: Request): Promise<Response> {
         const userPrompt = [reportPreamble(state.report), ctx.text, supplementBlock]
           .filter((s) => s !== '')
           .join('\n')
-        const { text } = await callProvider({
+        const { text, error } = await callDebateStatement({
           provider,
           systemPrompt: turnSystemPrompt(provider, isRedTeam, roundNumber, roleForProvider(state.plan, provider)),
           prompt: userPrompt,
           maxCompletionTokens: TURN_MAX_TOKENS,
           modelOverride: flagshipOverrideFor(provider),
+          roundNumber,
         })
-        if (!text || !text.trim()) continue
+        if (!text || !text.trim()) {
+          currentRoundTurns.push(
+            noResponseTurn({ provider, roundNumber, isRedTeam, reason: error || '빈 응답' })
+          )
+          continue
+        }
         const a = parseActionTag(text)
         const c = parseClaim(a.content)
         currentRoundTurns.push({
@@ -698,7 +814,8 @@ export async function POST(req: Request): Promise<Response> {
       state.turns = [...priorTurns, ...currentRoundTurns]
       await saveSession(sessionId, state, 'turn', 'running')
       return json({
-        ok: currentRoundTurns.length > 0,
+        // Placeholders always fill the array now — ask whether anyone spoke.
+        ok: currentRoundTurns.some((t) => !t.failed),
         stage: 'turn',
         sessionId,
         roundNumber,
@@ -718,7 +835,9 @@ export async function POST(req: Request): Promise<Response> {
       // Summarize the latest round that has turns but no summary yet.
       const roundNumber = summaries.length + 1
       const allTurnsThisRound = allTurns.filter((t) => t.roundNumber === roundNumber)
-      if (allTurnsThisRound.length === 0) {
+      // Placeholder ("no response") turns are not statements — a round made up
+      // solely of them has nothing to summarize, same as an empty round.
+      if (allTurnsThisRound.every((t) => t.failed)) {
         return fail('facilitate', `라운드 ${roundNumber}의 토론 발언이 없어 정리할 수 없습니다.`, 409)
       }
 

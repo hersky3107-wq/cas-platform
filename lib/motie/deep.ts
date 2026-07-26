@@ -28,6 +28,8 @@ import {
   callMotieLocalProvider,
   type MotieProvider,
 } from '@/lib/motie/local-providers'
+import { callMotieDeepseekChat } from '@/lib/motie/deepseek-chat'
+import { MOTIE_FLAGSHIP_BY_PROVIDER } from '@/lib/motie/models'
 import { buildMotieSupplementBlock, type MotieSupplement } from '@/lib/motie/supplements'
 
 /**
@@ -3437,6 +3439,14 @@ export type JejuVoteResult = {
 
 /** Tokens for a vote call — short: one choice line + a 1–2 sentence reason. */
 const VOTE_MAX_TOKENS = 400
+/**
+ * DeepSeek-only ballot cap. The shared 400-token ceiling is too tight once V4's
+ * default thinking mode burns part of the budget on hidden reasoning before
+ * `content` — the two required lines (표결:/이유:) never land and the seat
+ * abstains or fails parse. Routed through callMotieDeepseekChat with thinking
+ * OFF so the full budget is visible answer; 700 is modest headroom for Korean.
+ */
+const VOTE_MAX_TOKENS_DEEPSEEK = 700
 
 /** What the ballot is cast on: a chair ruling ('verdict') or the motion itself ('motion'). */
 type JejuVoteMode = 'verdict' | 'motion'
@@ -3736,14 +3746,25 @@ async function runOneVote(
 ): Promise<JejuVote> {
   let r
   try {
-    // Routes 'solar'/'exaone' through callMotieLocalProvider; all others keep the
-    // pre-existing runSingleAiProvider path (see callSeatProvider).
-    r = await callSeatProvider({
-      provider,
-      prompt: userPrompt,
-      systemPrompt,
-      maxCompletionTokens: VOTE_MAX_TOKENS,
-    })
+    if (provider === 'deepseek') {
+      // Same thinking-OFF path as debate turns — V4's default thinking burns the
+      // ballot budget before 표결:/이유: can land (see lib/motie/deepseek-chat.ts).
+      r = await callMotieDeepseekChat({
+        systemPrompt,
+        userPrompt,
+        maxCompletionTokens: VOTE_MAX_TOKENS_DEEPSEEK,
+        model: MOTIE_FLAGSHIP_BY_PROVIDER.deepseek,
+      })
+    } else {
+      // Routes 'solar'/'exaone' through callMotieLocalProvider; all others keep the
+      // pre-existing runSingleAiProvider path (see callSeatProvider).
+      r = await callSeatProvider({
+        provider,
+        prompt: userPrompt,
+        systemPrompt,
+        maxCompletionTokens: VOTE_MAX_TOKENS,
+      })
+    }
   } catch (e: unknown) {
     return {
       provider,

@@ -63,6 +63,19 @@ export type SynodTurn = {
   content: string
   /** True when this turn was assigned the adversarial / devil's-advocate role. */
   isRedTeam?: boolean
+  /**
+   * True for a PLACEHOLDER turn standing in for a seat that produced no usable
+   * statement this round (provider error, timeout, or empty content after a
+   * retry). `content` then holds a Korean notice naming the reason.
+   *
+   * Such a seat used to be skipped entirely, which made a 7-seat round
+   * indistinguishable from an 8-seat one — a reader could not tell that a
+   * panelist had dropped out. A placeholder keeps the absence VISIBLE while
+   * callers exclude it from anything that treats a turn as a POSITION: the
+   * facilitator's live-responder count, the chair's case file, and the
+   * ballot's own-record transcript.
+   */
+  failed?: boolean
 }
 
 /** The facilitator's compressed, structured summary of one round. */
@@ -124,7 +137,18 @@ export const SYNOD_DEBATERS: SynodDebaterProvider[] = [
   ...(ENABLE_META ? (['meta'] as SynodDebaterProvider[]) : []),
 ]
 
-/** Brand names shown in deliberation context / facilitator input. */
+/**
+ * Brand names shown in deliberation context / facilitator input — i.e. the name
+ * debaters use to ADDRESS each other in-debate and to state their own identity.
+ * These are bare PRODUCT names, deliberately NOT the "회사 (제품)" display
+ * labels used by the UI cards and the vote table (JEJU_VOTE_BRAND_LABEL,
+ * components/motie/aiProviderLabel.ts) — a panelist saying "Claude" reads
+ * naturally, "Anthropic (클로드)" does not.
+ *
+ * solar uses bare 'Solar' like the other six product names. Tradeoff: in the
+ * warroom (energy) domain a debater saying "Solar" could be read as solar power
+ * (솔라) rather than the Upstage model — accepted for naming consistency.
+ */
 export const PROVIDER_TO_BRAND: Record<SynodDebaterProvider, string> = {
   openai: 'ChatGPT',
   anthropic: 'Claude',
@@ -132,8 +156,8 @@ export const PROVIDER_TO_BRAND: Record<SynodDebaterProvider, string> = {
   xai: 'Grok',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
-  solar: 'Upstage (솔라)',
-  exaone: 'LG (엑사원)',
+  solar: 'Solar',
+  exaone: 'EXAONE',
   meta: 'Llama',
 }
 
@@ -624,6 +648,8 @@ function renderSummaryOneLine(s: FacilitatorSummary): string {
 /** Renders a single debate turn with its tags (names via `disp`). */
 function renderTurn(t: SynodTurn, disp: (n: string) => string): string {
   const tags: string[] = []
+  // First, so a reader (and the next debater) sees the absence before the text.
+  if (t.failed) tags.push('NO RESPONSE')
   if (t.isRedTeam) tags.push('STRESS-TEST')
   if (t.actionTag) tags.push(t.actionTag)
   const tagStr = tags.length ? ` (${tags.join(' · ')})` : ''
@@ -727,8 +753,11 @@ export function buildFacilitatorInput(params: {
   const { question, roundNumber, allTurnsThisRound, priorSummaries } = params
   const disp = (n: string) => n // facilitator sees real brand names
   // LIVE counts — never hardcode 6/7/8. Responder count can be < roster if a
-  // seat failed this round; scoring must use whoever actually spoke.
-  const liveResponders = allTurnsThisRound.length
+  // seat failed this round; scoring must use whoever actually spoke. Failed
+  // seats are still RENDERED below (so the facilitator can report the absence)
+  // but must not count as responders — a seat that said nothing has no stance
+  // to be in or out of agreement with.
+  const liveResponders = allTurnsThisRound.filter((t) => !t.failed).length
   const rosterSize = SYNOD_DEBATERS.length
 
   const sections: string[] = []
