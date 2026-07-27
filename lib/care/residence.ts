@@ -22,6 +22,15 @@ export interface Sigungu {
   name: string
   lat: number
   lng: number
+  /**
+   * HIRA `sgguCd` (시·군·구 코드, 6 digits) for this district, when known.
+   *
+   * OPTIONAL BY DESIGN: when present, HIRA search asks the API for this one
+   * district only — far fewer pages, and results already scoped to the user's
+   * 구. When absent, search falls back to the whole 시·도 exactly as before, so
+   * districts without a code keep working.
+   */
+  sgguCd?: string
 }
 
 export interface SidoInfo {
@@ -45,15 +54,30 @@ export interface Residence {
   sidoCode: string
   /** 시·군·구 display name, e.g. "종로구". Empty string = whole 시·도. */
   sigungu: string
+  /** HIRA sgguCd for `sigungu`, when that district has one. See {@link Sigungu.sgguCd}. */
+  sgguCd?: string
   lat: number
   lng: number
 }
 
 // ── Coordinate helpers ─────────────────────────────────────────────────────────
 
-/** Build a 시·군·구 list that all share one coordinate (metros: uniform weather). */
-function atCenter(names: string[], lat: number, lng: number): Sigungu[] {
-  return names.map((name) => ({ name, lat, lng }))
+/**
+ * Build a 시·군·구 list that all share one coordinate (metros: uniform weather).
+ *
+ * `codes` optionally attaches a HIRA sgguCd per district name. Districts left
+ * out of the map simply have no code and fall back to 시·도-wide HIRA search.
+ */
+function atCenter(
+  names: string[],
+  lat: number,
+  lng: number,
+  codes?: Record<string, string>
+): Sigungu[] {
+  return names.map((name) => {
+    const sgguCd = codes?.[name]
+    return sgguCd ? { name, lat, lng, sgguCd } : { name, lat, lng }
+  })
 }
 
 // ── The 17 시·도 table ───────────────────────────────────────────────────────────
@@ -72,7 +96,10 @@ export const REGIONS: SidoInfo[] = [
         '구로구', '금천구', '영등포구', '동작구', '관악구', '서초구', '강남구', '송파구', '강동구',
       ],
       37.5665,
-      126.978
+      126.978,
+      // HIRA sgguCd, added per district as each is verified against
+      // getHospBasisList. Unlisted districts fall back to 시·도-wide search.
+      { 금천구: '110025' }
     ),
   },
   {
@@ -384,11 +411,20 @@ export const REGIONS: SidoInfo[] = [
 
 // ── Default (safe fallback) ──────────────────────────────────────────────────
 
-/** Sensible default when the user skips setup or storage is unavailable: 서울. */
+/**
+ * Sensible default when the user skips setup or storage is unavailable:
+ * 서울특별시 금천구.
+ *
+ * Deliberately identical to `buildResidence(서울, 금천구)` — including the
+ * metro-center coordinates the 서울 table uses for every district — so the
+ * default and an explicitly picked 금천구 behave the same everywhere (weather,
+ * HIRA scope, labels).
+ */
 export const DEFAULT_RESIDENCE: Residence = {
   sido: '서울특별시',
   sidoCode: '110000',
-  sigungu: '',
+  sigungu: '금천구',
+  sgguCd: '110025',
   lat: 37.5665,
   lng: 126.978,
 }
@@ -409,6 +445,9 @@ export function buildResidence(sido: SidoInfo, sigungu: Sigungu | null): Residen
     sido: sido.name,
     sidoCode: sido.code,
     sigungu: sigungu ? sigungu.name : '',
+    // Omitted (not null/empty) when the district has no code, so downstream
+    // `residence.sgguCd ? …` checks cleanly mean "no district scope → 시·도-wide".
+    ...(sigungu?.sgguCd ? { sgguCd: sigungu.sgguCd } : {}),
     lat: sigungu ? sigungu.lat : sido.lat,
     lng: sigungu ? sigungu.lng : sido.lng,
   }
@@ -499,14 +538,31 @@ function isValidResidence(v: unknown): v is Residence {
   )
 }
 
-/** Read the saved residence, or null if unset/unavailable/corrupt. */
+/**
+ * Read the saved residence, or null if unset/unavailable/corrupt.
+ *
+ * `sgguCd` is optional and is kept only when it is a well-formed 6-digit code:
+ * a residence saved before district codes existed simply has none, and a
+ * malformed one is dropped rather than passed to HIRA. Either way the residence
+ * itself stays valid and search falls back to 시·도-wide.
+ */
 export function getResidence(): Residence | null {
   try {
     if (typeof window === 'undefined') return null
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as unknown
-    return isValidResidence(parsed) ? parsed : null
+    if (!isValidResidence(parsed)) return null
+    const { sgguCd } = parsed
+    const keepSgguCd = typeof sgguCd === 'string' && /^\d{6}$/.test(sgguCd)
+    return {
+      sido: parsed.sido,
+      sidoCode: parsed.sidoCode,
+      sigungu: parsed.sigungu,
+      ...(keepSgguCd ? { sgguCd } : {}),
+      lat: parsed.lat,
+      lng: parsed.lng,
+    }
   } catch {
     return null
   }

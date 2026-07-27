@@ -20,9 +20,13 @@ import { askPerplexity } from '@/lib/jeju/resident-search'
  */
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300
 
 const MODEL = 'claude-sonnet-4-6'
+
+/** HIRA fetch budget — small when scoped to one 구, full 시·도 sweep otherwise. */
+const HIRA_FETCH_LIMIT_SGGU = 300
+const HIRA_FETCH_LIMIT_SIDO = 1500
 
 interface ExtractedPlace {
   name: string
@@ -128,6 +132,9 @@ export async function POST(req: Request) {
   // Residence context. `area` (시·군·구) only refines the search hint; sidoCd
   // scopes the HIRA fact list. Fall back to 서울 so we never break.
   const sidoCd = typeof body.sidoCd === 'string' && /^\d{6}$/.test(body.sidoCd) ? body.sidoCd : '110000'
+  // Optional 시·군·구 code. Absent/malformed ⇒ undefined ⇒ 시·도-wide search.
+  const sgguCd =
+    typeof body.sgguCd === 'string' && /^\d{6}$/.test(body.sgguCd) ? body.sgguCd : undefined
   const regionLabel = typeof body.regionLabel === 'string' && body.regionLabel.trim() ? body.regionLabel.trim() : '우리 지역'
   const area = typeof body.area === 'string' ? body.area.trim() : ''
 
@@ -160,12 +167,16 @@ export async function POST(req: Request) {
   // 3) HIRA fact list for phone/address verification
   let hira: MedicalFacility[] = []
   try {
-    // Scope by 시·도 only; residence 시·군·구 names don't map 1:1 to HIRA's
-    // sgguCdNm, so we skip the sub-region filter to avoid empty results.
+    // Narrow at the API level with sgguCd when the residence has one; otherwise
+    // scope by 시·도. The name-based sgguCdNm post-filter stays off either way —
+    // residence 시·군·구 names don't map 1:1 to HIRA's sgguCdNm, and filtering on
+    // them would drop valid rows.
+    const fetchLimit = sgguCd ? HIRA_FETCH_LIMIT_SGGU : HIRA_FETCH_LIMIT_SIDO
     const opts = {
       sidoCd,
-      fetchLimit: 1500,
-      limit: 1500,
+      ...(sgguCd ? { sgguCd } : {}),
+      fetchLimit,
+      limit: fetchLimit,
     }
     hira = kind === '약국' ? await searchPharmacies(opts) : await searchHospitals(opts)
   } catch (e) {

@@ -224,7 +224,14 @@ export default function MedicalPage() {
       const res = await fetch('/api/care/symptom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symptom: trimmed, sidoCd: residence.sidoCode, regionLabel: regionLabel(residence) }),
+        body: JSON.stringify({
+          symptom: trimmed,
+          sidoCd: residence.sidoCode,
+          // Present only for districts with a known HIRA code; the server then
+          // searches just that 구 instead of the whole 시·도.
+          ...(residence.sgguCd ? { sgguCd: residence.sgguCd } : {}),
+          regionLabel: regionLabel(residence),
+        }),
       })
       const data = (await res.json()) as SymptomResult & { error?: string }
       if (!res.ok) {
@@ -262,6 +269,7 @@ export default function MedicalPage() {
         body: JSON.stringify({
           kind,
           sidoCd: residence.sidoCode,
+          ...(residence.sgguCd ? { sgguCd: residence.sgguCd } : {}),
           regionLabel: regionLabel(residence),
           ...(residence.sigungu ? { area: residence.sigungu } : {}),
         }),

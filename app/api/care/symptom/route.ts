@@ -23,9 +23,17 @@ import { askPerplexity } from '@/lib/jeju/resident-search'
  */
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300
 
 const MODEL = 'claude-sonnet-4-6'
+
+/**
+ * HIRA fetch budget. With a district code the API returns only that 구, so a
+ * few hundred rows already cover it; without one we still sweep the whole 시·도
+ * as before.
+ */
+const HIRA_FETCH_LIMIT_SGGU = 300
+const HIRA_FETCH_LIMIT_SIDO = 1500
 
 interface ClaudeTriage {
   emergency: boolean
@@ -187,6 +195,9 @@ export async function POST(req: Request) {
   }
   // Residence context (from the client). Falls back to 서울 so we never break.
   const sidoCd = typeof body.sidoCd === 'string' && /^\d{6}$/.test(body.sidoCd) ? body.sidoCd : '110000'
+  // Optional 시·군·구 code. Absent/malformed ⇒ undefined ⇒ 시·도-wide search.
+  const sgguCd =
+    typeof body.sgguCd === 'string' && /^\d{6}$/.test(body.sgguCd) ? body.sgguCd : undefined
   const regionLabel = typeof body.regionLabel === 'string' && body.regionLabel.trim() ? body.regionLabel.trim() : '우리 지역'
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -232,7 +243,13 @@ export async function POST(req: Request) {
   // 5) HIRA fact list for verification
   let hira: MedicalFacility[] = []
   try {
-    hira = await searchHospitals({ sidoCd, fetchLimit: 1500, limit: 1500 })
+    const fetchLimit = sgguCd ? HIRA_FETCH_LIMIT_SGGU : HIRA_FETCH_LIMIT_SIDO
+    hira = await searchHospitals({
+      sidoCd,
+      ...(sgguCd ? { sgguCd } : {}),
+      fetchLimit,
+      limit: fetchLimit,
+    })
   } catch (e) {
     console.error('[symptom] HIRA fetch failed:', e instanceof Error ? e.message : e)
   }
