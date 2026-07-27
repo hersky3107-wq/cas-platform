@@ -126,6 +126,8 @@ export type JejuUiPack = {
   deepMediaRiskHeading: string
   deepDisclaimerHeading: string
   deepConsensusLabel: string
+  /** One-line explainer shown under the consensus score — low score ≠ failure. */
+  deepConsensusExplainer: string
   deepVoteHeading: string
   deepVoteOutcome: (o: string) => string
   deepVoteSummaryLabel: string
@@ -198,6 +200,15 @@ export type JejuUiPack = {
   deliberateSearchSpecialistDesc: string
   deliberateSearchByline: string
   deliberateVoteAllPanel: (voterCount: number) => string
+  /** Explicit seat breakdown for the ballot header — e.g. "토론 8석 + 검색 1석 = 표결 9석". */
+  deliberateVoteSeatBreakdown: (debateSeatCount: number, searchSeatCount: number, totalSeatCount: number) => string
+  /** Shown on a debate turn card when that seat produced no usable statement this round. */
+  deliberateSeatFailedBadge: string
+  /** Static disclosure banner at the top of the deliberation page — who the 8 AI panel are. */
+  gunpoPanelNoticeTitle: string
+  gunpoPanelNoticeBody: string
+  /** Shown at the top of a result report when it ran with no user-submitted attachments. */
+  publicDataNoticeBody: string
   /** Brief (Mode A — 개방형 라이트) page */
   briefTitle: string
   briefDesc: string
@@ -276,7 +287,7 @@ const KO: JejuUiPack = {
   // Governance hub tiles — correct labels for the 4-mode launcher
   hubDeliberateTitle: '찬반형 심의',
   hubDeliberateDesc:
-    '7개 AI가 찬성·반대로 나뉘어 토론하고 민주적으로 표결하며, 소수의견까지 보존해 의장이 판결하는 심층 심의.',
+    '8개 AI가 찬성·반대로 나뉘어 토론하고, 검색·언론 동향을 전담하는 Perplexity가 더해진 9개 AI가 민주적으로 표결하며, 소수의견까지 보존해 의장이 판결하는 심층 심의.',
   hubBriefTitle: '개방형 브리핑',
   hubBriefDesc:
     '여러 AI가 서로 다른 전문 분야와 관점으로 분석해 종합 브리핑을 만드는 열린 진단.',
@@ -375,6 +386,8 @@ const KO: JejuUiPack = {
   deepMediaRiskHeading: '언론 수용 위험',
   deepDisclaimerHeading: '참고 사항',
   deepConsensusLabel: '최종 합의도',
+  deepConsensusExplainer:
+    '합의도는 쟁점 수렴 정도입니다. 논의가 원론에서 구체 설계로 내려가면 점수가 낮아질 수 있으며, 이는 실패가 아니라 쟁점이 구체화됐다는 신호입니다.',
   deepVoteHeading: '심의체 표결',
   deepVoteOutcome: (o: string) => {
     if (o === 'approved') return '다수 승인'
@@ -421,9 +434,9 @@ const KO: JejuUiPack = {
   deliberateDesc: 'SYNOD 토론 · 합의도 수렴 · 의장 판결',
   deliberateStartBtn: '결정 심의',
   deliberateQuestionPlaceholderTrade:
-    '예: 당정동 복합지구의 이주주택 공급 규모를 원안대로 유지할 것인가',
+    '예: 산본 재정비촉진구역의 이주주택을 당정동에 원안 규모로 배치할 것인가',
   deliberateQuestionPlaceholderWarroom:
-    '예: 군포시 20·30대 인구 유출을 완화하기 위해 우선 검토할 정책 영역은 무엇인가',
+    '예: 산본 재정비촉진구역의 이주주택을 당정동에 원안 규모로 배치할 것인가',
   deliberateQuestionHelper:
     '찬성과 반대가 나뉠 수 있는 문장을 입력해주세요. (\'~해야 하는가?\'처럼 예/아니오로 답할 수 있는 형태)',
   deliberateRunningHint: (debaterCount, voterCount) =>
@@ -458,14 +471,28 @@ const KO: JejuUiPack = {
     '패널 전체를 대신해 웹 검색과 언론 보도 동향을 전담 조사합니다. 토론에는 참여하지 않지만, 수집한 근거는 사전 분석 리포트와 최종 표결에 반영됩니다.',
   deliberateSearchByline: 'Perplexity가 패널을 대신해 수행한 실시간 검색',
   deliberateVoteAllPanel: (voterCount) => `심의체 전원(${voterCount}) 표결`,
+  deliberateVoteSeatBreakdown: (debateSeatCount, searchSeatCount, totalSeatCount) =>
+    searchSeatCount > 0
+      ? `토론 ${debateSeatCount}석 + 검색 ${searchSeatCount}석 = 표결 ${totalSeatCount}석`
+      : `표결 ${totalSeatCount}석`,
+  deliberateSeatFailedBadge: '응답 실패 — 이 라운드 불참',
+  gunpoPanelNoticeTitle: '8개 AI 심의체',
+  gunpoPanelNoticeBody:
+    '서로 다른 8개 회사의 AI가 각각 다른 담당 분야를 맡아 동시에 분석하고, 이견이 있으면 지우지 않고 남긴 뒤 의장 AI가 종합 판정합니다.\n' +
+    '참여: OpenAI(챗지피티)·Anthropic(클로드)·Google(제미나이)·xAI(그록)·Mistral·DeepSeek·Upstage(솔라)·LG(엑사원) — 이 중 두 개는 국내에서 개발된 모델입니다.\n' +
+    '최종 결정은 담당 공무원이 합니다. 이 시스템은 검토 자료를 만듭니다.',
+  publicDataNoticeBody:
+    "이 결과는 공개 자료만으로 작성되었습니다.\n" +
+    "본문에 '미확인'과 '[확인 필요]'가 반복되는 것은 오류가 아닙니다. 확인되지 않은 수치를 지어내지 않도록 설계했기 때문입니다.\n" +
+    "'첨부·추가 자료'에 시청 내부 문서를 올리면 같은 심의가 그 자료를 근거로 다시 실행되고, 위 공백 항목들이 채워집니다.",
   // Brief (개방형 라이트) page
   briefTitle: '개방형 브리핑',
   briefDesc: '상황 분석 · 병렬 전문가 검토 · 권고안 제시 (토론·표결 없음)',
-  briefStartBtn: '지형 탐색',
+  briefStartBtn: '종합 분석',
   briefQuestionPlaceholderTrade:
-    '예: 당정동 복합지구의 이주주택 공급 규모를 원안대로 유지할 것인가',
+    '예: 군포시 20·30대 인구 유출을 완화하려면 어떤 정책 영역을 우선 검토해야 하는가',
   briefQuestionPlaceholderWarroom:
-    '예: 군포시 20·30대 인구 유출을 완화하기 위해 우선 검토할 정책 영역은 무엇인가',
+    '예: 군포시 20·30대 인구 유출을 완화하려면 어떤 정책 영역을 우선 검토해야 하는가',
   briefRunningHint: (analystCount) =>
     `${analystCount}개 AI가 각자 다른 관점으로 병렬 분석하고, 실시간 검색 AI가 현지 언론·규제를 조사하며, 최고급 통합 AI가 종합 권고안을 작성합니다. 총 3~5분 소요됩니다.`,
   briefStageStart: '데이터 수집',
@@ -488,7 +515,7 @@ const KO: JejuUiPack = {
   briefSearchByline: 'Perplexity가 패널을 대신해 수행한 실시간 검색',
   briefNoSynthesis: '통합 브리핑을 생성하지 못했습니다.',
   briefMandateLabel: '직무',
-  briefPromptSectionLabel: '구체적인 현안을 질문하세요 — 7개 AI 심층 분석',
+  briefPromptSectionLabel: '구체적인 현안을 질문하세요 — 8개 AI 심층 분석',
   briefDiagnosticSectionLabel: '또는 분야별 빠른 진단',
   // Diagnostic (진단형) page
   diagnosticTitle: '진단 브리핑',
@@ -498,7 +525,7 @@ const KO: JejuUiPack = {
   diagnosticCustomPlaceholderTrade:
     '예: 당정동 복합지구의 이주주택 공급 규모를 원안대로 유지할 것인가',
   diagnosticCustomPlaceholderWarroom:
-    '예: 군포시 20·30대 인구 유출을 완화하기 위해 우선 검토할 정책 영역은 무엇인가',
+    '예: 산본 재정비 추진 현황과 가장 시급한 현안은 무엇인가',
   diagnosticCustomHelper:
     '위 분야에 없거나 더 구체적인 현안을 직접 질문하시려면 여기에 입력하세요. (분야 버튼을 누르면 해당 분야의 프리셋 질문이 실행됩니다.)',
   diagnosticRunBtn: '진단 시작',

@@ -39,6 +39,7 @@ interface MatchResult {
 interface WelfarePayload {
   ok: true
   deadlineSoon: SubsidyItem[]
+  alwaysOpen: SubsidyItem[]
   windowDays: number
   today: string
   contextMeta: ContextMeta | null
@@ -116,13 +117,20 @@ function SubsidyCard({ item, today }: { item: SubsidyItem; today: string }) {
       {item.deadline && <p className="text-sm text-[#475569]">⏰ {item.deadline}</p>}
       {item.how && <p className="text-sm text-[#475569]">📝 {item.how}</p>}
       {item.note && <p className="rounded-md bg-[#FEF3C7] px-2 py-1 text-xs text-[#8A3F04]">{item.note}</p>}
-      {item.url && (
-        <a href={item.url} target="_blank" rel="noreferrer" className="text-xs font-bold text-[#1E3A8A] underline">
+      {isAbsoluteUrl(item.url) ? (
+        <a href={item.url!} target="_blank" rel="noreferrer" className="text-xs font-bold text-[#1E3A8A] underline">
           자세히 보기
         </a>
+      ) : (
+        item.url && <p className="text-xs font-semibold text-[#475569]">📮 신청처: {item.url}</p>
       )}
     </article>
   )
+}
+
+/** True only for absolute http(s) URLs — never render a relative/descriptive string as a link (P0-2). */
+function isAbsoluteUrl(v: string | null): v is string {
+  return typeof v === 'string' && /^https?:\/\//i.test(v.trim())
 }
 
 export default function GunpoWelfarePage() {
@@ -251,16 +259,29 @@ export default function GunpoWelfarePage() {
             {!welfareLoading && welfare && (
               <>
                 <p className="rounded-xl bg-[#E0E7FF] px-4 py-2 text-sm font-semibold text-[#1E3A8A]">{welfare.freshnessNote}</p>
-                {welfare.deadlineSoon.length === 0 ? (
+                {welfare.deadlineSoon.length === 0 && (welfare.alwaysOpen?.length ?? 0) === 0 ? (
                   <p className="rounded-2xl border-2 border-[#CBD5E1] bg-white p-6 text-[#64748B]">
-                    앞으로 {welfare.windowDays}일 이내 마감되는 공고가 없어요.
+                    현재 조건에 맞는 공고가 없어요.
                   </p>
                 ) : (
-                  <div className="flex flex-col gap-3">
-                    {welfare.deadlineSoon.map((it, i) => (
-                      <SubsidyCard key={i} item={it} today={today} />
-                    ))}
-                  </div>
+                  <>
+                    {welfare.deadlineSoon.length > 0 && (
+                      <div className="flex flex-col gap-3">
+                        <h2 className="text-base font-black text-[#1E3A8A]">⏰ 마감 임박 ({welfare.windowDays}일 이내)</h2>
+                        {welfare.deadlineSoon.map((it, i) => (
+                          <SubsidyCard key={`soon-${i}`} item={it} today={today} />
+                        ))}
+                      </div>
+                    )}
+                    {(welfare.alwaysOpen?.length ?? 0) > 0 && (
+                      <div className="flex flex-col gap-3">
+                        <h2 className="text-base font-black text-[#1E3A8A]">📋 상시신청</h2>
+                        {welfare.alwaysOpen.map((it, i) => (
+                          <SubsidyCard key={`open-${i}`} item={it} today={today} />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
                 {welfare.contextMeta && <p className="text-sm text-[#64748B]">{fmtProvenance(welfare.contextMeta)}</p>}
                 <p className="text-sm font-semibold text-[#8A3F04]">{welfare.disclaimer}</p>

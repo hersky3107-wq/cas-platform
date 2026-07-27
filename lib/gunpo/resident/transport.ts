@@ -11,20 +11,27 @@ import 'server-only'
  * extra client geolocation prompt.
  *
  * CONFIRMED (STEP5): GUNPO_CITY_CODE = '31160' (TAGO 도시코드, 군포시).
- * CONFIRMED (STEP5): GUNPO_KEY_STOPS — filled from a live, one-off TAGO
- * BusSttnInfoInqireService/getCrdntPrxmtSttnList lookup (cityCode=31160) run
- * directly against 금정역(37.3722,126.9435) / 산본역(37.3583,126.9319), keeping
- * the 2 nearest real stops per station by Haversine distance. NOTE: TAGO does
- * NOT expose a "방면"(direction-to-destination) field for this city, and a
- * cross-check against BusRouteInfoInqireService/getRouteAcctoThrghSttnList
- * showed the routes serving these stops are circular/loop routes (each node
- * appears twice, at two different nodeord positions) — so a single
- * unambiguous "○○방면" text can NOT be derived from TAGO data without
- * guessing. Per instruction (추측값 절대 금지), labels below use only
- * REAL, verified fields (official station name + the actual TAGO nodenm
- * suffix / nodeno where a suffix doesn't exist) instead of invented
- * direction text — edit the `label` strings directly if you know the actual
- * signage wording.
+ * CONFIRMED (STEP5, expanded STEP8/P1-2): GUNPO_KEY_STOPS — filled from a
+ * live TAGO BusSttnInfoInqireService/getCrdntPrxmtSttnList lookup
+ * (cityCode=31160) run against 5 역 앵커: 금정역(37.3722,126.9435) /
+ * 산본역(37.3583,126.9319) / 수리산역(37.3489,126.9256) / 대야미역
+ * (37.3283,126.9128) / 군포역(37.3517,126.9482). For each anchor, candidate
+ * stops were checked in order of Haversine distance (nearest first, with
+ * exact-name matches preferred) against
+ * ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList; the first 2 that
+ * returned a NON-ERROR response (a valid resultCode, even with 0 current
+ * arrivals — an empty board is a normal state, not a failure) were kept.
+ * All 5 anchors returned verified stops (none were skipped) — 10 stops total.
+ * NOTE: TAGO does NOT expose a "방면"(direction-to-destination) field for
+ * this city, and a cross-check against
+ * BusRouteInfoInqireService/getRouteAcctoThrghSttnList showed the routes
+ * serving these stops are circular/loop routes (each node appears twice, at
+ * two different nodeord positions) — so a single unambiguous "○○방면" text
+ * can NOT be derived from TAGO data without guessing. Per instruction
+ * (추측값 절대 금지), labels below use only REAL, verified fields (official
+ * station name + the actual TAGO nodenm suffix / nodeno where a suffix
+ * doesn't exist) instead of invented direction text — edit the `label`
+ * strings directly if you know the actual signage wording.
  *
  * DESIGN CONTRACT (mirrors lib/jeju/bus.ts):
  *   - 'server-only' — the serviceKey never reaches the client.
@@ -57,18 +64,31 @@ export interface GunpoKeyStop {
 }
 
 /**
- * CONFIRMED (STEP5): 금정역·산본역 인근 핵심 정류소 4곳 — 전체 정류소가 아니라
- * "이 목록에 있는 것만" 보여주는 구조. 좌표기반 조회(getCrdntPrxmtSttnList,
- * cityCode=31160)로 실측된 nodeId만 사용 (추측 없음); distM은 조회 당시
- * Haversine 거리(참고용 주석, 코드에서 쓰이지 않음).
+ * CONFIRMED (STEP5, expanded STEP8/P1-2): 5개 역(금정·산본·수리산·대야미·군포)
+ * 인근 핵심 정류소 10곳 — 전체 정류소가 아니라 "이 목록에 있는 것만" 보여주는
+ * 구조. 좌표기반 조회(getCrdntPrxmtSttnList, cityCode=31160)로 실측되고,
+ * 도착정보 조회(getSttnAcctoArvlPrearngeInfoList)가 정상 응답한 nodeId만
+ * 사용 (추측 없음, 무응답 정류소 제외); distM은 조회 당시 Haversine 거리
+ * (참고용 주석, 코드에서 쓰이지 않음).
  */
 export const GUNPO_KEY_STOPS: readonly GunpoKeyStop[] = [
-  // 금정역(37.3722, 126.9435) 기준 최근접 2곳:
+  // 금정역(37.3722, 126.9435) 기준 최근접 2곳(둘 다 도착정보 응답 정상, 현재 0건):
   { nodeId: 'GGB225000166', label: '금정역 1번출구 (AK플라자)' }, // ~50m, nodeno 26178
   { nodeId: 'GGB225000011', label: '금정역 (정류소 26112)' }, // ~59m — 실제 nodenm은 "금정역"뿐이라 방면 문구 대신 정류소번호로 구분
   // 산본역(37.3583, 126.9319) 기준 최근접 2곳:
   { nodeId: 'GGB225000052', label: '산본역 (정류소 26046)' }, // ~46m — 위와 동일한 이유로 정류소번호 사용
   { nodeId: 'GGB225000047', label: '산본역 (정류소 26054)' }, // ~161m
+  // 수리산역(37.3489, 126.9256) 기준 최근접 2곳:
+  { nodeId: 'GGB225000138', label: '수리산역 (정류소 26017)' }, // ~21m
+  { nodeId: 'GGB225000397', label: '수리산역 (정류소 26378)' }, // ~79m, 도착정보 응답 정상(현재 0건)
+  // 대야미역(37.3283, 126.9128) 기준 — 정확한 명칭 매칭(nodenm에 "대야미" 포함)을
+  // 우선했으며, 최근접 후보(둔대초등학교 등)보다 멀지만(~401~423m) 방문객에게
+  // 더 식별하기 쉬운 실제 역명 정류소를 선택함:
+  { nodeId: 'GGB225000198', label: '대야미역 (정류소 26261)' }, // ~401m
+  { nodeId: 'GGB225000188', label: '대야미역 (정류소 26181)' }, // ~423m
+  // 군포역(37.3517, 126.9482) 기준 최근접 2곳:
+  { nodeId: 'GGB225000275', label: '군포역 2번출구 (정류소 26252)' }, // ~224m, 도착정보 응답 정상(현재 0건)
+  { nodeId: 'GGB225000117', label: '군포역 (군포1동행정복지센터, 정류소 26128)' }, // ~262m, 도착정보 응답 정상(현재 0건)
 ]
 
 // ── Result + domain types (mirrors lib/jeju/bus.ts) ────────────────────────────
@@ -372,13 +392,13 @@ export async function getGunpoTransport(): Promise<GunpoTransportResult> {
           : String(res?.reason ?? 'unknown error')
     errors.push(`stop(${stop.label}): ${reason}`)
     return { nodeId: stop.nodeId, label: stop.label, rows: [], error: reason }
-  })
+  }).filter((stop) => stop.rows.length > 0)
 
   return {
     ok: true,
     cityCode: GUNPO_CITY_CODE || null,
     stops,
-    freshnessNote: '국토교통부(TAGO) 버스도착정보 기준 (실시간, cityCode=31160 / 금정역·산본역 인근 4개 정류소 확정)',
+    freshnessNote: '정류소별 실시간 도착 정보만 표시합니다 · 국토교통부(TAGO) 버스도착정보',
     updatedAt: new Date().toISOString(),
     errors,
   }

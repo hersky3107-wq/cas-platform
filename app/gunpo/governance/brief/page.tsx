@@ -7,6 +7,7 @@ import { useMotieMode, toJejuCouncilMode } from '@/components/gunpo/mode-context
 import { useJejuUi } from '@/components/gunpo/useJejuUi'
 import { aiProductNameWithGloss } from '@/components/motie/aiProviderLabel'
 import { SupplementCard } from '@/app/gunpo/governance/_components/SupplementCard'
+import { PublicDataNotice } from '@/app/gunpo/governance/_components/GunpoPanelNotice'
 import type { MotieSupplement } from '@/lib/gunpo/supplements'
 
 // ── Local types (shape-compatible with the brief route) ───────────────────────
@@ -318,9 +319,18 @@ function BriefRunningBanner({
 
 // ── Brief result pieces ───────────────────────────────────────────────────────
 
-function SynthesisBlock({ synthesis, t }: { synthesis: string; t: Ui }) {
+function SynthesisBlock({
+  synthesis,
+  showPublicDataNotice,
+  t,
+}: {
+  synthesis: string
+  showPublicDataNotice: boolean
+  t: Ui
+}) {
   return (
     <div className="flex flex-col gap-5 rounded-2xl border border-jeju-accent/40 bg-gradient-to-b from-jeju-bg-elevated to-jeju-bg px-6 py-6 shadow-[var(--jeju-shadow)]">
+      {showPublicDataNotice && <PublicDataNotice t={t} />}
       <div className="border-b border-jeju-border pb-4">
         <p className="text-sm font-bold uppercase tracking-widest text-jeju-accent">
           {t.briefSynthesisHeading}
@@ -409,6 +419,9 @@ export function BriefSection() {
   const removeSupplement = useCallback((index: number) => {
     setSupplements((prev) => prev.filter((_, i) => i !== index))
   }, [])
+  // Snapshot of "did THIS run have attachments" — supplements can be edited
+  // after a run finishes, so the public-data notice must not read live state.
+  const [ranWithAttachments, setRanWithAttachments] = useState(false)
 
   // ── Shared request helper ──
   const requestWithRetry = useCallback(
@@ -475,7 +488,7 @@ export function BriefSection() {
     setSynthesis(null)
   }, [])
 
-  // ── PROMPT mode → 7-AI brief engine ──
+  // ── PROMPT mode → 8-AI brief engine ──
   const runBrief = useCallback(
     async (overrideQ?: string) => {
       const q = (overrideQ ?? question).trim()
@@ -483,6 +496,7 @@ export function BriefSection() {
 
       runningRef.current = true
       resetAll()
+      setRanWithAttachments(supplements.length > 0)
       setBriefStage('start')
 
       const post = (body: Record<string, unknown>) =>
@@ -561,17 +575,18 @@ export function BriefSection() {
 
   const hasBriefResult = roles.length > 0 || report || analyses.length > 0
 
-  // Synthetic 7th card (trade only): surface the forced Perplexity 현지 언론·여론
-  // search as a briefing card alongside the 6 analysts. Render-only — the
-  // analyses state array is never mutated and no extra AI call is made.
-  const localOpinionSearch =
-    councilMode === 'urban'
-      ? searches.find((s) => s.query.includes('현지 언론') || s.query.includes('여론'))
-      : undefined
+  // Surface the forced Perplexity 지역언론·타 지자체 사례 search as a briefing
+  // card alongside the analysts. Render-only — no extra AI call.
+  const localOpinionSearch = searches.find(
+    (s) =>
+      s.query.includes('지역언론') ||
+      s.query.includes('타 지자체') ||
+      s.query.includes('여론')
+  )
   const perplexityOpinionCard: OpenAnalysis | null = localOpinionSearch
     ? {
         roleId: 'perplexity-local-opinion',
-        roleLabel: '현지 언론·여론 조사',
+        roleLabel: '지역언론·타 지자체 사례 조사',
         provider: 'perplexity',
         subQuestion: localOpinionSearch.query.replace(/^\[오늘:[^\]]*\]\s*/, ''),
         isDoubledAngle: false,
@@ -583,17 +598,13 @@ export function BriefSection() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Free-text prompt → 7-AI brief */}
+      {/* Free-text prompt → 8-AI brief */}
       <div className="rounded-2xl border border-jeju-accent/40 bg-jeju-bg-elevated p-6 shadow-[var(--jeju-shadow)]">
         <p className="mb-3 text-sm font-bold text-jeju-fg">{t.briefPromptSectionLabel}</p>
         <textarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder={
-            councilMode === 'urban'
-              ? t.briefQuestionPlaceholderTrade
-              : t.briefQuestionPlaceholderWarroom
-          }
+          placeholder={t.briefQuestionPlaceholderWarroom}
           rows={3}
           disabled={running}
           className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-base text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"
@@ -624,7 +635,7 @@ export function BriefSection() {
             </span>
           ) : undefined
         }
-        defaultOpen={false}
+        defaultOpen
         t={t}
       >
         <SupplementCard
@@ -650,7 +661,9 @@ export function BriefSection() {
       )}
 
       {/* ── BRIEF result renderer ── */}
-      {synthesis && <SynthesisBlock synthesis={synthesis} t={t} />}
+      {synthesis && (
+        <SynthesisBlock synthesis={synthesis} showPublicDataNotice={!ranWithAttachments} t={t} />
+      )}
 
       {hasBriefResult && (
         <div className="flex flex-col gap-4">

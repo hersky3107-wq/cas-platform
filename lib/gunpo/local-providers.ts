@@ -49,6 +49,12 @@ type MotieLocalProviderConfig = {
    * sets this — see the 236B-slowness note below.
    */
   timeoutMs?: number
+  /**
+   * Floor for this provider's completion budget (STEP9 [1]). UNSET for exaone
+   * (its thinking-disable fix alone already frees the full budget for
+   * `content`). Only solar sets this — see the reasoning_effort note below.
+   */
+  minCompletionTokens?: number
 }
 
 /** Per-provider endpoint/model/env config. Set the matching env var directly
@@ -63,6 +69,9 @@ export const MOTIE_LOCAL_PROVIDER_CONFIG: Record<MotieLocalProvider, MotieLocalP
     model: 'solar-pro3',
     envKey: 'UPSTAGE_API_KEY',
     // No timeoutMs — unchanged/unbounded, per "do not touch other providers".
+    // STEP9 [1]: floor, mirroring MOTIE_DEEPSEEK_DEBATE_MIN_TOKENS — see the
+    // reasoning_effort fix below for why this is needed even with thinking off.
+    minCompletionTokens: 3000,
   },
   exaone: {
     baseUrl: 'https://api.friendli.ai/serverless/v1',
@@ -170,8 +179,9 @@ export function stripLeakedReasoningPreamble(raw: string | null): string | null 
  * intentionally never read as the answer — see the empty-content fallback
  * below. exaone additionally gets `chat_template_kwargs.enable_thinking:
  * false` (so it answers directly instead of dumping into hidden thinking)
- * and a >=90s abort timeout (config.timeoutMs) — both scoped to exaone only
- * via MOTIE_LOCAL_PROVIDER_CONFIG; solar's request shape/timeout is untouched.
+ * and a >=90s abort timeout (config.timeoutMs) — scoped to exaone only via
+ * MOTIE_LOCAL_PROVIDER_CONFIG. solar gets the analogous `reasoning_effort:
+ * 'low'` fix (see the STEP9 note below) plus a completion-token floor.
  */
 export async function callMotieLocalProvider(params: {
   provider: MotieLocalProvider
@@ -180,13 +190,20 @@ export async function callMotieLocalProvider(params: {
   temperature?: number
   maxCompletionTokens?: number
 }): Promise<MotieLocalProviderResult> {
-  const { provider, systemPrompt, userPrompt, temperature, maxCompletionTokens } = params
+  const { provider, systemPrompt, userPrompt, temperature } = params
   const config = MOTIE_LOCAL_PROVIDER_CONFIG[provider]
   const apiKey = process.env[config.envKey]
 
   if (!apiKey) {
     return { text: null, error: `${config.envKey} is not set` }
   }
+
+  // STEP9 [1]: floor the caller-supplied budget when this provider's config
+  // sets one (currently solar only) — see MOTIE_LOCAL_PROVIDER_CONFIG's doc.
+  const maxCompletionTokens =
+    typeof config.minCompletionTokens === 'number'
+      ? Math.max(params.maxCompletionTokens ?? 0, config.minCompletionTokens)
+      : params.maxCompletionTokens
 
   const payload: Record<string, unknown> = {
     model: config.model,
@@ -211,6 +228,22 @@ export async function callMotieLocalProvider(params: {
     // from FriendliAI's own K-EXAONE quickstart curl example and the model's
     // HuggingFace README (`chat_template_kwargs: { enable_thinking: bool }`).
     payload.chat_template_kwargs = { enable_thinking: false }
+  }
+  if (provider === 'solar') {
+    // STEP9 [1] — THE BUG: Solar returned empty `content` mid-debate (round 2).
+    // Upstage's own docs are self-contradictory: the general parameter table
+    // states `reasoning_effort` defaults to 'minimal' (reasoning OFF), but the
+    // solar-pro3-SPECIFIC reasoning-effort table lists 'medium' — NOT
+    // 'minimal' — as "Balanced reasoning (default)", with a dynamic budget up
+    // to 16,384 tokens drawn from the SAME remaining-context/completion budget
+    // as the visible answer. Left unset, the model is free to follow the
+    // model-specific default (reasoning ON) and can burn the entire
+    // max_tokens budget on hidden reasoning before `content` — exactly the
+    // exaone/deepseek failure mode. Explicitly forcing 'low' (documented as
+    // reasoning OFF for solar-pro3) closes this regardless of which default
+    // actually applies server-side. Verified against console.upstage.ai's own
+    // API reference, not invented.
+    payload.reasoning_effort = 'low'
   }
 
   const controller = new AbortController()

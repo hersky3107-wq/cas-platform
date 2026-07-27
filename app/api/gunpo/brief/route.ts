@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { gatherJejuSnapshot, buildBriefingContext, type JejuSnapshot } from '@/lib/gunpo/brief'
+import { gatherJejuSnapshot, buildBriefingContext, FIXED_GUNPO_COUNCIL_MODE, type JejuSnapshot } from '@/lib/gunpo/brief'
 import { summarizeAvailableData, type JejuExecutedSearch } from '@/lib/gunpo/deep'
 import { generateJejuPreReport } from '@/lib/gunpo/pre-report'
 import {
@@ -103,8 +103,9 @@ export async function POST(req: Request): Promise<Response> {
         typeof body.question === 'string' && body.question.trim() ? body.question.trim() : ''
       if (!question) return fail('start', '질문이 비어 있습니다.', 400)
 
-      const councilMode: 'trade' | 'warroom' =
-        body.councilMode === 'warroom' ? 'warroom' : 'trade'
+      // STEP12: mode toggle removed — always use the fixed single mode.
+      const councilMode: 'trade' | 'warroom' = FIXED_GUNPO_COUNCIL_MODE
+      void body.councilMode
 
       const snapshot = await gatherJejuSnapshot(councilMode)
       const context = buildBriefingContext(snapshot, councilMode)

@@ -7,6 +7,7 @@ import { useMotieMode, toJejuCouncilMode } from '@/components/gunpo/mode-context
 import { useJejuUi } from '@/components/gunpo/useJejuUi'
 import { aiProductName, aiProductNameWithGloss } from '@/components/motie/aiProviderLabel'
 import { SupplementCard } from '@/app/gunpo/governance/_components/SupplementCard'
+import { GunpoPanelNotice, PublicDataNotice } from '@/app/gunpo/governance/_components/GunpoPanelNotice'
 import type { MotieSupplement } from '@/lib/gunpo/supplements'
 
 // ── Local types (shape-compatible with app/api/jeju/deliberate/route.ts) ──────
@@ -36,6 +37,8 @@ type DebateTurn = {
   claim?: string
   content: string
   isRedTeam?: boolean
+  /** True when this seat produced no usable statement this round (see noResponseTurn). */
+  failed?: boolean
 }
 
 /** A facilitator summary (from the facilitate action). */
@@ -154,6 +157,15 @@ function RedTeamBadge({ t }: { t: Ui }) {
   return (
     <span className="rounded-md bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-bold text-rose-300">
       {t.deliberateRedTeamBadge}
+    </span>
+  )
+}
+
+/** Explicit, un-missable marker for a seat that produced nothing this round — never rendered silently. */
+function FailedBadge({ t }: { t: Ui }) {
+  return (
+    <span className="rounded-md border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+      ⚠ {t.deliberateSeatFailedBadge}
     </span>
   )
 }
@@ -429,11 +441,14 @@ function ConsensusTrajectory({ scores, t }: { scores: RoundScore[]; t: Ui }) {
 
 function TurnCard({ turn, t }: { turn: DebateTurn; t: Ui }) {
   return (
-    <div className="rounded-xl bg-jeju-tile-bg px-4 py-3">
+    <div
+      className={`rounded-xl px-4 py-3 ${turn.failed ? 'border border-amber-500/30 bg-amber-500/5' : 'bg-jeju-tile-bg'}`}
+    >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-jeju-fg">
           {aiProductNameWithGloss(turn.aiName)}
         </span>
+        {turn.failed && <FailedBadge t={t} />}
         {turn.isRedTeam && <RedTeamBadge t={t} />}
         {turn.actionTag && <ActionTagBadge tag={turn.actionTag} />}
       </div>
@@ -551,6 +566,7 @@ function VerdictBlock({
   voteSkipReason,
   consensusScore,
   stoppedReason,
+  showPublicDataNotice,
   t,
 }: {
   verdict: Verdict
@@ -559,6 +575,7 @@ function VerdictBlock({
   voteSkipReason: 'none' | 'open_ended' | 'unmeasurable' | 'high_consensus'
   consensusScore: number
   stoppedReason: string
+  showPublicDataNotice: boolean
   t: Ui
 }) {
   const sections: { heading: string; content: string | null }[] = [
@@ -578,6 +595,7 @@ function VerdictBlock({
 
   return (
     <div className="flex flex-col gap-5 rounded-2xl border border-jeju-accent/40 bg-gradient-to-b from-jeju-bg-elevated to-jeju-bg px-6 py-6 shadow-[var(--jeju-shadow)]">
+      {showPublicDataNotice && <PublicDataNotice t={t} />}
       {/* Headline band */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-jeju-border pb-4">
         <div>
@@ -602,6 +620,9 @@ function VerdictBlock({
               <span className="text-lg font-bold text-jeju-fg-muted">점</span>
             )}
           </span>
+          <p className="mt-1 max-w-[220px] text-right text-[10px] leading-snug text-jeju-fg-muted/80">
+            {t.deepConsensusExplainer}
+          </p>
         </div>
       </div>
 
@@ -622,7 +643,11 @@ function VerdictBlock({
               {t.deepVoteHeading}
             </h3>
             <span className="rounded-full border border-jeju-accent/40 bg-jeju-bg px-2 py-0.5 text-[10px] font-semibold text-jeju-accent">
-              {t.deliberateVoteAllPanel(vote.votes.length)}
+              {t.deliberateVoteSeatBreakdown(
+                vote.votes.filter((v) => v.provider !== 'perplexity').length,
+                vote.votes.filter((v) => v.provider === 'perplexity').length,
+                vote.votes.length
+              )}
             </span>
           </div>
           {/* FIX 1: flex-wrap so long tally line doesn't overflow on narrow cards */}
@@ -740,6 +765,9 @@ export function DeliberateSection() {
   const removeSupplement = useCallback((index: number) => {
     setSupplements((prev) => prev.filter((_, i) => i !== index))
   }, [])
+  // Snapshot of "did THIS run have attachments" — supplements can be edited
+  // after a run finishes, so the public-data notice must not read live state.
+  const [ranWithAttachments, setRanWithAttachments] = useState(false)
 
   const runningRef = useRef(false)
 
@@ -816,6 +844,7 @@ export function DeliberateSection() {
       const q = (overrideQ ?? question).trim()
       if (!q || runningRef.current) return
       runningRef.current = true
+      setRanWithAttachments(supplements.length > 0)
 
       setStage('start')
       setError(null)
@@ -994,6 +1023,8 @@ export function DeliberateSection() {
 
   return (
     <>
+      <GunpoPanelNotice t={t} />
+
       {/* Input */}
       <div className="mb-6 flex flex-col gap-3">
         <p className="text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
@@ -1003,11 +1034,7 @@ export function DeliberateSection() {
         <textarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder={
-            councilMode === 'urban'
-              ? t.deliberateQuestionPlaceholderTrade
-              : t.deliberateQuestionPlaceholderWarroom
-          }
+          placeholder={t.deliberateQuestionPlaceholderWarroom}
           disabled={isRunning}
           rows={3}
           className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-base text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"
@@ -1046,7 +1073,7 @@ export function DeliberateSection() {
               </span>
             ) : undefined
           }
-          defaultOpen={false}
+          defaultOpen
           t={t}
         >
           <SupplementCard
@@ -1094,6 +1121,7 @@ export function DeliberateSection() {
             voteSkipReason={voteSkipReason}
             consensusScore={consensusScore}
             stoppedReason={stoppedReason}
+            showPublicDataNotice={!ranWithAttachments}
             t={t}
           />
         </div>
@@ -1238,7 +1266,11 @@ export function DeliberateSection() {
             <Section title={t.deepVoteHeading} t={t}>
               <p className="mb-2">
                 <span className="rounded-full border border-jeju-accent/40 bg-jeju-bg px-2 py-0.5 text-[10px] font-semibold text-jeju-accent">
-                  {t.deliberateVoteAllPanel(vote.votes.length)}
+                  {t.deliberateVoteSeatBreakdown(
+                    vote.votes.filter((v) => v.provider !== 'perplexity').length,
+                    vote.votes.filter((v) => v.provider === 'perplexity').length,
+                    vote.votes.length
+                  )}
                 </span>
               </p>
               {/* FIX 1: flex-wrap so long tally line doesn't overflow on narrow cards */}

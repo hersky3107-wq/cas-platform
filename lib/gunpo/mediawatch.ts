@@ -15,7 +15,7 @@ import {
  * DESIGN CONSTRAINTS (same isolation discipline as the rest of lib/gunpo):
  *   - May import lib/ai/router.ts (runSingleAiProvider) only.
  *   - MUST NOT touch or depend on app/api/synod/* — self-contained.
- *   - AIMANI must NOT import lib/gunpo. The folder stays liftable to a standalone
+ *   - AIMANI must NOT import lib/gunpo. The folder stays lifetable to a standalone
  *     site. 'server-only'. Never throws — every exported fn returns a
  *     result object; a failed sub-call becomes an ok:false entry.
  *
@@ -33,11 +33,10 @@ import {
  *     (4) NATIONAL vs LOCAL press framing contrast.
  *   Honesty: summarize/analyze actual found coverage, cite sources, never fabricate.
  *
- * STEP 2 (구조 복제) STATE: MEDIAWATCH_UMBRELLAS below still has motie's
- * 제주(Jeju)-specific policy axes and search hints — TODO(군포): replace with
- * 군포시 도시·정비/시민·정주 axes. Left in place (not emptied to `[]`) so the
- * pipeline stays runnable while the content is filled in; every "제주" mention
- * in the umbrella hints/prompts below needs to become 군포 (or a TODO).
+ * STEP7: umbrellas + search role + queries are now 군포화. Two search axes:
+ *   A. 군포시·경기도 지역언론 및 시청 공식 발표 (안건 관련 최신 보도·공고)
+ *   B. 유사 규모 수도권 기초지자체의 동일 현안 대응 사례
+ * Every query embeds '군포시' or '경기도' so Perplexity stays region-anchored.
  */
 
 /**
@@ -60,10 +59,15 @@ const SYNTHESIS_PROVIDER: ExtendedAiProviderName = 'anthropic'
 const SEARCH_PROVIDER: ExtendedAiProviderName = 'perplexity'
 
 /**
- * Loose policy/interest UMBRELLAS reflecting Jeju's actual priorities. These are
- * broad HINTS, not rigid fixed questions — each becomes ONE Perplexity search.
- * The trailing free-catch entries (isFree) deliberately do NOT force everything
- * into an umbrella, so unexpected issues surface.
+ * Loose policy/interest UMBRELLAS reflecting 군포시's actual priorities. These
+ * are broad HINTS, not rigid fixed questions — each becomes ONE Perplexity search.
+ * Every hint embeds '군포시' or '경기도' so Perplexity stays region-anchored. The
+ * trailing free-catch entries (isFree) deliberately do NOT force everything into
+ * an umbrella, so unexpected issues surface.
+ *
+ * STEP7 search axes (baked into the hint phrasing):
+ *   A. 군포시·경기도 지역언론 및 시청 공식 발표 (안건 관련 최신 보도·공고)
+ *   B. 유사 규모 수도권 기초지자체의 동일 현안 대응 사례
  */
 const MEDIAWATCH_UMBRELLAS: ReadonlyArray<{
   id: string
@@ -72,50 +76,50 @@ const MEDIAWATCH_UMBRELLAS: ReadonlyArray<{
   isFree?: boolean
 }> = [
   {
-    id: 'tourism',
-    label: '관광 (내국인·외국인)',
-    hint: '제주 관광 동향 — 내국인·외국인 관광객 추이, 관광 정책, 관광업계 현안',
+    id: 'urban-renewal',
+    label: '도시·정비 (신도시·원도심)',
+    hint: '군포시 산본 1기 신도시·군포역·금정역 원도심 노후화, 역세권 개발, 재정비 — 경기도 군포시청 공식 발표와 지역언론 최신 보도',
   },
   {
-    id: 'logistics',
-    label: '물류·교통 (항공·항만)',
-    hint: '제주 물류·교통 — 항공 노선, 항만, 교통 인프라, 접근성, 운송비',
+    id: 'industry-complex',
+    label: '산업지 전환 (당정동 복합지구)',
+    hint: '군포시 당정동 노후 공업지역 첨단산업·주거·문화 복합지구 전환 — 경기도 군포시청 공식 발표와 지역언론 보도',
   },
   {
-    id: 'agrifood',
-    label: '농수산식품 판매·유통',
-    hint: '제주 농수산물·식품 — 생산, 판매·유통, 가격, 수출, 수급',
+    id: 'logistics-terminal',
+    label: '물류·교통 (부곡동 터미널)',
+    hint: '군포시 부곡동 복합물류터미널 화물차 통행·소음·생활권 단절, 기능전환 논의 — 경기도 군포시 지역언론 보도',
   },
   {
-    id: 'weather',
-    label: '날씨·기후',
-    hint: '제주 날씨·기후 — 기상특보, 이상기후, 기후변화의 지역 영향',
+    id: 'river-restoration',
+    label: '산본천 복원·침수',
+    hint: '군포시 산본천 복원 사업 국비 확보, 산본1동 저지대 집중호우 침수 이력 — 경기도 군포시청 발표와 지역언론 보도',
   },
   {
-    id: 'semiconductor',
-    label: '반도체 산업',
-    hint: '제주 반도체 산업 — 관련 투자, 입지, 정책, 인력',
+    id: 'welfare-residence',
+    label: '복지·정주 (인구·청년)',
+    hint: '군포시 인구 감소·청년층 유출, 주거·일자리·보육·문화 정주 여건 — 경기도 군포시청 복지·행정 발표',
   },
   {
-    id: 'ai-ax',
-    label: 'AI·AX 정책',
-    hint: '제주 AI·디지털 전환(AX) 정책 — 정부·도지사 역점 사업, 추진 현황',
+    id: 'transport',
+    label: '교통 (버스·환승)',
+    hint: '군포시 금정역 1·4호선 환승, GTX-C 정차역, 버스 정류소·도착정보 — 경기도 군포시 지역언론 교통 보도',
   },
   {
-    id: 'energy',
-    label: '친환경에너지·전력',
-    hint: '제주 친환경에너지·재생에너지 — 전력 수급, 계통, 출력제한, 정책',
+    id: 'peer-cities',
+    label: '타 수도권 기초지자체 사례',
+    hint: '유사 규모 수도권 기초지자체(과천·의왕·안양·시흥 등)의 노후 신도시 재정비·역세권 개발·공업지 전환 대응 사례 — 경기도 지자체 비교',
   },
   {
     id: 'free-1',
     label: '그 외 화제 (자유 탐색)',
-    hint: '위 분류에 속하지 않더라도 최근 제주에서 가장 화제가 된 일·사건·정책',
+    hint: '위 분류에 속하지 않더라도 최근 경기도 군포시에서 가장 화제가 된 일·사건·정책',
     isFree: true,
   },
   {
     id: 'free-2',
     label: '그 외 화제 (자유 탐색 2)',
-    hint: '최근 제주도민 사이에서 관심이 높거나 논란이 된 지역 이슈',
+    hint: '최근 군포시민 사이에서 관심이 높거나 논란이 된 경기도 군포시 지역 이슈',
     isFree: true,
   },
 ]
@@ -151,7 +155,7 @@ export type JejuMediaWatch = {
   coreIssues: string | null
   /** 주변 이슈 — minor-but-notable issues, listed briefly below the core. */
   minorIssues: string | null
-  /** 전국 vs 제주 지역 언론 논조 대비. */
+  /** 전국 vs 군포시 지역 언론 논조 대비. */
   nationalVsLocal: string | null
   /** Short top-of-page synthesis summary. */
   summary: string | null
@@ -224,19 +228,23 @@ function extractSources(text: string): string[] {
 /** Perplexity search-role system prompt — anchored to today, honesty-constrained. */
 function buildSearchSystemPrompt(today: string): string {
   return [
-    `당신은 제주 관련 최신 언론 보도를 찾아 정리하는 검색 전문가입니다. 오늘은 ${today}(한국 표준시)입니다.`,
-    '주어진 주제 영역에 대해, 가능한 한 최근의 실제 제주 관련 보도를 찾아 한국어로 정리하세요.',
+    `당신은 경기도 군포시 관련 최신 언론 보도를 찾아 정리하는 검색 전문가입니다. 오늘은 ${today}(한국 표준시)입니다.`,
+    '주어진 주제 영역에 대해, 가능한 한 최근의 실제 군포시·경기도 관련 보도·공고를 찾아 한국어로 정리하세요.',
+    '검색 축은 두 가지입니다:',
+    '  A. 군포시·경기도 지역언론 및 군포시청 공식 발표 (안건 관련 최신 보도·공고)',
+    '  B. 유사 규모 수도권 기초지자체(과천·의왕·안양·시흥 등)의 동일 현안 대응 사례',
+    '모든 검색 질의에는 반드시 "군포시" 또는 "경기도"가 포함되도록 하세요.',
     '',
     '목표: 해당 영역에서 실제로 보도된 기사·보고서를 3~5건 찾아 각각 따로 정리하세요. 보도가 실제로 많으면 5건, 적으면 있는 만큼(최소 1건)만 쓰세요.',
     '각 보도 항목마다 다음 네 가지를 빠짐없이 포함하세요:',
-    '① 언론사(매체명): 제주 지역언론(제주일보·한라일보·제이누리 등)이면 "지역지", 전국 언론이면 "전국지"로 함께 표시.',
+    '① 언론사(매체명): 군포·경기 지역언론(경기일보·경기신문·군포시청 공식 홈페이지 등)이면 "지역지", 전국 언론이면 "전국지"로 함께 표시.',
     '② 헤드라인 요지: 제목을 그대로 베끼지 말고 의미를 풀어서 쓰세요(직접 인용은 아주 짧게만, 큰따옴표로).',
     '③ 보도 날짜: 가능하면 명확히 쓰세요. 날짜를 확정할 수 없으면 "날짜 불명", 오래된 기사이면 "오래된 기사"로 표시하고 절대 지어내지 마세요.',
     '④ 논조(framing): 이 보도가 사안을 어떻게 바라보는지(긍정적/부정적/중립적, 무엇을 강조하고 무엇을 우려하는지) 1~2문장으로 설명하세요.',
     '가능하면 출처 URL도 포함하세요.',
     '',
-    '가능하면 제주 지역언론과 전국 언론을 섞어서 폭넓게 보세요.',
-    '규칙(엄수): 실재하지 않는 기사·날짜·수치를 절대 지어내지 마세요. 지지율·찬성률 같은 정량 수치는 만들지 말고, 보도 논조는 정성적으로만 다루세요. 해당 영역에서 보도를 찾지 못했으면 "이 영역에서 최근 제주 관련 보도를 찾지 못했습니다"라고 솔직히 쓰세요.',
+    '가능하면 군포·경기 지역언론과 전국 언론을 섞어서 폭넓게 보세요.',
+    '규칙(엄수): 실재하지 않는 기사·날짜·수치를 절대 지어내지 마세요. 지지율·찬성률 같은 정량 수치는 만들지 말고, 보도 논조는 정성적으로만 다루세요. 해당 영역에서 보도를 찾지 못했으면 "이 영역에서 최근 군포시·경기도 관련 보도를 찾지 못했습니다"라고 솔직히 쓰세요.',
   ].join('\n')
 }
 
@@ -245,7 +253,7 @@ async function runOneMediaSearch(
   umbrella: { id: string; label: string; hint: string },
   today: string
 ): Promise<JejuMediaWatchSearch> {
-  const query = `${umbrella.hint} — 오늘(${today}) 기준 가장 최근의 제주 관련 보도`
+  const query = `${umbrella.hint} — 오늘(${today}) 기준 가장 최근의 군포시·경기도 관련 보도`
   const base = { id: umbrella.id, label: umbrella.label, query }
 
   let r
@@ -309,9 +317,9 @@ async function runMediaSearches(today: string): Promise<JejuMediaWatchSearch[]> 
 function perspectiveFor(mode: JejuMediaWatchMode): string {
   if (mode === 'resident') {
     return [
-      '관점: 일반 제주도민의 시각으로 정리하세요.',
+      '관점: 일반 군포시민의 시각으로 정리하세요.',
       '"내 지역에 무슨 일이 일어나고 있나"를 중심으로, 생활·체감에 미치는 영향(물가, 교통, 환경, 일상)을 우선하세요.',
-      '행정 용어보다 도민이 이해하기 쉬운 표현을 쓰세요.',
+      '행정 용어보다 시민이 이해하기 쉬운 표현을 쓰세요.',
     ].join('\n')
   }
   return [
@@ -324,11 +332,11 @@ function perspectiveFor(mode: JejuMediaWatchMode): string {
 /** Synthesis system prompt — structure + honesty + the mode-specific perspective. */
 function buildSynthesisSystemPrompt(mode: JejuMediaWatchMode, today: string): string {
   return [
-    `당신은 제주 관련 언론 보도를 종합·분석하는 미디어 분석가입니다. 오늘은 ${today}(한국 표준시)입니다.`,
+    `당신은 경기도 군포시 관련 언론 보도를 종합·분석하는 미디어 분석가입니다. 오늘은 ${today}(한국 표준시)입니다.`,
     '여러 주제 영역에 대해 수집된 실제 보도 자료가 주어집니다. 당신의 가치는 단순 수집이 아니라 "가공"입니다:',
     '- 많이 다뤄진 큰 사안과 적게 다뤄진 사안을 구분(신호 vs 잡음)하고,',
     '- 헤드라인 나열이 아니라 논조(tone)를 분석하며,',
-    '- 전국 언론과 제주 지역언론의 프레이밍 차이를 대비하고,',
+    '- 전국 언론과 군포·경기 지역언론의 프레이밍 차이를 대비하고,',
     '- 공무원이 검증할 수 있도록 출처(매체·날짜)를 본문에 보존합니다.',
     '',
     perspectiveFor(mode),
@@ -338,10 +346,10 @@ function buildSynthesisSystemPrompt(mode: JejuMediaWatchMode, today: string): st
     '출력 형식(매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만. 각 값은 한국어 산문/목록 문자열입니다.',
     '스키마:',
     '{',
-    '  "summary": "최상단 요약 (4~6줄). 오늘 제주 언론 지형의 큰 그림 — 가장 뜨거운 사안 2~3개와 전체 논조 분위기.",',
+    '  "summary": "최상단 요약 (4~6줄). 오늘 군포시·경기도 언론 지형의 큰 그림 — 가장 뜨거운 사안 2~3개와 전체 논조 분위기.",',
     '  "coreIssues": "핵심 이슈 — 여러 매체에서 크게 다뤄진 주요 사안들. 각 사안마다: (1) 어떤 매체들이 어떤 날짜에 보도했는지, (2) 각 보도의 논조(긍정/부정/중립, 강조점, 우려), (3) 매체 간 논조 차이가 있으면 대비, (4) 이 사안이 정책적으로 왜 중요한지. 사안이 여럿이면 각각 충분히 다루세요. 이 섹션에 가장 큰 비중을 두세요.",',
     '  "minorIssues": "주변 이슈 — 보도량은 적지만 놓치면 안 될 사안들. 각 항목마다 매체·날짜·논조를 한 줄~두 줄로. 항목이 여럿이면 모두 포함하세요.",',
-    '  "nationalVsLocal": "전국 언론과 제주 지역언론의 논조가 갈리는 지점을 구체적으로 서술하세요. 같은 사안을 전국지는 어떻게, 지역지는 어떻게 프레이밍했는지 대비하세요. 차이가 뚜렷하지 않으면 그 이유와 함께 간략히 명시하세요."',
+    '  "nationalVsLocal": "전국 언론과 군포·경기 지역언론의 논조가 갈리는 지점을 구체적으로 서술하세요. 같은 사안을 전국지는 어떻게, 지역지는 어떻게 프레이밍했는지 대비하세요. 차이가 뚜렷하지 않으면 그 이유와 함께 간략히 명시하세요."',
     '}',
     '',
     '정직성 규칙(최우선): 제공된 보도 자료에만 근거하세요. 실재하지 않는 기사·수치·반응을 절대 지어내지 마세요. 지지율·찬성률 등 정량 수치를 만들지 말고 논조는 정성적으로만 다루세요. 특정 영역 보도가 실제로 빈약했다면 억지로 채우지 말고 "이 영역은 수집된 보도가 적었습니다"라고 솔직히 한 줄로 쓰고 넘어가세요. 분량은 반드시 실제 자료에서 나와야 합니다.',
@@ -415,7 +423,7 @@ export async function runJejuMediaWatch(params?: {
   const userPrompt = [
     `[오늘 날짜] ${date}`,
     '',
-    '[수집된 제주 관련 언론 보도 — 주제 영역별]',
+    '[수집된 군포시·경기도 관련 언론 보도 — 주제 영역별]',
     formatSearchesForSynthesis(searches),
     '',
     '위 자료를 종합하여 스키마에 맞는 순수 JSON만 출력하세요.',

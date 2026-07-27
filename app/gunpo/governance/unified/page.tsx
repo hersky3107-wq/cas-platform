@@ -6,7 +6,12 @@ import { JejuThemeShell } from '@/components/gunpo/JejuThemeShell'
 import { useJejuUi } from '@/components/gunpo/useJejuUi'
 import { DeliberateSection } from '@/app/gunpo/governance/deliberate/page'
 import { BriefSection } from '@/app/gunpo/governance/brief/page'
-import { DiagnosticSection } from '@/app/gunpo/governance/diagnostic/page'
+// NOTE (STEP10): 진단형(diagnostic) tab intentionally unlinked from the
+// governance landing/nav per user decision — the route + page itself
+// (app/gunpo/governance/diagnostic, app/api/gunpo/diagnostic) is left intact
+// so it can be re-linked later. Re-add the import + <UnifiedSection> block
+// below to restore it.
+// import { DiagnosticSection } from '@/app/gunpo/governance/diagnostic/page'
 
 // ── Local collapsible section wrapper (heading + 어미 설명 + body) ────────────
 
@@ -60,7 +65,7 @@ function UnifiedSection({
   )
 }
 
-// ── Unified governance view (통합 심의): 찬반형 → 개방형 → 진단형 stacked ──────
+// ── Unified governance view (통합 심의): 찬반형 → 개방형 stacked (진단형 unlinked) ──
 
 export default function JejuGovernanceUnifiedPage() {
   const { t } = useJejuUi()
@@ -86,10 +91,7 @@ export default function JejuGovernanceUnifiedPage() {
           <BriefSection />
         </UnifiedSection>
 
-        {/* Section 3 — 진단형 스캔 (standalone diagnostic engine with backing badges + legend) */}
-        <UnifiedSection title={t.hubDiagnosticTitle} explainer={t.hubDiagnosticDesc}>
-          <DiagnosticSection />
-        </UnifiedSection>
+        {/* Section 3 — 진단형 스캔: unlinked from nav for STEP10 (see import note above). */}
       </div>
     </JejuThemeShell>
   )

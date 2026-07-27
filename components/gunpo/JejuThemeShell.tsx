@@ -4,8 +4,6 @@ import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import type { JejuThemeId } from '@/lib/gunpo/ui-labels'
 import { useJejuUi } from './useJejuUi'
-import { MotieModeBand } from './MotieModeBand'
-import { useMotieMode } from './mode-context'
 
 type JejuThemeShellProps = {
   theme: JejuThemeId
@@ -27,11 +25,9 @@ export function JejuThemeShell({
   const { t } = useJejuUi()
   const isResident = theme === 'resident'
 
-  // For governance pages, the effective theme follows councilMode so the
-  // trade/warroom CSS palettes apply. The MotieModeContext default ('trade')
-  // is always defined, so this is safe even without an explicit provider.
-  const { mode } = useMotieMode()
-  const effectiveTheme: string = theme === 'governance' ? mode : theme
+  // STEP12: single-mode — no urban/people theme switch; governance uses its
+  // own theme token, resident keeps resident.
+  const effectiveTheme: string = theme
 
   return (
     <div
@@ -39,10 +35,21 @@ export function JejuThemeShell({
       className="min-h-screen bg-jeju-bg text-jeju-fg"
       style={{ fontSize: 'var(--jeju-text-base)' }}
     >
-      {/* Governance urban/people toggle only makes sense on governance pages —
-          resident (시민) chip pages hide it (STEP3: mirrors how the Jeju
-          original has no equivalent band on its resident pages). */}
-      {!isResident && <MotieModeBand />}
+      {/* STEP12: brand only (mode toggle removed). MotieModeBand left unused. */}
+      {!isResident && (
+        <div className="border-b border-jeju-border bg-jeju-bg-elevated px-4 py-4 sm:px-8">
+          <div className="mx-auto w-full max-w-4xl">
+            <p className="text-sm font-black tracking-[0.25em] text-jeju-accent">
+              {t.brandTitle}
+            </p>
+            {t.brandSubtitle ? (
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-jeju-fg-muted">
+                {t.brandSubtitle}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      )}
       <header
         className={`flex items-center gap-3 px-4 py-4 sm:px-8 ${
           isResident ? 'border-b-2 border-jeju-border' : 'border-b border-jeju-border'

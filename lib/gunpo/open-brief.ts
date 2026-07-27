@@ -24,9 +24,8 @@ import {
   userQuestionLabel,
   disclaimerFor,
   TRADE_ANALYST_DIRECTIVE,
-  TRADE_REDUNDANCY_RULE,
-  WARROOM_ANALYST_DIRECTIVE,
-  WARROOM_REDUNDANCY_RULE,
+  GUNPO_REDUNDANCY_RULE,
+  GUNPO_UNIFIED_ROLE_SEED,
 } from '@/lib/gunpo/persona'
 
 /**
@@ -206,150 +205,25 @@ function buildOpenOrchestratorSystemPrompt(councilMode: JejuCouncilMode): string
 }
 
 function fallbackOpenPlan(question: string, councilMode: JejuCouncilMode = 'warroom'): JejuOpenMeetingPlan {
-  if (councilMode === 'warroom') {
-    const warroomDefaults: Omit<JejuOpenAnalysisRole, 'provider'>[] = [
-      {
-        roleId: 'primary-a',
-        roleLabel: '핵심 현안·우선순위',
-        mandate: '질문의 핵심 자원·에너지 현안과 긴급도를 데이터 근거로 정리합니다.',
-        subQuestion: '지금 가장 시급한 자원·에너지 현안과 그 근거는 무엇인가?',
-        isDoubledAngle: true,
-        doubledGroupId: 'primary',
-      },
-      {
-        roleId: 'primary-b',
-        roleLabel: '핵심 현안·파급효과',
-        mandate: '동일 주제의 2차·파급 영향과 리스크를 분석합니다.',
-        subQuestion: '핵심 현안이 산업·물가·에너지 안보에 미치는 파급 영향은?',
-        isDoubledAngle: true,
-        doubledGroupId: 'primary',
-      },
-      {
-        roleId: 'energy-supply',
-        roleLabel: '에너지 수급·안보',
-        mandate: '에너지 수급 안정성과 수입의존도·공급 리스크를 평가합니다.',
-        subQuestion: '수급 안정성과 수입의존도 관점에서 주의할 점은?',
-        isDoubledAngle: false,
-      },
-      {
-        roleId: 'price-market',
-        roleLabel: '유가·가격',
-        mandate: '국내외 유가·가격 동향과 비용 영향을 분석합니다(오피넷 유가는 현재 현황 기준).',
-        subQuestion: '현재 유가·가격 동향이 시사하는 바는?',
-        isDoubledAngle: false,
-      },
-      {
-        roleId: 'geopolitics',
-        roleLabel: '국제정세·지정학',
-        mandate: '수입처·공급망의 지정학 리스크와 국제 정세 변수를 봅니다(현재 정세는 검색 기준).',
-        subQuestion: '국제 정세·지정학이 수급·가격에 주는 리스크는?',
-        isDoubledAngle: false,
-      },
-      {
-        roleId: 'industry-macro',
-        roleLabel: '산업 영향·물가',
-        mandate: '산업 비용·물가로의 파급과 거시 영향을 분석합니다.',
-        subQuestion: '산업·물가에 미치는 직접적 영향은?',
-        isDoubledAngle: false,
-      },
-      {
-        roleId: 'domestic-industry-response',
-        roleLabel: '국내 산업·수요업계 대응',
-        mandate: '국내 수요업계·산업 현장의 대응 여력과 실행 가능성을 점검합니다.',
-        subQuestion: '국내 산업계는 이 사안에 실제로 대응할 여력이 있는가?',
-        isDoubledAngle: false,
-      },
-      {
-        roleId: 'local-government-response',
-        roleLabel: '지자체·행정 대응체계',
-        mandate: '지자체·관계기관의 행정 대응 체계와 실행 여건을 점검합니다.',
-        subQuestion: '지자체·행정 대응 체계는 충분히 준비되어 있는가?',
-        isDoubledAngle: false,
-      },
-    ]
-    const warroomRoles: JejuOpenAnalysisRole[] = warroomDefaults.map((d, i) => ({
-      ...d,
-      provider: OPEN_BRIEF_ANALYSTS[i]!,
-    }))
-    return {
-      ok: true,
-      question,
-      roles: warroomRoles,
-      rationale: `오케스트레이터 JSON 파싱 실패 — 기본 ${OPEN_BRIEF_ANALYSTS.length}좌석(핵심 각도 2명 + 에너지·대응 6분야 1명)으로 대체했습니다.`,
-      primaryAngleId: 'primary',
-      searchNeeded: true,
-    }
-  }
-  const defaults: Omit<JejuOpenAnalysisRole, 'provider'>[] = [
-    {
-      roleId: 'primary-a',
-      roleLabel: '핵심 현안·우선순위',
-      mandate: '질문의 핵심 현안과 긴급도를 데이터 근거로 정리합니다.',
-      subQuestion: '지금 가장 시급한 현안과 그 근거는 무엇인가?',
-      isDoubledAngle: true,
-      doubledGroupId: 'primary',
-    },
-    {
-      roleId: 'primary-b',
-      roleLabel: '핵심 현안·파급효과',
-      mandate: '동일 주제의 2차·파급 영향과 리스크를 분석합니다.',
-      subQuestion: '핵심 현안이 다른 분야·도민·산업에 미치는 영향은?',
-      isDoubledAngle: true,
-      doubledGroupId: 'primary',
-    },
-    {
-      roleId: 'fiscal-regulatory',
-      roleLabel: '재정·규제',
-      mandate: '재정 부담과 규제·제도 여건을 평가합니다.',
-      subQuestion: '재정·규제 관점에서 주의할 점은?',
-      isDoubledAngle: false,
-    },
-    {
-      roleId: 'infra-ops',
-      roleLabel: '인프라·운영',
-      mandate: '실행 가능한 인프라·운영 여건을 점검합니다.',
-      subQuestion: '현재 인프라·운영 역량으로 대응 가능한가?',
-      isDoubledAngle: false,
-    },
-    {
-      roleId: 'community-impact',
-      roleLabel: '지역사회·민생',
-      mandate: '도민·지역사회·민생 영향을 분석합니다.',
-      subQuestion: '도민·민생에 미치는 직접적 영향은?',
-      isDoubledAngle: false,
-    },
-    {
-      roleId: 'external-trends',
-      roleLabel: '외부·시장 동향',
-      mandate: '외부 환경·시장·정책 동향과의 정합성을 봅니다.',
-      subQuestion: '외부 동향·타지역 사례가 시사하는 바는?',
-      isDoubledAngle: false,
-    },
-    {
-      roleId: 'export-support-programs',
-      roleLabel: '정부 지원·인증 제도',
-      mandate: '수출 지원사업·인증 등 국내 제도의 활용 가능성을 점검합니다.',
-      subQuestion: '이 사안과 관련해 활용 가능한 국내 지원·인증 제도는 무엇인가?',
-      isDoubledAngle: false,
-    },
-    {
-      roleId: 'domestic-supply-chain',
-      roleLabel: '국내 공급망·조달',
-      mandate: '원자재·부품 조달과 국내 생산·물류 여건을 점검합니다.',
-      subQuestion: '국내 공급망·조달 관점에서 실행 가능성은?',
-      isDoubledAngle: false,
-    },
-  ]
-  const roles: JejuOpenAnalysisRole[] = defaults.map((d, i) => ({
-    ...d,
+  // STEP12: single unified 8-role set (mode toggle removed). councilMode kept
+  // for call-site compatibility only. Exact 8 lenses from GUNPO_UNIFIED_ROLE_SEED;
+  // doubling is left to the live orchestrator (parseOpenPlan treats off-spec
+  // doubling as non-fatal).
+  void councilMode
+  const roles: JejuOpenAnalysisRole[] = GUNPO_UNIFIED_ROLE_SEED.map((d, i) => ({
+    roleId: d.roleId,
+    roleLabel: d.roleLabel,
+    mandate: d.mandate,
+    subQuestion: d.subQuestion,
     provider: OPEN_BRIEF_ANALYSTS[i]!,
+    isDoubledAngle: false,
   }))
   return {
     ok: true,
     question,
     roles,
-    rationale: `오케스트레이터 JSON 파싱 실패 — 기본 ${OPEN_BRIEF_ANALYSTS.length}좌석(핵심 각도 2명 + 6분야 1명)으로 대체했습니다.`,
-    primaryAngleId: 'primary',
+    rationale: `오케스트레이터 JSON 파싱 실패 — 기본 ${OPEN_BRIEF_ANALYSTS.length}좌석(군포 단일 8렌즈)으로 대체했습니다.`,
+    primaryAngleId: 'urban-renewal',
     searchNeeded: true,
   }
 }
@@ -509,7 +383,6 @@ export async function planJejuOpenMeeting(params: {
 // ── Parallel analysis (STEP 3) ────────────────────────────────────────────────
 
 function buildAnalystSystemPrompt(role: JejuOpenAnalysisRole, councilMode: JejuCouncilMode): string {
-  const isTrade = councilMode === 'trade'
   return [
     openAnalystPersonaLine(councilMode),
     `당신의 AI 브랜드: ${BRAND_LABEL[role.provider] ?? role.provider}.`,
@@ -517,33 +390,26 @@ function buildAnalystSystemPrompt(role: JejuOpenAnalysisRole, councilMode: JejuC
     `당신의 직무: ${role.mandate}`,
     '',
     TRUTH_SEEKING_DIRECTIVE,
-    ...(isTrade
-      ? ['', TRADE_ANALYST_DIRECTIVE, '', TRADE_REDUNDANCY_RULE]
-      : ['', WARROOM_ANALYST_DIRECTIVE, '', WARROOM_REDUNDANCY_RULE]),
+    '',
+    TRADE_ANALYST_DIRECTIVE,
+    '',
+    GUNPO_REDUNDANCY_RULE,
     '',
     '분석 규칙:',
     '- 이것은 토론이 아닙니다. 다른 AI를 반박하거나 이름을 부르며 논쟁하지 마세요.',
     '- CLAIM/ACTION 같은 토론 태그를 쓰지 마세요.',
     '- 제공된 [상황 브리핑]과 [수집 데이터]에 근거하세요. 없는 수치는 지어내지 마세요.',
-    ...(isTrade
-      ? [
-          '- 당신의 렌즈가 경쟁·현지언론·여론 계열이라면, [실시간 검색 결과]의 현지 언론·여론 조사 내용을 반드시 활용해 구체적으로 인용하세요(현지 매체명, 소비자 반응, 트렌드 등). 그 블록에 실제로 관련 내용이 없을 때만 "데이터 없음"이라고 하세요.',
-        ]
-      : []),
+    '- [실시간 검색 결과]의 지역언론·시청 공식 발표·타 지자체 사례가 있으면 반드시 활용해 구체적으로 인용하세요. 그 블록에 실제로 관련 내용이 없을 때만 "데이터 없음"이라고 하세요.',
     '',
     '출력 형식 (총 900~1300자, 두 섹션만):',
     '## 핵심 발견',
     '4~6문장. 당신의 렌즈에서 가장 중요한 발견을 충실히 서술하세요. 치명적 리스크가 있으면 이 안에 포함하세요.',
     '## 데이터 근거',
-    isTrade
-      ? '4~6문장. 수치·사실을 출처·시점과 함께 인용하세요. 예: "(출처: KOTRA 국가정보)".'
-      : '4~6문장. 수치·사실을 출처·시점과 함께 인용하세요. 예: "(출처: 오피넷, 오늘 기준)".',
+    '4~6문장. 수치·사실을 출처·시점과 함께 인용하세요. 예: "(출처: 군포시청 공식 발표, OO월 OO일 기준)".',
     '',
     '두 섹션 외 추가 제목(리스크, 불확실성 등)을 별도로 만들지 마세요. 충실하고 완결된 분석이 목표이며, 절대 문장 중간에 끊지 말고 끝까지 작성하세요.',
     '',
-    isTrade
-      ? '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 작성하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(HS코드, FTA, USD, VAT 등), 숫자, 단위는 허용.'
-      : '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 작성하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(WTI, Brent, LNG, OPEC, USD, bbl 등), 숫자, 단위는 허용.',
+    '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 작성하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(GTX, LAWD, USD 등), 숫자, 단위는 허용.',
     KOREAN_ONLY_DIRECTIVE,
   ].join('\n')
 }
@@ -554,7 +420,7 @@ function formatSearchesForAnalysts(searches: JejuExecutedSearch[] | undefined): 
   if (ok.length === 0) return []
   return [
     '',
-    '[실시간 검색 결과 — 현지 언론·여론·규제]',
+    '[실시간 검색 결과 — 지역언론·타 지자체 사례]',
     ...ok.map((s, i) => `${i + 1}. 검색어: ${s.query}\n결과: ${s.result!.trim()}`),
   ]
 }
@@ -668,7 +534,7 @@ export async function runJejuOpenAnalyses(params: {
   briefing: string
   context: string
   councilMode?: JejuCouncilMode
-  /** Pre-report Perplexity results (현지 언론·여론·규제) shared with every analyst. */
+  /** Pre-report Perplexity results (지역언론·타 지자체 사례) shared with every analyst. */
   searches?: JejuExecutedSearch[]
   /** User-submitted paste-text supplements — untrusted reference data only. */
   supplements?: MotieSupplement[]
@@ -721,27 +587,12 @@ function formatAnalysesBlock(analyses: JejuOpenAnalysis[]): string {
 }
 
 function buildSynthesisSystemPrompt(councilMode: JejuCouncilMode): string {
-  const isTrade = councilMode === 'trade'
-  const recommendationSection = isTrade
-    ? [
-        '4) ★권고 (수출 실행 판단)',
-        '   - 의장 추천안 1개: "★ 추천안(A안)" — 진입 / 보류 / 조건부 추진 중 하나를 고르고, 그 근거와 트레이드오프를 명시.',
-        '   - 대안 B안 1개: "B안" — 다른 실행 선택지(진입/보류/조건부 추진)와 트레이드오프.',
-        '   - 대안 C안 1개: "C안" — 또 다른 실행 선택지와 트레이드오프.',
-        '   - 수출기업이 A/B/C 중 선택할 수 있게 각 안의 장단·전제 조건·리스크를 분명히. 근거 없는 시점·전망 판단에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만).',
-      ]
-    : [
-        '4) ★권고 (자원·에너지 정책 판단)',
-        '   - 의장 추천안 1개: "★ 추천안(A안)" — 수급 안정 / 수입처 다변화 필요 / 비상대응 등 정책 방향 중 하나를 고르고, 그 근거와 트레이드오프를 명시.',
-        '   - 대안 B안 1개: "B안" — 다른 정책 방향·우선순위·트레이드오프.',
-        '   - 대안 C안 1개: "C안" — 또 다른 정책 방향·선택지·트레이드오프.',
-        '   - 정책결정자가 A/B/C 중 선택할 수 있게 각 안의 장단·전제 조건·리스크를 분명히. 근거 없는 전망·인과 판단에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만).',
-      ]
   return [
     ...synthesisPersonaLines(councilMode),
     '',
     TRUTH_SEEKING_DIRECTIVE,
-    ...(isTrade ? ['', TRADE_ANALYST_DIRECTIVE] : ['', WARROOM_ANALYST_DIRECTIVE]),
+    '',
+    TRADE_ANALYST_DIRECTIVE,
     '',
     '반드시 아래 5개 섹션 제목을 그대로 사용하고, 각 섹션을 충실히 채우세요:',
     '',
@@ -754,7 +605,11 @@ function buildSynthesisSystemPrompt(councilMode: JejuCouncilMode): string {
     '3) 가장 시급한 쟁점 (우선순위)',
     '   - 무엇을 먼저 다뤄야 하는지, 근거와 함께 우선순위.',
     '',
-    ...recommendationSection,
+    '4) ★권고 (군포시 실행 판단)',
+    '   - 의장 추천안 1개: "★ 추천안(A안)" — 진행 / 보류 / 조건부 추진 중 하나를 고르고, 그 근거와 트레이드오프를 명시.',
+    '   - 대안 B안 1개: "B안" — 다른 실행 선택지(진행/보류/조건부 추진)와 트레이드오프.',
+    '   - 대안 C안 1개: "C안" — 또 다른 실행 선택지와 트레이드오프.',
+    '   - 담당 부서가 A/B/C 중 결정할 수 있게 각 안의 장단·전제 조건·리스크를 분명히. 근거 없는 시점·전망 판단에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만).',
     '',
     '5) 데이터 공백·유의사항',
     '   - 확인되지 않은 것, 추가 조사 필요, 리스크.',

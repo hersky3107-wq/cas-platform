@@ -65,17 +65,47 @@ async function fetchSection(sourceId: string, label: string, errors: string[]): 
   }
 }
 
-async function fetchContext(errors: string[]): Promise<{ text: string; meta: ContextMeta }> {
+/**
+ * Builds the 특보 injection block for the living-summary prompt from the
+ * ALREADY-FETCHED KMA warning section text (P1-1: the summary must never
+ * contradict the actual 기상특보 lookup — so we hand the AI the real result
+ * instead of letting it guess/search independently).
+ */
+function warningInjectionBlock(warning: WeatherSection): { block: string; hasActiveWarning: boolean } {
+  const text = warning.ok ? warning.text ?? '' : ''
+  const hasActiveWarning = /^기상특보(?!: 현재 발효 중인 기상특보 없음)/.test(text.trim())
+  if (!warning.ok || !text) {
+    return {
+      block: '[기상특보 조회 결과] 조회 실패 — 특보 유무를 단정하지 말고 "특보 조회 결과를 확인할 수 없음"으로만 언급하세요.',
+      hasActiveWarning: false,
+    }
+  }
+  if (!hasActiveWarning) {
+    return { block: `[기상특보 조회 결과]\n${text}`, hasActiveWarning: false }
+  }
+  return { block: `[기상특보 조회 결과 — 현재 발효 중]\n${text}`, hasActiveWarning: true }
+}
+
+async function fetchContext(
+  errors: string[],
+  warning: WeatherSection
+): Promise<{ text: string; meta: ContextMeta }> {
   const today = kstTodayIso()
   const retrievedAt = kstNowIso()
+  const { block: warningBlock, hasActiveWarning } = warningInjectionBlock(warning)
   const systemPrompt =
     `오늘은 ${today}입니다. 가장 최신 정보 위주로, 가능하면 최근 1주일 이내 자료를 우선하라. ` +
     '당신은 경기도 군포시 생활 기상 안내원입니다. 한국어로만, 군더더기 없이 3~4문장으로 답하세요. ' +
     '인용 번호([1][3] 등)를 쓰지 말고, 한자·중문·일문 문장부호(。「」 등)를 쓰지 마세요. ' +
-    '기온·강수·바람·특보 등 생활 기상 특이사항만 사실 위주로 요약하세요.'
+    '기온·강수·바람·특보 등 생활 기상 특이사항만 사실 위주로 요약하세요. ' +
+    '아래 [기상특보 조회 결과]는 실제 기상청 조회값이므로 반드시 그 내용을 그대로 신뢰하고 반영하세요. ' +
+    (hasActiveWarning
+      ? '특보가 발효 중이므로 요약의 첫 문장에서 특보명을 명시하세요. "특보가 확인되지 않았지만" 같은, 조회 결과와 배치되는 표현은 절대 쓰지 마세요.'
+      : '조회 결과 발효 중인 특보가 없으므로, 없는 특보를 지어내거나 "발효 중"이라고 쓰지 마세요.')
   const prompt =
     `경기도 군포시 오늘(${today}) 날씨·기상 특이사항을 알려주세요. ` +
-    '기온, 비/바람, 특보·주의사항, 외출에 참고할 생활 기상 요약을 해주세요.'
+    '기온, 비/바람, 특보·주의사항, 외출에 참고할 생활 기상 요약을 해주세요.\n\n' +
+    warningBlock
   try {
     const r = await runSingleAiProvider({
       supabase: noDbSupabase(),
@@ -102,16 +132,19 @@ async function fetchContext(errors: string[]): Promise<{ text: string; meta: Con
 
 /**
  * Fetch Gunpo weather + disaster info. Never throws.
- * All three KMA sections + the Perplexity context run in parallel.
+ *
+ * The three KMA sections run in parallel first. The Perplexity 생활 기상 요약
+ * runs AFTER, because it MUST be given the real 기상특보 lookup result to
+ * inject into its prompt (P1-1) — otherwise the AI can contradict the actual
+ * warning section (e.g. claiming "특보 없음" while one is active).
  */
 export async function getGunpoWeatherAlert(): Promise<WeatherAlertResult> {
   const errors: string[] = []
 
-  const [currentSettled, midtermSettled, warningSettled, contextSettled] = await Promise.allSettled([
+  const [currentSettled, midtermSettled, warningSettled] = await Promise.allSettled([
     fetchSection('kma-gunpo-weather', 'current', errors),
     fetchSection('kma-gunpo-midterm', 'midterm', errors),
     fetchSection('kma-gunpo-warning', 'warning', errors),
-    fetchContext(errors),
   ])
 
   const current: WeatherSection =
@@ -123,22 +156,23 @@ export async function getGunpoWeatherAlert(): Promise<WeatherAlertResult> {
 
   let context = ''
   let contextMeta: ContextMeta = { source: '검색', retrievedAt: kstNowIso(), asOf: null }
-  if (contextSettled.status === 'fulfilled') {
-    context = contextSettled.value.text
-    contextMeta = contextSettled.value.meta
-  } else {
-    errors.push(`context(settled): ${String(contextSettled.reason)}`)
+  try {
+    const ctx = await fetchContext(errors, warning)
+    context = ctx.text
+    contextMeta = ctx.meta
+  } catch (e: unknown) {
+    errors.push(`context(settled): ${e instanceof Error ? e.message : String(e)}`)
   }
 
   return {
     ok: true,
-    region: '경기도 군포시', // TODO(군포): nx/ny·regId·stnId가 채워지면 정확한 하위 지역명으로 교체
+    region: '경기도 군포시',
     current,
     midterm,
     warning,
     context,
     contextMeta,
-    freshnessNote: '기상청 초단기실황·중기예보·기상특보 기준 (지역 파라미터 TODO — lib/gunpo/connectors.ts 참고)',
+    freshnessNote: '경기도 군포시 · 기상청 기준',
     updatedAt: new Date().toISOString(),
     errors,
   }

@@ -40,12 +40,14 @@ import {
  */
 
 /**
- * GUNPO top-level council mode. STILL 'trade' | 'warroom' internally (unchanged
- * identifier/values — see components/gunpo/mode-context.tsx's GunpoMode for the
- * UI-facing 'urban' | 'people' values). Wiring 'trade'→도시·정비 and
- * 'warroom'→시민·정주 through this file is a later step.
+ * GUNPO council mode type — identifiers kept as 'trade' | 'warroom' for
+ * import-stability. STEP12 removed the UI toggle; runtime always uses
+ * FIXED_GUNPO_COUNCIL_MODE.
  */
 export type JejuCouncilMode = 'trade' | 'warroom'
+
+/** STEP12: single fixed engine mode (toggle removed). */
+export const FIXED_GUNPO_COUNCIL_MODE: JejuCouncilMode = 'trade'
 
 /**
  * TODO(군포): 도시·정비(trade) 축에서 실제로 쓸 lib/gunpo/connectors.ts 소스
@@ -80,28 +82,28 @@ const SECTION_HEADER_BY_ID: Record<string, string> = {}
 const DEFAULT_DAILY_QUESTION = ''
 
 /**
- * Standing 군포 context for the TRADE axis (도시·정비) — injected into every
- * briefing (LITE + DEEP). Identifier kept as JEJU_STANDING_ECONOMY_CONTEXT for
- * import-stability (deep.ts imports this name); the value is the
- * STEP6-provided GUNPO_STANDING_URBAN_CONTEXT, copied verbatim.
+ * STEP12: 군포 단일 모드 상시 맥락.
+ * STEP6의 GUNPO_STANDING_URBAN_CONTEXT + GUNPO_STANDING_PEOPLE_CONTEXT를
+ * 요약·각색 없이 온전히 병합한 단일 상수. 모든 프롬프트 빌더가 이 값만 주입한다.
  */
-export const JEJU_STANDING_ECONOMY_CONTEXT = `군포시는 경기도 남부의 중소도시다. 1990년대 초 입주한 산본 1기 신도시와 군포역·금정역 일대 원도심이 동시에 노후화 국면에 들어섰다.
+export const GUNPO_STANDING_CONTEXT = `군포시는 경기도 남부의 중소도시다. 1990년대 초 입주한 산본 1기 신도시와 군포역·금정역 일대 원도심이 동시에 노후화 국면에 들어섰다.
 금정역은 수도권 1호선·4호선 환승역이며 GTX-C 정차역으로 계획돼 있다. 남·북부 역사 통합과 복합환승센터를 포함한 역세권 개발이 추진 중이나, 국토교통부·한국철도공사·GTX 사업시행자 등 다수 기관 협의가 필요해 시가 단독으로 시기를 결정할 수 없다.
 당정동 일대 노후 공업지역은 첨단산업·주거·문화 복합지구로 전환이 추진 중이다. 동시에 산본·평촌 재정비에 따른 이주수요를 흡수할 주택 공급도 같은 부지에 예정돼 있어, 자족 산업거점 목표와 이주주택 공급 목표가 한정된 면적을 두고 경합한다.
 부곡동 군포복합물류터미널은 화물차 통행·소음·생활권 단절 문제가 지속돼 왔다. 부지는 국토교통부 소유이며 민간 운영 방식이어서 시가 단독으로 이전이나 기능전환을 결정할 수 없다.
 산본천 복원 사업은 국비 확보에 차질이 있어 재원 대책이 쟁점이다.
 산본1동을 비롯한 저지대는 집중호우 시 침수 이력이 있고, 침수감지·급경사지 위험감지 체계가 운영되고 있다.
-시 재정은 자체수입 증가가 제한적이고 의무지출 비중이 높아 가용재원이 좁다. 따라서 신규 사업은 규모보다 재원 조달 방식과 우선순위가 항상 쟁점이 된다.`
+시 재정은 자체수입 증가가 제한적이고 의무지출 비중이 높아 가용재원이 좁다. 따라서 신규 사업은 규모보다 재원 조달 방식과 우선순위가 항상 쟁점이 된다.
 
-/**
- * Standing context for the WARROOM axis (시민·정주). Identifier kept as
- * WARROOM_STANDING_ENERGY_CONTEXT for import-stability (deep.ts imports this
- * name); the value is the STEP6-provided GUNPO_STANDING_PEOPLE_CONTEXT,
- * copied verbatim.
- */
-export const WARROOM_STANDING_ENERGY_CONTEXT = `군포시는 인구 감소와 청년층 유출이 동시에 진행되고 있다. 주거·일자리·보육·문화 등 정주 여건에서 인접 대도시와 경쟁하는 위치에 있다.
+군포시는 인구 감소와 청년층 유출이 동시에 진행되고 있다. 주거·일자리·보육·문화 등 정주 여건에서 인접 대도시와 경쟁하는 위치에 있다.
 신도시 노후화로 세대·계층별 생활 여건 격차가 벌어지고 있으며, 돌봄과 기본생활 정책은 현금성 지원 단일 수단보다 주거·일자리·시민참여와 연계되는 구조가 요구된다.
 생활안전(침수, 급경사지, 보행·교통 환경)은 시민 체감도가 높은 영역이다.`
+
+/**
+ * Import-stability aliases — both resolve to GUNPO_STANDING_CONTEXT (STEP12).
+ * Prefer GUNPO_STANDING_CONTEXT in new code.
+ */
+export const JEJU_STANDING_ECONOMY_CONTEXT = GUNPO_STANDING_CONTEXT
+export const WARROOM_STANDING_ENERGY_CONTEXT = GUNPO_STANDING_CONTEXT
 
 /** Korean uses ~2-3x more tokens than English; one page needs headroom. */
 const BRIEFING_MAX_TOKENS = 4000
@@ -197,11 +199,10 @@ export function buildBriefingContext(
   }
 
   const parts: string[] = []
-  // Standing context is mode-specific. TRADE omits it here (a trade-specific
-  // standing context lives in the prompt layer); WARROOM injects the energy-
-  // security context so fuel + LNG are read as one import-dependent picture.
-  if (councilMode === 'warroom' && WARROOM_STANDING_ENERGY_CONTEXT.trim()) {
-    parts.push(`## 시민·정주 상시 맥락\n${WARROOM_STANDING_ENERGY_CONTEXT}`)
+  // STEP12: single standing context for all runs (mode toggle removed).
+  void councilMode
+  if (GUNPO_STANDING_CONTEXT.trim()) {
+    parts.push(`## 군포시 상시 맥락\n${GUNPO_STANDING_CONTEXT}`)
   }
   parts.push(sections.length ? sections.join('\n\n') : '(수집된 데이터가 없습니다.)')
   if (failed.length) {

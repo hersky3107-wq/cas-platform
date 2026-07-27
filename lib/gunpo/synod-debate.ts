@@ -398,6 +398,14 @@ ${reactRule}- IMPORTANT: personas add flavor but everyone still argues toward th
  * `hasPriorParticipants` is false for the opening round, where the "react to a
  * prior participant" line would contradict the opening's "do not reference
  * others" rule — that single line is omitted there.
+ *
+ * STEP9 [3]: the last 4 HALLUCINATION GUARD lines are duplicated (not imported)
+ * from persona.ts's GUNPO_DELIBERATION_DIRECTIVES, kept word-for-word in sync.
+ * This file's PURITY AUDIT (top of file) intentionally imports only
+ * KOREAN_ONLY_DIRECTIVE/TRUTH_SEEKING_DIRECTIVE from lib/gunpo/deep.ts — adding a
+ * persona.ts import here for one more shared string was judged not worth
+ * widening this file's import surface. If GUNPO_DELIBERATION_DIRECTIVES changes,
+ * update this block too.
  */
 function modeStyleBlock(hasPriorParticipants: boolean): string {
   return `WRITING STYLE (EXPERT MODE):
@@ -405,7 +413,11 @@ function modeStyleBlock(hasPriorParticipants: boolean): string {
 - But control length: 8–10 sentences max. Do NOT turn this into an essay with many headings.
 - No dry report tone — keep your persona's voice while arguing rigorously.
 ${hasPriorParticipants ? `- React directly to a specific prior participant's claim first, before adding anything new.\n` : ''}- HALLUCINATION GUARD (critical in this mode): do NOT invent study names, author names, journal names, years, or precise numbers (effect sizes, sample sizes, percentages). Cite specifics ONLY if you are certain. When uncertain, write "a study suggests" without fake citations. Fabricated citations are a serious failure. This applies EQUALLY to institution and report names — inventing an agency, company, or report title (e.g. a plausible-sounding "OO Petro 2025 보고서", "OOGC 정기 보고서") is the same class of failure as a fabricated study citation; name a source only if it genuinely exists.
-- 구체 예산 규모·기간·수치를 단정하지 마십시오. 출처 없는 숫자는 "[추정]"으로 표기하거나 "상당 규모"처럼 정성적으로 표현하고, 검색 결과·공공데이터에 실제 근거가 있을 때만 구체 수치를 제시하십시오.`
+- 구체 예산 규모·기간·수치를 단정하지 마십시오. 출처 없는 숫자는 "[AI 추정]"으로 표기하거나 "상당 규모"처럼 정성적으로 표현하고, 검색 결과·공공데이터에 실제 근거가 있을 때만 구체 수치를 제시하십시오.
+- 지자체 내부 통계(부서 관리 이용자 수, 시설 이용률), 과거 민원·집회 사건, 타 지자체 개별 사례는 검색 결과나 첨부자료에 명시된 것만 인용하십시오. 근거 없이 구체적 지역명·연도·수치를 결합한 사례를 지어내지 마십시오.
+- 재정자립도·예산 규모 등 시 기본 지표는 확인된 값만 쓰고, 확인 불가하면 수치를 쓰지 마십시오. 같은 심의 안에서 라운드마다 다른 값을 제시하지 마십시오.
+- 용적률·인구밀도·가구당 면적 등은 원자료에 명시된 경우에만 인용하십시오. 계획안 면적과 가구 수를 나눠서 역산하지 마십시오(기준이 다를 수 있습니다).
+- 추정이 불가피하면 문장 앞에 반드시 "[AI 추정]"을 붙이십시오.`
 }
 
 /**

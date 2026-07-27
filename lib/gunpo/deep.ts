@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-import { gatherJejuSnapshot, buildBriefingContext, WARROOM_STANDING_ENERGY_CONTEXT, type JejuSnapshot, type JejuCouncilMode } from '@/lib/gunpo/brief'
+import { gatherJejuSnapshot, buildBriefingContext, GUNPO_STANDING_CONTEXT, type JejuSnapshot, type JejuCouncilMode } from '@/lib/gunpo/brief'
 import {
   analystPersonaLine,
   notDeciderLine,
@@ -18,6 +18,7 @@ import {
   WARROOM_CHAIR_PERSONA_LINES,
   WARROOM_DISCLAIMER,
   GUNPO_DELIBERATION_DIRECTIVES,
+  GUNPO_UNIFIED_ROLE_SEED,
 } from '@/lib/gunpo/persona'
 import {
   runSingleAiProvider,
@@ -221,11 +222,15 @@ export async function summarizeAvailableData(
     'jeju-cargo-throughput': '제주 항만별 화물 물동량 (입출항 품목·물류 추세)',
     'jeju-foreign-tourists': '제주 외국인 관광객 국적별 현황 (관광 수요·국가별 의존도)',
     'jeju-domestic-tourists': '제주 내국인 관광객 형태·목적별 현황',
-    // TRADE mode (수출참모)
+    // TRADE mode (도시·정비) — TODO(군포): connectors.ts의 도시·정비 소스 id로 다시 채울 것.
+    // 아래는 motie 원본의 KOTRA/환율 예시 라벨로, 현재 lib/gunpo/connectors.ts에 해당
+    // 소스가 없으므로 참고용일 뿐이다.
     'kotra-nation-info': 'KOTRA 국가정보 — 주요 수출시장 프로필 (GDP·인구·수출유망품목·수입규제)',
     'kotra-product-db': 'KOTRA 상품DB — 국가별 현지 유망상품',
     'koreaexim-fx': '원화 환율 (한국수출입은행, 주요 통화 KRW 기준)',
-    // WARROOM mode (자원·에너지 워룸)
+    // WARROOM mode (시민·정주) — TODO(군포): connectors.ts의 시민·정주 소스 id로 다시 채울 것.
+    // 아래는 motie 원본의 오피넷/KPX/가스공사 예시 라벨로, 현재 lib/gunpo/connectors.ts에
+    // 해당 소스가 없으므로 참고용일 뿐이다.
     'opinet-fuel-prices': '전국 평균 유가 (오피넷, 실시간 원/L·추이) — 현재 유가 동향용',
     'kpx-mainland-smp': '육지 계통한계가격(SMP)과 시간대별 전력 수요예측 — 육지 전력시장 가격·수급 현황 진단에 사용.',
     'kpx-gen-mix': '전국 발전원별 발전량(원자력·유연탄·가스·신재생·수력·양수·유류·국내탄·태양광, 순간출력 MW) — 에너지원 구성·원전/석탄/신재생 비중 진단에 사용.',
@@ -245,10 +250,10 @@ export async function summarizeAvailableData(
     return `- ${s.label}: ${status} — ${cap}`
   })
   const dataLines = lines.length ? lines.join('\n') : '(등록된 데이터 소스 없음)'
-  // Warroom prepends the national resource/energy-security standing context; trade
-  // has its own standing context in the prompt layer, so it omits it here.
-  if (councilMode === 'trade' || !WARROOM_STANDING_ENERGY_CONTEXT.trim()) return dataLines
-  return `${WARROOM_STANDING_ENERGY_CONTEXT}\n\n${dataLines}`
+  // STEP12: single standing context for every mode (toggle removed).
+  void councilMode
+  if (!GUNPO_STANDING_CONTEXT.trim()) return dataLines
+  return `${GUNPO_STANDING_CONTEXT}\n\n${dataLines}`
 }
 
 /**
@@ -264,64 +269,19 @@ function buildOrchestratorSystemPrompt(
   debateBrands?: MotieProvider[],
   councilMode: JejuCouncilMode = 'warroom'
 ): string {
+  // STEP12: councilMode kept for call-site compatibility; prompts are single-mode.
+  void councilMode
   const brandList = (Object.keys(AI_BRAND_STRENGTHS) as MotieProvider[])
     .map((k) => `  - ${k}: ${AI_BRAND_STRENGTHS[k]}`)
     .join('\n')
+  const unifiedSeatHint = GUNPO_UNIFIED_ROLE_SEED.map((r) => r.roleLabel).join(' / ')
 
-  // ── TRADE (수출참모): convene an export-advisor panel, business-framed ─────────
-  if (councilMode === 'trade') {
-    const n = debateBrands && debateBrands.length > 0 ? debateBrands.length : 0
-    const seatLine =
-      n > 0
-        ? [
-            `이 패널은 아래 ${n}개의 AI 브랜드가 각각 한 명의 수출참모가 되어 직접 토론·반박·수렴합니다.`,
-            `아래 ${n}개 브랜드 각각에 1:1로 정확히 하나의 참모 역할을 배정하세요(브랜드 수 = 역할 수, 중복·누락 금지).`,
-            '',
-            '배정 대상 브랜드(각각 정확히 1개 역할):',
-            (debateBrands ?? []).map((b) => `  - ${b}`).join('\n'),
-          ].join('\n')
-        : '이 질문에 가장 핵심적인 수출참모 역할 3~5개를 구성하세요.'
-
-    return [
-      '당신은 중소·중견 수출기업을 돕는 "수출참모 패널"의 구성 책임자입니다.',
-      '실제 수출 자문이 사안에 따라 서로 다른 전문가를 부르듯, 주어진 수출 질문과 현재 확보된 데이터(KOTRA 국가정보·상품DB·환율 등)를 읽고, 이 질문에 가장 적합한 참모 역할을 동적으로 구성하세요. 역할을 미리 정해두지 말고 매번 새로 설계하세요.',
-      '',
-      seatLine,
-      '',
-      '역할 구성 규칙:',
-      `(a) 이 패널은 수출 현안에 대한 관계부처·유관기관 합동 심의를 재현합니다. 좌석을 실제 대한민국 정부 부처·기관(및 업계 대표)의 관점으로 구성하세요. 권장 라인업(${n || 8}석): 산업통상자원부(통상·무역정책), 기획재정부(관세·재정), 외교부(통상외교·대외관계), 중소벤처기업부(중소·중견 수출기업 지원), 관세청(통관·원산지·관세행정), 특허청(지식재산·기술보호), KOTRA(현지 시장·바이어·수출 실무), 업계(수출기업 대표). 질문 성격상 특정 부처가 부적합하면 다른 실재 부처·기관(예: 식품의약품안전처, 농림축산식품부, 해양수산부)으로 대체하되, 반드시 실재하는 기관명만 쓰고 "수출부" 같은 가공의 부처는 절대 만들지 마세요.`,
-      '(b) 각 역할은 결론을 내리기 전에 자기 소관에서 가장 강력한 진입 근거와 가장 강력한 리스크·반대 근거를 모두 검토해야 합니다.',
-      '(c) roleLabel 표기: 위 실재 부처·기관명에 괄호로 담당 분야를 붙여 쓰세요(예: "산업통상자원부(통상·무역정책)", "관세청(통관·관세)", "업계(수출기업 대표)"). 은어·영어 표기 금지. 입장(찬/반)이 아니라 소속·분야로만 표기하세요.',
-      '(d) mandate(한국어 직무): 그 참모가 이 질문에서 무엇을 분석·논증하는지 구체적으로. 위 (b)의 양면 검토 의무를 담으세요.',
-      '(e) provider: 아래 브랜드 목록의 값을 사용하세요. perplexity는 검색·현지언론 전용이라 토론 좌석에는 배정하지 마세요(검색/언론 역할에만).',
-      '(f) questionType 분류: "binary"(진입/보류처럼 찬반으로 답하는 명제) 또는 "openEnded"(탐색형). 애매하면 "openEnded".',
-      '(g) 현지언론·시장 동향 역할: 현지 시장·경쟁·규제 뉴스가 중요한 사안이면 perplexity를 맡는 검색·현지언론 역할을 포함하세요.',
-      '',
-      '참고용 AI 브랜드 강점표(역할-브랜드 적합도 판단에만 사용):',
-      brandList,
-      '',
-      '출력 형식 (매우 중요):',
-      '오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
-      '스키마:',
-      '{',
-      n > 0
-        ? `  "roles": [ 정확히 ${n}개, 위 브랜드 각각에 1개씩 ],`
-        : '  "roles": [ 3~5개 ],',
-      '    각 원소: { "roleId": "string(영문 슬러그)", "roleLabel": "string(한국어)", "mandate": "string(한국어)", "provider": "위 목록의 브랜드 키", "isRedTeam": false },',
-      '  "rationale": "string(한국어 — 이 라인업이 왜 이 수출 질문에 적합한지)",',
-      n > 0 ? '  "searchNeeded": false,' : '  "searchNeeded": true 또는 false,',
-      '  "questionType": "binary" 또는 "openEnded"',
-      '}',
-      'provider 값은 반드시 위 브랜드 목록의 키 중 하나여야 합니다.',
-    ].join('\n')
-  }
-
-  // ── Mode B: 1:1 brand→role deliberation seating ─────────────────────────────
+  // ── Mode B: 1:1 brand→role deliberation seating (찬반형) ───────────────────
   if (debateBrands && debateBrands.length > 0) {
     const n = debateBrands.length
     const seatList = debateBrands.map((b) => `  - ${b}`).join('\n')
     return [
-      '당신은 국가 자원·에너지 안보 정책 "찬반 심의(deliberation)"의 회의 소집 책임자입니다.',
+      '당신은 군포시 정책 "찬반 심의(deliberation)"의 회의 소집 책임자입니다.',
       `이 심의는 아래 ${n}개의 AI 브랜드가 각각 한 명의 전문가가 되어 직접 토론·반박·수렴합니다.`,
       `따라서 아래 ${n}개 브랜드 각각에 1:1로 정확히 하나의 전문가 역할을 배정하세요(브랜드 수 = 역할 수, 중복·누락 금지).`,
       '역할을 미리 정해두지 말고, 주어진 질문과 데이터 현황에 맞춰 매번 새로 설계하세요.',
@@ -330,85 +290,58 @@ function buildOrchestratorSystemPrompt(
       seatList,
       '',
       '역할 구성 규칙:',
-      '(a) 중립 도메인 전문가만 배정(매우 중요): 찬성/반대 같은 입장을 좌석에 미리 박지 마세요. 각 좌석은 질문과 관련된 "분야 전문가"이며, 데이터를 자기 분야의 눈으로 정직하게 읽고 스스로 찬성/반대/유보를 판단합니다. 결론을 미리 정해 추인하도록 설계하지 마세요.',
-      `    - 이 심의는 자원·에너지 안보 현안에 대한 관계부처·유관기관 합동 심의를 재현합니다. 좌석을 실제 대한민국 정부 부처·기관(및 업계 대표)의 관점으로 구성하세요. 권장 라인업(${n}석): 산업통상자원부(에너지·자원정책), 기획재정부(재정·물가), 환경부(탄소·환경규제), 외교부(자원외교·대외관계), 한국전력·에너지 공기업(전력·수급 실무), 한국가스공사(LNG 도입·비축), 원자력안전위원회(원자력 안전·규제), 업계(에너지 수요기업 대표). 질문 성격상 특정 부처가 부적합하면 다른 실재 부처·기관(예: 한국석유공사, 국토교통부, 과학기술정보통신부)으로 대체하되, 반드시 실재하는 기관명만 쓰고 "재정부" 같은 가공의 부처는 절대 만들지 마세요. 브랜드 수만큼 이 질문에 가장 핵심적인 부처·기관을 배정하세요.`,
-      '    - 모든 좌석의 isRedTeam은 false로 두세요. 라운드별 상호 검증(서로의 논리 허점 점검)은 토론 단계에서 자동으로 처리되므로, 소집 단계에서 "반대 전담"이나 "옹호 전담" 좌석을 만들지 마세요.',
-      '    - 정직한 만장일치(예: 8:0)도 정당한 결과입니다. 인위적으로 찬반을 갈라놓지 마세요. 목표는 균형처럼 보이는 구도가 아니라, 각 분야의 가장 정확한 판단이 충돌·수렴해 "참된 최적해"가 살아남는 것입니다.',
-      '(b) 양면 검토 의무(각 mandate에 반드시 포함): 모든 전문가는 결론을 내리기 전에 자기 도메인 안에서 이 안건의 가장 강력한 찬성 근거와 가장 강력한 반대 근거를 모두 검토해야 합니다 — 한쪽으로 성급히 기울지 말고, 강한 반론을 무시하지 마세요.',
-      '(c) roleLabel 표기(정책결정자가 즉시 이해하는 한국어): 위 실재 부처·기관명에 괄호로 담당 분야를 붙여 쓰세요. "스틸맨" 같은 은어·외래어·영어 표기 금지. 입장(찬/반)이 아니라 소속·분야로만 표기하세요. 예) "산업통상자원부(에너지·자원정책)", "환경부(탄소·환경규제)", "한국전력·에너지 공기업(전력·수급 실무)", "업계(에너지 수요기업 대표)".',
-      '(d) mandate(한국어 직무): 그 전문가가 이 질문에서 자기 분야 관점으로 무엇을 분석·논증하는지 구체적으로 적되, 위 (b)의 양면 검토 의무를 반드시 담으세요.',
-      '(e) provider: 위 브랜드 목록의 값을 정확히 하나씩만 사용하세요(각 브랜드 1회). 목록에 없는 브랜드(특히 perplexity)는 절대 쓰지 마세요 — perplexity는 검색·언론 전용이라 이 토론 좌석에 들어오지 않습니다.',
-      '(f) questionType 분류: "binary"(정책결정자가 찬성/반대로 답하는 명확한 정책 명제) 또는 "openEnded"(단일 찬반으로 답할 수 없는 탐색형). 애매하면 반드시 "openEnded".',
+      '(a) 중립 도메인 전문가만 배정(매우 중요): 찬성/반대 같은 입장을 좌석에 미리 박지 마세요. 각 좌석은 질문과 관련된 "분야 전문가"이며, 데이터를 자기 분야의 눈으로 정직하게 읽고 스스로 찬성/반대/유보를 판단합니다.',
+      `    - 군포시 현안은 도시정비와 시민정주가 한 안건에 겹칩니다. 권장 ${n}석 렌즈: ${unifiedSeatHint}. 질문 성격에 맞춰 이 렌즈를 실재 부처·기관·군포시 부서명으로 표기하세요(예: "국토교통부(도시정비·재개발)", "군포시 시민복지과(청년정주·주거)"). 가공의 부처명은 쓰지 마세요.`,
+      '    - 모든 좌석의 isRedTeam은 false로 두세요. 라운드별 상호 검증은 토론 단계에서 자동 처리됩니다.',
+      '    - 정직한 만장일치(예: 8:0)도 정당한 결과입니다. 인위적으로 찬반을 갈라놓지 마세요.',
+      '(b) 양면 검토 의무(각 mandate에 반드시 포함): 결론 전에 자기 도메인에서 가장 강력한 찬성 근거와 가장 강력한 반대 근거를 모두 검토하세요.',
+      '(c) roleLabel: 실재 부처·기관·지자체 부서명 + 괄호 담당 분야. 은어·영어 금지.',
+      '(d) mandate: 이 질문에서 무엇을 분석하는지 구체적으로, (b)의 양면 검토를 포함.',
+      '(e) provider: 위 브랜드 목록의 값을 정확히 하나씩만. perplexity는 토론 좌석에 배정하지 마세요.',
+      '(f) questionType: "binary" 또는 "openEnded". 애매하면 "openEnded".',
       '',
-      '참고용 AI 브랜드 강점표(역할-브랜드 적합도 판단에만 사용):',
+      '참고용 AI 브랜드 강점표:',
       brandList,
       '',
-      '출력 형식 (매우 중요):',
-      '오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
+      '출력 형식: 오직 하나의 JSON 객체만. 마크다운 코드펜스·설명 문장 금지.',
       '스키마:',
       '{',
       `  "roles": [ 정확히 ${n}개, 위 브랜드 각각에 1개씩 ],`,
-      '    각 원소: { "roleId": "string(영문 슬러그)", "roleLabel": "string(한국어)", "mandate": "string(한국어)", "provider": "위 목록의 브랜드 키", "isRedTeam": false },',
-      '  "rationale": "string(한국어 — 이 라인업이 왜 이 질문에 적합한지)",',
+      '    각 원소: { "roleId": "string", "roleLabel": "string", "mandate": "string", "provider": "브랜드 키", "isRedTeam": false },',
+      '  "rationale": "string(한국어)",',
       '  "searchNeeded": false,',
       '  "questionType": "binary" 또는 "openEnded"',
       '}',
-      `provider 값은 반드시 위 ${n}개 브랜드 목록의 키 중 하나여야 하며, 모든 브랜드가 정확히 한 번씩 등장해야 합니다.`,
     ].join('\n')
   }
 
-  // ── Default: original 3–5 analytic-role convening (DEEP pipeline) ────────────
+  // ── Default: 3–5 analytic-role convening (DEEP pipeline) ───────────────────
   return [
-    '당신은 국가 자원·에너지 안보 정책 심의의 "회의 소집 책임자(meeting convener)"입니다.',
-    '실제 정부 회의가 안건에 따라 서로 다른 전문가를 부르듯, 당신은 주어진 정책 질문과',
-    '현재 확보된 실시간 데이터 현황을 읽고, 이 질문에 가장 적합한 전문가 역할을 동적으로 구성해야 합니다.',
-    '역할을 미리 정해두지 마세요 — 질문에 맞춰 매번 새로 설계하세요.',
+    '당신은 군포시 정책 심의의 "회의 소집 책임자(meeting convener)"입니다.',
+    '주어진 정책 질문과 현재 확보된 실시간 데이터 현황을 읽고, 이 질문에 가장 적합한 전문가 역할을 동적으로 구성하세요.',
     '',
     '결정해야 할 것:',
-    '(a) 소집할 전문가 역할 3~5개. 각 역할은 이 질문에 구체적으로 들어맞아야 합니다.',
-    '    예: 유가 질문 → 유가·가격/국제정세·지정학/산업 영향 전문가; 가스 수급 질문 → 에너지 수급·안보/수입처 다변화/물가·거시 전문가.',
-    '    각 역할에는 한국어 라벨(roleLabel)과, 왜 바로 그 전문가가 이 질문에 필요한지 설명하는',
-    '    한국어 직무(mandate)를 부여하세요.',
-    '(b) 각 역할에 가장 적합한 AI 브랜드를 아래 강점표에서 골라 배정하세요(provider).',
-    '    대립 구도(매우 중요): 이 심의의 목적은 미리 정해진 결론을 추인하는 것이 아니라, 안건에 대한 가장 강력한 찬성 논거와 가장 강력한 반대 논거가 정면으로 충돌하게 하여 의장이 진실에 가장 가까운 최적의 답을 찾도록 돕는 것입니다. 어느 한쪽으로 기울어진 라인업을 짜지 마세요.',
-    '    - 최소 1개 역할은 "가장 강력한 반대 논거"를 제시하는 좌석입니다(isRedTeam:true). 임무: 숨은 비용·실패 시나리오·통념의 허점을 근거와 전문성으로 가장 날카롭게 공격한다(트집이 아니라 최강의 반론). 가급적 xai 또는 anthropic에 배정하세요.',
-    '    - 최소 1개 역할은 "가장 강력한 찬성 논거"를 제시하는 좌석입니다(isRedTeam:false). 임무: 형식적 찬성이 아니라, 데이터·전문성으로 무장하여 이 제안이 옳을 수 있는 가장 엄밀하고 설득력 있는 근거를 끝까지 밀어붙인다. roleLabel과 mandate에 이 "찬성 측 최강 논거" 임무를 분명히 적으세요. 강한 추론에 능한 브랜드(anthropic, openai 등)에 배정하세요.',
-    '    - 두 좌석은 서로 다른 좌석이며 합치지 마세요. 둘 다 응원·비방이 아니라 근거·전문성으로만 논증합니다.',
-    '    - 나머지 기능·분석 역할(수급·안보·산업 영향·물가 등)은 진정으로 중립을 유지하세요. 이들은 사실과 영향을 평가할 뿐, 미리 찬/반 어느 한쪽을 골라서는 안 됩니다. 분석가 좌석을 회의론 쪽으로 기울이지 마세요.',
-    '    - roleLabel 표기 규칙(정책결정자가 즉시 이해하는 한국어, 매우 중요): "스틸맨" 같은 업계 은어·외래어·영어 표기를 절대 쓰지 마세요. 입장(stance)과 영역(domain)을 분리하고, 영역은 괄호로 붙이세요. 예) 반대 좌석 → "리스크·반대 논거 검토 (에너지 수급·안보 관점)", 찬성 좌석 → "정책 추진 옹호 (찬성 측 최강 논거, 산업 영향 관점)". 두 의무 좌석의 라벨은 각각 "가장 강력한 찬성"과 "가장 강력한 반대"로 읽혀야 합니다.',
-    '    - Perplexity 좌석 제한(매우 중요): perplexity는 검색·언론/여론 모니터링 전용입니다. 토론·수렴 라운드에 참여하는 좌석(분석가·반대 논거·찬성 논거 등 추론·논쟁 좌석)에는 perplexity를 절대 배정하지 마세요 — perplexity는 검색·검색엔진형 모델이라 토론에서 논거를 진전시키지 못하고 같은 말을 되풀이하는 경향이 있습니다. 토론에 참여하는 좌석은 오직 추론 브랜드(anthropic, openai, google, xai, deepseek, mistral) 중에서만 배정하세요. perplexity는 (c)의 실시간 검색 역할과 (e)의 언론 분석가 역할에만 쓰십시오.',
-    '    - 브랜드 다양성(가능한 한): 토론에 참여하는 좌석에는 가급적 서로 다른 브랜드를 배정하고, 8개 추론 브랜드(anthropic, openai, google, xai, deepseek, mistral, solar, exaone)를 고루 활용해 토론에 여러 AI가 눈에 띄게 참여하도록 하세요(매번 같은 5개만 반복 금지). 단, 브랜드를 더 넣으려고 불필요한 역할을 지어내지 마세요 — 역할 수는 질문이 요구하는 3~5개로만 정하고, 다양성은 어디까지나 브랜드 배정의 동점 처리 기준일 뿐 패널을 늘리는 이유가 될 수 없습니다.',
-    '(c) searchNeeded: 이 질문이 우리 내부 데이터를 넘어서는 최신 외부 정보를 필요로 하면 true.',
-    '    true인 경우 perplexity를 맡는 실시간 검색 역할을 반드시 포함하세요.',
-    '(d) questionType: 이 질문의 유형을 분류하세요.',
-    '    - "binary": 정책결정자가 찬성/반대로 답할 수 있는 명확한 정책 명제 (예: "X를 도입해야 하는가?").',
-    '    - "openEnded": 단일 찬반으로 답할 수 없는 탐색적·개방형 질문 (예: "유가 급등에 어떻게 대응해야 하는가?").',
-    '    애매하면 반드시 "openEnded"로 분류하세요.',
-    '(e) 언론 분석가(press analyst) 역할: 공공정책·여론 민감 사안이면 언론 분석가를 기본적으로 소집한다. 단순 사실조회는 제외.',
-    '    - 기본 소집 대상: 자원·에너지·유가·물가·산업 정책, 규제·입법, 사회적 파급·여론 민감성이 있는 안건, 수입처 다변화·에너지 전환 등 국민·산업계에 영향을 주는 공공 정책 질문. questionType이 "binary"이거나 openEnded라도 정책·쟁점화 성격이면 3~5개 역할 중 하나로 "언론 분석가"를 반드시 포함하세요.',
-    '    - 제외 대상: 시세·날씨·단순 수치 조회 등 좁은 기술·데이터 질문, 사실 확인만 필요한 단순 lookup. 이런 경우에는 언론 분석가를 소집하지 마세요(과잉 소집 방지).',
-    '    - 직무(mandate)에는 다음을 담으세요: 이 사안에 대한 언론 보도 논조와 반복 제기된 쟁점·우려를 분석한다. 정량 수치는 지어내지 말고 정성적으로만(논조·쟁점·우려) 다룬다. 가능하면 에너지·경제 전문지와 전국 언론(연합뉴스·전기신문 등)을 함께 본다.',
-    '    - 정직성(매우 중요): 이 역할은 언론 보도 논조를 분석할 뿐, 여론조사 수치가 아닙니다. 지지율 %, 찬성 N%, SNS 감성 점수 등 정량적 수치를 절대 지어내지 마십시오. 언론 보도는 오직 정성적으로(언론이 유사 사안을 어떻게 프레이밍했는지: 긍정/부정/중립 논조, 반복된 우려, 쟁점화 양상)만 추론합니다.',
-    '    - provider는 실시간 언론 검색이 가능한 브랜드, 특히 perplexity를 강력히 권장합니다(실제 보도를 확인하는 것이 이 역할의 핵심). 이미 다른 검색 역할이 perplexity를 맡고 있어도, 이 역할에도 perplexity를 배정할 수 있습니다(하류의 검색 통합·중복 제거와 검색 횟수 상한이 알아서 정리합니다). 검색 횟수 상한을 늘리려 하지 마십시오.',
-    '    - 이 역할은 레드팀 좌석과 별개입니다. 레드팀(isRedTeam:true)과 공존할 수 있으며, 둘을 하나로 합치지 마십시오. 언론 분석가는 isRedTeam:false 입니다.',
-    '    - perplexity를 맡은 언론 분석가가 토론·수렴 라운드에 참여할 경우, 그 기여는 "언론 논조·쟁점·리스크 보고"에 한정하고 상대를 정조준해 논거로 이기려는 반박은 하지 않게 mandate에 명시하세요. 만약 이 좌석이 본격적으로 논쟁(반박·수렴)에 참여하길 기대한다면 perplexity 대신 추론 브랜드를 배정하십시오.',
+    `(a) 소집할 전문가 역할 3~5개. 군포 단일 렌즈 참고: ${unifiedSeatHint}.`,
+    '    각 역할에 한국어 roleLabel과 mandate를 부여하세요.',
+    '(b) 각 역할에 가장 적합한 AI 브랜드를 아래 강점표에서 배정하세요(provider).',
+    '    - 최소 1개 역할은 가장 강력한 반대 논거(isRedTeam:true).',
+    '    - 최소 1개 역할은 가장 강력한 찬성 논거(isRedTeam:false).',
+    '    - perplexity는 토론 좌석에 배정하지 마세요(검색·언론 역할만).',
+    '(c) searchNeeded: 최신 외부 정보가 필요하면 true.',
+    '(d) questionType: "binary" 또는 "openEnded". 애매하면 "openEnded".',
+    '(e) 공공정책·여론 민감 사안이면 언론 분석가를 소집(단순 수치 조회는 제외).',
     '',
     'AI 브랜드 강점표:',
     brandList,
     '',
-    '출력 형식 (매우 중요):',
-    '오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
+    '출력 형식: 오직 하나의 JSON 객체만.',
     '스키마:',
     '{',
-    '  "roles": [',
-    '    { "roleId": "string(영문 슬러그)", "roleLabel": "string(한국어)", "mandate": "string(한국어)", "provider": "위 강점표의 키 중 하나", "isRedTeam": false },',
-    '    ...',
-    '  ],',
-    '  "rationale": "string(한국어 — 이 라인업이 왜 이 질문에 적합한지)",',
+    '  "roles": [ { "roleId": "string", "roleLabel": "string", "mandate": "string", "provider": "키", "isRedTeam": false }, ... ],',
+    '  "rationale": "string",',
     '  "searchNeeded": true 또는 false,',
     '  "questionType": "binary" 또는 "openEnded"',
     '}',
-    'provider 값은 반드시 강점표의 키(openai, anthropic, google, xai, deepseek, mistral, perplexity, meta) 중 하나여야 합니다.',
   ].join('\n')
 }
 
@@ -427,30 +360,27 @@ function stripFences(raw: string): string {
 
 /** A sane default lineup so the engine is never left dead (parse/empty failure). */
 function fallbackPlan(question: string, raw: string | undefined, note: string): JejuMeetingPlan {
+  // STEP12: seed from the unified 8-role set; reconcilePlan will 1:1-map to
+  // debate brands when present. Providers here are placeholders only.
+  const seedProviders: MotieProvider[] = [
+    'anthropic',
+    'openai',
+    'google',
+    'xai',
+    'deepseek',
+    'mistral',
+    'solar',
+    'exaone',
+  ]
   return {
     ok: true,
     question,
-    roles: [
-      {
-        roleId: 'general-analyst',
-        roleLabel: '종합분석가',
-        mandate: '질문 전반을 종합적으로 검토하고 핵심 쟁점을 정리합니다.',
-        provider: 'anthropic',
-      },
-      {
-        roleId: 'data-analyst',
-        roleLabel: '데이터분석가',
-        mandate: '확보된 정량 데이터를 분석하고 수치 근거를 제시합니다.',
-        provider: 'deepseek',
-      },
-      {
-        roleId: 'red-team',
-        roleLabel: '비판검토자(레드팀)',
-        mandate: '형성되는 합의의 약점과 통념의 허점을 적극적으로 반박합니다.',
-        provider: 'xai',
-        isRedTeam: true,
-      },
-    ],
+    roles: GUNPO_UNIFIED_ROLE_SEED.map((r, i) => ({
+      roleId: r.roleId,
+      roleLabel: r.roleLabel,
+      mandate: r.mandate,
+      provider: seedProviders[i] ?? 'anthropic',
+    })),
     rationale: `(기본 라인업) ${note}`,
     questionType: 'openEnded',
     searchNeeded: false,
@@ -903,7 +833,7 @@ export type JejuDeepThroughAnalysis = {
 }
 
 /** Default question for the daily/general DEEP run (senior-official path). */
-const DEFAULT_DEEP_QUESTION = '오늘의 자원·에너지 안보 종합 분석'
+const DEFAULT_DEEP_QUESTION = '오늘의 군포시 정책 종합 분석'
 
 /**
  * Orchestrates beats 1 + 2 end-to-end:
@@ -1073,10 +1003,9 @@ function normalizeMerged(raw: unknown): MergedSearch | null {
 
 /** Merge-AI system prompt: group similar requests, ≤MAX_SEARCHES, raw JSON only. */
 function buildMergeSystemPrompt(councilMode: JejuCouncilMode = 'warroom'): string {
-  const persona =
-    councilMode === 'trade'
-      ? '당신은 수출참모 패널의 검색 요청을 정리하는 조정자입니다.'
-      : '당신은 자원·에너지 안보 정책 심의의 검색 요청을 정리하는 조정자입니다.'
+  // STEP12: single-mode persona (councilMode ignored).
+  void councilMode
+  const persona = '당신은 군포시 정책 심의의 검색 요청을 정리하는 조정자입니다.'
   return [
     persona,
     '여러 전문가가 외부 정보 검색을 요청했습니다. 당신의 임무:',
@@ -1089,6 +1018,7 @@ function buildMergeSystemPrompt(councilMode: JejuCouncilMode = 'warroom'): strin
     '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
     '스키마:',
     '{ "merged": [ { "query": "통합 검색어", "requestedBy": ["역할A","역할B"] } ] }',
+    '모든 통합 검색어에는 반드시 "군포시" 또는 "경기도"가 포함되도록 하세요 (지역 정책 심의이므로 지역 밖 검색은 무의미합니다).',
   ].join('\n')
 }
 
@@ -1159,16 +1089,10 @@ export async function mergeSearchRequests(params: {
 
 /** Perplexity search-specialist system prompt (concise Korean summary + sources). */
 function buildSearchSystemPrompt(councilMode: JejuCouncilMode = 'warroom'): string {
-  const isTrade = councilMode === 'trade'
-  const persona = isTrade
-    ? [
-        '당신은 수출참모 패널을 지원하는 검색 전문가입니다. 특히 대상국 현지 시장·경쟁·규제·현지언론 동향을 우선 확인하세요.',
-        '현지 언론·여론 검색 시, 한국에서 작성된 자료(한국 블로그·한국 언론)가 아니라 대상국 현지(자국) 매체와 현지 소비자의 실제 반응을 우선 확인하고, 가능하면 현지어 소스를 인용하세요.',
-      ].join('\n')
-    : '당신은 자원·에너지 안보 정책 심의를 지원하는 검색 전문가입니다. 특히 국제 유가·가스 가격, 지정학·수급 정세 등 최신 동향을 우선 확인하세요.'
-  const langRule = isTrade
-    ? '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 정리하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(HS코드, FTA, USD, VAT 등), 숫자, 단위는 허용.'
-    : '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 정리하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(WTI, Brent, LNG, OPEC, USD, bbl 등), 숫자, 단위는 허용.'
+  const persona =
+    '당신은 군포시·경기도 지역 정책 심의를 지원하는 검색 전문가입니다. 검색 축은 두 가지입니다: (A) 군포시·경기도 지역언론 및 군포시청 공식 발표(안건 관련 최신 보도·공고), (B) 유사 규모 수도권 기초지자체(과천·의왕·안양·시흥 등)의 동일 현안 대응 사례. 모든 검색 질의에는 반드시 "군포시" 또는 "경기도"가 포함되도록 하세요.'
+  const langRule =
+    '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 정리하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(GTX, KMA, KECO 등), 숫자, 단위는 허용.'
   return [
     persona,
     '주어진 질의에 대해 최신·신뢰할 수 있는 외부 정보를 찾아 핵심만 간결하게(200~350자) 한국어로 요약하세요.',
@@ -2151,8 +2075,8 @@ async function runOneDeliberationTurn(
 function buildConsensusSystemPrompt(councilMode: JejuCouncilMode = 'warroom'): string {
   const persona =
     councilMode === 'trade'
-      ? '당신은 수출참모 패널의 합의 수준을 측정하는 중립 분석가입니다.'
-      : '당신은 자원·에너지 안보 정책 심의의 합의 수준을 측정하는 중립 분석가입니다.'
+      ? '당신은 군포시 도시·정비 정책 심의 패널의 합의 수준을 측정하는 중립 분석가입니다.'
+      : '당신은 군포시 시민·정주 정책 심의의 합의 수준을 측정하는 중립 분석가입니다.'
   return [
     persona,
     '여러 전문가가 이번 토론 라운드에서 낸 입장(position)·수용(concedes)·견지(holds)를 받습니다.',
@@ -2733,7 +2657,7 @@ export type JejuVerdict = {
  * via the prompt only.
  */
 /**
- * TRADE (수출참모) chair prompt — same structure/consensus weighting as the
+ * TRADE (도시·정비) chair prompt — same structure/consensus weighting as the
  * governance chair, but framed for an exporting company (no 공무원/도정), with the
  * fact-vs-estimate + import-regulation discipline injected and a business
  * disclaimer. Mirrors buildChairSystemPrompt's brief/hasVote behavior.
@@ -2805,7 +2729,7 @@ function buildTradeChairSystemPrompt(consensusScore: number, brief: boolean, has
     '당신의 결론(진입/보류/조건부 추진 등)과 그 이유. 이 판단의 가장 중요한 부분입니다. 결단력 있고 방어 가능하게, 기업이 실행할 수 있는 분명한 방향으로 쓰되, 추정·전망·타이밍 판단에는 반드시 [AI 추정]을 붙이십시오.',
     '',
     '## 수집 데이터 요약',
-    '이 판단의 근거가 된 공식 데이터(KOTRA·환율 등)를 출처와 함께 간결하게.',
+    '이 판단의 근거가 된 공식 데이터(군포시청 발표, KMA 기상, KECO 전기차충전소, 국토교통부 아파트 실거래가 등)를 출처와 함께 간결하게.',
     '',
     '## 참모 분석·조사 요약',
     '참모들이 무엇을 검토했고 외부 조사(현지 시장·언론)가 무엇을 더했는지 간결하게.',
@@ -2822,7 +2746,7 @@ function buildTradeChairSystemPrompt(consensusScore: number, brief: boolean, has
     '## 참고 사항',
     TRADE_DISCLAIMER,
     '',
-    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 공식 데이터와 [AI 추정]을 구분하고, 자료에 없는 사실을 지어내지 마십시오. "수입규제 없음" 같은 표현은 금지하며, 무역구제 조치 미확인과 등록·라벨링 규제를 구분해 서술하십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오.'
+    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 공식 데이터와 [AI 추정]을 구분하고, 자료에 없는 사실을 지어내지 마십시오. 부동산 가격 예측·특정 사업 여론 추정·정치적 유불리 평가는 하지 마십시오. 시가 단독으로 결정할 수 없는 사안은 협의 상대와 제약 조건을 함께 밝히십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오.'
   )
 
   return lines.join('\n')
@@ -2884,7 +2808,7 @@ function buildChairSystemPrompt(
       '출력을 반드시 이 절로 시작하십시오. 서론·머리말 없이, 이 심의에서 의견이 갈린 핵심 축을 정확히 3줄(각 줄 "- "로 시작하는 한 문장)로 요약하십시오. 예: 예산 vs 규제 우선순위, 추진 속도 vs 신중론, 단기 효과 vs 장기 리스크. 3줄을 넘기지 마십시오.',
       '',
       '## 최종 판단',
-      '당신의 자원·에너지 정책 판단(예: 수급 안정 / 수입처 다변화 필요 / 비상대응 등)과 핵심 이유를 간결하게. 합의를 확정하고 날카롭게 다듬되, 정책결정자가 대응할 수 있는 분명한 방향으로 쓰십시오. 추정·전망에는 [AI 추정]을 붙이십시오.',
+      '당신의 군포시 시민·정주 정책 판단(예: 우선순위 조정 / 재원 조달 방식 / 단계적 추진 등)과 핵심 이유를 간결하게. 합의를 확정하고 날카롭게 다듬되, 정책결정자가 대응할 수 있는 분명한 방향으로 쓰십시오. 추정·전망에는 [AI 추정]을 붙이십시오.',
       '',
       '## 토론·합의 과정',
       '토론이 어떻게 수렴했는지 짧게(합의 점수와 안착 지점 위주).',
@@ -2895,7 +2819,7 @@ function buildChairSystemPrompt(
       '## 참고 사항',
       WARROOM_DISCLAIMER,
       '',
-      '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
+      '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 공공데이터(군포시청 발표, KMA, KECO, Air Korea, TAGO 등)는 현재 현황으로 다루되, 자료에 없는 새로운 사실을 지어내지 마십시오. 부동산 가격 예측·특정 사업 여론 추정·정치적 유불리 평가는 하지 마십시오. 시가 단독으로 결정할 수 없는 사안은 협의 상대와 제약 조건을 함께 밝히십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
     )
     return lines.join('\n')
   }
@@ -2909,10 +2833,10 @@ function buildChairSystemPrompt(
     '출력을 반드시 이 절로 시작하십시오. 서론·머리말 없이, 이 심의에서 의견이 갈린 핵심 축을 정확히 3줄(각 줄 "- "로 시작하는 한 문장)로 요약하십시오. 예: 예산 vs 규제 우선순위, 추진 속도 vs 신중론, 단기 효과 vs 장기 리스크. 3줄을 넘기지 마십시오.',
     '',
     '## 최종 판단',
-    '당신의 자원·에너지 정책 판단(예: 수급 안정 / 수입처 다변화 필요 / 비상대응 등)과 그 이유. 이 심의의 가장 중요한 부분입니다. 결단력 있고 방어 가능하게, 정책결정자가 대응할 수 있는 분명한 방향으로 쓰되, 추정·전망에는 반드시 [AI 추정]을 붙이십시오.',
+    '당신의 군포시 시민·정주 정책 판단(예: 우선순위 조정 / 재원 조달 방식 / 단계적 추진 등)과 그 이유. 이 심의의 가장 중요한 부분입니다. 결단력 있고 방어 가능하게, 정책결정자가 대응할 수 있는 분명한 방향으로 쓰되, 추정·전망에는 반드시 [AI 추정]을 붙이십시오.',
     '',
     '## 수집 데이터 요약',
-    '이 판단의 근거가 된 데이터를 간결하게(beat 1). 오피넷 유가는 현재 현황, 가스공사 LNG 수입은 과거 구조 배경으로 구분해 인용하십시오.',
+    '이 판단의 근거가 된 데이터를 간결하게(beat 1). 공공데이터(군포시청 발표, KMA, KECO, Air Korea, TAGO 등)는 현재 현황으로 인용하되, 자료에 없는 수치는 [AI 추정]으로 명시하십시오.',
     '',
     '## 전문가 분석·조사 요약',
     '전문가들이 무엇을 검토했고 외부 조사가 무엇을 더했는지 간결하게(beat 2).',
@@ -2929,7 +2853,7 @@ function buildChairSystemPrompt(
     '## 참고 사항',
     WARROOM_DISCLAIMER,
     '',
-    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 데이터 부재로 해소되지 못한 쟁점은 그렇다고 솔직히 밝히십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
+    '데이터 정직성: 반드시 제공된 심의 자료에 근거하십시오. 공공데이터(군포시청 발표, KMA, KECO, Air Korea, TAGO 등)는 현재 현황으로 다루되, 과거 데이터를 현재처럼 쓰지 마십시오. 자료에 없는 새로운 사실을 지어내지 마십시오. 부동산 가격 예측·특정 사업 여론 추정·정치적 유불리 평가는 하지 마십시오. 시가 단독으로 결정할 수 없는 사안은 협의 상대와 제약 조건을 함께 밝히십시오. 데이터 부재로 해소되지 못한 쟁점은 그렇다고 솔직히 밝히십시오. 근거 없는 구체 수치(예산 규모·기간·금액)는 판결에서 반복하지 말고 정성적으로 다루십시오. 당신은 보좌역이며 최종 결정자가 아닙니다.'
   )
 
   return lines.join('\n')
@@ -3491,7 +3415,7 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: Jeju
     '평가 대상 — 추상화 금지:',
     '  안건에 명시된 구체적 정책 수단·방향을 그대로 평가하십시오.',
     '  안건을 더 추상적·더 반대하기 어려운 상위 가치로 바꿔 읽고 찬성하지 마십시오.',
-    '  예) 안건이 "LNG 수입처 다변화 확대"이면, "에너지 안보가 중요한가?"가 아니라 "수입처 다변화 확대라는 수단"이 옳은지를 표결합니다.',
+    '  예) 안건이 "산본 1기 신도시 재정비 추진"이면, "도시재생이 중요한가?"가 아니라 "산본 1기 신도시 재정비 추진이라는 수단"이 옳은지를 표결합니다.',
     '  전문가 합의도 숫자를 이유로 삼지 마십시오 — 찬성/반대 결정은 오직 안건의 내용과 당신의 토론 기록에 기반해야 합니다.',
     '',
     '찬성·조건부 찬성·기권·반대의 정의:',
@@ -3518,14 +3442,13 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: Jeju
 
   const isTrade = councilMode === 'trade'
 
+  // STEP12: single-mode voting persona (isTrade unused).
+  void isTrade
+
   if (mode === 'motion') {
     return [
-      isTrade
-        ? '당신은 수출참모 패널의 표결 위원입니다. 참모 심의를 거친 수출 실행 안건(동의안)이 표결에 부쳐졌습니다.'
-        : '당신은 자원·에너지 안보 정책 심의체의 표결 위원입니다. 전문가 심의를 거친 정책 안건(동의안)이 표결에 부쳐졌습니다.',
-      isTrade
-        ? '안건의 문구는 제출된 원안 그대로입니다. 어느 AI가 잘했는지 평가하는 것이 아닙니다.'
-        : '안건의 문구는 제출된 원안 그대로입니다. 어느 AI가 잘했는지 평가하는 것이 아닙니다.',
+      '당신은 군포시 정책 심의 패널의 표결 위원입니다. 전문가 심의를 거친 정책 안건(동의안)이 표결에 부쳐졌습니다.',
+      '안건의 문구는 제출된 원안 그대로입니다. 어느 AI가 잘했는지 평가하는 것이 아닙니다.',
       '',
       TRUTH_SEEKING_DIRECTIVE,
       '',
@@ -3538,9 +3461,7 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: Jeju
   }
 
   return [
-    isTrade
-      ? '당신은 수출참모 패널의 표결 위원입니다. 의장(총괄 참모)이 최종 판단을 내렸습니다.'
-      : '당신은 자원·에너지 안보 정책 심의체의 표결 위원입니다. 의장(자원·에너지 정책 심의 의장)이 최종 판단을 내렸습니다.',
+    '당신은 군포시 정책 심의 패널의 표결 위원입니다. 의장이 최종 판단을 내렸습니다.',
     '어느 AI가 잘했는지 평가하는 것이 아닙니다.',
     '',
     TRUTH_SEEKING_DIRECTIVE,
@@ -3712,7 +3633,7 @@ function buildVoterTranscript(
 ): string | null {
   if (!deliberation || deliberation.rounds.length === 0) return null
 
-  const own: { roundNumber: number; turn: JejuDeliberationTurn }[] = []
+  const own: { roundNumber: number; turn: JejuDeliberationTurn; failed: boolean }[] = []
   const ordered = [...deliberation.rounds].sort((a, b) => a.roundNumber - b.roundNumber)
   for (const round of ordered) {
     for (const turn of round.turns) {
@@ -3720,23 +3641,45 @@ function buildVoterTranscript(
       // to a real brand — this comparison is false for it against every
       // provider, so it never lands in anyone's transcript. See the type's
       // doc comment on JejuDeliberationTurn.provider for the full rationale.
-      if (turn.provider !== provider || !turn.ok) continue
+      if (turn.provider !== provider) continue
+      if (!turn.ok) {
+        // STEP9 [1]-b: this seat was CONVENED for the round but produced no
+        // usable statement (see noResponseTurn in the route). The round must
+        // not silently vanish from this voter's own record — it is recorded
+        // as an explicit gap below instead of being skipped.
+        own.push({ roundNumber: round.roundNumber, turn, failed: true })
+        continue
+      }
       const hasBody = (turn.position ?? '').trim() !== ''
       const hasClaim = (turn.claim ?? '').trim() !== ''
       if (!hasBody && !hasClaim) continue
-      own.push({ roundNumber: round.roundNumber, turn })
+      own.push({ roundNumber: round.roundNumber, turn, failed: false })
     }
   }
   if (own.length === 0) return null
 
-  // Split the budget across the voter's turns so every round survives.
+  // STEP9 [1]-c: every recorded round for this seat failed — it has no real
+  // position to vote from. The caller (runJejuMotionVote) already excludes
+  // such seats from the ballot entirely via `excludeProviders`; this is a
+  // defensive backstop so a seat with nothing but gaps never gets an "own
+  // record" that is 100% gaps and nothing else.
+  if (own.every((o) => o.failed)) return null
+
+  // Split the budget across the voter's turns (gaps included) so every round survives.
   const perTurn = Math.max(
     VOTE_TRANSCRIPT_MIN_TURN_CHARS,
     Math.floor(VOTE_TRANSCRIPT_MAX_CHARS / own.length)
   )
 
   const lines: string[] = ['# 당신이 이 심의에서 실제로 한 발언 (라운드 순)']
-  for (const { roundNumber, turn } of own) {
+  for (const { roundNumber, turn, failed } of own) {
+    if (failed) {
+      lines.push(
+        '',
+        `[라운드 ${roundNumber}] 응답 실패 — 이 라운드 불참 (당신은 이 라운드에 발언하지 못했습니다. 이 라운드는 당신의 입장 판단에 포함하지 마십시오.)`
+      )
+      continue
+    }
     const tag = turn.actionTag ? ` (ACTION: ${turn.actionTag})` : ''
     const stressTester = turn.isRedTeam ? ' [이 라운드 검증 반론 담당]' : ''
     lines.push('', `[라운드 ${roundNumber}]${tag}${stressTester}`)
@@ -3847,14 +3790,15 @@ function emptyVoteResult(summary: string): JejuVoteResult {
  */
 async function runPanelBallot(
   systemPrompt: string,
-  userPromptFor: (provider: MotieProvider) => string
+  userPromptFor: (provider: MotieProvider) => string,
+  panel: MotieProvider[] = JEJU_VOTE_PANEL
 ): Promise<JejuVoteResult> {
   const settled = await Promise.allSettled(
-    JEJU_VOTE_PANEL.map((p) => runOneVote(p, systemPrompt, userPromptFor(p)))
+    panel.map((p) => runOneVote(p, systemPrompt, userPromptFor(p)))
   )
 
   const votes: JejuVote[] = settled.map((s, i) => {
-    const provider = JEJU_VOTE_PANEL[i]!
+    const provider = panel[i]!
     if (s.status === 'fulfilled') return s.value
     return {
       provider,
@@ -3963,6 +3907,15 @@ export async function runJejuMotionVote(params: {
   question: string
   deliberation: JejuDeliberation
   councilMode?: JejuCouncilMode
+  /**
+   * STEP9 [1]-c: seats to drop from the ballot entirely — a debate seat whose
+   * EVERY round failed (see noResponseTurn) has no real position to vote from,
+   * unlike Perplexity (which never debates by design and has its own
+   * search-based voting instruction). Omit/empty for callers with no such
+   * seats — Mode A's in-process deliberation never produces this, so it never
+   * passes this param and its vote panel is unaffected.
+   */
+  excludeProviders?: MotieProvider[]
 }): Promise<JejuVoteResult> {
   const councilMode: JejuCouncilMode = params.councilMode ?? 'warroom'
   const question = params.question?.trim() ?? ''
@@ -3985,7 +3938,10 @@ export async function runJejuMotionVote(params: {
       ownTranscript: buildVoterTranscript(params.deliberation, provider),
     })
 
-  return runPanelBallot(systemPrompt, userPromptFor)
+  const exclude = params.excludeProviders
+  const panel = exclude && exclude.length > 0 ? JEJU_VOTE_PANEL.filter((p) => !exclude.includes(p)) : JEJU_VOTE_PANEL
+
+  return runPanelBallot(systemPrompt, userPromptFor, panel)
 }
 
 /** The full DEEP result plus the closing ballot on the chair's verdict. */

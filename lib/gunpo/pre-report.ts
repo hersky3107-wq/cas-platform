@@ -46,8 +46,8 @@ import {
  *     (Perplexity-backed, MAX_SEARCHES cap) from deep.ts, and runSingleAiProvider.
  *   - Korean-only output via KOREAN_ONLY_DIRECTIVE.
  *   - Hard requirement: every figure in the report cites its SOURCE
- *     (KPX/KAMIS/KMA/감귤통계 등) WITH a timestamp — the data-provenance display
- *     the product explicitly wants surfaced ("자랑할 데이터를 자랑하는").
+ *     (군포시청/KMA/KECO/Air Korea/TAGO 등) WITH a timestamp — the data-provenance
+ *     display the product explicitly wants surfaced ("자랑할 데이터를 자랑하는").
  *   - No debate, no vote, no chair here. Those are separate steps.
  *
  * 'server-only', never throws — failures return ok:false with partial data.
@@ -171,11 +171,10 @@ function parseLeadOutput(raw: string): { analysis: string; searchRequests: JejuS
 function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
   const isTrade = councilMode === 'trade'
   const gapLine = isTrade
-    ? '- 내부 데이터만으로 부족한 부분, 즉 최신 외부 정보(현지 시장·수요 동향, 관세·인증·라벨링 규제, 무역구제(반덤핑 등) 동향, 경쟁·바이어·유통, 환율 흐름 등)가 필요한 지점을 명확히 짚고, 추측으로 메우지 말고 "검색 요청"으로 선언하세요.'
-    : '- 내부 데이터만으로 부족한 부분, 즉 최신 외부 정보(국제 유가·가스 가격, 지정학·수급 정세, 정부 에너지 정책, 국제기구 전망 등)가 필요한 지점을 명확히 짚고, 추측으로 메우지 말고 "검색 요청"으로 선언하세요.'
-  const searchRequestClosingLine = isTrade
-    ? 'searchRequests에는 실제로 더 필요한 검색(경쟁사·가격·특정 이슈 등)만 담으세요. 대상국 규제·인증과 현지 언론·여론은 시스템이 자동 수행하므로 중복 선언하지 마세요. 추가 검색이 없으면 빈 배열 []도 가능합니다.'
-    : 'searchRequests는 정말 더 알아봐야 할 게 있을 때만. 없으면 빈 배열 [].'
+    ? '- 내부 데이터만으로 부족한 부분, 즉 최신 외부 정보(군포시·경기도 지역언론 보도, 군포시청 공식 발표, 유사 규모 수도권 기초지자체의 동일 현안 대응 사례 등)가 필요한 지점을 명확히 짚고, 추측으로 메우지 말고 "검색 요청"으로 선언하세요.'
+    : '- 내부 데이터만으로 부족한 부분, 즉 최신 외부 정보(군포시·경기도 지역언론 보도, 군포시청 공식 발표, 유사 규모 수도권 기초지자체의 동일 현안 대응 사례 등)가 필요한 지점을 명확히 짚고, 추측으로 메우지 말고 "검색 요청"으로 선언하세요.'
+  const searchRequestClosingLine =
+    'searchRequests는 정말 더 알아봐야 할 게 있을 때만. 없으면 빈 배열 []. 지역언론·타 지자체 사례 조사는 시스템이 자동 수행하므로 중복 선언하지 마세요.'
   return [
     leadAnalystPersonaLine(councilMode),
     '제공된 [수집 데이터]를 정밀하게 읽고, 이 질문에 답하기 위한 1차 분석을 수행하세요.',
@@ -186,7 +185,7 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
     '검색 요청은 의사결정에 정말 중요한 것 위주로, 무엇을 왜 찾아야 하는지 구체적으로.',
     ...(isTrade
       ? [
-          '- 대상국 규제·인증 검색과 현지 언론·여론 검색은 시스템이 자동으로 수행하므로 중복 선언하지 말고, 그 외에 실제로 더 필요한 검색(경쟁사·가격·특정 이슈 등)만 searchRequests에 declare하세요.',
+          '- 지역언론·타 지자체 사례 조사는 시스템이 자동으로 수행하므로 중복 선언하지 말고, 그 외에 실제로 더 필요한 검색만 searchRequests에 declare하세요.',
         ]
       : []),
     ...(isTrade ? ['', TRADE_ANALYST_DIRECTIVE] : ['', WARROOM_ANALYST_DIRECTIVE]),
@@ -204,8 +203,8 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
 function reportSectionList(mode: JejuPreReportMode, councilMode: JejuCouncilMode): string {
   const isTrade = councilMode === 'trade'
   const section2 = isTrade
-    ? '2. 데이터가 말하는 것: 확보된 정량·정성 데이터의 해석. 각 수치·사실마다 반드시 출처(KOTRA 국가정보, KOTRA 상품DB, 한국수출입은행 환율, 관세·통계 등)와 데이터 시점(언제 기준인지)을 괄호로 함께 명시하세요. 예: "관세율 OO% (출처: KOTRA 국가정보)". 출처·시점을 밝힐 수 없는 수치는 쓰지 말고, 근거 없는 추론·전망에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만 — 반복 확인 필요 사항은 마지막 "쟁점·불확실성" 섹션에 통합). 각 데이터 포인트는 1~2줄로 간결하게, 중복 없이.'
-    : '2. 데이터가 말하는 것: 확보된 정량·정성 데이터의 해석. 각 수치·사실마다 반드시 출처(오피넷 유가, 가스공사 LNG 수입, 검색 등)와 데이터 시점(언제 기준인지)을 괄호로 함께 명시하세요. 예: "휘발유 전국 평균 OO원/L (출처: 오피넷, 오늘 기준)". 오피넷 유가는 현재 현황으로, 가스공사 LNG 수입은 과거 구조 배경으로만 다루고 과거 데이터를 현재처럼 쓰지 마세요. 출처·시점을 밝힐 수 없는 수치는 쓰지 말고, 근거 없는 추론·전망에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만 — 반복 확인 필요 사항은 마지막 "쟁점·불확실성" 섹션에 통합). 각 데이터 포인트는 1~2줄로 간결하게, 중복 없이.'
+    ? '2. 데이터가 말하는 것: 확보된 정량·정성 데이터의 해석. 각 수치·사실마다 반드시 출처(군포시청 공식 발표, 경기도 언론 보도, 공공데이터 등)와 데이터 시점(언제 기준인지)을 괄호로 함께 명시하세요. 예: "산본 1기 신도시 재정비 추진 일정 (출처: 군포시청 발표, OO월 OO일 기준)". 출처·시점을 밝힐 수 없는 수치는 쓰지 말고, 근거 없는 추론·전망에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만 — 반복 확인 필요 사항은 마지막 "쟁점·불확실성" 섹션에 통합). 각 데이터 포인트는 1~2줄로 간결하게, 중복 없이.'
+    : '2. 데이터가 말하는 것: 확보된 정량·정성 데이터의 해석. 각 수치·사실마다 반드시 출처(군포시청 공식 발표, 경기도 언론 보도, 공공데이터 등)와 데이터 시점(언제 기준인지)을 괄호로 함께 명시하세요. 예: "산본 1기 신도시 재정비 추진 일정 (출처: 군포시청 발표, OO월 OO일 기준)". 출처·시점을 밝힐 수 없는 수치는 쓰지 말고, 근거 없는 추론·전망에는 [AI 추정]/[확인 필요]를 붙이세요 (단, 같은 불확실성은 반복 표기하지 말고 1회만 — 반복 확인 필요 사항은 마지막 "쟁점·불확실성" 섹션에 통합). 각 데이터 포인트는 1~2줄로 간결하게, 중복 없이.'
   const shared = [
     '1. 핵심 현안: 가장 중요한 메시지 3~5줄로 요약.',
     section2,
@@ -213,14 +212,14 @@ function reportSectionList(mode: JejuPreReportMode, councilMode: JejuCouncilMode
     '4. 쟁점과 불확실성: 데이터 공백, 상충, 검증이 필요한 지점, 신뢰도 한계.',
   ]
   let tail: string
+  // STEP12: single-mode section tails (isTrade unused).
+  void isTrade
   if (mode === 'deliberation') {
-    tail = isTrade
-      ? '5. 진입 판단을 위한 핵심 쟁점: 이 수출 안건을 진입/보류로 가르는 핵심 질문과, 진입(찬성) 측·보류(반대) 측 논거가 각각 출발할 지점을 정리하세요(결론을 내리지는 말 것 — 토론의 출발점만 제시).'
-      : '5. 찬반 판단을 위한 핵심 쟁점: 이 안건을 찬성/반대로 가르는 핵심 질문과, 찬성 측·반대 측 논거가 각각 출발할 지점을 정리하세요(결론을 내리지는 말 것 — 토론의 출발점만 제시).'
+    tail =
+      '5. 찬반 판단을 위한 핵심 쟁점: 이 군포시 안건을 찬성/반대로 가르는 핵심 질문과, 찬성 측·반대 측 논거가 각각 출발할 지점을 정리하세요(결론을 내리지는 말 것 — 토론의 출발점만 제시).'
   } else {
-    tail = isTrade
-      ? '5. 가능한 실행 방향들: 개방형 질문에 대해 데이터가 시사하는, 실행 가능한 수출 방향을 진입 / 보류 / 조건부 추진의 선택지로 제시하세요(단정이 아니라 선택지로).'
-      : '5. 가능한 방향들: 개방형 질문에 대해 데이터가 시사하는, 실행 가능한 정책 방향·제언을 제시하세요(단정이 아니라 선택지로).'
+    tail =
+      '5. 가능한 실행 방향들: 개방형 질문에 대해 데이터가 시사하는, 실행 가능한 군포시 정책 방향을 진행 / 보류 / 조건부 추진의 선택지로 제시하세요(단정이 아니라 선택지로).'
   }
   return [...shared, tail].join('\n')
 }
@@ -336,31 +335,31 @@ export async function generateJejuPreReport(params: {
   let searches: JejuExecutedSearch[] = []
   let droppedSearchCount = 0
 
-  // TRADE guarantee: the 수출참모 panel's differentiator is cross-checking the
-  // target country's REGULATION and its LOCAL PRESS/OPINION as TWO distinct
-  // lenses. Prompt-only enforcement failed because the merge AI collapses the
-  // two "similar" requests into one. So for trade we build them deterministically
-  // in code (the question embeds the target country/product — no parsing needed)
-  // and run them OUTSIDE the merge path so they always execute, un-collapsed, and
-  // appear in `searches` (UI + report/synthesis). warroom keeps the normal path.
+  // GUNPO guarantee: the panel's differentiator is cross-checking TWO distinct
+  // lenses — (A) 군포시·경기도 지역언론 + 시청 공식 발표, (B) 유사 규모 수도권
+  // 기초지자체의 동일 현안 대응 사례. Prompt-only enforcement failed because
+  // the merge AI collapses the two "similar" requests into one. So we build them
+  // deterministically in code and run them OUTSIDE the merge path so they always
+  // execute, un-collapsed, and appear in `searches` (UI + report/synthesis).
+  // Every forced query embeds '군포시' or '경기도' so Perplexity stays region-anchored.
+  // Applied to BOTH council modes (도시·정비 / 시민·정주) — both are 군포 axes now.
+  const forcedGunpoSearches: { query: string; requestedBy: string[] }[] = [
+    {
+      query: `[오늘: ${todayKST()}] 군포시 ${question} — 경기도 군포시청 공식 발표·공고 및 군포·경기 지역언론 최신 보도 (오늘 기준)`,
+      requestedBy: ['지역언론·타 지자체 사례 조사(필수: 군포시·경기도 지역언론·시청 발표)'],
+    },
+    {
+      query: `[오늘: ${todayKST()}] ${question} — 유사 규모 수도권 기초지자체(과천·의왕·안양·시흥 등 경기도)의 동일 현안 대응 사례, 재정비·역세권 개발·공업지 전환 비교`,
+      requestedBy: ['지역언론·타 지자체 사례 조사(필수: 타 수도권 기초지자체 사례)'],
+    },
+  ]
   const isTrade = councilMode === 'trade'
-  const forcedTradeSearches: { query: string; requestedBy: string[] }[] = isTrade
-    ? [
-        {
-          query: `[오늘: ${todayKST()}] ${question} 대상국 수입규제 인증 라벨링 통관 최신`,
-          requestedBy: ['수출참모(필수: 규제·인증)'],
-        },
-        {
-          query: `[오늘: ${todayKST()}] ${question} — 대상국 현지(자국) 언론·매체 보도와 현지 소비자 반응·SNS 여론. 한국 언론·블로그가 아닌 해당 국가 현지 매체·현지어 기사 기준. local news consumer sentiment (target country domestic media)`,
-          requestedBy: ['수출참모(필수: 대상국 현지 자국 매체·여론 — 한국 소스 아님)'],
-        },
-      ]
-    : []
+  void isTrade // (kept for downstream sectionList branching; forced searches are mode-agnostic now)
 
-  if (forcedTradeSearches.length > 0) {
-    // Run the two guaranteed trade searches directly — bypass merge-collapse.
+  if (forcedGunpoSearches.length > 0) {
+    // Run the two guaranteed gunpo searches directly — bypass merge-collapse.
     try {
-      searches = await executeJejuSearches({ merged: forcedTradeSearches, councilMode })
+      searches = await executeJejuSearches({ merged: forcedGunpoSearches, councilMode })
     } catch {
       // Guaranteed searches are best-effort; never block the report.
     }
@@ -378,9 +377,9 @@ export async function generateJejuPreReport(params: {
     }
     try {
       const { merged, droppedCount } = await mergeSearchRequests({ analyses: [leadAsRole], councilMode })
-      // Reserve slots for the forced trade searches; trim MERGED (tail), never
+      // Reserve slots for the forced gunpo searches; trim MERGED (tail), never
       // the forced two, so the total respects MAX_SEARCHES_TOTAL.
-      const remainingSlots = Math.max(0, MAX_SEARCHES_TOTAL - forcedTradeSearches.length)
+      const remainingSlots = Math.max(0, MAX_SEARCHES_TOTAL - forcedGunpoSearches.length)
       const mergedToRun = merged.slice(0, remainingSlots)
       droppedSearchCount = droppedCount + Math.max(0, merged.length - mergedToRun.length)
       if (mergedToRun.length > 0) {
@@ -406,8 +405,8 @@ export async function generateJejuPreReport(params: {
     leadAnalysis ? `[1차 분석 메모]\n${leadAnalysis}` : '',
     '',
     councilMode === 'trade'
-      ? '위 자료를 근거로, 지정된 섹션 구조의 한국어 수출 분석 리포트를 작성하세요. 모든 수치에 출처와 시점을 병기하세요.'
-      : '위 자료를 근거로, 지정된 섹션 구조의 한국어 자원·에너지 안보 분석 리포트를 작성하세요. 모든 수치에 출처와 시점을 병기하세요.',
+      ? '위 자료를 근거로, 지정된 섹션 구조의 한국어 군포시 도시·정비 분석 리포트를 작성하세요. 모든 수치에 출처와 시점을 병기하세요.'
+      : '위 자료를 근거로, 지정된 섹션 구조의 한국어 군포시 시민·정주 분석 리포트를 작성하세요. 모든 수치에 출처와 시점을 병기하세요.',
   ]
     .filter((line) => line !== '')
     .join('\n')

@@ -1,76 +1,16 @@
 'use client'
 
 /**
- * Shared AX COUNCIL brand band + urban/people segmented toggle
- * (cloned from components/motie/MotieModeBand.tsx).
- * Rendered at the top of every gunpo page (inside JejuThemeShell) so the mode
- * choice is always visible and consistent. Copy is mode-specific (placeholder).
+ * STEP12 — UNUSED.
+ *
+ * Previously: AX COUNCIL brand band + urban/people segmented toggle.
+ * Reason unused: 군포 현안은 도시·정비와 시민·정주가 한 안건에 겹쳐 토글이
+ * 오해를 만들고, STEP12에서 단일 모드로 통합했기 때문.
+ *
+ * Brand strip ("AX 군포") now lives in JejuThemeShell. Keep this file so a
+ * future restore is a one-line re-import; do not render it.
  */
 
-import { useJejuUi } from './useJejuUi'
-import { useMotieMode, type GunpoMode } from './mode-context'
-
 export function MotieModeBand() {
-  const { t } = useJejuUi()
-  const { mode, setMode } = useMotieMode()
-
-  const options: { key: GunpoMode; label: string; sub: string }[] = [
-    { key: 'urban', label: t.modeTrade, sub: t.modeTradeEn },
-    { key: 'people', label: t.modeWarroom, sub: t.modeWarroomEn },
-  ]
-  const copy = mode === 'urban' ? t.tradeCopy : t.warroomCopy
-
-  return (
-    <div className="border-b border-jeju-border bg-jeju-bg-elevated px-4 py-4 sm:px-8">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-black tracking-[0.25em] text-jeju-accent">
-              {t.brandTitle}
-            </p>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-jeju-fg-muted">
-              {t.brandSubtitle}
-            </p>
-          </div>
-
-          <div
-            role="tablist"
-            aria-label={t.brandTitle}
-            className="inline-flex rounded-xl border border-jeju-border bg-jeju-bg p-1"
-          >
-            {options.map((o) => {
-              const active = o.key === mode
-              return (
-                <button
-                  key={o.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setMode(o.key)}
-                  className={`rounded-lg px-3 py-1.5 text-center transition ${
-                    active
-                      ? 'bg-jeju-accent text-white shadow-sm'
-                      : 'text-jeju-fg-muted hover:bg-jeju-tile-hover'
-                  }`}
-                >
-                  <span className="block text-xs font-bold leading-tight sm:text-sm">
-                    {o.label}
-                  </span>
-                  <span
-                    className={`block text-[10px] font-medium leading-tight ${
-                      active ? 'text-white/80' : 'text-jeju-fg-muted/70'
-                    }`}
-                  >
-                    {o.sub}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <p className="text-xs leading-relaxed text-jeju-fg-muted sm:text-sm">{copy}</p>
-      </div>
-    </div>
-  )
+  return null
 }

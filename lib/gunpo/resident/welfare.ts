@@ -53,7 +53,7 @@ const MATCH_MAX_TOKENS = 2600
 const GUIDE_MAX_TOKENS = 1400
 /** deadline-soon window (today → +N days). */
 const SOON_DAYS = 30
-const FRESHNESS_NOTE = '보조금24 + 군포시청 공고 검색 기반 (마감 안 지난 것만)'
+const FRESHNESS_NOTE = '보조금24 + 군포시청 공고 검색 기반 (마감 임박 · 상시신청)'
 const DISCLAIMER =
   '정확한 자격·금액·기한은 반드시 소관기관에 확인하세요. 이 안내는 참고용이며 실제 지원 여부와 다를 수 있어요.'
 const CONFIRM_NOTE = '정확한 내용은 소관기관에 확인하세요.'
@@ -134,6 +134,8 @@ export interface MatchResult {
 export interface WelfarePayload {
   ok: true
   deadlineSoon: SubsidyItem[]
+  /** 마감일 없음(상시·수시 등) — 마감 임박과 별도 노출 */
+  alwaysOpen: SubsidyItem[]
   windowDays: number
   today: string
   contextMeta: ContextMeta | null
@@ -244,6 +246,14 @@ function passesDeadline(item: SubsidyItem, todayIso: string): boolean {
   if (!item.org && !item.url) return false // no source → never show
   if (!item.deadlineDate) return true // 상시/미정 → keep (sorts last)
   return item.deadlineDate >= todayIso
+}
+
+/** 마감일이 없거나 상시·수시 등 고정 마감이 없는 항목 (근로장려금·기초연금 등). */
+function isAlwaysOpenApplication(item: SubsidyItem): boolean {
+  if (item.deadlineDate) return false
+  const dl = (item.deadline ?? '').trim()
+  if (!dl) return true
+  return /상시|수시|연중|예산\s*소진|소진\s*시|별도\s*공고|미정|상시모집/.test(dl)
 }
 
 // ── 보조금24 (odcloud gov24 serviceList) ──────────────────────────────────────
@@ -624,11 +634,16 @@ async function buildWelfarePayload(): Promise<WelfarePayload> {
     merged.filter((it) => it.deadlineDate && it.deadlineDate >= today && it.deadlineDate <= soonEnd),
   )
 
-  if (soon.length === 0) errors.push('welfare: no dated 공고 within 30 days (상시/미정 제외)')
+  const alwaysOpen = sortByDeadline(merged.filter(isAlwaysOpenApplication))
+
+  if (soon.length === 0 && alwaysOpen.length === 0) {
+    errors.push('welfare: no deadline-soon or always-open 공고')
+  }
 
   return {
     ok: true,
     deadlineSoon: soon,
+    alwaysOpen,
     windowDays: SOON_DAYS,
     today,
     contextMeta,
@@ -698,7 +713,11 @@ export async function getWelfare(opts: GetWelfareOptions = {}): Promise<WelfareR
     const cached = await readCache(cacheKey)
     if (cached && cached.ok && Array.isArray(cached.deadlineSoon)) {
       console.log('[gunpo-welfare] cache hit', cacheKey)
-      return { ...(cached as unknown as WelfarePayload), fromCache: true }
+      return {
+        ...(cached as unknown as WelfarePayload),
+        alwaysOpen: Array.isArray(cached.alwaysOpen) ? (cached.alwaysOpen as SubsidyItem[]) : [],
+        fromCache: true,
+      }
     }
   } else {
     console.log('[gunpo-welfare] force bypass', cacheKey)

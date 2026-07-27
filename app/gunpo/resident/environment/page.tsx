@@ -2,8 +2,8 @@
 
 /**
  * 환경 — Gunpo resident environment chip. Cloned from the AirKorea-dust half
- * of app/jeju/resident/environment/page.tsx ONLY, plus a new EV-charger
- * section (클린하우스/배출요일제/Q&A were not ported — see STEP3 scope).
+ * of app/jeju/resident/environment/page.tsx ONLY
+ * (클린하우스/배출요일제/Q&A were not ported — see STEP3 scope).
  *
  * Data: GET /api/gunpo/resident/environment
  */
@@ -26,15 +26,9 @@ interface DustInfo {
   measuredAt: string | null
   asOf: string | null
 }
-interface EvChargerInfo {
-  ok: boolean
-  text: string | null
-  error: string | null
-}
 interface EnvironmentPayload {
   ok: true
   dust: DustInfo | null
-  evCharger: EvChargerInfo
   freshnessNote: string
   updatedAt: string
   errors: string[]
@@ -124,7 +118,7 @@ export default function GunpoEnvironmentPage() {
             <p className="rounded-xl bg-[#E0E7FF] px-4 py-2 text-sm font-semibold text-[#1E3A8A]">{data.freshnessNote}</p>
 
             <section className="rounded-2xl border-2 border-[#CBD5E1] bg-white p-5 shadow-sm">
-              <h2 className="mb-3 text-lg font-black text-[#1E3A8A]">🌫️ 오늘 대기질 (경기)</h2>
+              <h2 className="mb-3 text-lg font-black text-[#1E3A8A]">🌫️ 오늘 대기질 (군포)</h2>
               {data.dust ? (
                 <>
                   <div className="mb-2 flex flex-wrap gap-2">
@@ -146,20 +140,7 @@ export default function GunpoEnvironmentPage() {
                   </p>
                 </>
               ) : (
-                <p className="text-base font-semibold text-[#64748B]">
-                  대기질 정보 없음 — 측정소(stationName)가 아직 설정되지 않았을 수 있어요.
-                </p>
-              )}
-            </section>
-
-            <section className="rounded-2xl border-2 border-[#CBD5E1] bg-white p-5 shadow-sm">
-              <h2 className="mb-2 text-lg font-black text-[#1E3A8A]">🔌 전기차 충전 인프라</h2>
-              {data.evCharger.text ? (
-                <p className="whitespace-pre-line text-base leading-relaxed text-[#334155]">{data.evCharger.text}</p>
-              ) : (
-                <p className="text-base font-semibold text-[#64748B]">
-                  {data.evCharger.error ?? '정보 없음'} — 지역 파라미터(rgnNm)가 아직 설정되지 않았어요.
-                </p>
+                <p className="text-base font-semibold text-[#64748B]">지금은 대기질 정보를 불러올 수 없어요.</p>
               )}
             </section>
 
@@ -167,7 +148,7 @@ export default function GunpoEnvironmentPage() {
           </>
         )}
 
-        <p className="pt-2 text-center text-sm font-semibold text-[#64748B]">자료: 한국환경공단 에어코리아 + 환경부/KECO</p>
+        <p className="pt-2 text-center text-sm font-semibold text-[#64748B]">자료: 한국환경공단 에어코리아</p>
       </div>
     </div>
   )

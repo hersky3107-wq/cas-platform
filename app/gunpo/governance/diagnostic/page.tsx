@@ -416,11 +416,7 @@ export function DiagnosticSection() {
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder={
-              councilMode === 'urban'
-                ? t.diagnosticCustomPlaceholderTrade
-                : t.diagnosticCustomPlaceholderWarroom
-            }
+            placeholder={t.diagnosticCustomPlaceholderWarroom}
             rows={2}
             disabled={running}
             className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-sm text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"

@@ -8,7 +8,10 @@ import 'server-only'
  * day (cached in gunpo_news_cache — degrades to no-cache if table missing).
  * Call 1 sweeps all categories across national + local Gunpo/경기 press;
  * call 2 digs deeper into the two usually-highest-volume categories
- * (정치·행정, 경제·산업) in local press. Results are merged + deduped.
+ * (정치·행정, 경제·산업) in local press. Results are merged + deduped by
+ * headline SIMILARITY (character-bigram Dice coefficient, not just exact
+ * string match — see headlineSimilarity/mergeDedupe below), so near-duplicate
+ * coverage of the same event by different outlets collapses to one item.
  *
  * Lens: ordinary Gunpo(군포) residents' daily life, region term
  * '경기도 군포시' (was '제주'). Sourced from BOTH major national outlets'
@@ -313,13 +316,44 @@ function normalizeHeadline(headline: string): string {
   return headline.replace(/[\s.,!?"'…·\-()[\]「」『』]/g, '').toLowerCase()
 }
 
+/** Character bigrams of a normalized string — robust for Korean (no clean word boundaries). */
+function charBigrams(s: string): Set<string> {
+  const set = new Set<string>()
+  for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2))
+  if (set.size === 0 && s.length > 0) set.add(s)
+  return set
+}
+
+/** Dice coefficient (2·|A∩B| / (|A|+|B|)) over character bigrams — 1.0 = identical, 0.0 = disjoint. */
+function headlineSimilarity(a: string, b: string): number {
+  if (a === b) return 1
+  const A = charBigrams(a)
+  const B = charBigrams(b)
+  if (A.size === 0 || B.size === 0) return 0
+  let intersection = 0
+  for (const gram of A) if (B.has(gram)) intersection++
+  return (2 * intersection) / (A.size + B.size)
+}
+
+/**
+ * P2: exact-match dedup missed near-duplicate headlines that different
+ * outlets phrase slightly differently (e.g. "OO사업 착공" vs "OO사업 첫 삽"
+ * for the same event). Dedup by headline SIMILARITY instead of exact string
+ * equality: an item is dropped if any earlier-kept item's headline is >= the
+ * threshold similar (character-bigram Dice coefficient). O(n²) but n is
+ * small (sweep + follow-up results, capped well under 100).
+ */
+const DUP_SIMILARITY_THRESHOLD = 0.6
+
 function mergeDedupe(a: NewsItem[], b: NewsItem[]): NewsItem[] {
-  const seen = new Set<string>()
   const out: NewsItem[] = []
+  const outKeys: string[] = []
   for (const it of [...a, ...b]) {
     const key = normalizeHeadline(it.headline)
-    if (!key || seen.has(key)) continue
-    seen.add(key)
+    if (!key) continue
+    const isDuplicate = outKeys.some((k) => headlineSimilarity(key, k) >= DUP_SIMILARITY_THRESHOLD)
+    if (isDuplicate) continue
+    outKeys.push(key)
     out.push(it)
   }
   return out

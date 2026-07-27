@@ -237,9 +237,24 @@ function renderKmaWeather(rawJson: unknown): { text: string } | { error: string 
     return { error: 'No recognizable readings in KMA response' }
   }
 
-  const when = baseDate && baseTime ? `${baseDate} ${baseTime}` : ''
-  const headerLine = `초단기실황 (지역: 군포시, nx=${GUNPO_KMA_NX}/ny=${GUNPO_KMA_NY})${when ? ` (관측: ${when})` : ''}`
+  const whenLabel = formatKmaObservedAt(baseDate, baseTime)
+  const headerLine = `초단기실황 (경기도 군포시 · 기상청 기준)${whenLabel ? ` — ${whenLabel}` : ''}`
   return { text: `${headerLine}\n${readings.join(', ')}` }
+}
+
+/** Formats a YYYYMMDD/HHmm pair into a friendly "N월 N일 HH:mm" string (no suffix). */
+function formatKmaDateTime(baseDate: string, baseTime: string): string {
+  if (!/^\d{8}$/.test(baseDate) || !/^\d{3,4}$/.test(baseTime)) return ''
+  const month = Number(baseDate.slice(4, 6))
+  const day = Number(baseDate.slice(6, 8))
+  const hhmm = baseTime.padStart(4, '0')
+  return `${month}월 ${day}일 ${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`
+}
+
+/** Formats a KMA baseDate(YYYYMMDD)/baseTime(HHmm) pair into a friendly "N월 N일 HH:mm 관측" string. */
+function formatKmaObservedAt(baseDate: string, baseTime: string): string {
+  const dt = formatKmaDateTime(baseDate, baseTime)
+  return dt ? `${dt} 관측` : ''
 }
 
 /**
@@ -387,7 +402,8 @@ function renderMidtermLines(
     }
 
     const parts = [tempPart, wxPart, rainPart].filter((p) => p)
-    lines.push(`${n}일후: ${parts.length ? parts.join(', ') : '데이터 없음'}`)
+    if (parts.length === 0) continue // 결측 항목은 노출하지 않음 (P0-1)
+    lines.push(`${n}일후: ${parts.join(', ')}`)
   }
   return lines
 }
@@ -425,11 +441,14 @@ async function fetchKmaMidterm(): Promise<{ text: string } | { error: string }> 
   }
 
   const notes: string[] = []
-  if (!taItem) notes.push(`※ 중기기온(getMidTa) 수집 실패: ${ta.ok ? '' : ta.error}`)
-  if (!landItem) notes.push(`※ 중기육상예보(getMidLandFcst) 수집 실패: ${land.ok ? '' : land.error}`)
+  if (!taItem) notes.push('※ 기온 전망 정보를 일부 가져오지 못했어요.')
+  if (!landItem) notes.push('※ 날씨·강수 전망 정보를 일부 가져오지 못했어요.')
 
   const lines = renderMidtermLines(taItem, landItem)
-  const headerLine = `중기예보 (지역: 군포시, 발표시각: ${tmFc}, 기온 regId ${JEJU_MIDTA_REGID} / 육상 regId ${JEJU_MIDLAND_REGID})`
+  if (lines.length === 0) {
+    return { error: '중기예보 데이터 없음' }
+  }
+  const headerLine = '중기예보 (경기도 군포시 · 기상청 기준)'
   const text = [headerLine, ...notes, '', ...lines].join('\n')
   return { text }
 }
@@ -1257,23 +1276,23 @@ function readFlatDataGoKrEnvelope(rawJson: unknown): {
  * string describing how many pages were fetched vs requested (for honesty header).
  * Never throws.
  */
+/** True when a KECO item's sggNm (시군구명) names Gunpo city (군포시). */
+function isGunpoSgg(item: Record<string, unknown>): boolean {
+  const sgg = typeof item.sggNm === 'string' ? item.sggNm.trim() : ''
+  return sgg.includes('군포')
+}
+
 function aggregateKecoEvChargerItems(
-  items: Record<string, unknown>[],
-  totalCount: number | null,
-  pageNote: string
+  itemsAllGyeonggi: Record<string, unknown>[]
 ): { text: string } | { error: string } {
+  // Only 군포시 rows are shown to users — 경기도 전역 조회는 API 제약(rgnNm은 시도
+  // 단위까지만 지원)에 따른 것일 뿐, 타 시군구 분포·수집 메타는 사용자에게 무의미하다 (P0-3).
+  const items = itemsAllGyeonggi.filter(isGunpoSgg)
   if (items.length === 0) {
-    return { error: '전기차 충전기 데이터 없음 (빈 응답, rgnNm=경기도)' }
+    return { error: '군포시 전기차 충전소 데이터 없음' }
   }
 
-  const fetchedCount = items.length
-  const sampleNote =
-    totalCount != null && totalCount > fetchedCount
-      ? `표본 약 ${fetchedCount.toLocaleString()}건 (전체 ${totalCount.toLocaleString()}건 중)`
-      : `${fetchedCount.toLocaleString()}건`
-
   const stationSet = new Set<string>()
-  const sggCounts: Record<string, number> = {}
   const frmCounts: Record<string, number> = {}
   const capacities: number[] = []
   const yrCounts: Record<string, number> = {}
@@ -1281,9 +1300,6 @@ function aggregateKecoEvChargerItems(
   for (const item of items) {
     const stationId = typeof item.chgstnId === 'string' ? item.chgstnId.trim() : ''
     if (stationId) stationSet.add(stationId)
-
-    const sgg = typeof item.sggNm === 'string' ? item.sggNm.trim() : '(미상)'
-    sggCounts[sgg] = (sggCounts[sgg] ?? 0) + 1
 
     const frm = typeof item.chrgrFrm === 'string' ? item.chrgrFrm.trim() : '(미상)'
     frmCounts[frm] = (frmCounts[frm] ?? 0) + 1
@@ -1295,15 +1311,8 @@ function aggregateKecoEvChargerItems(
     if (yr) yrCounts[yr] = (yrCounts[yr] ?? 0) + 1
   }
 
-  const headerLine =
-    `전기차 충전 인프라 현황` +
-    ` (출처: 환경부/KECO getYrMnChgcpcyInfo, rgnNm=경기도, ${pageNote})`
-
-  const countLine = `수신 건수: ${sampleNote}`
+  const headerLine = '전기차 충전 인프라 현황 (경기도 군포시 · 환경부/KECO 기준)'
   const stationLine = `고유 충전소 수: ${stationSet.size.toLocaleString()}개소`
-
-  const sggSorted = Object.entries(sggCounts).sort((a, b) => b[1] - a[1])
-  const sggLine = `시군구별 분포: ${sggSorted.map(([k, v]) => `${k} ${v}건`).join(', ')}`
 
   const frmSorted = Object.entries(frmCounts).sort((a, b) => b[1] - a[1])
   const frmTop = frmSorted.slice(0, 5)
@@ -1326,9 +1335,7 @@ function aggregateKecoEvChargerItems(
     (Object.keys(yrCounts).length > 8 ? ' …' : '')
 
   return {
-    text: [headerLine, '', countLine, stationLine, sggLine, frmLine, capacityLine, yrLine].join(
-      '\n'
-    ),
+    text: [headerLine, '', stationLine, frmLine, capacityLine, yrLine].join('\n'),
   }
 }
 
@@ -1397,12 +1404,7 @@ async function fetchKecoEvCharger(): Promise<{ text: string } | { error: string 
     }
   }
 
-  const pageNote =
-    pagesSucceeded < PAGES_REQUESTED
-      ? `${PAGES_REQUESTED}페이지 요청 중 ${pagesSucceeded}페이지 성공`
-      : `${PAGES_REQUESTED}페이지 수집`
-
-  return aggregateKecoEvChargerItems(combined, totalCount, pageNote)
+  return aggregateKecoEvChargerItems(combined)
 }
 
 /**
@@ -1420,7 +1422,7 @@ function renderJejuWarning(rawJson: unknown): { text: string } | { error: string
   }
 
   if (env.items.length === 0) {
-    return { text: `기상특보: 현재 발효 중인 기상특보 없음 (지역: 군포시, stnId=${GUNPO_KMA_WARN_STNID})` }
+    return { text: '기상특보: 현재 발효 중인 기상특보 없음 (경기도 군포시 · 기상청 기준)' }
   }
 
   // Newest first by tmFc (발표시각, numeric).
@@ -1428,16 +1430,19 @@ function renderJejuWarning(rawJson: unknown): { text: string } | { error: string
   const lines = sorted
     .map((it) => {
       const title = typeof it.title === 'string' ? it.title.trim() : ''
-      const tmFc = parseNum(it.tmFc)
+      const tmFcRaw = typeof it.tmFc === 'string' || typeof it.tmFc === 'number' ? String(it.tmFc) : ''
+      const tmFcLabel = /^\d{12}$/.test(tmFcRaw)
+        ? formatKmaDateTime(tmFcRaw.slice(0, 8), tmFcRaw.slice(8, 12))
+        : ''
       if (!title) return ''
-      return tmFc != null ? `- (${tmFc}) ${title}` : `- ${title}`
+      return tmFcLabel ? `- ${title} (${tmFcLabel} 발표)` : `- ${title}`
     })
     .filter((l) => l !== '')
 
   if (lines.length === 0) {
-    return { text: `기상특보: 현재 발효 중인 기상특보 없음 (지역: 군포시, stnId=${GUNPO_KMA_WARN_STNID})` }
+    return { text: '기상특보: 현재 발효 중인 기상특보 없음 (경기도 군포시 · 기상청 기준)' }
   }
-  return { text: [`기상특보 (최근 발표순, 지역: 군포시, stnId=${GUNPO_KMA_WARN_STNID})`, ...lines].join('\n') }
+  return { text: ['기상특보 (경기도 군포시 · 기상청 기준, 최근 발표순)', ...lines].join('\n') }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

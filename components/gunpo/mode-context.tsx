@@ -1,27 +1,28 @@
 'use client'
 
 /**
- * AX COUNCIL top-level MODE toggle, shared across the gunpo governance pages
- * (cloned from components/motie/mode-context.tsx).
+ * AX COUNCIL mode context (cloned from components/motie/mode-context.tsx).
  *
- *   - 'urban'  = 도시·정비 — DEFAULT
- *   - 'people' = 시민·정주
+ * STEP12: urban/people toggle removed. GunpoMode type is kept for call-site
+ * compatibility, but the provider always exposes a single fixed value and
+ * setMode is a no-op. toJejuCouncilMode always returns the fixed engine mode.
  *
- * Persisted on-device (localStorage, guarded) so the choice carries across
- * pages/reloads. For this step the mode only drives brand copy + a `councilMode`
- * param threaded into the API routes — no connector/prompt branching yet.
+ * NOTE: Do NOT import from lib/gunpo/brief.ts here (server-only). The fixed
+ * engine mode string is duplicated as a client-safe constant below.
  */
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useContext } from 'react'
 
 export type GunpoMode = 'urban' | 'people'
 
-const STORAGE_KEY = 'gunpo.mode'
-const DEFAULT_MODE: GunpoMode = 'urban'
+/** STEP12 fixed UI mode — toggle removed; always 'urban' for identifier stability. */
+const FIXED_MODE: GunpoMode = 'urban'
 
-function isMotieMode(v: unknown): v is GunpoMode {
-  return v === 'urban' || v === 'people'
-}
+/**
+ * STEP12 fixed engine mode (client-safe duplicate of lib/gunpo/brief.ts's
+ * FIXED_GUNPO_COUNCIL_MODE). Must stay in sync: 'trade'.
+ */
+export const FIXED_GUNPO_COUNCIL_MODE: 'trade' | 'warroom' = 'trade'
 
 interface MotieModeContextValue {
   mode: GunpoMode
@@ -29,34 +30,20 @@ interface MotieModeContextValue {
 }
 
 const MotieModeContext = createContext<MotieModeContextValue>({
-  mode: DEFAULT_MODE,
+  mode: FIXED_MODE,
   setMode: () => {},
 })
 
 export function MotieModeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<GunpoMode>(DEFAULT_MODE)
-
-  // Restore persisted choice after mount (SSR-safe: default renders first).
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY)
-      if (isMotieMode(stored)) setModeState(stored)
-    } catch {
-      /* localStorage unavailable — stay on default */
-    }
-  }, [])
-
-  const setMode = useCallback((m: GunpoMode) => {
-    setModeState(m)
-    try {
-      window.localStorage.setItem(STORAGE_KEY, m)
-    } catch {
-      /* ignore persistence failure */
-    }
-  }, [])
-
   return (
-    <MotieModeContext.Provider value={{ mode, setMode }}>
+    <MotieModeContext.Provider
+      value={{
+        mode: FIXED_MODE,
+        setMode: () => {
+          /* STEP12: mode toggle removed — ignore */
+        },
+      }}
+    >
       {children}
     </MotieModeContext.Provider>
   )
@@ -67,11 +54,9 @@ export function useMotieMode(): MotieModeContextValue {
 }
 
 /**
- * Maps the UI-facing GunpoMode ('urban' | 'people') to the engine-facing
- * JejuCouncilMode ('trade' | 'warroom') used by lib/gunpo/brief.ts,
- * persona.ts, diagnostic-categories.ts, and the /api/gunpo/* routes — those
- * kept their original 'trade' | 'warroom' identifiers per STEP 2 scope.
+ * Maps GunpoMode → JejuCouncilMode. STEP12: always returns FIXED_GUNPO_COUNCIL_MODE
+ * regardless of input (toggle removed).
  */
-export function toJejuCouncilMode(m: GunpoMode): 'trade' | 'warroom' {
-  return m === 'urban' ? 'trade' : 'warroom'
+export function toJejuCouncilMode(_m?: GunpoMode): 'trade' | 'warroom' {
+  return FIXED_GUNPO_COUNCIL_MODE
 }

@@ -17,9 +17,8 @@ export async function POST(req: Request): Promise<Response> {
   const mode: JejuMediaWatchMode =
     body.mode === 'resident' ? 'resident' : 'governance'
 
-  // AX COUNCIL trade/warroom mode — plumbed through; branching lands next step.
-  const councilMode: 'trade' | 'warroom' = body.councilMode === 'warroom' ? 'warroom' : 'trade'
-  void councilMode
+  // STEP12: mode toggle removed — councilMode no longer branches mediawatch.
+  void body.councilMode
 
   try {
     const result = await runJejuMediaWatch({ mode })

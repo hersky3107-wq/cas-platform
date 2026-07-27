@@ -123,9 +123,7 @@ export default function GunpoWeatherPage() {
               {data.current.text ? (
                 <p className="whitespace-pre-line text-base leading-relaxed text-[#334155]">{data.current.text}</p>
               ) : (
-                <p className="text-base font-semibold text-[#64748B]">
-                  {data.current.error ?? '정보 없음'} — 지역 파라미터(nx/ny)가 아직 설정되지 않았어요.
-                </p>
+                <p className="text-base font-semibold text-[#64748B]">지금은 실황 정보를 불러올 수 없어요.</p>
               )}
             </section>
 
@@ -134,9 +132,7 @@ export default function GunpoWeatherPage() {
               {data.midterm.text ? (
                 <p className="whitespace-pre-line text-base leading-relaxed text-[#334155]">{data.midterm.text}</p>
               ) : (
-                <p className="text-base font-semibold text-[#64748B]">
-                  {data.midterm.error ?? '정보 없음'} — 지역 파라미터(regId)가 아직 설정되지 않았어요.
-                </p>
+                <p className="text-base font-semibold text-[#64748B]">지금은 중기예보 정보를 불러올 수 없어요.</p>
               )}
             </section>
 
@@ -145,9 +141,7 @@ export default function GunpoWeatherPage() {
               {data.warning.text ? (
                 <p className="whitespace-pre-line text-base leading-relaxed text-[#334155]">{data.warning.text}</p>
               ) : (
-                <p className="text-base font-semibold text-[#64748B]">
-                  {data.warning.error ?? '정보 없음'} — 지역 파라미터(stnId)가 아직 설정되지 않았어요.
-                </p>
+                <p className="text-base font-semibold text-[#64748B]">지금은 기상특보 정보를 불러올 수 없어요.</p>
               )}
             </section>
 

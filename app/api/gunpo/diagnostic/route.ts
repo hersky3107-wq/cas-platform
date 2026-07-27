@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { gatherJejuSnapshot, buildBriefingContext, type JejuSnapshot } from '@/lib/gunpo/brief'
+import { gatherJejuSnapshot, buildBriefingContext, FIXED_GUNPO_COUNCIL_MODE, type JejuSnapshot } from '@/lib/gunpo/brief'
 import { type JejuExecutedSearch } from '@/lib/gunpo/deep'
 import {
   runDiagnosticSearch,
@@ -89,8 +89,9 @@ export async function POST(req: Request): Promise<Response> {
   // ── ACTION: start — snapshot + context ───────────────────────────────────────
   if (action === 'start') {
     try {
-      const councilMode: 'trade' | 'warroom' =
-        body.councilMode === 'warroom' ? 'warroom' : 'trade'
+      // STEP12: mode toggle removed — always use the fixed single mode.
+      const councilMode: 'trade' | 'warroom' = FIXED_GUNPO_COUNCIL_MODE
+      void body.councilMode
 
       const categoryId = typeof body.categoryId === 'string' ? body.categoryId.trim() : ''
       const category = categoryId ? getDiagnosticCategory(categoryId, councilMode) : undefined

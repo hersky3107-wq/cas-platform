@@ -13,18 +13,12 @@ import 'server-only'
  *        getCtprvnRltmMesureDnsty used before). If the 당동 reading is
  *        missing/dead (결측 또는 통신장애), retried ONCE against
  *        GUNPO_AIR_FALLBACK_STATION='산본동'.
- *   2. 전기차 충전 인프라 — REUSES the already-registered gunpo governance
- *        connector `keco-gunpo-evcharger` (lib/gunpo/connectors.ts, rgnNm
- *        CONFIRMED = '경기도' per STEP4) via fetchJejuSource, so that value
- *        lives in exactly one place.
- *
  * Auth: DATA_GO_KR_KEY → KPX_SERVICE_KEY (same common key as other gunpo
  * connectors — no new env var).
  * ISOLATION: 'server-only'; MUST NOT import lib/jeju or lib/motie. Never
  * throws; sections degrade to null + errors[].
  */
 
-import { fetchJejuSource } from '@/lib/gunpo/connectors'
 import { dataGoKrKey } from './shared'
 
 // NOTE: was 'ArpltnInqireSvc' (missing "Info") in some older integrations —
@@ -35,7 +29,7 @@ const AIRKOREA_STATION_OP = `${AIRKOREA_BASE}/getMsrstnAcctoRltmMesureDnsty`
 const TIMEOUT_MS = 15_000
 const RETRY_DELAY_MS = 500
 const BODY_SNIPPET = 300
-const FRESHNESS_NOTE = '에어코리아 실시간 대기오염 (군포시 당동 측정소, 결측 시 산본동 대체) + KECO 전기차 충전 인프라'
+const FRESHNESS_NOTE = '에어코리아 실시간 대기오염 (군포시 당동 측정소, 결측 시 산본동 대체)'
 
 /** CONFIRMED (STEP5): 대표 측정소 — 당동. */
 export const GUNPO_AIR_STATION_NAME = '당동'
@@ -64,16 +58,9 @@ export interface DustInfo {
   asOf: string | null
 }
 
-export interface EvChargerInfo {
-  ok: boolean
-  text: string | null
-  error: string | null
-}
-
 export interface EnvironmentPayload {
   ok: true
   dust: DustInfo | null
-  evCharger: EvChargerInfo
   freshnessNote: string
   updatedAt: string
   errors: string[]
@@ -279,44 +266,18 @@ async function fetchDust(errors: string[]): Promise<DustInfo | null> {
   return toDustInfo(fallback, GUNPO_AIR_FALLBACK_STATION)
 }
 
-async function fetchEvCharger(errors: string[]): Promise<EvChargerInfo> {
-  try {
-    const r = await fetchJejuSource('keco-gunpo-evcharger')
-    if (!r.ok) {
-      errors.push(`evCharger: ${r.error ?? 'unknown error'}`)
-      return { ok: false, text: null, error: r.error ?? 'unknown error' }
-    }
-    return { ok: true, text: r.text, error: null }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    errors.push(`evCharger: ${msg}`)
-    return { ok: false, text: null, error: msg }
-  }
-}
-
-// ── Public entry (GET) ─────────────────────────────────────────────────────────
-
 /**
- * Fetch Gunpo environment snapshot: 미세먼지(경기) + 전기차 충전 인프라(전국
- * 커넥터 재사용). Never throws; sections degrade to null with errors[] entries.
+ * Fetch Gunpo environment snapshot: 미세먼지(당동/산본동 측정소).
+ * Never throws; section degrades to null with errors[] entries.
  */
 export async function getEnvironment(): Promise<EnvironmentResult> {
   const errors: string[] = []
 
-  const [dustSettled, evSettled] = await Promise.allSettled([fetchDust(errors), fetchEvCharger(errors)])
-
-  const dust = dustSettled.status === 'fulfilled' ? dustSettled.value : null
-  if (dustSettled.status === 'rejected') {
-    errors.push(`dust(settled): ${String(dustSettled.reason)}`)
-  }
-
-  const evCharger: EvChargerInfo =
-    evSettled.status === 'fulfilled' ? evSettled.value : { ok: false, text: null, error: 'settled-rejected' }
+  const dust = await fetchDust(errors)
 
   return {
     ok: true,
     dust,
-    evCharger,
     freshnessNote: FRESHNESS_NOTE,
     updatedAt: new Date().toISOString(),
     errors,

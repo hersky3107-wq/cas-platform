@@ -20,7 +20,7 @@ import {
   type JejuVerdict,
   type JejuVoteResult,
 } from '@/lib/gunpo/deep'
-import type { JejuSnapshot } from '@/lib/gunpo/brief'
+import { FIXED_GUNPO_COUNCIL_MODE, type JejuSnapshot } from '@/lib/gunpo/brief'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -172,8 +172,9 @@ export async function POST(req: Request): Promise<Response> {
           : undefined
       const maxRounds =
         typeof body.maxRounds === 'number' ? body.maxRounds : undefined
-      const councilMode: 'trade' | 'warroom' =
-        body.councilMode === 'warroom' ? 'warroom' : 'trade'
+      // STEP12: mode toggle removed — always use the fixed single mode.
+      const councilMode: 'trade' | 'warroom' = FIXED_GUNPO_COUNCIL_MODE
+      void body.councilMode
 
       const analysis = await runJejuDeepThroughAnalysis({
         question,

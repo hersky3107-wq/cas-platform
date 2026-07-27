@@ -210,8 +210,8 @@ function buildStatusSystemPrompt(councilMode: JejuCouncilMode): string {
   const isTrade = councilMode === 'trade'
   const todayKST = kstYmd()
   const sourceExample = isTrade
-    ? '- 모든 수치·사실에는 출처와 시점을 괄호로 병기하세요. 예: "(출처: KOTRA 국가정보)".'
-    : '- 모든 수치·사실에는 출처와 시점을 괄호로 병기하세요. 예: "(출처: 오피넷, 오늘 기준)". 오피넷 유가는 현재 현황, 가스공사 LNG 수입은 과거 구조 배경으로 구분하세요.'
+    ? '- 모든 수치·사실에는 출처와 시점을 괄호로 병기하세요. 예: "(출처: 군포시청 발표, OO월 OO일 기준)". 공공데이터(KMA, KECO, 국토교통부 아파트 실거래가 등)는 현재 현황으로 인용하되, 자료에 없는 수치는 [AI 추정]으로 명시하세요.'
+    : '- 모든 수치·사실에는 출처와 시점을 괄호로 병기하세요. 예: "(출처: 군포시청 발표, OO월 OO일 기준)". 공공데이터(KMA, KECO, Air Korea, TAGO 등)는 현재 현황으로 인용하되, 자료에 없는 수치는 [AI 추정]으로 명시하세요.'
   return [
     diagnosticStatusPersonaLine(councilMode),
     `오늘 날짜: ${todayKST}. 이 시점을 기준으로 "현재/최근"을 판단하라.`,

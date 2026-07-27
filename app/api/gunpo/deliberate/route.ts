@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
-import { gatherJejuSnapshot, buildBriefingContext, type JejuSnapshot } from '@/lib/gunpo/brief'
+import { gatherJejuSnapshot, buildBriefingContext, FIXED_GUNPO_COUNCIL_MODE, type JejuSnapshot } from '@/lib/gunpo/brief'
 import {
   planJejuMeeting,
   summarizeAvailableData,
@@ -455,13 +455,32 @@ function buildModeBDeliberation(
 ): JejuDeliberation {
   const rounds: JejuRoundResult[] = summaries.map((s) => {
     const roundTurns: JejuDeliberationTurn[] = turns
-      // Placeholder turns for seats that did not respond are dropped here on
-      // purpose: the chair's case file and each voter's own-record transcript
-      // both read a turn as a POSITION, and "이 좌석은 응답하지 않았습니다" is
-      // not one. The absence stays visible in the debate transcript itself.
-      .filter((t) => t.roundNumber === s.roundNumber && !t.failed && t.content.trim() !== '')
+      // A placeholder ("no response") turn still needs a roundTurns ENTRY —
+      // ok:false, no position — so buildVoterTranscript (deep.ts) can surface
+      // the gap explicitly to that seat's own ballot prompt (STEP9 [1]-b)
+      // instead of the round silently vanishing. formatDeliberationForChair
+      // already filters on `t.ok && position`, so the chair's case file is
+      // unaffected by including these. A genuinely empty non-failed turn
+      // (content.trim() === '' with failed:false — should not occur, but kept
+      // as a defensive drop) is still excluded.
+      .filter(
+        (t) => t.roundNumber === s.roundNumber && (t.failed || t.content.trim() !== '')
+      )
       .map((t) => {
         const resolvedProvider = resolveBrandToProvider(t.aiName)
+        if (t.failed) {
+          return {
+            roleId: resolvedProvider ?? t.aiName,
+            roleLabel: t.aiName,
+            ...(resolvedProvider ? { provider: resolvedProvider } : {}),
+            isRedTeam: t.isRedTeam === true,
+            ok: false,
+            position: null,
+            concedes: null,
+            holds: null,
+            error: '이 라운드 응답 실패 — 불참',
+          }
+        }
         return {
           roleId: resolvedProvider ?? t.aiName,
           roleLabel: t.aiName,
@@ -521,6 +540,27 @@ function preReportAsAnalysis(report: string | null | undefined): JejuRevisedAnal
   ]
 }
 
+/**
+ * STEP9 [1]-c: providers to drop from the closing ballot — a SYNOD debate seat
+ * that spoke in at least one round but got `failed:true` in EVERY round it
+ * appeared in has no real position to vote from (unlike Perplexity, which
+ * never debates by design and votes from its search findings instead). A
+ * provider that never appears at all in `turns` is left alone here — it is
+ * simply not a debate seat (e.g. this function is never asked about
+ * 'perplexity'), not a failure case.
+ */
+function fullyFailedDebaters(turns: SynodTurn[]): MotieProvider[] {
+  const excluded: MotieProvider[] = []
+  for (const provider of SYNOD_DEBATERS) {
+    const brand = PROVIDER_TO_BRAND[provider]
+    const own = turns.filter((t) => t.aiName === brand)
+    if (own.length > 0 && own.every((t) => t.failed)) {
+      excluded.push(provider as MotieProvider)
+    }
+  }
+  return excluded
+}
+
 /** No-ballot result (shape-faithful to deep.ts's emptyVoteResult). */
 function emptyVote(summary: string): JejuVoteResult {
   return {
@@ -559,8 +599,9 @@ export async function POST(req: Request): Promise<Response> {
 
       const orchestratorProvider =
         typeof body.orchestratorProvider === 'string' ? body.orchestratorProvider : undefined
-      const councilMode: 'trade' | 'warroom' =
-        body.councilMode === 'warroom' ? 'warroom' : 'trade'
+      // STEP12: mode toggle removed — always use the fixed single mode.
+      const councilMode: 'trade' | 'warroom' = FIXED_GUNPO_COUNCIL_MODE
+      void body.councilMode
       // Malformed entries are dropped (never a 400) and the result is undefined
       // when nothing usable arrived — see sanitizeMotieSupplements.
       const supplements = sanitizeMotieSupplements(body.supplements)
@@ -967,7 +1008,13 @@ export async function POST(req: Request): Promise<Response> {
 
       let vote: JejuVoteResult = emptyVote(noVoteSummary)
       if (doVote) {
-        vote = await runJejuMotionVote({ question: state.question, deliberation })
+        const excludeProviders = fullyFailedDebaters(state.turns ?? [])
+        if (excludeProviders.length > 0) {
+          console.warn(
+            `[motie/deliberate] excluding seat(s) from the ballot — every round failed: ${excludeProviders.join(', ')}`
+          )
+        }
+        vote = await runJejuMotionVote({ question: state.question, deliberation, excludeProviders })
       }
       state.vote = vote
       await saveSession(sessionId, state, 'vote', 'running')
