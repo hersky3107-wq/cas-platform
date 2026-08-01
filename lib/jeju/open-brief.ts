@@ -2,7 +2,11 @@ import 'server-only'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
+import { type ExtendedAiProviderName } from '@/lib/ai/router'
+import {
+  callJejuAi,
+  type JejuProvider,
+} from '@/lib/jeju/local-providers'
 import {
   KOREAN_ONLY_DIRECTIVE,
   TRUTH_SEEKING_DIRECTIVE,
@@ -13,7 +17,7 @@ import {
  * JEJU open-ended (라이트) governance briefing — Mode A engine.
  *
  * Pipeline: snapshot → orchestrate (neutral lenses, 1 doubled angle) → shared
- * pre-report (briefing mode, caller-supplied) → 6 parallel single-pass analyses
+ * pre-report (briefing mode, caller-supplied) → 8 parallel single-pass analyses
  * (NO debate/vote/consensus) → Opus synthesis (추천안 + B·C 대안).
  *
  * Fully isolated from lib/jeju/synod-debate.ts and the deliberate route.
@@ -25,11 +29,17 @@ import {
 /** How many analytical angles get a second AI (importance-weighted doubling). */
 export const OPEN_BRIEF_DOUBLED_ANGLE_COUNT = 1
 
-/** Six reasoning brands for open-mode parallel analysis. Meta intentionally excluded. */
-export const OPEN_BRIEF_ANALYSTS: ExtendedAiProviderName[] = [
+/**
+ * Eight reasoning brands for open-mode parallel analysis: the 6 shared-router
+ * brands plus JEJU-LOCAL solar/exaone (mid-order, matching SYNOD_DEBATERS).
+ * Meta intentionally excluded.
+ */
+export const OPEN_BRIEF_ANALYSTS: JejuProvider[] = [
   'openai',
   'anthropic',
   'google',
+  'solar',
+  'exaone',
   'xai',
   'deepseek',
   'mistral',
@@ -55,6 +65,8 @@ const BRAND_LABEL: Record<string, string> = {
   openai: 'ChatGPT',
   anthropic: 'Claude',
   google: 'Gemini',
+  solar: 'Solar',
+  exaone: 'EXAONE',
   xai: 'Grok',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
@@ -85,7 +97,7 @@ export type JejuOpenAnalysisRole = {
   mandate: string
   /** The specific sub-question this AI examines within its angle. */
   subQuestion: string
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
   /** True when this seat covers the importance-doubled primary angle. */
   isDoubledAngle: boolean
   /** Shared id linking the two AIs on the doubled angle (if any). */
@@ -108,7 +120,7 @@ export type JejuOpenMeetingPlan = {
 export type JejuOpenAnalysis = {
   roleId: string
   roleLabel: string
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
   subQuestion: string
   isDoubledAngle: boolean
   ok: boolean
@@ -131,7 +143,7 @@ function buildOpenOrchestratorSystemPrompt(): string {
   return [
     '당신은 제주특별자치도정 개방형(라이트) 거버넌스 브리핑의 오케스트레이터입니다.',
     '이 모드는 찬반 토론이 아닙니다. 공무원·실무자가 "지금 가장 시급한 현안은?" 같은 개방형 질문에 답하기 위해,',
-    '6개 추론 AI를 각기 다른 중립적 분석 렌즈에 배치합니다.',
+    '8개 추론 AI를 각기 다른 중립적 분석 렌즈에 배치합니다.',
     '',
     TRUTH_SEEKING_DIRECTIVE,
     '',
@@ -139,11 +151,11 @@ function buildOpenOrchestratorSystemPrompt(): string {
     '- 역할은 반드시 중립적 "분야·관점 분석"입니다. 찬성/반대/옹호/레드팀/비판자 같은 입장 배정 금지.',
     '- 각 AI는 자신의 전문 렌즈로 데이터를 읽고, 솔직하게 분석합니다. 8:0 찬성도 8:0 반대도 강요하지 않습니다.',
     '- Perplexity는 검색 전용이며 분석 좌석에 배정하지 마세요.',
-    `- 사용 가능한 6개 추론 AI(각각 정확히 1회만 배정):\n${brands}`,
+    `- 사용 가능한 8개 추론 AI(각각 정확히 1회만 배정):\n${brands}`,
     '',
     `중요도 가중 배치(고정 규칙): 이번 주제에서 가장 중요한 분석 각도 1개(primaryAngleId)를 고르고,`,
     `그 각도에 서로 다른 subQuestion을 가진 AI 2개를 배정하세요(약간 다른 하위 질문으로 깊이를 확보).`,
-    `나머지 4개 각도에는 AI 1개씩 배정합니다. 총 배정 수 = 6.`,
+    `나머지 6개 각도에는 AI 1개씩 배정합니다. 총 배정 수 = 8.`,
     '',
     '- 각 배정마다 roleLabel은 공무원이 즉시 이해하는 행정 한국어(예: "에너지·계통 수급", "관광·경제 영향").',
     '- mandate: 이 좌석이 무엇을, 왜 봐야 하는지 1~2문장.',
@@ -164,13 +176,13 @@ function buildOpenOrchestratorSystemPrompt(): string {
     '      "roleLabel": "행정 한국어 역할명",',
     '      "mandate": "직무 설명",',
     '      "subQuestion": "이 AI의 구체적 분석 과제",',
-    '      "provider": "openai|anthropic|google|xai|deepseek|mistral 중 하나",',
+    '      "provider": "openai|anthropic|google|solar|exaone|xai|deepseek|mistral 중 하나",',
     '      "isDoubledAngle": true/false,',
     '      "doubledGroupId": "primary 각도 id 또는 null"',
     '    }',
     '  ]',
     '}',
-    'assignments는 정확히 6개. provider는 6개 브랜드 각 1회만.',
+    'assignments는 정확히 8개. provider는 8개 브랜드 각 1회만.',
   ].join('\n')
 }
 
@@ -197,6 +209,20 @@ function fallbackOpenPlan(question: string): JejuOpenMeetingPlan {
       roleLabel: '재정·규제',
       mandate: '재정 부담과 규제·제도 여건을 평가합니다.',
       subQuestion: '재정·규제 관점에서 주의할 점은?',
+      isDoubledAngle: false,
+    },
+    {
+      roleId: 'admin-institutional',
+      roleLabel: '행정·제도 현실성',
+      mandate: '도정·유관 기관의 실제 집행 절차와 제도적 제약을 점검합니다.',
+      subQuestion: '행정·제도 관점에서 실제로 집행 가능한가?',
+      isDoubledAngle: false,
+    },
+    {
+      roleId: 'industry-field',
+      roleLabel: '현장·산업 실행 가능성',
+      mandate: '현장 운영·산업 여건에 비추어 실행 가능성을 점검합니다.',
+      subQuestion: '현장·산업 관점에서 실제로 실행 가능한가?',
       isDoubledAngle: false,
     },
     {
@@ -276,7 +302,7 @@ function parseOpenPlan(raw: string, question: string): JejuOpenMeetingPlan {
       roleLabel,
       mandate,
       subQuestion,
-      provider: provider as ExtendedAiProviderName,
+      provider: provider as JejuProvider,
       isDoubledAngle: a.isDoubledAngle === true,
       doubledGroupId:
         typeof a.doubledGroupId === 'string' && a.doubledGroupId.trim()
@@ -292,7 +318,7 @@ function parseOpenPlan(raw: string, question: string): JejuOpenMeetingPlan {
       raw,
       rationale: rationale || fb.rationale,
       searchNeeded: searchNeeded || fb.searchNeeded,
-      error: `오케스트레이터가 ${roles.length}개 좌석만 배정 — 6개 필요, 기본 배치로 대체`,
+      error: `오케스트레이터가 ${roles.length}개 좌석만 배정 — 8개 필요, 기본 배치로 대체`,
     }
   }
 
@@ -341,12 +367,12 @@ export async function planJejuOpenMeeting(params: {
     '[현재 확보된 실시간 데이터 현황]',
     params.availableDataSummary || '(가용 데이터 정보 없음)',
     '',
-    '위 질문과 데이터에 맞춰 6개 AI 분석 좌석을 배정하세요. 스키마에 맞는 순수 JSON만 출력하세요.',
+    '위 질문과 데이터에 맞춰 8개 AI 분석 좌석을 배정하세요. 스키마에 맞는 순수 JSON만 출력하세요.',
   ].join('\n')
 
   let r
   try {
-    r = await runSingleAiProvider({
+    r = await callJejuAi({
       supabase: noDbSupabase(),
       sessionId: null,
       userId: null,
@@ -454,7 +480,7 @@ async function runOneOpenAnalysis(params: {
   }
 
   try {
-    const r = await runSingleAiProvider({
+    const r = await callJejuAi({
       supabase: noDbSupabase(),
       sessionId: null,
       userId: null,
@@ -476,7 +502,7 @@ async function runOneOpenAnalysis(params: {
 }
 
 /**
- * Runs all 6 open-mode analysts IN PARALLEL — one single-pass analysis each.
+ * Runs all 8 open-mode analysts IN PARALLEL — one single-pass analysis each.
  * No debate rounds, no rebuttal, no vote.
  */
 export async function runJejuOpenAnalyses(params: {
@@ -531,7 +557,7 @@ function formatAnalysesBlock(analyses: JejuOpenAnalysis[]): string {
 function buildSynthesisSystemPrompt(): string {
   return [
     '당신은 제주특별자치도정 개방형 거버넌스 브리핑의 최종 통합 작성자(수석 보좌관)입니다.',
-    '6개 AI의 병렬 분석과 사전 브리핑을 읽고, 공무원·실무자가 바로 의사결정에 쓸 수 있는',
+    '8개 AI의 병렬 분석과 사전 브리핑을 읽고, 공무원·실무자가 바로 의사결정에 쓸 수 있는',
     '하나의 통합 브리핑을 작성하세요.',
     '',
     TRUTH_SEEKING_DIRECTIVE,
@@ -542,7 +568,7 @@ function buildSynthesisSystemPrompt(): string {
     '   - 3~5줄. 지금 무엇이 가장 중요한지, 한눈에.',
     '',
     '2) 분야별 현황',
-    '   - 6개 분석을 통합·정리. 데이터 출처·시점을 인라인으로 유지.',
+    '   - 8개 분석을 통합·정리. 데이터 출처·시점을 인라인으로 유지.',
     '',
     '3) 가장 시급한 쟁점 (우선순위)',
     '   - 무엇을 먼저 다뤄야 하는지, 근거와 함께 우선순위.',
@@ -588,7 +614,7 @@ function buildSynthesisUserPrompt(params: {
     '[Perplexity 검색 결과]',
     searchBlock,
     '',
-    '[6개 AI 병렬 분석]',
+    '[8개 AI 병렬 분석]',
     formatAnalysesBlock(params.analyses),
     '',
     '위 자료를 통합하여 5개 섹션 구조의 최종 브리핑을 작성하세요.',
@@ -616,7 +642,7 @@ export async function synthesizeJejuOpenBrief(params: {
   if (!params.briefing?.trim()) return { ...base, error: '브리핑이 없습니다.' }
 
   try {
-    const r = await runSingleAiProvider({
+    const r = await callJejuAi({
       supabase: noDbSupabase(),
       sessionId: null,
       userId: null,
