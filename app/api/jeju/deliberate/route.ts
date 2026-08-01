@@ -262,18 +262,28 @@ function buildModeBDeliberation(
   stoppedReason: JejuDeliberationStopReason
 ): JejuDeliberation {
   const rounds: JejuRoundResult[] = summaries.map((s) => {
-    const roundTurns: JejuDeliberationTurn[] = turns
-      .filter((t) => t.roundNumber === s.roundNumber && t.content.trim() !== '')
-      .map((t) => ({
-        roleId: BRAND_TO_PROVIDER[t.aiName] ?? t.aiName,
+    const roundTurns: JejuDeliberationTurn[] = []
+    for (const t of turns) {
+      if (t.roundNumber !== s.roundNumber || t.content.trim() === '') continue
+      const provider = BRAND_TO_PROVIDER[t.aiName]
+      if (!provider) {
+        // Never default-attribute — a miss must not land in any voter's transcript.
+        console.warn('[jeju-vote] unattributable turn excluded:', t.aiName)
+        continue
+      }
+      roundTurns.push({
+        roleId: provider,
         roleLabel: t.aiName,
-        provider: BRAND_TO_PROVIDER[t.aiName] ?? 'anthropic',
+        provider,
         isRedTeam: t.isRedTeam === true,
         ok: true,
         position: t.content.trim(),
         concedes: null,
         holds: null,
-      }))
+        ...(t.actionTag ? { actionTag: t.actionTag } : {}),
+        ...(t.claim ? { claim: t.claim } : {}),
+      })
+    }
     return {
       roundNumber: s.roundNumber,
       turns: roundTurns,

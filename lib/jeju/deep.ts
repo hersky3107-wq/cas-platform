@@ -1861,6 +1861,10 @@ export type JejuDeliberationTurn = {
   concedes: string | null
   /** What they still contest, and why. */
   holds: string | null
+  /** Mode B (찬반형) only — SYNOD ACTION tag carried through for vote transcripts. */
+  actionTag?: 'AGREE' | 'CHALLENGE' | 'SUPPLEMENT' | 'REFRAME'
+  /** Mode B (찬반형) only — SYNOD CLAIM line carried through for vote transcripts. */
+  claim?: string
   error?: string
 }
 
@@ -3349,6 +3353,139 @@ function sanitizeVoteReason(reason: string | null): string | null {
   return cleaned || null
 }
 
+/** Soft ceiling for a single voter's injected debate transcript. */
+const VOTE_TRANSCRIPT_MAX_CHARS = 2800
+
+/** Truncates one free-text body; marks the cut so nothing reads as complete. */
+function truncateVoteBody(body: string, budget: number): string {
+  if (budget <= 0) return ''
+  if (body.length <= budget) return body
+  return `${body.slice(0, budget).trimEnd()} …(이하 생략)`
+}
+
+/**
+ * Renders ONE voter's own attributable turns from the deliberation (round order).
+ * Returns null when this provider has no turns (perplexity / non-seated panelists /
+ * fail-safe exclusions) — caller then keeps today's recall-your-stance prompt.
+ *
+ * Budget: ~2800 chars. Truncate ONLY free-text bodies. NEVER drop a round header,
+ * ACTION/CLAIM line, or 입장/견지 header. If still over budget, drop OLDEST rounds'
+ * bodies first while keeping their ACTION/CLAIM (or 입장) one-liner.
+ */
+function buildVoterTranscript(
+  deliberation: JejuDeliberation,
+  provider: ExtendedAiProviderName
+): string | null {
+  const ordered = [...deliberation.rounds].sort((a, b) => a.roundNumber - b.roundNumber)
+
+  type RenderTurn = {
+    chanban: boolean
+    /** Lines that must survive truncation (round header + ACTION/CLAIM). */
+    protectedLines: string[]
+    /** Free-text body — truncatable / droppable (oldest first under pressure). */
+    body: string
+    /** Mode A only: present 견지/수용 labels (headers kept even when body dropped). */
+    extraLabels: { label: string; value: string }[]
+  }
+
+  const own: RenderTurn[] = []
+  for (const round of ordered) {
+    for (const turn of round.turns) {
+      if (!turn.ok || turn.provider !== provider) continue
+      const position = (turn.position ?? '').trim()
+      const claim = (turn.claim ?? '').trim()
+      const isChanban = turn.actionTag != null || claim !== ''
+      if (!position && !claim) continue
+
+      if (isChanban) {
+        own.push({
+          chanban: true,
+          protectedLines: [
+            `### 라운드 ${round.roundNumber}`,
+            `ACTION: ${turn.actionTag ?? '없음'}`,
+            `CLAIM: ${claim || '없음'}`,
+          ],
+          body: position,
+          extraLabels: [],
+        })
+      } else {
+        if (!position) continue
+        const extraLabels: { label: string; value: string }[] = []
+        const holds = (turn.holds ?? '').trim()
+        const concedes = (turn.concedes ?? '').trim()
+        if (holds) extraLabels.push({ label: '견지: ', value: holds })
+        if (concedes) extraLabels.push({ label: '수용: ', value: concedes })
+        own.push({
+          chanban: false,
+          protectedLines: [`### 라운드 ${round.roundNumber}`],
+          body: position,
+          extraLabels,
+        })
+      }
+    }
+  }
+  if (own.length === 0) return null
+
+  const render = (turns: RenderTurn[], bodyBudgets: number[]): string => {
+    const blocks: string[] = []
+    for (let i = 0; i < turns.length; i++) {
+      const t = turns[i]!
+      const budget = bodyBudgets[i] ?? 0
+      const lines = [...t.protectedLines]
+      if (t.chanban) {
+        if (budget > 0 && t.body) lines.push(truncateVoteBody(t.body, budget))
+      } else {
+        // 개방형: always keep an 입장 one-liner; truncate/drop only the free text.
+        if (budget > 0 && t.body) {
+          lines.push(`입장: ${truncateVoteBody(t.body, budget)}`)
+        } else {
+          lines.push('입장: (본문 생략)')
+        }
+        for (const { label, value } of t.extraLabels) {
+          // 견지/수용 headers are never dropped; only their free-text values shrink.
+          if (budget > 0) {
+            lines.push(label + truncateVoteBody(value, Math.max(40, Math.floor(budget / 2))))
+          } else {
+            lines.push(label + '(본문 생략)')
+          }
+        }
+      }
+      blocks.push(lines.join('\n'))
+    }
+    return blocks.join('\n\n')
+  }
+
+  // Share remaining budget across turn bodies after accounting for protected lines.
+  const protectedTotal = own.reduce((sum, t) => {
+    const base = t.protectedLines.join('\n').length
+    // Mode A always emits an 입장 line (header kept even when body is dropped).
+    const stanceFloor = t.chanban ? 0 : '입장: (본문 생략)'.length
+    const extraFloor = t.extraLabels.reduce((s, e) => s + e.label.length + '(본문 생략)'.length + 1, 0)
+    return sum + base + stanceFloor + extraFloor + 2
+  }, 0)
+  let bodyBudgets = own.map(() =>
+    Math.max(0, Math.floor(Math.max(0, VOTE_TRANSCRIPT_MAX_CHARS - protectedTotal) / own.length))
+  )
+
+  let text = render(own, bodyBudgets)
+  if (text.length <= VOTE_TRANSCRIPT_MAX_CHARS) return text
+
+  // Still over: shrink every body proportionally.
+  const over = text.length - VOTE_TRANSCRIPT_MAX_CHARS
+  const shrinkEach = Math.ceil(over / own.length) + 8
+  bodyBudgets = bodyBudgets.map((b) => Math.max(0, b - shrinkEach))
+  text = render(own, bodyBudgets)
+  if (text.length <= VOTE_TRANSCRIPT_MAX_CHARS) return text
+
+  // Last resort: drop OLDEST rounds' bodies first (keep ACTION/CLAIM or 입장 one-liner).
+  for (let i = 0; i < own.length && text.length > VOTE_TRANSCRIPT_MAX_CHARS; i++) {
+    bodyBudgets[i] = 0
+    text = render(own, bodyBudgets)
+  }
+
+  return text
+}
+
 /**
  * Builds the voter's user prompt: the proposition to vote on + the unresolved
  * issues + the consensus score (if known). Voters who see only a polished
@@ -3359,14 +3496,18 @@ function sanitizeVoteReason(reason: string | null): string | null {
  *     the chair's minority report.
  *   - 'motion' mode: proposition is the official's original question (verbatim);
  *     `unresolvedIssues` is the deliberation's contested points.
+ *   - `ownTranscript`: when set, this voter's attributable debate record is
+ *     injected before the mission block; when null/omitted, today's
+ *     recall-your-stance wording is kept unchanged.
  */
 function buildVoteUserPrompt(params: {
   mode: JejuVoteMode
   question: string
   proposition: string
   unresolvedIssues?: string | null
+  ownTranscript?: string | null
 }): string {
-  const { mode, question, proposition, unresolvedIssues } = params
+  const { mode, question, proposition, unresolvedIssues, ownTranscript } = params
 
   const parts: string[] =
     mode === 'motion'
@@ -3388,6 +3529,14 @@ function buildVoteUserPrompt(params: {
       '## 끝까지 해소되지 않은 쟁점',
       '(핵심 수단 자체를 거부하거나 다른 수단을 주장하는 쟁점이면 방향성 반대 사유 — 시행 조건·순서·규모 문제라면 조건부 찬성의 사유)',
       unresolvedIssues.trim()
+    )
+  }
+
+  if (ownTranscript && ownTranscript.trim() !== '') {
+    parts.push(
+      '',
+      '## 당신의 심의 토론 기록 (본인 발언만 — 이 기록에 충실히 표결하십시오)',
+      ownTranscript.trim()
     )
   }
 
@@ -3486,13 +3635,23 @@ function emptyVoteResult(summary: string): JejuVoteResult {
 }
 
 /**
- * Shared ballot engine: runs ALL 8 panel providers IN PARALLEL on a prepared
- * system+user prompt, then tallies. Abstain never tips the outcome — only
- * (찬성+조건부 찬성) vs 반대 do. ok = at least one parseable vote landed. Never throws.
+ * Shared ballot engine: runs ALL panel providers IN PARALLEL, then tallies.
+ * `userPromptOrBuilder` may be one shared string (verdict-mode / legacy) or a
+ * per-provider builder so each voter can receive its own debate transcript.
+ * Abstain never tips the outcome — only (찬성+조건부 찬성) vs 반대 do.
+ * ok = at least one parseable vote landed. Never throws.
  */
-async function runPanelBallot(systemPrompt: string, userPrompt: string): Promise<JejuVoteResult> {
+async function runPanelBallot(
+  systemPrompt: string,
+  userPromptOrBuilder: string | ((provider: ExtendedAiProviderName) => string)
+): Promise<JejuVoteResult> {
+  const buildUserPrompt =
+    typeof userPromptOrBuilder === 'function'
+      ? userPromptOrBuilder
+      : (_provider: ExtendedAiProviderName) => userPromptOrBuilder
+
   const settled = await Promise.allSettled(
-    JEJU_VOTE_PANEL.map((p) => runOneVote(p, systemPrompt, userPrompt))
+    JEJU_VOTE_PANEL.map((p) => runOneVote(p, systemPrompt, buildUserPrompt(p)))
   )
 
   const votes: JejuVote[] = settled.map((s, i) => {
@@ -3615,14 +3774,18 @@ export async function runJejuMotionVote(params: {
   }
 
   const systemPrompt = buildVoteSystemPrompt('motion')
-  const userPrompt = buildVoteUserPrompt({
-    mode: 'motion',
-    question,
-    proposition: question,
-    unresolvedIssues: formatContestedForVote(params.deliberation.contestedPoints),
-  })
+  const unresolvedIssues = formatContestedForVote(params.deliberation.contestedPoints)
 
-  return runPanelBallot(systemPrompt, userPrompt)
+  return runPanelBallot(systemPrompt, (provider) => {
+    const ownTranscript = buildVoterTranscript(params.deliberation, provider)
+    return buildVoteUserPrompt({
+      mode: 'motion',
+      question,
+      proposition: question,
+      unresolvedIssues,
+      ownTranscript,
+    })
+  })
 }
 
 /** The full DEEP result plus the closing ballot on the chair's verdict. */
