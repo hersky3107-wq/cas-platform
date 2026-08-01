@@ -25,6 +25,11 @@ import {
   type JejuSupplement,
 } from '@/lib/jeju/supplements'
 import {
+  runJejuCrossCheck,
+  buildDataTrustBlock,
+  type DataTrustBlock,
+} from '@/lib/jeju/cross-check'
+import {
   SYNOD_DEBATERS,
   PROVIDER_TO_BRAND,
   openingSystemPrompt,
@@ -121,6 +126,13 @@ type DeliberateState = {
    * USER prompts (open/turn) and the chair case file only — never the vote path.
    */
   supplements?: JejuSupplement[]
+  /**
+   * Data cross-validation findings, computed once from the beat-1 snapshot
+   * (lib/jeju/cross-check.ts). Injected into debate USER prompts (open/turn)
+   * and the chair case file only — never the vote path. Same boundary as
+   * `supplements` above.
+   */
+  dataTrust?: DataTrustBlock
 }
 
 type Stage =
@@ -209,6 +221,15 @@ function reportPreamble(report: string | null | undefined): string {
  */
 function supplementPreamble(supplements: JejuSupplement[] | undefined): string {
   return buildJejuSupplementBlock(supplements).trim()
+}
+
+/**
+ * The 데이터 신뢰도 점검 block for a debater's USER prompt. Returns '' when
+ * there are no issues (buildDataTrustBlock's own no-op contract). Never used
+ * by vote / facilitate / pre-report — same boundary as supplementPreamble.
+ */
+function dataTrustPreamble(dataTrust: DataTrustBlock | undefined): string {
+  return buildDataTrustBlock(dataTrust ?? { findings: [], hasIssues: false }).trim()
 }
 
 /** Clamp a model-supplied consensus score to 0–100, else mark unmeasurable. */
@@ -387,6 +408,9 @@ export async function POST(req: Request): Promise<Response> {
 
       const snapshot = await gatherJejuSnapshot()
       const context = buildBriefingContext(snapshot)
+      // Data cross-validation runs BEFORE the orchestrator, on the same
+      // snapshot it's about to read. Never throws (see runJejuCrossCheck).
+      const dataTrust = await runJejuCrossCheck({ snapshot })
       const availableDataSummary = await summarizeAvailableData()
       const plan = await planJejuMeeting({
         question,
@@ -410,6 +434,7 @@ export async function POST(req: Request): Promise<Response> {
         // consensus < 85. plan.questionType is left untouched on the plan object.
         questionType: 'binary',
         ...(supplements ? { supplements } : {}),
+        ...(dataTrust.hasIssues ? { dataTrust } : {}),
       }
 
       const ins = await supabaseAdmin
@@ -500,6 +525,7 @@ export async function POST(req: Request): Promise<Response> {
     try {
       const preamble = reportPreamble(state.report)
       const supplementBlock = supplementPreamble(state.supplements)
+      const dataTrustBlock = dataTrustPreamble(state.dataTrust)
       const results = await Promise.all(
         SYNOD_DEBATERS.map(async (provider) => {
           const userPrompt = [
@@ -510,6 +536,8 @@ export async function POST(req: Request): Promise<Response> {
             '위 안건에 대해, 사전 분석 리포트를 근거로 당신의 독립적이고 명확한 의견을 제시하세요.',
             // Appended ONLY when the user attached material.
             ...(supplementBlock ? ['', supplementBlock] : []),
+            // Appended ONLY when cross-check found data-source issues.
+            ...(dataTrustBlock ? ['', dataTrustBlock] : []),
           ].join('\n')
           const { text } = await callProvider({
             provider,
@@ -573,6 +601,7 @@ export async function POST(req: Request): Promise<Response> {
         : SYNOD_DEBATERS[roundNumber % SYNOD_DEBATERS.length]!
 
       const supplementBlock = supplementPreamble(state.supplements)
+      const dataTrustBlock = dataTrustPreamble(state.dataTrust)
       const currentRoundTurns: SynodTurn[] = []
       for (const provider of SYNOD_DEBATERS) {
         const isRedTeam = redTeamProvider !== null && provider === redTeamProvider
@@ -585,7 +614,7 @@ export async function POST(req: Request): Promise<Response> {
           currentRoundTurns,
           anonymize: false,
         })
-        const userPrompt = [reportPreamble(state.report), ctx.text, supplementBlock]
+        const userPrompt = [reportPreamble(state.report), ctx.text, supplementBlock, dataTrustBlock]
           .filter((s) => s !== '')
           .join('\n')
         const { text } = await callProvider({
@@ -785,6 +814,7 @@ export async function POST(req: Request): Promise<Response> {
           questionType: state.questionType ?? 'openEnded',
           consensusScore: state.verdict.consensusScore,
           verdict: state.verdict,
+          hasDataIssues: !!state.dataTrust,
           vote: state.vote ?? emptyVote('표결 없음'),
         })
       }
@@ -810,6 +840,7 @@ export async function POST(req: Request): Promise<Response> {
         brief,
         vote,
         ...(state.supplements ? { supplements: state.supplements } : {}),
+        ...(state.dataTrust ? { dataTrust: state.dataTrust } : {}),
       })
 
       state.verdict = verdict
@@ -830,10 +861,13 @@ export async function POST(req: Request): Promise<Response> {
           beat3Summary: verdict.beat3Summary,
           minorityReport: verdict.minorityReport,
           mediaRisk: verdict.mediaRisk,
+          dataTrust: verdict.dataTrust,
+          evidenceLedger: verdict.evidenceLedger,
           disclaimer: verdict.disclaimer,
           provider: verdict.provider,
           ...(verdict.error ? { error: verdict.error } : {}),
         },
+        hasDataIssues: !!state.dataTrust,
         vote,
         deliberation: {
           finalScore: deliberation.finalScore,

@@ -21,6 +21,12 @@ import {
   buildJejuSupplementBlock,
   type JejuSupplement,
 } from '@/lib/jeju/supplements'
+import {
+  buildDataTrustBlock,
+  renderDataTrustSection,
+  buildEvidenceLedger,
+  type DataTrustBlock,
+} from '@/lib/jeju/cross-check'
 
 /**
  * Jeju governance DEEP engine — piece 1: the dynamic meeting orchestrator.
@@ -2563,6 +2569,17 @@ export type JejuVerdict = {
   minorityReport: string | null
   /** Qualitative press/media reception risk — set ONLY when the case file contains media analysis; otherwise null. */
   mediaRisk: string | null
+  /**
+   * Data cross-validation findings, code-rendered (never LLM-authored — see
+   * lib/jeju/cross-check.ts#renderDataTrustSection). Always populated: the
+   * fixed '데이터 출처 간 불일치 없음.' string when there are no findings.
+   */
+  dataTrust: string
+  /**
+   * "출처 | 확보 | 기준시각 | 점검결과 | 결론 반영" appendix, code-rendered
+   * from JejuSnapshot.sources[] — ALWAYS populated, independent of hasIssues.
+   */
+  evidenceLedger: string
   /** Carried from the deliberation. */
   consensusScore: number
   /** The "참고용, 최종판단은 사람" note. */
@@ -2906,6 +2923,12 @@ export async function renderChairVerdict(params: {
    * debaters saw. Omitted ⇒ case file unchanged (orphan deep route stays a no-op).
    */
   supplements?: JejuSupplement[]
+  /**
+   * Data cross-validation findings (lib/jeju/cross-check.ts). Injected into the
+   * case file as untrusted-data context AND used to code-render the
+   * 데이터 이견 output section below. Omitted ⇒ both render as "no issues".
+   */
+  dataTrust?: DataTrustBlock
 }): Promise<JejuVerdict> {
   const { question, snapshot, searches, revised, rebuttals, deliberation, vote } = params
   const brief = params.brief === true
@@ -2919,10 +2942,17 @@ export async function renderChairVerdict(params: {
     vote.ok &&
     vote.approveCount + vote.conditionalCount + vote.opposeCount + vote.abstainCount > 0
 
+  const dataTrustBlock: DataTrustBlock = params.dataTrust ?? { findings: [], hasIssues: false }
+
   const base = {
     consensusScore,
     disclaimer: DEFAULT_DISCLAIMER,
     provider: 'anthropic',
+    // Code-rendered — never parsed from the chair's own prose (see the
+    // functions' doc comments for why: exact structured data must never be
+    // left to free-form LLM paraphrasing).
+    dataTrust: renderDataTrustSection(dataTrustBlock),
+    evidenceLedger: buildEvidenceLedger(snapshot, dataTrustBlock.findings, dataTrustBlock.fieldNotes),
   }
 
   const contextParts = [
@@ -2956,6 +2986,13 @@ export async function renderChairVerdict(params: {
   const supplementBlock = buildJejuSupplementBlock(params.supplements).trim()
   if (supplementBlock) {
     contextParts.push('', supplementBlock)
+  }
+
+  // Data cross-validation findings — untrusted-data context ONLY (see
+  // buildDataTrustBlock's directive: never used as a basis for the conclusion).
+  const dataTrustPromptBlock = buildDataTrustBlock(dataTrustBlock).trim()
+  if (dataTrustPromptBlock) {
+    contextParts.push('', dataTrustPromptBlock)
   }
 
   contextParts.push(
@@ -3076,6 +3113,8 @@ export async function runJejuDeepComplete(params?: {
     beat3Summary: null,
     mediaRisk: null,
     minorityReport: null,
+    dataTrust: '상위 단계가 유효하지 않아 데이터 점검을 생략했습니다.',
+    evidenceLedger: '(생략됨)',
     consensusScore: deliberationStage.deliberation.finalScore,
     disclaimer: DEFAULT_DISCLAIMER,
     provider: 'anthropic',
@@ -3812,6 +3851,8 @@ export async function runJejuDeepCompleteWithVote(params?: {
     beat3Summary: null,
     mediaRisk: null,
     minorityReport: null,
+    dataTrust: '상위 단계가 유효하지 않아 데이터 점검을 생략했습니다.',
+    evidenceLedger: '(생략됨)',
     consensusScore: finalScore,
     disclaimer: DEFAULT_DISCLAIMER,
     provider: 'anthropic',

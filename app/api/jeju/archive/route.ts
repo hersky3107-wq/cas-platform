@@ -64,6 +64,8 @@ export type JejuArchiveEntry = {
     judgment: string | null
     minorityReport: string | null
     mediaRisk: string | null
+    dataTrust: string | null
+    evidenceLedger: string | null
     voteSummary: string | null
     statusText: string | null
     issuesText: string | null
@@ -115,6 +117,8 @@ function rowToEntry(row: RawRow): JejuArchiveEntry | null {
   const judgment = verdict ? str(verdict.judgment) : null
   const minorityReport = verdict ? str(verdict.minorityReport) : null
   const mediaRisk = verdict ? str(verdict.mediaRisk) : null
+  const dataTrust = verdict ? str(verdict.dataTrust) : null
+  const evidenceLedger = verdict ? str(verdict.evidenceLedger) : null
   const voteSummary = vote ? str(vote.summary) : null
 
   const statusText = status ? str(status.text) : null
@@ -150,6 +154,8 @@ function rowToEntry(row: RawRow): JejuArchiveEntry | null {
       judgment,
       minorityReport,
       mediaRisk,
+      dataTrust,
+      evidenceLedger,
       voteSummary,
       statusText,
       issuesText,

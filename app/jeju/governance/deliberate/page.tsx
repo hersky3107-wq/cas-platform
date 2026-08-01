@@ -77,6 +77,8 @@ type Verdict = {
   beat3Summary: string | null
   minorityReport: string | null
   mediaRisk: string | null
+  dataTrust: string | null
+  evidenceLedger: string | null
   disclaimer: string
   provider: string
   error?: string
@@ -111,6 +113,7 @@ type DeliberateApiResult = {
   vote?: VoteResult
   // verdict
   verdict?: Verdict
+  hasDataIssues?: boolean
   deliberation?: {
     finalScore: number
     roundsRun: number
@@ -565,6 +568,7 @@ function VerdictBlock({
   questionType,
   consensusScore,
   stoppedReason,
+  hasDataIssues,
   t,
 }: {
   verdict: Verdict
@@ -573,6 +577,7 @@ function VerdictBlock({
   questionType: string | null
   consensusScore: number
   stoppedReason: string
+  hasDataIssues: boolean
   t: Ui
 }) {
   const sections: { heading: string; content: string | null }[] = [
@@ -585,7 +590,9 @@ function VerdictBlock({
     ...(verdict.mediaRisk
       ? [{ heading: t.deepMediaRiskHeading, content: verdict.mediaRisk }]
       : []),
+    { heading: t.deepDataTrustHeading, content: verdict.dataTrust },
     { heading: t.deepDisclaimerHeading, content: verdict.disclaimer },
+    { heading: t.deepEvidenceLedgerHeading, content: verdict.evidenceLedger },
   ]
 
   return (
@@ -593,8 +600,13 @@ function VerdictBlock({
       {/* Headline band */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-jeju-border pb-4">
         <div>
-          <p className="text-sm font-bold uppercase tracking-widest text-jeju-accent">
+          <p className="flex flex-wrap items-center gap-2 text-sm font-bold uppercase tracking-widest text-jeju-accent">
             {t.deepVerdictHeading}
+            {hasDataIssues && (
+              <span className="rounded-full border border-amber-400/50 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-300">
+                {t.deepDataIssuesBadge}
+              </span>
+            )}
           </p>
           <p className="mt-1 text-xs text-jeju-fg-muted">
             {t.deepStoppedReason(stoppedReason)}
@@ -737,6 +749,7 @@ export default function JejuGovernanceDeliberatePage() {
   // Flat list of per-round scores for the trajectory chart
   const [scores, setScores] = useState<RoundScore[]>([])
   const [verdict, setVerdict] = useState<Verdict | null>(null)
+  const [hasDataIssues, setHasDataIssues] = useState(false)
   const [vote, setVote] = useState<VoteResult | null>(null)
   const [consensusScore, setConsensusScore] = useState(-1)
   const [stoppedReason, setStoppedReason] = useState('max_rounds')
@@ -834,6 +847,7 @@ export default function JejuGovernanceDeliberatePage() {
       setSummaries(new Map())
       setScores([])
       setVerdict(null)
+      setHasDataIssues(false)
       setVote(null)
       setConsensusScore(-1)
       setStoppedReason('max_rounds')
@@ -950,6 +964,7 @@ export default function JejuGovernanceDeliberatePage() {
         const verdictRes = await postWithRetry({ action: 'verdict', sessionId })
         if (!verdictRes) { runningRef.current = false; return }
         if (verdictRes.verdict) setVerdict(verdictRes.verdict)
+        if (typeof verdictRes.hasDataIssues === 'boolean') setHasDataIssues(verdictRes.hasDataIssues)
         if (verdictRes.vote && !vote) setVote(verdictRes.vote)
         if (verdictRes.deliberation?.finalScore !== undefined)
           setConsensusScore(verdictRes.deliberation.finalScore)
@@ -1092,6 +1107,7 @@ export default function JejuGovernanceDeliberatePage() {
             questionType={questionType}
             consensusScore={consensusScore}
             stoppedReason={stoppedReason}
+            hasDataIssues={hasDataIssues}
             t={t}
           />
         </div>

@@ -12,6 +12,7 @@ import {
   type JejuOpenBriefSynthesis,
 } from '@/lib/jeju/open-brief'
 import { sanitizeJejuSupplements, type JejuSupplement } from '@/lib/jeju/supplements'
+import { runJejuCrossCheck, type DataTrustBlock } from '@/lib/jeju/cross-check'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -48,6 +49,8 @@ type BriefState = {
   synthesis?: JejuOpenBriefSynthesis
   /** User-submitted paste-text supplements — optional, sanitized on start. */
   supplements?: JejuSupplement[]
+  /** Data cross-validation findings, computed once from the beat-1 snapshot. */
+  dataTrust?: DataTrustBlock
 }
 
 type Stage = 'start' | 'orchestrate' | 'pre-report' | 'analyses' | 'synthesize' | 'done'
@@ -103,6 +106,9 @@ export async function POST(req: Request): Promise<Response> {
 
       const snapshot = await gatherJejuSnapshot()
       const context = buildBriefingContext(snapshot)
+      // Data cross-validation runs BEFORE the orchestrator, on the same
+      // snapshot it's about to read. Never throws (see runJejuCrossCheck).
+      const dataTrust = await runJejuCrossCheck({ snapshot })
       const availableDataSummary = await summarizeAvailableData()
       const supplements = sanitizeJejuSupplements(body.supplements)
 
@@ -112,6 +118,7 @@ export async function POST(req: Request): Promise<Response> {
         context,
         availableDataSummary,
         ...(supplements ? { supplements } : {}),
+        ...(dataTrust.hasIssues ? { dataTrust } : {}),
       }
 
       const ins = await supabaseAdmin
@@ -235,6 +242,7 @@ export async function POST(req: Request): Promise<Response> {
         briefing: state.report,
         context: state.context,
         supplements: state.supplements,
+        dataTrust: state.dataTrust,
       })
 
       const next: BriefState = { ...state, analyses }
@@ -270,6 +278,7 @@ export async function POST(req: Request): Promise<Response> {
         analyses: state.analyses,
         searches: state.reportSearches,
         supplements: state.supplements,
+        dataTrust: state.dataTrust,
       })
 
       const next: BriefState = { ...state, synthesis }

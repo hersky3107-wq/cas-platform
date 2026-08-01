@@ -19,6 +19,8 @@ type JejuArchiveEntry = {
     judgment: string | null
     minorityReport: string | null
     mediaRisk: string | null
+    dataTrust: string | null
+    evidenceLedger: string | null
     voteSummary: string | null
     statusText: string | null
     issuesText: string | null
@@ -126,6 +128,8 @@ function ArchiveCard({
               <TextSection heading={t.deepJudgmentHeading} content={detail.judgment} />
               <TextSection heading={t.deepMinorityHeading} content={detail.minorityReport} />
               <TextSection heading={t.deepMediaRiskHeading} content={detail.mediaRisk} />
+              <TextSection heading={t.deepDataTrustHeading} content={detail.dataTrust} />
+              <TextSection heading={t.deepEvidenceLedgerHeading} content={detail.evidenceLedger} />
             </>
           )}
           {entry.mode === 'diagnostic' && (

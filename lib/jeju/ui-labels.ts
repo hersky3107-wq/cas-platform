@@ -108,6 +108,9 @@ export type JejuUiPack = {
   deepBeat3Heading: string
   deepMinorityHeading: string
   deepMediaRiskHeading: string
+  deepDataTrustHeading: string
+  deepEvidenceLedgerHeading: string
+  deepDataIssuesBadge: string
   deepDisclaimerHeading: string
   deepConsensusLabel: string
   deepVoteHeading: string
@@ -341,6 +344,9 @@ const KO: JejuUiPack = {
   deepBeat3Heading: '토론·합의 과정',
   deepMinorityHeading: '마이너리티 리포트',
   deepMediaRiskHeading: '언론 수용 위험',
+  deepDataTrustHeading: '데이터 이견 및 확인 필요 사항',
+  deepEvidenceLedgerHeading: '근거 자료 점검표',
+  deepDataIssuesBadge: '데이터 점검',
   deepDisclaimerHeading: '참고 사항',
   deepConsensusLabel: '최종 합의도',
   deepVoteHeading: '심의체 표결',
