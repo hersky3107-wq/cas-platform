@@ -8,6 +8,10 @@ import {
   type JejuProvider,
 } from '@/lib/jeju/local-providers'
 import {
+  buildJejuSupplementBlock,
+  type JejuSupplement,
+} from '@/lib/jeju/supplements'
+import {
   KOREAN_ONLY_DIRECTIVE,
   TRUTH_SEEKING_DIRECTIVE,
   type JejuExecutedSearch,
@@ -444,6 +448,8 @@ function buildAnalystUserPrompt(params: {
   role: JejuOpenAnalysisRole
   briefing: string
   context: string
+  /** User-submitted paste-text supplements — untrusted reference data only. */
+  supplements?: JejuSupplement[]
 }): string {
   return [
     '[거버넌스 질문]',
@@ -457,6 +463,9 @@ function buildAnalystUserPrompt(params: {
     '',
     '[수집 데이터 원문]',
     params.context.trim(),
+    ...(params.supplements && params.supplements.length > 0
+      ? [buildJejuSupplementBlock(params.supplements)]
+      : []),
     '',
     '위 브리핑과 데이터를 바탕으로, 당신의 렌즈에서 한 번만 분석하세요.',
   ].join('\n')
@@ -467,6 +476,7 @@ async function runOneOpenAnalysis(params: {
   role: JejuOpenAnalysisRole
   briefing: string
   context: string
+  supplements?: JejuSupplement[]
 }): Promise<JejuOpenAnalysis> {
   const { role } = params
   const base: JejuOpenAnalysis = {
@@ -510,6 +520,8 @@ export async function runJejuOpenAnalyses(params: {
   plan: JejuOpenMeetingPlan
   briefing: string
   context: string
+  /** User-submitted paste-text supplements — untrusted reference data only. */
+  supplements?: JejuSupplement[]
 }): Promise<JejuOpenAnalysis[]> {
   const roles = params.plan.roles.length > 0 ? params.plan.roles : fallbackOpenPlan(params.question).roles
   const settled = await Promise.allSettled(
@@ -519,6 +531,7 @@ export async function runJejuOpenAnalyses(params: {
         role,
         briefing: params.briefing,
         context: params.context,
+        supplements: params.supplements,
       })
     )
   )
@@ -593,6 +606,8 @@ function buildSynthesisUserPrompt(params: {
   briefing: string
   analyses: JejuOpenAnalysis[]
   searches?: JejuExecutedSearch[]
+  /** User-submitted paste-text supplements — untrusted reference data only. */
+  supplements?: JejuSupplement[]
 }): string {
   const searchBlock =
     params.searches && params.searches.length > 0
@@ -616,6 +631,9 @@ function buildSynthesisUserPrompt(params: {
     '',
     '[8개 AI 병렬 분석]',
     formatAnalysesBlock(params.analyses),
+    ...(params.supplements && params.supplements.length > 0
+      ? [buildJejuSupplementBlock(params.supplements)]
+      : []),
     '',
     '위 자료를 통합하여 5개 섹션 구조의 최종 브리핑을 작성하세요.',
   ].join('\n')
@@ -629,6 +647,8 @@ export async function synthesizeJejuOpenBrief(params: {
   briefing: string
   analyses: JejuOpenAnalysis[]
   searches?: JejuExecutedSearch[]
+  /** User-submitted paste-text supplements — reaches synthesis the same as analysts. */
+  supplements?: JejuSupplement[]
 }): Promise<JejuOpenBriefSynthesis> {
   const question = params.question?.trim() ?? ''
   const base: JejuOpenBriefSynthesis = {

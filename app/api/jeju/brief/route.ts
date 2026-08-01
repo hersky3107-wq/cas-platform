@@ -11,6 +11,7 @@ import {
   type JejuOpenAnalysis,
   type JejuOpenBriefSynthesis,
 } from '@/lib/jeju/open-brief'
+import { sanitizeJejuSupplements, type JejuSupplement } from '@/lib/jeju/supplements'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -45,6 +46,8 @@ type BriefState = {
   droppedSearchCount?: number
   analyses?: JejuOpenAnalysis[]
   synthesis?: JejuOpenBriefSynthesis
+  /** User-submitted paste-text supplements — optional, sanitized on start. */
+  supplements?: JejuSupplement[]
 }
 
 type Stage = 'start' | 'orchestrate' | 'pre-report' | 'analyses' | 'synthesize' | 'done'
@@ -101,12 +104,14 @@ export async function POST(req: Request): Promise<Response> {
       const snapshot = await gatherJejuSnapshot()
       const context = buildBriefingContext(snapshot)
       const availableDataSummary = await summarizeAvailableData()
+      const supplements = sanitizeJejuSupplements(body.supplements)
 
       const state: BriefState = {
         question,
         snapshot,
         context,
         availableDataSummary,
+        ...(supplements ? { supplements } : {}),
       }
 
       const ins = await supabaseAdmin
@@ -229,6 +234,7 @@ export async function POST(req: Request): Promise<Response> {
         plan: state.plan,
         briefing: state.report,
         context: state.context,
+        supplements: state.supplements,
       })
 
       const next: BriefState = { ...state, analyses }
@@ -263,6 +269,7 @@ export async function POST(req: Request): Promise<Response> {
         briefing: state.report,
         analyses: state.analyses,
         searches: state.reportSearches,
+        supplements: state.supplements,
       })
 
       const next: BriefState = { ...state, synthesis }

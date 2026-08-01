@@ -14,6 +14,8 @@ import { JejuThemeShell } from '@/components/jeju/JejuThemeShell'
 import { useJejuUi } from '@/components/jeju/useJejuUi'
 import { aiProductNameWithGloss } from '@/components/jeju/aiProviderLabel'
 import { DIAGNOSTIC_CATEGORIES } from '@/lib/jeju/diagnostic-categories'
+import { SupplementCard } from '@/app/jeju/governance/_components/SupplementCard'
+import type { JejuSupplement } from '@/lib/jeju/supplements'
 
 // ── Local types (shape-compatible with the brief + diagnostic routes) ─────────
 
@@ -482,6 +484,9 @@ export default function JejuGovernanceBriefPage() {
   const [analyses, setAnalyses] = useState<OpenAnalysis[]>([])
   const [synthesis, setSynthesis] = useState<string | null>(null)
 
+  // ── 첨부·추가 자료 (선택) — paste supplements (S1); file upload is S3 ──
+  const [supplements, setSupplements] = useState<JejuSupplement[]>([])
+
   // ── Diagnostic (category) state ──
   const [diagStage, setDiagStage] = useState<DiagStageKey>('idle')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
@@ -579,7 +584,11 @@ export default function JejuGovernanceBriefPage() {
         runningRef.current = false
       }
 
-      const startRes = await post({ action: 'start', question: q })
+      const startRes = await post({
+        action: 'start',
+        question: q,
+        ...(supplements.length > 0 ? { supplements } : {}),
+      })
       if (!startRes?.ok || !startRes.sessionId) {
         failBrief('start', startRes?.error ?? '데이터 수집 단계 실패')
         return
@@ -626,7 +635,7 @@ export default function JejuGovernanceBriefPage() {
       setBriefStage('done')
       runningRef.current = false
     },
-    [question, requestWithRetry, resetAll, t.briefNoSynthesis]
+    [question, requestWithRetry, resetAll, t.briefNoSynthesis, supplements]
   )
 
   // ── DIAGNOSTIC mode → 2-AI quick brief (category preset) ──
@@ -747,6 +756,13 @@ export default function JejuGovernanceBriefPage() {
             disabled={running}
             className="w-full resize-y rounded-xl border border-jeju-border bg-jeju-bg px-4 py-3 text-base text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none focus:ring-1 focus:ring-jeju-accent disabled:opacity-60"
           />
+          <div className="mt-4">
+            <SupplementCard
+              supplements={supplements}
+              onChange={setSupplements}
+              disabled={running}
+            />
+          </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
