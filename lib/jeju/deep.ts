@@ -1,7 +1,5 @@
 import 'server-only'
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-
 import { gatherJejuSnapshot, buildBriefingContext, JEJU_STANDING_ECONOMY_CONTEXT, type JejuSnapshot } from '@/lib/jeju/brief'
 import {
   CROSS_DOMAIN_DIRECTIVE,
@@ -11,10 +9,14 @@ import {
   RECENCY_GUARD_DIRECTIVE,
 } from '@/lib/jeju/prompt-directives'
 import {
-  runSingleAiProvider,
   MODEL_BY_PROVIDER,
   type ExtendedAiProviderName,
 } from '@/lib/ai/router'
+import {
+  callJejuAi,
+  isJejuLocalProvider,
+  type JejuProvider,
+} from '@/lib/jeju/local-providers'
 
 /**
  * Jeju governance DEEP engine — piece 1: the dynamic meeting orchestrator.
@@ -38,10 +40,10 @@ import {
 
 /**
  * What each AI brand is good at — used both in the orchestrator's prompt (so it
- * can assign roles sensibly) and as our own reference. Keys are valid
- * ExtendedAiProviderName values; every entry must be a key of MODEL_BY_PROVIDER.
+ * can assign roles sensibly) and as our own reference. Keys are JejuProvider
+ * values: shared-router providers plus JEJU-LOCAL solar/exaone.
  */
-export const AI_BRAND_STRENGTHS: Record<ExtendedAiProviderName, string> = {
+export const AI_BRAND_STRENGTHS: Record<JejuProvider, string> = {
   perplexity: '실시간 검색·최신 정보·외부 사실 확인',
   anthropic: '종합·신중한 분석·리스크/윤리 검토 (의장 적합)',
   openai: '균형잡힌 정책 추론·범용',
@@ -49,6 +51,8 @@ export const AI_BRAND_STRENGTHS: Record<ExtendedAiProviderName, string> = {
   xai: '도발적 반박·통념 비판 (레드팀 적합)',
   deepseek: '수치·정량 분석·타임라인',
   mistral: '간결·창의적 관점·보조 분석',
+  solar: '제주 행정·제도 맥락 이해·도정 정책 현실성 검토 (국산 모델)',
+  exaone: '제주 현장·산업 현실성·실행 가능성 검토 (국산 모델)',
   meta: '빠른 보조 분석',
 }
 
@@ -60,8 +64,8 @@ export type JejuExpertRole = {
   roleLabel: string
   /** Korean: what this expert examines and why they're needed for THIS question. */
   mandate: string
-  /** The AI brand assigned to play this role. */
-  provider: ExtendedAiProviderName
+  /** The AI brand assigned to play this role (may be a JEJU-LOCAL provider). */
+  provider: JejuProvider
   /** True when this seat is the red-team / skeptic. */
   isRedTeam?: boolean
 }
@@ -181,17 +185,6 @@ export { DATA_GAP_DISCIPLINE }
  */
 export { RECENCY_GUARD_DIRECTIVE }
 
-/**
- * Throwaway Supabase client to satisfy runSingleAiProvider's required param.
- * Mirrors brief.ts's noDbSupabase pattern (not exported there, so replicated
- * locally): with sessionId:null + userId:null the router does NO DB inserts and
- * NO BYOK reads, so this client is never dereferenced for I/O. Keeping it local
- * preserves lib/jeju's portability.
- */
-function noDbSupabase(): SupabaseClient {
-  return createClient('http://localhost', 'deep-mode-no-db') as unknown as SupabaseClient
-}
-
 /** Resolves a provider string to a valid router provider, defaulting to anthropic. */
 function resolveProvider(p: string | undefined, fallback: ExtendedAiProviderName): ExtendedAiProviderName {
   if (p && VALID_PROVIDERS.has(p)) return p as ExtendedAiProviderName
@@ -245,8 +238,8 @@ export async function summarizeAvailableData(): Promise<string> {
  * default (no `debateBrands`) is the original 3–5 analytic-role convening used
  * by the DEEP pipeline — unchanged.
  */
-function buildOrchestratorSystemPrompt(debateBrands?: ExtendedAiProviderName[]): string {
-  const brandList = (Object.keys(AI_BRAND_STRENGTHS) as ExtendedAiProviderName[])
+function buildOrchestratorSystemPrompt(debateBrands?: JejuProvider[]): string {
+  const brandList = (Object.keys(AI_BRAND_STRENGTHS) as JejuProvider[])
     .map((k) => `  - ${k}: ${AI_BRAND_STRENGTHS[k]}`)
     .join('\n')
 
@@ -310,8 +303,8 @@ function buildOrchestratorSystemPrompt(debateBrands?: ExtendedAiProviderName[]):
     '    - 두 좌석은 서로 다른 좌석이며 합치지 마세요. 둘 다 응원·비방이 아니라 근거·전문성으로만 논증합니다.',
     '    - 나머지 기능·분석 역할(계통·재정·관광 등)은 진정으로 중립을 유지하세요. 이들은 사실과 영향을 평가할 뿐, 미리 찬/반 어느 한쪽을 골라서는 안 됩니다. 분석가 좌석을 회의론 쪽으로 기울이지 마세요.',
     '    - roleLabel 표기 규칙(공무원이 즉시 이해하는 행정 한국어, 매우 중요): "스틸맨" 같은 업계 은어·외래어·영어 표기를 절대 쓰지 마세요. 입장(stance)과 영역(domain)을 분리하고, 영역은 괄호로 붙이세요. 예) 반대 좌석 → "리스크·반대 논거 검토 (에너지·환경 관점)", 찬성 좌석 → "정책 추진 옹호 (찬성 측 최강 논거, 재정 관점)". 두 의무 좌석의 라벨은 각각 "가장 강력한 찬성"과 "가장 강력한 반대"로 읽혀야 합니다.',
-    '    - Perplexity 좌석 제한(매우 중요): perplexity는 검색·언론/여론 모니터링 전용입니다. 토론·수렴 라운드에 참여하는 좌석(분석가·반대 논거·찬성 논거 등 추론·논쟁 좌석)에는 perplexity를 절대 배정하지 마세요 — perplexity는 검색·검색엔진형 모델이라 토론에서 논거를 진전시키지 못하고 같은 말을 되풀이하는 경향이 있습니다. 토론에 참여하는 좌석은 오직 추론 브랜드(anthropic, openai, google, xai, deepseek, mistral) 중에서만 배정하세요. perplexity는 (c)의 실시간 검색 역할과 (e)의 언론 분석가 역할에만 쓰십시오.',
-    '    - 브랜드 다양성(가능한 한): 토론에 참여하는 좌석에는 가급적 서로 다른 브랜드를 배정하고, 6개 추론 브랜드(anthropic, openai, google, xai, deepseek, mistral)를 고루 활용해 토론에 여러 AI가 눈에 띄게 참여하도록 하세요(매번 같은 5개만 반복 금지). 단, 브랜드를 더 넣으려고 불필요한 역할을 지어내지 마세요 — 역할 수는 질문이 요구하는 3~5개로만 정하고, 다양성은 어디까지나 브랜드 배정의 동점 처리 기준일 뿐 패널을 늘리는 이유가 될 수 없습니다.',
+    '    - Perplexity 좌석 제한(매우 중요): perplexity는 검색·언론/여론 모니터링 전용입니다. 토론·수렴 라운드에 참여하는 좌석(분석가·반대 논거·찬성 논거 등 추론·논쟁 좌석)에는 perplexity를 절대 배정하지 마세요 — perplexity는 검색·검색엔진형 모델이라 토론에서 논거를 진전시키지 못하고 같은 말을 되풀이하는 경향이 있습니다. 토론에 참여하는 좌석은 오직 추론 브랜드(anthropic, openai, google, xai, deepseek, mistral, solar, exaone) 중에서만 배정하세요. perplexity는 (c)의 실시간 검색 역할과 (e)의 언론 분석가 역할에만 쓰십시오.',
+    '    - 브랜드 다양성(가능한 한): 토론에 참여하는 좌석에는 가급적 서로 다른 브랜드를 배정하고, 8개 추론 브랜드(anthropic, openai, google, xai, deepseek, mistral, solar, exaone)를 고루 활용해 토론에 여러 AI가 눈에 띄게 참여하도록 하세요(매번 같은 5개만 반복 금지). 단, 브랜드를 더 넣으려고 불필요한 역할을 지어내지 마세요 — 역할 수는 질문이 요구하는 3~5개로만 정하고, 다양성은 어디까지나 브랜드 배정의 동점 처리 기준일 뿐 패널을 늘리는 이유가 될 수 없습니다.',
     '(c) searchNeeded: 이 질문이 우리 내부 데이터를 넘어서는 최신 외부 정보를 필요로 하면 true.',
     '    true인 경우 perplexity를 맡는 실시간 검색 역할을 반드시 포함하세요.',
     '(d) questionType: 이 질문의 유형을 분류하세요.',
@@ -342,7 +335,7 @@ function buildOrchestratorSystemPrompt(debateBrands?: ExtendedAiProviderName[]):
     '  "searchNeeded": true 또는 false,',
     '  "questionType": "binary" 또는 "openEnded"',
     '}',
-    'provider 값은 반드시 강점표의 키(openai, anthropic, google, xai, deepseek, mistral, perplexity, meta) 중 하나여야 합니다.',
+    'provider 값은 반드시 강점표의 키(openai, anthropic, google, xai, deepseek, mistral, solar, exaone, perplexity, meta) 중 하나여야 합니다.',
   ].join('\n')
 }
 
@@ -409,10 +402,10 @@ function normalizeRole(
   const providerRaw = typeof o.provider === 'string' ? o.provider.trim() : ''
   if (!roleLabel || !mandate || !providerRaw) return null
 
-  const coerced = !VALID_PROVIDERS.has(providerRaw)
-  const provider: ExtendedAiProviderName = coerced
-    ? 'openai'
-    : (providerRaw as ExtendedAiProviderName)
+  // JEJU-LOCAL providers ('solar'/'exaone') are legitimate seat brands here even
+  // though they are absent from the shared MODEL_BY_PROVIDER-derived set.
+  const coerced = !VALID_PROVIDERS.has(providerRaw) && !isJejuLocalProvider(providerRaw)
+  const provider: JejuProvider = coerced ? 'openai' : (providerRaw as JejuProvider)
 
   const roleId =
     typeof o.roleId === 'string' && o.roleId.trim()
@@ -445,7 +438,7 @@ function normalizeRole(
  */
 function reconcileDebateRoles(
   roles: JejuExpertRole[],
-  brands: ExtendedAiProviderName[]
+  brands: JejuProvider[]
 ): JejuExpertRole[] {
   const pool = [...roles]
   const out: JejuExpertRole[] = []
@@ -471,7 +464,7 @@ function reconcileDebateRoles(
 /** Applies the 1:1 brand→role reconciliation to a plan when in debate mode. */
 function reconcilePlan(
   plan: JejuMeetingPlan,
-  debateBrands?: ExtendedAiProviderName[]
+  debateBrands?: JejuProvider[]
 ): JejuMeetingPlan {
   if (!debateBrands || debateBrands.length === 0) return plan
   return { ...plan, roles: reconcileDebateRoles(plan.roles, debateBrands) }
@@ -488,7 +481,7 @@ export async function planJejuMeeting(params: {
    * Mode B (찬반 심의): pin the convening to a 1:1 brand→role mapping, one
    * governance role per supplied debate brand. Omit for the default DEEP convening.
    */
-  debateBrands?: ExtendedAiProviderName[]
+  debateBrands?: JejuProvider[]
 }): Promise<JejuMeetingPlan> {
   const question = params.question?.trim() ?? ''
   const orchestrator = resolveProvider(params.provider, DEFAULT_ORCHESTRATOR)
@@ -519,10 +512,7 @@ export async function planJejuMeeting(params: {
 
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: orchestrator,
       prompt: userPrompt,
       systemPrompt: buildOrchestratorSystemPrompt(debateBrands),
@@ -629,7 +619,7 @@ export type JejuSearchRequest = {
 export type JejuRoleAnalysis = {
   roleId: string
   roleLabel: string
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
   isRedTeam: boolean
   ok: boolean
   /** First-pass analysis text (null only when the AI call failed). */
@@ -748,10 +738,7 @@ async function runOneExpert(
 
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: role.provider,
       prompt: userPrompt,
       systemPrompt: buildAnalystSystemPrompt(role, question),
@@ -1034,10 +1021,7 @@ export async function mergeSearchRequests(params: {
 
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: 'anthropic',
       prompt: userPrompt,
       systemPrompt: buildMergeSystemPrompt(),
@@ -1115,10 +1099,7 @@ async function runOneSearch(item: MergedSearch): Promise<JejuExecutedSearch> {
   const base = { query: item.query, requestedBy: item.requestedBy }
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: 'perplexity',
       prompt: item.query,
       systemPrompt: buildSearchSystemPrompt(),
@@ -1245,7 +1226,7 @@ const REVISION_MAX_TOKENS = 1200
 export type JejuRevisedAnalysis = {
   roleId: string
   roleLabel: string
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
   isRedTeam: boolean
   ok: boolean
   /** Carried over from piece 2 analysis. */
@@ -1354,10 +1335,7 @@ async function runOneRevision(
 
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: role.provider,
       prompt: userPrompt,
       systemPrompt: buildRevisionSystemPrompt(role, question),
@@ -1556,7 +1534,7 @@ const DEBATE_MAX_TOKENS = 1200
 export type JejuRebuttal = {
   roleId: string
   roleLabel: string
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
   isRedTeam: boolean
   ok: boolean
   /** Whom they pushed back against (role labels). */
@@ -1670,10 +1648,7 @@ async function runOneRebuttal(
 
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: role.provider,
       prompt: userPrompt,
       systemPrompt: buildDebateSystemPrompt(role, question),
@@ -1852,7 +1827,7 @@ const CONSENSUS_SCORE_UNAVAILABLE = -1
 export type JejuDeliberationTurn = {
   roleId: string
   roleLabel: string
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
   isRedTeam: boolean
   ok: boolean
   /** Their updated position THIS round. */
@@ -2008,10 +1983,7 @@ async function runOneDeliberationTurn(
 
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: role.provider,
       prompt: userPrompt,
       systemPrompt: buildDeliberationSystemPrompt(role, question, roundNumber),
@@ -2103,10 +2075,7 @@ async function measureConsensus(turns: JejuDeliberationTurn[]): Promise<{
 
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: 'anthropic',
       prompt: userPrompt,
       systemPrompt: buildConsensusSystemPrompt(),
@@ -2982,10 +2951,7 @@ export async function renderChairVerdict(params: {
 
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider: 'anthropic',
       prompt: contextBlock,
       systemPrompt: buildChairSystemPrompt(consensusScore, brief, hasVote),
@@ -3157,28 +3123,32 @@ export async function runJejuDeepComplete(params?: {
  */
 const ENABLE_META = false
 
-const JEJU_VOTE_PANEL: ExtendedAiProviderName[] = [
+const JEJU_VOTE_PANEL: JejuProvider[] = [
   'anthropic',
   'openai',
   'google',
   'xai',
   'deepseek',
   'mistral',
+  'solar',
+  'exaone',
   'perplexity',
-  ...(ENABLE_META ? (['meta'] as ExtendedAiProviderName[]) : []),
+  ...(ENABLE_META ? (['meta'] as JejuProvider[]) : []),
 ]
 
 /**
  * Brand labels for the vote panel. Kept local (small map) so lib/jeju stays
  * self-contained and portable — we do NOT reach into SYNOD or other modules.
  */
-const JEJU_VOTE_BRAND_LABEL: Record<ExtendedAiProviderName, string> = {
+const JEJU_VOTE_BRAND_LABEL: Record<JejuProvider, string> = {
   anthropic: 'Claude',
   openai: 'ChatGPT',
   google: 'Gemini',
   xai: 'Grok',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
+  solar: 'Upstage (솔라)',
+  exaone: 'LG (엑사원)',
   perplexity: 'Perplexity',
   meta: 'Llama',
 }
@@ -3188,7 +3158,7 @@ export type JejuVoteChoice = 'approve' | 'conditional' | 'oppose' | 'abstain'
 
 /** One provider's vote on the chair's verdict. */
 export type JejuVote = {
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
   ok: boolean
   choice: JejuVoteChoice | null
   /** 1–2 sentence Korean reason. */
@@ -3374,7 +3344,7 @@ function truncateVoteBody(body: string, budget: number): string {
  */
 function buildVoterTranscript(
   deliberation: JejuDeliberation,
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
 ): string | null {
   const ordered = [...deliberation.rounds].sort((a, b) => a.roundNumber - b.roundNumber)
 
@@ -3560,16 +3530,13 @@ function formatContestedForVote(contestedPoints: string[]): string | null {
 
 /** Casts ONE provider's vote on the given proposition. Never throws. */
 async function runOneVote(
-  provider: ExtendedAiProviderName,
+  provider: JejuProvider,
   systemPrompt: string,
   userPrompt: string
 ): Promise<JejuVote> {
   let r
   try {
-    r = await runSingleAiProvider({
-      supabase: noDbSupabase(),
-      sessionId: null,
-      userId: null,
+    r = await callJejuAi({
       provider,
       prompt: userPrompt,
       systemPrompt,
@@ -3643,12 +3610,12 @@ function emptyVoteResult(summary: string): JejuVoteResult {
  */
 async function runPanelBallot(
   systemPrompt: string,
-  userPromptOrBuilder: string | ((provider: ExtendedAiProviderName) => string)
+  userPromptOrBuilder: string | ((provider: JejuProvider) => string)
 ): Promise<JejuVoteResult> {
   const buildUserPrompt =
     typeof userPromptOrBuilder === 'function'
       ? userPromptOrBuilder
-      : (_provider: ExtendedAiProviderName) => userPromptOrBuilder
+      : (_provider: JejuProvider) => userPromptOrBuilder
 
   const settled = await Promise.allSettled(
     JEJU_VOTE_PANEL.map((p) => runOneVote(p, systemPrompt, buildUserPrompt(p)))

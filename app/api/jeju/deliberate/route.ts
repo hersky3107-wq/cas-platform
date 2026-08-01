@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
+import { type ExtendedAiProviderName } from '@/lib/ai/router'
+import { callJejuAi, type JejuProvider } from '@/lib/jeju/local-providers'
 import { gatherJejuSnapshot, buildBriefingContext, type JejuSnapshot } from '@/lib/jeju/brief'
 import {
   planJejuMeeting,
@@ -46,7 +47,7 @@ export const maxDuration = 300
 //   JEJU front  : gatherJejuSnapshot + buildBriefingContext + planJejuMeeting  (brief.ts / deep.ts)
 //   report      : generateJejuPreReport(mode:'deliberation')                   (pre-report.ts)
 //   debate loop : SYNOD opening/turn/facilitator prompts + memory builders     (synod-debate.ts)
-//   vote        : runJejuMotionVote (8-AI JEJU_VOTE_PANEL)                      (deep.ts)
+//   vote        : runJejuMotionVote (9-AI JEJU_VOTE_PANEL)                      (deep.ts)
 //   chair       : renderChairVerdict (6-section Korean governance verdict)      (deep.ts)
 //
 // Isolation: NO import from app/api/synod/* (the SYNOD core was copied into
@@ -55,7 +56,7 @@ export const maxDuration = 300
 //
 // Chunked-action discipline (mirror of app/api/jeju/deep/route.ts): one POST
 // advances ONE stage so no single call exceeds ~250s. The per-round 'turn'
-// action runs the 6 debaters of ONE round only (serial flow), never all rounds.
+// action runs the SYNOD_DEBATERS of ONE round only (serial flow), never all rounds.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const {
@@ -73,11 +74,11 @@ const TABLE = 'jeju_deep_sessions'
 const OPENING_MAX_TOKENS = 1100
 const TURN_MAX_TOKENS = 1100
 /**
- * The facilitator emits a structured JSON summary of ALL 6 debaters' turns
+ * The facilitator emits a structured JSON summary of ALL SYNOD_DEBATERS' turns
  * (consensusPoints + per-issue positions + nextDirective), in Korean. Korean +
  * JSON is token-heavy: at 1600 the JSON was truncated mid-output → unparseable →
- * the round scored as "unmeasurable" and the whole run died after round 1. A
- * 6-turn round needs ~3.7k chars complete; 4096 gives safe headroom.
+ * the round scored as "unmeasurable" and the whole run died after round 1. An
+ * 8-turn round needs headroom; 4096 is safe.
  */
 const FACILITATOR_MAX_TOKENS = 4096
 
@@ -85,9 +86,9 @@ const FACILITATOR_MAX_TOKENS = 4096
 const FACILITATOR_PROVIDER: ExtendedAiProviderName = 'anthropic'
 
 /** Reverse of PROVIDER_TO_BRAND, so a stored brand label maps back to a provider. */
-const BRAND_TO_PROVIDER: Record<string, ExtendedAiProviderName> = Object.fromEntries(
-  (Object.entries(PROVIDER_TO_BRAND) as [ExtendedAiProviderName, string][]).map(([p, b]) => [b, p])
-) as Record<string, ExtendedAiProviderName>
+const BRAND_TO_PROVIDER: Record<string, JejuProvider> = Object.fromEntries(
+  (Object.entries(PROVIDER_TO_BRAND) as [JejuProvider, string][]).map(([p, b]) => [b, p])
+) as Record<string, JejuProvider>
 
 // ── Persisted Mode B state (opaque JSONB blob in jeju_deep_sessions.state) ────
 type DeliberateState = {
@@ -154,14 +155,14 @@ async function saveSession(
     .eq('id', sessionId)
 }
 
-// ── AI call wrapper — sessionId/userId null ⇒ router does NO DB writes. ────────
+// ── AI call wrapper — solar/exaone via callJejuLocalProvider; else router. ─────
 async function callProvider(params: {
-  provider: ExtendedAiProviderName
+  provider: JejuProvider
   systemPrompt: string
   prompt: string
   maxCompletionTokens: number
 }): Promise<{ text: string | null; error?: string | null }> {
-  const r = await runSingleAiProvider({
+  return callJejuAi({
     supabase: supabaseAdmin,
     sessionId: null,
     userId: null,
@@ -170,7 +171,6 @@ async function callProvider(params: {
     systemPrompt: params.systemPrompt,
     maxCompletionTokens: params.maxCompletionTokens,
   })
-  return { text: r.text, error: r.error }
 }
 
 /**

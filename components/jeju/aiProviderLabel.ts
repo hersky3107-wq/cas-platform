@@ -14,6 +14,8 @@ const PRODUCT: Record<string, { name: string; gloss?: string }> = {
   mistral: { name: 'Mistral', gloss: '미스트랄' },
   perplexity: { name: 'Perplexity', gloss: '퍼플렉시티' },
   meta: { name: 'Llama', gloss: '라마' },
+  solar: { name: 'Solar', gloss: '솔라' },
+  exaone: { name: 'EXAONE', gloss: '엑사원' },
 }
 
 /**
@@ -29,6 +31,8 @@ const LABEL: Record<string, string> = {
   mistral: 'Mistral (미스트랄)',
   meta: 'Llama (메타)',
   perplexity: 'Perplexity (퍼플렉시티)',
+  solar: 'Upstage (솔라)',
+  exaone: 'LG (엑사원)',
 }
 
 /**
@@ -44,6 +48,10 @@ const BRAND_ALIAS: Record<string, string> = {
   Mistral: 'mistral',
   Llama: 'meta',
   Perplexity: 'perplexity',
+  Solar: 'solar',
+  EXAONE: 'exaone',
+  'Upstage (솔라)': 'solar',
+  'LG (엑사원)': 'exaone',
 }
 
 function normalize(provider: string): string {

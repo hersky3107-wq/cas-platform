@@ -78,10 +78,9 @@ export type FacilitatorSummary = {
 /**
  * The reasoning debaters. Perplexity is excluded from debate by design (it is
  * the search/press specialist — see the route + vote panel). 'meta' (Llama) is
- * an ExtendedAiProviderName, so the debater list is widened beyond the base
- * AiProviderName set with this dedicated type.
+ * an ExtendedAiProviderName; 'solar'/'exaone' are JEJU-LOCAL (lib/jeju/local-providers.ts).
  */
-export type SynodDebaterProvider = AiProviderName | 'meta'
+export type SynodDebaterProvider = AiProviderName | 'meta' | 'solar' | 'exaone'
 
 /**
  * RECOVERABLE FLAG — meta (Llama) is disabled.
@@ -97,25 +96,33 @@ const ENABLE_META = false
 
 /**
  * The reasoning debaters (Perplexity excluded — it searches, not debates).
- * Currently SIX (openai, anthropic, google, xai, deepseek, mistral); meta is
- * appended only when ENABLE_META is true. Consumers MUST read .length, never a
- * hardcoded count.
+ * EIGHT active seats: core six + JEJU-LOCAL solar/exaone mid-order so later
+ * speakers can address them in the same serial round. meta only when ENABLE_META.
+ * Consumers MUST read .length, never a hardcoded count.
  */
 export const SYNOD_DEBATERS: SynodDebaterProvider[] = [
   'openai',
   'anthropic',
   'google',
+  'solar',
+  'exaone',
   'xai',
   'deepseek',
   'mistral',
   ...(ENABLE_META ? (['meta'] as SynodDebaterProvider[]) : []),
 ]
 
-/** Brand names shown in deliberation context / facilitator input. */
+/**
+ * Brand names shown in deliberation context / facilitator input — bare PRODUCT
+ * names (in-debate address). Must match SynodTurn.aiName so BRAND_TO_PROVIDER
+ * round-trips for vote-transcript attribution.
+ */
 export const PROVIDER_TO_BRAND: Record<SynodDebaterProvider, string> = {
   openai: 'ChatGPT',
   anthropic: 'Claude',
   google: 'Gemini',
+  solar: 'Solar',
+  exaone: 'EXAONE',
   xai: 'Grok',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
@@ -228,6 +235,15 @@ CLAIM: <one sentence distilling your core claim>`
  */
 const SINGLE_TURN_RULE = `당신은 당신 본인의 발언만 작성합니다. 다른 참가자의 발언을 대신 생성하거나 인용 재구성하지 마십시오. 다른 참가자를 언급할 때는 그들의 실제 발언을 짧게 참조만 하고, 당신의 분석만 제시하십시오. 다른 참가자 이름이 붙은 발언 블록(예: "[Grok (CHALLENGE)] …")을 만들어내는 것은 금지됩니다.`
 
+/**
+ * Anti-fabrication rule for participant IDENTITY, built from the LIVE roster.
+ * Derived from SYNOD_DEBATERS at call time so it stays correct if seats change.
+ */
+function participantRosterRule(): string {
+  const roster = SYNOD_DEBATERS.map((p) => PROVIDER_TO_BRAND[p]).join(', ')
+  return `[참가자 명단 — 절대 준수] 이 심의의 참가자는 다음뿐입니다: ${roster}. 이 명단에 없는 이름을 언급하거나 만들어내지 마십시오. 존재하지 않는 참가자를 인용하는 것은 심각한 실패입니다. 다른 참가자를 지칭할 때는 위 명단의 표기를 그대로 쓰고, 실제로 컨텍스트에 제시된 발언만 근거로 삼으십시오.`
+}
+
 /** Convergence push for late rounds: partial agreement, not fake unanimity. */
 export const LATE_ROUND_RULE = `This is a LATE round — start converging. Acknowledge what others got right and move toward a shared answer. BUT do NOT fake agreement: if you genuinely still disagree on a specific point, say so clearly and hold that point ("I agree with X, but I still don't buy Y because..."). Honest partial agreement is better than hollow unanimity. Only fully agree if you are actually convinced.`
 
@@ -300,6 +316,10 @@ const PERSONA: Record<SynodDebaterProvider, string> = {
     'You are the reflective one who questions assumptions — you often step back and ask whether the question itself is framed wrong, and propose a better angle. Thoughtful, a little contrarian about premises.',
   google:
     "You are the balanced mediator — calm, neutral, fact- and evidence-focused. You find the middle ground and point to what's actually known.",
+  solar:
+    'You are the domestic-reality checker for Jeju governance — you test every proposal against how Korean ministries, the provincial office, and local governments actually behave: who signs off, which regulation bites, what the budget cycle allows. You are direct about the gap between a plan on paper and a plan that clears a Korean government desk.',
+  exaone:
+    'You are the field-and-industry realist for Jeju — you speak from operating constraints: tourism ops, energy/grid plant, ports, supply chains, workforce, and what Jeju firms and agencies can actually execute this year versus in five years. You are unimpressed by elegant strategy that ignores physical and industrial constraints.',
   xai:
     'You are the cool, slightly cheeky rebel — you push back against the forming consensus with a bit of attitude and wit, but you genuinely want the best answer, not just to be difficult.',
   deepseek:
@@ -389,6 +409,7 @@ Rules:
 - Take a clear position. Hedging on every point is a failure.
 - Respond in the same language as the question.
 - Keep it focused: your strongest reasoning only, no filler.
+${participantRosterRule()}
 
 ${voiceRules(false)}
 
@@ -430,6 +451,7 @@ Rules:
 - Target the reasoning on its merits — evidence, logic, blind spots — never the style, and never a conclusion you feel you "should" reach.
 - Respond in the same language as the question.
 ${SINGLE_TURN_RULE}
+${participantRosterRule()}
 ${lateBlock}
 ${voiceRules(true)}
 
@@ -455,6 +477,7 @@ You MUST begin your response with exactly one line declaring your move:
 Decide 찬성/반대/유보 honestly from the data and your domain — do not perform a side. Be STUBBORN about your own reasoning: do not abandon a position you previously took unless the context contains a genuinely stronger argument — and if you do concede, name exactly which argument changed your mind. Drifting toward the majority without cause is a failure; so is clinging to a position the evidence has refuted.
 Respond in the same language as the question.
 ${SINGLE_TURN_RULE}
+${participantRosterRule()}
 ${lateBlock}
 ${voiceRules(true)}
 
