@@ -5,6 +5,8 @@ import { ChevronDown, ChevronUp, PlayCircle, MessageSquare, Search, Loader2 } fr
 import { JejuThemeShell } from '@/components/jeju/JejuThemeShell'
 import { useJejuUi } from '@/components/jeju/useJejuUi'
 import { aiProductName, aiProductNameWithGloss } from '@/components/jeju/aiProviderLabel'
+import { SupplementCard } from '@/app/jeju/governance/_components/SupplementCard'
+import type { JejuSupplement } from '@/lib/jeju/supplements'
 
 // ── Local types (shape-compatible with app/api/jeju/deliberate/route.ts) ──────
 
@@ -742,6 +744,11 @@ export default function JejuGovernanceDeliberatePage() {
   // (e.g. consensus ≥ 85 on a binary question). Drives the skip-notice banner.
   const [voted, setVoted] = useState<boolean | null>(null)
 
+  // ── 첨부·추가 자료 (선택) — paste supplements (S2); file upload is S3 ──
+  // Sent once with `start`; the route persists them and injects into debate
+  // USER prompts + chair case file only (never the vote path).
+  const [supplements, setSupplements] = useState<JejuSupplement[]>([])
+
   const runningRef = useRef(false)
 
   // ── POST with retry ─────────────────────────────────────────────────────────
@@ -834,7 +841,11 @@ export default function JejuGovernanceDeliberatePage() {
 
       try {
         // ── start ────────────────────────────────────────────────────────────
-        const startRes = await postWithRetry({ action: 'start', question: q })
+        const startRes = await postWithRetry({
+          action: 'start',
+          question: q,
+          ...(supplements.length > 0 ? { supplements } : {}),
+        })
         if (!startRes) { runningRef.current = false; return }
         if (startRes.roles) setOrchestratorRoles(startRes.roles)
         if (startRes.debaters) setDebaters(startRes.debaters)
@@ -954,7 +965,7 @@ export default function JejuGovernanceDeliberatePage() {
         runningRef.current = false
       }
     },
-    [question, postWithRetry, stop, vote]
+    [question, postWithRetry, stop, vote, supplements]
   )
 
   // ── Derived values ──────────────────────────────────────────────────────────
@@ -1000,6 +1011,11 @@ export default function JejuGovernanceDeliberatePage() {
           disabled={isRunning}
           rows={3}
           className="w-full resize-none rounded-xl border border-jeju-border bg-jeju-bg-elevated px-4 py-3 text-sm text-jeju-fg placeholder:text-jeju-fg-muted focus:border-jeju-accent focus:outline-none disabled:opacity-50"
+        />
+        <SupplementCard
+          supplements={supplements}
+          onChange={setSupplements}
+          disabled={isRunning}
         />
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <span className="text-[11px] text-jeju-fg-muted">예시:</span>

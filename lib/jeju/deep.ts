@@ -17,6 +17,10 @@ import {
   isJejuLocalProvider,
   type JejuProvider,
 } from '@/lib/jeju/local-providers'
+import {
+  buildJejuSupplementBlock,
+  type JejuSupplement,
+} from '@/lib/jeju/supplements'
 
 /**
  * Jeju governance DEEP engine — piece 1: the dynamic meeting orchestrator.
@@ -2896,6 +2900,12 @@ export async function renderChairVerdict(params: {
   brief?: boolean
   /** A motion ballot to show the chair as ADVISORY context (non-binding). */
   vote?: JejuVoteResult
+  /**
+   * User-submitted reference material (첨부·추가 자료). Rendered into the case
+   * file with its provenance fence so the chair weighs the same material the
+   * debaters saw. Omitted ⇒ case file unchanged (orphan deep route stays a no-op).
+   */
+  supplements?: JejuSupplement[]
 }): Promise<JejuVerdict> {
   const { question, snapshot, searches, revised, rebuttals, deliberation, vote } = params
   const brief = params.brief === true
@@ -2939,6 +2949,13 @@ export async function renderChairVerdict(params: {
   // when a real vote happened (see hasVote); otherwise nothing is appended.
   if (hasVote) {
     contextParts.push('', '# 표결 결과 (참고용)', formatVoteForChair(vote!))
+  }
+
+  // User-submitted material, provenance-fenced identically to the debaters' copy.
+  // Nothing is appended when the caller passed no supplements.
+  const supplementBlock = buildJejuSupplementBlock(params.supplements).trim()
+  if (supplementBlock) {
+    contextParts.push('', supplementBlock)
   }
 
   contextParts.push(

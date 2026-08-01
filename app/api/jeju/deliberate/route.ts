@@ -20,6 +20,11 @@ import {
 } from '@/lib/jeju/deep'
 import { generateJejuPreReport } from '@/lib/jeju/pre-report'
 import {
+  sanitizeJejuSupplements,
+  buildJejuSupplementBlock,
+  type JejuSupplement,
+} from '@/lib/jeju/supplements'
+import {
   SYNOD_DEBATERS,
   PROVIDER_TO_BRAND,
   openingSystemPrompt,
@@ -111,6 +116,11 @@ type DeliberateState = {
   // beats 6+7 (vote + verdict)
   vote?: JejuVoteResult
   verdict?: JejuVerdict
+  /**
+   * User-submitted reference material (첨부·추가 자료). Injected into debate
+   * USER prompts (open/turn) and the chair case file only — never the vote path.
+   */
+  supplements?: JejuSupplement[]
 }
 
 type Stage =
@@ -190,6 +200,15 @@ function roleForProvider(
 function reportPreamble(report: string | null | undefined): string {
   if (!report || !report.trim()) return ''
   return ['[사전 분석 리포트 — 토론 전 반드시 숙지할 기초 자료]', report.trim(), '', '---', ''].join('\n')
+}
+
+/**
+ * The 첨부·추가 자료 block for a debater's USER prompt. Returns '' when there
+ * are no supplements (prompt assembly filters it out). Never used by vote /
+ * facilitate / pre-report.
+ */
+function supplementPreamble(supplements: JejuSupplement[] | undefined): string {
+  return buildJejuSupplementBlock(supplements).trim()
 }
 
 /** Clamp a model-supplied consensus score to 0–100, else mark unmeasurable. */
@@ -378,6 +397,8 @@ export async function POST(req: Request): Promise<Response> {
         ...(orchestratorProvider ? { provider: orchestratorProvider } : {}),
       })
 
+      const supplements = sanitizeJejuSupplements(body.supplements)
+
       const state: DeliberateState = {
         question,
         snapshot,
@@ -388,6 +409,7 @@ export async function POST(req: Request): Promise<Response> {
         // has its own brief route. Force binary so the ballot always runs when
         // consensus < 85. plan.questionType is left untouched on the plan object.
         questionType: 'binary',
+        ...(supplements ? { supplements } : {}),
       }
 
       const ins = await supabaseAdmin
@@ -477,6 +499,7 @@ export async function POST(req: Request): Promise<Response> {
   if (action === 'open') {
     try {
       const preamble = reportPreamble(state.report)
+      const supplementBlock = supplementPreamble(state.supplements)
       const results = await Promise.all(
         SYNOD_DEBATERS.map(async (provider) => {
           const userPrompt = [
@@ -485,6 +508,8 @@ export async function POST(req: Request): Promise<Response> {
             state.question,
             '',
             '위 안건에 대해, 사전 분석 리포트를 근거로 당신의 독립적이고 명확한 의견을 제시하세요.',
+            // Appended ONLY when the user attached material.
+            ...(supplementBlock ? ['', supplementBlock] : []),
           ].join('\n')
           const { text } = await callProvider({
             provider,
@@ -547,6 +572,7 @@ export async function POST(req: Request): Promise<Response> {
         ? null
         : SYNOD_DEBATERS[roundNumber % SYNOD_DEBATERS.length]!
 
+      const supplementBlock = supplementPreamble(state.supplements)
       const currentRoundTurns: SynodTurn[] = []
       for (const provider of SYNOD_DEBATERS) {
         const isRedTeam = redTeamProvider !== null && provider === redTeamProvider
@@ -559,7 +585,9 @@ export async function POST(req: Request): Promise<Response> {
           currentRoundTurns,
           anonymize: false,
         })
-        const userPrompt = [reportPreamble(state.report), ctx.text].filter((s) => s !== '').join('\n')
+        const userPrompt = [reportPreamble(state.report), ctx.text, supplementBlock]
+          .filter((s) => s !== '')
+          .join('\n')
         const { text } = await callProvider({
           provider,
           systemPrompt: turnSystemPrompt(provider, isRedTeam, roundNumber, roleForProvider(state.plan, provider)),
@@ -781,6 +809,7 @@ export async function POST(req: Request): Promise<Response> {
         deliberation,
         brief,
         vote,
+        ...(state.supplements ? { supplements: state.supplements } : {}),
       })
 
       state.verdict = verdict
