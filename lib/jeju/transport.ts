@@ -77,8 +77,57 @@ const FALLBACK_MAINLAND: { id: string; name: string }[] = [
   { id: 'NAARKJJ', name: '광주' },
 ]
 
-/** Port-name keywords that mark a port as Jeju-side (from getPortList). */
-const JEJU_PORT_KEYWORDS = ['제주', '성산', '추자', '한림', '화순', '우도', '애월', '서귀포', '모슬포', '도두', '이호']
+/**
+ * Non-Jeju place tokens. Checked FIRST, against the full raw name, and they win
+ * over the allowlist — GetPortList uses "<포트>_<지역>" names, so 경남 통영시의
+ * 우도 arrives as '우도_통영' and would otherwise pass a naive '우도' match.
+ * Any port or sailing endpoint containing one of these is mainland traffic.
+ */
+const NON_JEJU_TOKENS = [
+  '통영', '사량', '삼천포', '여수', '완도', '목포', '녹동', '고흥', '진도', '해남',
+  '보길', '노화', '청산', '거문', '장흥', '신안', '부산', '인천', '거제', '남해',
+  '창원', '마산', '광양', '포항', '후포', '울릉', '백령', '연평', '덕적', '자월',
+  '영흥', '격포', '군산', '대천', '보령', '안흥', '태안', '서산', '강화', '옹진',
+]
+
+/**
+ * Hard-blocked on SAILING rows, on either endpoint. NON_JEJU_TOKENS above is
+ * the port-resolution veto and is deliberately broad; a sailing may legitimately
+ * arrive at 완도·목포·녹동·진도·삼천포 (제주 출발 실제 여객선), but never at 통영·사량
+ * — the 경남 연안 ports whose lookalike names (우도_통영, 수우도) caused the
+ * original mis-filtering.
+ */
+const BLOCKED_SAILING_TOKENS = ['통영', '사량']
+
+/**
+ * Jeju port allowlist. ANCHORED patterns, never bare substrings: '수우도'
+ * (경남 사량면) must not satisfy the 우도 rule, so the name has to START with a
+ * known Jeju port token. Matched against the base name (the part before a
+ * '_' / '·' / '-' region suffix) after the exclusion pass above.
+ *
+ * Covers 제주항·성산포항·상하추자·한림항·화순항·우도(천진/하우목동)·도두항·애월항·
+ * 서귀포항·모슬포(운진항)·마라도·가파도·비양도·종달리.
+ */
+const JEJU_PORT_PATTERNS: RegExp[] = [
+  /^제주/,        // 제주항, 제주연안여객터미널
+  /^성산/,        // 성산포항
+  /^(상|하)?추자/, // 추자도, 상추자, 하추자
+  /^한림/,        // 한림항 (비양도 기점)
+  /^화순/,        // 화순항 (안덕면)
+  /^우도/,        // 우도 — '수우도'는 앵커 때문에 매칭되지 않음
+  /^천진/,        // 우도 천진항
+  /^하우목동/,     // 우도 하우목동항
+  /^도두/,        // 도두항
+  /^애월/,        // 애월항
+  /^서귀포/,      // 서귀포항
+  /^모슬포/,      // 모슬포항
+  /^운진/,        // 대정 운진항 (마라도·가파도 기점)
+  /^마라/,        // 마라도 살레덕선착장
+  /^가파/,        // 가파도 상동항
+  /^비양/,        // 비양도
+  /^종달/,        // 종달항
+  /^이호/,        // 이호항
+]
 
 /** Default Jeju City map center (제주시청) for the bus board when no stop given. */
 const DEFAULT_BUS_LAT = 33.4996
@@ -86,7 +135,16 @@ const DEFAULT_BUS_LNG = 126.5312
 const MAX_BUS_STATIONS = 2
 const MAX_BUS_ROWS = 10
 const MAX_FLIGHTS = 20
-const MAX_FERRY_PORTS = 4
+/**
+ * Safety cap only. The old value (4) silently truncated the allowlist and let
+ * whichever mainland ports sorted first monopolise the section; the allowlist
+ * itself is now the filter, so this just bounds the fan-out. GetPortList
+ * currently yields 16 Jeju ports out of ~749 — 24 leaves room for new berths
+ * without the cap ever becoming the de-facto filter again.
+ */
+const MAX_FERRY_PORTS = 24
+/** Ports queried per wave — keeps the TAGO shared session pool from tripping. */
+const FERRY_PORT_CHUNK = 6
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -570,6 +628,35 @@ interface JejuPort {
   nodeNm: string
 }
 
+/** Compact a port name for matching: drop whitespace and bracket decorations. */
+function normalizePortName(raw: string): string {
+  return raw.replace(/\s+/g, '').replace(/[()[\]（）]/g, '')
+}
+
+/** Base name = the part before a '_' / '·' / '-' / '/' region suffix. */
+function portBaseName(raw: string): string {
+  const compact = normalizePortName(raw)
+  const [base] = compact.split(/[_·\-/]/)
+  return base || compact
+}
+
+/** True when the name carries a mainland/non-Jeju place token. */
+function isNonJejuName(raw: string): boolean {
+  const compact = normalizePortName(raw)
+  return NON_JEJU_TOKENS.some((tok) => compact.includes(tok))
+}
+
+/**
+ * Strict Jeju port test: mainland tokens veto first, then the base name must
+ * START with an allowlisted Jeju port token. '수우도' and '우도_통영' both fail.
+ */
+function isJejuPortName(raw: string): boolean {
+  if (!raw) return false
+  if (isNonJejuName(raw)) return false
+  const base = portBaseName(raw)
+  return JEJU_PORT_PATTERNS.some((re) => re.test(base))
+}
+
 async function resolveJejuPorts(key: string): Promise<JejuPort[]> {
   // GetPortList totalCount can be ~750; fetch all in one call by requesting 1000.
   const items = await fetchTago('ship-port-list', portListUrl(key))
@@ -578,13 +665,15 @@ async function resolveJejuPorts(key: string): Promise<JejuPort[]> {
     console.log('[transport] ship-port sample →', JSON.stringify(items[0]).slice(0, 400))
   }
   const ports: JejuPort[] = []
+  const seen = new Set<string>()
   for (const it of items) {
     const nodeNm = pick(it, ['nodeNm', 'nodenm', 'portNm', 'portnm', 'trmnlNm', 'trminlNm', 'nodeName'])
     const nodeId = pick(it, ['nodeId', 'nodeid', 'portId', 'portid', 'trmnlId', 'trminlId'])
     if (!nodeNm || !nodeId) continue
-    if (JEJU_PORT_KEYWORDS.some((kw) => nodeNm.includes(kw))) {
-      ports.push({ nodeId, nodeNm })
-    }
+    if (!isJejuPortName(nodeNm)) continue
+    if (seen.has(nodeId)) continue
+    seen.add(nodeId)
+    ports.push({ nodeId, nodeNm })
   }
   return ports
 }
@@ -603,20 +692,55 @@ function toFerryRow(raw: Record<string, unknown>, fallbackDep: string): FerryRow
   }
 }
 
+/**
+ * Sailing-level guard.
+ *
+ * Rows are always OUTBOUND from an allowlisted Jeju port (we query by
+ * depNodeId), so the departure must still look Jeju — that is the net which
+ * catches 수우도→사량_내지 and 우도_통영→통영 if a port ever slips through
+ * resolveJejuPorts(). The arrival may be mainland: 제주→완도·목포·녹동·진도 are
+ * genuine Jeju coastal routes and residents need them.
+ *
+ * Exception: the 경남 연안 family (통영·사량·삼천포) that produced the original bug
+ * stays barred on EITHER endpoint, no matter what the other side says.
+ */
+function isAllowedSailing(row: FerryRow): boolean {
+  const dep = normalizePortName(row.dep)
+  const arr = normalizePortName(row.arr)
+  if (BLOCKED_SAILING_TOKENS.some((tok) => dep.includes(tok) || arr.includes(tok))) return false
+  return isJejuPortName(row.dep)
+}
+
+/** Stable identity for a sailing — two Jeju ports can list the same crossing. */
+function ferryRowKey(row: FerryRow): string {
+  return `${normalizePortName(row.dep)}|${normalizePortName(row.arr)}|${row.schedTime ?? ''}|${row.route}`
+}
+
 async function fetchFerry(key: string, ymd: string, errors: string[]): Promise<FerryRow[]> {
   const ports = await resolveJejuPorts(key)
   if (ports.length === 0) throw new Error('no Jeju ports resolved from getPortList')
 
-  console.log(`[transport] Jeju ports: ${ports.map((p) => `${p.nodeNm}:${p.nodeId}`).join(', ')}`)
+  console.log(`[transport] Jeju ports (${ports.length}): ${ports.map((p) => `${p.nodeNm}:${p.nodeId}`).join(', ')}`)
 
   const chosen = ports.slice(0, MAX_FERRY_PORTS)
-  const settled = await Promise.allSettled(
-    chosen.map((p) => fetchTago('ship-op', shipOpUrl(key, p.nodeId, ymd))),
-  )
+  if (chosen.length < ports.length) {
+    console.warn(`[transport] ferry port cap hit — querying ${chosen.length}/${ports.length}`)
+  }
+
+  // Chunked fan-out: TAGO's shared session pool rejects large parallel bursts.
+  const settled: PromiseSettledResult<Record<string, unknown>[]>[] = []
+  for (let i = 0; i < chosen.length; i += FERRY_PORT_CHUNK) {
+    const wave = chosen.slice(i, i + FERRY_PORT_CHUNK)
+    settled.push(
+      ...(await Promise.allSettled(wave.map((p) => fetchTago('ship-op', shipOpUrl(key, p.nodeId, ymd))))),
+    )
+  }
 
   const rows: FerryRow[] = []
   let anySuccess = false
   let loggedSample = false
+  let dropped = 0
+  const seen = new Set<string>()
   settled.forEach((res, i) => {
     const port = chosen[i]
     if (res.status === 'fulfilled') {
@@ -625,13 +749,25 @@ async function fetchFerry(key: string, ymd: string, errors: string[]): Promise<F
         console.log('[transport] ship-op sample →', JSON.stringify(res.value[0]).slice(0, 400))
         loggedSample = true
       }
-      rows.push(...res.value.map((it) => toFerryRow(it, port.nodeNm)))
+      for (const it of res.value) {
+        const row = toFerryRow(it, port.nodeNm)
+        if (!isAllowedSailing(row)) {
+          dropped += 1
+          continue
+        }
+        const dedupeKey = ferryRowKey(row)
+        if (seen.has(dedupeKey)) continue
+        seen.add(dedupeKey)
+        rows.push(row)
+      }
     } else {
       errors.push(`ferry(${port.nodeNm}): ${res.reason instanceof Error ? res.reason.message : String(res.reason)}`)
     }
   })
 
   if (!anySuccess) throw new Error('all Jeju ferry ports failed')
+
+  console.log(`[transport] ferry sailings: ${rows.length} kept, ${dropped} non-Jeju dropped`)
 
   return rows.sort((a, b) => {
     const am = hhmmToMinutes(a.schedTime) ?? 9999
