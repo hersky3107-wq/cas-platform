@@ -26,8 +26,8 @@ export default function JejuResidentGeneralPage() {
       theme="resident"
       title={t.practicalTitle}
       tagline="제주 생활 · 실시간 정보"
-      backHref="/jeju/resident"
-      backLabel={t.backToResident}
+      backHref="/jeju"
+      backLabel={t.backToJejuLobby}
     >
       <div className="grid grid-cols-2 gap-[var(--jeju-gap)] sm:grid-cols-3">
         {CHIPS.map((chip) => (

@@ -20,8 +20,8 @@ export default function JejuResidentAssistantPage() {
       theme="resident"
       title={t.assistantTitle}
       tagline="쉽고 간단한 안내"
-      backHref="/jeju/resident"
-      backLabel={t.backToResident}
+      backHref="/jeju"
+      backLabel={t.backToJejuLobby}
     >
       {/* 2-col grid — big tap targets, very large text, strong contrast */}
       <div className="grid grid-cols-2 gap-[var(--jeju-gap)]">

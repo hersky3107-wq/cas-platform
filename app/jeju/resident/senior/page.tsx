@@ -175,8 +175,8 @@ export default function JejuResidentSeniorPage() {
       </div>
 
       <div style={styles.topBar}>
-        <Link href="/jeju/resident" style={styles.backLink} aria-label="도민 홈으로">
-          ← 도민
+        <Link href="/jeju" style={styles.backLink} aria-label="제주 홈으로">
+          ← 제주
         </Link>
         {ttsSupported && (
           <button
