@@ -49,7 +49,7 @@ import {
  * (NO trailing "Service"). Operations use capital-G (GetArprtList, etc.).
  * Auth: lowercase serviceKey, same encoding form as the bus call.
  */
-const TAGO_BASE = 'https://apis.data.go.kr/1613000'
+const TAGO_BASE = 'http://apis.data.go.kr/1613000'
 const FLIGHT_LIST = `${TAGO_BASE}/DmstcFlightNvgInfo/GetArprtList`
 const FLIGHT_OP   = `${TAGO_BASE}/DmstcFlightNvgInfo/GetFlightOpratInfoList`
 const SHIP_PORT_LIST = `${TAGO_BASE}/DmstcShipNvgInfo/GetPortList`
@@ -202,12 +202,9 @@ export interface TransportOptions {
 // ── Key + fetch helpers (mirror marine.ts / weather-alert.ts) ─────────────────
 
 function serviceKey(): string {
-  return (
-    process.env.JEJU_DATAGO_KEY ??
-    process.env.DATA_GO_KR_KEY ??
-    process.env.KPX_SERVICE_KEY ??
-    ''
-  )
+  // Match lib/jeju/bus.ts exactly — bus never reads JEJU_DATAGO_KEY; a stale
+  // JEJU_DATAGO_KEY on Vercel was causing airport/ferry code-10 while bus worked.
+  return process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
 }
 
 function masked(url: string): string {
