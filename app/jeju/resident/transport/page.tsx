@@ -3,22 +3,32 @@
 /**
  * 교통 — Jeju resident transport chip.
  *
- * Data: GET /api/domin/transport (bus + airport + ferry + Perplexity context)
+ * Data sources (two, deliberately split):
+ *   - BUS: the shared Jeju bus routes (/api/jeju/bus/nearby|arrivals|route),
+ *     the same endpoints the senior (/jeju/resident/bus) and tourist bus panels
+ *     use. Location-aware: GPS → nearest stop, with a stop switcher and a route
+ *     -number search. Only TYPES are imported from lib/jeju/bus.ts (erased at
+ *     compile time) — the server-only module is never pulled into the client.
+ *   - AIRPORT / FERRY / CONTEXT: GET /api/domin/transport. Its `bus` array is
+ *     intentionally ignored here (it was a hardcoded-제주시청 merged board with
+ *     no stop selection); the live bus section above replaces it.
  *
  * Layout (top → bottom):
- *   1. 🚌 버스  — next arrivals sorted soonest-first
+ *   1. 🚌 버스  — 가까운 정류소 (GPS/앵커) + 도착 정보 + 버스 번호 찾기
  *   2. ✈️ 제주공항 — 출발/도착 tabs, ~10 rows near current time
  *   3. ⛴️ 여객선 — compact route list
  *   4. 생활 교통 요약 — Perplexity context + provenance
  *   5. 🔊 읽어주기 (ko-KR) + source credit
  *
  * Accessibility mirrors haenyeo/weather chips: ≥20px body, ≥48px targets,
- * ko-KR TTS. Korean-first hardcoded strings; no i18n hook.
+ * ko-KR TTS. Adult density — NOT the senior page's oversized type scale.
+ * Korean-first hardcoded strings; no i18n hook.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FriendlyErrors } from '@/components/jeju/FriendlyErrors'
+import type { BusStation, BusArrival, BusRoute } from '@/lib/jeju/bus'
 
 // ── Design tokens (resident palette — identical to weather/haenyeo) ───────────
 
@@ -50,6 +60,11 @@ const C = {
 
 // ── API types ─────────────────────────────────────────────────────────────────
 
+/**
+ * Legacy merged bus board still returned by /api/domin/transport. Kept in the
+ * payload type for accuracy, but NOT rendered — the live bus section uses the
+ * /api/jeju/bus/* routes instead.
+ */
 interface BusRow {
   route: string
   arrivalMin: number
@@ -98,7 +113,45 @@ interface TransportPayload {
 
 type TransportResult = TransportPayload | { ok: false; error: string }
 
+// ── Bus API types (shared /api/jeju/bus/* routes) ─────────────────────────────
+
+type NearbyResult = { ok: true; data: BusStation[] } | { ok: false; error: string }
+type ArrivalsResult = { ok: true; data: BusArrival[] } | { ok: false; error: string }
+type RouteResult = { ok: true; data: BusRoute } | { ok: false; error: string }
+
+type BusTab = 'nearby' | 'route'
+type GpsState = 'idle' | 'locating' | 'ok' | 'denied'
+
+interface Anchor {
+  label: string
+  lat: number
+  lng: number
+}
+
+/** No-GPS fallback anchors — same coordinates the senior bus page uses. */
+const ANCHORS: Anchor[] = [
+  { label: '제주시청', lat: 33.4996, lng: 126.5312 },
+  { label: '제주버스터미널', lat: 33.4996, lng: 126.5135 },
+  { label: '제주공항', lat: 33.5063, lng: 126.4929 },
+  { label: '동문시장', lat: 33.5125, lng: 126.5267 },
+  { label: '서귀포시청', lat: 33.2542, lng: 126.56 },
+  { label: '중문', lat: 33.2496, lng: 126.4116 },
+]
+
+/** Anchor used automatically when geolocation is denied or unavailable. */
+const DEFAULT_ANCHOR = ANCHORS[0]
+
+/** Nearby stations kept in the switcher. */
+const MAX_NEARBY_STATIONS = 12
+const ARRIVAL_REFRESH_MS = 30_000
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Seconds until arrival → compact Korean label. */
+function fmtArrival(sec: number): string {
+  if (sec <= 60) return '곧 도착'
+  return `${Math.round(sec / 60)}분 후`
+}
 
 function fmtRetrieval(meta: ContextMeta): string {
   const date = meta.retrievedAt.slice(0, 10)
@@ -128,6 +181,23 @@ export default function TransportPage() {
   const [ttsSupported, setTtsSupported] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+
+  // ── Bus section state (independent of /api/domin/transport) ────────────────
+  const [busTab, setBusTab] = useState<BusTab>('nearby')
+  const [gpsState, setGpsState] = useState<GpsState>('idle')
+  /** Label of whatever the nearby search was measured from ('내 위치' or an anchor). */
+  const [originLabel, setOriginLabel] = useState<string>('내 위치')
+  const [stations, setStations] = useState<BusStation[] | null>(null)
+  const [loadingStations, setLoadingStations] = useState(false)
+  const [activeStation, setActiveStation] = useState<BusStation | null>(null)
+  const [busArrivals, setBusArrivals] = useState<BusArrival[] | null>(null)
+  const [loadingArrivals, setLoadingArrivals] = useState(false)
+  const [showAllStations, setShowAllStations] = useState(false)
+  const [routeNo, setRouteNo] = useState('')
+  const [route, setRoute] = useState<BusRoute | null>(null)
+  const [loadingRoute, setLoadingRoute] = useState(false)
+  const [routeError, setRouteError] = useState<string | null>(null)
+  const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) setTtsSupported(true)
@@ -172,6 +242,132 @@ export default function TransportPage() {
 
   useEffect(() => { void fetchData() }, [fetchData])
 
+  // ── Bus: nearby stations / arrivals / route search ─────────────────────────
+
+  const clearRefresh = useCallback(() => {
+    if (refreshTimer.current) {
+      clearInterval(refreshTimer.current)
+      refreshTimer.current = null
+    }
+  }, [])
+
+  useEffect(() => () => clearRefresh(), [clearRefresh])
+
+  const fetchArrivals = useCallback(async (station: BusStation, opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoadingArrivals(true)
+      setBusArrivals(null)
+    }
+    setActiveStation(station)
+    try {
+      const res = await fetch('/api/jeju/bus/arrivals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: station.nodeId }),
+      })
+      const json = (await res.json()) as ArrivalsResult
+      setBusArrivals(json.ok ? json.data : [])
+    } catch {
+      setBusArrivals([])
+    } finally {
+      setLoadingArrivals(false)
+    }
+  }, [])
+
+  const loadStations = useCallback(
+    async (lat: number, lng: number, label: string) => {
+      setLoadingStations(true)
+      setStations(null)
+      setActiveStation(null)
+      setBusArrivals(null)
+      setShowAllStations(false)
+      setOriginLabel(label)
+      try {
+        const res = await fetch('/api/jeju/bus/nearby', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng }),
+        })
+        const json = (await res.json()) as NearbyResult
+        if (json.ok && json.data.length > 0) {
+          const list = json.data.slice(0, MAX_NEARBY_STATIONS)
+          setStations(list)
+          void fetchArrivals(list[0])
+        } else {
+          setStations([])
+        }
+      } catch {
+        setStations([])
+      } finally {
+        setLoadingStations(false)
+      }
+    },
+    [fetchArrivals],
+  )
+
+  /** GPS → nearest stop; falls back to the default anchor when unavailable. */
+  const locate = useCallback(() => {
+    clearRefresh()
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGpsState('denied')
+      void loadStations(DEFAULT_ANCHOR.lat, DEFAULT_ANCHOR.lng, DEFAULT_ANCHOR.label)
+      return
+    }
+    setGpsState('locating')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsState('ok')
+        void loadStations(pos.coords.latitude, pos.coords.longitude, '내 위치')
+      },
+      () => {
+        setGpsState('denied')
+        void loadStations(DEFAULT_ANCHOR.lat, DEFAULT_ANCHOR.lng, DEFAULT_ANCHOR.label)
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    )
+  }, [clearRefresh, loadStations])
+
+  useEffect(() => { locate() }, [locate])
+
+  // Auto-refresh the open station's arrivals every 30s.
+  useEffect(() => {
+    clearRefresh()
+    if (!activeStation) return
+    refreshTimer.current = setInterval(() => {
+      void fetchArrivals(activeStation, { silent: true })
+    }, ARRIVAL_REFRESH_MS)
+    return clearRefresh
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStation?.nodeId])
+
+  const searchRoute = useCallback(async () => {
+    const no = routeNo.trim()
+    if (!no || loadingRoute) return
+    setLoadingRoute(true)
+    setRouteError(null)
+    setRoute(null)
+    try {
+      const res = await fetch('/api/jeju/bus/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routeNo: no }),
+      })
+      const json = (await res.json()) as RouteResult
+      if (json.ok) setRoute(json.data)
+      else {
+        setRouteError(
+          json.error === 'NO_ROUTE'
+            ? '그 번호의 버스를 찾지 못했어요. 번호를 다시 확인해 주세요.'
+            : '지금은 노선 정보를 불러올 수 없어요. 잠시 후 다시 시도해 주세요.',
+        )
+      }
+    } catch {
+      setRouteError('연결에 문제가 있어요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setLoadingRoute(false)
+    }
+  }, [routeNo, loadingRoute])
+
   const stopSpeaking = useCallback(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try { window.speechSynthesis.cancel() } catch { /* no-op */ }
@@ -179,29 +375,32 @@ export default function TransportPage() {
     setSpeaking(false)
   }, [])
 
-  const buildTts = useCallback((d: TransportPayload): string => {
+  const buildTts = useCallback((d: TransportPayload | null): string => {
     const parts: string[] = ['제주 교통 안내입니다.']
-    // Next bus
-    if (d.bus.length > 0) {
-      const b = d.bus[0]
-      parts.push(`버스 ${b.route}번이 ${b.arrivalMin}분 후 도착합니다. ${b.stopName} 정류장입니다.`)
+    // Next bus at the selected stop (live /api/jeju/bus/arrivals data)
+    if (activeStation && busArrivals && busArrivals.length > 0) {
+      const a = busArrivals[0]
+      const when = a.arrTimeSec <= 60 ? '곧' : `${Math.round(a.arrTimeSec / 60)}분 후`
+      parts.push(`${activeStation.nodeNm} 정류장, ${a.routeNo}번 버스가 ${when} 도착합니다. ${a.stopsAway}정거장 전입니다.`)
+    } else if (activeStation) {
+      parts.push(`${activeStation.nodeNm} 정류장에 지금 오는 버스가 없습니다.`)
     } else {
       parts.push('버스 정보가 없습니다.')
     }
     // Disrupted flights
     const disrupted = [
-      ...(d.airport?.departures ?? []),
-      ...(d.airport?.arrivals ?? []),
+      ...(d?.airport?.departures ?? []),
+      ...(d?.airport?.arrivals ?? []),
     ].filter(f => f.status.includes('지연') || f.status.includes('결항'))
     if (disrupted.length > 0) {
       parts.push(`항공 특이사항: ${disrupted.map(f => `${f.flightId} ${f.status}`).join(', ')}.`)
     }
     return parts.join(' ')
-  }, [])
+  }, [activeStation, busArrivals])
 
   const onSpeak = useCallback(() => {
     if (speaking) { stopSpeaking(); return }
-    if (!data || typeof window === 'undefined') return
+    if (typeof window === 'undefined') return
     try {
       window.speechSynthesis.cancel()
       setSpeaking(true)
@@ -230,18 +429,187 @@ export default function TransportPage() {
         </button>
         <h1 style={S.pageTitle}>🚌 교통</h1>
         <button type="button" className="rt-ctrl" style={S.refreshBtn}
-          onClick={() => { stopSpeaking(); void fetchData() }}
+          onClick={() => { stopSpeaking(); locate(); void fetchData() }}
           aria-label="새로 고침" disabled={loading}>
           {loading ? '⏳' : '🔄'}
         </button>
       </div>
 
       <div style={S.body}>
-        {/* ── Loading ────────────────────────────────────────────────────── */}
+        {/* ── 1. 버스 (live — /api/jeju/bus/*, independent of the transport call) ── */}
+        <section style={S.card} aria-label="버스 도착 정보">
+          <h2 style={S.sectionTitle}>🚌 버스</h2>
+
+          <div style={S.tabRow} role="group" aria-label="버스 보기 방식 선택">
+            {([['nearby', '📍 가까운 정류소'], ['route', '🔢 버스 번호 찾기']] as [BusTab, string][]).map(([id, label]) => (
+              <button key={id} type="button" className="rt-tab"
+                style={busTab === id ? { ...S.tab, ...S.tabActive } : S.tab}
+                onClick={() => setBusTab(id)}
+                aria-pressed={busTab === id}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── 가까운 정류소 ─────────────────────────────────────────── */}
+          {busTab === 'nearby' && (
+            <>
+              {gpsState === 'locating' && (
+                <p style={S.busNote} aria-live="polite">📍 내 위치를 확인하는 중…</p>
+              )}
+
+              {gpsState === 'denied' && (
+                <p style={S.busNote}>
+                  위치를 확인할 수 없어 <strong>{DEFAULT_ANCHOR.label}</strong> 기준으로 보여드려요.
+                </p>
+              )}
+
+              {loadingStations && (
+                <p style={S.busNote} aria-live="polite">가까운 정류소를 찾는 중…</p>
+              )}
+
+              {!loadingStations && stations && stations.length === 0 && (
+                <p style={S.empty}>가까운 정류소를 찾지 못했어요.</p>
+              )}
+
+              {activeStation && (
+                <div style={S.stationHead}>
+                  <div style={S.stationHeadText}>
+                    <span style={S.stationName}>{activeStation.nodeNm}</span>
+                    {typeof activeStation.distance === 'number' && (
+                      <span style={S.stationDist}>{originLabel}에서 약 {activeStation.distance}m</span>
+                    )}
+                  </div>
+                  <button type="button" className="rt-ctrl" style={S.stationRefresh}
+                    onClick={() => void fetchArrivals(activeStation)}
+                    aria-label="도착 정보 새로 고침">🔄</button>
+                </div>
+              )}
+
+              {loadingArrivals ? (
+                <p style={S.busNote} aria-live="polite">도착 정보를 확인하는 중…</p>
+              ) : activeStation && busArrivals && busArrivals.length > 0 ? (
+                <div style={S.busList} role="list" aria-live="polite">
+                  {busArrivals.map((a, i) => (
+                    <div key={`${a.routeId}-${i}`} role="listitem" style={S.busRow}>
+                      <span style={S.busRoute}>{a.routeNo}</span>
+                      <div style={S.busMeta}>
+                        <span style={S.busArrival}>{fmtArrival(a.arrTimeSec)}</span>
+                        <span style={S.busDetail}>
+                          남은 정거장 {a.stopsAway}개{a.routeType ? ` · ${a.routeType}` : ''}
+                        </span>
+                      </div>
+                      {a.lowFloor && (
+                        <span style={S.lowFloorBadge} aria-label="저상버스">저상</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : activeStation ? (
+                <p style={S.empty}>지금 오는 버스가 없어요. 잠시 후 새로 고쳐 보세요.</p>
+              ) : null}
+
+              {activeStation && <p style={S.autoRefreshNote}>30초마다 자동으로 새로 고쳐요</p>}
+
+              {/* 가까운 다른 정류소 */}
+              {stations && stations.length > 1 && (
+                <div style={S.switcher}>
+                  <button type="button" className="rt-ctrl" style={S.switcherToggle}
+                    onClick={() => setShowAllStations(v => !v)}
+                    aria-expanded={showAllStations}>
+                    가까운 다른 정류소 {showAllStations ? '▲' : '▼'}
+                  </button>
+                  {showAllStations && (
+                    <div style={S.stationList} role="list">
+                      {stations.map(s => (
+                        <button key={s.nodeId} type="button" className="rt-station" role="listitem"
+                          style={s.nodeId === activeStation?.nodeId
+                            ? { ...S.stationBtn, ...S.stationBtnOn }
+                            : S.stationBtn}
+                          onClick={() => void fetchArrivals(s)}
+                          aria-label={`${s.nodeNm} 정류소 도착 정보 보기`}
+                          aria-pressed={s.nodeId === activeStation?.nodeId}>
+                          <span style={S.stationBtnName}>{s.nodeNm}</span>
+                          {typeof s.distance === 'number' && (
+                            <span style={S.stationBtnDist}>{s.distance}m</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 기준 위치 바꾸기 */}
+              <div style={S.anchorRow} role="group" aria-label="기준 위치 선택">
+                <button type="button" className="rt-chip" style={S.anchorChip}
+                  onClick={() => locate()} aria-label="내 위치로 정류소 찾기">📍 내 위치</button>
+                {ANCHORS.map(a => (
+                  <button key={a.label} type="button" className="rt-chip"
+                    style={originLabel === a.label ? { ...S.anchorChip, ...S.anchorChipOn } : S.anchorChip}
+                    onClick={() => void loadStations(a.lat, a.lng, a.label)}
+                    aria-pressed={originLabel === a.label}>
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* ── 버스 번호 찾기 ────────────────────────────────────────── */}
+          {busTab === 'route' && (
+            <>
+              <div style={S.routeInputRow}>
+                <input
+                  className="rt-input"
+                  style={S.routeInput}
+                  value={routeNo}
+                  onChange={e => setRouteNo(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') void searchRoute() }}
+                  placeholder="예: 240"
+                  inputMode="numeric"
+                  aria-label="버스 번호 입력"
+                />
+                <button type="button" className="rt-ctrl"
+                  style={routeNo.trim() && !loadingRoute ? S.searchBtn : { ...S.searchBtn, opacity: 0.45, cursor: 'not-allowed' }}
+                  onClick={() => void searchRoute()}
+                  disabled={!routeNo.trim() || loadingRoute}
+                  aria-disabled={!routeNo.trim() || loadingRoute}>
+                  🔍 찾기
+                </button>
+              </div>
+
+              {loadingRoute && <p style={S.busNote} aria-live="polite">노선을 찾는 중…</p>}
+              {!loadingRoute && routeError && <p style={S.routeErrorLine} role="alert">{routeError}</p>}
+
+              {!loadingRoute && route && (
+                <div style={S.routeWrap}>
+                  <div style={S.routeHead}>
+                    <span style={S.busRoute}>{route.routeNo}</span>
+                    {route.routeType && <span style={S.routeTypeBadge}>{route.routeType}</span>}
+                  </div>
+                  {route.startNode && route.endNode && (
+                    <p style={S.routeEnds}>{route.startNode} ↔ {route.endNode}</p>
+                  )}
+                  <ol style={S.stopList}>
+                    {route.stops.map((stop, i) => (
+                      <li key={`${stop.nodeId}-${i}`} style={S.stopItem}>
+                        <span style={S.stopSeq}>{stop.seq}</span>
+                        <span style={S.stopName}>{stop.nodeNm}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        {/* ── Loading (공항·여객선) ──────────────────────────────────────── */}
         {loading && (
           <div style={S.loadingBox} aria-live="polite" aria-busy="true">
             <span style={{ fontSize: 48 }} aria-hidden>⏳</span>
-            <p style={S.loadingText}>교통 정보 불러오는 중…</p>
+            <p style={S.loadingText}>공항·여객선 정보 불러오는 중…</p>
           </div>
         )}
 
@@ -257,33 +625,6 @@ export default function TransportPage() {
         {/* ── Main content ──────────────────────────────────────────────── */}
         {!loading && data && (
           <>
-            {/* ── 1. 버스 ────────────────────────────────────────────────── */}
-            <section style={S.card} aria-label="버스 도착 정보">
-              <h2 style={S.sectionTitle}>🚌 버스 다음 도착</h2>
-              {data.bus.length === 0 ? (
-                <p style={S.empty}>정보 없음</p>
-              ) : (
-                <div style={S.busList} role="list">
-                  {data.bus.map((b, i) => (
-                    <div key={i} role="listitem" style={S.busRow}>
-                      <span style={S.busRoute}>{b.route}</span>
-                      <div style={S.busMeta}>
-                        <span style={S.busArrival}>
-                          {b.arrivalMin}분 후
-                        </span>
-                        <span style={S.busDetail}>
-                          남은 정류장 {b.stopsLeft}개 · {b.stopName}
-                        </span>
-                      </div>
-                      {b.lowFloor && (
-                        <span style={S.lowFloorBadge} aria-label="저상버스">저상</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
             {/* ── 2. 제주공항 ────────────────────────────────────────────── */}
             <section style={S.card} aria-label="제주공항 운항 정보">
               <h2 style={S.sectionTitle}>✈️ 제주공항</h2>
@@ -372,8 +713,9 @@ export default function TransportPage() {
               <p style={S.sourceCredit}>자료: 국토교통부(TAGO) + 🔍 검색</p>
             </div>
 
-            {/* API errors (non-fatal, soft display) */}
-            <FriendlyErrors errors={data.errors} />
+            {/* API errors (non-fatal, soft display).
+                bus* entries are dropped: that section no longer reads this payload. */}
+            <FriendlyErrors errors={data.errors.filter(e => !/^bus/i.test(e))} />
           </>
         )}
       </div>
@@ -573,6 +915,240 @@ const S: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap',
     alignSelf: 'center',
   },
+  // ── Bus: station head / switcher / anchors / route search (adult density) ──
+  busNote: {
+    fontSize: 17,
+    fontWeight: 600,
+    color: C.mutedInk,
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  stationHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    background: C.blueBg,
+    border: `1.5px solid ${C.blueBorder}`,
+    borderRadius: 12,
+    padding: '10px 14px',
+  },
+  stationHeadText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    flex: 1,
+    minWidth: 0,
+  },
+  stationName: {
+    fontSize: 21,
+    fontWeight: 800,
+    color: C.ink,
+    lineHeight: 1.3,
+    wordBreak: 'keep-all',
+  },
+  stationDist: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: C.mutedInk,
+    lineHeight: 1.3,
+  },
+  stationRefresh: {
+    minHeight: 44,
+    minWidth: 44,
+    fontSize: 18,
+    color: C.sea,
+    background: C.surface,
+    border: `2px solid ${C.sea}`,
+    borderRadius: 10,
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  autoRefreshNote: {
+    fontSize: 13,
+    color: C.mutedInk,
+    margin: 0,
+    lineHeight: 1.4,
+  },
+  switcher: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  switcherToggle: {
+    minHeight: 48,
+    fontSize: 17,
+    fontWeight: 700,
+    color: C.sea,
+    background: C.surface,
+    border: `2px solid ${C.mutedBorder}`,
+    borderRadius: 12,
+    cursor: 'pointer',
+    padding: '8px 14px',
+    textAlign: 'left',
+  },
+  stationList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  stationBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    width: '100%',
+    minHeight: 48,
+    background: C.mutedBg,
+    border: `1.5px solid ${C.mutedBorder}`,
+    borderRadius: 10,
+    padding: '8px 14px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    boxSizing: 'border-box',
+  },
+  stationBtnOn: {
+    background: C.blueBg,
+    border: `2px solid ${C.sea}`,
+  },
+  stationBtnName: {
+    fontSize: 17,
+    fontWeight: 700,
+    color: C.ink,
+    wordBreak: 'keep-all',
+    lineHeight: 1.35,
+  },
+  stationBtnDist: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: C.mutedInk,
+    flexShrink: 0,
+  },
+  anchorRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  anchorChip: {
+    minHeight: 40,
+    fontSize: 15,
+    fontWeight: 700,
+    color: C.sea,
+    background: C.surface,
+    border: `1.5px solid ${C.mutedBorder}`,
+    borderRadius: 999,
+    cursor: 'pointer',
+    padding: '6px 14px',
+    whiteSpace: 'nowrap',
+  },
+  anchorChipOn: {
+    color: C.surface,
+    background: C.sea,
+    border: `1.5px solid ${C.seaStrong}`,
+  },
+  routeInputRow: {
+    display: 'flex',
+    gap: 10,
+  },
+  routeInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 52,
+    fontSize: 20,
+    fontWeight: 700,
+    color: C.ink,
+    background: C.surface,
+    border: `2px solid ${C.mutedBorder}`,
+    borderRadius: 12,
+    padding: '8px 14px',
+    boxSizing: 'border-box',
+    fontFamily: 'inherit',
+  },
+  searchBtn: {
+    minHeight: 52,
+    fontSize: 18,
+    fontWeight: 700,
+    color: C.surface,
+    background: C.sea,
+    border: 'none',
+    borderRadius: 12,
+    cursor: 'pointer',
+    padding: '8px 18px',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+  },
+  routeErrorLine: {
+    fontSize: 17,
+    fontWeight: 700,
+    color: C.red,
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  routeWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  routeHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  routeTypeBadge: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: C.blue,
+    background: C.blueBg,
+    border: `1.5px solid ${C.blueBorder}`,
+    borderRadius: 8,
+    padding: '4px 10px',
+  },
+  routeEnds: {
+    fontSize: 17,
+    fontWeight: 600,
+    color: C.inkSoft,
+    margin: 0,
+    lineHeight: 1.5,
+    wordBreak: 'keep-all',
+  },
+  stopList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    maxHeight: 420,
+    overflowY: 'auto',
+  },
+  stopItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    background: C.mutedBg,
+    borderRadius: 10,
+    padding: '8px 12px',
+  },
+  stopSeq: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    width: 30,
+    height: 30,
+    borderRadius: '50%',
+    background: C.blueBg,
+    fontSize: 14,
+    fontWeight: 800,
+    color: C.sea,
+  },
+  stopName: {
+    fontSize: 17,
+    fontWeight: 600,
+    color: C.ink,
+    flex: 1,
+    lineHeight: 1.35,
+    wordBreak: 'keep-all',
+  },
   // ── Airport tabs ──
   tabRow: {
     display: 'flex',
@@ -769,21 +1345,26 @@ const S: Record<string, React.CSSProperties> = {
 const GLOBAL_CSS = `
   .rt-back:focus-visible,
   .rt-ctrl:focus-visible,
-  .rt-tab:focus-visible {
+  .rt-tab:focus-visible,
+  .rt-station:focus-visible,
+  .rt-chip:focus-visible,
+  .rt-input:focus-visible {
     outline: 5px solid ${C.focus};
     outline-offset: 3px;
   }
+  .rt-input:focus { outline: 3px solid ${C.sea}; outline-offset: 0; border-color: ${C.seaStrong} !important; }
   .rt-back:hover { background: #EAF2FB; }
   .rt-ctrl:hover { background: #EAF2FB; }
   .rt-tab:hover { background: #EAF2FB; }
-  .rt-back, .rt-ctrl, .rt-tab {
+  .rt-station:hover, .rt-chip:hover { background: #EAF2FB; }
+  .rt-back, .rt-ctrl, .rt-tab, .rt-station, .rt-chip {
     transition: background 0.12s ease, transform 0.07s ease;
     -webkit-tap-highlight-color: transparent;
   }
   .rt-back:active, .rt-ctrl:active { transform: scale(0.97); }
-  .rt-tab:active { transform: scale(0.96); }
+  .rt-tab:active, .rt-station:active, .rt-chip:active { transform: scale(0.96); }
   @media (prefers-reduced-motion: reduce) {
-    .rt-back, .rt-ctrl, .rt-tab {
+    .rt-back, .rt-ctrl, .rt-tab, .rt-station, .rt-chip {
       transition: none !important;
       transform: none !important;
     }
