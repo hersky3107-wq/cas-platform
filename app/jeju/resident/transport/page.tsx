@@ -9,9 +9,9 @@
  *     use. Location-aware: GPS → nearest stop, with a stop switcher and a route
  *     -number search. Only TYPES are imported from lib/jeju/bus.ts (erased at
  *     compile time) — the server-only module is never pulled into the client.
- *   - AIRPORT / FERRY / CONTEXT: GET /api/domin/transport. Its `bus` array is
- *     intentionally ignored here (it was a hardcoded-제주시청 merged board with
- *     no stop selection); the live bus section above replaces it.
+ *   - AIRPORT / FERRY / CONTEXT: GET /api/domin/transport, sequenced AFTER the
+ *     bus section settles. Racing them starves TAGO (that route still fans out
+ *     bus+airport+ferry server-side). Its `bus` array is ignored in the UI.
  *
  * Layout (top → bottom):
  *   1. 🚌 버스  — 가까운 정류소 (GPS/앵커) + 도착 정보 + 버스 번호 찾기
@@ -213,6 +213,13 @@ export default function TransportPage() {
     [],
   )
 
+  /**
+   * Airport / ferry / context only. Intentionally runs AFTER the live bus
+   * section settles — /api/domin/transport still calls TAGO bus + up to ~10
+   * flight ops + ~16 ferry ports, and racing that against /api/jeju/bus/*
+   * starves TAGO's shared session pool (senior/tourist never hit this race
+   * because they only call the bus routes).
+   */
   const fetchData = useCallback(async () => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
@@ -240,9 +247,12 @@ export default function TransportPage() {
     }
   }, [])
 
-  useEffect(() => { void fetchData() }, [fetchData])
-
   // ── Bus: nearby stations / arrivals / route search ─────────────────────────
+  // Request shapes match app/jeju/resident/bus/page.tsx byte-for-byte:
+  //   POST /api/jeju/bus/nearby   { lat, lng }
+  //   POST /api/jeju/bus/arrivals { nodeId }
+  //   POST /api/jeju/bus/route    { routeNo }
+  // with Content-Type: application/json and { ok, data } | { ok:false, error }.
 
   const clearRefresh = useCallback(() => {
     if (refreshTimer.current) {
@@ -265,8 +275,8 @@ export default function TransportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodeId: station.nodeId }),
       })
-      const json = (await res.json()) as ArrivalsResult
-      setBusArrivals(json.ok ? json.data : [])
+      const data = (await res.json()) as ArrivalsResult
+      setBusArrivals(data.ok ? data.data : [])
     } catch {
       setBusArrivals([])
     } finally {
@@ -288,11 +298,12 @@ export default function TransportPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lat, lng }),
         })
-        const json = (await res.json()) as NearbyResult
-        if (json.ok && json.data.length > 0) {
-          const list = json.data.slice(0, MAX_NEARBY_STATIONS)
+        const data = (await res.json()) as NearbyResult
+        if (data.ok && data.data.length > 0) {
+          const list = data.data.slice(0, MAX_NEARBY_STATIONS)
           setStations(list)
-          void fetchArrivals(list[0])
+          // Await the first board so TAGO isn't immediately hit by transport.
+          await fetchArrivals(list[0]!)
         } else {
           setStations([])
         }
@@ -305,29 +316,48 @@ export default function TransportPage() {
     [fetchArrivals],
   )
 
-  /** GPS → nearest stop; falls back to the default anchor when unavailable. */
-  const locate = useCallback(() => {
+  /**
+   * GPS → nearest stop; falls back to the default anchor when unavailable.
+   * Returns a Promise so callers can sequence airport/ferry AFTER bus settles.
+   */
+  const locate = useCallback((): Promise<void> => {
     clearRefresh()
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setGpsState('denied')
-      void loadStations(DEFAULT_ANCHOR.lat, DEFAULT_ANCHOR.lng, DEFAULT_ANCHOR.label)
-      return
-    }
-    setGpsState('locating')
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGpsState('ok')
-        void loadStations(pos.coords.latitude, pos.coords.longitude, '내 위치')
-      },
-      () => {
+    return new Promise((resolve) => {
+      const run = (lat: number, lng: number, label: string) => {
+        void loadStations(lat, lng, label).finally(resolve)
+      }
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
         setGpsState('denied')
-        void loadStations(DEFAULT_ANCHOR.lat, DEFAULT_ANCHOR.lng, DEFAULT_ANCHOR.label)
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
-    )
+        run(DEFAULT_ANCHOR.lat, DEFAULT_ANCHOR.lng, DEFAULT_ANCHOR.label)
+        return
+      }
+      setGpsState('locating')
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setGpsState('ok')
+          run(pos.coords.latitude, pos.coords.longitude, '내 위치')
+        },
+        () => {
+          setGpsState('denied')
+          run(DEFAULT_ANCHOR.lat, DEFAULT_ANCHOR.lng, DEFAULT_ANCHOR.label)
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+      )
+    })
   }, [clearRefresh, loadStations])
 
-  useEffect(() => { locate() }, [locate])
+  // Bus first (senior pattern), THEN airport/ferry — never in parallel.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await locate()
+      if (!cancelled) await fetchData()
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Auto-refresh the open station's arrivals every 30s.
   useEffect(() => {
@@ -352,11 +382,11 @@ export default function TransportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ routeNo: no }),
       })
-      const json = (await res.json()) as RouteResult
-      if (json.ok) setRoute(json.data)
+      const data = (await res.json()) as RouteResult
+      if (data.ok) setRoute(data.data)
       else {
         setRouteError(
-          json.error === 'NO_ROUTE'
+          data.error === 'NO_ROUTE'
             ? '그 번호의 버스를 찾지 못했어요. 번호를 다시 확인해 주세요.'
             : '지금은 노선 정보를 불러올 수 없어요. 잠시 후 다시 시도해 주세요.',
         )
@@ -374,6 +404,13 @@ export default function TransportPage() {
     }
     setSpeaking(false)
   }, [])
+
+  /** Header 🔄 — bus first, then airport/ferry (same order as mount). */
+  const refreshAll = useCallback(async () => {
+    stopSpeaking()
+    await locate()
+    await fetchData()
+  }, [stopSpeaking, locate, fetchData])
 
   const buildTts = useCallback((d: TransportPayload | null): string => {
     const parts: string[] = ['제주 교통 안내입니다.']
@@ -429,9 +466,9 @@ export default function TransportPage() {
         </button>
         <h1 style={S.pageTitle}>🚌 교통</h1>
         <button type="button" className="rt-ctrl" style={S.refreshBtn}
-          onClick={() => { stopSpeaking(); locate(); void fetchData() }}
-          aria-label="새로 고침" disabled={loading}>
-          {loading ? '⏳' : '🔄'}
+          onClick={() => { void refreshAll() }}
+          aria-label="새로 고침" disabled={loading || loadingStations}>
+          {loading || loadingStations ? '⏳' : '🔄'}
         </button>
       </div>
 
