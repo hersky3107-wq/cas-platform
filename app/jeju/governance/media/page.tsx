@@ -197,6 +197,19 @@ export default function JejuGovernanceMediaPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'governance' }),
       })
+      // Defensive parse: Vercel may return a non-JSON body (e.g. a timeout/
+      // platform error page) when the upstream fan-out exceeds maxDuration.
+      // Never feed that into res.json() — surface a fixed Korean message instead.
+      const contentType = res.headers.get('content-type') ?? ''
+      const isJson = contentType.toLowerCase().includes('application/json')
+      if (!res.ok || !isJson) {
+        // Drain the body so the connection can be reused, but do NOT parse it.
+        await res.text().catch(() => {})
+        setFetchError(
+          '언론 동향을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요. (서버 응답 지연 또는 오류)'
+        )
+        return
+      }
       const data = (await res.json()) as JejuMediaWatch
       setResult(data)
     } catch (e: unknown) {
