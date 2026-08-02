@@ -8,6 +8,8 @@ import {
   renderChairVerdict,
   runJejuMotionVote,
   JEJU_DEEP_DELIBERATION_TUNING,
+  DEBATE_SPEECH_MAX_TOKENS,
+  polishDebateTurnOutput,
   type JejuMeetingPlan,
   type JejuExecutedSearch,
   type JejuRevisedAnalysis,
@@ -80,9 +82,13 @@ const {
 
 const TABLE = 'jeju_deep_sessions'
 
-/** Completion caps — Korean needs headroom; turns are 8–10 sentences. */
-const OPENING_MAX_TOKENS = 1100
-const TURN_MAX_TOKENS = 1100
+/**
+ * Completion caps for debate SPEECH — shared with deep.ts so every provider
+ * (Anthropic included) gets the same headroom. Korean 8–10 sentence turns were
+ * truncating mid-sentence at 1100; DEBATE_SPEECH_MAX_TOKENS is the single source.
+ */
+const OPENING_MAX_TOKENS = DEBATE_SPEECH_MAX_TOKENS
+const TURN_MAX_TOKENS = DEBATE_SPEECH_MAX_TOKENS
 /**
  * The facilitator emits a structured JSON summary of ALL SYNOD_DEBATERS' turns
  * (consensusPoints + per-issue positions + nextDirective), in Korean. Korean +
@@ -552,7 +558,11 @@ export async function POST(req: Request): Promise<Response> {
       const turns: SynodTurn[] = []
       for (const { provider, text } of results) {
         if (!text || !text.trim()) continue
-        const a = parseActionTag(text)
+        // Strip speaker-label bleed + mid-sentence truncation before parsing
+        // ACTION/CLAIM — stored content (incl. vote transcripts) is the polished text.
+        const polished = polishDebateTurnOutput(text)
+        if (!polished) continue
+        const a = parseActionTag(polished)
         const c = parseClaim(a.content)
         turns.push({
           roundNumber: 1,
@@ -624,7 +634,10 @@ export async function POST(req: Request): Promise<Response> {
           maxCompletionTokens: TURN_MAX_TOKENS,
         })
         if (!text || !text.trim()) continue
-        const a = parseActionTag(text)
+        // Same polish as opening — strip bleed + mid-sentence stump before store.
+        const polished = polishDebateTurnOutput(text)
+        if (!polished) continue
+        const a = parseActionTag(polished)
         const c = parseClaim(a.content)
         currentRoundTurns.push({
           roundNumber,
