@@ -7,6 +7,8 @@ import {
   renderChairVerdict,
   runJejuMotionVote,
   JEJU_DEEP_DELIBERATION_TUNING,
+  DEBATE_SPEECH_MAX_TOKENS,
+  polishDebateTurnOutput,
   type JejuMeetingPlan,
   type JejuExecutedSearch,
   type JejuRevisedAnalysis,
@@ -87,10 +89,10 @@ const TABLE = 'motie_deep_sessions'
 
 /**
  * Completion caps — Korean needs headroom; turns are 8–10 sentences.
- * Raised 1100 → 1600 for B2G depth (flagship debaters, cost not a concern).
+ * DEBATE_SPEECH_MAX_TOKENS is the single shared source for opening + turn speech.
  */
-const OPENING_MAX_TOKENS = 1600
-const TURN_MAX_TOKENS = 1600
+const OPENING_MAX_TOKENS = DEBATE_SPEECH_MAX_TOKENS
+const TURN_MAX_TOKENS = DEBATE_SPEECH_MAX_TOKENS
 /**
  * The facilitator emits a structured JSON summary of EVERY debater's turn
  * (consensusPoints + per-issue positions + nextDirective), in Korean. Korean +
@@ -758,7 +760,21 @@ export async function POST(req: Request): Promise<Response> {
           )
           continue
         }
-        const a = parseActionTag(text)
+        // Strip speaker-label bleed + mid-sentence truncation before parsing
+        // ACTION/CLAIM — stored content (incl. vote transcripts) is the polished text.
+        const polished = polishDebateTurnOutput(text)
+        if (!polished) {
+          turns.push(
+            noResponseTurn({
+              provider,
+              roundNumber: 1,
+              isRedTeam: false,
+              reason: error || '빈 응답',
+            })
+          )
+          continue
+        }
+        const a = parseActionTag(polished)
         const c = parseClaim(a.content)
         turns.push({
           roundNumber: 1,
@@ -840,7 +856,15 @@ export async function POST(req: Request): Promise<Response> {
           )
           continue
         }
-        const a = parseActionTag(text)
+        // Same polish as opening — strip bleed + mid-sentence stump before store.
+        const polished = polishDebateTurnOutput(text)
+        if (!polished) {
+          currentRoundTurns.push(
+            noResponseTurn({ provider, roundNumber, isRedTeam, reason: error || '빈 응답' })
+          )
+          continue
+        }
+        const a = parseActionTag(polished)
         const c = parseClaim(a.content)
         currentRoundTurns.push({
           roundNumber,

@@ -1540,6 +1540,138 @@ export async function runJejuDeepFull(params?: {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// Debate speech polish + shared token budget (ported from lib/jeju/deep.ts;
+// gunpo-local copy — no import from lib/jeju).
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Per-turn completion budget for debate SPEECH (opening + rebuttal +
+ * convergence turns). Shared by EVERY debate provider — Korean 8–10 sentence
+ * turns were hitting the old 1100/1200 caps mid-sentence (esp. Anthropic).
+ * Facilitator / vote / chair budgets are intentionally separate.
+ */
+export const DEBATE_SPEECH_MAX_TOKENS = 2200
+
+/**
+ * Brand display names that appear in SYNOD-style speaker labels
+ * ("[DeepSeek (CHALLENGE)]"). Kept here (not imported from synod-debate) to
+ * avoid a deep ↔ synod-debate cycle; must stay in sync with PROVIDER_TO_BRAND.
+ */
+const DEBATE_SPEAKER_BRANDS = [
+  'ChatGPT',
+  'Claude',
+  'Gemini',
+  'Solar',
+  'EXAONE',
+  'Grok',
+  'DeepSeek',
+  'Mistral',
+  'Llama',
+] as const
+
+const DEBATE_SPEAKER_ACTIONS = [
+  'AGREE',
+  'CHALLENGE',
+  'SUPPLEMENT',
+  'REFRAME',
+  'STRESS-TEST',
+] as const
+
+/** Matches "[Brand (ACTION)]" / "[Brand (STRESS-TEST · CHALLENGE)]" labels. */
+const SPEAKER_LABEL_RE = new RegExp(
+  `\\[(?:${DEBATE_SPEAKER_BRANDS.join('|')})\\s*\\((?:${DEBATE_SPEAKER_ACTIONS.join('|')})(?:\\s*[·,]\\s*(?:${DEBATE_SPEAKER_ACTIONS.join('|')}))*\\)\\]`,
+  'i'
+)
+
+/**
+ * Pure output filter: strips foreign speaker-label bleed from a debate turn.
+ * Solar/EXAONE (and occasionally others) sometimes emit other participants'
+ * labels inside their own output — e.g. a line beginning "[DeepSeek (CHALLENGE)]".
+ *   - A line that is/starts with such a label → drop that line and everything after
+ *     (content after it belongs to a different speaker).
+ *   - A label mid-line → keep the prefix, cut the rest of the turn.
+ * Does NOT invent content; only removes bleed. Safe no-op when none present.
+ */
+export function sanitizeDebateTurnBleed(text: string): string {
+  if (!text) return text
+  const lines = text.split('\n')
+  const kept: string[] = []
+  for (const line of lines) {
+    const idx = line.search(SPEAKER_LABEL_RE)
+    if (idx === -1) {
+      kept.push(line)
+      continue
+    }
+    // Label at line start (or only whitespace before it) → cut the turn here.
+    if (idx === 0 || line.slice(0, idx).trim() === '') break
+    // Label mid-line → keep the speaker's own prefix, drop the rest of the turn.
+    kept.push(line.slice(0, idx).trimEnd())
+    break
+  }
+  return kept.join('\n').trim()
+}
+
+/** True when `text` already ends on a complete sentence (or a complete CLAIM line). */
+function endsOnCompleteSentence(text: string): boolean {
+  const t = text.trimEnd()
+  if (!t) return true
+  const lastLine = t.split('\n').pop() ?? ''
+  if (/^CLAIM:\s*\S.+\S\s*$/i.test(lastLine)) {
+    const body = t.replace(/\nCLAIM:\s*.+$/i, '').trimEnd()
+    return body === '' ? true : endsOnCompleteSentence(body)
+  }
+  // Latin/CJK punctuation, or a Hangul sentence closer at the end.
+  return /[.!?。…)"」』]\s*$/.test(t) || /(?:습니다|ㅂ니다|어요|아요|예요|까|죠|네|다|요)\s*$/.test(t)
+}
+
+/**
+ * If a turn was cut mid-sentence by the output cap, trim back to the last
+ * complete sentence boundary. Never leaves a dangling clause; never invents
+ * a closer. A trailing complete `CLAIM:` line is preserved when present.
+ * No-op when the text already ends cleanly.
+ */
+export function trimDebateTurnAtSentenceBoundary(text: string): string {
+  const raw = text.trimEnd()
+  if (!raw || endsOnCompleteSentence(raw)) return raw.trim()
+
+  const claimMatch = raw.match(/\n(CLAIM:\s*.+)$/i)
+  const claim = claimMatch?.[1] ?? null
+  const body = claim && claimMatch && claimMatch.index != null
+    ? raw.slice(0, claimMatch.index).trimEnd()
+    : raw
+
+  // Prefer punctuation boundaries; fall back to Hangul sentence closers.
+  let last = -1
+  const punct = /[.!?。…]/g
+  let m: RegExpExecArray | null
+  while ((m = punct.exec(body)) !== null) last = m.index
+  const hangul = /(?:습니다|ㅂ니다|어요|아요|예요|까|죠|네|다|요)(?=\s|$)/g
+  while ((m = hangul.exec(body)) !== null) {
+    const end = m.index + m[0].length - 1
+    if (end > last) last = end
+  }
+
+  if (last === -1) {
+    // No usable sentence boundary — leave the text as-is rather than invent a
+    // cut (short unpunctuated Korean clauses are complete, not truncated).
+    return raw.trim()
+  }
+
+  const trimmed = body.slice(0, last + 1).trimEnd()
+  return claim ? (trimmed ? `${trimmed}\n${claim}` : claim) : trimmed
+}
+
+/**
+ * Post-generation polish for every debate turn: strip speaker-label bleed,
+ * then (if still mid-sentence) trim to the last complete sentence. Pure filter
+ * — applied to stored turn text (including vote transcripts) only to remove
+ * bleed / dangling truncation, never to rewrite substance.
+ */
+export function polishDebateTurnOutput(text: string): string {
+  return trimDebateTurnAtSentenceBoundary(sanitizeDebateTurnBleed(text))
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // PIECE 3 — the DEBATE round (beat 3: visible debate).
 //
 // Each expert has a search-informed revised analysis but has never confronted
@@ -1553,8 +1685,8 @@ export async function runJejuDeepFull(params?: {
 // is a failure of their job.
 // ════════════════════════════════════════════════════════════════════════════
 
-/** Token budget for one rebuttal (matches revision headroom). */
-const DEBATE_MAX_TOKENS = 1200
+/** Token budget for one rebuttal — same shared speech cap as Mode B turns. */
+const DEBATE_MAX_TOKENS = DEBATE_SPEECH_MAX_TOKENS
 
 /** One expert's rebuttal against the other experts' revised analyses. */
 export type JejuRebuttal = {
@@ -1708,7 +1840,12 @@ async function runOneRebuttal(
   }
 
   const { targetRoleLabels, rebuttal } = parseRebuttalOutput(r.text)
-  return { ...base, ok: true, targetRoleLabels, rebuttal }
+  return {
+    ...base,
+    ok: true,
+    targetRoleLabels,
+    rebuttal: polishDebateTurnOutput(rebuttal),
+  }
 }
 
 /**
@@ -1850,7 +1987,7 @@ export async function runJejuDeepWithDebate(params?: {
 // ════════════════════════════════════════════════════════════════════════════
 
 /** Token budgets for a deliberation turn and the consensus-measuring call. */
-const DELIBERATION_MAX_TOKENS = 1200
+const DELIBERATION_MAX_TOKENS = DEBATE_SPEECH_MAX_TOKENS
 // Korean summary + two point-lists need headroom; too small truncates the JSON
 // mid-string and forces the -1 sentinel. 2000 leaves comfortable room.
 const CONSENSUS_MAX_TOKENS = 2000
@@ -2068,7 +2205,15 @@ async function runOneDeliberationTurn(
   }
 
   const { position, concedes, holds } = parseDeliberationOutput(r.text)
-  return { ...base, ok: true, position, concedes, holds }
+  return {
+    ...base,
+    ok: true,
+    // Full polish on the free-form speech field; bleed-only on short concede/hold
+    // phrases so a complete but unpunctuated clause is not mistaken for a stump.
+    position: polishDebateTurnOutput(position),
+    concedes: sanitizeDebateTurnBleed(concedes),
+    holds: sanitizeDebateTurnBleed(holds),
+  }
 }
 
 /** Builds the consensus-measuring system prompt (one anthropic call per round). */
