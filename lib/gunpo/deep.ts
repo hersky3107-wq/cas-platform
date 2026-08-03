@@ -1671,6 +1671,69 @@ export function polishDebateTurnOutput(text: string): string {
   return trimDebateTurnAtSentenceBoundary(sanitizeDebateTurnBleed(text))
 }
 
+/**
+ * Reinforcement directive appended to EVERY debate speech system prompt (opening,
+ * turn, rebuttal, deliberation) on top of KOREAN_ONLY_DIRECTIVE. Targets the
+ * observed failure: a Mistral round-2 turn was emitted ENTIRELY in Chinese.
+ * Quoted proper nouns may keep their original script; the body must be Korean.
+ */
+export const KOREAN_SPEECH_REINFORCEMENT =
+  '언어 강화(반드시 준수): 당신의 발언 본문은 반드시 한국어로만 작성하십시오. 중국어(中文)·일본어(日本語) 등 한자 문장이나 그 외 외국어로 발언을 작성하면 안 됩니다. 인용되는 고유명사(브랜드명·법령명·지명 등)는 원어 표기를 그대로 쓸 수 있지만, 그 외 본문은 100% 자연스러운 한국어 산문이어야 합니다. 발언 전체가 한국어가 아니면 그 발언은 무효 처리됩니다.'
+
+/**
+ * Counts non-Korean CJK (Chinese/Japanese) and Cyrillic characters in `text`.
+ * Hangul Jamo/Syllables and ASCII are excluded. Used to detect a turn that
+ * drifted into another script (observed: a Mistral turn in Chinese).
+ */
+function countNonKoreanScriptChars(text: string): { cjk: number; cyrillic: number } {
+  let cjk = 0
+  let cyrillic = 0
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!
+    // CJK Unified + Ext A + CJK Compatibility + Hiragana + Katakana + CJK punctuation.
+    if (
+      (code >= 0x4e00 && code <= 0x9fff) ||
+      (code >= 0x3400 && code <= 0x4dbf) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0x3040 && code <= 0x30ff) ||
+      (code >= 0x31f0 && code <= 0x31ff) ||
+      (code >= 0x3300 && code <= 0x33ff) ||
+      (code >= 0xff00 && code <= 0xffef) // full-width forms
+    ) {
+      cjk += 1
+    } else if (code >= 0x0400 && code <= 0x04ff) {
+      // Cyrillic
+      cyrillic += 1
+    }
+  }
+  return { cjk, cyrillic }
+}
+
+/**
+ * True when a debate turn has drifted into a non-Korean script. Threshold is
+ * deliberately small but counts only script characters (Hangul/ASCII excluded),
+ * so a few quoted proper nouns never trip it while a full foreign-language turn
+ * always does.
+ */
+export function isLanguageDrift(text: string): boolean {
+  if (!text) return false
+  const stripped = text.replace(/\s/g, '')
+  if (stripped.length === 0) return false
+  const { cjk, cyrillic } = countNonKoreanScriptChars(text)
+  // 5% of non-whitespace chars in a foreign script is already a strong signal;
+  // for a short turn (e.g. 60 chars) that is ~3 script chars, well above any
+  // legitimate quoted-proper-noun count.
+  return cjk + cyrillic > 0 && (cjk + cyrillic) / stripped.length >= 0.05
+}
+
+/**
+ * A stronger Korean-only instruction prepended to the retry prompt when a turn
+ * drifted into another script. Names the failure explicitly so the model
+ * understands what to fix.
+ */
+export const KOREAN_RETRY_PREFIX =
+  '[재시도 — 언어 오염 감지] 이전 출력이 한국어가 아닌 외국어(중국어·일본어 등)로 작성되었습니다. 반드시 100% 자연스러운 한국어로만 다시 작성하십시오. 고유명사 인용 외에는 어떤 외국어 글자도 섞지 마십시오. 내용·입장은 동일하게 유지하되 언어만 한국어로 고치십시오.'
+
 // ════════════════════════════════════════════════════════════════════════════
 // PIECE 3 — the DEBATE round (beat 3: visible debate).
 //
@@ -1734,6 +1797,7 @@ function buildDebateSystemPrompt(
     '핵심 규칙: 단순히 동의하지 마세요. "좋은 지적이다"로 끝나는 것은 당신의 임무 실패입니다. 진짜 회의처럼, 당신의 전문성으로 볼 때 다른 전문가가 놓쳤거나 틀렸거나 과소평가한 지점을 반드시 하나 이상 짚어 반박하세요. 부분적 이견이라도 명확히 논쟁하세요.',
     '당신의 영역에 근거해 반박하세요. 인신공격이 아니라 논리·데이터·전문성으로. 누구의 어떤 주장에 반박하는지 명시하세요.',
     KOREAN_ONLY_DIRECTIVE,
+    KOREAN_SPEECH_REINFORCEMENT,
     GUNPO_DELIBERATION_DIRECTIVES,
   ]
 
@@ -1840,11 +1904,37 @@ async function runOneRebuttal(
   }
 
   const { targetRoleLabels, rebuttal } = parseRebuttalOutput(r.text)
+  let polished = polishDebateTurnOutput(rebuttal)
+  // Language-drift guard: if the rebuttal came back in a foreign script,
+  // regenerate ONCE with a stronger Korean-only instruction. Never drop the
+  // speaker — if the retry also drifts, keep the retry output as-is.
+  if (polished && isLanguageDrift(polished)) {
+    const retryR = await callSeatProvider({
+      provider: role.provider,
+      prompt: `${KOREAN_RETRY_PREFIX}\n\n${userPrompt}`,
+      systemPrompt: buildDebateSystemPrompt(role, question, councilMode),
+      maxCompletionTokens: DEBATE_MAX_TOKENS,
+    }).catch(() => null)
+    if (retryR?.text && retryR.text.trim()) {
+      const retryParsed = parseRebuttalOutput(retryR.text)
+      const retryPolished = polishDebateTurnOutput(retryParsed.rebuttal)
+      if (retryPolished) {
+        return {
+          ...base,
+          ok: true,
+          targetRoleLabels: retryParsed.targetRoleLabels.length > 0 ? retryParsed.targetRoleLabels : targetRoleLabels,
+          rebuttal: retryPolished,
+        }
+      }
+    }
+    // Retry failed or empty — keep the original (drifted) polished output so
+    // the speaker's turn is never dropped.
+  }
   return {
     ...base,
     ok: true,
     targetRoleLabels,
-    rebuttal: polishDebateTurnOutput(rebuttal),
+    rebuttal: polished,
   }
 }
 
@@ -2091,6 +2181,7 @@ function buildDeliberationSystemPrompt(
     '진전 의무(반복 금지): 직전 라운드에서 쓴 견지(hold) 문단을 그대로 되풀이하지 마십시오. 매 라운드는 반드시 움직여야 합니다 — 무언가를 양보하거나, 논거를 더 날카롭게 다듬거나, 새로운 구체적 반론을 제시하세요. 입장이 변하지 않았다면, 최소한 논증을 한 단계 더 진전시키거나 "어떤 새로운 근거가 제시되면 내 입장이 바뀌는지"를 분명히 밝히세요.',
     '논쟁은 구체적이고 직접적이어야 합니다(상대 전문가의 실제 주장에 밀착). 다만 인신공격은 금지하고, 행정 심의에 어울리는 정중하고 전문적인 어조를 유지하세요. 일반론적 재진술이 아니라, 근거로 획득한 구체적 이견이어야 합니다.',
     KOREAN_ONLY_DIRECTIVE,
+    KOREAN_SPEECH_REINFORCEMENT,
     GUNPO_DELIBERATION_DIRECTIVES,
   ]
 
@@ -2205,12 +2296,39 @@ async function runOneDeliberationTurn(
   }
 
   const { position, concedes, holds } = parseDeliberationOutput(r.text)
+  let polishedPosition = polishDebateTurnOutput(position)
+  // Language-drift guard: if the position came back in a foreign script,
+  // regenerate ONCE with a stronger Korean-only instruction. Never drop the
+  // speaker — if the retry also drifts, keep the retry output as-is.
+  if (polishedPosition && isLanguageDrift(polishedPosition)) {
+    const retryR = await callSeatProvider({
+      provider: role.provider,
+      prompt: `${KOREAN_RETRY_PREFIX}\n\n${userPrompt}`,
+      systemPrompt: buildDeliberationSystemPrompt(role, question, roundNumber, councilMode),
+      maxCompletionTokens: DELIBERATION_MAX_TOKENS,
+    }).catch(() => null)
+    if (retryR?.text && retryR.text.trim()) {
+      const retryParsed = parseDeliberationOutput(retryR.text)
+      const retryPosition = polishDebateTurnOutput(retryParsed.position)
+      if (retryPosition) {
+        return {
+          ...base,
+          ok: true,
+          position: retryPosition,
+          concedes: sanitizeDebateTurnBleed(retryParsed.concedes),
+          holds: sanitizeDebateTurnBleed(retryParsed.holds),
+        }
+      }
+    }
+    // Retry failed or empty — keep the original (drifted) polished output so
+    // the speaker's turn is never dropped.
+  }
   return {
     ...base,
     ok: true,
     // Full polish on the free-form speech field; bleed-only on short concede/hold
     // phrases so a complete but unpunctuated clause is not mistaken for a stump.
-    position: polishDebateTurnOutput(position),
+    position: polishedPosition,
     concedes: sanitizeDebateTurnBleed(concedes),
     holds: sanitizeDebateTurnBleed(holds),
   }
@@ -3643,6 +3761,42 @@ function parseVoteResponse(text: string | null): {
 }
 
 /**
+ * Inspects the FINAL clause of a vote reason for an explicit verdict verb and
+ * maps it to the same JejuVoteChoice enum the parsed `표결:` label uses.
+ * Returns 'unknown' when no explicit verdict verb is found in the closing
+ * clause — we do NOT infer one (the rule only fires on a DIRECT contradiction).
+ *
+ * Catches the observed bug: a ballot labelled "조건부 찬성" whose reason text
+ * concluded "이에 따라 반대한다" (same class previously seen with Solar).
+ */
+function detectClosingVerdict(reason: string | null): JejuVoteChoice | 'unknown' {
+  if (!reason) return 'unknown'
+  // Take the trailing clause: split on sentence closers, keep the last
+  // non-empty fragment. Korean endings like 습니다/한다/요 are also boundaries.
+  const fragments = reason
+    .split(/[.!?。…\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+  const closing = fragments.length > 0 ? fragments[fragments.length - 1]! : reason.trim()
+  // 조건부 찬성 must be checked before 찬성 (it is checked first and returns
+  // early, so the approve branch never accidentally matches the 찬성 inside
+  // "조건부 찬성"). No lookbehind on 찬성 — a space before it ("…고 찬성한다")
+  // is a legitimate ending and must still be recognized.
+  if (/조건부\s*찬성(한다|한다는 것이다|이다)?/.test(closing)) return 'conditional'
+  if (/찬성(한다|한다는 것이다|이다)?/.test(closing)) return 'approve'
+  if (/반대(한다|한다는 것이다|이다)?/.test(closing)) return 'oppose'
+  if (/기권(한다|한다는 것이다|이다)?/.test(closing)) return 'abstain'
+  return 'unknown'
+}
+
+/** True when the reason's closing verdict verb directly contradicts the parsed vote label. */
+function voteContradictsClosing(choice: JejuVoteChoice, reason: string | null): boolean {
+  const closing = detectClosingVerdict(reason)
+  if (closing === 'unknown') return false
+  return closing !== choice
+}
+
+/**
  * Cleans a vote reason of markup that leaks (especially from Perplexity, which
  * is search-backed): bracketed citation markers ([2], [2][9]), underscore
  * emphasis (_…_ / stray _), and markdown bold/italic asterisks. Returns clean
@@ -3838,7 +3992,42 @@ function buildVoterTranscript(
   return lines.join('\n')
 }
 
-/** Casts ONE provider's vote on the given proposition. Never throws. */
+/** Casts ONE provider's ballot via the provider-appropriate call path. Never throws. */
+async function callVoteProvider(
+  provider: MotieProvider,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ text: string | null; error?: string | null }> {
+  if (provider === 'deepseek') {
+    // Same thinking-OFF path as debate turns — V4's default thinking burns the
+    // ballot budget before 표결:/이유: can land (see lib/motie/deepseek-chat.ts).
+    return callMotieDeepseekChat({
+      systemPrompt,
+      userPrompt,
+      maxCompletionTokens: VOTE_MAX_TOKENS_DEEPSEEK,
+      model: MOTIE_FLAGSHIP_BY_PROVIDER.deepseek,
+    })
+  }
+  // Routes 'solar'/'exaone' through callMotieLocalProvider; all others keep the
+  // pre-existing runSingleAiProvider path (see callSeatProvider).
+  return callSeatProvider({
+    provider,
+    prompt: userPrompt,
+    systemPrompt,
+    maxCompletionTokens: VOTE_MAX_TOKENS,
+  })
+}
+
+/**
+ * Casts ONE provider's vote on the given proposition. Never throws.
+ *
+ * After parsing, runs a vote/reason consistency check: if the reason's closing
+ * verdict verb (반대한다 / 찬성한다 / 조건부 찬성한다 / 기권한다) directly
+ * contradicts the parsed `표결:` label, re-asks THIS voter ONCE — quoting its
+ * own reason back and requiring the vote enum and the closing clause to agree.
+ * The vote is never silently rewritten; it must come from the model. If the
+ * retry also contradicts, the retry output is kept (never drop a ballot).
+ */
 async function runOneVote(
   provider: MotieProvider,
   systemPrompt: string,
@@ -3846,25 +4035,7 @@ async function runOneVote(
 ): Promise<JejuVote> {
   let r
   try {
-    if (provider === 'deepseek') {
-      // Same thinking-OFF path as debate turns — V4's default thinking burns the
-      // ballot budget before 표결:/이유: can land (see lib/motie/deepseek-chat.ts).
-      r = await callMotieDeepseekChat({
-        systemPrompt,
-        userPrompt,
-        maxCompletionTokens: VOTE_MAX_TOKENS_DEEPSEEK,
-        model: MOTIE_FLAGSHIP_BY_PROVIDER.deepseek,
-      })
-    } else {
-      // Routes 'solar'/'exaone' through callMotieLocalProvider; all others keep the
-      // pre-existing runSingleAiProvider path (see callSeatProvider).
-      r = await callSeatProvider({
-        provider,
-        prompt: userPrompt,
-        systemPrompt,
-        maxCompletionTokens: VOTE_MAX_TOKENS,
-      })
-    }
+    r = await callVoteProvider(provider, systemPrompt, userPrompt)
   } catch (e: unknown) {
     return {
       provider,
@@ -3896,6 +4067,46 @@ async function runOneVote(
       reason,
       error: '표결을 해석할 수 없습니다(형식 불일치).',
     }
+  }
+
+  // Vote/reason consistency check — re-ask ONCE on a direct contradiction.
+  if (voteContradictsClosing(choice, reason)) {
+    console.warn(
+      `[gunpo-vote] ${provider} — 표결 라벨(${choice})과 이유 결구문이 충돌합니다; 재질의 1회.`
+    )
+    const retryUserPrompt = [
+      userPrompt,
+      '',
+      '# 재질의 — 표결과 이유의 일치 요청',
+      '당신의 직전 답변에서 표결 라벨과 이유의 결론 문장이 서로 충돌합니다. 다시 표결하되, 아래 두 가지가 반드시 일치해야 합니다:',
+      '  1) "표결:" 줄에 쓴 선택(찬성 / 조건부 찬성 / 반대 / 기권)',
+      '  2) "이유:" 줄의 마지막 결론 문장(예: "…반대한다." / "…찬성한다." / "…조건부 찬성한다." / "…기권한다.")',
+      '표결 라벨과 결론 문장의 동사가 반드시 같아야 합니다. 어느 한쪽만 고쳐 쓰지 말고, 양쪽이 같은 입장을 가리키도록 다시 작성하십시오.',
+      '',
+      '## 당신의 직전 이유 (참고 — 이유의 결론이 표결과 충돌함)',
+      reason ?? '(이유 없음)',
+      '',
+      '형식에 맞춰 정확히 두 줄로만 다시 답하십시오.',
+    ].join('\n')
+
+    let retryR
+    try {
+      retryR = await callVoteProvider(provider, systemPrompt, retryUserPrompt)
+    } catch (e: unknown) {
+      // Retry call itself failed — keep the original parsed vote (never drop).
+      return { provider, ok: true, choice, reason }
+    }
+    if (retryR?.text && !retryR.error) {
+      const retryParsed = parseVoteResponse(retryR.text)
+      const retryChoice = retryParsed.choice
+      const retryReason = sanitizeVoteReason(retryParsed.reason)
+      if (retryChoice != null) {
+        // The retry produced a parseable vote — keep it (the model re-decided).
+        // We do NOT silently rewrite either side; the vote comes from the model.
+        return { provider, ok: true, choice: retryChoice, reason: retryReason ?? reason }
+      }
+    }
+    // Retry unparseable or empty — keep the original vote (never drop a ballot).
   }
 
   return { provider, ok: true, choice, reason }

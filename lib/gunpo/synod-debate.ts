@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { AiProviderName } from '@/lib/ai/router'
-import { KOREAN_ONLY_DIRECTIVE, TRUTH_SEEKING_DIRECTIVE } from '@/lib/gunpo/deep'
+import { KOREAN_ONLY_DIRECTIVE, KOREAN_SPEECH_REINFORCEMENT, TRUTH_SEEKING_DIRECTIVE } from '@/lib/gunpo/deep'
 import type { MotieLocalProvider } from '@/lib/gunpo/local-providers'
 
 /**
@@ -298,10 +298,12 @@ const META_KOREAN_LOCK = `[추가 언어 잠금 — meta(Llama) 전용, 절대 �
 
 /**
  * The trailing language rule for a debater prompt. Always the shared Korean-only
- * directive; for meta (Llama) the stronger META_KOREAN_LOCK is appended.
+ * directive + the speech reinforcement (targets the observed Chinese-turn drift);
+ * for meta (Llama) the stronger META_KOREAN_LOCK is appended.
  */
 function languageLock(provider: SynodDebaterProvider): string {
-  return provider === 'meta' ? `${KOREAN_ONLY_DIRECTIVE}\n\n${META_KOREAN_LOCK}` : KOREAN_ONLY_DIRECTIVE
+  const base = `${KOREAN_ONLY_DIRECTIVE}\n\n${KOREAN_SPEECH_REINFORCEMENT}`
+  return provider === 'meta' ? `${base}\n\n${META_KOREAN_LOCK}` : base
 }
 
 export const FACILITATOR_SYSTEM = `You are the neutral Facilitator of SYNOD, a multi-AI deliberation. You never argue a position yourself.

@@ -9,6 +9,8 @@ import {
   JEJU_DEEP_DELIBERATION_TUNING,
   DEBATE_SPEECH_MAX_TOKENS,
   polishDebateTurnOutput,
+  isLanguageDrift,
+  KOREAN_RETRY_PREFIX,
   type JejuMeetingPlan,
   type JejuExecutedSearch,
   type JejuRevisedAnalysis,
@@ -307,6 +309,54 @@ async function callDebateStatement(params: {
     `[motie/deliberate] round ${params.roundNumber} — ${params.provider} failed twice (${reason}); emitting a visible placeholder turn.`
   )
   return { text: null, error: reason }
+}
+
+/**
+ * Polishes a debate statement and, if the polished text drifted into a
+ * non-Korean script, regenerates ONCE with a stronger Korean-only instruction.
+ * Never drops a speaker: if the retry also drifts (or fails), the retry output
+ * (or the original polished text) is returned so the seat always has a turn.
+ *
+ * Returns `{ polished: null }` only when there was no usable text at all — the
+ * caller then emits a noResponseTurn, exactly as before this guard existed.
+ */
+async function polishWithLanguageGuard(params: {
+  text: string | null
+  error: string | null
+  provider: MotieProvider
+  systemPrompt: string
+  userPrompt: string
+  maxCompletionTokens: number
+  modelOverride?: string
+  roundNumber: number
+}): Promise<{ polished: string | null; error: string | null }> {
+  const { text, error } = params
+  if (!text || !text.trim()) return { polished: null, error }
+
+  const polished = polishDebateTurnOutput(text)
+  if (!polished) return { polished: null, error }
+
+  if (!isLanguageDrift(polished)) return { polished, error: null }
+
+  // Drift detected — regenerate ONCE with the stronger Korean-only prefix.
+  console.warn(
+    `[motie/deliberate] round ${params.roundNumber} — ${params.provider} turn drifted to a non-Korean script; retrying once with Korean-only reinforcement.`
+  )
+  const retry = await callDebateStatement({
+    provider: params.provider,
+    systemPrompt: params.systemPrompt,
+    prompt: `${KOREAN_RETRY_PREFIX}\n\n${params.userPrompt}`,
+    maxCompletionTokens: params.maxCompletionTokens,
+    ...(params.modelOverride ? { modelOverride: params.modelOverride } : {}),
+    roundNumber: params.roundNumber,
+  })
+  if (retry.text && retry.text.trim()) {
+    const retryPolished = polishDebateTurnOutput(retry.text)
+    if (retryPolished) return { polished: retryPolished, error: null }
+  }
+  // Retry failed or still empty — keep the original (drifted) polished output
+  // so the speaker's turn is never dropped.
+  return { polished, error: null }
 }
 
 /**
@@ -762,14 +812,32 @@ export async function POST(req: Request): Promise<Response> {
         }
         // Strip speaker-label bleed + mid-sentence truncation before parsing
         // ACTION/CLAIM — stored content (incl. vote transcripts) is the polished text.
-        const polished = polishDebateTurnOutput(text)
+        // Language-drift guard: if the polished text drifted to a foreign script,
+        // regenerate ONCE with a stronger Korean-only instruction.
+        const { polished, error: polishError } = await polishWithLanguageGuard({
+          text,
+          error,
+          provider,
+          systemPrompt: openingSystemPrompt(provider, roleForProvider(state.plan, provider)),
+          userPrompt: [
+            preamble,
+            '[심의 안건]',
+            state.question,
+            '',
+            '위 안건에 대해, 사전 분석 리포트를 근거로 당신의 독립적이고 명확한 의견을 제시하세요.',
+            ...(supplementBlock ? ['', supplementBlock] : []),
+          ].join('\n'),
+          maxCompletionTokens: OPENING_MAX_TOKENS,
+          ...(flagshipOverrideFor(provider) ? { modelOverride: flagshipOverrideFor(provider) } : {}),
+          roundNumber: 1,
+        })
         if (!polished) {
           turns.push(
             noResponseTurn({
               provider,
               roundNumber: 1,
               isRedTeam: false,
-              reason: error || '빈 응답',
+              reason: polishError || error || '빈 응답',
             })
           )
           continue
@@ -857,10 +925,21 @@ export async function POST(req: Request): Promise<Response> {
           continue
         }
         // Same polish as opening — strip bleed + mid-sentence stump before store.
-        const polished = polishDebateTurnOutput(text)
+        // Language-drift guard: if the polished text drifted to a foreign script,
+        // regenerate ONCE with a stronger Korean-only instruction.
+        const { polished, error: polishError } = await polishWithLanguageGuard({
+          text,
+          error,
+          provider,
+          systemPrompt: turnSystemPrompt(provider, isRedTeam, roundNumber, roleForProvider(state.plan, provider)),
+          userPrompt,
+          maxCompletionTokens: TURN_MAX_TOKENS,
+          ...(flagshipOverrideFor(provider) ? { modelOverride: flagshipOverrideFor(provider) } : {}),
+          roundNumber,
+        })
         if (!polished) {
           currentRoundTurns.push(
-            noResponseTurn({ provider, roundNumber, isRedTeam, reason: error || '빈 응답' })
+            noResponseTurn({ provider, roundNumber, isRedTeam, reason: polishError || error || '빈 응답' })
           )
           continue
         }
