@@ -26,7 +26,6 @@ import { dataGoKrKey } from './shared'
 const AIRKOREA_BASE = 'https://apis.data.go.kr/B552584/ArpltnInforInqireSvc'
 /** 측정소별 실시간 측정정보 (station-level, NOT the sido-wide getCtprvnRltmMesureDnsty). */
 const AIRKOREA_STATION_OP = `${AIRKOREA_BASE}/getMsrstnAcctoRltmMesureDnsty`
-const TIMEOUT_MS = 15_000
 const RETRY_DELAY_MS = 500
 const BODY_SNIPPET = 300
 const FRESHNESS_NOTE = '에어코리아 실시간 대기오염 (군포시 당동 측정소, 결측 시 산본동 대체)'
@@ -99,13 +98,10 @@ interface AirEnvelope {
 }
 
 async function fetchJsonAttempt(url: string): Promise<unknown> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const res = await fetch(url, {
       method: 'GET',
       redirect: 'follow',
-      signal: controller.signal,
       headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Gunpo-Env/1.0)' },
       cache: 'no-store',
     })
@@ -119,17 +115,13 @@ async function fetchJsonAttempt(url: string): Promise<unknown> {
       throw new Error(`Non-JSON body — ${bodySnippet(trimmed)}`)
     }
   } catch (e: unknown) {
-    if (e instanceof Error && e.name === 'AbortError') throw new Error(`Timeout after ${TIMEOUT_MS}ms`)
     throw e instanceof Error ? e : new Error(String(e))
-  } finally {
-    clearTimeout(timer)
   }
 }
 
 function isRetryableFetchError(e: unknown): boolean {
   if (!(e instanceof Error)) return false
   if (e.name === 'TypeError') return true
-  if (/^Timeout after \d+ms$/.test(e.message)) return true
   if (/^HTTP 5\d\d\b/.test(e.message)) return true
   return false
 }

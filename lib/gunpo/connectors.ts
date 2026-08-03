@@ -281,32 +281,52 @@ function kmaMidTmFc(now: Date = new Date()): string {
   return `${y.getUTCFullYear()}${pad(y.getUTCMonth() + 1)}${pad(y.getUTCDate())}1800`
 }
 
+/**
+ * Build a data.go.kr query string. serviceKey is appended OUTSIDE URLSearchParams
+ * when it already contains percent-escapes (so '%' is not turned into '%25');
+ * otherwise URLSearchParams encodes it once — same rule as AirKorea's working path
+ * in lib/gunpo/resident/environment.ts (raw key → single encode).
+ */
+function buildDataGoKrQuery(
+  key: string,
+  params: Record<string, string>,
+  serviceKeyName: 'serviceKey' | 'ServiceKey' = 'serviceKey',
+): string {
+  const sp = new URLSearchParams(params)
+  const alreadyEncoded = /%[0-9A-Fa-f]{2}/.test(key)
+  if (alreadyEncoded) {
+    const qs = sp.toString()
+    return qs ? `${serviceKeyName}=${key}&${qs}` : `${serviceKeyName}=${key}`
+  }
+  sp.set(serviceKeyName, key)
+  return sp.toString()
+}
+
 /** Builds the 중기기온(getMidTa) request URL for the given tmFc. */
 function buildMidTaUrl(tmFc: string): string {
   const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
-  const params = new URLSearchParams({
-    serviceKey: key,
+  const qs = buildDataGoKrQuery(key, {
     dataType: 'JSON',
     regId: JEJU_MIDTA_REGID,
     tmFc,
     numOfRows: '10',
     pageNo: '1',
   })
-  return `https://apis.data.go.kr/1360000/MidFcstInfoService/getMidTa?${params.toString()}`
+  const url = `https://apis.data.go.kr/1360000/MidFcstInfoService/getMidTa?${qs}`
+  return url
 }
 
 /** Builds the 중기육상예보(getMidLandFcst) request URL for the given tmFc. */
 function buildMidLandUrl(tmFc: string): string {
   const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
-  const params = new URLSearchParams({
-    serviceKey: key,
+  const qs = buildDataGoKrQuery(key, {
     dataType: 'JSON',
     regId: JEJU_MIDLAND_REGID,
     tmFc,
     numOfRows: '10',
     pageNo: '1',
   })
-  return `https://apis.data.go.kr/1360000/MidFcstInfoService/getMidLandFcst?${params.toString()}`
+  return `https://apis.data.go.kr/1360000/MidFcstInfoService/getMidLandFcst?${qs}`
 }
 
 /**
@@ -418,8 +438,8 @@ async function fetchKmaMidterm(): Promise<{ text: string } | { error: string }> 
   const tmFc = kmaMidTmFc()
 
   const [taRes, landRes] = await Promise.all([
-    fetchJsonAt(buildMidTaUrl(tmFc)),
-    fetchJsonAt(buildMidLandUrl(tmFc)),
+    fetchJsonAt(buildMidTaUrl(tmFc), undefined),
+    fetchJsonAt(buildMidLandUrl(tmFc), undefined),
   ])
 
   const ta = taRes.ok
@@ -1909,8 +1929,7 @@ const JEJU_SOURCES: readonly JejuSource[] = [
     buildUrl: () => {
       const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
       const { baseDate, baseTime } = kmaBaseDateTime()
-      const params = new URLSearchParams({
-        serviceKey: key,
+      const qs = buildDataGoKrQuery(key, {
         dataType: 'JSON',
         base_date: baseDate,
         base_time: baseTime,
@@ -1919,7 +1938,8 @@ const JEJU_SOURCES: readonly JejuSource[] = [
         numOfRows: '100',
         pageNo: '1',
       })
-      return `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?${params.toString()}`
+      const url = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?${qs}`
+      return url
     },
     render: renderKmaWeather,
   },
@@ -1942,14 +1962,16 @@ const JEJU_SOURCES: readonly JejuSource[] = [
     modes: ['governance', 'resident', 'tourist'],
     buildUrl: () => {
       const key = process.env.DATA_GO_KR_KEY ?? process.env.KPX_SERVICE_KEY ?? ''
-      const params = new URLSearchParams({
-        ServiceKey: key,
+      // Use lowercase serviceKey (same as AirKorea / midterm / 초단기실황).
+      // Capital-S ServiceKey was a legacy alias; gateway code-10 treated it as bad params.
+      const qs = buildDataGoKrQuery(key, {
         pageNo: '1',
         numOfRows: '20',
         dataType: 'JSON',
         stnId: GUNPO_KMA_WARN_STNID,
       })
-      return `https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrWrnList?${params.toString()}`
+      const url = `https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrWrnList?${qs}`
+      return url
     },
     render: renderJejuWarning,
   },
@@ -2117,65 +2139,75 @@ function okResult(sourceLabel: string, title: string | null, fullText: string): 
 }
 
 /**
- * Low-level: fetch + JSON-parse a single URL with timeout. Returns the parsed
- * value or a plain error string. Never throws. Used directly by multi-endpoint
- * paths (e.g. 중기예보) and indirectly by `fetchAndParseJson` (single-source).
+ * Raw GET for data.go.kr.
+ *
+ * The gateway rejects any request whose headers contain the substring
+ * "environment=" with HTTP 400 INVALID_REQUEST_PARAMETER_ERROR, so nothing
+ * here may add tracing headers — see `tracePropagationTargets` in
+ * sentry.server.config.ts, which keeps Sentry's `baggage` header off these
+ * requests.
  */
-/**
- * ONE fetch+parse attempt. `retryable` marks failures worth re-trying (HTTP 5xx,
- * timeout, network) vs. terminal ones (bad URL, empty body, JSON parse) that a
- * retry can't fix. Parsing logic is unchanged from the original single-shot fn.
- */
-async function fetchJsonOnce(
-  url: URL,
-  timeoutMs: number
-): Promise<
-  { ok: true; parsed: unknown } | { ok: false; error: string; retryable: boolean }
-> {
+async function httpGet(
+  url: string,
+  timeoutMs: number,
+): Promise<{ status: number; statusText: string; body: string }> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
-  let res: Response
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       method: 'GET',
       redirect: 'follow',
+      cache: 'no-store',
       signal: controller.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; AIMANI-Extractor/1.0)',
         Accept: 'application/json,text/json,*/*;q=0.8',
       },
     })
-  } catch (e: unknown) {
-    const aborted = e instanceof Error && e.name === 'AbortError'
     return {
-      ok: false,
-      retryable: true,
-      error: aborted
-        ? `Request timed out after ${timeoutMs}ms`
-        : `Network error: ${e instanceof Error ? e.message : 'unknown error'}`,
+      status: res.status,
+      statusText: res.statusText,
+      body: await res.text(),
     }
   } finally {
     clearTimeout(timeout)
   }
+}
 
-  if (!res.ok) {
-    // Server errors (5xx) are transient and worth retrying; 4xx are not.
+/**
+ * ONE fetch+parse attempt. `retryable` marks failures worth re-trying (HTTP 5xx,
+ * timeout, network) vs. terminal ones (bad URL, empty body, JSON parse) that a
+ * retry can't fix. Parsing logic is unchanged from the original single-shot fn.
+ */
+async function fetchJsonOnce(
+  url: string,
+  timeoutMs: number,
+): Promise<
+  { ok: true; parsed: unknown } | { ok: false; error: string; retryable: boolean }
+> {
+  let status = 0
+  let statusText = ''
+  let raw = ''
+  try {
+    const res = await httpGet(url, timeoutMs)
+    status = res.status
+    statusText = res.statusText
+    raw = res.body
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'unknown error'
+    const timedOut = (e instanceof Error && e.name === 'AbortError') || /timed out/i.test(msg)
     return {
       ok: false,
-      retryable: res.status >= 500,
-      error: `Fetch failed: HTTP ${res.status} ${res.statusText}`.trim(),
+      retryable: true,
+      error: timedOut ? `Request timed out after ${timeoutMs}ms` : `Network error: ${msg}`,
     }
   }
 
-  let raw: string
-  try {
-    raw = await res.text()
-  } catch (e: unknown) {
+  if (status < 200 || status >= 300) {
     return {
       ok: false,
-      retryable: false,
-      error: `Could not read response body: ${e instanceof Error ? e.message : 'unknown error'}`,
+      retryable: status >= 500,
+      error: `Fetch failed: HTTP ${status} ${statusText}`.trim(),
     }
   }
 
@@ -2196,11 +2228,13 @@ async function fetchJsonOnce(
 
 async function fetchJsonAt(
   rawUrl: string,
-  resilience?: FetchResilience
+  resilience?: FetchResilience,
 ): Promise<{ ok: true; parsed: unknown } | { ok: false; error: string }> {
-  let url: URL
+  // Validate URL shape, but fetch the ORIGINAL raw string (do not re-serialize
+  // via URL.href — that can reorder/re-encode query params under Next's fetch).
   try {
-    url = new URL(rawUrl)
+    // eslint-disable-next-line no-new
+    new URL(rawUrl)
   } catch {
     return { ok: false, error: 'Invalid URL' }
   }
@@ -2216,7 +2250,7 @@ async function fetchJsonAt(
   }
 
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const r = await fetchJsonOnce(url, timeoutMs)
+    const r = await fetchJsonOnce(rawUrl, timeoutMs)
     if (r.ok) return r
     last = r
     if (!r.retryable || attempt === retries) break
@@ -2311,7 +2345,9 @@ async function fetchRenderedJson(source: JejuSource): Promise<ExtractedContent> 
   const title = source.label
 
   const fetched = await fetchAndParseJson(source)
-  if (!fetched.ok) return fetched.result
+  if (!fetched.ok) {
+    return fetched.result
+  }
 
   const rendered = source.render!(fetched.parsed)
   if ('error' in rendered) {
@@ -2331,10 +2367,11 @@ async function fetchCustomJson(source: JejuSource): Promise<ExtractedContent> {
   try {
     rendered = await source.fetchCustom!()
   } catch (e: unknown) {
+    const err = `Custom fetch failed: ${e instanceof Error ? e.message : 'unknown error'}`
     return failResult(
       source.id,
       source.label,
-      `Custom fetch failed: ${e instanceof Error ? e.message : 'unknown error'}`
+      err
     )
   }
   if ('error' in rendered) {

@@ -1,26 +1,24 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { JejuThemeShell } from '@/components/gunpo/JejuThemeShell'
 import { useJejuUi } from '@/components/gunpo/useJejuUi'
-import { useMotieMode, toJejuCouncilMode } from '@/components/gunpo/mode-context'
 
-// ─── Types (mirrors lib/jeju/mediawatch.ts — no direct import) ─────────────────
-type JejuMediaWatchSearch = {
-  id: string
-  label: string
-  query: string
-  ok: boolean
-  result: string | null
-  sources: string[]
-  error?: string
-}
+// ─── Types (mirrors lib/gunpo/mediawatch.ts — no direct import) ────────────────
 type JejuMediaWatch = {
   ok: boolean
   date: string
   mode: string
-  searches: JejuMediaWatchSearch[]
+  searches: Array<{
+    id: string
+    label: string
+    query: string
+    ok: boolean
+    result: string | null
+    sources: string[]
+    error?: string
+  }>
   coreIssues: string | null
   minorIssues: string | null
   nationalVsLocal: string | null
@@ -68,124 +66,24 @@ function TextSection({
   )
 }
 
-function SearchRow({
-  search,
-  queryLabel,
-  sourcesLabel,
-  failedLabel,
-}: {
-  search: JejuMediaWatchSearch
-  queryLabel: string
-  sourcesLabel: string
-  failedLabel: string
-}) {
-  return (
-    <details className="rounded-xl border border-jeju-border bg-jeju-bg-elevated">
-      <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 text-sm font-semibold select-none">
-        <span className="flex-1 truncate">{search.label}</span>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-            search.ok
-              ? 'bg-emerald-500/20 text-emerald-300'
-              : 'bg-rose-500/20 text-rose-300'
-          }`}
-        >
-          {search.ok ? 'OK' : failedLabel}
-        </span>
-      </summary>
-      <div className="flex flex-col gap-3 border-t border-jeju-border px-4 pb-4 pt-3">
-        <p className="text-xs text-jeju-fg-muted">
-          <span className="font-semibold">{queryLabel}:</span> {search.query}
-        </p>
-        {search.ok && search.result ? (
-          <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-jeju-fg font-sans">
-            {search.result}
-          </pre>
-        ) : (
-          <p className="text-xs text-rose-400">{search.error ?? failedLabel}</p>
-        )}
-        {search.sources.length > 0 && (
-          <div>
-            <p className="mb-1 text-xs font-semibold text-jeju-fg-muted">{sourcesLabel}</p>
-            <ul className="flex flex-col gap-1">
-              {search.sources.map((url, i) => (
-                <li key={i}>
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="break-all text-xs text-jeju-accent underline-offset-2 hover:underline"
-                  >
-                    {url}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </details>
-  )
-}
+// ─── MediaSection (reusable body) ──────────────────────────────────────────────
+//
+// Extracted so the unified governance page can embed 언론 동향 as a lazy,
+// collapse-by-default section (mirrors BriefSection / DeliberateSection). The
+// standalone page below wraps this in a JejuThemeShell.
+//
+// Session cache: the media fan-out is 30–90s + billable AI, so a successful
+// result is kept in a module-level variable for the life of the SPA session.
+// When the unified page collapses this section it unmounts the component, but a
+// re-expand rehydrates from this cache instead of re-running the fan-out. The
+// refresh button always forces a fresh run.
+let cachedMedia: JejuMediaWatch | null = null
 
-function SearchesSection({
-  searches,
-  showLabel,
-  hideLabel,
-  heading,
-  queryLabel,
-  sourcesLabel,
-  failedLabel,
-}: {
-  searches: JejuMediaWatchSearch[]
-  showLabel: string
-  hideLabel: string
-  heading: string
-  queryLabel: string
-  sourcesLabel: string
-  failedLabel: string
-}) {
-  const [open, setOpen] = useState(false)
-  if (!searches.length) return null
-
-  return (
-    <section>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-jeju-border bg-jeju-tile-bg px-4 py-2 text-sm font-semibold text-jeju-accent transition hover:bg-jeju-tile-hover"
-      >
-        {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        {open ? hideLabel : showLabel}
-      </button>
-      {open && (
-        <div className="mt-3 flex flex-col gap-3">
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-jeju-fg-muted">
-            {heading}
-          </h3>
-          {searches.map((s) => (
-            <SearchRow
-              key={s.id}
-              search={s}
-              queryLabel={queryLabel}
-              sourcesLabel={sourcesLabel}
-              failedLabel={failedLabel}
-            />
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-// ─── Page ────────────────────────────────────────────────────────────────────────
-
-export default function JejuGovernanceMediaPage() {
+export function MediaSection() {
   const { t } = useJejuUi()
-  const { mode: councilMode } = useMotieMode()
 
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<JejuMediaWatch | null>(null)
+  const [result, setResult] = useState<JejuMediaWatch | null>(cachedMedia)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   const runMedia = useCallback(async () => {
@@ -196,30 +94,44 @@ export default function JejuGovernanceMediaPage() {
       const res = await fetch('/api/gunpo/media', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'governance', councilMode: toJejuCouncilMode(councilMode) }),
+        body: JSON.stringify({ mode: 'governance' }),
       })
+      // Defensive parse: Vercel may return a non-JSON body (e.g. a timeout/
+      // platform error page) when the upstream fan-out exceeds maxDuration.
+      // Never feed that into res.json() — surface a fixed Korean message instead.
+      const contentType = res.headers.get('content-type') ?? ''
+      const isJson = contentType.toLowerCase().includes('application/json')
+      if (!res.ok || !isJson) {
+        // Drain the body so the connection can be reused, but do NOT parse it.
+        await res.text().catch(() => {})
+        setFetchError(
+          '언론 동향을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요. (서버 응답 지연 또는 오류)'
+        )
+        return
+      }
       const data = (await res.json()) as JejuMediaWatch
+      cachedMedia = data
       setResult(data)
     } catch (e: unknown) {
       setFetchError(e instanceof Error ? e.message : '네트워크 오류')
     } finally {
       setLoading(false)
     }
-  }, [councilMode])
+  }, [])
 
-  // Auto-load on mount
-  useEffect(() => { runMedia() }, [runMedia])
+  // Lazy load: fetch on first mount only when nothing is cached yet. On the
+  // unified page this component is not mounted until the user expands the
+  // (collapsed-by-default) section, so the expensive fan-out never runs on
+  // governance-page load. On the standalone route it mounts immediately, which
+  // preserves the original auto-load-on-open behavior.
+  useEffect(() => {
+    if (!cachedMedia) void runMedia()
+  }, [runMedia])
 
   return (
-    <JejuThemeShell
-      theme="governance"
-      title={t.mediaTitle}
-      tagline={t.mediaDesc}
-      backHref="/motie/governance"
-      backLabel={t.backToGovernance}
-    >
+    <div className="flex flex-col gap-6">
       {/* Refresh button */}
-      <div className="mb-8 flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <button
           type="button"
           disabled={loading}
@@ -246,10 +158,9 @@ export default function JejuGovernanceMediaPage() {
         </div>
       )}
 
-      {/* Result */}
+      {/* Result — summary / 핵심 / 주변 / 전국vs지역 only (raw evidence panel removed) */}
       {!loading && result && (
         <div className="flex flex-col gap-6">
-          {/* TOP: summary card */}
           {result.ok && result.summary ? (
             <div className="rounded-2xl border border-jeju-border bg-jeju-bg-elevated px-6 py-6 shadow-[var(--jeju-shadow)]">
               <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-jeju-accent">
@@ -263,25 +174,29 @@ export default function JejuGovernanceMediaPage() {
             </div>
           )}
 
-          {/* BELOW: structured detail sections */}
           <TextSection heading={t.mediaCoreHeading} content={result.coreIssues} />
           <TextSection heading={t.mediaMinorHeading} content={result.minorIssues} />
           <TextSection heading={t.mediaNationalVsLocalHeading} content={result.nationalVsLocal} />
-
-          {/* Collapsible individual searches */}
-          {result.searches && result.searches.length > 0 && (
-            <SearchesSection
-              searches={result.searches}
-              showLabel={t.evidenceShow}
-              hideLabel={t.evidenceHide}
-              heading={t.mediaSearchesHeading}
-              queryLabel={t.mediaSearchQueryLabel}
-              sourcesLabel={t.mediaSearchSourcesLabel}
-              failedLabel={t.mediaSearchFailed}
-            />
-          )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Page (standalone route — wraps the section in its own shell) ──────────────
+
+export default function JejuGovernanceMediaPage() {
+  const { t } = useJejuUi()
+
+  return (
+    <JejuThemeShell
+      theme="governance"
+      title={t.mediaTitle}
+      tagline={t.mediaDesc}
+      backHref="/motie/governance"
+      backLabel={t.backToGovernance}
+    >
+      <MediaSection />
     </JejuThemeShell>
   )
 }

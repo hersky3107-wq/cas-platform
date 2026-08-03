@@ -10,6 +10,17 @@ Sentry.init({
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 1,
 
+  // Only propagate trace headers to our own origins. The data.go.kr gateway
+  // rejects any request whose headers contain the substring "environment="
+  // (as Sentry's `baggage` header does) with a misleading HTTP 400
+  // INVALID_REQUEST_PARAMETER_ERROR.
+  tracePropagationTargets: [
+    /^\//,
+    /^https?:\/\/localhost(:\d+)?(\/|$)/,
+    /^https:\/\/([a-z0-9-]+\.)*aimani\.ai(\/|$)/,
+    /^https:\/\/([a-z0-9-]+\.)*vercel\.app(\/|$)/,
+  ],
+
   // Enable logs to be sent to Sentry
   enableLogs: true,
 

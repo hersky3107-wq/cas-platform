@@ -11,6 +11,15 @@ Sentry.init({
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 1,
 
+  // See sentry.server.config.ts: third-party gateways (data.go.kr) reject the
+  // `baggage` header, so only propagate trace headers to our own origins.
+  tracePropagationTargets: [
+    /^\//,
+    /^https?:\/\/localhost(:\d+)?(\/|$)/,
+    /^https:\/\/([a-z0-9-]+\.)*aimani\.ai(\/|$)/,
+    /^https:\/\/([a-z0-9-]+\.)*vercel\.app(\/|$)/,
+  ],
+
   // Enable logs to be sent to Sentry
   enableLogs: true,
 

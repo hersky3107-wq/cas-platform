@@ -2,7 +2,10 @@ import { runJejuMediaWatch } from '@/lib/gunpo/mediawatch'
 import type { JejuMediaWatchMode } from '@/lib/gunpo/mediawatch'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+// 180s covers the cache-miss fan-out (10 Perplexity + 1 Anthropic synthesis).
+// Matches app/api/jeju/media (observed ~89s in production). 60s risked killing
+// the run mid-fan-out. Vercel Pro allows up to 300s; 180 leaves headroom.
+export const maxDuration = 180
 
 // TODO: credit/auth gating before public launch
 

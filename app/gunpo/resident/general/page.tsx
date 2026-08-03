@@ -9,14 +9,15 @@ import { useJejuUi } from '@/components/gunpo/useJejuUi'
  * app/jeju/resident/general/page.tsx, trimmed from 10 chips down to the 6
  * ported for STEP3 (오늘 조업/해녀 물질안전/교통/물가 were intentionally not
  * ported — see STEP3 scope). 3-column grid preserved.
+ *
+ * 날씨·재난 and 환경 were merged into one 날씨·재난·환경 chip (7 → 6).
  */
 const CHIPS = [
-  { emoji: '🌦', label: '날씨·재난', href: '/gunpo/resident/weather' },
+  { emoji: '🌦', label: '날씨·재난·환경', href: '/gunpo/resident/weather-env' },
   { emoji: '🚌', label: '교통', href: '/gunpo/resident/transport' },
   { emoji: '🏥', label: '복지·행정', href: '/gunpo/resident/welfare' },
   { emoji: '📰', label: '언론', href: '/gunpo/resident/news' },
   { emoji: '🤖', label: '군포 AI', href: '/gunpo/resident/chat' },
-  { emoji: '♻️', label: '환경', href: '/gunpo/resident/environment' },
   { emoji: '🎉', label: '축제·행사', href: '/gunpo/resident/events' },
 ] as const
 

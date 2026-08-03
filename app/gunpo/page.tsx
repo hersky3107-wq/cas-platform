@@ -1,5 +1,6 @@
 'use client'
 
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Building2, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -73,6 +74,12 @@ function ModeTile({ href, icon: Icon, label, description, accent, primary = fals
 }
 
 export default function GunpoLobbyPage() {
+  // ── TEMPORARY (mayor demo, 2026-08-03): resident mode hidden ─────────────
+  // Skip the mode picker entirely and land straight on governance. To restore
+  // the picker (and resident mode, once reachable again), delete this one
+  // redirect() call — everything below it is untouched and still works.
+  redirect('/gunpo/governance/unified')
+
   const { t } = useJejuUi()
 
   return (
