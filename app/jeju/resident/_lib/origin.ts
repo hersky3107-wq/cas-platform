@@ -4,13 +4,9 @@
  * Senior home links append `?from=senior`. Shared feature pages read that
  * flag (at click time) so "처음으로"/back returns to /jeju/resident/senior —
  * without changing the general 도민 mode's existing back targets.
- *
- * /jeju/resident redirects to the general lobby (picker retired); prefer
- * GENERAL_HOME for non-senior back targets.
  */
 
 export const SENIOR_HOME = '/jeju/resident/senior'
-/** @deprecated Picker removed — redirects to GENERAL_HOME. Prefer GENERAL_HOME. */
 export const RESIDENT_PICKER = '/jeju/resident'
 export const GENERAL_HOME = '/jeju/resident/general'
 
@@ -32,8 +28,8 @@ export function withSeniorOrigin(href: string, fromSenior: boolean = isFromSenio
 
 /**
  * Home target for "처음으로"/back.
- * @param fallback used when not from senior (defaults to general lobby).
+ * @param fallback used when not from senior (picker or general home).
  */
-export function residentHome(fallback: string = GENERAL_HOME): string {
+export function residentHome(fallback: string = RESIDENT_PICKER): string {
   return isFromSeniorNow() ? SENIOR_HOME : fallback
 }

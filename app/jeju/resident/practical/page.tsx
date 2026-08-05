@@ -21,8 +21,8 @@ export default function JejuResidentPracticalPage() {
       theme="resident"
       title={t.practicalTitle}
       tagline="생활 정보 · 실무 안내"
-      backHref="/jeju"
-      backLabel={t.backToJejuLobby}
+      backHref="/jeju/resident"
+      backLabel={t.backToResident}
     >
       <div className="grid grid-cols-2 gap-[var(--jeju-gap)] sm:grid-cols-3">
         {CATEGORIES.map((cat) => (
