@@ -1,13 +1,30 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import {
+  attachBypassCookie,
+  evaluateRouteLock,
+  routeLockBlockedResponse,
+} from '@/lib/middleware/route-lock'
 import { cookieOptionsForRequest, isAllowedAppHost } from '@/lib/supabase/site-url'
 
+function withOptionalBypassCookie(response: NextResponse, setBypass: boolean): NextResponse {
+  if (setBypass) attachBypassCookie(response)
+  return response
+}
+
 export async function middleware(request: NextRequest) {
+  // ── Route lock (aimani.ai deploy): /care + /jeju only — runs BEFORE auth. ──
+  const lockDecision = evaluateRouteLock(request)
+  if (lockDecision.action === 'block') {
+    return routeLockBlockedResponse()
+  }
+  const setBypassCookie = lockDecision.action === 'pass_set_bypass'
+
   const host = request.nextUrl.host
 
   if (!isAllowedAppHost(host)) {
-    return NextResponse.next({ request })
+    return withOptionalBypassCookie(NextResponse.next({ request }), setBypassCookie)
   }
 
   const pathname = request.nextUrl.pathname
@@ -19,7 +36,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/festival/') ||
     pathname.startsWith('/api/festival/')
   ) {
-    return NextResponse.next({ request })
+    return withOptionalBypassCookie(NextResponse.next({ request }), setBypassCookie)
   }
 
   // Do NOT redirect www ↔ apex here. Vercel already redirects aimani.ai → www.aimani.ai;
@@ -57,7 +74,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   if (request.nextUrl.pathname.startsWith('/admin')) {
-    return supabaseResponse
+    return withOptionalBypassCookie(supabaseResponse, setBypassCookie)
   }
 
   if (request.nextUrl.pathname === '/' && !user) {
@@ -68,7 +85,7 @@ export async function middleware(request: NextRequest) {
     if (user) {
       return NextResponse.redirect(new URL('/', request.url))
     }
-    return supabaseResponse
+    return withOptionalBypassCookie(supabaseResponse, setBypassCookie)
   }
 
   if (
@@ -98,7 +115,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  return supabaseResponse
+  return withOptionalBypassCookie(supabaseResponse, setBypassCookie)
 }
 
 export const config = {
