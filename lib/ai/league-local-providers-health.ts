@@ -64,7 +64,7 @@ const LOCAL_PROVIDER_MIRROR: Record<LocalProviderMirrorId, LocalProviderMirrorCo
     brand: 'LG',
     league: 'world',
     baseUrl: 'https://api.friendli.ai/serverless/v1',
-    model: 'LGAI-EXAONE/K-EXAONE-236B-A23B',
+    model: 'LGAI-EXAONE/K-EXAONE-2.0-750B-A37B',
     envKey: 'FRIENDLI_TOKEN',
     timeoutMs: 120_000,
   },

@@ -66,7 +66,7 @@ export const MOTIE_LOCAL_PROVIDER_CONFIG: Record<MotieLocalProvider, MotieLocalP
   },
   exaone: {
     baseUrl: 'https://api.friendli.ai/serverless/v1',
-    model: 'LGAI-EXAONE/K-EXAONE-236B-A23B',
+    model: 'LGAI-EXAONE/K-EXAONE-2.0-750B-A37B',
     envKey: 'FRIENDLI_TOKEN',
     // 236B model observed taking 76s+ under a long system prompt. 120s gives
     // headroom above the requested >=90s floor without being unbounded.
