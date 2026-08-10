@@ -8,6 +8,7 @@ import {
   healthCheckPlatformModel,
   type PlatformLeague,
 } from '@/lib/ai/platform-providers'
+import { healthCheckAllLeagueLocalProviders } from '@/lib/ai/league-local-providers-health'
 import { runSingleAiProvider, MODEL_BY_PROVIDER, type AiProviderName } from '@/lib/ai/router'
 
 /** Fan-out can take 30–90s when You.com Research is included. */
@@ -22,8 +23,9 @@ export const maxDuration = 180
  *   pinged through the EXISTING production path, `runSingleAiProvider`, using
  *   the admin's own BYOK keys from `user_api_keys` (the same keys /settings
  *   writes to) — not the platform-wide env keys, and with `sessionId: null`
- *   so no DB rows are written. This is read-only monitoring; production call
- *   sites in router.ts are untouched.
+ * - Perplexity / Upstage Solar / LG EXAONE (league roster) are pinged via
+ *   lib/ai/league-local-providers-health.ts — read-only mirrors, no changes to
+ *   router.ts or local-providers.ts.
  *
  * GET /api/admin/platform-providers/health         -> pings all registered models
  * GET /api/admin/platform-providers/health?id=<id> -> pings one platform model by registry id
@@ -40,8 +42,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ result, todo: PLATFORM_MODEL_REGISTRY_TODO })
   }
 
-  const [platformResults, coreResults] = await Promise.all([
+  const [platformResults, leagueLocalResults, coreResults] = await Promise.all([
     healthCheckAllPlatformModels(),
+    healthCheckAllLeagueLocalProviders(),
     healthCheckCoreProviders(req),
   ])
 
@@ -50,8 +53,8 @@ export async function GET(req: Request) {
   )
 
   return NextResponse.json({
-    registryCount: PLATFORM_MODEL_REGISTRY.length + coreResults.length,
-    results: [...platformResults, ...coreResults],
+    registryCount: PLATFORM_MODEL_REGISTRY.length + leagueLocalResults.length + coreResults.length,
+    results: [...platformResults, ...leagueLocalResults, ...coreResults],
     todo: [...PLATFORM_MODEL_REGISTRY_TODO, ...coreTopTierNotes.map((note) => ({ requested: 'core top-tier note', note }))],
   })
 }

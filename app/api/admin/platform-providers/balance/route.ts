@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   const forbidden = await requireAdmin(req)
   if (forbidden) return forbidden
 
-  const [openrouter, youcom, metaMuse, clova] = await Promise.all([
+  const [openrouter, youcom, metaMuse, clova, upstage, friendli, perplexity] = await Promise.all([
     fetchOpenRouterBalance(),
     fetchYouComBalance(),
     Promise.resolve({
@@ -33,9 +33,30 @@ export async function GET(req: Request) {
       billingUrl: 'https://console.ncloud.com/clova-studio/product',
       note: 'No token-balance API on CLOVA Studio API keys — open NAVER Cloud console.',
     }),
+    Promise.resolve({
+      provider: 'upstage' as const,
+      label: 'Upstage (Solar)',
+      kind: 'link' as const,
+      billingUrl: 'https://console.upstage.ai/billing',
+      note: 'No remaining-balance API on Upstage API keys — open Upstage Console billing.',
+    }),
+    Promise.resolve({
+      provider: 'friendli' as const,
+      label: 'Friendli (EXAONE)',
+      kind: 'link' as const,
+      billingUrl: 'https://friendli.ai/suite/~/setting/billing/overview',
+      note: 'No remaining-credit API on Friendli inference tokens — open Friendli Suite billing.',
+    }),
+    Promise.resolve({
+      provider: 'perplexity' as const,
+      label: 'Perplexity',
+      kind: 'link' as const,
+      billingUrl: 'https://www.perplexity.ai/settings/api',
+      note: 'No balance API exposed for Perplexity API keys — open Perplexity API settings.',
+    }),
   ])
 
-  return NextResponse.json({ balances: [openrouter, youcom, metaMuse, clova] })
+  return NextResponse.json({ balances: [openrouter, youcom, metaMuse, clova, upstage, friendli, perplexity] })
 }
 
 type BalanceOk = {

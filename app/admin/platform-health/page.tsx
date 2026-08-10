@@ -19,13 +19,15 @@ type HealthResult = {
   error?: string
   /** Core-router rows only: no BYOK key saved in /settings for this provider. */
   keyMissing?: boolean
-  /** Core-router rows only: which of the two rows per brand this is. */
-  tier?: 'current' | 'top-tier'
+  /** Which variant row this is (core-router or league-local Perplexity). */
+  tier?: 'current' | 'top-tier' | 'production' | 'league-candidate'
 }
 
-const TIER_LABEL: Record<'current' | 'top-tier', string> = {
+const TIER_LABEL: Record<'current' | 'top-tier' | 'production' | 'league-candidate', string> = {
   current: '현재 프로덕션',
   'top-tier': '탑티어 (주식 모듈 후보)',
+  production: '프로덕션',
+  'league-candidate': '리그 후보',
 }
 
 type BalanceRow =
@@ -176,9 +178,9 @@ export default function PlatformHealthPage() {
             </p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">플랫폼 제공자 상태</h1>
             <p className="mt-1 text-sm text-slate-400">
-              OpenRouter / Meta Muse / You.com / CLOVA 실시간 점검 + 코어 라우터(GPT·Claude·Gemini·Grok·DeepSeek·Mistral)를
-              관리자 본인의 /settings 저장 키로 직접 점검합니다. 코어 라우터는 브랜드마다 현재 프로덕션 모델과
-              주식 비교 모듈 후보 탑티어 모델을 각각 점검합니다.
+              OpenRouter / Meta Muse / You.com / CLOVA 실시간 점검 + Perplexity / Upstage Solar / LG EXAONE
+              (리그 로스터) + 코어 라우터(GPT·Claude·Gemini·Grok·DeepSeek·Mistral)를 관리자 본인의 /settings
+              저장 키 또는 플랫폼 env 키로 직접 점검합니다.
             </p>
           </div>
           <button
@@ -351,7 +353,7 @@ export default function PlatformHealthPage() {
                           {r.tier ? (
                             <span
                               className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-medium normal-case ${
-                                r.tier === 'top-tier'
+                                r.tier === 'top-tier' || r.tier === 'league-candidate'
                                   ? 'border-cyan-400/30 text-cyan-300'
                                   : 'border-white/10 text-slate-400'
                               }`}
