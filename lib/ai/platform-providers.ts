@@ -207,6 +207,15 @@ export type PlatformCallResult = {
     completionTokens: number | null
     totalTokens: number | null
   }
+  /**
+   * Cost in USD for this call. Either the ACTUAL billed cost as reported by the
+   * provider (OpenRouter, via `usage: { include: true }`), or a documented
+   * flat-rate estimate (You.com Research — see costIsEstimated). Null when
+   * neither applies — callers then fall back to their own token×price estimate.
+   */
+  costUsd?: number | null
+  /** True when costUsd is a documented estimate, not a per-call billed figure. */
+  costIsEstimated?: boolean
   error?: string
 }
 
@@ -219,6 +228,8 @@ type OpenAiCompatibleCallParams = {
   maxCompletionTokens?: number
   /** Merged into the request body — e.g. `{ reasoning: { enabled: false } }` for models that reason-by-default. */
   extraRequestParams?: Record<string, unknown>
+  /** OpenRouter only: send `usage: { include: true }` so the response reports the actual billed cost (USD). */
+  includeUsageCost?: boolean
 }
 
 /**
@@ -251,7 +262,7 @@ async function callOpenAiCompatiblePlatformModel(
 async function callOpenAiCompatibleOnce(
   params: OpenAiCompatibleCallParams
 ): Promise<{ result: PlatformCallResult; emptyContent: boolean }> {
-  const { baseUrl, apiKey, model, systemPrompt, userPrompt, maxCompletionTokens, extraRequestParams } = params
+  const { baseUrl, apiKey, model, systemPrompt, userPrompt, maxCompletionTokens, extraRequestParams, includeUsageCost } = params
 
   const payload: Record<string, unknown> = {
     model,
@@ -261,6 +272,8 @@ async function callOpenAiCompatibleOnce(
     ],
     ...extraRequestParams,
   }
+  // OpenRouter returns `usage.cost` (billed USD) only when asked to include it.
+  if (includeUsageCost) payload.usage = { include: true }
   if (typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0) {
     payload.max_tokens = maxCompletionTokens
   }
@@ -328,6 +341,8 @@ async function callOpenAiCompatibleOnce(
           completionTokens: typeof usage.completion_tokens === 'number' ? usage.completion_tokens : null,
           totalTokens: typeof usage.total_tokens === 'number' ? usage.total_tokens : null,
         },
+        // OpenRouter reports the actual billed cost here (USD) when includeUsageCost was set.
+        costUsd: typeof usage.cost === 'number' ? usage.cost : null,
       },
       emptyContent: false,
     }
@@ -339,6 +354,23 @@ async function callOpenAiCompatibleOnce(
   }
 }
 
+type YouComResearchEffort = 'lite' | 'standard' | 'deep' | 'exhaustive' | 'frontier'
+
+/**
+ * You.com's published Research API pricing (USD per 1,000 calls, per effort
+ * tier), confirmed live 2026-08-13 against you.com/docs/administration/billing.
+ * The Research API response itself does NOT include a per-call billed cost
+ * field, so this documented flat rate is the best available figure — always
+ * returned with costIsEstimated:true, never presented as a metered/billed cost.
+ */
+const YOUCOM_PRICE_PER_1K_USD: Record<YouComResearchEffort, number> = {
+  lite: 12,
+  standard: 50,
+  deep: 100,
+  exhaustive: 450,
+  frontier: 1200,
+}
+
 /**
  * You.com Research API adapter. NOT OpenAI-compatible: returns a
  * synthesized Markdown answer + a source list, not chat-completion deltas.
@@ -348,7 +380,7 @@ async function callOpenAiCompatibleOnce(
 async function callYouComResearch(params: {
   apiKey: string
   input: string
-  researchEffort?: 'lite' | 'standard' | 'deep' | 'exhaustive'
+  researchEffort?: YouComResearchEffort
 }): Promise<PlatformCallResult> {
   const { apiKey, input, researchEffort = 'lite' } = params
 
@@ -379,7 +411,12 @@ async function callYouComResearch(params: {
           .map((s) => ({ url: s.url, title: typeof s.title === 'string' ? s.title : undefined }))
       : []
 
-    return { text, citations }
+    return {
+      text,
+      citations,
+      costUsd: YOUCOM_PRICE_PER_1K_USD[researchEffort] / 1000,
+      costIsEstimated: true,
+    }
   } catch (e: unknown) {
     return { text: null, citations: [], error: e instanceof Error ? e.message : 'unknown error calling You.com Research' }
   }
@@ -485,6 +522,8 @@ export async function callPlatformModel(params: {
       userPrompt,
       maxCompletionTokens,
       extraRequestParams: entry.extraRequestParams,
+      // Get the real billed cost back in usage.cost (OpenRouter-specific).
+      includeUsageCost: true,
     })
   }
 

@@ -57,6 +57,8 @@ export type RouterResult = {
   promptTokens: number | null
   completionTokens: number | null
   totalTokens: number | null
+  /** REAL billed cost (USD) when the provider's response reports one (currently only Perplexity). Null otherwise. */
+  costUsd?: number | null
   error?: string
 }
 
@@ -216,10 +218,13 @@ function normalizeTokens({
   promptTokens,
   completionTokens,
   totalTokens,
+  costUsd,
 }: {
   promptTokens?: number | null
   completionTokens?: number | null
   totalTokens?: number | null
+  /** REAL billed cost (USD) when the provider's response reports one (currently only Perplexity's usage.cost.total_cost). */
+  costUsd?: number | null
 }) {
   const pt = typeof promptTokens === 'number' ? promptTokens : null
   const ct = typeof completionTokens === 'number' ? completionTokens : null
@@ -229,7 +234,8 @@ function normalizeTokens({
       : pt != null && ct != null
         ? pt + ct
         : null
-  return { promptTokens: pt, completionTokens: ct, totalTokens: tt }
+  const cost = typeof costUsd === 'number' ? costUsd : null
+  return { promptTokens: pt, completionTokens: ct, totalTokens: tt, costUsd: cost }
 }
 
 async function fetchWithRetry(
@@ -321,6 +327,11 @@ async function callOpenAICompatibleChat({
       promptTokens: usage?.prompt_tokens,
       completionTokens: usage?.completion_tokens,
       totalTokens: usage?.total_tokens,
+      // Perplexity-only: usage.cost.total_cost is the REAL billed USD for this
+      // call (token cost + request/search fees). Other OpenAI-compatible
+      // providers on this generic path don't send `usage.cost`, so this stays
+      // null for them and callers fall back to a token×price estimate.
+      costUsd: usage?.cost?.total_cost,
     }),
   }
 }
@@ -1044,6 +1055,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
+      costUsd: usage.costUsd ?? null,
     }
   } catch (e: any) {
     const responseTimeMs = nowMs() - started
