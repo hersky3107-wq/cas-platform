@@ -49,9 +49,7 @@ export function createRng(seed: string): SeededRng {
   }
 }
 
-/** Fisher–Yates. Same seed + same deck always yields the same order. */
-export function seededShuffle<T>(seed: string, deck: readonly T[]): T[] {
-  const rng = createRng(seed)
+export function shuffleWithRng<T>(rng: SeededRng, deck: readonly T[]): T[] {
   const out = deck.slice()
   for (let i = out.length - 1; i > 0; i--) {
     const j = rng.nextInt(i + 1)
@@ -60,4 +58,9 @@ export function seededShuffle<T>(seed: string, deck: readonly T[]): T[] {
     out[j] = tmp
   }
   return out
+}
+
+/** Fisher–Yates. Same seed + same deck always yields the same order. */
+export function seededShuffle<T>(seed: string, deck: readonly T[]): T[] {
+  return shuffleWithRng(createRng(seed), deck)
 }
