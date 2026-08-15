@@ -9,6 +9,8 @@ describe('fourPillars — verified reference case', () => {
     expect(p.day.ganzhi).toBe('己巳')
     expect(p.hour?.ganzhi).toBe('丙寅')
     expect(p.hourUnknown).toBe(false)
+    expect(p.dayBoundaryUsed).toBe('zi_start')
+    expect(p.alternate).toBeNull()
   })
 })
 

@@ -25,6 +25,18 @@ export function formatYmd(y: number, m: number, d: number): string {
   return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
+/** Shift a Gregorian civil Y-M-D by a whole number of days (UTC date arithmetic; no DST). */
+export function addCivilYmd(y: number, m: number, d: number, delta: number): { y: number; m: number; d: number } {
+  const utc = new Date(Date.UTC(y, m - 1, d + delta))
+  return { y: utc.getUTCFullYear(), m: utc.getUTCMonth() + 1, d: utc.getUTCDate() }
+}
+
+export function addCivilDays(date: string, delta: number): string {
+  const { y, m, d } = parseYmd(date)
+  const next = addCivilYmd(y, m, d, delta)
+  return formatYmd(next.y, next.m, next.d)
+}
+
 function parseHhmm(time: string): { h: number; mi: number } {
   const match = /^(\d{2}):(\d{2})$/.exec(time)
   if (!match) throw new CalendarInputError(`invalid time string, expected HH:mm: "${time}"`)

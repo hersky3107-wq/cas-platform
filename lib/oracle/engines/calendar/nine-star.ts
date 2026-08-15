@@ -1,31 +1,27 @@
 /**
- * 구성 (Nine Star Ki / 구성기학) — 본명성(year)/월명성(month)/일명성(day), 절기 기준.
+ * 구성 (Nine Star Ki / 구성기학) — 본명성(year)/월명성(month)/일명성(day).
  *
- * Year and month stars are implemented from scratch using the documented
- * digit-reduction formulas (gender-independent, per multiple corroborating
- * Korean sources — see the engine coverage report), anchored to the real
- * 입춘/12-jie boundaries computed by `solarTerms()` rather than fixed
- * calendar dates.
+ * Year and month stars use the documented digit-reduction formulas, anchored
+ * to 입춘 / 12-jie boundaries from `solarTerms()`.
  *
- * Day star (유파 gap, flagged explicitly): there is no simple digit-formula
- * equivalent documented for 일명성 comparable to the year/month ones — the
- * traditional day-star method uses a 60-day 상원/중원/하원 (三元) cycle keyed
- * to the nearest 冬至, a materially different and more intricate computation.
- * This engine falls back to lunar-javascript's `getDayNineStar()`, which
- * implements the related-but-distinct 玄空飛星 (Xuan Kong Flying Star)
- * Feng-Shui numbering. Both systems share the same 9-number Luo Shu
- * vocabulary and often agree, but they are not guaranteed to be the same
- * convention. Reconciling day-star under one explicit school is an open
- * decision — do not treat this value as equivalent-confidence to year/month.
+ * Day star is the 気学 日盤 (K.Oka / Calend Mate / nobml), not 玄空飛星.
+ * See conventions.ts and docs/nine-star-verification.md.
  */
-import type { DateTimeInput, FiveElement, NineStarResult, NineStarValue } from './types'
+import type { DateTimeInput, NineStarResult, NineStarValue } from './types'
 import { NINE_STARS } from './tables'
-import { solarFromYmdHms } from './lunar-adapter'
 import { solarTerms } from './ganzhi'
-import { assertYearInRange, parseTimeOrNull, parseYmd, resolveInstantUtc } from './utils'
+import { CalendarInputError } from './errors'
+import { addCivilYmd, assertYearInRange, CALENDAR_MAX_YEAR, CALENDAR_MIN_YEAR, civilFieldsInZone, julianDayNumber, parseYmd, resolveInstantUtc } from './utils'
 
 const WANG_ZHI = new Set([0, 6, 3, 9]) // 자오묘유
 const GO_ZHI = new Set([4, 10, 1, 7]) // 진술축미
+const TOKYO = 'Asia/Tokyo'
+
+interface DaySwitch {
+  jdn: number
+  yang: boolean
+  startStar: number
+}
 
 function digitSum(n: number): number {
   let s = Math.abs(n)
@@ -73,10 +69,93 @@ function monthStarNumber(yearBranchIndex: number, monthNumber: number): number {
   return normalizeStar(base - monthNumber)
 }
 
-const CHINESE_NUMERALS: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }
+/** MJD at 00:00 UT of the civil date. JDN is noon-based, so MJD = JDN − 2400001. */
+function mjdAtUtMidnight(y: number, m: number, d: number): number {
+  return julianDayNumber(y, m, d) - 2400001
+}
 
-function elementFromChineseNumeral(n: number): FiveElement {
-  return NINE_STARS.find((s) => s.number === n)!.element
+/** 干支 index K, 甲子=0 … 癸亥=59. nobml: K = (MJD + 50) mod 60. */
+function ganzhiK(y: number, m: number, d: number): number {
+  return (((mjdAtUtMidnight(y, m, d) + 50) % 60) + 60) % 60
+}
+
+function nearestKoshi(y: number, m: number, d: number): { y: number; m: number; d: number } {
+  const k = ganzhiK(y, m, d)
+  // nobml / K.Oka: 0–28 → previous 甲子; 29–59 → next 甲子.
+  return k <= 28 ? addCivilYmd(y, m, d, -k) : addCivilYmd(y, m, d, 60 - k)
+}
+
+function solsticeTokyoDate(year: number, hangul: '동지' | '하지'): { y: number; m: number; d: number } {
+  const term = solarTerms(year).find((t) => t.hangul === hangul)
+  if (!term) throw new CalendarInputError(`could not locate ${hangul} in ${year}`)
+  const f = civilFieldsInZone(new Date(term.utcIso), TOKYO)
+  return { y: f.y, m: f.m, d: f.d }
+}
+
+function rawSwitchesAround(year: number): DaySwitch[] {
+  const from = Math.max(CALENDAR_MIN_YEAR, year - 2)
+  const to = Math.min(CALENDAR_MAX_YEAR, year + 2)
+  const out: DaySwitch[] = []
+  for (let y = from; y <= to; y++) {
+    const summer = solsticeTokyoDate(y, '하지')
+    const winter = solsticeTokyoDate(y, '동지')
+    const sKoshi = nearestKoshi(summer.y, summer.m, summer.d)
+    const wKoshi = nearestKoshi(winter.y, winter.m, winter.d)
+    out.push({ jdn: julianDayNumber(sKoshi.y, sKoshi.m, sKoshi.d), yang: false, startStar: 9 })
+    out.push({ jdn: julianDayNumber(wKoshi.y, wKoshi.m, wKoshi.d), yang: true, startStar: 1 })
+  }
+  out.sort((a, b) => a.jdn - b.jdn)
+  const deduped: DaySwitch[] = []
+  for (const s of out) {
+    if (deduped.at(-1)?.jdn !== s.jdn) deduped.push(s)
+  }
+  return deduped
+}
+
+/** Apply 九星閏 to raw 甲子 switches (nobml 240-day rule). */
+function applyKyuseiJun(raw: DaySwitch[]): DaySwitch[] {
+  const result = raw.map((s) => ({ ...s }))
+  for (let i = 0; i < raw.length - 1; i++) {
+    const gap = raw[i + 1]!.jdn - raw[i]!.jdn
+    if (gap === 180) continue
+    if (gap === 240) {
+      const later = raw[i + 1]!
+      result[i + 1] = {
+        jdn: later.jdn - 30,
+        yang: later.yang,
+        startStar: later.yang ? 7 : 3,
+      }
+      continue
+    }
+    if (gap === 120) {
+      throw new CalendarInputError('九星閏 120-day compression is not implemented (attested only far outside 1900–2100)')
+    }
+    throw new CalendarInputError(`unexpected 日盤 switch gap of ${gap} days`)
+  }
+  return result
+}
+
+const SWITCHES_BY_YEAR = new Map<number, DaySwitch[]>()
+
+function switchesForYear(year: number): DaySwitch[] {
+  const cached = SWITCHES_BY_YEAR.get(year)
+  if (cached) return cached
+  const applied = applyKyuseiJun(rawSwitchesAround(year))
+  SWITCHES_BY_YEAR.set(year, applied)
+  return applied
+}
+
+function dayStarNumber(y: number, m: number, d: number): number {
+  const target = julianDayNumber(y, m, d)
+  const switches = switchesForYear(y)
+  let current = switches[0]
+  if (!current) throw new CalendarInputError('日盤 switch table is empty')
+  for (const s of switches) {
+    if (s.jdn <= target) current = s
+    else break
+  }
+  const days = target - current.jdn
+  return current.yang ? normalizeStar(current.startStar + days) : normalizeStar(current.startStar - days)
 }
 
 export function nineStar(input: DateTimeInput): NineStarResult {
@@ -89,9 +168,6 @@ export function nineStar(input: DateTimeInput): NineStarResult {
   const yearBranchIndex = ((qiYear - 4) % 12 + 12) % 12
   const yearNum = yearStarNumber(qiYear)
 
-  // Month branch: derive from the jie period containing the birth instant, via the
-  // same Beijing-equivalent + Exact resolution ganzhi.ts uses (kept local & minimal
-  // here to avoid a circular import on fourPillars).
   const terms = solarTerms(y).concat(solarTerms(y - 1)).concat(solarTerms(y + 1))
   const jieTerms = terms.filter((t) => t.isJie).sort((a, b) => a.utcIso.localeCompare(b.utcIso))
   let currentJie = jieTerms[0]!
@@ -100,17 +176,11 @@ export function nineStar(input: DateTimeInput): NineStarResult {
   }
   const monthBranchIndex = currentJie.branchIndexIfJie!
   const monthNum = monthStarNumber(yearBranchIndex, jieMonthNumber(monthBranchIndex))
-
-  const localTime = parseTimeOrNull(time)
-  const hh = localTime ? localTime.h : 12
-  const mm = localTime ? localTime.mi : 0
-  const dayNineStarStr: string = solarFromYmdHms(y, m, d, hh, mm, 0).getLunar().getDayNineStar().toString()
-  const firstChar = Array.from(dayNineStarStr)[0] ?? '一'
-  const dayNum = CHINESE_NUMERALS[firstChar] ?? 1
+  const dayNum = dayStarNumber(y, m, d)
 
   return {
     year: starValue(yearNum),
     month: starValue(monthNum),
-    day: { number: dayNum, element: elementFromChineseNumeral(dayNum), hangul: NINE_STARS.find((s) => s.number === dayNum)!.hangul },
+    day: starValue(dayNum),
   }
 }

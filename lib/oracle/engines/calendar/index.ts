@@ -13,14 +13,15 @@
  *
  * Bump CALENDAR_ENGINE_VERSION whenever any function's output changes.
  */
-export const CALENDAR_ENGINE_VERSION = '1.0.0'
+export const CALENDAR_ENGINE_VERSION = '1.2.0'
 
 export { toLunar, toSolar, solarTerms, fourPillars } from './ganzhi'
 export { fiveElementBalance } from './five-elements'
 export { tenGods } from './ten-gods'
 export { greatLuck } from './great-luck'
 export { nineStar } from './nine-star'
-export { sukuyou } from './sukuyou'
+export { sukuyou, sukuyouRelation } from './sukuyou'
+export { NINE_STAR_DAY_SCHOOL, SUKUYOU_SCHOOL, DEFAULT_DAY_BOUNDARY } from './conventions'
 export { seasonElement } from './season-element'
 export { weekday } from './weekday'
 export { tzolkin } from './tzolkin'
@@ -34,7 +35,10 @@ export type {
   StemInfo,
   BranchInfo,
   Pillar,
+  DayBoundary,
   FourPillars,
+  FourPillarsCore,
+  FourPillarsInput,
   LunarCalendarDate,
   SolarCalendarDate,
   SolarTermInstant,
@@ -46,6 +50,9 @@ export type {
   NineStarValue,
   NineStarResult,
   SukuyouResult,
+  SukuyouRelation,
+  SukuyouRelationName,
+  SukuyouRelationPair,
   SeasonElement,
   TzolkinResult,
   DateTimeInput,

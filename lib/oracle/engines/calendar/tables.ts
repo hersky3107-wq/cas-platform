@@ -2,7 +2,7 @@
  * All lookup tables for the calendar engine, separate from logic (per spec).
  * Pure data only — no functions that read the clock or touch I/O.
  */
-import type { BranchInfo, FiveElement, StemInfo, YinYang } from './types'
+import type { BranchInfo, FiveElement, StemInfo, SukuyouRelationName, SukuyouRelationPair, YinYang } from './types'
 
 const ELEMENT_CYCLE: FiveElement[] = ['wood', 'fire', 'earth', 'metal', 'water']
 
@@ -158,11 +158,9 @@ export const NINE_STARS: readonly { number: number; element: FiveElement; hangul
 ] as const
 
 /**
- * 27수 (Sukuyodo / Nakshatra mansions), in their traditional display order starting
- * at 昴宿. See docs/calendar-verification.md and the engine report for the ayanamsa /
- * epoch-anchor caveat: this engine assigns index 1 (昴宿) to tropical moon longitude
- * 0-13.33 degrees as an explicit, documented convention (not independently verified
- * against a trusted 宿曜 reference implementation).
+ * 27수 (宿曜経), 昴-first, 牛宿 omitted. Index 0 = 昴宿 = public index 1.
+ * 朔日宿 table: 国立天文台 暦Wiki「二十七宿」/ 月宿傍通暦
+ * (正月室 二月奎 三月胃 四月畢 五月参 六月鬼 七月張 八月角 九月氐 十月心 十一月斗 十二月虚).
  */
 export const SUKUYOU_MANSIONS: readonly { hanja: string; hangul: string }[] = [
   { hanja: '昴宿', hangul: '묘수' },
@@ -193,6 +191,71 @@ export const SUKUYOU_MANSIONS: readonly { hanja: string; hangul: string }[] = [
   { hanja: '婁宿', hangul: '루수' },
   { hanja: '胃宿', hangul: '위수(胃)' },
 ] as const
+
+/** 朔日宿, keyed by lunar month 1–12. Values are 0-based indices into SUKUYOU_MANSIONS. */
+export const SUKUYOU_SAKUJITSU_INDEX: readonly number[] = [
+  22, // 1 室
+  24, // 2 奎
+  26, // 3 胃
+  1, // 4 畢
+  3, // 5 参
+  5, // 6 鬼
+  8, // 7 張
+  11, // 8 角
+  13, // 9 氐
+  15, // 10 心
+  18, // 11 斗
+  20, // 12 虚
+]
+
+/**
+ * 三九の秘法, offset 0–26 from 命 along the 昴-order cycle
+ * (逆時計 = advancing mansion index). Unambiguous across
+ * uranai.blog / uranai-starfortune / 大久保占い研究室.
+ */
+export const SUKUYOU_SAN_KU: readonly SukuyouRelationName[] = [
+  '命',
+  '栄',
+  '衰',
+  '安',
+  '危',
+  '成',
+  '壊',
+  '友',
+  '親',
+  '業',
+  '栄',
+  '衰',
+  '安',
+  '危',
+  '成',
+  '壊',
+  '友',
+  '親',
+  '胎',
+  '栄',
+  '衰',
+  '安',
+  '危',
+  '成',
+  '壊',
+  '友',
+  '親',
+]
+
+export const SUKUYOU_RELATION_PAIR: Record<SukuyouRelationName, SukuyouRelationPair> = {
+  命: '命',
+  業: '業胎',
+  胎: '業胎',
+  栄: '栄親',
+  親: '栄親',
+  友: '友衰',
+  衰: '友衰',
+  安: '安壊',
+  壊: '安壊',
+  危: '危成',
+  成: '危成',
+}
 
 /** 20 나왈 (Maya Tzolk'in day signs), index 0 = Imix, in the standard GMT-correlation order. */
 export const TZOLKIN_NAWAL: readonly { name: string }[] = [

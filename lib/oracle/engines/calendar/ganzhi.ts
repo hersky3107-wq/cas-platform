@@ -8,18 +8,17 @@
  *  2. Year/month pillar resolution uses the `*Exact` accessor family
  *     (full datetime comparison), never the date-only default/`ByLiChun`
  *     accessors.
- * Day pillar uses the true local civil date directly (jieqi-independent).
- * Hour pillar is computed by the standard 五鼠遁 formula from the local day
- * stem (not the library's getTimeGan/getTimeZhi), because that accessor
- * silently applies a "late zi-hour" (야자시) day+1 rollover for the last
- * two hours of the day — an inconsistent-with-day-pillar default we do not
- * want. See docs/calendar-verification.md.
+ * Day pillar is jieqi-independent. Default `dayBoundary: 'zi_start'` advances
+ * the DAY pillar (only) at 23:00–23:59; `'civil_midnight'` keeps the civil date.
+ * Hour pillar is 五鼠遁 from whichever day stem that convention selected
+ * (not the library's getTimeGan/getTimeZhi). See conventions.ts and
+ * docs/day-boundary-verification.md.
  */
-import type { BranchInfo, DateTimeInput, FourPillars, LunarCalendarDate, Pillar, SolarCalendarDate, SolarTermInstant, StemInfo } from './types'
+import type { BranchInfo, DateTimeInput, DayBoundary, FourPillars, FourPillarsCore, FourPillarsInput, LunarCalendarDate, Pillar, SolarCalendarDate, SolarTermInstant, StemInfo } from './types'
 import { BRANCHES, STEMS, SOLAR_TERMS_CALENDAR_YEAR_ORDER, branchByHanja, stemByHanja } from './tables'
 import { lunarFromYmd, solarFromYmd, solarFromYmdHms, type RawJieQiHandle } from './lunar-adapter'
 import { CalendarInputError } from './errors'
-import { assertYearInRange, beijingEquivalentFields, formatYmd, parseTimeOrNull, parseYmd, resolveInstantUtc } from './utils'
+import { addCivilDays, assertYearInRange, beijingEquivalentFields, formatYmd, parseTimeOrNull, parseYmd, resolveInstantUtc } from './utils'
 
 function pillar(stem: StemInfo, branch: BranchInfo): Pillar {
   return { stem, branch, ganzhi: stem.hanja + branch.hanja }
@@ -103,26 +102,32 @@ export function solarTerms(year: number): SolarTermInstant[] {
   return terms
 }
 
-/** Resolve the ganzhi four pillars for an explicit local date/time in an IANA timezone. */
-export function fourPillars(input: DateTimeInput): FourPillars {
+function isLateZiHour(time: string | null): boolean {
+  const localTime = parseTimeOrNull(time)
+  return localTime !== null && localTime.h === 23
+}
+
+function pillarsForBoundary(input: DateTimeInput, dayBoundary: DayBoundary): FourPillarsCore {
   const { date, time, timezone } = input
-  const { y, m, d } = parseYmd(date)
+  const { y } = parseYmd(date)
   assertYearInRange(y)
 
   const utcInstant = resolveInstantUtc(date, time, timezone)
 
   // Year + month pillar: jieqi-dependent, so resolve in the Beijing-equivalent frame
   // with the full-datetime-precision `*Exact` accessors (see module doc comment).
+  // These do NOT follow dayBoundary — they key off the birth instant / 节气.
   const bj = beijingEquivalentFields(utcInstant)
   const bjLunar = solarFromYmdHms(bj.y, bj.m, bj.d, bj.h, bj.mi, bj.s).getLunar()
   const yearPillar = pillar(stemByHanja(bjLunar.getYearGanExact()), branchByHanja(bjLunar.getYearZhiExact()))
   const monthPillar = pillar(stemByHanja(bjLunar.getMonthGanExact()), branchByHanja(bjLunar.getMonthZhiExact()))
 
-  // Day pillar: jieqi-independent, use the true local calendar date directly.
-  const localLunar = solarFromYmd(y, m, d).getLunar()
-  const dayPillar = pillar(stemByHanja(localLunar.getDayGan()), branchByHanja(localLunar.getDayZhi()))
-
   const localTime = parseTimeOrNull(time)
+  const rollDay = dayBoundary === 'zi_start' && localTime !== null && localTime.h === 23
+  const dayDate = rollDay ? addCivilDays(date, 1) : date
+  const dayYmd = parseYmd(dayDate)
+  const localLunar = solarFromYmd(dayYmd.y, dayYmd.m, dayYmd.d).getLunar()
+  const dayPillar = pillar(stemByHanja(localLunar.getDayGan()), branchByHanja(localLunar.getDayZhi()))
   const hourPillar = localTime ? hourPillarFromDayStem(dayPillar.stem, localTime.h) : null
 
   return {
@@ -131,5 +136,17 @@ export function fourPillars(input: DateTimeInput): FourPillars {
     day: dayPillar,
     hour: hourPillar,
     hourUnknown: localTime === null,
+    dayBoundaryUsed: dayBoundary,
+  }
+}
+
+/** Resolve the ganzhi four pillars for an explicit local date/time in an IANA timezone. */
+export function fourPillars(input: FourPillarsInput): FourPillars {
+  const dayBoundary: DayBoundary = input.dayBoundary ?? 'zi_start'
+  const main = pillarsForBoundary(input, dayBoundary)
+  const other: DayBoundary = dayBoundary === 'zi_start' ? 'civil_midnight' : 'zi_start'
+  return {
+    ...main,
+    alternate: isLateZiHour(input.time) ? pillarsForBoundary(input, other) : null,
   }
 }

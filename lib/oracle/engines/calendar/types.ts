@@ -33,13 +33,29 @@ export interface Pillar {
   ganzhi: string
 }
 
-export interface FourPillars {
+export type DayBoundary = 'zi_start' | 'civil_midnight'
+
+export interface FourPillarsCore {
   year: Pillar
   month: Pillar
   day: Pillar
   /** Null when birth time is unknown. */
   hour: Pillar | null
   hourUnknown: boolean
+  dayBoundaryUsed: DayBoundary
+}
+
+export interface FourPillars extends FourPillarsCore {
+  /**
+   * The other day-boundary convention, only when birth time is 23:00–23:59.
+   * Same pillar fields as the main result (no nested alternate).
+   */
+  alternate: FourPillarsCore | null
+}
+
+export type FourPillarsInput = DateTimeInput & {
+  /** Defaults to `zi_start`. Affects the day pillar and hour-stem only. */
+  dayBoundary?: DayBoundary
 }
 
 export interface LunarCalendarDate {
@@ -129,13 +145,29 @@ export interface NineStarResult {
   day: NineStarValue
 }
 
+export type SukuyouRelationName = '命' | '業' | '胎' | '栄' | '衰' | '安' | '危' | '成' | '壊' | '友' | '親'
+
+export type SukuyouRelationPair = '命' | '業胎' | '栄親' | '友衰' | '安壊' | '危成'
+
+export interface SukuyouRelation {
+  /** 0–26 steps from `from` along the 昴-order cycle (逆時計 = +index). */
+  offset: number
+  name: SukuyouRelationName
+  pair: SukuyouRelationPair
+}
+
 export interface SukuyouResult {
-  /** 1-27, Sukuyodo order starting at 昴宿. */
+  /** 1-27, 宿曜経 order starting at 昴宿. */
   index: number
   hanja: string
   hangul: string
-  moonLongitudeDeg: number
-  /** True when birth time was unknown and local-noon was substituted (reduced precision: +-6h can shift the index by 1-2). */
+  /** Japanese 旧暦 year used for the 朔日宿 count (may differ from the civil year). */
+  lunarYear: number
+  /** 1-12. Leap months reuse this number's 朔日宿. */
+  lunarMonth: number
+  lunarDay: number
+  isLeapMonth: boolean
+  /** True when birth time was not supplied. 朔日宿 itself is civil-date-only. */
   timeUnknown: boolean
 }
 

@@ -86,13 +86,11 @@ describe('tzolkin', () => {
 })
 
 describe('sukuyou', () => {
-  it('returns an index in range 1-27 and flags reduced precision when time is unknown', () => {
+  it('flags timeUnknown when time is omitted; 朔日宿 itself does not use the clock', () => {
     const known = sukuyou({ date: '1988-03-15', time: '04:30', timezone: 'Asia/Seoul' })
-    expect(known.index).toBeGreaterThanOrEqual(1)
-    expect(known.index).toBeLessThanOrEqual(27)
-    expect(known.timeUnknown).toBe(false)
-
     const unknown = sukuyou({ date: '1988-03-15', time: null, timezone: 'Asia/Seoul' })
+    expect(known.timeUnknown).toBe(false)
     expect(unknown.timeUnknown).toBe(true)
+    expect(known.hanja).toBe(unknown.hanja)
   })
 })
