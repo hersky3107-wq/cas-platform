@@ -22,6 +22,7 @@ export { greatLuck } from './great-luck'
 export { nineStar } from './nine-star'
 export { sukuyou } from './sukuyou'
 export { seasonElement } from './season-element'
+export { weekday } from './weekday'
 export { tzolkin } from './tzolkin'
 
 export { CalendarInputError, CalendarRangeError } from './errors'
@@ -49,3 +50,4 @@ export type {
   TzolkinResult,
   DateTimeInput,
 } from './types'
+export type { WeekdayIndex } from './weekday'

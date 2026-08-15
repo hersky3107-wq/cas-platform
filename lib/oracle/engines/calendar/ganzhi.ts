@@ -70,8 +70,13 @@ function jieQiUtcInstant(handle: RawJieQiHandle): Date {
  * source. Metadata (hangul/isJie/branchIndexIfJie) is assigned by position in the
  * fixed 24-term cycle, not by name matching — see tables.ts.
  */
+/** Pure-function memo: same year always yields the same 24 instants. */
+const SOLAR_TERMS_BY_YEAR = new Map<number, SolarTermInstant[]>()
+
 export function solarTerms(year: number): SolarTermInstant[] {
   assertYearInRange(year)
+  const cached = SOLAR_TERMS_BY_YEAR.get(year)
+  if (cached) return cached
   let cursor = solarFromYmd(year - 1, 12, 1).getLunar()
   const collectedUtc: Date[] = []
   for (let guard = 0; guard < 30; guard++) {
@@ -84,7 +89,7 @@ export function solarTerms(year: number): SolarTermInstant[] {
   if (collectedUtc.length !== 24) {
     throw new CalendarInputError(`solarTerms(${year}) collected ${collectedUtc.length} terms, expected exactly 24`)
   }
-  return collectedUtc.map((utc, i) => {
+  const terms = collectedUtc.map((utc, i) => {
     const meta = SOLAR_TERMS_CALENDAR_YEAR_ORDER[i]!
     return {
       hanja: meta.hanja,
@@ -94,6 +99,8 @@ export function solarTerms(year: number): SolarTermInstant[] {
       utcIso: utc.toISOString(),
     }
   })
+  SOLAR_TERMS_BY_YEAR.set(year, terms)
+  return terms
 }
 
 /** Resolve the ganzhi four pillars for an explicit local date/time in an IANA timezone. */
