@@ -185,6 +185,70 @@ export const HUO_LING_START: Record<number, { huo: number; ling: number }> = {
   7: { huo: 9, ling: 10 }, // 未
 }
 
+/**
+ * ── 生年四化 (natal Four Transformations) ─────────────────────────────
+ * From the birth (or target-year) YEAR STEM, four stars take
+ * 化祿 / 化權 / 化科 / 化忌. Indexed by 天干 (甲=0 … 癸=9); each entry is
+ * `[祿, 權, 科, 忌]` star names in this engine's simplified spelling.
+ *
+ * This is the iztro DEFAULT table (matches `SylarLong/iztro`
+ * `heavenlyStems.ts`), verified 2026-08-15 — we cross-check against iztro,
+ * so we match it exactly. See conventions.ts for the 庚 school split.
+ *
+ * 全書系 vs 中州派 diverge on 庚干's 科 star (太陰 vs 天府/天相). iztro's
+ * default is 太陽祿 武曲權 太陰科 天同忌 (全書系). Alternatives are exposed
+ * in `MUTAGEN_GENG_VARIANTS` so the 科/忌 pair can be switched later
+ * without touching logic.
+ */
+export const MUTAGEN_BY_STEM: ReadonlyArray<readonly [string, string, string, string]> = [
+  ['廉贞', '破军', '武曲', '太阳'], // 甲
+  ['天机', '天梁', '紫微', '太阴'], // 乙
+  ['天同', '天机', '文昌', '廉贞'], // 丙
+  ['太阴', '天同', '天机', '巨门'], // 丁
+  ['贪狼', '太阴', '右弼', '天机'], // 戊
+  ['武曲', '贪狼', '天梁', '文曲'], // 己
+  ['太阳', '武曲', '太阴', '天同'], // 庚  ← iztro default (全書系, 太陰科)
+  ['巨门', '太阳', '文曲', '文昌'], // 辛
+  ['天梁', '紫微', '左辅', '武曲'], // 壬
+  ['破军', '巨门', '太阴', '贪狼'], // 癸
+]
+
+/**
+ * 庚干四化 — the most famous school split in 紫微斗數. All schools agree on
+ * 太陽化祿 and 武曲化權; they differ on the 科 and 忌 pair. To switch schools,
+ * replace `MUTAGEN_BY_STEM[6]` with one of these and document it.
+ *
+ * NOT active by default — `MUTAGEN_BY_STEM` (全書系, matching iztro) is used.
+ */
+export const MUTAGEN_GENG_VARIANTS: Readonly<Record<string, readonly [string, string, string, string]>> = {
+  /** 全書系 / iztro default: 太陽祿 武曲權 太陰科 天同忌. */
+  quanshu: ['太阳', '武曲', '太阴', '天同'],
+  /** 中州派 (task-cited): 太陽祿 武曲權 天府科 天同忌. */
+  zhongzhou: ['太阳', '武曲', '天府', '天同'],
+  /** iztro config-doc example: 太陽祿 武曲權 天同科 天相忌. */
+  iztroDoc: ['太阳', '武曲', '天同', '天相'],
+}
+
+/**
+ * 小限 起宫: the 地支 (0=子) that holds 虚岁 1, keyed by birth YEAR BRANCH.
+ *   寅午戌 → 辰, 申子辰 → 戌, 巳酉丑 → 未, 亥卯未 → 丑.
+ * From there 男順女逆, one palace per 虚岁 year. Matches iztro `getAgeIndex`.
+ */
+export const XIAO_XIAN_START_BY_YEAR_BRANCH: readonly number[] = [
+  10, // 子 → 戌
+  7, // 丑 → 未
+  4, // 寅 → 辰
+  1, // 卯 → 丑
+  10, // 辰 → 戌
+  7, // 巳 → 未
+  4, // 午 → 辰
+  1, // 未 → 丑
+  10, // 申 → 戌
+  7, // 酉 → 未
+  4, // 戌 → 辰
+  1, // 亥 → 丑
+]
+
 /** 申子辰马寅, 寅午戌马申, 巳酉丑马亥, 亥卯未马巳 */
 export const TIAN_MA_BY_YEAR_BRANCH: readonly number[] = [
   2, // 子 → 寅

@@ -11,25 +11,34 @@ import {
   HUO_LING_START,
   KUI_YUE_BY_YEAR_STEM,
   LU_CUN_BY_YEAR_STEM,
+  MUTAGEN_BY_STEM,
   PALACE_NAMES,
   STAR_DEFS,
   STEM_HANJA,
   TIAN_MA_BY_YEAR_BRANCH,
   TIANFU_SERIES,
   WU_XING_JU,
+  XIAO_XIAN_START_BY_YEAR_BRANCH,
   ZIWEI_SERIES,
   nayinElement,
   wrap12,
 } from './tables'
 import type {
+  DaXian,
+  DaXianPeriod,
   GongRef,
+  LiuNian,
   Palace,
   PlacedStar,
+  SiHua,
   StarBrightness,
   WuXingJu,
+  XiaoXian,
   ZiweiChart,
   ZiweiInput,
+  ZiweiLimitation,
   ZiweiLunar,
+  ZiweiSex,
 } from './types'
 
 export { ZIWEI_ENGINE_VERSION }
@@ -38,6 +47,8 @@ export type { ZiweiErrorCode } from './errors'
 export {
   BRANCH_HANJA,
   MAJOR_STAR_NAMES,
+  MUTAGEN_BY_STEM,
+  MUTAGEN_GENG_VARIANTS,
   PALACE_NAMES,
   TIANFU_SERIES,
   WU_XING_JU,
@@ -45,17 +56,24 @@ export {
   wrap12,
 } from './tables'
 export type {
+  DaXian,
+  DaXianPeriod,
   GongRef,
+  LiuNian,
   Palace,
   PalaceName,
   PlacedStar,
+  SiHua,
+  SiHuaKind,
   StarBrightness,
   StarCategory,
   WuXingJu,
   WuXingJuName,
+  XiaoXian,
   ZiweiChart,
   ZiweiDayBoundary,
   ZiweiInput,
+  ZiweiLimitation,
   ZiweiLunar,
   ZiweiSex,
 } from './types'
@@ -176,6 +194,103 @@ function buildPalaces(
   }))
 }
 
+/** 干支 of a solar year (valid after 立春): stem/branch indices from the year number. */
+export function yearStemBranch(year: number): { stem: number; branch: number } {
+  return { stem: ((year - 4) % 10 + 10) % 10, branch: ((year - 4) % 12 + 12) % 12 }
+}
+
+/** 生年/流年四化 for a 天干 index (甲=0 … 癸=9). */
+export function siHuaForStem(stemIndex: number): SiHua {
+  const [lu, quan, ke, ji] = MUTAGEN_BY_STEM[wrapStem(stemIndex)]!
+  return { stem: STEM_HANJA[wrapStem(stemIndex)]!, lu, quan, ke, ji }
+}
+
+function wrapStem(n: number): number {
+  return ((n % 10) + 10) % 10
+}
+
+/** 陽男陰女 順行 (true); 陰男陽女 逆行 (false). 陽 = even 天干 index. */
+export function daXianForward(yearStemIndex: number, sex: ZiweiSex): boolean {
+  const isYang = wrapStem(yearStemIndex) % 2 === 0
+  return isYang === (sex === 'male')
+}
+
+/**
+ * 12 大限 in chronological order. First begins at 命宮 at 虚岁 = 五行局 number,
+ * then +10 per palace, walking 順/逆 by `forward`.
+ */
+export function buildDaXianPeriods(
+  mingBranch: number,
+  startAge: number,
+  forward: boolean,
+  palaces: Palace[],
+): DaXianPeriod[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const palaceIndex = forward ? wrap12(mingBranch + i) : wrap12(mingBranch - i)
+    const ageFrom = startAge + 10 * i
+    return {
+      palaceIndex,
+      palaceName: palaces[palaceIndex]!.name,
+      ageFrom,
+      ageTo: ageFrom + 9,
+    }
+  })
+}
+
+function daXianAtAge(periods: DaXianPeriod[], nominalAge: number): DaXianPeriod | null {
+  return periods.find((p) => nominalAge >= p.ageFrom && nominalAge <= p.ageTo) ?? null
+}
+
+/** 小限 palace for a 虚岁 age: 起宫 by birth year branch, then 男順女逆. */
+export function xiaoXianFor(
+  birthYearBranch: number,
+  sex: ZiweiSex,
+  nominalAge: number,
+  palaces: Palace[],
+): XiaoXian {
+  const start = XIAO_XIAN_START_BY_YEAR_BRANCH[wrap12(birthYearBranch)]!
+  const step = nominalAge - 1
+  const palaceIndex = sex === 'male' ? wrap12(start + step) : wrap12(start - step)
+  return { palaceIndex, palaceName: palaces[palaceIndex]!.name, nominalAge }
+}
+
+function computeLiuNian(
+  palaces: Palace[],
+  birthYearBranch: number,
+  birthLunarYear: number,
+  sex: ZiweiSex,
+  year: number,
+): LiuNian {
+  const { stem, branch } = yearStemBranch(year)
+  const palace = palaces[branch]!
+  const nominalAge = year - birthLunarYear + 1
+  return {
+    year,
+    yearStem: STEM_HANJA[stem]!,
+    yearBranch: BRANCH_HANJA[branch]!,
+    liuNianPalace: { index: branch, branch: BRANCH_HANJA[branch]!, name: palace.name },
+    liuNianSiHua: siHuaForStem(stem),
+    xiaoXian: xiaoXianFor(birthYearBranch, sex, nominalAge, palaces),
+  }
+}
+
+/**
+ * 流年 for a target civil year: 流年宮 (branch match), 流年四化 (year stem),
+ * and 小限 (虚岁 at that year). Requires a time-known chart (palaces present).
+ */
+export function ziweiLiuNian(chart: ZiweiChart, year: number): LiuNian {
+  if (chart.mingGong === null) {
+    throw new ZiweiInputError('requires_birth_time', 'liuNian requires a chart with a known birth time')
+  }
+  return computeLiuNian(
+    chart.palaces,
+    (BRANCH_HANJA as readonly string[]).indexOf(chart.lunar.yearBranch),
+    chart.lunar.year,
+    chart.sex,
+    year,
+  )
+}
+
 function parseBirthTime(time: string): { h: number; mi: number } {
   const match = /^(\d{2}):(\d{2})$/.exec(time)
   if (!match) throw new ZiweiInputError('invalid_time', `expected HH:mm, got "${time}"`)
@@ -225,34 +340,64 @@ export function ziweiChart(input: ZiweiInput): ZiweiChart {
   }
 
   const flags = { leapMonth: lunarDate.isLeapMonth, lateZiHour, lunarDayRolled }
+  const yearStem = pillars.year.stem.index
+  const siHua = siHuaForStem(yearStem)
 
   if (timeUnknown || !pillars.hour) {
     return {
       lunar,
+      sex: input.sex,
       mingGong: null,
       shenGong: null,
       wuXingJu: null,
       palaces: [],
+      siHua,
+      daXian: null,
+      liuNian: null,
       flags,
-      limitations: ['no_birth_time'],
+      limitations: ['no_birth_time', 'no_feixing_sihua', 'brightness_gaps'],
     }
   }
 
   const hourBranch = pillars.hour.branch.index
-  const yearStem = pillars.year.stem.index
   const yearBranch = pillars.year.branch.index
   const ming = mingGongBranch(lunarDate.month, hourBranch)
   const shen = shenGongBranch(lunarDate.month, hourBranch)
   const mingStem = palaceStem(yearStem, ming)
   const ju = wuXingJuFromMing(mingStem, ming)
+  const palaces = buildPalaces(ming, yearStem, yearBranch, lunarDate.month, lunarDate.day, hourBranch, ju.number)
+
+  const forward = daXianForward(yearStem, input.sex)
+  const periods = buildDaXianPeriods(ming, ju.number, forward, palaces)
+
+  let currentDaXian: DaXianPeriod | null = null
+  let liuNian: LiuNian | null = null
+  if (input.atDate) {
+    let atLunar
+    try {
+      atLunar = toLunar({ date: input.atDate })
+    } catch (err) {
+      throw new ZiweiInputError('invalid_date', err instanceof Error ? err.message : 'invalid atDate')
+    }
+    const nominalAge = atLunar.year - lunarDate.year + 1
+    currentDaXian = daXianAtAge(periods, nominalAge)
+    liuNian = computeLiuNian(palaces, yearBranch, lunarDate.year, input.sex, atLunar.year)
+  }
+
+  const daXian: DaXian = { forward, startAge: ju.number, periods, currentDaXian }
+  const limitations: ZiweiLimitation[] = ['no_feixing_sihua', 'brightness_gaps']
 
   return {
     lunar,
+    sex: input.sex,
     mingGong: gongRef(ming, yearStem),
     shenGong: gongRef(shen, yearStem),
     wuXingJu: ju,
-    palaces: buildPalaces(ming, yearStem, yearBranch, lunarDate.month, lunarDate.day, hourBranch, ju.number),
+    palaces,
+    siHua,
+    daXian,
+    liuNian,
     flags,
-    limitations: [],
+    limitations,
   }
 }

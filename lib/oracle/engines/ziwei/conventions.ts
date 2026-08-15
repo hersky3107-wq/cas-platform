@@ -1,8 +1,7 @@
 /**
- * 자미두수 (Zi Wei Dou Shu) PART 1 — star placement only.
- *
- * Pure functions. Lunar conversion is delegated to `lib/oracle/engines/calendar`.
- * This module does NOT implement 四化, 大限, 流年, or interpretation (PART 2).
+ * 자미두수 (Zi Wei Dou Shu). PART 1 = star placement, PART 2 = 四化 / 大限 /
+ * 流年 / 廟旺. Pure functions. Lunar conversion is delegated to
+ * `lib/oracle/engines/calendar`.
  *
  * ── TRAP 1 — lunar month, not 절기 ─────────────────────────────────────
  * `fourPillars()` switches the *month pillar* at 節 boundaries (입춘/경칩/…).
@@ -47,7 +46,56 @@
  * Hour branch uses the same whole-hour bins as the calendar engine
  * (23:00–01:00 = 子, 01:00–03:00 = 丑, …).
  *
- * `sex` is accepted for API stability with PART 2 (大限 direction) but is
- * unused for star placement.
+ * `sex` is used for 大限/小限 direction (PART 2) but is unused for star
+ * placement.
+ *
+ * ════════════════════════════════════════════════════════════════════
+ * PART 2 — 四化 / 大限 / 流年 / 廟旺
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * ── 生年四化 (natal Four Transformations) ─────────────────────────────
+ * From the birth YEAR STEM (立春 year, via fourPillars). Table lives in
+ * `tables.ts` (`MUTAGEN_BY_STEM`). It is the iztro DEFAULT table, so we
+ * match iztro when verifying.
+ *
+ * 庚干 SCHOOL SPLIT — the single most famous divergence. All schools agree
+ * 太陽化祿 + 武曲化權; they differ on 科/忌:
+ *   - 全書系 / iztro default (CHOSEN):  庚 = 太陽祿 武曲權 太陰科 天同忌
+ *   - 中州派:                           庚 = 太陽祿 武曲權 天府科 天同忌
+ *   - iztro config-doc example:         庚 = 太陽祿 武曲權 天同科 天相忌
+ * We pick the iztro default because verification is against iztro. The
+ * alternatives are in `MUTAGEN_GENG_VARIANTS` for later switching.
+ *
+ * 流年四化 uses the SAME table keyed by the target year's stem.
+ *
+ * 飛星四化 (宮干四化, flying-star transformations from each palace's own
+ * stem) is a SEPARATE school/feature and is intentionally NOT implemented.
+ * Charts carry the `no_feixing_sihua` limitation.
+ *
+ * ── 大限 (decade periods) ─────────────────────────────────────────────
+ *   - Start at 命宮; first 大限 begins at 虚岁 = the 五行局 number
+ *     (水二局 → 2–11, 木三局 → 3–12, 金四局 → 4–13, 土五局 → 5–14,
+ *      火六局 → 6–15), then +10 per palace.
+ *   - Direction from the birth YEAR STEM yin/yang × sex: 陽男陰女 順行
+ *     (increasing 地支), 陰男陽女 逆行. (Year stem and year branch always
+ *     share parity, so iztro's branch-based test is equivalent.)
+ *   - Matches current iztro (`getHoroscope`: `start = FiveElementsClass +
+ *     10*i`, `FiveElementsClass.wood3rd = 3`). NOTE: iztro's *older* docs
+ *     example page shows 木三局 命宮 as [4,13]; the current library uses
+ *     [3,12], which is what we implement.
+ *
+ * ── 小限 (minor limit) ────────────────────────────────────────────────
+ * Unambiguous, so implemented. 虚岁 1 sits in 辰/戌/未/丑 by birth year
+ * branch group (`XIAO_XIAN_START_BY_YEAR_BRANCH`); then 男順女逆, one
+ * palace per 虚岁 year. Matches iztro `getAgeIndex` + the ages loop.
+ *
+ * ── 廟旺利陷 (brightness) ─────────────────────────────────────────────
+ * The 三合 庙旺利陷 matrix (`STAR_DEFS[*].brightness`, iztro `STARS_INFO`
+ * rotated 寅→子) covers the 14 主星 plus 文昌 文曲 火星 铃星 擎羊 陀罗.
+ * iztro has NO brightness for 左輔 右弼 天魁 天鉞 地空 地劫 or the 小星,
+ * so those return null rather than a guess. Charts carry `brightness_gaps`.
+ *
+ * 虚岁 (nominal age): `atDate` lunar year − birth lunar year + 1 (natural-
+ * year divide, iztro default `ageDivide: 'normal'`).
  */
-export const ZIWEI_ENGINE_VERSION = '1.1.0'
+export const ZIWEI_ENGINE_VERSION = '1.2.0'

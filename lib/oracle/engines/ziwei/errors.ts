@@ -1,4 +1,4 @@
-export type ZiweiErrorCode = 'invalid_date' | 'invalid_time' | 'invalid_sex'
+export type ZiweiErrorCode = 'invalid_date' | 'invalid_time' | 'invalid_sex' | 'requires_birth_time'
 
 export class ZiweiInputError extends Error {
   readonly code: ZiweiErrorCode
