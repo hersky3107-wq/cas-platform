@@ -111,14 +111,41 @@ function buildTierSplit(models: CardModelPrediction[]): TierSplit {
   return split
 }
 
-function buildHitRate(round: RoundRow, models: CardModelPrediction[]): HitRateSummary {
+function buildHitRate(resolvedAt: string | null, models: CardModelPrediction[]): HitRateSummary {
   const graded = models.filter((m) => m.is_correct !== null)
   const correct = graded.filter((m) => m.is_correct === true).length
   return {
-    resolved: round.resolved_at !== null,
+    resolved: resolvedAt !== null,
     graded: graded.length,
     correct: graded.length ? correct : null,
     hitRatePct: graded.length ? Math.round((correct / graded.length) * 1000) / 10 : null,
+  }
+}
+
+export type CardAggregates = {
+  consensus: ConsensusSummary
+  campSplit: CampSplit
+  tierSplit: TierSplit
+  hitRate: HitRateSummary
+}
+
+/**
+ * The exact same aggregate definitions `buildCardData` uses, exposed
+ * standalone so a LIVE view can recompute them for an in-memory `models`
+ * array without ever re-implementing "majority" / "abstain" / "hit rate"
+ * anywhere else (see `lib/league/use-card-stream.ts`'s live-merge path,
+ * the ONE sanctioned caller of this outside `buildCardData` itself). This is
+ * not a second source of truth — it is the SAME function, so a live view and
+ * the next `GET /api/league/card` refetch can never define "majority"
+ * differently; they can only ever differ in which `models` rows they were
+ * given, and the DB-fetched set always wins once it arrives.
+ */
+export function computeCardAggregates(models: CardModelPrediction[], resolvedAt: string | null): CardAggregates {
+  return {
+    consensus: buildConsensus(models),
+    campSplit: buildCampSplit(models),
+    tierSplit: buildTierSplit(models),
+    hitRate: buildHitRate(resolvedAt, models),
   }
 }
 
@@ -161,10 +188,7 @@ export function buildCardData(roundRow: RoundRow, predictionRows: PredictionRow[
   return {
     round: toRoundMeta(roundRow),
     models,
-    consensus: buildConsensus(models),
-    campSplit: buildCampSplit(models),
-    tierSplit: buildTierSplit(models),
-    hitRate: buildHitRate(roundRow, models),
+    ...computeCardAggregates(models, roundRow.resolved_at),
     generatedAt: new Date().toISOString(),
   }
 }

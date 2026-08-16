@@ -8,6 +8,7 @@ import {
   computeCostUsd,
   type RosterEntry,
   type LeagueTier,
+  type Camp,
 } from '@/lib/league/roster'
 import { fetchDataPacket, formatDataPacketForPrompt, type DataPacket } from '@/lib/league/market-data'
 
@@ -76,6 +77,25 @@ export type GenerateOptions = {
   costCapUsd?: number
   /** Admin user id for optional BYOK key reads (core models). Platform models ignore it. */
   userId?: string | null
+  /**
+   * LIVE STREAM HOOK (optional, additive — no-op for every existing caller
+   * that doesn't pass it): invoked once the round row is resolved/created,
+   * before any model calls start. Lets a streaming route emit an early
+   * "round" line with the round_id the client needs to reconcile from
+   * `GET /api/league/card` later, plus `rosterSize` so the client can show a
+   * lightweight "N of rosterSize answered" progress state without guessing.
+   */
+  onRoundResolved?: (round: { id: string; created: boolean; rosterSize: number }) => void
+  /**
+   * LIVE STREAM HOOK (optional, additive): invoked once per model, right
+   * after that model's `model_predictions` row has been written (DB write
+   * happens inside `runOneModel`, this fires immediately after — the callback
+   * NEVER fires before the row exists, preserving "DB is truth, stream is
+   * just a display of what was just persisted"). Does not change concurrency,
+   * the kill-switch, or abstain/timeout handling in any way — it is a pure
+   * side-effect tap on the existing `results.push(outcome)` in the worker loop.
+   */
+  onModelResult?: (result: ModelRunResult) => void
 }
 
 type ModelStatus = 'ok' | 'abstain' | 'timeout' | 'error'
@@ -83,9 +103,11 @@ type ModelStatus = 'ok' | 'abstain' | 'timeout' | 'error'
 export type ModelRunResult = {
   model_id: string
   brand: string
+  camp: Camp
   tier: LeagueTier
   direction: 'up' | 'down' | 'flat' | null
   probability: number | null
+  reasoning_snippet: string | null
   cost_usd: number
   /** 'billed' = provider-reported actual/documented cost. 'estimated' = our token×list-price fallback. */
   cost_source: 'billed' | 'estimated'
@@ -423,11 +445,20 @@ async function runOneModel(
 ): Promise<ModelRunResult> {
   const raw = await callWithRetry(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
 
-  const base = { model_id: raw.actualModel, brand: entry.brand, tier: entry.league_tier }
+  const base = { model_id: raw.actualModel, brand: entry.brand, camp: entry.camp, tier: entry.league_tier }
 
   if (raw.error) {
     const status: ModelStatus = isTimeout(raw.error) ? 'timeout' : 'error'
-    return { ...base, direction: null, probability: null, cost_usd: 0, cost_source: 'estimated', status, error: raw.error }
+    return {
+      ...base,
+      direction: null,
+      probability: null,
+      reasoning_snippet: null,
+      cost_usd: 0,
+      cost_source: 'estimated',
+      status,
+      error: raw.error,
+    }
   }
 
   const parsed = parsePrediction(raw.text)
@@ -479,7 +510,15 @@ async function runOneModel(
       { onConflict: 'round_id,model_id' }
     )
 
-  return { ...base, direction: parsedDirection, probability, cost_usd: costUsd, cost_source: costSource, status }
+  return {
+    ...base,
+    direction: parsedDirection,
+    probability,
+    reasoning_snippet: rationale,
+    cost_usd: costUsd,
+    cost_source: costSource,
+    status,
+  }
 }
 
 function resolveCostCap(override?: number): number {
@@ -501,18 +540,22 @@ function resolveMaxCompletionTokensForEntry(entry: RosterEntry, runDefault: numb
 }
 
 export async function generatePredictions(opts: GenerateOptions): Promise<GenerateResult> {
-  const { round: roundInput, tiers, userId } = opts
+  const { round: roundInput, tiers, userId, onRoundResolved, onModelResult } = opts
   const concurrency = opts.concurrency && opts.concurrency > 0 ? opts.concurrency : DEFAULT_CONCURRENCY
   const timeoutMs = opts.timeoutMs && opts.timeoutMs > 0 ? opts.timeoutMs : DEFAULT_TIMEOUT_MS
   const costCap = resolveCostCap(opts.costCapUsd)
   const maxCompletionTokens = resolveMaxCompletionTokens(opts)
 
+  // Pure/synchronous config lookup — safe to resolve before the round exists,
+  // so onRoundResolved can report rosterSize in the same callback.
+  const roster = getRoster(tiers)
+
   const { round, created } = await ensureRound(roundInput)
+  onRoundResolved?.({ id: round.id, created, rosterSize: roster.length })
   // One packet fetch per ROUND (2 Twelve Data credits), injected to every
   // price-tier model — not per model.
   const packet = await fetchDataPacket(round.instrument)
   const prompts = buildPrompts(round, packet)
-  const roster = getRoster(tiers)
 
   const results: ModelRunResult[] = []
   let runningCost = 0
@@ -535,6 +578,9 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       const outcome = await runOneModel(entry, round.id, prompt, timeoutMs, userId ?? null, tokenBudget)
       runningCost += outcome.cost_usd
       results.push(outcome)
+      // Fires AFTER the DB write inside runOneModel — see onModelResult's doc
+      // comment on GenerateOptions for why this ordering is load-bearing.
+      onModelResult?.(outcome)
     }
   }
 

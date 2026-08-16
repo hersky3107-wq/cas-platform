@@ -19,6 +19,13 @@ const OWNER_EMAIL = 'hersky3107@gmail.com'
  *   /admin/league/card?instrument=AAPL&locale=ko            (force display language)
  *   /admin/league/card?instrument=AAPL&dev_declared_country=KR&dev_ip_country=KR   (jurisdiction: shows)
  *   /admin/league/card?instrument=AAPL&dev_declared_country=CN&dev_ip_country=CN   (jurisdiction: hides — China mainland row is empty in the matrix)
+ *   /admin/league/card?instrument=AAPL&live=1                (opt into the live generation stream — see the "Generate live" toggle below)
+ *
+ * LIVE (Layer 4): the "Generate live" checkbox is the explicit opt-in for
+ * `POST /api/league/generate-stream`. Unchecked (the default, matching every
+ * other card view on the product) always renders the STORED round exactly as
+ * `GET /api/league/card` returned it — this page never generates anything on
+ * a plain load.
  *
  * `dev_declared_country` / `dev_ip_country` are forwarded verbatim to
  * `PredictionCard`/`JurisdictionGate` as `devSignalsQuery` — a DEV-ONLY
@@ -34,6 +41,7 @@ export default function LeagueCardPreviewPage() {
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('instrument=AAPL')
   const [devSignalsQuery, setDevSignalsQuery] = useState<string | undefined>(undefined)
+  const [live, setLive] = useState(false)
 
   const load = useCallback(async (qs: string) => {
     setLoading(true)
@@ -66,6 +74,8 @@ export default function LeagueCardPreviewPage() {
       const forcedLocale = normalizeLeagueLocale(params.get('locale'))
       if (forcedLocale) setLeagueLocaleOverride(forcedLocale)
 
+      if (params.get('live') === '1') setLive(true)
+
       const devParams = new URLSearchParams()
       const devIp = params.get('dev_ip_country')
       const devDeclared = params.get('dev_declared_country')
@@ -77,6 +87,7 @@ export default function LeagueCardPreviewPage() {
       cardParams.delete('locale')
       cardParams.delete('dev_ip_country')
       cardParams.delete('dev_declared_country')
+      cardParams.delete('live')
       const initial = cardParams.toString() || 'instrument=AAPL'
       setQuery(initial)
       await load(initial)
@@ -108,11 +119,16 @@ export default function LeagueCardPreviewPage() {
         </button>
       </form>
 
+      <label className="flex items-center gap-2 text-xs text-gray-600">
+        <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} />
+        Generate live (re-runs the roster now, streamed — stored card is the default; this is opt-in)
+      </label>
+
       {loading ? <p className="text-sm text-gray-500">Loading…</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {card ? (
         <JurisdictionGate category={card.round.category} devSignalsQuery={devSignalsQuery}>
-          <PredictionCard initialData={card} devSignalsQuery={devSignalsQuery} />
+          <PredictionCard key={card.round.round_id} initialData={card} live={live} devSignalsQuery={devSignalsQuery} />
         </JurisdictionGate>
       ) : null}
     </div>
