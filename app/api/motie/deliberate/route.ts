@@ -1,4 +1,9 @@
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { resolveRouteAuth } from '@/lib/supabase/route-auth'
+import { creditsForLeagueDebate } from '@/lib/credits'
+import { deductCreditsBalance } from '@/lib/credits-server'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { LEAGUE_DEEP_RATE_RULE } from '@/lib/league/access-policy'
 import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
 import { gatherJejuSnapshot, buildBriefingContext, type JejuSnapshot } from '@/lib/motie/brief'
 import {
@@ -50,7 +55,13 @@ import {
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-// TODO: credit/auth gating before public launch (governance demo — open for now).
+/**
+ * Paid debate run. Auth is required on every POST. Credits
+ * (`creditsForLeagueDebate` / module `league_debate`) are deducted ONCE, on
+ * `action === 'start'`, via the existing `deductCreditsBalance` +
+ * `credit_logs` path — later stages of the same session are not recharged.
+ * Insufficient balance returns 402 and does not start the engine.
+ */
 
 // ─────────────────────────────────────────────────────────────────────────────
 // JEJU Mode B — yes/no DELIBERATION route (SEPARATE from app/api/jeju/deep).
@@ -550,12 +561,49 @@ export async function POST(req: Request): Promise<Response> {
 
   const action = typeof body.action === 'string' ? body.action : ''
 
+  const { user, error: authErr } = await resolveRouteAuth(req, body)
+  if (authErr || !user) {
+    return json({ ok: false, stage: action || 'unknown', error: 'Invalid session' }, 401)
+  }
+
   // ── ACTION: start — beat 1 (snapshot → context → plan). ──────────────────────
   if (action === 'start') {
     try {
       const question =
         typeof body.question === 'string' && body.question.trim() ? body.question.trim() : ''
       if (!question) return fail('start', '질문이 비어 있습니다.', 400)
+
+      // Burst guard on the only charged action, checked BEFORE the deduction so
+      // a throttled caller is never billed. Per-process and per-user — see
+      // `lib/rate-limit.ts` for what this does and does not protect against.
+      const limit = checkRateLimit(`league_debate:${user.id}`, LEAGUE_DEEP_RATE_RULE)
+      if (!limit.ok) {
+        return json(
+          {
+            ok: false,
+            stage: 'start',
+            error: 'Too many requests. Please wait a moment.',
+            retryAfterSec: Math.max(1, Math.ceil(limit.retryAfterMs / 1000)),
+          },
+          429
+        )
+      }
+
+      const cost = creditsForLeagueDebate()
+      const deduct = await deductCreditsBalance(supabaseAdmin, user.id, cost, 'league_debate')
+      if (!deduct.ok) {
+        const insufficient = deduct.reason === 'insufficient'
+        return json(
+          {
+            ok: false,
+            stage: 'start',
+            error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+            balance: deduct.balance,
+            required: cost,
+          },
+          insufficient ? 402 : 500
+        )
+      }
 
       const orchestratorProvider =
         typeof body.orchestratorProvider === 'string' ? body.orchestratorProvider : undefined

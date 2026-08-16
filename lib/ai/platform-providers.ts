@@ -23,7 +23,7 @@ import 'server-only'
  * bottom for requested models that could not be verified.
  */
 
-export type PlatformProviderId = 'openrouter' | 'meta-muse' | 'youcom' | 'clova'
+export type PlatformProviderId = 'openrouter' | 'meta-muse' | 'youcom' | 'clova' | 'upstage' | 'friendli'
 
 /** process.env key holding the bearer/API token for each platform provider. */
 export const PLATFORM_PROVIDER_ENV_KEY: Record<PlatformProviderId, string> = {
@@ -31,6 +31,8 @@ export const PLATFORM_PROVIDER_ENV_KEY: Record<PlatformProviderId, string> = {
   'meta-muse': 'META_MUSE_API_KEY',
   youcom: 'YOUCOM_API_KEY',
   clova: 'CLOVA_API_KEY',
+  upstage: 'UPSTAGE_API_KEY',
+  friendli: 'FRIENDLI_TOKEN',
 }
 
 /**
@@ -129,6 +131,20 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   { id: 'openrouter:nova-2-lite', provider: 'openrouter', brand: 'Amazon', displayName: 'Nova 2 Lite', model: 'amazon/nova-2-lite-v1', league: 'world', verified: true },
   { id: 'openrouter:llama-4-maverick', provider: 'openrouter', brand: 'Meta', displayName: 'Llama 4 Maverick', model: 'meta-llama/llama-4-maverick', league: 'world', verified: true },
   { id: 'openrouter:phi-4', provider: 'openrouter', brand: 'Microsoft', displayName: 'Phi-4', model: 'microsoft/phi-4', league: 'world', verified: true },
+  // --- 2026-08-16 roster expansion (official 40-model league). All model
+  // strings below confirmed present in the live OpenRouter catalog
+  // (GET /api/v1/models, 2026-08-16) before registering; reasoning-effort
+  // handling follows the per-model notes above. ---
+  { id: 'openrouter:deepseek-v4-pro', provider: 'openrouter', brand: 'DeepSeek', displayName: 'DeepSeek V4 Pro', model: 'deepseek/deepseek-v4-pro', league: 'premier', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  { id: 'openrouter:deepseek-v3.2', provider: 'openrouter', brand: 'DeepSeek', displayName: 'DeepSeek V3.2', model: 'deepseek/deepseek-v3.2', league: 'challenger', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  { id: 'openrouter:kimi-k2.6', provider: 'openrouter', brand: 'Moonshot AI', displayName: 'Kimi K2.6', model: 'moonshotai/kimi-k2.6', league: 'challenger', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  { id: 'openrouter:qwen3.5-plus', provider: 'openrouter', brand: 'Qwen', displayName: 'Qwen3.5 Plus', model: 'qwen/qwen3.5-plus-20260420', league: 'challenger', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  // NOTE: requested "Mistral Medium 3.5" — the catalog id is dashed
+  // (`mistralai/mistral-medium-3-5`); `mistral-medium-3.1` also exists but is
+  // the older minor, so 3-5 is the closer match to the roster slot.
+  { id: 'openrouter:mistral-medium-3.5', provider: 'openrouter', brand: 'Mistral', displayName: 'Mistral Medium 3.5', model: 'mistralai/mistral-medium-3-5', league: 'challenger', verified: true },
+  { id: 'openrouter:deepseek-v4-flash', provider: 'openrouter', brand: 'DeepSeek', displayName: 'DeepSeek V4 Flash', model: 'deepseek/deepseek-v4-flash', league: 'world', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  { id: 'openrouter:qwen3.5-flash', provider: 'openrouter', brand: 'Qwen', displayName: 'Qwen3.5 Flash', model: 'qwen/qwen3.5-flash-02-23', league: 'world', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   // NOTE: no AI21 entry — ai21/jamba-large-1.7 is still listed by OpenRouter
   // but its upstream is retired (HTTP 410). See PLATFORM_MODEL_REGISTRY_TODO.
 
@@ -148,7 +164,23 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   { id: 'youcom:research', provider: 'youcom', brand: 'You.com', displayName: 'You.com Research', model: 'research-agent', league: 'scout', verified: true },
 
   // --- NAVER CLOVA Studio (non-standard; POST /v3/chat-completions/{modelName}) ---
-  { id: 'clova:hcx-007', provider: 'clova', brand: 'NAVER', displayName: 'HyperCLOVA X HCX-007', model: 'HCX-007', league: 'sovereign', verified: true },
+  // League assignment resolved 2026-08-16: world tier (no sovereign tier in
+  // the ledger schema; sovereign only ever existed as this dashboard label).
+  { id: 'clova:hcx-007', provider: 'clova', brand: 'NAVER', displayName: 'HyperCLOVA X HCX-007', model: 'HCX-007', league: 'world', verified: true },
+
+  // --- Upstage (OpenAI-compatible; base https://api.upstage.ai/v1) ---
+  // Endpoint/model/env-key confirmed live 2026-08-10 via
+  // lib/ai/league-local-providers-health.ts's mirror; registered here so the
+  // league orchestrator can call it through `callPlatformModel` like every
+  // other roster entry. `reasoning_effort: 'low'` keeps hidden reasoning from
+  // burning the visible-content budget (same finding as the health mirror).
+  { id: 'upstage:solar-pro3', provider: 'upstage', brand: 'Upstage', displayName: 'Solar Pro 3', model: 'solar-pro3', league: 'world', verified: true, extraRequestParams: { reasoning_effort: 'low' } },
+
+  // --- Friendli Serverless (OpenAI-compatible; base https://api.friendli.ai/serverless/v1) ---
+  // Same provenance note as upstage:solar-pro3. `enable_thinking: false` is
+  // required for K-EXAONE to return visible content (confirmed live
+  // 2026-08-10 by the health mirror).
+  { id: 'friendli:exaone-k-2.0', provider: 'friendli', brand: 'LG', displayName: 'EXAONE (K-EXAONE 2.0 750B)', model: 'LGAI-EXAONE/K-EXAONE-2.0-750B-A37B', league: 'world', verified: true, extraRequestParams: { chat_template_kwargs: { enable_thinking: false } } },
 ]
 
 /**
@@ -530,6 +562,30 @@ export async function callPlatformModel(params: {
   if (entry.provider === 'meta-muse') {
     return callOpenAiCompatiblePlatformModel({
       baseUrl: 'https://api.meta.ai/v1',
+      apiKey,
+      model: entry.model,
+      systemPrompt,
+      userPrompt,
+      maxCompletionTokens,
+      extraRequestParams: entry.extraRequestParams,
+    })
+  }
+
+  if (entry.provider === 'upstage') {
+    return callOpenAiCompatiblePlatformModel({
+      baseUrl: 'https://api.upstage.ai/v1',
+      apiKey,
+      model: entry.model,
+      systemPrompt,
+      userPrompt,
+      maxCompletionTokens,
+      extraRequestParams: entry.extraRequestParams,
+    })
+  }
+
+  if (entry.provider === 'friendli') {
+    return callOpenAiCompatiblePlatformModel({
+      baseUrl: 'https://api.friendli.ai/serverless/v1',
       apiKey,
       model: entry.model,
       systemPrompt,

@@ -18,7 +18,7 @@ export function CardHeader({
       <div className="flex min-w-0 items-center gap-2">
         <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-league-accent" aria-hidden />
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-league-fg">{round.instrument}</p>
+          <p className="truncate text-sm font-semibold text-league-fg md:text-lg">{round.instrument}</p>
           <p className="truncate text-[11px] text-league-fg-muted">
             {round.horizon} · {formatCategory(round.category)}
           </p>

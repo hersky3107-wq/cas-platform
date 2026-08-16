@@ -13,9 +13,26 @@ export type UseCardStreamOptions = {
   live?: boolean
 }
 
+/**
+ * Why a live run never started. Distinct from `connection: 'error'` (which
+ * means a run started and then broke): the paid path can be REFUSED before any
+ * compute — 402 insufficient credits, 429 rate limited, 403 jurisdiction — and
+ * a user who was refused deserves to be told which, not "connection lost".
+ */
+export type CardStreamStartError = {
+  status: number
+  /** Present on a 402, straight from the standard credits error body. */
+  balance?: number
+  required?: number
+  /** Present on a 429. */
+  retryAfterSec?: number
+}
+
 export type UseCardStreamResult = {
   data: CardData
   connection: CardStreamState
+  /** Non-null when the live run was refused before it began. Cleared on the next attempt. */
+  startError: CardStreamStartError | null
   /** Re-pull the current stored state from the DB. Also fires automatically on reconnect. */
   refetch: () => Promise<void>
   /**
@@ -109,6 +126,7 @@ export function resort(prev: CardData): CardData {
 export function useCardStream({ roundId, initialData, live = false }: UseCardStreamOptions): UseCardStreamResult {
   const [data, setData] = useState<CardData>(initialData)
   const [connection, setConnection] = useState<CardStreamState>('static')
+  const [startError, setStartError] = useState<CardStreamStartError | null>(null)
   const [liveProgress, setLiveProgress] = useState<{ answered: number; rosterSize: number } | null>(null)
   const roundIdRef = useRef(roundId)
   useEffect(() => {
@@ -157,6 +175,7 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
 
     async function run() {
       setConnection('connecting')
+      setStartError(null)
       setLiveProgress(null)
       let answered = 0
       try {
@@ -167,7 +186,21 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
           body: JSON.stringify({ roundId: roundIdRef.current }),
           signal: abortController.signal,
         })
-        if (!res.ok || !res.body) throw new Error(`live stream failed to start: ${res.status}`)
+        if (!res.ok || !res.body) {
+          // Refused before any compute (402 / 429 / 403 / 401). The body is the
+          // route's standard JSON error shape; keep the numbers so the caller
+          // can say "needs 7, you have 3" instead of a generic failure.
+          const detail = (await res.json().catch(() => null)) as
+            | { balance?: number; required?: number; retryAfterSec?: number }
+            | null
+          setStartError({
+            status: res.status,
+            balance: typeof detail?.balance === 'number' ? detail.balance : undefined,
+            required: typeof detail?.required === 'number' ? detail.required : undefined,
+            retryAfterSec: typeof detail?.retryAfterSec === 'number' ? detail.retryAfterSec : undefined,
+          })
+          throw new Error(`live stream failed to start: ${res.status}`)
+        }
 
         setConnection('live')
         const reader = res.body.getReader()
@@ -235,5 +268,5 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
     }
   }, [live, roundId, refetch])
 
-  return { data, connection, refetch, liveProgress }
+  return { data, connection, startError, refetch, liveProgress }
 }

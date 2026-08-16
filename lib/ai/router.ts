@@ -265,6 +265,7 @@ async function callOpenAICompatibleChat({
   temperature,
   maxCompletionTokens,
   chatMessages,
+  extraPayload,
 }: {
   provider: ExtendedAiProviderName
   baseUrl: string
@@ -275,6 +276,8 @@ async function callOpenAICompatibleChat({
   temperature?: number
   maxCompletionTokens?: number
   chatMessages?: CompareChatMessage[]
+  /** Extra body fields merged into the request (e.g. xAI Live Search `search_parameters`). */
+  extraPayload?: Record<string, unknown>
 }) {
   const payload: Record<string, unknown> = {
     model,
@@ -287,6 +290,7 @@ async function callOpenAICompatibleChat({
           ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
           { role: 'user', content: prompt },
         ],
+    ...extraPayload,
   }
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
     payload.temperature = temperature
@@ -336,8 +340,74 @@ async function callOpenAICompatibleChat({
   }
 }
 
-async function callAnthropic({
+/**
+ * xAI Agent Tools API (POST /v1/responses) — the only xAI path with live web
+ * search after `search_parameters` was retired (410 Gone, confirmed
+ * 2026-08-16). Response shape is Responses-style (`output[]` items), NOT
+ * chat-completions, so it gets its own small caller. Single-turn only (the
+ * league's scout prompt is one-shot); chatMessages are intentionally not
+ * supported here.
+ */
+async function callXaiAgentSearch({
   provider,
+  apiKey,
+  model,
+  prompt,
+  systemPrompt,
+  maxCompletionTokens,
+}: {
+  provider: ExtendedAiProviderName
+  apiKey: string
+  model: string
+  prompt: string
+  systemPrompt: string
+  maxCompletionTokens?: number
+}) {
+  const payload: Record<string, unknown> = {
+    model,
+    input: prompt,
+    tools: [{ type: 'web_search' }],
+  }
+  if (systemPrompt) payload.instructions = systemPrompt
+  if (typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0) {
+    payload.max_output_tokens = maxCompletionTokens
+  }
+
+  const res = await fetchWithRetry(provider, 'https://api.x.ai/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`)
+  }
+
+  const json: any = await res.json()
+  const output: any[] = Array.isArray(json?.output) ? json.output : []
+  const text = output
+    .filter((item) => item?.type === 'message')
+    .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+    .map((part) => (part?.type === 'output_text' || part?.type === 'text' ? part?.text : null))
+    .filter((t): t is string => typeof t === 'string' && t.length > 0)
+    .join('\n')
+
+  const u = json?.usage
+  return {
+    text: text || null,
+    usage: normalizeTokens({
+      promptTokens: u?.input_tokens,
+      completionTokens: u?.output_tokens,
+      totalTokens: u?.total_tokens,
+    }),
+  }
+}
+
+async function callAnthropic({  provider,
   apiKey,
   model,
   prompt,
@@ -345,6 +415,7 @@ async function callAnthropic({
   temperature,
   maxCompletionTokens,
   chatMessages,
+  searchTool,
 }: {
   provider: ExtendedAiProviderName
   apiKey: string
@@ -354,6 +425,8 @@ async function callAnthropic({
   temperature?: number
   maxCompletionTokens?: number
   chatMessages?: CompareChatMessage[]
+  /** Enables the server-side web_search tool (Scout tier). max_uses caps searches per call for cost control. */
+  searchTool?: boolean
 }) {
   const capped =
     typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0
@@ -369,6 +442,9 @@ async function callAnthropic({
   }
   if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
     anthropicBody.temperature = temperature
+  }
+  if (searchTool) {
+    anthropicBody.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }]
   }
 
   const res = await fetchWithRetry(provider, 'https://api.anthropic.com/v1/messages', {
@@ -456,6 +532,7 @@ async function callGoogleGemini({
   maxCompletionTokens,
   chatMessages,
   allowGeminiThinking,
+  searchTool,
 }: {
   provider: ExtendedAiProviderName
   apiKey: string
@@ -473,6 +550,8 @@ async function callGoogleGemini({
    * flash models so thinking tokens don't eat the budget.
    */
   allowGeminiThinking?: boolean
+  /** Enables Google Search grounding (Scout tier). */
+  searchTool?: boolean
 }) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model,
@@ -515,6 +594,12 @@ async function callGoogleGemini({
         ...generationConfig,
         thinkingConfig: { thinkingBudget: 0 },
       }
+
+  if (searchTool) {
+    // Google Search grounding (Scout tier). Tool executes server-side; the
+    // SSE text aggregation below is unchanged.
+    geminiBody.tools = [{ google_search: {} }]
+  }
 
   const res = await fetchWithRetry(provider, url, {
     method: 'POST',
@@ -618,6 +703,7 @@ async function callProvider({
   maxCompletionTokens,
   chatMessages,
   allowGeminiThinking,
+  searchTool,
 }: {
   provider: ExtendedAiProviderName
   apiKey: string
@@ -631,6 +717,13 @@ async function callProvider({
   chatMessages?: CompareChatMessage[]
   /** Forwarded to callGoogleGemini; ignored by non-google providers. */
   allowGeminiThinking?: boolean
+  /**
+   * Scout-tier live web search. Only meaningful for xai (Live Search
+   * `search_parameters`), anthropic (web_search tool) and google (Search
+   * grounding). OpenAI's search models (e.g. gpt-5-search-api) search
+   * natively by model choice; every other provider ignores this.
+   */
+  searchTool?: boolean
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
   const sourceUserText =
@@ -715,6 +808,20 @@ async function callProvider({
   }
 
   if (provider === 'xai') {
+    // Live Search (`search_parameters` on chat/completions) was deprecated by
+    // xAI in 2026 — HTTP 410 "switch to the Agent Tools API". Scout search
+    // therefore goes through POST /v1/responses with a web_search tool.
+    if (searchTool) {
+      const { text, usage } = await callXaiAgentSearch({
+        provider,
+        apiKey,
+        model,
+        prompt: promptWithLanguageRule,
+        systemPrompt: injectedSystemPrompt,
+        maxCompletionTokens,
+      })
+      return { model, text, usage }
+    }
     const { text, usage } = await callOpenAICompatibleChat({
       provider,
       baseUrl: 'https://api.x.ai/v1',
@@ -808,6 +915,7 @@ async function callProvider({
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
+      searchTool,
       ...chatOpts,
     })
     return { model, text, usage }
@@ -822,6 +930,7 @@ async function callProvider({
     temperature,
     maxCompletionTokens,
     allowGeminiThinking,
+    searchTool,
     ...chatOpts,
   })
   return { model, text, usage }
@@ -857,6 +966,12 @@ export type RunSingleProviderParams = {
    * Overrides the default model for this provider (e.g. DEEP mode: Anthropic uses Opus for assigned parts).
    */
   modelOverride?: string
+  /**
+   * Scout-tier live web search (league use): xAI Live Search / Anthropic
+   * web_search / Google grounding. Ignored by providers without a wired
+   * search path; OpenAI search happens by model choice instead.
+   */
+  searchTool?: boolean
   /**
    * When set, stored in `ai_responses.response_text` instead of the raw provider `text`
    * (e.g. Arena mode: store user-visible body without internal tags).
@@ -939,6 +1054,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     temperature,
     maxCompletionTokens,
     modelOverride,
+    searchTool,
     storedResponseText,
     aiResponseExtras,
     transformPersist,
@@ -974,6 +1090,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       maxCompletionTokens,
       chatMessages,
       allowGeminiThinking,
+      searchTool,
     })
 
     const { text, usage } = params.timeoutMs && params.timeoutMs > 0

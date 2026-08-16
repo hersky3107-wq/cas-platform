@@ -1,4 +1,4 @@
-import type { DirectionTally } from '../card-types'
+import type { DirectionTally, LeagueTier } from '../card-types'
 import type { LeagueLocale } from './locales'
 
 export type LeagueDirectionWord = 'up' | 'down' | 'flat'
@@ -48,6 +48,22 @@ export type LeagueUiPack = {
     correct: string
     missed: string
   }
+  /**
+   * Cards-tab board chrome (division headers + final-verdict label).
+   * Directional SENTENCES still come only from `headline` / `compliance.ts`.
+   * `compactTally` is a ticker-style count (glyphs + numbers), not advice.
+   */
+  bracket: {
+    finalVerdict: string
+    division: Record<LeagueTier, string>
+    compactTally: (tally: DirectionTally) => string
+    showReasoning: string
+    hideReasoning: string
+    /** Short label making clear the % is the model's OWN confidence in its call. */
+    confidence: string
+    /** Legend for the correct/missed markers — only rendered once a round is resolved. */
+    resultLegend: string
+  }
   gating: {
     /** Shown (localized) when JurisdictionGate hides a category for this user. */
     unavailable: string
@@ -55,6 +71,79 @@ export type LeagueUiPack = {
     tosNote: string
   }
   languageToggleLabel: string
+  /**
+   * Leaderboard chrome (read-only rankings aggregated from already-resolved
+   * predictions — see `lib/league/leaderboard-aggregate.ts`). No buy/sell
+   * framing lives here — this is model PERFORMANCE, not investment advice —
+   * but every locale still carries the same disclaimer via `disclaimer`
+   * above, rendered through the same `DisclaimerFooter`/`CardCompliance`
+   * wrapper as the prediction card.
+   */
+  leaderboard: {
+    title: string
+    subtitle: string
+    tabs: { model: string; camp: string; tier: string; category: string }
+    /** Headline label above the camp view's US vs China comparison — the product's viral hook. */
+    campHeadline: string
+    columns: { rank: string; name: string; winRate: string; sample: string }
+    /** e.g. "12 resolved". Always shown alongside a win rate — see `provisionalBadge`. */
+    sampleCount: (n: number) => string
+    /** Badge text for any row with n below the provisional threshold. */
+    provisionalBadge: string
+    /** One-line explainer of what "provisional" means, shown once per screen. */
+    provisionalNote: string
+    /** Shown when a slice (or the whole leaderboard) has zero resolved predictions yet. */
+    emptyState: string
+    asOf: (date: string) => string
+  }
+  /** Record room chrome (immutable, timestamped log of resolved rounds — see `lib/league/record-room-aggregate.ts`). */
+  recordRoom: {
+    title: string
+    subtitle: string
+    outcomeLabel: string
+    resolvedAtLabel: string
+    /** e.g. "6/8 correct". */
+    modelsScore: (correct: number, total: number) => string
+    correct: string
+    incorrect: string
+    /** Grade badge for a model whose is_correct is still null even though the round resolved (e.g. scout tier). */
+    ungraded: string
+    emptyState: string
+    pagination: { prev: string; next: string; pageOf: (page: number, totalPages: number) => string }
+  }
+  /**
+   * Public (logged-in, non-admin) league hub chrome — the surface at `/league`.
+   *
+   * `freeReadNote` and `generateLive` are the money-facing strings and are
+   * therefore treated like compliance copy: every real locale states plainly
+   * that browsing is free and exactly what a live run costs, so a user is
+   * never charged by a button whose price they could not read.
+   */
+  hub: {
+    title: string
+    subtitle: string
+    tabs: { cards: string; leaderboard: string; recordRoom: string }
+    loading: string
+    /** Shown when the viewer's jurisdiction allows no league category at all. */
+    noInstruments: string
+    /** Paid CTA — MUST carry its price. */
+    generateLive: (credits: number) => string
+    generating: string
+    /** States the free-vs-paid split up front. */
+    freeReadNote: string
+    insufficientCredits: (required: number, balance: number) => string
+    rateLimited: string
+    genericError: string
+    balance: (credits: number) => string
+  }
+}
+
+/** Ticker-style division tally. Glyphs are language-neutral; locales may override. */
+function compactTally(tally: DirectionTally): string {
+  const parts = [`${tally.up}▲`, `${tally.down}▼`]
+  if (tally.flat) parts.push(`${tally.flat}■`)
+  if (tally.abstain) parts.push(`${tally.abstain}–`)
+  return parts.join(' / ')
 }
 
 const en: LeagueUiPack = {
@@ -95,11 +184,64 @@ const en: LeagueUiPack = {
     correct: 'Correct',
     missed: 'Missed',
   },
+  bracket: {
+    finalVerdict: 'Final verdict',
+    division: {
+      premier: '1 · PREMIER',
+      challenger: '2 · CHALLENGER',
+      world: '3 · WORLD',
+      scout: 'SCOUT',
+    },
+    compactTally,
+    showReasoning: 'Show reasoning',
+    hideReasoning: 'Hide reasoning',
+    confidence: 'confidence',
+    resultLegend:
+      '✓ correct — the AI\u2019s call matched the actual outcome · ✗ missed — it didn\u2019t. Shown only after the round resolves.',
+  },
   gating: {
     unavailable: 'This prediction category isn\u2019t available in your region yet.',
     tosNote: 'Availability is based on your account\u2019s declared country and detected location. You must use your real jurisdiction \u2014 attempting to bypass this (e.g. via VPN) shifts responsibility for any resulting misuse to you.',
   },
   languageToggleLabel: 'Language',
+  leaderboard: {
+    title: 'Leaderboard',
+    subtitle: 'Win rates computed only from resolved predictions — not investment advice.',
+    tabs: { model: 'Model', camp: 'Camp', tier: 'Tier', category: 'Category' },
+    campHeadline: 'US vs. China',
+    columns: { rank: '#', name: 'Name', winRate: 'Win rate', sample: 'Sample' },
+    sampleCount: (n) => `${n} resolved`,
+    provisionalBadge: 'Provisional',
+    provisionalNote: 'Provisional = fewer than 10 resolved predictions. Treat these win rates as early signal, not a settled record.',
+    emptyState: 'Not enough resolved predictions yet — check back as more rounds resolve.',
+    asOf: (date) => `As of ${date}`,
+  },
+  recordRoom: {
+    title: 'Record room',
+    subtitle: 'Every resolved round, with the actual outcome and each model\u2019s call. Read-only, immutable.',
+    outcomeLabel: 'Actual outcome',
+    resolvedAtLabel: 'Resolved',
+    modelsScore: (correct, total) => `${correct}/${total} correct`,
+    correct: 'Correct',
+    incorrect: 'Incorrect',
+    ungraded: 'Ungraded',
+    emptyState: 'No rounds have resolved yet.',
+    pagination: { prev: 'Previous', next: 'Next', pageOf: (page, totalPages) => `Page ${page} of ${totalPages}` },
+  },
+  hub: {
+    title: 'AI Prediction League',
+    subtitle: 'What the world\u2019s AI models predict \u2014 and how often they turned out to be right.',
+    tabs: { cards: 'Cards', leaderboard: 'Leaderboard', recordRoom: 'Record room' },
+    loading: 'Loading\u2026',
+    noInstruments: 'The league isn\u2019t available in your region yet.',
+    generateLive: (credits) => `Ask the models now \u00b7 ${credits} credits`,
+    generating: 'Asking the models\u2026',
+    freeReadNote: 'Browsing cards, the leaderboard and the record room is free. Only a live run spends credits.',
+    insufficientCredits: (required, balance) => `A live run needs ${required} credits \u2014 you have ${balance}.`,
+    rateLimited: 'Too many requests. Please wait a moment and try again.',
+    genericError: 'Something went wrong. Please try again.',
+    balance: (credits) => `${credits} credits`,
+  },
 }
 
 const ko: LeagueUiPack = {
@@ -140,11 +282,63 @@ const ko: LeagueUiPack = {
     correct: '적중',
     missed: '실패',
   },
+  bracket: {
+    finalVerdict: '최종 판정',
+    division: {
+      premier: '1부 PREMIER',
+      challenger: '2부 CHALLENGER',
+      world: '3부 WORLD',
+      scout: 'SCOUT',
+    },
+    compactTally,
+    showReasoning: '근거 보기',
+    hideReasoning: '근거 숨기기',
+    confidence: '확신도',
+    resultLegend: '✓ 적중 — AI 예측이 실제 결과와 일치 · ✗ 실패 — 불일치. 라운드 확정 후에만 표시됩니다.',
+  },
   gating: {
     unavailable: '이 예측 카테고리는 아직 회원님의 지역에서 제공되지 않습니다.',
     tosNote: '노출 여부는 계정에 등록된 국가와 감지된 접속 위치를 기준으로 결정됩니다. 반드시 실제 관할 지역을 사용해야 하며, VPN 등으로 이를 우회하려는 시도로 발생하는 문제의 책임은 이용자 본인에게 있습니다.',
   },
   languageToggleLabel: '언어',
+  leaderboard: {
+    title: '리더보드',
+    subtitle: '이미 결과가 확정된 예측만으로 계산한 적중률입니다 — 투자 조언이 아닙니다.',
+    tabs: { model: '모델', camp: '진영', tier: '티어', category: '카테고리' },
+    campHeadline: '미국 vs 중국',
+    columns: { rank: '순위', name: '이름', winRate: '적중률', sample: '표본' },
+    sampleCount: (n) => `${n}건 확정`,
+    provisionalBadge: '잠정',
+    provisionalNote: '잠정 = 확정된 예측이 10건 미만입니다. 아직 확정된 기록이 아니라 초기 신호로만 참고하세요.',
+    emptyState: '아직 결과가 확정된 예측이 충분하지 않습니다 — 라운드가 더 확정되면 다시 확인해 주세요.',
+    asOf: (date) => `${date} 기준`,
+  },
+  recordRoom: {
+    title: '기록실',
+    subtitle: '결과가 확정된 모든 라운드와 실제 결과, 각 모델의 예측을 보여줍니다. 읽기 전용이며 수정되지 않습니다.',
+    outcomeLabel: '실제 결과',
+    resolvedAtLabel: '확정 시각',
+    modelsScore: (correct, total) => `${total}개 중 ${correct}개 적중`,
+    correct: '적중',
+    incorrect: '실패',
+    ungraded: '채점 없음',
+    emptyState: '아직 결과가 확정된 라운드가 없습니다.',
+    pagination: { prev: '이전', next: '다음', pageOf: (page, totalPages) => `${totalPages}페이지 중 ${page}페이지` },
+  },
+  hub: {
+    title: 'AI 예측 리그',
+    subtitle: '전 세계 AI 모델들이 무엇을 예측했고, 실제로 얼마나 맞혔는지 확인하세요.',
+    tabs: { cards: '카드', leaderboard: '리더보드', recordRoom: '기록실' },
+    loading: '불러오는 중…',
+    noInstruments: '아직 회원님의 지역에서는 리그를 이용할 수 없습니다.',
+    generateLive: (credits) => `지금 모델에게 물어보기 · ${credits} 크레딧`,
+    generating: '모델에게 묻는 중…',
+    freeReadNote: '카드·리더보드·기록실 열람은 무료입니다. 실시간 실행에만 크레딧이 사용됩니다.',
+    insufficientCredits: (required, balance) => `실시간 실행에는 ${required} 크레딧이 필요합니다 — 현재 보유 ${balance} 크레딧.`,
+    rateLimited: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
+    genericError: '문제가 발생했습니다. 다시 시도해 주세요.',
+    balance: (credits) => `${credits} 크레딧`,
+  },
 }
 
 const ja: LeagueUiPack = {
@@ -185,11 +379,63 @@ const ja: LeagueUiPack = {
     correct: '的中',
     missed: '外れ',
   },
+  bracket: {
+    finalVerdict: '最終判定',
+    division: {
+      premier: '1部 PREMIER',
+      challenger: '2部 CHALLENGER',
+      world: '3部 WORLD',
+      scout: 'SCOUT',
+    },
+    compactTally,
+    showReasoning: '根拠を表示',
+    hideReasoning: '根拠を隠す',
+    confidence: '確信度',
+    resultLegend: '✓ 的中 — AIの予測が実際の結果と一致 · ✗ 不的中 — 不一致。ラウンド確定後のみ表示されます。',
+  },
   gating: {
     unavailable: 'この予測カテゴリーは、お住まいの地域ではまだご利用いただけません。',
     tosNote: '表示可否はアカウントに登録された国と検出された接続地域に基づいて判定されます。実際の管轄地域を使用してください。VPN等でこれを回避しようとした場合に生じる問題の責任はご自身が負うものとします。',
   },
   languageToggleLabel: '言語',
+  leaderboard: {
+    title: 'リーダーボード',
+    subtitle: '確定済みの予測のみから算出した的中率です — 投資助言ではありません。',
+    tabs: { model: 'モデル', camp: '陣営', tier: 'ティア', category: 'カテゴリー' },
+    campHeadline: '米国 vs 中国',
+    columns: { rank: '順位', name: '名前', winRate: '的中率', sample: 'サンプル数' },
+    sampleCount: (n) => `確定${n}件`,
+    provisionalBadge: '暫定',
+    provisionalNote: '暫定 = 確定した予測が10件未満です。確定した実績ではなく、初期的な傾向としてご覧ください。',
+    emptyState: 'まだ確定した予測が十分にありません — ラウンドが確定するたびに更新されます。',
+    asOf: (date) => `${date}時点`,
+  },
+  recordRoom: {
+    title: '記録室',
+    subtitle: '確定した全ラウンドの実際の結果と各モデルの判断を掲載しています。閲覧専用で改変されません。',
+    outcomeLabel: '実際の結果',
+    resolvedAtLabel: '確定日時',
+    modelsScore: (correct, total) => `${total}体中${correct}体的中`,
+    correct: '的中',
+    incorrect: '外れ',
+    ungraded: '未採点',
+    emptyState: 'まだ確定したラウンドがありません。',
+    pagination: { prev: '前へ', next: '次へ', pageOf: (page, totalPages) => `${totalPages}ページ中${page}ページ目` },
+  },
+  hub: {
+    title: 'AI予測リーグ',
+    subtitle: '世界のAIモデルが何を予測し、実際にどれだけ的中したかを見られます。',
+    tabs: { cards: 'カード', leaderboard: 'リーダーボード', recordRoom: '記録室' },
+    loading: '読み込み中…',
+    noInstruments: 'お住まいの地域では、リーグはまだご利用いただけません。',
+    generateLive: (credits) => `今すぐモデルに聞く・${credits}クレジット`,
+    generating: 'モデルに問い合わせ中…',
+    freeReadNote: 'カード・リーダーボード・記録室の閲覧は無料です。クレジットを消費するのはライブ実行のみです。',
+    insufficientCredits: (required, balance) => `ライブ実行には${required}クレジットが必要です — 現在の残高は${balance}クレジットです。`,
+    rateLimited: 'リクエストが多すぎます。少し時間をおいて再度お試しください。',
+    genericError: 'エラーが発生しました。もう一度お試しください。',
+    balance: (credits) => `${credits}クレジット`,
+  },
 }
 
 const zhTW: LeagueUiPack = {
@@ -230,11 +476,63 @@ const zhTW: LeagueUiPack = {
     correct: '命中',
     missed: '未命中',
   },
+  bracket: {
+    finalVerdict: '最終判定',
+    division: {
+      premier: '1級 PREMIER',
+      challenger: '2級 CHALLENGER',
+      world: '3級 WORLD',
+      scout: 'SCOUT',
+    },
+    compactTally,
+    showReasoning: '顯示理由',
+    hideReasoning: '隱藏理由',
+    confidence: '信心度',
+    resultLegend: '✓ 命中 — AI 預測與實際結果一致 · ✗ 未中 — 不一致。僅在回合結算後顯示。',
+  },
   gating: {
     unavailable: '此預測類別在您所在地區尚未開放。',
     tosNote: '是否顯示取決於您帳號登記的國家與偵測到的所在位置。您必須使用真實所在地區；若透過 VPN 等方式規避此限制，由此產生的任何後果由您自行承擔。',
   },
   languageToggleLabel: '語言',
+  leaderboard: {
+    title: '排行榜',
+    subtitle: '命中率僅根據已結算的預測計算 — 並非投資建議。',
+    tabs: { model: '模型', camp: '陣營', tier: '級別', category: '類別' },
+    campHeadline: '美國 vs 中國',
+    columns: { rank: '排名', name: '名稱', winRate: '命中率', sample: '樣本數' },
+    sampleCount: (n) => `已結算 ${n} 筆`,
+    provisionalBadge: '暫定',
+    provisionalNote: '暫定＝已結算的預測少於 10 筆。請將此視為初步訊號，而非穩定紀錄。',
+    emptyState: '目前已結算的預測還不夠多 — 之後會有更多輪次結算，請稍後再查看。',
+    asOf: (date) => `更新於 ${date}`,
+  },
+  recordRoom: {
+    title: '紀錄室',
+    subtitle: '列出所有已結算的輪次，包含實際結果與每個模型的判斷。僅供查閱，內容不可更改。',
+    outcomeLabel: '實際結果',
+    resolvedAtLabel: '結算時間',
+    modelsScore: (correct, total) => `${total} 個中命中 ${correct} 個`,
+    correct: '命中',
+    incorrect: '未命中',
+    ungraded: '未評分',
+    emptyState: '目前尚無已結算的輪次。',
+    pagination: { prev: '上一頁', next: '下一頁', pageOf: (page, totalPages) => `第 ${page} 頁，共 ${totalPages} 頁` },
+  },
+  hub: {
+    title: 'AI 預測聯賽',
+    subtitle: '看看全球 AI 模型預測了什麼，以及它們實際命中的紀錄。',
+    tabs: { cards: '卡片', leaderboard: '排行榜', recordRoom: '紀錄室' },
+    loading: '載入中…',
+    noInstruments: '您所在的地區尚未開放本聯賽。',
+    generateLive: (credits) => `立即詢問模型・${credits} 點數`,
+    generating: '正在詢問模型…',
+    freeReadNote: '瀏覽卡片、排行榜與紀錄室皆為免費，只有即時執行才會消耗點數。',
+    insufficientCredits: (required, balance) => `即時執行需要 ${required} 點數 — 您目前有 ${balance} 點。`,
+    rateLimited: '請求過於頻繁，請稍候再試。',
+    genericError: '發生錯誤，請再試一次。',
+    balance: (credits) => `${credits} 點數`,
+  },
 }
 
 const fr: LeagueUiPack = {
@@ -275,11 +573,64 @@ const fr: LeagueUiPack = {
     correct: 'Correct',
     missed: 'Manqué',
   },
+  bracket: {
+    finalVerdict: 'Verdict final',
+    division: {
+      premier: '1re · PREMIER',
+      challenger: '2e · CHALLENGER',
+      world: '3e · WORLD',
+      scout: 'SCOUT',
+    },
+    compactTally,
+    showReasoning: 'Voir le raisonnement',
+    hideReasoning: 'Masquer le raisonnement',
+    confidence: 'confiance',
+    resultLegend:
+      '✓ correct — la prédiction de l\u2019IA correspond au résultat réel · ✗ manqué — sinon. Affiché uniquement après la résolution.',
+  },
   gating: {
     unavailable: 'Cette catégorie de prédiction n\u2019est pas encore disponible dans votre région.',
     tosNote: 'La disponibilité dépend du pays déclaré sur votre compte et de votre localisation détectée. Vous devez utiliser votre véritable juridiction \u2014 toute tentative de contournement (par VPN, par exemple) vous rend responsable des conséquences.',
   },
   languageToggleLabel: 'Langue',
+  leaderboard: {
+    title: 'Classement',
+    subtitle: 'Taux de réussite calculés uniquement sur les prédictions résolues — ceci n\u2019est pas un conseil en investissement.',
+    tabs: { model: 'Modèle', camp: 'Camp', tier: 'Niveau', category: 'Catégorie' },
+    campHeadline: '\u00c9tats-Unis vs Chine',
+    columns: { rank: '#', name: 'Nom', winRate: 'Taux de réussite', sample: 'Échantillon' },
+    sampleCount: (n) => `${n} résolues`,
+    provisionalBadge: 'Provisoire',
+    provisionalNote: 'Provisoire = moins de 10 prédictions résolues. À considérer comme un signal précoce, pas comme un résultat établi.',
+    emptyState: 'Pas encore assez de prédictions résolues — revenez plus tard, au fil des résolutions.',
+    asOf: (date) => `Au ${date}`,
+  },
+  recordRoom: {
+    title: 'Salle des archives',
+    subtitle: 'Chaque tour résolu, avec le résultat réel et la réponse de chaque modèle. Lecture seule, immuable.',
+    outcomeLabel: 'Résultat réel',
+    resolvedAtLabel: 'Résolu le',
+    modelsScore: (correct, total) => `${correct}/${total} correct(s)`,
+    correct: 'Correct',
+    incorrect: 'Incorrect',
+    ungraded: 'Non noté',
+    emptyState: 'Aucun tour n\u2019a encore été résolu.',
+    pagination: { prev: 'Précédent', next: 'Suivant', pageOf: (page, totalPages) => `Page ${page} sur ${totalPages}` },
+  },
+  hub: {
+    title: 'Ligue de prédiction IA',
+    subtitle: 'Ce que prédisent les modèles d\u2019IA du monde entier \u2014 et à quelle fréquence ils ont eu raison.',
+    tabs: { cards: 'Cartes', leaderboard: 'Classement', recordRoom: 'Archives' },
+    loading: 'Chargement\u2026',
+    noInstruments: 'La ligue n\u2019est pas encore disponible dans votre région.',
+    generateLive: (credits) => `Interroger les modèles maintenant \u00b7 ${credits} crédits`,
+    generating: 'Interrogation des modèles\u2026',
+    freeReadNote: 'Consulter les cartes, le classement et les archives est gratuit. Seule une exécution en direct consomme des crédits.',
+    insufficientCredits: (required, balance) => `Une exécution en direct coûte ${required} crédits \u2014 vous en avez ${balance}.`,
+    rateLimited: 'Trop de requêtes. Patientez un instant avant de réessayer.',
+    genericError: 'Une erreur est survenue. Veuillez réessayer.',
+    balance: (credits) => `${credits} crédits`,
+  },
 }
 
 const es: LeagueUiPack = {
@@ -320,11 +671,64 @@ const es: LeagueUiPack = {
     correct: 'Acertó',
     missed: 'Falló',
   },
+  bracket: {
+    finalVerdict: 'Veredicto final',
+    division: {
+      premier: '1.ª · PREMIER',
+      challenger: '2.ª · CHALLENGER',
+      world: '3.ª · WORLD',
+      scout: 'SCOUT',
+    },
+    compactTally,
+    showReasoning: 'Ver el razonamiento',
+    hideReasoning: 'Ocultar el razonamiento',
+    confidence: 'confianza',
+    resultLegend:
+      '✓ acierto — la predicción de la IA coincide con el resultado real · ✗ fallo — no coincide. Solo se muestra tras la resolución.',
+  },
   gating: {
     unavailable: 'Esta categoría de predicción todavía no está disponible en tu región.',
     tosNote: 'La disponibilidad depende del país declarado en tu cuenta y de tu ubicación detectada. Debes usar tu jurisdicción real: si intentas evadir esto (por ejemplo, con una VPN), asumes la responsabilidad de las consecuencias.',
   },
   languageToggleLabel: 'Idioma',
+  leaderboard: {
+    title: 'Tabla de posiciones',
+    subtitle: 'Tasas de acierto calculadas solo con predicciones ya resueltas — esto no es asesoramiento de inversión.',
+    tabs: { model: 'Modelo', camp: 'Bloque', tier: 'Nivel', category: 'Categoría' },
+    campHeadline: 'EE. UU. vs China',
+    columns: { rank: '#', name: 'Nombre', winRate: 'Tasa de acierto', sample: 'Muestra' },
+    sampleCount: (n) => `${n} resueltas`,
+    provisionalBadge: 'Provisional',
+    provisionalNote: 'Provisional = menos de 10 predicciones resueltas. Tómalo como una señal temprana, no como un resultado consolidado.',
+    emptyState: 'Todavía no hay suficientes predicciones resueltas — vuelve a revisar a medida que se resuelvan más rondas.',
+    asOf: (date) => `Actualizado al ${date}`,
+  },
+  recordRoom: {
+    title: 'Sala de registros',
+    subtitle: 'Todas las rondas resueltas, con el resultado real y la respuesta de cada modelo. Solo lectura, inmutable.',
+    outcomeLabel: 'Resultado real',
+    resolvedAtLabel: 'Resuelto el',
+    modelsScore: (correct, total) => `${correct}/${total} acertados`,
+    correct: 'Acertó',
+    incorrect: 'Falló',
+    ungraded: 'Sin calificar',
+    emptyState: 'Todavía no se ha resuelto ninguna ronda.',
+    pagination: { prev: 'Anterior', next: 'Siguiente', pageOf: (page, totalPages) => `Página ${page} de ${totalPages}` },
+  },
+  hub: {
+    title: 'Liga de predicción de IA',
+    subtitle: 'Lo que predicen los modelos de IA del mundo \u2014 y con qué frecuencia acertaron.',
+    tabs: { cards: 'Tarjetas', leaderboard: 'Tabla', recordRoom: 'Registros' },
+    loading: 'Cargando\u2026',
+    noInstruments: 'La liga todavía no está disponible en tu región.',
+    generateLive: (credits) => `Preguntar a los modelos ahora \u00b7 ${credits} créditos`,
+    generating: 'Consultando a los modelos\u2026',
+    freeReadNote: 'Ver las tarjetas, la tabla y la sala de registros es gratis. Solo una ejecución en vivo consume créditos.',
+    insufficientCredits: (required, balance) => `Una ejecución en vivo cuesta ${required} créditos \u2014 tienes ${balance}.`,
+    rateLimited: 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.',
+    genericError: 'Algo salió mal. Inténtalo de nuevo.',
+    balance: (credits) => `${credits} créditos`,
+  },
 }
 
 const ar: LeagueUiPack = {
@@ -365,11 +769,63 @@ const ar: LeagueUiPack = {
     correct: 'إصابة',
     missed: 'خطأ',
   },
+  bracket: {
+    finalVerdict: 'الحكم النهائي',
+    division: {
+      premier: 'الأولى · PREMIER',
+      challenger: 'الثانية · CHALLENGER',
+      world: 'الثالثة · WORLD',
+      scout: 'SCOUT',
+    },
+    compactTally,
+    showReasoning: 'عرض السبب',
+    hideReasoning: 'إخفاء السبب',
+    confidence: 'الثقة',
+    resultLegend: '✓ صحيح — توقّع الذكاء الاصطناعي طابق النتيجة الفعلية · ✗ خاطئ — لم يطابقها. يُعرض فقط بعد حسم الجولة.',
+  },
   gating: {
     unavailable: 'فئة التوقعات هذه غير متاحة بعد في منطقتك.',
     tosNote: 'يعتمد الظهور على الدولة المسجَّلة في حسابك والموقع المكتشَف لاتصالك. يجب عليك استخدام نطاقك القضائي الحقيقي؛ وإذا حاولت تجاوز ذلك (عبر VPN مثلاً) فإنك تتحمل مسؤولية أي نتائج تترتب على ذلك.',
   },
   languageToggleLabel: 'اللغة',
+  leaderboard: {
+    title: 'لوحة الصدارة',
+    subtitle: 'معدلات الإصابة محسوبة فقط من التوقعات التي تم حسمها — هذه ليست نصيحة استثمارية.',
+    tabs: { model: 'النموذج', camp: 'المعسكر', tier: 'الفئة', category: 'التصنيف' },
+    campHeadline: 'الولايات المتحدة مقابل الصين',
+    columns: { rank: '#', name: 'الاسم', winRate: 'معدل الإصابة', sample: 'حجم العينة' },
+    sampleCount: (n) => `${n} تم حسمها`,
+    provisionalBadge: 'مؤقت',
+    provisionalNote: 'مؤقت = أقل من 10 توقعات محسومة. اعتبر هذه المعدلات إشارة مبكرة وليست سجلًا نهائيًا.',
+    emptyState: 'لا توجد توقعات محسومة كافية بعد — عد لاحقًا مع حسم المزيد من الجولات.',
+    asOf: (date) => `اعتبارًا من ${date}`,
+  },
+  recordRoom: {
+    title: 'غرفة السجلات',
+    subtitle: 'كل جولة تم حسمها، مع النتيجة الفعلية وتوقع كل نموذج. للعرض فقط ولا يمكن تعديلها.',
+    outcomeLabel: 'النتيجة الفعلية',
+    resolvedAtLabel: 'تاريخ الحسم',
+    modelsScore: (correct, total) => `${correct} من أصل ${total} إصابة`,
+    correct: 'إصابة',
+    incorrect: 'خطأ',
+    ungraded: 'غير مُقيَّم',
+    emptyState: 'لم يتم حسم أي جولة بعد.',
+    pagination: { prev: 'السابق', next: 'التالي', pageOf: (page, totalPages) => `صفحة ${page} من ${totalPages}` },
+  },
+  hub: {
+    title: 'دوري التوقعات بالذكاء الاصطناعي',
+    subtitle: 'ما تتوقعه نماذج الذكاء الاصطناعي حول العالم — ومدى دقتها فعليًا.',
+    tabs: { cards: 'البطاقات', leaderboard: 'لوحة الصدارة', recordRoom: 'غرفة السجلات' },
+    loading: 'جارٍ التحميل…',
+    noInstruments: 'الدوري غير متاح بعد في منطقتك.',
+    generateLive: (credits) => `اسأل النماذج الآن · ${credits} رصيد`,
+    generating: 'جارٍ سؤال النماذج…',
+    freeReadNote: 'تصفح البطاقات ولوحة الصدارة وغرفة السجلات مجاني. التشغيل المباشر وحده هو ما يستهلك الرصيد.',
+    insufficientCredits: (required, balance) => `يتطلب التشغيل المباشر ${required} من الرصيد — لديك ${balance}.`,
+    rateLimited: 'طلبات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
+    genericError: 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',
+    balance: (credits) => `${credits} رصيد`,
+  },
 }
 
 /** Structural stub — Brazil scope is intentionally deferred. Spreads English so the shape is always complete. */

@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/admin/require-admin'
 import { CardNotFoundError, fetchCardData, type CardLookup } from '@/lib/league/card'
+import {
+  authorizeRoundForViewer,
+  resolveLeagueViewer,
+  resolvePublicInstrumentRound,
+} from '@/lib/league/public-access'
 
 /**
  * GET /api/league/card?round_id=<uuid>
@@ -12,19 +16,43 @@ import { CardNotFoundError, fetchCardData, type CardLookup } from '@/lib/league/
  * (`lib/league/orchestrator.ts`, `app/api/cron/league/open`), which this
  * route does not import.
  *
- * AUTH (seam for later): admin-gated for now, same as the rest of the league
- * surface, because `prediction_rounds` / `model_predictions` are service-role
- * only (RLS default-deny) and there is no public/jurisdiction gating layer
- * yet. Swapping `requireAdmin` for a public+jurisdiction check later is a
- * one-line change here — the data-assembly layer (`fetchCardData`) does not
- * know or care who is allowed to call it.
+ * FREE, AND DELIBERATELY SO: a stored/cached card view costs us a couple of
+ * indexed selects, and it is the funnel for everything that does cost money.
+ * No `deductCreditsBalance` call belongs in this file. Live generation is the
+ * only paid league read path (`POST /api/league/generate-stream`).
+ *
+ * AUTH: any logged-in user (was admin-only). `prediction_rounds` /
+ * `model_predictions` are service-role tables (RLS default-deny), so this
+ * route IS the access control for them — see `lib/league/public-access.ts`:
+ *  - non-admin: RANKED rounds on CURATED instruments only, and only if the
+ *    round's category is allowed in their resolved jurisdiction (403);
+ *  - admin: any round / instrument / date, for operator preview.
  */
 export async function GET(req: Request) {
-  const forbidden = await requireAdmin(req)
-  if (forbidden) return forbidden
+  const auth = await resolveLeagueViewer(req)
+  if (!auth.ok) return auth.response
+  const { viewer } = auth
 
   const { searchParams } = new URL(req.url)
-  const lookup = parseLookup(searchParams)
+  const roundId = searchParams.get('round_id')?.trim() || ''
+  const instrument = searchParams.get('instrument')?.trim() || ''
+
+  let lookup: CardLookup | null = null
+
+  if (viewer.isAdmin) {
+    lookup = parseAdminLookup(searchParams)
+  } else if (roundId) {
+    const access = await authorizeRoundForViewer(viewer, roundId)
+    if (!access.ok) return access.response
+    lookup = { roundId: access.roundId }
+  } else if (instrument) {
+    const access = await resolvePublicInstrumentRound(viewer, instrument)
+    if (!access.ok) return access.response
+    // Public reads resolve to the latest ranked round for the instrument; the
+    // `date` parameter stays an admin/preview affordance.
+    lookup = { roundId: access.roundId }
+  }
+
   if (!lookup) {
     return NextResponse.json(
       { error: 'Provide either ?round_id=<uuid> or ?instrument=<SYMBOL>[&date=YYYY-MM-DD]' },
@@ -46,7 +74,7 @@ export async function GET(req: Request) {
   }
 }
 
-function parseLookup(searchParams: URLSearchParams): CardLookup | null {
+function parseAdminLookup(searchParams: URLSearchParams): CardLookup | null {
   const roundId = searchParams.get('round_id')?.trim()
   if (roundId) return { roundId }
 

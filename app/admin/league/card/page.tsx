@@ -98,7 +98,7 @@ export default function LeagueCardPreviewPage() {
   if (authState === 'denied') return <p className="p-6 text-sm text-red-600">Forbidden.</p>
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col gap-4 bg-gray-50 p-4">
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 bg-gray-50 p-4">
       <h1 className="text-lg font-bold">League Prediction Card — preview</h1>
 
       <form

@@ -84,6 +84,54 @@ describe('dictionary completeness', () => {
     expect(getLeagueUiPack('xx')).toBe(LEAGUE_UI.en)
   })
 
+  it('fills in the public hub chrome for every locale', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const hub = getLeagueUiPack(locale).hub
+      const strings = [
+        hub.title,
+        hub.subtitle,
+        hub.tabs.cards,
+        hub.tabs.leaderboard,
+        hub.tabs.recordRoom,
+        hub.loading,
+        hub.noInstruments,
+        hub.generating,
+        hub.freeReadNote,
+        hub.rateLimited,
+        hub.genericError,
+        hub.generateLive(7),
+        hub.insufficientCredits(7, 0),
+        hub.balance(120),
+      ]
+      for (const s of strings) expect(s.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  it('fills in the cards-tab bracket chrome for every locale', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const bracket = getLeagueUiPack(locale).bracket
+      expect(bracket.finalVerdict.trim().length).toBeGreaterThan(0)
+      expect(bracket.division.premier.trim().length).toBeGreaterThan(0)
+      expect(bracket.division.challenger.trim().length).toBeGreaterThan(0)
+      expect(bracket.division.world.trim().length).toBeGreaterThan(0)
+      expect(bracket.division.scout.trim().length).toBeGreaterThan(0)
+      expect(bracket.showReasoning.trim().length).toBeGreaterThan(0)
+      expect(bracket.hideReasoning.trim().length).toBeGreaterThan(0)
+      const tally = bracket.compactTally({ up: 6, down: 4, flat: 0, abstain: 1 })
+      expect(tally).toContain('6')
+      expect(tally).toContain('4')
+    }
+  })
+
+  it('always shows the price inside the paid hub CTA and the 402 message', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const hub = getLeagueUiPack(locale).hub
+      // A user must be able to read what a live run costs before spending.
+      expect(hub.generateLive(7)).toContain('7')
+      expect(hub.insufficientCredits(7, 0)).toContain('7')
+    }
+  })
+
   it('every real (non-stub) locale renders a distinct, non-empty consensus headline', () => {
     const seen = new Set<string>()
     for (const locale of LEAGUE_SELECTABLE_LOCALES) {

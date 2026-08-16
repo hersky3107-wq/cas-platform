@@ -82,6 +82,34 @@ export function creditsForDeep(mode: DeepOutputMode): number {
   return costs[mode]
 }
 
+/**
+ * Governance / league paid compute. Named constants — never inline these
+ * amounts at a call site. Cached league card reads (GET /api/league/card)
+ * are free and must not use any of these.
+ *
+ * LEAGUE_GENERATE_CREDITS was provisional at 5 and is confirmed at 7 for the
+ * public opening of the league (one live re-run of a ranked round: a full
+ * roster fan-out).
+ */
+export const LEAGUE_OPEN_CREDITS = 50
+export const LEAGUE_DEBATE_CREDITS = 70
+export const LEAGUE_GENERATE_CREDITS = 7
+
+/** Motie open analysis (`POST /api/motie/brief` start). */
+export function creditsForLeagueOpen(): number {
+  return LEAGUE_OPEN_CREDITS
+}
+
+/** Motie debate (`POST /api/motie/deliberate` start). */
+export function creditsForLeagueDebate(): number {
+  return LEAGUE_DEBATE_CREDITS
+}
+
+/** League live generation (`POST /api/league/generate-stream`) only — not cached reads. */
+export function creditsForLeagueGenerate(): number {
+  return LEAGUE_GENERATE_CREDITS
+}
+
 export function creditsForSuit(): number {
   return 13
 }

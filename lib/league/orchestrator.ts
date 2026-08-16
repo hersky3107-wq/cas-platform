@@ -11,6 +11,7 @@ import {
   type Camp,
 } from '@/lib/league/roster'
 import { fetchDataPacket, formatDataPacketForPrompt, type DataPacket } from '@/lib/league/market-data'
+import { getResearchPacket, type ResearchPacket } from '@/lib/league/research'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -102,6 +103,8 @@ type ModelStatus = 'ok' | 'abstain' | 'timeout' | 'error'
 
 export type ModelRunResult = {
   model_id: string
+  /** Actual model string the provider ran (audit trail for substitutions). */
+  actual_model: string
   brand: string
   camp: Camp
   tier: LeagueTier
@@ -119,6 +122,13 @@ export type GenerateResult = {
   round_id: string
   created: boolean
   data_packet: { available: boolean; symbol?: string; latestClose?: number; error?: string }
+  research: {
+    available: boolean
+    cached: boolean
+    costUsd: number
+    queries: string[]
+    error?: string
+  }
   results: ModelRunResult[]
   total_cost_usd: number
   capped: boolean
@@ -212,26 +222,30 @@ function buildPropositionBlock(round: ResolvedRound): string {
 
 /**
  * Builds the two prompt variants for a round:
- *  - price:  premier/challenger/world. Injects the Twelve Data packet as the
- *            ONLY data source; when a packet is present, abstention for "no
- *            data" is explicitly disallowed. When no packet is available, the
+ *  - price:  premier/challenger/world. Injects the Twelve Data packet AND the
+ *            shared research packet (identical text for every closed-book
+ *            model — fairness); when a packet is present, abstention for "no
+ *            data" is explicitly disallowed. When neither is available, the
  *            model is told so (and may honestly abstain).
- *  - scout:  research agents (You.com / Perplexity). No packet — they gather
- *            live data via web search and cite it.
+ *  - scout:  research agents (You.com / Perplexity / grounded Gemini / ...).
+ *            NO packets — they gather live data via their own web search and
+ *            cite it. Keeping Scout packet-free is the league's core
+ *            experiment: self-directed search vs reasoning from a fixed packet.
  */
-function buildPrompts(round: ResolvedRound, packet: DataPacket): { price: string; scout: string } {
+function buildPrompts(round: ResolvedRound, packet: DataPacket, research: ResearchPacket): { price: string; scout: string } {
   const block = buildPropositionBlock(round)
   const closer = 'Respond with the single-line JSON object described in the system message.'
 
   let price: string
-  if (packet.available) {
+  if (packet.available || research.available) {
     price = [
       block,
       '',
-      'DATA PACKET (authoritative — this IS your data; base your call ONLY on it):',
-      formatDataPacketForPrompt(packet),
-      '',
-      'You have market data above. Make a directional call (up/down/flat) with a probability. Do NOT answer "abstain" for lack of data — the packet is your data.',
+      ...(packet.available
+        ? ['DATA PACKET (authoritative price/history — Twelve Data):', formatDataPacketForPrompt(packet), '']
+        : []),
+      ...(research.available ? [research.promptBlock, ''] : []),
+      'You have the market data and research above. Make a directional call (up/down/flat) with a probability. Do NOT answer "abstain" for lack of data — the packets above are your data.',
       closer,
     ].join('\n')
   } else {
@@ -359,6 +373,7 @@ async function callOnce(
       maxCompletionTokens,
       modelOverride: entry.caller.modelOverride,
       allowGeminiThinking: entry.caller.allowGeminiThinking,
+      searchTool: entry.caller.searchTool,
       timeoutMs,
     })
     return {
@@ -373,9 +388,7 @@ async function callOnce(
       costIsEstimated: false,
       error: res.error,
     }
-  }
-
-  // Platform caller has no built-in external timeout — race it here.
+  }  // Platform caller has no built-in external timeout — race it here.
   const res = await withTimeout(
     callPlatformModel({
       id: entry.caller.platformId,
@@ -429,11 +442,20 @@ async function callWithRetry(
  * Runs one model and writes its ledger row immediately (per-model source of
  * truth). Returns the outcome for the aggregate report.
  *
- * - timeout / hard error → status timeout|error, NO row written (not a bogus prediction).
+ * A row is written for EVERY attempted model — the card renders the full
+ * roster, so a model that fails must not silently vanish from the board:
+ * - timeout / hard error → status timeout|error, row written with null
+ *   direction/value/snippet and cost 0 (renders as "no opinion", never
+ *   scores as wrong). A re-run upserts over it with a real answer.
  * - parse-fail or no usable direction → ABSTAIN: row written with
  *   predicted_direction = null (does NOT count as wrong later).
  * - scout tier → row written with predicted_direction = null by design
  *   (scored on citation accuracy; reconciliation leaves is_correct null).
+ *
+ * Rows are keyed by the roster's canonical model_id (not the provider's
+ * reported actual model) so two slots sharing one actual model string
+ * (e.g. challenger gemini-3.6-flash vs scout gemini-3.6-flash-grounded)
+ * never collide on the (round_id, model_id) unique key.
  */
 async function runOneModel(
   entry: RosterEntry,
@@ -445,10 +467,29 @@ async function runOneModel(
 ): Promise<ModelRunResult> {
   const raw = await callWithRetry(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
 
-  const base = { model_id: raw.actualModel, brand: entry.brand, camp: entry.camp, tier: entry.league_tier }
+  const base = { model_id: entry.model_id, actual_model: raw.actualModel, brand: entry.brand, camp: entry.camp, tier: entry.league_tier }
 
   if (raw.error) {
     const status: ModelStatus = isTimeout(raw.error) ? 'timeout' : 'error'
+    await supabaseAdmin
+      .from('model_predictions')
+      .upsert(
+        {
+          round_id: roundId,
+          model_id: entry.model_id,
+          brand: entry.brand,
+          camp: entry.camp,
+          league_tier: entry.league_tier,
+          predicted_direction: null,
+          predicted_value: null,
+          reasoning_snippet: null,
+          prompt_tokens: null,
+          completion_tokens: null,
+          reasoning_tokens: null,
+          cost_usd: 0,
+        },
+        { onConflict: 'round_id,model_id' }
+      )
     return {
       ...base,
       direction: null,
@@ -494,7 +535,7 @@ async function runOneModel(
     .upsert(
       {
         round_id: roundId,
-        model_id: raw.actualModel,
+        model_id: entry.model_id,
         brand: entry.brand,
         camp: entry.camp,
         league_tier: entry.league_tier,
@@ -555,10 +596,14 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   // One packet fetch per ROUND (2 Twelve Data credits), injected to every
   // price-tier model — not per model.
   const packet = await fetchDataPacket(round.instrument)
-  const prompts = buildPrompts(round, packet)
+  // One research packet per ROUND, shared identically by tiers 1/2/3 (Scout
+  // keeps its own live search). Cached per (instrument, horizon, 6h bucket);
+  // its cost counts against the same kill-switch cap as the model calls.
+  const research = await getResearchPacket({ round, budgetRemainingUsd: costCap })
+  const prompts = buildPrompts(round, packet, research)
 
   const results: ModelRunResult[] = []
-  let runningCost = 0
+  let runningCost = research.costUsd
   let capped = false
   let nextIndex = 0
 
@@ -575,7 +620,8 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       const entry = roster[i]
       const prompt = entry.league_tier === 'scout' ? prompts.scout : prompts.price
       const tokenBudget = resolveMaxCompletionTokensForEntry(entry, maxCompletionTokens)
-      const outcome = await runOneModel(entry, round.id, prompt, timeoutMs, userId ?? null, tokenBudget)
+      const entryTimeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : timeoutMs
+      const outcome = await runOneModel(entry, round.id, prompt, entryTimeoutMs, userId ?? null, tokenBudget)
       runningCost += outcome.cost_usd
       results.push(outcome)
       // Fires AFTER the DB write inside runOneModel — see onModelResult's doc
@@ -595,6 +641,13 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       symbol: packet.symbol,
       latestClose: packet.latestClose,
       error: packet.error,
+    },
+    research: {
+      available: research.available,
+      cached: research.cached,
+      costUsd: Number(research.costUsd.toFixed(6)),
+      queries: research.queries,
+      error: research.error,
     },
     results,
     total_cost_usd: Number(runningCost.toFixed(6)),

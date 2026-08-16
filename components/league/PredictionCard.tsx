@@ -1,8 +1,9 @@
 'use client'
 
 import type { CardData } from '@/lib/league/card-types'
-import { useCardStream } from '@/lib/league/use-card-stream'
+import { useCardStream, type CardStreamStartError } from '@/lib/league/use-card-stream'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
+import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { CardCompliance } from './CardCompliance'
 import { CardBody } from './CardBody'
 import { LanguageToggle } from './LanguageToggle'
@@ -19,10 +20,9 @@ export type PredictionCardProps = {
  * The public entry point for a league prediction card. This is the ONLY
  * exported way to render one — it always composes `CardCompliance` around
  * `CardBody`, so the disclaimer and approved phrasing rules always apply
- * (see `CardCompliance.tsx`). Mobile-first: the card is a single-column
- * block with no fixed width, meant to sit in a narrow container; desktop
- * layout is whatever wider container the page places it in (no separate
- * desktop variant needed at this size).
+ * (see `CardCompliance.tsx`). Mobile-first: the board is a single column
+ * of collapsible divisions at 375px and a full-width multi-column grid
+ * from `md` up — one component, CSS breakpoints, no desktop fork.
  *
  * Owns Layer A (language) end to end: resolves the locale, applies `dir`
  * for RTL locales (Arabic), and renders the visible toggle. Layer B
@@ -31,7 +31,7 @@ export type PredictionCardProps = {
  * component only ever deals with "how", never "whether", it renders.
  */
 export function PredictionCard({ initialData, live = false, devSignalsQuery }: PredictionCardProps) {
-  const { data, connection, liveProgress } = useCardStream({
+  const { data, connection, liveProgress, startError } = useCardStream({
     roundId: initialData.round.round_id,
     initialData,
     live,
@@ -44,11 +44,29 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
         <LiveStatusPill connection={connection} liveProgress={liveProgress} />
         <LanguageToggle locale={locale} onChange={setLocale} label={t.languageToggleLabel} />
       </div>
+      {startError ? (
+        <p className="mb-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {liveStartMessage(startError, t)}
+        </p>
+      ) : null}
       <CardCompliance colorBucket={data.round.color_bucket} t={t}>
         {(receipt) => <CardBody data={data} receipt={receipt} t={t} />}
       </CardCompliance>
     </div>
   )
+}
+
+/**
+ * A live run that was REFUSED never spent a credit and never ran a model — the
+ * user is owed the actual reason, localized, not the generic connection error.
+ * The stored card below is untouched and still valid, which is why this is a
+ * notice above the card rather than a replacement for it.
+ */
+function liveStartMessage(error: CardStreamStartError, t: LeagueUiPack): string {
+  if (error.status === 402) return t.hub.insufficientCredits(error.required ?? 0, error.balance ?? 0)
+  if (error.status === 429) return t.hub.rateLimited
+  if (error.status === 403) return t.gating.unavailable
+  return t.hub.genericError
 }
 
 /**

@@ -88,9 +88,14 @@ export async function middleware(request: NextRequest) {
     return withOptionalBypassCookie(supabaseResponse, setBypassCookie)
   }
 
+  // `/league` is the public (logged-in) league surface. Every league API route
+  // enforces auth on its own — this redirect only saves a signed-out visitor
+  // from landing on a page that would render nothing but 401s.
   if (
     !user &&
     (request.nextUrl.pathname.startsWith('/modes/') ||
+      request.nextUrl.pathname === '/league' ||
+      request.nextUrl.pathname.startsWith('/league/') ||
       request.nextUrl.pathname.startsWith('/settings'))
   ) {
     const loginUrl = new URL('/auth', request.url)
