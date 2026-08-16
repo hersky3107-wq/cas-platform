@@ -27,6 +27,18 @@
   --color-jeju-border: var(--jeju-border);
   --color-jeju-tile-bg: var(--jeju-tile-bg);
   --color-jeju-tile-hover: var(--jeju-tile-hover);
+
+  /* League prediction-card tone tokens — same pattern as --color-jeju-*
+     above. Values come from the [data-league-tone='…'] blocks below, scoped
+     to the card root. See lib/league/tone.ts. */
+  --color-league-accent: var(--league-accent);
+  --color-league-accent-soft: var(--league-accent-soft);
+  --color-league-accent-strong: var(--league-accent-strong);
+  --color-league-border: var(--league-border);
+  --color-league-fg: var(--league-fg);
+  --color-league-fg-muted: var(--league-fg-muted);
+  --color-league-bg: var(--league-bg);
+  --color-league-bg-elevated: var(--league-bg-elevated);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -145,6 +157,43 @@
   --jeju-tile-size-lg: 7rem;
   --jeju-gap: 1.75rem;
   --jeju-tap-min: 3rem;
+}
+
+/* ── League prediction-card tone tokens (data-league-tone on the card root) ──
+   green = calm-but-engaging, yellow = stronger, red = boldest. Tone changes
+   ONLY these visual values — never the compliance copy/rules. See
+   lib/league/tone.ts and components/league/CardCompliance.tsx. */
+[data-league-tone='green'] {
+  --league-bg: #ffffff;
+  --league-bg-elevated: #f8faf9;
+  --league-fg: #0f172a;
+  --league-fg-muted: #5b6b7a;
+  --league-accent: #10b981;
+  --league-accent-strong: #059669;
+  --league-accent-soft: rgba(16, 185, 129, 0.12);
+  --league-border: rgba(16, 185, 129, 0.28);
+}
+
+[data-league-tone='yellow'] {
+  --league-bg: #ffffff;
+  --league-bg-elevated: #fffaf0;
+  --league-fg: #1c1406;
+  --league-fg-muted: #7a6a45;
+  --league-accent: #d97706;
+  --league-accent-strong: #b45309;
+  --league-accent-soft: rgba(217, 119, 6, 0.14);
+  --league-border: rgba(217, 119, 6, 0.32);
+}
+
+[data-league-tone='red'] {
+  --league-bg: #ffffff;
+  --league-bg-elevated: #fff5f5;
+  --league-fg: #1c0a0a;
+  --league-fg-muted: #7a5555;
+  --league-accent: #dc2626;
+  --league-accent-strong: #b91c1c;
+  --league-accent-soft: rgba(220, 38, 38, 0.14);
+  --league-border: rgba(220, 38, 38, 0.36);
 }
 
 body {
