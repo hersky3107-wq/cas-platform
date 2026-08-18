@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
   LEAGUE_ARCHIVE_CREDITS,
-  LEAGUE_DEBATE_CREDITS,
+  LEAGUE_DEEP_DEBATE_CREDITS,
+  LEAGUE_DEEP_OPEN_CREDITS,
   LEAGUE_GENERATE_CREDITS,
-  LEAGUE_OPEN_CREDITS,
   creditsForLeagueArchive,
-  creditsForLeagueDebate,
+  creditsForLeagueDeepDebate,
+  creditsForLeagueDeepOpen,
   creditsForLeagueGenerate,
-  creditsForLeagueOpen,
 } from '../credits'
 
-describe('league / governance credit constants', () => {
-  it('pins the confirmed open-analysis and debate prices', () => {
-    expect(LEAGUE_OPEN_CREDITS).toBe(50)
-    expect(LEAGUE_DEBATE_CREDITS).toBe(70)
-    expect(creditsForLeagueOpen()).toBe(50)
-    expect(creditsForLeagueDebate()).toBe(70)
+describe('league credit constants (single module)', () => {
+  it('pins deep-analysis prices — do not change these without an owner decision', () => {
+    expect(LEAGUE_DEEP_OPEN_CREDITS).toBe(50)
+    expect(LEAGUE_DEEP_DEBATE_CREDITS).toBe(70)
+    expect(creditsForLeagueDeepOpen()).toBe(50)
+    expect(creditsForLeagueDeepDebate()).toBe(70)
   })
 
   it('pins the confirmed live-generation price', () => {
@@ -23,7 +23,7 @@ describe('league / governance credit constants', () => {
     expect(creditsForLeagueGenerate()).toBe(7)
   })
 
-  it('pins the flagged deep-archive price (owner-confirmable)', () => {
+  it('pins the deep-archive price', () => {
     expect(LEAGUE_ARCHIVE_CREDITS).toBe(3)
     expect(creditsForLeagueArchive()).toBe(3)
   })

@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { decryptText } from '@/lib/db/crypto'
+import { recordProviderCost } from '@/lib/ai/cost-span'
 
 const UNIVERSAL_LANGUAGE_PROMPT_RULE = `IMPORTANT: Always respond in the same language the user wrote their message in. If the user writes in Japanese, respond in Japanese. If in French, respond in French. If in English, respond in English. Match the user's language exactly.`
 const MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT =
@@ -1162,6 +1163,13 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       }
     }
 
+    const costUsd = usage.costUsd ?? null
+    recordProviderCost({
+      costUsd,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+    })
+
     return {
       // Runtime value is the exact provider passed in (core or opt-in). Cast to
       // keep RouterResult core-typed; opt-in callers don't consume `.provider`.
@@ -1172,7 +1180,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
-      costUsd: usage.costUsd ?? null,
+      costUsd,
     }
   } catch (e: any) {
     const responseTimeMs = nowMs() - started

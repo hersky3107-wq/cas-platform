@@ -103,6 +103,12 @@ describe('dictionary completeness', () => {
         hub.generateLive(7),
         hub.insufficientCredits(7, 0),
         hub.balance(120),
+        hub.deepOpen(50),
+        hub.deepDebate(70),
+        hub.deepRunning,
+        hub.deepUnscoredNote,
+        hub.deepOpenTitle,
+        hub.deepDebateTitle,
         getLeagueUiPack(locale).recordRoom.deepCta(3),
       ]
       for (const s of strings) expect(s.trim().length).toBeGreaterThan(0)
@@ -131,6 +137,8 @@ describe('dictionary completeness', () => {
       // A user must be able to read what a live run costs before spending.
       expect(hub.generateLive(7)).toContain('7')
       expect(hub.insufficientCredits(7, 0)).toContain('7')
+      expect(hub.deepOpen(50)).toContain('50')
+      expect(hub.deepDebate(70)).toContain('70')
       expect(getLeagueUiPack(locale).recordRoom.deepCta(3)).toContain('3')
     }
   })

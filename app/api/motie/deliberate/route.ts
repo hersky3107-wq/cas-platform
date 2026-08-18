@@ -561,6 +561,22 @@ export async function POST(req: Request): Promise<Response> {
 
   const action = typeof body.action === 'string' ? body.action : ''
 
+  // League deep analysis is a SEPARATE product with a locked input surface
+  // (`POST /api/league/deep-debate` accepts only { roundId, locale? }). A
+  // roundId / instrument / proposition on THIS MOTIE route is the exact
+  // free-text bypass that lock exists to prevent — refuse it here too.
+  if ('roundId' in body || 'instrument' in body || 'proposition' in body || 'proposition_text' in body) {
+    return json(
+      {
+        ok: false,
+        stage: action || 'unknown',
+        error: 'League deep analysis must use POST /api/league/deep-debate with { roundId } only.',
+        code: 'use_league_deep_debate',
+      },
+      400
+    )
+  }
+
   const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return json({ ok: false, stage: action || 'unknown', error: 'Invalid session' }, 401)

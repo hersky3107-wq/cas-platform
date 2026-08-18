@@ -190,6 +190,15 @@ export type LeagueUiPack = {
     insufficientCredits: (required: number, balance: number) => string
     rateLimited: string
     genericError: string
+    /** Paid CTA — MUST carry its price. Open-ended deep analysis of the current round. */
+    deepOpen: (credits: number) => string
+    /** Paid CTA — MUST carry its price. Pro/con debate of the current round. */
+    deepDebate: (credits: number) => string
+    deepRunning: string
+    /** Distinguishes this output from the scored prediction league. */
+    deepUnscoredNote: string
+    deepOpenTitle: string
+    deepDebateTitle: string
     balance: (credits: number) => string
   }
 }
@@ -361,6 +370,13 @@ const en: LeagueUiPack = {
     rateLimited: 'Too many requests. Please wait a moment and try again.',
     genericError: 'Something went wrong. Please try again.',
     balance: (credits) => `${credits} credits`,
+    deepOpen: (credits) => `Open analysis \u00b7 ${credits} credits`,
+    deepDebate: (credits) => `Pro/con debate \u00b7 ${credits} credits`,
+    deepRunning: 'Running deep analysis\u2026',
+    deepUnscoredNote:
+      'Unscored commentary \u2014 not a league prediction. Does not enter the leaderboard or track record.',
+    deepOpenTitle: 'Open analysis',
+    deepDebateTitle: 'Pro/con debate',
   },
 }
 
@@ -521,6 +537,12 @@ const ko: LeagueUiPack = {
     rateLimited: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
     genericError: '문제가 발생했습니다. 다시 시도해 주세요.',
     balance: (credits) => `${credits} 크레딧`,
+    deepOpen: (credits) => `개방형 분석 \u00b7 ${credits} 크레딧`,
+    deepDebate: (credits) => `찬반 토론 \u00b7 ${credits} 크레딧`,
+    deepRunning: '심층 분석 진행 중\u2026',
+    deepUnscoredNote: '비채점 논평입니다. 리그 예측이 아니며 리더보드와 전적에 반영되지 않습니다.',
+    deepOpenTitle: '개방형 분석',
+    deepDebateTitle: '찬반 토론',
   },
 }
 
@@ -681,6 +703,12 @@ const ja: LeagueUiPack = {
     rateLimited: 'リクエストが多すぎます。少し時間をおいて再度お試しください。',
     genericError: 'エラーが発生しました。もう一度お試しください。',
     balance: (credits) => `${credits}クレジット`,
+    deepOpen: (credits) => `自由分析 \u00b7 ${credits}クレジット`,
+    deepDebate: (credits) => `賛否討論 \u00b7 ${credits}クレジット`,
+    deepRunning: '深層分析を実行中\u2026',
+    deepUnscoredNote: '採点対象外の論評です。リーグ予測ではなく、リーダーボードや戦績には入りません。',
+    deepOpenTitle: '自由分析',
+    deepDebateTitle: '賛否討論',
   },
 }
 
@@ -841,6 +869,12 @@ const zhTW: LeagueUiPack = {
     rateLimited: '請求過於頻繁，請稍候再試。',
     genericError: '發生錯誤，請再試一次。',
     balance: (credits) => `${credits} 點數`,
+    deepOpen: (credits) => `開放分析 \u00b7 ${credits} 點數`,
+    deepDebate: (credits) => `正反辯論 \u00b7 ${credits} 點數`,
+    deepRunning: '深度分析進行中\u2026',
+    deepUnscoredNote: '未計分評論——不是聯盟預測，不會進入排行榜或戰績。',
+    deepOpenTitle: '開放分析',
+    deepDebateTitle: '正反辯論',
   },
 }
 
@@ -1003,6 +1037,13 @@ const fr: LeagueUiPack = {
     rateLimited: 'Trop de requêtes. Patientez un instant avant de réessayer.',
     genericError: 'Une erreur est survenue. Veuillez réessayer.',
     balance: (credits) => `${credits} crédits`,
+    deepOpen: (credits) => `Analyse ouverte \u00b7 ${credits} cr\u00e9dits`,
+    deepDebate: (credits) => `D\u00e9bat pour/contre \u00b7 ${credits} cr\u00e9dits`,
+    deepRunning: 'Analyse approfondie en cours\u2026',
+    deepUnscoredNote:
+      'Commentaire non not\u00e9 \u2014 ce n\u2019est pas une pr\u00e9diction de ligue. N\u2019entre ni au classement ni au palmar\u00e8s.',
+    deepOpenTitle: 'Analyse ouverte',
+    deepDebateTitle: 'D\u00e9bat pour/contre',
   },
 }
 
@@ -1165,6 +1206,13 @@ const es: LeagueUiPack = {
     rateLimited: 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.',
     genericError: 'Algo salió mal. Inténtalo de nuevo.',
     balance: (credits) => `${credits} créditos`,
+    deepOpen: (credits) => `An\u00e1lisis abierto \u00b7 ${credits} cr\u00e9ditos`,
+    deepDebate: (credits) => `Debate a favor/en contra \u00b7 ${credits} cr\u00e9ditos`,
+    deepRunning: 'Ejecutando an\u00e1lisis profundo\u2026',
+    deepUnscoredNote:
+      'Comentario sin puntuaci\u00f3n: no es una predicci\u00f3n de la liga. No entra en la clasificaci\u00f3n ni en el historial.',
+    deepOpenTitle: 'An\u00e1lisis abierto',
+    deepDebateTitle: 'Debate a favor/en contra',
   },
 }
 
@@ -1325,6 +1373,12 @@ const ar: LeagueUiPack = {
     rateLimited: 'طلبات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
     genericError: 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',
     balance: (credits) => `${credits} رصيد`,
+    deepOpen: (credits) => `تحليل مفتوح \u00b7 ${credits} رصيد`,
+    deepDebate: (credits) => `مناظرة مع/ضد \u00b7 ${credits} رصيد`,
+    deepRunning: 'جارٍ التحليل المعمّق\u2026',
+    deepUnscoredNote: 'تعليق غير مُقيَّم — ليس توقعًا للدوري ولا يدخل لوحة الصدارة أو السجل.',
+    deepOpenTitle: 'تحليل مفتوح',
+    deepDebateTitle: 'مناظرة مع/ضد',
   },
 }
 

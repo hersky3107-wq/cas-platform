@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { ModuleCreditsLink } from '@/components/credits/ModuleCreditsLink'
 import { PredictionCard } from '@/components/league/PredictionCard'
+import { DeepAnalysis } from '@/components/league/DeepAnalysis'
 import { Leaderboard } from '@/components/league/Leaderboard'
 import { RecordRoom } from '@/components/league/RecordRoom'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
@@ -270,6 +271,11 @@ function CardsPanel() {
       {active?.kind === 'instruments' && !loading && !error && card ? (
         <>
           <PredictionCard key={card.round.round_id} initialData={card} live={live} />
+          <DeepAnalysis
+            roundId={card.round.round_id}
+            category={card.round.category}
+            colorBucket={card.round.color_bucket}
+          />
           <button
             type="button"
             disabled={live}

@@ -83,42 +83,25 @@ export function creditsForDeep(mode: DeepOutputMode): number {
 }
 
 /**
- * Governance / league paid compute. Named constants — never inline these
- * amounts at a call site. Cached league card reads (GET /api/league/card)
- * are free and must not use any of these.
- *
- * LEAGUE_GENERATE_CREDITS was provisional at 5 and is confirmed at 7 for the
- * public opening of the league (one live re-run of a ranked round: a full
- * roster fan-out).
+ * League paid-compute amounts live in `lib/league/credits.ts` — re-exported
+ * here so client-safe imports (`@/lib/credits`) keep working. Do not add a
+ * second copy of these numbers.
  */
-export const LEAGUE_OPEN_CREDITS = 50
-export const LEAGUE_DEBATE_CREDITS = 70
-export const LEAGUE_GENERATE_CREDITS = 7
-/**
- * Deep archive (full history, model filter, date range, CSV). Flagged for
- * owner confirmation — recent-summary viewing stays free.
- */
-export const LEAGUE_ARCHIVE_CREDITS = 3
+export {
+  LEAGUE_GENERATE_CREDITS,
+  LEAGUE_ARCHIVE_CREDITS,
+  LEAGUE_DEEP_OPEN_CREDITS,
+  LEAGUE_DEEP_DEBATE_CREDITS,
+  creditsForLeagueGenerate,
+  creditsForLeagueArchive,
+  creditsForLeagueDeepOpen,
+  creditsForLeagueDeepDebate,
+} from './league/credits'
 
-/** Motie open analysis (`POST /api/motie/brief` start). */
-export function creditsForLeagueOpen(): number {
-  return LEAGUE_OPEN_CREDITS
-}
-
-/** Motie debate (`POST /api/motie/deliberate` start). */
-export function creditsForLeagueDebate(): number {
-  return LEAGUE_DEBATE_CREDITS
-}
-
-/** League live generation (`POST /api/league/generate-stream`) only — not cached reads. */
-export function creditsForLeagueGenerate(): number {
-  return LEAGUE_GENERATE_CREDITS
-}
-
-/** League deep archive (`POST /api/league/record-room/deep`) — not the free recent summary. */
-export function creditsForLeagueArchive(): number {
-  return LEAGUE_ARCHIVE_CREDITS
-}
+/** @deprecated Use LEAGUE_DEEP_OPEN_CREDITS — kept so existing MOTIE call sites compile. */
+export { LEAGUE_DEEP_OPEN_CREDITS as LEAGUE_OPEN_CREDITS, creditsForLeagueDeepOpen as creditsForLeagueOpen } from './league/credits'
+/** @deprecated Use LEAGUE_DEEP_DEBATE_CREDITS — kept so existing MOTIE call sites compile. */
+export { LEAGUE_DEEP_DEBATE_CREDITS as LEAGUE_DEBATE_CREDITS, creditsForLeagueDeepDebate as creditsForLeagueDebate } from './league/credits'
 
 export function creditsForSuit(): number {
   return 13

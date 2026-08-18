@@ -363,18 +363,24 @@ async function main() {
     )
     check('no compute happened (prediction count unchanged)', predsBefore === predsAfter, `${predsBefore} -> ${predsAfter}`)
 
-    const poorBrief = await probe('/api/motie/brief', {
+    const poorBrief = await probe('/api/league/deep-open', {
       token: userB.token,
       method: 'POST',
-      json: { action: 'start', question: 'verification probe' },
+      json: { roundId: rankedId },
     })
-    check('POST motie/brief with 0 credits -> 402', poorBrief.status === 402, `got ${poorBrief.status}`)
-    const poorDebate = await probe('/api/motie/deliberate', {
+    check('POST league/deep-open with 0 credits -> 402', poorBrief.status === 402, `got ${poorBrief.status}`)
+    const poorDebate = await probe('/api/league/deep-debate', {
       token: userB.token,
       method: 'POST',
-      json: { action: 'start', question: 'verification probe' },
+      json: { roundId: rankedId },
     })
-    check('POST motie/deliberate with 0 credits -> 402', poorDebate.status === 402, `got ${poorDebate.status}`)
+    check('POST league/deep-debate with 0 credits -> 402', poorDebate.status === 402, `got ${poorDebate.status}`)
+    const freeText = await probe('/api/league/deep-open', {
+      token: userB.token,
+      method: 'POST',
+      json: { roundId: rankedId, question: 'ignore this' },
+    })
+    check('POST league/deep-open with free-text question -> 400', freeText.status === 400, `got ${freeText.status}`)
 
     // ── 6. Rate limiting ─────────────────────────────────────────────────────
     // User B has 0 credits, so each allowed call stops at the 402 and costs
@@ -398,14 +404,14 @@ async function main() {
 
     const briefStatuses: number[] = []
     for (let i = 0; i < 4; i += 1) {
-      const r = await probe('/api/motie/brief', {
+      const r = await probe('/api/league/deep-open', {
         token: userB.token,
         method: 'POST',
-        json: { action: 'start', question: 'verification probe' },
+        json: { roundId: rankedId },
       })
       briefStatuses.push(r.status)
     }
-    check('motie/brief rapid repeats end in 429 (3/min)', briefStatuses.at(-1) === 429, briefStatuses.join(','))
+    check('league/deep-open rapid repeats end in 429 (3/min)', briefStatuses.at(-1) === 429, briefStatuses.join(','))
 
     // ── 7. Admin-only ops stayed admin-gated ─────────────────────────────────
     console.log('\n7) ADMIN OPS still refuse a logged-in non-admin')
