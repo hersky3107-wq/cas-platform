@@ -10,6 +10,8 @@ import {
   type ConsensusSummary,
   type Direction,
   type DirectionTally,
+  emptyCombinedTrack,
+  type CombinedMethodTrack,
   type HitRateSummary,
   type TierSplit,
 } from './card-types'
@@ -183,12 +185,17 @@ function toRoundMeta(row: RoundRow): CardRoundMeta {
 }
 
 /** Pure assembly step: round + predictions -> CardData. No I/O. */
-export function buildCardData(roundRow: RoundRow, predictionRows: PredictionRow[]): CardData {
+export function buildCardData(
+  roundRow: RoundRow,
+  predictionRows: PredictionRow[],
+  combinedTrack: CombinedMethodTrack = emptyCombinedTrack()
+): CardData {
   const models = predictionRows.map(toCardModel)
   return {
     round: toRoundMeta(roundRow),
     models,
     ...computeCardAggregates(models, roundRow.resolved_at),
+    combinedTrack,
     generatedAt: new Date().toISOString(),
   }
 }

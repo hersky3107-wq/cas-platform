@@ -1,4 +1,4 @@
-import type { ConsensusSummary, Direction } from './card-types'
+import type { CombinedMethodTrack, ConsensusSummary, Direction } from './card-types'
 import type { LeagueUiPack } from './i18n/dictionary'
 
 /**
@@ -58,6 +58,15 @@ export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack):
 /** Approved one-line group summary, e.g. "US: 3 up · 1 down". Used for camp/tier rows. */
 export function groupTallyLine(label: string, tally: ConsensusSummary['tally'], t: LeagueUiPack): string {
   return t.groupTallyLine(label, tally)
+}
+
+/**
+ * Citation-style past accuracy of the 40-model majority-vote method.
+ * Always carries n when a rate exists. Never advice.
+ */
+export function combinedTrackLine(track: CombinedMethodTrack, t: LeagueUiPack): string {
+  if (track.n === 0 || track.winRatePct === null) return t.bracket.combinedTrackPending
+  return t.bracket.combinedTrack(track.winRatePct, track.n)
 }
 
 /**

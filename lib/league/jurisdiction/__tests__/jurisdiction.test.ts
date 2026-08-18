@@ -37,6 +37,7 @@ describe('isCategoryAllowed — default-deny + single-signal cases', () => {
   it('allows an explicitly-listed category for a single known signal', () => {
     expect(isCategoryAllowed('stock', { ipCountry: 'KR' })).toBe(true)
     expect(isCategoryAllowed('crypto_perps', { declaredCountry: 'US' })).toBe(true)
+    expect(isCategoryAllowed('real_estate', { ipCountry: 'KR' })).toBe(true)
   })
 
   it('applies the recorded regional restrictions: crypto_perps off in UK/EU/ME', () => {

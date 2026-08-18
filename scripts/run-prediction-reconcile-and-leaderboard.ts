@@ -108,7 +108,6 @@ async function main() {
     .from('model_predictions')
     .select('model_id, brand, camp, league_tier, is_correct, prediction_rounds!inner(category, item_type)')
     .not('is_correct', 'is', null)
-    .neq('league_tier', 'scout')
     .eq('prediction_rounds.item_type', 'ranked')
   if (error) throw new Error(`leaderboard query failed: ${error.message}`)
 
@@ -121,6 +120,8 @@ async function main() {
       league_tier: row.league_tier,
       category: row.prediction_rounds!.category,
       is_correct: row.is_correct!,
+      round_id: 'unknown',
+      predicted_direction: null as 'up' | 'down' | 'flat' | null,
     }))
 
   const leaderboard = buildLeaderboardData(rows)

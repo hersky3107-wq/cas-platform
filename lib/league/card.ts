@@ -3,6 +3,7 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { buildCardData, type PredictionRow, type RoundRow } from './card-aggregate'
 import type { CardData } from './card-types'
+import { fetchLeaderboardData, type LeaderboardScope } from './leaderboard'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), DB read path.
@@ -79,8 +80,9 @@ async function loadPredictions(roundId: string): Promise<PredictionRow[]> {
 }
 
 /** Full read path: resolve the round, load its predictions, assemble CardData. */
-export async function fetchCardData(lookup: CardLookup): Promise<CardData> {
+export async function fetchCardData(lookup: CardLookup, scope?: LeaderboardScope): Promise<CardData> {
   const round = await loadRound(lookup)
   const predictions = await loadPredictions(round.id)
-  return buildCardData(round, predictions)
+  const board = await fetchLeaderboardData(scope)
+  return buildCardData(round, predictions, board.combined)
 }

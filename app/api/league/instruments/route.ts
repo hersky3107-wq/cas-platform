@@ -1,33 +1,36 @@
 import { NextResponse } from 'next/server'
-import { resolveLeagueViewer, viewerInstruments } from '@/lib/league/public-access'
+import { resolveLeagueViewer, viewerCatalog } from '@/lib/league/public-access'
 
 /**
  * GET /api/league/instruments
  *
- * The curated ranked instrument set this caller may browse, filtered by their
- * resolved jurisdiction. Free, read-only, no DB access at all — it is a
- * projection of the static `DAILY_FIXED_INSTRUMENTS` config.
+ * The 12-category public catalog this caller may browse, jurisdiction-filtered.
+ * Free, read-only — a projection of `lib/league/catalog.ts`. Labels are NOT
+ * included: the client resolves them from the locale pack so a language
+ * toggle does not need a refetch.
  *
- * WHY IT EXISTS: the public hub needs to know what to offer, and that list is
- * a server-side decision. `lib/league/instruments.ts` is `server-only`, and
- * shipping the full instrument config to the client would also mean shipping
- * entries the caller's jurisdiction forbids. A caller whose jurisdiction
- * allows nothing gets `[]` — the hub renders its empty state, and the card /
- * generate endpoints independently refuse those instruments anyway.
+ * WHY IT EXISTS: `catalog.ts` is client-safe, but WHICH categories a caller
+ * may see is a server decision. Shipping the full catalog to the client
+ * would also mean shipping chips the jurisdiction forbids. A caller whose
+ * jurisdiction allows nothing gets `[]` — the hub renders its empty state.
  *
- * This is NOT instrument search: it returns the fixed curated set and nothing
- * else. Arbitrary-instrument (on-demand) requests remain admin-only.
+ * This is NOT instrument search. Non-financial categories return
+ * `kind: "coming_soon"` with an empty instrument list.
  */
 export async function GET(req: Request) {
   const auth = await resolveLeagueViewer(req)
   if (!auth.ok) return auth.response
 
-  const instruments = viewerInstruments(auth.viewer).map((i) => ({
-    instrument: i.instrument,
-    label: i.label,
-    category: i.category,
-    horizon: i.horizon,
+  const categories = viewerCatalog(auth.viewer).map((c) => ({
+    id: c.id,
+    ledgerCategory: c.ledgerCategory,
+    tone: c.tone,
+    kind: c.kind,
+    instruments: c.instruments.map((i) => ({
+      instrument: i.instrument,
+      horizon: i.horizon,
+    })),
   }))
 
-  return NextResponse.json({ instruments })
+  return NextResponse.json({ categories })
 }

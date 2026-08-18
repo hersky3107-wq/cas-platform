@@ -8,11 +8,14 @@ export const maxDuration = 120
 /**
  * POST /api/cron/prediction/reconcile
  *
- * Vercel-cron-triggered reconciliation pass. Selects due, unresolved rounds in
- * the confirmed-source categories, resolves their actual outcome via Twelve
- * Data (the same source the orchestrator used for the data packet), and grades
- * each child model_prediction's is_correct. Reuses the existing
- * `reconcileDuePredictionRounds` — this route only adds cron auth + HTTP.
+ * Legacy cron-secret reconciliation pass. It is NOT scheduled in
+ * `vercel.json`. Requests without `?manual=1` safely no-op. Normal manual
+ * operation should use the admin-only
+ * `POST /api/admin/prediction/reconcile` endpoint instead.
+ *
+ * With `?manual=1`, this retained operational fallback selects due, unresolved
+ * rounds, resolves outcomes, and grades child predictions. It reuses the
+ * existing `reconcileDuePredictionRounds` engine.
  *
  * Auth: Bearer CRON_SECRET. Public callers get 401.
  *
@@ -24,6 +27,14 @@ export async function POST(req: Request) {
   if (authErr) return authErr
 
   const url = new URL(req.url)
+  if (url.searchParams.get('manual') !== '1') {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: 'automatic_league_reconciliation_disabled',
+    })
+  }
+
   const limitParam = Number(url.searchParams.get('limit'))
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 1000) : 200
 

@@ -2,6 +2,9 @@ import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveActualOutcome } from '@/lib/league/market-data'
+import type { PredictionCategory } from './categories'
+
+export type { PredictionCategory } from './categories'
 
 /**
  * AI Prediction League — reconciliation skeleton.
@@ -16,22 +19,6 @@ import { resolveActualOutcome } from '@/lib/league/market-data'
  * session_results).
  */
 
-export type PredictionCategory =
-  | 'stock'
-  | 'etf_index'
-  | 'bond_rate'
-  | 'gold_metal'
-  | 'macro_econ'
-  | 'commodity_energy'
-  | 'crypto_spot'
-  | 'fx'
-  | 'futures_derivatives'
-  | 'politics_election'
-  | 'sports'
-  | 'entertainment_awards'
-  | 'memecoin'
-  | 'crypto_perps'
-
 /**
  * Categories with a confirmed (or trivially-available) data source that this
  * automated job will attempt to reconcile once `fetchActualOutcome` is wired.
@@ -42,8 +29,7 @@ export type PredictionCategory =
  *
  * Everything NOT in this set is schema-only for now — politics_election,
  * entertainment_awards, memecoin, crypto_perps, commodity_energy, bond_rate,
- * futures_derivatives — and the SCOUT league (any category) is scored on
- * citation accuracy, not direction. // v2 / manual reconciliation
+ * futures_derivatives. Scout is graded on direction like every other tier.
  */
 export const AUTO_RECONCILE_CATEGORIES: readonly PredictionCategory[] = [
   'stock',
@@ -115,9 +101,9 @@ export type ReconciliationSummary = {
  *  4. grade each child model_prediction's is_correct by comparing its
  *     predicted_direction to the round's actual direction.
  *
- * Scout-league children (league_tier = 'scout') are left with is_correct = null
- * — their scoring axis is citation accuracy, deferred. Non-directional rows
- * (predicted_direction null) are also left null.
+ * Scout-league children are graded on direction like every other tier
+ * (they now persist a directional call). Non-directional rows
+ * (predicted_direction null) are left with is_correct = null.
  */
 export async function reconcileDuePredictionRounds(limit = 200): Promise<ReconciliationSummary> {
   const summary: ReconciliationSummary = {
@@ -185,9 +171,9 @@ export async function reconcileDuePredictionRounds(limit = 200): Promise<Reconci
 }
 
 /**
- * Sets is_correct for a round's directional, non-scout children. Returns how
- * many rows were graded. Scout rows and null-direction rows are skipped (they
- * keep is_correct = null).
+ * Sets is_correct for a round's directional children. Returns how many rows
+ * were graded. Null-direction rows are skipped (they keep is_correct = null).
+ * Scout is included — same directional compare as every other tier.
  */
 async function gradeChildren(
   roundId: string,
@@ -195,7 +181,7 @@ async function gradeChildren(
 ): Promise<number> {
   const { data: children, error } = await supabaseAdmin
     .from('model_predictions')
-    .select('id, predicted_direction, league_tier')
+    .select('id, predicted_direction')
     .eq('round_id', roundId)
 
   if (error || !children) return 0
@@ -204,10 +190,7 @@ async function gradeChildren(
   for (const child of children as {
     id: string
     predicted_direction: string | null
-    league_tier: string
   }[]) {
-    // Scout league is scored on citation accuracy (deferred) — never direction.
-    if (child.league_tier === 'scout') continue
     if (child.predicted_direction == null) continue
 
     const isCorrect = child.predicted_direction === actualDirection

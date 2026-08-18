@@ -79,11 +79,20 @@ describe('buildRecordRoomPage', () => {
     expect(page.pageSize).toBe(20)
     expect(page.totalRounds).toBe(45)
     expect(page.totalPages).toBe(3)
+    expect(page.deep).toBe(false)
+    expect(page.headline.latestInstrument).toBe('AAPL')
   })
 
   it('zero total rounds yields zero pages and an empty rounds array, never NaN', () => {
     const page = buildRecordRoomPage([], [], 1, 20, 0)
     expect(page.totalPages).toBe(0)
     expect(page.rounds).toEqual([])
+    expect(page.headline.recentGraded).toBe(0)
+    expect(page.headline.latestInstrument).toBeNull()
+  })
+
+  it('marks a deep page so the UI can show paid controls', () => {
+    const page = buildRecordRoomPage([], [], 2, 20, 0, true)
+    expect(page.deep).toBe(true)
   })
 })

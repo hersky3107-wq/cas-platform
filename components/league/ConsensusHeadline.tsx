@@ -1,5 +1,5 @@
-import { consensusHeadline } from '@/lib/league/compliance'
-import type { ConsensusSummary } from '@/lib/league/card-types'
+import { combinedTrackLine, consensusHeadline } from '@/lib/league/compliance'
+import type { CombinedMethodTrack, ConsensusSummary } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { ToneTokens } from '@/lib/league/tone'
 
@@ -10,22 +10,27 @@ import type { ToneTokens } from '@/lib/league/tone'
  * must never assemble directional wording on its own.
  *
  * `variant="verdict"` is the Cards-tab money shot at the bottom of the board.
- * Same sentence, denser scoreboard chrome. The disclaimer still lives in
- * `CardCompliance` immediately below this panel.
+ * Same sentence, denser scoreboard chrome, plus the combined method's past
+ * accuracy (citation / track record — never advice). The disclaimer still
+ * lives in `CardCompliance` immediately below this panel.
  */
 export function ConsensusHeadline({
   consensus,
+  combinedTrack,
   tone,
   t,
   variant = 'inline',
 }: {
   consensus: ConsensusSummary
+  combinedTrack?: CombinedMethodTrack
   tone: ToneTokens
   t: LeagueUiPack
   variant?: 'inline' | 'verdict'
 }) {
   const headline = consensusHeadline(consensus, t)
   const tally = t.bracket.compactTally(consensus.tally)
+  const trackLine = combinedTrack ? combinedTrackLine(combinedTrack, t) : null
+  const trackProvisional = !combinedTrack || combinedTrack.n === 0 || combinedTrack.provisional
 
   if (variant === 'verdict') {
     return (
@@ -41,6 +46,20 @@ export function ConsensusHeadline({
           {headline}
         </p>
         <p className="mt-2 font-mono text-sm font-semibold tabular-nums text-league-accent-strong">{tally}</p>
+        {trackLine ? (
+          <p
+            className={`mt-2 leading-snug ${
+              trackProvisional ? 'text-[11px] text-league-fg-muted' : 'text-xs font-medium text-league-fg'
+            }`}
+          >
+            {trackLine}
+            {combinedTrack && combinedTrack.n > 0 && combinedTrack.provisional ? (
+              <span className="ml-1.5 inline-block rounded-full bg-league-bg-elevated px-1.5 py-0.5 text-[9px] font-semibold">
+                {t.leaderboard.collectingData}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
       </div>
     )
   }
@@ -50,6 +69,7 @@ export function ConsensusHeadline({
       <p className={`font-bold leading-snug text-league-fg ${tone.emphasizeProbability ? 'text-lg' : 'text-base'}`}>
         {headline}
       </p>
+      {trackLine ? <p className="mt-1 text-[11px] text-league-fg-muted">{trackLine}</p> : null}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   LEADERBOARD_PROVISIONAL_THRESHOLD,
+  buildCombinedMethodTrack,
   buildLeaderboardData,
   buildLeaderboardSlice,
   type GradedPredictionRow,
@@ -14,6 +15,8 @@ function row(overrides: Partial<GradedPredictionRow> = {}): GradedPredictionRow 
     league_tier: 'premier',
     category: 'stock',
     is_correct: true,
+    round_id: 'r1',
+    predicted_direction: 'up',
     ...overrides,
   }
 }
@@ -47,7 +50,6 @@ describe('buildLeaderboardSlice', () => {
       row({ model_id: 'high-n-good', is_correct: false }),
     ]
     const slice = buildLeaderboardSlice(rows, 'model')
-    // low-n-perfect is 100% (n=1); high-n-good is 66.7% (n=3) — 100% still wins.
     expect(slice.rows[0]!.key).toBe('low-n-perfect')
     expect(slice.rows[0]!.winRatePct).toBe(100)
     expect(slice.rows[0]!.provisional).toBe(true)
@@ -65,32 +67,64 @@ describe('buildLeaderboardSlice', () => {
     expect(slice.rows.find((r) => r.key === 'at')!.provisional).toBe(false)
   })
 
-  it('a 1-for-1 model is 100% but still provisional (n carried alongside)', () => {
-    const slice = buildLeaderboardSlice([row({ model_id: 'solo', is_correct: true })], 'model')
-    const solo = slice.rows[0]!
-    expect(solo.winRatePct).toBe(100)
-    expect(solo.n).toBe(1)
-    expect(solo.provisional).toBe(true)
-  })
-
-  it('camp scope buckets by camp key with a human label', () => {
-    const rows = [row({ camp: 'us' }), row({ camp: 'china', is_correct: false })]
-    const slice = buildLeaderboardSlice(rows, 'camp')
-    const us = slice.rows.find((r) => r.key === 'us')!
-    const cn = slice.rows.find((r) => r.key === 'china')!
-    expect(us.label).toBe('US')
-    expect(cn.label).toBe('China')
-  })
-
-  it('tier scope never produces a scout bucket even if one somehow slips through', () => {
-    const rows = [row({ league_tier: 'premier' }), row({ league_tier: 'scout' })]
+  it('includes scout in the tier slice (directional rankings)', () => {
+    const rows = [row({ league_tier: 'premier' }), row({ league_tier: 'scout', model_id: 'sonar' })]
     const slice = buildLeaderboardSlice(rows, 'tier')
-    expect(slice.rows.some((r) => r.key === 'scout')).toBe(false)
+    expect(slice.rows.some((r) => r.key === 'scout')).toBe(true)
+    expect(slice.rows.some((r) => r.key === 'premier')).toBe(true)
   })
 
-  it('category scope formats underscores as spaces (technical label, not translated)', () => {
-    const slice = buildLeaderboardSlice([row({ category: 'crypto_spot' })], 'category')
-    expect(slice.rows[0]!.label).toBe('crypto spot')
+  it('campHeadline is US vs China only — third-country is omitted', () => {
+    const rows = [
+      row({ camp: 'us' }),
+      row({ camp: 'china', is_correct: false }),
+      row({ camp: 'other', brand: 'Mistral', model_id: 'mistral' }),
+    ]
+    const slice = buildLeaderboardSlice(rows, 'campHeadline')
+    expect(slice.rows.map((r) => r.key).sort()).toEqual(['china', 'us'])
+  })
+
+  it('camp 3-way includes third-country', () => {
+    const rows = [row({ camp: 'us' }), row({ camp: 'other', brand: 'Upstage', model_id: 'solar' })]
+    const slice = buildLeaderboardSlice(rows, 'camp')
+    expect(slice.rows.some((r) => r.key === 'other')).toBe(true)
+  })
+
+  it('method slice splits pure-reasoning (1/2/3) vs research (scout)', () => {
+    const rows = [
+      row({ league_tier: 'premier', is_correct: true }),
+      row({ league_tier: 'world', is_correct: false, model_id: 'luna' }),
+      row({ league_tier: 'scout', is_correct: true, model_id: 'sonar' }),
+    ]
+    const slice = buildLeaderboardSlice(rows, 'method')
+    const reasoning = slice.rows.find((r) => r.key === 'pure_reasoning')!
+    const research = slice.rows.find((r) => r.key === 'research')!
+    expect(reasoning.n).toBe(2)
+    expect(reasoning.correct).toBe(1)
+    expect(research.n).toBe(1)
+    expect(research.correct).toBe(1)
+  })
+
+  it('brand slice groups a company\'s models together', () => {
+    const rows = [
+      row({ model_id: 'gpt-a', brand: 'OpenAI' }),
+      row({ model_id: 'gpt-b', brand: 'OpenAI', is_correct: false }),
+      row({ model_id: 'gem', brand: 'Google' }),
+    ]
+    const slice = buildLeaderboardSlice(rows, 'brand')
+    expect(slice.rows.find((r) => r.key === 'OpenAI')!.n).toBe(2)
+    expect(slice.rows.find((r) => r.key === 'Google')!.n).toBe(1)
+  })
+
+  it('korea slice only includes Upstage / NAVER / LG', () => {
+    const rows = [
+      row({ brand: 'Upstage', model_id: 'solar' }),
+      row({ brand: 'NAVER', model_id: 'hcx', is_correct: false }),
+      row({ brand: 'LG', model_id: 'exaone' }),
+      row({ brand: 'OpenAI', model_id: 'gpt' }),
+    ]
+    const slice = buildLeaderboardSlice(rows, 'korea')
+    expect(slice.rows.map((r) => r.key).sort()).toEqual(['LG', 'NAVER', 'Upstage'])
   })
 
   it('a slice with zero rows has no entries and no NaN', () => {
@@ -100,27 +134,63 @@ describe('buildLeaderboardSlice', () => {
   })
 })
 
+describe('buildCombinedMethodTrack', () => {
+  it('counts a round as correct when the majority direction was right', () => {
+    const rows = [
+      row({ round_id: 'r1', predicted_direction: 'up', is_correct: true, model_id: 'a' }),
+      row({ round_id: 'r1', predicted_direction: 'up', is_correct: true, model_id: 'b' }),
+      row({ round_id: 'r1', predicted_direction: 'down', is_correct: false, model_id: 'c' }),
+    ]
+    const track = buildCombinedMethodTrack(rows)
+    expect(track.n).toBe(1)
+    expect(track.correct).toBe(1)
+    expect(track.winRatePct).toBe(100)
+    expect(track.provisional).toBe(true)
+  })
+
+  it('skips a tied majority so n is honest', () => {
+    const rows = [
+      row({ round_id: 'r1', predicted_direction: 'up', is_correct: true, model_id: 'a' }),
+      row({ round_id: 'r1', predicted_direction: 'down', is_correct: false, model_id: 'b' }),
+    ]
+    const track = buildCombinedMethodTrack(rows)
+    expect(track.n).toBe(0)
+    expect(track.winRatePct).toBeNull()
+  })
+
+  it('empty input is provisional with no percentage', () => {
+    const track = buildCombinedMethodTrack([])
+    expect(track).toEqual({ correct: 0, resolved: 0, n: 0, winRatePct: null, provisional: true })
+  })
+})
+
 describe('buildLeaderboardData', () => {
-  it('computes all four slices from one row set in a single pass', () => {
+  it('computes primary + secondary slices from one row set, including scout', () => {
     const rows = [
       row({ model_id: 'a', camp: 'us', league_tier: 'premier', category: 'stock', is_correct: true }),
-      row({ model_id: 'b', camp: 'china', league_tier: 'challenger', category: 'fx', is_correct: false }),
+      row({ model_id: 'b', camp: 'china', league_tier: 'scout', category: 'fx', is_correct: false, predicted_direction: 'down' }),
     ]
     const data = buildLeaderboardData(rows)
     expect(data.totalConsidered).toBe(2)
     expect(data.model.rows).toHaveLength(2)
-    expect(data.camp.rows).toHaveLength(2)
-    expect(data.tier.rows).toHaveLength(2)
-    expect(data.category.rows).toHaveLength(2)
+    expect(data.campHeadline.rows).toHaveLength(2)
+    expect(data.method.rows).toHaveLength(2)
+    expect(data.tier.rows.some((r) => r.key === 'scout')).toBe(true)
+    expect(data.korea.rows).toEqual([])
     expect(typeof data.generatedAt).toBe('string')
   })
 
   it('empty input yields empty slices everywhere, never throws', () => {
     const data = buildLeaderboardData([])
     expect(data.model.rows).toEqual([])
+    expect(data.campHeadline.rows).toEqual([])
+    expect(data.method.rows).toEqual([])
     expect(data.camp.rows).toEqual([])
     expect(data.tier.rows).toEqual([])
+    expect(data.brand.rows).toEqual([])
     expect(data.category.rows).toEqual([])
+    expect(data.korea.rows).toEqual([])
+    expect(data.combined.n).toBe(0)
     expect(data.totalConsidered).toBe(0)
   })
 })

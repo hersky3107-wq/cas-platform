@@ -5,14 +5,19 @@ import type { LeaderboardData, LeaderboardRow, LeaderboardScope } from '@/lib/le
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { ComplianceReceipt } from './CardCompliance'
 import { LeaderboardCampHeadline } from './LeaderboardCampHeadline'
+import { WinRateFigure } from './WinRateFigure'
 
-const SCOPES: LeaderboardScope[] = ['camp', 'model', 'tier', 'category']
+const SECONDARY_SCOPES: Exclude<LeaderboardScope, 'model' | 'campHeadline' | 'method'>[] = [
+  'camp',
+  'tier',
+  'brand',
+  'category',
+  'korea',
+]
 
 /**
- * The actual leaderboard content (title, camp headline, scope tabs, table).
- * Do NOT render this outside `<CardCompliance>` — see `CardBody.tsx` for why
- * `receipt` is typed the way it is; this component follows the exact same
- * pattern so the leaderboard can never render without its disclaimer either.
+ * Primary views always visible: US vs China, pure-reasoning vs research,
+ * per-model ranking. Secondary comparisons sit behind a collapsible tab strip.
  */
 export function LeaderboardBody({
   data,
@@ -24,9 +29,10 @@ export function LeaderboardBody({
   t: LeagueUiPack
 }) {
   void receipt
-  const [scope, setScope] = useState<LeaderboardScope>('camp')
-  const slice = data[scope]
-  const anyProvisional = slice.rows.some((r) => r.provisional)
+  const [showMore, setShowMore] = useState(false)
+  const [scope, setScope] = useState<(typeof SECONDARY_SCOPES)[number]>('camp')
+  const secondary = data[scope]
+  const anyProvisional = data.model.rows.some((r) => r.provisional) || secondary.rows.some((r) => r.provisional)
 
   return (
     <>
@@ -35,23 +41,91 @@ export function LeaderboardBody({
         <p className="text-[11px] text-league-fg-muted">{t.leaderboard.subtitle}</p>
       </div>
 
-      <LeaderboardCampHeadline slice={data.camp} t={t} />
+      <LeaderboardCampHeadline slice={data.campHeadline} t={t} />
+      <MethodHeadline slice={data.method} t={t} />
 
-      <div className="flex gap-0.5 overflow-x-auto px-4 pb-2 text-[11px]">
-        {SCOPES.map((s) => (
-          <ScopeTabButton key={s} active={scope === s} onClick={() => setScope(s)} label={t.leaderboard.tabs[tabLabelKey(s)]} />
-        ))}
+      <LeaderboardTable slice={data.model.rows} t={t} labelFor={modelLabel} />
+
+      <div className="px-4 pb-2 pt-3">
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          className="text-[11px] font-semibold text-league-accent-strong"
+        >
+          {showMore ? t.leaderboard.hideComparisons : t.leaderboard.moreComparisons}
+        </button>
       </div>
 
-      <LeaderboardTable slice={slice.rows} t={t} />
+      {showMore ? (
+        <>
+          <div className="flex gap-0.5 overflow-x-auto px-4 pb-2 text-[11px]">
+            {SECONDARY_SCOPES.map((s) => (
+              <ScopeTabButton
+                key={s}
+                active={scope === s}
+                onClick={() => setScope(s)}
+                label={t.leaderboard.tabs[tabLabelKey(s)]}
+              />
+            ))}
+          </div>
+          <LeaderboardTable slice={secondary.rows} t={t} labelFor={(row) => secondaryLabel(row, scope, t)} />
+        </>
+      ) : null}
 
       {anyProvisional ? <p className="px-4 pb-3 pt-1 text-[10px] text-league-fg-muted">{t.leaderboard.provisionalNote}</p> : null}
     </>
   )
 }
 
-function tabLabelKey(scope: LeaderboardScope): keyof LeagueUiPack['leaderboard']['tabs'] {
-  return scope
+function tabLabelKey(scope: (typeof SECONDARY_SCOPES)[number]): keyof LeagueUiPack['leaderboard']['tabs'] {
+  return scope === 'camp' ? 'camp3' : scope
+}
+
+function modelLabel(row: LeaderboardRow): string {
+  return row.label
+}
+
+function secondaryLabel(
+  row: LeaderboardRow,
+  scope: (typeof SECONDARY_SCOPES)[number],
+  t: LeagueUiPack
+): string {
+  if (scope === 'camp') {
+    if (row.key === 'us') return t.leaderboard.campLabels.us
+    if (row.key === 'china') return t.leaderboard.campLabels.china
+    if (row.key === 'other') return t.leaderboard.campLabels.other
+  }
+  return row.label
+}
+
+function MethodHeadline({ slice, t }: { slice: LeaderboardData['method']; t: LeagueUiPack }) {
+  const reasoning = slice.rows.find((r) => r.key === 'pure_reasoning')
+  const research = slice.rows.find((r) => r.key === 'research')
+  if (!reasoning && !research) return null
+
+  return (
+    <div className="mx-4 mb-3 rounded-xl border border-league-border/40 bg-league-bg-elevated p-3">
+      <p className="pb-2 text-center text-[10px] font-semibold uppercase tracking-wide text-league-fg-muted">
+        {t.leaderboard.methodHeadline}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="text-center">
+          <p className="text-[11px] font-medium text-league-fg-muted">{t.leaderboard.methodLabels.pure_reasoning}</p>
+          <WinRateFigure row={reasoning} t={t} size="hero" />
+          <p className="text-[10px] text-league-fg-muted">
+            {reasoning ? t.leaderboard.sampleCount(reasoning.n) : t.leaderboard.emptyState}
+          </p>
+        </div>
+        <div className="text-center">
+          <p className="text-[11px] font-medium text-league-fg-muted">{t.leaderboard.methodLabels.research}</p>
+          <WinRateFigure row={research} t={t} size="hero" />
+          <p className="text-[10px] text-league-fg-muted">
+            {research ? t.leaderboard.sampleCount(research.n) : t.leaderboard.emptyState}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ScopeTabButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
@@ -69,7 +143,15 @@ function ScopeTabButton({ active, onClick, label }: { active: boolean; onClick: 
   )
 }
 
-function LeaderboardTable({ slice, t }: { slice: LeaderboardRow[]; t: LeagueUiPack }) {
+function LeaderboardTable({
+  slice,
+  t,
+  labelFor,
+}: {
+  slice: LeaderboardRow[]
+  t: LeagueUiPack
+  labelFor: (row: LeaderboardRow) => string
+}) {
   if (slice.length === 0) {
     return <p className="px-4 py-6 text-center text-xs text-league-fg-muted">{t.leaderboard.emptyState}</p>
   }
@@ -88,9 +170,9 @@ function LeaderboardTable({ slice, t }: { slice: LeaderboardRow[]; t: LeagueUiPa
         {slice.map((row, i) => (
           <tr key={row.key} className="border-b border-league-border/20 last:border-b-0">
             <td className="px-4 py-2 text-league-fg-muted">{i + 1}</td>
-            <td className="max-w-[8rem] truncate py-2 font-medium text-league-fg">{row.label}</td>
-            <td className="py-2 text-right font-semibold tabular-nums text-league-fg">
-              {row.winRatePct !== null ? `${row.winRatePct}%` : '—'}
+            <td className="max-w-[8rem] truncate py-2 font-medium text-league-fg">{labelFor(row)}</td>
+            <td className="py-2 text-right">
+              <WinRateFigure row={row} t={t} size="table" />
             </td>
             <td className="px-4 py-2 text-right text-league-fg-muted">
               <span className="tabular-nums">{t.leaderboard.sampleCount(row.n)}</span>

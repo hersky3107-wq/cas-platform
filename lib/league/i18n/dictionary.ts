@@ -1,4 +1,5 @@
 import type { DirectionTally, LeagueTier } from '../card-types'
+import type { PublicCategoryId } from '../catalog'
 import type { LeagueLocale } from './locales'
 
 export type LeagueDirectionWord = 'up' | 'down' | 'flat'
@@ -38,7 +39,25 @@ export type LeagueUiPack = {
   }
   /** e.g. "US: 3 up · 1 down · 1 no call" — `label` (e.g. "US"/"Premier") is passed through untranslated (a proper-noun-ish group name). */
   groupTallyLine: (label: string, tally: DirectionTally) => string
-  disclaimer: { short: string; long: string }
+  disclaimer: {
+    short: string
+    long: string
+    /** Extra line ONLY on real_estate cards — statistical reference, not an appraisal. */
+    realEstate: string
+  }
+  /**
+   * Cards-tab Category → Instrument nav. Keys are catalog ids / instrument
+   * symbols from `lib/league/catalog.ts` — never shown as raw enum keys.
+   */
+  catalog: {
+    categories: Record<PublicCategoryId, string>
+    instruments: Record<string, string>
+    comingSoon: string
+    comingSoonHint: string
+    /** Academic framing for the macro_econ coming-soon panel. */
+    macroEconHint: string
+    noCardYet: string
+  }
   hitRate: { pending: string; pct: (pct: number) => string }
   modelList: {
     title: (count: number) => string
@@ -63,6 +82,10 @@ export type LeagueUiPack = {
     confidence: string
     /** Legend for the correct/missed markers — only rendered once a round is resolved. */
     resultLegend: string
+    /** Citation-style past accuracy of the 40-model majority-vote method. Always carries n. */
+    combinedTrack: (pct: number, n: number) => string
+    /** Shown when the combined method has no resolved majority-vote rounds yet. */
+    combinedTrackPending: string
   }
   gating: {
     /** Shown (localized) when JurisdictionGate hides a category for this user. */
@@ -82,17 +105,22 @@ export type LeagueUiPack = {
   leaderboard: {
     title: string
     subtitle: string
-    tabs: { model: string; camp: string; tier: string; category: string }
-    /** Headline label above the camp view's US vs China comparison — the product's viral hook. */
+    /** Secondary-tab strip (primary views sit above, always visible). */
+    tabs: { camp3: string; tier: string; brand: string; category: string; korea: string }
+    moreComparisons: string
+    hideComparisons: string
+    /** Headline label above the US vs China comparison. */
     campHeadline: string
+    /** Headline label above PURE-REASONING vs RESEARCH. */
+    methodHeadline: string
+    methodLabels: { pure_reasoning: string; research: string }
+    campLabels: { us: string; china: string; other: string }
     columns: { rank: string; name: string; winRate: string; sample: string }
-    /** e.g. "12 resolved". Always shown alongside a win rate — see `provisionalBadge`. */
     sampleCount: (n: number) => string
-    /** Badge text for any row with n below the provisional threshold. */
     provisionalBadge: string
-    /** One-line explainer of what "provisional" means, shown once per screen. */
     provisionalNote: string
-    /** Shown when a slice (or the whole leaderboard) has zero resolved predictions yet. */
+    /** Low-sample state — shown instead of a bold win-rate number. */
+    collectingData: string
     emptyState: string
     asOf: (date: string) => string
   }
@@ -110,6 +138,19 @@ export type LeagueUiPack = {
     ungraded: string
     emptyState: string
     pagination: { prev: string; next: string; pageOf: (page: number, totalPages: number) => string }
+    /** States that the recent view is free. */
+    freeNote: string
+    /** Paid CTA — MUST carry its price. */
+    deepCta: (credits: number) => string
+    deepUnlocking: string
+    exportCsv: string
+    filterModel: string
+    filterFrom: string
+    filterTo: string
+    applyFilters: string
+    headlineRecent: (correct: number, graded: number) => string
+    latestRound: (instrument: string, outcome: string) => string
+    insufficientCredits: (required: number, balance: number) => string
   }
   /**
    * Public (logged-in, non-admin) league hub chrome — the surface at `/league`.
@@ -174,6 +215,49 @@ const en: LeagueUiPack = {
   disclaimer: {
     short: 'Info only — not investment advice. You are responsible for your own decisions.',
     long: 'These are AI model opinions shown for information and entertainment purposes only. They are not investment, financial, legal, or professional advice, and no model here is a licensed advisor. Markets are unpredictable and AI models can be — and often are — wrong. You are solely responsible for any decision you make.',
+    realEstate:
+      'Statistical reference only — not a formal appraisal. Region- and instrument-level outlook; not a valuation of any specific property.',
+  },
+  catalog: {
+    categories: {
+      sports: 'Sports',
+      crypto: 'Crypto',
+      stocks: 'Stocks',
+      fx: 'FX',
+      gold_metals: 'Gold & metals',
+      index_etf: 'Index / ETF',
+      commodities_energy: 'Commodities & energy',
+      politics_election: 'Politics',
+      entertainment: 'Entertainment',
+      memecoin: 'Memecoin',
+      real_estate: 'Real estate',
+      macro_econ: 'Macro',
+    },
+    instruments: {
+      AAPL: 'Apple (AAPL)',
+      NVDA: 'NVIDIA (NVDA)',
+      TSLA: 'Tesla (TSLA)',
+      'BTC/USD': 'Bitcoin (BTC)',
+      'ETH/USD': 'Ethereum (ETH)',
+      'SOL/USD': 'Solana (SOL)',
+      'EUR/USD': 'Euro / US Dollar',
+      'USD/KRW': 'US Dollar / Korean Won',
+      'USD/JPY': 'US Dollar / Japanese Yen',
+      'XAU/USD': 'Gold',
+      'XAG/USD': 'Silver',
+      SPX: 'S&P 500',
+      NDX: 'Nasdaq 100',
+      'WTICO/USD': 'WTI Crude',
+      'NATGAS/USD': 'Natural Gas',
+      VNQ: 'Vanguard Real Estate (VNQ)',
+      SCHH: 'Schwab US REIT (SCHH)',
+      'DOGE/USD': 'Dogecoin (DOGE)',
+      'SHIB/USD': 'Shiba Inu (SHIB)',
+    },
+    comingSoon: 'Coming soon',
+    comingSoonHint: 'Event picker and prompt-search will live here. No fixed instruments for this category.',
+    macroEconHint: 'Expert market outlook — rates, inflation, bonds. Depth, not dopamine.',
+    noCardYet: 'No prediction card for this instrument yet.',
   },
   hitRate: { pending: 'Hit rate: pending', pct: (pct) => `${pct}% hit rate` },
   modelList: {
@@ -198,6 +282,8 @@ const en: LeagueUiPack = {
     confidence: 'confidence',
     resultLegend:
       '✓ correct — the AI\u2019s call matched the actual outcome · ✗ missed — it didn\u2019t. Shown only after the round resolves.',
+    combinedTrack: (pct, n) => `this combined method\u2019s past accuracy ${pct}% (n=${n})`,
+    combinedTrackPending: 'this combined method is still collecting a track record',
   },
   gating: {
     unavailable: 'This prediction category isn\u2019t available in your region yet.',
@@ -207,12 +293,18 @@ const en: LeagueUiPack = {
   leaderboard: {
     title: 'Leaderboard',
     subtitle: 'Win rates computed only from resolved predictions — not investment advice.',
-    tabs: { model: 'Model', camp: 'Camp', tier: 'Tier', category: 'Category' },
+    tabs: { camp3: 'Camp (3-way)', tier: 'Tier', brand: 'Brand', category: 'Category', korea: 'Korea' },
+    moreComparisons: 'More comparisons',
+    hideComparisons: 'Hide comparisons',
     campHeadline: 'US vs. China',
+    methodHeadline: 'Pure reasoning vs research',
+    methodLabels: { pure_reasoning: 'Pure reasoning', research: 'Research (Scout)' },
+    campLabels: { us: 'US', china: 'China', other: 'Third country' },
     columns: { rank: '#', name: 'Name', winRate: 'Win rate', sample: 'Sample' },
     sampleCount: (n) => `${n} resolved`,
     provisionalBadge: 'Provisional',
     provisionalNote: 'Provisional = fewer than 10 resolved predictions. Treat these win rates as early signal, not a settled record.',
+    collectingData: 'Collecting data',
     emptyState: 'Not enough resolved predictions yet — check back as more rounds resolve.',
     asOf: (date) => `As of ${date}`,
   },
@@ -227,6 +319,18 @@ const en: LeagueUiPack = {
     ungraded: 'Ungraded',
     emptyState: 'No rounds have resolved yet.',
     pagination: { prev: 'Previous', next: 'Next', pageOf: (page, totalPages) => `Page ${page} of ${totalPages}` },
+    freeNote: 'Recent results are free. Full history, model filters, date range and CSV export use credits.',
+    deepCta: (credits) => `Open deep archive \u00b7 ${credits} credits`,
+    deepUnlocking: 'Opening archive\u2026',
+    exportCsv: 'Export CSV',
+    filterModel: 'Model id',
+    filterFrom: 'From',
+    filterTo: 'To',
+    applyFilters: 'Apply',
+    headlineRecent: (correct, graded) =>
+      graded > 0 ? `Lately: ${correct} of ${graded} AI calls were right` : 'No graded calls in the recent window yet',
+    latestRound: (instrument, outcome) => `Latest: ${instrument} resolved ${outcome}`,
+    insufficientCredits: (required, balance) => `Deep archive needs ${required} credits \u2014 you have ${balance}.`,
   },
   hub: {
     title: 'AI Prediction League',
@@ -236,7 +340,7 @@ const en: LeagueUiPack = {
     noInstruments: 'The league isn\u2019t available in your region yet.',
     generateLive: (credits) => `Ask the models now \u00b7 ${credits} credits`,
     generating: 'Asking the models\u2026',
-    freeReadNote: 'Browsing cards, the leaderboard and the record room is free. Only a live run spends credits.',
+    freeReadNote: 'Browsing cards, the leaderboard and recent archive results is free. A live run or a deep archive query spends credits.',
     insufficientCredits: (required, balance) => `A live run needs ${required} credits \u2014 you have ${balance}.`,
     rateLimited: 'Too many requests. Please wait a moment and try again.',
     genericError: 'Something went wrong. Please try again.',
@@ -272,6 +376,48 @@ const ko: LeagueUiPack = {
   disclaimer: {
     short: '정보 제공 목적일 뿐 투자 조언이 아닙니다. 모든 결정의 책임은 본인에게 있습니다.',
     long: '본 콘텐츠는 여러 AI 모델의 의견을 정보 및 오락 목적으로 제공하는 것이며, 투자·금융·법률·전문 자문이 아닙니다. 여기 등장하는 어떤 모델도 인가받은 자문가가 아닙니다. 시장은 예측할 수 없으며 AI 모델의 예측은 자주, 그리고 크게 틀릴 수 있습니다. 이를 근거로 내리는 모든 결정의 책임은 전적으로 본인에게 있습니다.',
+    realEstate: '통계적 참고용이며 감정평가가 아닙니다. 개별 부동산 가치 산정이 아닙니다.',
+  },
+  catalog: {
+    categories: {
+      sports: '스포츠',
+      crypto: '암호화폐',
+      stocks: '주식',
+      fx: '외환',
+      gold_metals: '금·귀금속',
+      index_etf: '지수·ETF',
+      commodities_energy: '원자재·에너지',
+      politics_election: '정치·선거',
+      entertainment: '엔터테인먼트',
+      memecoin: '밈코인',
+      real_estate: '부동산',
+      macro_econ: '거시경제',
+    },
+    instruments: {
+      AAPL: '애플 (AAPL)',
+      NVDA: '엔비디아 (NVDA)',
+      TSLA: '테슬라 (TSLA)',
+      'BTC/USD': '비트코인 (BTC)',
+      'ETH/USD': '이더리움 (ETH)',
+      'SOL/USD': '솔라나 (SOL)',
+      'EUR/USD': '유로/달러',
+      'USD/KRW': '달러/원',
+      'USD/JPY': '엔/달러',
+      'XAU/USD': '금',
+      'XAG/USD': '은',
+      SPX: 'S&P 500',
+      NDX: '나스닥 100',
+      'WTICO/USD': '원유 (WTI)',
+      'NATGAS/USD': '천연가스',
+      VNQ: '뱅가드 리츠 (VNQ)',
+      SCHH: '슈왑 미국 리츠 (SCHH)',
+      'DOGE/USD': '도지코인 (DOGE)',
+      'SHIB/USD': '시바이누 (SHIB)',
+    },
+    comingSoon: '준비 중',
+    comingSoonHint: '앞으로 이벤트 선택과 질문 검색이 여기에 들어갑니다. 이 카테고리에는 고정 종목이 없습니다.',
+    macroEconHint: '금리·물가·채권 등 전문가용 시장 전망. 자극이 아니라 깊이입니다.',
+    noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
   },
   hitRate: { pending: '적중률 집계 중', pct: (pct) => `적중률 ${pct}%` },
   modelList: {
@@ -295,6 +441,8 @@ const ko: LeagueUiPack = {
     hideReasoning: '근거 숨기기',
     confidence: '확신도',
     resultLegend: '✓ 적중 — AI 예측이 실제 결과와 일치 · ✗ 실패 — 불일치. 라운드 확정 후에만 표시됩니다.',
+    combinedTrack: (pct, n) => `이 결합 방식의 과거 적중률 ${pct}% (n=${n})`,
+    combinedTrackPending: '이 결합 방식은 아직 성적표를 쌓는 중입니다',
   },
   gating: {
     unavailable: '이 예측 카테고리는 아직 회원님의 지역에서 제공되지 않습니다.',
@@ -304,12 +452,18 @@ const ko: LeagueUiPack = {
   leaderboard: {
     title: '리더보드',
     subtitle: '이미 결과가 확정된 예측만으로 계산한 적중률입니다 — 투자 조언이 아닙니다.',
-    tabs: { model: '모델', camp: '진영', tier: '티어', category: '카테고리' },
+    tabs: { camp3: '진영 (3자)', tier: '티어', brand: '브랜드', category: '카테고리', korea: '한국' },
+    moreComparisons: '비교 더 보기',
+    hideComparisons: '비교 접기',
     campHeadline: '미국 vs 중국',
+    methodHeadline: '순수 추론 vs 리서치',
+    methodLabels: { pure_reasoning: '순수 추론', research: '리서치 (스카우트)' },
+    campLabels: { us: '미국', china: '중국', other: '제3국' },
     columns: { rank: '순위', name: '이름', winRate: '적중률', sample: '표본' },
     sampleCount: (n) => `${n}건 확정`,
     provisionalBadge: '잠정',
     provisionalNote: '잠정 = 확정된 예측이 10건 미만입니다. 아직 확정된 기록이 아니라 초기 신호로만 참고하세요.',
+    collectingData: '데이터 수집 중',
     emptyState: '아직 결과가 확정된 예측이 충분하지 않습니다 — 라운드가 더 확정되면 다시 확인해 주세요.',
     asOf: (date) => `${date} 기준`,
   },
@@ -324,6 +478,18 @@ const ko: LeagueUiPack = {
     ungraded: '채점 없음',
     emptyState: '아직 결과가 확정된 라운드가 없습니다.',
     pagination: { prev: '이전', next: '다음', pageOf: (page, totalPages) => `${totalPages}페이지 중 ${page}페이지` },
+    freeNote: '최근 결과는 무료입니다. 전체 기록, 모델 필터, 기간 조회, CSV 내보내기는 크레딧이 필요합니다.',
+    deepCta: (credits) => `깊은 아카이브 열기 · ${credits} 크레딧`,
+    deepUnlocking: '아카이브 여는 중…',
+    exportCsv: 'CSV 내보내기',
+    filterModel: '모델 ID',
+    filterFrom: '시작',
+    filterTo: '끝',
+    applyFilters: '적용',
+    headlineRecent: (correct, graded) =>
+      graded > 0 ? `최근: AI 호출 ${graded}건 중 ${correct}건 적중` : '최근 구간에 채점된 호출이 아직 없습니다',
+    latestRound: (instrument, outcome) => `최근: ${instrument} → ${outcome}`,
+    insufficientCredits: (required, balance) => `깊은 아카이브는 ${required} 크레딧이 필요합니다 — 보유 ${balance}.`,
   },
   hub: {
     title: 'AI 예측 리그',
@@ -333,7 +499,7 @@ const ko: LeagueUiPack = {
     noInstruments: '아직 회원님의 지역에서는 리그를 이용할 수 없습니다.',
     generateLive: (credits) => `지금 모델에게 물어보기 · ${credits} 크레딧`,
     generating: '모델에게 묻는 중…',
-    freeReadNote: '카드·리더보드·기록실 열람은 무료입니다. 실시간 실행에만 크레딧이 사용됩니다.',
+    freeReadNote: '카드·리더보드·최근 기록 열람은 무료입니다. 실시간 실행이나 깊은 아카이브 조회에만 크레딧이 사용됩니다.',
     insufficientCredits: (required, balance) => `실시간 실행에는 ${required} 크레딧이 필요합니다 — 현재 보유 ${balance} 크레딧.`,
     rateLimited: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
     genericError: '문제가 발생했습니다. 다시 시도해 주세요.',
@@ -369,6 +535,48 @@ const ja: LeagueUiPack = {
   disclaimer: {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
     long: 'この内容は複数のAIモデルの見解を情報提供・娯楽目的で示したものであり、投資・金融・法律・専門的な助言ではありません。ここに登場するモデルはいずれも認可を受けたアドバイザーではありません。市場は予測不可能であり、AIモデルの予測は誤ることが多々あります。これに基づく判断の責任はすべてご自身が負うものとします。',
+    realEstate: '統計的な参考情報であり、鑑定評価ではありません。個別不動産の価格算定ではありません。',
+  },
+  catalog: {
+    categories: {
+      sports: 'スポーツ',
+      crypto: '暗号資産',
+      stocks: '株式',
+      fx: '為替',
+      gold_metals: '金・貴金属',
+      index_etf: '指数・ETF',
+      commodities_energy: '商品・エネルギー',
+      politics_election: '政治・選挙',
+      entertainment: 'エンタメ',
+      memecoin: 'ミームコイン',
+      real_estate: '不動産',
+      macro_econ: 'マクロ経済',
+    },
+    instruments: {
+      AAPL: 'アップル (AAPL)',
+      NVDA: 'エヌビディア (NVDA)',
+      TSLA: 'テスラ (TSLA)',
+      'BTC/USD': 'ビットコイン (BTC)',
+      'ETH/USD': 'イーサリアム (ETH)',
+      'SOL/USD': 'ソラナ (SOL)',
+      'EUR/USD': 'ユーロ / ドル',
+      'USD/KRW': 'ドル / ウォン',
+      'USD/JPY': 'ドル / 円',
+      'XAU/USD': '金',
+      'XAG/USD': '銀',
+      SPX: 'S&P 500',
+      NDX: 'ナスダック100',
+      'WTICO/USD': 'WTI原油',
+      'NATGAS/USD': '天然ガス',
+      VNQ: 'バンガード REIT (VNQ)',
+      SCHH: 'シュワブ米国REIT (SCHH)',
+      'DOGE/USD': 'ドージコイン (DOGE)',
+      'SHIB/USD': '柴犬コイン (SHIB)',
+    },
+    comingSoon: '近日公開',
+    comingSoonHint: 'イベント選択とプロンプト検索はここに入ります。このカテゴリに固定銘柄はありません。',
+    macroEconHint: '金利・物価・債券など、専門家向けの市場見通し。刺激ではなく深さです。',
+    noCardYet: 'この銘柄の予測カードはまだありません。',
   },
   hitRate: { pending: '的中率：集計待ち', pct: (pct) => `的中率${pct}%` },
   modelList: {
@@ -392,6 +600,8 @@ const ja: LeagueUiPack = {
     hideReasoning: '根拠を隠す',
     confidence: '確信度',
     resultLegend: '✓ 的中 — AIの予測が実際の結果と一致 · ✗ 不的中 — 不一致。ラウンド確定後のみ表示されます。',
+    combinedTrack: (pct, n) => `この合成方式の過去的中率 ${pct}%（n=${n}）`,
+    combinedTrackPending: 'この合成方式はまだ成績を蓄積しています',
   },
   gating: {
     unavailable: 'この予測カテゴリーは、お住まいの地域ではまだご利用いただけません。',
@@ -401,12 +611,18 @@ const ja: LeagueUiPack = {
   leaderboard: {
     title: 'リーダーボード',
     subtitle: '確定済みの予測のみから算出した的中率です — 投資助言ではありません。',
-    tabs: { model: 'モデル', camp: '陣営', tier: 'ティア', category: 'カテゴリー' },
+    tabs: { camp3: '陣営（3者）', tier: 'ティア', brand: 'ブランド', category: 'カテゴリー', korea: '韓国' },
+    moreComparisons: '比較をさらに表示',
+    hideComparisons: '比較を隠す',
     campHeadline: '米国 vs 中国',
+    methodHeadline: '純粋推論 vs リサーチ',
+    methodLabels: { pure_reasoning: '純粋推論', research: 'リサーチ（スカウト）' },
+    campLabels: { us: '米国', china: '中国', other: '第三国' },
     columns: { rank: '順位', name: '名前', winRate: '的中率', sample: 'サンプル数' },
     sampleCount: (n) => `確定${n}件`,
     provisionalBadge: '暫定',
     provisionalNote: '暫定 = 確定した予測が10件未満です。確定した実績ではなく、初期的な傾向としてご覧ください。',
+    collectingData: 'データ収集中',
     emptyState: 'まだ確定した予測が十分にありません — ラウンドが確定するたびに更新されます。',
     asOf: (date) => `${date}時点`,
   },
@@ -421,6 +637,18 @@ const ja: LeagueUiPack = {
     ungraded: '未採点',
     emptyState: 'まだ確定したラウンドがありません。',
     pagination: { prev: '前へ', next: '次へ', pageOf: (page, totalPages) => `${totalPages}ページ中${page}ページ目` },
+    freeNote: '直近の結果は無料です。全履歴・モデル絞り込み・期間指定・CSV書き出しはクレジットが必要です。',
+    deepCta: (credits) => `詳細アーカイブを開く・${credits}クレジット`,
+    deepUnlocking: 'アーカイブを開いています…',
+    exportCsv: 'CSVを書き出す',
+    filterModel: 'モデルID',
+    filterFrom: '開始',
+    filterTo: '終了',
+    applyFilters: '適用',
+    headlineRecent: (correct, graded) =>
+      graded > 0 ? `直近: AIの判断${graded}件中${correct}件が的中` : '直近の期間に採点済みの判断はまだありません',
+    latestRound: (instrument, outcome) => `最新: ${instrument} → ${outcome}`,
+    insufficientCredits: (required, balance) => `詳細アーカイブには${required}クレジットが必要です — 残高 ${balance}。`,
   },
   hub: {
     title: 'AI予測リーグ',
@@ -430,7 +658,7 @@ const ja: LeagueUiPack = {
     noInstruments: 'お住まいの地域では、リーグはまだご利用いただけません。',
     generateLive: (credits) => `今すぐモデルに聞く・${credits}クレジット`,
     generating: 'モデルに問い合わせ中…',
-    freeReadNote: 'カード・リーダーボード・記録室の閲覧は無料です。クレジットを消費するのはライブ実行のみです。',
+    freeReadNote: 'カード・リーダーボード・直近の記録室は無料です。ライブ実行と詳細アーカイブだけがクレジットを消費します。',
     insufficientCredits: (required, balance) => `ライブ実行には${required}クレジットが必要です — 現在の残高は${balance}クレジットです。`,
     rateLimited: 'リクエストが多すぎます。少し時間をおいて再度お試しください。',
     genericError: 'エラーが発生しました。もう一度お試しください。',
@@ -466,6 +694,48 @@ const zhTW: LeagueUiPack = {
   disclaimer: {
     short: '僅供參考，非投資建議。所有決定的責任由您自行承擔。',
     long: '本內容為多個 AI 模型的意見，僅供資訊與娛樂用途，並非投資、財務、法律或專業建議；此處任何模型皆非持牌顧問。市場無法預測，AI 模型的判斷經常出錯。您必須自行承擔依此做出之任何決定的全部責任。',
+    realEstate: '僅供統計參考，並非正式估價。僅涵蓋區域／標的層級，不對個別不動產估價。',
+  },
+  catalog: {
+    categories: {
+      sports: '運動',
+      crypto: '加密貨幣',
+      stocks: '股票',
+      fx: '外匯',
+      gold_metals: '黃金與金屬',
+      index_etf: '指數／ETF',
+      commodities_energy: '大宗商品與能源',
+      politics_election: '政治與選舉',
+      entertainment: '娛樂',
+      memecoin: '迷因幣',
+      real_estate: '不動產',
+      macro_econ: '總體經濟',
+    },
+    instruments: {
+      AAPL: '蘋果 (AAPL)',
+      NVDA: '輝達 (NVDA)',
+      TSLA: '特斯拉 (TSLA)',
+      'BTC/USD': '比特幣 (BTC)',
+      'ETH/USD': '以太坊 (ETH)',
+      'SOL/USD': '索拉納 (SOL)',
+      'EUR/USD': '歐元／美元',
+      'USD/KRW': '美元／韓元',
+      'USD/JPY': '美元／日圓',
+      'XAU/USD': '黃金',
+      'XAG/USD': '白銀',
+      SPX: 'S&P 500',
+      NDX: '那斯達克100',
+      'WTICO/USD': 'WTI 原油',
+      'NATGAS/USD': '天然氣',
+      VNQ: '先鋒不動產 (VNQ)',
+      SCHH: '嘉信美國 REIT (SCHH)',
+      'DOGE/USD': '狗狗幣 (DOGE)',
+      'SHIB/USD': '柴犬幣 (SHIB)',
+    },
+    comingSoon: '即將推出',
+    comingSoonHint: '活動選擇與提問搜尋將放在這裡。此類別沒有固定標的。',
+    macroEconHint: '利率、通膨、債券等專業市場展望。重深度，不重刺激。',
+    noCardYet: '此標的尚無預測卡。',
   },
   hitRate: { pending: '命中率：統計中', pct: (pct) => `命中率 ${pct}%` },
   modelList: {
@@ -489,6 +759,8 @@ const zhTW: LeagueUiPack = {
     hideReasoning: '隱藏理由',
     confidence: '信心度',
     resultLegend: '✓ 命中 — AI 預測與實際結果一致 · ✗ 未中 — 不一致。僅在回合結算後顯示。',
+    combinedTrack: (pct, n) => `此綜合方式的過往命中率 ${pct}%（n=${n}）`,
+    combinedTrackPending: '此綜合方式仍在累積紀錄',
   },
   gating: {
     unavailable: '此預測類別在您所在地區尚未開放。',
@@ -498,12 +770,18 @@ const zhTW: LeagueUiPack = {
   leaderboard: {
     title: '排行榜',
     subtitle: '命中率僅根據已結算的預測計算 — 並非投資建議。',
-    tabs: { model: '模型', camp: '陣營', tier: '級別', category: '類別' },
+    tabs: { camp3: '陣營（三方）', tier: '級別', brand: '品牌', category: '類別', korea: '韓國' },
+    moreComparisons: '更多比較',
+    hideComparisons: '收合比較',
     campHeadline: '美國 vs 中國',
+    methodHeadline: '純推理 vs 研究',
+    methodLabels: { pure_reasoning: '純推理', research: '研究（Scout）' },
+    campLabels: { us: '美國', china: '中國', other: '第三國' },
     columns: { rank: '排名', name: '名稱', winRate: '命中率', sample: '樣本數' },
     sampleCount: (n) => `已結算 ${n} 筆`,
     provisionalBadge: '暫定',
     provisionalNote: '暫定＝已結算的預測少於 10 筆。請將此視為初步訊號，而非穩定紀錄。',
+    collectingData: '資料收集中',
     emptyState: '目前已結算的預測還不夠多 — 之後會有更多輪次結算，請稍後再查看。',
     asOf: (date) => `更新於 ${date}`,
   },
@@ -518,6 +796,18 @@ const zhTW: LeagueUiPack = {
     ungraded: '未評分',
     emptyState: '目前尚無已結算的輪次。',
     pagination: { prev: '上一頁', next: '下一頁', pageOf: (page, totalPages) => `第 ${page} 頁，共 ${totalPages} 頁` },
+    freeNote: '近期結果免費。完整歷史、模型篩選、日期範圍與 CSV 匯出需使用點數。',
+    deepCta: (credits) => `開啟深度封存・${credits} 點數`,
+    deepUnlocking: '正在開啟封存…',
+    exportCsv: '匯出 CSV',
+    filterModel: '模型 ID',
+    filterFrom: '起',
+    filterTo: '迄',
+    applyFilters: '套用',
+    headlineRecent: (correct, graded) =>
+      graded > 0 ? `近期：${graded} 次 AI 判斷中命中 ${correct} 次` : '近期尚無已評分的判斷',
+    latestRound: (instrument, outcome) => `最新：${instrument} → ${outcome}`,
+    insufficientCredits: (required, balance) => `深度封存需要 ${required} 點數 — 您目前有 ${balance} 點。`,
   },
   hub: {
     title: 'AI 預測聯賽',
@@ -527,7 +817,7 @@ const zhTW: LeagueUiPack = {
     noInstruments: '您所在的地區尚未開放本聯賽。',
     generateLive: (credits) => `立即詢問模型・${credits} 點數`,
     generating: '正在詢問模型…',
-    freeReadNote: '瀏覽卡片、排行榜與紀錄室皆為免費，只有即時執行才會消耗點數。',
+    freeReadNote: '瀏覽卡片、排行榜與近期紀錄免費。即時執行或深度封存查詢才會消耗點數。',
     insufficientCredits: (required, balance) => `即時執行需要 ${required} 點數 — 您目前有 ${balance} 點。`,
     rateLimited: '請求過於頻繁，請稍候再試。',
     genericError: '發生錯誤，請再試一次。',
@@ -563,6 +853,49 @@ const fr: LeagueUiPack = {
   disclaimer: {
     short: 'Information uniquement, ceci n\u2019est pas un conseil en investissement. Vous êtes seul responsable de vos décisions.',
     long: 'Ce contenu présente les avis de plusieurs modèles d\u2019IA à titre purement informatif et de divertissement. Il ne s\u2019agit pas d\u2019un conseil en investissement, financier, juridique ou professionnel, et aucun modèle ici n\u2019est un conseiller agréé. Les marchés sont imprévisibles et les modèles d\u2019IA peuvent se tromper, et se trompent souvent. Vous assumez l\u2019entière responsabilité de toute décision prise sur cette base.',
+    realEstate:
+      'Référence statistique uniquement — pas une expertise immobilière. Horizon régional ou d\u2019instrument, pas une évaluation d\u2019un bien précis.',
+  },
+  catalog: {
+    categories: {
+      sports: 'Sports',
+      crypto: 'Crypto',
+      stocks: 'Actions',
+      fx: 'Forex',
+      gold_metals: 'Or et métaux',
+      index_etf: 'Indices / ETF',
+      commodities_energy: 'Matières premières',
+      politics_election: 'Politique',
+      entertainment: 'Divertissement',
+      memecoin: 'Memecoin',
+      real_estate: 'Immobilier',
+      macro_econ: 'Macro',
+    },
+    instruments: {
+      AAPL: 'Apple (AAPL)',
+      NVDA: 'NVIDIA (NVDA)',
+      TSLA: 'Tesla (TSLA)',
+      'BTC/USD': 'Bitcoin (BTC)',
+      'ETH/USD': 'Ethereum (ETH)',
+      'SOL/USD': 'Solana (SOL)',
+      'EUR/USD': 'Euro / dollar',
+      'USD/KRW': 'Dollar / won',
+      'USD/JPY': 'Dollar / yen',
+      'XAU/USD': 'Or',
+      'XAG/USD': 'Argent',
+      SPX: 'S&P 500',
+      NDX: 'Nasdaq 100',
+      'WTICO/USD': 'Pétrole WTI',
+      'NATGAS/USD': 'Gaz naturel',
+      VNQ: 'Vanguard Immobilier (VNQ)',
+      SCHH: 'Schwab REIT US (SCHH)',
+      'DOGE/USD': 'Dogecoin (DOGE)',
+      'SHIB/USD': 'Shiba Inu (SHIB)',
+    },
+    comingSoon: 'Bientôt',
+    comingSoonHint: 'Le sélecteur d\u2019événements et la recherche par question seront ici. Pas d\u2019instruments fixes pour cette catégorie.',
+    macroEconHint: 'Perspectives de marché pour experts — taux, inflation, obligations. De la profondeur, pas du spectacle.',
+    noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
   },
   hitRate: { pending: 'Taux de réussite : en attente', pct: (pct) => `${pct}% de réussite` },
   modelList: {
@@ -587,6 +920,8 @@ const fr: LeagueUiPack = {
     confidence: 'confiance',
     resultLegend:
       '✓ correct — la prédiction de l\u2019IA correspond au résultat réel · ✗ manqué — sinon. Affiché uniquement après la résolution.',
+    combinedTrack: (pct, n) => `précision passée de cette méthode combinée ${pct}% (n=${n})`,
+    combinedTrackPending: 'cette méthode combinée constitue encore son historique',
   },
   gating: {
     unavailable: 'Cette catégorie de prédiction n\u2019est pas encore disponible dans votre région.',
@@ -596,12 +931,18 @@ const fr: LeagueUiPack = {
   leaderboard: {
     title: 'Classement',
     subtitle: 'Taux de réussite calculés uniquement sur les prédictions résolues — ceci n\u2019est pas un conseil en investissement.',
-    tabs: { model: 'Modèle', camp: 'Camp', tier: 'Niveau', category: 'Catégorie' },
+    tabs: { camp3: 'Camp (3 voies)', tier: 'Niveau', brand: 'Marque', category: 'Catégorie', korea: 'Corée' },
+    moreComparisons: 'Plus de comparaisons',
+    hideComparisons: 'Masquer les comparaisons',
     campHeadline: '\u00c9tats-Unis vs Chine',
+    methodHeadline: 'Raisonnement pur vs recherche',
+    methodLabels: { pure_reasoning: 'Raisonnement pur', research: 'Recherche (Scout)' },
+    campLabels: { us: 'États-Unis', china: 'Chine', other: 'Pays tiers' },
     columns: { rank: '#', name: 'Nom', winRate: 'Taux de réussite', sample: 'Échantillon' },
     sampleCount: (n) => `${n} résolues`,
     provisionalBadge: 'Provisoire',
     provisionalNote: 'Provisoire = moins de 10 prédictions résolues. À considérer comme un signal précoce, pas comme un résultat établi.',
+    collectingData: 'Collecte des données',
     emptyState: 'Pas encore assez de prédictions résolues — revenez plus tard, au fil des résolutions.',
     asOf: (date) => `Au ${date}`,
   },
@@ -616,6 +957,18 @@ const fr: LeagueUiPack = {
     ungraded: 'Non noté',
     emptyState: 'Aucun tour n\u2019a encore été résolu.',
     pagination: { prev: 'Précédent', next: 'Suivant', pageOf: (page, totalPages) => `Page ${page} sur ${totalPages}` },
+    freeNote: 'Les résultats récents sont gratuits. L\u2019historique complet, les filtres, les dates et l\u2019export CSV consomment des crédits.',
+    deepCta: (credits) => `Ouvrir les archives détaillées \u00b7 ${credits} crédits`,
+    deepUnlocking: 'Ouverture des archives\u2026',
+    exportCsv: 'Exporter en CSV',
+    filterModel: 'Id du modèle',
+    filterFrom: 'Du',
+    filterTo: 'Au',
+    applyFilters: 'Appliquer',
+    headlineRecent: (correct, graded) =>
+      graded > 0 ? `Récemment : ${correct} des ${graded} appels IA étaient justes` : 'Aucun appel noté dans la fenêtre récente',
+    latestRound: (instrument, outcome) => `Dernier : ${instrument} → ${outcome}`,
+    insufficientCredits: (required, balance) => `Les archives détaillées coûtent ${required} crédits \u2014 vous en avez ${balance}.`,
   },
   hub: {
     title: 'Ligue de prédiction IA',
@@ -625,7 +978,7 @@ const fr: LeagueUiPack = {
     noInstruments: 'La ligue n\u2019est pas encore disponible dans votre région.',
     generateLive: (credits) => `Interroger les modèles maintenant \u00b7 ${credits} crédits`,
     generating: 'Interrogation des modèles\u2026',
-    freeReadNote: 'Consulter les cartes, le classement et les archives est gratuit. Seule une exécution en direct consomme des crédits.',
+    freeReadNote: 'Consulter les cartes, le classement et les archives récentes est gratuit. Une exécution en direct ou une requête d\u2019archives détaillées consomme des crédits.',
     insufficientCredits: (required, balance) => `Une exécution en direct coûte ${required} crédits \u2014 vous en avez ${balance}.`,
     rateLimited: 'Trop de requêtes. Patientez un instant avant de réessayer.',
     genericError: 'Une erreur est survenue. Veuillez réessayer.',
@@ -661,6 +1014,49 @@ const es: LeagueUiPack = {
   disclaimer: {
     short: 'Solo información, no es asesoramiento de inversión. Usted es responsable de sus propias decisiones.',
     long: 'Este contenido muestra opiniones de varios modelos de IA con fines informativos y de entretenimiento únicamente. No constituye asesoramiento de inversión, financiero, legal ni profesional, y ninguno de estos modelos es un asesor autorizado. Los mercados son impredecibles y los modelos de IA pueden equivocarse, y a menudo lo hacen. Usted es el único responsable de cualquier decisión que tome con base en esta información.',
+    realEstate:
+      'Solo referencia estadística, no es una tasación formal. Perspectiva de región o instrumento, no la valoración de un inmueble concreto.',
+  },
+  catalog: {
+    categories: {
+      sports: 'Deportes',
+      crypto: 'Cripto',
+      stocks: 'Acciones',
+      fx: 'Divisas',
+      gold_metals: 'Oro y metales',
+      index_etf: 'Índices / ETF',
+      commodities_energy: 'Materias primas',
+      politics_election: 'Política',
+      entertainment: 'Entretenimiento',
+      memecoin: 'Memecoin',
+      real_estate: 'Inmuebles',
+      macro_econ: 'Macro',
+    },
+    instruments: {
+      AAPL: 'Apple (AAPL)',
+      NVDA: 'NVIDIA (NVDA)',
+      TSLA: 'Tesla (TSLA)',
+      'BTC/USD': 'Bitcoin (BTC)',
+      'ETH/USD': 'Ethereum (ETH)',
+      'SOL/USD': 'Solana (SOL)',
+      'EUR/USD': 'Euro / dólar',
+      'USD/KRW': 'Dólar / won',
+      'USD/JPY': 'Dólar / yen',
+      'XAU/USD': 'Oro',
+      'XAG/USD': 'Plata',
+      SPX: 'S&P 500',
+      NDX: 'Nasdaq 100',
+      'WTICO/USD': 'Petróleo WTI',
+      'NATGAS/USD': 'Gas natural',
+      VNQ: 'Vanguard inmobiliario (VNQ)',
+      SCHH: 'Schwab REIT EE.UU. (SCHH)',
+      'DOGE/USD': 'Dogecoin (DOGE)',
+      'SHIB/USD': 'Shiba Inu (SHIB)',
+    },
+    comingSoon: 'Próximamente',
+    comingSoonHint: 'El selector de eventos y la búsqueda por pregunta estarán aquí. Esta categoría no tiene instrumentos fijos.',
+    macroEconHint: 'Perspectiva de mercado para expertos: tipos, inflación, bonos. Profundidad, no dopamina.',
+    noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
   },
   hitRate: { pending: 'Tasa de acierto: pendiente', pct: (pct) => `${pct}% de acierto` },
   modelList: {
@@ -685,6 +1081,8 @@ const es: LeagueUiPack = {
     confidence: 'confianza',
     resultLegend:
       '✓ acierto — la predicción de la IA coincide con el resultado real · ✗ fallo — no coincide. Solo se muestra tras la resolución.',
+    combinedTrack: (pct, n) => `precisión pasada de este método combinado ${pct}% (n=${n})`,
+    combinedTrackPending: 'este método combinado aún está reuniendo su historial',
   },
   gating: {
     unavailable: 'Esta categoría de predicción todavía no está disponible en tu región.',
@@ -694,12 +1092,18 @@ const es: LeagueUiPack = {
   leaderboard: {
     title: 'Tabla de posiciones',
     subtitle: 'Tasas de acierto calculadas solo con predicciones ya resueltas — esto no es asesoramiento de inversión.',
-    tabs: { model: 'Modelo', camp: 'Bloque', tier: 'Nivel', category: 'Categoría' },
+    tabs: { camp3: 'Bloque (3 vías)', tier: 'Nivel', brand: 'Marca', category: 'Categoría', korea: 'Corea' },
+    moreComparisons: 'Más comparaciones',
+    hideComparisons: 'Ocultar comparaciones',
     campHeadline: 'EE. UU. vs China',
+    methodHeadline: 'Razonamiento puro vs investigación',
+    methodLabels: { pure_reasoning: 'Razonamiento puro', research: 'Investigación (Scout)' },
+    campLabels: { us: 'EE. UU.', china: 'China', other: 'Tercer país' },
     columns: { rank: '#', name: 'Nombre', winRate: 'Tasa de acierto', sample: 'Muestra' },
     sampleCount: (n) => `${n} resueltas`,
     provisionalBadge: 'Provisional',
     provisionalNote: 'Provisional = menos de 10 predicciones resueltas. Tómalo como una señal temprana, no como un resultado consolidado.',
+    collectingData: 'Recopilando datos',
     emptyState: 'Todavía no hay suficientes predicciones resueltas — vuelve a revisar a medida que se resuelvan más rondas.',
     asOf: (date) => `Actualizado al ${date}`,
   },
@@ -714,6 +1118,18 @@ const es: LeagueUiPack = {
     ungraded: 'Sin calificar',
     emptyState: 'Todavía no se ha resuelto ninguna ronda.',
     pagination: { prev: 'Anterior', next: 'Siguiente', pageOf: (page, totalPages) => `Página ${page} de ${totalPages}` },
+    freeNote: 'Los resultados recientes son gratis. El historial completo, filtros, fechas y la exportación CSV usan créditos.',
+    deepCta: (credits) => `Abrir archivo profundo \u00b7 ${credits} créditos`,
+    deepUnlocking: 'Abriendo archivo\u2026',
+    exportCsv: 'Exportar CSV',
+    filterModel: 'Id del modelo',
+    filterFrom: 'Desde',
+    filterTo: 'Hasta',
+    applyFilters: 'Aplicar',
+    headlineRecent: (correct, graded) =>
+      graded > 0 ? `Últimamente: ${correct} de ${graded} llamadas de IA acertaron` : 'Aún no hay llamadas calificadas en la ventana reciente',
+    latestRound: (instrument, outcome) => `Última: ${instrument} → ${outcome}`,
+    insufficientCredits: (required, balance) => `El archivo profundo necesita ${required} créditos \u2014 tienes ${balance}.`,
   },
   hub: {
     title: 'Liga de predicción de IA',
@@ -723,7 +1139,7 @@ const es: LeagueUiPack = {
     noInstruments: 'La liga todavía no está disponible en tu región.',
     generateLive: (credits) => `Preguntar a los modelos ahora \u00b7 ${credits} créditos`,
     generating: 'Consultando a los modelos\u2026',
-    freeReadNote: 'Ver las tarjetas, la tabla y la sala de registros es gratis. Solo una ejecución en vivo consume créditos.',
+    freeReadNote: 'Ver las tarjetas, la tabla y los registros recientes es gratis. Una ejecución en vivo o una consulta de archivo profundo consume créditos.',
     insufficientCredits: (required, balance) => `Una ejecución en vivo cuesta ${required} créditos \u2014 tienes ${balance}.`,
     rateLimited: 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.',
     genericError: 'Algo salió mal. Inténtalo de nuevo.',
@@ -759,6 +1175,48 @@ const ar: LeagueUiPack = {
   disclaimer: {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
     long: 'يعرض هذا المحتوى آراء عدة نماذج ذكاء اصطناعي لأغراض المعلومات والترفيه فقط. وهو لا يمثل نصيحة استثمارية أو مالية أو قانونية أو مهنية، وليس أي نموذج هنا مستشارًا مرخصًا. الأسواق غير قابلة للتنبؤ، وقد تخطئ نماذج الذكاء الاصطناعي، بل وتخطئ كثيرًا. أنت وحدك المسؤول عن أي قرار تتخذه بناءً على ذلك.',
+    realEstate: 'مرجع إحصائي فقط — وليس تقييمًا رسميًا. نظرة على المنطقة أو الأداة، لا تقدير لعقار بعينه.',
+  },
+  catalog: {
+    categories: {
+      sports: 'رياضة',
+      crypto: 'عملات مشفرة',
+      stocks: 'أسهم',
+      fx: 'عملات',
+      gold_metals: 'ذهب ومعادن',
+      index_etf: 'مؤشرات / صناديق',
+      commodities_energy: 'سلع وطاقة',
+      politics_election: 'سياسة',
+      entertainment: 'ترفيه',
+      memecoin: 'ميم كوين',
+      real_estate: 'عقارات',
+      macro_econ: 'اقتصاد كلي',
+    },
+    instruments: {
+      AAPL: 'أبل (AAPL)',
+      NVDA: 'إنفيديا (NVDA)',
+      TSLA: 'تسلا (TSLA)',
+      'BTC/USD': 'بيتكوين (BTC)',
+      'ETH/USD': 'إيثيريوم (ETH)',
+      'SOL/USD': 'سولانا (SOL)',
+      'EUR/USD': 'يورو / دولار',
+      'USD/KRW': 'دولار / وون',
+      'USD/JPY': 'دولار / ين',
+      'XAU/USD': 'ذهب',
+      'XAG/USD': 'فضة',
+      SPX: 'S&P 500',
+      NDX: 'ناسداك 100',
+      'WTICO/USD': 'نفط غرب تكساس',
+      'NATGAS/USD': 'غاز طبيعي',
+      VNQ: 'فانغارد عقاري (VNQ)',
+      SCHH: 'شواب ريت أمريكي (SCHH)',
+      'DOGE/USD': 'دوجكوين (DOGE)',
+      'SHIB/USD': 'شيبا إينو (SHIB)',
+    },
+    comingSoon: 'قريبًا',
+    comingSoonHint: 'سيظهر هنا اختيار الأحداث والبحث بالسؤال. لا أدوات ثابتة لهذه الفئة.',
+    macroEconHint: 'نظرة سوقية للخبراء — أسعار الفائدة والتضخم والسندات. عمق لا إثارة.',
+    noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
   },
   hitRate: { pending: 'معدل الإصابة: قيد الحساب', pct: (pct) => `معدل الإصابة ${pct}%` },
   modelList: {
@@ -782,6 +1240,8 @@ const ar: LeagueUiPack = {
     hideReasoning: 'إخفاء السبب',
     confidence: 'الثقة',
     resultLegend: '✓ صحيح — توقّع الذكاء الاصطناعي طابق النتيجة الفعلية · ✗ خاطئ — لم يطابقها. يُعرض فقط بعد حسم الجولة.',
+    combinedTrack: (pct, n) => `دقة هذه الطريقة المجمّعة سابقًا ${pct}% (n=${n})`,
+    combinedTrackPending: 'هذه الطريقة المجمّعة ما زالت تجمع سجلها',
   },
   gating: {
     unavailable: 'فئة التوقعات هذه غير متاحة بعد في منطقتك.',
@@ -791,12 +1251,18 @@ const ar: LeagueUiPack = {
   leaderboard: {
     title: 'لوحة الصدارة',
     subtitle: 'معدلات الإصابة محسوبة فقط من التوقعات التي تم حسمها — هذه ليست نصيحة استثمارية.',
-    tabs: { model: 'النموذج', camp: 'المعسكر', tier: 'الفئة', category: 'التصنيف' },
+    tabs: { camp3: 'المعسكر (ثلاثي)', tier: 'الفئة', brand: 'العلامة', category: 'التصنيف', korea: 'كوريا' },
+    moreComparisons: 'مزيد من المقارنات',
+    hideComparisons: 'إخفاء المقارنات',
     campHeadline: 'الولايات المتحدة مقابل الصين',
+    methodHeadline: 'الاستدلال الصرف مقابل البحث',
+    methodLabels: { pure_reasoning: 'الاستدلال الصرف', research: 'البحث (الكشافة)' },
+    campLabels: { us: 'الولايات المتحدة', china: 'الصين', other: 'دولة ثالثة' },
     columns: { rank: '#', name: 'الاسم', winRate: 'معدل الإصابة', sample: 'حجم العينة' },
     sampleCount: (n) => `${n} تم حسمها`,
     provisionalBadge: 'مؤقت',
     provisionalNote: 'مؤقت = أقل من 10 توقعات محسومة. اعتبر هذه المعدلات إشارة مبكرة وليست سجلًا نهائيًا.',
+    collectingData: 'جارٍ جمع البيانات',
     emptyState: 'لا توجد توقعات محسومة كافية بعد — عد لاحقًا مع حسم المزيد من الجولات.',
     asOf: (date) => `اعتبارًا من ${date}`,
   },
@@ -811,6 +1277,18 @@ const ar: LeagueUiPack = {
     ungraded: 'غير مُقيَّم',
     emptyState: 'لم يتم حسم أي جولة بعد.',
     pagination: { prev: 'السابق', next: 'التالي', pageOf: (page, totalPages) => `صفحة ${page} من ${totalPages}` },
+    freeNote: 'النتائج الأخيرة مجانية. السجل الكامل والتصفية والتواريخ وتصدير CSV تستهلك رصيدًا.',
+    deepCta: (credits) => `فتح الأرشيف العميق · ${credits} رصيد`,
+    deepUnlocking: 'جارٍ فتح الأرشيف…',
+    exportCsv: 'تصدير CSV',
+    filterModel: 'معرّف النموذج',
+    filterFrom: 'من',
+    filterTo: 'إلى',
+    applyFilters: 'تطبيق',
+    headlineRecent: (correct, graded) =>
+      graded > 0 ? `مؤخرًا: أصاب ${correct} من أصل ${graded} نداءات ذكاء اصطناعي` : 'لا نداءات مُقيَّمة في النافذة الأخيرة بعد',
+    latestRound: (instrument, outcome) => `الأحدث: ${instrument} → ${outcome}`,
+    insufficientCredits: (required, balance) => `يتطلب الأرشيف العميق ${required} من الرصيد — لديك ${balance}.`,
   },
   hub: {
     title: 'دوري التوقعات بالذكاء الاصطناعي',
@@ -820,7 +1298,7 @@ const ar: LeagueUiPack = {
     noInstruments: 'الدوري غير متاح بعد في منطقتك.',
     generateLive: (credits) => `اسأل النماذج الآن · ${credits} رصيد`,
     generating: 'جارٍ سؤال النماذج…',
-    freeReadNote: 'تصفح البطاقات ولوحة الصدارة وغرفة السجلات مجاني. التشغيل المباشر وحده هو ما يستهلك الرصيد.',
+    freeReadNote: 'تصفح البطاقات ولوحة الصدارة والنتائج الأخيرة مجاني. التشغيل المباشر أو استعلام الأرشيف العميق يستهلك الرصيد.',
     insufficientCredits: (required, balance) => `يتطلب التشغيل المباشر ${required} من الرصيد — لديك ${balance}.`,
     rateLimited: 'طلبات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
     genericError: 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',

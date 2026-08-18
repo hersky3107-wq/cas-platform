@@ -1,4 +1,4 @@
-import type { PredictionCategory } from '@/lib/prediction/reconciliation'
+import type { PredictionCategory } from '@/lib/prediction/categories'
 import type { JurisdictionGroup } from './types'
 
 /**
@@ -46,6 +46,7 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     sports: true,
     entertainment_awards: true,
     memecoin: true,
+    real_estate: true,
   },
   EU: {
     stock: true,
@@ -60,6 +61,7 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     politics_election: true,
     sports: true,
     entertainment_awards: true,
+    real_estate: true,
     // crypto_perps: OFF (retail perpetuals restricted region-wide)
     // memecoin: OFF (illustrative — same speculative-asset caution as crypto_perps)
   },
@@ -76,6 +78,7 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     politics_election: true,
     sports: true,
     entertainment_awards: true,
+    real_estate: true,
     // crypto_perps: OFF (FCA ban on crypto derivatives for retail)
     // memecoin: OFF (illustrative, mirrors EU)
   },
@@ -94,6 +97,7 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     sports: true,
     entertainment_awards: true,
     memecoin: true,
+    real_estate: true,
   },
   JP: {
     stock: true,
@@ -110,6 +114,7 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     sports: true,
     entertainment_awards: true,
     memecoin: true,
+    real_estate: true,
   },
   ME: {
     stock: true,
@@ -122,6 +127,7 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     fx: true,
     sports: true,
     entertainment_awards: true,
+    real_estate: true,
     // futures_derivatives: OFF (explicit)
     // politics_election: OFF (explicit)
     // crypto_perps: OFF (mirrors UK/EU)
@@ -145,6 +151,7 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     politics_election: true,
     sports: true,
     entertainment_awards: true,
+    real_estate: true,
     // memecoin: OFF (conservative default for an unclassified rest-of-world bucket)
   },
   UNKNOWN: {

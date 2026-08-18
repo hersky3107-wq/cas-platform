@@ -93,12 +93,12 @@ describe('use-card-stream: live merge (Layer 4)', () => {
     )
     card = mergeModel(
       card,
-      liveModel({ model_id: 'sonar', brand: 'Perplexity', league_tier: 'scout', camp: 'us', direction: null, probability: null })
+      liveModel({ model_id: 'sonar', brand: 'Perplexity', league_tier: 'scout', camp: 'us', direction: 'up', probability: 55 })
     )
 
     expect(card.models.map((m) => m.model_id)).toEqual(['gpt-4o', 'qwen/qwen3.8-max', 'sonar'])
     expect(card.consensus.totalModels).toBe(3)
-    expect(card.consensus.respondedModels).toBe(2) // scout's null direction counts as abstain
+    expect(card.consensus.respondedModels).toBe(3)
   })
 
   it('re-sorts by tier then camp on "done", independent of arrival order', () => {

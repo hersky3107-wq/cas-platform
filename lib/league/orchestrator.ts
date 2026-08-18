@@ -154,16 +154,17 @@ type ResolvedRound = {
 const CATEGORY_COLOR: Record<string, 'green' | 'yellow' | 'red'> = {
   stock: 'green',
   etf_index: 'green',
-  fx: 'green',
   gold_metal: 'green',
-  crypto_spot: 'green',
   macro_econ: 'green',
   bond_rate: 'green',
+  fx: 'yellow',
+  crypto_spot: 'yellow',
+  crypto_perps: 'yellow',
   commodity_energy: 'yellow',
   futures_derivatives: 'yellow',
-  sports: 'yellow',
-  crypto_perps: 'yellow',
-  politics_election: 'red',
+  politics_election: 'yellow',
+  real_estate: 'yellow',
+  sports: 'red',
   entertainment_awards: 'red',
   memecoin: 'red',
 }
@@ -273,10 +274,29 @@ type ParsedPrediction = {
   rationale: string | null
 }
 
-/** Extracts the first {...} block and validates fields. Null = unparseable. */
+/** Extracts direction/probability/rationale from model output. Handles strict JSON,
+ *  markdown code fences, and inline JSON embedded in search-model prose. */
 function parsePrediction(text: string | null): ParsedPrediction | null {
   if (!text) return null
-  const match = text.match(/\{[\s\S]*\}/)
+
+  const candidates: string[] = []
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fenced?.[1]?.trim()) candidates.push(fenced[1].trim())
+  const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+  candidates.push(stripped)
+  const blocks = stripped.match(/\{[\s\S]*\}/g)
+  if (blocks) candidates.push(...blocks)
+
+  for (const chunk of candidates) {
+    const parsed = parseJsonPredictionBlock(chunk)
+    if (parsed) return parsed
+  }
+
+  return parseProsePredictionFallback(stripped)
+}
+
+function parseJsonPredictionBlock(raw: string): ParsedPrediction | null {
+  const match = raw.match(/\{[\s\S]*\}/)
   if (!match) return null
   let obj: Record<string, unknown>
   try {
@@ -284,9 +304,33 @@ function parsePrediction(text: string | null): ParsedPrediction | null {
   } catch {
     return null
   }
+  return normalizeParsedFields(obj)
+}
+
+/** Last-resort extraction when a search model wraps JSON in markdown/citations. */
+function parseProsePredictionFallback(text: string): ParsedPrediction | null {
+  const dirMatch =
+    text.match(/"direction"\s*:\s*"(up|down|flat|abstain)"/i) ??
+    text.match(/\bdirection\b\s*[:=]\s*["']?(up|down|flat|abstain)["']?/i)
+  if (!dirMatch) return null
+  const probMatch = text.match(/"probability"\s*:\s*(\d+)/i) ?? text.match(/\bprobability\b\s*[:=]\s*(\d+)/i)
+  const rationaleMatch = text.match(/"rationale"\s*:\s*"([^"]+)"/i)
+  const obj: Record<string, unknown> = {
+    direction: dirMatch[1],
+    ...(probMatch ? { probability: Number(probMatch[1]) } : {}),
+    ...(rationaleMatch ? { rationale: rationaleMatch[1] } : {}),
+  }
+  return normalizeParsedFields(obj)
+}
+
+function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction | null {
   const dirRaw = typeof obj.direction === 'string' ? obj.direction.trim().toLowerCase() : ''
   const direction =
-    dirRaw === 'up' || dirRaw === 'down' || dirRaw === 'flat' ? (dirRaw as 'up' | 'down' | 'flat') : null
+    dirRaw === 'up' || dirRaw === 'down' || dirRaw === 'flat'
+      ? (dirRaw as 'up' | 'down' | 'flat')
+      : dirRaw === 'abstain'
+        ? null
+        : null
 
   let probability: number | null = null
   const p = Number(obj.probability)
@@ -297,6 +341,7 @@ function parsePrediction(text: string | null): ParsedPrediction | null {
       ? obj.rationale.trim().slice(0, 500)
       : null
 
+  if (!direction && !rationale && probability === null) return null
   return { direction, probability, rationale }
 }
 
@@ -449,8 +494,8 @@ async function callWithRetry(
  *   scores as wrong). A re-run upserts over it with a real answer.
  * - parse-fail or no usable direction → ABSTAIN: row written with
  *   predicted_direction = null (does NOT count as wrong later).
- * - scout tier → row written with predicted_direction = null by design
- *   (scored on citation accuracy; reconciliation leaves is_correct null).
+ * - scout tier → same directional storage as other tiers (self-directed
+ *   search); reconciliation grades scout on direction like everyone else.
  *
  * Rows are keyed by the roster's canonical model_id (not the provider's
  * reported actual model) so two slots sharing one actual model string
@@ -512,19 +557,8 @@ async function runOneModel(
     : computeCostUsd(entry, raw.promptTokens, raw.completionTokens)
   const costSource: 'billed' | 'estimated' = hasProviderCost && !raw.costIsEstimated ? 'billed' : 'estimated'
 
-  const isScout = entry.league_tier === 'scout'
   const parsedDirection = parsed?.direction ?? null
-  // Scout: store null direction in DB (scored on citations later) but report
-  // parsed direction in the run summary so we can measure web-search quality.
-  const usableDirection = isScout ? null : parsedDirection
-  const status: ModelStatus =
-    isScout
-      ? parsedDirection
-        ? 'ok'
-        : 'abstain'
-      : parsedDirection
-        ? 'ok'
-        : 'abstain'
+  const status: ModelStatus = parsedDirection ? 'ok' : 'abstain'
 
   // Abstain still records participation (null direction) so it never scores as wrong.
   const rationale = parsed?.rationale ?? (raw.text ? raw.text.trim().slice(0, 500) : null)
@@ -539,7 +573,7 @@ async function runOneModel(
         brand: entry.brand,
         camp: entry.camp,
         league_tier: entry.league_tier,
-        predicted_direction: usableDirection,
+        predicted_direction: parsedDirection,
         predicted_value: probability,
         reasoning_snippet: rationale,
         prompt_tokens: raw.promptTokens,

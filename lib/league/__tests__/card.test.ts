@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildCardData } from '../card-aggregate'
-import { consensusHeadline, directionBadgeLabel, groupTallyLine } from '../compliance'
+import { combinedTrackLine, consensusHeadline, directionBadgeLabel, groupTallyLine } from '../compliance'
 import { LEAGUE_UI } from '../i18n/dictionary'
 import type { CardModelPrediction, ConsensusSummary } from '../card-types'
 
@@ -57,6 +57,9 @@ describe('buildCardData', () => {
     expect(card.consensus.respondedModels).toBe(3)
     // avg of the two 'up' + one 'down' directional responses: (60+70+55)/3
     expect(card.consensus.avgProbability).toBeCloseTo(61.7, 1)
+    expect(card.combinedTrack.n).toBe(0)
+    expect(card.combinedTrack.winRatePct).toBeNull()
+    expect(card.combinedTrack.provisional).toBe(true)
   })
 
   it('reports no majority on a tie', () => {
@@ -96,12 +99,12 @@ describe('buildCardData', () => {
     const rows: PredictionRow[] = [
       pred({ model_id: 'a', league_tier: 'premier', predicted_direction: 'up' }),
       pred({ model_id: 'b', league_tier: 'world', predicted_direction: 'flat' }),
-      pred({ model_id: 'c', league_tier: 'scout', predicted_direction: null, predicted_value: null }),
+      pred({ model_id: 'c', league_tier: 'scout', predicted_direction: 'down', predicted_value: 62 }),
     ]
     const card = buildCardData(round(), rows)
     expect(card.tierSplit.premier).toEqual({ up: 1, down: 0, flat: 0, abstain: 0 })
     expect(card.tierSplit.world).toEqual({ up: 0, down: 0, flat: 1, abstain: 0 })
-    expect(card.tierSplit.scout).toEqual({ up: 0, down: 0, flat: 0, abstain: 1 })
+    expect(card.tierSplit.scout).toEqual({ up: 0, down: 1, flat: 0, abstain: 0 })
     expect(card.tierSplit.challenger).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
   })
 
@@ -202,6 +205,16 @@ describe('compliance: approved phrasing helpers', () => {
   it('formats a group tally line for camp/tier summaries', () => {
     const tally = { up: 3, down: 1, flat: 0, abstain: 1 }
     expect(groupTallyLine('US', tally, en)).toBe('US: 3 up · 1 down · 1 no call')
+  })
+
+  it('cites the combined method track record without advice language', () => {
+    const line = combinedTrackLine({ correct: 7, resolved: 12, n: 12, winRatePct: 58.3, provisional: false }, en)
+    expect(line).toContain('58.3')
+    expect(line).toContain('12')
+    expect(line.toLowerCase()).not.toMatch(/\b(buy|sell|bet)\b/)
+    expect(combinedTrackLine({ correct: 0, resolved: 0, n: 0, winRatePct: null, provisional: true }, en)).toBe(
+      en.bracket.combinedTrackPending
+    )
   })
 
   it('produces a translated headline for a non-English locale without changing the underlying data', () => {

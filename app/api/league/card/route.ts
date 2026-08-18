@@ -61,7 +61,10 @@ export async function GET(req: Request) {
   }
 
   try {
-    const card = await fetchCardData(lookup)
+    const card = await fetchCardData(
+      lookup,
+      viewer.isAdmin ? undefined : { categories: viewer.visibleCategories }
+    )
     return NextResponse.json(card)
   } catch (e: unknown) {
     if (e instanceof CardNotFoundError) {

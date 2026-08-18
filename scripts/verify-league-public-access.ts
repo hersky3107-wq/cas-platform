@@ -28,6 +28,7 @@ import {
   type LeagueViewer,
 } from '../lib/league/public-access'
 import { visibleCategoriesFor } from '../lib/league/access-policy'
+import { CATALOG_INSTRUMENT_IDS, PUBLIC_CATEGORY_IDS } from '../lib/league/catalog'
 
 const BASE = process.env.VERIFY_BASE_URL ?? 'http://localhost:3000'
 
@@ -184,9 +185,13 @@ async function main() {
     const creditsBeforeReads = await getCreditsBalance(supabaseAdmin, userA.id)
 
     const instruments = await probe('/api/league/instruments', { token: userA.token })
-    const instrumentList = (instruments.body.instruments ?? []) as { instrument: string }[]
+    const categoryList = (instruments.body.categories ?? []) as { id: string }[]
     check('GET instruments -> 200', instruments.status === 200, `got ${instruments.status}`)
-    check('curated set returned', instrumentList.length === 4, instrumentList.map((i) => i.instrument).join(','))
+    check(
+      '12-category catalog returned',
+      categoryList.length === PUBLIC_CATEGORY_IDS.length,
+      categoryList.map((c) => c.id).join(','),
+    )
 
     const card = await probe('/api/league/card?instrument=AAPL', { token: userA.token })
     check('GET card?instrument=AAPL -> 200', card.status === 200, `got ${card.status}`)
@@ -202,9 +207,15 @@ async function main() {
       `totalConsidered=${lb.body.totalConsidered}`
     )
 
-    const rr = await probe('/api/league/record-room?page=1&pageSize=20', { token: userA.token })
+    const rr = await probe('/api/league/record-room?page=1&pageSize=5', { token: userA.token })
     const rrRounds = (rr.body.rounds ?? []) as { round_id: string; item_type?: string }[]
-    check('GET record-room -> 200', rr.status === 200, `got ${rr.status}`)
+    check('GET record-room (free summary) -> 200', rr.status === 200, `got ${rr.status}`)
+    const rrDeepDenied = await probe('/api/league/record-room?page=1&pageSize=20', { token: userA.token })
+    check(
+      'GET record-room pageSize=20 -> 403 deep_archive_required',
+      rrDeepDenied.status === 403 && rrDeepDenied.body.code === 'deep_archive_required',
+      `got ${rrDeepDenied.status} ${rrDeepDenied.body.code ?? ''}`
+    )
     check('record room returns the ranked history', rrRounds.length > 0, `${rrRounds.length} rounds`)
     check(
       'record room hides on-demand rounds from non-admin',
@@ -311,8 +322,8 @@ async function main() {
     )
     const cnInstruments = await probe('/api/league/instruments', { token: userA.token })
     check(
-      'CN viewer gets an empty instrument list',
-      ((cnInstruments.body.instruments ?? []) as unknown[]).length === 0,
+      'CN viewer gets an empty category catalog',
+      ((cnInstruments.body.categories ?? []) as unknown[]).length === 0,
       `got ${JSON.stringify(cnInstruments.body).slice(0, 80)}`
     )
     const cnLb = await probe('/api/league/leaderboard', { token: userA.token })
@@ -461,7 +472,10 @@ async function main() {
     const publicViewer: LeagueViewer = { ...adminViewer, isAdmin: false }
     check('admin sees a category denied by their jurisdiction', viewerCanSeeCategory(adminViewer, 'stock'), 'CN admin')
     check('non-admin does not', !viewerCanSeeCategory(publicViewer, 'stock'), 'CN non-admin')
-    check('admin instrument list is not jurisdiction-filtered', viewerInstruments(adminViewer).length === 4)
+    check(
+      'admin instrument list is not jurisdiction-filtered',
+      viewerInstruments(adminViewer).length === CATALOG_INSTRUMENT_IDS.length,
+    )
     check('non-admin instrument list is', viewerInstruments(publicViewer).length === 0)
 
     const adminOnDemand = await authorizeRoundForViewer(adminViewer, onDemandId)

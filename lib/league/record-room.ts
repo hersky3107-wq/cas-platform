@@ -23,25 +23,19 @@ const PREDICTION_COLUMNS = 'round_id, model_id, brand, camp, league_tier, predic
  * Paginated by `resolved_at` descending (most recently resolved first). Two
  * queries per page: (1) the page of resolved rounds + a total count, (2)
  * every model_predictions row for just those rounds. Read-only — never
- * writes, never touches scoring/cron/reconciliation. See
- * `record-room-aggregate.ts` for why `item_type` is NOT filtered here by
- * default (unlike the leaderboard) — a public caller still narrows it via
+ * writes, never touches scoring/cron/reconciliation.
+ *
+ * The FREE vs DEEP split is enforced by the API routes (this module only
+ * fetches what it is asked for). Public callers still narrow via
  * `RecordRoomScope.rankedOnly`.
  */
 export type RecordRoomScope = {
-  /**
-   * Restrict to these categories (the caller's jurisdiction-visible set). An
-   * EMPTY array means nothing is visible and short-circuits to an empty page;
-   * omitting the field is the unfiltered admin view.
-   */
   categories?: readonly string[]
-  /**
-   * Public callers see the ranked league's own history only. On-demand rounds
-   * are operator/ad-hoc runs (arbitrary propositions on arbitrary symbols);
-   * they are legitimately part of the admin log but are not the "proof of
-   * fairness" record for the ranked league.
-   */
   rankedOnly?: boolean
+  modelId?: string
+  from?: string
+  to?: string
+  deep?: boolean
 }
 
 export async function fetchRecordRoomPage(
@@ -55,7 +49,20 @@ export async function fetchRecordRoomPage(
     : RECORD_ROOM_DEFAULT_PAGE_SIZE
 
   if (scope?.categories && scope.categories.length === 0) {
-    return buildRecordRoomPage([], [], safePage, safePageSize, 0)
+    return buildRecordRoomPage([], [], safePage, safePageSize, 0, scope.deep === true)
+  }
+
+  let modelRoundIds: string[] | null = null
+  if (scope?.modelId?.trim()) {
+    const { data: modelRows, error: modelErr } = await supabaseAdmin
+      .from('model_predictions')
+      .select('round_id')
+      .eq('model_id', scope.modelId.trim())
+    if (modelErr) throw new Error(`league record room: model filter failed (${modelErr.message})`)
+    modelRoundIds = Array.from(new Set((modelRows ?? []).map((r) => r.round_id as string)))
+    if (modelRoundIds.length === 0) {
+      return buildRecordRoomPage([], [], safePage, safePageSize, 0, scope.deep === true)
+    }
   }
 
   const from = (safePage - 1) * safePageSize
@@ -68,6 +75,9 @@ export async function fetchRecordRoomPage(
 
   if (scope?.categories) roundsQuery = roundsQuery.in('category', scope.categories as string[])
   if (scope?.rankedOnly) roundsQuery = roundsQuery.eq('item_type', 'ranked')
+  if (modelRoundIds) roundsQuery = roundsQuery.in('id', modelRoundIds)
+  if (scope?.from?.trim()) roundsQuery = roundsQuery.gte('resolved_at', scope.from.trim())
+  if (scope?.to?.trim()) roundsQuery = roundsQuery.lte('resolved_at', scope.to.trim())
 
   const { data: roundRows, error: roundsError, count } = await roundsQuery
     .order('resolved_at', { ascending: false })
@@ -80,13 +90,74 @@ export async function fetchRecordRoomPage(
 
   let predictions: RecordRoomPredictionRow[] = []
   if (roundIds.length > 0) {
-    const { data: predictionRows, error: predictionsError } = await supabaseAdmin
-      .from('model_predictions')
-      .select(PREDICTION_COLUMNS)
-      .in('round_id', roundIds)
+    let predQuery = supabaseAdmin.from('model_predictions').select(PREDICTION_COLUMNS).in('round_id', roundIds)
+    if (scope?.modelId?.trim()) predQuery = predQuery.eq('model_id', scope.modelId.trim())
+    const { data: predictionRows, error: predictionsError } = await predQuery
     if (predictionsError) throw new Error(`league record room: predictions query failed (${predictionsError.message})`)
     predictions = (predictionRows ?? []) as RecordRoomPredictionRow[]
   }
 
-  return buildRecordRoomPage(rounds, predictions, safePage, safePageSize, count ?? 0)
+  return buildRecordRoomPage(rounds, predictions, safePage, safePageSize, count ?? 0, scope?.deep === true)
+}
+
+/** Flatten a record-room page into CSV (deep-archive export only). */
+export function recordRoomToCsv(page: RecordRoomPage): string {
+  const header = [
+    'resolved_at',
+    'instrument',
+    'category',
+    'proposition',
+    'actual_outcome',
+    'model_id',
+    'brand',
+    'camp',
+    'league_tier',
+    'direction',
+    'is_correct',
+  ]
+  const lines = [header.join(',')]
+  for (const round of page.rounds) {
+    if (round.models.length === 0) {
+      lines.push(
+        [
+          csv(round.resolved_at),
+          csv(round.instrument),
+          csv(round.category),
+          csv(round.proposition_text),
+          csv(round.actual_outcome),
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+        ].join(',')
+      )
+      continue
+    }
+    for (const model of round.models) {
+      lines.push(
+        [
+          csv(round.resolved_at),
+          csv(round.instrument),
+          csv(round.category),
+          csv(round.proposition_text),
+          csv(round.actual_outcome),
+          csv(model.model_id),
+          csv(model.brand),
+          csv(model.camp),
+          csv(model.league_tier),
+          csv(model.direction),
+          model.is_correct === null ? '' : model.is_correct ? 'true' : 'false',
+        ].join(',')
+      )
+    }
+  }
+  return `${lines.join('\n')}\n`
+}
+
+function csv(value: string | null | undefined): string {
+  const raw = value ?? ''
+  if (/[",\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`
+  return raw
 }

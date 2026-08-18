@@ -1,12 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/league/open",
-      "schedule": "30 21 * * *"
-    },
-    {
-      "path": "/api/cron/prediction/reconcile",
-      "schedule": "0 0,6,12,18 * * *"
-    }
-  ]
-}
+{}

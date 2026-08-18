@@ -49,7 +49,7 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
           {liveStartMessage(startError, t)}
         </p>
       ) : null}
-      <CardCompliance colorBucket={data.round.color_bucket} t={t}>
+      <CardCompliance colorBucket={data.round.color_bucket} t={t} category={data.round.category}>
         {(receipt) => <CardBody data={data} receipt={receipt} t={t} />}
       </CardCompliance>
     </div>

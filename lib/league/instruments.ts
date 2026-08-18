@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { PredictionCategory } from '@/lib/prediction/reconciliation'
+import type { PredictionCategory } from '@/lib/prediction/categories'
 
 /**
  * AI Prediction League — daily fixed instrument set (cron v1 scope).

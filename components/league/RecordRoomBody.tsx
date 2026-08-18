@@ -3,33 +3,63 @@ import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { ComplianceReceipt } from './CardCompliance'
 
 /**
- * The actual record-room content (title, list of resolved rounds,
- * pagination). Do NOT render this outside `<CardCompliance>` — same
- * `receipt`-gating pattern as `CardBody.tsx` / `LeaderboardBody.tsx`.
- *
- * Read-only, immutable log presentation: no edit affordances anywhere in
- * this tree.
+ * Record-room content. Free recent summary is always shown; deep filters /
+ * pagination / CSV are paid affordances whose price is visible in the CTA.
  */
 export function RecordRoomBody({
   data,
   receipt,
   t,
+  deepCost,
   onPageChange,
+  onDeepOpen,
+  onExportCsv,
   loading,
+  modelId,
+  from,
+  to,
+  onModelIdChange,
+  onFromChange,
+  onToChange,
 }: {
   data: RecordRoomPage
   receipt: ComplianceReceipt
   t: LeagueUiPack
+  deepCost: number
   onPageChange: (page: number) => void
+  onDeepOpen: () => void
+  onExportCsv: () => void
   loading: boolean
+  modelId: string
+  from: string
+  to: string
+  onModelIdChange: (value: string) => void
+  onFromChange: (value: string) => void
+  onToChange: (value: string) => void
 }) {
   void receipt
+  const headline = data.headline
+
   return (
     <>
       <div className="px-4 pt-4 pb-1">
         <h2 className="text-sm font-semibold text-league-fg">{t.recordRoom.title}</h2>
         <p className="text-[11px] text-league-fg-muted">{t.recordRoom.subtitle}</p>
+        <p className="mt-1 text-[11px] text-league-fg-muted">{t.recordRoom.freeNote}</p>
       </div>
+
+      {headline.recentGraded > 0 || headline.latestInstrument ? (
+        <div className="mx-4 mb-2 rounded-xl bg-league-accent-soft px-3 py-2">
+          {headline.latestInstrument && headline.latestOutcome ? (
+            <p className="text-xs font-semibold text-league-fg">
+              {t.recordRoom.latestRound(headline.latestInstrument, headline.latestOutcome)}
+            </p>
+          ) : null}
+          <p className="text-[11px] text-league-fg-muted">
+            {t.recordRoom.headlineRecent(headline.recentCorrect, headline.recentGraded)}
+          </p>
+        </div>
+      ) : null}
 
       {data.rounds.length === 0 ? (
         <p className="px-4 py-6 text-center text-xs text-league-fg-muted">{t.recordRoom.emptyState}</p>
@@ -41,7 +71,62 @@ export function RecordRoomBody({
         </ul>
       )}
 
-      <Pagination page={data.page} totalPages={data.totalPages} onChange={onPageChange} loading={loading} t={t} />
+      {data.deep ? (
+        <>
+          <div className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-3">
+            <input
+              value={modelId}
+              onChange={(e) => onModelIdChange(e.target.value)}
+              placeholder={t.recordRoom.filterModel}
+              className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
+            />
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => onFromChange(e.target.value)}
+              aria-label={t.recordRoom.filterFrom}
+              className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
+            />
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => onToChange(e.target.value)}
+              aria-label={t.recordRoom.filterTo}
+              className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 px-4 pb-2">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => onPageChange(1)}
+              className="rounded-full bg-league-bg-elevated px-3 py-1 text-[11px] font-semibold disabled:opacity-40"
+            >
+              {t.recordRoom.applyFilters}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={onExportCsv}
+              className="rounded-full bg-league-bg-elevated px-3 py-1 text-[11px] font-semibold disabled:opacity-40"
+            >
+              {t.recordRoom.exportCsv}
+            </button>
+          </div>
+          <Pagination page={data.page} totalPages={data.totalPages} onChange={onPageChange} loading={loading} t={t} />
+        </>
+      ) : (
+        <div className="px-4 py-3">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onDeepOpen}
+            className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {loading ? t.recordRoom.deepUnlocking : t.recordRoom.deepCta(deepCost)}
+          </button>
+        </div>
+      )}
     </>
   )
 }
@@ -129,7 +214,6 @@ function Pagination({
   )
 }
 
-/** Mirrors `CardHeader.tsx`'s `formatCategory` — category is a technical/data label, not translated chrome. Duplicated (not imported) for the same reason `leaderboard-aggregate.ts` duplicates it. */
 function formatCategory(category: string): string {
   return category.replace(/_/g, ' ')
 }

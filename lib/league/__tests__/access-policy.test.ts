@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   ALL_PREDICTION_CATEGORIES,
+  RECORD_ROOM_FREE_PAGE_SIZE,
   isCuratedInstrument,
+  isFreeArchiveQuery,
   tuningForViewer,
   visibleCategoriesFor,
 } from '../access-policy'
@@ -16,6 +18,7 @@ describe('visibleCategoriesFor', () => {
   it('gives a US viewer the full category set', () => {
     const visible = visibleCategoriesFor({ ipCountry: 'US' })
     expect(visible).toEqual(ALL_PREDICTION_CATEGORIES)
+    expect(visible).toContain('real_estate')
   })
 
   it('omits crypto_perps for a UK viewer but keeps ordinary finance categories', () => {
@@ -76,5 +79,20 @@ describe('tuningForViewer', () => {
   it('preserves the knobs for admin operational testing', () => {
     const raw = { ...hostile, tiers: ['premier'] as ('premier' | 'challenger')[] }
     expect(tuningForViewer(raw, true)).toEqual(raw)
+  })
+})
+
+describe('isFreeArchiveQuery', () => {
+  it('allows the recent-summary window only', () => {
+    expect(isFreeArchiveQuery({ page: 1, pageSize: RECORD_ROOM_FREE_PAGE_SIZE })).toBe(true)
+    expect(isFreeArchiveQuery({ page: 1, pageSize: 3 })).toBe(true)
+  })
+
+  it('treats pagination, filters, and CSV as deep (paid)', () => {
+    expect(isFreeArchiveQuery({ page: 2, pageSize: 5 })).toBe(false)
+    expect(isFreeArchiveQuery({ page: 1, pageSize: 20 })).toBe(false)
+    expect(isFreeArchiveQuery({ page: 1, pageSize: 5, modelId: 'gpt-4o' })).toBe(false)
+    expect(isFreeArchiveQuery({ page: 1, pageSize: 5, from: '2026-01-01' })).toBe(false)
+    expect(isFreeArchiveQuery({ page: 1, pageSize: 5, format: 'csv' })).toBe(false)
   })
 })

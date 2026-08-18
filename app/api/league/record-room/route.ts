@@ -1,21 +1,19 @@
 import { NextResponse } from 'next/server'
+import { RECORD_ROOM_FREE_PAGE_SIZE, isFreeArchiveQuery, type ArchiveQuery } from '@/lib/league/access-policy'
 import { RECORD_ROOM_DEFAULT_PAGE_SIZE, fetchRecordRoomPage } from '@/lib/league/record-room'
+import { creditsForLeagueArchive } from '@/lib/credits'
 import { resolveLeagueViewer } from '@/lib/league/public-access'
 
 /**
- * GET /api/league/record-room?page=1&pageSize=20
+ * GET /api/league/record-room?page=1&pageSize=5
  *
- * Read-only, paginated list of RESOLVED rounds (most recently resolved
- * first), each with its proposition, actual outcome, resolution timestamp,
- * and every model's directional call + correct/incorrect grade. The public
- * proof-of-fairness log — see `lib/league/record-room-aggregate.ts`. Creates
- * no new data, never mutates anything.
+ * FREE recent-summary for any logged-in user: the latest resolved rounds
+ * (proof-of-fairness / viral / funnel layer). Deep operations — page > 1,
+ * larger page size, model filter, date range, CSV — are refused here with
+ * 403 `deep_archive_required` and must go through
+ * `POST /api/league/record-room/deep` (credits).
  *
- * FREE for any logged-in user — a cache read, like the card and leaderboard.
- *
- * AUTH: any logged-in user (was admin-only). A non-admin sees only RANKED
- * rounds (the league's own history — on-demand operator runs stay internal)
- * in categories their jurisdiction allows.
+ * Admin may paginate and filter on this GET without paying (operator preview).
  */
 export async function GET(req: Request) {
   const auth = await resolveLeagueViewer(req)
@@ -23,14 +21,35 @@ export async function GET(req: Request) {
   const { viewer } = auth
 
   const { searchParams } = new URL(req.url)
-  const page = parsePositiveInt(searchParams.get('page')) ?? 1
-  const pageSize = parsePositiveInt(searchParams.get('pageSize')) ?? RECORD_ROOM_DEFAULT_PAGE_SIZE
+  const query: ArchiveQuery = {
+    page: parsePositiveInt(searchParams.get('page')) ?? 1,
+    pageSize: parsePositiveInt(searchParams.get('pageSize')) ?? RECORD_ROOM_FREE_PAGE_SIZE,
+    modelId: searchParams.get('modelId')?.trim() || undefined,
+    from: searchParams.get('from')?.trim() || undefined,
+    to: searchParams.get('to')?.trim() || undefined,
+    format: searchParams.get('format') === 'csv' ? 'csv' : 'json',
+  }
+
+  if (!viewer.isAdmin && !isFreeArchiveQuery(query)) {
+    return NextResponse.json(
+      {
+        error: 'Deep archive requires credits',
+        code: 'deep_archive_required',
+        required: creditsForLeagueArchive(),
+      },
+      { status: 403 }
+    )
+  }
+
+  const pageSize = viewer.isAdmin ? query.pageSize : Math.min(query.pageSize, RECORD_ROOM_FREE_PAGE_SIZE)
 
   try {
     const data = await fetchRecordRoomPage(
-      page,
-      pageSize,
-      viewer.isAdmin ? undefined : { categories: viewer.visibleCategories, rankedOnly: true }
+      query.page,
+      viewer.isAdmin ? pageSize || RECORD_ROOM_DEFAULT_PAGE_SIZE : pageSize,
+      viewer.isAdmin
+        ? { modelId: query.modelId, from: query.from, to: query.to, deep: true }
+        : { categories: viewer.visibleCategories, rankedOnly: true, deep: false }
     )
     return NextResponse.json(data)
   } catch (e: unknown) {

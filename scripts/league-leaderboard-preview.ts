@@ -24,15 +24,16 @@ type GradedQueryRow = {
   camp: string
   league_tier: string
   is_correct: boolean | null
+  predicted_direction: string | null
+  round_id: string
   prediction_rounds: { category: string; item_type: string } | null
 }
 
 async function loadLeaderboardRows(): Promise<GradedPredictionRow[]> {
   const { data, error } = await supabaseAdmin
     .from('model_predictions')
-    .select('model_id, brand, camp, league_tier, is_correct, prediction_rounds!inner(category, item_type)')
+    .select('model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)')
     .not('is_correct', 'is', null)
-    .neq('league_tier', 'scout')
     .eq('prediction_rounds.item_type', 'ranked')
 
   if (error) throw new Error(`leaderboard query failed: ${error.message}`)
@@ -46,6 +47,11 @@ async function loadLeaderboardRows(): Promise<GradedPredictionRow[]> {
       league_tier: row.league_tier,
       category: row.prediction_rounds!.category,
       is_correct: row.is_correct!,
+      round_id: row.round_id,
+      predicted_direction:
+        row.predicted_direction === 'up' || row.predicted_direction === 'down' || row.predicted_direction === 'flat'
+          ? row.predicted_direction
+          : null,
     }))
 }
 

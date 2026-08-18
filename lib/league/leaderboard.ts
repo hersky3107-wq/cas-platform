@@ -10,17 +10,16 @@ export type { LeaderboardData }
  * AI Prediction League — LEADERBOARD, DB read path.
  *
  * ONE query pass: fetch every graded, in-scope `model_predictions` row
- * (joined to its round only for `category` + `item_type`), then hand the
- * whole set to the pure `buildLeaderboardData` (see `leaderboard-aggregate.ts`)
- * to compute all four slices. No per-slice queries, no client-side
- * aggregation.
+ * (joined to its round for `category` + `item_type`), then hand the whole
+ * set to the pure `buildLeaderboardData`.
  *
- * In-scope filters (applied at the query level, see module doc in
- * `leaderboard-aggregate.ts` for why each exists):
+ * In-scope filters (applied at the query level):
  *   - `is_correct is not null`
- *   - `league_tier != 'scout'`
- *   - joined round's `item_type = 'ranked'` (excludes on-demand/live-preview rounds)
+ *   - joined round's `item_type = 'ranked'`
  *   - optionally, `category in (...)` — see `LeaderboardScope`
+ *
+ * Scout is INCLUDED. Directional grading applies to scout the same as every
+ * other tier; do not re-add a `league_tier != 'scout'` filter.
  *
  * Read-only. Never writes, never touches scoring/cron/reconciliation.
  */
@@ -31,18 +30,23 @@ type GradedQueryRow = {
   camp: string
   league_tier: string
   is_correct: boolean | null
+  predicted_direction: string | null
+  round_id: string
   prediction_rounds: { category: string; item_type: string } | null
 }
 
 export type LeaderboardScope = {
   /**
    * Restrict to these categories. Set by the API route to the caller's
-   * jurisdiction-visible categories, so a user never sees rankings built from
-   * a category they are not allowed to view. An EMPTY array means "nothing
-   * visible" (default-deny) and short-circuits to an empty leaderboard —
-   * omitting the field entirely is the unfiltered admin view.
+   * jurisdiction-visible categories. An EMPTY array means "nothing visible"
+   * (default-deny) and short-circuits to an empty leaderboard — omitting
+   * the field entirely is the unfiltered admin view.
    */
   categories?: readonly string[]
+}
+
+function toDirection(raw: string | null): GradedPredictionRow['predicted_direction'] {
+  return raw === 'up' || raw === 'down' || raw === 'flat' ? raw : null
 }
 
 export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<LeaderboardData> {
@@ -52,9 +56,10 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
 
   let query = supabaseAdmin
     .from('model_predictions')
-    .select('model_id, brand, camp, league_tier, is_correct, prediction_rounds!inner(category, item_type)')
+    .select(
+      'model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)'
+    )
     .not('is_correct', 'is', null)
-    .neq('league_tier', 'scout')
     .eq('prediction_rounds.item_type', 'ranked')
 
   if (scope?.categories) {
@@ -76,6 +81,8 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
       league_tier: row.league_tier,
       category: row.prediction_rounds.category,
       is_correct: row.is_correct,
+      round_id: row.round_id,
+      predicted_direction: toDirection(row.predicted_direction),
     }))
 
   return buildLeaderboardData(rows)

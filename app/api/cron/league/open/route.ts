@@ -90,10 +90,14 @@ type InstrumentResult = {
 /**
  * POST /api/cron/league/open
  *
- * Vercel-cron-triggered round opener. For each fixed instrument: build a 24h
- * ranked round and run the orchestrator across ALL league tiers. Idempotent via
- * cache_key (same-day re-runs skip). Cost-capped across the whole run by
- * LEAGUE_RUN_COST_CAP_USD.
+ * Legacy cron-secret round opener. It is NOT scheduled in `vercel.json`.
+ * Additionally, requests without `?manual=1` safely no-op, so a stale external
+ * schedule cannot spend provider money. Normal manual operation should use the
+ * admin-only `POST /api/admin/league/generate` endpoint instead.
+ *
+ * With `?manual=1`, this retained operational fallback builds 24h ranked rounds
+ * for the fixed set and runs all tiers. Idempotent via cache_key and cost-capped
+ * by LEAGUE_RUN_COST_CAP_USD.
  *
  * Auth: Bearer CRON_SECRET (Vercel sends this when the cron is configured with
  * an auth secret). Public callers get 401.
@@ -107,6 +111,14 @@ export async function POST(req: Request) {
   if (authErr) return authErr
 
   const url = new URL(req.url)
+  if (url.searchParams.get('manual') !== '1') {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: 'automatic_league_generation_disabled',
+    })
+  }
+
   const instruments = selectInstruments(url)
   if (instruments.length === 0) {
     return NextResponse.json({ ok: false, error: 'No matching fixed instruments' }, { status: 400 })

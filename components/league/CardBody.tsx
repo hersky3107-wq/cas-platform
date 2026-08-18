@@ -31,7 +31,13 @@ export function CardBody({ data, receipt, t }: { data: CardData; receipt: Compli
           {t.bracket.resultLegend}
         </p>
       ) : null}
-      <ConsensusHeadline consensus={data.consensus} tone={tone} t={t} variant="verdict" />
+      <ConsensusHeadline
+        consensus={data.consensus}
+        combinedTrack={data.combinedTrack}
+        tone={tone}
+        t={t}
+        variant="verdict"
+      />
     </>
   )
 }

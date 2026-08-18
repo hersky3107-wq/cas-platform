@@ -7,9 +7,9 @@ import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { checkRateLimit, type RateLimitRule } from '@/lib/rate-limit'
 import { isCategoryAllowed, type JurisdictionInput } from './jurisdiction/resolve'
-import { DAILY_FIXED_INSTRUMENTS } from './instruments'
+import { CATALOG_INSTRUMENT_IDS, PUBLIC_CATALOG, type PublicCategoryDef } from './catalog'
 import { isCuratedInstrument, visibleCategoriesFor } from './access-policy'
-import type { PredictionCategory } from '@/lib/prediction/reconciliation'
+import type { PredictionCategory } from '@/lib/prediction/categories'
 
 /**
  * AI Prediction League — PUBLIC PATH ENFORCEMENT (server-side).
@@ -52,7 +52,7 @@ export type LeagueViewer = {
 export type ViewerResult = { ok: true; viewer: LeagueViewer } | { ok: false; response: NextResponse }
 
 /** Curated ranked instrument strings — the only instruments a public user may reach. */
-export const CURATED_INSTRUMENTS: readonly string[] = DAILY_FIXED_INSTRUMENTS.map((i) => i.instrument)
+export const CURATED_INSTRUMENTS: readonly string[] = CATALOG_INSTRUMENT_IDS
 
 function jsonError(status: number, error: string, code: string, extra?: Record<string, unknown>): NextResponse {
   return NextResponse.json({ error, code, ...extra }, { status })
@@ -152,9 +152,21 @@ export function viewerCanSeeCategory(viewer: LeagueViewer, category: string): bo
   return isCategoryAllowed(category, viewer.jurisdiction)
 }
 
-/** Curated ranked instruments this viewer may reach, jurisdiction-filtered. */
+/** Jurisdiction-filtered public catalog (12 categories). Admin sees every chip. */
+export function viewerCatalog(viewer: LeagueViewer): PublicCategoryDef[] {
+  return PUBLIC_CATALOG.filter((c) => viewerCanSeeCategory(viewer, c.ledgerCategory))
+}
+
+/** Flattened curated instruments this viewer may reach (financial categories only). */
 export function viewerInstruments(viewer: LeagueViewer) {
-  return DAILY_FIXED_INSTRUMENTS.filter((i) => viewerCanSeeCategory(viewer, i.category))
+  return viewerCatalog(viewer).flatMap((c) =>
+    c.instruments.map((i) => ({
+      instrument: i.instrument,
+      category: c.ledgerCategory,
+      horizon: i.horizon,
+      label: i.instrument,
+    })),
+  )
 }
 
 export type RoundGuardRow = {

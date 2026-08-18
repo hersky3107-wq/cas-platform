@@ -1,4 +1,4 @@
-import type { PredictionCategory } from '@/lib/prediction/reconciliation'
+import type { PredictionCategory } from '@/lib/prediction/categories'
 import type { LeagueTier } from '@/lib/league/roster'
 import type { RateLimitRule } from '@/lib/rate-limit'
 import { isCategoryAllowed, type JurisdictionInput } from './jurisdiction/resolve'
@@ -46,6 +46,7 @@ const CATEGORY_UNIVERSE: Record<PredictionCategory, true> = {
   sports: true,
   entertainment_awards: true,
   memecoin: true,
+  real_estate: true,
 }
 
 export const ALL_PREDICTION_CATEGORIES = Object.keys(CATEGORY_UNIVERSE) as PredictionCategory[]
@@ -102,3 +103,34 @@ export const LEAGUE_GENERATE_RATE_RULE: RateLimitRule = { limit: 5, windowMs: 60
 
 /** Deep modes cost 50/70 credits and run long multi-model pipelines — tighter. */
 export const LEAGUE_DEEP_RATE_RULE: RateLimitRule = { limit: 3, windowMs: 60_000 }
+
+/** Deep archive is a paid query, not a model fan-out — slightly looser than generate. */
+export const LEAGUE_ARCHIVE_RATE_RULE: RateLimitRule = { limit: 8, windowMs: 60_000 }
+
+/** Free record-room window: page 1, at most this many recent resolved rounds. */
+export const RECORD_ROOM_FREE_PAGE_SIZE = 5
+export const RECORD_ROOM_FREE_MAX_PAGE = 1
+
+export type ArchiveQuery = {
+  page: number
+  pageSize: number
+  modelId?: string
+  from?: string
+  to?: string
+  format?: 'json' | 'csv'
+}
+
+/**
+ * A query is FREE only when it is the recent-summary view: first page, small
+ * page size, no model filter, no date range, no CSV export. Anything else is
+ * a deep-archive operation and must go through the paid endpoint.
+ */
+export function isFreeArchiveQuery(q: ArchiveQuery): boolean {
+  if (q.modelId && q.modelId.trim()) return false
+  if (q.from && q.from.trim()) return false
+  if (q.to && q.to.trim()) return false
+  if (q.format === 'csv') return false
+  if (q.page > RECORD_ROOM_FREE_MAX_PAGE) return false
+  if (q.pageSize > RECORD_ROOM_FREE_PAGE_SIZE) return false
+  return true
+}

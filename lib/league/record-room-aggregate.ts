@@ -25,7 +25,7 @@ export type RecordRoomModelEntry = {
   camp: Camp
   league_tier: LeagueTier
   direction: Direction | null
-  /** null = ungraded (e.g. scout tier, or abstained) even though the round resolved. */
+  /** null = ungraded (abstained / parse failure) even though the round resolved. */
   is_correct: boolean | null
 }
 
@@ -44,6 +44,14 @@ export type RecordRoomRoundEntry = {
   correctCount: number
 }
 
+export type RecordRoomHeadline = {
+  latestInstrument: string | null
+  latestOutcome: string | null
+  latestResolvedAt: string | null
+  recentGraded: number
+  recentCorrect: number
+}
+
 export type RecordRoomPage = {
   rounds: RecordRoomRoundEntry[]
   page: number
@@ -51,6 +59,10 @@ export type RecordRoomPage = {
   totalRounds: number
   totalPages: number
   generatedAt: string
+  /** Recent-results headline for the free summary view. */
+  headline: RecordRoomHeadline
+  /** true when this payload came from the paid deep-archive path. */
+  deep: boolean
 }
 
 export type RecordRoomRoundRow = {
@@ -122,20 +134,41 @@ export function buildRecordRoomEntries(
   })
 }
 
+export function buildRecordRoomHeadline(rounds: readonly RecordRoomRoundEntry[]): RecordRoomHeadline {
+  const latest = rounds[0]
+  let recentGraded = 0
+  let recentCorrect = 0
+  for (const r of rounds) {
+    recentGraded += r.gradedCount
+    recentCorrect += r.correctCount
+  }
+  return {
+    latestInstrument: latest?.instrument ?? null,
+    latestOutcome: latest?.actual_outcome ?? null,
+    latestResolvedAt: latest?.resolved_at ?? null,
+    recentGraded,
+    recentCorrect,
+  }
+}
+
 /** Assembles the full paginated response shape from a page of rounds + their predictions + the total count. */
 export function buildRecordRoomPage(
   roundRows: readonly RecordRoomRoundRow[],
   predictionRows: readonly RecordRoomPredictionRow[],
   page: number,
   pageSize: number,
-  totalRounds: number
+  totalRounds: number,
+  deep = false
 ): RecordRoomPage {
+  const rounds = buildRecordRoomEntries(roundRows, predictionRows)
   return {
-    rounds: buildRecordRoomEntries(roundRows, predictionRows),
+    rounds,
     page,
     pageSize,
     totalRounds,
     totalPages: totalRounds > 0 ? Math.ceil(totalRounds / pageSize) : 0,
     generatedAt: new Date().toISOString(),
+    headline: buildRecordRoomHeadline(rounds),
+    deep,
   }
 }

@@ -3,7 +3,7 @@
  * (actual_outcome set) before the 40-model re-run overwrote its predictions,
  * so reconcileDuePredictionRounds (which only touches unresolved rounds) never
  * graded the new rows. This mirrors reconciliation.ts gradeChildren() exactly
- * — non-scout, non-null-direction rows get is_correct = (direction ===
+ * — non-null-direction rows (including scout) get is_correct = (direction ===
  * actualDirection), with the direction derived from the stored outcome string
  * using the same FLAT_THRESHOLD_PCT rule — but scoped to this one round.
  *
@@ -37,7 +37,7 @@ async function main() {
 
   let graded = 0
   for (const c of children ?? []) {
-    if (c.league_tier === 'scout' || c.predicted_direction == null) continue
+    if (c.predicted_direction == null) continue
     const { error } = await supabaseAdmin
       .from('model_predictions')
       .update({ is_correct: c.predicted_direction === actual })

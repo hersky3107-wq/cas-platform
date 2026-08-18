@@ -67,6 +67,7 @@ describe('dictionary completeness', () => {
       expect(LEAGUE_UI[locale]).toBeDefined()
       expect(getLeagueUiPack(locale).disclaimer.short.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).disclaimer.long.length).toBeGreaterThan(0)
+      expect(getLeagueUiPack(locale).disclaimer.realEstate.length).toBeGreaterThan(0)
     }
   })
 
@@ -102,6 +103,7 @@ describe('dictionary completeness', () => {
         hub.generateLive(7),
         hub.insufficientCredits(7, 0),
         hub.balance(120),
+        getLeagueUiPack(locale).recordRoom.deepCta(3),
       ]
       for (const s of strings) expect(s.trim().length).toBeGreaterThan(0)
     }
@@ -129,6 +131,21 @@ describe('dictionary completeness', () => {
       // A user must be able to read what a live run costs before spending.
       expect(hub.generateLive(7)).toContain('7')
       expect(hub.insufficientCredits(7, 0)).toContain('7')
+      expect(getLeagueUiPack(locale).recordRoom.deepCta(3)).toContain('3')
+    }
+  })
+
+  it('fills in the new leaderboard / archive / verdict chrome for every locale', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const pack = getLeagueUiPack(locale)
+      expect(pack.leaderboard.methodHeadline.trim().length).toBeGreaterThan(0)
+      expect(pack.leaderboard.methodLabels.research.trim().length).toBeGreaterThan(0)
+      expect(pack.leaderboard.collectingData.trim().length).toBeGreaterThan(0)
+      expect(pack.leaderboard.tabs.korea.trim().length).toBeGreaterThan(0)
+      expect(pack.bracket.combinedTrack(54, 12)).toContain('54')
+      expect(pack.bracket.combinedTrack(54, 12)).toContain('12')
+      expect(pack.bracket.combinedTrackPending.trim().length).toBeGreaterThan(0)
+      expect(pack.recordRoom.freeNote.trim().length).toBeGreaterThan(0)
     }
   })
 

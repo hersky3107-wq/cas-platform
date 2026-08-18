@@ -94,6 +94,11 @@ export function creditsForDeep(mode: DeepOutputMode): number {
 export const LEAGUE_OPEN_CREDITS = 50
 export const LEAGUE_DEBATE_CREDITS = 70
 export const LEAGUE_GENERATE_CREDITS = 7
+/**
+ * Deep archive (full history, model filter, date range, CSV). Flagged for
+ * owner confirmation — recent-summary viewing stays free.
+ */
+export const LEAGUE_ARCHIVE_CREDITS = 3
 
 /** Motie open analysis (`POST /api/motie/brief` start). */
 export function creditsForLeagueOpen(): number {
@@ -108,6 +113,11 @@ export function creditsForLeagueDebate(): number {
 /** League live generation (`POST /api/league/generate-stream`) only — not cached reads. */
 export function creditsForLeagueGenerate(): number {
   return LEAGUE_GENERATE_CREDITS
+}
+
+/** League deep archive (`POST /api/league/record-room/deep`) — not the free recent summary. */
+export function creditsForLeagueArchive(): number {
+  return LEAGUE_ARCHIVE_CREDITS
 }
 
 export function creditsForSuit(): number {

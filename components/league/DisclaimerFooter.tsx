@@ -9,12 +9,23 @@ import type { ToneTokens } from '@/lib/league/tone'
  * (Layer A) — every locale in `lib/league/i18n/dictionary.ts` fills this in
  * explicitly, so no locale can render without an approved, translated disclaimer.
  */
-export function DisclaimerFooter({ tone, t }: { tone: ToneTokens; t: LeagueUiPack }) {
+export function DisclaimerFooter({
+  tone,
+  t,
+  category,
+}: {
+  tone: ToneTokens
+  t: LeagueUiPack
+  category?: string
+}) {
+  const extra = category === 'real_estate' ? t.disclaimer.realEstate : null
+
   if (tone.disclaimerWeight === 'default') {
     return (
-      <p className="border-t border-league-border/60 px-4 py-2.5 text-center text-[11px] leading-snug text-league-fg-muted">
-        {t.disclaimer.short}
-      </p>
+      <div className="border-t border-league-border/60 px-4 py-2.5 text-center text-[11px] leading-snug text-league-fg-muted">
+        <p>{t.disclaimer.short}</p>
+        {extra ? <p className="mt-1.5 font-medium text-league-fg">{extra}</p> : null}
+      </div>
     )
   }
 
@@ -26,6 +37,7 @@ export function DisclaimerFooter({ tone, t }: { tone: ToneTokens; t: LeagueUiPac
       }`}
     >
       <p className={prominent ? 'text-xs' : 'text-[11px]'}>{t.disclaimer.long}</p>
+      {extra ? <p className="mt-1.5 text-[11px] font-medium text-league-fg">{extra}</p> : null}
     </div>
   )
 }

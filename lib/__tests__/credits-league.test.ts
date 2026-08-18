@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  LEAGUE_ARCHIVE_CREDITS,
   LEAGUE_DEBATE_CREDITS,
   LEAGUE_GENERATE_CREDITS,
   LEAGUE_OPEN_CREDITS,
+  creditsForLeagueArchive,
   creditsForLeagueDebate,
   creditsForLeagueGenerate,
   creditsForLeagueOpen,
@@ -19,5 +21,10 @@ describe('league / governance credit constants', () => {
   it('pins the confirmed live-generation price', () => {
     expect(LEAGUE_GENERATE_CREDITS).toBe(7)
     expect(creditsForLeagueGenerate()).toBe(7)
+  })
+
+  it('pins the flagged deep-archive price (owner-confirmable)', () => {
+    expect(LEAGUE_ARCHIVE_CREDITS).toBe(3)
+    expect(creditsForLeagueArchive()).toBe(3)
   })
 })

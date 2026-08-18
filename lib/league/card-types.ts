@@ -40,7 +40,7 @@ export type CardModelPrediction = {
   brand: string
   camp: Camp
   league_tier: LeagueTier
-  /** null = abstained, timed out, errored, or (scout tier) not directional by design. */
+  /** null = abstained, timed out, errored, or parse failure. */
   direction: Direction | null
   /** 0-100 confidence/probability, or null. */
   probability: number | null
@@ -80,6 +80,24 @@ export type HitRateSummary = {
   hitRatePct: number | null
 }
 
+/**
+ * Track record of the COMBINED method (40-model majority vote treated as
+ * one predictor) across already-resolved ranked rounds. Citation / past
+ * accuracy — never advice. `n` is the number of resolved rounds that had
+ * a clear majority, not the number of models.
+ */
+export type CombinedMethodTrack = {
+  correct: number
+  resolved: number
+  n: number
+  winRatePct: number | null
+  provisional: boolean
+}
+
+export function emptyCombinedTrack(): CombinedMethodTrack {
+  return { correct: 0, resolved: 0, n: 0, winRatePct: null, provisional: true }
+}
+
 export type CardRoundMeta = {
   round_id: string
   instrument: string
@@ -105,6 +123,12 @@ export type CardData = {
   campSplit: CampSplit
   tierSplit: TierSplit
   hitRate: HitRateSummary
+  /**
+   * Past accuracy of the 40-model majority-vote method. Empty/provisional
+   * until enough ranked rounds have resolved. Attached by the card read
+   * path; `buildCardData` defaults it to an empty track.
+   */
+  combinedTrack: CombinedMethodTrack
   /** ISO timestamp this snapshot was assembled — lets the UI show "as of". */
   generatedAt: string
 }

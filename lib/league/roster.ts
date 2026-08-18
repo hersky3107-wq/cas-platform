@@ -134,10 +134,9 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   { model_id: 'ernie-4.5-vl', brand: 'Baidu', camp: 'china', league_tier: 'world', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:ernie-4.5-vl' }, price: { inputPerMTokens: 0.28, outputPerMTokens: 1.1 } },
   { model_id: 'seed-1.6', brand: 'ByteDance', camp: 'china', league_tier: 'world', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:seed-1.6' }, price: { inputPerMTokens: 0.3, outputPerMTokens: 1.2 } },
 
-  // ── 🟣 SCOUT (6) — all genuinely search-capable, no padding. Scored on
-  //     citation accuracy, not direction (reconciliation leaves is_correct
-  //     null). Scout never receives the shared research packet — independent
-  //     live search IS the experiment. ──
+  // ── 🟣 SCOUT (6) — all genuinely search-capable, no padding. Graded on
+  //     direction like every other tier. Scout never receives the shared
+  //     research packet — independent live search IS the experiment. ──
   // Roster asked for "GPT-5.6 + websearch"; OpenAI's search-enabled chat model
   // is gpt-5-search-api (no 5.6 search variant in the catalog) — substitution,
   // flagged in the run report. Search is built into this model (no body flag).

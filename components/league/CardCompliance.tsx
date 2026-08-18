@@ -46,11 +46,13 @@ export type CardComplianceProps = {
   colorBucket: ColorBucket
   /** Locale chrome pack (Layer A) — only used here to render the disclaimer in the current language; never affects whether/what disclaimer renders. */
   t: LeagueUiPack
+  /** Ledger category — unlocks the extra real_estate appraisal disclaimer. */
+  category?: string
   /** Render-prop: receives the receipt that unlocks `CardBody`. */
   children: (receipt: ComplianceReceipt) => ReactNode
 }
 
-export function CardCompliance({ colorBucket, t, children }: CardComplianceProps) {
+export function CardCompliance({ colorBucket, t, category, children }: CardComplianceProps) {
   const tone = toneFor(colorBucket)
   return (
     <div
@@ -58,7 +60,7 @@ export function CardCompliance({ colorBucket, t, children }: CardComplianceProps
       className="flex flex-col overflow-hidden rounded-2xl border border-league-border bg-league-bg text-league-fg"
     >
       {children(RECEIPT)}
-      <DisclaimerFooter tone={tone} t={t} />
+      <DisclaimerFooter tone={tone} t={t} category={category} />
     </div>
   )
 }
