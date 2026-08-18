@@ -59,6 +59,21 @@ export type LeagueUiPack = {
     noCardYet: string
   }
   hitRate: { pending: string; pct: (pct: number) => string }
+  /**
+   * Card header price chrome. The $ amount and its date/time are formatted
+   * by the component (locale-agnostic number/date formatting, same
+   * convention as `RecordRoomBody`'s `toLocaleString()`), NOT here — these
+   * three strings are only the connector words around those numbers, e.g.
+   * "$305.59 {atPrediction} · Aug 18, 12:44" and "{live} $306.10 · {now}".
+   */
+  header: {
+    /** e.g. "at prediction" — labels the ANCHOR price (round-open price). */
+    atPrediction: string
+    /** e.g. "now" — labels the optional live/current price. */
+    now: string
+    /** Small badge word next to the optional live price, e.g. "LIVE". */
+    live: string
+  }
   modelList: {
     title: (count: number) => string
     tierTab: string
@@ -260,6 +275,7 @@ const en: LeagueUiPack = {
     noCardYet: 'No prediction card for this instrument yet.',
   },
   hitRate: { pending: 'Hit rate: pending', pct: (pct) => `${pct}% hit rate` },
+  header: { atPrediction: 'at prediction', now: 'now', live: 'LIVE' },
   modelList: {
     title: (n) => `Models (${n})`,
     tierTab: 'Tier',
@@ -420,6 +436,7 @@ const ko: LeagueUiPack = {
     noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
   },
   hitRate: { pending: '적중률 집계 중', pct: (pct) => `적중률 ${pct}%` },
+  header: { atPrediction: '예측 시점', now: '현재', live: '실시간' },
   modelList: {
     title: (n) => `모델 (${n}개)`,
     tierTab: '티어',
@@ -579,6 +596,7 @@ const ja: LeagueUiPack = {
     noCardYet: 'この銘柄の予測カードはまだありません。',
   },
   hitRate: { pending: '的中率：集計待ち', pct: (pct) => `的中率${pct}%` },
+  header: { atPrediction: '予測時点', now: '現在', live: 'ライブ' },
   modelList: {
     title: (n) => `モデル（${n}）`,
     tierTab: 'ティア',
@@ -738,6 +756,7 @@ const zhTW: LeagueUiPack = {
     noCardYet: '此標的尚無預測卡。',
   },
   hitRate: { pending: '命中率：統計中', pct: (pct) => `命中率 ${pct}%` },
+  header: { atPrediction: '預測時', now: '目前', live: '即時' },
   modelList: {
     title: (n) => `模型（${n}）`,
     tierTab: '級別',
@@ -898,6 +917,7 @@ const fr: LeagueUiPack = {
     noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
   },
   hitRate: { pending: 'Taux de réussite : en attente', pct: (pct) => `${pct}% de réussite` },
+  header: { atPrediction: 'au moment de la prédiction', now: 'actuel', live: 'EN DIRECT' },
   modelList: {
     title: (n) => `Modèles (${n})`,
     tierTab: 'Niveau',
@@ -1059,6 +1079,7 @@ const es: LeagueUiPack = {
     noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
   },
   hitRate: { pending: 'Tasa de acierto: pendiente', pct: (pct) => `${pct}% de acierto` },
+  header: { atPrediction: 'al momento de la predicción', now: 'ahora', live: 'EN VIVO' },
   modelList: {
     title: (n) => `Modelos (${n})`,
     tierTab: 'Nivel',
@@ -1219,6 +1240,7 @@ const ar: LeagueUiPack = {
     noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
   },
   hitRate: { pending: 'معدل الإصابة: قيد الحساب', pct: (pct) => `معدل الإصابة ${pct}%` },
+  header: { atPrediction: 'وقت التنبؤ', now: 'الآن', live: 'مباشر' },
   modelList: {
     title: (n) => `النماذج (${n})`,
     tierTab: 'الفئة',

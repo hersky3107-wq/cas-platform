@@ -210,6 +210,27 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
   return { round: data as ResolvedRound, created: true }
 }
 
+/**
+ * Best-effort write of the round's ANCHOR price (see the doc comment at the
+ * `persistAnchorPrice` call site in `generatePredictions`). Never throws —
+ * a failure here degrades the card header to "no anchor price" (a state the
+ * UI already renders correctly for pre-migration rounds), not a generation
+ * failure. Deliberately NOT part of `ensureRound`'s insert: the packet fetch
+ * that produces this price happens one line after `ensureRound` returns, and
+ * duplicating that fetch earlier just to inline it into the insert would cost
+ * an extra, redundant Twelve Data call.
+ */
+async function persistAnchorPrice(roundId: string, price: number): Promise<void> {
+  try {
+    await supabaseAdmin
+      .from('prediction_rounds')
+      .update({ anchor_price: price, anchor_price_at: new Date().toISOString() })
+      .eq('id', roundId)
+  } catch {
+    // best-effort — see doc comment above
+  }
+}
+
 function buildPropositionBlock(round: ResolvedRound): string {
   return [
     `Proposition: ${round.proposition_text}`,
@@ -630,6 +651,15 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   // One packet fetch per ROUND (2 Twelve Data credits), injected to every
   // price-tier model — not per model.
   const packet = await fetchDataPacket(round.instrument)
+  // Persist the ANCHOR price (best-effort, presentation only — never read by
+  // grading/reconciliation): the card header shows "what the instrument was
+  // at when this round opened" so a model's up/down call is legible. Only
+  // stamped once, at creation, from the same packet already fetched above —
+  // never overwritten on a re-run of an existing round (`{ roundId }` input
+  // skips `created`), so the anchor always reflects the ORIGINAL open.
+  if (created && packet.available && typeof packet.latestClose === 'number') {
+    await persistAnchorPrice(round.id, packet.latestClose)
+  }
   // One research packet per ROUND, shared identically by tiers 1/2/3 (Scout
   // keeps its own live search). Cached per (instrument, horizon, 6h bucket);
   // its cost counts against the same kill-switch cap as the model calls.

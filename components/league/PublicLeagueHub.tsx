@@ -214,7 +214,7 @@ function CardsPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-1.5">
+      <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
         {categories.map((c) => (
           <button
             key={c.id}
@@ -302,7 +302,7 @@ function instrumentLabel(t: { catalog: { instruments: Record<string, string> } }
 }
 
 function categoryChipClass(tone: ColorBucket, selected: boolean): string {
-  const base = 'rounded-full px-3 py-1.5 text-xs font-semibold transition'
+  const base = 'shrink-0 whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition min-h-[44px]'
   if (tone === 'green') {
     return selected ? `${base} bg-emerald-600 text-white` : `${base} bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100`
   }

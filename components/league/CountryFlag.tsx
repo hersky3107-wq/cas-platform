@@ -65,11 +65,12 @@ export function CountryFlag({ brand, camp }: { brand: string; camp: Camp }) {
   const code = brandCountry(brand, camp)
   return (
     <span
-      className="inline-flex shrink-0 items-center gap-1 rounded bg-white/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-league-fg-muted"
+      dir="ltr"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded bg-white/80 px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted"
       title={`${COUNTRY_NAME[code]} · ${CAMP_LABEL[camp]}`}
     >
       <span
-        className="relative flex h-2.5 w-3.5 shrink-0 overflow-hidden rounded-[2px] ring-1 ring-inset ring-black/10"
+        className="relative flex h-4 w-6 shrink-0 overflow-hidden rounded-[3px] ring-1 ring-inset ring-black/10"
         aria-hidden
       >
         <FlagGlyph code={code} />
@@ -97,14 +98,14 @@ function FlagGlyph({ code }: { code: CountryCode }) {
     case 'CN':
       return (
         <span className="absolute inset-0 bg-red-600">
-          <span className="absolute left-[1px] top-0 text-[6px] leading-none text-yellow-300">★</span>
+          <span className="absolute left-[2px] top-[1px] text-[9px] leading-none text-yellow-300">★</span>
         </span>
       )
     case 'KR':
       return (
         <span className="absolute inset-0 items-center justify-center bg-white">
           <span
-            className="absolute left-1/2 top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+            className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full"
             style={{ background: 'conic-gradient(#cd2e3a 0deg 180deg, #0047a0 180deg 360deg)' }}
           />
         </span>

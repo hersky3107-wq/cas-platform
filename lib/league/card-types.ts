@@ -110,6 +110,27 @@ export type CardRoundMeta = {
   opened_at: string
   resolved_at: string | null
   actual_outcome: string | null
+  /**
+   * Instrument price AT ROUND-OPEN time (what makes a model's up/down call
+   * legible) — persisted once, at creation, from the same market-data packet
+   * used to build the model prompts (see `orchestrator.ts`'s
+   * `persistAnchorPrice`). Null for rounds created before this field existed,
+   * or when the price feed was unavailable at open time. PRESENTATION ONLY —
+   * never read by grading/reconciliation.
+   */
+  anchorPrice: number | null
+  /** Timestamp `anchorPrice` was observed. Null iff `anchorPrice` is null. */
+  anchorPriceAt: string | null
+  /**
+   * Best-effort CURRENT quote, computed at read time (not stored) via a
+   * short-TTL, in-process cache shared across all requests — see
+   * `lib/league/live-price-cache.ts`. Always null on a cold cache entry, a
+   * provider error/timeout/rate-limit, or a non-price category; never blocks
+   * or slows down the card read path. Secondary to `anchorPrice`.
+   */
+  livePrice: number | null
+  /** Timestamp `livePrice` was observed. Null iff `livePrice` is null. */
+  livePriceAt: string | null
 }
 
 /**

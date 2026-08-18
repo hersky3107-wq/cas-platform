@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { buildCardData, type PredictionRow, type RoundRow } from './card-aggregate'
 import type { CardData } from './card-types'
 import { fetchLeaderboardData, type LeaderboardScope } from './leaderboard'
+import { getCachedLivePrice } from './live-price-cache'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), DB read path.
@@ -22,6 +23,9 @@ const ROUND_COLUMNS =
   'id, proposition_text, category, color_bucket, instrument, horizon, resolution_rule, resolves_at, opened_at, actual_outcome, resolved_at'
 const PREDICTION_COLUMNS =
   'model_id, brand, camp, league_tier, predicted_direction, predicted_value, reasoning_snippet, is_correct, cost_usd, predicted_at'
+
+/** Warn once (not once per request) if the anchor-price migration hasn't been applied yet. */
+let warnedMissingAnchorColumns = false
 
 export type CardLookup = { roundId: string } | { instrument: string; date?: string }
 
@@ -69,6 +73,40 @@ async function loadRound(lookup: CardLookup): Promise<RoundRow> {
   return data as RoundRow
 }
 
+/**
+ * Deliberately SEPARATE from `loadRound`'s select (rather than adding
+ * `anchor_price, anchor_price_at` to `ROUND_COLUMNS`): migration
+ * `20260818000002_league_anchor_price.sql` may not be applied to every
+ * environment yet (same situation as `league_research_packets` — see
+ * `lib/league/research.ts`'s `readDurableCache`). Selecting an unknown
+ * column would fail the WHOLE query; isolating it here means a
+ * not-yet-migrated DB just renders the card without an anchor price
+ * (a state the UI already handles) instead of breaking every card read.
+ */
+async function loadAnchorPrice(roundId: string): Promise<{ anchor_price: number | null; anchor_price_at: string | null }> {
+  const empty = { anchor_price: null, anchor_price_at: null }
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select('anchor_price, anchor_price_at')
+      .eq('id', roundId)
+      .maybeSingle()
+    if (error) {
+      if (!warnedMissingAnchorColumns) {
+        warnedMissingAnchorColumns = true
+        console.warn(
+          `[league/card] anchor_price columns unavailable (${error.message}) — rendering cards without an anchor price. ` +
+            'Apply migration 20260818000002_league_anchor_price.sql to enable it.'
+        )
+      }
+      return empty
+    }
+    return data ? { anchor_price: data.anchor_price ?? null, anchor_price_at: data.anchor_price_at ?? null } : empty
+  } catch {
+    return empty
+  }
+}
+
 async function loadPredictions(roundId: string): Promise<PredictionRow[]> {
   const { data, error } = await supabaseAdmin
     .from('model_predictions')
@@ -82,7 +120,18 @@ async function loadPredictions(roundId: string): Promise<PredictionRow[]> {
 /** Full read path: resolve the round, load its predictions, assemble CardData. */
 export async function fetchCardData(lookup: CardLookup, scope?: LeaderboardScope): Promise<CardData> {
   const round = await loadRound(lookup)
+  const anchor = await loadAnchorPrice(round.id)
   const predictions = await loadPredictions(round.id)
   const board = await fetchLeaderboardData(scope)
-  return buildCardData(round, predictions, board.combined)
+  const card = buildCardData({ ...round, ...anchor }, predictions, board.combined)
+
+  // Secondary, best-effort, non-blocking — see `live-price-cache.ts`'s doc
+  // comment. A cache miss/provider hiccup just leaves this null; it never
+  // adds latency or a failure mode to this read.
+  const live = getCachedLivePrice(round.instrument)
+  if (live) {
+    card.round.livePrice = live.price
+    card.round.livePriceAt = live.asOf
+  }
+  return card
 }

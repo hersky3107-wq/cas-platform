@@ -178,6 +178,30 @@ export function formatDataPacketForPrompt(packet: DataPacket): string {
   return lines.join('\n')
 }
 
+/**
+ * Lightweight CURRENT quote — the `/quote` endpoint only (1 Twelve Data
+ * credit), no time series. Used by `live-price-cache.ts` for the card
+ * header's optional "live" price, which needs freshness far more than it
+ * needs the 10-day series `fetchDataPacket` also fetches for model prompts.
+ * Never throws; callers get `null` on any problem (bad symbol, no key,
+ * rate limit, timeout, malformed response).
+ */
+export async function fetchLiveQuote(instrument: string): Promise<{ price: number; asOf: string } | null> {
+  const mapped = mapInstrumentToTwelveData(instrument)
+  if (!mapped) return null
+
+  const params: Record<string, string> = { symbol: mapped.symbol }
+  if (mapped.exchange) params.exchange = mapped.exchange
+
+  const res = await twelveDataGet('quote', params)
+  if (!res.ok) return null
+
+  const price = num(res.json?.close)
+  if (typeof price !== 'number') return null
+  const asOf = typeof res.json?.datetime === 'string' ? res.json.datetime : new Date().toISOString()
+  return { price, asOf }
+}
+
 export type ResolvedOutcome = {
   rawOutcome: string
   actualDirection: 'up' | 'down' | 'flat' | null

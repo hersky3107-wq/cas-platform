@@ -42,6 +42,9 @@ export type RoundRow = {
   opened_at: string
   actual_outcome: string | null
   resolved_at: string | null
+  /** Optional: absent on rows selected before this column existed (e.g. older scripts' explicit column lists) — treated as null. */
+  anchor_price?: number | null
+  anchor_price_at?: string | null
 }
 
 export type PredictionRow = {
@@ -181,6 +184,14 @@ function toRoundMeta(row: RoundRow): CardRoundMeta {
     opened_at: row.opened_at,
     resolved_at: row.resolved_at,
     actual_outcome: row.actual_outcome,
+    anchorPrice: row.anchor_price ?? null,
+    anchorPriceAt: row.anchor_price_at ?? null,
+    // Populated by `card.ts` after this pure function returns — see
+    // `CardRoundMeta.livePrice`'s doc comment. Defaulting to null here keeps
+    // this function's output fully deterministic/testable without network
+    // access; `fetchCardData` is the only caller that overwrites these two.
+    livePrice: null,
+    livePriceAt: null,
   }
 }
 
