@@ -31,6 +31,7 @@ import { releaseAiSlots, tryAcquireAiSlots } from './concurrency'
 import {
   ORACLE_AI_UNIT_TIMEOUT_MS,
   ORACLE_LAYER1_CHUNK_SIZE,
+  ORACLE_LEASE_HEARTBEAT_SECONDS,
   ORACLE_LEASE_SECONDS,
   ORACLE_MAX_ATTEMPTS,
   ORACLE_TERMINAL_STATUSES,
@@ -107,6 +108,33 @@ export async function advanceOracleSession(sessionId: string, deps: AdvanceDeps)
 
   deps.schedule(() => runOracleChunk(claimed, deps))
   return describe(claimed, true)
+}
+
+/**
+ * Renew lease + heartbeat while parallel AI units run. Without this, a chunk
+ * whose units finish near the deadline can lose its lease during the sequential
+ * inserts that follow Promise.all, and the sweeper may re-run the chunk.
+ */
+async function runParallelWithLeaseHeartbeat<T>(
+  sessionId: string,
+  deps: AdvanceDeps,
+  now: RunnerClock,
+  work: () => Promise<T>,
+): Promise<T> {
+  const intervalMs = ORACLE_LEASE_HEARTBEAT_SECONDS * 1_000
+  const refresh = (): void => {
+    const at = now()
+    void deps.store.updateSession(sessionId, {
+      last_heartbeat_at: at.toISOString(),
+      lease_until: new Date(at.getTime() + ORACLE_LEASE_SECONDS * 1_000).toISOString(),
+    })
+  }
+  const timer = setInterval(refresh, intervalMs)
+  try {
+    return await work()
+  } finally {
+    clearInterval(timer)
+  }
 }
 
 /** Per-unit deadline. A hung adapter loses the race and the unit becomes a 결번. */
@@ -239,18 +267,20 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
   let produced = 0
 
   try {
-    const results = await Promise.all(
-      chunk.map(async (computation) => ({
-        computation,
-        result: await runAiUnit(deps, {
-          kind: 'reading',
-          sessionId: session.id,
-          unit: computation.system,
-          locale: session.locale ?? 'ko',
-          seed: session.seed,
-          payload: computation.ai_payload ?? {},
-        }),
-      })),
+    const results = await runParallelWithLeaseHeartbeat(session.id, deps, now, () =>
+      Promise.all(
+        chunk.map(async (computation) => ({
+          computation,
+          result: await runAiUnit(deps, {
+            kind: 'reading',
+            sessionId: session.id,
+            unit: computation.system,
+            locale: session.locale ?? 'ko',
+            seed: session.seed,
+            payload: computation.ai_payload ?? {},
+          }),
+        })),
+      ),
     )
 
     for (const { computation, result } of results) {

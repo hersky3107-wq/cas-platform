@@ -39,7 +39,7 @@ export function createOracleAiAdapter(options: OracleAiAdapterOptions = {}): Ora
   }
 }
 
-/** Extra AdvanceDeps when live — keeps the 90s lease from being stolen. */
+/** Extra AdvanceDeps when live — unit deadline stays under the 150s lease. */
 export function oracleAiAdvanceOptions(): { unitTimeoutMs?: number } {
   if (getOracleAiMode() !== 'live') return {}
   return { unitTimeoutMs: ORACLE_LAYER1_LIVE_TIMEOUT_MS }

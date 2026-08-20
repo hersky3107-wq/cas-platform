@@ -13,7 +13,13 @@ import type { OracleSessionKind, OracleSessionStatus } from '../schema'
 export const ORACLE_RUNNER_VERSION = '1.0.0'
 
 /** How long a claimed lease is held before the sweeper may take it over. */
-export const ORACLE_LEASE_SECONDS = 90
+export const ORACLE_LEASE_SECONDS = 150
+
+/**
+ * While parallel AI units are in flight, renew `last_heartbeat_at` and extend
+ * `lease_until` on this interval so a slow chunk is not mistaken for dead.
+ */
+export const ORACLE_LEASE_HEARTBEAT_SECONDS = 20
 
 /** A non-terminal session whose heartbeat is older than this is stuck. */
 export const ORACLE_STALE_HEARTBEAT_SECONDS = 60

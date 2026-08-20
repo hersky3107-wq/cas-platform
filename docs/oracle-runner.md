@@ -76,9 +76,12 @@ healthy session.
 ## Lease and heartbeat contract
 
 - **Claim.** A single conditional `UPDATE ... WHERE id = $1 AND (lease_until IS NULL OR
-  lease_until < now) AND attempt_count = $read` sets `lease_until = now + 90s`, stamps
+  lease_until < now) AND attempt_count = $read` sets `lease_until = now + 150s`, stamps
   `last_heartbeat_at`, and increments `attempt_count`. Zero rows updated means another worker
   holds it: the caller reports the current status and does no work.
+- **In-flight renewal.** While parallel layer-1 units run, the runner refreshes
+  `last_heartbeat_at` and extends `lease_until` every 20s so a slow chunk is not
+  mistaken for dead before the sequential inserts finish.
 - **Heartbeat.** Every completed unit stamps `last_heartbeat_at`, so the sweeper can tell a slow
   session from a dead one.
 - **Release.** Every exit path from a chunk sets `lease_until = null`, including the
@@ -88,7 +91,7 @@ healthy session.
   60s and a lease that is null or expired, then advances up to 20 per run.
 - **Clock.** Lease and heartbeat timestamps are computed in the app process, not by SQL `now()`,
   because supabase-js cannot put an expression in an UPDATE. Meaningful app/DB clock skew would
-  loosen the lease; the 90s window is wide enough to absorb ordinary drift.
+  loosen the lease; the 150s window is wide enough to absorb ordinary drift.
 
 `attempt_count` counts *consecutive fruitless* claims: any chunk that completes at least one
 unit resets it to 0. Above `ORACLE_MAX_ATTEMPTS` (4) the session is closed out.
@@ -97,8 +100,9 @@ unit resets it to 0. Above `ORACLE_MAX_ATTEMPTS` (4) the session is closed out.
 
 Each stubbed AI unit gets 25s (`ORACLE_AI_UNIT_TIMEOUT_MS`). Live layer-1 units get
 80s (`ORACLE_LAYER1_LIVE_TIMEOUT_MS`) so a reasoner can finish without outliving
-the 90s lease. The runner races the adapter either way; on expiry the row is
-written with `status='timeout'` and the run **continues**.
+the 150s lease (renewed every 20s while units are in flight). The runner races the
+adapter either way; on expiry the row is written with `status='timeout'` and the
+run **continues**.
 
 A missing system is a 결번, not a failure. Three things produce one, and all three land in
 `progress.failed`:

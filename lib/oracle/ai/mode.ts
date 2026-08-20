@@ -11,7 +11,8 @@ export function getOracleAiMode(env: NodeJS.ProcessEnv = process.env): OracleAiM
 
 /**
  * Live layer-1 units can sit on a reasoner for a long time. The runner lease
- * is 90s, and four systems in a chunk run in parallel, so this must stay
- * under the lease — otherwise the sweeper steals the session and we pay twice.
+ * is 150s (with in-flight heartbeat renewal every 20s), and four systems in a
+ * chunk run in parallel, so this must stay under the lease — otherwise the
+ * sweeper steals the session and we pay twice.
  */
 export const ORACLE_LAYER1_LIVE_TIMEOUT_MS = 80_000

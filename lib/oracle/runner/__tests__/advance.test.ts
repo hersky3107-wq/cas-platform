@@ -2,7 +2,7 @@
  * The chunked advance path: lease, idempotency, 결번 handling, and the
  * read-only poll.
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PRISM_COLORS } from '../../engines/prism'
 import type { OracleJobSession } from '../../schema'
 import { advanceOracleSession, runOracleChunk, type AdvanceDeps } from '../advance'
@@ -30,6 +30,27 @@ const PRISM_INPUTS = {
     identity: PRISM_COLORS[2],
     microCheck: [3, 4, 2, 3] as const,
   },
+}
+
+/** Hangs for `delayMs` so the runner's per-unit deadline and lease renewal can be exercised. */
+function delayedAi(delayMs: number): OracleAiAdapter {
+  return {
+    async run() {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, delayMs)
+      })
+      return {
+        ok: true,
+        brand: 'stub',
+        model: 'stub-oracle-v0',
+        text: '[stub] delayed reading',
+        summary: { headline: 'delayed' },
+        latencyMs: delayMs,
+        tokensIn: 1,
+        tokensOut: 1,
+      }
+    },
+  }
 }
 
 /** No real waiting: the stub's delay is injected away so tests stay instant. */
@@ -153,6 +174,48 @@ describe('lease', () => {
     const second = harness.deps()
     const next = await advanceOracleSession(harness.session.id, second)
     expect(next.claimed).toBe(true)
+  })
+
+  it('keeps the lease through slow inserts after units exceed the old 90s lease window', async () => {
+    vi.useFakeTimers({ now: NOW })
+    try {
+      const unitDelayMs = 85_000
+      const insertDelayMs = 5_000
+      const harness = await bootstrap({ ai: delayedAi(unitDelayMs) })
+
+      const baseInsert = harness.store.insertReadingIfAbsent.bind(harness.store)
+      harness.store.insertReadingIfAbsent = async (row) => {
+        await new Promise<void>((resolve) => setTimeout(resolve, insertDelayMs))
+        return baseInsert(row)
+      }
+
+      // Use the advancing fake clock (not the harness's frozen NOW) so in-flight
+      // lease renewal tracks elapsed wall time.
+      const deps = harness.deps({ unitTimeoutMs: 90_000, now: undefined })
+      await advanceOracleSession(harness.session.id, deps)
+      const drainPromise = deps.drain()
+
+      await vi.advanceTimersByTimeAsync(unitDelayMs)
+      await vi.advanceTimersByTimeAsync(insertDelayMs + 1_000)
+
+      const session = (await harness.store.getSession(harness.session.id))!
+      const elapsedMs = Date.now() - NOW.getTime()
+      expect(elapsedMs).toBeGreaterThan(90_000)
+      expect(session.lease_until).not.toBeNull()
+      expect(new Date(session.lease_until!).getTime()).toBeGreaterThan(Date.now())
+      expect(Date.now() - new Date(session.last_heartbeat_at!).getTime()).toBeLessThan(
+        ORACLE_STALE_HEARTBEAT_SECONDS * 1_000,
+      )
+
+      const summary = await sweepOracleSessions(deps)
+      expect(summary.candidates).toBe(0)
+
+      await vi.runAllTimersAsync()
+      await drainPromise
+      expect(harness.store.readings).toHaveLength(ORACLE_LAYER1_CHUNK_SIZE)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('refuses to claim a terminal session', async () => {
