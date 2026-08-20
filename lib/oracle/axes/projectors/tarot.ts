@@ -12,7 +12,7 @@
  */
 import { DRAW_ENGINE_VERSION, tarotDraw } from '../../engines/draw'
 import type { TarotDrawnCard, TarotDrawResult, TarotSpreadSize } from '../../engines/draw'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
 import { clampTraits, emptyElements, emptyPhase, emptyTraits, normalizeElements, normalizePhase, reflectTraitMix } from '../math'
 import {
   CLASSICAL_TO_OHENG,
@@ -96,7 +96,7 @@ export function projectTarot(input: TarotProjectorInput): AxisVote {
     confidence: {
       traits: { weight: HALF_WEIGHT, basis: 'derived' },
       elements: elements ? { weight: HALF_WEIGHT, basis: 'derived' } : null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('tarot', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable,
     reasons: {

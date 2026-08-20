@@ -13,8 +13,8 @@
  * no unreadable branch for unknown birth time.
  */
 import { CALENDAR_ENGINE_VERSION, sukuyou, sukuyouRelation } from '../../engines/calendar'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
-import { clampTraits, emptyElements, emptyPhase, emptyTraits, normalizeElements, normalizePhase } from '../math'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
+import { clampTraits, emptyElements, emptyTraits, normalizeElements, softenPhase } from '../math'
 import { ASTRO_BODY_TRAITS, SUKUYOU_LUMINARY_ELEMENT, SUKUYOU_MANSION_LUMINARY, SUKUYOU_RELATION_PHASE } from '../tables'
 import { TRAIT_AXES, type AxisVote } from '../types'
 
@@ -46,9 +46,7 @@ export function projectSukuyou(input: SukuyouProjectorInput): AxisVote {
     : null
 
   const relation = sukuyouRelation(natal.index, current.index)
-  const rawPhase = emptyPhase()
-  rawPhase[SUKUYOU_RELATION_PHASE[relation.name]] = 100
-  const phase = normalizePhase(rawPhase)
+  const phase = softenPhase(SUKUYOU_RELATION_PHASE[relation.name], 'strong')
 
   const unreadable: AxisVote['unreadable'] = []
   if (!elements) unreadable.push({ space: 'elements', code: 'sukuyou.no_wuxing_for_luminary' })
@@ -61,7 +59,7 @@ export function projectSukuyou(input: SukuyouProjectorInput): AxisVote {
     confidence: {
       traits: { weight: HALF_WEIGHT, basis: 'derived' },
       elements: elements ? { weight: HALF_WEIGHT, basis: 'derived' } : null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('sukuyou', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable,
     reasons: {

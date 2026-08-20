@@ -118,21 +118,21 @@ export const ASTRO_HOUSE_WEIGHT: Record<number, number> = {
 /**
  * 4 classical elements → 5 오행. This is DERIVED, never direct.
  *
- * Western fire/earth/water sit on the same names. Air has no 오행 seat:
- * it is split between wood (movement, speech, spring qi) and metal
- * (heaven, structure, dryness). Earth keeps a sliver of metal because
- * classical earth "contains" ore — without that sliver, metal would
- * only exist when air is present, which over-punishes earth-heavy charts.
+ * Western fire/earth/water sit on the same names. Air has no direct 오행
+ * homonym but the standard Western→East-Asian correspondence maps air
+ * primarily to wood (movement, speech, spring qi); a minority share goes
+ * to metal (heaven, structure, dryness). Earth keeps a sliver of metal
+ * because classical earth "contains" ore.
  *
  *   fire  → fire  1.00
  *   earth → earth 0.70 + metal 0.30
- *   air   → wood  0.50 + metal 0.50
+ *   air   → wood  0.75 + metal 0.25
  *   water → water 1.00
  */
 export const CLASSICAL_TO_OHENG: Record<'fire' | 'earth' | 'air' | 'water', Partial<Record<ElementAxis, number>>> = {
   fire: { fire: 1 },
   earth: { earth: 0.7, metal: 0.3 },
-  air: { wood: 0.5, metal: 0.5 },
+  air: { wood: 0.75, metal: 0.25 },
   water: { water: 1 },
 }
 
@@ -662,25 +662,24 @@ export const RUNE_TRAITS: Record<string, TraitVector> = {
 }
 
 /**
- * Rune → 오행, ONLY for the runes whose element association is fairly
- * consistent across popular rune-lore sources (the rune's own name is
- * literally the element, or its central image maps to one with little
- * disagreement: Kenaz=torch/fire, Isa=ice/water, Laguz=lake/water, …).
- * The other 15 runes are DELIBERATELY absent — different rune-magic
- * traditions assign them differently (or not at all), and the task says
- * to leave a rune out of the elements blend rather than guess. This is
- * NOT the same 24-entry completeness as `RUNE_TRAITS` above.
+ * Rune → 오행, ONLY for runes whose element association is fairly
+ * consistent across popular rune-lore sources. Growth/vegetation staves
+ * (Berkano, Jera, Ingwaz, Eihwaz) map to wood; cutting/precision staves
+ * (Tiwaz, Isa) map to metal. Runes with no agreed element stay absent —
+ * unmapped means excluded from the blend, not defaulted to earth.
  */
 export const RUNE_ELEMENT: Partial<Record<string, ElementAxis>> = {
   Uruz: 'earth',
   Kenaz: 'fire',
   Hagalaz: 'water',
-  Isa: 'water',
-  Jera: 'earth',
+  Isa: 'metal',
+  Jera: 'wood',
+  Eihwaz: 'wood',
   Sowilo: 'fire',
+  Tiwaz: 'metal',
   Laguz: 'water',
-  Berkano: 'earth',
-  Ingwaz: 'earth',
+  Berkano: 'wood',
+  Ingwaz: 'wood',
 }
 
 /**

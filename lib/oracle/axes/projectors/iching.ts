@@ -16,10 +16,10 @@
  */
 import { DRAW_ENGINE_VERSION, ichingDraw } from '../../engines/draw'
 import type { DayStemInput, IchingDrawResult } from '../../engines/draw'
-import { DIRECT_WEIGHT } from '../conventions'
-import { emptyElements, emptyPhase, normalizeElements, normalizePhase } from '../math'
+import { DIRECT_WEIGHT, phaseConfidence } from '../conventions'
+import { emptyElements, emptyPhase, normalizeElements, normalizePhase, softenPhase } from '../math'
 import { FIVE_ELEMENT_RELATION_PHASE, SIX_RELATIVE_TO_RELATION } from '../tables'
-import type { AxisVote } from '../types'
+import { PHASE_AXES, type AxisVote, type PhaseAxis } from '../types'
 
 export type IchingProjectorInput = {
   seed: string
@@ -41,9 +41,19 @@ function elementsFromLines(result: IchingDrawResult) {
 
 function phaseFromChangingLines(result: IchingDrawResult) {
   if (result.changingPositions.length === 0) {
-    return normalizePhase({ advance: 0, hold: 100, release: 0 })
+    return softenPhase('hold', 'strong')
   }
   const changing = result.lines.filter((line) => line.changing)
+  const counts = emptyPhase()
+  for (const line of changing) {
+    const relation = SIX_RELATIVE_TO_RELATION[line.relative]
+    counts[FIVE_ELEMENT_RELATION_PHASE[relation]] += 1
+  }
+  const dominant = PHASE_AXES.reduce((best, axis) => (counts[axis] > counts[best] ? axis : best), PHASE_AXES[0] as PhaseAxis)
+  const total = counts.advance + counts.hold + counts.release
+  if (total > 0 && counts[dominant] / total >= 0.999) {
+    return softenPhase(dominant, 'strong')
+  }
   const raw = emptyPhase()
   for (const line of changing) {
     const relation = SIX_RELATIVE_TO_RELATION[line.relative]
@@ -70,7 +80,7 @@ export function projectIching(input: IchingProjectorInput): AxisVote {
     confidence: {
       traits: null,
       elements: elements ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('iching', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable,
     reasons: {

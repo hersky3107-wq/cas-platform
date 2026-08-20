@@ -103,6 +103,17 @@ export function validateAxisVote(vote: AxisVote): ValidationIssue[] {
     if ((conf.basis === 'derived' || conf.basis === 'degraded') && conf.weight !== 0.5) {
       issues.push({ path: `confidence.${space}`, message: 'derived/degraded basis must weigh 0.5' })
     }
+    if (space === 'phase') {
+      const phaseConf = conf as import('./types').PhaseSpaceConfidence
+      if (
+        phaseConf.timescale !== 'era' &&
+        phaseConf.timescale !== 'annual' &&
+        phaseConf.timescale !== 'daily' &&
+        phaseConf.timescale !== 'draw'
+      ) {
+        issues.push({ path: 'confidence.phase.timescale', message: 'timescale must be era|annual|daily|draw' })
+      }
+    }
   }
 
   if (!Array.isArray(vote.unreadable)) {

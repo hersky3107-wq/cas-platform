@@ -27,7 +27,7 @@ describe('projectTarot', () => {
     expect(vote.system).toBe('tarot')
     expect(vote.traits).not.toBeNull()
     expect(vote.confidence.traits).toEqual({ weight: 0.5, basis: 'derived' })
-    expect(vote.confidence.phase).toEqual({ weight: 1, basis: 'direct' })
+    expect(vote.confidence.phase).toEqual({ weight: 1, basis: 'direct', timescale: 'draw' })
     expectSumsTo100OrNull(vote)
   })
 
@@ -76,7 +76,7 @@ describe('projectRune', () => {
     expect(vote.system).toBe('runes')
     expect(vote.traits).not.toBeNull()
     expect(vote.confidence.traits).toEqual({ weight: 0.5, basis: 'derived' })
-    expect(vote.confidence.phase).toEqual({ weight: 1, basis: 'direct' })
+    expect(vote.confidence.phase).toEqual({ weight: 1, basis: 'direct', timescale: 'draw' })
     expectSumsTo100OrNull(vote)
   })
 
@@ -119,17 +119,17 @@ describe('projectIching', () => {
     expect(vote.unreadable).toContainEqual({ space: 'traits', code: 'iching.no_trait_reading' })
     expect(vote.elements).not.toBeNull()
     expect(vote.confidence.elements).toEqual({ weight: 1, basis: 'direct' })
-    expect(vote.confidence.phase).toEqual({ weight: 1, basis: 'direct' })
+    expect(vote.confidence.phase).toEqual({ weight: 1, basis: 'direct', timescale: 'draw' })
     expectSumsTo100OrNull(vote)
   })
 
-  it('no changing lines leans fully to hold', () => {
+  it('no changing lines leans to hold via softenPhase', () => {
     let sawNoChanging = false
     for (let i = 0; i < 60 && !sawNoChanging; i += 1) {
       const vote = projectIching({ seed: `axes-iching-${i}` })
       if (vote.reasons.phase?.includes('iching.phase.no_changing_lines')) {
         sawNoChanging = true
-        expect(vote.phase).toEqual({ advance: 0, hold: 100, release: 0 })
+        expect(vote.phase).toEqual({ advance: 15, hold: 70, release: 15 })
       }
     }
     expect(sawNoChanging).toBe(true)
@@ -146,7 +146,7 @@ describe('projectNumerology', () => {
     expect(vote.elements).toBeNull()
     expect(vote.confidence.elements).toBeNull()
     expect(vote.unreadable).toContainEqual({ space: 'elements', code: 'numerology.no_wuxing_mapping' })
-    expect(vote.confidence.phase).toEqual({ weight: 1, basis: 'direct' })
+    expect(vote.confidence.phase).toEqual({ weight: 1, basis: 'direct', timescale: 'annual' })
     expectSumsTo100OrNull(vote)
   })
 

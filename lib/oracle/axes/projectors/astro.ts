@@ -9,7 +9,7 @@
 import { ASTRO_ENGINE_VERSION, natalChart, transits } from '../../engines/astro'
 import { CLASSICAL_BODY_NAMES } from '../../engines/astro/tables'
 import type { NatalChart, TransitResult } from '../../engines/astro/types'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
 import { clampTraits, emptyElements, emptyTraits, normalizeElements, normalizePhase } from '../math'
 import { ASTRO_BODY_TRAITS, ASTRO_HOUSE_WEIGHT, CLASSICAL_TO_OHENG } from '../tables'
 import { TRAIT_AXES, type AxisVote, type SpaceConfidence, type TraitVector } from '../types'
@@ -139,7 +139,7 @@ export function projectAstro(input: AstroProjectorInput): AxisVote {
     confidence: {
       traits: traitsConf(timeKnown),
       elements: elements ? { weight: HALF_WEIGHT, basis: 'derived' } : null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('astro', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable,
     reasons,

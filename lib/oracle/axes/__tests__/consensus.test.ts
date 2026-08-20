@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { computeConsensus, syntheticVote } from '../consensus'
 import { ELEMENT_BASELINE } from '../conventions'
 import { normalizeElements, normalizePhase } from '../math'
-import type { ElementVector, PhaseVector, TraitVector } from '../types'
+import { PHASE_AXES, type ElementVector, type PhaseVector, type TraitVector } from '../types'
 
 const FLAT_TRAITS: TraitVector = {
   drive: 50,
@@ -20,7 +20,7 @@ function phase(advance: number, hold: number, release: number): PhaseVector {
 }
 
 describe('computeConsensus', () => {
-  it('three identical votes → consensus and ~0 spread', () => {
+  it('three identical votes → high leader share and full unanimity', () => {
     const vote = syntheticVote('saju', {
       traits: FLAT_TRAITS,
       elements: BALANCED_ELEMENTS,
@@ -32,26 +32,31 @@ describe('computeConsensus', () => {
       { ...vote, system: 'prism' },
     ])
 
-    expect(result.phase.verdict).toBe('consensus')
     expect(result.phase.leader).toBe('advance')
-    expect(result.phase.tally.advance).toBeGreaterThanOrEqual(60)
+    expect(result.phase.leaderShare).toBeGreaterThanOrEqual(60)
+    expect(result.phase.unanimityCount).toBe(3)
+    expect(result.phase.participantCount).toBe(3)
     expect(result.traits.spread.drive).toBe(0)
     expect(result.traits.contested).toEqual([])
     expect(result.systemCount).toEqual({ total: 3, participating: 3, partial: 0, unreadable: 0 })
   })
 
-  it('two opposite phase votes → clash with the pair listed', () => {
-    const advancing = syntheticVote('saju', { phase: phase(80, 10, 10) })
-    const releasing = syntheticVote('astro', { phase: phase(10, 10, 80) })
+  it('two opposite phase votes → oppositions listed with leader share and counts', () => {
+    const advancing = syntheticVote('saju', { phase: phase(80, 10, 10), phaseTimescale: 'daily' })
+    const releasing = syntheticVote('astro', { phase: phase(10, 10, 80), phaseTimescale: 'daily' })
     const result = computeConsensus([advancing, releasing])
 
-    expect(result.phase.verdict).toBe('clash')
+    expect(result.phase.leaderShare).toBeGreaterThanOrEqual(45)
+    expect(result.phase.unanimityCount).toBe(1)
+    expect(result.phase.participantCount).toBe(2)
     expect(result.phase.oppositions).toHaveLength(1)
     expect(result.phase.oppositions[0]).toMatchObject({ a: 'saju', b: 'astro' })
     expect(result.phase.oppositions[0]!.gap).toBeGreaterThanOrEqual(60)
+    expect(result.phase.polarized).toBe(true)
+    expect(result.phase).not.toHaveProperty('verdict')
   })
 
-  it('clash beats a 60% majority', () => {
+  it('oppositions are reported alongside a strong advance tally', () => {
     const result = computeConsensus([
       syntheticVote('saju', { phase: phase(80, 15, 5) }),
       syntheticVote('astro', { phase: phase(10, 10, 80) }),
@@ -60,7 +65,8 @@ describe('computeConsensus', () => {
     ])
 
     expect(result.phase.tally.advance).toBeGreaterThanOrEqual(60)
-    expect(result.phase.verdict).toBe('clash')
+    expect(result.phase.leaderShare).toBeGreaterThanOrEqual(60)
+    expect(result.phase.unanimityCount).toBe(3)
     expect(result.phase.oppositions.some((row) => row.a === 'saju' && row.b === 'astro')).toBe(true)
   })
 
@@ -92,16 +98,10 @@ describe('computeConsensus', () => {
     expect(result.traits.participating).toEqual(['saju', 'astro'])
     expect(result.traits.unreadable).toEqual([])
     expect(degraded.confidence.traits).toEqual({ weight: 0.5, basis: 'degraded' })
-    // (80*1 + 20*0.5) / 1.5 = 60
     expect(result.traits.mean.drive).toBe(60)
   })
 
   it('same shape at different absolute levels is NOT contested (centering regression guard)', () => {
-    // All three votes share the exact same relative offsets across axes
-    // (+10 drive, -10 stability, +5 relation, +15 control, -15 exploration,
-    // -5 reflection from their own mean) but sit at different absolute
-    // levels (30 / 50 / 70) — the prism-vs-saju/astro scale mismatch this
-    // amendment exists to fix. None of the 6 axes should be contested.
     const shape = { drive: 10, stability: -10, relation: 5, control: 15, exploration: -15, reflection: -5 }
     const atLevel = (level: number): TraitVector => ({
       drive: level + shape.drive,
@@ -123,15 +123,10 @@ describe('computeConsensus', () => {
       expect(result.traits.spread[axis]).toBeLessThan(1)
       expect(result.traits.profile[axis]).toBeCloseTo(shape[axis], 1)
     }
-    // Raw mean still reflects the absolute levels (unchanged behaviour).
-    expect(result.traits.mean.drive).toBeCloseTo(60, 1) // (40+60+80)/3
+    expect(result.traits.mean.drive).toBeCloseTo(60, 1)
   })
 
-  it('a 45-59% leader is a `lean`, not `split` or `consensus`', () => {
-    // hold 53.3 vs advance 32.4 vs release 14.3 — the shape of the
-    // 7-projector worked example that motivated adding this band: a
-    // clear lean that the old binary consensus/split verdict would have
-    // mislabelled as `split`.
+  it('leaderShare matches tally leader percentage', () => {
     const result = computeConsensus([
       syntheticVote('saju', { phase: phase(32.4, 53.3, 14.3) }),
       syntheticVote('astro', { phase: phase(32.4, 53.3, 14.3) }),
@@ -139,40 +134,78 @@ describe('computeConsensus', () => {
     ])
 
     expect(result.phase.leader).toBe('hold')
-    expect(result.phase.tally.hold).toBeGreaterThanOrEqual(45)
-    expect(result.phase.tally.hold).toBeLessThan(60)
-    expect(result.phase.verdict).toBe('lean')
+    expect(result.phase.leaderShare).toBe(result.phase.tally.hold)
+    expect(result.phase.leaderShare).toBeGreaterThanOrEqual(45)
+    expect(result.phase.unanimityCount).toBe(3)
   })
 
-  it('a leader under 45% is `split`', () => {
+  it('split-shaped tally still exposes participant and unanimity counts', () => {
     const result = computeConsensus([
       syntheticVote('saju', { phase: phase(40, 35, 25) }),
       syntheticVote('astro', { phase: phase(30, 40, 30) }),
       syntheticVote('prism', { phase: phase(35, 30, 35) }),
     ])
 
-    expect(result.phase.tally[result.phase.leader]).toBeLessThan(45)
-    expect(result.phase.verdict).toBe('split')
+    expect(result.phase.leaderShare).toBeLessThan(45)
+    expect(result.phase.participantCount).toBe(3)
+    expect(result.phase.unanimityCount).toBeLessThan(3)
   })
 
-  it('a >=60% leader is still `consensus`, unchanged by the new band', () => {
-    const result = computeConsensus([
-      syntheticVote('saju', { phase: phase(70, 20, 10) }),
-      syntheticVote('astro', { phase: phase(65, 25, 10) }),
-    ])
-
-    expect(result.phase.tally.advance).toBeGreaterThanOrEqual(60)
-    expect(result.phase.verdict).toBe('consensus')
-  })
-
-  it('clash still overrides a `lean`-range leader', () => {
+  it('oppositions are reported without a verdict field', () => {
     const result = computeConsensus([
       syntheticVote('saju', { phase: phase(35, 50, 15) }),
       syntheticVote('astro', { phase: phase(80, 10, 10) }),
       syntheticVote('prism', { phase: phase(10, 10, 80) }),
     ])
 
-    expect(result.phase.verdict).toBe('clash')
+    expect(result.phase.oppositions.length).toBeGreaterThan(0)
+    expect(result.phase).not.toHaveProperty('verdict')
+  })
+
+  it('polarized is false when hold is >= 30%', () => {
+    const result = computeConsensus([
+      syntheticVote('saju', { phase: phase(40, 35, 25) }),
+      syntheticVote('astro', { phase: phase(35, 30, 35) }),
+    ])
+
+    expect(result.phase.polarized).toBe(false)
+  })
+
+  it('readingScope down-weights daily/draw phase votes under life lens', () => {
+    const eraVote = syntheticVote('saju', { phase: phase(80, 15, 5), phaseTimescale: 'era' })
+    const drawVote = syntheticVote('iching', { phase: phase(10, 10, 80), phaseTimescale: 'draw' })
+    const life = computeConsensus([eraVote, drawVote], { readingScope: 'life' })
+    const question = computeConsensus([eraVote, drawVote], { readingScope: 'question' })
+
+    expect(life.phase.leader).toBe('advance')
+    expect(life.phase.tally.advance).toBeGreaterThan(question.phase.tally.advance)
+    expect(question.phase.leader).toBe('release')
+  })
+
+  it('coreTally uses era/annual systems only and ignores daily/draw', () => {
+    const result = computeConsensus([
+      syntheticVote('saju', { phase: phase(80, 15, 5) }),
+      syntheticVote('ziwei', { phase: phase(75, 20, 5) }),
+      syntheticVote('prism', { phase: phase(70, 20, 10) }),
+      syntheticVote('sukuyou', { phase: phase(10, 10, 80) }),
+      syntheticVote('iching', { phase: phase(10, 10, 80) }),
+    ])
+
+    expect(result.phase.coreTally.advance).toBeGreaterThan(60)
+    expect(sumValues(result.phase.coreTally)).toBeCloseTo(100, 5)
+    expect(result.phase.tally.advance).toBeLessThan(result.phase.coreTally.advance)
+  })
+
+  it('coreTally is not affected by readingScope', () => {
+    const votes = [
+      syntheticVote('saju', { phase: phase(80, 15, 5) }),
+      syntheticVote('iching', { phase: phase(10, 10, 80) }),
+    ]
+    const life = computeConsensus(votes, { readingScope: 'life' })
+    const question = computeConsensus(votes, { readingScope: 'question' })
+
+    expect(life.phase.coreTally).toEqual(question.phase.coreTally)
+    expect(life.phase.tally.advance).toBeGreaterThan(question.phase.tally.advance)
   })
 
   it('unreadable systems appear in unreadable, never in participating', () => {
@@ -186,8 +219,12 @@ describe('computeConsensus', () => {
     expect(result.elements.unreadable).toEqual(['iching'])
     expect(result.phase.participating).toEqual(['saju'])
     expect(result.phase.unreadable).toEqual(['iching'])
-    expect(result.traits.participating).not.toContain('iching')
+    expect(result.phase.participantCount).toBe(1)
     expect(result.systemCount.unreadable).toBe(1)
     expect(result.systemCount.participating).toBe(1)
   })
 })
+
+function sumValues(values: PhaseVector): number {
+  return PHASE_AXES.reduce((sum, axis) => sum + values[axis], 0)
+}

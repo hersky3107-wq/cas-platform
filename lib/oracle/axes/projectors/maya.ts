@@ -15,8 +15,8 @@
  * degradation path exists here.
  */
 import { CALENDAR_ENGINE_VERSION, tzolkin } from '../../engines/calendar'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
-import { clampTraits, emptyPhase, emptyTraits, normalizePhase } from '../math'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
+import { clampTraits, emptyTraits, softenPhase } from '../math'
 import { MAYA_NAWAL_TRAITS, MAYA_TONE_PHASE } from '../tables'
 import { TRAIT_AXES, type AxisVote } from '../types'
 
@@ -38,9 +38,7 @@ export function projectMaya(input: MayaProjectorInput): AxisVote {
   for (const axis of TRAIT_AXES) rawTraits[axis] = mix[axis] * 100
   const traits = clampTraits(rawTraits)
 
-  const rawPhase = emptyPhase()
-  rawPhase[MAYA_TONE_PHASE[current.tone]!] = 100
-  const phase = normalizePhase(rawPhase)
+  const phase = softenPhase(MAYA_TONE_PHASE[current.tone]!, 'strong')
 
   return {
     system: 'tzolkin',
@@ -50,7 +48,7 @@ export function projectMaya(input: MayaProjectorInput): AxisVote {
     confidence: {
       traits: { weight: HALF_WEIGHT, basis: 'derived' },
       elements: null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('tzolkin', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable: [{ space: 'elements', code: 'maya.no_wuxing_mapping' }],
     reasons: {

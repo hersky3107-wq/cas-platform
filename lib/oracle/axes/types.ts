@@ -50,10 +50,20 @@ export type ConfidenceBasis = 'direct' | 'derived' | 'degraded'
 /** 1 = native full-weight vote; 0.5 = derived or degraded. */
 export type ConfidenceWeight = 1 | 0.5
 
+/** Which clock a projector reads phase on — used only in the phase space. */
+export type PhaseTimescale = 'era' | 'annual' | 'daily' | 'draw'
+
 export type SpaceConfidence = {
   weight: ConfidenceWeight
   basis: ConfidenceBasis
 }
+
+export type PhaseSpaceConfidence = SpaceConfidence & {
+  timescale: PhaseTimescale
+}
+
+/** Which temporal lens the caller wants phase consensus weighted for. */
+export type ReadingScope = 'life' | 'today' | 'question'
 
 export type UnreadableEntry = {
   space: AxisSpace
@@ -78,19 +88,50 @@ export type AxisVote = {
   confidence: {
     traits: SpaceConfidence | null
     elements: SpaceConfidence | null
-    phase: SpaceConfidence | null
+    phase: PhaseSpaceConfidence | null
   }
   unreadable: UnreadableEntry[]
   reasons: AxisReasons
   engineVersion: string
 }
 
-export type PhaseVerdict = 'consensus' | 'lean' | 'split' | 'clash'
-
 export type PhaseOpposition = {
   a: SystemId
   b: SystemId
   gap: number
+}
+
+/**
+ * Phase aggregation for display. Intentionally has NO `verdict` field —
+ * distribution simulation (40k subjects) showed there is no honest
+ * consensus/lean/split headline to give:
+ *   - full-12 mean leader share ~44%
+ *   - core (era+annual) mean leader 47.6%, five-system unanimity 2.2%
+ *   - saju+ziwei disagree 64% of the time when both vote
+ * UI copy uses `unanimityCount` / `participantCount` ("12개 중 5개가 정리 쪽")
+ * plus tally bars, `oppositions`, and `polarized`. Do NOT re-add verdict
+ * from intuition — the numbers above are the reason.
+ */
+export type PhaseConsensus = {
+  /** Full 12-system tally (scope-weighted). */
+  tally: PhaseVector
+  leader: PhaseAxis
+  /** Leading share of `tally`, 0–100. */
+  leaderShare: number
+  /** Systems whose own dominant pole matches `leader`. */
+  unanimityCount: number
+  /** Systems that contributed a phase vote (weight > 0). */
+  participantCount: number
+  /**
+   * Era + annual readers only (saju, ziwei, prism, numerology, ninestar),
+   * confidence weight alone — no readingScope multiplier.
+   */
+  coreTally: PhaseVector
+  /** Tally is bimodal: both action poles ≥30% and hold <30%. Screen flag only. */
+  polarized: boolean
+  oppositions: PhaseOpposition[]
+  participating: SystemId[]
+  unreadable: SystemId[]
 }
 
 export type TraitConsensus = {
@@ -113,15 +154,6 @@ export type ElementConsensus = {
   /** Gap below the balanced 20% baseline; 0 when at or above. Talisman input. */
   deficiency: ElementVector
   excess: ElementVector
-  participating: SystemId[]
-  unreadable: SystemId[]
-}
-
-export type PhaseConsensus = {
-  tally: PhaseVector
-  leader: PhaseAxis
-  verdict: PhaseVerdict
-  oppositions: PhaseOpposition[]
   participating: SystemId[]
   unreadable: SystemId[]
 }

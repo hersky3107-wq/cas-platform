@@ -16,7 +16,7 @@
 import { palaceStem, siHuaForStem, ziweiChart, ZIWEI_ENGINE_VERSION } from '../../engines/ziwei'
 import type { Palace, PlacedStar, SiHua, StarBrightness, ZiweiSex } from '../../engines/ziwei'
 import { stemByHanja } from '../../engines/calendar/tables'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
 import { clampTraits, emptyElements, emptyTraits, normalizeElements, normalizePhase } from '../math'
 import {
   ZIWEI_BRIGHTNESS_WEIGHT,
@@ -182,7 +182,7 @@ export function projectZiwei(input: ZiweiProjectorInput): AxisVote {
     confidence: {
       traits: { weight: HALF_WEIGHT, basis: 'derived' },
       elements: elements ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('ziwei', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable,
     reasons: {

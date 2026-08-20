@@ -13,7 +13,7 @@
  */
 import { DRAW_ENGINE_VERSION, runeDraw } from '../../engines/draw'
 import type { RuneDrawn } from '../../engines/draw'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
 import { clampTraits, emptyElements, emptyPhase, emptyTraits, normalizeElements, normalizePhase } from '../math'
 import { RUNE_ELEMENT, RUNE_PHASE, RUNE_TRAITS } from '../tables'
 import { TRAIT_AXES, type AxisVote, type PhaseAxis, type TraitVector } from '../types'
@@ -81,7 +81,7 @@ export function projectRune(input: RuneProjectorInput): AxisVote {
     confidence: {
       traits: { weight: HALF_WEIGHT, basis: 'derived' },
       elements: elements ? { weight: HALF_WEIGHT, basis: 'derived' } : null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('runes', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable,
     reasons: {

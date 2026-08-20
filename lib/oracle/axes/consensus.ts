@@ -1,8 +1,12 @@
 import {
   ELEMENT_BASELINE,
   PHASE_CLASH_END,
-  PHASE_CONSENSUS_MIN,
-  PHASE_LEAN_MIN,
+  PHASE_POLARIZED_ADVANCE_MIN,
+  PHASE_POLARIZED_HOLD_MAX,
+  PHASE_POLARIZED_RELEASE_MIN,
+  PHASE_CORE_SYSTEMS,
+  PHASE_SCOPE_WEIGHT,
+  PHASE_TIMESCALE,
   TRAIT_CONTESTED_SPREAD,
 } from './conventions'
 import {
@@ -26,15 +30,36 @@ import {
   type PhaseAxis,
   type PhaseOpposition,
   type PhaseVector,
+  type PhaseTimescale,
+  type ReadingScope,
   type SystemId,
   type TraitVector,
 } from './types'
 
 type WeightedSample = { x: number; w: number }
 
+function dominantPhase(vector: PhaseVector): PhaseAxis {
+  return PHASE_AXES.reduce((best, axis) => (vector[axis] > vector[best] ? axis : best), PHASE_AXES[0])
+}
+
+function phaseLeader(tally: PhaseVector): PhaseAxis {
+  return dominantPhase(tally)
+}
+
+export type ComputeConsensusOptions = {
+  /** Which temporal lens to weight phase votes for. Default `life`. */
+  readingScope?: ReadingScope
+}
+
 function spaceWeight(vote: AxisVote, space: 'traits' | 'elements' | 'phase'): number {
   const conf = vote.confidence[space]
   return conf ? conf.weight : 0
+}
+
+function phaseWeight(vote: AxisVote, readingScope: ReadingScope): number {
+  const conf = vote.confidence.phase
+  if (!conf) return 0
+  return conf.weight * PHASE_SCOPE_WEIGHT[readingScope][conf.timescale]
 }
 
 function partition(votes: AxisVote[], space: 'traits' | 'elements' | 'phase'): {
@@ -120,14 +145,14 @@ function elementConsensus(votes: AxisVote[]): AxisConsensus['elements'] {
   return { total, deficiency, excess, participating, unreadable }
 }
 
-function phaseConsensus(votes: AxisVote[]): AxisConsensus['phase'] {
-  const { participating, unreadable } = partition(votes, 'phase')
+export function computeCoreTally(votes: AxisVote[], systems: readonly SystemId[]): PhaseVector {
+  const allowed = new Set<SystemId>(systems)
   const raw = emptyPhase()
   let any = false
 
   for (const vote of votes) {
-    if (!vote.phase) continue
-    const weight = spaceWeight(vote, 'phase')
+    if (!allowed.has(vote.system) || !vote.phase) continue
+    const weight = vote.confidence.phase?.weight ?? 0
     if (weight <= 0) continue
     any = true
     for (const axis of PHASE_AXES) {
@@ -135,8 +160,52 @@ function phaseConsensus(votes: AxisVote[]): AxisConsensus['phase'] {
     }
   }
 
-  const tally: PhaseVector = any ? (normalizePhase(raw) ?? emptyPhase()) : emptyPhase()
-  const leader: PhaseAxis = PHASE_AXES.reduce((best, axis) => (tally[axis] > tally[best] ? axis : best), PHASE_AXES[0])
+  return any ? (normalizePhase(raw) ?? emptyPhase()) : emptyPhase()
+}
+
+function buildPhaseTally(votes: AxisVote[], weightFn: (vote: AxisVote) => number): PhaseVector {
+  const raw = emptyPhase()
+  let any = false
+  for (const vote of votes) {
+    if (!vote.phase) continue
+    const weight = weightFn(vote)
+    if (weight <= 0) continue
+    any = true
+    for (const axis of PHASE_AXES) {
+      raw[axis] += vote.phase[axis] * weight
+    }
+  }
+  return any ? (normalizePhase(raw) ?? emptyPhase()) : emptyPhase()
+}
+
+function countPhaseParticipants(votes: AxisVote[], weightFn: (vote: AxisVote) => number): number {
+  let count = 0
+  for (const vote of votes) {
+    if (!vote.phase) continue
+    if (weightFn(vote) > 0) count += 1
+  }
+  return count
+}
+
+function countPhaseUnanimity(votes: AxisVote[], leader: PhaseAxis, weightFn: (vote: AxisVote) => number): number {
+  let count = 0
+  for (const vote of votes) {
+    if (!vote.phase) continue
+    if (weightFn(vote) <= 0) continue
+    if (dominantPhase(vote.phase) === leader) count += 1
+  }
+  return count
+}
+
+function phaseConsensus(votes: AxisVote[], readingScope: ReadingScope): AxisConsensus['phase'] {
+  const { participating, unreadable } = partition(votes, 'phase')
+  const weightFn = (vote: AxisVote) => phaseWeight(vote, readingScope)
+  const tally = buildPhaseTally(votes, weightFn)
+  const leader = phaseLeader(tally)
+  const leaderShare = round1(tally[leader])
+  const participantCount = countPhaseParticipants(votes, weightFn)
+  const unanimityCount = countPhaseUnanimity(votes, leader, weightFn)
+  const coreTally = computeCoreTally(votes, PHASE_CORE_SYSTEMS)
 
   const readable = votes.filter((vote) => vote.phase !== null)
   const oppositions: PhaseOpposition[] = []
@@ -154,22 +223,30 @@ function phaseConsensus(votes: AxisVote[]): AxisConsensus['phase'] {
     }
   }
 
-  // Clash is the most interesting screen state — it hides neither behind a
-  // 60% majority nor behind a split. Below that, three bands by leader
-  // share: consensus (>=60), lean (>=45 and <60), split (<45).
-  let verdict: AxisConsensus['phase']['verdict']
-  if (oppositions.length > 0) verdict = 'clash'
-  else if (tally[leader] >= PHASE_CONSENSUS_MIN) verdict = 'consensus'
-  else if (tally[leader] >= PHASE_LEAN_MIN) verdict = 'lean'
-  else verdict = 'split'
+  const polarized =
+    tally.advance >= PHASE_POLARIZED_ADVANCE_MIN &&
+    tally.release >= PHASE_POLARIZED_RELEASE_MIN &&
+    tally.hold < PHASE_POLARIZED_HOLD_MAX
 
-  return { tally, leader, verdict, oppositions, participating, unreadable }
+  return {
+    tally,
+    leader,
+    leaderShare,
+    unanimityCount,
+    participantCount,
+    coreTally,
+    polarized,
+    oppositions,
+    participating,
+    unreadable,
+  }
 }
 
-export function computeConsensus(votes: AxisVote[]): AxisConsensus {
+export function computeConsensus(votes: AxisVote[], options: ComputeConsensusOptions = {}): AxisConsensus {
+  const readingScope = options.readingScope ?? 'life'
   const traits = traitConsensus(votes)
   const elements = elementConsensus(votes)
-  const phase = phaseConsensus(votes)
+  const phase = phaseConsensus(votes, readingScope)
 
   let participating = 0
   let partial = 0
@@ -206,6 +283,7 @@ export function syntheticVote(
     traitsWeight?: 1 | 0.5
     elementsWeight?: 1 | 0.5
     phaseWeight?: 1 | 0.5
+    phaseTimescale?: PhaseTimescale
     traitsBasis?: 'direct' | 'derived' | 'degraded'
     elementsBasis?: 'direct' | 'derived' | 'degraded'
     phaseBasis?: 'direct' | 'derived' | 'degraded'
@@ -232,7 +310,13 @@ export function syntheticVote(
       elements: partial.elements
         ? { weight: partial.elementsWeight ?? 1, basis: elementsBasis }
         : null,
-      phase: partial.phase ? { weight: partial.phaseWeight ?? 1, basis: phaseBasis } : null,
+      phase: partial.phase
+        ? {
+            weight: partial.phaseWeight ?? 1,
+            basis: phaseBasis,
+            timescale: partial.phaseTimescale ?? PHASE_TIMESCALE[system],
+          }
+        : null,
     },
     unreadable,
     reasons: {},

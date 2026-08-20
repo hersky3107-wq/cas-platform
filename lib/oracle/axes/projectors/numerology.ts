@@ -13,8 +13,8 @@
  */
 import { numerology, NUMEROLOGY_ENGINE_VERSION } from '../../engines/numerology'
 import type { NumerologyResult } from '../../engines/numerology'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
-import { clampTraits, emptyPhase, emptyTraits, normalizePhase } from '../math'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
+import { clampTraits, emptyTraits, softenPhase } from '../math'
 import { NUMEROLOGY_MASTER_BASE_DIGIT, NUMEROLOGY_NUMBER_TRAITS, NUMEROLOGY_PERSONAL_YEAR_PHASE } from '../tables'
 import { TRAIT_AXES, type AxisVote, type TraitVector } from '../types'
 
@@ -44,9 +44,7 @@ function phaseFromPersonalYear(personalYear: number) {
   const baseDigit = NUMEROLOGY_MASTER_BASE_DIGIT[personalYear] ?? personalYear
   const axis = NUMEROLOGY_PERSONAL_YEAR_PHASE[baseDigit]
   if (!axis) throw new Error(`axes/numerology: no phase for personal year ${personalYear}`)
-  const raw = emptyPhase()
-  raw[axis] = 100
-  return normalizePhase(raw)
+  return softenPhase(axis, 'strong')
 }
 
 export function projectNumerology(input: NumerologyProjectorInput): AxisVote {
@@ -64,7 +62,7 @@ export function projectNumerology(input: NumerologyProjectorInput): AxisVote {
     confidence: {
       traits: { weight: HALF_WEIGHT, basis: 'derived' },
       elements: null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('numerology', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable: [{ space: 'elements', code: 'numerology.no_wuxing_mapping' }],
     reasons: {

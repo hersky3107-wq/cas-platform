@@ -10,7 +10,7 @@ import type { SeasonElement } from '../../engines/calendar/types'
 import { prism, PRISM_ENGINE_VERSION, PRISM_TIMEZONE } from '../../engines/prism'
 import type { CycleId } from '../../engines/prism/tables'
 import type { PrismInput, PrismResult } from '../../engines/prism/types'
-import { DIRECT_WEIGHT } from '../conventions'
+import { DIRECT_WEIGHT, phaseConfidence } from '../conventions'
 import { clampTraits, emptyElements, normalizeElements, normalizePhase } from '../math'
 import { PRISM_CYCLE_PHASE, PRISM_CYCLE_REASON, PRISM_RELATION_REASON } from '../tables'
 import type { AxisVote, ElementAxis } from '../types'
@@ -77,7 +77,7 @@ export function projectPrismResult(result: PrismResult, atDate: string): AxisVot
     confidence: {
       traits: DIRECT,
       elements: elements ? DIRECT : null,
-      phase: phase ? DIRECT : null,
+      phase: phase ? phaseConfidence('prism', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable,
     reasons: {

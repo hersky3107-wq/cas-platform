@@ -15,7 +15,7 @@
 import { CALENDAR_ENGINE_VERSION, nineStar } from '../../engines/calendar'
 import { overcomes, producedBy } from '../../engines/calendar/tables'
 import type { FiveElement, NineStarValue } from '../../engines/calendar/types'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
 import { clampTraits, emptyElements, emptyPhase, emptyTraits, normalizeElements, normalizePhase } from '../math'
 import { FIVE_ELEMENT_RELATION_PHASE, NINE_STAR_ELEMENT_WEIGHT, NINE_STAR_PHASE_WEIGHT, NINE_STAR_TRAITS } from '../tables'
 import { TRAIT_AXES, type AxisVote, type PhaseVector, type TraitVector } from '../types'
@@ -97,7 +97,7 @@ export function projectNineStar(input: NineStarProjectorInput): AxisVote {
     confidence: {
       traits: { weight: HALF_WEIGHT, basis: 'derived' },
       elements: elements ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
-      phase: phase ? { weight: DIRECT_WEIGHT, basis: 'direct' } : null,
+      phase: phase ? phaseConfidence('ninestar', DIRECT_WEIGHT, 'direct') : null,
     },
     unreadable,
     reasons,

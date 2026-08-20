@@ -1,4 +1,7 @@
-import { ELEMENT_AXES, PHASE_AXES, TRAIT_AXES, type ElementVector, type PhaseVector, type TraitVector } from './types'
+import { PHASE_SOFTEN_MODERATE, PHASE_SOFTEN_STRONG } from './conventions'
+import { ELEMENT_AXES, PHASE_AXES, TRAIT_AXES, type ElementVector, type PhaseAxis, type PhaseVector, type TraitVector } from './types'
+
+export type PhaseStrength = 'strong' | 'moderate'
 
 export function clamp100(n: number): number {
   if (!Number.isFinite(n)) return 0
@@ -72,6 +75,30 @@ export function normalizeElements(raw: { wood: number; fire: number; earth: numb
 
 export function normalizePhase(raw: Record<string, number>): PhaseVector | null {
   return normalizeTo100(raw as PhaseVector, PHASE_AXES)
+}
+
+/**
+ * Soften a table-lookup phase verdict that would otherwise be 100/0/0.
+ * Dominant pole unchanged; residual splits toward `hold` when hold is not
+ * dominant (hold gets the larger residual share), or evenly between advance
+ * and release when hold IS dominant. See `PHASE_SOFTEN_*` in conventions.ts.
+ */
+export function softenPhase(dominant: PhaseAxis, strength: PhaseStrength): PhaseVector {
+  const shares = strength === 'strong' ? PHASE_SOFTEN_STRONG : PHASE_SOFTEN_MODERATE
+  const raw = emptyPhase()
+  raw[dominant] = shares.dominant
+  if (dominant === 'hold') {
+    const each = (100 - shares.dominant) / 2
+    raw.advance = each
+    raw.release = each
+  } else if (dominant === 'advance') {
+    raw.hold = shares.holdResidual
+    raw.release = shares.otherResidual
+  } else {
+    raw.hold = shares.holdResidual
+    raw.advance = shares.otherResidual
+  }
+  return normalizePhase(raw)!
 }
 
 /**

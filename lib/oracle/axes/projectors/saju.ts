@@ -6,7 +6,7 @@
 import { CALENDAR_ENGINE_VERSION, fiveElementBalance, fourPillars, greatLuck, tenGods } from '../../engines/calendar'
 import { overcomes, producedBy, TEN_GOD_MATRIX } from '../../engines/calendar/tables'
 import type { BranchInfo, FourPillars, StemInfo, TenGodName } from '../../engines/calendar/types'
-import { DIRECT_WEIGHT, HALF_WEIGHT } from '../conventions'
+import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
 import { clampTraits, emptyTraits, normalizeElements, normalizePhase } from '../math'
 import {
   TEN_GOD_GROUP,
@@ -155,7 +155,7 @@ export function projectSaju(input: SajuProjectorInput): AxisVote {
     confidence: {
       traits: conf(hourUnknown),
       elements: elements ? conf(hourUnknown) : null,
-      phase: phase ? conf(phaseDegraded) : null,
+      phase: phase ? phaseConfidence('saju', phaseDegraded ? HALF_WEIGHT : DIRECT_WEIGHT, phaseDegraded ? 'degraded' : 'direct') : null,
     },
     unreadable,
     reasons,
