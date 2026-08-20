@@ -1,12 +1,14 @@
 # Oracle rebuild schema
 
-Additive tables from `supabase/migrations/20260815000001_oracle_rebuild.sql`.
+Additive tables from `supabase/migrations/20260815000001_oracle_rebuild.sql`,
+plus per-session inputs from
+`supabase/migrations/20260820000001_oracle_session_inputs.sql`.
 `public.users.oracle_birth_profile` is the backfill **source** and is never
 nulled or dropped. Rollback: `supabase/rollbacks/20260815000001_oracle_rebuild_down.sql`
 (manual apply only — not under `supabase/migrations/`).
 
-Types: `lib/oracle/schema.ts`. No API route is wired to these tables yet.
-All future routes must use `supabaseAdmin` and still scope every query to
+Types: `lib/oracle/schema.ts`. Runner routes live under
+`app/api/oracle/session`. They use `supabaseAdmin` and still scope every query to
 the session uid (RLS is defense-in-depth; the admin client bypasses it).
 
 ## Name collision
@@ -36,7 +38,7 @@ users.oracle_birth_profile ──backfill──► oracle_profiles
 | Table | Writes | Reads |
 |---|---|---|
 | `oracle_profiles` | Profile save route (not wired). One-time backfill from `users.oracle_birth_profile`. | Job create (subject/partner), engines (`fourPillars` / 대운), any later history UI. |
-| `oracle_job_sessions` | Job-create route + cron sweeper (`status`, `lease_until`, `next_action`, `last_heartbeat_at`). | Cron claim, progress UI, every child-table join. |
+| `oracle_job_sessions` | Job-create route + cron sweeper (`status`, `lease_until`, `next_action`, `last_heartbeat_at`, `session_inputs`). | Cron claim, progress UI, every child-table join. |
 | `oracle_computations` | Compute worker (`next_action='compute'`). | Layer-1 readers (as `ai_payload`), later re-view. |
 | `oracle_readings` | Layer-1 worker. **Never `select model` in a client query.** | Layer-2 / UI narrative. |
 | `oracle_verdicts` | Layer-2 worker. **Never `select model` in a client query.** | Consensus worker, UI ballot. |
@@ -45,6 +47,31 @@ users.oracle_birth_profile ──backfill──► oracle_profiles
 | `oracle_sessions` (legacy) | Existing `save-session` route. **Not part of the rebuild.** | Existing share page. |
 
 `oracle_profiles.sex` is **only** for 대운 direction. Never send it to any AI.
+
+## Per-session inputs
+
+`oracle_job_sessions.session_inputs` is a nullable generic JSON bag for
+reading state that must be preserved with each historical session. It is not
+profile identity. The current shape is:
+
+```json
+{
+  "prism": {
+    "impulse": "ColorId",
+    "need": "ColorId",
+    "identity": "ColorId",
+    "microCheck": [1, 2, 3, 4]
+  }
+}
+```
+
+The three PRISM colors are required and distinct when `prism` is present.
+`microCheck` is optional; when present it is exactly four integers from 1 to
+5. MBTI remains on `oracle_profiles` because it is CORE identity.
+
+The bag is deliberately generic so another system can add a top-level key
+without another migration. Raw `session_inputs` never enters `ai_payload`;
+the AI receives only the computed projector output.
 
 ## Backfill
 

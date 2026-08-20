@@ -1,0 +1,234 @@
+/**
+ * Create-path behaviour: charge once, compute everything inline, and give the
+ * credits back if the calculation cannot produce anything.
+ */
+import { beforeEach, describe, expect, it } from 'vitest'
+import { PRISM_COLORS } from '../../engines/prism'
+import { resetAiSlots } from '../concurrency'
+import { creditsForOracleSession, ORACLE_CREDITS_MODULE, readerRosterFor } from '../conventions'
+import { createOracleSession, type CreateSessionRequest } from '../create'
+import { readingUnit, verdictUnit } from '../progress'
+import { createFakeCredits, createFakeStore, makeProfile, type FakeCredits, type FakeStore } from './fakes'
+
+const NOW = new Date('2026-08-20T03:00:00.000Z')
+const USER = 'user-1'
+const PRISM_INPUTS = {
+  prism: {
+    impulse: PRISM_COLORS[0],
+    need: PRISM_COLORS[1],
+    identity: PRISM_COLORS[2],
+    microCheck: [3, 4, 2, 3] as const,
+  },
+}
+
+const REQUEST: CreateSessionRequest = {
+  kind: 'personal',
+  subjectProfileId: 'profile-subject',
+  scope: 'single',
+  systems: [],
+  question: null,
+  sessionInputs: PRISM_INPUTS,
+  readerCount: 3,
+  locale: 'ko',
+}
+
+function harness(profileOverrides?: Parameters<typeof makeProfile>[0]): {
+  store: FakeStore
+  credits: FakeCredits
+  create: (request?: Partial<CreateSessionRequest>) => ReturnType<typeof createOracleSession>
+} {
+  const profile = makeProfile(profileOverrides)
+  const store = createFakeStore({ profiles: [profile] })
+  const credits = createFakeCredits()
+  return {
+    store,
+    credits,
+    create: (request) =>
+      createOracleSession(
+        USER,
+        { ...REQUEST, ...request },
+        { store, credits, now: () => NOW, seed: () => 'seed-create' },
+      ),
+  }
+}
+
+beforeEach(() => {
+  resetAiSlots()
+})
+
+describe('createOracleSession', () => {
+  it('charges once, computes all twelve systems, and hands back a layer1 session', async () => {
+    const { store, credits, create } = harness()
+    const outcome = await create()
+
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+
+    expect(outcome.reused).toBe(false)
+    expect(outcome.session.status).toBe('layer1')
+    expect(outcome.session.next_action).toBe('layer1')
+    expect(outcome.session.seed).toBe('seed-create')
+    expect(outcome.computations).toHaveLength(12)
+    expect(outcome.computations.every((row) => row.unreadable === false)).toBe(true)
+
+    const cost = creditsForOracleSession('personal', 3)
+    expect(credits.charges).toEqual([{ userId: USER, amount: cost, module: ORACLE_CREDITS_MODULE }])
+    expect(credits.refunds).toHaveLength(0)
+    expect(store.sessions[0]!.credits_charged).toBe(cost)
+    expect(store.sessions[0]!.charged_at).toBe(NOW.toISOString())
+    expect(store.sessions[0]!.session_inputs).toEqual(PRISM_INPUTS)
+  })
+
+  it('initializes progress with every reading and verdict unit', async () => {
+    const { store, create } = harness()
+    await create({ readerCount: 5 })
+
+    const progress = store.sessions[0]!.progress
+    expect(progress.pending).toContain(readingUnit('saju'))
+    expect(progress.pending).toContain(verdictUnit(readerRosterFor(5)[4]!))
+    expect(progress.pending).toHaveLength(12 + 5)
+    expect(progress.done).toHaveLength(0)
+    expect(progress.failed).toHaveLength(0)
+  })
+
+  it('writes the consensus row including the deficiency vector', async () => {
+    const { store, create } = harness()
+    await create()
+
+    const consensus = store.consensus[0]!
+    expect(consensus.system_agreement).not.toBeNull()
+    expect(consensus.deficiency_vector).not.toBeNull()
+    expect(consensus.ballot_tally).toBeNull()
+  })
+
+  it('marks a system that produced no vote as a 결번 before layer 1 starts', async () => {
+    // No name on the profile and no PRISM colours: two systems cannot compute.
+    const { store, create } = harness({ name_local: null, name_latin: null, name_hanja: null })
+    const outcome = await create({ sessionInputs: null })
+
+    expect(outcome.ok).toBe(true)
+    const progress = store.sessions[0]!.progress
+    expect(progress.failed).toContain(readingUnit('name'))
+    expect(progress.failed).toContain(readingUnit('prism'))
+    expect(progress.pending).not.toContain(readingUnit('name'))
+
+    const nameRow = store.computations.find((row) => row.system === 'name')!
+    expect(nameRow.axes).toBeNull()
+    expect(nameRow.ai_payload).toBeNull()
+  })
+
+  it('keeps PRISM as a 결번 when session inputs are absent', async () => {
+    const { store, create } = harness({
+      // A legacy profile-level copy must be ignored: PRISM state belongs to
+      // the session and reading it here would overwrite re-test history.
+      derived: {
+        prism: {
+          mbti: 'INTJ',
+          colors: {
+            impulse: PRISM_COLORS[0],
+            need: PRISM_COLORS[1],
+            identity: PRISM_COLORS[2],
+          },
+        },
+      },
+    })
+    const outcome = await create({ sessionInputs: null })
+
+    expect(outcome.ok).toBe(true)
+    expect(store.sessions[0]!.session_inputs).toBeNull()
+    expect(store.sessions[0]!.progress.failed).toContain(readingUnit('prism'))
+
+    const prism = store.computations.find((row) => row.system === 'prism')!
+    expect(prism.axes).toBeNull()
+    expect(prism.ai_payload).toBeNull()
+  })
+
+  it('rejects duplicate PRISM colors before deducting credits', async () => {
+    const { store, credits, create } = harness()
+    const duplicate = PRISM_COLORS[0]
+    const outcome = await create({
+      sessionInputs: {
+        prism: {
+          impulse: duplicate,
+          need: duplicate,
+          identity: PRISM_COLORS[1],
+        },
+      },
+    })
+
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.code).toBe('invalid_input')
+    expect(outcome.message).toContain('distinct')
+    expect(credits.charges).toHaveLength(0)
+    expect(store.sessions).toHaveLength(0)
+  })
+
+  it('returns the existing session instead of creating a second one', async () => {
+    const { store, credits, create } = harness()
+    const first = await create()
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+
+    const second = await create({ readerCount: 9 })
+    expect(second.ok).toBe(true)
+    if (!second.ok) return
+
+    expect(second.reused).toBe(true)
+    expect(second.session.id).toBe(first.session.id)
+    expect(second.session.reader_count).toBe(3)
+    expect(store.sessions).toHaveLength(1)
+    expect(credits.charges).toHaveLength(1)
+  })
+
+  it('refunds and marks the session failed when nothing is computable', async () => {
+    const { store, credits, create } = harness({ birth_date: 'not-a-date' })
+    const outcome = await create({ systems: ['saju', 'ziwei'] })
+
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.code).toBe('compute_failed')
+
+    const cost = creditsForOracleSession('personal', 3)
+    expect(credits.charges).toHaveLength(1)
+    expect(credits.refunds).toEqual([{ userId: USER, amount: cost }])
+    expect(credits.balance).toBe(1_000)
+
+    const session = store.sessions[0]!
+    expect(session.status).toBe('failed')
+    expect(session.next_action).toBeNull()
+    expect(session.completed_at).toBe(NOW.toISOString())
+  })
+
+  it('rejects an unknown profile without charging', async () => {
+    const { credits, create } = harness()
+    const outcome = await create({ subjectProfileId: 'profile-someone-else' })
+
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.code).toBe('profile_not_found')
+    expect(credits.charges).toHaveLength(0)
+  })
+
+  it('reports insufficient credits without creating a session', async () => {
+    const { store, credits, create } = harness()
+    credits.failWith = 'insufficient'
+
+    const outcome = await create()
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.code).toBe('insufficient_credits')
+    expect(store.sessions).toHaveLength(0)
+  })
+
+  it('records a skipped (admin) charge as 0 so a later refund cannot grant credits', async () => {
+    const { store, credits, create } = harness({ birth_date: 'not-a-date' })
+    credits.skip = true
+
+    const outcome = await create({ systems: ['saju'] })
+    expect(outcome.ok).toBe(false)
+    expect(store.sessions[0]!.credits_charged).toBe(0)
+    expect(credits.refunds).toHaveLength(0)
+    expect(credits.balance).toBe(1_000)
+  })
+})

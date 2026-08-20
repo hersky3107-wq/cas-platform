@@ -45,6 +45,21 @@ export type OracleJobProgress = {
   failed: string[]
 }
 
+export type OraclePrismSessionInput = {
+  impulse: string
+  need: string
+  identity: string
+  microCheck?: readonly [number, number, number, number]
+}
+
+/**
+ * Per-reading state, never profile identity. Generic bag so future systems
+ * can add inputs without another migration.
+ */
+export type OracleSessionInputs = {
+  prism?: OraclePrismSessionInput
+} & Record<string, unknown>
+
 /** public.oracle_profiles */
 export type OracleProfile = {
   id: string
@@ -82,6 +97,7 @@ export type OracleJobSession = {
   partner_profile_id: string | null
   scope: OracleSessionScope
   systems: string[]
+  session_inputs: OracleSessionInputs | null
   question_raw: string | null
   question_parsed: Record<string, unknown> | null
   reader_count: OracleReaderCount
