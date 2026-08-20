@@ -43,4 +43,18 @@ describe('LAYER1_REGISTRY', () => {
     }
     expect(layer1Entry('not-a-system')).toBeNull()
   })
+
+  it('scopes measured DeepSeek and Kimi controls to oracle calls', () => {
+    const saju = LAYER1_REGISTRY.saju.caller
+    const ninestar = LAYER1_REGISTRY.ninestar.caller
+    expect(saju.kind).toBe('platform')
+    expect(ninestar.kind).toBe('platform')
+    if (saju.kind === 'platform' && ninestar.kind === 'platform') {
+      expect(saju.extraRequestParams).toEqual({ reasoning: { max_tokens: 1024 } })
+      expect(ninestar.extraRequestParams).toEqual({
+        reasoning: { max_tokens: 1024 },
+        provider: { order: ['moonshotai'], allow_fallbacks: true },
+      })
+    }
+  })
 })

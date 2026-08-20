@@ -44,6 +44,10 @@ function okCall(overrides: Partial<Layer1CallResult> = {}): Layer1CallResult {
     latencyMs: 5,
     brand: 'DeepSeek',
     model: 'deepseek/deepseek-v3.2',
+    reasoningTokens: null,
+    contentTokens: 22,
+    costUsd: null,
+    diagnostics: null,
     ...overrides,
   }
 }

@@ -31,6 +31,15 @@ export type Layer1CallResult = {
   latencyMs: number
   brand: string
   model: string
+  reasoningTokens: number | null
+  contentTokens: number | null
+  costUsd: number | null
+  diagnostics: {
+    errorClass: string | null
+    httpStatus: number | null
+    responseBody: string | null
+    provider: string | null
+  } | null
 }
 
 export type Layer1Call = (input: Layer1CallInput) => Promise<Layer1CallResult>
@@ -68,8 +77,9 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
   try {
     if (entry.caller.kind === 'platform') {
       // TRAP (a): generous max_tokens is on the registry entry. Reasoning
-      // effort:'minimal' is already on PLATFORM_MODEL_REGISTRY extraRequestParams
-      // for the reasoners we use — we do not add a second copy here.
+      // controls are already on PLATFORM_MODEL_REGISTRY extraRequestParams
+      // (minimal effort normally; measured direct caps for DeepSeek/Kimi) —
+      // we do not add a second copy here.
       // TRAP (b): Qwen REJECTS reasoning.enabled=false. Do not send a disable.
       // TRAP (c): Amazon Nova is not in this twelve; if it is added, omit any
       // reasoning option entirely.
@@ -80,6 +90,11 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
         systemPrompt: input.systemPrompt,
         userPrompt: input.userPrompt,
         maxCompletionTokens: entry.maxCompletionTokens,
+        extraRequestParams: entry.caller.extraRequestParams,
+        // Return a branded provider timeout just before advance.ts's outer
+        // deadline. More importantly, AbortSignal stops the upstream request
+        // instead of leaving a billable fetch alive after Promise.race.
+        timeoutMs: Math.max(1, input.timeoutMs - 500),
       })
       const text = res.text ?? null
       const emptyContent = isEmptyModelText(text)
@@ -92,6 +107,10 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
         latencyMs: Date.now() - startedAt,
         brand: entry.brand,
         model: entry.model,
+        reasoningTokens: res.usage?.reasoningTokens ?? null,
+        contentTokens: res.usage?.contentTokens ?? null,
+        costUsd: res.costUsd ?? null,
+        diagnostics: res.diagnostics ?? null,
       }
       await logCost({
         sessionId: input.sessionId,
@@ -132,6 +151,17 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
       latencyMs: res.responseTimeMs || Date.now() - startedAt,
       brand: entry.brand,
       model: entry.model,
+      reasoningTokens: null,
+      contentTokens: res.completionTokens ?? null,
+      costUsd: res.costUsd ?? null,
+      diagnostics: res.error
+        ? {
+            errorClass: 'ProviderError',
+            httpStatus: null,
+            responseBody: res.error,
+            provider: entry.caller.provider,
+          }
+        : null,
     }
     await logCost({
       sessionId: input.sessionId,
@@ -164,6 +194,15 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
       latencyMs,
       brand: entry.brand,
       model: entry.model,
+      reasoningTokens: null,
+      contentTokens: null,
+      costUsd: null,
+      diagnostics: {
+        errorClass: error instanceof Error ? error.name : 'UnknownError',
+        httpStatus: null,
+        responseBody: message,
+        provider: entry.caller.kind === 'platform' ? 'openrouter' : entry.caller.provider,
+      },
     }
   }
 }

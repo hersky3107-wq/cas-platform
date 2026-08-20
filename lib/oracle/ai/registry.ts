@@ -23,6 +23,8 @@ export type Layer1Caller =
       kind: 'platform'
       /** PLATFORM_MODEL_REGISTRY id — the health page pings this exact key. */
       platformId: string
+      /** Oracle-only request controls; model catalog and league remain unchanged. */
+      extraRequestParams?: Record<string, unknown>
     }
   | {
       kind: 'core'
@@ -59,7 +61,13 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'DeepSeek V3.2',
     // PLATFORM_MODEL_REGISTRY id 'openrouter:deepseek-v3.2' (challenger, verified).
     model: 'deepseek/deepseek-v3.2',
-    caller: { kind: 'platform', platformId: 'openrouter:deepseek-v3.2' },
+    // Smoke 2026-08-20: effort:minimal still spent 2,380 reasoning tokens
+    // and took 88.3s. OpenRouter's documented direct-budget minimum is 1,024.
+    caller: {
+      kind: 'platform',
+      platformId: 'openrouter:deepseek-v3.2',
+      extraRequestParams: { reasoning: { max_tokens: 1024 } },
+    },
     maxCompletionTokens: 4000,
   },
   ziwei: {
@@ -87,7 +95,17 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'Kimi K2.6',
     // League confirmed 8000 is the working budget on a long prompt (2026-08-16).
     model: 'moonshotai/kimi-k2.6',
-    caller: { kind: 'platform', platformId: 'openrouter:kimi-k2.6' },
+    // Smoke 2026-08-20: unpinned routing returned an empty-content 200, then
+    // a Decart retry spent 5,411 reasoning tokens and exceeded 240s. Pin the
+    // Moonshot first-party endpoint while preserving fallback availability.
+    caller: {
+      kind: 'platform',
+      platformId: 'openrouter:kimi-k2.6',
+      extraRequestParams: {
+        reasoning: { max_tokens: 1024 },
+        provider: { order: ['moonshotai'], allow_fallbacks: true },
+      },
+    },
     maxCompletionTokens: 8000,
   },
   sukuyou: {

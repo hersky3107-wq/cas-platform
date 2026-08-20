@@ -221,6 +221,10 @@ async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit): Prom
   try {
     return await fetch(input, init)
   } catch (e: unknown) {
+    // A caller deadline is deliberate cancellation, not a transient network
+    // error. Retrying an already-aborted request would only delay the branded
+    // failure while the runner's outer deadline wins with brand=unknown.
+    if (init.signal?.aborted) throw e
     const name = typeof e === 'object' && e ? (e as { name?: unknown }).name : null
     const retryable = e instanceof TypeError || name === 'AbortError'
     if (!retryable) throw e
@@ -238,6 +242,10 @@ export type PlatformCallResult = {
     promptTokens: number | null
     completionTokens: number | null
     totalTokens: number | null
+    /** OpenRouter completion-token breakdown when the provider reports it. */
+    reasoningTokens?: number | null
+    /** Visible completion tokens (`completion - reasoning`) when derivable. */
+    contentTokens?: number | null
   }
   /**
    * Cost in USD for this call. Either the ACTUAL billed cost as reported by the
@@ -249,6 +257,13 @@ export type PlatformCallResult = {
   /** True when costUsd is a documented estimate, not a per-call billed figure. */
   costIsEstimated?: boolean
   error?: string
+  /** Raw transport details for server-side smoke diagnostics; never return to clients. */
+  diagnostics?: {
+    errorClass: 'HttpError' | 'InvalidJsonError' | 'EmptyContentError' | 'NetworkError' | 'TimeoutError' | null
+    httpStatus: number | null
+    responseBody: string | null
+    provider: string | null
+  }
 }
 
 type OpenAiCompatibleCallParams = {
@@ -262,6 +277,8 @@ type OpenAiCompatibleCallParams = {
   extraRequestParams?: Record<string, unknown>
   /** OpenRouter only: send `usage: { include: true }` so the response reports the actual billed cost (USD). */
   includeUsageCost?: boolean
+  /** Abort the actual HTTP request; unlike Promise.race this stops token spend. */
+  signal?: AbortSignal
 }
 
 /**
@@ -318,6 +335,7 @@ async function callOpenAiCompatibleOnce(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: params.signal,
     })
 
     const rawBody = await res.text().catch(() => '')
@@ -326,17 +344,48 @@ async function callOpenAiCompatibleOnce(
       // Never silently pass — surface status + raw body so auth / wrong
       // endpoint / wrong model name / billing errors are all diagnosable.
       return {
-        result: { text: null, error: `HTTP ${res.status} ${res.statusText}${rawBody ? ` - ${rawBody.slice(0, 800)}` : ''}` },
+        result: {
+          text: null,
+          error: `HTTP ${res.status} ${res.statusText}${rawBody ? ` - ${rawBody.slice(0, 800)}` : ''}`,
+          diagnostics: {
+            errorClass: 'HttpError',
+            httpStatus: res.status,
+            responseBody: rawBody.slice(0, 800) || null,
+            provider: null,
+          },
+        },
         emptyContent: false,
       }
     }
 
-    let json: any
+    let json: {
+      choices?: Array<{
+        message?: { content?: unknown }
+        finish_reason?: unknown
+      }>
+      usage?: {
+        prompt_tokens?: unknown
+        completion_tokens?: unknown
+        total_tokens?: unknown
+        cost?: unknown
+        completion_tokens_details?: { reasoning_tokens?: unknown }
+      }
+      provider?: unknown
+    }
     try {
       json = JSON.parse(rawBody)
     } catch {
       return {
-        result: { text: null, error: `HTTP ${res.status} but response body was not valid JSON: ${rawBody.slice(0, 800)}` },
+        result: {
+          text: null,
+          error: `HTTP ${res.status} but response body was not valid JSON: ${rawBody.slice(0, 800)}`,
+          diagnostics: {
+            errorClass: 'InvalidJsonError',
+            httpStatus: res.status,
+            responseBody: rawBody.slice(0, 800) || null,
+            provider: null,
+          },
+        },
         emptyContent: false,
       }
     }
@@ -344,6 +393,7 @@ async function callOpenAiCompatibleOnce(
     const choice = json?.choices?.[0]
     const content = choice?.message?.content
     const usage = json?.usage ?? {}
+    const reasoningTokens = usage?.completion_tokens_details?.reasoning_tokens
 
     if (typeof content !== 'string' || !content.trim().length) {
       // Same failure mode as lib/gunpo/local-providers.ts's solar/exaone bug:
@@ -352,7 +402,6 @@ async function callOpenAiCompatibleOnce(
       // `message.reasoning` only. Report it explicitly instead of returning
       // `{ text: null }` with no explanation; the caller retries once.
       const finishReason = choice?.finish_reason ?? 'unknown'
-      const reasoningTokens = usage?.completion_tokens_details?.reasoning_tokens
       return {
         result: {
           text: null,
@@ -360,6 +409,12 @@ async function callOpenAiCompatibleOnce(
             `HTTP 200 but message.content was empty (finish_reason=${finishReason}` +
             (typeof reasoningTokens === 'number' ? `, reasoning_tokens=${reasoningTokens}/${usage?.completion_tokens ?? '?'}` : '') +
             `). Raw: ${rawBody.slice(0, 500)}`,
+          diagnostics: {
+            errorClass: 'EmptyContentError',
+            httpStatus: res.status,
+            responseBody: rawBody.slice(0, 800) || null,
+            provider: typeof json?.provider === 'string' ? json.provider : null,
+          },
         },
         emptyContent: true,
       }
@@ -372,15 +427,39 @@ async function callOpenAiCompatibleOnce(
           promptTokens: typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : null,
           completionTokens: typeof usage.completion_tokens === 'number' ? usage.completion_tokens : null,
           totalTokens: typeof usage.total_tokens === 'number' ? usage.total_tokens : null,
+          reasoningTokens: typeof reasoningTokens === 'number' ? reasoningTokens : null,
+          contentTokens:
+            typeof usage.completion_tokens === 'number'
+              ? Math.max(0, usage.completion_tokens - (typeof reasoningTokens === 'number' ? reasoningTokens : 0))
+              : null,
         },
         // OpenRouter reports the actual billed cost here (USD) when includeUsageCost was set.
         costUsd: typeof usage.cost === 'number' ? usage.cost : null,
+        diagnostics: {
+          errorClass: null,
+          httpStatus: res.status,
+          responseBody: null,
+          provider: typeof json?.provider === 'string' ? json.provider : null,
+        },
       },
       emptyContent: false,
     }
   } catch (e: unknown) {
+    const errorName = e instanceof Error ? e.name : ''
     return {
-      result: { text: null, error: e instanceof Error ? e.message : 'unknown error calling OpenAI-compatible platform model' },
+      result: {
+        text: null,
+        error: e instanceof Error ? e.message : 'unknown error calling OpenAI-compatible platform model',
+        diagnostics: {
+          errorClass:
+            errorName === 'TimeoutError' || errorName === 'AbortError'
+              ? 'TimeoutError'
+              : 'NetworkError',
+          httpStatus: null,
+          responseBody: null,
+          provider: null,
+        },
+      },
       emptyContent: false,
     }
   }
@@ -431,7 +510,9 @@ async function callYouComResearch(params: {
       return { text: null, error: `HTTP ${res.status} ${res.statusText}${errText ? ` - ${errText}` : ''}` }
     }
 
-    const json: any = await res.json()
+    const json = (await res.json()) as {
+      output?: { content?: unknown; sources?: unknown }
+    }
     // Synchronous ResearchOutput shape: { output: { content, content_type, sources[] }, warnings[] }.
     // (background:true would instead return a ResearchTask handle — not used here.)
     const content = json?.output?.content
@@ -503,7 +584,13 @@ async function callClovaStudio(params: {
       return { text: null, error: `HTTP ${res.status} ${res.statusText}${errText ? ` - ${errText}` : ''}` }
     }
 
-    const json: any = await res.json()
+    const json = (await res.json()) as {
+      status?: { code?: unknown; message?: unknown }
+      result?: {
+        message?: { content?: unknown }
+        usage?: { promptTokens?: unknown; completionTokens?: unknown; totalTokens?: unknown }
+      }
+    }
     const statusCode = json?.status?.code
     if (statusCode && statusCode !== '20000') {
       return { text: null, error: `CLOVA status ${statusCode}: ${json?.status?.message ?? 'unknown error'}` }
@@ -535,8 +622,12 @@ export async function callPlatformModel(params: {
   systemPrompt?: string
   userPrompt: string
   maxCompletionTokens?: number
+  /** Optional real HTTP deadline. Aborts provider work instead of merely racing it. */
+  timeoutMs?: number
+  /** Server-side caller override; merged after the catalog entry's defaults. */
+  extraRequestParams?: Record<string, unknown>
 }): Promise<PlatformCallResult> {
-  const { id, systemPrompt, userPrompt, maxCompletionTokens } = params
+  const { id, systemPrompt, userPrompt, maxCompletionTokens, timeoutMs, extraRequestParams } = params
   const entry = getPlatformModelEntry(id)
   if (!entry) return { text: null, error: `Unknown platform model id: ${id}` }
 
@@ -546,6 +637,10 @@ export async function callPlatformModel(params: {
   }
 
   if (entry.provider === 'openrouter') {
+    const signal =
+      typeof timeoutMs === 'number' && timeoutMs > 0
+        ? AbortSignal.timeout(timeoutMs)
+        : undefined
     return callOpenAiCompatiblePlatformModel({
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey,
@@ -553,9 +648,10 @@ export async function callPlatformModel(params: {
       systemPrompt,
       userPrompt,
       maxCompletionTokens,
-      extraRequestParams: entry.extraRequestParams,
+      extraRequestParams: { ...entry.extraRequestParams, ...extraRequestParams },
       // Get the real billed cost back in usage.cost (OpenRouter-specific).
       includeUsageCost: true,
+      signal,
     })
   }
 
