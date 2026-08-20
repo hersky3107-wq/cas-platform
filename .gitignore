@@ -47,3 +47,4 @@ next-env.d.ts
 # local test-capture output (never commit)
 scripts/last-deep-run.txt
 .next-dev-route-lock-check.log
+supabase/.temp/
