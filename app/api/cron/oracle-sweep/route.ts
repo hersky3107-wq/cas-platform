@@ -11,7 +11,8 @@
  */
 import { after, NextResponse } from 'next/server'
 import { verifyCronAuth } from '@/lib/cron/auth'
-import { createStubAiAdapter, ORACLE_SWEEP_BATCH_SIZE, sweepOracleSessions } from '@/lib/oracle/runner'
+import { createOracleAiAdapter, oracleAiAdvanceOptions } from '@/lib/oracle/ai/create-adapter'
+import { ORACLE_SWEEP_BATCH_SIZE, sweepOracleSessions } from '@/lib/oracle/runner'
 import { createCreditsPort } from '@/lib/oracle/runner/credits'
 import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'
 
@@ -34,7 +35,8 @@ export async function GET(req: Request) {
       {
         store: createSupabaseRunnerStore(),
         credits: createCreditsPort(),
-        ai: createStubAiAdapter(),
+        ai: createOracleAiAdapter(),
+        ...oracleAiAdvanceOptions(),
         schedule: (task) => after(task),
       },
       limit,

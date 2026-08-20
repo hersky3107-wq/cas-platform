@@ -13,6 +13,8 @@
  */
 import type { AxisConsensus } from '../axes/types'
 import type { OracleComputation, OracleJobSession, OracleReaderCount, OracleSessionKind, OracleSessionScope } from '../schema'
+import { getOracleAiMode } from '../ai/mode'
+import { LAYER1_PROMPT_VERSION } from '../ai/prompts/layer1'
 import {
   creditsForOracleSession,
   ORACLE_CREDITS_MODULE,
@@ -197,7 +199,7 @@ export async function createOracleSession(
       credits_charged: chargedAmount,
       charged_at: nowIso,
       locale: request.locale,
-      prompt_version: ORACLE_PROMPT_VERSION,
+      prompt_version: getOracleAiMode() === 'live' ? LAYER1_PROMPT_VERSION : ORACLE_PROMPT_VERSION,
       last_heartbeat_at: nowIso,
     })
   } catch (e) {

@@ -1,9 +1,10 @@
 # ORACLE job runner
 
 Code: `lib/oracle/runner/`. Tables: `supabase/migrations/20260815000001_oracle_rebuild.sql`
-(see `docs/oracle-schema.md`). The AI provider is **stubbed** — `lib/oracle/runner/ai-stub.ts`
-implements `OracleAiAdapter`, and the real adapter will implement the same interface, so
-swapping it is a one-line change at each route.
+(see `docs/oracle-schema.md`). Layer 1 (the twelve per-system readings) can run live via `ORACLE_AI_MODE=live`.
+Layer 2 (readers / verdicts) is still stubbed. The default is `stub` so tests and
+local dev never spend tokens. Both adapters implement `OracleAiAdapter`; the
+routes construct them through `createOracleAiAdapter()`.
 
 ## Why it is shaped this way
 
@@ -94,9 +95,10 @@ unit resets it to 0. Above `ORACLE_MAX_ATTEMPTS` (4) the session is closed out.
 
 ## Timeouts and 결번
 
-Each AI unit gets 25s (`ORACLE_AI_UNIT_TIMEOUT_MS`), enforced by the runner racing the adapter
-so a misbehaving adapter cannot hang a chunk. On expiry the row is written with
-`status='timeout'` and the run **continues**.
+Each stubbed AI unit gets 25s (`ORACLE_AI_UNIT_TIMEOUT_MS`). Live layer-1 units get
+80s (`ORACLE_LAYER1_LIVE_TIMEOUT_MS`) so a reasoner can finish without outliving
+the 90s lease. The runner races the adapter either way; on expiry the row is
+written with `status='timeout'` and the run **continues**.
 
 A missing system is a 결번, not a failure. Three things produce one, and all three land in
 `progress.failed`:
@@ -181,6 +183,23 @@ until status ∈ { done, partial, failed }
   retries. The gauge is **process-local**: on a multi-instance deploy the effective limit is
   (instances × 50). A truly global cap needs a counter table and a round trip per unit, which is
   not worth paying for while the provider is stubbed.
+
+## AI mode
+
+```
+ORACLE_AI_MODE   stub | live    default stub
+```
+
+`stub` (default) uses `createStubAiAdapter` for both layers — no provider client
+is constructed. `live` runs layer-1 readings through the Challenger registry in
+`lib/oracle/ai/registry.ts` and keeps layer 2 on the stub. Model strings stay
+server-side; the poll view exposes brand only.
+
+A one-session live smoke (do not run from tests):
+
+```
+npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/oracle-smoke.ts
+```
 
 ## Stub configuration
 

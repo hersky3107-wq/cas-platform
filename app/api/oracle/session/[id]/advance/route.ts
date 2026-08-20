@@ -10,7 +10,8 @@
  * current status.
  */
 import { after, NextResponse } from 'next/server'
-import { advanceOracleSession, createStubAiAdapter } from '@/lib/oracle/runner'
+import { createOracleAiAdapter, oracleAiAdvanceOptions } from '@/lib/oracle/ai/create-adapter'
+import { advanceOracleSession } from '@/lib/oracle/runner'
 import { createCreditsPort } from '@/lib/oracle/runner/credits'
 import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
@@ -42,8 +43,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const outcome = await advanceOracleSession(id, {
       store,
       credits: createCreditsPort(),
-      // Swap this one line for the real provider adapter; the interface is identical.
-      ai: createStubAiAdapter(),
+      // ORACLE_AI_MODE=stub|live. Layer 2 stays on the stub either way.
+      ai: createOracleAiAdapter(),
+      ...oracleAiAdvanceOptions(),
       schedule: (task) => after(task),
     })
 
