@@ -30,7 +30,10 @@ export function ConsensusHeadline({
   const headline = consensusHeadline(consensus, t)
   const tally = t.bracket.compactTally(consensus.tally)
   const trackLine = combinedTrack ? combinedTrackLine(combinedTrack, t) : null
-  const trackProvisional = !combinedTrack || combinedTrack.n === 0 || combinedTrack.provisional
+  // Below the minimum sample `combinedTrackLine` already states the raw record
+  // and says the sample is too small, so no extra badge is needed — only the
+  // de-emphasis that keeps a low-sample line from reading like a headline claim.
+  const trackProvisional = !combinedTrack || combinedTrack.winRatePct === null
 
   if (variant === 'verdict') {
     return (
@@ -46,6 +49,7 @@ export function ConsensusHeadline({
           {headline}
         </p>
         <p className="mt-2 font-mono text-sm font-semibold tabular-nums text-league-accent-strong">{tally}</p>
+        <p className="mt-2 text-[11px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
         {trackLine ? (
           <p
             className={`mt-2 leading-snug ${
@@ -53,11 +57,6 @@ export function ConsensusHeadline({
             }`}
           >
             {trackLine}
-            {combinedTrack && combinedTrack.n > 0 && combinedTrack.provisional ? (
-              <span className="ml-1.5 inline-block rounded-full bg-league-bg-elevated px-1.5 py-0.5 text-[9px] font-semibold">
-                {t.leaderboard.collectingData}
-              </span>
-            ) : null}
           </p>
         ) : null}
       </div>
@@ -69,6 +68,7 @@ export function ConsensusHeadline({
       <p className={`font-bold leading-snug text-league-fg ${tone.emphasizeProbability ? 'text-lg' : 'text-base'}`}>
         {headline}
       </p>
+      <p className="mt-1 text-[11px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
       {trackLine ? <p className="mt-1 text-[11px] text-league-fg-muted">{trackLine}</p> : null}
     </div>
   )

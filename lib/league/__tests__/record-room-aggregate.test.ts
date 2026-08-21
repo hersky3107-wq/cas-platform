@@ -70,6 +70,23 @@ describe('buildRecordRoomEntries', () => {
     const [entry] = buildRecordRoomEntries([round({ color_bucket: 'bogus' })], [])
     expect(entry!.color_bucket).toBe('yellow')
   })
+
+  it('exposes RAW COUNTS ONLY — the record room can never publish a low-sample percentage', () => {
+    // The minimum-sample rule applies here by construction: this aggregate has no
+    // rate field at all, so the log shows "1 of 1 correct" and never "100%". If a
+    // percentage is ever added here it must go through lib/league/win-rate.ts.
+    const [entry] = buildRecordRoomEntries([round({ id: 'r1' })], [pred({ round_id: 'r1', is_correct: true })])
+    expect(entry!.correctCount).toBe(1)
+    expect(entry!.gradedCount).toBe(1)
+    const fields = Object.keys(entry!)
+    expect(fields.filter((f) => /pct|rate|percent/i.test(f))).toEqual([])
+
+    const page = buildRecordRoomPage([round({ id: 'r1' })], [pred({ round_id: 'r1' })], 1, 20, 1)
+    expect(Object.keys(page.headline).filter((f) => /pct|rate|percent/i.test(f))).toEqual([])
+    // The headline reports both numbers, so the sample size is always visible.
+    expect(page.headline.recentGraded).toBe(1)
+    expect(page.headline.recentCorrect).toBe(1)
+  })
 })
 
 describe('buildRecordRoomPage', () => {

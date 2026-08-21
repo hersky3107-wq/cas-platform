@@ -15,6 +15,11 @@ import {
   type HitRateSummary,
   type TierSplit,
 } from './card-types'
+import { gradingStateOf, type GradingState } from '../prediction/grading-state'
+import { formatRosterBrand, lookupRosterEntry, rosterModelIdentifier } from './roster'
+import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
+import { roundHitRecord } from './round-hit'
+import { normalizeSessionDate } from '../prediction/resolution'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), pure assembly.
@@ -45,9 +50,21 @@ export type RoundRow = {
   /** Optional: absent on rows selected before this column existed (e.g. older scripts' explicit column lists) — treated as null. */
   anchor_price?: number | null
   anchor_price_at?: string | null
+  /**
+   * Grading-trigger columns (migration 20260821000002). Optional for the same
+   * reason as the anchor pair: where they are absent the derived state falls
+   * back to what `resolves_at` + `actual_outcome` alone can prove, which is
+   * exactly the pre-migration behaviour.
+   */
+  grading_busy_until?: string | null
+  grading_attempted_at?: string | null
+  unresolvable_reason?: string | null
+  anchor_session_date?: string | null
+  resolution_session_date?: string | null
 }
 
 export type PredictionRow = {
+  id?: string | null
   model_id: string
   brand: string
   camp: string
@@ -117,13 +134,14 @@ function buildTierSplit(models: CardModelPrediction[]): TierSplit {
 }
 
 function buildHitRate(resolvedAt: string | null, models: CardModelPrediction[]): HitRateSummary {
-  const graded = models.filter((m) => m.is_correct !== null)
-  const correct = graded.filter((m) => m.is_correct === true).length
+  const { correct, graded } = roundHitRecord(models)
   return {
     resolved: resolvedAt !== null,
-    graded: graded.length,
-    correct: graded.length ? correct : null,
-    hitRatePct: graded.length ? Math.round((correct / graded.length) * 1000) / 10 : null,
+    graded,
+    correct: graded ? correct : null,
+    // Same minimum-sample gate as the leaderboard — see `./win-rate.ts`.
+    hitRatePct: winRatePctForDisplay(correct, graded),
+    provisional: !isDisplayableWinRate(graded),
   }
 }
 
@@ -157,9 +175,12 @@ export function computeCardAggregates(models: CardModelPrediction[], resolvedAt:
 function toCardModel(row: PredictionRow): CardModelPrediction {
   const tier = row.league_tier as CardModelPrediction['league_tier']
   const camp = row.camp as CardModelPrediction['camp']
+  const roster = lookupRosterEntry(row.model_id)
   return {
+    prediction_id: row.id ?? null,
     model_id: row.model_id,
-    brand: row.brand,
+    brand: roster ? formatRosterBrand(roster) : row.brand,
+    model_identifier: roster ? rosterModelIdentifier(roster) : row.model_id,
     camp,
     league_tier: tier,
     direction: toDirection(row.predicted_direction),
@@ -171,7 +192,58 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
   }
 }
 
-function toRoundMeta(row: RoundRow): CardRoundMeta {
+/**
+ * Presentation-layer grading state. `gradingStateOf` is the ledger; this is
+ * what the card is allowed to SHOW.
+ *
+ * A due round with no persisted `anchor_price` cannot be graded (the engine
+ * refuses with `missing_anchor`). Painting that as 'grading' is what trapped
+ * the AAPL card: every refresh re-fired grade-on-read, the attempt could not
+ * persist a reason (and even when it can, the next optimistic paint overwrote
+ * it), and the UI sat on "Grading…" forever. If we already know the attempt
+ * will refuse, we say so.
+ *
+ * A live claim (`grading`) is left alone — that is a genuine in-flight grade.
+ */
+export function presentCardGrading(
+  row: Pick<
+    RoundRow,
+    | 'resolves_at'
+    | 'actual_outcome'
+    | 'resolved_at'
+    | 'anchor_price'
+    | 'grading_busy_until'
+    | 'grading_attempted_at'
+    | 'unresolvable_reason'
+  >,
+  nowMs: number
+): { gradingState: GradingState; unresolvableReason: string | null } {
+  const gradingState = gradingStateOf(
+    {
+      resolves_at: row.resolves_at,
+      actual_outcome: row.actual_outcome,
+      resolved_at: row.resolved_at,
+      grading_busy_until: row.grading_busy_until ?? null,
+      grading_attempted_at: row.grading_attempted_at ?? null,
+      unresolvable_reason: row.unresolvable_reason ?? null,
+    },
+    nowMs
+  )
+  if (gradingState === 'due_ungraded' && !hasUsableAnchor(row.anchor_price)) {
+    return { gradingState: 'unresolvable', unresolvableReason: 'missing_anchor' }
+  }
+  return {
+    gradingState,
+    unresolvableReason: gradingState === 'unresolvable' ? (row.unresolvable_reason ?? null) : null,
+  }
+}
+
+function hasUsableAnchor(price: number | null | undefined): boolean {
+  return typeof price === 'number' && Number.isFinite(price)
+}
+
+function toRoundMeta(row: RoundRow, nowMs: number): CardRoundMeta {
+  const { gradingState, unresolvableReason } = presentCardGrading(row, nowMs)
   return {
     round_id: row.id,
     instrument: row.instrument,
@@ -184,8 +256,12 @@ function toRoundMeta(row: RoundRow): CardRoundMeta {
     opened_at: row.opened_at,
     resolved_at: row.resolved_at,
     actual_outcome: row.actual_outcome,
+    gradingState,
+    unresolvableReason,
     anchorPrice: row.anchor_price ?? null,
     anchorPriceAt: row.anchor_price_at ?? null,
+    anchorSessionDate: normalizeSessionDate(row.anchor_session_date ?? null),
+    resolutionSessionDate: normalizeSessionDate(row.resolution_session_date ?? null),
     // Populated by `card.ts` after this pure function returns — see
     // `CardRoundMeta.livePrice`'s doc comment. Defaulting to null here keeps
     // this function's output fully deterministic/testable without network
@@ -202,8 +278,9 @@ export function buildCardData(
   combinedTrack: CombinedMethodTrack = emptyCombinedTrack()
 ): CardData {
   const models = predictionRows.map(toCardModel)
+  const nowMs = Date.now()
   return {
-    round: toRoundMeta(roundRow),
+    round: toRoundMeta(roundRow, nowMs),
     models,
     ...computeCardAggregates(models, roundRow.resolved_at),
     combinedTrack,

@@ -1,6 +1,8 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import type { CardData } from '@/lib/league/card-types'
+import { GRADING_POLL_GIVE_UP_MS, GRADING_POLL_MS } from '@/lib/league/card-status'
 import { useCardStream, type CardStreamStartError } from '@/lib/league/use-card-stream'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
@@ -31,12 +33,57 @@ export type PredictionCardProps = {
  * component only ever deals with "how", never "whether", it renders.
  */
 export function PredictionCard({ initialData, live = false, devSignalsQuery }: PredictionCardProps) {
-  const { data, connection, liveProgress, startError } = useCardStream({
+  const { data, connection, liveProgress, startError, refetch } = useCardStream({
     roundId: initialData.round.round_id,
     initialData,
     live,
   })
   const { locale, t, dir, setLocale } = useLeagueLocale(devSignalsQuery)
+  const [gradingStalled, setGradingStalled] = useState(false)
+  const [translations, setTranslations] = useState<Record<string, string> | null>(null)
+  const [showOriginal, setShowOriginal] = useState(false)
+
+  useEffect(() => {
+    if (data.round.gradingState !== 'grading') {
+      setGradingStalled(false)
+      return
+    }
+    const startedAt = Date.now()
+    const id = window.setInterval(() => {
+      if (Date.now() - startedAt >= GRADING_POLL_GIVE_UP_MS) {
+        setGradingStalled(true)
+        window.clearInterval(id)
+        return
+      }
+      void refetch()
+    }, GRADING_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [data.round.gradingState, data.round.round_id, refetch])
+
+  useEffect(() => {
+    if (locale === 'en' || locale === 'pt') {
+      setTranslations(null)
+      setShowOriginal(false)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/league/card/rationales?round_id=${encodeURIComponent(data.round.round_id)}&locale=${encodeURIComponent(locale)}`,
+          { credentials: 'include' }
+        )
+        const body = (await res.json()) as { translations?: Record<string, string> }
+        if (cancelled) return
+        setTranslations(body.translations && Object.keys(body.translations).length ? body.translations : null)
+      } catch {
+        if (!cancelled) setTranslations(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [data.round.round_id, locale])
 
   return (
     <div dir={dir}>
@@ -50,7 +97,18 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
         </p>
       ) : null}
       <CardCompliance colorBucket={data.round.color_bucket} t={t} category={data.round.category}>
-        {(receipt) => <CardBody data={data} receipt={receipt} t={t} />}
+        {(receipt) => (
+          <CardBody
+            data={data}
+            receipt={receipt}
+            t={t}
+            locale={locale}
+            gradingStalled={gradingStalled}
+            translations={translations}
+            showOriginal={showOriginal}
+            onToggleOriginal={() => setShowOriginal((v) => !v)}
+          />
+        )}
       </CardCompliance>
     </div>
   )

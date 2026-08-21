@@ -13,6 +13,10 @@
  * "majority" / "abstain" / "hit rate").
  */
 
+import type { GradingState } from '../prediction/grading-state'
+
+export type { GradingState }
+
 export type Direction = 'up' | 'down' | 'flat'
 export type Camp = 'us' | 'china' | 'other'
 export type LeagueTier = 'premier' | 'challenger' | 'world' | 'scout'
@@ -36,8 +40,12 @@ export const TIER_LABEL: Record<LeagueTier, string> = {
 
 /** One model's stored answer for this round, as read from `model_predictions`. */
 export type CardModelPrediction = {
+  /** `model_predictions.id` — needed to cache view-time rationale translations. */
+  prediction_id: string | null
   model_id: string
   brand: string
+  /** Roster slot id shown under the brand line so tiers are distinguishable. */
+  model_identifier: string
   camp: Camp
   league_tier: LeagueTier
   /** null = abstained, timed out, errored, or parse failure. */
@@ -74,10 +82,18 @@ export type TierSplit = Record<LeagueTier, DirectionTally>
 /** Grading status. Fields stay null until the round's reconciliation job runs. */
 export type HitRateSummary = {
   resolved: boolean
-  /** Number of models whose is_correct is not null. */
+  /** Number of models whose is_correct is not null. This is the sample size `n`. */
   graded: number
   correct: number | null
+  /**
+   * Null until `graded` reaches the minimum sample (see `lib/league/win-rate.ts`)
+   * — a badge reading "100%" off two graded models is exactly the claim that
+   * gate exists to prevent. Below it the card shows the raw record instead,
+   * which `correct` + `graded` still support.
+   */
   hitRatePct: number | null
+  /** true while `graded` is below the minimum sample (equivalently: `hitRatePct === null`). */
+  provisional: boolean
 }
 
 /**
@@ -111,6 +127,21 @@ export type CardRoundMeta = {
   resolved_at: string | null
   actual_outcome: string | null
   /**
+   * WHICH KIND OF UNGRADED this round is: 'not_due' | 'due_ungraded' |
+   * 'grading' | 'graded' | 'unresolvable' (see
+   * `lib/prediction/grading-state.ts`). `actual_outcome === null` alone cannot
+   * tell a reader whether the deadline has not passed yet, whether grading is
+   * running right now, or whether grading was attempted and refused — the UI
+   * must say which rather than showing a blank result.
+   */
+  gradingState: GradingState
+  /**
+   * Why the last grading attempt refused, when `gradingState` is
+   * 'unresolvable' (e.g. 'missing_anchor', 'no_session_in_window',
+   * 'equal_close'). Null in every other state.
+   */
+  unresolvableReason: string | null
+  /**
    * Instrument price AT ROUND-OPEN time (what makes a model's up/down call
    * legible) — persisted once, at creation, from the same market-data packet
    * used to build the model prompts (see `orchestrator.ts`'s
@@ -122,11 +153,23 @@ export type CardRoundMeta = {
   /** Timestamp `anchorPrice` was observed. Null iff `anchorPrice` is null. */
   anchorPriceAt: string | null
   /**
+   * UTC-dated session whose close is `anchorPrice`. THE date the audit
+   * sentence may name. Never inferred from `anchorPriceAt`.
+   */
+  anchorSessionDate: string | null
+  /**
+   * UTC-dated session the round was graded against (`resolution_session_date`).
+   * Null until graded. Never inferred from `resolves_at`.
+   */
+  resolutionSessionDate: string | null
+  /**
    * Best-effort CURRENT quote, computed at read time (not stored) via a
    * short-TTL, in-process cache shared across all requests — see
    * `lib/league/live-price-cache.ts`. Always null on a cold cache entry, a
    * provider error/timeout/rate-limit, or a non-price category; never blocks
-   * or slows down the card read path. Secondary to `anchorPrice`.
+   * or slows down the card read path. Secondary to `anchorPrice`. The header
+   * MUST NOT render this until `anchorPrice` is present — a live quote
+   * standing alone is the wrong number for reading the forecasts against.
    */
   livePrice: number | null
   /** Timestamp `livePrice` was observed. Null iff `livePrice` is null. */

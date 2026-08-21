@@ -63,6 +63,17 @@ async function main() {
 
   console.log('--- Model view ---')
   printRows(leaderboard.model.rows)
+  const b = leaderboard.baselines
+  console.log(
+    `\n--- Baselines (not ranked) — ${b.modelsBeatingAlwaysUp} of ${b.modelsCompared} models beating Always up ---`
+  )
+  const alwaysFig =
+    b.alwaysUp.winRatePct !== null
+      ? `${b.alwaysUp.winRatePct}% (n=${b.alwaysUp.n})`
+      : `${b.alwaysUp.correct}W ${b.alwaysUp.resolved - b.alwaysUp.correct}L [sample too small]`
+  const flipFig = b.coinFlip.winRatePct !== null ? `${b.coinFlip.winRatePct}% (n=${b.coinFlip.n})` : '[sample too small]'
+  console.log(`     Always up          ${alwaysFig}`)
+  console.log(`     Coin flip          ${flipFig}  (reference, not a simulated run)`)
 
   console.log('\n--- Camp view (US vs. China vs. Other) ---')
   printRows(leaderboard.camp.rows)
@@ -111,10 +122,16 @@ function printRows(rows: ReturnType<typeof buildLeaderboardData>['model']['rows'
     console.log('  (no resolved predictions yet — empty state)')
     return
   }
-  for (const [i, row] of rows.entries()) {
-    const pct = row.winRatePct !== null ? `${row.winRatePct}%` : 'n/a'
-    const prov = row.provisional ? ' [provisional]' : ''
-    console.log(`  ${i + 1}. ${row.label.padEnd(16)} ${pct.padStart(6)}  (${row.correct}/${row.resolved} = n${row.n})${prov}`)
+  // Same gate as the UI: below the minimum sample there is no rank and no
+  // percentage to print, so an operator cannot screenshot a "100%" out of a dev
+  // console either.
+  for (const row of rows) {
+    const rank = row.rank !== null ? `${row.rank}.` : '  —'
+    const figure =
+      row.winRatePct !== null
+        ? `${row.winRatePct}% (n=${row.n})`
+        : `${row.correct}W ${row.resolved - row.correct}L [sample too small]`
+    console.log(`  ${rank.padStart(4)} ${row.label.padEnd(16)} ${figure}`)
   }
 }
 

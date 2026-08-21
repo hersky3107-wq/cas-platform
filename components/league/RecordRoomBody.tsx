@@ -58,6 +58,7 @@ export function RecordRoomBody({
           <p className="text-[11px] text-league-fg-muted">
             {t.recordRoom.headlineRecent(headline.recentCorrect, headline.recentGraded)}
           </p>
+          <p className="mt-1 text-[10px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
         </div>
       ) : null}
 
@@ -145,6 +146,7 @@ function RoundEntry({ entry, t }: { entry: RecordRoomRoundEntry; t: LeagueUiPack
           {t.recordRoom.modelsScore(entry.correctCount, entry.gradedCount)}
         </span>
       </div>
+      <p className="mt-1 text-[10px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
       {entry.actual_outcome ? (
         <p className="mt-1 text-[11px] text-league-fg-muted">
           {t.recordRoom.outcomeLabel}: {entry.actual_outcome}

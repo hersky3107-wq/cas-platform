@@ -1,5 +1,17 @@
 import 'server-only'
 
+import {
+  addUtcDays,
+  normalizeSessionDate,
+  precheckResolutionWindow,
+  resolveRoundOutcome,
+  toUtcDate,
+  type DailyBar,
+  type ResolutionResult,
+  type RoundResolutionInput,
+  type SeriesResult,
+} from '@/lib/prediction/resolution'
+
 /**
  * AI Prediction League — market-data adapter (Twelve Data).
  *
@@ -7,8 +19,12 @@ import 'server-only'
  *  1. fetchDataPacket(): current quote + recent N-day daily series for an
  *     instrument, normalized and formatted for injection into model prompts
  *     (tiers premier/challenger/world get ONLY this packet; scout uses web search).
- *  2. resolveActualOutcome(): the real resolved close + day-over-day direction,
- *     used by the reconciliation job's fetchActualOutcome.
+ *  2. resolveActualOutcome(): GRADING. Takes the ROUND (its persisted
+ *     `anchor_price` baseline + `resolves_at` deadline) and resolves it against
+ *     the HISTORICAL daily close inside that window — `time_series` only, never
+ *     `/quote`, never a live price. Used by the reconciliation job's
+ *     fetchActualOutcome. The decision logic itself is pure and lives in
+ *     `lib/prediction/resolution.ts`.
  *
  * Key: process.env.TWELVE_DATA_API_KEY (add to .env.local; full restart after).
  *
@@ -179,6 +195,19 @@ export function formatDataPacketForPrompt(packet: DataPacket): string {
 }
 
 /**
+ * Session date of a persisted close, taken from the packet's dated bars —
+ * never from `asOf` / wall-clock. Null when no bar matches.
+ */
+export function sessionDateForPrice(packet: DataPacket, price: number): string | null {
+  const series = packet.series ?? []
+  for (let i = series.length - 1; i >= 0; i--) {
+    const bar = series[i]
+    if (Math.abs(bar.close - price) < 0.005) return normalizeSessionDate(bar.date)
+  }
+  return null
+}
+
+/**
  * Lightweight CURRENT quote — the `/quote` endpoint only (1 Twelve Data
  * credit), no time series. Used by `live-price-cache.ts` for the card
  * header's optional "live" price, which needs freshness far more than it
@@ -202,46 +231,68 @@ export async function fetchLiveQuote(instrument: string): Promise<{ price: numbe
   return { price, asOf }
 }
 
-export type ResolvedOutcome = {
-  rawOutcome: string
-  actualDirection: 'up' | 'down' | 'flat' | null
-}
-
-/** Small deadband so a ~0% move resolves 'flat' rather than a noisy up/down. */
-const FLAT_THRESHOLD_PCT = 0.1
-
 /**
- * Real resolved close + day-over-day direction for reconciliation. Uses /quote
- * (latest close + previous_close + percent_change).
- *
- * NOTE: direction here is close-vs-previous-close (session over session), which
- * matches "closes higher than its last close" style props. Resolving strictly
- * against the price snapshot at round-open would need an anchor-price column on
- * prediction_rounds — a // v2 refinement.
+ * HISTORICAL daily closes for an inclusive UTC date range, from `time_series`.
+ * This is the ONLY price call in the grading path: no `/quote`, so a round
+ * reconciled days late is still graded against the close that actually
+ * happened inside its own window.
  */
-export async function resolveActualOutcome(instrument: string): Promise<ResolvedOutcome | null> {
+export async function fetchDailyCloses(
+  instrument: string,
+  startDate: string,
+  endDate: string
+): Promise<SeriesResult> {
   const mapped = mapInstrumentToTwelveData(instrument)
-  if (!mapped) return null
+  if (!mapped) return { ok: false, error: `instrument ${instrument} is not a market price symbol` }
 
-  const params: Record<string, string> = { symbol: mapped.symbol }
+  const params: Record<string, string> = {
+    symbol: mapped.symbol,
+    interval: '1day',
+    start_date: startDate,
+    end_date: endDate,
+    // Windows are short (24h…1m horizons); this only guards against the
+    // provider's default page size clipping a longer window.
+    outputsize: '500',
+  }
   if (mapped.exchange) params.exchange = mapped.exchange
 
-  const res = await twelveDataGet('quote', params)
-  if (!res.ok) return null
+  const res = await twelveDataGet('time_series', params)
+  if (!res.ok) return { ok: false, error: res.error }
 
-  const q = res.json
-  const close = num(q?.close)
-  if (typeof close !== 'number') return null
+  const values: any[] = Array.isArray(res.json?.values) ? res.json.values : []
+  const bars: DailyBar[] = values
+    .map((v) => ({ sessionDate: normalizeSessionDate(v?.datetime), close: num(v?.close) }))
+    .filter((v): v is DailyBar => typeof v.sessionDate === 'string' && typeof v.close === 'number')
+    .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate))
 
-  const pct = num(q?.percent_change)
-  const change = num(q?.change)
-  let direction: 'up' | 'down' | 'flat' | null = null
-  const basis = typeof pct === 'number' ? pct : typeof change === 'number' ? change : undefined
-  if (typeof basis === 'number') {
-    if (typeof pct === 'number' && Math.abs(pct) < FLAT_THRESHOLD_PCT) direction = 'flat'
-    else direction = basis > 0 ? 'up' : basis < 0 ? 'down' : 'flat'
+  return { ok: true, bars }
+}
+
+/**
+ * GRADING ENTRY POINT. Resolves ONE round against its own persisted baseline
+ * and its own deadline:
+ *   baseline   = round.anchorPrice (observed at round.anchorPriceAt)
+ *   resolution = close of the last session inside (anchorPriceAt, resolvesAt]
+ *
+ * Returns a REASON rather than a direction whenever the round cannot be graded
+ * honestly (no anchor, no session in the window, feed failure, exact tie) — see
+ * `lib/prediction/resolution.ts`. There is no live-quote fallback and no
+ * re-derived baseline: a round we cannot grade correctly stays ungraded.
+ */
+export async function resolveActualOutcome(round: RoundResolutionInput): Promise<ResolutionResult> {
+  if (!mapInstrumentToTwelveData(round.instrument)) {
+    return { ok: false, reason: 'not_price_instrument', detail: `${round.instrument} has no price symbol mapping` }
   }
 
-  const rawOutcome = `close=${close}${q?.currency ? ` ${q.currency}` : ''}${q?.datetime ? ` @ ${q.datetime}` : ''}${typeof pct === 'number' ? ` (${pct}%)` : ''}`
-  return { rawOutcome, actualDirection: direction }
+  // Validate the baseline/window BEFORE spending a price-feed credit.
+  const precheck = precheckResolutionWindow(round)
+  if (precheck) return precheck
+
+  const anchorDate = toUtcDate(Date.parse(round.anchorPriceAt!))
+  // +1 UTC day of headroom so the deadline day's bar is always in the response;
+  // bars past the deadline are then discarded by the window rule itself.
+  const endDate = addUtcDays(toUtcDate(Date.parse(round.resolvesAt)), 1)
+
+  const series = await fetchDailyCloses(round.instrument, anchorDate, endDate)
+  return resolveRoundOutcome({ ...round, series })
 }

@@ -1,17 +1,49 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { resolveActualOutcome } from '@/lib/league/market-data'
-import type { PredictionCategory } from './categories'
+import { fetchDailyCloses, mapInstrumentToTwelveData } from '@/lib/league/market-data'
+import {
+  createGradingEngine,
+  GRADING_SWEEP_SCAN_CAP,
+  type GradingRoundRecord,
+  type GradingStore,
+} from './grading-core'
+import { gradingStateOf, type GradingState } from './grading-state'
+import type { ResolutionDirection, ResolvedOutcome, UnresolvableReason } from './resolution'
 
 export type { PredictionCategory } from './categories'
+export type { GradingSweepReport, RoundGradingResult } from './grading-core'
+export { GRADING_SWEEP_SCAN_CAP } from './grading-core'
 
 /**
- * AI Prediction League — reconciliation skeleton.
+ * AI Prediction League — reconciliation (GRADING), DB wiring.
  *
- * SCOPE (this pass): storage + reconciliation wiring ONLY. No prediction
- * GENERATION (asking the models) and no price/result API is chosen here.
- * `fetchActualOutcome` is a deliberately-unimplemented, swappable stub.
+ * THE CREDIBILITY RULE: a round is graded against numbers that were already
+ * persisted or already happened, or it is not graded at all.
+ *  - baseline   = `prediction_rounds.anchor_price` (+ `anchor_price_at`),
+ *                 written at generation time. Never re-derived here.
+ *  - resolution = the historical close of the last session inside
+ *                 (anchor_price_at, resolves_at], from Twelve Data
+ *                 `time_series`. Never a live quote, so grading is
+ *                 time-invariant: reconciling three days late produces the
+ *                 same grade as reconciling on time.
+ *  - direction  = resolution vs anchor, binary up/down, NO flat band.
+ *
+ * Anything that cannot be resolved honestly (missing anchor, no session in the
+ * window, feed failure, exact tie) leaves the round UNGRADED with every
+ * `is_correct` NULL, and records WHY (`unresolvable_reason`) so the card and the
+ * leaderboard can say so out loud. An ungraded round is acceptable; a wrongly
+ * graded one is not.
+ *
+ * WHEN it runs — and the fact that nobody chooses WHICH rounds run — is
+ * `./grading-core.ts`. This file is only the service-role store behind it:
+ * every write here is conditioned on the round still being ungraded, so the DB
+ * refuses a second grade even if the application logic ever tried.
+ *
+ * NO CATEGORY SCOPE. The scan takes every due, ungraded round, including the
+ * ones with no price feed ('MATCH:…' sports handles): those come back as
+ * `not_price_instrument` and are visible as unresolvable instead of sitting
+ * ungraded forever with no explanation.
  *
  * ISOLATION: reads/writes ONLY public.prediction_rounds + public.model_predictions
  * via the service-role client. Never touches Verdict Predict or the generic
@@ -19,186 +51,207 @@ export type { PredictionCategory } from './categories'
  * session_results).
  */
 
-/**
- * Categories with a confirmed (or trivially-available) data source that this
- * automated job will attempt to reconcile once `fetchActualOutcome` is wired.
- *
- * 'sports' is included as the ONE event source treated as trivially available
- * (final scores are broadly published); it still flows through the same
- * swappable stub, so it resolves nothing until a source is chosen.
- *
- * Everything NOT in this set is schema-only for now — politics_election,
- * entertainment_awards, memecoin, crypto_perps, commodity_energy, bond_rate,
- * futures_derivatives. Scout is graded on direction like every other tier.
- */
-export const AUTO_RECONCILE_CATEGORIES: readonly PredictionCategory[] = [
-  'stock',
-  'etf_index',
-  'crypto_spot',
-  'fx',
-  'gold_metal',
-  'macro_econ',
-  'sports',
-]
+const ROUND_COLUMNS =
+  'id, instrument, category, resolves_at, anchor_price, anchor_price_at, actual_outcome, resolved_at, ' +
+  'grading_busy_until, grading_attempted_at, unresolvable_reason'
 
-export type PredictionRoundRow = {
-  id: string
-  category: PredictionCategory
-  instrument: string
-  horizon: string
-  resolution_rule: string
-  proposition_text: string
-  resolves_at: string
-  opened_at: string
+function asRecord(row: Record<string, unknown>): GradingRoundRecord {
+  return {
+    id: String(row.id),
+    instrument: String(row.instrument ?? ''),
+    category: String(row.category ?? ''),
+    resolves_at: String(row.resolves_at ?? ''),
+    anchor_price: typeof row.anchor_price === 'number' ? row.anchor_price : row.anchor_price === null ? null : Number(row.anchor_price) || null,
+    anchor_price_at: typeof row.anchor_price_at === 'string' ? row.anchor_price_at : null,
+    actual_outcome: typeof row.actual_outcome === 'string' ? row.actual_outcome : null,
+    resolved_at: typeof row.resolved_at === 'string' ? row.resolved_at : null,
+    grading_busy_until: typeof row.grading_busy_until === 'string' ? row.grading_busy_until : null,
+    grading_attempted_at: typeof row.grading_attempted_at === 'string' ? row.grading_attempted_at : null,
+    unresolvable_reason: typeof row.unresolvable_reason === 'string' ? row.unresolvable_reason : null,
+  }
 }
 
-/** Normalized outcome the reconciliation logic needs from any data source. */
-export type ActualOutcome = {
-  /** Raw resolved value stored verbatim on the round (price, score, result…). */
-  rawOutcome: string
+function isMissingColumnError(message: string, column: string): boolean {
+  return message.toLowerCase().includes(column) && /does not exist|schema cache/i.test(message)
+}
+
+/** Turns a Postgres "column missing" failure into the migration the operator has to apply. */
+function migrationHint(message: string): string {
+  if (isMissingColumnError(message, 'anchor_price')) {
+    return `${message} — apply migration 20260818000002_league_anchor_price.sql; grading requires a persisted baseline and will not guess one`
+  }
+  if (isMissingColumnError(message, 'grading_busy_until') || isMissingColumnError(message, 'unresolvable_reason')) {
+    return `${message} — apply migration 20260821000002_prediction_grading_state.sql; grading needs its claim/state columns`
+  }
+  if (isMissingColumnError(message, 'resolution_price') || isMissingColumnError(message, 'resolution_session_date')) {
+    return `${message} — apply migration 20260821000001_prediction_resolution_audit.sql; grading is not recorded without its audit trail`
+  }
+  return message
+}
+
+export const supabaseGradingStore: GradingStore = {
+  async loadRound(roundId) {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select(ROUND_COLUMNS)
+      .eq('id', roundId)
+      .maybeSingle()
+    if (error) throw new Error(migrationHint(error.message))
+    return data ? asRecord(data as unknown as Record<string, unknown>) : null
+  },
+
+  async listDueUngraded(cap) {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select(ROUND_COLUMNS)
+      .lt('resolves_at', new Date().toISOString())
+      .is('actual_outcome', null)
+      .order('resolves_at', { ascending: true })
+      .limit(cap)
+    if (error) throw new Error(migrationHint(error.message))
+    return ((data ?? []) as unknown as Record<string, unknown>[]).map(asRecord)
+  },
+
   /**
-   * The resolved direction used to grade directional predictions. Null when the
-   * source can determine a value but not a meaningful up/down/flat (grading is
-   * then left to manual/v2).
+   * THE LOCK. One conditional UPDATE: still ungraded, already due, and no live
+   * lease. Concurrent callers serialize on the row lock and only the first sees
+   * its predicate hold, so exactly one gets a row back — the same guarantee
+   * `league_deep_runs` gets from its unique key.
    */
-  actualDirection: 'up' | 'down' | 'flat' | null
-}
+  async claim(roundId, leaseUntilIso, nowIso) {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .update({ grading_busy_until: leaseUntilIso, grading_attempted_at: nowIso })
+      .eq('id', roundId)
+      .is('actual_outcome', null)
+      .lt('resolves_at', nowIso)
+      .or(`grading_busy_until.is.null,grading_busy_until.lt.${nowIso}`)
+      .select(ROUND_COLUMNS)
+      .maybeSingle()
+    if (error) throw new Error(migrationHint(error.message))
+    return data ? asRecord(data as unknown as Record<string, unknown>) : null
+  },
 
-/**
- * Swappable data-source adapter. Returns the resolved outcome for a due round,
- * or null when it cannot be resolved (source unavailable / not applicable).
- *
- * WIRED: price categories (stock/etf_index/crypto_spot/fx/gold_metal and, best
- * effort, macro_econ) resolve via Twelve Data — the same source used to build
- * the prediction data packet. Returns the resolved close + day-over-day
- * direction. Non-price instruments (e.g. 'sports' MATCH:… handles) don't map to
- * a Twelve Data symbol, so resolveActualOutcome returns null and they stay
- * effectively manual. // v2: sports/event result feeds.
- *
- * Still a single swappable function — repoint it to switch/augment sources.
- */
-export async function fetchActualOutcome(
-  round: PredictionRoundRow
-): Promise<ActualOutcome | null> {
-  const resolved = await resolveActualOutcome(round.instrument)
-  if (!resolved) return null
-  return { rawOutcome: resolved.rawOutcome, actualDirection: resolved.actualDirection }
-}
-
-export type ReconciliationSummary = {
-  scanned: number
-  resolved: number
-  skippedNoSource: number
-  childrenGraded: number
-  errors: { roundId: string; error: string }[]
-}
-
-/**
- * Reconciliation pass:
- *  1. select due, unresolved rounds in AUTO_RECONCILE_CATEGORIES,
- *  2. call the swappable fetchActualOutcome(round) stub,
- *  3. set round.actual_outcome + resolved_at,
- *  4. grade each child model_prediction's is_correct by comparing its
- *     predicted_direction to the round's actual direction.
- *
- * Scout-league children are graded on direction like every other tier
- * (they now persist a directional call). Non-directional rows
- * (predicted_direction null) are left with is_correct = null.
- */
-export async function reconcileDuePredictionRounds(limit = 200): Promise<ReconciliationSummary> {
-  const summary: ReconciliationSummary = {
-    scanned: 0,
-    resolved: 0,
-    skippedNoSource: 0,
-    childrenGraded: 0,
-    errors: [],
-  }
-
-  const nowIso = new Date().toISOString()
-
-  const { data: dueRounds, error: selErr } = await supabaseAdmin
-    .from('prediction_rounds')
-    .select('id, category, instrument, horizon, resolution_rule, proposition_text, resolves_at, opened_at')
-    .lt('resolves_at', nowIso)
-    .is('actual_outcome', null)
-    .in('category', AUTO_RECONCILE_CATEGORIES as unknown as string[])
-    .order('resolves_at', { ascending: true })
-    .limit(limit)
-
-  if (selErr) {
-    summary.errors.push({ roundId: '(select)', error: selErr.message })
-    return summary
-  }
-
-  const rounds = (dueRounds ?? []) as PredictionRoundRow[]
-  summary.scanned = rounds.length
-
-  for (const round of rounds) {
-    try {
-      const outcome = await fetchActualOutcome(round)
-      if (!outcome) {
-        // No source wired yet (or transient miss) — leave for a later pass.
-        summary.skippedNoSource += 1
-        continue
-      }
-
-      const resolvedAt = new Date().toISOString()
-      const { error: updErr } = await supabaseAdmin
-        .from('prediction_rounds')
-        .update({ actual_outcome: outcome.rawOutcome, resolved_at: resolvedAt })
-        .eq('id', round.id)
-        .is('actual_outcome', null) // idempotency guard against a racing pass
-
-      if (updErr) {
-        summary.errors.push({ roundId: round.id, error: updErr.message })
-        continue
-      }
-      summary.resolved += 1
-
-      // Grade children only when the source gave a usable direction.
-      if (outcome.actualDirection == null) continue
-
-      summary.childrenGraded += await gradeChildren(round.id, outcome.actualDirection)
-    } catch (e: unknown) {
-      summary.errors.push({
-        roundId: round.id,
-        error: e instanceof Error ? e.message : 'unknown reconciliation error',
+  /**
+   * Writes the grade with the EXACT number and session it was graded against.
+   * `.is('actual_outcome', null)` is the second double-grade guard: an expired
+   * claim can never overwrite a grade that already exists.
+   */
+  async saveGraded(roundId, outcome: ResolvedOutcome, nowIso) {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .update({
+        actual_outcome: outcome.rawOutcome,
+        resolution_price: outcome.resolutionPrice,
+        resolution_session_date: outcome.resolutionSessionDate,
+        resolved_at: nowIso,
+        unresolvable_reason: null,
+        unresolvable_detail: null,
+        grading_busy_until: null,
       })
-    }
-  }
+      .eq('id', roundId)
+      .is('actual_outcome', null)
+      .select('id')
 
-  return summary
+    if (error) {
+      const hint = migrationHint(error.message)
+      console.warn(`[prediction/grading] round ${roundId} not graded: ${hint}`)
+      return { ok: false, error: hint }
+    }
+    if (!data || data.length === 0) {
+      // Someone graded it between our claim and this write. Their grade stands.
+      return { ok: false, error: 'round was graded by another pass' }
+    }
+    return { ok: true }
+  },
+
+  async saveUnresolvable(roundId, reason: UnresolvableReason, detail, nowIso) {
+    const { error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .update({
+        unresolvable_reason: reason,
+        unresolvable_detail: detail.slice(0, 500),
+        grading_attempted_at: nowIso,
+        grading_busy_until: null,
+      })
+      .eq('id', roundId)
+      .is('actual_outcome', null)
+    if (error) {
+      console.warn(`[prediction/grading] round ${roundId} unresolvable (${reason}) but reason not recorded: ${migrationHint(error.message)}`)
+      return
+    }
+    console.warn(`[prediction/grading] round ${roundId} left UNGRADED — ${reason}: ${detail}`)
+  },
+
+  async releaseClaim(roundId) {
+    await supabaseAdmin.from('prediction_rounds').update({ grading_busy_until: null }).eq('id', roundId)
+  },
+
+  /**
+   * Grades the round's directional children. Rows with a null direction
+   * (abstain/timeout/error) and rows that answered 'flat' keep
+   * `is_correct = null`: a binary outcome must not manufacture a verdict for an
+   * answer it cannot judge.
+   */
+  async gradeChildren(roundId, direction: ResolutionDirection) {
+    const opposite = direction === 'up' ? 'down' : 'up'
+    const hit = await supabaseAdmin
+      .from('model_predictions')
+      .update({ is_correct: true }, { count: 'exact' })
+      .eq('round_id', roundId)
+      .eq('predicted_direction', direction)
+    const miss = await supabaseAdmin
+      .from('model_predictions')
+      .update({ is_correct: false }, { count: 'exact' })
+      .eq('round_id', roundId)
+      .eq('predicted_direction', opposite)
+    if (hit.error || miss.error) return 0
+    return (hit.count ?? 0) + (miss.count ?? 0)
+  },
 }
 
+const engine = createGradingEngine({
+  store: supabaseGradingStore,
+  fetchSeries: fetchDailyCloses,
+  isPriceInstrument: (instrument) => mapInstrumentToTwelveData(instrument) !== null,
+})
+
 /**
- * Sets is_correct for a round's directional children. Returns how many rows
- * were graded. Null-direction rows are skipped (they keep is_correct = null).
- * Scout is included — same directional compare as every other tier.
+ * THE ONLY TWO GRADING ENTRY POINTS. Neither takes a selector — see the
+ * contract at the top of `./grading-core.ts`.
  */
-async function gradeChildren(
-  roundId: string,
-  actualDirection: 'up' | 'down' | 'flat'
-): Promise<number> {
-  const { data: children, error } = await supabaseAdmin
-    .from('model_predictions')
-    .select('id, predicted_direction')
-    .eq('round_id', roundId)
+export const gradeRoundOnRead = engine.gradeRoundOnRead
+export const gradeAllDueRounds = engine.gradeAllDueRounds
 
-  if (error || !children) return 0
-
-  let graded = 0
-  for (const child of children as {
-    id: string
-    predicted_direction: string | null
-  }[]) {
-    if (child.predicted_direction == null) continue
-
-    const isCorrect = child.predicted_direction === actualDirection
-    const { error: updErr } = await supabaseAdmin
-      .from('model_predictions')
-      .update({ is_correct: isCorrect })
-      .eq('id', child.id)
-    if (!updErr) graded += 1
+/**
+ * Fire-and-forget grade-on-read for a page that lists MANY rounds (the record
+ * room). Same non-discretionary rule — it walks every due, ungraded round it
+ * finds — but per-round throttling (`GRADING_READ_COOLDOWN_MS`) keeps a page
+ * view from re-attempting a permanently unresolvable round every time.
+ *
+ * Never awaited by a read path: a reader waits for nothing, and whatever this
+ * grades shows up on their next load.
+ */
+export async function gradeDueRoundsInBackground(): Promise<void> {
+  try {
+    const due = await supabaseGradingStore.listDueUngraded(GRADING_SWEEP_SCAN_CAP)
+    for (const round of due) await gradeRoundOnRead(round.id)
+  } catch (e: unknown) {
+    console.warn(`[prediction/grading] background pass aborted: ${e instanceof Error ? e.message : 'unknown error'}`)
   }
-  return graded
+}
+
+/** Derived state for one round row — the read paths' source of truth. */
+export function gradingStateOfRow(
+  row: {
+    resolves_at: string
+    actual_outcome: string | null
+    resolved_at: string | null
+    grading_busy_until: string | null
+    grading_attempted_at: string | null
+    unresolvable_reason: string | null
+  },
+  nowMs = Date.now()
+): GradingState {
+  return gradingStateOf(row, nowMs)
 }

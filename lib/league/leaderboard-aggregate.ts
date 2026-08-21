@@ -1,11 +1,16 @@
 import {
   CAMP_LABEL,
+  CAMPS,
+  LEAGUE_TIERS,
   TIER_LABEL,
   emptyCombinedTrack,
   type Camp,
   type CombinedMethodTrack,
   type LeagueTier,
 } from './card-types'
+import { LEAGUE_ROSTER } from './roster'
+import { buildBaselineSummary, emptyBaselineSummary, type BaselineSummary } from './baselines'
+import { isDisplayableWinRate, winRatePctForDisplay, WIN_RATE_MIN_SAMPLE } from './win-rate'
 
 /**
  * AI Prediction League — LEADERBOARD aggregation (read-only).
@@ -18,17 +23,26 @@ import {
  * direction like every other tier. There is no excludeScout filter here and
  * the DB read path must not add one either.
  *
- * STATISTICAL HONESTY: every row carries `n` alongside `winRatePct`, and any
- * row with `n < LEADERBOARD_PROVISIONAL_THRESHOLD` is flagged `provisional`.
- * The UI must never render a win rate without also rendering `n`, and must
- * not show a bold percentage while provisional.
+ * STATISTICAL HONESTY IS ENFORCED IN THE DATA, NOT IN THE UI. A row with fewer
+ * than `LEADERBOARD_MIN_SAMPLE` graded rounds gets `winRatePct: null` AND
+ * `rank: null` — the percentage does not exist in the payload, so no component,
+ * embed or API consumer can render "100%" off one graded round, and no ordinal
+ * position can be derived from it either. Rows that do carry a percentage carry
+ * `n` next to it, and the percentage is TRUNCATED, never rounded up (see
+ * `./win-rate.ts`).
+ *
+ * SORT ORDER: ranked rows first, by win rate; below-threshold rows after them in
+ * a deliberately NON-PERFORMANCE order (roster order for models, tier order for
+ * tiers, camp order for camps, else alphabetical) so their position says nothing
+ * about who is winning.
  *
  * SCOPE of a "graded" row (applied by the caller at query time):
  *   - `is_correct` is non-null
  *   - the round's `item_type === 'ranked'`
  */
 
-export const LEADERBOARD_PROVISIONAL_THRESHOLD = 10
+/** Minimum graded rounds before a percentage or a rank exists. One number, from `lib/league/credits.ts`. */
+export const LEADERBOARD_MIN_SAMPLE = WIN_RATE_MIN_SAMPLE
 
 /** Korean national-pride slice — roster brand strings, not i18n keys. */
 export const KOREA_BRANDS = ['Upstage', 'NAVER', 'LG'] as const
@@ -63,9 +77,17 @@ export type LeaderboardRow = {
   resolved: number
   /** Same as `resolved` — kept as its own field because the UI must always show it next to `winRatePct`. */
   n: number
-  /** null only when `resolved === 0` (should not occur — buckets are only created from rows that exist). */
+  /**
+   * The displayable win rate, TRUNCATED to one decimal, or null when
+   * `n < LEADERBOARD_MIN_SAMPLE`. Null is not "unknown": it means a percentage
+   * must not be shown for this row, and there is no other field to compute one
+   * from (`correct`/`resolved` are there for the raw record, which is what the
+   * UI shows instead).
+   */
   winRatePct: number | null
-  /** true when `n < LEADERBOARD_PROVISIONAL_THRESHOLD`. */
+  /** Position among rows that qualify for a rate; null for below-threshold rows, which are unranked. */
+  rank: number | null
+  /** true when `n < LEADERBOARD_MIN_SAMPLE` (equivalently: `winRatePct === null`). */
   provisional: boolean
 }
 
@@ -74,6 +96,31 @@ export type LeaderboardSlice = {
   rows: LeaderboardRow[]
   /** Total graded rows that fed this slice (== sum of each row's `resolved`). */
   totalResolved: number
+  /** How many rows have a rank. 0 means this whole slice is presented unranked. */
+  rankedRows: number
+}
+
+/**
+ * HOW MANY ROUNDS ARE BEHIND THESE WIN RATES — and how many are not. Only
+ * `graded` rounds contribute to any denominator above; the other three counts
+ * exist so an ungraded round is DISCLOSED rather than quietly dropped, which is
+ * the difference between "we have graded 12 of 14 rounds" and a leaderboard that
+ * silently omits the two it could not grade.
+ *
+ * See `lib/prediction/grading-state.ts` for the state definitions. Rounds being
+ * graded right now count as `dueUngraded` (they are in flight, not a result).
+ */
+export type RoundCoverage = {
+  graded: number
+  /** Due, ungraded, and refused with a recorded reason (missing anchor, tie, no session…). */
+  unresolvable: number
+  /** Due and ungraded: grading has not run (or is running) for these yet. */
+  dueUngraded: number
+  notDue: number
+}
+
+export function emptyRoundCoverage(): RoundCoverage {
+  return { graded: 0, unresolvable: 0, dueUngraded: 0, notDue: 0 }
 }
 
 export type LeaderboardData = {
@@ -98,8 +145,21 @@ export type LeaderboardData = {
    * single method, how often that consensus matched the actual outcome.
    */
   combined: CombinedMethodTrack
+  /**
+   * Reference strategies (Always up, Coin flip). Not ranked. Computed from the
+   * same graded rounds as `model` — see `./baselines.ts`.
+   */
+  baselines: BaselineSummary
   /** Total in-scope graded rows considered. */
   totalConsidered: number
+  /**
+   * Graded rounds required before a row shows a percentage or gets a rank.
+   * Carried in the payload so a consumer (UI, blog embed, API client) states the
+   * same number the gate used instead of hard-coding its own.
+   */
+  minSample: number
+  /** Round-level accounting: what these win rates were computed from, and what they could not be. */
+  roundCoverage: RoundCoverage
   generatedAt: string
 }
 
@@ -132,14 +192,52 @@ function bucketOf(row: GradedPredictionRow, scope: LeaderboardScope): { key: str
   }
 }
 
-function sortRows(rows: LeaderboardRow[]): LeaderboardRow[] {
-  return [...rows].sort((a, b) => {
-    const wa = a.winRatePct ?? -1
-    const wb = b.winRatePct ?? -1
-    if (wb !== wa) return wb - wa
-    if (b.resolved !== a.resolved) return b.resolved - a.resolved
-    return a.key.localeCompare(b.key)
-  })
+const ROSTER_ORDER = new Map(LEAGUE_ROSTER.map((entry, index) => [entry.model_id, index]))
+
+/**
+ * Position of an UNRANKED row. Deliberately unrelated to performance: roster
+ * order for models, the league's own tier/camp order for those slices, and
+ * alphabetical everywhere else. A reader must not be able to infer a ranking
+ * from where a low-sample row sits.
+ */
+function unrankedOrderOf(row: LeaderboardRow, scope: LeaderboardScope): number {
+  if (scope === 'model') return ROSTER_ORDER.get(row.key) ?? Number.MAX_SAFE_INTEGER
+  if (scope === 'tier') {
+    const index = LEAGUE_TIERS.indexOf(row.key as LeagueTier)
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index
+  }
+  if (scope === 'camp' || scope === 'campHeadline') {
+    const index = CAMPS.indexOf(row.key as Camp)
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index
+  }
+  return Number.MAX_SAFE_INTEGER
+}
+
+/**
+ * Ranked rows first (by rate, then sample size), then the unranked ones. Only
+ * the ranked block gets rank numbers — that is what keeps a 1-round row from
+ * appearing to be "in first place".
+ */
+function orderAndRank(rows: LeaderboardRow[], scope: LeaderboardScope): LeaderboardRow[] {
+  const ranked = rows
+    .filter((row) => row.winRatePct !== null)
+    .sort((a, b) => {
+      if (b.winRatePct !== a.winRatePct) return (b.winRatePct ?? 0) - (a.winRatePct ?? 0)
+      if (b.resolved !== a.resolved) return b.resolved - a.resolved
+      return a.key.localeCompare(b.key)
+    })
+    .map((row, index) => ({ ...row, rank: index + 1 }))
+
+  const unranked = rows
+    .filter((row) => row.winRatePct === null)
+    .sort((a, b) => {
+      const oa = unrankedOrderOf(a, scope)
+      const ob = unrankedOrderOf(b, scope)
+      if (oa !== ob) return oa - ob
+      return a.label.localeCompare(b.label) || a.key.localeCompare(b.key)
+    })
+
+  return [...ranked, ...unranked]
 }
 
 function toRow(key: string, b: { label: string; correct: number; resolved: number }): LeaderboardRow {
@@ -149,8 +247,9 @@ function toRow(key: string, b: { label: string; correct: number; resolved: numbe
     correct: b.correct,
     resolved: b.resolved,
     n: b.resolved,
-    winRatePct: b.resolved > 0 ? Math.round((b.correct / b.resolved) * 1000) / 10 : null,
-    provisional: b.resolved < LEADERBOARD_PROVISIONAL_THRESHOLD,
+    winRatePct: winRatePctForDisplay(b.correct, b.resolved),
+    rank: null,
+    provisional: !isDisplayableWinRate(b.resolved),
   }
 }
 
@@ -168,10 +267,16 @@ export function buildLeaderboardSlice(rows: readonly GradedPredictionRow[], scop
     buckets.set(bucketKey.key, bucket)
   }
 
+  const ordered = orderAndRank(
+    Array.from(buckets.entries()).map(([key, b]) => toRow(key, b)),
+    scope
+  )
+
   return {
     scope,
-    rows: sortRows(Array.from(buckets.entries()).map(([key, b]) => toRow(key, b))),
+    rows: ordered,
     totalResolved: considered,
+    rankedRows: ordered.filter((row) => row.rank !== null).length,
   }
 }
 
@@ -218,15 +323,25 @@ export function buildCombinedMethodTrack(rows: readonly GradedPredictionRow[]): 
     correct,
     resolved,
     n: resolved,
-    winRatePct: Math.round((correct / resolved) * 1000) / 10,
-    provisional: resolved < LEADERBOARD_PROVISIONAL_THRESHOLD,
+    // Same gate as every other surface: the combined method does not get to
+    // advertise "100% accuracy" off its first resolved round either.
+    winRatePct: winRatePctForDisplay(correct, resolved),
+    provisional: !isDisplayableWinRate(resolved),
   }
 }
 
-/** Single entry point: one pass over already-filtered graded rows, all slices. */
-export function buildLeaderboardData(rows: readonly GradedPredictionRow[]): LeaderboardData {
+/**
+ * Single entry point: one pass over already-filtered graded rows, all slices.
+ * `coverage` is round-level accounting from the caller (the DB read path);
+ * omitting it yields zeros, never a guess derived from the graded rows.
+ */
+export function buildLeaderboardData(
+  rows: readonly GradedPredictionRow[],
+  coverage: RoundCoverage = emptyRoundCoverage()
+): LeaderboardData {
+  const model = buildLeaderboardSlice(rows, 'model')
   return {
-    model: buildLeaderboardSlice(rows, 'model'),
+    model,
     campHeadline: buildLeaderboardSlice(rows, 'campHeadline'),
     method: buildLeaderboardSlice(rows, 'method'),
     camp: buildLeaderboardSlice(rows, 'camp'),
@@ -235,7 +350,10 @@ export function buildLeaderboardData(rows: readonly GradedPredictionRow[]): Lead
     category: buildLeaderboardSlice(rows, 'category'),
     korea: buildLeaderboardSlice(rows, 'korea'),
     combined: buildCombinedMethodTrack(rows),
+    baselines: rows.length === 0 ? emptyBaselineSummary() : buildBaselineSummary(rows),
     totalConsidered: rows.length,
+    minSample: LEADERBOARD_MIN_SAMPLE,
+    roundCoverage: coverage,
     generatedAt: new Date().toISOString(),
   }
 }

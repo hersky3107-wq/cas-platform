@@ -1,4 +1,5 @@
 import type { Camp, ColorBucket, Direction, LeagueTier } from './card-types'
+import { roundHitRecord } from './round-hit'
 
 /**
  * AI Prediction League — RECORD ROOM aggregation (read-only).
@@ -118,7 +119,7 @@ export function buildRecordRoomEntries(
 
   return roundRows.map((round) => {
     const models = (byRound.get(round.id) ?? []).map(toModelEntry)
-    const graded = models.filter((m) => m.is_correct !== null)
+    const hit = roundHitRecord(models)
     return {
       round_id: round.id,
       proposition_text: round.proposition_text,
@@ -128,8 +129,8 @@ export function buildRecordRoomEntries(
       resolved_at: round.resolved_at,
       actual_outcome: round.actual_outcome,
       models,
-      gradedCount: graded.length,
-      correctCount: graded.filter((m) => m.is_correct === true).length,
+      gradedCount: hit.graded,
+      correctCount: hit.correct,
     }
   })
 }

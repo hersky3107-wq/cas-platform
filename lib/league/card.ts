@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { gradeRoundOnRead } from '@/lib/prediction/reconciliation'
 import { buildCardData, type PredictionRow, type RoundRow } from './card-aggregate'
 import type { CardData } from './card-types'
 import { fetchLeaderboardData, type LeaderboardScope } from './leaderboard'
@@ -11,9 +12,14 @@ import { getCachedLivePrice } from './live-price-cache'
  *
  * Reads one round + its model_predictions and hands them to the pure
  * `buildCardData` (see `card-aggregate.ts`) to assemble the read-only
- * `CardData` the UI consumes. This module NEVER writes to the ledger — that
- * remains the orchestrator's job (`lib/league/orchestrator.ts`), which this
- * file does not import and does not call.
+ * `CardData` the UI consumes. This module never CREATES anything — generation
+ * remains the orchestrator's job (`lib/league/orchestrator.ts`), which this file
+ * does not import and does not call.
+ *
+ * The one write it can cause is GRADE-ON-READ: opening a round whose deadline
+ * has passed is what triggers grading for that round (see `startGradingOnRead`).
+ * It is fire-and-forget, it is claimed so concurrent readers cannot double-grade,
+ * and it can only ever grade a round that is already due and still ungraded.
  */
 
 export { buildCardData }
@@ -22,7 +28,7 @@ export type { CardData }
 const ROUND_COLUMNS =
   'id, proposition_text, category, color_bucket, instrument, horizon, resolution_rule, resolves_at, opened_at, actual_outcome, resolved_at'
 const PREDICTION_COLUMNS =
-  'model_id, brand, camp, league_tier, predicted_direction, predicted_value, reasoning_snippet, is_correct, cost_usd, predicted_at'
+  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, reasoning_snippet, is_correct, cost_usd, predicted_at'
 
 /** Warn once (not once per request) if the anchor-price migration hasn't been applied yet. */
 let warnedMissingAnchorColumns = false
@@ -73,37 +79,87 @@ async function loadRound(lookup: CardLookup): Promise<RoundRow> {
   return data as RoundRow
 }
 
+type OptionalRoundColumns = {
+  anchor_price: number | null
+  anchor_price_at: string | null
+  grading_busy_until: string | null
+  grading_attempted_at: string | null
+  unresolvable_reason: string | null
+  anchor_session_date: string | null
+  resolution_session_date: string | null
+}
+
+const EMPTY_OPTIONAL_COLUMNS: OptionalRoundColumns = {
+  anchor_price: null,
+  anchor_price_at: null,
+  grading_busy_until: null,
+  grading_attempted_at: null,
+  unresolvable_reason: null,
+  anchor_session_date: null,
+  resolution_session_date: null,
+}
+
 /**
- * Deliberately SEPARATE from `loadRound`'s select (rather than adding
- * `anchor_price, anchor_price_at` to `ROUND_COLUMNS`): migration
- * `20260818000002_league_anchor_price.sql` may not be applied to every
+ * Deliberately SEPARATE from `loadRound`'s select (rather than adding these to
+ * `ROUND_COLUMNS`): migrations `20260818000002_league_anchor_price.sql` and
+ * `20260821000002_prediction_grading_state.sql` may not be applied to every
  * environment yet (same situation as `league_research_packets` — see
- * `lib/league/research.ts`'s `readDurableCache`). Selecting an unknown
- * column would fail the WHOLE query; isolating it here means a
- * not-yet-migrated DB just renders the card without an anchor price
- * (a state the UI already handles) instead of breaking every card read.
+ * `lib/league/research.ts`'s `readDurableCache`). Selecting an unknown column
+ * would fail the WHOLE query; isolating it here means a not-yet-migrated DB just
+ * renders the card without an anchor price and with the grading state that
+ * `resolves_at` + `actual_outcome` alone can prove, instead of breaking every
+ * card read.
  */
-async function loadAnchorPrice(roundId: string): Promise<{ anchor_price: number | null; anchor_price_at: string | null }> {
-  const empty = { anchor_price: null, anchor_price_at: null }
+async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumns> {
   try {
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
-      .select('anchor_price, anchor_price_at')
+      .select(
+        'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, anchor_session_date, resolution_session_date'
+      )
       .eq('id', roundId)
       .maybeSingle()
     if (error) {
+      const fallback = await supabaseAdmin
+        .from('prediction_rounds')
+        .select(
+          'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, resolution_session_date'
+        )
+        .eq('id', roundId)
+        .maybeSingle()
+      if (!fallback.error && fallback.data) {
+        return {
+          anchor_price: fallback.data.anchor_price ?? null,
+          anchor_price_at: fallback.data.anchor_price_at ?? null,
+          grading_busy_until: fallback.data.grading_busy_until ?? null,
+          grading_attempted_at: fallback.data.grading_attempted_at ?? null,
+          unresolvable_reason: fallback.data.unresolvable_reason ?? null,
+          anchor_session_date: null,
+          resolution_session_date: fallback.data.resolution_session_date ?? null,
+        }
+      }
       if (!warnedMissingAnchorColumns) {
         warnedMissingAnchorColumns = true
         console.warn(
-          `[league/card] anchor_price columns unavailable (${error.message}) — rendering cards without an anchor price. ` +
-            'Apply migration 20260818000002_league_anchor_price.sql to enable it.'
+          `[league/card] optional round columns unavailable (${error.message}) — rendering cards without an anchor ` +
+            'price / grading state. Apply migrations 20260818000002_league_anchor_price.sql and ' +
+            '20260821000002_prediction_grading_state.sql to enable them.'
         )
       }
-      return empty
+      return EMPTY_OPTIONAL_COLUMNS
     }
-    return data ? { anchor_price: data.anchor_price ?? null, anchor_price_at: data.anchor_price_at ?? null } : empty
+    if (!data) return EMPTY_OPTIONAL_COLUMNS
+    return {
+      anchor_price: data.anchor_price ?? null,
+      anchor_price_at: data.anchor_price_at ?? null,
+      grading_busy_until: data.grading_busy_until ?? null,
+      grading_attempted_at: data.grading_attempted_at ?? null,
+      unresolvable_reason: data.unresolvable_reason ?? null,
+      anchor_session_date: data.anchor_session_date ?? null,
+      resolution_session_date: data.resolution_session_date ?? null,
+    }
   } catch {
-    return empty
+    return EMPTY_OPTIONAL_COLUMNS
   }
 }
 
@@ -117,13 +173,41 @@ async function loadPredictions(roundId: string): Promise<PredictionRow[]> {
   return (data ?? []) as PredictionRow[]
 }
 
+/**
+ * GRADE-ON-READ. A round whose deadline has passed and that nobody has graded
+ * is graded because someone LOOKED at it — no cron, no operator decision. The
+ * reader waits for nothing: grading is started and abandoned here, the card goes
+ * out with `gradingState: 'grading'`, and the grade appears on the next read.
+ *
+ * Concurrency is not this function's problem: `gradeRoundOnRead` claims the
+ * round with a conditional update, so N simultaneous readers produce exactly one
+ * grading attempt and no double-grade (see `lib/prediction/grading-core.ts`).
+ * Worst case the request ends before grading finishes; the claim lease expires
+ * and the next read picks it up again.
+ */
+function startGradingOnRead(roundId: string): void {
+  void gradeRoundOnRead(roundId).catch((e: unknown) => {
+    console.warn(
+      `[league/card] grade-on-read failed for round ${roundId}: ${e instanceof Error ? e.message : 'unknown error'}`
+    )
+  })
+}
+
 /** Full read path: resolve the round, load its predictions, assemble CardData. */
 export async function fetchCardData(lookup: CardLookup, scope?: LeaderboardScope): Promise<CardData> {
   const round = await loadRound(lookup)
-  const anchor = await loadAnchorPrice(round.id)
+  const optional = await loadOptionalColumns(round.id)
   const predictions = await loadPredictions(round.id)
   const board = await fetchLeaderboardData(scope)
-  const card = buildCardData({ ...round, ...anchor }, predictions, board.combined)
+  const card = buildCardData({ ...round, ...optional }, predictions, board.combined)
+
+  if (card.round.gradingState === 'due_ungraded') {
+    startGradingOnRead(round.id)
+    // presentCardGrading already refused to advertise a missing-anchor round
+    // as due_ungraded, so reaching here means there is a baseline to grade
+    // against. The reader sees 'grading' and the client polls until it lands.
+    card.round.gradingState = 'grading'
+  }
 
   // Secondary, best-effort, non-blocking — see `live-price-cache.ts`'s doc
   // comment. A cache miss/provider hiccup just leaves this null; it never

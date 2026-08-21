@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { gradeDueRoundsInBackground } from '@/lib/prediction/reconciliation'
 import {
   buildRecordRoomPage,
   type RecordRoomPage,
@@ -22,8 +23,12 @@ const PREDICTION_COLUMNS = 'round_id, model_id, brand, camp, league_tier, predic
  *
  * Paginated by `resolved_at` descending (most recently resolved first). Two
  * queries per page: (1) the page of resolved rounds + a total count, (2)
- * every model_predictions row for just those rounds. Read-only — never
- * writes, never touches scoring/cron/reconciliation.
+ * every model_predictions row for just those rounds.
+ *
+ * The page itself is assembled read-only, but reading it TRIGGERS grading for
+ * every due, ungraded round (fire-and-forget — see `gradeDueRoundsInBackground`).
+ * That is the point: this page's whole job is showing the track record, so a
+ * round that is due and ungraded is a hole in it.
  *
  * The FREE vs DEEP split is enforced by the API routes (this module only
  * fetches what it is asked for). Public callers still narrow via
@@ -43,6 +48,14 @@ export async function fetchRecordRoomPage(
   pageSize: number,
   scope?: RecordRoomScope
 ): Promise<RecordRoomPage> {
+  // GRADE-ON-READ, list edition. The record room only ever DISPLAYS graded
+  // rounds, so a due-but-ungraded round is exactly what is missing from this
+  // page — reading it is what triggers grading for every such round. Started and
+  // abandoned: the reader waits for nothing and sees the results next load.
+  // Same claim/throttle rules as the card path, so simultaneous readers cannot
+  // double-grade and an unresolvable round is not retried on every page view.
+  void gradeDueRoundsInBackground()
+
   const safePage = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1
   const safePageSize = Number.isFinite(pageSize) && pageSize >= 1
     ? Math.min(Math.floor(pageSize), RECORD_ROOM_MAX_PAGE_SIZE)

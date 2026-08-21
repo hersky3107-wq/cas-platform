@@ -32,10 +32,16 @@ export function DivisionBoard({
   models,
   tierSplit,
   t,
+  roundGraded = false,
+  translations = null,
+  showOriginal = false,
 }: {
   models: CardModelPrediction[]
   tierSplit: TierSplit
   t: LeagueUiPack
+  roundGraded?: boolean
+  translations?: Record<string, string> | null
+  showOriginal?: boolean
 }) {
   const groups = useMemo(() => groupByTier(models), [models])
   const [open, setOpen] = useState<Record<LeagueTier, boolean>>({
@@ -77,7 +83,14 @@ export function DivisionBoard({
               className={`${expanded ? 'grid' : 'hidden'} grid-cols-1 gap-1.5 px-2 pb-2 md:grid md:grid-cols-3 md:gap-2 md:px-3 md:pb-3 lg:grid-cols-4 xl:grid-cols-5`}
             >
               {group.models.map((model) => (
-                <ModelTile key={model.model_id} model={model} t={t} />
+                <ModelTile
+                  key={model.model_id}
+                  model={model}
+                  t={t}
+                  roundGraded={roundGraded}
+                  translatedRationale={model.prediction_id ? translations?.[model.prediction_id] ?? null : null}
+                  showOriginal={showOriginal}
+                />
               ))}
             </ul>
           </section>
@@ -97,14 +110,17 @@ function OverallStrip({
   t: LeagueUiPack
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 md:px-4">
-      {groups.map((group) => (
-        <span key={group.tier} className="inline-flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-league-fg-muted">
-          <span className={`h-1.5 w-1.5 rounded-full ${DIVISION_DOT[group.tier]}`} aria-hidden />
-          <span className="font-sans font-bold uppercase tracking-wide">{t.bracket.division[group.tier]}</span>
-          <span>{t.bracket.compactTally(tierSplit[group.tier])}</span>
-        </span>
-      ))}
+    <div className="px-3 py-2 md:px-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {groups.map((group) => (
+          <span key={group.tier} className="inline-flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-league-fg-muted">
+            <span className={`h-1.5 w-1.5 rounded-full ${DIVISION_DOT[group.tier]}`} aria-hidden />
+            <span className="font-sans font-bold uppercase tracking-wide">{t.bracket.division[group.tier]}</span>
+            <span>{t.bracket.compactTally(tierSplit[group.tier])}</span>
+          </span>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[10px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
     </div>
   )
 }

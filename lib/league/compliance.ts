@@ -1,5 +1,6 @@
 import type { CombinedMethodTrack, ConsensusSummary, Direction } from './card-types'
 import type { LeagueUiPack } from './i18n/dictionary'
+import { formatWinRatePct } from './win-rate'
 
 /**
  * AI Prediction League — REGULATORY / COMPLIANCE LAYER (Layer 2).
@@ -61,12 +62,19 @@ export function groupTallyLine(label: string, tally: ConsensusSummary['tally'], 
 }
 
 /**
- * Citation-style past accuracy of the 40-model majority-vote method.
- * Always carries n when a rate exists. Never advice.
+ * Citation-style past accuracy of the 40-model majority-vote method. Never
+ * advice, and never a percentage below the minimum sample: with too few resolved
+ * rounds `winRatePct` is null by construction (see `lib/league/win-rate.ts`) and
+ * this line states the raw record instead — "still collecting a track record
+ * (1W 0L, sample too small)" — rather than "100% accurate so far".
  */
 export function combinedTrackLine(track: CombinedMethodTrack, t: LeagueUiPack): string {
-  if (track.n === 0 || track.winRatePct === null) return t.bracket.combinedTrackPending
-  return t.bracket.combinedTrack(track.winRatePct, track.n)
+  if (track.winRatePct === null) {
+    if (track.n === 0) return t.bracket.combinedTrackPending
+    const losses = Math.max(0, track.resolved - track.correct)
+    return `${t.bracket.combinedTrackPending} (${t.winRate.insufficient(track.correct, losses)})`
+  }
+  return t.bracket.combinedTrack(formatWinRatePct(track.winRatePct), track.n)
 }
 
 /**

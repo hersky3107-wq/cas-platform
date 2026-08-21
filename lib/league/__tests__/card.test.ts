@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildCardData } from '../card-aggregate'
 import { combinedTrackLine, consensusHeadline, directionBadgeLabel, groupTallyLine } from '../compliance'
 import { LEAGUE_UI } from '../i18n/dictionary'
+import { MIN_GRADED_ROUNDS_FOR_WIN_RATE } from '../credits'
 import type { CardModelPrediction, ConsensusSummary } from '../card-types'
 
 const en = LEAGUE_UI.en
@@ -111,10 +112,10 @@ describe('buildCardData', () => {
   it('hit rate stays null/unresolved until models are graded', () => {
     const rows: PredictionRow[] = [pred({ model_id: 'a', is_correct: null })]
     const card = buildCardData(round(), rows)
-    expect(card.hitRate).toEqual({ resolved: false, graded: 0, correct: null, hitRatePct: null })
+    expect(card.hitRate).toEqual({ resolved: false, graded: 0, correct: null, hitRatePct: null, provisional: true })
   })
 
-  it('computes hit rate once some models are graded', () => {
+  it('keeps the raw record but NO percentage while fewer models than the minimum sample are graded', () => {
     const rows: PredictionRow[] = [
       pred({ model_id: 'a', is_correct: true }),
       pred({ model_id: 'b', is_correct: true }),
@@ -125,7 +126,19 @@ describe('buildCardData', () => {
     expect(card.hitRate.resolved).toBe(true)
     expect(card.hitRate.graded).toBe(3)
     expect(card.hitRate.correct).toBe(2)
-    expect(card.hitRate.hitRatePct).toBeCloseTo(66.7, 1)
+    // 3 graded models is below the minimum sample: the badge shows "2W 1L", not "66.6%".
+    expect(card.hitRate.hitRatePct).toBeNull()
+    expect(card.hitRate.provisional).toBe(true)
+  })
+
+  it('computes a truncated hit rate once the minimum sample is graded', () => {
+    const rows: PredictionRow[] = Array.from({ length: MIN_GRADED_ROUNDS_FOR_WIN_RATE }, (_, i) =>
+      pred({ model_id: `m${i}`, is_correct: i < 8 })
+    )
+    const card = buildCardData(round({ resolved_at: '2026-08-17T15:35:00.000Z' }), rows)
+    expect(card.hitRate.graded).toBe(MIN_GRADED_ROUNDS_FOR_WIN_RATE)
+    expect(card.hitRate.hitRatePct).toBe(80)
+    expect(card.hitRate.provisional).toBe(false)
   })
 
   it('falls back an unrecognized color_bucket to yellow rather than throwing', () => {
@@ -144,6 +157,22 @@ describe('buildCardData', () => {
       cost_usd: 0.0123,
       reasoning_snippet: 'Strong earnings.',
     })
+  })
+
+  it('presents a due round with no anchor as unresolvable, never as grading', () => {
+    const card = buildCardData(
+      round({
+        resolves_at: '2026-08-19T03:12:40.000Z',
+        actual_outcome: null,
+        resolved_at: null,
+        anchor_price: null,
+        anchor_price_at: null,
+      }),
+      []
+    )
+    expect(card.round.gradingState).toBe('unresolvable')
+    expect(card.round.unresolvableReason).toBe('missing_anchor')
+    expect(card.round.gradingState).not.toBe('grading')
   })
 })
 
@@ -217,6 +246,20 @@ describe('compliance: approved phrasing helpers', () => {
     )
   })
 
+  it('states the raw record instead of a percentage while the combined method is below the minimum sample', () => {
+    const line = combinedTrackLine({ correct: 1, resolved: 1, n: 1, winRatePct: null, provisional: true }, en)
+    expect(line).not.toContain('%')
+    expect(line).not.toContain('100')
+    expect(line).toContain('1W 0L')
+    expect(line).toContain(en.bracket.combinedTrackPending)
+  })
+
+  it('states that a round-level tally is one correlated event, not independent forecasts', () => {
+    expect(en.headline.correlatedNote.toLowerCase()).toMatch(/correlated/)
+    expect(en.headline.correlatedNote.toLowerCase()).toMatch(/not 40 independent/)
+    expect(en.headline.correlatedNote.toLowerCase()).not.toMatch(/\b(buy|sell|bet)\b/)
+  })
+
   it('produces a translated headline for a non-English locale without changing the underlying data', () => {
     const ko = LEAGUE_UI.ko
     const headline = consensusHeadline(baseConsensus, ko)
@@ -233,5 +276,12 @@ describe('card-types groupings stay in sync with model rows (sanity)', () => {
     const model: CardModelPrediction = card.models[0]!
     expect(card.campSplit[model.camp]).toBeDefined()
     expect(card.tierSplit[model.league_tier]).toBeDefined()
+  })
+
+  it('enriches tile brand and model identifier from roster config', () => {
+    const rows: PredictionRow[] = [pred({ model_id: 'gpt-5.6-luna', brand: 'OpenAI' })]
+    const card = buildCardData(round(), rows)
+    expect(card.models[0]!.brand).toBe('OpenAI (ChatGPT)')
+    expect(card.models[0]!.model_identifier).toBe('gpt-5.6-luna')
   })
 })

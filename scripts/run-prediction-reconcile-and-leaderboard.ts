@@ -1,7 +1,8 @@
 /**
- * Manually run one prediction-league reconciliation pass, then print the
- * leaderboard snapshot. Calls `reconcileDuePredictionRounds` directly (same
- * function the cron/admin routes use).
+ * Manually run one prediction-league grading sweep, then print the leaderboard
+ * snapshot. Calls `gradeAllDueRounds` directly (the same non-discretionary pass
+ * the admin route runs — it takes no arguments, so this script cannot grade a
+ * subset either).
  *
  * Requires in .env.local:
  *   TWELVE_DATA_API_KEY, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -46,7 +47,7 @@ async function main() {
   loadEnvLocal()
 
   const { supabaseAdmin } = await import('../lib/supabase/server')
-  const { reconcileDuePredictionRounds } = await import('../lib/prediction/reconciliation')
+  const { gradeAllDueRounds } = await import('../lib/prediction/reconciliation')
   const { buildLeaderboardData } = await import('../lib/league/leaderboard-aggregate')
 
   async function countSnapshot() {
@@ -84,9 +85,9 @@ async function main() {
     console.log(`  ${r.id}  ${r.instrument}  ${r.category}  resolves ${r.resolves_at}  item_type=${r.item_type}`)
   }
 
-  console.log('\n=== Running reconcileDuePredictionRounds() ===\n')
-  const summary = await reconcileDuePredictionRounds(200)
-  console.log(JSON.stringify(summary, null, 2))
+  console.log('\n=== Running gradeAllDueRounds() ===\n')
+  const report = await gradeAllDueRounds()
+  console.log(JSON.stringify(report, null, 2))
 
   console.log('\n=== After reconcile ===')
   const after = await countSnapshot()
@@ -128,19 +129,39 @@ async function main() {
   console.log(`\n=== Leaderboard after reconcile (totalConsidered=${leaderboard.totalConsidered}) ===\n`)
   console.log('--- Model view ---')
   printSlice(leaderboard.model.rows)
+  const b = leaderboard.baselines
+  console.log(
+    `\n--- Baselines (not ranked) — ${b.modelsBeatingAlwaysUp} of ${b.modelsCompared} models beating Always up ---`
+  )
+  const alwaysFig =
+    b.alwaysUp.winRatePct !== null
+      ? `${b.alwaysUp.winRatePct}% (n=${b.alwaysUp.n})`
+      : `${b.alwaysUp.correct}W ${b.alwaysUp.resolved - b.alwaysUp.correct}L [sample too small]`
+  const flipFig = b.coinFlip.winRatePct !== null ? `${b.coinFlip.winRatePct}% (n=${b.coinFlip.n})` : '[sample too small]'
+  console.log(`     Always up          ${alwaysFig}`)
+  console.log(`     Coin flip          ${flipFig}  (reference, not a simulated run)`)
   console.log('\n--- Camp view ---')
   printSlice(leaderboard.camp.rows)
 }
 
-function printSlice(slice: { label: string; winRatePct: number | null; n: number; correct: number; resolved: number; provisional: boolean }[]) {
+/**
+ * Prints what the UI would show, minimum-sample rule included: a rank and a
+ * percentage only once a row has enough graded rounds, otherwise the raw record.
+ */
+function printSlice(
+  slice: { label: string; winRatePct: number | null; rank: number | null; n: number; correct: number; resolved: number }[]
+) {
   if (slice.length === 0) {
     console.log('  (empty — no in-scope graded predictions yet)')
     return
   }
-  for (const [i, row] of slice.entries()) {
-    const pct = row.winRatePct !== null ? `${row.winRatePct}%` : 'n/a'
-    const prov = row.provisional ? ' [provisional]' : ''
-    console.log(`  ${i + 1}. ${row.label.padEnd(16)} ${pct.padStart(6)}  n=${row.n} (${row.correct}/${row.resolved})${prov}`)
+  for (const row of slice) {
+    const rank = row.rank !== null ? `${row.rank}.` : '  —'
+    const figure =
+      row.winRatePct !== null
+        ? `${row.winRatePct}% (n=${row.n})`
+        : `${row.correct}W ${row.resolved - row.correct}L [sample too small]`
+    console.log(`  ${rank.padStart(4)} ${row.label.padEnd(16)} ${figure}`)
   }
 }
 

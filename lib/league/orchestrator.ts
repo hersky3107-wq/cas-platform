@@ -10,8 +10,9 @@ import {
   type LeagueTier,
   type Camp,
 } from '@/lib/league/roster'
-import { fetchDataPacket, formatDataPacketForPrompt, type DataPacket } from '@/lib/league/market-data'
+import { fetchDataPacket, formatDataPacketForPrompt, sessionDateForPrice, type DataPacket } from '@/lib/league/market-data'
 import { getResearchPacket, type ResearchPacket } from '@/lib/league/research'
+import { parsePrediction, sanitizeRationale } from '@/lib/league/prediction-parse'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -42,12 +43,14 @@ const FALLBACK_COST_CAP_USD = 20
 
 const PREDICTION_SYSTEM_PROMPT = `You are an independent forecasting model in a prediction league. You answer ALONE; you never see any other model's answer. You may reason internally, but your VISIBLE output MUST be exactly ONE line of strict JSON and nothing else — no markdown, no code fences, no preamble, no trailing text.
 
-Output schema (all keys required):
-{"direction":"up|down|flat|abstain","probability":<integer 0-100>,"rationale":"<one line, max 200 chars>"}
+Required JSON keys: direction, probability, rationale.
 
-- direction: your single best call for how the proposition resolves. Use "flat" only if you genuinely expect ~no change. Use "abstain" ONLY if you truly cannot form any view — abstaining is never penalized, but a real call is preferred.
-- probability: your confidence in the stated direction, integer 0-100.
-- rationale: one concise sentence of reasoning or a key citation.
+Example shape (replace values with your own forecast — do not copy this example verbatim):
+{"direction":"up","probability":72,"rationale":"Recent earnings beat and buyback support a higher close."}
+
+- direction: your single best call for how the proposition resolves — one of up, down, flat, or abstain. Use flat only if you genuinely expect ~no change. Use abstain ONLY if you truly cannot form any view — abstaining is never penalized, but a real call is preferred.
+- probability: your confidence in the stated direction, integer 0 through 100.
+- rationale: one concise sentence of reasoning or a key citation in plain prose (200 characters or fewer). Write your actual reasoning — never repeat these instructions, schema labels, or placeholder text.
 Return the JSON object only.`
 
 type ItemType = 'ranked' | 'on_demand'
@@ -220,11 +223,19 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
  * duplicating that fetch earlier just to inline it into the insert would cost
  * an extra, redundant Twelve Data call.
  */
-async function persistAnchorPrice(roundId: string, price: number): Promise<void> {
+async function persistAnchorPrice(
+  roundId: string,
+  price: number,
+  sessionDate: string | null
+): Promise<void> {
   try {
     await supabaseAdmin
       .from('prediction_rounds')
-      .update({ anchor_price: price, anchor_price_at: new Date().toISOString() })
+      .update({
+        anchor_price: price,
+        anchor_price_at: new Date().toISOString(),
+        ...(sessionDate ? { anchor_session_date: sessionDate } : {}),
+      })
       .eq('id', roundId)
   } catch {
     // best-effort — see doc comment above
@@ -287,83 +298,6 @@ function buildPrompts(round: ResolvedRound, packet: DataPacket, research: Resear
   ].join('\n')
 
   return { price, scout }
-}
-
-type ParsedPrediction = {
-  direction: 'up' | 'down' | 'flat' | null
-  probability: number | null
-  rationale: string | null
-}
-
-/** Extracts direction/probability/rationale from model output. Handles strict JSON,
- *  markdown code fences, and inline JSON embedded in search-model prose. */
-function parsePrediction(text: string | null): ParsedPrediction | null {
-  if (!text) return null
-
-  const candidates: string[] = []
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (fenced?.[1]?.trim()) candidates.push(fenced[1].trim())
-  const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
-  candidates.push(stripped)
-  const blocks = stripped.match(/\{[\s\S]*\}/g)
-  if (blocks) candidates.push(...blocks)
-
-  for (const chunk of candidates) {
-    const parsed = parseJsonPredictionBlock(chunk)
-    if (parsed) return parsed
-  }
-
-  return parseProsePredictionFallback(stripped)
-}
-
-function parseJsonPredictionBlock(raw: string): ParsedPrediction | null {
-  const match = raw.match(/\{[\s\S]*\}/)
-  if (!match) return null
-  let obj: Record<string, unknown>
-  try {
-    obj = JSON.parse(match[0]) as Record<string, unknown>
-  } catch {
-    return null
-  }
-  return normalizeParsedFields(obj)
-}
-
-/** Last-resort extraction when a search model wraps JSON in markdown/citations. */
-function parseProsePredictionFallback(text: string): ParsedPrediction | null {
-  const dirMatch =
-    text.match(/"direction"\s*:\s*"(up|down|flat|abstain)"/i) ??
-    text.match(/\bdirection\b\s*[:=]\s*["']?(up|down|flat|abstain)["']?/i)
-  if (!dirMatch) return null
-  const probMatch = text.match(/"probability"\s*:\s*(\d+)/i) ?? text.match(/\bprobability\b\s*[:=]\s*(\d+)/i)
-  const rationaleMatch = text.match(/"rationale"\s*:\s*"([^"]+)"/i)
-  const obj: Record<string, unknown> = {
-    direction: dirMatch[1],
-    ...(probMatch ? { probability: Number(probMatch[1]) } : {}),
-    ...(rationaleMatch ? { rationale: rationaleMatch[1] } : {}),
-  }
-  return normalizeParsedFields(obj)
-}
-
-function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction | null {
-  const dirRaw = typeof obj.direction === 'string' ? obj.direction.trim().toLowerCase() : ''
-  const direction =
-    dirRaw === 'up' || dirRaw === 'down' || dirRaw === 'flat'
-      ? (dirRaw as 'up' | 'down' | 'flat')
-      : dirRaw === 'abstain'
-        ? null
-        : null
-
-  let probability: number | null = null
-  const p = Number(obj.probability)
-  if (Number.isFinite(p)) probability = Math.max(0, Math.min(100, Math.round(p)))
-
-  const rationale =
-    typeof obj.rationale === 'string' && obj.rationale.trim().length
-      ? obj.rationale.trim().slice(0, 500)
-      : null
-
-  if (!direction && !rationale && probability === null) return null
-  return { direction, probability, rationale }
 }
 
 function isTransient(errMsg: string): boolean {
@@ -582,7 +516,9 @@ async function runOneModel(
   const status: ModelStatus = parsedDirection ? 'ok' : 'abstain'
 
   // Abstain still records participation (null direction) so it never scores as wrong.
-  const rationale = parsed?.rationale ?? (raw.text ? raw.text.trim().slice(0, 500) : null)
+  const rationale =
+    sanitizeRationale(parsed?.rationale) ??
+    sanitizeRationale(raw.text ? raw.text.trim().slice(0, 500) : null)
   const probability = parsed?.probability ?? null
 
   await supabaseAdmin
@@ -658,7 +594,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   // never overwritten on a re-run of an existing round (`{ roundId }` input
   // skips `created`), so the anchor always reflects the ORIGINAL open.
   if (created && packet.available && typeof packet.latestClose === 'number') {
-    await persistAnchorPrice(round.id, packet.latestClose)
+    await persistAnchorPrice(round.id, packet.latestClose, sessionDateForPrice(packet, packet.latestClose))
   }
   // One research packet per ROUND, shared identically by tiers 1/2/3 (Scout
   // keeps its own live search). Cached per (instrument, horizon, 6h bucket);

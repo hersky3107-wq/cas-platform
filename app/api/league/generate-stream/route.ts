@@ -13,6 +13,7 @@ import {
   type LeagueViewer,
 } from '@/lib/league/public-access'
 import type { LeagueTier } from '@/lib/league/roster'
+import { formatRosterBrand, lookupRosterEntry, rosterModelIdentifier } from '@/lib/league/roster'
 
 /** Mirrors app/api/admin/league/generate/route.ts's budget — same fan-out, just streamed. */
 export const maxDuration = 180
@@ -209,9 +210,12 @@ async function resolveTarget(
  * later `GET /api/league/card` returns).
  */
 function toWireModel(result: ModelRunResult) {
+  const roster = lookupRosterEntry(result.model_id)
   return {
+    prediction_id: null as string | null,
     model_id: result.model_id,
-    brand: result.brand,
+    brand: roster ? formatRosterBrand(roster) : result.brand,
+    model_identifier: roster ? rosterModelIdentifier(roster) : result.model_id,
     camp: result.camp,
     league_tier: result.tier,
     direction: result.direction,

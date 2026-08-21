@@ -83,11 +83,13 @@ export function creditsForDeep(mode: DeepOutputMode): number {
 }
 
 /**
- * League paid-compute amounts live in `lib/league/credits.ts` — re-exported
- * here so client-safe imports (`@/lib/credits`) keep working. Do not add a
- * second copy of these numbers.
+ * League paid-compute amounts (plus the minimum-sample threshold for showing a
+ * win rate) live in `lib/league/credits.ts` — re-exported here so client-safe
+ * imports (`@/lib/credits`) keep working. Do not add a second copy of these
+ * numbers.
  */
 export {
+  MIN_GRADED_ROUNDS_FOR_WIN_RATE,
   LEAGUE_GENERATE_CREDITS,
   LEAGUE_ARCHIVE_CREDITS,
   LEAGUE_DEEP_OPEN_CREDITS,

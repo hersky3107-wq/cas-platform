@@ -36,6 +36,12 @@ export type LeagueUiPack = {
     allAbstain: (totalModels: number) => string
     split: (respondedModels: number, totalModels: number) => string
     none: string
+    /**
+     * Shown under any figure that collapses one round into a single number
+     * ("29 of 40 lean up"). Tiers 1–3 share one research packet, so those
+     * calls are correlated — the UI must not imply 40 independent forecasts.
+     */
+    correlatedNote: string
   }
   /** e.g. "US: 3 up · 1 down · 1 no call" — `label` (e.g. "US"/"Premier") is passed through untranslated (a proper-noun-ish group name). */
   groupTallyLine: (label: string, tally: DirectionTally) => string
@@ -58,7 +64,77 @@ export type LeagueUiPack = {
     macroEconHint: string
     noCardYet: string
   }
-  hitRate: { pending: string; pct: (pct: number) => string }
+  /**
+   * Card accuracy badge. `withValue` receives an ALREADY-COMPOSED figure from
+   * `lib/league/win-rate.ts` — either "62% (n=40)" or a raw record like
+   * "1W 0L (sample too small)". Locales must not build the percentage
+   * themselves: that is the only way the minimum-sample rule and the
+   * "never a percentage without its n" rule hold in all 8 languages.
+   */
+  hitRate: {
+    pending: string
+    withValue: (value: string) => string
+    /** One round is a result, not a rate — e.g. "This round: 27/37 correct". */
+    roundResult: (correct: number, graded: number) => string
+  }
+  /**
+   * WIN-RATE FIGURES — the regulated numbers. Every accuracy percentage in the
+   * product is assembled by exactly one of these, via
+   * `lib/league/win-rate.ts`'s `winRateLabel`.
+   *
+   * `withSample` MUST keep the percentage and its n in the same string: a
+   * component cannot then place n somewhere quieter or drop it. Below the
+   * minimum sample there is no percentage to translate at all — `insufficient`
+   * takes wins and losses, never a rate.
+   */
+  winRate: {
+    /** e.g. "62% (n=34)". Percentage is pre-truncated; never re-round it. */
+    withSample: (pctText: string, n: number) => string
+    /** Raw record, e.g. "34W 12L" — used where a rate is shown alongside. */
+    record: (wins: number, losses: number) => string
+    /** Raw record + an explicit low-sample note, e.g. "1W 0L (sample too small)". NO percentage. */
+    insufficient: (wins: number, losses: number) => string
+    /** The low-sample note alone — for layouts that already show the record in an adjacent column. */
+    insufficientNote: string
+    /** States when ranking starts, so an unranked list does not look broken. */
+    rankingBegins: (minSample: number) => string
+    /** Nothing graded yet for this bucket. */
+    noRounds: string
+  }
+  /**
+   * GRADING-STATE chrome. A round with no result is not one thing: its deadline
+   * may not have passed, grading may be running right now, or grading may have
+   * been attempted and refused (e.g. the close came out exactly equal, so no
+   * up/down call can be right). The card says which — an empty result with no
+   * explanation is what makes a track record look edited.
+   *
+   * `unresolvableNote` must NOT blame the user or imply a pending fix; it states
+   * plainly that this round scores nobody.
+   */
+  grading: {
+    /** Deadline passed, grading is running now (badge). */
+    inProgress: string
+    /** Deadline passed, grading has not run yet (badge). */
+    pending: string
+    /** Deadline passed and this round cannot be graded (badge). */
+    unresolvable: string
+    /** One line explaining that nobody was scored on this round. */
+    unresolvableNote: string
+    /** A genuine in-flight grade that did not land after ~60s of polling. */
+    stalled: string
+    stalledNote: string
+    /** Plain-language reasons — keyed to `UnresolvableReason`. */
+    reason: {
+      missing_anchor: string
+      invalid_window: string
+      series_unavailable: string
+      no_series_data: string
+      no_session_in_window: string
+      equal_close: string
+      not_price_instrument: string
+      unknown: string
+    }
+  }
   /**
    * Card header price chrome. The $ amount and its date/time are formatted
    * by the component (locale-agnostic number/date formatting, same
@@ -73,6 +149,20 @@ export type LeagueUiPack = {
     now: string
     /** Small badge word next to the optional live price, e.g. "LIVE". */
     live: string
+    /** One-line header when the starting price is on the row. */
+    headlineWithAnchor: (today: string, instrument: string, price: string, anchorDate: string) => string
+    /** One-line header when the starting price was never recorded. */
+    headlineNoAnchor: (today: string, instrument: string) => string
+    /** Window sentence when both ends of the window are known. */
+    windowWithAnchor: (fromDate: string, fromPrice: string, toDate: string) => string
+    /** Anchor session known, resolution session not yet recorded. */
+    windowAnchorOnly: (fromDate: string, fromPrice: string) => string
+    /** Price exists but neither session date is persisted — do not invent dates. */
+    windowNoSessionDates: string
+    /** Window sentence when there is no persisted starting price. */
+    windowNoAnchor: string
+    /** Connector for the secondary live quote, only shown once an anchor exists. */
+    liveSecondary: string
   }
   modelList: {
     title: (count: number) => string
@@ -81,6 +171,21 @@ export type LeagueUiPack = {
     empty: string
     correct: string
     missed: string
+    /** Direction present, round graded, but this row has no is_correct. */
+    ungraded: string
+  }
+  /** Per-model tile chrome (brand + roster slot id). */
+  modelTile: {
+    /** Accessible label prefix for the monospace model id line. */
+    modelLabel: string
+    /** Short expand control on a collapsed tile that has a rationale. */
+    showWhy: string
+    /** Short collapse control once the rationale is open. */
+    hideWhy: string
+    /** Toggle: show the stored English original next to a translation. */
+    showOriginal: string
+    hideOriginal: string
+    originalLabel: string
   }
   /**
    * Cards-tab board chrome (division headers + final-verdict label).
@@ -97,8 +202,12 @@ export type LeagueUiPack = {
     confidence: string
     /** Legend for the correct/missed markers — only rendered once a round is resolved. */
     resultLegend: string
-    /** Citation-style past accuracy of the 40-model majority-vote method. Always carries n. */
-    combinedTrack: (pct: number, n: number) => string
+    /**
+     * Citation-style past accuracy of the 40-model majority-vote method. Always
+     * carries n. `pctText` arrives pre-truncated from `win-rate.ts` and only
+     * exists once the minimum sample is met.
+     */
+    combinedTrack: (pctText: string, n: number) => string
     /** Shown when the combined method has no resolved majority-vote rounds yet. */
     combinedTrackPending: string
   }
@@ -130,14 +239,30 @@ export type LeagueUiPack = {
     methodHeadline: string
     methodLabels: { pure_reasoning: string; research: string }
     campLabels: { us: string; china: string; other: string }
-    columns: { rank: string; name: string; winRate: string; sample: string }
-    sampleCount: (n: number) => string
-    provisionalBadge: string
-    provisionalNote: string
-    /** Low-sample state — shown instead of a bold win-rate number. */
-    collectingData: string
+    columns: { rank: string; name: string; winRate: string; record: string }
+    /**
+     * Round-level disclosure under the table: how many rounds these win rates
+     * were computed from, and how many could not be graded. Always rendered when
+     * anything is unresolvable — hiding it would make the record look cleaner
+     * than it is.
+     */
+    roundCoverage: (graded: number, unresolvable: number) => string
     emptyState: string
     asOf: (date: string) => string
+    /** Section label above Always up / Coin flip. */
+    baselinesTitle: string
+    /** States that baselines are not participants and are not ranked. */
+    baselinesNote: string
+    baselineBadge: string
+    alwaysUp: string
+    alwaysUpHint: string
+    coinFlip: string
+    coinFlipHint: string
+    /** Record-column filler for the coin-flip marker (it has no W/L). */
+    coinFlipRecord: string
+    /** The honest headline: how many models beat Always up. */
+    beatingAlwaysUp: (beating: number, compared: number) => string
+    beatingAlwaysUpEmpty: string
   }
   /** Record room chrome (immutable, timestamped log of resolved rounds — see `lib/league/record-room-aggregate.ts`). */
   recordRoom: {
@@ -227,6 +352,8 @@ const en: LeagueUiPack = {
     allAbstain: (total) => `All ${total} AI models abstained on this round`,
     split: (responded, total) => `${responded} of ${total} AI models are split — no clear lean`,
     none: 'No AI models have reported for this round yet',
+    correlatedNote:
+      'Premier, Challenger and World all read the same research packet, so this is one event with correlated inputs — not 40 independent forecasts.',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -283,8 +410,56 @@ const en: LeagueUiPack = {
     macroEconHint: 'Expert market outlook — rates, inflation, bonds. Depth, not dopamine.',
     noCardYet: 'No prediction card for this instrument yet.',
   },
-  hitRate: { pending: 'Hit rate: pending', pct: (pct) => `${pct}% hit rate` },
-  header: { atPrediction: 'at prediction', now: 'now', live: 'LIVE' },
+  hitRate: {
+    pending: 'Hit rate: pending',
+    withValue: (value) => `${value} hit rate`,
+    roundResult: (correct, graded) => `This round: ${correct}/${graded} correct`,
+  },
+  winRate: {
+    withSample: (pctText, n) => `${pctText}% (n=${n})`,
+    record: (wins, losses) => `${wins}W ${losses}L`,
+    insufficient: (wins, losses) => `${wins}W ${losses}L (sample too small)`,
+    insufficientNote: 'Sample too small',
+    rankingBegins: (minSample) =>
+      `Ranking starts after ${minSample} graded rounds. Until then these are shown unranked, with the raw record instead of a percentage.`,
+    noRounds: 'No graded rounds yet',
+  },
+  grading: {
+    inProgress: 'Grading\u2026',
+    pending: 'Awaiting grading',
+    unresolvable: 'Cannot be graded',
+    unresolvableNote:
+      'The deadline passed, but this round cannot be graded fairly \u2014 so no model was scored on it, and it counts for nobody.',
+    stalled: 'Grading did not finish',
+    stalledNote: 'A grade was started but no result arrived. Refresh later, or apply the missing baseline if this round has none.',
+    reason: {
+      missing_anchor: 'No starting price was recorded for this round, so it cannot be scored.',
+      invalid_window: 'The start and end times of this round do not make a usable window.',
+      series_unavailable: 'The historical price series could not be fetched, so nobody was scored.',
+      no_series_data: 'The price feed returned no usable closes for this window.',
+      no_session_in_window: 'No market session closed inside this prediction window (weekend or holiday).',
+      equal_close: 'The close matched the starting price exactly, so nobody is right or wrong.',
+      not_price_instrument: 'This instrument is not a market price, so it cannot be scored this way.',
+      unknown: 'This round cannot be scored, so it counts for nobody.',
+    },
+  },
+  header: {
+    atPrediction: 'at prediction',
+    now: 'now',
+    live: 'LIVE',
+    headlineWithAnchor: (today, instrument, price, anchorDate) =>
+      `${today} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 starting price unavailable`,
+    windowWithAnchor: (fromDate, fromPrice, toDate) =>
+      `Measured from the ${fromDate} close of ${fromPrice}, resolving against the ${toDate} close.`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `Measured from the ${fromDate} close of ${fromPrice}. The resolving session is not recorded yet.`,
+    windowNoSessionDates:
+      'The starting price is recorded, but the session dates for this prediction are not — those dates are not inferred from timestamps.',
+    windowNoAnchor:
+      'The starting price for this prediction was not recorded, so a live quote is not shown \u2014 it would be the wrong number to read these calls against.',
+    liveSecondary: 'now',
+  },
   modelList: {
     title: (n) => `Models (${n})`,
     tierTab: 'Tier',
@@ -292,6 +467,15 @@ const en: LeagueUiPack = {
     empty: 'No models have reported yet.',
     correct: 'Correct',
     missed: 'Missed',
+    ungraded: 'Not scored',
+  },
+  modelTile: {
+    modelLabel: 'Model',
+    showWhy: 'Why?',
+    hideWhy: 'Hide',
+    showOriginal: 'Show English original',
+    hideOriginal: 'Hide English original',
+    originalLabel: 'Original',
   },
   bracket: {
     finalVerdict: 'Final verdict',
@@ -325,13 +509,25 @@ const en: LeagueUiPack = {
     methodHeadline: 'Pure reasoning vs research',
     methodLabels: { pure_reasoning: 'Pure reasoning', research: 'Research (Scout)' },
     campLabels: { us: 'US', china: 'China', other: 'Third country' },
-    columns: { rank: '#', name: 'Name', winRate: 'Win rate', sample: 'Sample' },
-    sampleCount: (n) => `${n} resolved`,
-    provisionalBadge: 'Provisional',
-    provisionalNote: 'Provisional = fewer than 10 resolved predictions. Treat these win rates as early signal, not a settled record.',
-    collectingData: 'Collecting data',
+    columns: { rank: '#', name: 'Name', winRate: 'Win rate', record: 'Record' },
+    roundCoverage: (graded, unresolvable) =>
+      unresolvable > 0
+        ? `Computed from ${graded} graded rounds. ${unresolvable} round(s) could not be graded and count for nobody.`
+        : `Computed from ${graded} graded rounds.`,
     emptyState: 'Not enough resolved predictions yet — check back as more rounds resolve.',
     asOf: (date) => `As of ${date}`,
+    baselinesTitle: 'Reference baselines',
+    baselinesNote:
+      'Not league participants and not ranked. They exist so a model win rate can be read against a strategy that requires no skill.',
+    baselineBadge: 'Baseline',
+    alwaysUp: 'Always up',
+    alwaysUpHint: 'Predicts up on every round',
+    coinFlip: 'Coin flip',
+    coinFlipHint: 'Expected 50% line — a reference, not a simulated run',
+    coinFlipRecord: 'Reference',
+    beatingAlwaysUp: (beating, compared) =>
+      `${beating} of ${compared} models are beating Always up`,
+    beatingAlwaysUpEmpty: 'No graded rounds yet — Always up has nothing to compare against.',
   },
   recordRoom: {
     title: 'Record room',
@@ -396,6 +592,8 @@ const ko: LeagueUiPack = {
     allAbstain: (total) => `AI 모델 ${total}개 전원이 이번 라운드 의견을 유보했습니다`,
     split: (responded, total) => `AI 모델 ${total}개 중 ${responded}개가 의견을 냈지만 방향이 갈립니다 — 뚜렷한 우세 없음`,
     none: '아직 이번 라운드에 응답한 AI 모델이 없습니다',
+    correlatedNote:
+      '프리미어·챌린저·월드 모델은 같은 리서치 패킷을 받습니다. 이 숫자는 서로 독립된 40개 예측이 아니라, 입력이 상관된 한 번의 사건입니다.',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -451,8 +649,55 @@ const ko: LeagueUiPack = {
     macroEconHint: '금리·물가·채권 등 전문가용 시장 전망. 자극이 아니라 깊이입니다.',
     noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
   },
-  hitRate: { pending: '적중률 집계 중', pct: (pct) => `적중률 ${pct}%` },
-  header: { atPrediction: '예측 시점', now: '현재', live: '실시간' },
+  hitRate: {
+    pending: '적중률 집계 중',
+    withValue: (value) => `적중률 ${value}`,
+    roundResult: (correct, graded) => `이번 라운드 ${correct}/${graded} 적중`,
+  },
+  winRate: {
+    withSample: (pctText, n) => `${pctText}% (표본 ${n})`,
+    record: (wins, losses) => `${wins}승 ${losses}패`,
+    insufficient: (wins, losses) => `${wins}승 ${losses}패 (표본 부족)`,
+    insufficientNote: '표본 부족',
+    rankingBegins: (minSample) =>
+      `순위는 채점된 라운드가 ${minSample}건 쌓인 뒤부터 매깁니다. 그전까지는 순위 없이, 퍼센트 대신 승패 기록만 표시합니다.`,
+    noRounds: '채점된 라운드 없음',
+  },
+  grading: {
+    inProgress: '채점 중…',
+    pending: '채점 대기',
+    unresolvable: '채점 불가',
+    unresolvableNote:
+      '마감 시각은 지났지만 이 라운드는 공정하게 채점할 수 없습니다 — 따라서 어떤 모델도 점수를 받지 않으며, 누구의 전적에도 반영되지 않습니다.',
+    stalled: '채점이 끝나지 않음',
+    stalledNote: '채점을 시작했지만 결과가 오지 않았습니다. 나중에 새로고침하거나, 기준가가 없다면 먼저 기록하세요.',
+    reason: {
+      missing_anchor: '이 라운드의 시작 가격이 기록되지 않아 채점할 수 없습니다.',
+      invalid_window: '시작·종료 시각이 채점 가능한 구간을 만들지 않습니다.',
+      series_unavailable: '과거 시세를 가져오지 못해 아무도 채점되지 않았습니다.',
+      no_series_data: '이 구간에 쓸 수 있는 종가가 없습니다.',
+      no_session_in_window: '이 예측 구간 안에 마감된 거래일이 없습니다 (주말·휴일).',
+      equal_close: '종가가 시작 가격과 같아 누구도 맞거나 틀린 것이 아닙니다.',
+      not_price_instrument: '이 종목은 시장 가격이 아니라 이 방식으로 채점할 수 없습니다.',
+      unknown: '이 라운드는 채점할 수 없어 누구의 전적에도 들어가지 않습니다.',
+    },
+  },
+  header: {
+    atPrediction: '예측 시점',
+    now: '현재',
+    live: '실시간',
+    headlineWithAnchor: (today, instrument, price, anchorDate) =>
+      `${today} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 기준가 없음`,
+    windowWithAnchor: (fromDate, fromPrice, toDate) =>
+      `${fromDate} 종가 ${fromPrice}를 기준으로, ${toDate} 종가와 비교해 채점합니다.`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `${fromDate} 종가 ${fromPrice}를 기준으로 합니다. 채점에 쓴 거래일은 아직 기록되지 않았습니다.`,
+    windowNoSessionDates: '시작 가격은 있지만 거래일 기록이 없어, 시각에서 날짜를 짐작하지 않습니다.',
+    windowNoAnchor:
+      '이 예측의 시작 가격이 기록되지 않아 실시간 시세는 표시하지 않습니다. 그 숫자를 기준으로 읽으면 잘못된 해석이 됩니다.',
+    liveSecondary: '현재',
+  },
   modelList: {
     title: (n) => `모델 (${n}개)`,
     tierTab: '티어',
@@ -460,6 +705,15 @@ const ko: LeagueUiPack = {
     empty: '아직 응답한 모델이 없습니다.',
     correct: '적중',
     missed: '실패',
+    ungraded: '미채점',
+  },
+  modelTile: {
+    modelLabel: '모델',
+    showWhy: '이유 보기',
+    hideWhy: '접기',
+    showOriginal: '영어 원문 보기',
+    hideOriginal: '영어 원문 숨기기',
+    originalLabel: '원문',
   },
   bracket: {
     finalVerdict: '최종 판정',
@@ -492,13 +746,25 @@ const ko: LeagueUiPack = {
     methodHeadline: '순수 추론 vs 리서치',
     methodLabels: { pure_reasoning: '순수 추론', research: '리서치 (스카우트)' },
     campLabels: { us: '미국', china: '중국', other: '제3국' },
-    columns: { rank: '순위', name: '이름', winRate: '적중률', sample: '표본' },
-    sampleCount: (n) => `${n}건 확정`,
-    provisionalBadge: '잠정',
-    provisionalNote: '잠정 = 확정된 예측이 10건 미만입니다. 아직 확정된 기록이 아니라 초기 신호로만 참고하세요.',
-    collectingData: '데이터 수집 중',
+    columns: { rank: '순위', name: '이름', winRate: '적중률', record: '전적' },
+    roundCoverage: (graded, unresolvable) =>
+      unresolvable > 0
+        ? `채점 완료된 ${graded}개 라운드로 계산했습니다. ${unresolvable}개 라운드는 채점할 수 없어 누구의 전적에도 반영되지 않았습니다.`
+        : `채점 완료된 ${graded}개 라운드로 계산했습니다.`,
     emptyState: '아직 결과가 확정된 예측이 충분하지 않습니다 — 라운드가 더 확정되면 다시 확인해 주세요.',
     asOf: (date) => `${date} 기준`,
+    baselinesTitle: '기준선',
+    baselinesNote:
+      '리그 참가자가 아니며 순위도 매기지 않습니다. 기술이 필요 없는 전략과 모델 적중률을 나란히 보기 위한 참조입니다.',
+    baselineBadge: '기준선',
+    alwaysUp: '항상 상승',
+    alwaysUpHint: '매 라운드 상승을 예측',
+    coinFlip: '동전 던지기',
+    coinFlipHint: '기대값 50% 선 — 시뮬레이션이 아닌 참조 표시',
+    coinFlipRecord: '참조',
+    beatingAlwaysUp: (beating, compared) =>
+      `${compared}개 모델 중 ${beating}개가 ‘항상 상승’을 앞서고 있습니다`,
+    beatingAlwaysUpEmpty: '채점된 라운드가 없어 ‘항상 상승’과 비교할 수 없습니다.',
   },
   recordRoom: {
     title: '기록실',
@@ -562,6 +828,8 @@ const ja: LeagueUiPack = {
     allAbstain: (total) => `AIモデル${total}体全てが今回の判断を保留しました`,
     split: (responded, total) => `AIモデル${total}体中${responded}体が回答しましたが意見が分かれ、明確な優勢はありません`,
     none: 'このラウンドにはまだ回答したAIモデルがありません',
+    correlatedNote:
+      'プレミア・チャレンジャー・ワールドは同じリサーチパケットを読むため、これは40件の独立した予測ではなく、入力が相関した一つの出来事です。',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -617,8 +885,55 @@ const ja: LeagueUiPack = {
     macroEconHint: '金利・物価・債券など、専門家向けの市場見通し。刺激ではなく深さです。',
     noCardYet: 'この銘柄の予測カードはまだありません。',
   },
-  hitRate: { pending: '的中率：集計待ち', pct: (pct) => `的中率${pct}%` },
-  header: { atPrediction: '予測時点', now: '現在', live: 'ライブ' },
+  hitRate: {
+    pending: '的中率：集計待ち',
+    withValue: (value) => `的中率 ${value}`,
+    roundResult: (correct, graded) => `このラウンド ${correct}/${graded} 的中`,
+  },
+  winRate: {
+    withSample: (pctText, n) => `${pctText}%（n=${n}）`,
+    record: (wins, losses) => `${wins}勝${losses}敗`,
+    insufficient: (wins, losses) => `${wins}勝${losses}敗（標本不足）`,
+    insufficientNote: '標本不足',
+    rankingBegins: (minSample) =>
+      `順位付けは採点済みラウンドが${minSample}件に達してから始まります。それまでは順位を付けず、パーセンテージではなく勝敗記録のみを表示します。`,
+    noRounds: '採点済みラウンドなし',
+  },
+  grading: {
+    inProgress: '採点中…',
+    pending: '採点待ち',
+    unresolvable: '採点不可',
+    unresolvableNote:
+      '期限は過ぎましたが、このラウンドは公正に採点できません。したがってどのモデルも採点されず、誰の成績にも入りません。',
+    stalled: '採点が完了しませんでした',
+    stalledNote: '採点を始めましたが結果が届きません。あとで再読み込みするか、基準値が無い場合は先に記録してください。',
+    reason: {
+      missing_anchor: 'このラウンドの開始価格が記録されていないため採点できません。',
+      invalid_window: '開始と終了の時刻が、採点できる区間になっていません。',
+      series_unavailable: '過去の価格系列を取得できず、誰も採点されていません。',
+      no_series_data: 'この区間に使える終値がありません。',
+      no_session_in_window: 'この予測区間内に終わった取引日がありません（週末・祝日）。',
+      equal_close: '終値が開始価格と一致したため、正解も不正解もありません。',
+      not_price_instrument: 'この銘柄は市場価格ではないため、この方法では採点できません。',
+      unknown: 'このラウンドは採点できないため、誰の成績にも入りません。',
+    },
+  },
+  header: {
+    atPrediction: '予測時点',
+    now: '現在',
+    live: 'ライブ',
+    headlineWithAnchor: (today, instrument, price, anchorDate) =>
+      `${today} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 基準値なし`,
+    windowWithAnchor: (fromDate, fromPrice, toDate) =>
+      `${fromDate}の終値 ${fromPrice}を起点に、${toDate}の終値と比較して採点します。`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `${fromDate}の終値 ${fromPrice}を起点にします。採点に使った取引日はまだ記録されていません。`,
+    windowNoSessionDates: '開始価格はありますが取引日が無いため、時刻から日付を推測しません。',
+    windowNoAnchor:
+      'この予測の開始価格が記録されていないため、リアルタイム相場は表示しません。その数字を基準に読むと誤ります。',
+    liveSecondary: '現在',
+  },
   modelList: {
     title: (n) => `モデル（${n}）`,
     tierTab: 'ティア',
@@ -626,6 +941,15 @@ const ja: LeagueUiPack = {
     empty: 'まだ回答したモデルがありません。',
     correct: '的中',
     missed: '外れ',
+    ungraded: '未採点',
+  },
+  modelTile: {
+    modelLabel: 'モデル',
+    showWhy: '理由',
+    hideWhy: '閉じる',
+    showOriginal: '英語の原文を表示',
+    hideOriginal: '英語の原文を隠す',
+    originalLabel: '原文',
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -658,13 +982,25 @@ const ja: LeagueUiPack = {
     methodHeadline: '純粋推論 vs リサーチ',
     methodLabels: { pure_reasoning: '純粋推論', research: 'リサーチ（スカウト）' },
     campLabels: { us: '米国', china: '中国', other: '第三国' },
-    columns: { rank: '順位', name: '名前', winRate: '的中率', sample: 'サンプル数' },
-    sampleCount: (n) => `確定${n}件`,
-    provisionalBadge: '暫定',
-    provisionalNote: '暫定 = 確定した予測が10件未満です。確定した実績ではなく、初期的な傾向としてご覧ください。',
-    collectingData: 'データ収集中',
+    columns: { rank: '順位', name: '名前', winRate: '的中率', record: '勝敗' },
+    roundCoverage: (graded, unresolvable) =>
+      unresolvable > 0
+        ? `採点済み${graded}ラウンドから算出しています。${unresolvable}ラウンドは採点できず、誰の成績にも入っていません。`
+        : `採点済み${graded}ラウンドから算出しています。`,
     emptyState: 'まだ確定した予測が十分にありません — ラウンドが確定するたびに更新されます。',
     asOf: (date) => `${date}時点`,
+    baselinesTitle: '参照ベースライン',
+    baselinesNote:
+      'リーグ参加者ではなく、順位も付きません。スキルを要しない戦略とモデル的中率を並べて読むための参照です。',
+    baselineBadge: 'ベースライン',
+    alwaysUp: '常に上昇',
+    alwaysUpHint: '毎ラウンド上昇を予測',
+    coinFlip: 'コイントス',
+    coinFlipHint: '期待値50%の線 — シミュレーションではなく参照表示',
+    coinFlipRecord: '参照',
+    beatingAlwaysUp: (beating, compared) =>
+      `${compared}モデル中${beating}が「常に上昇」を上回っています`,
+    beatingAlwaysUpEmpty: '採点済みラウンドがないため、「常に上昇」と比較できません。',
   },
   recordRoom: {
     title: '記録室',
@@ -728,6 +1064,8 @@ const zhTW: LeagueUiPack = {
     allAbstain: (total) => `全部 ${total} 個 AI 模型本輪均未表態`,
     split: (responded, total) => `${total} 個 AI 模型中有 ${responded} 個給出意見，但看法分歧，沒有明顯多數`,
     none: '本輪目前尚無 AI 模型回應',
+    correlatedNote:
+      'Premier、Challenger、World 都讀同一份研究資料包，因此這是輸入相關的單一事件，不是 40 個獨立預測。',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -783,8 +1121,53 @@ const zhTW: LeagueUiPack = {
     macroEconHint: '利率、通膨、債券等專業市場展望。重深度，不重刺激。',
     noCardYet: '此標的尚無預測卡。',
   },
-  hitRate: { pending: '命中率：統計中', pct: (pct) => `命中率 ${pct}%` },
-  header: { atPrediction: '預測時', now: '目前', live: '即時' },
+  hitRate: {
+    pending: '命中率：統計中',
+    withValue: (value) => `命中率 ${value}`,
+    roundResult: (correct, graded) => `本輪 ${correct}/${graded} 命中`,
+  },
+  winRate: {
+    withSample: (pctText, n) => `${pctText}%（n=${n}）`,
+    record: (wins, losses) => `${wins}勝 ${losses}敗`,
+    insufficient: (wins, losses) => `${wins}勝 ${losses}敗（樣本不足）`,
+    insufficientNote: '樣本不足',
+    rankingBegins: (minSample) =>
+      `累積 ${minSample} 個已評分輪次後才開始排名。在此之前不排名，並以勝敗紀錄取代百分比。`,
+    noRounds: '尚無已評分輪次',
+  },
+  grading: {
+    inProgress: '評分中…',
+    pending: '待評分',
+    unresolvable: '無法評分',
+    unresolvableNote: '截止時間已過，但本輪無法公正評分，因此沒有任何模型被計分，也不計入任何紀錄。',
+    stalled: '評分未完成',
+    stalledNote: '已開始評分但未取得結果。請稍後重新整理；若本輪沒有基準價，請先補上。',
+    reason: {
+      missing_anchor: '本輪沒有記錄起始價格，因此無法評分。',
+      invalid_window: '起迄時間無法構成可評分的區間。',
+      series_unavailable: '無法取得歷史行情，因此無人被評分。',
+      no_series_data: '此區間沒有可用的收盤價。',
+      no_session_in_window: '此預測區間內沒有收盤的交易日（週末或假日）。',
+      equal_close: '收盤價與起始價格完全相同，因此無人對或錯。',
+      not_price_instrument: '此標的不是市場價格，無法用此方式評分。',
+      unknown: '本輪無法評分，因此不計入任何人的戰績。',
+    },
+  },
+  header: {
+    atPrediction: '預測時',
+    now: '目前',
+    live: '即時',
+    headlineWithAnchor: (today, instrument, price, anchorDate) =>
+      `${today} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 無基準價`,
+    windowWithAnchor: (fromDate, fromPrice, toDate) =>
+      `以 ${fromDate} 收盤價 ${fromPrice} 為基準，對照 ${toDate} 收盤價評分。`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `以 ${fromDate} 收盤價 ${fromPrice} 為基準。評分所用交易日尚未記錄。`,
+    windowNoSessionDates: '已有起始價格，但沒有交易日紀錄，因此不從時間戳推測日期。',
+    windowNoAnchor: '本預測未記錄起始價格，因此不顯示即時報價——用那個數字解讀預測會誤導。',
+    liveSecondary: '目前',
+  },
   modelList: {
     title: (n) => `模型（${n}）`,
     tierTab: '級別',
@@ -792,6 +1175,15 @@ const zhTW: LeagueUiPack = {
     empty: '目前尚無模型回應。',
     correct: '命中',
     missed: '未命中',
+    ungraded: '未評分',
+  },
+  modelTile: {
+    modelLabel: '模型',
+    showWhy: '理由',
+    hideWhy: '收合',
+    showOriginal: '顯示英文原文',
+    hideOriginal: '隱藏英文原文',
+    originalLabel: '原文',
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -824,13 +1216,25 @@ const zhTW: LeagueUiPack = {
     methodHeadline: '純推理 vs 研究',
     methodLabels: { pure_reasoning: '純推理', research: '研究（Scout）' },
     campLabels: { us: '美國', china: '中國', other: '第三國' },
-    columns: { rank: '排名', name: '名稱', winRate: '命中率', sample: '樣本數' },
-    sampleCount: (n) => `已結算 ${n} 筆`,
-    provisionalBadge: '暫定',
-    provisionalNote: '暫定＝已結算的預測少於 10 筆。請將此視為初步訊號，而非穩定紀錄。',
-    collectingData: '資料收集中',
+    columns: { rank: '排名', name: '名稱', winRate: '命中率', record: '勝敗' },
+    roundCoverage: (graded, unresolvable) =>
+      unresolvable > 0
+        ? `依據 ${graded} 個已評分輪次計算。有 ${unresolvable} 個輪次無法評分，不計入任何紀錄。`
+        : `依據 ${graded} 個已評分輪次計算。`,
     emptyState: '目前已結算的預測還不夠多 — 之後會有更多輪次結算，請稍後再查看。',
     asOf: (date) => `更新於 ${date}`,
+    baselinesTitle: '參考基準',
+    baselinesNote:
+      '不是聯賽參賽者，也不排名。用來把模型命中率對照一個不需技巧的策略。',
+    baselineBadge: '基準',
+    alwaysUp: '一律看漲',
+    alwaysUpHint: '每一輪都預測上漲',
+    coinFlip: '擲硬幣',
+    coinFlipHint: '期望 50% 線 — 參考標記，不是模擬結果',
+    coinFlipRecord: '參考',
+    beatingAlwaysUp: (beating, compared) =>
+      `${compared} 個模型中有 ${beating} 個勝過「一律看漲」`,
+    beatingAlwaysUpEmpty: '尚無已評分輪次，無法與「一律看漲」比較。',
   },
   recordRoom: {
     title: '紀錄室',
@@ -894,6 +1298,8 @@ const fr: LeagueUiPack = {
     allAbstain: (total) => `Les ${total} modèles IA se sont tous abstenus pour ce tour`,
     split: (responded, total) => `${responded} modèles IA sur ${total} ont répondu, mais les avis sont partagés — aucune tendance claire`,
     none: 'Aucun modèle IA n\u2019a encore répondu pour ce tour',
+    correlatedNote:
+      'Premier, Challenger et World lisent le même dossier de recherche : c\u2019est un seul événement à entrées corrélées, pas 40 prévisions indépendantes.',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -950,8 +1356,57 @@ const fr: LeagueUiPack = {
     macroEconHint: 'Perspectives de marché pour experts — taux, inflation, obligations. De la profondeur, pas du spectacle.',
     noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
   },
-  hitRate: { pending: 'Taux de réussite : en attente', pct: (pct) => `${pct}% de réussite` },
-  header: { atPrediction: 'au moment de la prédiction', now: 'actuel', live: 'EN DIRECT' },
+  hitRate: {
+    pending: 'Taux de réussite : en attente',
+    withValue: (value) => `${value} de réussite`,
+    roundResult: (correct, graded) => `Ce tour : ${correct}/${graded} justes`,
+  },
+  winRate: {
+    withSample: (pctText, n) => `${pctText}% (n=${n})`,
+    record: (wins, losses) => `${wins}V ${losses}D`,
+    insufficient: (wins, losses) => `${wins}V ${losses}D (échantillon insuffisant)`,
+    insufficientNote: 'Échantillon insuffisant',
+    rankingBegins: (minSample) =>
+      `Le classement commence après ${minSample} tours notés. D\u2019ici là, les résultats sont présentés sans classement, avec le bilan brut au lieu d\u2019un pourcentage.`,
+    noRounds: 'Aucun tour noté',
+  },
+  grading: {
+    inProgress: 'Notation en cours\u2026',
+    pending: 'En attente de notation',
+    unresolvable: 'Non notable',
+    unresolvableNote:
+      'L\u2019échéance est passée, mais ce tour ne peut pas être noté équitablement : aucun modèle n\u2019a donc été noté et il ne compte pour personne.',
+    stalled: 'La notation n\u2019est pas terminée',
+    stalledNote:
+      'Une notation a été lancée mais aucun résultat n\u2019est arrivé. Actualisez plus tard, ou enregistrez d\u2019abord le cours de départ s\u2019il manque.',
+    reason: {
+      missing_anchor: 'Aucun cours de départ n\u2019a été enregistré pour ce tour, il ne peut donc pas être noté.',
+      invalid_window: 'Les horaires de début et de fin ne forment pas une fenêtre utilisable.',
+      series_unavailable: 'La série de cours historiques n\u2019a pas pu être récupérée : personne n\u2019a été noté.',
+      no_series_data: 'Le flux n\u2019a renvoyé aucune clôture utilisable pour cette fenêtre.',
+      no_session_in_window: 'Aucune séance n\u2019a clôturé dans cette fenêtre (week-end ou jour férié).',
+      equal_close: 'La clôture est exactement égale au cours de départ : personne n\u2019a raison ni tort.',
+      not_price_instrument: 'Cet instrument n\u2019est pas un cours de marché, il ne peut pas être noté ainsi.',
+      unknown: 'Ce tour ne peut pas être noté, il ne compte pour personne.',
+    },
+  },
+  header: {
+    atPrediction: 'au moment de la prédiction',
+    now: 'actuel',
+    live: 'EN DIRECT',
+    headlineWithAnchor: (today, instrument, price, anchorDate) =>
+      `${today} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 cours de départ indisponible`,
+    windowWithAnchor: (fromDate, fromPrice, toDate) =>
+      `Mesuré depuis la clôture du ${fromDate} à ${fromPrice}, noté contre la clôture du ${toDate}.`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `Mesuré depuis la clôture du ${fromDate} à ${fromPrice}. La séance de résolution n\u2019est pas encore enregistrée.`,
+    windowNoSessionDates:
+      'Le cours de départ est enregistré, mais pas les dates de séance — elles ne sont pas déduites des horodatages.',
+    windowNoAnchor:
+      'Le cours de départ de cette prédiction n\u2019a pas été enregistré, le cours en direct n\u2019est donc pas affiché \u2014 ce serait le mauvais chiffre pour lire ces appels.',
+    liveSecondary: 'actuel',
+  },
   modelList: {
     title: (n) => `Modèles (${n})`,
     tierTab: 'Niveau',
@@ -959,6 +1414,15 @@ const fr: LeagueUiPack = {
     empty: 'Aucun modèle n\u2019a encore répondu.',
     correct: 'Correct',
     missed: 'Manqué',
+    ungraded: 'Non noté',
+  },
+  modelTile: {
+    modelLabel: 'Modèle',
+    showWhy: 'Pourquoi ?',
+    hideWhy: 'Masquer',
+    showOriginal: 'Afficher l\u2019original anglais',
+    hideOriginal: 'Masquer l\u2019original anglais',
+    originalLabel: 'Original',
   },
   bracket: {
     finalVerdict: 'Verdict final',
@@ -992,13 +1456,25 @@ const fr: LeagueUiPack = {
     methodHeadline: 'Raisonnement pur vs recherche',
     methodLabels: { pure_reasoning: 'Raisonnement pur', research: 'Recherche (Scout)' },
     campLabels: { us: 'États-Unis', china: 'Chine', other: 'Pays tiers' },
-    columns: { rank: '#', name: 'Nom', winRate: 'Taux de réussite', sample: 'Échantillon' },
-    sampleCount: (n) => `${n} résolues`,
-    provisionalBadge: 'Provisoire',
-    provisionalNote: 'Provisoire = moins de 10 prédictions résolues. À considérer comme un signal précoce, pas comme un résultat établi.',
-    collectingData: 'Collecte des données',
+    columns: { rank: '#', name: 'Nom', winRate: 'Taux de réussite', record: 'Bilan' },
+    roundCoverage: (graded, unresolvable) =>
+      unresolvable > 0
+        ? `Calculé à partir de ${graded} tours notés. ${unresolvable} tour(s) n\u2019ont pas pu être notés et ne comptent pour personne.`
+        : `Calculé à partir de ${graded} tours notés.`,
     emptyState: 'Pas encore assez de prédictions résolues — revenez plus tard, au fil des résolutions.',
     asOf: (date) => `Au ${date}`,
+    baselinesTitle: 'Références de base',
+    baselinesNote:
+      'Ce ne sont pas des participants du championnat et ils ne sont pas classés. Ils servent à lire un taux de réussite face à une stratégie sans compétence.',
+    baselineBadge: 'Référence',
+    alwaysUp: 'Toujours à la hausse',
+    alwaysUpHint: 'Prédit une hausse à chaque tour',
+    coinFlip: 'Pile ou face',
+    coinFlipHint: 'Ligne attendue à 50 % — un repère, pas une simulation',
+    coinFlipRecord: 'Repère',
+    beatingAlwaysUp: (beating, compared) =>
+      `${beating} modèles sur ${compared} battent « Toujours à la hausse »`,
+    beatingAlwaysUpEmpty: 'Aucun tour noté — rien à comparer à « Toujours à la hausse ».',
   },
   recordRoom: {
     title: 'Salle des archives',
@@ -1063,6 +1539,8 @@ const es: LeagueUiPack = {
     allAbstain: (total) => `Los ${total} modelos de IA se abstuvieron en esta ronda`,
     split: (responded, total) => `${responded} de ${total} modelos de IA respondieron, pero están divididos — sin tendencia clara`,
     none: 'Todavía ningún modelo de IA respondió en esta ronda',
+    correlatedNote:
+      'Premier, Challenger y World leen el mismo paquete de investigación: esto es un solo evento con entradas correlacionadas, no 40 pronósticos independientes.',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1119,8 +1597,57 @@ const es: LeagueUiPack = {
     macroEconHint: 'Perspectiva de mercado para expertos: tipos, inflación, bonos. Profundidad, no dopamina.',
     noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
   },
-  hitRate: { pending: 'Tasa de acierto: pendiente', pct: (pct) => `${pct}% de acierto` },
-  header: { atPrediction: 'al momento de la predicción', now: 'ahora', live: 'EN VIVO' },
+  hitRate: {
+    pending: 'Tasa de acierto: pendiente',
+    withValue: (value) => `${value} de acierto`,
+    roundResult: (correct, graded) => `Esta ronda: ${correct}/${graded} aciertos`,
+  },
+  winRate: {
+    withSample: (pctText, n) => `${pctText}% (n=${n})`,
+    record: (wins, losses) => `${wins}G ${losses}P`,
+    insufficient: (wins, losses) => `${wins}G ${losses}P (muestra insuficiente)`,
+    insufficientNote: 'Muestra insuficiente',
+    rankingBegins: (minSample) =>
+      `La clasificación empieza tras ${minSample} rondas calificadas. Hasta entonces se muestran sin clasificar, con el registro en bruto en lugar de un porcentaje.`,
+    noRounds: 'Sin rondas calificadas',
+  },
+  grading: {
+    inProgress: 'Calificando\u2026',
+    pending: 'Pendiente de calificación',
+    unresolvable: 'No se puede calificar',
+    unresolvableNote:
+      'El plazo venció, pero esta ronda no puede calificarse de forma justa: ningún modelo fue puntuado y no cuenta para nadie.',
+    stalled: 'La calificación no terminó',
+    stalledNote:
+      'Se inició una calificación pero no llegó ningún resultado. Actualice más tarde, o registre primero el precio de partida si falta.',
+    reason: {
+      missing_anchor: 'No se registró un precio de partida para esta ronda, así que no se puede calificar.',
+      invalid_window: 'Las horas de inicio y fin no forman una ventana usable.',
+      series_unavailable: 'No se pudo obtener la serie histórica de precios: nadie fue calificado.',
+      no_series_data: 'El flujo no devolvió ningún cierre usable para esta ventana.',
+      no_session_in_window: 'Ninguna sesión cerró dentro de esta ventana (fin de semana o festivo).',
+      equal_close: 'El cierre coincidió exactamente con el precio de partida: nadie acierta ni falla.',
+      not_price_instrument: 'Este instrumento no es un precio de mercado y no se puede calificar así.',
+      unknown: 'Esta ronda no se puede calificar, así que no cuenta para nadie.',
+    },
+  },
+  header: {
+    atPrediction: 'al momento de la predicción',
+    now: 'ahora',
+    live: 'EN VIVO',
+    headlineWithAnchor: (today, instrument, price, anchorDate) =>
+      `${today} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 precio de partida no disponible`,
+    windowWithAnchor: (fromDate, fromPrice, toDate) =>
+      `Medido desde el cierre del ${fromDate} de ${fromPrice}, se resuelve contra el cierre del ${toDate}.`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `Medido desde el cierre del ${fromDate} de ${fromPrice}. La sesión de resolución aún no está registrada.`,
+    windowNoSessionDates:
+      'El precio de partida está registrado, pero no las fechas de sesión: no se infieren de las marcas de tiempo.',
+    windowNoAnchor:
+      'No se registró el precio de partida de esta predicción, así que no se muestra la cotización en vivo: sería el número equivocado para leer estas llamadas.',
+    liveSecondary: 'ahora',
+  },
   modelList: {
     title: (n) => `Modelos (${n})`,
     tierTab: 'Nivel',
@@ -1128,6 +1655,15 @@ const es: LeagueUiPack = {
     empty: 'Todavía ningún modelo ha respondido.',
     correct: 'Acertó',
     missed: 'Falló',
+    ungraded: 'Sin calificar',
+  },
+  modelTile: {
+    modelLabel: 'Modelo',
+    showWhy: '¿Por qué?',
+    hideWhy: 'Ocultar',
+    showOriginal: 'Mostrar original en inglés',
+    hideOriginal: 'Ocultar original en inglés',
+    originalLabel: 'Original',
   },
   bracket: {
     finalVerdict: 'Veredicto final',
@@ -1161,13 +1697,25 @@ const es: LeagueUiPack = {
     methodHeadline: 'Razonamiento puro vs investigación',
     methodLabels: { pure_reasoning: 'Razonamiento puro', research: 'Investigación (Scout)' },
     campLabels: { us: 'EE. UU.', china: 'China', other: 'Tercer país' },
-    columns: { rank: '#', name: 'Nombre', winRate: 'Tasa de acierto', sample: 'Muestra' },
-    sampleCount: (n) => `${n} resueltas`,
-    provisionalBadge: 'Provisional',
-    provisionalNote: 'Provisional = menos de 10 predicciones resueltas. Tómalo como una señal temprana, no como un resultado consolidado.',
-    collectingData: 'Recopilando datos',
+    columns: { rank: '#', name: 'Nombre', winRate: 'Tasa de acierto', record: 'Registro' },
+    roundCoverage: (graded, unresolvable) =>
+      unresolvable > 0
+        ? `Calculado con ${graded} rondas calificadas. ${unresolvable} ronda(s) no pudieron calificarse y no cuentan para nadie.`
+        : `Calculado con ${graded} rondas calificadas.`,
     emptyState: 'Todavía no hay suficientes predicciones resueltas — vuelve a revisar a medida que se resuelvan más rondas.',
     asOf: (date) => `Actualizado al ${date}`,
+    baselinesTitle: 'Líneas de referencia',
+    baselinesNote:
+      'No son participantes de la liga y no se clasifican. Sirven para leer el acierto de un modelo frente a una estrategia que no exige habilidad.',
+    baselineBadge: 'Referencia',
+    alwaysUp: 'Siempre al alza',
+    alwaysUpHint: 'Predice alza en cada ronda',
+    coinFlip: 'Cara o cruz',
+    coinFlipHint: 'Línea esperada del 50 % — una marca, no una simulación',
+    coinFlipRecord: 'Referencia',
+    beatingAlwaysUp: (beating, compared) =>
+      `${beating} de ${compared} modelos superan a «Siempre al alza»`,
+    beatingAlwaysUpEmpty: 'Aún no hay rondas calificadas para comparar con «Siempre al alza».',
   },
   recordRoom: {
     title: 'Sala de registros',
@@ -1232,6 +1780,8 @@ const ar: LeagueUiPack = {
     allAbstain: (total) => `امتنعت جميع نماذج الذكاء الاصطناعي البالغ عددها ${total} عن إبداء رأي في هذه الجولة`,
     split: (responded, total) => `أجاب ${responded} من أصل ${total} من نماذج الذكاء الاصطناعي، لكن الآراء منقسمة — لا يوجد اتجاه واضح`,
     none: 'لم يستجب أي نموذج ذكاء اصطناعي لهذه الجولة بعد',
+    correlatedNote:
+      'Premier و Challenger و World يقرأون حزمة البحث نفسها، فهذه حادثة واحدة بمدخلات مترابطة — وليست 40 توقّعًا مستقلًا.',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1287,8 +1837,55 @@ const ar: LeagueUiPack = {
     macroEconHint: 'نظرة سوقية للخبراء — أسعار الفائدة والتضخم والسندات. عمق لا إثارة.',
     noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
   },
-  hitRate: { pending: 'معدل الإصابة: قيد الحساب', pct: (pct) => `معدل الإصابة ${pct}%` },
-  header: { atPrediction: 'وقت التنبؤ', now: 'الآن', live: 'مباشر' },
+  hitRate: {
+    pending: 'معدل الإصابة: قيد الحساب',
+    withValue: (value) => `معدل الإصابة ${value}`,
+    roundResult: (correct, graded) => `هذه الجولة: ${correct}/${graded} إصابة`,
+  },
+  winRate: {
+    withSample: (pctText, n) => `${pctText}% (ن=${n})`,
+    record: (wins, losses) => `${wins} فوز ${losses} خسارة`,
+    insufficient: (wins, losses) => `${wins} فوز ${losses} خسارة (العيّنة غير كافية)`,
+    insufficientNote: 'العيّنة غير كافية',
+    rankingBegins: (minSample) =>
+      `يبدأ الترتيب بعد ${minSample} جولة مُقيَّمة. وحتى ذلك الحين تُعرض النتائج دون ترتيب، بسجل الفوز والخسارة بدلًا من نسبة مئوية.`,
+    noRounds: 'لا جولات مُقيَّمة',
+  },
+  grading: {
+    inProgress: 'جارٍ التقييم…',
+    pending: 'في انتظار التقييم',
+    unresolvable: 'غير قابل للتقييم',
+    unresolvableNote:
+      'انتهى الموعد النهائي، لكن لا يمكن تقييم هذه الجولة بعدل — لذلك لم يُقيَّم أي نموذج فيها، ولا تُحسب لأي طرف.',
+    stalled: 'لم يكتمل التقييم',
+    stalledNote: 'بدأ التقييم لكن لم يصل أي نتيجة. حدّث لاحقًا، أو سجّل سعر البداية أولًا إن كان مفقودًا.',
+    reason: {
+      missing_anchor: 'لم يُسجَّل سعر بداية لهذه الجولة، لذلك لا يمكن تقييمها.',
+      invalid_window: 'وقتا البداية والنهاية لا يشكّلان نافذة صالحة للتقييم.',
+      series_unavailable: 'تعذّر جلب سلسلة الأسعار التاريخية، فلم يُقيَّم أحد.',
+      no_series_data: 'لم يُرجع المصدر أي إغلاق صالح لهذه النافذة.',
+      no_session_in_window: 'لم يُغلق أي يوم تداول داخل نافذة التنبؤ (عطلة أو عطلة نهاية الأسبوع).',
+      equal_close: 'طابق الإغلاق سعر البداية تمامًا، فلا صواب ولا خطأ.',
+      not_price_instrument: 'هذه الأداة ليست سعر سوق، ولا يمكن تقييمها بهذه الطريقة.',
+      unknown: 'لا يمكن تقييم هذه الجولة، لذلك لا تُحسب لأي طرف.',
+    },
+  },
+  header: {
+    atPrediction: 'وقت التنبؤ',
+    now: 'الآن',
+    live: 'مباشر',
+    headlineWithAnchor: (today, instrument, price, anchorDate) =>
+      `${today} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · سعر البداية غير متاح`,
+    windowWithAnchor: (fromDate, fromPrice, toDate) =>
+      `يُقاس من إغلاق ${fromDate} عند ${fromPrice}، ويُحسَم مقابل إغلاق ${toDate}.`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `يُقاس من إغلاق ${fromDate} عند ${fromPrice}. لم يُسجَّل بعد يوم الجلسة المستخدم في التقييم.`,
+    windowNoSessionDates: 'سعر البداية مسجَّل لكن تواريخ الجلسات ليست كذلك — ولا تُستنتج من الطوابع الزمنية.',
+    windowNoAnchor:
+      'لم يُسجَّل سعر بداية هذا التنبؤ، لذلك لا يُعرض السعر المباشر — سيكون الرقم الخطأ لقراءة هذه التوقعات.',
+    liveSecondary: 'الآن',
+  },
   modelList: {
     title: (n) => `النماذج (${n})`,
     tierTab: 'الفئة',
@@ -1296,6 +1893,15 @@ const ar: LeagueUiPack = {
     empty: 'لم يستجب أي نموذج بعد.',
     correct: 'إصابة',
     missed: 'خطأ',
+    ungraded: 'غير مُقيَّم',
+  },
+  modelTile: {
+    modelLabel: 'النموذج',
+    showWhy: 'لماذا؟',
+    hideWhy: 'إخفاء',
+    showOriginal: 'إظهار الأصل الإنجليزي',
+    hideOriginal: 'إخفاء الأصل الإنجليزي',
+    originalLabel: 'الأصل',
   },
   bracket: {
     finalVerdict: 'الحكم النهائي',
@@ -1328,13 +1934,25 @@ const ar: LeagueUiPack = {
     methodHeadline: 'الاستدلال الصرف مقابل البحث',
     methodLabels: { pure_reasoning: 'الاستدلال الصرف', research: 'البحث (الكشافة)' },
     campLabels: { us: 'الولايات المتحدة', china: 'الصين', other: 'دولة ثالثة' },
-    columns: { rank: '#', name: 'الاسم', winRate: 'معدل الإصابة', sample: 'حجم العينة' },
-    sampleCount: (n) => `${n} تم حسمها`,
-    provisionalBadge: 'مؤقت',
-    provisionalNote: 'مؤقت = أقل من 10 توقعات محسومة. اعتبر هذه المعدلات إشارة مبكرة وليست سجلًا نهائيًا.',
-    collectingData: 'جارٍ جمع البيانات',
+    columns: { rank: '#', name: 'الاسم', winRate: 'معدل الإصابة', record: 'السجل' },
+    roundCoverage: (graded, unresolvable) =>
+      unresolvable > 0
+        ? `محسوبة من ${graded} جولة مُقيَّمة. تعذّر تقييم ${unresolvable} جولة، ولا تُحسب لأي طرف.`
+        : `محسوبة من ${graded} جولة مُقيَّمة.`,
     emptyState: 'لا توجد توقعات محسومة كافية بعد — عد لاحقًا مع حسم المزيد من الجولات.',
     asOf: (date) => `اعتبارًا من ${date}`,
+    baselinesTitle: 'خطوط مرجعية',
+    baselinesNote:
+      'ليست مشاركين في الدوري ولا تُرتَّب. وُجدت لتُقرأ نسبة إصابة النموذج مقابل استراتيجية لا تحتاج مهارة.',
+    baselineBadge: 'مرجع',
+    alwaysUp: 'دائمًا صعود',
+    alwaysUpHint: 'يتوقع الصعود في كل جولة',
+    coinFlip: 'رمي عملة',
+    coinFlipHint: 'خط 50٪ المتوقع — علامة مرجعية لا محاكاة',
+    coinFlipRecord: 'مرجع',
+    beatingAlwaysUp: (beating, compared) =>
+      `${beating} من ${compared} نماذج تتفوّق على «دائمًا صعود»`,
+    beatingAlwaysUpEmpty: 'لا جولات مُقيَّمة بعد لمقارنتها بـ«دائمًا صعود».',
   },
   recordRoom: {
     title: 'غرفة السجلات',

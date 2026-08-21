@@ -36,6 +36,20 @@ export function creditsForLeagueDeepDebate(): number {
   return LEAGUE_DEEP_DEBATE_CREDITS
 }
 
+/**
+ * MINIMUM SAMPLE for showing a win rate as a PERCENTAGE. Below this, every
+ * surface shows the raw record ("1W 0L, sample too small") and nothing is ranked
+ * — see `lib/league/win-rate.ts`, which is the only module allowed to turn a
+ * ratio into a displayable percentage.
+ *
+ * NOT a cosmetic threshold. One graded round would render as "100% accuracy",
+ * which is both statistically meaningless and, for a service heading toward
+ * 유사투자자문 registration in Korea, the shape of a prohibited guaranteed-return
+ * advertising claim. It lives here with the other named league constants so
+ * there is one number, changed in one place, never inlined at a call site.
+ */
+export const MIN_GRADED_ROUNDS_FOR_WIN_RATE = 10
+
 /** credit_logs.module for a deep-open deduction. */
 export const LEAGUE_DEEP_OPEN_MODULE = 'league_deep_open'
 

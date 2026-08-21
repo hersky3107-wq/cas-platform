@@ -1,7 +1,14 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { buildLeaderboardData, type GradedPredictionRow, type LeaderboardData } from './leaderboard-aggregate'
+import { gradingStateOf } from '@/lib/prediction/grading-state'
+import {
+  buildLeaderboardData,
+  emptyRoundCoverage,
+  type GradedPredictionRow,
+  type LeaderboardData,
+  type RoundCoverage,
+} from './leaderboard-aggregate'
 
 export { buildLeaderboardData }
 export type { LeaderboardData }
@@ -17,6 +24,10 @@ export type { LeaderboardData }
  *   - `is_correct is not null`
  *   - joined round's `item_type = 'ranked'`
  *   - optionally, `category in (...)` — see `LeaderboardScope`
+ *
+ * Plus ONE more query for round-level coverage (`fetchRoundCoverage`): the win
+ * rates' denominators count graded rounds only, so the number of rounds that are
+ * ungraded or unresolvable is reported alongside them instead of vanishing.
  *
  * Scout is INCLUDED. Directional grading applies to scout the same as every
  * other tier; do not re-add a `league_tier != 'scout'` filter.
@@ -47,6 +58,49 @@ export type LeaderboardScope = {
 
 function toDirection(raw: string | null): GradedPredictionRow['predicted_direction'] {
   return raw === 'up' || raw === 'down' || raw === 'flat' ? raw : null
+}
+
+/**
+ * Round-level accounting for the same scope as the win rates: how many ranked
+ * rounds are graded, and how many are due-but-ungraded / unresolvable / not yet
+ * due. ONE query over the rounds table (rounds number in the dozens, so this is
+ * cheaper than four count queries), classified by the shared
+ * `gradingStateOf` — the leaderboard cannot invent a definition of "graded" that
+ * differs from the grading engine's.
+ *
+ * Degrades to zeros if the grading-state columns are not migrated yet, rather
+ * than failing the whole leaderboard read.
+ */
+async function fetchRoundCoverage(scope?: LeaderboardScope): Promise<RoundCoverage> {
+  let query = supabaseAdmin
+    .from('prediction_rounds')
+    .select('resolves_at, actual_outcome, resolved_at, grading_busy_until, grading_attempted_at, unresolvable_reason')
+    .eq('item_type', 'ranked')
+  if (scope?.categories) query = query.in('category', scope.categories as string[])
+
+  const { data, error } = await query
+  if (error || !data) return emptyRoundCoverage()
+
+  const nowMs = Date.now()
+  const coverage = emptyRoundCoverage()
+  for (const row of data as Record<string, unknown>[]) {
+    const state = gradingStateOf(
+      {
+        resolves_at: String(row.resolves_at ?? ''),
+        actual_outcome: (row.actual_outcome as string | null) ?? null,
+        resolved_at: (row.resolved_at as string | null) ?? null,
+        grading_busy_until: (row.grading_busy_until as string | null) ?? null,
+        grading_attempted_at: (row.grading_attempted_at as string | null) ?? null,
+        unresolvable_reason: (row.unresolvable_reason as string | null) ?? null,
+      },
+      nowMs
+    )
+    if (state === 'graded') coverage.graded += 1
+    else if (state === 'unresolvable') coverage.unresolvable += 1
+    else if (state === 'not_due') coverage.notDue += 1
+    else coverage.dueUngraded += 1
+  }
+  return coverage
 }
 
 export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<LeaderboardData> {
@@ -85,5 +139,5 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
       predicted_direction: toDirection(row.predicted_direction),
     }))
 
-  return buildLeaderboardData(rows)
+  return buildLeaderboardData(rows, await fetchRoundCoverage(scope))
 }

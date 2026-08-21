@@ -29,10 +29,16 @@ function CampStat({ row, label, t }: { row: LeaderboardRow | undefined; label: s
   return (
     <div className="text-center">
       <p className="text-[11px] font-medium text-league-fg-muted">{label}</p>
+      {/*
+        The figure carries its own sample size (or the raw record when the sample
+        is too small), so this headline has no separate n line to fall out of sync
+        with it — the viral US-vs-China number is the one most likely to be
+        screenshotted, and it must never travel without its n.
+      */}
       <div className="mt-0.5">
         <WinRateFigure row={row} t={t} size="hero" />
       </div>
-      <p className="text-[10px] text-league-fg-muted">{row ? t.leaderboard.sampleCount(row.n) : t.leaderboard.emptyState}</p>
+      {row ? null : <p className="text-[10px] text-league-fg-muted">{t.leaderboard.emptyState}</p>}
     </div>
   )
 }

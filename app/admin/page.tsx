@@ -29,6 +29,36 @@ type AdminStory = {
   pinned: boolean;
 };
 
+/**
+ * One round's result from the grading sweep. Mirrors `RoundGradingResult` in
+ * `lib/prediction/grading-core.ts` — the operator sees exactly what the engine
+ * decided, including the rounds it REFUSED to grade and why.
+ */
+type GradingRoundResult = {
+  outcome: "graded" | "unresolvable" | "rejected" | "error";
+  roundId: string;
+  instrument: string | null;
+  direction?: "up" | "down";
+  resolutionPrice?: number;
+  resolutionSessionDate?: string;
+  childrenGraded?: number;
+  reason?: string;
+  detail?: string;
+  error?: string;
+};
+
+type GradingReport = {
+  scanned: number;
+  graded: number;
+  unresolvable: number;
+  rejected: number;
+  failed: number;
+  childrenGraded: number;
+  seriesCalls: number;
+  truncated: boolean;
+  rounds: GradingRoundResult[];
+};
+
 type AdminStats = {
   overview: {
     totalUsers: number;
@@ -85,6 +115,10 @@ export default function AdminPage() {
   const [announcementDraft, setAnnouncementDraft] = useState("");
   const [announcementSaving, setAnnouncementSaving] = useState(false);
   const [announcementMsg, setAnnouncementMsg] = useState<string | null>(null);
+
+  const [gradingBusy, setGradingBusy] = useState(false);
+  const [gradingError, setGradingError] = useState<string | null>(null);
+  const [gradingReport, setGradingReport] = useState<GradingReport | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -198,6 +232,29 @@ export default function AdminPage() {
       setAnnouncementMsg(e instanceof Error ? e.message : "Save failed");
     } finally {
       setAnnouncementSaving(false);
+    }
+  }
+
+  /**
+   * Grades every due, ungraded prediction round in one pass. Sends NO body and
+   * NO query string, because there is nothing to choose: the endpoint rejects
+   * anything that looks like a selector (see the route's doc comment). There is
+   * deliberately no "re-grade" button anywhere on this page — a graded round is
+   * final.
+   */
+  async function gradeDueRounds() {
+    if (gradingBusy) return;
+    setGradingBusy(true);
+    setGradingError(null);
+    try {
+      const res = await fetch("/api/admin/prediction/reconcile", { method: "POST", credentials: "include" });
+      const j = (await res.json().catch(() => null)) as { ok?: boolean; report?: GradingReport; error?: string; detail?: string };
+      if (!res.ok) throw new Error(j?.detail ?? j?.error ?? "Grading sweep failed");
+      setGradingReport(j?.report ?? null);
+    } catch (e: unknown) {
+      setGradingError(e instanceof Error ? e.message : "Grading sweep failed");
+    } finally {
+      setGradingBusy(false);
     }
   }
 
@@ -452,6 +509,78 @@ export default function AdminPage() {
             </section>
           </>
         ) : null}
+
+        <section className="border-t border-white/10 pt-10">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">
+            Prediction league — grading
+          </h2>
+          <p className="mb-3 text-sm text-slate-500">
+            Grades every due, ungraded round in one pass. There is nothing to choose: no batch size, no round
+            picker, and a round that is already graded is never re-graded. Rounds are also graded automatically
+            when someone opens them — this button is for rounds nobody has read yet.
+          </p>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void gradeDueRounds()}
+                disabled={gradingBusy}
+                className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+              >
+                {gradingBusy ? "Grading due rounds…" : "Grade all due rounds"}
+              </button>
+              {gradingReport ? (
+                <span className="text-xs text-slate-400">
+                  {gradingReport.scanned} scanned · {gradingReport.graded} graded ({gradingReport.childrenGraded}{" "}
+                  predictions) · {gradingReport.unresolvable} unresolvable · {gradingReport.rejected} rejected ·{" "}
+                  {gradingReport.failed} failed · {gradingReport.seriesCalls} price call(s)
+                  {gradingReport.truncated ? " · more remain, run again" : ""}
+                </span>
+              ) : null}
+            </div>
+
+            {gradingError ? (
+              <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+                {gradingError}
+              </p>
+            ) : null}
+
+            {gradingReport ? (
+              gradingReport.rounds.length === 0 ? (
+                <p className="mt-3 text-xs text-slate-400">No due, ungraded rounds — nothing to grade.</p>
+              ) : (
+                <ul className="mt-3 space-y-1.5 text-xs">
+                  {gradingReport.rounds.map((r) => (
+                    <li key={r.roundId} className="flex flex-wrap items-baseline gap-x-2 text-slate-300">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          r.outcome === "graded"
+                            ? "bg-emerald-500/15 text-emerald-200"
+                            : r.outcome === "unresolvable"
+                              ? "bg-amber-500/15 text-amber-200"
+                              : r.outcome === "rejected"
+                                ? "bg-white/10 text-slate-300"
+                                : "bg-rose-500/15 text-rose-200"
+                        }`}
+                      >
+                        {r.outcome}
+                      </span>
+                      <span className="font-semibold text-white">{r.instrument ?? "—"}</span>
+                      <span className="font-mono text-[10px] text-slate-500">{r.roundId}</span>
+                      <span className="text-slate-400">
+                        {r.outcome === "graded"
+                          ? `${r.direction} · ${r.resolutionSessionDate} close ${r.resolutionPrice} · ${r.childrenGraded} graded`
+                          : r.outcome === "error"
+                            ? r.error
+                            : `${r.reason}${r.detail ? ` — ${r.detail}` : ""}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+          </div>
+        </section>
 
         <section className="border-t border-white/10 pt-10">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">

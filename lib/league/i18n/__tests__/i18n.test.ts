@@ -148,12 +148,66 @@ describe('dictionary completeness', () => {
       const pack = getLeagueUiPack(locale)
       expect(pack.leaderboard.methodHeadline.trim().length).toBeGreaterThan(0)
       expect(pack.leaderboard.methodLabels.research.trim().length).toBeGreaterThan(0)
-      expect(pack.leaderboard.collectingData.trim().length).toBeGreaterThan(0)
       expect(pack.leaderboard.tabs.korea.trim().length).toBeGreaterThan(0)
-      expect(pack.bracket.combinedTrack(54, 12)).toContain('54')
-      expect(pack.bracket.combinedTrack(54, 12)).toContain('12')
+      expect(pack.bracket.combinedTrack('54', 12)).toContain('54')
+      expect(pack.bracket.combinedTrack('54', 12)).toContain('12')
       expect(pack.bracket.combinedTrackPending.trim().length).toBeGreaterThan(0)
       expect(pack.recordRoom.freeNote.trim().length).toBeGreaterThan(0)
+      expect(pack.headline.correlatedNote.trim().length).toBeGreaterThan(0)
+      expect(pack.leaderboard.alwaysUp.trim().length).toBeGreaterThan(0)
+      expect(pack.leaderboard.coinFlip.trim().length).toBeGreaterThan(0)
+      expect(pack.leaderboard.beatingAlwaysUp(3, 40)).toContain('3')
+      expect(pack.leaderboard.beatingAlwaysUp(3, 40)).toContain('40')
+      expect(pack.leaderboard.beatingAlwaysUpEmpty.trim().length).toBeGreaterThan(0)
+      expect(pack.leaderboard.coinFlipHint.toLowerCase()).not.toMatch(/random|seed|rng/)
+    }
+  })
+
+  it('fills in header honesty / grading-reason / tile-expand chrome for every locale', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const pack = getLeagueUiPack(locale)
+      expect(pack.header.headlineNoAnchor('Today', 'AAPL')).toContain('AAPL')
+      expect(pack.header.headlineWithAnchor('Today', 'AAPL', '$305.59', 'Aug 17')).toContain('305.59')
+      expect(pack.header.windowWithAnchor('Aug 17', '$305.59', 'Aug 18')).toContain('305.59')
+      expect(pack.header.windowNoAnchor.trim().length).toBeGreaterThan(0)
+      expect(pack.header.windowAnchorOnly('Aug 17', '$305.59')).toContain('305.59')
+      expect(pack.header.windowNoSessionDates.trim().length).toBeGreaterThan(0)
+      expect(pack.header.liveSecondary.trim().length).toBeGreaterThan(0)
+      expect(pack.hitRate.roundResult(27, 37)).toContain('27')
+      expect(pack.hitRate.roundResult(27, 37)).toContain('37')
+      expect(pack.modelList.ungraded.trim().length).toBeGreaterThan(0)
+      expect(pack.modelTile.showOriginal.trim().length).toBeGreaterThan(0)
+      expect(pack.modelTile.hideOriginal.trim().length).toBeGreaterThan(0)
+      expect(pack.modelTile.originalLabel.trim().length).toBeGreaterThan(0)
+      expect(pack.grading.stalled.trim().length).toBeGreaterThan(0)
+      expect(pack.grading.stalledNote.trim().length).toBeGreaterThan(0)
+      expect(pack.grading.reason.missing_anchor.trim().length).toBeGreaterThan(0)
+      expect(pack.grading.reason.equal_close.trim().length).toBeGreaterThan(0)
+      expect(pack.grading.reason.unknown.trim().length).toBeGreaterThan(0)
+      expect(pack.modelTile.showWhy.trim().length).toBeGreaterThan(0)
+      expect(pack.modelTile.hideWhy.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  it('no locale can render a win rate without its sample size, or a percentage below the minimum sample', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const pack = getLeagueUiPack(locale)
+      const rate = pack.winRate.withSample('62', 34)
+      expect(rate).toContain('62')
+      // The n travels INSIDE the percentage string in every language.
+      expect(rate).toContain('34')
+
+      // Low-sample forms state a record, never a rate — in any language.
+      const low = pack.winRate.insufficient(1, 0)
+      expect(low).not.toContain('%')
+      expect(low).toContain('1')
+      expect(pack.winRate.insufficientNote.trim().length).toBeGreaterThan(0)
+      expect(pack.winRate.record(34, 12)).toContain('34')
+      expect(pack.winRate.rankingBegins(10)).toContain('10')
+      expect(pack.winRate.noRounds.trim().length).toBeGreaterThan(0)
+
+      // The card badge wraps a pre-composed figure, so it cannot drop the n either.
+      expect(pack.hitRate.withValue('62% (n=34)')).toContain('(n=34)')
     }
   })
 

@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import type { BaselineRow, BaselineSummary } from '@/lib/league/baselines'
+import { COIN_FLIP_EXPECTED_PCT } from '@/lib/league/baselines'
 import type { LeaderboardData, LeaderboardRow, LeaderboardScope } from '@/lib/league/leaderboard-aggregate'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { ComplianceReceipt } from './CardCompliance'
 import { LeaderboardCampHeadline } from './LeaderboardCampHeadline'
-import { WinRateFigure } from './WinRateFigure'
+import { WinRateFigure, WinRateRecord } from './WinRateFigure'
 
 const SECONDARY_SCOPES: Exclude<LeaderboardScope, 'model' | 'campHeadline' | 'method'>[] = [
   'camp',
@@ -32,7 +34,9 @@ export function LeaderboardBody({
   const [showMore, setShowMore] = useState(false)
   const [scope, setScope] = useState<(typeof SECONDARY_SCOPES)[number]>('camp')
   const secondary = data[scope]
-  const anyProvisional = data.model.rows.some((r) => r.provisional) || secondary.rows.some((r) => r.provisional)
+  // Any unranked row means the reader is looking at a partially- or fully-unranked
+  // board, and has to be told why rather than left to assume the order means something.
+  const anyUnranked = data.model.rows.some((r) => r.rank === null) || secondary.rows.some((r) => r.rank === null)
 
   return (
     <>
@@ -41,10 +45,12 @@ export function LeaderboardBody({
         <p className="text-[11px] text-league-fg-muted">{t.leaderboard.subtitle}</p>
       </div>
 
+      <BeatingHeadline baselines={data.baselines} t={t} />
       <LeaderboardCampHeadline slice={data.campHeadline} t={t} />
       <MethodHeadline slice={data.method} t={t} />
 
       <LeaderboardTable slice={data.model.rows} t={t} labelFor={modelLabel} />
+      <BaselineTable baselines={data.baselines} t={t} />
 
       <div className="px-4 pb-2 pt-3">
         <button
@@ -72,7 +78,19 @@ export function LeaderboardBody({
         </>
       ) : null}
 
-      {anyProvisional ? <p className="px-4 pb-3 pt-1 text-[10px] text-league-fg-muted">{t.leaderboard.provisionalNote}</p> : null}
+      {/*
+        Round-level accounting, always shown: the win rates above count graded
+        rounds ONLY, so a reader has to be able to see how many rounds exist that
+        no win rate reflects. Hiding the unresolvable count would make the record
+        look tidier than it is.
+      */}
+      <p className="px-4 pt-1 text-[10px] text-league-fg-muted">
+        {t.leaderboard.roundCoverage(data.roundCoverage.graded, data.roundCoverage.unresolvable)}
+      </p>
+
+      {anyUnranked ? (
+        <p className="px-4 pb-3 pt-1 text-[10px] text-league-fg-muted">{t.winRate.rankingBegins(data.minSample)}</p>
+      ) : null}
     </>
   )
 }
@@ -108,20 +126,21 @@ function MethodHeadline({ slice, t }: { slice: LeaderboardData['method']; t: Lea
       <p className="pb-2 text-center text-[10px] font-semibold uppercase tracking-wide text-league-fg-muted">
         {t.leaderboard.methodHeadline}
       </p>
+      {/*
+        No separate sample-size line here: `WinRateFigure` carries n inside the
+        percentage string itself, so there is no layout in which the rate is
+        visible and its sample size is not.
+      */}
       <div className="grid grid-cols-2 gap-2">
         <div className="text-center">
           <p className="text-[11px] font-medium text-league-fg-muted">{t.leaderboard.methodLabels.pure_reasoning}</p>
           <WinRateFigure row={reasoning} t={t} size="hero" />
-          <p className="text-[10px] text-league-fg-muted">
-            {reasoning ? t.leaderboard.sampleCount(reasoning.n) : t.leaderboard.emptyState}
-          </p>
+          {reasoning ? null : <p className="text-[10px] text-league-fg-muted">{t.leaderboard.emptyState}</p>}
         </div>
         <div className="text-center">
           <p className="text-[11px] font-medium text-league-fg-muted">{t.leaderboard.methodLabels.research}</p>
           <WinRateFigure row={research} t={t} size="hero" />
-          <p className="text-[10px] text-league-fg-muted">
-            {research ? t.leaderboard.sampleCount(research.n) : t.leaderboard.emptyState}
-          </p>
+          {research ? null : <p className="text-[10px] text-league-fg-muted">{t.leaderboard.emptyState}</p>}
         </div>
       </div>
     </div>
@@ -140,6 +159,80 @@ function ScopeTabButton({ active, onClick, label }: { active: boolean; onClick: 
     >
       {label}
     </button>
+  )
+}
+
+function BeatingHeadline({ baselines, t }: { baselines: BaselineSummary; t: LeagueUiPack }) {
+  const line =
+    baselines.alwaysUp.resolved > 0
+      ? t.leaderboard.beatingAlwaysUp(baselines.modelsBeatingAlwaysUp, baselines.modelsCompared)
+      : t.leaderboard.beatingAlwaysUpEmpty
+  return (
+    <div className="mx-4 mb-3 rounded-xl border border-league-border/40 bg-league-bg-elevated px-3 py-3">
+      <p className="text-center text-sm font-semibold leading-snug text-league-fg">{line}</p>
+    </div>
+  )
+}
+
+function BaselineTable({ baselines, t }: { baselines: BaselineSummary; t: LeagueUiPack }) {
+  return (
+    <div className="mt-1 border-t border-league-border/30 bg-league-bg-elevated/50">
+      <div className="px-4 pt-3 pb-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-league-fg-muted">
+          {t.leaderboard.baselinesTitle}
+        </p>
+        <p className="pt-0.5 text-[10px] leading-snug text-league-fg-muted">{t.leaderboard.baselinesNote}</p>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-league-border/40 text-[10px] font-semibold uppercase tracking-wide text-league-fg-muted">
+            <th className="px-4 py-1.5 text-left">{t.leaderboard.columns.rank}</th>
+            <th className="py-1.5 text-left">{t.leaderboard.columns.name}</th>
+            <th className="py-1.5 text-right">{t.leaderboard.columns.winRate}</th>
+            <th className="px-4 py-1.5 text-right">{t.leaderboard.columns.record}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <BaselineRowView row={baselines.alwaysUp} t={t} />
+          <BaselineRowView row={baselines.coinFlip} t={t} />
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function BaselineRowView({ row, t }: { row: BaselineRow; t: LeagueUiPack }) {
+  const isMarker = row.role === 'marker'
+  const name = row.key === 'always_up' ? t.leaderboard.alwaysUp : t.leaderboard.coinFlip
+  const hint = row.key === 'always_up' ? t.leaderboard.alwaysUpHint : t.leaderboard.coinFlipHint
+  return (
+    <tr className="border-b border-league-border/20 last:border-b-0 text-league-fg-muted">
+      <td className="px-4 py-2">
+        <span className="inline-block rounded-full bg-league-bg-elevated px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide">
+          {t.leaderboard.baselineBadge}
+        </span>
+      </td>
+      <td className="max-w-[10rem] py-2">
+        <span className="block truncate font-medium text-league-fg">{name}</span>
+        <span className="block text-[10px] leading-snug">{hint}</span>
+      </td>
+      <td className="py-2 text-right">
+        <WinRateFigure
+          row={row}
+          t={t}
+          size="table"
+          recordShownSeparately
+          expectedPct={isMarker ? COIN_FLIP_EXPECTED_PCT : undefined}
+        />
+      </td>
+      <td className="px-4 py-2 text-right">
+        {isMarker ? (
+          <span className="text-[10px]">{t.leaderboard.coinFlipRecord}</span>
+        ) : (
+          <WinRateRecord row={row} t={t} />
+        )}
+      </td>
+    </tr>
   )
 }
 
@@ -163,24 +256,24 @@ function LeaderboardTable({
           <th className="px-4 py-1.5 text-left">{t.leaderboard.columns.rank}</th>
           <th className="py-1.5 text-left">{t.leaderboard.columns.name}</th>
           <th className="py-1.5 text-right">{t.leaderboard.columns.winRate}</th>
-          <th className="px-4 py-1.5 text-right">{t.leaderboard.columns.sample}</th>
+          <th className="px-4 py-1.5 text-right">{t.leaderboard.columns.record}</th>
         </tr>
       </thead>
       <tbody>
-        {slice.map((row, i) => (
+        {slice.map((row) => (
           <tr key={row.key} className="border-b border-league-border/20 last:border-b-0">
-            <td className="px-4 py-2 text-league-fg-muted">{i + 1}</td>
+            {/*
+              The rank comes from the data, never from the row's position: a
+              below-threshold row has `rank === null` and shows a dash, so sitting
+              at the top of the unranked block cannot read as "#1".
+            */}
+            <td className="px-4 py-2 text-league-fg-muted">{row.rank ?? '—'}</td>
             <td className="max-w-[8rem] truncate py-2 font-medium text-league-fg">{labelFor(row)}</td>
             <td className="py-2 text-right">
-              <WinRateFigure row={row} t={t} size="table" />
+              <WinRateFigure row={row} t={t} size="table" recordShownSeparately />
             </td>
             <td className="px-4 py-2 text-right text-league-fg-muted">
-              <span className="tabular-nums">{t.leaderboard.sampleCount(row.n)}</span>
-              {row.provisional ? (
-                <span className="ml-1 inline-block rounded-full bg-league-bg-elevated px-1 py-0.5 text-[9px] font-semibold">
-                  {t.leaderboard.provisionalBadge}
-                </span>
-              ) : null}
+              <WinRateRecord row={row} t={t} />
             </td>
           </tr>
         ))}

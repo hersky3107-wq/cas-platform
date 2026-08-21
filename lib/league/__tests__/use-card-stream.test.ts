@@ -41,8 +41,10 @@ function pred(overrides: Partial<PredictionRow>): PredictionRow {
 
 function liveModel(overrides: Partial<CardModelPrediction> = {}): CardModelPrediction {
   return {
+    prediction_id: null,
     model_id: 'gpt-4o',
     brand: 'OpenAI',
+    model_identifier: 'gpt-4o',
     camp: 'us',
     league_tier: 'premier',
     direction: 'up',
@@ -130,6 +132,7 @@ describe('use-card-stream: live merge (Layer 4)', () => {
       live = mergeModel(live, {
         model_id: row.model_id,
         brand: row.brand,
+        model_identifier: row.model_id,
         camp: row.camp as CardModelPrediction['camp'],
         league_tier: row.league_tier as CardModelPrediction['league_tier'],
         direction: row.predicted_direction as CardModelPrediction['direction'],

@@ -1,26 +1,30 @@
 import { NextResponse } from 'next/server'
 import { verifyCronAuth } from '@/lib/cron/auth'
-import { reconcileDuePredictionRounds } from '@/lib/prediction/reconciliation'
+import { gradeAllDueRounds } from '@/lib/prediction/reconciliation'
 
-/** Reconciliation can scan many due rounds; give it room without being unbounded. */
+/** One sweep can grade many rounds; give it room without being unbounded. */
 export const maxDuration = 120
 
 /**
  * POST /api/cron/prediction/reconcile
  *
- * Legacy cron-secret reconciliation pass. It is NOT scheduled in
- * `vercel.json`. Requests without `?manual=1` safely no-op. Normal manual
- * operation should use the admin-only
- * `POST /api/admin/prediction/reconcile` endpoint instead.
+ * SCHEDULED GRADING IS OFF — DEFERRED, NOT DEAD. This route is intact and
+ * authenticated but absent from `vercel.json`, so nothing calls it on a
+ * schedule; a request without `?manual=1` deliberately no-ops.
  *
- * With `?manual=1`, this retained operational fallback selects due, unresolved
- * rounds, resolves outcomes, and grades child predictions. It reuses the
- * existing `reconcileDuePredictionRounds` engine.
+ * Grading is currently triggered two ways instead, both of which cover current
+ * round volume without a scheduler: GRADE-ON-READ (a due, ungraded round is
+ * claimed and graded when someone opens it — `lib/league/card.ts`) and the admin
+ * sweep (`POST /api/admin/prediction/reconcile`). Re-enable the schedule when
+ * volume outgrows that — i.e. when rounds routinely go days without a reader and
+ * the operator is running the sweep by hand to compensate. Nothing else needs to
+ * change at that point: this route already calls the same non-discretionary
+ * `gradeAllDueRounds()` pass.
  *
  * Auth: Bearer CRON_SECRET. Public callers get 401.
  *
- * Query params:
- *   ?limit=N   — cap the batch size (default 200, max 1000)
+ * Takes no other input: like every grading entry point, it grades every due,
+ * ungraded round and never re-grades a graded one.
  */
 export async function POST(req: Request) {
   const authErr = verifyCronAuth(req)
@@ -31,13 +35,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       skipped: true,
-      reason: 'automatic_league_reconciliation_disabled',
+      reason: 'scheduled_league_grading_disabled',
     })
   }
 
-  const limitParam = Number(url.searchParams.get('limit'))
-  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 1000) : 200
-
-  const summary = await reconcileDuePredictionRounds(limit)
-  return NextResponse.json({ ok: true, summary })
+  const report = await gradeAllDueRounds()
+  return NextResponse.json({ ok: true, report })
 }

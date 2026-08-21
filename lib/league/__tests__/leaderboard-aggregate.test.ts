@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  LEADERBOARD_PROVISIONAL_THRESHOLD,
+  LEADERBOARD_MIN_SAMPLE,
   buildCombinedMethodTrack,
   buildLeaderboardData,
   buildLeaderboardSlice,
@@ -21,8 +21,15 @@ function row(overrides: Partial<GradedPredictionRow> = {}): GradedPredictionRow 
   }
 }
 
+/** `count` graded rows for one bucket, the first `correct` of them right. */
+function rowsFor(modelId: string, count: number, correct: number, overrides: Partial<GradedPredictionRow> = {}) {
+  return Array.from({ length: count }, (_, i) =>
+    row({ model_id: modelId, round_id: `${modelId}-${i}`, is_correct: i < correct, ...overrides })
+  )
+}
+
 describe('buildLeaderboardSlice', () => {
-  it('groups per-model win rate with correct/resolved/n', () => {
+  it('groups per-model correct/resolved/n', () => {
     const rows = [
       row({ model_id: 'a', brand: 'A', is_correct: true }),
       row({ model_id: 'a', brand: 'A', is_correct: true }),
@@ -35,36 +42,83 @@ describe('buildLeaderboardSlice', () => {
     expect(a.correct).toBe(2)
     expect(a.resolved).toBe(3)
     expect(a.n).toBe(3)
-    expect(a.winRatePct).toBeCloseTo(66.7, 1)
     const b = slice.rows.find((r) => r.key === 'b')!
     expect(b.correct).toBe(0)
     expect(b.resolved).toBe(1)
-    expect(b.winRatePct).toBe(0)
   })
 
-  it('sorts descending by win rate, tie-broken by larger sample size', () => {
+  it('publishes NO percentage and NO rank below the minimum sample', () => {
+    const slice = buildLeaderboardSlice(rowsFor('one-round-perfect', 1, 1), 'model')
+    const only = slice.rows[0]!
+    // The 100%-off-one-round case this guard exists for: the number must not
+    // exist in the payload at all, so no client can render it.
+    expect(only.winRatePct).toBeNull()
+    expect(only.rank).toBeNull()
+    expect(only.provisional).toBe(true)
+    expect(only.correct).toBe(1)
+    expect(only.resolved).toBe(1)
+    expect(slice.rankedRows).toBe(0)
+  })
+
+  it('publishes a TRUNCATED percentage and a rank at the minimum sample', () => {
+    const slice = buildLeaderboardSlice(rowsFor('at', LEADERBOARD_MIN_SAMPLE, LEADERBOARD_MIN_SAMPLE - 1), 'model')
+    const at = slice.rows[0]!
+    expect(at.n).toBe(LEADERBOARD_MIN_SAMPLE)
+    expect(at.provisional).toBe(false)
+    expect(at.rank).toBe(1)
+    expect(at.winRatePct).toBe(90)
+    expect(slice.rankedRows).toBe(1)
+  })
+
+  it('truncates rather than rounds up — 2/3 of a qualifying sample never becomes the higher figure', () => {
+    // 8/12 = 66.66…: must publish 66.6, not 66.7.
+    const slice = buildLeaderboardSlice(rowsFor('two-thirds', 12, 8), 'model')
+    expect(slice.rows[0]!.winRatePct).toBe(66.6)
+  })
+
+  it('ranks only qualifying rows, and never lets a low-sample row outrank them', () => {
     const rows = [
-      row({ model_id: 'low-n-perfect', is_correct: true }),
-      row({ model_id: 'high-n-good', is_correct: true }),
-      row({ model_id: 'high-n-good', is_correct: true }),
-      row({ model_id: 'high-n-good', is_correct: false }),
+      ...rowsFor('low-n-perfect', 1, 1),
+      ...rowsFor('high-n-good', LEADERBOARD_MIN_SAMPLE + 2, LEADERBOARD_MIN_SAMPLE),
     ]
     const slice = buildLeaderboardSlice(rows, 'model')
-    expect(slice.rows[0]!.key).toBe('low-n-perfect')
-    expect(slice.rows[0]!.winRatePct).toBe(100)
-    expect(slice.rows[0]!.provisional).toBe(true)
+    expect(slice.rows[0]!.key).toBe('high-n-good')
+    expect(slice.rows[0]!.rank).toBe(1)
+    const low = slice.rows.find((r) => r.key === 'low-n-perfect')!
+    expect(low.rank).toBeNull()
+    expect(low.winRatePct).toBeNull()
+    expect(slice.rankedRows).toBe(1)
   })
 
-  it('flags rows below the provisional threshold and not rows at/above it', () => {
-    const belowRows: GradedPredictionRow[] = Array.from({ length: LEADERBOARD_PROVISIONAL_THRESHOLD - 1 }, () =>
-      row({ model_id: 'below' })
-    )
-    const atRows: GradedPredictionRow[] = Array.from({ length: LEADERBOARD_PROVISIONAL_THRESHOLD }, () =>
-      row({ model_id: 'at' })
-    )
-    const slice = buildLeaderboardSlice([...belowRows, ...atRows], 'model')
-    expect(slice.rows.find((r) => r.key === 'below')!.provisional).toBe(true)
-    expect(slice.rows.find((r) => r.key === 'at')!.provisional).toBe(false)
+  it('orders unranked rows by roster position, not by their (hidden) win rate', () => {
+    // Two low-sample rows: the perfect one must not float to the top of the
+    // unranked block, or its position becomes the ranking claim all over again.
+    const rows = [...rowsFor('gpt-5.6-sol', 2, 0), ...rowsFor('claude-fable-5', 2, 2)]
+    const slice = buildLeaderboardSlice(rows, 'model')
+    expect(slice.rows.every((r) => r.rank === null && r.winRatePct === null)).toBe(true)
+    const perfect = slice.rows.findIndex((r) => r.key === 'claude-fable-5')
+    const zero = slice.rows.findIndex((r) => r.key === 'gpt-5.6-sol')
+    // Roster order (gpt-5.6-sol is listed first), i.e. unrelated to performance.
+    expect(zero).toBeLessThan(perfect)
+  })
+
+  it('applies the same rule to non-model aggregates (camp / tier / brand)', () => {
+    const rows = [
+      ...rowsFor('us-model', 3, 3, { camp: 'us', league_tier: 'premier', brand: 'OpenAI' }),
+      ...rowsFor('cn-model', LEADERBOARD_MIN_SAMPLE, 5, { camp: 'china', league_tier: 'world', brand: 'DeepSeek' }),
+    ]
+    for (const scope of ['camp', 'campHeadline', 'tier', 'brand', 'category'] as const) {
+      const slice = buildLeaderboardSlice(rows, scope)
+      for (const bucket of slice.rows) {
+        if (bucket.n < LEADERBOARD_MIN_SAMPLE) {
+          expect(bucket.winRatePct).toBeNull()
+          expect(bucket.rank).toBeNull()
+        } else {
+          expect(bucket.winRatePct).not.toBeNull()
+          expect(bucket.rank).not.toBeNull()
+        }
+      }
+    }
   })
 
   it('includes scout in the tier slice (directional rankings)', () => {
@@ -135,7 +189,7 @@ describe('buildLeaderboardSlice', () => {
 })
 
 describe('buildCombinedMethodTrack', () => {
-  it('counts a round as correct when the majority direction was right', () => {
+  it('counts a round as correct when the majority direction was right, but publishes no rate off one round', () => {
     const rows = [
       row({ round_id: 'r1', predicted_direction: 'up', is_correct: true, model_id: 'a' }),
       row({ round_id: 'r1', predicted_direction: 'up', is_correct: true, model_id: 'b' }),
@@ -144,8 +198,21 @@ describe('buildCombinedMethodTrack', () => {
     const track = buildCombinedMethodTrack(rows)
     expect(track.n).toBe(1)
     expect(track.correct).toBe(1)
-    expect(track.winRatePct).toBe(100)
+    expect(track.winRatePct).toBeNull()
     expect(track.provisional).toBe(true)
+  })
+
+  it('publishes a truncated rate once the combined method reaches the minimum sample', () => {
+    const rows = Array.from({ length: LEADERBOARD_MIN_SAMPLE }, (_, i) => [
+      row({ round_id: `r${i}`, predicted_direction: 'up', is_correct: i < 6, model_id: 'a' }),
+      row({ round_id: `r${i}`, predicted_direction: 'up', is_correct: i < 6, model_id: 'b' }),
+      row({ round_id: `r${i}`, predicted_direction: 'down', is_correct: i >= 6, model_id: 'c' }),
+    ]).flat()
+    const track = buildCombinedMethodTrack(rows)
+    expect(track.n).toBe(LEADERBOARD_MIN_SAMPLE)
+    expect(track.correct).toBe(6)
+    expect(track.winRatePct).toBe(60)
+    expect(track.provisional).toBe(false)
   })
 
   it('skips a tied majority so n is honest', () => {
@@ -171,6 +238,7 @@ describe('buildLeaderboardData', () => {
       row({ model_id: 'b', camp: 'china', league_tier: 'scout', category: 'fx', is_correct: false, predicted_direction: 'down' }),
     ]
     const data = buildLeaderboardData(rows)
+    expect(data.minSample).toBe(LEADERBOARD_MIN_SAMPLE)
     expect(data.totalConsidered).toBe(2)
     expect(data.model.rows).toHaveLength(2)
     expect(data.campHeadline.rows).toHaveLength(2)
@@ -178,6 +246,33 @@ describe('buildLeaderboardData', () => {
     expect(data.tier.rows.some((r) => r.key === 'scout')).toBe(true)
     expect(data.korea.rows).toEqual([])
     expect(typeof data.generatedAt).toBe('string')
+  })
+
+  it('no slice ANYWHERE publishes a percentage or a rank for a below-threshold bucket', () => {
+    // A realistic early state: one model with a real sample, the rest with one
+    // or two graded rounds each, spread across camps, tiers, brands, categories.
+    const rows = [
+      ...rowsFor('deepseek-v4-pro', LEADERBOARD_MIN_SAMPLE + 3, 7, { camp: 'china', league_tier: 'premier', brand: 'DeepSeek' }),
+      ...rowsFor('gpt-5.6-sol', 1, 1, { camp: 'us', league_tier: 'premier', brand: 'OpenAI' }),
+      ...rowsFor('solar-pro-3', 2, 2, { camp: 'other', league_tier: 'world', brand: 'Upstage', category: 'fx' }),
+      ...rowsFor('sonar-pro-2', 1, 0, { camp: 'us', league_tier: 'scout', brand: 'Perplexity', category: 'crypto' }),
+    ]
+    const data = buildLeaderboardData(rows)
+    const scopes = ['model', 'campHeadline', 'method', 'camp', 'tier', 'brand', 'category', 'korea'] as const
+
+    for (const scope of scopes) {
+      for (const bucket of data[scope].rows) {
+        if (bucket.n < data.minSample) {
+          expect(bucket.winRatePct, `${scope}/${bucket.key}`).toBeNull()
+          expect(bucket.rank, `${scope}/${bucket.key}`).toBeNull()
+        } else {
+          expect(bucket.winRatePct, `${scope}/${bucket.key}`).not.toBeNull()
+        }
+      }
+      // Ranks, where they exist, are a dense 1..k over the qualifying rows only.
+      const ranks = data[scope].rows.map((r) => r.rank).filter((r): r is number => r !== null)
+      expect(ranks).toEqual(Array.from({ length: data[scope].rankedRows }, (_, i) => i + 1))
+    }
   })
 
   it('empty input yields empty slices everywhere, never throws', () => {
@@ -192,5 +287,7 @@ describe('buildLeaderboardData', () => {
     expect(data.korea.rows).toEqual([])
     expect(data.combined.n).toBe(0)
     expect(data.totalConsidered).toBe(0)
+    expect(data.baselines.alwaysUp.n).toBe(0)
+    expect(data.baselines.coinFlip.winRatePct).toBeNull()
   })
 })
