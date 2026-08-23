@@ -1,0 +1,1097 @@
+{
+  "catalog": {
+    "sentId": "gemini-3.6-flash",
+    "resolves": true,
+    "match": {
+      "name": "gemini-3.6-flash",
+      "displayName": "Gemini 3.6 Flash",
+      "version": "3.6-flash-07-2026"
+    },
+    "newerAliases": [
+      "gemini-3-flash-preview",
+      "gemini-3.1-flash-image",
+      "gemini-3.1-flash-image-preview",
+      "gemini-3.1-flash-lite",
+      "gemini-3.1-flash-lite-image",
+      "gemini-3.1-flash-lite-preview",
+      "gemini-3.1-flash-live-preview",
+      "gemini-3.1-flash-tts-preview",
+      "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.7-flash"
+    ],
+    "sampleIds": [
+      "gemini-3-flash-preview",
+      "gemini-3.1-flash-image",
+      "gemini-3.1-flash-image-preview",
+      "gemini-3.1-flash-lite",
+      "gemini-3.1-flash-lite-image",
+      "gemini-3.1-flash-lite-preview",
+      "gemini-3.1-flash-live-preview",
+      "gemini-3.1-flash-tts-preview",
+      "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.6-flash",
+      "gemini-3.7-flash"
+    ]
+  },
+  "budget0Result": "HTTP 400: {\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"Request contains an invalid argument.\",\n    \"status\": \"INVALID_ARGUMENT\"\n  }\n}\n",
+  "currentRows": [
+    {
+      "arm": "current",
+      "run": 1,
+      "parsed": false,
+      "contentTokens": 46,
+      "thoughtsTokens": 1150,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8015,
+      "textChars": 84,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 46,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1150,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 2,
+      "parsed": false,
+      "contentTokens": 48,
+      "thoughtsTokens": 1148,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8085,
+      "textChars": 82,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 48,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1148,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 3,
+      "parsed": false,
+      "contentTokens": 43,
+      "thoughtsTokens": 1153,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 7665,
+      "textChars": 83,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 43,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1153,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 4,
+      "parsed": false,
+      "contentTokens": 47,
+      "thoughtsTokens": 1149,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 7893,
+      "textChars": 124,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 47,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1149,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 5,
+      "parsed": false,
+      "contentTokens": 45,
+      "thoughtsTokens": 1151,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 7761,
+      "textChars": 82,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 45,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1151,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 6,
+      "parsed": false,
+      "contentTokens": 44,
+      "thoughtsTokens": 1152,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 7621,
+      "textChars": 82,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 44,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1152,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 7,
+      "parsed": false,
+      "contentTokens": 45,
+      "thoughtsTokens": 1151,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8428,
+      "textChars": 89,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 45,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1151,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 8,
+      "parsed": false,
+      "contentTokens": 48,
+      "thoughtsTokens": 1148,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8081,
+      "textChars": 90,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 48,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1148,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 9,
+      "parsed": false,
+      "contentTokens": 48,
+      "thoughtsTokens": 1148,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 7871,
+      "textChars": 80,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 48,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1148,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 10,
+      "parsed": false,
+      "contentTokens": 131,
+      "thoughtsTokens": 1065,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8988,
+      "textChars": 217,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 131,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1065,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 11,
+      "parsed": false,
+      "contentTokens": 47,
+      "thoughtsTokens": 1149,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8046,
+      "textChars": 88,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 47,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1149,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 12,
+      "parsed": false,
+      "contentTokens": 123,
+      "thoughtsTokens": 1073,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8853,
+      "textChars": 207,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 123,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1073,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 13,
+      "parsed": false,
+      "contentTokens": 120,
+      "thoughtsTokens": 1076,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8746,
+      "textChars": 213,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 120,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1076,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 14,
+      "parsed": false,
+      "contentTokens": 63,
+      "thoughtsTokens": 1133,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 7940,
+      "textChars": 116,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 63,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1133,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 15,
+      "parsed": false,
+      "contentTokens": 48,
+      "thoughtsTokens": 1148,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8164,
+      "textChars": 87,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 48,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1148,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 16,
+      "parsed": false,
+      "contentTokens": 45,
+      "thoughtsTokens": 1151,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 7690,
+      "textChars": 85,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 45,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1151,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 17,
+      "parsed": false,
+      "contentTokens": 146,
+      "thoughtsTokens": 1050,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8839,
+      "textChars": 252,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 146,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1050,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 18,
+      "parsed": false,
+      "contentTokens": 104,
+      "thoughtsTokens": 1092,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8416,
+      "textChars": 180,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 104,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1092,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 19,
+      "parsed": false,
+      "contentTokens": 44,
+      "thoughtsTokens": 1152,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 7487,
+      "textChars": 143,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 44,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1152,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "current",
+      "run": 20,
+      "parsed": false,
+      "contentTokens": 47,
+      "thoughtsTokens": 1149,
+      "promptTokens": 844,
+      "totalTokens": 2040,
+      "finishReason": "MAX_TOKENS",
+      "rawBodyBytes": 8255,
+      "textChars": 84,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 47,
+        "totalTokenCount": 2040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "thoughtsTokenCount": 1149,
+        "serviceTier": "standard"
+      }
+    }
+  ],
+  "minimalRows": [
+    {
+      "arm": "minimal",
+      "run": 1,
+      "parsed": true,
+      "contentTokens": 278,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1122,
+      "finishReason": "STOP",
+      "rawBodyBytes": 6235,
+      "textChars": 592,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 278,
+        "totalTokenCount": 1122,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 2,
+      "parsed": true,
+      "contentTokens": 260,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1104,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5849,
+      "textChars": 513,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 260,
+        "totalTokenCount": 1104,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 3,
+      "parsed": true,
+      "contentTokens": 316,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1160,
+      "finishReason": "STOP",
+      "rawBodyBytes": 6760,
+      "textChars": 674,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 316,
+        "totalTokenCount": 1160,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 4,
+      "parsed": true,
+      "contentTokens": 224,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1068,
+      "finishReason": "STOP",
+      "rawBodyBytes": 4871,
+      "textChars": 429,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 224,
+        "totalTokenCount": 1068,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 5,
+      "parsed": true,
+      "contentTokens": 242,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1086,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5393,
+      "textChars": 490,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 242,
+        "totalTokenCount": 1086,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 6,
+      "parsed": true,
+      "contentTokens": 265,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1109,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5843,
+      "textChars": 533,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 265,
+        "totalTokenCount": 1109,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 7,
+      "parsed": true,
+      "contentTokens": 261,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1105,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5828,
+      "textChars": 546,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 261,
+        "totalTokenCount": 1105,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 8,
+      "parsed": true,
+      "contentTokens": 236,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1080,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5402,
+      "textChars": 480,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 236,
+        "totalTokenCount": 1080,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 9,
+      "parsed": true,
+      "contentTokens": 269,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1113,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5814,
+      "textChars": 555,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 269,
+        "totalTokenCount": 1113,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 10,
+      "parsed": true,
+      "contentTokens": 289,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1133,
+      "finishReason": "STOP",
+      "rawBodyBytes": 6226,
+      "textChars": 571,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 289,
+        "totalTokenCount": 1133,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 11,
+      "parsed": true,
+      "contentTokens": 241,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1085,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5343,
+      "textChars": 486,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 241,
+        "totalTokenCount": 1085,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 12,
+      "parsed": true,
+      "contentTokens": 255,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1099,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5380,
+      "textChars": 514,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 255,
+        "totalTokenCount": 1099,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 13,
+      "parsed": true,
+      "contentTokens": 266,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1110,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5867,
+      "textChars": 564,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 266,
+        "totalTokenCount": 1110,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 14,
+      "parsed": true,
+      "contentTokens": 240,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1084,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5436,
+      "textChars": 537,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 240,
+        "totalTokenCount": 1084,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 15,
+      "parsed": true,
+      "contentTokens": 277,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1121,
+      "finishReason": "STOP",
+      "rawBodyBytes": 6303,
+      "textChars": 592,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 277,
+        "totalTokenCount": 1121,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 16,
+      "parsed": true,
+      "contentTokens": 215,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1059,
+      "finishReason": "STOP",
+      "rawBodyBytes": 4904,
+      "textChars": 418,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 215,
+        "totalTokenCount": 1059,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 17,
+      "parsed": true,
+      "contentTokens": 259,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1103,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5936,
+      "textChars": 592,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 259,
+        "totalTokenCount": 1103,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 18,
+      "parsed": true,
+      "contentTokens": 264,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1108,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5822,
+      "textChars": 542,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 264,
+        "totalTokenCount": 1108,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 19,
+      "parsed": true,
+      "contentTokens": 255,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1099,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5475,
+      "textChars": 527,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 255,
+        "totalTokenCount": 1099,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "arm": "minimal",
+      "run": 20,
+      "parsed": true,
+      "contentTokens": 240,
+      "thoughtsTokens": null,
+      "promptTokens": 844,
+      "totalTokens": 1084,
+      "finishReason": "STOP",
+      "rawBodyBytes": 5390,
+      "textChars": 495,
+      "error": null,
+      "usageRaw": {
+        "promptTokenCount": 844,
+        "candidatesTokenCount": 240,
+        "totalTokenCount": 1084,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 844
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    }
+  ],
+  "currentSum": {
+    "parsed": 0,
+    "total": 20,
+    "failIndexes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "clusterNote": "fails at runs [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] — early(1-5)=5, mid(6-15)=10, late(16-20)=5"
+  },
+  "minimalSum": {
+    "parsed": 20,
+    "total": 20,
+    "failIndexes": [],
+    "clusterNote": "no failures"
+  },
+  "winningArm": "minimal"
+}

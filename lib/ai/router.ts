@@ -60,6 +60,9 @@ export type RouterResult = {
   totalTokens: number | null
   /** REAL billed cost (USD) when the provider's response reports one (currently only Perplexity). Null otherwise. */
   costUsd?: number | null
+  /** Gemini thoughtsTokenCount when present. */
+  thoughtsTokenCount?: number | null
+  finishReason?: string | null
   error?: string
 }
 
@@ -486,6 +489,7 @@ type GeminiUsageMeta = {
   promptTokenCount?: number
   candidatesTokenCount?: number
   totalTokenCount?: number
+  thoughtsTokenCount?: number
 }
 
 function isChatGptSafetyRefusal(text: string | null): boolean {
@@ -516,11 +520,21 @@ function extractGeminiResponseText(obj: unknown): string {
   if (!Array.isArray(parts)) return ''
   let out = ''
   for (const p of parts) {
-    if (p && typeof p === 'object' && typeof (p as { text?: unknown }).text === 'string') {
-      out += (p as { text: string }).text
-    }
+    if (!p || typeof p !== 'object') continue
+    const part = p as { text?: unknown; thought?: unknown }
+    // Thought summaries must not pollute the visible answer (breaks JSON parse).
+    if (part.thought === true) continue
+    if (typeof part.text === 'string') out += part.text
   }
   return out
+}
+
+function extractGeminiFinishReason(obj: unknown): string | null {
+  if (!obj || typeof obj !== 'object') return null
+  const candidates = (obj as { candidates?: unknown }).candidates
+  if (!Array.isArray(candidates) || !candidates[0] || typeof candidates[0] !== 'object') return null
+  const fr = (candidates[0] as { finishReason?: unknown }).finishReason
+  return typeof fr === 'string' ? fr : null
 }
 
 async function callGoogleGemini({
@@ -533,6 +547,7 @@ async function callGoogleGemini({
   maxCompletionTokens,
   chatMessages,
   allowGeminiThinking,
+  geminiThinkingLevel,
   searchTool,
 }: {
   provider: ExtendedAiProviderName
@@ -551,6 +566,8 @@ async function callGoogleGemini({
    * flash models so thinking tokens don't eat the budget.
    */
   allowGeminiThinking?: boolean
+  /** Gemini 3 only. When set with allowGeminiThinking, sent as thinkingLevel. */
+  geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
   /** Enables Google Search grounding (Scout tier). */
   searchTool?: boolean
 }) {
@@ -589,12 +606,17 @@ async function callGoogleGemini({
       ? maxCompletionTokens
       : 8192
 
-  geminiBody.generationConfig = allowGeminiThinking
-    ? generationConfig
-    : {
-        ...generationConfig,
-        thinkingConfig: { thinkingBudget: 0 },
-      }
+  if (allowGeminiThinking) {
+    if (geminiThinkingLevel) {
+      generationConfig.thinkingConfig = { thinkingLevel: geminiThinkingLevel }
+    }
+    geminiBody.generationConfig = generationConfig
+  } else {
+    geminiBody.generationConfig = {
+      ...generationConfig,
+      thinkingConfig: { thinkingBudget: 0 },
+    }
+  }
 
   if (searchTool) {
     // Google Search grounding (Scout tier). Tool executes server-side; the
@@ -625,10 +647,13 @@ async function callGoogleGemini({
   let carry = ''
   let aggregatedText = ''
   const usageHolder: { meta: GeminiUsageMeta | null } = { meta: null }
+  let finishReason: string | null = null
 
   const applyParsedChunk = (parsed: unknown) => {
     const piece = extractGeminiResponseText(parsed)
     if (piece) aggregatedText += piece
+    const fr = extractGeminiFinishReason(parsed)
+    if (fr) finishReason = fr
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const um = (parsed as { usageMetadata?: GeminiUsageMeta }).usageMetadata
       if (um && typeof um === 'object') usageHolder.meta = um as GeminiUsageMeta
@@ -685,11 +710,16 @@ async function callGoogleGemini({
   const u = usageHolder.meta
   return {
     text: aggregatedText.length ? aggregatedText : null,
-    usage: normalizeTokens({
-      promptTokens: u?.promptTokenCount,
-      completionTokens: u?.candidatesTokenCount,
-      totalTokens: u?.totalTokenCount,
-    }),
+    usage: {
+      ...normalizeTokens({
+        promptTokens: u?.promptTokenCount,
+        completionTokens: u?.candidatesTokenCount,
+        totalTokens: u?.totalTokenCount,
+      }),
+      thoughtsTokenCount:
+        typeof u?.thoughtsTokenCount === 'number' ? u.thoughtsTokenCount : null,
+    },
+    finishReason,
   }
 }
 
@@ -704,6 +734,7 @@ async function callProvider({
   maxCompletionTokens,
   chatMessages,
   allowGeminiThinking,
+  geminiThinkingLevel,
   searchTool,
 }: {
   provider: ExtendedAiProviderName
@@ -718,6 +749,7 @@ async function callProvider({
   chatMessages?: CompareChatMessage[]
   /** Forwarded to callGoogleGemini; ignored by non-google providers. */
   allowGeminiThinking?: boolean
+  geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
   /**
    * Scout-tier live web search. Only meaningful for xai (Live Search
    * `search_parameters`), anthropic (web_search tool) and google (Search
@@ -922,7 +954,7 @@ async function callProvider({
     return { model, text, usage }
   }
 
-  const { text, usage } = await callGoogleGemini({
+  const { text, usage, finishReason } = await callGoogleGemini({
     provider,
     apiKey,
     model,
@@ -931,10 +963,11 @@ async function callProvider({
     temperature,
     maxCompletionTokens,
     allowGeminiThinking,
+    geminiThinkingLevel,
     searchTool,
     ...chatOpts,
   })
-  return { model, text, usage }
+  return { model, text, usage, finishReason }
 }
 
 export type RunSingleProviderParams = {
@@ -995,6 +1028,8 @@ export type RunSingleProviderParams = {
    * Default (undefined/false) keeps thinkingBudget:0. Ignored by non-google providers.
    */
   allowGeminiThinking?: boolean
+  /** Gemini 3 thinkingLevel; oracle may set 'minimal' to protect maxOutputTokens. */
+  geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
 }
 
 async function saveCompareArtifactsRows(
@@ -1061,6 +1096,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     transformPersist,
     chatMessages,
     allowGeminiThinking,
+    geminiThinkingLevel,
   } = params
 
   const started = nowMs()
@@ -1091,10 +1127,11 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       maxCompletionTokens,
       chatMessages,
       allowGeminiThinking,
+      geminiThinkingLevel,
       searchTool,
     })
 
-    const { text, usage } = params.timeoutMs && params.timeoutMs > 0
+    const { text, usage, finishReason } = params.timeoutMs && params.timeoutMs > 0
       ? await Promise.race([
           providerCallPromise,
           new Promise<never>((_, reject) =>
@@ -1181,6 +1218,11 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
       costUsd,
+      thoughtsTokenCount:
+        usage && typeof (usage as { thoughtsTokenCount?: unknown }).thoughtsTokenCount === 'number'
+          ? (usage as { thoughtsTokenCount: number }).thoughtsTokenCount
+          : null,
+      finishReason: finishReason ?? null,
     }
   } catch (e: any) {
     const responseTimeMs = nowMs() - started

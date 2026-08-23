@@ -13,6 +13,7 @@
  */
 import type { AxisConsensus } from '../axes/types'
 import type { OracleComputation, OracleJobSession, OracleReaderCount, OracleSessionKind, OracleSessionScope } from '../schema'
+import { isAllowedReaderCount } from '../ai/family-roster'
 import { getOracleAiMode } from '../ai/mode'
 import { LAYER1_PROMPT_VERSION } from '../ai/prompts/layer1'
 import {
@@ -141,6 +142,17 @@ export async function createOracleSession(
   if (active) {
     const existing = await store.listComputations(active.id)
     return { ok: true, reused: true, session: active, computations: existing.map(publicComputation) }
+  }
+
+  if (!isAllowedReaderCount(request.scope, request.readerCount)) {
+    return {
+      ok: false,
+      code: 'invalid_input',
+      message:
+        request.scope === 'single'
+          ? 'single-system readerCount must be 3, 5, or 7'
+          : 'readerCount must be 3, 5, 7, or 9',
+    }
   }
 
   // 2. Ownership. loadProfiles only returns rows owned by this user, so a

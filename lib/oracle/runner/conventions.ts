@@ -117,8 +117,18 @@ export const ORACLE_SESSION_BASE_CREDITS: Record<OracleSessionKind, number> = {
 }
 export const ORACLE_CREDITS_PER_READER = 4
 
+/**
+ * Synthesizer is always one paid AI call (agree/diverge/conclusion). The old
+ * draft `base + 4 × readerCount` omitted it entirely.
+ */
+export const ORACLE_CREDITS_PER_SYNTHESIZER = 4
+
 export function creditsForOracleSession(kind: OracleSessionKind, readerCount: number): number {
-  return ORACLE_SESSION_BASE_CREDITS[kind] + ORACLE_CREDITS_PER_READER * readerCount
+  return (
+    ORACLE_SESSION_BASE_CREDITS[kind] +
+    ORACLE_CREDITS_PER_READER * readerCount +
+    ORACLE_CREDITS_PER_SYNTHESIZER
+  )
 }
 
 /**

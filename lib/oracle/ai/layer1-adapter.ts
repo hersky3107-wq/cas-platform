@@ -90,8 +90,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         return failure('unknown', 'unknown', 'error', `no layer-1 registry entry for ${request.unit}`, 0)
       }
 
-      const systemPrompt = buildLayer1SystemPrompt(request.locale)
-      const userPrompt = buildLayer1UserPrompt(request.payload, request.locale)
+      const systemPrompt = buildLayer1SystemPrompt(request.locale, request.unit)
+      const userPrompt = buildLayer1UserPrompt(request.payload, request.locale, request.unit)
       const startedAt = Date.now()
       const deadlineAt = startedAt + opts.timeoutMs
       const httpBudget = createLayer1HttpBudget(LAYER1_HTTP_BUDGET)

@@ -36,6 +36,12 @@ export type Layer1Caller =
       modelOverride: string
       /** TRAP (d): Gemini 3.x rejects thinkingBudget:0. */
       allowGeminiThinking?: boolean
+      /**
+       * Gemini 3 thinkingLevel. When set with allowGeminiThinking, sent as
+       * thinkingConfig.thinkingLevel (e.g. 'minimal' to stop thinking from
+       * consuming maxOutputTokens). League paths leave this unset.
+       */
+      geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
     }
 
 export type Layer1RegistryEntry = {
@@ -157,7 +163,12 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       kind: 'core',
       provider: 'google',
       modelOverride: 'gemini-3.6-flash',
+      // thinkingBudget:0 is rejected (HTTP 400). Default thinking (omit config)
+      // burns ~1100 thoughtsTokenCount into maxOutputTokens=1200 → MAX_TOKENS
+      // with ~45 content tokens (measured 0/20 parse). thinkingLevel:minimal
+      // restores 20/20 STOP with full JSON — oracle-only; league untouched.
       allowGeminiThinking: true,
+      geminiThinkingLevel: 'minimal',
     },
     maxCompletionTokens: 1200,
   },

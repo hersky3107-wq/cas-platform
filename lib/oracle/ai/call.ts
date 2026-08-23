@@ -115,6 +115,27 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
     if (input.httpBudget) input.httpBudget.remaining -= 1
     coreAttemptStarted = true
 
+    if (process.env.ORACLE_DEBUG_REQUEST === '1' && entry.caller.kind === 'core') {
+      console.log(
+        '[oracle-debug-request] core outgoing:',
+        JSON.stringify(
+          {
+            provider: entry.caller.provider,
+            model: entry.caller.modelOverride,
+            maxCompletionTokens: entry.maxCompletionTokens,
+            allowGeminiThinking:
+              entry.caller.kind === 'core' ? entry.caller.allowGeminiThinking ?? false : false,
+            systemPromptChars: input.systemPrompt.length,
+            userPromptChars: input.userPrompt.length,
+            systemPrompt: input.systemPrompt,
+            userPrompt: input.userPrompt,
+          },
+          null,
+          2,
+        ),
+      )
+    }
+
     const res = await runSingleAiProvider({
       supabase: supabaseAdmin,
       authSupabase: supabaseAdmin,
@@ -126,6 +147,7 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
       skipLanguageInjection: true,
       modelOverride: entry.caller.modelOverride,
       allowGeminiThinking: entry.caller.allowGeminiThinking,
+      geminiThinkingLevel: entry.caller.geminiThinkingLevel,
       maxCompletionTokens: entry.maxCompletionTokens,
       timeoutMs: input.timeoutMs,
     })
@@ -156,11 +178,11 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
       latencyMs,
       brand: entry.brand,
       model: entry.model,
-      reasoningTokens: null,
+      reasoningTokens: res.thoughtsTokenCount ?? null,
       contentTokens: res.completionTokens ?? null,
       costUsd: res.costUsd ?? estimatedCostUsd,
       costIsEstimated: res.costUsd == null && estimatedCostUsd != null,
-      finishReason: null,
+      finishReason: res.finishReason ?? null,
       ...telemetryFromBudget(input.httpBudget, latencyMs),
       strictRetry: input.strictRetry ?? false,
       diagnostics: res.error

@@ -10,6 +10,7 @@
  * the existing session instead of charging again.
  */
 import { NextResponse } from 'next/server'
+import { isAllowedReaderCount } from '@/lib/oracle/ai/family-roster'
 import {
   ORACLE_READER_COUNTS,
   ORACLE_SESSION_KINDS,
@@ -69,6 +70,17 @@ function parseBody(body: Record<string, unknown>): ParsedBody {
       return { ok: false, error: `unknown system "${String(entry)}"` }
     }
     systems.push(entry)
+  }
+
+  // Single-system product rule: N ∈ {3,5,7} only (reject 9). Combined keeps 3/5/7/9.
+  if (!isAllowedReaderCount(scope as OracleSessionScope, readerCount)) {
+    return {
+      ok: false,
+      error:
+        scope === 'single'
+          ? 'single-system readerCount must be 3, 5, or 7'
+          : `readerCount must be one of ${ORACLE_READER_COUNTS.join(', ')}`,
+    }
   }
 
   const questionRaw = body.question

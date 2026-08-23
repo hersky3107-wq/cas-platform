@@ -95,21 +95,38 @@ describe('ai_payload privacy rule', () => {
     }
   })
 
-  it('machine-code fields hold codes, not prose — no name or date can hide there', () => {
+  it('machine-code fields hold codes plus parallel labels — code matches pattern', () => {
     const computed = computeAll()
     for (const entry of computed.systems) {
       if (entry.aiPayload === null) continue
       const reasons = entry.aiPayload.reasons as Record<string, string[] | undefined>
-      for (const codes of Object.values(reasons)) {
-        for (const code of codes ?? []) {
+      const labels = entry.aiPayload.labels as Record<string, string[] | undefined>
+      for (const space of Object.keys(reasons)) {
+        for (const code of reasons[space] ?? []) {
           expect(code, `${entry.system} reason "${code}"`).toMatch(MACHINE_CODE_PATTERN)
         }
+        const spaceLabels = labels?.[space] ?? []
+        expect(spaceLabels.length).toBe((reasons[space] ?? []).length)
+        for (const label of spaceLabels) {
+          expect(typeof label).toBe('string')
+          expect(label.length).toBeGreaterThan(0)
+        }
       }
-      const unreadable = entry.aiPayload.unreadable as Array<{ space: string; code: string }>
+      const unreadable = entry.aiPayload.unreadable as Array<{ space: string; code: string; label: string }>
       for (const item of unreadable) {
         expect(item.code).toMatch(MACHINE_CODE_PATTERN)
+        expect(item.label.length).toBeGreaterThan(0)
       }
     }
+  })
+
+  it('saju peer_dominant carries the Korean ten-god label 비견', () => {
+    const computed = computeAll()
+    const saju = computed.systems.find((entry) => entry.system === 'saju')
+    const reasons = saju?.aiPayload?.reasons as { traits?: string[] } | undefined
+    const labels = saju?.aiPayload?.labels as { traits?: string[] } | undefined
+    const idx = reasons?.traits?.indexOf('saju.tengods.peer_dominant') ?? -1
+    if (idx >= 0) expect(labels?.traits?.[idx]).toBe('비견')
   })
 
   it('still stores the raw engine result server-side — only ai_payload is restricted', () => {

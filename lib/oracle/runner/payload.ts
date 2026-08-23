@@ -9,6 +9,7 @@
  * (see OracleAiContext) — a closed, two-field shape.
  */
 import { AXES_LAYER_VERSION } from '../axes/conventions'
+import { buildLabelledReasons, labelForReasonCode } from '../axes/reason-labels'
 import type { AxisConsensus, AxisVote, ReadingScope } from '../axes/types'
 import type { OracleReading, OracleSessionKind } from '../schema'
 import { ORACLE_RUNNER_VERSION } from './conventions'
@@ -20,7 +21,7 @@ import type { JsonObject } from './types'
  * profile, so they are exempt from the value scan (keys are still enforced).
  * See PrivacyScanOptions for the collision this avoids.
  */
-export const MACHINE_CODE_FIELDS = ['reasons', 'unreadable'] as const
+export const MACHINE_CODE_FIELDS = ['reasons', 'labels', 'unreadable'] as const
 
 /**
  * Context fields intentionally OUTSIDE the birth-data assertion:
@@ -65,9 +66,12 @@ function contextOf(ctx: PayloadContext): OracleAiContext {
 /**
  * One system's layer-1 prompt input. Everything here comes off the AxisVote,
  * which is already free of raw profile data by construction — the projectors
- * emit vectors and machine codes only.
+ * emit vectors and machine codes only. Display labels are attached here as a
+ * parallel `labels` object (only codes present on this vote) so the model can
+ * use human terms without inventing them; AxisVote itself remains code-only.
  */
 export function buildReadingPayload(vote: AxisVote, ctx: PayloadContext, pii: PersonalData): JsonObject {
+  const labelled = buildLabelledReasons(vote.reasons, ctx.locale)
   const body: JsonObject = {
     ...envelope(ctx),
     system: vote.system,
@@ -76,8 +80,13 @@ export function buildReadingPayload(vote: AxisVote, ctx: PayloadContext, pii: Pe
     elements: vote.elements,
     phase: vote.phase,
     confidence: vote.confidence,
-    reasons: vote.reasons,
-    unreadable: vote.unreadable.map((entry) => ({ space: entry.space, code: entry.code })),
+    reasons: labelled.reasons,
+    labels: labelled.labels,
+    unreadable: vote.unreadable.map((entry) => ({
+      space: entry.space,
+      code: entry.code,
+      label: labelForReasonCode(entry.code, ctx.locale),
+    })),
   }
 
   assertNoPersonalData(body, pii, {

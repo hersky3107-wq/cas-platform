@@ -81,6 +81,7 @@ describe('LAYER1_REGISTRY', () => {
     expect(tarot.caller.kind).toBe('core')
     if (tarot.caller.kind === 'core') {
       expect(tarot.caller.allowGeminiThinking).toBe(true)
+      expect(tarot.caller.geminiThinkingLevel).toBe('minimal')
       expect(tarot.caller.modelOverride).toBe('gemini-3.6-flash')
     }
     expect(layer1Entry('not-a-system')).toBeNull()

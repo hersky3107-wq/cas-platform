@@ -1,0 +1,254 @@
+{
+  "sizes": [
+    {
+      "system": "saju",
+      "beforeBytes": 771,
+      "afterBytes": 862,
+      "objectFormBytes": 868,
+      "growthFactor": 1.12,
+      "objectFormGrowthFactor": 1.13,
+      "beforeApproxTokens": 185,
+      "afterApproxTokens": 202,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "astro",
+      "beforeBytes": 804,
+      "afterBytes": 929,
+      "objectFormBytes": 935,
+      "growthFactor": 1.16,
+      "objectFormGrowthFactor": 1.16,
+      "beforeApproxTokens": 193,
+      "afterApproxTokens": 213,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "prism",
+      "beforeBytes": 766,
+      "afterBytes": 865,
+      "objectFormBytes": 871,
+      "growthFactor": 1.13,
+      "objectFormGrowthFactor": 1.14,
+      "beforeApproxTokens": 184,
+      "afterApproxTokens": 202,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "ziwei",
+      "beforeBytes": 811,
+      "afterBytes": 924,
+      "objectFormBytes": 930,
+      "growthFactor": 1.14,
+      "objectFormGrowthFactor": 1.15,
+      "beforeApproxTokens": 195,
+      "afterApproxTokens": 214,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "numerology",
+      "beforeBytes": 736,
+      "afterBytes": 853,
+      "objectFormBytes": 855,
+      "growthFactor": 1.16,
+      "objectFormGrowthFactor": 1.16,
+      "beforeApproxTokens": 176,
+      "afterApproxTokens": 197,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "name",
+      "beforeBytes": 716,
+      "afterBytes": 821,
+      "objectFormBytes": 820,
+      "growthFactor": 1.15,
+      "objectFormGrowthFactor": 1.15,
+      "beforeApproxTokens": 171,
+      "afterApproxTokens": 189,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "iching",
+      "beforeBytes": 694,
+      "afterBytes": 803,
+      "objectFormBytes": 803,
+      "growthFactor": 1.16,
+      "objectFormGrowthFactor": 1.16,
+      "beforeApproxTokens": 166,
+      "afterApproxTokens": 184,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "tarot",
+      "beforeBytes": 837,
+      "afterBytes": 967,
+      "objectFormBytes": 990,
+      "growthFactor": 1.16,
+      "objectFormGrowthFactor": 1.18,
+      "beforeApproxTokens": 202,
+      "afterApproxTokens": 222,
+      "reasonCodeCount": 4
+    },
+    {
+      "system": "runes",
+      "beforeBytes": 800,
+      "afterBytes": 916,
+      "objectFormBytes": 922,
+      "growthFactor": 1.15,
+      "objectFormGrowthFactor": 1.15,
+      "beforeApproxTokens": 192,
+      "afterApproxTokens": 212,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "ninestar",
+      "beforeBytes": 785,
+      "afterBytes": 888,
+      "objectFormBytes": 894,
+      "growthFactor": 1.13,
+      "objectFormGrowthFactor": 1.14,
+      "beforeApproxTokens": 189,
+      "afterApproxTokens": 207,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "sukuyou",
+      "beforeBytes": 782,
+      "afterBytes": 872,
+      "objectFormBytes": 878,
+      "growthFactor": 1.12,
+      "objectFormGrowthFactor": 1.12,
+      "beforeApproxTokens": 187,
+      "afterApproxTokens": 204,
+      "reasonCodeCount": 3
+    },
+    {
+      "system": "tzolkin",
+      "beforeBytes": 691,
+      "afterBytes": 775,
+      "objectFormBytes": 777,
+      "growthFactor": 1.12,
+      "objectFormGrowthFactor": 1.12,
+      "beforeApproxTokens": 165,
+      "afterApproxTokens": 182,
+      "reasonCodeCount": 3
+    }
+  ],
+  "gemini": {
+    "note": "Same callLayer1Model → runSingleAiProvider(google) path for smoke tarot and bakeoff Google. Differences are prompt text + payload only.",
+    "smokeTarotBytes": 3509,
+    "bakeoffTarotBytes": 3509,
+    "bakeoffSajuAsGoogleBytes": 3400,
+    "preLabelTarotBytes": 3363,
+    "systemPromptBytes": 1929,
+    "smokeEqualsBakeoffTarot": true,
+    "userPromptDiffBytes": 130,
+    "systemPromptContainsTieRule": true,
+    "systemPromptContainsNoMachineCodes": true
+  },
+  "bodies": {
+    "smokeTarot": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Locale: ko (Korean). Write the narrative and one_line in Korean.\nQuestion (answer through this system's lens): 올해 일의 방향을 어떻게 잡아야 하는가?\nPayload (authoritative; do not recalculate):\n{\"runnerVersion\":\"1.0.0\",\"axesLayerVersion\":\"1.0.0\",\"kind\":\"personal\",\"locale\":\"ko\",\"readingScope\":\"question\",\"system\":\"tarot\",\"engineVersion\":\"1.0.0\",\"traits\":{\"drive\":13.3,\"stability\":14.2,\"relation\":6.7,\"control\":30.8,\"exploration\":15,\"reflection\":20},\"elements\":{\"wood\":25,\"fire\":33.3,\"earth\":0,\"metal\":8.4,\"water\":33.3},\"phase\":{\"advance\":33.3,\"hold\":66.7,\"release\":0},\"confidence\":{\"traits\":{\"weight\":0.5,\"basis\":\"derived\"},\"elements\":{\"weight\":0.5,\"basis\":\"derived\"},\"phase\":{\"weight\":1,\"basis\":\"direct\",\"timescale\":\"draw\"}},\"reasons\":{\"traits\":[\"tarot.traits.arcana_and_suit\",\"tarot.traits.reversals_reflected\"],\"elements\":[\"tarot.elements.suit_to_classical_to_oheng\"],\"phase\":[\"tarot.phase.card_character\"]},\"unreadable\":[],\"context\":{\"asOfDate\":\"2026-08-23\",\"question\":\"올해 일의 방향을 어떻게 잡아야 하는가?\"},\"labels\":{\"traits\":[\"아르카나·수트\",\"역위 반영\"],\"elements\":[\"수트→사원소→오행\"],\"phase\":[\"카드 성향\"]}}"
+            }
+          ]
+        }
+      ],
+      "systemInstruction": {
+        "parts": [
+          {
+            "text": "You are reading ONE divination system for one person.\nThe calculation in the payload is already done and is authoritative.\nNever recalculate. Never invent a value that is not in the payload.\nConnect at least THREE values from the payload in your explanation.\nNever list elements one by one.\nNo generic statements that would apply to anyone.\nWrite in Korean (locale ko). This is required — do not infer the language from the payload.\nIf a question is present under context.question, answer it through this system's lens.\nIf no question is present, give the general reading.\nWhen a parallel labels{} object is present, each labels[space][i] is the human term for reasons[space][i]. Use those labels in narrative/one_line — never invent alternate jargon.\nNever print machine codes in narrative or one_line (no dotted paths like saju.phase.daewoon_sewoon, no snake_case keys like peer_dominant). Use human labels only.\nPhase ties: if two phase values are equal and leading (e.g. advance 50 and hold 50), report the tie as a tie in the narrative. Do not invent a decisive lean. Prefer direction \"hold\" when forced to pick one enum value under a tie.\nOUTPUT RULES (strict):\n- Respond with a single JSON object and nothing else.\n- No markdown fences, no preamble, no commentary outside the JSON.\n- Do NOT show step-by-step working, chain-of-thought, or analysis in ANY field.\n- narrative and one_line must be final prose only — never numbered steps or reasoning traces.\nSchema (character budgets are hard limits — stay under them):\n{\n  \"narrative\": string,  // final reading prose only; max 500 characters; human terms only\n  \"one_line\": string,     // punchy summary; max 80 characters; human terms only\n  \"direction\": \"advance\" | \"hold\" | \"release\",\n  \"focus\": \"work\" | \"money\" | \"love\" | \"social\" | \"energy\",\n  \"axis_emphasis\": string[]  // machine codes only (trait / element / phase keys or reason codes from the payload)\n}"
+          }
+        ]
+      },
+      "generationConfig": {
+        "max_output_tokens": 1200,
+        "thinkingConfig": {
+          "includeThoughts": true
+        }
+      },
+      "model": "gemini-3.6-flash"
+    },
+    "bakeoffTarot": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Locale: ko (Korean). Write the narrative and one_line in Korean.\nQuestion (answer through this system's lens): 올해 일의 방향을 어떻게 잡아야 하는가?\nPayload (authoritative; do not recalculate):\n{\"runnerVersion\":\"1.0.0\",\"axesLayerVersion\":\"1.0.0\",\"kind\":\"personal\",\"locale\":\"ko\",\"readingScope\":\"question\",\"system\":\"tarot\",\"engineVersion\":\"1.0.0\",\"traits\":{\"drive\":13.3,\"stability\":14.2,\"relation\":6.7,\"control\":30.8,\"exploration\":15,\"reflection\":20},\"elements\":{\"wood\":25,\"fire\":33.3,\"earth\":0,\"metal\":8.4,\"water\":33.3},\"phase\":{\"advance\":33.3,\"hold\":66.7,\"release\":0},\"confidence\":{\"traits\":{\"weight\":0.5,\"basis\":\"derived\"},\"elements\":{\"weight\":0.5,\"basis\":\"derived\"},\"phase\":{\"weight\":1,\"basis\":\"direct\",\"timescale\":\"draw\"}},\"reasons\":{\"traits\":[\"tarot.traits.arcana_and_suit\",\"tarot.traits.reversals_reflected\"],\"elements\":[\"tarot.elements.suit_to_classical_to_oheng\"],\"phase\":[\"tarot.phase.card_character\"]},\"unreadable\":[],\"context\":{\"asOfDate\":\"2026-08-23\",\"question\":\"올해 일의 방향을 어떻게 잡아야 하는가?\"},\"labels\":{\"traits\":[\"아르카나·수트\",\"역위 반영\"],\"elements\":[\"수트→사원소→오행\"],\"phase\":[\"카드 성향\"]}}"
+            }
+          ]
+        }
+      ],
+      "systemInstruction": {
+        "parts": [
+          {
+            "text": "You are reading ONE divination system for one person.\nThe calculation in the payload is already done and is authoritative.\nNever recalculate. Never invent a value that is not in the payload.\nConnect at least THREE values from the payload in your explanation.\nNever list elements one by one.\nNo generic statements that would apply to anyone.\nWrite in Korean (locale ko). This is required — do not infer the language from the payload.\nIf a question is present under context.question, answer it through this system's lens.\nIf no question is present, give the general reading.\nWhen a parallel labels{} object is present, each labels[space][i] is the human term for reasons[space][i]. Use those labels in narrative/one_line — never invent alternate jargon.\nNever print machine codes in narrative or one_line (no dotted paths like saju.phase.daewoon_sewoon, no snake_case keys like peer_dominant). Use human labels only.\nPhase ties: if two phase values are equal and leading (e.g. advance 50 and hold 50), report the tie as a tie in the narrative. Do not invent a decisive lean. Prefer direction \"hold\" when forced to pick one enum value under a tie.\nOUTPUT RULES (strict):\n- Respond with a single JSON object and nothing else.\n- No markdown fences, no preamble, no commentary outside the JSON.\n- Do NOT show step-by-step working, chain-of-thought, or analysis in ANY field.\n- narrative and one_line must be final prose only — never numbered steps or reasoning traces.\nSchema (character budgets are hard limits — stay under them):\n{\n  \"narrative\": string,  // final reading prose only; max 500 characters; human terms only\n  \"one_line\": string,     // punchy summary; max 80 characters; human terms only\n  \"direction\": \"advance\" | \"hold\" | \"release\",\n  \"focus\": \"work\" | \"money\" | \"love\" | \"social\" | \"energy\",\n  \"axis_emphasis\": string[]  // machine codes only (trait / element / phase keys or reason codes from the payload)\n}"
+          }
+        ]
+      },
+      "generationConfig": {
+        "max_output_tokens": 1200,
+        "thinkingConfig": {
+          "includeThoughts": true
+        }
+      },
+      "model": "gemini-3.6-flash"
+    },
+    "bakeoffSajuAsGoogle": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Locale: ko (Korean). Write the narrative and one_line in Korean.\nQuestion (answer through this system's lens): 올해 일의 방향을 어떻게 잡아야 하는가?\nPayload (authoritative; do not recalculate):\n{\"runnerVersion\":\"1.0.0\",\"axesLayerVersion\":\"1.0.0\",\"kind\":\"personal\",\"locale\":\"ko\",\"readingScope\":\"question\",\"system\":\"saju\",\"engineVersion\":\"1.2.0\",\"traits\":{\"drive\":28.6,\"stability\":11.4,\"relation\":22.9,\"control\":27.1,\"exploration\":10,\"reflection\":0},\"elements\":{\"wood\":12.5,\"fire\":12.5,\"earth\":25,\"metal\":0,\"water\":50},\"phase\":{\"advance\":50,\"hold\":50,\"release\":0},\"confidence\":{\"traits\":{\"weight\":1,\"basis\":\"direct\"},\"elements\":{\"weight\":1,\"basis\":\"direct\"},\"phase\":{\"weight\":1,\"basis\":\"direct\",\"timescale\":\"era\"}},\"reasons\":{\"traits\":[\"saju.tengods.peer_dominant\"],\"elements\":[\"saju.elements.four_pillars\"],\"phase\":[\"saju.phase.daewoon_sewoon\"]},\"unreadable\":[],\"context\":{\"asOfDate\":\"2026-08-23\",\"question\":\"올해 일의 방향을 어떻게 잡아야 하는가?\"},\"labels\":{\"traits\":[\"비견\"],\"elements\":[\"사주 네 기둥\"],\"phase\":[\"대운·세운\"]}}"
+            }
+          ]
+        }
+      ],
+      "systemInstruction": {
+        "parts": [
+          {
+            "text": "You are reading ONE divination system for one person.\nThe calculation in the payload is already done and is authoritative.\nNever recalculate. Never invent a value that is not in the payload.\nConnect at least THREE values from the payload in your explanation.\nNever list elements one by one.\nNo generic statements that would apply to anyone.\nWrite in Korean (locale ko). This is required — do not infer the language from the payload.\nIf a question is present under context.question, answer it through this system's lens.\nIf no question is present, give the general reading.\nWhen a parallel labels{} object is present, each labels[space][i] is the human term for reasons[space][i]. Use those labels in narrative/one_line — never invent alternate jargon.\nNever print machine codes in narrative or one_line (no dotted paths like saju.phase.daewoon_sewoon, no snake_case keys like peer_dominant). Use human labels only.\nPhase ties: if two phase values are equal and leading (e.g. advance 50 and hold 50), report the tie as a tie in the narrative. Do not invent a decisive lean. Prefer direction \"hold\" when forced to pick one enum value under a tie.\nOUTPUT RULES (strict):\n- Respond with a single JSON object and nothing else.\n- No markdown fences, no preamble, no commentary outside the JSON.\n- Do NOT show step-by-step working, chain-of-thought, or analysis in ANY field.\n- narrative and one_line must be final prose only — never numbered steps or reasoning traces.\nSchema (character budgets are hard limits — stay under them):\n{\n  \"narrative\": string,  // final reading prose only; max 500 characters; human terms only\n  \"one_line\": string,     // punchy summary; max 80 characters; human terms only\n  \"direction\": \"advance\" | \"hold\" | \"release\",\n  \"focus\": \"work\" | \"money\" | \"love\" | \"social\" | \"energy\",\n  \"axis_emphasis\": string[]  // machine codes only (trait / element / phase keys or reason codes from the payload)\n}"
+          }
+        ]
+      },
+      "generationConfig": {
+        "max_output_tokens": 1200,
+        "thinkingConfig": {
+          "includeThoughts": true
+        }
+      },
+      "model": "gemini-3.6-flash"
+    },
+    "preLabelTarot": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Locale: ko (Korean). Write the narrative and one_line in Korean.\nQuestion (answer through this system's lens): 올해 일의 방향을 어떻게 잡아야 하는가?\nPayload (authoritative; do not recalculate):\n{\"runnerVersion\":\"1.0.0\",\"axesLayerVersion\":\"1.0.0\",\"kind\":\"personal\",\"locale\":\"ko\",\"readingScope\":\"question\",\"system\":\"tarot\",\"engineVersion\":\"1.0.0\",\"traits\":{\"drive\":13.3,\"stability\":14.2,\"relation\":6.7,\"control\":30.8,\"exploration\":15,\"reflection\":20},\"elements\":{\"wood\":25,\"fire\":33.3,\"earth\":0,\"metal\":8.4,\"water\":33.3},\"phase\":{\"advance\":33.3,\"hold\":66.7,\"release\":0},\"confidence\":{\"traits\":{\"weight\":0.5,\"basis\":\"derived\"},\"elements\":{\"weight\":0.5,\"basis\":\"derived\"},\"phase\":{\"weight\":1,\"basis\":\"direct\",\"timescale\":\"draw\"}},\"reasons\":{\"traits\":[\"tarot.traits.arcana_and_suit\",\"tarot.traits.reversals_reflected\"],\"elements\":[\"tarot.elements.suit_to_classical_to_oheng\"],\"phase\":[\"tarot.phase.card_character\"]},\"unreadable\":[],\"context\":{\"asOfDate\":\"2026-08-23\",\"question\":\"올해 일의 방향을 어떻게 잡아야 하는가?\"}}"
+            }
+          ]
+        }
+      ],
+      "systemInstruction": {
+        "parts": [
+          {
+            "text": "You are reading ONE divination system for one person.\nThe calculation in the payload is already done and is authoritative.\nNever recalculate. Never invent a value that is not in the payload.\nConnect at least THREE values from the payload in your explanation.\nNever list elements one by one.\nNo generic statements that would apply to anyone.\nWrite in Korean (locale ko). This is required — do not infer the language from the payload.\nIf a question is present under context.question, answer it through this system's lens.\nIf no question is present, give the general reading.\nWhen a parallel labels{} object is present, each labels[space][i] is the human term for reasons[space][i]. Use those labels in narrative/one_line — never invent alternate jargon.\nNever print machine codes in narrative or one_line (no dotted paths like saju.phase.daewoon_sewoon, no snake_case keys like peer_dominant). Use human labels only.\nPhase ties: if two phase values are equal and leading (e.g. advance 50 and hold 50), report the tie as a tie in the narrative. Do not invent a decisive lean. Prefer direction \"hold\" when forced to pick one enum value under a tie.\nOUTPUT RULES (strict):\n- Respond with a single JSON object and nothing else.\n- No markdown fences, no preamble, no commentary outside the JSON.\n- Do NOT show step-by-step working, chain-of-thought, or analysis in ANY field.\n- narrative and one_line must be final prose only — never numbered steps or reasoning traces.\nSchema (character budgets are hard limits — stay under them):\n{\n  \"narrative\": string,  // final reading prose only; max 500 characters; human terms only\n  \"one_line\": string,     // punchy summary; max 80 characters; human terms only\n  \"direction\": \"advance\" | \"hold\" | \"release\",\n  \"focus\": \"work\" | \"money\" | \"love\" | \"social\" | \"energy\",\n  \"axis_emphasis\": string[]  // machine codes only (trait / element / phase keys or reason codes from the payload)\n}"
+          }
+        ]
+      },
+      "generationConfig": {
+        "max_output_tokens": 1200,
+        "thinkingConfig": {
+          "includeThoughts": true
+        }
+      },
+      "model": "gemini-3.6-flash"
+    }
+  }
+}
