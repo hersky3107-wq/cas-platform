@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_IDS } from '../../axes/types'
 import { LAYER1_REGISTRY, layer1Entry } from '../registry'
+import { layer1RunawayContentThreshold } from '../layer1-adapter'
 
 const STALE_ROUTER_DEFAULTS = [
   'gpt-4o',
@@ -11,27 +12,39 @@ const STALE_ROUTER_DEFAULTS = [
   'mistral-large-latest',
 ]
 
+const EXPECTED_CEILINGS: Record<string, number> = {
+  saju: 1200,
+  ziwei: 3000,
+  iching: 2000,
+  ninestar: 1200,
+  sukuyou: 2500,
+  astro: 1200,
+  tarot: 1200,
+  runes: 1200,
+  numerology: 1200,
+  name: 1200,
+  tzolkin: 2000,
+  prism: 1200,
+}
+
 describe('LAYER1_REGISTRY', () => {
-  it('has one verified entry per system and no extras', () => {
+  it('has one verified entry per system and 12 distinct brands', () => {
     expect(Object.keys(LAYER1_REGISTRY).sort()).toEqual([...SYSTEM_IDS].sort())
     for (const system of SYSTEM_IDS) {
       const entry = layer1Entry(system)
       expect(entry).not.toBeNull()
       expect(entry!.brand.length).toBeGreaterThan(0)
       expect(entry!.model.length).toBeGreaterThan(0)
-      if (system === 'ziwei') {
-        expect(entry!.maxCompletionTokens).toBe(2000)
-      } else {
-        expect(entry!.maxCompletionTokens).toBe(1200)
-      }
+      expect(entry!.maxCompletionTokens).toBe(EXPECTED_CEILINGS[system])
     }
 
     const brands = Object.values(LAYER1_REGISTRY).map((entry) => entry.brand)
+    expect(brands).toHaveLength(SYSTEM_IDS.length)
     expect(new Set(brands).size).toBe(SYSTEM_IDS.length)
     expect(JSON.stringify(LAYER1_REGISTRY)).not.toContain('max_tokens')
   })
 
-  it('applies the owner-approved three-way reassignment', () => {
+  it('assigns the owner-approved brands including Llama 4 Maverick on ninestar', () => {
     expect(LAYER1_REGISTRY.saju).toMatchObject({
       brand: 'Moonshot AI',
       model: 'moonshotai/kimi-k3',
@@ -43,10 +56,11 @@ describe('LAYER1_REGISTRY', () => {
       caller: { kind: 'platform', platformId: 'openrouter:deepseek-v4-pro' },
     })
     expect(LAYER1_REGISTRY.ninestar).toMatchObject({
-      brand: 'Xiaomi',
-      model: 'xiaomi/mimo-v2.5',
-      caller: { kind: 'platform', platformId: 'openrouter:mimo-v2.5' },
+      brand: 'Meta',
+      model: 'meta-llama/llama-4-maverick',
+      caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' },
     })
+    expect(LAYER1_REGISTRY.ninestar.caller.kind === 'platform' && LAYER1_REGISTRY.ninestar.caller.extraRequestParams).toBeFalsy()
   })
 
   it('never uses the stale router.ts default model strings', () => {
@@ -58,6 +72,8 @@ describe('LAYER1_REGISTRY', () => {
       expect(models).not.toContain(stale)
       expect(overrides).not.toContain(stale)
     }
+    expect(models).not.toContain('xiaomi/mimo-v2.5')
+    expect(models).not.toContain('qwen/qwen3.5-plus-20260420')
   })
 
   it('pins Gemini thinking and does not invent a platform id for core brands', () => {
@@ -82,13 +98,37 @@ describe('LAYER1_REGISTRY', () => {
         reasoning: { enabled: false },
         provider: { order: ['moonshotai'], allow_fallbacks: true },
       })
-      expect(ninestar.extraRequestParams).toEqual({
-        reasoning: null,
-        provider: { order: ['xiaomi'], allow_fallbacks: true },
-      })
+      expect(ninestar.extraRequestParams).toBeUndefined()
       expect(ziwei.extraRequestParams).toEqual({
         reasoning: null,
       })
     }
+  })
+
+  it('scales the runaway guard to each system ceiling rather than a hardcoded value', () => {
+    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.saju.maxCompletionTokens)).toBe(1800)
+    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.sukuyou.maxCompletionTokens)).toBe(3750)
+    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.ziwei.maxCompletionTokens)).toBe(4500)
+    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.iching.maxCompletionTokens)).toBe(3000)
+    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.tzolkin.maxCompletionTokens)).toBe(3000)
+  })
+
+  it('pins official first-party prices on core-router estimates', () => {
+    expect(LAYER1_REGISTRY.astro.officialPricing).toEqual({
+      promptUsdPerToken: 0.000002,
+      completionUsdPerToken: 0.000012,
+    })
+    expect(LAYER1_REGISTRY.tarot.officialPricing).toEqual({
+      promptUsdPerToken: 0.0000015,
+      completionUsdPerToken: 0.0000075,
+    })
+    expect(LAYER1_REGISTRY.runes.officialPricing).toEqual({
+      promptUsdPerToken: 0.00000125,
+      completionUsdPerToken: 0.0000025,
+    })
+    expect(LAYER1_REGISTRY.prism.officialPricing).toEqual({
+      promptUsdPerToken: 0.000002,
+      completionUsdPerToken: 0.00001,
+    })
   })
 })

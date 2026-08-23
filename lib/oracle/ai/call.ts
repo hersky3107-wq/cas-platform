@@ -136,9 +136,9 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
       input.httpBudget.attempts += 1
       input.httpBudget.finalAttemptMs = latencyMs
     }
-    const pricing = entry.pricingModel
-      ? await getOpenRouterModelPricing(entry.pricingModel)
-      : null
+    const pricing =
+      entry.officialPricing ??
+      (entry.pricingModel ? await getOpenRouterModelPricing(entry.pricingModel) : null)
     const estimatedCostUsd =
       pricing && (res.promptTokens != null || res.completionTokens != null)
         ? estimateCostUsdFromPricing(

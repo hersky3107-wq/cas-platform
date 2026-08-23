@@ -24,6 +24,10 @@ export const LAYER1_HTTP_BUDGET = 2
 /** Do not open a fresh call when less than this remains on the unit deadline. */
 export const LAYER1_RETRY_MIN_REMAINING_MS = 25_000
 export const LAYER1_RUNAWAY_MULTIPLIER = 1.5
+/** Visible-content runaway threshold scales with that system's completion ceiling. */
+export function layer1RunawayContentThreshold(maxCompletionTokens: number): number {
+  return maxCompletionTokens * LAYER1_RUNAWAY_MULTIPLIER
+}
 export const LAYER1_STRICT_RETRY_INSTRUCTION =
   '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. Respect every field character limit.'
 
@@ -159,7 +163,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           continue
         }
 
-        const runawayThreshold = entry.maxCompletionTokens * LAYER1_RUNAWAY_MULTIPLIER
+        const runawayThreshold = layer1RunawayContentThreshold(entry.maxCompletionTokens)
         if ((raw.contentTokens ?? 0) > runawayThreshold) {
           lastError =
             `runaway visible content (${raw.contentTokens} > ${runawayThreshold} tokens)`

@@ -49,9 +49,14 @@ export type Layer1RegistryEntry = {
   /** Canonical OpenRouter catalog id used only for token-price estimation. */
   pricingModel?: string
   /**
-   * TRAP (a): current top models are reasoners. A small budget is spent on
-   * hidden reasoning and the visible reply comes back content:null /
-   * finish_reason:length. Narratives are long, so this is generous.
+   * Official first-party per-token USD rates. Used for core-router estimates
+   * so OpenRouter catalog prices cannot silently under/over-state spend.
+   */
+  officialPricing?: { promptUsdPerToken: number; completionUsdPerToken: number }
+  /**
+   * Per-system completion ceiling. Reasoning-emitting systems use
+   * (ceil(observed-max-reasoning, 500) + 800); non-reasoning stay 1200
+   * unless a measured floor requires more.
    */
   maxCompletionTokens: number
 }
@@ -88,7 +93,8 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       platformId: 'openrouter:deepseek-v4-pro',
       extraRequestParams: { reasoning: null },
     },
-    maxCompletionTokens: 2000,
+    // Measured reasoning 1328/1799 → ceil 2000 + 800 = 2800; floor 3000.
+    maxCompletionTokens: 3000,
   },
   iching: {
     system: 'iching',
@@ -96,23 +102,19 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'GLM-5.2',
     model: 'z-ai/glm-5.2',
     caller: { kind: 'platform', platformId: 'openrouter:glm-5.2' },
-    maxCompletionTokens: 1200,
+    // Measured reasoning 207/892 → ceil 1000 + 800 = 1800; floor 2000.
+    maxCompletionTokens: 2000,
   },
   ninestar: {
     system: 'ninestar',
-    brand: 'Xiaomi',
-    displayName: 'MiMo V2.5',
-    model: 'xiaomi/mimo-v2.5',
-    // Live metadata has no default_enabled=true. Xiaomi first-party is live,
-    // so strip the catalog reasoning default and pin its verified slug.
-    caller: {
-      kind: 'platform',
-      platformId: 'openrouter:mimo-v2.5',
-      extraRequestParams: {
-        reasoning: null,
-        provider: { order: ['xiaomi'], allow_fallbacks: true },
-      },
-    },
+    brand: 'Meta',
+    displayName: 'Llama 4 Maverick',
+    model: 'meta-llama/llama-4-maverick',
+    // Live metadata: no reasoning object / default_enabled absent; reasoning
+    // is not in supported_parameters. Catalog has no extraRequestParams.
+    // Meta first-party slug `meta` is NOT in the live endpoint list
+    // (DigitalOcean, DeepInfra, Novita, Parasail, Google) — do not pin.
+    caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' },
     maxCompletionTokens: 1200,
   },
   sukuyou: {
@@ -124,7 +126,8 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // provider.order:['minimax'] with allow_fallbacks:true.
     model: 'minimax/minimax-m3',
     caller: { kind: 'platform', platformId: 'openrouter:minimax-m3' },
-    maxCompletionTokens: 1200,
+    // Measured reasoning 928/1164 → ceil 1500 + 800 = 2300; floor 2500.
+    maxCompletionTokens: 2500,
   },
   astro: {
     system: 'astro',
@@ -133,6 +136,8 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // League challenger slot; health page pings this exact modelOverride.
     model: 'gpt-5.6-terra',
     pricingModel: 'openai/gpt-5.6-terra',
+    // Official OpenAI short-context: $2 / $12 per 1M (developers.openai.com/api/docs/pricing).
+    officialPricing: { promptUsdPerToken: 0.000002, completionUsdPerToken: 0.000012 },
     caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-5.6-terra' },
     maxCompletionTokens: 1200,
   },
@@ -144,6 +149,10 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // (HTTP 400 INVALID_ARGUMENT). allowGeminiThinking:true is required.
     model: 'gemini-3.6-flash',
     pricingModel: 'google/gemini-3.6-flash',
+    // Official Gemini Developer API Standard paid: $1.50 / $7.50 per 1M
+    // (ai.google.dev/gemini-api/docs/pricing). OpenRouter lists the $0.75/$3.75
+    // intro rate — wrong for the direct Google path we actually call.
+    officialPricing: { promptUsdPerToken: 0.0000015, completionUsdPerToken: 0.0000075 },
     caller: {
       kind: 'core',
       provider: 'google',
@@ -158,6 +167,8 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'Grok 4.3',
     model: 'grok-4.3',
     pricingModel: 'x-ai/grok-4.3',
+    // Official xAI <200k: $1.25 / $2.50 per 1M (docs.x.ai/developers/pricing).
+    officialPricing: { promptUsdPerToken: 0.00000125, completionUsdPerToken: 0.0000025 },
     caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.3' },
     maxCompletionTokens: 1200,
   },
@@ -186,7 +197,8 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // Full catalog id is nemotron-3-ultra-550b-a55b (not the bare name).
     model: 'nvidia/nemotron-3-ultra-550b-a55b',
     caller: { kind: 'platform', platformId: 'openrouter:nemotron-3-ultra-550b' },
-    maxCompletionTokens: 1200,
+    // Measured reasoning 352/731 → ceil 1000 + 800 = 1800; floor 2000.
+    maxCompletionTokens: 2000,
   },
   prism: {
     system: 'prism',
@@ -194,6 +206,8 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'Claude Sonnet 5',
     model: 'claude-sonnet-5',
     pricingModel: 'anthropic/claude-sonnet-5',
+    // Official Anthropic: $2 / $10 per 1M (anthropic.com/claude/sonnet).
+    officialPricing: { promptUsdPerToken: 0.000002, completionUsdPerToken: 0.00001 },
     caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-sonnet-5' },
     maxCompletionTokens: 1200,
   },

@@ -28,6 +28,17 @@ export async function resolveLayer1CostUsd(input: {
     return { costUsd: input.providerCostUsd, isEstimated: input.costIsEstimated }
   }
 
+  if (input.entry.officialPricing) {
+    return {
+      costUsd: estimateCostUsdFromPricing(
+        input.entry.officialPricing,
+        input.promptTokens,
+        input.completionTokens,
+      ),
+      isEstimated: true,
+    }
+  }
+
   const platformId =
     input.entry.caller.kind === 'platform' ? input.entry.caller.platformId : null
   const registryModel =

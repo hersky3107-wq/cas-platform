@@ -209,6 +209,25 @@ describe('createLayer1AiAdapter', () => {
     expect(calls).toBe(2)
     if (!result.ok) expect(result.message).toMatch(/runaway visible content/)
   })
+
+  it('uses the system ceiling for the runaway threshold, not a hardcoded 1800', async () => {
+    let calls = 0
+    const call: Layer1Call = async () => {
+      calls += 1
+      return okCall({
+        text: VALID_JSON,
+        tokensOut: 4501,
+        contentTokens: 4501,
+      })
+    }
+
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(readingRequest('ziwei'), { timeoutMs: 60_000 })
+
+    expect(calls).toBe(2)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/4501 > 4500/)
+  })
 })
 
 describe('live layer-1 through a session', () => {
