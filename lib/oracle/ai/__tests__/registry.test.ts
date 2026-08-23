@@ -19,8 +19,34 @@ describe('LAYER1_REGISTRY', () => {
       expect(entry).not.toBeNull()
       expect(entry!.brand.length).toBeGreaterThan(0)
       expect(entry!.model.length).toBeGreaterThan(0)
-      expect(entry!.maxCompletionTokens).toBeGreaterThanOrEqual(4000)
+      if (system === 'ziwei') {
+        expect(entry!.maxCompletionTokens).toBe(2000)
+      } else {
+        expect(entry!.maxCompletionTokens).toBe(1200)
+      }
     }
+
+    const brands = Object.values(LAYER1_REGISTRY).map((entry) => entry.brand)
+    expect(new Set(brands).size).toBe(SYSTEM_IDS.length)
+    expect(JSON.stringify(LAYER1_REGISTRY)).not.toContain('max_tokens')
+  })
+
+  it('applies the owner-approved three-way reassignment', () => {
+    expect(LAYER1_REGISTRY.saju).toMatchObject({
+      brand: 'Moonshot AI',
+      model: 'moonshotai/kimi-k3',
+      caller: { kind: 'platform', platformId: 'openrouter:kimi-k3' },
+    })
+    expect(LAYER1_REGISTRY.ziwei).toMatchObject({
+      brand: 'DeepSeek',
+      model: 'deepseek/deepseek-v4-pro',
+      caller: { kind: 'platform', platformId: 'openrouter:deepseek-v4-pro' },
+    })
+    expect(LAYER1_REGISTRY.ninestar).toMatchObject({
+      brand: 'Xiaomi',
+      model: 'xiaomi/mimo-v2.5',
+      caller: { kind: 'platform', platformId: 'openrouter:mimo-v2.5' },
+    })
   })
 
   it('never uses the stale router.ts default model strings', () => {
@@ -44,16 +70,24 @@ describe('LAYER1_REGISTRY', () => {
     expect(layer1Entry('not-a-system')).toBeNull()
   })
 
-  it('scopes measured DeepSeek and Kimi controls to oracle calls', () => {
+  it('scopes reassigned model reasoning and provider pins to oracle calls', () => {
     const saju = LAYER1_REGISTRY.saju.caller
     const ninestar = LAYER1_REGISTRY.ninestar.caller
+    const ziwei = LAYER1_REGISTRY.ziwei.caller
     expect(saju.kind).toBe('platform')
     expect(ninestar.kind).toBe('platform')
-    if (saju.kind === 'platform' && ninestar.kind === 'platform') {
-      expect(saju.extraRequestParams).toEqual({ reasoning: { max_tokens: 1024 } })
-      expect(ninestar.extraRequestParams).toEqual({
-        reasoning: { max_tokens: 1024 },
+    expect(ziwei.kind).toBe('platform')
+    if (saju.kind === 'platform' && ninestar.kind === 'platform' && ziwei.kind === 'platform') {
+      expect(saju.extraRequestParams).toEqual({
+        reasoning: { enabled: false },
         provider: { order: ['moonshotai'], allow_fallbacks: true },
+      })
+      expect(ninestar.extraRequestParams).toEqual({
+        reasoning: null,
+        provider: { order: ['xiaomi'], allow_fallbacks: true },
+      })
+      expect(ziwei.extraRequestParams).toEqual({
+        reasoning: null,
       })
     }
   })

@@ -46,6 +46,8 @@ export type Layer1RegistryEntry = {
   model: string
   displayName: string
   caller: Layer1Caller
+  /** Canonical OpenRouter catalog id used only for token-price estimation. */
+  pricingModel?: string
   /**
    * TRAP (a): current top models are reasoners. A small budget is spent on
    * hidden reasoning and the visible reply comes back content:null /
@@ -57,29 +59,36 @@ export type Layer1RegistryEntry = {
 export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   saju: {
     system: 'saju',
-    brand: 'DeepSeek',
-    displayName: 'DeepSeek V3.2',
-    // PLATFORM_MODEL_REGISTRY id 'openrouter:deepseek-v3.2' (challenger, verified).
-    model: 'deepseek/deepseek-v3.2',
-    // Smoke 2026-08-20: effort:minimal still spent 2,380 reasoning tokens
-    // and took 88.3s. OpenRouter's documented direct-budget minimum is 1,024.
+    brand: 'Moonshot AI',
+    displayName: 'Kimi K3',
+    model: 'moonshotai/kimi-k3',
+    // Live metadata: reasoning.default_enabled=true. Moonshot AI is present
+    // in the endpoint list, so prefer its verified `moonshotai` provider slug.
     caller: {
       kind: 'platform',
-      platformId: 'openrouter:deepseek-v3.2',
-      extraRequestParams: { reasoning: { max_tokens: 1024 } },
+      platformId: 'openrouter:kimi-k3',
+      extraRequestParams: {
+        reasoning: { enabled: false },
+        provider: { order: ['moonshotai'], allow_fallbacks: true },
+      },
     },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   ziwei: {
     system: 'ziwei',
-    brand: 'Qwen',
-    displayName: 'Qwen 3.5 Plus',
-    // Catalog id is dated (`qwen3.5-plus-20260420`); confirmed live 2026-08-16.
-    // TRAP (b): Qwen REJECTS reasoning.enabled=false (HTTP 400). The registry
-    // entry already sends reasoning:{effort:'minimal'} — do not add a disable.
-    model: 'qwen/qwen3.5-plus-20260420',
-    caller: { kind: 'platform', platformId: 'openrouter:qwen3.5-plus' },
-    maxCompletionTokens: 4000,
+    brand: 'DeepSeek',
+    displayName: 'DeepSeek V4 Pro',
+    model: 'deepseek/deepseek-v4-pro',
+    // Live metadata has no default_enabled=true. `reasoning:null` strips the
+    // platform catalog's effort default so no reasoning key is sent.
+    // DeepSeek first-party is absent from this model's live endpoint list;
+    // deliberately do not pin an upstream.
+    caller: {
+      kind: 'platform',
+      platformId: 'openrouter:deepseek-v4-pro',
+      extraRequestParams: { reasoning: null },
+    },
+    maxCompletionTokens: 2000,
   },
   iching: {
     system: 'iching',
@@ -87,26 +96,24 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'GLM-5.2',
     model: 'z-ai/glm-5.2',
     caller: { kind: 'platform', platformId: 'openrouter:glm-5.2' },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   ninestar: {
     system: 'ninestar',
-    brand: 'Moonshot AI',
-    displayName: 'Kimi K2.6',
-    // League confirmed 8000 is the working budget on a long prompt (2026-08-16).
-    model: 'moonshotai/kimi-k2.6',
-    // Smoke 2026-08-20: unpinned routing returned an empty-content 200, then
-    // a Decart retry spent 5,411 reasoning tokens and exceeded 240s. Pin the
-    // Moonshot first-party endpoint while preserving fallback availability.
+    brand: 'Xiaomi',
+    displayName: 'MiMo V2.5',
+    model: 'xiaomi/mimo-v2.5',
+    // Live metadata has no default_enabled=true. Xiaomi first-party is live,
+    // so strip the catalog reasoning default and pin its verified slug.
     caller: {
       kind: 'platform',
-      platformId: 'openrouter:kimi-k2.6',
+      platformId: 'openrouter:mimo-v2.5',
       extraRequestParams: {
-        reasoning: { max_tokens: 1024 },
-        provider: { order: ['moonshotai'], allow_fallbacks: true },
+        reasoning: null,
+        provider: { order: ['xiaomi'], allow_fallbacks: true },
       },
     },
-    maxCompletionTokens: 8000,
+    maxCompletionTokens: 1200,
   },
   sukuyou: {
     system: 'sukuyou',
@@ -117,7 +124,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // provider.order:['minimax'] with allow_fallbacks:true.
     model: 'minimax/minimax-m3',
     caller: { kind: 'platform', platformId: 'openrouter:minimax-m3' },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   astro: {
     system: 'astro',
@@ -125,8 +132,9 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'GPT-5.6 Terra',
     // League challenger slot; health page pings this exact modelOverride.
     model: 'gpt-5.6-terra',
+    pricingModel: 'openai/gpt-5.6-terra',
     caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-5.6-terra' },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   tarot: {
     system: 'tarot',
@@ -135,21 +143,23 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // TRAP (d): gemini-3.6-flash REJECTS thinkingConfig:{thinkingBudget:0}
     // (HTTP 400 INVALID_ARGUMENT). allowGeminiThinking:true is required.
     model: 'gemini-3.6-flash',
+    pricingModel: 'google/gemini-3.6-flash',
     caller: {
       kind: 'core',
       provider: 'google',
       modelOverride: 'gemini-3.6-flash',
       allowGeminiThinking: true,
     },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   runes: {
     system: 'runes',
     brand: 'xAI',
     displayName: 'Grok 4.3',
     model: 'grok-4.3',
+    pricingModel: 'x-ai/grok-4.3',
     caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.3' },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   numerology: {
     system: 'numerology',
@@ -159,7 +169,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // PLATFORM_MODEL_REGISTRY note — 3.1 is the older minor.
     model: 'mistralai/mistral-medium-3-5',
     caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   name: {
     system: 'name',
@@ -167,7 +177,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'HyperCLOVA X HCX-007',
     model: 'HCX-007',
     caller: { kind: 'platform', platformId: 'clova:hcx-007' },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   tzolkin: {
     system: 'tzolkin',
@@ -176,15 +186,16 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // Full catalog id is nemotron-3-ultra-550b-a55b (not the bare name).
     model: 'nvidia/nemotron-3-ultra-550b-a55b',
     caller: { kind: 'platform', platformId: 'openrouter:nemotron-3-ultra-550b' },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
   prism: {
     system: 'prism',
     brand: 'Anthropic',
     displayName: 'Claude Sonnet 5',
     model: 'claude-sonnet-5',
+    pricingModel: 'anthropic/claude-sonnet-5',
     caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-sonnet-5' },
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 1200,
   },
 }
 

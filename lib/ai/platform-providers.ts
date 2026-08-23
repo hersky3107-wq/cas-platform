@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { mergeExtraRequestParams } from '@/lib/ai/merge-extra-params'
+
 /**
  * PLATFORM-LEVEL LLM providers (OpenRouter, Meta Muse, You.com, NAVER CLOVA
  * Studio) — server-wide keys read from process.env, separate from the
@@ -22,6 +24,8 @@ import 'server-only'
  * docs), NOT guessed from memory. See PLATFORM_MODEL_REGISTRY_TODO at the
  * bottom for requested models that could not be verified.
  */
+
+export { mergeExtraRequestParams } from '@/lib/ai/merge-extra-params'
 
 export type PlatformProviderId = 'openrouter' | 'meta-muse' | 'youcom' | 'clova' | 'upstage' | 'friendli'
 
@@ -256,6 +260,7 @@ export type PlatformCallResult = {
   costUsd?: number | null
   /** True when costUsd is a documented estimate, not a per-call billed figure. */
   costIsEstimated?: boolean
+  finishReason?: string | null
   error?: string
   /** Raw transport details for server-side smoke diagnostics; never return to clients. */
   diagnostics?: {
@@ -279,6 +284,56 @@ type OpenAiCompatibleCallParams = {
   includeUsageCost?: boolean
   /** Abort the actual HTTP request; unlike Promise.race this stops token spend. */
   signal?: AbortSignal
+  /** When ORACLE_DEBUG_REQUEST=1, log the outgoing body once for this unit label (e.g. "saju"). */
+  debugRequestLabel?: string
+  /**
+   * Shared per-unit HTTP attempt budget. When set (oracle layer-1), each real
+   * fetch decrements it and empty-content retries stop when it hits 0.
+   * Omitted for league / other callers — they keep the historical one retry.
+   */
+  httpBudget?: {
+    remaining: number
+    attempts: number
+    finalAttemptMs: number | null
+  }
+}
+
+/** One-shot guard — ORACLE_DEBUG_REQUEST logs a single unit only. */
+let oracleDebugRequestPending = false
+
+function redactPayloadForDebug(payload: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
+}
+
+function maybeLogOracleDebugRequest(payload: Record<string, unknown>, label?: string): void {
+  if (process.env.ORACLE_DEBUG_REQUEST !== '1') return
+  if (!label || label !== 'saju') return
+  if (oracleDebugRequestPending) return
+  oracleDebugRequestPending = true
+  console.log('[oracle-debug-request] outgoing body:', JSON.stringify(redactPayloadForDebug(payload), null, 2))
+}
+
+function maybeLogOracleDebugResponse(json: Record<string, unknown>): void {
+  if (process.env.ORACLE_DEBUG_REQUEST !== '1' || !oracleDebugRequestPending) return
+  const choice = (json.choices as Array<Record<string, unknown>> | undefined)?.[0]
+  const message = choice?.message as Record<string, unknown> | undefined
+  const usage = json.usage as Record<string, unknown> | undefined
+  console.log(
+    '[oracle-debug-response] reasoning echo:',
+    JSON.stringify(
+      {
+        provider: json.provider ?? null,
+        finish_reason: choice?.finish_reason ?? null,
+        message_reasoning: message?.reasoning ?? null,
+        usage_completion_tokens_details: usage?.completion_tokens_details ?? null,
+        usage_reasoning_tokens:
+          (usage?.completion_tokens_details as Record<string, unknown> | undefined)?.reasoning_tokens ?? null,
+      },
+      null,
+      2,
+    ),
+  )
+  oracleDebugRequestPending = false
 }
 
 /**
@@ -300,6 +355,13 @@ async function callOpenAiCompatiblePlatformModel(
 ): Promise<PlatformCallResult> {
   const first = await callOpenAiCompatibleOnce(params)
   if (!first.emptyContent) return first.result
+
+  // Oracle layer-1 shares a per-unit budget of 2 HTTP calls with the adapter.
+  // When the budget is exhausted (or would be by a retry), skip the platform
+  // empty-content retry so the stack cannot reach 4 fetches.
+  if (params.httpBudget && params.httpBudget.remaining <= 0) {
+    return first.result
+  }
 
   console.log(
     `[platform-providers] ${params.model}: HTTP 200 with empty message.content — retrying once (known upstream flake).`
@@ -325,6 +387,36 @@ async function callOpenAiCompatibleOnce(
   if (includeUsageCost) payload.usage = { include: true }
   if (typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0) {
     payload.max_tokens = maxCompletionTokens
+  }
+
+  maybeLogOracleDebugRequest(payload, params.debugRequestLabel)
+
+  let attemptStartMs: number | null = null
+  if (params.httpBudget) {
+    if (params.httpBudget.remaining <= 0) {
+      return {
+        result: {
+          text: null,
+          error: 'HTTP budget exhausted for this unit',
+          diagnostics: {
+            errorClass: 'NetworkError',
+            httpStatus: null,
+            responseBody: null,
+            provider: null,
+          },
+        },
+        emptyContent: false,
+      }
+    }
+    params.httpBudget.remaining -= 1
+    attemptStartMs = Date.now()
+  }
+
+  const finalizeAttempt = (): void => {
+    if (params.httpBudget && attemptStartMs != null) {
+      params.httpBudget.attempts += 1
+      params.httpBudget.finalAttemptMs = Date.now() - attemptStartMs
+    }
   }
 
   try {
@@ -390,6 +482,8 @@ async function callOpenAiCompatibleOnce(
       }
     }
 
+    maybeLogOracleDebugResponse(json as Record<string, unknown>)
+
     const choice = json?.choices?.[0]
     const content = choice?.message?.content
     const usage = json?.usage ?? {}
@@ -401,7 +495,8 @@ async function callOpenAiCompatibleOnce(
       // hidden reasoning, or the upstream dropped the visible answer into
       // `message.reasoning` only. Report it explicitly instead of returning
       // `{ text: null }` with no explanation; the caller retries once.
-      const finishReason = choice?.finish_reason ?? 'unknown'
+      const finishReason =
+        typeof choice?.finish_reason === 'string' ? choice.finish_reason : String(choice?.finish_reason ?? 'unknown')
       return {
         result: {
           text: null,
@@ -409,6 +504,7 @@ async function callOpenAiCompatibleOnce(
             `HTTP 200 but message.content was empty (finish_reason=${finishReason}` +
             (typeof reasoningTokens === 'number' ? `, reasoning_tokens=${reasoningTokens}/${usage?.completion_tokens ?? '?'}` : '') +
             `). Raw: ${rawBody.slice(0, 500)}`,
+          finishReason,
           diagnostics: {
             errorClass: 'EmptyContentError',
             httpStatus: res.status,
@@ -420,6 +516,8 @@ async function callOpenAiCompatibleOnce(
       }
     }
 
+    const finishReason =
+      typeof choice?.finish_reason === 'string' ? choice.finish_reason : String(choice?.finish_reason ?? 'unknown')
     return {
       result: {
         text: content,
@@ -435,6 +533,7 @@ async function callOpenAiCompatibleOnce(
         },
         // OpenRouter reports the actual billed cost here (USD) when includeUsageCost was set.
         costUsd: typeof usage.cost === 'number' ? usage.cost : null,
+        finishReason,
         diagnostics: {
           errorClass: null,
           httpStatus: res.status,
@@ -462,6 +561,8 @@ async function callOpenAiCompatibleOnce(
       },
       emptyContent: false,
     }
+  } finally {
+    finalizeAttempt()
   }
 }
 
@@ -626,8 +727,17 @@ export async function callPlatformModel(params: {
   timeoutMs?: number
   /** Server-side caller override; merged after the catalog entry's defaults. */
   extraRequestParams?: Record<string, unknown>
+  /** When ORACLE_DEBUG_REQUEST=1, log the outgoing body once for this unit label. */
+  debugRequestLabel?: string
+  /** Shared per-unit HTTP attempt budget (oracle layer-1). */
+  httpBudget?: {
+    remaining: number
+    attempts: number
+    finalAttemptMs: number | null
+  }
 }): Promise<PlatformCallResult> {
-  const { id, systemPrompt, userPrompt, maxCompletionTokens, timeoutMs, extraRequestParams } = params
+  const { id, systemPrompt, userPrompt, maxCompletionTokens, timeoutMs, extraRequestParams, debugRequestLabel, httpBudget } =
+    params
   const entry = getPlatformModelEntry(id)
   if (!entry) return { text: null, error: `Unknown platform model id: ${id}` }
 
@@ -648,10 +758,12 @@ export async function callPlatformModel(params: {
       systemPrompt,
       userPrompt,
       maxCompletionTokens,
-      extraRequestParams: { ...entry.extraRequestParams, ...extraRequestParams },
+      extraRequestParams: mergeExtraRequestParams(entry.extraRequestParams, extraRequestParams),
       // Get the real billed cost back in usage.cost (OpenRouter-specific).
       includeUsageCost: true,
       signal,
+      debugRequestLabel,
+      httpBudget,
     })
   }
 

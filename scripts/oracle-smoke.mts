@@ -79,6 +79,7 @@ async function main() {
   }
 
   const callsBySystem = new Map<string, CallResult[]>()
+  const reportRows: Array<Record<string, unknown>> = []
   const trackedCall: typeof callLayer1Model = async (input) => {
     const result = await callLayer1Model(input)
     const calls = callsBySystem.get(input.entry.system) ?? []
@@ -100,12 +101,19 @@ async function main() {
   console.log(
     'system'.padEnd(12),
     'brand'.padEnd(14),
-    'ms'.padStart(7),
+    'provider'.padEnd(14),
+    'cumMs'.padStart(7),
+    'finalMs'.padStart(8),
+    'http'.padStart(5),
     'in'.padStart(6),
     'out'.padStart(6),
     'reason'.padStart(7),
     'content'.padStart(7),
+    'finish'.padEnd(8),
     'parsed',
+    'usd'.padStart(8),
+    'est'.padEnd(5),
+    'runaway',
     'would80sTimeout',
   )
 
@@ -146,17 +154,47 @@ async function main() {
     const reasoningTokens = call?.reasoningTokens ?? 0
     const contentTokens = call?.contentTokens ?? (tokensOut ? Math.max(0, tokensOut - reasoningTokens) : 0)
     const wouldTimeout = ms >= PRODUCT_LIVE_TIMEOUT_MS ? 'yes' : 'no'
+    const upstream = call?.diagnostics?.provider ?? '(none)'
+    const finishReason = call?.finishReason ?? '(none)'
+    const httpAttempts = call?.httpAttempts ?? 0
+    const finalAttemptMs = call?.finalAttemptMs ?? 0
+    const costUsd = attempts.reduce((sum, attempt) => sum + (attempt.costUsd ?? 0), 0)
+    const isEstimated = attempts.some((attempt) => attempt.costIsEstimated)
+    const runaway = attempts.some((attempt) => attempt.strictRetry)
     console.log(
       system.padEnd(12),
       brand.padEnd(14),
+      String(upstream).padEnd(14),
       String(ms).padStart(7),
+      String(finalAttemptMs).padStart(8),
+      String(httpAttempts).padStart(5),
       String(tokensIn).padStart(6),
       String(tokensOut).padStart(6),
       String(reasoningTokens).padStart(7),
       String(contentTokens).padStart(7),
+      String(finishReason).padEnd(8),
       parsed,
+      String(costUsd).padStart(8),
+      String(isEstimated).padEnd(5),
+      runaway ? 'yes' : 'no',
       wouldTimeout,
     )
+    reportRows.push({
+      system,
+      brand,
+      contentTokens,
+      reasoningTokens,
+      httpAttempts,
+      finalAttemptMs,
+      cumulativeMs: ms,
+      parsed,
+      finishReason,
+      upstream,
+      costUsd,
+      isEstimated,
+      runaway,
+      would80sTimeout: wouldTimeout,
+    })
 
     if (row?.status !== 'done') {
       const rowError =
@@ -176,16 +214,34 @@ async function main() {
       console.log(`  failure.body=${truncate(responseBody)}`)
     }
 
-    if (system === 'ziwei' && call) {
-      console.log(
-        `  qwen.reasoningTokens=${call.reasoningTokens ?? '(not reported)'} ` +
-          `contentTokens=${call.contentTokens ?? '(not reported)'} ` +
-          `actualCostUsd=${call.costUsd ?? '(not reported)'}`,
-      )
-    }
   }
 
   console.log(`status=${session.status}  readings=${store.readings.length}  verdicts=${store.verdicts.length}`)
+
+  // Cost attribution for the rebuild path lands on oracle_session_id (not
+  // session_id — that FK targets public.sessions). Query live DB for this smoke.
+  const { supabaseAdmin } = await import('../lib/supabase/server')
+  const { data: costRows, error: costErr } = await supabaseAdmin
+    .from('model_cost_logs')
+    .select('ai_name, model_name, input_tokens, output_tokens, cost_usd, response_time_ms, oracle_session_id')
+    .eq('oracle_session_id', created.session.id)
+  if (costErr) {
+    console.log(`cost_logs query error: ${costErr.message}`)
+    console.log(`SMOKE_RESULT_JSON=${JSON.stringify({ sessionId: created.session.id, rows: reportRows, totalUsd: null })}`)
+  } else {
+    const rows = costRows ?? []
+    const total = rows.reduce((sum, row) => sum + (typeof row.cost_usd === 'number' ? row.cost_usd : Number(row.cost_usd) || 0), 0)
+    console.log(`cost_logs for oracle_session_id=${created.session.id}: ${rows.length} rows, total_usd=${total}`)
+    for (const row of rows) {
+      console.log(
+        `  ${String(row.ai_name).padEnd(14)} ${String(row.model_name).padEnd(36)} ` +
+          `in=${row.input_tokens ?? 0} out=${row.output_tokens ?? 0} usd=${row.cost_usd ?? 0} cumMs=${row.response_time_ms ?? 0}`,
+      )
+    }
+    console.log(
+      `SMOKE_RESULT_JSON=${JSON.stringify({ sessionId: created.session.id, rows: reportRows, totalUsd: total })}`,
+    )
+  }
 }
 
 main().catch((error) => {

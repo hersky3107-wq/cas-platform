@@ -47,6 +47,11 @@ function okCall(overrides: Partial<Layer1CallResult> = {}): Layer1CallResult {
     reasoningTokens: null,
     contentTokens: 22,
     costUsd: null,
+    costIsEstimated: false,
+    finishReason: 'stop',
+    httpAttempts: 1,
+    finalAttemptMs: 5,
+    strictRetry: false,
     diagnostics: null,
     ...overrides,
   }
@@ -100,7 +105,7 @@ describe('createOracleAiAdapter isolation', () => {
 })
 
 describe('createLayer1AiAdapter', () => {
-  it('retries exactly once on empty-content 200, then 결번', async () => {
+  it('retries exactly once on empty-content 200 when deadline allows, then 결번', async () => {
     const calls: Layer1CallResult[] = []
     const call: Layer1Call = async () => {
       const result = okCall({ text: null, emptyContent: true, tokensOut: 0 })
@@ -108,7 +113,8 @@ describe('createLayer1AiAdapter', () => {
       return result
     }
     const adapter = createLayer1AiAdapter({ call })
-    const result = await adapter.run(readingRequest(), { timeoutMs: 1_000 })
+    // timeout must leave ≥25s after the first attempt so the retry gate opens.
+    const result = await adapter.run(readingRequest(), { timeoutMs: 60_000 })
     expect(calls).toHaveLength(2)
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -117,14 +123,29 @@ describe('createLayer1AiAdapter', () => {
     }
   })
 
-  it('retries once on parse failure, then 결번', async () => {
+  it('does not open a second call when less than 25s remains on the unit deadline', async () => {
+    let n = 0
+    const call: Layer1Call = async () => {
+      n += 1
+      return okCall({ text: null, emptyContent: true, tokensOut: 0 })
+    }
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(readingRequest(), { timeoutMs: 1_000 })
+    expect(n).toBe(1)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.message).toMatch(/insufficient time for retry/)
+    }
+  })
+
+  it('retries once on parse failure when deadline allows, then 결번', async () => {
     let n = 0
     const call: Layer1Call = async () => {
       n += 1
       return okCall({ text: '<<< not json >>>' })
     }
     const adapter = createLayer1AiAdapter({ call })
-    const result = await adapter.run(readingRequest(), { timeoutMs: 1_000 })
+    const result = await adapter.run(readingRequest(), { timeoutMs: 60_000 })
     expect(n).toBe(2)
     expect(result.ok).toBe(false)
   })
@@ -140,10 +161,53 @@ describe('createLayer1AiAdapter', () => {
     expect(n).toBe(1)
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.brand).toBe('DeepSeek')
+      expect(result.brand).toBe('Moonshot AI')
       expect(result.model).toBe(LAYER1_REGISTRY.saju.model)
       expect(result.summary).toMatchObject({ direction: 'advance', focus: 'work' })
     }
+  })
+
+  it('uses one strict retry after runaway visible content', async () => {
+    const prompts: string[] = []
+    const call: Layer1Call = async (input) => {
+      prompts.push(input.userPrompt)
+      if (prompts.length === 1) {
+        return okCall({
+          text: VALID_JSON,
+          tokensOut: 1900,
+          contentTokens: 1900,
+        })
+      }
+      return okCall({ strictRetry: true })
+    }
+
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(readingRequest(), { timeoutMs: 60_000 })
+
+    expect(result.ok).toBe(true)
+    expect(prompts).toHaveLength(2)
+    expect(prompts[0]).not.toContain('STRICT RETRY')
+    expect(prompts[1]).toContain('STRICT RETRY: Output ONLY the JSON object')
+  })
+
+  it('does not retry a runaway response more than once', async () => {
+    let calls = 0
+    const call: Layer1Call = async ({ strictRetry }) => {
+      calls += 1
+      return okCall({
+        text: VALID_JSON,
+        tokensOut: 1900,
+        contentTokens: 1900,
+        strictRetry: strictRetry ?? false,
+      })
+    }
+
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(readingRequest(), { timeoutMs: 60_000 })
+
+    expect(result.ok).toBe(false)
+    expect(calls).toBe(2)
+    if (!result.ok) expect(result.message).toMatch(/runaway visible content/)
   })
 })
 

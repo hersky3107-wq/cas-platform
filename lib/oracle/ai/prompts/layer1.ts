@@ -1,10 +1,10 @@
 /**
- * Layer-1 (per-system reading) prompt, v1.
+ * Layer-1 (per-system reading) prompt, v2.
  *
  * Output is forced JSON. Layer 2 reads `oracle_readings.summary`
  * (one_line / direction / focus / axis_emphasis), not the full narrative.
  */
-export const LAYER1_PROMPT_VERSION = 'layer1-v1'
+export const LAYER1_PROMPT_VERSION = 'layer1-v2'
 
 const LOCALE_LANGUAGE: Record<string, string> = {
   ko: 'Korean',
@@ -31,15 +31,18 @@ export function buildLayer1SystemPrompt(locale: string): string {
     `Write in ${language} (locale ${locale}). This is required — do not infer the language from the payload.`,
     'If a question is present under context.question, answer it through this system\'s lens.',
     'If no question is present, give the general reading.',
-    'Length: 300-500 characters of narrative.',
-    'Respond with a single JSON object and nothing else. No markdown fences, no preamble.',
-    'Schema:',
+    'OUTPUT RULES (strict):',
+    '- Respond with a single JSON object and nothing else.',
+    '- No markdown fences, no preamble, no commentary outside the JSON.',
+    '- Do NOT show step-by-step working, chain-of-thought, or analysis in ANY field.',
+    '- narrative and one_line must be final prose only — never numbered steps or reasoning traces.',
+    'Schema (character budgets are hard limits — stay under them):',
     '{',
-    '  "narrative": string,',
-    '  "one_line": string,            // max 40 characters',
+    '  "narrative": string,  // final reading prose only; max 500 characters',
+    '  "one_line": string,     // punchy summary; max 80 characters',
     '  "direction": "advance" | "hold" | "release",',
     '  "focus": "work" | "money" | "love" | "social" | "energy",',
-    '  "axis_emphasis": string[]      // machine codes only (trait / element / phase keys or reason codes from the payload)',
+    '  "axis_emphasis": string[]  // machine codes only (trait / element / phase keys or reason codes from the payload)',
     '}',
   ].join('\n')
 }
