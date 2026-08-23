@@ -130,6 +130,7 @@ describe('use-card-stream: live merge (Layer 4)', () => {
     let live = emptyCard()
     for (const row of [rows[2]!, rows[0]!, rows[1]!]) {
       live = mergeModel(live, {
+        prediction_id: row.id ?? null,
         model_id: row.model_id,
         brand: row.brand,
         model_identifier: row.model_id,
