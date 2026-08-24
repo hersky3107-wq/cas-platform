@@ -162,6 +162,27 @@ export async function getCreditsBalance(
   return null
 }
 
+/**
+ * True only for "the `profiles` table itself does not exist" (PostgREST
+ * schema-cache miss or Postgres 42P01) — NOT for a missing column, RLS
+ * denial, or any other failure on `profiles`. This deployment has no
+ * `profiles` table at all (confirmed live), so that ONE error class is
+ * permanently expected noise; every other error class must still log.
+ */
+function isProfilesTableMissingError(message: string): boolean {
+  const m = message.toLowerCase()
+  if (!m.includes('profiles')) return false
+  if (m.includes('column')) return false
+  return m.includes('could not find the table') || m.includes('does not exist')
+}
+
+/**
+ * Once a profiles-table-missing error is observed, skip attempting the
+ * `profiles` write entirely (guarded no-op) instead of re-querying a table
+ * this deployment does not have, every single credit deduction.
+ */
+let profilesTopupTableMissing = false
+
 /** Reads the tracked topup (PAYG) portion from users. Returns 0 if missing/unreadable. */
 async function readTopupCredits(userId: string): Promise<number> {
   const { data, error } = await supabaseAdmin
@@ -184,11 +205,17 @@ async function readTopupCredits(userId: string): Promise<number> {
 async function writeTopupCredits(userId: string, value: number): Promise<void> {
   const next = Math.max(0, Math.floor(value))
   for (const table of CREDITS_TABLES) {
+    if (table === 'profiles' && profilesTopupTableMissing) continue
+
     const { error } = await supabaseAdmin
       .from(table)
       .update({ topup_credits: next })
       .eq('id', userId)
     if (error) {
+      if (table === 'profiles' && isProfilesTableMissingError(error.message)) {
+        profilesTopupTableMissing = true
+        continue
+      }
       console.warn(`[credits] topup_credits set on ${table} failed:`, error.message)
     }
   }

@@ -15,9 +15,13 @@ import {
   addSpanTotals,
   deleteUnchargedRun,
   insertDeepRunClaim,
+  isUnseededState,
   loadDeepRun,
   markDeepRunBusy,
   markDeepRunCharged,
+  MAX_SEED_ATTEMPTS,
+  nextUnseededState,
+  placeholderUnseededState,
   resetDeepRun,
   saveDeepRunProgress,
   type DeepProduct,
@@ -90,6 +94,32 @@ function missingTableResponse(): NextResponse {
   )
 }
 
+/**
+ * Shared terminal-error path: refund (if not already skipped) and persist
+ * `status='error', refunded=true` in one write. Used both for a round whose
+ * upstream pipeline failed (existing top-level branch) and, since this
+ * reorder, for a seed that never succeeded after MAX_SEED_ATTEMPTS — same
+ * refund, same shape, one code path.
+ */
+async function finishRefund(existing: DeepRunRow, userId: string): Promise<NextResponse> {
+  await refundDeep(userId, existing.charged_cost, deductFromRow(existing))
+  await saveDeepRunProgress({
+    id: existing.id,
+    stage: existing.stage,
+    status: 'error',
+    state: existing.state,
+    result: existing.result,
+    billedUsd: existing.billed_usd,
+    estimatedUsd: existing.estimated_usd,
+    providerCalls: existing.provider_calls,
+    refunded: true,
+  })
+  return NextResponse.json(
+    { ok: false, error: (existing.result?.error as string | undefined) ?? 'deep analysis failed', code: 'upstream_failed' },
+    { status: 500 }
+  )
+}
+
 export async function handleDeepAnalysis(opts: {
   product: DeepProduct
   viewer: LeagueViewer
@@ -114,27 +144,15 @@ export async function handleDeepAnalysis(opts: {
   }
 
   if (action === 'finish_refund' && existing) {
-    await refundDeep(viewer.userId, existing.charged_cost, deductFromRow(existing))
-    await saveDeepRunProgress({
-      id: existing.id,
-      stage: existing.stage,
-      status: 'error',
-      state: existing.state,
-      result: existing.result,
-      billedUsd: existing.billed_usd,
-      estimatedUsd: existing.estimated_usd,
-      providerCalls: existing.provider_calls,
-      refunded: true,
-    })
-    return NextResponse.json(
-      { ok: false, error: (existing.result?.error as string | undefined) ?? 'deep analysis failed', code: 'upstream_failed' },
-      { status: 500 }
-    )
+    return finishRefund(existing, viewer.userId)
   }
 
   if (action === 'resume' && existing) {
     if (runIsBusy(existing)) {
       return pendingPayload(existing, existing.stage)
+    }
+    if (isUnseededState(existing.state)) {
+      return resumeSeed(existing, product, locale, viewer.userId)
     }
     return advancePersisted(existing, viewer.userId)
   }
@@ -146,42 +164,44 @@ export async function handleDeepAnalysis(opts: {
   )
   if (limited) return limited
 
-  const ctx = await buildLeagueDeepContext(roundId, locale)
-  if (!ctx) {
-    return NextResponse.json({ error: 'Round not found', code: 'no_round' }, { status: 404 })
-  }
-
-  const seed = product === 'open' ? seedOpenState(ctx) : seedDebateState(ctx)
   const cost = costFor(product)
+  const placeholder = placeholderUnseededState() as unknown as Record<string, unknown>
 
   let row: DeepRunRow
   if (action === 'restart' && existing) {
-    const reset = await resetDeepRun(existing.id, seed as unknown as Record<string, unknown>)
+    const reset = await resetDeepRun(existing.id, placeholder)
     if (!reset) return missingTableResponse()
     row = reset
   } else {
+    // CLAIM comes first now. The FK on round_id IS the round-existence
+    // check: a bad roundId aborts this insert (23503) before any charge,
+    // with no separate query — replacing the old buildLeagueDeepContext()
+    // pre-check that used to run here.
     const claimed = await insertDeepRunClaim({
       roundId,
       product,
       userId: viewer.userId,
-      state: seed as unknown as Record<string, unknown>,
+      state: placeholder,
     })
     if ('error' in claimed) {
-      return claimed.missingTable
-        ? missingTableResponse()
-        : NextResponse.json({ ok: false, error: claimed.error, code: 'upstream_failed' }, { status: 500 })
+      if (claimed.missingTable) return missingTableResponse()
+      if (claimed.noRound) return NextResponse.json({ error: 'Round not found', code: 'no_round' }, { status: 404 })
+      return NextResponse.json({ ok: false, error: claimed.error, code: 'upstream_failed' }, { status: 500 })
     }
     if (!claimed.created) {
       const raced = decideDeepRunAction(claimed.row)
       if (raced === 'replay') return replayPayload(claimed.row)
+      if (raced === 'finish_refund') return finishRefund(claimed.row, viewer.userId)
       if (raced === 'resume') {
         if (runIsBusy(claimed.row)) return pendingPayload(claimed.row, claimed.row.stage)
+        if (isUnseededState(claimed.row.state)) return resumeSeed(claimed.row, product, locale, viewer.userId)
         return advancePersisted(claimed.row, viewer.userId)
       }
     }
     row = claimed.row
   }
 
+  // CHARGE second. Only a successfully claimed (or reset) row reaches here.
   const charged = await chargeDeep(viewer.userId, cost, moduleFor(product))
   if (!charged.ok) {
     await deleteUnchargedRun(row.id)
@@ -196,7 +216,67 @@ export async function handleDeepAnalysis(opts: {
     deduct_skipped: charged.deduct.skipped === true,
   }
 
-  return advancePersisted(row, viewer.userId)
+  // BUILD CONTEXT last — only after the user has actually been charged.
+  return resumeSeed(row, product, locale, viewer.userId)
+}
+
+/**
+ * Turns a charged-but-unseeded row into a seeded one, then hands off to
+ * `advancePersisted`. A context-build failure here is NOT a pipeline
+ * failure: the row is left `running` with an incremented `seedAttempts` so
+ * the client's own retry loop (same sessionId) tries again — no refund, no
+ * lost credits, nothing charged twice. Only after MAX_SEED_ATTEMPTS
+ * consecutive failures does this give up and route into `finishRefund`,
+ * reusing the exact same refund path a failed pipeline uses.
+ */
+async function resumeSeed(
+  row: DeepRunRow,
+  product: DeepProduct,
+  locale: LeagueLocale | null,
+  userId: string
+): Promise<NextResponse> {
+  await markDeepRunBusy(row.id)
+
+  let ctx: Awaited<ReturnType<typeof buildLeagueDeepContext>> = null
+  let buildError: string | null = null
+  try {
+    ctx = await buildLeagueDeepContext(row.round_id, locale)
+    if (!ctx) buildError = 'round not found while building context (removed after claim?)'
+  } catch (e) {
+    buildError = e instanceof Error ? e.message : String(e)
+  }
+
+  if (!ctx) {
+    const failed = nextUnseededState(row.state, buildError ?? 'context build failed')
+
+    if (failed.seedAttempts >= MAX_SEED_ATTEMPTS) {
+      const failedRow: DeepRunRow = {
+        ...row,
+        status: 'error',
+        stage: 'seed_failed',
+        state: failed as unknown as Record<string, unknown>,
+        result: { error: `seed failed after ${failed.seedAttempts} attempts: ${failed.lastSeedError}` },
+      }
+      return finishRefund(failedRow, userId)
+    }
+
+    await saveDeepRunProgress({
+      id: row.id,
+      stage: 'seed_retry',
+      status: 'running',
+      state: failed as unknown as Record<string, unknown>,
+      billedUsd: row.billed_usd,
+      estimatedUsd: row.estimated_usd,
+      providerCalls: row.provider_calls,
+    })
+    return pendingPayload({ ...row, stage: 'seed_retry' }, 'seed_retry')
+  }
+
+  const seeded = product === 'open' ? seedOpenState(ctx) : seedDebateState(ctx)
+  return advancePersisted(
+    { ...row, stage: 'start', state: seeded as unknown as Record<string, unknown> },
+    userId
+  )
 }
 
 async function advancePersisted(row: DeepRunRow, userId: string): Promise<NextResponse> {

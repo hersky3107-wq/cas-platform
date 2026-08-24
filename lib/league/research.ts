@@ -70,7 +70,6 @@ const SONAR_PRICE = { inputPerMTokens: 1, outputPerMTokens: 1 }
 
 /** In-process fallback cache (durable cache = league_research_packets table). */
 const memoryCache = new Map<string, { packet: ResearchPacket; at: number }>()
-let warnedMissingTable = false
 
 /** 6-hour UTC bucket — a round re-generated within the bucket reuses research. */
 function timeBucket(d = new Date()): string {
@@ -101,25 +100,27 @@ async function readDurableCache(cacheKey: string): Promise<ResearchPacket | null
       .eq('cache_key', cacheKey)
       .maybeSingle()
     if (error) {
-      if (!warnedMissingTable) {
-        warnedMissingTable = true
-        console.warn(
-          `[league/research] durable cache read failed (${error.message}) — using in-process cache only. ` +
-            'Apply migration 20260816000002_league_research_packets.sql to enable the durable cache.',
-        )
-      }
+      // A failure is NOT a miss: a miss returns no row with no error. Log
+      // loudly so a broken durable cache (missing table, RLS, network) is
+      // visible instead of silently re-paying research per process.
+      console.error(
+        `[league/research] league_research_packets cache-read FAILED (not a cache miss), key=${cacheKey}: ${error.message}`,
+      )
       return null
     }
     const payload = data?.payload as ResearchPacket | undefined
     return payload && payload.available ? { ...payload, cached: true, costUsd: 0 } : null
-  } catch {
+  } catch (e) {
+    console.error(
+      `[league/research] league_research_packets cache-read THREW, key=${cacheKey}: ${e instanceof Error ? e.message : String(e)}`,
+    )
     return null
   }
 }
 
 async function writeDurableCache(cacheKey: string, round: ResearchRoundInput, packet: ResearchPacket): Promise<void> {
   try {
-    await supabaseAdmin.from('league_research_packets').upsert(
+    const { error } = await supabaseAdmin.from('league_research_packets').upsert(
       {
         cache_key: cacheKey,
         instrument: round.instrument,
@@ -129,8 +130,17 @@ async function writeDurableCache(cacheKey: string, round: ResearchRoundInput, pa
       },
       { onConflict: 'cache_key' },
     )
-  } catch {
-    // best-effort — the in-process cache still covers this server instance
+    if (error) {
+      // The packet was still returned to the caller and the in-process cache
+      // holds it; but every OTHER server instance will re-pay for research.
+      console.error(
+        `[league/research] league_research_packets cache-write FAILED, key=${cacheKey}: ${error.message}`,
+      )
+    }
+  } catch (e) {
+    console.error(
+      `[league/research] league_research_packets cache-write THREW, key=${cacheKey}: ${e instanceof Error ? e.message : String(e)}`,
+    )
   }
 }
 

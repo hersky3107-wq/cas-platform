@@ -1,10 +1,19 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { decideDeepRunAction, runIsBusy, type DeepRunAction } from './deep-run-policy'
+import {
+  decideDeepRunAction,
+  isUnseededState,
+  nextUnseededState,
+  placeholderUnseededState,
+  runIsBusy,
+  MAX_SEED_ATTEMPTS,
+  type DeepRunAction,
+  type UnseededState,
+} from './deep-run-policy'
 
-export { decideDeepRunAction, runIsBusy }
-export type { DeepRunAction }
+export { decideDeepRunAction, runIsBusy, isUnseededState, nextUnseededState, placeholderUnseededState, MAX_SEED_ATTEMPTS }
+export type { DeepRunAction, UnseededState }
 
 export const LEAGUE_DEEP_RUNS_TABLE = 'league_deep_runs'
 
@@ -92,12 +101,19 @@ export type InsertDeepRunInput = {
 }
 
 /**
- * Inserts a claim row (charged=false). On unique-key collision, returns the
- * existing row so the caller can replay/resume instead of charging twice.
+ * Inserts a claim row (charged=false, state=unseeded placeholder). On
+ * unique-key collision, returns the existing row so the caller can
+ * replay/resume instead of charging twice. On a foreign-key violation
+ * (round_id doesn't exist in prediction_rounds), returns `noRound: true` —
+ * this IS the round-existence check now: the claim insert rejects a bad
+ * round atomically, before any charge, with no separate query needed.
  */
 export async function insertDeepRunClaim(
   input: InsertDeepRunInput
-): Promise<{ row: DeepRunRow; created: boolean } | { error: string; missingTable: boolean }> {
+): Promise<
+  | { row: DeepRunRow; created: boolean }
+  | { error: string; missingTable: boolean; noRound: boolean }
+> {
   const ins = await supabaseAdmin
     .from(LEAGUE_DEEP_RUNS_TABLE)
     .insert([
@@ -126,8 +142,12 @@ export async function insertDeepRunClaim(
   }
 
   const message = ins.error?.message ?? 'could not create deep run'
-  const missingTable = /league_deep_runs|schema cache|does not exist/i.test(message)
-  return { error: message, missingTable }
+  const noRound = code === '23503'
+  // A foreign-key violation's own message mentions "league_deep_runs" (the
+  // constrained table), so it would otherwise false-match the missing-table
+  // regex below — noRound must be checked first and wins outright.
+  const missingTable = !noRound && /league_deep_runs|schema cache|does not exist/i.test(message)
+  return { error: message, missingTable, noRound }
 }
 
 export async function resetDeepRun(

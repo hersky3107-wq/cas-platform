@@ -62,10 +62,22 @@ export async function loadRoundRow(roundId: string): Promise<{
   }
 }
 
+/**
+ * Test-only fault injection for `scripts/verify-deep-run-single-charge.ts`.
+ * Guarded by an exact round_id match against an env var that is never set
+ * in any real deployment — this cannot fire outside that script. It exists
+ * so the claim→charge→build-context reorder's "context build fails after
+ * charge" path (no inline refund, resumable row, retry cap) can be tested
+ * deterministically without depending on a real upstream outage.
+ */
 export async function buildLeagueDeepContext(
   roundId: string,
   locale: LeagueLocale | null
 ): Promise<LeagueDeepContext | null> {
+  if (process.env.LEAGUE_DEEP_FORCE_CONTEXT_FAIL_ROUND_ID === roundId) {
+    throw new Error('forced context-build failure (LEAGUE_DEEP_FORCE_CONTEXT_FAIL_ROUND_ID test hook)')
+  }
+
   const round = await loadRoundRow(roundId)
   if (!round) return null
 
