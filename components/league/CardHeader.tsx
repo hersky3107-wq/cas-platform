@@ -46,6 +46,7 @@ export function CardHeader({
     anchorPrice: round.anchorPrice,
     anchorSessionDate: round.anchorSessionDate,
     resolutionSessionDate: round.resolutionSessionDate,
+    resolutionPrice: round.resolutionPrice,
     locale,
     t,
   })

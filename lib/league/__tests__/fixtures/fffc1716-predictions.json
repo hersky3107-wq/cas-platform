@@ -1,0 +1,402 @@
+[
+  {
+    "id": "a3fa5f35-e1f6-4da2-909f-8b47ecd82b71",
+    "model_id": "muse-spark-1.2",
+    "brand": "Meta Muse",
+    "camp": "us",
+    "league_tier": "premier",
+    "predicted_direction": "down",
+    "predicted_value": 53,
+    "is_correct": false
+  },
+  {
+    "id": "f8f4522b-5ade-4ee7-b06a-8af0fd238f0d",
+    "model_id": "gemini-3.1-pro",
+    "brand": "Google",
+    "camp": "us",
+    "league_tier": "premier",
+    "predicted_direction": "up",
+    "predicted_value": 53,
+    "is_correct": true
+  },
+  {
+    "id": "45da68fa-d1f9-49d2-9b07-c2f7137b40d2",
+    "model_id": "gpt-5.6-sol",
+    "brand": "OpenAI",
+    "camp": "us",
+    "league_tier": "premier",
+    "predicted_direction": "up",
+    "predicted_value": 53,
+    "is_correct": true
+  },
+  {
+    "id": "d30a0d0f-f60a-4306-bee6-527cec8781f2",
+    "model_id": "claude-fable-5",
+    "brand": "Anthropic",
+    "camp": "us",
+    "league_tier": "premier",
+    "predicted_direction": "up",
+    "predicted_value": 56,
+    "is_correct": true
+  },
+  {
+    "id": "e5587d6c-484b-47c5-be2e-abdc56ce7897",
+    "model_id": "kimi-k3",
+    "brand": "Moonshot AI",
+    "camp": "china",
+    "league_tier": "premier",
+    "predicted_direction": "down",
+    "predicted_value": 55,
+    "is_correct": false
+  },
+  {
+    "id": "e6bce0c5-3fc9-471e-a7b3-2c3a8d117b3c",
+    "model_id": "gpt-5.6-terra",
+    "brand": "OpenAI",
+    "camp": "us",
+    "league_tier": "challenger",
+    "predicted_direction": "down",
+    "predicted_value": 54,
+    "is_correct": false
+  },
+  {
+    "id": "2bdb95bd-0853-443b-8c8e-2087f33a2d5d",
+    "model_id": "qwen3.8-max",
+    "brand": "Qwen",
+    "camp": "china",
+    "league_tier": "premier",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "7068960f-dd5b-483e-89ba-f58b535a4633",
+    "model_id": "glm-5.2",
+    "brand": "Z.ai",
+    "camp": "china",
+    "league_tier": "premier",
+    "predicted_direction": "up",
+    "predicted_value": 52,
+    "is_correct": true
+  },
+  {
+    "id": "2855ecaf-4f3a-42ca-81e9-470168979bf2",
+    "model_id": "claude-sonnet-5",
+    "brand": "Anthropic",
+    "camp": "us",
+    "league_tier": "challenger",
+    "predicted_direction": "up",
+    "predicted_value": 52,
+    "is_correct": true
+  },
+  {
+    "id": "5505d383-bac1-453a-ae70-97aecada8f5c",
+    "model_id": "minimax-m3",
+    "brand": "MiniMax",
+    "camp": "china",
+    "league_tier": "premier",
+    "predicted_direction": "up",
+    "predicted_value": 51,
+    "is_correct": true
+  },
+  {
+    "id": "d7ef1823-f4ae-4895-b0a5-43e337adc05e",
+    "model_id": "mistral-medium-3.5",
+    "brand": "Mistral",
+    "camp": "other",
+    "league_tier": "challenger",
+    "predicted_direction": "up",
+    "predicted_value": 60,
+    "is_correct": true
+  },
+  {
+    "id": "20b1aaba-7d8d-46b0-a9c6-ba10c1d48a68",
+    "model_id": "gemini-3.6-flash",
+    "brand": "Google",
+    "camp": "us",
+    "league_tier": "challenger",
+    "predicted_direction": "up",
+    "predicted_value": 53,
+    "is_correct": true
+  },
+  {
+    "id": "c75965ce-b6bb-4bf0-8d33-39300de8d262",
+    "model_id": "command-a",
+    "brand": "Cohere",
+    "camp": "other",
+    "league_tier": "challenger",
+    "predicted_direction": "up",
+    "predicted_value": 60,
+    "is_correct": true
+  },
+  {
+    "id": "52fac139-6690-4806-b289-292702433654",
+    "model_id": "deepseek-v3.2",
+    "brand": "DeepSeek",
+    "camp": "china",
+    "league_tier": "challenger",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "37713e77-bc05-4113-8c0a-6e7cec198397",
+    "model_id": "nemotron-3-ultra-550b",
+    "brand": "NVIDIA",
+    "camp": "us",
+    "league_tier": "challenger",
+    "predicted_direction": "down",
+    "predicted_value": 55,
+    "is_correct": false
+  },
+  {
+    "id": "c01727b4-8800-462e-a495-27858a224628",
+    "model_id": "gpt-5.6-luna",
+    "brand": "OpenAI",
+    "camp": "us",
+    "league_tier": "world",
+    "predicted_direction": "down",
+    "predicted_value": 55,
+    "is_correct": false
+  },
+  {
+    "id": "64449600-5357-4c6b-a028-e18da2dd7c20",
+    "model_id": "claude-haiku-4.5",
+    "brand": "Anthropic",
+    "camp": "us",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "0a40f1cb-ad0a-49bb-b2f4-4d9e5bec8812",
+    "model_id": "grok-4.5",
+    "brand": "xAI",
+    "camp": "us",
+    "league_tier": "premier",
+    "predicted_direction": "down",
+    "predicted_value": 58,
+    "is_correct": false
+  },
+  {
+    "id": "5814d880-7a0b-4355-a26f-a5eede17dfc9",
+    "model_id": "gemini-3.5-flash-lite",
+    "brand": "Google",
+    "camp": "us",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 52,
+    "is_correct": true
+  },
+  {
+    "id": "b95a199b-83ae-4929-805f-408cff737f30",
+    "model_id": "grok-4.3",
+    "brand": "xAI",
+    "camp": "us",
+    "league_tier": "challenger",
+    "predicted_direction": "down",
+    "predicted_value": 52,
+    "is_correct": false
+  },
+  {
+    "id": "a845361d-9849-48f7-8385-4e557f2b3b2a",
+    "model_id": "nova-2-lite",
+    "brand": "Amazon",
+    "camp": "us",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 65,
+    "is_correct": true
+  },
+  {
+    "id": "6c8d8e93-89fd-430d-87c6-f49be236a7d3",
+    "model_id": "phi-4",
+    "brand": "Microsoft",
+    "camp": "us",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 60,
+    "is_correct": true
+  },
+  {
+    "id": "400cc8e0-e2de-44da-af04-679b94c563f9",
+    "model_id": "deepseek-v4-pro",
+    "brand": "DeepSeek",
+    "camp": "china",
+    "league_tier": "premier",
+    "predicted_direction": "down",
+    "predicted_value": 58,
+    "is_correct": false
+  },
+  {
+    "id": "cfa2ee07-ecdd-4221-b07e-8ef10d6481da",
+    "model_id": "llama-4-maverick",
+    "brand": "Meta",
+    "camp": "us",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "5aefdc3e-31d9-49b9-a924-f84203fee72f",
+    "model_id": "solar-pro3",
+    "brand": "Upstage",
+    "camp": "other",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 75,
+    "is_correct": true
+  },
+  {
+    "id": "62b89a97-7356-4958-94eb-deadb9b1fcda",
+    "model_id": "hcx-007",
+    "brand": "NAVER",
+    "camp": "other",
+    "league_tier": "world",
+    "predicted_direction": "down",
+    "predicted_value": 55,
+    "is_correct": false
+  },
+  {
+    "id": "9ca877b5-19f9-40f0-b70d-1645581b30fa",
+    "model_id": "k-exaone-2.0",
+    "brand": "LG",
+    "camp": "other",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "aa2cb106-0ed3-4a9a-8e59-c83de85a3bf0",
+    "model_id": "ernie-4.5-vl",
+    "brand": "Baidu",
+    "camp": "china",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "ee6d01ef-dbf0-4335-80ef-6d5c69d21236",
+    "model_id": "deepseek-v4-flash",
+    "brand": "DeepSeek",
+    "camp": "china",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "02e851ed-7db3-4a58-ae9f-c25207f8e2ee",
+    "model_id": "seed-1.6",
+    "brand": "ByteDance",
+    "camp": "china",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "5e951246-6f7b-453f-91a8-aa7c83e2abfe",
+    "model_id": "qwen3.5-plus",
+    "brand": "Qwen",
+    "camp": "china",
+    "league_tier": "challenger",
+    "predicted_direction": "up",
+    "predicted_value": 52,
+    "is_correct": true
+  },
+  {
+    "id": "ec8595ff-596d-4be3-ba38-ee7658eb2b84",
+    "model_id": "gpt-5-search-api",
+    "brand": "OpenAI",
+    "camp": "us",
+    "league_tier": "scout",
+    "predicted_direction": "down",
+    "predicted_value": 65,
+    "is_correct": false
+  },
+  {
+    "id": "f58e1b01-201c-40b4-bf83-43bd4a1fa386",
+    "model_id": "qwen3.5-flash",
+    "brand": "Qwen",
+    "camp": "china",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 62,
+    "is_correct": true
+  },
+  {
+    "id": "40702644-fb4a-4118-a126-50c53920d420",
+    "model_id": "gemini-3.6-flash-grounded",
+    "brand": "Google",
+    "camp": "us",
+    "league_tier": "scout",
+    "predicted_direction": "up",
+    "predicted_value": 53,
+    "is_correct": true
+  },
+  {
+    "id": "3231cf97-273d-4708-9319-90257eee04d9",
+    "model_id": "claude-sonnet-5-websearch",
+    "brand": "Anthropic",
+    "camp": "us",
+    "league_tier": "scout",
+    "predicted_direction": "up",
+    "predicted_value": 54,
+    "is_correct": true
+  },
+  {
+    "id": "532f0d41-8950-461c-8210-fdee5c8e3ae3",
+    "model_id": "sonar-reasoning-pro",
+    "brand": "Perplexity",
+    "camp": "us",
+    "league_tier": "scout",
+    "predicted_direction": "up",
+    "predicted_value": 53,
+    "is_correct": true
+  },
+  {
+    "id": "d0e69a2b-80cf-4a0c-9ea4-16a25257494e",
+    "model_id": "youcom-research",
+    "brand": "You.com",
+    "camp": "us",
+    "league_tier": "scout",
+    "predicted_direction": "down",
+    "predicted_value": 65,
+    "is_correct": false
+  },
+  {
+    "id": "c79741cf-527b-47cd-bda0-cada9812316b",
+    "model_id": "mimo-v2.5",
+    "brand": "Xiaomi",
+    "camp": "china",
+    "league_tier": "world",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  },
+  {
+    "id": "4d82ee41-030e-43e6-b15b-dfb04d414175",
+    "model_id": "kimi-k2.6",
+    "brand": "Moonshot AI",
+    "camp": "china",
+    "league_tier": "challenger",
+    "predicted_direction": "up",
+    "predicted_value": 58,
+    "is_correct": true
+  },
+  {
+    "id": "fe6fdfd9-122e-41a5-8f3c-de9388872d2d",
+    "model_id": "grok-4.6-livesearch",
+    "brand": "xAI",
+    "camp": "us",
+    "league_tier": "scout",
+    "predicted_direction": "up",
+    "predicted_value": 55,
+    "is_correct": true
+  }
+]

@@ -3,6 +3,10 @@
  * parser now rejects as prompt-schema placeholders (e.g. the literal
  * "<one line, max 200 chars>"). Direction and confidence are left alone.
  *
+ * CRITICAL: also delete every prediction_rationale_translations row whose
+ * prediction_id was purged, otherwise the translated placeholder stays on
+ * screen from cache.
+ *
  * This is NOT a migration. Run it explicitly:
  *
  *   npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/purge-placeholder-rationales.ts
@@ -31,13 +35,13 @@ async function main() {
   console.log(`placeholder rationales found: ${hits.length}`)
   for (const row of hits.slice(0, 20)) {
     console.log(
-      `  ${row.league_tier} ${row.model_id} round=${row.round_id} rationale=${JSON.stringify(row.reasoning_snippet)}`
+      `  ${row.league_tier} ${row.model_id} round=${row.round_id} rationale=${JSON.stringify(row.reasoning_snippet)}`,
     )
   }
   if (hits.length > 20) console.log(`  …and ${hits.length - 20} more`)
 
   if (!APPLY) {
-    console.log('dry run — re-run with --apply to null those rationale fields (direction/confidence untouched).')
+    console.log('dry run — re-run with --apply to null those rationale fields (direction/confidence untouched) and delete their translation cache rows.')
     return
   }
 
@@ -51,6 +55,7 @@ async function main() {
     throw new Error('purge-placeholder-rationales: some matching rows have no id — refusing to apply')
   }
 
+  // 1. Null the rationale on model_predictions. Direction/confidence untouched.
   const { error: updateError, count } = await supabaseAdmin
     .from('model_predictions')
     .update({ reasoning_snippet: null }, { count: 'exact' })
@@ -58,6 +63,19 @@ async function main() {
 
   if (updateError) throw new Error(`purge-placeholder-rationales: update failed (${updateError.message})`)
   console.log(`applied: nulled reasoning_snippet on ${count ?? ids.length} rows`)
+
+  // 2. Delete cached translations for the purged prediction_ids so the
+  //    translated placeholder does not stay on screen from cache.
+  const { count: txDeleted, error: txError } = await supabaseAdmin
+    .from('prediction_rationale_translations')
+    .delete({ count: 'exact' })
+    .in('prediction_id', ids)
+
+  if (txError) throw new Error(`purge-placeholder-rationales: translation delete failed (${txError.message})`)
+  console.log(`deleted ${txDeleted ?? 0} prediction_rationale_translations rows`)
+
+  console.log('affected prediction_ids:')
+  for (const id of ids) console.log(`  ${id}`)
 }
 
 main().catch((e) => {

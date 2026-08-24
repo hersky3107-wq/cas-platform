@@ -87,6 +87,7 @@ type OptionalRoundColumns = {
   unresolvable_reason: string | null
   anchor_session_date: string | null
   resolution_session_date: string | null
+  resolution_price: number | null
 }
 
 const EMPTY_OPTIONAL_COLUMNS: OptionalRoundColumns = {
@@ -97,6 +98,7 @@ const EMPTY_OPTIONAL_COLUMNS: OptionalRoundColumns = {
   unresolvable_reason: null,
   anchor_session_date: null,
   resolution_session_date: null,
+  resolution_price: null,
 }
 
 /**
@@ -115,7 +117,7 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
       .select(
-        'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, anchor_session_date, resolution_session_date'
+        'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, anchor_session_date, resolution_session_date, resolution_price'
       )
       .eq('id', roundId)
       .maybeSingle()
@@ -123,7 +125,7 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
       const fallback = await supabaseAdmin
         .from('prediction_rounds')
         .select(
-          'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, resolution_session_date'
+          'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, resolution_session_date, resolution_price'
         )
         .eq('id', roundId)
         .maybeSingle()
@@ -136,6 +138,7 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
           unresolvable_reason: fallback.data.unresolvable_reason ?? null,
           anchor_session_date: null,
           resolution_session_date: fallback.data.resolution_session_date ?? null,
+          resolution_price: fallback.data.resolution_price ?? null,
         }
       }
       if (!warnedMissingAnchorColumns) {
@@ -157,6 +160,7 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
       unresolvable_reason: data.unresolvable_reason ?? null,
       anchor_session_date: data.anchor_session_date ?? null,
       resolution_session_date: data.resolution_session_date ?? null,
+      resolution_price: data.resolution_price ?? null,
     }
   } catch {
     return EMPTY_OPTIONAL_COLUMNS

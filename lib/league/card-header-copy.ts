@@ -83,12 +83,20 @@ export function headerHeadline(args: {
  * Audit sentence. Built ONLY from persisted session dates — never from
  * `anchor_price_at` or `resolves_at`. If either date is missing we refuse
  * to invent one.
+ *
+ * `resolutionPrice` is optional: when a round has graded, both surfaces (the
+ * card header and the record room) pass the persisted resolution close so the
+ * sentence names the exact number the round was resolved against. Because both
+ * call THIS function with the same round fields, the two surfaces can never
+ * disagree. When it is absent (an open round, or the price was never recorded)
+ * the sentence falls back to the session-dates-only form.
  */
 export function headerWindow(args: {
   instrument: string
   anchorPrice: number | null
   anchorSessionDate: string | null
   resolutionSessionDate: string | null
+  resolutionPrice?: number | null
   locale: LeagueLocale
   t: LeagueUiPack
 }): string {
@@ -96,7 +104,17 @@ export function headerWindow(args: {
   const fromDate = args.anchorSessionDate ? formatSessionDate(args.anchorSessionDate, args.locale) : ''
   const toDate = args.resolutionSessionDate ? formatSessionDate(args.resolutionSessionDate, args.locale) : ''
   const price = formatInstrumentPrice(args.instrument, args.anchorPrice)
-  if (fromDate && toDate) return args.t.header.windowWithAnchor(fromDate, price, toDate)
+  if (fromDate && toDate) {
+    if (args.resolutionPrice !== null && args.resolutionPrice !== undefined) {
+      return args.t.header.windowResolved(
+        fromDate,
+        price,
+        toDate,
+        formatInstrumentPrice(args.instrument, args.resolutionPrice)
+      )
+    }
+    return args.t.header.windowWithAnchor(fromDate, price, toDate)
+  }
   if (fromDate) return args.t.header.windowAnchorOnly(fromDate, price)
   return args.t.header.windowNoSessionDates
 }

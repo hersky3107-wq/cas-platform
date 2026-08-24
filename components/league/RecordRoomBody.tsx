@@ -1,5 +1,7 @@
 import type { RecordRoomModelEntry, RecordRoomPage, RecordRoomRoundEntry } from '@/lib/league/record-room-aggregate'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
+import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import { headerWindow } from '@/lib/league/card-header-copy'
 import type { ComplianceReceipt } from './CardCompliance'
 
 /**
@@ -10,6 +12,7 @@ export function RecordRoomBody({
   data,
   receipt,
   t,
+  locale,
   deepCost,
   onPageChange,
   onDeepOpen,
@@ -25,6 +28,7 @@ export function RecordRoomBody({
   data: RecordRoomPage
   receipt: ComplianceReceipt
   t: LeagueUiPack
+  locale: LeagueLocale
   deepCost: number
   onPageChange: (page: number) => void
   onDeepOpen: () => void
@@ -52,7 +56,18 @@ export function RecordRoomBody({
         <div className="mx-4 mb-2 rounded-xl bg-league-accent-soft px-3 py-2">
           {headline.latestInstrument && headline.latestOutcome ? (
             <p className="text-xs font-semibold text-league-fg">
-              {t.recordRoom.latestRound(headline.latestInstrument, headline.latestOutcome)}
+              {t.recordRoom.latestRound(
+                headline.latestInstrument,
+                headerWindow({
+                  instrument: headline.latestInstrument,
+                  anchorPrice: headline.latestAnchorPrice,
+                  anchorSessionDate: headline.latestAnchorSessionDate,
+                  resolutionSessionDate: headline.latestResolutionSessionDate,
+                  resolutionPrice: headline.latestResolutionPrice,
+                  locale,
+                  t,
+                })
+              )}
             </p>
           ) : null}
           <p className="text-[11px] text-league-fg-muted">
@@ -67,7 +82,7 @@ export function RecordRoomBody({
       ) : (
         <ul>
           {data.rounds.map((round) => (
-            <RoundEntry key={round.round_id} entry={round} t={t} />
+            <RoundEntry key={round.round_id} entry={round} t={t} locale={locale} />
           ))}
         </ul>
       )}
@@ -132,7 +147,20 @@ export function RecordRoomBody({
   )
 }
 
-function RoundEntry({ entry, t }: { entry: RecordRoomRoundEntry; t: LeagueUiPack }) {
+function RoundEntry({ entry, t, locale }: { entry: RecordRoomRoundEntry; t: LeagueUiPack; locale: LeagueLocale }) {
+  // Audit sentence is built from the persisted SESSION dates + prices via the
+  // SAME helper the card header uses (`headerWindow`) — never from the date
+  // embedded in `actual_outcome` (which carries `anchor_price_at`). This is why
+  // the two surfaces can never disagree.
+  const auditWindow = headerWindow({
+    instrument: entry.instrument,
+    anchorPrice: entry.anchorPrice,
+    anchorSessionDate: entry.anchorSessionDate,
+    resolutionSessionDate: entry.resolutionSessionDate,
+    resolutionPrice: entry.resolutionPrice,
+    locale,
+    t,
+  })
   return (
     <li className="border-b border-league-border/40 px-4 py-3 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
@@ -149,7 +177,7 @@ function RoundEntry({ entry, t }: { entry: RecordRoomRoundEntry; t: LeagueUiPack
       <p className="mt-1 text-[10px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
       {entry.actual_outcome ? (
         <p className="mt-1 text-[11px] text-league-fg-muted">
-          {t.recordRoom.outcomeLabel}: {entry.actual_outcome}
+          {t.recordRoom.outcomeLabel}: {auditWindow}
         </p>
       ) : null}
       {entry.models.length > 0 ? (

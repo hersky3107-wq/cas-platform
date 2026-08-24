@@ -155,6 +155,8 @@ export type LeagueUiPack = {
     headlineNoAnchor: (today: string, instrument: string) => string
     /** Window sentence when both ends of the window are known. */
     windowWithAnchor: (fromDate: string, fromPrice: string, toDate: string) => string
+    /** Window sentence for a graded round — both session dates AND the resolution close price are known. */
+    windowResolved: (fromDate: string, fromPrice: string, toDate: string, toPrice: string) => string
     /** Anchor session known, resolution session not yet recorded. */
     windowAnchorOnly: (fromDate: string, fromPrice: string) => string
     /** Price exists but neither session date is persisted — do not invent dates. */
@@ -210,6 +212,38 @@ export type LeagueUiPack = {
     combinedTrack: (pctText: string, n: number) => string
     /** Shown when the combined method has no resolved majority-vote rounds yet. */
     combinedTrackPending: string
+  }
+  /**
+   * Final-verdict panel (raw counts only — see `lib/league/verdict-aggregate.ts`).
+   * No percentage templates live here; the hero line is always "hits/graded".
+   */
+  verdict: {
+    title: string
+    /** e.g. "This round 29/40 hit". */
+    heroHits: (hits: number, graded: number) => string
+    distributionUp: string
+    distributionDown: string
+    distributionNoDirection: string
+    sectionCamp: string
+    sectionTier: string
+    sectionBook: string
+    sectionCountry: string
+    /** One-line caution under the country section. */
+    sectionCountryCaution: string
+    sectionOverconfident: string
+    sectionStreaks: string
+    campLabels: { us: string; china: string; other: string }
+    tierLabels: { premier: string; challenger: string; world: string; scout: string }
+    bookLabels: { closed: string; scout: string }
+    countryLabels: { US: string; CN: string; KR: string; FR: string; CA: string; INT: string }
+    /** "18/25" style — hits over graded. */
+    rawCount: (hits: number, graded: number) => string
+    /** Ungraded count when > 0, e.g. "+3 unscored". */
+    ungradedNote: (ungraded: number) => string
+    overconfidentConfidence: (confidence: number) => string
+    streakLine: (label: string, streak: number) => string
+    expandSection: string
+    collapseSection: string
   }
   gating: {
     /** Shown (localized) when JurisdictionGate hides a category for this user. */
@@ -452,6 +486,8 @@ const en: LeagueUiPack = {
     headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 starting price unavailable`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Measured from the ${fromDate} close of ${fromPrice}, resolving against the ${toDate} close.`,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `Measured from the ${fromDate} close of ${fromPrice}, resolved against the ${toDate} close of ${toPrice}.`,
     windowAnchorOnly: (fromDate, fromPrice) =>
       `Measured from the ${fromDate} close of ${fromPrice}. The resolving session is not recorded yet.`,
     windowNoSessionDates:
@@ -493,6 +529,37 @@ const en: LeagueUiPack = {
       '✓ correct — the AI\u2019s call matched the actual outcome · ✗ missed — it didn\u2019t. Shown only after the round resolves.',
     combinedTrack: (pct, n) => `this combined method\u2019s past accuracy ${pct}% (n=${n})`,
     combinedTrackPending: 'this combined method is still collecting a track record',
+  },
+  verdict: {
+    title: 'Final verdict',
+    heroHits: (hits, graded) => `This round ${hits}/${graded} hit`,
+    distributionUp: 'Up',
+    distributionDown: 'Down',
+    distributionNoDirection: 'No direction',
+    sectionCamp: 'Camp',
+    sectionTier: 'Tier',
+    sectionBook: 'Reasoning vs research',
+    sectionCountry: 'By country',
+    sectionCountryCaution: 'Per-country samples are small (1–5 models) — read as texture, not a ranking.',
+    sectionOverconfident: 'Wrong calls by confidence',
+    sectionStreaks: 'Win streaks',
+    campLabels: { us: 'US', china: 'China', other: 'Other' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    bookLabels: { closed: 'Closed-book', scout: 'Open-book (Scout)' },
+    countryLabels: {
+      US: 'United States',
+      CN: 'China',
+      KR: 'South Korea',
+      FR: 'France',
+      CA: 'Canada',
+      INT: 'International',
+    },
+    rawCount: (hits, graded) => `${hits}/${graded}`,
+    ungradedNote: (ungraded) => `+${ungraded} unscored`,
+    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    streakLine: (label, streak) => `${label} · ${streak}`,
+    expandSection: 'Show',
+    collapseSection: 'Hide',
   },
   gating: {
     unavailable: 'This prediction category isn\u2019t available in your region yet.',
@@ -691,6 +758,8 @@ const ko: LeagueUiPack = {
     headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 기준가 없음`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `${fromDate} 종가 ${fromPrice}를 기준으로, ${toDate} 종가와 비교해 채점합니다.`,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `${fromDate} 종가 ${fromPrice}를 기준으로, ${toDate} 종가 ${toPrice}와 비교해 채점했습니다.`,
     windowAnchorOnly: (fromDate, fromPrice) =>
       `${fromDate} 종가 ${fromPrice}를 기준으로 합니다. 채점에 쓴 거래일은 아직 기록되지 않았습니다.`,
     windowNoSessionDates: '시작 가격은 있지만 거래일 기록이 없어, 시각에서 날짜를 짐작하지 않습니다.',
@@ -730,6 +799,37 @@ const ko: LeagueUiPack = {
     resultLegend: '✓ 적중 — AI 예측이 실제 결과와 일치 · ✗ 실패 — 불일치. 라운드 확정 후에만 표시됩니다.',
     combinedTrack: (pct, n) => `이 결합 방식의 과거 적중률 ${pct}% (n=${n})`,
     combinedTrackPending: '이 결합 방식은 아직 성적표를 쌓는 중입니다',
+  },
+  verdict: {
+    title: '최종 판정',
+    heroHits: (hits, graded) => `이번 라운드 ${hits}/${graded} 적중`,
+    distributionUp: '상승',
+    distributionDown: '하락',
+    distributionNoDirection: '방향 없음',
+    sectionCamp: '진영',
+    sectionTier: '티어',
+    sectionBook: '추론 vs 리서치',
+    sectionCountry: '국가별',
+    sectionCountryCaution: '국가별 표본은 1–5개 모델로 작습니다. 순위로 읽지 마세요.',
+    sectionOverconfident: '허풍 랭킹',
+    sectionStreaks: '연승',
+    campLabels: { us: 'US', china: 'CN', other: '기타' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    bookLabels: { closed: '클로즈드북', scout: '오픈북 (Scout)' },
+    countryLabels: {
+      US: '미국',
+      CN: '중국',
+      KR: '한국',
+      FR: '프랑스',
+      CA: '캐나다',
+      INT: '국제',
+    },
+    rawCount: (hits, graded) => `${hits}/${graded}`,
+    ungradedNote: (ungraded) => `+${ungraded} 미채점`,
+    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    streakLine: (label, streak) => `${label} · ${streak}연승`,
+    expandSection: '펼치기',
+    collapseSection: '접기',
   },
   gating: {
     unavailable: '이 예측 카테고리는 아직 회원님의 지역에서 제공되지 않습니다.',
@@ -927,6 +1027,8 @@ const ja: LeagueUiPack = {
     headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 基準値なし`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `${fromDate}の終値 ${fromPrice}を起点に、${toDate}の終値と比較して採点します。`,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `${fromDate}の終値 ${fromPrice}を起点に、${toDate}の終値 ${toPrice}と比較して採点しました。`,
     windowAnchorOnly: (fromDate, fromPrice) =>
       `${fromDate}の終値 ${fromPrice}を起点にします。採点に使った取引日はまだ記録されていません。`,
     windowNoSessionDates: '開始価格はありますが取引日が無いため、時刻から日付を推測しません。',
@@ -966,6 +1068,37 @@ const ja: LeagueUiPack = {
     resultLegend: '✓ 的中 — AIの予測が実際の結果と一致 · ✗ 不的中 — 不一致。ラウンド確定後のみ表示されます。',
     combinedTrack: (pct, n) => `この合成方式の過去的中率 ${pct}%（n=${n}）`,
     combinedTrackPending: 'この合成方式はまだ成績を蓄積しています',
+  },
+  verdict: {
+    title: '最終判定',
+    heroHits: (hits, graded) => `今回のラウンド ${hits}/${graded} 的中`,
+    distributionUp: '上昇',
+    distributionDown: '下落',
+    distributionNoDirection: '方向なし',
+    sectionCamp: '陣営',
+    sectionTier: 'ティア',
+    sectionBook: '推論 vs リサーチ',
+    sectionCountry: '国別',
+    sectionCountryCaution: '国別の標本は1–5モデルと小さいです。順位として読まないでください。',
+    sectionOverconfident: '自信過剰ランキング',
+    sectionStreaks: '連勝',
+    campLabels: { us: 'US', china: 'CN', other: 'その他' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    bookLabels: { closed: 'クローズドブック', scout: 'オープンブック（Scout）' },
+    countryLabels: {
+      US: 'アメリカ',
+      CN: '中国',
+      KR: '韓国',
+      FR: 'フランス',
+      CA: 'カナダ',
+      INT: '国際',
+    },
+    rawCount: (hits, graded) => `${hits}/${graded}`,
+    ungradedNote: (ungraded) => `+${ungraded} 未採点`,
+    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    streakLine: (label, streak) => `${label} · ${streak}連勝`,
+    expandSection: '開く',
+    collapseSection: '閉じる',
   },
   gating: {
     unavailable: 'この予測カテゴリーは、お住まいの地域ではまだご利用いただけません。',
@@ -1162,6 +1295,8 @@ const zhTW: LeagueUiPack = {
     headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 無基準價`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `以 ${fromDate} 收盤價 ${fromPrice} 為基準，對照 ${toDate} 收盤價評分。`,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `以 ${fromDate} 收盤價 ${fromPrice} 為基準，對照 ${toDate} 收盤價 ${toPrice} 完成評分。`,
     windowAnchorOnly: (fromDate, fromPrice) =>
       `以 ${fromDate} 收盤價 ${fromPrice} 為基準。評分所用交易日尚未記錄。`,
     windowNoSessionDates: '已有起始價格，但沒有交易日紀錄，因此不從時間戳推測日期。',
@@ -1200,6 +1335,37 @@ const zhTW: LeagueUiPack = {
     resultLegend: '✓ 命中 — AI 預測與實際結果一致 · ✗ 未中 — 不一致。僅在回合結算後顯示。',
     combinedTrack: (pct, n) => `此綜合方式的過往命中率 ${pct}%（n=${n}）`,
     combinedTrackPending: '此綜合方式仍在累積紀錄',
+  },
+  verdict: {
+    title: '最終判定',
+    heroHits: (hits, graded) => `本輪 ${hits}/${graded} 命中`,
+    distributionUp: '上漲',
+    distributionDown: '下跌',
+    distributionNoDirection: '無方向',
+    sectionCamp: '陣營',
+    sectionTier: '級別',
+    sectionBook: '推理 vs 研究',
+    sectionCountry: '依國家',
+    sectionCountryCaution: '各國樣本僅 1–5 個模型，請勿當成排名。',
+    sectionOverconfident: '虛張聲勢排名',
+    sectionStreaks: '連勝',
+    campLabels: { us: 'US', china: 'CN', other: '其他' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    bookLabels: { closed: '封閉書', scout: '開放書（Scout）' },
+    countryLabels: {
+      US: '美國',
+      CN: '中國',
+      KR: '韓國',
+      FR: '法國',
+      CA: '加拿大',
+      INT: '國際',
+    },
+    rawCount: (hits, graded) => `${hits}/${graded}`,
+    ungradedNote: (ungraded) => `+${ungraded} 未評分`,
+    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    streakLine: (label, streak) => `${label} · ${streak} 連勝`,
+    expandSection: '展開',
+    collapseSection: '收合',
   },
   gating: {
     unavailable: '此預測類別在您所在地區尚未開放。',
@@ -1399,6 +1565,8 @@ const fr: LeagueUiPack = {
     headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 cours de départ indisponible`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Mesuré depuis la clôture du ${fromDate} à ${fromPrice}, noté contre la clôture du ${toDate}.`,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `Mesuré depuis la clôture du ${fromDate} à ${fromPrice}, résolu contre la clôture du ${toDate} à ${toPrice}.`,
     windowAnchorOnly: (fromDate, fromPrice) =>
       `Mesuré depuis la clôture du ${fromDate} à ${fromPrice}. La séance de résolution n\u2019est pas encore enregistrée.`,
     windowNoSessionDates:
@@ -1440,6 +1608,37 @@ const fr: LeagueUiPack = {
       '✓ correct — la prédiction de l\u2019IA correspond au résultat réel · ✗ manqué — sinon. Affiché uniquement après la résolution.',
     combinedTrack: (pct, n) => `précision passée de cette méthode combinée ${pct}% (n=${n})`,
     combinedTrackPending: 'cette méthode combinée constitue encore son historique',
+  },
+  verdict: {
+    title: 'Verdict final',
+    heroHits: (hits, graded) => `Ce tour ${hits}/${graded} justes`,
+    distributionUp: 'Hausse',
+    distributionDown: 'Baisse',
+    distributionNoDirection: 'Sans direction',
+    sectionCamp: 'Bloc',
+    sectionTier: 'Niveau',
+    sectionBook: 'Raisonnement vs recherche',
+    sectionCountry: 'Par pays',
+    sectionCountryCaution: 'Les échantillons par pays sont petits (1–5 modèles) — à lire comme un contexte, pas un classement.',
+    sectionOverconfident: 'Appels faux par confiance',
+    sectionStreaks: 'Séries de victoires',
+    campLabels: { us: 'US', china: 'Chine', other: 'Autre' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    bookLabels: { closed: 'Livre fermé', scout: 'Livre ouvert (Scout)' },
+    countryLabels: {
+      US: 'États-Unis',
+      CN: 'Chine',
+      KR: 'Corée du Sud',
+      FR: 'France',
+      CA: 'Canada',
+      INT: 'International',
+    },
+    rawCount: (hits, graded) => `${hits}/${graded}`,
+    ungradedNote: (ungraded) => `+${ungraded} non notés`,
+    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    streakLine: (label, streak) => `${label} · ${streak} d’affilée`,
+    expandSection: 'Afficher',
+    collapseSection: 'Masquer',
   },
   gating: {
     unavailable: 'Cette catégorie de prédiction n\u2019est pas encore disponible dans votre région.',
@@ -1640,6 +1839,8 @@ const es: LeagueUiPack = {
     headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 precio de partida no disponible`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Medido desde el cierre del ${fromDate} de ${fromPrice}, se resuelve contra el cierre del ${toDate}.`,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `Medido desde el cierre del ${fromDate} de ${fromPrice}, resuelto contra el cierre del ${toDate} de ${toPrice}.`,
     windowAnchorOnly: (fromDate, fromPrice) =>
       `Medido desde el cierre del ${fromDate} de ${fromPrice}. La sesión de resolución aún no está registrada.`,
     windowNoSessionDates:
@@ -1681,6 +1882,37 @@ const es: LeagueUiPack = {
       '✓ acierto — la predicción de la IA coincide con el resultado real · ✗ fallo — no coincide. Solo se muestra tras la resolución.',
     combinedTrack: (pct, n) => `precisión pasada de este método combinado ${pct}% (n=${n})`,
     combinedTrackPending: 'este método combinado aún está reuniendo su historial',
+  },
+  verdict: {
+    title: 'Veredicto final',
+    heroHits: (hits, graded) => `Esta ronda ${hits}/${graded} aciertos`,
+    distributionUp: 'Subida',
+    distributionDown: 'Bajada',
+    distributionNoDirection: 'Sin dirección',
+    sectionCamp: 'Bando',
+    sectionTier: 'Nivel',
+    sectionBook: 'Razonamiento vs investigación',
+    sectionCountry: 'Por país',
+    sectionCountryCaution: 'Las muestras por país son pequeñas (1–5 modelos): léalas como contexto, no como un ranking.',
+    sectionOverconfident: 'Fallos por confianza',
+    sectionStreaks: 'Rachas',
+    campLabels: { us: 'EE. UU.', china: 'China', other: 'Otro' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    bookLabels: { closed: 'Libro cerrado', scout: 'Libro abierto (Scout)' },
+    countryLabels: {
+      US: 'Estados Unidos',
+      CN: 'China',
+      KR: 'Corea del Sur',
+      FR: 'Francia',
+      CA: 'Canadá',
+      INT: 'Internacional',
+    },
+    rawCount: (hits, graded) => `${hits}/${graded}`,
+    ungradedNote: (ungraded) => `+${ungraded} sin puntuar`,
+    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    streakLine: (label, streak) => `${label} · ${streak} seguidas`,
+    expandSection: 'Mostrar',
+    collapseSection: 'Ocultar',
   },
   gating: {
     unavailable: 'Esta categoría de predicción todavía no está disponible en tu región.',
@@ -1879,6 +2111,8 @@ const ar: LeagueUiPack = {
     headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · سعر البداية غير متاح`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `يُقاس من إغلاق ${fromDate} عند ${fromPrice}، ويُحسَم مقابل إغلاق ${toDate}.`,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `يُقاس من إغلاق ${fromDate} عند ${fromPrice}، وحُسِم مقابل إغلاق ${toDate} عند ${toPrice}.`,
     windowAnchorOnly: (fromDate, fromPrice) =>
       `يُقاس من إغلاق ${fromDate} عند ${fromPrice}. لم يُسجَّل بعد يوم الجلسة المستخدم في التقييم.`,
     windowNoSessionDates: 'سعر البداية مسجَّل لكن تواريخ الجلسات ليست كذلك — ولا تُستنتج من الطوابع الزمنية.',
@@ -1918,6 +2152,37 @@ const ar: LeagueUiPack = {
     resultLegend: '✓ صحيح — توقّع الذكاء الاصطناعي طابق النتيجة الفعلية · ✗ خاطئ — لم يطابقها. يُعرض فقط بعد حسم الجولة.',
     combinedTrack: (pct, n) => `دقة هذه الطريقة المجمّعة سابقًا ${pct}% (n=${n})`,
     combinedTrackPending: 'هذه الطريقة المجمّعة ما زالت تجمع سجلها',
+  },
+  verdict: {
+    title: 'الحكم النهائي',
+    heroHits: (hits, graded) => `هذه الجولة ${hits}/${graded} إصابة`,
+    distributionUp: 'صعود',
+    distributionDown: 'هبوط',
+    distributionNoDirection: 'بلا اتجاه',
+    sectionCamp: 'المعسكر',
+    sectionTier: 'المستوى',
+    sectionBook: 'استدلال مقابل بحث',
+    sectionCountry: 'حسب الدولة',
+    sectionCountryCaution: 'عينات الدول صغيرة (1–5 نماذج) — اقرأها كسياق لا كترتيب.',
+    sectionOverconfident: 'أخطاء حسب الثقة',
+    sectionStreaks: 'سلاسل الفوز',
+    campLabels: { us: 'الولايات المتحدة', china: 'الصين', other: 'أخرى' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    bookLabels: { closed: 'كتاب مغلق', scout: 'كتاب مفتوح (Scout)' },
+    countryLabels: {
+      US: 'الولايات المتحدة',
+      CN: 'الصين',
+      KR: 'كوريا الجنوبية',
+      FR: 'فرنسا',
+      CA: 'كندا',
+      INT: 'دولي',
+    },
+    rawCount: (hits, graded) => `${hits}/${graded}`,
+    ungradedNote: (ungraded) => `+${ungraded} غير مُقيَّم`,
+    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    streakLine: (label, streak) => `${label} · ${streak} متتالية`,
+    expandSection: 'إظهار',
+    collapseSection: 'إخفاء',
   },
   gating: {
     unavailable: 'فئة التوقعات هذه غير متاحة بعد في منطقتك.',
@@ -2000,8 +2265,50 @@ const ar: LeagueUiPack = {
   },
 }
 
-/** Structural stub — Brazil scope is intentionally deferred. Spreads English so the shape is always complete. */
-const pt: LeagueUiPack = { ...en }
+/** Structural stub — Brazil scope is intentionally deferred. Spreads English so the shape is always complete, then overrides new chrome so Portuguese does not ship English fallbacks. */
+const pt: LeagueUiPack = {
+  ...en,
+  header: {
+    ...en.header,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `Medido a partir do fechamento de ${fromDate} em ${fromPrice}, resolvido contra o fechamento de ${toDate} em ${toPrice}.`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `Medido a partir do fechamento de ${fromDate} em ${fromPrice}. A sessão de resolução ainda não foi registrada.`,
+    windowNoSessionDates:
+      'O preço inicial está registrado, mas as datas de sessão desta previsão não — essas datas não são inferidas de carimbos de tempo.',
+  },
+  verdict: {
+    title: 'Veredito final',
+    heroHits: (hits, graded) => `Nesta rodada ${hits}/${graded} acertos`,
+    distributionUp: 'Alta',
+    distributionDown: 'Baixa',
+    distributionNoDirection: 'Sem direção',
+    sectionCamp: 'Campo',
+    sectionTier: 'Nível',
+    sectionBook: 'Raciocínio vs pesquisa',
+    sectionCountry: 'Por país',
+    sectionCountryCaution: 'Amostras por país são pequenas (1–5 modelos) — leia como contexto, não como ranking.',
+    sectionOverconfident: 'Erros por confiança',
+    sectionStreaks: 'Sequências',
+    campLabels: { us: 'EUA', china: 'China', other: 'Outro' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    bookLabels: { closed: 'Livro fechado', scout: 'Livro aberto (Scout)' },
+    countryLabels: {
+      US: 'Estados Unidos',
+      CN: 'China',
+      KR: 'Coreia do Sul',
+      FR: 'França',
+      CA: 'Canadá',
+      INT: 'Internacional',
+    },
+    rawCount: (hits, graded) => `${hits}/${graded}`,
+    ungradedNote: (ungraded) => `+${ungraded} sem nota`,
+    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    streakLine: (label, streak) => `${label} · ${streak} seguidas`,
+    expandSection: 'Mostrar',
+    collapseSection: 'Ocultar',
+  },
+}
 
 export const LEAGUE_UI: Record<LeagueLocale, LeagueUiPack> = { en, ko, ja, 'zh-TW': zhTW, fr, ar, es, pt }
 

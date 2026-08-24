@@ -14,8 +14,10 @@
  */
 
 import type { GradingState } from '../prediction/grading-state'
+import type { VerdictPayload } from './verdict-aggregate'
 
 export type { GradingState }
+export type { VerdictPayload }
 
 export type Direction = 'up' | 'down' | 'flat'
 export type Camp = 'us' | 'china' | 'other'
@@ -163,6 +165,12 @@ export type CardRoundMeta = {
    */
   resolutionSessionDate: string | null
   /**
+   * The close the round was GRADED against (`resolution_price`). Null until
+   * graded. PRESENTATION ONLY — pairs with `resolutionSessionDate` in the audit
+   * sentence so the resolved close is named, never re-derived from a live quote.
+   */
+  resolutionPrice: number | null
+  /**
    * Best-effort CURRENT quote, computed at read time (not stored) via a
    * short-TTL, in-process cache shared across all requests — see
    * `lib/league/live-price-cache.ts`. Always null on a cold cache entry, a
@@ -187,6 +195,12 @@ export type CardData = {
   campSplit: CampSplit
   tierSplit: TierSplit
   hitRate: HitRateSummary
+  /**
+   * Final-verdict panel payload — raw counts only (see
+   * `lib/league/verdict-aggregate.ts`). Computed once with the other
+   * aggregates so the panel never recomputes a ratio itself.
+   */
+  verdict: VerdictPayload
   /**
    * Past accuracy of the 40-model majority-vote method. Empty/provisional
    * until enough ranked rounds have resolved. Attached by the card read

@@ -60,4 +60,40 @@ describe('header honesty', () => {
     expect(sentence).not.toMatch(/19/)
     expect(sentence).not.toMatch(/18/)
   })
+
+  it('does not fall back to anchor_price_at when only the anchor session date is missing', () => {
+    // resolution_session_date is present but anchor_session_date is null.
+    // The renderer must NOT invent an anchor date from anchor_price_at; it
+    // returns the no-session-dates sentence (기준일 미기록) with no date.
+    const sentence = headerWindow({
+      instrument: 'AAPL',
+      anchorPrice: 305.59,
+      anchorSessionDate: null,
+      resolutionSessionDate: '2026-08-18',
+      locale: 'ko',
+      t: ko,
+    })
+    expect(sentence).toBe(ko.header.windowNoSessionDates)
+    // No invented anchor date, no timestamp-derived date, no resolution date leaked in.
+    expect(sentence).not.toMatch(/17/)
+    expect(sentence).not.toMatch(/18/)
+    expect(sentence).not.toMatch(/2026/)
+  })
+
+  it('does not fall back to resolves_at when only the resolution session date is missing', () => {
+    // anchor_session_date is present but resolution_session_date is null.
+    // The renderer keeps the anchor date (windowAnchorOnly) and does NOT
+    // invent a resolution date from resolves_at.
+    const sentence = headerWindow({
+      instrument: 'AAPL',
+      anchorPrice: 305.59,
+      anchorSessionDate: '2026-08-17',
+      resolutionSessionDate: null,
+      locale: 'en',
+      t,
+    })
+    expect(sentence).toBe(t.header.windowAnchorOnly(formatSessionDate('2026-08-17', 'en'), '$305.59'))
+    expect(sentence).not.toMatch(/19/)
+    expect(sentence).not.toMatch(/18/)
+  })
 })

@@ -111,6 +111,7 @@ export function RecordRoom({ initialData, devSignalsQuery }: RecordRoomProps) {
             data={data}
             receipt={receipt}
             t={t}
+            locale={locale}
             deepCost={DEEP_COST}
             loading={loading}
             modelId={modelId}

@@ -16,10 +16,17 @@ import {
   type TierSplit,
 } from './card-types'
 import { gradingStateOf, type GradingState } from '../prediction/grading-state'
-import { formatRosterBrand, lookupRosterEntry, rosterModelIdentifier } from './roster'
+import { formatRosterBrand, lookupRosterEntry, rosterModelIdentifier, LEAGUE_ROSTER } from './roster'
 import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
 import { roundHitRecord } from './round-hit'
 import { normalizeSessionDate } from '../prediction/resolution'
+import { brandCountry } from './country'
+import {
+  bookFromTier,
+  buildVerdictPayload,
+  type VerdictPayload,
+  type VerdictRosterMeta,
+} from './verdict-aggregate'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), pure assembly.
@@ -61,6 +68,7 @@ export type RoundRow = {
   unresolvable_reason?: string | null
   anchor_session_date?: string | null
   resolution_session_date?: string | null
+  resolution_price?: number | null
 }
 
 export type PredictionRow = {
@@ -145,11 +153,36 @@ function buildHitRate(resolvedAt: string | null, models: CardModelPrediction[]):
   }
 }
 
+const VERDICT_ROSTER: readonly VerdictRosterMeta[] = LEAGUE_ROSTER.map((e) => ({
+  model_id: e.model_id,
+  camp: e.camp,
+  country: brandCountry(e.brand, e.camp),
+  tier: e.league_tier,
+  book: bookFromTier(e.league_tier),
+}))
+
+function buildVerdict(models: CardModelPrediction[]): VerdictPayload {
+  return buildVerdictPayload({
+    round: { id: '' },
+    predictions: models.map((m) => ({
+      model_id: m.model_id,
+      brand: m.brand,
+      camp: m.camp,
+      league_tier: m.league_tier,
+      predicted_direction: m.direction,
+      predicted_value: m.probability,
+      is_correct: m.is_correct,
+    })),
+    roster: VERDICT_ROSTER,
+  })
+}
+
 export type CardAggregates = {
   consensus: ConsensusSummary
   campSplit: CampSplit
   tierSplit: TierSplit
   hitRate: HitRateSummary
+  verdict: VerdictPayload
 }
 
 /**
@@ -169,6 +202,7 @@ export function computeCardAggregates(models: CardModelPrediction[], resolvedAt:
     campSplit: buildCampSplit(models),
     tierSplit: buildTierSplit(models),
     hitRate: buildHitRate(resolvedAt, models),
+    verdict: buildVerdict(models),
   }
 }
 
@@ -262,6 +296,7 @@ function toRoundMeta(row: RoundRow, nowMs: number): CardRoundMeta {
     anchorPriceAt: row.anchor_price_at ?? null,
     anchorSessionDate: normalizeSessionDate(row.anchor_session_date ?? null),
     resolutionSessionDate: normalizeSessionDate(row.resolution_session_date ?? null),
+    resolutionPrice: row.resolution_price ?? null,
     // Populated by `card.ts` after this pure function returns — see
     // `CardRoundMeta.livePrice`'s doc comment. Defaulting to null here keeps
     // this function's output fully deterministic/testable without network

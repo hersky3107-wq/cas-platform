@@ -45,4 +45,21 @@ describe('sanitizeRationale', () => {
   it('returns null for placeholder echoes', () => {
     expect(sanitizeRationale('<one line, max 200 chars>')).toBeNull()
   })
+
+  // Regression: the WORLD qwen3.5-flash row on round fffc1716 stored the
+  // literal prompt placeholder "<one line, max 200 chars>" as its rationale.
+  // Both guards must reject that exact string at write time so it cannot
+  // re-enter the table after the purge.
+  it('rejects the exact stored qwen3.5-flash placeholder at write time', () => {
+    const stored = '<one line, max 200 chars>'
+    expect(isPlaceholderRationale(stored)).toBe(true)
+    expect(sanitizeRationale(stored)).toBeNull()
+  })
+
+  it('parsePrediction drops the placeholder rationale but keeps direction', () => {
+    const parsed = parsePrediction(
+      '{"direction":"up","probability":72,"rationale":"<one line, max 200 chars>"}',
+    )
+    expect(parsed).toEqual({ direction: 'up', probability: 72, rationale: null })
+  })
 })

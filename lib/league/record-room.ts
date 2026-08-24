@@ -8,14 +8,26 @@ import {
   type RecordRoomPredictionRow,
   type RecordRoomRoundRow,
 } from './record-room-aggregate'
+import { recordRoomToCsv } from './record-room-csv'
 
-export { buildRecordRoomPage }
+export { buildRecordRoomPage, recordRoomToCsv }
 export type { RecordRoomPage }
 
 export const RECORD_ROOM_DEFAULT_PAGE_SIZE = 20
 export const RECORD_ROOM_MAX_PAGE_SIZE = 50
 
 const ROUND_COLUMNS = 'id, proposition_text, category, color_bucket, instrument, resolved_at, actual_outcome'
+// The audit-sentence columns live behind migrations that may not be applied to
+// every environment (same caution as `lib/league/card.ts`'s optional columns).
+// We ask for them, and fall back to the base set if the DB rejects the select —
+// a not-yet-migrated env just renders the record room without the resolved
+// window, never a broken page.
+const ROUND_COLUMNS_WITH_AUDIT =
+  `${ROUND_COLUMNS}, anchor_price, anchor_session_date, resolution_session_date, resolution_price`
+
+function isMissingColumnError(message: string): boolean {
+  return /does not exist|schema cache/i.test(message)
+}
 const PREDICTION_COLUMNS = 'round_id, model_id, brand, camp, league_tier, predicted_direction, is_correct'
 
 /**
@@ -81,24 +93,29 @@ export async function fetchRecordRoomPage(
   const from = (safePage - 1) * safePageSize
   const to = from + safePageSize - 1
 
-  let roundsQuery = supabaseAdmin
-    .from('prediction_rounds')
-    .select(ROUND_COLUMNS, { count: 'exact' })
-    .not('resolved_at', 'is', null)
+  const runRoundsQuery = async (columns: string) => {
+    let roundsQuery = supabaseAdmin
+      .from('prediction_rounds')
+      .select(columns, { count: 'exact' })
+      .not('resolved_at', 'is', null)
 
-  if (scope?.categories) roundsQuery = roundsQuery.in('category', scope.categories as string[])
-  if (scope?.rankedOnly) roundsQuery = roundsQuery.eq('item_type', 'ranked')
-  if (modelRoundIds) roundsQuery = roundsQuery.in('id', modelRoundIds)
-  if (scope?.from?.trim()) roundsQuery = roundsQuery.gte('resolved_at', scope.from.trim())
-  if (scope?.to?.trim()) roundsQuery = roundsQuery.lte('resolved_at', scope.to.trim())
+    if (scope?.categories) roundsQuery = roundsQuery.in('category', scope.categories as string[])
+    if (scope?.rankedOnly) roundsQuery = roundsQuery.eq('item_type', 'ranked')
+    if (modelRoundIds) roundsQuery = roundsQuery.in('id', modelRoundIds)
+    if (scope?.from?.trim()) roundsQuery = roundsQuery.gte('resolved_at', scope.from.trim())
+    if (scope?.to?.trim()) roundsQuery = roundsQuery.lte('resolved_at', scope.to.trim())
 
-  const { data: roundRows, error: roundsError, count } = await roundsQuery
-    .order('resolved_at', { ascending: false })
-    .range(from, to)
+    return roundsQuery.order('resolved_at', { ascending: false }).range(from, to)
+  }
+
+  let { data: roundRows, error: roundsError, count } = await runRoundsQuery(ROUND_COLUMNS_WITH_AUDIT)
+  if (roundsError && isMissingColumnError(roundsError.message)) {
+    ;({ data: roundRows, error: roundsError, count } = await runRoundsQuery(ROUND_COLUMNS))
+  }
 
   if (roundsError) throw new Error(`league record room: rounds query failed (${roundsError.message})`)
 
-  const rounds = (roundRows ?? []) as RecordRoomRoundRow[]
+  const rounds = (roundRows ?? []) as unknown as RecordRoomRoundRow[]
   const roundIds = rounds.map((r) => r.id)
 
   let predictions: RecordRoomPredictionRow[] = []
@@ -111,66 +128,4 @@ export async function fetchRecordRoomPage(
   }
 
   return buildRecordRoomPage(rounds, predictions, safePage, safePageSize, count ?? 0, scope?.deep === true)
-}
-
-/** Flatten a record-room page into CSV (deep-archive export only). */
-export function recordRoomToCsv(page: RecordRoomPage): string {
-  const header = [
-    'resolved_at',
-    'instrument',
-    'category',
-    'proposition',
-    'actual_outcome',
-    'model_id',
-    'brand',
-    'camp',
-    'league_tier',
-    'direction',
-    'is_correct',
-  ]
-  const lines = [header.join(',')]
-  for (const round of page.rounds) {
-    if (round.models.length === 0) {
-      lines.push(
-        [
-          csv(round.resolved_at),
-          csv(round.instrument),
-          csv(round.category),
-          csv(round.proposition_text),
-          csv(round.actual_outcome),
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-        ].join(',')
-      )
-      continue
-    }
-    for (const model of round.models) {
-      lines.push(
-        [
-          csv(round.resolved_at),
-          csv(round.instrument),
-          csv(round.category),
-          csv(round.proposition_text),
-          csv(round.actual_outcome),
-          csv(model.model_id),
-          csv(model.brand),
-          csv(model.camp),
-          csv(model.league_tier),
-          csv(model.direction),
-          model.is_correct === null ? '' : model.is_correct ? 'true' : 'false',
-        ].join(',')
-      )
-    }
-  }
-  return `${lines.join('\n')}\n`
-}
-
-function csv(value: string | null | undefined): string {
-  const raw = value ?? ''
-  if (/[",\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`
-  return raw
 }

@@ -76,8 +76,14 @@ describe('dictionary completeness', () => {
     expect(LEAGUE_LOCALES).toContain('pt')
   })
 
-  it('pt currently mirrors English verbatim (structural stub, not yet translated)', () => {
-    expect(LEAGUE_UI.pt).toEqual(LEAGUE_UI.en)
+  it('pt is a structural stub: mirrors English except for translated verdict + window chrome', () => {
+    const { verdict: ptVerdict, header: ptHeader, ...ptRest } = LEAGUE_UI.pt
+    const { verdict: enVerdict, header: enHeader, ...enRest } = LEAGUE_UI.en
+    expect(ptRest).toEqual(enRest)
+    expect(ptVerdict.title).not.toBe(enVerdict.title)
+    expect(ptHeader.windowNoSessionDates).not.toBe(enHeader.windowNoSessionDates)
+    expect(ptVerdict.heroHits(29, 40)).toContain('29')
+    expect(ptVerdict.heroHits(29, 40)).toContain('40')
   })
 
   it('falls back to English for an unrecognized key via getLeagueUiPack', () => {
@@ -160,6 +166,12 @@ describe('dictionary completeness', () => {
       expect(pack.leaderboard.beatingAlwaysUp(3, 40)).toContain('40')
       expect(pack.leaderboard.beatingAlwaysUpEmpty.trim().length).toBeGreaterThan(0)
       expect(pack.leaderboard.coinFlipHint.toLowerCase()).not.toMatch(/random|seed|rng/)
+      expect(pack.verdict.heroHits(29, 40)).toContain('29')
+      expect(pack.verdict.heroHits(29, 40)).toContain('40')
+      expect(pack.verdict.heroHits(29, 40)).not.toMatch(/%/)
+      expect(pack.verdict.sectionCamp.trim().length).toBeGreaterThan(0)
+      expect(pack.verdict.sectionCountryCaution.trim().length).toBeGreaterThan(0)
+      expect(pack.verdict.rawCount(18, 25)).toBe('18/25')
     }
   })
 

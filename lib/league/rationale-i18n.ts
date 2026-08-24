@@ -4,6 +4,11 @@ import { createHash } from 'node:crypto'
 import { runSingleAiProvider } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { LeagueLocale } from './i18n/locales'
+import {
+  persistRationaleTranslations,
+  logRationaleCacheError,
+  type RationaleTranslationStore,
+} from './rationale-i18n-store'
 
 /**
  * View-time rationale translation. Never called from generation.
@@ -68,9 +73,30 @@ function extractJsonArray(raw: string): string {
   return start !== -1 && end > start ? text.slice(start, end + 1) : text
 }
 
+const defaultStore: RationaleTranslationStore = {
+  async loadCached(locale, predictionIds) {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rationale_translations')
+      .select('prediction_id, translated_text, source_hash')
+      .eq('locale', locale)
+      .in('prediction_id', predictionIds)
+    return {
+      rows: (data ?? null) as { prediction_id: string; translated_text: string; source_hash: string }[] | null,
+      error: error ? { message: error.message } : null,
+    }
+  },
+  async upsert(writes) {
+    const { error } = await supabaseAdmin.from('prediction_rationale_translations').upsert(writes, {
+      onConflict: 'prediction_id,locale',
+    })
+    return { error: error ? { message: error.message } : null }
+  },
+}
+
 export async function translateRoundRationales(
   items: RationaleToTranslate[],
-  locale: LeagueLocale
+  locale: LeagueLocale,
+  store: RationaleTranslationStore = defaultStore
 ): Promise<TranslateRationalesResult> {
   const started = Date.now()
   const empty: TranslateRationalesResult = {
@@ -91,15 +117,12 @@ export async function translateRoundRationales(
   }
 
   const ids = usable.map((i) => i.predictionId)
-  const { data: cachedRows } = await supabaseAdmin
-    .from('prediction_rationale_translations')
-    .select('prediction_id, translated_text, source_hash')
-    .eq('locale', locale)
-    .in('prediction_id', ids)
+  const { rows: cachedRows, error: cacheReadError } = await store.loadCached(locale, ids)
+  if (cacheReadError) {
+    logRationaleCacheError('cache-read', cacheReadError.message)
+  }
 
-  const cached = new Map(
-    (cachedRows ?? []).map((row) => [row.prediction_id as string, row as { translated_text: string; source_hash: string }])
-  )
+  const cached = new Map((cachedRows ?? []).map((row) => [row.prediction_id, row]))
 
   const translations: Record<string, string> = {}
   const missing: RationaleToTranslate[] = []
@@ -179,9 +202,7 @@ export async function translateRoundRationales(
         translated = writes.length
         failed = missing.length - translated
         if (writes.length) {
-          await supabaseAdmin.from('prediction_rationale_translations').upsert(writes, {
-            onConflict: 'prediction_id,locale',
-          })
+          await persistRationaleTranslations(writes, store)
         }
       }
     } catch {

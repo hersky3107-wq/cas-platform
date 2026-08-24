@@ -4,8 +4,8 @@ import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { toneFor } from '@/lib/league/tone'
 import type { ComplianceReceipt } from './CardCompliance'
 import { CardHeader } from './CardHeader'
-import { ConsensusHeadline } from './ConsensusHeadline'
 import { DivisionBoard } from './DivisionBoard'
+import { VerdictPanel } from './VerdictPanel'
 
 /**
  * The actual prediction content (header, division board, final verdict).
@@ -76,13 +76,7 @@ export function CardBody({
           {t.bracket.resultLegend}
         </p>
       ) : null}
-      <ConsensusHeadline
-        consensus={data.consensus}
-        combinedTrack={data.combinedTrack}
-        tone={tone}
-        t={t}
-        variant="verdict"
-      />
+      <VerdictPanel verdict={data.verdict} models={data.models} t={t} />
     </>
   )
 }

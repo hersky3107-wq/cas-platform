@@ -1,5 +1,6 @@
 import type { Camp, ColorBucket, Direction, LeagueTier } from './card-types'
 import { roundHitRecord } from './round-hit'
+import { normalizeSessionDate } from '../prediction/resolution'
 
 /**
  * AI Prediction League — RECORD ROOM aggregation (read-only).
@@ -38,6 +39,17 @@ export type RecordRoomRoundEntry = {
   color_bucket: ColorBucket
   resolved_at: string
   actual_outcome: string | null
+  /**
+   * Audit fields the resolved-window sentence is built from — the SAME source
+   * as the card header (see `lib/league/card-header-copy.ts`'s `headerWindow`).
+   * The record room renders these, never the date embedded in `actual_outcome`,
+   * so the two surfaces can never disagree. Null where a session was never
+   * recorded; the renderer blanks rather than inventing a date.
+   */
+  anchorPrice: number | null
+  anchorSessionDate: string | null
+  resolutionSessionDate: string | null
+  resolutionPrice: number | null
   models: RecordRoomModelEntry[]
   /** Count of `models` with `is_correct !== null`. */
   gradedCount: number
@@ -49,6 +61,11 @@ export type RecordRoomHeadline = {
   latestInstrument: string | null
   latestOutcome: string | null
   latestResolvedAt: string | null
+  /** Latest round's audit fields, for the same window sentence the per-row entry uses. */
+  latestAnchorPrice: number | null
+  latestAnchorSessionDate: string | null
+  latestResolutionSessionDate: string | null
+  latestResolutionPrice: number | null
   recentGraded: number
   recentCorrect: number
 }
@@ -74,6 +91,10 @@ export type RecordRoomRoundRow = {
   instrument: string
   resolved_at: string
   actual_outcome: string | null
+  anchor_price?: number | null
+  anchor_session_date?: string | null
+  resolution_session_date?: string | null
+  resolution_price?: number | null
 }
 
 export type RecordRoomPredictionRow = {
@@ -128,6 +149,10 @@ export function buildRecordRoomEntries(
       color_bucket: toColorBucket(round.color_bucket),
       resolved_at: round.resolved_at,
       actual_outcome: round.actual_outcome,
+      anchorPrice: round.anchor_price ?? null,
+      anchorSessionDate: normalizeSessionDate(round.anchor_session_date ?? null),
+      resolutionSessionDate: normalizeSessionDate(round.resolution_session_date ?? null),
+      resolutionPrice: round.resolution_price ?? null,
       models,
       gradedCount: hit.graded,
       correctCount: hit.correct,
@@ -147,6 +172,10 @@ export function buildRecordRoomHeadline(rounds: readonly RecordRoomRoundEntry[])
     latestInstrument: latest?.instrument ?? null,
     latestOutcome: latest?.actual_outcome ?? null,
     latestResolvedAt: latest?.resolved_at ?? null,
+    latestAnchorPrice: latest?.anchorPrice ?? null,
+    latestAnchorSessionDate: latest?.anchorSessionDate ?? null,
+    latestResolutionSessionDate: latest?.resolutionSessionDate ?? null,
+    latestResolutionPrice: latest?.resolutionPrice ?? null,
     recentGraded,
     recentCorrect,
   }
