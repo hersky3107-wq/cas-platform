@@ -35,6 +35,7 @@ export function DivisionBoard({
   roundGraded = false,
   translations = null,
   showOriginal = false,
+  actualMagnitudePct = null,
 }: {
   models: CardModelPrediction[]
   tierSplit: TierSplit
@@ -42,6 +43,8 @@ export function DivisionBoard({
   roundGraded?: boolean
   translations?: Record<string, string> | null
   showOriginal?: boolean
+  /** Round-level actual percent change, once graded. Forwarded to each tile's compare line. */
+  actualMagnitudePct?: number | null
 }) {
   const groups = useMemo(() => groupByTier(models), [models])
   const [open, setOpen] = useState<Record<LeagueTier, boolean>>({
@@ -90,6 +93,7 @@ export function DivisionBoard({
                   roundGraded={roundGraded}
                   translatedRationale={model.prediction_id ? translations?.[model.prediction_id] ?? null : null}
                   showOriginal={showOriginal}
+                  actualMagnitudePct={actualMagnitudePct}
                 />
               ))}
             </ul>

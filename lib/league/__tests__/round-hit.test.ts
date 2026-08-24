@@ -50,4 +50,27 @@ describe('roundHitRecord — only graded rows enter the denominator', () => {
     expect(nonBinary).toHaveLength(2)
     expect(nonBinary.every((r) => r.is_correct === null)).toBe(true)
   })
+
+  /**
+   * Magnitude decoration (`predicted_magnitude_pct` — see `lib/league/magnitude.ts`)
+   * must never widen or shrink the hit denominator. `roundHitRecord`'s
+   * parameter type doesn't even declare a magnitude field, so this asserts
+   * the runtime behavior matches that structural guarantee: two rows that
+   * are identical except for wildly different (or missing) magnitude values
+   * produce the exact same `{ correct, graded }`.
+   */
+  it('magnitude never reaches the hit denominator, regardless of its value', () => {
+    const withoutMagnitude = [
+      { is_correct: true },
+      { is_correct: false },
+      { is_correct: null },
+    ]
+    const withMagnitude = [
+      { is_correct: true, predicted_magnitude_pct: 900 }, // absurd value, would fail validateMagnitude upstream
+      { is_correct: false, predicted_magnitude_pct: -0.01 },
+      { is_correct: null, predicted_magnitude_pct: null },
+    ]
+    expect(roundHitRecord(withMagnitude)).toEqual(roundHitRecord(withoutMagnitude))
+    expect(roundHitRecord(withMagnitude)).toEqual({ correct: 1, graded: 2 })
+  })
 })

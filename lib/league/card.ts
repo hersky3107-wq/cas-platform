@@ -28,7 +28,7 @@ export type { CardData }
 const ROUND_COLUMNS =
   'id, proposition_text, category, color_bucket, instrument, horizon, resolution_rule, resolves_at, opened_at, actual_outcome, resolved_at'
 const PREDICTION_COLUMNS =
-  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, reasoning_snippet, is_correct, cost_usd, predicted_at'
+  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, reasoning_snippet, is_correct, cost_usd, predicted_at'
 
 /** Warn once (not once per request) if the anchor-price migration hasn't been applied yet. */
 let warnedMissingAnchorColumns = false

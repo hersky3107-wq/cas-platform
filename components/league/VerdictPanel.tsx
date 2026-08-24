@@ -6,27 +6,32 @@ import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { CardModelPrediction } from '@/lib/league/card-types'
 import type { VerdictGroupCount, VerdictPayload } from '@/lib/league/verdict-aggregate'
 import { FLAG_SRC, type CountryCode } from '@/lib/league/country'
+import type { ConsensusSummary } from '@/lib/league/card-types'
+import { ConsensusHero } from '@/components/league/ConsensusHero'
 
 /**
- * Final-verdict panel — RAW COUNTS ONLY. Replaces the old consensus sentence
- * that mixed a hit tally with an average-confidence percentage.
+ * Final-verdict panel — RAW COUNTS ONLY.
  *
- * Hit counts always carry ✓ and a total (`✓12/14`). Direction counts always
- * use ▲/▼ and never a slash-over-total. The bar under the hero is the
- * direction mix, labeled as such — it is not a hit/miss bar.
- *
- * Desktop: camp / tier / book / overconfident / streaks stay expanded.
- * 국가별 is an accordion on every viewport (collapsed by default).
- * Mobile: accordion; only camp open by default.
+ * Hero order (graded cards):
+ *  1. Two-line consensus hero (answer + magnitude, then supporting figures)
+ *  2. Post-grading magnitude comparison (directly beneath hero)
+ *  3. Hit record ("✓29/40 적중")
+ *  4. Direction distribution bar and breakdown sections
  */
 export function VerdictPanel({
   verdict,
   models,
   t,
+  consensus,
+  horizon,
+  magnitudeCompare = null,
 }: {
   verdict: VerdictPayload
   models: readonly CardModelPrediction[]
   t: LeagueUiPack
+  consensus: ConsensusSummary
+  horizon: string
+  magnitudeCompare?: { predictedPct: number; actualPct: number } | null
 }) {
   const { hitRecord, distribution } = verdict
   const graded = hitRecord.graded
@@ -40,7 +45,10 @@ export function VerdictPanel({
   return (
     <div className="mx-2 mb-3 mt-1 rounded-xl border border-league-accent bg-league-accent-soft px-4 py-4 md:mx-3 md:px-5 md:py-5">
       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-league-accent-strong">{t.verdict.title}</p>
-      <p className="mt-1.5 text-lg font-bold leading-snug text-league-fg md:text-xl">
+      {consensus.totalModels > 0 ? (
+        <ConsensusHero consensus={consensus} horizon={horizon} t={t} magnitudeCompare={magnitudeCompare} />
+      ) : null}
+      <p className="mt-2 text-lg font-bold leading-snug text-league-fg md:text-xl">
         {t.verdict.heroHits(hitRecord.hits, hitRecord.graded)}
       </p>
       {hitRecord.ungraded > 0 ? (

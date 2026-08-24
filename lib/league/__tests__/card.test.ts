@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildCardData } from '../card-aggregate'
-import { combinedTrackLine, consensusHeadline, directionBadgeLabel, groupTallyLine } from '../compliance'
+import { combinedTrackLine, buildConsensusHero, consensusHeadline, directionBadgeLabel, groupTallyLine } from '../compliance'
 import { LEAGUE_UI } from '../i18n/dictionary'
 import { MIN_GRADED_ROUNDS_FOR_WIN_RATE } from '../credits'
 import type { CardModelPrediction, ConsensusSummary } from '../card-types'
@@ -187,6 +187,8 @@ describe('compliance: approved phrasing helpers', () => {
     avgProbability: 58.4,
     aggregateDirection: 'up',
     aggregateProbability: 58.4,
+    aggregateMagnitudePct: 2.4,
+    aggregateMagnitudeN: 6,
   }
 
   it('renders the approved "N of M AI models lean X" headline with confidence', () => {
@@ -218,6 +220,8 @@ describe('compliance: approved phrasing helpers', () => {
         avgProbability: null,
         aggregateDirection: null,
         aggregateProbability: null,
+        aggregateMagnitudePct: null,
+        aggregateMagnitudeN: 0,
       },
       en
     )
@@ -234,6 +238,8 @@ describe('compliance: approved phrasing helpers', () => {
         avgProbability: 50,
         aggregateDirection: null,
         aggregateProbability: null,
+        aggregateMagnitudePct: null,
+        aggregateMagnitudeN: 0,
       },
       en
     )
@@ -296,6 +302,46 @@ describe('compliance: approved phrasing helpers', () => {
     expect(headline).toContain('8')
     expect(headline).toContain('6')
     expect(headline).not.toBe(consensusHeadline(baseConsensus, en))
+  })
+})
+
+describe('buildConsensusHero — two-line card hero', () => {
+  const baseConsensus: ConsensusSummary = {
+    tally: { up: 34, down: 4, flat: 1, abstain: 1 },
+    majorityDirection: 'up',
+    totalModels: 40,
+    respondedModels: 39,
+    avgProbability: 61.2,
+    aggregateDirection: 'up',
+    aggregateProbability: 54,
+    aggregateMagnitudePct: 2.4,
+    aggregateMagnitudeN: 34,
+  }
+
+  it('line 1 is verb + magnitude; line 2 uses aggregateProbability, never avgProbability', () => {
+    const hero = buildConsensusHero(baseConsensus, '1d', en)!
+    expect(hero.kind).toBe('answer')
+    if (hero.kind !== 'answer') return
+    expect(hero.line1).toBe('Rises · within 1 day +2.4%')
+    expect(hero.line2).toBe('34 of 40 · 54% confidence')
+    expect(hero.line2).not.toContain('61')
+    expect(hero.line1).not.toMatch(/lean/i)
+  })
+
+  it('Korean hero matches the approved copy pattern', () => {
+    const hero = buildConsensusHero(baseConsensus, '1d', LEAGUE_UI.ko)!
+    expect(hero.kind).toBe('answer')
+    if (hero.kind !== 'answer') return
+    expect(hero.line1).toBe('오른다 · 1일 내 +2.4%')
+    expect(hero.line2).toBe('40개 중 34개 · 확신 54%')
+  })
+
+  it('would differ if avgProbability were mistakenly used for line 2', () => {
+    const hero = buildConsensusHero(baseConsensus, '1d', en)!
+    expect(hero.kind).toBe('answer')
+    if (hero.kind !== 'answer') return
+    const wrongLine2 = en.hero.supportLine(baseConsensus.tally.up, baseConsensus.totalModels, Math.round(baseConsensus.avgProbability!))
+    expect(hero.line2).not.toBe(wrongLine2)
   })
 })
 

@@ -54,6 +54,15 @@ export type CardModelPrediction = {
   direction: Direction | null
   /** 0-100 confidence/probability, or null. */
   probability: number | null
+  /**
+   * Expected signed percent change over the round's horizon (positive for
+   * up, negative for down), or null. DECORATION on the direction call —
+   * never read by `roundHitRecord` / `winRatePctForDisplay` / any verdict
+   * aggregate; those all take `is_correct` alone. Null on rows predating
+   * this field, or where validation failed and the model was recorded as an
+   * error (see `lib/league/orchestrator.ts`).
+   */
+  magnitude: number | null
   reasoning_snippet: string | null
   /** null = round not yet resolved / this row not yet graded. */
   is_correct: boolean | null
@@ -87,6 +96,16 @@ export type ConsensusSummary = {
   aggregateDirection: 'up' | 'down' | null
   /** Confidence in `aggregateDirection` after inverse-logit, 0–100. */
   aggregateProbability: number | null
+  /**
+   * Median expected magnitude among models whose OWN direction matches
+   * `aggregateDirection` (median, not mean — outlier-robust; see
+   * `lib/league/magnitude.ts`'s `aggregateMagnitude`). Null when no
+   * direction-agreeing model reported a usable magnitude. A QUALIFIER on the
+   * headline direction — never a graded figure, never in a hit fraction.
+   */
+  aggregateMagnitudePct: number | null
+  /** How many models fed `aggregateMagnitudePct`. 0 when it is null. */
+  aggregateMagnitudeN: number
 }
 
 export type CampSplit = Record<Camp, DirectionTally>
@@ -193,6 +212,17 @@ export type CardRoundMeta = {
   livePrice: number | null
   /** Timestamp `livePrice` was observed. Null iff `livePrice` is null. */
   livePriceAt: string | null
+  /**
+   * Actual realized percent change over the round (resolution close vs
+   * anchor close), for the post-grading "predicted vs actual" comparison.
+   * Derived from `anchorPrice`/`resolutionPrice` — never a separate stored
+   * fact, so it can never disagree with what the header already names. Null
+   * until both prices exist (i.e. until graded). PRESENTATION ONLY: grading
+   * itself (`lib/prediction/resolution.ts`) decides up/down from the sign of
+   * this same difference, never this percent value, and no hit/win-rate
+   * calculation reads it.
+   */
+  actualMagnitudePct: number | null
 }
 
 /**

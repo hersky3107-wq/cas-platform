@@ -1,7 +1,8 @@
-import type { CardRoundMeta } from '@/lib/league/card-types'
+import type { CardRoundMeta, ConsensusSummary } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { formatInstrumentPrice, formatRoundOpenedDate, formatSessionDate } from '@/lib/league/card-header-copy'
+import { ConsensusHero } from '@/components/league/ConsensusHero'
 
 /**
  * Shown INSTEAD OF `VerdictPanel` while a round has zero graded predictions
@@ -12,24 +13,21 @@ import { formatInstrumentPrice, formatRoundOpenedDate, formatSessionDate } from 
  * round grades, so the card stays worth reading before a single model call
  * has been scored.
  *
- * Does not read or duplicate any grading-engine logic, glyph rule, or the
- * correlation notice — presentation only, over fields `CardRoundMeta`
- * already carries (`proposition_text`, `anchorPrice`, `anchorSessionDate` /
- * `anchorPriceAt`, `resolves_at`). NEVER renders a hit figure or a
- * percentage — those belong to `VerdictPanel`, which only renders once
- * `graded > 0`; this component is the ungraded branch and has no access to
- * `hitRecord` at all (only `round`, `t`, `locale`, `now` are accepted).
+ * When `consensus` is supplied, renders the two-line hero (answer + magnitude,
+ * then supporting tally + aggregate confidence) — same component as graded
+ * cards use, minus the post-grading comparison and hit record.
  */
 export function PendingVerdictPanel({
   round,
   t,
   locale,
+  consensus = null,
   now = new Date(),
 }: {
   round: CardRoundMeta
   t: LeagueUiPack
   locale: LeagueLocale
-  /** Injectable for deterministic rendering/tests; defaults to the real clock. */
+  consensus?: ConsensusSummary | null
   now?: Date
 }) {
   const anchorDate = round.anchorSessionDate
@@ -48,6 +46,9 @@ export function PendingVerdictPanel({
       <p className="mt-1.5 text-sm font-semibold leading-snug text-league-fg md:text-base">
         {round.proposition_text}
       </p>
+      {consensus && consensus.totalModels > 0 ? (
+        <ConsensusHero consensus={consensus} horizon={round.horizon} t={t} />
+      ) : null}
       {round.anchorPrice !== null && anchorDate ? (
         <p className="mt-2 text-[12px] text-league-fg-muted" dir="ltr">
           {t.verdict.pendingAnchorLine(formatInstrumentPrice(round.instrument, round.anchorPrice), anchorDate)}

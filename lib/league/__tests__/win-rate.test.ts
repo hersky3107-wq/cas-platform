@@ -96,3 +96,28 @@ describe('a displayed percentage always carries its sample size', () => {
     }
   })
 })
+
+/**
+ * Magnitude decoration (`predicted_magnitude_pct` / `consensus_aggregate_magnitude_pct`
+ * — see `lib/league/magnitude.ts`) must never enter a win-rate calculation.
+ * Every function in this module takes raw `(correct, resolved)` counts —
+ * there is no row-shaped parameter anywhere here for a magnitude field to
+ * hide inside — so this is a structural guarantee, not just a runtime one.
+ * The runtime check below documents that guarantee: the same counts always
+ * produce the same win-rate output, independent of any magnitude value that
+ * might exist elsewhere on the rows those counts were derived from.
+ */
+describe('magnitude cannot enter a win-rate calculation', () => {
+  it('winRateDisplay/winRatePctForDisplay take only counts — a magnitude value has no parameter to occupy', () => {
+    // A bogus third argument (what a magnitude value would have to arrive
+    // as) is silently ignored at runtime and rejected by the type checker
+    // (`// @ts-expect-error` below) — there is no code path for it to reach.
+    // @ts-expect-error — magnitude is not an accepted argument.
+    const withExtraArg = winRateDisplay(7, 12, { predicted_magnitude_pct: 900 })
+    expect(withExtraArg).toEqual(winRateDisplay(7, 12))
+
+    // @ts-expect-error — same for the raw percentage gate.
+    const pctWithExtraArg = winRatePctForDisplay(7, 12, -900)
+    expect(pctWithExtraArg).toBe(winRatePctForDisplay(7, 12))
+  })
+})

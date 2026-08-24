@@ -20,6 +20,7 @@ describe('parsePrediction — binary up/down only', () => {
     expect(parsed).toEqual({
       direction: 'up',
       probability: 72,
+      magnitude: null,
       rationale: 'Momentum looks positive after the last earnings beat.',
       rejectedDirection: false,
     })
@@ -30,6 +31,7 @@ describe('parsePrediction — binary up/down only', () => {
     expect(parsed).toEqual({
       direction: 'down',
       probability: 61,
+      magnitude: null,
       rationale: null,
       rejectedDirection: false,
     })
@@ -52,6 +54,38 @@ describe('parsePrediction — binary up/down only', () => {
   })
 })
 
+describe('parsePrediction — magnitude extraction (raw only; bounds/sign checked by lib/league/magnitude.ts)', () => {
+  it('extracts a signed numeric magnitude', () => {
+    const parsed = parsePrediction('{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Earnings beat."}')
+    expect(parsed?.magnitude).toBe(2.4)
+    const down = parsePrediction('{"direction":"down","probability":65,"magnitude":-1.1,"rationale":"Weak guidance."}')
+    expect(down?.magnitude).toBe(-1.1)
+  })
+
+  it('is null when magnitude is missing or non-numeric', () => {
+    expect(parsePrediction('{"direction":"up","probability":72,"rationale":"No magnitude field."}')?.magnitude).toBeNull()
+    expect(
+      parsePrediction('{"direction":"up","probability":72,"magnitude":"not a number","rationale":"x"}')?.magnitude,
+    ).toBeNull()
+  })
+
+  it('does not apply direction-sign or per-horizon bound checks itself — an inverted or absurd value still round-trips raw', () => {
+    // This module has no horizon to validate against; validateMagnitude (called
+    // by the orchestrator) is the sole gate for sign consistency and bounds.
+    const invertedSign = parsePrediction('{"direction":"up","probability":72,"magnitude":-2.4,"rationale":"x"}')
+    expect(invertedSign?.magnitude).toBe(-2.4)
+    const absurd = parsePrediction('{"direction":"up","probability":72,"magnitude":900,"rationale":"x"}')
+    expect(absurd?.magnitude).toBe(900)
+  })
+
+  it('also extracts magnitude via the prose fallback path', () => {
+    const prose = 'Some citation text... "direction": "up", "probability": 70, "magnitude": 3.2, "rationale": "Strong momentum" ...more citations'
+    const parsed = parsePrediction(prose)
+    expect(parsed?.direction).toBe('up')
+    expect(parsed?.magnitude).toBe(3.2)
+  })
+})
+
 describe('sanitizeRationale', () => {
   it('returns null for placeholder echoes', () => {
     expect(sanitizeRationale('<one line, max 200 chars>')).toBeNull()
@@ -71,6 +105,12 @@ describe('sanitizeRationale', () => {
     const parsed = parsePrediction(
       '{"direction":"up","probability":72,"rationale":"<one line, max 200 chars>"}',
     )
-    expect(parsed).toEqual({ direction: 'up', probability: 72, rationale: null, rejectedDirection: false })
+    expect(parsed).toEqual({
+      direction: 'up',
+      probability: 72,
+      magnitude: null,
+      rationale: null,
+      rejectedDirection: false,
+    })
   })
 })

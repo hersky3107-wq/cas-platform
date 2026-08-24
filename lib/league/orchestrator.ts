@@ -14,9 +14,10 @@ import { fetchDataPacket, sessionDateForPrice, type DataPacket } from '@/lib/lea
 import { fetchCryptoContext, fetchMarketConsensus, wantsConsensus, wantsCryptoContext } from '@/lib/league/market-context'
 import { assembleClosedBookInjection, type ClosedBookPacketInput } from '@/lib/league/closed-book-packet'
 import { getResearchPacket, type ResearchPacket } from '@/lib/league/research'
-import { isBinaryDirection, parsePrediction, sanitizeRationale } from '@/lib/league/prediction-parse'
+import { isBinaryDirection, parsePrediction, sanitizeRationale, type ParsedPrediction } from '@/lib/league/prediction-parse'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
+import { aggregateMagnitude, validateMagnitude } from '@/lib/league/magnitude'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -47,18 +48,19 @@ const FALLBACK_COST_CAP_USD = 20
 
 const PREDICTION_SYSTEM_PROMPT = `You are an independent forecasting model in a prediction league. You answer ALONE; you never see any other model's answer. You may reason internally, but your VISIBLE output MUST be exactly ONE line of strict JSON and nothing else — no markdown, no code fences, no preamble, no trailing text.
 
-Required JSON keys: direction, probability, rationale.
+Required JSON keys: direction, probability, magnitude, rationale.
 
 Example shape (replace values with your own forecast — do not copy this example verbatim):
-{"direction":"up","probability":72,"rationale":"Recent earnings beat and buyback support a higher close."}
+{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close."}
 
 - direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
 - probability: your confidence in the stated direction, integer 0 through 100.
+- magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.
 - rationale: one concise sentence of reasoning or a key citation in plain prose (200 characters or fewer). Write your actual reasoning — never repeat these instructions, schema labels, or placeholder text.
 Return the JSON object only.`
 
-/** Appended once when the first answer is not binary up/down. */
-const BINARY_RETRY_INSTRUCTION = `BINARY RETRY: Your previous answer was invalid. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. Respond with one JSON line only: {"direction":"up"|"down","probability":0-100,"rationale":"..."}`
+/** Appended once when the first answer has an invalid direction and/or magnitude. */
+const PREDICTION_RETRY_INSTRUCTION = `RETRY: Your previous answer was invalid. Respond with exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"..."}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`
 
 type ItemType = 'ranked' | 'on_demand'
 
@@ -120,6 +122,8 @@ export type ModelRunResult = {
   tier: LeagueTier
   direction: 'up' | 'down' | null
   probability: number | null
+  /** Validated expected percent change over the horizon, signed to match `direction`. Decoration only — never read by grading. */
+  magnitude: number | null
   reasoning_snippet: string | null
   cost_usd: number
   /** 'billed' = provider-reported actual/documented cost. 'estimated' = our token×list-price fallback. */
@@ -255,10 +259,11 @@ async function persistClosedBookPacket(roundId: string, cacheKey: string, text: 
 
 async function persistConsensusAggregates(
   roundId: string,
-  results: readonly { direction: 'up' | 'down' | null; probability: number | null }[],
+  results: readonly { direction: 'up' | 'down' | null; probability: number | null; magnitude: number | null }[],
 ): Promise<void> {
   try {
     const dual = dualConsensus(binaryCallsFromModels(results))
+    const magnitude = aggregateMagnitude(results, dual.aggregate.direction)
     await supabaseAdmin
       .from('prediction_rounds')
       .update({
@@ -266,6 +271,8 @@ async function persistConsensusAggregates(
         consensus_majority_probability: dual.majority.probability,
         consensus_aggregate_direction: dual.aggregate.direction,
         consensus_aggregate_probability: dual.aggregate.probability,
+        consensus_aggregate_magnitude_pct: magnitude.medianPct,
+        consensus_aggregate_magnitude_n: magnitude.n,
       })
       .eq('id', roundId)
   } catch {
@@ -509,13 +516,28 @@ async function callWithRetry(
  * timeout). Default timeout is DEFAULT_TIMEOUT_MS (60s); roster entries may
  * set `timeoutMs` per model (e.g. deepseek-v4-pro 240s, grok-4.6-livesearch 150s).
  */
+/**
+ * Combined validity gate for direction + magnitude: a model's answer is only
+ * usable when BOTH are valid. `magnitude` is required exactly like
+ * `direction` — a missing/non-numeric/out-of-bounds/wrong-signed value fails
+ * this gate the same way a non-binary direction does, and both share the
+ * SAME one-retry-then-error budget (see `runOneModel`'s single retry call
+ * below) rather than each getting its own retry.
+ */
+function predictionInvalidReason(parsed: ParsedPrediction | null, horizon: string): string | null {
+  if (!isBinaryDirection(parsed?.direction)) return 'non_binary_direction'
+  const mv = validateMagnitude(parsed!.direction, parsed!.magnitude, horizon)
+  return mv.ok ? null : `invalid_magnitude:${mv.reason}`
+}
+
 async function runOneModel(
   entry: RosterEntry,
   roundId: string,
   userPrompt: string,
   timeoutMs: number,
   userId: string | null,
-  maxCompletionTokens: number
+  maxCompletionTokens: number,
+  horizon: string
 ): Promise<ModelRunResult> {
   let raw = await callWithRetry(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
   let totalCostUsd = 0
@@ -539,6 +561,7 @@ async function runOneModel(
       ...base,
       direction: null,
       probability: null,
+      magnitude: null,
       reasoning_snippet: null,
       cost_usd: 0,
       cost_source: 'estimated',
@@ -550,9 +573,11 @@ async function runOneModel(
   accumulateCost(raw)
   let parsed = parsePrediction(raw.text)
 
-  // Non-binary (flat/abstain/neutral/missing): one stricter retry, then error.
-  if (!isBinaryDirection(parsed?.direction)) {
-    const retryPrompt = `${userPrompt}\n\n${BINARY_RETRY_INSTRUCTION}`
+  // Invalid direction and/or magnitude (flat/abstain/missing/out-of-bounds/wrong-signed):
+  // one stricter retry naming BOTH requirements, then error.
+  let reason = predictionInvalidReason(parsed, horizon)
+  if (reason) {
+    const retryPrompt = `${userPrompt}\n\n${PREDICTION_RETRY_INSTRUCTION}`
     const retryRaw = await callWithRetry(entry, retryPrompt, timeoutMs, userId, maxCompletionTokens)
     if (retryRaw.error) {
       await upsertNullPrediction(roundId, entry)
@@ -561,6 +586,7 @@ async function runOneModel(
         actual_model: retryRaw.actualModel,
         direction: null,
         probability: null,
+        magnitude: null,
         reasoning_snippet: null,
         cost_usd: Number(totalCostUsd.toFixed(6)),
         cost_source: costSource,
@@ -571,20 +597,22 @@ async function runOneModel(
     accumulateCost(retryRaw)
     raw = retryRaw
     parsed = parsePrediction(retryRaw.text)
+    reason = predictionInvalidReason(parsed, horizon)
   }
 
-  if (!isBinaryDirection(parsed?.direction)) {
+  if (reason) {
     await upsertNullPrediction(roundId, entry)
     return {
       ...base,
       actual_model: raw.actualModel,
       direction: null,
       probability: null,
+      magnitude: null,
       reasoning_snippet: null,
       cost_usd: Number(totalCostUsd.toFixed(6)),
       cost_source: costSource,
       status: 'error',
-      error: 'non_binary_direction',
+      error: reason,
     }
   }
 
@@ -593,6 +621,12 @@ async function runOneModel(
     sanitizeRationale(raw.text ? raw.text.trim().slice(0, 500) : null)
   const probability = parsed!.probability ?? null
   const direction = parsed!.direction
+  // `reason` (checked above) already screened out a non-binary direction via
+  // `predictionInvalidReason` -> `isBinaryDirection`, so this narrows what
+  // `parsed!.direction`'s static type (`BinaryDirection | null`) cannot express.
+  if (!isBinaryDirection(direction)) throw new Error('unreachable: non-binary direction reached persistence')
+  const magnitudeValidation = validateMagnitude(direction, parsed!.magnitude, horizon)
+  const magnitude = magnitudeValidation.ok ? magnitudeValidation.value : null
 
   await supabaseAdmin
     .from('model_predictions')
@@ -605,6 +639,7 @@ async function runOneModel(
         league_tier: entry.league_tier,
         predicted_direction: direction,
         predicted_value: probability,
+        predicted_magnitude_pct: magnitude,
         reasoning_snippet: rationale,
         prompt_tokens: raw.promptTokens,
         completion_tokens: raw.completionTokens,
@@ -619,6 +654,7 @@ async function runOneModel(
     actual_model: raw.actualModel,
     direction,
     probability,
+    magnitude,
     reasoning_snippet: rationale,
     cost_usd: Number(totalCostUsd.toFixed(6)),
     cost_source: costSource,
@@ -638,6 +674,7 @@ async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promis
         league_tier: entry.league_tier,
         predicted_direction: null,
         predicted_value: null,
+        predicted_magnitude_pct: null,
         reasoning_snippet: null,
         prompt_tokens: null,
         completion_tokens: null,
@@ -760,7 +797,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       const prompt = entry.league_tier === 'scout' ? prompts.scout : prompts.price
       const tokenBudget = resolveMaxCompletionTokensForEntry(entry, maxCompletionTokens)
       const entryTimeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : timeoutMs
-      const outcome = await runOneModel(entry, round.id, prompt, entryTimeoutMs, userId ?? null, tokenBudget)
+      const outcome = await runOneModel(entry, round.id, prompt, entryTimeoutMs, userId ?? null, tokenBudget, round.horizon)
       runningCost += outcome.cost_usd
       results.push(outcome)
       // Fires AFTER the DB write inside runOneModel — see onModelResult's doc

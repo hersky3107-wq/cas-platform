@@ -2,9 +2,10 @@
 
 import { useState, type KeyboardEvent } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { directionBadgeLabel } from '@/lib/league/compliance'
+import { directionBadgeLabel, magnitudeCompareLine } from '@/lib/league/compliance'
 import type { CardModelPrediction, Direction } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
+import { formatSignedPercent } from '@/lib/league/magnitude'
 import { CountryFlag } from '@/components/league/CountryFlag'
 
 /**
@@ -17,6 +18,12 @@ import { CountryFlag } from '@/components/league/CountryFlag'
  *
  * Direction copy comes only from `directionBadgeLabel` (never buy/sell).
  * `reasoning_snippet` is the model's own quote, rendered verbatim.
+ *
+ * `model.magnitude` (when present) renders as "▲ +3.2%" NEXT TO the
+ * direction badge — never inside the ✓/✗ result stamp, so it can never be
+ * mistaken for the graded outcome. `actualMagnitudePct` (round-level,
+ * presentation only) enables a per-model "predicted X → actual Y" line once
+ * the round is graded and this tile is expanded.
  */
 export function ModelTile({
   model,
@@ -24,12 +31,15 @@ export function ModelTile({
   roundGraded = false,
   translatedRationale = null,
   showOriginal = false,
+  actualMagnitudePct = null,
 }: {
   model: CardModelPrediction
   t: LeagueUiPack
   roundGraded?: boolean
   translatedRationale?: string | null
   showOriginal?: boolean
+  /** Round-level actual percent change, once graded. Display only — see `lib/league/magnitude.ts`. */
+  actualMagnitudePct?: number | null
 }) {
   const [open, setOpen] = useState(false)
   const original = model.reasoning_snippet?.trim() || null
@@ -39,6 +49,11 @@ export function ModelTile({
   const glyph = model.direction ? DIRECTION_GLYPH[model.direction] : '\u2013'
   const badge = directionBadgeLabel(model.direction, t)
   const pct = model.direction && model.probability !== null ? `${Math.round(model.probability)}%` : null
+  const magnitudeText = model.direction && model.magnitude !== null ? formatSignedPercent(model.magnitude) : null
+  const magnitudeCompare =
+    model.magnitude !== null && actualMagnitudePct !== null
+      ? magnitudeCompareLine(model.magnitude, actualMagnitudePct, t)
+      : null
 
   function toggle() {
     if (!hasReasoning) return
@@ -90,6 +105,11 @@ export function ModelTile({
                 {glyph}
               </span>
               <span className="text-[10px] font-semibold uppercase tracking-wide">{badge}</span>
+              {magnitudeText ? (
+                <span className="text-[10px] font-semibold tabular-nums" aria-hidden>
+                  {magnitudeText}
+                </span>
+              ) : null}
             </div>
           </>
         ) : (
@@ -101,6 +121,11 @@ export function ModelTile({
               {glyph}
             </span>
             <span className="text-[10px] font-bold uppercase tracking-wide md:text-xs">{badge}</span>
+            {magnitudeText ? (
+              <span className="text-[10px] font-semibold tabular-nums" aria-hidden>
+                {magnitudeText}
+              </span>
+            ) : null}
           </div>
         )}
 
@@ -139,6 +164,12 @@ export function ModelTile({
         {open && pct ? (
           <p className="text-[10px] font-medium text-league-fg-muted">
             {t.bracket.confidence} <span className="tabular-nums">{pct}</span>
+          </p>
+        ) : null}
+
+        {open && magnitudeCompare ? (
+          <p className="text-[10px] font-medium text-league-fg-muted" dir="ltr">
+            {magnitudeCompare}
           </p>
         ) : null}
 

@@ -76,12 +76,14 @@ describe('dictionary completeness', () => {
     expect(LEAGUE_LOCALES).toContain('pt')
   })
 
-  it('pt is a structural stub: mirrors English except for translated verdict + window chrome', () => {
-    const { verdict: ptVerdict, header: ptHeader, ...ptRest } = LEAGUE_UI.pt
-    const { verdict: enVerdict, header: enHeader, ...enRest } = LEAGUE_UI.en
+  it('pt is a structural stub: mirrors English except for translated verdict, hero, magnitude + window chrome', () => {
+    const { verdict: ptVerdict, header: ptHeader, hero: ptHero, magnitude: ptMagnitude, ...ptRest } = LEAGUE_UI.pt
+    const { verdict: enVerdict, header: enHeader, hero: enHero, magnitude: enMagnitude, ...enRest } = LEAGUE_UI.en
     expect(ptRest).toEqual(enRest)
     expect(ptVerdict.title).not.toBe(enVerdict.title)
     expect(ptHeader.windowNoSessionDates).not.toBe(enHeader.windowNoSessionDates)
+    expect(ptHero.answerVerb.up).not.toBe(enHero.answerVerb.up)
+    expect(ptMagnitude.tileLabel).not.toBe(enMagnitude.tileLabel)
     expect(ptVerdict.heroHits(29, 40)).toContain('29')
     expect(ptVerdict.heroHits(29, 40)).toContain('40')
   })

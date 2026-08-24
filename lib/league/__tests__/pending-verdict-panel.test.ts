@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { PendingVerdictPanel } from '../../../components/league/PendingVerdictPanel'
 import { buildCatalogRankedRoundInput } from '../catalog'
 import { getLeagueUiPack } from '../i18n/dictionary'
-import type { CardRoundMeta } from '../card-types'
+import type { CardRoundMeta, ConsensusSummary } from '../card-types'
 
 /**
  * Renders the ACTUAL `PendingVerdictPanel` component (via `react-dom/server`,
@@ -38,6 +38,7 @@ describe('PendingVerdictPanel — synthetic 3-month round', () => {
     anchorSessionDate: '2026-08-21',
     resolutionSessionDate: null,
     resolutionPrice: null,
+    actualMagnitudePct: null,
     livePrice: null,
     livePriceAt: null,
   }
@@ -79,5 +80,68 @@ describe('PendingVerdictPanel — synthetic 3-month round', () => {
     expect(html).not.toMatch(/\d+%/)
     expect(html).not.toMatch(/\d+\/\d+/) // no "hits/graded" style fraction
     expect(html.replace(/<[^>]+>/g, '').trim().length).toBeGreaterThan(20)
+  })
+})
+
+describe('PendingVerdictPanel — magnitude qualifier on the headline (display only)', () => {
+  const now = new Date('2026-08-21T20:00:00.000Z')
+  const seed = buildCatalogRankedRoundInput('AAPL', '1d', now)
+  if (!seed) throw new Error('AAPL is expected to be a catalog instrument')
+
+  const round: CardRoundMeta = {
+    round_id: 'synthetic-1d-round',
+    instrument: seed.instrument,
+    category: seed.category,
+    horizon: seed.horizon,
+    resolution_rule: seed.resolution_rule,
+    proposition_text: seed.proposition_text,
+    color_bucket: 'green',
+    resolves_at: seed.resolves_at,
+    opened_at: now.toISOString(),
+    resolved_at: null,
+    actual_outcome: null,
+    gradingState: 'not_due',
+    unresolvableReason: null,
+    anchorPrice: 231.45,
+    anchorPriceAt: now.toISOString(),
+    anchorSessionDate: '2026-08-21',
+    resolutionSessionDate: null,
+    resolutionPrice: null,
+    actualMagnitudePct: null,
+    livePrice: null,
+    livePriceAt: null,
+  }
+
+  const consensus: ConsensusSummary = {
+    tally: { up: 6, down: 1, flat: 1, abstain: 0 },
+    majorityDirection: 'up',
+    totalModels: 8,
+    respondedModels: 8,
+    avgProbability: 58.4,
+    aggregateDirection: 'up',
+    aggregateProbability: 58.4,
+    aggregateMagnitudePct: 2.4,
+    aggregateMagnitudeN: 6,
+  }
+
+  const t = getLeagueUiPack('en')
+  const html = renderToStaticMarkup(createElement(PendingVerdictPanel, { round, t, locale: 'en', consensus, now }))
+
+  it('renders the two-line hero — verb answer + magnitude on line 1, tally + aggregate confidence on line 2', () => {
+    expect(html).toContain('Rises')
+    expect(html).toContain('+2.4%')
+    expect(html).toContain('6 of 8')
+    expect(html).toContain('58% confidence')
+    expect(html).not.toContain('lean')
+  })
+
+  it('the magnitude qualifier never carries a checkmark/cross or a hit-style fraction', () => {
+    expect(html).not.toMatch(/[✓✗]/)
+    expect(html).not.toMatch(/\d+\/\d+/)
+  })
+
+  it('omits the qualifier entirely (not a bare "0%") when no consensus is supplied', () => {
+    const bare = renderToStaticMarkup(createElement(PendingVerdictPanel, { round, t, locale: 'en', now }))
+    expect(bare).not.toContain('%')
   })
 })

@@ -71,6 +71,7 @@ export function CardBody({
         roundGraded={data.round.gradingState === 'graded'}
         translations={translations}
         showOriginal={showOriginal}
+        actualMagnitudePct={data.round.actualMagnitudePct}
       />
       {data.hitRate.graded > 0 ? (
         <p className="border-t border-league-border/50 px-3 py-2 text-[10px] leading-snug text-league-fg-muted md:px-4">
@@ -78,9 +79,20 @@ export function CardBody({
         </p>
       ) : null}
       {data.verdict.hitRecord.graded > 0 ? (
-        <VerdictPanel verdict={data.verdict} models={data.models} t={t} />
+        <VerdictPanel
+          verdict={data.verdict}
+          models={data.models}
+          t={t}
+          consensus={data.consensus}
+          horizon={data.round.horizon}
+          magnitudeCompare={
+            data.consensus.aggregateMagnitudePct !== null && data.round.actualMagnitudePct !== null
+              ? { predictedPct: data.consensus.aggregateMagnitudePct, actualPct: data.round.actualMagnitudePct }
+              : null
+          }
+        />
       ) : (
-        <PendingVerdictPanel round={data.round} t={t} locale={locale} />
+        <PendingVerdictPanel round={data.round} t={t} locale={locale} consensus={data.consensus} />
       )}
     </>
   )

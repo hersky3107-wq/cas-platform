@@ -28,6 +28,7 @@ import {
   type VerdictRosterMeta,
 } from './verdict-aggregate'
 import { binaryCallsFromModels, dualConsensus } from './log-odds-consensus'
+import { aggregateMagnitude, computeActualMagnitudePct } from './magnitude'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), pure assembly.
@@ -80,6 +81,8 @@ export type PredictionRow = {
   league_tier: string
   predicted_direction: string | null
   predicted_value: number | null
+  /** Optional: absent on rows selected before this column existed (pre-migration environments) — treated as null. */
+  predicted_magnitude_pct?: number | null
   reasoning_snippet: string | null
   is_correct: boolean | null
   cost_usd: number | null
@@ -122,6 +125,7 @@ function buildConsensus(models: CardModelPrediction[]): ConsensusSummary {
   const probs = directional.map((m) => m.probability).filter((p): p is number => typeof p === 'number')
   const avgProbability = probs.length ? probs.reduce((a, b) => a + b, 0) / probs.length : null
   const dual = dualConsensus(binaryCallsFromModels(models))
+  const magnitude = aggregateMagnitude(models, dual.aggregate.direction)
   return {
     tally,
     majorityDirection: majorityOf(tally),
@@ -130,6 +134,8 @@ function buildConsensus(models: CardModelPrediction[]): ConsensusSummary {
     avgProbability: avgProbability === null ? null : Math.round(avgProbability * 10) / 10,
     aggregateDirection: dual.aggregate.direction,
     aggregateProbability: dual.aggregate.probability,
+    aggregateMagnitudePct: magnitude.medianPct,
+    aggregateMagnitudeN: magnitude.n,
   }
 }
 
@@ -223,6 +229,7 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
     league_tier: tier,
     direction: toDirection(row.predicted_direction),
     probability: row.predicted_value,
+    magnitude: row.predicted_magnitude_pct ?? null,
     reasoning_snippet: row.reasoning_snippet,
     is_correct: row.is_correct,
     cost_usd: row.cost_usd,
@@ -301,6 +308,7 @@ function toRoundMeta(row: RoundRow, nowMs: number): CardRoundMeta {
     anchorSessionDate: normalizeSessionDate(row.anchor_session_date ?? null),
     resolutionSessionDate: normalizeSessionDate(row.resolution_session_date ?? null),
     resolutionPrice: row.resolution_price ?? null,
+    actualMagnitudePct: computeActualMagnitudePct(row.anchor_price ?? null, row.resolution_price ?? null),
     // Populated by `card.ts` after this pure function returns — see
     // `CardRoundMeta.livePrice`'s doc comment. Defaulting to null here keeps
     // this function's output fully deterministic/testable without network

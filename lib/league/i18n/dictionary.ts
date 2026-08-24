@@ -43,6 +43,23 @@ export type LeagueUiPack = {
      */
     correlatedNote: string
   }
+  /**
+   * Cards-tab consensus HERO — two lines, answer first, supporting figures
+   * demoted. Built only by `lib/league/compliance.ts`'s `buildConsensusHero`.
+   * Line 1 is a direction VERB (never "lean"); line 2 is roster tally +
+   * aggregate confidence. Confidence MUST come from `aggregateProbability`
+   * (log-odds aggregate) — never `avgProbability` (majority average).
+   */
+  hero: {
+    answerVerb: Record<'up' | 'down', string>
+    /** Line 2 when aggregate confidence exists — `confidencePct` is aggregateProbability, rounded. */
+    supportLine: (leanCount: number, totalModels: number, confidencePct: number) => string
+    /** Line 2 when direction is clear but aggregate confidence is null. */
+    supportLineNoConfidence: (leanCount: number, totalModels: number) => string
+    allAbstain: (totalModels: number) => string
+    split: (respondedModels: number, totalModels: number) => string
+    none: string
+  }
   /** e.g. "US: 3 up · 1 down · 1 no call" — `label` (e.g. "US"/"Premier") is passed through untranslated (a proper-noun-ish group name). */
   groupTallyLine: (label: string, tally: DirectionTally) => string
   disclaimer: {
@@ -263,6 +280,29 @@ export type LeagueUiPack = {
     expandSection: string
     collapseSection: string
   }
+  /**
+   * Magnitude chrome — a DECORATION on the binary direction call, never a
+   * graded fact. Every template here composes an already-signed, already-
+   * formatted percent string (e.g. "+2.4%"/"-1.1%" from
+   * `lib/league/magnitude.ts`'s `formatSignedPercent`); locales never build
+   * the sign or the number themselves. None of these may carry ✓/✗ or a
+   * slash-over-total — see `lib/league/compliance.ts`'s
+   * `magnitudeHeadlineQualifier` / `magnitudeCompareLine`, the only two
+   * callers.
+   */
+  magnitude: {
+    /**
+     * Headline qualifier attached under the approved direction sentence,
+     * e.g. "within 1d +2.4%" / "1일 내 +2.4%". `horizonLabel` is the same
+     * label `catalog.horizons` already uses elsewhere (never a new horizon
+     * vocabulary).
+     */
+    headlineQualifier: (horizonLabel: string, signedPct: string) => string
+    /** sr-only label for the glyph + signed-percent pair on a model tile. */
+    tileLabel: string
+    /** Post-grading comparison, e.g. "predicted +2.4% \u2192 actual +1.4%". Round-level and per-model use the same template. */
+    predictedVsActual: (predictedPct: string, actualPct: string) => string
+  }
   gating: {
     /** Shown (localized) when JurisdictionGate hides a category for this user. */
     unavailable: string
@@ -414,6 +454,14 @@ const en: LeagueUiPack = {
     none: 'No AI models have reported for this round yet',
     correlatedNote:
       'Premier, Challenger and World all read the same research packet, so this is one event with correlated inputs — not 40 independent forecasts.',
+  },
+  hero: {
+    answerVerb: { up: 'Rises', down: 'Falls' },
+    supportLine: (lean, total, conf) => `${lean} of ${total} · ${conf}% confidence`,
+    supportLineNoConfidence: (lean, total) => `${lean} of ${total}`,
+    allAbstain: (total) => `All ${total} AI models abstained on this round`,
+    split: (responded, total) => `${responded} of ${total} AI models are split — no clear answer`,
+    none: 'No AI models have reported for this round yet',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -593,6 +641,11 @@ const en: LeagueUiPack = {
     expandSection: 'Show',
     collapseSection: 'Hide',
   },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `within ${horizonLabel} ${signedPct}`,
+    tileLabel: 'expected magnitude',
+    predictedVsActual: (predictedPct, actualPct) => `predicted ${predictedPct} \u2192 actual ${actualPct}`,
+  },
   gating: {
     unavailable: 'This prediction category isn\u2019t available in your region yet.',
     tosNote: 'Availability is based on your account\u2019s declared country and detected location. You must use your real jurisdiction \u2014 attempting to bypass this (e.g. via VPN) shifts responsibility for any resulting misuse to you.',
@@ -693,6 +746,14 @@ const ko: LeagueUiPack = {
     none: '아직 이번 라운드에 응답한 AI 모델이 없습니다',
     correlatedNote:
       '프리미어·챌린저·월드 모델은 같은 리서치 패킷을 받습니다. 이 숫자는 서로 독립된 40개 예측이 아니라, 입력이 상관된 한 번의 사건입니다.',
+  },
+  hero: {
+    answerVerb: { up: '오른다', down: '내린다' },
+    supportLine: (lean, total, conf) => `${total}개 중 ${lean}개 · 확신 ${conf}%`,
+    supportLineNoConfidence: (lean, total) => `${total}개 중 ${lean}개`,
+    allAbstain: (total) => `AI 모델 ${total}개 전원이 이번 라운드 의견을 유보했습니다`,
+    split: (responded, total) => `AI 모델 ${total}개 중 ${responded}개가 응답했지만 방향이 갈립니다`,
+    none: '아직 이번 라운드에 응답한 AI 모델이 없습니다',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -869,6 +930,11 @@ const ko: LeagueUiPack = {
     expandSection: '펼치기',
     collapseSection: '접기',
   },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `${horizonLabel} 내 ${signedPct}`,
+    tileLabel: '예상 변동폭',
+    predictedVsActual: (predictedPct, actualPct) => `예측 ${predictedPct} \u2192 실제 ${actualPct}`,
+  },
   gating: {
     unavailable: '이 예측 카테고리는 아직 회원님의 지역에서 제공되지 않습니다.',
     tosNote: '노출 여부는 계정에 등록된 국가와 감지된 접속 위치를 기준으로 결정됩니다. 반드시 실제 관할 지역을 사용해야 하며, VPN 등으로 이를 우회하려는 시도로 발생하는 문제의 책임은 이용자 본인에게 있습니다.',
@@ -968,6 +1034,14 @@ const ja: LeagueUiPack = {
     none: 'このラウンドにはまだ回答したAIモデルがありません',
     correlatedNote:
       'プレミア・チャレンジャー・ワールドは同じリサーチパケットを読むため、これは40件の独立した予測ではなく、入力が相関した一つの出来事です。',
+  },
+  hero: {
+    answerVerb: { up: '上昇', down: '下落' },
+    supportLine: (lean, total, conf) => `${total}体中${lean}体 · 確信度${conf}%`,
+    supportLineNoConfidence: (lean, total) => `${total}体中${lean}体`,
+    allAbstain: (total) => `AIモデル${total}体全てが今回の判断を保留しました`,
+    split: (responded, total) => `AIモデル${total}体中${responded}体が回答しましたが意見が分かれています`,
+    none: 'このラウンドにはまだ回答したAIモデルがありません',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1144,6 +1218,11 @@ const ja: LeagueUiPack = {
     expandSection: '開く',
     collapseSection: '閉じる',
   },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `${horizonLabel}以内 ${signedPct}`,
+    tileLabel: '予想変動幅',
+    predictedVsActual: (predictedPct, actualPct) => `予測 ${predictedPct} \u2192 実際 ${actualPct}`,
+  },
   gating: {
     unavailable: 'この予測カテゴリーは、お住まいの地域ではまだご利用いただけません。',
     tosNote: '表示可否はアカウントに登録された国と検出された接続地域に基づいて判定されます。実際の管轄地域を使用してください。VPN等でこれを回避しようとした場合に生じる問題の責任はご自身が負うものとします。',
@@ -1243,6 +1322,14 @@ const zhTW: LeagueUiPack = {
     none: '本輪目前尚無 AI 模型回應',
     correlatedNote:
       'Premier、Challenger、World 都讀同一份研究資料包，因此這是輸入相關的單一事件，不是 40 個獨立預測。',
+  },
+  hero: {
+    answerVerb: { up: '看漲', down: '看跌' },
+    supportLine: (lean, total, conf) => `${total} 個中 ${lean} 個 · 信心 ${conf}%`,
+    supportLineNoConfidence: (lean, total) => `${total} 個中 ${lean} 個`,
+    allAbstain: (total) => `全部 ${total} 個 AI 模型本輪均未表態`,
+    split: (responded, total) => `${total} 個 AI 模型中有 ${responded} 個給出意見，但看法分歧`,
+    none: '本輪目前尚無 AI 模型回應',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1417,6 +1504,11 @@ const zhTW: LeagueUiPack = {
     expandSection: '展開',
     collapseSection: '收合',
   },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `${horizonLabel}內 ${signedPct}`,
+    tileLabel: '預期變動幅度',
+    predictedVsActual: (predictedPct, actualPct) => `預測 ${predictedPct} \u2192 實際 ${actualPct}`,
+  },
   gating: {
     unavailable: '此預測類別在您所在地區尚未開放。',
     tosNote: '是否顯示取決於您帳號登記的國家與偵測到的所在位置。您必須使用真實所在地區；若透過 VPN 等方式規避此限制，由此產生的任何後果由您自行承擔。',
@@ -1516,6 +1608,14 @@ const fr: LeagueUiPack = {
     none: 'Aucun modèle IA n\u2019a encore répondu pour ce tour',
     correlatedNote:
       'Premier, Challenger et World lisent le même dossier de recherche : c\u2019est un seul événement à entrées corrélées, pas 40 prévisions indépendantes.',
+  },
+  hero: {
+    answerVerb: { up: 'Hausse', down: 'Baisse' },
+    supportLine: (lean, total, conf) => `${lean} sur ${total} · confiance ${conf}%`,
+    supportLineNoConfidence: (lean, total) => `${lean} sur ${total}`,
+    allAbstain: (total) => `Les ${total} modèles IA se sont tous abstenus pour ce tour`,
+    split: (responded, total) => `${responded} modèles IA sur ${total} ont répondu, mais les avis sont partagés`,
+    none: 'Aucun modèle IA n\u2019a encore répondu pour ce tour',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1696,6 +1796,11 @@ const fr: LeagueUiPack = {
     expandSection: 'Afficher',
     collapseSection: 'Masquer',
   },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `sous ${horizonLabel} ${signedPct}`,
+    tileLabel: 'variation attendue',
+    predictedVsActual: (predictedPct, actualPct) => `prévu ${predictedPct} \u2192 réel ${actualPct}`,
+  },
   gating: {
     unavailable: 'Cette catégorie de prédiction n\u2019est pas encore disponible dans votre région.',
     tosNote: 'La disponibilité dépend du pays déclaré sur votre compte et de votre localisation détectée. Vous devez utiliser votre véritable juridiction \u2014 toute tentative de contournement (par VPN, par exemple) vous rend responsable des conséquences.',
@@ -1796,6 +1901,14 @@ const es: LeagueUiPack = {
     none: 'Todavía ningún modelo de IA respondió en esta ronda',
     correlatedNote:
       'Premier, Challenger y World leen el mismo paquete de investigación: esto es un solo evento con entradas correlacionadas, no 40 pronósticos independientes.',
+  },
+  hero: {
+    answerVerb: { up: 'Sube', down: 'Baja' },
+    supportLine: (lean, total, conf) => `${lean} de ${total} · confianza ${conf}%`,
+    supportLineNoConfidence: (lean, total) => `${lean} de ${total}`,
+    allAbstain: (total) => `Los ${total} modelos de IA se abstuvieron en esta ronda`,
+    split: (responded, total) => `${responded} de ${total} modelos de IA respondieron, pero están divididos`,
+    none: 'Todavía ningún modelo de IA respondió en esta ronda',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1976,6 +2089,11 @@ const es: LeagueUiPack = {
     expandSection: 'Mostrar',
     collapseSection: 'Ocultar',
   },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `en ${horizonLabel} ${signedPct}`,
+    tileLabel: 'variación esperada',
+    predictedVsActual: (predictedPct, actualPct) => `previsto ${predictedPct} \u2192 real ${actualPct}`,
+  },
   gating: {
     unavailable: 'Esta categoría de predicción todavía no está disponible en tu región.',
     tosNote: 'La disponibilidad depende del país declarado en tu cuenta y de tu ubicación detectada. Debes usar tu jurisdicción real: si intentas evadir esto (por ejemplo, con una VPN), asumes la responsabilidad de las consecuencias.',
@@ -2076,6 +2194,14 @@ const ar: LeagueUiPack = {
     none: 'لم يستجب أي نموذج ذكاء اصطناعي لهذه الجولة بعد',
     correlatedNote:
       'Premier و Challenger و World يقرأون حزمة البحث نفسها، فهذه حادثة واحدة بمدخلات مترابطة — وليست 40 توقّعًا مستقلًا.',
+  },
+  hero: {
+    answerVerb: { up: 'صعود', down: 'هبوط' },
+    supportLine: (lean, total, conf) => `${lean} من ${total} · ثقة ${conf}%`,
+    supportLineNoConfidence: (lean, total) => `${lean} من ${total}`,
+    allAbstain: (total) => `امتنعت جميع نماذج الذكاء الاصطناعي البالغ عددها ${total} عن إبداء رأي في هذه الجولة`,
+    split: (responded, total) => `أجاب ${responded} من ${total} من نماذج الذكاء الاصطناعي، لكن الآراء منقسمة`,
+    none: 'لم يستجب أي نموذج ذكاء اصطناعي لهذه الجولة بعد',
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -2252,6 +2378,11 @@ const ar: LeagueUiPack = {
     expandSection: 'إظهار',
     collapseSection: 'إخفاء',
   },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `خلال ${horizonLabel} ${signedPct}`,
+    tileLabel: 'التغير المتوقع',
+    predictedVsActual: (predictedPct, actualPct) => `متوقع ${predictedPct} \u2192 فعلي ${actualPct}`,
+  },
   gating: {
     unavailable: 'فئة التوقعات هذه غير متاحة بعد في منطقتك.',
     tosNote: 'يعتمد الظهور على الدولة المسجَّلة في حسابك والموقع المكتشَف لاتصالك. يجب عليك استخدام نطاقك القضائي الحقيقي؛ وإذا حاولت تجاوز ذلك (عبر VPN مثلاً) فإنك تتحمل مسؤولية أي نتائج تترتب على ذلك.',
@@ -2344,6 +2475,19 @@ const pt: LeagueUiPack = {
       `Medido a partir do fechamento de ${fromDate} em ${fromPrice}. A sessão de resolução ainda não foi registrada.`,
     windowNoSessionDates:
       'O preço inicial está registrado, mas as datas de sessão desta previsão não — essas datas não são inferidas de carimbos de tempo.',
+  },
+  hero: {
+    answerVerb: { up: 'Sobe', down: 'Desce' },
+    supportLine: (lean, total, conf) => `${lean} de ${total} · confiança ${conf}%`,
+    supportLineNoConfidence: (lean, total) => `${lean} de ${total}`,
+    allAbstain: (total) => `Todos os ${total} modelos de IA se abstiveram nesta rodada`,
+    split: (responded, total) => `${responded} de ${total} modelos de IA responderam, mas estão divididos`,
+    none: 'Nenhum modelo de IA respondeu nesta rodada ainda',
+  },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `em ${horizonLabel} ${signedPct}`,
+    tileLabel: 'variação esperada',
+    predictedVsActual: (predictedPct, actualPct) => `previsto ${predictedPct} \u2192 real ${actualPct}`,
   },
   verdict: {
     title: 'Veredito final',

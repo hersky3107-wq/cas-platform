@@ -1,6 +1,8 @@
 import type { CombinedMethodTrack, ConsensusSummary, Direction } from './card-types'
 import type { LeagueUiPack } from './i18n/dictionary'
 import { formatWinRatePct } from './win-rate'
+import { isUiHorizon } from './horizon'
+import { formatSignedPercent } from './magnitude'
 
 /**
  * AI Prediction League — REGULATORY / COMPLIANCE LAYER (Layer 2).
@@ -40,11 +42,10 @@ export function directionBadgeLabel(direction: Direction | null, t: LeagueUiPack
 }
 
 /**
- * The one approved consensus headline template, e.g.
- * "6 of 8 AI models lean UP · 58% avg confidence" (or its translation).
- * Direction + probability come from the confidence-weighted aggregate when
- * available; majority tallies still drive the "N of M" count for that lean.
- * Method names (log-odds, geometric mean) must never appear in copy.
+ * Legacy single-line headline (e.g. "6 of 8 AI models lean UP · 58% avg
+ * confidence"). Kept for scripts and retrospective tooling — the live card
+ * hero uses `buildConsensusHero` instead. When called, confidence still
+ * prefers `aggregateProbability` over `avgProbability`.
  */
 export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack): string {
   const { tally, majorityDirection, totalModels, respondedModels, avgProbability, aggregateDirection, aggregateProbability } =
@@ -60,6 +61,73 @@ export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack):
 
   const leanCount = tally[direction]
   return t.headline.majority(leanCount, totalModels, direction, probability)
+}
+
+export type ConsensusHeroPayload =
+  | { kind: 'answer'; line1: string; line2: string }
+  | { kind: 'fallback'; message: string }
+
+/**
+ * Two-line card hero. Field map (for audit — no surface may substitute):
+ *
+ *  Line 1 verb          ← consensus.aggregateDirection → t.hero.answerVerb
+ *  Line 1 magnitude     ← consensus.aggregateMagnitudePct → formatSignedPercent
+ *                          + t.magnitude.headlineQualifier(horizon)
+ *  Line 2 lean count    ← consensus.tally[aggregateDirection]
+ *  Line 2 total         ← consensus.totalModels
+ *  Line 2 confidence    ← consensus.aggregateProbability ONLY (log-odds aggregate)
+ *
+ * NEVER reads avgProbability or majorityDirection for rendered copy.
+ * majorityDirection / avgProbability stay on ConsensusSummary for retrospective
+ * comparison elsewhere — they do not appear in the hero.
+ */
+export function buildConsensusHero(
+  consensus: ConsensusSummary,
+  horizon: string,
+  t: LeagueUiPack,
+): ConsensusHeroPayload | null {
+  const { totalModels, respondedModels, tally, aggregateDirection, aggregateProbability, aggregateMagnitudePct } = consensus
+
+  if (totalModels === 0) return { kind: 'fallback', message: t.hero.none }
+  if (respondedModels === 0) return { kind: 'fallback', message: t.hero.allAbstain(totalModels) }
+  if (!aggregateDirection) return { kind: 'fallback', message: t.hero.split(respondedModels, totalModels) }
+
+  const verb = t.hero.answerVerb[aggregateDirection]
+  const magnitudePart =
+    aggregateMagnitudePct !== null
+      ? t.magnitude.headlineQualifier(
+          t.catalog.horizons[isUiHorizon(horizon) ? horizon : '1d'],
+          formatSignedPercent(aggregateMagnitudePct),
+        )
+      : null
+  const line1 = magnitudePart ? `${verb} · ${magnitudePart}` : verb
+
+  const leanCount = tally[aggregateDirection]
+  const line2 =
+    aggregateProbability !== null
+      ? t.hero.supportLine(leanCount, totalModels, Math.round(aggregateProbability))
+      : t.hero.supportLineNoConfidence(leanCount, totalModels)
+
+  return { kind: 'answer', line1, line2 }
+}
+
+/** Magnitude qualifier fragment only — used by tests and legacy callers. */
+export function magnitudeHeadlineQualifier(consensus: ConsensusSummary, horizon: string, t: LeagueUiPack): string | null {
+  if (consensus.aggregateMagnitudePct === null) return null
+  const horizonLabel = t.catalog.horizons[isUiHorizon(horizon) ? horizon : '1d']
+  return t.magnitude.headlineQualifier(horizonLabel, formatSignedPercent(consensus.aggregateMagnitudePct))
+}
+
+/**
+ * Post-grading "predicted vs actual" comparison line, e.g.
+ * "predicted +2.4% → actual +1.4%" (or its translation) — DISPLAY ONLY. Never
+ * feeds `is_correct`, a hit count, or a win rate (see
+ * `lib/league/__tests__/round-hit.test.ts`'s magnitude-exclusion assertion).
+ * Used both at the round level (predicted = the aggregate) and per-model
+ * (predicted = that model's own magnitude) — same template either way.
+ */
+export function magnitudeCompareLine(predictedPct: number, actualPct: number, t: LeagueUiPack): string {
+  return t.magnitude.predictedVsActual(formatSignedPercent(predictedPct), formatSignedPercent(actualPct))
 }
 
 /** Approved one-line group summary, e.g. "US: 3 up · 1 down". Used for camp/tier rows. */

@@ -8,7 +8,32 @@ import { getLeagueUiPack } from '../i18n/dictionary'
 import { brandCountry } from '../country'
 import { LEAGUE_ROSTER } from '../roster'
 import { bookFromTier, buildVerdictPayload, type VerdictPredictionRow, type VerdictRosterMeta } from '../verdict-aggregate'
-import type { CardModelPrediction } from '../card-types'
+import type { CardModelPrediction, ConsensusSummary } from '../card-types'
+
+/** Stub consensus for panel render tests — direction tallies match fixture distributions. */
+const FFFC1716_CONSENSUS: ConsensusSummary = {
+  tally: { up: 29, down: 11, flat: 0, abstain: 0 },
+  majorityDirection: 'up',
+  totalModels: 40,
+  respondedModels: 40,
+  avgProbability: 62,
+  aggregateDirection: 'up',
+  aggregateProbability: 54,
+  aggregateMagnitudePct: null,
+  aggregateMagnitudeN: 0,
+}
+
+const DOWN_ROUND_CONSENSUS: ConsensusSummary = {
+  tally: { up: 12, down: 28, flat: 0, abstain: 0 },
+  majorityDirection: 'down',
+  totalModels: 40,
+  respondedModels: 40,
+  avgProbability: 55,
+  aggregateDirection: 'down',
+  aggregateProbability: 58,
+  aggregateMagnitudePct: null,
+  aggregateMagnitudeN: 0,
+}
 
 /**
  * A number on screen must be unambiguously (a) a direction count or (b) a hit
@@ -65,6 +90,7 @@ function asCardModels(rows: VerdictPredictionRow[]): CardModelPrediction[] {
     league_tier: 'world',
     direction: r.predicted_direction === 'up' || r.predicted_direction === 'down' ? r.predicted_direction : null,
     probability: r.predicted_value,
+    magnitude: null,
     reasoning_snippet: null,
     is_correct: r.is_correct,
     cost_usd: 0,
@@ -115,6 +141,8 @@ describe('live AAPL fffc1716 hero legend — from the card payload, not the down
         verdict: payload,
         models: asCardModels(predictions),
         t: getLeagueUiPack('ko'),
+        consensus: FFFC1716_CONSENSUS,
+        horizon: '1d',
       })
     )
     expect(html).toContain('29▲')
@@ -184,6 +212,8 @@ describe('direction counts vs hit counts — down-outcome round', () => {
         verdict: payload,
         models: asCardModels(predictions),
         t,
+        consensus: DOWN_ROUND_CONSENSUS,
+        horizon: '1d',
       })
     )
     expect(html).toContain('\u271328/40')

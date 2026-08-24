@@ -11,6 +11,14 @@ export type BinaryDirection = 'up' | 'down'
 export type ParsedPrediction = {
   direction: BinaryDirection | null
   probability: number | null
+  /**
+   * Expected signed percent change over the round's horizon, or null when
+   * missing/non-numeric. Raw extraction only — sign-vs-direction and
+   * per-horizon bound checks happen in `lib/league/magnitude.ts`'s
+   * `validateMagnitude`, called by the orchestrator (this module has no
+   * horizon to check against).
+   */
+  magnitude: number | null
   rationale: string | null
   /** True when the model named a non-binary direction (flat/abstain/neutral/…). */
   rejectedDirection: boolean
@@ -82,10 +90,13 @@ function parseProsePredictionFallback(text: string): ParsedPrediction | null {
     text.match(/\bdirection\b\s*[:=]\s*["']?(up|down|flat|abstain|neutral)["']?/i)
   if (!dirMatch) return null
   const probMatch = text.match(/"probability"\s*:\s*(\d+)/i) ?? text.match(/\bprobability\b\s*[:=]\s*(\d+)/i)
+  const magnitudeMatch =
+    text.match(/"magnitude"\s*:\s*(-?\d+(?:\.\d+)?)/i) ?? text.match(/\bmagnitude\b\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)
   const rationaleMatch = text.match(/"rationale"\s*:\s*"([^"]+)"/i)
   const obj: Record<string, unknown> = {
     direction: dirMatch[1],
     ...(probMatch ? { probability: Number(probMatch[1]) } : {}),
+    ...(magnitudeMatch ? { magnitude: Number(magnitudeMatch[1]) } : {}),
     ...(rationaleMatch ? { rationale: rationaleMatch[1] } : {}),
   }
   return normalizeParsedFields(obj)
@@ -108,8 +119,14 @@ function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction |
   const p = Number(obj.probability)
   if (Number.isFinite(p)) probability = Math.max(0, Math.min(100, Math.round(p)))
 
+  let magnitude: number | null = null
+  if (typeof obj.magnitude === 'number' || typeof obj.magnitude === 'string') {
+    const m = Number(obj.magnitude)
+    if (Number.isFinite(m)) magnitude = m
+  }
+
   const rationale = sanitizeRationale(typeof obj.rationale === 'string' ? obj.rationale : null)
 
-  if (!direction && !rationale && probability === null && !rejectedDirection) return null
-  return { direction, probability, rationale, rejectedDirection }
+  if (!direction && !rationale && probability === null && magnitude === null && !rejectedDirection) return null
+  return { direction, probability, magnitude, rationale, rejectedDirection }
 }

@@ -78,12 +78,15 @@ async function main() {
   let live: CardData = buildCardData(roundRow as unknown as RoundRow, [])
   for (const row of rows) {
     const wireModel: CardModelPrediction = {
+      prediction_id: null,
       model_id: row.model_id,
       brand: row.brand,
+      model_identifier: row.model_id,
       camp: row.camp,
       league_tier: row.league_tier,
       direction: row.predicted_direction,
       probability: row.predicted_value,
+      magnitude: null,
       reasoning_snippet: row.reasoning_snippet,
       is_correct: null, // live lines never carry grading — see route's doc comment
       cost_usd: row.cost_usd,
