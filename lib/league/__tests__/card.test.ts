@@ -58,6 +58,8 @@ describe('buildCardData', () => {
     expect(card.consensus.respondedModels).toBe(3)
     // avg of the two 'up' + one 'down' directional responses: (60+70+55)/3
     expect(card.consensus.avgProbability).toBeCloseTo(61.7, 1)
+    expect(card.consensus.aggregateDirection).toBe('up')
+    expect(card.consensus.aggregateProbability).not.toBeNull()
     expect(card.combinedTrack.n).toBe(0)
     expect(card.combinedTrack.winRatePct).toBeNull()
     expect(card.combinedTrack.provisional).toBe(true)
@@ -183,6 +185,8 @@ describe('compliance: approved phrasing helpers', () => {
     totalModels: 8,
     respondedModels: 8,
     avgProbability: 58.4,
+    aggregateDirection: 'up',
+    aggregateProbability: 58.4,
   }
 
   it('renders the approved "N of M AI models lean X" headline with confidence', () => {
@@ -191,7 +195,15 @@ describe('compliance: approved phrasing helpers', () => {
 
   it('never emits an imperative like "buy" or "sell" for any direction', () => {
     for (const direction of ['up', 'down', 'flat'] as const) {
-      const headline = consensusHeadline({ ...baseConsensus, majorityDirection: direction }, en)
+      const headline = consensusHeadline(
+        {
+          ...baseConsensus,
+          majorityDirection: direction,
+          aggregateDirection: direction === 'flat' ? null : direction,
+          aggregateProbability: direction === 'flat' ? null : 58.4,
+        },
+        en,
+      )
       expect(headline.toLowerCase()).not.toMatch(/\b(buy|sell|bet)\b/)
     }
   })
@@ -204,6 +216,8 @@ describe('compliance: approved phrasing helpers', () => {
         totalModels: 5,
         respondedModels: 0,
         avgProbability: null,
+        aggregateDirection: null,
+        aggregateProbability: null,
       },
       en
     )
@@ -218,10 +232,26 @@ describe('compliance: approved phrasing helpers', () => {
         totalModels: 4,
         respondedModels: 4,
         avgProbability: 50,
+        aggregateDirection: null,
+        aggregateProbability: null,
       },
       en
     )
     expect(headline).toBe('4 of 4 AI models are split — no clear lean')
+  })
+
+  it('headline uses aggregate probability when majority and aggregate disagree on the number', () => {
+    const headline = consensusHeadline(
+      {
+        ...baseConsensus,
+        avgProbability: 56,
+        aggregateDirection: 'up',
+        aggregateProbability: 61.2,
+      },
+      en,
+    )
+    expect(headline).toContain('61%')
+    expect(headline).not.toMatch(/log-odds|geometric/i)
   })
 
   it('badges a null direction as NO CALL, never blank or an instruction', () => {

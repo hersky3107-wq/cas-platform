@@ -10,9 +10,13 @@ import {
   type LeagueTier,
   type Camp,
 } from '@/lib/league/roster'
-import { fetchDataPacket, formatDataPacketForPrompt, sessionDateForPrice, type DataPacket } from '@/lib/league/market-data'
+import { fetchDataPacket, sessionDateForPrice, type DataPacket } from '@/lib/league/market-data'
+import { fetchCryptoContext, fetchMarketConsensus, wantsConsensus, wantsCryptoContext } from '@/lib/league/market-context'
+import { assembleClosedBookInjection, type ClosedBookPacketInput } from '@/lib/league/closed-book-packet'
 import { getResearchPacket, type ResearchPacket } from '@/lib/league/research'
-import { parsePrediction, sanitizeRationale } from '@/lib/league/prediction-parse'
+import { isBinaryDirection, parsePrediction, sanitizeRationale } from '@/lib/league/prediction-parse'
+import { resolveOpenPhase } from '@/lib/league/open-phase'
+import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -48,10 +52,13 @@ Required JSON keys: direction, probability, rationale.
 Example shape (replace values with your own forecast — do not copy this example verbatim):
 {"direction":"up","probability":72,"rationale":"Recent earnings beat and buyback support a higher close."}
 
-- direction: your single best call for how the proposition resolves — one of up, down, flat, or abstain. Use flat only if you genuinely expect ~no change. Use abstain ONLY if you truly cannot form any view — abstaining is never penalized, but a real call is preferred.
+- direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
 - probability: your confidence in the stated direction, integer 0 through 100.
 - rationale: one concise sentence of reasoning or a key citation in plain prose (200 characters or fewer). Write your actual reasoning — never repeat these instructions, schema labels, or placeholder text.
 Return the JSON object only.`
+
+/** Appended once when the first answer is not binary up/down. */
+const BINARY_RETRY_INSTRUCTION = `BINARY RETRY: Your previous answer was invalid. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. Respond with one JSON line only: {"direction":"up"|"down","probability":0-100,"rationale":"..."}`
 
 type ItemType = 'ranked' | 'on_demand'
 
@@ -111,7 +118,7 @@ export type ModelRunResult = {
   brand: string
   camp: Camp
   tier: LeagueTier
-  direction: 'up' | 'down' | 'flat' | null
+  direction: 'up' | 'down' | null
   probability: number | null
   reasoning_snippet: string | null
   cost_usd: number
@@ -192,6 +199,7 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
   if (!input.resolves_at) throw new Error('resolves_at is required when creating a round')
 
   const itemType: ItemType = input.item_type ?? 'ranked'
+  const openPhase = resolveOpenPhase(input.instrument, new Date())
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
     .insert({
@@ -205,6 +213,7 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
       resolves_at: input.resolves_at,
       season_id: input.season_id ?? null,
       cache_key: input.cache_key ?? null,
+      open_phase: openPhase,
     })
     .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at')
     .single()
@@ -223,6 +232,47 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
  * duplicating that fetch earlier just to inline it into the insert would cost
  * an extra, redundant Twelve Data call.
  */
+/**
+ * Write-once snapshot of the exact closed-book injection. The `.is(..., null)`
+ * guard is the same contract as the anchor: a later packet rebuild must not
+ * erase what the original graded models saw.
+ */
+async function persistClosedBookPacket(roundId: string, cacheKey: string, text: string): Promise<void> {
+  try {
+    await supabaseAdmin
+      .from('prediction_rounds')
+      .update({
+        closed_book_packet_cache_key: cacheKey,
+        closed_book_packet_text: text,
+      })
+      .eq('id', roundId)
+      .is('closed_book_packet_text', null)
+  } catch {
+    // best-effort — generation still proceeds; the reproduce test fails closed
+    // if the write didn't land, which is the point of the audit trail.
+  }
+}
+
+async function persistConsensusAggregates(
+  roundId: string,
+  results: readonly { direction: 'up' | 'down' | null; probability: number | null }[],
+): Promise<void> {
+  try {
+    const dual = dualConsensus(binaryCallsFromModels(results))
+    await supabaseAdmin
+      .from('prediction_rounds')
+      .update({
+        consensus_majority_direction: dual.majority.direction,
+        consensus_majority_probability: dual.majority.probability,
+        consensus_aggregate_direction: dual.aggregate.direction,
+        consensus_aggregate_probability: dual.aggregate.probability,
+      })
+      .eq('id', roundId)
+  } catch {
+    // best-effort — card still recomputes live from model rows
+  }
+}
+
 async function persistAnchorPrice(
   roundId: string,
   price: number,
@@ -258,34 +308,31 @@ function buildPropositionBlock(round: ResolvedRound): string {
  *  - price:  premier/challenger/world. Injects the Twelve Data packet AND the
  *            shared research packet (identical text for every closed-book
  *            model — fairness); when a packet is present, abstention for "no
- *            data" is explicitly disallowed. When neither is available, the
- *            model is told so (and may honestly abstain).
+ *            data" is explicitly disallowed. Binary up/down only.
  *  - scout:  research agents (You.com / Perplexity / grounded Gemini / ...).
  *            NO packets — they gather live data via their own web search and
  *            cite it. Keeping Scout packet-free is the league's core
  *            experiment: self-directed search vs reasoning from a fixed packet.
  */
-function buildPrompts(round: ResolvedRound, packet: DataPacket, research: ResearchPacket): { price: string; scout: string } {
+function buildPrompts(round: ResolvedRound, injection: string | null, packetError?: string): { price: string; scout: string } {
   const block = buildPropositionBlock(round)
   const closer = 'Respond with the single-line JSON object described in the system message.'
 
   let price: string
-  if (packet.available || research.available) {
+  if (injection) {
     price = [
       block,
       '',
-      ...(packet.available
-        ? ['DATA PACKET (authoritative price/history — Twelve Data):', formatDataPacketForPrompt(packet), '']
-        : []),
-      ...(research.available ? [research.promptBlock, ''] : []),
-      'You have the market data and research above. Make a directional call (up/down/flat) with a probability. Do NOT answer "abstain" for lack of data — the packets above are your data.',
+      injection,
+      '',
+      'You have the numeric market data and research above. Exactly two answers exist: up or down, plus a probability. Do NOT answer "abstain" for lack of data — the packet above is your data. Prefer the numbered blocks over prose if they disagree.',
       closer,
     ].join('\n')
   } else {
     price = [
       block,
       '',
-      `No live market-data packet is available for this instrument${packet.error ? ` (${packet.error})` : ''}. Use your own prior knowledge; give your best directional call, or "abstain" only if truly impossible.`,
+      `No live market-data packet is available for this instrument${packetError ? ` (${packetError})` : ''}. Use your own prior knowledge; give your best up or down call with a probability. Exactly two answers exist — never flat or abstain.`,
       closer,
     ].join('\n')
   }
@@ -293,7 +340,7 @@ function buildPrompts(round: ResolvedRound, packet: DataPacket, research: Resear
   const scout = [
     block,
     '',
-    'Use live web search to gather the most recent price/context for this instrument, then make a directional call and cite your key source in the rationale.',
+    'Use live web search to gather the most recent price/context for this instrument, then make a directional call (exactly up or down) with a probability and cite your key source in the rationale.',
     closer,
   ].join('\n')
 
@@ -447,8 +494,9 @@ async function callWithRetry(
  * - timeout / hard error → status timeout|error, row written with null
  *   direction/value/snippet and cost 0 (renders as "no opinion", never
  *   scores as wrong). A re-run upserts over it with a real answer.
- * - parse-fail or no usable direction → ABSTAIN: row written with
- *   predicted_direction = null (does NOT count as wrong later).
+ * - non-binary answer (flat/abstain/neutral/…) → one stricter retry; if still
+ *   not up/down → status error, null direction (NOT stored as a prediction,
+ *   NOT counted in hit denominators).
  * - scout tier → same directional storage as other tiers (self-directed
  *   search); reconciliation grades scout on direction like everyone else.
  *
@@ -456,6 +504,10 @@ async function callWithRetry(
  * reported actual model) so two slots sharing one actual model string
  * (e.g. challenger gemini-3.6-flash vs scout gemini-3.6-flash-grounded)
  * never collide on the (round_id, model_id) unique key.
+ *
+ * Timeouts: `callWithRetry` retries once on transient failure (including
+ * timeout). Default timeout is DEFAULT_TIMEOUT_MS (60s); roster entries may
+ * set `timeoutMs` per model (e.g. deepseek-v4-pro 240s, grok-4.6-livesearch 150s).
  */
 async function runOneModel(
   entry: RosterEntry,
@@ -465,31 +517,24 @@ async function runOneModel(
   userId: string | null,
   maxCompletionTokens: number
 ): Promise<ModelRunResult> {
-  const raw = await callWithRetry(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
+  let raw = await callWithRetry(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
+  let totalCostUsd = 0
+  let costSource: 'billed' | 'estimated' = 'estimated'
 
   const base = { model_id: entry.model_id, actual_model: raw.actualModel, brand: entry.brand, camp: entry.camp, tier: entry.league_tier }
 
+  const accumulateCost = (call: RawCall) => {
+    const hasProviderCost = typeof call.costUsd === 'number'
+    const usd = hasProviderCost
+      ? call.costUsd!
+      : computeCostUsd(entry, call.promptTokens, call.completionTokens)
+    totalCostUsd += usd
+    if (hasProviderCost && !call.costIsEstimated) costSource = 'billed'
+  }
+
   if (raw.error) {
     const status: ModelStatus = isTimeout(raw.error) ? 'timeout' : 'error'
-    await supabaseAdmin
-      .from('model_predictions')
-      .upsert(
-        {
-          round_id: roundId,
-          model_id: entry.model_id,
-          brand: entry.brand,
-          camp: entry.camp,
-          league_tier: entry.league_tier,
-          predicted_direction: null,
-          predicted_value: null,
-          reasoning_snippet: null,
-          prompt_tokens: null,
-          completion_tokens: null,
-          reasoning_tokens: null,
-          cost_usd: 0,
-        },
-        { onConflict: 'round_id,model_id' }
-      )
+    await upsertNullPrediction(roundId, entry)
     return {
       ...base,
       direction: null,
@@ -502,24 +547,52 @@ async function runOneModel(
     }
   }
 
-  const parsed = parsePrediction(raw.text)
-  // Prefer the provider's reported cost (OpenRouter/Perplexity = real billed;
-  // You.com = documented flat-rate). Fall back to a token×list-price estimate
-  // only when the provider reports nothing (core-6 direct APIs, Meta Muse).
-  const hasProviderCost = typeof raw.costUsd === 'number'
-  const costUsd = hasProviderCost
-    ? raw.costUsd!
-    : computeCostUsd(entry, raw.promptTokens, raw.completionTokens)
-  const costSource: 'billed' | 'estimated' = hasProviderCost && !raw.costIsEstimated ? 'billed' : 'estimated'
+  accumulateCost(raw)
+  let parsed = parsePrediction(raw.text)
 
-  const parsedDirection = parsed?.direction ?? null
-  const status: ModelStatus = parsedDirection ? 'ok' : 'abstain'
+  // Non-binary (flat/abstain/neutral/missing): one stricter retry, then error.
+  if (!isBinaryDirection(parsed?.direction)) {
+    const retryPrompt = `${userPrompt}\n\n${BINARY_RETRY_INSTRUCTION}`
+    const retryRaw = await callWithRetry(entry, retryPrompt, timeoutMs, userId, maxCompletionTokens)
+    if (retryRaw.error) {
+      await upsertNullPrediction(roundId, entry)
+      return {
+        ...base,
+        actual_model: retryRaw.actualModel,
+        direction: null,
+        probability: null,
+        reasoning_snippet: null,
+        cost_usd: Number(totalCostUsd.toFixed(6)),
+        cost_source: costSource,
+        status: isTimeout(retryRaw.error) ? 'timeout' : 'error',
+        error: retryRaw.error,
+      }
+    }
+    accumulateCost(retryRaw)
+    raw = retryRaw
+    parsed = parsePrediction(retryRaw.text)
+  }
 
-  // Abstain still records participation (null direction) so it never scores as wrong.
+  if (!isBinaryDirection(parsed?.direction)) {
+    await upsertNullPrediction(roundId, entry)
+    return {
+      ...base,
+      actual_model: raw.actualModel,
+      direction: null,
+      probability: null,
+      reasoning_snippet: null,
+      cost_usd: Number(totalCostUsd.toFixed(6)),
+      cost_source: costSource,
+      status: 'error',
+      error: 'non_binary_direction',
+    }
+  }
+
   const rationale =
-    sanitizeRationale(parsed?.rationale) ??
+    sanitizeRationale(parsed!.rationale) ??
     sanitizeRationale(raw.text ? raw.text.trim().slice(0, 500) : null)
-  const probability = parsed?.probability ?? null
+  const probability = parsed!.probability ?? null
+  const direction = parsed!.direction
 
   await supabaseAdmin
     .from('model_predictions')
@@ -530,27 +603,49 @@ async function runOneModel(
         brand: entry.brand,
         camp: entry.camp,
         league_tier: entry.league_tier,
-        predicted_direction: parsedDirection,
+        predicted_direction: direction,
         predicted_value: probability,
         reasoning_snippet: rationale,
         prompt_tokens: raw.promptTokens,
         completion_tokens: raw.completionTokens,
-        // The reused callers do not surface hidden reasoning-token counts.
         reasoning_tokens: null,
-        cost_usd: costUsd,
+        cost_usd: totalCostUsd,
       },
       { onConflict: 'round_id,model_id' }
     )
 
   return {
     ...base,
-    direction: parsedDirection,
+    actual_model: raw.actualModel,
+    direction,
     probability,
     reasoning_snippet: rationale,
-    cost_usd: costUsd,
+    cost_usd: Number(totalCostUsd.toFixed(6)),
     cost_source: costSource,
-    status,
+    status: 'ok',
   }
+}
+
+async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promise<void> {
+  await supabaseAdmin
+    .from('model_predictions')
+    .upsert(
+      {
+        round_id: roundId,
+        model_id: entry.model_id,
+        brand: entry.brand,
+        camp: entry.camp,
+        league_tier: entry.league_tier,
+        predicted_direction: null,
+        predicted_value: null,
+        reasoning_snippet: null,
+        prompt_tokens: null,
+        completion_tokens: null,
+        reasoning_tokens: null,
+        cost_usd: 0,
+      },
+      { onConflict: 'round_id,model_id' }
+    )
 }
 
 function resolveCostCap(override?: number): number {
@@ -571,6 +666,33 @@ function resolveMaxCompletionTokensForEntry(entry: RosterEntry, runDefault: numb
     : runDefault
 }
 
+function toClosedBookInput(
+  round: ResolvedRound,
+  packet: DataPacket,
+  research: ResearchPacket,
+  consensus: Awaited<ReturnType<typeof fetchMarketConsensus>> | null,
+  crypto: Awaited<ReturnType<typeof fetchCryptoContext>> | null,
+): ClosedBookPacketInput {
+  const series = packet.series ?? []
+  const anchorClose = typeof packet.latestClose === 'number' ? packet.latestClose : null
+  return {
+    instrument: round.instrument,
+    category: round.category,
+    horizon: round.horizon,
+    series,
+    seriesSource: 'Twelve Data /time_series+quote',
+    seriesAsOf: packet.asOf ?? series[series.length - 1]?.date ?? null,
+    anchorClose,
+    anchorSessionDate: anchorClose != null ? sessionDateForPrice(packet, anchorClose) : null,
+    quoteAsOf: packet.asOf ?? null,
+    consensus,
+    crypto,
+    findings: research.findings,
+    researchCacheKey: research.cacheKey,
+    assembledAt: new Date().toISOString(),
+  }
+}
+
 export async function generatePredictions(opts: GenerateOptions): Promise<GenerateResult> {
   const { round: roundInput, tiers, userId, onRoundResolved, onModelResult } = opts
   const concurrency = opts.concurrency && opts.concurrency > 0 ? opts.concurrency : DEFAULT_CONCURRENCY
@@ -584,8 +706,8 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
 
   const { round, created } = await ensureRound(roundInput)
   onRoundResolved?.({ id: round.id, created, rosterSize: roster.length })
-  // One packet fetch per ROUND (2 Twelve Data credits), injected to every
-  // price-tier model — not per model.
+  // One packet fetch per ROUND (quote + long time_series = 2 Twelve Data
+  // credits). Consensus adds 5 more for equities (throttled to Basic's 8/min).
   const packet = await fetchDataPacket(round.instrument)
   // Persist the ANCHOR price (best-effort, presentation only — never read by
   // grading/reconciliation): the card header shows "what the instrument was
@@ -599,8 +721,25 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   // One research packet per ROUND, shared identically by tiers 1/2/3 (Scout
   // keeps its own live search). Cached per (instrument, horizon, 6h bucket);
   // its cost counts against the same kill-switch cap as the model calls.
+  // NO new AI call is added here — director+sonar are the existing pair;
+  // findings are filtered/capped in assembleClosedBookInjection.
   const research = await getResearchPacket({ round, budgetRemainingUsd: costCap })
-  const prompts = buildPrompts(round, packet, research)
+  const [consensus, crypto] = await Promise.all([
+    packet.available && wantsConsensus(round.category) && packet.symbol
+      ? fetchMarketConsensus(packet.symbol)
+      : Promise.resolve(null),
+    wantsCryptoContext(round.category) ? fetchCryptoContext(round.instrument) : Promise.resolve(null),
+  ])
+  const injection =
+    packet.available || research.available
+      ? assembleClosedBookInjection(toClosedBookInput(round, packet, research, consensus, crypto))
+      : null
+  // INPUT audit trail: freeze the exact text closed-book models are about to
+  // see, BEFORE any model call. Write-once (null-guard).
+  if (injection) {
+    await persistClosedBookPacket(round.id, research.cacheKey, injection)
+  }
+  const prompts = buildPrompts(round, injection, packet.error)
 
   const results: ModelRunResult[] = []
   let runningCost = research.costUsd
@@ -632,6 +771,8 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
 
   const workers = Array.from({ length: Math.min(concurrency, roster.length) }, () => worker())
   await Promise.all(workers)
+
+  await persistConsensusAggregates(round.id, results)
 
   return {
     round_id: round.id,

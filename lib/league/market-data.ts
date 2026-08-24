@@ -11,6 +11,7 @@ import {
   type RoundResolutionInput,
   type SeriesResult,
 } from '@/lib/prediction/resolution'
+import { PRINTED_SESSION_COUNT, SERIES_OUTPUT_SIZE } from './closed-book-packet'
 
 /**
  * AI Prediction League — market-data adapter (Twelve Data).
@@ -36,8 +37,37 @@ import {
  */
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com'
-const DEFAULT_SERIES_DAYS = 10
+/** Prompt series: enough bars for 3m base rates (see SERIES_OUTPUT_SIZE). Live quote is a separate 1-credit call. */
+const DEFAULT_SERIES_DAYS = SERIES_OUTPUT_SIZE
 const FETCH_TIMEOUT_MS = 15_000
+/** Basic plan is 8 credits/min. Leave 1 spare so a concurrent live-quote cannot 429 a generate. */
+const TD_CREDITS_PER_MIN = 7
+const creditStamps: number[] = []
+let creditLock: Promise<void> = Promise.resolve()
+
+async function waitForTwelveDataCredit(): Promise<void> {
+  let release!: () => void
+  const mine = new Promise<void>((r) => {
+    release = r
+  })
+  const prev = creditLock
+  creditLock = mine
+  await prev
+  try {
+    for (;;) {
+      const now = Date.now()
+      while (creditStamps.length && now - creditStamps[0] >= 60_000) creditStamps.shift()
+      if (creditStamps.length < TD_CREDITS_PER_MIN) {
+        creditStamps.push(now)
+        return
+      }
+      const wait = 60_000 - (now - creditStamps[0]) + 25
+      await new Promise((r) => setTimeout(r, wait))
+    }
+  } finally {
+    release()
+  }
+}
 
 export type InstrumentKind = 'stock' | 'crypto' | 'fx' | 'other'
 
@@ -84,10 +114,11 @@ function getApiKey(): string | null {
   return k && k.trim().length ? k.trim() : null
 }
 
-async function twelveDataGet(path: string, params: Record<string, string>): Promise<{ ok: true; json: any } | { ok: false; error: string }> {
+export async function twelveDataGet(path: string, params: Record<string, string>): Promise<{ ok: true; json: any } | { ok: false; error: string }> {
   const apiKey = getApiKey()
   if (!apiKey) return { ok: false, error: 'TWELVE_DATA_API_KEY not set' }
 
+  await waitForTwelveDataCredit()
   const qs = new URLSearchParams({ ...params, apikey: apiKey }).toString()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
@@ -188,8 +219,9 @@ export function formatDataPacketForPrompt(packet: DataPacket): string {
   if (typeof packet.previousClose === 'number') lines.push(`Previous close: ${packet.previousClose}`)
   if (typeof packet.percentChange === 'number') lines.push(`Last change: ${packet.percentChange}%`)
   if (packet.series && packet.series.length) {
-    const rows = packet.series.map((s) => `  ${s.date}: ${s.close}`).join('\n')
-    lines.push(`Recent daily closes (oldest→newest):\n${rows}`)
+    const printed = packet.series.slice(-PRINTED_SESSION_COUNT)
+    const rows = printed.map((s) => `  ${s.date}: ${s.close}`).join('\n')
+    lines.push(`Recent daily closes (last ${printed.length}, oldest→newest):\n${rows}`)
   }
   return lines.join('\n')
 }

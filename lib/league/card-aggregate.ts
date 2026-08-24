@@ -27,6 +27,7 @@ import {
   type VerdictPayload,
   type VerdictRosterMeta,
 } from './verdict-aggregate'
+import { binaryCallsFromModels, dualConsensus } from './log-odds-consensus'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), pure assembly.
@@ -120,12 +121,15 @@ function buildConsensus(models: CardModelPrediction[]): ConsensusSummary {
   const directional = models.filter((m) => m.direction !== null)
   const probs = directional.map((m) => m.probability).filter((p): p is number => typeof p === 'number')
   const avgProbability = probs.length ? probs.reduce((a, b) => a + b, 0) / probs.length : null
+  const dual = dualConsensus(binaryCallsFromModels(models))
   return {
     tally,
     majorityDirection: majorityOf(tally),
     totalModels: models.length,
     respondedModels: models.length - tally.abstain,
     avgProbability: avgProbability === null ? null : Math.round(avgProbability * 10) / 10,
+    aggregateDirection: dual.aggregate.direction,
+    aggregateProbability: dual.aggregate.probability,
   }
 }
 

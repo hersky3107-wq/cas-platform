@@ -51,7 +51,7 @@ export function usesTradingSessions(category: PredictionCategory | string): bool
  * holiday calendar is wired up, so this is a weekday approximation — the
  * same approximation documented on `addTradingDays` below).
  */
-const TRADING_SESSION_COUNT: Record<UiHorizon, number> = {
+export const TRADING_SESSION_COUNT: Record<UiHorizon, number> = {
   '1d': 1,
   '1w': 5,
   '1m': 21,
@@ -59,11 +59,21 @@ const TRADING_SESSION_COUNT: Record<UiHorizon, number> = {
 }
 
 /** Calendar-day count per horizon for categories that trade every day. */
-const CALENDAR_DAY_COUNT: Record<UiHorizon, number> = {
+export const CALENDAR_DAY_COUNT: Record<UiHorizon, number> = {
   '1d': 1,
   '1w': 7,
   '1m': 30,
   '3m': 90,
+}
+
+/**
+ * How many daily bars ahead the base rate / `resolves_at` counts for this
+ * (category, horizon). Equities/ETFs: trading sessions. Crypto/FX: calendar
+ * days (those series include weekend bars). Unknown horizon → 1 (1d).
+ */
+export function sessionsForHorizon(category: PredictionCategory | string, horizon: string): number {
+  const h = isUiHorizon(horizon) ? horizon : '1d'
+  return usesTradingSessions(category) ? TRADING_SESSION_COUNT[h] : CALENDAR_DAY_COUNT[h]
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000

@@ -1,0 +1,744 @@
+[
+  {
+    "id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "instrument": "AAPL",
+    "horizon": "1d",
+    "has_packet": true,
+    "has_base_rate": true,
+    "base_rate_pct": 53.4,
+    "packet_chars": 3019,
+    "dirs": {
+      "up": 34,
+      "down": 4,
+      "null": 1,
+      "flat": 1
+    },
+    "n_preds": 40,
+    "prob": {
+      "n": 39,
+      "min": 53,
+      "max": 72,
+      "spread": 19,
+      "mean": 56.33
+    },
+    "within_2_of_base_rate": 24,
+    "dispersion_cite": {
+      "cited_n": 1,
+      "cited_up": 1,
+      "cited_down": 0,
+      "not_cited_n": 37,
+      "not_cited_up": 33,
+      "not_cited_down": 4
+    },
+    "special": [
+      {
+        "model_id": "hcx-007",
+        "direction": null,
+        "probability": null,
+        "is_correct": null,
+        "rationale": null,
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "k-exaone-2.0",
+        "direction": "flat",
+        "probability": 62,
+        "is_correct": null,
+        "rationale": "Price at anchor close, tight recent range, and no earnings or major catalyst within horizon suggest minimal expected movement.",
+        "cites_dispersion": false
+      }
+    ],
+    "all": [
+      {
+        "model_id": "claude-fable-5",
+        "direction": "up",
+        "probability": 58,
+        "is_correct": null,
+        "rationale": "Aug 24 premarket showed AAPL up ~0.4% to ~310.55 on foldable iPhone buzz, above the 309.35 anchor, and the 1-day base rate favors gains at 53%.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "claude-haiku-4.5",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Base rate of 53.4% for up moves, recent premarket strength at $310.55 (+0.39%), positive earnings surprise (+6.9%), and bullish analyst consensus (25 buy/strong buy vs 5 sell) slightly favor upside, t",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "claude-sonnet-5",
+        "direction": "up",
+        "probability": 56,
+        "is_correct": null,
+        "rationale": "Premarket ticks up on new iPhone news, near-term momentum positive, and base rate slightly favors upside continuation.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "claude-sonnet-5-websearch",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "AAPL trading around $310 with no major negative catalysts and modest recent upward momentum despite mixed AI/restructuring news.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "command-a",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Recent positive earnings surprise and premarket gains suggest a higher close, despite mixed analyst ratings.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "deepseek-v3.2",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Historical base rate of 53.4% for up days, supported by positive earnings surprise and net buy analyst sentiment.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "deepseek-v4-flash",
+        "direction": "up",
+        "probability": 58,
+        "is_correct": null,
+        "rationale": "Recent bounce from 302 low, positive premarket, and base rate 53.4% give a slight edge for higher close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "deepseek-v4-pro",
+        "direction": "down",
+        "probability": 60,
+        "is_correct": null,
+        "rationale": "Recent downtrend with price below moving averages outweighs positive premarket.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "ernie-4.5-vl",
+        "direction": "up",
+        "probability": 53,
+        "is_correct": null,
+        "rationale": "Base rate suggests slight upward tendency with 53.4% historical probability of closing higher.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gemini-3.1-pro",
+        "direction": "up",
+        "probability": 58,
+        "is_correct": null,
+        "rationale": "Premarket and early intraday pricing on August 24 indicate a slight upward drift above the $309.35 anchor close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gemini-3.5-flash-lite",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Slight premarket uptick and positive historical base rate favor a marginal recovery from the anchor close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gemini-3.6-flash",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Slight premarket strength and support near the 50-day SMA favor a modest upward rebound consistent with base rates.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gemini-3.6-flash-grounded",
+        "direction": "up",
+        "probability": 53,
+        "is_correct": null,
+        "rationale": "AAPL shows slight upside momentum following consolidation around $309 based on Stock Analysis historical price data.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "glm-5.2",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Base rate favors up (53.4%); premarket slightly positive on foldable iPhone news; price near recent range lows supports bounce potential despite being below SMA20.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gpt-5-search-api",
+        "direction": "down",
+        "probability": 65,
+        "is_correct": null,
+        "rationale": "AAPL is trading at $309.35, down ~0.6% from its prior close of ~$311.30, sentiment neutral‐to‐weak and after recent guidance spooked investors ([benzinga.com](https://www.benzinga.com/quote/AAPL/senti",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gpt-5.6-luna",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "AAPL’s long-run one-session up rate is 53.4%; modest premarket strength and bullish earnings surprise slightly outweigh recent weakness below the 20-day average.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gpt-5.6-sol",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Positive Aug. 24 premarket indications and AAPL's 53.4% one-session up rate slightly outweigh recent weakness below its moving averages.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gpt-5.6-terra",
+        "direction": "up",
+        "probability": 56,
+        "is_correct": null,
+        "rationale": "Premarket indications are modestly positive, and AAPL's historical one-session up rate is 53.4%, despite trading below its 20-day average.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "grok-4.3",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Base rate of 53.4% higher closes plus recent earnings beat outweighs mild technical weakness below SMA20 in a normal-vol session.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "grok-4.5",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Base rate 53.4% up days; premarket bid ~310.5 on foldable-iPhone chatter and price near SMA50 with buy-heavy Street targets.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "grok-4.6-livesearch",
+        "direction": "down",
+        "probability": 58,
+        "is_correct": null,
+        "rationale": "Nasdaq futures down 0.55% on US-Canada tariff rift and Iran sanctions; AAPL premarket only +0.35% likely follows tech lower vs Friday $309.35 close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "hcx-007",
+        "direction": null,
+        "probability": null,
+        "is_correct": null,
+        "rationale": null,
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "k-exaone-2.0",
+        "direction": "flat",
+        "probability": 62,
+        "is_correct": null,
+        "rationale": "Price at anchor close, tight recent range, and no earnings or major catalyst within horizon suggest minimal expected movement.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "kimi-k2.6",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Base rate slightly favors up; AAPL is trading modestly above the Aug 21 close in premarket and holds near-term support, while a new foldable iPhone headline adds mild upside bias.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "kimi-k3",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Base rate favors up (53.4%) and premarket quotes show mild gains near 310.6, but price is below SMA20 with recent pullback, capping conviction.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "llama-4-maverick",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Recent earnings surprise and positive premarket news suggest a higher close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "mimo-v2.5",
+        "direction": "up",
+        "probability": 57,
+        "is_correct": null,
+        "rationale": "Positive earnings surprise and analyst median target above current price suggest upside potential.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "minimax-m3",
+        "direction": "up",
+        "probability": 56,
+        "is_correct": null,
+        "rationale": "Aug 24 premarket ~$310.55 (+0.39% vs 309.35 anchor) and 1d base rate 53.4% up tilt slightly bullish, though price below SMA20/50 and 33% vol cap confidence.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "mistral-medium-3.5",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Base rate 53.4% up, recent premarket/after-hours upticks, and positive earnings surprise support a slight upward bias.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "muse-spark-1.2",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Price below SMA20/SMA50 after two down days suggests short-term bounce; premarket +0.39% and base rate 53.4% favor slight up bias.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "nemotron-3-ultra-550b",
+        "direction": "down",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Price below SMA20/50 with 9% decline from July high and Jefferies Underperform rating signal near-term weakness despite earnings beat.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "nova-2-lite",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Recent earnings beat and mostly positive analyst sentiment support a higher close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "phi-4",
+        "direction": "up",
+        "probability": 60,
+        "is_correct": null,
+        "rationale": "Analysts' median price target and recent price trends suggest an uptrend, despite consensus dispersion.",
+        "cites_dispersion": true
+      },
+      {
+        "model_id": "qwen3.5-flash",
+        "direction": "up",
+        "probability": 72,
+        "is_correct": null,
+        "rationale": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Task: Forecast whether AAPL will close higher by 2026-08-25 than its last close (anchored at 2026-08-21).\n    *   Input Data: Numeric market dat",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "qwen3.5-plus",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": null,
+        "rationale": "Base rate favors up moves (53.4%), and recent positive earnings surprise alongside strong analyst consensus provides a marginal edge for a higher close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "qwen3.8-max",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Base rate favors up (53.4%), premarket shows slight positive momentum on foldable iPhone news, and stock is near short-term support after a 2-day pullback.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "seed-1.6",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "53.4% 1d higher base rate, 2026-08-24 premarket gain, and positive earnings surprise support an upward close on 2026-08-25.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "solar-pro3",
+        "direction": "up",
+        "probability": 58,
+        "is_correct": null,
+        "rationale": "Base rate shows 53.4% up over last 1000 sessions; median price target at 335 suggests upside.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "sonar-reasoning-pro",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": null,
+        "rationale": "Last close 309.35 with stable trading today and no negative news, giving slight edge to an uptick tomorrow[1][5][15].",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "youcom-research",
+        "direction": "up",
+        "probability": 58,
+        "is_correct": null,
+        "rationale": "Despite recent volatility and analyst downgrades, AAPL has a strong 'Buy' consensus and historical momentum, suggesting a likely rebound from the $309 level towards the $316-$330 analyst targets.",
+        "cites_dispersion": false
+      }
+    ]
+  },
+  {
+    "id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "instrument": "AAPL",
+    "horizon": "1d",
+    "has_packet": false,
+    "has_base_rate": false,
+    "base_rate_pct": null,
+    "packet_chars": 0,
+    "dirs": {
+      "up": 29,
+      "down": 11
+    },
+    "n_preds": 40,
+    "prob": {
+      "n": 40,
+      "min": 51,
+      "max": 75,
+      "spread": 24,
+      "mean": 56.23
+    },
+    "within_2_of_base_rate": null,
+    "dispersion_cite": {
+      "cited_n": 0,
+      "cited_up": 0,
+      "cited_down": 0,
+      "not_cited_n": 40,
+      "not_cited_up": 29,
+      "not_cited_down": 11
+    },
+    "special": [
+      {
+        "model_id": "hcx-007",
+        "direction": "down",
+        "probability": 55,
+        "is_correct": false,
+        "rationale": "Apple has been experiencing downward trends recently, closing lower than the previous day multiple times.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "k-exaone-2.0",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Slight positive momentum from premarket (+$0.12, +0.04%) and encouraging analyst upgrades outweigh minor NASDAQ weakness; recent trend shows recovery from low of 302.25, with last close near support.",
+        "cites_dispersion": false
+      }
+    ],
+    "all": [
+      {
+        "model_id": "claude-fable-5",
+        "direction": "up",
+        "probability": 56,
+        "is_correct": true,
+        "rationale": "Premarket slightly positive, Redburn Buy upgrade ($400 PT) and German antitrust resolution are tailwinds, though broader Nasdaq is soft; modest edge to up.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "claude-haiku-4.5",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "AAPL closed at $305.59 on Aug 17; premarket Aug 18 at $306.05 (+0.07%) and Redburn Buy upgrade with $400 target supports upside, though broad market weakness (-0.32% Nasdaq) creates headwind.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "claude-sonnet-5",
+        "direction": "up",
+        "probability": 52,
+        "is_correct": true,
+        "rationale": "Positive analyst upgrade and premarket strength slightly offset broader market weakness; near coin-flip with mild upward tilt.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "claude-sonnet-5-websearch",
+        "direction": "up",
+        "probability": 54,
+        "is_correct": true,
+        "rationale": "AAPL closed +0.22% at $305.93 on Aug 17 with bullish technical setup (ascending channel) despite mixed news flow like Micron chip supply concerns.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "command-a",
+        "direction": "up",
+        "probability": 60,
+        "is_correct": true,
+        "rationale": "Recent premarket activity shows a slight increase, and the Rothschild & Co Redburn upgrade to Buy with a $400 target may provide upward momentum, despite mixed broader market trends.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "deepseek-v3.2",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Positive catalyst from Rothschild upgrade to Buy with $400 target and market stabilization after recent dip supports short-term rebound.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "deepseek-v4-flash",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Premarket shows slight uptick and a positive analyst upgrade, but broader market weakness tempers confidence.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "deepseek-v4-pro",
+        "direction": "down",
+        "probability": 58,
+        "is_correct": false,
+        "rationale": "AAPL’s after-hours quote is below the Aug 17 close and broad market indications are negative, suggesting slight downside despite the Buy upgrade.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "ernie-4.5-vl",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Recent analyst upgrade to Buy and premarket gains suggest upward momentum.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gemini-3.1-pro",
+        "direction": "up",
+        "probability": 53,
+        "is_correct": true,
+        "rationale": "Recent analyst upgrade with a $400 target and the resolution of a German antitrust probe provide a slight positive catalyst despite recent broader market weakness.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gemini-3.5-flash-lite",
+        "direction": "up",
+        "probability": 52,
+        "is_correct": true,
+        "rationale": "Apple benefits from a recent Redburn Buy upgrade to $400, offsetting broader minor market weakness.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gemini-3.6-flash",
+        "direction": "up",
+        "probability": 53,
+        "is_correct": true,
+        "rationale": "Analyst upgrade to Buy by Rothschild & Co and price stabilization around $305 give a slight upward edge.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gemini-3.6-flash-grounded",
+        "direction": "up",
+        "probability": 53,
+        "is_correct": true,
+        "rationale": "AAPL closed at $305.59 on Aug 17; positive analyst sentiment on AI partnerships and steady demand support a modest upward bias for the Aug 18 session.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "glm-5.2",
+        "direction": "up",
+        "probability": 52,
+        "is_correct": true,
+        "rationale": "Bullish catalysts (Rothschild upgrade to Buy $400 target, German antitrust probe resolved) slightly offset weak broader market; AAPL stabilizing near 302-306 range with slight premarket gains.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gpt-5-search-api",
+        "direction": "down",
+        "probability": 65,
+        "is_correct": false,
+        "rationale": "Shares already down slightly & guidance was modest (9-11% growth, FX headwinds) suggests limited upside in next 24h vs recent close. ([axios.com](https://www.axios.com/2026/07/30/apple-earnings-beat-e",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gpt-5.6-luna",
+        "direction": "down",
+        "probability": 55,
+        "is_correct": false,
+        "rationale": "Recent momentum is negative and broader markets were weak; despite supportive Apple headlines, after-hours trading below $305.59 modestly favors a lower Aug. 18 close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gpt-5.6-sol",
+        "direction": "up",
+        "probability": 53,
+        "is_correct": true,
+        "rationale": "Slightly positive premarket trading and a fresh Buy upgrade modestly outweigh weak broad-market momentum and flat recent price action.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "gpt-5.6-terra",
+        "direction": "down",
+        "probability": 54,
+        "is_correct": false,
+        "rationale": "Nasdaq was reportedly down about 0.32% in Aug. 18 trading, and Apple lacked a strong confirmed catalyst to offset the weak broader tape.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "grok-4.3",
+        "direction": "down",
+        "probability": 52,
+        "is_correct": false,
+        "rationale": "Premarket at 306.05 but Nasdaq/S&P both down ~0.3-0.5% on Aug 18 outweighs upgrade news; recent closes flat-to-down.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "grok-4.5",
+        "direction": "down",
+        "probability": 58,
+        "is_correct": false,
+        "rationale": "Nasdaq/S&P down 0.3-0.5% in Aug 18 trading; AAPL AH quote ~305.27 below 305.59 close amid mixed analyst/news flow.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "grok-4.6-livesearch",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Overnight +0.12% to 305.96 vs Aug 17 close 305.59; mixed chip/iPhone news, tight recent range, slight bias higher (Yahoo Finance)",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "hcx-007",
+        "direction": "down",
+        "probability": 55,
+        "is_correct": false,
+        "rationale": "Apple has been experiencing downward trends recently, closing lower than the previous day multiple times.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "k-exaone-2.0",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Slight positive momentum from premarket (+$0.12, +0.04%) and encouraging analyst upgrades outweigh minor NASDAQ weakness; recent trend shows recovery from low of 302.25, with last close near support.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "kimi-k2.6",
+        "direction": "up",
+        "probability": 58,
+        "is_correct": true,
+        "rationale": "Premarket quotes slightly above $305.59 and fresh positive catalysts (antitrust probe end, Rothschild upgrade to Buy) support a modestly higher close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "kimi-k3",
+        "direction": "down",
+        "probability": 55,
+        "is_correct": false,
+        "rationale": "AAPL drifting lower since Aug 7 highs; broad indices negative (-0.3 to -0.5%) and after-hours quote slightly down, outweighing Redburn upgrade.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "llama-4-maverick",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Premarket quote is higher and recent analyst upgrades offset downgrades.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "mimo-v2.5",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Premarket quote at $306.05 slightly above last close and recent Buy upgrade support upside.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "minimax-m3",
+        "direction": "up",
+        "probability": 51,
+        "is_correct": true,
+        "rationale": "Premarket +0.04%, recent Buy upgrade ($400 PT), but broader market -0.32% and stock flat-late around $305.60; coin-flip with slight upside lean.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "mistral-medium-3.5",
+        "direction": "up",
+        "probability": 60,
+        "is_correct": true,
+        "rationale": "Recent Rothschild upgrade to Buy ($400 target) and premarket uptick (+0.04%) suggest positive momentum.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "muse-spark-1.2",
+        "direction": "down",
+        "probability": 53,
+        "is_correct": false,
+        "rationale": "AAPL in pullback from 313 peak (5 of last 7 closes down), Nasdaq -0.28% to -0.32% drag, despite premarket +0.04% bump, near-term momentum slightly negative.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "nemotron-3-ultra-550b",
+        "direction": "down",
+        "probability": 55,
+        "is_correct": false,
+        "rationale": "Recent downtrend and broader market weakness outweigh premarket uptick and analyst upgrade.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "nova-2-lite",
+        "direction": "up",
+        "probability": 65,
+        "is_correct": true,
+        "rationale": "Premarket quote shows upward momentum and recent analyst upgrade supports a potential rise.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "phi-4",
+        "direction": "up",
+        "probability": 60,
+        "is_correct": true,
+        "rationale": "AAPL's premarket uptick and Rothschild & Co upgrade suggest a potential upward move by the close.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "qwen3.5-flash",
+        "direction": "up",
+        "probability": 62,
+        "is_correct": true,
+        "rationale": null,
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "qwen3.5-plus",
+        "direction": "up",
+        "probability": 52,
+        "is_correct": true,
+        "rationale": "AAPL is consolidating in a tight range around $305-306 with mixed analyst updates and slight premarket gains balancing after-hours weakness, suggesting a narrow range close near current levels.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "qwen3.8-max",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Rothschild upgrade to Buy with $400 target and resolved German antitrust probe provide mild bullish catalyst; premarket slightly positive at $306.05 despite broader market weakness.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "seed-1.6",
+        "direction": "up",
+        "probability": 55,
+        "is_correct": true,
+        "rationale": "Rothschild’s Buy upgrade and antitrust probe resolution provide upside support despite mild broader U.S. market declines.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "solar-pro3",
+        "direction": "up",
+        "probability": 75,
+        "is_correct": true,
+        "rationale": "Upward pressure from positive earnings call and analyst upgrade outweighs market dip.",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "sonar-reasoning-pro",
+        "direction": "up",
+        "probability": 53,
+        "is_correct": true,
+        "rationale": "Apple trades just below prior close 305.93, and absent major news daily moves are near random with slight upside drift, so modest edge for a higher close[10][11].",
+        "cites_dispersion": false
+      },
+      {
+        "model_id": "youcom-research",
+        "direction": "down",
+        "probability": 65,
+        "is_correct": false,
+        "rationale": "Technical indicators, including a bearish MACD signal and a recent pivot top, suggest continued downward pressure toward established support levels despite a long-term consensus Buy rating. [[1]]",
+        "cites_dispersion": false
+      }
+    ]
+  }
+]

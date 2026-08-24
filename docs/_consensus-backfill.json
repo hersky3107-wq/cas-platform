@@ -1,0 +1,118 @@
+{
+  "rounds": [
+    {
+      "id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+      "open_phase": "pre_open",
+      "opened_at": "2026-08-24T11:41:45.642Z",
+      "majority": {
+        "direction": "up",
+        "probability": 56.2,
+        "up": 34,
+        "down": 4
+      },
+      "aggregate": {
+        "direction": "up",
+        "probability": 54.3,
+        "n": 38
+      },
+      "cites": {
+        "sma": 11,
+        "sma_models": [
+          "claude-haiku-4.5",
+          "deepseek-v4-pro",
+          "gemini-3.6-flash",
+          "glm-5.2",
+          "gpt-5.6-sol",
+          "grok-4.3",
+          "grok-4.5",
+          "kimi-k3",
+          "minimax-m3",
+          "muse-spark-1.2",
+          "nemotron-3-ultra-550b"
+        ],
+        "w52": 0,
+        "w52_models": [],
+        "pullback": 7,
+        "pullback_models": [
+          "deepseek-v4-flash",
+          "gemini-3.6-flash",
+          "glm-5.2",
+          "kimi-k3",
+          "muse-spark-1.2",
+          "qwen3.8-max",
+          "youcom-research"
+        ]
+      },
+      "down_callers": [
+        "deepseek-v4-pro",
+        "gpt-5-search-api",
+        "grok-4.6-livesearch",
+        "nemotron-3-ultra-550b"
+      ],
+      "packet_has_base_rate": true
+    },
+    {
+      "id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+      "open_phase": "after_close",
+      "opened_at": "2026-08-18T03:12:41.103Z",
+      "majority": {
+        "direction": "up",
+        "probability": 56.2,
+        "up": 29,
+        "down": 11
+      },
+      "aggregate": {
+        "direction": "up",
+        "probability": 52.7,
+        "n": 40
+      },
+      "cites": {
+        "sma": 0,
+        "sma_models": [],
+        "w52": 1,
+        "w52_models": [
+          "k-exaone-2.0"
+        ],
+        "pullback": 2,
+        "pullback_models": [
+          "deepseek-v3.2",
+          "muse-spark-1.2"
+        ]
+      },
+      "down_callers": [
+        "deepseek-v4-pro",
+        "gpt-5.6-luna",
+        "gpt-5.6-terra",
+        "grok-4.3",
+        "grok-4.5",
+        "hcx-007",
+        "kimi-k3",
+        "muse-spark-1.2",
+        "nemotron-3-ultra-550b",
+        "gpt-5-search-api",
+        "youcom-research"
+      ],
+      "packet_has_base_rate": false
+    }
+  ],
+  "down_caller_overlap": {
+    "overlap": [
+      "deepseek-v4-pro",
+      "gpt-5-search-api",
+      "nemotron-3-ultra-550b"
+    ],
+    "only_f3752ddd": [
+      "grok-4.6-livesearch"
+    ],
+    "only_fffc1716": [
+      "gpt-5.6-luna",
+      "gpt-5.6-terra",
+      "grok-4.3",
+      "grok-4.5",
+      "hcx-007",
+      "kimi-k3",
+      "muse-spark-1.2",
+      "youcom-research"
+    ]
+  }
+}

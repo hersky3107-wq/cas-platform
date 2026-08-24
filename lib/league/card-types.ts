@@ -69,13 +69,24 @@ export function emptyTally(): DirectionTally {
 
 export type ConsensusSummary = {
   tally: DirectionTally
-  /** null when tied or when every model abstained. */
+  /** Majority vote among up/down/flat tallies; null when tied or empty. */
   majorityDirection: Direction | null
   totalModels: number
   /** totalModels − abstain. */
   respondedModels: number
-  /** Average `probability` among directional (non-abstain) responses, 0-100, or null. */
+  /**
+   * Mean stated probability among directional responses (majority method).
+   * Kept for retrospective comparison with `aggregateProbability`.
+   */
   avgProbability: number | null
+  /**
+   * Confidence-weighted log-odds aggregate direction (up/down only).
+   * This is what the user-facing headline uses for direction + probability.
+   * Method name is never shown in UI.
+   */
+  aggregateDirection: 'up' | 'down' | null
+  /** Confidence in `aggregateDirection` after inverse-logit, 0–100. */
+  aggregateProbability: number | null
 }
 
 export type CampSplit = Record<Camp, DirectionTally>

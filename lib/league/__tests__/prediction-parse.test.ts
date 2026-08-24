@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isPlaceholderRationale, parsePrediction, sanitizeRationale } from '../prediction-parse'
+import { isPlaceholderRationale, parsePrediction, sanitizeRationale, isBinaryDirection } from '../prediction-parse'
 
 describe('isPlaceholderRationale', () => {
   it('rejects angle-bracket schema echoes', () => {
@@ -12,7 +12,7 @@ describe('isPlaceholderRationale', () => {
   })
 })
 
-describe('parsePrediction', () => {
+describe('parsePrediction — binary up/down only', () => {
   it('parses valid JSON and keeps rationale prose', () => {
     const parsed = parsePrediction(
       '{"direction":"up","probability":72,"rationale":"Momentum looks positive after the last earnings beat."}',
@@ -21,6 +21,7 @@ describe('parsePrediction', () => {
       direction: 'up',
       probability: 72,
       rationale: 'Momentum looks positive after the last earnings beat.',
+      rejectedDirection: false,
     })
   })
 
@@ -30,14 +31,24 @@ describe('parsePrediction', () => {
       direction: 'down',
       probability: 61,
       rationale: null,
+      rejectedDirection: false,
     })
   })
 
-  it('still returns direction when rationale is rejected', () => {
-    const parsed = parsePrediction('{"direction":"flat","probability":40,"rationale":"one line, max 200 chars"}')
-    expect(parsed?.direction).toBe('flat')
+  it('rejects flat — direction null, rejectedDirection true', () => {
+    const parsed = parsePrediction('{"direction":"flat","probability":40,"rationale":"Range-bound near anchor."}')
+    expect(parsed?.direction).toBeNull()
+    expect(parsed?.rejectedDirection).toBe(true)
     expect(parsed?.probability).toBe(40)
-    expect(parsed?.rationale).toBeNull()
+    expect(isBinaryDirection(parsed?.direction)).toBe(false)
+  })
+
+  it('rejects abstain, neutral, and null direction', () => {
+    expect(parsePrediction('{"direction":"abstain","probability":50,"rationale":"Unsure."}')?.direction).toBeNull()
+    expect(parsePrediction('{"direction":"neutral","probability":50,"rationale":"Unsure."}')?.rejectedDirection).toBe(
+      true,
+    )
+    expect(parsePrediction('{"direction":null,"probability":50,"rationale":"Unsure."}')?.rejectedDirection).toBe(true)
   })
 })
 
@@ -60,6 +71,6 @@ describe('sanitizeRationale', () => {
     const parsed = parsePrediction(
       '{"direction":"up","probability":72,"rationale":"<one line, max 200 chars>"}',
     )
-    expect(parsed).toEqual({ direction: 'up', probability: 72, rationale: null })
+    expect(parsed).toEqual({ direction: 'up', probability: 72, rationale: null, rejectedDirection: false })
   })
 })

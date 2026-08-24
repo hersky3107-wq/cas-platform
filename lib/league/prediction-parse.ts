@@ -1,12 +1,26 @@
 /**
  * Parses league model output into structured prediction fields.
  * Pure module — no server-only — so vitest can cover placeholder rejection.
+ *
+ * RULE: every model must answer up or down. flat / abstain / neutral / any
+ * third value is rejected (direction null). Callers retry once, then error.
  */
 
+export type BinaryDirection = 'up' | 'down'
+
 export type ParsedPrediction = {
-  direction: 'up' | 'down' | 'flat' | null
+  direction: BinaryDirection | null
   probability: number | null
   rationale: string | null
+  /** True when the model named a non-binary direction (flat/abstain/neutral/…). */
+  rejectedDirection: boolean
+}
+
+const BINARY = new Set(['up', 'down'])
+const REJECTED = new Set(['flat', 'abstain', 'neutral', 'sideways', 'unchanged', 'none', 'n/a', 'na'])
+
+export function isBinaryDirection(value: unknown): value is BinaryDirection {
+  return value === 'up' || value === 'down'
 }
 
 /** Reject prompt-schema echoes and other non-prose placeholder strings. */
@@ -64,8 +78,8 @@ function parseJsonPredictionBlock(raw: string): ParsedPrediction | null {
 /** Last-resort extraction when a search model wraps JSON in markdown/citations. */
 function parseProsePredictionFallback(text: string): ParsedPrediction | null {
   const dirMatch =
-    text.match(/"direction"\s*:\s*"(up|down|flat|abstain)"/i) ??
-    text.match(/\bdirection\b\s*[:=]\s*["']?(up|down|flat|abstain)["']?/i)
+    text.match(/"direction"\s*:\s*"(up|down|flat|abstain|neutral)"/i) ??
+    text.match(/\bdirection\b\s*[:=]\s*["']?(up|down|flat|abstain|neutral)["']?/i)
   if (!dirMatch) return null
   const probMatch = text.match(/"probability"\s*:\s*(\d+)/i) ?? text.match(/\bprobability\b\s*[:=]\s*(\d+)/i)
   const rationaleMatch = text.match(/"rationale"\s*:\s*"([^"]+)"/i)
@@ -79,12 +93,16 @@ function parseProsePredictionFallback(text: string): ParsedPrediction | null {
 
 function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction | null {
   const dirRaw = typeof obj.direction === 'string' ? obj.direction.trim().toLowerCase() : ''
-  const direction =
-    dirRaw === 'up' || dirRaw === 'down' || dirRaw === 'flat'
-      ? (dirRaw as 'up' | 'down' | 'flat')
-      : dirRaw === 'abstain'
-        ? null
-        : null
+  let direction: BinaryDirection | null = null
+  let rejectedDirection = false
+
+  if (BINARY.has(dirRaw)) {
+    direction = dirRaw as BinaryDirection
+  } else if (dirRaw === '' || obj.direction == null) {
+    rejectedDirection = true
+  } else if (REJECTED.has(dirRaw) || !BINARY.has(dirRaw)) {
+    rejectedDirection = true
+  }
 
   let probability: number | null = null
   const p = Number(obj.probability)
@@ -92,6 +110,6 @@ function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction |
 
   const rationale = sanitizeRationale(typeof obj.rationale === 'string' ? obj.rationale : null)
 
-  if (!direction && !rationale && probability === null) return null
-  return { direction, probability, rationale }
+  if (!direction && !rationale && probability === null && !rejectedDirection) return null
+  return { direction, probability, rationale, rejectedDirection }
 }

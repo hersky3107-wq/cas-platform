@@ -42,18 +42,24 @@ export function directionBadgeLabel(direction: Direction | null, t: LeagueUiPack
 /**
  * The one approved consensus headline template, e.g.
  * "6 of 8 AI models lean UP · 58% avg confidence" (or its translation).
- * This is the ONLY place a "lean" sentence is assembled — do not
- * string-concatenate direction words anywhere else in the UI.
+ * Direction + probability come from the confidence-weighted aggregate when
+ * available; majority tallies still drive the "N of M" count for that lean.
+ * Method names (log-odds, geometric mean) must never appear in copy.
  */
 export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack): string {
-  const { tally, majorityDirection, totalModels, respondedModels, avgProbability } = consensus
+  const { tally, majorityDirection, totalModels, respondedModels, avgProbability, aggregateDirection, aggregateProbability } =
+    consensus
 
   if (totalModels === 0) return t.headline.none
   if (respondedModels === 0) return t.headline.allAbstain(totalModels)
-  if (!majorityDirection) return t.headline.split(respondedModels, totalModels)
 
-  const majorityCount = tally[majorityDirection]
-  return t.headline.majority(majorityCount, totalModels, majorityDirection, avgProbability)
+  const direction = aggregateDirection ?? (majorityDirection === 'up' || majorityDirection === 'down' ? majorityDirection : null)
+  const probability = aggregateDirection != null ? aggregateProbability : avgProbability
+
+  if (!direction) return t.headline.split(respondedModels, totalModels)
+
+  const leanCount = tally[direction]
+  return t.headline.majority(leanCount, totalModels, direction, probability)
 }
 
 /** Approved one-line group summary, e.g. "US: 3 up · 1 down". Used for camp/tier rows. */
