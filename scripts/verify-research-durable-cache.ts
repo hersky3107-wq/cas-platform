@@ -16,7 +16,7 @@ const round = {
   instrument: 'AAPL',
   category: 'stock',
   proposition_text: 'Will AAPL close higher than the prior regular-session close?',
-  horizon: '24h',
+  horizon: '1d',
   resolution_rule: 'AAPL regular-session close vs prior close',
   resolves_at: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
 }

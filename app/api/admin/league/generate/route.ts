@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin/require-admin'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { generatePredictions, type RoundInput } from '@/lib/league/orchestrator'
+import { isUiHorizon, UI_HORIZONS } from '@/lib/league/horizon'
 import type { LeagueTier } from '@/lib/league/roster'
 
 /** Fan-out across the roster with a per-call timeout; give it headroom. */
@@ -20,6 +21,8 @@ const VALID_TIERS: LeagueTier[] = ['premier', 'challenger', 'world', 'scout']
  *   OR
  *   { round: { proposition_text, category, instrument, horizon,
  *              resolution_rule, resolves_at, item_type? } }   // create one
+ *              // horizon MUST be one of '1d' | '1w' | '1m' | '3m' (canonical
+ *              // set; 400 before any model call otherwise — matches the DB CHECK)
  *   Optional: tiers?: ('premier'|'challenger'|'world'|'scout')[]  // roster subset
  *             concurrency?: number   // default 6
  *             timeoutMs?: number     // default 60000
@@ -45,6 +48,20 @@ export async function POST(req: Request) {
         error:
           'Provide either { roundId } or { round: { proposition_text, category, instrument, horizon, resolution_rule, resolves_at } }',
       },
+      { status: 400 }
+    )
+  }
+
+  // Validate the caller-supplied horizon against the 4 canonical codes BEFORE
+  // a single model call. The DB CHECK (20260824000001) rejects anything else,
+  // and an INSERT that fails AFTER the roster has already answered would burn
+  // ~40 paid model calls for a row that can never be written. This is the same
+  // "validate the one free-text field before spending" hole we closed on the
+  // public path — the admin path is no exception. (The `{ roundId }` reuse
+  // path has no horizon field and is unaffected.)
+  if ('horizon' in roundInput && !isUiHorizon(roundInput.horizon)) {
+    return NextResponse.json(
+      { ok: false, error: `round.horizon must be one of: ${UI_HORIZONS.join(', ')}` },
       { status: 400 }
     )
   }

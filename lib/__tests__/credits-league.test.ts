@@ -19,8 +19,8 @@ describe('league credit constants (single module)', () => {
   })
 
   it('pins the confirmed live-generation price', () => {
-    expect(LEAGUE_GENERATE_CREDITS).toBe(7)
-    expect(creditsForLeagueGenerate()).toBe(7)
+    expect(LEAGUE_GENERATE_CREDITS).toBe(30)
+    expect(creditsForLeagueGenerate()).toBe(30)
   })
 
   it('pins the deep-archive price', () => {

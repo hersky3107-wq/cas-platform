@@ -1,5 +1,6 @@
 import type { ColorBucket } from './card-types'
 import type { PredictionCategory } from '@/lib/prediction/categories'
+import { cacheBucketFor, computeResolvesAt, tradingApproximationNote, type UiHorizon } from './horizon'
 
 /**
  * AI Prediction League — PUBLIC CATEGORY → INSTRUMENT CATALOG.
@@ -41,7 +42,6 @@ export type CatalogKind = 'instruments' | 'coming_soon'
 export type CatalogInstrument = {
   /** Ledger + Twelve Data symbol. Never shown as the only label — i18n key is `instrument`. */
   instrument: string
-  horizon: '24h'
   resolution_rule: string
 }
 
@@ -53,8 +53,6 @@ export type PublicCategoryDef = {
   kind: CatalogKind
   instruments: readonly CatalogInstrument[]
 }
-
-const H24 = '24h' as const
 
 export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
   {
@@ -70,9 +68,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'BTC/USD', horizon: H24, resolution_rule: 'BTC/USD spot close vs prior close' },
-      { instrument: 'ETH/USD', horizon: H24, resolution_rule: 'ETH/USD spot close vs prior close' },
-      { instrument: 'SOL/USD', horizon: H24, resolution_rule: 'SOL/USD spot close vs prior close' },
+      { instrument: 'BTC/USD', resolution_rule: 'BTC/USD spot close vs prior close' },
+      { instrument: 'ETH/USD', resolution_rule: 'ETH/USD spot close vs prior close' },
+      { instrument: 'SOL/USD', resolution_rule: 'SOL/USD spot close vs prior close' },
     ],
   },
   {
@@ -81,9 +79,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'AAPL', horizon: H24, resolution_rule: 'NASDAQ regular-session close price vs prior close' },
-      { instrument: 'NVDA', horizon: H24, resolution_rule: 'NASDAQ regular-session close price vs prior close' },
-      { instrument: 'TSLA', horizon: H24, resolution_rule: 'NASDAQ regular-session close price vs prior close' },
+      { instrument: 'AAPL', resolution_rule: 'NASDAQ regular-session close price vs prior close' },
+      { instrument: 'NVDA', resolution_rule: 'NASDAQ regular-session close price vs prior close' },
+      { instrument: 'TSLA', resolution_rule: 'NASDAQ regular-session close price vs prior close' },
     ],
   },
   {
@@ -92,9 +90,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'EUR/USD', horizon: H24, resolution_rule: 'EUR/USD spot close vs prior close' },
-      { instrument: 'USD/KRW', horizon: H24, resolution_rule: 'USD/KRW spot close vs prior close' },
-      { instrument: 'USD/JPY', horizon: H24, resolution_rule: 'USD/JPY spot close vs prior close' },
+      { instrument: 'EUR/USD', resolution_rule: 'EUR/USD spot close vs prior close' },
+      { instrument: 'USD/KRW', resolution_rule: 'USD/KRW spot close vs prior close' },
+      { instrument: 'USD/JPY', resolution_rule: 'USD/JPY spot close vs prior close' },
     ],
   },
   {
@@ -103,8 +101,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'XAU/USD', horizon: H24, resolution_rule: 'XAU/USD spot close vs prior close' },
-      { instrument: 'XAG/USD', horizon: H24, resolution_rule: 'XAG/USD spot close vs prior close' },
+      { instrument: 'XAU/USD', resolution_rule: 'XAU/USD spot close vs prior close' },
+      { instrument: 'XAG/USD', resolution_rule: 'XAG/USD spot close vs prior close' },
     ],
   },
   {
@@ -113,8 +111,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'SPX', horizon: H24, resolution_rule: 'S&P 500 cash index close vs prior close' },
-      { instrument: 'NDX', horizon: H24, resolution_rule: 'Nasdaq-100 cash index close vs prior close' },
+      { instrument: 'SPX', resolution_rule: 'S&P 500 cash index close vs prior close' },
+      { instrument: 'NDX', resolution_rule: 'Nasdaq-100 cash index close vs prior close' },
     ],
   },
   {
@@ -123,8 +121,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'WTICO/USD', horizon: H24, resolution_rule: 'WTI crude spot close vs prior close' },
-      { instrument: 'NATGAS/USD', horizon: H24, resolution_rule: 'Natural gas spot close vs prior close' },
+      { instrument: 'WTICO/USD', resolution_rule: 'WTI crude spot close vs prior close' },
+      { instrument: 'NATGAS/USD', resolution_rule: 'Natural gas spot close vs prior close' },
     ],
   },
   {
@@ -147,8 +145,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'red',
     kind: 'instruments',
     instruments: [
-      { instrument: 'DOGE/USD', horizon: H24, resolution_rule: 'DOGE/USD spot close vs prior close' },
-      { instrument: 'SHIB/USD', horizon: H24, resolution_rule: 'SHIB/USD spot close vs prior close' },
+      { instrument: 'DOGE/USD', resolution_rule: 'DOGE/USD spot close vs prior close' },
+      { instrument: 'SHIB/USD', resolution_rule: 'SHIB/USD spot close vs prior close' },
     ],
   },
   {
@@ -157,8 +155,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'VNQ', horizon: H24, resolution_rule: 'VNQ regular-session close vs prior close' },
-      { instrument: 'SCHH', horizon: H24, resolution_rule: 'SCHH regular-session close vs prior close' },
+      { instrument: 'VNQ', resolution_rule: 'VNQ regular-session close vs prior close' },
+      { instrument: 'SCHH', resolution_rule: 'SCHH regular-session close vs prior close' },
     ],
   },
   {
@@ -173,6 +171,68 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
 export const CATALOG_INSTRUMENT_IDS: readonly string[] = PUBLIC_CATALOG.flatMap((c) =>
   c.instruments.map((i) => i.instrument),
 )
+
+/** Server-owned ranked-round seed for a catalog instrument (never caller text). */
+export type CatalogRankedRoundInput = {
+  proposition_text: string
+  category: PredictionCategory
+  instrument: string
+  horizon: string
+  resolution_rule: string
+  resolves_at: string
+  item_type: 'ranked'
+  cache_key: string
+}
+
+/**
+ * Opens the current ranked round for a curated catalog symbol AT ONE OF THE
+ * 4 SELECTABLE HORIZONS (`uiHorizon`, default `'1d'`). Proposition, rule, and
+ * cache_key are taken from this file — a public caller cannot name them; the
+ * only caller-controlled input is which of the 4 fixed horizon codes to use
+ * (validated by `isUiHorizon` upstream — see `lib/league/access-policy.ts`).
+ *
+ * IDEMPOTENCY: the cache-key bucket matches the horizon's own cadence (day /
+ * ISO week / month / quarter — see `cacheBucketFor`), so a long-horizon round
+ * is opened once per period, not reopened daily while the previous one is
+ * still pending. `resolves_at` is computed from `now` per the horizon +
+ * category rule in `lib/league/horizon.ts` (trading sessions for
+ * equities/ETFs, calendar days for crypto/FX) — never reinterpreted later.
+ *
+ * THE PROPOSITION NAMES THE ACTUAL RESOLVE DATE — never a relative phrase
+ * like "over the next 1 month" or "21 trading days from now". Both the
+ * proposition and `resolves_at` are string-sliced from the SAME `resolvesAt`
+ * value computed below, so they can never disagree. For horizons whose date
+ * used the weekday-count trading-session approximation (see
+ * `tradingApproximationNote`), that limitation is appended to the
+ * proposition itself, not left in a code comment nobody reading the card
+ * would see.
+ */
+export function buildCatalogRankedRoundInput(
+  instrument: string,
+  uiHorizon: UiHorizon = '1d',
+  now: Date = new Date()
+): CatalogRankedRoundInput | null {
+  const found = findCatalogInstrument(instrument)
+  if (!found) return null
+  const bucket = cacheBucketFor(uiHorizon, now)
+  const resolvesAt = computeResolvesAt(found.category.ledgerCategory, uiHorizon, now.toISOString())
+  const resolveDate = resolvesAt.slice(0, 10)
+  const note = tradingApproximationNote(found.category.ledgerCategory, uiHorizon)
+  const proposition_text = `Will ${found.entry.instrument} close higher by ${resolveDate} than its last close?${
+    note ? ` (${resolveDate} ${note}.)` : ''
+  }`
+  return {
+    proposition_text,
+    category: found.category.ledgerCategory,
+    instrument: found.entry.instrument,
+    // The UI horizon code IS the stored value — no translation table.
+    horizon: uiHorizon,
+    resolution_rule: found.entry.resolution_rule,
+    resolves_at: resolvesAt,
+    item_type: 'ranked',
+    cache_key: `daily|${found.entry.instrument}|${uiHorizon}|${bucket}`,
+  }
+}
 
 export function findCatalogInstrument(instrument: string): {
   category: PublicCategoryDef

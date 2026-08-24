@@ -63,6 +63,8 @@ export type LeagueUiPack = {
     /** Academic framing for the macro_econ coming-soon panel. */
     macroEconHint: string
     noCardYet: string
+    /** Horizon selector chips shown next to the instrument chips. Default '1d'. */
+    horizons: { '1d': string; '1w': string; '1m': string; '3m': string }
   }
   /**
    * Card accuracy badge. `withValue` receives an ALREADY-COMPOSED figure from
@@ -74,7 +76,7 @@ export type LeagueUiPack = {
   hitRate: {
     pending: string
     withValue: (value: string) => string
-    /** One round is a result, not a rate — e.g. "This round: 27/37 correct". */
+    /** One round is a result, not a rate — e.g. "This round ✓27/37 correct". Always a hit count (✓ + total). */
     roundResult: (correct: number, graded: number) => string
   }
   /**
@@ -149,10 +151,10 @@ export type LeagueUiPack = {
     now: string
     /** Small badge word next to the optional live price, e.g. "LIVE". */
     live: string
-    /** One-line header when the starting price is on the row. */
-    headlineWithAnchor: (today: string, instrument: string, price: string, anchorDate: string) => string
+    /** One-line header when the starting price is on the row. `roundDate` is the round's own opened date — never "today". */
+    headlineWithAnchor: (roundDate: string, instrument: string, price: string, anchorDate: string) => string
     /** One-line header when the starting price was never recorded. */
-    headlineNoAnchor: (today: string, instrument: string) => string
+    headlineNoAnchor: (roundDate: string, instrument: string) => string
     /** Window sentence when both ends of the window are known. */
     windowWithAnchor: (fromDate: string, fromPrice: string, toDate: string) => string
     /** Window sentence for a graded round — both session dates AND the resolution close price are known. */
@@ -219,8 +221,23 @@ export type LeagueUiPack = {
    */
   verdict: {
     title: string
-    /** e.g. "This round 29/40 hit". */
+    /** e.g. "This round ✓29/40 hit". Always a hit count (✓ + total). */
     heroHits: (hits: number, graded: number) => string
+    /**
+     * Shown INSTEAD OF the hit-count panel while a round has zero graded
+     * predictions (long-horizon rounds sit here for weeks) — so the card is
+     * never an empty panel while waiting. Makes the proposition, the anchor,
+     * and the resolution date legible up front.
+     */
+    pendingHeading: string
+    /** e.g. "Started at $305.59 (Aug 18)". `price` is pre-formatted by the caller. */
+    pendingAnchorLine: (price: string, date: string) => string
+    /** e.g. "Grades on Sep 18". */
+    pendingResolvesLine: (date: string) => string
+    /** e.g. "26 days left". 0 when due today (grade-on-read/sweep will pick it up). */
+    pendingDaysRemaining: (days: number) => string
+    /** Heading over the direction-distribution bar — must not be readable as a hit tally. */
+    distributionHeading: string
     distributionUp: string
     distributionDown: string
     distributionNoDirection: string
@@ -236,11 +253,12 @@ export type LeagueUiPack = {
     tierLabels: { premier: string; challenger: string; world: string; scout: string }
     bookLabels: { closed: string; scout: string }
     countryLabels: { US: string; CN: string; KR: string; FR: string; CA: string; INT: string }
-    /** "18/25" style — hits over graded. */
+    /** "✓18/25" — hits over graded. Always a hit count (✓ + total). */
     rawCount: (hits: number, graded: number) => string
     /** Ungraded count when > 0, e.g. "+3 unscored". */
     ungradedNote: (ungraded: number) => string
-    overconfidentConfidence: (confidence: number) => string
+    /** e.g. "confidence 65% · missed" — never a bare number. */
+    overconfidentLine: (confidence: number) => string
     streakLine: (label: string, streak: number) => string
     expandSection: string
     collapseSection: string
@@ -362,12 +380,20 @@ export type LeagueUiPack = {
   }
 }
 
-/** Ticker-style division tally. Glyphs are language-neutral; locales may override. */
+/**
+ * Direction count. Glyphs are language-neutral. Never uses a slash-over-total
+ * (that shape is reserved for hit counts — see `hitCount`).
+ */
 function compactTally(tally: DirectionTally): string {
   const parts = [`${tally.up}▲`, `${tally.down}▼`]
   if (tally.flat) parts.push(`${tally.flat}■`)
   if (tally.abstain) parts.push(`${tally.abstain}–`)
-  return parts.join(' / ')
+  return parts.join(' ')
+}
+
+/** Hit count. Always carries ✓ and the graded total. Never a direction tally. */
+function hitCount(hits: number, graded: number): string {
+  return `\u2713${hits}/${graded}`
 }
 
 const en: LeagueUiPack = {
@@ -443,11 +469,12 @@ const en: LeagueUiPack = {
     comingSoonHint: 'Event picker and prompt-search will live here. No fixed instruments for this category.',
     macroEconHint: 'Expert market outlook — rates, inflation, bonds. Depth, not dopamine.',
     noCardYet: 'No prediction card for this instrument yet.',
+    horizons: { '1d': '1 day', '1w': '1 week', '1m': '1 month', '3m': '3 months' },
   },
   hitRate: {
     pending: 'Hit rate: pending',
     withValue: (value) => `${value} hit rate`,
-    roundResult: (correct, graded) => `This round: ${correct}/${graded} correct`,
+    roundResult: (correct, graded) => `This round ${hitCount(correct, graded)} correct`,
   },
   winRate: {
     withSample: (pctText, n) => `${pctText}% (n=${n})`,
@@ -481,9 +508,9 @@ const en: LeagueUiPack = {
     atPrediction: 'at prediction',
     now: 'now',
     live: 'LIVE',
-    headlineWithAnchor: (today, instrument, price, anchorDate) =>
-      `${today} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
-    headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 starting price unavailable`,
+    headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
+      `Round of ${roundDate} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (roundDate, instrument) => `Round of ${roundDate} \u00b7 ${instrument} \u00b7 starting price unavailable`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Measured from the ${fromDate} close of ${fromPrice}, resolving against the ${toDate} close.`,
     windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
@@ -532,7 +559,12 @@ const en: LeagueUiPack = {
   },
   verdict: {
     title: 'Final verdict',
-    heroHits: (hits, graded) => `This round ${hits}/${graded} hit`,
+    heroHits: (hits, graded) => `This round ${hitCount(hits, graded)} hit`,
+    pendingHeading: 'Round in progress \u2014 not graded yet',
+    pendingAnchorLine: (price, date) => `Started at ${price} (${date})`,
+    pendingResolvesLine: (date) => `Grades on ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'Grading due' : days === 1 ? '1 day left' : `${days} days left`),
+    distributionHeading: 'Prediction mix (direction)',
     distributionUp: 'Up',
     distributionDown: 'Down',
     distributionNoDirection: 'No direction',
@@ -554,9 +586,9 @@ const en: LeagueUiPack = {
       CA: 'Canada',
       INT: 'International',
     },
-    rawCount: (hits, graded) => `${hits}/${graded}`,
+    rawCount: (hits, graded) => hitCount(hits, graded),
     ungradedNote: (ungraded) => `+${ungraded} unscored`,
-    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    overconfidentLine: (confidence) => `confidence ${Math.round(confidence)}% \u00b7 missed`,
     streakLine: (label, streak) => `${label} · ${streak}`,
     expandSection: 'Show',
     collapseSection: 'Hide',
@@ -715,11 +747,12 @@ const ko: LeagueUiPack = {
     comingSoonHint: '앞으로 이벤트 선택과 질문 검색이 여기에 들어갑니다. 이 카테고리에는 고정 종목이 없습니다.',
     macroEconHint: '금리·물가·채권 등 전문가용 시장 전망. 자극이 아니라 깊이입니다.',
     noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
+    horizons: { '1d': '1일', '1w': '1주', '1m': '1개월', '3m': '3개월' },
   },
   hitRate: {
     pending: '적중률 집계 중',
     withValue: (value) => `적중률 ${value}`,
-    roundResult: (correct, graded) => `이번 라운드 ${correct}/${graded} 적중`,
+    roundResult: (correct, graded) => `이번 라운드 ${hitCount(correct, graded)} 적중`,
   },
   winRate: {
     withSample: (pctText, n) => `${pctText}% (표본 ${n})`,
@@ -753,9 +786,9 @@ const ko: LeagueUiPack = {
     atPrediction: '예측 시점',
     now: '현재',
     live: '실시간',
-    headlineWithAnchor: (today, instrument, price, anchorDate) =>
-      `${today} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
-    headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 기준가 없음`,
+    headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
+      `${roundDate} 라운드 · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (roundDate, instrument) => `${roundDate} 라운드 · ${instrument} · 기준가 없음`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `${fromDate} 종가 ${fromPrice}를 기준으로, ${toDate} 종가와 비교해 채점합니다.`,
     windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
@@ -802,7 +835,12 @@ const ko: LeagueUiPack = {
   },
   verdict: {
     title: '최종 판정',
-    heroHits: (hits, graded) => `이번 라운드 ${hits}/${graded} 적중`,
+    heroHits: (hits, graded) => `이번 라운드 ${hitCount(hits, graded)} 적중`,
+    pendingHeading: '라운드 진행 중 \u2014 아직 채점되지 않았습니다',
+    pendingAnchorLine: (price, date) => `${price}부터 시작 (${date} 기준)`,
+    pendingResolvesLine: (date) => `${date}에 채점됩니다`,
+    pendingDaysRemaining: (days) => (days <= 0 ? '채점 예정' : `${days}일 남음`),
+    distributionHeading: '예측 분포 (방향)',
     distributionUp: '상승',
     distributionDown: '하락',
     distributionNoDirection: '방향 없음',
@@ -824,9 +862,9 @@ const ko: LeagueUiPack = {
       CA: '캐나다',
       INT: '국제',
     },
-    rawCount: (hits, graded) => `${hits}/${graded}`,
+    rawCount: (hits, graded) => hitCount(hits, graded),
     ungradedNote: (ungraded) => `+${ungraded} 미채점`,
-    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    overconfidentLine: (confidence) => `확신 ${Math.round(confidence)}% · 실패`,
     streakLine: (label, streak) => `${label} · ${streak}연승`,
     expandSection: '펼치기',
     collapseSection: '접기',
@@ -984,11 +1022,12 @@ const ja: LeagueUiPack = {
     comingSoonHint: 'イベント選択とプロンプト検索はここに入ります。このカテゴリに固定銘柄はありません。',
     macroEconHint: '金利・物価・債券など、専門家向けの市場見通し。刺激ではなく深さです。',
     noCardYet: 'この銘柄の予測カードはまだありません。',
+    horizons: { '1d': '1日', '1w': '1週間', '1m': '1か月', '3m': '3か月' },
   },
   hitRate: {
     pending: '的中率：集計待ち',
     withValue: (value) => `的中率 ${value}`,
-    roundResult: (correct, graded) => `このラウンド ${correct}/${graded} 的中`,
+    roundResult: (correct, graded) => `このラウンド ${hitCount(correct, graded)} 的中`,
   },
   winRate: {
     withSample: (pctText, n) => `${pctText}%（n=${n}）`,
@@ -1022,9 +1061,9 @@ const ja: LeagueUiPack = {
     atPrediction: '予測時点',
     now: '現在',
     live: 'ライブ',
-    headlineWithAnchor: (today, instrument, price, anchorDate) =>
-      `${today} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
-    headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 基準値なし`,
+    headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
+      `${roundDate} のラウンド · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (roundDate, instrument) => `${roundDate} のラウンド · ${instrument} · 基準値なし`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `${fromDate}の終値 ${fromPrice}を起点に、${toDate}の終値と比較して採点します。`,
     windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
@@ -1071,7 +1110,12 @@ const ja: LeagueUiPack = {
   },
   verdict: {
     title: '最終判定',
-    heroHits: (hits, graded) => `今回のラウンド ${hits}/${graded} 的中`,
+    heroHits: (hits, graded) => `今回のラウンド ${hitCount(hits, graded)} 的中`,
+    pendingHeading: 'ラウンド進行中 \u2014 まだ採点されていません',
+    pendingAnchorLine: (price, date) => `${price}からスタート（${date}時点）`,
+    pendingResolvesLine: (date) => `${date}に採点されます`,
+    pendingDaysRemaining: (days) => (days <= 0 ? '採点予定' : `残り${days}日`),
+    distributionHeading: '予測の分布（方向）',
     distributionUp: '上昇',
     distributionDown: '下落',
     distributionNoDirection: '方向なし',
@@ -1093,9 +1137,9 @@ const ja: LeagueUiPack = {
       CA: 'カナダ',
       INT: '国際',
     },
-    rawCount: (hits, graded) => `${hits}/${graded}`,
+    rawCount: (hits, graded) => hitCount(hits, graded),
     ungradedNote: (ungraded) => `+${ungraded} 未採点`,
-    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    overconfidentLine: (confidence) => `確信 ${Math.round(confidence)}% · 外れ`,
     streakLine: (label, streak) => `${label} · ${streak}連勝`,
     expandSection: '開く',
     collapseSection: '閉じる',
@@ -1253,11 +1297,12 @@ const zhTW: LeagueUiPack = {
     comingSoonHint: '活動選擇與提問搜尋將放在這裡。此類別沒有固定標的。',
     macroEconHint: '利率、通膨、債券等專業市場展望。重深度，不重刺激。',
     noCardYet: '此標的尚無預測卡。',
+    horizons: { '1d': '1天', '1w': '1週', '1m': '1個月', '3m': '3個月' },
   },
   hitRate: {
     pending: '命中率：統計中',
     withValue: (value) => `命中率 ${value}`,
-    roundResult: (correct, graded) => `本輪 ${correct}/${graded} 命中`,
+    roundResult: (correct, graded) => `本輪 ${hitCount(correct, graded)} 命中`,
   },
   winRate: {
     withSample: (pctText, n) => `${pctText}%（n=${n}）`,
@@ -1290,9 +1335,9 @@ const zhTW: LeagueUiPack = {
     atPrediction: '預測時',
     now: '目前',
     live: '即時',
-    headlineWithAnchor: (today, instrument, price, anchorDate) =>
-      `${today} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
-    headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · 無基準價`,
+    headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
+      `${roundDate} 回合 · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (roundDate, instrument) => `${roundDate} 回合 · ${instrument} · 無基準價`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `以 ${fromDate} 收盤價 ${fromPrice} 為基準，對照 ${toDate} 收盤價評分。`,
     windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
@@ -1338,7 +1383,12 @@ const zhTW: LeagueUiPack = {
   },
   verdict: {
     title: '最終判定',
-    heroHits: (hits, graded) => `本輪 ${hits}/${graded} 命中`,
+    heroHits: (hits, graded) => `本輪 ${hitCount(hits, graded)} 命中`,
+    pendingHeading: '輪次進行中 \u2014 尚未評分',
+    pendingAnchorLine: (price, date) => `自 ${price} 起算（${date}）`,
+    pendingResolvesLine: (date) => `將於 ${date} 評分`,
+    pendingDaysRemaining: (days) => (days <= 0 ? '即將評分' : `尚餘 ${days} 天`),
+    distributionHeading: '預測分布（方向）',
     distributionUp: '上漲',
     distributionDown: '下跌',
     distributionNoDirection: '無方向',
@@ -1360,9 +1410,9 @@ const zhTW: LeagueUiPack = {
       CA: '加拿大',
       INT: '國際',
     },
-    rawCount: (hits, graded) => `${hits}/${graded}`,
+    rawCount: (hits, graded) => hitCount(hits, graded),
     ungradedNote: (ungraded) => `+${ungraded} 未評分`,
-    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    overconfidentLine: (confidence) => `信心 ${Math.round(confidence)}% · 未中`,
     streakLine: (label, streak) => `${label} · ${streak} 連勝`,
     expandSection: '展開',
     collapseSection: '收合',
@@ -1521,11 +1571,12 @@ const fr: LeagueUiPack = {
     comingSoonHint: 'Le sélecteur d\u2019événements et la recherche par question seront ici. Pas d\u2019instruments fixes pour cette catégorie.',
     macroEconHint: 'Perspectives de marché pour experts — taux, inflation, obligations. De la profondeur, pas du spectacle.',
     noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
+    horizons: { '1d': '1 jour', '1w': '1 semaine', '1m': '1 mois', '3m': '3 mois' },
   },
   hitRate: {
     pending: 'Taux de réussite : en attente',
     withValue: (value) => `${value} de réussite`,
-    roundResult: (correct, graded) => `Ce tour : ${correct}/${graded} justes`,
+    roundResult: (correct, graded) => `Ce tour ${hitCount(correct, graded)} justes`,
   },
   winRate: {
     withSample: (pctText, n) => `${pctText}% (n=${n})`,
@@ -1560,9 +1611,9 @@ const fr: LeagueUiPack = {
     atPrediction: 'au moment de la prédiction',
     now: 'actuel',
     live: 'EN DIRECT',
-    headlineWithAnchor: (today, instrument, price, anchorDate) =>
-      `${today} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
-    headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 cours de départ indisponible`,
+    headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
+      `Manche du ${roundDate} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (roundDate, instrument) => `Manche du ${roundDate} \u00b7 ${instrument} \u00b7 cours de départ indisponible`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Mesuré depuis la clôture du ${fromDate} à ${fromPrice}, noté contre la clôture du ${toDate}.`,
     windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
@@ -1611,7 +1662,12 @@ const fr: LeagueUiPack = {
   },
   verdict: {
     title: 'Verdict final',
-    heroHits: (hits, graded) => `Ce tour ${hits}/${graded} justes`,
+    heroHits: (hits, graded) => `Ce tour ${hitCount(hits, graded)} justes`,
+    pendingHeading: 'Tour en cours \u2014 pas encore noté',
+    pendingAnchorLine: (price, date) => `Départ à ${price} (${date})`,
+    pendingResolvesLine: (date) => `Noté le ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'Notation imminente' : days === 1 ? '1 jour restant' : `${days} jours restants`),
+    distributionHeading: 'Répartition des prédictions (direction)',
     distributionUp: 'Hausse',
     distributionDown: 'Baisse',
     distributionNoDirection: 'Sans direction',
@@ -1633,9 +1689,9 @@ const fr: LeagueUiPack = {
       CA: 'Canada',
       INT: 'International',
     },
-    rawCount: (hits, graded) => `${hits}/${graded}`,
+    rawCount: (hits, graded) => hitCount(hits, graded),
     ungradedNote: (ungraded) => `+${ungraded} non notés`,
-    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    overconfidentLine: (confidence) => `confiance ${Math.round(confidence)}% \u00b7 manqué`,
     streakLine: (label, streak) => `${label} · ${streak} d’affilée`,
     expandSection: 'Afficher',
     collapseSection: 'Masquer',
@@ -1795,11 +1851,12 @@ const es: LeagueUiPack = {
     comingSoonHint: 'El selector de eventos y la búsqueda por pregunta estarán aquí. Esta categoría no tiene instrumentos fijos.',
     macroEconHint: 'Perspectiva de mercado para expertos: tipos, inflación, bonos. Profundidad, no dopamina.',
     noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
+    horizons: { '1d': '1 día', '1w': '1 semana', '1m': '1 mes', '3m': '3 meses' },
   },
   hitRate: {
     pending: 'Tasa de acierto: pendiente',
     withValue: (value) => `${value} de acierto`,
-    roundResult: (correct, graded) => `Esta ronda: ${correct}/${graded} aciertos`,
+    roundResult: (correct, graded) => `Esta ronda ${hitCount(correct, graded)} aciertos`,
   },
   winRate: {
     withSample: (pctText, n) => `${pctText}% (n=${n})`,
@@ -1834,9 +1891,9 @@ const es: LeagueUiPack = {
     atPrediction: 'al momento de la predicción',
     now: 'ahora',
     live: 'EN VIVO',
-    headlineWithAnchor: (today, instrument, price, anchorDate) =>
-      `${today} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
-    headlineNoAnchor: (today, instrument) => `${today} \u00b7 ${instrument} \u00b7 precio de partida no disponible`,
+    headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
+      `Ronda del ${roundDate} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (roundDate, instrument) => `Ronda del ${roundDate} \u00b7 ${instrument} \u00b7 precio de partida no disponible`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Medido desde el cierre del ${fromDate} de ${fromPrice}, se resuelve contra el cierre del ${toDate}.`,
     windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
@@ -1885,7 +1942,12 @@ const es: LeagueUiPack = {
   },
   verdict: {
     title: 'Veredicto final',
-    heroHits: (hits, graded) => `Esta ronda ${hits}/${graded} aciertos`,
+    heroHits: (hits, graded) => `Esta ronda ${hitCount(hits, graded)} aciertos`,
+    pendingHeading: 'Ronda en curso \u2014 aún sin calificar',
+    pendingAnchorLine: (price, date) => `Inició en ${price} (${date})`,
+    pendingResolvesLine: (date) => `Se califica el ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'Calificación pendiente' : days === 1 ? 'Queda 1 día' : `Quedan ${days} días`),
+    distributionHeading: 'Distribución de predicciones (dirección)',
     distributionUp: 'Subida',
     distributionDown: 'Bajada',
     distributionNoDirection: 'Sin dirección',
@@ -1907,9 +1969,9 @@ const es: LeagueUiPack = {
       CA: 'Canadá',
       INT: 'Internacional',
     },
-    rawCount: (hits, graded) => `${hits}/${graded}`,
+    rawCount: (hits, graded) => hitCount(hits, graded),
     ungradedNote: (ungraded) => `+${ungraded} sin puntuar`,
-    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    overconfidentLine: (confidence) => `confianza ${Math.round(confidence)}% \u00b7 fallo`,
     streakLine: (label, streak) => `${label} · ${streak} seguidas`,
     expandSection: 'Mostrar',
     collapseSection: 'Ocultar',
@@ -2068,11 +2130,12 @@ const ar: LeagueUiPack = {
     comingSoonHint: 'سيظهر هنا اختيار الأحداث والبحث بالسؤال. لا أدوات ثابتة لهذه الفئة.',
     macroEconHint: 'نظرة سوقية للخبراء — أسعار الفائدة والتضخم والسندات. عمق لا إثارة.',
     noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
+    horizons: { '1d': 'يوم واحد', '1w': 'أسبوع واحد', '1m': 'شهر واحد', '3m': '3 أشهر' },
   },
   hitRate: {
     pending: 'معدل الإصابة: قيد الحساب',
     withValue: (value) => `معدل الإصابة ${value}`,
-    roundResult: (correct, graded) => `هذه الجولة: ${correct}/${graded} إصابة`,
+    roundResult: (correct, graded) => `هذه الجولة ${hitCount(correct, graded)} إصابة`,
   },
   winRate: {
     withSample: (pctText, n) => `${pctText}% (ن=${n})`,
@@ -2106,9 +2169,9 @@ const ar: LeagueUiPack = {
     atPrediction: 'وقت التنبؤ',
     now: 'الآن',
     live: 'مباشر',
-    headlineWithAnchor: (today, instrument, price, anchorDate) =>
-      `${today} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
-    headlineNoAnchor: (today, instrument) => `${today} · ${instrument} · سعر البداية غير متاح`,
+    headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
+      `جولة ${roundDate} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlineNoAnchor: (roundDate, instrument) => `جولة ${roundDate} · ${instrument} · سعر البداية غير متاح`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `يُقاس من إغلاق ${fromDate} عند ${fromPrice}، ويُحسَم مقابل إغلاق ${toDate}.`,
     windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
@@ -2155,7 +2218,12 @@ const ar: LeagueUiPack = {
   },
   verdict: {
     title: 'الحكم النهائي',
-    heroHits: (hits, graded) => `هذه الجولة ${hits}/${graded} إصابة`,
+    heroHits: (hits, graded) => `هذه الجولة ${hitCount(hits, graded)} إصابة`,
+    pendingHeading: 'الجولة جارية \u2014 لم يتم التقييم بعد',
+    pendingAnchorLine: (price, date) => `بدأت عند ${price} (${date})`,
+    pendingResolvesLine: (date) => `سيتم التقييم في ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'التقييم قريباً' : `متبقٍ ${days} يوم`),
+    distributionHeading: 'توزيع التوقعات (الاتجاه)',
     distributionUp: 'صعود',
     distributionDown: 'هبوط',
     distributionNoDirection: 'بلا اتجاه',
@@ -2177,9 +2245,9 @@ const ar: LeagueUiPack = {
       CA: 'كندا',
       INT: 'دولي',
     },
-    rawCount: (hits, graded) => `${hits}/${graded}`,
+    rawCount: (hits, graded) => hitCount(hits, graded),
     ungradedNote: (ungraded) => `+${ungraded} غير مُقيَّم`,
-    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    overconfidentLine: (confidence) => `ثقة ${Math.round(confidence)}% · إخفاق`,
     streakLine: (label, streak) => `${label} · ${streak} متتالية`,
     expandSection: 'إظهار',
     collapseSection: 'إخفاء',
@@ -2279,7 +2347,12 @@ const pt: LeagueUiPack = {
   },
   verdict: {
     title: 'Veredito final',
-    heroHits: (hits, graded) => `Nesta rodada ${hits}/${graded} acertos`,
+    heroHits: (hits, graded) => `Nesta rodada ${hitCount(hits, graded)} acertos`,
+    pendingHeading: 'Rodada em andamento \u2014 ainda não avaliada',
+    pendingAnchorLine: (price, date) => `Começou em ${price} (${date})`,
+    pendingResolvesLine: (date) => `Avaliada em ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'Avaliação em breve' : days === 1 ? 'Falta 1 dia' : `Faltam ${days} dias`),
+    distributionHeading: 'Distribuição das previsões (direção)',
     distributionUp: 'Alta',
     distributionDown: 'Baixa',
     distributionNoDirection: 'Sem direção',
@@ -2301,9 +2374,9 @@ const pt: LeagueUiPack = {
       CA: 'Canadá',
       INT: 'Internacional',
     },
-    rawCount: (hits, graded) => `${hits}/${graded}`,
+    rawCount: (hits, graded) => hitCount(hits, graded),
     ungradedNote: (ungraded) => `+${ungraded} sem nota`,
-    overconfidentConfidence: (confidence) => `${Math.round(confidence)}`,
+    overconfidentLine: (confidence) => `confiança ${Math.round(confidence)}% \u00b7 erro`,
     streakLine: (label, streak) => `${label} · ${streak} seguidas`,
     expandSection: 'Mostrar',
     collapseSection: 'Ocultar',

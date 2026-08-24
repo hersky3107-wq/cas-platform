@@ -11,9 +11,13 @@ import { FLAG_SRC, type CountryCode } from '@/lib/league/country'
  * Final-verdict panel — RAW COUNTS ONLY. Replaces the old consensus sentence
  * that mixed a hit tally with an average-confidence percentage.
  *
- * Desktop: all sections expanded, single scroll.
- * Mobile: accordion; only camp (section 1) open by default. Chevron affordance
- * mirrors ModelTile's "Why?" control (hover/press/Enter/Space/aria-expanded).
+ * Hit counts always carry ✓ and a total (`✓12/14`). Direction counts always
+ * use ▲/▼ and never a slash-over-total. The bar under the hero is the
+ * direction mix, labeled as such — it is not a hit/miss bar.
+ *
+ * Desktop: camp / tier / book / overconfident / streaks stay expanded.
+ * 국가별 is an accordion on every viewport (collapsed by default).
+ * Mobile: accordion; only camp open by default.
  */
 export function VerdictPanel({
   verdict,
@@ -63,7 +67,6 @@ export function VerdictPanel({
             flagOf={(key) => (key === 'us' ? 'US' : key === 'china' ? 'CN' : 'INT')}
             t={t}
           />
-          <CorrelationNote t={t} />
         </VerdictSection>
 
         <VerdictSection id="tier" title={t.verdict.sectionTier} t={t}>
@@ -72,7 +75,6 @@ export function VerdictPanel({
             labelOf={(key) => t.verdict.tierLabels[key as keyof typeof t.verdict.tierLabels] ?? key}
             t={t}
           />
-          <CorrelationNote t={t} />
         </VerdictSection>
 
         <VerdictSection id="book" title={t.verdict.sectionBook} t={t}>
@@ -81,10 +83,9 @@ export function VerdictPanel({
             labelOf={(key) => t.verdict.bookLabels[key as keyof typeof t.verdict.bookLabels] ?? key}
             t={t}
           />
-          <CorrelationNote t={t} />
         </VerdictSection>
 
-        <VerdictSection id="country" title={t.verdict.sectionCountry} t={t}>
+        <VerdictSection id="country" title={t.verdict.sectionCountry} accordion t={t}>
           <p className="mb-2 text-[10px] leading-snug text-league-fg-muted">{t.verdict.sectionCountryCaution}</p>
           <GroupRows
             rows={verdict.byCountry}
@@ -92,23 +93,33 @@ export function VerdictPanel({
             flagOf={(key) => (key in FLAG_SRC ? (key as CountryCode) : null)}
             t={t}
           />
-          <CorrelationNote t={t} />
         </VerdictSection>
 
         {hasOverconfident ? (
           <VerdictSection id="overconfident" title={t.verdict.sectionOverconfident} t={t}>
             <ul className="space-y-1">
-              {verdict.overconfident.map((row) => (
-                <li
-                  key={row.model_id}
-                  className="flex items-center justify-between gap-2 text-[12px] text-league-fg"
-                >
-                  <span className="min-w-0 truncate font-medium">{row.brand}</span>
-                  <span className="shrink-0 font-mono tabular-nums text-league-fg-muted">
-                    {row.confidence !== null ? t.verdict.overconfidentConfidence(row.confidence) : '—'}
-                  </span>
-                </li>
-              ))}
+              {verdict.overconfident.map((row) => {
+                const dirGlyph = row.direction === 'up' ? '\u25b2' : row.direction === 'down' ? '\u25bc' : row.direction === 'flat' ? '\u25a0' : ''
+                const dirLabel = row.direction ? t.direction.badge[row.direction] : t.direction.noCallBadge
+                return (
+                  <li
+                    key={row.model_id}
+                    className="flex items-center justify-between gap-2 text-[12px] text-league-fg"
+                  >
+                    <span className="min-w-0 truncate font-medium">
+                      {row.brand}
+                      {dirGlyph ? (
+                        <span className="ml-1.5 font-mono text-[11px] text-league-fg-muted">
+                          {dirGlyph} {dirLabel}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 font-mono tabular-nums text-league-fg-muted">
+                      {row.confidence !== null ? t.verdict.overconfidentLine(row.confidence) : '—'}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
           </VerdictSection>
         ) : null}
@@ -122,16 +133,11 @@ export function VerdictPanel({
                 </li>
               ))}
             </ul>
-            <CorrelationNote t={t} />
           </VerdictSection>
         ) : null}
       </div>
     </div>
   )
-}
-
-function CorrelationNote({ t }: { t: LeagueUiPack }) {
-  return <p className="mt-2 text-[10px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
 }
 
 function DistributionBar({
@@ -152,21 +158,24 @@ function DistributionBar({
   const nonePct = (noDirection / total) * 100
   return (
     <div className="mt-3">
-      <div className="flex h-2 overflow-hidden rounded-full bg-league-bg-elevated" aria-hidden>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.distributionHeading}</p>
+      <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-league-bg-elevated" aria-hidden>
         {up > 0 ? <span className="bg-emerald-500" style={{ width: `${upPct}%` }} /> : null}
         {down > 0 ? <span className="bg-rose-500" style={{ width: `${downPct}%` }} /> : null}
         {noDirection > 0 ? <span className="bg-slate-400" style={{ width: `${nonePct}%` }} /> : null}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] tabular-nums text-league-fg-muted">
-        <span>
-          <span className="text-emerald-700">{t.verdict.distributionUp}</span> {up}
+        <span className="text-emerald-700">
+          {up}▲ <span className="sr-only">{t.verdict.distributionUp}</span>
         </span>
-        <span>
-          <span className="text-rose-700">{t.verdict.distributionDown}</span> {down}
+        <span className="text-rose-700">
+          {down}▼ <span className="sr-only">{t.verdict.distributionDown}</span>
         </span>
-        <span>
-          <span className="text-slate-600">{t.verdict.distributionNoDirection}</span> {noDirection}
-        </span>
+        {noDirection > 0 ? (
+          <span className="text-slate-600">
+            {noDirection}– <span className="sr-only">{t.verdict.distributionNoDirection}</span>
+          </span>
+        ) : null}
       </div>
     </div>
   )
@@ -233,25 +242,29 @@ function VerdictSection({
   title,
   children,
   defaultOpen = false,
+  accordion = false,
   t,
 }: {
   id: string
   title: string
   children: ReactNode
   defaultOpen?: boolean
+  /** When true, stay collapsed-by-default on desktop too (국가별). */
+  accordion?: boolean
   t: LeagueUiPack
 }) {
   const desktop = useIsDesktop()
   const [open, setOpen] = useState(defaultOpen)
-  const expanded = desktop || open
+  const collapsible = accordion || !desktop
+  const expanded = collapsible ? open : true
 
   function toggle() {
-    if (desktop) return
+    if (!collapsible) return
     setOpen((v) => !v)
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (desktop) return
+    if (!collapsible) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       toggle()
@@ -261,20 +274,20 @@ function VerdictSection({
   return (
     <section className="rounded-lg border border-league-border/40 bg-league-bg-elevated/60">
       <div
-        role={desktop ? undefined : 'button'}
-        tabIndex={desktop ? undefined : 0}
-        aria-expanded={desktop ? undefined : expanded}
+        role={collapsible ? 'button' : undefined}
+        tabIndex={collapsible ? 0 : undefined}
+        aria-expanded={collapsible ? expanded : undefined}
         aria-controls={`verdict-section-${id}`}
         onClick={toggle}
         onKeyDown={onKeyDown}
         className={
-          desktop
-            ? 'flex w-full items-center justify-between gap-2 px-3 py-2 text-left'
-            : 'flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-league-accent-soft/40 active:bg-league-accent-soft/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-league-accent'
+          collapsible
+            ? 'flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-league-accent-soft/40 active:bg-league-accent-soft/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-league-accent'
+            : 'flex w-full items-center justify-between gap-2 px-3 py-2 text-left'
         }
       >
         <h3 className="text-[11px] font-bold uppercase tracking-wide text-league-fg">{title}</h3>
-        {!desktop ? (
+        {collapsible ? (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-league-accent-strong">
             <ChevronDown
               className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}

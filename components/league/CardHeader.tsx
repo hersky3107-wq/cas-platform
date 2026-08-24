@@ -2,7 +2,7 @@ import type { CardRoundMeta, HitRateSummary } from '@/lib/league/card-types'
 import { cardStatusCopy, cardStatusKind } from '@/lib/league/card-status'
 import {
   formatInstrumentPrice,
-  formatToday,
+  formatRoundOpenedDate,
   headerHeadline,
   headerWindow,
 } from '@/lib/league/card-header-copy'
@@ -11,10 +11,10 @@ import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import type { ToneTokens } from '@/lib/league/tone'
 
 /**
- * Header: today's date + instrument + ANCHOR (or "unavailable"), a one-line
- * prediction window, and ONE status badge. Live price is secondary and is
- * never shown until an anchor exists — otherwise a reader will treat $311
- * as the number the forecasts were measured from.
+ * Header: the ROUND's opened date + instrument + ANCHOR (or "unavailable"),
+ * a one-line prediction window, and ONE status badge. The date is
+ * `opened_at`, never `now()` — an archived card must not read as today's.
+ * Live price is secondary and is never shown until an anchor exists.
  */
 export function CardHeader({
   round,
@@ -32,9 +32,9 @@ export function CardHeader({
   gradingStalled?: boolean
 }) {
   void tone
-  const today = formatToday(locale)
+  const roundDate = formatRoundOpenedDate(round.opened_at, locale)
   const headline = headerHeadline({
-    today,
+    roundDate,
     instrument: round.instrument,
     anchorPrice: round.anchorPrice,
     anchorSessionDate: round.anchorSessionDate,

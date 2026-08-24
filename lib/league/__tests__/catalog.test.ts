@@ -4,6 +4,7 @@ import {
   PUBLIC_CATALOG,
   PUBLIC_CATEGORY_IDS,
   defaultCatalogCategoryId,
+  buildCatalogRankedRoundInput,
   findCatalogInstrument,
 } from '../catalog'
 import { LEAGUE_LOCALES, LEAGUE_SELECTABLE_LOCALES } from '../i18n/locales'
@@ -92,5 +93,54 @@ describe('catalog i18n', () => {
       expect(labels).not.toContain('etf_index')
       expect(labels).not.toContain('entertainment_awards')
     }
+  })
+
+  it('builds a server-owned ranked round for a catalog instrument with no existing card', () => {
+    const now = new Date('2026-08-24T09:00:00.000Z')
+    const input = buildCatalogRankedRoundInput('VNQ', '1d', now)
+    expect(input).toMatchObject({
+      instrument: 'VNQ',
+      category: 'real_estate',
+      horizon: '1d',
+      item_type: 'ranked',
+      cache_key: 'daily|VNQ|1d|2026-08-24',
+    })
+    expect(input?.proposition_text).toContain('VNQ')
+    expect(input?.resolution_rule).toContain('VNQ')
+    expect(buildCatalogRankedRoundInput('NOT-A-SYMBOL', '1d', now)).toBeNull()
+  })
+
+  it('stores the selected horizon code VERBATIM (one vocabulary, no translation) for all 4', () => {
+    const now = new Date('2026-08-24T09:00:00.000Z')
+    for (const h of ['1d', '1w', '1m', '3m'] as const) {
+      const input = buildCatalogRankedRoundInput('AAPL', h, now)
+      expect(input?.horizon).toBe(h)
+      expect(input?.cache_key.split('|')[2]).toBe(h)
+    }
+  })
+
+  it('names the ACTUAL resolve date in the proposition — never a relative phrase, never disagreeing with resolves_at', () => {
+    const now = new Date('2026-08-21T20:00:00.000Z') // a Friday
+    const input = buildCatalogRankedRoundInput('AAPL', '1m', now)
+    expect(input).not.toBeNull()
+    const resolveDate = input!.resolves_at.slice(0, 10)
+    expect(input!.proposition_text).toContain(`by ${resolveDate}`)
+    expect(input!.proposition_text).not.toMatch(/trading day/i)
+    expect(input!.proposition_text).not.toMatch(/next 1 month/i)
+  })
+
+  it('surfaces the weekday-approximation disclosure on the proposition for a trading-session horizon beyond 1d', () => {
+    const now = new Date('2026-08-21T20:00:00.000Z')
+    const oneMonth = buildCatalogRankedRoundInput('AAPL', '1m', now)
+    expect(oneMonth!.proposition_text).toMatch(/weekday/)
+    expect(oneMonth!.proposition_text).toMatch(/holiday calendar/)
+
+    // 1d: no disclosure (an off-by-one-holiday shift is immaterial to a next-session round).
+    const oneDay = buildCatalogRankedRoundInput('AAPL', '1d', now)
+    expect(oneDay!.proposition_text).not.toMatch(/weekday/)
+
+    // A calendar-day category (crypto) never carries the disclosure at any horizon.
+    const crypto = buildCatalogRankedRoundInput('BTC/USD', '3m', now)
+    expect(crypto!.proposition_text).not.toMatch(/weekday/)
   })
 })

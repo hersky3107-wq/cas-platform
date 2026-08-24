@@ -12,6 +12,7 @@ import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import { creditsForLeagueGenerate } from '@/lib/credits'
 import type { CardData, ColorBucket } from '@/lib/league/card-types'
 import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } from '@/lib/league/catalog'
+import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
 
@@ -22,7 +23,7 @@ type PublicCatalogCategory = {
   ledgerCategory: string
   tone: ColorBucket
   kind: CatalogKind
-  instruments: { instrument: string; horizon: string }[]
+  instruments: { instrument: string }[]
 }
 
 const LIVE_COST = creditsForLeagueGenerate()
@@ -101,6 +102,9 @@ function CardsPanel() {
   const [categories, setCategories] = useState<PublicCatalogCategory[] | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<PublicCategoryId | null>(null)
   const [selectedInstrument, setSelectedInstrument] = useState<string | null>(null)
+  // Horizon selector next to the instrument chips. Default '1d' — every
+  // instrument opens on the 1-day card first.
+  const [horizon, setHorizon] = useState<UiHorizon>('1d')
   const [card, setCard] = useState<CardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<CardLoadError | null>(null)
@@ -108,7 +112,7 @@ function CardsPanel() {
   // changes, so switching tabs/instruments can never silently start a paid run.
   const [live, setLive] = useState(false)
   // Guards against a slower, now-superseded fetch overwriting the result of a
-  // later one (e.g. clicking two instruments in quick succession).
+  // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
 
   // The SERVER'S response is the only jurisdiction decision this panel
@@ -116,12 +120,13 @@ function CardsPanel() {
   // same admin bypass every other league route has — see
   // `lib/league/public-access.ts`). Deriving "blocked" from the HTTP status
   // means the Cards tab can never disagree with Leaderboard/Record room.
-  const loadCard = useCallback(async (instrument: string) => {
+  const loadCard = useCallback(async (instrument: string, horizonArg: UiHorizon) => {
     const requestId = (requestIdRef.current += 1)
     try {
-      const res = await fetch(`/api/league/card?instrument=${encodeURIComponent(instrument)}`, {
-        credentials: 'include',
-      })
+      const res = await fetch(
+        `/api/league/card?instrument=${encodeURIComponent(instrument)}&horizon=${encodeURIComponent(horizonArg)}`,
+        { credentials: 'include' }
+      )
       const body = (await res.json()) as CardData | { error: string; code?: string }
       if (requestId !== requestIdRef.current) return
       if (!res.ok) {
@@ -162,7 +167,7 @@ function CardsPanel() {
         const firstInstrument = firstCat?.instruments[0]?.instrument ?? null
         setSelectedInstrument(firstInstrument)
         if (firstInstrument) {
-          void loadCard(firstInstrument)
+          void loadCard(firstInstrument, '1d')
         } else {
           setLoading(false)
         }
@@ -194,7 +199,7 @@ function CardsPanel() {
     const first = next.instruments[0]!.instrument
     setSelectedInstrument(first)
     setLoading(true)
-    void loadCard(first)
+    void loadCard(first, horizon)
   }
 
   // A plain click handler, not a `[selected]`-keyed effect: re-clicking the
@@ -205,7 +210,22 @@ function CardsPanel() {
     setCard(null)
     setError(null)
     setLoading(true)
-    void loadCard(instrument)
+    void loadCard(instrument, horizon)
+  }
+
+  // Switching horizon loads THAT horizon's round for the currently selected
+  // instrument — a genuinely different round (separate resolves_at), never a
+  // reinterpretation of the one just shown. Falls into the same empty state
+  // (with the priced generate CTA) when none exists yet for this horizon.
+  function selectHorizon(next: UiHorizon) {
+    if (next === horizon) return
+    setLive(false)
+    setHorizon(next)
+    setCard(null)
+    setError(null)
+    if (!selectedInstrument) return
+    setLoading(true)
+    void loadCard(selectedInstrument, next)
   }
 
   if (categories === null) return <PanelMessage text={t.hub.loading} />
@@ -248,12 +268,27 @@ function CardsPanel() {
                 }`}
               >
                 <span className="block text-sm">{instrumentLabel(t, i.instrument)}</span>
-                <span className={`mt-0.5 block text-[10px] font-medium ${selected ? 'text-slate-300' : 'text-slate-400'}`}>
-                  {i.horizon}
-                </span>
               </button>
             )
           })}
+        </div>
+      ) : null}
+
+      {active?.kind === 'instruments' ? (
+        <div className="flex gap-1.5" role="group" aria-label="Horizon">
+          {UI_HORIZONS.map((h) => (
+            <button
+              key={h}
+              type="button"
+              onClick={() => selectHorizon(h)}
+              aria-current={horizon === h}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                horizon === h ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100'
+              }`}
+            >
+              {t.catalog.horizons[h]}
+            </button>
+          ))}
         </div>
       ) : null}
 
@@ -262,7 +297,17 @@ function CardsPanel() {
         <PanelMessage text={t.gating.unavailable} />
       ) : null}
       {active?.kind === 'instruments' && !loading && error === 'no_round' ? (
-        <PanelMessage text={t.catalog.noCardYet} />
+        <EmptyInstrumentState
+          instrument={selectedInstrument}
+          horizon={horizon}
+          onOpened={() => {
+            if (selectedInstrument) {
+              setError(null)
+              setLoading(true)
+              void loadCard(selectedInstrument, horizon)
+            }
+          }}
+        />
       ) : null}
       {active?.kind === 'instruments' && !loading && error === 'load_failed' ? (
         <PanelMessage text={t.hub.genericError} tone="error" />
@@ -286,6 +331,109 @@ function CardsPanel() {
           </button>
         </>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * Generate currently lives BELOW an already-loaded PredictionCard
+ * (`!loading && !error && card`). That gate is why VNQ (and any instrument
+ * with no ranked round) was a dead end: the empty state replaced the card
+ * block, so the paid button never rendered. The button here is the same
+ * CTA (`hub.generateLive`) and hits the same endpoint with
+ * `{ instrument, horizon }`, which opens the currently-open catalog-defined
+ * ranked round FOR THAT HORIZON when none exists.
+ */
+function EmptyInstrumentState({
+  instrument,
+  horizon,
+  onOpened,
+}: {
+  instrument: string | null
+  horizon: UiHorizon
+  onOpened: () => void
+}) {
+  const { t } = useLeagueLocale()
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  async function startGenerate() {
+    if (!instrument || busy) return
+    setBusy(true)
+    setNotice(null)
+    try {
+      const res = await fetch('/api/league/generate-stream', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instrument, horizon }),
+      })
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null)) as
+          | { balance?: number; required?: number }
+          | null
+        if (res.status === 402) {
+          setNotice(t.hub.insufficientCredits(detail?.required ?? LIVE_COST, detail?.balance ?? 0))
+        } else if (res.status === 429) {
+          setNotice(t.hub.rateLimited)
+        } else if (res.status === 403) {
+          setNotice(t.gating.unavailable)
+        } else {
+          setNotice(t.hub.genericError)
+        }
+        return
+      }
+      if (!res.body) {
+        setNotice(t.hub.genericError)
+        return
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let opened = false
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.trim()) continue
+          let msg: { type?: string } | null = null
+          try {
+            msg = JSON.parse(line) as { type?: string }
+          } catch {
+            continue
+          }
+          if ((msg?.type === 'round' || msg?.type === 'done') && !opened) {
+            opened = true
+            onOpened()
+          }
+          if (msg?.type === 'error' && !opened) {
+            setNotice(t.hub.genericError)
+          }
+        }
+      }
+      if (!opened) onOpened()
+    } catch {
+      setNotice(t.hub.genericError)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
+      <p className="text-sm font-semibold text-slate-800">{t.catalog.noCardYet}</p>
+      <button
+        type="button"
+        disabled={busy || !instrument}
+        onClick={() => void startGenerate()}
+        className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50 md:max-w-sm"
+      >
+        {busy ? t.hub.generating : t.hub.generateLive(LIVE_COST)}
+      </button>
+      {notice ? <p className="mt-3 text-xs text-rose-700">{notice}</p> : null}
     </div>
   )
 }

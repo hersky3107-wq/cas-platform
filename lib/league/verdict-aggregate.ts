@@ -15,8 +15,10 @@ import { winRatePctForDisplay } from './win-rate'
  *    Denominator is always `is_correct !== null`. Ungraded models are counted
  *    in `ungraded`, never silently dropped.
  *  - Empty groups return `[]`, not a zero-filled placeholder row.
- *  - overconfident: wrong predictions, confidence desc, max 5. Raw confidence
- *    only — no Brier, no derived "허풍 지수".
+ *  - overconfident: wrong predictions whose confidence is strictly above the
+ *    round's median reported confidence, then confidence desc, max 5. Raw
+ *    confidence only — no Brier, no derived "허풍 지수". Empty when nobody
+ *    clears the floor (do not pad).
  *  - streaks: omit the key entirely when graded rounds < 2 OR the current
  *    win streak is 0 or 1. Never emit 0 or 1.
  *  - crossRoundRates: ONLY via `winRatePctForDisplay` from `./win-rate.ts`.
@@ -188,6 +190,13 @@ function resolveMeta(
   }
 }
 
+function medianOf(values: readonly number[]): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!
+}
+
 function emptyCounter(): { hits: number; graded: number; ungraded: number } {
   return { hits: 0, graded: 0, ungraded: 0 }
 }
@@ -299,15 +308,23 @@ export function buildVerdictPayload(args: {
     }
   }
 
-  wrong.sort((a, b) => {
-    const ac = a.confidence
-    const bc = b.confidence
-    if (ac === null && bc === null) return a.model_id.localeCompare(b.model_id)
-    if (ac === null) return 1
-    if (bc === null) return -1
-    if (bc !== ac) return bc - ac
-    return a.model_id.localeCompare(b.model_id)
-  })
+  const reported = args.predictions
+    .map((r) => r.predicted_value)
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+  const medianConfidence = medianOf(reported)
+
+  const overconfident = wrong
+    .filter((row) => {
+      if (row.confidence === null || medianConfidence === null) return false
+      return row.confidence > medianConfidence
+    })
+    .sort((a, b) => {
+      const ac = a.confidence ?? -Infinity
+      const bc = b.confidence ?? -Infinity
+      if (bc !== ac) return bc - ac
+      return a.model_id.localeCompare(b.model_id)
+    })
+    .slice(0, 5)
 
   const distribution: VerdictDistribution = {
     up,
@@ -326,7 +343,7 @@ export function buildVerdictPayload(args: {
     byCountry: toGroupArray(byCountry, COUNTRY_ORDER),
     byTier: toGroupArray(byTier, TIER_ORDER),
     byBook: toGroupArray(byBook, BOOK_ORDER),
-    overconfident: wrong.slice(0, 5),
+    overconfident,
   }
 
   if (args.crossRound && args.crossRound.length > 0) {

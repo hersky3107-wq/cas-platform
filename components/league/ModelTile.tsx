@@ -10,11 +10,10 @@ import { CountryFlag } from '@/components/league/CountryFlag'
 /**
  * One AI as a team card / ticker tile.
  *
- * Collapsed order: direction hero → brand → model identifier → country flag
- * → clipped rationale (2 lines) → explicit expand control (only when there
- * is a rationale). Expanded adds the full rationale, then confidence as the
- * last, muted line. Confidence is never a collapsed-tile headline: the
- * values cluster too tightly to distinguish models at a glance.
+ * Graded tiles: large ✓/✗ result stamp first, direction banner secondary.
+ * Ungraded tiles: direction hero first (unchanged). Then brand → model
+ * identifier → country flag → clipped rationale → expand control.
+ * Confidence is never a collapsed-tile headline.
  *
  * Direction copy comes only from `directionBadgeLabel` (never buy/sell).
  * `reasoning_snippet` is the model's own quote, rendered verbatim.
@@ -69,15 +68,41 @@ export function ModelTile({
             : ''
         }`}
       >
-        <div
-          dir="ltr"
-          className={`flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 md:flex-row md:justify-center md:gap-1.5 md:py-2 ${dirStyle}`}
-        >
-          <span className="text-[30px] font-black leading-none md:text-2xl" aria-hidden>
-            {glyph}
-          </span>
-          <span className="text-[10px] font-bold uppercase tracking-wide md:text-xs">{badge}</span>
-        </div>
+        {model.is_correct !== null ? (
+          <>
+            <div
+              className={`flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-2 md:py-2.5 ${
+                model.is_correct ? 'bg-emerald-500/15 text-emerald-700' : 'bg-rose-500/15 text-rose-700'
+              }`}
+            >
+              <span className="text-[34px] font-black leading-none md:text-3xl" aria-hidden>
+                {model.is_correct ? '\u2713' : '\u2717'}
+              </span>
+              <span className="text-[11px] font-bold uppercase tracking-wide md:text-xs">
+                {model.is_correct ? t.modelList.correct : t.modelList.missed}
+              </span>
+            </div>
+            <div
+              dir="ltr"
+              className={`flex shrink-0 items-center justify-center gap-1 rounded-md px-2 py-0.5 ${dirStyle}`}
+            >
+              <span className="text-[12px] font-black leading-none" aria-hidden>
+                {glyph}
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide">{badge}</span>
+            </div>
+          </>
+        ) : (
+          <div
+            dir="ltr"
+            className={`flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 md:flex-row md:justify-center md:gap-1.5 md:py-2 ${dirStyle}`}
+          >
+            <span className="text-[30px] font-black leading-none md:text-2xl" aria-hidden>
+              {glyph}
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wide md:text-xs">{badge}</span>
+          </div>
+        )}
 
         <p className="text-[13px] font-semibold leading-snug text-league-fg md:text-sm">{model.brand}</p>
         <p
@@ -117,15 +142,7 @@ export function ModelTile({
           </p>
         ) : null}
 
-        {model.is_correct !== null ? (
-          <span
-            className={`self-start rounded px-1 py-0.5 text-[10px] font-bold ${
-              model.is_correct ? 'bg-emerald-500/15 text-emerald-700' : 'bg-rose-500/15 text-rose-700'
-            }`}
-          >
-            {model.is_correct ? t.modelList.correct : t.modelList.missed}
-          </span>
-        ) : roundGraded && model.direction ? (
+        {model.is_correct === null && roundGraded && model.direction ? (
           <span className="self-start rounded bg-league-bg px-1 py-0.5 text-[10px] font-bold text-league-fg-muted">
             {t.modelList.ungraded}
           </span>

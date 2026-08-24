@@ -26,10 +26,14 @@ function resolveGlobalCostCap(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : FALLBACK_COST_CAP_USD
 }
 
+// Canonical horizon codes (see lib/league/horizon.ts) → human label for the
+// proposition. This opener only ever emits '1d' today (every fixed instrument
+// is a daily round), but the full map keeps it correct if the set grows.
 const HORIZON_LABEL: Record<string, string> = {
-  '24h': '24h',
-  '7d': '7 days',
+  '1d': '1 day',
+  '1w': '7 days',
   '1m': '1 month',
+  '3m': '3 months',
 }
 
 /**
@@ -95,9 +99,9 @@ type InstrumentResult = {
  * schedule cannot spend provider money. Normal manual operation should use the
  * admin-only `POST /api/admin/league/generate` endpoint instead.
  *
- * With `?manual=1`, this retained operational fallback builds 24h ranked rounds
- * for the fixed set and runs all tiers. Idempotent via cache_key and cost-capped
- * by LEAGUE_RUN_COST_CAP_USD.
+ * With `?manual=1`, this retained operational fallback builds 1d ranked rounds
+ * (canonical horizon code) for the fixed set and runs all tiers. Idempotent via
+ * cache_key and cost-capped by LEAGUE_RUN_COST_CAP_USD.
  *
  * Auth: Bearer CRON_SECRET (Vercel sends this when the cron is configured with
  * an auth secret). Public callers get 401.

@@ -151,7 +151,7 @@ async function main() {
         color_bucket: 'yellow',
         item_type: 'ranked',
         instrument: 'BTC/USD',
-        horizon: '24h',
+        horizon: '1d',
         resolution_rule: 'verification fixture — never resolved',
         resolves_at: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString(),
       })
@@ -251,7 +251,7 @@ async function main() {
           proposition_text: 'attacker-supplied proposition',
           category: 'stock',
           instrument: 'TSLA',
-          horizon: '24h',
+          horizon: '1d',
           resolution_rule: 'whatever',
           resolves_at: new Date(Date.now() + 86_400_000).toISOString(),
         },

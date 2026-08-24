@@ -6,6 +6,7 @@ import type { ComplianceReceipt } from './CardCompliance'
 import { CardHeader } from './CardHeader'
 import { DivisionBoard } from './DivisionBoard'
 import { VerdictPanel } from './VerdictPanel'
+import { PendingVerdictPanel } from './PendingVerdictPanel'
 
 /**
  * The actual prediction content (header, division board, final verdict).
@@ -76,7 +77,11 @@ export function CardBody({
           {t.bracket.resultLegend}
         </p>
       ) : null}
-      <VerdictPanel verdict={data.verdict} models={data.models} t={t} />
+      {data.verdict.hitRecord.graded > 0 ? (
+        <VerdictPanel verdict={data.verdict} models={data.models} t={t} />
+      ) : (
+        <PendingVerdictPanel round={data.round} t={t} locale={locale} />
+      )}
     </>
   )
 }

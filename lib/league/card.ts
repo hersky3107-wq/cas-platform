@@ -33,7 +33,7 @@ const PREDICTION_COLUMNS =
 /** Warn once (not once per request) if the anchor-price migration hasn't been applied yet. */
 let warnedMissingAnchorColumns = false
 
-export type CardLookup = { roundId: string } | { instrument: string; date?: string }
+export type CardLookup = { roundId: string } | { instrument: string; date?: string; horizon?: string }
 
 export class CardNotFoundError extends Error {
   constructor(message: string) {
@@ -67,6 +67,9 @@ async function loadRound(lookup: CardLookup): Promise<RoundRow> {
     const dayStart = `${lookup.date}T00:00:00.000Z`
     const dayEnd = `${lookup.date}T23:59:59.999Z`
     query = query.gte('opened_at', dayStart).lte('opened_at', dayEnd)
+  }
+  if (lookup.horizon) {
+    query = query.eq('horizon', lookup.horizon)
   }
 
   const { data, error } = await query.limit(1).maybeSingle()

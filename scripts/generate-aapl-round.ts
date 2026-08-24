@@ -6,7 +6,7 @@
  * `{ roundId }`, so it can create the round itself on an empty DB, unlike
  * `run-league-full-40.ts` which requires a round to already exist).
  *
- * Idempotent on cache_key like the cron opener: if today's `daily|AAPL|24h|<date>`
+ * Idempotent on cache_key like the cron opener: if today's `daily|AAPL|1d|<date>`
  * round already exists, this reuses it instead of trying (and failing) to
  * insert a duplicate.
  *
@@ -26,7 +26,7 @@ async function findRoundByCacheKey(cacheKey: string): Promise<string | null> {
 
 async function main() {
   const utcDay = new Date().toISOString().slice(0, 10)
-  const cacheKey = `daily|AAPL|24h|${utcDay}`
+  const cacheKey = `daily|AAPL|1d|${utcDay}`
   const resolvesAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 
   const existingId = await findRoundByCacheKey(cacheKey)
@@ -36,7 +36,7 @@ async function main() {
         proposition_text: 'Will Apple (AAPL) close higher 24h from now than its last close?',
         category: 'stock',
         instrument: 'AAPL',
-        horizon: '24h',
+        horizon: '1d',
         resolution_rule: 'NASDAQ regular-session close price vs prior close',
         resolves_at: resolvesAt,
         item_type: 'ranked',

@@ -106,8 +106,8 @@ describe('dictionary completeness', () => {
         hub.freeReadNote,
         hub.rateLimited,
         hub.genericError,
-        hub.generateLive(7),
-        hub.insufficientCredits(7, 0),
+        hub.generateLive(30),
+        hub.insufficientCredits(30, 0),
         hub.balance(120),
         hub.deepOpen(50),
         hub.deepDebate(70),
@@ -132,8 +132,8 @@ describe('dictionary completeness', () => {
       expect(bracket.showReasoning.trim().length).toBeGreaterThan(0)
       expect(bracket.hideReasoning.trim().length).toBeGreaterThan(0)
       const tally = bracket.compactTally({ up: 6, down: 4, flat: 0, abstain: 1 })
-      expect(tally).toContain('6')
-      expect(tally).toContain('4')
+      expect(tally).toBe('6▲ 4▼ 1–')
+      expect(tally).not.toMatch(/\//)
     }
   })
 
@@ -141,8 +141,8 @@ describe('dictionary completeness', () => {
     for (const locale of LEAGUE_LOCALES) {
       const hub = getLeagueUiPack(locale).hub
       // A user must be able to read what a live run costs before spending.
-      expect(hub.generateLive(7)).toContain('7')
-      expect(hub.insufficientCredits(7, 0)).toContain('7')
+      expect(hub.generateLive(30)).toContain('30')
+      expect(hub.insufficientCredits(30, 0)).toContain('30')
       expect(hub.deepOpen(50)).toContain('50')
       expect(hub.deepDebate(70)).toContain('70')
       expect(getLeagueUiPack(locale).recordRoom.deepCta(3)).toContain('3')
@@ -171,7 +171,12 @@ describe('dictionary completeness', () => {
       expect(pack.verdict.heroHits(29, 40)).not.toMatch(/%/)
       expect(pack.verdict.sectionCamp.trim().length).toBeGreaterThan(0)
       expect(pack.verdict.sectionCountryCaution.trim().length).toBeGreaterThan(0)
-      expect(pack.verdict.rawCount(18, 25)).toBe('18/25')
+      expect(pack.verdict.rawCount(18, 25)).toBe('\u271318/25')
+      expect(pack.verdict.heroHits(29, 40)).toContain('\u271329/40')
+      expect(pack.hitRate.roundResult(27, 37)).toContain('\u271327/37')
+      expect(pack.verdict.distributionHeading.trim().length).toBeGreaterThan(0)
+      expect(pack.verdict.overconfidentLine(65)).toMatch(/65/)
+      expect(pack.verdict.overconfidentLine(65)).toMatch(/%/)
     }
   })
 

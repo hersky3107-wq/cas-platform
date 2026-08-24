@@ -17,7 +17,7 @@ function round(overrides: Partial<RoundRow> = {}): RoundRow {
     category: 'stock',
     color_bucket: 'green',
     instrument: 'AAPL',
-    horizon: '24h',
+    horizon: '1d',
     resolution_rule: 'NASDAQ regular-session close price vs prior close',
     resolves_at: '2026-08-17T15:31:00.000Z',
     opened_at: '2026-08-16T21:30:00.000Z',

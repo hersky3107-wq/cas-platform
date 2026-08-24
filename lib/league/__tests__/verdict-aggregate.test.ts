@@ -181,19 +181,27 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
     expect(payload.byBook.map((g) => g.key)).toEqual(['closed'])
   })
 
-  it('ranks overconfident wrong predictions by raw confidence, capped at 5', () => {
+  it('ranks overconfident wrong predictions by raw confidence, capped at 5, only above median', () => {
     const payload = buildVerdictPayload({
       round: ROUND,
       predictions: asPredictions(FIXTURE_ROWS),
       roster: ROSTER,
     })
 
+    const reported = FIXTURE_ROWS.map((r) => r.predicted_value).filter(
+      (v): v is number => typeof v === 'number'
+    )
+    const sorted = [...reported].sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    const median =
+      sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!
+
     expect(payload.overconfident.length).toBeLessThanOrEqual(5)
-    expect(payload.overconfident.length).toBeGreaterThan(0)
     for (const row of payload.overconfident) {
       expect(row).toHaveProperty('confidence')
       expect(row).not.toHaveProperty('brier')
       expect(JSON.stringify(row)).not.toMatch(/허풍|brier|score/i)
+      expect(row.confidence).toBeGreaterThan(median)
     }
     for (let i = 1; i < payload.overconfident.length; i++) {
       const prev = payload.overconfident[i - 1]!.confidence ?? -Infinity
@@ -205,6 +213,71 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
       FIXTURE_ROWS.filter((r) => r.is_correct === false).map((r) => r.model_id)
     )
     for (const row of payload.overconfident) expect(wrongIds.has(row.model_id)).toBe(true)
+  })
+
+  it('hides 허풍 ranking when nobody is meaningfully above the round median', () => {
+    const clustered: VerdictPredictionRow[] = [
+      {
+        model_id: 'gpt-5.6-sol',
+        brand: 'OpenAI',
+        predicted_direction: 'up',
+        predicted_value: 55,
+        is_correct: true,
+      },
+      {
+        model_id: 'qwen3.8-max',
+        brand: 'Qwen',
+        predicted_direction: 'down',
+        predicted_value: 55,
+        is_correct: false,
+      },
+      {
+        model_id: 'solar-pro3',
+        brand: 'Upstage',
+        predicted_direction: 'up',
+        predicted_value: 55,
+        is_correct: true,
+      },
+    ]
+    const payload = buildVerdictPayload({
+      round: ROUND,
+      predictions: clustered,
+      roster: ROSTER,
+    })
+    expect(payload.overconfident).toEqual([])
+  })
+
+  it('does not pad the overconfident list to a fixed length', () => {
+    const oneLoudWrong: VerdictPredictionRow[] = [
+      {
+        model_id: 'gpt-5.6-sol',
+        brand: 'OpenAI',
+        predicted_direction: 'down',
+        predicted_value: 80,
+        is_correct: false,
+      },
+      {
+        model_id: 'qwen3.8-max',
+        brand: 'Qwen',
+        predicted_direction: 'up',
+        predicted_value: 50,
+        is_correct: true,
+      },
+      {
+        model_id: 'solar-pro3',
+        brand: 'Upstage',
+        predicted_direction: 'up',
+        predicted_value: 50,
+        is_correct: true,
+      },
+    ]
+    const payload = buildVerdictPayload({
+      round: ROUND,
+      predictions: oneLoudWrong,
+      roster: ROSTER,
+    })
+    expect(payload.overconfident).toHaveLength(1)
+    expect(payload.overconfident[0]!.model_id).toBe('gpt-5.6-sol')
   })
 
   it('omits streaks keys when graded rounds < 2 or streak is 0/1', () => {

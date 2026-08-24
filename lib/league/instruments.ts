@@ -1,12 +1,13 @@
 import 'server-only'
 
 import type { PredictionCategory } from '@/lib/prediction/categories'
+import type { UiHorizon } from './horizon'
 
 /**
- * AI Prediction League — daily fixed instrument set (cron v1 scope).
+ * AI Prediction League ??daily fixed instrument set (cron v1 scope).
  *
- * v1 SCOPE (do NOT extend ad hoc — // v2):
- *  - ONE horizon: 24h.
+ * v1 SCOPE (do NOT extend ad hoc ??// v2):
+ *  - ONE horizon: 1d (the canonical code; a daily round).
  *  - SMALL fixed set, free-tier-resolvable only (US equities / FX / crypto).
  *   Twelve Data's free (Basic) tier does NOT cover international exchanges
  *   (e.g. KRX / 005930), so those are intentionally excluded here.
@@ -17,8 +18,14 @@ import type { PredictionCategory } from '@/lib/prediction/categories'
  * plus the denormalized color_bucket so the config is self-describing (the
  * orchestrator re-derives color_bucket from category, but keeping it here makes
  * a single instrument's traffic-light visible without reading the orchestrator).
+ *
+ * HORIZON VOCABULARY: this legacy opener writes the SAME 4 canonical codes as
+ * the rest of the league (`UiHorizon` = '1d'/'1w'/'1m'/'3m'), so a round it
+ * opens satisfies the `prediction_rounds` horizon CHECK. Aliasing the type to
+ * `UiHorizon` (rather than redeclaring '24h') makes a non-canonical value a
+ * compile error here, not a runtime INSERT failure after 40 paid model calls.
  */
-export type LeagueHorizon = '24h' | '7d' | '1m'
+export type LeagueHorizon = UiHorizon
 
 export type FixedInstrument = {
   /** Ledger instrument string (also the Twelve Data symbol for price categories). */
@@ -39,7 +46,7 @@ export const DAILY_FIXED_INSTRUMENTS: readonly FixedInstrument[] = [
   {
     instrument: 'AAPL',
     category: 'stock',
-    horizon: '24h',
+    horizon: '1d',
     resolution_rule: 'NASDAQ regular-session close price vs prior close',
     item_type: 'ranked',
     color_bucket: 'green',
@@ -48,7 +55,7 @@ export const DAILY_FIXED_INSTRUMENTS: readonly FixedInstrument[] = [
   {
     instrument: 'NVDA',
     category: 'stock',
-    horizon: '24h',
+    horizon: '1d',
     resolution_rule: 'NASDAQ regular-session close price vs prior close',
     item_type: 'ranked',
     color_bucket: 'green',
@@ -57,7 +64,7 @@ export const DAILY_FIXED_INSTRUMENTS: readonly FixedInstrument[] = [
   {
     instrument: 'BTC/USD',
     category: 'crypto_spot',
-    horizon: '24h',
+    horizon: '1d',
     resolution_rule: 'BTC/USD spot close vs prior close',
     item_type: 'ranked',
     color_bucket: 'green',
@@ -66,7 +73,7 @@ export const DAILY_FIXED_INSTRUMENTS: readonly FixedInstrument[] = [
   {
     instrument: 'EUR/USD',
     category: 'fx',
-    horizon: '24h',
+    horizon: '1d',
     resolution_rule: 'EUR/USD spot close vs prior close',
     item_type: 'ranked',
     color_bucket: 'green',

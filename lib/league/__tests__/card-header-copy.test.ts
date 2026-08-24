@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatSessionDate, headerHeadline, headerWindow } from '../card-header-copy'
+import { formatRoundOpenedDate, formatSessionDate, headerHeadline, headerWindow } from '../card-header-copy'
 import { LEAGUE_UI } from '../i18n/dictionary'
 
 const t = LEAGUE_UI.en
@@ -8,7 +8,7 @@ const ko = LEAGUE_UI.ko
 describe('header honesty', () => {
   it('does not invent a starting price when the anchor is missing', () => {
     const headline = headerHeadline({
-      today: 'Friday, August 21, 2026',
+      roundDate: 'Aug 18, 2026',
       instrument: 'AAPL',
       anchorPrice: null,
       anchorSessionDate: null,
@@ -95,5 +95,34 @@ describe('header honesty', () => {
     expect(sentence).toBe(t.header.windowAnchorOnly(formatSessionDate('2026-08-17', 'en'), '$305.59'))
     expect(sentence).not.toMatch(/19/)
     expect(sentence).not.toMatch(/18/)
+  })
+
+  it('uses the round opened_at date, labeled as a round — never now()', () => {
+    const opened = formatRoundOpenedDate('2026-08-18T03:12:41.000Z', 'en')
+    expect(opened).toContain('18')
+    expect(opened).not.toMatch(/24/)
+
+    const headline = headerHeadline({
+      roundDate: opened,
+      instrument: 'AAPL',
+      anchorPrice: 305.59,
+      anchorSessionDate: '2026-08-17',
+      locale: 'en',
+      t,
+    })
+    expect(headline).toMatch(/Round of/i)
+    expect(headline).toContain(opened)
+    expect(headline).not.toMatch(/August 24/)
+
+    const koHeadline = headerHeadline({
+      roundDate: formatRoundOpenedDate('2026-08-18T03:12:41.000Z', 'ko'),
+      instrument: 'AAPL',
+      anchorPrice: 305.59,
+      anchorSessionDate: '2026-08-17',
+      locale: 'ko',
+      t: ko,
+    })
+    expect(koHeadline).toContain('라운드')
+    expect(koHeadline).toMatch(/18/)
   })
 })

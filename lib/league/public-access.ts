@@ -7,8 +7,15 @@ import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { checkRateLimit, type RateLimitRule } from '@/lib/rate-limit'
 import { isCategoryAllowed, type JurisdictionInput } from './jurisdiction/resolve'
-import { CATALOG_INSTRUMENT_IDS, PUBLIC_CATALOG, type PublicCategoryDef } from './catalog'
-import { isCuratedInstrument, visibleCategoriesFor } from './access-policy'
+import {
+  buildCatalogRankedRoundInput,
+  CATALOG_INSTRUMENT_IDS,
+  PUBLIC_CATALOG,
+  type CatalogRankedRoundInput,
+  type PublicCategoryDef,
+} from './catalog'
+import { gatePublicGenerateInstrument, isCuratedInstrument, visibleCategoriesFor } from './access-policy'
+import { isUiHorizon, type UiHorizon } from './horizon'
 import type { PredictionCategory } from '@/lib/prediction/categories'
 
 /**
@@ -163,7 +170,6 @@ export function viewerInstruments(viewer: LeagueViewer) {
     c.instruments.map((i) => ({
       instrument: i.instrument,
       category: c.ledgerCategory,
-      horizon: i.horizon,
       label: i.instrument,
     })),
   )
@@ -191,12 +197,22 @@ async function loadRoundGuard(roundId: string): Promise<RoundGuardRow | null> {
   return data as RoundGuardRow
 }
 
-/** Most recent RANKED round for a curated instrument — the public entry point for "today's card". */
-export async function latestRankedRoundId(instrument: string): Promise<string | null> {
+/**
+ * Most recent RANKED round for a curated (instrument, horizon) pair — the
+ * public entry point for "the current card for this horizon".
+ *
+ * MUST filter on horizon too: without it, opening a 1-week round for AAPL
+ * would make `latestRankedRoundId('AAPL')` return the 1-week round even
+ * while a caller asked for the 1-day card, silently swapping which round a
+ * reader sees. `horizon` is one of the 4 canonical codes (`1d`/`1w`/`1m`/`3m`)
+ * — the same value the UI shows and the row stores; there is no translation.
+ */
+export async function latestRankedRoundId(instrument: string, horizon: UiHorizon): Promise<string | null> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
     .select('id')
     .eq('instrument', instrument)
+    .eq('horizon', horizon)
     .eq('item_type', 'ranked')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -239,25 +255,81 @@ export async function authorizeRoundForViewer(viewer: LeagueViewer, roundIdRaw: 
 }
 
 /**
- * Resolves "the public card for this instrument" for a non-admin viewer:
- * curated symbols only, and specifically the latest RANKED round rather than
- * the latest round of any kind — so an admin's on-demand test round on the
- * same symbol can never become the public card.
+ * Resolves "the public card for this instrument at this horizon" for a
+ * non-admin viewer: curated symbols only, and specifically the latest
+ * RANKED round for that (instrument, horizon) pair rather than the latest
+ * round of any kind — so an admin's on-demand test round, or a round opened
+ * at a DIFFERENT horizon, can never become the public card for this one.
+ *
+ * `uiHorizon` defaults to `'1d'` so every existing caller (which predates
+ * horizon selection) keeps reading exactly the round it always read.
  */
-export async function resolvePublicInstrumentRound(viewer: LeagueViewer, instrumentRaw: string): Promise<RoundAccess> {
+export async function resolvePublicInstrumentRound(
+  viewer: LeagueViewer,
+  instrumentRaw: string,
+  uiHorizon: UiHorizon = '1d'
+): Promise<RoundAccess> {
   const instrument = instrumentRaw.trim()
   if (!instrument) {
     return { ok: false, response: jsonError(400, 'Missing instrument', 'missing_target') }
+  }
+  if (!isUiHorizon(uiHorizon)) {
+    return { ok: false, response: jsonError(400, 'Unknown horizon', 'unknown_horizon') }
   }
   if (!isCuratedInstrument(instrument, CURATED_INSTRUMENTS)) {
     // On-demand / arbitrary-instrument search is a later product piece — not open.
     return { ok: false, response: forbiddenResponse('not_public') }
   }
-  const roundId = await latestRankedRoundId(instrument)
+  const roundId = await latestRankedRoundId(instrument, uiHorizon)
   if (!roundId) {
     return { ok: false, response: jsonError(404, 'No ranked round available yet', 'no_round') }
   }
   return authorizeRoundForViewer(viewer, roundId)
+}
+
+export type PublicInstrumentGenerateTarget =
+  | { ok: true; round: { roundId: string } }
+  | { ok: true; round: CatalogRankedRoundInput }
+  | { ok: false; response: NextResponse }
+
+/**
+ * Paid generate target for a curated instrument at ONE OF THE 4 SELECTABLE
+ * HORIZONS (`horizonRaw`, default `'1d'`). The catalog + horizon +
+ * jurisdiction gate runs first (no DB, no packet, no charge). Reuses the
+ * currently-open round for that (instrument, horizon) when one exists;
+ * otherwise opens a new one from catalog metadata (server-owned
+ * proposition / rule / cache_key / resolves_at). A public caller still
+ * cannot invent those fields — `horizon` only selects among the 4 fixed
+ * codes, it does not set a duration.
+ */
+export async function resolvePublicInstrumentGenerateTarget(
+  viewer: LeagueViewer,
+  instrumentRaw: string,
+  horizonRaw: unknown = '1d'
+): Promise<PublicInstrumentGenerateTarget> {
+  const gate = gatePublicGenerateInstrument(instrumentRaw, viewer, horizonRaw)
+  if (!gate.ok) {
+    if (gate.status === 400) {
+      const message =
+        gate.code === 'missing_target'
+          ? 'Missing instrument'
+          : gate.code === 'unknown_horizon'
+            ? 'Unknown horizon'
+            : 'Unknown instrument'
+      return { ok: false, response: jsonError(400, message, gate.code) }
+    }
+    return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
+  }
+
+  const existing = await resolvePublicInstrumentRound(viewer, gate.instrument, gate.horizon)
+  if (existing.ok) return { ok: true, round: { roundId: existing.roundId } }
+  if (existing.response.status !== 404) return existing
+
+  const created = buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+  if (!created) {
+    return { ok: false, response: jsonError(404, 'No ranked round available yet', 'no_round') }
+  }
+  return { ok: true, round: created }
 }
 
 /**

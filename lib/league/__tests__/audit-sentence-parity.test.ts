@@ -34,7 +34,7 @@ function cardWindow(fields: Partial<typeof AUDIT>): string {
     category: 'stock',
     color_bucket: 'green',
     instrument: merged.instrument,
-    horizon: '24h',
+    horizon: '1d',
     resolution_rule: 'close vs prior close',
     resolves_at: '2026-08-18T15:31:00.000Z',
     opened_at: '2026-08-17T21:30:00.000Z',

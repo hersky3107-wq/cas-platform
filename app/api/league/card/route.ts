@@ -5,10 +5,15 @@ import {
   resolveLeagueViewer,
   resolvePublicInstrumentRound,
 } from '@/lib/league/public-access'
+import { isUiHorizon } from '@/lib/league/horizon'
 
 /**
  * GET /api/league/card?round_id=<uuid>
- * GET /api/league/card?instrument=AAPL[&date=YYYY-MM-DD]
+ * GET /api/league/card?instrument=AAPL[&horizon=1d|1w|1m|3m][&date=YYYY-MM-DD]
+ *
+ * `horizon` selects among the 4 fixed horizon codes (default `1d`, matching
+ * every caller written before horizon selection existed). An unrecognized
+ * horizon is 400 `unknown_horizon` — never silently defaulted.
  *
  * Read-only. Returns the assembled `CardData` (round meta + per-model list +
  * server-computed aggregates) for one round. Never generates or mutates
@@ -36,6 +41,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const roundId = searchParams.get('round_id')?.trim() || ''
   const instrument = searchParams.get('instrument')?.trim() || ''
+  const horizonRaw = searchParams.get('horizon')?.trim() || '1d'
 
   let lookup: CardLookup | null = null
 
@@ -46,10 +52,13 @@ export async function GET(req: Request) {
     if (!access.ok) return access.response
     lookup = { roundId: access.roundId }
   } else if (instrument) {
-    const access = await resolvePublicInstrumentRound(viewer, instrument)
+    if (!isUiHorizon(horizonRaw)) {
+      return NextResponse.json({ error: 'Unknown horizon', code: 'unknown_horizon' }, { status: 400 })
+    }
+    const access = await resolvePublicInstrumentRound(viewer, instrument, horizonRaw)
     if (!access.ok) return access.response
-    // Public reads resolve to the latest ranked round for the instrument; the
-    // `date` parameter stays an admin/preview affordance.
+    // Public reads resolve to the latest ranked round for the instrument at
+    // this horizon; the `date` parameter stays an admin/preview affordance.
     lookup = { roundId: access.roundId }
   }
 
@@ -84,7 +93,8 @@ function parseAdminLookup(searchParams: URLSearchParams): CardLookup | null {
   const instrument = searchParams.get('instrument')?.trim()
   if (instrument) {
     const date = searchParams.get('date')?.trim()
-    return date ? { instrument, date } : { instrument }
+    const horizon = searchParams.get('horizon')?.trim()
+    return { instrument, ...(date ? { date } : {}), ...(horizon ? { horizon } : {}) }
   }
 
   return null

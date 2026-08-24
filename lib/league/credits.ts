@@ -9,7 +9,7 @@
  */
 
 /** One live re-run of a ranked round (full 40-model roster). */
-export const LEAGUE_GENERATE_CREDITS = 7
+export const LEAGUE_GENERATE_CREDITS = 30
 
 /** Deep archive (full history, model filter, date range, CSV). Recent summary stays free. */
 export const LEAGUE_ARCHIVE_CREDITS = 3

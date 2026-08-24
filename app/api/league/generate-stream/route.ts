@@ -9,7 +9,7 @@ import {
   enforceRateLimit,
   forbiddenResponse,
   resolveLeagueViewer,
-  resolvePublicInstrumentRound,
+  resolvePublicInstrumentGenerateTarget,
   type LeagueViewer,
 } from '@/lib/league/public-access'
 import type { LeagueTier } from '@/lib/league/roster'
@@ -26,8 +26,11 @@ const VALID_TIERS: LeagueTier[] = ['premier', 'challenger', 'world', 'scout']
  * POST /api/league/generate-stream
  * Body:
  *   { roundId }                  — re-run an existing round (public + admin)
- *   { instrument: 'AAPL' }       — today's ranked round for a curated
- *                                  instrument (public + admin)
+ *   { instrument: 'AAPL', horizon?: '1d'|'1w'|'1m'|'3m' } — the currently-open
+ *                                  ranked round for a curated instrument at
+ *                                  this horizon (public + admin). `horizon`
+ *                                  defaults to '1d'; an unrecognized value is
+ *                                  400 `unknown_horizon`, never defaulted.
  *   { round: { ... } }           — create an arbitrary round (ADMIN ONLY)
  * plus optional `tiers` / `concurrency` / `timeoutMs` / `maxCompletionTokens` /
  * `costCapUsd` (ADMIN ONLY — silently ignored for everyone else).
@@ -43,10 +46,14 @@ const VALID_TIERS: LeagueTier[] = ['premier', 'challenger', 'world', 'scout']
  *   1. auth            -> 401. Any logged-in user; was admin-only.
  *   2. rate limit      -> 429, per user, before compute AND before charging,
  *                         so a throttled caller is never billed.
- *   3. target policy   -> 403/404. Non-admin: RANKED rounds on CURATED
- *                         instruments only, jurisdiction-allowed category
- *                         only, and NO arbitrary round creation (that is
- *                         on-demand search, which is not open yet).
+ *   3. target policy   -> 400/403/404. `{ instrument }` must match a
+ *                         server-side catalog key exactly (400 unknown)
+ *                         and pass the jurisdiction matrix (403 blocked)
+ *                         BEFORE any credit charge, packet fetch, or
+ *                         model call. A catalog hit reuses today's ranked
+ *                         round or opens one from catalog metadata
+ *                         (server-owned proposition/rule). NO arbitrary
+ *                         `{ round: ... }` creation (admin-only).
  *   4. cost knobs      -> stripped for non-admin, so the fixed price buys a
  *                         fixed amount of work.
  *   5. credits         -> 402 on insufficient balance, BEFORE the stream opens
@@ -155,13 +162,15 @@ export async function POST(req: Request) {
 /**
  * Resolves WHAT this caller is allowed to generate.
  *
- * The public surface is deliberately narrow: a public caller can only re-run a
- * round that the cron already opened for a curated instrument. They cannot
- * name a proposition, a category, an instrument, or a resolution rule — which
- * is what keeps this endpoint from being an open, arbitrary-prompt, arbitrary-
- * cost LLM fan-out behind a fixed 7-credit price, and what keeps the
- * jurisdiction matrix meaningful (you cannot invent a round in a category you
- * are not allowed to see).
+ * The public surface is deliberately narrow: `{ instrument, horizon }` is a
+ * catalog key plus one of 4 fixed horizon codes, not free text. `instrument`
+ * must match a server-side catalog entry by exact key, `horizon` must be one
+ * of `'1d'|'1w'|'1m'|'3m'` (default `'1d'`), and both must pass the
+ * jurisdiction matrix before this function returns a chargeable target. A
+ * public caller cannot name a proposition, a category, a resolution rule, or
+ * a resolves_at — which is what keeps this endpoint from being an open,
+ * arbitrary-prompt, arbitrary-cost LLM fan-out behind a fixed generate price,
+ * and what keeps the jurisdiction matrix meaningful.
  */
 async function resolveTarget(
   viewer: LeagueViewer,
@@ -169,6 +178,7 @@ async function resolveTarget(
 ): Promise<{ round: RoundInput } | { response: NextResponse }> {
   const roundId = typeof body.roundId === 'string' ? body.roundId.trim() : ''
   const instrument = typeof body.instrument === 'string' ? body.instrument.trim() : ''
+  const horizon = typeof body.horizon === 'string' ? body.horizon.trim() : '1d'
 
   if (roundId) {
     const access = await authorizeRoundForViewer(viewer, roundId)
@@ -177,9 +187,9 @@ async function resolveTarget(
   }
 
   if (instrument) {
-    const access = await resolvePublicInstrumentRound(viewer, instrument)
+    const access = await resolvePublicInstrumentGenerateTarget(viewer, instrument, horizon)
     if (!access.ok) return { response: access.response }
-    return { round: { roundId: access.roundId } }
+    return { round: access.round }
   }
 
   const arbitrary = buildArbitraryRoundInput(body)

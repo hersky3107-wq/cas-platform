@@ -1,7 +1,9 @@
 import type { PredictionCategory } from '@/lib/prediction/categories'
 import type { LeagueTier } from '@/lib/league/roster'
 import type { RateLimitRule } from '@/lib/rate-limit'
+import { findCatalogInstrument } from './catalog'
 import { isCategoryAllowed, type JurisdictionInput } from './jurisdiction/resolve'
+import { isUiHorizon, type UiHorizon } from './horizon'
 
 /**
  * AI Prediction League — PUBLIC ACCESS POLICY (pure).
@@ -72,6 +74,44 @@ export function isCuratedInstrument(instrument: string, curated: readonly string
 }
 
 /**
+ * Paid `{ instrument, horizon }` generate gate. Runs before any DB lookup,
+ * packet fetch, model call, or credit charge.
+ *
+ * The instrument key must match a server-side catalog entry exactly (after
+ * trim). Caller-invented / wrong-case / near-miss symbols are 400, not 403 —
+ * this is a free-input surface and a miss is a bad request, not a visibility
+ * secret. Same for `horizon`: it must be one of the 4 fixed UI codes
+ * (`isUiHorizon`) — anything else is 400 `unknown_horizon`, not silently
+ * defaulted. A catalog hit still has to pass the same jurisdiction matrix the
+ * card-read path uses; admin skips that matrix (same as card-read).
+ */
+export type PublicGenerateInstrumentGate =
+  | { ok: true; instrument: string; category: PredictionCategory; horizon: UiHorizon }
+  | { ok: false; status: 400; code: 'missing_target' | 'unknown_instrument' | 'unknown_horizon' }
+  | { ok: false; status: 403; code: 'jurisdiction_blocked' }
+
+export function gatePublicGenerateInstrument(
+  instrumentRaw: string,
+  viewer: { isAdmin: boolean; jurisdiction: JurisdictionInput },
+  horizonRaw: unknown = '1d'
+): PublicGenerateInstrumentGate {
+  const instrument = instrumentRaw.trim()
+  if (!instrument) return { ok: false, status: 400, code: 'missing_target' }
+
+  const horizon = typeof horizonRaw === 'string' ? horizonRaw.trim() : horizonRaw
+  if (!isUiHorizon(horizon)) return { ok: false, status: 400, code: 'unknown_horizon' }
+
+  const found = findCatalogInstrument(instrument)
+  if (!found) return { ok: false, status: 400, code: 'unknown_instrument' }
+
+  const category = found.category.ledgerCategory
+  if (!viewer.isAdmin && !isCategoryAllowed(category, viewer.jurisdiction)) {
+    return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+  }
+  return { ok: true, instrument: found.entry.instrument, category, horizon }
+}
+
+/**
  * Optional cost/shape knobs on `POST /api/league/generate-stream`. Admin-only:
  * they exist for operational testing (run one tier, cap spend, shorten the
  * timeout), and every one of them can be turned into either extra provider
@@ -88,7 +128,7 @@ export type GenerateTuning = {
 /**
  * Non-admin callers get the orchestrator's own server-side defaults for every
  * knob — their request body cannot influence fan-out size or spend ceiling.
- * The 7-credit price is only honest if the work behind it is fixed.
+ * The fixed generate price is only honest if the work behind it is fixed.
  */
 export function tuningForViewer(raw: GenerateTuning, isAdmin: boolean): GenerateTuning {
   return isAdmin ? raw : {}

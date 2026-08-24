@@ -59,8 +59,18 @@ export function formatInstrumentPrice(instrument: string, value: number): string
   return `${currencyGlyph(instrument)}${formatted}`
 }
 
+/**
+ * Calendar date of `opened_at` (UTC day). Used as the card headline date so an
+ * archived round cannot read as "today".
+ */
+export function formatRoundOpenedDate(openedAt: string, locale: LeagueLocale): string {
+  const ymd = openedAt.slice(0, 10)
+  const labeled = formatSessionDate(ymd, locale)
+  return labeled || ymd
+}
+
 export function headerHeadline(args: {
-  today: string
+  roundDate: string
   instrument: string
   anchorPrice: number | null
   anchorSessionDate: string | null
@@ -68,11 +78,11 @@ export function headerHeadline(args: {
   t: LeagueUiPack
 }): string {
   if (args.anchorPrice === null) {
-    return args.t.header.headlineNoAnchor(args.today, args.instrument)
+    return args.t.header.headlineNoAnchor(args.roundDate, args.instrument)
   }
   const session = args.anchorSessionDate ? formatSessionDate(args.anchorSessionDate, args.locale) : ''
   return args.t.header.headlineWithAnchor(
-    args.today,
+    args.roundDate,
     args.instrument,
     formatInstrumentPrice(args.instrument, args.anchorPrice),
     session
