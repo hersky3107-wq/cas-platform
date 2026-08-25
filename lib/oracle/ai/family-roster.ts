@@ -1,14 +1,13 @@
 /**
- * Per-family reader + synthesizer roster for single-system Oracle sessions.
+ * Per-family / per-system reader + synthesizer roster for Oracle sessions.
  *
- * Accepted from the family bakeoffs (saju, ziwei, tarot, runes, astro,
- * numerology) with corrections:
- * - Different synthesizer brand per family (never OpenAI for all four).
- * - Astro synthesizer is not OpenAI (ranked #8 on astro — demoted from seat 1).
- * - Synthesizer is never also a reader in the same session.
+ * Synthesis assignments come from docs/oracle-synthesis-bakeoff.md plus the
+ * DeepSeek/Anthropic clean re-run (docs/oracle-synthesis-rerun-spoiled.json).
+ * Reader seats come from layer-1 bakeoffs. OpenAI is excluded from every
+ * synthesizer seat until it passes a synthesis re-run.
  *
  * Systems with zero system-level bakeoff evidence inherit their family's
- * roster (evidence-by-family, not evidence-by-system) — marked below.
+ * default seat order (evidence-by-family) — marked on SYSTEM_READER_ROSTERS.
  */
 import type { SystemId } from '../axes/types'
 import { ORACLE_READER_COUNTS, type OracleReaderCount, type OracleSessionScope } from '../schema'
@@ -30,17 +29,25 @@ export type OracleFamilyRoster = {
   id: OracleFamilyId
   label: string
   systems: readonly SystemId[]
-  /** Seats 1–5 in product order. */
-  readers: readonly OracleFamilyBrand[]
   /**
-   * Seats 6–7 when N=7: remaining eligible brands (not MiniMax/Mistral/Meta/NAVER),
-   * not already readers, and not the family synthesizer — ordered by that family's
-   * bakeoff preference.
+   * Family-default seats 1–5. Used only by evidence-by-family systems.
+   * Single-mode seat 1 is quality-ranked for that family — it is NOT the
+   * integrated LAYER1_REGISTRY "dedicated brand" (that concept applies only
+   * to combined/integrated one-model-per-system routing).
    */
+  readers: readonly OracleFamilyBrand[]
   overflowReaders: readonly OracleFamilyBrand[]
   synthesizer: OracleFamilyBrand
-  /** Bakeoff cite justifying the synthesizer pick. */
   synthesizerCite: string
+}
+
+export type SystemReaderRoster = {
+  system: SystemId
+  family: OracleFamilyId
+  /** 'system' = measured bakeoff for this system; 'family' = inherited default. */
+  evidence: 'system' | 'family'
+  readers: readonly OracleFamilyBrand[]
+  overflowReaders: readonly OracleFamilyBrand[]
 }
 
 /**
@@ -57,76 +64,177 @@ export function isAllowedReaderCount(scope: OracleSessionScope, readerCount: num
   return (ORACLE_READER_COUNTS as readonly number[]).includes(readerCount)
 }
 
+/**
+ * Family defaults + synthesizers (synthesis-bakeoff evidence only).
+ * Each synthesizer is excluded from that family's reader/overflow pools.
+ *
+ * Clean single-panel pool after spoiled re-runs: NVIDIA, DeepSeek, Moonshot.
+ * Anthropic clean re-run DQ (universal conclusion); OpenAI excluded.
+ * Google used only where the clean pool is exhausted (self_ip).
+ */
 export const ORACLE_FAMILY_ROSTERS: Record<OracleFamilyId, OracleFamilyRoster> = {
   east_asian: {
     id: 'east_asian',
     label: 'East-Asian calendrical',
     systems: ['saju', 'ziwei', 'ninestar', 'sukuyou', 'name'],
-    // saju: Z.ai #1; ziwei: Moonshot #1, NVIDIA #2, Z.ai #3, xAI #4; DeepSeek saju #3 / ziwei hold
-    readers: ['Z.ai', 'Moonshot AI', 'xAI', 'NVIDIA', 'DeepSeek'],
-    // Remaining eligibles after readers + OpenAI synth: Google, Anthropic (ziwei #5 / #8)
-    overflowReaders: ['Anthropic', 'Google'],
-    // Off-panel; saju bakeoff #7 (0 fab, consistent). Not Anthropic (ziwei #5) — keep Anthropic free for self_ip readers.
-    synthesizer: 'OpenAI',
-    synthesizerCite: 'saju bakeoff rank #7 (0 fab); not on east_asian reader panel',
+    // NVIDIA = synth (removed from readers). Default for evidence-by-family.
+    readers: ['Z.ai', 'Moonshot AI', 'xAI', 'DeepSeek', 'Anthropic'],
+    overflowReaders: ['OpenAI', 'Google'],
+    synthesizer: 'NVIDIA',
+    synthesizerCite:
+      'synthesis bakeoff single #1 (0 univ-conclusion DQ); off east_asian reader panels; OpenAI excluded',
   },
   draw_based: {
     id: 'draw_based',
     label: 'Draw-based',
     systems: ['tarot', 'runes', 'iching'],
-    // runes: xAI #1, Google #2 (thinkingLevel:minimal), NVIDIA #3, Z.ai #4; tarot: Moonshot #3 among eligibles
+    // DeepSeek = synth after clean re-run (DQ=false on single).
     readers: ['xAI', 'Google', 'NVIDIA', 'Z.ai', 'Moonshot AI'],
-    // Remaining after DeepSeek synth: OpenAI (tarot #4), Anthropic
     overflowReaders: ['OpenAI', 'Anthropic'],
-    // Off-panel; runes #5 (0 fab). Distinct from east_asian OpenAI synth.
     synthesizer: 'DeepSeek',
-    synthesizerCite: 'runes bakeoff rank #5 (0 fab); not on draw_based reader panel',
+    synthesizerCite:
+      'synthesis clean re-run single DQ=false, ground=121; off draw_based readers; OpenAI excluded',
   },
   western_chart: {
     id: 'western_chart',
     label: 'Western chart',
     systems: ['astro'],
-    // astro bakeoff: Moonshot #1, DeepSeek #2, xAI #4, Z.ai #5, Anthropic #3 — OpenAI demoted (#8)
-    readers: ['Moonshot AI', 'DeepSeek', 'xAI', 'Z.ai', 'Anthropic'],
-    // Remaining after Google synth: NVIDIA (#7) then OpenAI (#8)
-    overflowReaders: ['NVIDIA', 'OpenAI'],
-    // CORRECTION 1: not OpenAI (#8). Best off-panel scorer is Google (#6, 0 fab).
-    synthesizer: 'Google',
-    synthesizerCite: 'astro bakeoff rank #6 (0 fab); OpenAI #8 excluded from synth; not on western reader panel',
+    // Moonshot = synth (single #3). NVIDIA already assigned to east_asian.
+    readers: ['DeepSeek', 'Anthropic', 'xAI', 'Z.ai', 'Google'],
+    overflowReaders: ['OpenAI', 'NVIDIA'],
+    synthesizer: 'Moonshot AI',
+    synthesizerCite:
+      'synthesis bakeoff single #3 (0 univ-conclusion DQ); not on western readers; varies from east_asian NVIDIA',
   },
   self_ip: {
     id: 'self_ip',
     label: 'Self-IP / number',
     systems: ['prism', 'numerology', 'tzolkin'],
-    // numerology: Moonshot #1, Z.ai #2, Anthropic #4, DeepSeek #5, Google #3 (post label-evidence fix)
-    readers: ['Moonshot AI', 'Z.ai', 'Anthropic', 'DeepSeek', 'Google'],
-    // Remaining after xAI synth: OpenAI (#7), NVIDIA (#8)
-    overflowReaders: ['OpenAI', 'NVIDIA'],
-    // Off-panel; numerology #6. Distinct synth brand.
-    synthesizer: 'xAI',
-    synthesizerCite: 'numerology bakeoff rank #6 (0 real fab after label-evidence fix); not on self_ip reader panel',
+    // Clean single pool exhausted (NVIDIA/DeepSeek/Moonshot taken). Google =
+    // best remaining (integrated #3); single was univ-conclusion DQ.
+    readers: ['Z.ai', 'Anthropic', 'DeepSeek', 'xAI', 'NVIDIA'],
+    overflowReaders: ['OpenAI', 'Moonshot AI'],
+    synthesizer: 'Google',
+    synthesizerCite:
+      'clean single pool exhausted; synthesis integrated #3 (0 univ DQ); single was DQ — best remaining; OpenAI excluded',
   },
 }
 
-/** System → family. Zero-evidence systems inherit family roster (see comments). */
+/** Integrated (combined) synthesizer — ranked separately from single-panel synths. */
+export const INTEGRATED_SYNTHESIZER_BRAND: OracleFamilyBrand = 'Z.ai'
+export const INTEGRATED_SYNTHESIZER_CITE =
+  'synthesis bakeoff integrated #1 (0 univ-conclusion DQ); OpenAI excluded from all synth seats'
+
+/**
+ * Per-system seat orders. Measured systems differ at N=3 within a family.
+ * Evidence-by-family systems copy ORACLE_FAMILY_ROSTERS defaults.
+ */
+export const SYSTEM_READER_ROSTERS: Record<SystemId, SystemReaderRoster> = {
+  // saju: Z.ai #1, xAI #2, DeepSeek #3… (NVIDIA = family synth, removed)
+  saju: {
+    system: 'saju',
+    family: 'east_asian',
+    evidence: 'system',
+    readers: ['Z.ai', 'xAI', 'DeepSeek', 'Moonshot AI', 'Anthropic'],
+    overflowReaders: ['OpenAI', 'Google'],
+  },
+  // ziwei: Moonshot #1, Z.ai #3, xAI #4… (NVIDIA was #2 — family synth, removed)
+  ziwei: {
+    system: 'ziwei',
+    family: 'east_asian',
+    evidence: 'system',
+    readers: ['Moonshot AI', 'Z.ai', 'xAI', 'DeepSeek', 'Anthropic'],
+    overflowReaders: ['OpenAI', 'Google'],
+  },
+  ninestar: {
+    system: 'ninestar',
+    family: 'east_asian',
+    evidence: 'family',
+    readers: ORACLE_FAMILY_ROSTERS.east_asian.readers,
+    overflowReaders: ORACLE_FAMILY_ROSTERS.east_asian.overflowReaders,
+  },
+  sukuyou: {
+    system: 'sukuyou',
+    family: 'east_asian',
+    evidence: 'family',
+    readers: ORACLE_FAMILY_ROSTERS.east_asian.readers,
+    overflowReaders: ORACLE_FAMILY_ROSTERS.east_asian.overflowReaders,
+  },
+  name: {
+    system: 'name',
+    family: 'east_asian',
+    evidence: 'family',
+    readers: ORACLE_FAMILY_ROSTERS.east_asian.readers,
+    overflowReaders: ORACLE_FAMILY_ROSTERS.east_asian.overflowReaders,
+  },
+  // tarot: Moonshot elevated vs runes; N=3 ≠ runes (DeepSeek = synth)
+  tarot: {
+    system: 'tarot',
+    family: 'draw_based',
+    evidence: 'system',
+    readers: ['Moonshot AI', 'xAI', 'Google', 'NVIDIA', 'Z.ai'],
+    overflowReaders: ['OpenAI', 'Anthropic'],
+  },
+  // runes: xAI #1, Google #2, NVIDIA #3, Z.ai #4, Moonshot #6
+  runes: {
+    system: 'runes',
+    family: 'draw_based',
+    evidence: 'system',
+    readers: ['xAI', 'Google', 'NVIDIA', 'Z.ai', 'Moonshot AI'],
+    overflowReaders: ['OpenAI', 'Anthropic'],
+  },
+  iching: {
+    system: 'iching',
+    family: 'draw_based',
+    evidence: 'family',
+    readers: ORACLE_FAMILY_ROSTERS.draw_based.readers,
+    overflowReaders: ORACLE_FAMILY_ROSTERS.draw_based.overflowReaders,
+  },
+  // astro: DeepSeek #2, Anthropic #3… (Moonshot = synth, removed)
+  astro: {
+    system: 'astro',
+    family: 'western_chart',
+    evidence: 'system',
+    readers: ['DeepSeek', 'Anthropic', 'xAI', 'Z.ai', 'Google'],
+    overflowReaders: ['OpenAI', 'NVIDIA'],
+  },
+  // numerology: Z.ai #2, Anthropic #4… (Google = synth, Moonshot demoted to overflow)
+  numerology: {
+    system: 'numerology',
+    family: 'self_ip',
+    evidence: 'system',
+    readers: ['Z.ai', 'Anthropic', 'DeepSeek', 'xAI', 'NVIDIA'],
+    overflowReaders: ['OpenAI', 'Moonshot AI'],
+  },
+  prism: {
+    system: 'prism',
+    family: 'self_ip',
+    evidence: 'family',
+    readers: ORACLE_FAMILY_ROSTERS.self_ip.readers,
+    overflowReaders: ORACLE_FAMILY_ROSTERS.self_ip.overflowReaders,
+  },
+  tzolkin: {
+    system: 'tzolkin',
+    family: 'self_ip',
+    evidence: 'family',
+    readers: ORACLE_FAMILY_ROSTERS.self_ip.readers,
+    overflowReaders: ORACLE_FAMILY_ROSTERS.self_ip.overflowReaders,
+  },
+}
+
+/** System → family. */
 export const SYSTEM_FAMILY: Record<SystemId, OracleFamilyId> = {
   saju: 'east_asian',
   ziwei: 'east_asian',
-  // evidence-by-family (not evidence-by-system): no bakeoff; inherits east_asian
   ninestar: 'east_asian',
-  // evidence-by-family (not evidence-by-system): no bakeoff; inherits east_asian
   sukuyou: 'east_asian',
-  // evidence-by-family (not evidence-by-system): no bakeoff; inherits east_asian
   name: 'east_asian',
   tarot: 'draw_based',
   runes: 'draw_based',
-  // evidence-by-family (not evidence-by-system): no bakeoff; inherits draw_based
   iching: 'draw_based',
   astro: 'western_chart',
   numerology: 'self_ip',
-  // evidence-by-family (not evidence-by-system): smoke length-lock only; inherits self_ip
   prism: 'self_ip',
-  // evidence-by-family (not evidence-by-system): no bakeoff; inherits self_ip
   tzolkin: 'self_ip',
 }
 
@@ -137,11 +245,16 @@ export type ResolvedSessionRoster = {
   readers: OracleFamilyBrand[]
   synthesizer: OracleFamilyBrand
   synthesizerCite: string
+  evidence: 'system' | 'family'
 }
 
 /**
  * Resolve single-system brand seats for N readers + family synthesizer.
  * Asserts no duplicate brands and synthesizer ∉ readers.
+ *
+ * Seat 1 is the quality-ranked lead for this system (or family default).
+ * It is intentionally NOT required to equal LAYER1_REGISTRY[system].brand —
+ * that "dedicated brand" applies only to integrated one-model-per-system mode.
  */
 export function resolveSingleSystemRoster(
   system: SystemId,
@@ -150,36 +263,32 @@ export function resolveSingleSystemRoster(
   if (!(ORACLE_SINGLE_READER_COUNTS as readonly number[]).includes(readerCount)) {
     throw new Error(`single-system readerCount must be 3, 5, or 7 (got ${readerCount})`)
   }
-  const familyId = SYSTEM_FAMILY[system]
-  const family = ORACLE_FAMILY_ROSTERS[familyId]
-  const pool = [...family.readers, ...family.overflowReaders]
+  const systemRoster = SYSTEM_READER_ROSTERS[system]
+  const family = ORACLE_FAMILY_ROSTERS[systemRoster.family]
+  const pool = [...systemRoster.readers, ...systemRoster.overflowReaders]
   const readers = pool.slice(0, readerCount) as OracleFamilyBrand[]
   if (readers.length !== readerCount) {
-    throw new Error(`family ${familyId} has fewer than ${readerCount} reader seats`)
+    throw new Error(`system ${system} has fewer than ${readerCount} reader seats`)
   }
   const unique = new Set(readers)
   if (unique.size !== readers.length) {
-    throw new Error(`duplicate reader brand in ${familyId} roster for ${system}`)
+    throw new Error(`duplicate reader brand in ${system} roster`)
   }
   if (unique.has(family.synthesizer)) {
     throw new Error(
-      `synthesizer ${family.synthesizer} collides with a reader in ${familyId} (system ${system})`,
+      `synthesizer ${family.synthesizer} collides with a reader for ${system}`,
     )
   }
   return {
-    family: familyId,
+    family: systemRoster.family,
     system,
     readerCount: readerCount as OracleSingleReaderCount,
     readers,
     synthesizer: family.synthesizer,
     synthesizerCite: family.synthesizerCite,
+    evidence: systemRoster.evidence,
   }
 }
-
-/** Integrated (combined) synthesizer brand for cost / wiring until a dedicated non-overlapping seat exists. */
-export const INTEGRATED_SYNTHESIZER_BRAND: OracleFamilyBrand = 'OpenAI'
-export const INTEGRATED_SYNTHESIZER_CITE =
-  'Integrated layer-1 still uses one brand per system (LAYER1_REGISTRY); OpenAI synth overlaps astro until that map changes. Single-system uses per-family synths below.'
 
 /** Printable synthesizer table for ops / docs. */
 export function synthesizerByFamily(): Array<{
@@ -195,6 +304,7 @@ export function synthesizerByFamily(): Array<{
 
 export function resolvedSingleSystemRosterTable(): Array<{
   system: SystemId
+  evidence: string
   n3: string
   n5: string
   n7: string
@@ -206,6 +316,7 @@ export function resolvedSingleSystemRosterTable(): Array<{
     const n7 = resolveSingleSystemRoster(system, 7)
     return {
       system,
+      evidence: n3.evidence,
       n3: n3.readers.join(', '),
       n5: n5.readers.join(', '),
       n7: n7.readers.join(', '),
@@ -213,4 +324,3 @@ export function resolvedSingleSystemRosterTable(): Array<{
     }
   })
 }
-

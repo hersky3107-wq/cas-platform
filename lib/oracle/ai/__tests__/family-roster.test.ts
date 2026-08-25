@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_IDS } from '../../axes/types'
+import { LAYER1_REGISTRY } from '../registry'
 import {
+  INTEGRATED_SYNTHESIZER_BRAND,
   ORACLE_FAMILY_ROSTERS,
   ORACLE_SINGLE_READER_COUNTS,
   SYSTEM_FAMILY,
+  SYSTEM_READER_ROSTERS,
   isAllowedReaderCount,
   resolveSingleSystemRoster,
   synthesizerByFamily,
-  type OracleFamilyBrand,
 } from '../family-roster'
 
 describe('family-roster', () => {
@@ -19,10 +21,11 @@ describe('family-roster', () => {
     }
   })
 
-  it('assigns a different synthesizer per family', () => {
+  it('assigns a different synthesizer per family and keeps OpenAI off synth seats', () => {
     const synths = synthesizerByFamily().map((s) => s.synthesizer)
     expect(new Set(synths).size).toBe(4)
-    expect(ORACLE_FAMILY_ROSTERS.western_chart.synthesizer).not.toBe('OpenAI')
+    expect(synths).not.toContain('OpenAI')
+    expect(INTEGRATED_SYNTHESIZER_BRAND).not.toBe('OpenAI')
   })
 
   it('resolves every system at N=3/5/7 with no duplicate brands and synth not a reader', () => {
@@ -33,22 +36,39 @@ describe('family-roster', () => {
         expect(new Set(resolved.readers).size).toBe(n)
         expect(resolved.readers).not.toContain(resolved.synthesizer)
         expect(resolved.family).toBe(SYSTEM_FAMILY[system])
-        expect(resolved.readers[0]).toBe(ORACLE_FAMILY_ROSTERS[resolved.family].readers[0])
+        // Seat 1 is quality-ranked for this system — NOT LAYER1_REGISTRY dedicated brand.
+        expect(resolved.readers[0]).toBe(SYSTEM_READER_ROSTERS[system].readers[0])
       }
     }
   })
 
+  it('does not require seat 1 to equal the integrated dedicated brand', () => {
+    const saju = resolveSingleSystemRoster('saju', 3)
+    expect(LAYER1_REGISTRY.saju.brand).toBe('Moonshot AI')
+    expect(saju.readers[0]).toBe('Z.ai')
+    expect(saju.readers[0]).not.toBe(LAYER1_REGISTRY.saju.brand)
+  })
+
+  it('gives evidence-backed systems distinct N=3 panels within a family', () => {
+    const byFamily = new Map<string, Array<{ system: string; n3: string }>>()
+    for (const system of SYSTEM_IDS) {
+      const roster = SYSTEM_READER_ROSTERS[system]
+      if (roster.evidence !== 'system') continue
+      const n3 = resolveSingleSystemRoster(system, 3).readers.join(',')
+      const rows = byFamily.get(roster.family) ?? []
+      rows.push({ system, n3 })
+      byFamily.set(roster.family, rows)
+    }
+    for (const [family, rows] of byFamily) {
+      if (rows.length < 2) continue
+      const panels = rows.map((r) => r.n3)
+      expect(new Set(panels).size, `${family} N=3 panels should differ`).toBe(panels.length)
+    }
+  })
+
   it('marks zero-evidence systems as family inheritance targets', () => {
-    const zeroEvidence: Array<[string, string]> = [
-      ['ninestar', 'east_asian'],
-      ['sukuyou', 'east_asian'],
-      ['name', 'east_asian'],
-      ['iching', 'draw_based'],
-      ['tzolkin', 'self_ip'],
-      ['prism', 'self_ip'],
-    ]
-    for (const [system, family] of zeroEvidence) {
-      expect(SYSTEM_FAMILY[system as keyof typeof SYSTEM_FAMILY]).toBe(family)
+    for (const system of ['ninestar', 'sukuyou', 'name', 'iching', 'tzolkin', 'prism'] as const) {
+      expect(SYSTEM_READER_ROSTERS[system].evidence).toBe('family')
     }
   })
 
@@ -63,15 +83,10 @@ describe('family-roster', () => {
     expect(() => resolveSingleSystemRoster('saju', 9)).toThrow(/3, 5, or 7/)
   })
 
-  it('locks accepted seat-1 brands', () => {
-    const seat1: Record<string, OracleFamilyBrand> = {
-      east_asian: 'Z.ai',
-      draw_based: 'xAI',
-      western_chart: 'Moonshot AI',
-      self_ip: 'Moonshot AI',
-    }
-    for (const [id, brand] of Object.entries(seat1)) {
-      expect(ORACLE_FAMILY_ROSTERS[id as keyof typeof ORACLE_FAMILY_ROSTERS].readers[0]).toBe(brand)
-    }
+  it('locks family-default seat-1 brands for inheritance only', () => {
+    expect(ORACLE_FAMILY_ROSTERS.east_asian.readers[0]).toBe('Z.ai')
+    expect(ORACLE_FAMILY_ROSTERS.draw_based.readers[0]).toBe('xAI')
+    expect(ORACLE_FAMILY_ROSTERS.western_chart.readers[0]).toBe('DeepSeek')
+    expect(ORACLE_FAMILY_ROSTERS.self_ip.readers[0]).toBe('Z.ai')
   })
 })

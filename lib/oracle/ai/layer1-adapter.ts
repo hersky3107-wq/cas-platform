@@ -33,6 +33,9 @@ export function layer1RunawayContentThreshold(maxCompletionTokens: number): numb
 export const LAYER1_STRICT_RETRY_INSTRUCTION =
   '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ≤500 Unicode characters (prism target 280–420). Respect every field character limit.'
 
+export const SYNTHESIS_STRICT_RETRY_INSTRUCTION =
+  '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble or text after the closing brace. Hard budgets: ≤6 agreements/divergences; each agreement/divergence ≤160 characters; conclusion ≤700 characters; confidence_note ≤220 characters or null.'
+
 /** Synthesis JSON is longer than a single reading; never inherit prism's 700 ceiling. */
 export const SYNTHESIS_MAX_COMPLETION_TOKENS = 1200
 
@@ -166,7 +169,11 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           entry: effectiveEntry,
           systemPrompt,
           userPrompt: strictRetryNext
-            ? `${userPrompt}${LAYER1_STRICT_RETRY_INSTRUCTION}`
+            ? `${userPrompt}${
+                request.kind === 'synthesis'
+                  ? SYNTHESIS_STRICT_RETRY_INSTRUCTION
+                  : LAYER1_STRICT_RETRY_INSTRUCTION
+              }`
             : userPrompt,
           timeoutMs: Math.max(1, deadlineAt - Date.now()),
           sessionId: request.sessionId,

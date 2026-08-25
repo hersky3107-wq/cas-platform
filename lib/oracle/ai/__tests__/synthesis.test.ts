@@ -27,18 +27,48 @@ describe('synthesis contract', () => {
     expect(parseSynthesisJson('{"agreements":[],"divergences":[],"conclusion":3,"confidence_note":null}')).toBeNull()
   })
 
-  it('enforces list and character budgets after parsing', () => {
-    const parsed = parseSynthesisJson(
-      JSON.stringify({
-        agreements: Array.from({ length: 20 }, () => 'a'.repeat(500)),
-        divergences: [],
-        conclusion: 'c'.repeat(2_000),
-        confidence_note: null,
-      }),
-    )!
-    expect(parsed.agreements).toHaveLength(SYNTHESIS_LIST_MAX)
-    expect(parsed.agreements[0]).toHaveLength(SYNTHESIS_AGREEMENT_MAX)
-    expect(parsed.conclusion).toHaveLength(SYNTHESIS_CONCLUSION_MAX)
+  it('rejects over-budget lists and strings instead of truncating', () => {
+    expect(
+      parseSynthesisJson(
+        JSON.stringify({
+          agreements: Array.from({ length: 20 }, () => 'a'.repeat(10)),
+          divergences: [],
+          conclusion: 'ok',
+          confidence_note: null,
+        }),
+      ),
+    ).toBeNull()
+    expect(
+      parseSynthesisJson(
+        JSON.stringify({
+          agreements: ['a'.repeat(SYNTHESIS_AGREEMENT_MAX + 1)],
+          divergences: [],
+          conclusion: 'ok',
+          confidence_note: null,
+        }),
+      ),
+    ).toBeNull()
+    expect(
+      parseSynthesisJson(
+        JSON.stringify({
+          agreements: [],
+          divergences: [],
+          conclusion: 'c'.repeat(SYNTHESIS_CONCLUSION_MAX + 1),
+          confidence_note: null,
+        }),
+      ),
+    ).toBeNull()
+    expect(
+      parseSynthesisJson(
+        JSON.stringify({
+          agreements: ['ok'],
+          divergences: [],
+          conclusion: 'c'.repeat(SYNTHESIS_CONCLUSION_MAX),
+          confidence_note: null,
+        }),
+      ),
+    ).not.toBeNull()
+    expect(SYNTHESIS_LIST_MAX).toBe(6)
   })
 
   it('pins JSON-only, no-working, no-machine-code prompt discipline', () => {
