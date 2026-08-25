@@ -13,8 +13,6 @@ export {
   ORACLE_ACTIVE_STATUSES,
   ORACLE_AI_UNIT_TIMEOUT_MS,
   ORACLE_CREDITS_MODULE,
-  ORACLE_CREDITS_PER_READER,
-  ORACLE_CREDITS_PER_SYNTHESIZER,
   ORACLE_LAYER1_CHUNK_SIZE,
   ORACLE_LEASE_SECONDS,
   ORACLE_LEASE_HEARTBEAT_SECONDS,
@@ -23,7 +21,7 @@ export {
   ORACLE_PROMPT_VERSION,
   ORACLE_READER_ROSTER,
   ORACLE_RUNNER_VERSION,
-  ORACLE_SESSION_BASE_CREDITS,
+  ORACLE_SESSION_CREDIT_PRICES,
   ORACLE_STALE_HEARTBEAT_SECONDS,
   ORACLE_SWEEP_BATCH_SIZE,
   ORACLE_TERMINAL_STATUSES,
@@ -54,7 +52,7 @@ export type { BallotTally } from './ballot'
 
 export { inFlightAiUnits, releaseAiSlots, resetAiSlots, tryAcquireAiSlots } from './concurrency'
 
-export { buildReadingPayload, buildVerdictPayload } from './payload'
+export { buildReadingPayload, buildSynthesisPayload, buildVerdictPayload } from './payload'
 export type { OracleAiContext, PayloadContext } from './payload'
 
 export { assertNoPersonalData, isFreeOfPersonalData, OraclePrivacyError } from './privacy'
@@ -75,6 +73,7 @@ export {
   parseUnit,
   progressCounts,
   readingUnit,
+  SYNTHESIS_UNIT,
   verdictUnit,
   READING_UNIT_PREFIX,
   VERDICT_UNIT_PREFIX,

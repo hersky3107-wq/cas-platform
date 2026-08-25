@@ -32,13 +32,15 @@ export type JsonObject = Record<string, unknown>
 // implement exactly this interface, so swapping them is a one-line change
 // at the route wiring.
 
-export type OracleAiUnitKind = 'reading' | 'verdict'
+export type OracleAiUnitKind = 'reading' | 'synthesis' | 'verdict'
 
 export type OracleAiRequest = {
   kind: OracleAiUnitKind
   sessionId: string
   /** System id for a reading, reader slug for a verdict. */
   unit: string
+  /** Required reader/synthesizer seat in single-system mode; server-only. */
+  brand?: string
   locale: string
   /** Session seed — makes a stubbed or sampled response reproducible. */
   seed: string
@@ -174,7 +176,7 @@ export type ConsensusUpsert = {
  * Every database touch the runner needs.
  *
  * The UNIQUE constraints on oracle_computations (session_id, system),
- * oracle_readings (session_id, system), and oracle_verdicts
+ * oracle_readings (session_id, system, brand), and oracle_verdicts
  * (session_id, reader_slug) are the idempotency guarantee: the
  * `insert*IfAbsent` methods return false instead of throwing when the row
  * already exists, so re-running a chunk can never duplicate rows.

@@ -151,7 +151,10 @@ export function createFakeStore(options: { profiles?: OracleProfile[] } = {}): F
 
     async insertReadingIfAbsent(row: ReadingInsert) {
       const clash = store.readings.some(
-        (candidate) => candidate.session_id === row.session_id && candidate.system === row.system,
+        (candidate) =>
+          candidate.session_id === row.session_id &&
+          candidate.system === row.system &&
+          candidate.brand === row.brand,
       )
       if (clash) {
         store.duplicateCount += 1

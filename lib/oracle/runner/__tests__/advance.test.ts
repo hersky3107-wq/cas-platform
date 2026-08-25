@@ -4,6 +4,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PRISM_COLORS } from '../../engines/prism'
+import { layer1Entry } from '../../ai/registry'
 import type { OracleJobSession } from '../../schema'
 import { advanceOracleSession, runOracleChunk, type AdvanceDeps } from '../advance'
 import { createStubAiAdapter } from '../ai-stub'
@@ -82,6 +83,8 @@ async function bootstrap(
     ai?: OracleAiAdapter
     readerCount?: 3 | 5 | 7 | 9
     withPrismInputs?: boolean
+    scope?: 'single' | 'combined'
+    systems?: string[]
   } = {},
 ): Promise<Harness> {
   const profile = makeProfile()
@@ -93,8 +96,8 @@ async function bootstrap(
     {
       kind: 'personal',
       subjectProfileId: profile.id,
-      scope: 'single',
-      systems: [],
+      scope: options.scope ?? 'combined',
+      systems: options.systems ?? [],
       question: null,
       sessionInputs: options.withPrismInputs === false ? null : PRISM_INPUTS,
       readerCount: options.readerCount ?? 3,
@@ -244,12 +247,15 @@ describe('idempotency', () => {
     expect(new Set(systems).size).toBe(systems.length)
   })
 
-  it('runs each system exactly once across a full session', async () => {
+  it('keeps integrated mode at exactly one row per system despite the looser DB key', async () => {
     const harness = await bootstrap()
     await runToCompletion(harness)
 
     expect(harness.store.readings).toHaveLength(12)
     expect(new Set(harness.store.readings.map((row) => row.system)).size).toBe(12)
+    for (const system of harness.session.systems) {
+      expect(harness.store.readings.filter((row) => row.system === system)).toHaveLength(1)
+    }
     expect(harness.store.verdicts).toHaveLength(3)
     expect(new Set(harness.store.verdicts.map((row) => row.reader_slug)).size).toBe(3)
   })
@@ -295,7 +301,7 @@ describe('결번 (a missing system)', () => {
 
     expect(final.status).toBe('done')
     expect(harness.store.readings.some((row) => row.system === 'prism')).toBe(false)
-    expect(final.progress.failed).toContain(readingUnit('prism'))
+    expect(final.progress.failed).toContain(readingUnit('prism', layer1Entry('prism')!.brand))
     expect(final.progress.pending).toHaveLength(0)
     expect(harness.credits.refunds).toHaveLength(0)
   })
@@ -312,9 +318,9 @@ describe('결번 (a missing system)', () => {
     expect(saju.status).toBe('timeout')
     expect(saju.narrative).toBeNull()
 
-    expect(final.progress.failed).toContain(readingUnit('saju'))
-    expect(final.progress.done).not.toContain(readingUnit('saju'))
-    expect(final.progress.done).toContain(readingUnit('astro'))
+    expect(final.progress.failed).toContain(readingUnit('saju', layer1Entry('saju')!.brand))
+    expect(final.progress.done).not.toContain(readingUnit('saju', layer1Entry('saju')!.brand))
+    expect(final.progress.done).toContain(readingUnit('astro', layer1Entry('astro')!.brand))
     expect(final.progress.pending).toHaveLength(0)
 
     // The session is still charged: a blank seat is not a failure.
@@ -329,6 +335,40 @@ describe('결번 (a missing system)', () => {
     expect(stats.units.systemsReadable).toBe(12)
     expect(stats.units.readingsDone).toBe(11)
     expect(stats.units.readingsMissing).toBe(1)
+  })
+})
+
+describe('single-system layer branches', () => {
+  it('writes N brand-distinct readings, synthesizes, and never creates seer votes', async () => {
+    const harness = await bootstrap({ scope: 'single', systems: ['saju'], readerCount: 3 })
+    const final = await runToCompletion(harness)
+
+    expect(final.status).toBe('done')
+    expect(harness.store.readings).toHaveLength(3)
+    expect(new Set(harness.store.readings.map((row) => row.system))).toEqual(new Set(['saju']))
+    expect(new Set(harness.store.readings.map((row) => row.brand)).size).toBe(3)
+    expect(harness.store.verdicts).toHaveLength(0)
+    const synthesis = harness.store.consensus[0]!.domain_stats?.synthesis as Record<string, unknown>
+    expect(synthesis.conclusion).toBe('stub synthesis conclusion')
+  })
+
+  it('combined mode produces synthesis and seer votes in the same layer2 chunk', async () => {
+    const harness = await bootstrap({ scope: 'combined', readerCount: 3 })
+    for (let i = 0; i < 3; i += 1) {
+      const deps = harness.deps()
+      await advanceOracleSession(harness.session.id, deps)
+      await deps.drain()
+    }
+    const before = (await harness.store.getSession(harness.session.id))!
+    expect(before.next_action).toBe('layer2')
+
+    const deps = harness.deps()
+    await advanceOracleSession(harness.session.id, deps)
+    await deps.drain()
+
+    expect(harness.store.verdicts).toHaveLength(3)
+    const synthesis = harness.store.consensus[0]!.domain_stats?.synthesis as Record<string, unknown>
+    expect(synthesis.conclusion).toBe('stub synthesis conclusion')
   })
 })
 
@@ -367,7 +407,10 @@ describe('poll', () => {
     expect(view.readings).toHaveLength(12)
     expect(view.verdicts).toHaveLength(3)
     expect(view.consensus).not.toBeNull()
-    expect(view.counts.total).toBe(15)
+    expect(view.counts.total).toBe(16)
+    expect(view.consensus?.agreements).toEqual(['stub agreement'])
+    expect(view.consensus?.divergences).toEqual(['stub divergence'])
+    expect(view.consensus?.conclusion).toBe('stub synthesis conclusion')
     expect(again).toEqual(view)
   })
 

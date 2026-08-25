@@ -8,7 +8,7 @@
  * for tens of seconds and lose the HTTP connection on mobile screen lock.
  */
 import type { ReadingScope } from '../axes/types'
-import type { OracleSessionKind, OracleSessionStatus } from '../schema'
+import type { OracleSessionKind, OracleSessionScope, OracleSessionStatus } from '../schema'
 
 export const ORACLE_RUNNER_VERSION = '1.0.0'
 
@@ -105,30 +105,19 @@ export const ORACLE_CREDITS_MODULE = 'oracle_session'
 export const ORACLE_PROMPT_VERSION = 'stub-0'
 
 /**
- * PROVISIONAL pricing. These numbers are a placeholder so the charge /
- * refund path is exercised end to end; they need an owner decision before
- * launch, like the pinned LEAGUE_* prices in lib/credits.ts.
+ * Provisional product prices. Pricing is data, not arithmetic embedded in
+ * orchestration, so changing a seat or synthesizer price never changes charge
+ * logic. Every value includes the synthesizer call.
  */
-export const ORACLE_SESSION_BASE_CREDITS: Record<OracleSessionKind, number> = {
-  personal: 30,
-  compat: 40,
-  daily: 10,
-  talisman: 20,
+export const ORACLE_SESSION_CREDIT_PRICES: Record<OracleSessionScope, Partial<Record<number, number>>> = {
+  single: { 3: 6, 5: 10, 7: 15 },
+  combined: { 3: 25, 5: 32, 7: 40, 9: 50 },
 }
-export const ORACLE_CREDITS_PER_READER = 4
 
-/**
- * Synthesizer is always one paid AI call (agree/diverge/conclusion). The old
- * draft `base + 4 × readerCount` omitted it entirely.
- */
-export const ORACLE_CREDITS_PER_SYNTHESIZER = 4
-
-export function creditsForOracleSession(kind: OracleSessionKind, readerCount: number): number {
-  return (
-    ORACLE_SESSION_BASE_CREDITS[kind] +
-    ORACLE_CREDITS_PER_READER * readerCount +
-    ORACLE_CREDITS_PER_SYNTHESIZER
-  )
+export function creditsForOracleSession(scope: OracleSessionScope, readerCount: number): number {
+  const price = ORACLE_SESSION_CREDIT_PRICES[scope][readerCount]
+  if (price == null) throw new Error(`no Oracle credit price for ${scope} N=${readerCount}`)
+  return price
 }
 
 /**

@@ -13,9 +13,10 @@
  */
 import type { AxisConsensus } from '../axes/types'
 import type { OracleComputation, OracleJobSession, OracleReaderCount, OracleSessionKind, OracleSessionScope } from '../schema'
-import { isAllowedReaderCount } from '../ai/family-roster'
+import { isAllowedReaderCount, resolveSingleSystemRoster } from '../ai/family-roster'
 import { getOracleAiMode } from '../ai/mode'
 import { LAYER1_PROMPT_VERSION } from '../ai/prompts/layer1'
+import { layer1Entry } from '../ai/registry'
 import {
   creditsForOracleSession,
   ORACLE_CREDITS_MODULE,
@@ -168,7 +169,16 @@ export async function createOracleSession(
   }
 
   // 3. Charge once, before any work.
-  const cost = creditsForOracleSession(request.kind, request.readerCount)
+  const systems = resolveSystems(request.systems)
+  if (request.scope === 'single' && systems.length !== 1) {
+    return {
+      ok: false,
+      code: 'invalid_input',
+      message: 'single-system scope requires exactly one valid system',
+    }
+  }
+
+  const cost = creditsForOracleSession(request.scope, request.readerCount)
   const charge = await credits.charge(userId, cost, ORACLE_CREDITS_MODULE)
   if (!charge.ok) {
     return {
@@ -185,8 +195,20 @@ export async function createOracleSession(
   const chargedAmount = charge.skipped ? 0 : cost
 
   const seed = makeSeed()
-  const systems = resolveSystems(request.systems)
-  const roster = readerRosterFor(request.readerCount)
+  const singleRoster =
+    request.scope === 'single'
+      ? resolveSingleSystemRoster(systems[0]!, request.readerCount)
+      : null
+  const roster = singleRoster?.readers ?? readerRosterFor(request.readerCount)
+  const readingUnits =
+    request.scope === 'single'
+      ? singleRoster!.readers.map((brand) => readingUnit(systems[0]!, brand))
+      : systems.map((system) => {
+          const brand = layer1Entry(system)?.brand
+          if (!brand) throw new Error(`missing integrated reader brand for ${system}`)
+          return readingUnit(system, brand)
+        })
+  const seerRoster = request.scope === 'combined' ? roster : []
   const question = request.question?.trim() ? request.question.trim() : null
   const startedAt = now()
   const nowIso = startedAt.toISOString()
@@ -205,7 +227,7 @@ export async function createOracleSession(
       reader_count: request.readerCount,
       reader_roster: roster,
       status: 'computing',
-      progress: initialProgress(systems, roster),
+      progress: initialProgress(readingUnits, seerRoster),
       seed,
       next_action: 'compute',
       credits_charged: chargedAmount,
@@ -262,9 +284,12 @@ export async function createOracleSession(
 
     // 6. A system that produced no vote will never produce a reading either,
     //    so its unit is already a 결번 before layer 1 starts.
-    let progress = initialProgress(systems, roster)
+    let progress = initialProgress(readingUnits, seerRoster)
     for (const entry of computed.systems) {
-      if (entry.vote === null) progress = markUnitFailed(progress, readingUnit(entry.system))
+      if (entry.vote === null) {
+        const affected = readingUnits.filter((unit) => unit.startsWith(`reading:${entry.system}:`))
+        for (const unit of affected) progress = markUnitFailed(progress, unit)
+      }
     }
 
     const updated = await store.updateSession(session.id, {

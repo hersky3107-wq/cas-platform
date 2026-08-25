@@ -6,7 +6,7 @@
  * layer-1 reading actually runs. Tests that stay on stub never construct
  * anything network-related — `lib/ai` is not on the static import graph.
  *
- * Layer 2 (verdicts) always uses the stub.
+ * Synthesis uses the live adapter. Verdicts remain isolated on the stub.
  */
 import { createStubAiAdapter, type StubAiConfig } from '../runner/ai-stub'
 import type { OracleAiAdapter, OracleAiRequest, OracleAiResult } from '../runner/types'
@@ -33,7 +33,7 @@ export function createOracleAiAdapter(options: OracleAiAdapterOptions = {}): Ora
 
   return {
     async run(request: OracleAiRequest, opts: { timeoutMs: number }): Promise<OracleAiResult> {
-      if (request.kind !== 'reading') return stub.run(request, opts)
+      if (request.kind === 'verdict') return stub.run(request, opts)
       return (await getLive()).run(request, opts)
     },
   }

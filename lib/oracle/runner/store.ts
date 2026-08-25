@@ -140,7 +140,7 @@ export function createSupabaseRunnerStore(): RunnerStore {
       if (rows.length === 0) return []
       const { data, error } = await supabaseAdmin
         .from(COMPUTATIONS)
-        .upsert(rows, { onConflict: 'session_id,system' })
+        .upsert(rows, { onConflict: 'session_id,system,brand' })
         .select('*')
       if (error) throw new Error(`upsertComputations: ${error.message}`)
       return (data ?? []) as OracleComputation[]

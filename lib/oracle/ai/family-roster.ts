@@ -193,3 +193,24 @@ export function synthesizerByFamily(): Array<{
   })
 }
 
+export function resolvedSingleSystemRosterTable(): Array<{
+  system: SystemId
+  n3: string
+  n5: string
+  n7: string
+  synthesizer: string
+}> {
+  return (Object.keys(SYSTEM_FAMILY) as SystemId[]).map((system) => {
+    const n3 = resolveSingleSystemRoster(system, 3)
+    const n5 = resolveSingleSystemRoster(system, 5)
+    const n7 = resolveSingleSystemRoster(system, 7)
+    return {
+      system,
+      n3: n3.readers.join(', '),
+      n5: n5.readers.join(', '),
+      n7: n7.readers.join(', '),
+      synthesizer: n7.synthesizer,
+    }
+  })
+}
+

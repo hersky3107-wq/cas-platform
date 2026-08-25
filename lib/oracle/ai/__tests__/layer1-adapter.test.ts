@@ -23,6 +23,12 @@ const VALID_JSON = JSON.stringify({
   focus: 'work',
   axis_emphasis: ['drive', 'fire', 'advance'],
 })
+const VALID_SYNTHESIS_JSON = JSON.stringify({
+  agreements: ['추진 신호가 겹친다'],
+  divergences: ['속도에는 이견이 있다'],
+  conclusion: '방향은 전진이지만 속도는 조절한다.',
+  confidence_note: '핵심 방향은 일치한다.',
+})
 
 function readingRequest(unit = 'saju'): OracleAiRequest {
   return {
@@ -102,9 +108,51 @@ describe('createOracleAiAdapter isolation', () => {
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.brand).toBe('stub')
   })
+
+  it('routes synthesis to the live adapter without weakening verdict isolation', async () => {
+    vi.stubEnv('ORACLE_AI_MODE', 'live')
+    const liveRun = vi.fn(async () => ({
+      ok: true as const,
+      brand: 'OpenAI',
+      model: 'server-only',
+      text: 'live synthesis',
+      summary: { agreements: [], divergences: [], conclusion: 'live synthesis', confidence_note: null },
+      latencyMs: 1,
+      tokensIn: 1,
+      tokensOut: 1,
+    }))
+    const adapter = createOracleAiAdapter({
+      stub: { minDelayMs: 0, maxDelayMs: 0, sleep: async () => {} },
+      layer1: { run: liveRun },
+    })
+    const result = await adapter.run(
+      { ...readingRequest(), kind: 'synthesis', unit: 'synthesis', brand: 'OpenAI' },
+      { timeoutMs: 1_000 },
+    )
+    expect(result.ok).toBe(true)
+    expect(liveRun).toHaveBeenCalledOnce()
+  })
 })
 
 describe('createLayer1AiAdapter', () => {
+  it('parses the strict synthesis JSON contract', async () => {
+    const adapter = createLayer1AiAdapter({
+      call: async () => okCall({ text: VALID_SYNTHESIS_JSON }),
+    })
+    const result = await adapter.run(
+      {
+        ...readingRequest(),
+        kind: 'synthesis',
+        unit: 'synthesis',
+        brand: 'OpenAI',
+        payload: { readings: [], consensus: {} },
+      },
+      { timeoutMs: 60_000 },
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.summary?.conclusion).toBe('방향은 전진이지만 속도는 조절한다.')
+  })
   it('retries exactly once on empty-content 200 when deadline allows, then 결번', async () => {
     const calls: Layer1CallResult[] = []
     const call: Layer1Call = async () => {
@@ -244,7 +292,7 @@ describe('live layer-1 through a session', () => {
       {
         kind: 'personal',
         subjectProfileId: profile.id,
-        scope: 'single',
+        scope: 'combined',
         systems: [],
         question: null,
         sessionInputs: {
@@ -286,11 +334,11 @@ describe('live layer-1 through a session', () => {
   }
 
   it('never leaks model strings into the poll body', async () => {
-    const call: Layer1Call = async ({ entry }) =>
+    const call: Layer1Call = async ({ entry, systemPrompt }) =>
       okCall({
         brand: entry.brand,
         model: entry.model,
-        text: VALID_JSON,
+        text: systemPrompt.includes('synthesis layer') ? VALID_SYNTHESIS_JSON : VALID_JSON,
       })
     const ai = createLayer1AiAdapter({
       call,
@@ -325,7 +373,10 @@ describe('live layer-1 through a session', () => {
   })
 
   it('lets a 결번 system still reach done', async () => {
-    const call: Layer1Call = async ({ entry }) => {
+    const call: Layer1Call = async ({ entry, systemPrompt }) => {
+      if (systemPrompt.includes('synthesis layer')) {
+        return okCall({ text: VALID_SYNTHESIS_JSON, brand: entry.brand, model: entry.model })
+      }
       if (entry.system === 'saju') {
         return okCall({ text: null, emptyContent: true, brand: entry.brand, model: entry.model })
       }

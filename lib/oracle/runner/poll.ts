@@ -45,7 +45,33 @@ export type PublicConsensus = {
   domainStats: JsonObject | null
   unanimous: boolean | null
   deficiencyVector: JsonObject | null
+  agreements: string[]
+  divergences: string[]
+  conclusion: string | null
+  confidenceNote: string | null
   computedAt: string
+}
+
+function publicSynthesis(domainStats: JsonObject | null): {
+  agreements: string[]
+  divergences: string[]
+  conclusion: string | null
+  confidenceNote: string | null
+} {
+  const raw =
+    domainStats && typeof domainStats.synthesis === 'object' && domainStats.synthesis !== null
+      ? domainStats.synthesis as JsonObject
+      : null
+  return {
+    agreements: Array.isArray(raw?.agreements)
+      ? raw.agreements.filter((value): value is string => typeof value === 'string')
+      : [],
+    divergences: Array.isArray(raw?.divergences)
+      ? raw.divergences.filter((value): value is string => typeof value === 'string')
+      : [],
+    conclusion: typeof raw?.conclusion === 'string' ? raw.conclusion : null,
+    confidenceNote: typeof raw?.confidence_note === 'string' ? raw.confidence_note : null,
+  }
 }
 
 export type OracleSessionView = {
@@ -128,6 +154,7 @@ export async function readOracleSession(
           domainStats: consensus.domain_stats,
           unanimous: consensus.unanimous,
           deficiencyVector: consensus.deficiency_vector,
+          ...publicSynthesis(consensus.domain_stats),
           computedAt: consensus.computed_at,
         }
       : null,

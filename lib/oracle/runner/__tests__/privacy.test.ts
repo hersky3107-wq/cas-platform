@@ -10,7 +10,13 @@
 import { describe, expect, it } from 'vitest'
 import { PRISM_COLORS } from '../../engines/prism'
 import { personalDataFrom, runComputations } from '../compute'
-import { buildVerdictPayload, MACHINE_CODE_FIELDS } from '../payload'
+import {
+  buildSynthesisPayload,
+  buildVerdictPayload,
+  MACHINE_CODE_FIELDS,
+  SYNTHESIS_NARRATIVE_MAX_TOKENS,
+  truncateNarrativeForSynthesis,
+} from '../payload'
 import {
   assertNoPersonalData,
   isFreeOfPersonalData,
@@ -169,6 +175,42 @@ describe('ai_payload privacy rule', () => {
     for (const literal of FORBIDDEN_LITERALS) {
       expect(serialized).not.toContain(literal)
     }
+  })
+
+  it('synthesis gets only truncated narratives plus axis consensus — never raw engine payloads or model identity', () => {
+    const computed = computeAll()
+    const pii = personalDataFrom([PROFILE])
+    const long = Array.from({ length: 260 }, (_, i) => `단어${i}`).join(' ')
+    const payload = buildSynthesisPayload(
+      [
+        {
+          id: 'reading-1',
+          session_id: 'session-1',
+          computation_id: 'computation-1',
+          system: 'saju',
+          brand: 'secret-brand',
+          model: 'secret-model',
+          narrative: long,
+          summary: { internal: 'do not copy' },
+          status: 'done',
+          latency_ms: 1,
+          tokens_in: 1,
+          tokens_out: 1,
+        },
+      ],
+      computed.consensus,
+      pii,
+    )
+    expect(Object.keys(payload).sort()).toEqual(['consensus', 'readings'])
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('secret-brand')
+    expect(serialized).not.toContain('secret-model')
+    expect(serialized).not.toContain('do not copy')
+    expect(serialized).not.toContain('"result"')
+    expect(serialized).not.toContain('"ai_payload"')
+    const narrative = (payload.readings as Array<{ narrative: string }>)[0]!.narrative
+    expect(truncateNarrativeForSynthesis(long)).toBe(narrative)
+    expect((narrative.match(/단어/g) ?? []).length).toBeLessThanOrEqual(SYNTHESIS_NARRATIVE_MAX_TOKENS)
   })
 
   it('rejects a forbidden key even when the value is harmless', () => {

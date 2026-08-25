@@ -16,6 +16,57 @@ import { ORACLE_RUNNER_VERSION } from './conventions'
 import { assertNoPersonalData, type PersonalData } from './privacy'
 import type { JsonObject } from './types'
 
+export const SYNTHESIS_NARRATIVE_MAX_TOKENS = 200
+
+/**
+ * Conservative tokenizer-free cap. CJK characters, words, numbers and
+ * punctuation count as units; an additional 600-code-point ceiling prevents
+ * long unbroken Latin strings from escaping the budget.
+ */
+export function truncateNarrativeForSynthesis(
+  text: string,
+  maxTokens = SYNTHESIS_NARRATIVE_MAX_TOKENS,
+): string {
+  const compact = text.replace(/\s+/g, ' ').trim()
+  const units = compact.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[\p{L}\p{N}]+|[^\s]/gu) ?? []
+  const capped = units.slice(0, maxTokens).join(' ')
+    .replace(/\s+([.,!?;:)\]}])/g, '$1')
+    .replace(/([([{])\s+/g, '$1')
+  return Array.from(capped).slice(0, maxTokens * 3).join('')
+}
+
+export function axisConsensusPayload(consensus: AxisConsensus): JsonObject {
+  return {
+    phase: {
+      tally: consensus.phase.tally,
+      leader: consensus.phase.leader,
+      leaderShare: consensus.phase.leaderShare,
+      unanimityCount: consensus.phase.unanimityCount,
+      participantCount: consensus.phase.participantCount,
+      coreTally: consensus.phase.coreTally,
+      polarized: consensus.phase.polarized,
+      oppositions: consensus.phase.oppositions,
+      participating: consensus.phase.participating,
+      unreadable: consensus.phase.unreadable,
+    },
+    traits: {
+      profile: consensus.traits.profile,
+      spread: consensus.traits.spread,
+      contested: consensus.traits.contested,
+      participating: consensus.traits.participating,
+      unreadable: consensus.traits.unreadable,
+    },
+    elements: {
+      total: consensus.elements.total,
+      deficiency: consensus.elements.deficiency,
+      excess: consensus.elements.excess,
+      participating: consensus.elements.participating,
+      unreadable: consensus.elements.unreadable,
+    },
+    systemCount: consensus.systemCount,
+  }
+}
+
 /**
  * Projector reason / unreadable codes come from static tables, never from the
  * profile, so they are exempt from the value scan (keys are still enforced).
@@ -116,35 +167,7 @@ export function buildVerdictPayload(
   const body: JsonObject = {
     ...envelope(ctx),
     reader: { slug: args.readerSlug, index: args.readerIndex, of: args.readerCount },
-    consensus: {
-      phase: {
-        tally: consensus.phase.tally,
-        leader: consensus.phase.leader,
-        leaderShare: consensus.phase.leaderShare,
-        unanimityCount: consensus.phase.unanimityCount,
-        participantCount: consensus.phase.participantCount,
-        coreTally: consensus.phase.coreTally,
-        polarized: consensus.phase.polarized,
-        oppositions: consensus.phase.oppositions,
-        participating: consensus.phase.participating,
-        unreadable: consensus.phase.unreadable,
-      },
-      traits: {
-        profile: consensus.traits.profile,
-        spread: consensus.traits.spread,
-        contested: consensus.traits.contested,
-        participating: consensus.traits.participating,
-        unreadable: consensus.traits.unreadable,
-      },
-      elements: {
-        total: consensus.elements.total,
-        deficiency: consensus.elements.deficiency,
-        excess: consensus.elements.excess,
-        participating: consensus.elements.participating,
-        unreadable: consensus.elements.unreadable,
-      },
-      systemCount: consensus.systemCount,
-    },
+    consensus: axisConsensusPayload(consensus),
     readings: args.readings.map((row) => ({
       system: row.system,
       status: row.status,
@@ -155,4 +178,28 @@ export function buildVerdictPayload(
 
   assertNoPersonalData(body, pii, `ai_payload(verdict:${args.readerSlug})`)
   return { ...body, context: contextOf(ctx) }
+}
+
+/**
+ * Synthesis receives exactly N independent reading narratives plus the
+ * axis-projection consensus. No raw engine result/ai_payload, profile data,
+ * provider identity, or reader-to-reader context crosses this boundary.
+ */
+export function buildSynthesisPayload(
+  readings: readonly OracleReading[],
+  consensus: AxisConsensus,
+  pii: PersonalData,
+): JsonObject {
+  const body: JsonObject = {
+    readings: readings.map((row, index) => ({
+      index: index + 1,
+      narrative: truncateNarrativeForSynthesis(row.narrative ?? ''),
+    })),
+    consensus: axisConsensusPayload(consensus),
+  }
+  assertNoPersonalData(body, pii, {
+    label: 'ai_payload(synthesis)',
+    machineCodeFields: MACHINE_CODE_FIELDS,
+  })
+  return body
 }

@@ -11,8 +11,10 @@ import type { OracleAiAdapter, OracleAiFailure, OracleAiRequest, OracleAiResult 
 import type { Layer1Call, Layer1CallResult } from './call'
 import { createLayer1HttpBudget, type Layer1HttpBudget } from './http-budget'
 import { isEmptyModelText, parseLayer1Json } from './parse-layer1'
+import { parseSynthesisJson } from './parse-synthesis'
 import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1'
-import { layer1Entry } from './registry'
+import { buildSynthesisSystemPrompt, buildSynthesisUserPrompt } from './prompts/synthesis'
+import { layer1Entry, layer1EntryForBrand } from './registry'
 
 export type Layer1AdapterOptions = {
   call?: Layer1Call
@@ -83,15 +85,32 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
 
   return {
     async run(request: OracleAiRequest, opts: { timeoutMs: number }): Promise<OracleAiResult> {
-      if (request.kind !== 'reading') return layer2.run(request, opts)
+      if (request.kind === 'verdict') return layer2.run(request, opts)
 
-      const entry = layer1Entry(request.unit)
+      const entry =
+        request.brand != null
+          ? layer1EntryForBrand(request.brand)
+          : request.kind === 'reading'
+            ? layer1Entry(request.unit)
+            : null
       if (!entry) {
-        return failure('unknown', 'unknown', 'error', `no layer-1 registry entry for ${request.unit}`, 0)
+        return failure(
+          request.brand ?? 'unknown',
+          'unknown',
+          'error',
+          `no live registry entry for ${request.kind}:${request.unit}:${request.brand ?? 'unassigned'}`,
+          0,
+        )
       }
 
-      const systemPrompt = buildLayer1SystemPrompt(request.locale, request.unit)
-      const userPrompt = buildLayer1UserPrompt(request.payload, request.locale, request.unit)
+      const systemPrompt =
+        request.kind === 'synthesis'
+          ? buildSynthesisSystemPrompt(request.locale)
+          : buildLayer1SystemPrompt(request.locale, request.unit)
+      const userPrompt =
+        request.kind === 'synthesis'
+          ? buildSynthesisUserPrompt(request.payload)
+          : buildLayer1UserPrompt(request.payload, request.locale, request.unit)
       const startedAt = Date.now()
       const deadlineAt = startedAt + opts.timeoutMs
       const httpBudget = createLayer1HttpBudget(LAYER1_HTTP_BUDGET)
@@ -175,8 +194,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           break
         }
 
-        const parsed = parseLayer1Json(raw.text ?? '')
-        if (parsed) {
+        const layer1Parsed = request.kind === 'reading' ? parseLayer1Json(raw.text ?? '') : null
+        const synthesisParsed = request.kind === 'synthesis' ? parseSynthesisJson(raw.text ?? '') : null
+        if (layer1Parsed || synthesisParsed) {
           const latencyMs = Date.now() - startedAt
           await finalizeUnitCost({
             sessionId: request.sessionId,
@@ -193,20 +213,30 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             ok: true,
             brand: entry.brand,
             model: entry.model,
-            text: parsed.narrative,
-            summary: {
-              one_line: parsed.one_line,
-              direction: parsed.direction,
-              focus: parsed.focus,
-              axis_emphasis: parsed.axis_emphasis,
-            },
+            text: layer1Parsed?.narrative ?? synthesisParsed!.conclusion,
+            summary: layer1Parsed
+              ? {
+                  one_line: layer1Parsed.one_line,
+                  direction: layer1Parsed.direction,
+                  focus: layer1Parsed.focus,
+                  axis_emphasis: layer1Parsed.axis_emphasis,
+                  parsed: true,
+                  finish_reason: raw.finishReason,
+                  content_tokens: raw.contentTokens,
+                }
+              : {
+                  ...synthesisParsed!,
+                  parsed: true,
+                  finish_reason: raw.finishReason,
+                  content_tokens: raw.contentTokens,
+                },
             latencyMs,
             tokensIn: raw.tokensIn,
             tokensOut: raw.tokensOut,
           }
         }
 
-        lastError = 'layer-1 JSON parse failed'
+        lastError = `${request.kind} JSON parse failed`
       }
 
       const latencyMs = Date.now() - startedAt

@@ -17,6 +17,11 @@
  */
 import { computeConsensus } from '../axes'
 import type { AxisVote } from '../axes/types'
+import {
+  INTEGRATED_SYNTHESIZER_BRAND,
+  resolveSingleSystemRoster,
+} from '../ai/family-roster'
+import { layer1Entry } from '../ai/registry'
 import type {
   OracleComputation,
   OracleJobProgress,
@@ -34,12 +39,19 @@ import {
   ORACLE_LEASE_HEARTBEAT_SECONDS,
   ORACLE_LEASE_SECONDS,
   ORACLE_MAX_ATTEMPTS,
+  ORACLE_MAX_CONCURRENT_AI_UNITS,
   ORACLE_TERMINAL_STATUSES,
   readerRosterFor,
   readingScopeForSession,
 } from './conventions'
-import { buildVerdictPayload, type PayloadContext } from './payload'
-import { markUnitDone, markUnitFailed, readingUnit, verdictUnit } from './progress'
+import { buildSynthesisPayload, buildVerdictPayload, type PayloadContext } from './payload'
+import {
+  markUnitDone,
+  markUnitFailed,
+  readingUnit,
+  SYNTHESIS_UNIT,
+  verdictUnit,
+} from './progress'
 import type {
   CreditsPort,
   JsonObject,
@@ -241,9 +253,21 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
   ])
 
   const readable = computations.filter((row) => row.axes !== null)
-  const alreadyRead = new Set(readings.map((row) => row.system))
-  // Systems with no vote never get a reading — they were marked 결번 at create.
-  const outstanding = readable.filter((row) => !alreadyRead.has(row.system))
+  const alreadyRead = new Set(readings.map((row) => `${row.system}:${row.brand}`))
+  const seats =
+    session.scope === 'single'
+      ? readable.flatMap((computation) =>
+          session.reader_roster.map((brand) => ({ computation, brand })),
+        )
+      : readable.map((computation) => {
+          const brand = layer1Entry(computation.system)?.brand
+          if (!brand) throw new Error(`missing integrated reader brand for ${computation.system}`)
+          return { computation, brand }
+        })
+  // Combined remains exactly one seat per system; single expands one system to N brands.
+  const outstanding = seats.filter(
+    ({ computation, brand }) => !alreadyRead.has(`${computation.system}:${brand}`),
+  )
   const chunk = outstanding.slice(0, ORACLE_LAYER1_CHUNK_SIZE)
 
   if (chunk.length === 0) {
@@ -269,12 +293,14 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
   try {
     const results = await runParallelWithLeaseHeartbeat(session.id, deps, now, () =>
       Promise.all(
-        chunk.map(async (computation) => ({
+        chunk.map(async ({ computation, brand }) => ({
           computation,
+          brand,
           result: await runAiUnit(deps, {
             kind: 'reading',
             sessionId: session.id,
             unit: computation.system,
+            brand,
             locale: session.locale ?? 'ko',
             seed: session.seed,
             payload: computation.ai_payload ?? {},
@@ -283,12 +309,12 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
       ),
     )
 
-    for (const { computation, result } of results) {
+    for (const { computation, brand, result } of results) {
       await deps.store.insertReadingIfAbsent({
         session_id: session.id,
         computation_id: computation.id,
         system: computation.system,
-        brand: result.brand,
+        brand,
         model: result.model,
         narrative: result.ok ? result.text : null,
         summary: result.ok ? result.summary : { error: result.message },
@@ -298,7 +324,7 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
         tokens_out: result.ok ? result.tokensOut : null,
       })
 
-      const unit = readingUnit(computation.system)
+      const unit = readingUnit(computation.system, brand)
       progress = result.ok ? markUnitDone(progress, unit) : markUnitFailed(progress, unit)
       produced += 1
       // Heartbeat per unit, so the sweeper can tell alive from stuck.
@@ -321,17 +347,29 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
 }
 
 async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now: RunnerClock): Promise<void> {
-  const roster = rosterFor(session)
-  const [computations, readings, verdicts] = await Promise.all([
+  const seerRoster = session.scope === 'combined' ? rosterFor(session) : []
+  const [computations, readings, verdicts, storedConsensus] = await Promise.all([
     deps.store.listComputations(session.id),
     deps.store.listReadings(session.id),
     deps.store.listVerdicts(session.id),
+    deps.store.getConsensus(session.id),
   ])
 
   const alreadyVoted = new Set(verdicts.map((row) => row.reader_slug))
-  const chunk = roster.filter((slug) => !alreadyVoted.has(slug))
+  const allMissingSeers = seerRoster.filter((slug) => !alreadyVoted.has(slug))
+  const existingSynthesis =
+    storedConsensus?.domain_stats &&
+    typeof storedConsensus.domain_stats.synthesis === 'object' &&
+    storedConsensus.domain_stats.synthesis !== null
+      ? storedConsensus.domain_stats.synthesis as JsonObject
+      : null
+  const needsSynthesis = existingSynthesis === null
+  const missingSeers = allMissingSeers.slice(
+    0,
+    ORACLE_MAX_CONCURRENT_AI_UNITS - (needsSynthesis ? 1 : 0),
+  )
 
-  if (chunk.length === 0) {
+  if (!needsSynthesis && allMissingSeers.length === 0) {
     await deps.store.updateSession(session.id, {
       next_action: 'consensus',
       lease_until: null,
@@ -341,7 +379,8 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
     return
   }
 
-  if (!tryAcquireAiSlots(chunk.length)) {
+  const unitCount = missingSeers.length + (needsSynthesis ? 1 : 0)
+  if (!tryAcquireAiSlots(unitCount)) {
     await deps.store.updateSession(session.id, { lease_until: null })
     return
   }
@@ -360,13 +399,31 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
     const consensus = computeConsensus(votesFromComputations(computations), { readingScope: ctx.readingScope })
     const done: OracleReading[] = readings.filter((row) => row.status === 'done')
 
-    const results = await Promise.all(
-      chunk.map(async (slug) => {
+    const synthesisBrand =
+      session.scope === 'single'
+        ? resolveSingleSystemRoster(
+            session.systems[0] as Parameters<typeof resolveSingleSystemRoster>[0],
+            session.reader_count,
+          ).synthesizer
+        : INTEGRATED_SYNTHESIZER_BRAND
+    const synthesisPromise = needsSynthesis
+      ? runAiUnit(deps, {
+          kind: 'synthesis',
+          sessionId: session.id,
+          unit: 'synthesis',
+          brand: synthesisBrand,
+          locale: ctx.locale,
+          seed: session.seed,
+          payload: buildSynthesisPayload(done, consensus, pii),
+        })
+      : null
+
+    const verdictPromises = missingSeers.map(async (slug) => {
         const payload = buildVerdictPayload(
           {
             readerSlug: slug,
-            readerIndex: roster.indexOf(slug) + 1,
-            readerCount: roster.length,
+            readerIndex: seerRoster.indexOf(slug) + 1,
+            readerCount: seerRoster.length,
             consensus,
             readings: done,
           },
@@ -384,8 +441,34 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
             payload,
           }),
         }
-      }),
-    )
+      })
+    const [synthesisResult, results] = await Promise.all([
+      synthesisPromise,
+      Promise.all(verdictPromises),
+    ])
+
+    if (synthesisResult) {
+      if (synthesisResult.ok && synthesisResult.summary) {
+        const synthesis = {
+          agreements: synthesisResult.summary.agreements,
+          divergences: synthesisResult.summary.divergences,
+          conclusion: synthesisResult.summary.conclusion,
+          confidence_note: synthesisResult.summary.confidence_note,
+        }
+        await deps.store.upsertConsensus({
+          session_id: session.id,
+          domain_stats: {
+            ...(storedConsensus?.domain_stats ?? {}),
+            synthesis,
+          },
+        })
+        progress = markUnitDone(progress, SYNTHESIS_UNIT)
+      } else {
+        progress = markUnitFailed(progress, SYNTHESIS_UNIT)
+      }
+      produced += 1
+      await deps.store.touchHeartbeat(session.id, now().toISOString())
+    }
 
     for (const { slug, result } of results) {
       const summary = result.ok ? (result.summary ?? {}) : {}
@@ -413,7 +496,7 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
       await deps.store.touchHeartbeat(session.id, now().toISOString())
     }
   } finally {
-    releaseAiSlots(chunk.length)
+    releaseAiSlots(unitCount)
   }
 
   await deps.store.updateSession(session.id, {

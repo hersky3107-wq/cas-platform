@@ -4,6 +4,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { PRISM_COLORS } from '../../engines/prism'
+import { layer1Entry } from '../../ai/registry'
 import { resetAiSlots } from '../concurrency'
 import { creditsForOracleSession, ORACLE_CREDITS_MODULE, readerRosterFor } from '../conventions'
 import { createOracleSession, type CreateSessionRequest } from '../create'
@@ -24,7 +25,7 @@ const PRISM_INPUTS = {
 const REQUEST: CreateSessionRequest = {
   kind: 'personal',
   subjectProfileId: 'profile-subject',
-  scope: 'single',
+  scope: 'combined',
   systems: [],
   question: null,
   sessionInputs: PRISM_INPUTS,
@@ -57,6 +58,25 @@ beforeEach(() => {
 })
 
 describe('createOracleSession', () => {
+  it('uses the parameterized provisional credit table, including synthesis', () => {
+    expect(creditsForOracleSession('single', 3)).toBe(6)
+    expect(creditsForOracleSession('single', 5)).toBe(10)
+    expect(creditsForOracleSession('single', 7)).toBe(15)
+    expect(creditsForOracleSession('combined', 3)).toBe(25)
+    expect(creditsForOracleSession('combined', 5)).toBe(32)
+    expect(creditsForOracleSession('combined', 7)).toBe(40)
+    expect(creditsForOracleSession('combined', 9)).toBe(50)
+  })
+
+  it('requires exactly one valid system in single scope before charging', async () => {
+    const { credits, create } = harness()
+    const empty = await create({ scope: 'single', systems: [] })
+    expect(empty.ok).toBe(false)
+    const many = await create({ scope: 'single', systems: ['saju', 'astro'] })
+    expect(many.ok).toBe(false)
+    expect(credits.charges).toHaveLength(0)
+  })
+
   it('charges once, computes all twelve systems, and hands back a layer1 session', async () => {
     const { store, credits, create } = harness()
     const outcome = await create()
@@ -71,7 +91,7 @@ describe('createOracleSession', () => {
     expect(outcome.computations).toHaveLength(12)
     expect(outcome.computations.every((row) => row.unreadable === false)).toBe(true)
 
-    const cost = creditsForOracleSession('personal', 3)
+    const cost = creditsForOracleSession('combined', 3)
     expect(credits.charges).toEqual([{ userId: USER, amount: cost, module: ORACLE_CREDITS_MODULE }])
     expect(credits.refunds).toHaveLength(0)
     expect(store.sessions[0]!.credits_charged).toBe(cost)
@@ -84,9 +104,9 @@ describe('createOracleSession', () => {
     await create({ readerCount: 5 })
 
     const progress = store.sessions[0]!.progress
-    expect(progress.pending).toContain(readingUnit('saju'))
+    expect(progress.pending).toContain(readingUnit('saju', layer1Entry('saju')!.brand))
     expect(progress.pending).toContain(verdictUnit(readerRosterFor(5)[4]!))
-    expect(progress.pending).toHaveLength(12 + 5)
+    expect(progress.pending).toHaveLength(12 + 1 + 5)
     expect(progress.done).toHaveLength(0)
     expect(progress.failed).toHaveLength(0)
   })
@@ -108,9 +128,9 @@ describe('createOracleSession', () => {
 
     expect(outcome.ok).toBe(true)
     const progress = store.sessions[0]!.progress
-    expect(progress.failed).toContain(readingUnit('name'))
-    expect(progress.failed).toContain(readingUnit('prism'))
-    expect(progress.pending).not.toContain(readingUnit('name'))
+    expect(progress.failed).toContain(readingUnit('name', layer1Entry('name')!.brand))
+    expect(progress.failed).toContain(readingUnit('prism', layer1Entry('prism')!.brand))
+    expect(progress.pending).not.toContain(readingUnit('name', layer1Entry('name')!.brand))
 
     const nameRow = store.computations.find((row) => row.system === 'name')!
     expect(nameRow.axes).toBeNull()
@@ -136,7 +156,7 @@ describe('createOracleSession', () => {
 
     expect(outcome.ok).toBe(true)
     expect(store.sessions[0]!.session_inputs).toBeNull()
-    expect(store.sessions[0]!.progress.failed).toContain(readingUnit('prism'))
+    expect(store.sessions[0]!.progress.failed).toContain(readingUnit('prism', layer1Entry('prism')!.brand))
 
     const prism = store.computations.find((row) => row.system === 'prism')!
     expect(prism.axes).toBeNull()
@@ -189,7 +209,7 @@ describe('createOracleSession', () => {
     if (outcome.ok) return
     expect(outcome.code).toBe('compute_failed')
 
-    const cost = creditsForOracleSession('personal', 3)
+    const cost = creditsForOracleSession('combined', 3)
     expect(credits.charges).toHaveLength(1)
     expect(credits.refunds).toEqual([{ userId: USER, amount: cost }])
     expect(credits.balance).toBe(1_000)

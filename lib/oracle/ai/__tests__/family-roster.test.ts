@@ -33,6 +33,7 @@ describe('family-roster', () => {
         expect(new Set(resolved.readers).size).toBe(n)
         expect(resolved.readers).not.toContain(resolved.synthesizer)
         expect(resolved.family).toBe(SYSTEM_FAMILY[system])
+        expect(resolved.readers[0]).toBe(ORACLE_FAMILY_ROSTERS[resolved.family].readers[0])
       }
     }
   })

@@ -126,6 +126,7 @@ export function createStubAiAdapter(overrides: Partial<StubAiConfig> = {}): Orac
       await config.sleep(delayMs)
 
       const isVerdict = request.kind === 'verdict'
+      const isSynthesis = request.kind === 'synthesis'
       const templates = isVerdict ? VERDICT_TEMPLATES : READING_TEMPLATES
       const text = `[stub:${request.unit}] ${templates[rng.nextInt(templates.length)]!}`
       const phase = PHASES[rng.nextInt(PHASES.length)]!
@@ -138,7 +139,14 @@ export function createStubAiAdapter(overrides: Partial<StubAiConfig> = {}): Orac
         text,
         summary: isVerdict
           ? { ballot: { phase, confidence: 40 + rng.nextInt(50) }, dissent: rng.nextBool() ? null : 'stub dissent noted' }
-          : { unit: request.unit, headline: `stub headline for ${request.unit}`, phase },
+          : isSynthesis
+            ? {
+                agreements: ['stub agreement'],
+                divergences: ['stub divergence'],
+                conclusion: 'stub synthesis conclusion',
+                confidence_note: null,
+              }
+            : { unit: request.unit, headline: `stub headline for ${request.unit}`, phase },
         latencyMs: config.now() - startedAt,
         tokensIn: Math.ceil(payloadSize / 4),
         tokensOut: Math.ceil(text.length / 4),

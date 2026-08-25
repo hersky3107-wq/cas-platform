@@ -230,6 +230,15 @@ export function layer1Entry(system: string): Layer1RegistryEntry | null {
     : null
 }
 
+/**
+ * Resolve a live model by public brand for single-system reader/synthesizer
+ * seats. The family roster owns seat order; this registry remains the single
+ * source of exact provider/model configuration.
+ */
+export function layer1EntryForBrand(brand: string): Layer1RegistryEntry | null {
+  return Object.values(LAYER1_REGISTRY).find((entry) => entry.brand === brand) ?? null
+}
+
 // TRAP (c): Amazon Nova BREAKS if a reasoning option is present at all.
 // None of the twelve layer-1 systems use Nova. If one is added later, do
 // not merge reasoning:{…} into that request — leave extraRequestParams unset,

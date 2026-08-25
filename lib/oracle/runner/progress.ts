@@ -2,7 +2,7 @@
  * oracle_job_sessions.progress bookkeeping.
  *
  * Unit keys are prefixed so one progress object can carry both layers:
- * 'reading:saju', 'verdict:archivist'. The keys accumulate across layers —
+ * 'reading:saju:Z.ai', 'synthesis', 'verdict:archivist'. The keys accumulate across layers —
  * a client polling at layer 2 can still see which systems were 결번.
  *
  * `failed` means "produced no output": an unreadable computation, a provider
@@ -12,18 +12,20 @@ import type { OracleJobProgress } from '../schema'
 
 export const READING_UNIT_PREFIX = 'reading:'
 export const VERDICT_UNIT_PREFIX = 'verdict:'
+export const SYNTHESIS_UNIT = 'synthesis'
 
-export function readingUnit(system: string): string {
-  return `${READING_UNIT_PREFIX}${system}`
+export function readingUnit(system: string, brand: string): string {
+  return `${READING_UNIT_PREFIX}${system}:${brand}`
 }
 
 export function verdictUnit(readerSlug: string): string {
   return `${VERDICT_UNIT_PREFIX}${readerSlug}`
 }
 
-export type ParsedUnit = { kind: 'reading' | 'verdict'; id: string }
+export type ParsedUnit = { kind: 'reading' | 'verdict' | 'synthesis'; id: string }
 
 export function parseUnit(key: string): ParsedUnit | null {
+  if (key === SYNTHESIS_UNIT) return { kind: 'synthesis', id: SYNTHESIS_UNIT }
   if (key.startsWith(READING_UNIT_PREFIX)) {
     return { kind: 'reading', id: key.slice(READING_UNIT_PREFIX.length) }
   }
@@ -41,10 +43,18 @@ export function emptyProgress(): OracleJobProgress {
  * Every unit the session intends to produce, listed up front so the client
  * can render a complete progress bar from the first poll.
  */
-export function initialProgress(systems: readonly string[], readers: readonly string[]): OracleJobProgress {
+export function initialProgress(
+  readingUnits: readonly string[],
+  readers: readonly string[],
+  includeSynthesis = true,
+): OracleJobProgress {
   return {
     done: [],
-    pending: [...systems.map(readingUnit), ...readers.map(verdictUnit)],
+    pending: [
+      ...readingUnits,
+      ...(includeSynthesis ? [SYNTHESIS_UNIT] : []),
+      ...readers.map(verdictUnit),
+    ],
     failed: [],
   }
 }
