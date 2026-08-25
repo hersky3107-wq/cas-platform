@@ -5,7 +5,7 @@
 
 export type SynthesisBakeoffRun = {
   brand: string
-  panel: 'single_saju_n3' | 'integrated_n3'
+  panel: 'single_saju_n3' | 'integrated_n3' | 'single_numerology_n3'
   run: number
   agreements: string[]
   divergences: string[]

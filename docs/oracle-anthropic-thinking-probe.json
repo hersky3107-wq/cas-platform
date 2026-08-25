@@ -1,0 +1,128 @@
+{
+  "rows": [
+    {
+      "label": "reading_default",
+      "httpStatus": 200,
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 1362,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 445,
+        "output_tokens_details": {
+          "thinking_tokens": 153
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "contentBlockTypes": [
+        "thinking",
+        "text"
+      ],
+      "thinkingBlockCount": 1,
+      "textChars": 366,
+      "textPreview": "{\"narrative\":\"코어 매트릭스가 통제력과 탐구심을 동시에 끌어올린 상태에서 원소 지지가 물과 금 기운으로 뒷받침되니, 상승 주기 70%가 뚜렷하게 앞서는 지금은 새로운 시도를 미루지 말고 일의 방향을 적극적으로 넓혀야 할 때입니다. 안정보다 확장에 무게를 두되, 물의 유연함으로 흐름을 살피며 나아가면 성과가 따릅니다.\",\"one_line\":\"상승 ",
+      "parsedReading": true,
+      "parsedSynthesis": false
+    },
+    {
+      "label": "reading_thinking_disabled",
+      "httpStatus": 200,
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 1362,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 334,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "contentBlockTypes": [
+        "text"
+      ],
+      "thinkingBlockCount": 0,
+      "textChars": 419,
+      "textPreview": "```json\n{\n  \"narrative\": \"올해는 상승 주기가 뚜렷해 전진 지수가 70으로 후퇴보다 압도적으로 높습니다. 코어 매트릭스에서 드러나는 통제력과 탐구력이 균형을 이루며, 물 기운이 46.4로 두텁게 자리해 원소 지지가 든든하니 일의 방향은 망설임보다 실행을 택하는 쪽이 유리합니다. 다만 관계축이 낮은 편이니 혼자 밀어붙이기보다 신뢰할 협력선",
+      "parsedReading": true,
+      "parsedSynthesis": false
+    },
+    {
+      "label": "synthesis_default",
+      "httpStatus": 200,
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 1979,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 641,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "contentBlockTypes": [
+        "text"
+      ],
+      "thinkingBlockCount": 0,
+      "textChars": 676,
+      "textPreview": "```json\n{\"agreements\":[\"세 가지 해석 모두 올해는 전진과 유지가 팽팽히 맞서는 시기라는 점에 동의합니다.\",\"비견의 기운이 강해 자기 주도력과 동료·경쟁 관계 관리가 중요하다는 데 일치합니다.\",\"물의 기운이 전체의 절반을 차지해 유연함과 흐름을 타는 태도가 강조됩니다.\",\"무리한 확장보다 현재 기반을 다지며 때를 관찰하는 전략이 공통적",
+      "parsedReading": false,
+      "parsedSynthesis": true
+    },
+    {
+      "label": "synthesis_thinking_disabled",
+      "httpStatus": 200,
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 1979,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 642,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "contentBlockTypes": [
+        "text"
+      ],
+      "thinkingBlockCount": 0,
+      "textChars": 669,
+      "textPreview": "{\"agreements\":[\"세 해석 모두 올해는 전진과 유지가 팽팽히 맞서는 시기로 본다\",\"비견의 기운이 강해 스스로 주도권을 쥐려는 힘이 두드러진다는 데 일치한다\",\"물의 기운이 사주 전체의 절반을 차지해 유연함과 흐름을 강조한다\",\"무리한 확장보다 현재 기반을 다지는 것이 유리하다는 결론이 공통적이다\",\"동료·경쟁자와의 관계를 살피며 균형을 잡는 태",
+      "parsedReading": false,
+      "parsedSynthesis": true
+    },
+    {
+      "label": "oracle_path_synthesis_registry",
+      "finishReason": "end_turn",
+      "reasoningTokens": null,
+      "contentTokens": 712,
+      "tokensOut": 712,
+      "textChars": 733,
+      "emptyContent": false,
+      "parsed": true,
+      "error": null
+    }
+  ]
+}

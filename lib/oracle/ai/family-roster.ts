@@ -11,6 +11,7 @@
  */
 import type { SystemId } from '../axes/types'
 import { ORACLE_READER_COUNTS, type OracleReaderCount, type OracleSessionScope } from '../schema'
+import { integratedReaderBrands } from './registry'
 
 /** Brands eligible for family reader / synthesizer seats (English display). */
 export type OracleFamilyBrand =
@@ -110,20 +111,40 @@ export const ORACLE_FAMILY_ROSTERS: Record<OracleFamilyId, OracleFamilyRoster> =
     id: 'self_ip',
     label: 'Self-IP / number',
     systems: ['prism', 'numerology', 'tzolkin'],
-    // Clean single pool exhausted (NVIDIA/DeepSeek/Moonshot taken). Google =
-    // best remaining (integrated #3); single was univ-conclusion DQ.
+    // Google = numerology single-panel synth #4 (0 univ DQ); not on self_ip
+    // readers at N=3/5/7. Moonshot/xAI/NVIDIA ranked higher but collide
+    // (western/east synth or self_ip reader seats). OpenAI #5 held out.
     readers: ['Z.ai', 'Anthropic', 'DeepSeek', 'xAI', 'NVIDIA'],
     overflowReaders: ['OpenAI', 'Moonshot AI'],
     synthesizer: 'Google',
     synthesizerCite:
-      'clean single pool exhausted; synthesis integrated #3 (0 univ DQ); single was DQ — best remaining; OpenAI excluded',
+      'numerology single-panel synthesis bakeoff #4 (0 univ-conclusion DQ); not on self_ip readers; OpenAI excluded',
   },
 }
 
-/** Integrated (combined) synthesizer — ranked separately from single-panel synths. */
+/** Integrated (combined) synthesizer — must NOT be any LAYER1 dedicated reader. */
 export const INTEGRATED_SYNTHESIZER_BRAND: OracleFamilyBrand = 'Z.ai'
 export const INTEGRATED_SYNTHESIZER_CITE =
-  'synthesis bakeoff integrated #1 (0 univ-conclusion DQ); OpenAI excluded from all synth seats'
+  'synthesis bakeoff integrated #1 (0 univ-conclusion DQ); removed from LAYER1 (iching→Qwen) so synth∉12 readers; OpenAI excluded'
+
+/**
+ * Assert synthesizer is never a reader in the same session.
+ * - Single: checks every system at N=3/5/7.
+ * - Integrated: synthesizer ∉ LAYER1 dedicated brands.
+ */
+export function assertSynthesizerNeverReader(): void {
+  const integratedReaders = new Set(integratedReaderBrands())
+  if (integratedReaders.has(INTEGRATED_SYNTHESIZER_BRAND)) {
+    throw new Error(
+      `integrated synthesizer ${INTEGRATED_SYNTHESIZER_BRAND} collides with a LAYER1 reader`,
+    )
+  }
+  for (const system of Object.keys(SYSTEM_FAMILY) as SystemId[]) {
+    for (const n of ORACLE_SINGLE_READER_COUNTS) {
+      resolveSingleSystemRoster(system, n)
+    }
+  }
+}
 
 /**
  * Per-system seat orders. Measured systems differ at N=3 within a family.
@@ -309,11 +330,16 @@ export function resolvedSingleSystemRosterTable(): Array<{
   n5: string
   n7: string
   synthesizer: string
+  ok357: boolean
 }> {
   return (Object.keys(SYSTEM_FAMILY) as SystemId[]).map((system) => {
     const n3 = resolveSingleSystemRoster(system, 3)
     const n5 = resolveSingleSystemRoster(system, 5)
     const n7 = resolveSingleSystemRoster(system, 7)
+    const ok357 =
+      !n3.readers.includes(n3.synthesizer) &&
+      !n5.readers.includes(n5.synthesizer) &&
+      !n7.readers.includes(n7.synthesizer)
     return {
       system,
       evidence: n3.evidence,
@@ -321,6 +347,7 @@ export function resolvedSingleSystemRosterTable(): Array<{
       n5: n5.readers.join(', '),
       n7: n7.readers.join(', '),
       synthesizer: n7.synthesizer,
+      ok357,
     }
   })
 }

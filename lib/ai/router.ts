@@ -411,7 +411,8 @@ async function callXaiAgentSearch({
   }
 }
 
-async function callAnthropic({  provider,
+async function callAnthropic({
+  provider,
   apiKey,
   model,
   prompt,
@@ -420,6 +421,7 @@ async function callAnthropic({  provider,
   maxCompletionTokens,
   chatMessages,
   searchTool,
+  anthropicThinking,
 }: {
   provider: ExtendedAiProviderName
   apiKey: string
@@ -431,6 +433,8 @@ async function callAnthropic({  provider,
   chatMessages?: CompareChatMessage[]
   /** Enables the server-side web_search tool (Scout tier). max_uses caps searches per call for cost control. */
   searchTool?: boolean
+  /** Oracle-only; league leaves undefined (provider default). */
+  anthropicThinking?: 'disabled' | 'enabled'
 }) {
   const capped =
     typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0
@@ -450,6 +454,14 @@ async function callAnthropic({  provider,
   if (searchTool) {
     anthropicBody.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }]
   }
+  if (anthropicThinking === 'disabled') {
+    anthropicBody.thinking = { type: 'disabled' }
+  } else if (anthropicThinking === 'enabled') {
+    anthropicBody.thinking = {
+      type: 'enabled',
+      budget_tokens: Math.min(8000, Math.max(1024, capped - 256)),
+    }
+  }
 
   const res = await fetchWithRetry(provider, 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -466,22 +478,53 @@ async function callAnthropic({  provider,
     throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`)
   }
 
-  const json: any = await res.json()
-  const text = Array.isArray(json?.content)
-    ? json.content.map((b: any) => b?.text).filter(Boolean).join('\n')
-    : null
+  const json = (await res.json()) as {
+    content?: Array<{ type?: string; text?: string; thinking?: string }>
+    usage?: {
+      input_tokens?: number
+      output_tokens?: number
+      thinking_tokens?: number
+      output_tokens_details?: { reasoning_tokens?: number; thinking_tokens?: number }
+    }
+    stop_reason?: string
+  }
+  const blocks = Array.isArray(json?.content) ? json.content : []
+  const text = blocks
+    .filter((b) => b?.type === 'text' || (typeof b?.text === 'string' && !b?.type))
+    .map((b) => b?.text)
+    .filter((t): t is string => typeof t === 'string' && t.length > 0)
+    .join('\n')
+  const thinkingChars = blocks
+    .filter((b) => b?.type === 'thinking' || b?.type === 'redacted_thinking')
+    .reduce((sum, b) => sum + (typeof b?.thinking === 'string' ? b.thinking.length : 0), 0)
+
+  const thinkingFromUsage =
+    typeof json?.usage?.thinking_tokens === 'number'
+      ? json.usage.thinking_tokens
+      : typeof json?.usage?.output_tokens_details?.thinking_tokens === 'number'
+        ? json.usage.output_tokens_details.thinking_tokens
+        : typeof json?.usage?.output_tokens_details?.reasoning_tokens === 'number'
+          ? json.usage.output_tokens_details.reasoning_tokens
+          : null
 
   return {
-    text: typeof text === 'string' && text.length ? text : null,
-    usage: normalizeTokens({
-      promptTokens: json?.usage?.input_tokens,
-      completionTokens: json?.usage?.output_tokens,
-      totalTokens:
-        typeof json?.usage?.input_tokens === 'number' &&
-        typeof json?.usage?.output_tokens === 'number'
-          ? json.usage.input_tokens + json.usage.output_tokens
-          : null,
-    }),
+    text: text.length ? text : null,
+    usage: {
+      ...normalizeTokens({
+        promptTokens: json?.usage?.input_tokens,
+        completionTokens: json?.usage?.output_tokens,
+        totalTokens:
+          typeof json?.usage?.input_tokens === 'number' &&
+          typeof json?.usage?.output_tokens === 'number'
+            ? json.usage.input_tokens + json.usage.output_tokens
+            : null,
+      }),
+      thoughtsTokenCount:
+        thinkingFromUsage ?? (thinkingChars > 0 ? Math.ceil(thinkingChars / 4) : null),
+    },
+    finishReason: typeof json?.stop_reason === 'string' ? json.stop_reason : null,
+    rawUsage: json?.usage ?? null,
+    contentBlockTypes: blocks.map((b) => b?.type ?? 'unknown'),
   }
 }
 
@@ -735,6 +778,7 @@ async function callProvider({
   chatMessages,
   allowGeminiThinking,
   geminiThinkingLevel,
+  anthropicThinking,
   searchTool,
 }: {
   provider: ExtendedAiProviderName
@@ -750,6 +794,8 @@ async function callProvider({
   /** Forwarded to callGoogleGemini; ignored by non-google providers. */
   allowGeminiThinking?: boolean
   geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
+  /** Forwarded to callAnthropic; ignored by non-anthropic providers. */
+  anthropicThinking?: 'disabled' | 'enabled'
   /**
    * Scout-tier live web search. Only meaningful for xai (Live Search
    * `search_parameters`), anthropic (web_search tool) and google (Search
@@ -940,7 +986,7 @@ async function callProvider({
   }
 
   if (provider === 'anthropic') {
-    const { text, usage } = await callAnthropic({
+    const { text, usage, finishReason } = await callAnthropic({
       provider,
       apiKey,
       model,
@@ -949,9 +995,10 @@ async function callProvider({
       temperature,
       maxCompletionTokens,
       searchTool,
+      anthropicThinking,
       ...chatOpts,
     })
-    return { model, text, usage }
+    return { model, text, usage, finishReason }
   }
 
   const { text, usage, finishReason } = await callGoogleGemini({
@@ -1030,6 +1077,8 @@ export type RunSingleProviderParams = {
   allowGeminiThinking?: boolean
   /** Gemini 3 thinkingLevel; oracle may set 'minimal' to protect maxOutputTokens. */
   geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
+  /** Oracle-only Anthropic thinking control; league leaves unset. */
+  anthropicThinking?: 'disabled' | 'enabled'
 }
 
 async function saveCompareArtifactsRows(
@@ -1097,6 +1146,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     chatMessages,
     allowGeminiThinking,
     geminiThinkingLevel,
+    anthropicThinking,
   } = params
 
   const started = nowMs()
@@ -1128,6 +1178,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       chatMessages,
       allowGeminiThinking,
       geminiThinkingLevel,
+      anthropicThinking,
       searchTool,
     })
 

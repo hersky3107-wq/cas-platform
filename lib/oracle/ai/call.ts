@@ -146,8 +146,12 @@ export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1Cal
       systemPrompt: input.systemPrompt,
       skipLanguageInjection: true,
       modelOverride: entry.caller.modelOverride,
-      allowGeminiThinking: entry.caller.allowGeminiThinking,
-      geminiThinkingLevel: entry.caller.geminiThinkingLevel,
+      allowGeminiThinking:
+        entry.caller.kind === 'core' ? entry.caller.allowGeminiThinking : undefined,
+      geminiThinkingLevel:
+        entry.caller.kind === 'core' ? entry.caller.geminiThinkingLevel : undefined,
+      anthropicThinking:
+        entry.caller.kind === 'core' ? entry.caller.anthropicThinking : undefined,
       maxCompletionTokens: entry.maxCompletionTokens,
       timeoutMs: input.timeoutMs,
     })

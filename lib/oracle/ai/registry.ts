@@ -42,6 +42,12 @@ export type Layer1Caller =
        * consuming maxOutputTokens). League paths leave this unset.
        */
       geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
+      /**
+       * Anthropic extended/adaptive thinking. Oracle may set 'disabled' so
+       * thinking tokens do not consume max_tokens on long synthesis prompts.
+       * League paths leave this unset (provider default).
+       */
+      anthropicThinking?: 'disabled' | 'enabled'
     }
 
 export type Layer1RegistryEntry = {
@@ -104,11 +110,16 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   },
   iching: {
     system: 'iching',
-    brand: 'Z.ai',
-    displayName: 'GLM-5.2',
-    model: 'z-ai/glm-5.2',
-    caller: { kind: 'platform', platformId: 'openrouter:glm-5.2' },
-    // Measured reasoning 207/892 → ceil 1000 + 800 = 1800; floor 2000.
+    brand: 'Qwen',
+    displayName: 'Qwen3.8 Max',
+    // Z.ai was moved off LAYER1 so it can be the integrated synthesizer
+    // without also reading iching in the same combined session.
+    model: 'qwen/qwen3.8-max',
+    caller: {
+      kind: 'platform',
+      platformId: 'openrouter:qwen3.8-max',
+      extraRequestParams: { reasoning: { effort: 'minimal' } },
+    },
     maxCompletionTokens: 2000,
   },
   ninestar: {
@@ -219,10 +230,34 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     pricingModel: 'anthropic/claude-sonnet-5',
     // Official Anthropic: $2 / $10 per 1M (anthropic.com/claude/sonnet).
     officialPricing: { promptUsdPerToken: 0.000002, completionUsdPerToken: 0.00001 },
-    caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-sonnet-5' },
+    caller: {
+      kind: 'core',
+      provider: 'anthropic',
+      modelOverride: 'claude-sonnet-5',
+      // Oracle-only: synthesis inputs are long; adaptive/extended thinking
+      // was burning the 1200 completion budget (empty/invalid JSON). League
+      // does not set this flag.
+      anthropicThinking: 'disabled',
+    },
     // Was 1200; Claude ignored the 280–420 char prompt lock and emitted 877
     // content tokens. Ceiling sized for ≤500-char JSON narrative + headroom.
     maxCompletionTokens: 700,
+  },
+}
+
+/**
+ * Brands that hold single-mode reader/synthesizer seats but do NOT own a
+ * LAYER1 dedicated system. Required so integrated synthesizer (Z.ai) can
+ * resolve a live caller without also appearing in the combined 12-reader set.
+ */
+export const ORACLE_SEAT_ONLY_BRANDS: Record<string, Layer1RegistryEntry> = {
+  'Z.ai': {
+    system: 'iching',
+    brand: 'Z.ai',
+    displayName: 'GLM-5.2',
+    model: 'z-ai/glm-5.2',
+    caller: { kind: 'platform', platformId: 'openrouter:glm-5.2' },
+    maxCompletionTokens: 2000,
   },
 }
 
@@ -232,13 +267,22 @@ export function layer1Entry(system: string): Layer1RegistryEntry | null {
     : null
 }
 
+/** Brands used as integrated (combined) one-model-per-system readers. */
+export function integratedReaderBrands(): string[] {
+  return Object.values(LAYER1_REGISTRY).map((entry) => entry.brand)
+}
+
 /**
  * Resolve a live model by public brand for single-system reader/synthesizer
  * seats. The family roster owns seat order; this registry remains the single
  * source of exact provider/model configuration.
  */
 export function layer1EntryForBrand(brand: string): Layer1RegistryEntry | null {
-  return Object.values(LAYER1_REGISTRY).find((entry) => entry.brand === brand) ?? null
+  return (
+    Object.values(LAYER1_REGISTRY).find((entry) => entry.brand === brand) ??
+    ORACLE_SEAT_ONLY_BRANDS[brand] ??
+    null
+  )
 }
 
 // TRAP (c): Amazon Nova BREAKS if a reasoning option is present at all.

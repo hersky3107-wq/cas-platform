@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_IDS } from '../../axes/types'
-import { LAYER1_REGISTRY } from '../registry'
+import { LAYER1_REGISTRY, ORACLE_SEAT_ONLY_BRANDS, integratedReaderBrands } from '../registry'
 import {
   INTEGRATED_SYNTHESIZER_BRAND,
   ORACLE_FAMILY_ROSTERS,
   ORACLE_SINGLE_READER_COUNTS,
   SYSTEM_FAMILY,
   SYSTEM_READER_ROSTERS,
+  assertSynthesizerNeverReader,
   isAllowedReaderCount,
   resolveSingleSystemRoster,
+  resolvedSingleSystemRosterTable,
   synthesizerByFamily,
 } from '../family-roster'
 
@@ -28,6 +30,18 @@ describe('family-roster', () => {
     expect(INTEGRATED_SYNTHESIZER_BRAND).not.toBe('OpenAI')
   })
 
+  it('keeps integrated synthesizer out of the LAYER1 dedicated reader set', () => {
+    expect(integratedReaderBrands()).not.toContain(INTEGRATED_SYNTHESIZER_BRAND)
+    expect(LAYER1_REGISTRY.iching.brand).toBe('Qwen')
+    expect(ORACLE_SEAT_ONLY_BRANDS['Z.ai']?.brand).toBe('Z.ai')
+  })
+
+  it('asserts synthesizer∉readers at N=3/5/7 and for integrated', () => {
+    expect(() => assertSynthesizerNeverReader()).not.toThrow()
+    const table = resolvedSingleSystemRosterTable()
+    expect(table.every((row) => row.ok357)).toBe(true)
+  })
+
   it('resolves every system at N=3/5/7 with no duplicate brands and synth not a reader', () => {
     for (const system of SYSTEM_IDS) {
       for (const n of ORACLE_SINGLE_READER_COUNTS) {
@@ -36,7 +50,6 @@ describe('family-roster', () => {
         expect(new Set(resolved.readers).size).toBe(n)
         expect(resolved.readers).not.toContain(resolved.synthesizer)
         expect(resolved.family).toBe(SYSTEM_FAMILY[system])
-        // Seat 1 is quality-ranked for this system — NOT LAYER1_REGISTRY dedicated brand.
         expect(resolved.readers[0]).toBe(SYSTEM_READER_ROSTERS[system].readers[0])
       }
     }

@@ -87,6 +87,18 @@ describe('LAYER1_REGISTRY', () => {
     expect(layer1Entry('not-a-system')).toBeNull()
   })
 
+  it('disables Anthropic thinking on the oracle prism entry only', () => {
+    expect(LAYER1_REGISTRY.prism.caller.kind).toBe('core')
+    if (LAYER1_REGISTRY.prism.caller.kind === 'core') {
+      expect(LAYER1_REGISTRY.prism.caller.anthropicThinking).toBe('disabled')
+    }
+  })
+
+  it('assigns Qwen to iching so Z.ai can be integrated synthesizer only', () => {
+    expect(LAYER1_REGISTRY.iching.brand).toBe('Qwen')
+    expect(LAYER1_REGISTRY.iching.model).toBe('qwen/qwen3.8-max')
+  })
+
   it('scopes reassigned model reasoning and provider pins to oracle calls', () => {
     const saju = LAYER1_REGISTRY.saju.caller
     const ninestar = LAYER1_REGISTRY.ninestar.caller
