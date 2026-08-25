@@ -21,12 +21,11 @@ export function languageForLocale(locale: string): string {
 
 /**
  * Prism / Claude Sonnet 5 overshoots the shared 500-char narrative budget
- * (measured 400 / 998 / 640 content tokens across three smokes). Cause:
- * Claude's default prose is expansive, the budget lives only in a schema
- * comment (not an API hard stop), and max_tokens 1200 leaves room for ~3×
- * the intended body — the runaway guard only trips above 1.5× the ceiling
- * (1800), so a 998-token narrative still "succeeds". These lines are the
- * Claude-specific hard stop without changing the model.
+ * (measured 400 / 998 / 640 / 877 content tokens). Cause: Claude's default
+ * prose is expansive, and a prompt-only lock is not an API hard stop —
+ * parseLayer1Json now rejects narrative >500 chars (forcing one retry),
+ * and prism maxCompletionTokens is 700 so the model cannot fill 877 again.
+ * These lines remain the Claude-specific in-prompt discipline.
  */
 const PRISM_LENGTH_RULES = [
   'PRISM / Claude-specific length lock (mandatory):',

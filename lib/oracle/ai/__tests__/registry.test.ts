@@ -24,7 +24,7 @@ const EXPECTED_CEILINGS: Record<string, number> = {
   numerology: 1200,
   name: 1200,
   tzolkin: 2000,
-  prism: 1200,
+  prism: 700,
 }
 
 describe('LAYER1_REGISTRY', () => {

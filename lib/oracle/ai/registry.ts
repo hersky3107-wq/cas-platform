@@ -220,7 +220,9 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // Official Anthropic: $2 / $10 per 1M (anthropic.com/claude/sonnet).
     officialPricing: { promptUsdPerToken: 0.000002, completionUsdPerToken: 0.00001 },
     caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-sonnet-5' },
-    maxCompletionTokens: 1200,
+    // Was 1200; Claude ignored the 280–420 char prompt lock and emitted 877
+    // content tokens. Ceiling sized for ≤500-char JSON narrative + headroom.
+    maxCompletionTokens: 700,
   },
 }
 

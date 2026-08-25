@@ -11,6 +11,8 @@ export const LAYER1_FOCUSES = ['work', 'money', 'love', 'social', 'energy'] as c
 export type Layer1Focus = (typeof LAYER1_FOCUSES)[number]
 
 export const LAYER1_ONE_LINE_MAX = 40
+/** Shared hard ceiling for narrative. Soft target for prism is 280–420. */
+export const LAYER1_NARRATIVE_MAX = 500
 
 export type Layer1Json = {
   narrative: string
@@ -82,6 +84,10 @@ export function parseLayer1Json(raw: string): Layer1Json | null {
   const record = parsed as Record<string, unknown>
   const narrative = typeof record.narrative === 'string' ? record.narrative.trim() : ''
   if (!narrative) return null
+  // Soft prompt budgets are ignored by expansive models (Claude×prism measured
+  // 877 content tokens). Reject over-budget narratives so the adapter retries
+  // once under the strict instruction instead of accepting the overrun.
+  if ([...narrative].length > LAYER1_NARRATIVE_MAX) return null
   const oneLineRaw = typeof record.one_line === 'string' ? record.one_line.trim() : ''
   if (!oneLineRaw) return null
   const direction = asDirection(record.direction)

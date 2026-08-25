@@ -31,7 +31,10 @@ export function layer1RunawayContentThreshold(maxCompletionTokens: number): numb
   return maxCompletionTokens * LAYER1_RUNAWAY_MULTIPLIER
 }
 export const LAYER1_STRICT_RETRY_INSTRUCTION =
-  '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. Respect every field character limit.'
+  '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ≤500 Unicode characters (prism target 280–420). Respect every field character limit.'
+
+/** Synthesis JSON is longer than a single reading; never inherit prism's 700 ceiling. */
+export const SYNTHESIS_MAX_COMPLETION_TOKENS = 1200
 
 async function defaultCall(input: Parameters<Layer1Call>[0]): Promise<Layer1CallResult> {
   const { callLayer1Model } = await import('./call')
@@ -103,6 +106,14 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         )
       }
 
+      const effectiveEntry =
+        request.kind === 'synthesis'
+          ? {
+              ...entry,
+              maxCompletionTokens: Math.max(entry.maxCompletionTokens, SYNTHESIS_MAX_COMPLETION_TOKENS),
+            }
+          : entry
+
       const systemPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisSystemPrompt(request.locale)
@@ -130,7 +141,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             const latencyMs = Date.now() - startedAt
             await finalizeUnitCost({
               sessionId: request.sessionId,
-              entry,
+              entry: effectiveEntry,
               lastRaw,
               httpBudget,
               cumulativeMs: latencyMs,
@@ -141,8 +152,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
               errorText: `insufficient time for retry (${remainingMs}ms < ${LAYER1_RETRY_MIN_REMAINING_MS}ms)`,
             })
             return failure(
-              entry.brand,
-              entry.model,
+              effectiveEntry.brand,
+              effectiveEntry.model,
               'error',
               `insufficient time for retry (${remainingMs}ms < ${LAYER1_RETRY_MIN_REMAINING_MS}ms)`,
               latencyMs,
@@ -152,7 +163,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         }
 
         const raw = await call({
-          entry,
+          entry: effectiveEntry,
           systemPrompt,
           userPrompt: strictRetryNext
             ? `${userPrompt}${LAYER1_STRICT_RETRY_INSTRUCTION}`
@@ -182,11 +193,11 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           continue
         }
 
-        const runawayThreshold = layer1RunawayContentThreshold(entry.maxCompletionTokens)
+        const runawayThreshold = layer1RunawayContentThreshold(effectiveEntry.maxCompletionTokens)
         if ((raw.contentTokens ?? 0) > runawayThreshold) {
           lastError =
             `runaway visible content (${raw.contentTokens} > ${runawayThreshold} tokens)`
-          console.warn(`[oracle] ${entry.system} ${lastError}`)
+          console.warn(`[oracle] ${effectiveEntry.system} ${lastError}`)
           if (!strictRetryNext) {
             strictRetryNext = true
             continue
@@ -200,7 +211,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           const latencyMs = Date.now() - startedAt
           await finalizeUnitCost({
             sessionId: request.sessionId,
-            entry,
+            entry: effectiveEntry,
             lastRaw: raw,
             httpBudget,
             cumulativeMs: latencyMs,
@@ -211,8 +222,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           })
           return {
             ok: true,
-            brand: entry.brand,
-            model: entry.model,
+            brand: effectiveEntry.brand,
+            model: effectiveEntry.model,
             text: layer1Parsed?.narrative ?? synthesisParsed!.conclusion,
             summary: layer1Parsed
               ? {
@@ -242,7 +253,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
       const latencyMs = Date.now() - startedAt
       await finalizeUnitCost({
         sessionId: request.sessionId,
-        entry,
+        entry: effectiveEntry,
         lastRaw,
         httpBudget,
         cumulativeMs: latencyMs,
@@ -252,7 +263,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         costIsEstimated: anyEstimatedCost,
         errorText: lastError,
       })
-      return failure(entry.brand, entry.model, 'error', lastError, latencyMs)
+      return failure(effectiveEntry.brand, effectiveEntry.model, 'error', lastError, latencyMs)
     },
   }
 }

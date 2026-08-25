@@ -1,0 +1,824 @@
+{
+  "question": "올해 일의 방향을 어떻게 잡아야 하는가?",
+  "single": {
+    "systems": [
+      "saju"
+    ],
+    "readings": [
+      {
+        "system": "saju",
+        "brand": "Z.ai",
+        "narrative": "올해 일의 방향은 전진과 유지가 팽팽하게 맞서는 시기입니다. 대운·세운이 주는 흐름이 밀어올리는 힘과 버티는 힘을 동등하게 만들고 있어, 무리하게 새로운 국면을 열기보다 현재 자리에서 기반을 다지는 것이 유리합니다. 사주 네 기둥에서 물의 기운이 절반을 차지하며 흐름과 유연성을 강조하는 반면, 토(土) 기운이 그 아래에서 중심을 잡아주어 안정감을 줍니다. 또한 비견이 강하게 작용하여 동료나 경쟁자와의 관계 속에서 자기 주도력을 발휘해야 하는 해이므로, 남의 속도에 휩쓸리지 말고 내节奏대로 일의 우선순위를 재정비하십시오.",
+        "summary": {
+          "one_line": "전진과 유지의 균형, 자기 템포로 기반부터 다지는 해",
+          "direction": "hold",
+          "focus": "work",
+          "axis_emphasis": [
+            "saju.tengods.peer_dominant",
+            "saju.elements.four_pillars",
+            "saju.phase.daewoon_sewoon"
+          ]
+        }
+      },
+      {
+        "system": "saju",
+        "brand": "Moonshot AI",
+        "narrative": "올해는 비견의 기운이 강해 스스로 주도권을 쥐고 밀고 나가려는 힘이 넘치지만, 대운·세운의 흐름은 나아감과 멈춤이 정확히 반반으로 맞서고 있습니다. 사주 네 기둥에서 물의 기운이 절반을 차지해 유연함과 지혜는 충분하나, 금의 기운이 비어 있어 결단력과 실행의 날이 무딜 수 있습니다. 새로운 확장보다는 기존의 것을 다지고, 동료와의 관계를 점검하며 때를 기다리는 것이 현명합니다. 욕심내어 무리하게 나아가기보다 균형을 잡는 데 집중하세요.",
+        "summary": {
+          "one_line": "비견의 추진력과 물의 유연함은 충분하나, 대운·세운이 팽팽하니 무리한 확",
+          "direction": "hold",
+          "focus": "work",
+          "axis_emphasis": [
+            "saju.tengods.peer_dominant",
+            "saju.elements.four_pillars",
+            "saju.phase.daewoon_sewoon"
+          ]
+        }
+      },
+      {
+        "system": "saju",
+        "brand": "xAI",
+        "narrative": "비견이 이끄는 기운 속에서 사주 네 기둥의 전체 균형과 대운·세운의 전진과 유지 동점 상황을 함께 고려해야 올해 일의 방향이 명확해집니다. 이 세 요소가 서로 얽혀 있어 무작정 밀어붙이기보다는 현재 위치를 단단히 다지면서 기회를 관찰하는 태도가 필요하며, 그 과정에서 관계와 안정성을 동시에 살피는 접근이 효과적입니다. 특히 물의 기운이 강하게 작용하므로 유연하게 흐름을 타되 섣부른 변화는 자제하는 것이 올해의 실질적인 전략입니다.",
+        "summary": {
+          "one_line": "비견·사주 네 기둥·대운·세운의 균형 속에서 유지하며 방향을 잡아라",
+          "direction": "hold",
+          "focus": "work",
+          "axis_emphasis": [
+            "saju.tengods.peer_dominant",
+            "saju.elements.four_pillars",
+            "saju.phase.daewoon_sewoon"
+          ]
+        }
+      }
+    ],
+    "consensus": {
+      "traits": {
+        "mean": {
+          "drive": 28.6,
+          "stability": 11.4,
+          "relation": 22.9,
+          "control": 27.1,
+          "exploration": 10,
+          "reflection": 0
+        },
+        "profile": {
+          "drive": 11.9,
+          "stability": -5.3,
+          "relation": 6.2,
+          "control": 10.4,
+          "exploration": -6.7,
+          "reflection": -16.7
+        },
+        "spread": {
+          "drive": 0,
+          "stability": 0,
+          "relation": 0,
+          "control": 0,
+          "exploration": 0,
+          "reflection": 0
+        },
+        "contested": [],
+        "participating": [
+          "saju"
+        ],
+        "unreadable": []
+      },
+      "elements": {
+        "total": {
+          "wood": 12.5,
+          "fire": 12.5,
+          "earth": 25,
+          "metal": 0,
+          "water": 50
+        },
+        "deficiency": {
+          "wood": 7.5,
+          "fire": 7.5,
+          "earth": 0,
+          "metal": 20,
+          "water": 0
+        },
+        "excess": {
+          "wood": 0,
+          "fire": 0,
+          "earth": 5,
+          "metal": 0,
+          "water": 30
+        },
+        "participating": [
+          "saju"
+        ],
+        "unreadable": []
+      },
+      "phase": {
+        "tally": {
+          "advance": 50,
+          "hold": 50,
+          "release": 0
+        },
+        "leader": "advance",
+        "leaderShare": 50,
+        "unanimityCount": 1,
+        "participantCount": 1,
+        "coreTally": {
+          "advance": 50,
+          "hold": 50,
+          "release": 0
+        },
+        "polarized": false,
+        "oppositions": [],
+        "participating": [
+          "saju"
+        ],
+        "unreadable": []
+      },
+      "systemCount": {
+        "total": 1,
+        "participating": 1,
+        "partial": 0,
+        "unreadable": 0
+      }
+    },
+    "synthesisPayload": {
+      "readings": [
+        {
+          "index": 1,
+          "narrative": "올 해 일 의 방 향 은 전 진 과 유 지 가 팽 팽 하 게 맞 서 는 시 기 입 니 다. 대 운 · 세 운 이 주 는 흐 름 이 밀 어 올 리 는 힘 과 버 티 는 힘 을 동 등 하 게 만 들 고 있 어, 무 리 하 게 새 로 운 국 면 을 열 기 보 다 현 재 자 리 에 서 기 반 을 다 지 는 것 이 유 리 합 니 다. 사 주 네 기 둥 에 서 물 의 기 운 이 절 반 을 차 지 하 며 흐 름 과 유 연 성 을 강 조 하 는 반 면, 토 (土) 기 운 이 그 아 래 에 서 중 심 을 잡 아 주 어 안 정 감 을 줍 니 다. 또 한 비 견 이 강 하 게 작 용 하 여 동 료 나 경 쟁 자 와 의 관 계 속 에 서 자 기 주 도 력 을 발 휘 해 야 하 는 해 이 므 로, 남 의 속 도 에"
+        },
+        {
+          "index": 2,
+          "narrative": "올 해 는 비 견 의 기 운 이 강 해 스 스 로 주 도 권 을 쥐 고 밀 고 나 가 려 는 힘 이 넘 치 지 만, 대 운 · 세 운 의 흐 름 은 나 아 감 과 멈 춤 이 정 확 히 반 반 으 로 맞 서 고 있 습 니 다. 사 주 네 기 둥 에 서 물 의 기 운 이 절 반 을 차 지 해 유 연 함 과 지 혜 는 충 분 하 나, 금 의 기 운 이 비 어 있 어 결 단 력 과 실 행 의 날 이 무 딜 수 있 습 니 다. 새 로 운 확 장 보 다 는 기 존 의 것 을 다 지 고, 동 료 와 의 관 계 를 점 검 하 며 때 를 기 다 리 는 것 이 현 명 합 니 다. 욕 심 내 어 무 리 하 게 나 아 가 기 보 다 균 형 을 잡 는 데 집 중 하 세 요."
+        },
+        {
+          "index": 3,
+          "narrative": "비 견 이 이 끄 는 기 운 속 에 서 사 주 네 기 둥 의 전 체 균 형 과 대 운 · 세 운 의 전 진 과 유 지 동 점 상 황 을 함 께 고 려 해 야 올 해 일 의 방 향 이 명 확 해 집 니 다. 이 세 요 소 가 서 로 얽 혀 있 어 무 작 정 밀 어 붙 이 기 보 다 는 현 재 위 치 를 단 단 히 다 지 면 서 기 회 를 관 찰 하 는 태 도 가 필 요 하 며, 그 과 정 에 서 관 계 와 안 정 성 을 동 시 에 살 피 는 접 근 이 효 과 적 입 니 다. 특 히 물 의 기 운 이 강 하 게 작 용 하 므 로 유 연 하 게 흐 름 을 타 되 섣 부 른 변 화 는 자 제 하 는 것 이 올 해 의 실 질 적 인 전 략 입 니 다."
+        }
+      ],
+      "consensus": {
+        "phase": {
+          "tally": {
+            "advance": 50,
+            "hold": 50,
+            "release": 0
+          },
+          "leader": "advance",
+          "leaderShare": 50,
+          "unanimityCount": 1,
+          "participantCount": 1,
+          "coreTally": {
+            "advance": 50,
+            "hold": 50,
+            "release": 0
+          },
+          "polarized": false,
+          "oppositions": [],
+          "participating": [
+            "saju"
+          ],
+          "unreadable": []
+        },
+        "traits": {
+          "profile": {
+            "drive": 11.9,
+            "stability": -5.3,
+            "relation": 6.2,
+            "control": 10.4,
+            "exploration": -6.7,
+            "reflection": -16.7
+          },
+          "spread": {
+            "drive": 0,
+            "stability": 0,
+            "relation": 0,
+            "control": 0,
+            "exploration": 0,
+            "reflection": 0
+          },
+          "contested": [],
+          "participating": [
+            "saju"
+          ],
+          "unreadable": []
+        },
+        "elements": {
+          "total": {
+            "wood": 12.5,
+            "fire": 12.5,
+            "earth": 25,
+            "metal": 0,
+            "water": 50
+          },
+          "deficiency": {
+            "wood": 7.5,
+            "fire": 7.5,
+            "earth": 0,
+            "metal": 20,
+            "water": 0
+          },
+          "excess": {
+            "wood": 0,
+            "fire": 0,
+            "earth": 5,
+            "metal": 0,
+            "water": 30
+          },
+          "participating": [
+            "saju"
+          ],
+          "unreadable": []
+        },
+        "systemCount": {
+          "total": 1,
+          "participating": 1,
+          "partial": 0,
+          "unreadable": 0
+        }
+      }
+    }
+  },
+  "integrated": {
+    "systems": [
+      "saju",
+      "ziwei",
+      "iching",
+      "ninestar",
+      "sukuyou",
+      "astro",
+      "tarot",
+      "runes",
+      "numerology",
+      "name",
+      "tzolkin",
+      "prism"
+    ],
+    "readings": [
+      {
+        "system": "saju",
+        "brand": "Moonshot AI",
+        "narrative": "올해 일의 방향은 전진과 유지가 정확히 절반씩 맞서는 해입니다. 비견이 강하게 드러나는 시기라, 혼자 밀어붙이기보다 동료·동업자와 힘을 나누는 구조가 유리합니다. 다만 비견은 재물을 나누는 성질도 있어, 수익 배분과 역할 경계를 처음부터 분명히 해야 합니다. 물 기운이 절반을 차지해 지혜와 정보의 흐름은 좋지만, 금이 비어 있어 결단과 마무리가 약할 수 있습니다. 새로운 벌리기보다 지금 하는 일을 깊이 다지면서, 협업의 규칙을 단단히 세우는 쪽이 올해의 정답입니다.",
+        "summary": {
+          "one_line": "전진과 유지가 팽팽한 해, 협업 규칙을 세우고 현재 일을 깊게 다지세요.",
+          "direction": "hold",
+          "focus": "work",
+          "axis_emphasis": [
+            "saju.tengods.peer_dominant",
+            "saju.elements.four_pillars",
+            "saju.phase.daewoon_sewoon"
+          ]
+        }
+      },
+      {
+        "system": "ziwei",
+        "brand": "DeepSeek",
+        "narrative": "올해 목의 기운(97.6%)이 압도적이며, 사화(대한·유년 사화)에 따른 전진 흐름(54.9%)이 강력합니다. 당신의 관계 지향성(32.5%)과 내성적 성찰(27.5%)을 결합하여, 대인 관계를 확장하며 깊이 있게 생각하는 방식으로 일을 추진해야 합니다. 안정보다는 도전을 택하고, 현재의 기회를 적극적으로 활용하는 것이 유리합니다.",
+        "summary": {
+          "one_line": "관계와 성찰의 힘으로 올해 일의 흐름을 타고 과감히 전진하라.",
+          "direction": "advance",
+          "focus": "work",
+          "axis_emphasis": [
+            "wood",
+            "advance",
+            "relation",
+            "reflection"
+          ]
+        }
+      },
+      {
+        "system": "iching",
+        "brand": "Z.ai",
+        "narrative": "올해 일의 방향은 명확히 전진에 무게를 실어야 할 시기입니다. 변효 관계로 도출된 전진 기운이 70으로 압도적이며, 이는 새로운 과제나 확장을 주저 없이 밀어붙이라는 신호입니다. 납갑·시 가중 오행에서 토(土)가 42.8로 가장 강해 안정적 토대 위에서의 성장이 유리하고, 목(木)과 화(火)가 각각 28.6로 균형을 이루어 기획과 실행이 조화를 이룰 수 있습니다. 다만 금(金)과 수(水)가 없으므로 과감한 구조 정리나 감정적 유연함은 부족할 수 있으니, 전진하되 토의 무게감을 살려 한 걸음씩 단단하게 쌓아가는 방식이 가장 효과적입니다.",
+        "summary": {
+          "one_line": "전진 기운 70, 토의 단단한 토대 위에서 일을 확장하라.",
+          "direction": "advance",
+          "focus": "work",
+          "axis_emphasis": [
+            "iching.elements.najia_shi_weighted",
+            "iching.phase.changing_lines_relation"
+          ]
+        }
+      },
+      {
+        "system": "ninestar",
+        "brand": "Meta",
+        "narrative": "본명성에 따른 강한 추진력과 연·월·일 성 혼합의 균형 있는 원소 분포로 인해 올해는 일의 방향을 적극적으로 추진하되 본명성 관계의 영향을 받아 신중하게 계획을 점검하며 진행해야 합니다. 추진력과 탐색력이 강해 새로운 기회를 잡을 수 있으나, 안정적인 진행을 위해 점검과 보완이 필요합니다.",
+        "summary": {
+          "one_line": "올해는 적극적인 추진과 신중한 계획 점검이 필요한 해입니다.",
+          "direction": "advance",
+          "focus": "work",
+          "axis_emphasis": [
+            "ninestar.traits.honmeisei",
+            "ninestar.elements.year_month_day_blend",
+            "ninestar.phase.honmeisei_relation"
+          ]
+        }
+      },
+      {
+        "system": "sukuyou",
+        "brand": "MiniMax",
+        "narrative": "올해 일의 방향은 '내려놓기'다. 화 오행이 70% 이상으로 강렬하게 타오르고 있지만, 안정성은 0, 추진력도 절반에 그친다. 삼구 胎 단계의 흐름이 70%로 '놓아주기'를 강하게 가리키고 있어, 새 것을 쌓기보다 기존 것을 정리하고 비워내는 데 집중하는 것이 흐름과 맞닿는다. 강한 불꽃이 어디로 뻗기보다 어디서 꺼뜨릴지, 그 거둠의 방향이 올해 일의 결을 만든다.",
+        "summary": {
+          "one_line": "올해는 거두는 해. 뜨거운 불꽃을 어디에 쏟을지보다 어디서 놓아줄지가 방",
+          "direction": "release",
+          "focus": "work",
+          "axis_emphasis": [
+            "sukuyou.traits.luminary_mars",
+            "sukuyou.elements.luminary_wuxing",
+            "sukuyou.phase.sanku_胎"
+          ]
+        }
+      },
+      {
+        "system": "astro",
+        "brand": "OpenAI",
+        "narrative": "올해 일은 확장보다 기반을 다지는 방향이 맞습니다. 적용 중인 트랜짓에서 유지가 54.6으로 가장 높아, 급한 이직·전환보다 현재 역할의 권한과 운영 방식을 정교하게 만드는 편이 유리합니다. 불과 물이 각각 25로 함께 강하므로 추진력과 직관은 충분하지만, 토 23.3의 현실성을 써서 일정·예산·성과 기준을 명확히 하세요. 하우스·애스펙트의 통제력 18.7과 추진력 19는 리더십 과제를 맡되 범위를 단계적으로 넓힐 때 빛납니다.",
+        "summary": {
+          "one_line": "올해는 판을 바꾸기보다, 성과 기준을 세워 현재 일을 주도하세요.",
+          "direction": "hold",
+          "focus": "work",
+          "axis_emphasis": [
+            "hold",
+            "fire",
+            "water",
+            "earth",
+            "drive",
+            "control"
+          ]
+        }
+      },
+      {
+        "system": "tarot",
+        "brand": "Google",
+        "narrative": "올해 일의 방향은 주저함 없이 앞으로 나아가는 전진이 핵심입니다. 카드 성향 분석에서 드러난 전진(100)의 강렬한 수치와 사원소·오행의 수(50), 흙(35) 기운이 어우러져, 유연하면서도 견고하게 실리를 챙길 기회가 열려 있습니다. 아르카나·수트와 역위 반영 지표는 수 기운 특유의 높은 관계성(24.2)과 깊은 성찰(21.3)을 뒷받침합니다. 주변과의 소통과 상황을 꿰뚫어 보는 통찰력을 바탕으로 목표를 향해 과감히 돌진할 때 가장 큰 결실을 볼 수 있습니다. 막연한 구상에 머물지 말고 이미 준비된 기운을 바탕으로 적극적인 실행에 옮기시기 바랍니다. 현실적인 기반 위에 추진력이 더해져 탁월한 성과를 이루어낼 것입니다.",
+        "summary": {
+          "one_line": "관계성과 성찰을 기반으로 전진의 기운을 살려 일의 목표를 향해 과감히 추",
+          "direction": "advance",
+          "focus": "work",
+          "axis_emphasis": [
+            "tarot.phase.card_character",
+            "tarot.elements.suit_to_classical_to_oheng",
+            "tarot.traits.arcana_and_suit"
+          ]
+        }
+      },
+      {
+        "system": "runes",
+        "brand": "xAI",
+        "narrative": "룬 성향에서 성찰이 가장 두드러지며 합의된 원소 대응만으로 물이 압도적인 상황 속에 정위·메르크스타브가 전진과 유지, 해방으로 팽팽히 균형을 이루고 있어 올해 일의 방향은 유지 중심으로 내실을 다지고 신중하게 접근해야 합니다. 성찰의 깊이를 활용해 물의 흐름처럼 유연하게 대응하면서 과도한 전진이나 해방을 자제하는 것이 적합합니다.",
+        "summary": {
+          "one_line": "성찰과 물의 기운으로 일 방향을 유지하며 내실 다지세요.",
+          "direction": "hold",
+          "focus": "work",
+          "axis_emphasis": [
+            "reflection",
+            "water",
+            "hold"
+          ]
+        }
+      },
+      {
+        "system": "numerology",
+        "brand": "Mistral",
+        "narrative": "개인년 8의 해, 관계와 성찰이 강해지는 시기이니 일에서 협력과 안정적인 성장을 추구하세요. 라이프패스·표현수 혼합이 뒷받침해줍니다.",
+        "summary": {
+          "one_line": "협력과 안정으로 일의 방향 잡기",
+          "direction": "release",
+          "focus": "work",
+          "axis_emphasis": [
+            "numerology.phase.personal_year_8",
+            "numerology.traits.lifepath_expression_blend",
+            "release"
+          ]
+        }
+      },
+      {
+        "system": "name",
+        "brand": "NAVER",
+        "narrative": "올해는 물의 기운이 강하게 작용하므로 감정과 직관에 따라 일을 진행하면 좋습니다. 안정적이고 내적인 성찰을 통해 자신의 길을 찾는 것이 중요하며, 사회적 관계와 조화를 이루는 방향으로 나아가야 합니다.",
+        "summary": {
+          "one_line": "감정과 직관을 중시하고 안정을 추구하라.",
+          "direction": "advance",
+          "focus": "social",
+          "axis_emphasis": [
+            "수리오행 오격",
+            "격·오행 원형"
+          ]
+        }
+      },
+      {
+        "system": "tzolkin",
+        "brand": "NVIDIA",
+        "narrative": "나왈 kimi가 반영하는 깊은 성찰(60)과 7톤의 유지 에너지(70)가 올해 일의 흐름을 잡아줍니다. 탐색(20)과 안정(10), 관계(10)가 보조하며, 큰 변화보다는 현 상태를 다듬고 내실을 기하는 것이 유리합니다.",
+        "summary": {
+          "one_line": "성찰과 유지의 해, 내실 다지기에 집중하세요.",
+          "direction": "hold",
+          "focus": "work",
+          "axis_emphasis": [
+            "reflection",
+            "hold",
+            "exploration",
+            "maya.traits.nawal_kimi",
+            "maya.phase.tone_7"
+          ]
+        }
+      },
+      {
+        "system": "prism",
+        "brand": "Anthropic",
+        "narrative": "상승 주기가 뚜렷하게 우세한 흐름이라 올해는 일을 확장하는 쪽으로 방향을 잡는 것이 맞습니다. 원소 지지에서 물의 기운이 두드러져 유연하게 판단하되, 코어 매트릭스에서 드러난 통제력을 바탕으로 계획을 단단히 세우고 실행에 옮기면 성과로 이어집니다. 다만 수용력이 상대적으로 약하니 주변과의 협력은 의식적으로 챙겨야 합니다.",
+        "summary": {
+          "one_line": "상승 주기와 통제력이 만나 올해 일은 확장과 전진이 답입니다.",
+          "direction": "advance",
+          "focus": "work",
+          "axis_emphasis": [
+            "prism.cycle.ascent",
+            "prism.element.support",
+            "control",
+            "water"
+          ]
+        }
+      }
+    ],
+    "consensus": {
+      "traits": {
+        "mean": {
+          "drive": 22.7,
+          "stability": 17,
+          "relation": 23.9,
+          "control": 19.9,
+          "exploration": 21.7,
+          "reflection": 25.9
+        },
+        "profile": {
+          "drive": 0.8,
+          "stability": -4.9,
+          "relation": 2.1,
+          "control": -1.9,
+          "exploration": -0.2,
+          "reflection": 4.1
+        },
+        "spread": {
+          "drive": 14.4,
+          "stability": 6.1,
+          "relation": 11.3,
+          "control": 10,
+          "exploration": 8.3,
+          "reflection": 18.1
+        },
+        "contested": [
+          "drive",
+          "relation",
+          "reflection"
+        ],
+        "participating": [
+          "saju",
+          "ziwei",
+          "ninestar",
+          "sukuyou",
+          "astro",
+          "tarot",
+          "runes",
+          "numerology",
+          "name",
+          "tzolkin",
+          "prism"
+        ],
+        "unreadable": [
+          "iching"
+        ]
+      },
+      "elements": {
+        "total": {
+          "wood": 25.7,
+          "fire": 15.8,
+          "earth": 19.1,
+          "metal": 8.8,
+          "water": 30.6
+        },
+        "deficiency": {
+          "wood": 0,
+          "fire": 4.2,
+          "earth": 0.9,
+          "metal": 11.2,
+          "water": 0
+        },
+        "excess": {
+          "wood": 5.7,
+          "fire": 0,
+          "earth": 0,
+          "metal": 0,
+          "water": 10.6
+        },
+        "participating": [
+          "saju",
+          "ziwei",
+          "iching",
+          "ninestar",
+          "sukuyou",
+          "astro",
+          "tarot",
+          "runes",
+          "name",
+          "prism"
+        ],
+        "unreadable": [
+          "numerology",
+          "tzolkin"
+        ]
+      },
+      "phase": {
+        "tally": {
+          "advance": 51,
+          "hold": 24.7,
+          "release": 24.3
+        },
+        "leader": "advance",
+        "leaderShare": 51,
+        "unanimityCount": 7,
+        "participantCount": 11,
+        "coreTally": {
+          "advance": 53,
+          "hold": 18.8,
+          "release": 28.2
+        },
+        "polarized": false,
+        "oppositions": [
+          {
+            "a": "iching",
+            "b": "sukuyou",
+            "gap": 70
+          },
+          {
+            "a": "iching",
+            "b": "numerology",
+            "gap": 70
+          },
+          {
+            "a": "ninestar",
+            "b": "sukuyou",
+            "gap": 70
+          },
+          {
+            "a": "ninestar",
+            "b": "numerology",
+            "gap": 70
+          },
+          {
+            "a": "tarot",
+            "b": "sukuyou",
+            "gap": 70
+          },
+          {
+            "a": "prism",
+            "b": "sukuyou",
+            "gap": 70
+          },
+          {
+            "a": "tarot",
+            "b": "numerology",
+            "gap": 70
+          },
+          {
+            "a": "prism",
+            "b": "numerology",
+            "gap": 70
+          }
+        ],
+        "participating": [
+          "saju",
+          "ziwei",
+          "iching",
+          "ninestar",
+          "sukuyou",
+          "astro",
+          "tarot",
+          "runes",
+          "numerology",
+          "tzolkin",
+          "prism"
+        ],
+        "unreadable": [
+          "name"
+        ]
+      },
+      "systemCount": {
+        "total": 12,
+        "participating": 12,
+        "partial": 4,
+        "unreadable": 0
+      }
+    },
+    "synthesisPayload": {
+      "readings": [
+        {
+          "index": 1,
+          "narrative": "올 해 일 의 방 향 은 전 진 과 유 지 가 정 확 히 절 반 씩 맞 서 는 해 입 니 다. 비 견 이 강 하 게 드 러 나 는 시 기 라, 혼 자 밀 어 붙 이 기 보 다 동 료 · 동 업 자 와 힘 을 나 누 는 구 조 가 유 리 합 니 다. 다 만 비 견 은 재 물 을 나 누 는 성 질 도 있 어, 수 익 배 분 과 역 할 경 계 를 처 음 부 터 분 명 히 해 야 합 니 다. 물 기 운 이 절 반 을 차 지 해 지 혜 와 정 보 의 흐 름 은 좋 지 만, 금 이 비 어 있 어 결 단 과 마 무 리 가 약 할 수 있 습 니 다. 새 로 운 벌 리 기 보 다 지 금 하 는 일 을 깊 이 다 지 면 서, 협 업 의 규 칙 을 단 단 히 세 우 는 쪽 이 올 해 의 정 답 입 니 다."
+        },
+        {
+          "index": 2,
+          "narrative": "올 해 목 의 기 운 (97. 6 %) 이 압 도 적 이 며, 사 화 (대 한 · 유 년 사 화) 에 따 른 전 진 흐 름 (54. 9 %) 이 강 력 합 니 다. 당 신 의 관 계 지 향 성 (32. 5 %) 과 내 성 적 성 찰 (27. 5 %) 을 결 합 하 여, 대 인 관 계 를 확 장 하 며 깊 이 있 게 생 각 하 는 방 식 으 로 일 을 추 진 해 야 합 니 다. 안 정 보 다 는 도 전 을 택 하 고, 현 재 의 기 회 를 적 극 적 으 로 활 용 하 는 것 이 유 리 합 니 다."
+        },
+        {
+          "index": 3,
+          "narrative": "올 해 일 의 방 향 은 명 확 히 전 진 에 무 게 를 실 어 야 할 시 기 입 니 다. 변 효 관 계 로 도 출 된 전 진 기 운 이 70으로 압 도 적 이 며, 이 는 새 로 운 과 제 나 확 장 을 주 저 없 이 밀 어 붙 이 라 는 신 호 입 니 다. 납 갑 · 시 가 중 오 행 에 서 토 (土) 가 42. 8로 가 장 강 해 안 정 적 토 대 위 에 서 의 성 장 이 유 리 하 고, 목 (木) 과 화 (火) 가 각 각 28. 6로 균 형 을 이 루 어 기 획 과 실 행 이 조 화 를 이 룰 수 있 습 니 다. 다 만 금 (金) 과 수 (水) 가 없 으 므 로 과 감 한 구 조 정 리 나 감 정 적 유 연 함 은 부 족 할 수 있 으 니, 전 진 하 되 토 의 무 게 감 을 살"
+        },
+        {
+          "index": 4,
+          "narrative": "본 명 성 에 따 른 강 한 추 진 력 과 연 · 월 · 일 성 혼 합 의 균 형 있 는 원 소 분 포 로 인 해 올 해 는 일 의 방 향 을 적 극 적 으 로 추 진 하 되 본 명 성 관 계 의 영 향 을 받 아 신 중 하 게 계 획 을 점 검 하 며 진 행 해 야 합 니 다. 추 진 력 과 탐 색 력 이 강 해 새 로 운 기 회 를 잡 을 수 있 으 나, 안 정 적 인 진 행 을 위 해 점 검 과 보 완 이 필 요 합 니 다."
+        },
+        {
+          "index": 5,
+          "narrative": "올 해 일 의 방 향 은 ' 내 려 놓 기 ' 다. 화 오 행 이 70 % 이 상 으 로 강 렬 하 게 타 오 르 고 있 지 만, 안 정 성 은 0, 추 진 력 도 절 반 에 그 친 다. 삼 구 胎 단 계 의 흐 름 이 70 % 로 ' 놓 아 주 기 ' 를 강 하 게 가 리 키 고 있 어, 새 것 을 쌓 기 보 다 기 존 것 을 정 리 하 고 비 워 내 는 데 집 중 하 는 것 이 흐 름 과 맞 닿 는 다. 강 한 불 꽃 이 어 디 로 뻗 기 보 다 어 디 서 꺼 뜨 릴 지, 그 거 둠 의 방 향 이 올 해 일 의 결 을 만 든 다."
+        },
+        {
+          "index": 6,
+          "narrative": "올 해 일 은 확 장 보 다 기 반 을 다 지 는 방 향 이 맞 습 니 다. 적 용 중 인 트 랜 짓 에 서 유 지 가 54. 6으로 가 장 높 아, 급 한 이 직 · 전 환 보 다 현 재 역 할 의 권 한 과 운 영 방 식 을 정 교 하 게 만 드 는 편 이 유 리 합 니 다. 불 과 물 이 각 각 25로 함 께 강 하 므 로 추 진 력 과 직 관 은 충 분 하 지 만, 토 23. 3의 현 실 성 을 써 서 일 정 · 예 산 · 성 과 기 준 을 명 확 히 하 세 요. 하 우 스 · 애 스 펙 트 의 통 제 력 18. 7과 추 진 력 19는 리 더 십 과 제 를 맡 되 범 위 를 단 계 적 으 로 넓 힐 때 빛 납 니 다."
+        },
+        {
+          "index": 7,
+          "narrative": "올 해 일 의 방 향 은 주 저 함 없 이 앞 으 로 나 아 가 는 전 진 이 핵 심 입 니 다. 카 드 성 향 분 석 에 서 드 러 난 전 진 (100) 의 강 렬 한 수 치 와 사 원 소 · 오 행 의 수 (50), 흙 (35) 기 운 이 어 우 러 져, 유 연 하 면 서 도 견 고 하 게 실 리 를 챙 길 기 회 가 열 려 있 습 니 다. 아 르 카 나 · 수 트 와 역 위 반 영 지 표 는 수 기 운 특 유 의 높 은 관 계 성 (24. 2) 과 깊 은 성 찰 (21. 3) 을 뒷 받 침 합 니 다. 주 변 과 의 소 통 과 상 황 을 꿰 뚫 어 보 는 통 찰 력 을 바 탕 으 로 목 표 를 향 해 과 감 히 돌 진 할 때 가 장 큰 결 실 을 볼 수 있 습 니 다. 막 연 한"
+        },
+        {
+          "index": 8,
+          "narrative": "룬 성 향 에 서 성 찰 이 가 장 두 드 러 지 며 합 의 된 원 소 대 응 만 으 로 물 이 압 도 적 인 상 황 속 에 정 위 · 메 르 크 스 타 브 가 전 진 과 유 지, 해 방 으 로 팽 팽 히 균 형 을 이 루 고 있 어 올 해 일 의 방 향 은 유 지 중 심 으 로 내 실 을 다 지 고 신 중 하 게 접 근 해 야 합 니 다. 성 찰 의 깊 이 를 활 용 해 물 의 흐 름 처 럼 유 연 하 게 대 응 하 면 서 과 도 한 전 진 이 나 해 방 을 자 제 하 는 것 이 적 합 합 니 다."
+        },
+        {
+          "index": 9,
+          "narrative": "개 인 년 8의 해, 관 계 와 성 찰 이 강 해 지 는 시 기 이 니 일 에 서 협 력 과 안 정 적 인 성 장 을 추 구 하 세 요. 라 이 프 패 스 · 표 현 수 혼 합 이 뒷 받 침 해 줍 니 다."
+        },
+        {
+          "index": 10,
+          "narrative": "올 해 는 물 의 기 운 이 강 하 게 작 용 하 므 로 감 정 과 직 관 에 따 라 일 을 진 행 하 면 좋 습 니 다. 안 정 적 이 고 내 적 인 성 찰 을 통 해 자 신 의 길 을 찾 는 것 이 중 요 하 며, 사 회 적 관 계 와 조 화 를 이 루 는 방 향 으 로 나 아 가 야 합 니 다."
+        },
+        {
+          "index": 11,
+          "narrative": "나 왈 kimi가 반 영 하 는 깊 은 성 찰 (60) 과 7톤의 유 지 에 너 지 (70) 가 올 해 일 의 흐 름 을 잡 아 줍 니 다. 탐 색 (20) 과 안 정 (10), 관 계 (10) 가 보 조 하 며, 큰 변 화 보 다 는 현 상 태 를 다 듬 고 내 실 을 기 하 는 것 이 유 리 합 니 다."
+        },
+        {
+          "index": 12,
+          "narrative": "상 승 주 기 가 뚜 렷 하 게 우 세 한 흐 름 이 라 올 해 는 일 을 확 장 하 는 쪽 으 로 방 향 을 잡 는 것 이 맞 습 니 다. 원 소 지 지 에 서 물 의 기 운 이 두 드 러 져 유 연 하 게 판 단 하 되, 코 어 매 트 릭 스 에 서 드 러 난 통 제 력 을 바 탕 으 로 계 획 을 단 단 히 세 우 고 실 행 에 옮 기 면 성 과 로 이 어 집 니 다. 다 만 수 용 력 이 상 대 적 으 로 약 하 니 주 변 과 의 협 력 은 의 식 적 으 로 챙 겨 야 합 니 다."
+        }
+      ],
+      "consensus": {
+        "phase": {
+          "tally": {
+            "advance": 51,
+            "hold": 24.7,
+            "release": 24.3
+          },
+          "leader": "advance",
+          "leaderShare": 51,
+          "unanimityCount": 7,
+          "participantCount": 11,
+          "coreTally": {
+            "advance": 53,
+            "hold": 18.8,
+            "release": 28.2
+          },
+          "polarized": false,
+          "oppositions": [
+            {
+              "a": "iching",
+              "b": "sukuyou",
+              "gap": 70
+            },
+            {
+              "a": "iching",
+              "b": "numerology",
+              "gap": 70
+            },
+            {
+              "a": "ninestar",
+              "b": "sukuyou",
+              "gap": 70
+            },
+            {
+              "a": "ninestar",
+              "b": "numerology",
+              "gap": 70
+            },
+            {
+              "a": "tarot",
+              "b": "sukuyou",
+              "gap": 70
+            },
+            {
+              "a": "prism",
+              "b": "sukuyou",
+              "gap": 70
+            },
+            {
+              "a": "tarot",
+              "b": "numerology",
+              "gap": 70
+            },
+            {
+              "a": "prism",
+              "b": "numerology",
+              "gap": 70
+            }
+          ],
+          "participating": [
+            "saju",
+            "ziwei",
+            "iching",
+            "ninestar",
+            "sukuyou",
+            "astro",
+            "tarot",
+            "runes",
+            "numerology",
+            "tzolkin",
+            "prism"
+          ],
+          "unreadable": [
+            "name"
+          ]
+        },
+        "traits": {
+          "profile": {
+            "drive": 0.8,
+            "stability": -4.9,
+            "relation": 2.1,
+            "control": -1.9,
+            "exploration": -0.2,
+            "reflection": 4.1
+          },
+          "spread": {
+            "drive": 14.4,
+            "stability": 6.1,
+            "relation": 11.3,
+            "control": 10,
+            "exploration": 8.3,
+            "reflection": 18.1
+          },
+          "contested": [
+            "drive",
+            "relation",
+            "reflection"
+          ],
+          "participating": [
+            "saju",
+            "ziwei",
+            "ninestar",
+            "sukuyou",
+            "astro",
+            "tarot",
+            "runes",
+            "numerology",
+            "name",
+            "tzolkin",
+            "prism"
+          ],
+          "unreadable": [
+            "iching"
+          ]
+        },
+        "elements": {
+          "total": {
+            "wood": 25.7,
+            "fire": 15.8,
+            "earth": 19.1,
+            "metal": 8.8,
+            "water": 30.6
+          },
+          "deficiency": {
+            "wood": 0,
+            "fire": 4.2,
+            "earth": 0.9,
+            "metal": 11.2,
+            "water": 0
+          },
+          "excess": {
+            "wood": 5.7,
+            "fire": 0,
+            "earth": 0,
+            "metal": 0,
+            "water": 10.6
+          },
+          "participating": [
+            "saju",
+            "ziwei",
+            "iching",
+            "ninestar",
+            "sukuyou",
+            "astro",
+            "tarot",
+            "runes",
+            "name",
+            "prism"
+          ],
+          "unreadable": [
+            "numerology",
+            "tzolkin"
+          ]
+        },
+        "systemCount": {
+          "total": 12,
+          "participating": 12,
+          "partial": 4,
+          "unreadable": 0
+        }
+      }
+    }
+  }
+}

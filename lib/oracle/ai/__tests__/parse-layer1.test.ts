@@ -40,6 +40,11 @@ describe('parseLayer1Json', () => {
     expect(parsed?.one_line).toHaveLength(40)
   })
 
+  it('rejects narrative over the 500-character hard ceiling', () => {
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(501) }))).toBeNull()
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(500) }))).not.toBeNull()
+  })
+
   it('rejects an invalid direction or focus', () => {
     expect(parseLayer1Json(validJson({ direction: 'maybe' }))).toBeNull()
     expect(parseLayer1Json(validJson({ focus: 'career' }))).toBeNull()
