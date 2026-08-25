@@ -13,7 +13,7 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import type { Layer1HttpBudget } from './http-budget'
 import { estimateCostUsdFromPricing, getOpenRouterModelPricing } from './openrouter-pricing'
 import { isEmptyModelText } from './parse-layer1'
-import type { Layer1RegistryEntry } from './registry'
+import { applyOracleBrandPolicies, type Layer1RegistryEntry } from './registry'
 
 export type Layer1CallInput = {
   entry: Layer1RegistryEntry
@@ -65,7 +65,7 @@ function telemetryFromBudget(
 }
 
 export async function callLayer1Model(input: Layer1CallInput): Promise<Layer1CallResult> {
-  const { entry } = input
+  const { entry } = { ...input, entry: applyOracleBrandPolicies(input.entry) }
   const startedAt = Date.now()
   let coreAttemptStarted = false
 

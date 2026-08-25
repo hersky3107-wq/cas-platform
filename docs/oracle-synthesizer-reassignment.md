@@ -9,7 +9,7 @@ OpenAI excluded from every synthesizer seat until it passes a clean synthesis ga
 
 | mode / family | synthesizer | cite | notes |
 |---|---|---|---|
-| **integrated** | **Z.ai** | synthesis integrated #1 (0 univ DQ) | removed from LAYER1 (iching→Qwen) so synth∉12 readers |
+| **integrated** | **Z.ai** | synthesis integrated #1 (0 univ DQ) | seat-only; iching dedicated is Cohere (Qwen retired) |
 | east_asian | **NVIDIA** | synthesis single #1 (0 univ DQ) | off east_asian reader panels |
 | draw_based | **DeepSeek** | clean re-run single DQ=false, ground=121 | prior integrated runs were empty-200 flake |
 | western_chart | **Moonshot AI** | synthesis single #3 (0 univ DQ) | NVIDIA already used by east_asian |
@@ -17,10 +17,11 @@ OpenAI excluded from every synthesizer seat until it passes a clean synthesis ga
 
 ## Integrated invariant
 
-LAYER1 dedicated brands (readers in every combined session): Moonshot, DeepSeek, Qwen,
+LAYER1 dedicated brands (readers in every combined session): Moonshot, DeepSeek, Cohere,
 Meta, MiniMax, OpenAI, Google, xAI, Mistral, NAVER, NVIDIA, Anthropic.
 
 Z.ai is seat-only (`ORACLE_SEAT_ONLY_BRANDS`) for single-mode readers + integrated synth.
+`RETIRED_BRANDS` = Qwen, Xiaomi MiMo — never a reader, synthesizer, or seat-only brand.
 
 ## Alternatives considered (DQ status)
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_IDS } from '../../axes/types'
-import { LAYER1_REGISTRY, layer1Entry } from '../registry'
+import { LAYER1_REGISTRY, applyOracleBrandPolicies, layer1Entry } from '../registry'
 import { layer1RunawayContentThreshold } from '../layer1-adapter'
 
 const STALE_ROUTER_DEFAULTS = [
@@ -14,8 +14,8 @@ const STALE_ROUTER_DEFAULTS = [
 
 const EXPECTED_CEILINGS: Record<string, number> = {
   saju: 1200,
-  ziwei: 3000,
-  iching: 2000,
+  ziwei: 8000,
+  iching: 1200,
   ninestar: 1200,
   sukuyou: 2500,
   astro: 1200,
@@ -23,7 +23,7 @@ const EXPECTED_CEILINGS: Record<string, number> = {
   runes: 1200,
   numerology: 1200,
   name: 1200,
-  tzolkin: 2000,
+  tzolkin: 4000,
   prism: 700,
 }
 
@@ -87,16 +87,26 @@ describe('LAYER1_REGISTRY', () => {
     expect(layer1Entry('not-a-system')).toBeNull()
   })
 
-  it('disables Anthropic thinking on the oracle prism entry only', () => {
-    expect(LAYER1_REGISTRY.prism.caller.kind).toBe('core')
-    if (LAYER1_REGISTRY.prism.caller.kind === 'core') {
-      expect(LAYER1_REGISTRY.prism.caller.anthropicThinking).toBe('disabled')
+  it('disables Anthropic thinking at the brand level for every oracle call', () => {
+    const prism = applyOracleBrandPolicies(LAYER1_REGISTRY.prism)
+    expect(prism.caller.kind).toBe('core')
+    if (prism.caller.kind === 'core') {
+      expect(prism.caller.anthropicThinking).toBe('disabled')
+    }
+    const cloned = applyOracleBrandPolicies({
+      ...LAYER1_REGISTRY.prism,
+      system: 'astro',
+      caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-sonnet-5' },
+    })
+    expect(cloned.caller.kind).toBe('core')
+    if (cloned.caller.kind === 'core') {
+      expect(cloned.caller.anthropicThinking).toBe('disabled')
     }
   })
 
-  it('assigns Qwen to iching so Z.ai can be integrated synthesizer only', () => {
-    expect(LAYER1_REGISTRY.iching.brand).toBe('Qwen')
-    expect(LAYER1_REGISTRY.iching.model).toBe('qwen/qwen3.8-max')
+  it('assigns Cohere to iching so Z.ai can stay integrated synthesizer', () => {
+    expect(LAYER1_REGISTRY.iching.brand).toBe('Cohere')
+    expect(LAYER1_REGISTRY.iching.model).toBe('cohere/command-a')
   })
 
   it('scopes reassigned model reasoning and provider pins to oracle calls', () => {
@@ -113,7 +123,7 @@ describe('LAYER1_REGISTRY', () => {
       })
       expect(ninestar.extraRequestParams).toBeUndefined()
       expect(ziwei.extraRequestParams).toEqual({
-        reasoning: null,
+        reasoning: { effort: 'minimal' },
       })
     }
   })
@@ -121,9 +131,9 @@ describe('LAYER1_REGISTRY', () => {
   it('scales the runaway guard to each system ceiling rather than a hardcoded value', () => {
     expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.saju.maxCompletionTokens)).toBe(1800)
     expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.sukuyou.maxCompletionTokens)).toBe(3750)
-    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.ziwei.maxCompletionTokens)).toBe(4500)
-    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.iching.maxCompletionTokens)).toBe(3000)
-    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.tzolkin.maxCompletionTokens)).toBe(3000)
+    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.ziwei.maxCompletionTokens)).toBe(12000)
+    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.iching.maxCompletionTokens)).toBe(1800)
+    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.tzolkin.maxCompletionTokens)).toBe(6000)
   })
 
   it('pins official first-party prices on core-router estimates', () => {

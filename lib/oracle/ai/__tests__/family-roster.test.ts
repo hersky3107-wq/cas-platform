@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_IDS } from '../../axes/types'
-import { LAYER1_REGISTRY, ORACLE_SEAT_ONLY_BRANDS, integratedReaderBrands } from '../registry'
+import {
+  LAYER1_REGISTRY,
+  ORACLE_SEAT_ONLY_BRANDS,
+  RETIRED_BRANDS,
+  integratedReaderBrands,
+  isRetiredBrand,
+  registrySeatBrands,
+} from '../registry'
 import {
   INTEGRATED_SYNTHESIZER_BRAND,
   ORACLE_FAMILY_ROSTERS,
   ORACLE_SINGLE_READER_COUNTS,
   SYSTEM_FAMILY,
   SYSTEM_READER_ROSTERS,
+  allSessionSeatBrands,
   assertSynthesizerNeverReader,
   isAllowedReaderCount,
   resolveSingleSystemRoster,
@@ -32,8 +40,19 @@ describe('family-roster', () => {
 
   it('keeps integrated synthesizer out of the LAYER1 dedicated reader set', () => {
     expect(integratedReaderBrands()).not.toContain(INTEGRATED_SYNTHESIZER_BRAND)
-    expect(LAYER1_REGISTRY.iching.brand).toBe('Qwen')
+    expect(LAYER1_REGISTRY.iching.brand).toBe('Cohere')
     expect(ORACLE_SEAT_ONLY_BRANDS['Z.ai']?.brand).toBe('Z.ai')
+  })
+
+  it('never seats a retired brand as reader, synthesizer, or seat-only, any mode any N', () => {
+    expect(RETIRED_BRANDS).toEqual(['Qwen', 'Xiaomi MiMo'])
+    const seated = [...registrySeatBrands(), ...allSessionSeatBrands()]
+    for (const brand of seated) {
+      expect(isRetiredBrand(brand), `${brand} is retired`).toBe(false)
+    }
+    expect(isRetiredBrand('Qwen')).toBe(true)
+    expect(isRetiredBrand('Xiaomi MiMo')).toBe(true)
+    expect(isRetiredBrand('Xiaomi')).toBe(true)
   })
 
   it('asserts synthesizer∉readers at N=3/5/7 and for integrated', () => {

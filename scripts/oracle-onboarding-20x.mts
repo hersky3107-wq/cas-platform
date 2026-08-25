@@ -6,6 +6,7 @@
  *   npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/oracle-onboarding-20x.mts
  *   npx tsx ... scripts/oracle-onboarding-20x.mts --readers-only
  *   npx tsx ... scripts/oracle-onboarding-20x.mts --integrated-only
+ *   npx tsx ... scripts/oracle-onboarding-20x.mts --brands=DeepSeek,NVIDIA --workload=synthesis --out=docs/oracle-onboarding-20x-fix.json
  */
 process.env.ORACLE_AI_MODE = 'live'
 
@@ -19,9 +20,17 @@ const OUT_MD = join(process.cwd(), 'docs', 'oracle-onboarding-20x.md')
 const OUT_JSON = join(process.cwd(), 'docs', 'oracle-onboarding-20x.json')
 const OUT_LOG = join(process.cwd(), 'docs', 'oracle-onboarding-20x-run.log')
 
-const args = new Set(process.argv.slice(2))
+type Workload = 'reading' | 'synthesis'
+
+const rawArgs = process.argv.slice(2)
+const args = new Set(rawArgs)
 const readersOnly = args.has('--readers-only')
 const integratedOnly = args.has('--integrated-only')
+const brandsFlag = rawArgs.find((a) => a.startsWith('--brands='))?.slice('--brands='.length)
+const workloadFlag = rawArgs.find((a) => a.startsWith('--workload='))?.slice('--workload='.length) as
+  | Workload
+  | undefined
+const outFlag = rawArgs.find((a) => a.startsWith('--out='))?.slice('--out='.length)
 
 /** Brands on single-mode reader or synthesizer seats (family roster). */
 const READER_SYNTH_BRANDS = [
@@ -41,7 +50,7 @@ const INTEGRATED_ONLY_BRANDS = [
   'Mistral',
   'NAVER',
   'OpenAI',
-  'Qwen',
+  'Cohere',
 ] as const
 
 const { PRISM_COLORS } = await import('../lib/oracle/engines/prism')
@@ -61,7 +70,11 @@ const {
   INTEGRATED_SYNTHESIZER_BRAND,
   resolveSingleSystemRoster,
 } = await import('../lib/oracle/ai/family-roster')
-const { SYNTHESIS_MAX_COMPLETION_TOKENS } = await import('../lib/oracle/ai/layer1-adapter')
+const {
+  SYNTHESIS_MAX_COMPLETION_TOKENS,
+  SYNTHESIS_STRICT_RETRY_INSTRUCTION,
+  LAYER1_STRICT_RETRY_INSTRUCTION,
+} = await import('../lib/oracle/ai/layer1-adapter')
 const { personalDataFrom, runComputations } = await import('../lib/oracle/runner/compute')
 const { buildSynthesisPayload } = await import('../lib/oracle/runner/payload')
 const { makeProfile } = await import('../lib/oracle/runner/__tests__/fakes')
@@ -74,7 +87,6 @@ function log(line: string) {
 
 writeFileSync(OUT_LOG, '')
 
-type Workload = 'reading' | 'synthesis'
 type BrandPlan = { brand: string; workload: Workload; homeSystem: string }
 
 function plansFor(brands: readonly string[]): BrandPlan[] {
@@ -83,8 +95,7 @@ function plansFor(brands: readonly string[]): BrandPlan[] {
     INTEGRATED_SYNTHESIZER_BRAND,
   ])
   return brands.map((brand) => {
-    if (synthBrands.has(brand as never)) {
-      // Synthesizer seat → synthesis prompt workload.
+    if (workloadFlag === 'synthesis' || (workloadFlag !== 'reading' && synthBrands.has(brand as never))) {
       const home =
         Object.values(LAYER1_REGISTRY).find((e) => e.brand === brand)?.system ??
         (brand === 'Z.ai' ? 'iching' : 'saju')
@@ -187,7 +198,12 @@ async function runBrand(plan: BrandPlan) {
             plan.homeSystem,
           )
 
-    const raw = await callLayer1Model({
+    const parse = (text: string | null) =>
+      plan.workload === 'synthesis'
+        ? parseSynthesisJson(text ?? '') != null
+        : parseLayer1Json(text ?? '') != null
+
+    let raw = await callLayer1Model({
       entry,
       systemPrompt,
       userPrompt,
@@ -195,10 +211,24 @@ async function runBrand(plan: BrandPlan) {
       sessionId: `onboard-${plan.brand}-${run}`,
       httpBudget: createLayer1HttpBudget(2),
     })
-    const parsed =
-      plan.workload === 'synthesis'
-        ? parseSynthesisJson(raw.text ?? '') != null
-        : parseLayer1Json(raw.text ?? '') != null
+    let parsed = parse(raw.text)
+    // Same one strict retry the live adapter uses after a parse reject.
+    if (!parsed) {
+      raw = await callLayer1Model({
+        entry,
+        systemPrompt,
+        userPrompt: `${userPrompt}${
+          plan.workload === 'synthesis'
+            ? SYNTHESIS_STRICT_RETRY_INSTRUCTION
+            : LAYER1_STRICT_RETRY_INSTRUCTION
+        }`,
+        timeoutMs: 240_000,
+        sessionId: `onboard-${plan.brand}-${run}-retry`,
+        httpBudget: createLayer1HttpBudget(2),
+        strictRetry: true,
+      })
+      parsed = parse(raw.text)
+    }
     const row: RunRow = {
       brand: plan.brand,
       workload: plan.workload,
@@ -218,14 +248,21 @@ async function runBrand(plan: BrandPlan) {
   }
 }
 
-const brandList = integratedOnly
-  ? INTEGRATED_ONLY_BRANDS
-  : readersOnly
-    ? READER_SYNTH_BRANDS
-    : [...READER_SYNTH_BRANDS, ...INTEGRATED_ONLY_BRANDS]
+const brandList = brandsFlag
+  ? brandsFlag.split(',').map((b) => b.trim()).filter(Boolean)
+  : integratedOnly
+    ? INTEGRATED_ONLY_BRANDS
+    : readersOnly
+      ? READER_SYNTH_BRANDS
+      : [...READER_SYNTH_BRANDS, ...INTEGRATED_ONLY_BRANDS]
+
+const outMd = outFlag ? outFlag.replace(/\.json$/, '.md') : OUT_MD
+const outJson = outFlag ?? OUT_JSON
 
 const plans = plansFor(brandList)
-log(`starting sequential 20× for ${plans.length} brands (readersOnly=${readersOnly} integratedOnly=${integratedOnly})`)
+log(
+  `starting sequential 20× for ${plans.length} brands (readersOnly=${readersOnly} integratedOnly=${integratedOnly} workload=${workloadFlag ?? 'auto'})`,
+)
 
 for (const plan of plans) {
   await runBrand(plan)
@@ -267,10 +304,7 @@ if (failed.length === 0) lines.push('- (none)')
 else for (const f of failed) lines.push(`- **${f.brand}**: ${f.parsed}`)
 lines.push('')
 
-writeFileSync(OUT_MD, lines.join('\n'))
-writeFileSync(OUT_JSON, JSON.stringify({ summary, results }, null, 2))
-log(`wrote ${OUT_MD}`)
+writeFileSync(outMd, lines.join('\n'))
+writeFileSync(outJson, JSON.stringify({ summary, results }, null, 2))
+log(`wrote ${outMd}`)
 log(`FAILED brands: ${failed.map((f) => `${f.brand} ${f.parsed}`).join(', ') || '(none)'}`)
-if (readersOnly) {
-  log('DEFERRED: Meta, MiniMax, Mistral, NAVER, OpenAI, Qwen (integrated-only) — run with --integrated-only')
-}

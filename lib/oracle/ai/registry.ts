@@ -103,24 +103,24 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     caller: {
       kind: 'platform',
       platformId: 'openrouter:deepseek-v4-pro',
-      extraRequestParams: { reasoning: null },
+      // `reasoning:null` stripped catalog effort:minimal and the model then
+      // burned the entire 3000 budget on hidden thinking (finish=length,
+      // reasoning_tokens=3000/3000). Keep catalog-safe minimal.
+      extraRequestParams: { reasoning: { effort: 'minimal' } },
     },
-    // Measured reasoning 1328/1799 → ceil 2000 + 800 = 2800; floor 3000.
-    maxCompletionTokens: 3000,
+    // Synthesis 20× @4500 still truncated (reasoning 4092–4451). Floor 8000.
+    maxCompletionTokens: 8000,
   },
   iching: {
     system: 'iching',
-    brand: 'Qwen',
-    displayName: 'Qwen3.8 Max',
-    // Z.ai was moved off LAYER1 so it can be the integrated synthesizer
-    // without also reading iching in the same combined session.
-    model: 'qwen/qwen3.8-max',
-    caller: {
-      kind: 'platform',
-      platformId: 'openrouter:qwen3.8-max',
-      extraRequestParams: { reasoning: { effort: 'minimal' } },
-    },
-    maxCompletionTokens: 2000,
+    brand: 'Cohere',
+    displayName: 'Command A',
+    // Qwen is RETIRED (consecutive empty-200 total failures). Z.ai stays
+    // seat-only as the integrated synthesizer (bakeoff #1, 20/20). Cohere
+    // is a live catalog brand that does not take a reasoning param.
+    model: 'cohere/command-a',
+    caller: { kind: 'platform', platformId: 'openrouter:command-a' },
+    maxCompletionTokens: 1200,
   },
   ninestar: {
     system: 'ninestar',
@@ -218,9 +218,14 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'Nemotron 3 Ultra',
     // Full catalog id is nemotron-3-ultra-550b-a55b (not the bare name).
     model: 'nvidia/nemotron-3-ultra-550b-a55b',
-    caller: { kind: 'platform', platformId: 'openrouter:nemotron-3-ultra-550b' },
-    // Measured reasoning 352/731 → ceil 1000 + 800 = 1800; floor 2000.
-    maxCompletionTokens: 2000,
+    caller: {
+      kind: 'platform',
+      platformId: 'openrouter:nemotron-3-ultra-550b',
+      extraRequestParams: { reasoning: { effort: 'minimal' } },
+    },
+    // Synthesis 20×: failed runs were finish=length with ~1743–1855 thinking
+    // into a 2000 ceiling (content truncated / JSON never closed).
+    maxCompletionTokens: 4000,
   },
   prism: {
     system: 'prism',
@@ -234,10 +239,8 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       kind: 'core',
       provider: 'anthropic',
       modelOverride: 'claude-sonnet-5',
-      // Oracle-only: synthesis inputs are long; adaptive/extended thinking
-      // was burning the 1200 completion budget (empty/invalid JSON). League
-      // does not set this flag.
-      anthropicThinking: 'disabled',
+      // Brand-level policy is enforced in callLayer1Model for every
+      // Anthropic oracle call (any system, reader or synth). League unset.
     },
     // Was 1200; Claude ignored the 280–420 char prompt lock and emitted 877
     // content tokens. Ceiling sized for ≤500-char JSON narrative + headroom.
@@ -246,10 +249,23 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
 }
 
 /**
- * Brands that hold single-mode reader/synthesizer seats but do NOT own a
- * LAYER1 dedicated system. Required so integrated synthesizer (Z.ai) can
- * resolve a live caller without also appearing in the combined 12-reader set.
+ * Brands retired from every Oracle seat after consecutive total failures.
+ * Must never appear as a reader, synthesizer, or seat-only brand.
  */
+export const RETIRED_BRANDS = ['Qwen', 'Xiaomi MiMo'] as const
+
+export function isRetiredBrand(brand: string): boolean {
+  if ((RETIRED_BRANDS as readonly string[]).includes(brand)) return true
+  const normalized = brand.trim().toLowerCase()
+  return (
+    normalized === 'qwen' ||
+    normalized === 'xiaomi' ||
+    normalized === 'xiaomi mimo' ||
+    normalized === 'mimo'
+  )
+}
+
+/** Seat-only brands: live caller, not a LAYER1 dedicated reader. */
 export const ORACLE_SEAT_ONLY_BRANDS: Record<string, Layer1RegistryEntry> = {
   'Z.ai': {
     system: 'iching',
@@ -276,13 +292,31 @@ export function integratedReaderBrands(): string[] {
  * Resolve a live model by public brand for single-system reader/synthesizer
  * seats. The family roster owns seat order; this registry remains the single
  * source of exact provider/model configuration.
+ *
+ * Oracle-wide brand policies (league callers never go through this).
  */
+export function applyOracleBrandPolicies(entry: Layer1RegistryEntry): Layer1RegistryEntry {
+  if (entry.brand !== 'Anthropic' || entry.caller.kind !== 'core') return entry
+  return {
+    ...entry,
+    caller: { ...entry.caller, anthropicThinking: 'disabled' },
+  }
+}
+
 export function layer1EntryForBrand(brand: string): Layer1RegistryEntry | null {
   return (
     Object.values(LAYER1_REGISTRY).find((entry) => entry.brand === brand) ??
     ORACLE_SEAT_ONLY_BRANDS[brand] ??
     null
   )
+}
+
+/** Every brand that can appear on a live oracle call via the registries. */
+export function registrySeatBrands(): string[] {
+  return [
+    ...Object.values(LAYER1_REGISTRY).map((entry) => entry.brand),
+    ...Object.values(ORACLE_SEAT_ONLY_BRANDS).map((entry) => entry.brand),
+  ]
 }
 
 // TRAP (c): Amazon Nova BREAKS if a reasoning option is present at all.

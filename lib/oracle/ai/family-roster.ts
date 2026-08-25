@@ -125,7 +125,7 @@ export const ORACLE_FAMILY_ROSTERS: Record<OracleFamilyId, OracleFamilyRoster> =
 /** Integrated (combined) synthesizer — must NOT be any LAYER1 dedicated reader. */
 export const INTEGRATED_SYNTHESIZER_BRAND: OracleFamilyBrand = 'Z.ai'
 export const INTEGRATED_SYNTHESIZER_CITE =
-  'synthesis bakeoff integrated #1 (0 univ-conclusion DQ); removed from LAYER1 (iching→Qwen) so synth∉12 readers; OpenAI excluded'
+  'synthesis bakeoff integrated #1 (0 univ-conclusion DQ); seat-only (iching dedicated is Cohere, not retired Qwen); OpenAI excluded'
 
 /**
  * Assert synthesizer is never a reader in the same session.
@@ -144,6 +144,27 @@ export function assertSynthesizerNeverReader(): void {
       resolveSingleSystemRoster(system, n)
     }
   }
+}
+
+/** Every brand that can sit in a session at any mode / any N. */
+export function allSessionSeatBrands(): string[] {
+  const brands = new Set<string>([
+    INTEGRATED_SYNTHESIZER_BRAND,
+    ...integratedReaderBrands(),
+  ])
+  for (const family of Object.values(ORACLE_FAMILY_ROSTERS)) {
+    brands.add(family.synthesizer)
+    for (const brand of family.readers) brands.add(brand)
+    for (const brand of family.overflowReaders) brands.add(brand)
+  }
+  for (const system of Object.keys(SYSTEM_FAMILY) as SystemId[]) {
+    for (const n of ORACLE_SINGLE_READER_COUNTS) {
+      const resolved = resolveSingleSystemRoster(system, n)
+      brands.add(resolved.synthesizer)
+      for (const brand of resolved.readers) brands.add(brand)
+    }
+  }
+  return [...brands]
 }
 
 /**
