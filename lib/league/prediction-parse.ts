@@ -50,10 +50,101 @@ export function sanitizeRationale(raw: string | null | undefined): string | null
   return trimmed
 }
 
+/** DB cap for the stored visible-reasoning block (PART 1 of the v2 output
+ *  contract). ~150 words is the prompt's ask; 4000 chars absorbs models that
+ *  overrun without letting a runaway output bloat the ledger row. */
+export const REASONING_TEXT_MAX_CHARS = 4000
+
+/** Cleans the pre-JSON reasoning block for persistence: fences stripped,
+ *  trimmed, capped. Null when empty or a placeholder echo. */
+export function sanitizeReasoningText(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null
+  const cleaned = raw
+    .replace(/```(?:json)?/gi, '')
+    .replace(/```/g, '')
+    .trim()
+    .slice(0, REASONING_TEXT_MAX_CHARS)
+    .trim()
+  if (!cleaned || isPlaceholderRationale(cleaned)) return null
+  return cleaned
+}
+
+/**
+ * Finds the LAST parseable JSON object in mixed output that carries a
+ * "direction" key (the v2 contract puts the answer JSON on the final line,
+ * after the visible reasoning block). Scans '{' positions from the END and
+ * brace-matches forward with string-awareness, so braces inside the reasoning
+ * prose or inside JSON string values cannot break extraction. The
+ * direction-key requirement skips nested sub-objects that parse but are not
+ * the answer.
+ */
+function findLastAnswerJson(text: string): { obj: Record<string, unknown>; start: number } | null {
+  const opens: number[] = []
+  for (let i = 0; i < text.length; i++) if (text[i] === '{') opens.push(i)
+  for (let c = opens.length - 1; c >= 0; c--) {
+    const start = opens[c]
+    let depth = 0
+    let inString = false
+    let escaped = false
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i]
+      if (inString) {
+        if (escaped) escaped = false
+        else if (ch === '\\') escaped = true
+        else if (ch === '"') inString = false
+        continue
+      }
+      if (ch === '"') inString = true
+      else if (ch === '{') depth++
+      else if (ch === '}') {
+        depth--
+        if (depth === 0) {
+          try {
+            const obj = JSON.parse(text.slice(start, i + 1)) as Record<string, unknown>
+            if (obj && typeof obj === 'object' && 'direction' in obj) return { obj, start }
+          } catch {
+            // not valid JSON from this open brace — try the previous one
+          }
+          break
+        }
+      }
+    }
+  }
+  return null
+}
+
+export type SplitPrediction = {
+  /** Verbatim text BEFORE the answer JSON (the visible reasoning block), sanitized. Null when the output was JSON-only or unparseable. */
+  reasoning: string | null
+  parsed: ParsedPrediction | null
+}
+
+/**
+ * v2 contract: reasoning block first, answer JSON as the last line. Splits
+ * mixed output into the stored reasoning text and the parsed answer. Falls
+ * back to `parsePrediction` heuristics when no last-line JSON is found, so
+ * legacy JSON-only outputs and scout prose still parse (reasoning null).
+ */
+export function splitReasoningAndJson(text: string | null): SplitPrediction {
+  if (!text) return { reasoning: null, parsed: null }
+  const last = findLastAnswerJson(text)
+  if (!last) return { reasoning: null, parsed: parsePrediction(text) }
+  const parsed = normalizeParsedFields(last.obj) ?? parsePrediction(text)
+  return { reasoning: sanitizeReasoningText(text.slice(0, last.start)), parsed }
+}
+
 /** Extracts direction/probability/rationale from model output. Handles strict JSON,
- *  markdown code fences, and inline JSON embedded in search-model prose. */
+ *  markdown code fences, inline JSON embedded in search-model prose, and the v2
+ *  reasoning-block-then-JSON shape (last parseable JSON with a direction key wins). */
 export function parsePrediction(text: string | null): ParsedPrediction | null {
   if (!text) return null
+
+  // v2 shape first: the answer is the LAST JSON object carrying "direction".
+  const last = findLastAnswerJson(text)
+  if (last) {
+    const parsed = normalizeParsedFields(last.obj)
+    if (parsed) return parsed
+  }
 
   const candidates: string[] = []
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)

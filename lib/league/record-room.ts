@@ -16,7 +16,7 @@ export type { RecordRoomPage }
 export const RECORD_ROOM_DEFAULT_PAGE_SIZE = 20
 export const RECORD_ROOM_MAX_PAGE_SIZE = 50
 
-const ROUND_COLUMNS = 'id, proposition_text, category, color_bucket, instrument, resolved_at, actual_outcome'
+const ROUND_COLUMNS = 'id, proposition_text, category, color_bucket, instrument, resolved_at, actual_outcome, item_type'
 // The audit-sentence columns live behind migrations that may not be applied to
 // every environment (same caution as `lib/league/card.ts`'s optional columns).
 // We ask for them, and fall back to the base set if the DB rejects the select —
@@ -43,8 +43,9 @@ const PREDICTION_COLUMNS = 'round_id, model_id, brand, camp, league_tier, predic
  * round that is due and ungraded is a hole in it.
  *
  * The FREE vs DEEP split is enforced by the API routes (this module only
- * fetches what it is asked for). Public callers still narrow via
- * `RecordRoomScope.rankedOnly`.
+ * fetches what it is asked for). `rankedOnly` remains available for operators
+ * who want a ranked-only slice, but public routes no longer set it — graded
+ * on_demand rounds are part of the track record.
  */
 export type RecordRoomScope = {
   categories?: readonly string[]

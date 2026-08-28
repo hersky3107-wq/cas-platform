@@ -167,7 +167,14 @@ function RoundEntry({ entry, t, locale }: { entry: RecordRoomRoundEntry; t: Leag
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-league-fg">{entry.proposition_text}</p>
           <p className="text-[10px] text-league-fg-muted">
-            {entry.instrument} · {formatCategory(entry.category)} · {t.recordRoom.resolvedAtLabel} {formatDate(entry.resolved_at)}
+            {entry.instrument} · {formatCategory(entry.category)} · {t.recordRoom.resolvedAtLabel}{' '}
+            {formatDate(entry.resolved_at)}
+            {entry.item_type ? (
+              <>
+                {' '}
+                · <span className="font-mono">{entry.item_type}</span>
+              </>
+            ) : null}
           </p>
         </div>
         <span className="shrink-0 whitespace-nowrap rounded-full bg-league-accent-soft px-2 py-1 text-[10px] font-semibold text-league-accent-strong">

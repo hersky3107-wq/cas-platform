@@ -143,6 +143,34 @@ describe('buildCardData', () => {
     expect(card.hitRate.provisional).toBe(false)
   })
 
+  it('wires crossRound so streaks render at 3 graded rounds while crossRoundRates stay gated at 10', () => {
+    const subject = pred({
+      model_id: 'streaker',
+      brand: 'Streak Brand',
+      is_correct: true,
+      predicted_direction: 'up',
+    })
+    const crossRound = [
+      { model_id: 'streaker', round_id: 'r1', is_correct: true, resolved_at: '2026-08-01T00:00:00Z' },
+      { model_id: 'streaker', round_id: 'r2', is_correct: true, resolved_at: '2026-08-02T00:00:00Z' },
+      { model_id: 'streaker', round_id: 'round-1', is_correct: true, resolved_at: '2026-08-03T00:00:00Z' },
+      // 3 graded rounds is enough for streaks (>=2) but below the win-rate gate (10)
+      { model_id: 'no-rate-yet', round_id: 'r1', is_correct: true, resolved_at: '2026-08-01T00:00:00Z' },
+      { model_id: 'no-rate-yet', round_id: 'r2', is_correct: true, resolved_at: '2026-08-02T00:00:00Z' },
+      { model_id: 'no-rate-yet', round_id: 'round-1', is_correct: true, resolved_at: '2026-08-03T00:00:00Z' },
+    ]
+
+    const card = buildCardData(
+      round({ id: 'round-1', resolved_at: '2026-08-03T00:00:00Z' }),
+      [subject],
+      undefined,
+      crossRound
+    )
+
+    expect(card.verdict.streaks).toEqual({ streaker: 3, 'no-rate-yet': 3 })
+    expect(card.verdict).not.toHaveProperty('crossRoundRates')
+  })
+
   it('falls back an unrecognized color_bucket to yellow rather than throwing', () => {
     const card = buildCardData(round({ color_bucket: 'not-a-real-bucket' }), [])
     expect(card.round.color_bucket).toBe('yellow')

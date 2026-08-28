@@ -12,9 +12,25 @@ import {
 } from '@/lib/league/roster'
 import { fetchDataPacket, sessionDateForPrice, type DataPacket } from '@/lib/league/market-data'
 import { fetchCryptoContext, fetchMarketConsensus, wantsConsensus, wantsCryptoContext } from '@/lib/league/market-context'
-import { assembleClosedBookInjection, type ClosedBookPacketInput } from '@/lib/league/closed-book-packet'
+import {
+  assembleClosedBookInjection,
+  type ClosedBookPacketInput,
+  type NonEnglishFinding,
+  type RelatedInstrumentStat,
+  type SlowDataSnapshot,
+} from '@/lib/league/closed-book-packet'
 import { getResearchPacket, type ResearchPacket } from '@/lib/league/research'
-import { isBinaryDirection, parsePrediction, sanitizeRationale, type ParsedPrediction } from '@/lib/league/prediction-parse'
+import { decideResearchTier, type TierDecision } from '@/lib/league/research-tier'
+import { relationsFor } from '@/lib/league/relations'
+import { fetchRelatedInstruments } from '@/lib/league/related-instruments'
+import { fetchSlowData } from '@/lib/league/slow-data'
+import {
+  isBinaryDirection,
+  parsePrediction,
+  sanitizeRationale,
+  splitReasoningAndJson,
+  type ParsedPrediction,
+} from '@/lib/league/prediction-parse'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 import { aggregateMagnitude, validateMagnitude } from '@/lib/league/magnitude'
@@ -39,14 +55,53 @@ import { aggregateMagnitude, validateMagnitude } from '@/lib/league/magnitude'
 
 const DEFAULT_CONCURRENCY = 6
 const DEFAULT_TIMEOUT_MS = 60_000
-// World/challenger default. Premier reasoning models get a larger budget (see
-// PREMIER_MAX_COMPLETION_TOKENS) so hidden reasoning still leaves room for JSON.
-const DEFAULT_MAX_COMPLETION_TOKENS = 1200
-const PREMIER_MAX_COMPLETION_TOKENS = 4000
+// Run default. Raised 1200 → 3000 when the visible reasoning block (PART 1 of
+// CLOSED_BOOK_SYSTEM_PROMPT) became mandatory: ~150 words of reasoning plus the
+// JSON line needs ~400-600 visible tokens, and models with hidden reasoning
+// spend from the same budget — a tight cap reproduces the empty-content
+// failures documented in roster.ts. Heavy hidden reasoners carry larger
+// per-entry overrides there.
+const DEFAULT_MAX_COMPLETION_TOKENS = 3000
+const PREMIER_MAX_COMPLETION_TOKENS = 5000
 /** Kill-switch default when LEAGUE_RUN_COST_CAP_USD is unset/invalid. */
 const FALLBACK_COST_CAP_USD = 20
 
-const PREDICTION_SYSTEM_PROMPT = `You are an independent forecasting model in a prediction league. You answer ALONE; you never see any other model's answer. You may reason internally, but your VISIBLE output MUST be exactly ONE line of strict JSON and nothing else — no markdown, no code fences, no preamble, no trailing text.
+/**
+ * Closed-book tiers (premier/challenger/world): a reasoning league must ask
+ * for reasoning. PART 1 is a mandatory four-line visible reasoning block —
+ * cross-asset chain, numeric evidence weighing, base-rate deviation, and the
+ * strongest self-counterargument — persisted verbatim to
+ * model_predictions.reasoning_text. PART 2 is the answer JSON, unchanged in
+ * shape, required to be the LAST line so `splitReasoningAndJson` can split
+ * mixed output deterministically.
+ */
+const CLOSED_BOOK_SYSTEM_PROMPT = `You are an independent forecasting model in a prediction league. You answer ALONE; you never see any other model's answer. Your visible output has exactly TWO parts, in this order.
+
+PART 1 — REASONING: exactly four labeled lines of plain text (no markdown, no code fences), at most ~150 words total. Cite actual numbers from the packet, not vague qualities.
+CHAIN: what the RELATED INSTRUMENTS block implies for this proposition — the cross-asset connection a single-asset analyst would miss. If the packet has no related-instruments data, write "CHAIN: no related-instrument data".
+EVIDENCE: which specific packet numbers argue up, which argue down, and which side is weightier and why.
+BASE RATE: what the packet's base rate says for this horizon, and why this round should or should not deviate from it.
+COUNTER: the strongest argument AGAINST your own conclusion.
+
+PART 2 — ANSWER: exactly ONE line of strict JSON as the LAST line of your output, nothing after it.
+
+Required JSON keys: direction, probability, magnitude, rationale.
+
+Example shape (replace values with your own forecast — do not copy this example verbatim):
+{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close."}
+
+- direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
+- probability: your confidence in the stated direction, integer 0 through 100.
+- magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.
+- rationale: one concise sentence distilled from your reasoning (200 characters or fewer). Write your actual conclusion — never repeat these instructions, schema labels, or placeholder text.`
+
+/**
+ * Scout keeps the original JSON-only contract: their experiment is
+ * self-directed web search, their output already interleaves citations, and
+ * their budgets (1600-2500) were sized for search overhead — the reasoning
+ * block is a closed-book-packet exercise they cannot perform (no packet).
+ */
+const SCOUT_SYSTEM_PROMPT = `You are an independent forecasting model in a prediction league. You answer ALONE; you never see any other model's answer. You may reason internally, but your VISIBLE output MUST be exactly ONE line of strict JSON and nothing else — no markdown, no code fences, no preamble, no trailing text.
 
 Required JSON keys: direction, probability, magnitude, rationale.
 
@@ -59,8 +114,10 @@ Example shape (replace values with your own forecast — do not copy this exampl
 - rationale: one concise sentence of reasoning or a key citation in plain prose (200 characters or fewer). Write your actual reasoning — never repeat these instructions, schema labels, or placeholder text.
 Return the JSON object only.`
 
-/** Appended once when the first answer has an invalid direction and/or magnitude. */
-const PREDICTION_RETRY_INSTRUCTION = `RETRY: Your previous answer was invalid. Respond with exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"..."}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`
+/** Appended once when the first answer has an invalid direction and/or magnitude.
+ *  Tier-neutral: brief reasoning before the JSON is allowed (closed-book) but the
+ *  LAST line must be the answer JSON (both tiers' parse path). */
+const PREDICTION_RETRY_INSTRUCTION = `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"..."}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`
 
 type ItemType = 'ranked' | 'on_demand'
 
@@ -84,7 +141,7 @@ export type GenerateOptions = {
   tiers?: LeagueTier[]
   concurrency?: number
   timeoutMs?: number
-  /** Override completion-token budget (premier defaults to 4000, others 1200). */
+  /** Override completion-token budget (premier-only runs default to 5000, others 3000; roster entries may override per model). */
   maxCompletionTokens?: number
   /** Override kill-switch (else LEAGUE_RUN_COST_CAP_USD, else $20). */
   costCapUsd?: number
@@ -125,6 +182,8 @@ export type ModelRunResult = {
   /** Validated expected percent change over the horizon, signed to match `direction`. Decoration only — never read by grading. */
   magnitude: number | null
   reasoning_snippet: string | null
+  /** Full visible reasoning block (PART 1, pre-JSON text), verbatim minus fences, capped at 4000 chars. Null on error/legacy/JSON-only outputs. */
+  reasoning_text: string | null
   cost_usd: number
   /** 'billed' = provider-reported actual/documented cost. 'estimated' = our token×list-price fallback. */
   cost_source: 'billed' | 'estimated'
@@ -141,8 +200,13 @@ export type GenerateResult = {
     cached: boolean
     costUsd: number
     queries: string[]
+    /** v2 (D): dispersion-decided budget tier + the signal that picked it. */
+    tier: string
+    tierSignal: string
     error?: string
   }
+  /** v2 (A): Twelve Data credits spent on related series this run (cache hits free). */
+  related_credits_spent: number
   results: ModelRunResult[]
   total_cost_usd: number
   capped: boolean
@@ -323,7 +387,9 @@ function buildPropositionBlock(round: ResolvedRound): string {
  */
 function buildPrompts(round: ResolvedRound, injection: string | null, packetError?: string): { price: string; scout: string } {
   const block = buildPropositionBlock(round)
-  const closer = 'Respond with the single-line JSON object described in the system message.'
+  const priceCloser =
+    'Write the four-line reasoning block (CHAIN / EVIDENCE / BASE RATE / COUNTER), then the single-line JSON object as the LAST line, exactly as described in the system message.'
+  const scoutCloser = 'Respond with the single-line JSON object described in the system message.'
 
   let price: string
   if (injection) {
@@ -333,14 +399,14 @@ function buildPrompts(round: ResolvedRound, injection: string | null, packetErro
       injection,
       '',
       'You have the numeric market data and research above. Exactly two answers exist: up or down, plus a probability. Do NOT answer "abstain" for lack of data — the packet above is your data. Prefer the numbered blocks over prose if they disagree.',
-      closer,
+      priceCloser,
     ].join('\n')
   } else {
     price = [
       block,
       '',
       `No live market-data packet is available for this instrument${packetError ? ` (${packetError})` : ''}. Use your own prior knowledge; give your best up or down call with a probability. Exactly two answers exist — never flat or abstain.`,
-      closer,
+      priceCloser,
     ].join('\n')
   }
 
@@ -348,7 +414,7 @@ function buildPrompts(round: ResolvedRound, injection: string | null, packetErro
     block,
     '',
     'Use live web search to gather the most recent price/context for this instrument, then make a directional call (exactly up or down) with a probability and cite your key source in the rationale.',
-    closer,
+    scoutCloser,
   ].join('\n')
 
   return { price, scout }
@@ -403,6 +469,12 @@ type RawCall = {
   error?: string
 }
 
+/** Tier-appropriate system prompt: closed-book tiers carry the mandatory
+ *  reasoning-block contract; scout keeps the original JSON-only contract. */
+function systemPromptFor(entry: RosterEntry): string {
+  return entry.league_tier === 'scout' ? SCOUT_SYSTEM_PROMPT : CLOSED_BOOK_SYSTEM_PROMPT
+}
+
 /** Single provider call via the appropriate EXISTING utility (no timeout/retry here). */
 async function callOnce(
   entry: RosterEntry,
@@ -420,7 +492,7 @@ async function callOnce(
       userId: userId ?? null,
       provider: entry.caller.provider,
       prompt: userPrompt,
-      systemPrompt: PREDICTION_SYSTEM_PROMPT,
+      systemPrompt: systemPromptFor(entry),
       // Truthy only to enable an admin BYOK lookup; RLS bypass is via supabaseAdmin.
       supabaseAccessToken: userId ? 'league-admin' : undefined,
       skipLanguageInjection: true,
@@ -446,7 +518,7 @@ async function callOnce(
   const res = await withTimeout(
     callPlatformModel({
       id: entry.caller.platformId,
-      systemPrompt: PREDICTION_SYSTEM_PROMPT,
+      systemPrompt: systemPromptFor(entry),
       userPrompt,
       maxCompletionTokens,
     }),
@@ -563,6 +635,7 @@ async function runOneModel(
       probability: null,
       magnitude: null,
       reasoning_snippet: null,
+      reasoning_text: null,
       cost_usd: 0,
       cost_source: 'estimated',
       status,
@@ -588,6 +661,7 @@ async function runOneModel(
         probability: null,
         magnitude: null,
         reasoning_snippet: null,
+        reasoning_text: null,
         cost_usd: Number(totalCostUsd.toFixed(6)),
         cost_source: costSource,
         status: isTimeout(retryRaw.error) ? 'timeout' : 'error',
@@ -609,6 +683,7 @@ async function runOneModel(
       probability: null,
       magnitude: null,
       reasoning_snippet: null,
+      reasoning_text: null,
       cost_usd: Number(totalCostUsd.toFixed(6)),
       cost_source: costSource,
       status: 'error',
@@ -619,6 +694,10 @@ async function runOneModel(
   const rationale =
     sanitizeRationale(parsed!.rationale) ??
     sanitizeRationale(raw.text ? raw.text.trim().slice(0, 500) : null)
+  // Visible reasoning block (everything before the final answer JSON). Stored
+  // for every tier — scout's pre-JSON prose (citations) is raw material too.
+  // reasoning_snippet stays the one-line display rationale; this is the full text.
+  const reasoningText = raw.text ? splitReasoningAndJson(raw.text).reasoning : null
   const probability = parsed!.probability ?? null
   const direction = parsed!.direction
   // `reason` (checked above) already screened out a non-binary direction via
@@ -641,6 +720,7 @@ async function runOneModel(
         predicted_value: probability,
         predicted_magnitude_pct: magnitude,
         reasoning_snippet: rationale,
+        reasoning_text: reasoningText,
         prompt_tokens: raw.promptTokens,
         completion_tokens: raw.completionTokens,
         reasoning_tokens: null,
@@ -656,6 +736,7 @@ async function runOneModel(
     probability,
     magnitude,
     reasoning_snippet: rationale,
+    reasoning_text: reasoningText,
     cost_usd: Number(totalCostUsd.toFixed(6)),
     cost_source: costSource,
     status: 'ok',
@@ -676,6 +757,7 @@ async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promis
         predicted_value: null,
         predicted_magnitude_pct: null,
         reasoning_snippet: null,
+        reasoning_text: null,
         prompt_tokens: null,
         completion_tokens: null,
         reasoning_tokens: null,
@@ -709,9 +791,19 @@ function toClosedBookInput(
   research: ResearchPacket,
   consensus: Awaited<ReturnType<typeof fetchMarketConsensus>> | null,
   crypto: Awaited<ReturnType<typeof fetchCryptoContext>> | null,
+  v2?: {
+    related?: readonly RelatedInstrumentStat[] | null
+    slow?: SlowDataSnapshot | null
+  },
 ): ClosedBookPacketInput {
   const series = packet.series ?? []
   const anchorClose = typeof packet.latestClose === 'number' ? packet.latestClose : null
+  // v2 (B): non-English findings get their own shared section; English
+  // findings keep flowing through the existing prose-findings filter.
+  const enFindings = research.findings.filter((f) => (f.lang ?? 'en') === 'en')
+  const nonEnglishFindings: NonEnglishFinding[] = research.findings
+    .filter((f) => f.lang && f.lang !== 'en')
+    .map((f) => ({ lang: f.lang!, query: f.query, summary: f.summary }))
   return {
     instrument: round.instrument,
     category: round.category,
@@ -724,9 +816,13 @@ function toClosedBookInput(
     quoteAsOf: packet.asOf ?? null,
     consensus,
     crypto,
-    findings: research.findings,
+    findings: enFindings,
     researchCacheKey: research.cacheKey,
     assembledAt: new Date().toISOString(),
+    related: v2?.related ?? null,
+    slow: v2?.slow ?? null,
+    nonEnglishFindings,
+    synthesis: research.synthesis,
   }
 }
 
@@ -755,21 +851,49 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   if (created && packet.available && typeof packet.latestClose === 'number') {
     await persistAnchorPrice(round.id, packet.latestClose, sessionDateForPrice(packet, packet.latestClose))
   }
-  // One research packet per ROUND, shared identically by tiers 1/2/3 (Scout
-  // keeps its own live search). Cached per (instrument, horizon, 6h bucket);
-  // its cost counts against the same kill-switch cap as the model calls.
-  // NO new AI call is added here — director+sonar are the existing pair;
-  // findings are filtered/capped in assembleClosedBookInjection.
-  const research = await getResearchPacket({ round, budgetRemainingUsd: costCap })
+  // v2 (D): consensus/crypto are fetched BEFORE research so the dispersion
+  // signal can set the research budget tier. Twelve Data order within the
+  // 7-credit/min window: quote+series (2) → consensus (5) → related series
+  // (fetched below, CONCURRENTLY with the research AI calls, so the throttle
+  // wait for a second credit window overlaps research latency instead of
+  // stalling the user-visible stream).
   const [consensus, crypto] = await Promise.all([
     packet.available && wantsConsensus(round.category) && packet.symbol
       ? fetchMarketConsensus(packet.symbol)
       : Promise.resolve(null),
     wantsCryptoContext(round.category) ? fetchCryptoContext(round.instrument) : Promise.resolve(null),
   ])
+  const tierDecision: TierDecision = decideResearchTier({
+    category: round.category,
+    consensus,
+    crypto,
+    closes: (packet.series ?? []).map((b) => b.close),
+    anchorClose: typeof packet.latestClose === 'number' ? packet.latestClose : null,
+  })
+  const relations = relationsFor(round.instrument)
+  // One research packet per ROUND, shared identically by tiers 1/2/3 (Scout
+  // keeps its own live search). Cached per (instrument, horizon, tier, langs,
+  // 6h bucket); its cost counts against the same kill-switch cap as the model
+  // calls. Related-series (TD credits) and slow public data (free HTTP) run
+  // concurrently with the research AI calls.
+  const [research, related, slow] = await Promise.all([
+    getResearchPacket({
+      round,
+      budgetRemainingUsd: costCap,
+      tier: tierDecision.tier,
+      languages: relations?.asiaLinks ?? [],
+    }),
+    fetchRelatedInstruments(round.instrument, packet.series ?? []),
+    fetchSlowData({ category: round.category, symbol: packet.symbol }),
+  ])
   const injection =
     packet.available || research.available
-      ? assembleClosedBookInjection(toClosedBookInput(round, packet, research, consensus, crypto))
+      ? assembleClosedBookInjection(
+          toClosedBookInput(round, packet, research, consensus, crypto, {
+            related: related?.stats ?? null,
+            slow,
+          }),
+        )
       : null
   // INPUT audit trail: freeze the exact text closed-book models are about to
   // see, BEFORE any model call. Write-once (null-guard).
@@ -825,8 +949,11 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       cached: research.cached,
       costUsd: Number(research.costUsd.toFixed(6)),
       queries: research.queries,
+      tier: research.tier,
+      tierSignal: tierDecision.signal,
       error: research.error,
     },
+    related_credits_spent: related?.creditsSpent ?? 0,
     results,
     total_cost_usd: Number(runningCost.toFixed(6)),
     capped,

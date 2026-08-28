@@ -38,7 +38,9 @@ import { isDisplayableWinRate, winRatePctForDisplay, WIN_RATE_MIN_SAMPLE } from 
  *
  * SCOPE of a "graded" row (applied by the caller at query time):
  *   - `is_correct` is non-null
- *   - the round's `item_type === 'ranked'`
+ *
+ * Creation mode (`item_type`) is provenance only — both `ranked` and
+ * `on_demand` rounds that graded under the standard contract count.
  */
 
 /** Minimum graded rounds before a percentage or a rank exists. One number, from `lib/league/credits.ts`. */

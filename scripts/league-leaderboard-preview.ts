@@ -34,7 +34,6 @@ async function loadLeaderboardRows(): Promise<GradedPredictionRow[]> {
     .from('model_predictions')
     .select('model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)')
     .not('is_correct', 'is', null)
-    .eq('prediction_rounds.item_type', 'ranked')
 
   if (error) throw new Error(`leaderboard query failed: ${error.message}`)
 

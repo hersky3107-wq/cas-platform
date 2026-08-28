@@ -42,6 +42,58 @@ export type CryptoSnapshot = {
 
 export type ResearchFinding = { query: string; summary: string }
 
+/**
+ * Packet v2 (A): locally computed stats for ONE related series (see
+ * `related-stats.ts` for the math and `relations.ts` for the map).
+ * The unavailable variant is printed as an UNAVAILABLE line, never dropped.
+ */
+export type RelatedInstrumentStat =
+  | {
+      symbol: string
+      role: string
+      note: string
+      lastClose: number
+      lastDate: string
+      move1dPct: number | null
+      corr: { r: number; n: number } | null
+      beta: { beta: number; n: number } | null
+      leadLag: readonly { lag: number; r: number; n: number }[]
+    }
+  | { symbol: string; role: string; note: string; unavailable: string }
+
+/**
+ * Packet v2 (C): slow-diffusing public datasets. Field semantics:
+ *  - `null`            → not applicable to this category (line omitted)
+ *  - `{ unavailable }` → applicable but the fetch failed (line printed)
+ */
+export type SlowDataSnapshot = {
+  fetchedAt: string
+  shortVolume:
+    | { date: string; shortShares: number; totalShares: number; shortPct: number }
+    | { unavailable: string }
+    | null
+  putCall:
+    | { date: string; total: number; index: number | null; equity: number | null }
+    | { unavailable: string }
+    | null
+  btcEtfFlow: { date: string; netFlowUsdM: number } | { unavailable: string } | null
+  insider:
+    | {
+        windowDays: number
+        buyTxns: number
+        buyShares: number
+        sellTxns: number
+        sellShares: number
+        netShares: number
+        latestFilingDate: string | null
+      }
+    | { unavailable: string }
+    | null
+}
+
+/** Packet v2 (B): a native-language research finding (original + English gloss). */
+export type NonEnglishFinding = { lang: string; query: string; summary: string }
+
 export type ClosedBookPacketInput = {
   instrument: string
   category: string
@@ -58,6 +110,14 @@ export type ClosedBookPacketInput = {
   findings: ResearchFinding[]
   researchCacheKey: string
   assembledAt: string
+  /** v2 (A) — cross-asset chain stats; omitted section when null/undefined. */
+  related?: readonly RelatedInstrumentStat[] | null
+  /** v2 (C) — slow public data; omitted section when null/undefined. */
+  slow?: SlowDataSnapshot | null
+  /** v2 (B) — shared native-language findings; omitted section when empty. */
+  nonEnglishFindings?: readonly NonEnglishFinding[]
+  /** v2 (D) — high-tier synthesis; when present it REPLACES prose findings. */
+  synthesis?: string | null
 }
 
 export type BaseRate = {
@@ -403,6 +463,106 @@ function formatCrypto(crypto: CryptoSnapshot | null, wanted: boolean): string {
   return lines.join('\n')
 }
 
+/** Non-English findings kept in the shared packet (with English gloss). */
+export const MAX_NON_ENGLISH_FINDINGS = 3
+export const MAX_NON_ENGLISH_CHARS_EACH = 450
+/** High-tier research synthesis is trimmed to this budget. */
+export const SYNTHESIS_MAX_CHARS = 1400
+
+function signed(n: number, digits = 2): string {
+  return `${n >= 0 ? '+' : ''}${fmt(n, digits)}`
+}
+
+function formatRelated(related: readonly RelatedInstrumentStat[] | null | undefined): string {
+  if (!related || !related.length) return ''
+  const lines: string[] = [
+    'RELATED INSTRUMENTS (cross-asset chain; corr/beta/lead-lag computed locally from date-aligned daily closes; lead-lag printed only when |r| >= 0.25; source: Twelve Data /time_series)',
+  ]
+  for (const s of related) {
+    const head = `${s.symbol} [${s.role} — ${s.note}]`
+    if ('unavailable' in s) {
+      lines.push(`  ${unavailable(head, s.unavailable)}`)
+      continue
+    }
+    const move = s.move1dPct == null ? '1d n/a' : `1d ${pct(s.move1dPct)}`
+    const corr = s.corr == null ? 'corr20 n/a' : `corr20 ${signed(s.corr.r)} (n=${s.corr.n})`
+    const beta = s.beta == null ? 'beta20 n/a' : `beta20 ${signed(s.beta.beta)} (n=${s.beta.n})`
+    const lead =
+      s.leadLag.length === 0
+        ? 'lead-lag: none >= |0.25|'
+        : `lead-lag: ${s.leadLag.map((l) => `t-${l.lag} r=${signed(l.r)} (n=${l.n})`).join(', ')}`
+    lines.push(`  ${head}: last ${fmt(s.lastClose)} on ${s.lastDate} (${move}); ${corr}; ${beta}; ${lead}`)
+  }
+  return lines.join('\n')
+}
+
+function fmtShares(n: number): string {
+  return Math.round(n).toLocaleString('en-US')
+}
+
+function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
+  if (!slow) return ''
+  const lines: string[] = [
+    `SLOW PUBLIC DATA (slow-diffusing public datasets; each line names the horizon it informs; as-of ${slow.fetchedAt})`,
+  ]
+  if (slow.shortVolume) {
+    lines.push(
+      'unavailable' in slow.shortVolume
+        ? `  ${unavailable('short-sale volume', slow.shortVolume.unavailable)}`
+        : `  short-sale volume (${slow.shortVolume.date}): short ${fmtShares(slow.shortVolume.shortShares)} / total ${fmtShares(slow.shortVolume.totalShares)} = ${fmt(slow.shortVolume.shortPct, 1)}% short-volume ratio (source: FINRA CNMS daily file; informative horizon: days-weeks)`,
+    )
+  }
+  if (slow.putCall) {
+    lines.push(
+      'unavailable' in slow.putCall
+        ? `  ${unavailable('put/call ratios', slow.putCall.unavailable)}`
+        : `  put/call ratios (${slow.putCall.date}): total ${fmt(slow.putCall.total)}${
+            slow.putCall.index == null ? '' : ` / index ${fmt(slow.putCall.index)}`
+          }${slow.putCall.equity == null ? '' : ` / equity ${fmt(slow.putCall.equity)}`} (source: CBOE daily market statistics; informative horizon: days-weeks)`,
+    )
+  }
+  if (slow.btcEtfFlow) {
+    lines.push(
+      'unavailable' in slow.btcEtfFlow
+        ? `  ${unavailable('BTC spot ETF flows', slow.btcEtfFlow.unavailable)}`
+        : `  BTC spot ETF net flow (${slow.btcEtfFlow.date}): ${signed(slow.btcEtfFlow.netFlowUsdM, 1)} US$m (source: Farside Investors; informative horizon: days-weeks)`,
+    )
+  }
+  if (slow.insider) {
+    lines.push(
+      'unavailable' in slow.insider
+        ? `  ${unavailable('insider Form 4', slow.insider.unavailable)}`
+        : `  insider Form 4 (SEC EDGAR, trailing ${slow.insider.windowDays}d, open-market P/S only): buys ${slow.insider.buyTxns} txns / ${fmtShares(slow.insider.buyShares)} sh; sells ${slow.insider.sellTxns} txns / ${fmtShares(slow.insider.sellShares)} sh; net ${fmtShares(slow.insider.netShares)} sh${
+            slow.insider.latestFilingDate ? `; latest filing ${slow.insider.latestFilingDate}` : ''
+          } (source: SEC EDGAR data.sec.gov; informative horizon: weeks-months — weak for 1d)`,
+    )
+  }
+  // Only the header would remain → treat as no section.
+  return lines.length > 1 ? lines.join('\n') : ''
+}
+
+function formatNonEnglish(findings: readonly NonEnglishFinding[] | undefined): string {
+  if (!findings?.length) return ''
+  const kept = findings
+    .filter((f) => hasNumericFact(f.summary))
+    .slice(0, MAX_NON_ENGLISH_FINDINGS)
+    .map((f) => ({ ...f, summary: trimAtSentenceBoundary(f.summary, MAX_NON_ENGLISH_CHARS_EACH) }))
+  if (!kept.length) return ''
+  return [
+    'NON-ENGLISH FINDINGS (native-language sources with English gloss; identical block for every closed-book model):',
+    ...kept.map((f, i) => `${i + 1}) [${f.lang}] ${f.query}\n   ${f.summary}`),
+  ].join('\n')
+}
+
+function formatSynthesis(synthesis: string | null | undefined): string {
+  const trimmed = synthesis?.trim()
+  if (!trimmed) return ''
+  return [
+    'RESEARCH SYNTHESIS (director decomposition, distilled numbers-first; numeric blocks above are authoritative if they disagree):',
+    trimAtSentenceBoundary(trimmed, SYNTHESIS_MAX_CHARS),
+  ].join('\n')
+}
+
 function formatProse(findings: ResearchFinding[], numericBlockText: string): string {
   const kept = selectProseFindings(findings, numericBlockText)
   // Absent section rather than an empty "none kept" stub — saves tokens and
@@ -430,9 +590,21 @@ export function assembleClosedBookInjection(input: ClosedBookPacketInput): strin
   if (wantsCrypto) {
     parts.push('', formatCrypto(input.crypto, true))
   }
+  const related = formatRelated(input.related)
+  if (related) parts.push('', related)
+  const slow = formatSlowData(input.slow)
+  if (slow) parts.push('', slow)
   const numericBlockText = parts.join('\n')
-  const prose = formatProse(input.findings, numericBlockText)
-  if (prose) parts.push('', prose)
+  const nonEnglish = formatNonEnglish(input.nonEnglishFindings)
+  if (nonEnglish) parts.push('', nonEnglish)
+  // High-tier synthesis REPLACES raw prose findings (it already distilled them).
+  const synthesis = formatSynthesis(input.synthesis)
+  if (synthesis) {
+    parts.push('', synthesis)
+  } else {
+    const prose = formatProse(input.findings, numericBlockText)
+    if (prose) parts.push('', prose)
+  }
   return parts.join('\n')
 }
 

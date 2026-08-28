@@ -216,10 +216,10 @@ async function main() {
       rrDeepDenied.status === 403 && rrDeepDenied.body.code === 'deep_archive_required',
       `got ${rrDeepDenied.status} ${rrDeepDenied.body.code ?? ''}`
     )
-    check('record room returns the ranked history', rrRounds.length > 0, `${rrRounds.length} rounds`)
+    check('record room returns graded history', rrRounds.length > 0, `${rrRounds.length} rounds`)
     check(
-      'record room hides on-demand rounds from non-admin',
-      rrRounds.length > 0 && !rrRounds.some((e) => e.round_id === onDemandId),
+      'record room includes on-demand graded rounds in the track record',
+      rrRounds.length > 0 && rrRounds.some((e) => e.round_id === onDemandId),
       rrRounds.map((e) => e.round_id.slice(0, 8)).join(',')
     )
 

@@ -14,7 +14,9 @@ export type GradedDirectionRow = {
  * A model win rate is unreadable without a comparison that requires no skill.
  * These two are that comparison. They are NOT league participants, they are
  * never ranked, and they reuse the SAME graded rounds the models already have
- * — no second scoring path, no invented outcomes.
+ * — no second scoring path, no invented outcomes. Creation mode (ranked vs
+ * on_demand) is provenance only; any round graded under the standard contract
+ * enters this baseline.
  *
  *   always_up  Predicts "up" on every round. Graded by inverting the model's
  *              already-persisted (direction, is_correct) pair back to the

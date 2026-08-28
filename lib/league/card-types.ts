@@ -130,7 +130,7 @@ export type HitRateSummary = {
 
 /**
  * Track record of the COMBINED method (40-model majority vote treated as
- * one predictor) across already-resolved ranked rounds. Citation / past
+ * one predictor) across already-resolved graded rounds. Citation / past
  * accuracy — never advice. `n` is the number of resolved rounds that had
  * a clear majority, not the number of models.
  */

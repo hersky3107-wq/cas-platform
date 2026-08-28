@@ -12,13 +12,9 @@ import { normalizeSessionDate } from '../prediction/resolution'
  *
  * This is the public proof-of-fairness view: an immutable, timestamped list
  * of rounds that have already resolved, with the actual outcome and every
- * model's directional call + correct/incorrect grade. It is intentionally
- * NOT filtered to `item_type = 'ranked'` the way the leaderboard is — that
- * exclusion exists to protect RANKING integrity (an ad-hoc on-demand round
- * must not move a model's win rate), which is a different concern from
- * "did this round resolve and what happened" record-keeping. A resolved
- * on-demand round is still a real, timestamped prediction and belongs in the
- * record room.
+ * model's directional call + correct/incorrect grade. Creation mode
+ * (`item_type`) is kept as provenance and shown on each entry; both ranked
+ * and on_demand graded rounds belong here once they resolve.
  */
 
 export type RecordRoomModelEntry = {
@@ -39,6 +35,8 @@ export type RecordRoomRoundEntry = {
   color_bucket: ColorBucket
   resolved_at: string
   actual_outcome: string | null
+  /** Provenance: how the round was opened. Not a quality tier. */
+  item_type: 'ranked' | 'on_demand' | null
   /**
    * Audit fields the resolved-window sentence is built from — the SAME source
    * as the card header (see `lib/league/card-header-copy.ts`'s `headerWindow`).
@@ -91,6 +89,7 @@ export type RecordRoomRoundRow = {
   instrument: string
   resolved_at: string
   actual_outcome: string | null
+  item_type?: string | null
   anchor_price?: number | null
   anchor_session_date?: string | null
   resolution_session_date?: string | null
@@ -149,6 +148,7 @@ export function buildRecordRoomEntries(
       color_bucket: toColorBucket(round.color_bucket),
       resolved_at: round.resolved_at,
       actual_outcome: round.actual_outcome,
+      item_type: round.item_type === 'on_demand' || round.item_type === 'ranked' ? round.item_type : null,
       anchorPrice: round.anchor_price ?? null,
       anchorSessionDate: normalizeSessionDate(round.anchor_session_date ?? null),
       resolutionSessionDate: normalizeSessionDate(round.resolution_session_date ?? null),

@@ -24,6 +24,7 @@ import { brandCountry } from './country'
 import {
   bookFromTier,
   buildVerdictPayload,
+  type VerdictCrossRoundGrade,
   type VerdictPayload,
   type VerdictRosterMeta,
 } from './verdict-aggregate'
@@ -171,9 +172,13 @@ const VERDICT_ROSTER: readonly VerdictRosterMeta[] = LEAGUE_ROSTER.map((e) => ({
   book: bookFromTier(e.league_tier),
 }))
 
-function buildVerdict(models: CardModelPrediction[]): VerdictPayload {
+function buildVerdict(
+  models: CardModelPrediction[],
+  roundId: string,
+  crossRound?: readonly VerdictCrossRoundGrade[]
+): VerdictPayload {
   return buildVerdictPayload({
-    round: { id: '' },
+    round: { id: roundId },
     predictions: models.map((m) => ({
       model_id: m.model_id,
       brand: m.brand,
@@ -184,6 +189,7 @@ function buildVerdict(models: CardModelPrediction[]): VerdictPayload {
       is_correct: m.is_correct,
     })),
     roster: VERDICT_ROSTER,
+    crossRound,
   })
 }
 
@@ -206,13 +212,17 @@ export type CardAggregates = {
  * differently; they can only ever differ in which `models` rows they were
  * given, and the DB-fetched set always wins once it arrives.
  */
-export function computeCardAggregates(models: CardModelPrediction[], resolvedAt: string | null): CardAggregates {
+export function computeCardAggregates(
+  models: CardModelPrediction[],
+  resolvedAt: string | null,
+  opts?: { roundId?: string; crossRound?: readonly VerdictCrossRoundGrade[] }
+): CardAggregates {
   return {
     consensus: buildConsensus(models),
     campSplit: buildCampSplit(models),
     tierSplit: buildTierSplit(models),
     hitRate: buildHitRate(resolvedAt, models),
-    verdict: buildVerdict(models),
+    verdict: buildVerdict(models, opts?.roundId ?? '', opts?.crossRound),
   }
 }
 
@@ -322,14 +332,18 @@ function toRoundMeta(row: RoundRow, nowMs: number): CardRoundMeta {
 export function buildCardData(
   roundRow: RoundRow,
   predictionRows: PredictionRow[],
-  combinedTrack: CombinedMethodTrack = emptyCombinedTrack()
+  combinedTrack: CombinedMethodTrack = emptyCombinedTrack(),
+  crossRound?: readonly VerdictCrossRoundGrade[]
 ): CardData {
   const models = predictionRows.map(toCardModel)
   const nowMs = Date.now()
   return {
     round: toRoundMeta(roundRow, nowMs),
     models,
-    ...computeCardAggregates(models, roundRow.resolved_at),
+    ...computeCardAggregates(models, roundRow.resolved_at, {
+      roundId: roundRow.id,
+      crossRound,
+    }),
     combinedTrack,
     generatedAt: new Date().toISOString(),
   }

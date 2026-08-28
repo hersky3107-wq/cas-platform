@@ -34,7 +34,7 @@ export type FixedInstrument = {
   horizon: LeagueHorizon
   /** Snapshot of how the round is judged (stored verbatim on the round). */
   resolution_rule: string
-  /** 'ranked' counts toward league scoring; 'on_demand' never does. */
+  /** 'ranked' = catalog/cron cadence; 'on_demand' = ad-hoc provenance. Both count once graded. */
   item_type: 'ranked' | 'on_demand'
   /** Denormalized traffic-light bucket (green/yellow/red). */
   color_bucket: 'green' | 'yellow' | 'red'

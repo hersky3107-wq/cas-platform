@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
   try {
     const data = await fetchRecordRoomPage(page, pageSize, {
-      ...(viewer.isAdmin ? {} : { categories: viewer.visibleCategories, rankedOnly: true }),
+      ...(viewer.isAdmin ? {} : { categories: viewer.visibleCategories }),
       modelId: modelId || undefined,
       from: from || undefined,
       to: to || undefined,

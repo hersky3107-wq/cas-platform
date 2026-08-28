@@ -49,7 +49,7 @@ export async function GET(req: Request) {
       viewer.isAdmin ? pageSize || RECORD_ROOM_DEFAULT_PAGE_SIZE : pageSize,
       viewer.isAdmin
         ? { modelId: query.modelId, from: query.from, to: query.to, deep: true }
-        : { categories: viewer.visibleCategories, rankedOnly: true, deep: false }
+        : { categories: viewer.visibleCategories, deep: false }
     )
     return NextResponse.json(data)
   } catch (e: unknown) {

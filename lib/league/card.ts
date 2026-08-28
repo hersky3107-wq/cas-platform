@@ -6,6 +6,7 @@ import { buildCardData, type PredictionRow, type RoundRow } from './card-aggrega
 import type { CardData } from './card-types'
 import { fetchLeaderboardData, type LeaderboardScope } from './leaderboard'
 import { getCachedLivePrice } from './live-price-cache'
+import type { VerdictCrossRoundGrade } from './verdict-aggregate'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), DB read path.
@@ -180,6 +181,51 @@ async function loadPredictions(roundId: string): Promise<PredictionRow[]> {
   return (data ?? []) as PredictionRow[]
 }
 
+type CrossRoundQueryRow = {
+  model_id: string
+  round_id: string
+  is_correct: boolean | null
+  prediction_rounds:
+    | { instrument: string; resolved_at: string | null }
+    | { instrument: string; resolved_at: string | null }[]
+    | null
+}
+
+/**
+ * Graded history for this instrument — feeds streaks / crossRoundRates on the
+ * verdict panel. Rows without a resolved_at are dropped (streaks need a total
+ * order). Failures degrade to [] so a join hiccup never breaks the card.
+ */
+async function loadCrossRoundGrades(instrument: string): Promise<VerdictCrossRoundGrade[]> {
+  const { data, error } = await supabaseAdmin
+    .from('model_predictions')
+    .select('model_id, round_id, is_correct, prediction_rounds!inner(instrument, resolved_at)')
+    .eq('prediction_rounds.instrument', instrument)
+    .not('is_correct', 'is', null)
+
+  if (error || !data) {
+    if (error) {
+      console.warn(`[league/card] cross-round grades unavailable (${error.message}) — streaks omitted`)
+    }
+    return []
+  }
+
+  const out: VerdictCrossRoundGrade[] = []
+  for (const row of data as unknown as CrossRoundQueryRow[]) {
+    if (row.is_correct === null) continue
+    const joined = Array.isArray(row.prediction_rounds) ? row.prediction_rounds[0] : row.prediction_rounds
+    const resolvedAt = joined?.resolved_at
+    if (!resolvedAt) continue
+    out.push({
+      model_id: row.model_id,
+      round_id: row.round_id,
+      is_correct: row.is_correct,
+      resolved_at: resolvedAt,
+    })
+  }
+  return out
+}
+
 /**
  * GRADE-ON-READ. A round whose deadline has passed and that nobody has graded
  * is graded because someone LOOKED at it — no cron, no operator decision. The
@@ -204,9 +250,12 @@ function startGradingOnRead(roundId: string): void {
 export async function fetchCardData(lookup: CardLookup, scope?: LeaderboardScope): Promise<CardData> {
   const round = await loadRound(lookup)
   const optional = await loadOptionalColumns(round.id)
-  const predictions = await loadPredictions(round.id)
-  const board = await fetchLeaderboardData(scope)
-  const card = buildCardData({ ...round, ...optional }, predictions, board.combined)
+  const [predictions, board, crossRound] = await Promise.all([
+    loadPredictions(round.id),
+    fetchLeaderboardData(scope),
+    loadCrossRoundGrades(round.instrument),
+  ])
+  const card = buildCardData({ ...round, ...optional }, predictions, board.combined, crossRound)
 
   if (card.round.gradingState === 'due_ungraded') {
     startGradingOnRead(round.id)

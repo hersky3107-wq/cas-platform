@@ -21,9 +21,12 @@ export type { LeaderboardData }
  * set to the pure `buildLeaderboardData`.
  *
  * In-scope filters (applied at the query level):
- *   - `is_correct is not null`
- *   - joined round's `item_type = 'ranked'`
+ *   - `is_correct is not null` — graded under the standard contract
  *   - optionally, `category in (...)` — see `LeaderboardScope`
+ *
+ * Creation mode (`item_type` ranked vs on_demand) is provenance, not a quality
+ * tier: once a round is graded, it enters the track record. Public catalog
+ * generates are already `ranked`; `on_demand` is mostly admin/script provenance.
  *
  * Plus ONE more query for round-level coverage (`fetchRoundCoverage`): the win
  * rates' denominators count graded rounds only, so the number of rounds that are
@@ -61,7 +64,7 @@ function toDirection(raw: string | null): GradedPredictionRow['predicted_directi
 }
 
 /**
- * Round-level accounting for the same scope as the win rates: how many ranked
+ * Round-level accounting for the same scope as the win rates: how many
  * rounds are graded, and how many are due-but-ungraded / unresolvable / not yet
  * due. ONE query over the rounds table (rounds number in the dozens, so this is
  * cheaper than four count queries), classified by the shared
@@ -75,7 +78,6 @@ async function fetchRoundCoverage(scope?: LeaderboardScope): Promise<RoundCovera
   let query = supabaseAdmin
     .from('prediction_rounds')
     .select('resolves_at, actual_outcome, resolved_at, grading_busy_until, grading_attempted_at, unresolvable_reason')
-    .eq('item_type', 'ranked')
   if (scope?.categories) query = query.in('category', scope.categories as string[])
 
   const { data, error } = await query
@@ -114,7 +116,6 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
       'model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)'
     )
     .not('is_correct', 'is', null)
-    .eq('prediction_rounds.item_type', 'ranked')
 
   if (scope?.categories) {
     query = query.in('prediction_rounds.category', scope.categories as string[])
