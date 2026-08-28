@@ -14,7 +14,7 @@ import type { DalResult } from '@/lib/reconciliation/types'
  * Authorization is APP-LAYER. supabaseAdmin bypasses RLS; RLS is
  * defense-in-depth only. Every read/write must go through this scope.
  */
-declare const ownedBrand: unique symbol
+const ownedBrand = Symbol('ownedScope')
 
 export type OwnedScope = {
   readonly userId: string
