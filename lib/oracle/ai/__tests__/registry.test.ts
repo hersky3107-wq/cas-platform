@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_IDS } from '../../axes/types'
-import { LAYER1_REGISTRY, applyOracleBrandPolicies, layer1Entry } from '../registry'
-import { layer1RunawayContentThreshold } from '../layer1-adapter'
+import { LAYER1_REGISTRY, LAYER1_READING_RUNAWAY_CONTENT_TOKENS, applyOracleBrandPolicies, layer1Entry } from '../registry'
+import { LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS, layer1RunawayContentThreshold } from '../layer1-adapter'
 
 const STALE_ROUTER_DEFAULTS = [
   'gpt-4o',
@@ -128,12 +128,38 @@ describe('LAYER1_REGISTRY', () => {
     }
   })
 
-  it('scales the runaway guard to each system ceiling rather than a hardcoded value', () => {
-    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.saju.maxCompletionTokens)).toBe(1800)
-    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.sukuyou.maxCompletionTokens)).toBe(3750)
-    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.ziwei.maxCompletionTokens)).toBe(12000)
-    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.iching.maxCompletionTokens)).toBe(1800)
-    expect(layer1RunawayContentThreshold(LAYER1_REGISTRY.tzolkin.maxCompletionTokens)).toBe(6000)
+  it('gives every system its own explicit runaway guard, independent of maxCompletionTokens', () => {
+    for (const system of SYSTEM_IDS) {
+      const entry = LAYER1_REGISTRY[system]
+      expect(entry.runawayContentTokens).toBe(LAYER1_READING_RUNAWAY_CONTENT_TOKENS)
+      expect(layer1RunawayContentThreshold(entry, 'reading')).toBe(LAYER1_READING_RUNAWAY_CONTENT_TOKENS)
+    }
+  })
+
+  it('does not silently move the runaway guard when a completion ceiling is retuned for an unrelated reason', () => {
+    // Regression for the 2026-08-26 incident: ziwei's maxCompletionTokens
+    // went 3000 -> 8000 (a hidden-reasoning budget fix for DeepSeek) and a
+    // formula-derived guard (maxCompletionTokens * 1.5) would have silently
+    // moved 4500 -> 12000 as a side effect. saju and prism sit at opposite
+    // ends of maxCompletionTokens (1200 vs 700) yet must produce the SAME
+    // runaway threshold, proving the guard tracks the shared output
+    // contract, not any one system's completion ceiling.
+    expect(LAYER1_REGISTRY.saju.maxCompletionTokens).not.toBe(LAYER1_REGISTRY.ziwei.maxCompletionTokens)
+    expect(LAYER1_REGISTRY.prism.maxCompletionTokens).not.toBe(LAYER1_REGISTRY.ziwei.maxCompletionTokens)
+    const thresholds = new Set(
+      [LAYER1_REGISTRY.saju, LAYER1_REGISTRY.ziwei, LAYER1_REGISTRY.prism, LAYER1_REGISTRY.tzolkin].map((entry) =>
+        layer1RunawayContentThreshold(entry, 'reading'),
+      ),
+    )
+    expect(thresholds.size).toBe(1)
+    expect([...thresholds][0]).toBe(LAYER1_READING_RUNAWAY_CONTENT_TOKENS)
+  })
+
+  it('floors the synthesis runaway guard to its own longer-contract value, never a reader ceiling', () => {
+    for (const system of SYSTEM_IDS) {
+      const entry = LAYER1_REGISTRY[system]
+      expect(layer1RunawayContentThreshold(entry, 'synthesis')).toBe(LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS)
+    }
   })
 
   it('pins official first-party prices on core-router estimates', () => {

@@ -258,23 +258,55 @@ describe('createLayer1AiAdapter', () => {
     if (!result.ok) expect(result.message).toMatch(/runaway visible content/)
   })
 
-  it('uses the system ceiling for the runaway threshold, not a hardcoded 1800', async () => {
+  it('does not scale the runaway threshold with a system\'s completion ceiling', async () => {
+    // Regression: ziwei's maxCompletionTokens is 8000 — a hidden-reasoning
+    // budget for DeepSeek, unrelated to visible output size. If the guard
+    // were still derived as maxCompletionTokens * 1.5 (as it was before
+    // the 2026-08-26 ziwei 3000->8000 bump), the threshold would silently
+    // move to 12000 and 1900 content tokens would never trip it. It must
+    // stay at the shared reading contract value regardless of that ceiling.
     let calls = 0
-    const call: Layer1Call = async () => {
+    const call: Layer1Call = async ({ strictRetry }) => {
       calls += 1
       return okCall({
         text: VALID_JSON,
-        tokensOut: 4501,
-        contentTokens: 4501,
+        tokensOut: 1900,
+        contentTokens: 1900,
+        strictRetry: strictRetry ?? false,
       })
     }
 
     const adapter = createLayer1AiAdapter({ call })
     const result = await adapter.run(readingRequest('ziwei'), { timeoutMs: 60_000 })
 
+    expect(LAYER1_REGISTRY.ziwei.maxCompletionTokens).toBe(8000)
     expect(calls).toBe(2)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.message).toMatch(/4501 > 4500/)
+    if (!result.ok) expect(result.message).toMatch(/1900 > 1800/)
+  })
+
+  it('floors the runaway threshold higher for synthesis than for a reading, regardless of which brand seats it', async () => {
+    let calls = 0
+    const call: Layer1Call = async ({ strictRetry }) => {
+      calls += 1
+      return okCall({
+        // Above the reading threshold (1800) but below the synthesis floor
+        // (3000) — must be accepted as a synthesis call, not flagged runaway.
+        text: VALID_SYNTHESIS_JSON,
+        tokensOut: 2500,
+        contentTokens: 2500,
+        strictRetry: strictRetry ?? false,
+      })
+    }
+
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(
+      { ...readingRequest(), kind: 'synthesis', unit: 'synthesis', brand: 'OpenAI' },
+      { timeoutMs: 60_000 },
+    )
+
+    expect(calls).toBe(1)
+    expect(result.ok).toBe(true)
   })
 })
 

@@ -71,7 +71,32 @@ export type Layer1RegistryEntry = {
    * unless a measured floor requires more.
    */
   maxCompletionTokens: number
+  /**
+   * Visible-content runaway guard, in tokens. Set explicitly per entry —
+   * NEVER computed from maxCompletionTokens. That ceiling is tuned per
+   * system for a hidden-reasoning budget unrelated to visible output size
+   * (ziwei/DeepSeek needs 8000 so it has room to think even though its
+   * visible JSON answer is a few hundred tokens); deriving this guard from
+   * it means every unrelated ceiling retune silently moves the runaway
+   * catch (see the 2026-08-26 ziwei 3000->8000 bump, which silently moved
+   * a formula-derived guard 4500->12000 and broke the runaway test without
+   * anyone touching the guard). Every reading shares one output contract
+   * (narrative <=500 chars, one_line <=80 chars) regardless of which model
+   * fills the seat, so this is a flat, contract-derived value today. See
+   * LAYER1_READING_RUNAWAY_CONTENT_TOKENS for the measurement.
+   */
+  runawayContentTokens: number
 }
+
+/**
+ * Reading contract worst case: narrative <=500 Unicode chars (LAYER1_NARRATIVE_MAX
+ * in parse-layer1.ts) + one_line <=80 chars + direction/focus/axis_emphasis
+ * overhead. CJK output can run close to 1 token/char, so worst-case legit
+ * content is roughly 600-900 tokens. 1800 gives ~2x headroom over that before
+ * a response is flagged as runaway (prism's own worst observed overshoot,
+ * pre-fix, was 877 content tokens — comfortably under this).
+ */
+export const LAYER1_READING_RUNAWAY_CONTENT_TOKENS = 1800
 
 export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   saju: {
@@ -90,6 +115,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       },
     },
     maxCompletionTokens: 1200,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   ziwei: {
     system: 'ziwei',
@@ -109,7 +135,10 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       extraRequestParams: { reasoning: { effort: 'minimal' } },
     },
     // Synthesis 20× @4500 still truncated (reasoning 4092–4451). Floor 8000.
+    // This is a hidden-reasoning budget, not a visible-content budget — the
+    // runaway guard stays at the shared reading value, not 8000 * 1.5.
     maxCompletionTokens: 8000,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   iching: {
     system: 'iching',
@@ -121,6 +150,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     model: 'cohere/command-a',
     caller: { kind: 'platform', platformId: 'openrouter:command-a' },
     maxCompletionTokens: 1200,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   ninestar: {
     system: 'ninestar',
@@ -133,6 +163,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // (DigitalOcean, DeepInfra, Novita, Parasail, Google) — do not pin.
     caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' },
     maxCompletionTokens: 1200,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   sukuyou: {
     system: 'sukuyou',
@@ -145,6 +176,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     caller: { kind: 'platform', platformId: 'openrouter:minimax-m3' },
     // Measured reasoning 928/1164 → ceil 1500 + 800 = 2300; floor 2500.
     maxCompletionTokens: 2500,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   astro: {
     system: 'astro',
@@ -157,6 +189,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     officialPricing: { promptUsdPerToken: 0.000002, completionUsdPerToken: 0.000012 },
     caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-5.6-terra' },
     maxCompletionTokens: 1200,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   tarot: {
     system: 'tarot',
@@ -182,6 +215,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       geminiThinkingLevel: 'minimal',
     },
     maxCompletionTokens: 1200,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   runes: {
     system: 'runes',
@@ -193,6 +227,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     officialPricing: { promptUsdPerToken: 0.00000125, completionUsdPerToken: 0.0000025 },
     caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.3' },
     maxCompletionTokens: 1200,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   numerology: {
     system: 'numerology',
@@ -203,6 +238,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     model: 'mistralai/mistral-medium-3-5',
     caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' },
     maxCompletionTokens: 1200,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   name: {
     system: 'name',
@@ -211,6 +247,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     model: 'HCX-007',
     caller: { kind: 'platform', platformId: 'clova:hcx-007' },
     maxCompletionTokens: 1200,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   tzolkin: {
     system: 'tzolkin',
@@ -224,8 +261,10 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       extraRequestParams: { reasoning: { effort: 'minimal' } },
     },
     // Synthesis 20×: failed runs were finish=length with ~1743–1855 thinking
-    // into a 2000 ceiling (content truncated / JSON never closed).
+    // into a 2000 ceiling (content truncated / JSON never closed). Hidden
+    // reasoning budget, not visible content — guard stays at the shared value.
     maxCompletionTokens: 4000,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   prism: {
     system: 'prism',
@@ -244,7 +283,12 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     },
     // Was 1200; Claude ignored the 280–420 char prompt lock and emitted 877
     // content tokens. Ceiling sized for ≤500-char JSON narrative + headroom.
+    // That 877-token overshoot is exactly why the runaway guard must NOT be
+    // maxCompletionTokens * 1.5: 700 * 1.5 = 1050 would sit dangerously close
+    // to (and could even fall under) a legitimate-shaped overrun we have
+    // already observed. The guard stays at the shared reading value instead.
     maxCompletionTokens: 700,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
 }
 
@@ -274,6 +318,7 @@ export const ORACLE_SEAT_ONLY_BRANDS: Record<string, Layer1RegistryEntry> = {
     model: 'z-ai/glm-5.2',
     caller: { kind: 'platform', platformId: 'openrouter:glm-5.2' },
     maxCompletionTokens: 2000,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
 }
 

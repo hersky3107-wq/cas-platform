@@ -14,7 +14,7 @@ import { isEmptyModelText, parseLayer1Json } from './parse-layer1'
 import { parseSynthesisJson } from './parse-synthesis'
 import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1'
 import { buildSynthesisSystemPrompt, buildSynthesisUserPrompt } from './prompts/synthesis'
-import { layer1Entry, layer1EntryForBrand } from './registry'
+import { layer1Entry, layer1EntryForBrand, type Layer1RegistryEntry } from './registry'
 
 export type Layer1AdapterOptions = {
   call?: Layer1Call
@@ -25,10 +25,28 @@ export type Layer1AdapterOptions = {
 export const LAYER1_HTTP_BUDGET = 2
 /** Do not open a fresh call when less than this remains on the unit deadline. */
 export const LAYER1_RETRY_MIN_REMAINING_MS = 25_000
-export const LAYER1_RUNAWAY_MULTIPLIER = 1.5
-/** Visible-content runaway threshold scales with that system's completion ceiling. */
-export function layer1RunawayContentThreshold(maxCompletionTokens: number): number {
-  return maxCompletionTokens * LAYER1_RUNAWAY_MULTIPLIER
+/**
+ * Synthesis contract is longer than a single reading (up to 6 agreements /
+ * divergences <=160 chars each + conclusion <=700 + confidence_note <=220
+ * => ~1880 chars worst case). Floor the guard here, same pattern as
+ * SYNTHESIS_MAX_COMPLETION_TOKENS below — never derived from any reader's
+ * maxCompletionTokens.
+ */
+export const LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS = 3000
+
+/**
+ * Visible-content runaway threshold. Reads the registry entry's own
+ * `runawayContentTokens` — deliberately NOT a function of maxCompletionTokens
+ * (see the comment on that field in registry.ts). Synthesis floors it to its
+ * own longer-contract value regardless of which brand's seat is synthesizing.
+ */
+export function layer1RunawayContentThreshold(
+  entry: Pick<Layer1RegistryEntry, 'runawayContentTokens'>,
+  kind: 'reading' | 'synthesis',
+): number {
+  return kind === 'synthesis'
+    ? Math.max(entry.runawayContentTokens, LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS)
+    : entry.runawayContentTokens
 }
 export const LAYER1_STRICT_RETRY_INSTRUCTION =
   '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ≤500 Unicode characters (prism target 280–420). Respect every field character limit.'
@@ -200,7 +218,10 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           continue
         }
 
-        const runawayThreshold = layer1RunawayContentThreshold(effectiveEntry.maxCompletionTokens)
+        const runawayThreshold = layer1RunawayContentThreshold(
+          effectiveEntry,
+          request.kind === 'synthesis' ? 'synthesis' : 'reading',
+        )
         if ((raw.contentTokens ?? 0) > runawayThreshold) {
           lastError =
             `runaway visible content (${raw.contentTokens} > ${runawayThreshold} tokens)`
