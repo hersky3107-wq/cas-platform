@@ -6,17 +6,18 @@
  * a rule someone has to remember: this module has no way to charge.
  *
  * `model` is stripped from readings and verdicts (server-only, per the
- * column comments in the migration). `result` and `ai_payload` are omitted
- * from computations: the first is large and the second is prompt-internal.
+ * column comments in the migration). `ai_payload` is omitted because it is
+ * prompt-internal. A recursively sanitized projection of `result` is exposed
+ * as `calculation` so the owner can see the engine chart without profile PII.
  */
 import type {
-  OracleComputation,
   OracleJobProgress,
   OracleJobSession,
   OracleNextAction,
   OracleSessionStatus,
 } from '../schema'
 import { progressCounts } from './progress'
+import { publicComputation } from './public-computation'
 import type { JsonObject, RunnerStore } from './types'
 
 export type PublicReading = {
@@ -88,19 +89,16 @@ export type OracleSessionView = {
   completedAt: string | null
   /** True while a worker holds the lease; the client should keep polling. */
   working: boolean
-  computations: Array<{ system: string; engineVersion: string | null; axes: JsonObject | null; unreadable: boolean }>
+  computations: Array<{
+    system: string
+    engineVersion: string | null
+    axes: JsonObject | null
+    calculation: JsonObject | null
+    unreadable: boolean
+  }>
   readings: PublicReading[]
   verdicts: PublicVerdict[]
   consensus: PublicConsensus | null
-}
-
-function publicComputation(row: OracleComputation) {
-  return {
-    system: row.system,
-    engineVersion: row.engine_version,
-    axes: row.axes,
-    unreadable: row.axes === null,
-  }
 }
 
 export async function readOracleSession(

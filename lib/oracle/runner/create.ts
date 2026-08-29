@@ -12,7 +12,7 @@
  * being moved to 'failed', and 'failed' is terminal, so it cannot run twice.
  */
 import type { AxisConsensus } from '../axes/types'
-import type { OracleComputation, OracleJobSession, OracleReaderCount, OracleSessionKind, OracleSessionScope } from '../schema'
+import type { OracleJobSession, OracleReaderCount, OracleSessionKind, OracleSessionScope } from '../schema'
 import { isAllowedReaderCount, resolveSingleSystemRoster } from '../ai/family-roster'
 import { getOracleAiMode } from '../ai/mode'
 import { LAYER1_PROMPT_VERSION } from '../ai/prompts/layer1'
@@ -27,6 +27,7 @@ import {
 import { OracleComputeError, personalDataFrom, resolveSystems, runComputations } from './compute'
 import { initialProgress, markUnitFailed, readingUnit } from './progress'
 import { OraclePrivacyError } from './privacy'
+import { publicComputation } from './public-computation'
 import {
   validateSessionInputs,
   type OracleSessionInputs,
@@ -57,6 +58,7 @@ export type PublicComputation = {
   system: string
   engineVersion: string | null
   axes: JsonObject | null
+  calculation: JsonObject | null
   unreadable: boolean
 }
 
@@ -83,15 +85,6 @@ export type CreateSessionOutcome =
       /** Present when the session row was created and then marked 'failed'. */
       sessionId?: string
     }
-
-function publicComputation(row: OracleComputation): PublicComputation {
-  return {
-    system: row.system,
-    engineVersion: row.engine_version,
-    axes: row.axes,
-    unreadable: row.axes === null,
-  }
-}
 
 /** Today's civil date in the subject's own timezone, not the server's. */
 export function civilDateIn(date: Date, timeZone: string): string {

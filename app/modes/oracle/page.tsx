@@ -79,6 +79,25 @@ export default function OracleLandingPage() {
           Tip: Use Chrome&apos;s built-in translation for your language
         </p>
 
+        <Link
+          href="/modes/oracle/single"
+          className="group mt-10 rounded-[26px] border border-cyan-300/30 bg-gradient-to-br from-cyan-500/12 via-[#111a31] to-violet-500/12 p-6 shadow-xl transition hover:border-cyan-200/55 sm:p-7"
+        >
+          <div className="flex items-start justify-between gap-5">
+            <div>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/70">
+                NEW · 한국어
+              </span>
+              <h2 className="mt-2 text-xl font-semibold text-white">단일 체계 깊이 읽기</h2>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-300">
+                사주·점성술·자미두수·주역 등 11개 체계 중 하나를 고르세요.
+                같은 계산표를 여러 해석자가 읽고, 일치와 이견을 함께 정리합니다.
+              </p>
+            </div>
+            <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-cyan-200 transition group-hover:translate-x-0.5" aria-hidden />
+          </div>
+        </Link>
+
         <nav className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <Link
             href="/modes/oracle/fate"

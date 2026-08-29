@@ -24,15 +24,88 @@ export async function GET(req: Request) {
   const complete =
     normalized && typeof normalized === 'object' && oracleProfileLooksComplete(normalized)
 
+  const { data: runnerProfile } = await supabaseAdmin
+    .from('oracle_profiles')
+    .select('id,birth_date,birth_time,birth_time_source,sex,tz')
+    .eq('user_id', user.id)
+    .eq('is_self', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
   return NextResponse.json({
     profile: normalized ?? null,
     complete: !!(complete ?? false),
+    runnerProfile: runnerProfile ?? null,
   })
 }
 
 function coerceGender(raw: unknown): Gender | null {
   if (raw === 'male' || raw === 'female' || raw === 'prefer_not_to_say') return raw
   return null
+}
+
+function isIanaTimezone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat('ko-KR', { timeZone: value }).format()
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function upsertSingleSystemProfile(userId: string, body: Record<string, unknown>) {
+  const birthDate = typeof body.birth_date === 'string' ? body.birth_date.trim() : ''
+  const birthTimeUnknown = body.birth_time_unknown === true
+  const birthTime = typeof body.birth_time === 'string' ? body.birth_time.trim() : ''
+  const timezone = typeof body.timezone === 'string' ? body.timezone.trim() : ''
+  const sex = body.sex === 'M' || body.sex === 'F' ? body.sex : null
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || Number.isNaN(Date.parse(`${birthDate}T00:00:00Z`))) {
+    return NextResponse.json({ error: '생년월일을 확인해 주세요.' }, { status: 400 })
+  }
+  if (!birthTimeUnknown && !/^([01]\d|2[0-3]):[0-5]\d$/.test(birthTime)) {
+    return NextResponse.json({ error: '출생 시간을 확인하거나 ‘모름’을 선택해 주세요.' }, { status: 400 })
+  }
+  if (!timezone || !isIanaTimezone(timezone)) {
+    return NextResponse.json({ error: '올바른 IANA 시간대를 선택해 주세요.' }, { status: 400 })
+  }
+  if (!sex) return NextResponse.json({ error: '성별을 선택해 주세요.' }, { status: 400 })
+
+  const { data: existing, error: readError } = await supabaseAdmin
+    .from('oracle_profiles')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('is_self', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (readError) {
+    return NextResponse.json({ error: '프로필을 불러오지 못했습니다.' }, { status: 500 })
+  }
+
+  const profile = {
+    user_id: userId,
+    label: '나',
+    is_self: true,
+    birth_date: birthDate,
+    birth_time: birthTimeUnknown ? null : birthTime,
+    birth_time_source: birthTimeUnknown ? 'unknown' : 'exact',
+    sex,
+    tz: timezone,
+    updated_at: new Date().toISOString(),
+  }
+
+  const query = existing?.id
+    ? supabaseAdmin.from('oracle_profiles').update(profile).eq('id', existing.id).eq('user_id', userId)
+    : supabaseAdmin.from('oracle_profiles').insert(profile)
+  const { data, error } = await query
+    .select('id,birth_date,birth_time,birth_time_source,sex,tz')
+    .single()
+  if (error) {
+    return NextResponse.json({ error: '프로필을 저장하지 못했습니다.' }, { status: 500 })
+  }
+  return NextResponse.json({ ok: true, subjectProfileId: data.id, runnerProfile: data })
 }
 
 export async function POST(req: Request) {
@@ -46,6 +119,12 @@ export async function POST(req: Request) {
   const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+  }
+
+  // Additive contract for the new single-system flow. Legacy profile callers
+  // omit this discriminator and continue through the unchanged V1 path below.
+  if (body.profile_mode === 'single-system') {
+    return upsertSingleSystemProfile(user.id, body)
   }
 
   const dob = typeof body.dob === 'string' ? body.dob.trim() : ''
