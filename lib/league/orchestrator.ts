@@ -10,20 +10,10 @@ import {
   type LeagueTier,
   type Camp,
 } from '@/lib/league/roster'
-import { fetchDataPacket, sessionDateForPrice, type DataPacket } from '@/lib/league/market-data'
-import { fetchCryptoContext, fetchMarketConsensus, wantsConsensus, wantsCryptoContext } from '@/lib/league/market-context'
-import {
-  assembleClosedBookInjection,
-  type ClosedBookPacketInput,
-  type NonEnglishFinding,
-  type RelatedInstrumentStat,
-  type SlowDataSnapshot,
-} from '@/lib/league/closed-book-packet'
-import { getResearchPacket, type ResearchPacket } from '@/lib/league/research'
-import { decideResearchTier, type TierDecision } from '@/lib/league/research-tier'
-import { relationsFor } from '@/lib/league/relations'
-import { fetchRelatedInstruments } from '@/lib/league/related-instruments'
-import { fetchSlowData } from '@/lib/league/slow-data'
+import { adapterForLedgerCategory } from '@/lib/league/gateway/adapters/registry.server'
+import { buildPriceSeriesPacket } from '@/lib/league/gateway/adapters/price-series-packet'
+import { LIVE_PRICE_SERIES_IO } from '@/lib/league/gateway/adapters/price-series-io.server'
+import type { CategoryPacket, PacketBuildContext } from '@/lib/league/gateway/types'
 import {
   isBinaryDirection,
   parsePrediction,
@@ -840,47 +830,6 @@ function resolveMaxCompletionTokensForEntry(entry: RosterEntry, runDefault: numb
     : runDefault
 }
 
-function toClosedBookInput(
-  round: ResolvedRound,
-  packet: DataPacket,
-  research: ResearchPacket,
-  consensus: Awaited<ReturnType<typeof fetchMarketConsensus>> | null,
-  crypto: Awaited<ReturnType<typeof fetchCryptoContext>> | null,
-  v2?: {
-    related?: readonly RelatedInstrumentStat[] | null
-    slow?: SlowDataSnapshot | null
-  },
-): ClosedBookPacketInput {
-  const series = packet.series ?? []
-  const anchorClose = typeof packet.latestClose === 'number' ? packet.latestClose : null
-  // v2 (B): non-English findings get their own shared section; English
-  // findings keep flowing through the existing prose-findings filter.
-  const enFindings = research.findings.filter((f) => (f.lang ?? 'en') === 'en')
-  const nonEnglishFindings: NonEnglishFinding[] = research.findings
-    .filter((f) => f.lang && f.lang !== 'en')
-    .map((f) => ({ lang: f.lang!, query: f.query, summary: f.summary }))
-  return {
-    instrument: round.instrument,
-    category: round.category,
-    horizon: round.horizon,
-    series,
-    seriesSource: 'Twelve Data /time_series+quote',
-    seriesAsOf: packet.asOf ?? series[series.length - 1]?.date ?? null,
-    anchorClose,
-    anchorSessionDate: anchorClose != null ? sessionDateForPrice(packet, anchorClose) : null,
-    quoteAsOf: packet.asOf ?? null,
-    consensus,
-    crypto,
-    findings: enFindings,
-    researchCacheKey: research.cacheKey,
-    assembledAt: new Date().toISOString(),
-    related: v2?.related ?? null,
-    slow: v2?.slow ?? null,
-    nonEnglishFindings,
-    synthesis: research.synthesis,
-  }
-}
-
 export async function generatePredictions(opts: GenerateOptions): Promise<GenerateResult> {
   const { round: roundInput, tiers, userId, onRoundResolved, onModelResult } = opts
   const concurrency = opts.concurrency && opts.concurrency > 0 ? opts.concurrency : DEFAULT_CONCURRENCY
@@ -894,71 +843,38 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
 
   const { round, created } = await ensureRound(roundInput)
   onRoundResolved?.({ id: round.id, created, rosterSize: roster.length })
-  // One packet fetch per ROUND (quote + long time_series = 2 Twelve Data
-  // credits). Consensus adds 5 more for equities (throttled to Basic's 8/min).
-  const packet = await fetchDataPacket(round.instrument)
-  // Persist the ANCHOR price (best-effort, presentation only — never read by
-  // grading/reconciliation): the card header shows "what the instrument was
-  // at when this round opened" so a model's up/down call is legible. Only
-  // stamped once, at creation, from the same packet already fetched above —
-  // never overwritten on a re-run of an existing round (`{ roundId }` input
-  // skips `created`), so the anchor always reflects the ORIGINAL open.
-  if (created && packet.available && typeof packet.latestClose === 'number') {
-    await persistAnchorPrice(round.id, packet.latestClose, sessionDateForPrice(packet, packet.latestClose))
+  // PACKET ASSEMBLY is CATEGORY JUDGMENT and lives behind
+  // `CategoryAdapter.buildPacket` (stocks today; the other 11 chips fall back
+  // to the same price-series builder until their adapters exist). The shell
+  // keeps only the DB side effects the adapter requests via events:
+  //  - anchor_price: persist the ANCHOR price (best-effort, presentation only
+  //    — never read by grading/reconciliation): the card header shows "what
+  //    the instrument was at when this round opened" so a model's up/down
+  //    call is legible. Only stamped once, at creation — never overwritten on
+  //    a re-run of an existing round (`{ roundId }` input skips `created`),
+  //    so the anchor always reflects the ORIGINAL open.
+  const packetCtx: PacketBuildContext = {
+    round,
+    costCapUsd: costCap,
+    onEvent: async (event) => {
+      if (event.kind === 'anchor_price' && created) {
+        await persistAnchorPrice(round.id, event.price, event.sessionDate)
+      }
+    },
   }
-  // v2 (D): consensus/crypto are fetched BEFORE research so the dispersion
-  // signal can set the research budget tier. Twelve Data order within the
-  // 7-credit/min window: quote+series (2) → consensus (5) → related series
-  // (fetched below, CONCURRENTLY with the research AI calls, so the throttle
-  // wait for a second credit window overlaps research latency instead of
-  // stalling the user-visible stream).
-  const [consensus, crypto] = await Promise.all([
-    packet.available && wantsConsensus(round.category) && packet.symbol
-      ? fetchMarketConsensus(packet.symbol)
-      : Promise.resolve(null),
-    wantsCryptoContext(round.category) ? fetchCryptoContext(round.instrument) : Promise.resolve(null),
-  ])
-  const tierDecision: TierDecision = decideResearchTier({
-    category: round.category,
-    consensus,
-    crypto,
-    closes: (packet.series ?? []).map((b) => b.close),
-    anchorClose: typeof packet.latestClose === 'number' ? packet.latestClose : null,
-  })
-  const relations = relationsFor(round.instrument)
-  // One research packet per ROUND, shared identically by tiers 1/2/3 (Scout
-  // keeps its own live search). Cached per (instrument, horizon, tier, langs,
-  // 6h bucket); its cost counts against the same kill-switch cap as the model
-  // calls. Related-series (TD credits) and slow public data (free HTTP) run
-  // concurrently with the research AI calls.
-  const [research, related, slow] = await Promise.all([
-    getResearchPacket({
-      round,
-      budgetRemainingUsd: costCap,
-      tier: tierDecision.tier,
-      languages: relations?.asiaLinks ?? [],
-    }),
-    fetchRelatedInstruments(round.instrument, packet.series ?? []),
-    fetchSlowData({ category: round.category, symbol: packet.symbol }),
-  ])
-  const injection =
-    packet.available || research.available
-      ? assembleClosedBookInjection(
-          toClosedBookInput(round, packet, research, consensus, crypto, {
-            related: related?.stats ?? null,
-            slow,
-          }),
-        )
-      : null
+  const adapter = adapterForLedgerCategory(round.category)
+  const pkt: CategoryPacket = adapter
+    ? await adapter.buildPacket(adapter.slotsForRound(round), packetCtx)
+    : await buildPriceSeriesPacket(packetCtx, LIVE_PRICE_SERIES_IO)
   // INPUT audit trail: freeze the exact text closed-book models are about to
   // see, BEFORE any model call. Write-once (null-guard).
-  if (injection) {
-    await persistClosedBookPacket(round.id, research.cacheKey, injection)
+  if (pkt.injection) {
+    await persistClosedBookPacket(round.id, pkt.researchCacheKey, pkt.injection)
   }
-  const prompts = buildPrompts(round, injection, packet.error)
+  const prompts = buildPrompts(round, pkt.injection, pkt.dataPacket.error)
 
   const results: ModelRunResult[] = []
-  let runningCost = research.costUsd
+  let runningCost = pkt.researchCostUsd
   let capped = false
   let nextIndex = 0
 
@@ -993,22 +909,9 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   return {
     round_id: round.id,
     created,
-    data_packet: {
-      available: packet.available,
-      symbol: packet.symbol,
-      latestClose: packet.latestClose,
-      error: packet.error,
-    },
-    research: {
-      available: research.available,
-      cached: research.cached,
-      costUsd: Number(research.costUsd.toFixed(6)),
-      queries: research.queries,
-      tier: research.tier,
-      tierSignal: tierDecision.signal,
-      error: research.error,
-    },
-    related_credits_spent: related?.creditsSpent ?? 0,
+    data_packet: pkt.dataPacket,
+    research: pkt.research,
+    related_credits_spent: pkt.relatedCreditsSpent,
     results,
     total_cost_usd: Number(runningCost.toFixed(6)),
     capped,

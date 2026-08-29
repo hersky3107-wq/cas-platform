@@ -193,11 +193,7 @@ export async function fetchCryptoContext(instrument: string): Promise<CryptoSnap
   return { fetchedAt, funding, openInterest, markIv }
 }
 
-export function wantsCryptoContext(category: string): boolean {
-  return category === 'crypto_spot' || category === 'crypto_perps' || category === 'memecoin'
-}
-
-/** Equities/ETFs have the analyst endpoints; FX/crypto/commodities typically do not. */
-export function wantsConsensus(category: string): boolean {
-  return category === 'stock' || category === 'etf_index'
-}
+// Category predicates moved to the pure packet-assembly module (their caller,
+// the orchestrator's inline packet block, moved there); re-exported so
+// existing imports keep working.
+export { wantsConsensus, wantsCryptoContext } from './gateway/adapters/price-series-packet'
