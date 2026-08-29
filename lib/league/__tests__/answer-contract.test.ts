@@ -257,3 +257,47 @@ describe('qualifier is decoration — never graded, never in a denominator', () 
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Ledger mapping — how a validated answer lands in model_predictions
+// ---------------------------------------------------------------------------
+
+describe('ledgerFields — the two qualifier columns split by contract', () => {
+  it('close_higher: signed percent into predicted_magnitude_pct, text column stays null (2026-08-24 semantics)', () => {
+    const c = answerContractFor('binary_close_higher')
+    const v = c.validate(c.parse('{"direction":"up","probability":62,"magnitude":2.4,"rationale":"Momentum."}'), '1d')
+    expect(v).toEqual({ ok: true, side: 'up', qualifierNumber: 2.4, qualifierText: null })
+    if (v.ok) expect(c.ledgerFields(v)).toEqual({ magnitudePct: 2.4, qualifierText: null })
+  })
+
+  it('subject_outcome: scoreline into predicted_qualifier_text, magnitude column stays null', () => {
+    const c = answerContractFor('binary_subject_outcome')
+    const v = c.validate(c.parse('{"side":"yes","probability":64,"qualifier":"2-1","rationale":"Form."}'), '1d')
+    expect(v.ok).toBe(true)
+    if (v.ok) expect(c.ledgerFields(v)).toEqual({ magnitudePct: null, qualifierText: '2-1' })
+  })
+
+  it('threshold: predicted print is TEXT, never a percent — magnitude column stays null', () => {
+    const c = answerContractFor('binary_threshold')
+    const v = c.validate(c.parse('{"side":"above","probability":58,"predicted_value":3.4,"rationale":"Nowcast."}'), '1m')
+    expect(v.ok).toBe(true)
+    if (v.ok) expect(c.ledgerFields(v)).toEqual({ magnitudePct: null, qualifierText: '3.4' })
+  })
+
+  it('no contract ever writes both columns', () => {
+    const samples: Array<[PropositionKind, string]> = [
+      ['binary_close_higher', '{"direction":"down","probability":55,"magnitude":-1.1,"rationale":"Drift."}'],
+      ['binary_subject_outcome', '{"side":"no","probability":57,"qualifier":"1-1 draw","rationale":"Rotation."}'],
+      ['binary_threshold', '{"side":"below","probability":66,"predicted_value":"2.9","rationale":"Cooling."}'],
+    ]
+    for (const [kind, text] of samples) {
+      const c = answerContractFor(kind)
+      const v = c.validate(c.parse(text), '1d')
+      expect(v.ok, kind).toBe(true)
+      if (v.ok) {
+        const fields = c.ledgerFields(v)
+        expect(fields.magnitudePct === null || fields.qualifierText === null, kind).toBe(true)
+      }
+    }
+  })
+})

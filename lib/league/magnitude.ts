@@ -99,7 +99,9 @@ export type MagnitudeAggregate = { medianPct: number | null; n: number }
  */
 export function aggregateMagnitude(
   models: readonly { direction: string | null; magnitude: number | null }[],
-  aggregateDirection: 'up' | 'down' | null
+  // Any contract-neutral side token. Magnitude only exists for close_higher
+  // (up/down) rows, so other tokens simply yield n=0 — same math either way.
+  aggregateDirection: string | null
 ): MagnitudeAggregate {
   if (!aggregateDirection) return { medianPct: null, n: 0 }
   const values = models

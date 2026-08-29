@@ -14,14 +14,16 @@ import { adapterForLedgerCategory } from '@/lib/league/gateway/adapters/registry
 import { buildPriceSeriesPacket } from '@/lib/league/gateway/adapters/price-series-packet'
 import { LIVE_PRICE_SERIES_IO } from '@/lib/league/gateway/adapters/price-series-io.server'
 import type { CategoryPacket, PacketBuildContext } from '@/lib/league/gateway/types'
-import { isBinaryDirection, sanitizeRationale } from '@/lib/league/prediction-parse'
+import { sanitizeRationale } from '@/lib/league/prediction-parse'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 import { aggregateMagnitude } from '@/lib/league/magnitude'
 import {
   answerContractFor,
   buildRoundPrompts,
+  isPropositionKind,
   type AnswerContract,
+  type AnswerSide,
   type ContractAnswer,
 } from '@/lib/league/answer-contract'
 
@@ -79,6 +81,10 @@ export type RoundInput =
       item_type?: ItemType
       season_id?: string | null
       cache_key?: string | null
+      /** Answer contract for the round (defaults to binary_close_higher — every price chip). */
+      proposition_kind?: string
+      /** Display name of the NAMED subject for binary_subject_outcome rounds. */
+      subject_label?: string | null
     }
 
 export type GenerateOptions = {
@@ -123,10 +129,13 @@ export type ModelRunResult = {
   brand: string
   camp: Camp
   tier: LeagueTier
-  direction: 'up' | 'down' | null
+  /** Contract-neutral side token (up|down, yes|no, above|below per the round's kind), or null for no answer. */
+  direction: AnswerSide | null
   probability: number | null
-  /** Validated expected percent change over the horizon, signed to match `direction`. Decoration only — never read by grading. */
+  /** close_higher ONLY: validated expected percent change, signed to match `direction`. Decoration — never read by grading. */
   magnitude: number | null
+  /** Non-numeric contracts ONLY: display qualifier (scoreline "2-1", margin, predicted print). Decoration — never read by grading. */
+  qualifier_text: string | null
   reasoning_snippet: string | null
   /** Full visible reasoning block (PART 1, pre-JSON text), verbatim minus fences, capped at 4000 chars. Null on error/legacy/JSON-only outputs. */
   reasoning_text: string | null
@@ -178,6 +187,8 @@ type ResolvedRound = {
   horizon: string
   resolution_rule: string
   resolves_at: string
+  /** Which answer contract the round runs under — the round row is the source of truth. */
+  proposition_kind: string
 }
 
 /**
@@ -212,7 +223,7 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
   if ('roundId' in input) {
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
-      .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at')
+      .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at, proposition_kind')
       .eq('id', input.roundId)
       .single()
     if (error || !data) {
@@ -239,8 +250,11 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
       season_id: input.season_id ?? null,
       cache_key: input.cache_key ?? null,
       open_phase: openPhase,
+      // DB default is 'binary_close_higher' — only set when the caller names one.
+      ...(input.proposition_kind ? { proposition_kind: input.proposition_kind } : {}),
+      ...(input.subject_label ? { subject_label: input.subject_label } : {}),
     })
-    .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at')
+    .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at, proposition_kind')
     .single()
 
   if (error || !data) throw new Error(`Failed to create round: ${error?.message ?? 'unknown'}`)
@@ -280,10 +294,13 @@ async function persistClosedBookPacket(roundId: string, cacheKey: string, text: 
 
 async function persistConsensusAggregates(
   roundId: string,
-  results: readonly { direction: 'up' | 'down' | null; probability: number | null; magnitude: number | null }[],
+  results: readonly { direction: AnswerSide | null; probability: number | null; magnitude: number | null }[],
+  sides: readonly [AnswerSide, AnswerSide],
 ): Promise<void> {
   try {
-    const dual = dualConsensus(binaryCallsFromModels(results))
+    // Side-token-neutral: the log-odds math is unchanged, only the pair of
+    // tokens it counts/persists comes from the round's answer contract.
+    const dual = dualConsensus(binaryCallsFromModels(results, sides), sides)
     const magnitude = aggregateMagnitude(results, dual.aggregate.direction)
     await supabaseAdmin
       .from('prediction_rounds')
@@ -558,6 +575,7 @@ async function runOneModel(
       direction: null,
       probability: null,
       magnitude: null,
+      qualifier_text: null,
       reasoning_snippet: null,
       reasoning_text: null,
       cost_usd: 0,
@@ -587,6 +605,7 @@ async function runOneModel(
         direction: null,
         probability: null,
         magnitude: null,
+        qualifier_text: null,
         reasoning_snippet: null,
         reasoning_text: null,
         cost_usd: Number(totalCostUsd.toFixed(6)),
@@ -610,6 +629,7 @@ async function runOneModel(
       direction: null,
       probability: null,
       magnitude: null,
+      qualifier_text: null,
       reasoning_snippet: null,
       reasoning_text: null,
       cost_usd: Number(totalCostUsd.toFixed(6)),
@@ -628,13 +648,13 @@ async function runOneModel(
   // reasoning_snippet stays the one-line display rationale; this is the full text.
   const reasoningText = contract.splitReasoning(raw.text)
   const probability = answer!.probability ?? null
+  // LEDGER SHAPE: predicted_direction stores the contract-neutral side token
+  // (CHECK: up|down|yes|no|above|below). The two qualifier columns split by
+  // contract: predicted_magnitude_pct is close_higher's signed % (unchanged
+  // 2026-08-24 semantics), predicted_qualifier_text is everyone else's
+  // display-only detail. Neither is read by grading.
   const direction = validation.side
-  // LEDGER SHAPE: predicted_direction / predicted_magnitude_pct only exist for
-  // the up|down + signed-percent contract today (DB CHECK constrains the
-  // column). `generatePredictions` refuses non-close_higher kinds before any
-  // model call, so this narrows what the contract's generic side type cannot.
-  if (!isBinaryDirection(direction)) throw new Error('unreachable: non-binary direction reached persistence')
-  const magnitude = validation.qualifierNumber
+  const ledger_fields = contract.ledgerFields(validation)
 
   await supabaseAdmin
     .from('model_predictions')
@@ -647,7 +667,8 @@ async function runOneModel(
         league_tier: entry.league_tier,
         predicted_direction: direction,
         predicted_value: probability,
-        predicted_magnitude_pct: magnitude,
+        predicted_magnitude_pct: ledger_fields.magnitudePct,
+        predicted_qualifier_text: ledger_fields.qualifierText,
         reasoning_snippet: rationale,
         reasoning_text: reasoningText,
         prompt_tokens: raw.promptTokens,
@@ -665,7 +686,8 @@ async function runOneModel(
     actual_model: raw.actualModel,
     direction,
     probability,
-    magnitude,
+    magnitude: ledger_fields.magnitudePct,
+    qualifier_text: ledger_fields.qualifierText,
     reasoning_snippet: rationale,
     reasoning_text: reasoningText,
     cost_usd: Number(totalCostUsd.toFixed(6)),
@@ -688,6 +710,7 @@ async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promis
         predicted_direction: null,
         predicted_value: null,
         predicted_magnitude_pct: null,
+        predicted_qualifier_text: null,
         reasoning_snippet: null,
         reasoning_text: null,
         prompt_tokens: null,
@@ -752,22 +775,17 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
     },
   }
   const adapter = adapterForLedgerCategory(round.category)
-  // ANSWER CONTRACT: how models respond is decided by the round's
-  // proposition_kind (via the adapter), NEVER per adapter/category — twelve
-  // adapters share three contracts. Categories without an adapter are all
-  // price chips today and take the close_higher contract they always had.
-  const propositionKind = adapter ? adapter.slotsForRound(round).proposition_kind : 'binary_close_higher'
+  // ANSWER CONTRACT: how models respond is decided by the round's persisted
+  // proposition_kind, NEVER per adapter/category — twelve adapters share
+  // three contracts. Every pre-column round defaulted to close_higher (all
+  // price chips); the adapter derivation is only the fallback for a round
+  // row that somehow predates the column.
+  const propositionKind = isPropositionKind(round.proposition_kind)
+    ? round.proposition_kind
+    : adapter
+      ? adapter.slotsForRound(round).proposition_kind
+      : 'binary_close_higher'
   const contract = answerContractFor(propositionKind)
-  // LEDGER GATE: model_predictions.predicted_direction is CHECK-constrained to
-  // up/down/flat and every render/consensus surface still assumes those
-  // tokens. Refuse BEFORE spending on packets or model calls rather than
-  // persist a side token the ledger and UI would misstate.
-  if (contract.kind !== 'binary_close_higher') {
-    throw new Error(
-      `league orchestrator: no ledger storage for proposition_kind '${contract.kind}' yet — ` +
-        `predicted_direction is CHECK-constrained to up/down/flat; migrate storage before opening non-price rounds`
-    )
-  }
   const pkt: CategoryPacket = adapter
     ? await adapter.buildPacket(adapter.slotsForRound(round), packetCtx)
     : await buildPriceSeriesPacket(packetCtx, LIVE_PRICE_SERIES_IO)
@@ -809,7 +827,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   const workers = Array.from({ length: Math.min(concurrency, roster.length) }, () => worker())
   await Promise.all(workers)
 
-  await persistConsensusAggregates(round.id, results)
+  await persistConsensusAggregates(round.id, results, contract.sides)
 
   return {
     round_id: round.id,

@@ -69,6 +69,21 @@ export type AnswerValidation =
     }
   | { ok: false; reason: string }
 
+export type ValidAnswer = Extract<AnswerValidation, { ok: true }>
+
+/**
+ * How a validated answer lands in the model_predictions ledger.
+ * `predicted_magnitude_pct` is the close_higher signed percent ONLY — the
+ * "예측 +2.4% → 실제 +1.4%" comparison depends on its semantics staying
+ * exactly what 2026-08-24 defined. Every other contract's qualifier is
+ * display-only TEXT (`predicted_qualifier_text`): scoreline "2-1", margin
+ * "5.2%p", predicted print. Neither field is ever read by grading.
+ */
+export type LedgerAnswerFields = {
+  magnitudePct: number | null
+  qualifierText: string | null
+}
+
 export type AnswerContract = {
   kind: PropositionKind
   /** The exactly-two sides, in prompt order. */
@@ -95,6 +110,8 @@ export type AnswerContract = {
    * one-retry-then-error budget in the orchestrator.
    */
   validate: (answer: ContractAnswer | null, horizon: string) => AnswerValidation
+  /** Maps a validated answer onto the ledger's two qualifier columns. */
+  ledgerFields: (validation: ValidAnswer) => LedgerAnswerFields
   /** Visible reasoning block (text before the answer JSON), sanitized. */
   splitReasoning: (text: string | null) => string | null
 }
@@ -368,6 +385,11 @@ const BINARY_CLOSE_HIGHER: AnswerContract = {
     if (!mv.ok) return { ok: false, reason: `invalid_magnitude:${mv.reason}` }
     return { ok: true, side: answer.side, qualifierNumber: mv.value, qualifierText: null }
   },
+  ledgerFields(v) {
+    // The 2026-08-24 magnitude semantics, unchanged: signed % into
+    // predicted_magnitude_pct, nothing in the text column.
+    return { magnitudePct: v.qualifierNumber, qualifierText: null }
+  },
   splitReasoning(text) {
     return text ? splitReasoningAndJson(text).reasoning : null
   },
@@ -415,6 +437,9 @@ const BINARY_SUBJECT_OUTCOME: AnswerContract = {
     if (!q) return { ok: false, reason: 'invalid_qualifier:missing' }
     if (q.length > QUALIFIER_TEXT_MAX_CHARS) return { ok: false, reason: 'invalid_qualifier:too_long' }
     return { ok: true, side: answer.side, qualifierNumber: null, qualifierText: q }
+  },
+  ledgerFields(v) {
+    return { magnitudePct: null, qualifierText: v.qualifierText }
   },
   splitReasoning: splitSideReasoning,
 }
@@ -464,6 +489,11 @@ const BINARY_THRESHOLD: AnswerContract = {
     }
     return { ok: true, side: answer.side, qualifierNumber: roundMagnitude(answer.qualifierNumber), qualifierText: null }
   },
+  ledgerFields(v) {
+    // The predicted print is a display-only qualifier, NOT a percent —
+    // predicted_magnitude_pct stays close_higher-only, so it lands as text.
+    return { magnitudePct: null, qualifierText: v.qualifierNumber === null ? null : String(v.qualifierNumber) }
+  },
   splitReasoning: splitSideReasoning,
 }
 
@@ -481,6 +511,20 @@ export function answerContractFor(kind: PropositionKind): AnswerContract {
   const contract = CONTRACTS[kind]
   if (!contract) throw new Error(`answer-contract: unknown proposition_kind '${kind}'`)
   return contract
+}
+
+/** Narrow a persisted `prediction_rounds.proposition_kind` value. */
+export function isPropositionKind(value: unknown): value is PropositionKind {
+  return typeof value === 'string' && value in CONTRACTS
+}
+
+/**
+ * The side pair for a persisted kind. Unknown/legacy values (rounds predating
+ * the proposition_kind column) fall back to close_higher — every pre-kind
+ * round is a price round, so this is a fact, not a guess.
+ */
+export function sidePairForKind(kind: unknown): readonly [AnswerSide, AnswerSide] {
+  return isPropositionKind(kind) ? CONTRACTS[kind].sides : CONTRACTS.binary_close_higher.sides
 }
 
 /** The round fields the prompt names — same shape the orchestrator resolves. */

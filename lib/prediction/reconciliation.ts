@@ -11,6 +11,7 @@ import {
   type GradingStore,
 } from './grading-core'
 import { gradingStateOf, type GradingState } from './grading-state'
+import { formatOutcomeForKind, gradedSidesFor } from './graded-sides'
 import type { ResolutionDirection, ResolvedOutcome, UnresolvableReason } from './resolution'
 
 export type { PredictionCategory } from './categories'
@@ -77,6 +78,30 @@ function isMissingColumnError(message: string, column: string): boolean {
   return message.toLowerCase().includes(column) && /does not exist|schema cache/i.test(message)
 }
 
+/**
+ * The round's answer-contract kind, read at grade time so `gradeChildren` /
+ * `saveGraded` can speak the round's side pair WITHOUT changing the
+ * `GradingStore` interface (grading-core.ts is untouched). Any failure —
+ * including the proposition_kind column not existing yet — falls back to
+ * 'binary_close_higher': every pre-kind round is a price round, so the
+ * fallback grades exactly as the ledger always did (writers stay valid
+ * whether or not the schema migration has been applied).
+ */
+async function roundPropositionKind(roundId: string): Promise<string> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select('proposition_kind')
+      .eq('id', roundId)
+      .maybeSingle()
+    if (error || !data) return 'binary_close_higher'
+    const kind = (data as { proposition_kind?: unknown }).proposition_kind
+    return typeof kind === 'string' && kind ? kind : 'binary_close_higher'
+  } catch {
+    return 'binary_close_higher'
+  }
+}
+
 /** Turns a Postgres "column missing" failure into the migration the operator has to apply. */
 function migrationHint(message: string): string {
   if (isMissingColumnError(message, 'anchor_price')) {
@@ -140,10 +165,13 @@ export const supabaseGradingStore: GradingStore = {
    * claim can never overwrite a grade that already exists.
    */
   async saveGraded(roundId, outcome: ResolvedOutcome, nowIso) {
+    // Side-pair mapping: byte-identical `outcome.rawOutcome` for
+    // close_higher rounds (see lib/prediction/graded-sides.ts).
+    const kind = await roundPropositionKind(roundId)
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
       .update({
-        actual_outcome: outcome.rawOutcome,
+        actual_outcome: formatOutcomeForKind(kind, outcome),
         resolution_price: outcome.resolutionPrice,
         resolution_session_date: outcome.resolutionSessionDate,
         resolved_at: nowIso,
@@ -190,23 +218,29 @@ export const supabaseGradingStore: GradingStore = {
   },
 
   /**
-   * Grades the round's directional children. Rows with a null direction
-   * (abstain/timeout/error) and rows that answered 'flat' keep
-   * `is_correct = null`: a binary outcome must not manufacture a verdict for an
-   * answer it cannot judge.
+   * Grades the round's children against the round's OWN side pair (its
+   * answer contract, via proposition_kind): the engine's binary outcome maps
+   * 'up' → side A / 'down' → side B, which for close_higher rounds is the
+   * identity — the exact same two UPDATE predicates as the pre-side-token
+   * ternary (proved byte-identical in graded-sides.test.ts). Rows with a
+   * null direction (abstain/timeout/error) and any token outside the
+   * round's pair (the one grandfathered 'flat' row) keep `is_correct = null`:
+   * a binary outcome must not manufacture a verdict for an answer it cannot
+   * judge.
    */
   async gradeChildren(roundId, direction: ResolutionDirection) {
-    const opposite = direction === 'up' ? 'down' : 'up'
+    const kind = await roundPropositionKind(roundId)
+    const { winner, loser } = gradedSidesFor(kind, direction)
     const hit = await supabaseAdmin
       .from('model_predictions')
       .update({ is_correct: true }, { count: 'exact' })
       .eq('round_id', roundId)
-      .eq('predicted_direction', direction)
+      .eq('predicted_direction', winner)
     const miss = await supabaseAdmin
       .from('model_predictions')
       .update({ is_correct: false }, { count: 'exact' })
       .eq('round_id', roundId)
-      .eq('predicted_direction', opposite)
+      .eq('predicted_direction', loser)
     if (hit.error || miss.error) return 0
     return (hit.count ?? 0) + (miss.count ?? 0)
   },

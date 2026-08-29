@@ -2,38 +2,54 @@
  * Binary consensus aggregates — pure math, no I/O.
  *
  * Two parallel methods are always computed:
- *  - majority: count of up/down (flat ignored); probability = mean of stated p
- *  - aggregate: confidence-weighted mean of log-odds of P(up), converted back
+ *  - majority: count of side-A/side-B (non-answers ignored); probability = mean of stated p
+ *  - aggregate: confidence-weighted mean of log-odds of P(side A), converted back
+ *
+ * SIDE VOCABULARY (2026-08-29): the math is side-token-neutral. Every round
+ * has exactly two sides from its answer contract — up/down for
+ * binary_close_higher (the default, so all pre-existing call sites are
+ * unchanged), yes/no for binary_subject_outcome, above/below for
+ * binary_threshold. "side A" is the FIRST token of the pair (up/yes/above);
+ * the log-odds aggregate computes P(side A) exactly as it computed P(up).
+ * Only the vocabulary is generalized — the 2026-08-24 aggregate math
+ * (clamp, logit, confidence weighting, inverse-logit) is byte-identical.
  *
  * Individual model rows are never mutated. UI must not name the method.
  */
 
-export type BinaryCall = {
-  direction: 'up' | 'down'
+/** The default side pair — binary_close_higher's vocabulary. */
+export const DEFAULT_SIDES = ['up', 'down'] as const
+
+export type DefaultSide = (typeof DEFAULT_SIDES)[number]
+
+export type BinaryCall<S extends string = DefaultSide> = {
+  direction: S
   /** Stated confidence in that direction, 0–100. */
   probability: number
 }
 
-export type MajorityConsensus = {
-  direction: 'up' | 'down' | null
+export type MajorityConsensus<S extends string = DefaultSide> = {
+  direction: S | null
   /** Mean of stated probabilities among binary callers, or null. */
   probability: number | null
+  /** Count for side A (first token of the pair: up / yes / above). */
   up: number
+  /** Count for side B (second token of the pair: down / no / below). */
   down: number
 }
 
-export type LogOddsConsensus = {
-  direction: 'up' | 'down' | null
+export type LogOddsConsensus<S extends string = DefaultSide> = {
+  direction: S | null
   /** Confidence in `direction` after inverse-logit, 0–100, or null. */
   probability: number | null
-  /** P(up) in (0,1) before mapping to direction confidence. */
+  /** P(side A) in (0,1) before mapping to direction confidence. */
   pUp: number | null
   n: number
 }
 
-export type DualConsensus = {
-  majority: MajorityConsensus
-  aggregate: LogOddsConsensus
+export type DualConsensus<S extends string = DefaultSide> = {
+  majority: MajorityConsensus<S>
+  aggregate: LogOddsConsensus<S>
 }
 
 /**
@@ -66,22 +82,25 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10
 }
 
-/** Majority vote among up/down only. Flat/null callers are ignored. */
-export function majorityConsensus(calls: readonly BinaryCall[]): MajorityConsensus {
+/** Majority vote between the two sides. Non-answer callers never reach here. */
+export function majorityConsensus<S extends string = DefaultSide>(
+  calls: readonly BinaryCall<S>[],
+  sides: readonly [S, S] = DEFAULT_SIDES as unknown as readonly [S, S],
+): MajorityConsensus<S> {
   let up = 0
   let down = 0
   let sumP = 0
   let nP = 0
   for (const c of calls) {
-    if (c.direction === 'up') up += 1
+    if (c.direction === sides[0]) up += 1
     else down += 1
     if (Number.isFinite(c.probability)) {
       sumP += c.probability
       nP += 1
     }
   }
-  const direction: 'up' | 'down' | null =
-    up === 0 && down === 0 ? null : up === down ? null : up > down ? 'up' : 'down'
+  const direction: S | null =
+    up === 0 && down === 0 ? null : up === down ? null : up > down ? sides[0] : sides[1]
   return {
     direction,
     probability: nP ? round1(sumP / nP) : null,
@@ -91,17 +110,20 @@ export function majorityConsensus(calls: readonly BinaryCall[]): MajorityConsens
 }
 
 /**
- * Confidence-weighted mean of log-odds of P(up).
+ * Confidence-weighted mean of log-odds of P(side A).
  * Weight = stated confidence (clamped unit probability).
  */
-export function logOddsConsensus(calls: readonly BinaryCall[]): LogOddsConsensus {
+export function logOddsConsensus<S extends string = DefaultSide>(
+  calls: readonly BinaryCall<S>[],
+  sides: readonly [S, S] = DEFAULT_SIDES as unknown as readonly [S, S],
+): LogOddsConsensus<S> {
   let sumW = 0
   let sumWLogit = 0
   let n = 0
   for (const c of calls) {
     if (!Number.isFinite(c.probability)) continue
     const conf = clampUnitProbability(c.probability / 100)
-    const pUp = c.direction === 'up' ? conf : 1 - conf
+    const pUp = c.direction === sides[0] ? conf : 1 - conf
     const w = conf
     sumW += w
     sumWLogit += w * logit(pUp)
@@ -111,27 +133,31 @@ export function logOddsConsensus(calls: readonly BinaryCall[]): LogOddsConsensus
     return { direction: null, probability: null, pUp: null, n: 0 }
   }
   const pUp = sigmoid(sumWLogit / sumW)
-  const direction: 'up' | 'down' = pUp >= 0.5 ? 'up' : 'down'
-  const probability = round1(100 * (direction === 'up' ? pUp : 1 - pUp))
+  const direction: S = pUp >= 0.5 ? sides[0] : sides[1]
+  const probability = round1(100 * (direction === sides[0] ? pUp : 1 - pUp))
   return { direction, probability, pUp, n }
 }
 
-export function dualConsensus(calls: readonly BinaryCall[]): DualConsensus {
+export function dualConsensus<S extends string = DefaultSide>(
+  calls: readonly BinaryCall<S>[],
+  sides: readonly [S, S] = DEFAULT_SIDES as unknown as readonly [S, S],
+): DualConsensus<S> {
   return {
-    majority: majorityConsensus(calls),
-    aggregate: logOddsConsensus(calls),
+    majority: majorityConsensus(calls, sides),
+    aggregate: logOddsConsensus(calls, sides),
   }
 }
 
-/** Extract binary calls from card/stream model rows (flat/null skipped). */
-export function binaryCallsFromModels(
+/** Extract binary calls from card/stream model rows (non-side / null skipped). */
+export function binaryCallsFromModels<S extends string = DefaultSide>(
   models: readonly { direction: string | null; probability: number | null }[],
-): BinaryCall[] {
-  const out: BinaryCall[] = []
+  sides: readonly [S, S] = DEFAULT_SIDES as unknown as readonly [S, S],
+): BinaryCall<S>[] {
+  const out: BinaryCall<S>[] = []
   for (const m of models) {
-    if (m.direction !== 'up' && m.direction !== 'down') continue
+    if (m.direction !== sides[0] && m.direction !== sides[1]) continue
     if (typeof m.probability !== 'number' || !Number.isFinite(m.probability)) continue
-    out.push({ direction: m.direction, probability: m.probability })
+    out.push({ direction: m.direction as S, probability: m.probability })
   }
   return out
 }

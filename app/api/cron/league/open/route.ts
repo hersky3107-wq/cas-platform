@@ -165,9 +165,9 @@ export async function POST(req: Request) {
         costCapUsd: remaining,
       })
       runningTotal += result.total_cost_usd
-      const directional = result.results.filter(
-        (r) => r.direction === 'up' || r.direction === 'down' || r.direction === 'flat'
-      ).length
+      // Any contract side token counts as an answer ('flat' is not storable —
+      // two-answers law); null is abstain/timeout/error.
+      const directional = result.results.filter((r) => r.direction !== null).length
       results.push({
         instrument: inst.instrument,
         label: inst.label,
