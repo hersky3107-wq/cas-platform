@@ -32,3 +32,15 @@ describe('computeCostUsd — grok tiered list price', () => {
     if (caller.kind === 'core') expect(caller.maxTurns).toBe(3)
   })
 })
+
+describe('computeCostUsd — grok-4.3 published tiers', () => {
+  const challenger = () => lookupRosterEntry('grok-4.3')!
+
+  it('uses $1.25/$2.50 under 200k', () => {
+    expect(computeCostUsd(challenger(), 100_000, 2_000)).toBeCloseTo(0.13, 6)
+  })
+
+  it('flips ALL tokens to $2.50/$5.00 at or above 200k', () => {
+    expect(computeCostUsd(challenger(), 200_000, 2_000)).toBeCloseTo(0.51, 6)
+  })
+})
