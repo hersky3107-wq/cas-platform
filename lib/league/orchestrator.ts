@@ -185,6 +185,17 @@ export type ModelRunResult = {
   /** Full visible reasoning block (PART 1, pre-JSON text), verbatim minus fences, capped at 4000 chars. Null on error/legacy/JSON-only outputs. */
   reasoning_text: string | null
   cost_usd: number
+  /**
+   * Token × roster list-price estimate for the same call(s). Always stored
+   * so we can see how far off the estimate was when `cost_usd` is billed.
+   */
+  estimated_cost_usd: number
+  /** xAI Agent Tools invocation count. Null for models that do not report one. */
+  server_side_tools_used: number | null
+  /** Raw xAI `cost_in_usd_ticks` (summed across retries). Null if never reported. */
+  cost_in_usd_ticks: number | null
+  prompt_tokens: number | null
+  completion_tokens: number | null
   /** 'billed' = provider-reported actual/documented cost. 'estimated' = our token×list-price fallback. */
   cost_source: 'billed' | 'estimated'
   status: ModelStatus
@@ -462,10 +473,12 @@ type RawCall = {
   promptTokens: number | null
   completionTokens: number | null
   actualModel: string
-  /** Cost (USD) when the provider reports one — real billed (OpenRouter, Perplexity) or a documented flat-rate estimate (You.com). Null otherwise. */
+  /** Cost (USD) when the provider reports one — real billed (OpenRouter, Perplexity, xAI ticks) or a documented flat-rate estimate (You.com). Null otherwise. */
   costUsd: number | null
   /** True when costUsd came from a documented estimate rather than per-call billed telemetry. Meaningless when costUsd is null. */
   costIsEstimated: boolean
+  serverSideToolsUsed: number | null
+  costInUsdTicks: number | null
   error?: string
 }
 
@@ -500,6 +513,7 @@ async function callOnce(
       modelOverride: entry.caller.modelOverride,
       allowGeminiThinking: entry.caller.allowGeminiThinking,
       searchTool: entry.caller.searchTool,
+      maxTurns: entry.caller.maxTurns,
       timeoutMs,
     })
     return {
@@ -507,11 +521,12 @@ async function callOnce(
       promptTokens: res.promptTokens,
       completionTokens: res.completionTokens,
       actualModel: res.model || entry.model_id,
-      // Real billed cost when the provider reports one (currently only
-      // Perplexity's usage.cost.total_cost flows through here) — else null,
-      // and runOneModel falls back to a token×list-price estimate.
+      // Billed USD when the provider reports one (xAI ticks, Perplexity
+      // total_cost, OpenRouter usage.cost). Null → token×list-price estimate.
       costUsd: res.costUsd ?? null,
       costIsEstimated: false,
+      serverSideToolsUsed: res.serverSideToolsUsed ?? null,
+      costInUsdTicks: res.costInUsdTicks ?? null,
       error: res.error,
     }
   }  // Platform caller has no built-in external timeout — race it here.
@@ -532,6 +547,8 @@ async function callOnce(
     actualModel: entry.model_id,
     costUsd: res.costUsd ?? null,
     costIsEstimated: !!res.costIsEstimated,
+    serverSideToolsUsed: null,
+    costInUsdTicks: null,
     error: res.error,
   }
 }
@@ -557,10 +574,10 @@ async function callWithRetry(
       try {
         return await callOnce(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
       } catch (e2: unknown) {
-        return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, error: e2 instanceof Error ? e2.message : 'unknown error' }
+        return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
       }
     }
-    return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, error: msg }
+    return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, error: msg }
   }
 }
 
@@ -613,18 +630,36 @@ async function runOneModel(
 ): Promise<ModelRunResult> {
   let raw = await callWithRetry(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
   let totalCostUsd = 0
+  let estimatedCostUsd = 0
+  let toolsUsed: number | null = null
+  let ticksSum: number | null = null
   let costSource: 'billed' | 'estimated' = 'estimated'
 
   const base = { model_id: entry.model_id, actual_model: raw.actualModel, brand: entry.brand, camp: entry.camp, tier: entry.league_tier }
 
   const accumulateCost = (call: RawCall) => {
+    const estimate = computeCostUsd(entry, call.promptTokens, call.completionTokens)
+    estimatedCostUsd += estimate
     const hasProviderCost = typeof call.costUsd === 'number'
-    const usd = hasProviderCost
-      ? call.costUsd!
-      : computeCostUsd(entry, call.promptTokens, call.completionTokens)
-    totalCostUsd += usd
+    // Prefer the provider's billed figure when it reports one. The estimate
+    // is kept separately so we can see how far off the roster price was.
+    totalCostUsd += hasProviderCost ? call.costUsd! : estimate
     if (hasProviderCost && !call.costIsEstimated) costSource = 'billed'
+    if (typeof call.serverSideToolsUsed === 'number') {
+      toolsUsed = (toolsUsed ?? 0) + call.serverSideToolsUsed
+    }
+    if (typeof call.costInUsdTicks === 'number') {
+      ticksSum = (ticksSum ?? 0) + call.costInUsdTicks
+    }
   }
+
+  const ledger = () => ({
+    estimated_cost_usd: Number(estimatedCostUsd.toFixed(6)),
+    server_side_tools_used: toolsUsed,
+    cost_in_usd_ticks: ticksSum,
+    prompt_tokens: raw.promptTokens,
+    completion_tokens: raw.completionTokens,
+  })
 
   if (raw.error) {
     const status: ModelStatus = isTimeout(raw.error) ? 'timeout' : 'error'
@@ -637,6 +672,8 @@ async function runOneModel(
       reasoning_snippet: null,
       reasoning_text: null,
       cost_usd: 0,
+      ...ledger(),
+      estimated_cost_usd: 0,
       cost_source: 'estimated',
       status,
       error: raw.error,
@@ -663,6 +700,7 @@ async function runOneModel(
         reasoning_snippet: null,
         reasoning_text: null,
         cost_usd: Number(totalCostUsd.toFixed(6)),
+        ...ledger(),
         cost_source: costSource,
         status: isTimeout(retryRaw.error) ? 'timeout' : 'error',
         error: retryRaw.error,
@@ -685,6 +723,7 @@ async function runOneModel(
       reasoning_snippet: null,
       reasoning_text: null,
       cost_usd: Number(totalCostUsd.toFixed(6)),
+      ...ledger(),
       cost_source: costSource,
       status: 'error',
       error: reason,
@@ -725,6 +764,8 @@ async function runOneModel(
         completion_tokens: raw.completionTokens,
         reasoning_tokens: null,
         cost_usd: totalCostUsd,
+        estimated_cost_usd: estimatedCostUsd,
+        server_side_tools_used: toolsUsed,
       },
       { onConflict: 'round_id,model_id' }
     )
@@ -738,6 +779,7 @@ async function runOneModel(
     reasoning_snippet: rationale,
     reasoning_text: reasoningText,
     cost_usd: Number(totalCostUsd.toFixed(6)),
+    ...ledger(),
     cost_source: costSource,
     status: 'ok',
   }
@@ -762,6 +804,8 @@ async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promis
         completion_tokens: null,
         reasoning_tokens: null,
         cost_usd: 0,
+        estimated_cost_usd: 0,
+        server_side_tools_used: null,
       },
       { onConflict: 'round_id,model_id' }
     )

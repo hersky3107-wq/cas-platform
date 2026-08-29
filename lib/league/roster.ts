@@ -38,10 +38,17 @@ export type LeagueCaller =
       /** Google-only: let reasoning models run in default thinking mode. */
       allowGeminiThinking?: boolean
       /**
-       * Scout only: enable the provider's server-side web search (xAI Live
-       * Search / Anthropic web_search / Google grounding). No-op elsewhere.
+       * Scout only: enable the provider's server-side web search (xAI Agent
+       * Tools web_search / Anthropic web_search / Google grounding). No-op
+       * elsewhere.
        */
       searchTool?: boolean
+      /**
+       * xAI Agent Tools only: request-level `max_turns` (caps assistant/tool
+       * turns, not individual tool calls). web_search has no `max_uses`
+       * equivalent — that field is Anthropic-only.
+       */
+      maxTurns?: number
     }
   | {
       kind: 'platform'
@@ -76,7 +83,31 @@ export type RosterEntry = {
    * for OpenRouter-routed models this estimate is not used. Core/Meta models
    * (no reported cost) still fall back to this. Unknown → 0.
    */
-  price: { inputPerMTokens: number; outputPerMTokens: number }
+  price: RosterPrice
+}
+
+export type RosterPrice = {
+  inputPerMTokens: number
+  outputPerMTokens: number
+  /**
+   * When prompt tokens reach this threshold, BOTH input and output of the
+   * whole request bill at the higher rates (xAI long-context rule: "all
+   * tokens in the request" flip). A single blended rate is not acceptable
+   * here — $3/$15 is not on the published table, under-200k would be
+   * overstated, and crossing 200k would be understated.
+   */
+  longContext?: {
+    promptTokens: number
+    inputPerMTokens: number
+    outputPerMTokens: number
+  }
+}
+
+/** Official grok-4.5 / grok-4.6 list price (docs.x.ai, 2026-08). */
+const XAI_GROK_46_PRICE: RosterPrice = {
+  inputPerMTokens: 2,
+  outputPerMTokens: 6,
+  longContext: { promptTokens: 200_000, inputPerMTokens: 4, outputPerMTokens: 12 },
 }
 
 export const LEAGUE_ROSTER: RosterEntry[] = [
@@ -85,7 +116,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   { model_id: 'claude-fable-5', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'premier', provider_key: 'anthropic', reasoning: false, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-fable-5' }, price: { inputPerMTokens: 5, outputPerMTokens: 25 } },
   // Catalog id carries the -preview suffix; that IS the Gemini 3.1 Pro endpoint.
   { model_id: 'gemini-3.1-pro', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'premier', provider_key: 'google', reasoning: true, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.1-pro-preview', allowGeminiThinking: true }, price: { inputPerMTokens: 2, outputPerMTokens: 12 } },
-  { model_id: 'grok-4.5', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'premier', provider_key: 'xai', reasoning: true, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.5' }, price: { inputPerMTokens: 3, outputPerMTokens: 15 } },
+  { model_id: 'grok-4.5', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'premier', provider_key: 'xai', reasoning: true, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.5' }, price: XAI_GROK_46_PRICE },
   { model_id: 'muse-spark-1.2', brand: 'Meta Muse', product_alias: 'Muse', camp: 'us', league_tier: 'premier', provider_key: 'meta-muse', reasoning: true, caller: { kind: 'platform', platformId: 'meta-muse:muse-spark-1.2' }, price: { inputPerMTokens: 0, outputPerMTokens: 0 } },
   { model_id: 'qwen3.8-max', brand: 'Qwen', camp: 'china', league_tier: 'premier', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:qwen3.8-max' }, price: { inputPerMTokens: 1.2, outputPerMTokens: 6 } },
   // v4-pro spends any budget ≤3000 entirely on hidden reasoning (confirmed
@@ -153,7 +184,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // per the official roster; scout only specifies "Grok + live search").
   // Agent Tools web_search runs long (>60s default timeout, confirmed live
   // 2026-08-16) — per-entry 150s headroom.
-  { model_id: 'grok-4.6-livesearch', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'scout', provider_key: 'xai', reasoning: true, maxCompletionTokens: 2500, timeoutMs: 150_000, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.6', searchTool: true }, price: { inputPerMTokens: 3, outputPerMTokens: 15 } },
+  { model_id: 'grok-4.6-livesearch', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'scout', provider_key: 'xai', reasoning: true, maxCompletionTokens: 2500, timeoutMs: 150_000, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.6', searchTool: true, maxTurns: 3 }, price: XAI_GROK_46_PRICE },
   { model_id: 'claude-sonnet-5-websearch', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'scout', provider_key: 'anthropic', reasoning: false, maxCompletionTokens: 1600, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-sonnet-5', searchTool: true }, price: { inputPerMTokens: 3, outputPerMTokens: 15 } },
   { model_id: 'sonar-reasoning-pro', brand: 'Perplexity', product_alias: 'Sonar', camp: 'us', league_tier: 'scout', provider_key: 'perplexity', reasoning: true, maxCompletionTokens: 1600, caller: { kind: 'core', provider: 'perplexity', modelOverride: 'sonar-reasoning-pro' }, price: { inputPerMTokens: 2, outputPerMTokens: 8 } },
   { model_id: 'youcom-research', brand: 'You.com', camp: 'us', league_tier: 'scout', provider_key: 'youcom', reasoning: true, caller: { kind: 'platform', platformId: 'youcom:research' }, price: { inputPerMTokens: 0, outputPerMTokens: 0 } },
@@ -182,7 +213,12 @@ export function getRoster(tiers?: LeagueTier[]): RosterEntry[] {
   return LEAGUE_ROSTER.filter((m) => set.has(m.league_tier))
 }
 
-/** cost (USD) = tokens × per-model price. Missing tokens/price → 0. */
+/**
+ * Token × roster list-price estimate. Missing tokens/price → 0.
+ * Does NOT include tool fees (xAI web_search is $5/1k calls). When the
+ * provider reports billed USD, persist this as `estimated_cost_usd` and
+ * store the billed figure in `cost_usd`.
+ */
 export function computeCostUsd(
   entry: RosterEntry,
   promptTokens: number | null,
@@ -190,5 +226,19 @@ export function computeCostUsd(
 ): number {
   const pt = typeof promptTokens === 'number' ? promptTokens : 0
   const ct = typeof completionTokens === 'number' ? completionTokens : 0
-  return (pt / 1_000_000) * entry.price.inputPerMTokens + (ct / 1_000_000) * entry.price.outputPerMTokens
+  const long = entry.price.longContext
+  const useLong = !!long && pt >= long.promptTokens
+  const inRate = useLong ? long.inputPerMTokens : entry.price.inputPerMTokens
+  const outRate = useLong ? long.outputPerMTokens : entry.price.outputPerMTokens
+  return (pt / 1_000_000) * inRate + (ct / 1_000_000) * outRate
+}
+
+/** Pre-fix grok list price ($3/$15) — used only to compare against the old ledger. */
+export function computeLegacyGrokListPriceUsd(
+  promptTokens: number | null,
+  completionTokens: number | null
+): number {
+  const pt = typeof promptTokens === 'number' ? promptTokens : 0
+  const ct = typeof completionTokens === 'number' ? completionTokens : 0
+  return (pt / 1_000_000) * 3 + (ct / 1_000_000) * 15
 }

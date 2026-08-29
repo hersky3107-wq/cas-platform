@@ -1,6 +1,10 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { decryptText } from '@/lib/db/crypto'
 import { recordProviderCost } from '@/lib/ai/cost-span'
+import {
+  billedUsdFromProviderUsage,
+  serverSideToolsUsedFromUsage,
+} from '@/lib/ai/provider-billed-cost'
 
 const UNIVERSAL_LANGUAGE_PROMPT_RULE = `IMPORTANT: Always respond in the same language the user wrote their message in. If the user writes in Japanese, respond in Japanese. If in French, respond in French. If in English, respond in English. Match the user's language exactly.`
 const MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT =
@@ -58,8 +62,12 @@ export type RouterResult = {
   promptTokens: number | null
   completionTokens: number | null
   totalTokens: number | null
-  /** REAL billed cost (USD) when the provider's response reports one (currently only Perplexity). Null otherwise. */
+  /** REAL billed cost (USD) when the provider's response reports one. Null otherwise. */
   costUsd?: number | null
+  /** xAI `usage.cost_in_usd_ticks` (integer). Null when the provider did not send ticks. */
+  costInUsdTicks?: number | null
+  /** xAI Agent Tools `num_server_side_tools_used`. Null for every other provider. */
+  serverSideToolsUsed?: number | null
   /** Gemini thoughtsTokenCount when present. */
   thoughtsTokenCount?: number | null
   finishReason?: string | null
@@ -223,12 +231,16 @@ function normalizeTokens({
   completionTokens,
   totalTokens,
   costUsd,
+  costInUsdTicks,
+  serverSideToolsUsed,
 }: {
   promptTokens?: number | null
   completionTokens?: number | null
   totalTokens?: number | null
-  /** REAL billed cost (USD) when the provider's response reports one (currently only Perplexity's usage.cost.total_cost). */
+  /** REAL billed cost (USD) when the provider's response reports one. */
   costUsd?: number | null
+  costInUsdTicks?: number | null
+  serverSideToolsUsed?: number | null
 }) {
   const pt = typeof promptTokens === 'number' ? promptTokens : null
   const ct = typeof completionTokens === 'number' ? completionTokens : null
@@ -239,7 +251,16 @@ function normalizeTokens({
         ? pt + ct
         : null
   const cost = typeof costUsd === 'number' ? costUsd : null
-  return { promptTokens: pt, completionTokens: ct, totalTokens: tt, costUsd: cost }
+  const ticks = typeof costInUsdTicks === 'number' ? costInUsdTicks : null
+  const tools = typeof serverSideToolsUsed === 'number' ? serverSideToolsUsed : null
+  return {
+    promptTokens: pt,
+    completionTokens: ct,
+    totalTokens: tt,
+    costUsd: cost,
+    costInUsdTicks: ticks,
+    serverSideToolsUsed: tools,
+  }
 }
 
 async function fetchWithRetry(
@@ -328,6 +349,7 @@ async function callOpenAICompatibleChat({
   const choice = json?.choices?.[0]
   const content = choice?.message?.content ?? null
   const usage = json?.usage ?? {}
+  const ticks = typeof usage?.cost_in_usd_ticks === 'number' ? usage.cost_in_usd_ticks : null
 
   return {
     text: typeof content === 'string' ? content : null,
@@ -335,11 +357,12 @@ async function callOpenAICompatibleChat({
       promptTokens: usage?.prompt_tokens,
       completionTokens: usage?.completion_tokens,
       totalTokens: usage?.total_tokens,
-      // Perplexity-only: usage.cost.total_cost is the REAL billed USD for this
-      // call (token cost + request/search fees). Other OpenAI-compatible
-      // providers on this generic path don't send `usage.cost`, so this stays
-      // null for them and callers fall back to a token×price estimate.
-      costUsd: usage?.cost?.total_cost,
+      // Perplexity `usage.cost.total_cost`, OpenRouter-style numeric
+      // `usage.cost`, or xAI `usage.cost_in_usd_ticks`. Other providers
+      // on this path leave this null and callers fall back to a token×price
+      // estimate.
+      costUsd: billedUsdFromProviderUsage(usage),
+      costInUsdTicks: ticks,
     }),
   }
 }
@@ -359,6 +382,7 @@ async function callXaiAgentSearch({
   prompt,
   systemPrompt,
   maxCompletionTokens,
+  maxTurns,
 }: {
   provider: ExtendedAiProviderName
   apiKey: string
@@ -366,6 +390,12 @@ async function callXaiAgentSearch({
   prompt: string
   systemPrompt: string
   maxCompletionTokens?: number
+  /**
+   * Caps assistant/tool turns in the agentic loop (xAI request-level
+   * `max_turns`). Not a per-tool `max_uses` — xAI web_search has no such
+   * field; that knob is Anthropic-only.
+   */
+  maxTurns?: number
 }) {
   const payload: Record<string, unknown> = {
     model,
@@ -375,6 +405,9 @@ async function callXaiAgentSearch({
   if (systemPrompt) payload.instructions = systemPrompt
   if (typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0) {
     payload.max_output_tokens = maxCompletionTokens
+  }
+  if (typeof maxTurns === 'number' && maxTurns > 0) {
+    payload.max_turns = maxTurns
   }
 
   const res = await fetchWithRetry(provider, 'https://api.x.ai/v1/responses', {
@@ -401,12 +434,16 @@ async function callXaiAgentSearch({
     .join('\n')
 
   const u = json?.usage
+  const ticks = typeof u?.cost_in_usd_ticks === 'number' ? u.cost_in_usd_ticks : null
   return {
     text: text || null,
     usage: normalizeTokens({
       promptTokens: u?.input_tokens,
       completionTokens: u?.output_tokens,
       totalTokens: u?.total_tokens,
+      costUsd: billedUsdFromProviderUsage(u),
+      costInUsdTicks: ticks,
+      serverSideToolsUsed: serverSideToolsUsedFromUsage(u),
     }),
   }
 }
@@ -780,6 +817,7 @@ async function callProvider({
   geminiThinkingLevel,
   anthropicThinking,
   searchTool,
+  maxTurns,
 }: {
   provider: ExtendedAiProviderName
   apiKey: string
@@ -797,12 +835,14 @@ async function callProvider({
   /** Forwarded to callAnthropic; ignored by non-anthropic providers. */
   anthropicThinking?: 'disabled' | 'enabled'
   /**
-   * Scout-tier live web search. Only meaningful for xai (Live Search
-   * `search_parameters`), anthropic (web_search tool) and google (Search
+   * Scout-tier live web search. Only meaningful for xai (Agent Tools
+   * web_search), anthropic (web_search tool) and google (Search
    * grounding). OpenAI's search models (e.g. gpt-5-search-api) search
    * natively by model choice; every other provider ignores this.
    */
   searchTool?: boolean
+  /** xAI Agent Tools only: request-level `max_turns`. Ignored elsewhere. */
+  maxTurns?: number
 }) {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
   const sourceUserText =
@@ -898,6 +938,7 @@ async function callProvider({
         prompt: promptWithLanguageRule,
         systemPrompt: injectedSystemPrompt,
         maxCompletionTokens,
+        maxTurns,
       })
       return { model, text, usage }
     }
@@ -1054,6 +1095,12 @@ export type RunSingleProviderParams = {
    */
   searchTool?: boolean
   /**
+   * xAI Agent Tools only: cap assistant/tool turns (`max_turns` on the
+   * Responses payload). web_search has no `max_uses` equivalent — that
+   * field is Anthropic-only and is already wired on the Claude scout.
+   */
+  maxTurns?: number
+  /**
    * When set, stored in `ai_responses.response_text` instead of the raw provider `text`
    * (e.g. Arena mode: store user-visible body without internal tags).
    */
@@ -1140,6 +1187,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     maxCompletionTokens,
     modelOverride,
     searchTool,
+    maxTurns,
     storedResponseText,
     aiResponseExtras,
     transformPersist,
@@ -1180,6 +1228,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       geminiThinkingLevel,
       anthropicThinking,
       searchTool,
+      maxTurns,
     })
 
     const { text, usage, finishReason } = params.timeoutMs && params.timeoutMs > 0
@@ -1269,6 +1318,8 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
       costUsd,
+      costInUsdTicks: usage.costInUsdTicks ?? null,
+      serverSideToolsUsed: usage.serverSideToolsUsed ?? null,
       thoughtsTokenCount:
         usage && typeof (usage as { thoughtsTokenCount?: unknown }).thoughtsTokenCount === 'number'
           ? (usage as { thoughtsTokenCount: number }).thoughtsTokenCount
