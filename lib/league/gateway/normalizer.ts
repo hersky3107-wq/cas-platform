@@ -52,7 +52,7 @@ export type ValidatedNormalizerOutput = {
 
 const PROPOSITION_KINDS: readonly PropositionKind[] = [
   'binary_close_higher',
-  'binary_event_outcome',
+  'binary_subject_outcome',
   'binary_threshold',
 ]
 

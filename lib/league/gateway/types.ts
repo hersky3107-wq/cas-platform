@@ -35,9 +35,9 @@ export type EntityKind =
   | 'macro_series'
 
 export type PropositionKind =
-  | 'binary_close_higher' // price-series family
-  | 'binary_event_outcome' // sports / awards / elections
-  | 'binary_threshold' // macro (e.g. print above consensus)
+  | 'binary_close_higher' // price-series family — sides up|down, qualifier = signed percent
+  | 'binary_subject_outcome' // a NAMED subject achieves the stated outcome or not (sports / awards / elections) — sides yes|no (a draw is NO, never "A vs B"), qualifier = audience detail (scoreline / margin / gap)
+  | 'binary_threshold' // macro / box office / chart entries — sides above|below, qualifier = predicted value
 
 export type RefusalCode =
   // shell-level

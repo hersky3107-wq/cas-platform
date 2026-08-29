@@ -2,6 +2,8 @@ import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { fetchDailyCloses, mapInstrumentToTwelveData } from '@/lib/league/market-data'
+import { adapterForInstrument } from '@/lib/league/gateway/adapters/registry.server'
+import { gradePlanFor } from '@/lib/league/gateway/grade-plan'
 import {
   createGradingEngine,
   GRADING_SWEEP_SCAN_CAP,
@@ -210,10 +212,28 @@ export const supabaseGradingStore: GradingStore = {
   },
 }
 
+/**
+ * RESOLUTION ASKS THE ADAPTER HOW TO GRADE (`CategoryAdapter.gradeSources`,
+ * consumed via `gradePlanFor` — see `lib/league/gateway/grade-plan.ts`).
+ * Tier-1 'twelve_data' takes the EXISTING hardened path below, byte-identical:
+ * same `fetchDailyCloses`, same window, same `resolveRoundOutcome`. A tier-1
+ * source with no executor yet fails the series fetch explicitly, leaving the
+ * round honestly ungraded instead of graded against the wrong feed.
+ */
+async function fetchSeriesViaGradePlan(instrument: string, startDate: string, endDate: string) {
+  const plan = gradePlanFor(adapterForInstrument(instrument), instrument)
+  if (plan.source !== 'price_series') {
+    return { ok: false as const, error: `no grading executor for tier-1 source '${plan.tier1Kind}' yet` }
+  }
+  return fetchDailyCloses(instrument, startDate, endDate)
+}
+
 const engine = createGradingEngine({
   store: supabaseGradingStore,
-  fetchSeries: fetchDailyCloses,
-  isPriceInstrument: (instrument) => mapInstrumentToTwelveData(instrument) !== null,
+  fetchSeries: fetchSeriesViaGradePlan,
+  isPriceInstrument: (instrument) =>
+    gradePlanFor(adapterForInstrument(instrument), instrument).source === 'price_series' &&
+    mapInstrumentToTwelveData(instrument) !== null,
 })
 
 /**

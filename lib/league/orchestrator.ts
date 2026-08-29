@@ -14,16 +14,16 @@ import { adapterForLedgerCategory } from '@/lib/league/gateway/adapters/registry
 import { buildPriceSeriesPacket } from '@/lib/league/gateway/adapters/price-series-packet'
 import { LIVE_PRICE_SERIES_IO } from '@/lib/league/gateway/adapters/price-series-io.server'
 import type { CategoryPacket, PacketBuildContext } from '@/lib/league/gateway/types'
-import {
-  isBinaryDirection,
-  parsePrediction,
-  sanitizeRationale,
-  splitReasoningAndJson,
-  type ParsedPrediction,
-} from '@/lib/league/prediction-parse'
+import { isBinaryDirection, sanitizeRationale } from '@/lib/league/prediction-parse'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
-import { aggregateMagnitude, validateMagnitude } from '@/lib/league/magnitude'
+import { aggregateMagnitude } from '@/lib/league/magnitude'
+import {
+  answerContractFor,
+  buildRoundPrompts,
+  type AnswerContract,
+  type ContractAnswer,
+} from '@/lib/league/answer-contract'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -46,7 +46,7 @@ import { aggregateMagnitude, validateMagnitude } from '@/lib/league/magnitude'
 const DEFAULT_CONCURRENCY = 6
 const DEFAULT_TIMEOUT_MS = 60_000
 // Run default. Raised 1200 → 3000 when the visible reasoning block (PART 1 of
-// CLOSED_BOOK_SYSTEM_PROMPT) became mandatory: ~150 words of reasoning plus the
+// the closed-book system prompt in answer-contract.ts) became mandatory: ~150 words of reasoning plus the
 // JSON line needs ~400-600 visible tokens, and models with hidden reasoning
 // spend from the same budget — a tight cap reproduces the empty-content
 // failures documented in roster.ts. Heavy hidden reasoners carry larger
@@ -57,57 +57,13 @@ const PREMIER_MAX_COMPLETION_TOKENS = 5000
 const FALLBACK_COST_CAP_USD = 20
 
 /**
- * Closed-book tiers (premier/challenger/world): a reasoning league must ask
- * for reasoning. PART 1 is a mandatory four-line visible reasoning block —
- * cross-asset chain, numeric evidence weighing, base-rate deviation, and the
- * strongest self-counterargument — persisted verbatim to
- * model_predictions.reasoning_text. PART 2 is the answer JSON, unchanged in
- * shape, required to be the LAST line so `splitReasoningAndJson` can split
- * mixed output deterministically.
+ * PROMPTS, PARSER, VALIDATION, RETRY all live in `lib/league/answer-contract.ts`,
+ * ONE contract per proposition_kind (never per adapter). This orchestrator
+ * resolves the round's contract once and consumes it — it carries no
+ * hardcoded side words of its own. The binary_close_higher contract is proven
+ * byte-identical to the historical prompt set in
+ * `__tests__/answer-contract-parity.test.ts`.
  */
-const CLOSED_BOOK_SYSTEM_PROMPT = `You are an independent forecasting model in a prediction league. You answer ALONE; you never see any other model's answer. Your visible output has exactly TWO parts, in this order.
-
-PART 1 — REASONING: exactly four labeled lines of plain text (no markdown, no code fences), at most ~150 words total. Cite actual numbers from the packet, not vague qualities.
-CHAIN: what the RELATED INSTRUMENTS block implies for this proposition — the cross-asset connection a single-asset analyst would miss. If the packet has no related-instruments data, write "CHAIN: no related-instrument data".
-EVIDENCE: which specific packet numbers argue up, which argue down, and which side is weightier and why.
-BASE RATE: what the packet's base rate says for this horizon, and why this round should or should not deviate from it.
-COUNTER: the strongest argument AGAINST your own conclusion.
-
-PART 2 — ANSWER: exactly ONE line of strict JSON as the LAST line of your output, nothing after it.
-
-Required JSON keys: direction, probability, magnitude, rationale.
-
-Example shape (replace values with your own forecast — do not copy this example verbatim):
-{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close."}
-
-- direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
-- probability: your confidence in the stated direction, integer 0 through 100.
-- magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.
-- rationale: one concise sentence distilled from your reasoning (200 characters or fewer). Write your actual conclusion — never repeat these instructions, schema labels, or placeholder text.`
-
-/**
- * Scout keeps the original JSON-only contract: their experiment is
- * self-directed web search, their output already interleaves citations, and
- * their budgets (1600-2500) were sized for search overhead — the reasoning
- * block is a closed-book-packet exercise they cannot perform (no packet).
- */
-const SCOUT_SYSTEM_PROMPT = `You are an independent forecasting model in a prediction league. You answer ALONE; you never see any other model's answer. You may reason internally, but your VISIBLE output MUST be exactly ONE line of strict JSON and nothing else — no markdown, no code fences, no preamble, no trailing text.
-
-Required JSON keys: direction, probability, magnitude, rationale.
-
-Example shape (replace values with your own forecast — do not copy this example verbatim):
-{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close."}
-
-- direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
-- probability: your confidence in the stated direction, integer 0 through 100.
-- magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.
-- rationale: one concise sentence of reasoning or a key citation in plain prose (200 characters or fewer). Write your actual reasoning — never repeat these instructions, schema labels, or placeholder text.
-Return the JSON object only.`
-
-/** Appended once when the first answer has an invalid direction and/or magnitude.
- *  Tier-neutral: brief reasoning before the JSON is allowed (closed-book) but the
- *  LAST line must be the answer JSON (both tiers' parse path). */
-const PREDICTION_RETRY_INSTRUCTION = `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"..."}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`
 
 type ItemType = 'ranked' | 'on_demand'
 
@@ -364,63 +320,6 @@ async function persistAnchorPrice(
   }
 }
 
-function buildPropositionBlock(round: ResolvedRound): string {
-  return [
-    `Proposition: ${round.proposition_text}`,
-    `Instrument: ${round.instrument}`,
-    `Category: ${round.category}`,
-    `Horizon: ${round.horizon}`,
-    `Resolution rule: ${round.resolution_rule}`,
-    `Resolves at (UTC): ${round.resolves_at}`,
-  ].join('\n')
-}
-
-/**
- * Builds the two prompt variants for a round:
- *  - price:  premier/challenger/world. Injects the Twelve Data packet AND the
- *            shared research packet (identical text for every closed-book
- *            model — fairness); when a packet is present, abstention for "no
- *            data" is explicitly disallowed. Binary up/down only.
- *  - scout:  research agents (You.com / Perplexity / grounded Gemini / ...).
- *            NO packets — they gather live data via their own web search and
- *            cite it. Keeping Scout packet-free is the league's core
- *            experiment: self-directed search vs reasoning from a fixed packet.
- */
-function buildPrompts(round: ResolvedRound, injection: string | null, packetError?: string): { price: string; scout: string } {
-  const block = buildPropositionBlock(round)
-  const priceCloser =
-    'Write the four-line reasoning block (CHAIN / EVIDENCE / BASE RATE / COUNTER), then the single-line JSON object as the LAST line, exactly as described in the system message.'
-  const scoutCloser = 'Respond with the single-line JSON object described in the system message.'
-
-  let price: string
-  if (injection) {
-    price = [
-      block,
-      '',
-      injection,
-      '',
-      'You have the numeric market data and research above. Exactly two answers exist: up or down, plus a probability. Do NOT answer "abstain" for lack of data — the packet above is your data. Prefer the numbered blocks over prose if they disagree.',
-      priceCloser,
-    ].join('\n')
-  } else {
-    price = [
-      block,
-      '',
-      `No live market-data packet is available for this instrument${packetError ? ` (${packetError})` : ''}. Use your own prior knowledge; give your best up or down call with a probability. Exactly two answers exist — never flat or abstain.`,
-      priceCloser,
-    ].join('\n')
-  }
-
-  const scout = [
-    block,
-    '',
-    'Use live web search to gather the most recent price/context for this instrument, then make a directional call (exactly up or down) with a probability and cite your key source in the rationale.',
-    scoutCloser,
-  ].join('\n')
-
-  return { price, scout }
-}
-
 function isTransient(errMsg: string): boolean {
   const m = errMsg.toLowerCase()
   return (
@@ -477,15 +376,16 @@ type RawCall = {
   error?: string
 }
 
-/** Tier-appropriate system prompt: closed-book tiers carry the mandatory
- *  reasoning-block contract; scout keeps the original JSON-only contract. */
-function systemPromptFor(entry: RosterEntry): string {
-  return entry.league_tier === 'scout' ? SCOUT_SYSTEM_PROMPT : CLOSED_BOOK_SYSTEM_PROMPT
+/** Tier-appropriate system prompt from the round's answer contract: closed-book
+ *  tiers carry the mandatory reasoning-block variant; scout keeps the JSON-only variant. */
+function systemPromptFor(entry: RosterEntry, contract: AnswerContract): string {
+  return entry.league_tier === 'scout' ? contract.scoutSystemPrompt : contract.closedBookSystemPrompt
 }
 
 /** Single provider call via the appropriate EXISTING utility (no timeout/retry here). */
 async function callOnce(
   entry: RosterEntry,
+  contract: AnswerContract,
   userPrompt: string,
   timeoutMs: number,
   userId: string | null,
@@ -500,7 +400,7 @@ async function callOnce(
       userId: userId ?? null,
       provider: entry.caller.provider,
       prompt: userPrompt,
-      systemPrompt: systemPromptFor(entry),
+      systemPrompt: systemPromptFor(entry, contract),
       // Truthy only to enable an admin BYOK lookup; RLS bypass is via supabaseAdmin.
       supabaseAccessToken: userId ? 'league-admin' : undefined,
       skipLanguageInjection: true,
@@ -529,7 +429,7 @@ async function callOnce(
   const res = await withTimeout(
     callPlatformModel({
       id: entry.caller.platformId,
-      systemPrompt: systemPromptFor(entry),
+      systemPrompt: systemPromptFor(entry, contract),
       userPrompt,
       maxCompletionTokens,
     }),
@@ -553,15 +453,16 @@ async function callOnce(
 /** Call with a single retry on transient failure. Timeouts surface as errors, not throws. */
 async function callWithRetry(
   entry: RosterEntry,
+  contract: AnswerContract,
   userPrompt: string,
   timeoutMs: number,
   userId: string | null,
   maxCompletionTokens: number
 ): Promise<RawCall> {
   try {
-    const first = await callOnce(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
+    const first = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens)
     if (first.error && isTransient(first.error)) {
-      const second = await callOnce(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
+      const second = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens)
       return second
     }
     return first
@@ -569,7 +470,7 @@ async function callWithRetry(
     const msg = e instanceof Error ? e.message : 'unknown error'
     if (isTransient(msg)) {
       try {
-        return await callOnce(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
+        return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens)
       } catch (e2: unknown) {
         return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
       }
@@ -602,22 +503,9 @@ async function callWithRetry(
  * timeout). Default timeout is DEFAULT_TIMEOUT_MS (60s); roster entries may
  * set `timeoutMs` per model (e.g. deepseek-v4-pro 240s, grok-4.6-livesearch 150s).
  */
-/**
- * Combined validity gate for direction + magnitude: a model's answer is only
- * usable when BOTH are valid. `magnitude` is required exactly like
- * `direction` — a missing/non-numeric/out-of-bounds/wrong-signed value fails
- * this gate the same way a non-binary direction does, and both share the
- * SAME one-retry-then-error budget (see `runOneModel`'s single retry call
- * below) rather than each getting its own retry.
- */
-function predictionInvalidReason(parsed: ParsedPrediction | null, horizon: string): string | null {
-  if (!isBinaryDirection(parsed?.direction)) return 'non_binary_direction'
-  const mv = validateMagnitude(parsed!.direction, parsed!.magnitude, horizon)
-  return mv.ok ? null : `invalid_magnitude:${mv.reason}`
-}
-
 async function runOneModel(
   entry: RosterEntry,
+  contract: AnswerContract,
   roundId: string,
   userPrompt: string,
   timeoutMs: number,
@@ -625,7 +513,7 @@ async function runOneModel(
   maxCompletionTokens: number,
   horizon: string
 ): Promise<ModelRunResult> {
-  let raw = await callWithRetry(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
+  let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens)
   let totalCostUsd = 0
   let estimatedCostUsd = 0
   let toolsUsed: number | null = null
@@ -682,14 +570,15 @@ async function runOneModel(
   }
 
   accumulateCost(raw)
-  let parsed = parsePrediction(raw.text)
+  let answer: ContractAnswer | null = contract.parse(raw.text)
 
-  // Invalid direction and/or magnitude (flat/abstain/missing/out-of-bounds/wrong-signed):
-  // one stricter retry naming BOTH requirements, then error.
-  let reason = predictionInvalidReason(parsed, horizon)
-  if (reason) {
-    const retryPrompt = `${userPrompt}\n\n${PREDICTION_RETRY_INSTRUCTION}`
-    const retryRaw = await callWithRetry(entry, retryPrompt, timeoutMs, userId, maxCompletionTokens)
+  // Invalid side and/or qualifier (flat/abstain/missing/out-of-bounds/wrong-signed):
+  // one stricter retry naming BOTH requirements, then error. Both are gated by
+  // the contract's single `validate` and share the SAME one-retry budget.
+  let validation = contract.validate(answer, horizon)
+  if (!validation.ok) {
+    const retryPrompt = `${userPrompt}\n\n${contract.retryInstruction}`
+    const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens)
     if (retryRaw.error) {
       await upsertNullPrediction(roundId, entry)
       return {
@@ -709,11 +598,11 @@ async function runOneModel(
     }
     accumulateCost(retryRaw)
     raw = retryRaw
-    parsed = parsePrediction(retryRaw.text)
-    reason = predictionInvalidReason(parsed, horizon)
+    answer = contract.parse(retryRaw.text)
+    validation = contract.validate(answer, horizon)
   }
 
-  if (reason) {
+  if (!validation.ok) {
     await upsertNullPrediction(roundId, entry)
     return {
       ...base,
@@ -727,25 +616,25 @@ async function runOneModel(
       ...ledger(),
       cost_source: costSource,
       status: 'error',
-      error: reason,
+      error: validation.reason,
     }
   }
 
   const rationale =
-    sanitizeRationale(parsed!.rationale) ??
+    sanitizeRationale(answer!.rationale) ??
     sanitizeRationale(raw.text ? raw.text.trim().slice(0, 500) : null)
   // Visible reasoning block (everything before the final answer JSON). Stored
   // for every tier — scout's pre-JSON prose (citations) is raw material too.
   // reasoning_snippet stays the one-line display rationale; this is the full text.
-  const reasoningText = raw.text ? splitReasoningAndJson(raw.text).reasoning : null
-  const probability = parsed!.probability ?? null
-  const direction = parsed!.direction
-  // `reason` (checked above) already screened out a non-binary direction via
-  // `predictionInvalidReason` -> `isBinaryDirection`, so this narrows what
-  // `parsed!.direction`'s static type (`BinaryDirection | null`) cannot express.
+  const reasoningText = contract.splitReasoning(raw.text)
+  const probability = answer!.probability ?? null
+  const direction = validation.side
+  // LEDGER SHAPE: predicted_direction / predicted_magnitude_pct only exist for
+  // the up|down + signed-percent contract today (DB CHECK constrains the
+  // column). `generatePredictions` refuses non-close_higher kinds before any
+  // model call, so this narrows what the contract's generic side type cannot.
   if (!isBinaryDirection(direction)) throw new Error('unreachable: non-binary direction reached persistence')
-  const magnitudeValidation = validateMagnitude(direction, parsed!.magnitude, horizon)
-  const magnitude = magnitudeValidation.ok ? magnitudeValidation.value : null
+  const magnitude = validation.qualifierNumber
 
   await supabaseAdmin
     .from('model_predictions')
@@ -863,6 +752,22 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
     },
   }
   const adapter = adapterForLedgerCategory(round.category)
+  // ANSWER CONTRACT: how models respond is decided by the round's
+  // proposition_kind (via the adapter), NEVER per adapter/category — twelve
+  // adapters share three contracts. Categories without an adapter are all
+  // price chips today and take the close_higher contract they always had.
+  const propositionKind = adapter ? adapter.slotsForRound(round).proposition_kind : 'binary_close_higher'
+  const contract = answerContractFor(propositionKind)
+  // LEDGER GATE: model_predictions.predicted_direction is CHECK-constrained to
+  // up/down/flat and every render/consensus surface still assumes those
+  // tokens. Refuse BEFORE spending on packets or model calls rather than
+  // persist a side token the ledger and UI would misstate.
+  if (contract.kind !== 'binary_close_higher') {
+    throw new Error(
+      `league orchestrator: no ledger storage for proposition_kind '${contract.kind}' yet — ` +
+        `predicted_direction is CHECK-constrained to up/down/flat; migrate storage before opening non-price rounds`
+    )
+  }
   const pkt: CategoryPacket = adapter
     ? await adapter.buildPacket(adapter.slotsForRound(round), packetCtx)
     : await buildPriceSeriesPacket(packetCtx, LIVE_PRICE_SERIES_IO)
@@ -871,7 +776,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   if (pkt.injection) {
     await persistClosedBookPacket(round.id, pkt.researchCacheKey, pkt.injection)
   }
-  const prompts = buildPrompts(round, pkt.injection, pkt.dataPacket.error)
+  const prompts = buildRoundPrompts(contract, round, pkt.injection, pkt.dataPacket.error)
 
   const results: ModelRunResult[] = []
   let runningCost = pkt.researchCostUsd
@@ -892,7 +797,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       const prompt = entry.league_tier === 'scout' ? prompts.scout : prompts.price
       const tokenBudget = resolveMaxCompletionTokensForEntry(entry, maxCompletionTokens)
       const entryTimeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : timeoutMs
-      const outcome = await runOneModel(entry, round.id, prompt, entryTimeoutMs, userId ?? null, tokenBudget, round.horizon)
+      const outcome = await runOneModel(entry, contract, round.id, prompt, entryTimeoutMs, userId ?? null, tokenBudget, round.horizon)
       runningCost += outcome.cost_usd
       results.push(outcome)
       // Fires AFTER the DB write inside runOneModel — see onModelResult's doc

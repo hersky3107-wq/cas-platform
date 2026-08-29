@@ -228,7 +228,7 @@ describe('orchestrator writes the snapshot BEFORE model calls', () => {
   it('persistClosedBookPacket is invoked after assemble and before runOneModel', () => {
     const src = readFileSync(join(__dirname, '../orchestrator.ts'), 'utf8')
     const persistAt = src.indexOf('await persistClosedBookPacket(')
-    const promptsAt = src.indexOf('const prompts = buildPrompts(')
+    const promptsAt = src.indexOf('const prompts = buildRoundPrompts(')
     const runAt = src.indexOf('await runOneModel(')
     expect(persistAt).toBeGreaterThan(0)
     expect(promptsAt).toBeGreaterThan(persistAt)
