@@ -8,13 +8,35 @@ import type { OracleSessionResponse } from "@/lib/oracle/session-types";
 
 const BEST_ANSWER_DELAY_MS = 2000;
 
+/**
+ * Vote-button accents. Keyed by the label that lands in
+ * `oracle_sessions.responses[].ai_name`, which is a legacy display name on the
+ * old routes and a roster BRAND on the runner. Both sets are listed because a
+ * missing entry silently renders a grey button.
+ *
+ * Colours only — this component must never import the model registry, which
+ * carries server-only model ids.
+ */
 const AI_ACCENT: Record<string, string> = {
+  // Legacy display names (Astro / Tarot / Daily)
   ChatGPT: "#10A37F",
   Claude: "#D97757",
   Gemini: "#4285F4",
   Grok: "#718096",
+  // Roster brands (runner sessions)
+  "Z.ai": "#5B5BD6",
+  "Moonshot AI": "#06B6D4",
+  xAI: "#0B0B0B",
+  NVIDIA: "#76B900",
   DeepSeek: "#4D6BFE",
+  Google: "#4285F4",
+  OpenAI: "#10A37F",
+  Anthropic: "#D97757",
+  Cohere: "#39594D",
+  Meta: "#0064E0",
+  MiniMax: "#F2545B",
   Mistral: "#FF7000",
+  NAVER: "#03C75A",
 };
 
 type SaveOracleSessionResult =
@@ -28,7 +50,33 @@ type OracleSessionEndFlowProps = {
   getResponses: () => OracleSessionResponse[];
   /** AI display names eligible for “best answer” vote */
   voteLabels: string[];
+  /**
+   * Identity of the run being archived — the runner session id for engine
+   * sessions. The mount ref alone cannot prevent a duplicate archive row,
+   * because a resumed session mounts this component again with the same
+   * finished run. Keyed on this, the archive is written exactly once and later
+   * mounts reuse the stored share id.
+   */
+  saveKey?: string | null;
 };
+
+type ArchivedSession = { id: string; share_id: string };
+
+function archiveStorageKey(saveKey: string): string {
+  return `oracle.archive.${saveKey}`;
+}
+
+function readArchived(saveKey: string): ArchivedSession | null {
+  try {
+    const raw = window.localStorage.getItem(archiveStorageKey(saveKey));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ArchivedSession>;
+    if (typeof parsed.id !== "string" || typeof parsed.share_id !== "string") return null;
+    return { id: parsed.id, share_id: parsed.share_id };
+  } catch {
+    return null;
+  }
+}
 
 export function OracleSessionEndFlow({
   oracleType,
@@ -36,6 +84,7 @@ export function OracleSessionEndFlow({
   allDone,
   getResponses,
   voteLabels,
+  saveKey = null,
 }: OracleSessionEndFlowProps) {
   const [oracleSessionId, setOracleSessionId] = useState<string | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
@@ -47,9 +96,22 @@ export function OracleSessionEndFlow({
   );
   const [sessionEndVisual, setSessionEndVisual] = useState(false);
   const saveScheduledRef = useRef(false);
+  const archivedRef = useRef<ArchivedSession | null>(null);
   const bestAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sessionQuestion = question.trim() || "Oracle reading";
+
+  useEffect(() => {
+    if (!saveKey) return;
+    const stored = readArchived(saveKey);
+    if (!stored) return;
+    archivedRef.current = stored;
+    // Deferred so this effect only reads the external store.
+    queueMicrotask(() => {
+      setOracleSessionId(stored.id);
+      setShareId(stored.share_id);
+    });
+  }, [saveKey]);
 
   useEffect(() => {
     return () => {
@@ -91,6 +153,8 @@ export function OracleSessionEndFlow({
       q: string,
       responses: OracleSessionResponse[],
     ): Promise<SaveOracleSessionResult> => {
+      const archived = archivedRef.current;
+      if (archived) return { ok: true, id: archived.id, share_id: archived.share_id };
       if (responses.length < 1) return { ok: false, error: "empty responses" };
       try {
         const res = await authenticatedFetch("/api/oracle/save-session", {
@@ -105,6 +169,18 @@ export function OracleSessionEndFlow({
         if (!res.ok || !j.id || !j.share_id) {
           return { ok: false, error: j?.error ?? `HTTP ${res.status}` };
         }
+        archivedRef.current = { id: j.id, share_id: j.share_id };
+        if (saveKey) {
+          try {
+            window.localStorage.setItem(
+              archiveStorageKey(saveKey),
+              JSON.stringify(archivedRef.current),
+            );
+          } catch {
+            // A full or blocked store only costs us the duplicate guard on a
+            // later remount; the archive row itself is already written.
+          }
+        }
         setOracleSessionId(j.id);
         setShareId(j.share_id);
         setSessionEndSaveFailed(false);
@@ -113,7 +189,7 @@ export function OracleSessionEndFlow({
         return { ok: false, error: e instanceof Error ? e.message : "network error" };
       }
     },
-    [oracleType],
+    [oracleType, saveKey],
   );
 
   const dismissSessionPanels = useCallback(() => {
@@ -203,7 +279,7 @@ export function OracleSessionEndFlow({
     if (!allDone) return;
     if (saveScheduledRef.current) return;
     const responses = getResponses();
-    if (responses.length < 1) return;
+    if (!archivedRef.current && responses.length < 1) return;
     saveScheduledRef.current = true;
     void (async () => {
       const saved = await saveOracleSession(sessionQuestion, responses);

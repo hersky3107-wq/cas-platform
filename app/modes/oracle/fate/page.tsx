@@ -1,68 +1,34 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+/**
+ * Fate route shell.
+ *
+ * Server component on purpose: the reader roster is resolved here so the brand
+ * names can be shown BEFORE the run without shipping the model registry (which
+ * carries server-only model ids) into the browser bundle.
+ */
 import HelpModal from "@/components/HelpModal";
-import type { OracleBirthProfileV1 } from "@/lib/oracle/types";
 import { oracleFateHelpContent } from "@/lib/help-modal/oracle-fate-content";
-import OracleReadingClient from "../OracleReadingClient";
-
-const BG = "min-h-screen bg-[#0a0f1e] text-white";
+import {
+  ORACLE_SINGLE_READER_COUNTS,
+  resolveSingleSystemRoster,
+} from "@/lib/oracle/ai/family-roster";
+import { creditsForOracleSession } from "@/lib/oracle/runner/conventions";
+import FateClient, { type FateRosterOption } from "./FateClient";
 
 export default function OracleFatePage() {
-  const router = useRouter();
-  const [ready, setReady] = useState(false);
-  const [oracleProfile, setOracleProfile] =
-    useState<OracleBirthProfileV1 | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const res = await fetch("/api/oracle/profile").catch(() => null);
-      if (cancelled) return;
-
-      if (!res?.ok) {
-        setOracleProfile(null);
-        setReady(true);
-        return;
-      }
-
-      const j = (await res.json().catch(() => null)) as {
-        profile?: OracleBirthProfileV1 | null;
-        complete?: boolean;
-      };
-      const hasProfile = j?.profile != null && typeof j.profile === "object";
-      if (!hasProfile || !j?.complete) {
-        router.replace("/modes/oracle/profile");
-        return;
-      }
-      setOracleProfile(j.profile!);
-      setReady(true);
-    })();
-    return () => {
-      cancelled = true;
+  const rosters: FateRosterOption[] = ORACLE_SINGLE_READER_COUNTS.map((readerCount) => {
+    const roster = resolveSingleSystemRoster("saju", readerCount);
+    return {
+      readerCount,
+      readers: [...roster.readers],
+      synthesizer: roster.synthesizer,
+      credits: creditsForOracleSession("single", readerCount),
     };
-  }, [router]);
-
-  if (!ready)
-    return (
-      <main className={BG} aria-busy="true">
-        <HelpModal content={oracleFateHelpContent} />
-      </main>
-    );
+  });
 
   return (
     <>
       <HelpModal content={oracleFateHelpContent} />
-      <OracleReadingClient
-      apiPath="/api/oracle/fate"
-      oracleType="saju"
-      title="Fate circle"
-      blurb="Eastern pillar reading from your stored birth sketch. Claude · Gemini · Grok · DeepSeek · Mistral answer in prose, then gpt‑4.1 weaves them."
-      {...(oracleProfile
-        ? { skipProfileGate: true as const, oracleBirthProfile: oracleProfile }
-        : {})}
-      />
+      <FateClient rosters={rosters} />
     </>
   );
 }

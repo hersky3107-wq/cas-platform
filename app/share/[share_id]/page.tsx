@@ -8,6 +8,7 @@ import { parseDeepResponses } from '@/lib/deep/session-types'
 import { parseComedyResponses } from '@/lib/comedy/session-types'
 import { parseTaleResponses } from '@/lib/tale/session-types'
 import { parseOracleResponses } from '@/lib/oracle/session-types'
+import { oracleSystemDisplayName } from '@/lib/oracle/system-display'
 import { parseSuitResponses } from '@/lib/suit/session-types'
 import {
   parseArenaShareRoundRows,
@@ -476,7 +477,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
               : session.kind === 'tale'
                 ? 'AI Tale'
                 : session.kind === 'oracle'
-                  ? `AI Oracle (${session.oracle_type || 'session'})`
+                  ? `AI Oracle (${oracleSystemDisplayName(session.oracle_type) || 'session'})`
                   : session.kind === 'suit'
                     ? 'AI SUIT'
                     : session.kind === 'synod'
@@ -553,7 +554,7 @@ export default async function SharePage({ params }: PageProps) {
               : session.kind === 'tale'
                 ? 'AI Tale Session'
                 : session.kind === 'oracle'
-                  ? `AI Oracle Session — ${session.oracle_type || 'oracle'}`
+                  ? `AI Oracle Session — ${oracleSystemDisplayName(session.oracle_type) || 'oracle'}`
                   : session.kind === 'suit'
                     ? 'AI SUIT Legal Session'
                     : session.kind === 'synod'

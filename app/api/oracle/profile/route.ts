@@ -4,10 +4,95 @@ import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import type { ApproxBirthBand, Gender, OracleBirthProfileV1 } from '@/lib/oracle/types'
 import { oracleProfileLooksComplete } from '@/lib/oracle/profile-guard'
 import { approxBandToMidpointHHMM } from '@/lib/oracle/sijin'
+import { geocodeBirthCity } from '@/lib/oracle/geocode'
+import { projectV1ToRunnerProfile } from '@/lib/oracle/runner-profile-projection'
 import { fetchOracleBirthProfileAdmin, oracleV1ToUsersJson } from '@/lib/oracle/users-oracle-storage'
 
 const COLUMN_HINT_SQL =
   'ALTER TABLE users ADD COLUMN IF NOT EXISTS oracle_birth_profile JSONB;'
+
+const RUNNER_PROFILE_COLUMNS = 'id,birth_date,birth_time,birth_time_source,sex,tz'
+
+type RunnerProfileRow = {
+  id: string
+  birth_date: string
+  birth_time: string | null
+  birth_time_source: string
+  sex: string | null
+  tz: string | null
+}
+
+/**
+ * Materialize the runner's projection of the ONE birth form.
+ *
+ * oracle_profiles is derived data, so this is an upsert of the self row rather
+ * than a second profile identity. The birth city is geocoded ONCE — only when
+ * it changed or coordinates are missing — because that is a third-party call on
+ * a path the lobby hits. A geocode failure is not a save failure: the runner
+ * falls back to its default timezone/coords and records the substitution as an
+ * assumption.
+ */
+async function syncRunnerProfile(
+  userId: string,
+  v1: OracleBirthProfileV1,
+): Promise<RunnerProfileRow | null> {
+  const projected = projectV1ToRunnerProfile(v1)
+
+  const { data: existing, error: readError } = await supabaseAdmin
+    .from('oracle_profiles')
+    .select('id,birth_place,lat,lng,tz')
+    .eq('user_id', userId)
+    .eq('is_self', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (readError) {
+    console.warn('[oracle/profile] runner profile read:', readError.message)
+    return null
+  }
+
+  const placeChanged = (existing?.birth_place ?? null) !== projected.birth_place
+  const needsCoordinates =
+    existing == null || placeChanged || existing.lat == null || existing.lng == null
+
+  let lat = typeof existing?.lat === 'number' ? existing.lat : null
+  let lng = typeof existing?.lng === 'number' ? existing.lng : null
+  let tz = typeof existing?.tz === 'string' ? existing.tz : null
+
+  if (needsCoordinates && projected.birth_place) {
+    const geo = await geocodeBirthCity(projected.birth_place).catch(() => null)
+    if (geo) {
+      lat = geo.latitude
+      lng = geo.longitude
+      tz = geo.timezone ?? tz
+    } else if (placeChanged) {
+      lat = null
+      lng = null
+    }
+  }
+
+  const row = {
+    user_id: userId,
+    label: '나',
+    is_self: true,
+    ...projected,
+    lat,
+    lng,
+    tz,
+    updated_at: new Date().toISOString(),
+  }
+
+  const query = existing?.id
+    ? supabaseAdmin.from('oracle_profiles').update(row).eq('id', existing.id).eq('user_id', userId)
+    : supabaseAdmin.from('oracle_profiles').insert(row)
+
+  const { data, error } = await query.select(RUNNER_PROFILE_COLUMNS).single()
+  if (error) {
+    console.warn('[oracle/profile] runner profile write:', error.message)
+    return null
+  }
+  return data as RunnerProfileRow
+}
 
 export async function GET(req: Request) {
   const { user, error: authErr } = await resolveRouteAuth(req)
@@ -24,88 +109,33 @@ export async function GET(req: Request) {
   const complete =
     normalized && typeof normalized === 'object' && oracleProfileLooksComplete(normalized)
 
-  const { data: runnerProfile } = await supabaseAdmin
+  const { data: stored } = await supabaseAdmin
     .from('oracle_profiles')
-    .select('id,birth_date,birth_time,birth_time_source,sex,tz')
+    .select(RUNNER_PROFILE_COLUMNS)
     .eq('user_id', user.id)
     .eq('is_self', true)
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
+  // Backfill for sketches saved before the two stores were unified, so an
+  // existing profile is never re-collected just because the projection is new.
+  let runnerProfile = (stored as RunnerProfileRow | null) ?? null
+  if (!runnerProfile && complete && normalized) {
+    runnerProfile = await syncRunnerProfile(user.id, normalized)
+  }
+
   return NextResponse.json({
     profile: normalized ?? null,
     complete: !!(complete ?? false),
-    runnerProfile: runnerProfile ?? null,
+    runnerProfile,
+    subjectProfileId: runnerProfile?.id ?? null,
   })
 }
 
 function coerceGender(raw: unknown): Gender | null {
   if (raw === 'male' || raw === 'female' || raw === 'prefer_not_to_say') return raw
   return null
-}
-
-function isIanaTimezone(value: string): boolean {
-  try {
-    new Intl.DateTimeFormat('ko-KR', { timeZone: value }).format()
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function upsertSingleSystemProfile(userId: string, body: Record<string, unknown>) {
-  const birthDate = typeof body.birth_date === 'string' ? body.birth_date.trim() : ''
-  const birthTimeUnknown = body.birth_time_unknown === true
-  const birthTime = typeof body.birth_time === 'string' ? body.birth_time.trim() : ''
-  const timezone = typeof body.timezone === 'string' ? body.timezone.trim() : ''
-  const sex = body.sex === 'M' || body.sex === 'F' ? body.sex : null
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || Number.isNaN(Date.parse(`${birthDate}T00:00:00Z`))) {
-    return NextResponse.json({ error: '생년월일을 확인해 주세요.' }, { status: 400 })
-  }
-  if (!birthTimeUnknown && !/^([01]\d|2[0-3]):[0-5]\d$/.test(birthTime)) {
-    return NextResponse.json({ error: '출생 시간을 확인하거나 ‘모름’을 선택해 주세요.' }, { status: 400 })
-  }
-  if (!timezone || !isIanaTimezone(timezone)) {
-    return NextResponse.json({ error: '올바른 IANA 시간대를 선택해 주세요.' }, { status: 400 })
-  }
-  if (!sex) return NextResponse.json({ error: '성별을 선택해 주세요.' }, { status: 400 })
-
-  const { data: existing, error: readError } = await supabaseAdmin
-    .from('oracle_profiles')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('is_self', true)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (readError) {
-    return NextResponse.json({ error: '프로필을 불러오지 못했습니다.' }, { status: 500 })
-  }
-
-  const profile = {
-    user_id: userId,
-    label: '나',
-    is_self: true,
-    birth_date: birthDate,
-    birth_time: birthTimeUnknown ? null : birthTime,
-    birth_time_source: birthTimeUnknown ? 'unknown' : 'exact',
-    sex,
-    tz: timezone,
-    updated_at: new Date().toISOString(),
-  }
-
-  const query = existing?.id
-    ? supabaseAdmin.from('oracle_profiles').update(profile).eq('id', existing.id).eq('user_id', userId)
-    : supabaseAdmin.from('oracle_profiles').insert(profile)
-  const { data, error } = await query
-    .select('id,birth_date,birth_time,birth_time_source,sex,tz')
-    .single()
-  if (error) {
-    return NextResponse.json({ error: '프로필을 저장하지 못했습니다.' }, { status: 500 })
-  }
-  return NextResponse.json({ ok: true, subjectProfileId: data.id, runnerProfile: data })
 }
 
 export async function POST(req: Request) {
@@ -119,12 +149,6 @@ export async function POST(req: Request) {
   const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-  }
-
-  // Additive contract for the new single-system flow. Legacy profile callers
-  // omit this discriminator and continue through the unchanged V1 path below.
-  if (body.profile_mode === 'single-system') {
-    return upsertSingleSystemProfile(user.id, body)
   }
 
   const dob = typeof body.dob === 'string' ? body.dob.trim() : ''
@@ -202,6 +226,16 @@ export async function POST(req: Request) {
     )
   }
 
+  // Both stores, one form. The runner row is derived from the sketch that was
+  // just saved, so a system can never read a stale chart.
+  const runnerProfile = await syncRunnerProfile(user.id, oracle_birth_profile)
+
   const complete = oracleProfileLooksComplete(oracle_birth_profile)
-  return NextResponse.json({ ok: true, profile: oracle_birth_profile, complete })
+  return NextResponse.json({
+    ok: true,
+    profile: oracle_birth_profile,
+    complete,
+    runnerProfile,
+    subjectProfileId: runnerProfile?.id ?? null,
+  })
 }
