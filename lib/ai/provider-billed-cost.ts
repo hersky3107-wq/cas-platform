@@ -9,6 +9,16 @@
 /** xAI documents `usage.cost_in_usd_ticks / 1e10` as the billed USD. */
 export const XAI_USD_TICKS_PER_DOLLAR = 10_000_000_000
 
+/** Anthropic web_search: $10 / 1,000 searches. */
+export const ANTHROPIC_WEB_SEARCH_USD_PER_CALL = 0.01
+
+/**
+ * OpenAI web search tool / gpt-*-search-api: $10 / 1,000 calls.
+ * gpt-5-search-api does not expose a per-response call count — league
+ * estimates exactly 1 call per prediction (see callProvider).
+ */
+export const OPENAI_WEB_SEARCH_USD_PER_CALL = 0.01
+
 export function usdFromCostTicks(ticks: unknown): number | null {
   if (typeof ticks !== 'number' || !Number.isFinite(ticks) || ticks < 0) return null
   return ticks / XAI_USD_TICKS_PER_DOLLAR
@@ -60,4 +70,20 @@ export function serverSideToolsUsedFromUsage(usage: unknown): number | null {
     if (any) return sum
   }
   return null
+}
+
+/**
+ * Anthropic Messages `usage.server_tool_use.web_search_requests` → fee USD.
+ * Returns null when the field is absent (non-search calls).
+ */
+export function anthropicWebSearchFeeFromUsage(usage: unknown): {
+  searches: number
+  feeUsd: number
+} | null {
+  if (!usage || typeof usage !== 'object') return null
+  const stu = (usage as Record<string, unknown>).server_tool_use
+  if (!stu || typeof stu !== 'object') return null
+  const n = (stu as Record<string, unknown>).web_search_requests
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return null
+  return { searches: n, feeUsd: n * ANTHROPIC_WEB_SEARCH_USD_PER_CALL }
 }

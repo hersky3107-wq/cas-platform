@@ -4,6 +4,8 @@ import { recordProviderCost } from '@/lib/ai/cost-span'
 import {
   billedUsdFromProviderUsage,
   serverSideToolsUsedFromUsage,
+  anthropicWebSearchFeeFromUsage,
+  OPENAI_WEB_SEARCH_USD_PER_CALL,
 } from '@/lib/ai/provider-billed-cost'
 
 const UNIVERSAL_LANGUAGE_PROMPT_RULE = `IMPORTANT: Always respond in the same language the user wrote their message in. If the user writes in Japanese, respond in Japanese. If in French, respond in French. If in English, respond in English. Match the user's language exactly.`
@@ -66,8 +68,16 @@ export type RouterResult = {
   costUsd?: number | null
   /** xAI `usage.cost_in_usd_ticks` (integer). Null when the provider did not send ticks. */
   costInUsdTicks?: number | null
-  /** xAI Agent Tools `num_server_side_tools_used`. Null for every other provider. */
+  /** xAI Agent Tools `num_server_side_tools_used`, or Anthropic `web_search_requests`. */
   serverSideToolsUsed?: number | null
+  /**
+   * Tool fee NOT already included in costUsd (Anthropic web_search $0.01/call;
+   * OpenAI search-api estimated $0.01/call). xAI ticks / Perplexity total_cost
+   * already fold tool fees into costUsd — leave this null for those.
+   */
+  toolFeeUsd?: number | null
+  /** True when toolFeeUsd is an explicit estimate (OpenAI search call count unknown). */
+  toolFeeIsEstimated?: boolean
   /** Gemini thoughtsTokenCount when present. */
   thoughtsTokenCount?: number | null
   finishReason?: string | null
@@ -233,6 +243,7 @@ function normalizeTokens({
   costUsd,
   costInUsdTicks,
   serverSideToolsUsed,
+  toolFeeUsd,
 }: {
   promptTokens?: number | null
   completionTokens?: number | null
@@ -241,6 +252,7 @@ function normalizeTokens({
   costUsd?: number | null
   costInUsdTicks?: number | null
   serverSideToolsUsed?: number | null
+  toolFeeUsd?: number | null
 }) {
   const pt = typeof promptTokens === 'number' ? promptTokens : null
   const ct = typeof completionTokens === 'number' ? completionTokens : null
@@ -253,6 +265,7 @@ function normalizeTokens({
   const cost = typeof costUsd === 'number' ? costUsd : null
   const ticks = typeof costInUsdTicks === 'number' ? costInUsdTicks : null
   const tools = typeof serverSideToolsUsed === 'number' ? serverSideToolsUsed : null
+  const toolFee = typeof toolFeeUsd === 'number' ? toolFeeUsd : null
   return {
     promptTokens: pt,
     completionTokens: ct,
@@ -260,6 +273,7 @@ function normalizeTokens({
     costUsd: cost,
     costInUsdTicks: ticks,
     serverSideToolsUsed: tools,
+    toolFeeUsd: toolFee,
   }
 }
 
@@ -522,6 +536,7 @@ async function callAnthropic({
       output_tokens?: number
       thinking_tokens?: number
       output_tokens_details?: { reasoning_tokens?: number; thinking_tokens?: number }
+      server_tool_use?: { web_search_requests?: number }
     }
     stop_reason?: string
   }
@@ -544,6 +559,8 @@ async function callAnthropic({
           ? json.usage.output_tokens_details.reasoning_tokens
           : null
 
+  const searchFee = anthropicWebSearchFeeFromUsage(json?.usage)
+
   return {
     text: text.length ? text : null,
     usage: {
@@ -555,6 +572,8 @@ async function callAnthropic({
           typeof json?.usage?.output_tokens === 'number'
             ? json.usage.input_tokens + json.usage.output_tokens
             : null,
+        serverSideToolsUsed: searchFee?.searches ?? null,
+        toolFeeUsd: searchFee?.feeUsd ?? null,
       }),
       thoughtsTokenCount:
         thinkingFromUsage ?? (thinkingChars > 0 ? Math.ceil(thinkingChars / 4) : null),
@@ -843,7 +862,12 @@ async function callProvider({
   searchTool?: boolean
   /** xAI Agent Tools only: request-level `max_turns`. Ignored elsewhere. */
   maxTurns?: number
-}) {
+}): Promise<{
+  model: string
+  text: string | null
+  usage: ReturnType<typeof normalizeTokens> & { thoughtsTokenCount?: number | null }
+  finishReason?: string | null
+}> {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
   const sourceUserText =
     prompt?.trim()
@@ -885,6 +909,26 @@ async function callProvider({
 
   const chatOpts = { chatMessages: injectedChatMessages }
 
+  type ProviderCallResult = {
+    model: string
+    text: string | null
+    usage: ReturnType<typeof normalizeTokens> & { thoughtsTokenCount?: number | null }
+    finishReason?: string | null
+  }
+
+  /** gpt-*-search-api: no call-count field on the chat response — estimate 1 search. */
+  const withOpenAiSearchFee = (result: ProviderCallResult): ProviderCallResult => {
+    if (!/search/i.test(model)) return result
+    return {
+      ...result,
+      usage: {
+        ...result.usage,
+        toolFeeUsd: OPENAI_WEB_SEARCH_USD_PER_CALL,
+        serverSideToolsUsed: result.usage.serverSideToolsUsed ?? 1,
+      },
+    }
+  }
+
   if (provider === 'openai') {
     const first = await callOpenAICompatibleChat({
       provider,
@@ -898,7 +942,7 @@ async function callProvider({
       ...chatOpts,
     })
     if (!isChatGptSafetyRefusal(first.text)) {
-      return { model, text: first.text, usage: first.usage }
+      return withOpenAiSearchFee({ model, text: first.text, usage: first.usage })
     }
 
     const second = await callOpenAICompatibleChat({
@@ -914,16 +958,16 @@ async function callProvider({
     })
 
     if (isChatGptSafetyRefusal(second.text)) {
-      return {
+      return withOpenAiSearchFee({
         model,
         text:
           `[ChatGPT Safety Filter] This response was blocked by ChatGPT's built-in content policy, not by AIMANI. ` +
           (first.text ?? ''),
         usage: first.usage,
-      }
+      })
     }
 
-    return { model, text: second.text, usage: second.usage }
+    return withOpenAiSearchFee({ model, text: second.text, usage: second.usage })
   }
 
   if (provider === 'xai') {
@@ -1301,8 +1345,14 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     }
 
     const costUsd = usage.costUsd ?? null
+    const toolFeeUsd = usage.toolFeeUsd ?? null
+    // OpenAI search-api fee is an explicit estimate (no call-count field).
+    const toolFeeIsEstimated =
+      typeof toolFeeUsd === 'number' && provider === 'openai' && /search/i.test(model)
     recordProviderCost({
-      costUsd,
+      costUsd: typeof costUsd === 'number' || typeof toolFeeUsd === 'number'
+        ? (costUsd ?? 0) + (toolFeeUsd ?? 0)
+        : null,
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
     })
@@ -1320,9 +1370,11 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       costUsd,
       costInUsdTicks: usage.costInUsdTicks ?? null,
       serverSideToolsUsed: usage.serverSideToolsUsed ?? null,
+      toolFeeUsd,
+      toolFeeIsEstimated,
       thoughtsTokenCount:
-        usage && typeof (usage as { thoughtsTokenCount?: unknown }).thoughtsTokenCount === 'number'
-          ? (usage as { thoughtsTokenCount: number }).thoughtsTokenCount
+        typeof (usage as { thoughtsTokenCount?: unknown }).thoughtsTokenCount === 'number'
+          ? (usage as { thoughtsTokenCount?: number }).thoughtsTokenCount!
           : null,
       finishReason: finishReason ?? null,
     }

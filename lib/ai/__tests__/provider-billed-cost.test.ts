@@ -3,6 +3,7 @@ import {
   billedUsdFromProviderUsage,
   serverSideToolsUsedFromUsage,
   usdFromCostTicks,
+  anthropicWebSearchFeeFromUsage,
 } from '../provider-billed-cost'
 
 describe('usdFromCostTicks', () => {
@@ -57,5 +58,20 @@ describe('serverSideToolsUsedFromUsage', () => {
 
   it('returns null when neither is present', () => {
     expect(serverSideToolsUsedFromUsage({ input_tokens: 10 })).toBeNull()
+  })
+})
+
+describe('anthropicWebSearchFeeFromUsage', () => {
+  it('bills $0.01 per web_search_requests', () => {
+    expect(
+      anthropicWebSearchFeeFromUsage({
+        input_tokens: 100,
+        server_tool_use: { web_search_requests: 2 },
+      }),
+    ).toEqual({ searches: 2, feeUsd: 0.02 })
+  })
+
+  it('returns null when server_tool_use is absent', () => {
+    expect(anthropicWebSearchFeeFromUsage({ input_tokens: 100 })).toBeNull()
   })
 })

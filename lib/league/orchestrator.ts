@@ -479,6 +479,11 @@ type RawCall = {
   costIsEstimated: boolean
   serverSideToolsUsed: number | null
   costInUsdTicks: number | null
+  /**
+   * Tool fee on top of tokens, when NOT already folded into costUsd
+   * (Anthropic web_search; OpenAI search-api estimate).
+   */
+  toolFeeUsd: number | null
   error?: string
 }
 
@@ -527,6 +532,7 @@ async function callOnce(
       costIsEstimated: false,
       serverSideToolsUsed: res.serverSideToolsUsed ?? null,
       costInUsdTicks: res.costInUsdTicks ?? null,
+      toolFeeUsd: res.toolFeeUsd ?? null,
       error: res.error,
     }
   }  // Platform caller has no built-in external timeout — race it here.
@@ -549,6 +555,7 @@ async function callOnce(
     costIsEstimated: !!res.costIsEstimated,
     serverSideToolsUsed: null,
     costInUsdTicks: null,
+    toolFeeUsd: null,
     error: res.error,
   }
 }
@@ -574,10 +581,10 @@ async function callWithRetry(
       try {
         return await callOnce(entry, userPrompt, timeoutMs, userId, maxCompletionTokens)
       } catch (e2: unknown) {
-        return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
+        return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
       }
     }
-    return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, error: msg }
+    return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: msg }
   }
 }
 
@@ -643,7 +650,11 @@ async function runOneModel(
     const hasProviderCost = typeof call.costUsd === 'number'
     // Prefer the provider's billed figure when it reports one. The estimate
     // is kept separately so we can see how far off the roster price was.
-    totalCostUsd += hasProviderCost ? call.costUsd! : estimate
+    // Tool fees (Anthropic web_search, OpenAI search-api estimate) are NOT
+    // inside costUsd for those providers — add them on top. xAI ticks and
+    // Perplexity total_cost already include tool/request fees.
+    const toolFee = typeof call.toolFeeUsd === 'number' ? call.toolFeeUsd : 0
+    totalCostUsd += (hasProviderCost ? call.costUsd! : estimate) + toolFee
     if (hasProviderCost && !call.costIsEstimated) costSource = 'billed'
     if (typeof call.serverSideToolsUsed === 'number') {
       toolsUsed = (toolsUsed ?? 0) + call.serverSideToolsUsed
