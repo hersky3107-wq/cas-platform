@@ -5,8 +5,20 @@
  * reconcile engine both take a rule as input so new channels are added by
  * defining a rule, not by branching logic.
  *
- * STAGE 1: only 'transfer' is wired. Card / delivery / voucher are intentionally
- * absent — adding them later means adding a ChannelRule, nothing else.
+ * STAGE 1: only 'transfer' was wired. STAGE 2 adds 'app_voucher' (탐나는전 앱,
+ * 온누리 앱) the same way. STAGE 2c adds 'card' (PG/card-company family:
+ * card, 바코드결제, 알리페이/위챗, 텍스프리, 배달앱) — still a ChannelRule,
+ * no new matcher branching. Cash (channel_type='cash') is a ChannelRule with
+ * expectsDeposit: false: it is stored as revenue and skipped by every
+ * deposit matcher. Fee rate and settlement window stay DATA.
+ *
+ * A real per-channel override always wins over these defaults: `ruleFromRow`
+ * only falls back to the map below when no `reconciliation_rules` row exists
+ * for that channel (or it isn't effective yet) — see reconcile.ts's
+ * `ruleForChannel`. Settlement window is therefore "configurable" in the
+ * sense the task asked for: add a `reconciliation_rules` row via the existing
+ * generic `POST /api/reconciliation/rules` to change it per user/channel
+ * without touching this file.
  */
 
 import type { FeeType } from '@/lib/reconciliation/types'
@@ -22,6 +34,11 @@ export type ChannelRule = {
   toleranceWon: number
   /** date discrepancy (days) tolerated before a match is flagged. */
   toleranceDays: number
+  /**
+   * When false, this channel never produces a bank deposit (cash).
+   * Omitted / true = deposits are expected (transfer, card, app_voucher).
+   */
+  expectsDeposit?: boolean
 }
 
 /** Bank transfer: no fee, same-day, exact. The simplest possible rule. */
@@ -34,9 +51,64 @@ export const TRANSFER_RULE: ChannelRule = {
   toleranceDays: 0,
 }
 
-/** channel_type → rule. Only 'transfer' exists in Stage 1. */
+/**
+ * App/barcode local voucher (탐나는전 앱, 온누리 앱): the merchant reads a
+ * barcode/QR and the voucher operator deposits the FULL face value straight
+ * to the bank account on its own schedule — zero fee, same shape as a
+ * transfer. Card-type local vouchers are NOT this rule: they ride inside a
+ * normal card settlement and are out of scope here (sale_kind='card').
+ */
+export const APP_VOUCHER_RULE: ChannelRule = {
+  channelType: 'app_voucher',
+  feeType: 'percent',
+  feeRate: 0,
+  settlementDays: 0,
+  toleranceWon: 0,
+  toleranceDays: 0,
+}
+
+/**
+ * Card-type family (channel_type='card'): card, 바코드결제, 알리페이/위챗,
+ * 텍스프리, 배달앱. One family because they all deduct a percent fee and
+ * settle NET, batched, days later via a PG/card company. Per-merchant rates
+ * differ — override via a reconciliation_rules row; this default is only
+ * the placeholder used when no row exists yet.
+ */
+export const CARD_RULE: ChannelRule = {
+  channelType: 'card',
+  feeType: 'percent',
+  feeRate: 2.5,
+  settlementDays: 2,
+  toleranceWon: 1,
+  toleranceDays: 0,
+}
+
+/**
+ * Cash: recorded as revenue, never deposited to the bank. feeRate 0.
+ * Matchers must skip these sales (no missing_deposit). expected_net = gross;
+ * expected_deposit_date stays null — do not call expectedDepositDate().
+ */
+export const CASH_RULE: ChannelRule = {
+  channelType: 'cash',
+  feeType: 'percent',
+  feeRate: 0,
+  settlementDays: 0,
+  toleranceWon: 0,
+  toleranceDays: 0,
+  expectsDeposit: false,
+}
+
+/** channel_type → rule. transfer / app_voucher / card / cash. */
 const RULES_BY_CHANNEL_TYPE: Record<string, ChannelRule> = {
   transfer: TRANSFER_RULE,
+  app_voucher: APP_VOUCHER_RULE,
+  card: CARD_RULE,
+  cash: CASH_RULE,
+}
+
+/** False only for cash (expectsDeposit: false). Everyone else expects a deposit. */
+export function channelExpectsDeposit(rule: ChannelRule): boolean {
+  return rule.expectsDeposit !== false
 }
 
 export function ruleForChannelType(channelType: string): ChannelRule | null {
@@ -76,5 +148,6 @@ export function ruleFromRow(row: {
     settlementDays: row.settlement_days ?? base.settlementDays,
     toleranceWon: row.tolerance_won ?? base.toleranceWon,
     toleranceDays: row.tolerance_days ?? base.toleranceDays,
+    expectsDeposit: base.expectsDeposit,
   }
 }

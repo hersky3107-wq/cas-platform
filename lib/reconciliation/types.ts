@@ -37,6 +37,12 @@ export type ReconStatus = (typeof RECON_STATUSES)[number]
 export const SECURITY_FLAGS = ['none', 'fake_deposit_suspected', 'anomaly'] as const
 export type SecurityFlag = (typeof SECURITY_FLAGS)[number]
 
+export const SALE_KINDS = ['card', 'app_voucher', 'manual_total', 'cash'] as const
+export type SaleKind = (typeof SALE_KINDS)[number]
+
+export const ENTRY_SOURCES = ['pos_import', 'voucher_tally', 'manual'] as const
+export type EntrySource = (typeof ENTRY_SOURCES)[number]
+
 export type RawDocument = {
   id: string
   user_id: string
@@ -81,6 +87,9 @@ export type SalesRecord = {
   expected_deposit_date: string | null
   confidence: number | null
   confirm_status: ConfirmStatus
+  sale_kind: SaleKind
+  sale_group_id: string | null
+  entry_source: EntrySource
   created_at: string
 }
 
@@ -96,6 +105,30 @@ export type DepositRecord = {
   created_at: string
 }
 
+export const ADVISORY_CONFIDENCES = ['low', 'medium', 'high'] as const
+export type AdvisoryConfidence = (typeof ADVISORY_CONFIDENCES)[number]
+
+/**
+ * Single-AI estimate of why an amount_mismatch exists.
+ * Advisory only — never auto-accepts or changes reconciliation status.
+ */
+export type DiscrepancyAdvisory = {
+  estimated_cause: string
+  confidence: AdvisoryConfidence
+  reasoning: string
+}
+
+export function parseDiscrepancyAdvisory(value: unknown): DiscrepancyAdvisory | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const row = value as Record<string, unknown>
+  const cause = typeof row.estimated_cause === 'string' ? row.estimated_cause.trim() : ''
+  const reasoning = typeof row.reasoning === 'string' ? row.reasoning.trim() : ''
+  const confidence = row.confidence
+  if (!cause || !reasoning) return null
+  if (confidence !== 'low' && confidence !== 'medium' && confidence !== 'high') return null
+  return { estimated_cause: cause, confidence, reasoning }
+}
+
 export type Reconciliation = {
   id: string
   user_id: string
@@ -105,6 +138,8 @@ export type Reconciliation = {
   security_flag: SecurityFlag
   resolved: boolean
   created_at: string
+  /** Persisted AI estimate; null until the user triggers explain-discrepancy. */
+  discrepancy_advisory: DiscrepancyAdvisory | null
 }
 
 export type ReconciliationMatch = {

@@ -4,15 +4,26 @@ import { encryptText, decryptText } from '@/lib/db/crypto'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { OwnedScope } from '@/lib/reconciliation/scope'
 import {
+  channelExpectsDeposit,
+  expectedDepositDate as computeExpectedDepositDate,
+  expectedNet as computeExpectedNet,
+  ruleForChannelType,
+  ruleFromRow,
+  type ChannelRule,
+} from '@/lib/reconciliation/channel-rules'
+import {
   CONFIRM_STATUSES,
+  ENTRY_SOURCES,
   FEE_TYPES,
   PARSE_STATUSES,
   RECON_STATUSES,
+  SALE_KINDS,
   SECURITY_FLAGS,
   SOURCE_TYPES,
   type ConfirmStatus,
   type DalResult,
   type DepositRecord,
+  type DiscrepancyAdvisory,
   type FeeType,
   type PaymentChannel,
   type RawDocument,
@@ -20,6 +31,7 @@ import {
   type ReconciliationMatch,
   type ReconciliationRule,
   type ReconciliationWithMatches,
+  type SaleKind,
   type SalesRecord,
   type SecurityFlag,
 } from '@/lib/reconciliation/types'
@@ -389,6 +401,40 @@ export async function getChannel(scope: OwnedScope, id: string): Promise<DalResu
   return requireReturnedOwner(data as PaymentChannel | null, scope)
 }
 
+/**
+ * Look up a channel by exact name (channels are unique per user by name —
+ * `payment_channels_user_name_uniq`). Returns null, not an error, when there
+ * is no such channel yet, so a caller can decide whether to create one.
+ */
+export async function findChannelByName(
+  scope: OwnedScope,
+  name: string
+): Promise<DalResult<PaymentChannel | null>> {
+  const { data, error } = await supabaseAdmin
+    .from('payment_channels')
+    .select('*')
+    .eq('user_id', scope.userId)
+    .eq('name', name)
+    .maybeSingle()
+  if (error) return fromSbError(error)
+  return dalOk((data as PaymentChannel | null) ?? null)
+}
+
+/**
+ * Find-or-create by name, for parse paths that name a channel from extracted
+ * text (e.g. a voucher_type) rather than a caller-supplied channel_id.
+ */
+export async function findOrCreateChannel(
+  scope: OwnedScope,
+  name: string,
+  channelType: string
+): Promise<DalResult<PaymentChannel>> {
+  const existing = await findChannelByName(scope, name)
+  if (!existing.ok) return existing
+  if (existing.data) return dalOk(existing.data)
+  return createChannel(scope, { name, channel_type: channelType })
+}
+
 export async function createChannel(
   scope: OwnedScope,
   input: Record<string, unknown>
@@ -688,6 +734,49 @@ export async function getSale(scope: OwnedScope, id: string): Promise<DalResult<
   return requireReturnedOwner(data as SalesRecord | null, scope)
 }
 
+/** 0-fee, same-day — used when the channel has no stored rule and no in-code default. */
+const GROSS_SAME_DAY_RULE: ChannelRule = {
+  channelType: '',
+  feeType: 'percent',
+  feeRate: 0,
+  settlementDays: 0,
+  toleranceWon: 0,
+  toleranceDays: 0,
+}
+
+export async function getEffectiveRuleForChannel(
+  scope: OwnedScope,
+  channelId: string | null
+): Promise<ChannelRule> {
+  if (!channelId) return GROSS_SAME_DAY_RULE
+  const owned = await getChannel(scope, channelId)
+  if (!owned.ok) return GROSS_SAME_DAY_RULE
+  const channel = owned.data
+  const inCode = ruleForChannelType(channel.channel_type)
+  const today = new Date().toISOString().slice(0, 10)
+  const { data } = await supabaseAdmin
+    .from('reconciliation_rules')
+    .select('*')
+    .eq('channel_id', channel.id)
+    .lte('effective_from', today)
+    .order('effective_from', { ascending: false })
+    .limit(1)
+  const row = (data ?? [])[0] as
+    | {
+        fee_type?: string | null
+        fee_rate?: number | null
+        settlement_days?: number | null
+        tolerance_won?: number | null
+        tolerance_days?: number | null
+        effective_to?: string | null
+      }
+    | undefined
+  if (!row || (row.effective_to && row.effective_to < today)) {
+    return inCode ?? GROSS_SAME_DAY_RULE
+  }
+  return ruleFromRow(row, channel.channel_type)
+}
+
 export async function createSale(
   scope: OwnedScope,
   input: Record<string, unknown>
@@ -715,6 +804,32 @@ export async function createSale(
   const channel = await resolveOptionalOwnedFk(scope, fields.channel_id, 'channel_id')
   if (!channel.ok) return channel
 
+  const rule = await getEffectiveRuleForChannel(scope, channel.data)
+  const cashChannel = !channelExpectsDeposit(rule)
+
+  const saleKind = fields.sale_kind
+    ? oneOf(fields.sale_kind, SALE_KINDS, 'sale_kind')
+    : dalOk<SaleKind>(cashChannel ? 'cash' : 'card')
+  if (!saleKind.ok) return saleKind
+  const entrySource = fields.entry_source
+    ? oneOf(fields.entry_source, ENTRY_SOURCES, 'entry_source')
+    : dalOk<(typeof ENTRY_SOURCES)[number]>('manual')
+  if (!entrySource.ok) return entrySource
+  const saleGroupId = asOptionalUuid(fields.sale_group_id, 'sale_group_id')
+  if (!saleGroupId.ok) return saleGroupId
+
+  // Persist expected net/date from the channel rule at insert time so a later
+  // fee-rate change cannot rewrite history. Client-supplied values win.
+  // Cash: expected_net = gross (0 fee), expected_deposit_date stays NULL —
+  // there is no bank deposit to wait for.
+  const noDeposit = cashChannel || saleKind.data === 'cash'
+  let persistedNet = expectedNet.data
+  let persistedSettle = expectedDeposit.data
+  if (persistedNet == null) persistedNet = computeExpectedNet(gross.data, rule)
+  if (persistedSettle == null) {
+    persistedSettle = noDeposit ? null : computeExpectedDepositDate(saleDate.data, rule)
+  }
+
   const { data, error } = await supabaseAdmin
     .from('sales_records')
     .insert({
@@ -723,10 +838,13 @@ export async function createSale(
       channel_id: channel.data,
       sale_date: saleDate.data,
       gross_amount: gross.data,
-      expected_net_amount: expectedNet.data,
-      expected_deposit_date: expectedDeposit.data,
+      expected_net_amount: persistedNet,
+      expected_deposit_date: persistedSettle,
       confidence: confidence.data,
       confirm_status: confirm.data,
+      sale_kind: saleKind.data,
+      sale_group_id: saleGroupId.data,
+      entry_source: entrySource.data,
     })
     .select('*')
     .single()
@@ -1194,6 +1312,30 @@ export async function updateReconciliation(
     if (!inserted.ok) return inserted
   }
 
+  return getReconciliation(scope, id)
+}
+
+/**
+ * Persist an advisory estimate on an amount_mismatch row.
+ * Updates ONLY discrepancy_advisory — status / resolved / amounts are untouched.
+ */
+export async function saveDiscrepancyAdvisory(
+  scope: OwnedScope,
+  id: string,
+  advisory: DiscrepancyAdvisory
+): Promise<DalResult<ReconciliationWithMatches>> {
+  const idCheck = asUuid(id, 'id')
+  if (!idCheck.ok) return idCheck
+  const { data, error } = await supabaseAdmin
+    .from('reconciliations')
+    .update({ discrepancy_advisory: advisory })
+    .eq('id', id)
+    .eq('user_id', scope.userId)
+    .eq('status', 'amount_mismatch')
+    .select('id, status')
+    .maybeSingle()
+  if (error) return fromSbError(error)
+  if (!data) return dalErr(409, 'reconciliation is not amount_mismatch')
   return getReconciliation(scope, id)
 }
 

@@ -3,6 +3,7 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { OwnedScope } from '@/lib/reconciliation/scope'
 import {
+  channelExpectsDeposit,
   expectedDepositDate,
   expectedNet,
   ruleFromRow,
@@ -21,21 +22,26 @@ import type {
 } from '@/lib/reconciliation/types'
 
 /**
- * 대사기 — transfer reconciliation engine (STAGE 1).
+ * 대사기 — transfer / app-voucher / card-type reconciliation engine.
  *
- * SCOPE: bank-transfer channels only. Transfer = 0 fee, same-day settlement,
- * so expected_net = gross and expected_deposit_date = sale_date. Any channel
- * whose channel_type !== 'transfer' is ignored here.
+ * SCOPE: three deposit-settling channel_types share ONE planner. Transfer
+ * (STAGE 1) and app_voucher (STAGE 2) are 0-fee, same-day, deposited at
+ * face value. Card-type (STAGE 2c) deducts a percent fee and settles NET.
+ * Cash (channel_type='cash') is revenue-only: it is NEVER loaded by a
+ * reconciler and is skipped by the planner if it appears (expectsDeposit
+ * false). There is no reconcileCash() — cash has no bank deposit to match.
  *
  * OWNERSHIP: takes OwnedScope from withOwnedScope() and filters every query by
  * user_id = scope.userId. supabaseAdmin bypasses RLS; this is the auth gate.
  *
- * ALGORITHM (per expected-settlement date):
- *   1. exact 1:1 amount matches → one `matched` reconciliation each,
+ * ALGORITHM (per expected-settlement date) — shared via
+ * planTransferReconciliations():
+ *   1. exact 1:1 NET-amount matches → one `matched` reconciliation each,
  *   2. remainder sales+deposits → one batch reconciliation:
- *        sums equal (within tolerance) → matched, else amount_mismatch (N:M),
+ *        net-sums equal (within tolerance) → matched, else amount_mismatch (N:M),
  *   3. remainder sales, no deposit → missing_deposit,
- *   4. remainder deposits, no sale → left OPEN (unmatched_deposit is out of scope).
+ *   4. remainder deposits, no sale → left OPEN for transfer/app_voucher
+ *        (byte-identical to Stage 1/2); card-type flags unmatched_deposit.
  *
  * IDEMPOTENT: sales/deposits already referenced by a reconciliation_matches row
  * are excluded, so re-running does not double-create.
@@ -43,10 +49,12 @@ import type {
  * This module is split into:
  *   - planTransferReconciliations(): PURE decision logic. Takes plain arrays +
  *     a rule map + already-matched id sets, returns what *would* be created.
- *     No supabase, no I/O — this is what unit tests exercise directly.
- *   - reconcileTransfers(): orchestrator. Does the I/O (load channels/rules/
- *     open rows, then persist each planned reconciliation) and delegates all
- *     matching decisions to the pure planner above.
+ *     No supabase, no I/O, no channel-type awareness at all (a channel is
+ *     just a string key into the rule map).
+ *   - reconcileByChannelType(): shared orchestrator.
+ *   - reconcileTransfers() / reconcileAppVouchers() / reconcileCards(): thin
+ *     wrappers. Transfer/app_voucher keep includeUnhinted / unmatched-deposit
+ *     flags as before so their verified behavior stays byte-identical.
  */
 
 export type ReconcileOptions = {
@@ -60,6 +68,7 @@ export type ReconcileSummary = {
   matched: number
   missing_deposit: number
   amount_mismatch: number
+  unmatched_deposit: number
   sales_considered: number
   deposits_considered: number
   deposits_left_open: number
@@ -111,6 +120,12 @@ export type PlanTransfersInput = {
   alreadyMatchedSaleIds?: ReadonlySet<string>
   /** deposit_record ids already linked by an existing reconciliation_matches row. */
   alreadyMatchedDepositIds?: ReadonlySet<string>
+  /**
+   * When true, leftover deposits (no open sale on that date) become
+   * unmatched_deposit plans. Default false: leftover deposits stay OPEN
+   * (Stage-1/2 transfer + app_voucher behavior, byte-identical).
+   */
+  flagUnmatchedDeposits?: boolean
 }
 
 function groupByDate<T extends { [k: string]: unknown }>(rows: T[], key: keyof T): Map<string, T[]> {
@@ -139,8 +154,17 @@ export function planTransferReconciliations(
   const ruleByChannelId = input.ruleByChannelId ?? new Map<string, ChannelRule>()
   const matchedSaleIds = input.alreadyMatchedSaleIds ?? new Set<string>()
   const matchedDepositIds = input.alreadyMatchedDepositIds ?? new Set<string>()
+  const flagUnmatchedDeposits = input.flagUnmatchedDeposits === true
 
-  const sales = input.sales.filter((s) => !matchedSaleIds.has(s.id))
+  const ruleFor = (sale: PlannerSaleInput): ChannelRule =>
+    (sale.channel_id && ruleByChannelId.get(sale.channel_id)) || TRANSFER_RULE
+
+  // Cash (expectsDeposit: false) is never matched and never flagged
+  // missing_deposit. Orchestrators also omit cash channels; this filter is
+  // defense-in-depth if a cash sale is passed in.
+  const sales = input.sales.filter(
+    (s) => !matchedSaleIds.has(s.id) && channelExpectsDeposit(ruleFor(s))
+  )
   const deposits = input.deposits.filter((d) => !matchedDepositIds.has(d.id))
 
   const plans: PlannedReconciliation[] = []
@@ -148,13 +172,12 @@ export function planTransferReconciliations(
     matched: 0,
     missing_deposit: 0,
     amount_mismatch: 0,
+    unmatched_deposit: 0,
     sales_considered: sales.length,
     deposits_considered: deposits.length,
     deposits_left_open: 0,
   }
 
-  const ruleFor = (sale: PlannerSaleInput): ChannelRule =>
-    (sale.channel_id && ruleByChannelId.get(sale.channel_id)) || TRANSFER_RULE
   const netOf = (sale: PlannerSaleInput): number =>
     sale.expected_net_amount != null ? sale.expected_net_amount : expectedNet(sale.gross_amount, ruleFor(sale))
   const toleranceOf = (sale: PlannerSaleInput): number => ruleFor(sale).toleranceWon
@@ -236,23 +259,38 @@ export function planTransferReconciliations(
       })
       summary.missing_deposit++
     } else if (remDeposits.length > 0) {
-      // ── pass 4: deposits with no sale → left OPEN (out of Stage-1 scope) ───
-      summary.deposits_left_open += remDeposits.length
+      // ── pass 4: deposits with no sale ─────────────────────────────────────
+      // Transfer / app_voucher (default): leave OPEN — byte-identical to Stage 1/2.
+      // Card-type (flagUnmatchedDeposits): numeric unmatched_deposit flag only;
+      // no AI explanation in this step.
+      if (flagUnmatchedDeposits) {
+        const actualSum = remDeposits.reduce((sum, d) => sum + d.actual_amount, 0)
+        plans.push({
+          status: 'unmatched_deposit',
+          discrepancyAmount: Math.round(actualSum * 100) / 100,
+          discrepancyReason: `no sale found for ${remDeposits.length} deposit(s) on ${date}`,
+          pairs: remDeposits.map((d) => ({ sale_id: null, deposit_id: d.id })),
+        })
+        summary.unmatched_deposit++
+      } else {
+        summary.deposits_left_open += remDeposits.length
+      }
     }
   }
 
   return { plans, summary }
 }
 
-async function loadTransferChannels(
+async function loadChannelsByType(
   scope: OwnedScope,
+  channelType: string,
   channelId?: string | null
 ): Promise<DalResult<PaymentChannel[]>> {
   let q = supabaseAdmin
     .from('payment_channels')
     .select('*')
     .eq('user_id', scope.userId)
-    .eq('channel_type', 'transfer')
+    .eq('channel_type', channelType)
   if (channelId) q = q.eq('id', channelId)
   const { data, error } = await q
   if (error) return fromSbError(error)
@@ -325,13 +363,34 @@ async function loadSales(
   if (opts.to) q = q.lte('sale_date', opts.to)
   const { data, error } = await q
   if (error) return fromSbError(error)
-  return dalOk(((data ?? []) as SalesRecord[]).filter((s) => s.user_id === scope.userId))
+  return dalOk(
+    ((data ?? []) as SalesRecord[]).filter(
+      (s) => s.user_id === scope.userId && s.sale_kind !== 'cash'
+    )
+  )
 }
 
-async function loadDeposits(
+/**
+ * Deposits eligible for ONE channel_type's pass: explicitly hinted at one of
+ * `channelIds`, or — only when `includeUnhinted` — carrying no hint at all.
+ *
+ * Transfer keeps `includeUnhinted = true` (its Stage-1 behavior, unchanged):
+ * the parser often can't identify the source bank, so an un-hinted deposit
+ * defaults to the transfer catch-all.
+ *
+ * App-voucher uses `includeUnhinted = false`: a voucher deposit is only ever
+ * produced by VOUCHER_PARSE_SPEC, which extracts the voucher name and hints
+ * the channel at parse time (see app/api/reconciliation/parse-voucher).
+ * Card-type also uses `includeUnhinted = false`: card deposits are entered
+ * with an explicit channel_hint (manual for now; unified parse later).
+ * Leaving un-hinted deposits out of these passes means the engines never
+ * compete over the same ambiguous row.
+ */
+async function loadDepositsForChannels(
   scope: OwnedScope,
-  transferChannelIds: Set<string>,
-  opts: ReconcileOptions
+  channelIds: Set<string>,
+  opts: ReconcileOptions,
+  includeUnhinted: boolean
 ): Promise<DalResult<DepositRecord[]>> {
   let q = supabaseAdmin
     .from('deposit_records')
@@ -342,12 +401,11 @@ async function loadDeposits(
   if (opts.to) q = q.lte('deposit_date', opts.to)
   const { data, error } = await q
   if (error) return fromSbError(error)
-  // Transfer slice: consider deposits hinted at a transfer channel OR with no
-  // hint (the parser often can't identify the source bank). Deposits explicitly
-  // hinted at a non-transfer channel are left for that channel's engine.
   return dalOk(
     ((data ?? []) as DepositRecord[]).filter(
-      (d) => d.user_id === scope.userId && (d.channel_hint == null || transferChannelIds.has(d.channel_hint))
+      (d) =>
+        d.user_id === scope.userId &&
+        (d.channel_hint == null ? includeUnhinted : channelIds.has(d.channel_hint))
     )
   )
 }
@@ -396,18 +454,27 @@ async function insertReconciliation(
   return dalOk({ ...recon, matches })
 }
 
-export async function reconcileTransfers(
+/**
+ * Shared orchestrator for any channel_type whose settlement behaves like a
+ * transfer (0 fee, direct deposit): loads that type's channels/rules/open
+ * rows, then delegates every matching decision to the pure planner. Adding a
+ * third such channel means one more thin wrapper below, not a new engine.
+ */
+async function reconcileByChannelType(
   scope: OwnedScope,
-  opts: ReconcileOptions = {}
+  opts: ReconcileOptions,
+  channelType: string,
+  includeUnhintedDeposits: boolean,
+  flagUnmatchedDeposits = false
 ): Promise<DalResult<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>> {
   for (const [k, v] of Object.entries(opts)) {
     if ((k === 'from' || k === 'to') && v != null && !DATE_RE.test(String(v))) {
       return dalErr(400, `${k} must be YYYY-MM-DD`)
     }
   }
-  // A supplied channel_id is scoped by loadTransferChannels' user_id filter, so
-  // a foreign channel simply yields zero transfer channels (no cross-user read).
-  const channelsRes = await loadTransferChannels(scope, opts.channelId ?? undefined)
+  // A supplied channel_id is scoped by loadChannelsByType's user_id filter, so
+  // a foreign channel simply yields zero channels of this type (no cross-user read).
+  const channelsRes = await loadChannelsByType(scope, channelType, opts.channelId ?? undefined)
   if (!channelsRes.ok) return channelsRes
   const channels = channelsRes.data
   const emptySummary: ReconcileSummary = {
@@ -415,6 +482,7 @@ export async function reconcileTransfers(
     matched: 0,
     missing_deposit: 0,
     amount_mismatch: 0,
+    unmatched_deposit: 0,
     sales_considered: 0,
     deposits_considered: 0,
     deposits_left_open: 0,
@@ -422,7 +490,7 @@ export async function reconcileTransfers(
   if (channels.length === 0) return dalOk({ created: [], summary: emptySummary })
 
   const channelIds = channels.map((c) => c.id)
-  const transferChannelIdSet = new Set(channelIds)
+  const channelIdSet = new Set(channelIds)
   const ruleByChannelId = new Map<string, ChannelRule>()
   for (const channel of channels) {
     ruleByChannelId.set(channel.id, await ruleForChannel(channel))
@@ -433,7 +501,7 @@ export async function reconcileTransfers(
 
   const salesRes = await loadSales(scope, channelIds, opts)
   if (!salesRes.ok) return salesRes
-  const depositsRes = await loadDeposits(scope, transferChannelIdSet, opts)
+  const depositsRes = await loadDepositsForChannels(scope, channelIdSet, opts, includeUnhintedDeposits)
   if (!depositsRes.ok) return depositsRes
 
   const { plans, summary: planSummary } = planTransferReconciliations({
@@ -442,6 +510,7 @@ export async function reconcileTransfers(
     ruleByChannelId,
     alreadyMatchedSaleIds: matchedRes.data.sales,
     alreadyMatchedDepositIds: matchedRes.data.deposits,
+    flagUnmatchedDeposits,
   })
 
   const created: ReconciliationWithMatches[] = []
@@ -454,3 +523,40 @@ export async function reconcileTransfers(
   const summary: ReconcileSummary = { ...planSummary, created: created.length }
   return dalOk({ created, summary })
 }
+
+/** STAGE 1: bank-transfer channels. Behavior unchanged from before Stage 2. */
+export async function reconcileTransfers(
+  scope: OwnedScope,
+  opts: ReconcileOptions = {}
+): Promise<DalResult<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>> {
+  return reconcileByChannelType(scope, opts, 'transfer', true)
+}
+
+/**
+ * STAGE 2: app/barcode local-voucher channels (탐나는전 앱, 온누리 앱). Same
+ * matcher as reconcileTransfers — zero new decision logic, see the module
+ * doc comment.
+ */
+export async function reconcileAppVouchers(
+  scope: OwnedScope,
+  opts: ReconcileOptions = {}
+): Promise<DalResult<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>> {
+  return reconcileByChannelType(scope, opts, 'app_voucher', false)
+}
+
+/**
+ * STAGE 2c: card-type family (channel_type='card'). Same planner as
+ * reconcileTransfers — fee + settlement window come from CARD_RULE / a
+ * stored reconciliation_rules row. Unhinted deposits are excluded (set
+ * channel_hint on a manually entered deposit). Leftover deposits are
+ * flagged unmatched_deposit (numeric only; no AI explanation yet).
+ */
+export async function reconcileCards(
+  scope: OwnedScope,
+  opts: ReconcileOptions = {}
+): Promise<DalResult<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>> {
+  return reconcileByChannelType(scope, opts, 'card', false, true)
+}
+
+// Cash (channel_type='cash') has no reconciler. It is stored as revenue and
+// skipped by every deposit matcher — see CASH_RULE.expectsDeposit.

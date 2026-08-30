@@ -1,19 +1,28 @@
 /**
- * Unit tests for the transfer reconciliation matcher + parser regex fallback.
+ * Unit tests for the transfer / app-voucher reconciliation matcher + parser
+ * regex fallbacks.
  *
  * DB-FREE: everything below calls a pure function with plain in-memory
  * fixtures. No supabaseAdmin, no network, no server-only side effects.
  *
  *   - planTransferReconciliations() (lib/reconciliation/reconcile.ts) is the
- *     pure decision core reconcileTransfers() delegates to — it takes plain
- *     sales/deposits arrays + a rule map + already-matched id sets and
- *     returns what *would* be created, with no I/O at all.
- *   - TRANSFER_PARSE_SPEC.regexFallback() (lib/reconciliation/parser.ts) is
- *     the deterministic fallback parseDeposit() uses when the AI path is
- *     unavailable — also pure, takes (text, todayKst) and returns {date, amount}.
+ *     pure decision core BOTH reconcileTransfers() AND reconcileAppVouchers()
+ *     delegate to — it takes plain sales/deposits arrays + a rule map +
+ *     already-matched id sets and returns what *would* be created, with no
+ *     I/O and no channel-type awareness at all.
+ *   - Card-type (STAGE 2c) reuses the same planner with CARD_RULE (2.5% fee,
+ *     T+2 settlement). Tests below prove net comparison, batch N:M with fee,
+ *     amount_mismatch, missing_deposit, and unmatched_deposit.
+ *   - TRANSFER_PARSE_SPEC.regexFallback() / VOUCHER_PARSE_SPEC's
+ *     regexFallback + voucher_type extraField (lib/reconciliation/parser.ts)
+ *     are the deterministic fallbacks parseDeposit() uses when the AI path
+ *     is unavailable — also pure.
  *
  * Run:
- *   npx tsx scripts/verify-reconciliation-matcher.ts
+ *   npx tsx --import ./scripts/stubs/register-server-only.mjs scripts/verify-reconciliation-matcher.ts
+ * (the stub is required because reconcile.ts/parser.ts `import 'server-only'`,
+ * which Next.js aliases away in its own bundler but a plain tsx process can't
+ * resolve on its own — see scripts/stubs/register-server-only.mjs.)
  */
 
 import {
@@ -21,7 +30,8 @@ import {
   type PlannerDepositInput,
   type PlannerSaleInput,
 } from '../lib/reconciliation/reconcile'
-import { TRANSFER_PARSE_SPEC } from '../lib/reconciliation/parser'
+import { matchVoucherType, TRANSFER_PARSE_SPEC, VOUCHER_PARSE_SPEC } from '../lib/reconciliation/parser'
+import { APP_VOUCHER_RULE, CARD_RULE, CASH_RULE, channelExpectsDeposit, expectedDepositDate, expectedNet, TRANSFER_RULE, type ChannelRule } from '../lib/reconciliation/channel-rules'
 
 // ── Assertion helpers (matches scripts/verify-fishing-decision.ts) ───────────
 
@@ -40,8 +50,20 @@ function assert(condition: boolean, label: string): void {
 
 // ── Fixture helpers ────────────────────────────────────────────────────────
 
-function sale(id: string, date: string, gross: number, channelId: string | null = 'ch-transfer'): PlannerSaleInput {
-  return { id, sale_date: date, gross_amount: gross, expected_net_amount: null, channel_id: channelId }
+function sale(
+  id: string,
+  date: string,
+  gross: number,
+  channelId: string | null = 'ch-transfer',
+  expectedNetAmount: number | null = null
+): PlannerSaleInput {
+  return {
+    id,
+    sale_date: date,
+    gross_amount: gross,
+    expected_net_amount: expectedNetAmount,
+    channel_id: channelId,
+  }
 }
 
 function deposit(id: string, date: string, amount: number, hint: string | null = null): PlannerDepositInput {
@@ -170,6 +192,267 @@ function runMatcherTests(): void {
   console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
 }
 
+// ── App-voucher reuse: SAME planner, a different channel_id + rule ────────
+//
+// STAGE 2 requirement: app-voucher reconciliation must reuse the transfer
+// matcher with "minimal new decision logic". Since planTransferReconciliations
+// has zero channel-type awareness (a channel is just a string key into the
+// rule map), an app-voucher fixture set proves matched / amount_mismatch /
+// missing_deposit all work identically — no new planner code exists to test.
+function runAppVoucherReuseTests(): void {
+  console.log('\n══ app-voucher reuse of planTransferReconciliations() ══')
+  const totalBefore = totalCount
+  const failBefore = failCount
+
+  const ruleByChannelId = new Map<string, ChannelRule>([['ch-voucher', APP_VOUCHER_RULE]])
+  assert(APP_VOUCHER_RULE.feeRate === 0, 'APP_VOUCHER_RULE: zero fee (direct deposit, no cut)')
+
+  // ── matched: exact 1:1 amount match on an app_voucher channel ────────────
+  {
+    const sales = [sale('v1', '2026-08-20', 50000, 'ch-voucher')]
+    const deposits = [deposit('vd1', '2026-08-20', 50000)]
+    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
+    assert(plans.length === 1 && plans[0]?.status === 'matched', 'voucher matched: 탐나는전-style exact deposit')
+    assert(summary.matched === 1, 'voucher matched: summary.matched === 1')
+  }
+
+  // ── amount_mismatch: deposit short of the expected face value ────────────
+  {
+    const sales = [sale('v2', '2026-08-21', 30000, 'ch-voucher')]
+    const deposits = [deposit('vd2', '2026-08-21', 25000)]
+    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
+    assert(plans.length === 1 && plans[0]?.status === 'amount_mismatch', 'voucher amount_mismatch: short deposit flagged')
+    assert(plans[0]?.discrepancyAmount === 5000, 'voucher amount_mismatch: discrepancy is 30000 - 25000 = 5000')
+    assert(summary.amount_mismatch === 1, 'voucher amount_mismatch: summary.amount_mismatch === 1')
+  }
+
+  // ── missing_deposit: sale with no matching voucher deposit at all ────────
+  {
+    const sales = [sale('v3', '2026-08-22', 15000, 'ch-voucher')]
+    const deposits: PlannerDepositInput[] = []
+    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
+    assert(plans.length === 1 && plans[0]?.status === 'missing_deposit', 'voucher missing_deposit: no settlement seen yet')
+    assert(summary.missing_deposit === 1, 'voucher missing_deposit: summary.missing_deposit === 1')
+  }
+
+  const total = totalCount - totalBefore
+  const pass = total - (failCount - failBefore)
+  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
+}
+
+// ── Card-type: SAME planner, CARD_RULE (fee + settlement window) ──────────
+//
+// Card deposits arrive NET of fees, batched, on expectedDepositDate (T+2).
+// The planner already compares against expectedNet / persisted
+// expected_net_amount — these fixtures prove that path, including that a
+// GROSS-amount deposit does NOT match.
+function runCardTypeTests(): void {
+  console.log('\n══ card-type reuse of planTransferReconciliations() ══')
+  const totalBefore = totalCount
+  const failBefore = failCount
+
+  const ruleByChannelId = new Map<string, ChannelRule>([['ch-card', CARD_RULE]])
+  assert(CARD_RULE.feeType === 'percent' && CARD_RULE.feeRate === 2.5, 'CARD_RULE: percent fee 2.5% (placeholder, data not matcher)')
+  assert(CARD_RULE.settlementDays === 2, 'CARD_RULE: T+2 settlement window')
+
+  const saleDate = '2026-08-01'
+  const settleDate = expectedDepositDate(saleDate, CARD_RULE)
+  assert(settleDate === '2026-08-03', `CARD_RULE expected deposit date is 2026-08-03 (got ${settleDate})`)
+
+  const gross = 100000
+  const net = expectedNet(gross, CARD_RULE)
+  assert(net === 97500, `expectedNet(100000, CARD_RULE) === 97500 (got ${net})`)
+
+  // ── matched: deposit equals NET on settlement date, not gross ────────────
+  {
+    const sales = [sale('c1', saleDate, gross, 'ch-card')]
+    const deposits = [deposit('cd1', settleDate, net)]
+    const { plans, summary } = planTransferReconciliations({
+      sales,
+      deposits,
+      ruleByChannelId,
+      flagUnmatchedDeposits: true,
+    })
+    assert(plans.length === 1 && plans[0]?.status === 'matched', 'card matched: net deposit on T+2')
+    assert(plans[0]?.discrepancyAmount === 0, 'card matched: discrepancy is 0')
+    assert(
+      plans[0]?.pairs[0]?.sale_id === 'c1' && plans[0]?.pairs[0]?.deposit_id === 'cd1',
+      'card matched: c1 ↔ cd1'
+    )
+    assert(summary.matched === 1, 'card matched: summary.matched === 1')
+  }
+
+  // ── persisted expected_net_amount wins over computed rule net ────────────
+  {
+    const storedNet = 97000
+    const sales = [sale('c1b', saleDate, gross, 'ch-card', storedNet)]
+    const deposits = [deposit('cd1b', settleDate, storedNet)]
+    const { plans } = planTransferReconciliations({
+      sales,
+      deposits,
+      ruleByChannelId,
+      flagUnmatchedDeposits: true,
+    })
+    assert(plans.length === 1 && plans[0]?.status === 'matched', 'card persisted expected_net_amount is what gets compared')
+  }
+
+  // ── GROSS deposit must NOT match (would if matcher ignored the fee) ──────
+  {
+    const sales = [sale('c1c', saleDate, gross, 'ch-card')]
+    const deposits = [deposit('cd1c', settleDate, gross)]
+    const { plans, summary } = planTransferReconciliations({
+      sales,
+      deposits,
+      ruleByChannelId,
+      flagUnmatchedDeposits: true,
+    })
+    assert(plans.length === 1 && plans[0]?.status === 'amount_mismatch', 'card: gross-amount deposit is amount_mismatch, not matched')
+    assert(plans[0]?.discrepancyAmount === net - gross, `card: discrepancy is net-gross = ${net - gross} (got ${plans[0]?.discrepancyAmount})`)
+    assert(summary.amount_mismatch === 1 && summary.matched === 0, 'card gross-deposit: 1 amount_mismatch, 0 matched')
+  }
+
+  // ── amount_mismatch: net off beyond tolerance ────────────────────────────
+  {
+    const sales = [sale('c2', saleDate, gross, 'ch-card')]
+    const deposits = [deposit('cd2', settleDate, 90000)]
+    const { plans, summary } = planTransferReconciliations({
+      sales,
+      deposits,
+      ruleByChannelId,
+      flagUnmatchedDeposits: true,
+    })
+    assert(plans.length === 1 && plans[0]?.status === 'amount_mismatch', 'card amount_mismatch: net short of expected')
+    assert(plans[0]?.discrepancyAmount === net - 90000, `card amount_mismatch: discrepancy ${net} - 90000 (got ${plans[0]?.discrepancyAmount})`)
+    assert(summary.amount_mismatch === 1, 'card amount_mismatch: summary.amount_mismatch === 1')
+  }
+
+  // ── batch N:M with fee: two sales, one net settlement deposit ────────────
+  {
+    const g1 = 40000
+    const g2 = 60000
+    const batchNet = expectedNet(g1, CARD_RULE) + expectedNet(g2, CARD_RULE)
+    const sales = [sale('c3', saleDate, g1, 'ch-card'), sale('c4', saleDate, g2, 'ch-card')]
+    const deposits = [deposit('cd3', settleDate, batchNet)]
+    const { plans, summary } = planTransferReconciliations({
+      sales,
+      deposits,
+      ruleByChannelId,
+      flagUnmatchedDeposits: true,
+    })
+    assert(plans.length === 1 && plans[0]?.status === 'matched', 'card batch N:M: two sales, one net deposit → matched')
+    assert(plans[0]?.discrepancyAmount === 0, 'card batch: discrepancy is 0')
+    assert(plans[0]?.pairs.length === 2, 'card batch: 2 pairs (2 sales × 1 deposit)')
+    const pairKeys = new Set((plans[0]?.pairs ?? []).map((p) => `${p.sale_id}:${p.deposit_id}`))
+    assert(pairKeys.has('c3:cd3') && pairKeys.has('c4:cd3'), 'card batch: both sales linked to the batched deposit')
+    assert(summary.matched === 1, 'card batch: summary.matched === 1')
+  }
+
+  // ── missing_deposit: sale, no settlement deposit ─────────────────────────
+  {
+    const sales = [sale('c5', saleDate, gross, 'ch-card')]
+    const deposits: PlannerDepositInput[] = []
+    const { plans, summary } = planTransferReconciliations({
+      sales,
+      deposits,
+      ruleByChannelId,
+      flagUnmatchedDeposits: true,
+    })
+    assert(plans.length === 1 && plans[0]?.status === 'missing_deposit', 'card missing_deposit: no PG settlement yet')
+    assert(plans[0]?.discrepancyAmount === net, `card missing_deposit: discrepancy is expected net ${net} (got ${plans[0]?.discrepancyAmount})`)
+    assert(
+      plans[0]?.pairs[0]?.sale_id === 'c5' && plans[0]?.pairs[0]?.deposit_id === null,
+      'card missing_deposit: one-sided pair (deposit_id null)'
+    )
+    assert(summary.missing_deposit === 1, 'card missing_deposit: summary.missing_deposit === 1')
+  }
+
+  // ── unmatched_deposit: deposit, no sale (card flags; transfer leaves OPEN)
+  {
+    const sales: PlannerSaleInput[] = []
+    const deposits = [deposit('cd6', settleDate, net)]
+    const { plans, summary } = planTransferReconciliations({
+      sales,
+      deposits,
+      ruleByChannelId,
+      flagUnmatchedDeposits: true,
+    })
+    assert(plans.length === 1 && plans[0]?.status === 'unmatched_deposit', 'card unmatched_deposit: leftover settlement flagged')
+    assert(
+      plans[0]?.pairs[0]?.sale_id === null && plans[0]?.pairs[0]?.deposit_id === 'cd6',
+      'card unmatched_deposit: one-sided pair (sale_id null)'
+    )
+    assert(summary.unmatched_deposit === 1 && summary.deposits_left_open === 0, 'card unmatched_deposit: counted, not left open')
+  }
+
+  const total = totalCount - totalBefore
+  const pass = total - (failCount - failBefore)
+  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
+}
+
+// ── Cash: skipped by the planner (revenue only, no deposit) ───────────────
+
+function runCashSkipTests(): void {
+  console.log('\n══ cash skip: planTransferReconciliations() never flags cash ══')
+  const totalBefore = totalCount
+  const failBefore = failCount
+
+  const ruleByChannelId = new Map<string, ChannelRule>([
+    ['ch-cash', CASH_RULE],
+    ['ch-transfer', TRANSFER_RULE],
+  ])
+  assert(CASH_RULE.feeRate === 0, 'CASH_RULE: feeRate 0')
+  assert(channelExpectsDeposit(CASH_RULE) === false, 'CASH_RULE: expectsDeposit is false')
+  assert(channelExpectsDeposit(TRANSFER_RULE) === true, 'TRANSFER_RULE: still expects a deposit')
+  assert(channelExpectsDeposit(CARD_RULE) === true, 'CARD_RULE: still expects a deposit')
+  assert(expectedNet(50000, CASH_RULE) === 50000, 'expectedNet(cash) === gross')
+
+  // ── cash sale, no deposit → NOT missing_deposit (skipped) ──────────────
+  {
+    const sales = [sale('cash1', '2026-08-01', 50000, 'ch-cash')]
+    const { plans, summary } = planTransferReconciliations({ sales, deposits: [], ruleByChannelId })
+    assert(plans.length === 0, 'cash only: zero plans (not missing_deposit)')
+    assert(summary.missing_deposit === 0, 'cash only: missing_deposit === 0')
+    assert(summary.sales_considered === 0, 'cash only: not counted as a sale to match')
+  }
+
+  // ── coincidental same-amount deposit must NOT match a cash sale ─────────
+  {
+    const sales = [sale('cash2', '2026-08-01', 50000, 'ch-cash')]
+    const deposits = [deposit('d-cash', '2026-08-01', 50000)]
+    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
+    assert(
+      plans.every((p) => !p.pairs.some((pair) => pair.sale_id === 'cash2')),
+      'cash sale is not paired with any deposit'
+    )
+    assert(summary.matched === 0, 'cash + coincidental deposit: not matched')
+    assert(summary.missing_deposit === 0, 'cash + coincidental deposit: not missing_deposit')
+  }
+
+  // ── transfer alongside cash: transfer still matches; cash still skipped ─
+  {
+    const sales = [
+      sale('t1', '2026-08-01', 30000, 'ch-transfer'),
+      sale('cash3', '2026-08-01', 50000, 'ch-cash'),
+    ]
+    const deposits = [deposit('dt1', '2026-08-01', 30000)]
+    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
+    assert(plans.length === 1 && plans[0]?.status === 'matched', 'transfer+cash: transfer still matched')
+    assert(
+      plans[0]?.pairs[0]?.sale_id === 't1' && plans[0]?.pairs[0]?.deposit_id === 'dt1',
+      'transfer+cash: t1 ↔ dt1'
+    )
+    assert(
+      plans.every((p) => !p.pairs.some((pair) => pair.sale_id === 'cash3')),
+      'transfer+cash: cash sale not in any pair'
+    )
+    assert(summary.matched === 1 && summary.missing_deposit === 0, 'transfer+cash: 1 matched, 0 missing_deposit')
+  }
+
+  const total = totalCount - totalBefore
+  const pass = total - (failCount - failBefore)
+  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
+}
+
 // ── Parser regex-fallback test ────────────────────────────────────────────
 
 function runParserTests(): void {
@@ -214,11 +497,51 @@ function runParserTests(): void {
   console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
 }
 
+// ── VOUCHER_PARSE_SPEC regex-fallback + voucher_type extraField test ──────
+
+function runVoucherParserTests(): void {
+  console.log('\n══ VOUCHER_PARSE_SPEC.regexFallback() + voucher_type ══')
+  const totalBefore = totalCount
+  const failBefore = failCount
+
+  // ── Case A: 탐나는전 app deposit — date/amount reused from TRANSFER, plus voucher_type ─
+  {
+    const text = '[Web발신]\n[농협은행]\n08/20 10:05\n탐나는전 50,000원 입금\n잔액 890,000원'
+    const { date, amount } = VOUCHER_PARSE_SPEC.regexFallback(text, '2026-08-20')
+    assert(date === '2026-08-20', `Voucher Case A: date extracted as 2026-08-20 (got ${date})`)
+    assert(amount === 50000, `Voucher Case A: amount extracted as 50000 (got ${amount})`)
+    assert(matchVoucherType(text) === '탐나는전', `Voucher Case A: voucher_type is 탐나는전 (got ${matchVoucherType(text)})`)
+  }
+
+  // ── Case B: 온누리 app deposit ─────────────────────────────────────────
+  {
+    const text = '입금 120,000원 완료 (2026.08.19 09:00 기준) 온누리상품권'
+    const { date, amount } = VOUCHER_PARSE_SPEC.regexFallback(text, '2026-08-20')
+    assert(date === '2026-08-19', `Voucher Case B: date extracted as 2026-08-19 (got ${date})`)
+    assert(amount === 120000, `Voucher Case B: amount extracted as 120000 (got ${amount})`)
+    assert(matchVoucherType(text) === '온누리', `Voucher Case B: voucher_type is 온누리 (got ${matchVoucherType(text)})`)
+  }
+
+  // ── Case C: neither known voucher name present → voucher_type is null ────
+  {
+    const text = '08-20 카카오뱅크 입금 75000원'
+    assert(matchVoucherType(text) === null, 'Voucher Case C: unrecognized payer → voucher_type null (not hallucinated)')
+  }
+
+  const total = totalCount - totalBefore
+  const pass = total - (failCount - failBefore)
+  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────
 
 function main(): void {
   runMatcherTests()
+  runAppVoucherReuseTests()
+  runCardTypeTests()
+  runCashSkipTests()
   runParserTests()
+  runVoucherParserTests()
 
   if (failCount > 0) {
     console.error(`\n❌ ${failCount} assertion(s) failed`)

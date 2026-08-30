@@ -1,5 +1,5 @@
 /**
- * 대사기 (Reconciliation) UI strings — Stage 1, transfer-only slice.
+ * 대사기 (Reconciliation) UI strings — manual sales + transfer reconciliation.
  *
  * Mirrors the repo's ui-labels pattern (see lib/synod/ui-labels.ts,
  * lib/jeju/ui-labels.ts): a Locale union, a flat UiPack of strings, a
@@ -28,8 +28,26 @@ export type ReconciliationUiPack = {
   saleSectionTitle: string
   saleDateLabel: string
   saleAmountLabel: string
+  saleKindLabel: string
+  saleKindCard: string
+  saleKindAppVoucher: string
+  saleKindManualTotal: string
+  saleKindCash: string
+  saleKindHelper: string
+  voucherSectionTitle: string
+  voucherOptionalBadge: string
+  voucherAmountLabel: string
+  voucherTypeLabel: string
+  voucherTypeChoose: string
+  voucherTypeTamna: string
+  voucherTypeOnnuri: string
+  voucherTypeCustom: string
+  voucherTypeCustomLabel: string
+  voucherTypeCustomPlaceholder: string
+  voucherTypeRequiredError: string
   saleSubmitBtn: string
   saleSubmittingBtn: string
+  saleCreatedMsg: string
   saleListEmptyMsg: string
   saleListTitle: string
 
@@ -40,6 +58,22 @@ export type ReconciliationUiPack = {
   depositParsingBtn: string
   depositParsedMsg: string
   depositParseFailedMsg: string
+  depositImageLabel: string
+  depositImageHint: string
+  depositImageBtn: string
+  depositImageParsingBtn: string
+
+  spreadsheetSectionTitle: string
+  spreadsheetKindLabel: string
+  spreadsheetKindDeposits: string
+  spreadsheetKindSales: string
+  spreadsheetHint: string
+  spreadsheetBtn: string
+  spreadsheetParsingBtn: string
+  spreadsheetParsedMsg: string
+  spreadsheetNeedsReviewLabel: string
+  spreadsheetFailedLabel: string
+  spreadsheetCapHint: string
 
   reviewSectionTitle: string
   reviewTagline: string
@@ -70,8 +104,8 @@ export type ReconciliationUiPack = {
 }
 
 const en: ReconciliationUiPack = {
-  pageTitle: 'Reconciliation — Bank Transfer (Stage 1)',
-  pageTagline: 'Paste a sale and a deposit alert, then reconcile them. Transfer channel only.',
+  pageTitle: 'Reconciliation — Manual sales entry',
+  pageTagline: 'Record sales manually, review deposit alerts, and run supported reconciliation channels.',
   signInRequiredTitle: 'Sign-in required',
   signInRequiredBody: 'Sign in elsewhere, then return to this page.',
   checkingSessionMsg: 'Checking session…',
@@ -80,8 +114,27 @@ const en: ReconciliationUiPack = {
   saleSectionTitle: '1. Record a sale',
   saleDateLabel: 'Sale date',
   saleAmountLabel: 'Gross amount (KRW)',
+  saleKindLabel: 'Sale kind',
+  saleKindCard: 'Card sale',
+  saleKindAppVoucher: 'App voucher',
+  saleKindManualTotal: 'Manual total',
+  saleKindCash: 'Cash',
+  saleKindHelper:
+    'If the receipt shows a card issuer, classify it as a card sale. If the bank statement shows a separate deposit under a voucher name such as Tamna Jeon or Onnuri, classify it as an app voucher. Practices vary by region, so check both the receipt and deposit history.',
+  voucherSectionTitle: 'Voucher portion within this sale',
+  voucherOptionalBadge: 'Optional — most users can skip this',
+  voucherAmountLabel: 'Voucher amount (KRW)',
+  voucherTypeLabel: 'Voucher type',
+  voucherTypeChoose: 'Choose a voucher',
+  voucherTypeTamna: 'Tamna Jeon (탐나는전)',
+  voucherTypeOnnuri: 'Onnuri (온누리)',
+  voucherTypeCustom: 'Enter another name',
+  voucherTypeCustomLabel: 'Voucher name',
+  voucherTypeCustomPlaceholder: 'Enter the voucher name',
+  voucherTypeRequiredError: 'Choose or enter a voucher type when a voucher amount is set.',
   saleSubmitBtn: 'Add sale',
   saleSubmittingBtn: 'Adding…',
+  saleCreatedMsg: 'Sale created',
   saleListEmptyMsg: 'No sales yet.',
   saleListTitle: 'Sales',
 
@@ -92,10 +145,27 @@ const en: ReconciliationUiPack = {
   depositParsingBtn: 'Parsing…',
   depositParsedMsg: 'Parsed deposit',
   depositParseFailedMsg: 'Could not extract a date and amount from that text.',
+  depositImageLabel: 'Or upload a deposit screenshot',
+  depositImageHint: 'Photo of a bank deposit alert or passbook. Vision is unreliable — you must confirm the values.',
+  depositImageBtn: 'Parse photo',
+  depositImageParsingBtn: 'Reading photo…',
+
+  spreadsheetSectionTitle: 'Spreadsheet import (Excel/CSV)',
+  spreadsheetKindLabel: 'This file is',
+  spreadsheetKindDeposits: 'Deposits',
+  spreadsheetKindSales: 'Sales',
+  spreadsheetHint:
+    'One POS or hand-kept sheet, many rows. Columns are mapped automatically — confirm low-confidence rows before reconciling. Max 300 data rows. Nothing is auto-reconciled.',
+  spreadsheetBtn: 'Parse spreadsheet',
+  spreadsheetParsingBtn: 'Reading spreadsheet…',
+  spreadsheetParsedMsg: 'Imported',
+  spreadsheetNeedsReviewLabel: 'need review',
+  spreadsheetFailedLabel: 'could not parse',
+  spreadsheetCapHint: 'Max 300 data rows per upload.',
 
   reviewSectionTitle: '3. Review parsed deposits',
-  reviewTagline: 'Confirm or correct AI-parsed values before reconciling.',
-  reviewEmptyMsg: 'No deposits awaiting review.',
+  reviewTagline: 'Confirm or correct pending sales and deposits before reconciling.',
+  reviewEmptyMsg: 'No rows awaiting review.',
   reviewDateLabel: 'Date',
   reviewAmountLabel: 'Amount (KRW)',
   reviewConfidenceLabel: 'Confidence',
@@ -122,8 +192,8 @@ const en: ReconciliationUiPack = {
 }
 
 const ko: ReconciliationUiPack = {
-  pageTitle: '대사 — 계좌이체 (1단계)',
-  pageTagline: '판매 내역과 입금 알림을 입력하면 자동으로 대사합니다. 계좌이체 채널만 지원합니다.',
+  pageTitle: '대사 — 수기 판매 등록',
+  pageTagline: '판매 내역을 직접 등록하고 입금 알림을 확인한 뒤 지원되는 채널을 대사합니다.',
   signInRequiredTitle: '로그인이 필요합니다',
   signInRequiredBody: '다른 곳에서 로그인한 뒤 이 페이지로 돌아와 주세요.',
   checkingSessionMsg: '세션 확인 중…',
@@ -132,8 +202,27 @@ const ko: ReconciliationUiPack = {
   saleSectionTitle: '1. 판매 등록',
   saleDateLabel: '판매일',
   saleAmountLabel: '판매 금액(원)',
+  saleKindLabel: '매출 구분',
+  saleKindCard: '카드매출',
+  saleKindAppVoucher: '앱상품권',
+  saleKindManualTotal: '수기총액',
+  saleKindCash: '현금',
+  saleKindHelper:
+    '영수증에 카드사명이 찍히면 카드매출, 통장에 탐나는전·온누리 등 상품권 이름으로 따로 입금되면 앱상품권으로 넣으세요. 지역마다 다를 수 있으니 영수증/입금 내역을 확인하세요.',
+  voucherSectionTitle: '이 매출 중 상품권 몫',
+  voucherOptionalBadge: '선택사항 — 대부분은 건너뛰어도 됩니다',
+  voucherAmountLabel: '상품권 금액(원)',
+  voucherTypeLabel: '상품권 종류',
+  voucherTypeChoose: '상품권을 선택하세요',
+  voucherTypeTamna: '탐나는전',
+  voucherTypeOnnuri: '온누리',
+  voucherTypeCustom: '직접입력',
+  voucherTypeCustomLabel: '상품권 이름',
+  voucherTypeCustomPlaceholder: '상품권 이름을 입력하세요',
+  voucherTypeRequiredError: '상품권 금액을 입력하면 상품권 종류도 선택하거나 입력해야 합니다.',
   saleSubmitBtn: '판매 추가',
   saleSubmittingBtn: '추가 중…',
+  saleCreatedMsg: '판매 등록 완료',
   saleListEmptyMsg: '등록된 판매 내역이 없습니다.',
   saleListTitle: '판매 내역',
 
@@ -144,10 +233,27 @@ const ko: ReconciliationUiPack = {
   depositParsingBtn: '분석 중…',
   depositParsedMsg: '입금 분석 완료',
   depositParseFailedMsg: '해당 문자에서 날짜와 금액을 추출할 수 없습니다.',
+  depositImageLabel: '또는 입금 알림 사진 올리기',
+  depositImageHint: '입금 알림 화면 또는 통장 사진. 사진 인식은 틀릴 수 있으니 반드시 값을 확인하세요.',
+  depositImageBtn: '사진 분석',
+  depositImageParsingBtn: '사진 읽는 중…',
+
+  spreadsheetSectionTitle: '엑셀/CSV 가져오기',
+  spreadsheetKindLabel: '이 파일은',
+  spreadsheetKindDeposits: '입금',
+  spreadsheetKindSales: '매출',
+  spreadsheetHint:
+    'POS 내보내기나 수기 장부 한 장, 여러 행. 열 이름은 자동으로 맞춥니다. 신뢰도가 낮은 행은 대사 전에 확인하세요. 한 번에 최대 300행. 가져오기만 하며 대사는 실행하지 않습니다.',
+  spreadsheetBtn: '스프레드시트 분석',
+  spreadsheetParsingBtn: '스프레드시트 읽는 중…',
+  spreadsheetParsedMsg: '가져옴',
+  spreadsheetNeedsReviewLabel: '확인 필요',
+  spreadsheetFailedLabel: '분석 실패',
+  spreadsheetCapHint: '한 번에 최대 300행.',
 
   reviewSectionTitle: '3. 분석된 입금 확인',
-  reviewTagline: '대사 전에 AI가 분석한 값을 확인하거나 수정하세요.',
-  reviewEmptyMsg: '확인이 필요한 입금 내역이 없습니다.',
+  reviewTagline: '대사 전에 대기 중인 매출·입금 값을 확인하거나 수정하세요.',
+  reviewEmptyMsg: '확인이 필요한 내역이 없습니다.',
   reviewDateLabel: '날짜',
   reviewAmountLabel: '금액(원)',
   reviewConfidenceLabel: '신뢰도',
