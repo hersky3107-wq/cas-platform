@@ -98,6 +98,98 @@ export const CASH_RULE: ChannelRule = {
   expectsDeposit: false,
 }
 
+/**
+ * A named channel preset the user can pick when creating a channel
+ * (POST /api/reconciliation/channels with `preset`). DATA ONLY: every preset
+ * maps to a channel_type that ALREADY has an engine — delivery apps and
+ * foreign pay are card-type (부류 B: fee withheld, PG deposits net after N
+ * days), so they ride reconcile-card unchanged. Picking a preset seeds one
+ * reconciliation_rules row with these defaults; from then on the rule is a
+ * normal per-channel row the user adjusts like any card rule.
+ */
+export type ChannelPreset = {
+  /** Stable pick id (accepted by POST /channels as `preset`). */
+  id: string
+  /** Default payment_channels.name — overridable at creation. */
+  name: string
+  /** Must be a key of RULES_BY_CHANNEL_TYPE — presets never add engines. */
+  channelType: string
+  feeType: FeeType
+  feeRate: number
+  settlementDays: number
+  toleranceWon: number
+  toleranceDays: number
+  /** Stored on the seeded rule row — tells the user why the default is rough. */
+  notes: string
+}
+
+/**
+ * Delivery apps: the "fee" here is 중개+결제+배달비+광고비 combined
+ * (~25-30%) and the real deduction VARIES per settlement (promotions, ad
+ * spend). The default below is deliberately a rough midpoint — frequent
+ * amount_mismatch is EXPECTED and correct: the multi-AI advisory explains
+ * the gap the rule can't model. Do not encode per-promotion deductions as
+ * rules. Settlement is weekly-batched, roughly D+3 from sale.
+ *
+ * Foreign pay (알리페이/위챗페이): normal PG-style percent fee, rough
+ * placeholder rate — actual MDR comes from the merchant's PG contract,
+ * settlement ~D+2. Adjust via the seeded rule row.
+ */
+export const CHANNEL_PRESETS: readonly ChannelPreset[] = [
+  {
+    id: 'baemin',
+    name: '배달의민족',
+    channelType: 'card',
+    feeType: 'percent',
+    feeRate: 27.5,
+    settlementDays: 3,
+    toleranceWon: 1,
+    toleranceDays: 0,
+    notes:
+      '배달앱 프리셋(rough): 중개+결제+배달비+광고비 합산 ~25-30%, 주 단위 배치 정산 ~D+3. 실제 공제는 정산마다 달라 amount_mismatch가 자주 뜨는 것이 정상 — AI 어드바이저리가 차액을 설명. 실제 계약 조건으로 수정하세요.',
+  },
+  {
+    id: 'coupang_eats',
+    name: '쿠팡이츠',
+    channelType: 'card',
+    feeType: 'percent',
+    feeRate: 27.5,
+    settlementDays: 3,
+    toleranceWon: 1,
+    toleranceDays: 0,
+    notes:
+      '배달앱 프리셋(rough): 중개+결제+배달비+광고비 합산 ~25-30%, 주 단위 배치 정산 ~D+3. 실제 공제는 정산마다 달라 amount_mismatch가 자주 뜨는 것이 정상 — AI 어드바이저리가 차액을 설명. 실제 계약 조건으로 수정하세요.',
+  },
+  {
+    id: 'alipay',
+    name: '알리페이',
+    channelType: 'card',
+    feeType: 'percent',
+    feeRate: 3,
+    settlementDays: 2,
+    toleranceWon: 1,
+    toleranceDays: 0,
+    notes:
+      '해외간편결제 프리셋(rough): 수수료 ~3%는 자리표시자 — PG 계약 요율로 수정하세요. 정산 ~D+2.',
+  },
+  {
+    id: 'wechat_pay',
+    name: '위챗페이',
+    channelType: 'card',
+    feeType: 'percent',
+    feeRate: 3,
+    settlementDays: 2,
+    toleranceWon: 1,
+    toleranceDays: 0,
+    notes:
+      '해외간편결제 프리셋(rough): 수수료 ~3%는 자리표시자 — PG 계약 요율로 수정하세요. 정산 ~D+2.',
+  },
+]
+
+export function channelPresetById(id: string): ChannelPreset | null {
+  return CHANNEL_PRESETS.find((p) => p.id === id) ?? null
+}
+
 /** channel_type → rule. transfer / app_voucher / card / cash. */
 const RULES_BY_CHANNEL_TYPE: Record<string, ChannelRule> = {
   transfer: TRANSFER_RULE,

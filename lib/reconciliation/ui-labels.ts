@@ -34,22 +34,17 @@ export type ReconciliationUiPack = {
   saleKindManualTotal: string
   saleKindCash: string
   saleKindHelper: string
-  voucherSectionTitle: string
-  voucherOptionalBadge: string
-  voucherAmountLabel: string
-  voucherTypeLabel: string
-  voucherTypeChoose: string
-  voucherTypeTamna: string
-  voucherTypeOnnuri: string
-  voucherTypeCustom: string
-  voucherTypeCustomLabel: string
-  voucherTypeCustomPlaceholder: string
-  voucherTypeRequiredError: string
   saleSubmitBtn: string
   saleSubmittingBtn: string
   saleCreatedMsg: string
   saleListEmptyMsg: string
   saleListTitle: string
+  saleImageLabel: string
+  saleImageHint: string
+  saleImageParsingBtn: string
+  saleImageParsedMsg: string
+  saleKindGuessBadge: string
+  saleKindUnknownBadge: string
 
   depositSectionTitle: string
   depositTextLabel: string
@@ -121,22 +116,18 @@ const en: ReconciliationUiPack = {
   saleKindCash: 'Cash',
   saleKindHelper:
     'If the receipt shows a card issuer, classify it as a card sale. If the bank statement shows a separate deposit under a voucher name such as Tamna Jeon or Onnuri, classify it as an app voucher. Practices vary by region, so check both the receipt and deposit history.',
-  voucherSectionTitle: 'Voucher portion within this sale',
-  voucherOptionalBadge: 'Optional — most users can skip this',
-  voucherAmountLabel: 'Voucher amount (KRW)',
-  voucherTypeLabel: 'Voucher type',
-  voucherTypeChoose: 'Choose a voucher',
-  voucherTypeTamna: 'Tamna Jeon (탐나는전)',
-  voucherTypeOnnuri: 'Onnuri (온누리)',
-  voucherTypeCustom: 'Enter another name',
-  voucherTypeCustomLabel: 'Voucher name',
-  voucherTypeCustomPlaceholder: 'Enter the voucher name',
-  voucherTypeRequiredError: 'Choose or enter a voucher type when a voucher amount is set.',
   saleSubmitBtn: 'Add sale',
   saleSubmittingBtn: 'Adding…',
   saleCreatedMsg: 'Sale created',
   saleListEmptyMsg: 'No sales yet.',
   saleListTitle: 'Sales',
+  saleImageLabel: 'Or upload a receipt / POS screenshot',
+  saleImageHint:
+    'Photo of a paper receipt or POS screen. Vision cannot reliably tell card vs cash — you must confirm the sale kind.',
+  saleImageParsingBtn: 'Reading receipt…',
+  saleImageParsedMsg: 'Parsed sale from photo',
+  saleKindGuessBadge: 'KIND GUESSED — CONFIRM',
+  saleKindUnknownBadge: 'KIND UNKNOWN — SET IT',
 
   depositSectionTitle: '2. Paste a deposit-alert message',
   depositTextLabel: 'Deposit alert text',
@@ -209,22 +200,18 @@ const ko: ReconciliationUiPack = {
   saleKindCash: '현금',
   saleKindHelper:
     '영수증에 카드사명이 찍히면 카드매출, 통장에 탐나는전·온누리 등 상품권 이름으로 따로 입금되면 앱상품권으로 넣으세요. 지역마다 다를 수 있으니 영수증/입금 내역을 확인하세요.',
-  voucherSectionTitle: '이 매출 중 상품권 몫',
-  voucherOptionalBadge: '선택사항 — 대부분은 건너뛰어도 됩니다',
-  voucherAmountLabel: '상품권 금액(원)',
-  voucherTypeLabel: '상품권 종류',
-  voucherTypeChoose: '상품권을 선택하세요',
-  voucherTypeTamna: '탐나는전',
-  voucherTypeOnnuri: '온누리',
-  voucherTypeCustom: '직접입력',
-  voucherTypeCustomLabel: '상품권 이름',
-  voucherTypeCustomPlaceholder: '상품권 이름을 입력하세요',
-  voucherTypeRequiredError: '상품권 금액을 입력하면 상품권 종류도 선택하거나 입력해야 합니다.',
   saleSubmitBtn: '판매 추가',
   saleSubmittingBtn: '추가 중…',
   saleCreatedMsg: '판매 등록 완료',
   saleListEmptyMsg: '등록된 판매 내역이 없습니다.',
   saleListTitle: '판매 내역',
+  saleImageLabel: '또는 영수증/POS 화면 사진 올리기',
+  saleImageHint:
+    '종이 영수증 또는 POS 화면 사진. 카드/현금은 사진만으로 확실하지 않으니 매출 구분을 반드시 확인하세요.',
+  saleImageParsingBtn: '영수증 읽는 중…',
+  saleImageParsedMsg: '사진에서 매출 분석 완료',
+  saleKindGuessBadge: '구분 추정 — 확인 필요',
+  saleKindUnknownBadge: '구분 모름 — 직접 선택',
 
   depositSectionTitle: '2. 입금 알림 문자 붙여넣기',
   depositTextLabel: '입금 알림 문자',

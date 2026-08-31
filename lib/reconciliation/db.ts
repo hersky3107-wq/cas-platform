@@ -4,11 +4,14 @@ import { encryptText, decryptText } from '@/lib/db/crypto'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { OwnedScope } from '@/lib/reconciliation/scope'
 import {
+  CHANNEL_PRESETS,
   channelExpectsDeposit,
+  channelPresetById,
   expectedDepositDate as computeExpectedDepositDate,
   expectedNet as computeExpectedNet,
   ruleForChannelType,
   ruleFromRow,
+  type ChannelPreset,
   type ChannelRule,
 } from '@/lib/reconciliation/channel-rules'
 import {
@@ -440,8 +443,30 @@ export async function createChannel(
   input: Record<string, unknown>
 ): Promise<DalResult<PaymentChannel>> {
   const fields = stripOwner(input)
-  const name = asOptionalString(fields.name)
-  const channelType = asOptionalString(fields.channel_type)
+
+  // Optional preset (배달앱/해외간편결제 등): resolves name/channel_type and
+  // seeds the initial reconciliation_rules row. Preset channel types always
+  // reuse an existing engine (all current presets are card-type), so this is
+  // data only — reconcile-card picks the channel up like any other card.
+  let preset: ChannelPreset | null = null
+  if (fields.preset != null) {
+    const presetId = asOptionalString(fields.preset)
+    preset = presetId ? channelPresetById(presetId) : null
+    if (!preset) {
+      const valid = CHANNEL_PRESETS.map((p) => p.id).join(', ')
+      return dalErr(400, `Unknown preset — valid presets: ${valid}`)
+    }
+  }
+
+  const name = asOptionalString(fields.name) ?? preset?.name ?? null
+  const explicitType = asOptionalString(fields.channel_type)
+  if (preset && explicitType && explicitType !== preset.channelType) {
+    return dalErr(
+      400,
+      `preset '${preset.id}' is channel_type '${preset.channelType}' — omit channel_type or pass the matching one`
+    )
+  }
+  const channelType = explicitType ?? preset?.channelType ?? null
   if (!name) return dalErr(400, 'name is required')
   if (!channelType) return dalErr(400, 'channel_type is required')
 
@@ -451,7 +476,29 @@ export async function createChannel(
     .select('*')
     .single()
   if (error) return fromSbError(error)
-  return requireReturnedOwner(data as PaymentChannel, scope)
+  const owned = requireReturnedOwner(data as PaymentChannel, scope)
+  if (!owned.ok || !preset) return owned
+
+  // Seed the preset's rule as a normal per-channel row — from here on it is
+  // user-adjustable data exactly like a card rule (PATCH /rules, new rows).
+  const { error: ruleError } = await supabaseAdmin.from('reconciliation_rules').insert({
+    channel_id: owned.data.id,
+    fee_type: preset.feeType,
+    fee_rate: preset.feeRate,
+    settlement_days: preset.settlementDays,
+    tolerance_won: preset.toleranceWon,
+    tolerance_days: preset.toleranceDays,
+    effective_from: new Date().toISOString().slice(0, 10),
+    effective_to: null,
+    notes: preset.notes,
+  })
+  if (ruleError) {
+    // Keep channel+rule creation atomic from the caller's view: roll the
+    // channel back rather than leaving a preset channel on CARD_RULE 2.5%.
+    await supabaseAdmin.from('payment_channels').delete().eq('id', owned.data.id)
+    return fromSbError(ruleError)
+  }
+  return owned
 }
 
 export async function updateChannel(
@@ -902,6 +949,11 @@ export async function updateSale(
     const channel = await resolveOptionalOwnedFk(scope, fields.channel_id, 'channel_id')
     if (!channel.ok) return channel
     patch.channel_id = channel.data
+  }
+  if ('sale_kind' in fields) {
+    const kind = oneOf(fields.sale_kind, SALE_KINDS, 'sale_kind')
+    if (!kind.ok) return kind
+    patch.sale_kind = kind.data
   }
   if (Object.keys(patch).length === 0) return dalErr(400, 'No fields to update')
 

@@ -17,12 +17,13 @@ import {
   normalizeReconciliationLocale,
   type ReconciliationUiPack,
 } from '@/lib/reconciliation/ui-labels'
-import type {
-  DepositRecord,
-  PaymentChannel,
-  ReconciliationWithMatches,
-  SaleKind,
-  SalesRecord,
+import {
+  SALE_KINDS,
+  type DepositRecord,
+  type PaymentChannel,
+  type ReconciliationWithMatches,
+  type SaleKind,
+  type SalesRecord,
 } from '@/lib/reconciliation/types'
 
 const TRANSFER_CHANNEL_NAME = 'Transfer'
@@ -101,13 +102,16 @@ export default function ReconciliationPage() {
   const [saleDate, setSaleDate] = useState('')
   const [saleAmount, setSaleAmount] = useState('')
   const [saleKind, setSaleKind] = useState<SaleKind>('card')
-  const [voucherSectionOpen, setVoucherSectionOpen] = useState(false)
-  const [voucherAmount, setVoucherAmount] = useState('')
-  const [voucherTypeChoice, setVoucherTypeChoice] = useState('')
-  const [customVoucherType, setCustomVoucherType] = useState('')
   const [savingSale, setSavingSale] = useState(false)
   const [saleError, setSaleError] = useState<string | null>(null)
   const [lastCreatedSale, setLastCreatedSale] = useState<SalesRecord | null>(null)
+  const [saleImageName, setSaleImageName] = useState('')
+  const [parsingSaleImage, setParsingSaleImage] = useState(false)
+  const [lastParsedSale, setLastParsedSale] = useState<{
+    confidence: number
+    sale_kind: SaleKind
+    sale_kind_guessed: boolean
+  } | null>(null)
 
   const [depositText, setDepositText] = useState('')
   const [depositImageName, setDepositImageName] = useState('')
@@ -123,7 +127,9 @@ export default function ReconciliationPage() {
   } | null>(null)
 
   const [editing, setEditing] = useState<Record<string, { date: string; amount: string }>>({})
-  const [editingSales, setEditingSales] = useState<Record<string, { date: string; amount: string }>>({})
+  const [editingSales, setEditingSales] = useState<
+    Record<string, { date: string; amount: string; sale_kind: SaleKind }>
+  >({})
   const [savingDepositId, setSavingDepositId] = useState<string | null>(null)
   const [savingPendingSaleId, setSavingPendingSaleId] = useState<string | null>(null)
 
@@ -198,45 +204,16 @@ export default function ReconciliationPage() {
   }, [userId, ensureTransferChannel, refreshLists])
 
   const handleAddSale = useCallback(async () => {
-    const resolvedVoucherType =
-      voucherTypeChoice === 'custom'
-        ? customVoucherType.trim()
-        : voucherTypeChoice || null
-    if (voucherAmount.trim() && !resolvedVoucherType) {
-      setSaleError(pack.voucherTypeRequiredError)
-      return
-    }
-
     setSaleError(null)
     setLastCreatedSale(null)
     setSavingSale(true)
     try {
-      let saleChannelId: string | undefined
-      if (saleKind === 'app_voucher' && resolvedVoucherType) {
-        const channels = await apiJson<PaymentChannel[]>('/api/reconciliation/channels')
-        const existing = channels.find(
-          (candidate) =>
-            candidate.channel_type === 'app_voucher' &&
-            candidate.name === resolvedVoucherType
-        )
-        const appVoucherChannel =
-          existing ??
-          (await apiJson<PaymentChannel>('/api/reconciliation/channels', {
-            method: 'POST',
-            json: { name: resolvedVoucherType, channel_type: 'app_voucher' },
-          }))
-        saleChannelId = appVoucherChannel.id
-      }
-
       const created = await apiJson<SalesRecord>('/api/reconciliation/sales', {
         method: 'POST',
         json: {
           sale_date: saleDate,
           gross_amount: Number(saleAmount),
-          channel_id: saleChannelId,
           sale_kind: saleKind,
-          voucher_amount: voucherAmount.trim() ? Number(voucherAmount) : null,
-          voucher_type: resolvedVoucherType,
           entry_source: 'manual',
           confirm_status: 'confirmed',
         },
@@ -245,10 +222,6 @@ export default function ReconciliationPage() {
       setSaleDate('')
       setSaleAmount('')
       setSaleKind('card')
-      setVoucherAmount('')
-      setVoucherTypeChoice('')
-      setCustomVoucherType('')
-      setVoucherSectionOpen(false)
       await refreshLists()
     } catch (e) {
       setSaleError(e instanceof Error ? e.message : String(e))
@@ -256,14 +229,10 @@ export default function ReconciliationPage() {
       setSavingSale(false)
     }
   }, [
-    customVoucherType,
-    pack.voucherTypeRequiredError,
     refreshLists,
     saleAmount,
     saleDate,
     saleKind,
-    voucherAmount,
-    voucherTypeChoice,
   ])
 
   const handleParseDeposit = useCallback(async () => {
@@ -327,6 +296,50 @@ export default function ReconciliationPage() {
       }
     },
     [channel, refreshLists]
+  )
+
+  const handleParseSalesImage = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return
+      setError(null)
+      setSaleError(null)
+      setParsingSaleImage(true)
+      setLastParsedSale(null)
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () =>
+            typeof reader.result === 'string'
+              ? resolve(reader.result)
+              : reject(new Error('Could not read image'))
+          reader.onerror = () => reject(new Error('Could not read image'))
+          reader.readAsDataURL(file)
+        })
+        const result = await apiJson<{
+          sale: SalesRecord
+          parsed: { confidence: number }
+          sale_kind_guessed: boolean
+        }>('/api/reconciliation/parse-sales-image', {
+          method: 'POST',
+          json: {
+            image: dataUrl,
+            media_type: file.type || undefined,
+          },
+        })
+        setLastParsedSale({
+          confidence: result.parsed.confidence,
+          sale_kind: result.sale.sale_kind,
+          sale_kind_guessed: result.sale_kind_guessed,
+        })
+        setSaleImageName('')
+        await refreshLists()
+      } catch (e) {
+        setSaleError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setParsingSaleImage(false)
+      }
+    },
+    [refreshLists]
   )
 
   const handleParseSpreadsheet = useCallback(
@@ -434,7 +447,11 @@ export default function ReconciliationPage() {
   const startEditSale = useCallback((sale: SalesRecord) => {
     setEditingSales((prev) => ({
       ...prev,
-      [sale.id]: { date: sale.sale_date, amount: String(sale.gross_amount) },
+      [sale.id]: {
+        date: sale.sale_date,
+        amount: String(sale.gross_amount),
+        sale_kind: sale.sale_kind,
+      },
     }))
   }, [])
 
@@ -469,6 +486,7 @@ export default function ReconciliationPage() {
           json: {
             sale_date: edit.date,
             gross_amount: Number(edit.amount),
+            sale_kind: edit.sale_kind,
             confirm_status: 'edited',
           },
         })
@@ -564,7 +582,6 @@ export default function ReconciliationPage() {
                 onChange={(e) => {
                   const next = e.target.value as SaleKind
                   setSaleKind(next)
-                  if (next === 'app_voucher') setVoucherSectionOpen(true)
                 }}
                 style={inputStyle}
               >
@@ -576,58 +593,6 @@ export default function ReconciliationPage() {
             <p style={{ fontSize: 12, color: '#555', lineHeight: 1.5 }}>
               {pack.saleKindHelper}
             </p>
-
-            <details
-              open={voucherSectionOpen}
-              onToggle={(e) => setVoucherSectionOpen(e.currentTarget.open)}
-              style={{ border: '1px dashed #aaa', padding: 10, marginBottom: 12 }}
-            >
-              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-                {pack.voucherSectionTitle}{' '}
-                <span style={{ fontWeight: 400, fontSize: 12, color: '#666' }}>
-                  ({pack.voucherOptionalBadge})
-                </span>
-              </summary>
-              <div style={{ marginTop: 12 }}>
-                <div style={rowStyle}>
-                  <span style={labelStyle}>{pack.voucherAmountLabel}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max={saleAmount || undefined}
-                    step="0.01"
-                    value={voucherAmount}
-                    onChange={(e) => setVoucherAmount(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-                <div style={rowStyle}>
-                  <span style={labelStyle}>{pack.voucherTypeLabel}</span>
-                  <select
-                    value={voucherTypeChoice}
-                    onChange={(e) => setVoucherTypeChoice(e.target.value)}
-                    style={inputStyle}
-                  >
-                    <option value="">{pack.voucherTypeChoose}</option>
-                    <option value="탐나는전">{pack.voucherTypeTamna}</option>
-                    <option value="온누리">{pack.voucherTypeOnnuri}</option>
-                    <option value="custom">{pack.voucherTypeCustom}</option>
-                  </select>
-                </div>
-                {voucherTypeChoice === 'custom' ? (
-                  <div style={rowStyle}>
-                    <span style={labelStyle}>{pack.voucherTypeCustomLabel}</span>
-                    <input
-                      type="text"
-                      value={customVoucherType}
-                      onChange={(e) => setCustomVoucherType(e.target.value)}
-                      placeholder={pack.voucherTypeCustomPlaceholder}
-                      style={inputStyle}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            </details>
 
             <button
               type="button"
@@ -649,6 +614,31 @@ export default function ReconciliationPage() {
                   {JSON.stringify(lastCreatedSale, null, 2)}
                 </pre>
               </div>
+            ) : null}
+
+            <div style={{ ...rowStyle, marginTop: 12 }}>
+              <span style={labelStyle}>{pack.saleImageLabel}</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                disabled={parsingSaleImage}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  setSaleImageName(file?.name ?? '')
+                  void handleParseSalesImage(file)
+                  e.target.value = ''
+                }}
+              />
+              {parsingSaleImage ? <span style={{ fontSize: 12 }}>{pack.saleImageParsingBtn}</span> : null}
+            </div>
+            <p style={{ fontSize: 12, color: '#555', lineHeight: 1.5 }}>{pack.saleImageHint}</p>
+            {saleImageName ? <p style={{ fontSize: 12 }}>{saleImageName}</p> : null}
+            {lastParsedSale ? (
+              <p>
+                {pack.saleImageParsedMsg} — {pack.reviewConfidenceLabel}: {lastParsedSale.confidence} —{' '}
+                {saleKindLabel(pack, lastParsedSale.sale_kind)}{' '}
+                {lastParsedSale.sale_kind_guessed ? pack.saleKindGuessBadge : pack.saleKindUnknownBadge}
+              </p>
             ) : null}
 
             <h3>{pack.saleListTitle}</h3>
@@ -774,6 +764,11 @@ export default function ReconciliationPage() {
                   return (
                     <div key={s.id} style={{ ...rowStyle, border: '1px dashed #ccc', padding: 8 }}>
                       {low ? <span style={badgeStyle}>{pack.reviewLowConfidenceBadge}</span> : null}
+                      {s.entry_source === 'pos_import' && s.sale_kind === 'manual_total' ? (
+                        <span style={badgeStyle}>{pack.saleKindUnknownBadge}</span>
+                      ) : s.entry_source === 'pos_import' ? (
+                        <span style={badgeStyle}>{pack.saleKindGuessBadge}</span>
+                      ) : null}
                       <span style={labelStyle}>{pack.spreadsheetKindSales}</span>
                       <span style={labelStyle}>{pack.reviewConfidenceLabel}</span>
                       <span>{s.confidence ?? '—'}</span>
@@ -803,6 +798,26 @@ export default function ReconciliationPage() {
                             }
                             style={inputStyle}
                           />
+                          <span style={labelStyle}>{pack.saleKindLabel}</span>
+                          <select
+                            value={edit.sale_kind}
+                            onChange={(e) =>
+                              setEditingSales((prev) => ({
+                                ...prev,
+                                [s.id]: {
+                                  ...prev[s.id],
+                                  sale_kind: e.target.value as SaleKind,
+                                },
+                              }))
+                            }
+                            style={inputStyle}
+                          >
+                            {SALE_KINDS.map((kind) => (
+                              <option key={kind} value={kind}>
+                                {saleKindLabel(pack, kind)}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             type="button"
                             disabled={savingPendingSaleId === s.id}

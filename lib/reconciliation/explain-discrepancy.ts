@@ -1,7 +1,14 @@
 import 'server-only'
 
-import { runSingleAiProvider } from '@/lib/ai/router'
+import { callPlatformModel } from '@/lib/ai/platform-providers'
+import { runSingleAiProvider, type ExtendedAiProviderName } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import {
+  ADVISORY_MAX_COMPLETION_TOKENS,
+  ADVISORY_MODELS,
+  ADVISORY_MODEL_TIMEOUT_MS,
+  type AdvisoryModelSpec,
+} from '@/lib/reconciliation/config'
 import {
   getChannel,
   getDeposit,
@@ -14,6 +21,8 @@ import type { ChannelRule } from '@/lib/reconciliation/channel-rules'
 import type { OwnedScope } from '@/lib/reconciliation/scope'
 import {
   parseDiscrepancyAdvisory,
+  type AdvisoryConfidence,
+  type AdvisoryModelVote,
   type DalResult,
   type DepositRecord,
   type DiscrepancyAdvisory,
@@ -23,20 +32,36 @@ import {
 } from '@/lib/reconciliation/types'
 
 /**
- * Single-AI discrepancy explanation for card-type amount_mismatch rows.
+ * Multi-AI discrepancy explanation for card-type amount_mismatch rows.
+ *
+ * N models (ADVISORY_MODELS) get the identical strict-JSON prompt in
+ * parallel and their answers are cross-verified:
+ *   - agreement on the cause  → consensus, confidence raised when unanimous
+ *   - disagreement            → divergent views shown side by side, confidence lowered
+ *   - partial failures        → aggregate over the models that responded
+ *   - all failed              → 502, nothing fabricated, nothing persisted
  *
  * ADVISORY ONLY: never writes status / resolved / discrepancy_amount.
- * The matcher is not called. Multi-AI cross-check is a later step.
+ * The matcher is not called. User-triggered + cached (re-run only on force).
  *
- * sessionId is null so the call does not write generic session tables
+ * sessionId is null so the calls do not write generic session tables
  * (same pattern as parseDeposit).
  */
+
+export type AdvisoryModelTiming = {
+  model: string
+  elapsed_ms: number
+  ok: boolean
+}
 
 export type ExplainDiscrepancyResult = {
   reconciliation_id: string
   status: ReconStatus
   advisory: DiscrepancyAdvisory
   cached: boolean
+  /** Fresh runs only — not persisted. Includes failures so slow/dead models are visible. */
+  model_timings?: AdvisoryModelTiming[]
+  wall_clock_ms?: number
 }
 
 const SYSTEM_PROMPT = [
@@ -84,6 +109,247 @@ function extractJson(text: string): Record<string, unknown> | null {
 function clip(text: string, max: number): string {
   if (text.length <= max) return text
   return text.slice(0, max).trimEnd()
+}
+
+/**
+ * Cause buckets used ONLY to decide whether two free-text answers name the
+ * same cause. Aligned with the example labels in SYSTEM_PROMPT. Keyword
+ * order matters: anomaly phrasing ("does not look like a normal fee")
+ * contains the word "fee", so the anomaly bucket is checked first.
+ */
+type CauseBucket = 'missing_or_extra' | 'refund' | 'rounding' | 'promotion_or_ad' | 'fee' | 'other'
+
+function classifyCauseText(text: string): CauseBucket {
+  const t = text.toLowerCase()
+  if (
+    /missing|omission|omit|unexplained|extra fund|anomal|data error|not (?:a |look like )?(?:normal )?fee|누락|초과|오류|이상/.test(
+      t
+    )
+  ) {
+    return 'missing_or_extra'
+  }
+  if (/refund|chargeback|환불|취소/.test(t)) return 'refund'
+  if (/round|반올림|절사/.test(t)) return 'rounding'
+  if (/promo|advertis|\bad\b|광고|프로모션|할인|delivery-app|배달/.test(t)) return 'promotion_or_ad'
+  if (/fee|rate|수수료|정산율/.test(t)) return 'fee'
+  return 'other'
+}
+
+function causeBucket(vote: AdvisoryModelVote): CauseBucket {
+  const fromCause = classifyCauseText(vote.cause)
+  if (fromCause !== 'other') return fromCause
+  return classifyCauseText(`${vote.cause} ${vote.reasoning}`)
+}
+
+const CONFIDENCE_LEVELS: readonly AdvisoryConfidence[] = ['low', 'medium', 'high']
+
+function shiftConfidence(value: AdvisoryConfidence, delta: 1 | -1): AdvisoryConfidence {
+  const idx = CONFIDENCE_LEVELS.indexOf(value) + delta
+  return CONFIDENCE_LEVELS[Math.min(2, Math.max(0, idx))]!
+}
+
+/** Lower median: for an even count the more cautious of the two middles. */
+function conservativeMedianConfidence(votes: AdvisoryModelVote[]): AdvisoryConfidence {
+  const sorted = votes
+    .map((v) => CONFIDENCE_LEVELS.indexOf(v.confidence))
+    .sort((a, b) => a - b)
+  return CONFIDENCE_LEVELS[sorted[Math.floor((sorted.length - 1) / 2)]!]!
+}
+
+/**
+ * Cross-verify the individual model votes into one advisory.
+ *
+ * - unanimous (all responders name the same bucket, >=2 responders):
+ *   consensus confidence raised one level above the agreeing median.
+ * - majority (>half agree): agreeing median kept as-is.
+ * - no majority: divergent views listed side by side, confidence lowered
+ *   one level below the overall median — the user decides, we never
+ *   silently pick one model's answer.
+ * - single responder: its answer unchanged (no raise for self-agreement).
+ *
+ * Two 'other'-bucket votes never count as agreeing (unclassifiable text is
+ * biased toward divergence, the cautious direction).
+ */
+function aggregateVotes(votes: AdvisoryModelVote[], requested: number): DiscrepancyAdvisory {
+  const groups = new Map<string, AdvisoryModelVote[]>()
+  votes.forEach((vote, i) => {
+    const bucket = causeBucket(vote)
+    const key = bucket === 'other' ? `other:${i}` : bucket
+    const group = groups.get(key)
+    if (group) group.push(vote)
+    else groups.set(key, [vote])
+  })
+
+  let agreeing: AdvisoryModelVote[] = []
+  for (const group of groups.values()) {
+    if (group.length > agreeing.length) agreeing = group
+  }
+
+  const agreement = `${agreeing.length}/${votes.length}`
+  const respondedNote =
+    votes.length < requested ? ` (${votes.length}/${requested} models responded)` : ''
+
+  const base: Pick<
+    DiscrepancyAdvisory,
+    'agreement' | 'models_requested' | 'models_responded' | 'per_model'
+  > = {
+    agreement,
+    models_requested: requested,
+    models_responded: votes.length,
+    per_model: votes,
+  }
+
+  if (votes.length === 1) {
+    const only = votes[0]!
+    return {
+      estimated_cause: only.cause,
+      confidence: only.confidence,
+      reasoning: clip(`[1/${requested} models responded — no cross-check] ${only.reasoning}`, 600),
+      consensus_cause: only.cause,
+      final_confidence: only.confidence,
+      ...base,
+    }
+  }
+
+  const hasMajority = agreeing.length * 2 > votes.length
+  if (hasMajority) {
+    const unanimous = agreeing.length === votes.length
+    // Most confident agreeing model speaks for the consensus text.
+    const representative = agreeing.reduce((best, v) =>
+      CONFIDENCE_LEVELS.indexOf(v.confidence) > CONFIDENCE_LEVELS.indexOf(best.confidence)
+        ? v
+        : best
+    )
+    const medianOfAgreeing = conservativeMedianConfidence(agreeing)
+    const finalConfidence = unanimous ? shiftConfidence(medianOfAgreeing, 1) : medianOfAgreeing
+    return {
+      estimated_cause: representative.cause,
+      confidence: finalConfidence,
+      reasoning: clip(
+        `[${agreement} models agree${respondedNote}] ${representative.reasoning}`,
+        600
+      ),
+      consensus_cause: representative.cause,
+      final_confidence: finalConfidence,
+      ...base,
+    }
+  }
+
+  // Divergence: no bucket holds a majority. Present every view, lower confidence.
+  const finalConfidence = shiftConfidence(conservativeMedianConfidence(votes), -1)
+  const sideBySide = votes.map((v) => `${v.model}: ${v.cause}`).join(' | ')
+  return {
+    estimated_cause: clip(`Models disagree — ${sideBySide}`, 240),
+    confidence: finalConfidence,
+    reasoning: clip(
+      `Models did not converge${respondedNote}; review each view and decide. ` +
+        votes.map((v) => `${v.model} (${v.confidence}): ${clip(v.reasoning, 160)}`).join(' | '),
+      600
+    ),
+    consensus_cause: clip(`Models disagree — ${sideBySide}`, 240),
+    final_confidence: finalConfidence,
+    ...base,
+  }
+}
+
+/** One provider's vote; null vote on failure/timeout/unparseable output. Always records elapsed_ms. */
+async function askOneModel(
+  scope: OwnedScope,
+  spec: AdvisoryModelSpec,
+  facts: string
+): Promise<{ vote: AdvisoryModelVote | null; elapsed_ms: number; model: string }> {
+  const t0 = Date.now()
+  try {
+    if (spec.platformId || spec.provider === 'clova') {
+      const platformId = spec.platformId ?? `clova:${spec.model.toLowerCase()}`
+      const res = await callPlatformModel({
+        id: platformId,
+        systemPrompt: SYSTEM_PROMPT,
+        userPrompt: facts,
+        maxCompletionTokens: ADVISORY_MAX_COMPLETION_TOKENS,
+        timeoutMs: ADVISORY_MODEL_TIMEOUT_MS,
+      })
+      const elapsed_ms = Date.now() - t0
+      const parsed = res.text ? extractJson(res.text) : null
+      const advisory = parseDiscrepancyAdvisory(parsed)
+      const model = spec.model
+      if (!advisory) {
+        const kind = res.error ? 'api_error' : !res.text ? 'empty_text' : parsed ? 'advisory_parse_fail' : 'json_extract_fail'
+        console.warn(
+          `[explain-discrepancy] ${spec.model} vote=null kind=${kind} finishReason=${res.finishReason ?? 'n/a'} elapsed_ms=${elapsed_ms} completionTokens=${res.usage?.completionTokens ?? 'n/a'}`,
+          JSON.stringify({ error: res.error ?? null, text: res.text ?? null })
+        )
+        return { vote: null, elapsed_ms, model }
+      }
+      if (res.finishReason === 'length' || res.finishReason === 'max_tokens') {
+        console.warn(
+          `[explain-discrepancy] ${spec.model} finished with ${res.finishReason} completionTokens=${res.usage?.completionTokens ?? 'n/a'} (possible truncate)`
+        )
+      }
+      return {
+        vote: {
+          model,
+          cause: clip(advisory.estimated_cause, 240),
+          confidence: advisory.confidence,
+          reasoning: clip(advisory.reasoning, 600),
+        },
+        elapsed_ms,
+        model,
+      }
+    }
+
+    const result = await runSingleAiProvider({
+      supabase: supabaseAdmin,
+      sessionId: null,
+      userId: scope.userId,
+      provider: spec.provider as ExtendedAiProviderName,
+      modelOverride: spec.model,
+      // gpt-5.6-terra rejects temperature=0; claude-sonnet-5 rejects temperature entirely.
+      // Omit so each provider uses its default — not a model substitution.
+      systemPrompt: SYSTEM_PROMPT,
+      prompt: facts,
+      maxCompletionTokens: ADVISORY_MAX_COMPLETION_TOKENS,
+      skipLanguageInjection: true,
+      timeoutMs: ADVISORY_MODEL_TIMEOUT_MS,
+    })
+    const elapsed_ms = result.responseTimeMs
+    const parsed = result.text ? extractJson(result.text) : null
+    const advisory = parseDiscrepancyAdvisory(parsed)
+    const model = result.model || spec.model
+    if (!advisory) {
+      // TEMP diagnostic — surface swallowed failures (api error vs empty vs unparseable).
+      const kind = result.error
+        ? 'api_error'
+        : !result.text
+          ? 'empty_text'
+          : parsed
+            ? 'advisory_parse_fail'
+            : 'json_extract_fail'
+      console.warn(
+        `[explain-discrepancy] ${spec.model} vote=null kind=${kind} finishReason=${result.finishReason ?? 'n/a'} elapsed_ms=${elapsed_ms}`,
+        JSON.stringify({
+          error: result.error ?? null,
+          text: result.text ?? null,
+          parsed,
+        })
+      )
+      return { vote: null, elapsed_ms, model }
+    }
+    return {
+      vote: {
+        model,
+        cause: clip(advisory.estimated_cause, 240),
+        confidence: advisory.confidence,
+        reasoning: clip(advisory.reasoning, 600),
+      },
+      elapsed_ms,
+      model,
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.warn(`[explain-discrepancy] ${spec.model} THROWN elapsed_ms=${Date.now() - t0}:`, msg)
+    return { vote: null, elapsed_ms: Date.now() - t0, model: spec.model }
+  }
 }
 
 async function loadUniqueSales(
@@ -233,36 +499,31 @@ export async function explainDiscrepancy(
     rule,
   })
 
-  let modelText: string | null = null
-  try {
-    const result = await runSingleAiProvider({
-      supabase: supabaseAdmin,
-      sessionId: null,
-      userId: scope.userId,
-      provider: 'openai',
-      systemPrompt: SYSTEM_PROMPT,
-      prompt: facts,
-      temperature: 0,
-      maxCompletionTokens: 250,
-      skipLanguageInjection: true,
-    })
-    modelText = result.text
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'AI provider failed'
-    return dalErr(502, message)
+  // Same strict-JSON prompt to every model, in parallel. askOneModel
+  // never throws — failures/timeouts/garbage become a null vote and we
+  // aggregate over whoever actually answered.
+  const wallStart = Date.now()
+  const settled = await Promise.all(
+    ADVISORY_MODELS.map((spec) => askOneModel(scope, spec, facts))
+  )
+  const wall_clock_ms = Date.now() - wallStart
+  const model_timings: AdvisoryModelTiming[] = settled.map((s) => ({
+    model: s.model,
+    elapsed_ms: s.elapsed_ms,
+    ok: s.vote !== null,
+  }))
+  const votes = settled
+    .map((s) => s.vote)
+    .filter((v): v is AdvisoryModelVote => v !== null)
+
+  if (votes.length === 0) {
+    return dalErr(
+      502,
+      `All ${ADVISORY_MODELS.length} advisory models failed or timed out — no explanation produced`
+    )
   }
 
-  const parsed = modelText ? extractJson(modelText) : null
-  const advisory = parseDiscrepancyAdvisory(parsed)
-  if (!advisory) {
-    return dalErr(502, 'Could not obtain a discrepancy explanation')
-  }
-
-  const clipped: DiscrepancyAdvisory = {
-    estimated_cause: clip(advisory.estimated_cause, 240),
-    confidence: advisory.confidence,
-    reasoning: clip(advisory.reasoning, 600),
-  }
+  const clipped = aggregateVotes(votes, ADVISORY_MODELS.length)
 
   const saved = await saveDiscrepancyAdvisory(scope, recon.data.id, clipped)
   if (!saved.ok) return saved
@@ -275,5 +536,7 @@ export async function explainDiscrepancy(
     status: saved.data.status,
     advisory: clipped,
     cached: false,
+    model_timings,
+    wall_clock_ms,
   })
 }

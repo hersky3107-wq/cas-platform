@@ -108,14 +108,43 @@ export type DepositRecord = {
 export const ADVISORY_CONFIDENCES = ['low', 'medium', 'high'] as const
 export type AdvisoryConfidence = (typeof ADVISORY_CONFIDENCES)[number]
 
+/** One model's independent vote in the multi-AI cross-verification. */
+export type AdvisoryModelVote = {
+  model: string
+  cause: string
+  confidence: AdvisoryConfidence
+  reasoning: string
+}
+
 /**
- * Single-AI estimate of why an amount_mismatch exists.
+ * AI estimate of why an amount_mismatch exists.
  * Advisory only — never auto-accepts or changes reconciliation status.
+ *
+ * estimated_cause / confidence / reasoning are the CONSENSUS values (kept
+ * top-level so pre-multi-AI consumers keep working; legacy single-AI rows
+ * have only these three). The optional fields carry the multi-AI
+ * cross-verification breakdown.
  */
 export type DiscrepancyAdvisory = {
   estimated_cause: string
   confidence: AdvisoryConfidence
   reasoning: string
+  consensus_cause?: string
+  final_confidence?: AdvisoryConfidence
+  /** e.g. "2/3" — models agreeing on the consensus cause / models responded. */
+  agreement?: string
+  models_requested?: number
+  models_responded?: number
+  per_model?: AdvisoryModelVote[]
+}
+
+function asAdvisoryConfidence(value: unknown): AdvisoryConfidence | null {
+  if (typeof value !== 'string') return null
+  const v = value.trim().toLowerCase()
+  if (v === 'low' || v === '낮음' || v === '하') return 'low'
+  if (v === 'medium' || v === 'med' || v === '중간' || v === '중') return 'medium'
+  if (v === 'high' || v === '높음' || v === '상') return 'high'
+  return null
 }
 
 export function parseDiscrepancyAdvisory(value: unknown): DiscrepancyAdvisory | null {
@@ -123,10 +152,39 @@ export function parseDiscrepancyAdvisory(value: unknown): DiscrepancyAdvisory | 
   const row = value as Record<string, unknown>
   const cause = typeof row.estimated_cause === 'string' ? row.estimated_cause.trim() : ''
   const reasoning = typeof row.reasoning === 'string' ? row.reasoning.trim() : ''
-  const confidence = row.confidence
-  if (!cause || !reasoning) return null
-  if (confidence !== 'low' && confidence !== 'medium' && confidence !== 'high') return null
-  return { estimated_cause: cause, confidence, reasoning }
+  const confidence = asAdvisoryConfidence(row.confidence)
+  if (!cause || !reasoning || !confidence) return null
+  const advisory: DiscrepancyAdvisory = { estimated_cause: cause, confidence, reasoning }
+
+  if (typeof row.consensus_cause === 'string' && row.consensus_cause.trim()) {
+    advisory.consensus_cause = row.consensus_cause.trim()
+  }
+  const finalConfidence = asAdvisoryConfidence(row.final_confidence)
+  if (finalConfidence) advisory.final_confidence = finalConfidence
+  if (typeof row.agreement === 'string' && /^\d+\/\d+$/.test(row.agreement)) {
+    advisory.agreement = row.agreement
+  }
+  if (typeof row.models_requested === 'number' && Number.isInteger(row.models_requested)) {
+    advisory.models_requested = row.models_requested
+  }
+  if (typeof row.models_responded === 'number' && Number.isInteger(row.models_responded)) {
+    advisory.models_responded = row.models_responded
+  }
+  if (Array.isArray(row.per_model)) {
+    const votes: AdvisoryModelVote[] = []
+    for (const item of row.per_model) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      const vote = item as Record<string, unknown>
+      const model = typeof vote.model === 'string' ? vote.model.trim() : ''
+      const voteCause = typeof vote.cause === 'string' ? vote.cause.trim() : ''
+      const voteReasoning = typeof vote.reasoning === 'string' ? vote.reasoning.trim() : ''
+      const voteConfidence = asAdvisoryConfidence(vote.confidence)
+      if (!model || !voteCause || !voteReasoning || !voteConfidence) continue
+      votes.push({ model, cause: voteCause, confidence: voteConfidence, reasoning: voteReasoning })
+    }
+    if (votes.length > 0) advisory.per_model = votes
+  }
+  return advisory
 }
 
 export type Reconciliation = {
