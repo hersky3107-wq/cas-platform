@@ -96,6 +96,15 @@ export type ReconciliationUiPack = {
   matchesCountLabel: string
   refreshBtn: string
   errorPrefix: string
+
+  advisoryCardTitle: string
+  advisoryConsensusLabel: string
+  advisoryConfidenceLabel: string
+  advisoryAgreementLabel: string
+  advisoryPerModelTitle: string
+  advisoryConfidenceHigh: string
+  advisoryConfidenceMedium: string
+  advisoryConfidenceLow: string
 }
 
 const en: ReconciliationUiPack = {
@@ -180,6 +189,15 @@ const en: ReconciliationUiPack = {
   matchesCountLabel: 'linked rows',
   refreshBtn: 'Refresh',
   errorPrefix: 'Error',
+
+  advisoryCardTitle: 'AI analysis',
+  advisoryConsensusLabel: 'Consensus',
+  advisoryConfidenceLabel: 'Confidence',
+  advisoryAgreementLabel: 'Models in agreement',
+  advisoryPerModelTitle: 'Per-model votes',
+  advisoryConfidenceHigh: 'High',
+  advisoryConfidenceMedium: 'Medium',
+  advisoryConfidenceLow: 'Low',
 }
 
 const ko: ReconciliationUiPack = {
@@ -264,6 +282,15 @@ const ko: ReconciliationUiPack = {
   matchesCountLabel: '연결된 항목',
   refreshBtn: '새로고침',
   errorPrefix: '오류',
+
+  advisoryCardTitle: 'AI 분석',
+  advisoryConsensusLabel: '합의된 추정 원인',
+  advisoryConfidenceLabel: '신뢰도',
+  advisoryAgreementLabel: '모델 일치',
+  advisoryPerModelTitle: '모델별 의견',
+  advisoryConfidenceHigh: '높음',
+  advisoryConfidenceMedium: '중간',
+  advisoryConfidenceLow: '낮음',
 }
 
 const PACKS: Record<ReconciliationLocale, ReconciliationUiPack> = { en, ko }
