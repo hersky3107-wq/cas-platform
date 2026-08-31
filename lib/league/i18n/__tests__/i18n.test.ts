@@ -71,21 +71,36 @@ describe('dictionary completeness', () => {
     }
   })
 
-  it('excludes the pt stub from the selectable (toggle) locale list', () => {
+  it('excludes pt from the selectable (toggle) locale list while Brazil scope stays deferred', () => {
     expect(LEAGUE_SELECTABLE_LOCALES).not.toContain('pt')
     expect(LEAGUE_LOCALES).toContain('pt')
   })
 
-  it('pt is a structural stub: mirrors English except for translated verdict, hero, magnitude + window chrome', () => {
-    const { verdict: ptVerdict, header: ptHeader, hero: ptHero, magnitude: ptMagnitude, ...ptRest } = LEAGUE_UI.pt
-    const { verdict: enVerdict, header: enHeader, hero: enHero, magnitude: enMagnitude, ...enRest } = LEAGUE_UI.en
-    expect(ptRest).toEqual(enRest)
-    expect(ptVerdict.title).not.toBe(enVerdict.title)
-    expect(ptHeader.windowNoSessionDates).not.toBe(enHeader.windowNoSessionDates)
-    expect(ptHero.answerVerb.up).not.toBe(enHero.answerVerb.up)
-    expect(ptMagnitude.tileLabel).not.toBe(enMagnitude.tileLabel)
-    expect(ptVerdict.heroHits(29, 40)).toContain('29')
-    expect(ptVerdict.heroHits(29, 40)).toContain('40')
+  it('pt is real Portuguese on every render surface — no longer an English spread', () => {
+    const pt = LEAGUE_UI.pt
+    const en = LEAGUE_UI.en
+    // One representative string per converted surface must differ from English.
+    expect(pt.direction.badge.up).not.toBe(en.direction.badge.up)
+    expect(pt.direction.noCallBadge).not.toBe(en.direction.noCallBadge)
+    expect(pt.sides.subjectOutcome.win.badge.yes).not.toBe(en.sides.subjectOutcome.win.badge.yes)
+    expect(pt.sides.threshold.answer.above('3,4%')).not.toBe(en.sides.threshold.answer.above('3,4%'))
+    expect(pt.hero.answerVerb.up).not.toBe(en.hero.answerVerb.up)
+    expect(pt.headline.correlatedNote).not.toBe(en.headline.correlatedNote)
+    expect(pt.grading.reason.no_session_in_window).not.toBe(en.grading.reason.no_session_in_window)
+    expect(pt.grading.reasonSubjectOutcome.no_session_in_window).not.toBe(en.grading.reasonSubjectOutcome.no_session_in_window)
+    expect(pt.grading.reasonThreshold.no_session_in_window).not.toBe(en.grading.reasonThreshold.no_session_in_window)
+    expect(pt.verdict.title).not.toBe(en.verdict.title)
+    expect(pt.header.windowNoSessionDates).not.toBe(en.header.windowNoSessionDates)
+    expect(pt.magnitude.tileLabel).not.toBe(en.magnitude.tileLabel)
+    expect(pt.modelList.ungraded).not.toBe(en.modelList.ungraded)
+    expect(pt.bracket.resultLegend).not.toBe(en.bracket.resultLegend)
+    expect(pt.leaderboard.baselinesNote).not.toBe(en.leaderboard.baselinesNote)
+    expect(pt.recordRoom.subtitle).not.toBe(en.recordRoom.subtitle)
+    expect(pt.hub.subtitle).not.toBe(en.hub.subtitle)
+    expect(pt.disclaimer.long).not.toBe(en.disclaimer.long)
+    // Shape guarantees survive translation.
+    expect(pt.verdict.heroHits(29, 40)).toContain('\u271329/40')
+    expect(pt.winRate.insufficient(1, 0)).not.toContain('%')
   })
 
   it('falls back to English for an unrecognized key via getLeagueUiPack', () => {

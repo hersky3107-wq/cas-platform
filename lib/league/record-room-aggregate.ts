@@ -1,5 +1,6 @@
-import type { Camp, ColorBucket, Direction, LeagueTier } from './card-types'
+import type { Camp, ColorBucket, LeagueTier, ModelSide } from './card-types'
 import { roundHitRecord } from './round-hit'
+import { toSideToken } from './side-labels'
 import { normalizeSessionDate } from '../prediction/resolution'
 
 /**
@@ -22,7 +23,8 @@ export type RecordRoomModelEntry = {
   brand: string
   camp: Camp
   league_tier: LeagueTier
-  direction: Direction | null
+  /** The row's own side token (up/down/yes/no/above/below) or legacy 'flat'; rendered via the round's side labels. */
+  direction: ModelSide | null
   /** null = ungraded (abstained / parse failure) even though the round resolved. */
   is_correct: boolean | null
 }
@@ -35,6 +37,9 @@ export type RecordRoomRoundEntry = {
   color_bucket: ColorBucket
   resolved_at: string
   actual_outcome: string | null
+  /** Answer contract of the round — drives every side word/glyph on the entry via `lib/league/side-labels.ts`. */
+  proposition_kind: string
+  subject_label: string | null
   /** Provenance: how the round was opened. Not a quality tier. */
   item_type: 'ranked' | 'on_demand' | null
   /**
@@ -59,6 +64,8 @@ export type RecordRoomHeadline = {
   latestInstrument: string | null
   latestOutcome: string | null
   latestResolvedAt: string | null
+  /** Latest round's contract — the headline window sentence is price-only, so the renderer needs the kind. */
+  latestPropositionKind: string | null
   /** Latest round's audit fields, for the same window sentence the per-row entry uses. */
   latestAnchorPrice: number | null
   latestAnchorSessionDate: string | null
@@ -90,6 +97,9 @@ export type RecordRoomRoundRow = {
   resolved_at: string
   actual_outcome: string | null
   item_type?: string | null
+  /** Optional like the audit columns: absent pre-20260829000002 = close_higher. */
+  proposition_kind?: string | null
+  subject_label?: string | null
   anchor_price?: number | null
   anchor_session_date?: string | null
   resolution_session_date?: string | null
@@ -106,10 +116,6 @@ export type RecordRoomPredictionRow = {
   is_correct: boolean | null
 }
 
-function toDirection(raw: string | null): Direction | null {
-  return raw === 'up' || raw === 'down' || raw === 'flat' ? raw : null
-}
-
 function toColorBucket(raw: string): ColorBucket {
   return raw === 'green' || raw === 'yellow' || raw === 'red' ? raw : 'yellow'
 }
@@ -120,7 +126,9 @@ function toModelEntry(row: RecordRoomPredictionRow): RecordRoomModelEntry {
     brand: row.brand,
     camp: row.camp as Camp,
     league_tier: row.league_tier as LeagueTier,
-    direction: toDirection(row.predicted_direction),
+    // toSideToken, not the old up/down/flat gate: yes/no/above/below rows are
+    // real calls in the log, never blanks.
+    direction: toSideToken(row.predicted_direction),
     is_correct: row.is_correct,
   }
 }
@@ -148,6 +156,8 @@ export function buildRecordRoomEntries(
       color_bucket: toColorBucket(round.color_bucket),
       resolved_at: round.resolved_at,
       actual_outcome: round.actual_outcome,
+      proposition_kind: round.proposition_kind ?? 'binary_close_higher',
+      subject_label: round.subject_label ?? null,
       item_type: round.item_type === 'on_demand' || round.item_type === 'ranked' ? round.item_type : null,
       anchorPrice: round.anchor_price ?? null,
       anchorSessionDate: normalizeSessionDate(round.anchor_session_date ?? null),
@@ -172,6 +182,7 @@ export function buildRecordRoomHeadline(rounds: readonly RecordRoomRoundEntry[])
     latestInstrument: latest?.instrument ?? null,
     latestOutcome: latest?.actual_outcome ?? null,
     latestResolvedAt: latest?.resolved_at ?? null,
+    latestPropositionKind: latest?.proposition_kind ?? null,
     latestAnchorPrice: latest?.anchorPrice ?? null,
     latestAnchorSessionDate: latest?.anchorSessionDate ?? null,
     latestResolutionSessionDate: latest?.resolutionSessionDate ?? null,

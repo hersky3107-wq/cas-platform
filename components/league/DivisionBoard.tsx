@@ -8,6 +8,7 @@ import {
   type TierSplit,
 } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
+import type { SideLabels } from '@/lib/league/side-labels'
 import { ModelTile } from './ModelTile'
 
 const DIVISION_DOT: Record<LeagueTier, string> = {
@@ -32,6 +33,7 @@ export function DivisionBoard({
   models,
   tierSplit,
   t,
+  labels,
   roundGraded = false,
   translations = null,
   showOriginal = false,
@@ -40,6 +42,8 @@ export function DivisionBoard({
   models: CardModelPrediction[]
   tierSplit: TierSplit
   t: LeagueUiPack
+  /** The round's side-label resolver. Omitted only by legacy price-round callers. */
+  labels?: SideLabels
   roundGraded?: boolean
   translations?: Record<string, string> | null
   showOriginal?: boolean
@@ -60,7 +64,7 @@ export function DivisionBoard({
 
   return (
     <div className="flex flex-col">
-      <OverallStrip groups={groups} tierSplit={tierSplit} t={t} />
+      <OverallStrip groups={groups} tierSplit={tierSplit} t={t} labels={labels} />
       {groups.map((group) => {
         const expanded = open[group.tier]
         return (
@@ -76,7 +80,7 @@ export function DivisionBoard({
                 {t.bracket.division[group.tier]}
               </span>
               <span className="shrink-0 font-mono text-[11px] font-semibold tabular-nums text-league-fg-muted">
-                {t.bracket.compactTally(tierSplit[group.tier])}
+                {t.bracket.compactTally(tierSplit[group.tier], labels?.glyphs)}
               </span>
               <span className="text-[10px] text-league-fg-muted md:hidden" aria-hidden>
                 {expanded ? '▾' : '▸'}
@@ -90,6 +94,7 @@ export function DivisionBoard({
                   key={model.model_id}
                   model={model}
                   t={t}
+                  labels={labels}
                   roundGraded={roundGraded}
                   translatedRationale={model.prediction_id ? translations?.[model.prediction_id] ?? null : null}
                   showOriginal={showOriginal}
@@ -108,10 +113,12 @@ function OverallStrip({
   groups,
   tierSplit,
   t,
+  labels,
 }: {
   groups: { tier: LeagueTier }[]
   tierSplit: TierSplit
   t: LeagueUiPack
+  labels?: SideLabels
 }) {
   return (
     <div className="px-3 py-2 md:px-4">
@@ -120,7 +127,7 @@ function OverallStrip({
           <span key={group.tier} className="inline-flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-league-fg-muted">
             <span className={`h-1.5 w-1.5 rounded-full ${DIVISION_DOT[group.tier]}`} aria-hidden />
             <span className="font-sans font-bold uppercase tracking-wide">{t.bracket.division[group.tier]}</span>
-            <span>{t.bracket.compactTally(tierSplit[group.tier])}</span>
+            <span>{t.bracket.compactTally(tierSplit[group.tier], labels?.glyphs)}</span>
           </span>
         ))}
       </div>

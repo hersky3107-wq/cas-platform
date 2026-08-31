@@ -2,16 +2,18 @@
  * AI Prediction League — i18n locales (Layer A).
  *
  * Scope matches the app's existing locale set (see `lib/landing/content.ts`,
- * `lib/synod/ui-labels.ts`) plus `pt` as a STRUCTURAL STUB: it exists as a
- * type member and has a dictionary entry so Brazil can attach later with zero
- * structural change, but it is not in `LEAGUE_SELECTABLE_LOCALES` (not offered
- * in the language toggle yet) and its dictionary entry currently just spreads
- * English (see `dictionary.ts`).
+ * `lib/synod/ui-labels.ts`) plus `pt`, which since 2026-08-31 is a FULLY
+ * TRANSLATED Brazilian Portuguese pack (see `dictionary.ts` — no longer an
+ * English spread; `i18n.test.ts` pins that boundary).
  */
 export const LEAGUE_LOCALES = ['en', 'ko', 'ja', 'zh-TW', 'fr', 'ar', 'es', 'pt'] as const
 export type LeagueLocale = (typeof LEAGUE_LOCALES)[number]
 
-/** Locales with a real, filled-in translation (offered in the UI toggle). `pt` is excluded until translated. */
+/**
+ * Locales offered in the UI toggle. `pt` is translated but not yet offered —
+ * turning a market on is a launch decision (jurisdiction copy review), not a
+ * translation gap; add it here when that call is made.
+ */
 export const LEAGUE_SELECTABLE_LOCALES: readonly LeagueLocale[] = [
   'en',
   'ko',

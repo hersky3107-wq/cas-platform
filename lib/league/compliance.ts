@@ -1,5 +1,6 @@
-import type { CombinedMethodTrack, ConsensusSummary, Direction } from './card-types'
+import type { CombinedMethodTrack, ConsensusSummary, ModelSide } from './card-types'
 import type { LeagueUiPack } from './i18n/dictionary'
+import { tallySlotOfToken, type SideLabels } from './side-labels'
 import { formatWinRatePct } from './win-rate'
 import { isUiHorizon } from './horizon'
 import { formatSignedPercent } from './magnitude'
@@ -36,9 +37,18 @@ import { formatSignedPercent } from './magnitude'
  * made in one place, not an accident of this file forgetting to translate.
  */
 
-/** Neutral badge word for a single model's row. Never "BUY"/"SELL". */
-export function directionBadgeLabel(direction: Direction | null, t: LeagueUiPack): string {
-  return direction ? t.direction.badge[direction] : t.direction.noCallBadge
+/**
+ * Neutral badge word for a single model's row. Never "BUY"/"SELL".
+ * Pass the round's `labels` (from `sideLabelsFor`) so the word matches the
+ * round's contract — 상승 · 승 · 상회. Without `labels` this is the legacy
+ * price-round path (scripts, old tests): identical bytes for up/down/flat,
+ * and any non-price token falls back to its slot's price word rather than
+ * crashing (those callers only ever see price rounds).
+ */
+export function directionBadgeLabel(direction: ModelSide | null, t: LeagueUiPack, labels?: SideLabels): string {
+  if (labels) return labels.badge(direction)
+  const slot = tallySlotOfToken(direction)
+  return slot ? t.direction.badge[slot] : t.direction.noCallBadge
 }
 
 /**
@@ -54,13 +64,19 @@ export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack):
   if (totalModels === 0) return t.headline.none
   if (respondedModels === 0) return t.headline.allAbstain(totalModels)
 
-  const direction = aggregateDirection ?? (majorityDirection === 'up' || majorityDirection === 'down' ? majorityDirection : null)
+  // Slot-based so a yes/above majority counts its own side instead of reading
+  // an undefined tally key. The WORD stays the slot's price verb — acceptable
+  // only because this template no longer renders on cards (scripts/tooling,
+  // price rounds); live surfaces use buildConsensusHero with SideLabels.
+  const majoritySlot = tallySlotOfToken(majorityDirection)
+  const slot =
+    tallySlotOfToken(aggregateDirection) ?? (majoritySlot === 'up' || majoritySlot === 'down' ? majoritySlot : null)
   const probability = aggregateDirection != null ? aggregateProbability : avgProbability
 
-  if (!direction) return t.headline.split(respondedModels, totalModels)
+  if (!slot || slot === 'flat') return t.headline.split(respondedModels, totalModels)
 
-  const leanCount = tally[direction]
-  return t.headline.majority(leanCount, totalModels, direction, probability)
+  const leanCount = tally[slot]
+  return t.headline.majority(leanCount, totalModels, slot, probability)
 }
 
 export type ConsensusHeroPayload =
@@ -70,21 +86,28 @@ export type ConsensusHeroPayload =
 /**
  * Two-line card hero. Field map (for audit — no surface may substitute):
  *
- *  Line 1 verb          ← consensus.aggregateDirection → t.hero.answerVerb
+ *  Line 1 verb          ← consensus.aggregateDirection → labels.answer
+ *                          (round's own contract: 오른다 · "맨유 승" · "3.4% 상회")
  *  Line 1 magnitude     ← consensus.aggregateMagnitudePct → formatSignedPercent
- *                          + t.magnitude.headlineQualifier(horizon)
- *  Line 2 lean count    ← consensus.tally[aggregateDirection]
+ *                          + t.magnitude.headlineQualifier(horizon) — price rounds
+ *                          only; non-price rounds carry no aggregate magnitude
+ *  Line 2 lean count    ← consensus.tally[slot of aggregateDirection]
  *  Line 2 total         ← consensus.totalModels
  *  Line 2 confidence    ← consensus.aggregateProbability ONLY (log-odds aggregate)
  *
  * NEVER reads avgProbability or majorityDirection for rendered copy.
  * majorityDirection / avgProbability stay on ConsensusSummary for retrospective
  * comparison elsewhere — they do not appear in the hero.
+ *
+ * `labels` omitted = legacy price-round call sites (scripts, frozen-fixture
+ * baselines): verb comes straight from t.hero.answerVerb, byte-identical to
+ * the pre-resolver hero. Live components always pass the round's labels.
  */
 export function buildConsensusHero(
   consensus: ConsensusSummary,
   horizon: string,
   t: LeagueUiPack,
+  labels?: SideLabels,
 ): ConsensusHeroPayload | null {
   const { totalModels, respondedModels, tally, aggregateDirection, aggregateProbability, aggregateMagnitudePct } = consensus
 
@@ -92,7 +115,9 @@ export function buildConsensusHero(
   if (respondedModels === 0) return { kind: 'fallback', message: t.hero.allAbstain(totalModels) }
   if (!aggregateDirection) return { kind: 'fallback', message: t.hero.split(respondedModels, totalModels) }
 
-  const verb = t.hero.answerVerb[aggregateDirection]
+  const verb = labels
+    ? labels.answer(aggregateDirection)
+    : t.hero.answerVerb[aggregateDirection === 'up' ? 'up' : 'down']
   const magnitudePart =
     aggregateMagnitudePct !== null
       ? t.magnitude.headlineQualifier(
@@ -102,7 +127,8 @@ export function buildConsensusHero(
       : null
   const line1 = magnitudePart ? `${verb} · ${magnitudePart}` : verb
 
-  const leanCount = tally[aggregateDirection]
+  const slot = tallySlotOfToken(aggregateDirection)
+  const leanCount = slot === 'up' || slot === 'down' ? tally[slot] : 0
   const line2 =
     aggregateProbability !== null
       ? t.hero.supportLine(leanCount, totalModels, Math.round(aggregateProbability))

@@ -3,31 +3,38 @@
 import { useState, type KeyboardEvent } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { directionBadgeLabel, magnitudeCompareLine } from '@/lib/league/compliance'
-import type { CardModelPrediction, Direction } from '@/lib/league/card-types'
+import type { CardModelPrediction } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
+import type { SideLabels, SideSlot } from '@/lib/league/side-labels'
 import { formatSignedPercent } from '@/lib/league/magnitude'
 import { CountryFlag } from '@/components/league/CountryFlag'
 
 /**
  * One AI as a team card / ticker tile.
  *
- * Graded tiles: large ✓/✗ result stamp first, direction banner secondary.
- * Ungraded tiles: direction hero first (unchanged). Then brand → model
+ * Graded tiles: large ✓/✗ result stamp first, side banner secondary.
+ * Ungraded tiles: side hero first (unchanged). Then brand → model
  * identifier → country flag → clipped rationale → expand control.
  * Confidence is never a collapsed-tile headline.
  *
- * Direction copy comes only from `directionBadgeLabel` (never buy/sell).
- * `reasoning_snippet` is the model's own quote, rendered verbatim.
+ * Side WORD and GLYPH come from the round's `labels` (never from the stored
+ * token alone): 상승/▲ on price rounds, 승/Y on subject-outcome rounds,
+ * 상회/> on threshold rounds. Colour keys on the SLOT (side A green, side B
+ * red) so every contract reads consistently. Copy still flows through
+ * `directionBadgeLabel` (never buy/sell). `reasoning_snippet` is the model's
+ * own quote, rendered verbatim.
  *
- * `model.magnitude` (when present) renders as "▲ +3.2%" NEXT TO the
- * direction badge — never inside the ✓/✗ result stamp, so it can never be
- * mistaken for the graded outcome. `actualMagnitudePct` (round-level,
- * presentation only) enables a per-model "predicted X → actual Y" line once
- * the round is graded and this tile is expanded.
+ * The QUALIFIER (magnitude "▲ +3.2%" on price rounds, `qualifierText`
+ * "2-1" / "+3.4%p" on the others) renders NEXT TO the side badge — never
+ * inside the ✓/✗ result stamp, so it can never be mistaken for the graded
+ * outcome, and it never joins a hit fraction. `actualMagnitudePct`
+ * (round-level, presentation only) enables a per-model "predicted X →
+ * actual Y" line once the round is graded and this tile is expanded.
  */
 export function ModelTile({
   model,
   t,
+  labels,
   roundGraded = false,
   translatedRationale = null,
   showOriginal = false,
@@ -35,6 +42,8 @@ export function ModelTile({
 }: {
   model: CardModelPrediction
   t: LeagueUiPack
+  /** The round's side-label resolver. Omitted only by legacy price-round callers. */
+  labels?: SideLabels
   roundGraded?: boolean
   translatedRationale?: string | null
   showOriginal?: boolean
@@ -45,11 +54,27 @@ export function ModelTile({
   const original = model.reasoning_snippet?.trim() || null
   const rationale = (translatedRationale?.trim() || original) ?? null
   const hasReasoning = Boolean(rationale)
-  const dirStyle = model.direction ? DIRECTION_STYLE[model.direction] : NO_CALL_STYLE
-  const glyph = model.direction ? DIRECTION_GLYPH[model.direction] : '\u2013'
-  const badge = directionBadgeLabel(model.direction, t)
+  const slot: SideSlot = labels
+    ? labels.slot(model.direction)
+    : model.direction === 'up'
+      ? 'a'
+      : model.direction === 'down'
+        ? 'b'
+        : model.direction === 'flat'
+          ? 'flat'
+          : 'none'
+  const dirStyle = SLOT_STYLE[slot]
+  const glyph = labels ? labels.glyph(model.direction) : LEGACY_GLYPH[slot]
+  const badge = directionBadgeLabel(model.direction, t, labels)
   const pct = model.direction && model.probability !== null ? `${Math.round(model.probability)}%` : null
-  const magnitudeText = model.direction && model.magnitude !== null ? formatSignedPercent(model.magnitude) : null
+  // ONE qualifier next to the badge: numeric magnitude on price rounds,
+  // adapter-provided qualifier text (scoreline, margin) on the others.
+  const magnitudeText =
+    model.direction && model.magnitude !== null
+      ? formatSignedPercent(model.magnitude)
+      : model.direction && model.qualifierText
+        ? model.qualifierText
+        : null
   const magnitudeCompare =
     model.magnitude !== null && actualMagnitudePct !== null
       ? magnitudeCompareLine(model.magnitude, actualMagnitudePct, t)
@@ -183,12 +208,18 @@ export function ModelTile({
   )
 }
 
-const DIRECTION_GLYPH: Record<Direction, string> = { up: '\u25b2', down: '\u25bc', flat: '\u25a0' }
-
-const DIRECTION_STYLE: Record<Direction, string> = {
-  up: 'bg-emerald-500/15 text-emerald-700',
-  down: 'bg-rose-500/15 text-rose-700',
+/** Colour by SLOT so side A is always green and side B always red, per contract. */
+const SLOT_STYLE: Record<SideSlot, string> = {
+  a: 'bg-emerald-500/15 text-emerald-700',
+  b: 'bg-rose-500/15 text-rose-700',
   flat: 'bg-slate-500/12 text-slate-600',
+  none: 'bg-slate-400/12 text-slate-500',
 }
 
-const NO_CALL_STYLE = 'bg-slate-400/12 text-slate-500'
+/** Price glyphs for label-less legacy callers (byte-identical to pre-resolver tiles). */
+const LEGACY_GLYPH: Record<SideSlot, string> = {
+  a: '\u25b2',
+  b: '\u25bc',
+  flat: '\u25a0',
+  none: '\u2013',
+}

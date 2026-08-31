@@ -13,7 +13,7 @@ import type { RecordRoomPage, RecordRoomRoundEntry } from './record-room-aggrega
 
 export function recordRoomAuditSentence(round: Pick<
   RecordRoomRoundEntry,
-  'instrument' | 'anchorPrice' | 'anchorSessionDate' | 'resolutionSessionDate' | 'resolutionPrice'
+  'instrument' | 'anchorPrice' | 'anchorSessionDate' | 'resolutionSessionDate' | 'resolutionPrice' | 'proposition_kind'
 >): string {
   return headerWindow({
     instrument: round.instrument,
@@ -21,6 +21,7 @@ export function recordRoomAuditSentence(round: Pick<
     anchorSessionDate: round.anchorSessionDate,
     resolutionSessionDate: round.resolutionSessionDate,
     resolutionPrice: round.resolutionPrice,
+    propositionKind: round.proposition_kind,
     locale: 'en',
     t: LEAGUE_UI.en,
   })

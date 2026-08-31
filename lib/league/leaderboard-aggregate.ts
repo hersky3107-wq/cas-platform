@@ -10,6 +10,7 @@ import {
 } from './card-types'
 import { LEAGUE_ROSTER } from './roster'
 import { buildBaselineSummary, emptyBaselineSummary, type BaselineSummary } from './baselines'
+import { toSideToken } from './side-labels'
 import { isDisplayableWinRate, winRatePctForDisplay, WIN_RATE_MIN_SAMPLE } from './win-rate'
 
 /**
@@ -69,7 +70,13 @@ export type GradedPredictionRow = {
   is_correct: boolean
   /** Required for the combined-method (majority-vote) track record. */
   round_id: string
-  predicted_direction: 'up' | 'down' | 'flat' | null
+  /**
+   * The round's own side token (up/down/yes/no/above/below), legacy 'flat',
+   * or null. Win rates read `is_correct` alone — this field only feeds the
+   * combined-method majority vote (token-generic) and the baselines (which
+   * deliberately recover outcomes from up/down rows only — price scope).
+   */
+  predicted_direction: string | null
 }
 
 export type LeaderboardRow = {
@@ -300,19 +307,29 @@ export function buildCombinedMethodTrack(rows: readonly GradedPredictionRow[]): 
   let correct = 0
   let resolved = 0
   for (const group of byRound.values()) {
-    const tally = { up: 0, down: 0, flat: 0 }
+    // Token-generic majority: a round's rows only ever carry its own side
+    // pair (up/down, yes/no, above/below — plus the one legacy 'flat'), so
+    // counting distinct stored tokens IS the majority vote under any
+    // contract. Byte-identical outcome for price rounds.
+    const tally = new Map<string, number>()
     for (const row of group) {
-      if (row.predicted_direction === 'up' || row.predicted_direction === 'down' || row.predicted_direction === 'flat') {
-        tally[row.predicted_direction] += 1
+      const side = toSideToken(row.predicted_direction)
+      if (side === null) continue
+      tally.set(side, (tally.get(side) ?? 0) + 1)
+    }
+    let topDir: string | null = null
+    let topCount = 0
+    let tied = false
+    for (const [side, count] of tally) {
+      if (count > topCount) {
+        topDir = side
+        topCount = count
+        tied = false
+      } else if (count === topCount) {
+        tied = true
       }
     }
-    const entries = (['up', 'down', 'flat'] as const)
-      .map((d) => [d, tally[d]] as const)
-      .sort((a, b) => b[1] - a[1])
-    const [topDir, topCount] = entries[0]!
-    if (topCount === 0) continue
-    const tied = entries.filter(([, c]) => c === topCount).length
-    if (tied !== 1) continue
+    if (topCount === 0 || tied || topDir === null) continue
 
     const sample = group.find((r) => r.predicted_direction === topDir)
     if (!sample) continue

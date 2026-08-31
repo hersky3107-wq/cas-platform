@@ -1,5 +1,6 @@
 import type { CardRoundMeta, HitRateSummary } from './card-types'
 import type { LeagueUiPack } from './i18n/dictionary'
+import { propositionKindOf } from './side-labels'
 
 /**
  * ONE status the card header is allowed to show. Hit-rate and grading used to
@@ -36,11 +37,31 @@ const KNOWN_REASONS = [
 
 export type KnownUnresolvableReason = (typeof KNOWN_REASONS)[number]
 
-export function unresolvableReasonCopy(reason: string | null, t: LeagueUiPack): string {
+/**
+ * Plain-language reason a round could not be graded — the card's
+ * self-explanation. KIND-AWARE: the same reason code reads differently under
+ * each contract ("no trading session closed inside the window" is a price
+ * sentence; a subject-outcome round says the event's outcome was not
+ * confirmed in time). `propositionKind` is the round's persisted kind;
+ * missing/legacy → price wording, which is exactly what every pre-kind
+ * round is.
+ */
+export function unresolvableReasonCopy(
+  reason: string | null,
+  t: LeagueUiPack,
+  propositionKind?: string | null
+): string {
+  const kind = propositionKindOf({ proposition_kind: propositionKind ?? null })
+  const table =
+    kind === 'binary_subject_outcome'
+      ? t.grading.reasonSubjectOutcome
+      : kind === 'binary_threshold'
+        ? t.grading.reasonThreshold
+        : t.grading.reason
   if (reason && (KNOWN_REASONS as readonly string[]).includes(reason)) {
-    return t.grading.reason[reason as KnownUnresolvableReason]
+    return table[reason as KnownUnresolvableReason]
   }
-  return t.grading.reason.unknown
+  return table.unknown
 }
 
 /**
@@ -51,10 +72,11 @@ export function unresolvableReasonCopy(reason: string | null, t: LeagueUiPack): 
 export function cardStatusCopy(
   kind: CardStatusKind,
   reason: string | null,
-  t: LeagueUiPack
+  t: LeagueUiPack,
+  propositionKind?: string | null
 ): { badge: string; note: string | null } {
   if (kind === 'unresolvable') {
-    return { badge: t.grading.unresolvable, note: unresolvableReasonCopy(reason, t) }
+    return { badge: t.grading.unresolvable, note: unresolvableReasonCopy(reason, t, propositionKind) }
   }
   if (kind === 'grading') return { badge: t.grading.inProgress, note: null }
   if (kind === 'stalled') return { badge: t.grading.stalled, note: t.grading.stalledNote }

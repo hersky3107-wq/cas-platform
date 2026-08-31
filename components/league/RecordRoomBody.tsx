@@ -64,9 +64,12 @@ export function RecordRoomBody({
                   anchorSessionDate: headline.latestAnchorSessionDate,
                   resolutionSessionDate: headline.latestResolutionSessionDate,
                   resolutionPrice: headline.latestResolutionPrice,
+                  propositionKind: headline.latestPropositionKind,
                   locale,
                   t,
-                })
+                  // Price rounds: the audit sentence. Other contracts have no
+                  // session closes — show the persisted outcome verbatim.
+                }) || headline.latestOutcome
               )}
             </p>
           ) : null}
@@ -151,16 +154,20 @@ function RoundEntry({ entry, t, locale }: { entry: RecordRoomRoundEntry; t: Leag
   // Audit sentence is built from the persisted SESSION dates + prices via the
   // SAME helper the card header uses (`headerWindow`) — never from the date
   // embedded in `actual_outcome` (which carries `anchor_price_at`). This is why
-  // the two surfaces can never disagree.
-  const auditWindow = headerWindow({
-    instrument: entry.instrument,
-    anchorPrice: entry.anchorPrice,
-    anchorSessionDate: entry.anchorSessionDate,
-    resolutionSessionDate: entry.resolutionSessionDate,
-    resolutionPrice: entry.resolutionPrice,
-    locale,
-    t,
-  })
+  // the two surfaces can never disagree. Price rounds only: for the other
+  // contracts headerWindow returns '' and the persisted outcome text (the
+  // grader's own record) is shown verbatim instead.
+  const auditWindow =
+    headerWindow({
+      instrument: entry.instrument,
+      anchorPrice: entry.anchorPrice,
+      anchorSessionDate: entry.anchorSessionDate,
+      resolutionSessionDate: entry.resolutionSessionDate,
+      resolutionPrice: entry.resolutionPrice,
+      propositionKind: entry.proposition_kind,
+      locale,
+      t,
+    }) || entry.actual_outcome
   return (
     <li className="border-b border-league-border/40 px-4 py-3 last:border-b-0">
       <div className="flex items-start justify-between gap-2">

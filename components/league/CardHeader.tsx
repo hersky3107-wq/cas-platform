@@ -38,15 +38,18 @@ export function CardHeader({
     instrument: round.instrument,
     anchorPrice: round.anchorPrice,
     anchorSessionDate: round.anchorSessionDate,
+    propositionKind: round.proposition_kind,
     locale,
     t,
   })
+  // '' for non-price contracts (no session closes to audit) — line is skipped.
   const window = headerWindow({
     instrument: round.instrument,
     anchorPrice: round.anchorPrice,
     anchorSessionDate: round.anchorSessionDate,
     resolutionSessionDate: round.resolutionSessionDate,
     resolutionPrice: round.resolutionPrice,
+    propositionKind: round.proposition_kind,
     locale,
     t,
   })
@@ -65,7 +68,7 @@ export function CardHeader({
         </div>
         <StatusBadge round={round} hitRate={hitRate} t={t} stalled={gradingStalled} />
       </div>
-      <p className="mt-2 text-[12px] leading-snug text-league-fg">{window}</p>
+      {window ? <p className="mt-2 text-[12px] leading-snug text-league-fg">{window}</p> : null}
       {round.anchorPrice !== null && round.livePrice !== null ? (
         <p className="mt-1 text-[11px] text-league-fg-muted" dir="ltr">
           <span className="font-semibold text-league-fg">
@@ -102,7 +105,7 @@ function StatusBadge({
   const kind = cardStatusKind(round, hitRate, stalled)
   if (kind === 'hit_rate') return <HitRateBadge hitRate={hitRate} t={t} />
 
-  const copy = cardStatusCopy(kind, round.unresolvableReason, t)
+  const copy = cardStatusCopy(kind, round.unresolvableReason, t, round.proposition_kind)
   return (
     <div className="max-w-[11rem] shrink-0 text-right md:max-w-xs">
       <span className="inline-flex items-center rounded-full bg-league-bg-elevated px-2.5 py-1 text-[11px] font-semibold text-league-fg-muted">

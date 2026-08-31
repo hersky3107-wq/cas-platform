@@ -1,5 +1,6 @@
 import type { LeagueLocale } from './i18n/locales'
 import type { LeagueUiPack } from './i18n/dictionary'
+import { propositionKindOf } from './side-labels'
 import { normalizeSessionDate } from '../prediction/resolution'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
@@ -74,9 +75,16 @@ export function headerHeadline(args: {
   instrument: string
   anchorPrice: number | null
   anchorSessionDate: string | null
+  /** The round's proposition_kind. Omitted/unknown = close_higher, so every existing caller is byte-identical. */
+  propositionKind?: string | null
   locale: LeagueLocale
   t: LeagueUiPack
 }): string {
+  if (propositionKindOf({ proposition_kind: args.propositionKind }) !== 'binary_close_higher') {
+    // Non-price contract: no anchor price EXISTS, so neither the price form
+    // nor the "starting price unavailable" apology is the truth.
+    return args.t.header.headlinePlain(args.roundDate, args.instrument)
+  }
   if (args.anchorPrice === null) {
     return args.t.header.headlineNoAnchor(args.roundDate, args.instrument)
   }
@@ -107,9 +115,16 @@ export function headerWindow(args: {
   anchorSessionDate: string | null
   resolutionSessionDate: string | null
   resolutionPrice?: number | null
+  /** The round's proposition_kind. Omitted/unknown = close_higher, so every existing caller is byte-identical. */
+  propositionKind?: string | null
   locale: LeagueLocale
   t: LeagueUiPack
 }): string {
+  // Close-to-close audit sentences are a PRICE-round concept. For the other
+  // contracts there are no session closes to name; return '' so callers blank
+  // the line instead of rendering "no starting price was recorded" — which
+  // would be an apology for a number that never existed.
+  if (propositionKindOf({ proposition_kind: args.propositionKind }) !== 'binary_close_higher') return ''
   if (args.anchorPrice === null) return args.t.header.windowNoAnchor
   const fromDate = args.anchorSessionDate ? formatSessionDate(args.anchorSessionDate, args.locale) : ''
   const toDate = args.resolutionSessionDate ? formatSessionDate(args.resolutionSessionDate, args.locale) : ''

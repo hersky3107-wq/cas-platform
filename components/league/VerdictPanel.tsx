@@ -5,6 +5,8 @@ import { ChevronDown } from 'lucide-react'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { CardModelPrediction } from '@/lib/league/card-types'
 import type { VerdictGroupCount, VerdictPayload } from '@/lib/league/verdict-aggregate'
+import { sideLabelsFor, type SideLabels } from '@/lib/league/side-labels'
+import { directionBadgeLabel } from '@/lib/league/compliance'
 import { FLAG_SRC, type CountryCode } from '@/lib/league/country'
 import type { ConsensusSummary } from '@/lib/league/card-types'
 import { ConsensusHero } from '@/components/league/ConsensusHero'
@@ -16,7 +18,11 @@ import { ConsensusHero } from '@/components/league/ConsensusHero'
  *  1. Two-line consensus hero (answer + magnitude, then supporting figures)
  *  2. Post-grading magnitude comparison (directly beneath hero)
  *  3. Hit record ("✓29/40 적중")
- *  4. Direction distribution bar and breakdown sections
+ *  4. Side distribution bar and breakdown sections
+ *
+ * Every side word/glyph below flows through `labels` (the round's
+ * `SideLabels`). Omitting `labels` = the price resolver — byte-identical to
+ * the pre-resolver panel for up/down rounds (frozen-fixture proven).
  */
 export function VerdictPanel({
   verdict,
@@ -24,6 +30,7 @@ export function VerdictPanel({
   t,
   consensus,
   horizon,
+  labels,
   magnitudeCompare = null,
 }: {
   verdict: VerdictPayload
@@ -31,12 +38,15 @@ export function VerdictPanel({
   t: LeagueUiPack
   consensus: ConsensusSummary
   horizon: string
+  /** The round's side-label resolver. Omitted only by legacy price-round callers. */
+  labels?: SideLabels
   magnitudeCompare?: { predictedPct: number; actualPct: number } | null
 }) {
   const { hitRecord, distribution } = verdict
   const graded = hitRecord.graded
   if (graded <= 0) return null
 
+  const sl = labels ?? sideLabelsFor({}, t)
   const brandById = new Map(models.map((m) => [m.model_id, m.brand]))
   const totalDir = distribution.up + distribution.down + distribution.noDirection
   const hasStreaks = Boolean(verdict.streaks && Object.keys(verdict.streaks).length > 0)
@@ -46,7 +56,7 @@ export function VerdictPanel({
     <div className="mx-2 mb-3 mt-1 rounded-xl border border-league-accent bg-league-accent-soft px-4 py-4 md:mx-3 md:px-5 md:py-5">
       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-league-accent-strong">{t.verdict.title}</p>
       {consensus.totalModels > 0 ? (
-        <ConsensusHero consensus={consensus} horizon={horizon} t={t} magnitudeCompare={magnitudeCompare} />
+        <ConsensusHero consensus={consensus} horizon={horizon} t={t} labels={sl} magnitudeCompare={magnitudeCompare} />
       ) : null}
       <p className="mt-2 text-lg font-bold leading-snug text-league-fg md:text-xl">
         {t.verdict.heroHits(hitRecord.hits, hitRecord.graded)}
@@ -62,6 +72,7 @@ export function VerdictPanel({
           noDirection={distribution.noDirection}
           total={totalDir}
           t={t}
+          labels={sl}
         />
       ) : null}
 
@@ -107,8 +118,8 @@ export function VerdictPanel({
           <VerdictSection id="overconfident" title={t.verdict.sectionOverconfident} t={t}>
             <ul className="space-y-1">
               {verdict.overconfident.map((row) => {
-                const dirGlyph = row.direction === 'up' ? '\u25b2' : row.direction === 'down' ? '\u25bc' : row.direction === 'flat' ? '\u25a0' : ''
-                const dirLabel = row.direction ? t.direction.badge[row.direction] : t.direction.noCallBadge
+                const dirGlyph = row.direction ? sl.glyph(row.direction) : ''
+                const dirLabel = directionBadgeLabel(row.direction, t, sl)
                 return (
                   <li
                     key={row.model_id}
@@ -148,25 +159,38 @@ export function VerdictPanel({
   )
 }
 
+/**
+ * Side-count bar. GLYPH LAW: side counts render as `{n}{side glyph}` — never
+ * a slash-over-total, never ✓/✗ — so they cannot be read as hit counts.
+ * Bar/legend props are named up/down for the wire-compatible SLOT fields of
+ * `VerdictDistribution` (side A / side B under any contract); the visible
+ * glyphs and sr-only words come from the round's `labels`.
+ */
 function DistributionBar({
   up,
   down,
   noDirection,
   total,
   t,
+  labels,
 }: {
   up: number
   down: number
   noDirection: number
   total: number
   t: LeagueUiPack
+  labels: SideLabels
 }) {
   const upPct = (up / total) * 100
   const downPct = (down / total) * 100
   const nonePct = (noDirection / total) * 100
+  const price = labels.kind === 'binary_close_higher'
+  const heading = price ? t.verdict.distributionHeading : t.verdict.distributionHeadingSides
+  const srA = price ? t.verdict.distributionUp : labels.badge(labels.sides[0])
+  const srB = price ? t.verdict.distributionDown : labels.badge(labels.sides[1])
   return (
     <div className="mt-3">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.distributionHeading}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{heading}</p>
       <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-league-bg-elevated" aria-hidden>
         {up > 0 ? <span className="bg-emerald-500" style={{ width: `${upPct}%` }} /> : null}
         {down > 0 ? <span className="bg-rose-500" style={{ width: `${downPct}%` }} /> : null}
@@ -174,10 +198,10 @@ function DistributionBar({
       </div>
       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] tabular-nums text-league-fg-muted">
         <span className="text-emerald-700">
-          {up}▲ <span className="sr-only">{t.verdict.distributionUp}</span>
+          {up}{labels.glyphs[0]} <span className="sr-only">{srA}</span>
         </span>
         <span className="text-rose-700">
-          {down}▼ <span className="sr-only">{t.verdict.distributionDown}</span>
+          {down}{labels.glyphs[1]} <span className="sr-only">{srB}</span>
         </span>
         {noDirection > 0 ? (
           <span className="text-slate-600">

@@ -1,7 +1,8 @@
-import type { Camp, Direction, LeagueTier } from './card-types'
+import type { Camp, LeagueTier, ModelSide } from './card-types'
 import type { CountryCode } from './country'
 import { roundHitRecord } from './round-hit'
 import { winRatePctForDisplay } from './win-rate'
+import { tallySlotOfToken, toSideToken } from './side-labels'
 
 /**
  * AI Prediction League — VERDICT PANEL aggregation (pure, no I/O).
@@ -44,7 +45,7 @@ export type VerdictPredictionRow = {
   /** Prefer roster meta when present; these are fallbacks from the DB row. */
   camp?: Camp | string
   league_tier?: LeagueTier | string
-  predicted_direction: Direction | string | null
+  predicted_direction: ModelSide | string | null
   /** 0–100 model confidence, or null. */
   predicted_value: number | null
   is_correct: boolean | null
@@ -75,6 +76,13 @@ export type VerdictHitRecord = {
 
 export type VerdictConfidenceBucketKey = '0_49' | '50_59' | '60_69' | '70_79' | '80_100' | 'unknown'
 
+/**
+ * SLOT-shaped side distribution, same convention as `DirectionTally`: `up`
+ * counts the round's side A (up / yes / above), `down` counts side B.
+ * `noDirection` counts no-answer rows AND the grandfathered legacy 'flat'
+ * (as before — flat was never a side here). Rendering maps the slots back to
+ * the round's own words via `lib/league/side-labels.ts`.
+ */
 export type VerdictDistribution = {
   up: number
   down: number
@@ -94,7 +102,8 @@ export type VerdictOverconfident = {
   brand: string
   /** Raw `predicted_value` — never a derived score. */
   confidence: number | null
-  direction: Direction | null
+  /** The row's own side token (or legacy 'flat'); rendered via the round's side labels. */
+  direction: ModelSide | null
 }
 
 export type VerdictCrossRoundRate = {
@@ -145,10 +154,6 @@ function confidenceBucket(value: number | null): VerdictConfidenceBucketKey {
   if (value < 70) return '60_69'
   if (value < 80) return '70_79'
   return '80_100'
-}
-
-function toDirection(raw: string | null | undefined): Direction | null {
-  return raw === 'up' || raw === 'down' || raw === 'flat' ? raw : null
 }
 
 function toCamp(raw: string | null | undefined): Camp | null {
@@ -282,9 +287,13 @@ export function buildVerdictPayload(args: {
   const wrong: VerdictOverconfident[] = []
 
   for (const row of args.predictions) {
-    const dir = toDirection(row.predicted_direction)
-    if (dir === 'up') up += 1
-    else if (dir === 'down') down += 1
+    // toSideToken (not the old up/down/flat gate): a yes/above row is a SIDE,
+    // never "no direction". Slots follow DirectionTally's convention; legacy
+    // 'flat' keeps counting as noDirection, exactly as before.
+    const dir = toSideToken(row.predicted_direction)
+    const slot = tallySlotOfToken(dir)
+    if (slot === 'up') up += 1
+    else if (slot === 'down') down += 1
     else noDirection += 1
 
     const bucket = confidenceBucket(row.predicted_value)

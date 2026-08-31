@@ -1,6 +1,7 @@
 import type { CardData } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import { sideLabelsFor } from '@/lib/league/side-labels'
 import { toneFor } from '@/lib/league/tone'
 import type { ComplianceReceipt } from './CardCompliance'
 import { CardHeader } from './CardHeader'
@@ -43,6 +44,9 @@ export function CardBody({
   void receipt
   const tone = toneFor(data.round.color_bucket)
   const hasTranslation = Boolean(translations && Object.keys(translations).length > 0)
+  // ONE resolver per card: every side word/glyph below (tiles, tallies,
+  // verdict, hero) derives from this round's (kind, subject_label, category).
+  const labels = sideLabelsFor(data.round, t)
   return (
     <>
       <CardHeader
@@ -68,6 +72,7 @@ export function CardBody({
         models={data.models}
         tierSplit={data.tierSplit}
         t={t}
+        labels={labels}
         roundGraded={data.round.gradingState === 'graded'}
         translations={translations}
         showOriginal={showOriginal}
@@ -83,6 +88,7 @@ export function CardBody({
           verdict={data.verdict}
           models={data.models}
           t={t}
+          labels={labels}
           consensus={data.consensus}
           horizon={data.round.horizon}
           magnitudeCompare={
@@ -92,7 +98,7 @@ export function CardBody({
           }
         />
       ) : (
-        <PendingVerdictPanel round={data.round} t={t} locale={locale} consensus={data.consensus} />
+        <PendingVerdictPanel round={data.round} t={t} locale={locale} labels={labels} consensus={data.consensus} />
       )}
     </>
   )

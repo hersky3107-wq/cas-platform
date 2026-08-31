@@ -1,11 +1,16 @@
 import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
 
-/** The only fields Always up needs — already-graded direction + verdict. */
+/**
+ * The only fields Always up needs — already-graded direction + verdict.
+ * `predicted_direction` may carry any contract's token (up/down/yes/no/
+ * above/below) or legacy 'flat'; everything but up/down is deliberately
+ * ignored here — see the PRICE SCOPE note below.
+ */
 export type GradedDirectionRow = {
   model_id: string
   round_id: string
   is_correct: boolean
-  predicted_direction: 'up' | 'down' | 'flat' | null
+  predicted_direction: string | null
 }
 
 /**
@@ -29,6 +34,19 @@ export type GradedDirectionRow = {
  *
  * Both obey the minimum-sample gate: below the threshold there is no
  * percentage in this payload.
+ *
+ * PRICE SCOPE (2026-08-31, deliberate): baselines cover binary_close_higher
+ * rounds ONLY. `actualDirectionFromGraded` recovers an outcome exclusively
+ * from up/down rows, so subject-outcome and threshold rounds drop out of the
+ * baseline pool AND out of the per-model comparison denominators — a model is
+ * only ever compared with Always up on the price rounds they both saw.
+ * A per-kind analogue ("Always yes", "Always above") was rejected: the
+ * adapter chooses which side of an event is phrased as yes/above, so such a
+ * baseline would measure the adapter's phrasing habits, not a skill-free
+ * strategy — flipping the proposition wording would flip its record. "Always
+ * up" is meaningful precisely because up is not a labeling choice.
+ * The leaderboard says this scope out loud (see `leaderboard.baselinesNote` /
+ * `alwaysUpHint` in every locale).
  */
 
 export const COIN_FLIP_EXPECTED_PCT = 50
@@ -65,6 +83,8 @@ export type BaselineSummary = {
 /**
  * Recover the round's actual up/down from a row that was already graded.
  * `is_correct` was written by the shared grading path; this does not re-judge.
+ * Non-price tokens (yes/no/above/below) return null BY DESIGN — that is the
+ * price scope, not a missing case (see module doc).
  */
 export function actualDirectionFromGraded(row: GradedDirectionRow): 'up' | 'down' | null {
   if (row.predicted_direction !== 'up' && row.predicted_direction !== 'down') return null

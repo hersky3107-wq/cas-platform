@@ -17,13 +17,14 @@ export const RECORD_ROOM_DEFAULT_PAGE_SIZE = 20
 export const RECORD_ROOM_MAX_PAGE_SIZE = 50
 
 const ROUND_COLUMNS = 'id, proposition_text, category, color_bucket, instrument, resolved_at, actual_outcome, item_type'
-// The audit-sentence columns live behind migrations that may not be applied to
-// every environment (same caution as `lib/league/card.ts`'s optional columns).
-// We ask for them, and fall back to the base set if the DB rejects the select —
-// a not-yet-migrated env just renders the record room without the resolved
-// window, never a broken page.
+// The audit-sentence columns (and the 20260829000002 contract columns) live
+// behind migrations that may not be applied to every environment (same caution
+// as `lib/league/card.ts`'s optional columns). We ask for them, and fall back
+// to the base set if the DB rejects the select — a not-yet-migrated env just
+// renders the record room without the resolved window (and as all-price
+// rounds, which is what a pre-migration DB only contains), never a broken page.
 const ROUND_COLUMNS_WITH_AUDIT =
-  `${ROUND_COLUMNS}, anchor_price, anchor_session_date, resolution_session_date, resolution_price`
+  `${ROUND_COLUMNS}, anchor_price, anchor_session_date, resolution_session_date, resolution_price, proposition_kind, subject_label`
 
 function isMissingColumnError(message: string): boolean {
   return /does not exist|schema cache/i.test(message)

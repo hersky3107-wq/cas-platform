@@ -91,6 +91,7 @@ function asCardModels(rows: VerdictPredictionRow[]): CardModelPrediction[] {
     direction: r.predicted_direction === 'up' || r.predicted_direction === 'down' ? r.predicted_direction : null,
     probability: r.predicted_value,
     magnitude: null,
+    qualifierText: null,
     reasoning_snippet: null,
     is_correct: r.is_correct,
     cost_usd: 0,

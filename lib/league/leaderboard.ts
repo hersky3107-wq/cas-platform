@@ -59,9 +59,6 @@ export type LeaderboardScope = {
   categories?: readonly string[]
 }
 
-function toDirection(raw: string | null): GradedPredictionRow['predicted_direction'] {
-  return raw === 'up' || raw === 'down' || raw === 'flat' ? raw : null
-}
 
 /**
  * Round-level accounting for the same scope as the win rates: how many
@@ -137,7 +134,10 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
       category: row.prediction_rounds.category,
       is_correct: row.is_correct,
       round_id: row.round_id,
-      predicted_direction: toDirection(row.predicted_direction),
+      // Raw token, passed through: `buildCombinedMethodTrack` gates it with
+      // `toSideToken`, so a graded yes/no/above/below row is a real vote in
+      // the combined-method majority — never silently an abstention.
+      predicted_direction: row.predicted_direction,
     }))
 
   return buildLeaderboardData(rows, await fetchRoundCoverage(scope))

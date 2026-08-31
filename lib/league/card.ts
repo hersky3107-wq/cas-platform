@@ -29,6 +29,10 @@ export type { CardData }
 const ROUND_COLUMNS =
   'id, proposition_text, category, color_bucket, instrument, horizon, resolution_rule, resolves_at, opened_at, actual_outcome, resolved_at'
 const PREDICTION_COLUMNS =
+  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at'
+
+/** Pre-20260829000002 environments lack `predicted_qualifier_text`; retried without it (see `loadPredictions`). */
+const PREDICTION_COLUMNS_LEGACY =
   'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, reasoning_snippet, is_correct, cost_usd, predicted_at'
 
 /** Warn once (not once per request) if the anchor-price migration hasn't been applied yet. */
@@ -92,6 +96,9 @@ type OptionalRoundColumns = {
   anchor_session_date: string | null
   resolution_session_date: string | null
   resolution_price: number | null
+  /** 20260829000002 — null/absent means close_higher (every pre-kind round is a price round). */
+  proposition_kind: string | null
+  subject_label: string | null
 }
 
 const EMPTY_OPTIONAL_COLUMNS: OptionalRoundColumns = {
@@ -103,6 +110,8 @@ const EMPTY_OPTIONAL_COLUMNS: OptionalRoundColumns = {
   anchor_session_date: null,
   resolution_session_date: null,
   resolution_price: null,
+  proposition_kind: null,
+  subject_label: null,
 }
 
 /**
@@ -121,7 +130,7 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
       .select(
-        'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, anchor_session_date, resolution_session_date, resolution_price'
+        'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, anchor_session_date, resolution_session_date, resolution_price, proposition_kind, subject_label'
       )
       .eq('id', roundId)
       .maybeSingle()
@@ -143,6 +152,9 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
           anchor_session_date: null,
           resolution_session_date: fallback.data.resolution_session_date ?? null,
           resolution_price: fallback.data.resolution_price ?? null,
+          // Pre-20260829000002 environment: every round is a price round.
+          proposition_kind: null,
+          subject_label: null,
         }
       }
       if (!warnedMissingAnchorColumns) {
@@ -165,6 +177,8 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
       anchor_session_date: data.anchor_session_date ?? null,
       resolution_session_date: data.resolution_session_date ?? null,
       resolution_price: data.resolution_price ?? null,
+      proposition_kind: data.proposition_kind ?? null,
+      subject_label: data.subject_label ?? null,
     }
   } catch {
     return EMPTY_OPTIONAL_COLUMNS
@@ -177,7 +191,17 @@ async function loadPredictions(roundId: string): Promise<PredictionRow[]> {
     .select(PREDICTION_COLUMNS)
     .eq('round_id', roundId)
     .order('predicted_at', { ascending: true })
-  if (error) throw new Error(`league card: predictions lookup failed (${error.message})`)
+  if (error) {
+    // Same degrade-not-break stance as `loadOptionalColumns`: a DB that
+    // predates 20260829000002 renders qualifiers as null, not a broken card.
+    const fallback = await supabaseAdmin
+      .from('model_predictions')
+      .select(PREDICTION_COLUMNS_LEGACY)
+      .eq('round_id', roundId)
+      .order('predicted_at', { ascending: true })
+    if (fallback.error) throw new Error(`league card: predictions lookup failed (${error.message})`)
+    return (fallback.data ?? []) as PredictionRow[]
+  }
   return (data ?? []) as PredictionRow[]
 }
 

@@ -22,14 +22,49 @@ export type LeagueDirectionWord = 'up' | 'down' | 'flat'
  * machine-translating up to ~20+ snippets per view, per language, per
  * request — a real cost/latency problem, not just an i18n one).
  */
+/**
+ * Outcome-word family for binary_subject_outcome side pairs, picked from the
+ * round's own category by `lib/league/side-labels.ts` (sports → 'win',
+ * politics_election → 'elected', entertainment → 'awarded', else 'achieved').
+ * The pair is an i18n KEY resolved per locale — never display text stored on
+ * the round.
+ */
+export type SubjectOutcomeFamilyKey = 'win' | 'elected' | 'awarded' | 'achieved'
+
 export type LeagueUiPack = {
   direction: {
-    /** Short badge word per model row, e.g. "UP". */
+    /** Short badge word per model row, e.g. "UP". binary_close_higher vocabulary — other kinds use `sides`. */
     badge: Record<LeagueDirectionWord, string>
     noCallBadge: string
     /** Lowercase word used inside a tally sentence, e.g. "3 up". */
     tally: Record<LeagueDirectionWord, string>
     noCallTally: string
+  }
+  /**
+   * SIDE PAIRS for the non-price contracts. Consumed ONLY through
+   * `lib/league/side-labels.ts`'s `sideLabelsFor` — components never read
+   * these fields directly, so a surface cannot pair a word with the wrong
+   * kind. binary_close_higher deliberately has no entry here: its words are
+   * the historical `direction` / `hero.answerVerb` fields, byte-identical.
+   *
+   * `badge` = short side word (tiles, tallies, distribution legend).
+   * `answer` = hero phrase naming the round's subject / threshold.
+   * None of these may carry ✓/✗ or a slash-over-total — side words are never
+   * hit counts.
+   */
+  sides: {
+    subjectOutcome: Record<
+      SubjectOutcomeFamilyKey,
+      {
+        badge: { yes: string; no: string }
+        answer: { yes: (subject: string) => string; no: (subject: string) => string }
+      }
+    >
+    threshold: {
+      badge: { above: string; below: string }
+      /** `threshold` is the round's display string (e.g. "3.4%"), or null when the round carries none. */
+      answer: { above: (threshold: string | null) => string; below: (threshold: string | null) => string }
+    }
   }
   headline: {
     majority: (majorityCount: number, totalModels: number, direction: LeagueDirectionWord, confidencePct: number | null) => string
@@ -142,8 +177,38 @@ export type LeagueUiPack = {
     /** A genuine in-flight grade that did not land after ~60s of polling. */
     stalled: string
     stalledNote: string
-    /** Plain-language reasons — keyed to `UnresolvableReason`. */
+    /**
+     * Plain-language reasons — keyed to `UnresolvableReason`, worded for
+     * binary_close_higher (price rounds). Byte-frozen: the pre-kind wording.
+     */
     reason: {
+      missing_anchor: string
+      invalid_window: string
+      series_unavailable: string
+      no_series_data: string
+      no_session_in_window: string
+      equal_close: string
+      not_price_instrument: string
+      unknown: string
+    }
+    /**
+     * The SAME seven refusal states + unknown, worded for
+     * binary_subject_outcome rounds ("close"/"session"/"price" would be the
+     * wrong nouns for a match or an election). Selected per round kind by
+     * `lib/league/card-status.ts`'s `unresolvableReasonCopy`.
+     */
+    reasonSubjectOutcome: {
+      missing_anchor: string
+      invalid_window: string
+      series_unavailable: string
+      no_series_data: string
+      no_session_in_window: string
+      equal_close: string
+      not_price_instrument: string
+      unknown: string
+    }
+    /** Same states again, worded for binary_threshold rounds (a print vs a stated line). */
+    reasonThreshold: {
       missing_anchor: string
       invalid_window: string
       series_unavailable: string
@@ -170,6 +235,8 @@ export type LeagueUiPack = {
     live: string
     /** One-line header when the starting price is on the row. `roundDate` is the round's own opened date — never "today". */
     headlineWithAnchor: (roundDate: string, instrument: string, price: string, anchorDate: string) => string
+    /** Headline for non-price contracts (subject outcome / threshold) — no price, and no "price unavailable" apology either. */
+    headlinePlain: (roundDate: string, instrument: string) => string
     /** One-line header when the starting price was never recorded. */
     headlineNoAnchor: (roundDate: string, instrument: string) => string
     /** Window sentence when both ends of the window are known. */
@@ -216,7 +283,14 @@ export type LeagueUiPack = {
   bracket: {
     finalVerdict: string
     division: Record<LeagueTier, string>
-    compactTally: (tally: DirectionTally) => string
+    /**
+     * Ticker-style side count (glyphs + numbers), e.g. "6▲ 4▼ 1–" / "6Y 4N".
+     * `glyphs` is the round's side-A/side-B pair from
+     * `lib/league/side-labels.ts` (`KIND_GLYPHS`); omitted = ▲▼, the
+     * close_higher pair, so every price call site is byte-identical. NEVER a
+     * slash-over-total and NEVER ✓ — those shapes are hit counts.
+     */
+    compactTally: (tally: DirectionTally, glyphs?: readonly [string, string]) => string
     showReasoning: string
     hideReasoning: string
     /** Short label making clear the % is the model's OWN confidence in its call. */
@@ -253,8 +327,10 @@ export type LeagueUiPack = {
     pendingResolvesLine: (date: string) => string
     /** e.g. "26 days left". 0 when due today (grade-on-read/sweep will pick it up). */
     pendingDaysRemaining: (days: number) => string
-    /** Heading over the direction-distribution bar — must not be readable as a hit tally. */
+    /** Heading over the direction-distribution bar — must not be readable as a hit tally. binary_close_higher wording (byte-frozen). */
     distributionHeading: string
+    /** Same heading for non-price kinds, where "direction" is the wrong noun — e.g. "Prediction mix (answer)". */
+    distributionHeadingSides: string
     distributionUp: string
     distributionDown: string
     distributionNoDirection: string
@@ -421,11 +497,15 @@ export type LeagueUiPack = {
 }
 
 /**
- * Direction count. Glyphs are language-neutral. Never uses a slash-over-total
- * (that shape is reserved for hit counts — see `hitCount`).
+ * Side count. Glyphs are language-neutral; the pair comes from the round's
+ * kind via `lib/league/side-labels.ts` (▲▼ price, Y/N subject-outcome, >/<
+ * threshold) and defaults to ▲▼ so price call sites are byte-identical.
+ * Never uses a slash-over-total (that shape is reserved for hit counts — see
+ * `hitCount`), and never ✓/✗. `tally.up`/`tally.down` are the side-A/side-B
+ * SLOTS (see `DirectionTally`'s doc), so this function is kind-agnostic.
  */
-function compactTally(tally: DirectionTally): string {
-  const parts = [`${tally.up}▲`, `${tally.down}▼`]
+function compactTally(tally: DirectionTally, glyphs: readonly [string, string] = ['▲', '▼']): string {
+  const parts = [`${tally.up}${glyphs[0]}`, `${tally.down}${glyphs[1]}`]
   if (tally.flat) parts.push(`${tally.flat}■`)
   if (tally.abstain) parts.push(`${tally.abstain}–`)
   return parts.join(' ')
@@ -462,6 +542,33 @@ const en: LeagueUiPack = {
     allAbstain: (total) => `All ${total} AI models abstained on this round`,
     split: (responded, total) => `${responded} of ${total} AI models are split — no clear answer`,
     none: 'No AI models have reported for this round yet',
+  },
+  sides: {
+    subjectOutcome: {
+      win: {
+        badge: { yes: 'Wins', no: 'Fails to win' },
+        answer: { yes: (s) => `${s} wins`, no: (s) => `${s} fails to win` },
+      },
+      elected: {
+        badge: { yes: 'Elected', no: 'Not elected' },
+        answer: { yes: (s) => `${s} elected`, no: (s) => `${s} not elected` },
+      },
+      awarded: {
+        badge: { yes: 'Awarded', no: 'Not awarded' },
+        answer: { yes: (s) => `${s} wins the award`, no: (s) => `${s} misses the award` },
+      },
+      achieved: {
+        badge: { yes: 'Achieves it', no: 'Falls short' },
+        answer: { yes: (s) => `${s} achieves it`, no: (s) => `${s} falls short` },
+      },
+    },
+    threshold: {
+      badge: { above: 'Above', below: 'Below' },
+      answer: {
+        above: (th) => (th ? `Above ${th}` : 'Above the line'),
+        below: (th) => (th ? `Below ${th}` : 'Below the line'),
+      },
+    },
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -551,6 +658,26 @@ const en: LeagueUiPack = {
       not_price_instrument: 'This instrument is not a market price, so it cannot be scored this way.',
       unknown: 'This round cannot be scored, so it counts for nobody.',
     },
+    reasonSubjectOutcome: {
+      missing_anchor: 'No starting state was recorded for this round, so it cannot be scored.',
+      invalid_window: 'The start and end times of this round do not make a usable window.',
+      series_unavailable: 'The outcome source could not be reached, so nobody was scored.',
+      no_series_data: 'The outcome source returned no usable result for this window.',
+      no_session_in_window: 'The event did not conclude inside this prediction window, so there was nothing to score against.',
+      equal_close: 'The event ended with no decision either way, so nobody is right or wrong.',
+      not_price_instrument: 'This round has no automatic outcome source, so it cannot be scored this way.',
+      unknown: 'This round cannot be scored, so it counts for nobody.',
+    },
+    reasonThreshold: {
+      missing_anchor: 'No reference value was recorded for this round, so it cannot be scored.',
+      invalid_window: 'The start and end times of this round do not make a usable window.',
+      series_unavailable: 'The data source could not be reached, so nobody was scored.',
+      no_series_data: 'The data source returned no usable reading for this window.',
+      no_session_in_window: 'No reading landed inside this prediction window, so there was nothing to compare with the stated line.',
+      equal_close: 'The reading matched the stated line exactly, so nobody is right or wrong.',
+      not_price_instrument: 'This round\u2019s subject has no numeric reading, so it cannot be scored against a line.',
+      unknown: 'This round cannot be scored, so it counts for nobody.',
+    },
   },
   header: {
     atPrediction: 'at prediction',
@@ -558,6 +685,7 @@ const en: LeagueUiPack = {
     live: 'LIVE',
     headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
       `Round of ${roundDate} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlinePlain: (roundDate, instrument) => `Round of ${roundDate} \u00b7 ${instrument}`,
     headlineNoAnchor: (roundDate, instrument) => `Round of ${roundDate} \u00b7 ${instrument} \u00b7 starting price unavailable`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Measured from the ${fromDate} close of ${fromPrice}, resolving against the ${toDate} close.`,
@@ -613,6 +741,7 @@ const en: LeagueUiPack = {
     pendingResolvesLine: (date) => `Grades on ${date}`,
     pendingDaysRemaining: (days) => (days <= 0 ? 'Grading due' : days === 1 ? '1 day left' : `${days} days left`),
     distributionHeading: 'Prediction mix (direction)',
+    distributionHeadingSides: 'Prediction mix (answer)',
     distributionUp: 'Up',
     distributionDown: 'Down',
     distributionNoDirection: 'No direction',
@@ -670,16 +799,16 @@ const en: LeagueUiPack = {
     asOf: (date) => `As of ${date}`,
     baselinesTitle: 'Reference baselines',
     baselinesNote:
-      'Not league participants and not ranked. They exist so a model win rate can be read against a strategy that requires no skill.',
+      'Not league participants and not ranked. They exist so a model win rate can be read against a strategy that requires no skill. Computed over price rounds only.',
     baselineBadge: 'Baseline',
     alwaysUp: 'Always up',
-    alwaysUpHint: 'Predicts up on every round',
+    alwaysUpHint: 'Predicts up on every price round',
     coinFlip: 'Coin flip',
     coinFlipHint: 'Expected 50% line — a reference, not a simulated run',
     coinFlipRecord: 'Reference',
     beatingAlwaysUp: (beating, compared) =>
       `${beating} of ${compared} models are beating Always up`,
-    beatingAlwaysUpEmpty: 'No graded rounds yet — Always up has nothing to compare against.',
+    beatingAlwaysUpEmpty: 'No graded price rounds yet — Always up has nothing to compare against.',
   },
   recordRoom: {
     title: 'Record room',
@@ -754,6 +883,33 @@ const ko: LeagueUiPack = {
     allAbstain: (total) => `AI 모델 ${total}개 전원이 이번 라운드 의견을 유보했습니다`,
     split: (responded, total) => `AI 모델 ${total}개 중 ${responded}개가 응답했지만 방향이 갈립니다`,
     none: '아직 이번 라운드에 응답한 AI 모델이 없습니다',
+  },
+  sides: {
+    subjectOutcome: {
+      win: {
+        badge: { yes: '승', no: '패' },
+        answer: { yes: (s) => `${s} 승`, no: (s) => `${s} 승 실패` },
+      },
+      elected: {
+        badge: { yes: '당선', no: '낙선' },
+        answer: { yes: (s) => `${s} 당선`, no: (s) => `${s} 낙선` },
+      },
+      awarded: {
+        badge: { yes: '수상', no: '불발' },
+        answer: { yes: (s) => `${s} 수상`, no: (s) => `${s} 수상 불발` },
+      },
+      achieved: {
+        badge: { yes: '실현', no: '불발' },
+        answer: { yes: (s) => `${s} 실현`, no: (s) => `${s} 불발` },
+      },
+    },
+    threshold: {
+      badge: { above: '상회', below: '하회' },
+      answer: {
+        above: (th) => (th ? `${th} 상회` : '기준선 상회'),
+        below: (th) => (th ? `${th} 하회` : '기준선 하회'),
+      },
+    },
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -842,6 +998,26 @@ const ko: LeagueUiPack = {
       not_price_instrument: '이 종목은 시장 가격이 아니라 이 방식으로 채점할 수 없습니다.',
       unknown: '이 라운드는 채점할 수 없어 누구의 전적에도 들어가지 않습니다.',
     },
+    reasonSubjectOutcome: {
+      missing_anchor: '이 라운드의 시작 상태가 기록되지 않아 채점할 수 없습니다.',
+      invalid_window: '시작·종료 시각이 채점 가능한 구간을 만들지 않습니다.',
+      series_unavailable: '결과 출처에 접근하지 못해 아무도 채점되지 않았습니다.',
+      no_series_data: '이 구간에 쓸 수 있는 결과가 없습니다.',
+      no_session_in_window: '이 예측 구간 안에 결과가 확정되지 않아 채점할 대상이 없습니다.',
+      equal_close: '어느 쪽으로도 결론이 나지 않아 누구도 맞거나 틀린 것이 아닙니다.',
+      not_price_instrument: '이 라운드는 자동으로 확인할 결과 출처가 없어 이 방식으로 채점할 수 없습니다.',
+      unknown: '이 라운드는 채점할 수 없어 누구의 전적에도 들어가지 않습니다.',
+    },
+    reasonThreshold: {
+      missing_anchor: '이 라운드의 기준값이 기록되지 않아 채점할 수 없습니다.',
+      invalid_window: '시작·종료 시각이 채점 가능한 구간을 만들지 않습니다.',
+      series_unavailable: '데이터 출처에 접근하지 못해 아무도 채점되지 않았습니다.',
+      no_series_data: '이 구간에 쓸 수 있는 수치가 없습니다.',
+      no_session_in_window: '이 예측 구간 안에 수치가 나오지 않아 기준선과 비교할 대상이 없습니다.',
+      equal_close: '수치가 기준선과 정확히 같아 누구도 맞거나 틀린 것이 아닙니다.',
+      not_price_instrument: '이 라운드의 대상에는 수치가 없어 기준선 방식으로 채점할 수 없습니다.',
+      unknown: '이 라운드는 채점할 수 없어 누구의 전적에도 들어가지 않습니다.',
+    },
   },
   header: {
     atPrediction: '예측 시점',
@@ -849,6 +1025,7 @@ const ko: LeagueUiPack = {
     live: '실시간',
     headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
       `${roundDate} 라운드 · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlinePlain: (roundDate, instrument) => `${roundDate} 라운드 · ${instrument}`,
     headlineNoAnchor: (roundDate, instrument) => `${roundDate} 라운드 · ${instrument} · 기준가 없음`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `${fromDate} 종가 ${fromPrice}를 기준으로, ${toDate} 종가와 비교해 채점합니다.`,
@@ -902,6 +1079,7 @@ const ko: LeagueUiPack = {
     pendingResolvesLine: (date) => `${date}에 채점됩니다`,
     pendingDaysRemaining: (days) => (days <= 0 ? '채점 예정' : `${days}일 남음`),
     distributionHeading: '예측 분포 (방향)',
+    distributionHeadingSides: '예측 분포 (답변)',
     distributionUp: '상승',
     distributionDown: '하락',
     distributionNoDirection: '방향 없음',
@@ -959,16 +1137,16 @@ const ko: LeagueUiPack = {
     asOf: (date) => `${date} 기준`,
     baselinesTitle: '기준선',
     baselinesNote:
-      '리그 참가자가 아니며 순위도 매기지 않습니다. 기술이 필요 없는 전략과 모델 적중률을 나란히 보기 위한 참조입니다.',
+      '리그 참가자가 아니며 순위도 매기지 않습니다. 기술이 필요 없는 전략과 모델 적중률을 나란히 보기 위한 참조이며, 가격 라운드만 집계합니다.',
     baselineBadge: '기준선',
     alwaysUp: '항상 상승',
-    alwaysUpHint: '매 라운드 상승을 예측',
+    alwaysUpHint: '모든 가격 라운드에서 상승을 예측',
     coinFlip: '동전 던지기',
     coinFlipHint: '기대값 50% 선 — 시뮬레이션이 아닌 참조 표시',
     coinFlipRecord: '참조',
     beatingAlwaysUp: (beating, compared) =>
       `${compared}개 모델 중 ${beating}개가 ‘항상 상승’을 앞서고 있습니다`,
-    beatingAlwaysUpEmpty: '채점된 라운드가 없어 ‘항상 상승’과 비교할 수 없습니다.',
+    beatingAlwaysUpEmpty: '채점된 가격 라운드가 없어 ‘항상 상승’과 비교할 수 없습니다.',
   },
   recordRoom: {
     title: '기록실',
@@ -1042,6 +1220,33 @@ const ja: LeagueUiPack = {
     allAbstain: (total) => `AIモデル${total}体全てが今回の判断を保留しました`,
     split: (responded, total) => `AIモデル${total}体中${responded}体が回答しましたが意見が分かれています`,
     none: 'このラウンドにはまだ回答したAIモデルがありません',
+  },
+  sides: {
+    subjectOutcome: {
+      win: {
+        badge: { yes: '勝利', no: '勝てず' },
+        answer: { yes: (s) => `${s}が勝つ`, no: (s) => `${s}は勝てず` },
+      },
+      elected: {
+        badge: { yes: '当選', no: '落選' },
+        answer: { yes: (s) => `${s}が当選`, no: (s) => `${s}は落選` },
+      },
+      awarded: {
+        badge: { yes: '受賞', no: '受賞逃す' },
+        answer: { yes: (s) => `${s}が受賞`, no: (s) => `${s}は受賞を逃す` },
+      },
+      achieved: {
+        badge: { yes: '実現', no: '実現せず' },
+        answer: { yes: (s) => `${s}が実現する`, no: (s) => `${s}は実現しない` },
+      },
+    },
+    threshold: {
+      badge: { above: '上回る', below: '下回る' },
+      answer: {
+        above: (th) => (th ? `${th}を上回る` : '基準線を上回る'),
+        below: (th) => (th ? `${th}を下回る` : '基準線を下回る'),
+      },
+    },
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1130,6 +1335,26 @@ const ja: LeagueUiPack = {
       not_price_instrument: 'この銘柄は市場価格ではないため、この方法では採点できません。',
       unknown: 'このラウンドは採点できないため、誰の成績にも入りません。',
     },
+    reasonSubjectOutcome: {
+      missing_anchor: 'このラウンドの開始時点の状態が記録されていないため採点できません。',
+      invalid_window: '開始と終了の時刻が、採点できる区間になっていません。',
+      series_unavailable: '結果の情報源に到達できず、誰も採点されていません。',
+      no_series_data: 'この区間に使える結果がありません。',
+      no_session_in_window: 'この予測区間内に結果が確定しなかったため、採点の対象がありません。',
+      equal_close: 'どちらとも決まらずに終わったため、正解も不正解もありません。',
+      not_price_instrument: 'このラウンドには自動で確認できる結果の情報源がなく、この方法では採点できません。',
+      unknown: 'このラウンドは採点できないため、誰の成績にも入りません。',
+    },
+    reasonThreshold: {
+      missing_anchor: 'このラウンドの基準値が記録されていないため採点できません。',
+      invalid_window: '開始と終了の時刻が、採点できる区間になっていません。',
+      series_unavailable: 'データの情報源に到達できず、誰も採点されていません。',
+      no_series_data: 'この区間に使える数値がありません。',
+      no_session_in_window: 'この予測区間内に数値が出なかったため、基準線と比べる対象がありません。',
+      equal_close: '数値が基準線と一致したため、正解も不正解もありません。',
+      not_price_instrument: 'このラウンドの対象には数値がなく、基準線方式では採点できません。',
+      unknown: 'このラウンドは採点できないため、誰の成績にも入りません。',
+    },
   },
   header: {
     atPrediction: '予測時点',
@@ -1137,6 +1362,7 @@ const ja: LeagueUiPack = {
     live: 'ライブ',
     headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
       `${roundDate} のラウンド · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlinePlain: (roundDate, instrument) => `${roundDate} のラウンド · ${instrument}`,
     headlineNoAnchor: (roundDate, instrument) => `${roundDate} のラウンド · ${instrument} · 基準値なし`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `${fromDate}の終値 ${fromPrice}を起点に、${toDate}の終値と比較して採点します。`,
@@ -1190,6 +1416,7 @@ const ja: LeagueUiPack = {
     pendingResolvesLine: (date) => `${date}に採点されます`,
     pendingDaysRemaining: (days) => (days <= 0 ? '採点予定' : `残り${days}日`),
     distributionHeading: '予測の分布（方向）',
+    distributionHeadingSides: '予測の分布（回答）',
     distributionUp: '上昇',
     distributionDown: '下落',
     distributionNoDirection: '方向なし',
@@ -1247,16 +1474,16 @@ const ja: LeagueUiPack = {
     asOf: (date) => `${date}時点`,
     baselinesTitle: '参照ベースライン',
     baselinesNote:
-      'リーグ参加者ではなく、順位も付きません。スキルを要しない戦略とモデル的中率を並べて読むための参照です。',
+      'リーグ参加者ではなく、順位も付きません。スキルを要しない戦略とモデル的中率を並べて読むための参照で、価格ラウンドのみを集計します。',
     baselineBadge: 'ベースライン',
     alwaysUp: '常に上昇',
-    alwaysUpHint: '毎ラウンド上昇を予測',
+    alwaysUpHint: 'すべての価格ラウンドで上昇を予測',
     coinFlip: 'コイントス',
     coinFlipHint: '期待値50%の線 — シミュレーションではなく参照表示',
     coinFlipRecord: '参照',
     beatingAlwaysUp: (beating, compared) =>
       `${compared}モデル中${beating}が「常に上昇」を上回っています`,
-    beatingAlwaysUpEmpty: '採点済みラウンドがないため、「常に上昇」と比較できません。',
+    beatingAlwaysUpEmpty: '採点済みの価格ラウンドがないため、「常に上昇」と比較できません。',
   },
   recordRoom: {
     title: '記録室',
@@ -1330,6 +1557,33 @@ const zhTW: LeagueUiPack = {
     allAbstain: (total) => `全部 ${total} 個 AI 模型本輪均未表態`,
     split: (responded, total) => `${total} 個 AI 模型中有 ${responded} 個給出意見，但看法分歧`,
     none: '本輪目前尚無 AI 模型回應',
+  },
+  sides: {
+    subjectOutcome: {
+      win: {
+        badge: { yes: '獲勝', no: '未獲勝' },
+        answer: { yes: (s) => `${s} 獲勝`, no: (s) => `${s} 未能獲勝` },
+      },
+      elected: {
+        badge: { yes: '當選', no: '落選' },
+        answer: { yes: (s) => `${s} 當選`, no: (s) => `${s} 落選` },
+      },
+      awarded: {
+        badge: { yes: '得獎', no: '未得獎' },
+        answer: { yes: (s) => `${s} 得獎`, no: (s) => `${s} 未能得獎` },
+      },
+      achieved: {
+        badge: { yes: '達成', no: '未達成' },
+        answer: { yes: (s) => `${s} 達成`, no: (s) => `${s} 未達成` },
+      },
+    },
+    threshold: {
+      badge: { above: '高於', below: '低於' },
+      answer: {
+        above: (th) => (th ? `高於 ${th}` : '高於基準線'),
+        below: (th) => (th ? `低於 ${th}` : '低於基準線'),
+      },
+    },
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1417,6 +1671,26 @@ const zhTW: LeagueUiPack = {
       not_price_instrument: '此標的不是市場價格，無法用此方式評分。',
       unknown: '本輪無法評分，因此不計入任何人的戰績。',
     },
+    reasonSubjectOutcome: {
+      missing_anchor: '本輪沒有記錄起始狀態，因此無法評分。',
+      invalid_window: '起迄時間無法構成可評分的區間。',
+      series_unavailable: '無法取得結果來源，因此無人被評分。',
+      no_series_data: '此區間沒有可用的結果。',
+      no_session_in_window: '此預測區間內事件尚未分出結果，因此沒有可評分的依據。',
+      equal_close: '事件以無勝負告終，因此無人對或錯。',
+      not_price_instrument: '本輪沒有可自動查核的結果來源，無法用此方式評分。',
+      unknown: '本輪無法評分，因此不計入任何人的戰績。',
+    },
+    reasonThreshold: {
+      missing_anchor: '本輪沒有記錄基準值，因此無法評分。',
+      invalid_window: '起迄時間無法構成可評分的區間。',
+      series_unavailable: '無法取得數據來源，因此無人被評分。',
+      no_series_data: '此區間沒有可用的數值。',
+      no_session_in_window: '此預測區間內沒有數值出爐，因此無從與基準線比較。',
+      equal_close: '數值與基準線完全相同，因此無人對或錯。',
+      not_price_instrument: '本輪的標的沒有數值，無法以基準線方式評分。',
+      unknown: '本輪無法評分，因此不計入任何人的戰績。',
+    },
   },
   header: {
     atPrediction: '預測時',
@@ -1424,6 +1698,7 @@ const zhTW: LeagueUiPack = {
     live: '即時',
     headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
       `${roundDate} 回合 · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlinePlain: (roundDate, instrument) => `${roundDate} 回合 · ${instrument}`,
     headlineNoAnchor: (roundDate, instrument) => `${roundDate} 回合 · ${instrument} · 無基準價`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `以 ${fromDate} 收盤價 ${fromPrice} 為基準，對照 ${toDate} 收盤價評分。`,
@@ -1476,6 +1751,7 @@ const zhTW: LeagueUiPack = {
     pendingResolvesLine: (date) => `將於 ${date} 評分`,
     pendingDaysRemaining: (days) => (days <= 0 ? '即將評分' : `尚餘 ${days} 天`),
     distributionHeading: '預測分布（方向）',
+    distributionHeadingSides: '預測分布（答案）',
     distributionUp: '上漲',
     distributionDown: '下跌',
     distributionNoDirection: '無方向',
@@ -1533,16 +1809,16 @@ const zhTW: LeagueUiPack = {
     asOf: (date) => `更新於 ${date}`,
     baselinesTitle: '參考基準',
     baselinesNote:
-      '不是聯賽參賽者，也不排名。用來把模型命中率對照一個不需技巧的策略。',
+      '不是聯賽參賽者，也不排名。用來把模型命中率對照一個不需技巧的策略，僅統計價格輪次。',
     baselineBadge: '基準',
     alwaysUp: '一律看漲',
-    alwaysUpHint: '每一輪都預測上漲',
+    alwaysUpHint: '每一個價格輪次都預測上漲',
     coinFlip: '擲硬幣',
     coinFlipHint: '期望 50% 線 — 參考標記，不是模擬結果',
     coinFlipRecord: '參考',
     beatingAlwaysUp: (beating, compared) =>
       `${compared} 個模型中有 ${beating} 個勝過「一律看漲」`,
-    beatingAlwaysUpEmpty: '尚無已評分輪次，無法與「一律看漲」比較。',
+    beatingAlwaysUpEmpty: '尚無已評分的價格輪次，無法與「一律看漲」比較。',
   },
   recordRoom: {
     title: '紀錄室',
@@ -1616,6 +1892,33 @@ const fr: LeagueUiPack = {
     allAbstain: (total) => `Les ${total} modèles IA se sont tous abstenus pour ce tour`,
     split: (responded, total) => `${responded} modèles IA sur ${total} ont répondu, mais les avis sont partagés`,
     none: 'Aucun modèle IA n\u2019a encore répondu pour ce tour',
+  },
+  sides: {
+    subjectOutcome: {
+      win: {
+        badge: { yes: 'Gagne', no: 'Ne gagne pas' },
+        answer: { yes: (s) => `${s} gagne`, no: (s) => `${s} ne gagne pas` },
+      },
+      elected: {
+        badge: { yes: 'Élu(e)', no: 'Non élu(e)' },
+        answer: { yes: (s) => `${s} élu(e)`, no: (s) => `${s} non élu(e)` },
+      },
+      awarded: {
+        badge: { yes: 'Primé(e)', no: 'Non primé(e)' },
+        answer: { yes: (s) => `${s} remporte le prix`, no: (s) => `${s} manque le prix` },
+      },
+      achieved: {
+        badge: { yes: 'Réussit', no: 'Échoue' },
+        answer: { yes: (s) => `${s} y parvient`, no: (s) => `${s} n\u2019y parvient pas` },
+      },
+    },
+    threshold: {
+      badge: { above: 'Au-dessus', below: 'En dessous' },
+      answer: {
+        above: (th) => (th ? `Au-dessus de ${th}` : 'Au-dessus du seuil'),
+        below: (th) => (th ? `En dessous de ${th}` : 'En dessous du seuil'),
+      },
+    },
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1706,6 +2009,26 @@ const fr: LeagueUiPack = {
       not_price_instrument: 'Cet instrument n\u2019est pas un cours de marché, il ne peut pas être noté ainsi.',
       unknown: 'Ce tour ne peut pas être noté, il ne compte pour personne.',
     },
+    reasonSubjectOutcome: {
+      missing_anchor: 'Aucun état de départ n\u2019a été enregistré pour ce tour, il ne peut donc pas être noté.',
+      invalid_window: 'Les horaires de début et de fin ne forment pas une fenêtre utilisable.',
+      series_unavailable: 'La source du résultat n\u2019a pas pu être jointe : personne n\u2019a été noté.',
+      no_series_data: 'La source n\u2019a renvoyé aucun résultat utilisable pour cette fenêtre.',
+      no_session_in_window: 'L\u2019événement ne s\u2019est pas conclu dans cette fenêtre : rien à noter.',
+      equal_close: 'L\u2019événement s\u2019est terminé sans décision : personne n\u2019a raison ni tort.',
+      not_price_instrument: 'Ce tour n\u2019a pas de source de résultat automatique, il ne peut pas être noté ainsi.',
+      unknown: 'Ce tour ne peut pas être noté, il ne compte pour personne.',
+    },
+    reasonThreshold: {
+      missing_anchor: 'Aucune valeur de référence n\u2019a été enregistrée pour ce tour, il ne peut donc pas être noté.',
+      invalid_window: 'Les horaires de début et de fin ne forment pas une fenêtre utilisable.',
+      series_unavailable: 'La source de données n\u2019a pas pu être jointe : personne n\u2019a été noté.',
+      no_series_data: 'La source n\u2019a renvoyé aucune valeur utilisable pour cette fenêtre.',
+      no_session_in_window: 'Aucune valeur n\u2019est tombée dans cette fenêtre : rien à comparer au seuil annoncé.',
+      equal_close: 'La valeur est exactement égale au seuil annoncé : personne n\u2019a raison ni tort.',
+      not_price_instrument: 'Le sujet de ce tour n\u2019a pas de valeur numérique, il ne peut pas être noté contre un seuil.',
+      unknown: 'Ce tour ne peut pas être noté, il ne compte pour personne.',
+    },
   },
   header: {
     atPrediction: 'au moment de la prédiction',
@@ -1713,6 +2036,7 @@ const fr: LeagueUiPack = {
     live: 'EN DIRECT',
     headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
       `Manche du ${roundDate} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlinePlain: (roundDate, instrument) => `Manche du ${roundDate} \u00b7 ${instrument}`,
     headlineNoAnchor: (roundDate, instrument) => `Manche du ${roundDate} \u00b7 ${instrument} \u00b7 cours de départ indisponible`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Mesuré depuis la clôture du ${fromDate} à ${fromPrice}, noté contre la clôture du ${toDate}.`,
@@ -1768,6 +2092,7 @@ const fr: LeagueUiPack = {
     pendingResolvesLine: (date) => `Noté le ${date}`,
     pendingDaysRemaining: (days) => (days <= 0 ? 'Notation imminente' : days === 1 ? '1 jour restant' : `${days} jours restants`),
     distributionHeading: 'Répartition des prédictions (direction)',
+    distributionHeadingSides: 'Répartition des prédictions (réponse)',
     distributionUp: 'Hausse',
     distributionDown: 'Baisse',
     distributionNoDirection: 'Sans direction',
@@ -1825,16 +2150,16 @@ const fr: LeagueUiPack = {
     asOf: (date) => `Au ${date}`,
     baselinesTitle: 'Références de base',
     baselinesNote:
-      'Ce ne sont pas des participants du championnat et ils ne sont pas classés. Ils servent à lire un taux de réussite face à une stratégie sans compétence.',
+      'Ce ne sont pas des participants du championnat et ils ne sont pas classés. Ils servent à lire un taux de réussite face à une stratégie sans compétence. Calculées uniquement sur les tours de prix.',
     baselineBadge: 'Référence',
     alwaysUp: 'Toujours à la hausse',
-    alwaysUpHint: 'Prédit une hausse à chaque tour',
+    alwaysUpHint: 'Prédit une hausse à chaque tour de prix',
     coinFlip: 'Pile ou face',
     coinFlipHint: 'Ligne attendue à 50 % — un repère, pas une simulation',
     coinFlipRecord: 'Repère',
     beatingAlwaysUp: (beating, compared) =>
       `${beating} modèles sur ${compared} battent « Toujours à la hausse »`,
-    beatingAlwaysUpEmpty: 'Aucun tour noté — rien à comparer à « Toujours à la hausse ».',
+    beatingAlwaysUpEmpty: 'Aucun tour de prix noté — rien à comparer à « Toujours à la hausse ».',
   },
   recordRoom: {
     title: 'Salle des archives',
@@ -1909,6 +2234,33 @@ const es: LeagueUiPack = {
     allAbstain: (total) => `Los ${total} modelos de IA se abstuvieron en esta ronda`,
     split: (responded, total) => `${responded} de ${total} modelos de IA respondieron, pero están divididos`,
     none: 'Todavía ningún modelo de IA respondió en esta ronda',
+  },
+  sides: {
+    subjectOutcome: {
+      win: {
+        badge: { yes: 'Gana', no: 'No gana' },
+        answer: { yes: (s) => `${s} gana`, no: (s) => `${s} no gana` },
+      },
+      elected: {
+        badge: { yes: 'Electo', no: 'No electo' },
+        answer: { yes: (s) => `${s} gana la elección`, no: (s) => `${s} pierde la elección` },
+      },
+      awarded: {
+        badge: { yes: 'Premiado', no: 'Sin premio' },
+        answer: { yes: (s) => `${s} gana el premio`, no: (s) => `${s} se queda sin el premio` },
+      },
+      achieved: {
+        badge: { yes: 'Lo logra', no: 'No lo logra' },
+        answer: { yes: (s) => `${s} lo logra`, no: (s) => `${s} no lo logra` },
+      },
+    },
+    threshold: {
+      badge: { above: 'Por encima', below: 'Por debajo' },
+      answer: {
+        above: (th) => (th ? `Por encima de ${th}` : 'Por encima de la línea'),
+        below: (th) => (th ? `Por debajo de ${th}` : 'Por debajo de la línea'),
+      },
+    },
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -1999,6 +2351,26 @@ const es: LeagueUiPack = {
       not_price_instrument: 'Este instrumento no es un precio de mercado y no se puede calificar así.',
       unknown: 'Esta ronda no se puede calificar, así que no cuenta para nadie.',
     },
+    reasonSubjectOutcome: {
+      missing_anchor: 'No se registró un estado de partida para esta ronda, así que no se puede calificar.',
+      invalid_window: 'Las horas de inicio y fin no forman una ventana usable.',
+      series_unavailable: 'No se pudo acceder a la fuente del resultado: nadie fue calificado.',
+      no_series_data: 'La fuente no devolvió ningún resultado usable para esta ventana.',
+      no_session_in_window: 'El evento no se resolvió dentro de esta ventana: no había nada que calificar.',
+      equal_close: 'El evento terminó sin decisión: nadie acierta ni falla.',
+      not_price_instrument: 'Esta ronda no tiene una fuente automática de resultado y no se puede calificar así.',
+      unknown: 'Esta ronda no se puede calificar, así que no cuenta para nadie.',
+    },
+    reasonThreshold: {
+      missing_anchor: 'No se registró un valor de referencia para esta ronda, así que no se puede calificar.',
+      invalid_window: 'Las horas de inicio y fin no forman una ventana usable.',
+      series_unavailable: 'No se pudo acceder a la fuente de datos: nadie fue calificado.',
+      no_series_data: 'La fuente no devolvió ningún valor usable para esta ventana.',
+      no_session_in_window: 'Ningún valor cayó dentro de esta ventana: no había nada que comparar con la línea indicada.',
+      equal_close: 'El valor coincidió exactamente con la línea indicada: nadie acierta ni falla.',
+      not_price_instrument: 'El sujeto de esta ronda no tiene valor numérico y no se puede calificar contra una línea.',
+      unknown: 'Esta ronda no se puede calificar, así que no cuenta para nadie.',
+    },
   },
   header: {
     atPrediction: 'al momento de la predicción',
@@ -2006,6 +2378,7 @@ const es: LeagueUiPack = {
     live: 'EN VIVO',
     headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
       `Ronda del ${roundDate} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlinePlain: (roundDate, instrument) => `Ronda del ${roundDate} \u00b7 ${instrument}`,
     headlineNoAnchor: (roundDate, instrument) => `Ronda del ${roundDate} \u00b7 ${instrument} \u00b7 precio de partida no disponible`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `Medido desde el cierre del ${fromDate} de ${fromPrice}, se resuelve contra el cierre del ${toDate}.`,
@@ -2061,6 +2434,7 @@ const es: LeagueUiPack = {
     pendingResolvesLine: (date) => `Se califica el ${date}`,
     pendingDaysRemaining: (days) => (days <= 0 ? 'Calificación pendiente' : days === 1 ? 'Queda 1 día' : `Quedan ${days} días`),
     distributionHeading: 'Distribución de predicciones (dirección)',
+    distributionHeadingSides: 'Distribución de predicciones (respuesta)',
     distributionUp: 'Subida',
     distributionDown: 'Bajada',
     distributionNoDirection: 'Sin dirección',
@@ -2118,16 +2492,16 @@ const es: LeagueUiPack = {
     asOf: (date) => `Actualizado al ${date}`,
     baselinesTitle: 'Líneas de referencia',
     baselinesNote:
-      'No son participantes de la liga y no se clasifican. Sirven para leer el acierto de un modelo frente a una estrategia que no exige habilidad.',
+      'No son participantes de la liga y no se clasifican. Sirven para leer el acierto de un modelo frente a una estrategia que no exige habilidad. Se calculan solo sobre rondas de precio.',
     baselineBadge: 'Referencia',
     alwaysUp: 'Siempre al alza',
-    alwaysUpHint: 'Predice alza en cada ronda',
+    alwaysUpHint: 'Predice alza en cada ronda de precio',
     coinFlip: 'Cara o cruz',
     coinFlipHint: 'Línea esperada del 50 % — una marca, no una simulación',
     coinFlipRecord: 'Referencia',
     beatingAlwaysUp: (beating, compared) =>
       `${beating} de ${compared} modelos superan a «Siempre al alza»`,
-    beatingAlwaysUpEmpty: 'Aún no hay rondas calificadas para comparar con «Siempre al alza».',
+    beatingAlwaysUpEmpty: 'Aún no hay rondas de precio calificadas para comparar con «Siempre al alza».',
   },
   recordRoom: {
     title: 'Sala de registros',
@@ -2202,6 +2576,33 @@ const ar: LeagueUiPack = {
     allAbstain: (total) => `امتنعت جميع نماذج الذكاء الاصطناعي البالغ عددها ${total} عن إبداء رأي في هذه الجولة`,
     split: (responded, total) => `أجاب ${responded} من ${total} من نماذج الذكاء الاصطناعي، لكن الآراء منقسمة`,
     none: 'لم يستجب أي نموذج ذكاء اصطناعي لهذه الجولة بعد',
+  },
+  sides: {
+    subjectOutcome: {
+      win: {
+        badge: { yes: 'يفوز', no: 'لا يفوز' },
+        answer: { yes: (s) => `يفوز ${s}`, no: (s) => `لا يفوز ${s}` },
+      },
+      elected: {
+        badge: { yes: 'يُنتخب', no: 'لا يُنتخب' },
+        answer: { yes: (s) => `يُنتخب ${s}`, no: (s) => `لا يُنتخب ${s}` },
+      },
+      awarded: {
+        badge: { yes: 'يُتوَّج', no: 'لا يُتوَّج' },
+        answer: { yes: (s) => `ينال ${s} الجائزة`, no: (s) => `لا ينال ${s} الجائزة` },
+      },
+      achieved: {
+        badge: { yes: 'يتحقق', no: 'لا يتحقق' },
+        answer: { yes: (s) => `يحقق ${s} ذلك`, no: (s) => `لا يحقق ${s} ذلك` },
+      },
+    },
+    threshold: {
+      badge: { above: 'أعلى', below: 'أدنى' },
+      answer: {
+        above: (th) => (th ? `أعلى من ${th}` : 'أعلى من الخط'),
+        below: (th) => (th ? `أدنى من ${th}` : 'أدنى من الخط'),
+      },
+    },
   },
   groupTallyLine: (label, tally) => {
     const parts: string[] = []
@@ -2290,6 +2691,26 @@ const ar: LeagueUiPack = {
       not_price_instrument: 'هذه الأداة ليست سعر سوق، ولا يمكن تقييمها بهذه الطريقة.',
       unknown: 'لا يمكن تقييم هذه الجولة، لذلك لا تُحسب لأي طرف.',
     },
+    reasonSubjectOutcome: {
+      missing_anchor: 'لم تُسجَّل حالة بداية لهذه الجولة، لذلك لا يمكن تقييمها.',
+      invalid_window: 'وقتا البداية والنهاية لا يشكّلان نافذة صالحة للتقييم.',
+      series_unavailable: 'تعذّر الوصول إلى مصدر النتيجة، فلم يُقيَّم أحد.',
+      no_series_data: 'لم يُرجع المصدر أي نتيجة صالحة لهذه النافذة.',
+      no_session_in_window: 'لم يُحسم الحدث داخل نافذة التنبؤ، فلا شيء يُقيَّم عليه.',
+      equal_close: 'انتهى الحدث دون حسم لأي طرف، فلا صواب ولا خطأ.',
+      not_price_instrument: 'لا يوجد لهذه الجولة مصدر نتيجة تلقائي، فلا يمكن تقييمها بهذه الطريقة.',
+      unknown: 'لا يمكن تقييم هذه الجولة، لذلك لا تُحسب لأي طرف.',
+    },
+    reasonThreshold: {
+      missing_anchor: 'لم تُسجَّل قيمة مرجعية لهذه الجولة، لذلك لا يمكن تقييمها.',
+      invalid_window: 'وقتا البداية والنهاية لا يشكّلان نافذة صالحة للتقييم.',
+      series_unavailable: 'تعذّر الوصول إلى مصدر البيانات، فلم يُقيَّم أحد.',
+      no_series_data: 'لم يُرجع المصدر أي قيمة صالحة لهذه النافذة.',
+      no_session_in_window: 'لم تصدر أي قيمة داخل نافذة التنبؤ، فلا شيء يُقارن بالخط المعلن.',
+      equal_close: 'طابقت القيمة الخط المعلن تمامًا، فلا صواب ولا خطأ.',
+      not_price_instrument: 'موضوع هذه الجولة بلا قيمة رقمية، فلا يمكن تقييمه مقابل خط.',
+      unknown: 'لا يمكن تقييم هذه الجولة، لذلك لا تُحسب لأي طرف.',
+    },
   },
   header: {
     atPrediction: 'وقت التنبؤ',
@@ -2297,6 +2718,7 @@ const ar: LeagueUiPack = {
     live: 'مباشر',
     headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
       `جولة ${roundDate} · ${instrument} · ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlinePlain: (roundDate, instrument) => `جولة ${roundDate} · ${instrument}`,
     headlineNoAnchor: (roundDate, instrument) => `جولة ${roundDate} · ${instrument} · سعر البداية غير متاح`,
     windowWithAnchor: (fromDate, fromPrice, toDate) =>
       `يُقاس من إغلاق ${fromDate} عند ${fromPrice}، ويُحسَم مقابل إغلاق ${toDate}.`,
@@ -2350,6 +2772,7 @@ const ar: LeagueUiPack = {
     pendingResolvesLine: (date) => `سيتم التقييم في ${date}`,
     pendingDaysRemaining: (days) => (days <= 0 ? 'التقييم قريباً' : `متبقٍ ${days} يوم`),
     distributionHeading: 'توزيع التوقعات (الاتجاه)',
+    distributionHeadingSides: 'توزيع التوقعات (الإجابة)',
     distributionUp: 'صعود',
     distributionDown: 'هبوط',
     distributionNoDirection: 'بلا اتجاه',
@@ -2407,16 +2830,16 @@ const ar: LeagueUiPack = {
     asOf: (date) => `اعتبارًا من ${date}`,
     baselinesTitle: 'خطوط مرجعية',
     baselinesNote:
-      'ليست مشاركين في الدوري ولا تُرتَّب. وُجدت لتُقرأ نسبة إصابة النموذج مقابل استراتيجية لا تحتاج مهارة.',
+      'ليست مشاركين في الدوري ولا تُرتَّب. وُجدت لتُقرأ نسبة إصابة النموذج مقابل استراتيجية لا تحتاج مهارة. تُحسب على جولات الأسعار فقط.',
     baselineBadge: 'مرجع',
     alwaysUp: 'دائمًا صعود',
-    alwaysUpHint: 'يتوقع الصعود في كل جولة',
+    alwaysUpHint: 'يتوقع الصعود في كل جولة أسعار',
     coinFlip: 'رمي عملة',
     coinFlipHint: 'خط 50٪ المتوقع — علامة مرجعية لا محاكاة',
     coinFlipRecord: 'مرجع',
     beatingAlwaysUp: (beating, compared) =>
       `${beating} من ${compared} نماذج تتفوّق على «دائمًا صعود»`,
-    beatingAlwaysUpEmpty: 'لا جولات مُقيَّمة بعد لمقارنتها بـ«دائمًا صعود».',
+    beatingAlwaysUpEmpty: 'لا جولات أسعار مُقيَّمة بعد لمقارنتها بـ«دائمًا صعود».',
   },
   recordRoom: {
     title: 'غرفة السجلات',
@@ -2464,17 +2887,31 @@ const ar: LeagueUiPack = {
   },
 }
 
-/** Structural stub — Brazil scope is intentionally deferred. Spreads English so the shape is always complete, then overrides new chrome so Portuguese does not ship English fallbacks. */
+/**
+ * Brazilian Portuguese — full pack since 2026-08-31 (previously a structural
+ * stub that spread English; the render-layer side-pair work required every
+ * converted surface to read as real Portuguese). Still not in
+ * `LEAGUE_SELECTABLE_LOCALES`: Brazil scope remains deferred, this is the
+ * pack quality catching up ahead of the toggle.
+ */
 const pt: LeagueUiPack = {
-  ...en,
-  header: {
-    ...en.header,
-    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
-      `Medido a partir do fechamento de ${fromDate} em ${fromPrice}, resolvido contra o fechamento de ${toDate} em ${toPrice}.`,
-    windowAnchorOnly: (fromDate, fromPrice) =>
-      `Medido a partir do fechamento de ${fromDate} em ${fromPrice}. A sessão de resolução ainda não foi registrada.`,
-    windowNoSessionDates:
-      'O preço inicial está registrado, mas as datas de sessão desta previsão não — essas datas não são inferidas de carimbos de tempo.',
+  direction: {
+    badge: { up: 'ALTA', down: 'BAIXA', flat: 'ESTÁVEL' },
+    noCallBadge: 'SEM RESPOSTA',
+    tally: { up: 'alta', down: 'baixa', flat: 'estável' },
+    noCallTally: 'sem resposta',
+  },
+  headline: {
+    majority: (count, total, dir, conf) => {
+      const word = { up: 'inclinam para ALTA', down: 'inclinam para BAIXA', flat: 'inclinam para ESTÁVEL' }[dir]
+      const suffix = conf !== null ? ` · confiança média de ${Math.round(conf)}%` : ''
+      return `${count} de ${total} modelos de IA ${word}${suffix}`
+    },
+    allAbstain: (total) => `Todos os ${total} modelos de IA se abstiveram nesta rodada`,
+    split: (responded, total) => `${responded} de ${total} modelos de IA responderam, mas estão divididos — sem inclinação clara`,
+    none: 'Nenhum modelo de IA respondeu nesta rodada ainda',
+    correlatedNote:
+      'Premier, Challenger e World leem o mesmo pacote de pesquisa, então isto é um evento com entradas correlacionadas — não 40 previsões independentes.',
   },
   hero: {
     answerVerb: { up: 'Sobe', down: 'Desce' },
@@ -2484,10 +2921,195 @@ const pt: LeagueUiPack = {
     split: (responded, total) => `${responded} de ${total} modelos de IA responderam, mas estão divididos`,
     none: 'Nenhum modelo de IA respondeu nesta rodada ainda',
   },
-  magnitude: {
-    headlineQualifier: (horizonLabel, signedPct) => `em ${horizonLabel} ${signedPct}`,
-    tileLabel: 'variação esperada',
-    predictedVsActual: (predictedPct, actualPct) => `previsto ${predictedPct} \u2192 real ${actualPct}`,
+  sides: {
+    subjectOutcome: {
+      win: {
+        badge: { yes: 'Vence', no: 'Não vence' },
+        answer: { yes: (s) => `${s} vence`, no: (s) => `${s} não vence` },
+      },
+      elected: {
+        badge: { yes: 'Eleito(a)', no: 'Não eleito(a)' },
+        answer: { yes: (s) => `${s} eleito(a)`, no: (s) => `${s} não eleito(a)` },
+      },
+      awarded: {
+        badge: { yes: 'Premiado(a)', no: 'Sem prêmio' },
+        answer: { yes: (s) => `${s} leva o prêmio`, no: (s) => `${s} fica sem o prêmio` },
+      },
+      achieved: {
+        badge: { yes: 'Consegue', no: 'Não consegue' },
+        answer: { yes: (s) => `${s} consegue`, no: (s) => `${s} não consegue` },
+      },
+    },
+    threshold: {
+      badge: { above: 'Acima', below: 'Abaixo' },
+      answer: {
+        above: (th) => (th ? `Acima de ${th}` : 'Acima da linha'),
+        below: (th) => (th ? `Abaixo de ${th}` : 'Abaixo da linha'),
+      },
+    },
+  },
+  groupTallyLine: (label, tally) => {
+    const parts: string[] = []
+    if (tally.up) parts.push(`${tally.up} alta`)
+    if (tally.down) parts.push(`${tally.down} baixa`)
+    if (tally.flat) parts.push(`${tally.flat} estável`)
+    if (tally.abstain) parts.push(`${tally.abstain} sem resposta`)
+    return `${label}: ${parts.length ? parts.join(' · ') : 'sem respostas ainda'}`
+  },
+  disclaimer: {
+    short: 'Apenas informação — não é recomendação de investimento. Você é responsável pelas próprias decisões.',
+    long: 'Estas são opiniões de modelos de IA exibidas apenas para fins informativos e de entretenimento. Não são aconselhamento de investimento, financeiro, jurídico ou profissional, e nenhum modelo aqui é um consultor licenciado. Os mercados são imprevisíveis e os modelos de IA podem errar — e erram com frequência. Você é o único responsável por qualquer decisão que tomar.',
+    realEstate:
+      'Referência estatística apenas — não é uma avaliação formal. Perspectiva por região e instrumento; não é a avaliação de nenhum imóvel específico.',
+  },
+  catalog: {
+    categories: {
+      sports: 'Esportes',
+      crypto: 'Cripto',
+      stocks: 'Ações',
+      fx: 'Câmbio',
+      gold_metals: 'Ouro e metais',
+      index_etf: 'Índice / ETF',
+      commodities_energy: 'Commodities e energia',
+      politics_election: 'Política',
+      entertainment: 'Entretenimento',
+      memecoin: 'Memecoin',
+      real_estate: 'Imóveis',
+      macro_econ: 'Macro',
+    },
+    instruments: {
+      AAPL: 'Apple (AAPL)',
+      NVDA: 'NVIDIA (NVDA)',
+      TSLA: 'Tesla (TSLA)',
+      'BTC/USD': 'Bitcoin (BTC)',
+      'ETH/USD': 'Ethereum (ETH)',
+      'SOL/USD': 'Solana (SOL)',
+      'EUR/USD': 'Euro / Dólar americano',
+      'USD/KRW': 'Dólar americano / Won sul-coreano',
+      'USD/JPY': 'Dólar americano / Iene japonês',
+      'XAU/USD': 'Ouro',
+      'XAG/USD': 'Prata',
+      SPX: 'S&P 500',
+      NDX: 'Nasdaq 100',
+      'WTICO/USD': 'Petróleo WTI',
+      'NATGAS/USD': 'Gás natural',
+      VNQ: 'Vanguard Real Estate (VNQ)',
+      SCHH: 'Schwab US REIT (SCHH)',
+      'DOGE/USD': 'Dogecoin (DOGE)',
+      'SHIB/USD': 'Shiba Inu (SHIB)',
+    },
+    comingSoon: 'Em breve',
+    comingSoonHint: 'O seletor de eventos e a busca por pergunta ficarão aqui. Sem instrumentos fixos para esta categoria.',
+    macroEconHint: 'Visão de mercado para especialistas — juros, inflação, títulos. Profundidade, não dopamina.',
+    noCardYet: 'Ainda não há cartão de previsão para este instrumento.',
+    horizons: { '1d': '1 dia', '1w': '1 semana', '1m': '1 mês', '3m': '3 meses' },
+  },
+  hitRate: {
+    pending: 'Taxa de acerto: em cálculo',
+    withValue: (value) => `taxa de acerto ${value}`,
+    roundResult: (correct, graded) => `Nesta rodada ${hitCount(correct, graded)} corretas`,
+  },
+  winRate: {
+    withSample: (pctText, n) => `${pctText}% (n=${n})`,
+    record: (wins, losses) => `${wins}V ${losses}D`,
+    insufficient: (wins, losses) => `${wins}V ${losses}D (amostra pequena demais)`,
+    insufficientNote: 'Amostra pequena demais',
+    rankingBegins: (minSample) =>
+      `O ranking começa após ${minSample} rodadas avaliadas. Até lá os resultados aparecem sem posição, com o histórico bruto em vez de porcentagem.`,
+    noRounds: 'Nenhuma rodada avaliada ainda',
+  },
+  grading: {
+    inProgress: 'Avaliando\u2026',
+    pending: 'Aguardando avaliação',
+    unresolvable: 'Não pode ser avaliada',
+    unresolvableNote:
+      'O prazo passou, mas esta rodada não pode ser avaliada com justiça \u2014 nenhum modelo recebeu nota e ela não conta para ninguém.',
+    stalled: 'A avaliação não terminou',
+    stalledNote: 'Uma avaliação foi iniciada mas nenhum resultado chegou. Atualize mais tarde, ou registre o preço inicial se estiver faltando.',
+    reason: {
+      missing_anchor: 'Nenhum preço inicial foi registrado para esta rodada, então ela não pode ser avaliada.',
+      invalid_window: 'Os horários de início e fim desta rodada não formam uma janela utilizável.',
+      series_unavailable: 'A série histórica de preços não pôde ser obtida: ninguém foi avaliado.',
+      no_series_data: 'O feed de preços não devolveu nenhum fechamento utilizável para esta janela.',
+      no_session_in_window: 'Nenhum pregão fechou dentro desta janela de previsão (fim de semana ou feriado).',
+      equal_close: 'O fechamento coincidiu exatamente com o preço inicial: ninguém está certo ou errado.',
+      not_price_instrument: 'Este instrumento não é um preço de mercado e não pode ser avaliado desta forma.',
+      unknown: 'Esta rodada não pode ser avaliada, então não conta para ninguém.',
+    },
+    reasonSubjectOutcome: {
+      missing_anchor: 'Nenhum estado inicial foi registrado para esta rodada, então ela não pode ser avaliada.',
+      invalid_window: 'Os horários de início e fim desta rodada não formam uma janela utilizável.',
+      series_unavailable: 'A fonte do resultado não pôde ser consultada: ninguém foi avaliado.',
+      no_series_data: 'A fonte não devolveu nenhum resultado utilizável para esta janela.',
+      no_session_in_window: 'O evento não se decidiu dentro desta janela de previsão: não havia o que avaliar.',
+      equal_close: 'O evento terminou sem decisão: ninguém está certo ou errado.',
+      not_price_instrument: 'Esta rodada não tem fonte automática de resultado e não pode ser avaliada desta forma.',
+      unknown: 'Esta rodada não pode ser avaliada, então não conta para ninguém.',
+    },
+    reasonThreshold: {
+      missing_anchor: 'Nenhum valor de referência foi registrado para esta rodada, então ela não pode ser avaliada.',
+      invalid_window: 'Os horários de início e fim desta rodada não formam uma janela utilizável.',
+      series_unavailable: 'A fonte de dados não pôde ser consultada: ninguém foi avaliado.',
+      no_series_data: 'A fonte não devolveu nenhum valor utilizável para esta janela.',
+      no_session_in_window: 'Nenhum valor saiu dentro desta janela de previsão: não havia o que comparar com a linha indicada.',
+      equal_close: 'O valor coincidiu exatamente com a linha indicada: ninguém está certo ou errado.',
+      not_price_instrument: 'O tema desta rodada não tem valor numérico e não pode ser avaliado contra uma linha.',
+      unknown: 'Esta rodada não pode ser avaliada, então não conta para ninguém.',
+    },
+  },
+  header: {
+    atPrediction: 'no momento da previsão',
+    now: 'agora',
+    live: 'AO VIVO',
+    headlineWithAnchor: (roundDate, instrument, price, anchorDate) =>
+      `Rodada de ${roundDate} \u00b7 ${instrument} \u00b7 ${price}${anchorDate ? ` (${anchorDate})` : ''}`,
+    headlinePlain: (roundDate, instrument) => `Rodada de ${roundDate} \u00b7 ${instrument}`,
+    headlineNoAnchor: (roundDate, instrument) => `Rodada de ${roundDate} \u00b7 ${instrument} \u00b7 preço inicial indisponível`,
+    windowWithAnchor: (fromDate, fromPrice, toDate) =>
+      `Medido a partir do fechamento de ${fromDate} em ${fromPrice}, a resolver contra o fechamento de ${toDate}.`,
+    windowResolved: (fromDate, fromPrice, toDate, toPrice) =>
+      `Medido a partir do fechamento de ${fromDate} em ${fromPrice}, resolvido contra o fechamento de ${toDate} em ${toPrice}.`,
+    windowAnchorOnly: (fromDate, fromPrice) =>
+      `Medido a partir do fechamento de ${fromDate} em ${fromPrice}. A sessão de resolução ainda não foi registrada.`,
+    windowNoSessionDates:
+      'O preço inicial está registrado, mas as datas de sessão desta previsão não — essas datas não são inferidas de carimbos de tempo.',
+    windowNoAnchor:
+      'O preço inicial desta previsão não foi registrado, então a cotação ao vivo não é exibida \u2014 seria o número errado para ler estas previsões.',
+    liveSecondary: 'agora',
+  },
+  modelList: {
+    title: (n) => `Modelos (${n})`,
+    tierTab: 'Nível',
+    campTab: 'Campo',
+    empty: 'Nenhum modelo respondeu ainda.',
+    correct: 'Correta',
+    missed: 'Errada',
+    ungraded: 'Sem nota',
+  },
+  modelTile: {
+    modelLabel: 'Modelo',
+    showWhy: 'Por quê?',
+    hideWhy: 'Ocultar',
+    showOriginal: 'Mostrar original em inglês',
+    hideOriginal: 'Ocultar original em inglês',
+    originalLabel: 'Original',
+  },
+  bracket: {
+    finalVerdict: 'Veredito final',
+    division: {
+      premier: '1 · PREMIER',
+      challenger: '2 · CHALLENGER',
+      world: '3 · WORLD',
+      scout: 'SCOUT',
+    },
+    compactTally,
+    showReasoning: 'Mostrar raciocínio',
+    hideReasoning: 'Ocultar raciocínio',
+    confidence: 'confiança',
+    resultLegend:
+      '✓ correta — a previsão da IA coincidiu com o resultado real · ✗ errada — não coincidiu. Exibido apenas após a resolução da rodada.',
+    combinedTrack: (pct, n) => `precisão passada deste método combinado: ${pct}% (n=${n})`,
+    combinedTrackPending: 'este método combinado ainda está construindo seu histórico',
   },
   verdict: {
     title: 'Veredito final',
@@ -2497,6 +3119,7 @@ const pt: LeagueUiPack = {
     pendingResolvesLine: (date) => `Avaliada em ${date}`,
     pendingDaysRemaining: (days) => (days <= 0 ? 'Avaliação em breve' : days === 1 ? 'Falta 1 dia' : `Faltam ${days} dias`),
     distributionHeading: 'Distribuição das previsões (direção)',
+    distributionHeadingSides: 'Distribuição das previsões (resposta)',
     distributionUp: 'Alta',
     distributionDown: 'Baixa',
     distributionNoDirection: 'Sem direção',
@@ -2524,6 +3147,91 @@ const pt: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak} seguidas`,
     expandSection: 'Mostrar',
     collapseSection: 'Ocultar',
+  },
+  magnitude: {
+    headlineQualifier: (horizonLabel, signedPct) => `em ${horizonLabel} ${signedPct}`,
+    tileLabel: 'variação esperada',
+    predictedVsActual: (predictedPct, actualPct) => `previsto ${predictedPct} \u2192 real ${actualPct}`,
+  },
+  gating: {
+    unavailable: 'Esta categoria de previsões ainda não está disponível na sua região.',
+    tosNote: 'A disponibilidade depende do país declarado na sua conta e da localização detectada da conexão. Você deve usar sua jurisdição real \u2014 tentar contornar isso (por exemplo, via VPN) transfere a você a responsabilidade por qualquer uso indevido.',
+  },
+  languageToggleLabel: 'Idioma',
+  leaderboard: {
+    title: 'Classificação',
+    subtitle: 'Taxas de acerto calculadas apenas com previsões resolvidas — não é recomendação de investimento.',
+    tabs: { camp3: 'Campo (3 vias)', tier: 'Nível', brand: 'Marca', category: 'Categoria', korea: 'Coreia' },
+    moreComparisons: 'Mais comparações',
+    hideComparisons: 'Ocultar comparações',
+    campHeadline: 'EUA vs. China',
+    methodHeadline: 'Raciocínio puro vs pesquisa',
+    methodLabels: { pure_reasoning: 'Raciocínio puro', research: 'Pesquisa (Scout)' },
+    campLabels: { us: 'EUA', china: 'China', other: 'Terceiro país' },
+    columns: { rank: '#', name: 'Nome', winRate: 'Taxa de acerto', record: 'Histórico' },
+    roundCoverage: (graded, unresolvable) =>
+      unresolvable > 0
+        ? `Calculado a partir de ${graded} rodadas avaliadas. ${unresolvable} rodada(s) não puderam ser avaliadas e não contam para ninguém.`
+        : `Calculado a partir de ${graded} rodadas avaliadas.`,
+    emptyState: 'Ainda não há previsões resolvidas suficientes — volte quando mais rodadas forem resolvidas.',
+    asOf: (date) => `Em ${date}`,
+    baselinesTitle: 'Linhas de referência',
+    baselinesNote:
+      'Não são participantes da liga e não entram no ranking. Existem para que a taxa de acerto de um modelo possa ser lida contra uma estratégia que não exige habilidade. Calculadas apenas sobre rodadas de preço.',
+    baselineBadge: 'Referência',
+    alwaysUp: 'Sempre alta',
+    alwaysUpHint: 'Prevê alta em toda rodada de preço',
+    coinFlip: 'Cara ou coroa',
+    coinFlipHint: 'Linha esperada de 50% — uma referência, não uma simulação',
+    coinFlipRecord: 'Referência',
+    beatingAlwaysUp: (beating, compared) =>
+      `${beating} de ${compared} modelos superam «Sempre alta»`,
+    beatingAlwaysUpEmpty: 'Ainda não há rodadas de preço avaliadas para comparar com «Sempre alta».',
+  },
+  recordRoom: {
+    title: 'Sala de registros',
+    subtitle: 'Cada rodada resolvida, com o resultado real e a previsão de cada modelo. Somente leitura, imutável.',
+    outcomeLabel: 'Resultado real',
+    resolvedAtLabel: 'Resolvida em',
+    modelsScore: (correct, total) => `${correct}/${total} corretas`,
+    correct: 'Correta',
+    incorrect: 'Errada',
+    ungraded: 'Sem nota',
+    emptyState: 'Nenhuma rodada foi resolvida ainda.',
+    pagination: { prev: 'Anterior', next: 'Próxima', pageOf: (page, totalPages) => `Página ${page} de ${totalPages}` },
+    freeNote: 'Os resultados recentes são gratuitos. Histórico completo, filtros por modelo, período e exportação CSV usam créditos.',
+    deepCta: (credits) => `Abrir arquivo completo \u00b7 ${credits} créditos`,
+    deepUnlocking: 'Abrindo o arquivo\u2026',
+    exportCsv: 'Exportar CSV',
+    filterModel: 'ID do modelo',
+    filterFrom: 'De',
+    filterTo: 'Até',
+    applyFilters: 'Aplicar',
+    headlineRecent: (correct, graded) =>
+      graded > 0 ? `Recentemente: ${correct} de ${graded} previsões de IA acertaram` : 'Nenhuma previsão avaliada na janela recente ainda',
+    latestRound: (instrument, outcome) => `Mais recente: ${instrument} resolvido ${outcome}`,
+    insufficientCredits: (required, balance) => `O arquivo completo exige ${required} créditos \u2014 você tem ${balance}.`,
+  },
+  hub: {
+    title: 'Liga de Previsões de IA',
+    subtitle: 'O que os modelos de IA do mundo preveem \u2014 e com que frequência acertaram.',
+    tabs: { cards: 'Cartões', leaderboard: 'Classificação', recordRoom: 'Sala de registros' },
+    loading: 'Carregando\u2026',
+    noInstruments: 'A liga ainda não está disponível na sua região.',
+    generateLive: (credits) => `Perguntar aos modelos agora \u00b7 ${credits} créditos`,
+    generating: 'Perguntando aos modelos\u2026',
+    freeReadNote: 'Navegar pelos cartões, pela classificação e pelos resultados recentes é gratuito. Uma rodada ao vivo ou uma consulta ao arquivo completo gasta créditos.',
+    insufficientCredits: (required, balance) => `Uma rodada ao vivo exige ${required} créditos \u2014 você tem ${balance}.`,
+    rateLimited: 'Muitas solicitações. Aguarde um momento e tente novamente.',
+    genericError: 'Algo deu errado. Tente novamente.',
+    balance: (credits) => `${credits} créditos`,
+    deepOpen: (credits) => `Análise aberta \u00b7 ${credits} créditos`,
+    deepDebate: (credits) => `Debate prós/contras \u00b7 ${credits} créditos`,
+    deepRunning: 'Executando análise profunda\u2026',
+    deepUnscoredNote:
+      'Comentário sem nota \u2014 não é uma previsão da liga. Não entra na classificação nem no histórico.',
+    deepOpenTitle: 'Análise aberta',
+    deepDebateTitle: 'Debate prós/contras',
   },
 }
 

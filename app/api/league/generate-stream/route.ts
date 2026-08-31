@@ -230,6 +230,10 @@ function toWireModel(result: ModelRunResult) {
     league_tier: result.tier,
     direction: result.direction,
     probability: result.probability,
+    // Both qualifiers ride the wire so a live tile shows the same decoration
+    // the next GET /api/league/card would (never graded, never in a hit count).
+    magnitude: result.magnitude,
+    qualifierText: result.qualifier_text,
     reasoning_snippet: result.reasoning_snippet,
     is_correct: null as boolean | null,
     cost_usd: result.cost_usd,

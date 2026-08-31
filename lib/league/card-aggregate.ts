@@ -8,13 +8,15 @@ import {
   type CardRoundMeta,
   type ColorBucket,
   type ConsensusSummary,
-  type Direction,
   type DirectionTally,
+  type ModelSide,
   emptyCombinedTrack,
   type CombinedMethodTrack,
   type HitRateSummary,
   type TierSplit,
 } from './card-types'
+import { sidePairOf, tallySlotOfToken, toSideToken, type SideRoundContext } from './side-labels'
+import type { AnswerSide } from './answer-contract'
 import { gradingStateOf, type GradingState } from '../prediction/grading-state'
 import { formatRosterBrand, lookupRosterEntry, rosterModelIdentifier, LEAGUE_ROSTER } from './roster'
 import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
@@ -48,6 +50,13 @@ import { aggregateMagnitude, computeActualMagnitudePct } from './magnitude'
 export type RoundRow = {
   id: string
   proposition_text: string
+  /**
+   * Optional like the other late columns: rounds selected before the
+   * 20260829000002 migration lack them. Unknown/absent kind = close_higher
+   * (every pre-kind round is a price round).
+   */
+  proposition_kind?: string | null
+  subject_label?: string | null
   category: string
   color_bucket: string
   instrument: string
@@ -84,52 +93,66 @@ export type PredictionRow = {
   predicted_value: number | null
   /** Optional: absent on rows selected before this column existed (pre-migration environments) — treated as null. */
   predicted_magnitude_pct?: number | null
+  /** Optional for the same reason — display-only text qualifier (scoreline/margin/print) on non-price contracts. */
+  predicted_qualifier_text?: string | null
   reasoning_snippet: string | null
   is_correct: boolean | null
   cost_usd: number | null
   predicted_at: string
 }
 
-function toDirection(raw: string | null): Direction | null {
-  return raw === 'up' || raw === 'down' || raw === 'flat' ? raw : null
-}
-
 function toColorBucket(raw: string): ColorBucket {
   return raw === 'green' || raw === 'yellow' || raw === 'red' ? raw : 'yellow'
 }
 
+/** Slot-shaped tally: side A rows land in `up`, side B in `down` (see `DirectionTally`'s doc). */
 function tallyOf(models: CardModelPrediction[]): DirectionTally {
   const t = emptyTally()
   for (const m of models) {
-    if (m.direction === null) t.abstain++
-    else t[m.direction]++
+    const slot = tallySlotOfToken(m.direction)
+    if (slot === null) t.abstain++
+    else t[slot]++
   }
   return t
 }
 
-function majorityOf(tally: DirectionTally): Direction | null {
-  const entries: Array<[Direction, number]> = [
-    ['up', tally.up],
-    ['down', tally.down],
-    ['flat', tally.flat],
-  ]
-  entries.sort((a, b) => b[1] - a[1])
-  const [topDir, topCount] = entries[0]!
-  if (topCount === 0) return null
-  const tiedForTop = entries.filter(([, c]) => c === topCount).length
-  return tiedForTop === 1 ? topDir : null
+/**
+ * Majority among the round's OWN side tokens (plus legacy 'flat'), counted
+ * from the rows directly — a round's rows only ever carry its contract's
+ * pair, so the winner is naturally that round's vocabulary. Null on tie or
+ * when nobody answered.
+ */
+function majorityOf(models: CardModelPrediction[]): ModelSide | null {
+  const counts = new Map<ModelSide, number>()
+  for (const m of models) {
+    if (m.direction === null) continue
+    counts.set(m.direction, (counts.get(m.direction) ?? 0) + 1)
+  }
+  let top: ModelSide | null = null
+  let topCount = 0
+  let tied = false
+  for (const [side, count] of counts) {
+    if (count > topCount) {
+      top = side
+      topCount = count
+      tied = false
+    } else if (count === topCount) {
+      tied = true
+    }
+  }
+  return topCount > 0 && !tied ? top : null
 }
 
-function buildConsensus(models: CardModelPrediction[]): ConsensusSummary {
+function buildConsensus(models: CardModelPrediction[], sides: readonly [AnswerSide, AnswerSide]): ConsensusSummary {
   const tally = tallyOf(models)
   const directional = models.filter((m) => m.direction !== null)
   const probs = directional.map((m) => m.probability).filter((p): p is number => typeof p === 'number')
   const avgProbability = probs.length ? probs.reduce((a, b) => a + b, 0) / probs.length : null
-  const dual = dualConsensus(binaryCallsFromModels(models))
+  const dual = dualConsensus(binaryCallsFromModels(models, sides), sides)
   const magnitude = aggregateMagnitude(models, dual.aggregate.direction)
   return {
     tally,
-    majorityDirection: majorityOf(tally),
+    majorityDirection: majorityOf(models),
     totalModels: models.length,
     respondedModels: models.length - tally.abstain,
     avgProbability: avgProbability === null ? null : Math.round(avgProbability * 10) / 10,
@@ -215,10 +238,22 @@ export type CardAggregates = {
 export function computeCardAggregates(
   models: CardModelPrediction[],
   resolvedAt: string | null,
-  opts?: { roundId?: string; crossRound?: readonly VerdictCrossRoundGrade[] }
+  opts?: {
+    roundId?: string
+    crossRound?: readonly VerdictCrossRoundGrade[]
+    /**
+     * The round the models belong to, for its side pair (consensus direction
+     * tokens). Omitted = close_higher (up/down) — correct for every caller
+     * that predates proposition_kind, wrong for a subject/threshold round, so
+     * pass it whenever a round is in hand (`buildCardData` and the stream
+     * hook both do).
+     */
+    round?: SideRoundContext
+  }
 ): CardAggregates {
+  const sides = sidePairOf(opts?.round ?? {})
   return {
-    consensus: buildConsensus(models),
+    consensus: buildConsensus(models, sides),
     campSplit: buildCampSplit(models),
     tierSplit: buildTierSplit(models),
     hitRate: buildHitRate(resolvedAt, models),
@@ -237,9 +272,12 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
     model_identifier: roster ? rosterModelIdentifier(roster) : row.model_id,
     camp,
     league_tier: tier,
-    direction: toDirection(row.predicted_direction),
+    // toSideToken, not the old up/down/flat gate: yes/no/above/below rows
+    // must land as answers, never as abstentions.
+    direction: toSideToken(row.predicted_direction),
     probability: row.predicted_value,
     magnitude: row.predicted_magnitude_pct ?? null,
+    qualifierText: row.predicted_qualifier_text ?? null,
     reasoning_snippet: row.reasoning_snippet,
     is_correct: row.is_correct,
     cost_usd: row.cost_usd,
@@ -306,6 +344,8 @@ function toRoundMeta(row: RoundRow, nowMs: number): CardRoundMeta {
     horizon: row.horizon,
     resolution_rule: row.resolution_rule,
     proposition_text: row.proposition_text,
+    proposition_kind: row.proposition_kind ?? 'binary_close_higher',
+    subject_label: row.subject_label ?? null,
     color_bucket: toColorBucket(row.color_bucket),
     resolves_at: row.resolves_at,
     opened_at: row.opened_at,
@@ -343,6 +383,7 @@ export function buildCardData(
     ...computeCardAggregates(models, roundRow.resolved_at, {
       roundId: roundRow.id,
       crossRound,
+      round: roundRow,
     }),
     combinedTrack,
     generatedAt: new Date().toISOString(),

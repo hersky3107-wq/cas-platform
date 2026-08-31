@@ -82,13 +82,15 @@ export function mergeModel(prev: CardData, incoming: CardModelPrediction): CardD
   const byId = new Map(prev.models.map((m) => [m.model_id, m] as const))
   byId.set(incoming.model_id, incoming)
   const models = Array.from(byId.values())
-  return { ...prev, models, ...computeCardAggregates(models, prev.round.resolved_at) }
+  // `round: prev.round` so a live subject/threshold round aggregates under its
+  // own side pair, not the up/down default.
+  return { ...prev, models, ...computeCardAggregates(models, prev.round.resolved_at, { round: prev.round }) }
 }
 
 /** Exported for the same reason as `mergeModel` — see its doc comment. */
 export function resort(prev: CardData): CardData {
   const models = sortByTierThenCamp(prev.models)
-  return { ...prev, models, ...computeCardAggregates(models, prev.round.resolved_at) }
+  return { ...prev, models, ...computeCardAggregates(models, prev.round.resolved_at, { round: prev.round }) }
 }
 
 /**

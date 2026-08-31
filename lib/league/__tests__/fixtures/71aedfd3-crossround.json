@@ -1,0 +1,704 @@
+[
+  {
+    "model_id": "claude-fable-5",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "claude-haiku-4.5",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "claude-sonnet-5",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "claude-sonnet-5-websearch",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "command-a",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "deepseek-v4-flash",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "deepseek-v4-pro",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "ernie-4.5-vl",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "gemini-3.1-pro",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "gemini-3.5-flash-lite",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "gemini-3.6-flash",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "gemini-3.6-flash-grounded",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "glm-5.2",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "gpt-5-search-api",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-luna",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-sol",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-terra",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "grok-4.3",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "grok-4.5",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "grok-4.6-livesearch",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "hcx-007",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "k-exaone-2.0",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "kimi-k2.6",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "kimi-k3",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "llama-4-maverick",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "mimo-v2.5",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "minimax-m3",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "mistral-medium-3.5",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "muse-spark-1.2",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "nemotron-3-ultra-550b",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "nova-2-lite",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "phi-4",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "qwen3.5-flash",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "qwen3.5-plus",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "qwen3.8-max",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "seed-1.6",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "solar-pro3",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "sonar-reasoning-pro",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "youcom-research",
+    "round_id": "71aedfd3-b66c-4e78-8241-eaaa566dc55c",
+    "is_correct": true,
+    "resolved_at": "2026-08-31T11:27:32.485+00:00"
+  },
+  {
+    "model_id": "claude-fable-5",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "claude-haiku-4.5",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "claude-sonnet-5",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "claude-sonnet-5-websearch",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "command-a",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "deepseek-v3.2",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "deepseek-v4-flash",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "deepseek-v4-pro",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": false,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "ernie-4.5-vl",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "gemini-3.1-pro",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "gemini-3.5-flash-lite",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "gemini-3.6-flash",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "gemini-3.6-flash-grounded",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "glm-5.2",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "gpt-5-search-api",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": false,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-luna",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-sol",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-terra",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "grok-4.3",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "grok-4.5",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "grok-4.6-livesearch",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": false,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "kimi-k2.6",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "kimi-k3",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "llama-4-maverick",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "mimo-v2.5",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "minimax-m3",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "mistral-medium-3.5",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "muse-spark-1.2",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "nemotron-3-ultra-550b",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": false,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "nova-2-lite",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "phi-4",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "qwen3.5-flash",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "qwen3.5-plus",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "qwen3.8-max",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "seed-1.6",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "solar-pro3",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "sonar-reasoning-pro",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "youcom-research",
+    "round_id": "f3752ddd-a0ca-44ab-9a38-3ae0d590d512",
+    "is_correct": true,
+    "resolved_at": "2026-08-28T09:33:40.38+00:00"
+  },
+  {
+    "model_id": "claude-fable-5",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "claude-haiku-4.5",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "claude-sonnet-5",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "claude-sonnet-5-websearch",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "command-a",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "deepseek-v3.2",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "deepseek-v4-flash",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "deepseek-v4-pro",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "ernie-4.5-vl",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "gemini-3.1-pro",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "gemini-3.5-flash-lite",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "gemini-3.6-flash",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "gemini-3.6-flash-grounded",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "glm-5.2",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "gpt-5-search-api",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-luna",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-sol",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "gpt-5.6-terra",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "grok-4.3",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "grok-4.5",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "grok-4.6-livesearch",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "hcx-007",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "k-exaone-2.0",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "kimi-k2.6",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "kimi-k3",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "llama-4-maverick",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "mimo-v2.5",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "minimax-m3",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "mistral-medium-3.5",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "muse-spark-1.2",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "nemotron-3-ultra-550b",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "nova-2-lite",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "phi-4",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "qwen3.5-flash",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "qwen3.5-plus",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "qwen3.8-max",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "seed-1.6",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "solar-pro3",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "sonar-reasoning-pro",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": true,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  },
+  {
+    "model_id": "youcom-research",
+    "round_id": "fffc1716-cd3d-45f2-883f-1242a373febc",
+    "is_correct": false,
+    "resolved_at": "2026-08-21T12:25:28.593+00:00"
+  }
+]

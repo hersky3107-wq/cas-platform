@@ -19,6 +19,23 @@ import type { VerdictPayload } from './verdict-aggregate'
 export type { GradingState }
 export type { VerdictPayload }
 
+/**
+ * Contract-neutral side token as stored in `model_predictions.predicted_direction`:
+ * up|down (binary_close_higher), yes|no (binary_subject_outcome), above|below
+ * (binary_threshold). Rendering words/glyphs come from the round's
+ * (proposition_kind, subject_label, side) via `lib/league/side-labels.ts` —
+ * never from this token alone.
+ */
+export type SideToken = 'up' | 'down' | 'yes' | 'no' | 'above' | 'below'
+
+/**
+ * What a model row's `direction` can hold: a contract side token, or the
+ * legacy 'flat' (one grandfathered pre-hardening row shape; not writable —
+ * see migration 20260829000002). 'flat' renders as its historical badge and
+ * counts in the tally's `flat` slot, never as a side.
+ */
+export type ModelSide = SideToken | 'flat'
+
 export type Direction = 'up' | 'down' | 'flat'
 export type Camp = 'us' | 'china' | 'other'
 export type LeagueTier = 'premier' | 'challenger' | 'world' | 'scout'
@@ -50,19 +67,27 @@ export type CardModelPrediction = {
   model_identifier: string
   camp: Camp
   league_tier: LeagueTier
-  /** null = abstained, timed out, errored, or parse failure. */
-  direction: Direction | null
+  /** null = abstained, timed out, errored, or parse failure. Otherwise the round's own side token (see `SideToken`). */
+  direction: ModelSide | null
   /** 0-100 confidence/probability, or null. */
   probability: number | null
   /**
    * Expected signed percent change over the round's horizon (positive for
-   * up, negative for down), or null. DECORATION on the direction call —
-   * never read by `roundHitRecord` / `winRatePctForDisplay` / any verdict
-   * aggregate; those all take `is_correct` alone. Null on rows predating
-   * this field, or where validation failed and the model was recorded as an
-   * error (see `lib/league/orchestrator.ts`).
+   * up, negative for down), or null. binary_close_higher ONLY. DECORATION on
+   * the direction call — never read by `roundHitRecord` /
+   * `winRatePctForDisplay` / any verdict aggregate; those all take
+   * `is_correct` alone. Null on rows predating this field, or where
+   * validation failed and the model was recorded as an error (see
+   * `lib/league/orchestrator.ts`).
    */
   magnitude: number | null
+  /**
+   * Display-only TEXT qualifier for non-price contracts (scoreline "2-1",
+   * vote margin, predicted print). Same negative guarantees as `magnitude`:
+   * never graded, never in a hit fraction, never carries ✓/✗. Null on
+   * close_higher rows (their qualifier is `magnitude`).
+   */
+  qualifierText: string | null
   reasoning_snippet: string | null
   /** null = round not yet resolved / this row not yet graded. */
   is_correct: boolean | null
@@ -70,6 +95,13 @@ export type CardModelPrediction = {
   predicted_at: string
 }
 
+/**
+ * SLOT-shaped side tally. Field names are historical (wire/JSON compatible):
+ * `up` counts the round's side A (up / yes / above — first token of its
+ * contract pair), `down` counts side B (down / no / below). `flat` only ever
+ * counts the grandfathered legacy row shape. Rendering maps slots back to the
+ * round's own words/glyphs via `lib/league/side-labels.ts`.
+ */
 export type DirectionTally = { up: number; down: number; flat: number; abstain: number }
 
 export function emptyTally(): DirectionTally {
@@ -78,8 +110,8 @@ export function emptyTally(): DirectionTally {
 
 export type ConsensusSummary = {
   tally: DirectionTally
-  /** Majority vote among up/down/flat tallies; null when tied or empty. */
-  majorityDirection: Direction | null
+  /** Majority vote among the two side slots (side token), or legacy 'flat'; null when tied or empty. */
+  majorityDirection: ModelSide | null
   totalModels: number
   /** totalModels − abstain. */
   respondedModels: number
@@ -89,11 +121,11 @@ export type ConsensusSummary = {
    */
   avgProbability: number | null
   /**
-   * Confidence-weighted log-odds aggregate direction (up/down only).
-   * This is what the user-facing headline uses for direction + probability.
-   * Method name is never shown in UI.
+   * Confidence-weighted log-odds aggregate direction — one of the round's two
+   * side tokens (up/down, yes/no, above/below). This is what the user-facing
+   * headline uses for direction + probability. Method name is never shown in UI.
    */
-  aggregateDirection: 'up' | 'down' | null
+  aggregateDirection: SideToken | null
   /** Confidence in `aggregateDirection` after inverse-logit, 0–100. */
   aggregateProbability: number | null
   /**
@@ -153,6 +185,21 @@ export type CardRoundMeta = {
   horizon: string
   resolution_rule: string
   proposition_text: string
+  /**
+   * Which answer contract this round runs under
+   * ('binary_close_higher' | 'binary_subject_outcome' | 'binary_threshold').
+   * Drives every side word/glyph on every surface via
+   * `lib/league/side-labels.ts`. Rounds predating the column (or unknown
+   * values) are close_higher — every pre-kind round is a price round.
+   */
+  proposition_kind: string
+  /**
+   * Display name of the NAMED subject for binary_subject_outcome rounds
+   * ("Manchester United", "Candidate A"), or the threshold display string for
+   * binary_threshold rounds. Null on price rounds. Server-composed by the
+   * adapter — never user text.
+   */
+  subject_label: string | null
   color_bucket: ColorBucket
   resolves_at: string
   opened_at: string
