@@ -1,20 +1,16 @@
 import { createHmac, timingSafeEqual } from 'crypto'
+import {
+  arenaExtendedBundleCreditCost,
+  arenaFinalBundleCreditCost,
+} from '@/lib/ai/arena-constants'
+
+export { arenaExtendedBundleCreditCost, arenaFinalBundleCreditCost }
 
 /** Rounds 4–6 × (left champ + co-fighter + right champ). */
 export const ARENA_FINAL_BUNDLE_MODEL_CALLS = 9
 
 /** Rounds 7–9 — same call pattern as final bundle. */
 export const ARENA_EXTENDED_BUNDLE_MODEL_CALLS = 9
-
-/** Flat unlock cost for rounds 4–6 (one purchase per session). */
-export function arenaFinalBundleCreditCost(): number {
-  return 6
-}
-
-/** Flat unlock cost for rounds 7–9 (second continue; requires final bundle). */
-export function arenaExtendedBundleCreditCost(): number {
-  return 6
-}
 
 function arenaBundleSecret(): string {
   return (

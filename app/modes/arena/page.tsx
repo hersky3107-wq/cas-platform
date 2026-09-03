@@ -10,16 +10,16 @@ import { flushSync } from "react-dom";
 import { ChevronLeft, Swords } from "lucide-react";
 import { ModuleCreditsLink } from "@/components/credits/ModuleCreditsLink";
 import DisclaimerText from "@/components/ui/DisclaimerText";
-import { supabase } from "@/lib/db/supabase";
-import { arenaExtendedBundleCreditCost, arenaFinalBundleCreditCost } from "@/lib/ai/arena-bundle";
 import {
   ARENA_DISPLAY,
   ARENA_ORDER,
+  arenaExtendedBundleCreditCost,
+  arenaFinalBundleCreditCost,
   type ArenaAI,
   type ArenaMemoryEntry,
   type ArenaResponse,
   type ArenaRound,
-} from "@/lib/ai/arena-engine";
+} from "@/lib/ai/arena-constants";
 import {
   type ArenaCampContext,
   computeBubbleAlign,

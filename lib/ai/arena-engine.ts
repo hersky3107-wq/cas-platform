@@ -21,17 +21,10 @@ import {
   type ParsedArenaTagBlock,
 } from '@/lib/ai/arena-parser'
 import type { ArenaAI, ArenaFightMode, ArenaMemoryEntry, ArenaResponse, ArenaRound } from '@/lib/ai/arena-types'
+import { ARENA_DISPLAY, ARENA_ORDER } from '@/lib/ai/arena-constants'
 
 export type { ArenaAI, ArenaFightMode, ArenaMemoryEntry, ArenaResponse, ArenaRound } from '@/lib/ai/arena-types'
-
-export const ARENA_ORDER: ArenaAI[] = [
-  'grok',
-  'gpt',
-  'gemini',
-  'deepseek',
-  'mistral',
-  'claude',
-]
+export { ARENA_DISPLAY, ARENA_ORDER }
 
 export const ARENA_TO_PROVIDER: Record<ArenaAI, AiProviderName> = {
   grok: 'xai',
@@ -40,15 +33,6 @@ export const ARENA_TO_PROVIDER: Record<ArenaAI, AiProviderName> = {
   deepseek: 'deepseek',
   mistral: 'mistral',
   claude: 'anthropic',
-}
-
-export const ARENA_DISPLAY: Record<ArenaAI, string> = {
-  grok: 'Grok',
-  gpt: 'ChatGPT',
-  gemini: 'Gemini',
-  deepseek: 'DeepSeek',
-  mistral: 'Mistral',
-  claude: 'Claude',
 }
 
 export type ArenaTransportContext = {
