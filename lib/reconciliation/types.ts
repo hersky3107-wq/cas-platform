@@ -37,8 +37,19 @@ export type ReconStatus = (typeof RECON_STATUSES)[number]
 export const SECURITY_FLAGS = ['none', 'fake_deposit_suspected', 'anomaly'] as const
 export type SecurityFlag = (typeof SECURITY_FLAGS)[number]
 
-export const SALE_KINDS = ['card', 'app_voucher', 'manual_total', 'cash'] as const
+export const SALE_KINDS = [
+  'card',
+  'app_voucher',
+  'paper_voucher',
+  'cash',
+  'manual_total',
+] as const
 export type SaleKind = (typeof SALE_KINDS)[number]
+
+/** Cash and paper vouchers are excluded from automatic deposit matchers. */
+export function saleKindExemptFromReconcile(kind: string): boolean {
+  return kind === 'cash' || kind === 'paper_voucher'
+}
 
 export const ENTRY_SOURCES = ['pos_import', 'voucher_tally', 'manual'] as const
 export type EntrySource = (typeof ENTRY_SOURCES)[number]
@@ -90,6 +101,8 @@ export type SalesRecord = {
   sale_kind: SaleKind
   sale_group_id: string | null
   entry_source: EntrySource
+  /** Reporting only. Never used in expected_net or matching. */
+  discount_amount: number | null
   created_at: string
 }
 

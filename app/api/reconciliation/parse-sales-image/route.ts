@@ -5,6 +5,8 @@ import { fromDal, withOwnedScope } from '@/lib/reconciliation/scope'
 import {
   DEPOSIT_IMAGE_MAX_BYTES,
   DEPOSIT_IMAGE_MIME,
+  IMAGE_JSON_MAX_CHARS,
+  IMAGE_TOO_LARGE_KO,
   storeDepositImage,
 } from '@/lib/reconciliation/storage'
 import type { SaleKind } from '@/lib/reconciliation/types'
@@ -48,6 +50,11 @@ function parseImagePayload(
 }
 
 export async function POST(req: Request) {
+  const contentLength = Number(req.headers.get('content-length') ?? 0)
+  if (Number.isFinite(contentLength) && contentLength > IMAGE_JSON_MAX_CHARS) {
+    return NextResponse.json({ error: IMAGE_TOO_LARGE_KO }, { status: 413 })
+  }
+
   const gate = await withOwnedScope(req)
   if (!gate.ok) return gate.response
   const { scope, body } = gate
@@ -73,11 +80,14 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'image is not valid base64' }, { status: 400 })
   }
-  if (bytes.byteLength === 0 || bytes.byteLength > DEPOSIT_IMAGE_MAX_BYTES) {
+  if (bytes.byteLength === 0) {
     return NextResponse.json(
       { error: 'image must be a non-empty file of 8MB or smaller' },
       { status: 400 }
     )
+  }
+  if (bytes.byteLength > DEPOSIT_IMAGE_MAX_BYTES || imageRaw.length > IMAGE_JSON_MAX_CHARS) {
+    return NextResponse.json({ error: IMAGE_TOO_LARGE_KO }, { status: 413 })
   }
 
   const stored = await storeDepositImage(scope, bytes, parsedImage.mediaType)

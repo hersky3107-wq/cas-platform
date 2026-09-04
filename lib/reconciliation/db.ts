@@ -405,6 +405,27 @@ export async function getChannel(scope: OwnedScope, id: string): Promise<DalResu
 }
 
 /**
+ * Look up the user's oldest channel of a given type. Returns null when none
+ * exists yet (does not create).
+ */
+export async function findChannelByType(
+  scope: OwnedScope,
+  channelType: string
+): Promise<DalResult<PaymentChannel | null>> {
+  const { data, error } = await supabaseAdmin
+    .from('payment_channels')
+    .select('*')
+    .eq('user_id', scope.userId)
+    .eq('channel_type', channelType)
+    .order('created_at', { ascending: true })
+    .limit(1)
+  if (error) return fromSbError(error)
+  const row = ((data ?? []) as PaymentChannel[])[0] ?? null
+  if (row && row.user_id !== scope.userId) return dalOk(null)
+  return dalOk(row)
+}
+
+/**
  * Look up a channel by exact name (channels are unique per user by name —
  * `payment_channels_user_name_uniq`). Returns null, not an error, when there
  * is no such channel yet, so a caller can decide whether to create one.
@@ -846,16 +867,36 @@ export async function createSale(
     ? oneOf(fields.confirm_status, CONFIRM_STATUSES, 'confirm_status')
     : dalOk<ConfirmStatus>('pending')
   if (!confirm.ok) return confirm
+  const discount = asOptionalNumber(fields.discount_amount, 'discount_amount')
+  if (!discount.ok) return discount
+  if (discount.data != null && discount.data < 0) {
+    return dalErr(400, '할인액은 비워 두거나 0 이상이어야 합니다.')
+  }
   const doc = await resolveOptionalOwnedFk(scope, fields.raw_document_id, 'raw_document_id')
   if (!doc.ok) return doc
   const channel = await resolveOptionalOwnedFk(scope, fields.channel_id, 'channel_id')
   if (!channel.ok) return channel
 
-  const rule = await getEffectiveRuleForChannel(scope, channel.data)
-  const cashChannel = !channelExpectsDeposit(rule)
-
-  const saleKind = fields.sale_kind
+  const saleKindHint = fields.sale_kind
     ? oneOf(fields.sale_kind, SALE_KINDS, 'sale_kind')
+    : dalOk<SaleKind | null>(null)
+  if (!saleKindHint.ok) return saleKindHint
+
+  let channelId = channel.data
+  if (
+    channelId == null &&
+    (saleKindHint.data === 'cash' || saleKindHint.data === 'paper_voucher')
+  ) {
+    const typed = await findChannelByType(scope, saleKindHint.data)
+    if (!typed.ok) return typed
+    channelId = typed.data?.id ?? null
+  }
+
+  const rule = await getEffectiveRuleForChannel(scope, channelId)
+  const cashChannel = !channelExpectsDeposit(rule) && rule.channelType !== 'paper_voucher'
+
+  const saleKind = saleKindHint.data
+    ? dalOk(saleKindHint.data)
     : dalOk<SaleKind>(cashChannel ? 'cash' : 'card')
   if (!saleKind.ok) return saleKind
   const entrySource = fields.entry_source
@@ -867,14 +908,20 @@ export async function createSale(
 
   // Persist expected net/date from the channel rule at insert time so a later
   // fee-rate change cannot rewrite history. Client-supplied values win.
-  // Cash: expected_net = gross (0 fee), expected_deposit_date stays NULL —
-  // there is no bank deposit to wait for.
-  const noDeposit = cashChannel || saleKind.data === 'cash'
+  // discount_amount is reporting-only and is never subtracted from net.
+  // Cash and paper_voucher: expected_net = gross, expected_deposit_date NULL.
+  // Paper voucher is not same-day complete — the bank date is unknown.
+  const isPaperVoucher = saleKind.data === 'paper_voucher'
+  const isCashKind = saleKind.data === 'cash'
   let persistedNet = expectedNet.data
   let persistedSettle = expectedDeposit.data
   if (persistedNet == null) persistedNet = computeExpectedNet(gross.data, rule)
   if (persistedSettle == null) {
-    persistedSettle = noDeposit ? null : computeExpectedDepositDate(saleDate.data, rule)
+    if (isPaperVoucher || isCashKind || cashChannel) {
+      persistedSettle = null
+    } else {
+      persistedSettle = computeExpectedDepositDate(saleDate.data, rule)
+    }
   }
 
   const { data, error } = await supabaseAdmin
@@ -882,7 +929,7 @@ export async function createSale(
     .insert({
       user_id: scope.userId,
       raw_document_id: doc.data,
-      channel_id: channel.data,
+      channel_id: channelId,
       sale_date: saleDate.data,
       gross_amount: gross.data,
       expected_net_amount: persistedNet,
@@ -892,6 +939,7 @@ export async function createSale(
       sale_kind: saleKind.data,
       sale_group_id: saleGroupId.data,
       entry_source: entrySource.data,
+      discount_amount: discount.data,
     })
     .select('*')
     .single()
@@ -968,9 +1016,22 @@ export async function updateSale(
   return requireReturnedOwner(data as SalesRecord | null, scope)
 }
 
+const SALE_MATCHED_DELETE_KO =
+  '이미 대사된 판매는 삭제할 수 없습니다. 대사 결과를 먼저 지우세요.'
+
 export async function deleteSale(scope: OwnedScope, id: string): Promise<DalResult<{ deleted: true }>> {
   const idCheck = asUuid(id, 'id')
   if (!idCheck.ok) return idCheck
+  const owned = await requireOwnedSale(scope, id)
+  if (!owned.ok) return owned
+
+  const { count, error: matchError } = await supabaseAdmin
+    .from('reconciliation_matches')
+    .select('id', { count: 'exact', head: true })
+    .eq('sales_record_id', id)
+  if (matchError) return fromSbError(matchError)
+  if ((count ?? 0) > 0) return dalErr(409, SALE_MATCHED_DELETE_KO)
+
   const { data, error } = await supabaseAdmin
     .from('sales_records')
     .delete()
@@ -978,7 +1039,10 @@ export async function deleteSale(scope: OwnedScope, id: string): Promise<DalResu
     .eq('user_id', scope.userId)
     .select('id')
     .maybeSingle()
-  if (error) return fromSbError(error)
+  if (error) {
+    if (error.code === '23503') return dalErr(409, SALE_MATCHED_DELETE_KO)
+    return fromSbError(error)
+  }
   if (!data) return dalErr(404, 'Not found')
   return dalOk({ deleted: true })
 }

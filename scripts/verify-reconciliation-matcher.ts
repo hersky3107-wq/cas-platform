@@ -31,7 +31,7 @@ import {
   type PlannerSaleInput,
 } from '../lib/reconciliation/reconcile'
 import { matchVoucherType, TRANSFER_PARSE_SPEC, VOUCHER_PARSE_SPEC } from '../lib/reconciliation/parser'
-import { APP_VOUCHER_RULE, CARD_RULE, CASH_RULE, channelExpectsDeposit, expectedDepositDate, expectedNet, TRANSFER_RULE, type ChannelRule } from '../lib/reconciliation/channel-rules'
+import { APP_VOUCHER_RULE, CARD_RULE, CASH_RULE, PAPER_VOUCHER_RULE, channelExpectsDeposit, expectedDepositDate, expectedNet, TRANSFER_RULE, type ChannelRule } from '../lib/reconciliation/channel-rules'
 
 // ── Assertion helpers (matches scripts/verify-fishing-decision.ts) ───────────
 
@@ -446,6 +446,21 @@ function runCashSkipTests(): void {
       'transfer+cash: cash sale not in any pair'
     )
     assert(summary.matched === 1 && summary.missing_deposit === 0, 'transfer+cash: 1 matched, 0 missing_deposit')
+  }
+
+  assert(channelExpectsDeposit(PAPER_VOUCHER_RULE) === false, 'PAPER_VOUCHER_RULE: expectsDeposit is false')
+  assert(expectedNet(50000, PAPER_VOUCHER_RULE) === 50000, 'expectedNet(paper_voucher) === gross')
+  // Persist leaves expected_deposit_date null (bank date unknown). No
+  // reconcilePaperVouchers() — a sale-date matcher would false-flag missing_deposit.
+  {
+    const pvRules = new Map<string, ChannelRule>([
+      ['ch-paper', PAPER_VOUCHER_RULE],
+      ['ch-transfer', TRANSFER_RULE],
+    ])
+    const sales = [sale('pv1', '2026-08-01', 40000, 'ch-paper')]
+    const { plans, summary } = planTransferReconciliations({ sales, deposits: [], ruleByChannelId: pvRules })
+    assert(plans.length === 0, 'paper_voucher only: zero plans (not missing_deposit)')
+    assert(summary.missing_deposit === 0, 'paper_voucher only: missing_deposit === 0')
   }
 
   const total = totalCount - totalBefore

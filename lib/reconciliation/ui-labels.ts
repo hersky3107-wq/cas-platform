@@ -28,9 +28,12 @@ export type ReconciliationUiPack = {
   saleSectionTitle: string
   saleDateLabel: string
   saleAmountLabel: string
+  saleDiscountLabel: string
+  saleDiscountHint: string
   saleKindLabel: string
   saleKindCard: string
   saleKindAppVoucher: string
+  saleKindPaperVoucher: string
   saleKindManualTotal: string
   saleKindCash: string
   saleKindHelper: string
@@ -39,6 +42,13 @@ export type ReconciliationUiPack = {
   saleCreatedMsg: string
   saleListEmptyMsg: string
   saleListTitle: string
+  saleExemptBadge: string
+  salePaperVoucherPendingBadge: string
+  salePaperVoucherHint: string
+  saleDeleteBtn: string
+  saleDeleteConfirmBtn: string
+  saleDeleteCancelBtn: string
+  saleDeletingBtn: string
   saleImageLabel: string
   saleImageHint: string
   saleImageParsingBtn: string
@@ -85,6 +95,9 @@ export type ReconciliationUiPack = {
   reconcileRunningBtn: string
   reconcileSummaryTitle: string
   reconcileNothingMsg: string
+  reconcilePassTransfer: string
+  reconcilePassCard: string
+  reconcilePassAppVoucher: string
 
   resultsSectionTitle: string
   resultsEmptyMsg: string
@@ -117,19 +130,30 @@ const en: ReconciliationUiPack = {
 
   saleSectionTitle: '1. Record a sale',
   saleDateLabel: 'Sale date',
-  saleAmountLabel: 'Gross amount (KRW)',
+  saleAmountLabel: 'Amount charged (KRW)',
+  saleDiscountLabel: 'Discount (KRW)',
+  saleDiscountHint: 'Optional. Reporting only — not used for expected net or matching.',
   saleKindLabel: 'Sale kind',
   saleKindCard: 'Card sale',
-  saleKindAppVoucher: 'App voucher',
+  saleKindAppVoucher: 'Barcode / app sale',
+  saleKindPaperVoucher: 'Paper voucher',
   saleKindManualTotal: 'Manual total',
-  saleKindCash: 'Cash',
+  saleKindCash: 'Cash sale',
   saleKindHelper:
-    'If the receipt shows a card issuer, classify it as a card sale. If the bank statement shows a separate deposit under a voucher name such as Tamna Jeon or Onnuri, classify it as an app voucher. Practices vary by region, so check both the receipt and deposit history.',
+    'If the receipt shows a card issuer, classify it as a card sale. If paid with a Tamna Jeon or Onnuri app barcode, classify it as a barcode/app sale. If you received a paper gift voucher, classify it as a paper voucher.',
   saleSubmitBtn: 'Add sale',
   saleSubmittingBtn: 'Adding…',
   saleCreatedMsg: 'Sale created',
   saleListEmptyMsg: 'No sales yet.',
   saleListTitle: 'Sales',
+  saleExemptBadge: 'Complete (no reconcile)',
+  salePaperVoucherPendingBadge: 'Awaiting bank deposit',
+  salePaperVoucherHint:
+    'Paper vouchers credit from the day they are banked (Onnuri same day, Tamna Jeon 2–3 days).',
+  saleDeleteBtn: 'Delete',
+  saleDeleteConfirmBtn: 'Confirm delete',
+  saleDeleteCancelBtn: 'Cancel',
+  saleDeletingBtn: 'Deleting…',
   saleImageLabel: 'Or upload a receipt / POS screenshot',
   saleImageHint:
     'Photo of a paper receipt or POS screen. Vision cannot reliably tell card vs cash — you must confirm the sale kind.',
@@ -178,6 +202,9 @@ const en: ReconciliationUiPack = {
   reconcileRunningBtn: 'Reconciling…',
   reconcileSummaryTitle: 'Last run',
   reconcileNothingMsg: 'Nothing new to reconcile.',
+  reconcilePassTransfer: 'Transfer',
+  reconcilePassCard: 'Card',
+  reconcilePassAppVoucher: 'Barcode / app',
 
   resultsSectionTitle: '4. Results',
   resultsEmptyMsg: 'No reconciliations yet.',
@@ -211,18 +238,29 @@ const ko: ReconciliationUiPack = {
   saleSectionTitle: '1. 판매 등록',
   saleDateLabel: '판매일',
   saleAmountLabel: '판매 금액(원)',
+  saleDiscountLabel: '할인액(원)',
+  saleDiscountHint: '선택. 기록용이며 정산 예정액·대사 계산에는 넣지 않습니다.',
   saleKindLabel: '매출 구분',
   saleKindCard: '카드매출',
-  saleKindAppVoucher: '앱상품권',
+  saleKindAppVoucher: '바코드·앱매출',
+  saleKindPaperVoucher: '지류상품권',
   saleKindManualTotal: '수기총액',
-  saleKindCash: '현금',
+  saleKindCash: '현금매출',
   saleKindHelper:
-    '영수증에 카드사명이 찍히면 카드매출, 통장에 탐나는전·온누리 등 상품권 이름으로 따로 입금되면 앱상품권으로 넣으세요. 지역마다 다를 수 있으니 영수증/입금 내역을 확인하세요.',
+    '영수증에 카드사명이 찍히면 카드매출, 탐나는전·온누리 앱 바코드로 결제하면 바코드·앱매출, 종이 상품권을 받으면 지류상품권.',
   saleSubmitBtn: '판매 추가',
   saleSubmittingBtn: '추가 중…',
   saleCreatedMsg: '판매 등록 완료',
   saleListEmptyMsg: '등록된 판매 내역이 없습니다.',
   saleListTitle: '판매 내역',
+  saleExemptBadge: '완료(대사 불필요)',
+  salePaperVoucherPendingBadge: '은행 입금 대기',
+  salePaperVoucherHint:
+    '종이 상품권은 은행에 넣은 날 기준으로 입금됩니다(온누리 당일, 탐나는전 2~3일).',
+  saleDeleteBtn: '삭제',
+  saleDeleteConfirmBtn: '삭제 확인',
+  saleDeleteCancelBtn: '취소',
+  saleDeletingBtn: '삭제 중…',
   saleImageLabel: '또는 영수증/POS 화면 사진 올리기',
   saleImageHint:
     '종이 영수증 또는 POS 화면 사진. 카드/현금은 사진만으로 확실하지 않으니 매출 구분을 반드시 확인하세요.',
@@ -271,6 +309,9 @@ const ko: ReconciliationUiPack = {
   reconcileRunningBtn: '대사 중…',
   reconcileSummaryTitle: '최근 실행 결과',
   reconcileNothingMsg: '새로 대사할 내역이 없습니다.',
+  reconcilePassTransfer: '이체',
+  reconcilePassCard: '카드',
+  reconcilePassAppVoucher: '바코드·앱',
 
   resultsSectionTitle: '4. 결과',
   resultsEmptyMsg: '아직 대사 결과가 없습니다.',

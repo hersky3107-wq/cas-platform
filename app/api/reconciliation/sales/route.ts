@@ -55,12 +55,26 @@ export async function POST(req: Request) {
     saleGroupId = body.sale_group_id
   }
 
+  let discountAmount: number | null = null
+  if (body.discount_amount != null && body.discount_amount !== '') {
+    const n =
+      typeof body.discount_amount === 'number' ? body.discount_amount : Number(body.discount_amount)
+    if (!Number.isFinite(n) || n < 0) {
+      return NextResponse.json(
+        { error: '할인액은 비워 두거나 0 이상이어야 합니다.' },
+        { status: 400 }
+      )
+    }
+    discountAmount = n
+  }
+
   return fromDal(
     await createSale(gate.scope, {
       ...body,
       sale_kind: saleKind,
       entry_source: entrySource,
       sale_group_id: saleGroupId,
+      discount_amount: discountAmount,
     }),
     201
   )

@@ -10,15 +10,16 @@ import {
   TRANSFER_RULE,
   type ChannelRule,
 } from '@/lib/reconciliation/channel-rules'
-import type {
-  DalResult,
-  DepositRecord,
-  PaymentChannel,
-  Reconciliation,
-  ReconciliationMatch,
-  ReconciliationWithMatches,
-  ReconStatus,
-  SalesRecord,
+import {
+  saleKindExemptFromReconcile,
+  type DalResult,
+  type DepositRecord,
+  type PaymentChannel,
+  type Reconciliation,
+  type ReconciliationMatch,
+  type ReconciliationWithMatches,
+  type ReconStatus,
+  type SalesRecord,
 } from '@/lib/reconciliation/types'
 
 /**
@@ -27,9 +28,12 @@ import type {
  * SCOPE: three deposit-settling channel_types share ONE planner. Transfer
  * (STAGE 1) and app_voucher (STAGE 2) are 0-fee, same-day, deposited at
  * face value. Card-type (STAGE 2c) deducts a percent fee and settles NET.
- * Cash (channel_type='cash') is revenue-only: it is NEVER loaded by a
- * reconciler and is skipped by the planner if it appears (expectsDeposit
- * false). There is no reconcileCash() — cash has no bank deposit to match.
+ * Cash (channel_type='cash') is revenue-only (no bank deposit). paper_voucher
+ * will be banked later on a day the system cannot know, so it is also NEVER
+ * loaded by a reconciler (`loadChannelsByType` is only called with transfer /
+ * app_voucher / card) and is skipped by the planner (expectsDeposit false).
+ * There is no reconcileCash() or reconcilePaperVouchers() — the latter would
+ * false-flag missing_deposit against the sale date.
  *
  * OWNERSHIP: takes OwnedScope from withOwnedScope() and filters every query by
  * user_id = scope.userId. supabaseAdmin bypasses RLS; this is the auth gate.
@@ -159,9 +163,9 @@ export function planTransferReconciliations(
   const ruleFor = (sale: PlannerSaleInput): ChannelRule =>
     (sale.channel_id && ruleByChannelId.get(sale.channel_id)) || TRANSFER_RULE
 
-  // Cash (expectsDeposit: false) is never matched and never flagged
-  // missing_deposit. Orchestrators also omit cash channels; this filter is
-  // defense-in-depth if a cash sale is passed in.
+  // Cash / paper_voucher (expectsDeposit: false) are never matched and never
+  // flagged missing_deposit. Orchestrators also omit those channels; this
+  // filter is defense-in-depth if such a sale is passed in.
   const sales = input.sales.filter(
     (s) => !matchedSaleIds.has(s.id) && channelExpectsDeposit(ruleFor(s))
   )
@@ -365,7 +369,7 @@ async function loadSales(
   if (error) return fromSbError(error)
   return dalOk(
     ((data ?? []) as SalesRecord[]).filter(
-      (s) => s.user_id === scope.userId && s.sale_kind !== 'cash'
+      (s) => s.user_id === scope.userId && !saleKindExemptFromReconcile(s.sale_kind)
     )
   )
 }
@@ -558,5 +562,7 @@ export async function reconcileCards(
   return reconcileByChannelType(scope, opts, 'card', false, true)
 }
 
-// Cash (channel_type='cash') has no reconciler. It is stored as revenue and
-// skipped by every deposit matcher — see CASH_RULE.expectsDeposit.
+// Cash and paper_voucher have no reconciler. They are stored as revenue and
+// skipped by every deposit matcher — see CASH_RULE / PAPER_VOUCHER_RULE
+// expectsDeposit. loadChannelsByType is only invoked for 'transfer',
+// 'app_voucher', and 'card'.

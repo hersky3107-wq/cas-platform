@@ -1,0 +1,23 @@
+starting sequential 20× for 1 brands (readersOnly=false integratedOnly=false workload=auto)
+Cohere reading 1/20 parsed=true finish=stop tokens=243 reason=0
+Cohere reading 2/20 parsed=true finish=stop tokens=244 reason=0
+Cohere reading 3/20 parsed=true finish=stop tokens=229 reason=0
+Cohere reading 4/20 parsed=true finish=stop tokens=212 reason=0
+Cohere reading 5/20 parsed=true finish=stop tokens=246 reason=0
+Cohere reading 6/20 parsed=true finish=stop tokens=237 reason=0
+Cohere reading 7/20 parsed=true finish=stop tokens=219 reason=0
+Cohere reading 8/20 parsed=true finish=stop tokens=258 reason=0
+Cohere reading 9/20 parsed=true finish=stop tokens=223 reason=0
+Cohere reading 10/20 parsed=true finish=stop tokens=224 reason=0
+Cohere reading 11/20 parsed=true finish=stop tokens=248 reason=0
+Cohere reading 12/20 parsed=true finish=stop tokens=234 reason=0
+Cohere reading 13/20 parsed=true finish=stop tokens=234 reason=0
+Cohere reading 14/20 parsed=true finish=stop tokens=242 reason=0
+Cohere reading 15/20 parsed=true finish=stop tokens=242 reason=0
+Cohere reading 16/20 parsed=true finish=stop tokens=239 reason=0
+Cohere reading 17/20 parsed=true finish=stop tokens=250 reason=0
+Cohere reading 18/20 parsed=true finish=stop tokens=247 reason=0
+Cohere reading 19/20 parsed=true finish=stop tokens=203 reason=0
+Cohere reading 20/20 parsed=true finish=stop tokens=222 reason=0
+wrote docs/oracle-onboarding-20x-cohere.md
+FAILED brands: (none)

@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/db/supabase'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
+import { prepareImageForUpload } from '@/lib/reconciliation/prepare-image-upload'
 import {
   getReconciliationUiPack,
   normalizeReconciliationLocale,
@@ -44,16 +45,112 @@ type ReconcileSummary = {
   deposits_left_open: number
 }
 
-async function apiJson<T>(url: string, init?: RequestInit & { json?: unknown }): Promise<T> {
-  const res = await authenticatedFetch(url, init)
-  const text = await res.text()
-  const body = text ? JSON.parse(text) : null
-  if (!res.ok) {
-    const message =
-      body && typeof body === 'object' && 'error' in body ? String(body.error) : res.statusText
-    throw new Error(message)
+const EMPTY_RECONCILE_SUMMARY: ReconcileSummary = {
+  created: 0,
+  matched: 0,
+  missing_deposit: 0,
+  amount_mismatch: 0,
+  sales_considered: 0,
+  deposits_considered: 0,
+  deposits_left_open: 0,
+}
+
+function addReconcileSummary(a: ReconcileSummary, b: ReconcileSummary): ReconcileSummary {
+  return {
+    created: a.created + b.created,
+    matched: a.matched + b.matched,
+    missing_deposit: a.missing_deposit + b.missing_deposit,
+    amount_mismatch: a.amount_mismatch + b.amount_mismatch,
+    sales_considered: a.sales_considered + b.sales_considered,
+    deposits_considered: a.deposits_considered + b.deposits_considered,
+    deposits_left_open: a.deposits_left_open + b.deposits_left_open,
   }
-  return body as T
+}
+
+const RECONCILE_PASSES = [
+  {
+    url: '/api/reconciliation/reconcile',
+    label: (pack: ReconciliationUiPack) => pack.reconcilePassTransfer,
+  },
+  {
+    url: '/api/reconciliation/reconcile-card',
+    label: (pack: ReconciliationUiPack) => pack.reconcilePassCard,
+  },
+  {
+    url: '/api/reconciliation/reconcile-app-voucher',
+    label: (pack: ReconciliationUiPack) => pack.reconcilePassAppVoucher,
+  },
+] as const
+
+async function postReconcilePass(
+  url: string
+): Promise<
+  { ok: true; summary: ReconcileSummary } | { ok: false; status: number; body: string }
+> {
+  const res = await authenticatedFetch(url, {
+    method: 'POST',
+    json: {},
+    cache: 'no-store',
+  })
+  const text = await res.text()
+  const snippet = text.slice(0, 200)
+  if (!res.ok) {
+    console.error('[reconciliation] request failed', {
+      method: 'POST',
+      url,
+      status: res.status,
+      body: snippet,
+    })
+    return { ok: false, status: res.status, body: snippet || '(empty body)' }
+  }
+  try {
+    const parsed = JSON.parse(text) as { summary?: ReconcileSummary }
+    if (!parsed.summary) {
+      return { ok: false, status: res.status, body: snippet || '(empty body)' }
+    }
+    return { ok: true, summary: parsed.summary }
+  } catch {
+    console.error('[reconciliation] request failed', {
+      method: 'POST',
+      url,
+      status: res.status,
+      body: snippet,
+    })
+    return { ok: false, status: res.status, body: snippet || '(empty body)' }
+  }
+}
+
+async function apiJson<T>(url: string, init?: RequestInit & { json?: unknown }): Promise<T> {
+  const method = init?.method ?? 'GET'
+  const res = await authenticatedFetch(url, { ...init, cache: 'no-store' })
+  const text = await res.text()
+  const snippet = text.slice(0, 200)
+  let parsed: unknown = null
+  let isJson = false
+  if (text) {
+    try {
+      parsed = JSON.parse(text) as unknown
+      isJson = true
+    } catch {
+      isJson = false
+    }
+  } else {
+    isJson = true
+  }
+  if (!res.ok || !isJson) {
+    const fromBody =
+      isJson && parsed && typeof parsed === 'object' && 'error' in parsed
+        ? String((parsed as { error: unknown }).error)
+        : null
+    console.error('[reconciliation] request failed', {
+      method,
+      url,
+      status: res.status,
+      body: snippet,
+    })
+    throw new Error(`HTTP ${res.status}: ${fromBody || snippet || '(empty body)'}`)
+  }
+  return parsed as T
 }
 
 /* ── shared class shorthands (presentation only) ─────────────────────────── */
@@ -81,6 +178,12 @@ const BADGE_WARN =
 const BADGE_AI =
   'inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 ' +
   'text-[11px] font-bold uppercase tracking-wide text-sky-800'
+const BADGE_EXEMPT =
+  'inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 ' +
+  'text-[11px] font-bold text-emerald-800'
+const BADGE_PENDING =
+  'inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 ' +
+  'text-[11px] font-bold text-slate-700'
 
 const STATUS_TONE: Record<string, { badge: string; border: string }> = {
   matched: {
@@ -130,9 +233,36 @@ function statusLabel(pack: ReconciliationUiPack, status: string): string {
 
 function saleKindLabel(pack: ReconciliationUiPack, kind: SaleKind): string {
   if (kind === 'app_voucher') return pack.saleKindAppVoucher
+  if (kind === 'paper_voucher') return pack.saleKindPaperVoucher
   if (kind === 'manual_total') return pack.saleKindManualTotal
   if (kind === 'cash') return pack.saleKindCash
   return pack.saleKindCard
+}
+
+function SaleKindStatus({
+  pack,
+  kind,
+  confirmStatus,
+}: {
+  pack: ReconciliationUiPack
+  kind: SaleKind
+  confirmStatus?: string
+}) {
+  if (kind === 'cash') {
+    return <span className={BADGE_EXEMPT}>{pack.saleExemptBadge}</span>
+  }
+  if (kind === 'paper_voucher') {
+    return (
+      <>
+        <span className={BADGE_PENDING}>{pack.salePaperVoucherPendingBadge}</span>
+        <span className="text-xs leading-relaxed text-slate-500">{pack.salePaperVoucherHint}</span>
+      </>
+    )
+  }
+  if (confirmStatus != null) {
+    return <span className="text-slate-500">{confirmStatus}</span>
+  }
+  return null
 }
 
 function advisoryConfidenceLabel(
@@ -213,8 +343,13 @@ export default function ReconciliationPage() {
   const [saleDate, setSaleDate] = useState('')
   const [saleAmount, setSaleAmount] = useState('')
   const [saleKind, setSaleKind] = useState<SaleKind>('card')
+  const [saleDiscount, setSaleDiscount] = useState('')
   const [savingSale, setSavingSale] = useState(false)
   const [saleError, setSaleError] = useState<string | null>(null)
+  const [saleImageError, setSaleImageError] = useState<string | null>(null)
+  const [saleListError, setSaleListError] = useState<string | null>(null)
+  const [confirmingSaleId, setConfirmingSaleId] = useState<string | null>(null)
+  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null)
   const [lastCreatedSale, setLastCreatedSale] = useState<SalesRecord | null>(null)
   const [saleImageName, setSaleImageName] = useState('')
   const [parsingSaleImage, setParsingSaleImage] = useState(false)
@@ -225,10 +360,13 @@ export default function ReconciliationPage() {
   } | null>(null)
 
   const [depositText, setDepositText] = useState('')
+  const [depositError, setDepositError] = useState<string | null>(null)
+  const [depositImageError, setDepositImageError] = useState<string | null>(null)
   const [depositImageName, setDepositImageName] = useState('')
   const [parsingDeposit, setParsingDeposit] = useState(false)
   const [lastParsed, setLastParsed] = useState<{ confidence: number } | null>(null)
   const [spreadsheetKind, setSpreadsheetKind] = useState<'deposits' | 'sales'>('deposits')
+  const [spreadsheetError, setSpreadsheetError] = useState<string | null>(null)
   const [parsingSpreadsheet, setParsingSpreadsheet] = useState(false)
   const [lastSpreadsheet, setLastSpreadsheet] = useState<{
     parsed_count: number
@@ -248,6 +386,8 @@ export default function ReconciliationPage() {
   const [lastSummary, setLastSummary] = useState<ReconcileSummary | null>(null)
 
   const [error, setError] = useState<string | null>(null)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+  const [reconcileError, setReconcileError] = useState<string | null>(null)
 
   useEffect(() => {
     setPack(getReconciliationUiPack(normalizeReconciliationLocale(navigator.language)))
@@ -266,6 +406,7 @@ export default function ReconciliationPage() {
 
   const ensureTransferChannel = useCallback(async () => {
     setSettingUpChannel(true)
+    setError(null)
     try {
       const channels = await apiJson<PaymentChannel[]>('/api/reconciliation/channels')
       const existing = channels.find((c) => c.channel_type === 'transfer')
@@ -316,6 +457,7 @@ export default function ReconciliationPage() {
 
   const handleAddSale = useCallback(async () => {
     setSaleError(null)
+    setSaleListError(null)
     setLastCreatedSale(null)
     setSavingSale(true)
     try {
@@ -327,28 +469,52 @@ export default function ReconciliationPage() {
           sale_kind: saleKind,
           entry_source: 'manual',
           confirm_status: 'confirmed',
+          discount_amount: saleDiscount.trim() === '' ? null : Number(saleDiscount),
         },
       })
       setLastCreatedSale(created)
-      setSaleDate('')
-      setSaleAmount('')
-      setSaleKind('card')
-      await refreshLists()
+      // Keep date / amount / kind so the next "판매 추가" can fire immediately.
+      // Clearing them disabled the button and looked like a failed consecutive add.
+      setSales((prev) => [created, ...prev.filter((row) => row.id !== created.id)])
+      try {
+        await refreshLists()
+      } catch (refreshErr) {
+        console.error('[reconciliation] list refresh failed after sale create', refreshErr)
+        setSaleListError(refreshErr instanceof Error ? refreshErr.message : String(refreshErr))
+      }
     } catch (e) {
       setSaleError(e instanceof Error ? e.message : String(e))
     } finally {
       setSavingSale(false)
     }
-  }, [
-    refreshLists,
-    saleAmount,
-    saleDate,
-    saleKind,
-  ])
+  }, [refreshLists, saleAmount, saleDate, saleDiscount, saleKind])
+
+  const handleDeleteSale = useCallback(
+    async (sale: SalesRecord) => {
+      setSaleListError(null)
+      setDeletingSaleId(sale.id)
+      try {
+        await apiJson(`/api/reconciliation/sales/${sale.id}`, { method: 'DELETE' })
+        setConfirmingSaleId(null)
+        setSales((prev) => prev.filter((row) => row.id !== sale.id))
+        try {
+          await refreshLists()
+        } catch (refreshErr) {
+          console.error('[reconciliation] list refresh failed after sale delete', refreshErr)
+          setSaleListError(refreshErr instanceof Error ? refreshErr.message : String(refreshErr))
+        }
+      } catch (e) {
+        setSaleListError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setDeletingSaleId(null)
+      }
+    },
+    [refreshLists]
+  )
 
   const handleParseDeposit = useCallback(async () => {
     if (!depositText.trim()) return
-    setError(null)
+    setDepositError(null)
     setParsingDeposit(true)
     setLastParsed(null)
     try {
@@ -364,7 +530,7 @@ export default function ReconciliationPage() {
       setDepositText('')
       await refreshLists()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setDepositError(e instanceof Error ? e.message : String(e))
     } finally {
       setParsingDeposit(false)
     }
@@ -373,26 +539,18 @@ export default function ReconciliationPage() {
   const handleParseDepositImage = useCallback(
     async (file: File | undefined) => {
       if (!file) return
-      setError(null)
+      setDepositImageError(null)
       setParsingDeposit(true)
       setLastParsed(null)
       try {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () =>
-            typeof reader.result === 'string'
-              ? resolve(reader.result)
-              : reject(new Error('Could not read image'))
-          reader.onerror = () => reject(new Error('Could not read image'))
-          reader.readAsDataURL(file)
-        })
+        const prepared = await prepareImageForUpload(file)
         const result = await apiJson<{ parsed: { confidence: number } }>(
           '/api/reconciliation/parse-deposit-image',
           {
             method: 'POST',
             json: {
-              image: dataUrl,
-              media_type: file.type || undefined,
+              image: prepared.dataUrl,
+              media_type: prepared.mediaType,
               channel_hint: channel?.id,
             },
           }
@@ -401,7 +559,7 @@ export default function ReconciliationPage() {
         setDepositImageName('')
         await refreshLists()
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setDepositImageError(e instanceof Error ? e.message : String(e))
       } finally {
         setParsingDeposit(false)
       }
@@ -412,20 +570,11 @@ export default function ReconciliationPage() {
   const handleParseSalesImage = useCallback(
     async (file: File | undefined) => {
       if (!file) return
-      setError(null)
-      setSaleError(null)
+      setSaleImageError(null)
       setParsingSaleImage(true)
       setLastParsedSale(null)
       try {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () =>
-            typeof reader.result === 'string'
-              ? resolve(reader.result)
-              : reject(new Error('Could not read image'))
-          reader.onerror = () => reject(new Error('Could not read image'))
-          reader.readAsDataURL(file)
-        })
+        const prepared = await prepareImageForUpload(file)
         const result = await apiJson<{
           sale: SalesRecord
           parsed: { confidence: number }
@@ -433,8 +582,8 @@ export default function ReconciliationPage() {
         }>('/api/reconciliation/parse-sales-image', {
           method: 'POST',
           json: {
-            image: dataUrl,
-            media_type: file.type || undefined,
+            image: prepared.dataUrl,
+            media_type: prepared.mediaType,
           },
         })
         setLastParsedSale({
@@ -445,7 +594,7 @@ export default function ReconciliationPage() {
         setSaleImageName('')
         await refreshLists()
       } catch (e) {
-        setSaleError(e instanceof Error ? e.message : String(e))
+        setSaleImageError(e instanceof Error ? e.message : String(e))
       } finally {
         setParsingSaleImage(false)
       }
@@ -456,7 +605,7 @@ export default function ReconciliationPage() {
   const handleParseSpreadsheet = useCallback(
     async (file: File | undefined) => {
       if (!file) return
-      setError(null)
+      setSpreadsheetError(null)
       setParsingSpreadsheet(true)
       setLastSpreadsheet(null)
       try {
@@ -491,7 +640,7 @@ export default function ReconciliationPage() {
         })
         await refreshLists()
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setSpreadsheetError(e instanceof Error ? e.message : String(e))
       } finally {
         setParsingSpreadsheet(false)
       }
@@ -508,7 +657,7 @@ export default function ReconciliationPage() {
 
   const handleConfirmDeposit = useCallback(
     async (deposit: DepositRecord) => {
-      setError(null)
+      setReviewError(null)
       setSavingDepositId(deposit.id)
       try {
         await apiJson(`/api/reconciliation/deposits/${deposit.id}`, {
@@ -517,7 +666,7 @@ export default function ReconciliationPage() {
         })
         await refreshLists()
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setReviewError(e instanceof Error ? e.message : String(e))
       } finally {
         setSavingDepositId(null)
       }
@@ -529,7 +678,7 @@ export default function ReconciliationPage() {
     async (deposit: DepositRecord) => {
       const edit = editing[deposit.id]
       if (!edit) return
-      setError(null)
+      setReviewError(null)
       setSavingDepositId(deposit.id)
       try {
         await apiJson(`/api/reconciliation/deposits/${deposit.id}`, {
@@ -547,7 +696,7 @@ export default function ReconciliationPage() {
         })
         await refreshLists()
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setReviewError(e instanceof Error ? e.message : String(e))
       } finally {
         setSavingDepositId(null)
       }
@@ -568,7 +717,7 @@ export default function ReconciliationPage() {
 
   const handleConfirmSale = useCallback(
     async (sale: SalesRecord) => {
-      setError(null)
+      setReviewError(null)
       setSavingPendingSaleId(sale.id)
       try {
         await apiJson(`/api/reconciliation/sales/${sale.id}`, {
@@ -577,7 +726,7 @@ export default function ReconciliationPage() {
         })
         await refreshLists()
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setReviewError(e instanceof Error ? e.message : String(e))
       } finally {
         setSavingPendingSaleId(null)
       }
@@ -589,7 +738,7 @@ export default function ReconciliationPage() {
     async (sale: SalesRecord) => {
       const edit = editingSales[sale.id]
       if (!edit) return
-      setError(null)
+      setReviewError(null)
       setSavingPendingSaleId(sale.id)
       try {
         await apiJson(`/api/reconciliation/sales/${sale.id}`, {
@@ -608,7 +757,7 @@ export default function ReconciliationPage() {
         })
         await refreshLists()
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setReviewError(e instanceof Error ? e.message : String(e))
       } finally {
         setSavingPendingSaleId(null)
       }
@@ -617,21 +766,34 @@ export default function ReconciliationPage() {
   )
 
   const handleReconcile = useCallback(async () => {
-    setError(null)
+    setReconcileError(null)
     setReconciling(true)
     try {
-      const result = await apiJson<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>(
-        '/api/reconciliation/reconcile',
-        { method: 'POST', json: channel ? { channel_id: channel.id } : {} }
-      )
-      setLastSummary(result.summary)
+      // Sequential on purpose: each pass writes reconciliation_matches, and the
+      // next pass excludes already-matched deposit ids. Parallel would race.
+      let merged = EMPTY_RECONCILE_SUMMARY
+      let succeeded = 0
+      const failures: string[] = []
+      for (const pass of RECONCILE_PASSES) {
+        const result = await postReconcilePass(pass.url)
+        if (result.ok) {
+          merged = addReconcileSummary(merged, result.summary)
+          succeeded += 1
+        } else {
+          failures.push(
+            `${pass.label(pack)} HTTP ${result.status}: ${result.body}`
+          )
+        }
+      }
+      if (succeeded > 0) setLastSummary(merged)
+      setReconcileError(failures.length > 0 ? failures.join(' · ') : null)
       await refreshLists()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setReconcileError(e instanceof Error ? e.message : String(e))
     } finally {
       setReconciling(false)
     }
-  }, [channel, refreshLists])
+  }, [pack, refreshLists])
 
   if (authLoading) {
     return (
@@ -655,6 +817,8 @@ export default function ReconciliationPage() {
   const pendingDeposits = deposits.filter((d) => d.confirm_status === 'pending')
   const pendingSales = sales.filter((s) => s.confirm_status === 'pending')
   const pendingCount = pendingDeposits.length + pendingSales.length
+  const cashSales = sales.filter((s) => s.sale_kind === 'cash')
+  const paperVoucherSales = sales.filter((s) => s.sale_kind === 'paper_voucher')
 
   return (
     <main className="min-h-screen bg-slate-50 pb-20">
@@ -663,6 +827,12 @@ export default function ReconciliationPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">{pack.pageTitle}</h1>
           <p className="mt-1 text-sm leading-relaxed text-slate-600">{pack.pageTagline}</p>
         </header>
+
+        {error ? (
+          <p className={ERROR_TEXT}>
+            {pack.errorPrefix}: {error}
+          </p>
+        ) : null}
 
         {settingUpChannel || !channel ? (
           <div className={CARD}>
@@ -697,6 +867,18 @@ export default function ReconciliationPage() {
                     required
                   />
                 </div>
+                <div>
+                  <label className={FIELD_LABEL}>{pack.saleDiscountLabel}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={saleDiscount}
+                    onChange={(e) => setSaleDiscount(e.target.value)}
+                    className={INPUT}
+                  />
+                  <p className={HINT}>{pack.saleDiscountHint}</p>
+                </div>
                 <div className="sm:col-span-2">
                   <label className={FIELD_LABEL}>{pack.saleKindLabel}</label>
                   <select
@@ -707,9 +889,11 @@ export default function ReconciliationPage() {
                     }}
                     className={INPUT}
                   >
-                    <option value="card">{pack.saleKindCard}</option>
-                    <option value="app_voucher">{pack.saleKindAppVoucher}</option>
-                    <option value="manual_total">{pack.saleKindManualTotal}</option>
+                    {SALE_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {saleKindLabel(pack, kind)}
+                      </option>
+                    ))}
                   </select>
                   <p className={HINT}>{pack.saleKindHelper}</p>
                 </div>
@@ -768,6 +952,11 @@ export default function ReconciliationPage() {
                 {saleImageName ? (
                   <p className="mt-1 text-xs text-slate-500">{saleImageName}</p>
                 ) : null}
+                {saleImageError ? (
+                  <p className={ERROR_TEXT}>
+                    {pack.errorPrefix}: {saleImageError}
+                  </p>
+                ) : null}
                 {lastParsedSale ? (
                   <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700">
                     <span className="font-semibold">{pack.saleImageParsedMsg}</span>
@@ -786,6 +975,11 @@ export default function ReconciliationPage() {
 
               <div className="mt-5 border-t border-slate-100 pt-4">
                 <h3 className="text-sm font-bold text-slate-800">{pack.saleListTitle}</h3>
+                {saleListError ? (
+                  <p className={ERROR_TEXT}>
+                    {pack.errorPrefix}: {saleListError}
+                  </p>
+                ) : null}
                 {sales.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-500">{pack.saleListEmptyMsg}</p>
                 ) : (
@@ -799,12 +993,56 @@ export default function ReconciliationPage() {
                         <span className="font-semibold tabular-nums text-slate-900">
                           {s.gross_amount.toLocaleString()}
                         </span>
-                        <span className="text-slate-500">
-                          {saleKindLabel(pack, s.sale_kind)} · {s.confirm_status}
-                        </span>
+                        {s.discount_amount != null ? (
+                          <span className="text-xs text-slate-500">
+                            {pack.saleDiscountLabel} {s.discount_amount.toLocaleString()}
+                          </span>
+                        ) : null}
+                        <span className="text-slate-500">{saleKindLabel(pack, s.sale_kind)}</span>
+                        <SaleKindStatus
+                          pack={pack}
+                          kind={s.sale_kind}
+                          confirmStatus={s.confirm_status}
+                        />
                         {s.confidence != null && s.confidence < LOW_CONFIDENCE_THRESHOLD ? (
                           <span className={BADGE_WARN}>{pack.reviewLowConfidenceBadge}</span>
                         ) : null}
+                        <span className="ml-auto flex flex-wrap gap-2">
+                          {confirmingSaleId === s.id ? (
+                            <>
+                              <button
+                                type="button"
+                                className={BTN_PRIMARY}
+                                disabled={deletingSaleId === s.id}
+                                onClick={() => void handleDeleteSale(s)}
+                              >
+                                {deletingSaleId === s.id
+                                  ? pack.saleDeletingBtn
+                                  : pack.saleDeleteConfirmBtn}
+                              </button>
+                              <button
+                                type="button"
+                                className={BTN_GHOST}
+                                disabled={deletingSaleId === s.id}
+                                onClick={() => setConfirmingSaleId(null)}
+                              >
+                                {pack.saleDeleteCancelBtn}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className={BTN_GHOST}
+                              disabled={deletingSaleId != null}
+                              onClick={() => {
+                                setSaleListError(null)
+                                setConfirmingSaleId(s.id)
+                              }}
+                            >
+                              {pack.saleDeleteBtn}
+                            </button>
+                          )}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -853,6 +1091,11 @@ export default function ReconciliationPage() {
                 </div>
               </div>
               <p className={HINT}>{pack.spreadsheetHint}</p>
+              {spreadsheetError ? (
+                <p className={ERROR_TEXT}>
+                  {pack.errorPrefix}: {spreadsheetError}
+                </p>
+              ) : null}
               {lastSpreadsheet ? (
                 <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
                   <p className="text-sm text-slate-700">
@@ -897,6 +1140,11 @@ export default function ReconciliationPage() {
                   {parsingDeposit ? pack.depositParsingBtn : pack.depositParseBtn}
                 </button>
               </div>
+              {depositError ? (
+                <p className={ERROR_TEXT}>
+                  {pack.errorPrefix}: {depositError}
+                </p>
+              ) : null}
               {lastParsed ? (
                 <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700">
                   <span className="font-semibold">{pack.depositParsedMsg}</span> —{' '}
@@ -932,6 +1180,11 @@ export default function ReconciliationPage() {
                 {depositImageName ? (
                   <p className="mt-1 text-xs text-slate-500">{depositImageName}</p>
                 ) : null}
+                {depositImageError ? (
+                  <p className={ERROR_TEXT}>
+                    {pack.errorPrefix}: {depositImageError}
+                  </p>
+                ) : null}
               </div>
             </section>
 
@@ -944,6 +1197,11 @@ export default function ReconciliationPage() {
                 ) : null}
               </div>
               <p className="mt-1 text-sm text-slate-600">{pack.reviewTagline}</p>
+              {reviewError ? (
+                <p className={ERROR_TEXT}>
+                  {pack.errorPrefix}: {reviewError}
+                </p>
+              ) : null}
               {pendingDeposits.length === 0 && pendingSales.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">{pack.reviewEmptyMsg}</p>
               ) : (
@@ -1182,6 +1440,11 @@ export default function ReconciliationPage() {
               >
                 {reconciling ? pack.reconcileRunningBtn : pack.reconcileBtn}
               </button>
+              {reconcileError ? (
+                <p className={ERROR_TEXT}>
+                  {pack.errorPrefix}: {reconcileError}
+                </p>
+              ) : null}
               {lastSummary ? (
                 <div className="mt-4">
                   <h3 className="text-sm font-bold text-slate-800">
@@ -1233,10 +1496,47 @@ export default function ReconciliationPage() {
                   {pack.refreshBtn}
                 </button>
               </div>
-              {results.length === 0 ? (
+              {results.length === 0 && cashSales.length === 0 && paperVoucherSales.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">{pack.resultsEmptyMsg}</p>
               ) : (
                 <ul className="mt-4 space-y-3">
+                  {cashSales.map((s) => (
+                    <li
+                      key={`cash-${s.id}`}
+                      className="rounded-xl border border-slate-200 border-l-4 border-l-emerald-500 bg-white p-4"
+                    >
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <span className={BADGE_EXEMPT}>{pack.saleExemptBadge}</span>
+                        <span className="font-medium text-slate-900">{s.sale_date}</span>
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          {s.gross_amount.toLocaleString()}
+                        </span>
+                        <span className="text-sm text-slate-600">
+                          {saleKindLabel(pack, s.sale_kind)}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                  {paperVoucherSales.map((s) => (
+                    <li
+                      key={`paper-${s.id}`}
+                      className="rounded-xl border border-slate-200 border-l-4 border-l-slate-400 bg-white p-4"
+                    >
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <span className={BADGE_PENDING}>{pack.salePaperVoucherPendingBadge}</span>
+                        <span className="font-medium text-slate-900">{s.sale_date}</span>
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          {s.gross_amount.toLocaleString()}
+                        </span>
+                        <span className="text-sm text-slate-600">
+                          {saleKindLabel(pack, s.sale_kind)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                        {pack.salePaperVoucherHint}
+                      </p>
+                    </li>
+                  ))}
                   {results.map((r) => {
                     const tone = STATUS_TONE[r.status] ?? DEFAULT_STATUS_TONE
                     return (
@@ -1272,12 +1572,6 @@ export default function ReconciliationPage() {
             </section>
           </>
         )}
-
-        {error ? (
-          <p className={ERROR_TEXT}>
-            {pack.errorPrefix}: {error}
-          </p>
-        ) : null}
       </div>
     </main>
   )

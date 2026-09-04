@@ -8,9 +8,12 @@
  * STAGE 1: only 'transfer' was wired. STAGE 2 adds 'app_voucher' (탐나는전 앱,
  * 온누리 앱) the same way. STAGE 2c adds 'card' (PG/card-company family:
  * card, 바코드결제, 알리페이/위챗, 텍스프리, 배달앱) — still a ChannelRule,
- * no new matcher branching. Cash (channel_type='cash') is a ChannelRule with
- * expectsDeposit: false: it is stored as revenue and skipped by every
- * deposit matcher. Fee rate and settlement window stay DATA.
+ * no new matcher branching. Cash and paper_voucher are ChannelRules with
+ * expectsDeposit: false: stored as revenue and skipped by every deposit
+ * matcher. Paper voucher is not same-day complete: expected_deposit_date
+ * stays null because the settlement clock starts when the owner banks the
+ * slips, which the system cannot know. There is no reconcilePaperVouchers()
+ * — a sale-date matcher would false-flag missing_deposit.
  *
  * A real per-channel override always wins over these defaults: `ruleFromRow`
  * only falls back to the map below when no `reconciliation_rules` row exists
@@ -35,8 +38,9 @@ export type ChannelRule = {
   /** date discrepancy (days) tolerated before a match is flagged. */
   toleranceDays: number
   /**
-   * When false, this channel never produces a bank deposit (cash).
-   * Omitted / true = deposits are expected (transfer, card, app_voucher).
+   * When false, automatic matchers skip this channel. Cash never produces a
+   * bank deposit. Paper voucher is banked later on a date the system cannot
+   * know. Omitted / true = deposits are expected (transfer, card, app_voucher).
    */
   expectsDeposit?: boolean
 }
@@ -90,6 +94,23 @@ export const CARD_RULE: ChannelRule = {
  */
 export const CASH_RULE: ChannelRule = {
   channelType: 'cash',
+  feeType: 'percent',
+  feeRate: 0,
+  settlementDays: 0,
+  toleranceWon: 0,
+  toleranceDays: 0,
+  expectsDeposit: false,
+}
+
+/**
+ * Paper gift voucher (지류상품권): 0-fee. expected_net = gross.
+ * expected_deposit_date stays null — the owner banks the slips later
+ * (온누리 same day after deposit, 탐나는전 2–3 days). A sale-date matcher
+ * cannot pair that, so expectsDeposit is false and there is no
+ * reconcilePaperVouchers().
+ */
+export const PAPER_VOUCHER_RULE: ChannelRule = {
+  channelType: 'paper_voucher',
   feeType: 'percent',
   feeRate: 0,
   settlementDays: 0,
@@ -190,15 +211,16 @@ export function channelPresetById(id: string): ChannelPreset | null {
   return CHANNEL_PRESETS.find((p) => p.id === id) ?? null
 }
 
-/** channel_type → rule. transfer / app_voucher / card / cash. */
+/** channel_type → rule. transfer / app_voucher / card / cash / paper_voucher. */
 const RULES_BY_CHANNEL_TYPE: Record<string, ChannelRule> = {
   transfer: TRANSFER_RULE,
   app_voucher: APP_VOUCHER_RULE,
   card: CARD_RULE,
   cash: CASH_RULE,
+  paper_voucher: PAPER_VOUCHER_RULE,
 }
 
-/** False only for cash (expectsDeposit: false). Everyone else expects a deposit. */
+/** False for cash and paper_voucher (expectsDeposit: false). Everyone else expects a deposit. */
 export function channelExpectsDeposit(rule: ChannelRule): boolean {
   return rule.expectsDeposit !== false
 }

@@ -12,6 +12,9 @@ import type { DalResult } from '@/lib/reconciliation/types'
 
 export const DEPOSIT_IMAGE_BUCKET = 'reconciliation-deposits'
 export const DEPOSIT_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+/** Cap on the JSON `image` string so we return JSON 413 instead of a platform plaintext body. */
+export const IMAGE_JSON_MAX_CHARS = 3 * 1024 * 1024
+export const IMAGE_TOO_LARGE_KO = '사진이 너무 큽니다. 더 작은 사진을 올려 주세요.'
 export const DEPOSIT_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
 
 export const SPREADSHEET_MAX_BYTES = DEPOSIT_IMAGE_MAX_BYTES

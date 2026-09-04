@@ -186,6 +186,7 @@ export function mapSaleKind(text: string | null | undefined): SaleKind | null {
   if (!text) return null
   const t = text.trim().toLowerCase()
   if (!t) return null
+  if (/지류|종이상품권|paper[_\s-]?voucher/.test(t)) return 'paper_voucher'
   if (/현금|cash/.test(t)) return 'cash'
   if (/상품권|voucher|탐나는전|온누리|지역화폐/.test(t)) return 'app_voucher'
   if (/수기|manual/.test(t)) return 'manual_total'
