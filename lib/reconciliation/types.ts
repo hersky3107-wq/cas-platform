@@ -112,6 +112,8 @@ export type DepositRecord = {
   raw_document_id: string | null
   deposit_date: string
   actual_amount: number
+  /** Counterparty / 적요. Used for HITL duplicate detection. Null allowed. */
+  memo: string | null
   channel_hint: string | null
   confidence: number | null
   confirm_status: ConfirmStatus
@@ -225,6 +227,30 @@ export type ReconciliationMatch = {
 
 export type ReconciliationWithMatches = Reconciliation & {
   matches: ReconciliationMatch[]
+}
+
+export type MonthlyReconciliationSummary = {
+  month: string
+  from: string
+  to: string
+  total_sales: number
+  total_discount: number
+  sales_by_kind: Record<SaleKind, { amount: number; count: number }>
+  deposits: {
+    total_amount: number
+    total_count: number
+    matched_amount: number
+    matched_count: number
+    unmatched_amount: number
+    unmatched_count: number
+  }
+  counts: {
+    matched: number
+    missing_deposit: number
+    amount_mismatch: number
+    paper_voucher_pending: number
+  }
+  paper_voucher_pending_amount: number
 }
 
 export type DalOk<T> = { ok: true; data: T }

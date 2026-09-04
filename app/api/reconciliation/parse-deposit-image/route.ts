@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { createDeposit, createDocument, updateDocument } from '@/lib/reconciliation/db'
-import { parseDepositImage, HITL_CONFIDENCE_THRESHOLD } from '@/lib/reconciliation/parser'
+import { createDocument, updateDocument } from '@/lib/reconciliation/db'
+import { attachDuplicateFlags } from '@/lib/reconciliation/deposit-parse-response'
+import { parseDepositImage, VISION_CONFIDENCE_CAP } from '@/lib/reconciliation/parser'
 import { fromDal, withOwnedScope } from '@/lib/reconciliation/scope'
 import {
   DEPOSIT_IMAGE_MAX_BYTES,
@@ -13,16 +14,12 @@ import {
 /**
  * POST /api/reconciliation/parse-deposit-image
  *
- * Body (JSON, fits withOwnedScope):
- *   { image: data-URL or bare base64, media_type?: 'image/jpeg'|...,
- *     channel_hint?: uuid }
- *
  * Stores the file in the private `reconciliation-deposits` bucket, records
- * raw_documents (source_type='receipt_image'), vision-parses date+amount via
- * openai/gpt-4o (sessionId=null), and inserts a deposit_records row with
- * confirm_status='pending'. Unreadable images 422 — no guess, no deposit row.
+ * raw_documents (source_type='receipt_image'), vision-parses EVERY visible
+ * deposit row. Does NOT insert deposit_records — review UI commits confirmed
+ * rows. Unreadable images 422 — no guess, no deposit row.
  *
- * Confidence is capped below 0.7 so the existing HITL review flags it.
+ * Each vision row is capped at 0.65.
  */
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -104,48 +101,48 @@ export async function POST(req: Request) {
     mediaType: parsedImage.mediaType,
   })
 
-  if (parsed.unreadable || parsed.amount == null || parsed.date == null) {
+  const readable = parsed.rows.filter((row) => row.amount != null && row.amount > 0)
+  if (parsed.unreadable || readable.length === 0) {
     await updateDocument(scope, documentId, {
       parse_status: 'failed',
-      parse_error: 'Image unreadable — could not extract both date and amount',
+      parse_error: 'Image unreadable — could not extract any deposit row',
     })
     return NextResponse.json(
       {
         error: 'Image unreadable. Take another photo in better light — values were not guessed.',
         document_id: documentId,
         storage_path: stored.data.storagePath,
-        parsed,
+        parsed: { ...parsed, rows: [], unreadable: true },
+        rows: [],
       },
       { status: 422 }
     )
   }
 
-  const deposit = await createDeposit(scope, {
-    raw_document_id: documentId,
-    deposit_date: parsed.date,
-    actual_amount: parsed.amount,
-    confidence: parsed.confidence,
-    confirm_status: 'pending',
-    channel_hint: typeof body.channel_hint === 'string' ? body.channel_hint : undefined,
-  })
-  if (!deposit.ok) {
+  const bodyHint = typeof body.channel_hint === 'string' ? body.channel_hint : null
+  const flagged = await attachDuplicateFlags(
+    scope,
+    readable.map((row) => ({
+      ...row,
+      confidence: Math.min(row.confidence, VISION_CONFIDENCE_CAP),
+      channel_hint: bodyHint,
+    }))
+  )
+  if (!flagged.ok) {
     await updateDocument(scope, documentId, {
       parse_status: 'failed',
-      parse_error: deposit.error,
+      parse_error: flagged.error,
     })
-    return fromDal(deposit)
+    return fromDal(flagged)
   }
 
   await updateDocument(scope, documentId, { parse_status: 'parsed', parse_error: null })
 
-  return NextResponse.json(
-    {
-      document_id: documentId,
-      storage_path: stored.data.storagePath,
-      deposit: deposit.data,
-      parsed,
-      needs_confirm: parsed.confidence < HITL_CONFIDENCE_THRESHOLD,
-    },
-    { status: 201 }
-  )
+  return NextResponse.json({
+    document_id: documentId,
+    storage_path: stored.data.storagePath,
+    parsed: { ...parsed, rows: flagged.data.rows, unreadable: false },
+    rows: flagged.data.rows,
+    fingerprints: flagged.data.fingerprints,
+  })
 }

@@ -37,7 +37,12 @@ import {
   type SaleKind,
   type SalesRecord,
   type SecurityFlag,
+  type MonthlyReconciliationSummary,
 } from '@/lib/reconciliation/types'
+import {
+  computeMonthlySummaryData,
+  getMonthDateRange,
+} from '@/lib/reconciliation/summary'
 
 /**
  * 대사기 server DAL.
@@ -1115,6 +1120,8 @@ export async function createDeposit(
   if (!doc.ok) return doc
   const hint = await resolveOptionalOwnedFk(scope, fields.channel_hint, 'channel_hint')
   if (!hint.ok) return hint
+  const memo = asOptionalString(fields.memo)
+  if (memo && memo.length > 500) return dalErr(400, 'memo must be 500 characters or fewer')
 
   const { data, error } = await supabaseAdmin
     .from('deposit_records')
@@ -1123,6 +1130,7 @@ export async function createDeposit(
       raw_document_id: doc.data,
       deposit_date: depositDate.data,
       actual_amount: amount.data,
+      memo,
       channel_hint: hint.data,
       confidence: confidence.data,
       confirm_status: confirm.data,
@@ -1173,6 +1181,11 @@ export async function updateDeposit(
     const hint = await resolveOptionalOwnedFk(scope, fields.channel_hint, 'channel_hint')
     if (!hint.ok) return hint
     patch.channel_hint = hint.data
+  }
+  if ('memo' in fields) {
+    const memo = asOptionalString(fields.memo)
+    if (memo && memo.length > 500) return dalErr(400, 'memo must be 500 characters or fewer')
+    patch.memo = memo
   }
   if (Object.keys(patch).length === 0) return dalErr(400, 'No fields to update')
 
@@ -1471,4 +1484,89 @@ export async function deleteReconciliation(
   if (error) return fromSbError(error)
   if (!data) return dalErr(404, 'Not found')
   return dalOk({ deleted: true })
+}
+
+// ── monthly summary ──────────────────────────────────────────────────────────
+
+export async function getMonthlySummary(
+  scope: OwnedScope,
+  month: string
+): Promise<DalResult<MonthlyReconciliationSummary>> {
+  const range = getMonthDateRange(month)
+  if (!range) {
+    return dalErr(400, 'month must be YYYY-MM')
+  }
+
+  const { from, to } = range
+
+  const [salesRes, depositsRes, reconsRes] = await Promise.all([
+    supabaseAdmin
+      .from('sales_records')
+      .select('id, sale_date, gross_amount, discount_amount, sale_kind')
+      .eq('user_id', scope.userId)
+      .gte('sale_date', from)
+      .lte('sale_date', to),
+    supabaseAdmin
+      .from('deposit_records')
+      .select('id, deposit_date, actual_amount, memo')
+      .eq('user_id', scope.userId)
+      .gte('deposit_date', from)
+      .lte('deposit_date', to),
+    supabaseAdmin
+      .from('reconciliations')
+      .select('id, status, discrepancy_amount')
+      .eq('user_id', scope.userId),
+  ])
+
+  if (salesRes.error) return fromSbError(salesRes.error)
+  if (depositsRes.error) return fromSbError(depositsRes.error)
+  if (reconsRes.error) return fromSbError(reconsRes.error)
+
+  const recons = (reconsRes.data ?? []) as {
+    id: string
+    status: string
+    discrepancy_amount: number | null
+  }[]
+  const reconIds = recons.map((r) => r.id)
+
+  let matches: {
+    reconciliation_id: string
+    sales_record_id: string | null
+    deposit_record_id: string | null
+  }[] = []
+  if (reconIds.length > 0) {
+    const matchesRes = await supabaseAdmin
+      .from('reconciliation_matches')
+      .select('reconciliation_id, sales_record_id, deposit_record_id')
+      .in('reconciliation_id', reconIds)
+    if (matchesRes.error) return fromSbError(matchesRes.error)
+    matches = (matchesRes.data ?? []) as typeof matches
+  }
+
+  const sales = (salesRes.data ?? []) as {
+    id: string
+    sale_date: string
+    gross_amount: number
+    discount_amount: number | null
+    sale_kind: SaleKind | string
+  }[]
+
+  const deposits = (depositsRes.data ?? []) as {
+    id: string
+    deposit_date: string
+    actual_amount: number
+    memo: string | null
+  }[]
+
+  const summary = computeMonthlySummaryData({
+    month,
+    from,
+    to,
+    sales,
+    deposits,
+    reconciliations: recons,
+    matches,
+  })
+
+  return dalOk(summary)
 }

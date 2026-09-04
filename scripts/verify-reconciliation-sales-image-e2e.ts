@@ -451,23 +451,23 @@ async function main() {
       media_type: 'image/png',
     })
     trackStorage(parse6.body)
-    requireResult(parse6.status === 201, 'deposit-image regression expected 201', parse6)
-    requireResult(typeof parse6.body.deposit?.id === 'string', 'deposit missing', parse6.body)
-    requireResult(parse6.body.deposit.confirm_status === 'pending', 'deposit pending', parse6.body.deposit)
+    requireResult(parse6.status === 200, 'deposit-image regression expected 200 (parse, no insert)', parse6)
+    requireResult(parse6.body.deposit == null, 'parse must not include a deposit', parse6.body)
+    const parse6Rows = (parse6.body.rows ?? []) as { confidence?: number; amount?: number }[]
+    requireResult(parse6Rows.length > 0, 'deposit rows missing', parse6.body)
     requireResult(
-      typeof parse6.body.parsed?.confidence === 'number' && parse6.body.parsed.confidence <= 0.65,
+      parse6Rows.every((row) => typeof row.confidence === 'number' && row.confidence <= 0.65),
       'deposit vision cap still <= 0.65',
-      parse6.body.parsed
+      parse6Rows
     )
     const doc6 = await dbDoc(parse6.body.document_id, userA.userId)
     requireResult(doc6?.parse_status === 'parsed' && doc6?.source_type === 'receipt_image', 'deposit document', doc6)
     const deps6 = await depositsForDoc(parse6.body.document_id, userA.userId)
-    requireResult(deps6.length === 1, 'one pending deposit from image', deps6)
-    requireResult(deps6[0]?.confirm_status === 'pending', 'deposit confirm pending', deps6)
+    requireResult(deps6.length === 0, 'parse must not insert deposit_records', deps6)
     const salesLeak6 = await salesForDoc(parse6.body.document_id, userA.userId)
     requireResult(salesLeak6.length === 0, 'deposit-image must not write sales', salesLeak6)
     console.log(
-      `CONFIRMED STEP 6: deposit-image HTTP 201, pending deposit amount=${deps6[0]?.actual_amount} conf=${parse6.body.parsed.confidence}`
+      `CONFIRMED STEP 6: deposit-image HTTP 200, ${parse6Rows.length} candidate row(s), zero inserts`
     )
 
     console.log('\n========== ALL LIVE SALES-IMAGE CHECKS PASSED ==========')

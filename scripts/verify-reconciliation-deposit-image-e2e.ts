@@ -263,8 +263,8 @@ async function main() {
       media_type: 'image/png',
     })
     requireResult(
-      parse1.status === 201 || parse1.status === 422,
-      'step-1 expected 201 (parsed) or 422 (unreadable generated image)',
+      parse1.status === 200 || parse1.status === 422,
+      'step-1 expected 200 (parsed, not inserted) or 422 (unreadable generated image)',
       parse1
     )
     const storagePath = parse1.body.storage_path as string
@@ -290,23 +290,34 @@ async function main() {
     requireResult(doc1.raw_text == null, 'raw_text must be null for image docs', doc1)
 
     const parsed = parse1.body.parsed as {
+      rows?: { date: string | null; amount: number | null; confidence: number }[]
+      date?: string | null
+      amount?: number | null
+      confidence?: number
+      unreadable?: boolean
+    }
+    const parsedRows = (parse1.body.rows ?? parsed?.rows ?? []) as {
       date: string | null
       amount: number | null
       confidence: number
-      unreadable?: boolean
-    }
+    }[]
     console.log(
-      `STEP 1 parsed: date=${parsed?.date} amount=${parsed?.amount} confidence=${parsed?.confidence} unreadable=${parsed?.unreadable}`
+      `STEP 1 parsed: rows=${parsedRows.length} unreadable=${parsed?.unreadable} ` +
+        JSON.stringify(parsedRows.slice(0, 5))
     )
     requireResult(parsed && typeof parsed === 'object', 'parse result object missing', parse1)
 
-    if (parse1.status === 201) {
+    if (parse1.status === 200) {
       requireResult(doc1.parse_status === 'parsed', 'successful parse should mark document parsed', doc1)
-      requireResult(typeof parsed.date === 'string' && typeof parsed.amount === 'number', '201 without date+amount', parsed)
+      requireResult(parsedRows.length > 0, '200 without any rows', parsedRows)
+      requireResult(
+        parsedRows.every((row) => row.amount != null && row.amount > 0),
+        '200 rows must have amounts (no invented empty rows)',
+        parsedRows
+      )
       const deps = await depositsForDoc(documentId, userA.userId)
-      requireResult(deps.length === 1, 'successful parse should create one deposit', deps)
-      requireResult(deps[0]?.confirm_status === 'pending', 'deposit confirm_status should be pending', deps)
-      console.log('CONFIRMED STEP 1: AI read the generated image (201 + deposit pending)')
+      requireResult(deps.length === 0, 'parse must NOT insert deposit_records (HITL commit does)', deps)
+      console.log('CONFIRMED STEP 1: AI read the generated image (200 + zero deposits until commit)')
     } else {
       requireResult(doc1.parse_status === 'failed', '422 should mark document failed', doc1)
       const deps = await depositsForDoc(documentId, userA.userId)
@@ -315,15 +326,13 @@ async function main() {
     }
 
     console.log('\n========== STEP 2: confidence cap <= 0.65 ==========')
-    if (parse1.status === 201) {
-      requireResult(parsed.confidence <= 0.65, 'vision confidence must be <= 0.65', parsed)
-      requireResult(parse1.body.needs_confirm === true, 'needs_confirm should be true under HITL 0.7', parse1)
+    if (parse1.status === 200) {
       requireResult(
-        Number(parse1.body.deposit?.confidence) <= 0.65,
-        'persisted deposit confidence must be <= 0.65',
-        parse1.body.deposit
+        parsedRows.every((row) => row.confidence <= 0.65),
+        'vision confidence must be <= 0.65 on every row',
+        parsedRows
       )
-      console.log(`CONFIRMED STEP 2: confidence=${parsed.confidence} <= 0.65, needs_confirm=true`)
+      console.log(`CONFIRMED STEP 2: all ${parsedRows.length} row(s) confidence <= 0.65`)
     } else {
       console.log('STEP 2 skipped: no successful vision parse on the generated image (nothing to cap).')
     }
@@ -345,11 +354,16 @@ async function main() {
     requireResult(doc3?.source_type === 'receipt_image', 'blank image source_type', doc3)
     const deps3 = await depositsForDoc(failDocId, userA.userId)
     requireResult(deps3.length === 0, 'blank image must not create a deposit_record', deps3)
-    const guessed = parse3.body.parsed?.amount
+    const guessed = parse3.body.parsed?.amount ?? parse3.body.rows?.[0]?.amount
     requireResult(
       parse3.body.parsed?.unreadable === true || guessed == null,
       'blank image must not guess an amount',
       parse3.body.parsed
+    )
+    requireResult(
+      !Array.isArray(parse3.body.rows) || parse3.body.rows.length === 0,
+      'blank image must return zero rows',
+      parse3.body.rows
     )
     console.log('CONFIRMED STEP 3: 422, parse_status=failed, zero deposits, no guessed amount')
 

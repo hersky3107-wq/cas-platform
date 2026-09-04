@@ -211,33 +211,56 @@ async function main() {
       json: { raw_text: smsVA, source_type: 'sms' },
     })
     log('V-A.2) POST /api/reconciliation/parse-voucher', parseVA)
-    if (parseVA.status !== 201) fail('parse-voucher V-A', parseVA)
+    if (parseVA.status !== 200) fail('parse-voucher V-A', parseVA)
 
-    const parsedVA = parseVA.body.parsed as {
+    const rowsVA = (parseVA.body.rows ?? []) as {
       date: string | null
       amount: number | null
+      memo: string | null
       confidence: number
       extra?: { voucher_type?: string | null } | null
-    }
-    const voucherTypeOut = (parseVA.body.voucher_type as string | null) ?? parsedVA.extra?.voucher_type ?? null
-    const depositVA = parseVA.body.deposit as {
-      id: string
-      channel_hint: string | null
-      deposit_date: string
-      actual_amount: number
-    }
+      channel_hint?: string | null
+    }[]
+    if (rowsVA.length === 0) fail('parse-voucher V-A returned no rows', parseVA)
+    const parsedVA = rowsVA[0]!
+    const voucherTypeOut =
+      (parseVA.body.voucher_type as string | null) ?? parsedVA.extra?.voucher_type ?? null
     console.log(
       `  parsed => date=${parsedVA.date} amount=${parsedVA.amount} ` +
         `voucher_type=${voucherTypeOut} confidence=${parsedVA.confidence}`
     )
-    console.log(`  deposit => id=${depositVA.id} channel_hint=${depositVA.channel_hint}`)
 
-    if (parsedVA.date !== today || parsedVA.amount !== saleAmountVA) {
-      fail('parse-voucher V-A date/amount mismatch', parseVA)
+    if (parsedVA.amount !== saleAmountVA) {
+      fail('parse-voucher V-A amount mismatch', parseVA)
     }
     if (voucherTypeOut !== '탐나는전') {
       fail('parse-voucher V-A voucher_type expected 탐나는전', parseVA)
     }
+
+    const commitVA = await probe('/api/reconciliation/deposits/commit', user.token, {
+      method: 'POST',
+      json: {
+        document_id: parseVA.body.document_id,
+        rows: rowsVA.map((row) => ({
+          deposit_date: row.date ?? today,
+          actual_amount: row.amount,
+          memo: row.memo,
+          confidence: row.confidence,
+          confirm_status: 'confirmed',
+          channel_hint: row.channel_hint,
+        })),
+      },
+    })
+    log('V-A.2b) POST /api/reconciliation/deposits/commit', commitVA)
+    if (commitVA.status !== 201) fail('commit voucher V-A', commitVA)
+    const depositVA = ((commitVA.body.created ?? []) as {
+      id: string
+      channel_hint: string | null
+      deposit_date: string
+      actual_amount: number
+    }[])[0]
+    if (!depositVA) fail('commit voucher V-A created zero deposits', commitVA)
+    console.log(`  deposit => id=${depositVA.id} channel_hint=${depositVA.channel_hint}`)
     if (!depositVA.channel_hint) {
       fail('parse-voucher V-A did not set channel_hint', parseVA)
     }
@@ -406,8 +429,33 @@ async function main() {
       json: { raw_text: smsTransfer, source_type: 'sms', channel_hint: transferChannelId },
     })
     log('V-C.2a) POST /api/reconciliation/parse (transfer deposit)', parseTransfer)
-    if (parseTransfer.status !== 201) fail('parse transfer deposit', parseTransfer)
-    const depositTransfer = parseTransfer.body.deposit as { id: string; channel_hint: string | null }
+    if (parseTransfer.status !== 200) fail('parse transfer deposit', parseTransfer)
+    const rowsTransfer = (parseTransfer.body.rows ?? []) as {
+      date: string | null
+      amount: number | null
+      memo: string | null
+      confidence: number
+      channel_hint?: string | null
+    }[]
+    if (rowsTransfer.length === 0) fail('parse transfer returned no rows', parseTransfer)
+    const commitTransfer = await probe('/api/reconciliation/deposits/commit', user.token, {
+      method: 'POST',
+      json: {
+        document_id: parseTransfer.body.document_id,
+        channel_hint: transferChannelId,
+        rows: rowsTransfer.map((row) => ({
+          deposit_date: row.date ?? today,
+          actual_amount: row.amount,
+          memo: row.memo,
+          confidence: row.confidence,
+          confirm_status: 'confirmed',
+          channel_hint: row.channel_hint ?? transferChannelId,
+        })),
+      },
+    })
+    if (commitTransfer.status !== 201) fail('commit transfer deposit', commitTransfer)
+    const depositTransfer = ((commitTransfer.body.created ?? []) as { id: string; channel_hint: string | null }[])[0]
+    if (!depositTransfer) fail('commit transfer created zero deposits', commitTransfer)
     console.log(`  transfer deposit id=${depositTransfer.id} hint=${depositTransfer.channel_hint}`)
 
     const smsVoucherVC =
@@ -417,8 +465,32 @@ async function main() {
       json: { raw_text: smsVoucherVC, source_type: 'sms' },
     })
     log('V-C.2b) POST /api/reconciliation/parse-voucher (탐나는전 deposit)', parseVoucherVC)
-    if (parseVoucherVC.status !== 201) fail('parse-voucher V-C', parseVoucherVC)
-    const depositVoucherVC = parseVoucherVC.body.deposit as { id: string; channel_hint: string | null }
+    if (parseVoucherVC.status !== 200) fail('parse-voucher V-C', parseVoucherVC)
+    const rowsVoucherVC = (parseVoucherVC.body.rows ?? []) as {
+      date: string | null
+      amount: number | null
+      memo: string | null
+      confidence: number
+      channel_hint?: string | null
+    }[]
+    if (rowsVoucherVC.length === 0) fail('parse-voucher V-C returned no rows', parseVoucherVC)
+    const commitVoucherVC = await probe('/api/reconciliation/deposits/commit', user.token, {
+      method: 'POST',
+      json: {
+        document_id: parseVoucherVC.body.document_id,
+        rows: rowsVoucherVC.map((row) => ({
+          deposit_date: row.date ?? today,
+          actual_amount: row.amount,
+          memo: row.memo,
+          confidence: row.confidence,
+          confirm_status: 'confirmed',
+          channel_hint: row.channel_hint,
+        })),
+      },
+    })
+    if (commitVoucherVC.status !== 201) fail('commit voucher V-C', commitVoucherVC)
+    const depositVoucherVC = ((commitVoucherVC.body.created ?? []) as { id: string; channel_hint: string | null }[])[0]
+    if (!depositVoucherVC) fail('commit voucher V-C created zero deposits', commitVoucherVC)
     console.log(
       `  voucher deposit id=${depositVoucherVC.id} hint=${depositVoucherVC.channel_hint} ` +
         `voucher_type=${String(parseVoucherVC.body.voucher_type)}`

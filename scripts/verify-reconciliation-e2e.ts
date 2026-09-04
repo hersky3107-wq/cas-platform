@@ -113,26 +113,38 @@ async function main() {
       json: { raw_text: smsText, source_type: 'sms', channel_hint: channelId },
     })
     log('2) POST /api/reconciliation/parse (case A)', parseA)
-    if (parseA.status !== 201) fail('parse deposit A', parseA)
-    const parsedA = parseA.body.parsed as { date: string | null; amount: number | null; confidence: number }
-    const depositA = parseA.body.deposit as { id: string; confirm_status: string }
-    console.log(`  parsed => date=${parsedA.date} amount=${parsedA.amount} confidence=${parsedA.confidence}`)
+    if (parseA.status !== 200) fail('parse deposit A', parseA)
+    const parsedRowsA = (parseA.body.rows ?? []) as {
+      date: string | null
+      amount: number | null
+      memo: string | null
+      confidence: number
+      duplicate_suspect?: boolean
+      channel_hint?: string | null
+    }[]
+    if (!Array.isArray(parsedRowsA) || parsedRowsA.length === 0) fail('parse A returned no rows', parseA)
+    const parsedA = parsedRowsA[0]!
+    console.log(`  parsed => date=${parsedA.date} amount=${parsedA.amount} confidence=${parsedA.confidence} rows=${parsedRowsA.length}`)
 
-    // ── 3. Confidence gate → confirm/edit path ───────────────────────────
-    if (parsedA.confidence < 0.7) {
-      console.log(`  confidence ${parsedA.confidence} < 0.7 -> exercising confirm/edit path`)
-      const confirmA = await probe(`/api/reconciliation/deposits/${depositA.id}`, user.token, {
-        method: 'PATCH',
-        json:
-          parsedA.amount === saleAmountA && parsedA.date === today
-            ? { confirm_status: 'confirmed' }
-            : { deposit_date: today, actual_amount: saleAmountA, confirm_status: 'edited' },
-      })
-      log('3) PATCH /api/reconciliation/deposits/{id} (confirm/edit)', confirmA)
-      if (confirmA.status !== 200) fail('confirm/edit deposit A', confirmA)
-    } else {
-      console.log(`  confidence ${parsedA.confidence} >= 0.7 -> confirm/edit path skipped (not required)`)
-    }
+    const commitA = await probe('/api/reconciliation/deposits/commit', user.token, {
+      method: 'POST',
+      json: {
+        document_id: parseA.body.document_id,
+        channel_hint: channelId,
+        rows: parsedRowsA.map((row) => ({
+          deposit_date: row.date ?? today,
+          actual_amount: row.amount ?? saleAmountA,
+          memo: row.memo,
+          confidence: row.confidence,
+          confirm_status: 'confirmed',
+          channel_hint: row.channel_hint ?? channelId,
+        })),
+      },
+    })
+    log('3) POST /api/reconciliation/deposits/commit (case A)', commitA)
+    if (commitA.status !== 201) fail('commit deposit A', commitA)
+    const createdA = (commitA.body.created ?? []) as { id: string }[]
+    if (createdA.length === 0) fail('commit A created zero deposits', commitA)
 
     // ── 4. Run reconciliation ────────────────────────────────────────────
     const reconcileA = await probe('/api/reconciliation/reconcile', user.token, {

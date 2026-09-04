@@ -1,17 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createDeposit, createDocument, getDocument, updateDocument } from '@/lib/reconciliation/db'
+import { createDocument, getDocument, updateDocument } from '@/lib/reconciliation/db'
+import { attachDuplicateFlags } from '@/lib/reconciliation/deposit-parse-response'
 import { parseDeposit, TRANSFER_PARSE_SPEC } from '@/lib/reconciliation/parser'
 import { fromDal, withOwnedScope } from '@/lib/reconciliation/scope'
 
 /**
- * Parse a pasted bank deposit-alert into a deposit_records row.
+ * Parse pasted bank deposit-alert text into candidate rows.
  *
- * Body (one of raw_document_id / raw_text required):
- *   { raw_document_id?: uuid, raw_text?: string, source_type?: 'sms'|'manual',
- *     channel_hint?: uuid }
- *
- * STAGE 1: bank-transfer spec only. Goes through withOwnedScope + the owned DAL,
- * so the document, deposit, and any channel_hint are all scoped to the session user.
+ * Does NOT insert deposit_records. Review UI confirms which rows to commit.
+ * Zero readable rows → 422, never invents a row.
  */
 export async function POST(req: Request) {
   const gate = await withOwnedScope(req)
@@ -50,37 +47,42 @@ export async function POST(req: Request) {
     spec: TRANSFER_PARSE_SPEC,
   })
 
-  if (parsed.amount == null || parsed.date == null) {
+  const readable = parsed.rows.filter((row) => row.amount != null && row.amount > 0)
+  if (readable.length === 0) {
     await updateDocument(scope, documentId, {
       parse_status: 'failed',
-      parse_error: 'Could not extract both date and amount',
+      parse_error: 'Could not extract any deposit row',
     })
     return NextResponse.json(
-      { error: 'Parse incomplete', document_id: documentId, parsed },
+      {
+        error: 'Parse incomplete',
+        document_id: documentId,
+        parsed,
+        rows: [],
+      },
       { status: 422 }
     )
   }
 
-  const deposit = await createDeposit(scope, {
-    raw_document_id: documentId,
-    deposit_date: parsed.date,
-    actual_amount: parsed.amount,
-    confidence: parsed.confidence,
-    confirm_status: 'pending',
-    channel_hint: typeof body.channel_hint === 'string' ? body.channel_hint : undefined,
-  })
-  if (!deposit.ok) {
+  const bodyHint = typeof body.channel_hint === 'string' ? body.channel_hint : null
+  const flagged = await attachDuplicateFlags(
+    scope,
+    readable.map((row) => ({ ...row, channel_hint: bodyHint }))
+  )
+  if (!flagged.ok) {
     await updateDocument(scope, documentId, {
       parse_status: 'failed',
-      parse_error: deposit.error,
+      parse_error: flagged.error,
     })
-    return fromDal(deposit)
+    return fromDal(flagged)
   }
 
   await updateDocument(scope, documentId, { parse_status: 'parsed', parse_error: null })
 
-  return NextResponse.json(
-    { document_id: documentId, deposit: deposit.data, parsed },
-    { status: 201 }
-  )
+  return NextResponse.json({
+    document_id: documentId,
+    parsed: { ...parsed, rows: flagged.data.rows },
+    rows: flagged.data.rows,
+    fingerprints: flagged.data.fingerprints,
+  })
 }

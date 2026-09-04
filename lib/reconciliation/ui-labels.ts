@@ -62,6 +62,7 @@ export type ReconciliationUiPack = {
   depositParseBtn: string
   depositParsingBtn: string
   depositParsedMsg: string
+  depositParsedRowsMsg: string
   depositParseFailedMsg: string
   depositImageLabel: string
   depositImageHint: string
@@ -85,11 +86,39 @@ export type ReconciliationUiPack = {
   reviewEmptyMsg: string
   reviewDateLabel: string
   reviewAmountLabel: string
+  reviewMemoLabel: string
   reviewConfidenceLabel: string
   reviewLowConfidenceBadge: string
+  reviewDuplicateBadge: string
+  reviewSkipLabel: string
+  reviewRemoveRowBtn: string
+  reviewCommitBtn: string
+  reviewCommittingBtn: string
+  reviewCommitHint: string
+  reviewYearAmbiguousHint: string
   reviewConfirmBtn: string
   reviewSaveEditBtn: string
   reviewSavingBtn: string
+
+  monthPickerLabel: string
+  monthPrevBtn: string
+  monthNextBtn: string
+  monthCurrentBtn: string
+  monthlySummaryTitle: string
+  monthlyTotalSales: string
+  monthlyTotalSalesSub: string
+  monthlyTotalDeposits: string
+  monthlyMissingDeposits: string
+  monthlyTotalDiscount: string
+  monthlyMatchedDeposits: string
+  monthlyUnmatchedDeposits: string
+  monthlyCountUnit: string
+  monthlySalesByKindTitle: string
+  monthlyPaperVoucherNote: string
+  depositListTitle: string
+  depositListEmptyMsg: string
+  depositMatchedBadge: string
+  depositUnmatchedBadge: string
 
   reconcileBtn: string
   reconcileRunningBtn: string
@@ -168,6 +197,7 @@ const en: ReconciliationUiPack = {
   depositParseBtn: 'Parse deposit',
   depositParsingBtn: 'Parsing…',
   depositParsedMsg: 'Parsed deposit',
+  depositParsedRowsMsg: 'Confirm the table below.',
   depositParseFailedMsg: 'Could not extract a date and amount from that text.',
   depositImageLabel: 'Or upload a deposit screenshot',
   depositImageHint: 'Photo of a bank deposit alert or passbook. Vision is unreliable — you must confirm the values.',
@@ -192,11 +222,41 @@ const en: ReconciliationUiPack = {
   reviewEmptyMsg: 'No rows awaiting review.',
   reviewDateLabel: 'Date',
   reviewAmountLabel: 'Amount (KRW)',
+  reviewMemoLabel: 'Memo',
   reviewConfidenceLabel: 'Confidence',
   reviewLowConfidenceBadge: 'LOW CONFIDENCE',
+  reviewDuplicateBadge: 'Suspected duplicate',
+  reviewSkipLabel: 'Skip',
+  reviewRemoveRowBtn: 'Remove',
+  reviewCommitBtn: 'Insert confirmed rows',
+  reviewCommittingBtn: 'Inserting…',
+  reviewCommitHint:
+    'Suspected duplicates are pre-checked to skip. Un-check skip to keep a genuine same-day repeat. Removed and skipped rows are not inserted.',
+  reviewYearAmbiguousHint: 'Year was not printed — fill the date before inserting.',
   reviewConfirmBtn: 'Confirm as-is',
   reviewSaveEditBtn: 'Save edit',
   reviewSavingBtn: 'Saving…',
+
+  monthPickerLabel: 'Month',
+  monthPrevBtn: 'Previous month',
+  monthNextBtn: 'Next month',
+  monthCurrentBtn: 'This month',
+  monthlySummaryTitle: 'Monthly summary',
+  monthlyTotalSales: 'Total sales',
+  monthlyTotalSalesSub: 'All 5 sale kinds included',
+  monthlyTotalDeposits: 'Total deposits',
+  monthlyMissingDeposits: 'Missing deposits',
+  monthlyTotalDiscount: 'Total discounts',
+  monthlyMatchedDeposits: 'Matched',
+  monthlyUnmatchedDeposits: 'Unmatched',
+  monthlyCountUnit: 'items',
+  monthlySalesByKindTitle: 'Sales breakdown by kind',
+  monthlyPaperVoucherNote:
+    'Paper gift vouchers are credited to the bank when deposited, so they are counted in total sales on the sale date but not compared directly to monthly deposits.',
+  depositListTitle: 'Deposits',
+  depositListEmptyMsg: 'No deposits recorded this month.',
+  depositMatchedBadge: 'Matched',
+  depositUnmatchedBadge: 'Unmatched',
 
   reconcileBtn: 'Run reconciliation',
   reconcileRunningBtn: 'Reconciling…',
@@ -275,6 +335,7 @@ const ko: ReconciliationUiPack = {
   depositParseBtn: '입금 분석',
   depositParsingBtn: '분석 중…',
   depositParsedMsg: '입금 분석 완료',
+  depositParsedRowsMsg: '아래 표에서 확인하세요.',
   depositParseFailedMsg: '해당 문자에서 날짜와 금액을 추출할 수 없습니다.',
   depositImageLabel: '또는 입금 알림 사진 올리기',
   depositImageHint: '입금 알림 화면 또는 통장 사진. 사진 인식은 틀릴 수 있으니 반드시 값을 확인하세요.',
@@ -299,11 +360,41 @@ const ko: ReconciliationUiPack = {
   reviewEmptyMsg: '확인이 필요한 내역이 없습니다.',
   reviewDateLabel: '날짜',
   reviewAmountLabel: '금액(원)',
+  reviewMemoLabel: '적요',
   reviewConfidenceLabel: '신뢰도',
   reviewLowConfidenceBadge: '신뢰도 낮음',
+  reviewDuplicateBadge: '중복 의심',
+  reviewSkipLabel: '건너뛰기',
+  reviewRemoveRowBtn: '행 삭제',
+  reviewCommitBtn: '확인한 입금만 등록',
+  reviewCommittingBtn: '등록 중…',
+  reviewCommitHint:
+    '중복 의심 행은 건너뛰기가 미리 선택되어 있습니다. 같은 날 진짜로 같은 금액이 두 번 들어왔다면 건너뛰기를 해제하세요. 삭제하거나 건너뛴 행은 등록되지 않습니다.',
+  reviewYearAmbiguousHint: '연도가 인쇄되어 있지 않습니다. 등록 전에 날짜를 채워 주세요.',
   reviewConfirmBtn: '그대로 확인',
   reviewSaveEditBtn: '수정 저장',
   reviewSavingBtn: '저장 중…',
+
+  monthPickerLabel: '조회 월',
+  monthPrevBtn: '이전 달',
+  monthNextBtn: '다음 달',
+  monthCurrentBtn: '이번 달',
+  monthlySummaryTitle: '월별 정산 요약',
+  monthlyTotalSales: '총매출',
+  monthlyTotalSalesSub: '5가지 매출 구분 전체 포함',
+  monthlyTotalDeposits: '입금누계',
+  monthlyMissingDeposits: '미입금 건수',
+  monthlyTotalDiscount: '총할인액',
+  monthlyMatchedDeposits: '대사됨',
+  monthlyUnmatchedDeposits: '미대사',
+  monthlyCountUnit: '건',
+  monthlySalesByKindTitle: '매출 구분별 소계',
+  monthlyPaperVoucherNote:
+    '종이 상품권(지류)은 은행에 입금한 날 기준으로 입금되므로 판매일 총매출에 포함되지만 입금누계와 단순 비교하지 않습니다.',
+  depositListTitle: '입금 내역',
+  depositListEmptyMsg: '선택한 월에 등록된 입금 내역이 없습니다.',
+  depositMatchedBadge: '대사 완료',
+  depositUnmatchedBadge: '미대사',
 
   reconcileBtn: '대사 실행',
   reconcileRunningBtn: '대사 중…',

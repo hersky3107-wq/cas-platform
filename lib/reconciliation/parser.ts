@@ -6,6 +6,15 @@ import {
   type ExtendedAiProviderName,
 } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import type { DepositCandidateCore } from '@/lib/reconciliation/deposit-duplicates'
+import {
+  applyYearInference,
+  extractDepositTextRows,
+  formatLineDate,
+  lowerConfidenceIfYearAmbiguous,
+  parseLineDate,
+  type LineDate,
+} from '@/lib/reconciliation/deposit-text-rows'
 import { SALE_KINDS, type SaleKind } from '@/lib/reconciliation/types'
 
 /**
@@ -23,11 +32,16 @@ import { SALE_KINDS, type SaleKind } from '@/lib/reconciliation/types'
  * regex fallback covers the "no key / model failed / non-JSON" cases at lower
  * confidence.
  *
+ * Both parseDeposit and parseDepositImage return an ARRAY of rows (multi-date
+ * internet-banking captures). Empty/unreadable → zero rows, never invented.
+ * Per-row dates stay on the printed line; year is inferred from sibling rows
+ * in the same capture, never from "today". Vision confidence is capped at
+ * VISION_CONFIDENCE_CAP (0.65). Callers must not insert until HITL confirms.
+ *
  * STAGE 2d: parseDepositImage() is a sibling for screenshots/passbook photos.
  * It uses the same runSingleAiProvider path (openai / gpt-4o, which accepts
  * vision `image_url` parts) with sessionId=null. There is no regex fallback —
- * an unreadable image is a failure, not a guess. Vision confidence is capped
- * below the HITL 0.7 threshold so the existing confirm/edit UI always flags it.
+ * an unreadable image is a failure, not a guess.
  *
  * parseSalesImage() is the sales counterpart: same vision path, plus a
  * sale_kind_guess. Kind is advisory only — HITL must confirm it. If the model
@@ -56,6 +70,15 @@ export type ParsedDeposit = {
    * TRANSFER_PARSE_SPEC.
    */
   extra: Record<string, string | null> | null
+  memo?: string | null
+}
+
+export type ParsedDepositRow = DepositCandidateCore
+
+export type ParsedDepositBatch = {
+  rows: ParsedDepositRow[]
+  raw_model_text: string | null
+  unreadable: boolean
 }
 
 /** One additional string field a ParseSpec wants extracted alongside date/amount. */
@@ -191,20 +214,27 @@ export const VOUCHER_PARSE_SPEC: ParseSpec = {
 
 function buildSystemPrompt(spec: ParseSpec, today: string): string {
   const extraFields = spec.extraFields ?? []
-  const schemaKeys = [
+  const extraKeys = extraFields.map((f) => `"${f.key}":<string>|null`)
+  const rowShape = [
     '"date":"YYYY-MM-DD"|null',
-    '"amount":<number>|null',
-    ...extraFields.map((f) => `"${f.key}":<string>|null`),
+    '"date_md":"MM-DD"|null',
+    '"amount":<number>',
+    '"memo":<string>|null',
+    ...extraKeys,
     '"confidence":<0..1>',
-  ]
+  ].join(',')
   return [
-    'You extract structured data from a short financial notification.',
+    'You extract structured data from Korean bank deposit alerts or internet-banking text.',
     spec.aiHint,
-    `Today (Asia/Seoul) is ${today}; use it to resolve a MM/DD date to a full year.`,
+    'The paste often contains MANY deposit rows on DIFFERENT dates. Extract EVERY inbound 입금/이체 row. Do NOT sum them. Do NOT keep only the first.',
+    'Ignore 잔액/balance figures, account numbers, and running totals.',
+    `Today (Asia/Seoul) is ${today}. Do NOT use that year to complete a MM/DD line.`,
+    'If a line has no year, set date to null and set date_md to "MM-DD". Year is inferred later from other rows in this same capture. If no year appears anywhere, leave date null — do not guess.',
     ...extraFields.map((f) => f.aiDescription),
     'Respond with ONLY a compact JSON object, no prose, no code fences:',
-    `{${schemaKeys.join(',')}}`,
-    'amount is a plain number in KRW with no separators. If a value is not clearly present, use null and lower the confidence.',
+    `{"rows":[{${rowShape}}],"unreadable":<boolean>}`,
+    'memo is the counterparty or 적요 (payer name, 온누리, 탐나는전, etc). amount is KRW with no separators.',
+    'If nothing readable, rows must be [] and unreadable true. Never invent a row.',
   ].join(' ')
 }
 
@@ -225,20 +255,143 @@ function computeExtra(
   return out
 }
 
-function extractJson(text: string): Record<string, unknown> | null {
+function extractJsonValue(text: string): unknown {
   const fenced = text.replace(/```(?:json)?/gi, '').trim()
-  const start = fenced.indexOf('{')
-  const end = fenced.lastIndexOf('}')
-  if (start < 0 || end <= start) return null
-  try {
-    const parsed: unknown = JSON.parse(fenced.slice(start, end + 1))
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
+  const tryParse = (slice: string): unknown => {
+    try {
+      return JSON.parse(slice)
+    } catch {
+      return null
     }
-  } catch {
-    /* fall through */
+  }
+  const startArr = fenced.indexOf('[')
+  const startObj = fenced.indexOf('{')
+  if (startArr >= 0 && (startObj < 0 || startArr < startObj)) {
+    const end = fenced.lastIndexOf(']')
+    if (end > startArr) {
+      const parsed = tryParse(fenced.slice(startArr, end + 1))
+      if (parsed != null) return parsed
+    }
+  }
+  if (startObj >= 0) {
+    const end = fenced.lastIndexOf('}')
+    if (end > startObj) {
+      const parsed = tryParse(fenced.slice(startObj, end + 1))
+      if (parsed != null) return parsed
+    }
   }
   return null
+}
+
+function extractJson(text: string): Record<string, unknown> | null {
+  const parsed = extractJsonValue(text)
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>
+  }
+  return null
+}
+
+function asMemo(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  return trimmed.slice(0, 500)
+}
+
+function coerceDepositRowObjects(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object' && !Array.isArray(row))
+  }
+  if (value && typeof value === 'object') {
+    const o = value as Record<string, unknown>
+    if (Array.isArray(o.rows)) return coerceDepositRowObjects(o.rows)
+    if ('amount' in o || 'date' in o) return [o]
+  }
+  return []
+}
+
+type RowDraft = DepositCandidateCore & { lineDate: LineDate | null }
+
+function draftFromObject(
+  o: Record<string, unknown>,
+  spec: ParseSpec | null,
+  scanText: string,
+  method: DepositCandidateCore['method']
+): RowDraft | null {
+  const amount = normalizeAmount(o.amount)
+  if (amount == null || amount <= 0) return null
+  const date = normalizeDate(o.date)
+  const mdSource =
+    typeof o.date_md === 'string' && o.date_md.trim()
+      ? o.date_md
+      : typeof o.date === 'string' && !date
+        ? o.date
+        : ''
+  const lineDate = date ? null : parseLineDate(mdSource)
+  const memo = asMemo(o.memo ?? o.counterparty ?? o.payer)
+  const extraScan = [memo, scanText].filter(Boolean).join('\n')
+  return {
+    date: date ?? (lineDate ? formatLineDate(lineDate) : null),
+    amount,
+    memo,
+    confidence: clampConfidence(o.confidence == null || o.confidence === '' ? 0.5 : o.confidence),
+    year_ambiguous: (date ?? (lineDate ? formatLineDate(lineDate) : null)) == null,
+    method,
+    extra: spec ? computeExtra(spec, extraScan, o) : null,
+    lineDate: date ? { y: Number(date.slice(0, 4)), m: Number(date.slice(5, 7)), d: Number(date.slice(8, 10)) } : lineDate,
+  }
+}
+
+function finalizeRows(drafts: RowDraft[], cap?: number): ParsedDepositRow[] {
+  const inferred = applyYearInference(drafts)
+  return inferred.map((row) => {
+    const confidence = lowerConfidenceIfYearAmbiguous(
+      cap != null ? Math.min(row.confidence, cap) : row.confidence,
+      row.year_ambiguous
+    )
+    return {
+      date: row.date,
+      amount: row.amount,
+      memo: row.memo,
+      confidence,
+      year_ambiguous: row.year_ambiguous,
+      method: row.method,
+      extra: row.extra,
+      channel_hint: row.channel_hint,
+    }
+  })
+}
+
+function regexDrafts(text: string, spec: ParseSpec): RowDraft[] {
+  return extractDepositTextRows(text).map((row) => ({
+    date: row.date,
+    amount: row.amount,
+    memo: row.memo,
+    confidence: row.year_ambiguous ? 0.4 : 0.45,
+    year_ambiguous: row.year_ambiguous,
+    method: 'regex' as const,
+    extra: computeExtra(spec, [row.memo, text].filter(Boolean).join('\n'), null),
+    lineDate: row.lineDate,
+  }))
+}
+
+function crossCheckMethod(
+  rows: ParsedDepositRow[],
+  regexRows: ParsedDepositRow[]
+): ParsedDepositRow[] {
+  if (rows.length === 0 || regexRows.length === 0) return rows
+  const regexAmounts = regexRows.map((r) => r.amount)
+  return rows.map((row) => {
+    if (row.amount == null) return row
+    const hit = regexAmounts.some((a) => a != null && Math.abs(a - row.amount!) < 0.005)
+    if (!hit) {
+      return { ...row, confidence: Math.min(row.confidence, 0.5) }
+    }
+    if (rows.length === 1 && regexRows.length === 1) {
+      return { ...row, method: 'ai+regex', confidence: Math.min(1, Math.max(row.confidence, 0.9)) }
+    }
+    return { ...row, method: row.method === 'ai' ? 'ai+regex' : row.method }
+  })
 }
 
 export async function parseDeposit(params: {
@@ -247,15 +400,16 @@ export async function parseDeposit(params: {
   spec: ParseSpec
   supabaseAccessToken?: string | null
   provider?: ExtendedAiProviderName
-}): Promise<ParsedDeposit> {
+}): Promise<ParsedDepositBatch> {
   const { userId, rawText, spec } = params
   const text = rawText.trim()
   const today = todayKst()
-  const regex = spec.regexFallback(text, today)
 
   if (!text) {
-    return { date: null, amount: null, confidence: 0, method: 'none', raw_model_text: null, extra: null }
+    return { rows: [], raw_model_text: null, unreadable: true }
   }
+
+  const regexRows = finalizeRows(regexDrafts(text, spec))
 
   let modelText: string | null = null
   try {
@@ -268,7 +422,7 @@ export async function parseDeposit(params: {
       prompt: text,
       supabaseAccessToken: params.supabaseAccessToken ?? undefined,
       temperature: 0,
-      maxCompletionTokens: 120,
+      maxCompletionTokens: 2000,
       skipLanguageInjection: true,
     })
     modelText = result.text
@@ -276,77 +430,51 @@ export async function parseDeposit(params: {
     modelText = null
   }
 
-  const parsed = modelText ? extractJson(modelText) : null
-  if (parsed) {
-    const aiDate = normalizeDate(parsed.date)
-    const aiAmount = normalizeAmount(parsed.amount)
-    let confidence = clampConfidence(parsed.confidence)
-    let method: ParsedDeposit['method'] = 'ai'
+  const parsed = modelText ? extractJsonValue(modelText) : null
+  const unreadableFlag =
+    parsed != null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>).unreadable === true
+      : false
+  const aiDrafts = coerceDepositRowObjects(parsed)
+    .map((o) => draftFromObject(o, spec, text, 'ai'))
+    .filter((row): row is RowDraft => row != null)
+  const aiRows = finalizeRows(aiDrafts)
 
-    // Cross-check with the deterministic fallback: agreement raises trust,
-    // disagreement on the amount caps it (the number is what gets reconciled).
-    if (aiAmount != null && regex.amount != null) {
-      if (Math.abs(aiAmount - regex.amount) < 0.005) {
-        confidence = Math.min(1, Math.max(confidence, 0.9))
-        method = 'ai+regex'
-      } else {
-        confidence = Math.min(confidence, 0.5)
-      }
-    }
-    if (aiAmount == null && regex.amount != null) {
-      return {
-        date: aiDate ?? regex.date,
-        amount: regex.amount,
-        confidence: Math.min(confidence || 0.4, 0.5),
-        method: 'ai+regex',
-        raw_model_text: modelText,
-        extra: computeExtra(spec, text, parsed),
-      }
-    }
-
+  if (aiRows.length > 0) {
     return {
-      date: aiDate ?? regex.date,
-      amount: aiAmount,
-      confidence: aiAmount == null ? Math.min(confidence, 0.3) : confidence,
-      method,
+      rows: crossCheckMethod(aiRows, regexRows),
       raw_model_text: modelText,
-      extra: computeExtra(spec, text, parsed),
+      unreadable: false,
     }
   }
 
-  // No usable model output — deterministic fallback only.
-  const hasAny = regex.amount != null || regex.date != null
-  return {
-    date: regex.date,
-    amount: regex.amount,
-    confidence: regex.amount != null ? 0.45 : hasAny ? 0.2 : 0,
-    method: hasAny ? 'regex' : 'none',
-    raw_model_text: modelText,
-    extra: computeExtra(spec, text, null),
+  if (regexRows.length > 0) {
+    return { rows: regexRows, raw_model_text: modelText, unreadable: false }
   }
+
+  return { rows: [], raw_model_text: modelText, unreadable: unreadableFlag || true }
 }
 
 function visionSystemPrompt(today: string): string {
   return [
-    'You extract the DEPOSIT date and amount from a photo of a Korean bank deposit-alert screenshot or a passbook page.',
-    'This is ADVISORY extraction for a human to confirm. Do NOT guess.',
-    `Today (Asia/Seoul) is ${today}; use it to resolve a MM/DD date to a full year.`,
-    'Extract the money that came IN (입금/이체). Ignore 잔액/balance, account numbers, and names.',
-    'If the image is blurry, cropped, dark, or the date/amount cannot be read with certainty, set unreadable true and both date and amount to null.',
+    'You extract EVERY inbound DEPOSIT row from a photo of a Korean internet-banking screenshot, deposit-alert, or passbook page.',
+    'This is ADVISORY extraction for a human to confirm. Do NOT guess. Do NOT sum rows. Do NOT keep only the first line.',
+    `Today (Asia/Seoul) is ${today}. Do NOT use that year to complete a MM/DD line.`,
+    'Each row keeps the date printed on that line. If a line has no year, set date null and date_md to "MM-DD".',
+    'If no year appears anywhere in the image, leave those dates null — do not invent a year.',
+    'Extract money that came IN (입금/이체). Ignore 잔액/balance, account numbers, and running totals.',
+    'memo is the counterparty or 적요 on that line (name, 온누리, 탐나는전, etc).',
+    'If the image is blurry, cropped, dark, or no deposit row can be read, set unreadable true and rows to [].',
     'Respond with ONLY a compact JSON object, no prose, no code fences:',
-    '{"date":"YYYY-MM-DD"|null,"amount":<number>|null,"confidence":<0..1>,"unreadable":<boolean>}',
-    'amount is a plain number in KRW with no separators. confidence must be conservative (vision OCR is unreliable).',
+    '{"rows":[{"date":"YYYY-MM-DD"|null,"date_md":"MM-DD"|null,"amount":<number>,"memo":<string>|null,"confidence":<0..1>}],"unreadable":<boolean>}',
+    'amount is KRW with no separators. confidence must be conservative (vision OCR is unreliable). Never invent a row.',
   ].join(' ')
 }
 
 /**
- * Vision parse of a deposit screenshot. Same ParsedDeposit shape as parseDeposit.
+ * Vision parse of a deposit screenshot into an array of rows.
  * No regex fallback — unreadable images fail rather than invent numbers.
- * Confidence is capped at VISION_CONFIDENCE_CAP so the existing 0.7 HITL
- * review always flags the row.
- *
- * Uses runSingleAiProvider (openai / gpt-4o) with a multimodal user message.
- * sessionId is null so nothing is written to generic session tables.
+ * Each row's confidence is capped at VISION_CONFIDENCE_CAP.
  */
 export async function parseDepositImage(params: {
   userId: string
@@ -354,11 +482,11 @@ export async function parseDepositImage(params: {
   mediaType: string
   supabaseAccessToken?: string | null
   provider?: ExtendedAiProviderName
-}): Promise<ParsedDeposit & { unreadable: boolean }> {
+}): Promise<ParsedDepositBatch> {
   const today = todayKst()
   const dataUrl = `data:${params.mediaType};base64,${params.imageBase64}`
   const userPrompt =
-    'Extract date and deposit amount from this image. If unreadable, say so — do not guess.'
+    'Extract EVERY deposit row in this image (date, amount, memo). Different dates stay on their own rows. If a line has no year, do not invent one. If unreadable, return zero rows — do not guess.'
 
   const visionMessage = {
     role: 'user' as const,
@@ -380,7 +508,7 @@ export async function parseDepositImage(params: {
       chatMessages: [visionMessage],
       supabaseAccessToken: params.supabaseAccessToken ?? undefined,
       temperature: 0,
-      maxCompletionTokens: 160,
+      maxCompletionTokens: 2000,
       skipLanguageInjection: true,
     })
     modelText = result.text
@@ -388,46 +516,25 @@ export async function parseDepositImage(params: {
     modelText = null
   }
 
-  const parsed = modelText ? extractJson(modelText) : null
+  const parsed = modelText ? extractJsonValue(modelText) : null
   if (!parsed) {
-    return {
-      date: null,
-      amount: null,
-      confidence: 0,
-      method: 'none',
-      raw_model_text: modelText,
-      extra: null,
-      unreadable: true,
-    }
+    return { rows: [], raw_model_text: modelText, unreadable: true }
   }
 
-  if (parsed.unreadable === true) {
-    return {
-      date: null,
-      amount: null,
-      confidence: 0,
-      method: 'ai',
-      raw_model_text: modelText,
-      extra: null,
-      unreadable: true,
-    }
+  const unreadableFlag =
+    typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>).unreadable === true
+      : false
+  const drafts = coerceDepositRowObjects(parsed)
+    .map((o) => draftFromObject(o, null, '', 'ai'))
+    .filter((row): row is RowDraft => row != null)
+  const rows = finalizeRows(drafts, VISION_CONFIDENCE_CAP)
+
+  if (rows.length === 0) {
+    return { rows: [], raw_model_text: modelText, unreadable: true }
   }
 
-  const date = normalizeDate(parsed.date)
-  const amount = normalizeAmount(parsed.amount)
-  const rawConf = parsed.confidence == null || parsed.confidence === '' ? 0.4 : parsed.confidence
-  const confidence = Math.min(clampConfidence(rawConf), VISION_CONFIDENCE_CAP)
-  const unreadable = date == null || amount == null
-
-  return {
-    date,
-    amount,
-    confidence: unreadable ? Math.min(confidence, 0.2) : confidence,
-    method: 'ai',
-    raw_model_text: modelText,
-    extra: null,
-    unreadable,
-  }
+  return { rows, raw_model_text: modelText, unreadable: unreadableFlag && rows.length === 0 }
 }
 
 function salesVisionSystemPrompt(today: string): string {

@@ -32,6 +32,9 @@ import {
 } from '../lib/reconciliation/reconcile'
 import { matchVoucherType, TRANSFER_PARSE_SPEC, VOUCHER_PARSE_SPEC } from '../lib/reconciliation/parser'
 import { APP_VOUCHER_RULE, CARD_RULE, CASH_RULE, PAPER_VOUCHER_RULE, channelExpectsDeposit, expectedDepositDate, expectedNet, TRANSFER_RULE, type ChannelRule } from '../lib/reconciliation/channel-rules'
+import { annotateDuplicates, normalizeDepositMemo } from '../lib/reconciliation/deposit-duplicates'
+import { extractDepositTextRows } from '../lib/reconciliation/deposit-text-rows'
+import { computeMonthlySummaryData, getMonthDateRange } from '../lib/reconciliation/summary'
 
 // ── Assertion helpers (matches scripts/verify-fishing-decision.ts) ───────────
 
@@ -548,6 +551,154 @@ function runVoucherParserTests(): void {
   console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
 }
 
+function runMultiRowDepositTests(): void {
+  console.log('\n══ extractDepositTextRows + HITL duplicate flags ══')
+  const totalBefore = totalCount
+  const failBefore = failCount
+
+  {
+    const text =
+      '2026.08.01 온누리 50,000원 입금\n2026.08.15 탐나는전 30,000원 입금\n08.20 홍길동 10,000원 입금'
+    const rows = extractDepositTextRows(text)
+    assert(rows.length === 3, `multi-row: 3 rows (got ${rows.length})`)
+    assert(rows[0]?.date === '2026-08-01' && rows[0]?.amount === 50000, 'multi-row: first keeps printed date')
+    assert(rows[1]?.date === '2026-08-15' && rows[1]?.amount === 30000, 'multi-row: second keeps its own date')
+    assert(rows[2]?.date === '2026-08-20' && rows[2]?.year_ambiguous === false, 'multi-row: MM/DD year inferred from siblings')
+  }
+
+  {
+    const text = '[Web발신]\n[국민은행]\n08/13 09:15\n홍길동님 50,000원 입금\n잔액 1,234,500원'
+    const rows = extractDepositTextRows(text)
+    assert(rows.length === 1, `SMS: one deposit row, 잔액 skipped (got ${rows.length})`)
+    assert(rows[0]?.amount === 50000, 'SMS: amount 50000')
+    assert(rows[0]?.date == null && rows[0]?.year_ambiguous === true, 'SMS: no year in capture → date null, not guessed')
+  }
+
+  {
+    const existing = [
+      { id: 'd1', deposit_date: '2026-08-01', actual_amount: 50000, memo: '온누리' },
+    ]
+    const cores = [
+      {
+        date: '2026-08-01',
+        amount: 50000,
+        memo: '온누리',
+        confidence: 0.6,
+        year_ambiguous: false,
+        method: 'ai' as const,
+        extra: null,
+      },
+      {
+        date: '2026-08-01',
+        amount: 50000,
+        memo: '탐나는전',
+        confidence: 0.6,
+        year_ambiguous: false,
+        method: 'ai' as const,
+        extra: null,
+      },
+      {
+        date: '2026-08-02',
+        amount: 50000,
+        memo: '온누리',
+        confidence: 0.6,
+        year_ambiguous: false,
+        method: 'ai' as const,
+        extra: null,
+      },
+    ]
+    const flagged = annotateDuplicates(cores, existing)
+    assert(flagged.length === 3, 'duplicate annotator never drops a row')
+    assert(flagged[0]?.duplicate_suspect === true && flagged[0]?.matching_deposit_ids[0] === 'd1', 'same date+amount+memo → 중복 의심')
+    assert(flagged[1]?.duplicate_suspect === false, 'same date+amount different memo → not a duplicate')
+    assert(flagged[2]?.duplicate_suspect === false, 'different date → not a duplicate')
+    assert(normalizeDepositMemo('  온누리   상품권  ') === '온누리 상품권', 'memo normalized')
+  }
+
+  const total = totalCount - totalBefore
+  const pass = total - (failCount - failBefore)
+  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
+}
+
+function runMonthlySummaryTests(): void {
+  console.log('\n── Monthly summary & date range tests ────────────────────────')
+  const totalBefore = totalCount
+  const failBefore = failCount
+
+  // Date range tests
+  const aug2026 = getMonthDateRange('2026-08')
+  assert(aug2026?.from === '2026-08-01' && aug2026?.to === '2026-08-31', '2026-08 range is 2026-08-01 ~ 2026-08-31')
+
+  const feb2026 = getMonthDateRange('2026-02')
+  assert(feb2026?.from === '2026-02-01' && feb2026?.to === '2026-02-28', '2026-02 non-leap range is 2026-02-01 ~ 2026-02-28')
+
+  const feb2024 = getMonthDateRange('2024-02')
+  assert(feb2024?.from === '2024-02-01' && feb2024?.to === '2024-02-29', '2024-02 leap year range is 2024-02-01 ~ 2024-02-29')
+
+  const invalid = getMonthDateRange('2026-13')
+  assert(invalid === null, 'invalid month returns null')
+
+  // Monthly summary computation tests
+  const sales = [
+    { id: 's1', sale_date: '2026-08-05', gross_amount: 100000, discount_amount: 5000, sale_kind: 'card' },
+    { id: 's2', sale_date: '2026-08-10', gross_amount: 50000, discount_amount: null, sale_kind: 'paper_voucher' },
+    { id: 's3', sale_date: '2026-08-15', gross_amount: 30000, discount_amount: 2000, sale_kind: 'cash' },
+    { id: 's4', sale_date: '2026-08-20', gross_amount: 40000, discount_amount: null, sale_kind: 'app_voucher' },
+    { id: 's5', sale_date: '2026-09-01', gross_amount: 999999, discount_amount: null, sale_kind: 'card' }, // Out of month
+  ]
+
+  const deposits = [
+    { id: 'd1', deposit_date: '2026-08-07', actual_amount: 97500, memo: '카드정산' }, // Matched
+    { id: 'd2', deposit_date: '2026-08-22', actual_amount: 40000, memo: '온누리앱' }, // Matched
+    { id: 'd3', deposit_date: '2026-08-25', actual_amount: 12000, memo: '미대사입금' }, // Unmatched
+    { id: 'd4', deposit_date: '2026-09-02', actual_amount: 888888, memo: '다음달' }, // Out of month
+  ]
+
+  const reconciliations = [
+    { id: 'r1', status: 'matched' },
+    { id: 'r2', status: 'amount_mismatch' },
+    { id: 'r3', status: 'missing_deposit' },
+  ]
+
+  const matches = [
+    { reconciliation_id: 'r1', sales_record_id: 's1', deposit_record_id: 'd1' },
+    { reconciliation_id: 'r2', sales_record_id: 's4', deposit_record_id: 'd2' },
+    { reconciliation_id: 'r3', sales_record_id: 's2', deposit_record_id: null }, // missing deposit for paper_voucher (if any)
+  ]
+
+  const summary = computeMonthlySummaryData({
+    month: '2026-08',
+    from: '2026-08-01',
+    to: '2026-08-31',
+    sales,
+    deposits,
+    reconciliations,
+    matches,
+  })
+
+  assert(summary.total_sales === 220000, `total_sales is sum of all in-month sales (100k+50k+30k+40k = 220000, got ${summary.total_sales})`)
+  assert(summary.total_discount === 7000, `total_discount is sum of discounts in-month (5k+2k = 7000, got ${summary.total_discount})`)
+  assert(summary.sales_by_kind.card.amount === 100000 && summary.sales_by_kind.card.count === 1, 'card sales breakdown')
+  assert(summary.sales_by_kind.paper_voucher.amount === 50000 && summary.sales_by_kind.paper_voucher.count === 1, 'paper_voucher sales breakdown')
+  assert(summary.sales_by_kind.cash.amount === 30000 && summary.sales_by_kind.cash.count === 1, 'cash sales breakdown')
+  assert(summary.sales_by_kind.app_voucher.amount === 40000 && summary.sales_by_kind.app_voucher.count === 1, 'app_voucher sales breakdown')
+
+  assert(summary.deposits.total_amount === 149500, `total deposits is 97500+40000+12000 = 149500, got ${summary.deposits.total_amount}`)
+  assert(summary.deposits.matched_amount === 137500, `matched deposits is 97500+40000 = 137500, got ${summary.deposits.matched_amount}`)
+  assert(summary.deposits.unmatched_amount === 12000, `unmatched deposits is 12000, got ${summary.deposits.unmatched_amount}`)
+  assert(summary.deposits.matched_count === 2 && summary.deposits.unmatched_count === 1, 'deposit matched/unmatched counts')
+
+  assert(summary.counts.matched === 1, 'counts.matched === 1')
+  assert(summary.counts.amount_mismatch === 1, 'counts.amount_mismatch === 1')
+  assert(summary.counts.missing_deposit === 1, 'counts.missing_deposit === 1')
+  assert(summary.counts.paper_voucher_pending === 1, 'paper_voucher_pending === 1')
+  assert(summary.paper_voucher_pending_amount === 50000, 'paper_voucher_pending_amount === 50000')
+
+  const total = totalCount - totalBefore
+  const pass = total - (failCount - failBefore)
+  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────
 
 function main(): void {
@@ -557,6 +708,8 @@ function main(): void {
   runCashSkipTests()
   runParserTests()
   runVoucherParserTests()
+  runMultiRowDepositTests()
+  runMonthlySummaryTests()
 
   if (failCount > 0) {
     console.error(`\n❌ ${failCount} assertion(s) failed`)

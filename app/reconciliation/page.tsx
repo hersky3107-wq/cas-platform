@@ -17,6 +17,11 @@ import { supabase } from '@/lib/db/supabase'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
 import { prepareImageForUpload } from '@/lib/reconciliation/prepare-image-upload'
 import {
+  annotateDuplicates,
+  type DepositCandidate,
+  type DepositFingerprint,
+} from '@/lib/reconciliation/deposit-duplicates'
+import {
   getReconciliationUiPack,
   normalizeReconciliationLocale,
   type ReconciliationUiPack,
@@ -26,14 +31,97 @@ import {
   type AdvisoryConfidence,
   type DepositRecord,
   type DiscrepancyAdvisory,
+  type MonthlyReconciliationSummary,
   type PaymentChannel,
   type ReconciliationWithMatches,
   type SaleKind,
   type SalesRecord,
 } from '@/lib/reconciliation/types'
+import { getMonthDateRange } from '@/lib/reconciliation/summary'
 
 const TRANSFER_CHANNEL_NAME = 'Transfer'
 const LOW_CONFIDENCE_THRESHOLD = 0.7
+
+function currentMonthString(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}`
+}
+
+function shiftMonth(monthStr: string, delta: number): string {
+  const parts = monthStr.split('-').map(Number)
+  const y = parts[0]
+  const m = parts[1]
+  if (!y || !m) return currentMonthString()
+  const date = new Date(Date.UTC(y, m - 1 + delta, 1))
+  const nextY = date.getUTCFullYear()
+  const nextM = String(date.getUTCMonth() + 1).padStart(2, '0')
+  return `${nextY}-${nextM}`
+}
+
+type DepositDraftRow = DepositCandidate & {
+  key: string
+  dateInput: string
+  amountInput: string
+  memoInput: string
+  skip: boolean
+  originalDate: string | null
+  originalAmount: number | null
+  originalMemo: string | null
+}
+
+function candidateAmount(raw: string): number | null {
+  if (!raw.trim()) return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+function toDraftRows(rows: DepositCandidate[]): DepositDraftRow[] {
+  return rows.map((row, index) => ({
+    ...row,
+    key: `${row.date ?? 'na'}-${row.amount ?? index}-${index}-${row.memo ?? ''}`,
+    dateInput: row.date ?? '',
+    amountInput: row.amount != null ? String(row.amount) : '',
+    memoInput: row.memo ?? '',
+    skip: row.duplicate_suspect,
+    originalDate: row.date,
+    originalAmount: row.amount,
+    originalMemo: row.memo,
+  }))
+}
+
+function reflagDrafts(rows: DepositDraftRow[], fingerprints: DepositFingerprint[]): DepositDraftRow[] {
+  const annotated = annotateDuplicates(
+    rows.map((row) => ({
+      date: row.dateInput.trim() || null,
+      amount: candidateAmount(row.amountInput),
+      memo: row.memoInput.trim() || null,
+      confidence: row.confidence,
+      year_ambiguous: row.year_ambiguous,
+      method: row.method,
+      extra: row.extra,
+      channel_hint: row.channel_hint,
+    })),
+    fingerprints
+  )
+  return rows.map((row, i) => {
+    const next = annotated[i]!
+    const wasSuspect = row.duplicate_suspect
+    let skip = row.skip
+    if (next.duplicate_suspect && !wasSuspect) skip = true
+    if (!next.duplicate_suspect && wasSuspect) skip = false
+    return {
+      ...row,
+      date: next.date,
+      amount: next.amount,
+      memo: next.memo,
+      duplicate_suspect: next.duplicate_suspect,
+      matching_deposit_ids: next.matching_deposit_ids,
+      skip,
+    }
+  })
+}
 
 type ReconcileSummary = {
   created: number
@@ -184,6 +272,9 @@ const BADGE_EXEMPT =
 const BADGE_PENDING =
   'inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 ' +
   'text-[11px] font-bold text-slate-700'
+const BADGE_DUP =
+  'inline-flex items-center rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 ' +
+  'text-[11px] font-bold text-violet-800'
 
 const STATUS_TONE: Record<string, { badge: string; border: string }> = {
   matched: {
@@ -364,7 +455,11 @@ export default function ReconciliationPage() {
   const [depositImageError, setDepositImageError] = useState<string | null>(null)
   const [depositImageName, setDepositImageName] = useState('')
   const [parsingDeposit, setParsingDeposit] = useState(false)
-  const [lastParsed, setLastParsed] = useState<{ confidence: number } | null>(null)
+  const [lastParsed, setLastParsed] = useState<{ rowCount: number } | null>(null)
+  const [draftDocumentId, setDraftDocumentId] = useState<string | null>(null)
+  const [draftFingerprints, setDraftFingerprints] = useState<DepositFingerprint[]>([])
+  const [draftRows, setDraftRows] = useState<DepositDraftRow[]>([])
+  const [committingDraft, setCommittingDraft] = useState(false)
   const [spreadsheetKind, setSpreadsheetKind] = useState<'deposits' | 'sales'>('deposits')
   const [spreadsheetError, setSpreadsheetError] = useState<string | null>(null)
   const [parsingSpreadsheet, setParsingSpreadsheet] = useState(false)
@@ -385,6 +480,11 @@ export default function ReconciliationPage() {
   const [reconciling, setReconciling] = useState(false)
   const [lastSummary, setLastSummary] = useState<ReconcileSummary | null>(null)
 
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthString)
+  const [summary, setSummary] = useState<MonthlyReconciliationSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [depositListError, setDepositListError] = useState<string | null>(null)
+
   const [error, setError] = useState<string | null>(null)
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [reconcileError, setReconcileError] = useState<string | null>(null)
@@ -393,16 +493,33 @@ export default function ReconciliationPage() {
     setPack(getReconciliationUiPack(normalizeReconciliationLocale(navigator.language)))
   }, [])
 
-  const refreshLists = useCallback(async () => {
-    const [salesRes, depositsRes, resultsRes] = await Promise.all([
-      apiJson<SalesRecord[]>('/api/reconciliation/sales'),
-      apiJson<DepositRecord[]>('/api/reconciliation/deposits'),
-      apiJson<ReconciliationWithMatches[]>('/api/reconciliation/results'),
-    ])
-    setSales(salesRes)
-    setDeposits(depositsRes)
-    setResults(resultsRes)
-  }, [])
+  const refreshLists = useCallback(
+    async (monthToFetch?: string) => {
+      const m = monthToFetch ?? selectedMonth
+      const range = getMonthDateRange(m)
+      const fromParam = range ? `?from=${range.from}&to=${range.to}` : ''
+      setSummaryLoading(true)
+      setDepositListError(null)
+      try {
+        const [salesRes, depositsRes, resultsRes, summaryRes] = await Promise.all([
+          apiJson<SalesRecord[]>(`/api/reconciliation/sales${fromParam}`),
+          apiJson<DepositRecord[]>(`/api/reconciliation/deposits${fromParam}`),
+          apiJson<ReconciliationWithMatches[]>('/api/reconciliation/results'),
+          apiJson<MonthlyReconciliationSummary>(`/api/reconciliation/summary?month=${m}`),
+        ])
+        setSales(salesRes)
+        setDeposits(depositsRes)
+        setResults(resultsRes)
+        setSummary(summaryRes)
+      } catch (err) {
+        setDepositListError(err instanceof Error ? err.message : String(err))
+        throw err
+      } finally {
+        setSummaryLoading(false)
+      }
+    },
+    [selectedMonth]
+  )
 
   const ensureTransferChannel = useCallback(async () => {
     setSettingUpChannel(true)
@@ -452,8 +569,8 @@ export default function ReconciliationPage() {
   useEffect(() => {
     if (!userId) return
     void ensureTransferChannel()
-    void refreshLists().catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [userId, ensureTransferChannel, refreshLists])
+    void refreshLists(selectedMonth).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }, [userId, selectedMonth, ensureTransferChannel, refreshLists])
 
   const handleAddSale = useCallback(async () => {
     setSaleError(null)
@@ -512,13 +629,31 @@ export default function ReconciliationPage() {
     [refreshLists]
   )
 
+  const applyParsedDepositRows = useCallback(
+    (result: {
+      document_id: string
+      rows: DepositCandidate[]
+      fingerprints?: DepositFingerprint[]
+    }) => {
+      setDraftDocumentId(result.document_id)
+      setDraftFingerprints(result.fingerprints ?? [])
+      setDraftRows(toDraftRows(result.rows ?? []))
+      setLastParsed({ rowCount: result.rows?.length ?? 0 })
+    },
+    []
+  )
+
   const handleParseDeposit = useCallback(async () => {
     if (!depositText.trim()) return
     setDepositError(null)
     setParsingDeposit(true)
     setLastParsed(null)
     try {
-      const result = await apiJson<{ parsed: { confidence: number } }>('/api/reconciliation/parse', {
+      const result = await apiJson<{
+        document_id: string
+        rows: DepositCandidate[]
+        fingerprints: DepositFingerprint[]
+      }>('/api/reconciliation/parse', {
         method: 'POST',
         json: {
           raw_text: depositText,
@@ -526,15 +661,14 @@ export default function ReconciliationPage() {
           channel_hint: channel?.id,
         },
       })
-      setLastParsed({ confidence: result.parsed.confidence })
+      applyParsedDepositRows(result)
       setDepositText('')
-      await refreshLists()
     } catch (e) {
       setDepositError(e instanceof Error ? e.message : String(e))
     } finally {
       setParsingDeposit(false)
     }
-  }, [depositText, channel, refreshLists])
+  }, [depositText, channel, applyParsedDepositRows])
 
   const handleParseDepositImage = useCallback(
     async (file: File | undefined) => {
@@ -544,28 +678,94 @@ export default function ReconciliationPage() {
       setLastParsed(null)
       try {
         const prepared = await prepareImageForUpload(file)
-        const result = await apiJson<{ parsed: { confidence: number } }>(
-          '/api/reconciliation/parse-deposit-image',
-          {
-            method: 'POST',
-            json: {
-              image: prepared.dataUrl,
-              media_type: prepared.mediaType,
-              channel_hint: channel?.id,
-            },
-          }
-        )
-        setLastParsed({ confidence: result.parsed.confidence })
+        const result = await apiJson<{
+          document_id: string
+          rows: DepositCandidate[]
+          fingerprints: DepositFingerprint[]
+        }>('/api/reconciliation/parse-deposit-image', {
+          method: 'POST',
+          json: {
+            image: prepared.dataUrl,
+            media_type: prepared.mediaType,
+            channel_hint: channel?.id,
+          },
+        })
+        applyParsedDepositRows(result)
         setDepositImageName('')
-        await refreshLists()
       } catch (e) {
         setDepositImageError(e instanceof Error ? e.message : String(e))
       } finally {
         setParsingDeposit(false)
       }
     },
-    [channel, refreshLists]
+    [channel, applyParsedDepositRows]
   )
+
+  const patchDraft = useCallback(
+    (key: string, patch: Partial<Pick<DepositDraftRow, 'dateInput' | 'amountInput' | 'memoInput' | 'skip'>>) => {
+      setDraftRows((prev) =>
+        reflagDrafts(
+          prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+          draftFingerprints
+        )
+      )
+    },
+    [draftFingerprints]
+  )
+
+  const removeDraftRow = useCallback((key: string) => {
+    setDraftRows((prev) => prev.filter((row) => row.key !== key))
+  }, [])
+
+  const handleCommitDrafts = useCallback(async () => {
+    const toInsert = draftRows.filter((row) => !row.skip)
+    if (toInsert.length === 0) {
+      setDraftRows([])
+      setDraftDocumentId(null)
+      return
+    }
+    setReviewError(null)
+    setCommittingDraft(true)
+    try {
+      for (const row of toInsert) {
+        if (!row.dateInput.trim() || candidateAmount(row.amountInput) == null) {
+          throw new Error(pack.reviewYearAmbiguousHint)
+        }
+      }
+      await apiJson('/api/reconciliation/deposits/commit', {
+        method: 'POST',
+        json: {
+          document_id: draftDocumentId,
+          rows: toInsert.map((row) => {
+            const amount = candidateAmount(row.amountInput)
+            const date = row.dateInput.trim()
+            const memo = row.memoInput.trim() || null
+            const edited =
+              date !== (row.originalDate ?? '') ||
+              amount !== row.originalAmount ||
+              memo !== (row.originalMemo ?? null)
+            return {
+              deposit_date: date,
+              actual_amount: amount,
+              memo,
+              confidence: row.confidence,
+              confirm_status: edited ? 'edited' : 'confirmed',
+              channel_hint: row.channel_hint,
+            }
+          }),
+        },
+      })
+      setDraftRows([])
+      setDraftDocumentId(null)
+      setDraftFingerprints([])
+      setLastParsed(null)
+      await refreshLists()
+    } catch (e) {
+      setReviewError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setCommittingDraft(false)
+    }
+  }, [draftRows, draftDocumentId, pack.reviewYearAmbiguousHint, refreshLists])
 
   const handleParseSalesImage = useCallback(
     async (file: File | undefined) => {
@@ -816,7 +1016,7 @@ export default function ReconciliationPage() {
 
   const pendingDeposits = deposits.filter((d) => d.confirm_status === 'pending')
   const pendingSales = sales.filter((s) => s.confirm_status === 'pending')
-  const pendingCount = pendingDeposits.length + pendingSales.length
+  const pendingCount = pendingDeposits.length + pendingSales.length + draftRows.length
   const cashSales = sales.filter((s) => s.sale_kind === 'cash')
   const paperVoucherSales = sales.filter((s) => s.sale_kind === 'paper_voucher')
 
@@ -840,6 +1040,201 @@ export default function ReconciliationPage() {
           </div>
         ) : (
           <>
+            {/* ── Monthly totals & month picker ──────────────────────────── */}
+            <section className={CARD}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">{pack.monthlySummaryTitle}</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {summary ? `${summary.from} ~ ${summary.to}` : selectedMonth}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <button
+                    type="button"
+                    className={BTN_GHOST}
+                    onClick={() => setSelectedMonth((m) => shiftMonth(m, -1))}
+                    title={pack.monthPrevBtn}
+                  >
+                    ←
+                  </button>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => {
+                      if (e.target.value) setSelectedMonth(e.target.value)
+                    }}
+                    className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+                  <button
+                    type="button"
+                    className={BTN_GHOST}
+                    onClick={() => setSelectedMonth((m) => shiftMonth(m, 1))}
+                    title={pack.monthNextBtn}
+                  >
+                    →
+                  </button>
+                  <button
+                    type="button"
+                    className={BTN_GHOST}
+                    onClick={() => setSelectedMonth(currentMonthString())}
+                  >
+                    {pack.monthCurrentBtn}
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Stat Tiles (4 tiles) ────────────────────────────── */}
+              <div
+                className={`mt-4 grid grid-cols-2 gap-3 transition-opacity duration-150 sm:grid-cols-4 sm:gap-4 ${
+                  summaryLoading ? 'opacity-60' : 'opacity-100'
+                }`}
+              >
+                {/* 1. 총매출 */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 sm:p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {pack.monthlyTotalSales}
+                  </p>
+                  <p className="mt-1.5 text-lg font-bold tracking-tight text-slate-900 sm:text-2xl">
+                    {summary ? `₩${summary.total_sales.toLocaleString()}` : '—'}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">{pack.monthlyTotalSalesSub}</p>
+                </div>
+
+                {/* 2. 입금누계 */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 sm:p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {pack.monthlyTotalDeposits}
+                  </p>
+                  <p className="mt-1.5 text-lg font-bold tracking-tight text-slate-900 sm:text-2xl">
+                    {summary ? `₩${summary.deposits.total_amount.toLocaleString()}` : '—'}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {summary
+                      ? `${pack.monthlyMatchedDeposits} ₩${summary.deposits.matched_amount.toLocaleString()} / ${pack.monthlyUnmatchedDeposits} ₩${summary.deposits.unmatched_amount.toLocaleString()}`
+                      : '—'}
+                  </p>
+                </div>
+
+                {/* 3. 미입금 건수 */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 sm:p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {pack.monthlyMissingDeposits}
+                  </p>
+                  <p className="mt-1.5 text-lg font-bold tracking-tight text-amber-700 sm:text-2xl">
+                    {summary
+                      ? `${summary.counts.missing_deposit} ${pack.monthlyCountUnit}`
+                      : '—'}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {summary
+                      ? `${pack.statusMatched} ${summary.counts.matched} / ${pack.statusAmountMismatch} ${summary.counts.amount_mismatch}`
+                      : '—'}
+                  </p>
+                </div>
+
+                {/* 4. 총할인액 */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 sm:p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {pack.monthlyTotalDiscount}
+                  </p>
+                  <p className="mt-1.5 text-lg font-bold tracking-tight text-slate-900 sm:text-2xl">
+                    {summary ? `₩${summary.total_discount.toLocaleString()}` : '—'}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">{pack.saleDiscountHint}</p>
+                </div>
+              </div>
+
+              {/* ── 매출 구분별 소계 ──────────────────────────────────── */}
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {pack.monthlySalesByKindTitle}
+                </h3>
+                <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-5">
+                  {/* Card */}
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                    <span className="font-medium text-slate-700">{pack.saleKindCard}</span>
+                    <span className="font-semibold tabular-nums text-slate-900">
+                      {summary ? `₩${summary.sales_by_kind.card.amount.toLocaleString()}` : '0'}
+                      <span className="ml-1 text-[11px] font-normal text-slate-500">
+                        ({summary?.sales_by_kind.card.count ?? 0}
+                        {pack.monthlyCountUnit})
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* App Voucher */}
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                    <span className="font-medium text-slate-700">{pack.saleKindAppVoucher}</span>
+                    <span className="font-semibold tabular-nums text-slate-900">
+                      {summary
+                        ? `₩${summary.sales_by_kind.app_voucher.amount.toLocaleString()}`
+                        : '0'}
+                      <span className="ml-1 text-[11px] font-normal text-slate-500">
+                        ({summary?.sales_by_kind.app_voucher.count ?? 0}
+                        {pack.monthlyCountUnit})
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* Paper Voucher - with 은행 입금 대기 badge */}
+                  <div className="flex flex-col gap-1 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-slate-700">
+                        {pack.saleKindPaperVoucher}
+                      </span>
+                      <span className={BADGE_PENDING}>
+                        {pack.salePaperVoucherPendingBadge}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-end">
+                      <span className="font-semibold tabular-nums text-slate-900">
+                        {summary
+                          ? `₩${summary.sales_by_kind.paper_voucher.amount.toLocaleString()}`
+                          : '0'}
+                        <span className="ml-1 text-[11px] font-normal text-slate-500">
+                          ({summary?.sales_by_kind.paper_voucher.count ?? 0}
+                          {pack.monthlyCountUnit})
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Cash */}
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                    <span className="font-medium text-slate-700">{pack.saleKindCash}</span>
+                    <span className="font-semibold tabular-nums text-slate-900">
+                      {summary ? `₩${summary.sales_by_kind.cash.amount.toLocaleString()}` : '0'}
+                      <span className="ml-1 text-[11px] font-normal text-slate-500">
+                        ({summary?.sales_by_kind.cash.count ?? 0}
+                        {pack.monthlyCountUnit})
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* Manual Total */}
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                    <span className="font-medium text-slate-700">
+                      {pack.saleKindManualTotal}
+                    </span>
+                    <span className="font-semibold tabular-nums text-slate-900">
+                      {summary
+                        ? `₩${summary.sales_by_kind.manual_total.amount.toLocaleString()}`
+                        : '0'}
+                      <span className="ml-1 text-[11px] font-normal text-slate-500">
+                        ({summary?.sales_by_kind.manual_total.count ?? 0}
+                        {pack.monthlyCountUnit})
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                  ℹ️ {pack.monthlyPaperVoucherNote}
+                </p>
+              </div>
+            </section>
+
             {/* ── 1. Sales entry ─────────────────────────────────────────── */}
             <section className={CARD}>
               <h2 className="text-base font-bold text-slate-900">{pack.saleSectionTitle}</h2>
@@ -974,7 +1369,9 @@ export default function ReconciliationPage() {
               </div>
 
               <div className="mt-5 border-t border-slate-100 pt-4">
-                <h3 className="text-sm font-bold text-slate-800">{pack.saleListTitle}</h3>
+                <h3 className="text-sm font-bold text-slate-800">
+                  {selectedMonth} {pack.saleListTitle} ({sales.length})
+                </h3>
                 {saleListError ? (
                   <p className={ERROR_TEXT}>
                     {pack.errorPrefix}: {saleListError}
@@ -1147,8 +1544,9 @@ export default function ReconciliationPage() {
               ) : null}
               {lastParsed ? (
                 <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  <span className="font-semibold">{pack.depositParsedMsg}</span> —{' '}
-                  {pack.reviewConfidenceLabel}: {lastParsed.confidence}
+                  <span className="font-semibold">{pack.depositParsedMsg}</span> ({lastParsed.rowCount})
+                  {' — '}
+                  {pack.depositParsedRowsMsg}
                 </p>
               ) : null}
 
@@ -1186,6 +1584,50 @@ export default function ReconciliationPage() {
                   </p>
                 ) : null}
               </div>
+
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <h3 className="text-sm font-bold text-slate-800">
+                  {selectedMonth} {pack.depositListTitle} ({deposits.length})
+                </h3>
+                {depositListError ? (
+                  <p className={ERROR_TEXT}>
+                    {pack.errorPrefix}: {depositListError}
+                  </p>
+                ) : null}
+                {deposits.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-500">{pack.depositListEmptyMsg}</p>
+                ) : (
+                  <ul className="mt-2 divide-y divide-slate-100">
+                    {deposits.map((d) => (
+                      <li
+                        key={d.id}
+                        className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 text-sm text-slate-700"
+                      >
+                        <span className="font-medium text-slate-900">{d.deposit_date}</span>
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          {d.actual_amount.toLocaleString()}
+                        </span>
+                        {d.memo ? (
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                            {d.memo}
+                          </span>
+                        ) : null}
+                        <span className="ml-auto flex items-center gap-2">
+                          <span
+                            className={
+                              d.confirm_status === 'confirmed' ? BADGE_EXEMPT : BADGE_PENDING
+                            }
+                          >
+                            {d.confirm_status === 'confirmed'
+                              ? pack.depositMatchedBadge
+                              : pack.depositUnmatchedBadge}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </section>
 
             {/* ── 3. Human review ────────────────────────────────────────── */}
@@ -1202,7 +1644,108 @@ export default function ReconciliationPage() {
                   {pack.errorPrefix}: {reviewError}
                 </p>
               ) : null}
-              {pendingDeposits.length === 0 && pendingSales.length === 0 ? (
+              {draftRows.length > 0 ? (
+                <div className="mt-4">
+                  <p className={HINT}>{pack.reviewCommitHint}</p>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full min-w-[40rem] border-collapse text-sm">
+                      <thead>
+                        <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          <th className="px-2 py-2">{pack.reviewSkipLabel}</th>
+                          <th className="px-2 py-2">{pack.reviewDateLabel}</th>
+                          <th className="px-2 py-2">{pack.reviewAmountLabel}</th>
+                          <th className="px-2 py-2">{pack.reviewMemoLabel}</th>
+                          <th className="px-2 py-2">{pack.reviewConfidenceLabel}</th>
+                          <th className="px-2 py-2" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {draftRows.map((row) => {
+                          const low =
+                            row.confidence < LOW_CONFIDENCE_THRESHOLD || row.year_ambiguous
+                          return (
+                            <tr
+                              key={row.key}
+                              className={`border-t border-slate-100 ${
+                                row.skip ? 'bg-slate-50 text-slate-500' : 'bg-white'
+                              }`}
+                            >
+                              <td className="px-2 py-2 align-top">
+                                <input
+                                  type="checkbox"
+                                  checked={row.skip}
+                                  onChange={(e) => patchDraft(row.key, { skip: e.target.checked })}
+                                  aria-label={pack.reviewSkipLabel}
+                                />
+                              </td>
+                              <td className="px-2 py-2 align-top">
+                                <input
+                                  type="date"
+                                  value={row.dateInput}
+                                  onChange={(e) => patchDraft(row.key, { dateInput: e.target.value })}
+                                  className={INPUT}
+                                />
+                                {row.year_ambiguous ? (
+                                  <p className="mt-1 text-[11px] text-amber-800">
+                                    {pack.reviewYearAmbiguousHint}
+                                  </p>
+                                ) : null}
+                              </td>
+                              <td className="px-2 py-2 align-top">
+                                <input
+                                  type="number"
+                                  value={row.amountInput}
+                                  onChange={(e) =>
+                                    patchDraft(row.key, { amountInput: e.target.value })
+                                  }
+                                  className={INPUT}
+                                />
+                              </td>
+                              <td className="px-2 py-2 align-top">
+                                <input
+                                  type="text"
+                                  value={row.memoInput}
+                                  onChange={(e) => patchDraft(row.key, { memoInput: e.target.value })}
+                                  className={INPUT}
+                                />
+                              </td>
+                              <td className="px-2 py-2 align-top">
+                                <div className="flex flex-col gap-1">
+                                  <span className="tabular-nums text-slate-700">{row.confidence}</span>
+                                  {low ? (
+                                    <span className={BADGE_WARN}>{pack.reviewLowConfidenceBadge}</span>
+                                  ) : null}
+                                  {row.duplicate_suspect ? (
+                                    <span className={BADGE_DUP}>{pack.reviewDuplicateBadge}</span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td className="px-2 py-2 align-top">
+                                <button
+                                  type="button"
+                                  className={BTN_GHOST}
+                                  onClick={() => removeDraftRow(row.key)}
+                                >
+                                  {pack.reviewRemoveRowBtn}
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button
+                    type="button"
+                    className={`${BTN_PRIMARY} mt-3`}
+                    disabled={committingDraft}
+                    onClick={() => void handleCommitDrafts()}
+                  >
+                    {committingDraft ? pack.reviewCommittingBtn : pack.reviewCommitBtn}
+                  </button>
+                </div>
+              ) : null}
+              {pendingDeposits.length === 0 && pendingSales.length === 0 && draftRows.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">{pack.reviewEmptyMsg}</p>
               ) : (
                 <div className="mt-4 space-y-3">
