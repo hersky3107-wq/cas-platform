@@ -41,7 +41,7 @@ export const SINGLE_SYSTEMS: readonly SingleSystemCopy[] = [
     shortName: 'PRISM',
     symbol: '◆',
     explanation: [
-      '생년월일과 MBTI, 세 가지 색 선택으로 지금의 상태를 읽습니다.',
+      'MBTI와 세 가지 색, 태어난 요일과 계절의 기운으로 지금의 상태를 읽습니다.',
       '충동·필요·정체성의 색이 겹치지 않게 골라 성향의 결을 봅니다.',
       '색의 조합과 성격 유형이 만드는 긴장과 조화를 함께 살핍니다.',
       '색을 고르지 않으면 이 체계는 결과를 내지 않습니다.',
