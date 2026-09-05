@@ -1,7 +1,7 @@
 /**
  * Route-facing factory. Swapping stub ↔ live is this one line plus the
- * `ORACLE_AI_MODE=live|stub`. Missing the flag: tests stay on stub; `npm run
- * dev` and production default to live so canned text is never billed as a reading.
+ * `ORACLE_AI_MODE=live|stub`. Missing the flag is stub — tests and local
+ * `npm run dev` never spend tokens unless the owner sets live.
  *
  * The live adapter is dynamically imported only when mode is live AND a
  * layer-1 reading actually runs. Tests that stay on stub never construct

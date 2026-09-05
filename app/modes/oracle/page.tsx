@@ -19,16 +19,20 @@ const FAMILY_GROUPS: ReadonlyArray<{
   label: string;
   systems: readonly SingleSystemId[];
 }> = [
-  { id: "east", label: "동양역법", systems: ["saju", "ziwei", "ninestar", "sukuyou"] },
-  { id: "west", label: "서양북구", systems: ["astro", "tarot", "runes", "iching", "numerology"] },
-  { id: "self", label: "자체현대", systems: ["prism", "name", "tzolkin"] },
+  {
+    id: "birth",
+    label: "생년월일로 보는 것",
+    systems: ["saju", "ziwei", "ninestar", "sukuyou", "astro", "numerology", "tzolkin"],
+  },
+  { id: "draw", label: "뽑아서 보는 것", systems: ["tarot", "runes", "iching"] },
+  { id: "self", label: "이름·성향으로 보는 것", systems: ["name", "prism"] },
 ];
 
 const singlePrices = ORACLE_SESSION_CREDIT_PRICES.single;
 const priceRange = ORACLE_SINGLE_READER_COUNTS.map((n) => singlePrices[n] ?? 0).filter(
   (n) => n > 0,
 );
-const priceLabel = `${Math.min(...priceRange)} / ${Math.max(...priceRange)} 크레딧`;
+const priceLabel = `${Math.min(...priceRange)}크레딧부터`;
 
 function systemNeedsBirth(system: SingleSystemId): boolean {
   return requiredProfileFields(system).some((field) =>
@@ -48,6 +52,9 @@ function SystemCard({ system }: { system: (typeof SINGLE_SYSTEMS)[number] }) {
         className="h-10 w-10 text-cyan-100/85 transition group-hover:text-cyan-50"
       />
       <span className="mt-3 text-sm font-semibold text-white">{system.shortName}</span>
+      <span className="mt-1.5 w-full text-[11px] leading-snug text-slate-300">
+        {system.explanation[0]}
+      </span>
       <span className="mt-1 text-[11px] leading-snug text-slate-400">
         {needsBirth ? "생년월일 필요" : "생년월일 불필요"}
       </span>
@@ -196,7 +203,7 @@ export default function OracleLandingPage() {
           <div className="mt-6 space-y-8">
             {FAMILY_GROUPS.map((family) => (
               <div key={family.id}>
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/40">
+                <p className="text-[11px] font-medium tracking-[0.08em] text-white/40">
                   {family.label}
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

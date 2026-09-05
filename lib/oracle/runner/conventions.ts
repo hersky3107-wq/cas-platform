@@ -99,9 +99,8 @@ export function readerRosterFor(readerCount: number): string[] {
 export const ORACLE_CREDITS_MODULE = 'oracle_session'
 
 /**
- * Stamped on oracle_job_sessions.prompt_version when ORACLE_AI_MODE is stub.
- * Live sessions stamp LAYER1_PROMPT_VERSION. Tests default to stub; `npm run
- * dev` and production default to live unless the flag is set.
+ * Stamped on oracle_job_sessions.prompt_version when ORACLE_AI_MODE is stub
+ * (the default). Live sessions stamp LAYER1_PROMPT_VERSION instead.
  */
 export const ORACLE_PROMPT_VERSION = 'stub-0'
 
