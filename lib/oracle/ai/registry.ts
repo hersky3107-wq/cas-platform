@@ -81,7 +81,7 @@ export type Layer1RegistryEntry = {
    * catch (see the 2026-08-26 ziwei 3000->8000 bump, which silently moved
    * a formula-derived guard 4500->12000 and broke the runaway test without
    * anyone touching the guard). Every reading shares one output contract
-   * (narrative <=500 chars, one_line <=80 chars) regardless of which model
+   * (narrative 700–1100 chars, one_line <=80 chars) regardless of which model
    * fills the seat, so this is a flat, contract-derived value today. See
    * LAYER1_READING_RUNAWAY_CONTENT_TOKENS for the measurement.
    */
@@ -89,14 +89,15 @@ export type Layer1RegistryEntry = {
 }
 
 /**
- * Reading contract worst case: narrative <=500 Unicode chars (LAYER1_NARRATIVE_MAX
- * in parse-layer1.ts) + one_line <=80 chars + direction/focus/axis_emphasis
- * overhead. CJK output can run close to 1 token/char, so worst-case legit
- * content is roughly 600-900 tokens. 1800 gives ~2x headroom over that before
- * a response is flagged as runaway (prism's own worst observed overshoot,
- * pre-fix, was 877 content tokens — comfortably under this).
+ * Reading contract worst case (v4 budgets, FIX 3): narrative <=1100 Unicode
+ * chars (LAYER1_NARRATIVE_MAX in parse-layer1.ts) + one_line <=80 chars +
+ * direction/focus/axis_emphasis overhead. CJK output can run close to
+ * 1 token/char, so worst-case legit content is roughly 1300-1600 tokens.
+ * 3000 keeps ~2x headroom over that before a response is flagged as runaway.
+ * Rescaled BY HAND from the 500-char-era value (1800) — this guard is a
+ * contract-derived constant and must never follow maxCompletionTokens.
  */
-export const LAYER1_READING_RUNAWAY_CONTENT_TOKENS = 1800
+export const LAYER1_READING_RUNAWAY_CONTENT_TOKENS = 3000
 
 export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   saju: {
@@ -114,7 +115,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
         provider: { order: ['moonshotai'], allow_fallbacks: true },
       },
     },
-    maxCompletionTokens: 1200,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   ziwei: {
@@ -149,7 +150,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // is a live catalog brand that does not take a reasoning param.
     model: 'cohere/command-a',
     caller: { kind: 'platform', platformId: 'openrouter:command-a' },
-    maxCompletionTokens: 1200,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   ninestar: {
@@ -162,7 +163,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // Meta first-party slug `meta` is NOT in the live endpoint list
     // (DigitalOcean, DeepInfra, Novita, Parasail, Google) — do not pin.
     caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' },
-    maxCompletionTokens: 1200,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   sukuyou: {
@@ -174,8 +175,9 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // provider.order:['minimax'] with allow_fallbacks:true.
     model: 'minimax/minimax-m3',
     caller: { kind: 'platform', platformId: 'openrouter:minimax-m3' },
-    // Measured reasoning 928/1164 → ceil 1500 + 800 = 2300; floor 2500.
-    maxCompletionTokens: 2500,
+    // Measured reasoning 928/1164 → ceil 1500; + v4 visible content (~1600
+    // tokens at 1100 CJK chars) = 3100; floor 3200.
+    maxCompletionTokens: 3200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   astro: {
@@ -188,7 +190,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // Official OpenAI short-context: $2 / $12 per 1M (developers.openai.com/api/docs/pricing).
     officialPricing: { promptUsdPerToken: 0.000002, completionUsdPerToken: 0.000012 },
     caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-5.6-terra' },
-    maxCompletionTokens: 1200,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   tarot: {
@@ -214,7 +216,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       allowGeminiThinking: true,
       geminiThinkingLevel: 'minimal',
     },
-    maxCompletionTokens: 1200,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   runes: {
@@ -226,7 +228,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // Official xAI <200k: $1.25 / $2.50 per 1M (docs.x.ai/developers/pricing).
     officialPricing: { promptUsdPerToken: 0.00000125, completionUsdPerToken: 0.0000025 },
     caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.3' },
-    maxCompletionTokens: 1200,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   numerology: {
@@ -237,7 +239,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // PLATFORM_MODEL_REGISTRY note — 3.1 is the older minor.
     model: 'mistralai/mistral-medium-3-5',
     caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' },
-    maxCompletionTokens: 1200,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   name: {
@@ -246,7 +248,7 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     displayName: 'HyperCLOVA X HCX-007',
     model: 'HCX-007',
     caller: { kind: 'platform', platformId: 'clova:hcx-007' },
-    maxCompletionTokens: 1200,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   tzolkin: {
@@ -281,13 +283,13 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
       // Brand-level policy is enforced in callLayer1Model for every
       // Anthropic oracle call (any system, reader or synth). League unset.
     },
-    // Was 1200; Claude ignored the 280–420 char prompt lock and emitted 877
-    // content tokens. Ceiling sized for ≤500-char JSON narrative + headroom.
-    // That 877-token overshoot is exactly why the runaway guard must NOT be
-    // maxCompletionTokens * 1.5: 700 * 1.5 = 1050 would sit dangerously close
-    // to (and could even fall under) a legitimate-shaped overrun we have
-    // already observed. The guard stays at the shared reading value instead.
-    maxCompletionTokens: 700,
+    // Claude ignores prompt-only length locks (measured 877 content tokens
+    // against a 500-char ask). Ceiling sized for the v4 ≤1100-char JSON
+    // narrative (~1500 tokens CJK) with a little headroom — deliberately the
+    // TIGHTEST reader ceiling so an essay hits the API stop, fails parse, and
+    // retries strict. The runaway guard stays at the shared contract value,
+    // never derived from this ceiling.
+    maxCompletionTokens: 1800,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
 }

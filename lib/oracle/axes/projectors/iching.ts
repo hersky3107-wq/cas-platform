@@ -14,8 +14,8 @@
  *            relation are the same 5-way classification under different
  *            names (see `SIX_RELATIVE_TO_RELATION`).
  */
-import { DRAW_ENGINE_VERSION, ichingDraw } from '../../engines/draw'
-import type { DayStemInput, IchingDrawResult } from '../../engines/draw'
+import { buildLiuyao, DRAW_ENGINE_VERSION, ichingDraw } from '../../engines/draw'
+import type { DayStemInput, IchingDrawResult, LineValue } from '../../engines/draw'
 import { DIRECT_WEIGHT, phaseConfidence } from '../conventions'
 import { emptyElements, emptyPhase, normalizeElements, normalizePhase, softenPhase } from '../math'
 import { FIVE_ELEMENT_RELATION_PHASE, SIX_RELATIVE_TO_RELATION } from '../tables'
@@ -23,6 +23,8 @@ import { PHASE_AXES, type AxisVote, type PhaseAxis } from '../types'
 
 export type IchingProjectorInput = {
   seed: string
+  /** User-cast six line values (bottom-up, 6..9). Omitted = seeded coin throw. */
+  values?: readonly LineValue[]
   /** Only affects `beast` (six-guardian) assignment, unused here. Optional. */
   dayStem?: DayStemInput
 }
@@ -63,7 +65,9 @@ function phaseFromChangingLines(result: IchingDrawResult) {
 }
 
 export function projectIching(input: IchingProjectorInput): AxisVote {
-  const result = ichingDraw({ seed: input.seed, dayStem: input.dayStem })
+  const result = input.values
+    ? buildLiuyao({ seed: input.seed, values: input.values, dayStem: input.dayStem })
+    : ichingDraw({ seed: input.seed, dayStem: input.dayStem })
 
   const elements = elementsFromLines(result)
   const phase = phaseFromChangingLines(result)

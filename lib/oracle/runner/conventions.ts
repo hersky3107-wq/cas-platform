@@ -132,3 +132,5 @@ export const ORACLE_DEFAULT_COORDS = { lat: 37.5665, lng: 126.978 } as const
 export const ORACLE_TAROT_SPREAD = 3 as const
 export const ORACLE_RUNE_COUNT = 3
 export const ORACLE_TAROT_DECK_SIZE = 78
+/** The rune cloth: all 24 Elder Futhark stones, face down. */
+export const ORACLE_RUNE_POOL_SIZE = 24

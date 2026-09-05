@@ -12,19 +12,26 @@ const STALE_ROUTER_DEFAULTS = [
   'mistral-large-latest',
 ]
 
+/**
+ * FIX 3 rescale: the v4 narrative budget is 700–1100 chars (~1600 CJK-heavy
+ * completion tokens incl. JSON overhead), so the shared reading ceiling moved
+ * 1200 → 2200. Systems with measured hidden-reasoning floors keep their own
+ * larger ceilings (ziwei 8000, tzolkin 4000, sukuyou 3200); prism keeps a
+ * tighter 1800 as the Claude length backstop.
+ */
 const EXPECTED_CEILINGS: Record<string, number> = {
-  saju: 1200,
+  saju: 2200,
   ziwei: 8000,
-  iching: 1200,
-  ninestar: 1200,
-  sukuyou: 2500,
-  astro: 1200,
-  tarot: 1200,
-  runes: 1200,
-  numerology: 1200,
-  name: 1200,
+  iching: 2200,
+  ninestar: 2200,
+  sukuyou: 3200,
+  astro: 2200,
+  tarot: 2200,
+  runes: 2200,
+  numerology: 2200,
+  name: 2200,
   tzolkin: 4000,
-  prism: 700,
+  prism: 1800,
 }
 
 describe('LAYER1_REGISTRY', () => {

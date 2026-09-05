@@ -176,7 +176,10 @@ describe('coreMatrix isolation', () => {
 })
 
 describe('domain score bounds', () => {
-  it('keeps every domain score in 0–100 across 10,000 random inputs', () => {
+  // 10k iterations run ~2.5s alone but can exceed the 5s default under
+  // full-suite worker contention — the loop is seeded/deterministic, so a
+  // timeout here is never signal. Give it explicit headroom.
+  it('keeps every domain score in 0–100 across 10,000 random inputs', { timeout: 30_000 }, () => {
     const rng = mulberry32(20260815)
     const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rng() * xs.length)]!
     for (let i = 0; i < 10_000; i++) {

@@ -34,10 +34,16 @@ export type RuneDrawn = {
   name: string
   transliteration: string
   glyph: string
-  /** Always false for the nine irreversible runes. */
+  /**
+   * Always false for the nine vertically-symmetric runes (they have no
+   * inverted glyph, so they cannot land reversed — and no random "dark side"
+   * is assigned in its place either; see the audit note in runes.ts).
+   */
   reversed: boolean
-  /** Only meaningful for irreversible runes; false for reversible ones. */
-  merkstave: boolean
+  /** Spread position label (e.g. "Past"); Korean mapping lives in display-copy. */
+  positionLabel: string
+  /** 1-based index into the seeded shuffle (the face-down cloth). */
+  pickedPosition: number
 }
 
 export type RuneDrawResult = {

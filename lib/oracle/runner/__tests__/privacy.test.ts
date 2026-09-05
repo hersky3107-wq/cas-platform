@@ -96,45 +96,44 @@ describe('ai_payload privacy rule', () => {
 
       const serialized = JSON.stringify(payload).toLowerCase()
       for (const literal of FORBIDDEN_LITERALS) {
-        expect(serialized, `${entry.system} leaked "${literal}"`).not.toContain(literal.toLowerCase())
+        const needle = literal.toLowerCase()
+        // Same rule as privacy.ts: ASCII name tokens use word boundaries, so
+        // the Maya nawal "Kimi" in tzolkin's native chart is not a leak of
+        // surname "Kim".
+        const leaked = /^[a-z]+$/.test(needle)
+          ? new RegExp(`\\b${needle}\\b`).test(serialized)
+          : serialized.includes(needle)
+        expect(leaked, `${entry.system} leaked "${literal}"`).toBe(false)
       }
       expect(isFreeOfPersonalData(entry.aiPayload, pii, { machineCodeFields: MACHINE_CODE_FIELDS })).toBe(true)
     }
   })
 
-  it('machine-code fields hold codes plus parallel labels — code matches pattern', () => {
+  it('layer-1 payloads carry no projector machine-code fields at all (FIX 1: native only)', () => {
     const computed = computeAll()
     for (const entry of computed.systems) {
       if (entry.aiPayload === null) continue
-      expect(entry.aiPayload.readingInput).toBe('axes')
-      const reasons = entry.aiPayload.reasons as Record<string, string[] | undefined>
-      const labels = entry.aiPayload.labels as Record<string, string[] | undefined>
-      for (const space of Object.keys(reasons)) {
-        for (const code of reasons[space] ?? []) {
-          expect(code, `${entry.system} reason "${code}"`).toMatch(MACHINE_CODE_PATTERN)
-        }
-        const spaceLabels = labels?.[space] ?? []
-        expect(spaceLabels.length).toBe((reasons[space] ?? []).length)
-        for (const label of spaceLabels) {
-          expect(typeof label).toBe('string')
-          expect(label.length).toBeGreaterThan(0)
-        }
-      }
-      const unreadable = entry.aiPayload.unreadable as Array<{ space: string; code: string; label: string }>
-      for (const item of unreadable) {
-        expect(item.code).toMatch(MACHINE_CODE_PATTERN)
-        expect(item.label.length).toBeGreaterThan(0)
+      for (const field of MACHINE_CODE_FIELDS) {
+        expect(entry.aiPayload[field], `${entry.system} carries ${field}`).toBeUndefined()
       }
     }
   })
 
-  it('saju peer_dominant carries the Korean ten-god label 비견', () => {
+  it('projector reason codes still match the machine-code pattern (verdict payload path)', () => {
+    // Reason codes live on the AxisVote (server-side) — the pattern is still
+    // enforced so nothing prose-like ever hides in a machine field.
     const computed = computeAll()
-    const saju = computed.systems.find((entry) => entry.system === 'saju')
-    const reasons = saju?.aiPayload?.reasons as { traits?: string[] } | undefined
-    const labels = saju?.aiPayload?.labels as { traits?: string[] } | undefined
-    const idx = reasons?.traits?.indexOf('saju.tengods.peer_dominant') ?? -1
-    if (idx >= 0) expect(labels?.traits?.[idx]).toBe('비견')
+    for (const entry of computed.systems) {
+      if (entry.vote === null) continue
+      for (const space of ['traits', 'elements', 'phase'] as const) {
+        for (const code of entry.vote.reasons[space] ?? []) {
+          expect(code, `${entry.system} reason "${code}"`).toMatch(MACHINE_CODE_PATTERN)
+        }
+      }
+      for (const item of entry.vote.unreadable) {
+        expect(item.code).toMatch(MACHINE_CODE_PATTERN)
+      }
+    }
   })
 
   it('still stores the raw engine result server-side — only ai_payload is restricted', () => {
@@ -271,10 +270,12 @@ function computeSingle(system: 'tarot' | 'prism' | 'saju' | 'tzolkin' | 'runes' 
     sessionInputs: {
       ...SESSION_INPUTS,
       tarot: { spread: 5, pickedPositions: [14, 3, 71, 8, 22] },
-      runes: { count: 3 },
+      // New ritual shapes: hand-picked stones from the 24-stone cloth and a
+      // user-cast 육효 (six three-coin throws, bottom-up).
+      runes: { spread: 3, pickedPositions: [5, 12, 24] },
+      iching: { lines: [7, 8, 9, 6, 7, 8] as const },
     },
     personalData: personalDataFrom([PROFILE]),
-    sessionScope: 'single',
   })
 }
 
@@ -373,38 +374,54 @@ describe('single-scope native charts', () => {
 })
 
 /**
- * Regression guard for the 5fbbc92 split: single-system readers get each
- * system's NATIVE chart; combined (integrated) readers keep the AXIS
- * projection — that comparison scale is exactly what combined mode is for.
- * The combined seer wiring must never leak back into scope='single'.
+ * FIX 1 guard: layer-1 readers get each system's NATIVE chart in EVERY mode
+ * (single and combined alike) — the axis projection (traits/elements/phase
+ * scores) flows ONLY to layer 2 (seer verdict payload) and the consensus
+ * tally. Combined mode sending the projection to layer-1 was the disease
+ * ("나무 기운 56.3" in a tarot reading); there is no axes variant to regress to.
  */
-describe('scope regression guard: single stays native, combined keeps the projection', () => {
-  it('the same profile computed under each scope produces the two distinct payload families', () => {
-    const single = computeSingle('tarot').systems[0]!.aiPayload!
-    expect(single.readingInput).toBe('native')
-    expect(single.chart).toBeTypeOf('object')
-    expect(single.traits).toBeUndefined()
-    expect(single.elements).toBeUndefined()
-    expect(single.phase).toBeUndefined()
+const AXIS_SCORE_KEYS = [
+  // trait axes
+  'drive', 'stability', 'relation', 'traits',
+  // element axes (comparison scale — native charts use Korean vocabulary)
+  'wood', 'fire', 'earth', 'metal', 'water', 'elements',
+  // phase axes
+  'advance', 'hold', 'release', 'phase',
+  // projection plumbing
+  'confidence', 'deficiency', 'excess', 'tally',
+] as const
 
-    const combined = computeAll().systems.find((entry) => entry.system === 'tarot')!.aiPayload!
-    expect(combined.readingInput).toBe('axes')
-    expect(combined.chart).toBeUndefined()
-    expect(combined.traits).toBeTypeOf('object')
-    expect(combined.phase).toBeTypeOf('object')
-    expect(combined.confidence).toBeDefined()
-  })
+function expectNativeLayer1(payload: Record<string, unknown>, system: string) {
+  expect(payload.readingInput, system).toBe('native')
+  expect(payload.chart, system).toBeTypeOf('object')
+  const keys = collectKeys(payload)
+  for (const key of AXIS_SCORE_KEYS) {
+    expect(keys.has(key), `${system} layer-1 payload contains axis key "${key}"`).toBe(false)
+  }
+}
 
-  it('every combined reading payload keeps the axis fields across all 12 systems', () => {
-    for (const entry of computeAll().systems) {
-      if (entry.aiPayload === null) continue
-      expect(entry.aiPayload.readingInput, entry.system).toBe('axes')
-      expect(entry.aiPayload.chart, entry.system).toBeUndefined()
-      expect(entry.aiPayload.traits, entry.system).toBeTypeOf('object')
+describe('FIX 1: layer-1 payloads are native in BOTH modes; projection only reaches layer 2', () => {
+  it('single mode: no layer-1 payload contains axis/element/phase scores', () => {
+    for (const system of [
+      'tarot', 'runes', 'iching', 'saju', 'ziwei', 'astro',
+      'prism', 'numerology', 'name', 'ninestar', 'sukuyou', 'tzolkin',
+    ] as const) {
+      const entry = computeSingle(system).systems[0]!
+      expect(entry.aiPayload, system).not.toBeNull()
+      expectNativeLayer1(entry.aiPayload!, `single:${system}`)
     }
   })
 
-  it('the seer verdict payload carries the axis-projection consensus', () => {
+  it('combined mode: no layer-1 payload contains axis/element/phase scores — all 12 at once', () => {
+    const computed = computeAll()
+    const withPayload = computed.systems.filter((entry) => entry.aiPayload !== null)
+    expect(withPayload.length).toBeGreaterThanOrEqual(11)
+    for (const entry of withPayload) {
+      expectNativeLayer1(entry.aiPayload!, `combined:${entry.system}`)
+    }
+  })
+
+  it('the seer verdict payload keeps the axis-projection consensus (layer 2 is its home)', () => {
     const computed = computeAll()
     const votes = computed.systems.flatMap((entry) => (entry.vote ? [entry.vote] : []))
     const consensus = computeConsensus(votes, { readingScope: 'life' })
@@ -423,5 +440,12 @@ describe('scope regression guard: single stays native, combined keeps the projec
     const consensusBlock = payload.consensus as { phase?: { tally?: unknown; oppositions?: unknown } }
     expect(consensusBlock.phase?.tally).toBeDefined()
     expect(consensusBlock.phase?.oppositions).toBeDefined()
+  })
+
+  it('the synthesis payload also keeps the consensus (code-tallied, never AI-tallied)', () => {
+    const computed = computeAll()
+    const payload = buildSynthesisPayload([], computed.consensus, personalDataFrom([PROFILE]))
+    const consensusBlock = payload.consensus as { phase?: { tally?: unknown } }
+    expect(consensusBlock.phase?.tally).toBeDefined()
   })
 })

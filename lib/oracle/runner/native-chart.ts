@@ -21,6 +21,7 @@ import {
   PRISM_RELATION_KO,
   RELATIVE_KO,
   RUNE_KO,
+  runePositionKo,
   SIGN_KO,
   STAR_CATEGORY_KO,
   tarotCardNameKo,
@@ -147,13 +148,12 @@ function runeRow(rune: unknown, index: number): JsonObject {
   const row = rec(rune) ?? {}
   const english = str(row.name)
   const reversed = bool(row.reversed) === true
-  const merkstave = bool(row.merkstave) === true
+  const positionLabel = str(row.positionLabel)
   return {
-    위치: ORDINAL_KO[index] ?? `${index + 1}번`,
+    위치: positionLabel ? runePositionKo(positionLabel) : (ORDINAL_KO[index] ?? `${index + 1}번`),
     룬: RUNE_KO[english] ?? english,
     글자: str(row.glyph),
     방향: reversed ? '역방향' : '정방향',
-    ...(merkstave ? { 어두운면: true } : {}),
   }
 }
 

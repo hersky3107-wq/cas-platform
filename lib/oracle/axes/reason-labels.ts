@@ -41,7 +41,8 @@ const KO: Record<string, string> = {
   'astro.traits.houses_and_aspects': '하우스·애스펙트',
   'astro.traits.no_houses': '하우스 없음',
   'astro.hour_unknown': '출생 시각 미상',
-  'astro.elements.classical_to_oheng': '별자리 원소',
+  // "별자리 원소"만 쓰면 모델이 행성(목성)과 원소(목)를 섞는다 — FIX 5c.
+  'astro.elements.classical_to_oheng': '별자리 4원소(불·흙·바람·물) 환산',
   'astro.phase.applying_transits': '적용 중인 트랜짓',
   'astro.moon_approximate': '달 위치 근사',
   'astro.no_element_reading': '오행 판독 불가',
@@ -106,8 +107,11 @@ const KO: Record<string, string> = {
 
   // ── runes ──
   'rune.traits.stave_character': '룬 성향',
-  'rune.elements.agreed_associations_only': '합의된 원소 대응만',
-  'rune.phase.direction_with_merkstave_flip': '정방향·어두운 면',
+  // 옛 라벨 "합의된 원소 대응만"은 문장 속에서 비문이 됐다 — FIX 5c.
+  'rune.elements.agreed_associations_only': '원소 대응이 합의된 룬만 반영',
+  'rune.phase.direction_with_reversal': '룬의 방향(역방향 반영)',
+  // Legacy code from draw engine 1.0.0 rows; new votes emit _with_reversal.
+  'rune.phase.direction_with_merkstave_flip': '룬의 방향(역방향 반영)',
   'rune.no_element_consensus': '원소 합의 없음',
 
   // ── ninestar ──
@@ -119,8 +123,10 @@ const KO: Record<string, string> = {
   'ninestar.no_phase_reading': '국면 판독 불가',
 
   // ── sukuyou ──
-  'sukuyou.elements.luminary_wuxing': '명성 오행',
-  'sukuyou.no_wuxing_for_luminary': '명성 오행 없음',
+  // 숙요의 아홉 曜(요)를 "명성"으로 부르면 구성기학의 본명성과 섞이고
+  // ("화성 명성"이 화면에 그대로 샜다) 名声으로도 읽힌다 — FIX 5c.
+  'sukuyou.elements.luminary_wuxing': '요(曜)의 오행',
+  'sukuyou.no_wuxing_for_luminary': '요(曜) 오행 없음',
 
   // ── maya / tzolkin ──
   'maya.no_wuxing_mapping': '오행 매핑 없음',
@@ -147,14 +153,20 @@ const EN: Record<string, string> = {
   'maya.no_wuxing_mapping': 'no wuxing mapping',
 }
 
-const LUMINARY_KO: Record<string, string> = {
-  sun: '태양',
-  moon: '달',
-  mercury: '수성',
-  venus: '금성',
-  mars: '화성',
-  jupiter: '목성',
-  saturn: '토성',
+/**
+ * 宿曜's nine luminaries are 曜 (요일의 曜), NOT 별/명성 — "화성 명성" read as
+ * 구성기학 vocabulary (본명성) and as 名声 at once. Use the 曜 names.
+ */
+const SUKUYOU_LUMINARY_KO: Record<string, string> = {
+  sun: '일요(日曜)',
+  moon: '월요(月曜)',
+  mercury: '수요(水曜)',
+  venus: '금요(金曜)',
+  mars: '화요(火曜)',
+  jupiter: '목요(木曜)',
+  saturn: '토요(土曜)',
+  rahu: '라후(羅睺)',
+  ketu: '계도(計都)',
 }
 
 function humanizeSegment(segment: string): string {
@@ -181,7 +193,7 @@ export function labelForReasonCode(code: string, locale: string): string {
   const sukuyouLum = code.match(/^sukuyou\.traits\.luminary_(.+)$/)
   if (sukuyouLum) {
     const key = sukuyouLum[1]!
-    if (lang === 'ko') return `${LUMINARY_KO[key] ?? key} 명성`
+    if (lang === 'ko') return `본명 ${SUKUYOU_LUMINARY_KO[key] ?? `${key} 요(曜)`}`
     return `${key} luminary`
   }
   const sukuyouPhase = code.match(/^sukuyou\.phase\.sanku_(.+)$/)

@@ -32,9 +32,12 @@ import {
 } from "lucide-react";
 import BrandBadge from "../runner/BrandBadge";
 import TarotDrawInput from "../inputs/TarotDrawInput";
-import RunesCountInput from "../inputs/RunesCountInput";
+import RunesDrawInput from "../inputs/RunesDrawInput";
+import IchingCastInput from "../inputs/IchingCastInput";
 import PrismColorInput, { type PrismPicks } from "../inputs/PrismColorInput";
 import MbtiEstimator from "../inputs/MbtiEstimator";
+import RunesDrawChart from "../charts/RunesDrawChart";
+import IchingHexagramChart from "../charts/IchingHexagramChart";
 import {
   useOracleRunnerSession,
   type OracleRunnerConsensus,
@@ -45,7 +48,8 @@ import { ORACLE_SEER_PERSONAS, seerPersona } from "@/lib/oracle/ai/seer-roster";
 import { ORACLE_SESSION_CREDIT_PRICES } from "@/lib/oracle/runner/conventions";
 import { SYSTEM_IDS, type SystemId } from "@/lib/oracle/axes/types";
 import type { OracleBirthProfileV1 } from "@/lib/oracle/types";
-import type { TarotSpreadSize } from "@/lib/oracle/engines/draw/conventions";
+import type { RuneSpreadSize, TarotSpreadSize } from "@/lib/oracle/engines/draw/conventions";
+import type { LineValue } from "@/lib/oracle/engines/draw";
 import { SINGLE_SYSTEM_BY_ID } from "@/lib/oracle/single-system-ui";
 import {
   missingRequiredFields,
@@ -341,6 +345,22 @@ function verdictHeadline(tally: BallotTallyView): string {
   return `${label} ${tally.leaderCount} / ${tally.participantCount}`;
 }
 
+/**
+ * Honest framing for unanimity (FIX: N=3 unanimity is common, not a strong
+ * signal — three ballots agreeing is a coin-flip-level event, and all seers
+ * read the same twelve readings). Surface that instead of celebrating it.
+ */
+function unanimityNote(tally: BallotTallyView): string | null {
+  if (!tally.unanimous || tally.participantCount === 0) return null;
+  if (tally.participantCount <= 3) {
+    return "판정단 3명이 모두 같은 방향을 골랐습니다. 세 명 규모에서는 드문 일이 아니니 확신의 근거로 읽기보다, 아래 판정문들이 서로 다른 이유로 같은 결론에 닿았는지를 보세요.";
+  }
+  if (tally.participantCount <= 5) {
+    return `판정단 ${tally.participantCount}명 전원이 같은 방향입니다. 규모가 작을수록 만장일치는 쉽게 나옵니다 — 판정문 사이의 근거 차이가 진짜 정보입니다.`;
+  }
+  return `판정단 ${tally.participantCount}명 전원이 같은 방향을 골랐습니다. 이 규모의 만장일치는 실제로 드문 편입니다.`;
+}
+
 function SeerVerdictCard({
   verdict,
   readerCount,
@@ -463,6 +483,16 @@ function FinalVerdictsSection({
             {finalTally.abstained.map((slug) => seerPersona(slug)?.nameKo ?? slug).join(", ")}
           </p>
         ) : null}
+        {finalTally ? (
+          (() => {
+            const note = unanimityNote(finalTally);
+            return note ? (
+              <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] leading-relaxed text-slate-300">
+                {note}
+              </p>
+            ) : null;
+          })()
+        ) : null}
         <p className="mt-5 whitespace-pre-wrap text-[15px] leading-7 text-slate-100">
           {stub
             ? "연습 모드입니다. 이 종합은 실제 해석이 아니며 크레딧은 차감되지 않았습니다."
@@ -566,8 +596,11 @@ function FinalVerdictsSection({
 
 function ConsensusMapSection({
   consensus,
+  readSystems,
 }: {
   consensus: OracleRunnerConsensus;
+  /** Systems that produced a completed reading below (FIX 5a). */
+  readSystems: ReadonlySet<string>;
 }) {
   const phase = parsePhaseMap(consensus.systemAgreement);
   const tally = parseBallotTally(consensus.ballotTally);
@@ -576,6 +609,12 @@ function ConsensusMapSection({
   const phaseTotal = phase
     ? DIRECTIONS.reduce((sum, direction) => sum + phase.tally[direction], 0)
     : 0;
+
+  // FIX 5a: a system can abstain from THIS tally (no phase axis — 성명학 has
+  // no time dimension) while its full reading renders below. Never call that
+  // 결번; reserve 결번 for systems that produced nothing at all.
+  const phaseAbstained = phase ? phase.unreadable.filter((system) => readSystems.has(system)) : [];
+  const phaseMissing = phase ? phase.unreadable.filter((system) => !readSystems.has(system)) : [];
 
   return (
     <section>
@@ -616,8 +655,11 @@ function ConsensusMapSection({
             <p className="mt-3 text-xs leading-relaxed text-slate-400">
               표를 낸 {phase.participantCount}개 체계 중 {phase.unanimityCount}개가
               {phase.leader ? ` ${DIRECTION_META[phase.leader].label} 쪽입니다.` : " 서로 다른 쪽을 봅니다."}
-              {phase.unreadable.length
-                ? ` 결번: ${phase.unreadable.map(systemShortName).join(", ")}.`
+              {phaseAbstained.length
+                ? ` ${phaseAbstained.map(systemShortName).join(", ")}는 시점을 다루지 않는 체계라 국면 투표에는 불참합니다 — 읽기는 아래에 있습니다.`
+                : ""}
+              {phaseMissing.length
+                ? ` 결번: ${phaseMissing.map(systemShortName).join(", ")}.`
                 : ""}
             </p>
             {phase.oppositions.length ? (
@@ -677,16 +719,28 @@ function ConsensusMapSection({
 /* ③ Twelve readings, expanded                                         */
 /* ------------------------------------------------------------------ */
 
+function drawItems(calculation: JsonObject | null, key: "runes" | "cards"): JsonObject[] {
+  const draw = asRecord(calculation?.draw);
+  if (!draw || !Array.isArray(draw[key])) return [];
+  return (draw[key] as unknown[]).flatMap((item) => {
+    const record = asRecord(item);
+    return record ? [record] : [];
+  });
+}
+
 function ReadingsSection({
   readings,
+  computations,
   terminal,
   stub,
 }: {
   readings: OracleRunnerReading[];
+  computations: Array<{ system: string; calculation: JsonObject | null }>;
   terminal: boolean;
   stub: boolean;
 }) {
   const bySystem = new Map(readings.map((reading) => [reading.system, reading]));
+  const calcBySystem = new Map(computations.map((entry) => [entry.system, entry.calculation]));
   const done = readings.filter((reading) => reading.status === "done").length;
 
   return (
@@ -727,6 +781,8 @@ function ReadingsSection({
               </article>
             );
           }
+          const calculation = calcBySystem.get(system) ?? null;
+          const runeItems = system === "runes" ? drawItems(calculation, "runes") : [];
           return (
             <article key={system} className="rounded-[22px] border border-white/10 bg-[#10182b] p-5">
               <div className="flex items-center justify-between gap-3">
@@ -746,6 +802,16 @@ function ReadingsSection({
                   </span>
                 ) : null}
               </div>
+              {runeItems.length ? (
+                <div className="mt-4">
+                  <RunesDrawChart runes={runeItems} />
+                </div>
+              ) : null}
+              {system === "iching" && calculation ? (
+                <div className="mt-4">
+                  <IchingHexagramChart calculation={calculation} />
+                </div>
+              ) : null}
               <div className="mt-3 whitespace-pre-wrap text-[14px] leading-7 text-slate-100">
                 {stub
                   ? "연습 모드의 자리 표시 문장입니다. 실제 해석이 아닙니다."
@@ -825,7 +891,9 @@ export default function OracleIntegratedClient({
   const [readerCount, setReaderCount] = useState<CombinedCount>(3);
   const [tarotSpread, setTarotSpread] = useState<TarotSpreadSize>(3);
   const [tarotPositions, setTarotPositions] = useState<number[]>([]);
-  const [runeCount, setRuneCount] = useState(3);
+  const [runeSpread, setRuneSpread] = useState<RuneSpreadSize>(3);
+  const [runePositions, setRunePositions] = useState<number[]>([]);
+  const [ichingLines, setIchingLines] = useState<LineValue[]>([]);
   const [prismPicks, setPrismPicks] = useState<PrismPicks>({
     impulse: null,
     need: null,
@@ -902,12 +970,14 @@ export default function OracleIntegratedClient({
   const insufficient = credits !== null && credits < price;
 
   const tarotReady = tarotPositions.length === tarotSpread;
+  const runesReady = runePositions.length === runeSpread;
+  const ichingReady = ichingLines.length === 6;
   const prismReady =
     Boolean(snapshot.mbti) &&
     prismPicks.impulse != null &&
     prismPicks.need != null &&
     prismPicks.identity != null;
-  const inputsReady = tarotReady && prismReady;
+  const inputsReady = tarotReady && runesReady && ichingReady && prismReady;
 
   const seatedPersonas = useMemo(
     () => ORACLE_SEER_PERSONAS.slice(0, readerCount),
@@ -952,7 +1022,8 @@ export default function OracleIntegratedClient({
       question,
       sessionInputs: {
         tarot: { spread: tarotSpread, pickedPositions: tarotPositions },
-        runes: { count: runeCount },
+        runes: { spread: runeSpread, pickedPositions: runePositions },
+        iching: { lines: ichingLines },
         prism: {
           impulse: prismPicks.impulse,
           need: prismPicks.need,
@@ -967,6 +1038,14 @@ export default function OracleIntegratedClient({
     setTarotPositions((prev) => {
       if (prev.includes(pos)) return prev.filter((p) => p !== pos);
       if (prev.length >= tarotSpread) return prev;
+      return [...prev, pos];
+    });
+  };
+
+  const toggleRune = (pos: number) => {
+    setRunePositions((prev) => {
+      if (prev.includes(pos)) return prev.filter((p) => p !== pos);
+      if (prev.length >= runeSpread) return prev;
       return [...prev, pos];
     });
   };
@@ -1054,11 +1133,23 @@ export default function OracleIntegratedClient({
             />
 
             {/* ② Consensus map. */}
-            {consensus ? <ConsensusMapSection consensus={consensus} /> : null}
+            {consensus ? (
+              <ConsensusMapSection
+                consensus={consensus}
+                readSystems={
+                  new Set(
+                    (view?.readings ?? [])
+                      .filter((reading) => reading.status === "done" && reading.narrative)
+                      .map((reading) => reading.system),
+                  )
+                }
+              />
+            ) : null}
 
             {/* ③ All twelve readings, expanded. */}
             <ReadingsSection
               readings={view?.readings ?? []}
+              computations={session.computations}
               terminal={session.terminal}
               stub={stub}
             />
@@ -1122,7 +1213,23 @@ export default function OracleIntegratedClient({
             </div>
 
             <div className="mt-8">
-              <RunesCountInput count={runeCount} onChange={setRuneCount} />
+              <RunesDrawInput
+                spread={runeSpread}
+                pickedPositions={runePositions}
+                onSpread={(next) => {
+                  setRuneSpread(next);
+                  setRunePositions([]);
+                }}
+                onToggle={toggleRune}
+              />
+            </div>
+
+            <div className="mt-8">
+              <IchingCastInput
+                lines={ichingLines}
+                onThrow={(value) => setIchingLines((prev) => (prev.length >= 6 ? prev : [...prev, value]))}
+                onReset={() => setIchingLines([])}
+              />
             </div>
 
             <div className="mt-8 space-y-6">
@@ -1233,7 +1340,8 @@ export default function OracleIntegratedClient({
               </button>
               {!inputsReady ? (
                 <p className="text-xs text-white/45">
-                  타로 {tarotPositions.length}/{tarotSpread}장
+                  타로 {tarotPositions.length}/{tarotSpread}장 · 룬 {runePositions.length}/{runeSpread}돌 · 주역{" "}
+                  {ichingLines.length}/6효
                   {!prismReady ? " · PRISM 색상 3개와 MBTI가 필요합니다" : ""}
                 </p>
               ) : null}

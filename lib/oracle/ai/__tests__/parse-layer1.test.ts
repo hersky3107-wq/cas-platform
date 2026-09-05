@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { isEmptyModelText, parseLayer1Json } from '../parse-layer1'
+import {
+  isEmptyModelText,
+  LAYER1_NARRATIVE_MAX,
+  LAYER1_NARRATIVE_MIN,
+  LAYER1_ONE_LINE_MAX,
+  parseLayer1Json,
+} from '../parse-layer1'
+
+// v4 band (FIX 3): narratives must land inside 400..1100 code points.
+const NARRATIVE =
+  '세 축이 동시에 밀린다. 추진은 일에 실리고 불의 비중과 전진 국면이 겹친다. '.repeat(12)
 
 const VALID = {
-  narrative: '세 축이 동시에 밀린다. 추진은 일에 실리고 불의 비중과 전진 국면이 겹친다.',
+  narrative: NARRATIVE.trim(),
   one_line: '일은 밀되 과신은 접어라',
   direction: 'advance',
   focus: 'work',
@@ -14,6 +24,12 @@ function validJson(overrides: Record<string, unknown> = {}): string {
 }
 
 describe('parseLayer1Json', () => {
+  it('fixture narrative sits inside the v4 band', () => {
+    const length = [...VALID.narrative].length
+    expect(length).toBeGreaterThanOrEqual(LAYER1_NARRATIVE_MIN)
+    expect(length).toBeLessThanOrEqual(LAYER1_NARRATIVE_MAX)
+  })
+
   it('accepts clean JSON', () => {
     const parsed = parseLayer1Json(validJson())
     expect(parsed).toEqual(VALID)
@@ -35,14 +51,19 @@ describe('parseLayer1Json', () => {
     expect(parseLayer1Json('')).toBeNull()
   })
 
-  it('truncates one_line to 40 characters', () => {
-    const parsed = parseLayer1Json(validJson({ one_line: 'x'.repeat(80) }))
-    expect(parsed?.one_line).toHaveLength(40)
+  it(`truncates one_line to ${LAYER1_ONE_LINE_MAX} characters`, () => {
+    const parsed = parseLayer1Json(validJson({ one_line: 'x'.repeat(LAYER1_ONE_LINE_MAX * 2) }))
+    expect(parsed?.one_line).toHaveLength(LAYER1_ONE_LINE_MAX)
   })
 
-  it('rejects narrative over the 500-character hard ceiling', () => {
-    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(501) }))).toBeNull()
-    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(500) }))).not.toBeNull()
+  it(`rejects narrative over the ${LAYER1_NARRATIVE_MAX}-character hard ceiling`, () => {
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(LAYER1_NARRATIVE_MAX + 1) }))).toBeNull()
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(LAYER1_NARRATIVE_MAX) }))).not.toBeNull()
+  })
+
+  it(`rejects narrative under the ${LAYER1_NARRATIVE_MIN}-character floor (FIX 3: no thin premium readings)`, () => {
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(LAYER1_NARRATIVE_MIN - 1) }))).toBeNull()
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(LAYER1_NARRATIVE_MIN) }))).not.toBeNull()
   })
 
   it('rejects an invalid direction or focus', () => {

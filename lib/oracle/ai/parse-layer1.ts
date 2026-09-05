@@ -10,9 +10,18 @@ export type Layer1Direction = (typeof LAYER1_DIRECTIONS)[number]
 export const LAYER1_FOCUSES = ['work', 'money', 'love', 'social', 'energy'] as const
 export type Layer1Focus = (typeof LAYER1_FOCUSES)[number]
 
-export const LAYER1_ONE_LINE_MAX = 40
-/** Shared hard ceiling for narrative. Soft target for prism is 280–420. */
-export const LAYER1_NARRATIVE_MAX = 500
+export const LAYER1_ONE_LINE_MAX = 80
+/**
+ * v4 budget (FIX 3): a 25-credit reading at 500 chars was too short and too
+ * jargon-heavy. Prompt demands 700–1100; the parser enforces a hard ceiling
+ * at 1100 and a hard floor at 400 — the floor sits below the prompt minimum
+ * on purpose, so a slightly-short legit reading retries once (strict) instead
+ * of becoming a 결번 on the spot.
+ */
+export const LAYER1_NARRATIVE_MAX = 1100
+export const LAYER1_NARRATIVE_MIN = 400
+/** What the prompt asks for (min–max prose band shown to the model). */
+export const LAYER1_NARRATIVE_TARGET = '700–1100'
 
 export type Layer1Json = {
   narrative: string
@@ -85,9 +94,11 @@ export function parseLayer1Json(raw: string): Layer1Json | null {
   const narrative = typeof record.narrative === 'string' ? record.narrative.trim() : ''
   if (!narrative) return null
   // Soft prompt budgets are ignored by expansive models (Claude×prism measured
-  // 877 content tokens). Reject over-budget narratives so the adapter retries
-  // once under the strict instruction instead of accepting the overrun.
-  if ([...narrative].length > LAYER1_NARRATIVE_MAX) return null
+  // 877 content tokens pre-v4). Reject narratives outside the hard band so the
+  // adapter retries once under the strict instruction instead of accepting a
+  // runaway OR a thin two-liner on a premium reading.
+  const narrativeLength = [...narrative].length
+  if (narrativeLength > LAYER1_NARRATIVE_MAX || narrativeLength < LAYER1_NARRATIVE_MIN) return null
   const oneLineRaw = typeof record.one_line === 'string' ? record.one_line.trim() : ''
   if (!oneLineRaw) return null
   const direction = asDirection(record.direction)

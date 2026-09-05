@@ -44,7 +44,7 @@ store.insertSession = async (row) => {
   return { ...created, id: nextSessionId }
 }
 
-async function runCombined(label: string, readerCount: 3 | 9) {
+async function runCombined(label: string, readerCount: 3 | 5 | 9) {
   nextSessionId = randomUUID()
   const calls: Array<{ kind: 'reading' | 'synthesis' | 'verdict'; brand: string; result: CallResult }> = []
   const trackedCall: typeof callLayer1Model = async (input) => {
@@ -81,7 +81,10 @@ async function runCombined(label: string, readerCount: 3 | 9) {
           microCheck: [3, 4, 2, 3],
         },
         tarot: { spread: 5, pickedPositions: [14, 3, 71, 8, 22] },
-        runes: { count: 3 },
+        // New rituals: hand-picked stones from the 24-stone cloth and a
+        // user-cast 육효 (six three-coin throws, bottom-up).
+        runes: { spread: 3, pickedPositions: [7, 19, 2] },
+        iching: { lines: [7, 8, 9, 6, 7, 8] },
       },
       readerCount,
       locale: 'ko',
@@ -148,7 +151,8 @@ async function runCombined(label: string, readerCount: 3 | 9) {
 
   console.log(`\n--- ${label} reader narratives (12 systems) ---`)
   for (const row of readings) {
-    console.log(`\n[${row.system} / ${row.brand}] status=${row.status} latency_ms=${row.latency_ms}`)
+    const chars = row.narrative ? [...row.narrative].length : 0
+    console.log(`\n[${row.system} / ${row.brand}] status=${row.status} latency_ms=${row.latency_ms} chars=${chars}`)
     console.log(row.narrative ?? '(결번)')
   }
 
@@ -179,11 +183,15 @@ async function runCombined(label: string, readerCount: 3 | 9) {
   return { sessionId, status: session.status, totalCostUsd: total, unitRows: rows.length, wallMs }
 }
 
-// SMOKE_RUNS=n3 (or n9, or n3,n9 — default) selects which sessions to run.
+// SMOKE_RUNS=n3 (or n5/n9, comma-separated; n3 may repeat as n3a,n3b for
+// unanimity sampling — default n3,n9) selects which sessions to run.
 const wanted = (process.env.SMOKE_RUNS ?? 'n3,n9').split(',').map((token) => token.trim())
 const results: Record<string, Awaited<ReturnType<typeof runCombined>>> = {}
-if (wanted.includes('n3')) results.n3 = await runCombined('combined-N3', 3)
-if (wanted.includes('n9')) results.n9 = await runCombined('combined-N9', 9)
+for (const token of wanted) {
+  if (token.startsWith('n3')) results[token] = await runCombined(`combined-N3:${token}`, 3)
+  else if (token.startsWith('n5')) results[token] = await runCombined(`combined-N5:${token}`, 5)
+  else if (token.startsWith('n9')) results[token] = await runCombined(`combined-N9:${token}`, 9)
+}
 
 console.log(
   `\nSMOKE_RESULT_JSON=${JSON.stringify(

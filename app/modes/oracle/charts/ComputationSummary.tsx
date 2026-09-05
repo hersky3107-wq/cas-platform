@@ -9,7 +9,6 @@ import {
   PALACE_KO,
   PRISM_CYCLE_KO,
   PRISM_RELATION_KO,
-  RUNE_KO,
   SIGN_KO,
   oneDecimal,
 } from "@/lib/oracle/display-copy";
@@ -17,6 +16,8 @@ import { PRISM_COLOR_HEX, PRISM_COLOR_KO } from "@/lib/oracle/prism-swatches";
 import type { PrismColor } from "@/lib/oracle/engines/prism/tables";
 import StructuredComputationPanel from "./StructuredComputationPanel";
 import TarotSpreadChart from "./TarotSpreadChart";
+import RunesDrawChart from "./RunesDrawChart";
+import IchingHexagramChart from "./IchingHexagramChart";
 
 type Json = Record<string, unknown>;
 
@@ -214,46 +215,15 @@ function nameSummary(calculation: Json) {
 function ichingSummary(calculation: Json) {
   const draw = nest(calculation, "draw");
   if (!isRecord(draw)) return null;
-  const primary = isRecord(draw.primary) ? draw.primary : null;
-  const resulting = isRecord(draw.resulting) ? draw.resulting : null;
-  if (!primary) return <ComingSoon />;
-  return (
-    <Panel title="괘">
-      <Row
-        label="본괘"
-        value={`${typeof primary.hanja === "string" ? primary.hanja : ""} ${typeof primary.hangul === "string" ? primary.hangul : ""}`.trim()}
-      />
-      {resulting ? (
-        <Row
-          label="변괘"
-          value={`${typeof resulting.hanja === "string" ? resulting.hanja : ""} ${typeof resulting.hangul === "string" ? resulting.hangul : ""}`.trim()}
-        />
-      ) : null}
-    </Panel>
-  );
+  return <IchingHexagramChart calculation={calculation} />;
 }
 
 function runesSummary(calculation: Json) {
   const draw = nest(calculation, "draw");
   if (!isRecord(draw) || !Array.isArray(draw.runes)) return null;
-  const names = draw.runes
-    .map((rune) => {
-      if (!isRecord(rune)) return null;
-      const glyph = typeof rune.glyph === "string" ? rune.glyph : "";
-      const raw = typeof rune.name === "string" ? rune.name : "";
-      const name = raw ? RUNE_KO[raw] ?? raw : "";
-      const reversed = rune.reversed === true ? " (역)" : "";
-      return `${glyph} ${name}${reversed}`.trim();
-    })
-    .filter((row): row is string => Boolean(row));
-  if (!names.length) return <ComingSoon />;
-  return (
-    <Panel title="뽑은 룬">
-      {names.map((name, i) => (
-        <Row key={`${name}-${i}`} label={`${i + 1}`} value={name} />
-      ))}
-    </Panel>
-  );
+  const runes = draw.runes.filter(isRecord);
+  if (!runes.length) return <ComingSoon />;
+  return <RunesDrawChart runes={runes} />;
 }
 
 function ninestarSummary(calculation: Json) {
@@ -370,18 +340,19 @@ function summaryFor(system: string, calculation: Json) {
   }
 }
 
-function stripTarotInternals(calculation: Json): Json {
+/** Hide shuffle internals (seed, ids, picked slots) from the raw-detail view. */
+function stripDrawInternals(calculation: Json, itemsKey: "cards" | "runes"): Json {
   const draw = nest(calculation, "draw");
-  if (!isRecord(draw) || !Array.isArray(draw.cards)) return calculation;
+  if (!isRecord(draw) || !Array.isArray(draw[itemsKey])) return calculation;
   const { seed: _seed, ...drawRest } = draw;
   void _seed;
   return {
     ...calculation,
     draw: {
       ...drawRest,
-      cards: draw.cards.map((card) => {
-        if (!isRecord(card)) return card;
-        const { id: _id, pickedPosition: _pos, ...rest } = card;
+      [itemsKey]: (draw[itemsKey] as unknown[]).map((item) => {
+        if (!isRecord(item)) return item;
+        const { id: _id, pickedPosition: _pos, ...rest } = item;
         void _id;
         void _pos;
         return rest;
@@ -405,7 +376,12 @@ export default function ComputationSummary({
 }) {
   const [open, setOpen] = useState(false);
   const body = !calculation || unreadable ? <ComingSoon /> : summaryFor(system, calculation);
-  const detail = calculation && system === "tarot" ? stripTarotInternals(calculation) : calculation;
+  const detail =
+    calculation && system === "tarot"
+      ? stripDrawInternals(calculation, "cards")
+      : calculation && system === "runes"
+        ? stripDrawInternals(calculation, "runes")
+        : calculation;
 
   return (
     <article className="rounded-[22px] border border-white/10 bg-[#10182b] p-5">

@@ -15,7 +15,8 @@ import { OracleSessionEndFlow } from "../OracleSessionEndFlow";
 import OracleSystemChart from "../charts/OracleSystemChart";
 import BrandBadge from "../runner/BrandBadge";
 import TarotDrawInput from "../inputs/TarotDrawInput";
-import RunesCountInput from "../inputs/RunesCountInput";
+import RunesDrawInput from "../inputs/RunesDrawInput";
+import IchingCastInput from "../inputs/IchingCastInput";
 import PrismColorInput, { type PrismPicks } from "../inputs/PrismColorInput";
 import MbtiEstimator from "../inputs/MbtiEstimator";
 import {
@@ -27,7 +28,8 @@ import {
 import { projectOracleArchiveResponses } from "@/lib/oracle/session-archive";
 import type { OracleBirthProfileV1 } from "@/lib/oracle/types";
 import type { SystemId } from "@/lib/oracle/axes/types";
-import type { TarotSpreadSize } from "@/lib/oracle/engines/draw/conventions";
+import type { RuneSpreadSize, TarotSpreadSize } from "@/lib/oracle/engines/draw/conventions";
+import type { LineValue } from "@/lib/oracle/engines/draw";
 import type { ReadingRosterOption } from "@/lib/oracle/reading-rosters";
 import { SINGLE_SYSTEM_BY_ID } from "@/lib/oracle/single-system-ui";
 import {
@@ -316,7 +318,9 @@ export default function OracleSystemReadingClient({
   const [readerCount, setReaderCount] = useState(rosters[0]?.readerCount ?? 3);
   const [tarotSpread, setTarotSpread] = useState<TarotSpreadSize>(3);
   const [tarotPositions, setTarotPositions] = useState<number[]>([]);
-  const [runeCount, setRuneCount] = useState(3);
+  const [runeSpread, setRuneSpread] = useState<RuneSpreadSize>(3);
+  const [runePositions, setRunePositions] = useState<number[]>([]);
+  const [ichingLines, setIchingLines] = useState<LineValue[]>([]);
   const [prismPicks, setPrismPicks] = useState<PrismPicks>({
     impulse: null,
     need: null,
@@ -428,13 +432,15 @@ export default function OracleSystemReadingClient({
   );
 
   const tarotReady = systemId !== "tarot" || tarotPositions.length === tarotSpread;
+  const runesReady = systemId !== "runes" || runePositions.length === runeSpread;
+  const ichingReady = systemId !== "iching" || ichingLines.length === 6;
   const prismReady =
     systemId !== "prism" ||
     (Boolean(snapshot.mbti) &&
       prismPicks.impulse != null &&
       prismPicks.need != null &&
       prismPicks.identity != null);
-  const inputsReady = tarotReady && prismReady;
+  const inputsReady = tarotReady && runesReady && ichingReady && prismReady;
 
   const saveMbti = async (type: string, estimated: boolean) => {
     setMbtiBusy(true);
@@ -471,7 +477,10 @@ export default function OracleSystemReadingClient({
       sessionInputs.tarot = { spread: tarotSpread, pickedPositions: tarotPositions };
     }
     if (systemId === "runes") {
-      sessionInputs.runes = { count: runeCount };
+      sessionInputs.runes = { spread: runeSpread, pickedPositions: runePositions };
+    }
+    if (systemId === "iching") {
+      sessionInputs.iching = { lines: ichingLines };
     }
     if (systemId === "prism") {
       sessionInputs.prism = {
@@ -494,6 +503,14 @@ export default function OracleSystemReadingClient({
     setTarotPositions((prev) => {
       if (prev.includes(pos)) return prev.filter((p) => p !== pos);
       if (prev.length >= tarotSpread) return prev;
+      return [...prev, pos];
+    });
+  };
+
+  const toggleRune = (pos: number) => {
+    setRunePositions((prev) => {
+      if (prev.includes(pos)) return prev.filter((p) => p !== pos);
+      if (prev.length >= runeSpread) return prev;
       return [...prev, pos];
     });
   };
@@ -693,7 +710,25 @@ export default function OracleSystemReadingClient({
 
             {systemId === "runes" ? (
               <div className="mt-8">
-                <RunesCountInput count={runeCount} onChange={setRuneCount} />
+                <RunesDrawInput
+                  spread={runeSpread}
+                  pickedPositions={runePositions}
+                  onSpread={(next) => {
+                    setRuneSpread(next);
+                    setRunePositions([]);
+                  }}
+                  onToggle={toggleRune}
+                />
+              </div>
+            ) : null}
+
+            {systemId === "iching" ? (
+              <div className="mt-8">
+                <IchingCastInput
+                  lines={ichingLines}
+                  onThrow={(value) => setIchingLines((prev) => (prev.length >= 6 ? prev : [...prev, value]))}
+                  onReset={() => setIchingLines([])}
+                />
               </div>
             ) : null}
 

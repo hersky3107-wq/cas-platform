@@ -2,15 +2,25 @@
  * Validation and row shape for per-session ORACLE inputs.
  *
  * These are reading state, not profile identity. PRISM colours, tarot fan
- * positions, and rune count can change on every reading, so each session
- * keeps its own copy.
+ * positions, rune cloth picks, and 육효 coin casts can change on every
+ * reading, so each session keeps its own copy.
  */
-import { TAROT_POSITION_BASE, TAROT_SPREADS, type TarotSpreadSize } from '../engines/draw/conventions'
+import {
+  RUNE_POSITION_BASE,
+  RUNE_SPREADS,
+  TAROT_POSITION_BASE,
+  TAROT_SPREADS,
+  type RuneSpreadSize,
+  type TarotSpreadSize,
+} from '../engines/draw/conventions'
+import type { LineValue } from '../engines/draw/tables'
 import { PRISM_COLORS, type PrismColor } from '../engines/prism'
 import type { MicroCheck } from '../engines/prism/types'
 
 export const ORACLE_TAROT_POSITION_MAX = 78
 export const ORACLE_RUNE_COUNT_MAX = 24
+export const ORACLE_ICHING_LINE_COUNT = 6
+export const ORACLE_ICHING_LINE_VALUES = [6, 7, 8, 9] as const
 
 export type OraclePrismSessionInput = {
   impulse: PrismColor
@@ -25,19 +35,30 @@ export type OracleTarotSessionInput = {
   pickedPositions: number[]
 }
 
-export type OracleRunesSessionInput = {
-  count: number
+export type OracleRunesSessionInput =
+  | {
+      spread: RuneSpreadSize
+      /** 1-based indexes into the seeded 24-stone shuffle (the cloth). */
+      pickedPositions: number[]
+    }
+  /** Legacy shape (pre-cloth clients): count only, seeded picks. */
+  | { count: number }
+
+export type OracleIchingSessionInput = {
+  /** Six user-cast line values, BOTTOM-UP (효1 first), each 6/7/8/9. */
+  lines: LineValue[]
 }
 
 /**
  * Generic bag by design: future systems may add their own per-session input
- * without another migration. Known keys (prism, tarot, runes) are validated;
- * other top-level keys are preserved unchanged.
+ * without another migration. Known keys (prism, tarot, runes, iching) are
+ * validated; other top-level keys are preserved unchanged.
  */
 export type OracleSessionInputs = {
   prism?: OraclePrismSessionInput
   tarot?: OracleTarotSessionInput
   runes?: OracleRunesSessionInput
+  iching?: OracleIchingSessionInput
 } & Record<string, unknown>
 
 export type SessionInputsValidation =
@@ -130,11 +151,47 @@ function parseTarot(raw: unknown): SessionInputsValidation {
   return { ok: true, value: { tarot: { spread, pickedPositions } } }
 }
 
+function isRuneSpread(value: unknown): value is RuneSpreadSize {
+  return typeof value === 'number' && (RUNE_SPREADS as readonly number[]).includes(value)
+}
+
 function parseRunes(raw: unknown): SessionInputsValidation {
   if (raw === undefined) return { ok: true, value: null }
   if (!isRecord(raw)) {
     return { ok: false, error: 'sessionInputs.runes must be an object' }
   }
+
+  // New shape: the two-step cloth draw (spread + hand-picked stones).
+  if ('pickedPositions' in raw || 'spread' in raw) {
+    if (!isRuneSpread(raw.spread)) {
+      return { ok: false, error: `sessionInputs.runes.spread must be one of ${RUNE_SPREADS.join(', ')}` }
+    }
+    const spread = raw.spread
+    if (!Array.isArray(raw.pickedPositions) || raw.pickedPositions.length !== spread) {
+      return {
+        ok: false,
+        error: `sessionInputs.runes.pickedPositions must contain exactly ${spread} values`,
+      }
+    }
+    const pickedPositions: number[] = []
+    const seen = new Set<number>()
+    for (const pos of raw.pickedPositions) {
+      if (!Number.isInteger(pos) || pos < RUNE_POSITION_BASE || pos > ORACLE_RUNE_COUNT_MAX) {
+        return {
+          ok: false,
+          error: `sessionInputs.runes.pickedPositions must be integers ${RUNE_POSITION_BASE}..${ORACLE_RUNE_COUNT_MAX}`,
+        }
+      }
+      if (seen.has(pos)) {
+        return { ok: false, error: `sessionInputs.runes.pickedPositions must be unique (duplicate ${pos})` }
+      }
+      seen.add(pos)
+      pickedPositions.push(pos)
+    }
+    return { ok: true, value: { runes: { spread, pickedPositions } } }
+  }
+
+  // Legacy shape: count only (seeded picks).
   const count = raw.count
   if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > ORACLE_RUNE_COUNT_MAX) {
     return {
@@ -143,6 +200,34 @@ function parseRunes(raw: unknown): SessionInputsValidation {
     }
   }
   return { ok: true, value: { runes: { count } } }
+}
+
+function isLineValue(value: unknown): value is LineValue {
+  return typeof value === 'number' && (ORACLE_ICHING_LINE_VALUES as readonly number[]).includes(value)
+}
+
+function parseIching(raw: unknown): SessionInputsValidation {
+  if (raw === undefined) return { ok: true, value: null }
+  if (!isRecord(raw)) {
+    return { ok: false, error: 'sessionInputs.iching must be an object' }
+  }
+  if (!Array.isArray(raw.lines) || raw.lines.length !== ORACLE_ICHING_LINE_COUNT) {
+    return {
+      ok: false,
+      error: `sessionInputs.iching.lines must contain exactly ${ORACLE_ICHING_LINE_COUNT} values (bottom-up)`,
+    }
+  }
+  const lines: LineValue[] = []
+  for (const value of raw.lines) {
+    if (!isLineValue(value)) {
+      return {
+        ok: false,
+        error: `sessionInputs.iching.lines values must be one of ${ORACLE_ICHING_LINE_VALUES.join(', ')} (노음/소양/소음/노양)`,
+      }
+    }
+    lines.push(value)
+  }
+  return { ok: true, value: { iching: { lines } } }
 }
 
 /**
@@ -162,6 +247,8 @@ export function validateSessionInputs(raw: unknown): SessionInputsValidation {
   if (!tarot.ok) return tarot
   const runes = parseRunes(raw.runes)
   if (!runes.ok) return runes
+  const iching = parseIching(raw.iching)
+  if (!iching.ok) return iching
 
   const value: OracleSessionInputs = { ...raw }
   if (prism.value && 'prism' in prism.value) value.prism = prism.value.prism
@@ -170,6 +257,8 @@ export function validateSessionInputs(raw: unknown): SessionInputsValidation {
   else delete value.tarot
   if (runes.value && 'runes' in runes.value) value.runes = runes.value.runes
   else delete value.runes
+  if (iching.value && 'iching' in iching.value) value.iching = iching.value.iching
+  else delete value.iching
 
   return { ok: true, value }
 }

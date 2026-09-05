@@ -1,6 +1,11 @@
 /** Fixed, versioned conventions for the pure draw engine. */
 
-export const DRAW_ENGINE_VERSION = '1.0.0'
+/**
+ * 1.1.0: rune draw became pick-based (24-stone cloth, orientation fixed per
+ * shuffle position) and the nine symmetric runes lost their random merkstave
+ * flag — same seed, different rune output than 1.0.0.
+ */
+export const DRAW_ENGINE_VERSION = '1.1.0'
 
 /**
  * User-picked fan positions are 1-based ("the 14th card" = 14).
@@ -10,6 +15,12 @@ export const TAROT_POSITION_BASE = 1 as const
 
 export const TAROT_SPREADS = [1, 3, 5, 10] as const
 export type TarotSpreadSize = (typeof TAROT_SPREADS)[number]
+
+/** Rune cloth picks are 1-based indexes into the seeded 24-stone shuffle. */
+export const RUNE_POSITION_BASE = 1 as const
+
+export const RUNE_SPREADS = [1, 3, 5] as const
+export type RuneSpreadSize = (typeof RUNE_SPREADS)[number]
 
 /**
  * 3-coin 육효 probabilities (classic Chinese coin method):

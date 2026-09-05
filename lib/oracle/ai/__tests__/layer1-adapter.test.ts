@@ -16,8 +16,14 @@ import { LAYER1_REGISTRY } from '../registry'
 const NOW = new Date('2026-08-20T03:00:00.000Z')
 const SECRET_MODEL = 'gpt-5.6-terra'
 
+// FIX 3 fixtures: the v4 parser enforces hard floors (narrative ≥400 chars,
+// synthesis conclusion ≥300), so valid fixtures must sit inside the band.
+const VALID_NARRATIVE =
+  '추진·불·전진이 한 줄로 묶인다. 일은 열리지만 과신은 접어야 한다. '.repeat(13).trim()
+const VALID_CONCLUSION = ('방향은 전진이지만 속도는 조절한다. '.repeat(17) + '끝.').trim()
+
 const VALID_JSON = JSON.stringify({
-  narrative: '추진·불·전진이 한 줄로 묶인다. 일은 열리지만 과신은 접어야 한다.',
+  narrative: VALID_NARRATIVE,
   one_line: '일은 밀되 과신은 접어라',
   direction: 'advance',
   focus: 'work',
@@ -26,7 +32,7 @@ const VALID_JSON = JSON.stringify({
 const VALID_SYNTHESIS_JSON = JSON.stringify({
   agreements: ['추진 신호가 겹친다'],
   divergences: ['속도에는 이견이 있다'],
-  conclusion: '방향은 전진이지만 속도는 조절한다.',
+  conclusion: VALID_CONCLUSION,
   confidence_note: '핵심 방향은 일치한다.',
 })
 const VALID_VERDICT_JSON = JSON.stringify({
@@ -180,7 +186,7 @@ describe('createLayer1AiAdapter', () => {
     )
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.summary?.conclusion).toBe('방향은 전진이지만 속도는 조절한다.')
+    expect(result.summary?.conclusion).toBe(VALID_CONCLUSION)
   })
   it('retries exactly once on empty-content 200 when deadline allows, then 결번', async () => {
     const calls: Layer1CallResult[] = []
@@ -251,8 +257,8 @@ describe('createLayer1AiAdapter', () => {
       if (prompts.length === 1) {
         return okCall({
           text: VALID_JSON,
-          tokensOut: 1900,
-          contentTokens: 1900,
+          tokensOut: 3200,
+          contentTokens: 3200,
         })
       }
       return okCall({ strictRetry: true })
@@ -273,8 +279,8 @@ describe('createLayer1AiAdapter', () => {
       calls += 1
       return okCall({
         text: VALID_JSON,
-        tokensOut: 1900,
-        contentTokens: 1900,
+        tokensOut: 3200,
+        contentTokens: 3200,
         strictRetry: strictRetry ?? false,
       })
     }
@@ -292,15 +298,16 @@ describe('createLayer1AiAdapter', () => {
     // budget for DeepSeek, unrelated to visible output size. If the guard
     // were still derived as maxCompletionTokens * 1.5 (as it was before
     // the 2026-08-26 ziwei 3000->8000 bump), the threshold would silently
-    // move to 12000 and 1900 content tokens would never trip it. It must
-    // stay at the shared reading contract value regardless of that ceiling.
+    // move to 12000 and 3200 content tokens would never trip it. It must
+    // stay at the shared reading contract value (3000, FIX 3 rescale)
+    // regardless of that ceiling.
     let calls = 0
     const call: Layer1Call = async ({ strictRetry }) => {
       calls += 1
       return okCall({
         text: VALID_JSON,
-        tokensOut: 1900,
-        contentTokens: 1900,
+        tokensOut: 3200,
+        contentTokens: 3200,
         strictRetry: strictRetry ?? false,
       })
     }
@@ -311,7 +318,7 @@ describe('createLayer1AiAdapter', () => {
     expect(LAYER1_REGISTRY.ziwei.maxCompletionTokens).toBe(8000)
     expect(calls).toBe(2)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.message).toMatch(/1900 > 1800/)
+    if (!result.ok) expect(result.message).toMatch(/3200 > 3000/)
   })
 
   it('parses a seer verdict ballot and maps it to summary.ballot / dissent', async () => {
@@ -373,11 +380,11 @@ describe('createLayer1AiAdapter', () => {
     const call: Layer1Call = async ({ strictRetry }) => {
       calls += 1
       return okCall({
-        // Above the reading threshold (1800) but below the synthesis floor
-        // (3000) — must be accepted as a synthesis call, not flagged runaway.
+        // Above the reading threshold (3000) but below the synthesis floor
+        // (3600) — must be accepted as a synthesis call, not flagged runaway.
         text: VALID_SYNTHESIS_JSON,
-        tokensOut: 2500,
-        contentTokens: 2500,
+        tokensOut: 3200,
+        contentTokens: 3200,
         strictRetry: strictRetry ?? false,
       })
     }

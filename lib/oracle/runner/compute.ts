@@ -32,19 +32,21 @@ import {
 import { SYSTEM_IDS, type AxisConsensus, type AxisVote, type ReadingScope, type SystemId } from '../axes/types'
 import { fiveElementBalance, fourPillars, greatLuck, nineStar, sukuyou, tenGods, tzolkin } from '../engines/calendar'
 import { natalChart, transits } from '../engines/astro'
-import { ichingDraw, runeDraw, tarotDraw } from '../engines/draw'
+import { buildLiuyao, ichingDraw, runeDraw, tarotDraw } from '../engines/draw'
 import type { TarotSpreadSize } from '../engines/draw/conventions'
+import type { LineValue } from '../engines/draw/tables'
 import { createRng } from '../engines/draw/rng'
 import { nameReading } from '../engines/name'
 import { numerology } from '../engines/numerology'
 import { MBTI_TYPES, prism } from '../engines/prism'
 import type { MicroCheck, PrismColors } from '../engines/prism/types'
 import { ziweiChart } from '../engines/ziwei'
-import type { OracleProfile, OracleSessionKind, OracleSessionScope } from '../schema'
+import type { OracleProfile, OracleSessionKind } from '../schema'
 import {
   ORACLE_DEFAULT_COORDS,
   ORACLE_DEFAULT_TIMEZONE,
   ORACLE_RUNE_COUNT,
+  ORACLE_RUNE_POOL_SIZE,
   ORACLE_TAROT_DECK_SIZE,
   ORACLE_TAROT_SPREAD,
   readingScopeForSession,
@@ -104,11 +106,6 @@ export type ComputeInput = {
   sessionInputs: OracleSessionInputs | null
   /** Needle set for the privacy gate — covers subject AND partner profiles. */
   personalData: PersonalData
-  /**
-   * Product scope. Combined (default) builds axis-projection payloads.
-   * Single builds that system's native chart and drops the axis block.
-   */
-  sessionScope?: OracleSessionScope
 }
 
 export type ComputeOutput = {
@@ -176,7 +173,9 @@ type SubjectContext = {
   nameParts: { surname: string; givenName: string } | null
   prism: { mbti: string; colors: PrismColors; microCheck: MicroCheck | undefined } | null
   tarot: { spread: TarotSpreadSize; pickedPositions: number[] } | null
-  runeCount: number | null
+  runes: { spread: number; pickedPositions: number[] | null } | null
+  /** User-cast 육효 lines (bottom-up, six values 6..9), or null for the seeded fallback. */
+  ichingLines: readonly LineValue[] | null
 }
 
 /**
@@ -243,9 +242,22 @@ function readTarotInputs(sessionInputs: OracleSessionInputs | null): SubjectCont
   return { spread: input.spread, pickedPositions: input.pickedPositions }
 }
 
-function readRuneCount(sessionInputs: OracleSessionInputs | null): number | null {
-  const count = sessionInputs?.runes?.count
-  return typeof count === 'number' ? count : null
+/** New shape: { spread, pickedPositions }. Legacy shape: { count } (no picks). */
+function readRuneInputs(sessionInputs: OracleSessionInputs | null): SubjectContext['runes'] {
+  const input = sessionInputs?.runes
+  if (!input) return null
+  if ('pickedPositions' in input && Array.isArray(input.pickedPositions)) {
+    return { spread: input.spread, pickedPositions: input.pickedPositions }
+  }
+  if ('count' in input && typeof input.count === 'number') {
+    return { spread: input.count, pickedPositions: null }
+  }
+  return null
+}
+
+function readIchingLines(sessionInputs: OracleSessionInputs | null): readonly LineValue[] | null {
+  const lines = sessionInputs?.iching?.lines
+  return Array.isArray(lines) && lines.length === 6 ? (lines as LineValue[]) : null
 }
 
 /** Combined-session fallback when the UI did not send a user draw. */
@@ -330,7 +342,15 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
     }
     case 'iching': {
       const seed = drawSeed(ctx.seed, 'iching')
-      return { vote: projectIching({ seed }), result: { draw: jsonObject(ichingDraw({ seed })) } }
+      // User-cast 육효 (session_inputs.iching.lines) wins; the seeded throw is
+      // the fallback so headless sessions stay reproducible from the seed.
+      const draw = ctx.ichingLines
+        ? buildLiuyao({ seed, values: ctx.ichingLines })
+        : ichingDraw({ seed })
+      return {
+        vote: projectIching({ seed, values: ctx.ichingLines ?? undefined }),
+        result: { draw: jsonObject(draw) },
+      }
     }
     case 'tarot': {
       const seed = drawSeed(ctx.seed, 'tarot')
@@ -342,7 +362,12 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
     }
     case 'runes': {
       const seed = drawSeed(ctx.seed, 'runes')
-      const input = { seed, count: ctx.runeCount ?? ORACLE_RUNE_COUNT }
+      const spread = ctx.runes?.spread ?? ORACLE_RUNE_COUNT
+      // User picks from the 24-stone cloth win; seeded picks are the fallback
+      // (same pattern as tarot) so headless sessions stay reproducible.
+      const pickedPositions =
+        ctx.runes?.pickedPositions ?? derivePickedPositions(seed, spread, ORACLE_RUNE_POOL_SIZE)
+      const input = { seed, count: spread, pickedPositions }
       return { vote: projectRune(input), result: { draw: jsonObject(runeDraw(input)) } }
     }
     case 'ninestar': {
@@ -410,7 +435,8 @@ export function runComputations(input: ComputeInput): ComputeOutput {
     nameParts: splitName(profile, input.locale),
     prism: readPrismInputs(profile, input.sessionInputs),
     tarot: readTarotInputs(input.sessionInputs),
-    runeCount: readRuneCount(input.sessionInputs),
+    runes: readRuneInputs(input.sessionInputs),
+    ichingLines: readIchingLines(input.sessionInputs),
   }
 
   const readingScope = readingScopeForSession(input.kind, input.question !== null)
@@ -420,7 +446,6 @@ export function runComputations(input: ComputeInput): ComputeOutput {
     readingScope,
     asOfDate: input.asOfDate,
     question: input.question,
-    sessionScope: input.sessionScope ?? 'combined',
     nominalAge: nominalAgeFrom(profile.birth_date, input.asOfDate),
   }
 

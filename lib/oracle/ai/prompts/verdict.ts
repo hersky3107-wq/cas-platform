@@ -1,5 +1,5 @@
 /**
- * Layer-2 seer verdict prompt, v1.
+ * Layer-2 seer verdict prompt, v2.
  *
  * One seer = one ballot. The seer receives every layer-1 reading plus the
  * axis-projection consensus (combined mode is exactly what the projection is
@@ -7,6 +7,12 @@
  * never tone, never a different schema. The panel tally is computed in code
  * from the ballots; the prompt says so, so no seer tries to speak for the
  * panel.
+ *
+ * v2 (FIX 4): advance/hold/release got explicit criteria the seer must apply
+ * to its OWN verdict text — session fb3336ed voted "만장일치 · 전진" while every
+ * verdict said stop expanding and finish what exists, because the enum had no
+ * stated meaning. The adapter now also validates direction-vs-text and retries
+ * once with VERDICT_DIRECTION_RETRY_INSTRUCTION.
  */
 import type { JsonObject } from '../../runner/types'
 import {
@@ -16,7 +22,19 @@ import {
 } from '../seer-roster'
 import { INTERNAL_VOCAB_RULES, languageForLocale } from './layer1'
 
-export const VERDICT_PROMPT_VERSION = 'verdict-v1'
+export const VERDICT_PROMPT_VERSION = 'verdict-v2'
+
+/**
+ * The direction is the ACTION the verdict recommends, not the mood of the
+ * readings. Shared between the system prompt and the mismatch retry.
+ */
+export const VERDICT_DIRECTION_CRITERIA = [
+  'DIRECTION CRITERIA (apply these to your OWN verdict_line, not to the readings\' mood):',
+  '- "advance"  = your verdict tells them to START or EXPAND something: open a new front, push into new ground, scale up.',
+  '- "hold"     = your verdict tells them to KEEP THE CURRENT COURSE: consolidate, maintain, defend, finish what already exists, add nothing new. Finishing existing work is hold, NOT advance.',
+  '- "release"  = your verdict tells them to END or LET GO of something: close it out, clear it away, subtract, walk away.',
+  'Write verdict_line FIRST in your head, then pick the direction that matches the action it actually recommends. If your text says 확장을 멈추고 정비하라, the direction is hold — voting advance there is a wrong ballot.',
+]
 
 /**
  * Ballot JSON worst case ≈ line budget + minority 160 chars + fixed keys —
@@ -27,6 +45,13 @@ export const VERDICT_MAX_COMPLETION_TOKENS = 900
 
 export const VERDICT_STRICT_RETRY_INSTRUCTION =
   '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, no analysis, no text after the closing brace. Respect the verdict_line character budget exactly; all five domains must be integers 0-100.'
+
+/**
+ * Appended when the first ballot's direction contradicted its own text.
+ * One retry, then the adapter accepts and logs the mismatch.
+ */
+export const VERDICT_DIRECTION_RETRY_INSTRUCTION =
+  '\n\nDIRECTION RETRY: Your previous ballot\'s direction contradicted its own verdict_line. Re-read the criteria — advance = start/expand something new; hold = keep course, consolidate, finish what exists; release = end/let go. Rewrite the ballot so the direction is the action your verdict_line actually recommends. If the text says consolidate or finish what exists, vote "hold". Output ONLY the JSON object.'
 
 export function buildVerdictSystemPrompt(
   locale: string,
@@ -46,7 +71,10 @@ export function buildVerdictSystemPrompt(
     'Evidence rules:',
     '- Work only from the supplied readings and consensus. Never invent a card, sign, or value that is not in the payload.',
     '- Cite systems by their divination names (사주, 타로, 룬, 주역, 점성술...). Never mention AI, models, brands, or other seers.',
+    '- Never print raw numeric scores or percentages in verdict_line or minority_opinion — speak in plain language.',
     ...INTERNAL_VOCAB_RULES,
+    ...VERDICT_DIRECTION_CRITERIA,
+    'verdict_line must be CONSISTENT with the direction you vote: a reader must be able to guess your direction from your text alone.',
     `Write user-facing text in ${language} (locale ${locale}).`,
     'If context.question is present, the ballot answers that question; otherwise it judges the period in general.',
     'OUTPUT RULES (strict):',
@@ -55,7 +83,7 @@ export function buildVerdictSystemPrompt(
     'Schema (character budgets are hard limits — stay under them):',
     '{',
     `  "verdict_line": string,  // your verdict; max ${lineBudget} characters; final prose only`,
-    '  "direction": "advance" | "hold" | "release",',
+    '  "direction": "advance" | "hold" | "release",  // per DIRECTION CRITERIA — the action your verdict_line recommends',
     '  "focus": "work" | "money" | "love" | "social" | "energy",  // the one domain your verdict turns on',
     '  "domains": {"work": int, "money": int, "love": int, "social": int, "energy": int},  // each 0-100, your read of the period per domain',
     `  "minority_opinion": string | null  // max ${SEER_MINORITY_OPINION_MAX} characters. If your ballot goes AGAINST the consensus tally leader, state the strongest fact behind your dissent; otherwise null.`,

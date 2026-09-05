@@ -169,6 +169,17 @@ export const ELDER_FUTHARK: readonly RuneDef[] = [
 
 export const IRREVERSIBLE_RUNE_NAMES = ELDER_FUTHARK.filter((r) => r.irreversible).map((r) => r.name)
 
+/**
+ * Rune spread position labels, same convention as TAROT_SPREAD_LABELS:
+ * 1 = today's rune, 3 = the Norns (past/present/future), 5 = cross.
+ * Korean display strings live in lib/oracle/display-copy.ts.
+ */
+export const RUNE_SPREAD_LABELS: Record<number, readonly string[]> = {
+  1: ["Today's rune"],
+  3: ['Past', 'Present', 'Future'],
+  5: ['Situation', 'Obstacle', 'Advice', 'External', 'Outcome'],
+}
+
 export const HEXAGRAM_NAMES: readonly { kingWen: number; hanja: string; hangul: string; english: string }[] = [
   { kingWen: 1, hanja: '乾', hangul: '건', english: 'The Creative' },
   { kingWen: 2, hanja: '坤', hangul: '곤', english: 'The Receptive' },

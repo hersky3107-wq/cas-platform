@@ -259,6 +259,51 @@ export const RUNE_KO: Record<string, string> = {
   Othala: '오달라',
 }
 
+/** Rune spread position labels (engine RUNE_SPREAD_LABELS keys → Korean). */
+export const RUNE_POSITION_KO: Record<string, string> = {
+  "Today's rune": '오늘의 룬',
+  Past: '과거',
+  Present: '현재',
+  Future: '미래',
+  Situation: '상황',
+  Obstacle: '방해',
+  Advice: '조언',
+  External: '외부',
+  Outcome: '결과',
+}
+
+export function runePositionKo(label: string): string {
+  return RUNE_POSITION_KO[label] ?? label
+}
+
+/** One line per stave for the drawn-rune display — keywords, not a reading. */
+export const RUNE_MEANING_KO: Record<string, string> = {
+  Fehu: '재물과 소득 — 손에 잡히는 결실',
+  Uruz: '원초적 힘과 체력 — 밀고 나가는 기세',
+  Thurisaz: '가시와 시련 — 방어와 돌파의 갈림',
+  Ansuz: '전언과 통찰 — 귀 기울여야 할 말',
+  Raidho: '여정과 리듬 — 움직임 속의 질서',
+  Kenaz: '횃불과 기술 — 밝혀지는 앎',
+  Gebo: '선물과 교환 — 주고받음의 균형',
+  Wunjo: '기쁨과 화합 — 무리 안의 안온함',
+  Hagalaz: '우박과 붕괴 — 통제 밖의 급변',
+  Nauthiz: '결핍과 제약 — 필요가 가르치는 것',
+  Isa: '얼음과 정지 — 멈춰서 지키는 시간',
+  Jera: '수확과 주기 — 제철에 맺히는 결실',
+  Eihwaz: '주목나무 — 끝과 시작을 잇는 축',
+  Perthro: '운명의 잔 — 감춰진 것과 우연',
+  Algiz: '엘크의 뿔 — 보호와 경계 태세',
+  Sowilo: '태양 — 방향이 분명한 성공의 힘',
+  Tiwaz: '전사의 별 — 원칙과 정당한 승부',
+  Berkano: '자작나무 — 돌봄과 새로 자람',
+  Ehwaz: '말(馬) — 신뢰로 함께 나아감',
+  Mannaz: '사람 — 자기 자리와 공동체',
+  Laguz: '물 — 직관과 흐름에 맡김',
+  Ingwaz: '씨앗 — 안에서 무르익는 완성',
+  Dagaz: '새벽 — 확연한 전환과 깨어남',
+  Othala: '유산과 터전 — 물려받고 지키는 것',
+}
+
 export function oneDecimal(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }

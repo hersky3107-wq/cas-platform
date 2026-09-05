@@ -266,14 +266,20 @@ export async function POST(req: Request) {
     const stub = await ensureStubRunner(user.id)
     if (!stub) return NextResponse.json({ error: 'Could not create a reading profile' }, { status: 500 })
     const patched = Object.keys(extrasPatch).length ? await patchRunnerExtras(user.id, extrasPatch) : stub
+    // A failed extras write is a FAILURE, not a degraded success — returning
+    // ok:true here made the client navigate on while the engine row kept the
+    // old (or no) name. See FIX 7.
+    if (!patched) {
+      return NextResponse.json({ error: '프로필을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' }, { status: 500 })
+    }
     return NextResponse.json({
       ok: true,
       profile: null,
       complete: false,
       runnerProfile: patched,
-      subjectProfileId: patched?.id ?? stub.id,
-      placeholderBirthDate: (patched ?? stub).derived?.placeholder_birth_date === true,
-      mbtiEstimated: (patched ?? stub).derived?.mbti_estimated === true,
+      subjectProfileId: patched.id,
+      placeholderBirthDate: patched.derived?.placeholder_birth_date === true,
+      mbtiEstimated: patched.derived?.mbti_estimated === true,
     })
   }
 
@@ -288,14 +294,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Could not create a reading profile' }, { status: 500 })
     }
     const patched = await patchRunnerExtras(user.id, extrasPatch)
+    // FIX 7: this used to answer ok:true with runnerProfile:null when the
+    // UPDATE failed. The client then navigated to the reading, which read the
+    // STALE profile row — the user "failed" to save a name yet still got a
+    // 성명학 reading from the old one. A failed write is now a failed request.
+    if (!patched) {
+      return NextResponse.json({ error: '이름을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' }, { status: 500 })
+    }
     return NextResponse.json({
       ok: true,
       profile: null,
       complete: false,
       runnerProfile: patched,
-      subjectProfileId: patched?.id ?? existing.id,
-      placeholderBirthDate: (patched ?? existing).derived?.placeholder_birth_date === true,
-      mbtiEstimated: (patched ?? existing).derived?.mbti_estimated === true,
+      subjectProfileId: patched.id,
+      placeholderBirthDate: patched.derived?.placeholder_birth_date === true,
+      mbtiEstimated: patched.derived?.mbti_estimated === true,
     })
   }
 
@@ -369,10 +382,21 @@ export async function POST(req: Request) {
   // Both stores, one form. The runner row is derived from the sketch that was
   // just saved, so a system can never read a stale chart.
   const runnerProfile = await syncRunnerProfile(user.id, oracle_birth_profile)
+  // FIX 7: if the runner row (the copy every engine actually reads) failed to
+  // write, the two stores are out of sync — surface it instead of ok:true.
+  if (!runnerProfile) {
+    return NextResponse.json(
+      { error: '프로필 저장이 완전히 끝나지 않았습니다. 잠시 후 다시 저장해 주세요.' },
+      { status: 500 },
+    )
+  }
   const withExtras =
-    runnerProfile && Object.keys(extrasPatch).length > 0
+    Object.keys(extrasPatch).length > 0
       ? await patchRunnerExtras(user.id, extrasPatch)
       : runnerProfile
+  if (!withExtras) {
+    return NextResponse.json({ error: '이름을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' }, { status: 500 })
+  }
 
   const complete = oracleProfileLooksComplete(oracle_birth_profile)
   return NextResponse.json({
@@ -380,8 +404,8 @@ export async function POST(req: Request) {
     profile: oracle_birth_profile,
     complete,
     runnerProfile: withExtras,
-    subjectProfileId: withExtras?.id ?? runnerProfile?.id ?? null,
-    placeholderBirthDate: withExtras?.derived?.placeholder_birth_date === true,
-    mbtiEstimated: withExtras?.derived?.mbti_estimated === true,
+    subjectProfileId: withExtras.id,
+    placeholderBirthDate: withExtras.derived?.placeholder_birth_date === true,
+    mbtiEstimated: withExtras.derived?.mbti_estimated === true,
   })
 }

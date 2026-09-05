@@ -12,7 +12,9 @@ import {
 
 describe('draw engine version', () => {
   it('exports DRAW_ENGINE_VERSION', () => {
-    expect(DRAW_ENGINE_VERSION).toBe('1.0.0')
+    // 1.1.0: rune picks from the 24-stone cloth + merkstave removed — a given
+    // seed's rune draw changed, which is exactly what this bump signals.
+    expect(DRAW_ENGINE_VERSION).toBe('1.1.0')
   })
 })
 
@@ -53,7 +55,7 @@ describe('tarotDraw', () => {
 })
 
 describe('runeDraw', () => {
-  it('never marks a symmetrical rune as reversed', () => {
+  it('never marks a symmetrical rune as reversed — and assigns no merkstave in its place', () => {
     const irreversible = new Set(IRREVERSIBLE_RUNE_NAMES)
     expect(irreversible).toEqual(
       new Set(['Gebo', 'Hagalaz', 'Nauthiz', 'Isa', 'Jera', 'Eihwaz', 'Sowilo', 'Ingwaz', 'Dagaz']),
@@ -64,10 +66,8 @@ describe('runeDraw', () => {
       for (const rune of result.runes) {
         if (irreversible.has(rune.name)) {
           expect(rune.reversed).toBe(false)
-          expect(typeof rune.merkstave).toBe('boolean')
-        } else {
-          expect(rune.merkstave).toBe(false)
         }
+        expect('merkstave' in rune, 'merkstave was removed with 1.1.0').toBe(false)
       }
     }
   })
@@ -75,6 +75,21 @@ describe('runeDraw', () => {
   it('is deterministic for the same seed and count', () => {
     const first = runeDraw({ seed: 'rune-det', count: 5 })
     expect(runeDraw({ seed: 'rune-det', count: 5 })).toEqual(first)
+  })
+
+  it('maps 1-based cloth positions into the seeded shuffle, like tarot', () => {
+    const seed = 'cloth-map'
+    const full = runeDraw({ seed, count: 24 })
+    const picked = runeDraw({ seed, count: 3, pickedPositions: [24, 1, 12] })
+    expect(picked.runes).toHaveLength(3)
+    expect(picked.runes[0]!.id).toBe(full.runes[23]!.id)
+    expect(picked.runes[1]!.id).toBe(full.runes[0]!.id)
+    expect(picked.runes[2]!.id).toBe(full.runes[11]!.id)
+    expect(picked.runes[0]!.pickedPosition).toBe(24)
+    // Reversal is decided per stone on the cloth at shuffle time, so the same
+    // stone shows the same face regardless of which pick order found it.
+    expect(picked.runes[0]!.reversed).toBe(full.runes[23]!.reversed)
+    expect(picked.runes.map((rune) => rune.positionLabel)).toEqual(['Past', 'Present', 'Future'])
   })
 })
 

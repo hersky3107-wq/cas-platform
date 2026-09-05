@@ -2,7 +2,13 @@ import { extractJsonObject } from './parse-layer1'
 
 export const SYNTHESIS_AGREEMENT_MAX = 160
 export const SYNTHESIS_DIVERGENCE_MAX = 160
-export const SYNTHESIS_CONCLUSION_MAX = 700
+/**
+ * FIX 3: conclusion budget 600–900 chars (was ≤700 with no floor — too thin
+ * for the premium tier). The parser floor sits below the prompt minimum so a
+ * slightly-short legit conclusion retries once instead of failing the unit.
+ */
+export const SYNTHESIS_CONCLUSION_MAX = 900
+export const SYNTHESIS_CONCLUSION_MIN = 300
 export const SYNTHESIS_CONFIDENCE_NOTE_MAX = 220
 export const SYNTHESIS_LIST_MAX = 6
 
@@ -47,7 +53,9 @@ export function parseSynthesisJson(raw: string): SynthesisJson | null {
 
   if (typeof record.conclusion !== 'string') return null
   const conclusion = record.conclusion.trim()
-  if (!conclusion || [...conclusion].length > SYNTHESIS_CONCLUSION_MAX) return null
+  if (!conclusion) return null
+  const conclusionLength = [...conclusion].length
+  if (conclusionLength > SYNTHESIS_CONCLUSION_MAX || conclusionLength < SYNTHESIS_CONCLUSION_MIN) return null
 
   let confidenceNote: string | null
   if (record.confidence_note === null) {

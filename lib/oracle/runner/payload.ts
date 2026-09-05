@@ -9,15 +9,19 @@
  * (see OracleAiContext) — a closed, two-field shape.
  */
 import { AXES_LAYER_VERSION } from '../axes/conventions'
-import { buildLabelledReasons, labelForReasonCode } from '../axes/reason-labels'
 import type { AxisConsensus, AxisVote, ReadingScope } from '../axes/types'
-import type { OracleReading, OracleSessionKind, OracleSessionScope } from '../schema'
+import type { OracleReading, OracleSessionKind } from '../schema'
 import { ORACLE_RUNNER_VERSION } from './conventions'
 import { buildNativeChart } from './native-chart'
 import { assertNoPersonalData, type PersonalData } from './privacy'
 import type { JsonObject } from './types'
 
-export const SYNTHESIS_NARRATIVE_MAX_TOKENS = 200
+/**
+ * How much of each layer-1 narrative the synthesis sees. Sized to the layer-1
+ * narrative budget (700–1100 chars, FIX 3): 400 units keeps ~the first half of
+ * a max-length reading, which is where the chart facts land under prompt v4.
+ */
+export const SYNTHESIS_NARRATIVE_MAX_TOKENS = 400
 
 /**
  * Conservative tokenizer-free cap. CJK characters, words, numbers and
@@ -99,28 +103,23 @@ export type PayloadContext = {
   readingScope: ReadingScope
   asOfDate: string
   question: string | null
-  /**
-   * Product scope. Combined keeps the axis projection (12-system compare).
-   * Single sends that system's native chart and drops the axis block.
-   * Missing scope is treated as combined so existing callers stay on axes.
-   */
-  sessionScope?: OracleSessionScope
   /** 세 / 虚岁 from birth year + asOfDate. Used only to mark 현재 대운/대한. Never emitted. */
   nominalAge?: number | null
 }
 
-function isSingleScope(ctx: PayloadContext): boolean {
-  return ctx.sessionScope === 'single'
-}
-
-function envelope(ctx: PayloadContext): JsonObject {
+/**
+ * `readingInput` states what the payload body carries: 'native' for a layer-1
+ * reading (that system's own chart), 'axes' for the layer-2 verdict payload
+ * (the cross-system projection — the only place it belongs).
+ */
+function envelope(ctx: PayloadContext, readingInput: 'native' | 'axes'): JsonObject {
   return {
     runnerVersion: ORACLE_RUNNER_VERSION,
     axesLayerVersion: AXES_LAYER_VERSION,
     kind: ctx.kind,
     locale: ctx.locale,
     readingScope: ctx.readingScope,
-    readingInput: isSingleScope(ctx) ? 'native' : 'axes',
+    readingInput,
   }
 }
 
@@ -128,47 +127,15 @@ function contextOf(ctx: PayloadContext): OracleAiContext {
   return { asOfDate: ctx.asOfDate, question: ctx.question }
 }
 
-function buildAxesReadingBody(vote: AxisVote, ctx: PayloadContext): JsonObject {
-  const labelled = buildLabelledReasons(vote.reasons, ctx.locale)
-  return {
-    ...envelope(ctx),
-    system: vote.system,
-    engineVersion: vote.engineVersion,
-    traits: vote.traits,
-    elements: vote.elements,
-    phase: vote.phase,
-    confidence: vote.confidence,
-    reasons: labelled.reasons,
-    labels: labelled.labels,
-    unreadable: vote.unreadable.map((entry) => ({
-      space: entry.space,
-      code: entry.code,
-      label: labelForReasonCode(entry.code, ctx.locale),
-    })),
-  }
-}
-
-function buildNativeReadingBody(vote: AxisVote, result: JsonObject | null, ctx: PayloadContext): JsonObject {
-  return {
-    ...envelope(ctx),
-    system: vote.system,
-    engineVersion: vote.engineVersion,
-    chart: buildNativeChart(vote.system, result, {
-      locale: ctx.locale,
-      nominalAge: ctx.nominalAge ?? null,
-    }),
-  }
-}
-
 /**
- * One system's layer-1 prompt input.
+ * One system's layer-1 prompt input — the engine's NATIVE chart in that
+ * system's own vocabulary, in EVERY mode (single and combined alike).
  *
- * Combined (integrated) mode: AxisVote only — vectors, confidence, labelled
- * reason codes. That is the 12-system comparison scale.
- *
- * Single-system mode: that engine's native chart in the system's own
- * vocabulary. The axis projection is omitted on purpose; it is the wrong
- * input for a tarot/rune/saju/etc. reading.
+ * The axis projection (traits/elements/phase scores) never goes to a layer-1
+ * reader: it is the comparison scale for LAYER 2 (seers) and the consensus
+ * map. Combined mode used to send it here, which made tarot narrate
+ * "나무 기운 56.3" — the exact disease 5fbbc92 fixed for single scope.
+ * One code path now; there is no axes variant to regress to.
  */
 export function buildReadingPayload(
   vote: AxisVote,
@@ -176,13 +143,19 @@ export function buildReadingPayload(
   ctx: PayloadContext,
   pii: PersonalData,
 ): JsonObject {
-  const body = isSingleScope(ctx)
-    ? buildNativeReadingBody(vote, result, ctx)
-    : buildAxesReadingBody(vote, ctx)
+  const body: JsonObject = {
+    ...envelope(ctx, 'native'),
+    system: vote.system,
+    engineVersion: vote.engineVersion,
+    chart: buildNativeChart(vote.system, result, {
+      locale: ctx.locale,
+      nominalAge: ctx.nominalAge ?? null,
+    }),
+  }
 
   assertNoPersonalData(body, pii, {
     label: `ai_payload(${vote.system})`,
-    machineCodeFields: isSingleScope(ctx) ? [] : MACHINE_CODE_FIELDS,
+    machineCodeFields: [],
   })
   return { ...body, context: contextOf(ctx) }
 }
@@ -211,7 +184,7 @@ export function buildVerdictPayload(
 ): JsonObject {
   const { consensus } = args
   const body: JsonObject = {
-    ...envelope(ctx),
+    ...envelope(ctx, 'axes'),
     reader: { slug: args.readerSlug, index: args.readerIndex, of: args.readerCount },
     ...(args.previous !== undefined ? { previous: args.previous } : {}),
     consensus: axisConsensusPayload(consensus),

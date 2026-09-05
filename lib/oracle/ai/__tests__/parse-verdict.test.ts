@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseVerdictJson } from '../parse-verdict'
+import { parseVerdictJson, verdictDirectionMismatch } from '../parse-verdict'
 
 const BALLOT = {
   verdict_line: '사주와 타로가 같은 문을 가리킨다. 이번 주는 미는 쪽이 맞다.',
@@ -71,5 +71,55 @@ describe('parseVerdictJson', () => {
     const rest: Partial<typeof BALLOT> = { ...BALLOT }
     delete rest.verdict_line
     expect(parseVerdictJson(JSON.stringify(rest), 3)).toBeNull()
+  })
+})
+
+/**
+ * FIX 4 — the fb3336ed disease: "만장일치 · 전진 3표" over three verdicts that
+ * all said stop expanding and finish what exists.
+ */
+describe('verdictDirectionMismatch', () => {
+  it('flags an advance vote whose text says consolidate/finish (the fb3336ed case)', () => {
+    const check = verdictDirectionMismatch({
+      verdict_line: '벌린 일을 늘리지 말고 지금 있는 것을 마무리하며 기반을 다지는 때다.',
+      direction: 'advance',
+    })
+    expect(check.mismatch).toBe(true)
+    expect(check.textDirection).toBe('hold')
+  })
+
+  it('accepts a ballot whose text matches its vote', () => {
+    expect(
+      verdictDirectionMismatch({
+        verdict_line: '이번 주는 새 제안에 착수하고 넓히는 쪽이 맞다.',
+        direction: 'advance',
+      }).mismatch,
+    ).toBe(false)
+    expect(
+      verdictDirectionMismatch({
+        verdict_line: '끝난 관계는 정리하고 내려놓아야 새 흐름이 들어온다.',
+        direction: 'release',
+      }).mismatch,
+    ).toBe(false)
+  })
+
+  it('does not flag negated framings that name both sides', () => {
+    // "무리한 확장보다 유지" mentions 확장 AND 유지 — the voted side is present,
+    // so the conservative rule stays silent.
+    expect(
+      verdictDirectionMismatch({
+        verdict_line: '무리한 확장보다 지금 판을 유지하는 편이 낫다.',
+        direction: 'hold',
+      }).mismatch,
+    ).toBe(false)
+  })
+
+  it('stays silent when the text carries no direction keyword at all', () => {
+    expect(
+      verdictDirectionMismatch({
+        verdict_line: '재물 축이 유난히 밝고 관계 축은 흐리다.',
+        direction: 'advance',
+      }).mismatch,
+    ).toBe(false)
   })
 })

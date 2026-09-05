@@ -9,7 +9,8 @@
  *            with a fairly agreed element association; a rune with no
  *            agreed element is left out of the blend, not guessed.
  * Phase    — direct, from each rune's own directional meaning;
- *            merkstave/reversed flips advance↔release.
+ *            a reversed stone flips advance↔release. The nine symmetric
+ *            runes never arrive reversed (engine audit, 2026-09-05).
  */
 import { DRAW_ENGINE_VERSION, runeDraw } from '../../engines/draw'
 import type { RuneDrawn } from '../../engines/draw'
@@ -21,6 +22,8 @@ import { TRAIT_AXES, type AxisVote, type PhaseAxis, type TraitVector } from '../
 export type RuneProjectorInput = {
   seed: string
   count: number
+  /** 1-based cloth picks; omitted = the first `count` stones of the shuffle. */
+  pickedPositions?: readonly number[]
 }
 
 /** `hold` has no opposite among the three phase axes, so it is unaffected. */
@@ -57,14 +60,18 @@ function phaseFromRunes(runes: readonly RuneDrawn[]) {
   for (const rune of runes) {
     const base = RUNE_PHASE[rune.name]
     if (!base) throw new Error(`axes/rune: no phase for "${rune.name}"`)
-    const axis = rune.reversed || rune.merkstave ? flip(base) : base
+    const axis = rune.reversed ? flip(base) : base
     raw[axis] += 100 / runes.length
   }
   return normalizePhase(raw)
 }
 
 export function projectRune(input: RuneProjectorInput): AxisVote {
-  const draw = runeDraw({ seed: input.seed, count: input.count })
+  const draw = runeDraw({
+    seed: input.seed,
+    count: input.count,
+    pickedPositions: input.pickedPositions,
+  })
 
   const traits = traitsFromRunes(draw.runes)
   const elements = elementsFromRunes(draw.runes)
@@ -87,7 +94,7 @@ export function projectRune(input: RuneProjectorInput): AxisVote {
     reasons: {
       traits: ['rune.traits.stave_character'],
       elements: elements ? ['rune.elements.agreed_associations_only'] : undefined,
-      phase: ['rune.phase.direction_with_merkstave_flip'],
+      phase: ['rune.phase.direction_with_reversal'],
     },
     engineVersion: DRAW_ENGINE_VERSION,
   }

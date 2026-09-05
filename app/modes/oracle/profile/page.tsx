@@ -399,12 +399,14 @@ function OracleProfileForm() {
         error?: string;
         hint?: string;
       };
-      if (!res.ok) {
+      // ok must be asserted, not assumed: a 200 with ok!==true used to slip
+      // through here and navigate onward while the name was never saved (FIX 7).
+      if (!res.ok || j?.ok !== true) {
         const parts = [
           typeof j?.error === "string" ? j.error : null,
           typeof j?.hint === "string" ? j.hint : null,
         ].filter(Boolean);
-        setErr(parts.join(" "));
+        setErr(parts.length ? parts.join(" ") : "저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setSaving(false);
         return;
       }

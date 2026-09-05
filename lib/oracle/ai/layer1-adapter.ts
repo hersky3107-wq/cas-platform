@@ -10,14 +10,21 @@
 import type { JsonObject, OracleAiAdapter, OracleAiFailure, OracleAiRequest, OracleAiResult } from '../runner/types'
 import type { Layer1Call, Layer1CallResult } from './call'
 import { createLayer1HttpBudget, type Layer1HttpBudget } from './http-budget'
-import { isEmptyModelText, parseLayer1Json } from './parse-layer1'
-import { parseSynthesisJson } from './parse-synthesis'
-import { parseVerdictJson, type VerdictJson } from './parse-verdict'
+import {
+  isEmptyModelText,
+  LAYER1_NARRATIVE_MAX,
+  LAYER1_NARRATIVE_MIN,
+  LAYER1_NARRATIVE_TARGET,
+  parseLayer1Json,
+} from './parse-layer1'
+import { parseSynthesisJson, SYNTHESIS_CONCLUSION_MAX } from './parse-synthesis'
+import { parseVerdictJson, verdictDirectionMismatch, type VerdictJson } from './parse-verdict'
 import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1'
 import { buildSynthesisSystemPrompt, buildSynthesisUserPrompt } from './prompts/synthesis'
 import {
   buildVerdictSystemPrompt,
   buildVerdictUserPrompt,
+  VERDICT_DIRECTION_RETRY_INSTRUCTION,
   VERDICT_MAX_COMPLETION_TOKENS,
   VERDICT_STRICT_RETRY_INSTRUCTION,
 } from './prompts/verdict'
@@ -32,13 +39,13 @@ export const LAYER1_HTTP_BUDGET = 2
 /** Do not open a fresh call when less than this remains on the unit deadline. */
 export const LAYER1_RETRY_MIN_REMAINING_MS = 25_000
 /**
- * Synthesis contract is longer than a single reading (up to 6 agreements /
- * divergences <=160 chars each + conclusion <=700 + confidence_note <=220
- * => ~1880 chars worst case). Floor the guard here, same pattern as
- * SYNTHESIS_MAX_COMPLETION_TOKENS below — never derived from any reader's
- * maxCompletionTokens.
+ * Synthesis contract worst case (FIX 3 budgets): up to 6 agreements /
+ * divergences <=160 chars each + conclusion <=900 + confidence_note <=220
+ * => ~3040 chars ≈ ~2400 tokens CJK. Floor the guard here with headroom,
+ * same pattern as SYNTHESIS_MAX_COMPLETION_TOKENS below — never derived
+ * from any reader's maxCompletionTokens.
  */
-export const LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS = 3000
+export const LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS = 3600
 
 /**
  * Visible-content runaway threshold. Reads the registry entry's own
@@ -55,13 +62,16 @@ export function layer1RunawayContentThreshold(
     : entry.runawayContentTokens
 }
 export const LAYER1_STRICT_RETRY_INSTRUCTION =
-  '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ≤500 Unicode characters (prism target 280–420). Respect every field character limit.'
+  `\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ${LAYER1_NARRATIVE_MIN}–${LAYER1_NARRATIVE_MAX} Unicode characters (aim ${LAYER1_NARRATIVE_TARGET}) — plain language, no raw numeric scores. Respect every field character limit.`
 
 export const SYNTHESIS_STRICT_RETRY_INSTRUCTION =
-  '\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble or text after the closing brace. Hard budgets: ≤6 agreements/divergences; each agreement/divergence ≤160 characters; conclusion ≤700 characters; confidence_note ≤220 characters or null.'
+  `\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble or text after the closing brace. Hard budgets: ≤6 agreements/divergences; each agreement/divergence ≤160 characters; conclusion 600–${SYNTHESIS_CONCLUSION_MAX} characters; confidence_note ≤220 characters or null.`
 
-/** Synthesis JSON is longer than a single reading; never inherit prism's 700 ceiling. */
-export const SYNTHESIS_MAX_COMPLETION_TOKENS = 1200
+/**
+ * Synthesis JSON is longer than a single reading; never inherit a reader's
+ * ceiling. Sized for the FIX 3 contract (~3040 chars ≈ ~2400 tokens CJK).
+ */
+export const SYNTHESIS_MAX_COMPLETION_TOKENS = 2600
 
 async function defaultCall(input: Parameters<Layer1Call>[0]): Promise<Layer1CallResult> {
   const { callLayer1Model } = await import('./call')
@@ -155,19 +165,18 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             : entry
 
       const readerCount = verdictReaderCount(request.payload)
-      const readingInput = request.payload.readingInput === 'native' ? 'native' : 'axes'
       const systemPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisSystemPrompt(request.locale)
           : request.kind === 'verdict'
             ? buildVerdictSystemPrompt(request.locale, request.unit, readerCount)
-            : buildLayer1SystemPrompt(request.locale, request.unit, readingInput)
+            : buildLayer1SystemPrompt(request.locale, request.unit)
       const userPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisUserPrompt(request.payload)
           : request.kind === 'verdict'
             ? buildVerdictUserPrompt(request.payload, request.locale)
-            : buildLayer1UserPrompt(request.payload, request.locale, request.unit, readingInput)
+            : buildLayer1UserPrompt(request.payload, request.locale, request.unit)
       const startedAt = Date.now()
       const deadlineAt = startedAt + opts.timeoutMs
       const httpBudget = createLayer1HttpBudget(LAYER1_HTTP_BUDGET)
@@ -175,6 +184,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
       let lastError = 'empty content'
       let lastRaw: Layer1CallResult | null = null
       let strictRetryNext = false
+      /** FIX 4: one direction-consistency retry, then accept + log. */
+      let directionRetryUsed = false
+      let directionRetryNext = false
       let totalPromptTokens = 0
       let totalCompletionTokens = 0
       let totalReportedCostUsd = 0
@@ -211,20 +223,24 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         const raw = await call({
           entry: effectiveEntry,
           systemPrompt,
-          userPrompt: strictRetryNext
-            ? `${userPrompt}${
-                request.kind === 'synthesis'
-                  ? SYNTHESIS_STRICT_RETRY_INSTRUCTION
-                  : request.kind === 'verdict'
-                    ? VERDICT_STRICT_RETRY_INSTRUCTION
-                    : LAYER1_STRICT_RETRY_INSTRUCTION
-              }`
-            : userPrompt,
+          userPrompt:
+            strictRetryNext || directionRetryNext
+              ? `${userPrompt}${
+                  directionRetryNext
+                    ? VERDICT_DIRECTION_RETRY_INSTRUCTION
+                    : request.kind === 'synthesis'
+                      ? SYNTHESIS_STRICT_RETRY_INSTRUCTION
+                      : request.kind === 'verdict'
+                        ? VERDICT_STRICT_RETRY_INSTRUCTION
+                        : LAYER1_STRICT_RETRY_INSTRUCTION
+                }`
+              : userPrompt,
           timeoutMs: Math.max(1, deadlineAt - Date.now()),
           sessionId: request.sessionId,
           httpBudget,
-          strictRetry: strictRetryNext,
+          strictRetry: strictRetryNext || directionRetryNext,
         })
+        directionRetryNext = false
         lastRaw = raw
         totalPromptTokens += raw.tokensIn
         totalCompletionTokens += raw.tokensOut
@@ -264,6 +280,29 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         const synthesisParsed = request.kind === 'synthesis' ? parseSynthesisJson(raw.text ?? '') : null
         const verdictParsed: VerdictJson | null =
           request.kind === 'verdict' ? parseVerdictJson(raw.text ?? '', readerCount) : null
+
+        // FIX 4: the vote must not contradict its own text. On an obvious
+        // keyword-level disagreement, retry ONCE with the direction-criteria
+        // instruction; if it persists, accept the ballot but log and mark it —
+        // an honest mismatch beats a silently relabelled vote.
+        let directionMismatch = false
+        if (verdictParsed) {
+          const check = verdictDirectionMismatch(verdictParsed)
+          if (check.mismatch && !directionRetryUsed) {
+            directionRetryUsed = true
+            directionRetryNext = true
+            lastError = `verdict direction/text mismatch (voted ${verdictParsed.direction}, text reads ${check.textDirection ?? 'unclear'})`
+            console.warn(`[oracle] ${request.unit} ${lastError} — retrying once`)
+            continue
+          }
+          if (check.mismatch) {
+            directionMismatch = true
+            console.warn(
+              `[oracle] ${request.unit} verdict direction/text mismatch persisted after retry (voted ${verdictParsed.direction}, text reads ${check.textDirection ?? 'unclear'}) — accepting and logging`,
+            )
+          }
+        }
+
         if (layer1Parsed || synthesisParsed || verdictParsed) {
           const latencyMs = Date.now() - startedAt
           await finalizeUnitCost({
@@ -303,6 +342,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                       domains: verdictParsed.domains,
                     },
                     dissent: verdictParsed.minority_opinion,
+                    // FIX 4: persisted direction/text disagreement, kept honest.
+                    ...(directionMismatch ? { direction_text_mismatch: true } : {}),
                     parsed: true,
                     finish_reason: raw.finishReason,
                     content_tokens: raw.contentTokens,
