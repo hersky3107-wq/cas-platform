@@ -1,14 +1,89 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import HelpModal from "@/components/HelpModal";
-import { oracleHelpContent } from "@/lib/help-modal/oracle-content";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Sparkles } from "lucide-react";
+import { Lock } from "lucide-react";
+import HelpModal from "@/components/HelpModal";
+import { oracleHelpContent } from "@/lib/help-modal/oracle-content";
+import SystemGlyph from "./glyphs/SystemGlyph";
+import { SINGLE_SYSTEMS, type SingleSystemId } from "@/lib/oracle/single-system-ui";
+import { readingPath, requiredProfileFields } from "@/lib/oracle/system-requirements";
+import { ORACLE_SESSION_CREDIT_PRICES } from "@/lib/oracle/runner/conventions";
+import { ORACLE_SINGLE_READER_COUNTS } from "@/lib/oracle/ai/family-roster";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
+
+const FAMILY_GROUPS: ReadonlyArray<{
+  id: string;
+  label: string;
+  systems: readonly SingleSystemId[];
+}> = [
+  { id: "east", label: "동양역법", systems: ["saju", "ziwei", "ninestar", "sukuyou"] },
+  { id: "west", label: "서양북구", systems: ["astro", "tarot", "runes", "iching", "numerology"] },
+  { id: "self", label: "자체현대", systems: ["prism", "name", "tzolkin"] },
+];
+
+const singlePrices = ORACLE_SESSION_CREDIT_PRICES.single;
+const priceRange = ORACLE_SINGLE_READER_COUNTS.map((n) => singlePrices[n] ?? 0).filter(
+  (n) => n > 0,
+);
+const priceLabel = `${Math.min(...priceRange)} / ${Math.max(...priceRange)} 크레딧`;
+
+function systemNeedsBirth(system: SingleSystemId): boolean {
+  return requiredProfileFields(system).some((field) =>
+    ["birth_date", "sex", "birth_place"].includes(field),
+  );
+}
+
+function SystemCard({ system }: { system: (typeof SINGLE_SYSTEMS)[number] }) {
+  const needsBirth = systemNeedsBirth(system.id);
+  return (
+    <Link
+      href={readingPath(system.id)}
+      className="group flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-4 text-center transition hover:border-cyan-300/40 hover:bg-white/[0.06]"
+    >
+      <SystemGlyph
+        system={system.id}
+        className="h-10 w-10 text-cyan-100/85 transition group-hover:text-cyan-50"
+      />
+      <span className="mt-3 text-sm font-semibold text-white">{system.shortName}</span>
+      <span className="mt-1 text-[11px] leading-snug text-slate-400">
+        {needsBirth ? "생년월일 필요" : "생년월일 불필요"}
+      </span>
+      <span className="mt-2 text-[11px] font-medium tabular-nums text-cyan-200/80">
+        {priceLabel}
+      </span>
+    </Link>
+  );
+}
+
+function DisabledTierCard({
+  title,
+  subtitle,
+  className = "",
+}: {
+  title: string;
+  subtitle: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`relative flex flex-col justify-between overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.02] p-6 ${className}`}
+      aria-disabled="true"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-lg font-semibold text-white/85">{title}</p>
+          <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/55">
+          <Lock className="h-3 w-3" aria-hidden /> 준비 중
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function OracleLandingPage() {
   const router = useRouter();
@@ -46,158 +121,94 @@ export default function OracleLandingPage() {
   return (
     <main className={BG}>
       <HelpModal content={oracleHelpContent} />
-      <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-5 pb-32 pt-10 sm:px-8">
+      <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 pb-28 pt-8 sm:px-6 sm:pt-10">
         <Link
           href="/"
-          className="mb-8 text-[11px] uppercase tracking-[0.22em] text-cyan-200/85 hover:text-cyan-100"
+          className="mb-6 text-[11px] uppercase tracking-[0.22em] text-cyan-200/85 hover:text-cyan-100"
         >
           ← Lobby home
         </Link>
 
-        <div className="mb-10 flex justify-center">
-          <div className="relative flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)] bg-white/[0.04] ring-1 ring-white/15">
-            <Image
-              src="/icons/oracle.png"
-              alt=""
-              fill
-              className="object-contain p-2"
-              sizes="96px"
-              style={{ filter: "brightness(0.85)" }}
-            />
+        <header className="text-center">
+          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Oracle</h1>
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-300">
+            열두 가지 체계, 한 번의 계산, 서로 다른 해석.
+          </p>
+        </header>
+
+        {/* TIER 1 — integrated 12-system verdict */}
+        <section className="mt-10">
+          <div className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-gradient-to-br from-violet-500/15 via-[#11172b] to-cyan-500/10 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.3)] sm:p-8">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-xl">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-200/70">
+                  통합 12체계 판독
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+                  당신의 운세를 두고 AI들이 갈렸습니다
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-slate-300">
+                  같은 열두 계산을 서로 다른 AI가 각자 읽고, 종합 AI가 일치점과 이견을
+                  정리합니다. 어디서 갈렸는지가 진짜 정보입니다.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/20 px-3 py-1.5 text-xs font-medium text-white/70">
+                <Lock className="h-3.5 w-3.5" aria-hidden /> 준비 중
+              </span>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-2">
+              {SINGLE_SYSTEMS.map((system) => (
+                <span
+                  key={system.id}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-slate-300"
+                >
+                  {system.shortName}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
+        </section>
 
-        <h1 className="text-center text-4xl font-semibold tracking-tight sm:text-5xl">
-          Oracle
-        </h1>
-        <p className="mx-auto mt-3 max-w-lg text-center text-sm text-slate-300">
-          Saju pillars, tropical Sun / Moon / Rising, tarot spreads, and your daily
-          fortune — all in one place.
-        </p>
+        {/* TIER 2 — compat / daily / talisman */}
+        <section className="mt-6 grid gap-4 sm:grid-cols-3">
+          <DisabledTierCard title="궁합" subtitle="두 사람의 흐름을 겹쳐 읽습니다." />
+          <DisabledTierCard title="오늘의 운세" subtitle="오늘 날짜 기준의 축소 판독." />
+          <DisabledTierCard title="부적" subtitle="지금 필요한 기운을 상징으로." />
+        </section>
 
-        <p className="mx-auto mt-4 max-w-md text-center text-[11px] text-white/38">
-          Tip: Use Chrome&apos;s built-in translation for your language
-        </p>
-
-        <nav className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Link
-            href="/modes/oracle/fate"
-            className="group flex min-h-[220px] flex-col justify-between rounded-[26px] border border-[#f5d4a088] bg-[#261a08]/95 p-6 shadow-xl transition hover:border-amber-200/60 hover:bg-[#2f220f]/95"
-          >
+        {/* TIER 3 — 12 live systems */}
+        <section className="mt-10">
+          <div className="flex items-end justify-between gap-3">
             <div>
-              <span className="mb-4 block text-[32px] leading-none text-[#c9a84c]" aria-hidden>
-                ☯
-              </span>
-              <span className="text-lg font-semibold tracking-tight text-amber-50">
-                Fate
-              </span>
-              <span className="mt-2 block text-sm text-slate-200/95">
-                사주 팔자표를 계산하고, 3·5·7개 AI 브랜드가 같은 원국을 각자 읽은 뒤 다른
-                AI가 종합합니다.
-              </span>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/65">
+                12체계 단일 판독
+              </p>
+              <h2 className="mt-1 text-xl font-semibold text-white">한 가지 체계로 깊게</h2>
             </div>
-            <span className="mt-5 inline-flex items-center gap-1 text-xs font-semibold text-amber-200/95 group-hover:text-amber-100">
-              Continue <ChevronRight className="h-4 w-4" aria-hidden />
-            </span>
-          </Link>
+            <Link
+              href="/modes/oracle/profile"
+              className="shrink-0 rounded-full border border-cyan-300/35 px-3 py-1.5 text-xs text-cyan-100 hover:border-cyan-200/70"
+            >
+              프로필 수정
+            </Link>
+          </div>
 
-          <Link
-            href="/modes/oracle/astro"
-            className="group flex min-h-[220px] flex-col justify-between rounded-[26px] border border-cyan-400/30 bg-[#0c1826]/98 p-6 shadow-xl transition hover:border-cyan-200/55 hover:bg-[#0f1f34]/98"
-          >
-            <div>
-              <Sparkles className="mb-4 block h-7 w-7 text-cyan-200" aria-hidden />
-              <span className="text-lg font-semibold tracking-tight text-cyan-50">
-                Astro
-              </span>
-              <span className="mt-2 block text-sm text-slate-200/95">
-                Geocoded birthplace, tropical Sun · Moon · Ascendant chart block for
-                the models.
-              </span>
-            </div>
-            <span className="mt-5 inline-flex items-center gap-1 text-xs font-semibold text-cyan-200/95 group-hover:text-cyan-100">
-              Continue{" "}
-              <ChevronRight className="h-4 w-4" aria-hidden />
-            </span>
-          </Link>
-
-          <Link
-            href="/modes/oracle/tarot"
-            className="group flex min-h-[220px] flex-col justify-between rounded-[26px] border border-fuchsia-400/25 bg-[#1a1430]/90 p-6 shadow-xl transition hover:border-fuchsia-200/55 hover:bg-[#21173d]/90"
-          >
-            <div>
-              <span className="mb-4 block h-8 w-8 overflow-hidden rounded-lg bg-fuchsia-500/15">
-                <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true" focusable="false">
-                  <defs>
-                    <linearGradient id="tarotCardIconBg" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#b16cff" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#c9a84c" stopOpacity="0.18" />
-                    </linearGradient>
-                  </defs>
-                  <rect
-                    x="6"
-                    y="4.5"
-                    width="20"
-                    height="23"
-                    rx="4"
-                    fill="url(#tarotCardIconBg)"
-                    stroke="#c9a84c"
-                    strokeOpacity="0.7"
-                  />
-                  <path
-                    d="M16 10.2 L17.6 14.1 L21.8 14.4 L18.6 17 L19.6 21 L16 18.9 L12.4 21 L13.4 17 L10.2 14.4 L14.4 14.1 Z"
-                    fill="#c9a84c"
-                    fillOpacity="0.95"
-                  />
-                </svg>
-              </span>
-              <span className="text-lg font-semibold tracking-tight text-fuchsia-50">
-                Tarot
-              </span>
-              <span className="mt-2 block text-sm text-slate-200/95">
-                Choose a spread, draw your cards, then receive three readings plus a synthesis.
-              </span>
-            </div>
-            <span className="mt-5 inline-flex items-center gap-1 text-xs font-semibold text-fuchsia-200/95 group-hover:text-fuchsia-100">
-              Continue{" "}
-              <ChevronRight className="h-4 w-4" aria-hidden />
-            </span>
-          </Link>
-
-          <Link
-            href="/modes/oracle/daily"
-            className="group flex min-h-[220px] flex-col justify-between rounded-[26px] border border-amber-300/20 bg-[#141024]/90 p-6 shadow-xl transition hover:border-amber-200/55 hover:bg-[#1a1530]/90"
-          >
-            <div>
-              <span className="mb-4 block h-7 w-7 rounded-lg bg-amber-500/15 text-center text-amber-100 leading-[28px]">
-                ☀️
-              </span>
-              <span className="text-lg font-semibold tracking-tight text-amber-50">
-                Daily Fortune
-              </span>
-              <span className="mt-2 block text-sm text-slate-200/95">
-                Today&apos;s energy through Saju, astrology, and tarot — refreshed every day
-              </span>
-            </div>
-            <span className="mt-5 inline-flex items-center gap-1 text-xs font-semibold text-amber-200/95 group-hover:text-amber-100">
-              Continue{" "}
-              <ChevronRight className="h-4 w-4" aria-hidden />
-            </span>
-          </Link>
-        </nav>
-
-        <Link
-          href="/modes/oracle/profile"
-          className="mx-auto mt-12 flex max-w-md flex-col items-center gap-2 rounded-2xl border-2 border-cyan-400/45 bg-[#131c35] px-8 py-5 text-center shadow-[0_8px_28px_rgba(0,0,0,0.35)] transition hover:border-cyan-300/70 hover:bg-[#171f3d]"
-        >
-          <span className="flex items-center gap-2 text-base font-semibold uppercase tracking-[0.12em] text-cyan-100 sm:text-lg">
-            <span aria-hidden>✏️</span>
-            EDIT BIRTH PROFILE
-          </span>
-          <span className="text-sm font-normal leading-snug tracking-normal text-slate-300">
-            Set your birth date, time and city — required for all readings
-          </span>
-        </Link>
+          <div className="mt-6 space-y-8">
+            {FAMILY_GROUPS.map((family) => (
+              <div key={family.id}>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/40">
+                  {family.label}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {family.systems.map((id) => {
+                    const system = SINGLE_SYSTEMS.find((entry) => entry.id === id);
+                    return system ? <SystemCard key={id} system={system} /> : null;
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </main>
   );
