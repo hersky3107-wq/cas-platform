@@ -10,7 +10,7 @@
  */
 process.env.ORACLE_AI_MODE = 'live'
 
-import { writeFileSync, appendFileSync, existsSync } from 'node:fs'
+import { writeFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const RUNS = 20
@@ -20,7 +20,7 @@ const OUT_MD = join(process.cwd(), 'docs', 'oracle-onboarding-20x.md')
 const OUT_JSON = join(process.cwd(), 'docs', 'oracle-onboarding-20x.json')
 const OUT_LOG = join(process.cwd(), 'docs', 'oracle-onboarding-20x-run.log')
 
-type Workload = 'reading' | 'synthesis'
+type Workload = 'reading' | 'synthesis' | 'verdict'
 
 const rawArgs = process.argv.slice(2)
 const args = new Set(rawArgs)
@@ -58,12 +58,19 @@ const { callLayer1Model } = await import('../lib/oracle/ai/call')
 const { createLayer1HttpBudget } = await import('../lib/oracle/ai/http-budget')
 const { parseLayer1Json } = await import('../lib/oracle/ai/parse-layer1')
 const { parseSynthesisJson } = await import('../lib/oracle/ai/parse-synthesis')
+const { parseVerdictJson } = await import('../lib/oracle/ai/parse-verdict')
 const { buildLayer1SystemPrompt, buildLayer1UserPrompt } = await import(
   '../lib/oracle/ai/prompts/layer1'
 )
 const { buildSynthesisSystemPrompt, buildSynthesisUserPrompt } = await import(
   '../lib/oracle/ai/prompts/synthesis'
 )
+const {
+  buildVerdictSystemPrompt,
+  buildVerdictUserPrompt,
+  VERDICT_MAX_COMPLETION_TOKENS,
+  VERDICT_STRICT_RETRY_INSTRUCTION,
+} = await import('../lib/oracle/ai/prompts/verdict')
 const { LAYER1_REGISTRY, layer1EntryForBrand } = await import('../lib/oracle/ai/registry')
 const {
   ORACLE_FAMILY_ROSTERS,
@@ -76,7 +83,6 @@ const {
   LAYER1_STRICT_RETRY_INSTRUCTION,
 } = await import('../lib/oracle/ai/layer1-adapter')
 const { personalDataFrom, runComputations } = await import('../lib/oracle/runner/compute')
-const { buildSynthesisPayload } = await import('../lib/oracle/runner/payload')
 const { makeProfile } = await import('../lib/oracle/runner/__tests__/fakes')
 const { readFileSync } = await import('node:fs')
 
@@ -95,6 +101,12 @@ function plansFor(brands: readonly string[]): BrandPlan[] {
     INTEGRATED_SYNTHESIZER_BRAND,
   ])
   return brands.map((brand) => {
+    if (workloadFlag === 'verdict') {
+      // Seer-seat gate: the workload the seat will actually run.
+      const home =
+        Object.values(LAYER1_REGISTRY).find((e) => e.brand === brand)?.system ?? 'saju'
+      return { brand, workload: 'verdict' as const, homeSystem: home }
+    }
     if (workloadFlag === 'synthesis' || (workloadFlag !== 'reading' && synthBrands.has(brand as never))) {
       const home =
         Object.values(LAYER1_REGISTRY).find((e) => e.brand === brand)?.system ??
@@ -150,6 +162,25 @@ const bakeoffInputs = JSON.parse(
   readFileSync(join(process.cwd(), 'docs', 'oracle-synthesis-bakeoff-inputs.json'), 'utf8'),
 )
 
+/**
+ * Verdict-seat gate payload: the CONTRARIAN persona judging the integrated
+ * 12-reading panel (same seat the new brand will hold). Brand fields are
+ * stripped, matching buildVerdictPayload — a seer never sees who wrote what.
+ */
+const VERDICT_GATE_READER_COUNT = 5
+const verdictGatePayload = {
+  readingInput: 'axes',
+  reader: { slug: 'contrarian', index: 5, of: VERDICT_GATE_READER_COUNT },
+  consensus: bakeoffInputs.integrated.consensus,
+  readings: (bakeoffInputs.integrated.readings as Array<Record<string, unknown>>).map((row) => ({
+    system: row.system,
+    status: 'done',
+    summary: row.summary,
+    narrative: row.narrative,
+  })),
+  context: { asOfDate: '2026-08-25', question: QUESTION },
+}
+
 type RunRow = {
   brand: string
   workload: Workload
@@ -180,28 +211,43 @@ async function runBrand(plan: BrandPlan) {
               SYNTHESIS_MAX_COMPLETION_TOKENS,
             ),
           }
-        : {
-            ...entryBase,
-            system: plan.homeSystem as keyof typeof LAYER1_REGISTRY,
-          }
+        : plan.workload === 'verdict'
+          ? {
+              ...entryBase,
+              system: plan.homeSystem as keyof typeof LAYER1_REGISTRY,
+              maxCompletionTokens: Math.max(
+                entryBase.maxCompletionTokens,
+                VERDICT_MAX_COMPLETION_TOKENS,
+              ),
+            }
+          : {
+              ...entryBase,
+              system: plan.homeSystem as keyof typeof LAYER1_REGISTRY,
+            }
 
     const systemPrompt =
       plan.workload === 'synthesis'
         ? buildSynthesisSystemPrompt(LOCALE)
-        : buildLayer1SystemPrompt(LOCALE, plan.homeSystem)
+        : plan.workload === 'verdict'
+          ? buildVerdictSystemPrompt(LOCALE, 'contrarian', VERDICT_GATE_READER_COUNT)
+          : buildLayer1SystemPrompt(LOCALE, plan.homeSystem)
     const userPrompt =
       plan.workload === 'synthesis'
         ? buildSynthesisUserPrompt(bakeoffInputs.single.synthesisPayload)
-        : buildLayer1UserPrompt(
-            computed.systems.find((s) => s.system === plan.homeSystem)?.aiPayload ?? {},
-            LOCALE,
-            plan.homeSystem,
-          )
+        : plan.workload === 'verdict'
+          ? buildVerdictUserPrompt(verdictGatePayload, LOCALE)
+          : buildLayer1UserPrompt(
+              computed.systems.find((s) => s.system === plan.homeSystem)?.aiPayload ?? {},
+              LOCALE,
+              plan.homeSystem,
+            )
 
     const parse = (text: string | null) =>
       plan.workload === 'synthesis'
         ? parseSynthesisJson(text ?? '') != null
-        : parseLayer1Json(text ?? '') != null
+        : plan.workload === 'verdict'
+          ? parseVerdictJson(text ?? '', VERDICT_GATE_READER_COUNT) != null
+          : parseLayer1Json(text ?? '') != null
 
     let raw = await callLayer1Model({
       entry,
@@ -220,7 +266,9 @@ async function runBrand(plan: BrandPlan) {
         userPrompt: `${userPrompt}${
           plan.workload === 'synthesis'
             ? SYNTHESIS_STRICT_RETRY_INSTRUCTION
-            : LAYER1_STRICT_RETRY_INSTRUCTION
+            : plan.workload === 'verdict'
+              ? VERDICT_STRICT_RETRY_INSTRUCTION
+              : LAYER1_STRICT_RETRY_INSTRUCTION
         }`,
         timeoutMs: 240_000,
         sessionId: `onboard-${plan.brand}-${run}-retry`,

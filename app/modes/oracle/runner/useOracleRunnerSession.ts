@@ -45,12 +45,29 @@ export type OracleRunnerReading = {
   latencyMs: number | null;
 };
 
+export type OracleRunnerVerdict = {
+  readerSlug: string;
+  brand: string;
+  verdictLine: string | null;
+  ballot: JsonObject | null;
+  dissent: string | null;
+  fullText: string | null;
+  status: string | null;
+  latencyMs: number | null;
+};
+
 export type OracleRunnerConsensus = {
   agreements: string[];
   divergences: string[];
   conclusion: string | null;
   confidenceNote: string | null;
   unanimous: boolean | null;
+  /** Axis snapshot written at create ({ phase, traits, systemCount }) — combined result material. */
+  systemAgreement?: JsonObject | null;
+  /** Seer ballot tally, counted in code at finalize. Combined sessions only. */
+  ballotTally?: JsonObject | null;
+  /** Element gap below baseline — the talisman entry point's feedstock. */
+  deficiencyVector?: JsonObject | null;
 };
 
 export type OracleRunnerAssumptions = {
@@ -73,6 +90,8 @@ export type OracleRunnerView = {
   working: boolean;
   computations: OracleRunnerComputation[];
   readings: OracleRunnerReading[];
+  /** Layer-2 seer ballots. Empty for single-system sessions. */
+  verdicts: OracleRunnerVerdict[];
   consensus: OracleRunnerConsensus | null;
   assumptions: OracleRunnerAssumptions | null;
   aiMode: "stub" | "live";

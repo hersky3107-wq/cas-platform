@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Lock, Sparkles } from "lucide-react";
 import HelpModal from "@/components/HelpModal";
 import { oracleHelpContent } from "@/lib/help-modal/oracle-content";
 import SystemGlyph from "./glyphs/SystemGlyph";
@@ -33,6 +33,11 @@ const priceRange = ORACLE_SINGLE_READER_COUNTS.map((n) => singlePrices[n] ?? 0).
   (n) => n > 0,
 );
 const priceLabel = `${Math.min(...priceRange)}크레딧부터`;
+
+const combinedPrices = Object.values(ORACLE_SESSION_CREDIT_PRICES.combined).filter(
+  (price): price is number => typeof price === "number" && price > 0,
+);
+const combinedPriceLabel = `${Math.min(...combinedPrices)}크레딧부터`;
 
 function systemNeedsBirth(system: SingleSystemId): boolean {
   return requiredProfileFields(system).some((field) =>
@@ -145,7 +150,10 @@ export default function OracleLandingPage() {
 
         {/* TIER 1 — integrated 12-system verdict */}
         <section className="mt-10">
-          <div className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-gradient-to-br from-violet-500/15 via-[#11172b] to-cyan-500/10 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.3)] sm:p-8">
+          <Link
+            href="/modes/oracle/integrated"
+            className="group relative block overflow-hidden rounded-[30px] border border-violet-300/25 bg-gradient-to-br from-violet-500/15 via-[#11172b] to-cyan-500/10 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.3)] transition hover:border-violet-200/50 sm:p-8"
+          >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-xl">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-200/70">
@@ -155,12 +163,12 @@ export default function OracleLandingPage() {
                   당신의 운세를 두고 AI들이 갈렸습니다
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  같은 열두 계산을 서로 다른 AI가 각자 읽고, 종합 AI가 일치점과 이견을
-                  정리합니다. 어디서 갈렸는지가 진짜 정보입니다.
+                  같은 열두 계산을 서로 다른 AI가 각자 읽고, 판정단이 한 표씩 던지고, 종합
+                  AI가 일치점과 이견을 정리합니다. 어디서 갈렸는지가 진짜 정보입니다.
                 </p>
               </div>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/20 px-3 py-1.5 text-xs font-medium text-white/70">
-                <Lock className="h-3.5 w-3.5" aria-hidden /> 준비 중
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/40 bg-violet-400/15 px-3 py-1.5 text-xs font-semibold text-violet-100 transition group-hover:bg-violet-400/25">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden /> {combinedPriceLabel}
               </span>
             </div>
             <div className="mt-6 flex flex-wrap gap-2">
@@ -173,7 +181,7 @@ export default function OracleLandingPage() {
                 </span>
               ))}
             </div>
-          </div>
+          </Link>
         </section>
 
         {/* TIER 2 — compat / daily / talisman */}

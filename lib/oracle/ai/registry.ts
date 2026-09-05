@@ -320,6 +320,28 @@ export const ORACLE_SEAT_ONLY_BRANDS: Record<string, Layer1RegistryEntry> = {
     maxCompletionTokens: 2000,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
+  // CONTRARIAN seer seat (replaces retired Qwen). Deliberately the one brand
+  // with no layer-1 reading stake in a combined session. `system` is a home
+  // label for debug/cost rows only — ByteDance never reads a system.
+  // Sequential 20× gate result: docs/oracle-onboarding-20x.md.
+  ByteDance: {
+    system: 'saju',
+    brand: 'ByteDance',
+    displayName: 'Seed 1.6',
+    model: 'bytedance-seed/seed-1.6',
+    // Reasoning probe (scripts/oracle-brand-probe.mts, 2026-09-05): Seed 1.6
+    // THINKS BY DEFAULT — 925 reasoning vs 126 content tokens on the verdict
+    // prompt even though the catalog entry carries no reasoning params.
+    // Uncapped thinking can eat maxCompletionTokens and truncate the ballot,
+    // so the oracle seat pins reasoning explicitly (catalog stays unchanged).
+    caller: {
+      kind: 'platform',
+      platformId: 'openrouter:seed-1.6',
+      extraRequestParams: { reasoning: { enabled: false } },
+    },
+    maxCompletionTokens: 2000,
+    runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
+  },
 }
 
 export function layer1Entry(system: string): Layer1RegistryEntry | null {

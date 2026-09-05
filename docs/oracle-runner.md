@@ -1,9 +1,9 @@
 # ORACLE job runner
 
 Code: `lib/oracle/runner/`. Tables: `supabase/migrations/20260815000001_oracle_rebuild.sql`
-(see `docs/oracle-schema.md`). Layer 1 (the twelve per-system readings) can run live via `ORACLE_AI_MODE=live`.
-Layer 2 (readers / verdicts) is still stubbed. The default is `stub` so tests and
-local dev never spend tokens. Both adapters implement `OracleAiAdapter`; the
+(see `docs/oracle-schema.md`). With `ORACLE_AI_MODE=live`, layer 1 (readings), layer 2
+(seer verdicts, combined scope), and the synthesis all run live. The default is `stub` so
+tests and local dev never spend tokens. Both adapters implement `OracleAiAdapter`; the
 routes construct them through `createOracleAiAdapter()`.
 
 ## Why it is shaped this way
@@ -195,15 +195,52 @@ ORACLE_AI_MODE   stub | live    default stub
 ```
 
 `stub` (default) uses `createStubAiAdapter` for both layers — no provider client
-is constructed. `live` runs layer-1 readings through the Challenger registry in
-`lib/oracle/ai/registry.ts` and keeps layer 2 on the stub. Model strings stay
+is constructed. `live` runs layer-1 readings, layer-2 seer verdicts, and the
+synthesis through the registry in `lib/oracle/ai/registry.ts`. Model strings stay
 server-side; the poll view exposes brand only.
 
-A one-session live smoke (do not run from tests):
+Live smokes (do not run from tests):
 
 ```
 npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/oracle-smoke.ts
+npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/oracle-single-system-smoke.mts
+npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/oracle-combined-smoke.mts
 ```
+
+## Integrated (combined) mode
+
+`scope='combined'` reads all twelve systems (one dedicated brand per system, from
+`LAYER1_REGISTRY`), then seats N seers (3/5/7/9, `reader_count`) who each receive
+**all twelve readings plus the axis-projection consensus** and cast ONE ballot:
+`verdict_line / direction (advance|hold|release) / focus / five domain scores /
+minority_opinion`. Personas differ by DECISION RULE, not tone — see
+`lib/oracle/ai/seer-roster.ts` for the nine seats, rules, and brand evidence.
+The tally is counted in CODE (`runner/ballot.ts`), never by an AI. The synthesis
+ALSO runs for combined mode — both layers are produced and both are shown.
+
+Payload boundary (regression-guarded in `runner/__tests__/privacy.test.ts`):
+single-scope readers get each system's NATIVE chart and no axis projection;
+combined-scope readers and seers get the axis projection. `verdict_line` budgets
+scale with N (400/240/120/80 chars) so the total output length stays in one band
+while the format changes: 3 = long individual verdicts, 5 = medium + for-against
+tally, 7 = short line + vote counts, 9 = one-liners + votes + minority highlight.
+
+UI: `/modes/oracle/integrated` (lobby hero tier). Result order: ① final verdicts
+with the divergence visible (conclusion on top) ② consensus map — tally bars,
+opposition sentences, polarized badge; the abolished consensus/lean/split labels
+stay abolished ③ all twelve readings expanded ④ talisman entry point
+(deficiency vector). Brand names shown, model names never.
+
+Measured live cost per combined session (`model_cost_logs`, 2026-09-05):
+
+| Session | Calls | Cost (USD) | Wall time | Credits |
+|---|---|---|---|---|
+| N=3 (12 readings + 3 seers + synthesis) | 16 | $0.078 / $0.071 (two runs) | 84s / 63s | 25 |
+| N=9 (12 readings + 9 seers + synthesis) | 22 | $0.123 | 145s | 50 |
+
+Seer seats add ~$0.006–0.008 each. Prices in
+`ORACLE_SESSION_CREDIT_PRICES.combined` (25/32/40/50) hold ~3.2–4.1× headroom at
+1 credit ≈ $0.01 revenue-equivalent.
 
 ## Stub configuration
 
@@ -228,8 +265,9 @@ Rolls are seeded per `(session seed, kind, unit)`, so a re-run is reproducible.
   `ComputeAssumptions.birthTimeEstimated`; the honest fix is a third basis in the axis layer.
 - **Two-syllable Korean surnames** (남궁, 황보 …) split wrong: the runner takes the first
   syllable as the surname.
-- **Tarot positions and rune counts are derived from the seed**, not drawn by the user, until the
-  UI exists.
+- **Tarot positions and rune counts fall back to the seed** when `session_inputs` omit a
+  user draw. The single-system and integrated pages both collect real draws.
 - **`sex` defaults to male** for 대운 / 大限 direction when the profile has none. Recorded in
   `ComputeAssumptions.sexDefaulted`.
-- **No UI is wired.** Deliberate, per the task.
+- **WITNESS (seat 9) needs a prior session.** On a first visit its `previous` payload block is
+  null and its ballot records the baseline instead of a delta — by design, not a bug.

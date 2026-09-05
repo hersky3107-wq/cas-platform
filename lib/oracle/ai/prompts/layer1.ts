@@ -41,7 +41,8 @@ const PRISM_LENGTH_RULES = [
   '- one_line must be ≤80 characters and must not restate the whole narrative.',
 ]
 
-const INTERNAL_VOCAB_RULES = [
+/** Shared with the layer-2 verdict prompt (prompts/verdict.ts). */
+export const INTERNAL_VOCAB_RULES = [
   'Never name our internal engine layers or scoring axes in user-facing prose.',
   'Forbidden phrases (do not quote, translate, or gloss them): 지휘 주기, 코어 매트릭스, 원소 공명, 수트→사원소→오행, 역위 반영, 카드 성향, 유지/방출 축, drive/stability vectors, core matrix, command cycle.',
   'Speak only in this divination system\'s own terms (cards, runes, 괘, 팔자, 궁성, planets/houses, 오격, 나왈, and so on).',

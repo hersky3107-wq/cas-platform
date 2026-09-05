@@ -81,6 +81,7 @@ const VERDICT_TEMPLATES = [
 ] as const
 
 const PHASES = ['advance', 'hold', 'release'] as const
+const FOCI = ['work', 'money', 'love', 'social', 'energy'] as const
 
 /**
  * Canned text is deliberately generic: it must not read as a real reading.
@@ -131,6 +132,19 @@ export function createStubAiAdapter(overrides: Partial<StubAiConfig> = {}): Orac
       const text = `[stub:${request.unit}] ${templates[rng.nextInt(templates.length)]!}`
       const phase = PHASES[rng.nextInt(PHASES.length)]!
       const payloadSize = JSON.stringify(request.payload).length
+      // Same ballot shape the live seer adapter produces, so the code tally
+      // (runner/ballot.ts) is exercised identically on stub sessions.
+      const ballot = {
+        direction: phase,
+        focus: FOCI[rng.nextInt(FOCI.length)]!,
+        domains: {
+          work: 20 + rng.nextInt(70),
+          money: 20 + rng.nextInt(70),
+          love: 20 + rng.nextInt(70),
+          social: 20 + rng.nextInt(70),
+          energy: 20 + rng.nextInt(70),
+        },
+      }
 
       return {
         ok: true,
@@ -138,7 +152,7 @@ export function createStubAiAdapter(overrides: Partial<StubAiConfig> = {}): Orac
         model: ORACLE_STUB_MODEL,
         text,
         summary: isVerdict
-          ? { ballot: { phase, confidence: 40 + rng.nextInt(50) }, dissent: rng.nextBool() ? null : 'stub dissent noted' }
+          ? { ballot, dissent: rng.nextBool() ? null : 'stub dissent noted' }
           : isSynthesis
             ? {
                 agreements: ['stub agreement'],

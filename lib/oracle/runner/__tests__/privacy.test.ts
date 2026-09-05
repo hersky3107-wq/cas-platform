@@ -8,6 +8,7 @@
  * key the gate's walker might not reach.
  */
 import { describe, expect, it } from 'vitest'
+import { computeConsensus } from '../../axes'
 import { PRISM_COLORS } from '../../engines/prism'
 import { personalDataFrom, runComputations } from '../compute'
 import {
@@ -368,5 +369,59 @@ describe('single-scope native charts', () => {
     expect(serialized).not.toContain('maya.nawal.kim')
     expect(serialized).not.toContain('nawal_kim')
     expect(serialized).not.toMatch(/\bKʼimʼ\b/)
+  })
+})
+
+/**
+ * Regression guard for the 5fbbc92 split: single-system readers get each
+ * system's NATIVE chart; combined (integrated) readers keep the AXIS
+ * projection — that comparison scale is exactly what combined mode is for.
+ * The combined seer wiring must never leak back into scope='single'.
+ */
+describe('scope regression guard: single stays native, combined keeps the projection', () => {
+  it('the same profile computed under each scope produces the two distinct payload families', () => {
+    const single = computeSingle('tarot').systems[0]!.aiPayload!
+    expect(single.readingInput).toBe('native')
+    expect(single.chart).toBeTypeOf('object')
+    expect(single.traits).toBeUndefined()
+    expect(single.elements).toBeUndefined()
+    expect(single.phase).toBeUndefined()
+
+    const combined = computeAll().systems.find((entry) => entry.system === 'tarot')!.aiPayload!
+    expect(combined.readingInput).toBe('axes')
+    expect(combined.chart).toBeUndefined()
+    expect(combined.traits).toBeTypeOf('object')
+    expect(combined.phase).toBeTypeOf('object')
+    expect(combined.confidence).toBeDefined()
+  })
+
+  it('every combined reading payload keeps the axis fields across all 12 systems', () => {
+    for (const entry of computeAll().systems) {
+      if (entry.aiPayload === null) continue
+      expect(entry.aiPayload.readingInput, entry.system).toBe('axes')
+      expect(entry.aiPayload.chart, entry.system).toBeUndefined()
+      expect(entry.aiPayload.traits, entry.system).toBeTypeOf('object')
+    }
+  })
+
+  it('the seer verdict payload carries the axis-projection consensus', () => {
+    const computed = computeAll()
+    const votes = computed.systems.flatMap((entry) => (entry.vote ? [entry.vote] : []))
+    const consensus = computeConsensus(votes, { readingScope: 'life' })
+    const payload = buildVerdictPayload(
+      {
+        readerSlug: 'contrarian',
+        readerIndex: 5,
+        readerCount: 5,
+        consensus,
+        readings: [],
+      },
+      { kind: 'personal', locale: 'ko', readingScope: 'life', asOfDate: AS_OF, question: null },
+      personalDataFrom([PROFILE]),
+    )
+    expect(payload.readingInput).toBe('axes')
+    const consensusBlock = payload.consensus as { phase?: { tally?: unknown; oppositions?: unknown } }
+    expect(consensusBlock.phase?.tally).toBeDefined()
+    expect(consensusBlock.phase?.oppositions).toBeDefined()
   })
 })

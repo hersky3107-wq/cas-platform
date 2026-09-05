@@ -1,24 +1,30 @@
 /**
- * Live layer-1 adapter. Implements OracleAiAdapter so swapping the stub is
- * a one-line change at the route. Verdicts (layer 2) are never sent here —
- * the factory keeps those on the stub.
+ * Live layer-1 + layer-2 adapter. Implements OracleAiAdapter so swapping the
+ * stub is a one-line change at the route. Readings, synthesis, and seer
+ * verdicts all run through the same call/retry/cost loop — what differs per
+ * kind is the prompt pair, the parser, and the completion ceiling.
  *
  * Network clients are constructed only when `call` is omitted; tests inject
  * a fake so this file stays offline.
  */
-import { createStubAiAdapter } from '../runner/ai-stub'
-import type { OracleAiAdapter, OracleAiFailure, OracleAiRequest, OracleAiResult } from '../runner/types'
+import type { JsonObject, OracleAiAdapter, OracleAiFailure, OracleAiRequest, OracleAiResult } from '../runner/types'
 import type { Layer1Call, Layer1CallResult } from './call'
 import { createLayer1HttpBudget, type Layer1HttpBudget } from './http-budget'
 import { isEmptyModelText, parseLayer1Json } from './parse-layer1'
 import { parseSynthesisJson } from './parse-synthesis'
+import { parseVerdictJson, type VerdictJson } from './parse-verdict'
 import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1'
 import { buildSynthesisSystemPrompt, buildSynthesisUserPrompt } from './prompts/synthesis'
+import {
+  buildVerdictSystemPrompt,
+  buildVerdictUserPrompt,
+  VERDICT_MAX_COMPLETION_TOKENS,
+  VERDICT_STRICT_RETRY_INSTRUCTION,
+} from './prompts/verdict'
 import { layer1Entry, layer1EntryForBrand, type Layer1RegistryEntry } from './registry'
 
 export type Layer1AdapterOptions = {
   call?: Layer1Call
-  layer2?: OracleAiAdapter
 }
 
 /** Per-unit HTTP ceiling shared with the platform empty-content retry. */
@@ -103,14 +109,22 @@ async function finalizeUnitCost(opts: {
   }
 }
 
+/** Panel size travels inside the verdict payload (reader.of). */
+function verdictReaderCount(payload: JsonObject): number {
+  const reader = payload.reader
+  if (reader && typeof reader === 'object' && !Array.isArray(reader)) {
+    const of = (reader as JsonObject).of
+    if (typeof of === 'number' && Number.isFinite(of) && of > 0) return of
+  }
+  // Tightest line budget — a malformed payload must not loosen the contract.
+  return 9
+}
+
 export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): OracleAiAdapter {
   const call = options.call ?? defaultCall
-  const layer2 = options.layer2 ?? createStubAiAdapter()
 
   return {
     async run(request: OracleAiRequest, opts: { timeoutMs: number }): Promise<OracleAiResult> {
-      if (request.kind === 'verdict') return layer2.run(request, opts)
-
       const entry =
         request.brand != null
           ? layer1EntryForBrand(request.brand)
@@ -133,17 +147,27 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
               ...entry,
               maxCompletionTokens: Math.max(entry.maxCompletionTokens, SYNTHESIS_MAX_COMPLETION_TOKENS),
             }
-          : entry
+          : request.kind === 'verdict'
+            ? {
+                ...entry,
+                maxCompletionTokens: Math.max(entry.maxCompletionTokens, VERDICT_MAX_COMPLETION_TOKENS),
+              }
+            : entry
 
+      const readerCount = verdictReaderCount(request.payload)
       const readingInput = request.payload.readingInput === 'native' ? 'native' : 'axes'
       const systemPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisSystemPrompt(request.locale)
-          : buildLayer1SystemPrompt(request.locale, request.unit, readingInput)
+          : request.kind === 'verdict'
+            ? buildVerdictSystemPrompt(request.locale, request.unit, readerCount)
+            : buildLayer1SystemPrompt(request.locale, request.unit, readingInput)
       const userPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisUserPrompt(request.payload)
-          : buildLayer1UserPrompt(request.payload, request.locale, request.unit, readingInput)
+          : request.kind === 'verdict'
+            ? buildVerdictUserPrompt(request.payload, request.locale)
+            : buildLayer1UserPrompt(request.payload, request.locale, request.unit, readingInput)
       const startedAt = Date.now()
       const deadlineAt = startedAt + opts.timeoutMs
       const httpBudget = createLayer1HttpBudget(LAYER1_HTTP_BUDGET)
@@ -191,7 +215,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             ? `${userPrompt}${
                 request.kind === 'synthesis'
                   ? SYNTHESIS_STRICT_RETRY_INSTRUCTION
-                  : LAYER1_STRICT_RETRY_INSTRUCTION
+                  : request.kind === 'verdict'
+                    ? VERDICT_STRICT_RETRY_INSTRUCTION
+                    : LAYER1_STRICT_RETRY_INSTRUCTION
               }`
             : userPrompt,
           timeoutMs: Math.max(1, deadlineAt - Date.now()),
@@ -236,7 +262,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
 
         const layer1Parsed = request.kind === 'reading' ? parseLayer1Json(raw.text ?? '') : null
         const synthesisParsed = request.kind === 'synthesis' ? parseSynthesisJson(raw.text ?? '') : null
-        if (layer1Parsed || synthesisParsed) {
+        const verdictParsed: VerdictJson | null =
+          request.kind === 'verdict' ? parseVerdictJson(raw.text ?? '', readerCount) : null
+        if (layer1Parsed || synthesisParsed || verdictParsed) {
           const latencyMs = Date.now() - startedAt
           await finalizeUnitCost({
             sessionId: request.sessionId,
@@ -253,7 +281,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             ok: true,
             brand: effectiveEntry.brand,
             model: effectiveEntry.model,
-            text: layer1Parsed?.narrative ?? synthesisParsed!.conclusion,
+            text: layer1Parsed?.narrative ?? verdictParsed?.verdict_line ?? synthesisParsed!.conclusion,
             summary: layer1Parsed
               ? {
                   one_line: layer1Parsed.one_line,
@@ -264,12 +292,27 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                   finish_reason: raw.finishReason,
                   content_tokens: raw.contentTokens,
                 }
-              : {
-                  ...synthesisParsed!,
-                  parsed: true,
-                  finish_reason: raw.finishReason,
-                  content_tokens: raw.contentTokens,
-                },
+              : verdictParsed
+                ? {
+                    // advance.ts reads summary.ballot / summary.dissent when
+                    // writing oracle_verdicts; the tally in runner/ballot.ts
+                    // reads ballot.direction / focus / domains.
+                    ballot: {
+                      direction: verdictParsed.direction,
+                      focus: verdictParsed.focus,
+                      domains: verdictParsed.domains,
+                    },
+                    dissent: verdictParsed.minority_opinion,
+                    parsed: true,
+                    finish_reason: raw.finishReason,
+                    content_tokens: raw.contentTokens,
+                  }
+                : {
+                    ...synthesisParsed!,
+                    parsed: true,
+                    finish_reason: raw.finishReason,
+                    content_tokens: raw.contentTokens,
+                  },
             latencyMs,
             tokensIn: raw.tokensIn,
             tokensOut: raw.tokensOut,
@@ -277,6 +320,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         }
 
         lastError = `${request.kind} JSON parse failed`
+        // The one retry after a parse reject carries the strict instruction —
+        // same behavior the onboarding gate and bakeoff scripts reproduce.
+        strictRetryNext = true
       }
 
       const latencyMs = Date.now() - startedAt

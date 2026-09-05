@@ -188,9 +188,14 @@ export function buildReadingPayload(
 }
 
 /**
- * One reader's layer-2 prompt input: the aggregated axis picture plus every
+ * One seer's layer-2 prompt input: the aggregated axis picture plus every
  * layer-1 narrative. The narratives are themselves derived from reading
  * payloads that passed the same gate, so they cannot reintroduce birth data.
+ *
+ * `previous` is the WITNESS seat's prior-session block ({} for returning
+ * users, null on a first visit). It carries only computed values (ballot
+ * tally, synthesis conclusion) and is still covered by the privacy scan.
+ * Other seers never get the key.
  */
 export function buildVerdictPayload(
   args: {
@@ -199,6 +204,7 @@ export function buildVerdictPayload(
     readerCount: number
     consensus: AxisConsensus
     readings: OracleReading[]
+    previous?: JsonObject | null
   },
   ctx: PayloadContext,
   pii: PersonalData,
@@ -207,6 +213,7 @@ export function buildVerdictPayload(
   const body: JsonObject = {
     ...envelope(ctx),
     reader: { slug: args.readerSlug, index: args.readerIndex, of: args.readerCount },
+    ...(args.previous !== undefined ? { previous: args.previous } : {}),
     consensus: axisConsensusPayload(consensus),
     readings: args.readings.map((row) => ({
       system: row.system,

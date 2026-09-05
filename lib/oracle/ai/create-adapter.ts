@@ -3,11 +3,12 @@
  * `ORACLE_AI_MODE=live|stub`. Missing the flag is stub — tests and local
  * `npm run dev` never spend tokens unless the owner sets live.
  *
- * The live adapter is dynamically imported only when mode is live AND a
- * layer-1 reading actually runs. Tests that stay on stub never construct
- * anything network-related — `lib/ai` is not on the static import graph.
+ * The live adapter is dynamically imported only when mode is live AND an
+ * AI unit actually runs. Tests that stay on stub never construct anything
+ * network-related — `lib/ai` is not on the static import graph.
  *
- * Synthesis uses the live adapter. Verdicts remain isolated on the stub.
+ * Readings, synthesis, AND seer verdicts all run live: the layer-2 seer
+ * panel (combined mode) casts real ballots through the same adapter.
  */
 import { createStubAiAdapter, type StubAiConfig } from '../runner/ai-stub'
 import type { OracleAiAdapter, OracleAiRequest, OracleAiResult } from '../runner/types'
@@ -27,14 +28,13 @@ export function createOracleAiAdapter(options: OracleAiAdapterOptions = {}): Ora
   const getLive = (): Promise<OracleAiAdapter> => {
     if (options.layer1) return Promise.resolve(options.layer1)
     if (!live) {
-      live = import('./layer1-adapter').then((mod) => mod.createLayer1AiAdapter({ layer2: stub }))
+      live = import('./layer1-adapter').then((mod) => mod.createLayer1AiAdapter())
     }
     return live
   }
 
   return {
     async run(request: OracleAiRequest, opts: { timeoutMs: number }): Promise<OracleAiResult> {
-      if (request.kind === 'verdict') return stub.run(request, opts)
       return (await getLive()).run(request, opts)
     },
   }

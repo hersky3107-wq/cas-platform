@@ -22,6 +22,7 @@ import {
   resolveSingleSystemRoster,
 } from '../ai/family-roster'
 import { layer1Entry } from '../ai/registry'
+import { seerBrandFor } from '../ai/seer-roster'
 import type {
   OracleComputation,
   OracleJobProgress,
@@ -418,6 +419,13 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
         })
       : null
 
+    // WITNESS (seat 9) verdicts on change vs the user's previous combined
+    // session; first-timers get previous=null and the persona records the
+    // baseline instead. Fetched once per chunk, only when witness is due.
+    const witnessPrevious = missingSeers.includes('witness')
+      ? await loadWitnessPrevious(session, deps)
+      : null
+
     const verdictPromises = missingSeers.map(async (slug) => {
         const payload = buildVerdictPayload(
           {
@@ -426,6 +434,7 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
             readerCount: seerRoster.length,
             consensus,
             readings: done,
+            previous: slug === 'witness' ? witnessPrevious : undefined,
           },
           ctx,
           pii,
@@ -436,6 +445,7 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
             kind: 'verdict',
             sessionId: session.id,
             unit: slug,
+            brand: seerBrandFor(slug) ?? undefined,
             locale: ctx.locale,
             seed: session.seed,
             payload,
@@ -507,6 +517,31 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
     last_heartbeat_at: now().toISOString(),
     attempt_count: produced > 0 ? 0 : session.attempt_count,
   })
+}
+
+/**
+ * The WITNESS seer's previous-record block. Only computed values cross this
+ * boundary — the prior session's ballot tally and synthesis conclusion —
+ * never profile data, and the result still passes the payload privacy gate.
+ */
+async function loadWitnessPrevious(
+  session: OracleJobSession,
+  deps: AdvanceDeps,
+): Promise<JsonObject | null> {
+  const prior = await deps.store.findLatestCompletedSession(session.user_id, 'combined', session.id)
+  if (!prior) return null
+  const consensus = await deps.store.getConsensus(prior.id)
+  const synthesis =
+    consensus?.domain_stats &&
+    typeof consensus.domain_stats.synthesis === 'object' &&
+    consensus.domain_stats.synthesis !== null
+      ? (consensus.domain_stats.synthesis as JsonObject)
+      : null
+  return {
+    completedAt: prior.completed_at,
+    ballotTally: consensus?.ballot_tally ?? null,
+    conclusion: typeof synthesis?.conclusion === 'string' ? synthesis.conclusion : null,
+  }
 }
 
 async function finalizeSession(session: OracleJobSession, deps: AdvanceDeps, now: RunnerClock): Promise<void> {

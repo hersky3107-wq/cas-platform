@@ -8,6 +8,7 @@
  * for tens of seconds and lose the HTTP connection on mobile screen lock.
  */
 import type { ReadingScope } from '../axes/types'
+import { ORACLE_SEER_SLUGS, type OracleSeerSlug } from '../ai/seer-roster'
 import type { OracleSessionKind, OracleSessionScope, OracleSessionStatus } from '../schema'
 
 export const ORACLE_RUNNER_VERSION = '1.0.0'
@@ -75,21 +76,13 @@ export const ORACLE_UNIT_STATUSES = ['done', 'timeout', 'error'] as const
 export type OracleUnitStatus = (typeof ORACLE_UNIT_STATUSES)[number]
 
 /**
- * Reader roster. `reader_count` (3/5/7/9) takes the first N in order, so the
- * ORDER here is a product decision, not an implementation detail.
+ * Layer-2 seer roster (combined mode only). `reader_count` (3/5/7/9) takes
+ * the first N in order, so the ORDER is a product decision — see
+ * lib/oracle/ai/seer-roster.ts for the personas, decision rules, and brand
+ * seats behind these slugs.
  */
-export const ORACLE_READER_ROSTER = [
-  'archivist',
-  'diviner',
-  'strategist',
-  'skeptic',
-  'elder',
-  'cartographer',
-  'physician',
-  'wanderer',
-  'scribe',
-] as const
-export type OracleReaderSlug = (typeof ORACLE_READER_ROSTER)[number]
+export const ORACLE_READER_ROSTER = ORACLE_SEER_SLUGS
+export type OracleReaderSlug = OracleSeerSlug
 
 export function readerRosterFor(readerCount: number): string[] {
   return ORACLE_READER_ROSTER.slice(0, readerCount)

@@ -184,6 +184,16 @@ export type ConsensusUpsert = {
 export type RunnerStore = {
   /** The user's session in an ORACLE_ACTIVE_STATUSES status, if any. */
   findActiveSession(userId: string): Promise<OracleJobSession | null>
+  /**
+   * Most recent finished ('done' or 'partial') session for this user+scope,
+   * excluding `excludeSessionId`. Read-only; feeds the WITNESS seer's
+   * previous-record comparison in combined mode.
+   */
+  findLatestCompletedSession(
+    userId: string,
+    scope: OracleSessionScope,
+    excludeSessionId?: string,
+  ): Promise<OracleJobSession | null>
   /** Only rows owned by `userId`; a foreign id simply does not come back. */
   loadProfiles(userId: string, profileIds: string[]): Promise<OracleProfile[]>
   insertSession(row: SessionInsert): Promise<OracleJobSession>

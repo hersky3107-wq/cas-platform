@@ -21,6 +21,7 @@ const BRAND_STYLE: Record<string, string> = {
   MiniMax: "border-rose-300/30 bg-rose-400/10 text-rose-100",
   Mistral: "border-amber-300/30 bg-amber-400/10 text-amber-100",
   NAVER: "border-green-300/30 bg-green-400/10 text-green-100",
+  ByteDance: "border-fuchsia-300/30 bg-fuchsia-400/10 text-fuchsia-100",
 };
 
 export default function BrandBadge({

@@ -70,6 +70,15 @@ export function createFakeStore(options: { profiles?: OracleProfile[] } = {}): F
       return found ? cloneSession(found) : null
     },
 
+    async findLatestCompletedSession(userId, scope, excludeSessionId) {
+      const found = store.sessions
+        .filter((row) => row.user_id === userId && row.scope === scope && row.id !== excludeSessionId)
+        .filter((row) => row.status === 'done' || row.status === 'partial')
+        .sort((a, b) => (a.completed_at ?? '').localeCompare(b.completed_at ?? ''))
+        .at(-1)
+      return found ? cloneSession(found) : null
+    },
+
     async loadProfiles(userId, profileIds) {
       return store.profiles
         .filter((row) => row.user_id === userId && profileIds.includes(row.id))

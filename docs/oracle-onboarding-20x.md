@@ -27,6 +27,15 @@ Prior DeepSeek/NVIDIA synthesis (unfixed): **12/20** and **15/20**.
 | OpenAI | reading | 20/20 | yes |
 | Cohere | reading | 20/20 | yes | new iching dedicated (Qwen retired) |
 
+## Seer seats (verdict workload — integrated 12-reading panel, contrarian prompt)
+
+| brand | workload | parsed | pass | notes |
+| --- | --- | ---: | --- | --- |
+| ByteDance | verdict | **20/20** | yes | NEW (CONTRARIAN seat, replaces retired Qwen). Probe: Seed 1.6 thinks by default (925 reasoning / 126 content tokens); oracle entry pins `reasoning:{enabled:false}` → 0 reasoning tokens, ~7s, finish=stop on all 20. Raw runs: `oracle-onboarding-bytedance.json`. |
+
+Other seer seats (Moonshot AI, Google, xAI, NAVER, NVIDIA, DeepSeek, Anthropic,
+OpenAI) reuse brands already gated above — no new pass required.
+
 ## Below 19/20
 
 - (none after the DeepSeek/NVIDIA parameter fix)

@@ -29,6 +29,29 @@ const VALID_SYNTHESIS_JSON = JSON.stringify({
   conclusion: '방향은 전진이지만 속도는 조절한다.',
   confidence_note: '핵심 방향은 일치한다.',
 })
+const VALID_VERDICT_JSON = JSON.stringify({
+  verdict_line: '타로와 사주가 같은 문을 가리킨다. 이번 주는 미는 쪽이 맞다.',
+  direction: 'advance',
+  focus: 'work',
+  domains: { work: 72, money: 55, love: 48, social: 60, energy: 65 },
+  minority_opinion: null,
+})
+
+function verdictRequest(unit = 'reader', readerCount = 3): OracleAiRequest {
+  return {
+    kind: 'verdict',
+    sessionId: 'session-1',
+    unit,
+    brand: 'Moonshot AI',
+    locale: 'ko',
+    seed: 'seed',
+    payload: {
+      reader: { slug: unit, index: 1, of: readerCount },
+      consensus: {},
+      readings: [],
+    },
+  }
+}
 
 function readingRequest(unit = 'saju'): OracleAiRequest {
   return {
@@ -93,23 +116,29 @@ describe('createOracleAiAdapter isolation', () => {
     expect(source).toMatch(/import\('\.\/layer1-adapter'\)/)
   })
 
-  it('keeps verdicts on the stub even when live', async () => {
+  it('routes verdicts to the live adapter when live (seer panel is real AI)', async () => {
     vi.stubEnv('ORACLE_AI_MODE', 'live')
-    const liveRun = vi.fn()
+    const liveRun = vi.fn(async () => ({
+      ok: true as const,
+      brand: 'Moonshot AI',
+      model: 'server-only',
+      text: '전진이 맞다.',
+      summary: { ballot: { direction: 'advance', focus: 'work', domains: {} }, dissent: null },
+      latencyMs: 1,
+      tokensIn: 1,
+      tokensOut: 1,
+    }))
     const adapter = createOracleAiAdapter({
       stub: { minDelayMs: 0, maxDelayMs: 0, sleep: async () => {} },
-      layer1: { run: async () => { liveRun(); throw new Error('layer1 must not run verdicts') } },
+      layer1: { run: liveRun },
     })
-    const result = await adapter.run(
-      { ...readingRequest(), kind: 'verdict', unit: 'archivist' },
-      { timeoutMs: 1_000 },
-    )
-    expect(liveRun).not.toHaveBeenCalled()
+    const result = await adapter.run(verdictRequest(), { timeoutMs: 1_000 })
+    expect(liveRun).toHaveBeenCalledOnce()
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.brand).toBe('stub')
+    if (result.ok) expect(result.brand).toBe('Moonshot AI')
   })
 
-  it('routes synthesis to the live adapter without weakening verdict isolation', async () => {
+  it('routes synthesis to the live adapter', async () => {
     vi.stubEnv('ORACLE_AI_MODE', 'live')
     const liveRun = vi.fn(async () => ({
       ok: true as const,
@@ -285,6 +314,60 @@ describe('createLayer1AiAdapter', () => {
     if (!result.ok) expect(result.message).toMatch(/1900 > 1800/)
   })
 
+  it('parses a seer verdict ballot and maps it to summary.ballot / dissent', async () => {
+    const prompts: string[] = []
+    const call: Layer1Call = async (input) => {
+      prompts.push(input.systemPrompt)
+      return okCall({ text: VALID_VERDICT_JSON, brand: 'Moonshot AI', model: 'moonshotai/kimi-k3' })
+    }
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(verdictRequest('reader', 3), { timeoutMs: 60_000 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.text).toContain('타로와 사주')
+    expect(result.summary?.ballot).toMatchObject({
+      direction: 'advance',
+      focus: 'work',
+      domains: { work: 72, money: 55, love: 48, social: 60, energy: 65 },
+    })
+    expect(result.summary?.dissent).toBeNull()
+    // Persona decision rule reaches the system prompt.
+    expect(prompts[0]).toContain('LEAST-CONFIDENT FIRST')
+    expect(prompts[0]).toContain('panel of 3')
+  })
+
+  it('rejects a verdict_line over the N-budget and retries strictly once', async () => {
+    let calls = 0
+    const longLine = JSON.stringify({
+      verdict_line: '가'.repeat(120), // over the N=9 budget of 80
+      direction: 'hold',
+      focus: 'energy',
+      domains: { work: 50, money: 50, love: 50, social: 50, energy: 50 },
+      minority_opinion: null,
+    })
+    const call: Layer1Call = async (input) => {
+      calls += 1
+      expect(input.userPrompt.includes('STRICT RETRY')).toBe(calls === 2)
+      return okCall({ text: longLine })
+    }
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(verdictRequest('mystic', 9), { timeoutMs: 60_000 })
+    expect(calls).toBe(2)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/verdict JSON parse failed/)
+  })
+
+  it('fails a verdict without a seat brand instead of guessing', async () => {
+    const call: Layer1Call = async () => okCall()
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(
+      { ...verdictRequest(), brand: undefined },
+      { timeoutMs: 60_000 },
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/no live registry entry/)
+  })
+
   it('floors the runaway threshold higher for synthesis than for a reading, regardless of which brand seats it', async () => {
     let calls = 0
     const call: Layer1Call = async ({ strictRetry }) => {
@@ -370,25 +453,13 @@ describe('live layer-1 through a session', () => {
       okCall({
         brand: entry.brand,
         model: entry.model,
-        text: systemPrompt.includes('synthesis layer') ? VALID_SYNTHESIS_JSON : VALID_JSON,
+        text: systemPrompt.includes('synthesis layer')
+          ? VALID_SYNTHESIS_JSON
+          : systemPrompt.includes('seer on a panel')
+            ? VALID_VERDICT_JSON
+            : VALID_JSON,
       })
-    const ai = createLayer1AiAdapter({
-      call,
-      layer2: {
-        async run() {
-          return {
-            ok: true,
-            brand: 'stub',
-            model: 'stub-oracle-v0',
-            text: 'stub verdict',
-            summary: { ballot: { phase: 'hold', confidence: 50 }, dissent: null },
-            latencyMs: 1,
-            tokensIn: 1,
-            tokensOut: 1,
-          }
-        },
-      },
-    })
+    const ai = createLayer1AiAdapter({ call })
     const { store, session, runToDone } = await bootstrap(ai)
     const final = await runToDone()
     const view = await readOracleSession(final, store, NOW)
@@ -401,6 +472,9 @@ describe('live layer-1 through a session', () => {
     expect(body).not.toContain('"model"')
     expect(view.readings.some((row) => row.brand === 'DeepSeek')).toBe(true)
     expect(store.readings.every((row) => row.model.length > 0)).toBe(true)
+    // N=3 seer panel produced live ballots with seat brands, never 'stub'.
+    expect(view.verdicts.map((row) => row.readerSlug).sort()).toEqual(['guide', 'reader', 'seer'])
+    expect(view.verdicts.every((row) => row.brand !== 'stub')).toBe(true)
     expect(session.id).toBe(final.id)
   })
 
@@ -409,33 +483,27 @@ describe('live layer-1 through a session', () => {
       if (systemPrompt.includes('synthesis layer')) {
         return okCall({ text: VALID_SYNTHESIS_JSON, brand: entry.brand, model: entry.model })
       }
+      if (systemPrompt.includes('seer on a panel')) {
+        return okCall({ text: VALID_VERDICT_JSON, brand: entry.brand, model: entry.model })
+      }
       if (entry.system === 'saju') {
         return okCall({ text: null, emptyContent: true, brand: entry.brand, model: entry.model })
       }
       return okCall({ brand: entry.brand, model: entry.model })
     }
-    const ai = createLayer1AiAdapter({
-      call,
-      layer2: {
-        async run() {
-          return {
-            ok: true,
-            brand: 'stub',
-            model: 'stub-oracle-v0',
-            text: 'stub verdict',
-            summary: { ballot: { phase: 'hold', confidence: 50 }, dissent: null },
-            latencyMs: 1,
-            tokensIn: 1,
-            tokensOut: 1,
-          }
-        },
-      },
-    })
+    const ai = createLayer1AiAdapter({ call })
     const { store, runToDone } = await bootstrap(ai)
     const final = await runToDone()
     expect(final.status).toBe('done')
     const saju = store.readings.find((row) => row.system === 'saju')
     expect(saju?.status).toBe('error')
     expect(store.readings.filter((row) => row.status === 'done').length).toBeGreaterThan(0)
+    // Code tally over the live ballots: all three seers voted 'advance'.
+    const consensus = store.consensus.find((row) => row.session_id === final.id)
+    expect(consensus?.ballot_tally).toMatchObject({
+      counts: { advance: 3, hold: 0, release: 0 },
+      leader: 'advance',
+      unanimous: true,
+    })
   })
 })

@@ -371,6 +371,61 @@ describe('single-system layer branches', () => {
     const synthesis = harness.store.consensus[0]!.domain_stats?.synthesis as Record<string, unknown>
     expect(synthesis.conclusion).toBe('stub synthesis conclusion')
   })
+
+  it('verdict units carry the seer seat brand; witness gets previous only for returning users', async () => {
+    const seen: Array<{ unit: string; brand?: string; previous: unknown }> = []
+    const recording = (inner: OracleAiAdapter): OracleAiAdapter => ({
+      run(request, options) {
+        if (request.kind === 'verdict') {
+          seen.push({
+            unit: request.unit,
+            brand: request.brand,
+            previous: 'previous' in request.payload ? request.payload.previous : 'ABSENT',
+          })
+        }
+        return inner.run(request, options)
+      },
+    })
+
+    // First visit: N=9 panel, no prior combined session.
+    const harness = await bootstrap({ scope: 'combined', readerCount: 9, ai: recording(fastAi()) })
+    const first = await runToCompletion(harness)
+    expect(first.status).toBe('done')
+
+    const bySlug = new Map(seen.map((row) => [row.unit, row]))
+    expect(bySlug.get('contrarian')?.brand).toBe('ByteDance')
+    expect(bySlug.get('elder')?.brand).toBe('NAVER')
+    expect(bySlug.get('mystic')?.brand).toBe('Anthropic')
+    // Non-witness seers never see the key; first-time witness sees null.
+    expect(bySlug.get('reader')?.previous).toBe('ABSENT')
+    expect(bySlug.get('witness')?.previous).toBeNull()
+
+    // Second visit, same user + store: witness now compares against the record.
+    seen.length = 0
+    const again = await createOracleSession(
+      USER,
+      {
+        kind: 'personal',
+        subjectProfileId: 'profile-subject',
+        scope: 'combined',
+        systems: [],
+        question: null,
+        sessionInputs: PRISM_INPUTS,
+        readerCount: 9,
+        locale: 'ko',
+      },
+      { store: harness.store, credits: harness.credits, now: () => NOW, seed: () => 'seed-advance-2' },
+    )
+    if (!again.ok) throw new Error('second session failed')
+    const secondHarness: Harness = { ...harness, session: again.session }
+    const second = await runToCompletion(secondHarness, recording(fastAi()))
+    expect(second.status).toBe('done')
+
+    const witness = seen.find((row) => row.unit === 'witness')
+    expect(witness?.previous).toMatchObject({ completedAt: expect.anything() })
+    const previous = witness?.previous as { ballotTally?: { participantCount?: number } }
+    expect(previous.ballotTally?.participantCount).toBe(9)
+  })
 })
 
 describe('finalize', () => {

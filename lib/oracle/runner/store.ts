@@ -61,6 +61,26 @@ export function createSupabaseRunnerStore(): RunnerStore {
       return (data?.[0] as OracleJobSession | undefined) ?? null
     },
 
+    async findLatestCompletedSession(
+      userId: string,
+      scope: OracleJobSession['scope'],
+      excludeSessionId?: string,
+    ): Promise<OracleJobSession | null> {
+      let query = supabaseAdmin
+        .from(SESSIONS)
+        .select('*')
+        .eq('user_id', userId)
+        .eq('scope', scope)
+        // 'failed' is terminal too but is not a record worth comparing against.
+        .in('status', ['done', 'partial'])
+        .order('completed_at', { ascending: false, nullsFirst: false })
+        .limit(1)
+      if (excludeSessionId) query = query.neq('id', excludeSessionId)
+      const { data, error } = await query
+      if (error) throw new Error(`findLatestCompletedSession: ${error.message}`)
+      return (data?.[0] as OracleJobSession | undefined) ?? null
+    },
+
     async loadProfiles(userId: string, profileIds: string[]): Promise<OracleProfile[]> {
       if (profileIds.length === 0) return []
       const { data, error } = await supabaseAdmin
