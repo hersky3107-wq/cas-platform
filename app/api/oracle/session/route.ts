@@ -11,6 +11,7 @@
  */
 import { NextResponse } from 'next/server'
 import { isAllowedReaderCount } from '@/lib/oracle/ai/family-roster'
+import { refreshProfileCoordinates } from '@/lib/oracle/profile-coordinates'
 import {
   ORACLE_READER_COUNTS,
   ORACLE_SESSION_KINDS,
@@ -138,6 +139,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
 
+    const wantsAstro =
+      parsed.request.systems.includes('astro') || parsed.request.systems.length === 0
+    if (wantsAstro) {
+      await refreshProfileCoordinates(user.id, parsed.request.subjectProfileId)
+    }
+
     const outcome = await createOracleSession(user.id, parsed.request, {
       store: createSupabaseRunnerStore(),
       credits: createCreditsPort(),
@@ -166,6 +173,7 @@ export async function POST(req: Request) {
       nextAction: outcome.session.next_action,
       progress: outcome.session.progress,
       computations: outcome.computations,
+      assumptions: outcome.assumptions,
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'

@@ -11,7 +11,8 @@ import { fetchOracleBirthProfileAdmin, oracleV1ToUsersJson } from '@/lib/oracle/
 const COLUMN_HINT_SQL =
   'ALTER TABLE users ADD COLUMN IF NOT EXISTS oracle_birth_profile JSONB;'
 
-const RUNNER_PROFILE_COLUMNS = 'id,birth_date,birth_time,birth_time_source,sex,tz'
+const RUNNER_PROFILE_COLUMNS =
+  'id,birth_date,birth_time,birth_time_source,sex,tz,birth_place,lat,lng,name_local,name_hanja,name_latin,mbti,derived'
 
 type RunnerProfileRow = {
   id: string
@@ -20,6 +21,14 @@ type RunnerProfileRow = {
   birth_time_source: string
   sex: string | null
   tz: string | null
+  birth_place: string | null
+  lat: number | null
+  lng: number | null
+  name_local: string | null
+  name_hanja: string | null
+  name_latin: string | null
+  mbti: string | null
+  derived: Record<string, unknown> | null
 }
 
 /**
@@ -40,7 +49,7 @@ async function syncRunnerProfile(
 
   const { data: existing, error: readError } = await supabaseAdmin
     .from('oracle_profiles')
-    .select('id,birth_place,lat,lng,tz')
+    .select('id,birth_place,lat,lng,tz,derived')
     .eq('user_id', userId)
     .eq('is_self', true)
     .order('updated_at', { ascending: false })
@@ -71,6 +80,13 @@ async function syncRunnerProfile(
     }
   }
 
+  const derived = {
+    ...((existing?.derived && typeof existing.derived === 'object' && !Array.isArray(existing.derived)
+      ? existing.derived
+      : {}) as Record<string, unknown>),
+  }
+  delete derived.placeholder_birth_date
+
   const row = {
     user_id: userId,
     label: '나',
@@ -79,6 +95,7 @@ async function syncRunnerProfile(
     lat,
     lng,
     tz,
+    derived,
     updated_at: new Date().toISOString(),
   }
 
@@ -130,12 +147,80 @@ export async function GET(req: Request) {
     complete: !!(complete ?? false),
     runnerProfile,
     subjectProfileId: runnerProfile?.id ?? null,
+    placeholderBirthDate: runnerProfile?.derived?.placeholder_birth_date === true,
   })
 }
 
 function coerceGender(raw: unknown): Gender | null {
   if (raw === 'male' || raw === 'female' || raw === 'prefer_not_to_say') return raw
   return null
+}
+
+const MBTI_RE = /^(INTJ|INTP|ENTJ|ENTP|INFJ|INFP|ENFJ|ENFP|ISTJ|ISFJ|ESTJ|ESFJ|ISTP|ISFP|ESTP|ESFP)$/i
+
+async function loadSelfRunner(userId: string): Promise<RunnerProfileRow | null> {
+  const { data } = await supabaseAdmin
+    .from('oracle_profiles')
+    .select(RUNNER_PROFILE_COLUMNS)
+    .eq('user_id', userId)
+    .eq('is_self', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data as RunnerProfileRow | null) ?? null
+}
+
+async function ensureStubRunner(userId: string): Promise<RunnerProfileRow | null> {
+  const existing = await loadSelfRunner(userId)
+  if (existing) return existing
+  const { data, error } = await supabaseAdmin
+    .from('oracle_profiles')
+    .insert({
+      user_id: userId,
+      label: '나',
+      is_self: true,
+      birth_date: '1970-01-01',
+      birth_time: null,
+      birth_time_source: 'unknown',
+      derived: { placeholder_birth_date: true },
+    })
+    .select(RUNNER_PROFILE_COLUMNS)
+    .single()
+  if (error) {
+    console.warn('[oracle/profile] stub insert:', error.message)
+    return null
+  }
+  return data as RunnerProfileRow
+}
+
+function composeLocalName(surname: string, given: string, locale: string): { name_local?: string; name_latin?: string } {
+  const family = surname.trim()
+  const personal = given.trim()
+  if (!family || !personal) return {}
+  const east = locale === 'ko' || locale === 'ja' || locale.startsWith('zh')
+  if (east) return { name_local: `${family}${personal}` }
+  return { name_latin: `${personal} ${family}` }
+}
+
+async function patchRunnerExtras(
+  userId: string,
+  patch: Record<string, unknown>,
+): Promise<RunnerProfileRow | null> {
+  const existing = await loadSelfRunner(userId)
+  if (!existing) return null
+  if (Object.keys(patch).length === 0) return existing
+  const { data, error } = await supabaseAdmin
+    .from('oracle_profiles')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', existing.id)
+    .eq('user_id', userId)
+    .select(RUNNER_PROFILE_COLUMNS)
+    .single()
+  if (error) {
+    console.warn('[oracle/profile] extras patch:', error.message)
+    return null
+  }
+  return data as RunnerProfileRow
 }
 
 export async function POST(req: Request) {
@@ -151,7 +236,57 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }
 
+  const extrasPatch: Record<string, unknown> = {}
+  const surname = typeof body.name_surname === 'string' ? body.name_surname.trim() : ''
+  const given = typeof body.name_given === 'string' ? body.name_given.trim() : ''
+  const nameLocale = typeof body.name_locale === 'string' && body.name_locale.trim() ? body.name_locale.trim() : 'ko'
+  if (surname && given) Object.assign(extrasPatch, composeLocalName(surname, given, nameLocale))
+  if (typeof body.name_latin === 'string' && body.name_latin.trim()) {
+    extrasPatch.name_latin = body.name_latin.trim()
+  }
+  if (typeof body.mbti === 'string' && body.mbti.trim()) {
+    const mbti = body.mbti.trim().toUpperCase()
+    if (!MBTI_RE.test(mbti)) {
+      return NextResponse.json({ error: 'mbti must be a 4-letter MBTI type' }, { status: 400 })
+    }
+    extrasPatch.mbti = mbti
+  }
+
+  if (body.ensureStub === true) {
+    const stub = await ensureStubRunner(user.id)
+    if (!stub) return NextResponse.json({ error: 'Could not create a reading profile' }, { status: 500 })
+    const patched = Object.keys(extrasPatch).length ? await patchRunnerExtras(user.id, extrasPatch) : stub
+    return NextResponse.json({
+      ok: true,
+      profile: null,
+      complete: false,
+      runnerProfile: patched,
+      subjectProfileId: patched?.id ?? stub.id,
+      placeholderBirthDate: (patched ?? stub).derived?.placeholder_birth_date === true,
+    })
+  }
+
   const dob = typeof body.dob === 'string' ? body.dob.trim() : ''
+  const extrasOnly = dob === '' && (surname !== '' || given !== '' || typeof body.name_latin === 'string' || typeof body.mbti === 'string')
+  if (extrasOnly) {
+    let existing = await loadSelfRunner(user.id)
+    if (!existing) {
+      existing = await ensureStubRunner(user.id)
+    }
+    if (!existing) {
+      return NextResponse.json({ error: 'Could not create a reading profile' }, { status: 500 })
+    }
+    const patched = await patchRunnerExtras(user.id, extrasPatch)
+    return NextResponse.json({
+      ok: true,
+      profile: null,
+      complete: false,
+      runnerProfile: patched,
+      subjectProfileId: patched?.id ?? existing.id,
+      placeholderBirthDate: (patched ?? existing).derived?.placeholder_birth_date === true,
+    })
+  }
+
   const birthCity = typeof body.birth_city === 'string' ? body.birth_city.trim() : ''
   const gender = coerceGender(body.gender)
   const birth_time_known = body.birth_time_known === true
@@ -170,8 +305,6 @@ export async function POST(req: Request) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
     return NextResponse.json({ error: 'Invalid date of birth' }, { status: 400 })
   }
-  if (!birthCity) return NextResponse.json({ error: 'City of birth required' }, { status: 400 })
-  if (!gender) return NextResponse.json({ error: 'Gender required' }, { status: 400 })
 
   if (birth_time_known) {
     if (!birth_time_24h || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(birth_time_24h)) {
@@ -185,22 +318,13 @@ export async function POST(req: Request) {
   const effectiveTime =
     birth_time_24h && /^([01]?\d|2[0-3]):([0-5]\d)$/.test(birth_time_24h) ? birth_time_24h : null
 
-  if (!birth_time_known && !effectiveTime) {
-    return NextResponse.json(
-      {
-        error: 'Provide an exact time or complete all 15 birth-time questions.',
-      },
-      { status: 400 }
-    )
-  }
-
   const oracle_birth_profile: OracleBirthProfileV1 = {
     version: 1,
     dob,
     birth_city: birthCity,
-    gender,
+    gender: gender ?? 'prefer_not_to_say',
     birth_time_known,
-    birth_time_24h: effectiveTime ?? '12:00',
+    birth_time_24h: effectiveTime,
     ...(time_approx_band ? { time_approx_band: time_approx_band as ApproxBirthBand } : { time_approx_band: null }),
     time_from_survey: time_from_survey || undefined,
     resolved_sijin_kr: resolved_sijin_kr ?? undefined,
@@ -208,10 +332,14 @@ export async function POST(req: Request) {
     completed_at: new Date().toISOString(),
   }
 
+  const storedProfile = birthCity && (oracle_birth_profile.birth_time_known || oracle_birth_profile.time_from_survey || oracle_birth_profile.time_approx_band)
+    ? oracleV1ToUsersJson(oracle_birth_profile)
+    : oracle_birth_profile
+
   const patch = await supabaseAdmin
     .from('users')
     .update({
-      oracle_birth_profile: oracleV1ToUsersJson(oracle_birth_profile),
+      oracle_birth_profile: storedProfile,
     })
     .eq('id', user.id)
 
@@ -229,13 +357,18 @@ export async function POST(req: Request) {
   // Both stores, one form. The runner row is derived from the sketch that was
   // just saved, so a system can never read a stale chart.
   const runnerProfile = await syncRunnerProfile(user.id, oracle_birth_profile)
+  const withExtras =
+    runnerProfile && Object.keys(extrasPatch).length > 0
+      ? await patchRunnerExtras(user.id, extrasPatch)
+      : runnerProfile
 
   const complete = oracleProfileLooksComplete(oracle_birth_profile)
   return NextResponse.json({
     ok: true,
     profile: oracle_birth_profile,
     complete,
-    runnerProfile,
-    subjectProfileId: runnerProfile?.id ?? null,
+    runnerProfile: withExtras,
+    subjectProfileId: withExtras?.id ?? runnerProfile?.id ?? null,
+    placeholderBirthDate: withExtras?.derived?.placeholder_birth_date === true,
   })
 }

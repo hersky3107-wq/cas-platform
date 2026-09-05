@@ -1,6 +1,6 @@
 import type { SystemId } from './axes/types'
 
-export type SingleSystemId = Exclude<SystemId, 'prism'>
+export type SingleSystemId = SystemId
 
 export type SingleSystemCopy = {
   id: SingleSystemId
@@ -33,6 +33,18 @@ export const SINGLE_SYSTEMS: readonly SingleSystemCopy[] = [
       '행성 간 각도와 별자리 배치로 성향과 관계를 읽습니다.',
       '현재 행성의 이동을 출생 차트와 겹쳐 변화의 시기를 봅니다.',
       '출생 시간을 모르면 상승궁과 하우스 없이 축소해 해석합니다.',
+    ],
+  },
+  {
+    id: 'prism',
+    name: 'PRISM-5',
+    shortName: 'PRISM',
+    symbol: '◆',
+    explanation: [
+      '생년월일과 MBTI, 세 가지 색 선택으로 지금의 상태를 읽습니다.',
+      '충동·필요·정체성의 색이 겹치지 않게 골라 성향의 결을 봅니다.',
+      '색의 조합과 성격 유형이 만드는 긴장과 조화를 함께 살핍니다.',
+      '색을 고르지 않으면 이 체계는 결과를 내지 않습니다.',
     ],
   },
   {

@@ -53,6 +53,14 @@ export type OracleRunnerConsensus = {
   unanimous: boolean | null;
 };
 
+export type OracleRunnerAssumptions = {
+  sexDefaulted: boolean
+  timezoneDefaulted: boolean
+  coordinatesDefaulted: boolean
+  birthTimeUnknown: boolean
+  birthTimeEstimated: boolean
+}
+
 export type OracleRunnerView = {
   sessionId: string;
   status: OracleRunnerStatus;
@@ -66,6 +74,7 @@ export type OracleRunnerView = {
   computations: OracleRunnerComputation[];
   readings: OracleRunnerReading[];
   consensus: OracleRunnerConsensus | null;
+  assumptions: OracleRunnerAssumptions | null;
 };
 
 export type StartOracleSessionRequest = {
@@ -84,7 +93,8 @@ const POLL_INTERVAL_MS = 2_000;
 export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [view, setView] = useState<OracleRunnerView | null>(null);
-  const [initialComputations, setInitialComputations] = useState<OracleRunnerComputation[]>([]);
+  const [initialComputations, setInitialComputations] = useState<OracleRunnerComputation[]>([])
+  const [assumptions, setAssumptions] = useState<OracleRunnerAssumptions | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const advancing = useRef(false);
@@ -180,6 +190,7 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
         const payload = (await response.json().catch(() => null)) as {
           sessionId?: string;
           computations?: OracleRunnerComputation[];
+          assumptions?: OracleRunnerAssumptions | null;
           balance?: number;
           error?: string;
         } | null;
@@ -190,6 +201,7 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
         }
 
         setInitialComputations(payload.computations ?? []);
+        setAssumptions(payload.assumptions ?? null);
         setView(null);
         setSessionId(payload.sessionId);
         window.localStorage.setItem(storageKey, payload.sessionId);
@@ -210,6 +222,7 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
     setSessionId(null);
     setView(null);
     setInitialComputations([]);
+    setAssumptions(null);
     setError(null);
   }, [storageKey]);
 
@@ -217,11 +230,13 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
   // the calculation is on screen immediately rather than one tick later.
   const computations = view?.computations.length ? view.computations : initialComputations;
   const terminal = view ? ORACLE_RUNNER_TERMINAL.has(view.status) : false;
+  const resolvedAssumptions = view?.assumptions ?? assumptions;
 
   return {
     sessionId,
     view,
     computations,
+    assumptions: resolvedAssumptions,
     terminal,
     starting,
     error,

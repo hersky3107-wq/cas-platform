@@ -53,6 +53,21 @@ export type PublicConsensus = {
   computedAt: string
 }
 
+function publicAssumptions(domainStats: JsonObject | null): OracleSessionView['assumptions'] {
+  const raw =
+    domainStats && typeof domainStats.assumptions === 'object' && domainStats.assumptions !== null
+      ? (domainStats.assumptions as JsonObject)
+      : null
+  if (!raw) return null
+  return {
+    sexDefaulted: raw.sexDefaulted === true,
+    timezoneDefaulted: raw.timezoneDefaulted === true,
+    coordinatesDefaulted: raw.coordinatesDefaulted === true,
+    birthTimeUnknown: raw.birthTimeUnknown === true,
+    birthTimeEstimated: raw.birthTimeEstimated === true,
+  }
+}
+
 function publicSynthesis(domainStats: JsonObject | null): {
   agreements: string[]
   divergences: string[]
@@ -99,6 +114,13 @@ export type OracleSessionView = {
   readings: PublicReading[]
   verdicts: PublicVerdict[]
   consensus: PublicConsensus | null
+  assumptions: {
+    sexDefaulted: boolean
+    timezoneDefaulted: boolean
+    coordinatesDefaulted: boolean
+    birthTimeUnknown: boolean
+    birthTimeEstimated: boolean
+  } | null
 }
 
 export async function readOracleSession(
@@ -156,5 +178,6 @@ export async function readOracleSession(
           computedAt: consensus.computed_at,
         }
       : null,
+    assumptions: publicAssumptions(consensus?.domain_stats ?? null),
   }
 }

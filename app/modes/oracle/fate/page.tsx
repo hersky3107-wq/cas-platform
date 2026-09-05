@@ -1,34 +1,20 @@
 /**
- * Fate route shell.
+ * Fate route shell — saju on the shared reading page.
  *
  * Server component on purpose: the reader roster is resolved here so the brand
- * names can be shown BEFORE the run without shipping the model registry (which
- * carries server-only model ids) into the browser bundle.
+ * names can be shown BEFORE the run without shipping the model registry into
+ * the browser bundle.
  */
 import HelpModal from "@/components/HelpModal";
-import { oracleFateHelpContent } from "@/lib/help-modal/oracle-fate-content";
-import {
-  ORACLE_SINGLE_READER_COUNTS,
-  resolveSingleSystemRoster,
-} from "@/lib/oracle/ai/family-roster";
-import { creditsForOracleSession } from "@/lib/oracle/runner/conventions";
-import FateClient, { type FateRosterOption } from "./FateClient";
+import { oracleSystemHelpContent } from "@/lib/help-modal/oracle-system-content";
+import { buildSystemRosters } from "@/lib/oracle/reading-rosters";
+import FateClient from "./FateClient";
 
 export default function OracleFatePage() {
-  const rosters: FateRosterOption[] = ORACLE_SINGLE_READER_COUNTS.map((readerCount) => {
-    const roster = resolveSingleSystemRoster("saju", readerCount);
-    return {
-      readerCount,
-      readers: [...roster.readers],
-      synthesizer: roster.synthesizer,
-      credits: creditsForOracleSession("single", readerCount),
-    };
-  });
-
   return (
     <>
-      <HelpModal content={oracleFateHelpContent} />
-      <FateClient rosters={rosters} />
+      <HelpModal content={oracleSystemHelpContent("saju")} />
+      <FateClient rosters={buildSystemRosters("saju")} />
     </>
   );
 }

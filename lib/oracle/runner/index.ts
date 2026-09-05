@@ -61,7 +61,9 @@ export type { PersonalData } from './privacy'
 export { validateSessionInputs } from './session-inputs'
 export type {
   OraclePrismSessionInput,
+  OracleRunesSessionInput,
   OracleSessionInputs,
+  OracleTarotSessionInput,
   SessionInputsValidation,
 } from './session-inputs'
 

@@ -25,6 +25,7 @@ import {
   readingScopeForSession,
 } from './conventions'
 import { OracleComputeError, personalDataFrom, resolveSystems, runComputations } from './compute'
+import type { ComputeAssumptions } from './compute'
 import { initialProgress, markUnitFailed, readingUnit } from './progress'
 import { OraclePrivacyError } from './privacy'
 import { publicComputation } from './public-computation'
@@ -76,6 +77,7 @@ export type CreateSessionOutcome =
       reused: boolean
       session: OracleJobSession
       computations: PublicComputation[]
+      assumptions: ComputeAssumptions | null
     }
   | {
       ok: false
@@ -135,7 +137,13 @@ export async function createOracleSession(
   const active = await store.findActiveSession(userId)
   if (active) {
     const existing = await store.listComputations(active.id)
-    return { ok: true, reused: true, session: active, computations: existing.map(publicComputation) }
+    return {
+      ok: true,
+      reused: true,
+      session: active,
+      computations: existing.map(publicComputation),
+      assumptions: null,
+    }
   }
 
   if (!isAllowedReaderCount(request.scope, request.readerCount)) {
@@ -297,6 +305,7 @@ export async function createOracleSession(
       reused: false,
       session: updated ?? { ...session, status: 'layer1', next_action: 'layer1', progress },
       computations: rows.map(publicComputation),
+      assumptions: computed.assumptions,
     }
   } catch (e) {
     await store.updateSession(session.id, {

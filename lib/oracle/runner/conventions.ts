@@ -135,7 +135,7 @@ export function readingScopeForSession(kind: OracleSessionKind, hasQuestion: boo
 export const ORACLE_DEFAULT_TIMEZONE = 'Asia/Seoul'
 export const ORACLE_DEFAULT_COORDS = { lat: 37.5665, lng: 126.978 } as const
 
-/** Tarot spread and rune count used until the UI lets the user draw. */
+/** Default tarot spread / rune count when session_inputs omit a user draw. */
 export const ORACLE_TAROT_SPREAD = 3 as const
 export const ORACLE_RUNE_COUNT = 3
 export const ORACLE_TAROT_DECK_SIZE = 78

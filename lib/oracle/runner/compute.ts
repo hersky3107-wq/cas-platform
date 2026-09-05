@@ -33,6 +33,7 @@ import { SYSTEM_IDS, type AxisConsensus, type AxisVote, type ReadingScope, type 
 import { fiveElementBalance, fourPillars, greatLuck, nineStar, sukuyou, tenGods, tzolkin } from '../engines/calendar'
 import { natalChart, transits } from '../engines/astro'
 import { ichingDraw, runeDraw, tarotDraw } from '../engines/draw'
+import type { TarotSpreadSize } from '../engines/draw/conventions'
 import { createRng } from '../engines/draw/rng'
 import { nameReading } from '../engines/name'
 import { numerology } from '../engines/numerology'
@@ -169,6 +170,8 @@ type SubjectContext = {
   latinName: string | null
   nameParts: { surname: string; givenName: string } | null
   prism: { mbti: string; colors: PrismColors; microCheck: MicroCheck | undefined } | null
+  tarot: { spread: TarotSpreadSize; pickedPositions: number[] } | null
+  runeCount: number | null
 }
 
 /**
@@ -229,7 +232,18 @@ function drawSeed(seed: string, system: string): string {
   return `${seed}:${system}`
 }
 
-/** Deterministic stand-in until the UI lets the user pick from the fanned deck. */
+function readTarotInputs(sessionInputs: OracleSessionInputs | null): SubjectContext['tarot'] {
+  const input = sessionInputs?.tarot
+  if (!input) return null
+  return { spread: input.spread, pickedPositions: input.pickedPositions }
+}
+
+function readRuneCount(sessionInputs: OracleSessionInputs | null): number | null {
+  const count = sessionInputs?.runes?.count
+  return typeof count === 'number' ? count : null
+}
+
+/** Combined-session fallback when the UI did not send a user draw. */
 function derivePickedPositions(seed: string, count: number, deckSize: number): number[] {
   const rng = createRng(seed)
   const picked: number[] = []
@@ -315,13 +329,15 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
     }
     case 'tarot': {
       const seed = drawSeed(ctx.seed, 'tarot')
-      const pickedPositions = derivePickedPositions(seed, ORACLE_TAROT_SPREAD, ORACLE_TAROT_DECK_SIZE)
-      const input = { seed, spread: ORACLE_TAROT_SPREAD, pickedPositions }
+      const spread = ctx.tarot?.spread ?? ORACLE_TAROT_SPREAD
+      const pickedPositions =
+        ctx.tarot?.pickedPositions ?? derivePickedPositions(seed, spread, ORACLE_TAROT_DECK_SIZE)
+      const input = { seed, spread, pickedPositions }
       return { vote: projectTarot(input), result: { draw: jsonObject(tarotDraw(input)) } }
     }
     case 'runes': {
       const seed = drawSeed(ctx.seed, 'runes')
-      const input = { seed, count: ORACLE_RUNE_COUNT }
+      const input = { seed, count: ctx.runeCount ?? ORACLE_RUNE_COUNT }
       return { vote: projectRune(input), result: { draw: jsonObject(runeDraw(input)) } }
     }
     case 'ninestar': {
@@ -381,6 +397,8 @@ export function runComputations(input: ComputeInput): ComputeOutput {
     latinName: profile.name_latin ?? null,
     nameParts: splitName(profile, input.locale),
     prism: readPrismInputs(profile, input.sessionInputs),
+    tarot: readTarotInputs(input.sessionInputs),
+    runeCount: readRuneCount(input.sessionInputs),
   }
 
   const readingScope = readingScopeForSession(input.kind, input.question !== null)

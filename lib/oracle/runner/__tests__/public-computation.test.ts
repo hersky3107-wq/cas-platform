@@ -51,9 +51,9 @@ describe('publicComputation', () => {
 })
 
 describe('single-system UI catalog', () => {
-  it('contains exactly the 11 non-prism systems with four Korean explanation lines each', () => {
-    expect(SINGLE_SYSTEMS).toHaveLength(11)
-    expect(SINGLE_SYSTEMS.map((system) => String(system.id))).not.toContain('prism')
+  it('contains all 12 systems including PRISM, each with four Korean explanation lines', () => {
+    expect(SINGLE_SYSTEMS).toHaveLength(12)
+    expect(SINGLE_SYSTEMS.map((system) => String(system.id))).toContain('prism')
     for (const system of SINGLE_SYSTEMS) {
       expect(system.explanation).toHaveLength(4)
       expect(system.explanation.every((line) => /[가-힣]/.test(line))).toBe(true)

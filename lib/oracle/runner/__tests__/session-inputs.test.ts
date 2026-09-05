@@ -59,4 +59,31 @@ describe('validateSessionInputs', () => {
       value: { futureSystem: { draw: 7 } },
     })
   })
+
+  it('accepts a user-drawn tarot spread with unique 1-based positions', () => {
+    const result = validateSessionInputs({
+      tarot: { spread: 3, pickedPositions: [14, 3, 71] },
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value?.tarot).toEqual({ spread: 3, pickedPositions: [14, 3, 71] })
+    }
+  })
+
+  it('rejects tarot picks that duplicate or miss the spread length', () => {
+    expect(
+      validateSessionInputs({ tarot: { spread: 3, pickedPositions: [1, 1, 2] } }).ok,
+    ).toBe(false)
+    expect(
+      validateSessionInputs({ tarot: { spread: 3, pickedPositions: [1, 2] } }).ok,
+    ).toBe(false)
+  })
+
+  it('accepts rune counts from 1 to 24', () => {
+    expect(validateSessionInputs({ runes: { count: 1 } }).ok).toBe(true)
+    expect(validateSessionInputs({ runes: { count: 5 } }).ok).toBe(true)
+    expect(validateSessionInputs({ runes: { count: 24 } }).ok).toBe(true)
+    expect(validateSessionInputs({ runes: { count: 0 } }).ok).toBe(false)
+    expect(validateSessionInputs({ runes: { count: 25 } }).ok).toBe(false)
+  })
 })

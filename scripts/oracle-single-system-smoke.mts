@@ -29,7 +29,12 @@ type Scope = 'single' | 'combined'
 const USER = 'oracle-single-system-smoke'
 const DIAGNOSTIC_TIMEOUT_MS = 240_000
 
-async function runSmoke(label: string, scope: Scope, systems: string[]) {
+async function runSmoke(
+  label: string,
+  scope: Scope,
+  systems: string[],
+  extraInputs: Record<string, unknown> = {},
+) {
   const profile = makeProfile({ user_id: USER })
   const store = createFakeStore({ profiles: [profile] })
   const sessionId = randomUUID()
@@ -57,6 +62,7 @@ async function runSmoke(label: string, scope: Scope, systems: string[]) {
           identity: PRISM_COLORS[2],
           microCheck: [3, 4, 2, 3],
         },
+        ...extraInputs,
       },
       readerCount: 3,
       locale: 'ko',
@@ -138,6 +144,8 @@ async function runSmoke(label: string, scope: Scope, systems: string[]) {
 }
 
 const single = await runSmoke('single-saju-N3', 'single', ['saju'])
-const integrated = await runSmoke('integrated-N3', 'combined', [])
-console.log(`\nSMOKE_RESULT_JSON=${JSON.stringify({ single, integrated })}`)
+const tarot = await runSmoke('single-tarot-N3', 'single', ['tarot'], {
+  tarot: { spread: 3, pickedPositions: [14, 3, 71] },
+})
+console.log(`\nSMOKE_RESULT_JSON=${JSON.stringify({ single, tarot })}`)
 process.exit(0)

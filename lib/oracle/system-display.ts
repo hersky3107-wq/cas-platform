@@ -5,7 +5,7 @@
  * what the share page reads. The stored value must stay an id so old rows and
  * new rows compare, so the label is resolved at render instead.
  *
- * The eleven single-system names are derived from SINGLE_SYSTEMS rather than
+ * The twelve single-system names are derived from SINGLE_SYSTEMS rather than
  * retyped, so the lobby copy and a shared page can never disagree. Legacy
  * `oracle_type` values written before the engine rebuild are aliased here so
  * shares created by the old Astro/Tarot/Daily routes still render a name.
@@ -19,7 +19,6 @@ const LEGACY_ORACLE_TYPE_NAMES: Record<string, string> = {
 
 const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
   ...Object.fromEntries(SINGLE_SYSTEMS.map((system) => [system.id, system.name])),
-  prism: 'PRISM-5',
   ...LEGACY_ORACLE_TYPE_NAMES,
 }
 

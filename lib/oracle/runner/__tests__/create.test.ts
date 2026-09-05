@@ -251,4 +251,27 @@ describe('createOracleSession', () => {
     expect(credits.refunds).toHaveLength(0)
     expect(credits.balance).toBe(1_000)
   })
+
+  it('records user-drawn tarot positions on the computation', async () => {
+    const { store, create } = harness()
+    const pickedPositions = [14, 3, 71]
+    const outcome = await create({
+      scope: 'single',
+      systems: ['tarot'],
+      sessionInputs: { tarot: { spread: 3, pickedPositions } },
+    })
+
+    expect(outcome.ok).toBe(true)
+    const tarot = store.computations.find((row) => row.system === 'tarot')!
+    const draw = tarot.result as { draw?: { cards?: Array<{ pickedPosition: number }> } }
+    expect(draw.draw?.cards?.map((card) => card.pickedPosition)).toEqual(pickedPositions)
+  })
+
+  it('surfaces coordinatesDefaulted when astro has no lat/lng', async () => {
+    const { create } = harness({ lat: null, lng: null })
+    const outcome = await create({ scope: 'single', systems: ['astro'] })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.assumptions?.coordinatesDefaulted).toBe(true)
+  })
 })
