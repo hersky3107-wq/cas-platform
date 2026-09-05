@@ -11,8 +11,9 @@
 import { AXES_LAYER_VERSION } from '../axes/conventions'
 import { buildLabelledReasons, labelForReasonCode } from '../axes/reason-labels'
 import type { AxisConsensus, AxisVote, ReadingScope } from '../axes/types'
-import type { OracleReading, OracleSessionKind } from '../schema'
+import type { OracleReading, OracleSessionKind, OracleSessionScope } from '../schema'
 import { ORACLE_RUNNER_VERSION } from './conventions'
+import { buildNativeChart } from './native-chart'
 import { assertNoPersonalData, type PersonalData } from './privacy'
 import type { JsonObject } from './types'
 
@@ -98,6 +99,18 @@ export type PayloadContext = {
   readingScope: ReadingScope
   asOfDate: string
   question: string | null
+  /**
+   * Product scope. Combined keeps the axis projection (12-system compare).
+   * Single sends that system's native chart and drops the axis block.
+   * Missing scope is treated as combined so existing callers stay on axes.
+   */
+  sessionScope?: OracleSessionScope
+  /** 세 / 虚岁 from birth year + asOfDate. Used only to mark 현재 대운/대한. Never emitted. */
+  nominalAge?: number | null
+}
+
+function isSingleScope(ctx: PayloadContext): boolean {
+  return ctx.sessionScope === 'single'
 }
 
 function envelope(ctx: PayloadContext): JsonObject {
@@ -107,6 +120,7 @@ function envelope(ctx: PayloadContext): JsonObject {
     kind: ctx.kind,
     locale: ctx.locale,
     readingScope: ctx.readingScope,
+    readingInput: isSingleScope(ctx) ? 'native' : 'axes',
   }
 }
 
@@ -114,16 +128,9 @@ function contextOf(ctx: PayloadContext): OracleAiContext {
   return { asOfDate: ctx.asOfDate, question: ctx.question }
 }
 
-/**
- * One system's layer-1 prompt input. Everything here comes off the AxisVote,
- * which is already free of raw profile data by construction — the projectors
- * emit vectors and machine codes only. Display labels are attached here as a
- * parallel `labels` object (only codes present on this vote) so the model can
- * use human terms without inventing them; AxisVote itself remains code-only.
- */
-export function buildReadingPayload(vote: AxisVote, ctx: PayloadContext, pii: PersonalData): JsonObject {
+function buildAxesReadingBody(vote: AxisVote, ctx: PayloadContext): JsonObject {
   const labelled = buildLabelledReasons(vote.reasons, ctx.locale)
-  const body: JsonObject = {
+  return {
     ...envelope(ctx),
     system: vote.system,
     engineVersion: vote.engineVersion,
@@ -139,10 +146,43 @@ export function buildReadingPayload(vote: AxisVote, ctx: PayloadContext, pii: Pe
       label: labelForReasonCode(entry.code, ctx.locale),
     })),
   }
+}
+
+function buildNativeReadingBody(vote: AxisVote, result: JsonObject | null, ctx: PayloadContext): JsonObject {
+  return {
+    ...envelope(ctx),
+    system: vote.system,
+    engineVersion: vote.engineVersion,
+    chart: buildNativeChart(vote.system, result, {
+      locale: ctx.locale,
+      nominalAge: ctx.nominalAge ?? null,
+    }),
+  }
+}
+
+/**
+ * One system's layer-1 prompt input.
+ *
+ * Combined (integrated) mode: AxisVote only — vectors, confidence, labelled
+ * reason codes. That is the 12-system comparison scale.
+ *
+ * Single-system mode: that engine's native chart in the system's own
+ * vocabulary. The axis projection is omitted on purpose; it is the wrong
+ * input for a tarot/rune/saju/etc. reading.
+ */
+export function buildReadingPayload(
+  vote: AxisVote,
+  result: JsonObject | null,
+  ctx: PayloadContext,
+  pii: PersonalData,
+): JsonObject {
+  const body = isSingleScope(ctx)
+    ? buildNativeReadingBody(vote, result, ctx)
+    : buildAxesReadingBody(vote, ctx)
 
   assertNoPersonalData(body, pii, {
     label: `ai_payload(${vote.system})`,
-    machineCodeFields: MACHINE_CODE_FIELDS,
+    machineCodeFields: isSingleScope(ctx) ? [] : MACHINE_CODE_FIELDS,
   })
   return { ...body, context: contextOf(ctx) }
 }

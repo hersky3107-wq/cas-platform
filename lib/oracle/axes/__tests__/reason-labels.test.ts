@@ -21,7 +21,11 @@ describe('reason-labels', () => {
     expect(labelled.labels.phase).toEqual(['대운·세운'])
   })
 
-  it('labels tarot reason codes', () => {
-    expect(labelForReasonCode('tarot.traits.arcana_and_suit', 'ko')).toBe('아르카나·수트')
+  it('labels tarot reason codes in human terms, not mapping jargon', () => {
+    expect(labelForReasonCode('tarot.traits.arcana_and_suit', 'ko')).toBe('메이저·수트')
+    expect(labelForReasonCode('tarot.elements.suit_to_classical_to_oheng', 'ko')).toBe('카드의 기운')
+    expect(labelForReasonCode('tarot.traits.reversals_reflected', 'ko')).toBe('뒤집힌 카드')
+    expect(labelForReasonCode('prism.traits.core_matrix', 'ko')).toBe('성향의 결')
+    expect(labelForReasonCode('prism.cycle.command', 'ko')).toBe('결단')
   })
 })

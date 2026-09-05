@@ -264,6 +264,7 @@ export async function createOracleSession(
       question,
       sessionInputs: sessionInputs.value,
       personalData: personalDataFrom(profiles),
+      sessionScope: request.scope,
     })
 
     const rows = await store.upsertComputations(

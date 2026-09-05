@@ -12,6 +12,15 @@ describe('layer1 prompts', () => {
     const prompt = buildLayer1SystemPrompt('ko', 'saju')
     expect(prompt).toContain('Never print machine codes in narrative or one_line')
     expect(prompt).toContain('report the tie as a tie')
+    expect(prompt).toContain('Never name our internal engine layers')
+  })
+
+  it('native single-system prompt leads with the chart, not the axis projection', () => {
+    const prompt = buildLayer1SystemPrompt('ko', 'tarot', 'native')
+    expect(prompt).toContain('payload.chart is THIS system')
+    expect(prompt).toContain('name every card')
+    expect(prompt).not.toContain('report the tie as a tie')
+    expect(prompt).toContain('Tarot has no 오행')
   })
 
   it('adds Claude-specific length lock only for prism', () => {

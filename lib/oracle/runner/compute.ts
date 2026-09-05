@@ -40,7 +40,7 @@ import { numerology } from '../engines/numerology'
 import { MBTI_TYPES, prism } from '../engines/prism'
 import type { MicroCheck, PrismColors } from '../engines/prism/types'
 import { ziweiChart } from '../engines/ziwei'
-import type { OracleProfile, OracleSessionKind } from '../schema'
+import type { OracleProfile, OracleSessionKind, OracleSessionScope } from '../schema'
 import {
   ORACLE_DEFAULT_COORDS,
   ORACLE_DEFAULT_TIMEZONE,
@@ -104,6 +104,11 @@ export type ComputeInput = {
   sessionInputs: OracleSessionInputs | null
   /** Needle set for the privacy gate — covers subject AND partner profiles. */
   personalData: PersonalData
+  /**
+   * Product scope. Combined (default) builds axis-projection payloads.
+   * Single builds that system's native chart and drops the axis block.
+   */
+  sessionScope?: OracleSessionScope
 }
 
 export type ComputeOutput = {
@@ -308,7 +313,7 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
         microCheck: ctx.prism.microCheck,
         atDate: ctx.asOfDate,
       })
-      return { vote: projectPrismResult(result, ctx.asOfDate), result: { prism: jsonObject(result) } }
+      return { vote: projectPrismResult(result, ctx.asOfDate), result: { prism: jsonObject(result), mbti: ctx.prism.mbti, colors: jsonObject(ctx.prism.colors) } }
     }
     case 'ziwei': {
       const input = { birthDate: ctx.date, birthTime: ctx.time, tz: ctx.tz, sex: ctx.sex, atDate: ctx.asOfDate }
@@ -370,6 +375,13 @@ export function resolveSystems(requested: readonly string[]): SystemId[] {
   return SYSTEM_IDS.filter((id) => wanted.has(id))
 }
 
+function nominalAgeFrom(birthDate: string, asOfDate: string): number | null {
+  const birthYear = Number(birthDate.slice(0, 4))
+  const asOfYear = Number(asOfDate.slice(0, 4))
+  if (!Number.isFinite(birthYear) || !Number.isFinite(asOfYear)) return null
+  return asOfYear - birthYear + 1
+}
+
 export function runComputations(input: ComputeInput): ComputeOutput {
   const { profile } = input
   const clock = toClock(profile.birth_time)
@@ -408,6 +420,8 @@ export function runComputations(input: ComputeInput): ComputeOutput {
     readingScope,
     asOfDate: input.asOfDate,
     question: input.question,
+    sessionScope: input.sessionScope ?? 'combined',
+    nominalAge: nominalAgeFrom(profile.birth_date, input.asOfDate),
   }
 
   const systems: ComputedSystem[] = []
@@ -440,7 +454,7 @@ export function runComputations(input: ComputeInput): ComputeOutput {
     systems.push({
       system,
       result: outcome.result,
-      aiPayload: buildReadingPayload(outcome.vote, payloadContext, input.personalData),
+      aiPayload: buildReadingPayload(outcome.vote, outcome.result, payloadContext, input.personalData),
       axes: jsonObject(outcome.vote),
       engineVersion: outcome.vote.engineVersion,
       vote: outcome.vote,

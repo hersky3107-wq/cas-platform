@@ -262,3 +262,48 @@ export const RUNE_KO: Record<string, string> = {
 export function oneDecimal(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
+
+export const ASPECT_KO: Record<string, string> = {
+  conjunction: '합',
+  opposition: '충',
+  trine: '삼분',
+  square: '사분',
+  sextile: '육분',
+}
+
+export const WEEKDAY_KO = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'] as const
+
+export const TRIGRAM_KO: Record<string, string> = {
+  乾: '건',
+  兑: '태',
+  离: '이',
+  震: '진',
+  巽: '손',
+  坎: '감',
+  艮: '간',
+  坤: '곤',
+}
+
+export const RELATIVE_KO: Record<string, string> = {
+  兄弟: '형제',
+  子孙: '자손',
+  妻财: '처재',
+  官鬼: '관귀',
+  父母: '부모',
+}
+
+export const BEAST_KO: Record<string, string> = {
+  青龙: '청룡',
+  朱雀: '주작',
+  勾陈: '구진',
+  螣蛇: '등사',
+  白虎: '백호',
+  玄武: '현무',
+}
+
+export const STAR_CATEGORY_KO: Record<string, string> = {
+  major: '주성',
+  lucky: '길성',
+  malefic: '살성',
+  minor: '소성',
+}

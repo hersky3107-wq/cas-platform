@@ -105,6 +105,7 @@ describe('ai_payload privacy rule', () => {
     const computed = computeAll()
     for (const entry of computed.systems) {
       if (entry.aiPayload === null) continue
+      expect(entry.aiPayload.readingInput).toBe('axes')
       const reasons = entry.aiPayload.reasons as Record<string, string[] | undefined>
       const labels = entry.aiPayload.labels as Record<string, string[] | undefined>
       for (const space of Object.keys(reasons)) {
@@ -240,5 +241,132 @@ describe('ai_payload privacy rule', () => {
     const pii = personalDataFrom([PROFILE])
     expect(pii.names).toContain('Minseo')
     expect(pii.names).toContain('Kim')
+  })
+})
+
+function collectKeys(value: unknown, keys = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) collectKeys(item, keys)
+    return keys
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, nested] of Object.entries(value)) {
+      keys.add(key)
+      collectKeys(nested, keys)
+    }
+  }
+  return keys
+}
+
+function computeSingle(system: 'tarot' | 'prism' | 'saju' | 'tzolkin' | 'runes' | 'iching' | 'ziwei' | 'astro' | 'numerology' | 'name' | 'ninestar' | 'sukuyou') {
+  return runComputations({
+    profile: PROFILE,
+    systems: [system],
+    seed: 'seed-privacy-single',
+    asOfDate: AS_OF,
+    locale: 'ko',
+    kind: 'personal',
+    question: null,
+    sessionInputs: {
+      ...SESSION_INPUTS,
+      tarot: { spread: 5, pickedPositions: [14, 3, 71, 8, 22] },
+      runes: { count: 3 },
+    },
+    personalData: personalDataFrom([PROFILE]),
+    sessionScope: 'single',
+  })
+}
+
+describe('single-scope native charts', () => {
+  it('drops the axis projection and never uses JSON key name', () => {
+    const systems = [
+      'tarot',
+      'runes',
+      'iching',
+      'saju',
+      'ziwei',
+      'astro',
+      'prism',
+      'numerology',
+      'name',
+      'ninestar',
+      'sukuyou',
+      'tzolkin',
+    ] as const
+    for (const system of systems) {
+      const entry = computeSingle(system).systems[0]!
+      expect(entry.aiPayload, system).not.toBeNull()
+      expect(entry.aiPayload!.readingInput).toBe('native')
+      expect(entry.aiPayload!.traits, system).toBeUndefined()
+      expect(entry.aiPayload!.elements, system).toBeUndefined()
+      expect(entry.aiPayload!.phase, system).toBeUndefined()
+      expect(entry.aiPayload!.chart, system).toBeTypeOf('object')
+      const keys = collectKeys(entry.aiPayload)
+      expect(keys.has('name'), `${system} leaked JSON key name`).toBe(false)
+      expect(keys.has('seed'), `${system} leaked seed`).toBe(false)
+      expect(keys.has('pickedPosition'), `${system} leaked pickedPosition`).toBe(false)
+      expect(keys.has('instantUtc'), `${system} leaked instantUtc`).toBe(false)
+      expect(keys.has('sex'), `${system} leaked sex`).toBe(false)
+    }
+  })
+
+  it('still carries no birth date, time, place, name, coordinates, or timezone', () => {
+    const pii = personalDataFrom([PROFILE])
+    for (const system of ['tarot', 'prism', 'saju', 'tzolkin', 'name', 'astro', 'ziwei'] as const) {
+      const payload = computeSingle(system).systems[0]!.aiPayload!
+      const serialized = JSON.stringify(payload).toLowerCase()
+      for (const literal of FORBIDDEN_LITERALS) {
+        const needle = literal.toLowerCase()
+        // Same rule as privacy.ts: ASCII name tokens use word boundaries, so
+        // the Maya nawal "Kimi" is not a leak of surname "Kim".
+        const leaked = /^[a-z]+$/.test(needle)
+          ? new RegExp(`\\b${needle}\\b`).test(serialized)
+          : serialized.includes(needle)
+        expect(leaked, `${system} leaked "${literal}"`).toBe(false)
+      }
+      expect(isFreeOfPersonalData(payload, pii)).toBe(true)
+    }
+  })
+
+  it('tarot chart names cards and positions, and does not carry 오행 mapping', () => {
+    const payload = computeSingle('tarot').systems[0]!.aiPayload!
+    const chart = payload.chart as { 카드: Array<{ 카드: string; 위치: string; 방향: string }> }
+    expect(chart.카드).toHaveLength(5)
+    expect(chart.카드.map((card) => card.위치)).toEqual(['상황', '방해', '조언', '외부', '결과'])
+    for (const card of chart.카드) {
+      expect(card.카드.length).toBeGreaterThan(0)
+      expect(card.카드).not.toMatch(/Death|Hermit|Fool|Cups|Wands/)
+      expect(['정방향', '역방향']).toContain(card.방향)
+    }
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('수트→사원소→오행')
+    expect(serialized).not.toContain('"drive"')
+    expect(serialized).not.toContain('pickedPosition')
+  })
+
+  it('prism chart uses Korean colour names under 충동/필요/정체성, not English ids', () => {
+    const payload = computeSingle('prism').systems[0]!.aiPayload!
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('"impulse"')
+    expect(serialized).not.toContain('"need"')
+    expect(serialized).not.toContain('"identity"')
+    expect(serialized).not.toContain('"microCheck"')
+    expect(serialized).not.toContain(PRISM_COLORS[0])
+    expect(serialized).not.toContain(PRISM_COLORS[1])
+    expect(serialized).not.toContain(PRISM_COLORS[2])
+    expect(serialized).not.toContain('coreMatrix')
+    expect(serialized).not.toContain('코어 매트릭스')
+    const chart = payload.chart as { 색: { 충동: string; 필요: string; 정체성: string }; MBTI: string }
+    expect(chart.MBTI).toBe('INTJ')
+    expect(chart.색.충동.length).toBeGreaterThan(0)
+    expect(chart.색.충동).not.toBe(PRISM_COLORS[0])
+  })
+
+  it('tzolkin chart uses the Yucatec nawal spelling, not maya.nawal.kim', () => {
+    const payload = computeSingle('tzolkin').systems[0]!.aiPayload!
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('maya.nawal.kim')
+    expect(serialized).not.toContain('nawal_kim')
+    expect(serialized).not.toMatch(/\bKʼimʼ\b/)
   })
 })

@@ -135,14 +135,15 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             }
           : entry
 
+      const readingInput = request.payload.readingInput === 'native' ? 'native' : 'axes'
       const systemPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisSystemPrompt(request.locale)
-          : buildLayer1SystemPrompt(request.locale, request.unit)
+          : buildLayer1SystemPrompt(request.locale, request.unit, readingInput)
       const userPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisUserPrompt(request.payload)
-          : buildLayer1UserPrompt(request.payload, request.locale, request.unit)
+          : buildLayer1UserPrompt(request.payload, request.locale, request.unit, readingInput)
       const startedAt = Date.now()
       const deadlineAt = startedAt + opts.timeoutMs
       const httpBudget = createLayer1HttpBudget(LAYER1_HTTP_BUDGET)
