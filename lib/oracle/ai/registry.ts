@@ -86,6 +86,13 @@ export type Layer1RegistryEntry = {
    * LAYER1_READING_RUNAWAY_CONTENT_TOKENS for the measurement.
    */
   runawayContentTokens: number
+  /**
+   * Explicit narrative-floor override, in Unicode chars. Only for a seat
+   * whose pinned model has a MEASURED prose ceiling below the shared
+   * LAYER1_NARRATIVE_MIN — a shorter accepted reading beats a 결번 on every
+   * session, but the exception must be visible here, never a quiet default.
+   */
+  narrativeFloor?: number
 }
 
 /**
@@ -175,9 +182,13 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     // provider.order:['minimax'] with allow_fallbacks:true.
     model: 'minimax/minimax-m3',
     caller: { kind: 'platform', platformId: 'openrouter:minimax-m3' },
-    // Measured reasoning 928/1164 → ceil 1500; + v4 visible content (~1600
-    // tokens at 1100 CJK chars) = 3100; floor 3200.
-    maxCompletionTokens: 3200,
+    // Under the v4 prompt M3's hidden reasoning runs much longer than the
+    // pre-v4 measurement, and 'reasoning effort minimal' (set on the platform
+    // entry) does NOT cap it — live 2026-09-05: successes reason 2000-2300,
+    // the tail blew through 3200 AND 4500 (finish=length). 6000 covers the
+    // observed tail (~4500 reasoning + ~800 content tokens for 1100 CJK
+    // chars). Runaway is guarded on CONTENT tokens, not this ceiling.
+    maxCompletionTokens: 6000,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   astro: {
@@ -241,15 +252,31 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' },
     maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
+    // Measured 2026-09-05 (5 live sessions): typical 318-345 chars, best 473,
+    // even when the length retry names the shortfall. 300 accepts its usual
+    // output instead of 결번-ing numerology most combined sessions.
+    narrativeFloor: 300,
   },
   name: {
     system: 'name',
     brand: 'NAVER',
     displayName: 'HyperCLOVA X HCX-007',
     model: 'HCX-007',
-    caller: { kind: 'platform', platformId: 'clova:hcx-007' },
+    // thinking.effort low: with the dispatcher default ('none') HCX-007
+    // tops out at ~250-270 narrative chars; 'low' lifts substance and length
+    // to ~310 (measured 2026-09-05: none 257/269, low 308/309 across
+    // retries). Content stays in result.message.content with thinking on.
+    caller: {
+      kind: 'platform',
+      platformId: 'clova:hcx-007',
+      extraRequestParams: { thinking: { effort: 'low' } },
+    },
     maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
+    // Measured HCX-007 prose ceiling ~310 chars — it will not reach the
+    // shared 400 floor even when the retry names the shortfall. 280 accepts
+    // its best output; 성명학 must not 결번 every combined session (FIX 7).
+    narrativeFloor: 280,
   },
   tzolkin: {
     system: 'tzolkin',

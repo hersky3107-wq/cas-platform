@@ -24,7 +24,7 @@ const EXPECTED_CEILINGS: Record<string, number> = {
   ziwei: 8000,
   iching: 2200,
   ninestar: 2200,
-  sukuyou: 3200,
+  sukuyou: 6000,
   astro: 2200,
   tarot: 2200,
   runes: 2200,

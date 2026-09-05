@@ -15,9 +15,15 @@ import {
   LAYER1_NARRATIVE_MAX,
   LAYER1_NARRATIVE_MIN,
   LAYER1_NARRATIVE_TARGET,
+  layer1NarrativeBandViolation,
   parseLayer1Json,
 } from './parse-layer1'
-import { parseSynthesisJson, SYNTHESIS_CONCLUSION_MAX } from './parse-synthesis'
+import {
+  parseSynthesisJson,
+  SYNTHESIS_CONCLUSION_MAX,
+  SYNTHESIS_CONCLUSION_MIN,
+  synthesisConclusionBandViolation,
+} from './parse-synthesis'
 import { parseVerdictJson, verdictDirectionMismatch, type VerdictJson } from './parse-verdict'
 import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1'
 import { buildSynthesisSystemPrompt, buildSynthesisUserPrompt } from './prompts/synthesis'
@@ -64,14 +70,35 @@ export function layer1RunawayContentThreshold(
 export const LAYER1_STRICT_RETRY_INSTRUCTION =
   `\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ${LAYER1_NARRATIVE_MIN}–${LAYER1_NARRATIVE_MAX} Unicode characters (aim ${LAYER1_NARRATIVE_TARGET}) — plain language, no raw numeric scores. Respect every field character limit.`
 
+/**
+ * Length-targeted retry (post-FIX 3): brands that habitually write short
+ * (HCX, Mistral small) kept failing the 400-char floor under the generic
+ * strict instruction. Naming the defect with the measured count is what
+ * moves them — the reading was otherwise valid JSON.
+ */
+export function layer1LengthRetryInstruction(violation: { length: number; kind: 'short' | 'long' }): string {
+  return violation.kind === 'short'
+    ? `\n\nLENGTH RETRY: Your narrative was ${violation.length} characters — the contract requires ${LAYER1_NARRATIVE_TARGET} (hard floor ${LAYER1_NARRATIVE_MIN}). Rewrite the SAME reading expanded: name more concrete chart elements and explain what each one means for the question, in plain language, no raw numbers. Keep every other field. Output ONLY the JSON object.`
+    : `\n\nLENGTH RETRY: Your narrative was ${violation.length} characters — over the hard ceiling ${LAYER1_NARRATIVE_MAX}. Rewrite the SAME reading condensed to ${LAYER1_NARRATIVE_TARGET} characters. Keep every other field. Output ONLY the JSON object.`
+}
+
 export const SYNTHESIS_STRICT_RETRY_INSTRUCTION =
   `\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble or text after the closing brace. Hard budgets: ≤6 agreements/divergences; each agreement/divergence ≤160 characters; conclusion 600–${SYNTHESIS_CONCLUSION_MAX} characters; confidence_note ≤220 characters or null.`
 
 /**
  * Synthesis JSON is longer than a single reading; never inherit a reader's
- * ceiling. Sized for the FIX 3 contract (~3040 chars ≈ ~2400 tokens CJK).
+ * ceiling. Sized for the FIX 3 contract (~3040 chars ≈ ~2400 tokens CJK)
+ * PLUS the synthesizer's hidden reasoning — GLM emits reasoning tokens and
+ * hit finish=length at 2600 in 1 of 5 live sessions (2026-09-05).
  */
-export const SYNTHESIS_MAX_COMPLETION_TOKENS = 2600
+export const SYNTHESIS_MAX_COMPLETION_TOKENS = 3400
+
+/** Synthesis conclusion band miss: retry names the measured count. */
+export function synthesisLengthRetryInstruction(violation: { length: number; kind: 'short' | 'long' }): string {
+  return violation.kind === 'short'
+    ? `\n\nLENGTH RETRY: Your conclusion was ${violation.length} characters — the contract requires 600–${SYNTHESIS_CONCLUSION_MAX} (hard floor ${SYNTHESIS_CONCLUSION_MIN}). Rewrite the SAME synthesis with the conclusion expanded: what the readings converge on, where they split, and the concrete move to make. Keep every other field. Output ONLY the JSON object.`
+    : `\n\nLENGTH RETRY: Your conclusion was ${violation.length} characters — over the hard ceiling ${SYNTHESIS_CONCLUSION_MAX}. Rewrite the SAME synthesis with the conclusion condensed to 600–${SYNTHESIS_CONCLUSION_MAX} characters. Keep every other field. Output ONLY the JSON object.`
+}
 
 async function defaultCall(input: Parameters<Layer1Call>[0]): Promise<Layer1CallResult> {
   const { callLayer1Model } = await import('./call')
@@ -187,6 +214,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
       /** FIX 4: one direction-consistency retry, then accept + log. */
       let directionRetryUsed = false
       let directionRetryNext = false
+      /** Length-band miss: retry names the defect with the measured count. */
+      let lengthRetryInstruction: string | null = null
       let totalPromptTokens = 0
       let totalCompletionTokens = 0
       let totalReportedCostUsd = 0
@@ -229,10 +258,10 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                   directionRetryNext
                     ? VERDICT_DIRECTION_RETRY_INSTRUCTION
                     : request.kind === 'synthesis'
-                      ? SYNTHESIS_STRICT_RETRY_INSTRUCTION
+                      ? (lengthRetryInstruction ?? SYNTHESIS_STRICT_RETRY_INSTRUCTION)
                       : request.kind === 'verdict'
                         ? VERDICT_STRICT_RETRY_INSTRUCTION
-                        : LAYER1_STRICT_RETRY_INSTRUCTION
+                        : (lengthRetryInstruction ?? LAYER1_STRICT_RETRY_INSTRUCTION)
                 }`
               : userPrompt,
           timeoutMs: Math.max(1, deadlineAt - Date.now()),
@@ -276,7 +305,10 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           break
         }
 
-        const layer1Parsed = request.kind === 'reading' ? parseLayer1Json(raw.text ?? '') : null
+        const layer1Parsed =
+          request.kind === 'reading'
+            ? parseLayer1Json(raw.text ?? '', { narrativeMin: effectiveEntry.narrativeFloor })
+            : null
         const synthesisParsed = request.kind === 'synthesis' ? parseSynthesisJson(raw.text ?? '') : null
         const verdictParsed: VerdictJson | null =
           request.kind === 'verdict' ? parseVerdictJson(raw.text ?? '', readerCount) : null
@@ -361,6 +393,22 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         }
 
         lastError = `${request.kind} JSON parse failed`
+        if (request.kind === 'reading') {
+          const narrativeMin = effectiveEntry.narrativeFloor ?? LAYER1_NARRATIVE_MIN
+          const violation = layer1NarrativeBandViolation(raw.text ?? '', { narrativeMin })
+          if (violation) {
+            lastError = `narrative out of band (${violation.length} chars, ${violation.kind}; band ${narrativeMin}–${LAYER1_NARRATIVE_MAX})`
+            lengthRetryInstruction = layer1LengthRetryInstruction(violation)
+            console.warn(`[oracle] ${request.unit} ${lastError} — length retry`)
+          }
+        } else if (request.kind === 'synthesis') {
+          const violation = synthesisConclusionBandViolation(raw.text ?? '')
+          if (violation) {
+            lastError = `synthesis conclusion out of band (${violation.length} chars, ${violation.kind}; band ${SYNTHESIS_CONCLUSION_MIN}–${SYNTHESIS_CONCLUSION_MAX})`
+            lengthRetryInstruction = synthesisLengthRetryInstruction(violation)
+            console.warn(`[oracle] synthesis ${lastError} — length retry`)
+          }
+        }
         // The one retry after a parse reject carries the strict instruction —
         // same behavior the onboarding gate and bakeoff scripts reproduce.
         strictRetryNext = true

@@ -4,6 +4,7 @@ import {
   LAYER1_NARRATIVE_MAX,
   LAYER1_NARRATIVE_MIN,
   LAYER1_ONE_LINE_MAX,
+  layer1NarrativeBandViolation,
   parseLayer1Json,
 } from '../parse-layer1'
 
@@ -64,6 +65,34 @@ describe('parseLayer1Json', () => {
   it(`rejects narrative under the ${LAYER1_NARRATIVE_MIN}-character floor (FIX 3: no thin premium readings)`, () => {
     expect(parseLayer1Json(validJson({ narrative: '가'.repeat(LAYER1_NARRATIVE_MIN - 1) }))).toBeNull()
     expect(parseLayer1Json(validJson({ narrative: '가'.repeat(LAYER1_NARRATIVE_MIN) }))).not.toBeNull()
+  })
+
+  it('honors a registry narrativeFloor override (HCX-007 seat measures ~310 max)', () => {
+    const short = validJson({ narrative: '가'.repeat(300) })
+    expect(parseLayer1Json(short)).toBeNull()
+    expect(parseLayer1Json(short, { narrativeMin: 280 })).not.toBeNull()
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(279) }), { narrativeMin: 280 })).toBeNull()
+  })
+
+  it('strips markdown bold markers before measuring or returning the narrative', () => {
+    const bolded = `**천격**${'가'.repeat(LAYER1_NARRATIVE_MIN)}`
+    const parsed = parseLayer1Json(validJson({ narrative: bolded }))
+    expect(parsed?.narrative).toBe(`천격${'가'.repeat(LAYER1_NARRATIVE_MIN)}`)
+  })
+
+  it('reports a length-band violation only when JSON is otherwise sound', () => {
+    expect(layer1NarrativeBandViolation(validJson({ narrative: '가'.repeat(300) }))).toEqual({
+      length: 300,
+      kind: 'short',
+    })
+    expect(
+      layer1NarrativeBandViolation(validJson({ narrative: '가'.repeat(300) }), { narrativeMin: 280 }),
+    ).toBeNull()
+    expect(
+      layer1NarrativeBandViolation(validJson({ narrative: '가'.repeat(LAYER1_NARRATIVE_MAX + 5) })),
+    ).toEqual({ length: LAYER1_NARRATIVE_MAX + 5, kind: 'long' })
+    expect(layer1NarrativeBandViolation('not json')).toBeNull()
+    expect(layer1NarrativeBandViolation(validJson())).toBeNull()
   })
 
   it('rejects an invalid direction or focus', () => {

@@ -76,3 +76,28 @@ export function parseSynthesisJson(raw: string): SynthesisJson | null {
     confidence_note: confidenceNote,
   }
 }
+
+/**
+ * Reports when synthesis failed ONLY because the conclusion missed the length
+ * band — the adapter retries naming the measured count (live 2026-09-05: GLM
+ * wrote an otherwise-valid synthesis with a thin conclusion and the generic
+ * strict retry did not move it).
+ */
+export function synthesisConclusionBandViolation(
+  raw: string,
+): { length: number; kind: 'short' | 'long' } | null {
+  const json = extractJsonObject(raw) ?? raw.trim()
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const conclusion = (parsed as Record<string, unknown>).conclusion
+  if (typeof conclusion !== 'string' || !conclusion.trim()) return null
+  const length = [...conclusion.trim()].length
+  if (length < SYNTHESIS_CONCLUSION_MIN) return { length, kind: 'short' }
+  if (length > SYNTHESIS_CONCLUSION_MAX) return { length, kind: 'long' }
+  return null
+}

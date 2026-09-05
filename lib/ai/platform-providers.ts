@@ -809,13 +809,26 @@ export async function callPlatformModel(params: {
     return callYouComResearch({ apiKey, input })
   }
 
+  // CLOVA is not OpenAI-compatible, so extraRequestParams cannot be merged
+  // wholesale — only the thinking effort is honored as an override. Default
+  // stays 'none' (health checks, short judgments); the oracle name seat opts
+  // into a real effort because HCX-007 with thinking disabled writes ~250
+  // chars no matter what length the prompt demands (measured 2026-09-05).
+  const clovaThinking = (() => {
+    const thinking = extraRequestParams?.thinking
+    if (thinking && typeof thinking === 'object' && !Array.isArray(thinking)) {
+      const effort = (thinking as { effort?: unknown }).effort
+      if (effort === 'none' || effort === 'low' || effort === 'medium' || effort === 'high') return effort
+    }
+    return 'none' as const
+  })()
   return callClovaStudio({
     apiKey,
     model: entry.model,
     systemPrompt,
     userPrompt,
     maxCompletionTokens,
-    thinkingEffort: 'none',
+    thinkingEffort: clovaThinking,
   })
 }
 

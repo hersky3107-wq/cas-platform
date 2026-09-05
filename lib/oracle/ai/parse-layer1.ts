@@ -80,7 +80,13 @@ function asAxisEmphasis(value: unknown): string[] | null {
   return value.filter((entry): entry is string => typeof entry === 'string')
 }
 
-export function parseLayer1Json(raw: string): Layer1Json | null {
+export function parseLayer1Json(
+  raw: string,
+  opts?: {
+    /** Registry narrativeFloor override — see Layer1RegistryEntry. */
+    narrativeMin?: number
+  },
+): Layer1Json | null {
   const unfenced = stripFences(raw)
   const extracted = extractJsonObject(unfenced) ?? unfenced
   let parsed: unknown
@@ -91,14 +97,18 @@ export function parseLayer1Json(raw: string): Layer1Json | null {
   }
   if (!parsed || typeof parsed !== 'object') return null
   const record = parsed as Record<string, unknown>
-  const narrative = typeof record.narrative === 'string' ? record.narrative.trim() : ''
+  // The narrative renders as plain text (whitespace-pre-wrap), so markdown
+  // bold markers some models emit (HCX, Cohere) would show as literal **.
+  const narrative =
+    typeof record.narrative === 'string' ? record.narrative.replace(/\*\*/g, '').trim() : ''
   if (!narrative) return null
   // Soft prompt budgets are ignored by expansive models (Claude×prism measured
   // 877 content tokens pre-v4). Reject narratives outside the hard band so the
   // adapter retries once under the strict instruction instead of accepting a
   // runaway OR a thin two-liner on a premium reading.
+  const narrativeMin = opts?.narrativeMin ?? LAYER1_NARRATIVE_MIN
   const narrativeLength = [...narrative].length
-  if (narrativeLength > LAYER1_NARRATIVE_MAX || narrativeLength < LAYER1_NARRATIVE_MIN) return null
+  if (narrativeLength > LAYER1_NARRATIVE_MAX || narrativeLength < narrativeMin) return null
   const oneLineRaw = typeof record.one_line === 'string' ? record.one_line.trim() : ''
   if (!oneLineRaw) return null
   const direction = asDirection(record.direction)
@@ -112,6 +122,37 @@ export function parseLayer1Json(raw: string): Layer1Json | null {
     focus,
     axis_emphasis: axisEmphasis,
   }
+}
+
+export type Layer1NarrativeBandViolation = { length: number; kind: 'short' | 'long' }
+
+/**
+ * Reports when a reading failed ONLY because the narrative missed the length
+ * band (JSON itself parsed, narrative is a non-empty string). Brands that
+ * habitually write ~300 chars (HCX, Mistral small) ignore the generic strict
+ * retry — the adapter uses this to retry with the defect named and counted,
+ * which is what actually moves them into the band.
+ */
+export function layer1NarrativeBandViolation(
+  raw: string,
+  opts?: { narrativeMin?: number },
+): Layer1NarrativeBandViolation | null {
+  const unfenced = raw.trim()
+  const extracted = extractJsonObject(unfenced) ?? unfenced
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(extracted)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const narrative = (parsed as Record<string, unknown>).narrative
+  if (typeof narrative !== 'string' || !narrative.trim()) return null
+  // Same normalization as parseLayer1Json so both measure the same string.
+  const length = [...narrative.replace(/\*\*/g, '').trim()].length
+  if (length < (opts?.narrativeMin ?? LAYER1_NARRATIVE_MIN)) return { length, kind: 'short' }
+  if (length > LAYER1_NARRATIVE_MAX) return { length, kind: 'long' }
+  return null
 }
 
 /** TRAP (f): treat whitespace-only as empty, same as a content:null 200. */
