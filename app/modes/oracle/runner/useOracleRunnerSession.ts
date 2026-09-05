@@ -75,6 +75,7 @@ export type OracleRunnerView = {
   readings: OracleRunnerReading[];
   consensus: OracleRunnerConsensus | null;
   assumptions: OracleRunnerAssumptions | null;
+  aiMode: "stub" | "live";
 };
 
 export type StartOracleSessionRequest = {
@@ -95,6 +96,7 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
   const [view, setView] = useState<OracleRunnerView | null>(null);
   const [initialComputations, setInitialComputations] = useState<OracleRunnerComputation[]>([])
   const [assumptions, setAssumptions] = useState<OracleRunnerAssumptions | null>(null);
+  const [aiMode, setAiMode] = useState<"stub" | "live" | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const advancing = useRef(false);
@@ -191,6 +193,7 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
           sessionId?: string;
           computations?: OracleRunnerComputation[];
           assumptions?: OracleRunnerAssumptions | null;
+          aiMode?: "stub" | "live";
           balance?: number;
           error?: string;
         } | null;
@@ -202,6 +205,7 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
 
         setInitialComputations(payload.computations ?? []);
         setAssumptions(payload.assumptions ?? null);
+        setAiMode(payload.aiMode === "stub" ? "stub" : "live");
         setView(null);
         setSessionId(payload.sessionId);
         window.localStorage.setItem(storageKey, payload.sessionId);
@@ -223,6 +227,7 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
     setView(null);
     setInitialComputations([]);
     setAssumptions(null);
+    setAiMode(null);
     setError(null);
   }, [storageKey]);
 
@@ -231,12 +236,14 @@ export function useOracleRunnerSession({ storageKey }: { storageKey: string }) {
   const computations = view?.computations.length ? view.computations : initialComputations;
   const terminal = view ? ORACLE_RUNNER_TERMINAL.has(view.status) : false;
   const resolvedAssumptions = view?.assumptions ?? assumptions;
+  const resolvedAiMode = view?.aiMode ?? aiMode;
 
   return {
     sessionId,
     view,
     computations,
     assumptions: resolvedAssumptions,
+    aiMode: resolvedAiMode,
     terminal,
     starting,
     error,

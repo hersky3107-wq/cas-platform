@@ -148,6 +148,7 @@ export async function GET(req: Request) {
     runnerProfile,
     subjectProfileId: runnerProfile?.id ?? null,
     placeholderBirthDate: runnerProfile?.derived?.placeholder_birth_date === true,
+    mbtiEstimated: runnerProfile?.derived?.mbti_estimated === true,
   })
 }
 
@@ -209,9 +210,17 @@ async function patchRunnerExtras(
   const existing = await loadSelfRunner(userId)
   if (!existing) return null
   if (Object.keys(patch).length === 0) return existing
+  const next: Record<string, unknown> = { ...patch }
+  if (patch.derived && typeof patch.derived === 'object' && !Array.isArray(patch.derived)) {
+    const prev =
+      existing.derived && typeof existing.derived === 'object' && !Array.isArray(existing.derived)
+        ? existing.derived
+        : {}
+    next.derived = { ...prev, ...(patch.derived as Record<string, unknown>) }
+  }
   const { data, error } = await supabaseAdmin
     .from('oracle_profiles')
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({ ...next, updated_at: new Date().toISOString() })
     .eq('id', existing.id)
     .eq('user_id', userId)
     .select(RUNNER_PROFILE_COLUMNS)
@@ -250,6 +259,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'mbti must be a 4-letter MBTI type' }, { status: 400 })
     }
     extrasPatch.mbti = mbti
+    extrasPatch.derived = { mbti_estimated: body.mbti_estimated === true }
   }
 
   if (body.ensureStub === true) {
@@ -263,6 +273,7 @@ export async function POST(req: Request) {
       runnerProfile: patched,
       subjectProfileId: patched?.id ?? stub.id,
       placeholderBirthDate: (patched ?? stub).derived?.placeholder_birth_date === true,
+      mbtiEstimated: (patched ?? stub).derived?.mbti_estimated === true,
     })
   }
 
@@ -284,6 +295,7 @@ export async function POST(req: Request) {
       runnerProfile: patched,
       subjectProfileId: patched?.id ?? existing.id,
       placeholderBirthDate: (patched ?? existing).derived?.placeholder_birth_date === true,
+      mbtiEstimated: (patched ?? existing).derived?.mbti_estimated === true,
     })
   }
 
@@ -370,5 +382,6 @@ export async function POST(req: Request) {
     runnerProfile: withExtras,
     subjectProfileId: withExtras?.id ?? runnerProfile?.id ?? null,
     placeholderBirthDate: withExtras?.derived?.placeholder_birth_date === true,
+    mbtiEstimated: withExtras?.derived?.mbti_estimated === true,
   })
 }

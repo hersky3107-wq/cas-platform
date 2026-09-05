@@ -1,12 +1,19 @@
 /**
- * Oracle AI mode. Default is stub so tests and local dev never spend tokens.
- * Set ORACLE_AI_MODE=live to route layer-1 readings through real providers.
- * Layer 2 (readers / verdicts) stays on the stub regardless.
+ * Oracle AI mode.
+ *
+ * Explicit `ORACLE_AI_MODE=live|stub` always wins.
+ * Tests (Vitest / NODE_ENV=test) default to stub so unit tests never spend tokens.
+ * `npm run dev` and production default to live so the browser path matches the
+ * live smoke script — missing the env var must not silently serve canned text.
  */
 export type OracleAiMode = 'stub' | 'live'
 
 export function getOracleAiMode(env: NodeJS.ProcessEnv = process.env): OracleAiMode {
-  return env.ORACLE_AI_MODE === 'live' ? 'live' : 'stub'
+  const raw = env.ORACLE_AI_MODE?.trim()
+  if (raw === 'live') return 'live'
+  if (raw === 'stub') return 'stub'
+  if (env.VITEST === 'true' || env.NODE_ENV === 'test') return 'stub'
+  return 'live'
 }
 
 /**

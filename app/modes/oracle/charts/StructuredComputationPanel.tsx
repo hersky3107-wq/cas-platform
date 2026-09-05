@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Placeholder calculation view for systems that do not yet have a dedicated
- * chart. Swap in a real chart by registering it on OracleSystemChart —
- * this panel stays the default so labelled engine output is never a JSON dump.
+ * Full engine dump. Default result UI is ComputationSummary; this panel is
+ * only the collapsed 자세히 보기 tree.
  */
 type Json = Record<string, unknown>;
 
@@ -86,12 +85,34 @@ export default function StructuredComputationPanel({
   calculation,
   engineVersion,
   unreadable,
+  embedded,
 }: {
   systemName: string;
   calculation: Json | null;
   engineVersion: string | null;
   unreadable?: boolean;
+  embedded?: boolean;
 }) {
+  const body =
+    unreadable || !calculation ? (
+      <p className="text-sm text-white/45">이 체계는 이번 읽기에서 계산되지 않았습니다.</p>
+    ) : (
+      <div className="text-sm">
+        <Node value={calculation} depth={0} />
+      </div>
+    );
+
+  if (embedded) {
+    return (
+      <div>
+        {engineVersion ? (
+          <p className="mb-2 text-[10px] text-white/30">{engineVersion}</p>
+        ) : null}
+        {body}
+      </div>
+    );
+  }
+
   return (
     <article className="rounded-[22px] border border-white/10 bg-[#10182b] p-5">
       <div className="flex items-end justify-between gap-3">
@@ -105,17 +126,7 @@ export default function StructuredComputationPanel({
           <span className="text-[10px] text-white/30">{engineVersion}</span>
         ) : null}
       </div>
-      {unreadable || !calculation ? (
-        <p className="mt-4 text-sm text-white/45">이 체계는 이번 읽기에서 계산되지 않았습니다.</p>
-      ) : (
-        <div className="mt-4 text-sm">
-          <Node value={calculation} depth={0} />
-        </div>
-      )}
-      <p className="mt-5 border-t border-white/8 pt-3 text-[11px] leading-relaxed text-white/35">
-        체계별 전용 차트는 이후에 이 자리를 대체합니다. 지금은 엔진이 낸 값을 항목별로 보여
-        줍니다.
-      </p>
+      <div className="mt-4">{body}</div>
     </article>
   );
 }

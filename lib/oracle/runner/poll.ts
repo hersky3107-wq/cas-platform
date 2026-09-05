@@ -16,9 +16,16 @@ import type {
   OracleNextAction,
   OracleSessionStatus,
 } from '../schema'
+import { ORACLE_PROMPT_VERSION } from './conventions'
 import { progressCounts } from './progress'
 import { publicComputation } from './public-computation'
 import type { JsonObject, RunnerStore } from './types'
+
+export type OracleAiModeView = 'stub' | 'live'
+
+function sessionAiMode(session: OracleJobSession): OracleAiModeView {
+  return session.prompt_version === ORACLE_PROMPT_VERSION ? 'stub' : 'live'
+}
 
 export type PublicReading = {
   system: string
@@ -121,6 +128,8 @@ export type OracleSessionView = {
     birthTimeUnknown: boolean
     birthTimeEstimated: boolean
   } | null
+  /** 'stub' sessions must not be presented as live readings. */
+  aiMode: OracleAiModeView
 }
 
 export async function readOracleSession(
@@ -179,5 +188,6 @@ export async function readOracleSession(
         }
       : null,
     assumptions: publicAssumptions(consensus?.domain_stats ?? null),
+    aiMode: sessionAiMode(session),
   }
 }

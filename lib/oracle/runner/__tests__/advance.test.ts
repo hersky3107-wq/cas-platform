@@ -145,6 +145,7 @@ async function runToCompletion(harness: Harness, ai?: OracleAiAdapter): Promise<
 
 beforeEach(() => {
   resetAiSlots()
+  vi.stubEnv('ORACLE_AI_MODE', 'live')
 })
 
 describe('lease', () => {
@@ -411,6 +412,7 @@ describe('poll', () => {
     expect(view.consensus?.agreements).toEqual(['stub agreement'])
     expect(view.consensus?.divergences).toEqual(['stub divergence'])
     expect(view.consensus?.conclusion).toBe('stub synthesis conclusion')
+    expect(view.aiMode).toBe('live')
     expect(again).toEqual(view)
   })
 

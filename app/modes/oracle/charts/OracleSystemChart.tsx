@@ -3,14 +3,12 @@
 /**
  * Per-system calculation display.
  *
- * Saju keeps the 팔자표. Every other system uses StructuredComputationPanel
- * until its real chart is registered here — swap by adding an entry to CHARTS,
- * not by forking the reading page.
+ * Saju keeps the 팔자표. Tarot shows drawn card images. Every other system
+ * uses a curated Korean summary — engine internals stay behind 자세히 보기.
  */
-import type { SystemId } from "@/lib/oracle/axes/types";
 import { oracleSystemDisplayName } from "@/lib/oracle/system-display";
 import SajuPillarsChart from "./SajuPillarsChart";
-import StructuredComputationPanel from "./StructuredComputationPanel";
+import ComputationSummary from "./ComputationSummary";
 
 type Json = Record<string, unknown>;
 
@@ -33,7 +31,8 @@ export default function OracleSystemChart({
     );
   }
   return (
-    <StructuredComputationPanel
+    <ComputationSummary
+      system={system}
       systemName={oracleSystemDisplayName(system) || system}
       calculation={calculation}
       engineVersion={engineVersion}
@@ -41,10 +40,3 @@ export default function OracleSystemChart({
     />
   );
 }
-
-/** Registry hook: dedicated charts land here as they are built. */
-export const ORACLE_SYSTEM_CHARTS: Partial<
-  Record<SystemId, typeof SajuPillarsChart>
-> = {
-  saju: SajuPillarsChart,
-};

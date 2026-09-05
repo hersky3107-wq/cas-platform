@@ -58,6 +58,7 @@ export type ProfileSnapshot = {
   name_hanja?: string | null
   name_latin?: string | null
   mbti?: string | null
+  mbtiEstimated?: boolean
   /** Runner row exists. Draw-based systems only need this (or a stub). */
   subjectProfileId?: string | null
   /** True when the runner row is an FK stub with no real birth sketch. */
@@ -211,8 +212,8 @@ export const PROFILE_FIELD_REASON: Record<ProfileField, { ko: string; en: string
     en: 'Numerology can add a name number from a Latin name. Date-only still works.',
   },
   mbti: {
-    ko: 'PRISM은 프로필에 저장된 MBTI를 씁니다.',
-    en: 'PRISM reads MBTI from the saved profile.',
+    ko: 'PRISM은 MBTI를 씁니다. 모르면 짧은 문항으로 추정할 수 있습니다. 외부 검사는 필요 없습니다.',
+    en: 'PRISM reads MBTI from the saved profile. If you do not know yours, a short in-app estimator stores it as estimated.',
   },
 }
 

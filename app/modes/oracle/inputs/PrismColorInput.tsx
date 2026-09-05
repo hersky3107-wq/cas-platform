@@ -2,38 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { PRISM_COLORS, type PrismColor } from "@/lib/oracle/engines/prism/tables";
-
-const SWATCH: Record<PrismColor, string> = {
-  crimson: "#9B1B30",
-  scarlet: "#FF2400",
-  amber: "#FFBF00",
-  gold: "#D4AF37",
-  coral: "#FF7F50",
-  rose: "#E8A0BF",
-  azure: "#007FFF",
-  indigo: "#4B0082",
-  violet: "#7F00FF",
-  teal: "#008080",
-  sage: "#9CAF88",
-  slate: "#708090",
-  ochre: "#CC7722",
-  olive: "#808000",
-  bronze: "#CD7F32",
-  sand: "#C2B280",
-  ivory: "#FFFFF0",
-  pearl: "#EAE0C8",
-  silver: "#C0C0C0",
-  mint: "#98FF98",
-  onyx: "#353839",
-  plum: "#8E4585",
-  navy: "#000080",
-  ember: "#C04000",
-};
+import { PRISM_COLOR_HEX, PRISM_COLOR_KO } from "@/lib/oracle/prism-swatches";
 
 const ROUNDS = [
-  { key: "impulse" as const, title: "1. Impulse · 충동", hint: "생각하지 말고 고르세요." },
-  { key: "need" as const, title: "2. Need · 필요", hint: "지금 가장 끌리는 색." },
-  { key: "identity" as const, title: "3. Identity · 정체성", hint: "나를 나타내는 색." },
+  { key: "impulse" as const, title: "1. 충동", hint: "생각하지 말고 고르세요." },
+  { key: "need" as const, title: "2. 필요", hint: "지금 가장 끌리는 색." },
+  { key: "identity" as const, title: "3. 정체성", hint: "나를 나타내는 색." },
 ];
 
 export type PrismPicks = {
@@ -114,26 +88,32 @@ export default function PrismColorInput({
               type="button"
               disabled={taken && !isCurrent}
               onClick={() => pick(color)}
-              className={`flex flex-col items-center gap-1 rounded-xl border p-2 text-[10px] capitalize transition disabled:opacity-30 ${
+              className={`flex flex-col items-center gap-1 rounded-xl border p-2 text-[10px] transition disabled:opacity-30 ${
                 isCurrent
                   ? "border-cyan-300/70 ring-2 ring-cyan-300/40"
                   : "border-white/10 hover:border-white/30"
               }`}
             >
               <span
-                className="block h-8 w-full rounded-md border border-white/15"
-                style={{ background: SWATCH[color] }}
+                className={`block h-8 w-full rounded-md border ${
+                  color === "onyx"
+                    ? "border-white/55"
+                    : color === "ivory" || color === "pearl"
+                      ? "border-white/70"
+                      : "border-white/15"
+                }`}
+                style={{ background: PRISM_COLOR_HEX[color] }}
               />
-              {color}
+              {PRISM_COLOR_KO[color]}
             </button>
           );
         })}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/55">
-        <span>충동 {value.impulse ?? "—"}</span>
-        <span>필요 {value.need ?? "—"}</span>
-        <span>정체성 {value.identity ?? "—"}</span>
+        <span>충동 {value.impulse ? PRISM_COLOR_KO[value.impulse] : "—"}</span>
+        <span>필요 {value.need ? PRISM_COLOR_KO[value.need] : "—"}</span>
+        <span>정체성 {value.identity ? PRISM_COLOR_KO[value.identity] : "—"}</span>
         <button
           type="button"
           onClick={() => onChange(EMPTY)}

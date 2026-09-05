@@ -22,6 +22,7 @@ import {
 } from '@/lib/oracle/schema'
 import { SYSTEM_IDS } from '@/lib/oracle/axes/types'
 import { createOracleSession, type CreateSessionRequest } from '@/lib/oracle/runner'
+import { ORACLE_PROMPT_VERSION } from '@/lib/oracle/runner/conventions'
 import { createCreditsPort } from '@/lib/oracle/runner/credits'
 import { validateSessionInputs } from '@/lib/oracle/runner/session-inputs'
 import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'
@@ -174,6 +175,7 @@ export async function POST(req: Request) {
       progress: outcome.session.progress,
       computations: outcome.computations,
       assumptions: outcome.assumptions,
+      aiMode: outcome.session.prompt_version === ORACLE_PROMPT_VERSION ? 'stub' : 'live',
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'

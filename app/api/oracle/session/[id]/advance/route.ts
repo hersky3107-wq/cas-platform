@@ -43,7 +43,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const outcome = await advanceOracleSession(id, {
       store,
       credits: createCreditsPort(),
-      // ORACLE_AI_MODE=stub|live. Layer 2 stays on the stub either way.
+      // ORACLE_AI_MODE=live|stub. Readings and synthesis follow the flag;
+      // verdicts (layer 2) stay on the stub adapter.
       ai: createOracleAiAdapter(),
       ...oracleAiAdvanceOptions(),
       schedule: (task) => after(task),

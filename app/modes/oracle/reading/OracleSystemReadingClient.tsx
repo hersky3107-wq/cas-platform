@@ -17,6 +17,7 @@ import BrandBadge from "../runner/BrandBadge";
 import TarotDrawInput from "../inputs/TarotDrawInput";
 import RunesCountInput from "../inputs/RunesCountInput";
 import PrismColorInput, { type PrismPicks } from "../inputs/PrismColorInput";
+import MbtiEstimator from "../inputs/MbtiEstimator";
 import {
   useOracleRunnerSession,
   type OracleRunnerAssumptions,
@@ -51,6 +52,7 @@ type ProfilePayload = {
   complete?: boolean;
   subjectProfileId?: string | null;
   placeholderBirthDate?: boolean;
+  mbtiEstimated?: boolean;
   runnerProfile?: {
     id?: string;
     birth_date?: string | null;
@@ -62,6 +64,7 @@ type ProfilePayload = {
     name_hanja?: string | null;
     name_latin?: string | null;
     mbti?: string | null;
+    derived?: { mbti_estimated?: unknown } | null;
   } | null;
 };
 
@@ -80,6 +83,8 @@ function snapshotFromPayload(payload: ProfilePayload | null): ProfileSnapshot {
     name_hanja: runner?.name_hanja ?? null,
     name_latin: runner?.name_latin ?? null,
     mbti: runner?.mbti ?? null,
+    mbtiEstimated:
+      payload?.mbtiEstimated === true || runner?.derived?.mbti_estimated === true,
     subjectProfileId: payload?.subjectProfileId ?? runner?.id ?? null,
     placeholderBirthDate: payload?.placeholderBirthDate === true,
   };
@@ -132,7 +137,34 @@ function RosterPreview({
   );
 }
 
-function ReaderCard({ reading, index }: { reading: OracleRunnerReading; index: number }) {
+function looksLikeStubText(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  return trimmed.startsWith("[stub:") || trimmed === "stub synthesis conclusion";
+}
+
+function sessionIsStub(
+  view: { aiMode?: "stub" | "live"; readings: OracleRunnerReading[]; consensus: OracleRunnerConsensus | null } | null,
+  aiMode: "stub" | "live" | null,
+): boolean {
+  if (aiMode === "stub") return true;
+  if (!view) return false;
+  if (view.aiMode === "stub") return true;
+  if (view.readings.some((reading) => reading.brand === "stub" || looksLikeStubText(reading.narrative))) {
+    return true;
+  }
+  return looksLikeStubText(view.consensus?.conclusion);
+}
+
+function ReaderCard({
+  reading,
+  index,
+  stub,
+}: {
+  reading: OracleRunnerReading;
+  index: number;
+  stub: boolean;
+}) {
   return (
     <article className="rounded-[22px] border border-white/10 bg-[#10182b] p-5">
       <div className="flex items-center justify-between gap-3">
@@ -140,19 +172,27 @@ function ReaderCard({ reading, index }: { reading: OracleRunnerReading; index: n
           <span className="text-xs tabular-nums text-white/30">
             {String(index + 1).padStart(2, "0")}
           </span>
-          <BrandBadge brand={reading.brand} />
+          {stub ? (
+            <span className="rounded-full border border-amber-300/40 bg-amber-400/10 px-2.5 py-1 text-xs font-semibold text-amber-100">
+              연습 모드
+            </span>
+          ) : (
+            <BrandBadge brand={reading.brand} />
+          )}
         </div>
         {reading.latencyMs ? (
           <span className="text-[10px] text-white/30">{(reading.latencyMs / 1000).toFixed(1)}초</span>
         ) : null}
       </div>
       <div className="mt-4 whitespace-pre-wrap text-[14px] leading-7 text-slate-100">
-        {reading.narrative ??
-          (reading.status === "done"
-            ? "이 해석자는 본문을 남기지 않았습니다."
-            : reading.status
-              ? "이 해석자는 이번 응답을 마치지 못했습니다."
-              : "해석을 준비하고 있습니다.")}
+        {stub
+          ? "연습 모드의 자리 표시 문장입니다. 실제 해석이 아닙니다."
+          : reading.narrative ??
+            (reading.status === "done"
+              ? "이 해석자는 본문을 남기지 않았습니다."
+              : reading.status
+                ? "이 해석자는 이번 응답을 마치지 못했습니다."
+                : "해석을 준비하고 있습니다.")}
       </div>
     </article>
   );
@@ -161,59 +201,71 @@ function ReaderCard({ reading, index }: { reading: OracleRunnerReading; index: n
 function SynthesisCard({
   consensus,
   synthesizer,
+  stub,
 }: {
   consensus: OracleRunnerConsensus;
   synthesizer: string;
+  stub: boolean;
 }) {
   return (
     <article className="rounded-[26px] border border-violet-300/25 bg-gradient-to-br from-violet-500/15 via-[#11172b] to-cyan-500/10 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.3)] sm:p-7">
       <div className="flex items-center justify-between gap-3">
         <SectionLabel>종합 해석</SectionLabel>
-        <BrandBadge brand={synthesizer} size="sm" />
+        {stub ? (
+          <span className="rounded-full border border-amber-300/40 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-100">
+            연습 모드
+          </span>
+        ) : (
+          <BrandBadge brand={synthesizer} size="sm" />
+        )}
       </div>
       <h2 className="mt-2 text-xl font-semibold text-white">결론</h2>
       <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-slate-100">
-        {consensus.conclusion ?? "완성된 해석들을 종합하고 있습니다."}
+        {stub
+          ? "연습 모드입니다. 이 종합은 실제 해석이 아닙니다. 크레딧은 차감되지 않았습니다."
+          : (consensus.conclusion ?? "완성된 해석들을 종합하고 있습니다.")}
       </p>
 
-      <div className="mt-7 grid gap-5 sm:grid-cols-2">
-        <section>
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-100">
-            <Check className="h-4 w-4" aria-hidden /> 함께 본 점
-          </h3>
-          {consensus.agreements.length ? (
-            <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-200">
-              {consensus.agreements.map((item) => (
-                <li key={item} className="rounded-xl bg-emerald-400/[0.06] px-3 py-2">
-                  {item}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm text-white/40">뚜렷한 공통점이 정리되지 않았습니다.</p>
-          )}
-        </section>
-        <section>
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
-            <CircleAlert className="h-4 w-4" aria-hidden /> 다르게 본 점
-          </h3>
-          <p className="mt-2 text-xs leading-relaxed text-amber-100/65">
-            이견은 오류가 아닙니다. 같은 계산을 놓고 어디에 더 무게를 두었는지 보여 줍니다.
-          </p>
-          {consensus.divergences.length ? (
-            <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-200">
-              {consensus.divergences.map((item) => (
-                <li key={item} className="rounded-xl bg-amber-400/[0.06] px-3 py-2">
-                  {item}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm text-white/40">이번에는 큰 이견이 없었습니다.</p>
-          )}
-        </section>
-      </div>
-      {consensus.confidenceNote ? (
+      {!stub ? (
+        <div className="mt-7 grid gap-5 sm:grid-cols-2">
+          <section>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-100">
+              <Check className="h-4 w-4" aria-hidden /> 함께 본 점
+            </h3>
+            {consensus.agreements.length ? (
+              <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-200">
+                {consensus.agreements.map((item) => (
+                  <li key={item} className="rounded-xl bg-emerald-400/[0.06] px-3 py-2">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-white/40">뚜렷한 공통점이 정리되지 않았습니다.</p>
+            )}
+          </section>
+          <section>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
+              <CircleAlert className="h-4 w-4" aria-hidden /> 다르게 본 점
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-amber-100/65">
+              이견은 오류가 아닙니다. 같은 계산을 놓고 어디에 더 무게를 두었는지 보여 줍니다.
+            </p>
+            {consensus.divergences.length ? (
+              <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-200">
+                {consensus.divergences.map((item) => (
+                  <li key={item} className="rounded-xl bg-amber-400/[0.06] px-3 py-2">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-white/40">이번에는 큰 이견이 없었습니다.</p>
+            )}
+          </section>
+        </div>
+      ) : null}
+      {!stub && consensus.confidenceNote ? (
         <p className="mt-6 border-t border-white/8 pt-4 text-xs leading-relaxed text-white/45">
           {consensus.confidenceNote}
         </p>
@@ -270,6 +322,7 @@ export default function OracleSystemReadingClient({
     need: null,
     identity: null,
   });
+  const [mbtiBusy, setMbtiBusy] = useState(false);
 
   const session = useOracleRunnerSession({ storageKey });
 
@@ -286,6 +339,8 @@ export default function OracleSystemReadingClient({
       if (cancelled) return;
       const snap = snapshotFromPayload(payload);
       const missing = missingRequiredFields(systemId, snap);
+      const prismMbtiOnly =
+        systemId === "prism" && missing.length === 1 && missing[0] === "mbti";
 
       if (isDrawBasedSystem(systemId) && !snap.subjectProfileId) {
         const stubRes = await fetch("/api/oracle/profile", {
@@ -305,7 +360,7 @@ export default function OracleSystemReadingClient({
         return;
       }
 
-      if (missing.length > 0) {
+      if (missing.length > 0 && !prismMbtiOnly) {
         router.replace(profilePathForSystem(systemId, missing));
         return;
       }
@@ -358,6 +413,7 @@ export default function OracleSystemReadingClient({
 
   const expectedReaders = readerOrder.length;
   const finished = session.terminal && consensus !== null;
+  const stub = sessionIsStub(view, session.aiMode);
 
   const getResponses = useCallback(
     () =>
@@ -374,8 +430,39 @@ export default function OracleSystemReadingClient({
   const tarotReady = systemId !== "tarot" || tarotPositions.length === tarotSpread;
   const prismReady =
     systemId !== "prism" ||
-    (prismPicks.impulse != null && prismPicks.need != null && prismPicks.identity != null);
+    (Boolean(snapshot.mbti) &&
+      prismPicks.impulse != null &&
+      prismPicks.need != null &&
+      prismPicks.identity != null);
   const inputsReady = tarotReady && prismReady;
+
+  const saveMbti = async (type: string, estimated: boolean) => {
+    setMbtiBusy(true);
+    session.setError(null);
+    try {
+      const response = await fetch("/api/oracle/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mbti: type, mbti_estimated: estimated }),
+      });
+      const payload = (await response.json().catch(() => null)) as ProfilePayload | null;
+      if (!response.ok) {
+        session.setError("MBTI를 저장하지 못했습니다.");
+        return;
+      }
+      const snap = snapshotFromPayload(payload);
+      setSnapshot((prev) => ({
+        ...prev,
+        ...snap,
+        subjectProfileId: snap.subjectProfileId ?? prev.subjectProfileId,
+        mbti: type,
+        mbtiEstimated: estimated,
+      }));
+      if (snap.subjectProfileId) setSubjectProfileId(snap.subjectProfileId);
+    } finally {
+      setMbtiBusy(false);
+    }
+  };
 
   const startReading = async () => {
     if (!subjectProfileId || !inputsReady) return;
@@ -471,7 +558,18 @@ export default function OracleSystemReadingClient({
 
             <AssumptionsBanner systemId={systemId} assumptions={session.assumptions} />
 
-            {consensus ? <SynthesisCard consensus={consensus} synthesizer={synthesizer} /> : null}
+            {stub ? (
+              <p
+                role="status"
+                className="rounded-2xl border border-amber-400/45 bg-amber-950/50 px-4 py-3 text-sm leading-relaxed text-amber-50"
+              >
+                연습 모드입니다. 아래 글은 실제 해석이 아니며 크레딧은 차감되지 않습니다.
+              </p>
+            ) : null}
+
+            {consensus ? (
+              <SynthesisCard consensus={consensus} synthesizer={synthesizer} stub={stub} />
+            ) : null}
 
             <OracleSystemChart
               system={systemId}
@@ -495,7 +593,7 @@ export default function OracleSystemReadingClient({
               </div>
               <div className="mt-4 grid gap-4">
                 {readings.map((reading, index) => (
-                  <ReaderCard key={reading.brand} reading={reading} index={index} />
+                  <ReaderCard key={reading.brand} reading={reading} index={index} stub={stub} />
                 ))}
                 {!readings.length && !session.terminal ? (
                   <div className="rounded-[22px] border border-dashed border-white/12 bg-white/[0.02] px-5 py-8 text-center text-sm text-white/40">
@@ -517,7 +615,7 @@ export default function OracleSystemReadingClient({
               </article>
             ) : null}
 
-            {session.terminal ? (
+            {session.terminal && !stub ? (
               <OracleSessionEndFlow
                 oracleType={systemId}
                 question={question.trim() || `${copy.name} 읽기`}
@@ -556,7 +654,10 @@ export default function OracleSystemReadingClient({
                       <p className="text-slate-300">{snapshot.name_local}</p>
                     ) : null}
                     {systemId === "prism" && snapshot.mbti ? (
-                      <p className="text-slate-300">MBTI {snapshot.mbti}</p>
+                      <p className="text-slate-300">
+                        MBTI {snapshot.mbti}
+                        {snapshot.mbtiEstimated ? " · 추정" : ""}
+                      </p>
                     ) : null}
                     {systemId === "numerology" && snapshot.name_latin ? (
                       <p className="text-slate-300">{snapshot.name_latin}</p>
@@ -597,7 +698,10 @@ export default function OracleSystemReadingClient({
             ) : null}
 
             {systemId === "prism" ? (
-              <div className="mt-8">
+              <div className="mt-8 space-y-6">
+                {snapshot.mbti ? null : (
+                  <MbtiEstimator busy={mbtiBusy} onResolved={(type, estimated) => void saveMbti(type, estimated)} />
+                )}
                 <PrismColorInput value={prismPicks} onChange={setPrismPicks} />
               </div>
             ) : null}

@@ -17,7 +17,7 @@ import {
   type SurveyAnswersExpected,
 } from "@/lib/oracle/survey-data";
 import { approxBandToMidpointHHMM } from "@/lib/oracle/sijin";
-import { MBTI_TYPES } from "@/lib/oracle/engines/prism/tables";
+import MbtiEstimator from "../inputs/MbtiEstimator";
 import {
   isReadingSystemId,
   parseMissingParam,
@@ -172,6 +172,7 @@ function OracleProfileForm() {
   const [nameLocale, setNameLocale] = useState("ko");
   const [nameLatin, setNameLatin] = useState("");
   const [mbti, setMbti] = useState("");
+  const [mbtiEstimated, setMbtiEstimated] = useState(false);
 
   const surveyReady = useMemo(() => answersComplete(surveyAnswers), [surveyAnswers]);
 
@@ -253,6 +254,7 @@ function OracleProfileForm() {
           mbti?: string | null;
         } | null;
         placeholderBirthDate?: boolean;
+        mbtiEstimated?: boolean;
       };
       if (cancelled) return;
       const p = j.profile;
@@ -304,6 +306,7 @@ function OracleProfileForm() {
       setNameGiven(names.given);
       setNameLatin(j.runnerProfile?.name_latin ?? "");
       setMbti(j.runnerProfile?.mbti ?? "");
+      setMbtiEstimated(j.mbtiEstimated === true);
       setLoading(false);
     })();
     return () => {
@@ -347,7 +350,7 @@ function OracleProfileForm() {
       return;
     }
     if (show("mbti") && !mbti) {
-      setErr("Choose an MBTI type.");
+      setErr("유형을 고르거나 추정 문항을 모두 답해 주세요.");
       return;
     }
 
@@ -361,7 +364,10 @@ function OracleProfileForm() {
       extras.name_locale = nameLocale;
     }
     if (show("name_latin") && nameLatin.trim()) extras.name_latin = nameLatin.trim();
-    if (show("mbti") && mbti) extras.mbti = mbti;
+    if (show("mbti") && mbti) {
+      extras.mbti = mbti;
+      extras.mbti_estimated = mbtiEstimated;
+    }
 
     const body: Record<string, unknown> = { ...extras };
 
@@ -612,21 +618,19 @@ function OracleProfileForm() {
             ) : null}
 
             {show("mbti") ? (
-              <fieldset className="space-y-2">
-                <label className="text-[11px] uppercase tracking-[0.2em] text-white/52">MBTI</label>
-                <select
-                  required
-                  value={mbti}
-                  onChange={(e) => setMbti(e.target.value)}
-                  className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
-                >
-                  <option value="">Select type</option>
-                  {MBTI_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+              <fieldset className="space-y-3">
+                {mbti ? (
+                  <p className="text-sm text-slate-200">
+                    현재 {mbti}
+                    {mbtiEstimated ? " · 추정" : ""}
+                  </p>
+                ) : null}
+                <MbtiEstimator
+                  onResolved={(type, estimated) => {
+                    setMbti(type);
+                    setMbtiEstimated(estimated);
+                  }}
+                />
               </fieldset>
             ) : null}
 

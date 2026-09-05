@@ -179,21 +179,26 @@ export async function createOracleSession(
     }
   }
 
+  const aiMode = getOracleAiMode()
   const cost = creditsForOracleSession(request.scope, request.readerCount)
-  const charge = await credits.charge(userId, cost, ORACLE_CREDITS_MODULE)
-  if (!charge.ok) {
-    return {
-      ok: false,
-      code: charge.reason === 'insufficient' ? 'insufficient_credits' : 'credits_error',
-      message: charge.reason === 'insufficient' ? 'insufficient credits' : 'could not update credits',
-      balance: charge.balance,
+  // Stub sessions must never take credits. The charge used to run before the
+  // adapter was chosen, so a missing ORACLE_AI_MODE silently billed canned text.
+  let chargedAmount = 0
+  if (aiMode === 'live') {
+    const charge = await credits.charge(userId, cost, ORACLE_CREDITS_MODULE)
+    if (!charge.ok) {
+      return {
+        ok: false,
+        code: charge.reason === 'insufficient' ? 'insufficient_credits' : 'credits_error',
+        message: charge.reason === 'insufficient' ? 'insufficient credits' : 'could not update credits',
+        balance: charge.balance,
+      }
     }
+    // An admin charge is skipped rather than taken. Recording 0 keeps the row
+    // truthful and makes every refund path (which derives its amount from this
+    // column) correctly do nothing instead of granting free credits.
+    chargedAmount = charge.skipped ? 0 : cost
   }
-
-  // An admin charge is skipped rather than taken. Recording 0 keeps the row
-  // truthful and makes every refund path (which derives its amount from this
-  // column) correctly do nothing instead of granting free credits.
-  const chargedAmount = charge.skipped ? 0 : cost
 
   const seed = makeSeed()
   const singleRoster =
@@ -234,7 +239,7 @@ export async function createOracleSession(
       credits_charged: chargedAmount,
       charged_at: nowIso,
       locale: request.locale,
-      prompt_version: getOracleAiMode() === 'live' ? LAYER1_PROMPT_VERSION : ORACLE_PROMPT_VERSION,
+      prompt_version: aiMode === 'live' ? LAYER1_PROMPT_VERSION : ORACLE_PROMPT_VERSION,
       last_heartbeat_at: nowIso,
     })
   } catch (e) {

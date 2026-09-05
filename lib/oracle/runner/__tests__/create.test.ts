@@ -2,11 +2,11 @@
  * Create-path behaviour: charge once, compute everything inline, and give the
  * credits back if the calculation cannot produce anything.
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PRISM_COLORS } from '../../engines/prism'
 import { layer1Entry } from '../../ai/registry'
 import { resetAiSlots } from '../concurrency'
-import { creditsForOracleSession, ORACLE_CREDITS_MODULE, readerRosterFor } from '../conventions'
+import { creditsForOracleSession, ORACLE_CREDITS_MODULE, ORACLE_PROMPT_VERSION, readerRosterFor } from '../conventions'
 import { createOracleSession, type CreateSessionRequest } from '../create'
 import { readingUnit, verdictUnit } from '../progress'
 import { createFakeCredits, createFakeStore, makeProfile, type FakeCredits, type FakeStore } from './fakes'
@@ -55,6 +55,7 @@ function harness(profileOverrides?: Parameters<typeof makeProfile>[0]): {
 
 beforeEach(() => {
   resetAiSlots()
+  vi.stubEnv('ORACLE_AI_MODE', 'live')
 })
 
 describe('createOracleSession', () => {
@@ -273,5 +274,16 @@ describe('createOracleSession', () => {
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
     expect(outcome.assumptions?.coordinatesDefaulted).toBe(true)
+  })
+
+  it('does not charge credits when the AI adapter is in stub mode', async () => {
+    vi.stubEnv('ORACLE_AI_MODE', 'stub')
+    const { store, credits, create } = harness()
+    const outcome = await create({ scope: 'single', systems: ['saju'] })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(credits.charges).toHaveLength(0)
+    expect(store.sessions[0]!.credits_charged).toBe(0)
+    expect(store.sessions[0]!.prompt_version).toBe(ORACLE_PROMPT_VERSION)
   })
 })
