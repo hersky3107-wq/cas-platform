@@ -1,5 +1,6 @@
 import { inferMatchProposals } from '@/lib/reconciliation/match-infer'
 import { fromDal, withOwnedScope } from '@/lib/reconciliation/scope'
+import { consumeAnonAi } from '@/lib/reconciliation/anon-workspace'
 
 /**
  * AI MATCH INFERENCE — run AFTER the deterministic engine
@@ -18,6 +19,8 @@ export async function POST(req: Request) {
   const gate = await withOwnedScope(req)
   if (!gate.ok) return gate.response
   const { scope, body } = gate
+  const cap = await consumeAnonAi(scope.userId, 'infer')
+  if (!cap.ok) return cap.response
 
   const depositIds = Array.isArray(body.deposit_ids)
     ? body.deposit_ids.filter((v): v is string => typeof v === 'string')

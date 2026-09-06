@@ -100,3 +100,14 @@ export const ASK_MAX_COMPLETION_TOKENS = 700
 export const INGEST_VISION_MAX_COMPLETION_TOKENS = 2000
 /** Spreadsheet rows serialized into classifiable text (matches SPREADSHEET_MAX_DATA_ROWS spirit). */
 export const INGEST_SHEET_MAX_ROWS = 200
+
+/**
+ * Contest public-access abuse caps (invisible to a normal judge).
+ * Per anonymous workspace, per KST day. High enough that a human never hits
+ * them; a script looping classify/infer/ask will.
+ */
+export const ANON_AI_CLASSIFY_PER_DAY = 80
+export const ANON_AI_INFER_PER_DAY = 40
+export const ANON_AI_ASK_PER_DAY = 60
+/** Global cap on NEW anonymous workspaces minted per KST day. */
+export const ANON_WORKSPACES_PER_DAY = 80

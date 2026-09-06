@@ -4,6 +4,7 @@ import { createDocument, updateDocument } from '@/lib/reconciliation/db'
 import { sheetGridToText, transcribeLedgerImage } from '@/lib/reconciliation/ingest-extract'
 import { readSpreadsheet } from '@/lib/reconciliation/spreadsheet-read'
 import { fromDal, withOwnedScope } from '@/lib/reconciliation/scope'
+import { consumeAnonAi } from '@/lib/reconciliation/anon-workspace'
 import {
   DEPOSIT_IMAGE_MAX_BYTES,
   DEPOSIT_IMAGE_MIME,
@@ -68,6 +69,8 @@ export async function POST(req: Request) {
   const gate = await withOwnedScope(req)
   if (!gate.ok) return gate.response
   const { scope, body } = gate
+  const cap = await consumeAnonAi(scope.userId, 'classify')
+  if (!cap.ok) return cap.response
 
   const mediaTypeHint = typeof body.media_type === 'string' ? body.media_type : undefined
 

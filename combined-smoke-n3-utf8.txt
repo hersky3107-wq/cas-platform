@@ -1,0 +1,96 @@
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+=== combined-N3 session=d0743a99-0d0c-4a92-a402-4572c27041e8 status=done wall_ms=62582 ===
+readingInput=axes
+
+unit	brand	status	reasoning	content	finish	ms
+reading:astro	OpenAI	done	-	212	-	3965
+reading:iching	Cohere	done	0	194	stop	3330
+reading:name	NAVER	done	-	-	-	2207
+reading:ninestar	Meta	done	0	181	stop	11172
+reading:numerology	Mistral	done	0	150	stop	3206
+reading:prism	Anthropic	done	0	300	end_turn	4166
+reading:runes	xAI	done	-	162	-	13241
+reading:saju	Moonshot AI	done	0	352	stop	16900
+reading:sukuyou	MiniMax	done	1832	229	stop	18934
+reading:tarot	Google	done	-	330	STOP	3041
+reading:tzolkin	NVIDIA	done	686	153	stop	4812
+reading:ziwei	DeepSeek	done	1129	205	stop	19684
+seer:reader	Moonshot AI	done	0	292	stop	12196
+seer:seer	Google	done	-	271	STOP	2590
+seer:guide	xAI	done	-	116	-	14356
+synthesis	Z.ai	done	15	705	stop	11562
+
+--- combined-N3 seer ballots ---
+
+[reader / Moonshot AI] status=done
+verdict_line: 올해 일의 방향은 새 판을 벌이기보다 이미 잡은 일의 구조와 기준을 정비하는 쪽입니다. 점성술은 유지가 강한 트랜짓을, 사주는 비견 중심에 나아감과 머묾이 반반인 해를, 타로는 지킴의 기운 60%와 통제 성향을, 룬은 안정성과 유지 국면을, 구성성은 현상 유지의 힘을, 졸킨은 5톤의 유지 에너지를 들어 같은 결을 말합니다. 다만 사주가 짚은 금(金)의 공백—결단과 마무리의 약함—을 메우는 것이 관건입니다. 기존 일을 지키며 협업 기준을 다지고, 새 기회는 기존 성과를 확장할 때만 선별적으로 잡으세요.
+ballot: {"direction":"hold","focus":"work","domains":{"work":68,"money":52,"love":45,"social":58,"energy":50}}
+
+[seer / Google] status=done
+verdict_line: 숙요(宿曜)의 삼구 쇠(衰)의 내림 흐름과 화성의 기운이 명확한 신호를 보냅니다. 올해 일의 방향은 불꽃처럼 과도하게 붙잡고 있던 헛된 집착과 무거운 책임을 과감히 비워내는 데 있습니다. 속도를 붙잡을 힘이 바닥난 내림길에서는 무리하게 정복하거나 확장하려 하지 말고, 사그라지는 흐름을 거스르지 않은 채 자리를 정돈하고 비우는 것이 다음 길을 여는 열쇠입니다.
+ballot: {"direction":"release","focus":"work","domains":{"work":85,"money":50,"love":40,"social":45,"energy":30}}
+minority_opinion: 합의세는 유지를 말하나, 숙요의 삼구 쇠(衰) 운국은 무리한 수성보다 과감히 내려놓고 비우는 정리가 진정한 대비책임을 강력히 가리킵니다.
+
+[guide / xAI] status=done
+verdict_line: 이번 주에는 기존 업무의 구조와 기준을 점검하며 안정적으로 다지는 데 집중하세요. 비견과 유지 기운이 강한 흐름에서 새로운 확장보다 현재 기반을 견고히 하는 것이 유리합니다.
+ballot: {"direction":"hold","focus":"work","domains":{"work":75,"money":45,"love":35,"social":55,"energy":60}}
+
+ballot_tally={"counts":{"advance":0,"hold":2,"release":1},"leader":"hold","leaderCount":2,"participantCount":3,"abstained":[],"unanimous":false,"focusCounts":{"work":3,"money":0,"love":0,"social":0,"energy":0},"domainMeans":{"work":76,"money":49,"love":40,"social":52.7,"energy":46.7},"minoritySlugs":["seer"]}
+synthesis={"agreements":["기존 토대를 지키며 무리한 확장보다 내실을 다지는 방향이 유리하다는 의견이 다수","물(水) 기운이 강해 유연성과 흐름을 살려 상황에 맞게 조정하는 태도가 권장됨","목(木) 에너지가 강해 새 기회와 확장 가능성은 있되, 신중하게 접근해야 한다는 공통점","통제·유지 성향이 뚜렷하여 세밀한 계획과 안정성을 함께 고려해야 함","협업과 관계를 중시하며 동료·동업자와 보조를 맞추는 것이 유리하다는 흐름","성찰을 바탕으로 꾸준히 나아가는 태도가 방향을 명확히 만든다는 점"],"divergences":["전진·추진을 강조하는 독해와 현상 유지·내림을 강조하는 독해가 분명히 갈림","금(金)이 비어 결단·마무리가 약할 수 있다는 지적 vs 추진력이 충분하다는 지적","큰 변화 모색을 피하라는 독해 vs 작은 변화가 큰 성과로 이어질 수 있다는 독해","혼자 앞서 나가지 말라는 독해 vs 적극적으로 앞으로 나아가야 한다는 독해","내림 흐름에 맞춰 책임을 내려놓으라는 독해 vs 상승 흐름이 뚜렷하니 전진하라는 독해"],"conclusion":"올해 일의 방향은 기존 자리를 지키며 내실을 다지는 쪽이 가장 유리합니다. 유지·통제 성향이 우세하고, 물의 유연함과 목의 확장 에너지가 함께 작용하므로, 무리한 확장보다는 현재 흐름을 읽고 필요한 때만 움직이는 점진적 접근이 권장됩니다. 협업과 관계를 중시하고, 세부 계획과 안정성을 함께 고려하되, 새 기회는 기존 성과의 연장선에서 선별적으로 잡는 것이 좋습니다. 한편, 전진과 유지 사이의 시각 차이가 크므로, 성급한 결단보다는 성찰을 바탕으로 상황에 맞춰 조정하며 나아가는 태도가 필요합니다.","confidence_note":"참가 12개 체계 중 만장일치 5건, 유지 우세 42.1%로 다수 의견은 일관되나 전진·내림 시각 차이가 존재해 신중한 해석이 요구됩니다."}
+
+--- combined-N3 reader narratives (12 systems) ---
+
+[astro / OpenAI] status=done latency_ms=3965
+올해 일은 크게 판을 바꾸기보다, 이미 맡은 분야의 구조와 기준을 단단히 세우는 쪽이 맞습니다. 적용 중인 트랜짓은 유지가 강하게 나타나며, 하우스·애스펙트의 추진력과 통제력도 높습니다. 별자리 원소에서 불과 물이 함께 강하므로, 의욕만 앞세우기보다 현장의 반응을 읽어 업무 방식·협업 기준을 정비하세요. 새 기회는 기존 성과를 확장할 때 선별적으로 잡는 것이 좋습니다.
+
+[iching / Cohere] status=done latency_ms=3330
+올해 일의 방향은 '진행'에 초점을 맞춰야 합니다. 납갑·시 가중 오행에서 목(木)의 에너지가 가장 강하게 나타나며, 이는 새로운 프로젝트를 시작하거나 기존 일을 확장하기에 적합한 시기임을 의미합니다. 변효 관계에 따르면, 작은 변화가 큰 성과로 이어질 수 있으니, 적극적으로 기회를 잡고 추진력을 유지하세요. 다만, 토(土)의 에너지도 강하므로, 세부적인 계획과 안정성을 함께 고려해야 합니다.
+
+[name / NAVER] status=done latency_ms=2207
+올해는 물의 기운이 강하게 작용하여 유연성과 흐름을 중시하는 방향으로 일을 진행해야 합니다. 수리오행 오격을 통해 볼 때, 변화와 유동성을 수용하며 새로운 기회를 탐색하는 것이 중요합니다.
+
+[ninestar / Meta] status=done latency_ms=11172
+올해 일의 방향은 본명성과 연·월·일 성의 혼합에 따라 큰 변화를 모색하기보다는 현재 상태를 유지하는 것에 초점을 두어야 합니다. 본명성의 영향으로 일관된 추진력과 탐색의 욕구가 강하지만, 현재 상태 유지의 힘이 더 크기 때문에 급진적인 변화를 피하고 안정성을 확보하는 것이 좋습니다. 특히, 木의 요소가 강해 새로운 시작이나 확장을 상징하지만, 현재의 흐름을 유지하는 것이 더 유리합니다.
+
+[numerology / Mistral] status=done latency_ms=3206
+개인연도 8의 에너지는 성취와 권위를 향한 집중을 요구하며, 라이프패스·표현수의 조합은 관계와 성찰을 통해 안정적인 기반을 다질 때 일의 방향이 명확해진다. 방출의 흐름에 따라 과감히 정리하고 새로운 구조를 세워라.
+
+[prism / Anthropic] status=done latency_ms=4166
+물의 기운이 두드러지고 금의 받침이 뒤를 든든히 지지하는 흐름 속에서, 성향의 결은 통제와 탐구가 함께 깊어지는 모습을 보입니다. 올해 상승의 흐름이 뚜렷하게 나타나므로, 일에서는 망설임보다 앞으로 나아가는 방향을 택하되 물의 유연함을 살려 상황에 맞게 조정하며 전진하는 것이 유리합니다.
+
+[runes / xAI] status=done latency_ms=13241
+룬 해석에서 안정성 45와 목 원소 100이 지배하며 유지 국면 66.7이 앞서는 상황은 올해 일의 방향을 기존 토대 위에서 천천히 다져가는 식으로 정하라고 말합니다. 이 세 값이 함께 작용해 서두르지 말고 현재 위치를 견고하게 지키면서 필요한 때만 움직이는 태도를 요구하며, 다른 특성들은 그 과정을 보조하는 역할만 합니다.
+
+[saju / Moonshot AI] status=done latency_ms=16900
+올해 일의 방향은 비견의 기운이 중심에 서 있어, 혼자 앞서 나가기보다 동료·동업자와 보조를 맞추는 쪽이 유리합니다. 오행으로는 수(水)가 절반을 차지하고 토(土)가 그 뒤를 받치는 구조라, 흐름을 읽고 정보를 모으는 힘은 강하지만 금(金)이 비어 있어 결단과 마무리가 약해질 수 있습니다. 대운·세운의 흐름은 나아감과 머묾이 정확히 반반으로 맞선 해입니다. 억지로 크게 벌이기보다 이미 잡은 일을 지키며 사람과의 신뢰를 다지고, 밀리는 물살처럼 새 기회가 들어올 때만 몸을 실으세요. 방향은 확장이 아니라 정돈입니다.
+
+[sukuyou / MiniMax] status=done latency_ms=18934
+화성 명성이 높이 치솟는 불기운을 피워 올리지만, 이미 그 열기는 삼구 衰의 내림 흐름 위에 놓여 있습니다. 추진력은 중간을 지키고 있을 뿐, 안정감은 바닥이라 속도 자체를 붙잡을 힘이 없습니다. 올해 일의 방향은 전진이 아니라 내림입니다. 명성으로 세운 자리, 불꽃으로 빛낸 성과가 점점 옅어지는 흐름을 거스르지 마십시오. 힘을 쏟아 정복하기보다, 사그라지는 것에 맞춰 책임을 내려놓고 자리를 비우는 것이 다음을 여는 길입니다. 지금의 길을 놓아야 다른 길이 보입니다.
+
+[tarot / Google] status=done latency_ms=3041
+올해 일의 방향을 설정할 때는 무리하게 확장하기보다 현재의 자리를 지키며 점검하는 것이 유리합니다. 카드가 가리키는 흐름에서 지킴(hold)의 기운이 60%로 가장 높게 나타나며, 카드의 기운 중 불(fire 33.3%)과 물(water 33.3%)의 기운이 동등하게 균형을 이루고 있습니다. 이는 열정과 냉철한 감정 조절이 동시에 요구됨을 의미합니다. 인내와 질서를 뜻하는 통제(control 23.4%) 성향이 강하게 작용하고 있으므로, 새로운 프로젝트를 성급하게 추진하기보다는 내부 내실을 다지고 리스크를 관리하는 데 집중해야 합니다. 메이저·수트와 뒤집힌 카드의 기운을 종합해 볼 때, 지금은 속도를 내기보다 안정성을 최우선으로 삼아 기반을 공고히 할 때입니다.
+
+[tzolkin / NVIDIA] status=done latency_ms=4812
+나왈 kimi의 깊은 반영(60)과 5톤의 유지 에너지(70)가 올해 일의 흐름을 안정적으로 이끕니다. 탐색(20)과 관계(10)도 함께 작용해 새로운 시도를 조심스럽게 펼치며, 내면의 성찰을 바탕으로 꾸준히 나아가는 것이 유리합니다.
+
+[ziwei / DeepSeek] status=done latency_ms=19684
+명궁·신궁 주성에서는 관계성이 가장 두드러지고 사색이 깊게 자리하며, 오행국·궁성에서는 목 기운이 압도적입니다. 대한·유년 사화에서 진취 방향이 뚜렷하니, 올해 일은 혼자 파고들기보다 안정된 기반 위에서 인맥과 협업을 넓히며 적극적으로 앞으로 나아가야 합니다. 소통을 통한 전략적 사색이 방향을 선명하게 만들어 줄 것입니다.
+
+--- combined-N3 model_cost_logs (session=d0743a99-0d0c-4a92-a402-4572c27041e8) ---
+Moonshot AI	calls=2	cost_usd=0.023405
+Google	calls=2	cost_usd=0.011574
+xAI	calls=2	cost_usd=0.010012
+Anthropic	calls=1	cost_usd=0.006114
+OpenAI	calls=1	cost_usd=0.004372
+Cohere	calls=1	cost_usd=0.004180
+DeepSeek	calls=1	cost_usd=0.002683
+NVIDIA	calls=1	cost_usd=0.002558
+MiniMax	calls=1	cost_usd=0.002540
+Mistral	calls=1	cost_usd=0.002510
+Z.ai	calls=1	cost_usd=0.001170
+Meta	calls=1	cost_usd=0.000300
+NAVER	calls=1	cost_usd=0.000000
+TOTAL rows=16 cost_usd=0.071418
+
+SMOKE_RESULT_JSON={"n3":{"sessionId":"d0743a99-0d0c-4a92-a402-4572c27041e8","status":"done","totalCostUsd":0.07141806248,"rows":16,"wallMs":62582}}

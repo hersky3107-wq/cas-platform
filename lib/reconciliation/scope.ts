@@ -3,6 +3,8 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 import type { DalResult } from '@/lib/reconciliation/types'
+import { isReconPublic } from '@/lib/reconciliation/public-access'
+import { cookieValueFromRequest, ensureAnonWorkspace } from '@/lib/reconciliation/anon-workspace'
 
 /**
  * Branded owner scope for 대사기.
@@ -40,7 +42,9 @@ export type OwnedScopeFail = {
  * Authenticate the request and return a branded owner scope.
  *
  * All reconciliation API routes MUST call this before any DAL function.
- * Rejects unauthenticated callers. Does not trust a user_id in the body.
+ * When RECONCILIATION_PUBLIC=true, scopes to a signed cookie workspace
+ * instead of auth.users (contest judging). Otherwise rejects unauthenticated
+ * callers. Does not trust a user_id in the body.
  */
 export async function withOwnedScope(req: Request): Promise<OwnedScopeOk | OwnedScopeFail> {
   const missing = missingSupabaseEnv()
@@ -73,6 +77,14 @@ export async function withOwnedScope(req: Request): Promise<OwnedScopeOk | Owned
         response: NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }),
       }
     }
+  }
+
+  // Contest public access: cookie workspace replaces auth.users. Off → existing
+  // login path unchanged. League/oracle/arena never call this function.
+  if (isReconPublic()) {
+    const minted = await ensureAnonWorkspace(await cookieValueFromRequest(req))
+    if (!minted.ok) return minted
+    return { ok: true, scope: createOwnedScope(minted.workspaceId), body }
   }
 
   const { user, error: authErr } = await resolveRouteAuth(req, body)

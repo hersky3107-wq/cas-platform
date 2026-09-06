@@ -1,5 +1,6 @@
 import { askLedger } from '@/lib/reconciliation/ask'
 import { fromDal, withOwnedScope } from '@/lib/reconciliation/scope'
+import { consumeAnonAi } from '@/lib/reconciliation/anon-workspace'
 
 /**
  * POST /api/reconciliation/ask — AI에게 물어보기 (Part-B ask box).
@@ -20,6 +21,8 @@ export async function POST(req: Request) {
   const gate = await withOwnedScope(req)
   if (!gate.ok) return gate.response
   const { scope, body } = gate
+  const cap = await consumeAnonAi(scope.userId, 'ask')
+  if (!cap.ok) return cap.response
 
   return fromDal(
     await askLedger(scope, {

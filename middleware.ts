@@ -7,6 +7,14 @@ import {
   routeLockBlockedResponse,
 } from '@/lib/middleware/route-lock'
 import { cookieOptionsForRequest, isAllowedAppHost } from '@/lib/supabase/site-url'
+import {
+  isReconPublic,
+  isReconciliationPath,
+  issueWorkspaceCookieValue,
+  parseWorkspaceCookie,
+  reconWsCookieOptions,
+  RECON_WS_COOKIE,
+} from '@/lib/reconciliation/public-access'
 
 function withOptionalBypassCookie(response: NextResponse, setBypass: boolean): NextResponse {
   if (setBypass) attachBypassCookie(response)
@@ -120,7 +128,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  return withOptionalBypassCookie(supabaseResponse, setBypassCookie)
+  const outgoing = withOptionalBypassCookie(supabaseResponse, setBypassCookie)
+
+  // Contest public access: stamp a workspace cookie on /reconciliation and
+  // /api/reconciliation/* ONLY. Does not change league/oracle/arena redirects
+  // above. Off (env unset) → this block is a no-op.
+  if (isReconPublic() && isReconciliationPath(pathname)) {
+    const existing = request.cookies.get(RECON_WS_COOKIE)?.value
+    const valid = await parseWorkspaceCookie(existing)
+    if (!valid) {
+      const issued = await issueWorkspaceCookieValue()
+      if (issued) {
+        outgoing.cookies.set(RECON_WS_COOKIE, issued, reconWsCookieOptions())
+      }
+    }
+  }
+
+  return outgoing
 }
 
 export const config = {

@@ -19,7 +19,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from '@/lib/db/supabase'
 import { getMonthDateRange } from '@/lib/reconciliation/summary'
 import type {
   CardIssuer,
@@ -81,59 +80,43 @@ async function fetchLedger(month: string): Promise<LedgerData> {
 }
 
 export default function ReconciliationPage() {
-  const [userId, setUserId] = useState<string | null>(null)
-  const [authLoading, setAuthLoading] = useState(true)
-
   const [tab, setTab] = useState<Tab>('ingest')
   const [month, setMonth] = useState<string>(currentMonthString)
   const [data, setData] = useState<LedgerData | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [needsLogin, setNeedsLogin] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
 
   const [busyLabel, setBusyLabel] = useState<string | null>(null)
   const [pipelineError, setPipelineError] = useState<string | null>(null)
   const pipelineRunning = useRef(false)
 
-  /* ── 인증: 구독 콜백에서만 setState (기존 패턴 유지) ─────────────────── */
+  /* ── 데이터: await 뒤에만 setState. 공개 모드면 로그인 없이 장부가 열리고,
+     공개가 꺼져 401이 오면 로그인 안내만 보여 준다. ────────────────────── */
   useEffect(() => {
-    let cancelled = false
-    async function init() {
-      const { data: authData } = await supabase.auth.getUser()
-      if (cancelled) return
-      setUserId(authData.user?.id ?? null)
-      setAuthLoading(false)
-    }
-    void init()
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserId(session?.user?.id ?? null)
-    })
-    return () => {
-      cancelled = true
-      subscription.unsubscribe()
-    }
-  }, [])
-
-  /* ── 데이터: await 뒤에만 setState → 동기 setState 없음 (lint 에러 2건 제거) ── */
-  useEffect(() => {
-    if (!userId) return
     let alive = true
     void (async () => {
       try {
         const next = await fetchLedger(month)
         if (!alive) return
+        setNeedsLogin(false)
         setData(next)
         setLoadError(null)
       } catch (e) {
         if (!alive) return
-        setLoadError(e instanceof Error ? e.message : String(e))
+        const msg = e instanceof Error ? e.message : String(e)
+        if (/Invalid session|HTTP 401/.test(msg)) {
+          setNeedsLogin(true)
+          setData(null)
+        } else {
+          setLoadError(msg)
+        }
       }
     })()
     return () => {
       alive = false
     }
-  }, [userId, month, reloadKey])
+  }, [month, reloadKey])
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
 
@@ -202,14 +185,7 @@ export default function ReconciliationPage() {
     ).length ?? 0)
 
   /* ── 화면 ─────────────────────────────────────────────────────────────── */
-  if (authLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-        <p className="text-sm text-slate-500">잠시만요…</p>
-      </main>
-    )
-  }
-  if (!userId) {
+  if (needsLogin) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
         <div className={`${CARD} max-w-sm text-center`}>
