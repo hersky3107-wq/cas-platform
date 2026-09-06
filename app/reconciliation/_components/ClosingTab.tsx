@@ -149,12 +149,14 @@ export default function ClosingTab({
             <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
               {summary ? won(summary.total_sales) : '—'}
             </p>
+            <p className="mt-1 text-xs font-semibold text-slate-600">매출 {monthSales.length}건</p>
           </div>
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5">
             <p className="text-xs font-semibold text-slate-500">통장에 들어온 돈</p>
             <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
               {summary ? won(summary.deposits.total_amount) : '—'}
             </p>
+            <p className="mt-1 text-xs font-semibold text-slate-600">입금 {monthDeposits.length}건</p>
           </div>
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5">
             <p className="text-xs font-semibold text-slate-500">할인해 준 것</p>
@@ -169,6 +171,13 @@ export default function ClosingTab({
             </p>
           </div>
         </div>
+
+        {monthSales.length > 0 ? (
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
+            매출 건수가 기억보다 많으면 통장 입금이 매출로 들어갔는지 아래 「이 달 전체 내역」에서 보세요. 자동으로
+            지우지는 않아요.
+          </p>
+        ) : null}
 
         {summary && summary.paper_voucher_pending_amount > 0 ? (
           <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">

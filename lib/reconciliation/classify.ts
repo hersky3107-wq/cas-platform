@@ -9,6 +9,7 @@ import {
 } from '@/lib/reconciliation/config'
 import { listIssuers } from '@/lib/reconciliation/issuers-db'
 import { todayKst } from '@/lib/reconciliation/reconcile'
+import { crossCheckClassifications, type RawClassified } from '@/lib/reconciliation/classify-merge'
 import {
   RECONCILED_METHOD_CODES,
   SETTLEMENT_ONLY_METHOD_CODES,
@@ -24,11 +25,11 @@ import {
  * (signed: refunds negative)? The owner should choose almost nothing.
  *
  * Cross-check: the two strongest ADVISORY_MODELS answer independently. Rows
- * that BOTH models produce (same kind + date + amount) are 'agreed' —
- * confidence raised; rows only one model saw are kept but flagged
- * needs_review with capped confidence. Nothing is auto-committed: the route
- * returns candidate rows for the review UI, which commits via the existing
- * POST /sales and /deposits endpoints.
+ * that BOTH models produce (same date + amount + kind) are 'agreed'.
+ * Same date + amount but different kind (매출 vs 입금) is ONE row at
+ * low confidence with kind_disputed — the owner must confirm before save.
+ * Bank-statement / issuer-memo lines are forced toward deposit; 출금 is
+ * dropped. Dates come from printed text (집계일시 / YY/MM/DD), never today.
  *
  * (Images keep their existing dedicated AI routes — parse-sales-image /
  * parse-deposit-image — which already run vision models with HITL commit.)
@@ -47,6 +48,10 @@ export type ClassifiedRow = {
   /** true when only one model produced the row, or the models disagreed on details. */
   needs_review: boolean
   agreement: string
+  /** Models disagreed on 매출 vs 입금 — owner must tap the toggle before save. */
+  kind_disputed: boolean
+  /** Printed date missing or unreadable — never filled with today. */
+  date_unreadable: boolean
 }
 
 export type ClassifyResult = {
@@ -69,31 +74,27 @@ const METHOD_CODES = [...RECONCILED_METHOD_CODES, ...SETTLEMENT_ONLY_METHOD_CODE
 function buildSystemPrompt(issuerNames: string[], today: string): string {
   return [
     'You classify a Korean clothing-store owner\'s raw text into structured sales (매출) and bank deposits (입금).',
-    'A SALE row is something the store sold: has a payment method and, for card sales, a card issuer. A refund/cancellation is a sale row with a NEGATIVE amount.',
-    'A DEPOSIT row is money arriving in the bank account (입금 알림, 통장 내역).',
+    'SALE = money the store charged a customer (POS 승인내역, 카드매출, 현금, 상품권). A refund/cancellation is a SALE with a NEGATIVE amount.',
+    'DEPOSIT = money arriving in the bank (입금 알림, 통장, 카드사 정산 입금).',
+    'HARD RULES — sale vs deposit:',
+    '- Text containing 입출금안내 / 입금 / 출금 / 적요 / 잔액 / 거래일자 is a BANK line → kind=deposit, NEVER sale.',
+    '- A card-issuer code stuck to digits (삼성17938696, NH15524303, 하나90343621, 신한11895817) is a DEPOSIT memo, not a sale.',
+    '- 출금 lines (e.g. 제민신협(체크기) 5,500 출금) must be OMITTED entirely — neither sale nor deposit.',
+    '- HINT (not a hard rule): POS card sales are often round-ish thousands (31,500 / 94,500 / 176,000). Card-settlement deposits are net-of-fee with odd trailing digits (42,636 / 68,033 / 31,453). Use this as reasoning material only.',
     `Payment method codes: card(카드), app_voucher(앱상품권: 탐나는전/온누리 앱), barcode_pay(바코드결제), delivery_app(배달앱), foreign_pay(알리페이/위챗), tax_free(택스프리), cash(현금), transfer(계좌이체), paper_voucher(지류상품권). Use null when the method is not stated.`,
     `Card issuers at this store: ${issuerNames.join(', ')}. Use the exact name; null when not identifiable.`,
-    `Dates: YYYY-MM-DD. Today is ${today} (KST) — resolve MM/DD without a year against it (never a future date). Use null when no date is given.`,
-    'Amounts: integer won, signed (refund → negative). Skip balance lines (잔액), totals that duplicate itemized rows, and non-transactional text.',
+    'DATES: YYYY-MM-DD copied from the text. POS 승인내역 prints 집계일시, 집계기간, and per-line dates as YY/MM/DD (e.g. 26/09/05 → 2026-09-05). Never guess, never use today as the date.',
+    `Today is ${today} (KST) — that is NOT a fallback date. If a date cannot be read, date=null.`,
+    'Amounts: integer won, signed (refund → negative). Skip 잔액/balance lines, totals that duplicate itemized rows, and non-transactional text.',
     'Respond with ONLY a compact JSON array, no prose:',
     '[{"kind":"sale"|"deposit","method":"<code or null>","issuer":"<name or null>","date":"YYYY-MM-DD or null","amount":<signed won>,"memo":"<short source snippet>","confidence":<0..1>}]',
     'Do not invent rows that are not in the text. An empty array is a valid answer.',
   ].join(' ')
 }
 
-type RawRow = {
-  kind: 'sale' | 'deposit'
-  method: string | null
-  issuer: string | null
-  date: string | null
-  amount: number
-  memo: string | null
-  confidence: number
-}
-
-function parseModelRows(json: unknown): RawRow[] {
+function parseModelRows(json: unknown): RawClassified[] {
   if (!Array.isArray(json)) return []
-  const out: RawRow[] = []
+  const out: RawClassified[] = []
   for (const item of json) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue
     const row = item as Record<string, unknown>
@@ -114,8 +115,6 @@ function parseModelRows(json: unknown): RawRow[] {
   }
   return out
 }
-
-const rowKey = (r: RawRow): string => `${r.kind}|${r.date ?? '?'}|${r.amount}`
 
 export async function classifyText(
   scope: OwnedScope,
@@ -147,63 +146,18 @@ export async function classifyText(
 
   const perModel = answers
     .map((a) => ({ model: a.model, rows: a.json != null ? parseModelRows(a.json) : null }))
-    .filter((m): m is { model: string; rows: RawRow[] } => m.rows != null)
+    .filter((m): m is { model: string; rows: RawClassified[] } => m.rows != null)
 
   if (perModel.length === 0) {
     return dalErr(502, '모든 분류 모델이 실패했습니다 — 잠시 후 다시 시도하세요.')
   }
 
-  // Cross-check by (kind, date, amount) as MULTISETS — a text can genuinely
-  // contain two identical rows (two same-amount deposits), so we align
-  // occurrence-by-occurrence. A row both models produced is 'agreed'
-  // (confidence raised, details merged preferring the more confident model);
-  // a row only one model saw is kept but flagged needs_review with capped
-  // confidence — cross-check never silently drops or invents.
-  const byKey = (list: RawRow[]): Map<string, RawRow[]> => {
-    const map = new Map<string, RawRow[]>()
-    for (const row of list) {
-      const bucket = map.get(rowKey(row)) ?? []
-      bucket.push(row)
-      map.set(rowKey(row), bucket)
-    }
-    return map
-  }
-  const mapA = byKey(perModel[0]!.rows)
-  const mapB = perModel.length >= 2 ? byKey(perModel[1]!.rows) : new Map<string, RawRow[]>()
-  const bothResponded = perModel.length >= 2
-
-  const rows: ClassifiedRow[] = []
-  for (const key of new Set([...mapA.keys(), ...mapB.keys()])) {
-    const a = mapA.get(key) ?? []
-    const b = mapB.get(key) ?? []
-    const agreedCount = bothResponded ? Math.min(a.length, b.length) : 0
-    const total = Math.max(a.length, b.length)
-    for (let i = 0; i < total; i++) {
-      const rowA = a[i]
-      const rowB = b[i]
-      const agreed = i < agreedCount
-      const best =
-        rowA && rowB ? (rowB.confidence > rowA.confidence ? rowB : rowA) : (rowA ?? rowB)!
-      const issuer = best.issuer ? (issuerByName.get(best.issuer.toLowerCase()) ?? null) : null
-      const confidence = agreed
-        ? Math.min(0.95, Math.max(rowA?.confidence ?? 0, rowB?.confidence ?? 0, 0.8))
-        : Math.min(bothResponded ? 0.55 : 0.65, best.confidence)
-      rows.push({
-        kind: best.kind,
-        method_code: best.method ?? (issuer ? 'card' : null),
-        issuer_id: issuer?.id ?? null,
-        issuer_name: issuer?.name ?? (best.issuer || null),
-        date: best.date,
-        amount: best.amount,
-        memo: best.memo,
-        confidence,
-        needs_review: !agreed || (issuer == null && best.issuer != null),
-        agreement: agreed ? '2/2' : `1/${perModel.length}`,
-      })
-    }
-  }
-
-  rows.sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999') || a.kind.localeCompare(b.kind))
+  const rows = crossCheckClassifications(
+    perModel[0]!.rows,
+    perModel.length >= 2 ? perModel[1]!.rows : null,
+    text,
+    issuerByName
+  )
 
   return dalOk({
     rows,

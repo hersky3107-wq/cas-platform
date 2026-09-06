@@ -15,6 +15,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { prepareImageForUpload } from '@/lib/reconciliation/prepare-image-upload'
 import { annotateDuplicates } from '@/lib/reconciliation/deposit-duplicates'
+import { KIND_DISAGREE_KO } from '@/lib/reconciliation/ingest-guards'
 import type { CardIssuer, DepositRecord, PaymentChannel, SaleKind } from '@/lib/reconciliation/types'
 import {
   apiJson,
@@ -49,6 +50,9 @@ type ReviewRow = {
   duplicate: boolean
   skip: boolean
   saveError: string | null
+  kindDisputed: boolean
+  kindConfirmed: boolean
+  dateUnreadable: boolean
 }
 
 const METHOD_OPTIONS = [
@@ -94,6 +98,9 @@ function rowFromClassified(row: ClassifiedRowView, i: number): ReviewRow {
     duplicate: false,
     skip: false,
     saveError: null,
+    kindDisputed: row.kind_disputed === true,
+    kindConfirmed: false,
+    dateUnreadable: row.date_unreadable === true || !row.date,
   }
 }
 
@@ -156,7 +163,9 @@ export default function IngestTab({
     // 확인이 필요한 행(모델 불일치·낮은 신뢰도)을 맨 위로.
     drafts.sort(
       (a, b) =>
-        Number(b.needsReview || b.confidence < LOW_CONFIDENCE) - Number(a.needsReview || a.confidence < LOW_CONFIDENCE) ||
+        Number(b.kindDisputed) - Number(a.kindDisputed) ||
+        Number(b.needsReview || b.confidence < LOW_CONFIDENCE || !b.date) -
+          Number(a.needsReview || a.confidence < LOW_CONFIDENCE || !a.date) ||
         a.confidence - b.confidence
     )
     setRows(drafts)
@@ -257,6 +266,10 @@ export default function IngestTab({
         failed.push({ ...row, saveError: '날짜와 금액을 채워 주세요' })
         continue
       }
+      if (row.kindDisputed && !row.kindConfirmed) {
+        failed.push({ ...row, saveError: KIND_DISAGREE_KO })
+        continue
+      }
       try {
         const confirmStatus = row.edited ? 'edited' : 'confirmed'
         if (row.kind === 'sale') {
@@ -277,6 +290,7 @@ export default function IngestTab({
               confidence: row.confidence,
               confirm_status: confirmStatus,
               entry_source: 'manual',
+              source_snippet: row.memo.trim() || null,
             },
           })
           savedSales++
@@ -409,11 +423,12 @@ export default function IngestTab({
 
           <ul className="mt-3 space-y-2.5">
             {rows.map((row) => {
-              const uncertain = row.needsReview || row.confidence < LOW_CONFIDENCE
+              const uncertain =
+                row.needsReview || row.kindDisputed || row.confidence < LOW_CONFIDENCE || !row.date
               return (
                 <li
                   key={row.key}
-                  className={`rounded-xl border p-3 ${
+                  className={`min-w-0 overflow-visible rounded-xl border p-3 ${
                     row.skip
                       ? 'border-slate-200 bg-slate-50 opacity-60'
                       : uncertain
@@ -421,30 +436,34 @@ export default function IngestTab({
                         : 'border-slate-200 bg-white'
                   }`}
                 >
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* 매출/입금 토글 */}
-                    <div className="inline-flex overflow-hidden rounded-lg border border-slate-300">
-                      {(['sale', 'deposit'] as const).map((k) => (
-                        <button
-                          key={k}
-                          type="button"
-                          className={`px-3 py-1.5 text-xs font-bold ${
-                            row.kind === k ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'
-                          }`}
-                          onClick={() => patchRow(row.key, { kind: k, edited: true })}
-                        >
-                          {k === 'sale' ? '매출' : '입금'}
-                        </button>
-                      ))}
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-slate-300">
+                        {(['sale', 'deposit'] as const).map((k) => (
+                          <button
+                            key={k}
+                            type="button"
+                            className={`min-h-10 min-w-[4.5rem] px-3 py-2 text-sm font-bold ${
+                              row.kind === k ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'
+                            }`}
+                            onClick={() =>
+                              patchRow(row.key, { kind: k, edited: true, kindConfirmed: true })
+                            }
+                          >
+                            {k === 'sale' ? '매출' : '입금'}
+                          </button>
+                        ))}
+                      </div>
+                      {row.kindDisputed ? <span className={BADGE_WARN}>매출인지 입금인지</span> : null}
+                      {uncertain && !row.kindDisputed ? <span className={BADGE_WARN}>확인해 주세요</span> : null}
+                      {row.duplicate ? <span className={BADGE_WARN}>이미 있는 입금 같아요</span> : null}
                     </div>
-                    {uncertain ? <span className={BADGE_WARN}>확인해 주세요</span> : null}
-                    {row.duplicate ? <span className={BADGE_WARN}>이미 있는 입금 같아요</span> : null}
                     {row.saveError ? (
-                      <span className="text-xs font-semibold text-rose-700">{row.saveError}</span>
+                      <p className="text-xs font-semibold leading-relaxed text-rose-700">{row.saveError}</p>
                     ) : null}
                     <button
                       type="button"
-                      className="ml-auto text-xs font-semibold text-slate-400 underline underline-offset-2"
+                      className="self-start text-xs font-semibold text-slate-400 underline underline-offset-2"
                       onClick={() =>
                         row.skip ? patchRow(row.key, { skip: false }) : patchRow(row.key, { skip: true })
                       }
@@ -453,49 +472,64 @@ export default function IngestTab({
                     </button>
                   </div>
 
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <input
-                      type="date"
-                      value={row.date}
-                      onChange={(e) => patchRow(row.key, { date: e.target.value })}
-                      className={`${INPUT} px-2 py-2 text-sm`}
-                    />
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={row.amount}
-                      onChange={(e) => patchRow(row.key, { amount: e.target.value })}
-                      placeholder="금액 (환불은 -)"
-                      className={`${INPUT} px-2 py-2 text-sm tabular-nums`}
-                    />
-                    <select
-                      value={row.tag}
-                      onChange={(e) => patchRow(row.key, { tag: e.target.value })}
-                      className={`${INPUT} px-2 py-2 text-sm`}
-                    >
-                      <option value="">잘 모름 (AI가 나중에 찾음)</option>
-                      <optgroup label="카드">
-                        {activeIssuers.map((i) => (
-                          <option key={i.id} value={`issuer:${i.id}`}>
-                            카드 · {i.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="다른 방법">
-                        {METHOD_OPTIONS.map((code) => (
-                          <option key={code} value={`method:${code}`}>
-                            {METHOD_KO[code]}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
-                    <input
-                      type="text"
-                      value={row.memo}
-                      onChange={(e) => patchRow(row.key, { memo: e.target.value })}
-                      placeholder="메모"
-                      className={`${INPUT} px-2 py-2 text-sm`}
-                    />
+                  <div className="mt-2 grid min-w-0 grid-cols-1 gap-2">
+                    <label className="block min-w-0">
+                      <span className="mb-1 block text-[11px] font-semibold text-slate-500">날짜 (년-월-일)</span>
+                      <input
+                        type="date"
+                        value={row.date}
+                        onChange={(e) => patchRow(row.key, { date: e.target.value, dateUnreadable: false })}
+                        className={`${INPUT} min-h-12 w-full min-w-0 px-3 py-2 text-base`}
+                      />
+                      <p className={`mt-0.5 text-xs tabular-nums ${row.date ? 'text-slate-600' : 'text-amber-800'}`}>
+                        {row.date || '날짜를 읽어내지 못했어요 — 직접 넣어 주세요'}
+                      </p>
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="mb-1 block text-[11px] font-semibold text-slate-500">금액</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={row.amount}
+                        onChange={(e) => patchRow(row.key, { amount: e.target.value })}
+                        placeholder="금액 (환불은 -)"
+                        className={`${INPUT} min-h-12 w-full min-w-0 px-3 py-2 text-base tabular-nums`}
+                      />
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="mb-1 block text-[11px] font-semibold text-slate-500">결제</span>
+                      <select
+                        value={row.tag}
+                        onChange={(e) => patchRow(row.key, { tag: e.target.value })}
+                        className={`${INPUT} min-h-12 w-full min-w-0 px-3 py-2 text-base`}
+                      >
+                        <option value="">잘 모름 (AI가 나중에 찾음)</option>
+                        <optgroup label="카드">
+                          {activeIssuers.map((i) => (
+                            <option key={i.id} value={`issuer:${i.id}`}>
+                              카드 · {i.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="다른 방법">
+                          {METHOD_OPTIONS.map((code) => (
+                            <option key={code} value={`method:${code}`}>
+                              {METHOD_KO[code]}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="mb-1 block text-[11px] font-semibold text-slate-500">메모</span>
+                      <input
+                        type="text"
+                        value={row.memo}
+                        onChange={(e) => patchRow(row.key, { memo: e.target.value })}
+                        placeholder="메모"
+                        className={`${INPUT} min-h-12 w-full min-w-0 px-3 py-2 text-base`}
+                      />
+                    </label>
                   </div>
 
                   <p className="mt-1.5 text-[11px] text-slate-400">

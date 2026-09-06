@@ -200,7 +200,7 @@ export default function ReconciliationPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-28">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-4 px-4 pt-5">
+      <div className="mx-auto flex w-full min-w-0 max-w-xl flex-col gap-4 px-4 pt-5">
         <header className="flex items-end justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">가게 장부</h1>

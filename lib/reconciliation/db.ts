@@ -45,6 +45,7 @@ import {
 } from '@/lib/reconciliation/summary'
 import { getIssuer, learnMemoAlias } from '@/lib/reconciliation/issuers-db'
 import { fraction, netWon } from '@/lib/reconciliation/fees'
+import { depositBlockedBySource, saleBlockedBySource } from '@/lib/reconciliation/ingest-guards'
 
 /**
  * 대사기 server DAL.
@@ -874,6 +875,21 @@ export async function createSale(
   }
   const doc = await resolveOptionalOwnedFk(scope, fields.raw_document_id, 'raw_document_id')
   if (!doc.ok) return doc
+
+  // Hard guard: bank-statement lines cannot be saved as sales, even if a
+  // model labelled them 매출. Owner must flip the 매출/입금 toggle.
+  let documentText: string | null = null
+  if (doc.data) {
+    const full = await getDocument(scope, doc.data)
+    if (full.ok) documentText = full.data.raw_text
+  }
+  const blockedSale = saleBlockedBySource({
+    snippet: asOptionalString(fields.source_snippet),
+    documentText,
+    amount: gross.data,
+  })
+  if (blockedSale) return dalErr(400, blockedSale)
+
   const channel = await resolveOptionalOwnedFk(scope, fields.channel_id, 'channel_id')
   if (!channel.ok) return channel
 
@@ -1147,6 +1163,18 @@ export async function createDeposit(
   if (!hint.ok) return hint
   const memo = asOptionalString(fields.memo)
   if (memo && memo.length > 500) return dalErr(400, 'memo must be 500 characters or fewer')
+
+  let depositDocText: string | null = null
+  if (doc.data) {
+    const full = await getDocument(scope, doc.data)
+    if (full.ok) depositDocText = full.data.raw_text
+  }
+  const blockedDeposit = depositBlockedBySource({
+    snippet: memo,
+    documentText: depositDocText,
+    amount: amount.data,
+  })
+  if (blockedDeposit) return dalErr(400, blockedDeposit)
 
   const issuerFields = await validateDepositIssuerFields(scope, fields)
   if (!issuerFields.ok) return issuerFields

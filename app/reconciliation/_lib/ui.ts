@@ -59,6 +59,8 @@ export type ClassifiedRowView = {
   confidence: number
   needs_review: boolean
   agreement: string
+  kind_disputed?: boolean
+  date_unreadable?: boolean
 }
 
 export type ClassifyResponse = {

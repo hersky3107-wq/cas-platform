@@ -35,8 +35,9 @@ function visionTranscribePrompt(today: string): string {
   return [
     'You transcribe a Korean store photo (receipt, POS screen, internet-banking or deposit-alert screenshot, passbook page, or a handwritten sales note) into plain text lines for a downstream classifier.',
     'One transaction per line, exactly as printed: date (as shown), the counterparty/description/memo VERBATIM (keep card-issuer names like 신한/NH/하나/삼성 exactly), and the amount in won.',
+    'Copy POS header dates verbatim: 집계일시, 집계기간, and per-line YY/MM/DD (e.g. 26/09/05). Do not convert them and do not replace them with today.',
     `Today (Asia/Seoul) is ${today} — do NOT use it to complete dates that lack a year; transcribe the date exactly as printed.`,
-    'Include sales, refunds (mark 환불/취소 as printed), and inbound deposits (입금). Skip 잔액/balance lines, running totals, account numbers, and decoration.',
+    'Include sales, refunds (mark 환불/취소 as printed), inbound deposits (입금), and bank headers (입출금안내/적요/거래일자) when printed. Skip 잔액/balance-only lines, running totals, account numbers, and decoration. Omit 출금 (withdrawal) lines entirely.',
     'Do NOT invent, sum, or reorder rows. Do NOT decide whether a line is a sale or a deposit — just transcribe.',
     'If the photo is too blurry/dark/cropped to read ANY transaction line, set unreadable true.',
     'Respond with ONLY compact JSON, no prose, no code fences:',
