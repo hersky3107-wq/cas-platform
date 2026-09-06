@@ -79,3 +79,24 @@ export const CLASSIFY_MAX_TEXT_CHARS = 8000
  * deposits stay open (the owner may simply not have entered the sales yet).
  */
 export const UNMATCHED_DEPOSIT_AGE_DAYS = 14
+
+/**
+ * AI에게 물어보기 (ask.ts) — grounded Q&A over the owner's own ledger.
+ * The model sees a BOUNDED factual context (one month ± lookback), never
+ * the whole table: at most the row caps below, serialized as compact
+ * one-line facts with citation refs (S1/D2/R3…). One model per question
+ * (fallback to the second ADVISORY slot); ~1 call per question.
+ */
+export const ASK_MAX_QUESTION_CHARS = 300
+export const ASK_MAX_SALES_ROWS = 120
+export const ASK_MAX_DEPOSIT_ROWS = 100
+export const ASK_MAX_RECON_ROWS = 80
+export const ASK_MAX_PROPOSAL_ROWS = 10
+/** Days before the month start also included, so "지난주" works near the 1st. */
+export const ASK_LOOKBACK_DAYS = 14
+export const ASK_MAX_COMPLETION_TOKENS = 700
+
+/** Unified ingest: vision transcription of a photo into classifiable text lines. */
+export const INGEST_VISION_MAX_COMPLETION_TOKENS = 2000
+/** Spreadsheet rows serialized into classifiable text (matches SPREADSHEET_MAX_DATA_ROWS spirit). */
+export const INGEST_SHEET_MAX_ROWS = 200

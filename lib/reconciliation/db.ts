@@ -1167,6 +1167,17 @@ export async function createDeposit(
     .select('*')
     .single()
   if (error) return fromSbError(error)
+
+  // LEARNING (symmetric with updateDeposit): an issuer the OWNER set at
+  // creation time — e.g. corrected in the ingest review table before saving —
+  // teaches the memo alias so the same memo resolves for free next time.
+  if (issuerFields.data.issuer_source === 'user' && typeof issuerFields.data.issuer_id === 'string' && memo) {
+    const learned = await learnMemoAlias(scope, issuerFields.data.issuer_id, memo)
+    if (!learned.ok) {
+      console.warn('[reconciliation] learnMemoAlias on create failed:', learned.error)
+    }
+  }
+
   return requireReturnedOwner(data as DepositRecord, scope)
 }
 
