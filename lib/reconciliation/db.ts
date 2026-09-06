@@ -43,6 +43,8 @@ import {
   computeMonthlySummaryData,
   getMonthDateRange,
 } from '@/lib/reconciliation/summary'
+import { getIssuer, learnMemoAlias } from '@/lib/reconciliation/issuers-db'
+import { fraction, netWon } from '@/lib/reconciliation/fees'
 
 /**
  * 대사기 server DAL.
@@ -140,15 +142,6 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[], field: s
   return dalErr(400, `${field} must be one of: ${allowed.join(', ')}`)
 }
 
-function optionalOneOf<T extends string>(
-  value: unknown,
-  allowed: readonly T[],
-  field: string
-): DalResult<T | null> {
-  if (value == null || value === '') return dalOk(null)
-  return oneOf(value, allowed, field)
-}
-
 function encryptRawText(plain: string): string {
   return RAW_TEXT_PREFIX + encryptText(plain)
 }
@@ -169,7 +162,9 @@ function decodeDocument(row: RawDocument): RawDocument {
 }
 
 function stripOwner(input: Record<string, unknown>): Record<string, unknown> {
-  const { user_id: _a, userId: _b, ...rest } = input
+  const rest = { ...input }
+  delete rest.user_id
+  delete rest.userId
   return rest
 }
 
@@ -887,6 +882,16 @@ export async function createSale(
     : dalOk<SaleKind | null>(null)
   if (!saleKindHint.ok) return saleKindHint
 
+  // Card issuer attribution (Step 2): must be an owned card_issuers row.
+  const issuerId = asOptionalUuid(fields.issuer_id, 'issuer_id')
+  if (!issuerId.ok) return issuerId
+  let issuerRow: { fee_rate: number; settlement_days: number } | null = null
+  if (issuerId.data) {
+    const issuer = await getIssuer(scope, issuerId.data)
+    if (!issuer.ok) return issuer
+    issuerRow = issuer.data
+  }
+
   let channelId = channel.data
   if (
     channelId == null &&
@@ -911,8 +916,10 @@ export async function createSale(
   const saleGroupId = asOptionalUuid(fields.sale_group_id, 'sale_group_id')
   if (!saleGroupId.ok) return saleGroupId
 
-  // Persist expected net/date from the channel rule at insert time so a later
-  // fee-rate change cannot rewrite history. Client-supplied values win.
+  // Persist expected net/date at insert time so a later fee-rate change
+  // cannot rewrite history. Client-supplied values win. An attributed card
+  // sale uses the ISSUER's FRACTION rate + settlement_days (authoritative,
+  // Step-2 req. F); channel rules only cover issuer-less rows.
   // discount_amount is reporting-only and is never subtracted from net.
   // Cash and paper_voucher: expected_net = gross, expected_deposit_date NULL.
   // Paper voucher is not same-day complete — the bank date is unknown.
@@ -920,10 +927,18 @@ export async function createSale(
   const isCashKind = saleKind.data === 'cash'
   let persistedNet = expectedNet.data
   let persistedSettle = expectedDeposit.data
-  if (persistedNet == null) persistedNet = computeExpectedNet(gross.data, rule)
+  if (persistedNet == null) {
+    persistedNet = issuerRow
+      ? netWon(gross.data, fraction(issuerRow.fee_rate))
+      : computeExpectedNet(gross.data, rule)
+  }
   if (persistedSettle == null) {
     if (isPaperVoucher || isCashKind || cashChannel) {
       persistedSettle = null
+    } else if (issuerRow) {
+      const d = new Date(`${saleDate.data}T00:00:00Z`)
+      d.setUTCDate(d.getUTCDate() + issuerRow.settlement_days)
+      persistedSettle = d.toISOString().slice(0, 10)
     } else {
       persistedSettle = computeExpectedDepositDate(saleDate.data, rule)
     }
@@ -945,6 +960,7 @@ export async function createSale(
       sale_group_id: saleGroupId.data,
       entry_source: entrySource.data,
       discount_amount: discount.data,
+      issuer_id: issuerId.data,
     })
     .select('*')
     .single()
@@ -1007,6 +1023,15 @@ export async function updateSale(
     const kind = oneOf(fields.sale_kind, SALE_KINDS, 'sale_kind')
     if (!kind.ok) return kind
     patch.sale_kind = kind.data
+  }
+  if ('issuer_id' in fields) {
+    const issuerId = asOptionalUuid(fields.issuer_id, 'issuer_id')
+    if (!issuerId.ok) return issuerId
+    if (issuerId.data) {
+      const issuer = await getIssuer(scope, issuerId.data)
+      if (!issuer.ok) return issuer
+    }
+    patch.issuer_id = issuerId.data
   }
   if (Object.keys(patch).length === 0) return dalErr(400, 'No fields to update')
 
@@ -1123,6 +1148,9 @@ export async function createDeposit(
   const memo = asOptionalString(fields.memo)
   if (memo && memo.length > 500) return dalErr(400, 'memo must be 500 characters or fewer')
 
+  const issuerFields = await validateDepositIssuerFields(scope, fields)
+  if (!issuerFields.ok) return issuerFields
+
   const { data, error } = await supabaseAdmin
     .from('deposit_records')
     .insert({
@@ -1134,11 +1162,55 @@ export async function createDeposit(
       channel_hint: hint.data,
       confidence: confidence.data,
       confirm_status: confirm.data,
+      ...issuerFields.data,
     })
     .select('*')
     .single()
   if (error) return fromSbError(error)
   return requireReturnedOwner(data as DepositRecord, scope)
+}
+
+/**
+ * Validate the Step-2 issuer attribution fields on a deposit payload.
+ * issuer_id must be an owned card_issuers row; issuer_source is one of
+ * parser/user/ai ('ai' additionally needs the Step-2 CHECK widening).
+ */
+async function validateDepositIssuerFields(
+  scope: OwnedScope,
+  fields: Record<string, unknown>
+): Promise<DalResult<Record<string, unknown>>> {
+  const out: Record<string, unknown> = {}
+  if ('issuer_id' in fields) {
+    const issuerId = asOptionalUuid(fields.issuer_id, 'issuer_id')
+    if (!issuerId.ok) return issuerId
+    if (issuerId.data) {
+      const issuer = await getIssuer(scope, issuerId.data)
+      if (!issuer.ok) return issuer
+    }
+    out.issuer_id = issuerId.data
+  }
+  if ('issuer_confidence' in fields) {
+    const n = asOptionalNumber(fields.issuer_confidence, 'issuer_confidence')
+    if (!n.ok) return n
+    if (n.data != null && (n.data < 0 || n.data > 1)) {
+      return dalErr(400, 'issuer_confidence must be between 0 and 1')
+    }
+    out.issuer_confidence = n.data
+  }
+  if ('issuer_source' in fields) {
+    if (fields.issuer_source == null || fields.issuer_source === '') {
+      out.issuer_source = null
+    } else if (
+      fields.issuer_source === 'parser' ||
+      fields.issuer_source === 'user' ||
+      fields.issuer_source === 'ai'
+    ) {
+      out.issuer_source = fields.issuer_source
+    } else {
+      return dalErr(400, 'issuer_source must be one of: parser, user, ai')
+    }
+  }
+  return dalOk(out)
 }
 
 export async function updateDeposit(
@@ -1187,6 +1259,14 @@ export async function updateDeposit(
     if (memo && memo.length > 500) return dalErr(400, 'memo must be 500 characters or fewer')
     patch.memo = memo
   }
+  const issuerFields = await validateDepositIssuerFields(scope, fields)
+  if (!issuerFields.ok) return issuerFields
+  Object.assign(patch, issuerFields.data)
+  // A user-made issuer correction defaults source/confidence accordingly so
+  // the UI can just send { issuer_id, issuer_source: 'user' }.
+  if (patch.issuer_id != null && patch.issuer_source === 'user' && !('issuer_confidence' in patch)) {
+    patch.issuer_confidence = null
+  }
   if (Object.keys(patch).length === 0) return dalErr(400, 'No fields to update')
 
   const { data, error } = await supabaseAdmin
@@ -1197,7 +1277,19 @@ export async function updateDeposit(
     .select('*')
     .maybeSingle()
   if (error) return fromSbError(error)
-  return requireReturnedOwner(data as DepositRecord | null, scope)
+  const owned = requireReturnedOwner(data as DepositRecord | null, scope)
+  if (!owned.ok) return owned
+
+  // LEARNING (Step-2 req. 5): the owner corrected the issuer by hand →
+  // remember the memo's leading token as an alias so the same memo resolves
+  // deterministically (for free) next time. Never throws the update away.
+  if (patch.issuer_source === 'user' && typeof patch.issuer_id === 'string') {
+    const learned = await learnMemoAlias(scope, patch.issuer_id, owned.data.memo)
+    if (!learned.ok) {
+      console.warn('[reconciliation] learnMemoAlias failed:', learned.error)
+    }
+  }
+  return owned
 }
 
 export async function deleteDeposit(scope: OwnedScope, id: string): Promise<DalResult<{ deleted: true }>> {

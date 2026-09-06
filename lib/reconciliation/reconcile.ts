@@ -3,62 +3,74 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { OwnedScope } from '@/lib/reconciliation/scope'
 import {
-  channelExpectsDeposit,
-  expectedDepositDate,
-  expectedNet,
+  channelFeeFraction,
   ruleFromRow,
-  TRANSFER_RULE,
+  ruleForChannelType,
   type ChannelRule,
 } from '@/lib/reconciliation/channel-rules'
+import { fraction } from '@/lib/reconciliation/fees'
+import {
+  addDaysIso,
+  planWindowReconciliations,
+  type GroupRule,
+  type WindowDepositInput,
+  type WindowPlan,
+  type WindowSaleInput,
+} from '@/lib/reconciliation/plan-issuer'
+import { listIssuers, resolveIssuerByAlias } from '@/lib/reconciliation/issuers-db'
+import { UNMATCHED_DEPOSIT_AGE_DAYS } from '@/lib/reconciliation/config'
 import {
   saleKindExemptFromReconcile,
+  RECONCILED_METHOD_CODES,
+  SETTLEMENT_ONLY_METHOD_CODES,
+  type CardIssuer,
   type DalResult,
   type DepositRecord,
   type PaymentChannel,
   type Reconciliation,
   type ReconciliationMatch,
   type ReconciliationWithMatches,
-  type ReconStatus,
   type SalesRecord,
 } from '@/lib/reconciliation/types'
 
 /**
- * 대사기 — transfer / app-voucher / card-type reconciliation engine.
+ * 정산대사기 — UNIFIED deterministic reconciliation engine (Step 2).
  *
- * SCOPE: three deposit-settling channel_types share ONE planner. Transfer
- * (STAGE 1) and app_voucher (STAGE 2) are 0-fee, same-day, deposited at
- * face value. Card-type (STAGE 2c) deducts a percent fee and settles NET.
- * Cash (channel_type='cash') is revenue-only (no bank deposit). paper_voucher
- * will be banked later on a day the system cannot know, so it is also NEVER
- * loaded by a reconciler (`loadChannelsByType` is only called with transfer /
- * app_voucher / card) and is skipped by the planner (expectsDeposit false).
- * There is no reconcileCash() or reconcilePaperVouchers() — the latter would
- * false-flag missing_deposit against the sale date.
+ * ONE run covers every RECONCILED method (payment_method_defs.is_reconciled):
+ *   card         → matched PER ISSUER (card_issuers): window
+ *                  [sale_date, sale_date + settlement_days + window_days],
+ *                  net = gross × (1 − fee_rate) with the issuer's FRACTION
+ *                  rate. ★card_issuers.fee_rate (fraction) takes precedence
+ *                  over any reconciliation_rules percent row — enforced by
+ *                  type: the planner only accepts FractionRate (fees.ts).
+ *   app_voucher / barcode_pay / delivery_app / foreign_pay / tax_free
+ *                → matched per channel with the channel's effective rule
+ *                  (percent → fraction through the one sanctioned
+ *                  toFraction() converter).
  *
- * OWNERSHIP: takes OwnedScope from withOwnedScope() and filters every query by
- * user_id = scope.userId. supabaseAdmin bypasses RLS; this is the auth gate.
+ * ★TRANSFER RECONCILER RETIRED (Step-2 req. D). cash / transfer /
+ * paper_voucher are 정산 전용 (settlement-only): their sales are never
+ * loaded, never matched, never missing_deposit; transfer-hinted deposits
+ * are treated as UNASSIGNED (the old catch-all hint carries no meaning) —
+ * they only enter matching if the memo resolves to a card issuer.
+ * Existing transfer reconciliation history rows are NOT touched: they
+ * remain readable via /api/reconciliation/results; the engine simply stops
+ * producing new ones. There is no reconcileTransfers() anymore.
  *
- * ALGORITHM (per expected-settlement date) — shared via
- * planTransferReconciliations():
- *   1. exact 1:1 NET-amount matches → one `matched` reconciliation each,
- *   2. remainder sales+deposits → one batch reconciliation:
- *        net-sums equal (within tolerance) → matched, else amount_mismatch (N:M),
- *   3. remainder sales, no deposit → missing_deposit,
- *   4. remainder deposits, no sale → left OPEN for transfer/app_voucher
- *        (byte-identical to Stage 1/2); card-type flags unmatched_deposit.
+ * DETERMINISTIC FIRST, AI SECOND (req. 4): this engine only writes what is
+ * CERTAIN (exact/batch matches inside the window, window-expired
+ * missing_deposit, aged candidate-free unmatched_deposit — see
+ * plan-issuer.ts). Every deposit it cannot resolve stays OPEN and is
+ * reported as the AI inference queue (match-infer.ts), where multi-model
+ * reasoning proposes and the OWNER confirms. Rows written here carry
+ * source='deterministic'; approved proposals carry source='ai_confirmed'.
  *
- * IDEMPOTENT: sales/deposits already referenced by a reconciliation_matches row
- * are excluded, so re-running does not double-create.
+ * IDEMPOTENT: already-matched sales/deposits are excluded before planning;
+ * re-running creates nothing new. When a deterministic match lands on a
+ * deposit/sale that a PENDING AI proposal references, the proposal is
+ * marked superseded (deterministic certainty outranks an unconfirmed guess).
  *
- * This module is split into:
- *   - planTransferReconciliations(): PURE decision logic. Takes plain arrays +
- *     a rule map + already-matched id sets, returns what *would* be created.
- *     No supabase, no I/O, no channel-type awareness at all (a channel is
- *     just a string key into the rule map).
- *   - reconcileByChannelType(): shared orchestrator.
- *   - reconcileTransfers() / reconcileAppVouchers() / reconcileCards(): thin
- *     wrappers. Transfer/app_voucher keep includeUnhinted / unmatched-deposit
- *     flags as before so their verified behavior stays byte-identical.
+ * OWNERSHIP: OwnedScope + user_id filter on every query, as before.
  */
 
 export type ReconcileOptions = {
@@ -67,19 +79,38 @@ export type ReconcileOptions = {
   channelId?: string | null
 }
 
+export type MethodBreakdown = {
+  matched: number
+  missing_deposit: number
+  unmatched_deposit: number
+}
+
 export type ReconcileSummary = {
   created: number
   matched: number
   missing_deposit: number
+  /** Deterministic engine never writes amount_mismatch anymore (kept for old-UI shape; always 0). */
   amount_mismatch: number
   unmatched_deposit: number
   sales_considered: number
   deposits_considered: number
+  /** Deposits deterministic matching could not resolve — the AI proposal queue. */
   deposits_left_open: number
+  /** Unmatched sales whose settlement window is still open (money may still arrive). */
+  sales_left_open: number
+  /** Deposits whose issuer was resolved for free by a memo alias in this run. */
+  issuer_resolved_by_alias: number
+  /** Reconciled-method sales that could not be grouped (no issuer, no channel). */
+  unassigned_sales: number
+  /** Deposits with no issuer and no usable hint — memo-resolve/AI classify territory. */
+  unassigned_deposits: number
+  /** Pending AI proposals superseded because a deterministic match consumed their rows. */
+  superseded_proposals: number
+  by_method: Record<string, MethodBreakdown>
+  engine: 'deterministic'
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-const AMOUNT_EPSILON = 0.005
 
 function dalOk<T>(data: T): DalResult<T> {
   return { ok: true, data }
@@ -87,246 +118,49 @@ function dalOk<T>(data: T): DalResult<T> {
 function dalErr(status: number, error: string): DalResult<never> {
   return { ok: false, status, error }
 }
-function fromSbError(error: { message: string }): DalResult<never> {
+function fromSbError(error: { message: string; code?: string }): DalResult<never> {
+  if (error.code === '42P01') {
+    return dalErr(503, '스키마가 아직 준비되지 않았습니다 — Step-1/Step-2 마이그레이션 SQL을 먼저 실행하세요.')
+  }
   console.error('[reconciliation:reconcile] db error:', error.message)
   return dalErr(500, 'Database error')
 }
 
-export type MatchPair = { sale_id: string | null; deposit_id: string | null }
-
-export type PlannedReconciliation = {
-  status: ReconStatus
-  discrepancyAmount: number
-  discrepancyReason: string | null
-  pairs: MatchPair[]
+/** YYYY-MM-DD in KST — window-expiry decisions must use the store's clock, not UTC. */
+export function todayKst(): string {
+  return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10)
 }
 
-export type PlanSummary = Omit<ReconcileSummary, 'created'>
-
-/** Minimal shape the pure planner needs from a sales_records row. */
-export type PlannerSaleInput = Pick<
-  SalesRecord,
-  'id' | 'sale_date' | 'gross_amount' | 'expected_net_amount' | 'channel_id'
->
-
-/** Minimal shape the pure planner needs from a deposit_records row. */
-export type PlannerDepositInput = Pick<
-  DepositRecord,
-  'id' | 'deposit_date' | 'actual_amount' | 'channel_hint'
->
-
-export type PlanTransfersInput = {
-  sales: readonly PlannerSaleInput[]
-  deposits: readonly PlannerDepositInput[]
-  /** channel_id -> effective ChannelRule. Missing entries fall back to TRANSFER_RULE. */
-  ruleByChannelId?: ReadonlyMap<string, ChannelRule>
-  /** sales_record ids already linked by an existing reconciliation_matches row. */
-  alreadyMatchedSaleIds?: ReadonlySet<string>
-  /** deposit_record ids already linked by an existing reconciliation_matches row. */
-  alreadyMatchedDepositIds?: ReadonlySet<string>
-  /**
-   * When true, leftover deposits (no open sale on that date) become
-   * unmatched_deposit plans. Default false: leftover deposits stay OPEN
-   * (Stage-1/2 transfer + app_voucher behavior, byte-identical).
-   */
-  flagUnmatchedDeposits?: boolean
-}
-
-function groupByDate<T extends { [k: string]: unknown }>(rows: T[], key: keyof T): Map<string, T[]> {
-  const map = new Map<string, T[]>()
-  for (const row of rows) {
-    const d = String(row[key])
-    const list = map.get(d) ?? []
-    list.push(row)
-    map.set(d, list)
-  }
-  return map
-}
+// ── method defs ──────────────────────────────────────────────────────────────
 
 /**
- * PURE matching engine. No supabase, no async — given already-loaded sales
- * and deposits (plus optional rule/already-matched inputs), returns exactly
- * what reconciliations *would* be created and a summary of the run.
- *
- * Idempotency is enforced right here: rows whose id is in
- * alreadyMatchedSaleIds / alreadyMatchedDepositIds are excluded up front, so
- * re-running with the same already-matched sets never re-plans them.
+ * payment_method_defs.is_reconciled map. Falls back to the in-code constant
+ * sets when the defs table is unreadable — the split is spec, not just data.
  */
-export function planTransferReconciliations(
-  input: PlanTransfersInput
-): { plans: PlannedReconciliation[]; summary: PlanSummary } {
-  const ruleByChannelId = input.ruleByChannelId ?? new Map<string, ChannelRule>()
-  const matchedSaleIds = input.alreadyMatchedSaleIds ?? new Set<string>()
-  const matchedDepositIds = input.alreadyMatchedDepositIds ?? new Set<string>()
-  const flagUnmatchedDeposits = input.flagUnmatchedDeposits === true
-
-  const ruleFor = (sale: PlannerSaleInput): ChannelRule =>
-    (sale.channel_id && ruleByChannelId.get(sale.channel_id)) || TRANSFER_RULE
-
-  // Cash / paper_voucher (expectsDeposit: false) are never matched and never
-  // flagged missing_deposit. Orchestrators also omit those channels; this
-  // filter is defense-in-depth if such a sale is passed in.
-  const sales = input.sales.filter(
-    (s) => !matchedSaleIds.has(s.id) && channelExpectsDeposit(ruleFor(s))
-  )
-  const deposits = input.deposits.filter((d) => !matchedDepositIds.has(d.id))
-
-  const plans: PlannedReconciliation[] = []
-  const summary: PlanSummary = {
-    matched: 0,
-    missing_deposit: 0,
-    amount_mismatch: 0,
-    unmatched_deposit: 0,
-    sales_considered: sales.length,
-    deposits_considered: deposits.length,
-    deposits_left_open: 0,
-  }
-
-  const netOf = (sale: PlannerSaleInput): number =>
-    sale.expected_net_amount != null ? sale.expected_net_amount : expectedNet(sale.gross_amount, ruleFor(sale))
-  const toleranceOf = (sale: PlannerSaleInput): number => ruleFor(sale).toleranceWon
-
-  // Index sales by their EXPECTED deposit date (transfer = same day), deposits by actual date.
-  const salesByExpected = new Map<string, PlannerSaleInput[]>()
-  for (const sale of sales) {
-    const expDate = expectedDepositDate(sale.sale_date, ruleFor(sale))
-    const list = salesByExpected.get(expDate) ?? []
-    list.push(sale)
-    salesByExpected.set(expDate, list)
-  }
-  const depositsByDate = groupByDate(deposits as PlannerDepositInput[], 'deposit_date')
-
-  const allDates = new Set<string>([...salesByExpected.keys(), ...depositsByDate.keys()])
-
-  for (const date of Array.from(allDates).sort()) {
-    const dateSales = [...(salesByExpected.get(date) ?? [])]
-    const dateDeposits = [...(depositsByDate.get(date) ?? [])]
-
-    // ── pass 1: exact 1:1 amount matches ────────────────────────────────────
-    const depositUsed = new Set<string>()
-    for (const sale of [...dateSales]) {
-      const target = netOf(sale)
-      const tol = toleranceOf(sale)
-      const hit = dateDeposits.find(
-        (d) => !depositUsed.has(d.id) && Math.abs(d.actual_amount - target) <= Math.max(tol, AMOUNT_EPSILON)
-      )
-      if (!hit) continue
-      depositUsed.add(hit.id)
-      const idx = dateSales.indexOf(sale)
-      if (idx >= 0) dateSales.splice(idx, 1)
-      plans.push({
-        status: 'matched',
-        discrepancyAmount: 0,
-        discrepancyReason: null,
-        pairs: [{ sale_id: sale.id, deposit_id: hit.id }],
-      })
-      summary.matched++
+export async function loadReconciledMethodSet(): Promise<DalResult<Set<string>>> {
+  const { data, error } = await supabaseAdmin
+    .from('payment_method_defs')
+    .select('code, is_reconciled')
+  if (error) {
+    if (error.code === '42P01') {
+      console.warn('[reconciliation:reconcile] payment_method_defs missing — using in-code method split')
+      return dalOk(new Set<string>(RECONCILED_METHOD_CODES))
     }
-    const remDeposits = dateDeposits.filter((d) => !depositUsed.has(d.id))
-
-    // ── pass 2: batch remainder (N sales ↔ N deposits) ──────────────────────
-    if (dateSales.length > 0 && remDeposits.length > 0) {
-      const expectedSum = dateSales.reduce((sum, s) => sum + netOf(s), 0)
-      const actualSum = remDeposits.reduce((sum, d) => sum + d.actual_amount, 0)
-      const diff = Math.round((expectedSum - actualSum) * 100) / 100
-      const tol = Math.max(...dateSales.map(toleranceOf), 0)
-      const pairs: MatchPair[] = []
-      for (const s of dateSales) {
-        for (const d of remDeposits) pairs.push({ sale_id: s.id, deposit_id: d.id })
-      }
-      if (Math.abs(diff) <= Math.max(tol, AMOUNT_EPSILON)) {
-        plans.push({
-          status: 'matched',
-          discrepancyAmount: 0,
-          discrepancyReason: `batch: ${dateSales.length} sale(s) ↔ ${remDeposits.length} deposit(s) on ${date}`,
-          pairs,
-        })
-        summary.matched++
-      } else {
-        plans.push({
-          status: 'amount_mismatch',
-          discrepancyAmount: diff,
-          discrepancyReason: `expected ${expectedSum} vs received ${actualSum} on ${date}`,
-          pairs,
-        })
-        summary.amount_mismatch++
-      }
-    } else if (dateSales.length > 0) {
-      // ── pass 3: sales with no deposit → missing_deposit ───────────────────
-      const expectedSum = dateSales.reduce((sum, s) => sum + netOf(s), 0)
-      const pairs: MatchPair[] = dateSales.map((s) => ({ sale_id: s.id, deposit_id: null }))
-      plans.push({
-        status: 'missing_deposit',
-        discrepancyAmount: expectedSum,
-        discrepancyReason: `no transfer deposit found for ${dateSales.length} sale(s) expected on ${date}`,
-        pairs,
-      })
-      summary.missing_deposit++
-    } else if (remDeposits.length > 0) {
-      // ── pass 4: deposits with no sale ─────────────────────────────────────
-      // Transfer / app_voucher (default): leave OPEN — byte-identical to Stage 1/2.
-      // Card-type (flagUnmatchedDeposits): numeric unmatched_deposit flag only;
-      // no AI explanation in this step.
-      if (flagUnmatchedDeposits) {
-        const actualSum = remDeposits.reduce((sum, d) => sum + d.actual_amount, 0)
-        plans.push({
-          status: 'unmatched_deposit',
-          discrepancyAmount: Math.round(actualSum * 100) / 100,
-          discrepancyReason: `no sale found for ${remDeposits.length} deposit(s) on ${date}`,
-          pairs: remDeposits.map((d) => ({ sale_id: null, deposit_id: d.id })),
-        })
-        summary.unmatched_deposit++
-      } else {
-        summary.deposits_left_open += remDeposits.length
-      }
-    }
+    return fromSbError(error)
   }
-
-  return { plans, summary }
-}
-
-async function loadChannelsByType(
-  scope: OwnedScope,
-  channelType: string,
-  channelId?: string | null
-): Promise<DalResult<PaymentChannel[]>> {
-  let q = supabaseAdmin
-    .from('payment_channels')
-    .select('*')
-    .eq('user_id', scope.userId)
-    .eq('channel_type', channelType)
-  if (channelId) q = q.eq('id', channelId)
-  const { data, error } = await q
-  if (error) return fromSbError(error)
-  return dalOk(((data ?? []) as PaymentChannel[]).filter((c) => c.user_id === scope.userId))
-}
-
-async function ruleForChannel(channel: PaymentChannel): Promise<ChannelRule> {
-  const today = new Date().toISOString().slice(0, 10)
-  const { data } = await supabaseAdmin
-    .from('reconciliation_rules')
-    .select('*')
-    .eq('channel_id', channel.id)
-    .lte('effective_from', today)
-    .order('effective_from', { ascending: false })
-    .limit(1)
-  const row = (data ?? [])[0] as
-    | {
-        fee_type?: string | null
-        fee_rate?: number | null
-        settlement_days?: number | null
-        tolerance_won?: number | null
-        tolerance_days?: number | null
-        effective_to?: string | null
-      }
-    | undefined
-  if (row && row.effective_to && row.effective_to < today) {
-    return ruleFromRow(null, channel.channel_type)
+  const set = new Set<string>()
+  for (const row of (data ?? []) as { code: string; is_reconciled: boolean }[]) {
+    if (row.is_reconciled) set.add(row.code)
   }
-  return ruleFromRow(row ?? null, channel.channel_type)
+  // Defensive: settlement-only codes must never be reconciled even if a defs
+  // row is edited by hand — the domain split is a product invariant.
+  for (const code of SETTLEMENT_ONLY_METHOD_CODES) set.delete(code)
+  return dalOk(set)
 }
 
-async function alreadyMatchedIds(
+// ── shared loaders ───────────────────────────────────────────────────────────
+
+export async function alreadyMatchedIds(
   scope: OwnedScope
 ): Promise<DalResult<{ sales: Set<string>; deposits: Set<string> }>> {
   const { data: recons, error: reconErr } = await supabaseAdmin
@@ -351,87 +185,129 @@ async function alreadyMatchedIds(
   return dalOk({ sales, deposits })
 }
 
-async function loadSales(
-  scope: OwnedScope,
-  channelIds: string[],
-  opts: ReconcileOptions
-): Promise<DalResult<SalesRecord[]>> {
-  if (channelIds.length === 0) return dalOk([])
-  let q = supabaseAdmin
-    .from('sales_records')
+export async function ruleForChannel(channel: PaymentChannel): Promise<ChannelRule> {
+  const today = new Date().toISOString().slice(0, 10)
+  const { data } = await supabaseAdmin
+    .from('reconciliation_rules')
     .select('*')
-    .eq('user_id', scope.userId)
-    .in('channel_id', channelIds)
-    .order('sale_date', { ascending: true })
-  if (opts.from) q = q.gte('sale_date', opts.from)
-  if (opts.to) q = q.lte('sale_date', opts.to)
-  const { data, error } = await q
-  if (error) return fromSbError(error)
-  return dalOk(
-    ((data ?? []) as SalesRecord[]).filter(
-      (s) => s.user_id === scope.userId && !saleKindExemptFromReconcile(s.sale_kind)
-    )
-  )
+    .eq('channel_id', channel.id)
+    .lte('effective_from', today)
+    .order('effective_from', { ascending: false })
+    .limit(1)
+  const row = (data ?? [])[0] as
+    | {
+        fee_type?: string | null
+        fee_rate?: number | null
+        settlement_days?: number | null
+        tolerance_won?: number | null
+        tolerance_days?: number | null
+        effective_to?: string | null
+      }
+    | undefined
+  if (row && row.effective_to && row.effective_to < today) {
+    return ruleFromRow(null, channel.channel_type)
+  }
+  return ruleFromRow(row ?? null, channel.channel_type)
 }
+
+// ── group construction ───────────────────────────────────────────────────────
+
+const issuerGroupKey = (issuerId: string): string => `issuer:${issuerId}`
+const channelGroupKey = (methodCode: string, channelId: string): string =>
+  `method:${methodCode}:${channelId}`
+
+type GroupingContext = {
+  rulesByGroup: Map<string, GroupRule>
+  issuersById: Map<string, CardIssuer>
+  channelsById: Map<string, PaymentChannel>
+  reconciledMethods: Set<string>
+  /** widest settle+window across groups — bounds the date-range extension. */
+  maxLagDays: number
+}
+
+function buildGroups(
+  issuers: CardIssuer[],
+  channels: PaymentChannel[],
+  channelRules: Map<string, ChannelRule>,
+  reconciledMethods: Set<string>
+): GroupingContext {
+  const rulesByGroup = new Map<string, GroupRule>()
+  const issuersById = new Map<string, CardIssuer>()
+  const channelsById = new Map<string, PaymentChannel>()
+  let maxLagDays = UNMATCHED_DEPOSIT_AGE_DAYS
+
+  for (const issuer of issuers) {
+    issuersById.set(issuer.id, issuer)
+    const key = issuerGroupKey(issuer.id)
+    rulesByGroup.set(key, {
+      groupKey: key,
+      methodCode: 'card',
+      issuerId: issuer.id,
+      label: issuer.name,
+      fee: fraction(issuer.fee_rate),
+      settlementDays: issuer.settlement_days,
+      windowDays: issuer.settlement_window_days,
+      toleranceWon: 0,
+    })
+    maxLagDays = Math.max(maxLagDays, issuer.settlement_days + issuer.settlement_window_days)
+  }
+
+  for (const channel of channels) {
+    channelsById.set(channel.id, channel)
+    if (!reconciledMethods.has(channel.channel_type)) continue
+    const rule = channelRules.get(channel.id) ?? ruleForChannelType(channel.channel_type)
+    if (!rule) continue
+    const key = channelGroupKey(channel.channel_type, channel.id)
+    rulesByGroup.set(key, {
+      groupKey: key,
+      methodCode: channel.channel_type,
+      issuerId: null,
+      label: channel.name,
+      fee: channelFeeFraction(rule),
+      settlementDays: rule.settlementDays,
+      windowDays: rule.toleranceDays,
+      toleranceWon: rule.toleranceWon,
+    })
+    maxLagDays = Math.max(maxLagDays, rule.settlementDays + rule.toleranceDays)
+  }
+
+  return { rulesByGroup, issuersById, channelsById, reconciledMethods, maxLagDays }
+}
+
+// ── persistence ──────────────────────────────────────────────────────────────
 
 /**
- * Deposits eligible for ONE channel_type's pass: explicitly hinted at one of
- * `channelIds`, or — only when `includeUnhinted` — carrying no hint at all.
- *
- * Transfer keeps `includeUnhinted = true` (its Stage-1 behavior, unchanged):
- * the parser often can't identify the source bank, so an un-hinted deposit
- * defaults to the transfer catch-all.
- *
- * App-voucher uses `includeUnhinted = false`: a voucher deposit is only ever
- * produced by VOUCHER_PARSE_SPEC, which extracts the voucher name and hints
- * the channel at parse time (see app/api/reconciliation/parse-voucher).
- * Card-type also uses `includeUnhinted = false`: card deposits are entered
- * with an explicit channel_hint (manual for now; unified parse later).
- * Leaving un-hinted deposits out of these passes means the engines never
- * compete over the same ambiguous row.
+ * Insert one planned reconciliation + its match rows. Written with the
+ * Step-2 columns (issuer_id / method_code / source); when the optional
+ * `source` column has not been migrated yet (42703), retries without it so
+ * the deterministic engine keeps working pre-migration.
  */
-async function loadDepositsForChannels(
+async function insertPlanned(
   scope: OwnedScope,
-  channelIds: Set<string>,
-  opts: ReconcileOptions,
-  includeUnhinted: boolean
-): Promise<DalResult<DepositRecord[]>> {
-  let q = supabaseAdmin
-    .from('deposit_records')
-    .select('*')
-    .eq('user_id', scope.userId)
-    .order('deposit_date', { ascending: true })
-  if (opts.from) q = q.gte('deposit_date', opts.from)
-  if (opts.to) q = q.lte('deposit_date', opts.to)
-  const { data, error } = await q
-  if (error) return fromSbError(error)
-  return dalOk(
-    ((data ?? []) as DepositRecord[]).filter(
-      (d) =>
-        d.user_id === scope.userId &&
-        (d.channel_hint == null ? includeUnhinted : channelIds.has(d.channel_hint))
-    )
-  )
-}
-
-async function insertReconciliation(
-  scope: OwnedScope,
-  plan: PlannedReconciliation
+  plan: WindowPlan
 ): Promise<DalResult<ReconciliationWithMatches>> {
-  const { data, error } = await supabaseAdmin
+  const base = {
+    user_id: scope.userId,
+    status: plan.status,
+    discrepancy_amount: Math.round(plan.discrepancyAmount * 100) / 100,
+    discrepancy_reason: plan.discrepancyReason,
+    security_flag: 'none',
+    resolved: false,
+    issuer_id: plan.issuerId,
+    method_code: plan.methodCode,
+  }
+
+  let inserted = await supabaseAdmin
     .from('reconciliations')
-    .insert({
-      user_id: scope.userId,
-      status: plan.status,
-      discrepancy_amount: Math.round(plan.discrepancyAmount * 100) / 100,
-      discrepancy_reason: plan.discrepancyReason,
-      security_flag: 'none',
-      resolved: false,
-    })
+    .insert({ ...base, source: 'deterministic' })
     .select('*')
     .single()
-  if (error) return fromSbError(error)
-  const recon = data as Reconciliation
+  if (inserted.error && inserted.error.code === '42703') {
+    console.warn('[reconciliation:reconcile] reconciliations.source missing — run the Step-2 SQL; inserting without it')
+    inserted = await supabaseAdmin.from('reconciliations').insert(base).select('*').single()
+  }
+  if (inserted.error) return fromSbError(inserted.error)
+  const recon = inserted.data as Reconciliation
   if (recon.user_id !== scope.userId) return dalErr(500, 'Ownership mismatch')
 
   const rows = plan.pairs
@@ -444,125 +320,265 @@ async function insertReconciliation(
 
   let matches: ReconciliationMatch[] = []
   if (rows.length > 0) {
-    const inserted = await supabaseAdmin.from('reconciliation_matches').insert(rows).select('*')
-    if (inserted.error) {
+    const ins = await supabaseAdmin.from('reconciliation_matches').insert(rows).select('*')
+    if (ins.error) {
       await supabaseAdmin
         .from('reconciliations')
         .delete()
         .eq('id', recon.id)
         .eq('user_id', scope.userId)
-      return fromSbError(inserted.error)
+      return fromSbError(ins.error)
     }
-    matches = (inserted.data ?? []) as ReconciliationMatch[]
+    matches = (ins.data ?? []) as ReconciliationMatch[]
   }
   return dalOk({ ...recon, matches })
 }
 
 /**
- * Shared orchestrator for any channel_type whose settlement behaves like a
- * transfer (0 fee, direct deposit): loads that type's channels/rules/open
- * rows, then delegates every matching decision to the pure planner. Adding a
- * third such channel means one more thin wrapper below, not a new engine.
+ * A deterministic match outranks an unconfirmed AI guess: mark pending
+ * proposals that reference a just-consumed deposit or sale as superseded.
+ * Silently a no-op before the proposals table is migrated.
  */
-async function reconcileByChannelType(
+async function supersedePendingProposals(
   scope: OwnedScope,
-  opts: ReconcileOptions,
-  channelType: string,
-  includeUnhintedDeposits: boolean,
-  flagUnmatchedDeposits = false
+  consumedSaleIds: string[],
+  consumedDepositIds: string[]
+): Promise<number> {
+  if (consumedSaleIds.length === 0 && consumedDepositIds.length === 0) return 0
+  let superseded = 0
+  try {
+    if (consumedDepositIds.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('reconciliation_match_proposals')
+        .update({ status: 'superseded', decided_at: new Date().toISOString() })
+        .eq('user_id', scope.userId)
+        .eq('status', 'pending')
+        .in('deposit_record_id', consumedDepositIds)
+        .select('id')
+      if (error) throw error
+      superseded += (data ?? []).length
+    }
+    if (consumedSaleIds.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('reconciliation_match_proposals')
+        .update({ status: 'superseded', decided_at: new Date().toISOString() })
+        .eq('user_id', scope.userId)
+        .eq('status', 'pending')
+        .overlaps('proposed_sale_ids', consumedSaleIds)
+        .select('id')
+      if (error) throw error
+      superseded += (data ?? []).length
+    }
+  } catch (e: unknown) {
+    const code = (e as { code?: string })?.code
+    if (code !== '42P01') {
+      console.warn('[reconciliation:reconcile] supersede proposals failed:', e instanceof Error ? e.message : e)
+    }
+  }
+  return superseded
+}
+
+// ── the unified run ──────────────────────────────────────────────────────────
+
+export async function runUnifiedReconcile(
+  scope: OwnedScope,
+  opts: ReconcileOptions = {}
 ): Promise<DalResult<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>> {
   for (const [k, v] of Object.entries(opts)) {
     if ((k === 'from' || k === 'to') && v != null && !DATE_RE.test(String(v))) {
       return dalErr(400, `${k} must be YYYY-MM-DD`)
     }
   }
-  // A supplied channel_id is scoped by loadChannelsByType's user_id filter, so
-  // a foreign channel simply yields zero channels of this type (no cross-user read).
-  const channelsRes = await loadChannelsByType(scope, channelType, opts.channelId ?? undefined)
-  if (!channelsRes.ok) return channelsRes
-  const channels = channelsRes.data
-  const emptySummary: ReconcileSummary = {
-    created: 0,
-    matched: 0,
-    missing_deposit: 0,
-    amount_mismatch: 0,
-    unmatched_deposit: 0,
-    sales_considered: 0,
-    deposits_considered: 0,
-    deposits_left_open: 0,
-  }
-  if (channels.length === 0) return dalOk({ created: [], summary: emptySummary })
 
-  const channelIds = channels.map((c) => c.id)
-  const channelIdSet = new Set(channelIds)
-  const ruleByChannelId = new Map<string, ChannelRule>()
+  const methodsRes = await loadReconciledMethodSet()
+  if (!methodsRes.ok) return methodsRes
+  const reconciledMethods = methodsRes.data
+
+  const issuersRes = await listIssuers(scope, { includeInactive: true })
+  if (!issuersRes.ok) return issuersRes
+  const issuers = issuersRes.data
+
+  const { data: channelRows, error: channelErr } = await supabaseAdmin
+    .from('payment_channels')
+    .select('*')
+    .eq('user_id', scope.userId)
+  if (channelErr) return fromSbError(channelErr)
+  let channels = ((channelRows ?? []) as PaymentChannel[]).filter((c) => c.user_id === scope.userId)
+  if (opts.channelId) {
+    // Optional narrowing (legacy API surface): only that channel's method
+    // group runs; issuer groups still run — card money has no single channel.
+    channels = channels.filter((c) => c.id === opts.channelId)
+  }
+
+  const channelRules = new Map<string, ChannelRule>()
   for (const channel of channels) {
-    ruleByChannelId.set(channel.id, await ruleForChannel(channel))
+    if (!reconciledMethods.has(channel.channel_type)) continue
+    channelRules.set(channel.id, await ruleForChannel(channel))
+  }
+
+  const ctx = buildGroups(issuers, channels, channelRules, reconciledMethods)
+
+  // ── load sales (range extended backwards so a deposit inside [from,to]
+  //    can still see the sales it settles) ────────────────────────────────────
+  let salesQ = supabaseAdmin
+    .from('sales_records')
+    .select('*')
+    .eq('user_id', scope.userId)
+    .order('sale_date', { ascending: true })
+  if (opts.from) salesQ = salesQ.gte('sale_date', addDaysIso(opts.from, -ctx.maxLagDays))
+  if (opts.to) salesQ = salesQ.lte('sale_date', opts.to)
+  const { data: saleRows, error: salesErr } = await salesQ
+  if (salesErr) return fromSbError(salesErr)
+  const allSales = ((saleRows ?? []) as SalesRecord[]).filter((s) => s.user_id === scope.userId)
+
+  // ── load deposits (range extended forwards for late settlements) ──────────
+  let depositQ = supabaseAdmin
+    .from('deposit_records')
+    .select('*')
+    .eq('user_id', scope.userId)
+    .order('deposit_date', { ascending: true })
+  if (opts.from) depositQ = depositQ.gte('deposit_date', opts.from)
+  if (opts.to) depositQ = depositQ.lte('deposit_date', addDaysIso(opts.to, ctx.maxLagDays))
+  const { data: depositRows, error: depositsErr } = await depositQ
+  if (depositsErr) return fromSbError(depositsErr)
+  const allDeposits = ((depositRows ?? []) as DepositRecord[]).filter(
+    (d) => d.user_id === scope.userId
+  )
+
+  // ── free issuer resolution: deterministic memo-alias pass (persisted) ─────
+  // Only unresolved deposits; AI resolution is a separate, explicit route
+  // (resolve-issuers). An alias hit costs nothing and makes the issuer
+  // window matching below immediately effective.
+  let resolvedByAlias = 0
+  const activeIssuers = issuers.filter((i) => i.is_active)
+  for (const deposit of allDeposits) {
+    if (deposit.issuer_id != null || deposit.issuer_source === 'user') continue
+    const hit = resolveIssuerByAlias(deposit.memo, activeIssuers)
+    if (!hit) continue
+    const { error: upErr } = await supabaseAdmin
+      .from('deposit_records')
+      .update({ issuer_id: hit.issuer.id, issuer_confidence: 0.95, issuer_source: 'parser' })
+      .eq('id', deposit.id)
+      .eq('user_id', scope.userId)
+    if (upErr) {
+      console.warn('[reconciliation:reconcile] alias persist failed:', upErr.message)
+      continue
+    }
+    deposit.issuer_id = hit.issuer.id
+    deposit.issuer_confidence = 0.95
+    deposit.issuer_source = 'parser'
+    resolvedByAlias++
+  }
+
+  // ── group assignment ──────────────────────────────────────────────────────
+  const plannerSales: WindowSaleInput[] = []
+  let unassignedSales = 0
+  for (const sale of allSales) {
+    if (saleKindExemptFromReconcile(sale.sale_kind)) continue // cash / paper_voucher: 정산 전용
+    const channel = sale.channel_id ? ctx.channelsById.get(sale.channel_id) : undefined
+    if (sale.issuer_id && ctx.rulesByGroup.has(issuerGroupKey(sale.issuer_id))) {
+      plannerSales.push({
+        id: sale.id,
+        sale_date: sale.sale_date,
+        gross_amount: sale.gross_amount,
+        groupKey: issuerGroupKey(sale.issuer_id),
+      })
+      continue
+    }
+    if (channel && reconciledMethods.has(channel.channel_type)) {
+      plannerSales.push({
+        id: sale.id,
+        sale_date: sale.sale_date,
+        gross_amount: sale.gross_amount,
+        groupKey: channelGroupKey(channel.channel_type, channel.id),
+      })
+      continue
+    }
+    if (channel) continue // settlement-only channel (transfer/cash/paper) — 정산 전용, silently skipped
+    unassignedSales++ // reconciled-ish sale with no channel and no issuer — needs classification
+  }
+
+  const plannerDeposits: WindowDepositInput[] = []
+  let unassignedDeposits = 0
+  for (const deposit of allDeposits) {
+    if (deposit.issuer_id && ctx.rulesByGroup.has(issuerGroupKey(deposit.issuer_id))) {
+      plannerDeposits.push({
+        id: deposit.id,
+        deposit_date: deposit.deposit_date,
+        actual_amount: deposit.actual_amount,
+        groupKey: issuerGroupKey(deposit.issuer_id),
+      })
+      continue
+    }
+    const hinted = deposit.channel_hint ? ctx.channelsById.get(deposit.channel_hint) : undefined
+    if (hinted && reconciledMethods.has(hinted.channel_type)) {
+      plannerDeposits.push({
+        id: deposit.id,
+        deposit_date: deposit.deposit_date,
+        actual_amount: deposit.actual_amount,
+        groupKey: channelGroupKey(hinted.channel_type, hinted.id),
+      })
+      continue
+    }
+    // Unhinted, or hinted at a settlement-only channel (the legacy transfer
+    // catch-all hint means nothing now): NOT matched deterministically and
+    // NEVER flagged — memo resolution / AI classification decide its nature.
+    unassignedDeposits++
   }
 
   const matchedRes = await alreadyMatchedIds(scope)
   if (!matchedRes.ok) return matchedRes
 
-  const salesRes = await loadSales(scope, channelIds, opts)
-  if (!salesRes.ok) return salesRes
-  const depositsRes = await loadDepositsForChannels(scope, channelIdSet, opts, includeUnhintedDeposits)
-  if (!depositsRes.ok) return depositsRes
-
-  const { plans, summary: planSummary } = planTransferReconciliations({
-    sales: salesRes.data,
-    deposits: depositsRes.data,
-    ruleByChannelId,
+  const { plans, summary: planSummary } = planWindowReconciliations({
+    today: todayKst(),
+    rulesByGroup: ctx.rulesByGroup,
+    sales: plannerSales,
+    deposits: plannerDeposits,
     alreadyMatchedSaleIds: matchedRes.data.sales,
     alreadyMatchedDepositIds: matchedRes.data.deposits,
-    flagUnmatchedDeposits,
+    unmatchedDepositAgeDays: UNMATCHED_DEPOSIT_AGE_DAYS,
   })
 
   const created: ReconciliationWithMatches[] = []
+  const byMethod: Record<string, MethodBreakdown> = {}
+  const consumedSaleIds: string[] = []
+  const consumedDepositIds: string[] = []
   for (const plan of plans) {
-    const res = await insertReconciliation(scope, plan)
+    const res = await insertPlanned(scope, plan)
     if (!res.ok) return res
     created.push(res.data)
+    const bucket = (byMethod[plan.methodCode] ??= {
+      matched: 0,
+      missing_deposit: 0,
+      unmatched_deposit: 0,
+    })
+    bucket[plan.status]++
+    if (plan.status === 'matched') {
+      for (const pair of plan.pairs) {
+        if (pair.sale_id) consumedSaleIds.push(pair.sale_id)
+        if (pair.deposit_id) consumedDepositIds.push(pair.deposit_id)
+      }
+    }
   }
 
-  const summary: ReconcileSummary = { ...planSummary, created: created.length }
+  const superseded = await supersedePendingProposals(scope, consumedSaleIds, consumedDepositIds)
+
+  const summary: ReconcileSummary = {
+    created: created.length,
+    matched: planSummary.matched,
+    missing_deposit: planSummary.missing_deposit,
+    amount_mismatch: 0,
+    unmatched_deposit: planSummary.unmatched_deposit,
+    sales_considered: planSummary.sales_considered,
+    deposits_considered: planSummary.deposits_considered,
+    deposits_left_open: planSummary.deposits_left_open_for_ai,
+    sales_left_open: planSummary.sales_left_open,
+    issuer_resolved_by_alias: resolvedByAlias,
+    unassigned_sales: unassignedSales,
+    unassigned_deposits: unassignedDeposits,
+    superseded_proposals: superseded,
+    by_method: byMethod,
+    engine: 'deterministic',
+  }
   return dalOk({ created, summary })
 }
-
-/** STAGE 1: bank-transfer channels. Behavior unchanged from before Stage 2. */
-export async function reconcileTransfers(
-  scope: OwnedScope,
-  opts: ReconcileOptions = {}
-): Promise<DalResult<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>> {
-  return reconcileByChannelType(scope, opts, 'transfer', true)
-}
-
-/**
- * STAGE 2: app/barcode local-voucher channels (탐나는전 앱, 온누리 앱). Same
- * matcher as reconcileTransfers — zero new decision logic, see the module
- * doc comment.
- */
-export async function reconcileAppVouchers(
-  scope: OwnedScope,
-  opts: ReconcileOptions = {}
-): Promise<DalResult<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>> {
-  return reconcileByChannelType(scope, opts, 'app_voucher', false)
-}
-
-/**
- * STAGE 2c: card-type family (channel_type='card'). Same planner as
- * reconcileTransfers — fee + settlement window come from CARD_RULE / a
- * stored reconciliation_rules row. Unhinted deposits are excluded (set
- * channel_hint on a manually entered deposit). Leftover deposits are
- * flagged unmatched_deposit (numeric only; no AI explanation yet).
- */
-export async function reconcileCards(
-  scope: OwnedScope,
-  opts: ReconcileOptions = {}
-): Promise<DalResult<{ created: ReconciliationWithMatches[]; summary: ReconcileSummary }>> {
-  return reconcileByChannelType(scope, opts, 'card', false, true)
-}
-
-// Cash and paper_voucher have no reconciler. They are stored as revenue and
-// skipped by every deposit matcher — see CASH_RULE / PAPER_VOUCHER_RULE
-// expectsDeposit. loadChannelsByType is only invoked for 'transfer',
-// 'app_voucher', and 'card'.

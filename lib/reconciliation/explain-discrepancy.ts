@@ -21,6 +21,7 @@ import type { ChannelRule } from '@/lib/reconciliation/channel-rules'
 import type { OwnedScope } from '@/lib/reconciliation/scope'
 import {
   parseDiscrepancyAdvisory,
+  RECONCILED_METHOD_CODES,
   type AdvisoryConfidence,
   type AdvisoryModelVote,
   type DalResult,
@@ -484,9 +485,16 @@ export async function explainDiscrepancy(
     if (!ch.ok) return ch
     channel = ch.data
   }
-  const channelType = channel?.channel_type ?? (sales[0]?.sale_kind === 'card' ? 'card' : null)
-  if (channelType !== 'card') {
-    return dalErr(400, 'discrepancy explanation is only available for card-type mismatches')
+  // Gate: reconciled (대사) methods only. Historically 'card' alone; the
+  // Step-2 retype moved delivery apps / foreign pay onto their own codes and
+  // ai_confirmed mismatches can carry any reconciled method — all of them
+  // settle net-of-fee and deserve the advisory. Settlement-only methods
+  // (cash/transfer/paper_voucher) never have amount_mismatch rows at all.
+  const channelType =
+    channel?.channel_type ??
+    (sales[0]?.sale_kind === 'card' || sales.some((s) => s.issuer_id) ? 'card' : null)
+  if (!channelType || !(RECONCILED_METHOD_CODES as readonly string[]).includes(channelType)) {
+    return dalErr(400, 'discrepancy explanation is only available for reconciled-method mismatches')
   }
 
   const rule = await getEffectiveRuleForChannel(scope, channelId)

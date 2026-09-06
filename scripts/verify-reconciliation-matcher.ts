@@ -1,37 +1,58 @@
 /**
- * Unit tests for the transfer / app-voucher reconciliation matcher + parser
- * regex fallbacks.
+ * Unit tests for the Step-2 WINDOW reconciliation planner + fee units +
+ * parser regex fallbacks.
  *
  * DB-FREE: everything below calls a pure function with plain in-memory
  * fixtures. No supabaseAdmin, no network, no server-only side effects.
  *
- *   - planTransferReconciliations() (lib/reconciliation/reconcile.ts) is the
- *     pure decision core BOTH reconcileTransfers() AND reconcileAppVouchers()
- *     delegate to — it takes plain sales/deposits arrays + a rule map +
- *     already-matched id sets and returns what *would* be created, with no
- *     I/O and no channel-type awareness at all.
- *   - Card-type (STAGE 2c) reuses the same planner with CARD_RULE (2.5% fee,
- *     T+2 settlement). Tests below prove net comparison, batch N:M with fee,
- *     amount_mismatch, missing_deposit, and unmatched_deposit.
- *   - TRANSFER_PARSE_SPEC.regexFallback() / VOUCHER_PARSE_SPEC's
- *     regexFallback + voucher_type extraField (lib/reconciliation/parser.ts)
- *     are the deterministic fallbacks parseDeposit() uses when the AI path
- *     is unavailable — also pure.
+ *   - planWindowReconciliations() (lib/reconciliation/plan-issuer.ts) is the
+ *     pure decision core of the unified deterministic engine
+ *     (lib/reconciliation/reconcile.ts runUnifiedReconcile): per-issuer /
+ *     per-method WINDOW matching, FRACTION fees, refund netting, and the
+ *     deterministic-only statuses (matched / expired missing_deposit / aged
+ *     unmatched_deposit — everything else stays open for AI proposals).
+ *   - fees.ts is the unit-confusion guard: fraction() rejects percent-style
+ *     values, toFraction() is the one sanctioned converter.
+ *   - The fixtures below include the REAL store data from the spec:
+ *     2026-09-01 sales NH 31,500 / 하나 94,500 settling 09-03 / 09-02 at
+ *     ~0.15%, and late-August 신한/삼성 money landing 09-02.
+ *   - TRANSFER RETIREMENT: transfer/cash/paper_voucher have no planner group
+ *     — rows carrying a groupless key are ignored entirely (settlement-only).
+ *   - Parser fallbacks + duplicate flags + monthly summary tests unchanged.
  *
  * Run:
- *   npx tsx --import ./scripts/stubs/register-server-only.mjs scripts/verify-reconciliation-matcher.ts
- * (the stub is required because reconcile.ts/parser.ts `import 'server-only'`,
+ *   npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/verify-reconciliation-matcher.ts
+ * (the stub is required because parser.ts `import 'server-only'`,
  * which Next.js aliases away in its own bundler but a plain tsx process can't
- * resolve on its own — see scripts/stubs/register-server-only.mjs.)
+ * resolve on its own — see scripts/stubs/register-server-only.mjs. The env
+ * file only satisfies supabaseAdmin's module-load construction via the
+ * parser import — no test below touches the network or the DB.)
  */
 
 import {
-  planTransferReconciliations,
-  type PlannerDepositInput,
-  type PlannerSaleInput,
-} from '../lib/reconciliation/reconcile'
+  planWindowReconciliations,
+  addDaysIso,
+  type GroupRule,
+  type WindowDepositInput,
+  type WindowSaleInput,
+} from '../lib/reconciliation/plan-issuer'
+import {
+  fraction,
+  matchToleranceWon,
+  netWon,
+  percent,
+  toFraction,
+} from '../lib/reconciliation/fees'
+import {
+  channelExpectsDeposit,
+  channelFeeFraction,
+  CASH_RULE,
+  DELIVERY_APP_RULE,
+  PAPER_VOUCHER_RULE,
+  TRANSFER_RULE,
+  CHANNEL_PRESETS,
+} from '../lib/reconciliation/channel-rules'
 import { matchVoucherType, TRANSFER_PARSE_SPEC, VOUCHER_PARSE_SPEC } from '../lib/reconciliation/parser'
-import { APP_VOUCHER_RULE, CARD_RULE, CASH_RULE, PAPER_VOUCHER_RULE, channelExpectsDeposit, expectedDepositDate, expectedNet, TRANSFER_RULE, type ChannelRule } from '../lib/reconciliation/channel-rules'
 import { annotateDuplicates, normalizeDepositMemo } from '../lib/reconciliation/deposit-duplicates'
 import { extractDepositTextRows } from '../lib/reconciliation/deposit-text-rows'
 import { computeMonthlySummaryData, getMonthDateRange } from '../lib/reconciliation/summary'
@@ -51,424 +72,314 @@ function assert(condition: boolean, label: string): void {
   }
 }
 
-// ── Fixture helpers ────────────────────────────────────────────────────────
-
-function sale(
-  id: string,
-  date: string,
-  gross: number,
-  channelId: string | null = 'ch-transfer',
-  expectedNetAmount: number | null = null
-): PlannerSaleInput {
-  return {
-    id,
-    sale_date: date,
-    gross_amount: gross,
-    expected_net_amount: expectedNetAmount,
-    channel_id: channelId,
-  }
-}
-
-function deposit(id: string, date: string, amount: number, hint: string | null = null): PlannerDepositInput {
-  return { id, deposit_date: date, actual_amount: amount, channel_hint: hint }
-}
-
-// ── Matcher tests ──────────────────────────────────────────────────────────
-
-function runMatcherTests(): void {
-  console.log('\n══ reconcile matcher: planTransferReconciliations() ══')
+function section(title: string, run: () => void): void {
+  console.log(`\n══ ${title} ══`)
   const totalBefore = totalCount
   const failBefore = failCount
+  run()
+  const total = totalCount - totalBefore
+  const pass = total - (failCount - failBefore)
+  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
+}
 
-  // ── Case 1: exact 1:1 amount match → matched ──────────────────────────────
-  {
-    const sales = [sale('s1', '2026-08-01', 50000)]
-    const deposits = [deposit('d1', '2026-08-01', 50000)]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits })
+// ── Fixture helpers ────────────────────────────────────────────────────────
 
-    assert(plans.length === 1, 'Case 1: exactly one planned reconciliation')
-    assert(plans[0]?.status === 'matched', 'Case 1: status is matched')
-    assert(plans[0]?.discrepancyAmount === 0, 'Case 1: discrepancy is 0')
-    assert(
-      plans[0]?.pairs.length === 1 &&
-        plans[0]?.pairs[0]?.sale_id === 's1' &&
-        plans[0]?.pairs[0]?.deposit_id === 'd1',
-      'Case 1: single pair links s1 ↔ d1'
-    )
-    assert(summary.matched === 1, 'Case 1: summary.matched === 1')
-    assert(summary.sales_considered === 1 && summary.deposits_considered === 1, 'Case 1: summary considers 1 sale + 1 deposit')
+/** Per-user issuer defaults from the schema seed: 0.15% fraction, T+2, window 3. */
+function issuerGroup(key: string, name: string, over?: Partial<GroupRule>): GroupRule {
+  return {
+    groupKey: key,
+    methodCode: 'card',
+    issuerId: `id-${key}`,
+    label: name,
+    fee: fraction(0.0015),
+    settlementDays: 2,
+    windowDays: 3,
+    toleranceWon: 0,
+    ...over,
   }
+}
 
-  // ── Case 2: N:M batch, sums equal → matched with cross-links ─────────────
-  {
-    const sales = [sale('s2', '2026-08-02', 30000), sale('s3', '2026-08-02', 20000)]
-    const deposits = [deposit('d2', '2026-08-02', 45000), deposit('d3', '2026-08-02', 5000)]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits })
+function sale(id: string, date: string, gross: number, groupKey: string): WindowSaleInput {
+  return { id, sale_date: date, gross_amount: gross, groupKey }
+}
 
-    assert(plans.length === 1, 'Case 2: exactly one planned reconciliation (batch)')
-    assert(plans[0]?.status === 'matched', 'Case 2: batch status is matched (sums equal)')
-    assert(plans[0]?.discrepancyAmount === 0, 'Case 2: batch discrepancy is 0')
-    const pairKeys = new Set((plans[0]?.pairs ?? []).map((p) => `${p.sale_id}:${p.deposit_id}`))
-    assert(pairKeys.size === 4, 'Case 2: 4 cross-linked pairs (2 sales × 2 deposits)')
-    for (const s of ['s2', 's3']) {
-      for (const d of ['d2', 'd3']) {
-        assert(pairKeys.has(`${s}:${d}`), `Case 2: cross-link ${s} ↔ ${d} present`)
-      }
+function deposit(id: string, date: string, amount: number, groupKey: string): WindowDepositInput {
+  return { id, deposit_date: date, actual_amount: amount, groupKey }
+}
+
+const rules = (...groups: GroupRule[]): Map<string, GroupRule> =>
+  new Map(groups.map((g) => [g.groupKey, g]))
+
+// ── fee units (req. F) ─────────────────────────────────────────────────────
+
+function runFeeUnitTests(): void {
+  section('fees.ts — FRACTION vs PERCENT made impossible to confuse', () => {
+    assert(fraction(0.0015).value === 0.0015 && fraction(0.0015).unit === 'fraction', 'fraction(0.0015) builds a branded fraction')
+    let threw = false
+    try {
+      fraction(2.5) // percent-style value into the fraction constructor = unit bug
+    } catch {
+      threw = true
     }
-    assert(summary.matched === 1, 'Case 2: summary.matched === 1')
-  }
+    assert(threw, 'fraction(2.5) THROWS — percent units cannot leak into fraction land')
+    assert(toFraction(percent(2.5)).value === 0.025, 'toFraction(percent(2.5)) === 0.025 (the one sanctioned converter)')
+    assert(toFraction(fraction(0.0015)).value === 0.0015, 'toFraction(fraction) is identity')
 
-  // ── Case 3: batch, sums differ → amount_mismatch ──────────────────────────
-  {
-    const sales = [sale('s4', '2026-08-03', 30000), sale('s5', '2026-08-03', 20000)]
-    const deposits = [deposit('d4', '2026-08-03', 40000)]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits })
+    // Real store data at the measured ~0.15% preferential rate:
+    assert(netWon(31500, fraction(0.0015)) === 31453, 'netWon(31,500 @0.15%) === 31,453 (NH deposit, exact)')
+    assert(netWon(94500, fraction(0.0015)) === 94358, 'netWon(94,500 @0.15%) === 94,358 (하나 deposit was 94,359 — ₩1 rounding)')
+    assert(matchToleranceWon(1) >= 1, 'tolerance absorbs the measured ₩1 rounding gap')
+    assert(netWon(-20000, fraction(0.0015)) === -19970, 'refund net is sign-preserving')
 
-    assert(plans.length === 1, 'Case 3: exactly one planned reconciliation (batch)')
-    assert(plans[0]?.status === 'amount_mismatch', 'Case 3: batch status is amount_mismatch (sums differ)')
-    assert(plans[0]?.discrepancyAmount === 10000, 'Case 3: discrepancy is expected(50000) - actual(40000) = 10000')
-    assert(plans[0]?.pairs.length === 2, 'Case 3: 2 pairs (2 sales × 1 deposit)')
-    assert(summary.amount_mismatch === 1 && summary.matched === 0, 'Case 3: summary counts 1 amount_mismatch, 0 matched')
-  }
+    assert(channelFeeFraction(DELIVERY_APP_RULE).value === 0.275, 'channelFeeFraction(배달앱 27.5%) === 0.275 fraction')
+    assert(channelFeeFraction(TRANSFER_RULE).value === 0, 'channelFeeFraction(transfer 0%) === 0')
+  })
+}
 
-  // ── Case 4: sale with no deposit → missing_deposit ────────────────────────
-  {
-    const sales = [sale('s6', '2026-08-04', 10000)]
-    const deposits: PlannerDepositInput[] = []
-    const { plans, summary } = planTransferReconciliations({ sales, deposits })
+// ── the real September data from the spec ──────────────────────────────────
 
-    assert(plans.length === 1, 'Case 4: exactly one planned reconciliation')
-    assert(plans[0]?.status === 'missing_deposit', 'Case 4: status is missing_deposit')
-    assert(plans[0]?.discrepancyAmount === 10000, 'Case 4: discrepancy equals expected net amount')
+function runRealDataTests(): void {
+  section('window planner — REAL 9/1 store data (per-issuer windows)', () => {
+    const NH = issuerGroup('issuer:nh', 'NH') // T+2, window 3
+    const HANA = issuerGroup('issuer:hana', '하나', { settlementDays: 1 }) // 하나 was T+1 in the sample
+    const SHINHAN = issuerGroup('issuer:shinhan', '신한')
+    const SAMSUNG = issuerGroup('issuer:samsung', '삼성')
+
+    const sales = [
+      sale('s-nh', '2026-09-01', 31500, NH.groupKey),
+      sale('s-hana', '2026-09-01', 94500, HANA.groupKey),
+      // Late-August 신한 sale whose money lands 09-02 — months are irrelevant:
+      sale('s-shinhan', '2026-08-30', 68135, SHINHAN.groupKey),
+    ]
+    const deposits = [
+      deposit('d-hana', '2026-09-02', 94359, HANA.groupKey), // memo 하나90343621
+      deposit('d-nh', '2026-09-03', 31453, NH.groupKey), // memo NH15524303
+      deposit('d-shinhan', '2026-09-02', 68033, SHINHAN.groupKey), // memo 신한11895817
+      deposit('d-samsung', '2026-09-02', 42636, SAMSUNG.groupKey), // 삼성17938696 — sales not entered
+    ]
+
+    const { plans, summary } = planWindowReconciliations({
+      today: '2026-09-06',
+      rulesByGroup: rules(NH, HANA, SHINHAN, SAMSUNG),
+      sales,
+      deposits,
+    })
+
+    const matched = plans.filter((p) => p.status === 'matched')
+    assert(matched.length === 3, `NH + 하나 + 신한 all matched (got ${matched.length})`)
+    const byDeposit = new Map(matched.map((p) => [p.pairs[0]?.deposit_id, p]))
+
+    const nh = byDeposit.get('d-nh')
+    assert(nh?.pairs[0]?.sale_id === 's-nh', 'NH 31,500 (9/1) ↔ 31,453 (9/3): T+2 lands inside the window')
+    assert(nh?.discrepancyAmount === 0, 'NH residual 0 (rounding exact)')
+    assert(nh?.issuerId === 'id-issuer:nh' && nh?.methodCode === 'card', 'NH plan carries issuer + method for the result row')
+
+    const hana = byDeposit.get('d-hana')
+    assert(hana?.pairs[0]?.sale_id === 's-hana', '하나 94,500 (9/1) ↔ 94,359 (9/2): T+1 issuer lag')
+    assert(hana?.discrepancyAmount === -1, '하나 residual −1 (₩1 rounding ABSORBED, recorded honestly)')
+
+    const shinhan = byDeposit.get('d-shinhan')
+    assert(shinhan?.pairs[0]?.sale_id === 's-shinhan', '신한 8/30 매출 ↔ 9/2 입금: window crosses the month boundary')
+
+    // 삼성 42,636: its late-Aug sales were never entered. Deposit is only 4
+    // days old — NOT flagged, left open for the AI/owner. That is the whole
+    // deterministic-vs-AI split.
+    assert(summary.unmatched_deposit === 0, '삼성 deposit NOT flagged unmatched (too young to condemn)')
+    assert(summary.deposits_left_open_for_ai === 1, '삼성 deposit left open → AI inference queue')
+    assert(summary.missing_deposit === 0, 'no missing_deposit — every sale matched')
+
+    // Same data but weeks later: now the 삼성 deposit is aged and candidate-free.
+    const aged = planWindowReconciliations({
+      today: '2026-09-20',
+      rulesByGroup: rules(NH, HANA, SHINHAN, SAMSUNG),
+      sales,
+      deposits,
+    })
     assert(
-      plans[0]?.pairs.length === 1 && plans[0]?.pairs[0]?.sale_id === 's6' && plans[0]?.pairs[0]?.deposit_id === null,
-      'Case 4: one-sided pair (sale_id set, deposit_id null)'
+      aged.plans.some((p) => p.status === 'unmatched_deposit' && p.pairs[0]?.deposit_id === 'd-samsung'),
+      '삼성 deposit aged 14d+ with zero candidates → unmatched_deposit'
     )
-    assert(summary.missing_deposit === 1, 'Case 4: summary.missing_deposit === 1')
-  }
+  })
+}
 
-  // ── Case 5: re-run idempotency — already-linked rows are excluded ────────
-  {
-    const sales = [sale('s1', '2026-08-01', 50000)]
-    const deposits = [deposit('d1', '2026-08-01', 50000)]
+// ── refund netting (req. B) ────────────────────────────────────────────────
 
-    // First run: no prior matches, s1/d1 get matched (same as Case 1).
-    const first = planTransferReconciliations({ sales, deposits })
-    assert(first.plans.length === 1, 'Case 5: first run plans 1 reconciliation')
+function runRefundNettingTests(): void {
+  section('refund netting — negative sales net inside the batch', () => {
+    const HANA = issuerGroup('issuer:hana', '하나', { settlementDays: 1 })
+    const sales = [
+      sale('s-pos', '2026-09-01', 50000, HANA.groupKey),
+      sale('s-ref', '2026-09-01', -20000, HANA.groupKey), // refund, same issuer, same day
+    ]
+    // Batch deposit = (50,000 − 20,000) × (1 − 0.0015) per-sale-rounded:
+    const expected = netWon(50000, fraction(0.0015)) + netWon(-20000, fraction(0.0015)) // 49925 − 19970
+    assert(expected === 29955, `netted batch expectation is ₩29,955 (got ${expected})`)
 
-    // Re-run with the SAME rows, but now s1/d1 are already linked by a prior
-    // reconciliation_matches row (as reconcileTransfers() would report via
-    // alreadyMatchedIds()). The planner must exclude them — no double-create.
-    const rerun = planTransferReconciliations({
+    const { plans, summary } = planWindowReconciliations({
+      today: '2026-09-03',
+      rulesByGroup: rules(HANA),
+      sales,
+      deposits: [deposit('d1', '2026-09-02', 29955, HANA.groupKey)],
+    })
+    assert(plans.length === 1 && plans[0]?.status === 'matched', 'refund-netted day batch → matched')
+    assert(plans[0]?.matchKind === 'day_batch', 'match kind is day_batch (1:1 pass defers when a refund is in the window)')
+    assert(plans[0]?.pairs.length === 2, 'both the sale and the refund are linked to the deposit')
+    assert(plans[0]?.discrepancyReason.includes('환불 1건 상계'), 'reason names the refund netting')
+    assert(summary.matched === 1, 'summary.matched === 1')
+
+    // A positive-only 1:1 match must NOT fire against the un-netted amount:
+    const wrong = planWindowReconciliations({
+      today: '2026-09-03',
+      rulesByGroup: rules(HANA),
+      sales,
+      deposits: [deposit('d2', '2026-09-02', 49925, HANA.groupKey)],
+    })
+    assert(
+      wrong.plans.every((p) => p.status !== 'matched'),
+      'deposit equal to the UN-netted single sale does not match while a refund shares the window'
+    )
+  })
+}
+
+// ── batch / N:M (req. C) ───────────────────────────────────────────────────
+
+function runBatchTests(): void {
+  section('batch matching — multi-day windows, multi-deposit days', () => {
+    // Delivery app: 27.5% fee, D+3, window 7 — weekly batch of 2 sale days.
+    const DELIV: GroupRule = {
+      groupKey: 'method:delivery_app:ch1',
+      methodCode: 'delivery_app',
+      issuerId: null,
+      label: '배달의민족',
+      fee: channelFeeFraction(DELIVERY_APP_RULE),
+      settlementDays: DELIVERY_APP_RULE.settlementDays,
+      windowDays: DELIVERY_APP_RULE.toleranceDays,
+      toleranceWon: DELIVERY_APP_RULE.toleranceWon,
+    }
+    const s1 = sale('s1', '2026-09-01', 10000, DELIV.groupKey) // net 7,250
+    const s2 = sale('s2', '2026-09-02', 20000, DELIV.groupKey) // net 14,500
+    const batch = planWindowReconciliations({
+      today: '2026-09-05',
+      rulesByGroup: rules(DELIV),
+      sales: [s1, s2],
+      deposits: [deposit('d1', '2026-09-04', 21750, DELIV.groupKey)],
+    })
+    assert(batch.plans.length === 1 && batch.plans[0]?.status === 'matched', 'two sale days → one weekly batch deposit → matched')
+    assert(batch.plans[0]?.matchKind === 'window_batch', 'match kind is window_batch')
+    assert(batch.plans[0]?.pairs.length === 2, 'both sales linked to the batch deposit')
+
+    // Several deposits covering one period (multi_deposit_batch):
+    const NH = issuerGroup('issuer:nh', 'NH')
+    const m = planWindowReconciliations({
+      today: '2026-09-05',
+      rulesByGroup: rules(NH),
+      sales: [
+        sale('m1', '2026-09-01', 30000, NH.groupKey), // net 29,955
+        sale('m2', '2026-09-01', 40000, NH.groupKey), // net 39,940
+      ],
+      deposits: [
+        deposit('md1', '2026-09-03', 29955, NH.groupKey),
+        deposit('md2', '2026-09-03', 39940, NH.groupKey),
+      ],
+    })
+    // Exact 1:1s take precedence — but both resolve, nothing left open:
+    assert(m.summary.matched === 2 && m.summary.deposits_left_open_for_ai === 0, 'two same-day deposits both consumed (M:N period coverage)')
+  })
+}
+
+// ── deterministic-only flags ───────────────────────────────────────────────
+
+function runWindowExpiryTests(): void {
+  section('missing_deposit fires only after the window EXPIRES', () => {
+    const NH = issuerGroup('issuer:nh', 'NH') // window end = sale + 2 + 3
+    const sales = [sale('s1', '2026-09-01', 31500, NH.groupKey)]
+
+    const young = planWindowReconciliations({
+      today: '2026-09-04', // window ends 09-06 — money may still be coming
+      rulesByGroup: rules(NH),
+      sales,
+      deposits: [],
+    })
+    assert(young.plans.length === 0, 'window still open → NO missing_deposit yet')
+    assert(young.summary.sales_left_open === 1, 'sale reported as left open instead')
+
+    const expired = planWindowReconciliations({
+      today: '2026-09-07', // 09-06 passed with no deposit
+      rulesByGroup: rules(NH),
+      sales,
+      deposits: [],
+    })
+    assert(
+      expired.plans.length === 1 && expired.plans[0]?.status === 'missing_deposit',
+      'window expired → missing_deposit'
+    )
+    assert(expired.plans[0]?.discrepancyAmount === 31453, 'discrepancy is the expected NET (fee applied)')
+    assert(
+      expired.plans[0]?.pairs[0]?.sale_id === 's1' && expired.plans[0]?.pairs[0]?.deposit_id === null,
+      'one-sided pair (deposit_id null)'
+    )
+
+    // Refund-only day: nets to ≤ 0 → nothing is owed → never missing_deposit.
+    const refundOnly = planWindowReconciliations({
+      today: '2026-09-30',
+      rulesByGroup: rules(NH),
+      sales: [sale('r1', '2026-09-01', -20000, NH.groupKey)],
+      deposits: [],
+    })
+    assert(refundOnly.plans.length === 0, 'refund-only expired day expects no deposit → no flag')
+  })
+}
+
+// ── idempotency + settlement-only retirement (req. D) ──────────────────────
+
+function runIdempotencyAndRetirementTests(): void {
+  section('idempotency + settlement-only methods never planned', () => {
+    const NH = issuerGroup('issuer:nh', 'NH')
+    const sales = [sale('s1', '2026-09-01', 31500, NH.groupKey)]
+    const deposits = [deposit('d1', '2026-09-03', 31453, NH.groupKey)]
+
+    const first = planWindowReconciliations({
+      today: '2026-09-06',
+      rulesByGroup: rules(NH),
+      sales,
+      deposits,
+    })
+    assert(first.plans.length === 1, 'first run plans 1 reconciliation')
+
+    const rerun = planWindowReconciliations({
+      today: '2026-09-06',
+      rulesByGroup: rules(NH),
       sales,
       deposits,
       alreadyMatchedSaleIds: new Set(['s1']),
       alreadyMatchedDepositIds: new Set(['d1']),
     })
-    assert(rerun.plans.length === 0, 'Case 5: re-run plans 0 reconciliations (already matched)')
-    assert(rerun.summary.sales_considered === 0, 'Case 5: re-run considers 0 sales (s1 excluded)')
-    assert(rerun.summary.deposits_considered === 0, 'Case 5: re-run considers 0 deposits (d1 excluded)')
-    assert(rerun.summary.matched === 0, 'Case 5: re-run summary.matched === 0 (no double-create)')
+    assert(rerun.plans.length === 0, 're-run with already-matched ids plans 0 (no double-create)')
+    assert(rerun.summary.sales_considered === 0 && rerun.summary.deposits_considered === 0, 're-run considers nothing')
 
-    // Partial exclusion: only the sale is already matched (its deposit is
-    // not, e.g. it settles a different sale). The excluded sale's date-group
-    // must not wrongly consume that leftover deposit; a separate open sale on
-    // a different date with no deposit of its own must still be flagged.
-    const partial = planTransferReconciliations({
-      sales: [sale('s1', '2026-08-01', 50000), sale('s7', '2026-08-05', 12345)],
-      deposits: [deposit('d1', '2026-08-01', 50000)],
-      alreadyMatchedSaleIds: new Set(['s1']),
+    // TRANSFER RETIRED: the orchestrator never builds a group for
+    // settlement-only methods, so their rows carry a groupKey with no rule —
+    // the planner must ignore them completely (no match, no flag, ever).
+    const strayTransfer = planWindowReconciliations({
+      today: '2026-09-30',
+      rulesByGroup: rules(NH),
+      sales: [sale('t1', '2026-09-01', 50000, 'method:transfer:ch-t')],
+      deposits: [deposit('td1', '2026-09-01', 50000, 'method:transfer:ch-t')],
     })
-    assert(partial.plans.length === 1, 'Case 5 (partial): only s7 is planned (s1 excluded)')
+    assert(strayTransfer.plans.length === 0, 'transfer rows (groupless) produce ZERO plans — never missing_deposit')
     assert(
-      partial.plans[0]?.status === 'missing_deposit' && partial.plans[0]?.pairs[0]?.sale_id === 's7',
-      'Case 5 (partial): s7 (different date, no deposit) → missing_deposit'
+      strayTransfer.summary.sales_considered === 0 && strayTransfer.summary.deposits_considered === 0,
+      'transfer rows are not even considered'
     )
+
+    assert(channelExpectsDeposit(CASH_RULE) === false, 'CASH_RULE stays expectsDeposit=false (정산 전용)')
+    assert(channelExpectsDeposit(PAPER_VOUCHER_RULE) === false, 'PAPER_VOUCHER_RULE stays expectsDeposit=false (정산 전용)')
     assert(
-      partial.summary.deposits_left_open === 1,
-      'Case 5 (partial): d1 (excluded sale\'s date, no open sale left) → left open, not re-matched'
+      CHANNEL_PRESETS.every((p) => p.channelType !== 'card'),
+      'presets no longer lump onto card: 배달앱→delivery_app, 알리/위챗→foreign_pay'
     )
-  }
-
-  const total = totalCount - totalBefore
-  const pass = total - (failCount - failBefore)
-  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
-}
-
-// ── App-voucher reuse: SAME planner, a different channel_id + rule ────────
-//
-// STAGE 2 requirement: app-voucher reconciliation must reuse the transfer
-// matcher with "minimal new decision logic". Since planTransferReconciliations
-// has zero channel-type awareness (a channel is just a string key into the
-// rule map), an app-voucher fixture set proves matched / amount_mismatch /
-// missing_deposit all work identically — no new planner code exists to test.
-function runAppVoucherReuseTests(): void {
-  console.log('\n══ app-voucher reuse of planTransferReconciliations() ══')
-  const totalBefore = totalCount
-  const failBefore = failCount
-
-  const ruleByChannelId = new Map<string, ChannelRule>([['ch-voucher', APP_VOUCHER_RULE]])
-  assert(APP_VOUCHER_RULE.feeRate === 0, 'APP_VOUCHER_RULE: zero fee (direct deposit, no cut)')
-
-  // ── matched: exact 1:1 amount match on an app_voucher channel ────────────
-  {
-    const sales = [sale('v1', '2026-08-20', 50000, 'ch-voucher')]
-    const deposits = [deposit('vd1', '2026-08-20', 50000)]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
-    assert(plans.length === 1 && plans[0]?.status === 'matched', 'voucher matched: 탐나는전-style exact deposit')
-    assert(summary.matched === 1, 'voucher matched: summary.matched === 1')
-  }
-
-  // ── amount_mismatch: deposit short of the expected face value ────────────
-  {
-    const sales = [sale('v2', '2026-08-21', 30000, 'ch-voucher')]
-    const deposits = [deposit('vd2', '2026-08-21', 25000)]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
-    assert(plans.length === 1 && plans[0]?.status === 'amount_mismatch', 'voucher amount_mismatch: short deposit flagged')
-    assert(plans[0]?.discrepancyAmount === 5000, 'voucher amount_mismatch: discrepancy is 30000 - 25000 = 5000')
-    assert(summary.amount_mismatch === 1, 'voucher amount_mismatch: summary.amount_mismatch === 1')
-  }
-
-  // ── missing_deposit: sale with no matching voucher deposit at all ────────
-  {
-    const sales = [sale('v3', '2026-08-22', 15000, 'ch-voucher')]
-    const deposits: PlannerDepositInput[] = []
-    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
-    assert(plans.length === 1 && plans[0]?.status === 'missing_deposit', 'voucher missing_deposit: no settlement seen yet')
-    assert(summary.missing_deposit === 1, 'voucher missing_deposit: summary.missing_deposit === 1')
-  }
-
-  const total = totalCount - totalBefore
-  const pass = total - (failCount - failBefore)
-  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
-}
-
-// ── Card-type: SAME planner, CARD_RULE (fee + settlement window) ──────────
-//
-// Card deposits arrive NET of fees, batched, on expectedDepositDate (T+2).
-// The planner already compares against expectedNet / persisted
-// expected_net_amount — these fixtures prove that path, including that a
-// GROSS-amount deposit does NOT match.
-function runCardTypeTests(): void {
-  console.log('\n══ card-type reuse of planTransferReconciliations() ══')
-  const totalBefore = totalCount
-  const failBefore = failCount
-
-  const ruleByChannelId = new Map<string, ChannelRule>([['ch-card', CARD_RULE]])
-  assert(CARD_RULE.feeType === 'percent' && CARD_RULE.feeRate === 2.5, 'CARD_RULE: percent fee 2.5% (placeholder, data not matcher)')
-  assert(CARD_RULE.settlementDays === 2, 'CARD_RULE: T+2 settlement window')
-
-  const saleDate = '2026-08-01'
-  const settleDate = expectedDepositDate(saleDate, CARD_RULE)
-  assert(settleDate === '2026-08-03', `CARD_RULE expected deposit date is 2026-08-03 (got ${settleDate})`)
-
-  const gross = 100000
-  const net = expectedNet(gross, CARD_RULE)
-  assert(net === 97500, `expectedNet(100000, CARD_RULE) === 97500 (got ${net})`)
-
-  // ── matched: deposit equals NET on settlement date, not gross ────────────
-  {
-    const sales = [sale('c1', saleDate, gross, 'ch-card')]
-    const deposits = [deposit('cd1', settleDate, net)]
-    const { plans, summary } = planTransferReconciliations({
-      sales,
-      deposits,
-      ruleByChannelId,
-      flagUnmatchedDeposits: true,
-    })
-    assert(plans.length === 1 && plans[0]?.status === 'matched', 'card matched: net deposit on T+2')
-    assert(plans[0]?.discrepancyAmount === 0, 'card matched: discrepancy is 0')
-    assert(
-      plans[0]?.pairs[0]?.sale_id === 'c1' && plans[0]?.pairs[0]?.deposit_id === 'cd1',
-      'card matched: c1 ↔ cd1'
-    )
-    assert(summary.matched === 1, 'card matched: summary.matched === 1')
-  }
-
-  // ── persisted expected_net_amount wins over computed rule net ────────────
-  {
-    const storedNet = 97000
-    const sales = [sale('c1b', saleDate, gross, 'ch-card', storedNet)]
-    const deposits = [deposit('cd1b', settleDate, storedNet)]
-    const { plans } = planTransferReconciliations({
-      sales,
-      deposits,
-      ruleByChannelId,
-      flagUnmatchedDeposits: true,
-    })
-    assert(plans.length === 1 && plans[0]?.status === 'matched', 'card persisted expected_net_amount is what gets compared')
-  }
-
-  // ── GROSS deposit must NOT match (would if matcher ignored the fee) ──────
-  {
-    const sales = [sale('c1c', saleDate, gross, 'ch-card')]
-    const deposits = [deposit('cd1c', settleDate, gross)]
-    const { plans, summary } = planTransferReconciliations({
-      sales,
-      deposits,
-      ruleByChannelId,
-      flagUnmatchedDeposits: true,
-    })
-    assert(plans.length === 1 && plans[0]?.status === 'amount_mismatch', 'card: gross-amount deposit is amount_mismatch, not matched')
-    assert(plans[0]?.discrepancyAmount === net - gross, `card: discrepancy is net-gross = ${net - gross} (got ${plans[0]?.discrepancyAmount})`)
-    assert(summary.amount_mismatch === 1 && summary.matched === 0, 'card gross-deposit: 1 amount_mismatch, 0 matched')
-  }
-
-  // ── amount_mismatch: net off beyond tolerance ────────────────────────────
-  {
-    const sales = [sale('c2', saleDate, gross, 'ch-card')]
-    const deposits = [deposit('cd2', settleDate, 90000)]
-    const { plans, summary } = planTransferReconciliations({
-      sales,
-      deposits,
-      ruleByChannelId,
-      flagUnmatchedDeposits: true,
-    })
-    assert(plans.length === 1 && plans[0]?.status === 'amount_mismatch', 'card amount_mismatch: net short of expected')
-    assert(plans[0]?.discrepancyAmount === net - 90000, `card amount_mismatch: discrepancy ${net} - 90000 (got ${plans[0]?.discrepancyAmount})`)
-    assert(summary.amount_mismatch === 1, 'card amount_mismatch: summary.amount_mismatch === 1')
-  }
-
-  // ── batch N:M with fee: two sales, one net settlement deposit ────────────
-  {
-    const g1 = 40000
-    const g2 = 60000
-    const batchNet = expectedNet(g1, CARD_RULE) + expectedNet(g2, CARD_RULE)
-    const sales = [sale('c3', saleDate, g1, 'ch-card'), sale('c4', saleDate, g2, 'ch-card')]
-    const deposits = [deposit('cd3', settleDate, batchNet)]
-    const { plans, summary } = planTransferReconciliations({
-      sales,
-      deposits,
-      ruleByChannelId,
-      flagUnmatchedDeposits: true,
-    })
-    assert(plans.length === 1 && plans[0]?.status === 'matched', 'card batch N:M: two sales, one net deposit → matched')
-    assert(plans[0]?.discrepancyAmount === 0, 'card batch: discrepancy is 0')
-    assert(plans[0]?.pairs.length === 2, 'card batch: 2 pairs (2 sales × 1 deposit)')
-    const pairKeys = new Set((plans[0]?.pairs ?? []).map((p) => `${p.sale_id}:${p.deposit_id}`))
-    assert(pairKeys.has('c3:cd3') && pairKeys.has('c4:cd3'), 'card batch: both sales linked to the batched deposit')
-    assert(summary.matched === 1, 'card batch: summary.matched === 1')
-  }
-
-  // ── missing_deposit: sale, no settlement deposit ─────────────────────────
-  {
-    const sales = [sale('c5', saleDate, gross, 'ch-card')]
-    const deposits: PlannerDepositInput[] = []
-    const { plans, summary } = planTransferReconciliations({
-      sales,
-      deposits,
-      ruleByChannelId,
-      flagUnmatchedDeposits: true,
-    })
-    assert(plans.length === 1 && plans[0]?.status === 'missing_deposit', 'card missing_deposit: no PG settlement yet')
-    assert(plans[0]?.discrepancyAmount === net, `card missing_deposit: discrepancy is expected net ${net} (got ${plans[0]?.discrepancyAmount})`)
-    assert(
-      plans[0]?.pairs[0]?.sale_id === 'c5' && plans[0]?.pairs[0]?.deposit_id === null,
-      'card missing_deposit: one-sided pair (deposit_id null)'
-    )
-    assert(summary.missing_deposit === 1, 'card missing_deposit: summary.missing_deposit === 1')
-  }
-
-  // ── unmatched_deposit: deposit, no sale (card flags; transfer leaves OPEN)
-  {
-    const sales: PlannerSaleInput[] = []
-    const deposits = [deposit('cd6', settleDate, net)]
-    const { plans, summary } = planTransferReconciliations({
-      sales,
-      deposits,
-      ruleByChannelId,
-      flagUnmatchedDeposits: true,
-    })
-    assert(plans.length === 1 && plans[0]?.status === 'unmatched_deposit', 'card unmatched_deposit: leftover settlement flagged')
-    assert(
-      plans[0]?.pairs[0]?.sale_id === null && plans[0]?.pairs[0]?.deposit_id === 'cd6',
-      'card unmatched_deposit: one-sided pair (sale_id null)'
-    )
-    assert(summary.unmatched_deposit === 1 && summary.deposits_left_open === 0, 'card unmatched_deposit: counted, not left open')
-  }
-
-  const total = totalCount - totalBefore
-  const pass = total - (failCount - failBefore)
-  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
-}
-
-// ── Cash: skipped by the planner (revenue only, no deposit) ───────────────
-
-function runCashSkipTests(): void {
-  console.log('\n══ cash skip: planTransferReconciliations() never flags cash ══')
-  const totalBefore = totalCount
-  const failBefore = failCount
-
-  const ruleByChannelId = new Map<string, ChannelRule>([
-    ['ch-cash', CASH_RULE],
-    ['ch-transfer', TRANSFER_RULE],
-  ])
-  assert(CASH_RULE.feeRate === 0, 'CASH_RULE: feeRate 0')
-  assert(channelExpectsDeposit(CASH_RULE) === false, 'CASH_RULE: expectsDeposit is false')
-  assert(channelExpectsDeposit(TRANSFER_RULE) === true, 'TRANSFER_RULE: still expects a deposit')
-  assert(channelExpectsDeposit(CARD_RULE) === true, 'CARD_RULE: still expects a deposit')
-  assert(expectedNet(50000, CASH_RULE) === 50000, 'expectedNet(cash) === gross')
-
-  // ── cash sale, no deposit → NOT missing_deposit (skipped) ──────────────
-  {
-    const sales = [sale('cash1', '2026-08-01', 50000, 'ch-cash')]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits: [], ruleByChannelId })
-    assert(plans.length === 0, 'cash only: zero plans (not missing_deposit)')
-    assert(summary.missing_deposit === 0, 'cash only: missing_deposit === 0')
-    assert(summary.sales_considered === 0, 'cash only: not counted as a sale to match')
-  }
-
-  // ── coincidental same-amount deposit must NOT match a cash sale ─────────
-  {
-    const sales = [sale('cash2', '2026-08-01', 50000, 'ch-cash')]
-    const deposits = [deposit('d-cash', '2026-08-01', 50000)]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
-    assert(
-      plans.every((p) => !p.pairs.some((pair) => pair.sale_id === 'cash2')),
-      'cash sale is not paired with any deposit'
-    )
-    assert(summary.matched === 0, 'cash + coincidental deposit: not matched')
-    assert(summary.missing_deposit === 0, 'cash + coincidental deposit: not missing_deposit')
-  }
-
-  // ── transfer alongside cash: transfer still matches; cash still skipped ─
-  {
-    const sales = [
-      sale('t1', '2026-08-01', 30000, 'ch-transfer'),
-      sale('cash3', '2026-08-01', 50000, 'ch-cash'),
-    ]
-    const deposits = [deposit('dt1', '2026-08-01', 30000)]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits, ruleByChannelId })
-    assert(plans.length === 1 && plans[0]?.status === 'matched', 'transfer+cash: transfer still matched')
-    assert(
-      plans[0]?.pairs[0]?.sale_id === 't1' && plans[0]?.pairs[0]?.deposit_id === 'dt1',
-      'transfer+cash: t1 ↔ dt1'
-    )
-    assert(
-      plans.every((p) => !p.pairs.some((pair) => pair.sale_id === 'cash3')),
-      'transfer+cash: cash sale not in any pair'
-    )
-    assert(summary.matched === 1 && summary.missing_deposit === 0, 'transfer+cash: 1 matched, 0 missing_deposit')
-  }
-
-  assert(channelExpectsDeposit(PAPER_VOUCHER_RULE) === false, 'PAPER_VOUCHER_RULE: expectsDeposit is false')
-  assert(expectedNet(50000, PAPER_VOUCHER_RULE) === 50000, 'expectedNet(paper_voucher) === gross')
-  // Persist leaves expected_deposit_date null (bank date unknown). No
-  // reconcilePaperVouchers() — a sale-date matcher would false-flag missing_deposit.
-  {
-    const pvRules = new Map<string, ChannelRule>([
-      ['ch-paper', PAPER_VOUCHER_RULE],
-      ['ch-transfer', TRANSFER_RULE],
-    ])
-    const sales = [sale('pv1', '2026-08-01', 40000, 'ch-paper')]
-    const { plans, summary } = planTransferReconciliations({ sales, deposits: [], ruleByChannelId: pvRules })
-    assert(plans.length === 0, 'paper_voucher only: zero plans (not missing_deposit)')
-    assert(summary.missing_deposit === 0, 'paper_voucher only: missing_deposit === 0')
-  }
-
-  const total = totalCount - totalBefore
-  const pass = total - (failCount - failBefore)
-  console.log(`\n  ${pass}/${total} passed${failCount > failBefore ? ` — ${failCount - failBefore} FAILED` : ' ✅'}`)
+    assert(addDaysIso('2026-08-30', 5) === '2026-09-04', 'window arithmetic crosses month boundaries')
+  })
 }
 
 // ── Parser regex-fallback test ────────────────────────────────────────────
@@ -702,10 +613,12 @@ function runMonthlySummaryTests(): void {
 // ── Main ──────────────────────────────────────────────────────────────────
 
 function main(): void {
-  runMatcherTests()
-  runAppVoucherReuseTests()
-  runCardTypeTests()
-  runCashSkipTests()
+  runFeeUnitTests()
+  runRealDataTests()
+  runRefundNettingTests()
+  runBatchTests()
+  runWindowExpiryTests()
+  runIdempotencyAndRetirementTests()
   runParserTests()
   runVoucherParserTests()
   runMultiRowDepositTests()

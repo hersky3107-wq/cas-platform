@@ -24,6 +24,7 @@
  * without touching this file.
  */
 
+import { percent, toFraction, ZERO_FEE, type FractionRate } from '@/lib/reconciliation/fees'
 import type { FeeType } from '@/lib/reconciliation/types'
 
 export type ChannelRule = {
@@ -35,17 +36,34 @@ export type ChannelRule = {
   settlementDays: number
   /** won discrepancy tolerated before a match is flagged. */
   toleranceWon: number
-  /** date discrepancy (days) tolerated before a match is flagged. */
+  /**
+   * WINDOW width for the Step-2 planner: deposits are accepted in
+   * [sale_date, sale_date + settlementDays + toleranceDays]. (Historically
+   * "date discrepancy tolerated"; the retired single-date matcher never read
+   * it, the window planner does. Stored reconciliation_rules.tolerance_days
+   * rows flow through ruleFromRow the same way.)
+   */
   toleranceDays: number
   /**
    * When false, automatic matchers skip this channel. Cash never produces a
    * bank deposit. Paper voucher is banked later on a date the system cannot
-   * know. Omitted / true = deposits are expected (transfer, card, app_voucher).
+   * know. Omitted / true = deposits are expected (card, app_voucher, …).
    */
   expectsDeposit?: boolean
 }
 
-/** Bank transfer: no fee, same-day, exact. The simplest possible rule. */
+/**
+ * Bank transfer: no fee, same-day, exact.
+ *
+ * ★RETIRED FROM RECONCILIATION (Step 2, per the store owner's spec):
+ * transfer is 정산 전용 (settlement-only). The unified engine excludes it by
+ * DATA — payment_method_defs.is_reconciled=false — so transfer sales never
+ * produce missing_deposit and transfer-hinted deposits are never matched.
+ * The rule object stays because createSale still uses it for expected-net
+ * bookkeeping and sale_kind defaulting; expectsDeposit is deliberately NOT
+ * flipped to false here (that would silently re-default transfer sales to
+ * sale_kind='cash' in createSale and corrupt monthly summaries).
+ */
 export const TRANSFER_RULE: ChannelRule = {
   channelType: 'transfer',
   feeType: 'percent',
@@ -67,16 +85,19 @@ export const APP_VOUCHER_RULE: ChannelRule = {
   feeType: 'percent',
   feeRate: 0,
   settlementDays: 0,
+  // The operator pays out on its own schedule; face-value exact matching is
+  // safe, so the window is generous rather than same-day.
+  toleranceDays: 5,
   toleranceWon: 0,
-  toleranceDays: 0,
 }
 
 /**
- * Card-type family (channel_type='card'): card, 바코드결제, 알리페이/위챗,
- * 텍스프리, 배달앱. One family because they all deduct a percent fee and
- * settle NET, batched, days later via a PG/card company. Per-merchant rates
- * differ — override via a reconciliation_rules row; this default is only
- * the placeholder used when no row exists yet.
+ * Legacy lumped-card rule (channel_type='card' rows NOT yet attributed to a
+ * card_issuers issuer). The Step-2 engine matches card money PER ISSUER with
+ * the issuer's FRACTION fee (card_issuers.fee_rate wins over any percent
+ * rule); this rule remains only as the fallback for issuer-less legacy card
+ * sales. 2.5% is a placeholder — the measured real-world small-merchant rate
+ * was ~0.149%.
  */
 export const CARD_RULE: ChannelRule = {
   channelType: 'card',
@@ -84,7 +105,57 @@ export const CARD_RULE: ChannelRule = {
   feeRate: 2.5,
   settlementDays: 2,
   toleranceWon: 1,
-  toleranceDays: 0,
+  toleranceDays: 3,
+}
+
+/**
+ * Delivery apps (배민/쿠팡이츠…), now a first-class channel_type
+ * (retyped from 'card' by the Step-2 migration). The "fee" is 중개+결제+
+ * 배달비+광고비 combined and VARIES per settlement — deterministic exact
+ * matches are rare and that is fine: unresolved delivery deposits flow to
+ * the AI match-inference queue instead. Weekly batches → wide window.
+ */
+export const DELIVERY_APP_RULE: ChannelRule = {
+  channelType: 'delivery_app',
+  feeType: 'percent',
+  feeRate: 27.5,
+  settlementDays: 3,
+  toleranceWon: 1,
+  toleranceDays: 7,
+}
+
+/** Alipay/WeChat via PG (retyped from 'card'). Placeholder MDR — user-editable rule. */
+export const FOREIGN_PAY_RULE: ChannelRule = {
+  channelType: 'foreign_pay',
+  feeType: 'percent',
+  feeRate: 3,
+  settlementDays: 2,
+  toleranceWon: 1,
+  toleranceDays: 3,
+}
+
+/**
+ * Barcode pay (제로페이류): typically 0-fee, ~D+1. ★Route warning (defs
+ * notes): barcode money may arrive via a card issuer OR as a direct
+ * transfer under its own name — never assume one route.
+ */
+export const BARCODE_PAY_RULE: ChannelRule = {
+  channelType: 'barcode_pay',
+  feeType: 'percent',
+  feeRate: 0,
+  settlementDays: 1,
+  toleranceWon: 0,
+  toleranceDays: 3,
+}
+
+/** Tax-free (card portion). Placeholder rate; adjust from the operator contract. */
+export const TAX_FREE_RULE: ChannelRule = {
+  channelType: 'tax_free',
+  feeType: 'percent',
+  feeRate: 1.5,
+  settlementDays: 3,
+  toleranceWon: 1,
+  toleranceDays: 4,
 }
 
 /**
@@ -122,9 +193,11 @@ export const PAPER_VOUCHER_RULE: ChannelRule = {
 /**
  * A named channel preset the user can pick when creating a channel
  * (POST /api/reconciliation/channels with `preset`). DATA ONLY: every preset
- * maps to a channel_type that ALREADY has an engine — delivery apps and
- * foreign pay are card-type (부류 B: fee withheld, PG deposits net after N
- * days), so they ride reconcile-card unchanged. Picking a preset seeds one
+ * maps to a channel_type in RULES_BY_CHANNEL_TYPE (and payment_method_defs).
+ * Since Step 2, delivery apps are channel_type='delivery_app' and Alipay/
+ * WeChat are 'foreign_pay' — first-class reconciled methods, no longer lumped
+ * under 'card'. (Channels created before the retype migration keep 'card'
+ * until the Step-2 SQL updates them.) Picking a preset seeds one
  * reconciliation_rules row with these defaults; from then on the rule is a
  * normal per-channel row the user adjusts like any card rule.
  */
@@ -160,7 +233,7 @@ export const CHANNEL_PRESETS: readonly ChannelPreset[] = [
   {
     id: 'baemin',
     name: '배달의민족',
-    channelType: 'card',
+    channelType: 'delivery_app',
     feeType: 'percent',
     feeRate: 27.5,
     settlementDays: 3,
@@ -172,7 +245,7 @@ export const CHANNEL_PRESETS: readonly ChannelPreset[] = [
   {
     id: 'coupang_eats',
     name: '쿠팡이츠',
-    channelType: 'card',
+    channelType: 'delivery_app',
     feeType: 'percent',
     feeRate: 27.5,
     settlementDays: 3,
@@ -184,7 +257,7 @@ export const CHANNEL_PRESETS: readonly ChannelPreset[] = [
   {
     id: 'alipay',
     name: '알리페이',
-    channelType: 'card',
+    channelType: 'foreign_pay',
     feeType: 'percent',
     feeRate: 3,
     settlementDays: 2,
@@ -196,7 +269,7 @@ export const CHANNEL_PRESETS: readonly ChannelPreset[] = [
   {
     id: 'wechat_pay',
     name: '위챗페이',
-    channelType: 'card',
+    channelType: 'foreign_pay',
     feeType: 'percent',
     feeRate: 3,
     settlementDays: 2,
@@ -211,11 +284,15 @@ export function channelPresetById(id: string): ChannelPreset | null {
   return CHANNEL_PRESETS.find((p) => p.id === id) ?? null
 }
 
-/** channel_type → rule. transfer / app_voucher / card / cash / paper_voucher. */
+/** channel_type → rule, one per payment_method_defs code. */
 const RULES_BY_CHANNEL_TYPE: Record<string, ChannelRule> = {
   transfer: TRANSFER_RULE,
   app_voucher: APP_VOUCHER_RULE,
   card: CARD_RULE,
+  delivery_app: DELIVERY_APP_RULE,
+  foreign_pay: FOREIGN_PAY_RULE,
+  barcode_pay: BARCODE_PAY_RULE,
+  tax_free: TAX_FREE_RULE,
   cash: CASH_RULE,
   paper_voucher: PAPER_VOUCHER_RULE,
 }
@@ -227,6 +304,18 @@ export function channelExpectsDeposit(rule: ChannelRule): boolean {
 
 export function ruleForChannelType(channelType: string): ChannelRule | null {
   return RULES_BY_CHANNEL_TYPE[channelType] ?? null
+}
+
+/**
+ * Percent-unit ChannelRule fee → branded FractionRate, through the one
+ * sanctioned converter (fees.ts). The Step-2 planner accepts ONLY fractions;
+ * this is the single place a channel rule's percent number becomes one.
+ * Corrupt rows (negative / ≥100) yield ZERO_FEE rather than a guess.
+ */
+export function channelFeeFraction(rule: ChannelRule): FractionRate {
+  if (rule.feeType !== 'percent' || rule.feeRate === 0) return ZERO_FEE
+  if (rule.feeRate >= 100 || rule.feeRate < 0) return ZERO_FEE
+  return toFraction(percent(rule.feeRate))
 }
 
 /** Net amount expected to arrive after the channel's fee. */

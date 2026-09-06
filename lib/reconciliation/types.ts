@@ -54,6 +54,102 @@ export function saleKindExemptFromReconcile(kind: string): boolean {
 export const ENTRY_SOURCES = ['pos_import', 'voucher_tally', 'manual'] as const
 export type EntrySource = (typeof ENTRY_SOURCES)[number]
 
+// ── Step-2 redesign: methods, issuers, proposals ─────────────────────────────
+
+/**
+ * payment_method_defs.code values (Step-1 schema). is_reconciled=true → 대사
+ * (matched against bank deposits); false → 정산 전용 (monthly closing only,
+ * never missing_deposit, never a reconciliation row).
+ */
+export const RECONCILED_METHOD_CODES = [
+  'card',
+  'app_voucher',
+  'barcode_pay',
+  'delivery_app',
+  'foreign_pay',
+  'tax_free',
+] as const
+export const SETTLEMENT_ONLY_METHOD_CODES = ['cash', 'transfer', 'paper_voucher'] as const
+export type MethodCode =
+  | (typeof RECONCILED_METHOD_CODES)[number]
+  | (typeof SETTLEMENT_ONLY_METHOD_CODES)[number]
+
+export type PaymentMethodDef = {
+  code: string
+  label_ko: string
+  label_en: string
+  is_reconciled: boolean
+  sort_order: number
+  notes: string | null
+}
+
+/** Per-user card issuer master (card_issuers). fee_rate is a FRACTION: 0.0015 = 0.15%. */
+export type CardIssuer = {
+  id: string
+  user_id: string
+  name: string
+  /** FRACTION of gross (0.0015 = 0.15%) — NOT percent. See lib/reconciliation/fees.ts. */
+  fee_rate: number
+  settlement_days: number
+  /** Deposits accepted in [sale_date, sale_date + settlement_days + settlement_window_days]. */
+  settlement_window_days: number
+  /** Bank-memo fragments identifying this issuer ("NH15524303" → NH). Learning store. */
+  memo_aliases: string[]
+  is_active: boolean
+  display_order: number
+  created_at: string
+  updated_at: string
+}
+
+/** Who resolved a deposit's issuer. 'ai' requires the Step-2 CHECK widening migration. */
+export const ISSUER_SOURCES = ['parser', 'user', 'ai'] as const
+export type IssuerSource = (typeof ISSUER_SOURCES)[number]
+
+/** Where a reconciliation row came from: deterministic engine or owner-confirmed AI proposal. */
+export const RECON_SOURCES = ['deterministic', 'ai_confirmed'] as const
+export type ReconSource = (typeof RECON_SOURCES)[number]
+
+export const PROPOSAL_STATUSES = ['pending', 'approved', 'rejected', 'superseded'] as const
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number]
+
+/** One model's vote in match inference: which candidate sales this deposit represents. */
+export type ProposalModelVote = {
+  model: string
+  sale_ids: string[]
+  confidence: AdvisoryConfidence
+  reasoning: string
+}
+
+/**
+ * AI-inferred match PROPOSAL (reconciliation_match_proposals). Never a
+ * reconciliation by itself — the owner approves/rejects/edits, and only
+ * approval creates a reconciliation row (source='ai_confirmed').
+ */
+export type MatchProposal = {
+  id: string
+  user_id: string
+  deposit_record_id: string
+  issuer_id: string | null
+  method_code: string | null
+  proposed_sale_ids: string[]
+  /** What the owner actually confirmed (differs from proposed when edited). */
+  approved_sale_ids: string[] | null
+  expected_net_total: number | null
+  deposit_amount: number
+  /** expected_net_total − deposit_amount at proposal time. */
+  residual_won: number | null
+  confidence: AdvisoryConfidence
+  /** e.g. "3/3" — models proposing the winning sale set / models responding. */
+  agreement: string | null
+  per_model: ProposalModelVote[] | null
+  reasoning: string | null
+  status: ProposalStatus
+  correction_note: string | null
+  reconciliation_id: string | null
+  created_at: string
+  decided_at: string | null
+}
+
 export type RawDocument = {
   id: string
   user_id: string
@@ -103,6 +199,11 @@ export type SalesRecord = {
   entry_source: EntrySource
   /** Reporting only. Never used in expected_net or matching. */
   discount_amount: number | null
+  /**
+   * Card issuer this sale (or refund — negative gross_amount) settles
+   * through. NULL for non-card methods / unattributed legacy rows.
+   */
+  issuer_id: string | null
   created_at: string
 }
 
@@ -117,6 +218,12 @@ export type DepositRecord = {
   channel_hint: string | null
   confidence: number | null
   confirm_status: ConfirmStatus
+  /** Resolved card issuer (from the memo). User-correctable; never assume a fixed route. */
+  issuer_id: string | null
+  /** 0..1 confidence of the memo → issuer resolution. NULL when unresolved/user-set. */
+  issuer_confidence: number | null
+  /** 'parser' (alias hit) | 'ai' (model consensus) | 'user' (manual fix). NULL = unresolved. */
+  issuer_source: string | null
   created_at: string
 }
 
@@ -213,6 +320,12 @@ export type Reconciliation = {
   created_at: string
   /** Persisted AI estimate; null until the user triggers explain-discrepancy. */
   discrepancy_advisory: DiscrepancyAdvisory | null
+  /** Card issuer this result concerns (per-issuer engine). NULL for non-card / legacy rows. */
+  issuer_id?: string | null
+  /** payment_method_defs.code. Only is_reconciled methods ever appear here. */
+  method_code?: string | null
+  /** 'deterministic' | 'ai_confirmed'. Optional until the Step-2 SQL adds the column. */
+  source?: string | null
 }
 
 export type ReconciliationMatch = {
