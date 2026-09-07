@@ -2,6 +2,7 @@ import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { gradeRoundOnRead } from '@/lib/prediction/reconciliation'
+import { planForRound } from '@/lib/league/gateway/plan-for-round'
 import { buildCardData, type PredictionRow, type RoundRow } from './card-aggregate'
 import type { CardData } from './card-types'
 import { fetchLeaderboardData, type LeaderboardScope } from './leaderboard'
@@ -185,6 +186,25 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
   }
 }
 
+async function loadOperatorEvidence(
+  roundId: string
+): Promise<{ sourceUrl: string; gradedAt: string } | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_round_grade_evidence')
+      .select('source_url, graded_at')
+      .eq('round_id', roundId)
+      .maybeSingle()
+    if (error || !data) return null
+    const url = typeof data.source_url === 'string' ? data.source_url : ''
+    const gradedAt = typeof data.graded_at === 'string' ? data.graded_at : ''
+    if (!url || !gradedAt) return null
+    return { sourceUrl: url, gradedAt }
+  } catch {
+    return null
+  }
+}
+
 async function loadPredictions(roundId: string): Promise<PredictionRow[]> {
   const { data, error } = await supabaseAdmin
     .from('model_predictions')
@@ -274,19 +294,24 @@ function startGradingOnRead(roundId: string): void {
 export async function fetchCardData(lookup: CardLookup, scope?: LeaderboardScope): Promise<CardData> {
   const round = await loadRound(lookup)
   const optional = await loadOptionalColumns(round.id)
-  const [predictions, board, crossRound] = await Promise.all([
+  const [predictions, board, crossRound, operatorEvidence] = await Promise.all([
     loadPredictions(round.id),
     fetchLeaderboardData(scope),
     loadCrossRoundGrades(round.instrument),
+    loadOperatorEvidence(round.id),
   ])
   const card = buildCardData({ ...round, ...optional }, predictions, board.combined, crossRound)
+  card.round.operatorEvidence = operatorEvidence
 
   if (card.round.gradingState === 'due_ungraded') {
-    startGradingOnRead(round.id)
-    // presentCardGrading already refused to advertise a missing-anchor round
-    // as due_ungraded, so reaching here means there is a baseline to grade
-    // against. The reader sees 'grading' and the client polls until it lands.
-    card.round.gradingState = 'grading'
+    const plan = planForRound(round.instrument, round.category)
+    if (plan.source !== 'operator_manual') {
+      startGradingOnRead(round.id)
+      // presentCardGrading already refused to advertise a missing-anchor round
+      // as due_ungraded, so reaching here means there is a baseline to grade
+      // against. The reader sees 'grading' and the client polls until it lands.
+      card.round.gradingState = 'grading'
+    }
   }
 
   // Secondary, best-effort, non-blocking — see `live-price-cache.ts`'s doc

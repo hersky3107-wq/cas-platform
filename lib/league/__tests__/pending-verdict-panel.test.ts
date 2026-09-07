@@ -43,6 +43,7 @@ describe('PendingVerdictPanel — synthetic 3-month round', () => {
     actualMagnitudePct: null,
     livePrice: null,
     livePriceAt: null,
+    operatorEvidence: null,
   }
 
   const t = getLeagueUiPack('en')
@@ -114,6 +115,7 @@ describe('PendingVerdictPanel — magnitude qualifier on the headline (display o
     actualMagnitudePct: null,
     livePrice: null,
     livePriceAt: null,
+    operatorEvidence: null,
   }
 
   const consensus: ConsensusSummary = {

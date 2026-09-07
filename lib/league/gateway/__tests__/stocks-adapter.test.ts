@@ -149,12 +149,12 @@ describe('stocks adapter — jurisdiction, refusal taxonomy, grade sources', () 
     }
   })
 
-  it('grades through the 3-tier ladder: Twelve Data → sourced Perplexity → program compare', () => {
+  it('grades through the 3-tier ladder: Twelve Data → sourced Perplexity → operator manual', () => {
     const [t1, t2, t3] = adapter.gradeSources(slots())
     expect(t1).toMatchObject({ tier: 1, kind: 'twelve_data' })
     expect(t1.tier === 1 && t1.endpoint).toContain('AAPL')
     expect(t2).toEqual({ tier: 2, kind: 'perplexity_sourced', require_url: true })
-    expect(t3).toMatchObject({ tier: 3, kind: 'program_compare' })
+    expect(t3).toEqual({ tier: 3, kind: 'operator_manual', require_url: true })
   })
 })
 

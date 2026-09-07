@@ -270,6 +270,12 @@ export type CardRoundMeta = {
    * calculation reads it.
    */
   actualMagnitudePct: number | null
+  /**
+   * Operator-evidence row when this round was graded from a published URL
+   * (never the observed fact — that stays off the public card). Null on
+   * every price-path round and on operator_manual rounds still waiting.
+   */
+  operatorEvidence: { sourceUrl: string; gradedAt: string } | null
 }
 
 /**

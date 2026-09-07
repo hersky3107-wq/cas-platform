@@ -68,6 +68,9 @@ describe('dictionary completeness', () => {
       expect(getLeagueUiPack(locale).disclaimer.short.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).disclaimer.long.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).disclaimer.realEstate.length).toBeGreaterThan(0)
+      expect(getLeagueUiPack(locale).operatorGrade.verifiedLabel.length).toBeGreaterThan(0)
+      expect(getLeagueUiPack(locale).operatorGrade.sourceLinkLabel.length).toBeGreaterThan(0)
+      expect(getLeagueUiPack(locale).operatorGrade.gradedOn('7 Sep 2026').length).toBeGreaterThan(0)
     }
   })
 
@@ -98,6 +101,8 @@ describe('dictionary completeness', () => {
     expect(pt.recordRoom.subtitle).not.toBe(en.recordRoom.subtitle)
     expect(pt.hub.subtitle).not.toBe(en.hub.subtitle)
     expect(pt.disclaimer.long).not.toBe(en.disclaimer.long)
+    expect(pt.operatorGrade.verifiedLabel).not.toBe(en.operatorGrade.verifiedLabel)
+    expect(pt.operatorGrade.gradedOn('7 set 2026')).not.toBe(en.operatorGrade.gradedOn('7 set 2026'))
     // Shape guarantees survive translation.
     expect(pt.verdict.heroHits(29, 40)).toContain('\u271329/40')
     expect(pt.winRate.insufficient(1, 0)).not.toContain('%')

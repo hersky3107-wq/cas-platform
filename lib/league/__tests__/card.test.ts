@@ -203,6 +203,26 @@ describe('buildCardData', () => {
     expect(card.round.gradingState).toBe('unresolvable')
     expect(card.round.unresolvableReason).toBe('missing_anchor')
     expect(card.round.gradingState).not.toBe('grading')
+    expect(card.round.operatorEvidence).toBeNull()
+  })
+
+  it('a due subject-outcome round without an anchor stays due_ungraded', () => {
+    const card = buildCardData(
+      round({
+        category: 'sports',
+        instrument: 'MATCH:MUN-LIV-20260901',
+        proposition_kind: 'binary_subject_outcome',
+        subject_label: 'Manchester United',
+        resolves_at: '2026-08-19T03:12:40.000Z',
+        actual_outcome: null,
+        resolved_at: null,
+        anchor_price: null,
+      }),
+      []
+    )
+    expect(card.round.gradingState).toBe('due_ungraded')
+    expect(card.round.unresolvableReason).toBeNull()
+    expect(card.round.operatorEvidence).toBeNull()
   })
 })
 

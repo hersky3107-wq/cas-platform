@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { fetchDailyCloses, mapInstrumentToTwelveData } from '@/lib/league/market-data'
 import { adapterForInstrument } from '@/lib/league/gateway/adapters/registry.server'
 import { gradePlanFor } from '@/lib/league/gateway/grade-plan'
+import { planForRound } from '@/lib/league/gateway/plan-for-round'
 import {
   createGradingEngine,
   GRADING_SWEEP_SCAN_CAP,
@@ -128,15 +129,20 @@ export const supabaseGradingStore: GradingStore = {
   },
 
   async listDueUngraded(cap) {
+    // Over-fetch so operator_manual rows (skipped below) cannot hide a
+    // price-round that sits behind them in deadline order.
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
       .select(ROUND_COLUMNS)
       .lt('resolves_at', new Date().toISOString())
       .is('actual_outcome', null)
       .order('resolves_at', { ascending: true })
-      .limit(cap)
+      .limit(Math.min(cap * 3, GRADING_SWEEP_SCAN_CAP * 3))
     if (error) throw new Error(migrationHint(error.message))
-    return ((data ?? []) as unknown as Record<string, unknown>[]).map(asRecord)
+    return ((data ?? []) as unknown as Record<string, unknown>[])
+      .map(asRecord)
+      .filter((row) => planForRound(row.instrument, row.category).source !== 'operator_manual')
+      .slice(0, cap)
   },
 
   /**
@@ -256,10 +262,15 @@ export const supabaseGradingStore: GradingStore = {
  */
 async function fetchSeriesViaGradePlan(instrument: string, startDate: string, endDate: string) {
   const plan = gradePlanFor(adapterForInstrument(instrument), instrument)
-  if (plan.source !== 'price_series') {
-    return { ok: false as const, error: `no grading executor for tier-1 source '${plan.tier1Kind}' yet` }
+  if (plan.source === 'price_series') {
+    return fetchDailyCloses(instrument, startDate, endDate)
   }
-  return fetchDailyCloses(instrument, startDate, endDate)
+  // operator_manual is a real grade source, not a missing executor. The
+  // price engine never fetches a series for it (isPriceInstrument is false).
+  if (plan.source === 'operator_manual') {
+    return { ok: false as const, error: 'operator_manual: awaiting published evidence' }
+  }
+  return { ok: false as const, error: `no grading executor for tier-1 source '${plan.tier1Kind}' yet` }
 }
 
 const engine = createGradingEngine({
@@ -273,8 +284,25 @@ const engine = createGradingEngine({
 /**
  * THE ONLY TWO GRADING ENTRY POINTS. Neither takes a selector — see the
  * contract at the top of `./grading-core.ts`.
+ *
+ * `gradeRoundOnRead` is wrapped: an operator_manual round is refused here
+ * BEFORE the engine claims or writes. GradingRejection has no "awaiting
+ * operator" token; `not_due` writes nothing and leaves the row pending.
+ * A card view therefore cannot stamp `not_price_instrument`.
  */
-export const gradeRoundOnRead = engine.gradeRoundOnRead
+export async function gradeRoundOnRead(roundId: string) {
+  const round = await supabaseGradingStore.loadRound(roundId)
+  if (round && planForRound(round.instrument, round.category).source === 'operator_manual') {
+    return {
+      outcome: 'rejected' as const,
+      roundId: round.id,
+      instrument: round.instrument,
+      reason: 'not_due' as const,
+      state: gradingStateOf(round, Date.now()),
+    }
+  }
+  return engine.gradeRoundOnRead(roundId)
+}
 export const gradeAllDueRounds = engine.gradeAllDueRounds
 
 /**

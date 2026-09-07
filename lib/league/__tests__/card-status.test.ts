@@ -49,6 +49,15 @@ describe('presentCardGrading + card status — unresolvable never looks like gra
     }
   })
 
+  it('a due subject-outcome round without an anchor stays due_ungraded, not missing_anchor', () => {
+    const presented = presentCardGrading(
+      { ...due, proposition_kind: 'binary_subject_outcome' },
+      NOW
+    )
+    expect(presented.gradingState).toBe('due_ungraded')
+    expect(presented.unresolvableReason).toBeNull()
+  })
+
   it('a live claim lease is the only state that may show as grading', () => {
     const presented = presentCardGrading(
       { ...due, grading_busy_until: '2026-08-21T12:01:00.000Z', anchor_price: 305.59 },

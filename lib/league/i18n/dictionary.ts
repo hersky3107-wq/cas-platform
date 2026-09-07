@@ -104,6 +104,16 @@ export type LeagueUiPack = {
     realEstate: string
   }
   /**
+   * Shown on a card AFTER an operator-manual round has been graded from
+   * published evidence. Never names a winner the operator picked — only the
+   * source link, that it was operator-verified, and when.
+   */
+  operatorGrade: {
+    verifiedLabel: string
+    sourceLinkLabel: string
+    gradedOn: (date: string) => string
+  }
+  /**
    * Cards-tab Category → Instrument nav. Keys are catalog ids / instrument
    * symbols from `lib/league/catalog.ts` — never shown as raw enum keys.
    */
@@ -584,6 +594,11 @@ const en: LeagueUiPack = {
     realEstate:
       'Statistical reference only — not a formal appraisal. Region- and instrument-level outlook; not a valuation of any specific property.',
   },
+  operatorGrade: {
+    verifiedLabel: 'Operator-verified',
+    sourceLinkLabel: 'Source',
+    gradedOn: (date) => `Graded ${date}`,
+  },
   catalog: {
     categories: {
       sports: 'Sports',
@@ -924,6 +939,11 @@ const ko: LeagueUiPack = {
     long: '본 콘텐츠는 여러 AI 모델의 의견을 정보 및 오락 목적으로 제공하는 것이며, 투자·금융·법률·전문 자문이 아닙니다. 여기 등장하는 어떤 모델도 인가받은 자문가가 아닙니다. 시장은 예측할 수 없으며 AI 모델의 예측은 자주, 그리고 크게 틀릴 수 있습니다. 이를 근거로 내리는 모든 결정의 책임은 전적으로 본인에게 있습니다.',
     realEstate: '통계적 참고용이며 감정평가가 아닙니다. 개별 부동산 가치 산정이 아닙니다.',
   },
+  operatorGrade: {
+    verifiedLabel: '운영자 확인',
+    sourceLinkLabel: '출처',
+    gradedOn: (date) => `채점일 ${date}`,
+  },
   catalog: {
     categories: {
       sports: '스포츠',
@@ -1260,6 +1280,11 @@ const ja: LeagueUiPack = {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
     long: 'この内容は複数のAIモデルの見解を情報提供・娯楽目的で示したものであり、投資・金融・法律・専門的な助言ではありません。ここに登場するモデルはいずれも認可を受けたアドバイザーではありません。市場は予測不可能であり、AIモデルの予測は誤ることが多々あります。これに基づく判断の責任はすべてご自身が負うものとします。',
     realEstate: '統計的な参考情報であり、鑑定評価ではありません。個別不動産の価格算定ではありません。',
+  },
+  operatorGrade: {
+    verifiedLabel: '運営者確認済み',
+    sourceLinkLabel: '出典',
+    gradedOn: (date) => `採点日 ${date}`,
   },
   catalog: {
     categories: {
@@ -1598,6 +1623,11 @@ const zhTW: LeagueUiPack = {
     long: '本內容為多個 AI 模型的意見，僅供資訊與娛樂用途，並非投資、財務、法律或專業建議；此處任何模型皆非持牌顧問。市場無法預測，AI 模型的判斷經常出錯。您必須自行承擔依此做出之任何決定的全部責任。',
     realEstate: '僅供統計參考，並非正式估價。僅涵蓋區域／標的層級，不對個別不動產估價。',
   },
+  operatorGrade: {
+    verifiedLabel: '營運者已驗證',
+    sourceLinkLabel: '來源',
+    gradedOn: (date) => `評分日期 ${date}`,
+  },
   catalog: {
     categories: {
       sports: '運動',
@@ -1933,6 +1963,11 @@ const fr: LeagueUiPack = {
     long: 'Ce contenu présente les avis de plusieurs modèles d\u2019IA à titre purement informatif et de divertissement. Il ne s\u2019agit pas d\u2019un conseil en investissement, financier, juridique ou professionnel, et aucun modèle ici n\u2019est un conseiller agréé. Les marchés sont imprévisibles et les modèles d\u2019IA peuvent se tromper, et se trompent souvent. Vous assumez l\u2019entière responsabilité de toute décision prise sur cette base.',
     realEstate:
       'Référence statistique uniquement — pas une expertise immobilière. Horizon régional ou d\u2019instrument, pas une évaluation d\u2019un bien précis.',
+  },
+  operatorGrade: {
+    verifiedLabel: 'Vérifié par l\u2019opérateur',
+    sourceLinkLabel: 'Source',
+    gradedOn: (date) => `Noté le ${date}`,
   },
   catalog: {
     categories: {
@@ -2276,6 +2311,11 @@ const es: LeagueUiPack = {
     realEstate:
       'Solo referencia estadística, no es una tasación formal. Perspectiva de región o instrumento, no la valoración de un inmueble concreto.',
   },
+  operatorGrade: {
+    verifiedLabel: 'Verificado por el operador',
+    sourceLinkLabel: 'Fuente',
+    gradedOn: (date) => `Calificado el ${date}`,
+  },
   catalog: {
     categories: {
       sports: 'Deportes',
@@ -2616,6 +2656,11 @@ const ar: LeagueUiPack = {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
     long: 'يعرض هذا المحتوى آراء عدة نماذج ذكاء اصطناعي لأغراض المعلومات والترفيه فقط. وهو لا يمثل نصيحة استثمارية أو مالية أو قانونية أو مهنية، وليس أي نموذج هنا مستشارًا مرخصًا. الأسواق غير قابلة للتنبؤ، وقد تخطئ نماذج الذكاء الاصطناعي، بل وتخطئ كثيرًا. أنت وحدك المسؤول عن أي قرار تتخذه بناءً على ذلك.',
     realEstate: 'مرجع إحصائي فقط — وليس تقييمًا رسميًا. نظرة على المنطقة أو الأداة، لا تقدير لعقار بعينه.',
+  },
+  operatorGrade: {
+    verifiedLabel: 'تم التحقق من قِبل المشغّل',
+    sourceLinkLabel: 'المصدر',
+    gradedOn: (date) => `تاريخ التقييم ${date}`,
   },
   catalog: {
     categories: {
@@ -2961,6 +3006,11 @@ const pt: LeagueUiPack = {
     long: 'Estas são opiniões de modelos de IA exibidas apenas para fins informativos e de entretenimento. Não são aconselhamento de investimento, financeiro, jurídico ou profissional, e nenhum modelo aqui é um consultor licenciado. Os mercados são imprevisíveis e os modelos de IA podem errar — e erram com frequência. Você é o único responsável por qualquer decisão que tomar.',
     realEstate:
       'Referência estatística apenas — não é uma avaliação formal. Perspectiva por região e instrumento; não é a avaliação de nenhum imóvel específico.',
+  },
+  operatorGrade: {
+    verifiedLabel: 'Verificado pelo operador',
+    sourceLinkLabel: 'Fonte',
+    gradedOn: (date) => `Avaliado em ${date}`,
   },
   catalog: {
     categories: {

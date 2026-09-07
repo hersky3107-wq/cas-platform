@@ -308,6 +308,7 @@ export function presentCardGrading(
     | 'grading_busy_until'
     | 'grading_attempted_at'
     | 'unresolvable_reason'
+    | 'proposition_kind'
   >,
   nowMs: number
 ): { gradingState: GradingState; unresolvableReason: string | null } {
@@ -322,7 +323,12 @@ export function presentCardGrading(
     },
     nowMs
   )
-  if (gradingState === 'due_ungraded' && !hasUsableAnchor(row.anchor_price)) {
+  const kind = row.proposition_kind ?? 'binary_close_higher'
+  if (
+    gradingState === 'due_ungraded' &&
+    !hasUsableAnchor(row.anchor_price) &&
+    kind === 'binary_close_higher'
+  ) {
     return { gradingState: 'unresolvable', unresolvableReason: 'missing_anchor' }
   }
   return {
@@ -365,6 +371,7 @@ function toRoundMeta(row: RoundRow, nowMs: number): CardRoundMeta {
     // access; `fetchCardData` is the only caller that overwrites these two.
     livePrice: null,
     livePriceAt: null,
+    operatorEvidence: null,
   }
 }
 

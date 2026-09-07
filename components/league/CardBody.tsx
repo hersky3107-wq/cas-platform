@@ -5,6 +5,7 @@ import { sideLabelsFor } from '@/lib/league/side-labels'
 import { toneFor } from '@/lib/league/tone'
 import type { ComplianceReceipt } from './CardCompliance'
 import { CardHeader } from './CardHeader'
+import { OperatorEvidenceNote } from './OperatorEvidenceNote'
 import { DivisionBoard } from './DivisionBoard'
 import { VerdictPanel } from './VerdictPanel'
 import { PendingVerdictPanel } from './PendingVerdictPanel'
@@ -57,6 +58,7 @@ export function CardBody({
         locale={locale}
         gradingStalled={gradingStalled}
       />
+      <OperatorEvidenceNote evidence={data.round.operatorEvidence} t={t} locale={locale} />
       {hasTranslation && onToggleOriginal ? (
         <div className="px-4 pb-1">
           <button

@@ -176,11 +176,7 @@ export function createStocksAdapter(io: PriceSeriesIo): CategoryAdapter {
           endpoint: `/time_series?symbol=${slots.entity_id}&interval=1day (regular-session close vs anchor close)`,
         },
         { tier: 2, kind: 'perplexity_sourced', require_url: true },
-        {
-          tier: 3,
-          kind: 'program_compare',
-          rule: 'compare operator-recorded official closes for the anchor and resolution sessions; up iff resolution close > anchor close',
-        },
+        { tier: 3, kind: 'operator_manual', require_url: true },
       ]
     },
 
