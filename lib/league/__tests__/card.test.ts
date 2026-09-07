@@ -340,7 +340,7 @@ describe('compliance: approved phrasing helpers', () => {
 
   it('states that a round-level tally is one correlated event, not independent forecasts', () => {
     expect(en.headline.correlatedNote.toLowerCase()).toMatch(/correlated/)
-    expect(en.headline.correlatedNote.toLowerCase()).toMatch(/not 40 independent/)
+    expect(en.headline.correlatedNote.toLowerCase()).toMatch(/not 41 independent/)
     expect(en.headline.correlatedNote.toLowerCase()).not.toMatch(/\b(buy|sell|bet)\b/)
   })
 

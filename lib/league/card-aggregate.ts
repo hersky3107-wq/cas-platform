@@ -193,6 +193,7 @@ const VERDICT_ROSTER: readonly VerdictRosterMeta[] = LEAGUE_ROSTER.map((e) => ({
   country: brandCountry(e.brand, e.camp),
   tier: e.league_tier,
   book: bookFromTier(e.league_tier),
+  weights: e.weights,
 }))
 
 function buildVerdict(

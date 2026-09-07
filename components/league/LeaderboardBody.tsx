@@ -9,7 +9,7 @@ import type { ComplianceReceipt } from './CardCompliance'
 import { LeaderboardCampHeadline } from './LeaderboardCampHeadline'
 import { WinRateFigure, WinRateRecord } from './WinRateFigure'
 
-const SECONDARY_SCOPES: Exclude<LeaderboardScope, 'model' | 'campHeadline' | 'method'>[] = [
+const SECONDARY_SCOPES: Exclude<LeaderboardScope, 'model' | 'campHeadline' | 'method' | 'weights'>[] = [
   'camp',
   'tier',
   'brand',

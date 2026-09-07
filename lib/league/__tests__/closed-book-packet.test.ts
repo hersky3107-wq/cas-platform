@@ -83,6 +83,18 @@ describe('closed-book packet — numbers first', () => {
     expect(SERIES_OUTPUT_SIZE).toBe(1083)
   })
 
+  it('crypto base-rate copy names calendar days, not trading sessions', () => {
+    const text = assembleClosedBookInjection(input({ category: 'crypto_spot', instrument: 'BTC/USD', consensus: null }))
+    expect(text).toMatch(/BASE RATE \(1d — 1 calendar day, not trading sessions\)/)
+    expect(text).toMatch(/1 calendar day later/)
+    expect(text).not.toMatch(/not calendar days/)
+  })
+
+  it('equity base-rate copy still names sessions, not calendar days', () => {
+    const text = assembleClosedBookInjection(input())
+    expect(text).toMatch(/BASE RATE \(1d — 1 session, not calendar days\)/)
+  })
+
   it('base rate is per-horizon: 1d and 3m are not the same number', () => {
     const series = bars(1083, 200)
     const d1 = computeBaseRate(series, sessionsForHorizon('stock', '1d'), 1000, '1d')

@@ -77,6 +77,7 @@ function rosterFor(rows: VerdictPredictionRow[]): VerdictRosterMeta[] {
     country: 'US',
     tier: 'world',
     book: bookFromTier('world'),
+    weights: 'closed',
   }))
 }
 
@@ -127,6 +128,7 @@ describe('live AAPL fffc1716 hero legend — from the card payload, not the down
       country: brandCountry(e.brand, e.camp),
       tier: e.league_tier,
       book: bookFromTier(e.league_tier),
+      weights: e.weights,
     }))
     const payload = buildVerdictPayload({
       round: { id: 'fffc1716-cd3d-45f2-883f-1242a373febc' },
@@ -175,7 +177,7 @@ describe('direction counts vs hit counts — down-outcome round', () => {
     const hitStrings = [
       t.verdict.heroHits(payload.hitRecord.hits, payload.hitRecord.graded),
       t.hitRate.roundResult(payload.hitRecord.hits, payload.hitRecord.graded),
-      ...[...payload.byCamp, ...payload.byTier, ...payload.byBook, ...payload.byCountry].map((row) =>
+      ...[...payload.byCamp, ...payload.byTier, ...payload.byBook, ...payload.byWeights, ...payload.byCountry].map((row) =>
         t.verdict.rawCount(row.hits, row.graded)
       ),
     ]

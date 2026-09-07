@@ -8,7 +8,7 @@ import {
   type CombinedMethodTrack,
   type LeagueTier,
 } from './card-types'
-import { LEAGUE_ROSTER } from './roster'
+import { LEAGUE_ROSTER, WEIGHT_LABEL, WEIGHTS_KINDS, type WeightsKind } from './roster'
 import { buildBaselineSummary, emptyBaselineSummary, type BaselineSummary } from './baselines'
 import { toSideToken } from './side-labels'
 import { isDisplayableWinRate, winRatePctForDisplay, WIN_RATE_MIN_SAMPLE } from './win-rate'
@@ -58,6 +58,7 @@ export type LeaderboardScope =
   | 'tier'
   | 'brand'
   | 'category'
+  | 'weights'
   | 'korea'
 
 /** One graded, in-scope prediction — the minimal shape this module needs. */
@@ -147,6 +148,8 @@ export type LeaderboardData = {
   brand: LeaderboardSlice
   /** SECONDARY: stocks vs crypto vs fx, etc. */
   category: LeaderboardSlice
+  /** SECONDARY: closed-weights vs open-weights. */
+  weights: LeaderboardSlice
   /** SECONDARY: Upstage vs NAVER (LG seat retired 2026-09-07). */
   korea: LeaderboardSlice
   /**
@@ -195,6 +198,11 @@ function bucketOf(row: GradedPredictionRow, scope: LeaderboardScope): { key: str
       return { key: row.brand, label: row.brand }
     case 'category':
       return { key: row.category, label: formatCategory(row.category) }
+    case 'weights': {
+      const entry = ROSTER_BY_MODEL_ID.get(row.model_id)
+      if (!entry) return null
+      return { key: entry.weights, label: WEIGHT_LABEL[entry.weights] }
+    }
     case 'korea':
       if (!(KOREA_BRANDS as readonly string[]).includes(row.brand)) return null
       return { key: row.brand, label: row.brand }
@@ -202,6 +210,7 @@ function bucketOf(row: GradedPredictionRow, scope: LeaderboardScope): { key: str
 }
 
 const ROSTER_ORDER = new Map(LEAGUE_ROSTER.map((entry, index) => [entry.model_id, index]))
+const ROSTER_BY_MODEL_ID = new Map(LEAGUE_ROSTER.map((entry) => [entry.model_id, entry]))
 
 /**
  * Position of an UNRANKED row. Deliberately unrelated to performance: roster
@@ -217,6 +226,10 @@ function unrankedOrderOf(row: LeaderboardRow, scope: LeaderboardScope): number {
   }
   if (scope === 'camp' || scope === 'campHeadline') {
     const index = CAMPS.indexOf(row.key as Camp)
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index
+  }
+  if (scope === 'weights') {
+    const index = WEIGHTS_KINDS.indexOf(row.key as WeightsKind)
     return index === -1 ? Number.MAX_SAFE_INTEGER : index
   }
   return Number.MAX_SAFE_INTEGER
@@ -367,6 +380,7 @@ export function buildLeaderboardData(
     tier: buildLeaderboardSlice(rows, 'tier'),
     brand: buildLeaderboardSlice(rows, 'brand'),
     category: buildLeaderboardSlice(rows, 'category'),
+    weights: buildLeaderboardSlice(rows, 'weights'),
     korea: buildLeaderboardSlice(rows, 'korea'),
     combined: buildCombinedMethodTrack(rows),
     baselines: rows.length === 0 ? emptyBaselineSummary() : buildBaselineSummary(rows),

@@ -35,6 +35,7 @@ const ROSTER: VerdictRosterMeta[] = LEAGUE_ROSTER.map((e) => ({
   country: brandCountry(e.brand, e.camp),
   tier: e.league_tier,
   book: bookFromTier(e.league_tier),
+  weights: e.weights,
 }))
 
 function asPredictions(rows: FixtureRow[]): VerdictPredictionRow[] {
@@ -107,7 +108,7 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
       roster: ROSTER,
     })
 
-    for (const group of [...payload.byCamp, ...payload.byCountry, ...payload.byTier, ...payload.byBook]) {
+    for (const group of [...payload.byCamp, ...payload.byCountry, ...payload.byTier, ...payload.byBook, ...payload.byWeights]) {
       expect(Object.keys(group).sort()).toEqual(['graded', 'hits', 'key', 'ungraded'])
       expect(group.hits + (group.graded - group.hits)).toBe(group.graded)
       expect(group.graded + group.ungraded).toBeGreaterThan(0)
@@ -119,6 +120,19 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
     expect(closed).toMatchObject({ graded: 34, ungraded: 0 })
     expect(scout).toMatchObject({ graded: 6, ungraded: 0 })
     expect(closed!.hits + scout!.hits).toBe(29)
+
+    const closedW = payload.byWeights.find((g) => g.key === 'closed')
+    const openW = payload.byWeights.find((g) => g.key === 'open')
+    expect(closedW).toBeDefined()
+    expect(openW).toBeDefined()
+    // Fixture still has retired k-exaone-2.0 — weights come from the live
+    // roster only, so that one seat is omitted rather than guessed.
+    const liveIds = new Set(LEAGUE_ROSTER.map((e) => e.model_id))
+    const liveRows = FIXTURE_ROWS.filter((r) => liveIds.has(r.model_id))
+    expect((closedW?.graded ?? 0) + (openW?.graded ?? 0) + (closedW?.ungraded ?? 0) + (openW?.ungraded ?? 0)).toBe(
+      liveRows.length
+    )
+    expect((closedW?.hits ?? 0) + (openW?.hits ?? 0)).toBe(liveRows.filter((r) => r.is_correct === true).length)
   })
 
   it('surfaces ungraded models in every group denominator display', () => {
@@ -179,6 +193,7 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
     expect(payload.byCamp.find((g) => g.key === 'china')).toBeUndefined()
     expect(payload.byCountry.map((g) => g.key)).toEqual(['US'])
     expect(payload.byBook.map((g) => g.key)).toEqual(['closed'])
+    expect(payload.byWeights.map((g) => g.key)).toEqual(['closed'])
   })
 
   it('ranks overconfident wrong predictions by raw confidence, capped at 5, only above median', () => {

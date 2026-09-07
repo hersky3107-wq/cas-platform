@@ -112,8 +112,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'SPX', resolution_rule: 'S&P 500 cash index close vs prior close' },
-      { instrument: 'NDX', resolution_rule: 'Nasdaq-100 cash index close vs prior close' },
+      { instrument: 'SPY', resolution_rule: 'SPY regular-session close vs prior close' },
+      { instrument: 'QQQ', resolution_rule: 'QQQ regular-session close vs prior close' },
     ],
   },
   {
@@ -197,7 +197,8 @@ export type CatalogRankedRoundInput = {
  * is opened once per period, not reopened daily while the previous one is
  * still pending. `resolves_at` is computed from `now` per the horizon +
  * category rule in `lib/league/horizon.ts` (trading sessions for
- * equities/ETFs, calendar days for crypto/FX) — never reinterpreted later.
+ * equities / index ETFs / REIT ETFs, calendar days for crypto / FX /
+ * spot metals / energy) — never reinterpreted later.
  *
  * THE PROPOSITION NAMES THE ACTUAL RESOLVE DATE — never a relative phrase
  * like "over the next 1 month" or "21 trading days from now". Both the

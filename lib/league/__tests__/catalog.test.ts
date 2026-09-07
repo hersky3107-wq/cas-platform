@@ -142,5 +142,9 @@ describe('catalog i18n', () => {
     // A calendar-day category (crypto) never carries the disclosure at any horizon.
     const crypto = buildCatalogRankedRoundInput('BTC/USD', '3m', now)
     expect(crypto!.proposition_text).not.toMatch(/weekday/)
+
+    // REIT ETFs share the equity session clock — same disclosure as AAPL.
+    const reit = buildCatalogRankedRoundInput('VNQ', '1m', now)
+    expect(reit!.proposition_text).toMatch(/weekday/)
   })
 })

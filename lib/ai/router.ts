@@ -876,6 +876,7 @@ async function callProvider({
   anthropicThinking,
   searchTool,
   maxTurns,
+  extraPayload,
 }: {
   provider: ExtendedAiProviderName
   apiKey: string
@@ -901,6 +902,8 @@ async function callProvider({
   searchTool?: boolean
   /** xAI Agent Tools only: request-level `max_turns`. Ignored elsewhere. */
   maxTurns?: number
+  /** Extra body fields for OpenAI-compatible providers (e.g. DeepSeek `thinking`). */
+  extraPayload?: Record<string, unknown>
 }): Promise<ProviderCallResult> {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
   const sourceUserText =
@@ -1086,6 +1089,7 @@ async function callProvider({
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
+      extraPayload,
       ...chatOpts,
     })
     return { model, text, usage, citations, searchResults }
@@ -1211,6 +1215,8 @@ export type RunSingleProviderParams = {
   geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
   /** Oracle-only Anthropic thinking control; league leaves unset. */
   anthropicThinking?: 'disabled' | 'enabled'
+  /** Extra body fields for OpenAI-compatible providers (e.g. DeepSeek `thinking`). */
+  extraPayload?: Record<string, unknown>
 }
 
 async function saveCompareArtifactsRows(
@@ -1280,6 +1286,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
     allowGeminiThinking,
     geminiThinkingLevel,
     anthropicThinking,
+    extraPayload,
   } = params
 
   const started = nowMs()
@@ -1314,6 +1321,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       anthropicThinking,
       searchTool,
       maxTurns,
+      extraPayload,
     })
 
     const { text, usage, finishReason, citations, searchResults } = params.timeoutMs && params.timeoutMs > 0

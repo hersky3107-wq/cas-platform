@@ -1,4 +1,4 @@
-import { isUiHorizon, sessionsForHorizon, type UiHorizon } from './horizon'
+import { isUiHorizon, sessionsForHorizon, usesTradingSessions, type UiHorizon } from './horizon'
 
 /**
  * Closed-book packet assembly — PURE. No fetches, no AI calls.
@@ -349,16 +349,29 @@ function formatBaseRate(input: ClosedBookPacketInput): string {
   const rate = computeBaseRate(input.series, ahead, BASE_RATE_LOOKBACK, h)
   const asOf = input.seriesAsOf ?? 'unknown'
   const src = input.seriesSource
+  const sessionClock = usesTradingSessions(input.category)
+  const aheadLabel = sessionClock
+    ? `${ahead} session${ahead === 1 ? '' : 's'}`
+    : `${ahead} calendar day${ahead === 1 ? '' : 's'}`
   if (!rate) {
     return unavailable(
-      `BASE RATE (${h}, ${ahead} session${ahead === 1 ? '' : 's'} ahead)`,
+      `BASE RATE (${h}, ${aheadLabel} ahead)`,
       `need >${ahead} daily bars; had ${input.series.length}; source ${src}; as-of ${asOf}`,
     )
   }
-  const unit = ahead === 1 ? '1 session later' : `${ahead} sessions later`
+  const unit = sessionClock
+    ? ahead === 1
+      ? '1 session later'
+      : `${ahead} sessions later`
+    : ahead === 1
+      ? '1 calendar day later'
+      : `${ahead} calendar days later`
+  const windowNoun = sessionClock ? 'sessions' : 'calendar days'
   return [
-    `BASE RATE (${h} — ${ahead} session${ahead === 1 ? '' : 's'}, not calendar days)`,
-    `over the last ${rate.n} sessions, ${input.instrument} closed higher ${unit} ${fmt(rate.upPct, 1)}% of the time (n=${rate.n}; lookback=${rate.lookbackSessions} pairs; source: ${src}; as-of ${asOf})`,
+    sessionClock
+      ? `BASE RATE (${h} — ${aheadLabel}, not calendar days)`
+      : `BASE RATE (${h} — ${aheadLabel}, not trading sessions)`,
+    `over the last ${rate.n} ${windowNoun}, ${input.instrument} closed higher ${unit} ${fmt(rate.upPct, 1)}% of the time (n=${rate.n}; lookback=${rate.lookbackSessions} pairs; source: ${src}; as-of ${asOf})`,
   ].join('\n')
 }
 

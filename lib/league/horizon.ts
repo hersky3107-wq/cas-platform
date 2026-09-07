@@ -17,7 +17,8 @@ import type { PredictionCategory } from '@/lib/prediction/categories'
  * This module is the single place that:
  *  1. defines/validates the 4 canonical horizon codes;
  *  2. computes `resolves_at` from an anchor timestamp, honoring the rule
- *     "trading sessions for equities/ETFs, calendar days for crypto/FX";
+ *     "trading sessions for equities / index ETFs / REIT ETFs, calendar
+ *     days for crypto / FX / spot metals / energy";
  *  3. buckets the idempotency cache key at a granularity matching the
  *     horizon's own cadence, so a 1-month round opens once a month, not
  *     once a day — see `cacheBucketFor`.
@@ -36,11 +37,20 @@ export function isUiHorizon(value: unknown): value is UiHorizon {
 }
 
 /**
- * "Trading sessions for equities/ETFs, calendar days for crypto/FX" — the
- * two categories graded on exchange session closes vs. the ones that trade
- * (and are graded) every calendar day.
+ * "Trading sessions for equities / index ETFs / REIT ETFs, calendar days
+ * for crypto / FX / spot metals / energy" — session-close categories vs.
+ * series that trade (and are graded) every calendar day.
+ *
+ * gold_metal and commodity_energy stay on the calendar path: the public
+ * chips are spot symbols (XAU/USD, WTICO/USD), not CME session contracts,
+ * and Twelve Data's daily bars include weekend/overnight prints. real_estate
+ * chips are NYSE REIT ETFs (VNQ, SCHH) and share the equity session clock.
  */
-const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set(['stock', 'etf_index'])
+const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set([
+  'stock',
+  'etf_index',
+  'real_estate',
+])
 
 export function usesTradingSessions(category: PredictionCategory | string): boolean {
   return TRADING_SESSION_CATEGORIES.has(category as PredictionCategory)

@@ -184,10 +184,13 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   // burning the visible-content budget (same finding as the health mirror).
   { id: 'upstage:solar-pro3', provider: 'upstage', brand: 'Upstage', displayName: 'Solar Pro 3', model: 'solar-pro3', league: 'world', verified: true, extraRequestParams: { reasoning_effort: 'low' } },
 
-  // --- Friendli Serverless — no league seat as of 2026-09-07 ---
-  // EXAONE left Model APIs (dedicated-only). WORLD seat moved to
-  // openrouter:inkling. Friendli remains a platform provider for MOTIE /
-  // Jeju / Gunpo local callers; do not re-add a 404 id here.
+  // --- Friendli Serverless ---
+  // EXAONE left Model APIs (dedicated-only) 2026-09-06. WORLD LG seat moved
+  // to openrouter:inkling. 2026-09-07: google/gemma-4-31B-it is live on
+  // GET /serverless/v1/models and passed the league CHAIN/JSON contract on
+  // the 65192045 packet. GLM / DeepSeek / MiniMax ids on this catalog are
+  // already rostered elsewhere; do not double-seat them.
+  { id: 'friendli:gemma-4-31b-it', provider: 'friendli', brand: 'Google', displayName: 'Gemma 4 31B IT', model: 'google/gemma-4-31B-it', league: 'world', verified: true },
 ]
 
 /**

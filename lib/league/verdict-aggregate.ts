@@ -1,4 +1,5 @@
 import type { Camp, LeagueTier, ModelSide } from './card-types'
+import type { WeightsKind } from './roster'
 import type { CountryCode } from './country'
 import { roundHitRecord } from './round-hit'
 import { winRatePctForDisplay } from './win-rate'
@@ -12,7 +13,7 @@ import { tallySlotOfToken, toSideToken } from './side-labels'
  *
  * HARD RULES (enforced by tests):
  *  - hitRecord comes ONLY from `roundHitRecord()` — raw counts, never a %.
- *  - Group rows (camp / country / tier / book) are RAW COUNTS ONLY.
+ *  - Group rows (camp / country / tier / book / weights) are RAW COUNTS ONLY.
  *    Denominator is always `is_correct !== null`. Ungraded models are counted
  *    in `ungraded`, never silently dropped.
  *  - Empty groups return `[]`, not a zero-filled placeholder row.
@@ -36,6 +37,7 @@ export type VerdictRosterMeta = {
   country: CountryCode
   tier: LeagueTier
   book: VerdictBook
+  weights: WeightsKind
 }
 
 /** One model_predictions row for THIS round (the panel's subject). */
@@ -120,6 +122,7 @@ export type VerdictPayload = {
   byCountry: VerdictGroupCount[]
   byTier: VerdictGroupCount[]
   byBook: VerdictGroupCount[]
+  byWeights: VerdictGroupCount[]
   overconfident: VerdictOverconfident[]
   /**
    * model_id → current win streak. Key is OMITTED when graded rounds < 2 or
@@ -145,6 +148,7 @@ const CONFIDENCE_BUCKET_ORDER: readonly VerdictConfidenceBucketKey[] = [
 const CAMP_ORDER: readonly Camp[] = ['us', 'china', 'other']
 const TIER_ORDER: readonly LeagueTier[] = ['premier', 'challenger', 'world', 'scout']
 const BOOK_ORDER: readonly VerdictBook[] = ['closed', 'scout']
+const WEIGHTS_ORDER: readonly WeightsKind[] = ['closed', 'open']
 const COUNTRY_ORDER: readonly CountryCode[] = ['US', 'CN', 'KR', 'FR', 'CA', 'INT']
 
 function confidenceBucket(value: number | null): VerdictConfidenceBucketKey {
@@ -169,6 +173,7 @@ type ResolvedMeta = {
   country: CountryCode
   tier: LeagueTier
   book: VerdictBook
+  weights: WeightsKind | null
 }
 
 function resolveMeta(
@@ -182,6 +187,7 @@ function resolveMeta(
       country: fromRoster.country,
       tier: fromRoster.tier,
       book: fromRoster.book,
+      weights: fromRoster.weights,
     }
   }
   const camp = toCamp(row.camp ?? null)
@@ -192,6 +198,8 @@ function resolveMeta(
     country: camp === 'us' ? 'US' : camp === 'china' ? 'CN' : 'INT',
     tier,
     book: tier === 'scout' ? 'scout' : 'closed',
+    // Never guess weights from a DB row — omit the group rather than invent.
+    weights: null,
   }
 }
 
@@ -283,6 +291,7 @@ export function buildVerdictPayload(args: {
   const byCountry = new Map<string, { hits: number; graded: number; ungraded: number }>()
   const byTier = new Map<string, { hits: number; graded: number; ungraded: number }>()
   const byBook = new Map<string, { hits: number; graded: number; ungraded: number }>()
+  const byWeights = new Map<string, { hits: number; graded: number; ungraded: number }>()
 
   const wrong: VerdictOverconfident[] = []
 
@@ -305,6 +314,7 @@ export function buildVerdictPayload(args: {
       bump(byCountry, meta.country, row.is_correct)
       bump(byTier, meta.tier, row.is_correct)
       bump(byBook, meta.book, row.is_correct)
+      if (meta.weights) bump(byWeights, meta.weights, row.is_correct)
     }
 
     if (row.is_correct === false) {
@@ -352,6 +362,7 @@ export function buildVerdictPayload(args: {
     byCountry: toGroupArray(byCountry, COUNTRY_ORDER),
     byTier: toGroupArray(byTier, TIER_ORDER),
     byBook: toGroupArray(byBook, BOOK_ORDER),
+    byWeights: toGroupArray(byWeights, WEIGHTS_ORDER),
     overconfident,
   }
 

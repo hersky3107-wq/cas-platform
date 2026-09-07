@@ -104,6 +104,15 @@ export function VerdictPanel({
           />
         </VerdictSection>
 
+        <p className="px-3 py-1.5 text-[12px] leading-snug text-league-fg">
+          {t.verdict.weightsLine(
+            verdict.byWeights.find((row) => row.key === 'closed')?.hits ?? 0,
+            verdict.byWeights.find((row) => row.key === 'closed')?.graded ?? 0,
+            verdict.byWeights.find((row) => row.key === 'open')?.hits ?? 0,
+            verdict.byWeights.find((row) => row.key === 'open')?.graded ?? 0,
+          )}
+        </p>
+
         <VerdictSection id="country" title={t.verdict.sectionCountry} accordion t={t}>
           <p className="mb-2 text-[10px] leading-snug text-league-fg-muted">{t.verdict.sectionCountryCaution}</p>
           <GroupRows

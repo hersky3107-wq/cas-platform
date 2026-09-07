@@ -431,6 +431,7 @@ async function callOnce(
       allowGeminiThinking: entry.caller.allowGeminiThinking,
       searchTool: entry.caller.searchTool,
       maxTurns: entry.caller.maxTurns,
+      extraPayload: entry.caller.extraPayload,
       timeoutMs,
     })
     return {

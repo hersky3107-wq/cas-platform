@@ -4,6 +4,7 @@ import { LEAGUE_GENERATE_CREDITS } from '../../credits'
 import { createStubNormalizer, validateNormalizerOutput } from '../normalizer'
 import { runLeagueGateway, type GatewayDeps, type GatewayRequest } from '../shell'
 import { createStocksAdapter } from '../adapters/stocks'
+import { createMemecoinAdapter } from '../adapters/price-series-family'
 import type { PriceSeriesIo } from '../adapters/price-series-packet'
 import type { CategoryAdapter, GatewayViewer } from '../types'
 
@@ -160,6 +161,31 @@ describe('gateway shell — refusals never charge and never reach the normalizer
     expect(result).toMatchObject({ status: 'refused', refusal: { code: 'jurisdiction_blocked' } })
     expect(h.normalizeSpy).not.toHaveBeenCalled()
     expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('memecoin is blocked in EU / UK / ME / OTHER before normalize or charge', async () => {
+    const memecoin = createMemecoinAdapter(DEAD_IO)
+    for (const ipCountry of ['DE', 'GB', 'AE', 'BR'] as const) {
+      const normalizeSpy = vi.fn()
+      const chargeSpy = vi.fn(async () => ({ ok: true }))
+      const result = await runLeagueGateway(
+        {
+          viewer: { userId: 'u-meme', isAdmin: false, jurisdiction: { ipCountry } },
+          category_id: 'memecoin',
+          raw_text: '도지코인 내일 오를까?',
+          locale: 'ko',
+        },
+        {
+          adapterFor: (id) => (id === 'memecoin' ? memecoin : null),
+          normalizer: { normalize: normalizeSpy },
+          deductCredits: chargeSpy,
+          now: () => NOW,
+        },
+      )
+      expect(result, ipCountry).toMatchObject({ status: 'refused', refusal: { code: 'jurisdiction_blocked' } })
+      expect(normalizeSpy, ipCountry).not.toHaveBeenCalled()
+      expect(chargeSpy, ipCountry).not.toHaveBeenCalled()
+    }
   })
 
   it('layer-0 pre-filters reject junk with the same envelope as a normalize refusal, zero LLM cost', async () => {

@@ -107,7 +107,7 @@ describe('buildLeaderboardSlice', () => {
       ...rowsFor('us-model', 3, 3, { camp: 'us', league_tier: 'premier', brand: 'OpenAI' }),
       ...rowsFor('cn-model', LEADERBOARD_MIN_SAMPLE, 5, { camp: 'china', league_tier: 'world', brand: 'DeepSeek' }),
     ]
-    for (const scope of ['camp', 'campHeadline', 'tier', 'brand', 'category'] as const) {
+    for (const scope of ['camp', 'campHeadline', 'tier', 'brand', 'category', 'weights'] as const) {
       const slice = buildLeaderboardSlice(rows, scope)
       for (const bucket of slice.rows) {
         if (bucket.n < LEADERBOARD_MIN_SAMPLE) {
@@ -142,6 +142,19 @@ describe('buildLeaderboardSlice', () => {
     const rows = [row({ camp: 'us' }), row({ camp: 'other', brand: 'Upstage', model_id: 'solar' })]
     const slice = buildLeaderboardSlice(rows, 'camp')
     expect(slice.rows.some((r) => r.key === 'other')).toBe(true)
+  })
+
+  it('weights slice splits closed vs open from the live roster and drops unknown ids', () => {
+    const rows = [
+      row({ model_id: 'gpt-5.6-sol', is_correct: true }),
+      row({ model_id: 'llama-4-maverick', is_correct: false }),
+      row({ model_id: 'retired-unknown', is_correct: true }),
+    ]
+    const slice = buildLeaderboardSlice(rows, 'weights')
+    expect(slice.rows.map((r) => r.key).sort()).toEqual(['closed', 'open'])
+    expect(slice.rows.find((r) => r.key === 'closed')!.n).toBe(1)
+    expect(slice.rows.find((r) => r.key === 'open')!.n).toBe(1)
+    expect(slice.totalResolved).toBe(2)
   })
 
   it('method slice splits pure-reasoning (1/2/3) vs research (scout)', () => {
@@ -258,7 +271,7 @@ describe('buildLeaderboardData', () => {
       ...rowsFor('sonar-pro-2', 1, 0, { camp: 'us', league_tier: 'scout', brand: 'Perplexity', category: 'crypto' }),
     ]
     const data = buildLeaderboardData(rows)
-    const scopes = ['model', 'campHeadline', 'method', 'camp', 'tier', 'brand', 'category', 'korea'] as const
+    const scopes = ['model', 'campHeadline', 'method', 'camp', 'tier', 'brand', 'category', 'weights', 'korea'] as const
 
     for (const scope of scopes) {
       for (const bucket of data[scope].rows) {
@@ -284,6 +297,7 @@ describe('buildLeaderboardData', () => {
     expect(data.tier.rows).toEqual([])
     expect(data.brand.rows).toEqual([])
     expect(data.category.rows).toEqual([])
+    expect(data.weights.rows).toEqual([])
     expect(data.korea.rows).toEqual([])
     expect(data.combined.n).toBe(0)
     expect(data.totalConsidered).toBe(0)

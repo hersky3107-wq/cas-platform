@@ -9,8 +9,9 @@
  * numbers (corr/beta/lead-lag — see `related-stats.ts`), never raw series.
  *
  * CONSTRAINT: every symbol here must be fetchable on the Twelve Data free
- * (Basic) tier — US equities/ETFs, FX pairs, crypto pairs. Index symbols
- * (SPX/NDX/VIX) are NOT free-tier, so ETF proxies stand in (SPY/QQQ/VIXY).
+ * (Basic) tier — US equities/ETFs, FX pairs, crypto pairs. Cash-index
+ * symbols (SPX/NDX/VIX) return 404 Grow/Venture on our key (probed
+ * 2026-09-07). The catalog therefore lists SPY/QQQ, not SPX/NDX.
  * A symbol the plan rejects degrades to an UNAVAILABLE line, never a guess.
  *
  * Editing this file is a data edit (like roster.ts): add/remove a relation,
@@ -178,9 +179,9 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     asiaLinks: [],
   },
   {
-    instrument: 'SPX',
+    instrument: 'SPY',
     related: [
-      { symbol: 'SPY', role: 'index_proxy', note: 'S&P 500 ETF (tracks the index)' },
+      { symbol: 'QQQ', role: 'index_proxy', note: 'Nasdaq-100 ETF (risk-asset peer)' },
       VOL,
       RATES,
       { symbol: 'HYG', role: 'index_proxy', note: 'high-yield credit ETF (risk stress gauge)' },
@@ -189,10 +190,10 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     asiaLinks: [],
   },
   {
-    instrument: 'NDX',
+    instrument: 'QQQ',
     related: [
-      { symbol: 'QQQ', role: 'index_proxy', note: 'Nasdaq-100 ETF (tracks the index)' },
-      { symbol: 'SMH', role: 'sector_etf', note: 'semis — NDX heavyweight sector' },
+      { symbol: 'SPY', role: 'index_proxy', note: 'S&P 500 ETF (broad-market peer)' },
+      { symbol: 'SMH', role: 'sector_etf', note: 'semis — QQQ heavyweight sector' },
       VOL,
       RATES,
     ],

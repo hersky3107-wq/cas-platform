@@ -63,8 +63,23 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
   })
 
   it('rejects a jurisdiction-blocked catalog instrument with 403 before any chargeable work', () => {
-    // DOGE/USD is a real catalog key (memecoin). GB denies memecoin.
+    // DOGE/USD is a real catalog key (memecoin). EU / UK / ME / OTHER deny it.
     expect(gatePublicGenerateInstrument('DOGE/USD', gbPublic)).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
+    })
+    expect(gatePublicGenerateInstrument('DOGE/USD', { isAdmin: false, jurisdiction: { ipCountry: 'DE' } })).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
+    })
+    expect(gatePublicGenerateInstrument('DOGE/USD', { isAdmin: false, jurisdiction: { ipCountry: 'AE' } })).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
+    })
+    expect(gatePublicGenerateInstrument('DOGE/USD', { isAdmin: false, jurisdiction: { ipCountry: 'BR' } })).toEqual({
       ok: false,
       status: 403,
       code: 'jurisdiction_blocked',

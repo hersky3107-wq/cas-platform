@@ -30,12 +30,15 @@ describe('isUiHorizon', () => {
 })
 
 describe('usesTradingSessions', () => {
-  it('is true only for stock / etf_index', () => {
+  it('is true for stock / etf_index / real_estate (REIT ETFs share the equity clock)', () => {
     expect(usesTradingSessions('stock')).toBe(true)
     expect(usesTradingSessions('etf_index')).toBe(true)
+    expect(usesTradingSessions('real_estate')).toBe(true)
     expect(usesTradingSessions('crypto_spot')).toBe(false)
     expect(usesTradingSessions('fx')).toBe(false)
-    expect(usesTradingSessions('real_estate')).toBe(false)
+    expect(usesTradingSessions('gold_metal')).toBe(false)
+    expect(usesTradingSessions('commodity_energy')).toBe(false)
+    expect(usesTradingSessions('memecoin')).toBe(false)
     expect(usesTradingSessions('tech')).toBe(false)
     expect(usesTradingSessions('ai_models')).toBe(false)
   })
@@ -95,10 +98,21 @@ describe('computeResolvesAt', () => {
     expect(computeResolvesAt('crypto_spot', '3m', weekendMorning)).toBe('2026-11-27T09:43:16.752Z')
   })
 
-  it('etf_index matches stock (same session-counted path)', () => {
+  it('etf_index and real_estate match stock (same session-counted path)', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
     for (const h of UI_HORIZONS) {
       expect(computeResolvesAt('etf_index', h, weekendMorning)).toBe(computeResolvesAt('stock', h, weekendMorning))
+      expect(computeResolvesAt('real_estate', h, weekendMorning)).toBe(computeResolvesAt('stock', h, weekendMorning))
+    }
+  })
+
+  it('gold / energy stay on the crypto/FX calendar-day path', () => {
+    const weekendMorning = '2026-08-29T09:43:16.752Z'
+    for (const h of UI_HORIZONS) {
+      expect(computeResolvesAt('gold_metal', h, weekendMorning)).toBe(computeResolvesAt('crypto_spot', h, weekendMorning))
+      expect(computeResolvesAt('commodity_energy', h, weekendMorning)).toBe(
+        computeResolvesAt('crypto_spot', h, weekendMorning),
+      )
     }
   })
 })
@@ -139,19 +153,23 @@ describe('tradingApproximationNote', () => {
   it('is null for 1d — an off-by-one-holiday deadline shift is immaterial to a next-session round', () => {
     expect(tradingApproximationNote('stock', '1d')).toBeNull()
     expect(tradingApproximationNote('etf_index', '1d')).toBeNull()
+    expect(tradingApproximationNote('real_estate', '1d')).toBeNull()
   })
 
   it('is null for calendar-day categories at every horizon — no approximation is made there', () => {
     for (const h of UI_HORIZONS) {
       expect(tradingApproximationNote('crypto_spot', h)).toBeNull()
       expect(tradingApproximationNote('fx', h)).toBeNull()
+      expect(tradingApproximationNote('gold_metal', h)).toBeNull()
+      expect(tradingApproximationNote('commodity_energy', h)).toBeNull()
     }
   })
 
-  it('discloses the weekday-count approximation for equities/ETF at 1w/1m/3m', () => {
+  it('discloses the weekday-count approximation for equities/ETF/REITs at 1w/1m/3m', () => {
     for (const h of ['1w', '1m', '3m'] as const) {
       expect(tradingApproximationNote('stock', h)).toMatch(/weekday/)
       expect(tradingApproximationNote('etf_index', h)).toMatch(/holiday calendar/)
+      expect(tradingApproximationNote('real_estate', h)).toMatch(/weekday/)
     }
   })
 })

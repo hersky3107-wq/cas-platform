@@ -74,8 +74,8 @@ export type LeagueUiPack = {
     none: string
     /**
      * Shown under any figure that collapses one round into a single number
-     * ("29 of 40 lean up"). Tiers 1–3 share one research packet, so those
-     * calls are correlated — the UI must not imply 40 independent forecasts.
+     * ("29 of 41 lean up"). Tiers 1–3 share one research packet, so those
+     * calls are correlated — the UI must not imply 41 independent forecasts.
      */
     correlatedNote: string
   }
@@ -348,6 +348,7 @@ export type LeagueUiPack = {
     sectionCamp: string
     sectionTier: string
     sectionBook: string
+    sectionWeights: string
     sectionCountry: string
     /** One-line caution under the country section. */
     sectionCountryCaution: string
@@ -356,6 +357,9 @@ export type LeagueUiPack = {
     campLabels: { us: string; china: string; other: string }
     tierLabels: { premier: string; challenger: string; world: string; scout: string }
     bookLabels: { closed: string; scout: string }
+    weightLabels: { closed: string; open: string }
+    /** ONE integrated line — total closed vs total open. Not a country/camp/brand split. */
+    weightsLine: (closedHits: number, closedGraded: number, openHits: number, openGraded: number) => string
     countryLabels: { US: string; CN: string; KR: string; FR: string; CA: string; INT: string }
     /** "✓18/25" — hits over graded. Always a hit count (✓ + total). */
     rawCount: (hits: number, graded: number) => string
@@ -409,7 +413,7 @@ export type LeagueUiPack = {
     title: string
     subtitle: string
     /** Secondary-tab strip (primary views sit above, always visible). */
-    tabs: { camp3: string; tier: string; brand: string; category: string; korea: string }
+    tabs: { camp3: string; tier: string; brand: string; category: string; weights: string; korea: string }
     moreComparisons: string
     hideComparisons: string
     /** Headline label above the US vs China comparison. */
@@ -417,6 +421,7 @@ export type LeagueUiPack = {
     /** Headline label above PURE-REASONING vs RESEARCH. */
     methodHeadline: string
     methodLabels: { pure_reasoning: string; research: string }
+    weightLabels: { closed: string; open: string }
     campLabels: { us: string; china: string; other: string }
     columns: { rank: string; name: string; winRate: string; record: string }
     /**
@@ -544,7 +549,7 @@ const en: LeagueUiPack = {
     split: (responded, total) => `${responded} of ${total} AI models are split — no clear lean`,
     none: 'No AI models have reported for this round yet',
     correlatedNote:
-      'Premier, Challenger and World all read the same research packet, so this is one event with correlated inputs — not 40 independent forecasts.',
+      'Premier, Challenger and World all read the same research packet, so this is one event with correlated inputs — not 41 independent forecasts.',
   },
   hero: {
     answerVerb: { up: 'Rises', down: 'Falls' },
@@ -627,8 +632,8 @@ const en: LeagueUiPack = {
       'USD/JPY': 'US Dollar / Japanese Yen',
       'XAU/USD': 'Gold',
       'XAG/USD': 'Silver',
-      SPX: 'S&P 500',
-      NDX: 'Nasdaq 100',
+      SPY: 'S&P 500 ETF (SPY)',
+      QQQ: 'Nasdaq-100 ETF (QQQ)',
       'WTICO/USD': 'WTI Crude',
       'NATGAS/USD': 'Natural Gas',
       VNQ: 'Vanguard Real Estate (VNQ)',
@@ -763,14 +768,18 @@ const en: LeagueUiPack = {
     distributionNoDirection: 'No direction',
     sectionCamp: 'Camp',
     sectionTier: 'Tier',
-    sectionBook: 'Reasoning vs research',
+    sectionBook: 'Own reasoning vs web search',
+    sectionWeights: 'Open vs closed weights',
     sectionCountry: 'By country',
     sectionCountryCaution: 'Per-country samples are small (1–5 models) — read as texture, not a ranking.',
     sectionOverconfident: 'Wrong calls by confidence',
     sectionStreaks: 'Win streaks',
     campLabels: { us: 'US', china: 'China', other: 'Other' },
     tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
-    bookLabels: { closed: 'Closed-book', scout: 'Open-book (Scout)' },
+    bookLabels: { closed: 'Own reasoning', scout: 'Web search' },
+    weightLabels: { closed: 'Closed-weights', open: 'Open-weights' },
+    weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
+      `Closed-weights ${hitCount(closedHits, closedGraded)} \u00b7 Open-weights ${hitCount(openHits, openGraded)}`,
     countryLabels: {
       US: 'United States',
       CN: 'China',
@@ -799,12 +808,13 @@ const en: LeagueUiPack = {
   leaderboard: {
     title: 'Leaderboard',
     subtitle: 'Win rates computed only from resolved predictions — not investment advice.',
-    tabs: { camp3: 'Camp (3-way)', tier: 'Tier', brand: 'Brand', category: 'Category', korea: 'Korea' },
+    tabs: { camp3: 'Camp (3-way)', tier: 'Tier', brand: 'Brand', category: 'Category', weights: 'Weights', korea: 'Korea' },
     moreComparisons: 'More comparisons',
     hideComparisons: 'Hide comparisons',
     campHeadline: 'US vs. China',
-    methodHeadline: 'Pure reasoning vs research',
-    methodLabels: { pure_reasoning: 'Pure reasoning', research: 'Research (Scout)' },
+    methodHeadline: 'Own reasoning vs web search',
+    methodLabels: { pure_reasoning: 'Own reasoning', research: 'Web search' },
+    weightLabels: { closed: 'Closed-weights', open: 'Open-weights' },
     campLabels: { us: 'US', china: 'China', other: 'Third country' },
     columns: { rank: '#', name: 'Name', winRate: 'Win rate', record: 'Record' },
     roundCoverage: (graded, unresolvable) =>
@@ -890,7 +900,7 @@ const ko: LeagueUiPack = {
     split: (responded, total) => `AI 모델 ${total}개 중 ${responded}개가 의견을 냈지만 방향이 갈립니다 — 뚜렷한 우세 없음`,
     none: '아직 이번 라운드에 응답한 AI 모델이 없습니다',
     correlatedNote:
-      '프리미어·챌린저·월드 모델은 같은 리서치 패킷을 받습니다. 이 숫자는 서로 독립된 40개 예측이 아니라, 입력이 상관된 한 번의 사건입니다.',
+      '프리미어·챌린저·월드 모델은 같은 리서치 패킷을 받습니다. 이 숫자는 서로 독립된 41개 예측이 아니라, 입력이 상관된 한 번의 사건입니다.',
   },
   hero: {
     answerVerb: { up: '오른다', down: '내린다' },
@@ -972,8 +982,8 @@ const ko: LeagueUiPack = {
       'USD/JPY': '엔/달러',
       'XAU/USD': '금',
       'XAG/USD': '은',
-      SPX: 'S&P 500',
-      NDX: '나스닥 100',
+      SPY: 'S&P 500 ETF (SPY)',
+      QQQ: '나스닥 100 ETF (QQQ)',
       'WTICO/USD': '원유 (WTI)',
       'NATGAS/USD': '천연가스',
       VNQ: '뱅가드 리츠 (VNQ)',
@@ -1106,14 +1116,18 @@ const ko: LeagueUiPack = {
     distributionNoDirection: '방향 없음',
     sectionCamp: '진영',
     sectionTier: '티어',
-    sectionBook: '추론 vs 리서치',
+    sectionBook: '자체추론 vs 웹검색',
+    sectionWeights: '폐쇄형 vs 오픈웨이트',
     sectionCountry: '국가별',
     sectionCountryCaution: '국가별 표본은 1–5개 모델로 작습니다. 순위로 읽지 마세요.',
     sectionOverconfident: '허풍 랭킹',
     sectionStreaks: '연승',
     campLabels: { us: 'US', china: 'CN', other: '기타' },
     tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
-    bookLabels: { closed: '클로즈드북', scout: '오픈북 (Scout)' },
+    bookLabels: { closed: '자체추론', scout: '웹검색' },
+    weightLabels: { closed: '폐쇄형', open: '오픈웨이트' },
+    weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
+      `폐쇄형 ${hitCount(closedHits, closedGraded)} \u00b7 오픈웨이트 ${hitCount(openHits, openGraded)}`,
     countryLabels: {
       US: '미국',
       CN: '중국',
@@ -1142,12 +1156,13 @@ const ko: LeagueUiPack = {
   leaderboard: {
     title: '리더보드',
     subtitle: '이미 결과가 확정된 예측만으로 계산한 적중률입니다 — 투자 조언이 아닙니다.',
-    tabs: { camp3: '진영 (3자)', tier: '티어', brand: '브랜드', category: '카테고리', korea: '한국' },
+    tabs: { camp3: '진영 (3자)', tier: '티어', brand: '브랜드', category: '카테고리', weights: '가중치', korea: '한국' },
     moreComparisons: '비교 더 보기',
     hideComparisons: '비교 접기',
     campHeadline: '미국 vs 중국',
-    methodHeadline: '순수 추론 vs 리서치',
-    methodLabels: { pure_reasoning: '순수 추론', research: '리서치 (스카우트)' },
+    methodHeadline: '자체추론 vs 웹검색',
+    methodLabels: { pure_reasoning: '자체추론', research: '웹검색' },
+    weightLabels: { closed: '폐쇄형', open: '오픈웨이트' },
     campLabels: { us: '미국', china: '중국', other: '제3국' },
     columns: { rank: '순위', name: '이름', winRate: '적중률', record: '전적' },
     roundCoverage: (graded, unresolvable) =>
@@ -1232,7 +1247,7 @@ const ja: LeagueUiPack = {
     split: (responded, total) => `AIモデル${total}体中${responded}体が回答しましたが意見が分かれ、明確な優勢はありません`,
     none: 'このラウンドにはまだ回答したAIモデルがありません',
     correlatedNote:
-      'プレミア・チャレンジャー・ワールドは同じリサーチパケットを読むため、これは40件の独立した予測ではなく、入力が相関した一つの出来事です。',
+      'プレミア・チャレンジャー・ワールドは同じリサーチパケットを読むため、これは41件の独立した予測ではなく、入力が相関した一つの出来事です。',
   },
   hero: {
     answerVerb: { up: '上昇', down: '下落' },
@@ -1314,8 +1329,8 @@ const ja: LeagueUiPack = {
       'USD/JPY': 'ドル / 円',
       'XAU/USD': '金',
       'XAG/USD': '銀',
-      SPX: 'S&P 500',
-      NDX: 'ナスダック100',
+      SPY: 'S&P 500 ETF (SPY)',
+      QQQ: 'ナスダック100 ETF (QQQ)',
       'WTICO/USD': 'WTI原油',
       'NATGAS/USD': '天然ガス',
       VNQ: 'バンガード REIT (VNQ)',
@@ -1448,14 +1463,18 @@ const ja: LeagueUiPack = {
     distributionNoDirection: '方向なし',
     sectionCamp: '陣営',
     sectionTier: 'ティア',
-    sectionBook: '推論 vs リサーチ',
+    sectionBook: '自己推論 vs ウェブ検索',
+    sectionWeights: 'クローズドウェイト vs オープンウェイト',
     sectionCountry: '国別',
     sectionCountryCaution: '国別の標本は1–5モデルと小さいです。順位として読まないでください。',
     sectionOverconfident: '自信過剰ランキング',
     sectionStreaks: '連勝',
     campLabels: { us: 'US', china: 'CN', other: 'その他' },
     tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
-    bookLabels: { closed: 'クローズドブック', scout: 'オープンブック（Scout）' },
+    bookLabels: { closed: '自己推論', scout: 'ウェブ検索' },
+    weightLabels: { closed: 'クローズドウェイト', open: 'オープンウェイト' },
+    weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
+      `クローズドウェイト ${hitCount(closedHits, closedGraded)} \u00b7 オープンウェイト ${hitCount(openHits, openGraded)}`,
     countryLabels: {
       US: 'アメリカ',
       CN: '中国',
@@ -1484,12 +1503,13 @@ const ja: LeagueUiPack = {
   leaderboard: {
     title: 'リーダーボード',
     subtitle: '確定済みの予測のみから算出した的中率です — 投資助言ではありません。',
-    tabs: { camp3: '陣営（3者）', tier: 'ティア', brand: 'ブランド', category: 'カテゴリー', korea: '韓国' },
+    tabs: { camp3: '陣営（3者）', tier: 'ティア', brand: 'ブランド', category: 'カテゴリー', weights: 'ウェイト', korea: '韓国' },
     moreComparisons: '比較をさらに表示',
     hideComparisons: '比較を隠す',
     campHeadline: '米国 vs 中国',
-    methodHeadline: '純粋推論 vs リサーチ',
-    methodLabels: { pure_reasoning: '純粋推論', research: 'リサーチ（スカウト）' },
+    methodHeadline: '自己推論 vs ウェブ検索',
+    methodLabels: { pure_reasoning: '自己推論', research: 'ウェブ検索' },
+    weightLabels: { closed: 'クローズドウェイト', open: 'オープンウェイト' },
     campLabels: { us: '米国', china: '中国', other: '第三国' },
     columns: { rank: '順位', name: '名前', winRate: '的中率', record: '勝敗' },
     roundCoverage: (graded, unresolvable) =>
@@ -1574,7 +1594,7 @@ const zhTW: LeagueUiPack = {
     split: (responded, total) => `${total} 個 AI 模型中有 ${responded} 個給出意見，但看法分歧，沒有明顯多數`,
     none: '本輪目前尚無 AI 模型回應',
     correlatedNote:
-      'Premier、Challenger、World 都讀同一份研究資料包，因此這是輸入相關的單一事件，不是 40 個獨立預測。',
+      'Premier、Challenger、World 都讀同一份研究資料包，因此這是輸入相關的單一事件，不是 41 個獨立預測。',
   },
   hero: {
     answerVerb: { up: '看漲', down: '看跌' },
@@ -1656,8 +1676,8 @@ const zhTW: LeagueUiPack = {
       'USD/JPY': '美元／日圓',
       'XAU/USD': '黃金',
       'XAG/USD': '白銀',
-      SPX: 'S&P 500',
-      NDX: '那斯達克100',
+      SPY: 'S&P 500 ETF (SPY)',
+      QQQ: '那斯達克100 ETF (QQQ)',
       'WTICO/USD': 'WTI 原油',
       'NATGAS/USD': '天然氣',
       VNQ: '先鋒不動產 (VNQ)',
@@ -1788,14 +1808,18 @@ const zhTW: LeagueUiPack = {
     distributionNoDirection: '無方向',
     sectionCamp: '陣營',
     sectionTier: '級別',
-    sectionBook: '推理 vs 研究',
+    sectionBook: '自身推理 vs 網路搜尋',
+    sectionWeights: '封閉權重 vs 開放權重',
     sectionCountry: '依國家',
     sectionCountryCaution: '各國樣本僅 1–5 個模型，請勿當成排名。',
     sectionOverconfident: '虛張聲勢排名',
     sectionStreaks: '連勝',
     campLabels: { us: 'US', china: 'CN', other: '其他' },
     tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
-    bookLabels: { closed: '封閉書', scout: '開放書（Scout）' },
+    bookLabels: { closed: '自身推理', scout: '網路搜尋' },
+    weightLabels: { closed: '封閉權重', open: '開放權重' },
+    weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
+      `封閉權重 ${hitCount(closedHits, closedGraded)} \u00b7 開放權重 ${hitCount(openHits, openGraded)}`,
     countryLabels: {
       US: '美國',
       CN: '中國',
@@ -1824,12 +1848,13 @@ const zhTW: LeagueUiPack = {
   leaderboard: {
     title: '排行榜',
     subtitle: '命中率僅根據已結算的預測計算 — 並非投資建議。',
-    tabs: { camp3: '陣營（三方）', tier: '級別', brand: '品牌', category: '類別', korea: '韓國' },
+    tabs: { camp3: '陣營（三方）', tier: '級別', brand: '品牌', category: '類別', weights: '權重', korea: '韓國' },
     moreComparisons: '更多比較',
     hideComparisons: '收合比較',
     campHeadline: '美國 vs 中國',
-    methodHeadline: '純推理 vs 研究',
-    methodLabels: { pure_reasoning: '純推理', research: '研究（Scout）' },
+    methodHeadline: '自身推理 vs 網路搜尋',
+    methodLabels: { pure_reasoning: '自身推理', research: '網路搜尋' },
+    weightLabels: { closed: '封閉權重', open: '開放權重' },
     campLabels: { us: '美國', china: '中國', other: '第三國' },
     columns: { rank: '排名', name: '名稱', winRate: '命中率', record: '勝敗' },
     roundCoverage: (graded, unresolvable) =>
@@ -1914,7 +1939,7 @@ const fr: LeagueUiPack = {
     split: (responded, total) => `${responded} modèles IA sur ${total} ont répondu, mais les avis sont partagés — aucune tendance claire`,
     none: 'Aucun modèle IA n\u2019a encore répondu pour ce tour',
     correlatedNote:
-      'Premier, Challenger et World lisent le même dossier de recherche : c\u2019est un seul événement à entrées corrélées, pas 40 prévisions indépendantes.',
+      'Premier, Challenger et World lisent le même dossier de recherche : c\u2019est un seul événement à entrées corrélées, pas 41 prévisions indépendantes.',
   },
   hero: {
     answerVerb: { up: 'Hausse', down: 'Baisse' },
@@ -1997,8 +2022,8 @@ const fr: LeagueUiPack = {
       'USD/JPY': 'Dollar / yen',
       'XAU/USD': 'Or',
       'XAG/USD': 'Argent',
-      SPX: 'S&P 500',
-      NDX: 'Nasdaq 100',
+      SPY: 'S&P 500 ETF (SPY)',
+      QQQ: 'Nasdaq-100 ETF (QQQ)',
       'WTICO/USD': 'Pétrole WTI',
       'NATGAS/USD': 'Gaz naturel',
       VNQ: 'Vanguard Immobilier (VNQ)',
@@ -2134,14 +2159,18 @@ const fr: LeagueUiPack = {
     distributionNoDirection: 'Sans direction',
     sectionCamp: 'Bloc',
     sectionTier: 'Niveau',
-    sectionBook: 'Raisonnement vs recherche',
+    sectionBook: 'Raisonnement interne vs recherche web',
+    sectionWeights: 'Poids fermés vs ouverts',
     sectionCountry: 'Par pays',
     sectionCountryCaution: 'Les échantillons par pays sont petits (1–5 modèles) — à lire comme un contexte, pas un classement.',
     sectionOverconfident: 'Appels faux par confiance',
     sectionStreaks: 'Séries de victoires',
     campLabels: { us: 'US', china: 'Chine', other: 'Autre' },
     tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
-    bookLabels: { closed: 'Livre fermé', scout: 'Livre ouvert (Scout)' },
+    bookLabels: { closed: 'Raisonnement interne', scout: 'Recherche web' },
+    weightLabels: { closed: 'Poids fermés', open: 'Poids ouverts' },
+    weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
+      `Poids fermés ${hitCount(closedHits, closedGraded)} \u00b7 Poids ouverts ${hitCount(openHits, openGraded)}`,
     countryLabels: {
       US: 'États-Unis',
       CN: 'Chine',
@@ -2170,12 +2199,13 @@ const fr: LeagueUiPack = {
   leaderboard: {
     title: 'Classement',
     subtitle: 'Taux de réussite calculés uniquement sur les prédictions résolues — ceci n\u2019est pas un conseil en investissement.',
-    tabs: { camp3: 'Camp (3 voies)', tier: 'Niveau', brand: 'Marque', category: 'Catégorie', korea: 'Corée' },
+    tabs: { camp3: 'Camp (3 voies)', tier: 'Niveau', brand: 'Marque', category: 'Catégorie', weights: 'Poids', korea: 'Corée' },
     moreComparisons: 'Plus de comparaisons',
     hideComparisons: 'Masquer les comparaisons',
     campHeadline: '\u00c9tats-Unis vs Chine',
-    methodHeadline: 'Raisonnement pur vs recherche',
-    methodLabels: { pure_reasoning: 'Raisonnement pur', research: 'Recherche (Scout)' },
+    methodHeadline: 'Raisonnement interne vs recherche web',
+    methodLabels: { pure_reasoning: 'Raisonnement interne', research: 'Recherche web' },
+    weightLabels: { closed: 'Poids fermés', open: 'Poids ouverts' },
     campLabels: { us: 'États-Unis', china: 'Chine', other: 'Pays tiers' },
     columns: { rank: '#', name: 'Nom', winRate: 'Taux de réussite', record: 'Bilan' },
     roundCoverage: (graded, unresolvable) =>
@@ -2261,7 +2291,7 @@ const es: LeagueUiPack = {
     split: (responded, total) => `${responded} de ${total} modelos de IA respondieron, pero están divididos — sin tendencia clara`,
     none: 'Todavía ningún modelo de IA respondió en esta ronda',
     correlatedNote:
-      'Premier, Challenger y World leen el mismo paquete de investigación: esto es un solo evento con entradas correlacionadas, no 40 pronósticos independientes.',
+      'Premier, Challenger y World leen el mismo paquete de investigación: esto es un solo evento con entradas correlacionadas, no 41 pronósticos independientes.',
   },
   hero: {
     answerVerb: { up: 'Sube', down: 'Baja' },
@@ -2344,8 +2374,8 @@ const es: LeagueUiPack = {
       'USD/JPY': 'Dólar / yen',
       'XAU/USD': 'Oro',
       'XAG/USD': 'Plata',
-      SPX: 'S&P 500',
-      NDX: 'Nasdaq 100',
+      SPY: 'S&P 500 ETF (SPY)',
+      QQQ: 'Nasdaq-100 ETF (QQQ)',
       'WTICO/USD': 'Petróleo WTI',
       'NATGAS/USD': 'Gas natural',
       VNQ: 'Vanguard inmobiliario (VNQ)',
@@ -2481,14 +2511,18 @@ const es: LeagueUiPack = {
     distributionNoDirection: 'Sin dirección',
     sectionCamp: 'Bando',
     sectionTier: 'Nivel',
-    sectionBook: 'Razonamiento vs investigación',
+    sectionBook: 'Razonamiento propio vs búsqueda web',
+    sectionWeights: 'Pesos cerrados vs abiertos',
     sectionCountry: 'Por país',
     sectionCountryCaution: 'Las muestras por país son pequeñas (1–5 modelos): léalas como contexto, no como un ranking.',
     sectionOverconfident: 'Fallos por confianza',
     sectionStreaks: 'Rachas',
     campLabels: { us: 'EE. UU.', china: 'China', other: 'Otro' },
     tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
-    bookLabels: { closed: 'Libro cerrado', scout: 'Libro abierto (Scout)' },
+    bookLabels: { closed: 'Razonamiento propio', scout: 'Búsqueda web' },
+    weightLabels: { closed: 'Pesos cerrados', open: 'Pesos abiertos' },
+    weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
+      `Pesos cerrados ${hitCount(closedHits, closedGraded)} \u00b7 Pesos abiertos ${hitCount(openHits, openGraded)}`,
     countryLabels: {
       US: 'Estados Unidos',
       CN: 'China',
@@ -2517,12 +2551,13 @@ const es: LeagueUiPack = {
   leaderboard: {
     title: 'Tabla de posiciones',
     subtitle: 'Tasas de acierto calculadas solo con predicciones ya resueltas — esto no es asesoramiento de inversión.',
-    tabs: { camp3: 'Bloque (3 vías)', tier: 'Nivel', brand: 'Marca', category: 'Categoría', korea: 'Corea' },
+    tabs: { camp3: 'Bloque (3 vías)', tier: 'Nivel', brand: 'Marca', category: 'Categoría', weights: 'Pesos', korea: 'Corea' },
     moreComparisons: 'Más comparaciones',
     hideComparisons: 'Ocultar comparaciones',
     campHeadline: 'EE. UU. vs China',
-    methodHeadline: 'Razonamiento puro vs investigación',
-    methodLabels: { pure_reasoning: 'Razonamiento puro', research: 'Investigación (Scout)' },
+    methodHeadline: 'Razonamiento propio vs búsqueda web',
+    methodLabels: { pure_reasoning: 'Razonamiento propio', research: 'Búsqueda web' },
+    weightLabels: { closed: 'Pesos cerrados', open: 'Pesos abiertos' },
     campLabels: { us: 'EE. UU.', china: 'China', other: 'Tercer país' },
     columns: { rank: '#', name: 'Nombre', winRate: 'Tasa de acierto', record: 'Registro' },
     roundCoverage: (graded, unresolvable) =>
@@ -2608,7 +2643,7 @@ const ar: LeagueUiPack = {
     split: (responded, total) => `أجاب ${responded} من أصل ${total} من نماذج الذكاء الاصطناعي، لكن الآراء منقسمة — لا يوجد اتجاه واضح`,
     none: 'لم يستجب أي نموذج ذكاء اصطناعي لهذه الجولة بعد',
     correlatedNote:
-      'Premier و Challenger و World يقرأون حزمة البحث نفسها، فهذه حادثة واحدة بمدخلات مترابطة — وليست 40 توقّعًا مستقلًا.',
+      'Premier و Challenger و World يقرأون حزمة البحث نفسها، فهذه حادثة واحدة بمدخلات مترابطة — وليست 41 توقّعًا مستقلًا.',
   },
   hero: {
     answerVerb: { up: 'صعود', down: 'هبوط' },
@@ -2690,8 +2725,8 @@ const ar: LeagueUiPack = {
       'USD/JPY': 'دولار / ين',
       'XAU/USD': 'ذهب',
       'XAG/USD': 'فضة',
-      SPX: 'S&P 500',
-      NDX: 'ناسداك 100',
+      SPY: 'S&P 500 ETF (SPY)',
+      QQQ: 'ناسداك 100 ETF (QQQ)',
       'WTICO/USD': 'نفط غرب تكساس',
       'NATGAS/USD': 'غاز طبيعي',
       VNQ: 'فانغارد عقاري (VNQ)',
@@ -2824,14 +2859,18 @@ const ar: LeagueUiPack = {
     distributionNoDirection: 'بلا اتجاه',
     sectionCamp: 'المعسكر',
     sectionTier: 'المستوى',
-    sectionBook: 'استدلال مقابل بحث',
+    sectionBook: 'استدلال ذاتي مقابل بحث ويب',
+    sectionWeights: 'أوزان مغلقة مقابل مفتوحة',
     sectionCountry: 'حسب الدولة',
     sectionCountryCaution: 'عينات الدول صغيرة (1–5 نماذج) — اقرأها كسياق لا كترتيب.',
     sectionOverconfident: 'أخطاء حسب الثقة',
     sectionStreaks: 'سلاسل الفوز',
     campLabels: { us: 'الولايات المتحدة', china: 'الصين', other: 'أخرى' },
     tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
-    bookLabels: { closed: 'كتاب مغلق', scout: 'كتاب مفتوح (Scout)' },
+    bookLabels: { closed: 'استدلال ذاتي', scout: 'بحث ويب' },
+    weightLabels: { closed: 'أوزان مغلقة', open: 'أوزان مفتوحة' },
+    weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
+      `أوزان مغلقة ${hitCount(closedHits, closedGraded)} \u00b7 أوزان مفتوحة ${hitCount(openHits, openGraded)}`,
     countryLabels: {
       US: 'الولايات المتحدة',
       CN: 'الصين',
@@ -2860,12 +2899,13 @@ const ar: LeagueUiPack = {
   leaderboard: {
     title: 'لوحة الصدارة',
     subtitle: 'معدلات الإصابة محسوبة فقط من التوقعات التي تم حسمها — هذه ليست نصيحة استثمارية.',
-    tabs: { camp3: 'المعسكر (ثلاثي)', tier: 'الفئة', brand: 'العلامة', category: 'التصنيف', korea: 'كوريا' },
+    tabs: { camp3: 'المعسكر (ثلاثي)', tier: 'الفئة', brand: 'العلامة', category: 'التصنيف', weights: 'الأوزان', korea: 'كوريا' },
     moreComparisons: 'مزيد من المقارنات',
     hideComparisons: 'إخفاء المقارنات',
     campHeadline: 'الولايات المتحدة مقابل الصين',
-    methodHeadline: 'الاستدلال الصرف مقابل البحث',
-    methodLabels: { pure_reasoning: 'الاستدلال الصرف', research: 'البحث (الكشافة)' },
+    methodHeadline: 'استدلال ذاتي مقابل بحث ويب',
+    methodLabels: { pure_reasoning: 'استدلال ذاتي', research: 'بحث ويب' },
+    weightLabels: { closed: 'أوزان مغلقة', open: 'أوزان مفتوحة' },
     campLabels: { us: 'الولايات المتحدة', china: 'الصين', other: 'دولة ثالثة' },
     columns: { rank: '#', name: 'الاسم', winRate: 'معدل الإصابة', record: 'السجل' },
     roundCoverage: (graded, unresolvable) =>
@@ -2957,7 +2997,7 @@ const pt: LeagueUiPack = {
     split: (responded, total) => `${responded} de ${total} modelos de IA responderam, mas estão divididos — sem inclinação clara`,
     none: 'Nenhum modelo de IA respondeu nesta rodada ainda',
     correlatedNote:
-      'Premier, Challenger e World leem o mesmo pacote de pesquisa, então isto é um evento com entradas correlacionadas — não 40 previsões independentes.',
+      'Premier, Challenger e World leem o mesmo pacote de pesquisa, então isto é um evento com entradas correlacionadas — não 41 previsões independentes.',
   },
   hero: {
     answerVerb: { up: 'Sobe', down: 'Desce' },
@@ -3040,8 +3080,8 @@ const pt: LeagueUiPack = {
       'USD/JPY': 'Dólar americano / Iene japonês',
       'XAU/USD': 'Ouro',
       'XAG/USD': 'Prata',
-      SPX: 'S&P 500',
-      NDX: 'Nasdaq 100',
+      SPY: 'S&P 500 ETF (SPY)',
+      QQQ: 'Nasdaq-100 ETF (QQQ)',
       'WTICO/USD': 'Petróleo WTI',
       'NATGAS/USD': 'Gás natural',
       VNQ: 'Vanguard Real Estate (VNQ)',
@@ -3176,14 +3216,18 @@ const pt: LeagueUiPack = {
     distributionNoDirection: 'Sem direção',
     sectionCamp: 'Campo',
     sectionTier: 'Nível',
-    sectionBook: 'Raciocínio vs pesquisa',
+    sectionBook: 'Raciocínio próprio vs busca na web',
+    sectionWeights: 'Pesos fechados vs abertos',
     sectionCountry: 'Por país',
     sectionCountryCaution: 'Amostras por país são pequenas (1–5 modelos) — leia como contexto, não como ranking.',
     sectionOverconfident: 'Erros por confiança',
     sectionStreaks: 'Sequências',
     campLabels: { us: 'EUA', china: 'China', other: 'Outro' },
     tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
-    bookLabels: { closed: 'Livro fechado', scout: 'Livro aberto (Scout)' },
+    bookLabels: { closed: 'Raciocínio próprio', scout: 'Busca na web' },
+    weightLabels: { closed: 'Pesos fechados', open: 'Pesos abertos' },
+    weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
+      `Pesos fechados ${hitCount(closedHits, closedGraded)} \u00b7 Pesos abertos ${hitCount(openHits, openGraded)}`,
     countryLabels: {
       US: 'Estados Unidos',
       CN: 'China',
@@ -3212,12 +3256,13 @@ const pt: LeagueUiPack = {
   leaderboard: {
     title: 'Classificação',
     subtitle: 'Taxas de acerto calculadas apenas com previsões resolvidas — não é recomendação de investimento.',
-    tabs: { camp3: 'Campo (3 vias)', tier: 'Nível', brand: 'Marca', category: 'Categoria', korea: 'Coreia' },
+    tabs: { camp3: 'Campo (3 vias)', tier: 'Nível', brand: 'Marca', category: 'Categoria', weights: 'Pesos', korea: 'Coreia' },
     moreComparisons: 'Mais comparações',
     hideComparisons: 'Ocultar comparações',
     campHeadline: 'EUA vs. China',
-    methodHeadline: 'Raciocínio puro vs pesquisa',
-    methodLabels: { pure_reasoning: 'Raciocínio puro', research: 'Pesquisa (Scout)' },
+    methodHeadline: 'Raciocínio próprio vs busca na web',
+    methodLabels: { pure_reasoning: 'Raciocínio próprio', research: 'Busca na web' },
+    weightLabels: { closed: 'Pesos fechados', open: 'Pesos abertos' },
     campLabels: { us: 'EUA', china: 'China', other: 'Terceiro país' },
     columns: { rank: '#', name: 'Nome', winRate: 'Taxa de acerto', record: 'Histórico' },
     roundCoverage: (graded, unresolvable) =>
