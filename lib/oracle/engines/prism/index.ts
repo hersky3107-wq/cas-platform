@@ -390,6 +390,83 @@ function computeWarningDomain(scores: DomainScores): DomainName {
   return worst
 }
 
+/** Birth-anchored core vector: the season and weekday tables only — the two
+ * PRISM inputs a birth date alone determines. Used by the pair sketch, where
+ * the other person has no MBTI or colour picks to give. */
+export function birthAnchorVector(birthDate: string): CoreVector {
+  const birth = parseYmd(birthDate, 'birthDate')
+  if (daysInMonth(birth.y, birth.m) < birth.d) {
+    throw new PrismInputError('invalid_date', `birthDate ${birthDate} is not a real civil day`)
+  }
+  const season = SEASON_VECTORS[seasonElement(calendarNoon(birthDate))]
+  const rhythm = WEEKDAY_VECTORS[weekday(calendarNoon(birthDate))]!
+  const zero = emptyCore(0)
+  return mixCore(season, 0.5, rhythm, 0.5, zero, 0, zero, 0)
+}
+
+export type PrismPairSide = {
+  seasonElement: SeasonElement
+  weekday: WeekdayIndex
+  annualCycle: CycleSnapshot
+}
+
+export type PrismPairSketch = {
+  a: PrismPairSide
+  b: PrismPairSide
+  /** Pearson shape concordance of the two birth-anchor vectors, 0–100. */
+  anchorConcordance: number
+  /** B's season element relative to A (SUPPORT = B feeds A, etc.). */
+  relationForA: ElementRelation
+  /** A's season element relative to B. */
+  relationForB: ElementRelation
+  sameAnnualCycle: boolean
+  anchorA: CoreVector
+  anchorB: CoreVector
+}
+
+/**
+ * PRISM's native two-person entry point. Uses only what two birth dates
+ * determine — season element, weekday rhythm, and the 12-year cycle position
+ * at `atDate` — plus the engine's own `concordance` (6-axis Pearson).
+ * Deliberately does NOT require MBTI or colours: the partner never has them.
+ */
+export function prismPairSketch(input: {
+  birthDateA: string
+  birthDateB: string
+  atDate: string
+}): PrismPairSketch {
+  const birthA = parseYmd(input.birthDateA, 'birthDateA')
+  const birthB = parseYmd(input.birthDateB, 'birthDateB')
+  const at = parseYmd(input.atDate, 'atDate')
+  for (const [label, ymd] of [
+    ['birthDateA', birthA],
+    ['birthDateB', birthB],
+    ['atDate', at],
+  ] as const) {
+    if (daysInMonth(ymd.y, ymd.m) < ymd.d) {
+      throw new PrismInputError('invalid_date', `${label} is not a real civil day`)
+    }
+  }
+
+  const anchorA = birthAnchorVector(input.birthDateA)
+  const anchorB = birthAnchorVector(input.birthDateB)
+  const seasonA = seasonElement(calendarNoon(input.birthDateA))
+  const seasonB = seasonElement(calendarNoon(input.birthDateB))
+  const annualA = annualCycle(birthA, at)
+  const annualB = annualCycle(birthB, at)
+
+  return {
+    a: { seasonElement: seasonA, weekday: weekday(calendarNoon(input.birthDateA)), annualCycle: annualA },
+    b: { seasonElement: seasonB, weekday: weekday(calendarNoon(input.birthDateB)), annualCycle: annualB },
+    anchorConcordance: concordance(anchorA, anchorB),
+    relationForA: elementRelation(seasonA, seasonB),
+    relationForB: elementRelation(seasonB, seasonA),
+    sameAnnualCycle: annualA.id === annualB.id,
+    anchorA,
+    anchorB,
+  }
+}
+
 function assertDistinctColors(colors: PrismInput['colors']): void {
   const { impulse, need, identity } = colors
   if (!isPrismColor(impulse) || !isPrismColor(need) || !isPrismColor(identity)) {

@@ -30,6 +30,7 @@ import { buildSynthesisSystemPrompt, buildSynthesisUserPrompt } from './prompts/
 import {
   buildVerdictSystemPrompt,
   buildVerdictUserPrompt,
+  COMPAT_VERDICT_DIRECTION_RETRY_INSTRUCTION,
   VERDICT_DIRECTION_RETRY_INSTRUCTION,
   VERDICT_MAX_COMPLETION_TOKENS,
   VERDICT_STRICT_RETRY_INSTRUCTION,
@@ -146,6 +147,15 @@ async function finalizeUnitCost(opts: {
   }
 }
 
+/**
+ * Session kind travels inside every payload envelope ('personal' | 'compat').
+ * 궁합 swaps the prompt framing and the direction keyword table; the wire enum
+ * and parser stay identical.
+ */
+function payloadKind(payload: JsonObject): string | undefined {
+  return typeof payload.kind === 'string' ? payload.kind : undefined
+}
+
 /** Panel size travels inside the verdict payload (reader.of). */
 function verdictReaderCount(payload: JsonObject): number {
   const reader = payload.reader
@@ -192,18 +202,19 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             : entry
 
       const readerCount = verdictReaderCount(request.payload)
+      const sessionKind = payloadKind(request.payload)
       const systemPrompt =
         request.kind === 'synthesis'
-          ? buildSynthesisSystemPrompt(request.locale)
+          ? buildSynthesisSystemPrompt(request.locale, sessionKind)
           : request.kind === 'verdict'
-            ? buildVerdictSystemPrompt(request.locale, request.unit, readerCount)
-            : buildLayer1SystemPrompt(request.locale, request.unit)
+            ? buildVerdictSystemPrompt(request.locale, request.unit, readerCount, sessionKind)
+            : buildLayer1SystemPrompt(request.locale, request.unit, sessionKind)
       const userPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisUserPrompt(request.payload)
           : request.kind === 'verdict'
-            ? buildVerdictUserPrompt(request.payload, request.locale)
-            : buildLayer1UserPrompt(request.payload, request.locale, request.unit)
+            ? buildVerdictUserPrompt(request.payload, request.locale, sessionKind)
+            : buildLayer1UserPrompt(request.payload, request.locale, request.unit, sessionKind)
       const startedAt = Date.now()
       const deadlineAt = startedAt + opts.timeoutMs
       const httpBudget = createLayer1HttpBudget(LAYER1_HTTP_BUDGET)
@@ -256,7 +267,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             strictRetryNext || directionRetryNext
               ? `${userPrompt}${
                   directionRetryNext
-                    ? VERDICT_DIRECTION_RETRY_INSTRUCTION
+                    ? sessionKind === 'compat'
+                      ? COMPAT_VERDICT_DIRECTION_RETRY_INSTRUCTION
+                      : VERDICT_DIRECTION_RETRY_INSTRUCTION
                     : request.kind === 'synthesis'
                       ? (lengthRetryInstruction ?? SYNTHESIS_STRICT_RETRY_INSTRUCTION)
                       : request.kind === 'verdict'
@@ -319,7 +332,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         // an honest mismatch beats a silently relabelled vote.
         let directionMismatch = false
         if (verdictParsed) {
-          const check = verdictDirectionMismatch(verdictParsed)
+          const check = verdictDirectionMismatch(verdictParsed, sessionKind)
           if (check.mismatch && !directionRetryUsed) {
             directionRetryUsed = true
             directionRetryNext = true

@@ -31,6 +31,16 @@ describe('family-roster', () => {
     }
   })
 
+  it('궁합 panels: 단일 3/5 only, 통합 3/5/7 only — never the 9-seat witness panel', () => {
+    expect(isAllowedReaderCount('single', 3, 'compat')).toBe(true)
+    expect(isAllowedReaderCount('single', 5, 'compat')).toBe(true)
+    expect(isAllowedReaderCount('single', 7, 'compat')).toBe(false)
+    expect(isAllowedReaderCount('combined', 3, 'compat')).toBe(true)
+    expect(isAllowedReaderCount('combined', 5, 'compat')).toBe(true)
+    expect(isAllowedReaderCount('combined', 7, 'compat')).toBe(true)
+    expect(isAllowedReaderCount('combined', 9, 'compat')).toBe(false)
+  })
+
   it('assigns a different synthesizer per family and keeps OpenAI off synth seats', () => {
     const synths = synthesizerByFamily().map((s) => s.synthesizer)
     expect(new Set(synths).size).toBe(4)

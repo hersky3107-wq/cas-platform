@@ -25,7 +25,8 @@ import {
   readingScopeForSession,
 } from './conventions'
 import { OracleComputeError, personalDataFrom, resolveSystems, runComputations } from './compute'
-import type { ComputeAssumptions } from './compute'
+import type { ComputeAssumptions, ComputeOutput } from './compute'
+import { isCompatSingleSystem, runCompatComputations } from './compute-compat'
 import { initialProgress, markUnitFailed, readingUnit } from './progress'
 import { OraclePrivacyError } from './privacy'
 import { publicComputation } from './public-computation'
@@ -146,14 +147,37 @@ export async function createOracleSession(
     }
   }
 
-  if (!isAllowedReaderCount(request.scope, request.readerCount)) {
+  if (!isAllowedReaderCount(request.scope, request.readerCount, request.kind)) {
     return {
       ok: false,
       code: 'invalid_input',
       message:
-        request.scope === 'single'
-          ? 'single-system readerCount must be 3, 5, or 7'
-          : 'readerCount must be 3, 5, 7, or 9',
+        request.kind === 'compat'
+          ? request.scope === 'single'
+            ? 'compat single-system readerCount must be 3 or 5'
+            : 'compat readerCount must be 3, 5, or 7'
+          : request.scope === 'single'
+            ? 'single-system readerCount must be 3, 5, or 7'
+            : 'readerCount must be 3, 5, 7, or 9',
+    }
+  }
+
+  // 궁합 carries Person B as SESSION-scoped input, never as a profile row.
+  const partner = request.kind === 'compat' ? (sessionInputs.value?.partner ?? null) : null
+  if (request.kind === 'compat') {
+    if (!partner) {
+      return {
+        ok: false,
+        code: 'invalid_input',
+        message: 'compat sessions need sessionInputs.partner (Person B birth date)',
+      }
+    }
+    if (request.partnerProfileId) {
+      return {
+        ok: false,
+        code: 'invalid_input',
+        message: 'compat sessions carry Person B in sessionInputs.partner, not as a profile id',
+      }
     }
   }
 
@@ -178,9 +202,16 @@ export async function createOracleSession(
       message: 'single-system scope requires exactly one valid system',
     }
   }
+  if (request.kind === 'compat' && request.scope === 'single' && !isCompatSingleSystem(systems[0]!)) {
+    return {
+      ok: false,
+      code: 'invalid_input',
+      message: `${systems[0]} has no two-person rule and is not offered as 단일 궁합`,
+    }
+  }
 
   const aiMode = getOracleAiMode()
-  const cost = creditsForOracleSession(request.scope, request.readerCount)
+  const cost = creditsForOracleSession(request.scope, request.readerCount, request.kind)
   // Stub sessions must never take credits. The charge used to run before the
   // adapter was chosen, so a missing ORACLE_AI_MODE silently billed canned text.
   let chargedAmount = 0
@@ -253,18 +284,33 @@ export async function createOracleSession(
   }
 
   try {
-    // 4 + 5. All engines, the axis projection, and consensus.
-    const computed = runComputations({
-      profile: subject,
-      systems,
-      seed,
-      asOfDate: civilDateIn(startedAt, subject.tz ?? 'UTC'),
-      locale: request.locale,
-      kind: request.kind,
-      question,
-      sessionInputs: sessionInputs.value,
-      personalData: personalDataFrom(profiles),
-    })
+    // 4 + 5. All engines, the axis projection, and consensus. The privacy
+    // needle set covers every loaded profile AND the 궁합 partner.
+    const personalData = personalDataFrom(profiles, partner)
+    const asOfDate = civilDateIn(startedAt, subject.tz ?? 'UTC')
+    const computed: ComputeOutput = partner
+      ? runCompatComputations({
+          profile: subject,
+          partner,
+          systems,
+          seed,
+          asOfDate,
+          locale: request.locale,
+          question,
+          sessionInputs: sessionInputs.value,
+          personalData,
+        })
+      : runComputations({
+          profile: subject,
+          systems,
+          seed,
+          asOfDate,
+          locale: request.locale,
+          kind: request.kind,
+          question,
+          sessionInputs: sessionInputs.value,
+          personalData,
+        })
 
     const rows = await store.upsertComputations(
       computed.systems.map((entry) => ({
@@ -288,11 +334,13 @@ export async function createOracleSession(
       },
     })
 
-    // 6. A system that produced no vote will never produce a reading either,
-    //    so its unit is already a 결번 before layer 1 starts.
+    // 6. A system that produced no ai_payload can never produce a reading,
+    //    so its unit is already a 결번 before layer 1 starts. (Keyed on the
+    //    payload, not the vote: compat tzolkin reads both portraits WITHOUT
+    //    casting a vote, and that reading must still run.)
     let progress = initialProgress(readingUnits, seerRoster)
     for (const entry of computed.systems) {
-      if (entry.vote === null) {
+      if (entry.aiPayload === null) {
         const affected = readingUnits.filter((unit) => unit.startsWith(`reading:${entry.system}:`))
         for (const unit of affected) progress = markUnitFailed(progress, unit)
       }

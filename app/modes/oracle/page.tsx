@@ -186,7 +186,23 @@ export default function OracleLandingPage() {
 
         {/* TIER 2 — compat / daily / talisman */}
         <section className="mt-6 grid gap-4 sm:grid-cols-3">
-          <DisabledTierCard title="궁합" subtitle="두 사람의 흐름을 겹쳐 읽습니다." />
+          <Link
+            href="/modes/oracle/compat"
+            className="group relative flex flex-col justify-between overflow-hidden rounded-[26px] border border-rose-300/25 bg-gradient-to-br from-rose-500/12 via-[#11172b] to-violet-500/8 p-6 transition hover:border-rose-200/50"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-lg font-semibold text-white">궁합</p>
+                <p className="mt-1 text-sm text-slate-400">두 사람의 흐름을 겹쳐 읽습니다.</p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-400/15 px-2.5 py-1 text-[11px] font-medium text-rose-100 transition group-hover:bg-rose-400/25">
+                <Sparkles className="h-3 w-3" aria-hidden /> 단일 · 통합
+              </span>
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-white/40">
+              상대방 정보는 이번 판독에만 쓰이고 저장되지 않습니다.
+            </p>
+          </Link>
           <DisabledTierCard title="오늘의 운세" subtitle="오늘 날짜 기준의 축소 판독." />
           <DisabledTierCard title="부적" subtitle="지금 필요한 기운을 상징으로." />
         </section>

@@ -287,3 +287,98 @@ describe('createOracleSession', () => {
     expect(store.sessions[0]!.prompt_version).toBe(ORACLE_PROMPT_VERSION)
   })
 })
+
+describe('createOracleSession (kind=compat)', () => {
+  const PARTNER = { birthDate: '1991-03-08', birthTime: '21:40', sex: 'M' as const, name: '박도윤' }
+  const COMPAT_REQUEST: Partial<CreateSessionRequest> = {
+    kind: 'compat',
+    scope: 'combined',
+    systems: [],
+    sessionInputs: { ...PRISM_INPUTS, partner: PARTNER },
+    readerCount: 3,
+  }
+
+  it('reads the 궁합 credit table from config: 단일 4/6, 통합 15/19/23', () => {
+    expect(creditsForOracleSession('single', 3, 'compat')).toBe(4)
+    expect(creditsForOracleSession('single', 5, 'compat')).toBe(6)
+    expect(creditsForOracleSession('combined', 3, 'compat')).toBe(15)
+    expect(creditsForOracleSession('combined', 5, 'compat')).toBe(19)
+    expect(creditsForOracleSession('combined', 7, 'compat')).toBe(23)
+    // Seat counts the 궁합 product does not sell have NO price row.
+    expect(() => creditsForOracleSession('single', 7, 'compat')).toThrow()
+    expect(() => creditsForOracleSession('combined', 9, 'compat')).toThrow()
+  })
+
+  it('charges the compat price and stores Person B ONLY on the session row', async () => {
+    const { store, credits, create } = harness()
+    const outcome = await create(COMPAT_REQUEST)
+
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.session.kind).toBe('compat')
+    expect(outcome.computations).toHaveLength(12)
+    expect(credits.charges).toEqual([{ userId: USER, amount: 15, module: ORACLE_CREDITS_MODULE }])
+
+    // Session-scoped: partner rides on session_inputs…
+    expect(store.sessions[0]!.session_inputs?.partner).toEqual(PARTNER)
+    // …and NEVER becomes a profile row (the ★ rule).
+    expect(store.profiles).toHaveLength(1)
+    expect(store.profiles[0]!.id).toBe('profile-subject')
+  })
+
+  it('rejects a compat session without Person B before charging', async () => {
+    const { store, credits, create } = harness()
+    const outcome = await create({ ...COMPAT_REQUEST, sessionInputs: PRISM_INPUTS })
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.code).toBe('invalid_input')
+    expect(outcome.message).toContain('partner')
+    expect(credits.charges).toHaveLength(0)
+    expect(store.sessions).toHaveLength(0)
+  })
+
+  it('rejects partnerProfileId on a compat session — Person B is never a profile', async () => {
+    const { credits, create } = harness()
+    const outcome = await create({ ...COMPAT_REQUEST, partnerProfileId: 'profile-other' })
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.code).toBe('invalid_input')
+    expect(credits.charges).toHaveLength(0)
+  })
+
+  it('rejects tzolkin as 단일 궁합 (no two-person rule) before charging', async () => {
+    const { credits, create } = harness()
+    const outcome = await create({ ...COMPAT_REQUEST, scope: 'single', systems: ['tzolkin'] })
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.code).toBe('invalid_input')
+    expect(outcome.message).toContain('단일 궁합')
+    expect(credits.charges).toHaveLength(0)
+  })
+
+  it('enforces compat reader counts: single 3/5 only, combined 3/5/7 only', async () => {
+    const { credits, create } = harness()
+    const single7 = await create({ ...COMPAT_REQUEST, scope: 'single', systems: ['saju'], readerCount: 7 })
+    expect(single7.ok).toBe(false)
+    const combined9 = await create({ ...COMPAT_REQUEST, readerCount: 9 })
+    expect(combined9.ok).toBe(false)
+    expect(credits.charges).toHaveLength(0)
+
+    const single5 = await create({ ...COMPAT_REQUEST, scope: 'single', systems: ['saju'], readerCount: 5 })
+    expect(single5.ok).toBe(true)
+    expect(credits.charges).toEqual([{ userId: USER, amount: 6, module: ORACLE_CREDITS_MODULE }])
+  })
+
+  it('surfaces the partner assumption flags on the create outcome', async () => {
+    const { create } = harness()
+    const outcome = await create({
+      ...COMPAT_REQUEST,
+      sessionInputs: { ...PRISM_INPUTS, partner: { birthDate: '1991-03-08', birthTime: null, sex: null, name: null } },
+    })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.assumptions?.partnerBirthTimeUnknown).toBe(true)
+    expect(outcome.assumptions?.partnerSexDefaulted).toBe(true)
+    expect(outcome.assumptions?.partnerLocationAssumed).toBe(true)
+  })
+})

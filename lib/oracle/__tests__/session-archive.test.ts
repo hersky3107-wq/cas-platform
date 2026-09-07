@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { LAYER1_REGISTRY, ORACLE_SEAT_ONLY_BRANDS } from '../ai/registry'
 import { allSessionSeatBrands } from '../ai/family-roster'
 import { projectOracleArchiveResponses } from '../session-archive'
-import { oracleSystemDisplayName } from '../system-display'
+import { compatOracleType, oracleSystemDisplayName } from '../system-display'
 
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..')
 
@@ -126,5 +126,16 @@ describe('system display names', () => {
   it('falls back to the raw value rather than an empty heading', () => {
     expect(oracleSystemDisplayName('mystery')).toBe('mystery')
     expect(oracleSystemDisplayName(null)).toBe('')
+  })
+
+  it('궁합 sessions archive under their own oracle_type, never a single-reading heading', () => {
+    expect(compatOracleType()).toBe('compat')
+    expect(compatOracleType('saju')).toBe('compat:saju')
+    expect(oracleSystemDisplayName('compat')).toBe('궁합 · 통합 판독')
+    expect(oracleSystemDisplayName('compat:saju')).toBe('사주명리 궁합')
+    expect(oracleSystemDisplayName('compat:name')).toBe('성명학 궁합')
+    expect(oracleSystemDisplayName('compat:astro')).toBe('서양 점성술 궁합')
+    // Unknown inner system still renders, never an empty heading.
+    expect(oracleSystemDisplayName('compat:mystery')).toBe('mystery 궁합')
   })
 })

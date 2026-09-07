@@ -76,6 +76,10 @@ export type OracleRunnerAssumptions = {
   coordinatesDefaulted: boolean
   birthTimeUnknown: boolean
   birthTimeEstimated: boolean
+  /** 궁합 sessions only — Person B degradations, stated honestly on screen. */
+  partnerBirthTimeUnknown?: boolean
+  partnerSexDefaulted?: boolean
+  partnerLocationAssumed?: boolean
 }
 
 export type OracleRunnerView = {

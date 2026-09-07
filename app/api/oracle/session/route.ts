@@ -74,14 +74,19 @@ function parseBody(body: Record<string, unknown>): ParsedBody {
     systems.push(entry)
   }
 
-  // Single-system product rule: N ∈ {3,5,7} only (reject 9). Combined keeps 3/5/7/9.
-  if (!isAllowedReaderCount(scope as OracleSessionScope, readerCount)) {
+  // Single-system product rule: N ∈ {3,5,7} only (reject 9). Combined keeps
+  // 3/5/7/9. 궁합 panels are smaller: single 3/5, combined 3/5/7.
+  if (!isAllowedReaderCount(scope as OracleSessionScope, readerCount, kind as OracleSessionKind)) {
     return {
       ok: false,
       error:
-        scope === 'single'
-          ? 'single-system readerCount must be 3, 5, or 7'
-          : `readerCount must be one of ${ORACLE_READER_COUNTS.join(', ')}`,
+        kind === 'compat'
+          ? scope === 'single'
+            ? 'compat single-system readerCount must be 3 or 5'
+            : 'compat readerCount must be 3, 5, or 7'
+          : scope === 'single'
+            ? 'single-system readerCount must be 3, 5, or 7'
+            : `readerCount must be one of ${ORACLE_READER_COUNTS.join(', ')}`,
     }
   }
 

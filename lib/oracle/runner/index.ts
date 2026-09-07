@@ -21,6 +21,7 @@ export {
   ORACLE_PROMPT_VERSION,
   ORACLE_READER_ROSTER,
   ORACLE_RUNNER_VERSION,
+  ORACLE_COMPAT_SESSION_CREDIT_PRICES,
   ORACLE_SESSION_CREDIT_PRICES,
   ORACLE_STALE_HEARTBEAT_SECONDS,
   ORACLE_SWEEP_BATCH_SIZE,
@@ -43,6 +44,9 @@ export type {
 
 export { OracleComputeError, personalDataFrom, resolveSystems, runComputations } from './compute'
 export type { ComputeAssumptions, ComputedSystem, ComputeInput, ComputeOutput } from './compute'
+
+export { COMPAT_SINGLE_SYSTEMS, isCompatSingleSystem, runCompatComputations } from './compute-compat'
+export type { CompatComputeInput } from './compute-compat'
 
 export { createStubAiAdapter, stubAiConfigFromEnv, ORACLE_STUB_BRAND, ORACLE_STUB_MODEL } from './ai-stub'
 export type { StubAiConfig } from './ai-stub'

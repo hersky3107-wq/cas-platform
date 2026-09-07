@@ -7,7 +7,12 @@
  * session_inputs.runes.pickedPositions; which rune hides under which stone is
  * only revealed by the engine after session create.
  */
-import { RUNE_SPREADS, type RuneSpreadSize } from "@/lib/oracle/engines/draw/conventions";
+import {
+  COMPAT_RUNE_LABELS,
+  COMPAT_RUNE_SPREADS,
+  RUNE_SPREADS,
+  type RuneSpreadSize,
+} from "@/lib/oracle/engines/draw/conventions";
 import { RUNE_SPREAD_LABELS } from "@/lib/oracle/engines/draw/tables";
 import { runePositionKo } from "@/lib/oracle/display-copy";
 
@@ -15,6 +20,12 @@ const SPREAD_COPY: Record<RuneSpreadSize, { title: string; subtitle: string }> =
   1: { title: "1돌", subtitle: "오늘의 룬" },
   3: { title: "3돌", subtitle: "노른: 과거 · 현재 · 미래" },
   5: { title: "5돌", subtitle: "상황 · 방해 · 조언 · 외부 · 결과" },
+};
+
+/** 궁합: same cloth, relationship positions. */
+const COMPAT_SPREAD_COPY: Partial<Record<RuneSpreadSize, { title: string; subtitle: string }>> = {
+  3: { title: "3돌", subtitle: "본인 · 상대 · 두 사람 사이" },
+  5: { title: "5돌", subtitle: "본인 · 상대 · 사이 · 걸림돌 · 흐름" },
 };
 
 /** Deterministic scatter so the cloth looks tossed but never reshuffles mid-pick. */
@@ -55,19 +66,24 @@ export default function RunesDrawInput({
   pickedPositions,
   onSpread,
   onToggle,
+  compat = false,
 }: {
   spread: RuneSpreadSize;
   pickedPositions: number[];
   onSpread: (spread: RuneSpreadSize) => void;
   onToggle: (position: number) => void;
+  /** 궁합: relationship spreads (3/5) and position labels; same ritual. */
+  compat?: boolean;
 }) {
   const need = spread;
+  const spreads: readonly RuneSpreadSize[] = compat ? COMPAT_RUNE_SPREADS : RUNE_SPREADS;
+  const compatLabels = compat ? COMPAT_RUNE_LABELS[spread] : undefined;
   return (
     <div className="space-y-4">
       <div>
         <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">스프레드</p>
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          {RUNE_SPREADS.map((size) => (
+        <div className={`mt-2 grid gap-2 ${compat ? "grid-cols-2" : "grid-cols-3"}`}>
+          {spreads.map((size) => (
             <button
               key={size}
               type="button"
@@ -78,8 +94,12 @@ export default function RunesDrawInput({
                   : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/25"
               }`}
             >
-              <span className="block text-sm font-semibold">{SPREAD_COPY[size].title}</span>
-              <span className="mt-0.5 block text-[11px] text-white/45">{SPREAD_COPY[size].subtitle}</span>
+              <span className="block text-sm font-semibold">
+                {(compat ? COMPAT_SPREAD_COPY[size] : undefined)?.title ?? SPREAD_COPY[size].title}
+              </span>
+              <span className="mt-0.5 block text-[11px] text-white/45">
+                {(compat ? COMPAT_SPREAD_COPY[size] : undefined)?.subtitle ?? SPREAD_COPY[size].subtitle}
+              </span>
             </button>
           ))}
         </div>
@@ -90,9 +110,11 @@ export default function RunesDrawInput({
           룬돌을 고르세요 · {pickedPositions.length}/{need}
         </p>
         <p className="mt-1 text-[11px] text-white/40">
-          {RUNE_SPREAD_LABELS[spread]
-            .map((label, i) => `${i + 1}. ${runePositionKo(label)}`)
-            .join("  ·  ")}
+          {compatLabels
+            ? compatLabels.map((label, i) => `${i + 1}. ${label}`).join("  ·  ")
+            : RUNE_SPREAD_LABELS[spread]
+                .map((label, i) => `${i + 1}. ${runePositionKo(label)}`)
+                .join("  ·  ")}
         </p>
         <div className="mt-3 overflow-x-auto pb-2">
           <div

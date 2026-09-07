@@ -118,4 +118,52 @@ describe('validateSessionInputs', () => {
     expect(validateSessionInputs({ iching: { lines: [7, 8, 9, 6, 7, 5] } }).ok).toBe(false)
     expect(validateSessionInputs({ iching: { lines: 'cast' } }).ok).toBe(false)
   })
+
+  // 궁합 Person B — session-scoped, never a profile row.
+  it('accepts a full partner and normalizes whitespace', () => {
+    const result = validateSessionInputs({
+      partner: { birthDate: ' 1991-03-08 ', birthTime: '21:40', sex: 'M', name: ' 박도윤 ' },
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value?.partner).toEqual({
+        birthDate: '1991-03-08',
+        birthTime: '21:40',
+        sex: 'M',
+        name: '박도윤',
+      })
+    }
+  })
+
+  it('accepts a date-only partner: time, sex, and name degrade to null', () => {
+    const result = validateSessionInputs({ partner: { birthDate: '1991-03-08' } })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value?.partner).toEqual({ birthDate: '1991-03-08', birthTime: null, sex: null, name: null })
+    }
+  })
+
+  it('rejects a partner birth date that is not a real civil day', () => {
+    expect(validateSessionInputs({ partner: { birthDate: '1991-02-30' } }).ok).toBe(false)
+    expect(validateSessionInputs({ partner: { birthDate: '1991-3-8' } }).ok).toBe(false)
+    expect(validateSessionInputs({ partner: { birthDate: 19910308 } }).ok).toBe(false)
+    expect(validateSessionInputs({ partner: {} }).ok).toBe(false)
+  })
+
+  it('rejects malformed partner time, sex, and an over-long name', () => {
+    expect(validateSessionInputs({ partner: { birthDate: '1991-03-08', birthTime: '25:00' } }).ok).toBe(false)
+    expect(validateSessionInputs({ partner: { birthDate: '1991-03-08', birthTime: '9:5' } }).ok).toBe(false)
+    expect(validateSessionInputs({ partner: { birthDate: '1991-03-08', sex: 'X' } }).ok).toBe(false)
+    expect(
+      validateSessionInputs({ partner: { birthDate: '1991-03-08', name: '가'.repeat(100) } }).ok,
+    ).toBe(false)
+  })
+
+  it('a blank partner name becomes null, not an empty-string needle', () => {
+    const result = validateSessionInputs({ partner: { birthDate: '1991-03-08', name: '   ' } })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value?.partner?.name).toBeNull()
+    }
+  })
 })

@@ -1,15 +1,30 @@
 /**
  * The ai_payload privacy rule.
  *
- * Nothing sent to an AI may carry the subject's birth date, birth time,
- * birth place, or name — nor the coordinates or timezone those resolve to.
- * The payload builder in payload.ts works from an ALLOWLIST (computed
- * vectors and machine codes only); this module is the gate that proves it.
+ * Nothing sent to an AI may carry ANY session participant's birth date,
+ * birth time, birth place, or name — the subject's AND every other person's
+ * (co-profiles, the 궁합 partner) — nor the coordinates or timezone those
+ * resolve to. The payload builder in payload.ts works from an ALLOWLIST
+ * (computed vectors and machine codes only); this module is the gate that
+ * proves it.
  *
  * `assertNoPersonalData` runs on every payload before it leaves the process,
  * so a future contributor who adds a field carrying raw profile data gets a
  * failed session instead of a leak. It fails closed on purpose.
  */
+
+/** One additional person whose facts are equally forbidden (co-profiles, the 궁합 partner). */
+export type PersonalDataOther = {
+  /** YYYY-MM-DD */
+  birthDate: string | null
+  /** HH:mm or HH:mm:ss */
+  birthTime: string | null
+  birthPlace: string | null
+  names: string[]
+  lat: number | null
+  lng: number | null
+  timezone: string | null
+}
 
 /** The raw profile facts that must never reach a provider. */
 export type PersonalData = {
@@ -23,6 +38,13 @@ export type PersonalData = {
   lat: number | null
   lng: number | null
   timezone: string | null
+  /**
+   * EVERY other person in the session — partner profiles and the 궁합
+   * Person B. Their birth data is scanned with exactly the same strictness
+   * as the subject's: a payload may not carry ANYONE's birth date, time,
+   * place, name, or coordinates.
+   */
+  others?: PersonalDataOther[]
 }
 
 /**
@@ -133,13 +155,24 @@ function buildNeedles(pii: PersonalData): Needle[] {
     needles.push({ text: value, test: (lowered) => lowered.includes(value), alphabeticAscii })
   }
 
-  push(pii.birthDate)
-  push(pii.birthTime)
-  // A 'HH:mm:ss' birth time also leaks as 'HH:mm'.
-  if (pii.birthTime && pii.birthTime.length > 5) push(pii.birthTime.slice(0, 5))
-  push(pii.birthPlace)
-  push(pii.timezone)
-  for (const name of pii.names) push(name)
+  const pushPerson = (person: {
+    birthDate: string | null
+    birthTime: string | null
+    birthPlace: string | null
+    names: string[]
+    timezone: string | null
+  }): void => {
+    push(person.birthDate)
+    push(person.birthTime)
+    // A 'HH:mm:ss' birth time also leaks as 'HH:mm'.
+    if (person.birthTime && person.birthTime.length > 5) push(person.birthTime.slice(0, 5))
+    push(person.birthPlace)
+    push(person.timezone)
+    for (const name of person.names) push(name)
+  }
+
+  pushPerson(pii)
+  for (const other of pii.others ?? []) pushPerson(other)
 
   return needles
 }
@@ -155,7 +188,9 @@ function checkString(value: string, path: string, needles: readonly Needle[], sk
 }
 
 function checkNumber(value: number, path: string, pii: PersonalData): void {
-  for (const coord of [pii.lat, pii.lng]) {
+  const coords = [pii.lat, pii.lng]
+  for (const other of pii.others ?? []) coords.push(other.lat, other.lng)
+  for (const coord of coords) {
     if (coord !== null && Number.isFinite(coord) && value === coord) {
       throw new OraclePrivacyError('personal_value', path, `equals birth coordinate ${coord}`)
     }

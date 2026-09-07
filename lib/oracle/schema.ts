@@ -53,11 +53,25 @@ export type OraclePrismSessionInput = {
 }
 
 /**
+ * 궁합 Person B (structural mirror of runner/session-inputs.ts).
+ * SOMEONE ELSE'S data: lives only on the session row, never in
+ * oracle_profiles.
+ */
+export type OracleCompatPartner = {
+  birthDate: string
+  birthTime?: string | null
+  sex?: OracleSex | null
+  name?: string | null
+}
+
+/**
  * Per-reading state, never profile identity. Generic bag so future systems
  * can add inputs without another migration.
  */
 export type OracleSessionInputs = {
   prism?: OraclePrismSessionInput
+  /** kind='compat' only — session-scoped Person B. */
+  partner?: OracleCompatPartner
 } & Record<string, unknown>
 
 /** public.oracle_profiles */

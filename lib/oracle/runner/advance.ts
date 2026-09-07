@@ -253,7 +253,9 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
     deps.store.listReadings(session.id),
   ])
 
-  const readable = computations.filter((row) => row.axes !== null)
+  // Keyed on the payload, not the axes: a compat tzolkin row has a payload
+  // (both portraits) but casts no usable vote, and it must still be read.
+  const readable = computations.filter((row) => row.ai_payload !== null)
   const alreadyRead = new Set(readings.map((row) => `${row.system}:${row.brand}`))
   const seats =
     session.scope === 'single'
@@ -395,7 +397,9 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
       ...(session.partner_profile_id ? [session.partner_profile_id] : []),
     ]
     const profiles = await deps.store.loadProfiles(session.user_id, profileIds)
-    const pii = personalDataFrom(profiles)
+    // The 궁합 partner's session-scoped birth data joins the needle set with
+    // the same strictness as the subject's profile.
+    const pii = personalDataFrom(profiles, session.session_inputs?.partner ?? null)
     const ctx = payloadContextFor(session)
     const consensus = computeConsensus(votesFromComputations(computations), { readingScope: ctx.readingScope })
     const done: OracleReading[] = readings.filter((row) => row.status === 'done')
@@ -415,7 +419,7 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
           brand: synthesisBrand,
           locale: ctx.locale,
           seed: session.seed,
-          payload: buildSynthesisPayload(done, consensus, pii),
+          payload: buildSynthesisPayload(done, consensus, pii, session.kind),
         })
       : null
 

@@ -112,6 +112,18 @@ export const VERDICT_DIRECTION_KEYWORDS: Record<VerdictDirection, readonly strin
   release: ['정리', '내려놓', '비우', '비워', '놓아주', '놓아 주', '떠나보내', '흘려보내', '손을 떼', '손 떼', '끝내', '청산'],
 }
 
+/**
+ * 궁합 ballots speak in relationship motion (다가서라 / 흐름을 지켜라 / 거리를
+ * 두라), so the mismatch guard needs its own stems — '확장'/'착수' never appear
+ * in a verdict about two people, and '거리를 두라' must count as release, not
+ * as nothing.
+ */
+export const COMPAT_VERDICT_DIRECTION_KEYWORDS: Record<VerdictDirection, readonly string[]> = {
+  advance: ['다가서', '다가가', '가까워', '가까이', '깊어', '깊게', '마음을 열', '고백', '표현하', '먼저 손', '진전', '나아가', '적극적으로'],
+  hold: ['유지', '지금처럼', '이대로', '지키', '지켜', '기다리', '무르익', '천천히', '머무', '흐름을 타', '흐름에 맡'],
+  release: ['거리를 두', '거리 두', '물러서', '물러나', '멀어지', '내려놓', '놓아주', '놓아 주', '떠나보내', '정리', '각자의 길', '손을 놓', '끝내'],
+}
+
 /** Negators that flip a keyword when they follow within a short window. */
 const TRAILING_NEGATORS = ['지 말', '지말', '말고', '말라', '마라', '멈추', '그만', '보다', '아니라', '않', '접어', '자제', '늦추']
 /** Qualifiers that mark the keyword as the rejected option when they precede it. */
@@ -140,15 +152,19 @@ export type VerdictDirectionCheck = {
   textDirection: VerdictDirection | null
 }
 
-export function verdictDirectionMismatch(verdict: {
-  verdict_line: string
-  direction: VerdictDirection
-}): VerdictDirectionCheck {
+export function verdictDirectionMismatch(
+  verdict: {
+    verdict_line: string
+    direction: VerdictDirection
+  },
+  kind?: string,
+): VerdictDirectionCheck {
   const text = verdict.verdict_line
+  const table = kind === 'compat' ? COMPAT_VERDICT_DIRECTION_KEYWORDS : VERDICT_DIRECTION_KEYWORDS
   const affirmed: Record<VerdictDirection, boolean> = {
-    advance: VERDICT_DIRECTION_KEYWORDS.advance.some((kw) => affirms(text, kw)),
-    hold: VERDICT_DIRECTION_KEYWORDS.hold.some((kw) => affirms(text, kw)),
-    release: VERDICT_DIRECTION_KEYWORDS.release.some((kw) => affirms(text, kw)),
+    advance: table.advance.some((kw) => affirms(text, kw)),
+    hold: table.hold.some((kw) => affirms(text, kw)),
+    release: table.release.some((kw) => affirms(text, kw)),
   }
 
   if (affirmed[verdict.direction]) return { mismatch: false, textDirection: null }

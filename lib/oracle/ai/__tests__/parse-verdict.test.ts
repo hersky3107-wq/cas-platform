@@ -123,3 +123,53 @@ describe('verdictDirectionMismatch', () => {
     ).toBe(false)
   })
 })
+
+/**
+ * kind='compat' — relationship-motion keyword table. 궁합 verdicts speak in
+ * 다가서라/이대로/거리를 두라, not in start/expand/finish-work stems.
+ */
+describe('verdictDirectionMismatch (kind=compat)', () => {
+  it('거리를 두라 counts as release: an advance vote over it is flagged', () => {
+    const check = verdictDirectionMismatch(
+      { verdict_line: '지금은 거리를 두고 각자의 시간을 보내는 편이 낫다.', direction: 'advance' },
+      'compat',
+    )
+    expect(check.mismatch).toBe(true)
+    expect(check.textDirection).toBe('release')
+  })
+
+  it('다가서라 counts as advance: a hold vote over it is flagged', () => {
+    const check = verdictDirectionMismatch(
+      { verdict_line: '먼저 다가서서 마음을 여는 쪽이 이 관계를 살린다.', direction: 'hold' },
+      'compat',
+    )
+    expect(check.mismatch).toBe(true)
+    expect(check.textDirection).toBe('advance')
+  })
+
+  it('accepts a compat ballot whose text matches its vote', () => {
+    expect(
+      verdictDirectionMismatch(
+        { verdict_line: '지금의 흐름을 이대로 지키며 무르익기를 기다리는 때다.', direction: 'hold' },
+        'compat',
+      ).mismatch,
+    ).toBe(false)
+  })
+
+  it('negated framings stay silent: 성급히 다가서지 말라 is not an advance affirmation', () => {
+    expect(
+      verdictDirectionMismatch(
+        { verdict_line: '성급히 다가서지 말고 지금의 온도를 지켜야 한다.', direction: 'hold' },
+        'compat',
+      ).mismatch,
+    ).toBe(false)
+  })
+
+  it('without kind, the personal table still applies (확장/정리 stems)', () => {
+    const check = verdictDirectionMismatch({
+      verdict_line: '벌린 일을 늘리지 말고 마무리하며 기반을 다지는 때다.',
+      direction: 'advance',
+    })
+    expect(check.mismatch).toBe(true)
+  })
+})

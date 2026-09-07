@@ -10,7 +10,12 @@
  * default seat order (evidence-by-family) — marked on SYSTEM_READER_ROSTERS.
  */
 import type { SystemId } from '../axes/types'
-import { ORACLE_READER_COUNTS, type OracleReaderCount, type OracleSessionScope } from '../schema'
+import {
+  ORACLE_READER_COUNTS,
+  type OracleReaderCount,
+  type OracleSessionKind,
+  type OracleSessionScope,
+} from '../schema'
 import { integratedReaderBrands } from './registry'
 
 /** Brands eligible for family reader / synthesizer seats (English display). */
@@ -58,7 +63,24 @@ export type SystemReaderRoster = {
 export const ORACLE_SINGLE_READER_COUNTS = [3, 5, 7] as const satisfies readonly OracleReaderCount[]
 export type OracleSingleReaderCount = (typeof ORACLE_SINGLE_READER_COUNTS)[number]
 
-export function isAllowedReaderCount(scope: OracleSessionScope, readerCount: number): boolean {
+/**
+ * 궁합 panels are smaller than the personal ones (matching the 4/6 and
+ * 15/19/23 credit tiers): 단일 궁합 3/5, 통합 궁합 3/5/7 — never the 9-seat
+ * witness panel, whose previous-session comparison is a personal concept.
+ */
+export const ORACLE_COMPAT_SINGLE_READER_COUNTS = [3, 5] as const satisfies readonly OracleReaderCount[]
+export const ORACLE_COMPAT_COMBINED_READER_COUNTS = [3, 5, 7] as const satisfies readonly OracleReaderCount[]
+
+export function isAllowedReaderCount(
+  scope: OracleSessionScope,
+  readerCount: number,
+  kind: OracleSessionKind = 'personal',
+): boolean {
+  if (kind === 'compat') {
+    const allowed =
+      scope === 'single' ? ORACLE_COMPAT_SINGLE_READER_COUNTS : ORACLE_COMPAT_COMBINED_READER_COUNTS
+    return (allowed as readonly number[]).includes(readerCount)
+  }
   if (scope === 'single') {
     return (ORACLE_SINGLE_READER_COUNTS as readonly number[]).includes(readerCount)
   }
