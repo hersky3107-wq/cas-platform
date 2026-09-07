@@ -2,6 +2,7 @@ import type { PredictionCategory } from '@/lib/prediction/categories'
 import type { PublicCategoryId } from '../catalog'
 import type { UiHorizon } from '../horizon'
 import type { JurisdictionInput } from '../jurisdiction/resolve'
+import type { ObservationShape } from '../observation-shape'
 
 /**
  * AI Prediction League — freeform prompt gateway SHARED TYPES (pure).
@@ -33,6 +34,7 @@ export type EntityKind =
   | 'award'
   | 'indicator'
   | 'macro_series'
+  | 'company'
 
 export type PropositionKind =
   | 'binary_close_higher' // price-series family — sides up|down, qualifier = signed percent
@@ -58,10 +60,19 @@ export type RefusalCode =
   | 'no_result_source'
   | 'unsupported_entity'
   | 'horizon_incompatible'
+  | 'price_or_earnings'
+  | 'vague_claim'
+
+/**
+ * Adapter id: public chips plus ledger-only adapters that are not on the
+ * Cards tab yet. Do not add a public chip by putting a value here — that
+ * lives in `PUBLIC_CATEGORY_IDS`.
+ */
+export type AdapterCategoryId = PublicCategoryId | 'tech'
 
 /** Structured, validated normalization result. NEVER contains freeform model prose. */
 export type NormalizeSlots = {
-  category_id: PublicCategoryId
+  category_id: AdapterCategoryId
   /** Canonical id (AAPL, BTC/USD, MATCH:…, ELECTION:…) — always from a server-side resolver, never from the model. */
   entity_id: string
   entity_kind: EntityKind
@@ -97,6 +108,7 @@ export type Refusal = {
 
 export type GradeSource =
   | { tier: 1; kind: 'twelve_data' | 'official_api'; endpoint: string }
+  | { tier: 1; kind: 'perplexity_sourced'; require_url: true }
   | { tier: 2; kind: 'perplexity_sourced'; require_url: true }
   | { tier: 3; kind: 'operator_manual'; require_url: true }
 
@@ -125,6 +137,15 @@ export type ComposedRound = {
   resolves_at: string
   item_type: 'ranked'
   cache_key: string
+  /** Set by non-price adapters so ensureRound persists the answer contract. */
+  proposition_kind?: PropositionKind
+  /** Named subject for binary_subject_outcome (company / team / candidate). */
+  subject_label?: string | null
+  /**
+   * How operator evidence maps onto the side pair. Adapter-authored;
+   * persisted on the round. Price adapters omit this.
+   */
+  observation_shape?: ObservationShape | null
 }
 
 export type EntityResolution =
@@ -190,10 +211,15 @@ export type CategoryPacket = {
 
 /** One category's complete judgment surface. The shell holds no category knowledge. */
 export interface CategoryAdapter {
-  readonly category_id: PublicCategoryId
+  readonly category_id: AdapterCategoryId
   /** Value stored on `prediction_rounds.category`; jurisdiction checks this key. */
   readonly ledger_category: PredictionCategory
   readonly entity_kinds: readonly EntityKind[]
+  /**
+   * Observation shape this adapter writes on every composed round.
+   * Null = not an operator-mapped subject-outcome (price / threshold).
+   */
+  readonly observation_shape: ObservationShape | null
 
   /** Resolve a freeform mention → canonical entity, or ask / refuse. */
   resolveEntity(raw: string, locale: string): Promise<EntityResolution>

@@ -88,6 +88,7 @@ export function createStocksAdapter(io: PriceSeriesIo): CategoryAdapter {
     category_id: 'stocks',
     ledger_category: 'stock',
     entity_kinds: ['ticker'],
+    observation_shape: null,
 
     async resolveEntity(raw: string, _locale: string): Promise<EntityResolution> {
       const catalog = stockInstruments()

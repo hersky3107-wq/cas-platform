@@ -62,6 +62,8 @@ export function subjectOutcomeFamily(category: string | null | undefined): Subje
       return 'elected'
     case 'entertainment':
       return 'awarded'
+    case 'tech':
+      return 'achieved'
     default:
       return 'achieved'
   }

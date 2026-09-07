@@ -14,14 +14,16 @@ import {
 const CURATED = ['AAPL', 'NVDA', 'BTC/USD', 'EUR/USD'] as const
 
 describe('visibleCategoriesFor', () => {
-  it('default-denies a viewer with no jurisdiction signal at all', () => {
-    expect(visibleCategoriesFor({ declaredCountry: null, ipCountry: null })).toEqual([])
+  it('a viewer with no jurisdiction signal sees only tech / ai_models', () => {
+    expect(visibleCategoriesFor({ declaredCountry: null, ipCountry: null })).toEqual(['tech', 'ai_models'])
   })
 
   it('gives a US viewer the full category set', () => {
     const visible = visibleCategoriesFor({ ipCountry: 'US' })
     expect(visible).toEqual(ALL_PREDICTION_CATEGORIES)
     expect(visible).toContain('real_estate')
+    expect(visible).toContain('tech')
+    expect(visible).toContain('ai_models')
   })
 
   it('omits crypto_perps for a UK viewer but keeps ordinary finance categories', () => {
@@ -36,8 +38,8 @@ describe('visibleCategoriesFor', () => {
     expect(visibleCategoriesFor({ declaredCountry: 'US', ipCountry: 'GB' })).not.toContain('crypto_perps')
   })
 
-  it('returns an empty list for a jurisdiction with no allowed categories (CN)', () => {
-    expect(visibleCategoriesFor({ declaredCountry: 'CN' })).toEqual([])
+  it('a CN viewer sees only tech / ai_models (finance and sports stay off)', () => {
+    expect(visibleCategoriesFor({ declaredCountry: 'CN' })).toEqual(['tech', 'ai_models'])
   })
 
   it('never returns a category outside the known universe', () => {

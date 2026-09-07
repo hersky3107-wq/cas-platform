@@ -18,7 +18,12 @@ import type { JurisdictionGroup } from './types'
  *  - politics_election: additionally auto-off during election blackout
  *    windows, layered on top of this matrix (see `election-blackout.ts`) —
  *    a jurisdiction can be "on" here and still be temporarily denied.
- *  - China mainland (CN): effectively off (empty row = every category denied).
+ *  - China mainland (CN): financial / sports / politics chips stay off
+ *    (empty of those keys). `tech` and `ai_models` are ON — they are
+ *    product-launch / model-release predictions, not financial, gambling,
+ *    or political content, and there is no product or legal basis to hide
+ *    them. Same for UNKNOWN (no geo signal): those two stay readable;
+ *    everything else stays default-deny.
  *  - memecoin: treated as high-risk/speculative like crypto_perps (same
  *    category color bucket, 'red', as politics/entertainment in
  *    `lib/league/orchestrator.ts`'s CATEGORY_COLOR) and restricted
@@ -47,6 +52,8 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     entertainment_awards: true,
     memecoin: true,
     real_estate: true,
+    tech: true,
+    ai_models: true,
   },
   EU: {
     stock: true,
@@ -62,6 +69,8 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     sports: true,
     entertainment_awards: true,
     real_estate: true,
+    tech: true,
+    ai_models: true,
     // crypto_perps: OFF (retail perpetuals restricted region-wide)
     // memecoin: OFF (illustrative — same speculative-asset caution as crypto_perps)
   },
@@ -79,6 +88,8 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     sports: true,
     entertainment_awards: true,
     real_estate: true,
+    tech: true,
+    ai_models: true,
     // crypto_perps: OFF (FCA ban on crypto derivatives for retail)
     // memecoin: OFF (illustrative, mirrors EU)
   },
@@ -98,6 +109,8 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     entertainment_awards: true,
     memecoin: true,
     real_estate: true,
+    tech: true,
+    ai_models: true,
   },
   JP: {
     stock: true,
@@ -115,6 +128,8 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     entertainment_awards: true,
     memecoin: true,
     real_estate: true,
+    tech: true,
+    ai_models: true,
   },
   ME: {
     stock: true,
@@ -128,14 +143,18 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     sports: true,
     entertainment_awards: true,
     real_estate: true,
+    tech: true,
+    ai_models: true,
     // futures_derivatives: OFF (explicit)
     // politics_election: OFF (explicit)
     // crypto_perps: OFF (mirrors UK/EU)
     // memecoin: OFF (illustrative)
   },
   CN: {
-    // Effectively off: China mainland gets no categories until this
-    // product has a real compliance basis to operate there.
+    // Financial / sports / politics stay off until there is a compliance
+    // basis. tech + ai_models are not those categories.
+    tech: true,
+    ai_models: true,
   },
   OTHER: {
     stock: true,
@@ -152,10 +171,15 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     sports: true,
     entertainment_awards: true,
     real_estate: true,
+    tech: true,
+    ai_models: true,
     // memecoin: OFF (conservative default for an unclassified rest-of-world bucket)
   },
   UNKNOWN: {
-    // No resolvable jurisdiction signal at all -> default-deny everything.
+    // No geo signal: default-deny finance/sports/politics. tech + ai_models
+    // stay on — they are not restricted content.
+    tech: true,
+    ai_models: true,
   },
 }
 

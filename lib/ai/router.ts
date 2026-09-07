@@ -51,6 +51,13 @@ export type RouterInput = {
   supabaseAccessToken?: string
 }
 
+export type SearchResultItem = {
+  url?: string
+  title?: string
+  date?: string
+  snippet?: string
+}
+
 export type RouterResult = {
   // Stays core-6: every Compare/Verdict consumer maps results into core-keyed
   // structures. runSingleAiProvider can be invoked with an opt-in provider, but
@@ -82,6 +89,10 @@ export type RouterResult = {
   thoughtsTokenCount?: number | null
   finishReason?: string | null
   error?: string
+  /** Web search / Sonar structured citations (URLs). */
+  citations?: string[]
+  /** Web search / Sonar structured search results (URL, title, date, snippet). */
+  searchResults?: SearchResultItem[]
 }
 
 /** One user turn in Compare mode; per-provider replies live in aiResponses. */
@@ -365,6 +376,23 @@ async function callOpenAICompatibleChat({
   const usage = json?.usage ?? {}
   const ticks = typeof usage?.cost_in_usd_ticks === 'number' ? usage.cost_in_usd_ticks : null
 
+  const rawCitations = json?.citations ?? choice?.message?.citations
+  const citations = Array.isArray(rawCitations)
+    ? rawCitations.filter((c: unknown): c is string => typeof c === 'string')
+    : undefined
+
+  const rawSearchResults = json?.search_results ?? choice?.message?.search_results
+  const searchResults = Array.isArray(rawSearchResults)
+    ? rawSearchResults
+        .filter((r: unknown): r is Record<string, unknown> => typeof r === 'object' && r !== null)
+        .map((r: Record<string, unknown>) => ({
+          url: typeof r.url === 'string' ? r.url : undefined,
+          title: typeof r.title === 'string' ? r.title : undefined,
+          date: typeof r.date === 'string' ? r.date : undefined,
+          snippet: typeof r.snippet === 'string' ? r.snippet : undefined,
+        }))
+    : undefined
+
   return {
     text: typeof content === 'string' ? content : null,
     usage: normalizeTokens({
@@ -378,6 +406,8 @@ async function callOpenAICompatibleChat({
       costUsd: billedUsdFromProviderUsage(usage),
       costInUsdTicks: ticks,
     }),
+    citations,
+    searchResults,
   }
 }
 
@@ -822,6 +852,15 @@ async function callGoogleGemini({
   }
 }
 
+type ProviderCallResult = {
+  model: string
+  text: string | null
+  usage: ReturnType<typeof normalizeTokens> & { thoughtsTokenCount?: number | null }
+  finishReason?: string | null
+  citations?: string[]
+  searchResults?: SearchResultItem[]
+}
+
 async function callProvider({
   provider,
   apiKey,
@@ -862,12 +901,7 @@ async function callProvider({
   searchTool?: boolean
   /** xAI Agent Tools only: request-level `max_turns`. Ignored elsewhere. */
   maxTurns?: number
-}): Promise<{
-  model: string
-  text: string | null
-  usage: ReturnType<typeof normalizeTokens> & { thoughtsTokenCount?: number | null }
-  finishReason?: string | null
-}> {
+}): Promise<ProviderCallResult> {
   const model = modelParam ?? MODEL_BY_PROVIDER[provider]
   const sourceUserText =
     prompt?.trim()
@@ -909,13 +943,6 @@ async function callProvider({
 
   const chatOpts = { chatMessages: injectedChatMessages }
 
-  type ProviderCallResult = {
-    model: string
-    text: string | null
-    usage: ReturnType<typeof normalizeTokens> & { thoughtsTokenCount?: number | null }
-    finishReason?: string | null
-  }
-
   /** gpt-*-search-api: no call-count field on the chat response — estimate 1 search. */
   const withOpenAiSearchFee = (result: ProviderCallResult): ProviderCallResult => {
     if (!/search/i.test(model)) return result
@@ -942,7 +969,13 @@ async function callProvider({
       ...chatOpts,
     })
     if (!isChatGptSafetyRefusal(first.text)) {
-      return withOpenAiSearchFee({ model, text: first.text, usage: first.usage })
+      return withOpenAiSearchFee({
+        model,
+        text: first.text,
+        usage: first.usage,
+        citations: first.citations,
+        searchResults: first.searchResults,
+      })
     }
 
     const second = await callOpenAICompatibleChat({
@@ -964,10 +997,18 @@ async function callProvider({
           `[ChatGPT Safety Filter] This response was blocked by ChatGPT's built-in content policy, not by AIMANI. ` +
           (first.text ?? ''),
         usage: first.usage,
+        citations: first.citations,
+        searchResults: first.searchResults,
       })
     }
 
-    return withOpenAiSearchFee({ model, text: second.text, usage: second.usage })
+    return withOpenAiSearchFee({
+      model,
+      text: second.text,
+      usage: second.usage,
+      citations: second.citations,
+      searchResults: second.searchResults,
+    })
   }
 
   if (provider === 'xai') {
@@ -986,7 +1027,7 @@ async function callProvider({
       })
       return { model, text, usage }
     }
-    const { text, usage } = await callOpenAICompatibleChat({
+    const { text, usage, citations, searchResults } = await callOpenAICompatibleChat({
       provider,
       baseUrl: 'https://api.x.ai/v1',
       apiKey,
@@ -997,11 +1038,11 @@ async function callProvider({
       maxCompletionTokens,
       ...chatOpts,
     })
-    return { model, text, usage }
+    return { model, text, usage, citations, searchResults }
   }
 
   if (provider === 'perplexity') {
-    const { text, usage } = await callOpenAICompatibleChat({
+    const { text, usage, citations, searchResults } = await callOpenAICompatibleChat({
       provider,
       baseUrl: 'https://api.perplexity.ai',
       apiKey,
@@ -1012,11 +1053,11 @@ async function callProvider({
       maxCompletionTokens,
       ...chatOpts,
     })
-    return { model, text, usage }
+    return { model, text, usage, citations, searchResults }
   }
 
   if (provider === 'meta') {
-    const { text, usage } = await callOpenAICompatibleChat({
+    const { text, usage, citations, searchResults } = await callOpenAICompatibleChat({
       provider,
       baseUrl: 'https://api.groq.com/openai/v1',
       apiKey,
@@ -1027,7 +1068,7 @@ async function callProvider({
       maxCompletionTokens,
       ...chatOpts,
     })
-    return { model, text, usage }
+    return { model, text, usage, citations, searchResults }
   }
 
   if (provider === 'deepseek') {
@@ -1036,7 +1077,7 @@ async function callProvider({
       : promptHasNonLatin
         ? `${DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT}\n\n${promptWithLanguageRule}`
         : `${DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT}\n\n${promptWithLanguageRule}`
-    const { text, usage } = await callOpenAICompatibleChat({
+    const { text, usage, citations, searchResults } = await callOpenAICompatibleChat({
       provider,
       baseUrl: 'https://api.deepseek.com',
       apiKey,
@@ -1047,7 +1088,7 @@ async function callProvider({
       maxCompletionTokens,
       ...chatOpts,
     })
-    return { model, text, usage }
+    return { model, text, usage, citations, searchResults }
   }
 
   if (provider === 'mistral') {
@@ -1056,7 +1097,7 @@ async function callProvider({
       : promptHasNonLatin
         ? `${MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT}\n\n${promptWithLanguageRule}`
         : promptWithLanguageRule
-    const { text, usage } = await callOpenAICompatibleChat({
+    const { text, usage, citations, searchResults } = await callOpenAICompatibleChat({
       provider,
       baseUrl: 'https://api.mistral.ai/v1',
       apiKey,
@@ -1067,7 +1108,7 @@ async function callProvider({
       maxCompletionTokens,
       ...chatOpts,
     })
-    return { model, text, usage }
+    return { model, text, usage, citations, searchResults }
   }
 
   if (provider === 'anthropic') {
@@ -1275,7 +1316,7 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
       maxTurns,
     })
 
-    const { text, usage, finishReason } = params.timeoutMs && params.timeoutMs > 0
+    const { text, usage, finishReason, citations, searchResults } = params.timeoutMs && params.timeoutMs > 0
       ? await Promise.race([
           providerCallPromise,
           new Promise<never>((_, reject) =>
@@ -1377,6 +1418,8 @@ export async function runSingleAiProvider(params: RunSingleProviderParams): Prom
           ? (usage as { thoughtsTokenCount?: number }).thoughtsTokenCount!
           : null,
       finishReason: finishReason ?? null,
+      citations: citations ?? undefined,
+      searchResults: searchResults ?? undefined,
     }
   } catch (e: any) {
     const responseTimeMs = nowMs() - started

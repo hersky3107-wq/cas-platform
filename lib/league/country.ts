@@ -16,6 +16,7 @@ const BRAND_COUNTRY: Record<string, CountryCode> = {
   Microsoft: 'US',
   Perplexity: 'US',
   'You.com': 'US',
+  'Thinking Machines': 'US',
   Qwen: 'CN',
   DeepSeek: 'CN',
   'Moonshot AI': 'CN',

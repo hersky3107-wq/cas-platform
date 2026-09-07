@@ -6,6 +6,7 @@ export type OperatorQueueItem = {
   instrument: string
   horizon: string
   proposition_kind: string
+  observation_shape: 'name_match' | 'occurrence' | null
   side_a: string
   side_b: string
   resolves_at: string

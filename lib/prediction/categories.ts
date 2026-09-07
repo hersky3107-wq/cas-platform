@@ -7,7 +7,9 @@
  * The PUBLIC Cards tab shows 12 categories (`lib/league/catalog.ts`); this
  * union is the larger ledger set those 12 map onto. `bond_rate`,
  * `crypto_perps`, `futures_derivatives`, and `entertainment_awards` stay so
- * historical rows remain valid. `real_estate` is the one additive value.
+ * historical rows remain valid. `real_estate` was the first additive value;
+ * `tech` and `ai_models` are the next (tech ships an adapter this pass;
+ * ai_models is ledger-only until its adapter lands).
  */
 export type PredictionCategory =
   | 'stock'
@@ -25,3 +27,5 @@ export type PredictionCategory =
   | 'memecoin'
   | 'crypto_perps'
   | 'real_estate'
+  | 'tech'
+  | 'ai_models'

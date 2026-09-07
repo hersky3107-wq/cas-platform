@@ -27,7 +27,7 @@ import type { PropositionKind } from './types'
 export type NormalizerRequest = {
   raw_text: string
   /** The chip the user typed under — authoritative for adapter selection. */
-  category_id: PublicCategoryId
+  category_id: PublicCategoryId | string
   locale: string
 }
 

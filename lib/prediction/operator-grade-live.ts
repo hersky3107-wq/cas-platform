@@ -20,7 +20,7 @@ export const liveOperatorGradeDeps: OperatorGradeDeps = {
   async loadRound(roundId) {
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
-      .select('id, instrument, category, proposition_kind, subject_label, actual_outcome, resolved_at, resolves_at')
+      .select('id, instrument, category, proposition_kind, subject_label, observation_shape, actual_outcome, resolved_at, resolves_at')
       .eq('id', roundId)
       .maybeSingle()
     if (error || !data) return null

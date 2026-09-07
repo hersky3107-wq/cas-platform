@@ -2,6 +2,7 @@ import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { planForRound } from '@/lib/league/gateway/plan-for-round'
+import { observationShapeForRound } from '@/lib/league/observation-shape'
 import { sideLabelsFor, tallySlotOfToken, toSideToken } from '@/lib/league/side-labels'
 import { LEAGUE_UI } from '@/lib/league/i18n/dictionary'
 import type { OperatorQueueItem } from './operator-queue-types'
@@ -9,7 +10,7 @@ import type { OperatorQueueItem } from './operator-queue-types'
 export type { OperatorQueueItem }
 
 const QUEUE_COLUMNS =
-  'id, proposition_text, category, instrument, horizon, proposition_kind, subject_label, resolves_at, actual_outcome'
+  'id, proposition_text, category, instrument, horizon, proposition_kind, subject_label, observation_shape, resolves_at, actual_outcome'
 
 /**
  * Every due, ungraded round whose grade plan is operator_manual.
@@ -60,6 +61,10 @@ export async function listOperatorGradeQueue(nowMs = Date.now()): Promise<Operat
       },
       t
     )
+    const shaped = observationShapeForRound({
+      propositionKind: (row.proposition_kind as string | null) ?? null,
+      observationShape: row.observation_shape,
+    })
     const resolvesAt = String(row.resolves_at)
     const days = Math.max(0, Math.floor((nowMs - Date.parse(resolvesAt)) / 86_400_000))
     return {
@@ -70,6 +75,7 @@ export async function listOperatorGradeQueue(nowMs = Date.now()): Promise<Operat
       instrument: String(row.instrument ?? ''),
       horizon: String(row.horizon ?? ''),
       proposition_kind: labels.kind,
+      observation_shape: shaped.ok ? shaped.shape : null,
       side_a: labels.badge(labels.sides[0]),
       side_b: labels.badge(labels.sides[1]),
       resolves_at: resolvesAt,

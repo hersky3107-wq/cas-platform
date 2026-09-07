@@ -170,7 +170,7 @@ describe('buildLeaderboardSlice', () => {
     expect(slice.rows.find((r) => r.key === 'Google')!.n).toBe(1)
   })
 
-  it('korea slice only includes Upstage / NAVER / LG', () => {
+  it('korea slice only includes Upstage / NAVER', () => {
     const rows = [
       row({ brand: 'Upstage', model_id: 'solar' }),
       row({ brand: 'NAVER', model_id: 'hcx', is_correct: false }),
@@ -178,7 +178,7 @@ describe('buildLeaderboardSlice', () => {
       row({ brand: 'OpenAI', model_id: 'gpt' }),
     ]
     const slice = buildLeaderboardSlice(rows, 'korea')
-    expect(slice.rows.map((r) => r.key).sort()).toEqual(['LG', 'NAVER', 'Upstage'])
+    expect(slice.rows.map((r) => r.key).sort()).toEqual(['NAVER', 'Upstage'])
   })
 
   it('a slice with zero rows has no entries and no NaN', () => {

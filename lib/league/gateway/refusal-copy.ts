@@ -89,6 +89,14 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     ko: '이 종목은 선택하신 기간으로는 예측할 수 없습니다. 다른 기간을 선택해 주세요.',
     en: 'This instrument cannot be predicted at the selected horizon. Please pick another horizon.',
   },
+  price_or_earnings: {
+    ko: '주가·실적 숫자는 기술 카테고리에서 열 수 없습니다. 주식 카테고리에서 예측해 주세요.',
+    en: 'Share-price and earnings-number questions cannot be opened here. Use the stocks category.',
+  },
+  vague_claim: {
+    ko: '한 개의 공개 링크로 확인할 수 없는 질문은 열 수 없습니다. 공식 출처·대상·날짜를 특정해 주세요.',
+    en: 'A claim that cannot be checked from one published link cannot be opened. Name the official source, the object, and the date.',
+  },
 }
 
 /** Clarify prompts + option labels, keyed by full i18n key. */
@@ -113,6 +121,26 @@ const CLARIFY_COPY: Record<string, Copy> = {
   'league.gateway.horizon.1w': { ko: '1주', en: '1 week' },
   'league.gateway.horizon.1m': { ko: '1개월', en: '1 month' },
   'league.gateway.horizon.3m': { ko: '3개월', en: '3 months' },
+  'league.gateway.clarify.tech.claim_kind': {
+    ko: '어떤 종류의 사실인가요?',
+    en: 'What kind of published fact is this?',
+  },
+  'league.gateway.clarify.tech.object': {
+    ko: '어떤 대상에 대한 예측인가요?',
+    en: 'What is the named object of the claim?',
+  },
+  'league.gateway.clarify.tech.artifact': {
+    ko: '어떤 공개물로 확인할까요?',
+    en: 'Which published artifact will verify the claim?',
+  },
+  'league.gateway.clarify.tech.venue': {
+    ko: '어느 공식 출처에서 확인할까요?',
+    en: 'Which official venue will host the artifact?',
+  },
+  'league.gateway.clarify.tech.resolve_by': {
+    ko: '언제까지의 공개를 예측하나요?',
+    en: 'By which date must the artifact be published?',
+  },
 }
 
 export function resolveGatewayLocale(locale: string): GatewayLocale {

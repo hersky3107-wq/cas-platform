@@ -46,7 +46,8 @@ export function resolveJurisdictionGroups(input: JurisdictionInput): Jurisdictio
  *
  * When only one signal is present, that signal alone decides. When NEITHER
  * is present, the request is treated as the 'UNKNOWN' group, which
- * default-denies (see `matrix.ts`).
+ * default-denies finance / sports / politics and allows only `tech` and
+ * `ai_models` (see `matrix.ts`).
  */
 export function isCategoryAllowed(category: string, input: JurisdictionInput, atMs: number = Date.now()): boolean {
   const hasDeclared = Boolean(input.declaredCountry?.trim())

@@ -28,6 +28,7 @@ describe('CountryFlag roster coverage', () => {
     expect(brandCountry('NAVER (HyperCLOVA)', 'other')).toBe('KR')
     expect(brandCountry('Upstage (Solar)', 'other')).toBe('KR')
     expect(brandCountry('LG (EXAONE)', 'other')).toBe('KR')
+    expect(brandCountry('Thinking Machines (Inkling)', 'us')).toBe('US')
     expect(brandCountry('Mistral', 'other')).toBe('FR')
     expect(brandCountry('Cohere (Command)', 'other')).toBe('CA')
   })

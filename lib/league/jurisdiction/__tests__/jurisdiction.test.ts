@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { groupForCountry } from '../country-groups'
 import { isCategoryAllowed, resolveJurisdictionGroups } from '../resolve'
 import { isCategoryAllowedForGroup } from '../matrix'
+import { JURISDICTION_GROUPS } from '../types'
 
 describe('groupForCountry', () => {
   it('maps known countries to their jurisdiction group', () => {
@@ -24,20 +25,26 @@ describe('groupForCountry', () => {
 })
 
 describe('isCategoryAllowed — default-deny + single-signal cases', () => {
-  it('default-denies every category when there is no country signal at all', () => {
+  it('default-denies finance/sports when there is no country signal, but allows tech / ai_models', () => {
     expect(isCategoryAllowed('stock', {})).toBe(false)
     expect(isCategoryAllowed('sports', { declaredCountry: null, ipCountry: null })).toBe(false)
+    expect(isCategoryAllowed('tech', {})).toBe(true)
+    expect(isCategoryAllowed('ai_models', { declaredCountry: null, ipCountry: null })).toBe(true)
   })
 
-  it('default-denies a category the matrix never explicitly allowed for a known group (CN)', () => {
+  it('default-denies a category the matrix never explicitly allowed for a known group (CN finance)', () => {
     expect(isCategoryAllowed('stock', { ipCountry: 'CN' })).toBe(false)
     expect(isCategoryAllowed('sports', { declaredCountry: 'CN' })).toBe(false)
+    expect(isCategoryAllowed('tech', { ipCountry: 'CN' })).toBe(true)
+    expect(isCategoryAllowed('ai_models', { declaredCountry: 'CN' })).toBe(true)
   })
 
   it('allows an explicitly-listed category for a single known signal', () => {
     expect(isCategoryAllowed('stock', { ipCountry: 'KR' })).toBe(true)
     expect(isCategoryAllowed('crypto_perps', { declaredCountry: 'US' })).toBe(true)
     expect(isCategoryAllowed('real_estate', { ipCountry: 'KR' })).toBe(true)
+    expect(isCategoryAllowed('tech', { ipCountry: 'KR' })).toBe(true)
+    expect(isCategoryAllowed('ai_models', { ipCountry: 'KR' })).toBe(true)
   })
 
   it('applies the recorded regional restrictions: crypto_perps off in UK/EU/ME', () => {
@@ -83,9 +90,18 @@ describe('resolveJurisdictionGroups mismatch flag', () => {
 })
 
 describe('matrix default-deny shape (data-table sanity)', () => {
-  it('CN row is empty (China mainland effectively off) for every category checked', () => {
+  it('CN keeps finance/sports/politics off; tech and ai_models are on', () => {
     for (const category of ['stock', 'crypto_spot', 'sports', 'politics_election', 'memecoin']) {
       expect(isCategoryAllowedForGroup('CN', category)).toBe(false)
+    }
+    expect(isCategoryAllowedForGroup('CN', 'tech')).toBe(true)
+    expect(isCategoryAllowedForGroup('CN', 'ai_models')).toBe(true)
+  })
+
+  it('tech and ai_models are on in every jurisdiction group', () => {
+    for (const group of JURISDICTION_GROUPS) {
+      expect(isCategoryAllowedForGroup(group, 'tech'), group).toBe(true)
+      expect(isCategoryAllowedForGroup(group, 'ai_models'), group).toBe(true)
     }
   })
 

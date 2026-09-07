@@ -71,6 +71,9 @@ describe('dictionary completeness', () => {
       expect(getLeagueUiPack(locale).operatorGrade.verifiedLabel.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).operatorGrade.sourceLinkLabel.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).operatorGrade.gradedOn('7 Sep 2026').length).toBeGreaterThan(0)
+      expect(getLeagueUiPack(locale).sides.subjectOutcome.achieved.badge.yes.length).toBeGreaterThan(0)
+      expect(getLeagueUiPack(locale).sides.subjectOutcome.achieved.badge.no.length).toBeGreaterThan(0)
+      expect(getLeagueUiPack(locale).sides.subjectOutcome.achieved.answer.yes('Apple').length).toBeGreaterThan(0)
     }
   })
 
@@ -103,6 +106,9 @@ describe('dictionary completeness', () => {
     expect(pt.disclaimer.long).not.toBe(en.disclaimer.long)
     expect(pt.operatorGrade.verifiedLabel).not.toBe(en.operatorGrade.verifiedLabel)
     expect(pt.operatorGrade.gradedOn('7 set 2026')).not.toBe(en.operatorGrade.gradedOn('7 set 2026'))
+    expect(pt.sides.subjectOutcome.achieved.badge.yes).toBe('Consegue')
+    expect(pt.sides.subjectOutcome.achieved.badge.no).toBe('Não consegue')
+    expect(pt.sides.subjectOutcome.achieved.answer.yes('Apple')).toBe('Apple consegue')
     // Shape guarantees survive translation.
     expect(pt.verdict.heroHits(29, 40)).toContain('\u271329/40')
     expect(pt.winRate.insufficient(1, 0)).not.toContain('%')

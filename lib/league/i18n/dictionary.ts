@@ -25,7 +25,8 @@ export type LeagueDirectionWord = 'up' | 'down' | 'flat'
 /**
  * Outcome-word family for binary_subject_outcome side pairs, picked from the
  * round's own category by `lib/league/side-labels.ts` (sports → 'win',
- * politics_election → 'elected', entertainment → 'awarded', else 'achieved').
+ * politics_election → 'elected', entertainment → 'awarded', tech → 'achieved',
+ * else 'achieved').
  * The pair is an i18n KEY resolved per locale — never display text stored on
  * the round.
  */

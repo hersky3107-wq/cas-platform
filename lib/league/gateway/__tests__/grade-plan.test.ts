@@ -69,7 +69,7 @@ describe('gradePlanFor — resolution asks the adapter', () => {
     expect(plan.source).toBe('price_series')
     if (plan.source === 'price_series' && plan.tier1 !== 'legacy') {
       expect(plan.tier1).toMatchObject({ tier: 1, kind: 'twelve_data' })
-      expect(plan.tier1.tier === 1 && plan.tier1.endpoint).toContain('AAPL')
+      expect(plan.tier1.tier === 1 && plan.tier1.kind === 'twelve_data' && plan.tier1.endpoint).toContain('AAPL')
     } else {
       throw new Error('expected a consulted tier-1 source, not legacy')
     }
@@ -85,6 +85,7 @@ describe('gradePlanFor — resolution asks the adapter', () => {
     expect(withCategoryFallback(legacy, 'sports')).toEqual({ source: 'operator_manual' })
     expect(withCategoryFallback(legacy, 'politics_election')).toEqual({ source: 'operator_manual' })
     expect(withCategoryFallback(legacy, 'entertainment_awards')).toEqual({ source: 'operator_manual' })
+    expect(withCategoryFallback(legacy, 'tech')).toEqual({ source: 'operator_manual' })
     expect(withCategoryFallback(legacy, 'stock')).toEqual(legacy)
   })
 

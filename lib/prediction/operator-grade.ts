@@ -36,6 +36,7 @@ export type OperatorRoundRow = {
   category: string
   proposition_kind: string | null
   subject_label: string | null
+  observation_shape: string | null
   actual_outcome: string | null
   resolved_at: string | null
   resolves_at: string
@@ -52,6 +53,8 @@ export type OperatorGradeInput = {
   sourceUrl: string
   observedFact: string
   gradedBy: string
+  /** Occurrence shape only. Omitted on name-match. Never a side token. */
+  occurrence?: unknown
 }
 
 export type OperatorGradeOk = {
@@ -115,6 +118,8 @@ export async function gradeFromOperatorEvidence(
     propositionKind: round.proposition_kind,
     subjectLabel: round.subject_label,
     observedFact,
+    observationShape: round.observation_shape,
+    occurrence: input.occurrence,
   })
   if (!mapped.ok) return fail(400, mapped.error)
 

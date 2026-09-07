@@ -48,7 +48,7 @@ import { isDisplayableWinRate, winRatePctForDisplay, WIN_RATE_MIN_SAMPLE } from 
 export const LEADERBOARD_MIN_SAMPLE = WIN_RATE_MIN_SAMPLE
 
 /** Korean national-pride slice — roster brand strings, not i18n keys. */
-export const KOREA_BRANDS = ['Upstage', 'NAVER', 'LG'] as const
+export const KOREA_BRANDS = ['Upstage', 'NAVER'] as const
 
 export type LeaderboardScope =
   | 'model'
@@ -147,7 +147,7 @@ export type LeaderboardData = {
   brand: LeaderboardSlice
   /** SECONDARY: stocks vs crypto vs fx, etc. */
   category: LeaderboardSlice
-  /** SECONDARY: Upstage vs NAVER vs LG. */
+  /** SECONDARY: Upstage vs NAVER (LG seat retired 2026-09-07). */
   korea: LeaderboardSlice
   /**
    * Combined-method track record: treating the 40-model majority vote as a

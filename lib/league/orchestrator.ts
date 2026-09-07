@@ -85,6 +85,8 @@ export type RoundInput =
       proposition_kind?: string
       /** Display name of the NAMED subject for binary_subject_outcome rounds. */
       subject_label?: string | null
+      /** How operator evidence maps onto the side pair. Adapter-authored. */
+      observation_shape?: string | null
     }
 
 export type GenerateOptions = {
@@ -213,6 +215,8 @@ const CATEGORY_COLOR: Record<string, 'green' | 'yellow' | 'red'> = {
   sports: 'red',
   entertainment_awards: 'red',
   memecoin: 'red',
+  tech: 'yellow',
+  ai_models: 'yellow',
 }
 
 function colorForCategory(category: string): 'green' | 'yellow' | 'red' {
@@ -253,6 +257,7 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
       // DB default is 'binary_close_higher' — only set when the caller names one.
       ...(input.proposition_kind ? { proposition_kind: input.proposition_kind } : {}),
       ...(input.subject_label ? { subject_label: input.subject_label } : {}),
+      ...(input.observation_shape ? { observation_shape: input.observation_shape } : {}),
     })
     .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at, proposition_kind')
     .single()

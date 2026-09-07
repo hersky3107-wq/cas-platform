@@ -149,6 +149,10 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   { id: 'openrouter:mistral-medium-3.5', provider: 'openrouter', brand: 'Mistral', displayName: 'Mistral Medium 3.5', model: 'mistralai/mistral-medium-3-5', league: 'challenger', verified: true },
   { id: 'openrouter:deepseek-v4-flash', provider: 'openrouter', brand: 'DeepSeek', displayName: 'DeepSeek V4 Flash', model: 'deepseek/deepseek-v4-flash', league: 'world', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   { id: 'openrouter:qwen3.5-flash', provider: 'openrouter', brand: 'Qwen', displayName: 'Qwen3.5 Flash', model: 'qwen/qwen3.5-flash-02-23', league: 'world', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  // 2026-09-07: WORLD seat replacing dead Friendli EXAONE. Default effort on
+  // a league packet billed $0.0107 with content null; effort:minimal billed
+  // $0.0034 and returned a clean CHAIN/JSON contract. See roster PRICE AUDIT.
+  { id: 'openrouter:inkling', provider: 'openrouter', brand: 'Thinking Machines', displayName: 'Inkling', model: 'thinkingmachines/inkling', league: 'world', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   // NOTE: no AI21 entry — ai21/jamba-large-1.7 is still listed by OpenRouter
   // but its upstream is retired (HTTP 410). See PLATFORM_MODEL_REGISTRY_TODO.
 
@@ -180,11 +184,10 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   // burning the visible-content budget (same finding as the health mirror).
   { id: 'upstage:solar-pro3', provider: 'upstage', brand: 'Upstage', displayName: 'Solar Pro 3', model: 'solar-pro3', league: 'world', verified: true, extraRequestParams: { reasoning_effort: 'low' } },
 
-  // --- Friendli Serverless (OpenAI-compatible; base https://api.friendli.ai/serverless/v1) ---
-  // Same provenance note as upstage:solar-pro3. `enable_thinking: false` is
-  // required for K-EXAONE to return visible content (confirmed live
-  // 2026-08-10 by the health mirror).
-  { id: 'friendli:exaone-k-2.0', provider: 'friendli', brand: 'LG', displayName: 'EXAONE (K-EXAONE 2.0 750B)', model: 'LGAI-EXAONE/K-EXAONE-2.0-750B-A37B', league: 'world', verified: true, extraRequestParams: { chat_template_kwargs: { enable_thinking: false } } },
+  // --- Friendli Serverless — no league seat as of 2026-09-07 ---
+  // EXAONE left Model APIs (dedicated-only). WORLD seat moved to
+  // openrouter:inkling. Friendli remains a platform provider for MOTIE /
+  // Jeju / Gunpo local callers; do not re-add a 404 id here.
 ]
 
 /**
@@ -193,6 +196,10 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
  * GET /api/v1/models on 2026-08-10 17:50 KST.
  */
 export const PLATFORM_MODEL_REGISTRY_TODO: { requested: string; note: string }[] = [
+  {
+    requested: 'LG K-EXAONE (Friendli) — seat replaced 2026-09-07 by openrouter:inkling',
+    note: "Friendli deprecated LGAI-EXAONE/K-EXAONE-2.0-750B-A37B from serverless at 2026-09-06 00:00 UTC (dedicated only). LG's own API is partnership-only. K-EXAONE-236B-A23B also 404s on Model APIs. WORLD seat swapped to thinkingmachines/inkling on OpenRouter. Do not rewire Friendli EXAONE unless a live serverless id returns visible content.",
+  },
   {
     requested: 'AI21 Jamba (OpenRouter) — KNOWN RETIRED, removed from active health check',
     note: "OpenRouter still lists exactly one AI21 model, `ai21/jamba-large-1.7` (expiration_date: null), but calling it returns HTTP 410: \"This API has been retired. The AI21 Gateway is available at https://app.ai21.com — see https://docs.ai21.com/august-deprecation-notice\". Jamba Mini 2 was never on OpenRouter. Confirmed live 2026-08-10: the catalog listing is stale and there is NO working ai21/* route, so the entry was pulled from PLATFORM_MODEL_REGISTRY to avoid a permanent red on /admin/platform-health. To restore AI21, integrate the AI21 Gateway (app.ai21.com) directly as its own platform provider rather than via OpenRouter.",

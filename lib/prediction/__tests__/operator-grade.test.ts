@@ -12,6 +12,19 @@ const DUE_SPORTS: OperatorRoundRow = {
   category: 'sports',
   proposition_kind: 'binary_subject_outcome',
   subject_label: 'Manchester United',
+  observation_shape: 'name_match',
+  actual_outcome: null,
+  resolved_at: null,
+  resolves_at: '2026-09-01T21:00:00.000Z',
+}
+
+const DUE_TECH: OperatorRoundRow = {
+  id: 'round-tech-1',
+  instrument: 'TECH:AAPL:product_launch:foldable_iphone',
+  category: 'tech',
+  proposition_kind: 'binary_subject_outcome',
+  subject_label: 'Apple',
+  observation_shape: 'occurrence',
   actual_outcome: null,
   resolved_at: null,
   resolves_at: '2026-09-01T21:00:00.000Z',
@@ -153,5 +166,40 @@ describe('gradeFromOperatorEvidence — write path', () => {
     expect(deps.evidence.size).toBe(0)
     expect(deps.outcomes.size).toBe(0)
     expect(deps.children).toHaveLength(0)
+  })
+
+  it('a tech occurrence fact with occurred derives yes — not by matching Apple', async () => {
+    const deps = memoryDeps(DUE_TECH)
+    const result = await gradeFromOperatorEvidence(
+      {
+        roundId: DUE_TECH.id,
+        sourceUrl: 'https://www.apple.com/newsroom/2026/09/foldable/',
+        observedFact: 'product page live on the official newsroom',
+        gradedBy: 'admin-user-id',
+        occurrence: 'occurred',
+      },
+      deps
+    )
+    expect(result).toMatchObject({ ok: true, derived_side: 'yes' })
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.actual_outcome).toBe('yes (observed product page live on the official newsroom)')
+    expect(deps.evidence.get(DUE_TECH.id)?.derived_side).toBe('yes')
+  })
+
+  it('refuses a tech occurrence round that omits the structured report — will not parse prose', async () => {
+    const deps = memoryDeps(DUE_TECH)
+    const result = await gradeFromOperatorEvidence(
+      {
+        roundId: DUE_TECH.id,
+        sourceUrl: 'https://www.apple.com/newsroom/2026/09/foldable/',
+        observedFact: 'product page live on the official newsroom',
+        gradedBy: 'admin-user-id',
+      },
+      deps
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected fail')
+    expect(result.error).toMatch(/occurred \| did_not_occur/)
+    expect(deps.evidence.size).toBe(0)
   })
 })

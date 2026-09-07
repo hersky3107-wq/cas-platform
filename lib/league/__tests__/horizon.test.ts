@@ -36,6 +36,8 @@ describe('usesTradingSessions', () => {
     expect(usesTradingSessions('crypto_spot')).toBe(false)
     expect(usesTradingSessions('fx')).toBe(false)
     expect(usesTradingSessions('real_estate')).toBe(false)
+    expect(usesTradingSessions('tech')).toBe(false)
+    expect(usesTradingSessions('ai_models')).toBe(false)
   })
 })
 

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { runSingleAiProvider } from '@/lib/ai/router'
+import { runSingleAiProvider, type SearchResultItem } from '@/lib/ai/router'
 import type { ResearchTier } from './research-tier'
 import type { ResearchLang } from './relations'
 
@@ -30,7 +30,13 @@ import type { ResearchLang } from './relations'
  * the run degrades to the price-only prompt (previous behavior).
  */
 
-export type ResearchFinding = { query: string; summary: string; lang?: string }
+export type ResearchFinding = {
+  query: string
+  summary: string
+  lang?: string
+  citations?: string[]
+  searchResults?: SearchResultItem[]
+}
 
 export type ResearchPacket = {
   /** True when a usable packet exists (cache hit or fresh fetch). */
@@ -285,7 +291,12 @@ async function runDirector(
 async function runQuery(
   round: ResearchRoundInput,
   query: DirectorQuery,
-): Promise<{ summary: string | null; costUsd: number }> {
+): Promise<{
+  summary: string | null
+  costUsd: number
+  citations?: string[]
+  searchResults?: SearchResultItem[]
+}> {
   const answerRule =
     query.lang === 'en'
       ? 'Answer with a compact factual brief (max 120 words): concrete numbers, dates and named sources. No opinions, no disclaimers.'
@@ -315,7 +326,12 @@ async function runQuery(
       : estimateUsd(SONAR_PRICE, res.promptTokens, res.completionTokens)
 
   const summary = res.text?.trim().slice(0, MAX_FINDING_CHARS)
-  return { summary: res.error ? null : summary && summary.length ? summary : null, costUsd }
+  return {
+    summary: res.error ? null : summary && summary.length ? summary : null,
+    costUsd,
+    citations: res.citations,
+    searchResults: res.searchResults,
+  }
 }
 
 /**
@@ -409,7 +425,15 @@ export async function getResearchPacket(args: {
     if (costUsd >= budgetRemainingUsd) break // kill-switch: stop spending mid-assembly
     const r = await runQuery(round, query)
     costUsd += r.costUsd
-    if (r.summary) findings.push({ query: query.q, summary: r.summary, lang: query.lang })
+    if (r.summary) {
+      findings.push({
+        query: query.q,
+        summary: r.summary,
+        lang: query.lang,
+        citations: r.citations,
+        searchResults: r.searchResults,
+      })
+    }
   }
 
   if (!findings.length) {

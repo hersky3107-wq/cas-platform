@@ -18,12 +18,13 @@ import type { ExtendedAiProviderName } from '@/lib/ai/router'
  * only ever sees its own provider's key — the orchestrator adds nothing that
  * would cross that boundary.
  *
- * OFFICIAL ROSTER (locked 2026-08-16): 40 models — 10 premier / 10 challenger
- * / 14 world (incl. all three Korean models, world tier per owner decision —
- * no sovereign tier exists in the ledger schema) / 6 scout (all genuinely
- * search-capable endpoints, no padding). Model strings were mapped to the
- * provider catalogs live on 2026-08-16 (scripts/probe-model-catalogs.ts);
- * deviations from the requested version labels are noted inline per entry.
+ * OFFICIAL ROSTER (40 models): 10 premier / 10 challenger / 14 world / 6 scout.
+ * World holds the two remaining Korean vendors (NAVER, Upstage) plus Thinking
+ * Machines (Inkling) in the former LG seat — see PRICE AUDIT. No sovereign
+ * tier exists in the ledger schema. Scout is all genuinely search-capable
+ * endpoints, no padding. Model strings were mapped to the provider catalogs
+ * live on 2026-08-16 (scripts/probe-model-catalogs.ts); the 2026-09-07
+ * Inkling swap is noted inline.
  */
 
 export type LeagueTier = 'premier' | 'challenger' | 'world' | 'scout'
@@ -104,7 +105,7 @@ export type RosterPrice = {
 }
 
 /**
- * PRICE AUDIT — last verified 2026-08-29.
+ * PRICE AUDIT — last verified 2026-09-07 (Inkling swap).
  *
  * Sources used (per provider):
  *   OpenAI     — developers.openai.com/api/docs/models/{gpt-5.6-sol,terra,luna}
@@ -117,15 +118,35 @@ export type RosterPrice = {
  *                grok-4.3 $1.25/$2.50 & $2.50/$5 @200k; web_search $5/1k)
  *   OpenRouter — live GET https://openrouter.ai/api/v1/models (prompt/completion
  *                fields × 1e6). Covers every openrouter:* roster seat.
+ *                thinkingmachines/inkling listed $1.00 / $4.05 (2026-09-07);
+ *                endpoints DeepInfra $0.95/$4.05, BaseTen/Together $1.00/$4.05.
  *   Meta Muse  — developer.meta.com Muse Spark 1.2 standard tier $1.25/$4.25
  *   Upstage    — Solar Pro 3 list $0.15/$0.60 (matches OpenRouter)
- *   Friendli   — friendli.ai/pricing K-EXAONE-2.0 promo $0.60/$2.40
- *                (list $1.20/$4.80; we store the currently billed promo)
+ *   Friendli   — no longer hosts a league seat. K-EXAONE-2.0-750B-A37B left
+ *                serverless 2026-09-06 00:00 UTC (dedicated only). LG's own
+ *                API is partnership-only. 236B also 404 on Model APIs. The
+ *                WORLD LG seat was replaced by Thinking Machines Inkling on
+ *                OpenRouter (2026-09-07) rather than left erroring.
  *   Perplexity — docs.perplexity.ai pricing (sonar-reasoning-pro $2/$8 +
  *                request fee; billed total_cost already preferred in ledger)
  *   You.com    — you.com/docs/administration/billing lite $12/1k ($0.012/call);
  *                token price stays $0 — cost is the flat documented rate
  *   NAVER CLOVA — no public HCX-007 sheet (NCP console only); kept $0/$0
+ *
+ * SEAT-SWAP NOTES (keep for future sessions):
+ *   - LG was lost because Friendli moved EXAONE to dedicated-only on
+ *     2026-09-06 and LG's first-party API is partnership-only. No new
+ *     vendor account.
+ *   - Sakana Fugu Ultra (sakana/fugu-ultra) was the preferred Japanese
+ *     replacement but was rejected: a real ~1,900-token closed-book packet
+ *     billed $0.27; OpenRouter/Sakana expose no max_turns; effort:high
+ *     made it worse ($0.32). Agent pool on Ultra is fixed.
+ *   - The roster now has NO Japanese seat. Japan is the open gap to fill
+ *     when a Japanese lab appears pay-as-you-go on a provider we already
+ *     use (OpenRouter or Friendli serverless).
+ *   - India, Middle East, SEA, LatAm and Africa have zero models on
+ *     OpenRouter today, so geographic diversity beyond US/CN/KR/FR/CA is
+ *     currently not purchasable.
  *
  * Re-audit whenever a first-party page moves, or when an OpenRouter drift
  * script flags a seat off by >25%.
@@ -190,7 +211,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // hence the 240s timeout.
   { model_id: 'kimi-k2.6', brand: 'Moonshot AI', product_alias: 'Kimi', camp: 'china', league_tier: 'challenger', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 8000, timeoutMs: 240_000, caller: { kind: 'platform', platformId: 'openrouter:kimi-k2.6' }, price: { inputPerMTokens: 0.95, outputPerMTokens: 4 } },
 
-  // ── 🟢 WORLD (14) — incl. the three Korean models (no sovereign tier) ────
+  // ── 🟢 WORLD (14) — two Korean vendors (NAVER, Upstage); no sovereign tier ─
   { model_id: 'gpt-5.6-luna', brand: 'OpenAI', product_alias: 'ChatGPT', camp: 'us', league_tier: 'world', provider_key: 'openai', reasoning: true, caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-5.6-luna' }, price: { inputPerMTokens: 0.2, outputPerMTokens: 1.2 } },
   { model_id: 'claude-haiku-4.5', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'world', provider_key: 'anthropic', reasoning: false, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-haiku-4-5-20251001' }, price: { inputPerMTokens: 1, outputPerMTokens: 5 } },
   { model_id: 'gemini-3.5-flash-lite', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'world', provider_key: 'google', reasoning: true, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.5-flash-lite', allowGeminiThinking: true }, price: { inputPerMTokens: 0.3, outputPerMTokens: 2.5 } },
@@ -202,7 +223,11 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   { model_id: 'mimo-v2.5', brand: 'Xiaomi', product_alias: 'MiMo', camp: 'china', league_tier: 'world', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4000, caller: { kind: 'platform', platformId: 'openrouter:mimo-v2.5' }, price: { inputPerMTokens: 0.14, outputPerMTokens: 0.28 } },
   { model_id: 'solar-pro3', brand: 'Upstage', product_alias: 'Solar', camp: 'other', league_tier: 'world', provider_key: 'upstage', reasoning: true, caller: { kind: 'platform', platformId: 'upstage:solar-pro3' }, price: { inputPerMTokens: 0.15, outputPerMTokens: 0.6 } },
   { model_id: 'hcx-007', brand: 'NAVER', product_alias: 'HyperCLOVA', camp: 'other', league_tier: 'world', provider_key: 'clova', reasoning: false, caller: { kind: 'platform', platformId: 'clova:hcx-007' }, price: { inputPerMTokens: 0, outputPerMTokens: 0 } },
-  { model_id: 'k-exaone-2.0', brand: 'LG', product_alias: 'EXAONE', camp: 'other', league_tier: 'world', provider_key: 'friendli', reasoning: true, caller: { kind: 'platform', platformId: 'friendli:exaone-k-2.0' }, price: { inputPerMTokens: 0.6, outputPerMTokens: 2.4 } },
+  // 2026-09-07: replaces dead LG/EXAONE. OpenRouter list $1.00/$4.05.
+  // effort:minimal — default effort on this packet billed $0.0107 and
+  // returned empty content (2000 tokens of hidden reasoning). 4500 / 90s
+  // match other WORLD reasoning seats; measured call finished in <1s.
+  { model_id: 'inkling', brand: 'Thinking Machines', product_alias: 'Inkling', camp: 'us', league_tier: 'world', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, timeoutMs: 90_000, caller: { kind: 'platform', platformId: 'openrouter:inkling' }, price: { inputPerMTokens: 1, outputPerMTokens: 4.05 } },
   { model_id: 'ernie-4.5-vl', brand: 'Baidu', product_alias: 'ERNIE', camp: 'china', league_tier: 'world', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:ernie-4.5-vl' }, price: { inputPerMTokens: 0.42, outputPerMTokens: 1.25 } },
   { model_id: 'seed-1.6', brand: 'ByteDance', product_alias: 'Seed', camp: 'china', league_tier: 'world', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:seed-1.6' }, price: { inputPerMTokens: 0.25, outputPerMTokens: 2 } },
 
@@ -226,8 +251,17 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
 
 const ROSTER_BY_MODEL_ID = new Map(LEAGUE_ROSTER.map((entry) => [entry.model_id, entry]))
 
+/**
+ * Display-only aliases for model_ids that left the live roster. Historical
+ * prediction rows keep the original model_id; tiles must still name the
+ * brand that actually answered. Not a live seat — never called.
+ */
+const RETIRED_ROSTER_DISPLAY: Record<string, Pick<RosterEntry, 'brand' | 'product_alias'>> = {
+  'k-exaone-2.0': { brand: 'LG', product_alias: 'EXAONE' },
+}
+
 /** Brand line for tiles — e.g. "OpenAI (ChatGPT)" when a product alias exists. */
-export function formatRosterBrand(entry: RosterEntry): string {
+export function formatRosterBrand(entry: Pick<RosterEntry, 'brand' | 'product_alias'>): string {
   return entry.product_alias ? `${entry.brand} (${entry.product_alias})` : entry.brand
 }
 
@@ -238,6 +272,15 @@ export function rosterModelIdentifier(entry: RosterEntry): string {
 
 export function lookupRosterEntry(modelId: string): RosterEntry | undefined {
   return ROSTER_BY_MODEL_ID.get(modelId)
+}
+
+/** Live roster first; retired display alias if the seat has been replaced. */
+export function lookupRosterDisplay(modelId: string): { brand: string; model_id: string } | undefined {
+  const live = lookupRosterEntry(modelId)
+  if (live) return { brand: formatRosterBrand(live), model_id: rosterModelIdentifier(live) }
+  const retired = RETIRED_ROSTER_DISPLAY[modelId]
+  if (!retired) return undefined
+  return { brand: formatRosterBrand(retired), model_id: modelId }
 }
 
 /** Roster subset by tier (e.g. run only 'world' first to keep the cost test cheap). */

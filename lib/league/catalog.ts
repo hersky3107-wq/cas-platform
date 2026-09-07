@@ -11,13 +11,14 @@ import { cacheBucketFor, computeResolvesAt, tradingApproximationNote, type UiHor
  * chips in the hub UI.
  *
  * The 12 public ids are the product surface. Each maps onto one ledger
- * `PredictionCategory` (the 15-value CHECK constraint). Schema leftovers
- * that are NOT a top-level chip:
+ * `PredictionCategory` (the 17-value CHECK constraint after tech/ai_models).
+ * Schema leftovers that are NOT a top-level chip:
  *  - esports never existed — absorbed into `sports`
  *  - `crypto_perps` / extra memecoins live under `crypto` / `memecoin`
  *  - `bond_rate` folds into `macro_econ` (coming-soon, no chips)
  *  - `futures_derivatives` is schema-only (not a public chip)
  *  - `entertainment_awards` is the ledger key for public `entertainment`
+ *  - `tech` / `ai_models` are ledger-only this pass (no public chip yet)
  */
 
 export const PUBLIC_CATEGORY_IDS = [

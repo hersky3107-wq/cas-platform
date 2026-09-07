@@ -3,6 +3,7 @@ import { requireAdmin, ADMIN_EMAIL } from '@/lib/admin/require-admin'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { listOperatorGradeQueue } from '@/lib/prediction/operator-queue'
 import { gradeRoundFromOperatorEvidence } from '@/lib/prediction/operator-grade-live'
+import { rejectOperatorVerdictFields } from '@/lib/prediction/operator-map'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,6 +37,9 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'invalid JSON' }, { status: 400 })
   }
+  const verdict = rejectOperatorVerdictFields(body)
+  if (verdict) return NextResponse.json({ error: verdict.error }, { status: 400 })
+
   const roundId = typeof (body as { roundId?: unknown }).roundId === 'string' ? (body as { roundId: string }).roundId : ''
   const sourceUrl =
     typeof (body as { sourceUrl?: unknown }).sourceUrl === 'string' ? (body as { sourceUrl: string }).sourceUrl : ''
@@ -43,6 +47,7 @@ export async function POST(req: Request) {
     typeof (body as { observedFact?: unknown }).observedFact === 'string'
       ? (body as { observedFact: string }).observedFact
       : ''
+  const occurrence = (body as { occurrence?: unknown }).occurrence
 
   if (!roundId) return NextResponse.json({ error: 'roundId is required' }, { status: 400 })
 
@@ -51,6 +56,7 @@ export async function POST(req: Request) {
     sourceUrl,
     observedFact,
     gradedBy,
+    occurrence,
   })
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })

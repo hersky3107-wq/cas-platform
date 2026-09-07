@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin/require-admin'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { generatePredictions, type RoundInput } from '@/lib/league/orchestrator'
+import { adapterForLedgerCategory } from '@/lib/league/gateway/adapters/registry.server'
+import { applyAdapterComposeToRoundInput } from '@/lib/league/gateway/hydrate-round-input'
 import { isUiHorizon, UI_HORIZONS } from '@/lib/league/horizon'
 import type { LeagueTier } from '@/lib/league/roster'
 
@@ -21,6 +23,9 @@ const VALID_TIERS: LeagueTier[] = ['premier', 'challenger', 'world', 'scout']
  *   OR
  *   { round: { proposition_text, category, instrument, horizon,
  *              resolution_rule, resolves_at, item_type? } }   // create one
+ *              // proposition_kind / subject_label / observation_shape are
+ *              // taken from the adapter compose output, not from the caller.
+ *              // A caller-supplied value that disagrees is 400.
  *              // horizon MUST be one of '1d' | '1w' | '1m' | '3m' (canonical
  *              // set; 400 before any model call otherwise — matches the DB CHECK)
  *   Optional: tiers?: ('premier'|'challenger'|'world'|'scout')[]  // roster subset
@@ -40,8 +45,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const roundInput = buildRoundInput(body)
-  if (!roundInput) {
+  const parsed = buildRoundInput(body)
+  if (!parsed) {
     return NextResponse.json(
       {
         ok: false,
@@ -52,13 +57,19 @@ export async function POST(req: Request) {
     )
   }
 
-  // Validate the caller-supplied horizon against the 4 canonical codes BEFORE
-  // a single model call. The DB CHECK (20260824000001) rejects anything else,
-  // and an INSERT that fails AFTER the roster has already answered would burn
-  // ~40 paid model calls for a row that can never be written. This is the same
-  // "validate the one free-text field before spending" hole we closed on the
-  // public path — the admin path is no exception. (The `{ roundId }` reuse
-  // path has no horizon field and is unaffected.)
+  let roundInput: RoundInput = parsed
+  if (!('roundId' in parsed)) {
+    const adapter = adapterForLedgerCategory(parsed.category)
+    const hydrated = applyAdapterComposeToRoundInput(parsed, adapter)
+    if (!hydrated.ok) {
+      return NextResponse.json({ ok: false, error: hydrated.error }, { status: 400 })
+    }
+    roundInput = hydrated.input
+  }
+
+  // Validate horizon AFTER compose may have remapped the calendar date onto
+  // the 4-value CHECK. A bad code here would burn ~40 paid model calls.
+  // The `{ roundId }` reuse path has no horizon field and is unaffected.
   if ('horizon' in roundInput && !isUiHorizon(roundInput.horizon)) {
     return NextResponse.json(
       { ok: false, error: `round.horizon must be one of: ${UI_HORIZONS.join(', ')}` },
@@ -112,6 +123,10 @@ function buildRoundInput(body: Record<string, unknown>): RoundInput | null {
         item_type: itemType,
         season_id: typeof o.season_id === 'string' ? o.season_id : null,
         cache_key: typeof o.cache_key === 'string' ? o.cache_key : null,
+        // Optional — used only to reject a mismatch with adapter compose.
+        proposition_kind: typeof o.proposition_kind === 'string' ? o.proposition_kind : undefined,
+        subject_label: typeof o.subject_label === 'string' ? o.subject_label : undefined,
+        observation_shape: typeof o.observation_shape === 'string' ? o.observation_shape : undefined,
       }
     }
   }

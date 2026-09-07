@@ -49,6 +49,8 @@ const CATEGORY_UNIVERSE: Record<PredictionCategory, true> = {
   entertainment_awards: true,
   memecoin: true,
   real_estate: true,
+  tech: true,
+  ai_models: true,
 }
 
 export const ALL_PREDICTION_CATEGORIES = Object.keys(CATEGORY_UNIVERSE) as PredictionCategory[]

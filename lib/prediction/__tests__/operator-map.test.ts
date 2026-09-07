@@ -4,6 +4,7 @@ import {
   mapObservedFactToSide,
   normalizeObservedLabel,
   parsePrintedNumber,
+  rejectOperatorVerdictFields,
   validateOperatorEvidenceInput,
 } from '../operator-map'
 
@@ -16,13 +17,14 @@ describe('validateOperatorEvidenceInput', () => {
   })
 })
 
-describe('mapObservedFactToSide — subject_outcome', () => {
+describe('mapObservedFactToSide — subject_outcome name_match (sports)', () => {
   it('maps a normalized subject match to yes, anything else to no', () => {
     expect(
       mapObservedFactToSide({
         propositionKind: 'binary_subject_outcome',
         subjectLabel: 'Manchester United',
         observedFact: 'manchester united',
+        observationShape: 'name_match',
       })
     ).toEqual({ ok: true, derived_side: 'yes' })
 
@@ -31,8 +33,19 @@ describe('mapObservedFactToSide — subject_outcome', () => {
         propositionKind: 'binary_subject_outcome',
         subjectLabel: 'Manchester United',
         observedFact: 'Liverpool',
+        observationShape: 'name_match',
       })
     ).toEqual({ ok: true, derived_side: 'no' })
+  })
+
+  it('legacy subject-outcome rows with no persisted shape still name-match', () => {
+    expect(
+      mapObservedFactToSide({
+        propositionKind: 'binary_subject_outcome',
+        subjectLabel: 'Manchester United',
+        observedFact: 'Manchester United',
+      })
+    ).toEqual({ ok: true, derived_side: 'yes' })
   })
 
   it('refuses a subject-outcome round with no subject_label', () => {
@@ -76,6 +89,81 @@ describe('mapObservedFactToSide — threshold', () => {
   })
 })
 
+describe('mapObservedFactToSide — occurrence (tech)', () => {
+  it('derives yes from occurred even when the fact is not the company name', () => {
+    expect(
+      mapObservedFactToSide({
+        propositionKind: 'binary_subject_outcome',
+        subjectLabel: 'Apple',
+        observedFact: 'product page live on the official newsroom',
+        observationShape: 'occurrence',
+        occurrence: 'occurred',
+      })
+    ).toEqual({ ok: true, derived_side: 'yes' })
+  })
+
+  it('derives no from did_not_occur even when the fact equals the subject name', () => {
+    expect(
+      mapObservedFactToSide({
+        propositionKind: 'binary_subject_outcome',
+        subjectLabel: 'Apple',
+        observedFact: 'Apple',
+        observationShape: 'occurrence',
+        occurrence: 'did_not_occur',
+      })
+    ).toEqual({ ok: true, derived_side: 'no' })
+  })
+
+  it('refuses an occurrence round that omits the structured report — does not invert via name match', () => {
+    const result = mapObservedFactToSide({
+      propositionKind: 'binary_subject_outcome',
+      subjectLabel: 'Apple',
+      observedFact: 'product page live on the official newsroom',
+      observationShape: 'occurrence',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/will not parse/)
+  })
+
+  it('refuses a side token in the occurrence field', () => {
+    const result = mapObservedFactToSide({
+      propositionKind: 'binary_subject_outcome',
+      subjectLabel: 'Apple',
+      observedFact: 'product page live on the official newsroom',
+      observationShape: 'occurrence',
+      occurrence: 'yes',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/not a side token/)
+  })
+})
+
+describe('mapObservedFactToSide — mismatched shapes are refused', () => {
+  it('refuses an occurrence report on a name-match (sports) round', () => {
+    const result = mapObservedFactToSide({
+      propositionKind: 'binary_subject_outcome',
+      subjectLabel: 'Manchester United',
+      observedFact: 'Manchester United',
+      observationShape: 'name_match',
+      occurrence: 'occurred',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/name-match/)
+  })
+
+  it('refuses an unknown persisted shape rather than guessing', () => {
+    const result = mapObservedFactToSide({
+      propositionKind: 'binary_subject_outcome',
+      subjectLabel: 'Apple',
+      observedFact: 'product page live on the official newsroom',
+      observationShape: 'announce_vibes',
+      occurrence: 'occurred',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/will not guess/)
+  })
+})
+
 describe('mapObservedFactToSide — close_higher is refused', () => {
   it('never invents a close from operator evidence', () => {
     const result = mapObservedFactToSide({
@@ -85,6 +173,14 @@ describe('mapObservedFactToSide — close_higher is refused', () => {
     })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toMatch(/market feed/)
+  })
+})
+
+describe('rejectOperatorVerdictFields', () => {
+  it('rejects a typed side token or correct/incorrect', () => {
+    expect(rejectOperatorVerdictFields({ side: 'yes' })?.error).toMatch(/side token/)
+    expect(rejectOperatorVerdictFields({ correct: true })?.error).toMatch(/correct/)
+    expect(rejectOperatorVerdictFields({ roundId: 'x', sourceUrl: 'https://a.com', observedFact: 'x' })).toBeNull()
   })
 })
 

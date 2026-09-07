@@ -18,7 +18,7 @@ import {
 import { sidePairOf, tallySlotOfToken, toSideToken, type SideRoundContext } from './side-labels'
 import type { AnswerSide } from './answer-contract'
 import { gradingStateOf, type GradingState } from '../prediction/grading-state'
-import { formatRosterBrand, lookupRosterEntry, rosterModelIdentifier, LEAGUE_ROSTER } from './roster'
+import { lookupRosterDisplay, LEAGUE_ROSTER } from './roster'
 import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
 import { roundHitRecord } from './round-hit'
 import { normalizeSessionDate } from '../prediction/resolution'
@@ -264,12 +264,12 @@ export function computeCardAggregates(
 function toCardModel(row: PredictionRow): CardModelPrediction {
   const tier = row.league_tier as CardModelPrediction['league_tier']
   const camp = row.camp as CardModelPrediction['camp']
-  const roster = lookupRosterEntry(row.model_id)
+  const roster = lookupRosterDisplay(row.model_id)
   return {
     prediction_id: row.id ?? null,
     model_id: row.model_id,
-    brand: roster ? formatRosterBrand(roster) : row.brand,
-    model_identifier: roster ? rosterModelIdentifier(roster) : row.model_id,
+    brand: roster ? roster.brand : row.brand,
+    model_identifier: roster ? roster.model_id : row.model_id,
     camp,
     league_tier: tier,
     // toSideToken, not the old up/down/flat gate: yes/no/above/below rows
