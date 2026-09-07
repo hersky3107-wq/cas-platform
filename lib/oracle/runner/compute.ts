@@ -52,8 +52,8 @@ import {
   readingScopeForSession,
 } from './conventions'
 import { buildReadingPayload, type PayloadContext } from './payload'
-import type { PersonalData } from './privacy'
-import type { OracleSessionInputs } from './session-inputs'
+import type { PersonalData, PersonalDataOther } from './privacy'
+import type { OracleCompatPartnerInput, OracleSessionInputs } from './session-inputs'
 import type { JsonObject } from './types'
 
 export class OracleComputeError extends Error {
@@ -80,6 +80,15 @@ export type ComputeAssumptions = {
    * 자미두수 report it at full weight. Tracked, not silently swallowed.
    */
   birthTimeEstimated: boolean
+  /** 궁합 Person B gave no birth time: their 시주/大限/하우스 are dropped. */
+  partnerBirthTimeUnknown?: boolean
+  /** 궁합 Person B gave no sex: 대운/大限 direction defaulted to male. */
+  partnerSexDefaulted?: boolean
+  /**
+   * 궁합 Person B never has a birth place: their astro chart runs on the
+   * subject's timezone and the default coordinates, houses omitted.
+   */
+  partnerLocationAssumed?: boolean
 }
 
 export type ComputedSystem = {
@@ -126,34 +135,74 @@ function jsonObject(value: object): JsonObject {
 }
 
 /** oracle_profiles.birth_time is a SQL `time` ('HH:mm:ss'); engines want 'HH:mm'. */
-function toClock(value: string | null): string | null {
+export function toClock(value: string | null): string | null {
   if (!value) return null
   const match = /^(\d{1,2}):(\d{2})/.exec(value.trim())
   if (!match) return null
   return `${match[1]!.padStart(2, '0')}:${match[2]}`
 }
 
-export function personalDataFrom(profiles: OracleProfile[]): PersonalData {
+/** A name plus its split forms: leaking only the given name still leaks. */
+function nameForms(values: Array<string | null | undefined>): string[] {
   const names: string[] = []
-  for (const profile of profiles) {
-    for (const raw of [profile.name_local, profile.name_hanja, profile.name_latin]) {
-      if (!raw) continue
-      names.push(raw)
-      // Split forms too: a payload leaking only the given name still leaks.
-      for (const part of raw.split(/[\s·]+/)) {
-        if (part.length > 0) names.push(part)
-      }
+  for (const raw of values) {
+    if (!raw) continue
+    names.push(raw)
+    for (const part of raw.split(/[\s·]+/)) {
+      if (part.length > 0) names.push(part)
     }
   }
+  return names
+}
+
+/**
+ * Needle set for the privacy gate. EVERY profile's birth data participates
+ * (not just the first — that was a real gap when a partner profile rode
+ * along), and the 궁합 partner's session-scoped facts join with the same
+ * strictness. Korean partner names split like `splitName`: first syllable is
+ * the surname, so the given name alone is also a needle.
+ */
+export function personalDataFrom(
+  profiles: OracleProfile[],
+  partner?: OracleCompatPartnerInput | null,
+): PersonalData {
   const first = profiles[0]
+  const others: PersonalDataOther[] = profiles.slice(1).map((profile) => ({
+    birthDate: profile.birth_date ?? null,
+    birthTime: profile.birth_time ?? null,
+    birthPlace: profile.birth_place ?? null,
+    names: nameForms([profile.name_local, profile.name_hanja, profile.name_latin]),
+    lat: profile.lat ?? null,
+    lng: profile.lng ?? null,
+    timezone: profile.tz ?? null,
+  }))
+
+  if (partner) {
+    const partnerNames = nameForms([partner.name])
+    const split = partner.name ? splitNameParts(partner.name, null, null) : null
+    if (split) partnerNames.push(split.surname, split.givenName)
+    others.push({
+      birthDate: partner.birthDate,
+      birthTime: partner.birthTime ?? null,
+      birthPlace: null,
+      names: partnerNames,
+      lat: null,
+      lng: null,
+      timezone: null,
+    })
+  }
+
   return {
     birthDate: first?.birth_date ?? '',
     birthTime: first?.birth_time ?? null,
     birthPlace: first?.birth_place ?? null,
-    names,
+    names: nameForms(
+      profiles.flatMap((profile) => [profile.name_local, profile.name_hanja, profile.name_latin]),
+    ),
     lat: first?.lat ?? null,
     lng: first?.lng ?? null,
     timezone: first?.tz ?? null,
+    ...(others.length > 0 ? { others } : {}),
   }
 }
 
@@ -182,28 +231,37 @@ type SubjectContext = {
  * Korean names have no separator: the first syllable is the surname (the
  * one-syllable surnames cover the overwhelming majority; 남궁/황보 and the
  * other two-syllable surnames are a known gap). Latin names split on
- * whitespace, last token first.
+ * whitespace, last token first. Shared by the subject profile and the 궁합
+ * partner (who has only a local-name string).
  */
-function splitName(profile: OracleProfile, locale: string): { surname: string; givenName: string } | null {
-  const local = profile.name_local?.trim()
+export function splitNameParts(
+  nameLocal: string | null | undefined,
+  nameHanja: string | null | undefined,
+  nameLatin: string | null | undefined,
+): { surname: string; givenName: string } | null {
+  const local = nameLocal?.trim()
   if (local && local.length >= 2 && /[\u3131-\uD79D\u4E00-\u9FFF]/.test(local)) {
     return { surname: local.slice(0, 1), givenName: local.slice(1) }
   }
-  const hanja = profile.name_hanja?.trim()
+  const hanja = nameHanja?.trim()
   if (hanja && hanja.length >= 2) {
     return { surname: hanja.slice(0, 1), givenName: hanja.slice(1) }
   }
-  const latin = profile.name_latin?.trim()
+  const latin = nameLatin?.trim()
   if (latin) {
     const parts = latin.split(/\s+/).filter(Boolean)
     if (parts.length >= 2) {
       return { surname: parts[parts.length - 1]!, givenName: parts.slice(0, -1).join(' ') }
     }
   }
+  return null
+}
+
+function splitName(profile: OracleProfile, locale: string): { surname: string; givenName: string } | null {
   // Locale is kept in the signature because the engine branches on it; a
   // single-token name is unreadable in every locale.
   void locale
-  return null
+  return splitNameParts(profile.name_local, profile.name_hanja, profile.name_latin)
 }
 
 /**
@@ -232,18 +290,22 @@ function readPrismInputs(
   }
 }
 
-function drawSeed(seed: string, system: string): string {
+export function drawSeed(seed: string, system: string): string {
   return `${seed}:${system}`
 }
 
-function readTarotInputs(sessionInputs: OracleSessionInputs | null): SubjectContext['tarot'] {
+export function readTarotInputs(
+  sessionInputs: OracleSessionInputs | null,
+): { spread: TarotSpreadSize; pickedPositions: number[] } | null {
   const input = sessionInputs?.tarot
   if (!input) return null
   return { spread: input.spread, pickedPositions: input.pickedPositions }
 }
 
 /** New shape: { spread, pickedPositions }. Legacy shape: { count } (no picks). */
-function readRuneInputs(sessionInputs: OracleSessionInputs | null): SubjectContext['runes'] {
+export function readRuneInputs(
+  sessionInputs: OracleSessionInputs | null,
+): { spread: number; pickedPositions: number[] | null } | null {
   const input = sessionInputs?.runes
   if (!input) return null
   if ('pickedPositions' in input && Array.isArray(input.pickedPositions)) {
@@ -255,13 +317,13 @@ function readRuneInputs(sessionInputs: OracleSessionInputs | null): SubjectConte
   return null
 }
 
-function readIchingLines(sessionInputs: OracleSessionInputs | null): readonly LineValue[] | null {
+export function readIchingLines(sessionInputs: OracleSessionInputs | null): readonly LineValue[] | null {
   const lines = sessionInputs?.iching?.lines
   return Array.isArray(lines) && lines.length === 6 ? (lines as LineValue[]) : null
 }
 
 /** Combined-session fallback when the UI did not send a user draw. */
-function derivePickedPositions(seed: string, count: number, deckSize: number): number[] {
+export function derivePickedPositions(seed: string, count: number, deckSize: number): number[] {
   const rng = createRng(seed)
   const picked: number[] = []
   while (picked.length < count) {
@@ -400,7 +462,7 @@ export function resolveSystems(requested: readonly string[]): SystemId[] {
   return SYSTEM_IDS.filter((id) => wanted.has(id))
 }
 
-function nominalAgeFrom(birthDate: string, asOfDate: string): number | null {
+export function nominalAgeFrom(birthDate: string, asOfDate: string): number | null {
   const birthYear = Number(birthDate.slice(0, 4))
   const asOfYear = Number(asOfDate.slice(0, 4))
   if (!Number.isFinite(birthYear) || !Number.isFinite(asOfYear)) return null

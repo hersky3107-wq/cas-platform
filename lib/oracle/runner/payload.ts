@@ -161,6 +161,32 @@ export function buildReadingPayload(
 }
 
 /**
+ * 궁합 variant of the layer-1 payload. The chart is PREBUILT (see
+ * native-chart-compat.ts) because a pair chart needs both sides' typed engine
+ * results plus the relation block — reconstructing that from the stored jsonb
+ * would be parsing for its own sake. Same envelope, same privacy gate.
+ */
+export function buildCompatReadingPayload(
+  vote: AxisVote,
+  chart: JsonObject,
+  ctx: PayloadContext,
+  pii: PersonalData,
+): JsonObject {
+  const body: JsonObject = {
+    ...envelope(ctx, 'native'),
+    system: vote.system,
+    engineVersion: vote.engineVersion,
+    chart,
+  }
+
+  assertNoPersonalData(body, pii, {
+    label: `ai_payload(compat:${vote.system})`,
+    machineCodeFields: [],
+  })
+  return { ...body, context: contextOf(ctx) }
+}
+
+/**
  * One seer's layer-2 prompt input: the aggregated axis picture plus every
  * layer-1 narrative. The narratives are themselves derived from reading
  * payloads that passed the same gate, so they cannot reintroduce birth data.
@@ -209,8 +235,12 @@ export function buildSynthesisPayload(
   readings: readonly OracleReading[],
   consensus: AxisConsensus,
   pii: PersonalData,
+  kind: OracleSessionKind = 'personal',
 ): JsonObject {
   const body: JsonObject = {
+    // The synthesis prompt needs to know a 궁합 session is about a
+    // RELATIONSHIP, not a person. A machine enum, never profile data.
+    kind,
     readings: readings.map((row, index) => ({
       index: index + 1,
       narrative: truncateNarrativeForSynthesis(row.narrative ?? ''),

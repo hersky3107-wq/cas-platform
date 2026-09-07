@@ -5,8 +5,11 @@ import { LAYER1_NARRATIVE_TARGET } from '../../parse-layer1'
 describe('layer1 prompts (v4)', () => {
   it('is the v4 prompt: native-only, no axes variant', () => {
     expect(LAYER1_PROMPT_VERSION).toBe('layer1-v4')
-    // The signature takes no readingInput any more — one code path.
-    expect(buildLayer1SystemPrompt.length).toBeLessThanOrEqual(2)
+    // (locale, system?, kind?) — still no readingInput param: native is the
+    // only code path; kind only reframes one person vs. a relationship.
+    expect(buildLayer1SystemPrompt.length).toBeLessThanOrEqual(3)
+    const prompt = buildLayer1SystemPrompt('ko', 'saju')
+    expect(prompt).not.toContain('readingInput')
   })
 
   it('demands the 700–1100 budget and forbids raw scores in prose (FIX 3)', () => {
@@ -45,5 +48,23 @@ describe('layer1 prompts (v4)', () => {
     expect(system).toContain(`Target narrative length: ${LAYER1_NARRATIVE_TARGET}`)
     expect(user).toContain('Emit JSON only')
     expect(buildLayer1SystemPrompt('ko', 'saju')).not.toContain('length lock')
+  })
+
+  it('kind=compat reframes the reading as a RELATIONSHIP and bans invented facts and scores', () => {
+    const compat = buildLayer1SystemPrompt('ko', 'saju', 'compat')
+    expect(compat).toContain('RELATIONSHIP')
+    expect(compat).toContain('궁합')
+    expect(compat).toContain('본인')
+    expect(compat).toContain('상대')
+    expect(compat).toContain('Never invent names, ages, birth facts')
+    expect(compat).toContain('Do not manufacture a percentage score')
+    // Relationship-motion direction semantics ride along for the vote field.
+    expect(compat).toContain('다가서라')
+    expect(compat).toContain('거리를 두라')
+
+    // Personal prompt stays untouched.
+    const personal = buildLayer1SystemPrompt('ko', 'saju')
+    expect(personal).not.toContain('궁합')
+    expect(personal).toContain('for one person')
   })
 })

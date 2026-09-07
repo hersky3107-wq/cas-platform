@@ -23,6 +23,19 @@ const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
 }
 
 /**
+ * 궁합 sessions archive with their own oracle_type so a shared 궁합 never
+ * renders under a single-reading heading: 'compat' (통합) and
+ * 'compat:<systemId>' (단일 체계 궁합).
+ */
+const COMPAT_ORACLE_TYPE = 'compat'
+const COMPAT_ORACLE_TYPE_PREFIX = 'compat:'
+
+export function compatOracleType(systemId?: string | null): string {
+  const key = typeof systemId === 'string' ? systemId.trim() : ''
+  return key ? `${COMPAT_ORACLE_TYPE_PREFIX}${key}` : COMPAT_ORACLE_TYPE
+}
+
+/**
  * Never throws and never returns an empty string: an unknown id renders as
  * itself, because a share page losing its heading is worse than showing a raw
  * id for one row.
@@ -30,5 +43,11 @@ const SYSTEM_DISPLAY_NAMES: Record<string, string> = {
 export function oracleSystemDisplayName(systemId: string | null | undefined): string {
   const key = typeof systemId === 'string' ? systemId.trim() : ''
   if (!key) return ''
+  if (key === COMPAT_ORACLE_TYPE) return '궁합 · 통합 판독'
+  if (key.startsWith(COMPAT_ORACLE_TYPE_PREFIX)) {
+    const inner = key.slice(COMPAT_ORACLE_TYPE_PREFIX.length)
+    const name = SYSTEM_DISPLAY_NAMES[inner] ?? inner
+    return `${name} 궁합`
+  }
   return SYSTEM_DISPLAY_NAMES[key] ?? key
 }

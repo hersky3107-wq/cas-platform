@@ -70,11 +70,26 @@ const NATIVE_SYSTEM_RULES: Record<string, string> = {
   name: 'Name: speak through 오격 (천·인·지·외·총) and their 길흉 — say what each 격\'s reading means for the question.',
 }
 
-export function buildLayer1SystemPrompt(locale: string, system?: string): string {
+/**
+ * 궁합 layer-1 framing. The direction enum keeps its wire values
+ * (advance/hold/release) so nothing downstream forks, but its MEANING is
+ * relationship motion: 다가서라 / 지금 흐름대로 / 거리를 두라.
+ */
+const COMPAT_READING_RULES = [
+  'THIS IS A 궁합 (two-person compatibility) READING. The chart describes a RELATIONSHIP: 본인 (the person asking) and 상대 (the other person). The 관계 block is the heart — read it first.',
+  'Speak about the relationship between 본인 and 상대. Never invent names, ages, birth facts, or genders for either person — the chart deliberately carries none.',
+  'Do not manufacture a percentage score or a pass/fail verdict. Say what the chart actually shows: where the two charts pull together, where they grind, and what that asks of them.',
+  'direction (relationship motion): "advance" = 다가서라 (invest more, move closer, commit further); "hold" = 지금의 흐름을 지켜라 (keep the current distance and rhythm, tend what exists); "release" = 거리를 두라 (step back, loosen, or let go).',
+]
+
+export function buildLayer1SystemPrompt(locale: string, system?: string, kind?: string): string {
   const language = languageForLocale(locale)
   const lines = [
-    'You are reading ONE divination system for one person.',
+    kind === 'compat'
+      ? 'You are reading ONE divination system for the RELATIONSHIP between two people.'
+      : 'You are reading ONE divination system for one person.',
     'The native chart in the payload is already done and is authoritative. Never recalculate. Never invent a card, sign, or value that is not in the chart.',
+    ...(kind === 'compat' ? COMPAT_READING_RULES : []),
     'WRITING RULES (this is the product):',
     '- Write for someone who knows NOTHING about this divination system. No unexplained jargon: the first time a term appears, make its meaning clear from the sentence itself.',
     '- Name the concrete elements of the chart — this card, this 괘, this 별자리 — and say what each one MEANS for this person\'s question. Meaning, not scores.',
@@ -109,6 +124,7 @@ export function buildLayer1UserPrompt(
   payload: Record<string, unknown>,
   locale: string,
   system?: string,
+  kind?: string,
 ): string {
   const context = payload.context
   const question =
@@ -121,8 +137,12 @@ export function buildLayer1UserPrompt(
   const lines = [
     `Locale: ${locale} (${language}). Write the narrative and one_line in ${language}.`,
     hasQuestion
-      ? `Question (answer through this system's lens): ${question}`
-      : 'No question was submitted. Give the general reading.',
+      ? kind === 'compat'
+        ? `Question about this relationship (answer through this system's lens): ${question}`
+        : `Question (answer through this system's lens): ${question}`
+      : kind === 'compat'
+        ? 'No question was submitted. Give the general relationship reading for 본인 and 상대.'
+        : 'No question was submitted. Give the general reading.',
     'Native chart (authoritative; do not recalculate; do not import 오행/유지·방출 unless they appear in the chart):',
     JSON.stringify(payload),
   ]

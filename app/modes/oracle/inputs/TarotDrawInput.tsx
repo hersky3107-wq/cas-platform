@@ -5,7 +5,12 @@
  * Positions are 1-based indexes into the seeded shuffle — cards stay face-down
  * until the engine reveals them after session create.
  */
-import { TAROT_SPREADS, type TarotSpreadSize } from "@/lib/oracle/engines/draw/conventions";
+import {
+  COMPAT_TAROT_LABELS,
+  COMPAT_TAROT_SPREADS,
+  TAROT_SPREADS,
+  type TarotSpreadSize,
+} from "@/lib/oracle/engines/draw/conventions";
 import { TAROT_SPREAD_LABELS } from "@/lib/oracle/engines/draw/tables";
 
 const SPREAD_COPY: Record<TarotSpreadSize, { title: string; subtitle: string }> = {
@@ -13,6 +18,12 @@ const SPREAD_COPY: Record<TarotSpreadSize, { title: string; subtitle: string }> 
   3: { title: "3장", subtitle: "과거 · 현재 · 미래" },
   5: { title: "5장", subtitle: "상황 · 방해 · 조언 · 외부 · 결과" },
   10: { title: "10장", subtitle: "켈틱 크로스" },
+};
+
+/** 궁합: same fan, relationship positions. */
+const COMPAT_SPREAD_COPY: Partial<Record<TarotSpreadSize, { title: string; subtitle: string }>> = {
+  3: { title: "3장", subtitle: "본인 · 상대 · 두 사람 사이" },
+  5: { title: "5장", subtitle: "본인 · 상대 · 사이 · 걸림돌 · 흐름" },
 };
 
 function TarotBack() {
@@ -32,19 +43,25 @@ export default function TarotDrawInput({
   pickedPositions,
   onSpread,
   onToggle,
+  compat = false,
 }: {
   spread: TarotSpreadSize;
   pickedPositions: number[];
   onSpread: (spread: TarotSpreadSize) => void;
   onToggle: (position: number) => void;
+  /** 궁합: relationship spreads (3/5) and position labels; same ritual. */
+  compat?: boolean;
 }) {
   const need = spread;
+  const spreads: readonly TarotSpreadSize[] = compat ? COMPAT_TAROT_SPREADS : TAROT_SPREADS;
+  const labels: readonly string[] =
+    (compat ? COMPAT_TAROT_LABELS[spread] : undefined) ?? TAROT_SPREAD_LABELS[spread];
   return (
     <div className="space-y-4">
       <div>
         <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">스프레드</p>
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {TAROT_SPREADS.map((size) => (
+        <div className={`mt-2 grid grid-cols-2 gap-2 ${compat ? "" : "sm:grid-cols-4"}`}>
+          {spreads.map((size) => (
             <button
               key={size}
               type="button"
@@ -55,8 +72,12 @@ export default function TarotDrawInput({
                   : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/25"
               }`}
             >
-              <span className="block text-sm font-semibold">{SPREAD_COPY[size].title}</span>
-              <span className="mt-0.5 block text-[11px] text-white/45">{SPREAD_COPY[size].subtitle}</span>
+              <span className="block text-sm font-semibold">
+                {(compat ? COMPAT_SPREAD_COPY[size] : undefined)?.title ?? SPREAD_COPY[size].title}
+              </span>
+              <span className="mt-0.5 block text-[11px] text-white/45">
+                {(compat ? COMPAT_SPREAD_COPY[size] : undefined)?.subtitle ?? SPREAD_COPY[size].subtitle}
+              </span>
             </button>
           ))}
         </div>
@@ -67,7 +88,7 @@ export default function TarotDrawInput({
           카드를 고르세요 · {pickedPositions.length}/{need}
         </p>
         <p className="mt-1 text-[11px] text-white/40">
-          {TAROT_SPREAD_LABELS[spread].map((label, i) => `${i + 1}. ${label}`).join("  ·  ")}
+          {labels.map((label, i) => `${i + 1}. ${label}`).join("  ·  ")}
         </p>
         <div className="mt-4 overflow-x-auto pb-4">
           <div className="relative mx-auto h-[168px] min-w-[720px] max-w-4xl">

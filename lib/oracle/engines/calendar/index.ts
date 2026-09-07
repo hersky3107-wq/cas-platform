@@ -21,6 +21,14 @@ export { tenGods } from './ten-gods'
 export { greatLuck } from './great-luck'
 export { nineStar } from './nine-star'
 export { sukuyou, sukuyouRelation } from './sukuyou'
+export {
+  ELEMENT_GENERATES,
+  ELEMENT_OVERCOMES,
+  branchPairRelation,
+  elementPairRelation,
+  stemCombination,
+} from './relations'
+export type { BranchPairRelation, PairElementRelation } from './relations'
 export { NINE_STAR_DAY_SCHOOL, SUKUYOU_SCHOOL, DEFAULT_DAY_BOUNDARY } from './conventions'
 export { seasonElement } from './season-element'
 export { weekday } from './weekday'

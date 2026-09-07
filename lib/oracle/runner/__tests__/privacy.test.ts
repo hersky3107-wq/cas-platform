@@ -202,7 +202,9 @@ describe('ai_payload privacy rule', () => {
       computed.consensus,
       pii,
     )
-    expect(Object.keys(payload).sort()).toEqual(['consensus', 'readings'])
+    // 'kind' is the session-kind enum ('personal' | 'compat') — a machine
+    // value the synthesis prompt needs, never profile data.
+    expect(Object.keys(payload).sort()).toEqual(['consensus', 'kind', 'readings'])
     const serialized = JSON.stringify(payload)
     expect(serialized).not.toContain('secret-brand')
     expect(serialized).not.toContain('secret-model')
@@ -241,6 +243,107 @@ describe('ai_payload privacy rule', () => {
     const pii = personalDataFrom([PROFILE])
     expect(pii.names).toContain('Minseo')
     expect(pii.names).toContain('Kim')
+  })
+})
+
+/**
+ * 궁합 extension: TWO people's birth data now enters the system. Person B is
+ * session-scoped (never an oracle_profiles row), and her needles must be
+ * enforced with exactly the same strictness as the subject's.
+ */
+describe('privacy needles for 궁합 Person B and co-profiles', () => {
+  const PARTNER = { birthDate: '1991-03-08', birthTime: '21:40', sex: 'M' as const, name: '박도윤' }
+
+  it('personalDataFrom carries the partner as an `others` entry with split name parts', () => {
+    const pii = personalDataFrom([PROFILE], PARTNER)
+    expect(pii.others).toHaveLength(1)
+    const other = pii.others![0]!
+    expect(other.birthDate).toBe('1991-03-08')
+    expect(other.birthTime).toBe('21:40')
+    expect(other.names).toContain('박도윤')
+    expect(other.names).toContain('박')
+    expect(other.names).toContain('도윤')
+  })
+
+  it("rejects Person B's birth date, birth time, and name under any key", () => {
+    const pii = personalDataFrom([PROFILE], PARTNER)
+    expect(() => assertNoPersonalData({ note: 'anchor 1991-03-08' }, pii)).toThrow(OraclePrivacyError)
+    expect(() => assertNoPersonalData({ note: 'around 21:40 that night' }, pii)).toThrow(OraclePrivacyError)
+    expect(() => assertNoPersonalData({ note: '박도윤님의 기운' }, pii)).toThrow(OraclePrivacyError)
+    // The given name alone is a needle too.
+    expect(() => assertNoPersonalData({ note: '도윤은 물의 사람' }, pii)).toThrow(OraclePrivacyError)
+  })
+
+  it("a second PROFILE row's birth data is scanned too (the old first-profile-only gap)", () => {
+    const second = makeProfile({
+      id: 'profile-partner',
+      is_self: false,
+      birth_date: '1993-07-14',
+      birth_time: '09:05:00',
+      birth_place: 'Daegu',
+      name_local: '이서준',
+      name_latin: 'Seojun Lee',
+    })
+    const pii = personalDataFrom([PROFILE, second])
+    expect(() => assertNoPersonalData({ note: 'born 1993-07-14' }, pii)).toThrow(OraclePrivacyError)
+    expect(() => assertNoPersonalData({ note: 'at 09:05 sharp' }, pii)).toThrow(OraclePrivacyError)
+    expect(() => assertNoPersonalData({ note: 'from Daegu' }, pii)).toThrow(OraclePrivacyError)
+    expect(() => assertNoPersonalData({ note: '이서준' }, pii)).toThrow(OraclePrivacyError)
+    expect(() => assertNoPersonalData({ note: 'call me Seojun' }, pii)).toThrow(OraclePrivacyError)
+  })
+
+  it("a partner surnamed Kim still coexists with tzolkin's romanized nawal codes (the Kʼimʼ collision)", () => {
+    const pii = personalDataFrom([PROFILE], { ...PARTNER, name: null })
+    // Romanized-name needles are skipped ONLY inside declared machine-code
+    // fields; 'kim' inside maya.nawal.kim is the known, allowed collision.
+    expect(
+      isFreeOfPersonalData(
+        { reasons: { traits: ['maya.nawal.kim'] } },
+        pii,
+        { machineCodeFields: ['reasons'] },
+      ),
+    ).toBe(true)
+    // Outside machine-code fields the same string still fails.
+    expect(isFreeOfPersonalData({ note: 'nawal kim rules' }, personalDataFrom([PROFILE]))).toBe(false)
+  })
+
+  it('a partner given name that equals a relationship position label fails CLOSED, not open', () => {
+    // '상대' as a given name is practically nonexistent, but if it ever
+    // happens the draw chart's position label collides with the needle and
+    // the session refuses to build the payload — a failed session, no leak.
+    const pii = personalDataFrom([PROFILE], { ...PARTNER, name: '김상대' })
+    expect(isFreeOfPersonalData({ 카드: [{ 위치: '상대' }] }, pii)).toBe(false)
+  })
+
+  it('the compat verdict payload carries neither person', () => {
+    const computed = computeAll()
+    const pii = personalDataFrom([PROFILE], PARTNER)
+    const payload = buildVerdictPayload(
+      {
+        readerSlug: 'archivist',
+        readerIndex: 1,
+        readerCount: 3,
+        consensus: computed.consensus,
+        readings: [],
+      },
+      { kind: 'compat', locale: 'ko', readingScope: 'life', asOfDate: AS_OF, question: null },
+      pii,
+    )
+    const serialized = JSON.stringify(payload)
+    for (const literal of [...FORBIDDEN_LITERALS, PARTNER.birthDate, PARTNER.birthTime, PARTNER.name, '도윤']) {
+      expect(serialized).not.toContain(literal)
+    }
+  })
+
+  it('the compat synthesis payload carries neither person and says kind=compat', () => {
+    const computed = computeAll()
+    const pii = personalDataFrom([PROFILE], PARTNER)
+    const payload = buildSynthesisPayload([], computed.consensus, pii, 'compat')
+    expect(payload.kind).toBe('compat')
+    const serialized = JSON.stringify(payload)
+    for (const literal of [PARTNER.birthDate, PARTNER.birthTime, PARTNER.name, '도윤']) {
+      expect(serialized).not.toContain(literal)
+    }
   })
 })
 

@@ -12,8 +12,17 @@ export const SYNTHESIS_PROMPT_VERSION = 'synthesis-v2'
 /** What the prompt asks for; the parser's hard floor sits lower on purpose. */
 export const SYNTHESIS_CONCLUSION_TARGET = '600–900'
 
-export function buildSynthesisSystemPrompt(locale: string): string {
-  return `You are the Oracle synthesis layer. Synthesize independent readings without inventing evidence.
+export function buildSynthesisSystemPrompt(locale: string, kind?: string): string {
+  const compatFrame =
+    kind === 'compat'
+      ? `
+
+COMPATIBILITY FRAME (this session is a 궁합 reading of ONE relationship):
+- Every reading judged the SAME relationship between 본인 (the asker) and 상대 (the other person). Synthesize what they say about the two of them together — where the bond carries, where it grinds, and how to move.
+- Refer to the two people only as 본인 and 상대. Never invent names, ages, birth facts, or genders — the input deliberately carries none.
+- Do not manufacture a compatibility percentage or a pass/fail. The conclusion ends with a concrete move for the relationship (다가설지, 지금 흐름을 지킬지, 거리를 둘지 — and how).`
+      : ''
+  return `You are the Oracle synthesis layer. Synthesize independent readings without inventing evidence.${compatFrame}
 
 OUTPUT CONTRACT (mandatory):
 - Output exactly one JSON object and nothing else: no preamble, markdown, visible working, or text after the closing brace.

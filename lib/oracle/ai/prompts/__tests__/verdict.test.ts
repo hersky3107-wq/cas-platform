@@ -49,4 +49,34 @@ describe('verdict prompts', () => {
     expect(without).toContain('No question was submitted')
     expect(without).toContain('Korean')
   })
+
+  it('kind=compat swaps the direction criteria to relationship motion, same enum values', () => {
+    const compat = buildVerdictSystemPrompt('ko', 'reader', 5, 'compat')
+    // Relationship semantics: 다가서라 / 지금의 흐름을 지켜라 / 거리를 두라.
+    expect(compat).toContain('다가서라')
+    expect(compat).toContain('지금의 흐름을 지켜라')
+    expect(compat).toContain('거리를 두라')
+    expect(compat).toContain('궁합')
+    expect(compat).toContain('본인')
+    expect(compat).toContain('상대')
+    // The wire enum stays advance/hold/release — no schema change.
+    expect(compat).toContain('"advance" | "hold" | "release"')
+    // Guardrails specific to two-person readings.
+    expect(compat).toContain('compatibility percentage')
+
+    const personal = buildVerdictSystemPrompt('ko', 'reader', 5)
+    expect(personal).not.toContain('다가서라')
+    expect(personal).not.toContain('궁합')
+  })
+
+  it('kind=compat user prompt ballots on the relationship, not the period', () => {
+    const compat = buildVerdictUserPrompt(
+      { reader: { slug: 'reader', index: 1, of: 3 }, context: { asOfDate: '2026-09-05', question: null } },
+      'ko',
+      'compat',
+    )
+    expect(compat).toContain('Ballot on the relationship in general')
+    expect(compat).toContain('relationship readings')
+    expect(compat).not.toContain('Ballot on the period in general')
+  })
 })

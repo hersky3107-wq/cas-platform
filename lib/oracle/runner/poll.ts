@@ -72,6 +72,16 @@ function publicAssumptions(domainStats: JsonObject | null): OracleSessionView['a
     coordinatesDefaulted: raw.coordinatesDefaulted === true,
     birthTimeUnknown: raw.birthTimeUnknown === true,
     birthTimeEstimated: raw.birthTimeEstimated === true,
+    // 궁합 sessions only — undefined (not false) on personal sessions.
+    ...(raw.partnerBirthTimeUnknown !== undefined
+      ? { partnerBirthTimeUnknown: raw.partnerBirthTimeUnknown === true }
+      : {}),
+    ...(raw.partnerSexDefaulted !== undefined
+      ? { partnerSexDefaulted: raw.partnerSexDefaulted === true }
+      : {}),
+    ...(raw.partnerLocationAssumed !== undefined
+      ? { partnerLocationAssumed: raw.partnerLocationAssumed === true }
+      : {}),
   }
 }
 
@@ -127,6 +137,9 @@ export type OracleSessionView = {
     coordinatesDefaulted: boolean
     birthTimeUnknown: boolean
     birthTimeEstimated: boolean
+    partnerBirthTimeUnknown?: boolean
+    partnerSexDefaulted?: boolean
+    partnerLocationAssumed?: boolean
   } | null
   /** 'stub' sessions must not be presented as live readings. */
   aiMode: OracleAiModeView

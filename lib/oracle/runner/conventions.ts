@@ -107,9 +107,24 @@ export const ORACLE_SESSION_CREDIT_PRICES: Record<OracleSessionScope, Partial<Re
   combined: { 3: 25, 5: 32, 7: 40, 9: 50 },
 }
 
-export function creditsForOracleSession(scope: OracleSessionScope, readerCount: number): number {
-  const price = ORACLE_SESSION_CREDIT_PRICES[scope][readerCount]
-  if (price == null) throw new Error(`no Oracle credit price for ${scope} N=${readerCount}`)
+/**
+ * 궁합 (kind='compat') prices — provisional product numbers, cheaper than the
+ * personal readings at the same seat count. 단일 궁합 sells N=3/5 only;
+ * 통합 궁합 sells N=3/5/7 (no 9-seat witness panel for a relationship).
+ */
+export const ORACLE_COMPAT_SESSION_CREDIT_PRICES: Record<OracleSessionScope, Partial<Record<number, number>>> = {
+  single: { 3: 4, 5: 6 },
+  combined: { 3: 15, 5: 19, 7: 23 },
+}
+
+export function creditsForOracleSession(
+  scope: OracleSessionScope,
+  readerCount: number,
+  kind: OracleSessionKind = 'personal',
+): number {
+  const table = kind === 'compat' ? ORACLE_COMPAT_SESSION_CREDIT_PRICES : ORACLE_SESSION_CREDIT_PRICES
+  const price = table[scope][readerCount]
+  if (price == null) throw new Error(`no Oracle credit price for ${kind}/${scope} N=${readerCount}`)
   return price
 }
 

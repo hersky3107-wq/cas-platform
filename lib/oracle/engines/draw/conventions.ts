@@ -23,6 +23,28 @@ export const RUNE_SPREADS = [1, 3, 5] as const
 export type RuneSpreadSize = (typeof RUNE_SPREADS)[number]
 
 /**
+ * 궁합 draw rituals: SAME draw, relationship position labels. The draw reads
+ * THE RELATIONSHIP, not two people. One source for both the pick UI and the
+ * engine relabel (compute-compat.ts) so the hint and the chart never drift.
+ * '본인'/'상대' are role words chosen not to collide with Korean name needles
+ * ('나'/'우리' could — see the privacy scanner).
+ */
+export const COMPAT_TAROT_SPREADS = [3, 5] as const satisfies readonly TarotSpreadSize[]
+export const COMPAT_RUNE_SPREADS = [3, 5] as const satisfies readonly RuneSpreadSize[]
+
+export const COMPAT_TAROT_LABELS: Readonly<Partial<Record<number, readonly string[]>>> = {
+  1: ['두 사람 사이의 흐름'],
+  3: ['본인', '상대', '두 사람 사이'],
+  5: ['본인', '상대', '두 사람 사이', '걸림돌', '흐름'],
+}
+
+export const COMPAT_RUNE_LABELS: Readonly<Partial<Record<number, readonly string[]>>> = {
+  1: ['두 사람 사이의 흐름'],
+  3: ['본인', '상대', '두 사람 사이'],
+  5: ['본인', '상대', '두 사람 사이', '걸림돌', '흐름'],
+}
+
+/**
  * 3-coin 육효 probabilities (classic Chinese coin method):
  * heads = 3 (yang), tails = 2 (yin).
  * 6 old yin 1/8, 7 young yang 3/8, 8 young yin 3/8, 9 old yang 1/8.
