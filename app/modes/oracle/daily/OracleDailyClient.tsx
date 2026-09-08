@@ -2,8 +2,11 @@
 
 /**
  * 오늘의 운세 — the existing Daily Fortune route, re-pointed at the 12-system
- * engine. One AI (Z.ai), one short weave, automatic tarot/rune draw, 0 credits
- * through the charge path. Server cache is one row per user per civil day.
+ * engine. One AI (Z.ai), one short weave, automatic tarot/rune draw. First
+ * civil-day read is 2 credits through the charge path; re-reads of the same
+ * day are served from oracle_daily_cache at 0. Calculation (일진, 宿, 일명성,
+ * 톤·나왈, card, rune) renders from oracle_computations as soon as create
+ * returns; the weave arrives after the one AI call.
  */
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -45,6 +48,10 @@ function rec(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function cardsFrom(computations: OracleRunnerComputation[]) {
   const row = computations.find((entry) => entry.system === "tarot");
   const draw = rec(row?.calculation)?.draw;
@@ -57,6 +64,44 @@ function runesFrom(computations: OracleRunnerComputation[]) {
   const draw = rec(row?.calculation)?.draw;
   const runes = rec(draw)?.runes;
   return Array.isArray(runes) ? runes : [];
+}
+
+function dailyFacts(computations: OracleRunnerComputation[]): { label: string; value: string }[] {
+  const facts: { label: string; value: string }[] = [];
+
+  const iljin = rec(rec(computations.find((entry) => entry.system === "saju")?.calculation)?.iljin);
+  const pillar = rec(iljin?.pillar);
+  const gods = rec(iljin?.tenGods);
+  const ganzhi = text(pillar?.ganzhi);
+  const stemGod = text(gods?.stem);
+  const branchGod = text(gods?.branch);
+  if (ganzhi) {
+    const godsLine = [stemGod, branchGod].filter(Boolean).join("·");
+    facts.push({ label: "일진", value: godsLine ? `${ganzhi} ${godsLine}` : ganzhi });
+  }
+
+  const mansion = rec(computations.find((entry) => entry.system === "sukuyou")?.calculation)?.current;
+  const mansionRow = rec(mansion);
+  const mansionLabel = [text(mansionRow?.hangul), text(mansionRow?.hanja)].filter(Boolean).join(" ");
+  if (mansionLabel) facts.push({ label: "오늘의 宿", value: mansionLabel });
+
+  const dayStar = rec(rec(computations.find((entry) => entry.system === "ninestar")?.calculation)?.current)?.day;
+  const star = rec(dayStar);
+  const starName = text(star?.hangul);
+  const starNum = typeof star?.number === "number" ? String(star.number) : null;
+  if (starName || starNum) {
+    facts.push({ label: "일명성", value: [starName, starNum].filter(Boolean).join(" ") });
+  }
+
+  const today = rec(computations.find((entry) => entry.system === "tzolkin")?.calculation)?.current;
+  const tz = rec(today);
+  const nawal = text(tz?.nawalName);
+  const tone = typeof tz?.tone === "number" ? String(tz.tone) : text(tz?.tone);
+  if (nawal || tone) {
+    facts.push({ label: "톤·나왈", value: [tone ? `톤 ${tone}` : null, nawal].filter(Boolean).join(" · ") });
+  }
+
+  return facts;
 }
 
 export default function OracleDailyClient() {
@@ -118,6 +163,7 @@ export default function OracleDailyClient() {
   const direction = typeof summary?.direction === "string" ? summary.direction : null;
   const cards = cardsFrom(session.computations);
   const runes = runesFrom(session.computations);
+  const facts = dailyFacts(session.computations);
   const working = Boolean(session.sessionId) && !session.terminal;
   const failed = session.view?.status === "failed";
 
@@ -144,7 +190,7 @@ export default function OracleDailyClient() {
             <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
             Oracle
           </Link>
-          <p className="text-[11px] tabular-nums text-white/40">오늘 첫 판독 · 0크레딧</p>
+          <p className="text-[11px] tabular-nums text-white/40">첫 판독 2 · 재열람 0</p>
         </div>
 
         <header className="text-center">
@@ -159,6 +205,22 @@ export default function OracleDailyClient() {
           <p className="mt-6 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
             {session.error}
           </p>
+        ) : null}
+
+        {facts.length > 0 ? (
+          <section className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {facts.map((fact) => (
+              <div
+                key={fact.label}
+                className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-center"
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/65">
+                  {fact.label}
+                </p>
+                <p className="mt-1 text-sm text-white">{fact.value}</p>
+              </div>
+            ))}
+          </section>
         ) : null}
 
         <section className="mt-8 grid gap-6 sm:grid-cols-2">

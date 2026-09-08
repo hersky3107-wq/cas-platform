@@ -39,7 +39,7 @@ const profile = makeProfile({ user_id: USER })
 const store = createFakeStore({ profiles: [profile] })
 
 const insert = store.insertSession.bind(store)
-let nextSessionId = randomUUID()
+const nextSessionId = randomUUID()
 store.insertSession = async (row) => {
   const created = await insert(row)
   const retained = store.sessions.find((session) => session.id === created.id)
@@ -88,6 +88,7 @@ out(`systems=${created.session.systems.join(',')}`)
 out(`roster=${created.session.reader_roster.join(',')}`)
 out(`asOfDate=${String(created.session.session_inputs?.asOfDate ?? '')}`)
 out(`assumptions=${JSON.stringify(created.assumptions ?? {})}`)
+out(`cache_key=oracle_daily_cache(user_id, civilDateIn(now, profile.tz ?? Asia/Seoul))`)
 
 const saju = created.computations.find((row) => row.system === 'saju')
 const tarot = created.computations.find((row) => row.system === 'tarot')
@@ -119,6 +120,22 @@ const readings = store.readings.filter((row) => row.session_id === sessionId)
 out(`\n=== daily session=${sessionId} status=${session.status} wall_ms=${wallMs} ===`)
 out(`readings=${readings.length} verdicts=${store.verdicts.length} cache=${store.dailyCaches.length}`)
 out(`ai_calls=${calls.length} kinds=${calls.map((c) => c.kind).join(',')}`)
+out(`length_retry=${calls.filter((c) => c.kind === 'reading').length > 1}`)
+for (const [i, c] of calls.entries()) {
+  const narrativeChars = (() => {
+    const raw = c.result.text
+    if (!raw) return 0
+    try {
+      const parsed = JSON.parse(raw) as { narrative?: unknown }
+      return typeof parsed.narrative === 'string' ? [...parsed.narrative].length : 0
+    } catch {
+      return 0
+    }
+  })()
+  out(
+    `call[${i}] kind=${c.kind} brand=${c.brand} latency_ms=${c.result.latencyMs} reasoning=${c.result.reasoningTokens} content=${c.result.contentTokens} narrative_chars=${narrativeChars} finish=${c.result.finishReason}`,
+  )
+}
 
 for (const row of readings) {
   const chars = row.narrative ? [...row.narrative].length : 0
@@ -150,6 +167,10 @@ out(
     rows: rows.length,
     wallMs,
     chars: readings[0]?.narrative ? [...readings[0].narrative].length : 0,
+    aiCalls: calls.length,
+    lengthRetry: calls.filter((c) => c.kind === 'reading').length > 1,
+    callLatenciesMs: calls.map((c) => c.result.latencyMs),
+    callReasoningTokens: calls.map((c) => c.result.reasoningTokens),
   })}`,
 )
 

@@ -31,6 +31,7 @@ import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1
 import {
   buildDailySystemPrompt,
   buildDailyUserPrompt,
+  DAILY_MAX_COMPLETION_TOKENS,
   DAILY_STRICT_RETRY_INSTRUCTION,
   dailyLengthRetryInstruction,
 } from './prompts/daily'
@@ -175,6 +176,29 @@ function verdictReaderCount(payload: JsonObject): number {
   return 9
 }
 
+/**
+ * Daily is a morning tile, not a paid panel. GLM-5.2's catalog default is
+ * reasoning.effort:minimal — that is what turned one short weave into ~16s.
+ * Pin thinking off and cap completion so a 300–450 char JSON cannot ramble
+ * into a length retry. Paid readings keep the catalog entry unchanged.
+ */
+export function applyDailyReaderPolicies(entry: Layer1RegistryEntry): Layer1RegistryEntry {
+  const capped = { ...entry, maxCompletionTokens: DAILY_MAX_COMPLETION_TOKENS }
+  if (capped.caller.kind === 'platform') {
+    return {
+      ...capped,
+      caller: {
+        ...capped.caller,
+        extraRequestParams: {
+          ...capped.caller.extraRequestParams,
+          reasoning: { enabled: false },
+        },
+      },
+    }
+  }
+  return capped
+}
+
 export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): OracleAiAdapter {
   const call = options.call ?? defaultCall
 
@@ -196,6 +220,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         )
       }
 
+      const sessionKind = payloadKind(request.payload)
+      const isDailyReading = request.kind === 'reading' && sessionKind === 'daily'
       const effectiveEntry =
         request.kind === 'synthesis'
           ? {
@@ -207,11 +233,11 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                 ...entry,
                 maxCompletionTokens: Math.max(entry.maxCompletionTokens, VERDICT_MAX_COMPLETION_TOKENS),
               }
-            : entry
+            : isDailyReading
+              ? applyDailyReaderPolicies(entry)
+              : entry
 
       const readerCount = verdictReaderCount(request.payload)
-      const sessionKind = payloadKind(request.payload)
-      const isDailyReading = request.kind === 'reading' && sessionKind === 'daily'
       const systemPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisSystemPrompt(request.locale, sessionKind)

@@ -24,12 +24,16 @@ export const LAYER1_NARRATIVE_MIN = 400
 export const LAYER1_NARRATIVE_TARGET = '700–1100'
 
 /**
- * 오늘의 운세: prompt asks 300–450; parser sits a little wider so a slightly
- * short/long legit weave retries once instead of becoming a 결번.
+ * 오늘의 운세: the prompt/schema hard-budget is 300–450 (what the model sees).
+ * The parser sits a little wider so a slightly short/long legit weave retries
+ * once instead of becoming a 결번 — that slack is NOT advertised to the model,
+ * because advertising 480 is what let a 502-char draft burn a second call.
  */
+export const DAILY_NARRATIVE_PROMPT_MIN = 300
+export const DAILY_NARRATIVE_PROMPT_MAX = 450
 export const DAILY_NARRATIVE_MIN = 280
 export const DAILY_NARRATIVE_MAX = 480
-export const DAILY_NARRATIVE_TARGET = '300–450'
+export const DAILY_NARRATIVE_TARGET = `${DAILY_NARRATIVE_PROMPT_MIN}–${DAILY_NARRATIVE_PROMPT_MAX}`
 
 export type Layer1Json = {
   narrative: string

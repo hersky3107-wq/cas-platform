@@ -250,6 +250,44 @@ describe('createLayer1AiAdapter', () => {
     }
   })
 
+  it('pins daily Z.ai to a short completion budget and reasoning off', async () => {
+    const { DAILY_MAX_COMPLETION_TOKENS } = await import('../prompts/daily')
+    const dailyNarrative = '가'.repeat(350)
+    const text = JSON.stringify({
+      narrative: dailyNarrative,
+      one_line: '오늘은 밀되 과신은 접어라',
+      direction: 'advance',
+      focus: 'energy',
+      axis_emphasis: ['일진', '카드'],
+    })
+    let seen: Parameters<Layer1Call>[0]['entry'] | null = null
+    const adapter = createLayer1AiAdapter({
+      call: async (input) => {
+        seen = input.entry
+        return okCall({ text, brand: 'Z.ai', model: 'z-ai/glm-5.2' })
+      },
+    })
+    const result = await adapter.run(
+      {
+        kind: 'reading',
+        sessionId: 'session-1',
+        unit: 'saju',
+        brand: 'Z.ai',
+        locale: 'ko',
+        seed: 'seed',
+        payload: { kind: 'daily', systems: {} },
+      },
+      { timeoutMs: 60_000 },
+    )
+    expect(result.ok).toBe(true)
+    expect(seen).not.toBeNull()
+    expect(seen!.maxCompletionTokens).toBe(DAILY_MAX_COMPLETION_TOKENS)
+    expect(seen!.caller.kind).toBe('platform')
+    if (seen!.caller.kind === 'platform') {
+      expect(seen!.caller.extraRequestParams).toMatchObject({ reasoning: { enabled: false } })
+    }
+  })
+
   it('uses one strict retry after runaway visible content', async () => {
     const prompts: string[] = []
     const call: Layer1Call = async (input) => {

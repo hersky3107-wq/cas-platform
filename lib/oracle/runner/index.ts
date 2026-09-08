@@ -90,6 +90,7 @@ export { readOracleSession } from './poll'
 export type { OracleSessionView, PublicConsensus, PublicReading, PublicVerdict } from './poll'
 
 export {
+  dailyCacheKey,
   dailySeed,
   ORACLE_DAILY_HOST_SYSTEM,
   ORACLE_DAILY_READER_BRAND,

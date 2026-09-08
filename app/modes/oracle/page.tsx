@@ -213,7 +213,7 @@ export default function OracleLandingPage() {
                 <p className="mt-1 text-sm text-slate-400">오늘 날짜 기준의 짧은 판독.</p>
               </div>
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2.5 py-1 text-[11px] font-medium text-amber-100 transition group-hover:bg-amber-400/25">
-                <Sparkles className="h-3 w-3" aria-hidden /> 0크레딧
+                <Sparkles className="h-3 w-3" aria-hidden /> 2크레딧
               </span>
             </div>
             <p className="mt-3 text-[11px] leading-relaxed text-white/40">

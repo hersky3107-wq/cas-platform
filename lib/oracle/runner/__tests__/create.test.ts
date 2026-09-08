@@ -393,13 +393,13 @@ describe('createOracleSession (kind=daily)', () => {
     question: 'ignored',
   }
 
-  it('wires an explicit zero through the credit table', () => {
-    expect(creditsForOracleSession('combined', 1, 'daily')).toBe(0)
+  it('wires an explicit 2 through the credit table', () => {
+    expect(creditsForOracleSession('combined', 1, 'daily')).toBe(2)
     expect(() => creditsForOracleSession('combined', 3, 'daily')).toThrow()
     expect(() => creditsForOracleSession('single', 1, 'daily')).toThrow()
   })
 
-  it('charges 0, pins seven day-moving systems, one Z.ai seat, and a civil-day seed', async () => {
+  it('charges 2, pins seven day-moving systems, one Z.ai seat, and a civil-day seed', async () => {
     const { store, credits, create } = harness()
     const outcome = await create(DAILY_REQUEST)
 
@@ -420,8 +420,8 @@ describe('createOracleSession (kind=daily)', () => {
       'sukuyou',
       'tzolkin',
     ])
-    expect(credits.charges).toEqual([{ userId: USER, amount: 0, module: ORACLE_CREDITS_MODULE }])
-    expect(store.sessions[0]!.credits_charged).toBe(0)
+    expect(credits.charges).toEqual([{ userId: USER, amount: 2, module: ORACLE_CREDITS_MODULE }])
+    expect(store.sessions[0]!.credits_charged).toBe(2)
 
     const progress = store.sessions[0]!.progress
     expect(progress.pending).toEqual([readingUnit('saju', 'Z.ai')])

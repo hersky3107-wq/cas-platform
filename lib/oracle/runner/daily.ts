@@ -21,11 +21,21 @@ export const ORACLE_DAILY_SYSTEMS = [
 export type OracleDailySystemId = (typeof ORACLE_DAILY_SYSTEMS)[number]
 
 /**
+ * oracle_daily_cache primary key. `date` is the subject's civil day
+ * (`civilDateIn(now, profile.tz ?? Asia/Seoul)`), not the engine's zi_start
+ * boundary. First miss charges 2; a hit on this key skips create/charge.
+ */
+export function dailyCacheKey(userId: string, civilDate: string): { user_id: string; date: string } {
+  return { user_id: userId, date: civilDate }
+}
+
+/**
  * Z.ai: #1 measured saju reader (SYSTEM_READER_ROSTERS.saju) AND the measured
  * integrated synthesizer (INTEGRATED_SYNTHESIZER_BRAND). Daily weaves native
  * charts rather than running a seer panel, so the synthesizer seat is the
- * right brand — and it is cheap enough that a free daily does not blow the
- * budget. Seat-only; layer1EntryForBrand('Z.ai') already exists.
+ * right brand. Seat-only; layer1EntryForBrand('Z.ai') already exists.
+ * Daily calls pin reasoning off and a short completion cap — see
+ * applyDailyReaderPolicies in the layer-1 adapter.
  */
 export const ORACLE_DAILY_READER_BRAND = 'Z.ai'
 

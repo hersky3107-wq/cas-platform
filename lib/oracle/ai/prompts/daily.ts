@@ -3,16 +3,24 @@
  *
  * Not a panel, not a seer layer, not a synthesis of other narratives.
  * The model sees each system's own chart (never axis scores) and writes
- * ONE piece of 300–450 characters.
+ * ONE piece of 300–450 characters. Character budgets live in the JSON
+ * schema the same way layer-1 v4 does — that is the length lock, not a
+ * retry after the fact.
  */
 import {
-  DAILY_NARRATIVE_MAX,
-  DAILY_NARRATIVE_MIN,
+  DAILY_NARRATIVE_PROMPT_MAX,
+  DAILY_NARRATIVE_PROMPT_MIN,
   DAILY_NARRATIVE_TARGET,
 } from '../parse-layer1'
 import { INTERNAL_VOCAB_RULES, languageForLocale } from './layer1'
 
-export const DAILY_PROMPT_VERSION = 'daily-v1'
+export const DAILY_PROMPT_VERSION = 'daily-v2'
+
+/**
+ * 300–450 CJK chars + JSON fields. Tight enough that GLM cannot ramble
+ * into a length retry; roomy enough that a 450-char weave is not truncated.
+ */
+export const DAILY_MAX_COMPLETION_TOKENS = 900
 
 export function buildDailySystemPrompt(locale: string): string {
   const language = languageForLocale(locale)
@@ -36,9 +44,13 @@ export function buildDailySystemPrompt(locale: string): string {
     '- No markdown fences, no preamble, no commentary outside the JSON.',
     '- Do NOT show step-by-step working, chain-of-thought, or analysis in ANY field.',
     '- narrative and one_line must be final prose only.',
+    'LENGTH LOCK (mandatory):',
+    `- Count characters in the final narrative string. If it would exceed ${DAILY_NARRATIVE_PROMPT_MAX} Unicode characters, shorten BEFORE emitting JSON.`,
+    `- Target narrative length: ${DAILY_NARRATIVE_TARGET}. Never pad, never write filler to reach the minimum.`,
+    '- one_line must be ≤80 characters and must not restate the whole narrative.',
     'Schema (character budgets are hard limits):',
     '{',
-    `  "narrative": string,  // ONE woven reading; ${DAILY_NARRATIVE_MIN}–${DAILY_NARRATIVE_MAX} Unicode characters (aim ${DAILY_NARRATIVE_TARGET}); plain language, no raw scores`,
+    `  "narrative": string,  // ONE woven reading; ${DAILY_NARRATIVE_TARGET} Unicode characters (hard); plain language, no raw scores`,
     '  "one_line": string,     // punchy summary; max 80 characters',
     '  "direction": "advance" | "hold" | "release",',
     '  "focus": "work" | "money" | "love" | "social" | "energy",',
@@ -54,15 +66,15 @@ export function buildDailyUserPrompt(payload: Record<string, unknown>, locale: s
     'No question was submitted. Weave today\'s charts into one short daily fortune.',
     'Native charts (authoritative; do not recalculate; do not import 오행/유지·방출 unless they appear in a chart):',
     JSON.stringify(payload),
-    `Reminder: narrative ${DAILY_NARRATIVE_TARGET} characters (hard band ${DAILY_NARRATIVE_MIN}–${DAILY_NARRATIVE_MAX}). One weave, not five mini-readings. Emit JSON only.`,
+    `Reminder: narrative ${DAILY_NARRATIVE_TARGET} Unicode characters — count before emitting. One weave, not five mini-readings. Emit JSON only.`,
   ].join('\n')
 }
 
 export const DAILY_STRICT_RETRY_INSTRUCTION =
-  `\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ${DAILY_NARRATIVE_MIN}–${DAILY_NARRATIVE_MAX} Unicode characters (aim ${DAILY_NARRATIVE_TARGET}) — ONE woven daily fortune, plain language, no raw numeric scores. Respect every field character limit.`
+  `\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ${DAILY_NARRATIVE_TARGET} Unicode characters (hard) — ONE woven daily fortune, plain language, no raw numeric scores. Count characters before emitting. Respect every field character limit.`
 
 export function dailyLengthRetryInstruction(violation: { length: number; kind: 'short' | 'long' }): string {
   return violation.kind === 'short'
-    ? `\n\nLENGTH RETRY: Your narrative was ${violation.length} characters — the contract requires ${DAILY_NARRATIVE_TARGET} (hard floor ${DAILY_NARRATIVE_MIN}). Rewrite the SAME daily fortune expanded: name more concrete chart elements (일진, card, rune, 宿, nawal) and what each means for today. Keep every other field. Output ONLY the JSON object.`
-    : `\n\nLENGTH RETRY: Your narrative was ${violation.length} characters — over the hard ceiling ${DAILY_NARRATIVE_MAX}. Rewrite the SAME daily fortune condensed to ${DAILY_NARRATIVE_TARGET} characters. Keep every other field. Output ONLY the JSON object.`
+    ? `\n\nLENGTH RETRY: Your narrative was ${violation.length} characters — the contract requires ${DAILY_NARRATIVE_TARGET} (hard floor ${DAILY_NARRATIVE_PROMPT_MIN}). Rewrite the SAME daily fortune expanded: name more concrete chart elements (일진, card, rune, 宿, nawal) and what each means for today. Keep every other field. Output ONLY the JSON object.`
+    : `\n\nLENGTH RETRY: Your narrative was ${violation.length} characters — over the hard ceiling ${DAILY_NARRATIVE_PROMPT_MAX}. Rewrite the SAME daily fortune condensed to ${DAILY_NARRATIVE_TARGET} characters. Count before emitting. Keep every other field. Output ONLY the JSON object.`
 }

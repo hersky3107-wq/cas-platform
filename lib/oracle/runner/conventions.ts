@@ -118,12 +118,14 @@ export const ORACLE_COMPAT_SESSION_CREDIT_PRICES: Record<OracleSessionScope, Par
 }
 
 /**
- * 오늘의 운세 is free: first read of a civil day AND re-reads are 0.
- * The zero still goes through `credits.charge` (and a credit_logs row).
+ * 오늘의 운세: first read of a civil day is 2 credits through `credits.charge`.
+ * Re-reads of the same (user_id, civil date) are free because
+ * `oracle_daily_cache` returns the existing session before charge — never
+ * because this table is 0. A new local day is a new key and charges 2 again.
  */
 export const ORACLE_DAILY_SESSION_CREDIT_PRICES: Record<OracleSessionScope, Partial<Record<number, number>>> = {
   single: {},
-  combined: { 1: 0 },
+  combined: { 1: 2 },
 }
 
 export function creditsForOracleSession(

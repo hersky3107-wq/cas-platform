@@ -1,5 +1,5 @@
 /**
- * 오늘의 운세: 일진, native weave (no axes), one AI, cache, credits 0.
+ * 오늘의 운세: 일진, native weave (no axes), one AI, cache, first-read 2 credits.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fourPillars, tenGodFor } from '../../engines/calendar'
@@ -7,11 +7,11 @@ import { personalDataFrom, runComputations } from '../compute'
 import { createOracleSession } from '../create'
 import { advanceOracleSession } from '../advance'
 import { createStubAiAdapter } from '../ai-stub'
-import { dailySeed, ORACLE_DAILY_READER_BRAND, ORACLE_DAILY_SYSTEMS } from '../daily'
+import { dailyCacheKey, dailySeed, ORACLE_DAILY_READER_BRAND, ORACLE_DAILY_SYSTEMS } from '../daily'
 import { isFreeOfPersonalData } from '../privacy'
 import { resetAiSlots } from '../concurrency'
 import { createFakeCredits, createFakeStore, createScheduler, makeProfile } from './fakes'
-import { creditsForOracleSession, ORACLE_CREDITS_MODULE } from '../conventions'
+import { civilDateIn, creditsForOracleSession, ORACLE_CREDITS_MODULE, ORACLE_DEFAULT_TIMEZONE } from '../conventions'
 
 const NOW = new Date('2026-08-20T03:00:00.000Z')
 const USER = 'user-1'
@@ -100,10 +100,14 @@ describe('daily runner session', () => {
     vi.stubEnv('ORACLE_AI_MODE', 'live')
   })
 
-  it('runs one AI unit, skips seers/synthesis, caches the civil day, and re-opens without charging', async () => {
+  it('charges 2 on the first civil-day read, 0 on a cache re-read, and 2 again on a new local day', async () => {
     const profile = makeProfile()
     const store = createFakeStore({ profiles: [profile] })
     const credits = createFakeCredits()
+    const tz = profile.tz ?? ORACLE_DEFAULT_TIMEZONE
+    const cacheKey = dailyCacheKey(USER, civilDateIn(NOW, tz))
+    expect(cacheKey).toEqual({ user_id: USER, date: AS_OF })
+
     const created = await createOracleSession(
       USER,
       {
@@ -120,8 +124,8 @@ describe('daily runner session', () => {
     )
     expect(created.ok).toBe(true)
     if (!created.ok) return
-    expect(credits.charges).toEqual([{ userId: USER, amount: 0, module: ORACLE_CREDITS_MODULE }])
-    expect(creditsForOracleSession('combined', 1, 'daily')).toBe(0)
+    expect(credits.charges).toEqual([{ userId: USER, amount: 2, module: ORACLE_CREDITS_MODULE }])
+    expect(creditsForOracleSession('combined', 1, 'daily')).toBe(2)
 
     const ai = createStubAiAdapter({ minDelayMs: 0, maxDelayMs: 0, sleep: async () => {} })
     for (let i = 0; i < 8; i += 1) {
@@ -147,7 +151,7 @@ describe('daily runner session', () => {
     const synthesis = store.consensus[0]?.domain_stats?.synthesis
     expect(synthesis).toBeUndefined()
     expect(store.dailyCaches).toHaveLength(1)
-    expect(store.dailyCaches[0]!.date).toBe(AS_OF)
+    expect(store.dailyCaches[0]).toMatchObject(cacheKey)
     expect(store.dailyCaches[0]!.session_id).toBe(session.id)
 
     const reopen = await createOracleSession(
@@ -168,6 +172,36 @@ describe('daily runner session', () => {
     if (!reopen.ok) return
     expect(reopen.reused).toBe(true)
     expect(reopen.session.id).toBe(session.id)
-    expect(credits.charges).toHaveLength(1)
+    expect(credits.charges).toEqual([{ userId: USER, amount: 2, module: ORACLE_CREDITS_MODULE }])
+
+    const nextMorning = new Date('2026-08-21T03:00:00.000Z')
+    const nextKey = dailyCacheKey(USER, civilDateIn(nextMorning, tz))
+    expect(nextKey).toEqual({ user_id: USER, date: NEXT_DAY })
+    expect(nextKey.date).not.toBe(cacheKey.date)
+
+    const nextDay = await createOracleSession(
+      USER,
+      {
+        kind: 'daily',
+        subjectProfileId: profile.id,
+        scope: 'combined',
+        systems: [],
+        question: null,
+        sessionInputs: null,
+        readerCount: 1,
+        locale: 'ko',
+      },
+      { store, credits, now: () => nextMorning },
+    )
+    expect(nextDay.ok).toBe(true)
+    if (!nextDay.ok) return
+    expect(nextDay.reused).toBe(false)
+    expect(nextDay.session.id).not.toBe(session.id)
+    expect(credits.charges).toEqual([
+      { userId: USER, amount: 2, module: ORACLE_CREDITS_MODULE },
+      { userId: USER, amount: 2, module: ORACLE_CREDITS_MODULE },
+    ])
+    expect(nextDay.session.credits_charged).toBe(2)
+    expect(nextDay.session.seed).toBe(`daily:${USER}:${NEXT_DAY}`)
   })
 })
