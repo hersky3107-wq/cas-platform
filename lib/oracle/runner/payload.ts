@@ -9,7 +9,7 @@
  * (see OracleAiContext) — a closed, two-field shape.
  */
 import { AXES_LAYER_VERSION } from '../axes/conventions'
-import type { AxisConsensus, AxisVote, ReadingScope } from '../axes/types'
+import { SYSTEM_IDS, type AxisConsensus, type AxisVote, type ReadingScope, type SystemId } from '../axes/types'
 import type { OracleReading, OracleSessionKind } from '../schema'
 import { ORACLE_RUNNER_VERSION } from './conventions'
 import { buildNativeChart } from './native-chart'
@@ -155,6 +155,33 @@ export function buildReadingPayload(
 
   assertNoPersonalData(body, pii, {
     label: `ai_payload(${vote.system})`,
+    machineCodeFields: [],
+  })
+  return { ...body, context: contextOf(ctx) }
+}
+
+/**
+ * 오늘의 운세 weave: every daily system's NATIVE chart in one payload, never
+ * axis scores. Attached to the saju host row so layer 1 has exactly one seat.
+ */
+export function buildDailyWeavePayload(
+  systems: readonly { system: string; result: JsonObject | null }[],
+  ctx: PayloadContext,
+  pii: PersonalData,
+): JsonObject {
+  const chartCtx = { locale: ctx.locale, nominalAge: ctx.nominalAge ?? null }
+  const charts: JsonObject = {}
+  for (const entry of systems) {
+    if (entry.result === null) continue
+    if (!(SYSTEM_IDS as readonly string[]).includes(entry.system)) continue
+    charts[entry.system] = buildNativeChart(entry.system as SystemId, entry.result, chartCtx)
+  }
+  const body: JsonObject = {
+    ...envelope(ctx, 'native'),
+    systems: charts,
+  }
+  assertNoPersonalData(body, pii, {
+    label: 'ai_payload(daily)',
     machineCodeFields: [],
   })
   return { ...body, context: contextOf(ctx) }

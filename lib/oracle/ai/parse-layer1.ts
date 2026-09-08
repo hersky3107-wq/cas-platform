@@ -23,6 +23,14 @@ export const LAYER1_NARRATIVE_MIN = 400
 /** What the prompt asks for (min–max prose band shown to the model). */
 export const LAYER1_NARRATIVE_TARGET = '700–1100'
 
+/**
+ * 오늘의 운세: prompt asks 300–450; parser sits a little wider so a slightly
+ * short/long legit weave retries once instead of becoming a 결번.
+ */
+export const DAILY_NARRATIVE_MIN = 280
+export const DAILY_NARRATIVE_MAX = 480
+export const DAILY_NARRATIVE_TARGET = '300–450'
+
 export type Layer1Json = {
   narrative: string
   one_line: string
@@ -85,6 +93,7 @@ export function parseLayer1Json(
   opts?: {
     /** Registry narrativeFloor override — see Layer1RegistryEntry. */
     narrativeMin?: number
+    narrativeMax?: number
   },
 ): Layer1Json | null {
   const unfenced = stripFences(raw)
@@ -107,8 +116,9 @@ export function parseLayer1Json(
   // adapter retries once under the strict instruction instead of accepting a
   // runaway OR a thin two-liner on a premium reading.
   const narrativeMin = opts?.narrativeMin ?? LAYER1_NARRATIVE_MIN
+  const narrativeMax = opts?.narrativeMax ?? LAYER1_NARRATIVE_MAX
   const narrativeLength = [...narrative].length
-  if (narrativeLength > LAYER1_NARRATIVE_MAX || narrativeLength < narrativeMin) return null
+  if (narrativeLength > narrativeMax || narrativeLength < narrativeMin) return null
   const oneLineRaw = typeof record.one_line === 'string' ? record.one_line.trim() : ''
   if (!oneLineRaw) return null
   const direction = asDirection(record.direction)
@@ -135,7 +145,7 @@ export type Layer1NarrativeBandViolation = { length: number; kind: 'short' | 'lo
  */
 export function layer1NarrativeBandViolation(
   raw: string,
-  opts?: { narrativeMin?: number },
+  opts?: { narrativeMin?: number; narrativeMax?: number },
 ): Layer1NarrativeBandViolation | null {
   const unfenced = raw.trim()
   const extracted = extractJsonObject(unfenced) ?? unfenced
@@ -151,7 +161,7 @@ export function layer1NarrativeBandViolation(
   // Same normalization as parseLayer1Json so both measure the same string.
   const length = [...narrative.replace(/\*\*/g, '').trim()].length
   if (length < (opts?.narrativeMin ?? LAYER1_NARRATIVE_MIN)) return { length, kind: 'short' }
-  if (length > LAYER1_NARRATIVE_MAX) return { length, kind: 'long' }
+  if (length > (opts?.narrativeMax ?? LAYER1_NARRATIVE_MAX)) return { length, kind: 'long' }
   return null
 }
 

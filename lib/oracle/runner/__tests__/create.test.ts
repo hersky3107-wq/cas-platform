@@ -382,3 +382,61 @@ describe('createOracleSession (kind=compat)', () => {
     expect(outcome.assumptions?.partnerLocationAssumed).toBe(true)
   })
 })
+
+describe('createOracleSession (kind=daily)', () => {
+  const DAILY_REQUEST: Partial<CreateSessionRequest> = {
+    kind: 'daily',
+    scope: 'combined',
+    systems: [],
+    sessionInputs: null,
+    readerCount: 1,
+    question: 'ignored',
+  }
+
+  it('wires an explicit zero through the credit table', () => {
+    expect(creditsForOracleSession('combined', 1, 'daily')).toBe(0)
+    expect(() => creditsForOracleSession('combined', 3, 'daily')).toThrow()
+    expect(() => creditsForOracleSession('single', 1, 'daily')).toThrow()
+  })
+
+  it('charges 0, pins seven day-moving systems, one Z.ai seat, and a civil-day seed', async () => {
+    const { store, credits, create } = harness()
+    const outcome = await create(DAILY_REQUEST)
+
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.session.kind).toBe('daily')
+    expect(outcome.session.reader_count).toBe(1)
+    expect(outcome.session.reader_roster).toEqual(['Z.ai'])
+    expect(outcome.session.question_raw).toBeNull()
+    expect(outcome.session.seed).toBe('daily:user-1:2026-08-20')
+    expect(outcome.session.session_inputs).toMatchObject({ asOfDate: '2026-08-20' })
+    expect(outcome.computations.map((row) => row.system)).toEqual([
+      'saju',
+      'astro',
+      'tarot',
+      'runes',
+      'ninestar',
+      'sukuyou',
+      'tzolkin',
+    ])
+    expect(credits.charges).toEqual([{ userId: USER, amount: 0, module: ORACLE_CREDITS_MODULE }])
+    expect(store.sessions[0]!.credits_charged).toBe(0)
+
+    const progress = store.sessions[0]!.progress
+    expect(progress.pending).toEqual([readingUnit('saju', 'Z.ai')])
+    expect(progress.pending).not.toContain('synthesis')
+  })
+
+  it('does not reuse a personal session in flight', async () => {
+    const { store, create } = harness()
+    const personal = await create()
+    expect(personal.ok).toBe(true)
+    const daily = await create(DAILY_REQUEST)
+    expect(daily.ok).toBe(true)
+    if (!personal.ok || !daily.ok) return
+    expect(daily.reused).toBe(false)
+    expect(daily.session.id).not.toBe(personal.session.id)
+    expect(store.sessions).toHaveLength(2)
+  })
+})

@@ -181,9 +181,16 @@ export type ConsensusUpsert = {
  * `insert*IfAbsent` methods return false instead of throwing when the row
  * already exists, so re-running a chunk can never duplicate rows.
  */
+export type DailyCacheUpsert = {
+  user_id: string
+  date: string
+  values: JsonObject
+  session_id: string | null
+}
+
 export type RunnerStore = {
-  /** The user's session in an ORACLE_ACTIVE_STATUSES status, if any. */
-  findActiveSession(userId: string): Promise<OracleJobSession | null>
+  /** The user's session in an ORACLE_ACTIVE_STATUSES status, if any. Pass kind so daily does not collide with personal. */
+  findActiveSession(userId: string, kind?: OracleSessionKind): Promise<OracleJobSession | null>
   /**
    * Most recent finished ('done' or 'partial') session for this user+scope,
    * excluding `excludeSessionId`. Read-only; feeds the WITNESS seer's
@@ -219,6 +226,9 @@ export type RunnerStore = {
 
   upsertConsensus(row: ConsensusUpsert): Promise<void>
   getConsensus(sessionId: string): Promise<OracleConsensus | null>
+
+  getDailyCache(userId: string, date: string): Promise<DailyCacheUpsert & { computed_at: string } | null>
+  upsertDailyCache(row: DailyCacheUpsert): Promise<void>
 
   /** Non-terminal sessions with a stale heartbeat and a free lease. */
   listStaleSessions(limit: number, staleBeforeIso: string, nowIso: string): Promise<OracleJobSession[]>

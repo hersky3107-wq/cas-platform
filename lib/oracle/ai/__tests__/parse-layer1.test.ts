@@ -74,6 +74,13 @@ describe('parseLayer1Json', () => {
     expect(parseLayer1Json(validJson({ narrative: '가'.repeat(279) }), { narrativeMin: 280 })).toBeNull()
   })
 
+  it('오늘의 운세 band is 280–480 so a 300–450 weave is accepted and a layer-1-length reading is not', () => {
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(350) }), { narrativeMin: 280, narrativeMax: 480 })).not.toBeNull()
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(279) }), { narrativeMin: 280, narrativeMax: 480 })).toBeNull()
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(481) }), { narrativeMin: 280, narrativeMax: 480 })).toBeNull()
+    expect(parseLayer1Json(validJson({ narrative: '가'.repeat(700) }), { narrativeMin: 280, narrativeMax: 480 })).toBeNull()
+  })
+
   it('strips markdown bold markers before measuring or returning the narrative', () => {
     const bolded = `**천격**${'가'.repeat(LAYER1_NARRATIVE_MIN)}`
     const parsed = parseLayer1Json(validJson({ narrative: bolded }))

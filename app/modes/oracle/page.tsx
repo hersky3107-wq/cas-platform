@@ -203,7 +203,23 @@ export default function OracleLandingPage() {
               상대방 정보는 이번 판독에만 쓰이고 저장되지 않습니다.
             </p>
           </Link>
-          <DisabledTierCard title="오늘의 운세" subtitle="오늘 날짜 기준의 축소 판독." />
+          <Link
+            href="/modes/oracle/daily"
+            className="group relative flex flex-col justify-between overflow-hidden rounded-[26px] border border-amber-300/25 bg-gradient-to-br from-amber-500/12 via-[#11172b] to-violet-500/8 p-6 transition hover:border-amber-200/50"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-lg font-semibold text-white">오늘의 운세</p>
+                <p className="mt-1 text-sm text-slate-400">오늘 날짜 기준의 짧은 판독.</p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2.5 py-1 text-[11px] font-medium text-amber-100 transition group-hover:bg-amber-400/25">
+                <Sparkles className="h-3 w-3" aria-hidden /> 0크레딧
+              </span>
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-white/40">
+              일진·트랜싯·구성·숙요·촐킨·타로·룬을 한 번에 엮습니다.
+            </p>
+          </Link>
           <DisabledTierCard title="부적" subtitle="지금 필요한 기운을 상징으로." />
         </section>
 

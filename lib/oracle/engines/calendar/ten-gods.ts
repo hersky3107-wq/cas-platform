@@ -10,7 +10,7 @@
 import type { BranchInfo, FourPillars, StemInfo, TenGodName } from './types'
 import { TEN_GOD_MATRIX, overcomes, producedBy } from './tables'
 
-function tenGodFor(dayStem: StemInfo, target: StemInfo | BranchInfo): TenGodName {
+export function tenGodFor(dayStem: StemInfo, target: StemInfo | BranchInfo): TenGodName {
   const same = target.yinYang === dayStem.yinYang
   if (target.element === dayStem.element) return TEN_GOD_MATRIX.same[same ? 'same' : 'diff'] as TenGodName
   if (target.element === producedBy(dayStem.element)) return TEN_GOD_MATRIX.produces[same ? 'same' : 'diff'] as TenGodName

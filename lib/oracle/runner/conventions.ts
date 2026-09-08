@@ -117,12 +117,26 @@ export const ORACLE_COMPAT_SESSION_CREDIT_PRICES: Record<OracleSessionScope, Par
   combined: { 3: 15, 5: 19, 7: 23 },
 }
 
+/**
+ * 오늘의 운세 is free: first read of a civil day AND re-reads are 0.
+ * The zero still goes through `credits.charge` (and a credit_logs row).
+ */
+export const ORACLE_DAILY_SESSION_CREDIT_PRICES: Record<OracleSessionScope, Partial<Record<number, number>>> = {
+  single: {},
+  combined: { 1: 0 },
+}
+
 export function creditsForOracleSession(
   scope: OracleSessionScope,
   readerCount: number,
   kind: OracleSessionKind = 'personal',
 ): number {
-  const table = kind === 'compat' ? ORACLE_COMPAT_SESSION_CREDIT_PRICES : ORACLE_SESSION_CREDIT_PRICES
+  const table =
+    kind === 'daily'
+      ? ORACLE_DAILY_SESSION_CREDIT_PRICES
+      : kind === 'compat'
+        ? ORACLE_COMPAT_SESSION_CREDIT_PRICES
+        : ORACLE_SESSION_CREDIT_PRICES
   const price = table[scope][readerCount]
   if (price == null) throw new Error(`no Oracle credit price for ${kind}/${scope} N=${readerCount}`)
   return price
@@ -142,6 +156,20 @@ export function readingScopeForSession(kind: OracleSessionKind, hasQuestion: boo
 /** Fallbacks used when a profile is missing location data, recorded as assumptions. */
 export const ORACLE_DEFAULT_TIMEZONE = 'Asia/Seoul'
 export const ORACLE_DEFAULT_COORDS = { lat: 37.5665, lng: 126.978 } as const
+
+/** Today's civil date in an IANA timezone, not the server's. */
+export function civilDateIn(date: Date, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date)
+  } catch {
+    return date.toISOString().slice(0, 10)
+  }
+}
 
 /** Default tarot spread / rune count when session_inputs omit a user draw. */
 export const ORACLE_TAROT_SPREAD = 3 as const

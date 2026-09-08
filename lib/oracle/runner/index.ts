@@ -22,6 +22,7 @@ export {
   ORACLE_READER_ROSTER,
   ORACLE_RUNNER_VERSION,
   ORACLE_COMPAT_SESSION_CREDIT_PRICES,
+  ORACLE_DAILY_SESSION_CREDIT_PRICES,
   ORACLE_SESSION_CREDIT_PRICES,
   ORACLE_STALE_HEARTBEAT_SECONDS,
   ORACLE_SWEEP_BATCH_SIZE,
@@ -56,7 +57,7 @@ export type { BallotTally } from './ballot'
 
 export { inFlightAiUnits, releaseAiSlots, resetAiSlots, tryAcquireAiSlots } from './concurrency'
 
-export { buildReadingPayload, buildSynthesisPayload, buildVerdictPayload } from './payload'
+export { buildDailyWeavePayload, buildReadingPayload, buildSynthesisPayload, buildVerdictPayload } from './payload'
 export type { OracleAiContext, PayloadContext } from './payload'
 
 export { assertNoPersonalData, isFreeOfPersonalData, OraclePrivacyError } from './privacy'
@@ -87,6 +88,17 @@ export {
 
 export { readOracleSession } from './poll'
 export type { OracleSessionView, PublicConsensus, PublicReading, PublicVerdict } from './poll'
+
+export {
+  dailySeed,
+  ORACLE_DAILY_HOST_SYSTEM,
+  ORACLE_DAILY_READER_BRAND,
+  ORACLE_DAILY_READER_COUNT,
+  ORACLE_DAILY_RUNE_SPREAD,
+  ORACLE_DAILY_SYSTEMS,
+  ORACLE_DAILY_TAROT_SPREAD,
+} from './daily'
+export type { DailyCacheRow, OracleDailyCacheValues, OracleDailySystemId } from './daily'
 
 export { sweepOracleSessions } from './sweep'
 export type { SweepSummary } from './sweep'

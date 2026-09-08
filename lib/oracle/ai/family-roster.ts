@@ -11,7 +11,6 @@
  */
 import type { SystemId } from '../axes/types'
 import {
-  ORACLE_READER_COUNTS,
   type OracleReaderCount,
   type OracleSessionKind,
   type OracleSessionScope,
@@ -71,11 +70,20 @@ export type OracleSingleReaderCount = (typeof ORACLE_SINGLE_READER_COUNTS)[numbe
 export const ORACLE_COMPAT_SINGLE_READER_COUNTS = [3, 5] as const satisfies readonly OracleReaderCount[]
 export const ORACLE_COMPAT_COMBINED_READER_COUNTS = [3, 5, 7] as const satisfies readonly OracleReaderCount[]
 
+/** Personal/integrated combined panels. Daily's N=1 is not in this list. */
+export const ORACLE_COMBINED_READER_COUNTS = [3, 5, 7, 9] as const satisfies readonly OracleReaderCount[]
+
+/** 오늘의 운세: one AI, combined systems, never a panel. */
+export const ORACLE_DAILY_READER_COUNT = 1 as const satisfies OracleReaderCount
+
 export function isAllowedReaderCount(
   scope: OracleSessionScope,
   readerCount: number,
   kind: OracleSessionKind = 'personal',
 ): boolean {
+  if (kind === 'daily') {
+    return scope === 'combined' && readerCount === ORACLE_DAILY_READER_COUNT
+  }
   if (kind === 'compat') {
     const allowed =
       scope === 'single' ? ORACLE_COMPAT_SINGLE_READER_COUNTS : ORACLE_COMPAT_COMBINED_READER_COUNTS
@@ -84,7 +92,7 @@ export function isAllowedReaderCount(
   if (scope === 'single') {
     return (ORACLE_SINGLE_READER_COUNTS as readonly number[]).includes(readerCount)
   }
-  return (ORACLE_READER_COUNTS as readonly number[]).includes(readerCount)
+  return (ORACLE_COMBINED_READER_COUNTS as readonly number[]).includes(readerCount)
 }
 
 /**

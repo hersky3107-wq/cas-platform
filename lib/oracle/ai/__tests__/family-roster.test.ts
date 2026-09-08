@@ -41,6 +41,15 @@ describe('family-roster', () => {
     expect(isAllowedReaderCount('combined', 9, 'compat')).toBe(false)
   })
 
+  it('오늘의 운세 is combined N=1 only — never a personal or 궁합 panel size', () => {
+    expect(isAllowedReaderCount('combined', 1, 'daily')).toBe(true)
+    expect(isAllowedReaderCount('single', 1, 'daily')).toBe(false)
+    expect(isAllowedReaderCount('combined', 3, 'daily')).toBe(false)
+    expect(isAllowedReaderCount('combined', 1)).toBe(false)
+    expect(isAllowedReaderCount('combined', 1, 'personal')).toBe(false)
+    expect(isAllowedReaderCount('combined', 1, 'compat')).toBe(false)
+  })
+
   it('assigns a different synthesizer per family and keeps OpenAI off synth seats', () => {
     const synths = synthesizerByFamily().map((s) => s.synthesizer)
     expect(new Set(synths).size).toBe(4)

@@ -43,6 +43,13 @@ export type FakeStore = RunnerStore & {
   readings: OracleReading[]
   verdicts: OracleVerdict[]
   consensus: OracleConsensus[]
+  dailyCaches: Array<{
+    user_id: string
+    date: string
+    values: Record<string, unknown>
+    session_id: string | null
+    computed_at: string
+  }>
   /** Every mutating call. A poll must leave this at 0. */
   writeCount: number
   /** Rejected duplicate inserts — the UNIQUE constraint doing its job. */
@@ -60,12 +67,14 @@ export function createFakeStore(options: { profiles?: OracleProfile[] } = {}): F
     readings: [],
     verdicts: [],
     consensus: [],
+    dailyCaches: [],
     writeCount: 0,
     duplicateCount: 0,
 
-    async findActiveSession(userId) {
+    async findActiveSession(userId, kind) {
       const found = store.sessions
         .filter((row) => row.user_id === userId && (ORACLE_ACTIVE_STATUSES as readonly string[]).includes(row.status))
+        .filter((row) => (kind ? row.kind === kind : true))
         .at(-1)
       return found ? cloneSession(found) : null
     },
@@ -223,6 +232,29 @@ export function createFakeStore(options: { profiles?: OracleProfile[] } = {}): F
     async getConsensus(sessionId) {
       const found = store.consensus.find((row) => row.session_id === sessionId)
       return found ? { ...found } : null
+    },
+
+    async getDailyCache(userId, date) {
+      const found = store.dailyCaches.find((row) => row.user_id === userId && row.date === date)
+      return found ? { ...found } : null
+    },
+
+    async upsertDailyCache(row) {
+      store.writeCount += 1
+      const existing = store.dailyCaches.find((candidate) => candidate.user_id === row.user_id && candidate.date === row.date)
+      if (existing) {
+        existing.values = row.values
+        existing.session_id = row.session_id
+        existing.computed_at = new Date(0).toISOString()
+        return
+      }
+      store.dailyCaches.push({
+        user_id: row.user_id,
+        date: row.date,
+        values: row.values,
+        session_id: row.session_id,
+        computed_at: new Date(0).toISOString(),
+      })
     },
 
     async listStaleSessions(limit, staleBeforeIso, nowIso) {

@@ -30,7 +30,7 @@ import {
   projectZiwei,
 } from '../axes'
 import { SYSTEM_IDS, type AxisConsensus, type AxisVote, type ReadingScope, type SystemId } from '../axes/types'
-import { fiveElementBalance, fourPillars, greatLuck, nineStar, sukuyou, tenGods, tzolkin } from '../engines/calendar'
+import { fiveElementBalance, fourPillars, greatLuck, nineStar, sukuyou, tenGodFor, tenGods, tzolkin } from '../engines/calendar'
 import { natalChart, transits } from '../engines/astro'
 import { buildLiuyao, ichingDraw, runeDraw, tarotDraw } from '../engines/draw'
 import type { TarotSpreadSize } from '../engines/draw/conventions'
@@ -51,7 +51,12 @@ import {
   ORACLE_TAROT_SPREAD,
   readingScopeForSession,
 } from './conventions'
-import { buildReadingPayload, type PayloadContext } from './payload'
+import { buildDailyWeavePayload, buildReadingPayload, type PayloadContext } from './payload'
+import {
+  ORACLE_DAILY_HOST_SYSTEM,
+  ORACLE_DAILY_RUNE_SPREAD,
+  ORACLE_DAILY_TAROT_SPREAD,
+} from './daily'
 import type { PersonalData, PersonalDataOther } from './privacy'
 import type { OracleCompatPartnerInput, OracleSessionInputs } from './session-inputs'
 import type { JsonObject } from './types'
@@ -225,6 +230,7 @@ type SubjectContext = {
   runes: { spread: number; pickedPositions: number[] | null } | null
   /** User-cast 육효 lines (bottom-up, six values 6..9), or null for the seeded fallback. */
   ichingLines: readonly LineValue[] | null
+  kind: OracleSessionKind
 }
 
 /**
@@ -345,6 +351,8 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
         ctx.time === null
           ? null
           : greatLuck({ date: ctx.date, time: ctx.time, timezone: ctx.tz, sex: ctx.sex })
+      const todayPillars = fourPillars({ date: ctx.asOfDate, time: '12:00', timezone: ctx.tz })
+      const dayMaster = pillars.day.stem
       return {
         vote: projectSaju({ date: ctx.date, time: ctx.time, timezone: ctx.tz, sex: ctx.sex, asOfDate: ctx.asOfDate }),
         result: {
@@ -352,6 +360,13 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
           fiveElements: jsonObject(fiveElementBalance(pillars)),
           tenGods: jsonObject(tenGods(pillars.day.stem, pillars)),
           greatLuck: luck ? jsonObject(luck) : null,
+          iljin: {
+            pillar: jsonObject(todayPillars.day),
+            tenGods: {
+              stem: tenGodFor(dayMaster, todayPillars.day.stem),
+              branch: tenGodFor(dayMaster, todayPillars.day.branch),
+            },
+          },
         },
       }
     }
@@ -416,7 +431,7 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
     }
     case 'tarot': {
       const seed = drawSeed(ctx.seed, 'tarot')
-      const spread = ctx.tarot?.spread ?? ORACLE_TAROT_SPREAD
+      const spread = ctx.tarot?.spread ?? (ctx.kind === 'daily' ? ORACLE_DAILY_TAROT_SPREAD : ORACLE_TAROT_SPREAD)
       const pickedPositions =
         ctx.tarot?.pickedPositions ?? derivePickedPositions(seed, spread, ORACLE_TAROT_DECK_SIZE)
       const input = { seed, spread, pickedPositions }
@@ -424,7 +439,7 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
     }
     case 'runes': {
       const seed = drawSeed(ctx.seed, 'runes')
-      const spread = ctx.runes?.spread ?? ORACLE_RUNE_COUNT
+      const spread = ctx.runes?.spread ?? (ctx.kind === 'daily' ? ORACLE_DAILY_RUNE_SPREAD : ORACLE_RUNE_COUNT)
       // User picks from the 24-stone cloth win; seeded picks are the fallback
       // (same pattern as tarot) so headless sessions stay reproducible.
       const pickedPositions =
@@ -499,6 +514,7 @@ export function runComputations(input: ComputeInput): ComputeOutput {
     tarot: readTarotInputs(input.sessionInputs),
     runes: readRuneInputs(input.sessionInputs),
     ichingLines: readIchingLines(input.sessionInputs),
+    kind: input.kind,
   }
 
   const readingScope = readingScopeForSession(input.kind, input.question !== null)
@@ -547,6 +563,13 @@ export function runComputations(input: ComputeInput): ComputeOutput {
       vote: outcome.vote,
       unreadableCode: null,
     })
+  }
+
+  if (input.kind === 'daily') {
+    const host = systems.find((entry) => entry.system === ORACLE_DAILY_HOST_SYSTEM && entry.result !== null)
+    if (host?.vote) {
+      host.aiPayload = buildDailyWeavePayload(systems, payloadContext, input.personalData)
+    }
   }
 
   if (votes.length === 0) {

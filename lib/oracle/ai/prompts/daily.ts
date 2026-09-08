@@ -1,0 +1,68 @@
+/**
+ * 오늘의 운세 — one short weave of today's native charts, one AI.
+ *
+ * Not a panel, not a seer layer, not a synthesis of other narratives.
+ * The model sees each system's own chart (never axis scores) and writes
+ * ONE piece of 300–450 characters.
+ */
+import {
+  DAILY_NARRATIVE_MAX,
+  DAILY_NARRATIVE_MIN,
+  DAILY_NARRATIVE_TARGET,
+} from '../parse-layer1'
+import { INTERNAL_VOCAB_RULES, languageForLocale } from './layer1'
+
+export const DAILY_PROMPT_VERSION = 'daily-v1'
+
+export function buildDailySystemPrompt(locale: string): string {
+  const language = languageForLocale(locale)
+  return [
+    'You are writing TODAY\'s fortune (오늘의 운세) as ONE short piece.',
+    'The payload carries several divination systems\' NATIVE charts for this civil day. They are already computed and authoritative. Never recalculate. Never invent a card, star, 간지, 宿, or nawal that is not in the charts.',
+    'WEAVE the day into a single reading. Do not write a separate paragraph per system. Lead with 사주 일진 (today\'s 간지 and its 십신 vs the natal 일간) — that is the classic 오늘의 운세 — and let the other charts color the same day: transits, 구성 일명성, 오늘의 宿, today\'s tzolkin tone/nawal, the one tarot card, the one rune.',
+    'Ziwei 유일 is NOT in the payload; do not invent a daily palace rotation.',
+    'WRITING RULES:',
+    '- Write for someone who knows nothing about these systems. The first time a term appears, make its meaning clear from the sentence.',
+    '- Name concrete chart elements and say what they MEAN for today. Meaning, not scores.',
+    '- NEVER print a raw numeric score, percentage, or axis value. Numbers that ARE the system\'s own vocabulary (일진 간지, 라이프패스, 톤 숫자) are fine.',
+    '- No generic statements that would apply to anyone. Every claim ties to something in these charts.',
+    '- END with one concrete thing to do or watch for today.',
+    `Write in ${language} (locale ${locale}). Required — do not infer the language from the payload.`,
+    'There is no question. This is the general daily fortune.',
+    ...INTERNAL_VOCAB_RULES,
+    'axis_emphasis: 2–5 short human terms copied from the charts (일진 간지, 십신, card name, rune, 宿, nawal). Never dotted machine codes.',
+    'OUTPUT RULES (strict):',
+    '- Respond with a single JSON object and nothing else.',
+    '- No markdown fences, no preamble, no commentary outside the JSON.',
+    '- Do NOT show step-by-step working, chain-of-thought, or analysis in ANY field.',
+    '- narrative and one_line must be final prose only.',
+    'Schema (character budgets are hard limits):',
+    '{',
+    `  "narrative": string,  // ONE woven reading; ${DAILY_NARRATIVE_MIN}–${DAILY_NARRATIVE_MAX} Unicode characters (aim ${DAILY_NARRATIVE_TARGET}); plain language, no raw scores`,
+    '  "one_line": string,     // punchy summary; max 80 characters',
+    '  "direction": "advance" | "hold" | "release",',
+    '  "focus": "work" | "money" | "love" | "social" | "energy",',
+    '  "axis_emphasis": string[]  // 2-5 human terms from the charts',
+    '}',
+  ].join('\n')
+}
+
+export function buildDailyUserPrompt(payload: Record<string, unknown>, locale: string): string {
+  const language = languageForLocale(locale)
+  return [
+    `Locale: ${locale} (${language}). Write the narrative and one_line in ${language}.`,
+    'No question was submitted. Weave today\'s charts into one short daily fortune.',
+    'Native charts (authoritative; do not recalculate; do not import 오행/유지·방출 unless they appear in a chart):',
+    JSON.stringify(payload),
+    `Reminder: narrative ${DAILY_NARRATIVE_TARGET} characters (hard band ${DAILY_NARRATIVE_MIN}–${DAILY_NARRATIVE_MAX}). One weave, not five mini-readings. Emit JSON only.`,
+  ].join('\n')
+}
+
+export const DAILY_STRICT_RETRY_INSTRUCTION =
+  `\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ${DAILY_NARRATIVE_MIN}–${DAILY_NARRATIVE_MAX} Unicode characters (aim ${DAILY_NARRATIVE_TARGET}) — ONE woven daily fortune, plain language, no raw numeric scores. Respect every field character limit.`
+
+export function dailyLengthRetryInstruction(violation: { length: number; kind: 'short' | 'long' }): string {
+  return violation.kind === 'short'
+    ? `\n\nLENGTH RETRY: Your narrative was ${violation.length} characters — the contract requires ${DAILY_NARRATIVE_TARGET} (hard floor ${DAILY_NARRATIVE_MIN}). Rewrite the SAME daily fortune expanded: name more concrete chart elements (일진, card, rune, 宿, nawal) and what each means for today. Keep every other field. Output ONLY the JSON object.`
+    : `\n\nLENGTH RETRY: Your narrative was ${violation.length} characters — over the hard ceiling ${DAILY_NARRATIVE_MAX}. Rewrite the SAME daily fortune condensed to ${DAILY_NARRATIVE_TARGET} characters. Keep every other field. Output ONLY the JSON object.`
+}

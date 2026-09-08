@@ -16,14 +16,24 @@ import type { OracleJobSession, OracleReaderCount, OracleSessionKind, OracleSess
 import { isAllowedReaderCount, resolveSingleSystemRoster } from '../ai/family-roster'
 import { getOracleAiMode } from '../ai/mode'
 import { LAYER1_PROMPT_VERSION } from '../ai/prompts/layer1'
+import { DAILY_PROMPT_VERSION } from '../ai/prompts/daily'
 import { layer1Entry } from '../ai/registry'
 import {
   creditsForOracleSession,
   ORACLE_CREDITS_MODULE,
+  ORACLE_DEFAULT_TIMEZONE,
   ORACLE_PROMPT_VERSION,
   readerRosterFor,
   readingScopeForSession,
+  civilDateIn,
 } from './conventions'
+import {
+  dailySeed,
+  ORACLE_DAILY_HOST_SYSTEM,
+  ORACLE_DAILY_READER_BRAND,
+  ORACLE_DAILY_READER_COUNT,
+  ORACLE_DAILY_SYSTEMS,
+} from './daily'
 import { OracleComputeError, personalDataFrom, resolveSystems, runComputations } from './compute'
 import type { ComputeAssumptions, ComputeOutput } from './compute'
 import { isCompatSingleSystem, runCompatComputations } from './compute-compat'
@@ -90,19 +100,7 @@ export type CreateSessionOutcome =
     }
 
 /** Today's civil date in the subject's own timezone, not the server's. */
-export function civilDateIn(date: Date, timeZone: string): string {
-  try {
-    // en-CA renders as YYYY-MM-DD.
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(date)
-  } catch {
-    return date.toISOString().slice(0, 10)
-  }
-}
+export { civilDateIn } from './conventions'
 
 function consensusJson(consensus: AxisConsensus): JsonObject {
   return {
@@ -134,8 +132,21 @@ export async function createOracleSession(
     return { ok: false, code: 'invalid_input', message: sessionInputs.error }
   }
 
-  // 1. One active session per user. A second create returns the first.
-  const active = await store.findActiveSession(userId)
+  // Daily is a product constant: combined, N=1, the seven day-moving systems,
+  // no question. The client may send a partial body; we pin the rest here.
+  if (request.kind === 'daily') {
+    request = {
+      ...request,
+      scope: 'combined',
+      readerCount: ORACLE_DAILY_READER_COUNT,
+      question: null,
+      systems: [...ORACLE_DAILY_SYSTEMS],
+    }
+  }
+
+  // 1. One active session per user+kind. Daily must not collide with a
+  //    personal reading already in flight (and vice versa).
+  const active = await store.findActiveSession(userId, request.kind)
   if (active) {
     const existing = await store.listComputations(active.id)
     return {
@@ -152,7 +163,9 @@ export async function createOracleSession(
       ok: false,
       code: 'invalid_input',
       message:
-        request.kind === 'compat'
+        request.kind === 'daily'
+          ? 'daily sessions use readerCount 1'
+          : request.kind === 'compat'
           ? request.scope === 'single'
             ? 'compat single-system readerCount must be 3 or 5'
             : 'compat readerCount must be 3, 5, or 7'
@@ -193,6 +206,30 @@ export async function createOracleSession(
     return { ok: false, code: 'profile_not_found', message: 'partner profile not found' }
   }
 
+  const startedAt = now()
+  const asOfDate = civilDateIn(startedAt, subject.tz ?? ORACLE_DEFAULT_TIMEZONE)
+
+  if (request.kind === 'daily') {
+    const cached = await store.getDailyCache(userId, asOfDate)
+    if (cached?.session_id) {
+      const cachedSession = await store.getSession(cached.session_id)
+      if (
+        cachedSession &&
+        cachedSession.user_id === userId &&
+        (cachedSession.status === 'done' || cachedSession.status === 'partial')
+      ) {
+        const existing = await store.listComputations(cachedSession.id)
+        return {
+          ok: true,
+          reused: true,
+          session: cachedSession,
+          computations: existing.map(publicComputation),
+          assumptions: null,
+        }
+      }
+    }
+  }
+
   // 3. Charge once, before any work.
   const systems = resolveSystems(request.systems)
   if (request.scope === 'single' && systems.length !== 1) {
@@ -231,24 +268,39 @@ export async function createOracleSession(
     chargedAmount = charge.skipped ? 0 : cost
   }
 
-  const seed = makeSeed()
+  const seed = request.kind === 'daily' ? dailySeed(userId, asOfDate) : makeSeed()
   const singleRoster =
     request.scope === 'single'
       ? resolveSingleSystemRoster(systems[0]!, request.readerCount)
       : null
-  const roster = singleRoster?.readers ?? readerRosterFor(request.readerCount)
+  const roster =
+    request.kind === 'daily'
+      ? [ORACLE_DAILY_READER_BRAND]
+      : (singleRoster?.readers ?? readerRosterFor(request.readerCount))
   const readingUnits =
-    request.scope === 'single'
-      ? singleRoster!.readers.map((brand) => readingUnit(systems[0]!, brand))
-      : systems.map((system) => {
-          const brand = layer1Entry(system)?.brand
-          if (!brand) throw new Error(`missing integrated reader brand for ${system}`)
-          return readingUnit(system, brand)
-        })
-  const seerRoster = request.scope === 'combined' ? roster : []
-  const question = request.question?.trim() ? request.question.trim() : null
-  const startedAt = now()
+    request.kind === 'daily'
+      ? [readingUnit(ORACLE_DAILY_HOST_SYSTEM, ORACLE_DAILY_READER_BRAND)]
+      : request.scope === 'single'
+        ? singleRoster!.readers.map((brand) => readingUnit(systems[0]!, brand))
+        : systems.map((system) => {
+            const brand = layer1Entry(system)?.brand
+            if (!brand) throw new Error(`missing integrated reader brand for ${system}`)
+            return readingUnit(system, brand)
+          })
+  const seerRoster = request.kind === 'daily' ? [] : request.scope === 'combined' ? roster : []
+  const includeSynthesis = request.kind !== 'daily'
+  const question = request.kind === 'daily' ? null : request.question?.trim() ? request.question.trim() : null
   const nowIso = startedAt.toISOString()
+  const storedInputs: OracleSessionInputs | null =
+    request.kind === 'daily'
+      ? { ...(sessionInputs.value ?? {}), asOfDate }
+      : sessionInputs.value
+  const promptVersion =
+    aiMode === 'live'
+      ? request.kind === 'daily'
+        ? DAILY_PROMPT_VERSION
+        : LAYER1_PROMPT_VERSION
+      : ORACLE_PROMPT_VERSION
 
   let session: OracleJobSession
   try {
@@ -259,18 +311,18 @@ export async function createOracleSession(
       partner_profile_id: request.partnerProfileId ?? null,
       scope: request.scope,
       systems,
-      session_inputs: sessionInputs.value,
+      session_inputs: storedInputs,
       question_raw: question,
       reader_count: request.readerCount,
       reader_roster: roster,
       status: 'computing',
-      progress: initialProgress(readingUnits, seerRoster),
+      progress: initialProgress(readingUnits, seerRoster, includeSynthesis),
       seed,
       next_action: 'compute',
       credits_charged: chargedAmount,
       charged_at: nowIso,
       locale: request.locale,
-      prompt_version: aiMode === 'live' ? LAYER1_PROMPT_VERSION : ORACLE_PROMPT_VERSION,
+      prompt_version: promptVersion,
       last_heartbeat_at: nowIso,
     })
   } catch (e) {
@@ -287,7 +339,6 @@ export async function createOracleSession(
     // 4 + 5. All engines, the axis projection, and consensus. The privacy
     // needle set covers every loaded profile AND the 궁합 partner.
     const personalData = personalDataFrom(profiles, partner)
-    const asOfDate = civilDateIn(startedAt, subject.tz ?? 'UTC')
     const computed: ComputeOutput = partner
       ? runCompatComputations({
           profile: subject,
@@ -297,7 +348,7 @@ export async function createOracleSession(
           asOfDate,
           locale: request.locale,
           question,
-          sessionInputs: sessionInputs.value,
+          sessionInputs: storedInputs,
           personalData,
         })
       : runComputations({
@@ -308,7 +359,7 @@ export async function createOracleSession(
           locale: request.locale,
           kind: request.kind,
           question,
-          sessionInputs: sessionInputs.value,
+          sessionInputs: storedInputs,
           personalData,
         })
 
@@ -338,7 +389,7 @@ export async function createOracleSession(
     //    so its unit is already a 결번 before layer 1 starts. (Keyed on the
     //    payload, not the vote: compat tzolkin reads both portraits WITHOUT
     //    casting a vote, and that reading must still run.)
-    let progress = initialProgress(readingUnits, seerRoster)
+    let progress = initialProgress(readingUnits, seerRoster, includeSynthesis)
     for (const entry of computed.systems) {
       if (entry.aiPayload === null) {
         const affected = readingUnits.filter((unit) => unit.startsWith(`reading:${entry.system}:`))

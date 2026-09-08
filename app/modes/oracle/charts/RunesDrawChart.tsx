@@ -11,12 +11,14 @@ import {
   RUNE_MEANING_KO,
   runePositionKo,
 } from "@/lib/oracle/display-copy";
+import { ELDER_FUTHARK } from "@/lib/oracle/engines/draw/tables";
 
 type DrawnRune = {
   name?: string;
   glyph?: string;
   reversed?: boolean;
   positionLabel?: string;
+  id?: number;
 };
 
 export default function RunesDrawChart({ runes }: { runes: DrawnRune[] }) {
@@ -33,7 +35,12 @@ export default function RunesDrawChart({ runes }: { runes: DrawnRune[] }) {
   return (
     <ul className={`grid gap-3 ${cols}`}>
       {runes.map((rune, index) => {
-        const name = rune.name ?? "";
+        const fromPool = ELDER_FUTHARK.find(
+          (entry) =>
+            (typeof rune.id === "number" && entry.id === rune.id) ||
+            (rune.glyph != null && entry.glyph === rune.glyph),
+        );
+        const name = rune.name || fromPool?.name || "";
         const nameKo = RUNE_KO[name] ?? name;
         const meaning = RUNE_MEANING_KO[name] ?? "";
         const position = rune.positionLabel

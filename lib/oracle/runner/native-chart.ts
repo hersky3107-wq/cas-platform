@@ -292,6 +292,23 @@ function sajuChart(result: Record<string, unknown>, ctx: NativeChartContext): Js
       }
     })
   }
+  const iljin = rec(result.iljin)
+  if (iljin) {
+    const pillar = rec(iljin.pillar) ?? iljin
+    const gods = rec(iljin.tenGods)
+    chart.일진 = {
+      간지: str(pillar.ganzhi),
+      천간: (() => {
+        const stem = rec(pillar.stem)
+        return stem ? hangulHanja(str(stem.hanja), str(stem.hangul)) : ''
+      })(),
+      지지: (() => {
+        const branch = rec(pillar.branch)
+        return branch ? hangulHanja(str(branch.hanja), str(branch.hangul)) : ''
+      })(),
+      십신: gods ? { 천간: str(gods.stem), 지지: str(gods.branch) } : null,
+    }
+  }
   return chart
 }
 

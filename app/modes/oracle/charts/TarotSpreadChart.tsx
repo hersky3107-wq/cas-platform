@@ -22,23 +22,32 @@ function cardSrc(id: number | undefined): string | null {
 
 export default function TarotSpreadChart({
   cards,
+  size = "default",
 }: {
   cards: DrawnCard[]
+  size?: "default" | "hero"
 }) {
   if (!cards.length) {
     return <p className="text-sm text-white/45">뽑은 카드가 없습니다.</p>
   }
 
+  const hero = size === "hero"
+  const width = hero ? 220 : 140
+  const height = hero ? 374 : 238
+  const imgClass = hero ? "h-auto w-[13.5rem] sm:w-[16rem]" : "h-auto w-[7.5rem]"
+
   return (
-    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <ul className={hero ? "flex justify-center" : "grid grid-cols-2 gap-3 sm:grid-cols-3"}>
       {cards.map((card, index) => {
         const src = cardSrc(card.id)
-        const nameKo = tarotCardNameKo(card.name ?? "", typeof card.id === "number" ? card.id : -1)
+        const deckName =
+          typeof card.id === "number" ? (DECK.find((entry) => entry.id === card.id)?.name ?? "") : ""
+        const nameKo = tarotCardNameKo(card.name || deckName, typeof card.id === "number" ? card.id : -1)
         const position = tarotPositionKo(card.positionLabel ?? "")
         return (
           <li
             key={`${position}-${index}`}
-            className="flex flex-col items-center rounded-2xl border border-white/10 bg-black/20 p-3"
+            className={`flex flex-col items-center rounded-2xl border border-white/10 bg-black/20 ${hero ? "p-5" : "p-3"}`}
           >
             <p className="text-[11px] font-medium tracking-wide text-cyan-100/80">{position}</p>
             <div className="mt-2 overflow-hidden rounded-lg border border-white/15 bg-[#1a0533]">
@@ -46,17 +55,23 @@ export default function TarotSpreadChart({
                 <Image
                   src={src}
                   alt={nameKo}
-                  width={140}
-                  height={238}
-                  className={`h-auto w-[7.5rem] ${card.reversed ? "rotate-180" : ""}`}
+                  width={width}
+                  height={height}
+                  className={`${imgClass} ${card.reversed ? "rotate-180" : ""}`}
                 />
               ) : (
-                <div className="flex h-[238px] w-[7.5rem] items-center justify-center text-xs text-white/40">
+                <div
+                  className={`flex items-center justify-center text-xs text-white/40 ${
+                    hero ? "h-[374px] w-[13.5rem] sm:w-[16rem]" : "h-[238px] w-[7.5rem]"
+                  }`}
+                >
                   {nameKo}
                 </div>
               )}
             </div>
-            <p className="mt-2 text-center text-sm font-semibold text-white">{nameKo}</p>
+            <p className={`mt-2 text-center font-semibold text-white ${hero ? "text-lg" : "text-sm"}`}>
+              {nameKo}
+            </p>
             {card.reversed ? (
               <p className="mt-0.5 text-[11px] text-amber-200/80">역방향</p>
             ) : null}

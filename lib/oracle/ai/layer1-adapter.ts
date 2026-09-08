@@ -11,6 +11,8 @@ import type { JsonObject, OracleAiAdapter, OracleAiFailure, OracleAiRequest, Ora
 import type { Layer1Call, Layer1CallResult } from './call'
 import { createLayer1HttpBudget, type Layer1HttpBudget } from './http-budget'
 import {
+  DAILY_NARRATIVE_MAX,
+  DAILY_NARRATIVE_MIN,
   isEmptyModelText,
   LAYER1_NARRATIVE_MAX,
   LAYER1_NARRATIVE_MIN,
@@ -26,6 +28,12 @@ import {
 } from './parse-synthesis'
 import { parseVerdictJson, verdictDirectionMismatch, type VerdictJson } from './parse-verdict'
 import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1'
+import {
+  buildDailySystemPrompt,
+  buildDailyUserPrompt,
+  DAILY_STRICT_RETRY_INSTRUCTION,
+  dailyLengthRetryInstruction,
+} from './prompts/daily'
 import { buildSynthesisSystemPrompt, buildSynthesisUserPrompt } from './prompts/synthesis'
 import {
   buildVerdictSystemPrompt,
@@ -203,18 +211,23 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
 
       const readerCount = verdictReaderCount(request.payload)
       const sessionKind = payloadKind(request.payload)
+      const isDailyReading = request.kind === 'reading' && sessionKind === 'daily'
       const systemPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisSystemPrompt(request.locale, sessionKind)
           : request.kind === 'verdict'
             ? buildVerdictSystemPrompt(request.locale, request.unit, readerCount, sessionKind)
-            : buildLayer1SystemPrompt(request.locale, request.unit, sessionKind)
+            : isDailyReading
+              ? buildDailySystemPrompt(request.locale)
+              : buildLayer1SystemPrompt(request.locale, request.unit, sessionKind)
       const userPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisUserPrompt(request.payload)
           : request.kind === 'verdict'
             ? buildVerdictUserPrompt(request.payload, request.locale, sessionKind)
-            : buildLayer1UserPrompt(request.payload, request.locale, request.unit, sessionKind)
+            : isDailyReading
+              ? buildDailyUserPrompt(request.payload, request.locale)
+              : buildLayer1UserPrompt(request.payload, request.locale, request.unit, sessionKind)
       const startedAt = Date.now()
       const deadlineAt = startedAt + opts.timeoutMs
       const httpBudget = createLayer1HttpBudget(LAYER1_HTTP_BUDGET)
@@ -274,7 +287,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                       ? (lengthRetryInstruction ?? SYNTHESIS_STRICT_RETRY_INSTRUCTION)
                       : request.kind === 'verdict'
                         ? VERDICT_STRICT_RETRY_INSTRUCTION
-                        : (lengthRetryInstruction ?? LAYER1_STRICT_RETRY_INSTRUCTION)
+                        : (lengthRetryInstruction ??
+                            (isDailyReading ? DAILY_STRICT_RETRY_INSTRUCTION : LAYER1_STRICT_RETRY_INSTRUCTION))
                 }`
               : userPrompt,
           timeoutMs: Math.max(1, deadlineAt - Date.now()),
@@ -318,9 +332,12 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           break
         }
 
+        const layer1ParseOpts = isDailyReading
+          ? { narrativeMin: DAILY_NARRATIVE_MIN, narrativeMax: DAILY_NARRATIVE_MAX }
+          : { narrativeMin: effectiveEntry.narrativeFloor }
         const layer1Parsed =
           request.kind === 'reading'
-            ? parseLayer1Json(raw.text ?? '', { narrativeMin: effectiveEntry.narrativeFloor })
+            ? parseLayer1Json(raw.text ?? '', layer1ParseOpts)
             : null
         const synthesisParsed = request.kind === 'synthesis' ? parseSynthesisJson(raw.text ?? '') : null
         const verdictParsed: VerdictJson | null =
@@ -407,11 +424,16 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
 
         lastError = `${request.kind} JSON parse failed`
         if (request.kind === 'reading') {
-          const narrativeMin = effectiveEntry.narrativeFloor ?? LAYER1_NARRATIVE_MIN
-          const violation = layer1NarrativeBandViolation(raw.text ?? '', { narrativeMin })
+          const narrativeMin = isDailyReading
+            ? DAILY_NARRATIVE_MIN
+            : (effectiveEntry.narrativeFloor ?? LAYER1_NARRATIVE_MIN)
+          const narrativeMax = isDailyReading ? DAILY_NARRATIVE_MAX : LAYER1_NARRATIVE_MAX
+          const violation = layer1NarrativeBandViolation(raw.text ?? '', { narrativeMin, narrativeMax })
           if (violation) {
-            lastError = `narrative out of band (${violation.length} chars, ${violation.kind}; band ${narrativeMin}–${LAYER1_NARRATIVE_MAX})`
-            lengthRetryInstruction = layer1LengthRetryInstruction(violation)
+            lastError = `narrative out of band (${violation.length} chars, ${violation.kind}; band ${narrativeMin}–${narrativeMax})`
+            lengthRetryInstruction = isDailyReading
+              ? dailyLengthRetryInstruction(violation)
+              : layer1LengthRetryInstruction(violation)
             console.warn(`[oracle] ${request.unit} ${lastError} — length retry`)
           }
         } else if (request.kind === 'synthesis') {

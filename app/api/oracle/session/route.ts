@@ -23,6 +23,7 @@ import {
 import { SYSTEM_IDS } from '@/lib/oracle/axes/types'
 import { createOracleSession, type CreateSessionRequest } from '@/lib/oracle/runner'
 import { ORACLE_PROMPT_VERSION } from '@/lib/oracle/runner/conventions'
+import { ORACLE_DAILY_SYSTEMS } from '@/lib/oracle/runner/daily'
 import { createCreditsPort } from '@/lib/oracle/runner/credits'
 import { validateSessionInputs } from '@/lib/oracle/runner/session-inputs'
 import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'
@@ -42,14 +43,37 @@ function parseBody(body: Record<string, unknown>): ParsedBody {
     return { ok: false, error: `kind must be one of ${ORACLE_SESSION_KINDS.join(', ')}` }
   }
 
-  const scope = body.scope
-  if (typeof scope !== 'string' || !(ORACLE_SESSION_SCOPES as readonly string[]).includes(scope)) {
-    return { ok: false, error: `scope must be one of ${ORACLE_SESSION_SCOPES.join(', ')}` }
-  }
-
   const subjectProfileId = body.subjectProfileId
   if (typeof subjectProfileId !== 'string' || subjectProfileId.trim() === '') {
     return { ok: false, error: 'subjectProfileId is required' }
+  }
+
+  const locale = typeof body.locale === 'string' && body.locale.trim() !== '' ? body.locale.trim() : 'ko'
+  const sessionInputs = validateSessionInputs(body.sessionInputs)
+  if (!sessionInputs.ok) {
+    return { ok: false, error: sessionInputs.error }
+  }
+
+  if (kind === 'daily') {
+    return {
+      ok: true,
+      request: {
+        kind: 'daily',
+        subjectProfileId: subjectProfileId.trim(),
+        partnerProfileId: null,
+        scope: 'combined',
+        systems: [...ORACLE_DAILY_SYSTEMS],
+        question: null,
+        sessionInputs: sessionInputs.value,
+        readerCount: 1,
+        locale,
+      },
+    }
+  }
+
+  const scope = body.scope
+  if (typeof scope !== 'string' || !(ORACLE_SESSION_SCOPES as readonly string[]).includes(scope)) {
+    return { ok: false, error: `scope must be one of ${ORACLE_SESSION_SCOPES.join(', ')}` }
   }
 
   const partnerRaw = body.partnerProfileId
@@ -97,13 +121,6 @@ function parseBody(body: Record<string, unknown>): ParsedBody {
   if (typeof questionRaw === 'string' && questionRaw.length > MAX_QUESTION_LENGTH) {
     return { ok: false, error: `question must be at most ${MAX_QUESTION_LENGTH} characters` }
   }
-
-  const sessionInputs = validateSessionInputs(body.sessionInputs)
-  if (!sessionInputs.ok) {
-    return { ok: false, error: sessionInputs.error }
-  }
-
-  const locale = typeof body.locale === 'string' && body.locale.trim() !== '' ? body.locale.trim() : 'ko'
 
   return {
     ok: true,

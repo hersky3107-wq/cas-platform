@@ -35,7 +35,9 @@ import { ballotTallyJson, tallyBallots } from './ballot'
 import { personalDataFrom } from './compute'
 import { releaseAiSlots, tryAcquireAiSlots } from './concurrency'
 import {
+  civilDateIn,
   ORACLE_AI_UNIT_TIMEOUT_MS,
+  ORACLE_DEFAULT_TIMEZONE,
   ORACLE_LAYER1_CHUNK_SIZE,
   ORACLE_LEASE_HEARTBEAT_SECONDS,
   ORACLE_LEASE_SECONDS,
@@ -45,6 +47,7 @@ import {
   readerRosterFor,
   readingScopeForSession,
 } from './conventions'
+import { ORACLE_DAILY_HOST_SYSTEM, ORACLE_DAILY_READER_BRAND } from './daily'
 import { buildSynthesisPayload, buildVerdictPayload, type PayloadContext } from './payload'
 import {
   markUnitDone,
@@ -197,13 +200,16 @@ function votesFromComputations(computations: readonly OracleComputation[]): Axis
 
 function payloadContextFor(session: OracleJobSession): PayloadContext {
   const question = session.question_raw
+  const asOfFromInputs = session.session_inputs?.asOfDate
+  const asOfDate =
+    typeof asOfFromInputs === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(asOfFromInputs)
+      ? asOfFromInputs
+      : session.created_at.slice(0, 10)
   return {
     kind: session.kind,
     locale: session.locale ?? 'ko',
     readingScope: readingScopeForSession(session.kind, question !== null),
-    // asOfDate is only carried for prompt context; the vectors were already
-    // anchored at create time.
-    asOfDate: session.created_at.slice(0, 10),
+    asOfDate,
     question,
   }
 }
@@ -258,15 +264,22 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
   const readable = computations.filter((row) => row.ai_payload !== null)
   const alreadyRead = new Set(readings.map((row) => `${row.system}:${row.brand}`))
   const seats =
-    session.scope === 'single'
-      ? readable.flatMap((computation) =>
-          session.reader_roster.map((brand) => ({ computation, brand })),
-        )
-      : readable.map((computation) => {
-          const brand = layer1Entry(computation.system)?.brand
-          if (!brand) throw new Error(`missing integrated reader brand for ${computation.system}`)
-          return { computation, brand }
-        })
+    session.kind === 'daily'
+      ? readable
+          .filter((computation) => computation.system === ORACLE_DAILY_HOST_SYSTEM)
+          .map((computation) => ({
+            computation,
+            brand: session.reader_roster[0] ?? ORACLE_DAILY_READER_BRAND,
+          }))
+      : session.scope === 'single'
+        ? readable.flatMap((computation) =>
+            session.reader_roster.map((brand) => ({ computation, brand })),
+          )
+        : readable.map((computation) => {
+            const brand = layer1Entry(computation.system)?.brand
+            if (!brand) throw new Error(`missing integrated reader brand for ${computation.system}`)
+            return { computation, brand }
+          })
   // Combined remains exactly one seat per system; single expands one system to N brands.
   const outstanding = seats.filter(
     ({ computation, brand }) => !alreadyRead.has(`${computation.system}:${brand}`),
@@ -274,9 +287,10 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
   const chunk = outstanding.slice(0, ORACLE_LAYER1_CHUNK_SIZE)
 
   if (chunk.length === 0) {
+    const skipLayer2 = session.kind === 'daily'
     await deps.store.updateSession(session.id, {
-      status: 'layer2',
-      next_action: 'layer2',
+      status: skipLayer2 ? 'layer2' : 'layer2',
+      next_action: skipLayer2 ? 'consensus' : 'layer2',
       lease_until: null,
       last_heartbeat_at: now().toISOString(),
       attempt_count: 0,
@@ -338,10 +352,11 @@ async function runLayer1Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
   }
 
   const allHandled = outstanding.length <= chunk.length
+  const skipLayer2 = session.kind === 'daily'
   await deps.store.updateSession(session.id, {
     progress,
     status: allHandled ? 'layer2' : 'layer1',
-    next_action: allHandled ? 'layer2' : 'layer1',
+    next_action: allHandled ? (skipLayer2 ? 'consensus' : 'layer2') : 'layer1',
     lease_until: null,
     last_heartbeat_at: now().toISOString(),
     // Progress resets the attempt budget; a stalled session keeps its count.
@@ -366,7 +381,7 @@ async function runLayer2Chunk(session: OracleJobSession, deps: AdvanceDeps, now:
     storedConsensus.domain_stats.synthesis !== null
       ? storedConsensus.domain_stats.synthesis as JsonObject
       : null
-  const needsSynthesis = existingSynthesis === null
+  const needsSynthesis = session.kind !== 'daily' && existingSynthesis === null
   const missingSeers = allMissingSeers.slice(
     0,
     ORACLE_MAX_CONCURRENT_AI_UNITS - (needsSynthesis ? 1 : 0),
@@ -576,6 +591,30 @@ async function finalizeSession(session: OracleJobSession, deps: AdvanceDeps, now
       },
     },
   })
+
+  if (session.kind === 'daily') {
+    const reading = readings.find((row) => row.status === 'done' && typeof row.narrative === 'string')
+    const asOf =
+      typeof session.session_inputs?.asOfDate === 'string'
+        ? session.session_inputs.asOfDate
+        : civilDateIn(now(), ORACLE_DEFAULT_TIMEZONE)
+    if (reading?.narrative) {
+      const summary = reading.summary
+      await deps.store.upsertDailyCache({
+        user_id: session.user_id,
+        date: asOf,
+        session_id: session.id,
+        values: {
+          asOfDate: asOf,
+          narrative: reading.narrative,
+          one_line: typeof summary?.one_line === 'string' ? summary.one_line : null,
+          direction: typeof summary?.direction === 'string' ? summary.direction : null,
+          focus: typeof summary?.focus === 'string' ? summary.focus : null,
+          brand: reading.brand,
+        },
+      })
+    }
+  }
 
   // A 결번 does not fail the session: a missing system is a blank seat.
   await deps.store.updateSession(session.id, {

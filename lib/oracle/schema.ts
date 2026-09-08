@@ -22,7 +22,7 @@ export type OracleSessionKind = (typeof ORACLE_SESSION_KINDS)[number]
 export const ORACLE_SESSION_SCOPES = ['single', 'combined'] as const
 export type OracleSessionScope = (typeof ORACLE_SESSION_SCOPES)[number]
 
-export const ORACLE_READER_COUNTS = [3, 5, 7, 9] as const
+export const ORACLE_READER_COUNTS = [1, 3, 5, 7, 9] as const
 export type OracleReaderCount = (typeof ORACLE_READER_COUNTS)[number]
 
 export const ORACLE_SESSION_STATUSES = [
@@ -189,10 +189,12 @@ export type OracleConsensus = {
   computed_at: string
 }
 
-/** public.oracle_daily_cache — global, not per-user */
+/** public.oracle_daily_cache — one row per (user_id, civil date) */
 export type OracleDailyCache = {
-  /** YYYY-MM-DD */
+  user_id: string
+  /** YYYY-MM-DD in the subject's timezone */
   date: string
   values: Record<string, unknown>
+  session_id: string | null
   computed_at: string
 }

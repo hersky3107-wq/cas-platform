@@ -21,6 +21,7 @@ import { ORACLE_ACTIVE_STATUSES, ORACLE_TERMINAL_STATUSES } from './conventions'
 import type {
   ComputationInsert,
   ConsensusUpsert,
+  DailyCacheUpsert,
   ReadingInsert,
   RunnerStore,
   SessionInsert,
@@ -34,6 +35,7 @@ const COMPUTATIONS = 'oracle_computations'
 const READINGS = 'oracle_readings'
 const VERDICTS = 'oracle_verdicts'
 const CONSENSUS = 'oracle_consensus'
+const DAILY_CACHE = 'oracle_daily_cache'
 
 /** Postgres unique_violation — the idempotency signal, not an error. */
 const UNIQUE_VIOLATION = '23505'
@@ -49,14 +51,14 @@ function freeLeaseFilter(nowIso: string): string {
 
 export function createSupabaseRunnerStore(): RunnerStore {
   return {
-    async findActiveSession(userId: string): Promise<OracleJobSession | null> {
-      const { data, error } = await supabaseAdmin
+    async findActiveSession(userId: string, kind?: OracleJobSession['kind']): Promise<OracleJobSession | null> {
+      let query = supabaseAdmin
         .from(SESSIONS)
         .select('*')
         .eq('user_id', userId)
         .in('status', [...ORACLE_ACTIVE_STATUSES])
-        .order('created_at', { ascending: false })
-        .limit(1)
+      if (kind) query = query.eq('kind', kind)
+      const { data, error } = await query.order('created_at', { ascending: false }).limit(1)
       if (error) throw new Error(`findActiveSession: ${error.message}`)
       return (data?.[0] as OracleJobSession | undefined) ?? null
     },
@@ -226,6 +228,32 @@ export function createSupabaseRunnerStore(): RunnerStore {
         .maybeSingle()
       if (error) throw new Error(`getConsensus: ${error.message}`)
       return (data as OracleConsensus | null) ?? null
+    },
+
+    async getDailyCache(userId: string, date: string) {
+      const { data, error } = await supabaseAdmin
+        .from(DAILY_CACHE)
+        .select('user_id, date, values, session_id, computed_at')
+        .eq('user_id', userId)
+        .eq('date', date)
+        .maybeSingle()
+      if (error) throw new Error(`getDailyCache: ${error.message}`)
+      if (!data) return null
+      return data as DailyCacheUpsert & { computed_at: string }
+    },
+
+    async upsertDailyCache(row: DailyCacheUpsert) {
+      const { error } = await supabaseAdmin.from(DAILY_CACHE).upsert(
+        {
+          user_id: row.user_id,
+          date: row.date,
+          values: row.values,
+          session_id: row.session_id,
+          computed_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,date' },
+      )
+      if (error) throw new Error(`upsertDailyCache: ${error.message}`)
     },
 
     async listStaleSessions(limit: number, staleBeforeIso: string, nowIso: string): Promise<OracleJobSession[]> {
