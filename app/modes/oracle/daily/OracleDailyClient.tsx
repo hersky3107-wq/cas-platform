@@ -9,13 +9,12 @@
  * returns; the weave arrives after the one AI call.
  */
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, LoaderCircle } from "lucide-react";
 import { civilDateIn } from "@/lib/oracle/runner/conventions";
 import { ORACLE_DAILY_READER_BRAND } from "@/lib/oracle/runner/daily";
-import { projectOracleArchiveResponses } from "@/lib/oracle/session-archive";
-import { OracleSessionEndFlow } from "../OracleSessionEndFlow";
+import { dailyFactsFromNativeCharts, dailyNativeChartsFromResults } from "@/lib/oracle/runner/daily-facts";
 import TarotSpreadChart from "../charts/TarotSpreadChart";
 import RunesDrawChart from "../charts/RunesDrawChart";
 import BrandBadge from "../runner/BrandBadge";
@@ -48,10 +47,6 @@ function rec(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function text(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
 function cardsFrom(computations: OracleRunnerComputation[]) {
   const row = computations.find((entry) => entry.system === "tarot");
   const draw = rec(row?.calculation)?.draw;
@@ -64,44 +59,6 @@ function runesFrom(computations: OracleRunnerComputation[]) {
   const draw = rec(row?.calculation)?.draw;
   const runes = rec(draw)?.runes;
   return Array.isArray(runes) ? runes : [];
-}
-
-function dailyFacts(computations: OracleRunnerComputation[]): { label: string; value: string }[] {
-  const facts: { label: string; value: string }[] = [];
-
-  const iljin = rec(rec(computations.find((entry) => entry.system === "saju")?.calculation)?.iljin);
-  const pillar = rec(iljin?.pillar);
-  const gods = rec(iljin?.tenGods);
-  const ganzhi = text(pillar?.ganzhi);
-  const stemGod = text(gods?.stem);
-  const branchGod = text(gods?.branch);
-  if (ganzhi) {
-    const godsLine = [stemGod, branchGod].filter(Boolean).join("·");
-    facts.push({ label: "일진", value: godsLine ? `${ganzhi} ${godsLine}` : ganzhi });
-  }
-
-  const mansion = rec(computations.find((entry) => entry.system === "sukuyou")?.calculation)?.current;
-  const mansionRow = rec(mansion);
-  const mansionLabel = [text(mansionRow?.hangul), text(mansionRow?.hanja)].filter(Boolean).join(" ");
-  if (mansionLabel) facts.push({ label: "오늘의 宿", value: mansionLabel });
-
-  const dayStar = rec(rec(computations.find((entry) => entry.system === "ninestar")?.calculation)?.current)?.day;
-  const star = rec(dayStar);
-  const starName = text(star?.hangul);
-  const starNum = typeof star?.number === "number" ? String(star.number) : null;
-  if (starName || starNum) {
-    facts.push({ label: "일명성", value: [starName, starNum].filter(Boolean).join(" ") });
-  }
-
-  const today = rec(computations.find((entry) => entry.system === "tzolkin")?.calculation)?.current;
-  const tz = rec(today);
-  const nawal = text(tz?.nawalName);
-  const tone = typeof tz?.tone === "number" ? String(tz.tone) : text(tz?.tone);
-  if (nawal || tone) {
-    facts.push({ label: "톤·나왈", value: [tone ? `톤 ${tone}` : null, nawal].filter(Boolean).join(" · ") });
-  }
-
-  return facts;
 }
 
 export default function OracleDailyClient() {
@@ -163,17 +120,17 @@ export default function OracleDailyClient() {
   const direction = typeof summary?.direction === "string" ? summary.direction : null;
   const cards = cardsFrom(session.computations);
   const runes = runesFrom(session.computations);
-  const facts = dailyFacts(session.computations);
+  const facts = useMemo(
+    () =>
+      dailyFactsFromNativeCharts(
+        dailyNativeChartsFromResults(
+          session.computations.map((row) => ({ system: row.system, result: row.calculation })),
+        ),
+      ),
+    [session.computations],
+  );
   const working = Boolean(session.sessionId) && !session.terminal;
   const failed = session.view?.status === "failed";
-
-  const getResponses = useCallback(
-    () =>
-      projectOracleArchiveResponses({
-        readings: reading ? [{ brand: reading.brand, narrative: reading.narrative }] : [],
-      }),
-    [reading],
-  );
 
   if (!ready) {
     return <main className={BG} />;
@@ -261,19 +218,6 @@ export default function OracleDailyClient() {
                   : "")}
           </div>
         </section>
-
-        {session.terminal && reading?.narrative ? (
-          <div className="mt-8">
-            <OracleSessionEndFlow
-              oracleType="daily"
-              question=""
-              allDone
-              getResponses={getResponses}
-              voteLabels={[reading.brand]}
-              saveKey={session.sessionId}
-            />
-          </div>
-        ) : null}
       </div>
     </main>
   );

@@ -8,6 +8,7 @@ import { createOracleSession } from '../create'
 import { advanceOracleSession } from '../advance'
 import { createStubAiAdapter } from '../ai-stub'
 import { dailyCacheKey, dailySeed, ORACLE_DAILY_READER_BRAND, ORACLE_DAILY_SYSTEMS } from '../daily'
+import { dailyFactsFromNativeCharts, dailyNativeChartsFromResults } from '../daily-facts'
 import { isFreeOfPersonalData } from '../privacy'
 import { resetAiSlots } from '../concurrency'
 import { createFakeCredits, createFakeStore, createScheduler, makeProfile } from './fakes'
@@ -80,6 +81,33 @@ describe('daily native weave', () => {
     const serialized = JSON.stringify(payload)
     expect(serialized).not.toContain('"drive"')
     expect(serialized).not.toContain('pickedPosition')
+  })
+
+  it('builds the facts strip from the same native charts as the weave payload', () => {
+    const computed = computeDaily(AS_OF)
+    const host = computed.systems.find((row) => row.system === 'saju')!
+    const payloadCharts = host.aiPayload!.systems as Record<string, Record<string, unknown>>
+    const fromResults = dailyNativeChartsFromResults(
+      computed.systems.map((row) => ({ system: row.system, result: row.result })),
+    )
+    const fromPayload = dailyFactsFromNativeCharts(payloadCharts)
+    const fromSameBuilder = dailyFactsFromNativeCharts(fromResults)
+    expect(fromPayload).toEqual(fromSameBuilder)
+
+    const iljin = payloadCharts.saju.일진 as { 간지: string; 십신: { 천간: string; 지지: string } }
+    const todayStar = (payloadCharts.ninestar.오늘 as { 일: { 이름: string; 숫자: number } }).일
+    const natalStar = payloadCharts.ninestar.일명성 as { 이름: string; 숫자: number }
+    const mansion = payloadCharts.sukuyou.오늘숙 as { 한글: string; 한자: string }
+    const tz = payloadCharts.tzolkin.오늘 as { 톤: number; 나왈: string }
+
+    expect(fromPayload).toEqual([
+      { label: '일진', value: `${iljin.간지} ${iljin.십신.천간}·${iljin.십신.지지}` },
+      { label: '오늘의 宿', value: `${mansion.한글} ${mansion.한자}` },
+      { label: '일명성', value: `${todayStar.이름} ${todayStar.숫자}` },
+      { label: '톤·나왈', value: `톤 ${tz.톤} · ${tz.나왈}` },
+    ])
+    // Natal 일명성 is a different field. The old strip/model split used both.
+    expect(`${todayStar.이름} ${todayStar.숫자}`).not.toBe(`${natalStar.이름} ${natalStar.숫자}`)
   })
 
   it('keeps the same tarot/rune draw for the same seed (user + civil day)', () => {

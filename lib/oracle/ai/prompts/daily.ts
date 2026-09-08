@@ -14,7 +14,7 @@ import {
 } from '../parse-layer1'
 import { INTERNAL_VOCAB_RULES, languageForLocale } from './layer1'
 
-export const DAILY_PROMPT_VERSION = 'daily-v2'
+export const DAILY_PROMPT_VERSION = 'daily-v3'
 
 /**
  * 300–450 CJK chars + JSON fields. Tight enough that GLM cannot ramble
@@ -27,8 +27,13 @@ export function buildDailySystemPrompt(locale: string): string {
   return [
     'You are writing TODAY\'s fortune (오늘의 운세) as ONE short piece.',
     'The payload carries several divination systems\' NATIVE charts for this civil day. They are already computed and authoritative. Never recalculate. Never invent a card, star, 간지, 宿, or nawal that is not in the charts.',
-    'WEAVE the day into a single reading. Do not write a separate paragraph per system. Lead with 사주 일진 (today\'s 간지 and its 십신 vs the natal 일간) — that is the classic 오늘의 운세 — and let the other charts color the same day: transits, 구성 일명성, 오늘의 宿, today\'s tzolkin tone/nawal, the one tarot card, the one rune.',
+    'WEAVE the day into a single reading. Do not write a separate paragraph per system. Lead with 사주 일진 (today\'s 간지 and its 십신 vs the natal 일간 at saju.팔자.일주) — that is the classic 오늘의 운세 — and let the other charts color the same day: astro.오늘 transits, ninestar.오늘.일 (today\'s 일명성), sukuyou.오늘숙, tzolkin.오늘, the one tarot card, the one rune.',
     'Ziwei 유일 is NOT in the payload; do not invent a daily palace rotation.',
+    'CHART FIDELITY (mandatory):',
+    '- Name ONLY values that appear in these charts. If a 간지, 십신, 명성, 宿, nawal, card, rune, planet, or sign is not in the JSON, do not write it.',
+    '- Today\'s 일명성 is ninestar.오늘.일. ninestar.일명성 is the natal day star — never present it as today\'s star.',
+    '- Natal 일간 is saju.팔자.일주. Copy that 천간; do not guess 경금/임수 or any other stem.',
+    '- Today\'s transits are astro.오늘 (planet + sign only, no house). Do not invent a 하우스 for a transit. Natal 행성.하우스 stays natal — do not describe it as today\'s sky.',
     'WRITING RULES:',
     '- Write for someone who knows nothing about these systems. The first time a term appears, make its meaning clear from the sentence.',
     '- Name concrete chart elements and say what they MEAN for today. Meaning, not scores.',
