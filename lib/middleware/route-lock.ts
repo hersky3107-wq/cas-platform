@@ -2,7 +2,7 @@ import type { NextRequest, NextResponse } from 'next/server'
 
 /** HttpOnly cookie set after a valid ?k= bypass; presence alone grants access. */
 export const LOCK_BYPASS_COOKIE = 'lock_bypass'
-const LOCK_BYPASS_COOKIE_VALUE = '1'
+const LOCK_BYPASS_COOKIE_VALUE = '2'
 
 function isEnvLockOn(envValue: string | undefined): boolean {
   return envValue === '1'
@@ -26,9 +26,19 @@ function isJejuPath(pathname: string): boolean {
   )
 }
 
+function isGunpoPath(pathname: string): boolean {
+  return (
+    pathname === '/gunpo' ||
+    pathname.startsWith('/gunpo/') ||
+    pathname === '/api/gunpo' ||
+    pathname.startsWith('/api/gunpo/')
+  )
+}
+
 function isPathLocked(pathname: string): boolean {
   if (isCarePath(pathname) && isEnvLockOn(process.env.LOCK_CARE)) return true
   if (isJejuPath(pathname) && isEnvLockOn(process.env.LOCK_JEJU)) return true
+  if (isGunpoPath(pathname) && isEnvLockOn(process.env.LOCK_GUNPO)) return true
   return false
 }
 
