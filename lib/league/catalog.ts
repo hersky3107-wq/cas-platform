@@ -10,6 +10,10 @@ import { cacheBucketFor, computeResolvesAt, tradingApproximationNote, type UiHor
  * is a data edit here (+ i18n labels in `dictionary.ts`); do not hardcode
  * chips in the hub UI.
  *
+ * Catalog membership and chip visibility are separate: `chip_visible: false`
+ * keeps the instrument gradeable (rounds, record room, win rates) while
+ * hiding it from the hub rail. Do not delete a rotated-out row.
+ *
  * The 12 public ids are the product surface. Each maps onto one ledger
  * `PredictionCategory` (the 17-value CHECK constraint after tech/ai_models).
  * Schema leftovers that are NOT a top-level chip:
@@ -44,6 +48,13 @@ export type CatalogInstrument = {
   /** Ledger + Twelve Data symbol. Never shown as the only label — i18n key is `instrument`. */
   instrument: string
   resolution_rule: string
+  /**
+   * Chip rotation, independent of catalog membership.
+   * true  = offered as a hub chip this month
+   * false = stays in the catalog (gradeable, historical rounds keep
+   *         resolving, win rates still count) but is not shown as a chip
+   */
+  chip_visible: boolean
 }
 
 export type PublicCategoryDef = {
@@ -69,9 +80,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'BTC/USD', resolution_rule: 'BTC/USD spot close vs prior close' },
-      { instrument: 'ETH/USD', resolution_rule: 'ETH/USD spot close vs prior close' },
-      { instrument: 'SOL/USD', resolution_rule: 'SOL/USD spot close vs prior close' },
+      { instrument: 'BTC/USD', resolution_rule: 'BTC/USD spot close vs prior close', chip_visible: true },
+      { instrument: 'ETH/USD', resolution_rule: 'ETH/USD spot close vs prior close', chip_visible: true },
+      { instrument: 'SOL/USD', resolution_rule: 'SOL/USD spot close vs prior close', chip_visible: true },
     ],
   },
   {
@@ -80,9 +91,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'AAPL', resolution_rule: 'NASDAQ regular-session close price vs prior close' },
-      { instrument: 'NVDA', resolution_rule: 'NASDAQ regular-session close price vs prior close' },
-      { instrument: 'TSLA', resolution_rule: 'NASDAQ regular-session close price vs prior close' },
+      { instrument: 'AAPL', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true },
+      { instrument: 'NVDA', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true },
+      { instrument: 'TSLA', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true },
     ],
   },
   {
@@ -91,9 +102,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'EUR/USD', resolution_rule: 'EUR/USD spot close vs prior close' },
-      { instrument: 'USD/KRW', resolution_rule: 'USD/KRW spot close vs prior close' },
-      { instrument: 'USD/JPY', resolution_rule: 'USD/JPY spot close vs prior close' },
+      { instrument: 'EUR/USD', resolution_rule: 'EUR/USD spot close vs prior close', chip_visible: true },
+      { instrument: 'USD/KRW', resolution_rule: 'USD/KRW spot close vs prior close', chip_visible: true },
+      { instrument: 'USD/JPY', resolution_rule: 'USD/JPY spot close vs prior close', chip_visible: true },
     ],
   },
   {
@@ -102,8 +113,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'XAU/USD', resolution_rule: 'XAU/USD spot close vs prior close' },
-      { instrument: 'XAG/USD', resolution_rule: 'XAG/USD spot close vs prior close' },
+      { instrument: 'XAU/USD', resolution_rule: 'XAU/USD spot close vs prior close', chip_visible: true },
+      { instrument: 'XAG/USD', resolution_rule: 'XAG/USD spot close vs prior close', chip_visible: true },
     ],
   },
   {
@@ -112,8 +123,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'SPY', resolution_rule: 'SPY regular-session close vs prior close' },
-      { instrument: 'QQQ', resolution_rule: 'QQQ regular-session close vs prior close' },
+      { instrument: 'SPY', resolution_rule: 'SPY regular-session close vs prior close', chip_visible: true },
+      { instrument: 'QQQ', resolution_rule: 'QQQ regular-session close vs prior close', chip_visible: true },
     ],
   },
   {
@@ -122,8 +133,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'WTICO/USD', resolution_rule: 'WTI crude spot close vs prior close' },
-      { instrument: 'NATGAS/USD', resolution_rule: 'Natural gas spot close vs prior close' },
+      { instrument: 'WTICO/USD', resolution_rule: 'WTI crude spot close vs prior close', chip_visible: true },
+      { instrument: 'NATGAS/USD', resolution_rule: 'Natural gas spot close vs prior close', chip_visible: true },
     ],
   },
   {
@@ -146,8 +157,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'red',
     kind: 'instruments',
     instruments: [
-      { instrument: 'DOGE/USD', resolution_rule: 'DOGE/USD spot close vs prior close' },
-      { instrument: 'SHIB/USD', resolution_rule: 'SHIB/USD spot close vs prior close' },
+      { instrument: 'DOGE/USD', resolution_rule: 'DOGE/USD spot close vs prior close', chip_visible: true },
+      { instrument: 'SHIB/USD', resolution_rule: 'SHIB/USD spot close vs prior close', chip_visible: true },
     ],
   },
   {
@@ -156,8 +167,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'VNQ', resolution_rule: 'VNQ regular-session close vs prior close' },
-      { instrument: 'SCHH', resolution_rule: 'SCHH regular-session close vs prior close' },
+      { instrument: 'VNQ', resolution_rule: 'VNQ regular-session close vs prior close', chip_visible: true },
+      { instrument: 'SCHH', resolution_rule: 'SCHH regular-session close vs prior close', chip_visible: true },
     ],
   },
   {
@@ -169,9 +180,30 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
   },
 ]
 
+/** Every catalog member — including rotated-out (chip_visible: false) instruments. */
 export const CATALOG_INSTRUMENT_IDS: readonly string[] = PUBLIC_CATALOG.flatMap((c) =>
   c.instruments.map((i) => i.instrument),
 )
+
+export function isChipVisible(entry: CatalogInstrument): boolean {
+  return entry.chip_visible === true
+}
+
+/** Currently-open chips for a category. Hidden members stay in the catalog. */
+export function visibleChipEntries(category: PublicCategoryDef): CatalogInstrument[] {
+  return category.instruments.filter(isChipVisible)
+}
+
+export function visibleChipInstrumentIds(categoryId: string): string[] {
+  const category = catalogById(categoryId)
+  return category ? visibleChipEntries(category).map((i) => i.instrument) : []
+}
+
+/** All catalog members for a category, visible or not. */
+export function catalogMemberIds(categoryId: string): string[] {
+  const category = catalogById(categoryId)
+  return category ? category.instruments.map((i) => i.instrument) : []
+}
 
 /** Server-owned ranked-round seed for a catalog instrument (never caller text). */
 export type CatalogRankedRoundInput = {

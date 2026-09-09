@@ -14,6 +14,7 @@ import {
 } from '@/lib/league/public-access'
 import type { LeagueTier } from '@/lib/league/roster'
 import { formatRosterBrand, lookupRosterEntry, rosterModelIdentifier } from '@/lib/league/roster'
+import { consumeGatewayReceipt } from '@/lib/league/gateway/charge-receipt'
 
 /** Mirrors app/api/admin/league/generate/route.ts's budget — same fan-out, just streamed. */
 export const maxDuration = 180
@@ -102,17 +103,24 @@ export async function POST(req: Request) {
   const tuning = tuningForViewer(parseTuning(body), viewer.isAdmin)
 
   const cost = creditsForLeagueGenerate()
-  const deduct = await deductCreditsBalance(supabaseAdmin, viewer.userId, cost, 'league_generate')
-  if (!deduct.ok) {
-    const insufficient = deduct.reason === 'insufficient'
-    return NextResponse.json(
-      {
-        error: insufficient ? 'Insufficient credits' : 'Could not update credits',
-        balance: deduct.balance,
-        required: cost,
-      },
-      { status: insufficient ? 402 : 500 }
-    )
+  const instrument = typeof body.instrument === 'string' ? body.instrument.trim() : ''
+  const horizon = typeof body.horizon === 'string' && body.horizon.trim() ? body.horizon.trim() : '1d'
+  const receipt = typeof body.gateway_receipt === 'string' ? body.gateway_receipt.trim() : ''
+  const skipCharge = receipt ? consumeGatewayReceipt(receipt, viewer.userId, instrument, horizon) : false
+
+  if (!skipCharge) {
+    const deduct = await deductCreditsBalance(supabaseAdmin, viewer.userId, cost, 'league_generate')
+    if (!deduct.ok) {
+      const insufficient = deduct.reason === 'insufficient'
+      return NextResponse.json(
+        {
+          error: insufficient ? 'Insufficient credits' : 'Could not update credits',
+          balance: deduct.balance,
+          required: cost,
+        },
+        { status: insufficient ? 402 : 500 }
+      )
+    }
   }
 
   const enc = new TextEncoder()

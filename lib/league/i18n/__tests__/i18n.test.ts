@@ -103,6 +103,8 @@ describe('dictionary completeness', () => {
     expect(pt.leaderboard.baselinesNote).not.toBe(en.leaderboard.baselinesNote)
     expect(pt.recordRoom.subtitle).not.toBe(en.recordRoom.subtitle)
     expect(pt.hub.subtitle).not.toBe(en.hub.subtitle)
+    expect(pt.gateway.submit).not.toBe(en.gateway.submit)
+    expect(pt.gateway.placeholder.stocks).not.toBe(en.gateway.placeholder.stocks)
     expect(pt.disclaimer.long).not.toBe(en.disclaimer.long)
     expect(pt.operatorGrade.verifiedLabel).not.toBe(en.operatorGrade.verifiedLabel)
     expect(pt.operatorGrade.gradedOn('7 set 2026')).not.toBe(en.operatorGrade.gradedOn('7 set 2026'))
@@ -143,6 +145,16 @@ describe('dictionary completeness', () => {
         hub.deepUnscoredNote,
         hub.deepOpenTitle,
         hub.deepDebateTitle,
+        getLeagueUiPack(locale).gateway.submit,
+        getLeagueUiPack(locale).gateway.retry,
+        getLeagueUiPack(locale).gateway.refuseTitle,
+        getLeagueUiPack(locale).gateway.placeholder.stocks,
+        getLeagueUiPack(locale).gateway.placeholder.sports,
+        getLeagueUiPack(locale).gateway.refusal.prompt_not_available,
+        getLeagueUiPack(locale).gateway.refusal.registered_country_missing,
+        getLeagueUiPack(locale).gateway.refusal.country_mismatch,
+        getLeagueUiPack(locale).gating.registeredCountryRequired,
+        getLeagueUiPack(locale).gating.countryMismatchNotice,
         getLeagueUiPack(locale).recordRoom.deepCta(3),
       ]
       for (const s of strings) expect(s.trim().length).toBeGreaterThan(0)
@@ -216,6 +228,18 @@ describe('dictionary completeness', () => {
       expect(pack.verdict.overconfidentLine(65)).toMatch(/%/)
     }
     const ko = getLeagueUiPack('ko')
+    expect(ko.gateway.refusal.prompt_not_available).toBe(
+      '이 지역에서는 직접 입력으로 이 카테고리 질문을 열 수 없습니다. 아래 종목 칩을 이용해 주세요.',
+    )
+    expect(ko.gateway.refusal.registered_country_missing).toBe(
+      '등록 국가가 없습니다. 계정에 거주 국가를 등록한 뒤에 이용해 주세요.',
+    )
+    expect(ko.gateway.refusal.country_mismatch).toBe(
+      '등록 국가와 접속 국가가 다릅니다. 두 지역 중 더 엄격한 기준을 적용하며, 리그 이용은 가능합니다.',
+    )
+    expect(ko.gating.registeredCountryRequired).toBe(
+      '거주 국가는 필수입니다. 허위로 등록하면 이용 제한이나 계정 문제가 생길 수 있습니다.',
+    )
     expect(ko.verdict.bookLabels.closed).toBe('자체추론')
     expect(ko.verdict.bookLabels.scout).toBe('웹검색')
     expect(ko.verdict.weightLabels.closed).toBe('폐쇄형')

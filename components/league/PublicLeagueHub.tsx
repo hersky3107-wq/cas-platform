@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { ModuleCreditsLink } from '@/components/credits/ModuleCreditsLink'
+import { FreeformPromptBox } from '@/components/league/FreeformPromptBox'
 import { PredictionCard } from '@/components/league/PredictionCard'
 import { DeepAnalysis } from '@/components/league/DeepAnalysis'
 import { Leaderboard } from '@/components/league/Leaderboard'
@@ -12,6 +13,7 @@ import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import { creditsForLeagueGenerate } from '@/lib/credits'
 import type { CardData, ColorBucket } from '@/lib/league/card-types'
 import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } from '@/lib/league/catalog'
+import { SIGNUP_COUNTRY_CODES } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
@@ -23,7 +25,13 @@ type PublicCatalogCategory = {
   ledgerCategory: string
   tone: ColorBucket
   kind: CatalogKind
+  promptAllowed: boolean
   instruments: { instrument: string }[]
+}
+
+type InstrumentsPayload = {
+  categories?: PublicCatalogCategory[]
+  jurisdiction?: { declaredMissing?: boolean; mismatch?: boolean }
 }
 
 const LIVE_COST = creditsForLeagueGenerate()
@@ -45,9 +53,8 @@ const LIVE_COST = creditsForLeagueGenerate()
  * server re-checks auth, jurisdiction, rate limit and credits regardless of
  * what this component does (see `app/api/league/generate-stream/route.ts`).
  *
- * Note the deliberate absence of an instrument search box: public users get
- * the 12-category catalog from `GET /api/league/instruments` (jurisdiction-
- * filtered), and the API refuses anything else.
+ * Freeform input sits under the category chips. The gateway composes a
+ * catalog proposition; it never forwards the user's sentence to the 40 models.
  */
 export function PublicLeagueHub({ initialTab = 'cards' }: { initialTab?: LeagueHubTab }) {
   const { t, dir } = useLeagueLocale()
@@ -108,6 +115,8 @@ function CardsPanel() {
   const [card, setCard] = useState<CardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<CardLoadError | null>(null)
+  const [declaredMissing, setDeclaredMissing] = useState(false)
+  const [countryMismatch, setCountryMismatch] = useState(false)
   // Live is opt-in per card and resets whenever the selected instrument
   // changes, so switching tabs/instruments can never silently start a paid run.
   const [live, setLive] = useState(false)
@@ -157,9 +166,11 @@ function CardsPanel() {
     void (async () => {
       try {
         const res = await fetch('/api/league/instruments', { credentials: 'include' })
-        const body = (await res.json()) as { categories?: PublicCatalogCategory[] }
+        const body = (await res.json()) as InstrumentsPayload
         if (cancelled) return
         const list = body.categories ?? []
+        setDeclaredMissing(Boolean(body.jurisdiction?.declaredMissing))
+        setCountryMismatch(Boolean(body.jurisdiction?.mismatch))
         setCategories(list)
         const firstId = defaultCatalogCategoryId(list)
         setSelectedCategory(firstId)
@@ -248,6 +259,42 @@ function CardsPanel() {
           </button>
         ))}
       </div>
+
+      {declaredMissing ? (
+        <DeclaredCountryForm
+          onSaved={() => {
+            setDeclaredMissing(false)
+            window.location.reload()
+          }}
+        />
+      ) : null}
+      {countryMismatch && !declaredMissing ? (
+        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+          {t.gating.countryMismatchNotice}
+        </p>
+      ) : null}
+
+      {selectedCategory && active?.promptAllowed ? (
+        <FreeformPromptBox
+          categoryId={selectedCategory}
+          onPickInstrument={(instrument) => {
+            setLive(false)
+            setSelectedInstrument(instrument)
+            setCard(null)
+            setError(null)
+            setLoading(true)
+            void loadCard(instrument, horizon)
+          }}
+          onRoundOpened={(instrument, nextHorizon) => {
+            setHorizon(nextHorizon)
+            setSelectedInstrument(instrument)
+            setLive(false)
+            setError(null)
+            setLoading(true)
+            void loadCard(instrument, nextHorizon)
+          }}
+        />
+      ) : null}
 
       {active?.kind === 'coming_soon' ? (
         <ComingSoonPanel categoryId={active.id} />
@@ -434,6 +481,66 @@ function EmptyInstrumentState({
         {busy ? t.hub.generating : t.hub.generateLive(LIVE_COST)}
       </button>
       {notice ? <p className="mt-3 text-xs text-rose-700">{notice}</p> : null}
+    </div>
+  )
+}
+
+function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
+  const { t } = useLeagueLocale()
+  const [country, setCountry] = useState('KR')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/league/declared-country', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ country }),
+      })
+      if (!res.ok) {
+        setError(t.hub.genericError)
+        return
+      }
+      onSaved()
+    } catch {
+      setError(t.hub.genericError)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+      <p className="text-xs font-semibold text-amber-950">{t.gating.registeredCountryLabel}</p>
+      <p className="mt-1 text-xs leading-relaxed text-amber-900">{t.gating.registeredCountryRequired}</p>
+      <div className="mt-2 flex gap-2">
+        <select
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
+          disabled={busy}
+          className="min-h-[40px] flex-1 rounded-xl border border-amber-200 bg-white px-3 text-xs text-slate-900"
+        >
+          {SIGNUP_COUNTRY_CODES.map((code) => (
+            <option key={code} value={code}>
+              {code}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void save()}
+          className="rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          {t.gating.registeredCountrySave}
+        </button>
+      </div>
+      {error ? <p className="mt-2 text-xs text-rose-700">{error}</p> : null}
     </div>
   )
 }

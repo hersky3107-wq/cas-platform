@@ -1,7 +1,10 @@
 import { LEAGUE_GENERATE_CREDITS } from '../credits'
-import { isCategoryAllowed } from '../jurisdiction/resolve'
+import { visibleChipInstrumentIds } from '../catalog'
 import type { PublicCategoryId } from '../catalog'
+import { leagueGatewayAdmission } from './admission'
 import { validateNormalizerOutput, type PromptNormalizer } from './normalizer'
+import { MAX_CANDIDATE_CHIPS } from './candidate-search'
+import { prefilterRejects } from './prefilter'
 import { refusalMessageForKey, refusalMessageKey } from './refusal-copy'
 import type {
   CategoryAdapter,
@@ -18,8 +21,9 @@ import type {
  *
  * Owns: the order of operations, the normalizer schema gate, the global
  * jurisdiction matrix, cheap pre-LLM filters, the refuse/clarify/ready
- * envelope, and CHARGE ORDERING. It holds zero category knowledge — every
- * judgment call is delegated to the `CategoryAdapter` the chip selects.
+ * envelope, clarify-round cap (2), and CHARGE ORDERING. It holds zero
+ * category knowledge — every judgment call is delegated to the
+ * `CategoryAdapter` the chip selects.
  *
  * ORDER OF OPERATIONS (design steps; 1–2 live in the HTTP route):
  *   1. Auth                        → 401 (route: `resolveLeagueViewer`)
@@ -27,20 +31,18 @@ import type {
  *   3. Adapter pick                → refused `category_unavailable`
  *   4. Jurisdiction (matrix, then adapter overlay) → refused, no charge
  *   4½. Layer-0 pre-filters (no LLM, no DB)        → refused, no charge
- *   5. NORMALIZE (LLM port, stubbed) + strict schema validation
- *   6. Entity resolution + isDecidable → clarify OR refused, no charge
+ *   5. NORMALIZE + strict schema validation
+ *   6. Entity resolution / open-question search / isDecidable
+ *      → clarify (max 2 slot rounds, one question) OR refused, no charge
+ *   6½. Confirm is UNCONDITIONAL — the user must approve the
+ *      server-composed proposition. Two prior slot-clarifies make this
+ *      more necessary, not less. Charge is unreachable without it.
  *   7. composeProposition (server template only)
- *   8. Credits deduct — STRICTLY after a decidable, composed proposition
+ *   8. Credits deduct — STRICTLY after confirm + a decidable compose
  *   9. ready → caller runs ensureRound + generatePredictions
- *
- * A user can never pay for a proposition that turned out ungradeable:
- * `deductCredits` is unreachable before `isDecidable === true` and
- * `composeProposition` returned. Refusal and clarify NEVER charge.
- *
- * NOT in this pass: the real normalizer LLM (stubbed behind
- * `PromptNormalizer`), normalize-quota/caching layers, and any UI wiring —
- * this function is server-side only.
  */
+
+export const MAX_CLARIFY_ROUNDS = 2
 
 export type GatewayRequest = {
   viewer: GatewayViewer
@@ -49,11 +51,15 @@ export type GatewayRequest = {
   raw_text: string
   locale: string
   /**
-   * Answers from a previous `clarify` round-trip, keyed by question slot
-   * (option ids only — chip taps, never free text).
+   * Answers from a previous `clarify` round-trip, keyed by question slot.
+   * Chip ids, or a 직접 입력 mention for `entity_id` — still only a lookup key.
    */
   answered_slots?: Record<string, string>
+  /** How many clarify answers have already been submitted (0 on first send). */
+  clarify_round?: number
 }
+
+export type CandidateSearchHit = { id: string; label_i18n_key: string }
 
 export type GatewayDeps = {
   adapterFor(categoryId: string): CategoryAdapter | null
@@ -64,13 +70,30 @@ export type GatewayDeps = {
    */
   deductCredits(viewer: GatewayViewer, credits: number): Promise<{ ok: boolean }>
   now?: () => Date
+  /**
+   * Open-question candidate search. Optional so unit tests stay LLM-free.
+   * Must refuse (return [] / null) rather than invent names.
+   */
+  searchCandidates?(args: {
+    raw_text: string
+    locale: string
+    adapter: CategoryAdapter
+  }): Promise<CandidateSearchHit[] | null>
 }
 
-/** Layer-0 pre-filter bounds — freeform propositions don't need more. */
-const MIN_RAW_CHARS = 4
-const MAX_RAW_CHARS = 200
+function catalogChipsFor(categoryId: string): { id: string; label_i18n_key: string }[] {
+  return visibleChipInstrumentIds(categoryId).map((id) => ({
+    id,
+    label_i18n_key: `league.catalog.instruments.${id}`,
+  }))
+}
 
-function refused(code: RefusalCode, locale: string, safe_facts?: Record<string, string>): GatewayResult {
+function refused(
+  code: RefusalCode,
+  locale: string,
+  safe_facts?: Record<string, string>,
+  categoryId?: string,
+): GatewayResult {
   const key = refusalMessageKey(code)
   const refusal: Refusal & { message: string } = {
     code,
@@ -78,53 +101,75 @@ function refused(code: RefusalCode, locale: string, safe_facts?: Record<string, 
     message: refusalMessageForKey(key, locale),
     ...(safe_facts ? { safe_facts } : {}),
   }
-  return { status: 'refused', refusal }
+  const chips =
+    (code === 'unsupported_entity' || code === 'prompt_not_available') && categoryId
+      ? catalogChipsFor(categoryId)
+      : undefined
+  return { status: 'refused', refusal, ...(chips && chips.length > 0 ? { catalog_chips: chips } : {}) }
 }
 
-function refusedFrom(refusal: Refusal, locale: string): GatewayResult {
+function refusedFrom(refusal: Refusal, locale: string, categoryId?: string): GatewayResult {
+  const chips =
+    (refusal.code === 'unsupported_entity' || refusal.code === 'prompt_not_available') && categoryId
+      ? catalogChipsFor(categoryId)
+      : undefined
   return {
     status: 'refused',
     refusal: { ...refusal, message: refusalMessageForKey(refusal.message_i18n_key, locale) },
+    ...(chips && chips.length > 0 ? { catalog_chips: chips } : {}),
   }
 }
 
-/**
- * Layer-0 pre-filters: reject junk before any model call. Deliberately
- * returns the SAME refusal shape as a post-normalize refusal so a probing
- * caller cannot distinguish "filtered cheaply" from "normalized and refused".
- */
-function prefilterRejects(rawText: string): boolean {
-  const text = rawText.trim()
-  if (text.length < MIN_RAW_CHARS || text.length > MAX_RAW_CHARS) return true
-  // Must contain Hangul or Latin alphanumerics; rejects emoji-only, URL-junk-only, control chars.
-  if (!/[A-Za-z0-9\uAC00-\uD7A3]/.test(text)) return true
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text)) return true
-  return false
+function roundsUsed(req: GatewayRequest): number {
+  const answered = req.answered_slots ?? {}
+  const slotAnswers = Object.keys(answered).filter((k) => k !== 'entity_confirmed')
+  return Math.max(req.clarify_round ?? 0, slotAnswers.length)
+}
+
+function oneQuestion(question: ClarifyingQuestion): ClarifyingQuestion {
+  const options =
+    question.slot === 'entity_id' ? question.options?.slice(0, MAX_CANDIDATE_CHIPS) : question.options
+  return {
+    ...question,
+    ...(options ? { options } : {}),
+    allow_free_input: question.slot === 'entity_id' ? true : question.allow_free_input,
+  }
+}
+
+function clarifyOrCap(
+  questions: ClarifyingQuestion[],
+  partial: Partial<NormalizeSlots>,
+  used: number,
+  locale: string,
+): GatewayResult {
+  if (used >= MAX_CLARIFY_ROUNDS) return refused('missing_slot', locale)
+  const first = questions[0]
+  if (!first) return refused('missing_slot', locale)
+  return { status: 'clarify', questions: [oneQuestion(first)], partial }
 }
 
 export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): Promise<GatewayResult> {
   const { viewer, locale } = req
   const now = deps.now?.() ?? new Date()
+  const used = roundsUsed(req)
 
   // 3. Adapter pick — an unknown chip and a chip with no adapter yet are the
   //    same product answer: this category is not open for freeform input.
   const adapter = deps.adapterFor(String(req.category_id))
   if (!adapter) return refused('category_unavailable', locale)
 
-  // 4. Jurisdiction: global matrix first (admin bypasses, mirroring
-  //    `viewerCanSeeCategory`), then the adapter's category overlay.
-  if (!viewer.isAdmin && !isCategoryAllowed(adapter.ledger_category, viewer.jurisdiction, now.getTime())) {
-    return refused('jurisdiction_blocked', locale)
-  }
+  // 4. Admission: category matrix, registered-country, then
+  //    promptAllowed(jurisdiction × category). Before prefilter / normalize /
+  //    charge. Admin bypasses. Adapter overlay may still add category rules.
+  const admission = leagueGatewayAdmission(viewer, adapter.category_id, adapter.ledger_category, now.getTime())
+  if (admission) return refused(admission, locale, undefined, adapter.category_id)
   const overlay = adapter.jurisdictionGate(viewer, now)
-  if (overlay) return refusedFrom(overlay, locale)
+  if (overlay) return refusedFrom(overlay, locale, adapter.category_id)
 
   // 4½. Layer-0 pre-filters — zero LLM cost for junk.
   if (prefilterRejects(req.raw_text)) return refused('low_confidence', locale)
 
-  // 5. Normalize (stubbed LLM port) + strict schema gate. Malformed output
-  //    (null from the port, or any schema violation) is a refusal, not a 500.
+  // 5. Normalize + strict schema gate. Malformed output is a refusal, not a 500.
   const rawOutput = await deps.normalizer.normalize({
     raw_text: req.raw_text,
     category_id: adapter.category_id,
@@ -142,8 +187,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   const answered = req.answered_slots ?? {}
 
   // 6a. Entity resolution — server-side resolver only. Priority: an answered
-  //     clarify chip beats the hint, the hint (a mere lookup key) beats the
-  //     transient mention.
+  //     clarify chip (or 직접 입력) beats the hint, the hint beats the mention.
   const mentionCandidates = [answered.entity_id, normalized.entity_id_hint, normalized.entity_mention].filter(
     (v): v is string => typeof v === 'string' && v.trim().length > 0,
   )
@@ -161,14 +205,43 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     if ('need' in resolution && !entityAsk) entityAsk = resolution.need
     if ('refuse' in resolution && !entityRefusal) entityRefusal = resolution.refuse
   }
+
+  const openQuestion =
+    mentionCandidates.length === 0 || normalized.slots.open_question === 'true' || normalized.needs_slot === 'entity_id'
+
+  if (!entity && openQuestion && mentionCandidates.length === 0 && deps.searchCandidates) {
+    const hits = await deps.searchCandidates({ raw_text: req.raw_text, locale, adapter })
+    if (!hits || hits.length === 0) return refused('low_confidence', locale)
+    return clarifyOrCap(
+      [
+        {
+          slot: 'entity_id',
+          prompt_i18n_key: 'league.gateway.clarify.entity',
+          options: hits.map((h) => ({ id: h.id, label_i18n_key: h.label_i18n_key })),
+          allow_free_input: true,
+        },
+      ],
+      { horizon: normalized.horizon },
+      used,
+      locale,
+    )
+  }
+
   if (!entity) {
-    if (entityAsk) return { status: 'clarify', questions: [entityAsk], partial: { horizon: normalized.horizon } }
-    return refusedFrom(entityRefusal ?? { code: 'unsupported_entity', message_i18n_key: refusalMessageKey('unsupported_entity') }, locale)
+    if (entityAsk) return clarifyOrCap([entityAsk], { horizon: normalized.horizon }, used, locale)
+    return refusedFrom(
+      entityRefusal ?? { code: 'unsupported_entity', message_i18n_key: refusalMessageKey('unsupported_entity') },
+      locale,
+      adapter.category_id,
+    )
   }
 
   // 6b. Assemble slots: normalizer fields + clarify answers. Horizon answers
   //     are enum-gated the same way the normalizer's horizon was.
-  const answeredHorizon = answered.horizon === '1d' || answered.horizon === '1w' || answered.horizon === '1m' || answered.horizon === '3m' ? answered.horizon : null
+  const answeredHorizon =
+    answered.horizon === '1d' || answered.horizon === '1w' || answered.horizon === '1m' || answered.horizon === '3m'
+      ? answered.horizon
+      : null
   const slots: NormalizeSlots = {
     category_id: adapter.category_id,
     entity_id: entity.entity_id,
@@ -181,36 +254,36 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     confidence: normalized.confidence,
   }
 
-  // 6c. Decidability — the charge gate. Missing slots become clarify chips.
+  // 6c. Decidability — the charge gate. Missing slots become one clarify chip.
   if (!adapter.isDecidable(slots)) {
     const questions = adapter.clarifyingQuestions(slots)
-    if (questions.length > 0) return { status: 'clarify', questions, partial: slots }
+    if (questions.length > 0) return clarifyOrCap(questions, slots, used, locale)
     return refused('missing_slot', locale)
   }
 
-  // 6d. Mid-band confidence (0.55–0.85): decidable but not confidently parsed
-  //     → one confirm chip instead of a silent best-effort paid round.
-  //     `entity_confirmed` arrives via answered_slots on the retry.
-  if (slots.confidence < 0.85 && slots.slots.entity_confirmed !== 'true') {
+  // 6½. Confirm is unconditional. The 2-round cap is for missing slots
+  //     (entity / horizon). Confirm is the regulatory approval of the
+  //     server-composed proposition and is never skipped.
+  if (slots.slots.entity_confirmed !== 'true') {
+    const preview = adapter.composeProposition(slots, now)
     return {
       status: 'clarify',
       questions: [
-        {
+        oneQuestion({
           slot: 'entity_confirmed',
           prompt_i18n_key: 'league.gateway.clarify.confirm_entity',
           options: [{ id: 'true', label_i18n_key: 'league.gateway.clarify.option.confirm_yes' }],
-        },
+        }),
       ],
       partial: slots,
+      preview_proposition: preview.proposition_text,
     }
   }
 
   // 7. Server-composed proposition — the only text users/models ever see.
   const round = adapter.composeProposition(slots, now)
 
-  // 8. Charge — strictly after isDecidable + compose. Refusal/clarify paths
-  //    above are all unreachable from here; nothing before this line spends
-  //    user credits.
+  // 8. Charge — strictly after isDecidable + compose.
   const charge = await deps.deductCredits(viewer, LEAGUE_GENERATE_CREDITS)
   if (!charge.ok) return refused('insufficient_credits', locale)
 

@@ -143,6 +143,9 @@ export function tuningForViewer(raw: GenerateTuning, isAdmin: boolean): Generate
  */
 export const LEAGUE_GENERATE_RATE_RULE: RateLimitRule = { limit: 5, windowMs: 60_000 }
 
+/** Freeform gateway: clarify taps need more room than a paid generate. */
+export const LEAGUE_GATEWAY_RATE_RULE: RateLimitRule = { limit: 20, windowMs: 60_000 }
+
 /** Deep modes cost 50/70 credits and run long multi-model pipelines — tighter. */
 export const LEAGUE_DEEP_RATE_RULE: RateLimitRule = { limit: 3, windowMs: 60_000 }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ensureWelcomeCreditsForUser } from '@/lib/credits-server'
+import { normalizeSignupCountry } from '@/lib/league/jurisdiction/signup-countries'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
@@ -70,6 +71,15 @@ export async function POST(req: Request) {
         .update({ ui_locale: detectedLocale })
         .eq('id', user.id)
         .is('ui_locale', null)
+    }
+
+    const declared = normalizeSignupCountry(body?.declared_country)
+    if (declared) {
+      await supabaseAdmin
+        .from('users')
+        .update({ declared_country: declared })
+        .eq('id', user.id)
+        .is('declared_country', null)
     }
 
     return NextResponse.json({

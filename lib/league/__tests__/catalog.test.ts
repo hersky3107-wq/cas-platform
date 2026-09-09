@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   CATALOG_INSTRUMENT_IDS,
@@ -6,6 +8,8 @@ import {
   defaultCatalogCategoryId,
   buildCatalogRankedRoundInput,
   findCatalogInstrument,
+  visibleChipEntries,
+  type CatalogInstrument,
 } from '../catalog'
 import { LEAGUE_LOCALES, LEAGUE_SELECTABLE_LOCALES } from '../i18n/locales'
 import { getLeagueUiPack } from '../i18n/dictionary'
@@ -66,6 +70,41 @@ describe('PUBLIC_CATALOG', () => {
   it('defaults the Cards tab to stocks when that category is visible', () => {
     expect(defaultCatalogCategoryId(PUBLIC_CATALOG)).toBe('stocks')
     expect(defaultCatalogCategoryId(PUBLIC_CATALOG.filter((c) => c.id !== 'stocks'))).toBe('crypto')
+  })
+
+  it('separates catalog membership from chip visibility', () => {
+    for (const category of PUBLIC_CATALOG) {
+      for (const entry of category.instruments) {
+        expect(entry.chip_visible).toBe(true)
+      }
+    }
+    const hidden: CatalogInstrument = {
+      instrument: 'HIDDEN-ROTATED',
+      resolution_rule: 'keeps historical rounds',
+      chip_visible: false,
+    }
+    const shown: CatalogInstrument = {
+      instrument: 'SHOWN',
+      resolution_rule: 'on the rail',
+      chip_visible: true,
+    }
+    expect(visibleChipEntries({ ...PUBLIC_CATALOG[2]!, instruments: [hidden, shown] }).map((i) => i.instrument)).toEqual(
+      ['SHOWN'],
+    )
+    expect(findCatalogInstrument('AAPL')).not.toBeNull()
+    expect(CATALOG_INSTRUMENT_IDS).toContain('AAPL')
+    expect(buildCatalogRankedRoundInput('AAPL', '1d', new Date('2026-08-24T09:00:00.000Z'))?.instrument).toBe('AAPL')
+  })
+
+  it('grading, record room, and generate auth stay on catalog membership — not chip visibility', () => {
+    const room = readFileSync(join(__dirname, '../record-room.ts'), 'utf8')
+    const access = readFileSync(join(__dirname, '../public-access.ts'), 'utf8')
+    const policy = readFileSync(join(__dirname, '../access-policy.ts'), 'utf8')
+    expect(room).not.toMatch(/chip_visible/)
+    expect(access).toContain('CATALOG_INSTRUMENT_IDS')
+    expect(access).toContain('isCuratedInstrument')
+    expect(policy).toContain('findCatalogInstrument')
+    expect(policy).not.toMatch(/chip_visible/)
   })
 })
 

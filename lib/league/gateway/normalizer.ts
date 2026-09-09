@@ -3,26 +3,20 @@ import { isUiHorizon, type UiHorizon } from '../horizon'
 import type { PropositionKind } from './types'
 
 /**
- * Normalizer PORT — the LLM call itself is NOT implemented in this pass.
+ * Normalizer PORT + schema gate.
  *
- * CONTRACT (what the future implementation must honor):
- *  - Input: the raw user text, the chip the user is on, and their locale.
- *    Raw text is an input to the normalizer ONLY — it is quarantined for
- *    audit, never echoed to the user, never forwarded to the 40 models.
- *  - Output: `normalize` resolves to the JSON-parsed structured object below
- *    (as `unknown` — the shell trusts NOTHING until `validateNormalizerOutput`
- *    passes it), or `null` when the model failed to produce parseable JSON
- *    after the implementation's ONE internal retry. `null` becomes a
- *    `low_confidence` refusal upstream; a prompt that reliably breaks the
- *    parser burns its own quota and nothing else.
- *  - The implementation must place user text in a delimited untrusted-data
- *    block (mitigation) — but the DEFENSE is validation here: every enum is
- *    checked against server lists, confidence is clamped, unknown fields are
- *    dropped, and `entity_id_hint` is only ever a lookup key into the
- *    adapter's server-side resolver. A hostile prompt can at worst produce a
- *    wrong lookup key, never a wrong entity and never output text.
- *  - Planned model: gemini-3.5-flash (already the research director), with a
- *    cheap roster fallback; est. $0.0001–0.001/call, absorbed pre-charge.
+ * Live implementation: `createLlmNormalizer` / `createLiveNormalizer`
+ * (gemini-3.5-flash-lite, one JSON retry). Tests keep `createStubNormalizer`.
+ *
+ * CONTRACT:
+ *  - Input: raw user text + the chip the user is on + locale.
+ *    The category is ALWAYS known; this never routes.
+ *  - Output: JSON-parsed structured object as `unknown`, or `null` after
+ *    one malformed-JSON retry. The shell trusts NOTHING until
+ *    `validateNormalizerOutput` builds a fresh object.
+ *  - User text sits in a delimited untrusted-data block (mitigation).
+ *    The DEFENSE is this validator: enums, clamped confidence, dropped
+ *    unknown fields, `entity_id_hint` as a lookup key only.
  */
 export type NormalizerRequest = {
   raw_text: string

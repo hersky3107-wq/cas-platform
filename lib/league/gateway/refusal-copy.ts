@@ -82,8 +82,20 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     en: 'No official source exists to verify the result, so this question cannot be opened.',
   },
   unsupported_entity: {
-    ko: '지원하지 않는 종목입니다. 현재 카탈로그에 있는 종목만 예측할 수 있습니다.',
-    en: 'This instrument is not supported. Only instruments in the current catalog can be predicted.',
+    ko: '이 카테고리에서 지금 열 수 있는 대상은 아래와 같습니다.',
+    en: 'That subject is not in this category’s open list. Pick one of the instruments below.',
+  },
+  prompt_not_available: {
+    ko: '이 지역에서는 직접 입력으로 이 카테고리 질문을 열 수 없습니다. 아래 종목 칩을 이용해 주세요.',
+    en: 'Typed questions are not available for this category in your region. Please use the instrument chips.',
+  },
+  registered_country_missing: {
+    ko: '등록 국가가 없습니다. 계정에 거주 국가를 등록한 뒤에 이용해 주세요.',
+    en: 'Your account has no registered country. Register your country of residence, then try again.',
+  },
+  country_mismatch: {
+    ko: '등록 국가와 접속 국가가 다릅니다. 두 지역 중 더 엄격한 기준을 적용하며, 리그 이용은 가능합니다.',
+    en: 'Your registered country and connection country differ. The stricter of the two applies; the league stays available.',
   },
   horizon_incompatible: {
     ko: '이 종목은 선택하신 기간으로는 예측할 수 없습니다. 다른 기간을 선택해 주세요.',

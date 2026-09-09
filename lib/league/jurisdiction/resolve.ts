@@ -1,6 +1,7 @@
 import { groupForCountry } from './country-groups'
 import { isPoliticsBlackoutActive } from './election-blackout'
 import { isCategoryAllowedForGroup } from './matrix'
+import { isPromptAllowedForGroup } from './prompt-matrix'
 import type { JurisdictionGroup } from './types'
 
 /**
@@ -68,4 +69,27 @@ export function isCategoryAllowed(category: string, input: JurisdictionInput, at
   }
 
   return allowed
+}
+
+/**
+ * Is the freeform PROMPT allowed for `category` (public chip id, e.g. `stocks`)
+ * under the same STRICTER-OF-THE-TWO rule as `isCategoryAllowed`?
+ *
+ * Never silently picks declared-or-IP. When both signals are present, BOTH
+ * groups must allow the prompt. A traveller is not hard-blocked from the
+ * league — chips still follow the category matrix — but the prompt takes
+ * the stricter cell.
+ */
+export function isPromptAllowed(category: string, input: JurisdictionInput): boolean {
+  const hasDeclared = Boolean(input.declaredCountry?.trim())
+  const hasIp = Boolean(input.ipCountry?.trim())
+
+  if (!hasDeclared && !hasIp) {
+    return isPromptAllowedForGroup('UNKNOWN', category)
+  }
+
+  const { declaredGroup, ipGroup } = resolveJurisdictionGroups(input)
+  const declaredOk = hasDeclared ? isPromptAllowedForGroup(declaredGroup, category) : true
+  const ipOk = hasIp ? isPromptAllowedForGroup(ipGroup, category) : true
+  return declaredOk && ipOk
 }

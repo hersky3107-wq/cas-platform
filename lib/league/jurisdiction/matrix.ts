@@ -107,10 +107,10 @@ export const CATEGORY_JURISDICTION_MATRIX: Partial<
     politics_election: true,
     sports: true,
     entertainment_awards: true,
-    memecoin: true,
     real_estate: true,
     tech: true,
     ai_models: true,
+    // memecoin: OFF in Korea (blocked as a category, not just the prompt)
   },
   JP: {
     stock: true,

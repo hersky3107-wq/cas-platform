@@ -31,8 +31,14 @@ const DEAD_IO: PriceSeriesIo = {
 
 const NOW = new Date('2026-08-28T09:00:00.000Z')
 
-const KR_VIEWER: GatewayViewer = {
+const US_VIEWER: GatewayViewer = {
   userId: 'user-1',
+  isAdmin: false,
+  jurisdiction: { declaredCountry: 'US', ipCountry: 'US' },
+}
+
+const KR_VIEWER: GatewayViewer = {
+  userId: 'user-kr',
   isAdmin: false,
   jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' },
 }
@@ -107,7 +113,7 @@ function harness(opts: {
 
 function request(over: Partial<GatewayRequest> = {}): GatewayRequest {
   return {
-    viewer: KR_VIEWER,
+    viewer: US_VIEWER,
     category_id: 'stocks',
     raw_text: '애플 내일 오를까?',
     locale: 'ko',
@@ -115,10 +121,22 @@ function request(over: Partial<GatewayRequest> = {}): GatewayRequest {
   }
 }
 
+function confirmed(over: Partial<GatewayRequest> = {}): GatewayRequest {
+  const extra = over.answered_slots ?? {}
+  return request({ ...over, answered_slots: { ...extra, entity_confirmed: 'true' } })
+}
+
 describe('gateway shell — ready path and charge ordering', () => {
   it('returns ready with the server-composed catalog round and charges exactly once', async () => {
     const h = harness()
-    const result = await runLeagueGateway(request(), h.deps)
+    const preview = await runLeagueGateway(request(), h.deps)
+    expect(preview.status).toBe('clarify')
+    if (preview.status !== 'clarify') throw new Error('unreachable')
+    expect(preview.questions[0].slot).toBe('entity_confirmed')
+    expect(preview.preview_proposition).toBe(buildCatalogRankedRoundInput('AAPL', '1d', NOW)?.proposition_text)
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+
+    const result = await runLeagueGateway(confirmed(), h.deps)
 
     expect(result.status).toBe('ready')
     if (result.status !== 'ready') throw new Error('unreachable')
@@ -132,7 +150,7 @@ describe('gateway shell — ready path and charge ordering', () => {
 
     // Charge is called once, and strictly AFTER isDecidable and compose.
     expect(h.chargeSpy).toHaveBeenCalledTimes(1)
-    expect(h.chargeSpy).toHaveBeenCalledWith(KR_VIEWER, LEAGUE_GENERATE_CREDITS)
+    expect(h.chargeSpy).toHaveBeenCalledWith(US_VIEWER, LEAGUE_GENERATE_CREDITS)
     expect(h.log.indexOf('charge')).toBeGreaterThan(h.log.indexOf('isDecidable'))
     expect(h.log.indexOf('charge')).toBeGreaterThan(h.log.indexOf('compose'))
     expect(h.log.filter((e) => e === 'charge')).toHaveLength(1)
@@ -140,7 +158,7 @@ describe('gateway shell — ready path and charge ordering', () => {
 
   it('a failed deduction refuses with insufficient_credits (after compose, nothing generated)', async () => {
     const h = harness({ chargeOk: false })
-    const result = await runLeagueGateway(request(), h.deps)
+    const result = await runLeagueGateway(confirmed(), h.deps)
     expect(result).toMatchObject({ status: 'refused', refusal: { code: 'insufficient_credits' } })
     if (result.status === 'refused') expect(result.refusal.message).toContain('크레딧')
   })
@@ -190,7 +208,7 @@ describe('gateway shell — refusals never charge and never reach the normalizer
 
   it('layer-0 pre-filters reject junk with the same envelope as a normalize refusal, zero LLM cost', async () => {
     const h = harness()
-    for (const junk of ['오?', '!!!!????', 'x'.repeat(300), '🚀🚀🚀🚀🚀']) {
+    for (const junk of ['오?', '!!!!????', 'x'.repeat(300), '🚀🚀🚀🚀🚀', 'https://evil.example/aaaa', 'aaaaaaaaaa']) {
       const result = await runLeagueGateway(request({ raw_text: junk }), h.deps)
       expect(result).toMatchObject({ status: 'refused', refusal: { code: 'low_confidence' } })
     }
@@ -213,13 +231,93 @@ describe('gateway shell — refusals never charge and never reach the normalizer
     expect(h.chargeSpy).not.toHaveBeenCalled()
   })
 
-  it('unresolvable entity → unsupported_entity with safe candidate facts, no charge', async () => {
+  it('unresolvable entity → unsupported_entity with currently-open chips, no charge', async () => {
     const h = harness({
       normalizerOutput: { ...APPLE_1D_OUTPUT, entity_mention: '삼성전자', entity_id_hint: '005930' },
     })
     const result = await runLeagueGateway(request({ raw_text: '삼성전자 내일 오를까?' }), h.deps)
     expect(result).toMatchObject({ status: 'refused', refusal: { code: 'unsupported_entity' } })
+    if (result.status !== 'refused') throw new Error('unreachable')
+    expect(result.refusal.message).toMatch(/아래/)
+    expect(result.catalog_chips?.map((c) => c.id)).toEqual(['AAPL', 'NVDA', 'TSLA'])
     expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('gateway shell — jurisdiction × category prompt gate (before normalize / LLM / charge)', () => {
+  it('KR financial category is refused before normalization, before any LLM call, and before any charge', async () => {
+    const h = harness()
+    const result = await runLeagueGateway(request({ viewer: KR_VIEWER, raw_text: '애플 내일 오를까?' }), h.deps)
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'prompt_not_available' } })
+    if (result.status === 'refused') {
+      expect(result.refusal.message).toContain('직접 입력')
+      expect(result.catalog_chips?.map((c) => c.id)).toEqual(['AAPL', 'NVDA', 'TSLA'])
+    }
+    expect(h.log).not.toContain('normalize')
+    expect(h.normalizeSpy).not.toHaveBeenCalled()
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('missing registered country refuses before normalize even when IP would allow the category', async () => {
+    const h = harness()
+    const result = await runLeagueGateway(
+      request({
+        viewer: { userId: 'u-null', isAdmin: false, jurisdiction: { declaredCountry: null, ipCountry: 'US' } },
+      }),
+      h.deps,
+    )
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'registered_country_missing' } })
+    expect(h.normalizeSpy).not.toHaveBeenCalled()
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('applies the stricter of registered vs IP — a US account on a KR IP cannot use the stocks prompt', async () => {
+    const h = harness()
+    const result = await runLeagueGateway(
+      request({
+        viewer: { userId: 'u-travel', isAdmin: false, jurisdiction: { declaredCountry: 'US', ipCountry: 'KR' } },
+      }),
+      h.deps,
+    )
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'prompt_not_available' } })
+    expect(h.normalizeSpy).not.toHaveBeenCalled()
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not hard-block a traveller when both jurisdictions allow the prompt', async () => {
+    const h = harness()
+    const preview = await runLeagueGateway(
+      request({
+        viewer: { userId: 'u-jp', isAdmin: false, jurisdiction: { declaredCountry: 'US', ipCountry: 'JP' } },
+      }),
+      h.deps,
+    )
+    expect(preview.status).toBe('clarify')
+    expect(h.normalizeSpy).toHaveBeenCalled()
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('memecoin is blocked entirely in Korea before normalize or charge', async () => {
+    const memecoin = createMemecoinAdapter(DEAD_IO)
+    const normalizeSpy = vi.fn()
+    const chargeSpy = vi.fn(async () => ({ ok: true }))
+    const result = await runLeagueGateway(
+      {
+        viewer: KR_VIEWER,
+        category_id: 'memecoin',
+        raw_text: '도지코인 내일 오를까?',
+        locale: 'ko',
+      },
+      {
+        adapterFor: (id) => (id === 'memecoin' ? memecoin : null),
+        normalizer: { normalize: normalizeSpy },
+        deductCredits: chargeSpy,
+        now: () => NOW,
+      },
+    )
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'jurisdiction_blocked' } })
+    expect(normalizeSpy).not.toHaveBeenCalled()
+    expect(chargeSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -237,7 +335,7 @@ describe('gateway shell — clarify round-trips', () => {
   it('an answered horizon chip completes the round on retry', async () => {
     const h = harness({ normalizerOutput: { ...APPLE_1D_OUTPUT, horizon: null } })
     const result = await runLeagueGateway(
-      request({ raw_text: '애플 오를까?', answered_slots: { horizon: '1w' } }),
+      confirmed({ raw_text: '애플 오를까?', answered_slots: { horizon: '1w' } }),
       h.deps,
     )
     expect(result.status).toBe('ready')
@@ -272,9 +370,18 @@ describe('gateway shell — clarify round-trips', () => {
       request({ raw_text: '테슬 내일 오를까?', answered_slots: { entity_id: 'TSLA' } }),
       h.deps,
     )
-    expect(second.status).toBe('ready')
-    if (second.status !== 'ready') throw new Error('unreachable')
-    expect(second.round.instrument).toBe('TSLA')
+    expect(second.status).toBe('clarify')
+    if (second.status !== 'clarify') throw new Error('unreachable')
+    expect(second.questions[0].slot).toBe('entity_confirmed')
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+
+    const third = await runLeagueGateway(
+      confirmed({ raw_text: '테슬 내일 오를까?', answered_slots: { entity_id: 'TSLA' } }),
+      h.deps,
+    )
+    expect(third.status).toBe('ready')
+    if (third.status !== 'ready') throw new Error('unreachable')
+    expect(third.round.instrument).toBe('TSLA')
   })
 })
 
@@ -305,7 +412,10 @@ describe('gateway shell — normalizer output is never trusted', () => {
       },
     })
     // Hint fails resolution, mention still resolves — exactly the designed fallback.
-    const result = await runLeagueGateway(request(), h.deps)
+    const preview = await runLeagueGateway(request(), h.deps)
+    expect(preview.status).toBe('clarify')
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+    const result = await runLeagueGateway(confirmed(), h.deps)
     expect(result.status).toBe('ready')
     if (result.status !== 'ready') throw new Error('unreachable')
     expect(result.round.instrument).toBe('AAPL')
@@ -316,6 +426,83 @@ describe('gateway shell — normalizer output is never trusted', () => {
     const h = harness({ normalizerOutput: { ...APPLE_1D_OUTPUT, category_id: 'politics_election' } })
     const result = await runLeagueGateway(request(), h.deps)
     expect(result).toMatchObject({ status: 'refused', refusal: { code: 'low_confidence' } })
+  })
+})
+
+describe('gateway shell — clarify cap, one question, open-question search', () => {
+  it('after two clarify answers a still-undecidable parse refuses', async () => {
+    const h = harness({ normalizerOutput: { ...APPLE_1D_OUTPUT, horizon: null } })
+    const result = await runLeagueGateway(
+      request({ raw_text: '애플 오를까?', answered_slots: { note: 'x', extra: 'y' }, clarify_round: 2 }),
+      h.deps,
+    )
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'missing_slot' } })
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('returns a single question and caps options at 3', async () => {
+    const h = harness({
+      normalizerOutput: { ...APPLE_1D_OUTPUT, entity_mention: '', entity_id_hint: null, slots: { open_question: 'true' } },
+    })
+    h.deps.searchCandidates = async () => [
+      { id: 'AAPL', label_i18n_key: 'league.catalog.instruments.AAPL' },
+      { id: 'NVDA', label_i18n_key: 'league.catalog.instruments.NVDA' },
+      { id: 'TSLA', label_i18n_key: 'league.catalog.instruments.TSLA' },
+      { id: 'EXTRA', label_i18n_key: 'league.catalog.instruments.EXTRA' },
+    ]
+    const result = await runLeagueGateway(request({ raw_text: '어떤 주식 오를까?' }), h.deps)
+    expect(result.status).toBe('clarify')
+    if (result.status !== 'clarify') throw new Error('unreachable')
+    expect(result.questions).toHaveLength(1)
+    expect(result.questions[0].allow_free_input).toBe(true)
+    expect(result.questions[0].options?.map((o) => o.id)).toEqual(['AAPL', 'NVDA', 'TSLA'])
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('refuses when search cannot establish a candidate set', async () => {
+    const h = harness({
+      normalizerOutput: { ...APPLE_1D_OUTPUT, entity_mention: '', entity_id_hint: null, slots: { open_question: 'true' } },
+    })
+    h.deps.searchCandidates = async () => []
+    const result = await runLeagueGateway(request({ raw_text: '누가 이겨?' }), h.deps)
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'low_confidence' } })
+  })
+
+  it('still asks to confirm after two slot-clarifies — never charges without it', async () => {
+    const h = harness({ normalizerOutput: { ...APPLE_1D_OUTPUT, confidence: 0.7 } })
+    const result = await runLeagueGateway(
+      request({ answered_slots: { entity_id: 'AAPL', horizon: '1d' }, clarify_round: 2 }),
+      h.deps,
+    )
+    expect(result.status).toBe('clarify')
+    if (result.status !== 'clarify') throw new Error('unreachable')
+    expect(result.questions[0].slot).toBe('entity_confirmed')
+    expect(result.preview_proposition).toContain('AAPL')
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('no path reaches credit deduction without an explicit confirm', async () => {
+    const cases: GatewayRequest[] = [
+      request(),
+      request({ answered_slots: { horizon: '1d' } }),
+      request({ answered_slots: { entity_id: 'AAPL' } }),
+      request({ answered_slots: { entity_id: 'AAPL', horizon: '1d' }, clarify_round: 2 }),
+      request({
+        raw_text: '애플 오를까?',
+        answered_slots: { horizon: '1w' },
+      }),
+    ]
+    for (const req of cases) {
+      const h = harness()
+      const result = await runLeagueGateway(req, h.deps)
+      expect(result.status, JSON.stringify(req.answered_slots)).not.toBe('ready')
+      expect(h.chargeSpy, JSON.stringify(req.answered_slots)).not.toHaveBeenCalled()
+    }
+
+    const charged = harness()
+    const ready = await runLeagueGateway(confirmed(), charged.deps)
+    expect(ready.status).toBe('ready')
+    expect(charged.chargeSpy).toHaveBeenCalledTimes(1)
   })
 })
 

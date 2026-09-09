@@ -62,6 +62,9 @@ export type RefusalCode =
   | 'horizon_incompatible'
   | 'price_or_earnings'
   | 'vague_claim'
+  | 'prompt_not_available'
+  | 'registered_country_missing'
+  | 'country_mismatch'
 
 /**
  * Adapter id: public chips plus ledger-only adapters that are not on the
@@ -94,8 +97,10 @@ export type ClarifyingQuestion = {
   slot: string
   /** i18n key for the user-facing question — copy lives in `refusal-copy.ts`. */
   prompt_i18n_key: string
-  /** Chip answers when the option set is finite. */
+  /** Chip answers when the option set is finite. Capped at 3 by the shell. */
   options?: { id: string; label_i18n_key: string }[]
+  /** Open-question / entity clarifies offer a 직접 입력 field (still a lookup key). */
+  allow_free_input?: boolean
 }
 
 export type Refusal = {
@@ -273,5 +278,16 @@ export type GatewayResult =
       charged_credits: number
       grade_sources: readonly [GradeSource, GradeSource, GradeSource]
     }
-  | { status: 'clarify'; questions: ClarifyingQuestion[]; partial: Partial<NormalizeSlots> }
-  | { status: 'refused'; refusal: Refusal & { message: string } }
+  | {
+      status: 'clarify'
+      questions: ClarifyingQuestion[]
+      partial: Partial<NormalizeSlots>
+      /** Set on the confirm step — the server-composed text the user is approving. */
+      preview_proposition?: string
+    }
+    | {
+        status: 'refused'
+        refusal: Refusal & { message: string }
+        /** Currently-open (chip-visible) instruments — a next step, not a dead end. */
+        catalog_chips?: { id: string; label_i18n_key: string }[]
+      }

@@ -1,4 +1,4 @@
-import { buildCatalogRankedRoundInput, catalogById } from '../../catalog'
+import { buildCatalogRankedRoundInput, catalogById, visibleChipEntries } from '../../catalog'
 import { isUiHorizon, UI_HORIZONS } from '../../horizon'
 import { refusalMessageKey } from '../refusal-copy'
 import { buildPriceSeriesPacket, type PriceSeriesIo } from './price-series-packet'
@@ -75,6 +75,11 @@ function stockInstruments(): readonly string[] {
   return (catalogById('stocks')?.instruments ?? []).map((i) => i.instrument)
 }
 
+function stockChipIds(): readonly string[] {
+  const cat = catalogById('stocks')
+  return cat ? visibleChipEntries(cat).map((i) => i.instrument) : []
+}
+
 function normalizeMention(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '')
 }
@@ -136,7 +141,7 @@ export function createStocksAdapter(io: PriceSeriesIo): CategoryAdapter {
         questions.push({
           slot: 'entity_id',
           prompt_i18n_key: 'league.gateway.clarify.entity',
-          options: stockInstruments().map((t) => ({ id: t, label_i18n_key: `league.catalog.instruments.${t}` })),
+          options: stockChipIds().map((t) => ({ id: t, label_i18n_key: `league.catalog.instruments.${t}` })),
         })
       }
       if (!partial.horizon) questions.push(HORIZON_QUESTION)

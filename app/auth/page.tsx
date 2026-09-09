@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/db/supabase'
+import { SIGNUP_COUNTRY_CODES } from '@/lib/league/jurisdiction/signup-countries'
 import { getAuthCallbackUrl } from '@/lib/supabase/auth-urls'
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -42,9 +43,19 @@ function AuthForm() {
   const returnPath = safeRedirectPath(searchParams.get('redirectTo'))
 
   const [email, setEmail] = useState('')
+  const [country, setCountry] = useState('')
   const [message, setMessage] = useState(errorFromUrl ?? '')
   const [googleLoading, setGoogleLoading] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
+
+  function requireCountry(): boolean {
+    if (!country) {
+      setMessage('거주 국가는 필수입니다. 허위로 등록하면 이용 제한이나 계정 문제가 생길 수 있습니다.')
+      return false
+    }
+    window.sessionStorage.setItem('cas.declared_country', country)
+    return true
+  }
 
   const authCallbackBase = getAuthCallbackUrl(
     typeof window !== 'undefined' ? window.location.origin : undefined
@@ -54,6 +65,7 @@ function AuthForm() {
     : authCallbackBase
 
   async function handleGoogleLogin() {
+    if (!requireCountry()) return
     setMessage('')
     setGoogleLoading(true)
 
@@ -71,6 +83,7 @@ function AuthForm() {
   }
 
   async function handleLogin() {
+    if (!requireCountry()) return
     if (!email.trim()) {
       setMessage('Enter your email address.')
       return
@@ -106,6 +119,30 @@ function AuthForm() {
         </p>
         <h1 className="mt-2 text-2xl font-semibold text-white">Sign in</h1>
         <p className="mt-1 text-sm text-slate-400">Continue with Google or a magic link</p>
+
+        <label htmlFor="auth-country" className="mt-6 block text-xs font-semibold text-slate-300">
+          거주 국가
+        </label>
+        <select
+          id="auth-country"
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
+          disabled={googleLoading || emailLoading}
+          required
+          className="mt-1 w-full rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-sm text-white focus:border-cyan-300/55 focus:outline-none disabled:opacity-60"
+        >
+          <option value="" className="bg-[#131c35] text-slate-900">
+            Select country / 국가 선택
+          </option>
+          {SIGNUP_COUNTRY_CODES.map((code) => (
+            <option key={code} value={code} className="bg-[#131c35] text-slate-900">
+              {code}
+            </option>
+          ))}
+        </select>
+        <p className="mt-2 text-xs leading-relaxed text-slate-400">
+          거주 국가는 필수입니다. 허위로 등록하면 이용 제한이나 계정 문제가 생길 수 있습니다.
+        </p>
 
         <button
           type="button"

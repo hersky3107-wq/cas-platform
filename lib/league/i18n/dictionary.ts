@@ -399,6 +399,10 @@ export type LeagueUiPack = {
     unavailable: string
     /** ToS-style note: users must use their real jurisdiction. */
     tosNote: string
+    registeredCountryLabel: string
+    registeredCountryRequired: string
+    registeredCountrySave: string
+    countryMismatchNotice: string
   }
   languageToggleLabel: string
   /**
@@ -509,6 +513,33 @@ export type LeagueUiPack = {
     deepOpenTitle: string
     deepDebateTitle: string
     balance: (credits: number) => string
+  }
+  /** Freeform box under the category chips. */
+  gateway: {
+    placeholder: Record<PublicCategoryId, string>
+    submit: string
+    retry: string
+    refuseTitle: string
+    freeInput: string
+    freeInputPlaceholder: string
+    confirmYes: string
+    askEntity: string
+    askHorizon: string
+    askConfirm: string
+    opening: string
+    refusal: {
+      low_confidence: string
+      category_unavailable: string
+      jurisdiction_blocked: string
+      missing_slot: string
+      unsupported_entity: string
+      insufficient_credits: string
+      ungradeable: string
+      prompt_not_available: string
+      registered_country_missing: string
+      country_mismatch: string
+      generic: string
+    }
   }
 }
 
@@ -803,6 +834,12 @@ const en: LeagueUiPack = {
   gating: {
     unavailable: 'This prediction category isn\u2019t available in your region yet.',
     tosNote: 'Availability is based on your account\u2019s declared country and detected location. You must use your real jurisdiction \u2014 attempting to bypass this (e.g. via VPN) shifts responsibility for any resulting misuse to you.',
+    registeredCountryLabel: 'Country of residence',
+    registeredCountryRequired:
+      'Country of residence is required. A false declaration may restrict your access or cause account problems.',
+    registeredCountrySave: 'Save country',
+    countryMismatchNotice:
+      'Your registered country and connection country differ. The stricter of the two applies; the league stays available.',
   },
   languageToggleLabel: 'Language',
   leaderboard: {
@@ -880,6 +917,46 @@ const en: LeagueUiPack = {
       'Unscored commentary \u2014 not a league prediction. Does not enter the leaderboard or track record.',
     deepOpenTitle: 'Open analysis',
     deepDebateTitle: 'Pro/con debate',
+  },
+  gateway: {
+    placeholder: {
+      sports: 'Will this named team win tonight?',
+      crypto: 'Will Bitcoin go up this week?',
+      stocks: 'Will Apple close higher tomorrow?',
+      fx: 'Will EUR/USD rise this week?',
+      gold_metals: 'Will gold close higher this month?',
+      index_etf: 'Will SPY close higher tomorrow?',
+      commodities_energy: 'Will WTI oil rise this week?',
+      politics_election: 'Will this named candidate win?',
+      entertainment: 'Will this named title win Best Picture?',
+      memecoin: 'Will Dogecoin close higher tomorrow?',
+      real_estate: 'Will VNQ close higher this month?',
+      macro_econ: 'Will US CPI print above 3% this month?',
+    },
+    submit: 'Ask',
+    retry: 'Edit and retry',
+    refuseTitle: 'This question could not be opened',
+    freeInput: 'Type a name',
+    freeInputPlaceholder: 'Named subject',
+    confirmYes: 'Yes, that\u2019s right',
+    askEntity: 'Which subject?',
+    askHorizon: 'Which horizon?',
+    askConfirm: 'Is this the subject you meant?',
+    opening: 'Opening the round\u2026',
+    refusal: {
+      low_confidence: 'This question could not be opened. Name one subject and a yes/no, then retry.',
+      category_unavailable: 'This category is not open for typed questions yet.',
+      jurisdiction_blocked: 'This category is not available for your account or region.',
+      missing_slot: 'Still not enough to grade. Please retype a simpler yes/no question.',
+      unsupported_entity: 'That subject is not in this category\u2019s open list. Pick one of the instruments below.',
+      insufficient_credits: 'Not enough credits to open this round.',
+      ungradeable: 'This question cannot be graded objectively.',
+      prompt_not_available: 'Typed questions are not available for this category in your region. Please use the instrument chips.',
+      registered_country_missing: 'Your account has no registered country. Register your country of residence, then try again.',
+      country_mismatch:
+        'Your registered country and connection country differ. The stricter of the two applies; the league stays available.',
+      generic: 'This question could not be opened. Please retry.',
+    },
   },
 }
 
@@ -1151,6 +1228,12 @@ const ko: LeagueUiPack = {
   gating: {
     unavailable: '이 예측 카테고리는 아직 회원님의 지역에서 제공되지 않습니다.',
     tosNote: '노출 여부는 계정에 등록된 국가와 감지된 접속 위치를 기준으로 결정됩니다. 반드시 실제 관할 지역을 사용해야 하며, VPN 등으로 이를 우회하려는 시도로 발생하는 문제의 책임은 이용자 본인에게 있습니다.',
+    registeredCountryLabel: '거주 국가',
+    registeredCountryRequired:
+      '거주 국가는 필수입니다. 허위로 등록하면 이용 제한이나 계정 문제가 생길 수 있습니다.',
+    registeredCountrySave: '국가 등록',
+    countryMismatchNotice:
+      '등록 국가와 접속 국가가 다릅니다. 두 지역 중 더 엄격한 기준을 적용하며, 리그 이용은 가능합니다.',
   },
   languageToggleLabel: '언어',
   leaderboard: {
@@ -1227,6 +1310,45 @@ const ko: LeagueUiPack = {
     deepUnscoredNote: '비채점 논평입니다. 리그 예측이 아니며 리더보드와 전적에 반영되지 않습니다.',
     deepOpenTitle: '개방형 분석',
     deepDebateTitle: '찬반 토론',
+  },
+  gateway: {
+    placeholder: {
+      sports: '오늘 밤 이 팀이 이길까?',
+      crypto: '비트코인 이번 주 오를까?',
+      stocks: '애플 내일 오를까?',
+      fx: '유로달러 이번 주 오를까?',
+      gold_metals: '금 이번 달 오를까?',
+      index_etf: 'SPY 내일 오를까?',
+      commodities_energy: 'WTI 유가 이번 주 오를까?',
+      politics_election: '이 후보가 당선될까?',
+      entertainment: '이 작품이 작품상을 받을까?',
+      memecoin: '도지코인 내일 오를까?',
+      real_estate: 'VNQ 이번 달 오를까?',
+      macro_econ: '이번 달 미국 CPI가 3%를 넘을까?',
+    },
+    submit: '질문하기',
+    retry: '고쳐서 다시',
+    refuseTitle: '이 질문은 열 수 없습니다',
+    freeInput: '직접 입력',
+    freeInputPlaceholder: '대상 이름',
+    confirmYes: '네, 맞아요',
+    askEntity: '어떤 대상을 말씀하시나요?',
+    askHorizon: '어느 기간의 예측인가요?',
+    askConfirm: '이 대상이 맞나요?',
+    opening: '라운드를 여는 중\u2026',
+    refusal: {
+      low_confidence: '이 질문은 열 수 없습니다. 대상 하나와 예/아니오로 다시 입력해 주세요.',
+      category_unavailable: '이 카테고리는 아직 직접 질문을 받을 수 없습니다.',
+      jurisdiction_blocked: '현재 계정 또는 지역에서는 이 카테고리를 이용할 수 없습니다.',
+      missing_slot: '아직 판정할 수 없습니다. 더 단순한 예/아니오 질문으로 다시 입력해 주세요.',
+      unsupported_entity: '이 카테고리에서 지금 열 수 있는 대상은 아래와 같습니다.',
+      insufficient_credits: '크레딧이 부족합니다.',
+      ungradeable: '객관적으로 판정할 수 없는 질문입니다.',
+      prompt_not_available: '이 지역에서는 직접 입력으로 이 카테고리 질문을 열 수 없습니다. 아래 종목 칩을 이용해 주세요.',
+      registered_country_missing: '등록 국가가 없습니다. 계정에 거주 국가를 등록한 뒤에 이용해 주세요.',
+      country_mismatch: '등록 국가와 접속 국가가 다릅니다. 두 지역 중 더 엄격한 기준을 적용하며, 리그 이용은 가능합니다.',
+      generic: '이 질문은 열 수 없습니다. 다시 입력해 주세요.',
+    },
   },
 }
 
@@ -1498,6 +1620,10 @@ const ja: LeagueUiPack = {
   gating: {
     unavailable: 'この予測カテゴリーは、お住まいの地域ではまだご利用いただけません。',
     tosNote: '表示可否はアカウントに登録された国と検出された接続地域に基づいて判定されます。実際の管轄地域を使用してください。VPN等でこれを回避しようとした場合に生じる問題の責任はご自身が負うものとします。',
+    registeredCountryLabel: '居住国',
+    registeredCountryRequired: '居住国の登録は必須です。虚偽の申告は利用制限やアカウント上の問題につながる場合があります。',
+    registeredCountrySave: '国を登録',
+    countryMismatchNotice: '登録国と接続国が異なります。より厳しい方を適用します。リーグ自体は利用できます。',
   },
   languageToggleLabel: '言語',
   leaderboard: {
@@ -1574,6 +1700,45 @@ const ja: LeagueUiPack = {
     deepUnscoredNote: '採点対象外の論評です。リーグ予測ではなく、リーダーボードや戦績には入りません。',
     deepOpenTitle: '自由分析',
     deepDebateTitle: '賛否討論',
+  },
+  gateway: {
+    placeholder: {
+      sports: '今夜、このチームは勝つ？',
+      crypto: 'ビットコインは今週上がる？',
+      stocks: 'アップルは明日上がる？',
+      fx: 'ユーロドルは今週上がる？',
+      gold_metals: '金は今月上がる？',
+      index_etf: 'SPYは明日上がる？',
+      commodities_energy: 'WTI原油は今週上がる？',
+      politics_election: 'この候補は当選する？',
+      entertainment: 'この作品は最優秀作品賞を取る？',
+      memecoin: 'ドージコインは明日上がる？',
+      real_estate: 'VNQは今月上がる？',
+      macro_econ: '今月の米CPIは3%を超える？',
+    },
+    submit: '質問する',
+    retry: '直して再試行',
+    refuseTitle: 'この質問は開けません',
+    freeInput: '直接入力',
+    freeInputPlaceholder: '対象名',
+    confirmYes: 'はい、それで合っています',
+    askEntity: 'どの対象ですか？',
+    askHorizon: 'どの期間ですか？',
+    askConfirm: 'この対象でよいですか？',
+    opening: 'ラウンドを開いています\u2026',
+    refusal: {
+      low_confidence: '開けません。対象を一つと、はい/いいえで書き直してください。',
+      category_unavailable: 'このカテゴリはまだ入力質問に対応していません。',
+      jurisdiction_blocked: 'ご利用の地域ではこのカテゴリを使えません。',
+      missing_slot: 'まだ判定できません。より単純な質問に書き直してください。',
+      unsupported_entity: 'このカテゴリで今開ける対象は以下です。',
+      insufficient_credits: 'クレジットが不足しています。',
+      ungradeable: '客観的に判定できない質問です。',
+      prompt_not_available: 'この地域ではこのカテゴリへの入力質問は開けません。下のチップを使ってください。',
+      registered_country_missing: '登録国がありません。居住国を登録してからご利用ください。',
+      country_mismatch: '登録国と接続国が異なります。より厳しい方を適用します。リーグ自体は利用できます。',
+      generic: 'この質問は開けません。書き直してください。',
+    },
   },
 }
 
@@ -1843,6 +2008,10 @@ const zhTW: LeagueUiPack = {
   gating: {
     unavailable: '此預測類別在您所在地區尚未開放。',
     tosNote: '是否顯示取決於您帳號登記的國家與偵測到的所在位置。您必須使用真實所在地區；若透過 VPN 等方式規避此限制，由此產生的任何後果由您自行承擔。',
+    registeredCountryLabel: '居住國家',
+    registeredCountryRequired: '居住國家為必填。虛報可能導致使用受限或帳號問題。',
+    registeredCountrySave: '登記國家',
+    countryMismatchNotice: '登記國家與連線國家不同。將套用較嚴格的一方；聯盟仍可使用。',
   },
   languageToggleLabel: '語言',
   leaderboard: {
@@ -1919,6 +2088,45 @@ const zhTW: LeagueUiPack = {
     deepUnscoredNote: '未計分評論——不是聯盟預測，不會進入排行榜或戰績。',
     deepOpenTitle: '開放分析',
     deepDebateTitle: '正反辯論',
+  },
+  gateway: {
+    placeholder: {
+      sports: '今晚這支球隊會贏嗎？',
+      crypto: '比特幣這週會漲嗎？',
+      stocks: '蘋果明天會漲嗎？',
+      fx: '歐元美元這週會升嗎？',
+      gold_metals: '黃金這個月會漲嗎？',
+      index_etf: 'SPY明天會漲嗎？',
+      commodities_energy: 'WTI原油這週會漲嗎？',
+      politics_election: '這位候選人會當選嗎？',
+      entertainment: '這部作品會拿最佳影片嗎？',
+      memecoin: '狗狗幣明天會漲嗎？',
+      real_estate: 'VNQ這個月會漲嗎？',
+      macro_econ: '這個月美國CPI會高於3%嗎？',
+    },
+    submit: '提問',
+    retry: '修改後重試',
+    refuseTitle: '這個問題無法開啟',
+    freeInput: '自行輸入',
+    freeInputPlaceholder: '對象名稱',
+    confirmYes: '對，就是這個',
+    askEntity: '你指的是哪個對象？',
+    askHorizon: '要預測哪個期間？',
+    askConfirm: '是這個對象嗎？',
+    opening: '正在開啟回合\u2026',
+    refusal: {
+      low_confidence: '無法開啟。請寫下一個對象，並用是/否重新提問。',
+      category_unavailable: '此類別尚不接受輸入提問。',
+      jurisdiction_blocked: '你的帳號或地區目前無法使用此類別。',
+      missing_slot: '仍無法評分。請改成更單純的是/否問題。',
+      unsupported_entity: '此類別目前可開啟的對象如下。',
+      insufficient_credits: '點數不足。',
+      ungradeable: '這個問題無法客觀評分。',
+      prompt_not_available: '此地區無法以輸入方式開啟此類別。請使用下方籌碼。',
+      registered_country_missing: '尚未登記國家。請先登記居住國家再使用。',
+      country_mismatch: '登記國家與連線國家不同。將套用較嚴格的一方；聯盟仍可使用。',
+      generic: '這個問題無法開啟。請再試一次。',
+    },
   },
 }
 
@@ -2194,6 +2402,12 @@ const fr: LeagueUiPack = {
   gating: {
     unavailable: 'Cette catégorie de prédiction n\u2019est pas encore disponible dans votre région.',
     tosNote: 'La disponibilité dépend du pays déclaré sur votre compte et de votre localisation détectée. Vous devez utiliser votre véritable juridiction \u2014 toute tentative de contournement (par VPN, par exemple) vous rend responsable des conséquences.',
+    registeredCountryLabel: 'Pays de résidence',
+    registeredCountryRequired:
+      'Le pays de résidence est obligatoire. Une fausse déclaration peut restreindre l\u2019accès ou poser un problème de compte.',
+    registeredCountrySave: 'Enregistrer le pays',
+    countryMismatchNotice:
+      'Votre pays enregistré et votre pays de connexion diffèrent. Le plus strict des deux s\u2019applique ; la ligue reste disponible.',
   },
   languageToggleLabel: 'Langue',
   leaderboard: {
@@ -2271,6 +2485,47 @@ const fr: LeagueUiPack = {
       'Commentaire non not\u00e9 \u2014 ce n\u2019est pas une pr\u00e9diction de ligue. N\u2019entre ni au classement ni au palmar\u00e8s.',
     deepOpenTitle: 'Analyse ouverte',
     deepDebateTitle: 'D\u00e9bat pour/contre',
+  },
+  gateway: {
+    placeholder: {
+      sports: 'Cette \u00e9quipe va-t-elle gagner ce soir ?',
+      crypto: 'Le bitcoin va-t-il monter cette semaine ?',
+      stocks: 'Apple va-t-il cl\u00f4turer plus haut demain ?',
+      fx: 'L\u2019EUR/USD va-t-il monter cette semaine ?',
+      gold_metals: 'L\u2019or va-t-il monter ce mois-ci ?',
+      index_etf: 'SPY va-t-il cl\u00f4turer plus haut demain ?',
+      commodities_energy: 'Le WTI va-t-il monter cette semaine ?',
+      politics_election: 'Ce candidat va-t-il gagner ?',
+      entertainment: 'Ce film va-t-il gagner l\u2019Oscar ?',
+      memecoin: 'Dogecoin va-t-il monter demain ?',
+      real_estate: 'VNQ va-t-il monter ce mois-ci ?',
+      macro_econ: 'L\u2019IPC US d\u00e9passera-t-il 3 % ce mois-ci ?',
+    },
+    submit: 'Demander',
+    retry: 'Corriger et r\u00e9essayer',
+    refuseTitle: 'Cette question n\u2019a pas pu \u00eatre ouverte',
+    freeInput: 'Saisir un nom',
+    freeInputPlaceholder: 'Sujet nomm\u00e9',
+    confirmYes: 'Oui, c\u2019est \u00e7a',
+    askEntity: 'Quel sujet ?',
+    askHorizon: 'Quel horizon ?',
+    askConfirm: 'Est-ce le bon sujet ?',
+    opening: 'Ouverture de la manche\u2026',
+    refusal: {
+      low_confidence: 'Impossible d\u2019ouvrir. Nommez un sujet et une question oui/non.',
+      category_unavailable: 'Cette cat\u00e9gorie n\u2019accepte pas encore les questions tap\u00e9es.',
+      jurisdiction_blocked: 'Cette cat\u00e9gorie n\u2019est pas disponible pour votre compte ou r\u00e9gion.',
+      missing_slot: 'Toujours impossible \u00e0 noter. Reposez une question plus simple.',
+      unsupported_entity: 'Les sujets actuellement ouverts dans cette cat\u00e9gorie sont ci-dessous.',
+      insufficient_credits: 'Cr\u00e9dits insuffisants.',
+      ungradeable: 'Cette question ne peut pas \u00eatre not\u00e9e objectivement.',
+      prompt_not_available:
+        'Les questions tapées ne sont pas disponibles pour cette cat\u00e9gorie dans votre région. Utilisez les jetons.',
+      registered_country_missing: 'Aucun pays n\u2019est enregistré. Enregistrez votre pays de résidence, puis réessayez.',
+      country_mismatch:
+        'Votre pays enregistré et votre pays de connexion diffèrent. Le plus strict des deux s\u2019applique ; la ligue reste disponible.',
+      generic: 'Cette question n\u2019a pas pu \u00eatre ouverte. R\u00e9essayez.',
+    },
   },
 }
 
@@ -2546,6 +2801,12 @@ const es: LeagueUiPack = {
   gating: {
     unavailable: 'Esta categoría de predicción todavía no está disponible en tu región.',
     tosNote: 'La disponibilidad depende del país declarado en tu cuenta y de tu ubicación detectada. Debes usar tu jurisdicción real: si intentas evadir esto (por ejemplo, con una VPN), asumes la responsabilidad de las consecuencias.',
+    registeredCountryLabel: 'País de residencia',
+    registeredCountryRequired:
+      'El país de residencia es obligatorio. Una declaración falsa puede restringir el acceso o causar problemas de cuenta.',
+    registeredCountrySave: 'Guardar país',
+    countryMismatchNotice:
+      'Tu país registrado y el de conexión no coinciden. Se aplica el más estricto de los dos; la liga sigue disponible.',
   },
   languageToggleLabel: 'Idioma',
   leaderboard: {
@@ -2623,6 +2884,47 @@ const es: LeagueUiPack = {
       'Comentario sin puntuaci\u00f3n: no es una predicci\u00f3n de la liga. No entra en la clasificaci\u00f3n ni en el historial.',
     deepOpenTitle: 'An\u00e1lisis abierto',
     deepDebateTitle: 'Debate a favor/en contra',
+  },
+  gateway: {
+    placeholder: {
+      sports: '\u00bfGanar\u00e1 este equipo esta noche?',
+      crypto: '\u00bfSubir\u00e1 bitcoin esta semana?',
+      stocks: '\u00bfApple cerrar\u00e1 m\u00e1s alto ma\u00f1ana?',
+      fx: '\u00bfSubir\u00e1 el EUR/USD esta semana?',
+      gold_metals: '\u00bfSubir\u00e1 el oro este mes?',
+      index_etf: '\u00bfSPY cerrar\u00e1 m\u00e1s alto ma\u00f1ana?',
+      commodities_energy: '\u00bfSubir\u00e1 el WTI esta semana?',
+      politics_election: '\u00bfGanar\u00e1 este candidato?',
+      entertainment: '\u00bfGanar\u00e1 esta pel\u00edcula el Oscar?',
+      memecoin: '\u00bfSubir\u00e1 Dogecoin ma\u00f1ana?',
+      real_estate: '\u00bfSubir\u00e1 VNQ este mes?',
+      macro_econ: '\u00bfEl IPC de EE. UU. superar\u00e1 el 3% este mes?',
+    },
+    submit: 'Preguntar',
+    retry: 'Editar y reintentar',
+    refuseTitle: 'No se pudo abrir esta pregunta',
+    freeInput: 'Escribir un nombre',
+    freeInputPlaceholder: 'Sujeto',
+    confirmYes: 'S\u00ed, es ese',
+    askEntity: '\u00bfQu\u00e9 sujeto?',
+    askHorizon: '\u00bfQu\u00e9 horizonte?',
+    askConfirm: '\u00bfEs este el sujeto?',
+    opening: 'Abriendo la ronda\u2026',
+    refusal: {
+      low_confidence: 'No se pudo abrir. Nombra un sujeto y una pregunta s\u00ed/no.',
+      category_unavailable: 'Esta categor\u00eda a\u00fan no acepta preguntas escritas.',
+      jurisdiction_blocked: 'Esta categor\u00eda no est\u00e1 disponible para tu cuenta o regi\u00f3n.',
+      missing_slot: 'A\u00fan no se puede calificar. Reescribe una pregunta m\u00e1s simple.',
+      unsupported_entity: 'Los sujetos abiertos ahora en esta categor\u00eda están abajo.',
+      insufficient_credits: 'No hay cr\u00e9ditos suficientes.',
+      ungradeable: 'Esta pregunta no se puede calificar con objetividad.',
+      prompt_not_available:
+        'En tu región no se pueden abrir preguntas escritas en esta categor\u00eda. Usa las fichas de abajo.',
+      registered_country_missing: 'No hay país registrado. Registra tu país de residencia y vuelve a intentarlo.',
+      country_mismatch:
+        'Tu país registrado y el de conexión no coinciden. Se aplica el más estricto de los dos; la liga sigue disponible.',
+      generic: 'No se pudo abrir esta pregunta. Inténtalo de nuevo.',
+    },
   },
 }
 
@@ -2894,6 +3196,10 @@ const ar: LeagueUiPack = {
   gating: {
     unavailable: 'فئة التوقعات هذه غير متاحة بعد في منطقتك.',
     tosNote: 'يعتمد الظهور على الدولة المسجَّلة في حسابك والموقع المكتشَف لاتصالك. يجب عليك استخدام نطاقك القضائي الحقيقي؛ وإذا حاولت تجاوز ذلك (عبر VPN مثلاً) فإنك تتحمل مسؤولية أي نتائج تترتب على ذلك.',
+    registeredCountryLabel: 'بلد الإقامة',
+    registeredCountryRequired: 'بلد الإقامة إلزامي. التصريح الكاذب قد يقيّد الاستخدام أو يسبب مشكلة في الحساب.',
+    registeredCountrySave: 'حفظ البلد',
+    countryMismatchNotice: 'بلد التسجيل وبلد الاتصال مختلفان. يُطبَّق الأشد منهما؛ الدوري يبقى متاحًا.',
   },
   languageToggleLabel: 'اللغة',
   leaderboard: {
@@ -2970,6 +3276,45 @@ const ar: LeagueUiPack = {
     deepUnscoredNote: 'تعليق غير مُقيَّم — ليس توقعًا للدوري ولا يدخل لوحة الصدارة أو السجل.',
     deepOpenTitle: 'تحليل مفتوح',
     deepDebateTitle: 'مناظرة مع/ضد',
+  },
+  gateway: {
+    placeholder: {
+      sports: 'هل سيفوز هذا الفريق الليلة؟',
+      crypto: 'هل سيرتفع البيتكوين هذا الأسبوع؟',
+      stocks: 'هل ستغلق أبل أعلى غدًا؟',
+      fx: 'هل سيرتفع اليورو/دولار هذا الأسبوع؟',
+      gold_metals: 'هل سيرتفع الذهب هذا الشهر؟',
+      index_etf: 'هل سيغلق SPY أعلى غدًا؟',
+      commodities_energy: 'هل سيرتفع خام غرب تكساس هذا الأسبوع؟',
+      politics_election: 'هل سيفوز هذا المرشح؟',
+      entertainment: 'هل سيفوز هذا العمل بجائزة الفيلم؟',
+      memecoin: 'هل سترتفع دوجكوين غدًا؟',
+      real_estate: 'هل سيرتفع VNQ هذا الشهر؟',
+      macro_econ: 'هل سيتجاوز تضخم أمريكا 3% هذا الشهر؟',
+    },
+    submit: 'اسأل',
+    retry: 'عدّل وأعد المحاولة',
+    refuseTitle: 'تعذر فتح هذا السؤال',
+    freeInput: 'أدخل اسمًا',
+    freeInputPlaceholder: 'الموضوع',
+    confirmYes: 'نعم، هذا هو',
+    askEntity: 'أي موضوع تقصد؟',
+    askHorizon: 'أي أفق زمني؟',
+    askConfirm: 'هل هذا هو الموضوع؟',
+    opening: 'جارٍ فتح الجولة\u2026',
+    refusal: {
+      low_confidence: 'تعذر الفتح. اذكر موضوعًا واحدًا وسؤال نعم/لا.',
+      category_unavailable: 'هذه الفئة لا تقبل الأسئلة المكتوبة بعد.',
+      jurisdiction_blocked: 'هذه الفئة غير متاحة لحسابك أو منطقتك.',
+      missing_slot: 'ما زال غير قابل للتحكيم. أعد كتابة سؤال أبسط.',
+      unsupported_entity: 'الموضوعات المفتوحة الآن في هذه الفئة أدناه.',
+      insufficient_credits: 'الرصيد غير كافٍ.',
+      ungradeable: 'لا يمكن تحكيم هذا السؤال بموضوعية.',
+      prompt_not_available: 'لا يمكن فتح أسئلة مكتوبة لهذه الفئة في منطقتك. استخدم الرقائق أدناه.',
+      registered_country_missing: 'لا يوجد بلد مسجَّل. سجّل بلد إقامتك ثم أعد المحاولة.',
+      country_mismatch: 'بلد التسجيل وبلد الاتصال مختلفان. يُطبَّق الأشد منهما؛ الدوري يبقى متاحًا.',
+      generic: 'تعذر فتح هذا السؤال. أعد المحاولة.',
+    },
   },
 }
 
@@ -3251,6 +3596,12 @@ const pt: LeagueUiPack = {
   gating: {
     unavailable: 'Esta categoria de previsões ainda não está disponível na sua região.',
     tosNote: 'A disponibilidade depende do país declarado na sua conta e da localização detectada da conexão. Você deve usar sua jurisdição real \u2014 tentar contornar isso (por exemplo, via VPN) transfere a você a responsabilidade por qualquer uso indevido.',
+    registeredCountryLabel: 'País de residência',
+    registeredCountryRequired:
+      'O país de residência é obrigatório. Uma declaração falsa pode restringir o acesso ou causar problemas na conta.',
+    registeredCountrySave: 'Salvar país',
+    countryMismatchNotice:
+      'O país registrado e o país da conexão diferem. Vale o mais restritivo dos dois; a liga continua disponível.',
   },
   languageToggleLabel: 'Idioma',
   leaderboard: {
@@ -3328,6 +3679,47 @@ const pt: LeagueUiPack = {
       'Comentário sem nota \u2014 não é uma previsão da liga. Não entra na classificação nem no histórico.',
     deepOpenTitle: 'Análise aberta',
     deepDebateTitle: 'Debate prós/contras',
+  },
+  gateway: {
+    placeholder: {
+      sports: 'Esse time vai ganhar hoje à noite?',
+      crypto: 'O bitcoin sobe nesta semana?',
+      stocks: 'A Apple fecha mais alta amanhã?',
+      fx: 'O EUR/USD sobe nesta semana?',
+      gold_metals: 'O ouro sobe neste mês?',
+      index_etf: 'A SPY fecha mais alta amanhã?',
+      commodities_energy: 'O WTI sobe nesta semana?',
+      politics_election: 'Esse candidato vai vencer?',
+      entertainment: 'Esse filme leva o Oscar?',
+      memecoin: 'A Dogecoin sobe amanhã?',
+      real_estate: 'A VNQ sobe neste mês?',
+      macro_econ: 'O CPI dos EUA fica acima de 3% neste mês?',
+    },
+    submit: 'Perguntar',
+    retry: 'Editar e tentar de novo',
+    refuseTitle: 'Não foi possível abrir esta pergunta',
+    freeInput: 'Digitar um nome',
+    freeInputPlaceholder: 'Assunto',
+    confirmYes: 'Sim, é esse',
+    askEntity: 'Qual assunto?',
+    askHorizon: 'Qual horizonte?',
+    askConfirm: 'É este o assunto?',
+    opening: 'Abrindo a rodada\u2026',
+    refusal: {
+      low_confidence: 'Não deu para abrir. Nomeie um assunto e uma pergunta sim/não.',
+      category_unavailable: 'Esta categoria ainda não aceita perguntas digitadas.',
+      jurisdiction_blocked: 'Esta categoria não está disponível para sua conta ou região.',
+      missing_slot: 'Ainda não dá para pontuar. Reescreva uma pergunta mais simples.',
+      unsupported_entity: 'Os assuntos abertos agora nesta categoria estão abaixo.',
+      insufficient_credits: 'Créditos insuficientes.',
+      ungradeable: 'Esta pergunta não pode ser pontuada com objetividade.',
+      prompt_not_available:
+        'Nesta região não é possível abrir perguntas digitadas nesta categoria. Use as fichas abaixo.',
+      registered_country_missing: 'Não há país registrado. Registre o país de residência e tente de novo.',
+      country_mismatch:
+        'O país registrado e o país da conexão diferem. Vale o mais restritivo dos dois; a liga continua disponível.',
+      generic: 'Não foi possível abrir esta pergunta. Tente de novo.',
+    },
   },
 }
 

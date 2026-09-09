@@ -79,6 +79,11 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
       status: 403,
       code: 'jurisdiction_blocked',
     })
+    expect(gatePublicGenerateInstrument('DOGE/USD', krPublic)).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
+    })
     expect(gatePublicGenerateInstrument('DOGE/USD', { isAdmin: false, jurisdiction: { ipCountry: 'BR' } })).toEqual({
       ok: false,
       status: 403,

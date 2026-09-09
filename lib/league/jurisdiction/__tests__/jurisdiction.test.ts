@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { groupForCountry } from '../country-groups'
-import { isCategoryAllowed, resolveJurisdictionGroups } from '../resolve'
+import { isCategoryAllowed, isPromptAllowed, resolveJurisdictionGroups } from '../resolve'
 import { isCategoryAllowedForGroup } from '../matrix'
+import {
+  FINANCIAL_PROMPT_CATEGORIES,
+  NON_FINANCIAL_PROMPT_CATEGORIES,
+  PROMPT_ALLOWED,
+  PROMPT_CATEGORY_IDS,
+  isPromptAllowedForGroup,
+} from '../prompt-matrix'
 import { JURISDICTION_GROUPS } from '../types'
 
 describe('groupForCountry', () => {
@@ -105,8 +112,39 @@ describe('matrix default-deny shape (data-table sanity)', () => {
     }
   })
 
+  it('Korea blocks memecoin as a category, not only the prompt', () => {
+    expect(isCategoryAllowedForGroup('KR', 'memecoin')).toBe(false)
+    expect(isCategoryAllowed('memecoin', { declaredCountry: 'KR', ipCountry: 'KR' })).toBe(false)
+  })
+
   it('an unknown/unlisted category string is denied everywhere, never throws', () => {
     expect(isCategoryAllowedForGroup('US', 'not_a_real_category')).toBe(false)
     expect(isCategoryAllowed('not_a_real_category', { ipCountry: 'US' })).toBe(false)
+  })
+})
+
+describe('promptAllowed — every cell is data', () => {
+  it('has an explicit boolean for every jurisdiction × category', () => {
+    for (const group of JURISDICTION_GROUPS) {
+      for (const category of PROMPT_CATEGORY_IDS) {
+        expect(typeof PROMPT_ALLOWED[group][category], `${group}.${category}`).toBe('boolean')
+      }
+    }
+  })
+
+  it('Korea disables the prompt for every financial category and leaves non-financial on', () => {
+    for (const category of FINANCIAL_PROMPT_CATEGORIES) {
+      expect(isPromptAllowedForGroup('KR', category), category).toBe(false)
+    }
+    for (const category of NON_FINANCIAL_PROMPT_CATEGORIES) {
+      expect(isPromptAllowedForGroup('KR', category), category).toBe(true)
+    }
+  })
+
+  it('applies stricter-of-the-two and never silently picks one country', () => {
+    expect(isPromptAllowed('stocks', { declaredCountry: 'US', ipCountry: 'KR' })).toBe(false)
+    expect(isPromptAllowed('stocks', { declaredCountry: 'KR', ipCountry: 'US' })).toBe(false)
+    expect(isPromptAllowed('stocks', { declaredCountry: 'US', ipCountry: 'JP' })).toBe(true)
+    expect(isPromptAllowed('sports', { declaredCountry: 'KR', ipCountry: 'US' })).toBe(true)
   })
 })

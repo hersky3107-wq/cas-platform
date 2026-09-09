@@ -11,6 +11,7 @@ import {
   buildCatalogRankedRoundInput,
   CATALOG_INSTRUMENT_IDS,
   PUBLIC_CATALOG,
+  visibleChipEntries,
   type CatalogRankedRoundInput,
   type PublicCategoryDef,
 } from './catalog'
@@ -164,10 +165,10 @@ export function viewerCatalog(viewer: LeagueViewer): PublicCategoryDef[] {
   return PUBLIC_CATALOG.filter((c) => viewerCanSeeCategory(viewer, c.ledgerCategory))
 }
 
-/** Flattened curated instruments this viewer may reach (financial categories only). */
+/** Flattened currently-open chips this viewer may see. Hidden catalog members are omitted. */
 export function viewerInstruments(viewer: LeagueViewer) {
   return viewerCatalog(viewer).flatMap((c) =>
-    c.instruments.map((i) => ({
+    visibleChipEntries(c).map((i) => ({
       instrument: i.instrument,
       category: c.ledgerCategory,
       label: i.instrument,

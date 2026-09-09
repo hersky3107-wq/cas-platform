@@ -1,4 +1,4 @@
-import { buildCatalogRankedRoundInput, catalogById } from '../../catalog'
+import { buildCatalogRankedRoundInput, catalogById, visibleChipEntries } from '../../catalog'
 import type { PublicCategoryId } from '../../catalog'
 import { isUiHorizon, UI_HORIZONS } from '../../horizon'
 import type { PredictionCategory } from '@/lib/prediction/categories'
@@ -72,6 +72,11 @@ export function createPriceSeriesFamilyAdapter(cfg: PriceSeriesFamilyConfig, io:
     return (catalogById(cfg.category_id)?.instruments ?? []).map((i) => i.instrument)
   }
 
+  function chipIds(): readonly string[] {
+    const cat = catalogById(cfg.category_id)
+    return cat ? visibleChipEntries(cat).map((i) => i.instrument) : []
+  }
+
   function isDecidableSlots(slots: NormalizeSlots): boolean {
     return instruments().includes(slots.entity_id) && isUiHorizon(slots.horizon)
   }
@@ -127,7 +132,7 @@ export function createPriceSeriesFamilyAdapter(cfg: PriceSeriesFamilyConfig, io:
         questions.push({
           slot: 'entity_id',
           prompt_i18n_key: 'league.gateway.clarify.entity',
-          options: instruments().map((t) => ({ id: t, label_i18n_key: `league.catalog.instruments.${t}` })),
+          options: chipIds().map((t) => ({ id: t, label_i18n_key: `league.catalog.instruments.${t}` })),
         })
       }
       if (!partial.horizon) questions.push(HORIZON_QUESTION)

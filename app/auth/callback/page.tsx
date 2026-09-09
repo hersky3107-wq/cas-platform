@@ -51,13 +51,16 @@ function AuthCallbackClient() {
         window.history.replaceState(null, '', window.location.pathname + window.location.search)
       }
 
+      const storedCountry =
+        typeof window !== 'undefined' ? window.sessionStorage.getItem('cas.declared_country') : null
       await authenticatedFetch('/api/auth/welcome-credits', {
         method: 'POST',
-        json: {},
+        json: storedCountry ? { declared_country: storedCountry } : {},
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
       }).catch((err) => console.error('[welcome-credits]', err))
+      if (storedCountry) window.sessionStorage.removeItem('cas.declared_country')
 
       setStatus('Signed in. Redirecting…')
       router.replace(returnPath)
