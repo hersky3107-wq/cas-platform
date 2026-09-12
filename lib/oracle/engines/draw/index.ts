@@ -15,6 +15,8 @@ export { seededShuffle, createRng } from './rng'
 export { tarotDraw } from './tarot'
 export { runeDraw } from './runes'
 export { ichingDraw, buildLiuyao, hexagramFromYangFlags } from './iching'
+export type { LiuyaoInput } from './iching'
+export { monthPhase, dayRelation, changingActions, hiddenRelatives } from './strength'
 
 export {
   TAROT_DECK,
@@ -26,6 +28,9 @@ export {
   PALACE_BY_KING_WEN,
   NAJIA_BRANCHES,
   SIX_BEASTS,
+  SIX_RELATIVES,
+  ELEMENT_GENERATES,
+  ELEMENT_OVERCOMES,
 } from './tables'
 export type { LineValue, RuneDef } from './tables'
 
@@ -36,6 +41,10 @@ export type {
   RuneDrawn,
   IchingDrawResult,
   IchingLine,
+  IchingLimitation,
   HexagramInfo,
   DayStemInput,
+  MonthPhase,
+  DayLineRelation,
+  ChangingLineAction,
 } from './types'

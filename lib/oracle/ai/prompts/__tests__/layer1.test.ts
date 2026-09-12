@@ -67,4 +67,13 @@ describe('layer1 prompts (v4)', () => {
     expect(personal).not.toContain('궁합')
     expect(personal).toContain('for one person')
   })
+
+  it('lets 육효 name 왕쇠 only from computed 월령/일건/동효/복장 fields', () => {
+    const prompt = buildLayer1SystemPrompt('ko', 'iching')
+    expect(prompt).toContain('월령')
+    expect(prompt).toContain('복장')
+    expect(prompt).toContain('Never infer')
+    expect(prompt).toContain('일건')
+    expect(prompt).toContain('동효생극')
+  })
 })

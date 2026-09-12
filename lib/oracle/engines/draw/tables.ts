@@ -341,7 +341,12 @@ export const BRANCH_ELEMENT: Record<string, FiveElement> = {
   未: 'earth',
 }
 
-const PRODUCES: Record<FiveElement, FiveElement> = {
+/**
+ * 상생: the key element PRODUCES the value. Same cycle as
+ * `calendar/relations.ELEMENT_GENERATES` — do not re-derive. A drift test
+ * in strength.test.ts locks the two tables together.
+ */
+export const ELEMENT_GENERATES: Record<FiveElement, FiveElement> = {
   wood: 'fire',
   fire: 'earth',
   earth: 'metal',
@@ -349,7 +354,11 @@ const PRODUCES: Record<FiveElement, FiveElement> = {
   water: 'wood',
 }
 
-const OVERCOMES: Record<FiveElement, FiveElement> = {
+/**
+ * 상극: the key element OVERCOMES the value. Same cycle as
+ * `calendar/relations.ELEMENT_OVERCOMES`.
+ */
+export const ELEMENT_OVERCOMES: Record<FiveElement, FiveElement> = {
   wood: 'earth',
   fire: 'metal',
   earth: 'water',
@@ -357,12 +366,15 @@ const OVERCOMES: Record<FiveElement, FiveElement> = {
   water: 'fire',
 }
 
+/** 육친 names in the 상생 cycle order from the palace (兄弟→子孙→妻财→官鬼→父母). */
+export const SIX_RELATIVES: readonly SixRelative[] = ['兄弟', '子孙', '妻财', '官鬼', '父母']
+
 /** 육친 from the palace element (me) toward the line element. */
 export function sixRelative(palaceElement: FiveElement, lineElement: FiveElement): SixRelative {
   if (lineElement === palaceElement) return '兄弟'
-  if (lineElement === PRODUCES[palaceElement]) return '子孙'
-  if (lineElement === OVERCOMES[palaceElement]) return '妻财'
-  if (palaceElement === OVERCOMES[lineElement]) return '官鬼'
+  if (lineElement === ELEMENT_GENERATES[palaceElement]) return '子孙'
+  if (lineElement === ELEMENT_OVERCOMES[palaceElement]) return '妻财'
+  if (palaceElement === ELEMENT_OVERCOMES[lineElement]) return '官鬼'
   return '父母'
 }
 

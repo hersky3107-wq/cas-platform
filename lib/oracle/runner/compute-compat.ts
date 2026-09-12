@@ -66,6 +66,7 @@ import {
 import {
   derivePickedPositions,
   drawSeed,
+  ichingClockFromAsOf,
   nominalAgeFrom,
   OracleComputeError,
   readIchingLines,
@@ -575,14 +576,30 @@ function computeCompatSystem(system: SystemId, a: PersonCtx, b: PersonCtx, share
     case 'iching': {
       const ichingSeed = drawSeed(seed, 'iching')
       const lines = readIchingLines(shared.sessionInputs)
-      const draw = lines ? buildLiuyao({ seed: ichingSeed, values: lines }) : ichingDraw({ seed: ichingSeed })
+      const clock = ichingClockFromAsOf(asOfDate, a.tz)
+      const draw = lines
+        ? buildLiuyao({ seed: ichingSeed, values: lines, ...clock })
+        : ichingDraw({ seed: ichingSeed, ...clock })
       const result = { draw: jsonObject(draw) }
+      const native = buildNativeChart('iching', result, chartCtxA)
+      const chartLines = Array.isArray(native.효) ? native.효 : []
+      const roleLine = (position: unknown) =>
+        chartLines.find((line) => {
+          return (
+            line !== null &&
+            typeof line === 'object' &&
+            !Array.isArray(line) &&
+            (line as { 위치?: unknown }).위치 === position
+          )
+        }) ?? null
       return {
         vote: projectIching({ seed: ichingSeed, values: lines ?? undefined }),
         result,
         chart: {
-          ...buildNativeChart('iching', result, chartCtxA),
+          ...native,
           세응풀이: ICHING_COMPAT_NOTE,
+          본인세효: roleLine(native.세효),
+          상대응효: roleLine(native.응효),
         },
       }
     }

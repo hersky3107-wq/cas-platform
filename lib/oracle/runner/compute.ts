@@ -34,7 +34,7 @@ import { fiveElementBalance, fourPillars, greatLuck, nineStar, sukuyou, tenGods,
 import { natalChart, transits } from '../engines/astro'
 import { buildLiuyao, ichingDraw, runeDraw, tarotDraw } from '../engines/draw'
 import type { TarotSpreadSize } from '../engines/draw/conventions'
-import type { LineValue } from '../engines/draw/tables'
+import type { FiveElement, LineValue } from '../engines/draw/tables'
 import { createRng } from '../engines/draw/rng'
 import { nameReading } from '../engines/name'
 import { numerology } from '../engines/numerology'
@@ -294,6 +294,22 @@ export function drawSeed(seed: string, system: string): string {
   return `${seed}:${system}`
 }
 
+/**
+ * 육효 월령/일건/육수 clock from the reading day (일진), not the natal chart.
+ * Noon local avoids 자시 day-boundary forks; month pillar is solar-term 월건.
+ */
+export function ichingClockFromAsOf(
+  asOfDate: string,
+  timezone: string,
+): { dayStem: string; monthElement: FiveElement; dayElement: FiveElement } {
+  const pillars = fourPillars({ date: asOfDate, time: '12:00', timezone })
+  return {
+    dayStem: pillars.day.stem.hanja,
+    monthElement: pillars.month.branch.element,
+    dayElement: pillars.day.branch.element,
+  }
+}
+
 export function readTarotInputs(
   sessionInputs: OracleSessionInputs | null,
 ): { spread: TarotSpreadSize; pickedPositions: number[] } | null {
@@ -404,11 +420,12 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
     }
     case 'iching': {
       const seed = drawSeed(ctx.seed, 'iching')
+      const clock = ichingClockFromAsOf(ctx.asOfDate, ctx.tz)
       // User-cast 육효 (session_inputs.iching.lines) wins; the seeded throw is
       // the fallback so headless sessions stay reproducible from the seed.
       const draw = ctx.ichingLines
-        ? buildLiuyao({ seed, values: ctx.ichingLines })
-        : ichingDraw({ seed })
+        ? buildLiuyao({ seed, values: ctx.ichingLines, ...clock })
+        : ichingDraw({ seed, ...clock })
       return {
         vote: projectIching({ seed, values: ctx.ichingLines ?? undefined }),
         result: { draw: jsonObject(draw) },
