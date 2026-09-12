@@ -3,7 +3,7 @@
  * from this file. 1988-03-15 is the engine's triple-checked 만세력 chart.
  */
 import { describe, expect, it } from 'vitest'
-import { CALENDAR_ENGINE_VERSION, eokbu, EOKBU_THRESHOLD, fourPillars } from '..'
+import { CALENDAR_ENGINE_VERSION, eokbu, EOKBU_JONGGYEOK, EOKBU_THRESHOLD, fourPillars } from '..'
 import { HIDDEN_STEMS } from '../tables'
 
 function palja(p: ReturnType<typeof fourPillars>) {
@@ -11,9 +11,10 @@ function palja(p: ReturnType<typeof fourPillars>) {
 }
 
 describe('calendar engine version', () => {
-  it('bumps to 1.4.0 with 억부 용신', () => {
-    expect(CALENDAR_ENGINE_VERSION).toBe('1.4.0')
+  it('bumps to 1.5.0 with the 5/8 종격 cutoff', () => {
+    expect(CALENDAR_ENGINE_VERSION).toBe('1.5.0')
     expect(EOKBU_THRESHOLD).toEqual({ weakMax: 2, strongMin: 5 })
+    expect(EOKBU_JONGGYEOK).toEqual({ numerator: 5, denominator: 8, minLead: 2 })
   })
 })
 
@@ -81,14 +82,25 @@ describe('eokbu — missing birth time', () => {
   })
 })
 
-describe('eokbu — 종격 판정불가 (편왕)', () => {
-  it('1984-02-10 04:30 甲子 丙寅 甲戌 丙寅 → 목 4/8, no 용신', () => {
+describe('eokbu — 4/8 is ordinary, not 종격', () => {
+  it('1984-02-10 04:30 甲子 丙寅 甲戌 丙寅 → 목 4/8, 신강 용신 화', () => {
     // Same civil day as the 신강 fixture, 인시: 甲甲 + 寅寅 = 목 4, 화 2.
-    // 억부 would call 신강 and name 식상 화 — that is 종강 편왕, so we refuse.
+    // 4 of 8 with a gap of 2 used to fire as 종격; that cutoff is ordinary.
     const p = fourPillars({ date: '1984-02-10', time: '04:30', timezone: 'Asia/Seoul' })
     expect(palja(p)).toBe('甲子 丙寅 甲戌 丙寅')
     const r = eokbu(p)
-    expect(r.inapplicable).toEqual({ code: 'jonggyeok_dominant', element: 'wood', count: 4, chars: 8 })
+    expect(r.inapplicable).toBeNull()
+    expect(r.strength).toBe('strong')
+    expect(r.yongsin).toBe('fire')
+  })
+})
+
+describe('eokbu — 종격 판정불가 (편왕)', () => {
+  it('1980-01-08 04:30 己未 丁丑 庚辰 戊寅 → 토 5/8, no 용신', () => {
+    const p = fourPillars({ date: '1980-01-08', time: '04:30', timezone: 'Asia/Seoul' })
+    expect(palja(p)).toBe('己未 丁丑 庚辰 戊寅')
+    const r = eokbu(p)
+    expect(r.inapplicable).toEqual({ code: 'jonggyeok_dominant', element: 'earth', count: 5, chars: 8 })
     expect(r.yongsin).toBeNull()
     expect(r.huisin).toBeNull()
     expect(r.gisin).toBeNull()

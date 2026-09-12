@@ -76,7 +76,10 @@ describe('daily native weave', () => {
     expect(systems.ninestar.흉방).toBeDefined()
     expect(systems.ninestar.연반).toBeDefined()
     expect(systems.sukuyou.오늘숙).toBeDefined()
+    expect(systems.sukuyou.삼구).toBeDefined()
+    expect(systems.sukuyou.성격).toMatchObject({ 출처: 'AI 판단 요청' })
     expect(systems.tzolkin.오늘).toBeDefined()
+    expect(systems.tzolkin.의미).toMatchObject({ 출처: 'AI 판단 요청' })
 
     const pii = personalDataFrom([makeProfile()])
     expect(isFreeOfPersonalData(payload, pii)).toBe(true)
@@ -100,11 +103,13 @@ describe('daily native weave', () => {
     const todayStar = (payloadCharts.ninestar.오늘 as { 일: { 이름: string; 숫자: number } }).일
     const natalStar = payloadCharts.ninestar.일명성 as { 이름: string; 숫자: number }
     const mansion = payloadCharts.sukuyou.오늘숙 as { 한글: string; 한자: string }
+    const sanKu = payloadCharts.sukuyou.삼구 as { 관계: string }
     const tz = payloadCharts.tzolkin.오늘 as { 톤: number; 나왈: string }
 
     expect(fromPayload).toEqual([
       { label: '일진', value: `${iljin.간지} ${iljin.십신.천간}·${iljin.십신.지지}` },
       { label: '오늘의 宿', value: `${mansion.한글} ${mansion.한자}` },
+      { label: '삼구', value: sanKu.관계 },
       { label: '일명성', value: `${todayStar.이름} ${todayStar.숫자}` },
       { label: '톤·나왈', value: `톤 ${tz.톤} · ${tz.나왈}` },
     ])

@@ -10,7 +10,7 @@
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { eokbu, fourPillars } from '../lib/oracle/engines/calendar'
-import { EOKBU_THRESHOLD } from '../lib/oracle/engines/calendar/eokbu'
+import { EOKBU_JONGGYEOK, EOKBU_THRESHOLD } from '../lib/oracle/engines/calendar/eokbu'
 import type { EokbuStrength } from '../lib/oracle/engines/calendar/types'
 
 const N_SUBJECTS = 20_000
@@ -88,7 +88,7 @@ function pct(n: number, total = N_SUBJECTS): string {
 const inapplicableRate = counts.inapplicable / N_SUBJECTS
 const cutoffNote =
   inapplicableRate >= 0.2
-    ? `판정불가 is ${pct(counts.inapplicable)} — high. Revisit the 종격 cutoff (half the characters AND lead ≥ 2).`
+    ? `판정불가 is ${pct(counts.inapplicable)} — high. Revisit the 종격 cutoff (ceil(chars×5/8) AND lead ≥ 2).`
     : inapplicableRate >= 0.1
       ? `판정불가 is ${pct(counts.inapplicable)} — watch the cutoff if live sessions cluster here.`
       : `판정불가 is ${pct(counts.inapplicable)} — within a rare-종격 band; cutoff can stay.`
@@ -98,7 +98,13 @@ const report = [
   '',
   `N = ${N_SUBJECTS.toLocaleString()} synthetic subjects (1950–2010, 10% unknown birth time, seed 0x454f4b42).`,
   `Threshold: 신약 ≤ ${EOKBU_THRESHOLD.weakMax} · 중화 ${EOKBU_THRESHOLD.weakMax + 1}–${EOKBU_THRESHOLD.strongMin - 1} · 신강 ≥ ${EOKBU_THRESHOLD.strongMin}.`,
-  `종격 판정불가: one 오행 ≥ ceil(chars/2) and lead ≥ 2.`,
+  `종격 판정불가: one 오행 ≥ ceil(chars × ${EOKBU_JONGGYEOK.numerator}/${EOKBU_JONGGYEOK.denominator}) and lead ≥ ${EOKBU_JONGGYEOK.minLead}.`,
+  '',
+  'Cutoff comparison on this same sample (before picking 5/8):',
+  '- half + gap ≥ 2 (old): 24.69% 판정불가, of which 43.60% 토',
+  '- 5/8 + gap ≥ 2 (chosen): 6.31%',
+  '- half + gap ≥ 3: 7.69%',
+  '- 토-aware only (토 uses 5/8 and gap ≥ 3; others keep half + gap 2): 16.91%',
   '',
   '| bucket | count | share |',
   '| --- | ---: | ---: |',

@@ -54,6 +54,9 @@ export function dailyFactsFromNativeCharts(systems: Record<string, unknown>): Da
   const mansion = rec(rec(systems.sukuyou)?.오늘숙)
   const mansionLabel = [text(mansion?.한글), text(mansion?.한자)].filter(Boolean).join(' ')
   if (mansionLabel) facts.push({ label: '오늘의 宿', value: mansionLabel })
+  const sanKu = rec(rec(systems.sukuyou)?.삼구)
+  const sanKuLabel = text(sanKu?.관계)
+  if (sanKuLabel) facts.push({ label: '삼구', value: sanKuLabel })
 
   const todayStar = rec(rec(rec(systems.ninestar)?.오늘)?.일)
   const starName = text(todayStar?.이름)

@@ -101,7 +101,7 @@ describe('본명살 / 길방 / 오황 중궁', () => {
 })
 
 describe('calendar engine version', () => {
-  it('bumps to 1.4.0 with the 구궁 (억부 용신 is 1.4.0)', () => {
-    expect(CALENDAR_ENGINE_VERSION).toBe('1.4.0')
+  it('tracks CALENDAR_ENGINE_VERSION', () => {
+    expect(CALENDAR_ENGINE_VERSION).toBe('1.5.0')
   })
 })

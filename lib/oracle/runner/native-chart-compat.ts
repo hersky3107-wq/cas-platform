@@ -35,6 +35,8 @@ import {
   PRISM_CYCLE_KO,
   PRISM_RELATION_KO,
   SIGN_KO,
+  SUKUYOU_NAME_KO,
+  SUKUYOU_PAIR_RELATION_KO,
   WEEKDAY_KO,
 } from '../display-copy'
 import type { JsonObject } from './types'
@@ -154,34 +156,10 @@ function branchKo(branch: BranchInfo): string {
   return `${branch.hanja} (${branch.hangul}·${branch.animal})`
 }
 
-/** 三九 relation names, Korean readings. */
-const SUKUYOU_NAME_KO: Record<string, string> = {
-  命: '명',
-  業: '업',
-  胎: '태',
-  栄: '영',
-  衰: '쇠',
-  安: '안',
-  危: '위',
-  成: '성',
-  壊: '괴',
-  友: '우',
-  親: '친',
-}
-
-const SUKUYOU_PAIR_KO: Record<string, string> = {
-  命: '명 — 같은 자리, 거울 같은 사이',
-  業胎: '업태 — 오래 이어진 인연의 사이',
-  栄親: '영친 — 서로 살리고 북돋는 사이',
-  友衰: '우쇠 — 벗처럼 편안한 사이',
-  安壊: '안괴 — 강하게 끌리나 흔들리는 사이',
-  危成: '위성 — 서로 자극하고 밀어붙이는 사이',
-}
-
 function sukuyouRelationKo(relation: SukuyouRelation): JsonObject {
   return {
     관계: `${relation.name} (${SUKUYOU_NAME_KO[relation.name] ?? relation.name})`,
-    분류: SUKUYOU_PAIR_KO[relation.pair] ?? relation.pair,
+    분류: SUKUYOU_PAIR_RELATION_KO[relation.pair] ?? relation.pair,
   }
 }
 

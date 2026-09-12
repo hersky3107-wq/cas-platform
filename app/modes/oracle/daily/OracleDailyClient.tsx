@@ -18,6 +18,8 @@ import { dailyFactsFromNativeCharts, dailyNativeChartsFromResults } from "@/lib/
 import TarotSpreadChart from "../charts/TarotSpreadChart";
 import RunesDrawChart from "../charts/RunesDrawChart";
 import BrandBadge from "../runner/BrandBadge";
+import AiJudgementNote from "../charts/AiJudgementNote";
+import { inferredFromReadingSummaries } from "@/lib/oracle/tier2";
 import {
   useOracleRunnerSession,
   type OracleRunnerComputation,
@@ -120,6 +122,9 @@ export default function OracleDailyClient() {
   const direction = typeof summary?.direction === "string" ? summary.direction : null;
   const cards = cardsFrom(session.computations);
   const runes = runesFrom(session.computations);
+  const inferences = inferredFromReadingSummaries(
+    (session.view?.readings ?? []).map((row) => ({ brand: row.brand, summary: rec(row.summary) })),
+  );
   const facts = useMemo(
     () =>
       dailyFactsFromNativeCharts(
@@ -177,6 +182,9 @@ export default function OracleDailyClient() {
                 <p className="mt-1 text-sm text-white">{fact.value}</p>
               </div>
             ))}
+            <div className="col-span-2 sm:col-span-4">
+              <AiJudgementNote inferences={inferences} pending="숙·나왈·톤·메이저의 의미" />
+            </div>
           </section>
         ) : null}
 
@@ -185,7 +193,7 @@ export default function OracleDailyClient() {
             <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/65">
               오늘의 카드
             </p>
-            <TarotSpreadChart cards={cards} size="hero" />
+            <TarotSpreadChart cards={cards} size="hero" showJudgement={false} />
           </div>
           <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
             <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/65">

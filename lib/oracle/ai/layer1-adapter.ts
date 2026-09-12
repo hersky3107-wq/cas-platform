@@ -34,6 +34,7 @@ import {
   readYongsinChartState,
   yongsinRetryInstruction,
 } from '../yongsin-guard'
+import { clipInferred } from '../tier2'
 import {
   buildDailySystemPrompt,
   buildDailyUserPrompt,
@@ -432,6 +433,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           }
         }
 
+        const inferred = layer1Parsed ? clipInferred(layer1Parsed.inferred) : null
+
         if (layer1Parsed || synthesisParsed || verdictParsed) {
           const latencyMs = Date.now() - startedAt
           await finalizeUnitCost({
@@ -457,6 +460,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                   focus: layer1Parsed.focus,
                   axis_emphasis: layer1Parsed.axis_emphasis,
                   ...(yongsinNeeded ? { needed: yongsinNeeded } : {}),
+                  ...(inferred ? { inferred } : {}),
                   parsed: true,
                   finish_reason: raw.finishReason,
                   content_tokens: raw.contentTokens,

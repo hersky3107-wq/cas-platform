@@ -547,3 +547,54 @@ export const DUN_KO: Record<string, string> = {
   yang: '양둔',
   yin: '음둔',
 }
+
+/** 三九の秘法 names, Korean readings. */
+export const SUKUYOU_NAME_KO: Record<string, string> = {
+  命: '명',
+  業: '업',
+  胎: '태',
+  栄: '영',
+  衰: '쇠',
+  安: '안',
+  危: '위',
+  成: '성',
+  壊: '괴',
+  友: '우',
+  親: '친',
+}
+
+/** Five 三九 groups: 命業胎 / 栄親 / 友衰 / 安壊 / 危成. */
+export const SUKUYOU_SAN_KU_GROUP_KO: Record<string, string> = {
+  命業胎: '명업태 (命業胎)',
+  栄親: '영친 (栄親)',
+  友衰: '우쇠 (友衰)',
+  安壊: '안괴 (安壊)',
+  危成: '위성 (危成)',
+}
+
+/** 궁합 관계 copy — two people, not natal-vs-today. */
+export const SUKUYOU_PAIR_RELATION_KO: Record<string, string> = {
+  命: '명 — 같은 자리, 거울 같은 사이',
+  業胎: '업태 — 오래 이어진 인연의 사이',
+  栄親: '영친 — 서로 살리고 북돋는 사이',
+  友衰: '우쇠 — 벗처럼 편안한 사이',
+  安壊: '안괴 — 강하게 끌리나 흔들리는 사이',
+  危成: '위성 — 서로 자극하고 밀어붙이는 사이',
+}
+
+export function sukuyouSanKuGroup(name: string, pair: string): string {
+  if (name === '命' || name === '業' || name === '胎' || pair === '命' || pair === '業胎') {
+    return SUKUYOU_SAN_KU_GROUP_KO['命業胎']!
+  }
+  return SUKUYOU_SAN_KU_GROUP_KO[pair] ?? pair
+}
+
+export function sukuyouRelationNativeChart(relation: { name: string; pair: string }): {
+  관계: string
+  분류: string
+} {
+  return {
+    관계: `${relation.name} (${SUKUYOU_NAME_KO[relation.name] ?? relation.name})`,
+    분류: sukuyouSanKuGroup(relation.name, relation.pair),
+  }
+}

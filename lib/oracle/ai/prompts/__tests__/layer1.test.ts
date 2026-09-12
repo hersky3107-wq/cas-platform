@@ -90,10 +90,33 @@ describe('layer1 prompts (v4)', () => {
     expect(prompt).toContain('never name a different 오행 as 용신')
     expect(prompt).toContain('AI 판단 요청')
     expect(prompt).toContain('Fill JSON "needed"')
+    expect(prompt).toContain('Stay silent ONLY when there is no material at all')
+    expect(prompt).toContain('Fill JSON "inferred"')
     expect(prompt).toContain('용신을 하나로 고정하지 않습니다')
     expect(prompt).toContain('If 강약 is 중화, that is also TIER 1')
     expect(prompt).not.toContain('If 판정불가 is not 없음, do not name a 용신')
     expect(prompt).toContain('조후/병약/통관 are not computed')
+  })
+
+  it('asks TIER 2 from chart material for tzolkin, 숙요, tarot majors, and ziwei without time', () => {
+    const tzolkin = buildLayer1SystemPrompt('ko', 'tzolkin')
+    expect(tzolkin).toContain('nawal/tone')
+    expect(tzolkin).toContain('NEVER assign an 오행')
+    expect(tzolkin).toContain('no pair score')
+
+    const sukuyou = buildLayer1SystemPrompt('ko', 'sukuyou')
+    expect(sukuyou).toContain('命業胎')
+    expect(sukuyou).toContain('성격.출처')
+    expect(sukuyou).toContain('대길/소길 grade')
+
+    const tarot = buildLayer1SystemPrompt('ko', 'tarot')
+    expect(tarot).toContain('메이저')
+    expect(tarot).toContain('Do not map the card to an 오행')
+
+    const ziwei = buildLayer1SystemPrompt('ko', 'ziwei')
+    expect(ziwei).toContain('출생시각 없음')
+    expect(ziwei).toContain('reduced confidence')
+    expect(ziwei).toContain('Do not invent 명궁')
   })
 
   it('lets 육효 name 왕쇠 only from computed 월령/일건/동효/복장 fields', () => {

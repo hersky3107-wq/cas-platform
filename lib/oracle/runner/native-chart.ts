@@ -5,6 +5,12 @@
  * must send THIS engine's own result in that system's vocabulary — never the
  * consensus-layer 오행 / 유지·방출 mapping.
  *
+ * Authority: compute whatever CAN be computed and treat it as authoritative
+ * (TIER 1). Where the tradition has no codified rule but the chart still has
+ * material, the payload flags 출처: AI 판단 요청 (TIER 2). Stay silent only
+ * when there is no material at all (no name, no PRISM colours, 육효 월령 없음,
+ * tzolkin 오행 map, tzolkin pair score).
+ *
  * Privacy: never emit JSON key `name`, birth date/time/city, lat/lng, tz, sex,
  * draw seeds, or natal instants. Derived glyphs (카드, 괘, 팔자) are allowed.
  */
@@ -28,6 +34,7 @@ import {
   runePositionKo,
   SIGN_KO,
   STAR_CATEGORY_KO,
+  sukuyouRelationNativeChart,
   tarotCardNameKo,
   tarotPositionKo,
   TRIGRAM_KO,
@@ -44,6 +51,7 @@ import {
   type LuoshuBoard,
   type LuoshuCell,
 } from '../engines/calendar/luoshu'
+import { sukuyouRelation } from '../engines/calendar'
 import type { FiveElement } from '../engines/calendar/types'
 import type { JsonObject } from './types'
 
@@ -176,13 +184,19 @@ function tarotCard(card: unknown): JsonObject {
   const reversed = bool(row.reversed) === true
   const suit = str(row.suit)
   const arcana = str(row.arcana)
-  return {
+  const isMajor = arcana === 'major'
+  const out: JsonObject = {
     위치: tarotPositionKo(str(row.positionLabel)),
     카드: tarotCardNameKo(english, id),
     방향: reversed ? '역방향' : '정방향',
-    구분: arcana === 'major' ? '메이저' : arcana === 'minor' ? '마이너' : arcana,
+    구분: isMajor ? '메이저' : arcana === 'minor' ? '마이너' : arcana,
     수트: suit ? (TAROT_SUIT_KO[suit] ?? suit) : '없음',
   }
+  if (isMajor) {
+    out.출처 = 'AI 판단 요청'
+    out.안내 = '이 메이저 카드의 의미를 말하라. 오행으로 옮기지 마라.'
+  }
+  return out
 }
 
 function runeRow(rune: unknown, index: number): JsonObject {
@@ -513,12 +527,25 @@ function ziweiChart(result: Record<string, unknown>, ctx: NativeChartContext): J
       }
     }
   }
-  return {
+  const limitations = arr(chart.limitations).map(str)
+  const noBirthTime = limitations.includes('no_birth_time')
+  const lunar = rec(chart.lunar)
+  const out: JsonObject = {
     오행국: rec(chart.wuXingJu)?.name ?? null,
     십이궁: palaces,
     사화: sihuaChart(chart.siHua),
     대한: 대한,
   }
+  if (lunar && (str(lunar.yearStem) || str(lunar.yearBranch))) {
+    out.연주 = { 천간: str(lunar.yearStem), 지지: str(lunar.yearBranch) }
+  }
+  if (noBirthTime) {
+    out.한계 = '출생시각 없음 — 십이궁·대한은 세울 수 없음'
+    out.출처 = 'AI 판단 요청'
+    out.안내 =
+      '연주와 사화(연간)로 말할 수 있는 것만 말하라. 신뢰도가 낮음을 명시하라. 명궁·대한을 지어내지 마라.'
+  }
+  return out
 }
 
 function numerologyChart(result: Record<string, unknown>): JsonObject {
@@ -580,10 +607,18 @@ function ichingChart(result: Record<string, unknown>): JsonObject {
 
 function tarotChart(result: Record<string, unknown>): JsonObject {
   const draw = rec(result.draw) ?? result
-  return {
+  const cards = arr(draw.cards).map(tarotCard)
+  const chart: JsonObject = {
     장수: draw.spread,
-    카드: arr(draw.cards).map(tarotCard),
+    카드: cards,
   }
+  if (cards.some((card) => rec(card)?.구분 === '메이저')) {
+    chart.의미 = {
+      출처: 'AI 판단 요청',
+      안내: '차트에 있는 메이저 카드의 의미를 말하라. 오행 대응은 없다.',
+    }
+  }
+  return chart
 }
 
 function runesChart(result: Record<string, unknown>): JsonObject {
@@ -732,10 +767,26 @@ function sukuyouMansion(value: unknown): JsonObject | null {
 }
 
 function sukuyouChart(result: Record<string, unknown>): JsonObject {
-  return {
+  const natal = rec(result.natal)
+  const current = rec(result.current)
+  const natalIndex = num(natal?.index)
+  const currentIndex = num(current?.index)
+  const chart: JsonObject = {
     태어난숙: sukuyouMansion(result.natal),
     오늘숙: sukuyouMansion(result.current),
   }
+  if (natalIndex != null && currentIndex != null) {
+    chart.삼구 = {
+      ...sukuyouRelationNativeChart(sukuyouRelation(natalIndex, currentIndex)),
+      출처: '엔진 계산',
+    }
+  }
+  chart.성격 = {
+    출처: 'AI 판단 요청',
+    안내:
+      '태어난 숙과 오늘 숙, 그리고 삼구 관계(命業胎/栄親/友衰/安壊/危成)를 성격으로 말하라. 길흉 등급(대길/소길)을 엔진 결과로 내지 마라.',
+  }
+  return chart
 }
 
 function tzolkinCoord(value: unknown): JsonObject | null {
@@ -748,6 +799,11 @@ function tzolkinChart(result: Record<string, unknown>): JsonObject {
   return {
     태어난날: tzolkinCoord(result.natal),
     오늘: tzolkinCoord(result.current),
+    의미: {
+      출처: 'AI 판단 요청',
+      안내:
+        '태어난날의 나왈과 톤 조합이 이 사람에게 무엇을 뜻하는지 말하라. 오행으로 옮기지 마라.',
+    },
   }
 }
 

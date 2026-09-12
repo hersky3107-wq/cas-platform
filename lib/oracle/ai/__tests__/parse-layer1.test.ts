@@ -111,6 +111,12 @@ describe('parseLayer1Json', () => {
     expect(parseLayer1Json(validJson())?.needed).toBeUndefined()
     expect(parseLayer1Json(validJson({ needed: '화' }))?.needed).toBe('화')
   })
+
+  it('keeps optional inferred without requiring it', () => {
+    expect(parseLayer1Json(validJson())?.inferred).toBeUndefined()
+    expect(parseLayer1Json(validJson({ inferred: '각성은 시작의 결단' }))?.inferred).toBe('각성은 시작의 결단')
+    expect(parseLayer1Json(validJson({ inferred: '가'.repeat(200) }))?.inferred?.length).toBe(80)
+  })
 })
 
 describe('isEmptyModelText', () => {

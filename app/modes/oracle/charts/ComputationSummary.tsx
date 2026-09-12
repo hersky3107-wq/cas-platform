@@ -11,13 +11,17 @@ import {
   PRISM_RELATION_KO,
   SIGN_KO,
   oneDecimal,
+  sukuyouRelationNativeChart,
 } from "@/lib/oracle/display-copy";
+import { sukuyouRelation } from "@/lib/oracle/engines/calendar";
 import { PRISM_COLOR_HEX, PRISM_COLOR_KO } from "@/lib/oracle/prism-swatches";
 import type { PrismColor } from "@/lib/oracle/engines/prism/tables";
 import StructuredComputationPanel from "./StructuredComputationPanel";
 import TarotSpreadChart from "./TarotSpreadChart";
 import RunesDrawChart from "./RunesDrawChart";
 import IchingHexagramChart from "./IchingHexagramChart";
+import AiJudgementNote from "./AiJudgementNote";
+import { inferredFromReadingSummaries, type TextInference } from "@/lib/oracle/tier2";
 
 type Json = Record<string, unknown>;
 
@@ -253,39 +257,62 @@ function ninestarSummary(calculation: Json) {
   );
 }
 
-function sukuyouSummary(calculation: Json) {
+function sukuyouSummary(calculation: Json, inferences: TextInference[]) {
   const natal = nest(calculation, "natal");
   if (!isRecord(natal)) return null;
   const hanja = typeof natal.hanja === "string" ? natal.hanja : "";
   const hangul = typeof natal.hangul === "string" ? natal.hangul : "";
   if (!hanja && !hangul) return <ComingSoon />;
+  const current = nest(calculation, "current");
+  const natalIndex = natal.index;
+  const currentIndex = isRecord(current) ? current.index : null;
+  const relation =
+    typeof natalIndex === "number" && typeof currentIndex === "number"
+      ? sukuyouRelationNativeChart(sukuyouRelation(natalIndex, currentIndex))
+      : null;
   return (
-    <Panel title="태어난 숙">
-      <Row label="숙" value={`${hanja} ${hangul}`.trim()} />
-    </Panel>
+    <>
+      <Panel title="태어난 숙">
+        <Row label="숙" value={`${hanja} ${hangul}`.trim()} />
+        {relation ? (
+          <>
+            <Row label="삼구" value={relation.관계} />
+            <Row label="분류" value={relation.분류} />
+          </>
+        ) : null}
+      </Panel>
+      <AiJudgementNote inferences={inferences} pending="숙과 삼구 관계의 성격" />
+    </>
   );
 }
 
-function tzolkinSummary(calculation: Json) {
+function tzolkinSummary(calculation: Json, inferences: TextInference[]) {
   const natal = nest(calculation, "natal");
   if (!isRecord(natal)) return null;
   const tone = natal.tone;
   const nawal = typeof natal.nawalName === "string" ? natal.nawalName : "";
   if (!nawal && tone == null) return <ComingSoon />;
   return (
-    <Panel title="촐킨">
-      {typeof tone === "number" ? <Row label="톤" value={String(tone)} /> : null}
-      {nawal ? <Row label="날의 문양" value={nawal} /> : null}
-    </Panel>
+    <>
+      <Panel title="촐킨">
+        {typeof tone === "number" ? <Row label="톤" value={String(tone)} /> : null}
+        {nawal ? <Row label="날의 문양" value={nawal} /> : null}
+      </Panel>
+      <AiJudgementNote inferences={inferences} pending="나왈과 톤의 의미" />
+    </>
   );
 }
 
-function ziweiSummary(calculation: Json) {
+function ziweiSummary(calculation: Json, inferences: TextInference[]) {
   const chart = nest(calculation, "chart");
   if (!isRecord(chart)) return null;
   const palaces = Array.isArray(chart.palaces) ? chart.palaces : null;
   const ming = palaces?.find((p) => isRecord(p) && p.name === "命");
   const ju = isRecord(chart.wuXingJu) ? chart.wuXingJu : null;
+  const lunar = isRecord(chart.lunar) ? chart.lunar : null;
+  const siHua = isRecord(chart.siHua) ? chart.siHua : null;
+  const limitations = Array.isArray(chart.limitations) ? chart.limitations : [];
+  const noBirthTime = limitations.includes("no_birth_time");
   const rows: { label: string; value: string }[] = [];
   if (ju && typeof ju.name === "string") rows.push({ label: "오행국", value: ju.name });
   if (isRecord(ming) && Array.isArray(ming.stars)) {
@@ -295,13 +322,36 @@ function ziweiSummary(calculation: Json) {
       .filter(Boolean);
     if (majors.length) rows.push({ label: PALACE_KO.命 ?? "명궁", value: majors.join(" · ") });
   }
+  if (noBirthTime && lunar) {
+    const stem = typeof lunar.yearStem === "string" ? lunar.yearStem : "";
+    const branch = typeof lunar.yearBranch === "string" ? lunar.yearBranch : "";
+    if (stem || branch) rows.push({ label: "연주", value: `${stem}${branch}` });
+  }
+  if (noBirthTime && siHua) {
+    const lu = typeof siHua.lu === "string" ? siHua.lu : "";
+    const quan = typeof siHua.quan === "string" ? siHua.quan : "";
+    const ke = typeof siHua.ke === "string" ? siHua.ke : "";
+    const ji = typeof siHua.ji === "string" ? siHua.ji : "";
+    const stars = [
+      lu && `화록 ${lu}`,
+      quan && `화권 ${quan}`,
+      ke && `화과 ${ke}`,
+      ji && `화기 ${ji}`,
+    ].filter(Boolean);
+    if (stars.length) rows.push({ label: "사화", value: stars.join(" · ") });
+  }
   if (!rows.length) return <ComingSoon />;
   return (
-    <Panel title="자미두수">
-      {rows.map((row) => (
-        <Row key={row.label} label={row.label} value={row.value} />
-      ))}
-    </Panel>
+    <>
+      <Panel title="자미두수">
+        {rows.map((row) => (
+          <Row key={row.label} label={row.label} value={row.value} />
+        ))}
+      </Panel>
+      {noBirthTime ? (
+        <AiJudgementNote inferences={inferences} pending="연주·사화로 말할 수 있는 것 (신뢰도 낮음)" />
+      ) : null}
+    </>
   );
 }
 
@@ -311,7 +361,7 @@ function tarotCards(calculation: Json): Array<Record<string, unknown>> {
   return draw.cards.filter(isRecord);
 }
 
-function summaryFor(system: string, calculation: Json) {
+function summaryFor(system: string, calculation: Json, inferences: TextInference[]) {
   switch (system) {
     case "prism":
       return prismSummary(calculation);
@@ -328,13 +378,13 @@ function summaryFor(system: string, calculation: Json) {
     case "ninestar":
       return ninestarSummary(calculation);
     case "sukuyou":
-      return sukuyouSummary(calculation);
+      return sukuyouSummary(calculation, inferences);
     case "tzolkin":
-      return tzolkinSummary(calculation);
+      return tzolkinSummary(calculation, inferences);
     case "ziwei":
-      return ziweiSummary(calculation);
+      return ziweiSummary(calculation, inferences);
     case "tarot":
-      return <TarotSpreadChart cards={tarotCards(calculation)} />;
+      return <TarotSpreadChart cards={tarotCards(calculation)} inferences={inferences} />;
     default:
       return <ComingSoon />;
   }
@@ -367,15 +417,18 @@ export default function ComputationSummary({
   calculation,
   engineVersion,
   unreadable,
+  readings = [],
 }: {
   system: string;
   systemName: string;
   calculation: Json | null;
   engineVersion: string | null;
   unreadable?: boolean;
+  readings?: Array<{ brand: string; summary: Record<string, unknown> | null }>;
 }) {
   const [open, setOpen] = useState(false);
-  const body = !calculation || unreadable ? <ComingSoon /> : summaryFor(system, calculation);
+  const inferences = inferredFromReadingSummaries(readings);
+  const body = !calculation || unreadable ? <ComingSoon /> : summaryFor(system, calculation, inferences);
   const detail =
     calculation && system === "tarot"
       ? stripDrawInternals(calculation, "cards")

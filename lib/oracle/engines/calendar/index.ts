@@ -13,12 +13,12 @@
  *
  * Bump CALENDAR_ENGINE_VERSION whenever any function's output changes.
  */
-export const CALENDAR_ENGINE_VERSION = '1.4.0'
+export const CALENDAR_ENGINE_VERSION = '1.5.0'
 
 export { toLunar, toSolar, solarTerms, fourPillars } from './ganzhi'
 export { fiveElementBalance } from './five-elements'
 export { tenGodFor, tenGods } from './ten-gods'
-export { eokbu, EOKBU_THRESHOLD } from './eokbu'
+export { eokbu, EOKBU_THRESHOLD, EOKBU_JONGGYEOK } from './eokbu'
 export { greatLuck } from './great-luck'
 export { nineStar } from './nine-star'
 export { sukuyou, sukuyouRelation } from './sukuyou'

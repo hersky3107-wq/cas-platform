@@ -94,12 +94,12 @@ describe('parseSajuChart', () => {
     expect(noTime.eokbu!.hourUnknownNote).toContain('시주가 없어')
     expect(noTime.eokbu!.yongsin).toBe('화(火)')
 
-    const refused = parseSajuChart(sajuCalculation('1984-02-10', '04:30'))!
+    const refused = parseSajuChart(sajuCalculation('1980-01-08', '04:30'))!
     expect(refused.eokbu!.yongsin).toBe('없음')
     expect(refused.eokbu!.inferenceRequested).toBe(true)
     expect(refused.eokbu!.provenance).toBe('AI 판단 요청')
     expect(refused.eokbu!.inapplicable).toContain('편왕')
-    expect(refused.eokbu!.dominant?.element).toBe('목(木)')
+    expect(refused.eokbu!.dominant?.element).toBe('토(土)')
     expect(refused.eokbu!.summary).toContain('AI 판단 요청')
     expect(refused.eokbu!.guidance).toContain('억부로는 판정되지 않음')
   })

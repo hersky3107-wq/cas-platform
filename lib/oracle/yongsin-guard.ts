@@ -1,9 +1,7 @@
 /**
- * Two-tier 용신 authority.
- *
- * TIER 1 — the engine produced a 용신: that 오행 is authoritative.
- * TIER 2 — 억부 판정불가 (종격/편왕): the AI must still say what the chart
- * needs, labelled as AI 판단. Never present that guess as 억부법 계산.
+ * Two-tier 용신 authority (사주). Same split as TIER_AUTHORITY_RULES:
+ * compute what CAN be computed; where 억부 has no 용신 but the chart still
+ * has 일간·득령/득지/득세·편왕, the AI reasons, labelled AI 판단.
  */
 import { elementKoHanja } from './display-copy'
 

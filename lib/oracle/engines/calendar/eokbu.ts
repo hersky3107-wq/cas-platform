@@ -16,8 +16,10 @@
  *   · 신강 용신 — 설기 식상 first; some schools lead with 관성.
  *   · 토 통근 — 일간 천간이 지장간에 있어야 함 (戊 ≠ 己). 辰戌丑未 전부 토근
  *     으로 세는 느슨한 법과는 다름.
- *   · 종격 — 한 오행이 글자의 절반 이상이고 2 이상 앞설 때만 판정불가. Cutoff
- *     varies by primer; a wrong 용신 is worse than none.
+ *   · 종격 — 한 오행이 ceil(글자×5/8) 이상이고 2 이상 앞설 때만 판정불가.
+ *     8글자 → 5, 시주 없으면 6글자 → 4. 절반(4/8)은 흔하고, 辰戌丑未가
+ *     전부 토라 "4+격차 2"는 토 종격을 남발한다. Cutoff varies by primer;
+ *     a wrong 용신 is worse than none.
  */
 import { fiveElementBalance } from './five-elements'
 import { HIDDEN_STEMS, STEMS, producedBy } from './tables'
@@ -39,6 +41,8 @@ const ELEMENT_CYCLE: FiveElement[] = ['wood', 'fire', 'earth', 'metal', 'water']
 
 const WEAK_MAX = 2
 const STRONG_MIN = 5
+/** 종격: count >= ceil(chars * 5/8) and lead >= 2. */
+export const EOKBU_JONGGYEOK = { numerator: 5, denominator: 8, minLead: 2 } as const
 
 function producerOf(element: FiveElement): FiveElement {
   const i = ELEMENT_CYCLE.indexOf(element)
@@ -141,7 +145,8 @@ function dominantElement(pillars: FourPillars): { element: FiveElement; count: n
 
 function isJonggyeok(pillars: FourPillars): EokbuResult['inapplicable'] {
   const { element, count, second, chars } = dominantElement(pillars)
-  if (count >= Math.ceil(chars / 2) && count - second >= 2) {
+  const minCount = Math.ceil((chars * EOKBU_JONGGYEOK.numerator) / EOKBU_JONGGYEOK.denominator)
+  if (count >= minCount && count - second >= EOKBU_JONGGYEOK.minLead) {
     return { code: 'jonggyeok_dominant', element, count, chars }
   }
   return null

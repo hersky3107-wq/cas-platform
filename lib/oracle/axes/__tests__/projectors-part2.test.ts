@@ -67,7 +67,7 @@ describe('projectNineStar', () => {
 
   it('keeps 오행/phase numbers on the star blend; 흉방 is a reason flag only', () => {
     const vote = projectNineStar({ date: BIRTH_DATE, time: BIRTH_TIME, timezone: TZ, atDate: AT_DATE })
-    expect(vote.engineVersion).toBe('1.4.0')
+    expect(vote.engineVersion).toBe('1.5.0')
     expect(vote.reasons.phase).toContain('ninestar.phase.honmeisei_relation')
     expect(vote.reasons.phase).toEqual(
       expect.arrayContaining(['ninestar.hyungbang.ohwang', 'ninestar.hyungbang.amgeom', 'ninestar.hyungbang.honmei']),

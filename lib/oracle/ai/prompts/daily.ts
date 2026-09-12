@@ -33,6 +33,9 @@ export function buildDailySystemPrompt(locale: string): string {
     '- 구성 흉방 (오황살, 암검살, 본명살, 본명적살, 세파, 월파) and 길방 come only from ninestar.흉방 / ninestar.길방. Never invent a direction.',
     '- Natal 일간 is saju.팔자.일주. Copy that 천간; do not guess or substitute stems.',
     '- 사주 용신: TIER 1 when saju.용신.출처 is 억부법 계산 — copy that 오행, never substitute. TIER 2 when 출처 is AI 판단 요청: state what the natal chart needs and why; fill "needed" with 목|화|토|금|수. Forbidden: "용신을 고정하지 않습니다". If 강약 is 중화, say balanced and do not pick a 용신.',
+    '- 숙요: TIER 1 copy 태어난숙 / 오늘숙 / 삼구. TIER 2 when 성격.출처 is AI 판단 요청: characterise the 宿 and the relation; fill "inferred". No 대길/소길 grade.',
+    '- 촐킨: TIER 1 copy 톤 / 나왈. TIER 2 when 의미.출처 is AI 판단 요청: say what the natal nawal/tone means; never assign an 오행. Fill "inferred".',
+    '- 타로 메이저: TIER 2 when 의미.출처 or a 메이저 card is AI 판단 요청: say what the card means; never map to 오행. Fill "inferred".',
     '- Today\'s transits are astro.오늘 (planet + sign only, no house). Do not invent a 하우스 for a transit. Natal 행성.하우스 stays natal — do not describe it as today\'s sky.',
     'CORE WRITING RULES (HALF GROUNDING, HALF PLAIN SPEECH):',
     '- DO NOT list or mention every system. The facts strip above the text already shows all individual values. Pick only the ONE or TWO strongest, most prominent signals of the day (e.g. today\'s 사주 일진/십신, or the single tarot card, or the rune) and build the reading around them.',
@@ -64,6 +67,7 @@ export function buildDailySystemPrompt(locale: string): string {
     '  "focus": "work" | "money" | "love" | "social" | "energy",',
     '  "axis_emphasis": string[]  // 2-4 human terms from the charts',
     '  "needed": string            // saju TIER 2 only: 목|화|토|금|수. Omit when 용신 is already computed.',
+    '  "inferred": string          // TIER 2 only: short characterisation, max 80. Omit when unused.',
     '}',
   ].join('\n')
 }

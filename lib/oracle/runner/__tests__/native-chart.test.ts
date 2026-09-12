@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { eokbu, fiveElementBalance, fourPillars, nineStar, tenGods } from '../../engines/calendar'
+import { eokbu, fiveElementBalance, fourPillars, nineStar, sukuyou, tenGods, tzolkin } from '../../engines/calendar'
+import { ziweiChart } from '../../engines/ziwei'
 import { buildLiuyao, tarotDraw } from '../../engines/draw'
 import { buildNativeChart } from '../native-chart'
 import type { JsonObject } from '../types'
@@ -15,14 +16,25 @@ describe('buildNativeChart', () => {
       locale: 'ko',
       nominalAge: 39,
     })
-    const cards = chart.카드 as Array<{ 카드: string; 위치: string; 방향: string; 구분: string; 수트: string }>
+    const cards = chart.카드 as Array<{
+      카드: string
+      위치: string
+      방향: string
+      구분: string
+      수트: string
+      출처?: string
+    }>
     expect(cards).toHaveLength(5)
     expect(cards.map((card) => card.위치)).toEqual(['상황', '방해', '조언', '외부', '결과'])
+    if (cards.some((card) => card.구분 === '메이저')) {
+      expect(chart.의미).toMatchObject({ 출처: 'AI 판단 요청' })
+    }
     const death = draw.cards.find((card) => card.name === 'Death')
     if (death) {
       const mapped = cards[draw.cards.indexOf(death)]!
       expect(mapped.카드).toBe('죽음')
       expect(mapped.구분).toBe('메이저')
+      expect(mapped).toMatchObject({ 출처: 'AI 판단 요청' })
     }
     const hermit = draw.cards.find((card) => card.name === 'The Hermit')
     if (hermit) {
@@ -137,7 +149,7 @@ describe('buildNativeChart', () => {
   })
 
   it('on 편왕 판정불가 still ships 일간·십신분포·편왕 and asks for AI 판단', () => {
-    const pillars = fourPillars({ date: '1984-02-10', time: '04:30', timezone: 'Asia/Seoul' })
+    const pillars = fourPillars({ date: '1980-01-08', time: '04:30', timezone: 'Asia/Seoul' })
     const chart = buildNativeChart(
       'saju',
       {
@@ -159,8 +171,60 @@ describe('buildNativeChart', () => {
     expect(yongsin.용신).toBe('없음')
     expect(yongsin.출처).toBe('AI 판단 요청')
     expect(yongsin.안내).toContain('억부로는 판정되지 않음')
-    expect(yongsin.편왕).toMatchObject({ 오행: '목(木)', 개수: 4, 글자: 8 })
-    expect(yongsin.일간).toContain('甲')
+    expect(yongsin.편왕).toMatchObject({ 오행: '토(土)', 개수: 5, 글자: 8 })
+    expect(yongsin.일간).toContain('庚')
     expect(Object.keys(yongsin.십신분포).length).toBeGreaterThan(0)
+  })
+
+  it('wires 三九 (命業胎/栄親/友衰/安壊/危成) in Korean and asks TIER 2 for 성격', () => {
+    const natal = sukuyou({ date: '1988-03-15', time: '04:30', timezone: 'Asia/Seoul' })
+    const current = sukuyou({ date: '2026-08-20', time: '12:00', timezone: 'Asia/Seoul' })
+    const chart = buildNativeChart('sukuyou', { natal, current } as unknown as JsonObject, {
+      locale: 'ko',
+      nominalAge: 39,
+    })
+    const relation = chart.삼구 as { 관계: string; 분류: string; 출처: string }
+    expect(relation.출처).toBe('엔진 계산')
+    expect(relation.관계).toMatch(/\([명업태영쇠안위성괴우친]\)/)
+    expect(relation.분류).toMatch(/명업태|영친|우쇠|안괴|위성/)
+    const nature = chart.성격 as { 출처: string; 안내: string }
+    expect(nature.출처).toBe('AI 판단 요청')
+    expect(nature.안내).toContain('성격')
+    const blob = JSON.stringify(chart)
+    expect(blob).not.toContain('"offset"')
+    expect(blob).not.toContain('wood')
+  })
+
+  it('asks TIER 2 for tzolkin nawal/tone meaning, never an 오행', () => {
+    const natal = tzolkin({ date: '1988-03-15' })
+    const current = tzolkin({ date: '2026-08-20' })
+    const chart = buildNativeChart('tzolkin', { natal, current } as unknown as JsonObject, {
+      locale: 'ko',
+      nominalAge: 39,
+    })
+    const meaning = chart.의미 as { 출처: string; 안내: string }
+    expect(meaning.출처).toBe('AI 판단 요청')
+    expect(meaning.안내).toContain('나왈')
+    expect(meaning.안내).toContain('오행으로 옮기지 마라')
+    expect(JSON.stringify(chart)).not.toContain('"wood"')
+  })
+
+  it('on ziwei without birth time still ships 연주·사화 and asks TIER 2 at reduced confidence', () => {
+    const raw = ziweiChart({
+      birthDate: '1988-03-15',
+      birthTime: null,
+      tz: 'Asia/Seoul',
+      sex: 'male',
+    })
+    const chart = buildNativeChart('ziwei', { chart: raw } as unknown as JsonObject, {
+      locale: 'ko',
+      nominalAge: 39,
+    })
+    expect(chart.출처).toBe('AI 판단 요청')
+    expect(chart.한계).toContain('출생시각 없음')
+    expect(chart.연주).toMatchObject({ 천간: expect.any(String), 지지: expect.any(String) })
+    expect(chart.사화).toBeTruthy()
+    expect(chart.안내).toContain('신뢰도')
+    expect(chart.안내).toContain('명궁')
   })
 })

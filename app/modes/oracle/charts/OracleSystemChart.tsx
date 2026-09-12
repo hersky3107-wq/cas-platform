@@ -48,6 +48,7 @@ export default function OracleSystemChart({
       calculation={calculation}
       engineVersion={engineVersion}
       unreadable={unreadable}
+      readings={readings}
     />
   );
 }

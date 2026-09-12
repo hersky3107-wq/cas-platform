@@ -11,6 +11,7 @@ export const LAYER1_FOCUSES = ['work', 'money', 'love', 'social', 'energy'] as c
 export type Layer1Focus = (typeof LAYER1_FOCUSES)[number]
 
 export const LAYER1_ONE_LINE_MAX = 80
+export const LAYER1_INFERRED_MAX = 80
 /**
  * v4 budget (FIX 3): a 25-credit reading at 500 chars was too short and too
  * jargon-heavy. Prompt demands 700–1100; the parser enforces a hard ceiling
@@ -43,6 +44,8 @@ export type Layer1Json = {
   axis_emphasis: string[]
   /** TIER 2 용신 오행 (목/화/토/금/수). Absent on TIER 1. */
   needed?: string
+  /** TIER 2 characterisation (숙요 성격, 촐킨 의미, 메이저, 자미 무시각). */
+  inferred?: string
 }
 
 function stripFences(raw: string): string {
@@ -132,6 +135,7 @@ export function parseLayer1Json(
   const axisEmphasis = asAxisEmphasis(record.axis_emphasis)
   if (!direction || !focus || !axisEmphasis) return null
   const neededRaw = typeof record.needed === 'string' ? record.needed.trim() : ''
+  const inferredRaw = typeof record.inferred === 'string' ? record.inferred.trim() : ''
   return {
     narrative,
     one_line: oneLineRaw.slice(0, LAYER1_ONE_LINE_MAX),
@@ -139,6 +143,7 @@ export function parseLayer1Json(
     focus,
     axis_emphasis: axisEmphasis,
     ...(neededRaw ? { needed: neededRaw } : {}),
+    ...(inferredRaw ? { inferred: [...inferredRaw].slice(0, LAYER1_INFERRED_MAX).join('') } : {}),
   }
 }
 
