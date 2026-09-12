@@ -36,6 +36,7 @@ import { natalChart, synastry, type CrossAspect, type NatalChart } from '../engi
 import {
   branchPairRelation,
   elementPairRelation,
+  eokbu,
   fiveElementBalance,
   fourPillars,
   greatLuck,
@@ -326,12 +327,14 @@ function computeCompatSystem(system: SystemId, a: PersonCtx, b: PersonCtx, share
         pillars: jsonObject(pillarsA),
         fiveElements: jsonObject(balanceA),
         tenGods: jsonObject(tenGods(pillarsA.day.stem, pillarsA)),
+        eokbu: jsonObject(eokbu(pillarsA)),
         greatLuck: luckA ? jsonObject(luckA) : null,
       }
       const sideB = {
         pillars: jsonObject(pillarsB),
         fiveElements: jsonObject(balanceB),
         tenGods: jsonObject(tenGods(pillarsB.day.stem, pillarsB)),
+        eokbu: jsonObject(eokbu(pillarsB)),
         greatLuck: luckB ? jsonObject(luckB) : null,
       }
 

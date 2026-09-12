@@ -185,6 +185,33 @@ export default function SajuPillarsChart({
           </p>
         ) : null}
 
+        {chart.eokbu ? (
+          <section className="mt-5 rounded-xl border border-cyan-300/20 bg-cyan-400/[0.06] px-3 py-3 sm:px-4">
+            <div className="flex items-end justify-between gap-3">
+              <h4 className="text-sm font-semibold text-white">용신 · 억부법</h4>
+              <span className="text-[10px] text-white/35">{chart.eokbu.strength}</span>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-cyan-50">{chart.eokbu.summary}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-white/55">
+              희신 {chart.eokbu.huisin} · 기신 {chart.eokbu.gisin}
+              {chart.eokbu.deukji.roots.length > 0
+                ? ` · 통근 ${chart.eokbu.deukji.roots.join(', ')}`
+                : ''}
+              {chart.eokbu.deukse.helpers.length > 0
+                ? ` · 조력 ${chart.eokbu.deukse.helpers.join(', ')}`
+                : ''}
+            </p>
+            {chart.eokbu.inapplicable ? (
+              <p className="mt-2 text-[11px] leading-relaxed text-amber-100/85">
+                억부 판정불가 · {chart.eokbu.inapplicable}. 용신을 억지로 고르지 않습니다.
+              </p>
+            ) : null}
+            {chart.eokbu.hourUnknownNote ? (
+              <p className="mt-2 text-[11px] leading-relaxed text-white/45">{chart.eokbu.hourUnknownNote}</p>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="mt-6 border-t border-white/8 pt-5">
           <div className="flex items-end justify-between gap-3">
             <h4 className="text-sm font-semibold text-white">오행 분포</h4>

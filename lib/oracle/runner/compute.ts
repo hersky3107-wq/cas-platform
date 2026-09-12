@@ -30,7 +30,7 @@ import {
   projectZiwei,
 } from '../axes'
 import { SYSTEM_IDS, type AxisConsensus, type AxisVote, type ReadingScope, type SystemId } from '../axes/types'
-import { fiveElementBalance, fourPillars, greatLuck, nineStar, sukuyou, tenGods, tzolkin } from '../engines/calendar'
+import { eokbu, fiveElementBalance, fourPillars, greatLuck, nineStar, sukuyou, tenGods, tzolkin } from '../engines/calendar'
 import { natalChart, transits } from '../engines/astro'
 import { buildLiuyao, ichingDraw, runeDraw, tarotDraw } from '../engines/draw'
 import type { TarotSpreadSize } from '../engines/draw/conventions'
@@ -367,6 +367,7 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
           pillars: jsonObject(pillars),
           fiveElements: jsonObject(fiveElementBalance(pillars)),
           tenGods: jsonObject(tenGods(pillars.day.stem, pillars)),
+          eokbu: jsonObject(eokbu(pillars)),
           greatLuck: luck ? jsonObject(luck) : null,
         },
       }

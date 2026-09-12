@@ -112,6 +112,60 @@ export interface TenGodsResult {
   hour: { stem: TenGodName; branch: TenGodName } | null
 }
 
+export type EokbuStrength = 'weak' | 'balanced' | 'strong'
+
+export type EokbuDeukryeongRelation = 'wang' | 'sheng' | 'none'
+
+export type EokbuRootRole = 'yu' | 'zhong' | 'ben'
+
+export type EokbuPillarKey = 'year' | 'month' | 'day' | 'hour'
+
+export type EokbuInapplicableCode = 'jonggyeok_dominant'
+
+export interface EokbuInapplicable {
+  code: EokbuInapplicableCode
+  element: FiveElement
+  count: number
+  chars: number
+}
+
+export interface EokbuRoot {
+  pillar: EokbuPillarKey
+  branchHanja: string
+  role: EokbuRootRole
+}
+
+export interface EokbuHelper {
+  kind: 'stem' | 'benqi'
+  pillar: EokbuPillarKey
+  hanja: string
+}
+
+export interface EokbuResult {
+  school: 'eokbu'
+  strength: EokbuStrength | null
+  deukryeong: {
+    has: boolean
+    score: number
+    relation: EokbuDeukryeongRelation
+    monthBranchHanja: string
+  }
+  deukji: {
+    score: number
+    roots: EokbuRoot[]
+  }
+  deukse: {
+    score: number
+    helpers: EokbuHelper[]
+  }
+  total: number
+  yongsin: FiveElement | null
+  huisin: FiveElement | null
+  gisin: FiveElement | null
+  inapplicable: EokbuInapplicable | null
+  hourUnknown: boolean
+}
+
 export interface GreatLuckPeriod {
   /** 1-based period index. */
   index: number

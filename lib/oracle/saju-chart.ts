@@ -10,6 +10,7 @@
  *
  * Pure: no React, no DOM, no clock.
  */
+import { eokbuNativeChart } from './display-copy'
 
 export const SAJU_ELEMENT_KEYS = ['wood', 'fire', 'earth', 'metal', 'water'] as const
 export type SajuElementKey = (typeof SAJU_ELEMENT_KEYS)[number]
@@ -69,6 +70,20 @@ export type SajuChart = {
   hourUnknown: boolean
   /** 일간, the reference character every 십신 is measured against. */
   dayStem: SajuChartChar | null
+  eokbu: SajuEokbu | null
+}
+
+export type SajuEokbu = {
+  strength: string
+  summary: string
+  yongsin: string
+  huisin: string
+  gisin: string
+  deukryeong: { has: boolean; score: number; monthBranch: string; relation: string }
+  deukji: { score: number; roots: string[] }
+  deukse: { score: number; helpers: string[] }
+  inapplicable: string | null
+  hourUnknownNote: string | null
 }
 
 type Json = Record<string, unknown>
@@ -156,5 +171,28 @@ export function parseSajuChart(calculation: unknown): SajuChart | null {
     charCount: elements.reduce((sum, entry) => sum + entry.count, 0),
     hourUnknown,
     dayStem: columns.find((column) => column.key === 'day')?.stem ?? null,
+    eokbu: readEokbu(root?.eokbu),
+  }
+}
+
+function readEokbu(raw: unknown): SajuEokbu | null {
+  const ko = eokbuNativeChart(raw)
+  if (!ko) return null
+  return {
+    strength: ko.강약,
+    summary: ko.요약,
+    yongsin: ko.용신,
+    huisin: ko.희신,
+    gisin: ko.기신,
+    deukryeong: {
+      has: ko.득령.여부,
+      score: ko.득령.점수,
+      monthBranch: ko.득령.월지,
+      relation: ko.득령.관계,
+    },
+    deukji: { score: ko.득지.점수, roots: ko.득지.통근 },
+    deukse: { score: ko.득세.점수, helpers: ko.득세.조력 },
+    inapplicable: ko.판정불가 === '없음' ? null : ko.판정불가,
+    hourUnknownNote: ko.시주없음 ? ko.시주없음약화 : null,
   }
 }

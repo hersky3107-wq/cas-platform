@@ -48,6 +48,159 @@ export const ELEMENT_KO: Record<string, string> = {
   WATER: '수',
 }
 
+export const ELEMENT_HANJA: Record<string, string> = {
+  wood: '木',
+  fire: '火',
+  earth: '土',
+  metal: '金',
+  water: '水',
+}
+
+export function elementKoHanja(element: string): string {
+  const ko = ELEMENT_KO[element]
+  const hanja = ELEMENT_HANJA[element]
+  if (ko && hanja) return `${ko}(${hanja})`
+  return ko ?? element
+}
+
+export const EOKBU_STRENGTH_KO: Record<string, string> = {
+  weak: '신약',
+  balanced: '중화',
+  strong: '신강',
+}
+
+export const EOKBU_DEUKRYEONG_KO: Record<string, string> = {
+  wang: '왕',
+  sheng: '상생',
+  none: '없음',
+}
+
+export const EOKBU_ROOT_ROLE_KO: Record<string, string> = {
+  yu: '여기',
+  zhong: '중기',
+  ben: '정기',
+}
+
+export const EOKBU_PILLAR_KO: Record<string, string> = {
+  year: '년',
+  month: '월',
+  day: '일',
+  hour: '시',
+}
+
+export function formatEokbuSummary(input: {
+  strength: string | null
+  yongsin: string | null
+  deukryeongRelation: string
+  deukji: number
+  deukse: number
+  inapplicable: { element: string; count: number; chars: number } | null
+}): string {
+  const deukryeong =
+    input.deukryeongRelation === 'wang' || input.deukryeongRelation === 'sheng'
+      ? `득령 ${EOKBU_DEUKRYEONG_KO[input.deukryeongRelation] ?? input.deukryeongRelation}`
+      : '득령 없음'
+  const parts = `${deukryeong}, 득지 ${input.deukji}, 득세 ${input.deukse}`
+  if (input.inapplicable) {
+    return `억부 판정불가 · 편왕 (${elementKoHanja(input.inapplicable.element)} ${input.inapplicable.count}/${input.inapplicable.chars}자)`
+  }
+  if (!input.yongsin || !input.strength || input.strength === 'balanced') {
+    const label = input.strength ? EOKBU_STRENGTH_KO[input.strength] ?? input.strength : '중화'
+    return `${label} (${parts})`
+  }
+  const strength = EOKBU_STRENGTH_KO[input.strength] ?? input.strength
+  return `용신 ${elementKoHanja(input.yongsin)} · ${strength} (${parts})`
+}
+
+export type EokbuNativeChart = {
+  강약: string
+  득령: { 여부: boolean; 점수: number; 월지: string; 관계: string }
+  득지: { 점수: number; 통근: string[] }
+  득세: { 점수: number; 조력: string[] }
+  종합: number
+  용신: string
+  희신: string
+  기신: string
+  판정불가: string
+  시주없음: boolean
+  시주없음약화: string
+  요약: string
+  학교: '억부법'
+}
+
+function recUnknown(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+}
+
+function strUnknown(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function numUnknown(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** Korean native-chart / UI shape from the English engine `eokbu` object. */
+export function eokbuNativeChart(value: unknown): EokbuNativeChart | null {
+  const row = recUnknown(value)
+  if (!row) return null
+  const deukryeong = recUnknown(row.deukryeong) ?? {}
+  const deukji = recUnknown(row.deukji) ?? {}
+  const deukse = recUnknown(row.deukse) ?? {}
+  const inapplicable = recUnknown(row.inapplicable)
+  const strength = strUnknown(row.strength)
+  const yongsin = strUnknown(row.yongsin)
+  const roots = (Array.isArray(deukji.roots) ? deukji.roots : []).map((root) => {
+    const cell = recUnknown(root) ?? {}
+    const pillar = EOKBU_PILLAR_KO[strUnknown(cell.pillar)] ?? strUnknown(cell.pillar)
+    const role = EOKBU_ROOT_ROLE_KO[strUnknown(cell.role)] ?? strUnknown(cell.role)
+    return `${pillar}지 ${strUnknown(cell.branchHanja)} (${role})`
+  })
+  const helpers = (Array.isArray(deukse.helpers) ? deukse.helpers : []).map((helper) => {
+    const cell = recUnknown(helper) ?? {}
+    const pillar = EOKBU_PILLAR_KO[strUnknown(cell.pillar)] ?? strUnknown(cell.pillar)
+    const kind = strUnknown(cell.kind) === 'benqi' ? '지본기' : '간'
+    return `${pillar}${kind} ${strUnknown(cell.hanja)}`
+  })
+  const hourUnknown = row.hourUnknown === true
+  const 판정불가 = inapplicable
+    ? `편왕 (${elementKoHanja(strUnknown(inapplicable.element))} ${numUnknown(inapplicable.count) ?? '?'}/${numUnknown(inapplicable.chars) ?? '?'}자)`
+    : '없음'
+  return {
+    강약: strength ? EOKBU_STRENGTH_KO[strength] ?? strength : '없음',
+    득령: {
+      여부: deukryeong.has === true,
+      점수: numUnknown(deukryeong.score) ?? 0,
+      월지: strUnknown(deukryeong.monthBranchHanja),
+      관계: EOKBU_DEUKRYEONG_KO[strUnknown(deukryeong.relation)] ?? strUnknown(deukryeong.relation),
+    },
+    득지: { 점수: numUnknown(deukji.score) ?? 0, 통근: roots },
+    득세: { 점수: numUnknown(deukse.score) ?? 0, 조력: helpers },
+    종합: numUnknown(row.total) ?? 0,
+    용신: yongsin ? elementKoHanja(yongsin) : '없음',
+    희신: strUnknown(row.huisin) ? elementKoHanja(strUnknown(row.huisin)) : '없음',
+    기신: strUnknown(row.gisin) ? elementKoHanja(strUnknown(row.gisin)) : '없음',
+    판정불가,
+    시주없음: hourUnknown,
+    시주없음약화: hourUnknown ? '시주가 없어 득지·득세는 연월일만으로 계산했다' : '없음',
+    요약: formatEokbuSummary({
+      strength: strength || null,
+      yongsin: yongsin || null,
+      deukryeongRelation: strUnknown(deukryeong.relation) || 'none',
+      deukji: numUnknown(deukji.score) ?? 0,
+      deukse: numUnknown(deukse.score) ?? 0,
+      inapplicable: inapplicable
+        ? {
+            element: strUnknown(inapplicable.element),
+            count: numUnknown(inapplicable.count) ?? 0,
+            chars: numUnknown(inapplicable.chars) ?? 0,
+          }
+        : null,
+    }),
+    학교: '억부법',
+  }
+}
+
 export const DOMAIN_KO: Record<string, string> = {
   work: '일',
   money: '재물',
