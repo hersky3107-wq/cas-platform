@@ -12,9 +12,9 @@ import {
 
 describe('draw engine version', () => {
   it('exports DRAW_ENGINE_VERSION', () => {
-    // 1.1.0: rune picks from the 24-stone cloth + merkstave removed — a given
-    // seed's rune draw changed, which is exactly what this bump signals.
-    expect(DRAW_ENGINE_VERSION).toBe('1.1.0')
+    // 1.2.0: 육효 gained 왕쇠 parts and 복장. Hexagram identity for a given
+    // seed is unchanged; the draw result gained fields.
+    expect(DRAW_ENGINE_VERSION).toBe('1.2.0')
   })
 })
 
@@ -123,9 +123,9 @@ describe('ichingDraw / 육효', () => {
   })
 
   it('is deterministic for the same seed', () => {
-    const first = ichingDraw({ seed: 'iching-det', dayStem: '甲' })
+    const first = ichingDraw({ seed: 'iching-det', dayStem: '甲', monthElement: 'fire', dayElement: 'water' })
     for (let i = 0; i < 50; i++) {
-      expect(ichingDraw({ seed: 'iching-det', dayStem: '甲' })).toEqual(first)
+      expect(ichingDraw({ seed: 'iching-det', dayStem: '甲', monthElement: 'fire', dayElement: 'water' })).toEqual(first)
     }
     expect(first.lines).toHaveLength(6)
     expect(first.lines[0]!.beast).toBe('青龙')
@@ -134,7 +134,9 @@ describe('ichingDraw / 육효', () => {
 
   it('flags missing day stem instead of inventing 육수', () => {
     const reading = ichingDraw({ seed: 'no-stem' })
-    expect(reading.limitations).toEqual(['no_day_stem'])
+    expect(reading.limitations).toEqual(['no_day_stem', 'no_month_element', 'no_day_element'])
     expect(reading.lines.every((line) => line.beast === null)).toBe(true)
+    expect(reading.lines.every((line) => line.monthPhase === null)).toBe(true)
+    expect(reading.lines.every((line) => line.dayRelation === null)).toBe(true)
   })
 })

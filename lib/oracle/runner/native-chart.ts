@@ -16,6 +16,7 @@ import {
   DOMAIN_KO,
   ELEMENT_KO,
   GYEOK_KO,
+  MONTH_PHASE_KO,
   PALACE_KO,
   PRISM_CYCLE_KO,
   PRISM_RELATION_KO,
@@ -166,9 +167,44 @@ function hexagramChart(hex: unknown): JsonObject | null {
   }
 }
 
+function ilgeonKo(relation: unknown): string {
+  const row = rec(relation)
+  if (!row) return '없음'
+  const kind = str(row.kind)
+  const actor = str(row.actor)
+  if (kind === '비화' || actor === 'same') return '비화'
+  if (kind === '생' && actor === 'day') return '일진이 이 효를 생함'
+  if (kind === '생' && actor === 'line') return '이 효가 일진을 생함'
+  if (kind === '극' && actor === 'day') return '일진이 이 효를 극함'
+  if (kind === '극' && actor === 'line') return '이 효가 일진을 극함'
+  return '없음'
+}
+
+function donghyoKo(fromChanging: unknown): string[] {
+  return arr(fromChanging).flatMap((entry) => {
+    const row = rec(entry)
+    if (!row) return []
+    const position = num(row.position)
+    const action = str(row.action)
+    if (position == null || (action !== '생' && action !== '극')) return []
+    return [`${position}효가 이 효를 ${action}함`]
+  })
+}
+
+function changingActionKo(entry: unknown): string | null {
+  const row = rec(entry)
+  if (!row) return null
+  const from = num(row.from)
+  const to = num(row.to)
+  const action = str(row.action)
+  if (from == null || to == null || (action !== '생' && action !== '극')) return null
+  return `${from}효가 ${to}효를 ${action}함`
+}
+
 function ichingLine(line: unknown): JsonObject {
   const row = rec(line) ?? {}
   const value = num(row.value)
+  const phase = str(row.monthPhase)
   return {
     위치: num(row.position),
     음양: bool(row.yang) ? '양' : '음',
@@ -177,6 +213,9 @@ function ichingLine(line: unknown): JsonObject {
     육친: RELATIVE_KO[str(row.relative)] ?? str(row.relative),
     육신: BEAST_KO[str(row.beast)] ?? str(row.beast),
     오행: elementKo(row.element),
+    월령: phase ? (MONTH_PHASE_KO[phase] ?? phase) : '없음',
+    일건: ilgeonKo(row.dayRelation),
+    동효생극: donghyoKo(row.fromChanging),
   }
 }
 
@@ -472,6 +511,8 @@ function nameChart(result: Record<string, unknown>): JsonObject {
 function ichingChart(result: Record<string, unknown>): JsonObject {
   const draw = rec(result.draw) ?? result
   const palace = str(draw.palace)
+  const month = str(draw.monthElement)
+  const day = str(draw.dayElement)
   return {
     본괘: hexagramChart(draw.primary),
     변괘: hexagramChart(draw.resulting),
@@ -479,6 +520,13 @@ function ichingChart(result: Record<string, unknown>): JsonObject {
     세효: draw.shi,
     응효: draw.ying,
     궁: hangulHanja(palace, TRIGRAM_KO[palace]),
+    월령오행: month ? elementKo(month) : '없음',
+    일진오행: day ? elementKo(day) : '없음',
+    복장: arr(draw.hiddenRelatives).map((relative) => RELATIVE_KO[str(relative)] ?? str(relative)),
+    동효생극: arr(draw.changingActions).flatMap((entry) => {
+      const label = changingActionKo(entry)
+      return label ? [label] : []
+    }),
     효: arr(draw.lines).map(ichingLine),
   }
 }

@@ -401,4 +401,5 @@ export function tzolkinCompatChart(a: JsonObject, b: JsonObject): JsonObject {
 }
 
 /** 육효 draw read for the relationship: 세효 = 본인, 응효 = 상대. */
-export const ICHING_COMPAT_NOTE = '세효(世爻)는 본인, 응효(應爻)는 상대를 나타냅니다. 두 효의 육친·왕쇠와 상호 작용이 관계의 축입니다.'
+export const ICHING_COMPAT_NOTE =
+  '세효(世爻)는 본인, 응효(應爻)는 상대를 나타냅니다. 본인세효·상대응효의 육친·월령(왕상휴수사)·일건·동효생극이 관계의 축입니다. 강약은 그 계산 값에서만 말하고, 육친이 있다/없다만으로 추론하지 마세요.'

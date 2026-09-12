@@ -1,5 +1,6 @@
 import { COIN_YANG, COIN_YIN } from './conventions'
 import { createRng } from './rng'
+import { changingActions, dayRelation, hiddenRelatives, monthPhase } from './strength'
 import {
   BRANCH_ELEMENT,
   HEXAGRAM_NAMES,
@@ -11,9 +12,10 @@ import {
   STEM_HANJA,
   TRIGRAM_BY_BITS,
   sixRelative,
+  type FiveElement,
   type LineValue,
 } from './tables'
-import type { DayStemInput, HexagramInfo, IchingDrawResult, IchingLine } from './types'
+import type { DayStemInput, HexagramInfo, IchingDrawResult, IchingLimitation, IchingLine } from './types'
 
 function bitsFromYangFlags(yang: readonly boolean[]): number {
   return yang.reduce((bits, isYang, index) => bits + (isYang ? 1 << index : 0), 0)
@@ -69,11 +71,17 @@ function coinLine(rng: ReturnType<typeof createRng>): LineValue {
   return sum as LineValue
 }
 
-export function buildLiuyao(input: {
+export type LiuyaoInput = {
   seed: string
   values: readonly LineValue[]
   dayStem?: DayStemInput
-}): IchingDrawResult {
+  /** 월건 오행 (월령). Omit → monthPhase null, limitation `no_month_element`. */
+  monthElement?: FiveElement
+  /** 일진 지지 오행 (일건). Omit → dayRelation null, limitation `no_day_element`. */
+  dayElement?: FiveElement
+}
+
+export function buildLiuyao(input: LiuyaoInput): IchingDrawResult {
   if (input.values.length !== 6) throw new RangeError('draw engine: 육효 requires 6 line values')
   for (const value of input.values) {
     if (value !== 6 && value !== 7 && value !== 8 && value !== 9) {
@@ -92,7 +100,7 @@ export function buildLiuyao(input: {
   const branches = najiaBranches(primaryYang)
   const changingPositions: number[] = []
 
-  const lines: IchingLine[] = input.values.map((value, index) => {
+  const baseLines = input.values.map((value, index) => {
     const changing = value === 6 || value === 9
     if (changing) changingPositions.push(index + 1)
     const branch = branches[index]!
@@ -109,6 +117,23 @@ export function buildLiuyao(input: {
     }
   })
 
+  const actions = changingActions(baseLines)
+  const monthElement = input.monthElement
+  const dayElement = input.dayElement
+  const lines: IchingLine[] = baseLines.map((line) => ({
+    ...line,
+    monthPhase: monthElement ? monthPhase(line.element, monthElement) : null,
+    dayRelation: dayElement ? dayRelation(dayElement, line.element) : null,
+    fromChanging: actions
+      .filter((action) => action.to === line.position)
+      .map((action) => ({ position: action.from, action: action.action })),
+  }))
+
+  const limitations: IchingLimitation[] = []
+  if (stem === null) limitations.push('no_day_stem')
+  if (monthElement === undefined) limitations.push('no_month_element')
+  if (dayElement === undefined) limitations.push('no_day_element')
+
   return {
     seed: input.seed,
     primary,
@@ -120,12 +145,22 @@ export function buildLiuyao(input: {
     ying: palace.ying,
     lines,
     changingPositions,
-    limitations: stem === null ? ['no_day_stem'] : [],
+    hiddenRelatives: hiddenRelatives(lines),
+    changingActions: actions,
+    monthElement: monthElement ?? null,
+    dayElement: dayElement ?? null,
+    limitations,
   }
 }
 
-export function ichingDraw(input: { seed: string; dayStem?: DayStemInput }): IchingDrawResult {
+export function ichingDraw(input: Omit<LiuyaoInput, 'values'> & { seed: string }): IchingDrawResult {
   const rng = createRng(input.seed)
   const values = [coinLine(rng), coinLine(rng), coinLine(rng), coinLine(rng), coinLine(rng), coinLine(rng)]
-  return buildLiuyao({ seed: input.seed, values, dayStem: input.dayStem })
+  return buildLiuyao({
+    seed: input.seed,
+    values,
+    dayStem: input.dayStem,
+    monthElement: input.monthElement,
+    dayElement: input.dayElement,
+  })
 }

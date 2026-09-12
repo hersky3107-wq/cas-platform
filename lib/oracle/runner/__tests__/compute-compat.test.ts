@@ -178,9 +178,20 @@ describe('runCompatComputations', () => {
     expect(runeDraw.runes.map((rune) => rune.positionLabel)).toEqual([...COMPAT_RUNE_LABELS[3]!])
 
     const iching = computed.systems.find((entry) => entry.system === 'iching')!
-    const chart = iching.aiPayload!.chart as { 세응풀이?: string }
+    const chart = iching.aiPayload!.chart as {
+      세응풀이?: string
+      복장?: string[]
+      본인세효?: { 월령?: string; 육친?: string }
+      상대응효?: { 월령?: string; 육친?: string }
+    }
     expect(chart.세응풀이).toContain('세효')
     expect(chart.세응풀이).toContain('응효')
+    expect(chart.세응풀이).toContain('월령')
+    expect(Array.isArray(chart.복장)).toBe(true)
+    expect(chart.본인세효?.월령).toBeTruthy()
+    expect(chart.본인세효?.월령).not.toBe('없음')
+    expect(chart.상대응효?.월령).toBeTruthy()
+    expect(chart.상대응효?.월령).not.toBe('없음')
   })
 
   it('degrades honestly per side: no partner birth time drops HER ziwei, not the session', () => {

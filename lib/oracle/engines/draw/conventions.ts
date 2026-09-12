@@ -4,8 +4,10 @@
  * 1.1.0: rune draw became pick-based (24-stone cloth, orientation fixed per
  * shuffle position) and the nine symmetric runes lost their random merkstave
  * flag — same seed, different rune output than 1.0.0.
+ * 1.2.0: 육효 gained 월령 왕상휴수사, 일건, 동효 생극, and 복장. Hexagram
+ * identity for a given seed is unchanged; the draw result gained fields.
  */
-export const DRAW_ENGINE_VERSION = '1.1.0'
+export const DRAW_ENGINE_VERSION = '1.2.0'
 
 /**
  * User-picked fan positions are 1-based ("the 14th card" = 14).

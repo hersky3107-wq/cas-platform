@@ -337,6 +337,15 @@ export const RELATIVE_KO: Record<string, string> = {
   父母: '부모',
 }
 
+/** 월령 왕상휴수사. Hangul plus hanja so 수(囚) is not read as 오행 수. */
+export const MONTH_PHASE_KO: Record<string, string> = {
+  旺: '왕(旺)',
+  相: '상(相)',
+  休: '휴(休)',
+  囚: '수(囚)',
+  死: '사(死)',
+}
+
 export const BEAST_KO: Record<string, string> = {
   青龙: '청룡',
   朱雀: '주작',
