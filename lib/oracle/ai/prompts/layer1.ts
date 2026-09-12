@@ -62,7 +62,8 @@ const NATIVE_SYSTEM_RULES: Record<string, string> = {
   astro:
     'Astrology: name planets, signs, houses, aspects, and angles from the chart. Planets (목성, 화성...) are planets — never call a planet an element. The four sign elements are 불·흙·바람·물.',
   prism: 'PRISM: speak in MBTI, the three colours, weekday/season, and this year/month\'s cycle. Never say 코어 매트릭스.',
-  ninestar: 'Nine Star: name 본명성 / 월명성 / 일명성 and their 오행, and what today\'s star means against the natal star.',
+  ninestar:
+    'Nine Star: name 본명성 / 월명성 / 일명성 and their 오행, and what today\'s star means against the natal star. The 연반 구궁 is the directional chart — name 오황살 / 암검살 / 본명살 / 본명적살 / 세파 / 월파 and 길방 only from those chart fields, never by inferring a direction from the star number alone. 길방 is 오행 상생 with 본명성 and free of those 흉방; do not invent a 대길/소길 grade.',
   sukuyou:
     'Sukuyou: name the natal 宿 and today\'s 宿 and read their relation. 宿 are lunar mansions — never call them 명성 and never borrow 구성기학 vocabulary (본명성).',
   tzolkin: 'Tzolkin: name the nawal and tone for the natal day and for today. Use the Yucatec names from the chart.',

@@ -32,6 +32,10 @@
  *     Winter 閏 starts 陽遁 at 7 (七赤); summer 閏 starts 陰遁 at 3 (三碧).
  *   - 120-day compression (attested only far outside 1900–2100) is not
  *     implemented; if it appears the engine throws rather than guess.
+ *   - 구궁 비성: 年·月·日 LAYOUT is 陽遁 順飛 (the nine 中宮図). Verified
+ *     uic.jp 1988 年盤. 日盤 陽/陰遁 is the 중궁 counting direction, not
+ *     奇門 逆飛 of the palaces — some 飛星 schools reverse 陰遁 days; we
+ *     do not, so a 二黒 day matches the 二黒 中宮図 (오황 북동).
  *
  * Solstice calendar dates are the Asia/Tokyo civil date of the instant
  * from `solarTerms()` (Japanese 気学 practice).

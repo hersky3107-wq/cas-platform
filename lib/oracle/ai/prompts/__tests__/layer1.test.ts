@@ -68,6 +68,19 @@ describe('layer1 prompts (v4)', () => {
     expect(personal).toContain('for one person')
   })
 
+  it('lets 구성 name 흉방/길방 only from chart fields, with no invented 吉 grade', () => {
+    const prompt = buildLayer1SystemPrompt('ko', 'ninestar')
+    expect(prompt).toContain('오황살')
+    expect(prompt).toContain('암검살')
+    expect(prompt).toContain('본명살')
+    expect(prompt).toContain('본명적살')
+    expect(prompt).toContain('세파')
+    expect(prompt).toContain('월파')
+    expect(prompt).toContain('길방')
+    expect(prompt).toContain('never by inferring a direction')
+    expect(prompt).toContain('do not invent a 대길/소길 grade')
+  })
+
   it('lets 육효 name 왕쇠 only from computed 월령/일건/동효/복장 fields', () => {
     const prompt = buildLayer1SystemPrompt('ko', 'iching')
     expect(prompt).toContain('월령')

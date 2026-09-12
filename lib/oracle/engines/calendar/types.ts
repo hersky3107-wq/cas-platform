@@ -4,6 +4,8 @@
  * date (+ time) and IANA timezone.
  */
 
+import type { LuoshuBoard } from './luoshu'
+
 export type FiveElement = 'wood' | 'fire' | 'earth' | 'metal' | 'water'
 export type YinYang = 'yang' | 'yin'
 
@@ -143,6 +145,15 @@ export interface NineStarResult {
   year: NineStarValue
   month: NineStarValue
   day: NineStarValue
+  /** 구성 연의 지지 (입춘 기준). 세파에 쓴다. 0=子. */
+  yearBranchIndex: number
+  /** 절월 지지. 월파에 쓴다. */
+  monthBranchIndex: number
+  /** 日盤 중궁 counting 遁 (甲子 switch). 年·月·日 배치는 항상 陽遁 順飛. */
+  dayDun: 'yang' | 'yin'
+  yearBoard: LuoshuBoard
+  monthBoard: LuoshuBoard
+  dayBoard: LuoshuBoard
 }
 
 export type SukuyouRelationName = '命' | '業' | '胎' | '栄' | '衰' | '安' | '危' | '成' | '壊' | '友' | '親'

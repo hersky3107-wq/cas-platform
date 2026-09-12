@@ -121,6 +121,9 @@ const KO: Record<string, string> = {
   'ninestar.time_unknown_noon_fallback': '정오 대체 시각',
   'ninestar.no_element_reading': '오행 판독 불가',
   'ninestar.no_phase_reading': '국면 판독 불가',
+  'ninestar.hyungbang.ohwang': '오황살',
+  'ninestar.hyungbang.amgeom': '암검살',
+  'ninestar.hyungbang.honmei': '본명살',
 
   // ── sukuyou ──
   // 숙요의 아홉 曜(요)를 "명성"으로 부르면 구성기학의 본명성과 섞이고
