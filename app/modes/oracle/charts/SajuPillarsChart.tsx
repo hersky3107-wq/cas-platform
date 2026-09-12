@@ -12,7 +12,14 @@ import {
   parseSajuChart,
   type SajuChartChar,
   type SajuElementKey,
+  type SajuEokbu,
 } from "@/lib/oracle/saju-chart";
+import {
+  collapseYongsinInferences,
+  formatComputedYongsinLine,
+  formatInferredYongsinLine,
+  type YongsinInference,
+} from "@/lib/oracle/yongsin-guard";
 
 const ELEMENT_CELL: Record<SajuElementKey, string> = {
   wood: "border-emerald-300/35 bg-emerald-400/[0.12] text-emerald-50",
@@ -92,12 +99,62 @@ function CharCell({
   );
 }
 
+function YongsinPanel({
+  eokbu,
+  inferences,
+}: {
+  eokbu: SajuEokbu;
+  inferences: YongsinInference[];
+}) {
+  const inferred = collapseYongsinInferences(inferences);
+  const computed = !eokbu.inferenceRequested && eokbu.yongsin !== "없음";
+  return (
+    <section className="mt-5 rounded-xl border border-cyan-300/20 bg-cyan-400/[0.06] px-3 py-3 sm:px-4">
+      <div className="flex items-end justify-between gap-3">
+        <h4 className="text-sm font-semibold text-white">용신</h4>
+        <span className="text-[10px] text-white/35">{eokbu.provenance}</span>
+      </div>
+      {computed ? (
+        <p className="mt-2 text-sm leading-relaxed text-cyan-50">
+          {formatComputedYongsinLine(eokbu.yongsin)}
+        </p>
+      ) : inferred.length > 0 ? (
+        <div className="mt-2 space-y-1">
+          {inferred.map((row) => (
+            <p key={`${row.element}-${row.brand ?? "all"}`} className="text-sm leading-relaxed text-amber-50">
+              {formatInferredYongsinLine(row.element)}
+              {row.brand ? ` (${row.brand})` : ""}
+            </p>
+          ))}
+        </div>
+      ) : eokbu.inferenceRequested ? (
+        <p className="mt-2 text-sm leading-relaxed text-amber-50">억부로는 판정되지 않음 · AI 판단 요청</p>
+      ) : (
+        <p className="mt-2 text-sm leading-relaxed text-cyan-50">{eokbu.summary}</p>
+      )}
+      <p className="mt-2 text-[11px] leading-relaxed text-white/55">
+        {eokbu.inferenceRequested
+          ? eokbu.summary
+          : `${eokbu.strength} (득령 ${eokbu.deukryeong.relation}, 득지 ${eokbu.deukji.score}, 득세 ${eokbu.deukse.score})`}
+        {eokbu.huisin !== "없음" || eokbu.gisin !== "없음"
+          ? ` · 희신 ${eokbu.huisin} · 기신 ${eokbu.gisin}`
+          : ""}
+      </p>
+      {eokbu.hourUnknownNote ? (
+        <p className="mt-2 text-[11px] leading-relaxed text-white/45">{eokbu.hourUnknownNote}</p>
+      ) : null}
+    </section>
+  );
+}
+
 export default function SajuPillarsChart({
   calculation,
   engineVersion,
+  yongsinInferences = [],
 }: {
   calculation: Record<string, unknown> | null;
   engineVersion?: string | null;
+  yongsinInferences?: YongsinInference[];
 }) {
   const chart = parseSajuChart(calculation);
 
@@ -185,32 +242,7 @@ export default function SajuPillarsChart({
           </p>
         ) : null}
 
-        {chart.eokbu ? (
-          <section className="mt-5 rounded-xl border border-cyan-300/20 bg-cyan-400/[0.06] px-3 py-3 sm:px-4">
-            <div className="flex items-end justify-between gap-3">
-              <h4 className="text-sm font-semibold text-white">용신 · 억부법</h4>
-              <span className="text-[10px] text-white/35">{chart.eokbu.strength}</span>
-            </div>
-            <p className="mt-2 text-sm leading-relaxed text-cyan-50">{chart.eokbu.summary}</p>
-            <p className="mt-2 text-[11px] leading-relaxed text-white/55">
-              희신 {chart.eokbu.huisin} · 기신 {chart.eokbu.gisin}
-              {chart.eokbu.deukji.roots.length > 0
-                ? ` · 통근 ${chart.eokbu.deukji.roots.join(', ')}`
-                : ''}
-              {chart.eokbu.deukse.helpers.length > 0
-                ? ` · 조력 ${chart.eokbu.deukse.helpers.join(', ')}`
-                : ''}
-            </p>
-            {chart.eokbu.inapplicable ? (
-              <p className="mt-2 text-[11px] leading-relaxed text-amber-100/85">
-                억부 판정불가 · {chart.eokbu.inapplicable}. 용신을 억지로 고르지 않습니다.
-              </p>
-            ) : null}
-            {chart.eokbu.hourUnknownNote ? (
-              <p className="mt-2 text-[11px] leading-relaxed text-white/45">{chart.eokbu.hourUnknownNote}</p>
-            ) : null}
-          </section>
-        ) : null}
+        {chart.eokbu ? <YongsinPanel eokbu={chart.eokbu} inferences={yongsinInferences} /> : null}
 
         <section className="mt-6 border-t border-white/8 pt-5">
           <div className="flex items-end justify-between gap-3">

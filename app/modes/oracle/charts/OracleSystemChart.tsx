@@ -9,6 +9,10 @@
 import { oracleSystemDisplayName } from "@/lib/oracle/system-display";
 import SajuPillarsChart from "./SajuPillarsChart";
 import ComputationSummary from "./ComputationSummary";
+import {
+  inferencesFromReadingSummaries,
+  type YongsinInference,
+} from "@/lib/oracle/yongsin-guard";
 
 type Json = Record<string, unknown>;
 
@@ -17,6 +21,7 @@ type ChartProps = {
   calculation: Json | null;
   engineVersion: string | null;
   unreadable?: boolean;
+  readings?: Array<{ brand: string; summary: Json | null }>;
 };
 
 export default function OracleSystemChart({
@@ -24,10 +29,16 @@ export default function OracleSystemChart({
   calculation,
   engineVersion,
   unreadable,
+  readings,
 }: ChartProps) {
   if (system === "saju") {
+    const yongsinInferences: YongsinInference[] = inferencesFromReadingSummaries(readings ?? []);
     return (
-      <SajuPillarsChart calculation={calculation} engineVersion={engineVersion} />
+      <SajuPillarsChart
+        calculation={calculation}
+        engineVersion={engineVersion}
+        yongsinInferences={yongsinInferences}
+      />
     );
   }
   return (

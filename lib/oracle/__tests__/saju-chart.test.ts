@@ -84,7 +84,9 @@ describe('parseSajuChart', () => {
     expect(weak.eokbu).not.toBeNull()
     expect(weak.eokbu!.strength).toBe('신약')
     expect(weak.eokbu!.yongsin).toBe('화(火)')
-    expect(weak.eokbu!.summary).toBe('용신 화(火) · 신약 (득령 없음, 득지 0, 득세 2)')
+    expect(weak.eokbu!.summary).toBe('용신 화(火) · 억부법 계산 · 신약 (득령 없음, 득지 0, 득세 2)')
+    expect(weak.eokbu!.provenance).toBe('억부법 계산')
+    expect(weak.eokbu!.inferenceRequested).toBe(false)
     expect(weak.eokbu!.deukryeong.relation).toBe('없음')
     expect(weak.eokbu!.inapplicable).toBeNull()
 
@@ -94,8 +96,12 @@ describe('parseSajuChart', () => {
 
     const refused = parseSajuChart(sajuCalculation('1984-02-10', '04:30'))!
     expect(refused.eokbu!.yongsin).toBe('없음')
+    expect(refused.eokbu!.inferenceRequested).toBe(true)
+    expect(refused.eokbu!.provenance).toBe('AI 판단 요청')
     expect(refused.eokbu!.inapplicable).toContain('편왕')
-    expect(refused.eokbu!.summary).toContain('억부 판정불가')
+    expect(refused.eokbu!.dominant?.element).toBe('목(木)')
+    expect(refused.eokbu!.summary).toContain('AI 판단 요청')
+    expect(refused.eokbu!.guidance).toContain('억부로는 판정되지 않음')
   })
 
   it('degrades one cell instead of throwing on malformed characters', () => {

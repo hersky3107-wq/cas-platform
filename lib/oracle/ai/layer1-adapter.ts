@@ -29,6 +29,12 @@ import {
 import { parseVerdictJson, verdictDirectionMismatch, type VerdictJson } from './parse-verdict'
 import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1'
 import {
+  applyYongsinGuard,
+  elementLabel,
+  readYongsinChartState,
+  yongsinRetryInstruction,
+} from '../yongsin-guard'
+import {
   buildDailySystemPrompt,
   buildDailyUserPrompt,
   DAILY_MAX_COMPLETION_TOKENS,
@@ -264,6 +270,11 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
       /** FIX 4: one direction-consistency retry, then accept + log. */
       let directionRetryUsed = false
       let directionRetryNext = false
+      /** TIER-1 용신 override / TIER-2 silence: one retry, then accept + drop. */
+      let yongsinRetryUsed = false
+      let yongsinRetryNext = false
+      let yongsinRetryText = ''
+      let yongsinNeeded: string | null = null
       /** Length-band miss: retry names the defect with the measured count. */
       let lengthRetryInstruction: string | null = null
       let totalPromptTokens = 0
@@ -303,9 +314,11 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           entry: effectiveEntry,
           systemPrompt,
           userPrompt:
-            strictRetryNext || directionRetryNext
+            strictRetryNext || directionRetryNext || yongsinRetryNext
               ? `${userPrompt}${
-                  directionRetryNext
+                  yongsinRetryNext
+                    ? yongsinRetryText
+                    : directionRetryNext
                     ? sessionKind === 'compat'
                       ? COMPAT_VERDICT_DIRECTION_RETRY_INSTRUCTION
                       : VERDICT_DIRECTION_RETRY_INSTRUCTION
@@ -320,9 +333,10 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           timeoutMs: Math.max(1, deadlineAt - Date.now()),
           sessionId: request.sessionId,
           httpBudget,
-          strictRetry: strictRetryNext || directionRetryNext,
+          strictRetry: strictRetryNext || directionRetryNext || yongsinRetryNext,
         })
         directionRetryNext = false
+        yongsinRetryNext = false
         lastRaw = raw
         totalPromptTokens += raw.tokensIn
         totalCompletionTokens += raw.tokensOut
@@ -391,6 +405,33 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           }
         }
 
+        yongsinNeeded = null
+        if (layer1Parsed) {
+          const yongsinState = readYongsinChartState(request.payload)
+          if (yongsinState) {
+            const guarded = applyYongsinGuard({
+              state: yongsinState,
+              proposed: layer1Parsed.needed,
+              narrative: layer1Parsed.narrative,
+            })
+            if (guarded.defect && !yongsinRetryUsed) {
+              yongsinRetryUsed = true
+              yongsinRetryNext = true
+              yongsinRetryText = yongsinRetryInstruction(
+                guarded.defect,
+                yongsinState.computed ? elementLabel(yongsinState.computed) : undefined,
+              )
+              lastError = `yongsin ${guarded.defect}`
+              console.warn(`[oracle] ${request.unit} ${lastError} — retrying once`)
+              continue
+            }
+            if (guarded.defect) {
+              console.warn(`[oracle] ${request.unit} yongsin ${guarded.defect} persisted after retry — accepting without inferred 용신`)
+            }
+            yongsinNeeded = guarded.needed
+          }
+        }
+
         if (layer1Parsed || synthesisParsed || verdictParsed) {
           const latencyMs = Date.now() - startedAt
           await finalizeUnitCost({
@@ -415,6 +456,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                   direction: layer1Parsed.direction,
                   focus: layer1Parsed.focus,
                   axis_emphasis: layer1Parsed.axis_emphasis,
+                  ...(yongsinNeeded ? { needed: yongsinNeeded } : {}),
                   parsed: true,
                   finish_reason: raw.finishReason,
                   content_tokens: raw.contentTokens,

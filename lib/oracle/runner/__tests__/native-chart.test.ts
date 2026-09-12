@@ -113,6 +113,8 @@ describe('buildNativeChart', () => {
       요약: string
       판정불가: string
       학교: string
+      출처: string
+      일간: string
       득령: { 관계: string; 점수: number }
       득지: { 점수: number }
       득세: { 점수: number }
@@ -121,14 +123,44 @@ describe('buildNativeChart', () => {
     expect(yongsin.용신).toBe('화(火)')
     expect(yongsin.희신).toBe('토(土)')
     expect(yongsin.기신).toBe('수(水)')
-    expect(yongsin.요약).toBe('용신 화(火) · 신약 (득령 없음, 득지 0, 득세 2)')
+    expect(yongsin.요약).toBe('용신 화(火) · 억부법 계산 · 신약 (득령 없음, 득지 0, 득세 2)')
     expect(yongsin.판정불가).toBe('없음')
     expect(yongsin.학교).toBe('억부법')
+    expect(yongsin.출처).toBe('억부법 계산')
+    expect(yongsin.일간).toContain('己')
     expect(yongsin.득령.관계).toBe('없음')
     const blob = JSON.stringify(chart)
     expect(blob).not.toContain('"weak"')
     expect(blob).not.toContain('"wood"')
     expect(blob).not.toContain('"yongsin"')
     expect(blob).not.toContain('deukryeong')
+  })
+
+  it('on 편왕 판정불가 still ships 일간·십신분포·편왕 and asks for AI 판단', () => {
+    const pillars = fourPillars({ date: '1984-02-10', time: '04:30', timezone: 'Asia/Seoul' })
+    const chart = buildNativeChart(
+      'saju',
+      {
+        pillars,
+        fiveElements: fiveElementBalance(pillars),
+        tenGods: tenGods(pillars.day.stem, pillars),
+        eokbu: eokbu(pillars),
+      } as unknown as JsonObject,
+      { locale: 'ko', nominalAge: 39 },
+    )
+    const yongsin = chart.용신 as {
+      용신: string
+      출처: string
+      안내: string
+      편왕: { 오행: string; 개수: number; 글자: number } | string
+      일간: string
+      십신분포: Record<string, number>
+    }
+    expect(yongsin.용신).toBe('없음')
+    expect(yongsin.출처).toBe('AI 판단 요청')
+    expect(yongsin.안내).toContain('억부로는 판정되지 않음')
+    expect(yongsin.편왕).toMatchObject({ 오행: '목(木)', 개수: 4, 글자: 8 })
+    expect(yongsin.일간).toContain('甲')
+    expect(Object.keys(yongsin.십신분포).length).toBeGreaterThan(0)
   })
 })

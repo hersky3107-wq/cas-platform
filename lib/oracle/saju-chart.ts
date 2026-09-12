@@ -84,6 +84,12 @@ export type SajuEokbu = {
   deukse: { score: number; helpers: string[] }
   inapplicable: string | null
   hourUnknownNote: string | null
+  provenance: string
+  inferenceRequested: boolean
+  dayMaster: string
+  tenGodCounts: Record<string, number>
+  dominant: { element: string; count: number; chars: number } | null
+  guidance: string | null
 }
 
 type Json = Record<string, unknown>
@@ -164,20 +170,42 @@ export function parseSajuChart(calculation: unknown): SajuChart | null {
   const hourColumn = columns.find((column) => column.key === 'hour')
   const hourUnknown =
     pillars.hourUnknown === true || hourColumn?.missing === true || hourColumn?.stem === null
+  const dayStem = columns.find((column) => column.key === 'day')?.stem ?? null
+  const eokbu = readEokbu(root?.eokbu)
+  if (eokbu) {
+    eokbu.dayMaster = dayStem ? `${dayStem.hanja}${dayStem.hangul ? ` (${dayStem.hangul})` : ''}` : ''
+    eokbu.tenGodCounts = tenGodCountsFromColumns(columns)
+  }
 
   return {
     columns,
     elements,
     charCount: elements.reduce((sum, entry) => sum + entry.count, 0),
     hourUnknown,
-    dayStem: columns.find((column) => column.key === 'day')?.stem ?? null,
-    eokbu: readEokbu(root?.eokbu),
+    dayStem,
+    eokbu,
   }
+}
+
+function tenGodCountsFromColumns(columns: SajuChartColumn[]): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const column of columns) {
+    for (const part of [column.stem?.tenGod, column.branch?.tenGod]) {
+      if (!part || part === '일간') continue
+      counts[part] = (counts[part] ?? 0) + 1
+    }
+  }
+  return counts
 }
 
 function readEokbu(raw: unknown): SajuEokbu | null {
   const ko = eokbuNativeChart(raw)
   if (!ko) return null
+  const 편왕 = ko.편왕
+  const dominant =
+    편왕 !== '없음'
+      ? { element: 편왕.오행, count: 편왕.개수, chars: 편왕.글자 }
+      : null
   return {
     strength: ko.강약,
     summary: ko.요약,
@@ -194,5 +222,11 @@ function readEokbu(raw: unknown): SajuEokbu | null {
     deukse: { score: ko.득세.점수, helpers: ko.득세.조력 },
     inapplicable: ko.판정불가 === '없음' ? null : ko.판정불가,
     hourUnknownNote: ko.시주없음 ? ko.시주없음약화 : null,
+    provenance: ko.출처,
+    inferenceRequested: ko.출처 === 'AI 판단 요청',
+    dayMaster: '',
+    tenGodCounts: {},
+    dominant,
+    guidance: ko.안내 === '없음' ? null : ko.안내,
   }
 }

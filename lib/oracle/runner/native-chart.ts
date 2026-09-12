@@ -146,8 +146,27 @@ function tenGodCell(cell: unknown): JsonObject | null {
   return { 천간: str(row.stem), 지지: str(row.branch) }
 }
 
-function eokbuChart(value: unknown): JsonObject | null {
-  return eokbuNativeChart(value) as JsonObject | null
+function tenGodDistribution(gods: Record<string, unknown> | null): JsonObject {
+  const counts: Record<string, number> = {}
+  if (!gods) return counts
+  for (const key of ['year', 'month', 'day', 'hour'] as const) {
+    const cell = rec(gods[key])
+    if (!cell) continue
+    for (const part of [str(cell.stem), str(cell.branch)]) {
+      if (!part || part === '일간') continue
+      counts[part] = (counts[part] ?? 0) + 1
+    }
+  }
+  return counts
+}
+
+function eokbuChart(
+  value: unknown,
+  extras: { 일간: string; 십신분포: JsonObject },
+): JsonObject | null {
+  const base = eokbuNativeChart(value)
+  if (!base) return null
+  return { ...base, 일간: extras.일간, 십신분포: extras.십신분포 }
 }
 
 function tarotCard(card: unknown): JsonObject {
@@ -334,7 +353,13 @@ function sajuChart(result: Record<string, unknown>, ctx: NativeChartContext): Js
     오행: five
       ? { 목: five.wood, 화: five.fire, 토: five.earth, 금: five.metal, 수: five.water }
       : null,
-    용신: eokbuChart(result.eokbu),
+    용신: eokbuChart(result.eokbu, {
+      일간: (() => {
+        const day = pillars ? rec(rec(pillars.day)?.stem) : null
+        return day ? hangulHanja(day.hanja, day.hangul) : '없음'
+      })(),
+      십신분포: tenGodDistribution(gods),
+    }),
   }
   const periods = luck ? arr(luck.periods) : []
   if (periods.length > 0) {

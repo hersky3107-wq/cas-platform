@@ -50,6 +50,13 @@ export const INTERNAL_VOCAB_RULES = [
   'Speak only in this divination system\'s own terms (cards, runes, 괘, 팔자, 궁성, planets/houses, 오격, 나왈, and so on).',
 ]
 
+/** Computed chart values are law; the AI fills gaps the engine honestly cannot. */
+export const TIER_AUTHORITY_RULES = [
+  'TWO-TIER AUTHORITY (mandatory):',
+  'TIER 1 — computed. When the chart already carries a real engine value, that value is authoritative. Explain it. NEVER override, second-guess, or substitute your own.',
+  'TIER 2 — inferred. When the chart explicitly says a rule does not apply (판정불가, AI 판단 요청), reason from what IS on the chart and state the answer in this system\'s own terms. Variation between runs is acceptable here. You may not refuse with a sentence like "용신을 고정하지 않습니다".',
+]
+
 const NATIVE_SYSTEM_RULES: Record<string, string> = {
   tarot:
     'Tarot: name every card, its position label, and whether it is 정방향 or 역방향 — then say what that card in that position means for the question. Tarot has no 오행; never mention 오행 or elemental percentages.',
@@ -57,7 +64,7 @@ const NATIVE_SYSTEM_RULES: Record<string, string> = {
     'Runes: name every rune (Korean name from the chart), its position, and 정방향/역방향 — a reversed rune reads as the stave\'s meaning blocked or turned inward, not as a random bad omen.',
   iching:
     'I Ching: name 본괘 and 변괘 by their names, explain what the situation-hexagram and the becoming-hexagram each say, and read the 변효 (and 세효/응효 where telling) in 육효 terms. A 육친 is 강 only when that line\'s 월령 is 왕(旺) or 상(相), and 약 only when 수(囚) or 사(死); 휴(休) is rest, not strength. Never infer 왕쇠 from presence, 육친 name, or 세효 alone — use only the 월령 / 일건 / 동효생극 fields already on the chart. 복장 is the list of 육친 missing from the six lines; an empty 복장 means all five are present. If 월령 is 없음, do not call the line strong or weak.',
-  saju: 'Saju: read from 팔자 (천간/지지), 십신, 오행 분포, the current 대운, and 용신. 일간 강약 is saju.용신.강약 with 득령/득지/득세 already on the chart; 용신/희신/기신 are those fields. Never infer 용신 from 오행 counts. If 판정불가 is not 없음, do not name a 용신. If 강약 is 중화, say the chart is balanced and do not pick a side. 조후/병약/통관 are not computed — do not invent them.',
+  saju: 'Saju: read from 팔자 (천간/지지), 십신, 오행 분포, the current 대운, and 용신. 일간 강약 is saju.용신.강약 with 득령/득지/득세 already on the chart. TIER 1: when saju.용신.출처 is 억부법 계산 and 용신 is not 없음, that 오행 is the 용신 — copy it; never name a different 오행 as 용신; omit JSON "needed" or set it to the same 오행. If 강약 is 중화, that is also TIER 1: say the chart is balanced and do not pick a 용신. TIER 2: when saju.용신.출처 is AI 판단 요청 (억부 판정불가), you MUST state what this 사주 needs and why, from 일간·득령/득지/득세·편왕·십신분포·대운, in 사주 terms (인성/비겁 vs 식상/재성/관성, or 종격). Fill JSON "needed" with 목 or 화 or 토 or 금 or 수. Forbidden refusals: "용신을 하나로 고정하지 않습니다", "용신을 고정하지 않습니다", "용신을 억지로 고르지 않습니다". Never infer a TIER-1 용신 from 오행 counts. 조후/병약/통관 are not computed — do not present them as engine output.',
   ziwei: 'Ziwei: read from 12궁 placements, 주성/보조성, 사화, and the current 대한 — explain what the relevant palace and its stars mean, not just their names.',
   astro:
     'Astrology: name planets, signs, houses, aspects, and angles from the chart. Planets (목성, 화성...) are planets — never call a planet an element. The four sign elements are 불·흙·바람·물.',
@@ -101,6 +108,7 @@ export function buildLayer1SystemPrompt(locale: string, system?: string, kind?: 
     'If a question is present under context.question, answer it through this system\'s lens.',
     'If no question is present, give the general reading.',
     ...INTERNAL_VOCAB_RULES,
+    ...TIER_AUTHORITY_RULES,
     'axis_emphasis: 2–5 short human terms copied from the chart (card names, 괘 names, 십신, palace names). Never dotted machine codes.',
     'OUTPUT RULES (strict):',
     '- Respond with a single JSON object and nothing else.',
@@ -114,6 +122,7 @@ export function buildLayer1SystemPrompt(locale: string, system?: string, kind?: 
     '  "direction": "advance" | "hold" | "release",',
     '  "focus": "work" | "money" | "love" | "social" | "energy",',
     '  "axis_emphasis": string[]  // 2-5 human terms from the chart; never dotted codes or scoring-axis names',
+    '  "needed": string            // saju TIER 2 only: 목|화|토|금|수. Omit when 용신 is already computed.',
     '}',
   ]
   if (system && NATIVE_SYSTEM_RULES[system]) lines.push(NATIVE_SYSTEM_RULES[system])

@@ -81,12 +81,18 @@ describe('layer1 prompts (v4)', () => {
     expect(prompt).toContain('do not invent a 대길/소길 grade')
   })
 
-  it('lets 사주 name 용신 only from computed 억부 fields, never 오행 counts', () => {
+  it('lets 사주 name a TIER-1 용신 from 억부 and requires TIER-2 when 판정불가', () => {
     const prompt = buildLayer1SystemPrompt('ko', 'saju')
+    expect(prompt).toContain('TWO-TIER AUTHORITY')
+    expect(prompt).toContain('TIER 1 — computed')
+    expect(prompt).toContain('TIER 2 — inferred')
     expect(prompt).toContain('saju.용신')
-    expect(prompt).toContain('Never infer 용신 from 오행 counts')
-    expect(prompt).toContain('If 판정불가 is not 없음, do not name a 용신')
-    expect(prompt).toContain('If 강약 is 중화, say the chart is balanced')
+    expect(prompt).toContain('never name a different 오행 as 용신')
+    expect(prompt).toContain('AI 판단 요청')
+    expect(prompt).toContain('Fill JSON "needed"')
+    expect(prompt).toContain('용신을 하나로 고정하지 않습니다')
+    expect(prompt).toContain('If 강약 is 중화, that is also TIER 1')
+    expect(prompt).not.toContain('If 판정불가 is not 없음, do not name a 용신')
     expect(prompt).toContain('조후/병약/통관 are not computed')
   })
 

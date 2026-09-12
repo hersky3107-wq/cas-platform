@@ -12,7 +12,7 @@ import {
   DAILY_NARRATIVE_PROMPT_MIN,
   DAILY_NARRATIVE_TARGET,
 } from '../parse-layer1'
-import { INTERNAL_VOCAB_RULES, languageForLocale } from './layer1'
+import { INTERNAL_VOCAB_RULES, languageForLocale, TIER_AUTHORITY_RULES } from './layer1'
 
 export const DAILY_PROMPT_VERSION = 'daily-v4'
 
@@ -32,7 +32,7 @@ export function buildDailySystemPrompt(locale: string): string {
     '- Today\'s 일명성 is ninestar.오늘.일. ninestar.일명성 is the natal day star — never present it as today\'s star.',
     '- 구성 흉방 (오황살, 암검살, 본명살, 본명적살, 세파, 월파) and 길방 come only from ninestar.흉방 / ninestar.길방. Never invent a direction.',
     '- Natal 일간 is saju.팔자.일주. Copy that 천간; do not guess or substitute stems.',
-    '- 사주 용신/희신/기신 and 신강·신약 come only from saju.용신. Never infer 용신 from 오행 counts. If 판정불가 is not 없음, do not name a 용신.',
+    '- 사주 용신: TIER 1 when saju.용신.출처 is 억부법 계산 — copy that 오행, never substitute. TIER 2 when 출처 is AI 판단 요청: state what the natal chart needs and why; fill "needed" with 목|화|토|금|수. Forbidden: "용신을 고정하지 않습니다". If 강약 is 중화, say balanced and do not pick a 용신.',
     '- Today\'s transits are astro.오늘 (planet + sign only, no house). Do not invent a 하우스 for a transit. Natal 행성.하우스 stays natal — do not describe it as today\'s sky.',
     'CORE WRITING RULES (HALF GROUNDING, HALF PLAIN SPEECH):',
     '- DO NOT list or mention every system. The facts strip above the text already shows all individual values. Pick only the ONE or TWO strongest, most prominent signals of the day (e.g. today\'s 사주 일진/십신, or the single tarot card, or the rune) and build the reading around them.',
@@ -45,6 +45,7 @@ export function buildDailySystemPrompt(locale: string): string {
     `Write in ${language} (locale ${locale}). Required — do not infer the language from the payload.`,
     'There is no question. This is the general daily fortune.',
     ...INTERNAL_VOCAB_RULES,
+    ...TIER_AUTHORITY_RULES,
     'axis_emphasis: 2–4 short human terms copied from the charts actually cited (일진 간지, 십신, card name, rune). Never dotted machine codes.',
     'OUTPUT RULES (strict):',
     '- Respond with a single JSON object and nothing else.',
@@ -62,6 +63,7 @@ export function buildDailySystemPrompt(locale: string): string {
     '  "direction": "advance" | "hold" | "release",',
     '  "focus": "work" | "money" | "love" | "social" | "energy",',
     '  "axis_emphasis": string[]  // 2-4 human terms from the charts',
+    '  "needed": string            // saju TIER 2 only: 목|화|토|금|수. Omit when 용신 is already computed.',
     '}',
   ].join('\n')
 }

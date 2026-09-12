@@ -41,6 +41,8 @@ export type Layer1Json = {
   direction: Layer1Direction
   focus: Layer1Focus
   axis_emphasis: string[]
+  /** TIER 2 용신 오행 (목/화/토/금/수). Absent on TIER 1. */
+  needed?: string
 }
 
 function stripFences(raw: string): string {
@@ -129,12 +131,14 @@ export function parseLayer1Json(
   const focus = asFocus(record.focus)
   const axisEmphasis = asAxisEmphasis(record.axis_emphasis)
   if (!direction || !focus || !axisEmphasis) return null
+  const neededRaw = typeof record.needed === 'string' ? record.needed.trim() : ''
   return {
     narrative,
     one_line: oneLineRaw.slice(0, LAYER1_ONE_LINE_MAX),
     direction,
     focus,
     axis_emphasis: axisEmphasis,
+    ...(neededRaw ? { needed: neededRaw } : {}),
   }
 }
 

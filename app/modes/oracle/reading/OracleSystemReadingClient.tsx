@@ -593,6 +593,10 @@ export default function OracleSystemReadingClient({
               calculation={computation?.calculation ?? null}
               engineVersion={computation?.engineVersion ?? null}
               unreadable={computation?.unreadable}
+              readings={readings.map((reading) => ({
+                brand: reading.brand,
+                summary: reading.summary,
+              }))}
             />
 
             <section>

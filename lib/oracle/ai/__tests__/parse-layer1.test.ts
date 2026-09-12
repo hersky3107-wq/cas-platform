@@ -106,6 +106,11 @@ describe('parseLayer1Json', () => {
     expect(parseLayer1Json(validJson({ direction: 'maybe' }))).toBeNull()
     expect(parseLayer1Json(validJson({ focus: 'career' }))).toBeNull()
   })
+
+  it('keeps optional needed without requiring it', () => {
+    expect(parseLayer1Json(validJson())?.needed).toBeUndefined()
+    expect(parseLayer1Json(validJson({ needed: '화' }))?.needed).toBe('화')
+  })
 })
 
 describe('isEmptyModelText', () => {

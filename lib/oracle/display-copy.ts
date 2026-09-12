@@ -102,14 +102,14 @@ export function formatEokbuSummary(input: {
       : '득령 없음'
   const parts = `${deukryeong}, 득지 ${input.deukji}, 득세 ${input.deukse}`
   if (input.inapplicable) {
-    return `억부 판정불가 · 편왕 (${elementKoHanja(input.inapplicable.element)} ${input.inapplicable.count}/${input.inapplicable.chars}자)`
+    return `억부 판정불가 · 편왕 (${elementKoHanja(input.inapplicable.element)} ${input.inapplicable.count}/${input.inapplicable.chars}자) · AI 판단 요청`
   }
   if (!input.yongsin || !input.strength || input.strength === 'balanced') {
     const label = input.strength ? EOKBU_STRENGTH_KO[input.strength] ?? input.strength : '중화'
-    return `${label} (${parts})`
+    return `${label} · 억부법 계산 (${parts})`
   }
   const strength = EOKBU_STRENGTH_KO[input.strength] ?? input.strength
-  return `용신 ${elementKoHanja(input.yongsin)} · ${strength} (${parts})`
+  return `용신 ${elementKoHanja(input.yongsin)} · 억부법 계산 · ${strength} (${parts})`
 }
 
 export type EokbuNativeChart = {
@@ -122,6 +122,9 @@ export type EokbuNativeChart = {
   희신: string
   기신: string
   판정불가: string
+  편왕: { 오행: string; 개수: number; 글자: number } | '없음'
+  출처: '억부법 계산' | 'AI 판단 요청'
+  안내: string
   시주없음: boolean
   시주없음약화: string
   요약: string
@@ -166,6 +169,14 @@ export function eokbuNativeChart(value: unknown): EokbuNativeChart | null {
   const 판정불가 = inapplicable
     ? `편왕 (${elementKoHanja(strUnknown(inapplicable.element))} ${numUnknown(inapplicable.count) ?? '?'}/${numUnknown(inapplicable.chars) ?? '?'}자)`
     : '없음'
+  const 편왕 = inapplicable
+    ? {
+        오행: elementKoHanja(strUnknown(inapplicable.element)),
+        개수: numUnknown(inapplicable.count) ?? 0,
+        글자: numUnknown(inapplicable.chars) ?? 0,
+      }
+    : ('없음' as const)
+  const inferenceRequested = inapplicable != null
   return {
     강약: strength ? EOKBU_STRENGTH_KO[strength] ?? strength : '없음',
     득령: {
@@ -181,6 +192,11 @@ export function eokbuNativeChart(value: unknown): EokbuNativeChart | null {
     희신: strUnknown(row.huisin) ? elementKoHanja(strUnknown(row.huisin)) : '없음',
     기신: strUnknown(row.gisin) ? elementKoHanja(strUnknown(row.gisin)) : '없음',
     판정불가,
+    편왕,
+    출처: inferenceRequested ? 'AI 판단 요청' : '억부법 계산',
+    안내: inferenceRequested
+      ? '억부로는 판정되지 않음 — AI 판단 요청. 일간·득령·득지·득세·편왕 오행·십신분포·대운을 근거로 이 사주가 무엇을 필요로 하는지 말하라.'
+      : '없음',
     시주없음: hourUnknown,
     시주없음약화: hourUnknown ? '시주가 없어 득지·득세는 연월일만으로 계산했다' : '없음',
     요약: formatEokbuSummary({
