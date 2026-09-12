@@ -37,6 +37,13 @@
  *     奇門 逆飛 of the palaces — some 飛星 schools reverse 陰遁 days; we
  *     do not, so a 二黒 day matches the 二黒 中宮図 (오황 북동).
  *
+ * ── 사주 억부 용신 ────────────────────────────────────────────────
+ * 일간 강약 = 득령(월지 본기 왕=3 / 상생=2) + 득지(지장간 통근 기둥 수)
+ * + 득세(년·월·시 천간 조력 + 중복되지 않은 년·일·시 본기 조력).
+ * 신약 ≤2, 중화 3–4, 신강 ≥5. 종격(한 오행이 글자의 절반 이상이고
+ * 2 이상 앞섬)은 용신을 내지 않는다. 조후·병약·통관은 이 패스에 없음.
+ *
+ *
  * Solstice calendar dates are the Asia/Tokyo civil date of the instant
  * from `solarTerms()` (Japanese 気学 practice).
  *

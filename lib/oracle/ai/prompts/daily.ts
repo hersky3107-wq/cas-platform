@@ -32,6 +32,7 @@ export function buildDailySystemPrompt(locale: string): string {
     '- Today\'s 일명성 is ninestar.오늘.일. ninestar.일명성 is the natal day star — never present it as today\'s star.',
     '- 구성 흉방 (오황살, 암검살, 본명살, 본명적살, 세파, 월파) and 길방 come only from ninestar.흉방 / ninestar.길방. Never invent a direction.',
     '- Natal 일간 is saju.팔자.일주. Copy that 천간; do not guess or substitute stems.',
+    '- 사주 용신/희신/기신 and 신강·신약 come only from saju.용신. Never infer 용신 from 오행 counts. If 판정불가 is not 없음, do not name a 용신.',
     '- Today\'s transits are astro.오늘 (planet + sign only, no house). Do not invent a 하우스 for a transit. Natal 행성.하우스 stays natal — do not describe it as today\'s sky.',
     'CORE WRITING RULES (HALF GROUNDING, HALF PLAIN SPEECH):',
     '- DO NOT list or mention every system. The facts strip above the text already shows all individual values. Pick only the ONE or TWO strongest, most prominent signals of the day (e.g. today\'s 사주 일진/십신, or the single tarot card, or the rune) and build the reading around them.',

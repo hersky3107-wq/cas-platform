@@ -20,6 +20,8 @@ describe('daily prompts', () => {
     expect(prompt).toContain('ninestar.길방')
     expect(prompt).toContain('오황살')
     expect(prompt).toContain('saju.팔자.일주')
+    expect(prompt).toContain('saju.용신')
+    expect(prompt).toContain('Never infer 용신 from 오행 counts')
     expect(prompt).toContain('astro.오늘')
     expect(prompt).toContain('CORE WRITING RULES (HALF GROUNDING, HALF PLAIN SPEECH):')
     expect(prompt).toContain('IN-SENTENCE PLAIN EXPLANATION:')

@@ -1,7 +1,7 @@
 /**
  * Pure calendar engine — 만세력/사주 four-pillars, solar terms, five-element
- * balance, ten gods, great-luck (대운), nine-star (구성), sukuyou (27수),
- * season element, and Maya tzolkin.
+ * balance, ten gods, 억부 용신, great-luck (대운), nine-star (구성),
+ * sukuyou (27수), season element, and Maya tzolkin.
  *
  * PURE FUNCTIONS ONLY: no DB, no network, no LLM calls, no Date.now(). Every
  * function that resolves an instant takes an explicit date/time + IANA
@@ -13,11 +13,12 @@
  *
  * Bump CALENDAR_ENGINE_VERSION whenever any function's output changes.
  */
-export const CALENDAR_ENGINE_VERSION = '1.3.0'
+export const CALENDAR_ENGINE_VERSION = '1.4.0'
 
 export { toLunar, toSolar, solarTerms, fourPillars } from './ganzhi'
 export { fiveElementBalance } from './five-elements'
 export { tenGodFor, tenGods } from './ten-gods'
+export { eokbu, EOKBU_THRESHOLD } from './eokbu'
 export { greatLuck } from './great-luck'
 export { nineStar } from './nine-star'
 export { sukuyou, sukuyouRelation } from './sukuyou'
@@ -72,6 +73,9 @@ export type {
   FiveElementCounts,
   TenGodName,
   TenGodsResult,
+  EokbuResult,
+  EokbuStrength,
+  EokbuInapplicable,
   GreatLuckPeriod,
   GreatLuckResult,
   NineStarValue,

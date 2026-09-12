@@ -57,7 +57,7 @@ const NATIVE_SYSTEM_RULES: Record<string, string> = {
     'Runes: name every rune (Korean name from the chart), its position, and 정방향/역방향 — a reversed rune reads as the stave\'s meaning blocked or turned inward, not as a random bad omen.',
   iching:
     'I Ching: name 본괘 and 변괘 by their names, explain what the situation-hexagram and the becoming-hexagram each say, and read the 변효 (and 세효/응효 where telling) in 육효 terms. A 육친 is 강 only when that line\'s 월령 is 왕(旺) or 상(相), and 약 only when 수(囚) or 사(死); 휴(休) is rest, not strength. Never infer 왕쇠 from presence, 육친 name, or 세효 alone — use only the 월령 / 일건 / 동효생극 fields already on the chart. 복장 is the list of 육친 missing from the six lines; an empty 복장 means all five are present. If 월령 is 없음, do not call the line strong or weak.',
-  saju: 'Saju: read from 팔자 (천간/지지), 십신, 오행 분포, and the current 대운 — say what the dominant 십신 or element MEANS for the question, in plain words.',
+  saju: 'Saju: read from 팔자 (천간/지지), 십신, 오행 분포, the current 대운, and 용신. 일간 강약 is saju.용신.강약 with 득령/득지/득세 already on the chart; 용신/희신/기신 are those fields. Never infer 용신 from 오행 counts. If 판정불가 is not 없음, do not name a 용신. If 강약 is 중화, say the chart is balanced and do not pick a side. 조후/병약/통관 are not computed — do not invent them.',
   ziwei: 'Ziwei: read from 12궁 placements, 주성/보조성, 사화, and the current 대한 — explain what the relevant palace and its stars mean, not just their names.',
   astro:
     'Astrology: name planets, signs, houses, aspects, and angles from the chart. Planets (목성, 화성...) are planets — never call a planet an element. The four sign elements are 불·흙·바람·물.',

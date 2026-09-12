@@ -67,6 +67,35 @@ export const BRANCH_SEEDS: readonly BranchSeed[] = [
 
 export const BRANCHES: readonly BranchInfo[] = BRANCH_SEEDS.map((b, index) => ({ index, ...b }))
 
+/**
+ * 지장간 (人元 / 배장). 余气→中气→本气. 子卯酉 have no 중기; 午 keeps 己
+ * as 중기 (자평). Some Korean primers list 午 as 丙·丁 only — 己 午월
+ * 통근 then disappears; we keep the 배장 己.
+ *
+ * 십신 labels still use 地支本氣 (`tenGods`); this table is for 통근.
+ */
+export type HiddenStemRole = 'yu' | 'zhong' | 'ben'
+
+export type HiddenStem = {
+  stemIndex: number
+  role: HiddenStemRole
+}
+
+export const HIDDEN_STEMS: readonly (readonly HiddenStem[])[] = [
+  [{ stemIndex: 8, role: 'yu' }, { stemIndex: 9, role: 'ben' }], // 子 壬癸
+  [{ stemIndex: 9, role: 'yu' }, { stemIndex: 7, role: 'zhong' }, { stemIndex: 5, role: 'ben' }], // 丑 癸辛己
+  [{ stemIndex: 4, role: 'yu' }, { stemIndex: 2, role: 'zhong' }, { stemIndex: 0, role: 'ben' }], // 寅 戊丙甲
+  [{ stemIndex: 0, role: 'yu' }, { stemIndex: 1, role: 'ben' }], // 卯 甲乙
+  [{ stemIndex: 1, role: 'yu' }, { stemIndex: 9, role: 'zhong' }, { stemIndex: 4, role: 'ben' }], // 辰 乙癸戊
+  [{ stemIndex: 4, role: 'yu' }, { stemIndex: 6, role: 'zhong' }, { stemIndex: 2, role: 'ben' }], // 巳 戊庚丙
+  [{ stemIndex: 2, role: 'yu' }, { stemIndex: 5, role: 'zhong' }, { stemIndex: 3, role: 'ben' }], // 午 丙己丁
+  [{ stemIndex: 3, role: 'yu' }, { stemIndex: 1, role: 'zhong' }, { stemIndex: 5, role: 'ben' }], // 未 丁乙己
+  [{ stemIndex: 4, role: 'yu' }, { stemIndex: 8, role: 'zhong' }, { stemIndex: 6, role: 'ben' }], // 申 戊壬庚
+  [{ stemIndex: 6, role: 'yu' }, { stemIndex: 7, role: 'ben' }], // 酉 庚辛
+  [{ stemIndex: 7, role: 'yu' }, { stemIndex: 3, role: 'zhong' }, { stemIndex: 4, role: 'ben' }], // 戌 辛丁戊
+  [{ stemIndex: 4, role: 'yu' }, { stemIndex: 0, role: 'zhong' }, { stemIndex: 8, role: 'ben' }], // 亥 戊甲壬
+]
+
 export function stemByHanja(hanja: string): StemInfo {
   const found = STEMS.find((s) => s.hanja === hanja)
   if (!found) throw new Error(`calendar engine: unknown stem hanja "${hanja}"`)

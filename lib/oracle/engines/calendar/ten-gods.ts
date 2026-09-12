@@ -2,10 +2,8 @@
  * 십신 (Ten Gods): each pillar's stem/branch labeled relative to the day stem.
  *
  * Simplification (유파 note): branches are labeled using their own principal
- * five-element (地支本氣) directly, e.g. 巳 -> fire. Some schools instead
- * decompose each branch into its 지장간 (hidden stems) and weight the ten-god
- * label by which hidden stem is dominant. That weighted approach is NOT
- * implemented here — flagged as an open convention choice.
+ * five-element (地支本氣) directly, e.g. 巳 -> fire. 지장간 now exist in
+ * `HIDDEN_STEMS` for 억부 통근; they do NOT reweight these 십신 labels.
  */
 import type { BranchInfo, FourPillars, StemInfo, TenGodName } from './types'
 import { TEN_GOD_MATRIX, overcomes, producedBy } from './tables'

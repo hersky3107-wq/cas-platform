@@ -17,6 +17,7 @@ import {
   DOMAIN_KO,
   DUN_KO,
   ELEMENT_KO,
+  eokbuNativeChart,
   GYEOK_KO,
   MONTH_PHASE_KO,
   PALACE_KO,
@@ -143,6 +144,10 @@ function tenGodCell(cell: unknown): JsonObject | null {
   const row = rec(cell)
   if (!row) return null
   return { 천간: str(row.stem), 지지: str(row.branch) }
+}
+
+function eokbuChart(value: unknown): JsonObject | null {
+  return eokbuNativeChart(value) as JsonObject | null
 }
 
 function tarotCard(card: unknown): JsonObject {
@@ -329,6 +334,7 @@ function sajuChart(result: Record<string, unknown>, ctx: NativeChartContext): Js
     오행: five
       ? { 목: five.wood, 화: five.fire, 토: five.earth, 금: five.metal, 수: five.water }
       : null,
+    용신: eokbuChart(result.eokbu),
   }
   const periods = luck ? arr(luck.periods) : []
   if (periods.length > 0) {

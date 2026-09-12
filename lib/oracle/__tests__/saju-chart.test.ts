@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { eokbu } from '../engines/calendar/eokbu'
 import { fourPillars } from '../engines/calendar/ganzhi'
 import { fiveElementBalance } from '../engines/calendar/five-elements'
 import { tenGods } from '../engines/calendar/ten-gods'
@@ -12,6 +13,7 @@ function sajuCalculation(date: string, time: string | null) {
       pillars,
       fiveElements: fiveElementBalance(pillars),
       tenGods: tenGods(pillars.day.stem, pillars),
+      eokbu: eokbu(pillars),
       greatLuck: null,
     }),
   ) as unknown
@@ -75,6 +77,25 @@ describe('parseSajuChart', () => {
     expect(parseSajuChart({})).toBeNull()
     expect(parseSajuChart({ pillars: {} })).toBeNull()
     expect(parseSajuChart({ pillars: { year: { stem: {} } } })).toBeNull()
+  })
+
+  it('surfaces 억부 용신 in Korean, never inferring from 오행 counts', () => {
+    const weak = parseSajuChart(sajuCalculation('1988-03-15', '04:30'))!
+    expect(weak.eokbu).not.toBeNull()
+    expect(weak.eokbu!.strength).toBe('신약')
+    expect(weak.eokbu!.yongsin).toBe('화(火)')
+    expect(weak.eokbu!.summary).toBe('용신 화(火) · 신약 (득령 없음, 득지 0, 득세 2)')
+    expect(weak.eokbu!.deukryeong.relation).toBe('없음')
+    expect(weak.eokbu!.inapplicable).toBeNull()
+
+    const noTime = parseSajuChart(sajuCalculation('1988-03-15', null))!
+    expect(noTime.eokbu!.hourUnknownNote).toContain('시주가 없어')
+    expect(noTime.eokbu!.yongsin).toBe('화(火)')
+
+    const refused = parseSajuChart(sajuCalculation('1984-02-10', '04:30'))!
+    expect(refused.eokbu!.yongsin).toBe('없음')
+    expect(refused.eokbu!.inapplicable).toContain('편왕')
+    expect(refused.eokbu!.summary).toContain('억부 판정불가')
   })
 
   it('degrades one cell instead of throwing on malformed characters', () => {

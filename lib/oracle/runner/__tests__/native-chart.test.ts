@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nineStar } from '../../engines/calendar'
+import { eokbu, fiveElementBalance, fourPillars, nineStar, tenGods } from '../../engines/calendar'
 import { buildLiuyao, tarotDraw } from '../../engines/draw'
 import { buildNativeChart } from '../native-chart'
 import type { JsonObject } from '../types'
@@ -91,5 +91,44 @@ describe('buildNativeChart', () => {
     expect(blob).not.toContain('"yang"')
     expect(blob).not.toContain('대길')
     expect(blob).not.toContain('"wood"')
+  })
+
+  it('renders 사주 억부 용신 in Korean with 득령/득지/득세, never engine codes', () => {
+    const pillars = fourPillars({ date: '1988-03-15', time: '04:30', timezone: 'Asia/Seoul' })
+    const chart = buildNativeChart(
+      'saju',
+      {
+        pillars,
+        fiveElements: fiveElementBalance(pillars),
+        tenGods: tenGods(pillars.day.stem, pillars),
+        eokbu: eokbu(pillars),
+      } as unknown as JsonObject,
+      { locale: 'ko', nominalAge: 39 },
+    )
+    const yongsin = chart.용신 as {
+      강약: string
+      용신: string
+      희신: string
+      기신: string
+      요약: string
+      판정불가: string
+      학교: string
+      득령: { 관계: string; 점수: number }
+      득지: { 점수: number }
+      득세: { 점수: number }
+    }
+    expect(yongsin.강약).toBe('신약')
+    expect(yongsin.용신).toBe('화(火)')
+    expect(yongsin.희신).toBe('토(土)')
+    expect(yongsin.기신).toBe('수(水)')
+    expect(yongsin.요약).toBe('용신 화(火) · 신약 (득령 없음, 득지 0, 득세 2)')
+    expect(yongsin.판정불가).toBe('없음')
+    expect(yongsin.학교).toBe('억부법')
+    expect(yongsin.득령.관계).toBe('없음')
+    const blob = JSON.stringify(chart)
+    expect(blob).not.toContain('"weak"')
+    expect(blob).not.toContain('"wood"')
+    expect(blob).not.toContain('"yongsin"')
+    expect(blob).not.toContain('deukryeong')
   })
 })
