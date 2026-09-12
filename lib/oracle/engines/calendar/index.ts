@@ -13,7 +13,7 @@
  *
  * Bump CALENDAR_ENGINE_VERSION whenever any function's output changes.
  */
-export const CALENDAR_ENGINE_VERSION = '1.2.0'
+export const CALENDAR_ENGINE_VERSION = '1.3.0'
 
 export { toLunar, toSolar, solarTerms, fourPillars } from './ganzhi'
 export { fiveElementBalance } from './five-elements'
@@ -21,6 +21,25 @@ export { tenGodFor, tenGods } from './ten-gods'
 export { greatLuck } from './great-luck'
 export { nineStar } from './nine-star'
 export { sukuyou, sukuyouRelation } from './sukuyou'
+export {
+  flyBoard,
+  nineStarDirections,
+  palaceHoldingStar,
+  sepaDirection,
+  starInPalace,
+  LUOSHU_PALACES,
+  BRANCH_PALACE,
+} from './luoshu'
+export type {
+  CompassDirection,
+  Dun,
+  LuoshuBoard,
+  LuoshuCell,
+  LuoshuPalace,
+  NineStarDirections,
+  NineStarKillings,
+  PalaceNumber,
+} from './luoshu'
 export {
   ELEMENT_GENERATES,
   ELEMENT_OVERCOMES,

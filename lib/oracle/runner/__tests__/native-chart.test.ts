@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { nineStar } from '../../engines/calendar'
 import { buildLiuyao, tarotDraw } from '../../engines/draw'
 import { buildNativeChart } from '../native-chart'
 import type { JsonObject } from '../types'
@@ -57,5 +58,38 @@ describe('buildNativeChart', () => {
     expect(blob).not.toContain('"wang"')
     expect(blob).not.toContain('a_generates_b')
     expect(blob).not.toContain('妻财')
+  })
+
+  it('renders 구성 낙서 구궁 with Korean 흉방 and no invented 吉 grade', () => {
+    const natal = nineStar({ date: '1951-06-15', time: '12:00', timezone: 'Asia/Seoul' })
+    const current = nineStar({ date: '1988-03-15', time: '12:00', timezone: 'Asia/Seoul' })
+    const chart = buildNativeChart('ninestar', { natal, current } as unknown as JsonObject, {
+      locale: 'ko',
+      nominalAge: 39,
+    })
+    const hyung = chart.흉방 as Record<string, string>
+    expect(hyung).toMatchObject({
+      오황살: '서',
+      암검살: '동',
+      본명살: '북서',
+      본명적살: '남동',
+      세파: '북서',
+    })
+    expect(chart.길방).toEqual(['남서'])
+    const yearGrid = chart.연반 as { 둔: string; 안내: string; 격자: Array<Array<{ 방위: string; 성: string; 흉방: string[]; 본명관계: string }>> }
+    expect(yearGrid.둔).toBe('양둔')
+    expect(yearGrid.안내).toContain('낙서')
+    expect(yearGrid.격자).toHaveLength(3)
+    expect(yearGrid.격자.every((row) => row.length === 3)).toBe(true)
+    expect(yearGrid.격자[0]!.map((cell) => cell.방위)).toEqual(['남동', '남', '남서'])
+    const west = yearGrid.격자[1]![2]!
+    expect(west.방위).toBe('서')
+    expect(west.성).toBe('오황토성')
+    expect(west.흉방).toContain('오황살')
+    const blob = JSON.stringify(chart)
+    expect(blob).not.toContain('"west"')
+    expect(blob).not.toContain('"yang"')
+    expect(blob).not.toContain('대길')
+    expect(blob).not.toContain('"wood"')
   })
 })

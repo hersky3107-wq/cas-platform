@@ -30,6 +30,7 @@ export function buildDailySystemPrompt(locale: string): string {
     'CHART FIDELITY (mandatory):',
     '- Name ONLY values that appear in these charts. If a 간지, 십신, 명성, 宿, nawal, card, rune, planet, or sign is not in the JSON, do not write it.',
     '- Today\'s 일명성 is ninestar.오늘.일. ninestar.일명성 is the natal day star — never present it as today\'s star.',
+    '- 구성 흉방 (오황살, 암검살, 본명살, 본명적살, 세파, 월파) and 길방 come only from ninestar.흉방 / ninestar.길방. Never invent a direction.',
     '- Natal 일간 is saju.팔자.일주. Copy that 천간; do not guess or substitute stems.',
     '- Today\'s transits are astro.오늘 (planet + sign only, no house). Do not invent a 하우스 for a transit. Natal 행성.하우스 stays natal — do not describe it as today\'s sky.',
     'CORE WRITING RULES (HALF GROUNDING, HALF PLAIN SPEECH):',

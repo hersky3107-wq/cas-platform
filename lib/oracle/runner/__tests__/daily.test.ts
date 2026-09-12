@@ -73,6 +73,8 @@ describe('daily native weave', () => {
     expect(systems.runes.룬).toHaveLength(1)
     expect(systems.astro.오늘).toBeDefined()
     expect(systems.ninestar.오늘).toBeDefined()
+    expect(systems.ninestar.흉방).toBeDefined()
+    expect(systems.ninestar.연반).toBeDefined()
     expect(systems.sukuyou.오늘숙).toBeDefined()
     expect(systems.tzolkin.오늘).toBeDefined()
 

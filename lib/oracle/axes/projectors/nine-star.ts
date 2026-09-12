@@ -7,12 +7,13 @@
  *            slowest-moving signal).
  * Phase    — direct, from the five-element relation between 본명성 and
  *            each of 년/월/일盤 (day 50% / month 30% / year 20% — day is
- *            the most immediate 방위 signal). See `FIVE_ELEMENT_RELATION_PHASE`
- *            for why this proxies the classical 방위-grid reading.
+ *            the most immediate 방위 signal). The 낙서 구궁 now exists;
+ *            this phase blend is unchanged so existing 오행/phase votes
+ *            do not jump. 흉방 presence is a reason flag only.
  *
  * No unreadable branch: a nine-star reading only needs a civil date.
  */
-import { CALENDAR_ENGINE_VERSION, nineStar } from '../../engines/calendar'
+import { CALENDAR_ENGINE_VERSION, nineStar, nineStarDirections } from '../../engines/calendar'
 import { overcomes, producedBy } from '../../engines/calendar/tables'
 import type { FiveElement, NineStarValue } from '../../engines/calendar/types'
 import { DIRECT_WEIGHT, HALF_WEIGHT, phaseConfidence } from '../conventions'
@@ -88,6 +89,17 @@ export function projectNineStar(input: NineStarProjectorInput): AxisVote {
     phase: ['ninestar.phase.honmeisei_relation'],
   }
   if (input.time === null) reasons.traits = [...(reasons.traits ?? []), 'ninestar.time_unknown_noon_fallback']
+
+  const dirs = nineStarDirections(
+    current.yearBoard,
+    current.monthBoard,
+    natal.year.number,
+    current.yearBranchIndex,
+    current.monthBranchIndex,
+  )
+  if (dirs.killings.ohwang) reasons.phase = [...(reasons.phase ?? []), 'ninestar.hyungbang.ohwang']
+  if (dirs.killings.amgeom) reasons.phase = [...(reasons.phase ?? []), 'ninestar.hyungbang.amgeom']
+  if (dirs.killings.honmei !== 'center') reasons.phase = [...(reasons.phase ?? []), 'ninestar.hyungbang.honmei']
 
   return {
     system: 'ninestar',

@@ -361,3 +361,20 @@ export const STAR_CATEGORY_KO: Record<string, string> = {
   malefic: '살성',
   minor: '소성',
 }
+
+export const COMPASS_KO: Record<string, string> = {
+  north: '북',
+  northeast: '북동',
+  east: '동',
+  southeast: '남동',
+  south: '남',
+  southwest: '남서',
+  west: '서',
+  northwest: '북서',
+  center: '중앙',
+}
+
+export const DUN_KO: Record<string, string> = {
+  yang: '양둔',
+  yin: '음둔',
+}

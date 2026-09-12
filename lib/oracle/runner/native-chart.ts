@@ -13,7 +13,9 @@ import {
   ASPECT_KO,
   BEAST_KO,
   BODY_KO,
+  COMPASS_KO,
   DOMAIN_KO,
+  DUN_KO,
   ELEMENT_KO,
   GYEOK_KO,
   MONTH_PHASE_KO,
@@ -32,6 +34,16 @@ import {
   oneDecimal,
 } from '../display-copy'
 import { PRISM_COLOR_KO } from '../prism-swatches'
+import {
+  boardRows,
+  nineStarDirections,
+  oppositeDirection,
+  sitRelation,
+  type CompassDirection,
+  type LuoshuBoard,
+  type LuoshuCell,
+} from '../engines/calendar/luoshu'
+import type { FiveElement } from '../engines/calendar/types'
 import type { JsonObject } from './types'
 
 const TAROT_SUIT_KO: Record<string, string> = {
@@ -102,6 +114,10 @@ function bool(value: unknown): boolean | null {
 function elementKo(value: unknown): string {
   const key = str(value)
   return ELEMENT_KO[key] ?? key
+}
+
+function isElement(value: string): value is FiveElement {
+  return value === 'wood' || value === 'fire' || value === 'earth' || value === 'metal' || value === 'water'
 }
 
 function hangulHanja(hanja: unknown, hangul: unknown): string {
@@ -556,9 +572,94 @@ function nineStarValue(value: unknown): JsonObject | null {
   }
 }
 
+function compassKo(direction: unknown): string {
+  const key = str(direction)
+  return COMPASS_KO[key] ?? key
+}
+
+function hyungFlags(
+  direction: CompassDirection,
+  killings: ReturnType<typeof nineStarDirections>['killings'],
+): string[] {
+  const flags: string[] = []
+  if (direction === killings.ohwang) flags.push('오황살')
+  if (direction === killings.amgeom) flags.push('암검살')
+  if (direction === killings.honmei) flags.push('본명살')
+  if (direction === killings.honmeiOpposite) flags.push('본명적살')
+  if (direction === killings.sepa) flags.push('세파')
+  return flags
+}
+
+function luoshuCellChart(
+  cell: LuoshuCell,
+  honmeiElement: FiveElement,
+  killings: ReturnType<typeof nineStarDirections>['killings'] | null,
+  monthFlags: { ohwang: CompassDirection | null; wolpa: CompassDirection } | null,
+): JsonObject {
+  const flags: string[] = []
+  if (killings) flags.push(...hyungFlags(cell.direction, killings))
+  if (monthFlags && cell.direction !== 'center') {
+    if (cell.direction === monthFlags.ohwang) flags.push('월오황살')
+    const monthAmgeom = monthFlags.ohwang ? oppositeDirection(monthFlags.ohwang) : null
+    if (cell.direction === monthAmgeom) flags.push('월암검살')
+    if (cell.direction === monthFlags.wolpa) flags.push('월파')
+  }
+  return {
+    방위: compassKo(cell.direction),
+    궁: cell.trigram === '中' ? '중궁' : hangulHanja(cell.trigram, TRIGRAM_KO[cell.trigram]),
+    성: cell.star.hangul,
+    오행: elementKo(cell.star.element),
+    본명관계: sitRelation(honmeiElement, cell.star.element),
+    흉방: flags,
+  }
+}
+
+function asBoard(value: unknown): LuoshuBoard | null {
+  const row = rec(value)
+  if (!row) return null
+  const cells = arr(row.cells)
+  if (cells.length !== 9) return null
+  return row as unknown as LuoshuBoard
+}
+
+function luoshuGridChart(
+  board: LuoshuBoard,
+  honmeiElement: FiveElement,
+  killings: ReturnType<typeof nineStarDirections>['killings'] | null,
+  monthFlags: { ohwang: CompassDirection | null; wolpa: CompassDirection } | null,
+): JsonObject {
+  const rows = boardRows(board)
+  return {
+    중궁: board.center,
+    둔: DUN_KO[board.dun] ?? board.dun,
+    안내: '남쪽이 위 (낙서 순비)',
+    격자: rows.map((row) =>
+      row.map((cell) => luoshuCellChart(cell, honmeiElement, killings, monthFlags)),
+    ),
+  }
+}
+
 function ninestarChart(result: Record<string, unknown>): JsonObject {
   const natal = rec(result.natal)
   const current = rec(result.current)
+  const natalYear = rec(natal?.year)
+  const honmeiNumber = num(natalYear?.number)
+  const honmeiElement = str(natalYear?.element)
+  const yearBoard = current ? asBoard(current.yearBoard) : null
+  const monthBoard = current ? asBoard(current.monthBoard) : null
+  const dayBoard = current ? asBoard(current.dayBoard) : null
+  const yearBranch = current ? num(current.yearBranchIndex) : null
+  const monthBranch = current ? num(current.monthBranchIndex) : null
+
+  const dirs =
+    yearBoard && monthBoard && honmeiNumber != null && yearBranch != null && monthBranch != null
+      ? nineStarDirections(yearBoard, monthBoard, honmeiNumber, yearBranch, monthBranch)
+      : null
+
+  const monthFive = monthBoard?.cells.find((cell) => cell.star.number === 5)
+  const monthOhwang = monthFive && monthFive.direction !== 'center' ? monthFive.direction : null
+  const monthFlags = dirs ? { ohwang: monthOhwang, wolpa: dirs.killings.wolpa } : null
+
   return {
     본명성: natal ? nineStarValue(natal.year) : null,
     월명성: natal ? nineStarValue(natal.month) : null,
@@ -568,8 +669,28 @@ function ninestarChart(result: Record<string, unknown>): JsonObject {
           연: nineStarValue(current.year),
           월: nineStarValue(current.month),
           일: nineStarValue(current.day),
+          일반둔: DUN_KO[str(current.dayDun)] ?? str(current.dayDun),
         }
       : null,
+    연반: yearBoard && isElement(honmeiElement) ? luoshuGridChart(yearBoard, honmeiElement, dirs?.killings ?? null, null) : null,
+    월반:
+      monthBoard && isElement(honmeiElement)
+        ? luoshuGridChart(monthBoard, honmeiElement, null, monthFlags)
+        : null,
+    일반: dayBoard && isElement(honmeiElement) ? luoshuGridChart(dayBoard, honmeiElement, null, null) : null,
+    흉방: dirs
+      ? {
+          오황살: dirs.killings.ohwang ? compassKo(dirs.killings.ohwang) : '없음 (오황 중궁)',
+          암검살: dirs.killings.amgeom ? compassKo(dirs.killings.amgeom) : '없음',
+          본명살: compassKo(dirs.killings.honmei),
+          본명적살: dirs.killings.honmeiOpposite ? compassKo(dirs.killings.honmeiOpposite) : '없음 (본명성 중궁)',
+          세파: compassKo(dirs.killings.sepa),
+          월파: compassKo(dirs.killings.wolpa),
+        }
+      : null,
+    길방: dirs ? dirs.gilbang.map(compassKo) : [],
+    길방연: dirs ? dirs.gilbangYear.map(compassKo) : [],
+    길방월: dirs ? dirs.gilbangMonth.map(compassKo) : [],
   }
 }
 

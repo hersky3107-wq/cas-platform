@@ -9,6 +9,7 @@
  */
 import type { DateTimeInput, NineStarResult, NineStarValue } from './types'
 import { NINE_STARS } from './tables'
+import { flyBoard } from './luoshu'
 import { solarTerms } from './ganzhi'
 import { CalendarInputError } from './errors'
 import { addCivilYmd, assertYearInRange, CALENDAR_MAX_YEAR, CALENDAR_MIN_YEAR, civilFieldsInZone, julianDayNumber, parseYmd, resolveInstantUtc } from './utils'
@@ -145,7 +146,7 @@ function switchesForYear(year: number): DaySwitch[] {
   return applied
 }
 
-function dayStarNumber(y: number, m: number, d: number): number {
+function dayStarState(y: number, m: number, d: number): { number: number; yang: boolean } {
   const target = julianDayNumber(y, m, d)
   const switches = switchesForYear(y)
   let current = switches[0]
@@ -155,7 +156,8 @@ function dayStarNumber(y: number, m: number, d: number): number {
     else break
   }
   const days = target - current.jdn
-  return current.yang ? normalizeStar(current.startStar + days) : normalizeStar(current.startStar - days)
+  const number = current.yang ? normalizeStar(current.startStar + days) : normalizeStar(current.startStar - days)
+  return { number, yang: current.yang }
 }
 
 export function nineStar(input: DateTimeInput): NineStarResult {
@@ -176,11 +178,20 @@ export function nineStar(input: DateTimeInput): NineStarResult {
   }
   const monthBranchIndex = currentJie.branchIndexIfJie!
   const monthNum = monthStarNumber(yearBranchIndex, jieMonthNumber(monthBranchIndex))
-  const dayNum = dayStarNumber(y, m, d)
+  const day = dayStarState(y, m, d)
+  const dayDun = day.yang ? ('yang' as const) : ('yin' as const)
 
   return {
     year: starValue(yearNum),
     month: starValue(monthNum),
-    day: starValue(dayNum),
+    day: starValue(day.number),
+    yearBranchIndex,
+    monthBranchIndex,
+    dayDun,
+    yearBoard: flyBoard(yearNum, 'yang'),
+    monthBoard: flyBoard(monthNum, 'yang'),
+    // 気学 日盤 uses the same 中宮図 as 年盤 (順飛). 陽/陰遁 is the
+    // 중궁 counting direction (`dayDun`), not 奇門 逆飛 of the grid.
+    dayBoard: flyBoard(day.number, 'yang'),
   }
 }
