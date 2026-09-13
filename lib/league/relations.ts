@@ -160,8 +160,8 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
   {
     instrument: 'XAU/USD',
     related: [
-      { symbol: 'GDX', role: 'peer', note: 'gold miners ETF — levered gold beta' },
-      { symbol: 'XAG/USD', role: 'peer', note: 'silver — co-moving metal' },
+      { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — US-listed physical gold' },
+      { symbol: 'SLV', role: 'peer', note: 'iShares silver ETF — co-moving metal (XAG/USD is not on this Twelve Data tier)' },
       DOLLAR,
       { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy; real rates drive gold)' },
       VOL,
@@ -169,12 +169,24 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     asiaLinks: ['zh'],
   },
   {
-    instrument: 'XAG/USD',
+    instrument: 'GLD',
     related: [
-      { symbol: 'XAU/USD', role: 'peer', note: 'gold — co-moving metal' },
-      { symbol: 'SIL', role: 'peer', note: 'silver miners ETF' },
-      { symbol: 'COPX', role: 'commodity_proxy', note: 'copper miners — industrial-demand side of silver' },
+      { symbol: 'XAU/USD', role: 'commodity_proxy', note: 'spot gold — the ETF tracks this' },
+      { symbol: 'SLV', role: 'peer', note: 'iShares silver ETF — co-moving metal' },
       DOLLAR,
+      { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy; real rates drive gold)' },
+      VOL,
+    ],
+    asiaLinks: ['zh'],
+  },
+  {
+    instrument: 'SLV',
+    related: [
+      { symbol: 'XAU/USD', role: 'commodity_proxy', note: 'spot gold — co-moving metal' },
+      { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — co-moving metal ETF' },
+      DOLLAR,
+      { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy)' },
+      VOL,
     ],
     asiaLinks: [],
   },

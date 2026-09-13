@@ -66,6 +66,8 @@ describe('price-series family — Korean / English synonyms', () => {
   it.each([
     ['index_etf', family.index_etf, '나스닥', 'QQQ'],
     ['gold_metals', family.gold_metals, '금', 'XAU/USD'],
+    ['gold_metals', family.gold_metals, '은', 'SLV'],
+    ['gold_metals', family.gold_metals, 'gld', 'GLD'],
     ['commodities_energy', family.commodities_energy, '원유', 'WTICO/USD'],
     ['fx', family.fx, '달러원', 'USD/KRW'],
     ['crypto', family.crypto, '비트코인', 'BTC/USD'],
@@ -153,7 +155,7 @@ describe('price-series family — packet predicates', () => {
 })
 
 describe('price-series family — clocks', () => {
-  it('index / REIT chips use trading sessions; crypto / FX / gold / energy use calendar days', () => {
+  it('index / REIT chips use trading sessions; crypto / FX / gold-spot / energy use calendar days', () => {
     expect(usesTradingSessions(family.index_etf.ledger_category)).toBe(true)
     expect(usesTradingSessions(family.real_estate.ledger_category)).toBe(true)
     expect(usesTradingSessions(family.crypto.ledger_category)).toBe(false)
@@ -161,5 +163,11 @@ describe('price-series family — clocks', () => {
     expect(usesTradingSessions(family.gold_metals.ledger_category)).toBe(false)
     expect(usesTradingSessions(family.commodities_energy.ledger_category)).toBe(false)
     expect(usesTradingSessions(family.memecoin.ledger_category)).toBe(false)
+  })
+
+  it('GLD / SLV override gold_metal onto the NYSE session clock; XAU/USD stays calendar', () => {
+    expect(usesTradingSessions('gold_metal', 'GLD')).toBe(true)
+    expect(usesTradingSessions('gold_metal', 'SLV')).toBe(true)
+    expect(usesTradingSessions('gold_metal', 'XAU/USD')).toBe(false)
   })
 })

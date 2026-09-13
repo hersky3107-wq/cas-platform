@@ -4,14 +4,36 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { runSingleAiProvider, type SearchResultItem } from '@/lib/ai/router'
 import type { ResearchTier } from './research-tier'
 import type { ResearchLang } from './relations'
+import {
+  QUERY_BUDGET,
+  TIGHT_QUERY_BUDGET,
+  NORMAL_QUERY_BUDGET,
+  HIGH_QUERY_BUDGET,
+  allNeedsPresent,
+  attachSourceUrl,
+  buildPacketInventory,
+  buildStage1Prompt,
+  buildStage2Prompt,
+  isAdmissibleFinding,
+  parseStage1Needs,
+  parseStage2Coverage,
+  selectQueriesFromCoverage,
+  type DirectorNeed,
+  type PacketInventoryInput,
+} from './research-director'
+
+export { TIGHT_QUERY_BUDGET, NORMAL_QUERY_BUDGET, HIGH_QUERY_BUDGET }
+export type { PacketInventoryInput, DirectorNeed }
 
 /**
  * AI Prediction League — dynamic RESEARCH step (server engine only).
  *
  * Per round, BEFORE the roster fans out:
- *   1. A "research director" model (cheap, fast: gemini-3.5-flash) reads the
- *      proposition and decides which recent facts are needed, emitting a
- *      small set of web-search queries.
+ *   1. A two-stage "research director" (cheap, fast: gemini-3.5-flash):
+ *      Stage 1 lists structural drivers of the asset class AND near-term
+ *      catalysts for THIS proposition (inventory-blind, category-agnostic).
+ *      Stage 2 marks each need against the packet inventory and emits search
+ *      queries only for MISSING needs.
  *   2. Each query is run through Perplexity Sonar (already the wired search
  *      provider) and compressed into a short factual brief.
  *   3. The findings are assembled into ONE shared RESEARCH PACKET that is
@@ -68,25 +90,11 @@ export type ResearchRoundInput = {
 }
 
 const DIRECTOR_MODEL = 'gemini-3.5-flash'
-const DIRECTOR_MAX_TOKENS = 500
-/** High tier emits up to 12 sub-questions — needs more visible output room. */
-const DIRECTOR_MAX_TOKENS_HIGH = 1000
+const DIRECTOR_MAX_TOKENS = 2000
 const QUERY_MODEL = 'sonar'
 const QUERY_MAX_TOKENS = 800
 const MAX_FINDING_CHARS = 700
 const MAX_BLOCK_CHARS = 3600
-/**
- * v2 (D) — dispersion-triggered ENGLISH query budgets per tier. Non-English
- * queries (one per flagged language) are ADDITIVE on top of these.
- */
-export const TIGHT_QUERY_BUDGET = 2
-export const NORMAL_QUERY_BUDGET = 4
-export const HIGH_QUERY_BUDGET = 12
-const QUERY_BUDGET: Record<ResearchTier, number> = {
-  tight: TIGHT_QUERY_BUDGET,
-  normal: NORMAL_QUERY_BUDGET,
-  high: HIGH_QUERY_BUDGET,
-}
 /** Synthesis output cap (the packet trims again at SYNTHESIS_MAX_CHARS). */
 const SYNTHESIS_MAX_TOKENS = 600
 /** Below this remaining budget the whole research step is skipped. */
@@ -107,9 +115,8 @@ function timeBucket(d = new Date()): string {
 }
 
 /**
- * v2 cache key includes the budget tier and language set — a round
- * re-generated in the same bucket under a DIFFERENT tier must not reuse a
- * shallower (or deeper) packet. Old rp_v1 rows simply never hit again.
+ * v4 cache key: Stage 1 prompt rebuild (structural + near-term). Old
+ * rp_v1/rp_v2/rp_v3 rows simply never hit again.
  */
 export function researchCacheKey(
   instrument: string,
@@ -119,7 +126,7 @@ export function researchCacheKey(
   languages: readonly ResearchLang[] = [],
 ): string {
   const langs = languages.length ? [...languages].sort().join('+') : 'en'
-  return `rp_v2|${instrument}|${horizon}|${tier}|${langs}|${timeBucket(now)}`
+  return `rp_v4|${instrument}|${horizon}|${tier}|${langs}|${timeBucket(now)}`
 }
 
 function estimateUsd(
@@ -185,107 +192,111 @@ async function writeDurableCache(cacheKey: string, round: ResearchRoundInput, pa
   }
 }
 
-/**
- * Director system prompt, built per tier + language set.
- *  - tight/normal: the original "N focused queries" contract.
- *  - high: Cassi-style DECOMPOSITION into sub-questions (v2 D), searched
- *    individually and later distilled by ONE synthesis call.
- *  - languages (v2 B): one additional query per flagged language, WRITTEN in
- *    that language, aimed at native-language sources. Findings land in the
- *    SHARED packet — every closed-book model sees the identical block.
- */
-function buildDirectorPrompt(tier: ResearchTier, languages: readonly ResearchLang[]): string {
-  const budget = QUERY_BUDGET[tier]
-  const englishRule =
-    tier === 'high'
-      ? `- DECOMPOSE the proposition into ${budget - 2} to ${budget} focused sub-questions, in English, each a self-contained web-search query targeting a DIFFERENT causal angle (latest price & drivers; upcoming events/earnings; macro backdrop; sector & peer moves; positioning & flows; analyst/expert expectations; technical levels; key risks; cross-asset signals).`
-      : `- ${Math.max(2, budget - 1)} to ${budget} focused web-search queries, in English, each targeting a DIFFERENT angle (latest price/drivers; recent news, earnings or events; analyst/expert expectations; key risks).`
-  const langRule = languages.length
-    ? `- ADDITIONALLY include exactly one query per language in [${languages
-        .map((l) => `${l}: ${LANG_NAMES[l]}`)
-        .join(', ')}], WRITTEN IN that language, targeting native-language sources (local news, exchange notices, regulators, filings).`
-    : ''
+function roundBlock(round: ResearchRoundInput): string {
   return [
-    'You are the research director for a prediction league. Decide what RECENT, verifiable information would most improve a forecast for the proposition below.',
-    '',
-    'Output ONLY a JSON object, no markdown, no commentary:',
-    '{"queries":[{"q":"...","lang":"en"},{"q":"...","lang":"ko"}]}',
-    '',
-    'Rules:',
-    englishRule,
-    ...(langRule ? [langRule] : []),
-    '- Each query must be self-contained (include the instrument/topic name).',
-    '- Prefer recency: mention "latest" or the current month where relevant.',
-    '- lang is the 2-letter code of the language the query is written in.',
+    `Proposition: ${round.proposition_text}`,
+    `Instrument: ${round.instrument}`,
+    `Category: ${round.category}`,
+    `Horizon: ${round.horizon}`,
+    `Resolution rule: ${round.resolution_rule}`,
+    `Resolves at (UTC): ${round.resolves_at}`,
   ].join('\n')
 }
 
 type DirectorQuery = { q: string; lang: string }
 
-function parseDirectorQueries(raw: unknown, maxQueries: number, allowedLangs: ReadonlySet<string>): DirectorQuery[] {
-  const list = Array.isArray(raw) ? raw : []
-  const out: DirectorQuery[] = []
-  for (const item of list) {
-    let q: string | null = null
-    let lang = 'en'
-    if (typeof item === 'string') {
-      q = item
-    } else if (item && typeof item === 'object') {
-      const obj = item as { q?: unknown; lang?: unknown }
-      if (typeof obj.q === 'string') q = obj.q
-      if (typeof obj.lang === 'string' && allowedLangs.has(obj.lang)) lang = obj.lang
-    }
-    if (q && q.trim().length) out.push({ q: q.trim().slice(0, 300), lang })
-    if (out.length >= maxQueries) break
-  }
-  return out
-}
-
-async function runDirector(
-  round: ResearchRoundInput,
-  tier: ResearchTier,
-  languages: readonly ResearchLang[],
-): Promise<{ queries: DirectorQuery[]; costUsd: number; error?: string }> {
+async function callDirector(
+  systemPrompt: string,
+  prompt: string,
+  model = DIRECTOR_MODEL,
+): Promise<{ text: string | null; costUsd: number; error?: string }> {
   const res = await runSingleAiProvider({
     supabase: supabaseAdmin,
     authSupabase: supabaseAdmin,
     sessionId: null,
     userId: null,
     provider: 'google',
-    prompt: [
-      `Proposition: ${round.proposition_text}`,
-      `Instrument: ${round.instrument}`,
-      `Category: ${round.category}`,
-      `Horizon: ${round.horizon}`,
-      `Resolution rule: ${round.resolution_rule}`,
-      `Resolves at (UTC): ${round.resolves_at}`,
-    ].join('\n'),
-    systemPrompt: buildDirectorPrompt(tier, languages),
+    prompt,
+    systemPrompt,
     skipLanguageInjection: true,
-    maxCompletionTokens: tier === 'high' ? DIRECTOR_MAX_TOKENS_HIGH : DIRECTOR_MAX_TOKENS,
-    modelOverride: DIRECTOR_MODEL,
+    maxCompletionTokens: DIRECTOR_MAX_TOKENS,
+    modelOverride: model,
+    // 3.5-flash accepts thinkingBudget:0; 3.6-flash and 3.1-pro reject it.
+    allowGeminiThinking: model !== DIRECTOR_MODEL,
     timeoutMs: 45_000,
   })
-
   const costUsd =
     typeof res.costUsd === 'number'
       ? res.costUsd
       : estimateUsd(DIRECTOR_PRICE, res.promptTokens, res.completionTokens)
+  if (res.error || !res.text) return { text: null, costUsd, error: res.error ?? 'director returned no text' }
+  return { text: res.text, costUsd }
+}
 
-  if (res.error || !res.text) return { queries: [], costUsd, error: res.error ?? 'director returned no text' }
-
-  const match = res.text.match(/\{[\s\S]*\}/)
-  if (!match) return { queries: [], costUsd, error: 'director output was not JSON' }
-  try {
-    const obj = JSON.parse(match[0]) as { queries?: unknown }
-    const maxQueries = QUERY_BUDGET[tier] + languages.length
-    const allowed = new Set<string>(['en', ...languages])
-    const queries = parseDirectorQueries(obj.queries, maxQueries, allowed)
-    if (!queries.length) return { queries: [], costUsd, error: 'director produced zero usable queries' }
-    return { queries, costUsd }
-  } catch {
-    return { queries: [], costUsd, error: 'director JSON parse failed' }
+/** Inventory-blind Stage 1 only — used by the gold-chip audit print. */
+export async function runDirectorStage1(
+  round: ResearchRoundInput,
+  opts?: { modelOverride?: string },
+): Promise<{
+  needs: DirectorNeed[]
+  rawText: string
+  costUsd: number
+  error?: string
+  model: string
+}> {
+  const model = opts?.modelOverride ?? DIRECTOR_MODEL
+  const stage1 = await callDirector(buildStage1Prompt(), roundBlock(round), model)
+  if (!stage1.text) return { needs: [], rawText: '', costUsd: stage1.costUsd, error: stage1.error, model }
+  const parsed = parseStage1Needs(stage1.text)
+  if ('error' in parsed) {
+    return { needs: [], rawText: stage1.text, costUsd: stage1.costUsd, error: parsed.error, model }
   }
+  return { needs: parsed, rawText: stage1.text, costUsd: stage1.costUsd, model }
+}
+
+async function runDirector(
+  round: ResearchRoundInput,
+  tier: ResearchTier,
+  languages: readonly ResearchLang[],
+  inventory: PacketInventoryInput | undefined,
+): Promise<{ queries: DirectorQuery[]; costUsd: number; allPresent: boolean; needs: DirectorNeed[]; error?: string }> {
+  const allowed = new Set<string>(['en', ...languages])
+  const maxEnglish = QUERY_BUDGET[tier]
+
+  const stage1 = await callDirector(buildStage1Prompt(), roundBlock(round))
+  let costUsd = stage1.costUsd
+  if (!stage1.text) return { queries: [], costUsd, allPresent: false, needs: [], error: stage1.error }
+
+  const needs = parseStage1Needs(stage1.text)
+  if ('error' in needs) return { queries: [], costUsd, allPresent: false, needs: [], error: needs.error }
+
+  const inventoryText = inventory
+    ? buildPacketInventory(inventory)
+    : 'PACKET INVENTORY: not supplied — mark every Stage 1 need as missing.'
+  const stage2Prompt = [
+    roundBlock(round),
+    '',
+    'STAGE 1 NEEDS:',
+    JSON.stringify({ needs }),
+    '',
+    'PACKET INVENTORY:',
+    inventoryText,
+  ].join('\n')
+
+  const stage2 = await callDirector(buildStage2Prompt(tier, languages), stage2Prompt)
+  costUsd += stage2.costUsd
+
+  let coverage = stage2.text ? parseStage2Coverage(stage2.text) : ({ error: stage2.error ?? 'stage 2 empty' } as const)
+  if ('error' in coverage) {
+    // Degrade: search the Stage 1 needs themselves, still capped by the tier.
+    const queries = selectQueriesFromCoverage([], maxEnglish, allowed, needs, round.instrument)
+    return { queries, costUsd, allPresent: false, needs, error: coverage.error }
+  }
+
+  const queries = selectQueriesFromCoverage(coverage, maxEnglish, allowed, needs, round.instrument)
+  if (allNeedsPresent(coverage)) return { queries: [], costUsd, allPresent: true, needs }
+  if (!queries.length) return { queries: [], costUsd, allPresent: false, needs, error: 'director produced zero usable queries' }
+  return { queries, costUsd, allPresent: false, needs }
 }
 
 async function runQuery(
@@ -299,8 +310,8 @@ async function runQuery(
 }> {
   const answerRule =
     query.lang === 'en'
-      ? 'Answer with a compact factual brief (max 120 words): concrete numbers, dates and named sources. No opinions, no disclaimers.'
-      : `The question is in ${LANG_NAMES[query.lang as ResearchLang] ?? query.lang}. Search sources in that language. Answer with (1) ONE key sentence in that language quoting the concrete figure, then (2) an English gloss starting "EN:" with the same numbers, dates and named source. Max 120 words total. No opinions, no disclaimers.`
+      ? 'Answer with a compact factual brief (max 120 words): concrete numbers, an as-of date (YYYY-MM-DD or "Mon DD, YYYY"), and a source URL. No opinions, no disclaimers. Drop the answer if you cannot cite a number, a date, AND a URL.'
+      : `The question is in ${LANG_NAMES[query.lang as ResearchLang] ?? query.lang}. Search sources in that language. Answer with (1) ONE key sentence in that language quoting the concrete figure, then (2) an English gloss starting "EN:" with the same numbers, a date, and a named source URL. Max 120 words total. No opinions, no disclaimers.`
   const res = await runSingleAiProvider({
     supabase: supabaseAdmin,
     authSupabase: supabaseAdmin,
@@ -382,6 +393,8 @@ export async function getResearchPacket(args: {
   tier?: ResearchTier
   /** v2 (B): languages to ALSO query (findings go into the shared packet). */
   languages?: readonly ResearchLang[]
+  /** Packet field inventory for Stage 2. Omit → every Stage 1 need is missing. */
+  inventory?: PacketInventoryInput
 }): Promise<ResearchPacket> {
   const { round, budgetRemainingUsd } = args
   const tier: ResearchTier = args.tier ?? 'normal'
@@ -414,9 +427,26 @@ export async function getResearchPacket(args: {
     return durableHit
   }
 
-  const director = await runDirector(round, tier, languages)
+  const director = await runDirector(round, tier, languages, args.inventory)
   let costUsd = director.costUsd
   if (!director.queries.length) {
+    if (director.allPresent) {
+      const packet: ResearchPacket = {
+        available: true,
+        cached: false,
+        cacheKey,
+        directorModel: DIRECTOR_MODEL,
+        queries: [],
+        findings: [],
+        promptBlock: '',
+        costUsd,
+        tier,
+        synthesis: null,
+      }
+      memoryCache.set(cacheKey, { packet, at: Date.now() })
+      await writeDurableCache(cacheKey, round, packet)
+      return packet
+    }
     return { ...miss, costUsd, directorModel: DIRECTOR_MODEL, error: director.error ?? 'no queries' }
   }
 
@@ -426,11 +456,17 @@ export async function getResearchPacket(args: {
     const r = await runQuery(round, query)
     costUsd += r.costUsd
     if (r.summary) {
+      const citations = [
+        ...(r.citations ?? []),
+        ...((r.searchResults ?? []).map((s) => s.url).filter((u): u is string => !!u) ?? []),
+      ]
+      const summary = attachSourceUrl(r.summary, citations)
+      if (!isAdmissibleFinding(summary, citations)) continue
       findings.push({
         query: query.q,
-        summary: r.summary,
+        summary,
         lang: query.lang,
-        citations: r.citations,
+        citations: citations.length ? citations : undefined,
         searchResults: r.searchResults,
       })
     }

@@ -59,6 +59,18 @@ describe('PUBLIC_CATALOG', () => {
     }
   })
 
+  it('gold_metals chips are XAU/USD, GLD, SLV — ETFs filed by underlying, not as index_etf; XAG is gone', () => {
+    const gold = PUBLIC_CATALOG.find((c) => c.id === 'gold_metals')!
+    expect(gold.instruments.map((i) => i.instrument)).toEqual(['XAU/USD', 'GLD', 'SLV'])
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('XAG/USD')
+    expect(findCatalogInstrument('GLD')?.category.id).toBe('gold_metals')
+    expect(findCatalogInstrument('SLV')?.category.id).toBe('gold_metals')
+    expect(findCatalogInstrument('GLD')?.category.ledgerCategory).toBe('gold_metal')
+    const index = PUBLIC_CATALOG.find((c) => c.id === 'index_etf')!
+    expect(index.instruments.map((i) => i.instrument)).toEqual(['SPY', 'QQQ'])
+    expect(index.instruments.map((i) => i.instrument)).not.toContain('GLD')
+  })
+
   it('keeps instrument ids unique and includes the existing AAPL / BTC/USD / EUR/USD keys', () => {
     expect(new Set(CATALOG_INSTRUMENT_IDS).size).toBe(CATALOG_INSTRUMENT_IDS.length)
     expect(CATALOG_INSTRUMENT_IDS).toContain('AAPL')
@@ -185,5 +197,13 @@ describe('catalog i18n', () => {
     // REIT ETFs share the equity session clock — same disclosure as AAPL.
     const reit = buildCatalogRankedRoundInput('VNQ', '1m', now)
     expect(reit!.proposition_text).toMatch(/weekday/)
+
+    // GLD/SLV share the equity session clock; XAU/USD stays on calendar days.
+    const gld = buildCatalogRankedRoundInput('GLD', '1m', now)
+    expect(gld!.proposition_text).toMatch(/weekday/)
+    const slv = buildCatalogRankedRoundInput('SLV', '1m', now)
+    expect(slv!.proposition_text).toMatch(/weekday/)
+    const xau = buildCatalogRankedRoundInput('XAU/USD', '1m', now)
+    expect(xau!.proposition_text).not.toMatch(/weekday/)
   })
 })

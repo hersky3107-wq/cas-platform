@@ -114,7 +114,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     kind: 'instruments',
     instruments: [
       { instrument: 'XAU/USD', resolution_rule: 'XAU/USD spot close vs prior close', chip_visible: true },
-      { instrument: 'XAG/USD', resolution_rule: 'XAG/USD spot close vs prior close', chip_visible: true },
+      { instrument: 'GLD', resolution_rule: 'GLD regular-session close vs prior close', chip_visible: true },
+      { instrument: 'SLV', resolution_rule: 'SLV regular-session close vs prior close', chip_visible: true },
     ],
   },
   {
@@ -228,9 +229,9 @@ export type CatalogRankedRoundInput = {
  * ISO week / month / quarter — see `cacheBucketFor`), so a long-horizon round
  * is opened once per period, not reopened daily while the previous one is
  * still pending. `resolves_at` is computed from `now` per the horizon +
- * category rule in `lib/league/horizon.ts` (trading sessions for
- * equities / index ETFs / REIT ETFs, calendar days for crypto / FX /
- * spot metals / energy) — never reinterpreted later.
+ * category + instrument rule in `lib/league/horizon.ts` (trading sessions
+ * for equities / index ETFs / REIT ETFs / GLD / SLV, calendar days for
+ * crypto / FX / spot metals / energy) — never reinterpreted later.
  *
  * THE PROPOSITION NAMES THE ACTUAL RESOLVE DATE — never a relative phrase
  * like "over the next 1 month" or "21 trading days from now". Both the
@@ -249,9 +250,14 @@ export function buildCatalogRankedRoundInput(
   const found = findCatalogInstrument(instrument)
   if (!found) return null
   const bucket = cacheBucketFor(uiHorizon, now)
-  const resolvesAt = computeResolvesAt(found.category.ledgerCategory, uiHorizon, now.toISOString())
+  const resolvesAt = computeResolvesAt(
+    found.category.ledgerCategory,
+    uiHorizon,
+    now.toISOString(),
+    found.entry.instrument,
+  )
   const resolveDate = resolvesAt.slice(0, 10)
-  const note = tradingApproximationNote(found.category.ledgerCategory, uiHorizon)
+  const note = tradingApproximationNote(found.category.ledgerCategory, uiHorizon, found.entry.instrument)
   const proposition_text = `Will ${found.entry.instrument} close higher by ${resolveDate} than its last close?${
     note ? ` (${resolveDate} ${note}.)` : ''
   }`

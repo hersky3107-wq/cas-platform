@@ -17,8 +17,9 @@ import type { PredictionCategory } from '@/lib/prediction/categories'
  * This module is the single place that:
  *  1. defines/validates the 4 canonical horizon codes;
  *  2. computes `resolves_at` from an anchor timestamp, honoring the rule
- *     "trading sessions for equities / index ETFs / REIT ETFs, calendar
- *     days for crypto / FX / spot metals / energy";
+ *     "trading sessions for equities / index ETFs / REIT ETFs / US-listed
+ *     metal ETFs (GLD, SLV), calendar days for crypto / FX / spot metals
+ *     (XAU/USD) / energy";
  *  3. buckets the idempotency cache key at a granularity matching the
  *     horizon's own cadence, so a 1-month round opens once a month, not
  *     once a day — see `cacheBucketFor`.
@@ -37,14 +38,17 @@ export function isUiHorizon(value: unknown): value is UiHorizon {
 }
 
 /**
- * "Trading sessions for equities / index ETFs / REIT ETFs, calendar days
- * for crypto / FX / spot metals / energy" — session-close categories vs.
- * series that trade (and are graded) every calendar day.
+ * "Trading sessions for equities / index ETFs / REIT ETFs / US-listed
+ * metal ETFs, calendar days for crypto / FX / spot metals / energy."
  *
- * gold_metal and commodity_energy stay on the calendar path: the public
- * chips are spot symbols (XAU/USD, WTICO/USD), not CME session contracts,
- * and Twelve Data's daily bars include weekend/overnight prints. real_estate
- * chips are NYSE REIT ETFs (VNQ, SCHH) and share the equity session clock.
+ * Clock follows LISTING, not catalog chip. gold_metal chips mix both:
+ * XAU/USD is a 24/5 spot pair (calendar days); GLD and SLV are NYSE
+ * equities and share the equity session clock even though they are filed
+ * under gold_metals (underlying asset), not index_etf.
+ *
+ * commodity_energy stays on the calendar path: public chips are spot
+ * symbols (WTICO/USD), not CME session contracts. real_estate chips are
+ * NYSE REIT ETFs (VNQ, SCHH) via the category set below.
  */
 const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set([
   'stock',
@@ -52,8 +56,20 @@ const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set([
   'real_estate',
 ])
 
-export function usesTradingSessions(category: PredictionCategory | string): boolean {
-  return TRADING_SESSION_CATEGORIES.has(category as PredictionCategory)
+/**
+ * US-listed equity tickers whose ledger category is NOT stock/etf_index
+ * but whose grading close is the NYSE/Nasdaq session. Catalog files them
+ * by underlying asset (GLD/SLV → gold_metal).
+ */
+export const SESSION_CLOCK_INSTRUMENTS: ReadonlySet<string> = new Set(['GLD', 'SLV'])
+
+export function usesTradingSessions(
+  category: PredictionCategory | string,
+  instrument?: string | null,
+): boolean {
+  if (TRADING_SESSION_CATEGORIES.has(category as PredictionCategory)) return true
+  const ticker = instrument?.trim().toUpperCase()
+  return Boolean(ticker && SESSION_CLOCK_INSTRUMENTS.has(ticker))
 }
 
 /**
@@ -81,16 +97,20 @@ export const CALENDAR_DAY_COUNT: Record<UiHorizon, number> = {
  * (category, horizon). Equities/ETFs: trading sessions. Crypto/FX: calendar
  * days (those series include weekend bars). Unknown horizon → 1 (1d).
  */
-export function sessionsForHorizon(category: PredictionCategory | string, horizon: string): number {
+export function sessionsForHorizon(
+  category: PredictionCategory | string,
+  horizon: string,
+  instrument?: string | null,
+): number {
   const h = isUiHorizon(horizon) ? horizon : '1d'
-  return usesTradingSessions(category) ? TRADING_SESSION_COUNT[h] : CALENDAR_DAY_COUNT[h]
+  return usesTradingSessions(category, instrument) ? TRADING_SESSION_COUNT[h] : CALENDAR_DAY_COUNT[h]
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
- * Public catalog equities/ETFs are NYSE/Nasdaq. `computeResolvesAt` has no
- * instrument argument, so session-counted categories use this exchange clock.
+ * Public catalog equities/ETFs are NYSE/Nasdaq. Session-counted categories
+ * and SESSION_CLOCK_INSTRUMENTS (GLD, SLV) use this exchange clock.
  * (KRX symbols exist in `open-phase.ts` but are not in the public catalog.)
  */
 const US_EQUITY_TIME_ZONE = 'America/New_York'
@@ -245,10 +265,11 @@ export function addTradingDays(fromMs: number, n: number): number {
 export function computeResolvesAt(
   category: PredictionCategory | string,
   horizon: UiHorizon,
-  anchorIso: string
+  anchorIso: string,
+  instrument?: string | null,
 ): string {
   const anchorMs = Date.parse(anchorIso)
-  if (!usesTradingSessions(category)) {
+  if (!usesTradingSessions(category, instrument)) {
     return new Date(anchorMs + CALENDAR_DAY_COUNT[horizon] * DAY_MS).toISOString()
   }
   const sessionDate = nthFutureUsEquitySessionDate(anchorIso, TRADING_SESSION_COUNT[horizon])
@@ -268,9 +289,13 @@ export function computeResolvesAt(
  * next-session round) and for calendar-day categories (crypto/FX trade,
  * and are graded, every day — no approximation is made there at all).
  */
-export function tradingApproximationNote(category: PredictionCategory | string, horizon: UiHorizon): string | null {
+export function tradingApproximationNote(
+  category: PredictionCategory | string,
+  horizon: UiHorizon,
+  instrument?: string | null,
+): string | null {
   if (horizon === '1d') return null
-  if (!usesTradingSessions(category)) return null
+  if (!usesTradingSessions(category, instrument)) return null
   return 'this date is estimated by counting weekdays, not an exchange holiday calendar'
 }
 

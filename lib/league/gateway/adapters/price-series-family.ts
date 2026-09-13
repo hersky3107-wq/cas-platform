@@ -226,11 +226,14 @@ export const GOLD_METAL_SYNONYMS: Record<string, string> = {
   'xau/usd': 'XAU/USD',
   금: 'XAU/USD',
   골드: 'XAU/USD',
-  silver: 'XAG/USD',
-  xag: 'XAG/USD',
-  'xag/usd': 'XAG/USD',
-  은: 'XAG/USD',
-  실버: 'XAG/USD',
+  gld: 'GLD',
+  'gld etf': 'GLD',
+  silver: 'SLV',
+  xag: 'SLV',
+  'xag/usd': 'SLV',
+  slv: 'SLV',
+  은: 'SLV',
+  실버: 'SLV',
 }
 
 export const COMMODITY_ENERGY_SYNONYMS: Record<string, string> = {

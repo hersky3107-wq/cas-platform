@@ -2,6 +2,7 @@ import 'server-only'
 
 import { XMLParser } from 'fast-xml-parser'
 import type { SlowDataSnapshot } from './closed-book-packet'
+import { fetchMetalsSlowFields } from './metals-data'
 
 /**
  * Packet v2 (C) — SLOW PUBLIC DATA (server engine only). Free public
@@ -328,6 +329,7 @@ const SHORT_VOLUME_CATEGORIES = new Set(['stock', 'etf_index', 'real_estate'])
 const PUT_CALL_CATEGORIES = new Set(['stock', 'etf_index', 'real_estate'])
 const CRYPTO_CATEGORIES = new Set(['crypto_spot', 'crypto_perps', 'memecoin'])
 const INSIDER_CATEGORIES = new Set(['stock'])
+const METALS_CATEGORIES = new Set(['gold_metal'])
 
 /**
  * Slow-data snapshot for one round. Returns null when NOTHING applies to the
@@ -345,15 +347,24 @@ export async function fetchSlowData(args: {
   const wantsPutCall = PUT_CALL_CATEGORIES.has(category)
   const wantsBtcFlow = CRYPTO_CATEGORIES.has(category)
   const wantsInsider = INSIDER_CATEGORIES.has(category) && isUsTicker
+  const wantsMetals = METALS_CATEGORIES.has(category)
 
-  if (!wantsShort && !wantsPutCall && !wantsBtcFlow && !wantsInsider) return null
+  if (!wantsShort && !wantsPutCall && !wantsBtcFlow && !wantsInsider && !wantsMetals) return null
 
-  const [shortVolume, putCall, btcEtfFlow, insider] = await Promise.all([
+  const [shortVolume, putCall, btcEtfFlow, insider, metals] = await Promise.all([
     wantsShort ? fetchShortVolume(symbol!) : Promise.resolve(null),
     wantsPutCall ? fetchPutCall() : Promise.resolve(null),
     wantsBtcFlow ? fetchBtcEtfFlow() : Promise.resolve(null),
     wantsInsider ? fetchInsider(symbol!) : Promise.resolve(null),
+    wantsMetals ? fetchMetalsSlowFields(category) : Promise.resolve(null),
   ])
 
-  return { fetchedAt: new Date().toISOString(), shortVolume, putCall, btcEtfFlow, insider }
+  return {
+    fetchedAt: new Date().toISOString(),
+    shortVolume,
+    putCall,
+    btcEtfFlow,
+    insider,
+    ...(metals ?? {}),
+  }
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   assembleClosedBookInjection,
+  isOzOzGoldSilverRatio,
   type ClosedBookPacketInput,
   type RelatedInstrumentStat,
   type SeriesBar,
@@ -106,6 +107,79 @@ describe('closed-book packet v2 — new sections', () => {
     expect(text).toContain('put/call ratios (2026-08-27): total 0.73 / index 0.92 / equity 0.62')
     expect(text).toContain('informative horizon: weeks-months — weak for 1d')
     expect(text).toMatch(/BTC spot ETF flows: UNAVAILABLE/)
+  })
+
+  it('renders metals slow fields with source + as-of, and UNAVAILABLE on failure', () => {
+    const text = assembleClosedBookInjection(
+      input({
+        instrument: 'XAU/USD',
+        category: 'gold_metal',
+        slow: {
+          fetchedAt: '2026-09-13T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: null,
+          insider: null,
+          realYield10y: { date: '2026-09-11', yieldPct: 1.82 },
+          cotGold: {
+            contract: 'GOLD - COMMODITY EXCHANGE INC.',
+            date: '2026-09-08',
+            openInterest: 411227,
+            managedMoneyLong: 145804,
+            managedMoneyShort: 10832,
+            managedMoneyNet: 134972,
+          },
+          cotSilver: { unavailable: 'CFTC f_disagg.txt: HTTP 500' },
+          gldHoldings: { unavailable: 'GLD holdings: HTML (bot wall or missing CSV)' },
+          slvHoldings: { date: '2026-09-12', tonnes: 14123.45, ounces: 454000000 },
+          goldSilverRatio: {
+            ratio: 7.21,
+            goldLast: 310.5,
+            silverLast: 43.07,
+            goldSymbol: 'GLD',
+            silverSymbol: 'SLV',
+            asOf: '2026-09-12',
+          },
+        },
+      }),
+    )
+    expect(text).toContain('10Y TIPS real yield (2026-09-11): 1.82%')
+    expect(text).toContain('US Treasury daily real yield curve')
+    expect(text).toContain('CFTC gold managed-money (2026-09-08): managed-money net 134,972 contracts')
+    expect(text).toMatch(/CFTC silver managed-money: UNAVAILABLE/)
+    expect(text).toMatch(/GLD holdings: UNAVAILABLE/)
+    expect(text).toContain('SLV holdings (2026-09-12): 14123.45 t')
+    expect(text).toMatch(/gold\/silver ratio: UNAVAILABLE/)
+    expect(text).not.toContain('7.210')
+    expect(text).not.toContain('ETF-share proxy')
+  })
+
+  it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {
+    expect(isOzOzGoldSilverRatio(7.21)).toBe(false)
+    expect(isOzOzGoldSilverRatio(72.9)).toBe(true)
+    const ozOz = assembleClosedBookInjection(
+      input({
+        instrument: 'XAU/USD',
+        category: 'gold_metal',
+        slow: {
+          fetchedAt: '2026-09-13T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: null,
+          insider: null,
+          goldSilverRatio: {
+            ratio: 72.9,
+            goldLast: 3375,
+            silverLast: 46.3,
+            goldSymbol: 'XAU/USD',
+            silverSymbol: 'XAG/USD',
+            asOf: '2026-09-12',
+          },
+        },
+      }),
+    )
+    expect(ozOz).toContain('gold/silver ratio (2026-09-12): 72.9 oz silver per oz gold')
+    expect(ozOz).not.toContain('ETF-share proxy')
   })
 
   it('slow-data fields that are null (not applicable) are omitted, not UNAVAILABLE', () => {

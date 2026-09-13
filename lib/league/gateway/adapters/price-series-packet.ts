@@ -9,6 +9,7 @@ import {
 } from '../../closed-book-packet'
 import { decideResearchTier, type ResearchTier, type TierDecision } from '../../research-tier'
 import { relationsFor, type ResearchLang } from '../../relations'
+import type { PacketInventoryInput } from '../../research-director'
 import { normalizeSessionDate } from '@/lib/prediction/resolution'
 import type { DataPacket } from '../../market-data'
 import type { ResearchPacket } from '../../research'
@@ -41,6 +42,7 @@ export type PriceSeriesIo = {
     budgetRemainingUsd: number
     tier?: ResearchTier
     languages?: readonly ResearchLang[]
+    inventory?: PacketInventoryInput
   }): Promise<ResearchPacket>
   fetchRelatedInstruments(
     instrument: string,
@@ -137,9 +139,7 @@ export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceS
   // v2 (D): consensus/crypto are fetched BEFORE research so the dispersion
   // signal can set the research budget tier. Twelve Data order within the
   // 7-credit/min window: quote+series (2) → consensus (5) → related series
-  // (fetched below, CONCURRENTLY with the research AI calls, so the throttle
-  // wait for a second credit window overlaps research latency instead of
-  // stalling the user-visible stream).
+  // (below) → director Stage 1/2. Related no longer overlaps research latency.
   const [consensus, crypto] = await Promise.all([
     packet.available && wantsConsensus(round.category) && packet.symbol
       ? io.fetchMarketConsensus(packet.symbol)
@@ -154,21 +154,31 @@ export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceS
     anchorClose: typeof packet.latestClose === 'number' ? packet.latestClose : null,
   })
   const relations = relationsFor(round.instrument)
-  // One research packet per ROUND, shared identically by tiers 1/2/3 (Scout
-  // keeps its own live search). Cached per (instrument, horizon, tier, langs,
-  // 6h bucket); its cost counts against the same kill-switch cap as the model
-  // calls. Related-series (TD credits) and slow public data (free HTTP) run
-  // concurrently with the research AI calls.
-  const [research, related, slow] = await Promise.all([
-    io.getResearchPacket({
-      round,
-      budgetRemainingUsd: ctx.costCapUsd,
-      tier: tierDecision.tier,
-      languages: relations?.asiaLinks ?? [],
-    }),
+  // Related-series (TD credits) and slow public data (free HTTP) run BEFORE
+  // the director so Stage 2 can see the inventory. Research AI calls no longer
+  // overlap the Twelve Data throttle wait — extra latency, fewer wasted searches.
+  const [related, slow] = await Promise.all([
     io.fetchRelatedInstruments(round.instrument, packet.series ?? []),
     io.fetchSlowData({ category: round.category, symbol: packet.symbol }),
   ])
+  const research = await io.getResearchPacket({
+    round,
+    budgetRemainingUsd: ctx.costCapUsd,
+    tier: tierDecision.tier,
+    languages: relations?.asiaLinks ?? [],
+    inventory: {
+      instrument: round.instrument,
+      category: round.category,
+      horizon: round.horizon,
+      seriesLength: (packet.series ?? []).length,
+      seriesAsOf: packet.asOf ?? packet.series?.[(packet.series?.length ?? 1) - 1]?.date ?? null,
+      anchorClose: typeof packet.latestClose === 'number' ? packet.latestClose : null,
+      consensus,
+      crypto,
+      related: related?.stats ?? null,
+      slow,
+    },
+  })
   const injection =
     packet.available || research.available
       ? assembleClosedBookInjection(

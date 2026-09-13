@@ -37,6 +37,9 @@ describe('usesTradingSessions', () => {
     expect(usesTradingSessions('crypto_spot')).toBe(false)
     expect(usesTradingSessions('fx')).toBe(false)
     expect(usesTradingSessions('gold_metal')).toBe(false)
+    expect(usesTradingSessions('gold_metal', 'XAU/USD')).toBe(false)
+    expect(usesTradingSessions('gold_metal', 'GLD')).toBe(true)
+    expect(usesTradingSessions('gold_metal', 'SLV')).toBe(true)
     expect(usesTradingSessions('commodity_energy')).toBe(false)
     expect(usesTradingSessions('memecoin')).toBe(false)
     expect(usesTradingSessions('tech')).toBe(false)
@@ -110,9 +113,20 @@ describe('computeResolvesAt', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
     for (const h of UI_HORIZONS) {
       expect(computeResolvesAt('gold_metal', h, weekendMorning)).toBe(computeResolvesAt('crypto_spot', h, weekendMorning))
+      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'XAU/USD')).toBe(
+        computeResolvesAt('crypto_spot', h, weekendMorning),
+      )
       expect(computeResolvesAt('commodity_energy', h, weekendMorning)).toBe(
         computeResolvesAt('crypto_spot', h, weekendMorning),
       )
+    }
+  })
+
+  it('GLD and SLV use the equity session clock even though they are filed under gold_metal', () => {
+    const weekendMorning = '2026-08-29T09:43:16.752Z'
+    for (const h of UI_HORIZONS) {
+      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'GLD')).toBe(computeResolvesAt('stock', h, weekendMorning))
+      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'SLV')).toBe(computeResolvesAt('stock', h, weekendMorning))
     }
   })
 })
@@ -161,6 +175,7 @@ describe('tradingApproximationNote', () => {
       expect(tradingApproximationNote('crypto_spot', h)).toBeNull()
       expect(tradingApproximationNote('fx', h)).toBeNull()
       expect(tradingApproximationNote('gold_metal', h)).toBeNull()
+      expect(tradingApproximationNote('gold_metal', h, 'XAU/USD')).toBeNull()
       expect(tradingApproximationNote('commodity_energy', h)).toBeNull()
     }
   })
@@ -170,6 +185,8 @@ describe('tradingApproximationNote', () => {
       expect(tradingApproximationNote('stock', h)).toMatch(/weekday/)
       expect(tradingApproximationNote('etf_index', h)).toMatch(/holiday calendar/)
       expect(tradingApproximationNote('real_estate', h)).toMatch(/weekday/)
+      expect(tradingApproximationNote('gold_metal', h, 'GLD')).toMatch(/weekday/)
+      expect(tradingApproximationNote('gold_metal', h, 'SLV')).toMatch(/weekday/)
     }
   })
 })

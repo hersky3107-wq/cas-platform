@@ -95,6 +95,31 @@ describe('closed-book packet — numbers first', () => {
     expect(text).toMatch(/BASE RATE \(1d — 1 session, not calendar days\)/)
   })
 
+  it('XAU/USD gold 1d uses calendar-day base-rate copy; GLD uses sessions', () => {
+    const xau = assembleClosedBookInjection(
+      input({ category: 'gold_metal', instrument: 'XAU/USD', consensus: null }),
+    )
+    expect(xau).toMatch(/BASE RATE \(1d — 1 calendar day, not trading sessions\)/)
+    const gld = assembleClosedBookInjection(input({ category: 'gold_metal', instrument: 'GLD', consensus: null }))
+    expect(gld).toMatch(/BASE RATE \(1d — 1 session, not calendar days\)/)
+  })
+
+  it('prints a trend NOTE when the lookback up-close rate exceeds 60%, and hides it at ~50%', () => {
+    const evenOdd = assembleClosedBookInjection(input({ horizon: '1d' }))
+    expect(evenOdd).toMatch(/closed higher 1 session later 5\d\.\d% of the time/)
+    expect(evenOdd).not.toMatch(/not a coin-flip prior/)
+
+    const threeMonth = assembleClosedBookInjection(input({ horizon: '3m' }))
+    expect(threeMonth).toMatch(/NOTE: \d+\.\d% exceeds 60% because this lookback window covers a sustained trend; the figure reflects that trend, not a coin-flip prior\./)
+
+    const monotonic: SeriesBar[] = Array.from({ length: 1083 }, (_, i) => ({
+      date: `2024-01-${String((i % 28) + 1).padStart(2, '0')}`,
+      close: 100 + i,
+    }))
+    const alwaysUp = assembleClosedBookInjection(input({ series: monotonic, horizon: '1d' }))
+    expect(alwaysUp).toMatch(/NOTE: 100\.0% exceeds 60% because this lookback window covers a sustained trend; the figure reflects that trend, not a coin-flip prior\./)
+  })
+
   it('base rate is per-horizon: 1d and 3m are not the same number', () => {
     const series = bars(1083, 200)
     const d1 = computeBaseRate(series, sessionsForHorizon('stock', '1d'), 1000, '1d')

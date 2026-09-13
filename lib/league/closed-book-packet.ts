@@ -10,6 +10,8 @@ import { isUiHorizon, sessionsForHorizon, usesTradingSessions, type UiHorizon } 
 export const PRINTED_SESSION_COUNT = 20
 /** Lookback pairs for the base rate (need lookback + horizon bars in the series). */
 export const BASE_RATE_LOOKBACK = 1000
+/** Lookback up-close frequency above this is a trend, not a coin-flip prior. */
+export const BASE_RATE_TREND_NOTE_MIN_PCT = 60
 /**
  * time_series outputsize: 1000 lookback + 63 (3m equity sessions) + 20 buffer.
  * One Twelve Data credit — same as the previous 10-bar series call.
@@ -66,6 +68,21 @@ export type RelatedInstrumentStat =
  *  - `null`            → not applicable to this category (line omitted)
  *  - `{ unavailable }` → applicable but the fetch failed (line printed)
  */
+export type CotPositioning =
+  | {
+      contract: string
+      date: string
+      openInterest: number
+      managedMoneyLong: number
+      managedMoneyShort: number
+      managedMoneyNet: number
+    }
+  | { unavailable: string }
+
+export type EtfHoldings =
+  | { date: string; tonnes: number | null; ounces: number | null }
+  | { unavailable: string }
+
 export type SlowDataSnapshot = {
   fetchedAt: string
   shortVolume:
@@ -87,6 +104,23 @@ export type SlowDataSnapshot = {
         netShares: number
         latestFilingDate: string | null
       }
+    | { unavailable: string }
+    | null
+  /** US Treasury 10Y TIPS real yield. Gold/metals only; omitted elsewhere. */
+  realYield10y?: { date: string; yieldPct: number } | { unavailable: string } | null
+  /** CFTC disaggregated managed-money positioning. Gold/metals only. */
+  cotGold?: CotPositioning | null
+  cotSilver?: CotPositioning | null
+  gldHoldings?: EtfHoldings | null
+  slvHoldings?: EtfHoldings | null
+  /**
+   * GLD last / SLV last is NOT the gold/silver ratio (that is ounces of
+   * silver per ounce of gold, historically ~65-90). Do not populate this
+   * with an ETF share-price quotient. Omit the field unless the number is
+   * ounces/ounces.
+   */
+  goldSilverRatio?:
+    | { ratio: number; goldLast: number; silverLast: number; goldSymbol: string; silverSymbol: string; asOf: string }
     | { unavailable: string }
     | null
 }
@@ -274,6 +308,11 @@ function fmt(n: number, digits = 2): string {
   return Number.isFinite(n) ? n.toFixed(digits) : 'n/a'
 }
 
+/** Ounces of silver per ounce of gold. Share-price GLD/SLV (~6–8) is not this. */
+export function isOzOzGoldSilverRatio(ratio: number): boolean {
+  return Number.isFinite(ratio) && ratio >= 20 && ratio <= 200
+}
+
 function pct(n: number): string {
   return `${n >= 0 ? '+' : ''}${fmt(n, 1)}%`
 }
@@ -345,11 +384,11 @@ function formatNumericMarket(input: ClosedBookPacketInput): string {
 
 function formatBaseRate(input: ClosedBookPacketInput): string {
   const h = resolveHorizonForRate(input.horizon)
-  const ahead = sessionsForHorizon(input.category, h)
+  const ahead = sessionsForHorizon(input.category, h, input.instrument)
   const rate = computeBaseRate(input.series, ahead, BASE_RATE_LOOKBACK, h)
   const asOf = input.seriesAsOf ?? 'unknown'
   const src = input.seriesSource
-  const sessionClock = usesTradingSessions(input.category)
+  const sessionClock = usesTradingSessions(input.category, input.instrument)
   const aheadLabel = sessionClock
     ? `${ahead} session${ahead === 1 ? '' : 's'}`
     : `${ahead} calendar day${ahead === 1 ? '' : 's'}`
@@ -367,12 +406,19 @@ function formatBaseRate(input: ClosedBookPacketInput): string {
       ? '1 calendar day later'
       : `${ahead} calendar days later`
   const windowNoun = sessionClock ? 'sessions' : 'calendar days'
-  return [
+  const pctStr = fmt(rate.upPct, 1)
+  const lines = [
     sessionClock
       ? `BASE RATE (${h} — ${aheadLabel}, not calendar days)`
       : `BASE RATE (${h} — ${aheadLabel}, not trading sessions)`,
-    `over the last ${rate.n} ${windowNoun}, ${input.instrument} closed higher ${unit} ${fmt(rate.upPct, 1)}% of the time (n=${rate.n}; lookback=${rate.lookbackSessions} pairs; source: ${src}; as-of ${asOf})`,
-  ].join('\n')
+    `over the last ${rate.n} ${windowNoun}, ${input.instrument} closed higher ${unit} ${pctStr}% of the time (n=${rate.n}; lookback=${rate.lookbackSessions} pairs; source: ${src}; as-of ${asOf})`,
+  ]
+  if (rate.upPct > BASE_RATE_TREND_NOTE_MIN_PCT) {
+    lines.push(
+      `NOTE: ${pctStr}% exceeds 60% because this lookback window covers a sustained trend; the figure reflects that trend, not a coin-flip prior.`,
+    )
+  }
+  return lines.join('\n')
 }
 
 function formatConsensus(c: ConsensusSnapshot | null, instrument: string, last: number | null): string {
@@ -513,6 +559,18 @@ function fmtShares(n: number): string {
   return Math.round(n).toLocaleString('en-US')
 }
 
+function formatHoldings(label: string, h: EtfHoldings): string {
+  if ('unavailable' in h) return `  ${unavailable(label, h.unavailable)}`
+  const tonnes = h.tonnes == null ? 'n/a t' : `${fmt(h.tonnes, 2)} t`
+  const ounces = h.ounces == null ? '' : ` / ${fmt(h.ounces, 0)} oz`
+  return `  ${label} (${h.date}): ${tonnes}${ounces} (source: issuer holdings file; informative horizon: weeks)`
+}
+
+function formatCot(label: string, cot: CotPositioning): string {
+  if ('unavailable' in cot) return `  ${unavailable(label, cot.unavailable)}`
+  return `  ${label} (${cot.date}): managed-money net ${fmtShares(cot.managedMoneyNet)} contracts (long ${fmtShares(cot.managedMoneyLong)} / short ${fmtShares(cot.managedMoneyShort)}; OI ${fmtShares(cot.openInterest)}; ${cot.contract}) (source: CFTC disaggregated COT f_disagg.txt; informative horizon: weeks)`
+}
+
 function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
   if (!slow) return ''
   const lines: string[] = [
@@ -548,6 +606,26 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
         : `  insider Form 4 (SEC EDGAR, trailing ${slow.insider.windowDays}d, open-market P/S only): buys ${slow.insider.buyTxns} txns / ${fmtShares(slow.insider.buyShares)} sh; sells ${slow.insider.sellTxns} txns / ${fmtShares(slow.insider.sellShares)} sh; net ${fmtShares(slow.insider.netShares)} sh${
             slow.insider.latestFilingDate ? `; latest filing ${slow.insider.latestFilingDate}` : ''
           } (source: SEC EDGAR data.sec.gov; informative horizon: weeks-months — weak for 1d)`,
+    )
+  }
+  if (slow.realYield10y) {
+    lines.push(
+      'unavailable' in slow.realYield10y
+        ? `  ${unavailable('10Y TIPS real yield', slow.realYield10y.unavailable)}`
+        : `  10Y TIPS real yield (${slow.realYield10y.date}): ${fmt(slow.realYield10y.yieldPct, 2)}% (source: US Treasury daily real yield curve; informative horizon: days-weeks)`,
+    )
+  }
+  if (slow.cotGold) lines.push(formatCot('CFTC gold managed-money', slow.cotGold))
+  if (slow.cotSilver) lines.push(formatCot('CFTC silver managed-money', slow.cotSilver))
+  if (slow.gldHoldings) lines.push(formatHoldings('GLD holdings', slow.gldHoldings))
+  if (slow.slvHoldings) lines.push(formatHoldings('SLV holdings', slow.slvHoldings))
+  if (slow.goldSilverRatio) {
+    lines.push(
+      'unavailable' in slow.goldSilverRatio
+        ? `  ${unavailable('gold/silver ratio', slow.goldSilverRatio.unavailable)}`
+        : isOzOzGoldSilverRatio(slow.goldSilverRatio.ratio)
+          ? `  gold/silver ratio (${slow.goldSilverRatio.asOf}): ${fmt(slow.goldSilverRatio.ratio, 1)} oz silver per oz gold (source: ${slow.goldSilverRatio.goldSymbol}/${slow.goldSilverRatio.silverSymbol} implied spot; informative horizon: days)`
+          : `  ${unavailable('gold/silver ratio', 'value is not ounces of silver per ounce of gold (historical ~65-90); an ETF share-price quotient is not this number')}`,
     )
   }
   // Only the header would remain → treat as no section.
