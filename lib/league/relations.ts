@@ -8,11 +8,12 @@
  * (Twelve Data `time_series`, 1 credit each) and prints LOCALLY COMPUTED
  * numbers (corr/beta/lead-lag — see `related-stats.ts`), never raw series.
  *
- * CONSTRAINT: every symbol here must be fetchable on the Twelve Data free
- * (Basic) tier — US equities/ETFs, FX pairs, crypto pairs. Cash-index
- * symbols (SPX/NDX/VIX) return 404 Grow/Venture on our key (probed
- * 2026-09-07). The catalog therefore lists SPY/QQQ, not SPX/NDX.
- * A symbol the plan rejects degrades to an UNAVAILABLE line, never a guess.
+ * CONSTRAINT: every symbol here must be fetchable on the current Twelve Data
+ * Grow plan — US equities/ETFs, FX, crypto, commodity spots (XAU/XAG/WTI/XBR).
+ * Cash-index tickers (SPX/NDX/VIX) are poison: they HTTP-200 as unrelated
+ * equities. The catalog therefore lists SPY/QQQ, never SPX/NDX.
+ * A symbol the plan rejects, or whose resolved NAME fails expected_name,
+ * degrades to an UNAVAILABLE line, never a guess.
  *
  * Editing this file is a data edit (like roster.ts): add/remove a relation,
  * no engine change.
@@ -161,7 +162,8 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     instrument: 'XAU/USD',
     related: [
       { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — US-listed physical gold' },
-      { symbol: 'SLV', role: 'peer', note: 'iShares silver ETF — co-moving metal (XAG/USD is not on this Twelve Data tier)' },
+      { symbol: 'XAG/USD', role: 'peer', note: 'spot silver — co-moving metal (calendar clock)' },
+      { symbol: 'SLV', role: 'peer', note: 'iShares silver ETF — co-moving metal (NYSE session)' },
       DOLLAR,
       { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy; real rates drive gold)' },
       VOL,
@@ -172,6 +174,7 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     instrument: 'GLD',
     related: [
       { symbol: 'XAU/USD', role: 'commodity_proxy', note: 'spot gold — the ETF tracks this' },
+      { symbol: 'XAG/USD', role: 'peer', note: 'spot silver — co-moving metal (calendar clock)' },
       { symbol: 'SLV', role: 'peer', note: 'iShares silver ETF — co-moving metal' },
       DOLLAR,
       { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy; real rates drive gold)' },
@@ -183,6 +186,19 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     instrument: 'SLV',
     related: [
       { symbol: 'XAU/USD', role: 'commodity_proxy', note: 'spot gold — co-moving metal' },
+      { symbol: 'XAG/USD', role: 'commodity_proxy', note: 'spot silver — the ETF tracks this' },
+      { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — co-moving metal ETF' },
+      DOLLAR,
+      { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy)' },
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'XAG/USD',
+    related: [
+      { symbol: 'SLV', role: 'peer', note: 'iShares silver ETF — US-listed, NYSE session' },
+      { symbol: 'XAU/USD', role: 'peer', note: 'spot gold — co-moving metal' },
       { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — co-moving metal ETF' },
       DOLLAR,
       { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy)' },
@@ -212,19 +228,30 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     asiaLinks: [],
   },
   {
-    instrument: 'WTICO/USD',
+    instrument: 'WTI/USD',
     related: [
       { symbol: 'XLE', role: 'sector_etf', note: 'energy equities' },
-      { symbol: 'NATGAS/USD', role: 'peer', note: 'co-moving energy commodity' },
+      { symbol: 'XBR/USD', role: 'peer', note: 'Brent spot — co-moving crude' },
+      { symbol: 'UNG', role: 'peer', note: 'US natural gas ETF (no spot symbol on this vendor)' },
       DOLLAR,
       VOL,
     ],
     asiaLinks: ['zh'],
   },
   {
-    instrument: 'NATGAS/USD',
+    instrument: 'XBR/USD',
     related: [
-      { symbol: 'WTICO/USD', role: 'peer', note: 'co-moving energy commodity' },
+      { symbol: 'WTI/USD', role: 'peer', note: 'WTI spot — co-moving crude' },
+      { symbol: 'XLE', role: 'sector_etf', note: 'energy equities' },
+      DOLLAR,
+      VOL,
+    ],
+    asiaLinks: ['zh'],
+  },
+  {
+    instrument: 'UNG',
+    related: [
+      { symbol: 'WTI/USD', role: 'peer', note: 'WTI spot — co-moving energy' },
       { symbol: 'XLE', role: 'sector_etf', note: 'energy equities' },
       DOLLAR,
     ],

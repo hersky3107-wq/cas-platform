@@ -1,6 +1,8 @@
 import 'server-only'
 
 import { mapInstrumentToTwelveData, twelveDataGet } from './market-data'
+import { catalogIdentityError } from './catalog'
+import { isPoisonTicker } from './instrument-identity'
 import { relationsFor } from './relations'
 import { computeRelatedStats } from './related-stats'
 import type { RelatedInstrumentStat, SeriesBar } from './closed-book-packet'
@@ -15,8 +17,8 @@ import type { RelatedInstrumentStat, SeriesBar } from './closed-book-packet'
  * `related-stats.ts`; a failed fetch becomes an UNAVAILABLE stat line,
  * never a guess and never a thrown error.
  *
- * THROTTLE: `twelveDataGet` already serializes against the 7-credit/min
- * budget. Callers should run this CONCURRENTLY with the research step (AI
+ * THROTTLE: `twelveDataGet` already serializes against the 48-credit/min
+ * Grow budget. Callers should run this CONCURRENTLY with the research step (AI
  * seconds are free Twelve Data seconds) — see the orchestrator.
  */
 
@@ -45,6 +47,9 @@ async function fetchRelatedSeries(symbol: string): Promise<{ bars: SeriesBar[]; 
   const hit = seriesDayCache.get(key)
   if (hit) return { bars: hit, cached: true }
 
+  if (isPoisonTicker(symbol)) {
+    return { error: catalogIdentityError(symbol, null) ?? `refusing ${symbol}` }
+  }
   const mapped = mapInstrumentToTwelveData(symbol)
   if (!mapped) return { error: `no Twelve Data mapping for ${symbol}` }
 
@@ -57,6 +62,9 @@ async function fetchRelatedSeries(symbol: string): Promise<{ bars: SeriesBar[]; 
 
   const res = await twelveDataGet('time_series', params)
   if (!res.ok) return { error: res.error }
+  const metaName = typeof res.json?.meta?.name === 'string' ? res.json.meta.name : null
+  const idErr = catalogIdentityError(symbol, metaName)
+  if (idErr) return { error: idErr }
 
   const values: unknown[] = Array.isArray(res.json?.values) ? res.json.values : []
   const bars = values

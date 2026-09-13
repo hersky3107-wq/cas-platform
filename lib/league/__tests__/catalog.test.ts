@@ -59,16 +59,36 @@ describe('PUBLIC_CATALOG', () => {
     }
   })
 
-  it('gold_metals chips are XAU/USD, GLD, SLV — ETFs filed by underlying, not as index_etf; XAG is gone', () => {
+  it('gold_metals chips are XAU/USD, XAG/USD, GLD, SLV — spots and ETFs side by side; ETFs filed by underlying', () => {
     const gold = PUBLIC_CATALOG.find((c) => c.id === 'gold_metals')!
-    expect(gold.instruments.map((i) => i.instrument)).toEqual(['XAU/USD', 'GLD', 'SLV'])
-    expect(CATALOG_INSTRUMENT_IDS).not.toContain('XAG/USD')
+    expect(gold.instruments.map((i) => i.instrument)).toEqual(['XAU/USD', 'XAG/USD', 'GLD', 'SLV'])
+    expect(CATALOG_INSTRUMENT_IDS).toContain('XAG/USD')
     expect(findCatalogInstrument('GLD')?.category.id).toBe('gold_metals')
     expect(findCatalogInstrument('SLV')?.category.id).toBe('gold_metals')
-    expect(findCatalogInstrument('GLD')?.category.ledgerCategory).toBe('gold_metal')
+    expect(findCatalogInstrument('XAG/USD')?.category.ledgerCategory).toBe('gold_metal')
     const index = PUBLIC_CATALOG.find((c) => c.id === 'index_etf')!
     expect(index.instruments.map((i) => i.instrument)).toEqual(['SPY', 'QQQ'])
     expect(index.instruments.map((i) => i.instrument)).not.toContain('GLD')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('SPX')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('NDX')
+  })
+
+  it('commodities_energy chips are WTI/USD, XBR/USD, UNG — no invalid WTICO/NATGAS aliases', () => {
+    const energy = PUBLIC_CATALOG.find((c) => c.id === 'commodities_energy')!
+    expect(energy.instruments.map((i) => i.instrument)).toEqual(['WTI/USD', 'XBR/USD', 'UNG'])
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('WTICO/USD')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('NATGAS/USD')
+    expect(findCatalogInstrument('UNG')?.entry.resolution_rule).toMatch(/regular-session/)
+    expect(findCatalogInstrument('WTI/USD')?.entry.resolution_rule).toMatch(/spot/)
+  })
+
+  it('every catalog chip declares expected_name and none is a poison ticker', () => {
+    for (const id of CATALOG_INSTRUMENT_IDS) {
+      const entry = findCatalogInstrument(id)!.entry
+      expect(entry.expected_name.length, id).toBeGreaterThan(0)
+    }
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('SPX')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('NDX')
   })
 
   it('keeps instrument ids unique and includes the existing AAPL / BTC/USD / EUR/USD keys', () => {
@@ -94,11 +114,13 @@ describe('PUBLIC_CATALOG', () => {
       instrument: 'HIDDEN-ROTATED',
       resolution_rule: 'keeps historical rounds',
       chip_visible: false,
+      expected_name: ['Hidden'],
     }
     const shown: CatalogInstrument = {
       instrument: 'SHOWN',
       resolution_rule: 'on the rail',
       chip_visible: true,
+      expected_name: ['Shown'],
     }
     expect(visibleChipEntries({ ...PUBLIC_CATALOG[2]!, instruments: [hidden, shown] }).map((i) => i.instrument)).toEqual(
       ['SHOWN'],
@@ -198,12 +220,18 @@ describe('catalog i18n', () => {
     const reit = buildCatalogRankedRoundInput('VNQ', '1m', now)
     expect(reit!.proposition_text).toMatch(/weekday/)
 
-    // GLD/SLV share the equity session clock; XAU/USD stays on calendar days.
+    // GLD/SLV share the equity session clock; XAU/XAG stay on calendar days.
     const gld = buildCatalogRankedRoundInput('GLD', '1m', now)
     expect(gld!.proposition_text).toMatch(/weekday/)
     const slv = buildCatalogRankedRoundInput('SLV', '1m', now)
     expect(slv!.proposition_text).toMatch(/weekday/)
     const xau = buildCatalogRankedRoundInput('XAU/USD', '1m', now)
     expect(xau!.proposition_text).not.toMatch(/weekday/)
+    const xag = buildCatalogRankedRoundInput('XAG/USD', '1m', now)
+    expect(xag!.proposition_text).not.toMatch(/weekday/)
+    const ung = buildCatalogRankedRoundInput('UNG', '1m', now)
+    expect(ung!.proposition_text).toMatch(/weekday/)
+    const wti = buildCatalogRankedRoundInput('WTI/USD', '1m', now)
+    expect(wti!.proposition_text).not.toMatch(/weekday/)
   })
 })

@@ -46,9 +46,9 @@ export function isUiHorizon(value: unknown): value is UiHorizon {
  * equities and share the equity session clock even though they are filed
  * under gold_metals (underlying asset), not index_etf.
  *
- * commodity_energy stays on the calendar path: public chips are spot
- * symbols (WTICO/USD), not CME session contracts. real_estate chips are
- * NYSE REIT ETFs (VNQ, SCHH) via the category set below.
+ * commodity_energy mixes clocks: WTI/USD and XBR/USD are spots (calendar);
+ * UNG is a NYSE ETF and uses the equity session clock via SESSION_CLOCK_INSTRUMENTS.
+ * real_estate chips are NYSE REIT ETFs (VNQ, SCHH) via the category set below.
  */
 const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set([
   'stock',
@@ -59,9 +59,9 @@ const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set([
 /**
  * US-listed equity tickers whose ledger category is NOT stock/etf_index
  * but whose grading close is the NYSE/Nasdaq session. Catalog files them
- * by underlying asset (GLD/SLV → gold_metal).
+ * by underlying asset (GLD/SLV → gold_metal; UNG → commodity_energy).
  */
-export const SESSION_CLOCK_INSTRUMENTS: ReadonlySet<string> = new Set(['GLD', 'SLV'])
+export const SESSION_CLOCK_INSTRUMENTS: ReadonlySet<string> = new Set(['GLD', 'SLV', 'UNG'])
 
 export function usesTradingSessions(
   category: PredictionCategory | string,

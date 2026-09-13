@@ -124,7 +124,7 @@ export function toClosedBookInput(
 export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceSeriesIo): Promise<CategoryPacket> {
   const round = ctx.round
   // One packet fetch per ROUND (quote + long time_series = 2 Twelve Data
-  // credits). Consensus adds 5 more for equities (throttled to Basic's 8/min).
+  // credits). Consensus adds 5 more for equities (throttled to Grow's 55/min; we pace at 48).
   const packet = await io.fetchDataPacket(round.instrument)
   // ANCHOR price event — emitted at the exact point the pre-adapter
   // orchestrator persisted it (before the consensus fetch). The shell decides
@@ -138,7 +138,7 @@ export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceS
   }
   // v2 (D): consensus/crypto are fetched BEFORE research so the dispersion
   // signal can set the research budget tier. Twelve Data order within the
-  // 7-credit/min window: quote+series (2) → consensus (5) → related series
+  // 48-credit/min window: quote+series (2) → consensus (5) → related series
   // (below) → director Stage 1/2. Related no longer overlaps research latency.
   const [consensus, crypto] = await Promise.all([
     packet.available && wantsConsensus(round.category) && packet.symbol

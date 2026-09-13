@@ -12,6 +12,8 @@ import {
   type SeriesResult,
 } from '@/lib/prediction/resolution'
 import { PRINTED_SESSION_COUNT, SERIES_OUTPUT_SIZE } from './closed-book-packet'
+import { catalogIdentityError } from './catalog'
+import { identityMismatchMessage, isPoisonTicker } from './instrument-identity'
 
 /**
  * AI Prediction League — market-data adapter (Twelve Data).
@@ -29,19 +31,20 @@ import { PRINTED_SESSION_COUNT, SERIES_OUTPUT_SIZE } from './closed-book-packet'
  *
  * Key: process.env.TWELVE_DATA_API_KEY (add to .env.local; full restart after).
  *
- * FREE (Basic) TIER SCOPE: US equities, forex, crypto only. International
- * exchanges (e.g. KRX / Samsung 005930) require a paid Grow/Pro plan — the
- * symbol mapper still emits the correct exchange param, but a free key will get
- * a "not available on your plan" error back, in which case the packet is marked
- * unavailable and price-tier models see "no live data" (and may abstain).
+ * FREE (Grow) TIER SCOPE: US equities, forex, crypto, commodity spots
+ * (XAU/XAG/WTI/XBR), and EOD Western Europe/Canada/India/Brazil equities.
+ * Local Asia (KRX / TSE / TWSE / HKEX / SIX) still needs Pro — a Grow key
+ * gets "not available on your plan", the packet is marked unavailable, and
+ * price-tier models see "no live data" (and may abstain).
+ * Ambiguous tickers (SPX/NDX) are refused by identity, not trusted on HTTP 200.
  */
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com'
 /** Prompt series: enough bars for 3m base rates (see SERIES_OUTPUT_SIZE). Live quote is a separate 1-credit call. */
 const DEFAULT_SERIES_DAYS = SERIES_OUTPUT_SIZE
 const FETCH_TIMEOUT_MS = 15_000
-/** Basic plan is 8 credits/min. Leave 1 spare so a concurrent live-quote cannot 429 a generate. */
-const TD_CREDITS_PER_MIN = 7
+/** Grow is 55 credits/min. Leave 7 spare so a concurrent live-quote / second generate cannot 429 a packet fetch. */
+export const TD_CREDITS_PER_MIN = 48
 const creditStamps: number[] = []
 let creditLock: Promise<void> = Promise.resolve()
 
@@ -164,12 +167,21 @@ function num(v: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
+function resolvedInstrumentName(json: { name?: unknown; meta?: { name?: unknown } } | undefined): string | null {
+  if (typeof json?.name === 'string' && json.name.trim()) return json.name
+  if (typeof json?.meta?.name === 'string' && json.meta.name.trim()) return json.meta.name
+  return null
+}
+
 /**
  * Current quote + recent daily series for an instrument (one packet, injected
  * to every price-tier model — so it costs 2 Twelve Data credits per ROUND, not
  * per model). Never throws; returns { available:false, error } on any problem.
  */
 export async function fetchDataPacket(instrument: string, days = DEFAULT_SERIES_DAYS): Promise<DataPacket> {
+  if (isPoisonTicker(instrument)) {
+    return { available: false, instrument, error: identityMismatchMessage(instrument, null, []) }
+  }
   const mapped = mapInstrumentToTwelveData(instrument)
   if (!mapped) return { available: false, instrument, error: 'instrument is not a market price symbol' }
 
@@ -186,6 +198,11 @@ export async function fetchDataPacket(instrument: string, days = DEFAULT_SERIES_
   }
 
   const q = quoteRes.ok ? quoteRes.json : {}
+  const idErr = catalogIdentityError(instrument, resolvedInstrumentName(quoteRes.ok ? q : seriesRes.ok ? seriesRes.json : undefined))
+  if (idErr) {
+    return { available: false, instrument, symbol: mapped.symbol, error: idErr }
+  }
+
   const values: any[] = seriesRes.ok && Array.isArray(seriesRes.json?.values) ? seriesRes.json.values : []
   // Twelve Data returns values newest-first; flip to oldest→newest for readability.
   const series = values
@@ -248,6 +265,7 @@ export function sessionDateForPrice(packet: DataPacket, price: number): string |
  * rate limit, timeout, malformed response).
  */
 export async function fetchLiveQuote(instrument: string): Promise<{ price: number; asOf: string } | null> {
+  if (isPoisonTicker(instrument)) return null
   const mapped = mapInstrumentToTwelveData(instrument)
   if (!mapped) return null
 
@@ -256,6 +274,7 @@ export async function fetchLiveQuote(instrument: string): Promise<{ price: numbe
 
   const res = await twelveDataGet('quote', params)
   if (!res.ok) return null
+  if (catalogIdentityError(instrument, resolvedInstrumentName(res.json))) return null
 
   const price = num(res.json?.close)
   if (typeof price !== 'number') return null
@@ -274,6 +293,9 @@ export async function fetchDailyCloses(
   startDate: string,
   endDate: string
 ): Promise<SeriesResult> {
+  if (isPoisonTicker(instrument)) {
+    return { ok: false, error: identityMismatchMessage(instrument, null, []) }
+  }
   const mapped = mapInstrumentToTwelveData(instrument)
   if (!mapped) return { ok: false, error: `instrument ${instrument} is not a market price symbol` }
 
@@ -290,6 +312,8 @@ export async function fetchDailyCloses(
 
   const res = await twelveDataGet('time_series', params)
   if (!res.ok) return { ok: false, error: res.error }
+  const idErr = catalogIdentityError(instrument, resolvedInstrumentName(res.json))
+  if (idErr) return { ok: false, error: idErr }
 
   const values: any[] = Array.isArray(res.json?.values) ? res.json.values : []
   const bars: DailyBar[] = values

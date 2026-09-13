@@ -38,8 +38,11 @@ describe('usesTradingSessions', () => {
     expect(usesTradingSessions('fx')).toBe(false)
     expect(usesTradingSessions('gold_metal')).toBe(false)
     expect(usesTradingSessions('gold_metal', 'XAU/USD')).toBe(false)
+    expect(usesTradingSessions('gold_metal', 'XAG/USD')).toBe(false)
     expect(usesTradingSessions('gold_metal', 'GLD')).toBe(true)
     expect(usesTradingSessions('gold_metal', 'SLV')).toBe(true)
+    expect(usesTradingSessions('commodity_energy', 'UNG')).toBe(true)
+    expect(usesTradingSessions('commodity_energy', 'WTI/USD')).toBe(false)
     expect(usesTradingSessions('commodity_energy')).toBe(false)
     expect(usesTradingSessions('memecoin')).toBe(false)
     expect(usesTradingSessions('tech')).toBe(false)
@@ -127,6 +130,12 @@ describe('computeResolvesAt', () => {
     for (const h of UI_HORIZONS) {
       expect(computeResolvesAt('gold_metal', h, weekendMorning, 'GLD')).toBe(computeResolvesAt('stock', h, weekendMorning))
       expect(computeResolvesAt('gold_metal', h, weekendMorning, 'SLV')).toBe(computeResolvesAt('stock', h, weekendMorning))
+      expect(computeResolvesAt('commodity_energy', h, weekendMorning, 'UNG')).toBe(
+        computeResolvesAt('stock', h, weekendMorning),
+      )
+      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'XAG/USD')).toBe(
+        computeResolvesAt('crypto_spot', h, weekendMorning),
+      )
     }
   })
 })
@@ -187,6 +196,8 @@ describe('tradingApproximationNote', () => {
       expect(tradingApproximationNote('real_estate', h)).toMatch(/weekday/)
       expect(tradingApproximationNote('gold_metal', h, 'GLD')).toMatch(/weekday/)
       expect(tradingApproximationNote('gold_metal', h, 'SLV')).toMatch(/weekday/)
+      expect(tradingApproximationNote('commodity_energy', h, 'UNG')).toMatch(/weekday/)
+      expect(tradingApproximationNote('gold_metal', h, 'XAG/USD')).toBeNull()
     }
   })
 })

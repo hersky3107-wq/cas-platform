@@ -1,6 +1,7 @@
 import type { ColorBucket } from './card-types'
 import type { PredictionCategory } from '@/lib/prediction/categories'
 import { cacheBucketFor, computeResolvesAt, tradingApproximationNote, type UiHorizon } from './horizon'
+import { identityMismatchMessage, isPoisonTicker, quoteMatchesIdentity } from './instrument-identity'
 
 /**
  * AI Prediction League — PUBLIC CATEGORY → INSTRUMENT CATALOG.
@@ -55,6 +56,12 @@ export type CatalogInstrument = {
    *         resolving, win rates still count) but is not shown as a chip
    */
   chip_visible: boolean
+  /**
+   * Substrings that MUST appear in Twelve Data's resolved instrument name.
+   * HTTP 200 is not identity — `SPX` 200s as Stellar AfricaGold. Fetch and
+   * grade paths refuse a quote whose name does not contain every token.
+   */
+  expected_name: readonly string[]
 }
 
 export type PublicCategoryDef = {
@@ -80,9 +87,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'BTC/USD', resolution_rule: 'BTC/USD spot close vs prior close', chip_visible: true },
-      { instrument: 'ETH/USD', resolution_rule: 'ETH/USD spot close vs prior close', chip_visible: true },
-      { instrument: 'SOL/USD', resolution_rule: 'SOL/USD spot close vs prior close', chip_visible: true },
+      { instrument: 'BTC/USD', resolution_rule: 'BTC/USD spot close vs prior close', chip_visible: true, expected_name: ['Bitcoin'] },
+      { instrument: 'ETH/USD', resolution_rule: 'ETH/USD spot close vs prior close', chip_visible: true, expected_name: ['Ethereum'] },
+      { instrument: 'SOL/USD', resolution_rule: 'SOL/USD spot close vs prior close', chip_visible: true, expected_name: ['Solana'] },
     ],
   },
   {
@@ -91,9 +98,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'AAPL', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true },
-      { instrument: 'NVDA', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true },
-      { instrument: 'TSLA', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true },
+      { instrument: 'AAPL', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true, expected_name: ['Apple'] },
+      { instrument: 'NVDA', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true, expected_name: ['NVIDIA'] },
+      { instrument: 'TSLA', resolution_rule: 'NASDAQ regular-session close price vs prior close', chip_visible: true, expected_name: ['Tesla'] },
     ],
   },
   {
@@ -102,9 +109,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'EUR/USD', resolution_rule: 'EUR/USD spot close vs prior close', chip_visible: true },
-      { instrument: 'USD/KRW', resolution_rule: 'USD/KRW spot close vs prior close', chip_visible: true },
-      { instrument: 'USD/JPY', resolution_rule: 'USD/JPY spot close vs prior close', chip_visible: true },
+      { instrument: 'EUR/USD', resolution_rule: 'EUR/USD spot close vs prior close', chip_visible: true, expected_name: ['Euro'] },
+      { instrument: 'USD/KRW', resolution_rule: 'USD/KRW spot close vs prior close', chip_visible: true, expected_name: ['Won'] },
+      { instrument: 'USD/JPY', resolution_rule: 'USD/JPY spot close vs prior close', chip_visible: true, expected_name: ['Yen'] },
     ],
   },
   {
@@ -113,9 +120,10 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'XAU/USD', resolution_rule: 'XAU/USD spot close vs prior close', chip_visible: true },
-      { instrument: 'GLD', resolution_rule: 'GLD regular-session close vs prior close', chip_visible: true },
-      { instrument: 'SLV', resolution_rule: 'SLV regular-session close vs prior close', chip_visible: true },
+      { instrument: 'XAU/USD', resolution_rule: 'XAU/USD spot close vs prior close', chip_visible: true, expected_name: ['Gold', 'Spot'] },
+      { instrument: 'XAG/USD', resolution_rule: 'XAG/USD spot close vs prior close', chip_visible: true, expected_name: ['Silver', 'Spot'] },
+      { instrument: 'GLD', resolution_rule: 'GLD regular-session close vs prior close', chip_visible: true, expected_name: ['SPDR', 'Gold'] },
+      { instrument: 'SLV', resolution_rule: 'SLV regular-session close vs prior close', chip_visible: true, expected_name: ['iShares', 'Silver'] },
     ],
   },
   {
@@ -124,8 +132,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'green',
     kind: 'instruments',
     instruments: [
-      { instrument: 'SPY', resolution_rule: 'SPY regular-session close vs prior close', chip_visible: true },
-      { instrument: 'QQQ', resolution_rule: 'QQQ regular-session close vs prior close', chip_visible: true },
+      { instrument: 'SPY', resolution_rule: 'SPY regular-session close vs prior close', chip_visible: true, expected_name: ['S&P 500'] },
+      { instrument: 'QQQ', resolution_rule: 'QQQ regular-session close vs prior close', chip_visible: true, expected_name: ['Invesco'] },
     ],
   },
   {
@@ -134,8 +142,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'WTICO/USD', resolution_rule: 'WTI crude spot close vs prior close', chip_visible: true },
-      { instrument: 'NATGAS/USD', resolution_rule: 'Natural gas spot close vs prior close', chip_visible: true },
+      { instrument: 'WTI/USD', resolution_rule: 'WTI/USD spot close vs prior close', chip_visible: true, expected_name: ['WTI'] },
+      { instrument: 'XBR/USD', resolution_rule: 'XBR/USD spot close vs prior close', chip_visible: true, expected_name: ['Brent'] },
+      { instrument: 'UNG', resolution_rule: 'UNG regular-session close vs prior close', chip_visible: true, expected_name: ['Natural Gas'] },
     ],
   },
   {
@@ -158,8 +167,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'red',
     kind: 'instruments',
     instruments: [
-      { instrument: 'DOGE/USD', resolution_rule: 'DOGE/USD spot close vs prior close', chip_visible: true },
-      { instrument: 'SHIB/USD', resolution_rule: 'SHIB/USD spot close vs prior close', chip_visible: true },
+      { instrument: 'DOGE/USD', resolution_rule: 'DOGE/USD spot close vs prior close', chip_visible: true, expected_name: ['Dogecoin'] },
+      { instrument: 'SHIB/USD', resolution_rule: 'SHIB/USD spot close vs prior close', chip_visible: true, expected_name: ['Shiba'] },
     ],
   },
   {
@@ -168,8 +177,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     tone: 'yellow',
     kind: 'instruments',
     instruments: [
-      { instrument: 'VNQ', resolution_rule: 'VNQ regular-session close vs prior close', chip_visible: true },
-      { instrument: 'SCHH', resolution_rule: 'SCHH regular-session close vs prior close', chip_visible: true },
+      { instrument: 'VNQ', resolution_rule: 'VNQ regular-session close vs prior close', chip_visible: true, expected_name: ['Vanguard'] },
+      { instrument: 'SCHH', resolution_rule: 'SCHH regular-session close vs prior close', chip_visible: true, expected_name: ['Schwab'] },
     ],
   },
   {
@@ -230,8 +239,8 @@ export type CatalogRankedRoundInput = {
  * is opened once per period, not reopened daily while the previous one is
  * still pending. `resolves_at` is computed from `now` per the horizon +
  * category + instrument rule in `lib/league/horizon.ts` (trading sessions
- * for equities / index ETFs / REIT ETFs / GLD / SLV, calendar days for
- * crypto / FX / spot metals / energy) — never reinterpreted later.
+ * for equities / index ETFs / REIT ETFs / GLD / SLV / UNG, calendar days for
+ * crypto / FX / spot metals / energy spots) — never reinterpreted later.
  *
  * THE PROPOSITION NAMES THE ACTUAL RESOLVE DATE — never a relative phrase
  * like "over the next 1 month" or "21 trading days from now". Both the
@@ -290,6 +299,20 @@ export function catalogById(id: string): PublicCategoryDef | null {
   return PUBLIC_CATALOG.find((c) => c.id === id) ?? null
 }
 
+/**
+ * Fetch/grade guard. Poison tickers never hit the vendor. Catalog chips
+ * must match expected_name. Related-only symbols (not in the catalog) skip.
+ */
+export function catalogIdentityError(instrument: string, resolvedName: string | null | undefined): string | null {
+  if (isPoisonTicker(instrument)) {
+    return identityMismatchMessage(instrument, resolvedName, [])
+  }
+  const found = findCatalogInstrument(instrument)
+  if (!found) return null
+  if (quoteMatchesIdentity(resolvedName, found.entry.expected_name)) return null
+  return identityMismatchMessage(instrument, resolvedName, found.entry.expected_name)
+}
+
 /** First financial (chip) category, preferring stocks so the existing AAPL card is the default. */
 export function defaultCatalogCategoryId(
   visible: readonly { id: PublicCategoryId; kind: CatalogKind; instruments: readonly unknown[] }[],
@@ -298,4 +321,16 @@ export function defaultCatalogCategoryId(
   if (stocks) return stocks.id
   const financial = visible.find((c) => c.kind === 'instruments' && c.instruments.length > 0)
   return financial?.id ?? visible[0]?.id ?? null
+}
+
+for (const id of CATALOG_INSTRUMENT_IDS) {
+  if (isPoisonTicker(id)) {
+    throw new Error(
+      `PUBLIC_CATALOG must not contain ${id}: Twelve Data 200s this ticker as an unrelated equity, not an index`,
+    )
+  }
+  const found = findCatalogInstrument(id)
+  if (!found || found.entry.expected_name.length === 0) {
+    throw new Error(`PUBLIC_CATALOG ${id} is missing expected_name tokens — HTTP 200 is not identity`)
+  }
 }

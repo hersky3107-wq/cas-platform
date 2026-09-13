@@ -66,9 +66,9 @@ describe('price-series family — Korean / English synonyms', () => {
   it.each([
     ['index_etf', family.index_etf, '나스닥', 'QQQ'],
     ['gold_metals', family.gold_metals, '금', 'XAU/USD'],
-    ['gold_metals', family.gold_metals, '은', 'SLV'],
+    ['gold_metals', family.gold_metals, '은', 'XAG/USD'],
     ['gold_metals', family.gold_metals, 'gld', 'GLD'],
-    ['commodities_energy', family.commodities_energy, '원유', 'WTICO/USD'],
+    ['commodities_energy', family.commodities_energy, '원유', 'WTI/USD'],
     ['fx', family.fx, '달러원', 'USD/KRW'],
     ['crypto', family.crypto, '비트코인', 'BTC/USD'],
     ['memecoin', family.memecoin, '도지코인', 'DOGE/USD'],
@@ -98,7 +98,7 @@ describe('price-series family — compose matches the catalog chip path', () => 
   it.each([
     ['index_etf', family.index_etf, 'SPY'],
     ['gold_metals', family.gold_metals, 'XAU/USD'],
-    ['commodities_energy', family.commodities_energy, 'WTICO/USD'],
+    ['commodities_energy', family.commodities_energy, 'WTI/USD'],
     ['fx', family.fx, 'EUR/USD'],
     ['crypto', family.crypto, 'BTC/USD'],
     ['memecoin', family.memecoin, 'DOGE/USD'],
@@ -165,9 +165,12 @@ describe('price-series family — clocks', () => {
     expect(usesTradingSessions(family.memecoin.ledger_category)).toBe(false)
   })
 
-  it('GLD / SLV override gold_metal onto the NYSE session clock; XAU/USD stays calendar', () => {
+  it('GLD / SLV / UNG override onto the NYSE session clock; XAU/XAG/WTI stay calendar', () => {
     expect(usesTradingSessions('gold_metal', 'GLD')).toBe(true)
     expect(usesTradingSessions('gold_metal', 'SLV')).toBe(true)
     expect(usesTradingSessions('gold_metal', 'XAU/USD')).toBe(false)
+    expect(usesTradingSessions('gold_metal', 'XAG/USD')).toBe(false)
+    expect(usesTradingSessions('commodity_energy', 'UNG')).toBe(true)
+    expect(usesTradingSessions('commodity_energy', 'WTI/USD')).toBe(false)
   })
 })
