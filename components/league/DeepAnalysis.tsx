@@ -104,23 +104,29 @@ export function DeepAnalysis({
   return (
     <div className="mt-4 flex flex-col gap-3">
       <p className="text-[11px] leading-relaxed text-slate-500">{t.hub.deepUnscoredNote}</p>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <button
-          type="button"
-          disabled={running !== null}
-          onClick={() => void run('open')}
-          className="flex-1 rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
-        >
-          {running === 'open' ? t.hub.deepRunning : t.hub.deepOpen(OPEN_COST)}
-        </button>
-        <button
-          type="button"
-          disabled={running !== null}
-          onClick={() => void run('debate')}
-          className="flex-1 rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
-        >
-          {running === 'debate' ? t.hub.deepRunning : t.hub.deepDebate(DEBATE_COST)}
-        </button>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex-1">
+          <button
+            type="button"
+            disabled={running !== null}
+            onClick={() => void run('open')}
+            className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
+          >
+            {running === 'open' ? t.hub.deepRunning : t.hub.deepOpen(OPEN_COST)}
+          </button>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">{t.hub.deepOpenHint}</p>
+        </div>
+        <div className="flex-1">
+          <button
+            type="button"
+            disabled={running !== null}
+            onClick={() => void run('debate')}
+            className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
+          >
+            {running === 'debate' ? t.hub.deepRunning : t.hub.deepDebate(DEBATE_COST)}
+          </button>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">{t.hub.deepDebateHint}</p>
+        </div>
       </div>
       {error ? (
         <p className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>

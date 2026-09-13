@@ -7,11 +7,11 @@ import type { JejuSnapshot, JejuCouncilMode } from '@/lib/motie/brief'
 import {
   mergeSearchRequests,
   executeJejuSearches,
-  KOREAN_ONLY_DIRECTIVE,
   type JejuRoleAnalysis,
   type JejuSearchRequest,
   type JejuExecutedSearch,
 } from '@/lib/motie/deep'
+import { activeLanguageDirective } from '@/lib/motie/output-language'
 import {
   leadAnalystPersonaLine,
   reportWriterPersonaLines,
@@ -191,7 +191,7 @@ function buildLeadAnalysisSystemPrompt(councilMode: JejuCouncilMode): string {
       : []),
     ...(isTrade ? ['', TRADE_ANALYST_DIRECTIVE] : ['', WARROOM_ANALYST_DIRECTIVE]),
     '',
-    KOREAN_ONLY_DIRECTIVE,
+    activeLanguageDirective(),
     '',
     '출력 형식 (매우 중요): 오직 하나의 JSON 객체만 출력하세요. 마크다운 코드펜스(```)도, 설명 문장도 쓰지 마세요. 순수 JSON만.',
     '스키마:',
@@ -242,7 +242,7 @@ function buildReportWriterSystemPrompt(mode: JejuPreReportMode, sourceHint: stri
     sourceHint ? `참고로, 이번에 확보된 내부 데이터 출처는 다음과 같습니다(가능하면 이 명칭으로 인용): ${sourceHint}` : '',
     '데이터에 없는 수치는 절대 지어내지 마세요. 데이터가 없거나 누락된 부분은 그 사실을 솔직히 밝히세요.',
     '',
-    KOREAN_ONLY_DIRECTIVE,
+    activeLanguageDirective(),
     '',
     '출력: 위 섹션 구조를 따르는 리포트 본문만 작성하세요(마크다운 섹션 제목 사용 가능). JSON으로 감싸지 마세요.',
   ]

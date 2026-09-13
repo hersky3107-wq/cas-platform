@@ -234,6 +234,11 @@ export const GOLD_METAL_SYNONYMS: Record<string, string> = {
   slv: 'SLV',
   은: 'XAG/USD',
   실버: 'XAG/USD',
+  platinum: 'XPT/USD',
+  xpt: 'XPT/USD',
+  'xpt/usd': 'XPT/USD',
+  백금: 'XPT/USD',
+  플래티넘: 'XPT/USD',
 }
 
 export const COMMODITY_ENERGY_SYNONYMS: Record<string, string> = {

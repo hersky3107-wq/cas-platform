@@ -6,8 +6,9 @@
  * components (`components/league/*`) so there is exactly ONE definition of
  * what a card looks like.
  *
- * All AGGREGATES below (consensus / campSplit / tierSplit / hitRate) are
- * computed ONCE server-side by `buildCardData` in `card.ts`. Client code must
+ * All AGGREGATES below (consensus / campSplit / tierSplit / bookSplit /
+ * weightsSplit / hitRate) are computed ONCE server-side by `buildCardData`
+ * in `card.ts`. Client code must
  * only ever READ these fields — never recompute tallies/averages from
  * `models` itself (that would risk drifting from the server's definition of
  * "majority" / "abstain" / "hit rate").
@@ -142,6 +143,10 @@ export type ConsensusSummary = {
 
 export type CampSplit = Record<Camp, DirectionTally>
 export type TierSplit = Record<LeagueTier, DirectionTally>
+/** Closed-book (own reasoning) vs scout (web search) — PREDICTION counts. */
+export type BookSplit = { closed: DirectionTally; scout: DirectionTally }
+/** Roster open-weights vs closed-weights — PREDICTION counts. */
+export type WeightsSplit = { closed: DirectionTally; open: DirectionTally }
 
 /** Grading status. Fields stay null until the round's reconciliation job runs. */
 export type HitRateSummary = {
@@ -288,6 +293,13 @@ export type CardData = {
   consensus: ConsensusSummary
   campSplit: CampSplit
   tierSplit: TierSplit
+  /**
+   * Pre-grading (and live) side tallies by book and by weight class.
+   * Same DirectionTally shape as camp/tier — NEVER hit counts. Client reads
+   * these; it must not recompute them from `models`.
+   */
+  bookSplit: BookSplit
+  weightsSplit: WeightsSplit
   hitRate: HitRateSummary
   /**
    * Final-verdict panel payload — raw counts only (see

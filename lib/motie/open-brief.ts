@@ -12,10 +12,10 @@ import {
 import { buildMotieSupplementBlock, type MotieSupplement } from '@/lib/motie/supplements'
 import type { JejuCouncilMode } from '@/lib/motie/brief'
 import {
-  KOREAN_ONLY_DIRECTIVE,
   TRUTH_SEEKING_DIRECTIVE,
   type JejuExecutedSearch,
 } from '@/lib/motie/deep'
+import { activeLanguageDirective, activePureLanguageRule } from '@/lib/motie/output-language'
 import {
   openOrchestratorPersonaLines,
   openRoleLabelHintLine,
@@ -181,7 +181,7 @@ function buildOpenOrchestratorSystemPrompt(councilMode: JejuCouncilMode): string
     '- subQuestion: 이 AI만의 구체적 분석 과제(다른 AI와 겹치지 않게).',
     '- doubledGroupId: 같은 primary 각도에 배정된 두 AI는 동일 id(예: "energy-supply").',
     '',
-    KOREAN_ONLY_DIRECTIVE,
+    activeLanguageDirective(),
     '',
     '출력: 오직 하나의 JSON 객체만. 마크다운 코드펜스(```) 금지.',
     '스키마:',
@@ -541,10 +541,8 @@ function buildAnalystSystemPrompt(role: JejuOpenAnalysisRole, councilMode: JejuC
     '',
     '두 섹션 외 추가 제목(리스크, 불확실성 등)을 별도로 만들지 마세요. 충실하고 완결된 분석이 목표이며, 절대 문장 중간에 끊지 말고 끝까지 작성하세요.',
     '',
-    isTrade
-      ? '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 작성하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(HS코드, FTA, USD, VAT 등), 숫자, 단위는 허용.'
-      : '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 작성하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(WTI, Brent, LNG, OPEC, USD, bbl 등), 숫자, 단위는 허용.',
-    KOREAN_ONLY_DIRECTIVE,
+    activePureLanguageRule(isTrade ? 'trade' : 'energy'),
+    activeLanguageDirective(),
   ].join('\n')
 }
 
@@ -761,7 +759,7 @@ function buildSynthesisSystemPrompt(councilMode: JejuCouncilMode): string {
     `   - 마지막 줄에 면책: "${disclaimerFor(councilMode)}"`,
     '',
     '금지: 찬반 표결, 합의도 점수, 토론 요약, "전원 찬성" 같은 표현.',
-    KOREAN_ONLY_DIRECTIVE,
+    activeLanguageDirective(),
   ].join('\n')
 }
 

@@ -1,4 +1,4 @@
-import type { CombinedMethodTrack, ConsensusSummary, ModelSide } from './card-types'
+import type { CombinedMethodTrack, ConsensusSummary, DirectionTally, ModelSide } from './card-types'
 import type { LeagueUiPack } from './i18n/dictionary'
 import { tallySlotOfToken, type SideLabels } from './side-labels'
 import { formatWinRatePct } from './win-rate'
@@ -80,28 +80,43 @@ export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack):
 }
 
 export type ConsensusHeroPayload =
-  | { kind: 'answer'; line1: string; line2: string }
+  | { kind: 'answer'; line1: string; line2: string; diverged: boolean }
   | { kind: 'fallback'; message: string }
+
+function binarySlot(direction: ConsensusSummary['majorityDirection']): 'up' | 'down' | null {
+  const slot = tallySlotOfToken(direction)
+  return slot === 'up' || slot === 'down' ? slot : null
+}
+
+/** Head-count leader used for "most models". Majority first; else the larger side. */
+function headCountSlot(consensus: ConsensusSummary): 'up' | 'down' {
+  const fromMajority = binarySlot(consensus.majorityDirection)
+  if (fromMajority) return fromMajority
+  return consensus.tally.up >= consensus.tally.down ? 'up' : 'down'
+}
+
+function tokenForBinarySlot(slot: 'up' | 'down', labels?: SideLabels) {
+  if (!labels) return slot
+  return slot === 'up' ? labels.sides[0] : labels.sides[1]
+}
 
 /**
  * Two-line card hero. Field map (for audit — no surface may substitute):
  *
- *  Line 1 verb          ← consensus.aggregateDirection → labels.answer
- *                          (round's own contract: 오른다 · "맨유 승" · "3.4% 상회")
+ *  Line 1 verb          ← consensus.aggregateDirection
+ *                          price: answerVerb, or weightedCallVerb when diverged
+ *                          other kinds: labels.answer (prefix when diverged)
  *  Line 1 magnitude     ← consensus.aggregateMagnitudePct → formatSignedPercent
  *                          + t.magnitude.headlineQualifier(horizon) — price rounds
  *                          only; non-price rounds carry no aggregate magnitude
- *  Line 2 lean count    ← consensus.tally[slot of aggregateDirection]
- *  Line 2 total         ← consensus.totalModels
- *  Line 2 confidence    ← consensus.aggregateProbability ONLY (log-odds aggregate)
+ *  Line 2 sides         ← head-count majority vs the other binary side (· joined)
+ *  Line 2 confidence    ← consensus.aggregateProbability ONLY
  *
- * NEVER reads avgProbability or majorityDirection for rendered copy.
- * majorityDirection / avgProbability stay on ConsensusSummary for retrospective
- * comparison elsewhere — they do not appear in the hero.
+ * NEVER reads avgProbability for rendered copy. majorityDirection IS read so
+ * the hero can name a head-count vs weighted-call split.
  *
- * `labels` omitted = legacy price-round call sites (scripts, frozen-fixture
- * baselines): verb comes straight from t.hero.answerVerb, byte-identical to
- * the pre-resolver hero. Live components always pass the round's labels.
+ * `labels` omitted = legacy price-round call sites (scripts, frozen fixtures).
+ * Live components always pass the round's labels.
  */
 export function buildConsensusHero(
   consensus: ConsensusSummary,
@@ -115,9 +130,18 @@ export function buildConsensusHero(
   if (respondedModels === 0) return { kind: 'fallback', message: t.hero.allAbstain(totalModels) }
   if (!aggregateDirection) return { kind: 'fallback', message: t.hero.split(respondedModels, totalModels) }
 
-  const verb = labels
-    ? labels.answer(aggregateDirection)
-    : t.hero.answerVerb[aggregateDirection === 'up' ? 'up' : 'down']
+  const aggregateSlot = binarySlot(aggregateDirection) ?? 'down'
+  const majoritySlot = headCountSlot(consensus)
+  const otherSlot: 'up' | 'down' = majoritySlot === 'up' ? 'down' : 'up'
+  const diverged = majoritySlot !== aggregateSlot
+  const priceLike = !labels || labels.kind === 'binary_close_higher'
+
+  const verb = priceLike
+    ? diverged
+      ? t.hero.weightedCallVerb[aggregateSlot]
+      : t.hero.answerVerb[aggregateSlot]
+    : labels.answer(aggregateDirection)
+  const prefix = diverged ? t.hero.weightedCallPrefix : ''
   const magnitudePart =
     aggregateMagnitudePct !== null
       ? t.magnitude.headlineQualifier(
@@ -125,16 +149,33 @@ export function buildConsensusHero(
           formatSignedPercent(aggregateMagnitudePct),
         )
       : null
-  const line1 = magnitudePart ? `${verb} · ${magnitudePart}` : verb
+  const line1 = prefix + (magnitudePart ? `${verb} · ${magnitudePart}` : verb)
 
-  const slot = tallySlotOfToken(aggregateDirection)
-  const leanCount = slot === 'up' || slot === 'down' ? tally[slot] : 0
-  const line2 =
-    aggregateProbability !== null
-      ? t.hero.supportLine(leanCount, totalModels, Math.round(aggregateProbability))
-      : t.hero.supportLineNoConfidence(leanCount, totalModels)
+  const majorityToken = tokenForBinarySlot(majoritySlot, labels)
+  const otherToken = tokenForBinarySlot(otherSlot, labels)
+  const aggregateToken = tokenForBinarySlot(aggregateSlot, labels)
+  const majorityWord = labels ? labels.tallyWord(majorityToken) : t.direction.tally[majoritySlot]
+  const otherWord = labels ? labels.tallyWord(otherToken) : t.direction.tally[otherSlot]
+  const aggregateWord = labels ? labels.tallyWord(aggregateToken) : t.direction.tally[aggregateSlot]
+  const saidWord = priceLike ? t.hero.majoritySaid[majoritySlot] : majorityWord
+  const majorityCount = tally[majoritySlot]
+  const otherCount = tally[otherSlot]
+  const conf = aggregateProbability !== null ? Math.round(aggregateProbability) : null
 
-  return { kind: 'answer', line1, line2 }
+  let line2: string
+  if (diverged) {
+    line2 =
+      conf !== null
+        ? t.hero.divergeLine(saidWord, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, conf)
+        : t.hero.divergeLineNoConfidence(saidWord, majorityWord, majorityCount, otherWord, otherCount, aggregateWord)
+  } else {
+    line2 =
+      conf !== null
+        ? t.hero.supportLine(majorityWord, majorityCount, otherWord, otherCount, conf)
+        : t.hero.supportLineNoConfidence(majorityWord, majorityCount, otherWord, otherCount)
+  }
+
+  return { kind: 'answer', line1, line2, diverged }
 }
 
 /** Magnitude qualifier fragment only — used by tests and legacy callers. */
@@ -159,6 +200,26 @@ export function magnitudeCompareLine(predictedPct: number, actualPct: number, t:
 /** Approved one-line group summary, e.g. "US: 3 up · 1 down". Used for camp/tier rows. */
 export function groupTallyLine(label: string, tally: ConsensusSummary['tally'], t: LeagueUiPack): string {
   return t.groupTallyLine(label, tally)
+}
+
+/**
+ * Pre-grading axis line. PREDICTION counts, never hits.
+ * Uses the round's `labels.tallyWord` so sports/threshold cards don't say "up".
+ * Never a slash-over-total, never ✓/✗.
+ */
+export function predictionAxisLine(
+  label: string,
+  tally: DirectionTally,
+  t: LeagueUiPack,
+  labels: SideLabels,
+): string {
+  const n = tally.up + tally.down + tally.flat + tally.abstain
+  const parts: string[] = []
+  if (tally.up) parts.push(t.predictions.axisPart(tally.up, labels.tallyWord(labels.sides[0])))
+  if (tally.down) parts.push(t.predictions.axisPart(tally.down, labels.tallyWord(labels.sides[1])))
+  if (tally.flat) parts.push(t.predictions.axisPart(tally.flat, labels.tallyWord('flat')))
+  if (tally.abstain) parts.push(t.predictions.axisPart(tally.abstain, labels.tallyWord(null)))
+  return t.predictions.axisLine(label, n, parts.length ? parts.join(' \u00b7 ') : t.predictions.noCalls)
 }
 
 /**

@@ -2,6 +2,7 @@ import {
   CAMPS,
   LEAGUE_TIERS,
   emptyTally,
+  type BookSplit,
   type CampSplit,
   type CardData,
   type CardModelPrediction,
@@ -14,11 +15,12 @@ import {
   type CombinedMethodTrack,
   type HitRateSummary,
   type TierSplit,
+  type WeightsSplit,
 } from './card-types'
 import { sidePairOf, tallySlotOfToken, toSideToken, type SideRoundContext } from './side-labels'
 import type { AnswerSide } from './answer-contract'
 import { gradingStateOf, type GradingState } from '../prediction/grading-state'
-import { lookupRosterDisplay, LEAGUE_ROSTER } from './roster'
+import { lookupRosterDisplay, lookupRosterEntry, LEAGUE_ROSTER } from './roster'
 import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
 import { roundHitRecord } from './round-hit'
 import { normalizeSessionDate } from '../prediction/resolution'
@@ -175,6 +177,28 @@ function buildTierSplit(models: CardModelPrediction[]): TierSplit {
   return split
 }
 
+function buildBookSplit(models: CardModelPrediction[]): BookSplit {
+  const split: BookSplit = { closed: emptyTally(), scout: emptyTally() }
+  for (const m of models) {
+    const book = bookFromTier(m.league_tier)
+    const slot = tallySlotOfToken(m.direction)
+    if (slot === null) split[book].abstain++
+    else split[book][slot]++
+  }
+  return split
+}
+
+function buildWeightsSplit(models: CardModelPrediction[]): WeightsSplit {
+  const split: WeightsSplit = { closed: emptyTally(), open: emptyTally() }
+  for (const m of models) {
+    const weights = lookupRosterEntry(m.model_id)?.weights === 'open' ? 'open' : 'closed'
+    const slot = tallySlotOfToken(m.direction)
+    if (slot === null) split[weights].abstain++
+    else split[weights][slot]++
+  }
+  return split
+}
+
 function buildHitRate(resolvedAt: string | null, models: CardModelPrediction[]): HitRateSummary {
   const { correct, graded } = roundHitRecord(models)
   return {
@@ -221,6 +245,8 @@ export type CardAggregates = {
   consensus: ConsensusSummary
   campSplit: CampSplit
   tierSplit: TierSplit
+  bookSplit: BookSplit
+  weightsSplit: WeightsSplit
   hitRate: HitRateSummary
   verdict: VerdictPayload
 }
@@ -257,6 +283,8 @@ export function computeCardAggregates(
     consensus: buildConsensus(models, sides),
     campSplit: buildCampSplit(models),
     tierSplit: buildTierSplit(models),
+    bookSplit: buildBookSplit(models),
+    weightsSplit: buildWeightsSplit(models),
     hitRate: buildHitRate(resolvedAt, models),
     verdict: buildVerdict(models, opts?.roundId ?? '', opts?.crossRound),
   }

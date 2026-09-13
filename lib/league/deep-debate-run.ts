@@ -13,6 +13,8 @@ import {
 import { generateJejuPreReport } from '@/lib/motie/pre-report'
 import { SYNOD_DEBATERS } from '@/lib/motie/synod-debate'
 import type { LeagueDeepContext } from './deep-context'
+import type { LeagueLocale } from './i18n/locales'
+import { runWithOutputLanguage } from '@/lib/motie/output-language'
 import type { DeepDebateResult } from './deep-debate-types'
 import type { DeepProviderMeta } from './deep-store'
 
@@ -26,6 +28,7 @@ export type DebatePipelineState = {
   context: string
   availableDataSummary: string
   snapshot: LeagueDeepContext['snapshot']
+  outputLanguage: LeagueLocale
   plan?: JejuMeetingPlan
   report?: string | null
   searches?: JejuExecutedSearch[]
@@ -42,6 +45,7 @@ export function seedDebateState(ctx: LeagueDeepContext): DebatePipelineState {
     context: ctx.context,
     availableDataSummary: ctx.availableDataSummary,
     snapshot: ctx.snapshot,
+    outputLanguage: ctx.outputLanguage,
   }
 }
 
@@ -182,11 +186,13 @@ export async function advanceDebateState(state: DebatePipelineState): Promise<De
 
 /** Test/script helper — runs every stage in-process (not for the HTTP route). */
 export async function runDeepDebate(ctx: LeagueDeepContext): Promise<DeepDebateResult> {
-  let state = seedDebateState(ctx)
-  for (let i = 0; i < 6; i += 1) {
-    const step = await advanceDebateState(state)
-    if (step.done) return step.result
-    state = step.state
-  }
-  return failResult(state, 'debate did not finish')
+  return runWithOutputLanguage(ctx.outputLanguage, async () => {
+    let state = seedDebateState(ctx)
+    for (let i = 0; i < 6; i += 1) {
+      const step = await advanceDebateState(state)
+      if (step.done) return step.result
+      state = step.state
+    }
+    return failResult(state, 'debate did not finish')
+  })
 }

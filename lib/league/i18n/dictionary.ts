@@ -82,22 +82,71 @@ export type LeagueUiPack = {
   /**
    * Cards-tab consensus HERO — two lines, answer first, supporting figures
    * demoted. Built only by `lib/league/compliance.ts`'s `buildConsensusHero`.
-   * Line 1 is a direction VERB (never "lean"); line 2 is roster tally +
-   * aggregate confidence. Confidence MUST come from `aggregateProbability`
-   * (log-odds aggregate) — never `avgProbability` (majority average).
+   * Line 1 is a direction VERB (never "lean"). When the head-count majority
+   * and the confidence-weighted call disagree, line 1 is prefixed and line 2
+   * names both sides. Confidence MUST come from `aggregateProbability`
+   * (never `avgProbability`). Do not name the statistical method on screen.
    */
   hero: {
     answerVerb: Record<'up' | 'down', string>
-    /** Line 2 when aggregate confidence exists — `confidencePct` is aggregateProbability, rounded. */
-    supportLine: (leanCount: number, totalModels: number, confidencePct: number) => string
-    /** Line 2 when direction is clear but aggregate confidence is null. */
-    supportLineNoConfidence: (leanCount: number, totalModels: number) => string
+    /** Verb after the weighted-call prefix — EN lowercase (`falls`), KO unchanged. */
+    weightedCallVerb: Record<'up' | 'down', string>
+    /** e.g. "Weighted call: " / "가중 결론: " — include the trailing space. */
+    weightedCallPrefix: string
+    /** One sentence next to the prefix. Never names the statistical method. */
+    weightedCallHelp: string
+    /** "rise" / "fall" in the divergent "Most models said …" clause. */
+    majoritySaid: Record<'up' | 'down', string>
+    supportLine: (
+      majorityWord: string,
+      majorityCount: number,
+      otherWord: string,
+      otherCount: number,
+      confidencePct: number,
+    ) => string
+    supportLineNoConfidence: (
+      majorityWord: string,
+      majorityCount: number,
+      otherWord: string,
+      otherCount: number,
+    ) => string
+    divergeLine: (
+      majoritySaid: string,
+      majorityWord: string,
+      majorityCount: number,
+      otherWord: string,
+      otherCount: number,
+      aggregateWord: string,
+      confidencePct: number,
+    ) => string
+    divergeLineNoConfidence: (
+      majoritySaid: string,
+      majorityWord: string,
+      majorityCount: number,
+      otherWord: string,
+      otherCount: number,
+      aggregateWord: string,
+    ) => string
     allAbstain: (totalModels: number) => string
     split: (respondedModels: number, totalModels: number) => string
     none: string
   }
   /** e.g. "US: 3 up · 1 down · 1 no call" — `label` (e.g. "US"/"Premier") is passed through untranslated (a proper-noun-ish group name). */
   groupTallyLine: (label: string, tally: DirectionTally) => string
+  /**
+   * Pre-grading axis lines. PREDICTION counts, never hits.
+   * `axisLine` / `axisPart` must never emit a slash-over-total or ✓/✗ —
+   * those shapes are reserved for hit counts (2026-08-24).
+   */
+  predictions: {
+    /** Unmistakable: these rows are calls, not graded hits. */
+    heading: string
+    /** e.g. "US · 14 models: 9 up · 5 down". `parts` is already joined with ·. */
+    axisLine: (label: string, modelCount: number, parts: string) => string
+    /** Attach a count to a side word. Never a slash. */
+    axisPart: (n: number, word: string) => string
+    noCalls: string
+  }
   disclaimer: {
     short: string
     long: string
@@ -128,6 +177,13 @@ export type LeagueUiPack = {
     noCardYet: string
     /** Horizon selector chips shown next to the instrument chips. Default '1d'. */
     horizons: { '1d': string; '1w': string; '1m': string; '3m': string }
+    /**
+     * Shown once near the chip row when a category mixes spot (calendar
+     * clock) and ETF (exchange-session clock). Reusable: gold vs GLD, and
+     * later WTI vs USO / UNG. Different hours, different resolution clocks,
+     * different propositions.
+     */
+    spotVsEtfNote: string
   }
   /**
    * Card accuracy badge. `withValue` receives an ALREADY-COMPOSED figure from
@@ -510,6 +566,10 @@ export type LeagueUiPack = {
     deepRunning: string
     /** Distinguishes this output from the scored prediction league. */
     deepUnscoredNote: string
+    /** One-sentence description under the open-analysis button. */
+    deepOpenHint: string
+    /** One-sentence description under the debate button. */
+    deepDebateHint: string
     deepOpenTitle: string
     deepDebateTitle: string
     balance: (credits: number) => string
@@ -584,8 +644,19 @@ const en: LeagueUiPack = {
   },
   hero: {
     answerVerb: { up: 'Rises', down: 'Falls' },
-    supportLine: (lean, total, conf) => `${lean} of ${total} · ${conf}% confidence`,
-    supportLineNoConfidence: (lean, total) => `${lean} of ${total}`,
+    weightedCallVerb: { up: 'rises', down: 'falls' },
+    weightedCallPrefix: 'Weighted call: ',
+    weightedCallHelp:
+      'The weighted call gives more weight to models that were more confident, so it can differ from a simple head count.',
+    majoritySaid: { up: 'rise', down: 'fall' },
+    supportLine: (majorityWord, majorityCount, otherWord, otherCount, confidencePct) =>
+      `Most models called ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}) · aggregate confidence ${confidencePct}%`,
+    supportLineNoConfidence: (majorityWord, majorityCount, otherWord, otherCount) =>
+      `Most models called ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})`,
+    divergeLine: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, confidencePct) =>
+      `Most models said ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). The confidence-weighted call is ${aggregateWord}, at ${confidencePct}%.`,
+    divergeLineNoConfidence: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord) =>
+      `Most models said ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). The confidence-weighted call is ${aggregateWord}.`,
     allAbstain: (total) => `All ${total} AI models abstained on this round`,
     split: (responded, total) => `${responded} of ${total} AI models are split — no clear answer`,
     none: 'No AI models have reported for this round yet',
@@ -625,6 +696,12 @@ const en: LeagueUiPack = {
     if (tally.abstain) parts.push(`${tally.abstain} no call`)
     return `${label}: ${parts.length ? parts.join(' · ') : 'no responses yet'}`
   },
+  predictions: {
+    heading: 'Predictions \u2014 not hits',
+    axisLine: (label, n, parts) => `${label} \u00b7 ${n} models: ${parts}`,
+    axisPart: (n, word) => `${n} ${word}`,
+    noCalls: 'no calls yet',
+  },
   disclaimer: {
     short: 'Info only — not investment advice. You are responsible for your own decisions.',
     long: 'These are AI model opinions shown for information and entertainment purposes only. They are not investment, financial, legal, or professional advice, and no model here is a licensed advisor. Markets are unpredictable and AI models can be — and often are — wrong. You are solely responsible for any decision you make.',
@@ -661,10 +738,11 @@ const en: LeagueUiPack = {
       'EUR/USD': 'Euro / US Dollar',
       'USD/KRW': 'US Dollar / Korean Won',
       'USD/JPY': 'US Dollar / Japanese Yen',
-      'XAU/USD': 'Gold',
-      'XAG/USD': 'Silver',
-      GLD: 'SPDR Gold (GLD)',
-      SLV: 'iShares Silver (SLV)',
+      'XAU/USD': 'Gold spot',
+      'XAG/USD': 'Silver spot',
+      'XPT/USD': 'Platinum spot',
+      GLD: 'Gold ETF',
+      SLV: 'Silver ETF',
       SPY: 'S&P 500 ETF (SPY)',
       QQQ: 'Nasdaq-100 ETF (QQQ)',
       'WTI/USD': 'WTI Crude',
@@ -680,6 +758,8 @@ const en: LeagueUiPack = {
     macroEconHint: 'Expert market outlook — rates, inflation, bonds. Depth, not dopamine.',
     noCardYet: 'No prediction card for this instrument yet.',
     horizons: { '1d': '1 day', '1w': '1 week', '1m': '1 month', '3m': '3 months' },
+    spotVsEtfNote:
+      'Spot and ETF chips trade on different hours and grade on different clocks — they are different propositions, even when they name the same metal or commodity.',
   },
   hitRate: {
     pending: 'Hit rate: pending',
@@ -918,6 +998,10 @@ const en: LeagueUiPack = {
     deepRunning: 'Running deep analysis\u2026',
     deepUnscoredNote:
       'Unscored commentary \u2014 not a league prediction. Does not enter the leaderboard or track record.',
+    deepOpenHint:
+      'Several models each write a brief from this round\u2019s packet, then one synthesis. Unscored commentary \u2014 not a league prediction, not on the leaderboard.',
+    deepDebateHint:
+      'Models argue both sides, vote, and a chair writes a verdict including the minority view. Unscored \u2014 not a league prediction.',
     deepOpenTitle: 'Open analysis',
     deepDebateTitle: 'Pro/con debate',
   },
@@ -984,8 +1068,19 @@ const ko: LeagueUiPack = {
   },
   hero: {
     answerVerb: { up: '오른다', down: '내린다' },
-    supportLine: (lean, total, conf) => `${total}개 중 ${lean}개 · 확신 ${conf}%`,
-    supportLineNoConfidence: (lean, total) => `${total}개 중 ${lean}개`,
+    weightedCallVerb: { up: '오른다', down: '내린다' },
+    weightedCallPrefix: '가중 결론: ',
+    weightedCallHelp:
+      '가중 결론은 확신이 높은 모델에 더 큰 비중을 둡니다. 그래서 단순 다수와 달라질 수 있습니다.',
+    majoritySaid: { up: '상승', down: '하락' },
+    supportLine: (majorityWord, majorityCount, otherWord, otherCount, confidencePct) =>
+      `다수가 ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}) · 가중 확신 ${confidencePct}%`,
+    supportLineNoConfidence: (majorityWord, majorityCount, otherWord, otherCount) =>
+      `다수가 ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})`,
+    divergeLine: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, confidencePct) =>
+      `다수는 ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). 확신 가중 결론은 ${aggregateWord}, ${confidencePct}%.`,
+    divergeLineNoConfidence: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord) =>
+      `다수는 ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). 확신 가중 결론은 ${aggregateWord}.`,
     allAbstain: (total) => `AI 모델 ${total}개 전원이 이번 라운드 의견을 유보했습니다`,
     split: (responded, total) => `AI 모델 ${total}개 중 ${responded}개가 응답했지만 방향이 갈립니다`,
     none: '아직 이번 라운드에 응답한 AI 모델이 없습니다',
@@ -1025,6 +1120,12 @@ const ko: LeagueUiPack = {
     if (tally.abstain) parts.push(`의견없음 ${tally.abstain}`)
     return `${label}: ${parts.length ? parts.join(' · ') : '아직 응답 없음'}`
   },
+  predictions: {
+    heading: '예측 집계 \u2014 적중이 아닙니다',
+    axisLine: (label, n, parts) => `${label} \u00b7 ${n}개: ${parts}`,
+    axisPart: (n, word) => `${word} ${n}`,
+    noCalls: '아직 응답 없음',
+  },
   disclaimer: {
     short: '정보 제공 목적일 뿐 투자 조언이 아닙니다. 모든 결정의 책임은 본인에게 있습니다.',
     long: '본 콘텐츠는 여러 AI 모델의 의견을 정보 및 오락 목적으로 제공하는 것이며, 투자·금융·법률·전문 자문이 아닙니다. 여기 등장하는 어떤 모델도 인가받은 자문가가 아닙니다. 시장은 예측할 수 없으며 AI 모델의 예측은 자주, 그리고 크게 틀릴 수 있습니다. 이를 근거로 내리는 모든 결정의 책임은 전적으로 본인에게 있습니다.',
@@ -1060,10 +1161,11 @@ const ko: LeagueUiPack = {
       'EUR/USD': '유로/달러',
       'USD/KRW': '달러/원',
       'USD/JPY': '엔/달러',
-      'XAU/USD': '금',
-      'XAG/USD': '은',
-      GLD: 'SPDR 금 ETF (GLD)',
-      SLV: 'iShares 은 ETF (SLV)',
+      'XAU/USD': '금 현물',
+      'XAG/USD': '은 현물',
+      'XPT/USD': '백금 현물',
+      GLD: '금 ETF',
+      SLV: '은 ETF',
       SPY: 'S&P 500 ETF (SPY)',
       QQQ: '나스닥 100 ETF (QQQ)',
       'WTI/USD': '원유 (WTI)',
@@ -1079,6 +1181,8 @@ const ko: LeagueUiPack = {
     macroEconHint: '금리·물가·채권 등 전문가용 시장 전망. 자극이 아니라 깊이입니다.',
     noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
     horizons: { '1d': '1일', '1w': '1주', '1m': '1개월', '3m': '3개월' },
+    spotVsEtfNote:
+      '현물과 ETF는 거래 시간과 채점 시각이 다릅니다. 같은 금속·원자재여도 다른 예측입니다.',
   },
   hitRate: {
     pending: '적중률 집계 중',
@@ -1314,6 +1418,9 @@ const ko: LeagueUiPack = {
     deepDebate: (credits) => `찬반 토론 \u00b7 ${credits} 크레딧`,
     deepRunning: '심층 분석 진행 중\u2026',
     deepUnscoredNote: '비채점 논평입니다. 리그 예측이 아니며 리더보드와 전적에 반영되지 않습니다.',
+    deepOpenHint:
+      '같은 라운드 자료를 여러 모델이 각자 브리핑한 뒤 하나로 합칩니다. 비채점 논평이며 리그 예측·리더보드가 아닙니다.',
+    deepDebateHint: '찬반으로 토론하고 투표한 뒤, 의장이 소수 의견까지 담아 판정합니다. 비채점이며 리그 예측이 아닙니다.',
     deepOpenTitle: '개방형 분석',
     deepDebateTitle: '찬반 토론',
   },
@@ -1379,8 +1486,19 @@ const ja: LeagueUiPack = {
   },
   hero: {
     answerVerb: { up: '上昇', down: '下落' },
-    supportLine: (lean, total, conf) => `${total}体中${lean}体 · 確信度${conf}%`,
-    supportLineNoConfidence: (lean, total) => `${total}体中${lean}体`,
+    weightedCallVerb: { up: '上昇', down: '下落' },
+    weightedCallPrefix: '加重結論: ',
+    weightedCallHelp:
+      '加重結論は、確信度が高いモデルにより大きな比重を置くため、単純な件数と異なることがあります。',
+    majoritySaid: { up: '上昇', down: '下落' },
+    supportLine: (majorityWord, majorityCount, otherWord, otherCount, confidencePct) =>
+      `多数が${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}) · 加重確信度 ${confidencePct}%`,
+    supportLineNoConfidence: (majorityWord, majorityCount, otherWord, otherCount) =>
+      `多数が${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})`,
+    divergeLine: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, confidencePct) =>
+      `多数は${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})。確信度加重結論は${aggregateWord}、${confidencePct}%。`,
+    divergeLineNoConfidence: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord) =>
+      `多数は${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})。確信度加重結論は${aggregateWord}。`,
     allAbstain: (total) => `AIモデル${total}体全てが今回の判断を保留しました`,
     split: (responded, total) => `AIモデル${total}体中${responded}体が回答しましたが意見が分かれています`,
     none: 'このラウンドにはまだ回答したAIモデルがありません',
@@ -1420,6 +1538,12 @@ const ja: LeagueUiPack = {
     if (tally.abstain) parts.push(`判断なし${tally.abstain}`)
     return `${label}：${parts.length ? parts.join('・') : 'まだ回答なし'}`
   },
+  predictions: {
+    heading: '予測 \u2014 的中ではありません',
+    axisLine: (label, n, parts) => `${label} \u00b7 ${n}モデル: ${parts}`,
+    axisPart: (n, word) => `${word}${n}`,
+    noCalls: 'まだ回答なし',
+  },
   disclaimer: {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
     long: 'この内容は複数のAIモデルの見解を情報提供・娯楽目的で示したものであり、投資・金融・法律・専門的な助言ではありません。ここに登場するモデルはいずれも認可を受けたアドバイザーではありません。市場は予測不可能であり、AIモデルの予測は誤ることが多々あります。これに基づく判断の責任はすべてご自身が負うものとします。',
@@ -1455,10 +1579,11 @@ const ja: LeagueUiPack = {
       'EUR/USD': 'ユーロ / ドル',
       'USD/KRW': 'ドル / ウォン',
       'USD/JPY': 'ドル / 円',
-      'XAU/USD': '金',
-      'XAG/USD': '銀',
-      GLD: 'SPDR 金 ETF (GLD)',
-      SLV: 'iShares 銀 ETF (SLV)',
+      'XAU/USD': '金 現物',
+      'XAG/USD': '銀 現物',
+      'XPT/USD': '白金 現物',
+      GLD: '金 ETF',
+      SLV: '銀 ETF',
       SPY: 'S&P 500 ETF (SPY)',
       QQQ: 'ナスダック100 ETF (QQQ)',
       'WTI/USD': 'WTI原油',
@@ -1474,6 +1599,8 @@ const ja: LeagueUiPack = {
     macroEconHint: '金利・物価・債券など、専門家向けの市場見通し。刺激ではなく深さです。',
     noCardYet: 'この銘柄の予測カードはまだありません。',
     horizons: { '1d': '1日', '1w': '1週間', '1m': '1か月', '3m': '3か月' },
+    spotVsEtfNote:
+      '現物とETFは取引時間と採点時刻が異なります。同じ金属・商品でも別の命題です。',
   },
   hitRate: {
     pending: '的中率：集計待ち',
@@ -1707,6 +1834,9 @@ const ja: LeagueUiPack = {
     deepDebate: (credits) => `賛否討論 \u00b7 ${credits}クレジット`,
     deepRunning: '深層分析を実行中\u2026',
     deepUnscoredNote: '採点対象外の論評です。リーグ予測ではなく、リーダーボードや戦績には入りません。',
+    deepOpenHint:
+      '同じラウンドの資料を複数のモデルがそれぞれブリーフし、1つにまとめます。採点対象外の論評であり、リーグ予測でもリーダーボードでもありません。',
+    deepDebateHint: '賛否で議論し投票したあと、議長が少数意見まで含めて判定します。採点対象外であり、リーグ予測ではありません。',
     deepOpenTitle: '自由分析',
     deepDebateTitle: '賛否討論',
   },
@@ -1772,8 +1902,18 @@ const zhTW: LeagueUiPack = {
   },
   hero: {
     answerVerb: { up: '看漲', down: '看跌' },
-    supportLine: (lean, total, conf) => `${total} 個中 ${lean} 個 · 信心 ${conf}%`,
-    supportLineNoConfidence: (lean, total) => `${total} 個中 ${lean} 個`,
+    weightedCallVerb: { up: '看漲', down: '看跌' },
+    weightedCallPrefix: '加權結論：',
+    weightedCallHelp: '加權結論會給較有把握的模型更大權重，因此可能與單純票數不同。',
+    majoritySaid: { up: '看漲', down: '看跌' },
+    supportLine: (majorityWord, majorityCount, otherWord, otherCount, confidencePct) =>
+      `多數模型${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}) · 加權信心 ${confidencePct}%`,
+    supportLineNoConfidence: (majorityWord, majorityCount, otherWord, otherCount) =>
+      `多數模型${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})`,
+    divergeLine: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, confidencePct) =>
+      `多數${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})。信心加權結論為${aggregateWord}，${confidencePct}%。`,
+    divergeLineNoConfidence: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord) =>
+      `多數${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})。信心加權結論為${aggregateWord}。`,
     allAbstain: (total) => `全部 ${total} 個 AI 模型本輪均未表態`,
     split: (responded, total) => `${total} 個 AI 模型中有 ${responded} 個給出意見，但看法分歧`,
     none: '本輪目前尚無 AI 模型回應',
@@ -1813,6 +1953,12 @@ const zhTW: LeagueUiPack = {
     if (tally.abstain) parts.push(`未表態 ${tally.abstain}`)
     return `${label}：${parts.length ? parts.join('・') : '尚無回應'}`
   },
+  predictions: {
+    heading: '預測 \u2014 非命中',
+    axisLine: (label, n, parts) => `${label} \u00b7 ${n} 個模型：${parts}`,
+    axisPart: (n, word) => `${word} ${n}`,
+    noCalls: '尚無回應',
+  },
   disclaimer: {
     short: '僅供參考，非投資建議。所有決定的責任由您自行承擔。',
     long: '本內容為多個 AI 模型的意見，僅供資訊與娛樂用途，並非投資、財務、法律或專業建議；此處任何模型皆非持牌顧問。市場無法預測，AI 模型的判斷經常出錯。您必須自行承擔依此做出之任何決定的全部責任。',
@@ -1848,10 +1994,11 @@ const zhTW: LeagueUiPack = {
       'EUR/USD': '歐元／美元',
       'USD/KRW': '美元／韓元',
       'USD/JPY': '美元／日圓',
-      'XAU/USD': '黃金',
-      'XAG/USD': '白銀',
-      GLD: 'SPDR 黃金 (GLD)',
-      SLV: 'iShares 白銀 (SLV)',
+      'XAU/USD': '黃金現貨',
+      'XAG/USD': '白銀現貨',
+      'XPT/USD': '鉑金現貨',
+      GLD: '黃金 ETF',
+      SLV: '白銀 ETF',
       SPY: 'S&P 500 ETF (SPY)',
       QQQ: '那斯達克100 ETF (QQQ)',
       'WTI/USD': 'WTI 原油',
@@ -1867,6 +2014,8 @@ const zhTW: LeagueUiPack = {
     macroEconHint: '利率、通膨、債券等專業市場展望。重深度，不重刺激。',
     noCardYet: '此標的尚無預測卡。',
     horizons: { '1d': '1天', '1w': '1週', '1m': '1個月', '3m': '3個月' },
+    spotVsEtfNote:
+      '現貨與 ETF 的交易時段和計分時鐘不同。即使同金屬或同商品，也是不同命題。',
   },
   hitRate: {
     pending: '命中率：統計中',
@@ -2098,6 +2247,9 @@ const zhTW: LeagueUiPack = {
     deepDebate: (credits) => `正反辯論 \u00b7 ${credits} 點數`,
     deepRunning: '深度分析進行中\u2026',
     deepUnscoredNote: '未計分評論——不是聯盟預測，不會進入排行榜或戰績。',
+    deepOpenHint:
+      '多個模型各自根據本回合資料撰寫簡報，再合成一份。未計分評論——不是聯盟預測，也不上排行榜。',
+    deepDebateHint: '正反辯論並投票後，主席寫出含少數意見的裁決。未計分——不是聯盟預測。',
     deepOpenTitle: '開放分析',
     deepDebateTitle: '正反辯論',
   },
@@ -2163,8 +2315,19 @@ const fr: LeagueUiPack = {
   },
   hero: {
     answerVerb: { up: 'Hausse', down: 'Baisse' },
-    supportLine: (lean, total, conf) => `${lean} sur ${total} · confiance ${conf}%`,
-    supportLineNoConfidence: (lean, total) => `${lean} sur ${total}`,
+    weightedCallVerb: { up: 'hausse', down: 'baisse' },
+    weightedCallPrefix: 'Appel pondéré : ',
+    weightedCallHelp:
+      'L\u2019appel pondéré donne plus de poids aux modèles plus confiants, c\u2019est pourquoi il peut différer d\u2019un simple décompte.',
+    majoritySaid: { up: 'hausse', down: 'baisse' },
+    supportLine: (majorityWord, majorityCount, otherWord, otherCount, confidencePct) =>
+      `La plupart des modèles ont appelé ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}) · confiance agrégée ${confidencePct}%`,
+    supportLineNoConfidence: (majorityWord, majorityCount, otherWord, otherCount) =>
+      `La plupart des modèles ont appelé ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})`,
+    divergeLine: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, confidencePct) =>
+      `La plupart des modèles ont dit ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). L\u2019appel pondéré par la confiance est ${aggregateWord}, à ${confidencePct}%.`,
+    divergeLineNoConfidence: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord) =>
+      `La plupart des modèles ont dit ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). L\u2019appel pondéré par la confiance est ${aggregateWord}.`,
     allAbstain: (total) => `Les ${total} modèles IA se sont tous abstenus pour ce tour`,
     split: (responded, total) => `${responded} modèles IA sur ${total} ont répondu, mais les avis sont partagés`,
     none: 'Aucun modèle IA n\u2019a encore répondu pour ce tour',
@@ -2204,6 +2367,12 @@ const fr: LeagueUiPack = {
     if (tally.abstain) parts.push(`${tally.abstain} sans avis`)
     return `${label} : ${parts.length ? parts.join(' · ') : 'aucune réponse pour le moment'}`
   },
+  predictions: {
+    heading: 'Pr\u00e9visions \u2014 pas des r\u00e9ussites',
+    axisLine: (label, n, parts) => `${label} \u00b7 ${n} mod\u00e8les : ${parts}`,
+    axisPart: (n, word) => `${n} ${word}`,
+    noCalls: 'aucune r\u00e9ponse pour le moment',
+  },
   disclaimer: {
     short: 'Information uniquement, ceci n\u2019est pas un conseil en investissement. Vous êtes seul responsable de vos décisions.',
     long: 'Ce contenu présente les avis de plusieurs modèles d\u2019IA à titre purement informatif et de divertissement. Il ne s\u2019agit pas d\u2019un conseil en investissement, financier, juridique ou professionnel, et aucun modèle ici n\u2019est un conseiller agréé. Les marchés sont imprévisibles et les modèles d\u2019IA peuvent se tromper, et se trompent souvent. Vous assumez l\u2019entière responsabilité de toute décision prise sur cette base.',
@@ -2240,10 +2409,11 @@ const fr: LeagueUiPack = {
       'EUR/USD': 'Euro / dollar',
       'USD/KRW': 'Dollar / won',
       'USD/JPY': 'Dollar / yen',
-      'XAU/USD': 'Or',
-      'XAG/USD': 'Argent',
-      GLD: 'SPDR Or (GLD)',
-      SLV: 'iShares Argent (SLV)',
+      'XAU/USD': 'Or spot',
+      'XAG/USD': 'Argent spot',
+      'XPT/USD': 'Platine spot',
+      GLD: 'ETF or',
+      SLV: 'ETF argent',
       SPY: 'S&P 500 ETF (SPY)',
       QQQ: 'Nasdaq-100 ETF (QQQ)',
       'WTI/USD': 'Pétrole WTI',
@@ -2259,6 +2429,8 @@ const fr: LeagueUiPack = {
     macroEconHint: 'Perspectives de marché pour experts — taux, inflation, obligations. De la profondeur, pas du spectacle.',
     noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
     horizons: { '1d': '1 jour', '1w': '1 semaine', '1m': '1 mois', '3m': '3 mois' },
+    spotVsEtfNote:
+      'Le spot et l\u2019ETF n\u2019ont pas les m\u00eames heures de march\u00e9 ni la m\u00eame horloge de r\u00e8glement \u2014 ce sont des propositions distinctes, m\u00eame s\u2019ils nomment le m\u00eame m\u00e9tal ou la m\u00eame mati\u00e8re.',
   },
   hitRate: {
     pending: 'Taux de réussite : en attente',
@@ -2498,6 +2670,10 @@ const fr: LeagueUiPack = {
     deepRunning: 'Analyse approfondie en cours\u2026',
     deepUnscoredNote:
       'Commentaire non not\u00e9 \u2014 ce n\u2019est pas une pr\u00e9diction de ligue. N\u2019entre ni au classement ni au palmar\u00e8s.',
+    deepOpenHint:
+      'Plusieurs modèles rédigent chacun une note à partir du dossier de ce tour, puis une synthèse. Commentaire non noté \u2014 pas une prédiction de ligue, pas au classement.',
+    deepDebateHint:
+      'Les modèles argumentent les deux camps, votent, et un président rédige un verdict incluant la minorité. Non noté \u2014 pas une prédiction de ligue.',
     deepOpenTitle: 'Analyse ouverte',
     deepDebateTitle: 'D\u00e9bat pour/contre',
   },
@@ -2565,8 +2741,19 @@ const es: LeagueUiPack = {
   },
   hero: {
     answerVerb: { up: 'Sube', down: 'Baja' },
-    supportLine: (lean, total, conf) => `${lean} de ${total} · confianza ${conf}%`,
-    supportLineNoConfidence: (lean, total) => `${lean} de ${total}`,
+    weightedCallVerb: { up: 'sube', down: 'baja' },
+    weightedCallPrefix: 'Conclusión ponderada: ',
+    weightedCallHelp:
+      'La conclusión ponderada da más peso a los modelos más seguros, por eso puede diferir de un recuento simple.',
+    majoritySaid: { up: 'sube', down: 'baja' },
+    supportLine: (majorityWord, majorityCount, otherWord, otherCount, confidencePct) =>
+      `La mayoría de los modelos llamó ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}) · confianza agregada ${confidencePct}%`,
+    supportLineNoConfidence: (majorityWord, majorityCount, otherWord, otherCount) =>
+      `La mayoría de los modelos llamó ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})`,
+    divergeLine: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, confidencePct) =>
+      `La mayoría de los modelos dijo ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). La conclusión ponderada por confianza es ${aggregateWord}, al ${confidencePct}%.`,
+    divergeLineNoConfidence: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord) =>
+      `La mayoría de los modelos dijo ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). La conclusión ponderada por confianza es ${aggregateWord}.`,
     allAbstain: (total) => `Los ${total} modelos de IA se abstuvieron en esta ronda`,
     split: (responded, total) => `${responded} de ${total} modelos de IA respondieron, pero están divididos`,
     none: 'Todavía ningún modelo de IA respondió en esta ronda',
@@ -2606,6 +2793,12 @@ const es: LeagueUiPack = {
     if (tally.abstain) parts.push(`${tally.abstain} sin opinión`)
     return `${label}: ${parts.length ? parts.join(' · ') : 'sin respuestas todavía'}`
   },
+  predictions: {
+    heading: 'Predicciones \u2014 no son aciertos',
+    axisLine: (label, n, parts) => `${label} \u00b7 ${n} modelos: ${parts}`,
+    axisPart: (n, word) => `${n} ${word}`,
+    noCalls: 'sin respuestas todav\u00eda',
+  },
   disclaimer: {
     short: 'Solo información, no es asesoramiento de inversión. Usted es responsable de sus propias decisiones.',
     long: 'Este contenido muestra opiniones de varios modelos de IA con fines informativos y de entretenimiento únicamente. No constituye asesoramiento de inversión, financiero, legal ni profesional, y ninguno de estos modelos es un asesor autorizado. Los mercados son impredecibles y los modelos de IA pueden equivocarse, y a menudo lo hacen. Usted es el único responsable de cualquier decisión que tome con base en esta información.',
@@ -2642,10 +2835,11 @@ const es: LeagueUiPack = {
       'EUR/USD': 'Euro / dólar',
       'USD/KRW': 'Dólar / won',
       'USD/JPY': 'Dólar / yen',
-      'XAU/USD': 'Oro',
-      'XAG/USD': 'Plata',
-      GLD: 'SPDR Oro (GLD)',
-      SLV: 'iShares Plata (SLV)',
+      'XAU/USD': 'Oro spot',
+      'XAG/USD': 'Plata spot',
+      'XPT/USD': 'Platino spot',
+      GLD: 'ETF de oro',
+      SLV: 'ETF de plata',
       SPY: 'S&P 500 ETF (SPY)',
       QQQ: 'Nasdaq-100 ETF (QQQ)',
       'WTI/USD': 'Petróleo WTI',
@@ -2661,6 +2855,8 @@ const es: LeagueUiPack = {
     macroEconHint: 'Perspectiva de mercado para expertos: tipos, inflación, bonos. Profundidad, no dopamina.',
     noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
     horizons: { '1d': '1 día', '1w': '1 semana', '1m': '1 mes', '3m': '3 meses' },
+    spotVsEtfNote:
+      'El spot y el ETF tienen horarios y relojes de resoluci\u00f3n distintos: son proposiciones diferentes, aunque nombren el mismo metal o commodity.',
   },
   hitRate: {
     pending: 'Tasa de acierto: pendiente',
@@ -2900,6 +3096,10 @@ const es: LeagueUiPack = {
     deepRunning: 'Ejecutando an\u00e1lisis profundo\u2026',
     deepUnscoredNote:
       'Comentario sin puntuaci\u00f3n: no es una predicci\u00f3n de la liga. No entra en la clasificaci\u00f3n ni en el historial.',
+    deepOpenHint:
+      'Varios modelos escriben cada uno un informe con el paquete de esta ronda, luego una síntesis. Comentario sin puntuar \u2014 no es una predicción de la liga ni entra en la clasificación.',
+    deepDebateHint:
+      'Los modelos argumentan ambos lados, votan, y un presidente redacta un veredicto incluyendo la minoría. Sin puntuar \u2014 no es una predicción de la liga.',
     deepOpenTitle: 'An\u00e1lisis abierto',
     deepDebateTitle: 'Debate a favor/en contra',
   },
@@ -2967,8 +3167,19 @@ const ar: LeagueUiPack = {
   },
   hero: {
     answerVerb: { up: 'صعود', down: 'هبوط' },
-    supportLine: (lean, total, conf) => `${lean} من ${total} · ثقة ${conf}%`,
-    supportLineNoConfidence: (lean, total) => `${lean} من ${total}`,
+    weightedCallVerb: { up: 'صعود', down: 'هبوط' },
+    weightedCallPrefix: 'النداء المرجّح: ',
+    weightedCallHelp:
+      'النداء المرجّح يعطي وزنًا أكبر للنماذج الأكثر ثقة، لذلك قد يختلف عن عدّ الرؤوس البسيط.',
+    majoritySaid: { up: 'صعود', down: 'هبوط' },
+    supportLine: (majorityWord, majorityCount, otherWord, otherCount, confidencePct) =>
+      `قالت أغلب النماذج ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}) · ثقة مرجّحة ${confidencePct}%`,
+    supportLineNoConfidence: (majorityWord, majorityCount, otherWord, otherCount) =>
+      `قالت أغلب النماذج ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})`,
+    divergeLine: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, confidencePct) =>
+      `قالت أغلب النماذج ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). النداء المرجّح بالثقة هو ${aggregateWord}، عند ${confidencePct}%.`,
+    divergeLineNoConfidence: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord) =>
+      `قالت أغلب النماذج ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). النداء المرجّح بالثقة هو ${aggregateWord}.`,
     allAbstain: (total) => `امتنعت جميع نماذج الذكاء الاصطناعي البالغ عددها ${total} عن إبداء رأي في هذه الجولة`,
     split: (responded, total) => `أجاب ${responded} من ${total} من نماذج الذكاء الاصطناعي، لكن الآراء منقسمة`,
     none: 'لم يستجب أي نموذج ذكاء اصطناعي لهذه الجولة بعد',
@@ -3008,6 +3219,12 @@ const ar: LeagueUiPack = {
     if (tally.abstain) parts.push(`${tally.abstain} بلا رأي`)
     return `${label}: ${parts.length ? parts.join(' · ') : 'لا توجد إجابات بعد'}`
   },
+  predictions: {
+    heading: 'توقعات \u2014 ليست إصابات',
+    axisLine: (label, n, parts) => `${label} \u00b7 ${n} نماذج: ${parts}`,
+    axisPart: (n, word) => `${n} ${word}`,
+    noCalls: 'لا توجد إجابات بعد',
+  },
   disclaimer: {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
     long: 'يعرض هذا المحتوى آراء عدة نماذج ذكاء اصطناعي لأغراض المعلومات والترفيه فقط. وهو لا يمثل نصيحة استثمارية أو مالية أو قانونية أو مهنية، وليس أي نموذج هنا مستشارًا مرخصًا. الأسواق غير قابلة للتنبؤ، وقد تخطئ نماذج الذكاء الاصطناعي، بل وتخطئ كثيرًا. أنت وحدك المسؤول عن أي قرار تتخذه بناءً على ذلك.',
@@ -3043,10 +3260,11 @@ const ar: LeagueUiPack = {
       'EUR/USD': 'يورو / دولار',
       'USD/KRW': 'دولار / وون',
       'USD/JPY': 'دولار / ين',
-      'XAU/USD': 'ذهب',
-      'XAG/USD': 'فضة',
-      GLD: 'SPDR ذهب (GLD)',
-      SLV: 'iShares فضة (SLV)',
+      'XAU/USD': 'ذهب فوري',
+      'XAG/USD': 'فضة فورية',
+      'XPT/USD': 'بلاتين فوري',
+      GLD: 'صندوق ذهب ETF',
+      SLV: 'صندوق فضة ETF',
       SPY: 'S&P 500 ETF (SPY)',
       QQQ: 'ناسداك 100 ETF (QQQ)',
       'WTI/USD': 'نفط غرب تكساس',
@@ -3062,6 +3280,8 @@ const ar: LeagueUiPack = {
     macroEconHint: 'نظرة سوقية للخبراء — أسعار الفائدة والتضخم والسندات. عمق لا إثارة.',
     noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
     horizons: { '1d': 'يوم واحد', '1w': 'أسبوع واحد', '1m': 'شهر واحد', '3m': '3 أشهر' },
+    spotVsEtfNote:
+      'الفوري وصندوق ETF يختلفان في ساعات التداول وساعة التسوية \u2014 هما رهانان مختلفان حتى لو سمّيا المعدن أو السلعة نفسها.',
   },
   hitRate: {
     pending: 'معدل الإصابة: قيد الحساب',
@@ -3295,6 +3515,10 @@ const ar: LeagueUiPack = {
     deepDebate: (credits) => `مناظرة مع/ضد \u00b7 ${credits} رصيد`,
     deepRunning: 'جارٍ التحليل المعمّق\u2026',
     deepUnscoredNote: 'تعليق غير مُقيَّم — ليس توقعًا للدوري ولا يدخل لوحة الصدارة أو السجل.',
+    deepOpenHint:
+      'تكتب عدة نماذج كلٌّ منها موجزًا من ملف هذه الجولة، ثم يُجمع في تركيب واحد. تعليق غير مُقيَّم — ليس توقعًا للدوري ولا على لوحة الصدارة.',
+    deepDebateHint:
+      'تتناظر النماذج على الجانبين وتصوّت، ويكتب رئيس الجلسة حكمًا يشمل رأي الأقلية. غير مُقيَّم — ليس توقعًا للدوري.',
     deepOpenTitle: 'تحليل مفتوح',
     deepDebateTitle: 'مناظرة مع/ضد',
   },
@@ -3367,8 +3591,19 @@ const pt: LeagueUiPack = {
   },
   hero: {
     answerVerb: { up: 'Sobe', down: 'Desce' },
-    supportLine: (lean, total, conf) => `${lean} de ${total} · confiança ${conf}%`,
-    supportLineNoConfidence: (lean, total) => `${lean} de ${total}`,
+    weightedCallVerb: { up: 'sobe', down: 'desce' },
+    weightedCallPrefix: 'Chamada ponderada: ',
+    weightedCallHelp:
+      'A chamada ponderada dá mais peso aos modelos mais confiantes, por isso pode diferir de uma simples contagem.',
+    majoritySaid: { up: 'alta', down: 'baixa' },
+    supportLine: (majorityWord, majorityCount, otherWord, otherCount, confidencePct) =>
+      `A maioria dos modelos chamou ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}) · confiança agregada ${confidencePct}%`,
+    supportLineNoConfidence: (majorityWord, majorityCount, otherWord, otherCount) =>
+      `A maioria dos modelos chamou ${majorityWord} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord})`,
+    divergeLine: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord, confidencePct) =>
+      `A maioria dos modelos disse ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). A chamada ponderada por confiança é ${aggregateWord}, em ${confidencePct}%.`,
+    divergeLineNoConfidence: (majoritySaid, majorityWord, majorityCount, otherWord, otherCount, aggregateWord) =>
+      `A maioria dos modelos disse ${majoritySaid} (${majorityCount} ${majorityWord} · ${otherCount} ${otherWord}). A chamada ponderada por confiança é ${aggregateWord}.`,
     allAbstain: (total) => `Todos os ${total} modelos de IA se abstiveram nesta rodada`,
     split: (responded, total) => `${responded} de ${total} modelos de IA responderam, mas estão divididos`,
     none: 'Nenhum modelo de IA respondeu nesta rodada ainda',
@@ -3408,6 +3643,12 @@ const pt: LeagueUiPack = {
     if (tally.abstain) parts.push(`${tally.abstain} sem resposta`)
     return `${label}: ${parts.length ? parts.join(' · ') : 'sem respostas ainda'}`
   },
+  predictions: {
+    heading: 'Previs\u00f5es \u2014 n\u00e3o s\u00e3o acertos',
+    axisLine: (label, n, parts) => `${label} \u00b7 ${n} modelos: ${parts}`,
+    axisPart: (n, word) => `${n} ${word}`,
+    noCalls: 'sem respostas ainda',
+  },
   disclaimer: {
     short: 'Apenas informação — não é recomendação de investimento. Você é responsável pelas próprias decisões.',
     long: 'Estas são opiniões de modelos de IA exibidas apenas para fins informativos e de entretenimento. Não são aconselhamento de investimento, financeiro, jurídico ou profissional, e nenhum modelo aqui é um consultor licenciado. Os mercados são imprevisíveis e os modelos de IA podem errar — e erram com frequência. Você é o único responsável por qualquer decisão que tomar.',
@@ -3444,10 +3685,11 @@ const pt: LeagueUiPack = {
       'EUR/USD': 'Euro / Dólar americano',
       'USD/KRW': 'Dólar americano / Won sul-coreano',
       'USD/JPY': 'Dólar americano / Iene japonês',
-      'XAU/USD': 'Ouro',
-      'XAG/USD': 'Prata',
-      GLD: 'SPDR Ouro (GLD)',
-      SLV: 'iShares Prata (SLV)',
+      'XAU/USD': 'Ouro à vista',
+      'XAG/USD': 'Prata à vista',
+      'XPT/USD': 'Platina à vista',
+      GLD: 'ETF de ouro',
+      SLV: 'ETF de prata',
       SPY: 'S&P 500 ETF (SPY)',
       QQQ: 'Nasdaq-100 ETF (QQQ)',
       'WTI/USD': 'Petróleo WTI',
@@ -3463,6 +3705,8 @@ const pt: LeagueUiPack = {
     macroEconHint: 'Visão de mercado para especialistas — juros, inflação, títulos. Profundidade, não dopamina.',
     noCardYet: 'Ainda não há cartão de previsão para este instrumento.',
     horizons: { '1d': '1 dia', '1w': '1 semana', '1m': '1 mês', '3m': '3 meses' },
+    spotVsEtfNote:
+      '\u00c0 vista e ETF t\u00eam hor\u00e1rios e rel\u00f3gios de resolu\u00e7\u00e3o diferentes \u2014 s\u00e3o proposi\u00e7\u00f5es distintas, mesmo quando nomeiam o mesmo metal ou commodity.',
   },
   hitRate: {
     pending: 'Taxa de acerto: em cálculo',
@@ -3701,6 +3945,10 @@ const pt: LeagueUiPack = {
     deepRunning: 'Executando análise profunda\u2026',
     deepUnscoredNote:
       'Comentário sem nota \u2014 não é uma previsão da liga. Não entra na classificação nem no histórico.',
+    deepOpenHint:
+      'Vários modelos escrevem cada um um briefing a partir do pacote desta rodada, depois uma síntese. Comentário sem pontuação \u2014 não é uma previsão da liga nem entra no ranking.',
+    deepDebateHint:
+      'Os modelos argumentam os dois lados, votam, e um presidente redige um veredito incluindo a minoria. Sem pontuação \u2014 não é uma previsão da liga.',
     deepOpenTitle: 'Análise aberta',
     deepDebateTitle: 'Debate prós/contras',
   },

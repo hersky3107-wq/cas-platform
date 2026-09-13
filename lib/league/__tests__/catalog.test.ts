@@ -5,6 +5,7 @@ import {
   CATALOG_INSTRUMENT_IDS,
   PUBLIC_CATALOG,
   PUBLIC_CATEGORY_IDS,
+  categoryHasMixedResolutionClocks,
   defaultCatalogCategoryId,
   buildCatalogRankedRoundInput,
   findCatalogInstrument,
@@ -59,13 +60,15 @@ describe('PUBLIC_CATALOG', () => {
     }
   })
 
-  it('gold_metals chips are XAU/USD, XAG/USD, GLD, SLV — spots and ETFs side by side; ETFs filed by underlying', () => {
+  it('gold_metals chips are XAU/USD, XAG/USD, XPT/USD, GLD, SLV — spots and ETFs side by side; ETFs filed by underlying', () => {
     const gold = PUBLIC_CATALOG.find((c) => c.id === 'gold_metals')!
-    expect(gold.instruments.map((i) => i.instrument)).toEqual(['XAU/USD', 'XAG/USD', 'GLD', 'SLV'])
+    expect(gold.instruments.map((i) => i.instrument)).toEqual(['XAU/USD', 'XAG/USD', 'XPT/USD', 'GLD', 'SLV'])
     expect(CATALOG_INSTRUMENT_IDS).toContain('XAG/USD')
+    expect(CATALOG_INSTRUMENT_IDS).toContain('XPT/USD')
     expect(findCatalogInstrument('GLD')?.category.id).toBe('gold_metals')
     expect(findCatalogInstrument('SLV')?.category.id).toBe('gold_metals')
     expect(findCatalogInstrument('XAG/USD')?.category.ledgerCategory).toBe('gold_metal')
+    expect(findCatalogInstrument('XPT/USD')?.entry.expected_name).toEqual(['Platinum', 'Spot'])
     const index = PUBLIC_CATALOG.find((c) => c.id === 'index_etf')!
     expect(index.instruments.map((i) => i.instrument)).toEqual(['SPY', 'QQQ'])
     expect(index.instruments.map((i) => i.instrument)).not.toContain('GLD')
@@ -156,7 +159,22 @@ describe('catalog i18n', () => {
         expect(label.trim().length).toBeGreaterThan(0)
       }
       expect(pack.disclaimer.realEstate.trim().length).toBeGreaterThan(0)
+      expect(pack.catalog.spotVsEtfNote.trim().length).toBeGreaterThan(0)
+      expect(pack.predictions.heading.trim().length).toBeGreaterThan(0)
     }
+    expect(getLeagueUiPack('en').catalog.instruments['XAU/USD']).toBe('Gold spot')
+    expect(getLeagueUiPack('en').catalog.instruments.GLD).toBe('Gold ETF')
+    expect(getLeagueUiPack('ko').catalog.instruments['XAU/USD']).toBe('금 현물')
+    expect(getLeagueUiPack('ko').catalog.instruments.GLD).toBe('금 ETF')
+    expect(getLeagueUiPack('ko').catalog.instruments['XPT/USD']).toBe('백금 현물')
+  })
+
+  it('spot vs ETF note is shown for mixed-clock categories, not for session-only or calendar-only', () => {
+    expect(categoryHasMixedResolutionClocks(PUBLIC_CATALOG.find((c) => c.id === 'gold_metals')!)).toBe(true)
+    expect(categoryHasMixedResolutionClocks(PUBLIC_CATALOG.find((c) => c.id === 'commodities_energy')!)).toBe(true)
+    expect(categoryHasMixedResolutionClocks(PUBLIC_CATALOG.find((c) => c.id === 'stocks')!)).toBe(false)
+    expect(categoryHasMixedResolutionClocks(PUBLIC_CATALOG.find((c) => c.id === 'crypto')!)).toBe(false)
+    expect(categoryHasMixedResolutionClocks(PUBLIC_CATALOG.find((c) => c.id === 'fx')!)).toBe(false)
   })
 
   it('selectable locales do not show raw ledger keys as category labels', () => {
@@ -229,6 +247,8 @@ describe('catalog i18n', () => {
     expect(xau!.proposition_text).not.toMatch(/weekday/)
     const xag = buildCatalogRankedRoundInput('XAG/USD', '1m', now)
     expect(xag!.proposition_text).not.toMatch(/weekday/)
+    const xpt = buildCatalogRankedRoundInput('XPT/USD', '1m', now)
+    expect(xpt!.proposition_text).not.toMatch(/weekday/)
     const ung = buildCatalogRankedRoundInput('UNG', '1m', now)
     expect(ung!.proposition_text).toMatch(/weekday/)
     const wti = buildCatalogRankedRoundInput('WTI/USD', '1m', now)

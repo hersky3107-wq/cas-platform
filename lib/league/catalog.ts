@@ -1,6 +1,12 @@
 import type { ColorBucket } from './card-types'
 import type { PredictionCategory } from '@/lib/prediction/categories'
-import { cacheBucketFor, computeResolvesAt, tradingApproximationNote, type UiHorizon } from './horizon'
+import {
+  cacheBucketFor,
+  computeResolvesAt,
+  tradingApproximationNote,
+  usesTradingSessions,
+  type UiHorizon,
+} from './horizon'
 import { identityMismatchMessage, isPoisonTicker, quoteMatchesIdentity } from './instrument-identity'
 
 /**
@@ -122,6 +128,7 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     instruments: [
       { instrument: 'XAU/USD', resolution_rule: 'XAU/USD spot close vs prior close', chip_visible: true, expected_name: ['Gold', 'Spot'] },
       { instrument: 'XAG/USD', resolution_rule: 'XAG/USD spot close vs prior close', chip_visible: true, expected_name: ['Silver', 'Spot'] },
+      { instrument: 'XPT/USD', resolution_rule: 'XPT/USD spot close vs prior close', chip_visible: true, expected_name: ['Platinum', 'Spot'] },
       { instrument: 'GLD', resolution_rule: 'GLD regular-session close vs prior close', chip_visible: true, expected_name: ['SPDR', 'Gold'] },
       { instrument: 'SLV', resolution_rule: 'SLV regular-session close vs prior close', chip_visible: true, expected_name: ['iShares', 'Silver'] },
     ],
@@ -202,6 +209,25 @@ export function isChipVisible(entry: CatalogInstrument): boolean {
 /** Currently-open chips for a category. Hidden members stay in the catalog. */
 export function visibleChipEntries(category: PublicCategoryDef): CatalogInstrument[] {
   return category.instruments.filter(isChipVisible)
+}
+
+/**
+ * True when visible chips in this category mix a calendar-day clock (spot)
+ * with an exchange-session clock (ETF). Used to show the reusable
+ * spot-vs-ETF note once on the chip row — gold (XAU vs GLD) and energy
+ * (WTI vs UNG) both qualify. Stocks never do: every chip is session-clock.
+ */
+export function categoryHasMixedResolutionClocks(category: PublicCategoryDef): boolean {
+  const chips = visibleChipEntries(category)
+  if (chips.length < 2) return false
+  let session = false
+  let calendar = false
+  for (const chip of chips) {
+    if (usesTradingSessions(category.ledgerCategory, chip.instrument)) session = true
+    else calendar = true
+    if (session && calendar) return true
+  }
+  return false
 }
 
 export function visibleChipInstrumentIds(categoryId: string): string[] {

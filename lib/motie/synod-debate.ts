@@ -1,7 +1,8 @@
 import 'server-only'
 
 import type { AiProviderName } from '@/lib/ai/router'
-import { KOREAN_ONLY_DIRECTIVE, TRUTH_SEEKING_DIRECTIVE } from '@/lib/motie/deep'
+import { TRUTH_SEEKING_DIRECTIVE } from '@/lib/motie/deep'
+import { activeLanguageDirective, getOutputLanguage } from '@/lib/motie/output-language'
 import type { MotieLocalProvider } from '@/lib/motie/local-providers'
 
 /**
@@ -301,7 +302,8 @@ const META_KOREAN_LOCK = `[추가 언어 잠금 — meta(Llama) 전용, 절대 �
  * directive; for meta (Llama) the stronger META_KOREAN_LOCK is appended.
  */
 function languageLock(provider: SynodDebaterProvider): string {
-  return provider === 'meta' ? `${KOREAN_ONLY_DIRECTIVE}\n\n${META_KOREAN_LOCK}` : KOREAN_ONLY_DIRECTIVE
+  const base = activeLanguageDirective()
+  return provider === 'meta' && getOutputLanguage() === 'ko' ? `${base}\n\n${META_KOREAN_LOCK}` : base
 }
 
 export const FACILITATOR_SYSTEM = `You are the neutral Facilitator of SYNOD, a multi-AI deliberation. You never argue a position yourself.
@@ -538,7 +540,7 @@ ${languageLock(provider)}`
 export function facilitatorSystemPrompt(): string {
   return `${FACILITATOR_SYSTEM}
 
-${KOREAN_ONLY_DIRECTIVE}
+${activeLanguageDirective()}
 NOTE: This language rule applies to the STRING VALUES inside the JSON (e.g. each "point", "issue", "stance", "nextDirective"). The JSON FIELD NAMES must stay in English exactly as specified above.`
 }
 

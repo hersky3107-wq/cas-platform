@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildCardData } from '../card-aggregate'
-import { combinedTrackLine, buildConsensusHero, consensusHeadline, directionBadgeLabel, groupTallyLine } from '../compliance'
+import { combinedTrackLine, buildConsensusHero, consensusHeadline, directionBadgeLabel, groupTallyLine, predictionAxisLine } from '../compliance'
 import { LEAGUE_UI } from '../i18n/dictionary'
+import { sideLabelsFor } from '../side-labels'
 import { MIN_GRADED_ROUNDS_FOR_WIN_RATE } from '../credits'
 import type { CardModelPrediction, ConsensusSummary } from '../card-types'
 
@@ -109,6 +110,36 @@ describe('buildCardData', () => {
     expect(card.tierSplit.world).toEqual({ up: 0, down: 0, flat: 1, abstain: 0 })
     expect(card.tierSplit.scout).toEqual({ up: 0, down: 1, flat: 0, abstain: 0 })
     expect(card.tierSplit.challenger).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
+  })
+
+  it('splits prediction counts per book (closed vs scout) and per weight class', () => {
+    const rows: PredictionRow[] = [
+      pred({ model_id: 'gpt-5.6-sol', league_tier: 'premier', predicted_direction: 'up' }),
+      pred({ model_id: 'qwen3.8-max', league_tier: 'premier', predicted_direction: 'down' }),
+      pred({ model_id: 'gpt-5-search-api', league_tier: 'scout', predicted_direction: 'down' }),
+    ]
+    const card = buildCardData(round(), rows)
+    expect(card.bookSplit.closed).toEqual({ up: 1, down: 1, flat: 0, abstain: 0 })
+    expect(card.bookSplit.scout).toEqual({ up: 0, down: 1, flat: 0, abstain: 0 })
+    expect(card.weightsSplit.closed).toEqual({ up: 1, down: 1, flat: 0, abstain: 0 })
+    expect(card.weightsSplit.open).toEqual({ up: 0, down: 1, flat: 0, abstain: 0 })
+  })
+
+  it('prediction axis lines are side tallies — never a slash-over-total or a hit mark', () => {
+    const rows: PredictionRow[] = [
+      pred({ model_id: 'a', camp: 'us', predicted_direction: 'up' }),
+      pred({ model_id: 'b', camp: 'us', predicted_direction: 'up' }),
+      pred({ model_id: 'c', camp: 'us', predicted_direction: 'down' }),
+    ]
+    const card = buildCardData(round(), rows)
+    const labels = sideLabelsFor(card.round, en)
+    const line = predictionAxisLine('US', card.campSplit.us, en, labels)
+    expect(line).toBe('US · 3 models: 2 up · 1 down')
+    expect(line).not.toMatch(/\//)
+    expect(line).not.toMatch(/[✓✗]/)
+    const koLine = predictionAxisLine('US', card.campSplit.us, LEAGUE_UI.ko, sideLabelsFor(card.round, LEAGUE_UI.ko))
+    expect(koLine).toBe('US · 3개: 상승 2 · 하락 1')
+    expect(koLine).not.toMatch(/\//)
   })
 
   it('hit rate stays null/unresolved until models are graded', () => {
@@ -366,14 +397,17 @@ describe('buildConsensusHero — two-line card hero', () => {
     aggregateMagnitudeN: 34,
   }
 
-  it('line 1 is verb + magnitude; line 2 uses aggregateProbability, never avgProbability', () => {
+  it('line 1 is verb + magnitude; line 2 names both sides and uses aggregateProbability', () => {
     const hero = buildConsensusHero(baseConsensus, '1d', en)!
     expect(hero.kind).toBe('answer')
     if (hero.kind !== 'answer') return
+    expect(hero.diverged).toBe(false)
     expect(hero.line1).toBe('Rises · within 1 day +2.4%')
-    expect(hero.line2).toBe('34 of 40 · 54% confidence')
+    expect(hero.line2).toBe('Most models called up (34 up · 4 down) · aggregate confidence 54%')
     expect(hero.line2).not.toContain('61')
     expect(hero.line1).not.toMatch(/lean/i)
+    expect(hero.line2).not.toMatch(/\d+\/\d+/)
+    expect(hero.line2).not.toMatch(/\d+ of \d+/)
   })
 
   it('Korean hero matches the approved copy pattern', () => {
@@ -381,15 +415,59 @@ describe('buildConsensusHero — two-line card hero', () => {
     expect(hero.kind).toBe('answer')
     if (hero.kind !== 'answer') return
     expect(hero.line1).toBe('오른다 · 1일 내 +2.4%')
-    expect(hero.line2).toBe('40개 중 34개 · 확신 54%')
+    expect(hero.line2).toBe('다수가 상승 (34 상승 · 4 하락) · 가중 확신 54%')
+  })
+
+  it('divergent EN prefixes Weighted call and states both sides', () => {
+    const hero = buildConsensusHero(
+      {
+        ...baseConsensus,
+        tally: { up: 24, down: 16, flat: 1, abstain: 0 },
+        majorityDirection: 'up',
+        totalModels: 41,
+        respondedModels: 41,
+        aggregateDirection: 'down',
+        aggregateProbability: 50,
+        aggregateMagnitudePct: -0.4,
+      },
+      '1d',
+      en,
+    )!
+    expect(hero.kind).toBe('answer')
+    if (hero.kind !== 'answer') return
+    expect(hero.diverged).toBe(true)
+    expect(hero.line1).toBe('Weighted call: falls · within 1 day -0.4%')
+    expect(hero.line2).toBe(
+      'Most models said rise (24 up · 16 down). The confidence-weighted call is down, at 50%.',
+    )
+  })
+
+  it('divergent KO prefixes 가중 결론 and states both sides', () => {
+    const hero = buildConsensusHero(
+      {
+        ...baseConsensus,
+        tally: { up: 24, down: 16, flat: 1, abstain: 0 },
+        majorityDirection: 'up',
+        totalModels: 41,
+        respondedModels: 41,
+        aggregateDirection: 'down',
+        aggregateProbability: 50,
+        aggregateMagnitudePct: -0.4,
+      },
+      '1d',
+      LEAGUE_UI.ko,
+    )!
+    expect(hero.kind).toBe('answer')
+    if (hero.kind !== 'answer') return
+    expect(hero.line1).toBe('가중 결론: 내린다 · 1일 내 -0.4%')
+    expect(hero.line2).toBe('다수는 상승 (24 상승 · 16 하락). 확신 가중 결론은 하락, 50%.')
   })
 
   it('would differ if avgProbability were mistakenly used for line 2', () => {
     const hero = buildConsensusHero(baseConsensus, '1d', en)!
     expect(hero.kind).toBe('answer')
     if (hero.kind !== 'answer') return
-    const wrongLine2 = en.hero.supportLine(baseConsensus.tally.up, baseConsensus.totalModels, Math.round(baseConsensus.avgProbability!))
-    expect(hero.line2).not.toBe(wrongLine2)
+    expect(hero.line2).not.toContain('61')
   })
 })
 

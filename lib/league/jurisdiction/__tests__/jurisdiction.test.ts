@@ -141,6 +141,12 @@ describe('promptAllowed — every cell is data', () => {
     }
   })
 
+  it('gold_metals prompt is off in every jurisdiction — finite chip set, freeform names nothing extra', () => {
+    for (const group of JURISDICTION_GROUPS) {
+      expect(isPromptAllowedForGroup(group, 'gold_metals'), group).toBe(false)
+    }
+  })
+
   it('applies stricter-of-the-two and never silently picks one country', () => {
     expect(isPromptAllowed('stocks', { declaredCountry: 'US', ipCountry: 'KR' })).toBe(false)
     expect(isPromptAllowed('stocks', { declaredCountry: 'KR', ipCountry: 'US' })).toBe(false)

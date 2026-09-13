@@ -100,7 +100,17 @@ export function CardBody({
           }
         />
       ) : (
-        <PendingVerdictPanel round={data.round} t={t} locale={locale} labels={labels} consensus={data.consensus} />
+        <PendingVerdictPanel
+          round={data.round}
+          t={t}
+          locale={locale}
+          labels={labels}
+          consensus={data.consensus}
+          campSplit={data.campSplit}
+          tierSplit={data.tierSplit}
+          bookSplit={data.bookSplit}
+          weightsSplit={data.weightsSplit}
+        />
       )}
     </>
   )

@@ -5,6 +5,7 @@ import { fetchDataPacket, formatDataPacketForPrompt } from '@/lib/league/market-
 import { getResearchPacket } from '@/lib/league/research'
 import type { JejuSnapshot } from '@/lib/motie/brief'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import { OUTPUT_LANGUAGE_NAME } from '@/lib/motie/output-language'
 
 /**
  * Server-side context for a league deep-analysis run. Built ONLY from the
@@ -23,17 +24,8 @@ export type LeagueDeepContext = {
   context: string
   availableDataSummary: string
   snapshot: JejuSnapshot
-}
-
-const LANGUAGE_NAME: Record<LeagueLocale, string> = {
-  en: 'English',
-  ko: 'Korean',
-  ja: 'Japanese',
-  'zh-TW': 'Traditional Chinese',
-  fr: 'French',
-  ar: 'Arabic',
-  es: 'Spanish',
-  pt: 'Portuguese',
+  /** Persisted onto the pipeline row so resume hops honor the session locale. */
+  outputLanguage: LeagueLocale
 }
 
 export async function loadRoundRow(roundId: string): Promise<{
@@ -96,7 +88,8 @@ export async function buildLeagueDeepContext(
     }),
   ])
 
-  const language = locale ? LANGUAGE_NAME[locale] : 'English'
+  const outputLanguage: LeagueLocale = locale ?? 'en'
+  const language = OUTPUT_LANGUAGE_NAME[outputLanguage]
   const question = [
     `Write in ${language}.`,
     'This is UNSCORED COMMENTARY on an already-opened AI Prediction League proposition — not a new prediction, not a scored league call, and not investment advice.',
@@ -144,6 +137,7 @@ export async function buildLeagueDeepContext(
       research.available ? `Research packet: ${research.queries.length} queries.` : 'No research packet.',
     ].join(' '),
     snapshot,
+    outputLanguage,
   }
 }
 

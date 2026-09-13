@@ -62,7 +62,8 @@ type PromptRow = Record<PromptCategoryId, boolean>
  * Initial cells (2026-09-09):
  *  - KR: prompt OFF for every financial category (chips only).
  *  - Non-financial: prompt ON everywhere, pending per-category review.
- *  - Other jurisdictions: financial prompt ON (category matrix may still hide the chip).
+ *  - Other jurisdictions: financial prompt ON except gold_metals (chips-only
+ *    everywhere — finite instrument set, freeform names nothing extra).
  *  - UNKNOWN: financial prompt OFF (no registered country / no IP).
  */
 export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
@@ -71,7 +72,7 @@ export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
     crypto: true,
     stocks: true,
     fx: true,
-    gold_metals: true,
+    gold_metals: false,
     index_etf: true,
     commodities_energy: true,
     politics_election: true,
@@ -87,7 +88,7 @@ export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
     crypto: true,
     stocks: true,
     fx: true,
-    gold_metals: true,
+    gold_metals: false,
     index_etf: true,
     commodities_energy: true,
     politics_election: true,
@@ -103,7 +104,7 @@ export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
     crypto: true,
     stocks: true,
     fx: true,
-    gold_metals: true,
+    gold_metals: false,
     index_etf: true,
     commodities_energy: true,
     politics_election: true,
@@ -135,7 +136,7 @@ export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
     crypto: true,
     stocks: true,
     fx: true,
-    gold_metals: true,
+    gold_metals: false,
     index_etf: true,
     commodities_energy: true,
     politics_election: true,
@@ -151,7 +152,7 @@ export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
     crypto: true,
     stocks: true,
     fx: true,
-    gold_metals: true,
+    gold_metals: false,
     index_etf: true,
     commodities_energy: true,
     politics_election: true,
@@ -183,7 +184,7 @@ export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
     crypto: true,
     stocks: true,
     fx: true,
-    gold_metals: true,
+    gold_metals: false,
     index_etf: true,
     commodities_energy: true,
     politics_election: true,

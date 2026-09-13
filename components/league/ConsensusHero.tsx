@@ -10,8 +10,10 @@ import { buildConsensusHero, magnitudeCompareLine } from '@/lib/league/complianc
  *
  * Line 1: the round's own answer phrase + optional magnitude qualifier —
  * "오른다 · 1일 내 +2.4%" on a price round, "맨유 승" / "3.4% 상회" on the
- * other contracts, all via `labels` (the round's `SideLabels`).
- * Line 2: roster tally + log-odds aggregate confidence only.
+ * other contracts. When the head count and the weighted call disagree, line 1
+ * is prefixed ("Weighted call:" / "가중 결론:") and a one-sentence help
+ * sits next to that prefix. Do not name the statistical method.
+ * Line 2: both sides + aggregate confidence (or the divergent sentence).
  * Graded only: optional predicted-vs-actual comparison sits directly under
  * line 2, visually grouped with the hero — never in a lower section.
  */
@@ -37,9 +39,33 @@ export function ConsensusHero({
     return <p className="mt-1.5 text-sm font-medium leading-snug text-league-fg-muted">{hero.message}</p>
   }
 
+  const prefix = t.hero.weightedCallPrefix
+  const remainder =
+    hero.diverged && hero.line1.startsWith(prefix) ? hero.line1.slice(prefix.length) : hero.line1
+
   return (
     <div className="mt-2">
-      <p className="text-lg font-bold leading-snug text-league-fg md:text-xl">{hero.line1}</p>
+      <p className="text-lg font-bold leading-snug text-league-fg md:text-xl">
+        {hero.diverged ? (
+          <>
+            <span>{prefix.trimEnd()}</span>
+            <details className="relative ml-1 inline-block align-middle">
+              <summary
+                className="cursor-help list-none text-[11px] font-semibold text-league-fg-muted underline decoration-dotted [&::-webkit-details-marker]:hidden"
+                title={t.hero.weightedCallHelp}
+              >
+                ?
+              </summary>
+              <p className="absolute left-0 z-10 mt-1 w-64 rounded-md border border-league-border bg-white px-2 py-1.5 text-[11px] font-medium leading-snug text-league-fg-muted shadow-sm">
+                {t.hero.weightedCallHelp}
+              </p>
+            </details>{' '}
+            {remainder}
+          </>
+        ) : (
+          hero.line1
+        )}
+      </p>
       <p className="mt-0.5 text-[11px] font-medium leading-snug text-league-fg-muted">{hero.line2}</p>
       {magnitudeCompare ? (
         <p className="mt-1 text-[11px] font-medium text-league-fg-muted" dir="ltr">

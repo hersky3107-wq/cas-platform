@@ -67,7 +67,7 @@ describe('price-series family — Korean / English synonyms', () => {
     ['index_etf', family.index_etf, '나스닥', 'QQQ'],
     ['gold_metals', family.gold_metals, '금', 'XAU/USD'],
     ['gold_metals', family.gold_metals, '은', 'XAG/USD'],
-    ['gold_metals', family.gold_metals, 'gld', 'GLD'],
+    ['gold_metals', family.gold_metals, '백금', 'XPT/USD'],
     ['commodities_energy', family.commodities_energy, '원유', 'WTI/USD'],
     ['fx', family.fx, '달러원', 'USD/KRW'],
     ['crypto', family.crypto, '비트코인', 'BTC/USD'],
@@ -169,6 +169,7 @@ describe('price-series family — clocks', () => {
     expect(usesTradingSessions('gold_metal', 'GLD')).toBe(true)
     expect(usesTradingSessions('gold_metal', 'SLV')).toBe(true)
     expect(usesTradingSessions('gold_metal', 'XAU/USD')).toBe(false)
+    expect(usesTradingSessions('gold_metal', 'XPT/USD')).toBe(false)
     expect(usesTradingSessions('gold_metal', 'XAG/USD')).toBe(false)
     expect(usesTradingSessions('commodity_energy', 'UNG')).toBe(true)
     expect(usesTradingSessions('commodity_energy', 'WTI/USD')).toBe(false)

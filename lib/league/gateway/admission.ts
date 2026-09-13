@@ -13,7 +13,9 @@ import type { GatewayViewer, RefusalCode } from './types'
  *   2. registered country missing — do not silently fall back to IP
  *   3. promptAllowed(jurisdiction × category) — stricter-of-the-two
  *
- * Admin bypasses, matching `viewerCanSeeCategory`.
+ * Admin still bypasses category visibility and the registered-country check
+ * (matching `viewerCanSeeCategory`). The prompt matrix is the single source
+ * of truth for the freeform box — admin does not get a hidden prompt.
  */
 export function leagueGatewayAdmission(
   viewer: GatewayViewer,
@@ -21,14 +23,14 @@ export function leagueGatewayAdmission(
   ledgerCategory: string,
   atMs: number = Date.now(),
 ): RefusalCode | null {
-  if (viewer.isAdmin) return null
+  if (!viewer.isAdmin) {
+    if (!isCategoryAllowed(ledgerCategory, viewer.jurisdiction, atMs)) {
+      return 'jurisdiction_blocked'
+    }
 
-  if (!isCategoryAllowed(ledgerCategory, viewer.jurisdiction, atMs)) {
-    return 'jurisdiction_blocked'
-  }
-
-  if (!viewer.jurisdiction.declaredCountry?.trim()) {
-    return 'registered_country_missing'
+    if (!viewer.jurisdiction.declaredCountry?.trim()) {
+      return 'registered_country_missing'
+    }
   }
 
   if (!isPromptAllowed(categoryId, viewer.jurisdiction)) {

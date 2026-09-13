@@ -9,7 +9,7 @@
  * numbers (corr/beta/lead-lag — see `related-stats.ts`), never raw series.
  *
  * CONSTRAINT: every symbol here must be fetchable on the current Twelve Data
- * Grow plan — US equities/ETFs, FX, crypto, commodity spots (XAU/XAG/WTI/XBR).
+ * Grow plan — US equities/ETFs, FX, crypto, commodity spots (XAU/XAG/XPT/WTI/XBR).
  * Cash-index tickers (SPX/NDX/VIX) are poison: they HTTP-200 as unrelated
  * equities. The catalog therefore lists SPY/QQQ, never SPX/NDX.
  * A symbol the plan rejects, or whose resolved NAME fails expected_name,
@@ -202,6 +202,18 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
       { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — co-moving metal ETF' },
       DOLLAR,
       { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy)' },
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'XPT/USD',
+    related: [
+      { symbol: 'XAU/USD', role: 'peer', note: 'spot gold — co-moving precious metal' },
+      { symbol: 'XAG/USD', role: 'peer', note: 'spot silver — co-moving precious metal' },
+      { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — co-moving metal ETF' },
+      DOLLAR,
+      { symbol: 'TIP', role: 'index_proxy', note: 'TIPS ETF (real-rate proxy; real rates drive precious metals)' },
       VOL,
     ],
     asiaLinks: [],

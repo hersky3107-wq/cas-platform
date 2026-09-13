@@ -39,6 +39,7 @@ describe('usesTradingSessions', () => {
     expect(usesTradingSessions('gold_metal')).toBe(false)
     expect(usesTradingSessions('gold_metal', 'XAU/USD')).toBe(false)
     expect(usesTradingSessions('gold_metal', 'XAG/USD')).toBe(false)
+    expect(usesTradingSessions('gold_metal', 'XPT/USD')).toBe(false)
     expect(usesTradingSessions('gold_metal', 'GLD')).toBe(true)
     expect(usesTradingSessions('gold_metal', 'SLV')).toBe(true)
     expect(usesTradingSessions('commodity_energy', 'UNG')).toBe(true)
@@ -136,6 +137,9 @@ describe('computeResolvesAt', () => {
       expect(computeResolvesAt('gold_metal', h, weekendMorning, 'XAG/USD')).toBe(
         computeResolvesAt('crypto_spot', h, weekendMorning),
       )
+      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'XPT/USD')).toBe(
+        computeResolvesAt('crypto_spot', h, weekendMorning),
+      )
     }
   })
 })
@@ -198,6 +202,7 @@ describe('tradingApproximationNote', () => {
       expect(tradingApproximationNote('gold_metal', h, 'SLV')).toMatch(/weekday/)
       expect(tradingApproximationNote('commodity_energy', h, 'UNG')).toMatch(/weekday/)
       expect(tradingApproximationNote('gold_metal', h, 'XAG/USD')).toBeNull()
+      expect(tradingApproximationNote('gold_metal', h, 'XPT/USD')).toBeNull()
     }
   })
 })

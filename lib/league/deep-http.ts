@@ -31,6 +31,7 @@ import { decideDeepRunAction, runIsBusy } from './deep-run-policy'
 import { advanceDebateState, providersFromDebateState, seedDebateState, type DebatePipelineState } from './deep-debate-run'
 import { advanceOpenState, providersFromOpenState, seedOpenState, type OpenPipelineState } from './deep-open-run'
 import type { LeagueLocale } from './i18n/locales'
+import { localeFromPersistedState, runWithOutputLanguage } from '@/lib/motie/output-language'
 import type { LeagueViewer } from './public-access'
 import { enforceRateLimit } from './public-access'
 
@@ -283,10 +284,15 @@ async function advancePersisted(row: DeepRunRow, userId: string): Promise<NextRe
   await markDeepRunBusy(row.id)
 
   try {
+    const language = localeFromPersistedState(row.state)
     const span =
       row.product === 'open'
-        ? await withCostSpan(() => advanceOpenState(row.state as unknown as OpenPipelineState))
-        : await withCostSpan(() => advanceDebateState(row.state as unknown as DebatePipelineState))
+        ? await withCostSpan(() =>
+            runWithOutputLanguage(language, () => advanceOpenState(row.state as unknown as OpenPipelineState)),
+          )
+        : await withCostSpan(() =>
+            runWithOutputLanguage(language, () => advanceDebateState(row.state as unknown as DebatePipelineState)),
+          )
 
     const totals = addSpanTotals(row, span)
     const nextState = span.result.state as unknown as Record<string, unknown>

@@ -26,6 +26,7 @@ type PublicCatalogCategory = {
   tone: ColorBucket
   kind: CatalogKind
   promptAllowed: boolean
+  mixedResolutionClocks: boolean
   instruments: { instrument: string }[]
 }
 
@@ -319,6 +320,9 @@ function CardsPanel() {
             )
           })}
         </div>
+      ) : null}
+      {active?.kind === 'instruments' && active.mixedResolutionClocks ? (
+        <p className="text-[11px] leading-relaxed text-slate-500">{t.catalog.spotVsEtfNote}</p>
       ) : null}
 
       {active?.kind === 'instruments' ? (

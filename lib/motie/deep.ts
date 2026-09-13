@@ -31,6 +31,11 @@ import {
 import { callMotieDeepseekChat } from '@/lib/motie/deepseek-chat'
 import { MOTIE_FLAGSHIP_BY_PROVIDER } from '@/lib/motie/models'
 import { buildMotieSupplementBlock, type MotieSupplement } from '@/lib/motie/supplements'
+import {
+  activeLanguageDirective,
+  activeSearchPureLanguageRule,
+  activeSearchSummarizeLine,
+} from '@/lib/motie/output-language'
 
 /**
  * Jeju governance DEEP engine — piece 1: the dynamic meeting orchestrator.
@@ -121,13 +126,11 @@ const DEFAULT_ORCHESTRATOR: ExtendedAiProviderName = 'anthropic'
 const VALID_PROVIDERS = new Set(Object.keys(MODEL_BY_PROVIDER))
 
 /**
- * Hard Korean-only output lock, injected into every governance expert/debate/
- * deliberation/revision system prompt. Governance questions are always Korean,
- * so we hardcode a strong directive (no language detection needed) to stop the
- * observed contamination ("電気료", "商业용", "šte한", "스티엄", "경관계통" etc.).
+ * Hard output-language lock. Historic name kept: Jeju/MOTIE default is still
+ * Korean when no league ALS locale is set. League deep-analysis wraps each
+ * hop in `runWithOutputLanguage` so interpolations below honor the session.
  */
-export const KOREAN_ONLY_DIRECTIVE =
-  '언어 규칙(매우 중요, 반드시 준수): 출력은 100% 깨끗한 표준 한국어여야 합니다. 중국어·일본어 한자나 다른 언어 글자, 혼종·오염 표기를 절대 섞지 마십시오(금지 예: "電気료", "商业용", "šte한", "스티엄", "경관계통"). 브랜드명 등 불가피한 고유명사를 제외하고는 한자·외국어 글자를 쓰지 말고, 모든 문장을 자연스러운 한국어로만 작성하십시오.'
+export { KOREAN_ONLY_DIRECTIVE } from '@/lib/motie/output-language'
 
 /**
  * Shared truth-seeking directive injected near the TOP of every debater AND
@@ -720,7 +723,7 @@ function buildAnalystSystemPrompt(
     `핵심 규칙: 오직 당신의 전문 영역(${role.roleLabel}) 관점에서만 분석하세요. 다른 전문가 영역을 침범하거나 일반적 종합 의견을 내지 마세요. 당신만의 고유한 시각·우려·발견을 제시하는 것이 임무입니다.`,
     '반드시 제공된 [수집 데이터]에 근거하세요. 데이터에 없는 수치는 지어내지 마세요.',
     '진짜 전문가처럼 일하세요. 주어진 데이터만으로 판단이 부족하거나, 더 확인해야 할 외부 정보(최신 통계, 타지역 사례, 정부 정책, 법령, 시장 동향 등)가 있으면, 추측으로 메우지 말고 "검색 요청"으로 명시하세요. 무엇을, 왜 찾아야 하는지 구체적으로.',
-    KOREAN_ONLY_DIRECTIVE,
+    activeLanguageDirective(),
   ]
 
   if (isTrade) {
@@ -1158,12 +1161,10 @@ function buildSearchSystemPrompt(councilMode: JejuCouncilMode = 'warroom'): stri
         '현지 언론·여론 검색 시, 한국에서 작성된 자료(한국 블로그·한국 언론)가 아니라 대상국 현지(자국) 매체와 현지 소비자의 실제 반응을 우선 확인하고, 가능하면 현지어 소스를 인용하세요.',
       ].join('\n')
     : '당신은 자원·에너지 안보 정책 심의를 지원하는 검색 전문가입니다. 특히 국제 유가·가스 가격, 지정학·수급 정세 등 최신 동향을 우선 확인하세요.'
-  const langRule = isTrade
-    ? '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 정리하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(HS코드, FTA, USD, VAT 등), 숫자, 단위는 허용.'
-    : '언어 규칙(절대 준수): 결과를 반드시 순수 한국어로 정리하라. 한자(漢字)·중국어·일본어 문자를 절대 사용하지 말 것. 단 영어 약어(WTI, Brent, LNG, OPEC, USD, bbl 등), 숫자, 단위는 허용.'
+  const langRule = activeSearchPureLanguageRule(isTrade ? 'trade' : 'energy')
   return [
     persona,
-    '주어진 질의에 대해 최신·신뢰할 수 있는 외부 정보를 찾아 핵심만 간결하게(200~350자) 한국어로 요약하세요.',
+    activeSearchSummarizeLine(),
     '출처가 있으면 함께 제시하세요. 추측하지 말고, 찾은 정보가 없으면 없다고 하세요.',
     '',
     langRule,
@@ -1349,7 +1350,7 @@ function buildRevisionSystemPrompt(
     '당신은 1차 분석을 이미 제출했습니다. 이제 회의 공용 조사 자료(검색 결과)가 추가되었습니다.',
     `이 새 정보를 검토하여, 당신의 전문 영역(${role.roleLabel}) 관점에서 분석을 갱신하세요. 새 정보가 당신의 판단을 바꾸면 솔직히 반영하고(수치·근거 인용), 바꾸지 않으면 기존 입장을 유지하되 그 이유를 밝히세요.`,
     `여전히 당신의 영역(${role.roleLabel})에만 집중하고, 데이터·조사자료에 근거하세요. 추측 금지.`,
-    KOREAN_ONLY_DIRECTIVE,
+    activeLanguageDirective(),
   ]
 
   if (isTrade) {
@@ -1668,7 +1669,7 @@ function buildDebateSystemPrompt(
     `회의의 다른 전문가들이 각자 분석을 내놨습니다. 당신의 임무는 그들의 분석에서 당신의 전문 영역(${role.roleLabel}) 관점에서 동의할 수 없거나, 빠졌거나, 위험한 지점을 찾아 반박하는 것입니다.`,
     '핵심 규칙: 단순히 동의하지 마세요. "좋은 지적이다"로 끝나는 것은 당신의 임무 실패입니다. 진짜 회의처럼, 당신의 전문성으로 볼 때 다른 전문가가 놓쳤거나 틀렸거나 과소평가한 지점을 반드시 하나 이상 짚어 반박하세요. 부분적 이견이라도 명확히 논쟁하세요.',
     '당신의 영역에 근거해 반박하세요. 인신공격이 아니라 논리·데이터·전문성으로. 누구의 어떤 주장에 반박하는지 명시하세요.',
-    KOREAN_ONLY_DIRECTIVE,
+    activeLanguageDirective(),
   ]
 
   if (councilMode === 'trade') {
@@ -2019,7 +2020,7 @@ function buildDeliberationSystemPrompt(
     '핵심 — 지목 반박(매우 중요): 이번 라운드에서 가장 중요하다고 보는 "단 한 명"의 다른 전문가를 고르세요. 그 사람의 이름(역할 라벨)을 명시하고, 그가 견지(hold)한 "구체적 문장 한 대목을 직접 인용"한 뒤, 바로 그 지점을 정면으로 반박하세요. 여러 명을 한꺼번에 상대하지 마십시오 — 한 라운드에 한 명만 정조준합니다. (예: "[유가·가격 분석가]의 \'유가 하락이 곧 산업 비용 완화로 직결된다\'는 견지에 반대합니다 …")',
     '진전 의무(반복 금지): 직전 라운드에서 쓴 견지(hold) 문단을 그대로 되풀이하지 마십시오. 매 라운드는 반드시 움직여야 합니다 — 무언가를 양보하거나, 논거를 더 날카롭게 다듬거나, 새로운 구체적 반론을 제시하세요. 입장이 변하지 않았다면, 최소한 논증을 한 단계 더 진전시키거나 "어떤 새로운 근거가 제시되면 내 입장이 바뀌는지"를 분명히 밝히세요.',
     '논쟁은 구체적이고 직접적이어야 합니다(상대 전문가의 실제 주장에 밀착). 다만 인신공격은 금지하고, 행정 심의에 어울리는 정중하고 전문적인 어조를 유지하세요. 일반론적 재진술이 아니라, 근거로 획득한 구체적 이견이어야 합니다.',
-    KOREAN_ONLY_DIRECTIVE,
+    activeLanguageDirective(),
   ]
 
   if (councilMode === 'trade') {

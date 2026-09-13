@@ -1,10 +1,11 @@
-import type { CardRoundMeta, ConsensusSummary } from '@/lib/league/card-types'
+import type { BookSplit, CampSplit, CardRoundMeta, ConsensusSummary, TierSplit, WeightsSplit } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import type { SideLabels } from '@/lib/league/side-labels'
 import { unresolvableReasonCopy } from '@/lib/league/card-status'
 import { formatInstrumentPrice, formatRoundOpenedDate, formatSessionDate } from '@/lib/league/card-header-copy'
 import { ConsensusHero } from '@/components/league/ConsensusHero'
+import { PredictionAxes } from '@/components/league/PredictionAxes'
 
 /**
  * Shown INSTEAD OF `VerdictPanel` while a round has zero graded predictions
@@ -31,6 +32,10 @@ export function PendingVerdictPanel({
   locale,
   labels,
   consensus = null,
+  campSplit = null,
+  tierSplit = null,
+  bookSplit = null,
+  weightsSplit = null,
   now = new Date(),
 }: {
   round: CardRoundMeta
@@ -39,6 +44,10 @@ export function PendingVerdictPanel({
   /** The round's side-label resolver. Omitted only by legacy price-round callers. */
   labels?: SideLabels
   consensus?: ConsensusSummary | null
+  campSplit?: CampSplit | null
+  tierSplit?: TierSplit | null
+  bookSplit?: BookSplit | null
+  weightsSplit?: WeightsSplit | null
   now?: Date
 }) {
   const anchorDate = round.anchorSessionDate
@@ -60,6 +69,16 @@ export function PendingVerdictPanel({
       </p>
       {consensus && consensus.totalModels > 0 ? (
         <ConsensusHero consensus={consensus} horizon={round.horizon} t={t} labels={labels} />
+      ) : null}
+      {labels && campSplit && tierSplit && bookSplit && weightsSplit ? (
+        <PredictionAxes
+          campSplit={campSplit}
+          tierSplit={tierSplit}
+          bookSplit={bookSplit}
+          weightsSplit={weightsSplit}
+          t={t}
+          labels={labels}
+        />
       ) : null}
       {round.anchorPrice !== null && anchorDate ? (
         <p className="mt-2 text-[12px] text-league-fg-muted" dir="ltr">

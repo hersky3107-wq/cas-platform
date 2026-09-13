@@ -143,6 +143,8 @@ describe('dictionary completeness', () => {
         hub.deepDebate(70),
         hub.deepRunning,
         hub.deepUnscoredNote,
+        hub.deepOpenHint,
+        hub.deepDebateHint,
         hub.deepOpenTitle,
         hub.deepDebateTitle,
         getLeagueUiPack(locale).gateway.submit,
@@ -226,6 +228,17 @@ describe('dictionary completeness', () => {
       expect(pack.verdict.distributionHeading.trim().length).toBeGreaterThan(0)
       expect(pack.verdict.overconfidentLine(65)).toMatch(/65/)
       expect(pack.verdict.overconfidentLine(65)).toMatch(/%/)
+      const predLine = pack.predictions.axisLine(
+        'US',
+        14,
+        `${pack.predictions.axisPart(9, pack.direction.tally.up)} · ${pack.predictions.axisPart(5, pack.direction.tally.down)}`,
+      )
+      expect(predLine).toContain('14')
+      expect(predLine).toContain('9')
+      expect(predLine).toContain('5')
+      expect(predLine).not.toMatch(/\//)
+      expect(predLine).not.toMatch(/[✓✗]/)
+      expect(pack.predictions.heading.trim().length).toBeGreaterThan(0)
     }
     const ko = getLeagueUiPack('ko')
     expect(ko.gateway.refusal.prompt_not_available).toBe(
@@ -309,5 +322,52 @@ describe('dictionary completeness', () => {
     }
     // en/ko/ja/zh-TW/fr/ar/es should all read differently
     expect(seen.size).toBe(LEAGUE_SELECTABLE_LOCALES.length)
+  })
+
+  it('pins the approved hero and deep-button copy in EN and KO', () => {
+    const en = getLeagueUiPack('en')
+    const ko = getLeagueUiPack('ko')
+    expect(en.hero.supportLine('up', 34, 'down', 4, 54)).toBe(
+      'Most models called up (34 up · 4 down) · aggregate confidence 54%',
+    )
+    expect(ko.hero.supportLine('상승', 34, '하락', 4, 54)).toBe(
+      '다수가 상승 (34 상승 · 4 하락) · 가중 확신 54%',
+    )
+    expect(en.hero.divergeLine('rise', 'up', 24, 'down', 16, 'down', 50)).toBe(
+      'Most models said rise (24 up · 16 down). The confidence-weighted call is down, at 50%.',
+    )
+    expect(ko.hero.divergeLine('상승', '상승', 24, '하락', 16, '하락', 50)).toBe(
+      '다수는 상승 (24 상승 · 16 하락). 확신 가중 결론은 하락, 50%.',
+    )
+    expect(en.hero.weightedCallHelp).toBe(
+      'The weighted call gives more weight to models that were more confident, so it can differ from a simple head count.',
+    )
+    expect(ko.hero.weightedCallHelp).toBe(
+      '가중 결론은 확신이 높은 모델에 더 큰 비중을 둡니다. 그래서 단순 다수와 달라질 수 있습니다.',
+    )
+    expect(en.hub.deepOpenHint).toBe(
+      'Several models each write a brief from this round\u2019s packet, then one synthesis. Unscored commentary \u2014 not a league prediction, not on the leaderboard.',
+    )
+    expect(ko.hub.deepOpenHint).toBe(
+      '같은 라운드 자료를 여러 모델이 각자 브리핑한 뒤 하나로 합칩니다. 비채점 논평이며 리그 예측·리더보드가 아닙니다.',
+    )
+    expect(en.hub.deepDebateHint).toBe(
+      'Models argue both sides, vote, and a chair writes a verdict including the minority view. Unscored \u2014 not a league prediction.',
+    )
+    expect(ko.hub.deepDebateHint).toBe(
+      '찬반으로 토론하고 투표한 뒤, 의장이 소수 의견까지 담아 판정합니다. 비채점이며 리그 예측이 아닙니다.',
+    )
+    for (const locale of LEAGUE_LOCALES) {
+      const pack = getLeagueUiPack(locale)
+      expect(pack.hero.weightedCallHelp.toLowerCase()).not.toMatch(/log-?odds|logit|inverse/)
+      expect(pack.hero.supportLine('a', 1, 'b', 2, 3)).not.toMatch(/\d+\/\d+/)
+      expect(pack.hub.deepOpenHint.trim().length).toBeGreaterThan(0)
+      expect(pack.hub.deepDebateHint.trim().length).toBeGreaterThan(0)
+      if (locale !== 'en') {
+        expect(pack.hero.weightedCallHelp).not.toBe(en.hero.weightedCallHelp)
+        expect(pack.hub.deepOpenHint).not.toBe(en.hub.deepOpenHint)
+        expect(pack.hub.deepDebateHint).not.toBe(en.hub.deepDebateHint)
+      }
+    }
   })
 })

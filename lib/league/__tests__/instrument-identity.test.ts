@@ -44,6 +44,7 @@ describe('instrument identity', () => {
     expect(catalogIdentityError('SPX', 'Stellar AfricaGold Inc.')).toMatch(/refusing SPX/)
     expect(catalogIdentityError('SPY', 'Stellar AfricaGold Inc.')).toMatch(/identity mismatch/)
     expect(catalogIdentityError('SPY', 'SPDR S&P 500 ETF Trust')).toBeNull()
-    expect(catalogIdentityError('XLK', 'Technology Select Sector SPDR Fund')).toBeNull()
+    expect(quoteMatchesIdentity('Platinum Spot / US Dollar', ['Platinum', 'Spot'])).toBe(true)
+    expect(catalogIdentityError('XPT/USD', 'Platinum Spot / US Dollar')).toBeNull()
   })
 })
