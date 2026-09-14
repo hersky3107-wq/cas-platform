@@ -43,10 +43,10 @@ const PREDICTION_COLUMNS = 'round_id, model_id, brand, camp, league_tier, predic
  * That is the point: this page's whole job is showing the track record, so a
  * round that is due and ungraded is a hole in it.
  *
- * The FREE vs DEEP split is enforced by the API routes (this module only
- * fetches what it is asked for). `rankedOnly` remains available for operators
- * who want a ranked-only slice, but public routes no longer set it — graded
- * on_demand rounds are part of the track record.
+ * Window clipping is enforced by the API routes (this module only fetches
+ * what it is asked for). `rankedOnly` remains available for operators who
+ * want a ranked-only slice; public paid listings pass an explicit
+ * `windowRoundIds` list so a purchase cannot walk past its 30-round freeze.
  */
 export type RecordRoomScope = {
   categories?: readonly string[]
@@ -55,6 +55,9 @@ export type RecordRoomScope = {
   from?: string
   to?: string
   deep?: boolean
+  /** When set, the listing is restricted to these ids (purchased window). */
+  windowRoundIds?: readonly string[]
+  window?: { asOf: string; roundLimit: number }
 }
 
 export async function fetchRecordRoomPage(
@@ -76,7 +79,11 @@ export async function fetchRecordRoomPage(
     : RECORD_ROOM_DEFAULT_PAGE_SIZE
 
   if (scope?.categories && scope.categories.length === 0) {
-    return buildRecordRoomPage([], [], safePage, safePageSize, 0, scope.deep === true)
+    return buildRecordRoomPage([], [], safePage, safePageSize, 0, scope.deep === true, scope.window)
+  }
+
+  if (scope?.windowRoundIds && scope.windowRoundIds.length === 0) {
+    return buildRecordRoomPage([], [], safePage, safePageSize, 0, scope.deep === true, scope.window)
   }
 
   let modelRoundIds: string[] | null = null
@@ -88,8 +95,16 @@ export async function fetchRecordRoomPage(
     if (modelErr) throw new Error(`league record room: model filter failed (${modelErr.message})`)
     modelRoundIds = Array.from(new Set((modelRows ?? []).map((r) => r.round_id as string)))
     if (modelRoundIds.length === 0) {
-      return buildRecordRoomPage([], [], safePage, safePageSize, 0, scope.deep === true)
+      return buildRecordRoomPage([], [], safePage, safePageSize, 0, scope.deep === true, scope.window)
     }
+  }
+
+  let restrictIds: string[] | null = scope?.windowRoundIds ? [...scope.windowRoundIds] : modelRoundIds
+  if (scope?.windowRoundIds && modelRoundIds) {
+    restrictIds = scope.windowRoundIds.filter((id) => modelRoundIds!.includes(id))
+  }
+  if (restrictIds && restrictIds.length === 0) {
+    return buildRecordRoomPage([], [], safePage, safePageSize, 0, scope?.deep === true, scope?.window)
   }
 
   const from = (safePage - 1) * safePageSize
@@ -103,7 +118,7 @@ export async function fetchRecordRoomPage(
 
     if (scope?.categories) roundsQuery = roundsQuery.in('category', scope.categories as string[])
     if (scope?.rankedOnly) roundsQuery = roundsQuery.eq('item_type', 'ranked')
-    if (modelRoundIds) roundsQuery = roundsQuery.in('id', modelRoundIds)
+    if (restrictIds) roundsQuery = roundsQuery.in('id', restrictIds)
     if (scope?.from?.trim()) roundsQuery = roundsQuery.gte('resolved_at', scope.from.trim())
     if (scope?.to?.trim()) roundsQuery = roundsQuery.lte('resolved_at', scope.to.trim())
 
@@ -129,5 +144,36 @@ export async function fetchRecordRoomPage(
     predictions = (predictionRows ?? []) as RecordRoomPredictionRow[]
   }
 
-  return buildRecordRoomPage(rounds, predictions, safePage, safePageSize, count ?? 0, scope?.deep === true)
+  return buildRecordRoomPage(
+    rounds,
+    predictions,
+    safePage,
+    safePageSize,
+    count ?? 0,
+    scope?.deep === true,
+    scope?.window
+  )
+}
+
+/**
+ * The 30 (or `limit`) most recently resolved rounds at or before `asOf`.
+ * This is the frozen record-room window one purchase buys.
+ */
+export async function listRecentResolvedRoundIds(params: {
+  asOf: string
+  limit: number
+  categories?: readonly string[]
+}): Promise<string[]> {
+  if (params.categories && params.categories.length === 0) return []
+  let query = supabaseAdmin
+    .from('prediction_rounds')
+    .select('id')
+    .not('resolved_at', 'is', null)
+    .lte('resolved_at', params.asOf)
+    .order('resolved_at', { ascending: false })
+    .limit(params.limit)
+  if (params.categories) query = query.in('category', params.categories as string[])
+  const { data, error } = await query
+  if (error) throw new Error(`league record room: window ids failed (${error.message})`)
+  return (data ?? []).map((row) => row.id as string)
 }

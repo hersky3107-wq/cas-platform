@@ -507,6 +507,12 @@ export type LeagueUiPack = {
     /** The honest headline: how many models beat Always up. */
     beatingAlwaysUp: (beating: number, compared: number) => string
     beatingAlwaysUpEmpty: string
+    /** Paid CTA — MUST carry its price. */
+    unlock: (credits: number) => string
+    unlocking: string
+    /** Permanent live access after one purchase. */
+    unlockNote: string
+    insufficientCredits: (required: number, balance: number) => string
   }
   /** Record room chrome (immutable, timestamped log of resolved rounds — see `lib/league/record-room-aggregate.ts`). */
   recordRoom: {
@@ -522,12 +528,18 @@ export type LeagueUiPack = {
     ungraded: string
     emptyState: string
     pagination: { prev: string; next: string; pageOf: (page: number, totalPages: number) => string }
-    /** States that the recent view is free. */
-    freeNote: string
+    /** States the paid 30-round frozen window. Never says viewing is free. */
+    paidNote: string
     /** Paid CTA — MUST carry its price. */
+    unlock: (credits: number) => string
+    unlocking: string
+    unlockNote: (rounds: number) => string
+    refreshCta: (credits: number) => string
+    windowAsOf: (date: string, rounds: number) => string
+    /** CSV of the purchased window — MUST carry its (higher) price. */
     deepCta: (credits: number) => string
     deepUnlocking: string
-    exportCsv: string
+    exportCsv: (credits: number) => string
     filterModel: string
     filterFrom: string
     filterTo: string
@@ -982,6 +994,10 @@ const en: LeagueUiPack = {
     beatingAlwaysUp: (beating, compared) =>
       `${beating} of ${compared} models are beating Always up`,
     beatingAlwaysUpEmpty: 'No graded price rounds yet — Always up has nothing to compare against.',
+    unlock: (credits) => `Open the leaderboard \u00b7 ${credits} credits`,
+    unlocking: 'Opening\u2026',
+    unlockNote: 'One payment. Rankings stay current as later rounds grade \u2014 you do not pay again.',
+    insufficientCredits: (required, balance) => `The leaderboard needs ${required} credits \u2014 you have ${balance}.`,
   },
   recordRoom: {
     title: 'Record room',
@@ -994,10 +1010,15 @@ const en: LeagueUiPack = {
     ungraded: 'Ungraded',
     emptyState: 'No rounds have resolved yet.',
     pagination: { prev: 'Previous', next: 'Next', pageOf: (page, totalPages) => `Page ${page} of ${totalPages}` },
-    freeNote: 'Recent results are free. Full history, model filters, date range and CSV export use credits.',
-    deepCta: (credits) => `Open deep archive \u00b7 ${credits} credits`,
-    deepUnlocking: 'Opening archive\u2026',
-    exportCsv: 'Export CSV',
+    paidNote: 'One purchase opens the 30 most recently resolved rounds as of that payment. Newer grades need another purchase. CSV of that same window is a separate higher charge.',
+    unlock: (credits) => `Open the record room \u00b7 ${credits} credits`,
+    unlocking: 'Opening\u2026',
+    unlockNote: (rounds) => `This purchase covers the ${rounds} most recently resolved rounds at the time you pay. It does not unlock the full history.`,
+    refreshCta: (credits) => `Refresh this window \u00b7 ${credits} credits`,
+    windowAsOf: (date, rounds) => `${rounds} resolved rounds as of ${date}`,
+    deepCta: (credits) => `Export this window as CSV \u00b7 ${credits} credits`,
+    deepUnlocking: 'Exporting\u2026',
+    exportCsv: (credits) => `Export CSV \u00b7 ${credits} credits`,
     filterModel: 'Model id',
     filterFrom: 'From',
     filterTo: 'To',
@@ -1005,7 +1026,7 @@ const en: LeagueUiPack = {
     headlineRecent: (correct, graded) =>
       graded > 0 ? `Lately: ${correct} of ${graded} AI calls were right` : 'No graded calls in the recent window yet',
     latestRound: (instrument, outcome) => `Latest: ${instrument} resolved ${outcome}`,
-    insufficientCredits: (required, balance) => `Deep archive needs ${required} credits \u2014 you have ${balance}.`,
+    insufficientCredits: (required, balance) => `This view needs ${required} credits \u2014 you have ${balance}.`,
   },
   hub: {
     title: 'AI Prediction League',
@@ -1431,6 +1452,10 @@ const ko: LeagueUiPack = {
     beatingAlwaysUp: (beating, compared) =>
       `${compared}개 모델 중 ${beating}개가 ‘항상 상승’을 앞서고 있습니다`,
     beatingAlwaysUpEmpty: '채점된 가격 라운드가 없어 ‘항상 상승’과 비교할 수 없습니다.',
+    unlock: (credits) => `리더보드 열람 · ${credits} 크레딧`,
+    unlocking: '여는 중…',
+    unlockNote: '한 번 결제하면 이후 라운드가 채점되어도 순위가 갱신됩니다. 다시 결제하지 않습니다.',
+    insufficientCredits: (required, balance) => `리더보드는 ${required} 크레딧이 필요합니다 — 보유 ${balance}.`,
   },
   recordRoom: {
     title: '기록실',
@@ -1443,10 +1468,15 @@ const ko: LeagueUiPack = {
     ungraded: '채점 없음',
     emptyState: '아직 결과가 확정된 라운드가 없습니다.',
     pagination: { prev: '이전', next: '다음', pageOf: (page, totalPages) => `${totalPages}페이지 중 ${page}페이지` },
-    freeNote: '최근 결과는 무료입니다. 전체 기록, 모델 필터, 기간 조회, CSV 내보내기는 크레딧이 필요합니다.',
-    deepCta: (credits) => `깊은 아카이브 열기 · ${credits} 크레딧`,
-    deepUnlocking: '아카이브 여는 중…',
-    exportCsv: 'CSV 내보내기',
+    paidNote: '한 번 결제하면 결제시점 기준 최근 확정 라운드 30건을 엽니다. 더 새로운 채점은 다시 결제해야 합니다. 같은 구간의 CSV는 별도 상위 요금입니다.',
+    unlock: (credits) => `기록실 열람 · ${credits} 크레딧`,
+    unlocking: '여는 중…',
+    unlockNote: (rounds) => `이 결제는 결제 시점 기준 최근 확정 라운드 ${rounds}건입니다. 전체 이력은 열리지 않습니다.`,
+    refreshCta: (credits) => `이 구간 새로고침 · ${credits} 크레딧`,
+    windowAsOf: (date, rounds) => `${date} 기준 확정 라운드 ${rounds}건`,
+    deepCta: (credits) => `이 구간 CSV 내보내기 · ${credits} 크레딧`,
+    deepUnlocking: '내보내는 중…',
+    exportCsv: (credits) => `CSV 내보내기 · ${credits} 크레딧`,
     filterModel: '모델 ID',
     filterFrom: '시작',
     filterTo: '끝',
@@ -1454,7 +1484,7 @@ const ko: LeagueUiPack = {
     headlineRecent: (correct, graded) =>
       graded > 0 ? `최근: AI 호출 ${graded}건 중 ${correct}건 적중` : '최근 구간에 채점된 호출이 아직 없습니다',
     latestRound: (instrument, outcome) => `최근: ${instrument} → ${outcome}`,
-    insufficientCredits: (required, balance) => `깊은 아카이브는 ${required} 크레딧이 필요합니다 — 보유 ${balance}.`,
+    insufficientCredits: (required, balance) => `이 열람은 ${required} 크레딧이 필요합니다 — 보유 ${balance}.`,
   },
   hub: {
     title: 'AI 예측 리그',
@@ -1875,6 +1905,10 @@ const ja: LeagueUiPack = {
     beatingAlwaysUp: (beating, compared) =>
       `${compared}モデル中${beating}が「常に上昇」を上回っています`,
     beatingAlwaysUpEmpty: '採点済みの価格ラウンドがないため、「常に上昇」と比較できません。',
+    unlock: (credits) => `リーダーボードを開く・${credits}クレジット`,
+    unlocking: '開いています…',
+    unlockNote: '1回のお支払いで、後から採点されたラウンドも順位に反映されます。再課金はありません。',
+    insufficientCredits: (required, balance) => `リーダーボードには${required}クレジットが必要です — 残高 ${balance}。`,
   },
   recordRoom: {
     title: '記録室',
@@ -1887,10 +1921,15 @@ const ja: LeagueUiPack = {
     ungraded: '未採点',
     emptyState: 'まだ確定したラウンドがありません。',
     pagination: { prev: '前へ', next: '次へ', pageOf: (page, totalPages) => `${totalPages}ページ中${page}ページ目` },
-    freeNote: '直近の結果は無料です。全履歴・モデル絞り込み・期間指定・CSV書き出しはクレジットが必要です。',
-    deepCta: (credits) => `詳細アーカイブを開く・${credits}クレジット`,
-    deepUnlocking: 'アーカイブを開いています…',
-    exportCsv: 'CSVを書き出す',
+    paidNote: '1回の支払いで、支払時点の直近確定ラウンド30件を開きます。新しい採点を見るには再購入が必要です。同じ区間のCSVは別途、より高い料金です。',
+    unlock: (credits) => `記録室を開く・${credits}クレジット`,
+    unlocking: '開いています…',
+    unlockNote: (rounds) => `この支払いは、支払時点の直近確定ラウンド${rounds}件です。全履歴は開きません。`,
+    refreshCta: (credits) => `この区間を更新・${credits}クレジット`,
+    windowAsOf: (date, rounds) => `${date}時点の確定ラウンド${rounds}件`,
+    deepCta: (credits) => `この区間をCSVで書き出す・${credits}クレジット`,
+    deepUnlocking: '書き出しています…',
+    exportCsv: (credits) => `CSVを書き出す・${credits}クレジット`,
     filterModel: 'モデルID',
     filterFrom: '開始',
     filterTo: '終了',
@@ -1898,7 +1937,7 @@ const ja: LeagueUiPack = {
     headlineRecent: (correct, graded) =>
       graded > 0 ? `直近: AIの判断${graded}件中${correct}件が的中` : '直近の期間に採点済みの判断はまだありません',
     latestRound: (instrument, outcome) => `最新: ${instrument} → ${outcome}`,
-    insufficientCredits: (required, balance) => `詳細アーカイブには${required}クレジットが必要です — 残高 ${balance}。`,
+    insufficientCredits: (required, balance) => `この閲覧には${required}クレジットが必要です — 残高 ${balance}。`,
   },
   hub: {
     title: 'AI予測リーグ',
@@ -2316,6 +2355,10 @@ const zhTW: LeagueUiPack = {
     beatingAlwaysUp: (beating, compared) =>
       `${compared} 個模型中有 ${beating} 個勝過「一律看漲」`,
     beatingAlwaysUpEmpty: '尚無已評分的價格輪次，無法與「一律看漲」比較。',
+    unlock: (credits) => `開啟排行榜・${credits} 點數`,
+    unlocking: '開啟中…',
+    unlockNote: '一次付費。之後輪次評分時排名會更新，無須再付。',
+    insufficientCredits: (required, balance) => `排行榜需要 ${required} 點數 — 目前有 ${balance}。`,
   },
   recordRoom: {
     title: '紀錄室',
@@ -2328,10 +2371,15 @@ const zhTW: LeagueUiPack = {
     ungraded: '未評分',
     emptyState: '目前尚無已結算的輪次。',
     pagination: { prev: '上一頁', next: '下一頁', pageOf: (page, totalPages) => `第 ${page} 頁，共 ${totalPages} 頁` },
-    freeNote: '近期結果免費。完整歷史、模型篩選、日期範圍與 CSV 匯出需使用點數。',
-    deepCta: (credits) => `開啟深度封存・${credits} 點數`,
-    deepUnlocking: '正在開啟封存…',
-    exportCsv: '匯出 CSV',
+    paidNote: '一次購買可開啟付款當下最近 30 筆已結算輪次。更新的評分需再購買。同一區間的 CSV 是較高的另項收費。',
+    unlock: (credits) => `開啟紀錄室・${credits} 點數`,
+    unlocking: '開啟中…',
+    unlockNote: (rounds) => `此次購買涵蓋付款當下最近 ${rounds} 筆已結算輪次，不會開啟全部歷史。`,
+    refreshCta: (credits) => `更新此區間・${credits} 點數`,
+    windowAsOf: (date, rounds) => `${date} 當時的 ${rounds} 筆已結算輪次`,
+    deepCta: (credits) => `匯出此區間 CSV・${credits} 點數`,
+    deepUnlocking: '匯出中…',
+    exportCsv: (credits) => `匯出 CSV・${credits} 點數`,
     filterModel: '模型 ID',
     filterFrom: '起',
     filterTo: '迄',
@@ -2339,7 +2387,7 @@ const zhTW: LeagueUiPack = {
     headlineRecent: (correct, graded) =>
       graded > 0 ? `近期：${graded} 次 AI 判斷中命中 ${correct} 次` : '近期尚無已評分的判斷',
     latestRound: (instrument, outcome) => `最新：${instrument} → ${outcome}`,
-    insufficientCredits: (required, balance) => `深度封存需要 ${required} 點數 — 您目前有 ${balance} 點。`,
+    insufficientCredits: (required, balance) => `此檢視需要 ${required} 點數 — 您目前有 ${balance} 點。`,
   },
   hub: {
     title: 'AI 預測聯賽',
@@ -2766,6 +2814,10 @@ const fr: LeagueUiPack = {
     beatingAlwaysUp: (beating, compared) =>
       `${beating} modèles sur ${compared} battent « Toujours à la hausse »`,
     beatingAlwaysUpEmpty: 'Aucun tour de prix noté — rien à comparer à « Toujours à la hausse ».',
+    unlock: (credits) => `Ouvrir le classement \u00b7 ${credits} crédits`,
+    unlocking: 'Ouverture\u2026',
+    unlockNote: 'Un paiement. Le classement reste à jour quand d\u2019autres tours sont notés \u2014 sans nouveau paiement.',
+    insufficientCredits: (required, balance) => `Le classement coûte ${required} crédits \u2014 vous en avez ${balance}.`,
   },
   recordRoom: {
     title: 'Salle des archives',
@@ -2778,10 +2830,15 @@ const fr: LeagueUiPack = {
     ungraded: 'Non noté',
     emptyState: 'Aucun tour n\u2019a encore été résolu.',
     pagination: { prev: 'Précédent', next: 'Suivant', pageOf: (page, totalPages) => `Page ${page} sur ${totalPages}` },
-    freeNote: 'Les résultats récents sont gratuits. L\u2019historique complet, les filtres, les dates et l\u2019export CSV consomment des crédits.',
-    deepCta: (credits) => `Ouvrir les archives détaillées \u00b7 ${credits} crédits`,
-    deepUnlocking: 'Ouverture des archives\u2026',
-    exportCsv: 'Exporter en CSV',
+    paidNote: 'Un achat ouvre les 30 tours les plus récemment résolus au moment du paiement. Les notations plus récentes demandent un nouvel achat. Le CSV de cette même fenêtre est un tarif distinct, plus élevé.',
+    unlock: (credits) => `Ouvrir les archives \u00b7 ${credits} crédits`,
+    unlocking: 'Ouverture\u2026',
+    unlockNote: (rounds) => `Cet achat couvre les ${rounds} tours les plus récemment résolus au moment du paiement. L\u2019historique complet n\u2019est pas déverrouillé.`,
+    refreshCta: (credits) => `Actualiser cette fenêtre \u00b7 ${credits} crédits`,
+    windowAsOf: (date, rounds) => `${rounds} tours résolus au ${date}`,
+    deepCta: (credits) => `Exporter cette fenêtre en CSV \u00b7 ${credits} crédits`,
+    deepUnlocking: 'Export\u2026',
+    exportCsv: (credits) => `Exporter en CSV \u00b7 ${credits} crédits`,
     filterModel: 'Id du modèle',
     filterFrom: 'Du',
     filterTo: 'Au',
@@ -2789,7 +2846,7 @@ const fr: LeagueUiPack = {
     headlineRecent: (correct, graded) =>
       graded > 0 ? `Récemment : ${correct} des ${graded} appels IA étaient justes` : 'Aucun appel noté dans la fenêtre récente',
     latestRound: (instrument, outcome) => `Dernier : ${instrument} → ${outcome}`,
-    insufficientCredits: (required, balance) => `Les archives détaillées coûtent ${required} crédits \u2014 vous en avez ${balance}.`,
+    insufficientCredits: (required, balance) => `Cette vue coûte ${required} crédits \u2014 vous en avez ${balance}.`,
   },
   hub: {
     title: 'Ligue de prédiction IA',
@@ -3220,6 +3277,10 @@ const es: LeagueUiPack = {
     beatingAlwaysUp: (beating, compared) =>
       `${beating} de ${compared} modelos superan a «Siempre al alza»`,
     beatingAlwaysUpEmpty: 'Aún no hay rondas de precio calificadas para comparar con «Siempre al alza».',
+    unlock: (credits) => `Abrir la tabla \u00b7 ${credits} créditos`,
+    unlocking: 'Abriendo\u2026',
+    unlockNote: 'Un solo pago. La tabla se actualiza cuando se califican más rondas, sin volver a cobrar.',
+    insufficientCredits: (required, balance) => `La tabla necesita ${required} créditos \u2014 tienes ${balance}.`,
   },
   recordRoom: {
     title: 'Sala de registros',
@@ -3232,10 +3293,15 @@ const es: LeagueUiPack = {
     ungraded: 'Sin calificar',
     emptyState: 'Todavía no se ha resuelto ninguna ronda.',
     pagination: { prev: 'Anterior', next: 'Siguiente', pageOf: (page, totalPages) => `Página ${page} de ${totalPages}` },
-    freeNote: 'Los resultados recientes son gratis. El historial completo, filtros, fechas y la exportación CSV usan créditos.',
-    deepCta: (credits) => `Abrir archivo profundo \u00b7 ${credits} créditos`,
-    deepUnlocking: 'Abriendo archivo\u2026',
-    exportCsv: 'Exportar CSV',
+    paidNote: 'Una compra abre las 30 rondas resueltas más recientes en el momento del pago. Las calificaciones más nuevas requieren otra compra. El CSV de esa misma ventana es un cargo aparte y más alto.',
+    unlock: (credits) => `Abrir la sala de registros \u00b7 ${credits} créditos`,
+    unlocking: 'Abriendo\u2026',
+    unlockNote: (rounds) => `Esta compra cubre las ${rounds} rondas resueltas más recientes en el momento del pago. No desbloquea el historial completo.`,
+    refreshCta: (credits) => `Actualizar esta ventana \u00b7 ${credits} créditos`,
+    windowAsOf: (date, rounds) => `${rounds} rondas resueltas al ${date}`,
+    deepCta: (credits) => `Exportar esta ventana a CSV \u00b7 ${credits} créditos`,
+    deepUnlocking: 'Exportando\u2026',
+    exportCsv: (credits) => `Exportar CSV \u00b7 ${credits} créditos`,
     filterModel: 'Id del modelo',
     filterFrom: 'Desde',
     filterTo: 'Hasta',
@@ -3243,7 +3309,7 @@ const es: LeagueUiPack = {
     headlineRecent: (correct, graded) =>
       graded > 0 ? `Últimamente: ${correct} de ${graded} llamadas de IA acertaron` : 'Aún no hay llamadas calificadas en la ventana reciente',
     latestRound: (instrument, outcome) => `Última: ${instrument} → ${outcome}`,
-    insufficientCredits: (required, balance) => `El archivo profundo necesita ${required} créditos \u2014 tienes ${balance}.`,
+    insufficientCredits: (required, balance) => `Esta vista necesita ${required} créditos \u2014 tienes ${balance}.`,
   },
   hub: {
     title: 'Liga de predicción de IA',
@@ -3668,6 +3734,10 @@ const ar: LeagueUiPack = {
     beatingAlwaysUp: (beating, compared) =>
       `${beating} من ${compared} نماذج تتفوّق على «دائمًا صعود»`,
     beatingAlwaysUpEmpty: 'لا جولات أسعار مُقيَّمة بعد لمقارنتها بـ«دائمًا صعود».',
+    unlock: (credits) => `افتح لوحة الصدارة · ${credits} رصيد`,
+    unlocking: 'جارٍ الفتح…',
+    unlockNote: 'دفعة واحدة. تبقى الترتيب محدّثًا كلما قُيِّمت جولات لاحقة — دون دفع مرة أخرى.',
+    insufficientCredits: (required, balance) => `لوحة الصدارة تتطلب ${required} من الرصيد — لديك ${balance}.`,
   },
   recordRoom: {
     title: 'غرفة السجلات',
@@ -3680,10 +3750,15 @@ const ar: LeagueUiPack = {
     ungraded: 'غير مُقيَّم',
     emptyState: 'لم يتم حسم أي جولة بعد.',
     pagination: { prev: 'السابق', next: 'التالي', pageOf: (page, totalPages) => `صفحة ${page} من ${totalPages}` },
-    freeNote: 'النتائج الأخيرة مجانية. السجل الكامل والتصفية والتواريخ وتصدير CSV تستهلك رصيدًا.',
-    deepCta: (credits) => `فتح الأرشيف العميق · ${credits} رصيد`,
-    deepUnlocking: 'جارٍ فتح الأرشيف…',
-    exportCsv: 'تصدير CSV',
+    paidNote: 'عملية شراء واحدة تفتح أحدث 30 جولة محسومة وقت الدفع. التقييمات الأحدث تحتاج شراءً آخر. تصدير CSV لنفس النافذة رسم أعلى منفصل.',
+    unlock: (credits) => `افتح غرفة السجلات · ${credits} رصيد`,
+    unlocking: 'جارٍ الفتح…',
+    unlockNote: (rounds) => `يغطي هذا الشراء أحدث ${rounds} جولات محسومة وقت الدفع. لا يفتح السجل الكامل.`,
+    refreshCta: (credits) => `حدّث هذه النافذة · ${credits} رصيد`,
+    windowAsOf: (date, rounds) => `${rounds} جولات محسومة حتى ${date}`,
+    deepCta: (credits) => `صدّر هذه النافذة CSV · ${credits} رصيد`,
+    deepUnlocking: 'جارٍ التصدير…',
+    exportCsv: (credits) => `تصدير CSV · ${credits} رصيد`,
     filterModel: 'معرّف النموذج',
     filterFrom: 'من',
     filterTo: 'إلى',
@@ -3691,7 +3766,7 @@ const ar: LeagueUiPack = {
     headlineRecent: (correct, graded) =>
       graded > 0 ? `مؤخرًا: أصاب ${correct} من أصل ${graded} نداءات ذكاء اصطناعي` : 'لا نداءات مُقيَّمة في النافذة الأخيرة بعد',
     latestRound: (instrument, outcome) => `الأحدث: ${instrument} → ${outcome}`,
-    insufficientCredits: (required, balance) => `يتطلب الأرشيف العميق ${required} من الرصيد — لديك ${balance}.`,
+    insufficientCredits: (required, balance) => `هذا العرض يتطلب ${required} من الرصيد — لديك ${balance}.`,
   },
   hub: {
     title: 'دوري التوقعات بالذكاء الاصطناعي',
@@ -4125,6 +4200,10 @@ const pt: LeagueUiPack = {
     beatingAlwaysUp: (beating, compared) =>
       `${beating} de ${compared} modelos superam «Sempre alta»`,
     beatingAlwaysUpEmpty: 'Ainda não há rodadas de preço avaliadas para comparar com «Sempre alta».',
+    unlock: (credits) => `Abrir a classificação \u00b7 ${credits} créditos`,
+    unlocking: 'Abrindo\u2026',
+    unlockNote: 'Um pagamento. A classificação continua atual quando rodadas posteriores são avaliadas \u2014 sem nova cobrança.',
+    insufficientCredits: (required, balance) => `A classificação exige ${required} créditos \u2014 você tem ${balance}.`,
   },
   recordRoom: {
     title: 'Sala de registros',
@@ -4137,10 +4216,15 @@ const pt: LeagueUiPack = {
     ungraded: 'Sem nota',
     emptyState: 'Nenhuma rodada foi resolvida ainda.',
     pagination: { prev: 'Anterior', next: 'Próxima', pageOf: (page, totalPages) => `Página ${page} de ${totalPages}` },
-    freeNote: 'Os resultados recentes são gratuitos. Histórico completo, filtros por modelo, período e exportação CSV usam créditos.',
-    deepCta: (credits) => `Abrir arquivo completo \u00b7 ${credits} créditos`,
-    deepUnlocking: 'Abrindo o arquivo\u2026',
-    exportCsv: 'Exportar CSV',
+    paidNote: 'Uma compra abre as 30 rodadas resolvidas mais recentes no momento do pagamento. Notas mais novas exigem outra compra. O CSV dessa mesma janela é uma cobrança à parte e mais alta.',
+    unlock: (credits) => `Abrir a sala de registros \u00b7 ${credits} créditos`,
+    unlocking: 'Abrindo\u2026',
+    unlockNote: (rounds) => `Esta compra cobre as ${rounds} rodadas resolvidas mais recentes no momento do pagamento. Não destrava o histórico completo.`,
+    refreshCta: (credits) => `Atualizar esta janela \u00b7 ${credits} créditos`,
+    windowAsOf: (date, rounds) => `${rounds} rodadas resolvidas em ${date}`,
+    deepCta: (credits) => `Exportar esta janela em CSV \u00b7 ${credits} créditos`,
+    deepUnlocking: 'Exportando\u2026',
+    exportCsv: (credits) => `Exportar CSV \u00b7 ${credits} créditos`,
     filterModel: 'ID do modelo',
     filterFrom: 'De',
     filterTo: 'Até',
@@ -4148,7 +4232,7 @@ const pt: LeagueUiPack = {
     headlineRecent: (correct, graded) =>
       graded > 0 ? `Recentemente: ${correct} de ${graded} previsões de IA acertaram` : 'Nenhuma previsão avaliada na janela recente ainda',
     latestRound: (instrument, outcome) => `Mais recente: ${instrument} resolvido ${outcome}`,
-    insufficientCredits: (required, balance) => `O arquivo completo exige ${required} créditos \u2014 você tem ${balance}.`,
+    insufficientCredits: (required, balance) => `Esta visualização exige ${required} créditos \u2014 você tem ${balance}.`,
   },
   hub: {
     title: 'Liga de Previsões de IA',

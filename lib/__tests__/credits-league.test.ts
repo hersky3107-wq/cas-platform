@@ -4,10 +4,14 @@ import {
   LEAGUE_DEEP_DEBATE_CREDITS,
   LEAGUE_DEEP_OPEN_CREDITS,
   LEAGUE_GENERATE_CREDITS,
+  LEAGUE_LEADERBOARD_CREDITS,
+  LEAGUE_RECORD_ROOM_CREDITS,
   creditsForLeagueArchive,
   creditsForLeagueDeepDebate,
   creditsForLeagueDeepOpen,
   creditsForLeagueGenerate,
+  creditsForLeagueLeaderboard,
+  creditsForLeagueRecordRoom,
 } from '../credits'
 
 describe('league credit constants (single module)', () => {
@@ -23,8 +27,12 @@ describe('league credit constants (single module)', () => {
     expect(creditsForLeagueGenerate()).toBe(30)
   })
 
-  it('pins the deep-archive price', () => {
-    expect(LEAGUE_ARCHIVE_CREDITS).toBe(3)
-    expect(creditsForLeagueArchive()).toBe(3)
+  it('pins the paid-view prices for leaderboard, record room, and window CSV', () => {
+    expect(LEAGUE_LEADERBOARD_CREDITS).toBe(2)
+    expect(creditsForLeagueLeaderboard()).toBe(2)
+    expect(LEAGUE_RECORD_ROOM_CREDITS).toBe(10)
+    expect(creditsForLeagueRecordRoom()).toBe(10)
+    expect(LEAGUE_ARCHIVE_CREDITS).toBe(15)
+    expect(creditsForLeagueArchive()).toBe(15)
   })
 })

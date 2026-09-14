@@ -82,10 +82,12 @@ export type RecordRoomPage = {
   totalRounds: number
   totalPages: number
   generatedAt: string
-  /** Recent-results headline for the free summary view. */
+  /** Headline over the rounds on this page (purchased window or admin listing). */
   headline: RecordRoomHeadline
-  /** true when this payload came from the paid deep-archive path. */
+  /** true when filters / pagination / CSV are available (purchased or admin). */
   deep: boolean
+  /** Frozen record-room window this listing is clipped to. Absent for admin unbounded. */
+  window?: { asOf: string; roundLimit: number }
 }
 
 export type RecordRoomRoundRow = {
@@ -199,7 +201,8 @@ export function buildRecordRoomPage(
   page: number,
   pageSize: number,
   totalRounds: number,
-  deep = false
+  deep = false,
+  window?: { asOf: string; roundLimit: number }
 ): RecordRoomPage {
   const rounds = buildRecordRoomEntries(roundRows, predictionRows)
   return {
@@ -211,5 +214,6 @@ export function buildRecordRoomPage(
     generatedAt: new Date().toISOString(),
     headline: buildRecordRoomHeadline(rounds),
     deep,
+    ...(window ? { window } : {}),
   }
 }

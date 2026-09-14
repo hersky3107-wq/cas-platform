@@ -3,10 +3,8 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   ALL_PREDICTION_CATEGORIES,
-  RECORD_ROOM_FREE_PAGE_SIZE,
   gatePublicGenerateInstrument,
   isCuratedInstrument,
-  isFreeArchiveQuery,
   tuningForViewer,
   visibleCategoriesFor,
 } from '../access-policy'
@@ -225,17 +223,3 @@ describe('tuningForViewer', () => {
   })
 })
 
-describe('isFreeArchiveQuery', () => {
-  it('allows the recent-summary window only', () => {
-    expect(isFreeArchiveQuery({ page: 1, pageSize: RECORD_ROOM_FREE_PAGE_SIZE })).toBe(true)
-    expect(isFreeArchiveQuery({ page: 1, pageSize: 3 })).toBe(true)
-  })
-
-  it('treats pagination, filters, and CSV as deep (paid)', () => {
-    expect(isFreeArchiveQuery({ page: 2, pageSize: 5 })).toBe(false)
-    expect(isFreeArchiveQuery({ page: 1, pageSize: 20 })).toBe(false)
-    expect(isFreeArchiveQuery({ page: 1, pageSize: 5, modelId: 'gpt-4o' })).toBe(false)
-    expect(isFreeArchiveQuery({ page: 1, pageSize: 5, from: '2026-01-01' })).toBe(false)
-    expect(isFreeArchiveQuery({ page: 1, pageSize: 5, format: 'csv' })).toBe(false)
-  })
-})

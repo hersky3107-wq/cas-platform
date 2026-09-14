@@ -171,7 +171,10 @@ describe('dictionary completeness', () => {
         getLeagueUiPack(locale).gateway.refusal.country_mismatch,
         getLeagueUiPack(locale).gating.registeredCountryRequired,
         getLeagueUiPack(locale).gating.countryMismatchNotice,
-        getLeagueUiPack(locale).recordRoom.deepCta(3),
+        getLeagueUiPack(locale).recordRoom.deepCta(15),
+        getLeagueUiPack(locale).recordRoom.paidNote,
+        getLeagueUiPack(locale).leaderboard.unlockNote,
+        getLeagueUiPack(locale).recordRoom.unlockNote(30),
       ]
       for (const s of strings) expect(s.trim().length).toBeGreaterThan(0)
     }
@@ -204,7 +207,10 @@ describe('dictionary completeness', () => {
       expect(hub.generationProgress(12, 41)).toContain('41')
       expect(hub.deepOpen(50)).toContain('50')
       expect(hub.deepDebate(70)).toContain('70')
-      expect(getLeagueUiPack(locale).recordRoom.deepCta(3)).toContain('3')
+      expect(getLeagueUiPack(locale).leaderboard.unlock(2)).toContain('2')
+      expect(getLeagueUiPack(locale).recordRoom.unlock(10)).toContain('10')
+      expect(getLeagueUiPack(locale).recordRoom.deepCta(15)).toContain('15')
+      expect(getLeagueUiPack(locale).recordRoom.exportCsv(15)).toContain('15')
     }
   })
 
@@ -225,7 +231,9 @@ describe('dictionary completeness', () => {
       expect(pack.bracket.combinedTrack('54', 12)).toContain('54')
       expect(pack.bracket.combinedTrack('54', 12)).toContain('12')
       expect(pack.bracket.combinedTrackPending.trim().length).toBeGreaterThan(0)
-      expect(pack.recordRoom.freeNote.trim().length).toBeGreaterThan(0)
+      expect(pack.recordRoom.paidNote.trim().length).toBeGreaterThan(0)
+      expect(pack.leaderboard.unlockNote.trim().length).toBeGreaterThan(0)
+      expect(pack.recordRoom.unlockNote(30)).toContain('30')
       expect(pack.headline.correlatedNote.trim().length).toBeGreaterThan(0)
       expect(pack.headline.correlatedNote).toMatch(/41/)
       expect(pack.leaderboard.alwaysUp.trim().length).toBeGreaterThan(0)
@@ -280,6 +288,17 @@ describe('dictionary completeness', () => {
     expect(ko.leaderboard.methodHeadline).toBe('자체추론 vs 웹검색')
     expect(ko.leaderboard.methodLabels.pure_reasoning).toBe('자체추론')
     expect(ko.leaderboard.methodLabels.research).toBe('웹검색')
+  })
+
+  it('does not claim any league view is free', () => {
+    const viewingFree = /free|무료|無料|免費|gratuit|gratis|مجاني/
+    for (const locale of LEAGUE_LOCALES) {
+      const pack = getLeagueUiPack(locale)
+      expect(pack.recordRoom.paidNote).not.toMatch(viewingFree)
+      expect(pack.leaderboard.unlockNote).not.toMatch(viewingFree)
+      expect(pack.recordRoom.unlockNote(30)).not.toMatch(viewingFree)
+      expect(pack.hub.openRoundNote).not.toMatch(viewingFree)
+    }
   })
 
   it('fills in header honesty / grading-reason / tile-expand chrome for every locale', () => {

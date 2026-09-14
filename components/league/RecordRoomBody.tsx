@@ -5,18 +5,20 @@ import { headerWindow } from '@/lib/league/card-header-copy'
 import type { ComplianceReceipt } from './CardCompliance'
 
 /**
- * Record-room content. Free recent summary is always shown; deep filters /
- * pagination / CSV are paid affordances whose price is visible in the CTA.
+ * Record-room content. Listing is the purchased frozen window; CSV of that
+ * window is a separate higher charge. Nothing here is a free preview.
  */
 export function RecordRoomBody({
   data,
   receipt,
   t,
   locale,
-  deepCost,
+  archiveCost,
+  roomCost,
+  windowRounds,
   onPageChange,
-  onDeepOpen,
   onExportCsv,
+  onRefreshWindow,
   loading,
   modelId,
   from,
@@ -29,10 +31,12 @@ export function RecordRoomBody({
   receipt: ComplianceReceipt
   t: LeagueUiPack
   locale: LeagueLocale
-  deepCost: number
+  archiveCost: number
+  roomCost: number
+  windowRounds: number
   onPageChange: (page: number) => void
-  onDeepOpen: () => void
   onExportCsv: () => void
+  onRefreshWindow?: () => void
   loading: boolean
   modelId: string
   from: string
@@ -43,13 +47,17 @@ export function RecordRoomBody({
 }) {
   void receipt
   const headline = data.headline
+  const asOf = data.window?.asOf ? formatDate(data.window.asOf) : null
 
   return (
     <>
       <div className="px-4 pt-4 pb-1">
         <h2 className="text-sm font-semibold text-league-fg">{t.recordRoom.title}</h2>
         <p className="text-[11px] text-league-fg-muted">{t.recordRoom.subtitle}</p>
-        <p className="mt-1 text-[11px] text-league-fg-muted">{t.recordRoom.freeNote}</p>
+        {data.window ? <p className="mt-1 text-[11px] text-league-fg-muted">{t.recordRoom.paidNote}</p> : null}
+        {asOf ? (
+          <p className="mt-1 text-[11px] font-medium text-league-fg">{t.recordRoom.windowAsOf(asOf, windowRounds)}</p>
+        ) : null}
       </div>
 
       {headline.recentGraded > 0 || headline.latestInstrument ? (
@@ -67,8 +75,6 @@ export function RecordRoomBody({
                   propositionKind: headline.latestPropositionKind,
                   locale,
                   t,
-                  // Price rounds: the audit sentence. Other contracts have no
-                  // session closes — show the persisted outcome verbatim.
                 }) || headline.latestOutcome
               )}
             </p>
@@ -90,73 +96,62 @@ export function RecordRoomBody({
         </ul>
       )}
 
-      {data.deep ? (
-        <>
-          <div className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-3">
-            <input
-              value={modelId}
-              onChange={(e) => onModelIdChange(e.target.value)}
-              placeholder={t.recordRoom.filterModel}
-              className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
-            />
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => onFromChange(e.target.value)}
-              aria-label={t.recordRoom.filterFrom}
-              className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
-            />
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => onToChange(e.target.value)}
-              aria-label={t.recordRoom.filterTo}
-              className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2 px-4 pb-2">
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => onPageChange(1)}
-              className="rounded-full bg-league-bg-elevated px-3 py-1 text-[11px] font-semibold disabled:opacity-40"
-            >
-              {t.recordRoom.applyFilters}
-            </button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={onExportCsv}
-              className="rounded-full bg-league-bg-elevated px-3 py-1 text-[11px] font-semibold disabled:opacity-40"
-            >
-              {t.recordRoom.exportCsv}
-            </button>
-          </div>
-          <Pagination page={data.page} totalPages={data.totalPages} onChange={onPageChange} loading={loading} t={t} />
-        </>
-      ) : (
-        <div className="px-4 py-3">
+      <div className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-3">
+        <input
+          value={modelId}
+          onChange={(e) => onModelIdChange(e.target.value)}
+          placeholder={t.recordRoom.filterModel}
+          className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
+        />
+        <input
+          type="date"
+          value={from}
+          onChange={(e) => onFromChange(e.target.value)}
+          aria-label={t.recordRoom.filterFrom}
+          className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
+        />
+        <input
+          type="date"
+          value={to}
+          onChange={(e) => onToChange(e.target.value)}
+          aria-label={t.recordRoom.filterTo}
+          className="rounded-lg border border-league-border/40 bg-league-bg-elevated px-2 py-1.5 text-[11px]"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2 px-4 pb-2">
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => onPageChange(1)}
+          className="rounded-full bg-league-bg-elevated px-3 py-1 text-[11px] font-semibold disabled:opacity-40"
+        >
+          {t.recordRoom.applyFilters}
+        </button>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onExportCsv}
+          className="rounded-full bg-league-bg-elevated px-3 py-1 text-[11px] font-semibold disabled:opacity-40"
+        >
+          {loading ? t.recordRoom.deepUnlocking : t.recordRoom.exportCsv(archiveCost)}
+        </button>
+        {onRefreshWindow ? (
           <button
             type="button"
             disabled={loading}
-            onClick={onDeepOpen}
-            className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+            onClick={onRefreshWindow}
+            className="rounded-full bg-league-bg-elevated px-3 py-1 text-[11px] font-semibold disabled:opacity-40"
           >
-            {loading ? t.recordRoom.deepUnlocking : t.recordRoom.deepCta(deepCost)}
+            {t.recordRoom.refreshCta(roomCost)}
           </button>
-        </div>
-      )}
+        ) : null}
+      </div>
+      <Pagination page={data.page} totalPages={data.totalPages} onChange={onPageChange} loading={loading} t={t} />
     </>
   )
 }
 
 function RoundEntry({ entry, t, locale }: { entry: RecordRoomRoundEntry; t: LeagueUiPack; locale: LeagueLocale }) {
-  // Audit sentence is built from the persisted SESSION dates + prices via the
-  // SAME helper the card header uses (`headerWindow`) — never from the date
-  // embedded in `actual_outcome` (which carries `anchor_price_at`). This is why
-  // the two surfaces can never disagree. Price rounds only: for the other
-  // contracts headerWindow returns '' and the persisted outcome text (the
-  // grader's own record) is shown verbatim instead.
   const auditWindow =
     headerWindow({
       instrument: entry.instrument,

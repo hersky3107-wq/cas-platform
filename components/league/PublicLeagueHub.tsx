@@ -17,6 +17,7 @@ import { SIGNUP_COUNTRY_CODES } from '@/lib/league/jurisdiction/signup-countries
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
+import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/league/view-purchase-policy'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -644,17 +645,28 @@ function categoryChipClass(tone: ColorBucket, selected: boolean): string {
 function LeaderboardPanel() {
   const { t } = useLeagueLocale()
   const [data, setData] = useState<LeaderboardData | null>(null)
+  const [locked, setLocked] = useState<{ required: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [buying, setBuying] = useState(false)
+
+  const load = useCallback(async () => {
+    const res = await fetch('/api/league/leaderboard', { credentials: 'include' })
+    const body = (await res.json()) as LeaderboardData | { error: string }
+    if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
+    if (isLockedViewPayload(body)) {
+      setLocked({ required: body.required })
+      setData(null)
+      return
+    }
+    setLocked(null)
+    setData(body as LeaderboardData)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        const res = await fetch('/api/league/leaderboard', { credentials: 'include' })
-        const body = (await res.json()) as LeaderboardData | { error: string }
-        if (cancelled) return
-        if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
-        setData(body as LeaderboardData)
+        await load()
       } catch {
         if (!cancelled) setError('load_failed')
       }
@@ -662,9 +674,46 @@ function LeaderboardPanel() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [load])
 
-  if (error) return <PanelMessage text={t.hub.genericError} tone="error" />
+  const unlock = useCallback(async () => {
+    setBuying(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/league/leaderboard', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const body = (await res.json()) as LeaderboardData | { error: string; required?: number; balance?: number }
+      if (res.status === 402 && 'required' in body && 'balance' in body && body.required != null && body.balance != null) {
+        throw new Error(t.leaderboard.insufficientCredits(body.required, body.balance))
+      }
+      if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
+      if (isLockedViewPayload(body)) throw new Error(t.hub.genericError)
+      setLocked(null)
+      setData(body as LeaderboardData)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'load_failed')
+    } finally {
+      setBuying(false)
+    }
+  }, [t.hub.genericError, t.leaderboard])
+
+  if (error && !locked && !data) return <PanelMessage text={error === 'load_failed' ? t.hub.genericError : error} tone="error" />
+  if (locked) {
+    return (
+      <UnlockPanel
+        title={t.leaderboard.unlock(locked.required)}
+        note={t.leaderboard.unlockNote}
+        busy={buying}
+        busyLabel={t.leaderboard.unlocking}
+        error={error}
+        onUnlock={() => void unlock()}
+      />
+    )
+  }
   if (!data) return <PanelMessage text={t.hub.loading} />
   return <Leaderboard data={data} />
 }
@@ -672,17 +721,28 @@ function LeaderboardPanel() {
 function RecordRoomPanel() {
   const { t } = useLeagueLocale()
   const [data, setData] = useState<RecordRoomPage | null>(null)
+  const [locked, setLocked] = useState<{ required: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [buying, setBuying] = useState(false)
+
+  const load = useCallback(async () => {
+    const res = await fetch('/api/league/record-room?page=1&pageSize=20', { credentials: 'include' })
+    const body = (await res.json()) as RecordRoomPage | { error: string }
+    if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
+    if (isLockedViewPayload(body)) {
+      setLocked({ required: body.required })
+      setData(null)
+      return
+    }
+    setLocked(null)
+    setData(body as RecordRoomPage)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        const res = await fetch('/api/league/record-room?page=1&pageSize=5', { credentials: 'include' })
-        const body = (await res.json()) as RecordRoomPage | { error: string }
-        if (cancelled) return
-        if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
-        setData(body as RecordRoomPage)
+        await load()
       } catch {
         if (!cancelled) setError('load_failed')
       }
@@ -690,11 +750,89 @@ function RecordRoomPanel() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [load])
 
-  if (error) return <PanelMessage text={t.hub.genericError} tone="error" />
+  const purchase = useCallback(
+    async (refresh: boolean) => {
+      setBuying(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/league/record-room', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh }),
+        })
+        const body = (await res.json()) as RecordRoomPage | { error: string; required?: number; balance?: number }
+        if (res.status === 402 && 'required' in body && 'balance' in body && body.required != null && body.balance != null) {
+          throw new Error(t.recordRoom.insufficientCredits(body.required, body.balance))
+        }
+        if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
+        if (isLockedViewPayload(body)) throw new Error(t.hub.genericError)
+        setLocked(null)
+        setData(body as RecordRoomPage)
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'load_failed')
+      } finally {
+        setBuying(false)
+      }
+    },
+    [t.hub.genericError, t.recordRoom]
+  )
+
+  if (error && !locked && !data) return <PanelMessage text={error === 'load_failed' ? t.hub.genericError : error} tone="error" />
+  if (locked) {
+    return (
+      <UnlockPanel
+        title={t.recordRoom.unlock(locked.required)}
+        note={t.recordRoom.unlockNote(RECORD_ROOM_PURCHASE_ROUND_LIMIT)}
+        busy={buying}
+        busyLabel={t.recordRoom.unlocking}
+        error={error}
+        onUnlock={() => void purchase(false)}
+      />
+    )
+  }
   if (!data) return <PanelMessage text={t.hub.loading} />
-  return <RecordRoom initialData={data} />
+  return (
+    <RecordRoom
+      key={data.window?.asOf ?? data.generatedAt}
+      initialData={data}
+      refreshing={buying}
+      onRefreshWindow={() => void purchase(true)}
+    />
+  )
+}
+
+function UnlockPanel({
+  title,
+  note,
+  busy,
+  busyLabel,
+  error,
+  onUnlock,
+}: {
+  title: string
+  note: string
+  busy: boolean
+  busyLabel: string
+  error: string | null
+  onUnlock: () => void
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-center">
+      <p className="text-xs leading-relaxed text-slate-600">{note}</p>
+      {error ? <p className="mt-2 text-[11px] text-rose-600">{error}</p> : null}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onUnlock}
+        className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+      >
+        {busy ? busyLabel : title}
+      </button>
+    </div>
+  )
 }
 
 function PanelMessage({ text, tone = 'muted' }: { text: string; tone?: 'muted' | 'error' }) {
