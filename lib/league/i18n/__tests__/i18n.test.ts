@@ -140,6 +140,7 @@ describe('dictionary completeness', () => {
         hub.generationFailedRefunded,
         hub.retryGeneration,
         hub.generationBusy,
+        hub.marketDataUnavailable,
         hub.rateLimited,
         hub.genericError,
         hub.openRound(30),
@@ -274,6 +275,9 @@ describe('dictionary completeness', () => {
     )
     expect(ko.gateway.refusal.country_mismatch).toBe(
       '등록 국가와 접속 국가가 다릅니다. 두 지역 중 더 엄격한 기준을 적용하며, 리그 이용은 가능합니다.',
+    )
+    expect(ko.hub.marketDataUnavailable).toBe(
+      '시세 데이터를 잠시 가져오지 못했습니다. 결제되지 않았습니다. 잠시 후 다시 시도해 주세요.',
     )
     expect(ko.gating.registeredCountryRequired).toBe(
       '거주 국가는 필수입니다. 허위로 등록하면 이용 제한이나 계정 문제가 생길 수 있습니다.',

@@ -23,13 +23,21 @@ import {
   LEAGUE_JOB_MAX_ACTIVE,
 } from '@/lib/league/generation/policy'
 import { advanceLeagueGenerationJob } from '@/lib/league/generation/runner'
+import { getLeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { normalizeLeagueLocale } from '@/lib/league/i18n/locales'
+import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import {
   authorizeRoundForViewer,
   enforceRateLimit,
   resolveLeagueViewer,
   resolvePublicInstrumentGenerateTarget,
 } from '@/lib/league/public-access'
+import {
+  ensurePriceRoundAnchor,
+  persistAnchorPrice,
+  probeObtainablePriceAnchor,
+} from '@/lib/league/price-anchor'
+import { MARKET_DATA_UNAVAILABLE_CODE } from '@/lib/league/price-anchor-policy'
 
 /**
  * POST /api/league/generate — open (view-purchase) a league round. THE PAID
@@ -43,9 +51,10 @@ import {
  * again.
  *
  * INLINE (this request, ~1s): auth → rate limit → jurisdiction/instrument
- * gate → backpressure → charge (or receipt consume, or nothing when access
- * is already held) → round row insert if needed → job/access row insert →
- * respond with { round_id, state }.
+ * gate → backpressure → PRICE ANCHOR (close-higher only; refuse before any
+ * deduction if Twelve Data cannot supply a usable open-time close) → charge
+ * (or receipt consume, or nothing when access is already held) → job/access
+ * row insert → respond with { round_id, state }.
  *
  * QUEUED (background, oracle-runner pattern): packet assembly, the 41-model
  * fan-out (chunked by tier), consensus persistence. The first chunk is
@@ -74,9 +83,13 @@ export async function POST(req: Request) {
   const limited = enforceRateLimit(viewer, 'league_generate', LEAGUE_GENERATE_RATE_RULE)
   if (limited) return limited
 
+  const locale = normalizeLeagueLocale(typeof body.locale === 'string' ? body.locale : '') ?? 'en'
+  const cost = creditsForLeagueGenerate()
+
   // ── Target: an authorized round id, or a curated instrument+horizon that
   // resolves to the open ranked round (creating its row here when none
-  // exists — a fast insert from server-owned catalog metadata, no packet).
+  // exists). Catalog chips are close-higher: probe Twelve Data BEFORE insert
+  // so a dead feed never leaves an unanchored price row.
   const roundIdRaw = typeof body.roundId === 'string' ? body.roundId.trim() : ''
   const instrument = typeof body.instrument === 'string' ? body.instrument.trim() : ''
   const horizon = typeof body.horizon === 'string' && body.horizon.trim() ? body.horizon.trim() : '1d'
@@ -92,9 +105,17 @@ export async function POST(req: Request) {
     if ('roundId' in target.round) {
       roundId = target.round.roundId
     } else {
+      const probed = await probeObtainablePriceAnchor(target.round.instrument)
+      if (!probed.ok) {
+        return await marketDataUnavailableResponse(locale, viewer.userId, body, instrument, horizon, cost)
+      }
       try {
         const { round } = await ensureLeagueRound(target.round)
         roundId = round.id
+        const stamped = await persistAnchorPrice(roundId, probed.price, probed.sessionDate)
+        if (!stamped) {
+          return await marketDataUnavailableResponse(locale, viewer.userId, body, instrument, horizon, cost)
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : ''
         // Race: another press created this cache_key round first — reuse it.
@@ -143,11 +164,23 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── Price-anchor gate, AFTER the press decision and BEFORE any money
+  // moves (deductCreditsBalance or consumeGatewayReceipt). Close-higher
+  // only: subject-outcome / threshold skip inside ensurePriceRoundAnchor.
+  // Free re-views of a round the user already paid for do not re-fetch.
+  if (decisionCharges(decision) || decisionNeedsNewJob(decision)) {
+    const anchor = await ensurePriceRoundAnchor(roundId)
+    if (!anchor.ok) {
+      if (anchor.code === 'market_data_unavailable') {
+        return await marketDataUnavailableResponse(locale, viewer.userId, body, instrument, horizon, cost)
+      }
+      return NextResponse.json({ error: 'Round not found', code: 'no_round' }, { status: 404 })
+    }
+  }
+
   // ── Charge. Receipt first (the freeform gateway already charged and issued
   // a durable one-shot receipt); otherwise a normal deduction. Admins are
   // skipped by deductCreditsBalance itself and recorded as deduct_skipped.
-  const cost = creditsForLeagueGenerate()
-  const locale = normalizeLeagueLocale(typeof body.locale === 'string' ? body.locale : '') ?? 'en'
   let charged = false
   let chargedCost = 0
   let deductSkipped = false
@@ -269,4 +302,29 @@ export async function POST(req: Request) {
       { status: 500 }
     )
   }
+}
+
+/**
+ * Refuse a close-higher press whose open-time close is not obtainable.
+ * Nothing in THIS request is deducted. If the freeform gateway already
+ * charged and handed us a one-shot receipt, consume it and put the money
+ * back so "nothing was charged" stays true.
+ */
+async function marketDataUnavailableResponse(
+  locale: LeagueLocale,
+  userId: string,
+  body: Record<string, unknown>,
+  instrument: string,
+  horizon: string,
+  cost: number
+): Promise<NextResponse> {
+  const receiptId = typeof body.gateway_receipt === 'string' ? body.gateway_receipt.trim() : ''
+  if (receiptId) {
+    const consumed = await consumeGatewayReceipt(receiptId, userId, instrument, horizon)
+    if (consumed) await addCreditsBalance(supabaseAdmin, userId, cost)
+  }
+  return NextResponse.json(
+    { error: getLeagueUiPack(locale).hub.marketDataUnavailable, code: MARKET_DATA_UNAVAILABLE_CODE },
+    { status: 503, headers: { 'Retry-After': '60' } }
+  )
 }

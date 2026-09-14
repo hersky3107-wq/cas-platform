@@ -438,6 +438,8 @@ function LockedRoundPanel({
           setNotice(t.hub.rateLimited)
         } else if (res.status === 503 && detail?.code === 'busy') {
           setNotice(t.hub.generationBusy)
+        } else if (res.status === 503 && detail?.code === 'market_data_unavailable') {
+          setNotice(t.hub.marketDataUnavailable)
         } else if (res.status === 403) {
           setNotice(t.gating.unavailable)
         } else {
@@ -525,7 +527,13 @@ function GenerationBanner({
       })
       if (!res.ok) {
         const detail = (await res.json().catch(() => null)) as { code?: string } | null
-        setNotice(res.status === 503 && detail?.code === 'busy' ? t.hub.generationBusy : t.hub.genericError)
+        setNotice(
+          res.status === 503 && detail?.code === 'busy'
+            ? t.hub.generationBusy
+            : res.status === 503 && detail?.code === 'market_data_unavailable'
+              ? t.hub.marketDataUnavailable
+              : t.hub.genericError
+        )
         return
       }
       onRetried()

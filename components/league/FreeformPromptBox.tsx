@@ -151,7 +151,10 @@ export function FreeformPromptBox({
       return
     }
     if (res.status === 503) {
-      setRefusal(t.hub.generationBusy)
+      const detail = (await res.json().catch(() => null)) as { code?: string } | null
+      setRefusal(
+        detail?.code === 'market_data_unavailable' ? t.hub.marketDataUnavailable : t.hub.generationBusy
+      )
       return
     }
     if (!res.ok) {

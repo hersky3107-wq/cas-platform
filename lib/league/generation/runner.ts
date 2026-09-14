@@ -79,6 +79,12 @@ export type LeagueRunnerDeps = {
   refundCredits: (userId: string, amount: number) => Promise<void>
   /** Full model_id list per tier (roster order). */
   tierModelIds: (tier: 'premier' | 'challenger' | 'world' | 'scout') => string[]
+  /**
+   * Close-higher jobs must already have a persisted anchor. 'fail' trips
+   * the same terminal-refund path as the attempt cap — never fan out 41
+   * models on an empty packet. Tests default this to 'proceed'.
+   */
+  priceAnchorGate: (roundId: string) => Promise<'proceed' | 'fail'>
   /** Routes pass `after()`; tests pass a collector so the chunk can be awaited. */
   schedule: (task: () => Promise<void>) => void
   now?: () => Date
@@ -156,6 +162,12 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
 
   if (job.attempt_count > LEAGUE_JOB_MAX_ATTEMPTS) {
     await closeOutExhaustedJob(job, deps, now)
+    return
+  }
+
+  const anchorGate = await deps.priceAnchorGate(job.round_id)
+  if (anchorGate === 'fail') {
+    await failLeagueGenerationJob(job, deps, now, 'missing_anchor: price packet never persisted')
     return
   }
 
@@ -270,10 +282,11 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
  * deep-run `refundDeep` path calls), with the same skip rules: nothing moves
  * for `deduct_skipped` (admin) or zero-cost rows.
  */
-export async function closeOutExhaustedJob(
+export async function failLeagueGenerationJob(
   job: LeagueGenerationJob,
   deps: LeagueRunnerDeps,
-  now: () => Date
+  now: () => Date,
+  lastError: string
 ): Promise<void> {
   await refundLeagueRoundPurchases(job.round_id, deps)
   await deps.store.updateJob(job.id, {
@@ -281,8 +294,21 @@ export async function closeOutExhaustedJob(
     lease_until: null,
     last_heartbeat_at: now().toISOString(),
     completed_at: now().toISOString(),
-    last_error: job.last_error ?? `attempt cap reached (${LEAGUE_JOB_MAX_ATTEMPTS})`,
+    last_error: lastError.slice(0, 500),
   })
+}
+
+export async function closeOutExhaustedJob(
+  job: LeagueGenerationJob,
+  deps: LeagueRunnerDeps,
+  now: () => Date
+): Promise<void> {
+  await failLeagueGenerationJob(
+    job,
+    deps,
+    now,
+    job.last_error ?? `attempt cap reached (${LEAGUE_JOB_MAX_ATTEMPTS})`
+  )
 }
 
 /** Refund every charged-unrefunded purchase on the round, each exactly once. */

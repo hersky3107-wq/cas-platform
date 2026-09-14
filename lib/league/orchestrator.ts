@@ -26,6 +26,7 @@ import {
   type AnswerSide,
   type ContractAnswer,
 } from '@/lib/league/answer-contract'
+import { persistAnchorPrice } from '@/lib/league/price-anchor'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -334,32 +335,6 @@ async function persistConsensusAggregates(
       .eq('id', roundId)
   } catch {
     // best-effort — card still recomputes live from model rows
-  }
-}
-
-async function persistAnchorPrice(
-  roundId: string,
-  price: number,
-  sessionDate: string | null
-): Promise<void> {
-  try {
-    await supabaseAdmin
-      .from('prediction_rounds')
-      .update({
-        anchor_price: price,
-        anchor_price_at: new Date().toISOString(),
-        ...(sessionDate ? { anchor_session_date: sessionDate } : {}),
-      })
-      .eq('id', roundId)
-      // WRITE-ONCE, enforced in the DB: the anchor is "what the instrument
-      // was at when this round opened" and a later packet rebuild (job-runner
-      // tick, re-run) must never move it. This null-guard replaces the old
-      // `created`-flag guard so a round created OUTSIDE this function (the
-      // inline generate route inserts the row before the job runs) still gets
-      // its anchor stamped on the first packet build.
-      .is('anchor_price', null)
-  } catch {
-    // best-effort — see doc comment above
   }
 }
 

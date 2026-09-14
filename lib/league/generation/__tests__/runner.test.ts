@@ -149,6 +149,7 @@ function makeDeps(
       refunds.push({ userId, amount })
     },
     tierModelIds: (tier) => [...TIERS[tier]],
+    priceAnchorGate: over.priceAnchorGate ?? (async () => 'proceed'),
     schedule: (task) => {
       scheduled.push(task)
     },
@@ -326,6 +327,33 @@ describe('failure and refund safety', () => {
     // The next sweep can claim it immediately.
     const retry = await advanceLeagueGenerationJob('job-1', bundle.deps)
     expect(retry.claimed).toBe(true)
+  })
+
+  it('a close-higher job with no persisted anchor fails and refunds — never fans out', async () => {
+    const payerJob = makeJob({ id: 'job-1' })
+    const attachedPurchase = makeJob({
+      id: 'purchase-2',
+      user_id: 'user-2',
+      status: 'done',
+      stage: 'view',
+      charged: true,
+    })
+    const fake = makeStore([payerJob, attachedPurchase])
+    const bundle = makeDeps(fake, { priceAnchorGate: async () => 'fail' })
+
+    await advanceLeagueGenerationJob('job-1', bundle.deps)
+    await bundle.runScheduled()
+
+    const job = fake.byId.get('job-1')!
+    expect(job.status).toBe('failed')
+    expect(job.last_error).toContain('missing_anchor')
+    expect(bundle.generateCalls).toEqual([])
+    expect(bundle.finalized).toEqual([])
+    expect(bundle.refunds).toEqual([
+      { userId: 'user-1', amount: 30 },
+      { userId: 'user-2', amount: 30 },
+    ])
+    expect(fake.byId.get('purchase-2')!.refunded).toBe(true)
   })
 })
 

@@ -16,6 +16,7 @@ import {
   updateGenerationJob,
 } from './job-store'
 import type { LeagueRunnerDeps } from './runner'
+import { runnerPriceAnchorGate } from '@/lib/league/price-anchor'
 
 /**
  * Live bindings for the league generation runner. Kept out of runner.ts on
@@ -62,6 +63,7 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
       await addCreditsBalance(supabaseAdmin, userId, amount)
     },
     tierModelIds: (tier: LeagueTier) => getRoster([tier]).map((entry) => entry.model_id),
+    priceAnchorGate: runnerPriceAnchorGate,
     schedule,
   }
 }

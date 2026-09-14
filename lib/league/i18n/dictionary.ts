@@ -583,6 +583,8 @@ export type LeagueUiPack = {
     retryGeneration: string
     /** 503 from the press: the global job queue is full. */
     generationBusy: string
+    /** 503: Twelve Data could not supply an open-time close. Nothing charged. */
+    marketDataUnavailable: string
     insufficientCredits: (required: number, balance: number) => string
     rateLimited: string
     genericError: string
@@ -1043,6 +1045,7 @@ const en: LeagueUiPack = {
     generationFailedRefunded: 'Generation failed, so your credits were refunded. You can try again.',
     retryGeneration: 'Retry',
     generationBusy: 'Heavy traffic right now. Please try again in a minute.',
+    marketDataUnavailable: 'Market data is temporarily unavailable. Nothing was charged. Please try again shortly.',
     insufficientCredits: (required, balance) => `Opening a round needs ${required} credits \u2014 you have ${balance}.`,
     rateLimited: 'Too many requests. Please wait a moment and try again.',
     genericError: 'Something went wrong. Please try again.',
@@ -1501,6 +1504,7 @@ const ko: LeagueUiPack = {
     generationFailedRefunded: '생성에 실패해 크레딧을 환불해 드렸습니다. 다시 시도할 수 있습니다.',
     retryGeneration: '다시 시도',
     generationBusy: '지금 요청이 많습니다. 잠시 후 다시 시도해 주세요.',
+    marketDataUnavailable: '시세 데이터를 잠시 가져오지 못했습니다. 결제되지 않았습니다. 잠시 후 다시 시도해 주세요.',
     insufficientCredits: (required, balance) => `라운드 열람에는 ${required} 크레딧이 필요합니다 — 현재 보유 ${balance} 크레딧.`,
     rateLimited: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
     genericError: '문제가 발생했습니다. 다시 시도해 주세요.',
@@ -1954,6 +1958,7 @@ const ja: LeagueUiPack = {
     generationFailedRefunded: '生成に失敗したため、クレジットは返金済みです。もう一度お試しいただけます。',
     retryGeneration: '再試行',
     generationBusy: '現在混み合っています。しばらくしてからもう一度お試しください。',
+    marketDataUnavailable: '相場データを一時的に取得できませんでした。料金は発生していません。しばらくしてからもう一度お試しください。',
     insufficientCredits: (required, balance) => `ラウンドを開くには${required}クレジットが必要です — 現在の残高は${balance}クレジットです。`,
     rateLimited: 'リクエストが多すぎます。少し時間をおいて再度お試しください。',
     genericError: 'エラーが発生しました。もう一度お試しください。',
@@ -2404,6 +2409,7 @@ const zhTW: LeagueUiPack = {
     generationFailedRefunded: '生成失敗，點數已退還。您可以再試一次。',
     retryGeneration: '重試',
     generationBusy: '目前請求較多，請稍後再試。',
+    marketDataUnavailable: '暫時無法取得行情資料，尚未扣款。請稍後再試。',
     insufficientCredits: (required, balance) => `開啟回合需要 ${required} 點數 — 您目前有 ${balance} 點。`,
     rateLimited: '請求過於頻繁，請稍候再試。',
     genericError: '發生錯誤，請再試一次。',
@@ -2863,6 +2869,7 @@ const fr: LeagueUiPack = {
     generationFailedRefunded: 'La génération a échoué : vos crédits ont été remboursés. Vous pouvez réessayer.',
     retryGeneration: 'Réessayer',
     generationBusy: 'Trop de demandes en ce moment. Réessayez dans un instant.',
+    marketDataUnavailable: 'Les données de marché sont temporairement indisponibles. Aucun crédit n\u2019a été débité. Réessayez dans un instant.',
     insufficientCredits: (required, balance) => `Ouvrir une manche coûte ${required} crédits \u2014 vous en avez ${balance}.`,
     rateLimited: 'Trop de requêtes. Patientez un instant avant de réessayer.',
     genericError: 'Une erreur est survenue. Veuillez réessayer.',
@@ -3326,6 +3333,7 @@ const es: LeagueUiPack = {
     generationFailedRefunded: 'La generación falló y tus créditos fueron reembolsados. Puedes intentarlo de nuevo.',
     retryGeneration: 'Reintentar',
     generationBusy: 'Hay muchas solicitudes ahora mismo. Inténtalo de nuevo en un momento.',
+    marketDataUnavailable: 'Los datos de mercado no están disponibles por el momento. No se ha cobrado nada. Inténtalo de nuevo en un momento.',
     insufficientCredits: (required, balance) => `Abrir una ronda cuesta ${required} créditos \u2014 tienes ${balance}.`,
     rateLimited: 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.',
     genericError: 'Algo salió mal. Inténtalo de nuevo.',
@@ -3783,6 +3791,7 @@ const ar: LeagueUiPack = {
     generationFailedRefunded: 'فشل التوليد وأُعيد رصيدك. يمكنك المحاولة مرة أخرى.',
     retryGeneration: 'إعادة المحاولة',
     generationBusy: 'الطلبات كثيرة الآن. يرجى المحاولة بعد قليل.',
+    marketDataUnavailable: 'بيانات السوق غير متاحة مؤقتًا. لم يُخصم أي رصيد. يرجى المحاولة بعد قليل.',
     insufficientCredits: (required, balance) => `فتح الجولة يتطلب ${required} من الرصيد — لديك ${balance}.`,
     rateLimited: 'طلبات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
     genericError: 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',
@@ -4249,6 +4258,7 @@ const pt: LeagueUiPack = {
     generationFailedRefunded: 'A geração falhou e seus créditos foram reembolsados. Você pode tentar de novo.',
     retryGeneration: 'Tentar novamente',
     generationBusy: 'Muitas solicitações agora. Tente novamente em instantes.',
+    marketDataUnavailable: 'Os dados de mercado estão temporariamente indisponíveis. Nada foi cobrado. Tente novamente em instantes.',
     insufficientCredits: (required, balance) => `Abrir uma rodada exige ${required} créditos \u2014 você tem ${balance}.`,
     rateLimited: 'Muitas solicitações. Aguarde um momento e tente novamente.',
     genericError: 'Algo deu errado. Tente novamente.',
