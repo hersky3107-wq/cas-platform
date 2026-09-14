@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { addCreditsBalance } from '@/lib/credits-server'
+import { supabaseAdmin } from '@/lib/supabase/server'
 import { LEAGUE_GATEWAY_RATE_RULE } from '@/lib/league/access-policy'
 import { PUBLIC_CATEGORY_IDS, visibleChipInstrumentIds } from '@/lib/league/catalog'
 import { admissionForPublicCategory } from '@/lib/league/gateway/admission'
@@ -102,7 +104,22 @@ export async function POST(req: Request) {
     })
   }
 
-  const receipt = issueGatewayReceipt(viewer.userId, result.round.instrument, result.round.horizon)
+  // DB-backed receipt (league_gateway_receipts): durable across serverless
+  // isolates, one-shot consume. If the receipt cannot be written after the
+  // gateway already charged, REFUND — answering "ready" without a working
+  // receipt is exactly the double-charge this table exists to kill.
+  let receipt: string
+  try {
+    receipt = await issueGatewayReceipt(viewer.userId, result.round.instrument, result.round.horizon)
+  } catch {
+    if (result.charged_credits > 0) {
+      await addCreditsBalance(supabaseAdmin, viewer.userId, result.charged_credits)
+    }
+    return NextResponse.json(
+      { error: 'Could not record the charge receipt. Nothing was charged.', code: 'receipt_failed' },
+      { status: 500 }
+    )
+  }
   return NextResponse.json({
     status: 'ready',
     instrument: result.round.instrument,

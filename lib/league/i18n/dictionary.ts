@@ -539,10 +539,13 @@ export type LeagueUiPack = {
   /**
    * Public (logged-in, non-admin) league hub chrome — the surface at `/league`.
    *
-   * `freeReadNote` and `generateLive` are the money-facing strings and are
-   * therefore treated like compliance copy: every real locale states plainly
-   * that browsing is free and exactly what a live run costs, so a user is
-   * never charged by a button whose price they could not read.
+   * `openRound` is THE money-facing string and is treated like compliance
+   * copy: every locale carries the exact price on the button, so a user is
+   * never charged by a button whose price they could not read. PAID VIEW
+   * (2026-09-14): opening a round costs the same fixed price whether it is
+   * being created or already exists, and access is permanent once paid —
+   * `openRoundNote` says so. The old "browsing is free" line is GONE because
+   * it is no longer true.
    */
   hub: {
     title: string
@@ -551,11 +554,23 @@ export type LeagueUiPack = {
     loading: string
     /** Shown when the viewer's jurisdiction allows no league category at all. */
     noInstruments: string
-    /** Paid CTA — MUST carry its price. */
-    generateLive: (credits: number) => string
-    generating: string
-    /** States the free-vs-paid split up front. */
-    freeReadNote: string
+    /** Paid CTA — MUST carry its price. Same button for create and unlock. */
+    openRound: (credits: number) => string
+    /** Busy label while the open press is in flight (~a second). */
+    openingRound: string
+    /** Permanent-access promise under the CTA. */
+    openRoundNote: string
+    /** Background job accepted, waiting for a runner slot. */
+    generationQueued: string
+    /** Board filling: N of TOTAL models answered. */
+    generationProgress: (answered: number, total: number) => string
+    /** Job failed; viewer still holds paid access (retry is free). */
+    generationFailed: string
+    /** Job failed terminally; credits already went back. */
+    generationFailedRefunded: string
+    retryGeneration: string
+    /** 503 from the press: the global job queue is full. */
+    generationBusy: string
     insufficientCredits: (required: number, balance: number) => string
     rateLimited: string
     genericError: string
@@ -986,10 +1001,16 @@ const en: LeagueUiPack = {
     tabs: { cards: 'Cards', leaderboard: 'Leaderboard', recordRoom: 'Record room' },
     loading: 'Loading\u2026',
     noInstruments: 'The league isn\u2019t available in your region yet.',
-    generateLive: (credits) => `Ask the models now \u00b7 ${credits} credits`,
-    generating: 'Asking the models\u2026',
-    freeReadNote: 'Browsing cards, the leaderboard and recent archive results is free. A live run or a deep archive query spends credits.',
-    insufficientCredits: (required, balance) => `A live run needs ${required} credits \u2014 you have ${balance}.`,
+    openRound: (credits) => `Open this round \u00b7 ${credits} credits`,
+    openingRound: 'Opening\u2026',
+    openRoundNote: 'One payment per round. Once opened, you can come back to it any time \u2014 including after grading \u2014 at no extra charge.',
+    generationQueued: 'In line \u2014 your round starts shortly. You can close this screen; it keeps running.',
+    generationProgress: (answered, total) => `Models answering \u00b7 ${answered}/${total}`,
+    generationFailed: 'This run stopped before finishing. Your payment still covers this round \u2014 retry is free.',
+    generationFailedRefunded: 'Generation failed, so your credits were refunded. You can try again.',
+    retryGeneration: 'Retry',
+    generationBusy: 'Heavy traffic right now. Please try again in a minute.',
+    insufficientCredits: (required, balance) => `Opening a round needs ${required} credits \u2014 you have ${balance}.`,
     rateLimited: 'Too many requests. Please wait a moment and try again.',
     genericError: 'Something went wrong. Please try again.',
     balance: (credits) => `${credits} credits`,
@@ -1407,10 +1428,16 @@ const ko: LeagueUiPack = {
     tabs: { cards: '카드', leaderboard: '리더보드', recordRoom: '기록실' },
     loading: '불러오는 중…',
     noInstruments: '아직 회원님의 지역에서는 리그를 이용할 수 없습니다.',
-    generateLive: (credits) => `지금 모델에게 물어보기 · ${credits} 크레딧`,
-    generating: '모델에게 묻는 중…',
-    freeReadNote: '카드·리더보드·최근 기록 열람은 무료입니다. 실시간 실행이나 깊은 아카이브 조회에만 크레딧이 사용됩니다.',
-    insufficientCredits: (required, balance) => `실시간 실행에는 ${required} 크레딧이 필요합니다 — 현재 보유 ${balance} 크레딧.`,
+    openRound: (credits) => `이 라운드 열람 · ${credits} 크레딧`,
+    openingRound: '여는 중…',
+    openRoundNote: '라운드당 1회 결제입니다. 한 번 열면 채점 이후를 포함해 언제든 추가 비용 없이 다시 볼 수 있습니다.',
+    generationQueued: '대기열에 등록되었습니다 — 곧 시작됩니다. 화면을 닫아도 계속 진행됩니다.',
+    generationProgress: (answered, total) => `모델 응답 수집 중 · ${answered}/${total}`,
+    generationFailed: '실행이 중간에 멈췄습니다. 결제는 그대로 유효하므로 무료로 다시 시도할 수 있습니다.',
+    generationFailedRefunded: '생성에 실패해 크레딧을 환불해 드렸습니다. 다시 시도할 수 있습니다.',
+    retryGeneration: '다시 시도',
+    generationBusy: '지금 요청이 많습니다. 잠시 후 다시 시도해 주세요.',
+    insufficientCredits: (required, balance) => `라운드 열람에는 ${required} 크레딧이 필요합니다 — 현재 보유 ${balance} 크레딧.`,
     rateLimited: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
     genericError: '문제가 발생했습니다. 다시 시도해 주세요.',
     balance: (credits) => `${credits} 크레딧`,
@@ -1823,10 +1850,16 @@ const ja: LeagueUiPack = {
     tabs: { cards: 'カード', leaderboard: 'リーダーボード', recordRoom: '記録室' },
     loading: '読み込み中…',
     noInstruments: 'お住まいの地域では、リーグはまだご利用いただけません。',
-    generateLive: (credits) => `今すぐモデルに聞く・${credits}クレジット`,
-    generating: 'モデルに問い合わせ中…',
-    freeReadNote: 'カード・リーダーボード・直近の記録室は無料です。ライブ実行と詳細アーカイブだけがクレジットを消費します。',
-    insufficientCredits: (required, balance) => `ライブ実行には${required}クレジットが必要です — 現在の残高は${balance}クレジットです。`,
+    openRound: (credits) => `このラウンドを開く・${credits}クレジット`,
+    openingRound: '開いています…',
+    openRoundNote: 'ラウンドごとに1回のお支払いです。一度開けば、採点後も含めていつでも追加料金なしで再閲覧できます。',
+    generationQueued: '順番待ちに登録されました — まもなく開始します。画面を閉じても処理は続きます。',
+    generationProgress: (answered, total) => `モデルの回答を収集中・${answered}/${total}`,
+    generationFailed: '実行が途中で停止しました。お支払いは有効なので、無料で再試行できます。',
+    generationFailedRefunded: '生成に失敗したため、クレジットは返金済みです。もう一度お試しいただけます。',
+    retryGeneration: '再試行',
+    generationBusy: '現在混み合っています。しばらくしてからもう一度お試しください。',
+    insufficientCredits: (required, balance) => `ラウンドを開くには${required}クレジットが必要です — 現在の残高は${balance}クレジットです。`,
     rateLimited: 'リクエストが多すぎます。少し時間をおいて再度お試しください。',
     genericError: 'エラーが発生しました。もう一度お試しください。',
     balance: (credits) => `${credits}クレジット`,
@@ -2236,10 +2269,16 @@ const zhTW: LeagueUiPack = {
     tabs: { cards: '卡片', leaderboard: '排行榜', recordRoom: '紀錄室' },
     loading: '載入中…',
     noInstruments: '您所在的地區尚未開放本聯賽。',
-    generateLive: (credits) => `立即詢問模型・${credits} 點數`,
-    generating: '正在詢問模型…',
-    freeReadNote: '瀏覽卡片、排行榜與近期紀錄免費。即時執行或深度封存查詢才會消耗點數。',
-    insufficientCredits: (required, balance) => `即時執行需要 ${required} 點數 — 您目前有 ${balance} 點。`,
+    openRound: (credits) => `開啟此回合・${credits} 點數`,
+    openingRound: '開啟中…',
+    openRoundNote: '每回合僅收費一次。開啟後可隨時重看（包含評分後），不再另外收費。',
+    generationQueued: '已進入佇列 — 即將開始。關閉畫面也會繼續進行。',
+    generationProgress: (answered, total) => `正在收集模型回覆・${answered}/${total}`,
+    generationFailed: '執行中途停止。您的付款仍然有效，可免費重試。',
+    generationFailedRefunded: '生成失敗，點數已退還。您可以再試一次。',
+    retryGeneration: '重試',
+    generationBusy: '目前請求較多，請稍後再試。',
+    insufficientCredits: (required, balance) => `開啟回合需要 ${required} 點數 — 您目前有 ${balance} 點。`,
     rateLimited: '請求過於頻繁，請稍候再試。',
     genericError: '發生錯誤，請再試一次。',
     balance: (credits) => `${credits} 點數`,
@@ -2658,10 +2697,16 @@ const fr: LeagueUiPack = {
     tabs: { cards: 'Cartes', leaderboard: 'Classement', recordRoom: 'Archives' },
     loading: 'Chargement\u2026',
     noInstruments: 'La ligue n\u2019est pas encore disponible dans votre région.',
-    generateLive: (credits) => `Interroger les modèles maintenant \u00b7 ${credits} crédits`,
-    generating: 'Interrogation des modèles\u2026',
-    freeReadNote: 'Consulter les cartes, le classement et les archives récentes est gratuit. Une exécution en direct ou une requête d\u2019archives détaillées consomme des crédits.',
-    insufficientCredits: (required, balance) => `Une exécution en direct coûte ${required} crédits \u2014 vous en avez ${balance}.`,
+    openRound: (credits) => `Ouvrir cette manche \u00b7 ${credits} crédits`,
+    openingRound: 'Ouverture\u2026',
+    openRoundNote: 'Paiement unique par manche. Une fois ouverte, vous pouvez y revenir à tout moment — même après notation — sans frais supplémentaires.',
+    generationQueued: 'En file d\u2019attente — votre manche démarre sous peu. Vous pouvez fermer cet écran, le traitement continue.',
+    generationProgress: (answered, total) => `Réponses des modèles \u00b7 ${answered}/${total}`,
+    generationFailed: 'L\u2019exécution s\u2019est arrêtée en cours. Votre paiement reste valable — réessayez sans frais.',
+    generationFailedRefunded: 'La génération a échoué : vos crédits ont été remboursés. Vous pouvez réessayer.',
+    retryGeneration: 'Réessayer',
+    generationBusy: 'Trop de demandes en ce moment. Réessayez dans un instant.',
+    insufficientCredits: (required, balance) => `Ouvrir une manche coûte ${required} crédits \u2014 vous en avez ${balance}.`,
     rateLimited: 'Trop de requêtes. Patientez un instant avant de réessayer.',
     genericError: 'Une erreur est survenue. Veuillez réessayer.',
     balance: (credits) => `${credits} crédits`,
@@ -3084,10 +3129,16 @@ const es: LeagueUiPack = {
     tabs: { cards: 'Tarjetas', leaderboard: 'Tabla', recordRoom: 'Registros' },
     loading: 'Cargando\u2026',
     noInstruments: 'La liga todavía no está disponible en tu región.',
-    generateLive: (credits) => `Preguntar a los modelos ahora \u00b7 ${credits} créditos`,
-    generating: 'Consultando a los modelos\u2026',
-    freeReadNote: 'Ver las tarjetas, la tabla y los registros recientes es gratis. Una ejecución en vivo o una consulta de archivo profundo consume créditos.',
-    insufficientCredits: (required, balance) => `Una ejecución en vivo cuesta ${required} créditos \u2014 tienes ${balance}.`,
+    openRound: (credits) => `Abrir esta ronda \u00b7 ${credits} créditos`,
+    openingRound: 'Abriendo\u2026',
+    openRoundNote: 'Pago único por ronda. Una vez abierta, puedes volver a verla cuando quieras — incluso tras la calificación — sin costo adicional.',
+    generationQueued: 'En cola — tu ronda comienza en breve. Puedes cerrar esta pantalla; sigue en marcha.',
+    generationProgress: (answered, total) => `Recogiendo respuestas de los modelos \u00b7 ${answered}/${total}`,
+    generationFailed: 'La ejecución se detuvo a medias. Tu pago sigue vigente: reintenta sin costo.',
+    generationFailedRefunded: 'La generación falló y tus créditos fueron reembolsados. Puedes intentarlo de nuevo.',
+    retryGeneration: 'Reintentar',
+    generationBusy: 'Hay muchas solicitudes ahora mismo. Inténtalo de nuevo en un momento.',
+    insufficientCredits: (required, balance) => `Abrir una ronda cuesta ${required} créditos \u2014 tienes ${balance}.`,
     rateLimited: 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.',
     genericError: 'Algo salió mal. Inténtalo de nuevo.',
     balance: (credits) => `${credits} créditos`,
@@ -3504,10 +3555,16 @@ const ar: LeagueUiPack = {
     tabs: { cards: 'البطاقات', leaderboard: 'لوحة الصدارة', recordRoom: 'غرفة السجلات' },
     loading: 'جارٍ التحميل…',
     noInstruments: 'الدوري غير متاح بعد في منطقتك.',
-    generateLive: (credits) => `اسأل النماذج الآن · ${credits} رصيد`,
-    generating: 'جارٍ سؤال النماذج…',
-    freeReadNote: 'تصفح البطاقات ولوحة الصدارة والنتائج الأخيرة مجاني. التشغيل المباشر أو استعلام الأرشيف العميق يستهلك الرصيد.',
-    insufficientCredits: (required, balance) => `يتطلب التشغيل المباشر ${required} من الرصيد — لديك ${balance}.`,
+    openRound: (credits) => `افتح هذه الجولة · ${credits} من الرصيد`,
+    openingRound: 'جارٍ الفتح…',
+    openRoundNote: 'دفعة واحدة لكل جولة. بعد فتحها يمكنك العودة إليها في أي وقت — حتى بعد التقييم — دون رسوم إضافية.',
+    generationQueued: 'في قائمة الانتظار — ستبدأ جولتك قريبًا. يمكنك إغلاق هذه الشاشة وسيستمر التنفيذ.',
+    generationProgress: (answered, total) => `جارٍ جمع إجابات النماذج · ${answered}/${total}`,
+    generationFailed: 'توقف التنفيذ قبل الاكتمال. دفعتك ما تزال سارية — أعد المحاولة دون رسوم.',
+    generationFailedRefunded: 'فشل التوليد وأُعيد رصيدك. يمكنك المحاولة مرة أخرى.',
+    retryGeneration: 'إعادة المحاولة',
+    generationBusy: 'الطلبات كثيرة الآن. يرجى المحاولة بعد قليل.',
+    insufficientCredits: (required, balance) => `فتح الجولة يتطلب ${required} من الرصيد — لديك ${balance}.`,
     rateLimited: 'طلبات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
     genericError: 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',
     balance: (credits) => `${credits} رصيد`,
@@ -3933,10 +3990,16 @@ const pt: LeagueUiPack = {
     tabs: { cards: 'Cartões', leaderboard: 'Classificação', recordRoom: 'Sala de registros' },
     loading: 'Carregando\u2026',
     noInstruments: 'A liga ainda não está disponível na sua região.',
-    generateLive: (credits) => `Perguntar aos modelos agora \u00b7 ${credits} créditos`,
-    generating: 'Perguntando aos modelos\u2026',
-    freeReadNote: 'Navegar pelos cartões, pela classificação e pelos resultados recentes é gratuito. Uma rodada ao vivo ou uma consulta ao arquivo completo gasta créditos.',
-    insufficientCredits: (required, balance) => `Uma rodada ao vivo exige ${required} créditos \u2014 você tem ${balance}.`,
+    openRound: (credits) => `Abrir esta rodada \u00b7 ${credits} créditos`,
+    openingRound: 'Abrindo\u2026',
+    openRoundNote: 'Pagamento único por rodada. Depois de aberta, você pode revê-la a qualquer momento — inclusive após a avaliação — sem custo extra.',
+    generationQueued: 'Na fila — sua rodada começa em instantes. Pode fechar esta tela; o processo continua.',
+    generationProgress: (answered, total) => `Coletando respostas dos modelos \u00b7 ${answered}/${total}`,
+    generationFailed: 'A execução parou no meio. Seu pagamento continua válido — tente novamente sem custo.',
+    generationFailedRefunded: 'A geração falhou e seus créditos foram reembolsados. Você pode tentar de novo.',
+    retryGeneration: 'Tentar novamente',
+    generationBusy: 'Muitas solicitações agora. Tente novamente em instantes.',
+    insufficientCredits: (required, balance) => `Abrir uma rodada exige ${required} créditos \u2014 você tem ${balance}.`,
     rateLimited: 'Muitas solicitações. Aguarde um momento e tente novamente.',
     genericError: 'Algo deu errado. Tente novamente.',
     balance: (credits) => `${credits} créditos`,

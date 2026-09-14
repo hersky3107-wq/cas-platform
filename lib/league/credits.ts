@@ -2,13 +2,22 @@
  * AI Prediction League — paid-compute credit constants.
  *
  * THE single place league credit amounts live. Named constants only — never
- * inline these at a call site. Cached league card reads (`GET /api/league/card`)
- * are free and must not use any of these.
+ * inline these at a call site. Since 2026-09-14 viewing a round card is paid
+ * (LEAGUE_GENERATE_CREDITS, permanent per-user access once paid); the card
+ * READ route still never charges — the charge lives exclusively on
+ * `POST /api/league/generate`.
  *
  * Re-exported from `lib/credits.ts` so existing client-safe imports keep working.
  */
 
-/** One live re-run of a ranked round (full 40-model roster). */
+/**
+ * VIEW ACCESS to one round (2026-09-14 pricing): the same price whether the
+ * press creates the round (cron job runs the full roster) or unlocks one
+ * that already exists — the user is buying the same result either way, and
+ * once paid, access is permanent per (round, user). Charged by
+ * `POST /api/league/generate`; refunded in full when a generation job fails
+ * terminally (see lib/league/generation/runner.ts).
+ */
 export const LEAGUE_GENERATE_CREDITS = 30
 
 /** Deep archive (full history, model filter, date range, CSV). Recent summary stays free. */

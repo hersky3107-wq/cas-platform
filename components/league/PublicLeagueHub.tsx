@@ -10,8 +10,8 @@ import { DeepAnalysis } from '@/components/league/DeepAnalysis'
 import { Leaderboard } from '@/components/league/Leaderboard'
 import { RecordRoom } from '@/components/league/RecordRoom'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
-import { creditsForLeagueGenerate } from '@/lib/credits'
-import type { CardData, ColorBucket } from '@/lib/league/card-types'
+import type { CardData, ColorBucket, LockedCardPayload } from '@/lib/league/card-types'
+import { GENERATION_POLL_MS } from '@/lib/league/generation/policy'
 import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } from '@/lib/league/catalog'
 import { SIGNUP_COUNTRY_CODES } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
@@ -35,8 +35,6 @@ type InstrumentsPayload = {
   jurisdiction?: { declaredMissing?: boolean; mismatch?: boolean }
 }
 
-const LIVE_COST = creditsForLeagueGenerate()
-
 /**
  * The PUBLIC (logged-in, non-admin) league surface.
  *
@@ -48,14 +46,18 @@ const LIVE_COST = creditsForLeagueGenerate()
  * approved phrasing) and already locale-aware through `useLeagueLocale`. This
  * file adds no new card chrome and no new compliance surface of its own.
  *
- * FREE VS PAID, made visible: the three tabs are cache reads and cost nothing.
- * The single paid affordance is "ask the models now", which carries its price
- * in the button label and only flips `PredictionCard`'s `live` prop — the
- * server re-checks auth, jurisdiction, rate limit and credits regardless of
- * what this component does (see `app/api/league/generate-stream/route.ts`).
+ * PAID VIEW (2026-09-14): opening a round costs a fixed credit price — the
+ * same price whether the press creates the round or unlocks one that already
+ * exists, and access is permanent once paid. The server decides locked vs
+ * full (`GET /api/league/card` returns a `LockedCardPayload` until this user
+ * has paid); this component renders whichever came back and POSTs
+ * `/api/league/generate` on the unlock press. While the background job runs,
+ * the card is POLLED every few seconds — tiles fill as model rows land, and
+ * a locked screen / closed tab / network change costs nothing: reopening
+ * re-reads the same server state and resumes.
  *
  * Freeform input sits under the category chips. The gateway composes a
- * catalog proposition; it never forwards the user's sentence to the 40 models.
+ * catalog proposition; it never forwards the user's sentence to the models.
  */
 export function PublicLeagueHub({ initialTab = 'cards' }: { initialTab?: LeagueHubTab }) {
   const { t, dir } = useLeagueLocale()
@@ -77,7 +79,6 @@ export function PublicLeagueHub({ initialTab = 'cards' }: { initialTab?: LeagueH
       <div>
         <h1 className="text-xl font-bold text-slate-900">{t.hub.title}</h1>
         <p className="mt-1 text-xs leading-relaxed text-slate-600">{t.hub.subtitle}</p>
-        <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{t.hub.freeReadNote}</p>
       </div>
 
       <nav className="flex gap-1 rounded-full bg-white p-1 shadow-sm" aria-label={t.hub.title}>
@@ -103,64 +104,68 @@ export function PublicLeagueHub({ initialTab = 'cards' }: { initialTab?: LeagueH
   )
 }
 
-type CardLoadError = 'load_failed' | 'jurisdiction_blocked' | 'no_round'
+/** What the card slot is currently showing. The server decides locked vs full. */
+type CardView =
+  | { kind: 'loading' }
+  | { kind: 'card'; card: CardData }
+  | { kind: 'locked'; locked: LockedCardPayload }
+  | { kind: 'blocked' }
+  | { kind: 'none' }
+  | { kind: 'error' }
 
 function CardsPanel() {
-  const { t } = useLeagueLocale()
+  const { t, locale } = useLeagueLocale()
   const [categories, setCategories] = useState<PublicCatalogCategory[] | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<PublicCategoryId | null>(null)
   const [selectedInstrument, setSelectedInstrument] = useState<string | null>(null)
   // Horizon selector next to the instrument chips. Default '1d' — every
   // instrument opens on the 1-day card first.
   const [horizon, setHorizon] = useState<UiHorizon>('1d')
-  const [card, setCard] = useState<CardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<CardLoadError | null>(null)
+  const [view, setView] = useState<CardView>({ kind: 'loading' })
   const [declaredMissing, setDeclaredMissing] = useState(false)
   const [countryMismatch, setCountryMismatch] = useState(false)
-  // Live is opt-in per card and resets whenever the selected instrument
-  // changes, so switching tabs/instruments can never silently start a paid run.
-  const [live, setLive] = useState(false)
   // Guards against a slower, now-superseded fetch overwriting the result of a
   // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
 
-  // The SERVER'S response is the only jurisdiction decision this panel
-  // trusts: `GET /api/league/card` already runs the real check (with the
-  // same admin bypass every other league route has — see
-  // `lib/league/public-access.ts`). Deriving "blocked" from the HTTP status
-  // means the Cards tab can never disagree with Leaderboard/Record room.
-  const loadCard = useCallback(async (instrument: string, horizonArg: UiHorizon) => {
-    const requestId = (requestIdRef.current += 1)
-    try {
-      const res = await fetch(
-        `/api/league/card?instrument=${encodeURIComponent(instrument)}&horizon=${encodeURIComponent(horizonArg)}`,
-        { credentials: 'include' }
-      )
-      const body = (await res.json()) as CardData | { error: string; code?: string }
-      if (requestId !== requestIdRef.current) return
-      if (!res.ok) {
-        setCard(null)
-        if ('code' in body && body.code === 'jurisdiction_blocked') {
-          setError('jurisdiction_blocked')
-        } else if (res.status === 404 || ('code' in body && body.code === 'no_round')) {
-          setError('no_round')
-        } else {
-          setError('load_failed')
+  // The SERVER'S response is the only decision this panel trusts — locked vs
+  // full card, jurisdiction, everything. `quiet` polls (while a generation
+  // job runs) skip the loading flash but share the same supersede guard.
+  const loadCard = useCallback(
+    async (instrument: string, horizonArg: UiHorizon, opts?: { quiet?: boolean }) => {
+      const requestId = (requestIdRef.current += 1)
+      if (!opts?.quiet) setView({ kind: 'loading' })
+      try {
+        const res = await fetch(
+          `/api/league/card?instrument=${encodeURIComponent(instrument)}&horizon=${encodeURIComponent(horizonArg)}`,
+          { credentials: 'include' }
+        )
+        const body = (await res.json()) as
+          | CardData
+          | LockedCardPayload
+          | { error: string; code?: string }
+        if (requestId !== requestIdRef.current) return
+        if (!res.ok) {
+          if ('code' in body && body.code === 'jurisdiction_blocked') {
+            setView({ kind: 'blocked' })
+          } else if (res.status === 404 || ('code' in body && body.code === 'no_round')) {
+            setView({ kind: 'none' })
+          } else {
+            setView({ kind: 'error' })
+          }
+          return
         }
-        return
+        if ('locked' in body && body.locked) {
+          setView({ kind: 'locked', locked: body })
+          return
+        }
+        setView({ kind: 'card', card: body as CardData })
+      } catch {
+        if (requestId === requestIdRef.current && !opts?.quiet) setView({ kind: 'error' })
       }
-      setCard(body as CardData)
-      setError(null)
-    } catch {
-      if (requestId === requestIdRef.current) {
-        setCard(null)
-        setError('load_failed')
-      }
-    } finally {
-      if (requestId === requestIdRef.current) setLoading(false)
-    }
-  }, [])
+    },
+    []
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -181,13 +186,12 @@ function CardsPanel() {
         if (firstInstrument) {
           void loadCard(firstInstrument, '1d')
         } else {
-          setLoading(false)
+          setView({ kind: 'none' })
         }
       } catch {
         if (!cancelled) {
           setCategories([])
-          setLoading(false)
-          setError('load_failed')
+          setView({ kind: 'error' })
         }
       }
     })()
@@ -196,47 +200,56 @@ function CardsPanel() {
     }
   }, [loadCard])
 
+  // POLL while a background generation job is queued/running. Survives locked
+  // screens and closed tabs by construction: the job runs server-side, and
+  // every poll (including the first one after reopening this page) re-reads
+  // the whole state from the DB. Also self-heals on tab foregrounding.
+  const generationStatus =
+    view.kind === 'card' ? view.card.generation?.status ?? null : null
+  useEffect(() => {
+    if (!selectedInstrument) return
+    if (generationStatus !== 'queued' && generationStatus !== 'running') return
+    const id = window.setInterval(() => {
+      void loadCard(selectedInstrument, horizon, { quiet: true })
+    }, GENERATION_POLL_MS)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadCard(selectedInstrument, horizon, { quiet: true })
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [generationStatus, selectedInstrument, horizon, loadCard])
+
   function selectCategory(id: PublicCategoryId) {
     if (!categories) return
     const next = categories.find((c) => c.id === id)
-    setLive(false)
     setSelectedCategory(id)
-    setCard(null)
-    setError(null)
     if (!next || next.kind === 'coming_soon' || next.instruments.length === 0) {
       setSelectedInstrument(null)
-      setLoading(false)
+      setView({ kind: 'none' })
       return
     }
     const first = next.instruments[0]!.instrument
     setSelectedInstrument(first)
-    setLoading(true)
     void loadCard(first, horizon)
   }
 
   // A plain click handler, not a `[selected]`-keyed effect: re-clicking the
   // ALREADY-selected instrument must still fire a fresh fetch.
   function selectInstrument(instrument: string) {
-    setLive(false)
     setSelectedInstrument(instrument)
-    setCard(null)
-    setError(null)
-    setLoading(true)
     void loadCard(instrument, horizon)
   }
 
   // Switching horizon loads THAT horizon's round for the currently selected
   // instrument — a genuinely different round (separate resolves_at), never a
-  // reinterpretation of the one just shown. Falls into the same empty state
-  // (with the priced generate CTA) when none exists yet for this horizon.
+  // reinterpretation of the one just shown.
   function selectHorizon(next: UiHorizon) {
     if (next === horizon) return
-    setLive(false)
     setHorizon(next)
-    setCard(null)
-    setError(null)
     if (!selectedInstrument) return
-    setLoading(true)
     void loadCard(selectedInstrument, next)
   }
 
@@ -279,19 +292,12 @@ function CardsPanel() {
         <FreeformPromptBox
           categoryId={selectedCategory}
           onPickInstrument={(instrument) => {
-            setLive(false)
             setSelectedInstrument(instrument)
-            setCard(null)
-            setError(null)
-            setLoading(true)
             void loadCard(instrument, horizon)
           }}
           onRoundOpened={(instrument, nextHorizon) => {
             setHorizon(nextHorizon)
             setSelectedInstrument(instrument)
-            setLive(false)
-            setError(null)
-            setLoading(true)
             void loadCard(instrument, nextHorizon)
           }}
         />
@@ -343,43 +349,42 @@ function CardsPanel() {
         </div>
       ) : null}
 
-      {active?.kind === 'instruments' && loading ? <PanelMessage text={t.hub.loading} /> : null}
-      {active?.kind === 'instruments' && !loading && error === 'jurisdiction_blocked' ? (
+      {active?.kind === 'instruments' && view.kind === 'loading' ? (
+        <PanelMessage text={t.hub.loading} />
+      ) : null}
+      {active?.kind === 'instruments' && view.kind === 'blocked' ? (
         <PanelMessage text={t.gating.unavailable} />
       ) : null}
-      {active?.kind === 'instruments' && !loading && error === 'no_round' ? (
-        <EmptyInstrumentState
-          instrument={selectedInstrument}
-          horizon={horizon}
-          onOpened={() => {
-            if (selectedInstrument) {
-              setError(null)
-              setLoading(true)
-              void loadCard(selectedInstrument, horizon)
-            }
-          }}
-        />
+      {active?.kind === 'instruments' && view.kind === 'none' ? (
+        <PanelMessage text={t.catalog.noCardYet} />
       ) : null}
-      {active?.kind === 'instruments' && !loading && error === 'load_failed' ? (
+      {active?.kind === 'instruments' && view.kind === 'error' ? (
         <PanelMessage text={t.hub.genericError} tone="error" />
       ) : null}
 
-      {active?.kind === 'instruments' && !loading && !error && card ? (
+      {active?.kind === 'instruments' && view.kind === 'locked' && selectedInstrument ? (
+        <LockedRoundPanel
+          locked={view.locked}
+          instrument={selectedInstrument}
+          horizon={horizon}
+          locale={locale}
+          onOpened={() => void loadCard(selectedInstrument, horizon)}
+        />
+      ) : null}
+
+      {active?.kind === 'instruments' && view.kind === 'card' && selectedInstrument ? (
         <>
-          <PredictionCard key={card.round.round_id} initialData={card} live={live} />
-          <DeepAnalysis
-            roundId={card.round.round_id}
-            category={card.round.category}
-            colorBucket={card.round.color_bucket}
+          <GenerationBanner
+            card={view.card}
+            locale={locale}
+            onRetried={() => void loadCard(selectedInstrument, horizon)}
           />
-          <button
-            type="button"
-            disabled={live}
-            onClick={() => setLive(true)}
-            className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50 md:max-w-sm"
-          >
-            {live ? t.hub.generating : t.hub.generateLive(LIVE_COST)}
-          </button>
+          <PredictionCard key={view.card.round.round_id} initialData={view.card} />
+          <DeepAnalysis
+            roundId={view.card.round.round_id}
+            category={view.card.round.category}
+            colorBucket={view.card.round.color_bucket}
+          />
         </>
       ) : null}
     </div>
@@ -387,46 +392,51 @@ function CardsPanel() {
 }
 
 /**
- * Generate currently lives BELOW an already-loaded PredictionCard
- * (`!loading && !error && card`). That gate is why VNQ (and any instrument
- * with no ranked round) was a dead end: the empty state replaced the card
- * block, so the paid button never rendered. The button here is the same
- * CTA (`hub.generateLive`) and hits the same endpoint with
- * `{ instrument, horizon }`, which opens the currently-open catalog-defined
- * ranked round FOR THAT HORIZON when none exists.
+ * The single paid affordance. One identical panel whether the round already
+ * exists, is mid-generation by someone else, or has never been opened — the
+ * price and the copy never say which (that asymmetry is server-enforced: the
+ * locked payload simply doesn't carry the information). Errors never lock
+ * the button: `busy` resets on every response, so a failed press is always
+ * retryable, and the server side guarantees a retry can't double-charge.
  */
-function EmptyInstrumentState({
+function LockedRoundPanel({
+  locked,
   instrument,
   horizon,
+  locale,
   onOpened,
 }: {
-  instrument: string | null
+  locked: LockedCardPayload
+  instrument: string
   horizon: UiHorizon
+  locale: string
   onOpened: () => void
 }) {
   const { t } = useLeagueLocale()
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
-  async function startGenerate() {
-    if (!instrument || busy) return
+  async function open() {
+    if (busy) return
     setBusy(true)
     setNotice(null)
     try {
-      const res = await fetch('/api/league/generate-stream', {
+      const res = await fetch('/api/league/generate', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instrument, horizon }),
+        body: JSON.stringify({ instrument, horizon, locale }),
       })
       if (!res.ok) {
         const detail = (await res.json().catch(() => null)) as
-          | { balance?: number; required?: number }
+          | { balance?: number; required?: number; code?: string }
           | null
         if (res.status === 402) {
-          setNotice(t.hub.insufficientCredits(detail?.required ?? LIVE_COST, detail?.balance ?? 0))
+          setNotice(t.hub.insufficientCredits(detail?.required ?? locked.price, detail?.balance ?? 0))
         } else if (res.status === 429) {
           setNotice(t.hub.rateLimited)
+        } else if (res.status === 503 && detail?.code === 'busy') {
+          setNotice(t.hub.generationBusy)
         } else if (res.status === 403) {
           setNotice(t.gating.unavailable)
         } else {
@@ -434,38 +444,7 @@ function EmptyInstrumentState({
         }
         return
       }
-      if (!res.body) {
-        setNotice(t.hub.genericError)
-        return
-      }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let opened = false
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.trim()) continue
-          let msg: { type?: string } | null = null
-          try {
-            msg = JSON.parse(line) as { type?: string }
-          } catch {
-            continue
-          }
-          if ((msg?.type === 'round' || msg?.type === 'done') && !opened) {
-            opened = true
-            onOpened()
-          }
-          if (msg?.type === 'error' && !opened) {
-            setNotice(t.hub.genericError)
-          }
-        }
-      }
-      if (!opened) onOpened()
+      onOpened()
     } catch {
       setNotice(t.hub.genericError)
     } finally {
@@ -474,17 +453,102 @@ function EmptyInstrumentState({
   }
 
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
-      <p className="text-sm font-semibold text-slate-800">{t.catalog.noCardYet}</p>
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6">
+      <p className="text-sm font-semibold leading-relaxed text-slate-900">{locked.round.proposition_text}</p>
+      {locked.refundedNotice ? (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+          {t.hub.generationFailedRefunded}
+        </p>
+      ) : null}
       <button
         type="button"
-        disabled={busy || !instrument}
-        onClick={() => void startGenerate()}
+        disabled={busy}
+        onClick={() => void open()}
         className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50 md:max-w-sm"
       >
-        {busy ? t.hub.generating : t.hub.generateLive(LIVE_COST)}
+        {busy ? t.hub.openingRound : t.hub.openRound(locked.price)}
       </button>
+      <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{t.hub.openRoundNote}</p>
       {notice ? <p className="mt-3 text-xs text-rose-700">{notice}</p> : null}
+    </div>
+  )
+}
+
+/**
+ * Progress / failure strip above an unlocked card while its job runs. Tiles
+ * below fill on every poll; this line names the number. A FAILED job renders
+ * the refund state and a retry that can never double-charge: with access
+ * still held the retry is free; after a refund the server returns the locked
+ * panel again and a retry is a fresh purchase — either way this button is
+ * enabled, never stuck.
+ */
+function GenerationBanner({
+  card,
+  locale,
+  onRetried,
+}: {
+  card: CardData
+  locale: string
+  onRetried: () => void
+}) {
+  const { t } = useLeagueLocale()
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const generation = card.generation
+
+  if (!generation) return null
+
+  if (generation.status === 'queued' || generation.status === 'running') {
+    const label =
+      generation.status === 'queued'
+        ? t.hub.generationQueued
+        : t.hub.generationProgress(generation.answered, generation.rosterSize)
+    return (
+      <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
+        <p className="text-xs font-medium leading-relaxed text-emerald-900">{label}</p>
+      </div>
+    )
+  }
+
+  async function retry() {
+    if (busy) return
+    setBusy(true)
+    setNotice(null)
+    try {
+      const res = await fetch('/api/league/generate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId: card.round.round_id, locale }),
+      })
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null)) as { code?: string } | null
+        setNotice(res.status === 503 && detail?.code === 'busy' ? t.hub.generationBusy : t.hub.genericError)
+        return
+      }
+      onRetried()
+    } catch {
+      setNotice(t.hub.genericError)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+      <p className="text-xs leading-relaxed text-amber-900">
+        {generation.refunded ? t.hub.generationFailedRefunded : t.hub.generationFailed}
+      </p>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void retry()}
+        className="mt-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm disabled:opacity-50"
+      >
+        {busy ? t.hub.openingRound : t.hub.retryGeneration}
+      </button>
+      {notice ? <p className="mt-2 text-xs text-rose-700">{notice}</p> : null}
     </div>
   )
 }

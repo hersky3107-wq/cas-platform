@@ -14,7 +14,6 @@ import {
 } from '@/lib/league/public-access'
 import type { LeagueTier } from '@/lib/league/roster'
 import { formatRosterBrand, lookupRosterEntry, rosterModelIdentifier } from '@/lib/league/roster'
-import { consumeGatewayReceipt } from '@/lib/league/gateway/charge-receipt'
 
 /** Mirrors app/api/admin/league/generate/route.ts's budget — same fan-out, just streamed. */
 export const maxDuration = 180
@@ -94,6 +93,13 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
   const { viewer } = auth
 
+  // ADMIN-ONLY since 2026-09-14: the public paid path is POST
+  // /api/league/generate (inline charge + cron-driven background job — see
+  // lib/league/generation/). This live NDJSON re-run stays for operator
+  // testing; leaving it public would let a caller bypass the paid-view
+  // pricing and the one-active-job-per-round guarantee.
+  if (!viewer.isAdmin) return forbiddenResponse('not_public')
+
   const limited = enforceRateLimit(viewer, 'league_generate', LEAGUE_GENERATE_RATE_RULE)
   if (limited) return limited
 
@@ -103,12 +109,9 @@ export async function POST(req: Request) {
   const tuning = tuningForViewer(parseTuning(body), viewer.isAdmin)
 
   const cost = creditsForLeagueGenerate()
-  const instrument = typeof body.instrument === 'string' ? body.instrument.trim() : ''
-  const horizon = typeof body.horizon === 'string' && body.horizon.trim() ? body.horizon.trim() : '1d'
-  const receipt = typeof body.gateway_receipt === 'string' ? body.gateway_receipt.trim() : ''
-  const skipCharge = receipt ? consumeGatewayReceipt(receipt, viewer.userId, instrument, horizon) : false
-
-  if (!skipCharge) {
+  {
+    // Admin deductions are skipped inside deductCreditsBalance; the call
+    // stays so a future non-admin exemption cannot silently make this free.
     const deduct = await deductCreditsBalance(supabaseAdmin, viewer.userId, cost, 'league_generate')
     if (!deduct.ok) {
       const insufficient = deduct.reason === 'insufficient'

@@ -1,7 +1,20 @@
 import { NextResponse } from 'next/server'
+import { creditsForLeagueGenerate } from '@/lib/credits'
 import { CardNotFoundError, fetchCardData, type CardLookup } from '@/lib/league/card'
+import type { CardData, CardGenerationState, LockedCardPayload } from '@/lib/league/card-types'
+import { gatePublicGenerateInstrument } from '@/lib/league/access-policy'
+import { buildCatalogRankedRoundInput, findCatalogInstrument } from '@/lib/league/catalog'
+import {
+  findActiveJobForRound,
+  hasPaidRoundAccess,
+  isRoundComplete,
+  latestWorkJobForRound,
+  wasRefundedForRound,
+} from '@/lib/league/generation/job-store'
+import { getRoster } from '@/lib/league/roster'
 import {
   authorizeRoundForViewer,
+  forbiddenResponse,
   resolveLeagueViewer,
   resolvePublicInstrumentRound,
 } from '@/lib/league/public-access'
@@ -11,27 +24,25 @@ import { isUiHorizon } from '@/lib/league/horizon'
  * GET /api/league/card?round_id=<uuid>
  * GET /api/league/card?instrument=AAPL[&horizon=1d|1w|1m|3m][&date=YYYY-MM-DD]
  *
- * `horizon` selects among the 4 fixed horizon codes (default `1d`, matching
- * every caller written before horizon selection existed). An unrecognized
- * horizon is 400 `unknown_horizon` — never silently defaulted.
+ * Read-only, and STILL RATE-LIMIT-FREE ON PURPOSE: this is the poll target
+ * while a background generation job runs (every ~5s), and a stored card view
+ * costs a couple of indexed selects. Never generates and never charges — the
+ * paid press is `POST /api/league/generate`.
  *
- * Read-only. Returns the assembled `CardData` (round meta + per-model list +
- * server-computed aggregates) for one round. Never generates or mutates
- * anything — that stays with the orchestrator/cron
- * (`lib/league/orchestrator.ts`, `app/api/cron/league/open`), which this
- * route does not import.
+ * PAID VIEW (2026-09-14): a non-admin viewer without a live purchase row for
+ * the round gets a LOCKED payload — round identity + proposition + price,
+ * nothing about models, consensus, grading, or whether content exists at
+ * all. Payment is permanent per (round, user): once paid, this route serves
+ * the full card forever, including after grading.
  *
- * FREE, AND DELIBERATELY SO: a stored/cached card view costs us a couple of
- * indexed selects, and it is the funnel for everything that does cost money.
- * No `deductCreditsBalance` call belongs in this file. Live generation is the
- * only paid league read path (`POST /api/league/generate-stream`).
+ * While a job is queued/running (viewer has access), the full card carries a
+ * `generation` block; the client polls and tiles fill as rows land. A
+ * viewer's read still triggers grade-on-read inside `fetchCardData`, locked
+ * or not, so grading stays read-driven for the leaderboard/record room.
  *
- * AUTH: any logged-in user (was admin-only). `prediction_rounds` /
- * `model_predictions` are service-role tables (RLS default-deny), so this
- * route IS the access control for them — see `lib/league/public-access.ts`:
- *  - non-admin: RANKED rounds on CURATED instruments only, and only if the
- *    round's category is allowed in their resolved jurisdiction (403);
- *  - admin: any round / instrument / date, for operator preview.
+ * AUTH: any logged-in user. Non-admin: RANKED rounds on CURATED instruments
+ * in an allowed jurisdiction (see lib/league/public-access.ts). Admin: any
+ * round, full card, no purchase needed (operator preview — deep-runs parity).
  */
 export async function GET(req: Request) {
   const auth = await resolveLeagueViewer(req)
@@ -44,6 +55,7 @@ export async function GET(req: Request) {
   const horizonRaw = searchParams.get('horizon')?.trim() || '1d'
 
   let lookup: CardLookup | null = null
+  let lockedPreview: LockedCardPayload | null = null
 
   if (viewer.isAdmin) {
     lookup = parseAdminLookup(searchParams)
@@ -56,11 +68,44 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unknown horizon', code: 'unknown_horizon' }, { status: 400 })
     }
     const access = await resolvePublicInstrumentRound(viewer, instrument, horizonRaw)
-    if (!access.ok) return access.response
-    // Public reads resolve to the latest ranked round for the instrument at
-    // this horizon; the `date` parameter stays an admin/preview affordance.
-    lookup = { roundId: access.roundId }
+    if (access.ok) {
+      lookup = { roundId: access.roundId }
+    } else if (access.response.status === 404) {
+      // No round exists yet for this curated instrument+horizon. The viewer
+      // must not learn that: serve the SAME locked shape they would get for
+      // an existing unpaid round, with the proposition composed from the
+      // same catalog metadata the generate press would use.
+      const gate = gatePublicGenerateInstrument(instrument, viewer, horizonRaw)
+      if (!gate.ok) {
+        return gate.status === 403
+          ? forbiddenResponse('jurisdiction_blocked')
+          : NextResponse.json({ error: 'Unknown instrument', code: gate.code }, { status: 400 })
+      }
+      const wouldOpen = buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+      const catalogTone = findCatalogInstrument(gate.instrument)?.category.tone ?? 'yellow'
+      if (!wouldOpen) {
+        return NextResponse.json({ error: 'No ranked round available yet', code: 'no_round' }, { status: 404 })
+      }
+      lockedPreview = {
+        locked: true,
+        price: creditsForLeagueGenerate(),
+        round: {
+          round_id: null,
+          instrument: wouldOpen.instrument,
+          horizon: wouldOpen.horizon,
+          category: wouldOpen.category,
+          color_bucket: catalogTone,
+          proposition_text: wouldOpen.proposition_text,
+          resolves_at: wouldOpen.resolves_at,
+        },
+        refundedNotice: false,
+      }
+    } else {
+      return access.response
+    }
   }
+
+  if (lockedPreview) return NextResponse.json(lockedPreview)
 
   if (!lookup) {
     return NextResponse.json(
@@ -70,11 +115,38 @@ export async function GET(req: Request) {
   }
 
   try {
+    // Assembles the card AND triggers grade-on-read — deliberately before the
+    // paywall branch so grading stays read-driven even for locked viewers.
     const card = await fetchCardData(
       lookup,
       viewer.isAdmin ? undefined : { categories: viewer.visibleCategories }
     )
-    return NextResponse.json(card)
+
+    if (!viewer.isAdmin) {
+      const paid = await hasPaidRoundAccess(card.round.round_id, viewer.userId)
+      if (!paid) {
+        const refundedNotice = await wasRefundedForRound(card.round.round_id, viewer.userId)
+        const locked: LockedCardPayload = {
+          locked: true,
+          price: creditsForLeagueGenerate(),
+          round: {
+            round_id: card.round.round_id,
+            instrument: card.round.instrument,
+            horizon: card.round.horizon,
+            category: card.round.category,
+            color_bucket: card.round.color_bucket,
+            proposition_text: card.round.proposition_text,
+            resolves_at: card.round.resolves_at,
+          },
+          refundedNotice,
+        }
+        return NextResponse.json(locked)
+      }
+    }
+
+    const generation = await generationStateFor(card)
+    const payload: CardData = { ...card, generation }
+    return NextResponse.json(payload)
   } catch (e: unknown) {
     if (e instanceof CardNotFoundError) {
       return NextResponse.json({ error: e.message }, { status: 404 })
@@ -84,6 +156,43 @@ export async function GET(req: Request) {
       { status: 500 }
     )
   }
+}
+
+/**
+ * The card's `generation` block: an active job (queued/running), or the
+ * latest FAILED work job while the round is still incomplete (so the client
+ * can explain and offer the retry), else null.
+ */
+async function generationStateFor(card: CardData): Promise<CardGenerationState | null> {
+  const roundId = card.round.round_id
+  const rosterSize = getRoster().length
+  const answered = card.models.length
+
+  const active = await findActiveJobForRound(roundId)
+  if (active) {
+    return {
+      status: active.status === 'queued' ? 'queued' : 'running',
+      stage: active.stage,
+      rosterSize,
+      answered,
+      refunded: false,
+    }
+  }
+
+  const complete = await isRoundComplete(roundId)
+  if (complete) return null
+
+  const latest = await latestWorkJobForRound(roundId)
+  if (latest && latest.status === 'failed') {
+    return {
+      status: 'failed',
+      stage: latest.stage,
+      rosterSize,
+      answered,
+      refunded: latest.refunded,
+    }
+  }
+  return null
 }
 
 function parseAdminLookup(searchParams: URLSearchParams): CardLookup | null {

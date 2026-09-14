@@ -284,6 +284,52 @@ export type CardRoundMeta = {
 }
 
 /**
+ * Background-generation status for a round whose model board is still being
+ * filled by the cron job runner (see lib/league/generation/). Attached by
+ * `GET /api/league/card` — null once the round is complete (or when no work
+ * job is relevant). The client POLLS the card while status is
+ * queued/running; tiles fill as `models` grows between polls.
+ */
+export type CardGenerationState = {
+  status: 'queued' | 'running' | 'failed'
+  /** Work stage: packet → premier → challenger → world → scout → finalize. */
+  stage: string
+  /** Full roster target for this round (denominator of the progress line). */
+  rosterSize: number
+  /** Model rows written so far (numerator; includes 결번 rows). */
+  answered: number
+  /**
+   * failed only: this viewer's money already went back. A retry is a fresh
+   * purchase — the locked state says so instead of a stuck button.
+   */
+  refunded: boolean
+}
+
+/**
+ * What `GET /api/league/card` returns when the viewer has NOT paid for this
+ * round (paid-view pricing, 2026-09-14). Deliberately does not say whether
+ * the round already has content, is being generated, or does not exist yet —
+ * the price and the promise are identical in every case, and the server
+ * never explains why one round exists and another does not.
+ */
+export type LockedCardPayload = {
+  locked: true
+  price: number
+  round: {
+    /** Null when no round row exists yet for this instrument+horizon (indistinguishable to the client on purpose — it always re-opens via instrument+horizon). */
+    round_id: string | null
+    instrument: string
+    horizon: string
+    category: string
+    color_bucket: ColorBucket
+    proposition_text: string
+    resolves_at: string | null
+  }
+  /** This viewer previously paid here and was refunded after a failed run. */
+  refundedNotice: boolean
+}
+
+/**
  * The full, self-contained shape a prediction card renders from. Everything a
  * component needs — no follow-up fetches, no client-side aggregation.
  */
@@ -315,4 +361,10 @@ export type CardData = {
   combinedTrack: CombinedMethodTrack
   /** ISO timestamp this snapshot was assembled — lets the UI show "as of". */
   generatedAt: string
+  /**
+   * Non-null while a background generation job is queued/running (or failed
+   * without a completed round). Attached by the card ROUTE, not by
+   * `buildCardData` — pure card assembly stays job-agnostic.
+   */
+  generation?: CardGenerationState | null
 }

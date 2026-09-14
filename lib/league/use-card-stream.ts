@@ -121,9 +121,12 @@ export function resort(prev: CardData): CardData {
  *    merges each arriving model in as it completes.
  *
  * SCOPE: `live` is an explicit opt-in per render (see `PredictionCard`'s
- * `live` prop). Nothing here or upstream ever flips it on by default — the
- * stored/cached path (`initialData` from `GET /api/league/card`) remains
- * what every normal card view renders.
+ * `live` prop) and is ADMIN-ONLY since 2026-09-14: the NDJSON endpoint it
+ * consumes (`POST /api/league/generate-stream`) now 403s non-admins. The
+ * public surface uses the cron job runner instead — the hub POSTs
+ * `/api/league/generate` and POLLS `GET /api/league/card`, passing each
+ * fresh snapshot down as `initialData` (synced by the effect above). Only
+ * the admin preview page (`app/admin/league/card`) still passes `live`.
  */
 export function useCardStream({ roundId, initialData, live = false }: UseCardStreamOptions): UseCardStreamResult {
   const [data, setData] = useState<CardData>(initialData)
@@ -135,14 +138,26 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
     roundIdRef.current = roundId
   }, [roundId])
 
+  // POLLING SUPPORT: the hub re-fetches the card while a background
+  // generation job runs and passes each fresh snapshot down as
+  // `initialData`. Without this sync the state initialized on mount would
+  // ignore every later snapshot and the tiles would never fill.
+  useEffect(() => {
+    setData(initialData)
+  }, [initialData])
+
   const refetch = useCallback(async () => {
     try {
       const res = await fetch(`/api/league/card?round_id=${encodeURIComponent(roundIdRef.current)}`, {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(`league card refetch failed: ${res.status}`)
-      const fresh = (await res.json()) as CardData
-      setData(fresh)
+      const fresh = (await res.json()) as CardData | { locked?: boolean }
+      // Paid-view pricing: a refetch can come back LOCKED (e.g. this viewer
+      // was refunded after a failed run). The hub's own poll owns that
+      // transition — here we just keep the last full snapshot.
+      if ((fresh as { locked?: boolean }).locked) return
+      setData(fresh as CardData)
       setConnection((prev) => (prev === 'live' || prev === 'connecting' ? prev : 'static'))
     } catch {
       setConnection('error')

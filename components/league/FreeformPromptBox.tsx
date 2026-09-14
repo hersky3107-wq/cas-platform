@@ -125,11 +125,17 @@ export function FreeformPromptBox({
     }
   }
 
+  /**
+   * The gateway already charged and issued a durable one-shot receipt; this
+   * hands it to the inline open endpoint, which returns in ~a second with the
+   * round enqueued (or already viewable). No NDJSON stream anymore — the hub
+   * reloads the card and POLLS it while the background job fills the board.
+   */
   async function startGenerate(ready: Extract<GatewayResponse, { status: 'ready' }>) {
     const horizon = (['1d', '1w', '1m', '3m'] as const).includes(ready.horizon as UiHorizon)
       ? (ready.horizon as UiHorizon)
       : '1d'
-    const res = await fetch('/api/league/generate-stream', {
+    const res = await fetch('/api/league/generate', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -137,40 +143,22 @@ export function FreeformPromptBox({
         instrument: ready.instrument,
         horizon,
         gateway_receipt: ready.gateway_receipt,
+        locale,
       }),
     })
     if (res.status === 402) {
       setRefusal(t.hub.insufficientCredits(creditsForLeagueGenerate(), 0))
       return
     }
-    if (!res.ok || !res.body) {
+    if (res.status === 503) {
+      setRefusal(t.hub.generationBusy)
+      return
+    }
+    if (!res.ok) {
       setRefusal(t.hub.genericError)
       return
     }
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let opened = false
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const msg = JSON.parse(line) as { type?: string }
-          if ((msg.type === 'round' || msg.type === 'done') && !opened) {
-            opened = true
-            onRoundOpened(ready.instrument, horizon)
-          }
-        } catch {
-          /* skip a torn line */
-        }
-      }
-    }
-    if (!opened) onRoundOpened(ready.instrument, horizon)
+    onRoundOpened(ready.instrument, horizon)
   }
 
   function tapOption(optionId: string) {

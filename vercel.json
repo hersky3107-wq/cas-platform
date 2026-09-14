@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/oracle-sweep",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/league-generate",
+      "schedule": "* * * * *"
     }
   ]
 }

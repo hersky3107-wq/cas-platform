@@ -93,6 +93,20 @@ export type GenerateOptions = {
   round: RoundInput
   /** Roster subset by tier — run 'world' first to keep the cost test cheap. */
   tiers?: LeagueTier[]
+  /**
+   * RESUME SUPPORT (cron job runner): roster model_ids to skip because their
+   * `model_predictions` row already exists for this round. The rows table is
+   * unique on (round_id, model_id), so "has a row" IS the resume state — a
+   * resumed worker never redoes finished work. Additive: absent = run all.
+   */
+  excludeModelIds?: readonly string[]
+  /**
+   * WALL-CLOCK LAUNCH GATE (cron job runner): epoch ms after which no model
+   * whose own timeout cannot finish by this deadline is LAUNCHED. Models left
+   * unlaunched simply have no row yet and are picked up by the next tick.
+   * In-flight calls are never interrupted. Additive: absent = no gate.
+   */
+  deadlineAtMs?: number
   concurrency?: number
   timeoutMs?: number
   /** Override completion-token budget (premier-only runs default to 5000, others 3000; roster entries may override per model). */
@@ -337,6 +351,13 @@ async function persistAnchorPrice(
         ...(sessionDate ? { anchor_session_date: sessionDate } : {}),
       })
       .eq('id', roundId)
+      // WRITE-ONCE, enforced in the DB: the anchor is "what the instrument
+      // was at when this round opened" and a later packet rebuild (job-runner
+      // tick, re-run) must never move it. This null-guard replaces the old
+      // `created`-flag guard so a round created OUTSIDE this function (the
+      // inline generate route inserts the row before the job runs) still gets
+      // its anchor stamped on the first packet build.
+      .is('anchor_price', null)
   } catch {
     // best-effort — see doc comment above
   }
@@ -683,6 +704,11 @@ async function runOneModel(
         cost_usd: totalCostUsd,
         estimated_cost_usd: estimatedCostUsd,
         server_side_tools_used: toolsUsed,
+        // Refreshed on every attempt (upsert UPDATE branch would otherwise
+        // keep the stale first-write value). The job runner's retry rule
+        // reads this: a null row is only re-attempted by a NEW job when its
+        // last attempt predates that job.
+        predicted_at: new Date().toISOString(),
       },
       { onConflict: 'round_id,model_id' }
     )
@@ -725,9 +751,60 @@ async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promis
         cost_usd: 0,
         estimated_cost_usd: 0,
         server_side_tools_used: null,
+        // See the parallel comment in runOneModel — the retry rule needs the
+        // LAST attempt time, and the upsert UPDATE branch keeps stale values
+        // for columns missing from the payload.
+        predicted_at: new Date().toISOString(),
       },
       { onConflict: 'round_id,model_id' }
     )
+}
+
+/**
+ * Round row resolution/creation for callers OUTSIDE a generation run — the
+ * inline generate route inserts the round row in the fast path (so the user
+ * gets a round_id in ~a second) and the job runner does the model work later
+ * against `{ roundId }`. Exactly `ensureRound`, exported under a name that
+ * says what it is.
+ */
+export async function ensureLeagueRound(
+  input: RoundInput
+): Promise<{ round: { id: string; instrument: string; horizon: string }; created: boolean }> {
+  const { round, created } = await ensureRound(input)
+  return { round: { id: round.id, instrument: round.instrument, horizon: round.horizon }, created }
+}
+
+/**
+ * FINALIZE for the job runner: recompute + persist the round's consensus from
+ * EVERY `model_predictions` row in the DB. The per-invocation persist at the
+ * end of `generatePredictions` only sees that invocation's results — correct
+ * for a full-roster run, but a tier-chunked job would otherwise finish with
+ * consensus computed from its LAST tier only. This variant reads the whole
+ * board back and persists the true final aggregate.
+ */
+export async function persistLeagueConsensusFromDb(roundId: string): Promise<void> {
+  const { round } = await ensureRound({ roundId })
+  const adapter = adapterForLedgerCategory(round.category)
+  const propositionKind = isPropositionKind(round.proposition_kind)
+    ? round.proposition_kind
+    : adapter
+      ? adapter.slotsForRound(round).proposition_kind
+      : 'binary_close_higher'
+  const contract = answerContractFor(propositionKind)
+
+  const { data, error } = await supabaseAdmin
+    .from('model_predictions')
+    .select('predicted_direction, predicted_value, predicted_magnitude_pct')
+    .eq('round_id', roundId)
+  if (error) throw new Error(`persistLeagueConsensusFromDb: ${error.message}`)
+
+  const rows = (data ?? []).map((row) => ({
+    direction: (row as { predicted_direction: string | null }).predicted_direction as AnswerSide | null,
+    probability: (row as { predicted_value: number | null }).predicted_value,
+    magnitude: (row as { predicted_magnitude_pct: number | null }).predicted_magnitude_pct,
+  }))
+
+  await persistConsensusAggregates(roundId, rows, contract.sides)
 }
 
 function resolveCostCap(override?: number): number {
@@ -757,7 +834,10 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
 
   // Pure/synchronous config lookup — safe to resolve before the round exists,
   // so onRoundResolved can report rosterSize in the same callback.
-  const roster = getRoster(tiers)
+  // `excludeModelIds` (resume support) filters models whose row already
+  // exists — see GenerateOptions.
+  const excluded = new Set(opts.excludeModelIds ?? [])
+  const roster = getRoster(tiers).filter((entry) => !excluded.has(entry.model_id))
 
   const { round, created } = await ensureRound(roundInput)
   onRoundResolved?.({ id: round.id, created, rosterSize: roster.length })
@@ -775,7 +855,11 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
     round,
     costCapUsd: costCap,
     onEvent: async (event) => {
-      if (event.kind === 'anchor_price' && created) {
+      // Not gated on `created` anymore: persistAnchorPrice is write-once via
+      // a DB null-guard, so rounds inserted by the inline generate route
+      // (which this function then sees as pre-existing) still get an anchor
+      // on their first packet build, and re-runs still can't move it.
+      if (event.kind === 'anchor_price') {
         await persistAnchorPrice(round.id, event.price, event.sessionDate)
       }
     },
@@ -814,13 +898,20 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
         capped = true
         return
       }
-      const i = nextIndex++
+      // WALL-CLOCK GATE (job runner): only launch a model whose own timeout
+      // still fits inside the deadline. This peek→check→claim sequence is
+      // synchronous (no await between), so parallel workers can't double-claim
+      // an index. An unlaunched model simply has no row yet — the next cron
+      // tick picks it up from the resume state.
+      const i = nextIndex
       if (i >= roster.length) return
-
       const entry = roster[i]
+      const entryTimeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : timeoutMs
+      if (opts.deadlineAtMs && Date.now() + entryTimeoutMs > opts.deadlineAtMs) return
+      nextIndex = i + 1
+
       const prompt = entry.league_tier === 'scout' ? prompts.scout : prompts.price
       const tokenBudget = resolveMaxCompletionTokensForEntry(entry, maxCompletionTokens)
-      const entryTimeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : timeoutMs
       const outcome = await runOneModel(entry, contract, round.id, prompt, entryTimeoutMs, userId ?? null, tokenBudget, round.horizon)
       runningCost += outcome.cost_usd
       results.push(outcome)

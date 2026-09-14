@@ -132,11 +132,17 @@ describe('dictionary completeness', () => {
         hub.tabs.recordRoom,
         hub.loading,
         hub.noInstruments,
-        hub.generating,
-        hub.freeReadNote,
+        hub.openingRound,
+        hub.openRoundNote,
+        hub.generationQueued,
+        hub.generationProgress(12, 41),
+        hub.generationFailed,
+        hub.generationFailedRefunded,
+        hub.retryGeneration,
+        hub.generationBusy,
         hub.rateLimited,
         hub.genericError,
-        hub.generateLive(30),
+        hub.openRound(30),
         hub.insufficientCredits(30, 0),
         hub.balance(120),
         hub.deepOpen(50),
@@ -182,9 +188,12 @@ describe('dictionary completeness', () => {
   it('always shows the price inside the paid hub CTA and the 402 message', () => {
     for (const locale of LEAGUE_LOCALES) {
       const hub = getLeagueUiPack(locale).hub
-      // A user must be able to read what a live run costs before spending.
-      expect(hub.generateLive(30)).toContain('30')
+      // A user must be able to read what opening a round costs before spending.
+      expect(hub.openRound(30)).toContain('30')
       expect(hub.insufficientCredits(30, 0)).toContain('30')
+      // The progress line must carry both the numerator and the roster size.
+      expect(hub.generationProgress(12, 41)).toContain('12')
+      expect(hub.generationProgress(12, 41)).toContain('41')
       expect(hub.deepOpen(50)).toContain('50')
       expect(hub.deepDebate(70)).toContain('70')
       expect(getLeagueUiPack(locale).recordRoom.deepCta(3)).toContain('3')
