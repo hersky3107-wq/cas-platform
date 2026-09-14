@@ -168,4 +168,15 @@ describe('use-card-stream: live merge (Layer 4)', () => {
     expect(reconciled.models).toHaveLength(1)
     expect(reconciled).toEqual(card)
   })
+
+  it('ignores a null/blank/flat incoming model — never a no-opinion tile', () => {
+    const start = emptyCard()
+    expect(mergeModel(start, liveModel({ direction: null })).models).toHaveLength(0)
+    expect(mergeModel(start, liveModel({ direction: 'flat' })).models).toHaveLength(0)
+
+    const withCall = mergeModel(start, liveModel({ model_id: 'gpt-4o', direction: 'up' }))
+    const afterFail = mergeModel(withCall, liveModel({ model_id: 'gpt-4o', direction: null }))
+    expect(afterFail.models).toHaveLength(1)
+    expect(afterFail.models[0]!.direction).toBe('up')
+  })
 })

@@ -50,6 +50,34 @@ export function sanitizeRationale(raw: string | null | undefined): string | null
   return trimmed
 }
 
+function hostnameFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, '')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * DISPLAY-ONLY scout rationale cleaner. Never call this on a write path —
+ * stored `reasoning_snippet` stays verbatim. Strips numeric citation markers
+ * and turns markdown/bare URLs into the visible label or hostname (no query).
+ */
+export function sanitizeScoutRationaleDisplay(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null
+  let text = raw
+  text = text.replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi, (_m, label: string, url: string) => {
+    const visible = String(label).trim()
+    return visible || hostnameFromUrl(url)
+  })
+  text = text.replace(/\[\[\s*\d+(?:\s*,\s*\d+)*\s*\]\]/g, '')
+  text = text.replace(/\[\s*\d+(?:\s*,\s*\d+)*\s*\]/g, '')
+  text = text.replace(/https?:\/\/[^\s)\]>]+/gi, (url) => hostnameFromUrl(url))
+  text = text.replace(/[?&](?:utm_[a-z0-9]+|fbclid|gclid|mc_cid|mc_eid)=[^&\s]*/gi, '')
+  text = text.replace(/[ \t]{2,}/g, ' ').replace(/ +([,.;:])/g, '$1').trim()
+  return text || null
+}
+
 /** DB cap for the stored visible-reasoning block (PART 1 of the v2 output
  *  contract). ~150 words is the prompt's ask; 4000 chars absorbs models that
  *  overrun without letting a runaway output bloat the ledger row. */

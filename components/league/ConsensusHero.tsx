@@ -45,7 +45,7 @@ export function ConsensusHero({
 
   return (
     <div className="mt-2">
-      <p className="text-lg font-bold leading-snug text-league-fg md:text-xl">
+      <div className="text-lg font-bold leading-snug text-league-fg md:text-xl">
         {hero.diverged ? (
           <>
             <span>{prefix.trimEnd()}</span>
@@ -56,16 +56,16 @@ export function ConsensusHero({
               >
                 ?
               </summary>
-              <p className="absolute left-0 z-10 mt-1 w-64 rounded-md border border-league-border bg-white px-2 py-1.5 text-[11px] font-medium leading-snug text-league-fg-muted shadow-sm">
+              <div className="absolute left-0 z-10 mt-1 w-64 rounded-md border border-league-border bg-white px-2 py-1.5 text-[11px] font-medium leading-snug text-league-fg-muted shadow-sm">
                 {t.hero.weightedCallHelp}
-              </p>
+              </div>
             </details>{' '}
             {remainder}
           </>
         ) : (
           hero.line1
         )}
-      </p>
+      </div>
       <p className="mt-0.5 text-[11px] font-medium leading-snug text-league-fg-muted">{hero.line2}</p>
       {magnitudeCompare ? (
         <p className="mt-1 text-[11px] font-medium text-league-fg-muted" dir="ltr">

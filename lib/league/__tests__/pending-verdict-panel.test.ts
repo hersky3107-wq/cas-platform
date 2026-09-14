@@ -258,6 +258,10 @@ describe('ConsensusHero — weighted-call help only when diverged', () => {
     expect(html).toContain(t.hero.weightedCallHelp)
     expect(html).not.toMatch(/log-?odds|logit|inverse/i)
     expect(html).toContain('Most models said rise')
+    expect(html).toContain('<div class="text-lg font-bold leading-snug text-league-fg md:text-xl">')
+    expect(html).toContain('<details')
+    expect(html).not.toMatch(/<p class="text-lg font-bold leading-snug text-league-fg md:text-xl">/)
+    expect(html).not.toMatch(/<p class="absolute left-0 z-10/)
   })
 
   it('does not render the help when majority and weighted call agree', () => {

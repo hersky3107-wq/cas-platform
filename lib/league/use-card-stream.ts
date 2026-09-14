@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CAMPS, LEAGUE_TIERS, type CardData, type CardModelPrediction } from './card-types'
 import { computeCardAggregates } from './card-aggregate'
+import { hasCallableSide } from './side-labels'
 
 export type CardStreamState = 'static' | 'connecting' | 'live' | 'reconnecting' | 'error'
 
@@ -79,6 +80,9 @@ function sortByTierThenCamp(models: CardModelPrediction[]): CardModelPrediction[
  * `__tests__/use-card-stream.test.ts`.
  */
 export function mergeModel(prev: CardData, incoming: CardModelPrediction): CardData {
+  // Null/blank/unparseable/flat never land on tiles or in live aggregates —
+  // same gate as `buildCardData`. A failed stream row is a no-op, not "no opinion".
+  if (!hasCallableSide(incoming.direction)) return prev
   const byId = new Map(prev.models.map((m) => [m.model_id, m] as const))
   byId.set(incoming.model_id, incoming)
   const models = Array.from(byId.values())

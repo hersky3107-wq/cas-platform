@@ -96,6 +96,11 @@ export type AnswerContract = {
   scoutSystemPrompt: string
   /** Appended once when the first answer fails `validate`. */
   retryInstruction: string
+  /**
+   * Used when the first answer has no valid side (null/blank/unparseable).
+   * Asks only for the two-side token so a follow-up can salvage a call.
+   */
+  directionOnlyRetryInstruction: string
   /** User-prompt guidance when a packet/injection is present. */
   packetAnswerGuidance: string
   /** User-prompt guidance when no packet is available. */
@@ -114,6 +119,14 @@ export type AnswerContract = {
   ledgerFields: (validation: ValidAnswer) => LedgerAnswerFields
   /** Visible reasoning block (text before the answer JSON), sanitized. */
   splitReasoning: (text: string | null) => string | null
+}
+
+/** True when the extracted token is one of this contract's two sides. */
+export function isContractSide(
+  side: string | null | undefined,
+  contract: Pick<AnswerContract, 'sides'>
+): side is AnswerSide {
+  return side === contract.sides[0] || side === contract.sides[1]
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +370,8 @@ const BINARY_CLOSE_HIGHER: AnswerContract = {
   closedBookSystemPrompt: composeClosedBookPrompt(CLOSE_HIGHER_CONFIG),
   scoutSystemPrompt: composeScoutPrompt(CLOSE_HIGHER_CONFIG),
   retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"..."}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`,
+  directionOnlyRetryInstruction:
+    'RETRY: Previous answer had no valid direction. Output EXACTLY one JSON line and nothing else: {"direction":"up"} or {"direction":"down"}. Never flat, abstain, empty, or any other value.',
   packetAnswerGuidance:
     'You have the numeric market data and research above. Exactly two answers exist: up or down, plus a probability. Do NOT answer "abstain" for lack of data — the packet above is your data. Prefer the numbered blocks over prose if they disagree.',
   noPacketAnswerGuidance: (packetError?: string) =>
@@ -420,6 +435,8 @@ const BINARY_SUBJECT_OUTCOME: AnswerContract = {
   closedBookSystemPrompt: composeClosedBookPrompt(SUBJECT_OUTCOME_CONFIG),
   scoutSystemPrompt: composeScoutPrompt(SUBJECT_OUTCOME_CONFIG),
   retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"yes"|"no","probability":0-100,"qualifier":"<short string>","rationale":"..."}. side must be exactly "yes" or "no" — whether the named subject achieves the stated outcome; any other result (including a draw) is "no". Never abstain, never a name. qualifier is required: a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) with your predicted detail (scoreline, margin, gap).`,
+  directionOnlyRetryInstruction:
+    'RETRY: Previous answer had no valid side. Output EXACTLY one JSON line and nothing else: {"side":"yes"} or {"side":"no"}. Never abstain, empty, a name, or any other value.',
   packetAnswerGuidance:
     'You have the research packet above. Exactly two answers exist: yes or no — does the named subject achieve the stated outcome? Do NOT answer "abstain" for lack of data — the packet above is your data. Prefer the numbered blocks over prose if they disagree.',
   noPacketAnswerGuidance: (packetError?: string) =>
@@ -469,6 +486,8 @@ const BINARY_THRESHOLD: AnswerContract = {
   closedBookSystemPrompt: composeClosedBookPrompt(THRESHOLD_CONFIG),
   scoutSystemPrompt: composeScoutPrompt(THRESHOLD_CONFIG),
   retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"above"|"below","probability":0-100,"predicted_value":<number>,"rationale":"..."}. side must be exactly "above" or "below" — never at, equal, abstain, or any other value. predicted_value is required: a plain number in the same units as the proposition's threshold.`,
+  directionOnlyRetryInstruction:
+    'RETRY: Previous answer had no valid side. Output EXACTLY one JSON line and nothing else: {"side":"above"} or {"side":"below"}. Never at, equal, abstain, empty, or any other value.',
   packetAnswerGuidance:
     'You have the data packet and research above. Exactly two answers exist: above or below the stated threshold, plus a probability. Do NOT answer "abstain" for lack of data — the packet above is your data. Prefer the numbered blocks over prose if they disagree.',
   noPacketAnswerGuidance: (packetError?: string) =>

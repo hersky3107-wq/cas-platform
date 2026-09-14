@@ -217,7 +217,7 @@ const XAI_GROK_43_PRICE: RosterPrice = {
 }
 
 /** First-party DeepSeek thinking — confirmed live 2026-09-07 (CHAIN/JSON in content). */
-const DEEPSEEK_FIRST_PARTY_THINKING: Record<string, unknown> = {
+export const DEEPSEEK_FIRST_PARTY_THINKING: Record<string, unknown> = {
   thinking: { type: 'enabled' },
   reasoning_effort: 'low',
 }
@@ -294,7 +294,9 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // maxCompletionTokens to draw down idle Friendli credit; the model still
   // stops when the contract is done (probe finished at 270 completion tokens).
   { model_id: 'gemma-4-31b-it', brand: 'Google', product_alias: 'Gemma', camp: 'us', league_tier: 'world', weights: 'open', provider_key: 'friendli', reasoning: false, maxCompletionTokens: 16000, timeoutMs: 90_000, caller: { kind: 'platform', platformId: 'friendli:gemma-4-31b-it' }, price: { inputPerMTokens: 0.14, outputPerMTokens: 0.4 } }, // Gemma license; google/gemma-4-31B-it
-  { model_id: 'ernie-4.5-vl', brand: 'Baidu', product_alias: 'ERNIE', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:ernie-4.5-vl' }, price: { inputPerMTokens: 0.42, outputPerMTokens: 1.25 } }, // Apache-2.0; baidu/ERNIE-4.5-VL-424B-A47B-PT
+  // 2026-09-14: WORLD seat replacing uncallable Baidu ERNIE (only VL existed).
+  // OpenRouter list $0.06/$0.25; 131k context.
+  { model_id: 'granite-4.2-8b', brand: 'IBM', product_alias: 'Granite', camp: 'us', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:granite-4.2-8b' }, price: { inputPerMTokens: 0.06, outputPerMTokens: 0.25 } }, // Apache-2.0; ibm-granite/granite-4.2-8b
   { model_id: 'seed-1.6', brand: 'ByteDance', product_alias: 'Seed', camp: 'china', league_tier: 'world', weights: 'closed', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:seed-1.6' }, price: { inputPerMTokens: 0.25, outputPerMTokens: 2 } }, // API-only; Seed-OSS is a sibling, not this model
 
   // ── 🟣 SCOUT (6) — all genuinely search-capable, no padding. Graded on
@@ -324,6 +326,8 @@ const ROSTER_BY_MODEL_ID = new Map(LEAGUE_ROSTER.map((entry) => [entry.model_id,
  */
 const RETIRED_ROSTER_DISPLAY: Record<string, Pick<RosterEntry, 'brand' | 'product_alias'>> = {
   'k-exaone-2.0': { brand: 'LG', product_alias: 'EXAONE' },
+  'ernie-4.5-vl': { brand: 'Baidu', product_alias: 'ERNIE' },
+  'ernie-4.5': { brand: 'Baidu', product_alias: 'ERNIE' },
 }
 
 /** Brand line for tiles — e.g. "OpenAI (ChatGPT)" when a product alias exists. */

@@ -1,21 +1,19 @@
 import 'server-only'
 
 import {
-  planJejuMeeting,
-  renderChairVerdict,
-  type JejuMeetingPlan,
-  type JejuDeliberation,
-  type JejuRevisedAnalysis,
-  type JejuExecutedSearch,
-} from '@/lib/motie/deep'
-import { remapOpenPlanExaone, runLeagueDeliberation, runLeagueMotionVote } from './deep-debate-replacement'
-import { generateJejuPreReport } from '@/lib/motie/pre-report'
-import { SYNOD_DEBATERS } from '@/lib/motie/synod-debate'
+  planLeagueDebateMeeting,
+  renderLeagueChairVerdict,
+  runLeagueDeliberation,
+  runLeagueMotionVote,
+} from './deep-debate-engine'
+import { generateLeaguePreReport } from './deep-open-engine'
+import { remapOpenPlanExaone } from './deep-open-replacement-policy'
 import type { LeagueDeepContext } from './deep-context'
 import type { LeagueLocale } from './i18n/locales'
-import { runWithOutputLanguage } from '@/lib/motie/output-language'
+import { runWithOutputLanguage } from './deep-output-language'
 import type { DeepDebateResult } from './deep-debate-types'
 import type { DeepProviderMeta } from './deep-store'
+import type { LeagueDebateMeetingPlan, LeagueDeliberation } from './deep-types'
 
 export type { DeepDebateResult } from './deep-debate-types'
 
@@ -28,10 +26,9 @@ export type DebatePipelineState = {
   availableDataSummary: string
   snapshot: LeagueDeepContext['snapshot']
   outputLanguage: LeagueLocale
-  plan?: JejuMeetingPlan
+  plan?: LeagueDebateMeetingPlan
   report?: string | null
-  searches?: JejuExecutedSearch[]
-  deliberation?: JejuDeliberation
+  deliberation?: LeagueDeliberation
   result?: DeepDebateResult
 }
 
@@ -61,20 +58,16 @@ export function providersFromDebateState(state: DebatePipelineState): DeepProvid
 
 function seedFromReport(
   report: string | null,
-  roles: { roleId: string; roleLabel: string; provider: string; isRedTeam?: boolean }[]
-): JejuRevisedAnalysis[] {
+  roles: { roleId: string; roleLabel: string }[]
+): { roleId: string; roleLabel: string; ok: boolean; revised: string | null }[] {
   if (!report?.trim()) return []
   const first = roles[0]
   return [
     {
       roleId: first?.roleId ?? 'brief',
       roleLabel: first?.roleLabel ?? 'Pre-report',
-      provider: (first?.provider ?? 'anthropic') as JejuRevisedAnalysis['provider'],
-      isRedTeam: first?.isRedTeam === true,
       ok: true,
-      firstPass: report,
       revised: report,
-      changed: false,
     },
   ]
 }
@@ -97,42 +90,33 @@ export type DebateAdvance =
   | { done: false; stage: string; state: DebatePipelineState }
   | { done: true; result: DeepDebateResult; state: DebatePipelineState }
 
-/**
- * One HTTP-sized stage. A one-shot local run took ~346s.
- * start → plan → pre-report → deliberation → vote + chair
- */
 export async function advanceDebateState(state: DebatePipelineState): Promise<DebateAdvance> {
   if (state.result?.ok) {
     return { done: true, result: state.result, state }
   }
 
   if (!state.plan) {
-    const plan = await planJejuMeeting({
+    const plan = await planLeagueDebateMeeting({
       question: state.question,
       availableDataSummary: state.availableDataSummary,
-      debateBrands: [...SYNOD_DEBATERS],
-      councilMode: 'warroom',
     })
     if (!plan.ok || plan.roles.length === 0) {
       const result = failResult(state, plan.error ?? 'orchestrator failed')
       return { done: true, result, state: { ...state, plan, result } }
     }
-    return { done: false, stage: 'plan', state: { ...state, plan: remapOpenPlanExaone(plan) as typeof plan } }
+    return { done: false, stage: 'plan', state: { ...state, plan: remapOpenPlanExaone(plan) } }
   }
 
   if (!state.report) {
-    const pre = await generateJejuPreReport({
+    const pre = await generateLeaguePreReport({
       question: state.question,
-      snapshot: state.snapshot,
       context: state.context,
-      mode: 'deliberation',
-      councilMode: 'warroom',
     })
     if (!pre.ok || !pre.report?.trim()) {
       const result = failResult(state, pre.error ?? 'pre-report failed')
-      return { done: true, result, state: { ...state, report: pre.report, searches: pre.searches, result } }
+      return { done: true, result, state: { ...state, report: pre.report, result } }
     }
-    return { done: false, stage: 'report', state: { ...state, report: pre.report, searches: pre.searches } }
+    return { done: false, stage: 'report', state: { ...state, report: pre.report } }
   }
 
   if (!state.deliberation) {
@@ -152,19 +136,13 @@ export async function advanceDebateState(state: DebatePipelineState): Promise<De
   const vote = await runLeagueMotionVote({
     question: state.question,
     deliberation: state.deliberation,
-    councilMode: 'warroom',
   })
-  const verdict = await renderChairVerdict({
+  const verdict = await renderLeagueChairVerdict({
     question: state.question,
-    snapshot: state.snapshot,
-    analyses: [],
-    searches: state.searches ?? [],
-    revised: seedFromReport(state.report ?? null, state.plan.roles),
-    rebuttals: [],
+    briefing: state.report ?? null,
+    context: state.context,
     deliberation: state.deliberation,
-    brief: state.deliberation.finalScore >= 85,
     vote,
-    councilMode: 'warroom',
   })
   const result: DeepDebateResult = {
     ok: verdict.ok,
@@ -190,7 +168,6 @@ export async function advanceDebateState(state: DebatePipelineState): Promise<De
   return { done: true, result, state: { ...state, result } }
 }
 
-/** Test/script helper — runs every stage in-process (not for the HTTP route). */
 export async function runDeepDebate(ctx: LeagueDeepContext): Promise<DeepDebateResult> {
   return runWithOutputLanguage(ctx.outputLanguage, async () => {
     let state = seedDebateState(ctx)

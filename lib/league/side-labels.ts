@@ -92,6 +92,16 @@ export function toSideToken(raw: string | null | undefined): ModelSide | null {
 }
 
 /**
+ * A stored side that may appear on tiles and in camp/tier/book/weights
+ * aggregates. Null, blank, garbage, and legacy `flat` are excluded — the
+ * two-answers law never renders "no opinion".
+ */
+export function hasCallableSide(side: ModelSide | string | null | undefined): boolean {
+  const slot = tallySlotOfToken(toSideToken(side))
+  return slot === 'up' || slot === 'down'
+}
+
+/**
  * Token → tally slot WITHOUT round context. Sound because side tokens are
  * contract-exclusive and side A is always the pair's first token (up / yes /
  * above — see `answer-contract.ts`). This is what lets `DirectionTally`

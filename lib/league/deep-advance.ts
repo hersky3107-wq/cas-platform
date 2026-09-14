@@ -11,7 +11,7 @@ import {
   type DeepRunRow,
 } from './deep-store'
 import { normalizeLeagueLocale } from './i18n/locales'
-import { localeFromPersistedState, runWithOutputLanguage } from '@/lib/motie/output-language'
+import { localeFromPersistedState, runWithOutputLanguage } from './deep-output-language'
 import {
   advanceDebateState,
   providersFromDebateState,

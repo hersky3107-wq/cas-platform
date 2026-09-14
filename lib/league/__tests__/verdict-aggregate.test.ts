@@ -165,13 +165,13 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
       roster: ROSTER,
     })
 
-    expect(payload.hitRecord).toEqual({ hits: 1, graded: 1, total: 3, ungraded: 2 })
+    expect(payload.hitRecord).toEqual({ hits: 1, graded: 1, total: 2, ungraded: 1 })
     const us = payload.byCamp.find((g) => g.key === 'us')
     const cn = payload.byCamp.find((g) => g.key === 'china')
     const other = payload.byCamp.find((g) => g.key === 'other')
     expect(us).toEqual({ key: 'us', hits: 1, graded: 1, ungraded: 0 })
     expect(cn).toEqual({ key: 'china', hits: 0, graded: 0, ungraded: 1 })
-    expect(other).toEqual({ key: 'other', hits: 0, graded: 0, ungraded: 1 })
+    expect(other).toBeUndefined()
   })
 
   it('returns an empty array for empty groups — never a zero-filled row', () => {

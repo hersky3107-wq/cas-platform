@@ -17,7 +17,7 @@ import {
   type TierSplit,
   type WeightsSplit,
 } from './card-types'
-import { sidePairOf, tallySlotOfToken, toSideToken, type SideRoundContext } from './side-labels'
+import { sidePairOf, tallySlotOfToken, toSideToken, hasCallableSide, type SideRoundContext } from './side-labels'
 import type { AnswerSide } from './answer-contract'
 import { gradingStateOf, type GradingState } from '../prediction/grading-state'
 import { lookupRosterDisplay, lookupRosterEntry, LEAGUE_ROSTER } from './roster'
@@ -278,15 +278,16 @@ export function computeCardAggregates(
     round?: SideRoundContext
   }
 ): CardAggregates {
+  const callable = models.filter((m) => hasCallableSide(m.direction))
   const sides = sidePairOf(opts?.round ?? {})
   return {
-    consensus: buildConsensus(models, sides),
-    campSplit: buildCampSplit(models),
-    tierSplit: buildTierSplit(models),
-    bookSplit: buildBookSplit(models),
-    weightsSplit: buildWeightsSplit(models),
-    hitRate: buildHitRate(resolvedAt, models),
-    verdict: buildVerdict(models, opts?.roundId ?? '', opts?.crossRound),
+    consensus: buildConsensus(callable, sides),
+    campSplit: buildCampSplit(callable),
+    tierSplit: buildTierSplit(callable),
+    bookSplit: buildBookSplit(callable),
+    weightsSplit: buildWeightsSplit(callable),
+    hitRate: buildHitRate(resolvedAt, callable),
+    verdict: buildVerdict(callable, opts?.roundId ?? '', opts?.crossRound),
   }
 }
 
@@ -411,7 +412,7 @@ export function buildCardData(
   combinedTrack: CombinedMethodTrack = emptyCombinedTrack(),
   crossRound?: readonly VerdictCrossRoundGrade[]
 ): CardData {
-  const models = predictionRows.map(toCardModel)
+  const models = predictionRows.map(toCardModel).filter((m) => hasCallableSide(m.direction))
   const nowMs = Date.now()
   return {
     round: toRoundMeta(roundRow, nowMs),

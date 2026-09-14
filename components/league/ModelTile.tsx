@@ -7,6 +7,7 @@ import type { CardModelPrediction } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { SideLabels, SideSlot } from '@/lib/league/side-labels'
 import { formatSignedPercent } from '@/lib/league/magnitude'
+import { sanitizeScoutRationaleDisplay } from '@/lib/league/prediction-parse'
 import { CountryFlag } from '@/components/league/CountryFlag'
 
 /**
@@ -22,7 +23,9 @@ import { CountryFlag } from '@/components/league/CountryFlag'
  * 상회/> on threshold rounds. Colour keys on the SLOT (side A green, side B
  * red) so every contract reads consistently. Copy still flows through
  * `directionBadgeLabel` (never buy/sell). `reasoning_snippet` is the model's
- * own quote, rendered verbatim.
+ * own quote. Scout tiles sanitize citation markers and markdown URLs at
+ * display time only; stored text is unchanged. The English-original toggle
+ * still shows that (sanitized) original.
  *
  * The QUALIFIER (magnitude "▲ +3.2%" on price rounds, `qualifierText`
  * "2-1" / "+3.4%p" on the others) renders NEXT TO the side badge — never
@@ -51,8 +54,14 @@ export function ModelTile({
   actualMagnitudePct?: number | null
 }) {
   const [open, setOpen] = useState(false)
-  const original = model.reasoning_snippet?.trim() || null
-  const rationale = (translatedRationale?.trim() || original) ?? null
+  const isScout = model.league_tier === 'scout'
+  const original = isScout
+    ? sanitizeScoutRationaleDisplay(model.reasoning_snippet)
+    : model.reasoning_snippet?.trim() || null
+  const translated = isScout
+    ? sanitizeScoutRationaleDisplay(translatedRationale)
+    : translatedRationale?.trim() || null
+  const rationale = translated || original
   const hasReasoning = Boolean(rationale)
   const slot: SideSlot = labels
     ? labels.slot(model.direction)
@@ -169,7 +178,7 @@ export function ModelTile({
           </p>
         ) : null}
 
-        {open && showOriginal && translatedRationale && original && translatedRationale.trim() !== original ? (
+        {open && showOriginal && translated && original && translated !== original ? (
           <p className="text-[10px] leading-snug text-league-fg-muted">
             <span className="font-semibold not-italic">{t.modelTile.originalLabel}: </span>
             &ldquo;{original}&rdquo;

@@ -53,9 +53,11 @@ describe('buildCardData', () => {
       pred({ model_id: 'd', predicted_direction: null, predicted_value: null }),
     ]
     const card = buildCardData(round(), rows)
-    expect(card.consensus.tally).toEqual({ up: 2, down: 1, flat: 0, abstain: 1 })
+    expect(card.models).toHaveLength(3)
+    expect(card.models.every((m) => m.direction === 'up' || m.direction === 'down')).toBe(true)
+    expect(card.consensus.tally).toEqual({ up: 2, down: 1, flat: 0, abstain: 0 })
     expect(card.consensus.majorityDirection).toBe('up')
-    expect(card.consensus.totalModels).toBe(4)
+    expect(card.consensus.totalModels).toBe(3)
     expect(card.consensus.respondedModels).toBe(3)
     // avg of the two 'up' + one 'down' directional responses: (60+70+55)/3
     expect(card.consensus.avgProbability).toBeCloseTo(61.7, 1)
@@ -81,6 +83,8 @@ describe('buildCardData', () => {
       pred({ model_id: 'b', predicted_direction: null, predicted_value: null }),
     ]
     const card = buildCardData(round(), rows)
+    expect(card.models).toHaveLength(0)
+    expect(card.consensus.totalModels).toBe(0)
     expect(card.consensus.majorityDirection).toBeNull()
     expect(card.consensus.avgProbability).toBeNull()
     expect(card.consensus.respondedModels).toBe(0)
@@ -96,7 +100,7 @@ describe('buildCardData', () => {
     const card = buildCardData(round(), rows)
     expect(card.campSplit.us).toEqual({ up: 2, down: 0, flat: 0, abstain: 0 })
     expect(card.campSplit.china).toEqual({ up: 0, down: 1, flat: 0, abstain: 0 })
-    expect(card.campSplit.other).toEqual({ up: 0, down: 0, flat: 0, abstain: 1 })
+    expect(card.campSplit.other).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
   })
 
   it('splits direction tallies per league tier', () => {
@@ -106,8 +110,9 @@ describe('buildCardData', () => {
       pred({ model_id: 'c', league_tier: 'scout', predicted_direction: 'down', predicted_value: 62 }),
     ]
     const card = buildCardData(round(), rows)
+    expect(card.models.map((m) => m.model_id)).toEqual(['a', 'c'])
     expect(card.tierSplit.premier).toEqual({ up: 1, down: 0, flat: 0, abstain: 0 })
-    expect(card.tierSplit.world).toEqual({ up: 0, down: 0, flat: 1, abstain: 0 })
+    expect(card.tierSplit.world).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
     expect(card.tierSplit.scout).toEqual({ up: 0, down: 1, flat: 0, abstain: 0 })
     expect(card.tierSplit.challenger).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
   })

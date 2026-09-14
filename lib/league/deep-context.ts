@@ -3,13 +3,14 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { fetchDataPacket, formatDataPacketForPrompt } from '@/lib/league/market-data'
 import { getResearchPacket } from '@/lib/league/research'
-import type { JejuSnapshot } from '@/lib/motie/brief'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
-import { OUTPUT_LANGUAGE_NAME } from '@/lib/motie/output-language'
+import { OUTPUT_LANGUAGE_NAME } from './deep-output-language'
+import type { LeagueDeepSnapshot } from './deep-types'
 
 /**
  * Server-side context for a league deep-analysis run. Built ONLY from the
- * round row + the existing research/price packets — never from client text.
+ * round row + the existing research/price packets — never from client text
+ * and never from AX/JEJU national-institution connectors.
  */
 
 export type LeagueDeepContext = {
@@ -19,12 +20,10 @@ export type LeagueDeepContext = {
   horizon: string
   proposition: string
   resolutionRule: string
-  /** The engine "question" — the already-normalized proposition, plus a citation-voice frame. */
   question: string
   context: string
   availableDataSummary: string
-  snapshot: JejuSnapshot
-  /** Persisted onto the pipeline row so resume hops honor the session locale. */
+  snapshot: LeagueDeepSnapshot
   outputLanguage: LeagueLocale
 }
 
@@ -54,14 +53,6 @@ export async function loadRoundRow(roundId: string): Promise<{
   }
 }
 
-/**
- * Test-only fault injection for `scripts/verify-deep-run-single-charge.ts`.
- * Guarded by an exact round_id match against an env var that is never set
- * in any real deployment — this cannot fire outside that script. It exists
- * so the claim→charge→build-context reorder's "context build fails after
- * charge" path (no inline refund, resumable row, retry cap) can be tested
- * deterministically without depending on a real upstream outage.
- */
 export async function buildLeagueDeepContext(
   roundId: string,
   locale: LeagueLocale | null
@@ -113,7 +104,7 @@ export async function buildLeagueDeepContext(
     researchBlock,
   ].join('\n')
 
-  const snapshot: JejuSnapshot = {
+  const snapshot: LeagueDeepSnapshot = {
     ok: packet.available || research.available,
     sources: [
       { id: 'proposition', label: 'League proposition', ok: true, text: round.proposition_text },
@@ -141,7 +132,6 @@ export async function buildLeagueDeepContext(
   }
 }
 
-/** Deep analysis is only valid on a round that already has league cards. */
 export async function roundHasCards(roundId: string): Promise<boolean> {
   const { count, error } = await supabaseAdmin
     .from('model_predictions')

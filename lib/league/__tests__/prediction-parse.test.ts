@@ -4,6 +4,7 @@ import {
   parsePrediction,
   sanitizeRationale,
   sanitizeReasoningText,
+  sanitizeScoutRationaleDisplay,
   splitReasoningAndJson,
   isBinaryDirection,
   REASONING_TEXT_MAX_CHARS,
@@ -191,5 +192,37 @@ describe('sanitizeReasoningText', () => {
     expect(sanitizeReasoningText('   ')).toBeNull()
     expect(sanitizeReasoningText('<one line, max 200 chars>')).toBeNull()
     expect(sanitizeReasoningText(null)).toBeNull()
+  })
+})
+
+describe('sanitizeScoutRationaleDisplay — display-time only', () => {
+  it('does not change what sanitizeRationale would persist', () => {
+    const raw = 'Momentum higher[4] via [Reuters](https://www.reuters.com/a?utm_source=x).'
+    expect(sanitizeRationale(raw)).toBe(raw)
+    expect(sanitizeScoutRationaleDisplay(raw)).toBe('Momentum higher via Reuters.')
+  })
+
+  it('strips bracketed numeric citations including nested lists', () => {
+    expect(sanitizeScoutRationaleDisplay('Higher close [4] then drift [12].')).toBe('Higher close then drift.')
+    expect(sanitizeScoutRationaleDisplay('See [[1, 2]] plus extra.')).toBe('See plus extra.')
+    expect(sanitizeScoutRationaleDisplay('See [1, 2] as well.')).toBe('See as well.')
+  })
+
+  it('keeps markdown link labels and drops the URL plus query', () => {
+    expect(
+      sanitizeScoutRationaleDisplay(
+        'Despite headwinds, ([benzinga.com](https://www.benzinga.com/quote/AAPL/earnings-forecasts?utm_source=openai))',
+      ),
+    ).toBe('Despite headwinds, (benzinga.com)')
+  })
+
+  it('turns a bare URL into the hostname and strips leftover tracking params', () => {
+    expect(
+      sanitizeScoutRationaleDisplay('Source https://example.com/path?utm_source=x&gclid=abc more'),
+    ).toBe('Source example.com more')
+  })
+
+  it('leaves non-numeric brackets and the rest of the sentence', () => {
+    expect(sanitizeScoutRationaleDisplay('The [Fed] cut is priced in.')).toBe('The [Fed] cut is priced in.')
   })
 })

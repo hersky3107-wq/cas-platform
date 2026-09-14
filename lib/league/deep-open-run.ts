@@ -1,13 +1,16 @@
 import 'server-only'
 
-import { planJejuOpenMeeting, synthesizeJejuOpenBrief } from '@/lib/motie/open-brief'
-import { remapOpenPlanExaone, runLeagueOpenAnalyses } from './deep-open-replacement'
-import { generateJejuPreReport } from '@/lib/motie/pre-report'
-import type { JejuOpenMeetingPlan, JejuOpenAnalysis } from '@/lib/motie/open-brief'
-import type { JejuExecutedSearch } from '@/lib/motie/deep'
+import {
+  generateLeaguePreReport,
+  planLeagueOpenMeeting,
+  runLeagueOpenAnalyses,
+  synthesizeLeagueOpenBrief,
+} from './deep-open-engine'
+import { remapOpenPlanExaone } from './deep-open-replacement-policy'
 import type { LeagueDeepContext } from './deep-context'
 import type { LeagueLocale } from './i18n/locales'
-import { runWithOutputLanguage } from '@/lib/motie/output-language'
+import { runWithOutputLanguage } from './deep-output-language'
+import type { LeagueOpenAnalysis, LeagueOpenMeetingPlan } from './deep-types'
 import type { DeepProviderMeta } from './deep-store'
 
 export type DeepOpenResult = {
@@ -30,10 +33,9 @@ export type OpenPipelineState = {
   availableDataSummary: string
   snapshot: LeagueDeepContext['snapshot']
   outputLanguage: LeagueLocale
-  plan?: JejuOpenMeetingPlan
+  plan?: LeagueOpenMeetingPlan
   report?: string | null
-  searches?: JejuExecutedSearch[]
-  analyses?: JejuOpenAnalysis[]
+  analyses?: LeagueOpenAnalysis[]
   result?: DeepOpenResult
 }
 
@@ -86,44 +88,33 @@ export type OpenAdvance =
   | { done: false; stage: string; state: OpenPipelineState }
   | { done: true; result: DeepOpenResult; state: OpenPipelineState }
 
-/**
- * One HTTP-sized stage. A one-shot local run of this pipeline took ~227s
- * against a 300s platform cap — splitting is what keeps a kill from
- * landing mid-run with no persisted checkpoint.
- *
- * start → plan → pre-report → analyses → synthesize
- */
 export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAdvance> {
   if (state.result?.ok) {
     return { done: true, result: state.result, state }
   }
 
   if (!state.plan) {
-    const plan = await planJejuOpenMeeting({
+    const plan = await planLeagueOpenMeeting({
       question: state.question,
       availableDataSummary: state.availableDataSummary,
-      councilMode: 'warroom',
     })
     if (!plan.ok) {
       const result = failResult(state, plan.error ?? 'orchestrator failed')
       return { done: true, result, state: { ...state, plan, result } }
     }
-    return { done: false, stage: 'plan', state: { ...state, plan: remapOpenPlanExaone(plan) as typeof plan } }
+    return { done: false, stage: 'plan', state: { ...state, plan: remapOpenPlanExaone(plan) } }
   }
 
   if (!state.report) {
-    const pre = await generateJejuPreReport({
+    const pre = await generateLeaguePreReport({
       question: state.question,
-      snapshot: state.snapshot,
       context: state.context,
-      mode: 'briefing',
-      councilMode: 'warroom',
     })
     if (!pre.ok || !pre.report?.trim()) {
       const result = failResult(state, pre.error ?? 'pre-report failed')
-      return { done: true, result, state: { ...state, report: pre.report, searches: pre.searches, result } }
+      return { done: true, result, state: { ...state, report: pre.report, result } }
     }
-    return { done: false, stage: 'report', state: { ...state, report: pre.report, searches: pre.searches } }
+    return { done: false, stage: 'report', state: { ...state, report: pre.report } }
   }
 
   if (!state.analyses) {
@@ -132,7 +123,6 @@ export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAd
       plan: state.plan,
       briefing: state.report,
       context: state.context,
-      searches: state.searches,
     })
     const anyOk = analyses.some((a) => a.ok)
     if (!anyOk) {
@@ -142,12 +132,10 @@ export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAd
     return { done: false, stage: 'analyses', state: { ...state, analyses } }
   }
 
-  const synthesis = await synthesizeJejuOpenBrief({
+  const synthesis = await synthesizeLeagueOpenBrief({
     question: state.question,
     briefing: state.report,
     analyses: state.analyses,
-    searches: state.searches,
-    councilMode: 'warroom',
   })
   const result: DeepOpenResult = {
     ok: synthesis.ok,
@@ -167,7 +155,6 @@ export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAd
   return { done: true, result, state: { ...state, result } }
 }
 
-/** Test/script helper — runs every stage in-process (not for the HTTP route). */
 export async function runDeepOpen(ctx: LeagueDeepContext): Promise<DeepOpenResult> {
   return runWithOutputLanguage(ctx.outputLanguage, async () => {
     let state = seedOpenState(ctx)

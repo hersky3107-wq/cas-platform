@@ -3,7 +3,7 @@ import type { WeightsKind } from './roster'
 import type { CountryCode } from './country'
 import { roundHitRecord } from './round-hit'
 import { winRatePctForDisplay } from './win-rate'
-import { tallySlotOfToken, toSideToken } from './side-labels'
+import { tallySlotOfToken, toSideToken, hasCallableSide } from './side-labels'
 
 /**
  * AI Prediction League — VERDICT PANEL aggregation (pure, no I/O).
@@ -81,9 +81,8 @@ export type VerdictConfidenceBucketKey = '0_49' | '50_59' | '60_69' | '70_79' | 
 /**
  * SLOT-shaped side distribution, same convention as `DirectionTally`: `up`
  * counts the round's side A (up / yes / above), `down` counts side B.
- * `noDirection` counts no-answer rows AND the grandfathered legacy 'flat'
- * (as before — flat was never a side here). Rendering maps the slots back to
- * the round's own words via `lib/league/side-labels.ts`.
+ * Null/blank/unparseable/legacy-flat rows are excluded before this payload is
+ * built, so `noDirection` stays 0 and "no opinion" never renders.
  */
 export type VerdictDistribution = {
   up: number
@@ -269,10 +268,11 @@ export function buildVerdictPayload(args: {
   crossRound?: readonly VerdictCrossRoundGrade[]
 }): VerdictPayload {
   void args.round
+  const predictions = args.predictions.filter((row) => hasCallableSide(row.predicted_direction))
   const rosterById = new Map(args.roster.map((r) => [r.model_id, r]))
 
-  const hit = roundHitRecord(args.predictions)
-  const total = args.predictions.length
+  const hit = roundHitRecord(predictions)
+  const total = predictions.length
   const ungraded = total - hit.graded
   const hitRecord: VerdictHitRecord = {
     hits: hit.correct,
@@ -295,7 +295,7 @@ export function buildVerdictPayload(args: {
 
   const wrong: VerdictOverconfident[] = []
 
-  for (const row of args.predictions) {
+  for (const row of predictions) {
     // toSideToken (not the old up/down/flat gate): a yes/above row is a SIDE,
     // never "no direction". Slots follow DirectionTally's convention; legacy
     // 'flat' keeps counting as noDirection, exactly as before.
@@ -327,7 +327,7 @@ export function buildVerdictPayload(args: {
     }
   }
 
-  const reported = args.predictions
+  const reported = predictions
     .map((r) => r.predicted_value)
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
   const medianConfidence = medianOf(reported)

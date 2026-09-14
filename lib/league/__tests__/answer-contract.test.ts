@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 import {
   answerContractFor,
   buildRoundPrompts,
+  isContractSide,
   QUALIFIER_TEXT_MAX_CHARS,
   type AnswerContract,
 } from '../answer-contract'
@@ -52,6 +53,16 @@ describe('product law — every contract has exactly two sides, nothing else', (
     const c = answerContractFor(kind)
     expect(c.validate(c.parse(null), '1d').ok).toBe(false)
     expect(c.validate(null, '1d').ok).toBe(false)
+  })
+
+  it.each(KINDS)('%s: direction-only retry JSON parses a side but still fails validate (salvage is orchestrator)', (kind) => {
+    const c = answerContractFor(kind)
+    const text = `{"${c.jsonKeys[0]}":"${c.sides[0]}"}`
+    const parsed = c.parse(text)
+    expect(isContractSide(parsed?.side, c)).toBe(true)
+    expect(c.validate(parsed, '1d').ok).toBe(false)
+    expect(c.directionOnlyRetryInstruction).toContain(`"${c.jsonKeys[0]}":"${c.sides[0]}"`)
+    expect(c.directionOnlyRetryInstruction).toContain(`"${c.jsonKeys[0]}":"${c.sides[1]}"`)
   })
 })
 
@@ -255,6 +266,14 @@ describe('qualifier is decoration — never graded, never in a denominator', () 
       const src = readFileSync(join(__dirname, rel), 'utf8')
       expect(src, rel).not.toMatch(/qualifier|answer-contract|answerContract/i)
     }
+  })
+})
+
+describe('no-side retry is direction-only, shared across every category', () => {
+  it('orchestrator uses directionOnlyRetryInstruction then salvages a side', () => {
+    const src = readFileSync(join(__dirname, '../orchestrator.ts'), 'utf8')
+    expect(src).toContain('directionOnlyRetryInstruction')
+    expect(src).toContain('isContractSide')
   })
 })
 

@@ -21,6 +21,7 @@ import { aggregateMagnitude } from '@/lib/league/magnitude'
 import {
   answerContractFor,
   buildRoundPrompts,
+  isContractSide,
   isPropositionKind,
   type AnswerContract,
   type AnswerSide,
@@ -592,12 +593,18 @@ async function runOneModel(
   accumulateCost(raw)
   let answer: ContractAnswer | null = contract.parse(raw.text)
 
-  // Invalid side and/or qualifier (flat/abstain/missing/out-of-bounds/wrong-signed):
-  // one stricter retry naming BOTH requirements, then error. Both are gated by
-  // the contract's single `validate` and share the SAME one-retry budget.
+  // Invalid side and/or qualifier: one retry, then salvage or drop.
+  // No-side / blank / unparseable → direction-only prompt (force up|down / yes|no / above|below).
+  // Side present but qualifier failed → existing full retryInstruction (frozen bytes).
+  // One-retry budget is shared. After retry, a valid side with a still-invalid
+  // qualifier is persisted with a null qualifier so the model still counts as a call.
   let validation = contract.validate(answer, horizon)
   if (!validation.ok) {
-    const retryPrompt = `${userPrompt}\n\n${contract.retryInstruction}`
+    const retryText =
+      answer && isContractSide(answer.side, contract)
+        ? contract.retryInstruction
+        : contract.directionOnlyRetryInstruction
+    const retryPrompt = `${userPrompt}\n\n${retryText}`
     const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens)
     if (retryRaw.error) {
       await upsertNullPrediction(roundId, entry)
@@ -624,21 +631,30 @@ async function runOneModel(
   }
 
   if (!validation.ok) {
-    await upsertNullPrediction(roundId, entry)
-    return {
-      ...base,
-      actual_model: raw.actualModel,
-      direction: null,
-      probability: null,
-      magnitude: null,
-      qualifier_text: null,
-      reasoning_snippet: null,
-      reasoning_text: null,
-      cost_usd: Number(totalCostUsd.toFixed(6)),
-      ...ledger(),
-      cost_source: costSource,
-      status: 'error',
-      error: validation.reason,
+    if (answer && isContractSide(answer.side, contract)) {
+      validation = {
+        ok: true,
+        side: answer.side,
+        qualifierNumber: null,
+        qualifierText: null,
+      }
+    } else {
+      await upsertNullPrediction(roundId, entry)
+      return {
+        ...base,
+        actual_model: raw.actualModel,
+        direction: null,
+        probability: null,
+        magnitude: null,
+        qualifier_text: null,
+        reasoning_snippet: null,
+        reasoning_text: null,
+        cost_usd: Number(totalCostUsd.toFixed(6)),
+        ...ledger(),
+        cost_source: costSource,
+        status: 'error',
+        error: validation.reason,
+      }
     }
   }
 

@@ -12,7 +12,7 @@ import { unresolvableReasonCopy, type KnownUnresolvableReason } from '../card-st
 import { buildConsensusHero } from '../compliance'
 import { getLeagueUiPack, LEAGUE_UI } from '../i18n/dictionary'
 import { LEAGUE_LOCALES } from '../i18n/locales'
-import { sideLabelsFor, toSideToken, tallySlotOfToken, KIND_GLYPHS } from '../side-labels'
+import { sideLabelsFor, toSideToken, tallySlotOfToken, hasCallableSide, KIND_GLYPHS } from '../side-labels'
 
 /**
  * KIND-AWARE RENDER — the positive half of the refactor (the negative half,
@@ -109,7 +109,8 @@ describe('binary_subject_outcome — the round\u2019s own pair drives every word
     expect(card.consensus.respondedModels).toBe(8)
     expect(card.consensus.tally.up).toBe(6) // side A slot = yes
     expect(card.consensus.tally.down).toBe(2) // side B slot = no
-    expect(card.consensus.tally.abstain).toBe(1)
+    expect(card.consensus.tally.abstain).toBe(0)
+    expect(card.models).toHaveLength(8)
     expect(card.consensus.aggregateDirection).toBe('yes')
   })
 
@@ -355,5 +356,25 @@ describe('toSideToken — the one token gate (no caller may read a valid side as
     expect(tallySlotOfToken('below')).toBe('down')
     expect(tallySlotOfToken('flat')).toBe('flat')
     expect(tallySlotOfToken(null)).toBeNull()
+  })
+})
+
+describe('hasCallableSide — tiles and aggregates never count a non-call', () => {
+  it('is true only for the six contract sides', () => {
+    expect(hasCallableSide('up')).toBe(true)
+    expect(hasCallableSide('down')).toBe(true)
+    expect(hasCallableSide('yes')).toBe(true)
+    expect(hasCallableSide('no')).toBe(true)
+    expect(hasCallableSide('above')).toBe(true)
+    expect(hasCallableSide('below')).toBe(true)
+  })
+
+  it('rejects null, blank, garbage, and legacy flat', () => {
+    expect(hasCallableSide(null)).toBe(false)
+    expect(hasCallableSide(undefined)).toBe(false)
+    expect(hasCallableSide('')).toBe(false)
+    expect(hasCallableSide('flat')).toBe(false)
+    expect(hasCallableSide('abstain')).toBe(false)
+    expect(hasCallableSide('sideways')).toBe(false)
   })
 })
