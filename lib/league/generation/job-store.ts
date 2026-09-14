@@ -6,6 +6,7 @@ import {
   GENERATION_TERMINAL_STATUSES,
   type GenerationJobStatus,
 } from './policy'
+import { freeLeaseFilter } from './lease'
 
 /**
  * Store for `league_generation_jobs` (migration 20260914000001), mirroring
@@ -72,11 +73,6 @@ export type JobInsert = {
 
 function quotedList(values: readonly string[]): string {
   return `(${values.map((value) => `"${value}"`).join(',')})`
-}
-
-/** `lease_until IS NULL OR lease_until < now` as a PostgREST filter (oracle store verbatim). */
-function freeLeaseFilter(nowIso: string): string {
-  return `lease_until.is.null,lease_until.lt.${nowIso}`
 }
 
 export type InsertJobResult =

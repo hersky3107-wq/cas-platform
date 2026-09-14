@@ -1,6 +1,7 @@
 import 'server-only'
 
-import { planJejuOpenMeeting, runJejuOpenAnalyses, synthesizeJejuOpenBrief } from '@/lib/motie/open-brief'
+import { planJejuOpenMeeting, synthesizeJejuOpenBrief } from '@/lib/motie/open-brief'
+import { remapOpenPlanExaone, runLeagueOpenAnalyses } from './deep-open-replacement'
 import { generateJejuPreReport } from '@/lib/motie/pre-report'
 import type { JejuOpenMeetingPlan, JejuOpenAnalysis } from '@/lib/motie/open-brief'
 import type { JejuExecutedSearch } from '@/lib/motie/deep'
@@ -47,6 +48,13 @@ export function seedOpenState(ctx: LeagueDeepContext): OpenPipelineState {
     snapshot: ctx.snapshot,
     outputLanguage: ctx.outputLanguage,
   }
+}
+
+export function upcomingOpenStage(state: OpenPipelineState): string {
+  if (!state.plan) return 'plan'
+  if (!state.report) return 'report'
+  if (!state.analyses) return 'analyses'
+  return 'synthesis'
 }
 
 export function providersFromOpenState(state: OpenPipelineState): DeepProviderMeta[] {
@@ -100,7 +108,7 @@ export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAd
       const result = failResult(state, plan.error ?? 'orchestrator failed')
       return { done: true, result, state: { ...state, plan, result } }
     }
-    return { done: false, stage: 'plan', state: { ...state, plan } }
+    return { done: false, stage: 'plan', state: { ...state, plan: remapOpenPlanExaone(plan) as typeof plan } }
   }
 
   if (!state.report) {
@@ -119,12 +127,11 @@ export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAd
   }
 
   if (!state.analyses) {
-    const analyses = await runJejuOpenAnalyses({
+    const analyses = await runLeagueOpenAnalyses({
       question: state.question,
       plan: state.plan,
       briefing: state.report,
       context: state.context,
-      councilMode: 'warroom',
       searches: state.searches,
     })
     const anyOk = analyses.some((a) => a.ok)

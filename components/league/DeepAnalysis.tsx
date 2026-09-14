@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ColorBucket } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import { creditsForLeagueDeepDebate, creditsForLeagueDeepOpen } from '@/lib/credits'
+import { DEEP_POLL_MS } from '@/lib/league/generation/policy'
 import { CardCompliance, type ComplianceReceipt } from './CardCompliance'
 
 const OPEN_COST = creditsForLeagueDeepOpen()
@@ -33,11 +34,27 @@ type DebatePayload = {
 
 type DeepPayload = OpenPayload | DebatePayload
 
+type PollBody = DeepPayload & {
+  error?: string
+  required?: number
+  balance?: number
+  ok?: boolean
+  done?: boolean
+  exists?: boolean
+  waiting?: boolean
+  sessionId?: string
+  stage?: string
+  refunded?: boolean
+  code?: string
+}
+
+function pathFor(kind: DeepKind): string {
+  return kind === 'open' ? '/api/league/deep-open' : '/api/league/deep-debate'
+}
+
 /**
- * Deep-analysis entry + result. Shown ONLY when a round card already exists
- * (the parent gates on `card`). Buttons carry their credit price. The result
- * is wrapped in the same `CardCompliance` as the prediction card — one
- * disclaimer layer, not a weaker copy.
+ * Deep-analysis entry + result. POST starts the job (~1s); GET polls every 5s.
+ * Reopening the tab resumes from the row — the job is not held in this tab.
  */
 export function DeepAnalysis({
   roundId,
@@ -50,56 +67,135 @@ export function DeepAnalysis({
 }) {
   const { t, locale } = useLeagueLocale()
   const [running, setRunning] = useState<DeepKind | null>(null)
+  const [lastKind, setLastKind] = useState<DeepKind>('open')
+  const [stage, setStage] = useState<string | null>(null)
+  const [waiting, setWaiting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [refunded, setRefunded] = useState(false)
   const [result, setResult] = useState<DeepPayload | null>(null)
+
+  const applyPoll = useCallback(
+    (kind: DeepKind, body: PollBody, status: number) => {
+      if (status === 402) {
+        setError(t.hub.insufficientCredits(body.required ?? 0, body.balance ?? 0))
+        setRunning(null)
+        return 'stop'
+      }
+      if (status === 429) {
+        setError(t.hub.rateLimited)
+        setRunning(null)
+        return 'stop'
+      }
+      if (status === 503 && body.code === 'busy') {
+        setError(t.hub.deepBusy)
+        setRunning(null)
+        return 'stop'
+      }
+      if (!body.ok && body.done && body.refunded) {
+        setError(t.hub.deepFailedRefunded)
+        setRefunded(true)
+        setRunning(null)
+        return 'stop'
+      }
+      if (!body.ok && body.done) {
+        setError(t.hub.deepFailed)
+        setRefunded(false)
+        setRunning(null)
+        return 'stop'
+      }
+      if (status >= 400 || body.ok === false) {
+        setError(body.error ?? t.hub.genericError)
+        setRunning(null)
+        return 'stop'
+      }
+      if (body.done === false) {
+        setRunning(kind)
+        setLastKind(kind)
+        setStage(typeof body.stage === 'string' ? body.stage : 'start')
+        setWaiting(body.waiting === true)
+        return 'poll'
+      }
+      if (body.done === true && body.kind) {
+        setResult(body)
+        setRunning(null)
+        setStage(null)
+        return 'stop'
+      }
+      return 'stop'
+    },
+    [t]
+  )
+
+  const pollOnce = useCallback(
+    async (kind: DeepKind) => {
+      const res = await fetch(`${pathFor(kind)}?roundId=${encodeURIComponent(roundId)}&locale=${encodeURIComponent(locale)}`, {
+        credentials: 'include',
+      })
+      const body = (await res.json()) as PollBody
+      if (body.exists === false) return 'absent'
+      return applyPoll(kind, body, res.status)
+    },
+    [applyPoll, locale, roundId]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      for (const kind of ['open', 'debate'] as const) {
+        if (cancelled) return
+        const outcome = await pollOnce(kind)
+        if (outcome === 'poll' || outcome === 'stop') return
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [pollOnce])
+
+  useEffect(() => {
+    if (!running) return
+    const id = window.setInterval(() => {
+      void pollOnce(running)
+    }, DEEP_POLL_MS)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void pollOnce(running)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [running, pollOnce])
 
   async function run(kind: DeepKind) {
     setRunning(kind)
+    setLastKind(kind)
     setError(null)
+    setRefunded(false)
+    setResult(null)
+    setStage('start')
     try {
-      const path = kind === 'open' ? '/api/league/deep-open' : '/api/league/deep-debate'
-      let sessionId: string | undefined
-      for (let i = 0; i < 8; i += 1) {
-        const res = await fetch(path, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roundId, locale, ...(sessionId ? { sessionId } : {}) }),
-        })
-        const body = (await res.json()) as DeepPayload & {
-          error?: string
-          required?: number
-          balance?: number
-          ok?: boolean
-          done?: boolean
-          sessionId?: string
-        }
-        if (res.status === 402) {
-          setError(t.hub.insufficientCredits(body.required ?? 0, body.balance ?? 0))
-          return
-        }
-        if (res.status === 429) {
-          setError(t.hub.rateLimited)
-          return
-        }
-        if (!res.ok || body.ok === false) {
-          setError(body.error ?? t.hub.genericError)
-          return
-        }
-        if (body.done === false && body.sessionId) {
-          sessionId = body.sessionId
-          continue
-        }
-        setResult(body)
-        return
-      }
-      setError(t.hub.genericError)
+      const res = await fetch(pathFor(kind), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId, locale }),
+      })
+      const body = (await res.json()) as PollBody
+      applyPoll(kind, body, res.status)
     } catch {
       setError(t.hub.genericError)
-    } finally {
       setRunning(null)
     }
   }
+
+  const progressLine = running
+    ? waiting
+      ? t.hub.deepQueued
+      : stage
+        ? t.hub.deepStage(stage)
+        : t.hub.deepRunning
+    : null
 
   return (
     <div className="mt-4 flex flex-col gap-3">
@@ -128,8 +224,25 @@ export function DeepAnalysis({
           <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">{t.hub.deepDebateHint}</p>
         </div>
       </div>
+      {running ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <p className="text-[12px] font-medium text-slate-800">{progressLine}</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{t.hub.deepWaitNote}</p>
+        </div>
+      ) : null}
       {error ? (
-        <p className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>
+        <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          <p>{error}</p>
+          {running === null && (refunded || error === t.hub.deepFailed) ? (
+            <button
+              type="button"
+              onClick={() => void run(lastKind)}
+              className="mt-2 font-semibold underline"
+            >
+              {t.hub.retryGeneration}
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {result ? (
         <CardCompliance colorBucket={colorBucket} t={t} category={category}>

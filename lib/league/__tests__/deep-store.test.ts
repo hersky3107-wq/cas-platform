@@ -54,6 +54,15 @@ describe('unseeded-state helpers (claim -> charge -> build-context reorder)', ()
     expect(isUnseededState(placeholder)).toBe(true)
   })
 
+  it('carries the session locale so the runner can seed without the HTTP body', () => {
+    const placeholder = placeholderUnseededState('en')
+    expect(placeholder.locale).toBe('en')
+    expect(isUnseededState(placeholder)).toBe(true)
+    const next = nextUnseededState(placeholder, 'boom')
+    expect(next.locale).toBe('en')
+    expect(next.seedAttempts).toBe(1)
+  })
+
   it('does not treat a real seeded pipeline state as unseeded', () => {
     expect(isUnseededState({ instrument: 'AAPL', category: 'stock' })).toBe(false)
     expect(isUnseededState(null)).toBe(false)

@@ -70,6 +70,25 @@ export const LEAGUE_GENERATE_MODULE = 'league_generate'
 export const GENERATION_POLL_MS = 5_000
 
 /**
+ * Own running cap for deep-open / deep-debate — NOT shared with generation.
+ * A deep hop is 8-wide (open) or a 2-round debate; three of those would
+ * occupy the generation cap for ~6 minutes and stall every 30-credit
+ * round. Two concurrent deep jobs + three generation jobs = 5 workers,
+ * inside provider burst tolerance. Overflow deep rows stay `running`
+ * with a free lease; the card/poll shows the queued wait, no error.
+ */
+export const LEAGUE_DEEP_MAX_RUNNING = 2
+
+/**
+ * Press-time backpressure for NEW deep purchases. At 2 running × ~6 min,
+ * the 7th waiter would sit ~18 minutes — refuse before charge.
+ */
+export const LEAGUE_DEEP_MAX_ACTIVE = 6
+
+/** Same 5s poll as the generation card. */
+export const DEEP_POLL_MS = GENERATION_POLL_MS
+
+/**
  * Work stages, in run order. One tier per stage keeps a tick's fan-out
  * bounded; 'packet' is not a separate wait — the first tier tick builds the
  * packet on its way in (packet assembly lives inside the orchestrator call).

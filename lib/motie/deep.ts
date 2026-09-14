@@ -2004,7 +2004,7 @@ function formatSeedAnalyses(seed: JejuRevisedAnalysis[]): string {
 }
 
 /** Builds one expert's deliberation system prompt: hold AND concede, gradual convergence. */
-function buildDeliberationSystemPrompt(
+export function buildDeliberationSystemPrompt(
   role: JejuExpertRole,
   question: string,
   roundNumber: number,
@@ -2049,7 +2049,7 @@ function buildDeliberationSystemPrompt(
 }
 
 /** Parses one deliberation turn output into { position, concedes, holds }. Robust to non-JSON. */
-function parseDeliberationOutput(raw: string): {
+export function parseDeliberationOutput(raw: string): {
   position: string
   concedes: string
   holds: string
@@ -2167,7 +2167,7 @@ function clampScore(n: number): number {
 }
 
 /** Measures consensus across this round's turns via one anthropic call. Never throws. */
-async function measureConsensus(
+export async function measureConsensus(
   turns: JejuDeliberationTurn[],
   councilMode: JejuCouncilMode = 'warroom'
 ): Promise<{

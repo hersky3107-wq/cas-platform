@@ -1,10 +1,7 @@
-import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/server'
-import { withCostSpan } from '@/lib/ai/cost-span'
+import { after, NextResponse } from 'next/server'
 import type { DeductCreditsOutcome } from '@/lib/credits'
 import { LEAGUE_DEEP_RATE_RULE } from './access-policy'
 import { chargeDeep, refundDeep } from './deep-charge'
-import { buildLeagueDeepContext } from './deep-context'
 import {
   creditsForLeagueDeepDebate,
   creditsForLeagueDeepOpen,
@@ -12,26 +9,23 @@ import {
   LEAGUE_DEEP_OPEN_MODULE,
 } from './credits'
 import {
-  addSpanTotals,
+  countActiveDeepRuns,
   deleteUnchargedRun,
   insertDeepRunClaim,
   isUnseededState,
   loadDeepRun,
-  markDeepRunBusy,
   markDeepRunCharged,
-  MAX_SEED_ATTEMPTS,
-  nextUnseededState,
-  placeholderUnseededState,
+  markDeepRunRefundedOnce,
   resetDeepRun,
   saveDeepRunProgress,
   type DeepProduct,
   type DeepRunRow,
 } from './deep-store'
-import { decideDeepRunAction, runIsBusy } from './deep-run-policy'
-import { advanceDebateState, providersFromDebateState, seedDebateState, type DebatePipelineState } from './deep-debate-run'
-import { advanceOpenState, providersFromOpenState, seedOpenState, type OpenPipelineState } from './deep-open-run'
+import { decideDeepRunAction, placeholderUnseededState, runIsBusy } from './deep-run-policy'
+import { createDeepRunnerDeps } from './generation/deep-live-deps'
+import { LEAGUE_DEEP_MAX_ACTIVE } from './generation/policy'
+import { advanceDeepRun } from './generation/deep-runner'
 import type { LeagueLocale } from './i18n/locales'
-import { localeFromPersistedState, runWithOutputLanguage } from '@/lib/motie/output-language'
 import type { LeagueViewer } from './public-access'
 import { enforceRateLimit } from './public-access'
 
@@ -47,11 +41,6 @@ function deductFromRow(row: DeepRunRow): DeductCreditsOutcome {
   return row.deduct_skipped ? { ok: true, balance: null, skipped: true } : { ok: true, balance: null }
 }
 
-async function currentBalance(userId: string): Promise<number | undefined> {
-  const { data } = await supabaseAdmin.from('users').select('credits').eq('id', userId).maybeSingle()
-  return typeof data?.credits === 'number' ? data.credits : undefined
-}
-
 function replayPayload(row: DeepRunRow): NextResponse {
   const result = row.result ?? {}
   return NextResponse.json({
@@ -65,6 +54,8 @@ function replayPayload(row: DeepRunRow): NextResponse {
     kind: row.product === 'open' ? 'open' : 'debate',
     providers: row.providers,
     created_at: row.created_at,
+    stage: row.stage,
+    refunded: row.refunded,
     upstream_cost_usd: Number((row.billed_usd + row.estimated_usd).toFixed(4)),
     billed_usd: Number(row.billed_usd.toFixed(4)),
     estimated_usd: Number(row.estimated_usd.toFixed(4)),
@@ -73,14 +64,17 @@ function replayPayload(row: DeepRunRow): NextResponse {
 }
 
 function pendingPayload(row: DeepRunRow, stage: string): NextResponse {
+  const waiting = !runIsBusy(row) && (row.lease_until === null || Date.parse(row.lease_until) <= Date.now())
   return NextResponse.json({
     ok: true,
     done: false,
     sessionId: row.id,
     stage,
+    waiting,
     unscored: true,
     kind: row.product,
     roundId: row.round_id,
+    refunded: row.refunded,
   })
 }
 
@@ -95,15 +89,16 @@ function missingTableResponse(): NextResponse {
   )
 }
 
-/**
- * Shared terminal-error path: refund (if not already skipped) and persist
- * `status='error', refunded=true` in one write. Used both for a round whose
- * upstream pipeline failed (existing top-level branch) and, since this
- * reorder, for a seed that never succeeded after MAX_SEED_ATTEMPTS — same
- * refund, same shape, one code path.
- */
+function busyResponse(): NextResponse {
+  return NextResponse.json(
+    { error: 'Deep analysis queue is full. Try again shortly.', code: 'busy' },
+    { status: 503, headers: { 'Retry-After': '60' } }
+  )
+}
+
 async function finishRefund(existing: DeepRunRow, userId: string): Promise<NextResponse> {
-  await refundDeep(userId, existing.charged_cost, deductFromRow(existing))
+  const won = await markDeepRunRefundedOnce(existing.id)
+  if (won) await refundDeep(userId, existing.charged_cost, deductFromRow(existing))
   await saveDeepRunProgress({
     id: existing.id,
     stage: existing.stage,
@@ -116,11 +111,53 @@ async function finishRefund(existing: DeepRunRow, userId: string): Promise<NextR
     refunded: true,
   })
   return NextResponse.json(
-    { ok: false, error: (existing.result?.error as string | undefined) ?? 'deep analysis failed', code: 'upstream_failed' },
+    { ok: false, error: (existing.result?.error as string | undefined) ?? 'deep analysis failed', code: 'upstream_failed', refunded: true },
     { status: 500 }
   )
 }
 
+function enqueue(row: DeepRunRow): void {
+  const deps = createDeepRunnerDeps((task) => after(task))
+  after(async () => {
+    await advanceDeepRun(row.id, deps)
+  })
+}
+
+/**
+ * GET — poll status. No rate limit (same as the card). Does not charge,
+ * claim, or advance. Resume state is the row.
+ */
+export async function handleDeepStatus(opts: {
+  product: DeepProduct
+  viewer: LeagueViewer
+  roundId: string
+}): Promise<NextResponse> {
+  const existing = await loadDeepRun(opts.roundId, opts.product, opts.viewer.userId)
+  if (!existing) {
+    return NextResponse.json({ ok: true, done: false, exists: false, kind: opts.product, roundId: opts.roundId })
+  }
+  if (existing.status === 'done' && existing.result) return replayPayload(existing)
+  if (existing.status === 'error') {
+    return NextResponse.json({
+      ok: false,
+      done: true,
+      exists: true,
+      refunded: existing.refunded,
+      stage: existing.stage,
+      error: (existing.result?.error as string | undefined) ?? 'deep analysis failed',
+      sessionId: existing.id,
+      kind: existing.product,
+      roundId: existing.round_id,
+    })
+  }
+  return pendingPayload(existing, existing.stage)
+}
+
+/**
+ * POST — claim → charge → enqueue. Hops run on the cron / after() runner.
+ * Ordering from 2026-08-29 is preserved: nothing that costs money happens
+ * before insertDeepRunClaim wins. The runner never charges.
+ */
 export async function handleDeepAnalysis(opts: {
   product: DeepProduct
   viewer: LeagueViewer
@@ -152,10 +189,8 @@ export async function handleDeepAnalysis(opts: {
     if (runIsBusy(existing)) {
       return pendingPayload(existing, existing.stage)
     }
-    if (isUnseededState(existing.state)) {
-      return resumeSeed(existing, product, locale, viewer.userId)
-    }
-    return advancePersisted(existing, viewer.userId)
+    enqueue(existing)
+    return pendingPayload(existing, existing.stage)
   }
 
   const limited = enforceRateLimit(
@@ -165,8 +200,11 @@ export async function handleDeepAnalysis(opts: {
   )
   if (limited) return limited
 
+  const active = await countActiveDeepRuns()
+  if (active >= LEAGUE_DEEP_MAX_ACTIVE) return busyResponse()
+
   const cost = costFor(product)
-  const placeholder = placeholderUnseededState() as unknown as Record<string, unknown>
+  const placeholder = placeholderUnseededState(locale) as unknown as Record<string, unknown>
 
   let row: DeepRunRow
   if (action === 'restart' && existing) {
@@ -174,10 +212,7 @@ export async function handleDeepAnalysis(opts: {
     if (!reset) return missingTableResponse()
     row = reset
   } else {
-    // CLAIM comes first now. The FK on round_id IS the round-existence
-    // check: a bad roundId aborts this insert (23503) before any charge,
-    // with no separate query — replacing the old buildLeagueDeepContext()
-    // pre-check that used to run here.
+    // CLAIM first. The FK on round_id IS the round-existence check.
     const claimed = await insertDeepRunClaim({
       roundId,
       product,
@@ -195,8 +230,8 @@ export async function handleDeepAnalysis(opts: {
       if (raced === 'finish_refund') return finishRefund(claimed.row, viewer.userId)
       if (raced === 'resume') {
         if (runIsBusy(claimed.row)) return pendingPayload(claimed.row, claimed.row.stage)
-        if (isUnseededState(claimed.row.state)) return resumeSeed(claimed.row, product, locale, viewer.userId)
-        return advancePersisted(claimed.row, viewer.userId)
+        enqueue(claimed.row)
+        return pendingPayload(claimed.row, claimed.row.stage)
       }
     }
     row = claimed.row
@@ -217,165 +252,7 @@ export async function handleDeepAnalysis(opts: {
     deduct_skipped: charged.deduct.skipped === true,
   }
 
-  // BUILD CONTEXT last — only after the user has actually been charged.
-  return resumeSeed(row, product, locale, viewer.userId)
-}
-
-/**
- * Turns a charged-but-unseeded row into a seeded one, then hands off to
- * `advancePersisted`. A context-build failure here is NOT a pipeline
- * failure: the row is left `running` with an incremented `seedAttempts` so
- * the client's own retry loop (same sessionId) tries again — no refund, no
- * lost credits, nothing charged twice. Only after MAX_SEED_ATTEMPTS
- * consecutive failures does this give up and route into `finishRefund`,
- * reusing the exact same refund path a failed pipeline uses.
- */
-async function resumeSeed(
-  row: DeepRunRow,
-  product: DeepProduct,
-  locale: LeagueLocale | null,
-  userId: string
-): Promise<NextResponse> {
-  await markDeepRunBusy(row.id)
-
-  let ctx: Awaited<ReturnType<typeof buildLeagueDeepContext>> = null
-  let buildError: string | null = null
-  try {
-    ctx = await buildLeagueDeepContext(row.round_id, locale)
-    if (!ctx) buildError = 'round not found while building context (removed after claim?)'
-  } catch (e) {
-    buildError = e instanceof Error ? e.message : String(e)
-  }
-
-  if (!ctx) {
-    const failed = nextUnseededState(row.state, buildError ?? 'context build failed')
-
-    if (failed.seedAttempts >= MAX_SEED_ATTEMPTS) {
-      const failedRow: DeepRunRow = {
-        ...row,
-        status: 'error',
-        stage: 'seed_failed',
-        state: failed as unknown as Record<string, unknown>,
-        result: { error: `seed failed after ${failed.seedAttempts} attempts: ${failed.lastSeedError}` },
-      }
-      return finishRefund(failedRow, userId)
-    }
-
-    await saveDeepRunProgress({
-      id: row.id,
-      stage: 'seed_retry',
-      status: 'running',
-      state: failed as unknown as Record<string, unknown>,
-      billedUsd: row.billed_usd,
-      estimatedUsd: row.estimated_usd,
-      providerCalls: row.provider_calls,
-    })
-    return pendingPayload({ ...row, stage: 'seed_retry' }, 'seed_retry')
-  }
-
-  const seeded = product === 'open' ? seedOpenState(ctx) : seedDebateState(ctx)
-  return advancePersisted(
-    { ...row, stage: 'start', state: seeded as unknown as Record<string, unknown> },
-    userId
-  )
-}
-
-async function advancePersisted(row: DeepRunRow, userId: string): Promise<NextResponse> {
-  await markDeepRunBusy(row.id)
-
-  try {
-    const language = localeFromPersistedState(row.state)
-    const span =
-      row.product === 'open'
-        ? await withCostSpan(() =>
-            runWithOutputLanguage(language, () => advanceOpenState(row.state as unknown as OpenPipelineState)),
-          )
-        : await withCostSpan(() =>
-            runWithOutputLanguage(language, () => advanceDebateState(row.state as unknown as DebatePipelineState)),
-          )
-
-    const totals = addSpanTotals(row, span)
-    const nextState = span.result.state as unknown as Record<string, unknown>
-    const providers =
-      row.product === 'open'
-        ? providersFromOpenState(span.result.state as OpenPipelineState)
-        : providersFromDebateState(span.result.state as DebatePipelineState)
-
-    if (span.result.done && !span.result.result.ok) {
-      await refundDeep(userId, row.charged_cost, deductFromRow(row))
-      await saveDeepRunProgress({
-        id: row.id,
-        stage: 'error',
-        status: 'error',
-        state: nextState,
-        result: span.result.result as unknown as Record<string, unknown>,
-        providers,
-        ...totals,
-        refunded: true,
-      })
-      return NextResponse.json(
-        { ok: false, error: span.result.result.error ?? 'deep analysis failed', code: 'upstream_failed' },
-        { status: 500 }
-      )
-    }
-
-    if (!span.result.done) {
-      await saveDeepRunProgress({
-        id: row.id,
-        stage: span.result.stage,
-        status: 'running',
-        state: nextState,
-        providers,
-        ...totals,
-      })
-      return pendingPayload({ ...row, stage: span.result.stage }, span.result.stage)
-    }
-
-    const result = span.result.result as unknown as Record<string, unknown>
-    await saveDeepRunProgress({
-      id: row.id,
-      stage: 'done',
-      status: 'done',
-      state: nextState,
-      result,
-      providers,
-      ...totals,
-    })
-
-    const balance = await currentBalance(userId)
-    return NextResponse.json({
-      ...result,
-      ok: true,
-      done: true,
-      cached: false,
-      unscored: true,
-      sessionId: row.id,
-      roundId: row.round_id,
-      kind: row.product,
-      instrument: (nextState.instrument as string | undefined) ?? row.state.instrument,
-      category: (nextState.category as string | undefined) ?? row.state.category,
-      proposition: (result.proposition as string | undefined) ?? row.state.proposition,
-      providers,
-      created_at: row.created_at,
-      upstream_cost_usd: Number((totals.billedUsd + totals.estimatedUsd).toFixed(4)),
-      billed_usd: Number(totals.billedUsd.toFixed(4)),
-      estimated_usd: Number(totals.estimatedUsd.toFixed(4)),
-      provider_calls: totals.providerCalls,
-      balance,
-    })
-  } catch {
-    // Platform kill / thrown interrupt: leave the row running at the last
-    // persisted stage so the next request resumes. Do NOT refund.
-    await saveDeepRunProgress({
-      id: row.id,
-      stage: row.stage,
-      status: 'running',
-      state: row.state,
-      providers: row.providers,
-      billedUsd: row.billed_usd,
-      estimatedUsd: row.estimated_usd,
-      providerCalls: row.provider_calls,
-    })
-    return pendingPayload(row, row.stage)
-  }
+  // BUILD CONTEXT is the runner's first hop (unseeded placeholder). Not here.
+  enqueue(row)
+  return pendingPayload({ ...row, stage: isUnseededState(row.state) ? 'start' : row.stage }, 'start')
 }

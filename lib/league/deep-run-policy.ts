@@ -36,10 +36,12 @@ export type UnseededState = {
   __unseeded: true
   seedAttempts: number
   lastSeedError?: string
+  /** Session locale captured at claim so the runner can seed without the HTTP body. */
+  locale?: string | null
 }
 
-export function placeholderUnseededState(): UnseededState {
-  return { __unseeded: true, seedAttempts: 0 }
+export function placeholderUnseededState(locale?: string | null): UnseededState {
+  return { __unseeded: true, seedAttempts: 0, ...(locale ? { locale } : {}) }
 }
 
 export function isUnseededState(state: unknown): state is UnseededState {
@@ -54,5 +56,11 @@ export function isUnseededState(state: unknown): state is UnseededState {
 /** Records one more failed seed attempt, keeping the prior count and cause chain. */
 export function nextUnseededState(state: unknown, error: string): UnseededState {
   const attempts = isUnseededState(state) ? state.seedAttempts : 0
-  return { __unseeded: true, seedAttempts: attempts + 1, lastSeedError: error }
+  const locale = isUnseededState(state) ? state.locale : undefined
+  return {
+    __unseeded: true,
+    seedAttempts: attempts + 1,
+    lastSeedError: error,
+    ...(locale ? { locale } : {}),
+  }
 }

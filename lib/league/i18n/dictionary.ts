@@ -587,6 +587,18 @@ export type LeagueUiPack = {
     deepDebateHint: string
     deepOpenTitle: string
     deepDebateTitle: string
+    /**
+     * Sets the 5–6 minute wait as deliberate. Must say the user can close
+     * the screen and come back.
+     */
+    deepWaitNote: string
+    /** Waiting for a runner slot (own deep cap is full). */
+    deepQueued: string
+    /** Named hop so the wait has visible progress. */
+    deepStage: (stage: string) => string
+    deepFailed: string
+    deepFailedRefunded: string
+    deepBusy: string
     balance: (credits: number) => string
   }
   /** Freeform box under the category chips. */
@@ -1025,6 +1037,28 @@ const en: LeagueUiPack = {
       'Models argue both sides, vote, and a chair writes a verdict including the minority view. Unscored \u2014 not a league prediction.',
     deepOpenTitle: 'Open analysis',
     deepDebateTitle: 'Pro/con debate',
+    deepWaitNote:
+      'Several models read and write in sequence. This usually takes 5–6 minutes. You can lock or close this screen — it keeps running, and reopening picks up where it left off.',
+    deepQueued: 'In line — your analysis starts shortly. You can close this screen.',
+    deepStage: (stage) =>
+      (
+        ({
+          start: 'Preparing the round packet',
+          seed_retry: 'Preparing the round packet',
+          plan: 'Assigning analyst seats',
+          report: 'Writing the shared briefing',
+          analyses: 'Collecting each model’s brief',
+          synthesis: 'Combining the briefs into one',
+          deliberate: 'The models are debating',
+          verdict: 'Vote and chair’s verdict',
+          done: 'Done',
+          error: 'Stopped',
+          seed_failed: 'Stopped',
+        }) as Record<string, string>
+      )[stage] ?? 'Working through the analysis',
+    deepFailed: 'This analysis stopped before finishing. Your payment still covers it — retry is free.',
+    deepFailedRefunded: 'Analysis failed, so your credits were refunded. You can try again.',
+    deepBusy: 'Heavy traffic on deep analysis right now. Please try again in a minute.',
   },
   gateway: {
     placeholder: {
@@ -1450,6 +1484,28 @@ const ko: LeagueUiPack = {
     deepDebateHint: '찬반으로 토론하고 투표한 뒤, 의장이 소수 의견까지 담아 판정합니다. 비채점이며 리그 예측이 아닙니다.',
     deepOpenTitle: '개방형 분석',
     deepDebateTitle: '찬반 토론',
+    deepWaitNote:
+      '여러 모델이 차례로 읽고 씁니다. 보통 5–6분 걸립니다. 화면을 닫거나 잠가도 계속 진행되며, 다시 열면 이어서 보입니다.',
+    deepQueued: '대기열에 등록되었습니다 — 곧 시작됩니다. 화면을 닫아도 됩니다.',
+    deepStage: (stage) =>
+      (
+        ({
+          start: '라운드 자료를 준비하고 있습니다',
+          seed_retry: '라운드 자료를 준비하고 있습니다',
+          plan: '분석 좌석을 배정하는 중입니다',
+          report: '공유 브리핑을 쓰는 중입니다',
+          analyses: '모델별 브리핑을 모으는 중입니다',
+          synthesis: '여덟 편의 브리핑을 하나로 합치는 중입니다',
+          deliberate: '찬반 토론이 진행 중입니다',
+          verdict: '투표와 의장 판정을 내는 중입니다',
+          done: '완료',
+          error: '중단됨',
+          seed_failed: '중단됨',
+        }) as Record<string, string>
+      )[stage] ?? '심층 분석을 진행하는 중입니다',
+    deepFailed: '분석이 중간에 멈췄습니다. 결제는 그대로 유효하므로 무료로 다시 시도할 수 있습니다.',
+    deepFailedRefunded: '분석에 실패해 크레딧을 환불해 드렸습니다. 다시 시도할 수 있습니다.',
+    deepBusy: '지금 심층 분석 요청이 많습니다. 잠시 후 다시 시도해 주세요.',
   },
   gateway: {
     placeholder: {
@@ -1872,6 +1928,28 @@ const ja: LeagueUiPack = {
     deepDebateHint: '賛否で議論し投票したあと、議長が少数意見まで含めて判定します。採点対象外であり、リーグ予測ではありません。',
     deepOpenTitle: '自由分析',
     deepDebateTitle: '賛否討論',
+    deepWaitNote:
+      '複数のモデルが順に読み、書きます。通常5〜6分かかります。画面を閉じても処理は続き、開き直せば続きから表示されます。',
+    deepQueued: '順番待ちです — まもなく開始します。画面を閉じても構いません。',
+    deepStage: (stage) =>
+      (
+        ({
+          start: 'ラウンド資料を準備しています',
+          seed_retry: 'ラウンド資料を準備しています',
+          plan: '分析座席を割り当てています',
+          report: '共有ブリーフィングを書いています',
+          analyses: '各モデルのブリーフィングを集めています',
+          synthesis: '8本のブリーフィングを一つにまとめています',
+          deliberate: '賛否の討論中です',
+          verdict: '投票と議長判定を出しています',
+          done: '完了',
+          error: '停止',
+          seed_failed: '停止',
+        }) as Record<string, string>
+      )[stage] ?? '深層分析を進めています',
+    deepFailed: '分析が途中で止まりました。お支払いは有効なので、無料で再試行できます。',
+    deepFailedRefunded: '分析に失敗したため、クレジットを返金しました。もう一度お試しいただけます。',
+    deepBusy: 'ただいま深層分析の混雑です。しばらくしてからお試しください。',
   },
   gateway: {
     placeholder: {
@@ -2291,6 +2369,28 @@ const zhTW: LeagueUiPack = {
     deepDebateHint: '正反辯論並投票後，主席寫出含少數意見的裁決。未計分——不是聯盟預測。',
     deepOpenTitle: '開放分析',
     deepDebateTitle: '正反辯論',
+    deepWaitNote:
+      '多個模型依序讀寫。通常需要 5–6 分鐘。關閉或鎖定畫面也會繼續進行，重新打開即可接續。',
+    deepQueued: '已進入佇列 — 即將開始。可以關閉畫面。',
+    deepStage: (stage) =>
+      (
+        ({
+          start: '正在準備本回合資料',
+          seed_retry: '正在準備本回合資料',
+          plan: '正在分配分析席次',
+          report: '正在撰寫共用簡報',
+          analyses: '正在收集各模型簡報',
+          synthesis: '正在把八份簡報合成一份',
+          deliberate: '正反辯論進行中',
+          verdict: '正在投票並由主席裁決',
+          done: '完成',
+          error: '已中止',
+          seed_failed: '已中止',
+        }) as Record<string, string>
+      )[stage] ?? '深度分析進行中',
+    deepFailed: '分析中途停止。付款仍然有效，可免費重試。',
+    deepFailedRefunded: '分析失敗，點數已退還。可以再試一次。',
+    deepBusy: '目前深度分析較多，請稍後再試。',
   },
   gateway: {
     placeholder: {
@@ -2721,6 +2821,28 @@ const fr: LeagueUiPack = {
       'Les modèles argumentent les deux camps, votent, et un président rédige un verdict incluant la minorité. Non noté \u2014 pas une prédiction de ligue.',
     deepOpenTitle: 'Analyse ouverte',
     deepDebateTitle: 'D\u00e9bat pour/contre',
+    deepWaitNote:
+      'Plusieurs modèles lisent et écrivent à tour de rôle. Comptez 5 à 6 minutes. Vous pouvez verrouiller ou fermer cet écran : le travail continue, et le rouvrir reprend là où il en était.',
+    deepQueued: 'En file d\u2019attente — l\u2019analyse démarre sous peu. Vous pouvez fermer cet écran.',
+    deepStage: (stage) =>
+      (
+        ({
+          start: 'Préparation du dossier',
+          seed_retry: 'Préparation du dossier',
+          plan: 'Attribution des sièges d\u2019analyse',
+          report: 'Rédaction du briefing partagé',
+          analyses: 'Collecte des notes de chaque modèle',
+          synthesis: 'Fusion des notes en une synthèse',
+          deliberate: 'Débat en cours',
+          verdict: 'Vote et verdict du président',
+          done: 'Terminé',
+          error: 'Interrompu',
+          seed_failed: 'Interrompu',
+        }) as Record<string, string>
+      )[stage] ?? 'Analyse en cours',
+    deepFailed: 'L\u2019analyse s\u2019est arrêtée en cours. Votre paiement reste valable — réessayez sans frais.',
+    deepFailedRefunded: 'L\u2019analyse a échoué : vos crédits ont été remboursés. Vous pouvez réessayer.',
+    deepBusy: 'Trop de demandes d\u2019analyse approfondie. Réessayez dans un instant.',
   },
   gateway: {
     placeholder: {
@@ -3153,6 +3275,28 @@ const es: LeagueUiPack = {
       'Los modelos argumentan ambos lados, votan, y un presidente redacta un veredicto incluyendo la minoría. Sin puntuar \u2014 no es una predicción de la liga.',
     deepOpenTitle: 'An\u00e1lisis abierto',
     deepDebateTitle: 'Debate a favor/en contra',
+    deepWaitNote:
+      'Varios modelos leen y escriben por turnos. Suele tardar 5–6 minutos. Puedes bloquear o cerrar esta pantalla: sigue en marcha, y al reabrir retomas el punto.',
+    deepQueued: 'En cola — tu análisis empieza en breve. Puedes cerrar esta pantalla.',
+    deepStage: (stage) =>
+      (
+        ({
+          start: 'Preparando el paquete de la ronda',
+          seed_retry: 'Preparando el paquete de la ronda',
+          plan: 'Asignando asientos de análisis',
+          report: 'Escribiendo el briefing compartido',
+          analyses: 'Recogiendo el informe de cada modelo',
+          synthesis: 'Uniendo los informes en uno',
+          deliberate: 'El debate está en curso',
+          verdict: 'Voto y veredicto de la presidencia',
+          done: 'Listo',
+          error: 'Detenido',
+          seed_failed: 'Detenido',
+        }) as Record<string, string>
+      )[stage] ?? 'Análisis en curso',
+    deepFailed: 'El análisis se detuvo a medias. Tu pago sigue vigente: reintenta sin costo.',
+    deepFailedRefunded: 'El análisis falló y tus créditos fueron reembolsados. Puedes intentarlo de nuevo.',
+    deepBusy: 'Hay muchas solicitudes de análisis profundo. Inténtalo de nuevo en un momento.',
   },
   gateway: {
     placeholder: {
@@ -3578,6 +3722,28 @@ const ar: LeagueUiPack = {
       'تتناظر النماذج على الجانبين وتصوّت، ويكتب رئيس الجلسة حكمًا يشمل رأي الأقلية. غير مُقيَّم — ليس توقعًا للدوري.',
     deepOpenTitle: 'تحليل مفتوح',
     deepDebateTitle: 'مناظرة مع/ضد',
+    deepWaitNote:
+      'تقرأ النماذج وتكتب بالدور. يستغرق ذلك عادة 5–6 دقائق. يمكنك إغلاق الشاشة أو قفلها — يستمر التنفيذ، وإعادة الفتح تستأنف من حيث توقفت.',
+    deepQueued: 'في قائمة الانتظار — سيبدأ تحليلك قريبًا. يمكنك إغلاق هذه الشاشة.',
+    deepStage: (stage) =>
+      (
+        ({
+          start: 'جارٍ تجهيز ملف الجولة',
+          seed_retry: 'جارٍ تجهيز ملف الجولة',
+          plan: 'جارٍ توزيع مقاعد التحليل',
+          report: 'جارٍ كتابة الإحاطة المشتركة',
+          analyses: 'جارٍ جمع موجز كل نموذج',
+          synthesis: 'جارٍ دمج الموجزات في نص واحد',
+          deliberate: 'المناظرة جارية',
+          verdict: 'التصويت وحكم رئيس الجلسة',
+          done: 'اكتمل',
+          error: 'توقف',
+          seed_failed: 'توقف',
+        }) as Record<string, string>
+      )[stage] ?? 'التحليل المعمّق جارٍ',
+    deepFailed: 'توقف التحليل قبل الاكتمال. دفعتك ما تزال سارية — أعد المحاولة دون رسوم.',
+    deepFailedRefunded: 'فشل التحليل وأُعيد رصيدك. يمكنك المحاولة مرة أخرى.',
+    deepBusy: 'طلبات التحليل المعمّق كثيرة الآن. يرجى المحاولة بعد قليل.',
   },
   gateway: {
     placeholder: {
@@ -4014,6 +4180,28 @@ const pt: LeagueUiPack = {
       'Os modelos argumentam os dois lados, votam, e um presidente redige um veredito incluindo a minoria. Sem pontuação \u2014 não é uma previsão da liga.',
     deepOpenTitle: 'Análise aberta',
     deepDebateTitle: 'Debate prós/contras',
+    deepWaitNote:
+      'Vários modelos leem e escrevem em sequência. Costuma levar 5–6 minutos. Você pode bloquear ou fechar esta tela — o processo continua, e reabrir retoma de onde parou.',
+    deepQueued: 'Na fila — sua análise começa em instantes. Pode fechar esta tela.',
+    deepStage: (stage) =>
+      (
+        ({
+          start: 'Preparando o pacote da rodada',
+          seed_retry: 'Preparando o pacote da rodada',
+          plan: 'Atribuindo assentos de análise',
+          report: 'Escrevendo o briefing compartilhado',
+          analyses: 'Coletando o briefing de cada modelo',
+          synthesis: 'Unindo os briefings em um só',
+          deliberate: 'O debate está em andamento',
+          verdict: 'Voto e veredito da presidência',
+          done: 'Concluído',
+          error: 'Interrompido',
+          seed_failed: 'Interrompido',
+        }) as Record<string, string>
+      )[stage] ?? 'Análise em andamento',
+    deepFailed: 'A análise parou no meio. Seu pagamento continua válido — tente novamente sem custo.',
+    deepFailedRefunded: 'A análise falhou e seus créditos foram reembolsados. Você pode tentar de novo.',
+    deepBusy: 'Muitas solicitações de análise profunda agora. Tente novamente em instantes.',
   },
   gateway: {
     placeholder: {

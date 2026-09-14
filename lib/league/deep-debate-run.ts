@@ -2,7 +2,6 @@ import 'server-only'
 
 import {
   planJejuMeeting,
-  runDeliberation,
   runJejuMotionVote,
   renderChairVerdict,
   type JejuMeetingPlan,
@@ -10,6 +9,7 @@ import {
   type JejuRevisedAnalysis,
   type JejuExecutedSearch,
 } from '@/lib/motie/deep'
+import { remapOpenPlanExaone, runLeagueDeliberation } from './deep-debate-replacement'
 import { generateJejuPreReport } from '@/lib/motie/pre-report'
 import { SYNOD_DEBATERS } from '@/lib/motie/synod-debate'
 import type { LeagueDeepContext } from './deep-context'
@@ -47,6 +47,13 @@ export function seedDebateState(ctx: LeagueDeepContext): DebatePipelineState {
     snapshot: ctx.snapshot,
     outputLanguage: ctx.outputLanguage,
   }
+}
+
+export function upcomingDebateStage(state: DebatePipelineState): string {
+  if (!state.plan) return 'plan'
+  if (!state.report) return 'report'
+  if (!state.deliberation) return 'deliberate'
+  return 'verdict'
 }
 
 export function providersFromDebateState(state: DebatePipelineState): DeepProviderMeta[] {
@@ -111,7 +118,7 @@ export async function advanceDebateState(state: DebatePipelineState): Promise<De
       const result = failResult(state, plan.error ?? 'orchestrator failed')
       return { done: true, result, state: { ...state, plan, result } }
     }
-    return { done: false, stage: 'plan', state: { ...state, plan } }
+    return { done: false, stage: 'plan', state: { ...state, plan: remapOpenPlanExaone(plan) as typeof plan } }
   }
 
   if (!state.report) {
@@ -130,7 +137,7 @@ export async function advanceDebateState(state: DebatePipelineState): Promise<De
   }
 
   if (!state.deliberation) {
-    const deliberation = await runDeliberation({
+    const deliberation = await runLeagueDeliberation({
       question: state.question,
       roles: state.plan.roles,
       seedAnalyses: seedFromReport(state.report, state.plan.roles),

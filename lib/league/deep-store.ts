@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { freeBusyFilter, freeLeaseFilter } from './generation/lease'
 import {
   decideDeepRunAction,
   isUnseededState,
@@ -40,12 +41,16 @@ export type DeepRunRow = {
   estimated_usd: number
   provider_calls: number
   busy_until: string | null
+  attempt_count: number
+  lease_until: string | null
+  last_heartbeat_at: string | null
+  last_error: string | null
   created_at: string
   updated_at: string
 }
 
 const COLUMNS =
-  'id, round_id, product, user_id, status, stage, result, providers, state, charged, charged_cost, deduct_skipped, refunded, billed_usd, estimated_usd, provider_calls, busy_until, created_at, updated_at'
+  'id, round_id, product, user_id, status, stage, result, providers, state, charged, charged_cost, deduct_skipped, refunded, billed_usd, estimated_usd, provider_calls, busy_until, attempt_count, lease_until, last_heartbeat_at, last_error, created_at, updated_at'
 
 function asRow(data: Record<string, unknown>): DeepRunRow {
   return {
@@ -66,6 +71,10 @@ function asRow(data: Record<string, unknown>): DeepRunRow {
     estimated_usd: typeof data.estimated_usd === 'number' ? Number(data.estimated_usd) : 0,
     provider_calls: typeof data.provider_calls === 'number' ? data.provider_calls : 0,
     busy_until: typeof data.busy_until === 'string' ? data.busy_until : null,
+    attempt_count: typeof data.attempt_count === 'number' ? data.attempt_count : 0,
+    lease_until: typeof data.lease_until === 'string' ? data.lease_until : null,
+    last_heartbeat_at: typeof data.last_heartbeat_at === 'string' ? data.last_heartbeat_at : null,
+    last_error: typeof data.last_error === 'string' ? data.last_error : null,
     created_at: String(data.created_at ?? ''),
     updated_at: String(data.updated_at ?? ''),
   }
@@ -170,6 +179,10 @@ export async function resetDeepRun(
       estimated_usd: 0,
       provider_calls: 0,
       busy_until: null,
+      attempt_count: 0,
+      lease_until: null,
+      last_heartbeat_at: null,
+      last_error: null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -250,4 +263,132 @@ export function addSpanTotals(
     estimatedUsd: row.estimated_usd + span.estimatedUsd,
     providerCalls: row.provider_calls + span.calls,
   }
+}
+
+export type DeepRunPatch = Partial<
+  Pick<
+    DeepRunRow,
+    | 'status'
+    | 'stage'
+    | 'lease_until'
+    | 'last_heartbeat_at'
+    | 'attempt_count'
+    | 'last_error'
+    | 'refunded'
+    | 'state'
+    | 'result'
+    | 'providers'
+  >
+>
+
+export async function updateDeepRun(id: string, patch: DeepRunPatch): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw new Error(`updateDeepRun: ${error.message}`)
+}
+
+/**
+ * Atomic lease claim — same predicate as claimGenerationJobLease
+ * (attempt_count + free lease) PLUS free busy_until so a live HTTP hop
+ * from before this runner shipped is never stolen mid-request.
+ */
+export async function claimDeepRunLease(
+  id: string,
+  leaseUntil: string,
+  nowIso: string
+): Promise<DeepRunRow | null> {
+  const { data: current, error: readError } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .select('attempt_count,status,busy_until')
+    .eq('id', id)
+    .maybeSingle()
+  if (readError) throw new Error(`claimDeepRunLease read: ${readError.message}`)
+  if (!current) return null
+
+  const row = current as { attempt_count: number; status: string; busy_until: string | null }
+  if (row.status === 'done' || row.status === 'error') return null
+  if (row.busy_until && row.busy_until >= nowIso) return null
+
+  const { data, error } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .update({
+      status: 'running',
+      lease_until: leaseUntil,
+      last_heartbeat_at: nowIso,
+      attempt_count: row.attempt_count + 1,
+      updated_at: nowIso,
+    })
+    .eq('id', id)
+    .eq('attempt_count', row.attempt_count)
+    .eq('status', 'running')
+    .or(freeLeaseFilter(nowIso))
+    .or(freeBusyFilter(nowIso))
+    .select(COLUMNS)
+    .maybeSingle()
+  if (error) throw new Error(`claimDeepRunLease: ${error.message}`)
+  return data ? asRow(data as Record<string, unknown>) : null
+}
+
+export async function touchDeepRunHeartbeat(id: string, nowIso: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .update({ last_heartbeat_at: nowIso })
+    .eq('id', id)
+  if (error) throw new Error(`touchDeepRunHeartbeat: ${error.message}`)
+}
+
+export async function listClaimableDeepRuns(
+  limit: number,
+  staleBeforeIso: string,
+  nowIso: string
+): Promise<DeepRunRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .select(COLUMNS)
+    .eq('status', 'running')
+    .or(`last_heartbeat_at.is.null,last_heartbeat_at.lt.${staleBeforeIso}`)
+    .or(freeLeaseFilter(nowIso))
+    .or(freeBusyFilter(nowIso))
+    .order('created_at', { ascending: true })
+    .limit(limit)
+  if (error) throw new Error(`listClaimableDeepRuns: ${error.message}`)
+  return (data ?? []).map((row) => asRow(row as Record<string, unknown>))
+}
+
+export async function countRunningDeepRuns(nowIso: string): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'running')
+    .gt('lease_until', nowIso)
+  if (error) throw new Error(`countRunningDeepRuns: ${error.message}`)
+  return count ?? 0
+}
+
+export async function countActiveDeepRuns(): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'running')
+  if (error) throw new Error(`countActiveDeepRuns: ${error.message}`)
+  return count ?? 0
+}
+
+/**
+ * Flip refunded exactly once — same conditional as markJobRefundedOnce.
+ * Caller moves credits only when this returns the row.
+ */
+export async function markDeepRunRefundedOnce(id: string): Promise<DeepRunRow | null> {
+  const { data, error } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .update({ refunded: true, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('charged', true)
+    .eq('refunded', false)
+    .select(COLUMNS)
+    .maybeSingle()
+  if (error) throw new Error(`markDeepRunRefundedOnce: ${error.message}`)
+  return data ? asRow(data as Record<string, unknown>) : null
 }

@@ -508,7 +508,7 @@ export async function planJejuOpenMeeting(params: {
 
 // ── Parallel analysis (STEP 3) ────────────────────────────────────────────────
 
-function buildAnalystSystemPrompt(role: JejuOpenAnalysisRole, councilMode: JejuCouncilMode): string {
+export function buildAnalystSystemPrompt(role: JejuOpenAnalysisRole, councilMode: JejuCouncilMode): string {
   const isTrade = councilMode === 'trade'
   return [
     openAnalystPersonaLine(councilMode),
@@ -557,7 +557,7 @@ function formatSearchesForAnalysts(searches: JejuExecutedSearch[] | undefined): 
   ]
 }
 
-function buildAnalystUserPrompt(params: {
+export function buildAnalystUserPrompt(params: {
   question: string
   role: JejuOpenAnalysisRole
   briefing: string

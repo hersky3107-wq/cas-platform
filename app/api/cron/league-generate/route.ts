@@ -13,8 +13,10 @@
  */
 import { after, NextResponse } from 'next/server'
 import { verifyCronAuth } from '@/lib/cron/auth'
+import { createDeepRunnerDeps } from '@/lib/league/generation/deep-live-deps'
 import { createLeagueRunnerDeps } from '@/lib/league/generation/live-deps'
 import { LEAGUE_JOB_SWEEP_BATCH_SIZE } from '@/lib/league/generation/policy'
+import { sweepLeagueDeepRuns } from '@/lib/league/generation/deep-runner'
 import { sweepLeagueGenerationJobs } from '@/lib/league/generation/runner'
 
 export const runtime = 'nodejs'
@@ -32,12 +34,11 @@ export async function GET(req: Request) {
         ? Math.min(limitParam, LEAGUE_JOB_SWEEP_BATCH_SIZE)
         : LEAGUE_JOB_SWEEP_BATCH_SIZE
 
-    const summary = await sweepLeagueGenerationJobs(
-      createLeagueRunnerDeps((task) => after(task)),
-      limit
-    )
+    const schedule = (task: () => Promise<void>) => after(task)
+    const generation = await sweepLeagueGenerationJobs(createLeagueRunnerDeps(schedule), limit)
+    const deep = await sweepLeagueDeepRuns(createDeepRunnerDeps(schedule), limit)
 
-    return NextResponse.json({ ok: true, summary })
+    return NextResponse.json({ ok: true, summary: { generation, deep } })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })

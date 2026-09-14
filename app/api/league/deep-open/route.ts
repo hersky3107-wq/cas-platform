@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { authorizeRoundForViewer, resolveLeagueViewer } from '@/lib/league/public-access'
 import { parseDeepRequest } from '@/lib/league/deep-request'
 import { roundHasCards } from '@/lib/league/deep-context'
-import { handleDeepAnalysis } from '@/lib/league/deep-http'
+import { handleDeepAnalysis, handleDeepStatus } from '@/lib/league/deep-http'
 
 export const maxDuration = 300
 
@@ -48,4 +48,23 @@ export async function POST(req: Request) {
     locale: parsed.request.locale,
     sessionId: parsed.request.sessionId,
   })
+}
+
+/** Poll. No rate limit — same as GET /api/league/card. Does not charge. */
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const parsed = parseDeepRequest({
+    roundId: url.searchParams.get('roundId') ?? '',
+    locale: url.searchParams.get('locale') ?? undefined,
+    sessionId: url.searchParams.get('sessionId') ?? undefined,
+  })
+  if (!parsed.ok) return parsed.response
+
+  const auth = await resolveLeagueViewer(req, {})
+  if (!auth.ok) return auth.response
+
+  const access = await authorizeRoundForViewer(auth.viewer, parsed.request.roundId)
+  if (!access.ok) return access.response
+
+  return handleDeepStatus({ product: 'open', viewer: auth.viewer, roundId: access.roundId })
 }
