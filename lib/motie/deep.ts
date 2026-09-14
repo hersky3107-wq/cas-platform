@@ -2,7 +2,13 @@ import 'server-only'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-import { gatherJejuSnapshot, buildBriefingContext, WARROOM_STANDING_ENERGY_CONTEXT, type JejuSnapshot, type JejuCouncilMode } from '@/lib/motie/brief'
+import {
+  gatherJejuSnapshot,
+  buildBriefingContext,
+  WARROOM_STANDING_ENERGY_CONTEXT,
+  type JejuSnapshot,
+  type JejuCouncilMode,
+} from '@/lib/motie/brief'
 import {
   analystPersonaLine,
   notDeciderLine,
@@ -28,6 +34,9 @@ import {
   callMotieLocalProvider,
   type MotieProvider,
 } from '@/lib/motie/local-providers'
+
+export type { JejuSnapshot, JejuCouncilMode }
+export type { MotieProvider }
 import { callMotieDeepseekChat } from '@/lib/motie/deepseek-chat'
 import { MOTIE_FLAGSHIP_BY_PROVIDER } from '@/lib/motie/models'
 import { buildMotieSupplementBlock, type MotieSupplement } from '@/lib/motie/supplements'
@@ -2981,7 +2990,8 @@ function formatVoteForChair(vote: JejuVoteResult): string {
   const lines = [vote.summary]
   for (const v of vote.votes) {
     if (!v.ok || v.choice == null) continue
-    const label = JEJU_VOTE_BRAND_LABEL[v.provider]
+    const providerKey = String(v.provider)
+    const label = (JEJU_VOTE_BRAND_LABEL as Record<string, string>)[providerKey] ?? (providerKey === 'glm-5.2' ? 'GLM' : providerKey)
     const reason = v.reason && v.reason.trim() !== '' ? ` — ${v.reason.trim()}` : ''
     lines.push(`- ${label}: ${voteChoiceLabel(v.choice)}${reason}`)
   }
@@ -3450,7 +3460,7 @@ const VOTE_MAX_TOKENS = 400
 const VOTE_MAX_TOKENS_DEEPSEEK = 700
 
 /** What the ballot is cast on: a chair ruling ('verdict') or the motion itself ('motion'). */
-type JejuVoteMode = 'verdict' | 'motion'
+export type JejuVoteMode = 'verdict' | 'motion'
 
 /**
  * Builds the Korean system prompt for a voting member of the deliberation body.
@@ -3458,7 +3468,7 @@ type JejuVoteMode = 'verdict' | 'motion'
  *   - 'motion':  vote on the official's original proposition (the motion) itself,
  *                cast BEFORE any chair ruling exists.
  */
-function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: JejuCouncilMode = 'warroom'): string {
+export function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: JejuCouncilMode = 'warroom'): string {
   // Shared preamble — the stance-first rule is the same regardless of mode.
   const stancePrimary = [
     '핵심 원칙 — 당신 자신의 토론 기록대로 표결하십시오(가장 중요):',
@@ -3543,7 +3553,7 @@ function buildVoteSystemPrompt(mode: JejuVoteMode = 'verdict', councilMode: Jeju
 }
 
 /** Maps a parsed Korean choice token to a JejuVoteChoice. */
-function parseVoteChoice(raw: string): JejuVoteChoice | null {
+export function parseVoteChoice(raw: string): JejuVoteChoice | null {
   if (raw === '조건부 찬성') return 'conditional'
   if (raw === '찬성') return 'approve'
   if (raw === '반대') return 'oppose'
@@ -3552,7 +3562,7 @@ function parseVoteChoice(raw: string): JejuVoteChoice | null {
 }
 
 /** Parses a vote response into { choice, reason }. Unparseable → choice:null. */
-function parseVoteResponse(text: string | null): {
+export function parseVoteResponse(text: string | null): {
   choice: JejuVoteChoice | null
   reason: string | null
 } {
@@ -3571,7 +3581,7 @@ function parseVoteResponse(text: string | null): {
  * emphasis (_…_ / stray _), and markdown bold/italic asterisks. Returns clean
  * Korean prose. Applied to ALL panelists' reasons (harmless for the others).
  */
-function sanitizeVoteReason(reason: string | null): string | null {
+export function sanitizeVoteReason(reason: string | null): string | null {
   if (!reason) return reason
   const cleaned = reason
     .replace(/\[\d+\](?:\[\d+\])*/g, '') // footnote/citation markers [n], [n][m]
@@ -3594,7 +3604,7 @@ function sanitizeVoteReason(reason: string | null): string | null {
  *   - 'motion' mode: proposition is the official's original question (verbatim);
  *     `unresolvedIssues` is the deliberation's contested points.
  */
-function buildVoteUserPrompt(params: {
+export function buildVoteUserPrompt(params: {
   mode: JejuVoteMode
   question: string
   proposition: string
@@ -3646,7 +3656,7 @@ function buildVoteUserPrompt(params: {
 }
 
 /** Renders the deliberation's contested points into the "unresolved issues" block for a motion vote. */
-function formatContestedForVote(contestedPoints: string[]): string | null {
+export function formatContestedForVote(contestedPoints: string[]): string | null {
   if (contestedPoints.length === 0) return null
   return contestedPoints.map((p) => `• ${p}`).join('\n')
 }
@@ -3695,9 +3705,9 @@ function truncateTurnBody(body: string, budget: number): string {
  *      section) for that voter only — silent misattribution must be
  *      impossible, and showing no record beats showing the WRONG one.
  */
-function buildVoterTranscript(
+export function buildVoterTranscript(
   deliberation: JejuDeliberation | undefined,
-  provider: MotieProvider
+  provider: MotieProvider | string
 ): string | null {
   if (!deliberation || deliberation.rounds.length === 0) return null
 
@@ -3740,7 +3750,7 @@ function buildVoterTranscript(
 }
 
 /** Casts ONE provider's vote on the given proposition. Never throws. */
-async function runOneVote(
+export async function runOneVote(
   provider: MotieProvider,
   systemPrompt: string,
   userPrompt: string

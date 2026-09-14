@@ -22,3 +22,28 @@ export function remapOpenPlanExaone<T extends { roles: Array<{ provider: string 
     ),
   }
 }
+
+export const LEAGUE_VOTE_PANEL: readonly string[] = [
+  'anthropic',
+  'openai',
+  'google',
+  'xai',
+  'deepseek',
+  'mistral',
+  'solar',
+  LEAGUE_OPEN_REPLACEMENT_PROVIDER,
+  'perplexity',
+] as const
+
+export const LEAGUE_VOTE_BRAND_LABEL: Record<string, string> = {
+  anthropic: 'Claude',
+  openai: 'ChatGPT',
+  google: 'Gemini',
+  xai: 'Grok',
+  deepseek: 'DeepSeek',
+  mistral: 'Mistral',
+  solar: 'Upstage (솔라)',
+  [LEAGUE_OPEN_REPLACEMENT_PROVIDER]: 'GLM',
+  perplexity: 'Perplexity',
+  meta: 'Llama',
+}

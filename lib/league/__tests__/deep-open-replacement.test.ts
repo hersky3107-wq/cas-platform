@@ -4,6 +4,8 @@ import {
   LEAGUE_DEAD_OPEN_PROVIDER,
   LEAGUE_OPEN_REPLACEMENT_PLATFORM_ID,
   LEAGUE_OPEN_REPLACEMENT_PROVIDER,
+  LEAGUE_VOTE_BRAND_LABEL,
+  LEAGUE_VOTE_PANEL,
   remapOpenPlanExaone,
 } from '../deep-open-replacement-policy'
 
@@ -42,5 +44,12 @@ describe('league deep-open EXAONE replacement', () => {
       ],
     }
     expect(remapOpenPlanExaone(plan).roles.map((r) => r.provider)).toEqual(['openai', 'glm-5.2', 'solar'])
+  })
+
+  it('configures league vote panel without exaone and with glm-5.2', () => {
+    expect(LEAGUE_VOTE_PANEL).toContain('glm-5.2')
+    expect(LEAGUE_VOTE_PANEL).not.toContain('exaone')
+    expect(LEAGUE_VOTE_PANEL).toHaveLength(9)
+    expect(LEAGUE_VOTE_BRAND_LABEL['glm-5.2']).toBe('GLM')
   })
 })

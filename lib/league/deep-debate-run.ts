@@ -2,14 +2,13 @@ import 'server-only'
 
 import {
   planJejuMeeting,
-  runJejuMotionVote,
   renderChairVerdict,
   type JejuMeetingPlan,
   type JejuDeliberation,
   type JejuRevisedAnalysis,
   type JejuExecutedSearch,
 } from '@/lib/motie/deep'
-import { remapOpenPlanExaone, runLeagueDeliberation } from './deep-debate-replacement'
+import { remapOpenPlanExaone, runLeagueDeliberation, runLeagueMotionVote } from './deep-debate-replacement'
 import { generateJejuPreReport } from '@/lib/motie/pre-report'
 import { SYNOD_DEBATERS } from '@/lib/motie/synod-debate'
 import type { LeagueDeepContext } from './deep-context'
@@ -150,7 +149,7 @@ export async function advanceDebateState(state: DebatePipelineState): Promise<De
     return { done: false, stage: 'deliberate', state: { ...state, deliberation } }
   }
 
-  const vote = await runJejuMotionVote({
+  const vote = await runLeagueMotionVote({
     question: state.question,
     deliberation: state.deliberation,
     councilMode: 'warroom',

@@ -2,25 +2,42 @@ import { callPlatformModel } from '@/lib/ai/platform-providers'
 import { userQuestionLabel } from '@/lib/motie/persona'
 import {
   buildDeliberationSystemPrompt,
+  buildVoteSystemPrompt,
+  buildVoteUserPrompt,
+  buildVoterTranscript,
+  formatContestedForVote,
   formatPriorRound,
   JEJU_DEEP_DELIBERATION_TUNING,
   measureConsensus,
   parseDeliberationOutput,
+  parseVoteResponse,
   runDeliberationRound,
+  runOneVote,
+  sanitizeVoteReason,
+  type JejuCouncilMode,
   type JejuDeliberation,
   type JejuDeliberationStopReason,
   type JejuDeliberationTurn,
   type JejuExpertRole,
   type JejuRevisedAnalysis,
   type JejuRoundResult,
+  type JejuVote,
+  type JejuVoteResult,
+  type MotieProvider,
 } from '@/lib/motie/deep'
 import {
   isLeagueOpenReplacementSeat,
   LEAGUE_OPEN_REPLACEMENT_PLATFORM_ID,
   LEAGUE_OPEN_REPLACEMENT_PROVIDER,
+  LEAGUE_VOTE_BRAND_LABEL,
+  LEAGUE_VOTE_PANEL,
 } from './deep-open-replacement-policy'
 
-export { remapOpenPlanExaone } from './deep-open-replacement-policy'
+export {
+  LEAGUE_VOTE_BRAND_LABEL,
+  LEAGUE_VOTE_PANEL,
+  remapOpenPlanExaone,
+} from './deep-open-replacement-policy'
 
 const DELIBERATION_MAX_TOKENS = 1200
 
@@ -250,5 +267,159 @@ async function runReplacementDeliberationTurn(params: {
     }
   } catch (e: unknown) {
     return { ...base, error: e instanceof Error ? e.message : 'replacement debater threw' }
+  }
+}
+
+/**
+ * League motion vote. Same rules as MOTIE `runJejuMotionVote`, but the
+ * dead EXAONE seat is remapped to GLM-5.2 and routed through OpenRouter,
+ * while the other 8 seats stay on MOTIE.
+ */
+export async function runLeagueMotionVote(params: {
+  question: string
+  deliberation: JejuDeliberation
+  councilMode?: JejuCouncilMode
+}): Promise<JejuVoteResult> {
+  const councilMode: JejuCouncilMode = params.councilMode ?? 'warroom'
+  const question = params.question?.trim() ?? ''
+  if (!question) {
+    return {
+      votes: [],
+      approveCount: 0,
+      conditionalCount: 0,
+      opposeCount: 0,
+      abstainCount: 0,
+      approveProviders: [],
+      conditionalProviders: [],
+      opposeProviders: [],
+      abstainProviders: [],
+      outcome: 'divided',
+      ok: false,
+      summary: '표결할 안건이 없어 표결을 건너뜁니다.',
+    }
+  }
+
+  const systemPrompt = buildVoteSystemPrompt('motion', councilMode)
+  const unresolvedIssues = formatContestedForVote(params.deliberation.contestedPoints)
+
+  const userPromptFor = (provider: string): string =>
+    buildVoteUserPrompt({
+      mode: 'motion',
+      question,
+      proposition: question,
+      unresolvedIssues,
+      ownTranscript: buildVoterTranscript(params.deliberation, provider),
+    })
+
+  const settled = await Promise.allSettled(
+    LEAGUE_VOTE_PANEL.map((p) => {
+      if (isLeagueOpenReplacementSeat(p)) {
+        return runReplacementVote(systemPrompt, userPromptFor(p))
+      }
+      return runOneVote(p as MotieProvider, systemPrompt, userPromptFor(p))
+    })
+  )
+
+  const votes: JejuVote[] = settled.map((s, i) => {
+    const provider = LEAGUE_VOTE_PANEL[i]!
+    if (s.status === 'fulfilled') return s.value
+    return {
+      provider: provider as JejuVote['provider'],
+      ok: false,
+      choice: null,
+      reason: null,
+      error: `표결 처리 실패: ${s.reason instanceof Error ? s.reason.message : 'unknown error'}`,
+    }
+  })
+
+  const approveProviders: string[] = []
+  const conditionalProviders: string[] = []
+  const opposeProviders: string[] = []
+  const abstainProviders: string[] = []
+
+  for (const v of votes) {
+    if (!v.ok || v.choice == null) continue
+    const label = LEAGUE_VOTE_BRAND_LABEL[v.provider] ?? v.provider
+    if (v.choice === 'approve') approveProviders.push(label)
+    else if (v.choice === 'conditional') conditionalProviders.push(label)
+    else if (v.choice === 'oppose') opposeProviders.push(label)
+    else if (v.choice === 'abstain') abstainProviders.push(label)
+  }
+
+  const approveCount = approveProviders.length
+  const conditionalCount = conditionalProviders.length
+  const opposeCount = opposeProviders.length
+  const abstainCount = abstainProviders.length
+
+  const yesSide = approveCount + conditionalCount
+  let outcome: 'approved' | 'rejected' | 'divided'
+  if (yesSide > opposeCount) outcome = 'approved'
+  else if (opposeCount > yesSide) outcome = 'rejected'
+  else outcome = 'divided'
+
+  const outcomeLabel =
+    outcome === 'approved' ? '다수 승인' : outcome === 'rejected' ? '다수 반대' : '찬반 동수'
+  const summary = `찬성 ${approveCount} · 조건부 찬성 ${conditionalCount} · 기권 ${abstainCount} · 반대 ${opposeCount} — ${outcomeLabel}`
+  const ok = approveCount + conditionalCount + opposeCount + abstainCount > 0
+
+  return {
+    votes,
+    approveCount,
+    conditionalCount,
+    opposeCount,
+    abstainCount,
+    approveProviders,
+    conditionalProviders,
+    opposeProviders,
+    abstainProviders,
+    outcome,
+    ok,
+    summary,
+  }
+}
+
+async function runReplacementVote(
+  systemPrompt: string,
+  userPrompt: string
+): Promise<JejuVote> {
+  const provider = LEAGUE_OPEN_REPLACEMENT_PROVIDER as JejuVote['provider']
+  try {
+    const called = await callPlatformModel({
+      id: LEAGUE_OPEN_REPLACEMENT_PLATFORM_ID,
+      systemPrompt,
+      userPrompt,
+      maxCompletionTokens: 700,
+      timeoutMs: 120_000,
+    })
+    if (called.error || !called.text) {
+      return {
+        provider,
+        ok: false,
+        choice: null,
+        reason: null,
+        error: called.error ?? '표결 응답이 비어 있습니다.',
+      }
+    }
+    const parsed = parseVoteResponse(called.text)
+    const choice = parsed.choice
+    const reason = sanitizeVoteReason(parsed.reason)
+    if (choice == null) {
+      return {
+        provider,
+        ok: false,
+        choice: null,
+        reason,
+        error: '표결을 해석할 수 없습니다(형식 불일치).',
+      }
+    }
+    return { provider, ok: true, choice, reason }
+  } catch (e: unknown) {
+    return {
+      provider,
+      ok: false,
+      choice: null,
+      reason: null,
+      error: `표결 호출 실패: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
   }
 }
