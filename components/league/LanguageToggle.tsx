@@ -38,7 +38,7 @@ export function LanguageToggle({
         aria-label={label}
       >
         {LEAGUE_SELECTABLE_LOCALES.map((code) => (
-          <option key={code} value={code}>
+          <option key={code} value={code} className="bg-league-bg-elevated text-league-fg">
             {LOCALE_DISPLAY_NAME[code]}
           </option>
         ))}

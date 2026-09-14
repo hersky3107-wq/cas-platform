@@ -489,7 +489,7 @@ function OracleProfileForm() {
                     className="rounded-2xl border border-white/[0.14] bg-black/35 px-3 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                   >
                     {MONTH_NAMES.map((label, ix) => (
-                      <option key={label} value={ix}>
+                      <option key={label} value={ix} className="bg-[#0f172a] text-white">
                         {label}
                       </option>
                     ))}
@@ -503,9 +503,9 @@ function OracleProfileForm() {
                     }}
                     className="rounded-2xl border border-white/[0.14] bg-black/35 px-3 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                   >
-                    <option value={0}>Day</option>
+                    <option value={0} className="bg-[#0f172a] text-white">Day</option>
                     {Array.from({ length: maxDay }, (_, i) => i + 1).map((d) => (
-                      <option key={d} value={d}>
+                      <option key={d} value={d} className="bg-[#0f172a] text-white">
                         {d}
                       </option>
                     ))}
@@ -524,9 +524,9 @@ function OracleProfileForm() {
                     }}
                     className="rounded-2xl border border-white/[0.14] bg-black/35 px-3 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                   >
-                    <option value={0}>Year</option>
+                    <option value={0} className="bg-[#0f172a] text-white">Year</option>
                     {yearOptions.map((y) => (
-                      <option key={y} value={y}>
+                      <option key={y} value={y} className="bg-[#0f172a] text-white">
                         {y}
                       </option>
                     ))}
@@ -566,9 +566,9 @@ function OracleProfileForm() {
                   onChange={(e) => setGender(e.target.value as Gender)}
                   className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                 >
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="prefer_not_to_say">Prefer not to say</option>
+                  <option value="female" className="bg-[#0f172a] text-white">Female</option>
+                  <option value="male" className="bg-[#0f172a] text-white">Male</option>
+                  <option value="prefer_not_to_say" className="bg-[#0f172a] text-white">Prefer not to say</option>
                 </select>
               </fieldset>
             ) : null}
@@ -597,10 +597,10 @@ function OracleProfileForm() {
                   onChange={(e) => setNameLocale(e.target.value)}
                   className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                 >
-                  <option value="ko">한국어 (성+이름)</option>
-                  <option value="ja">日本語 (姓+名)</option>
-                  <option value="zh">中文 (姓+名)</option>
-                  <option value="en">Latin (given then surname)</option>
+                  <option value="ko" className="bg-[#0f172a] text-white">한국어 (성+이름)</option>
+                  <option value="ja" className="bg-[#0f172a] text-white">日本語 (姓+名)</option>
+                  <option value="zh" className="bg-[#0f172a] text-white">中文 (姓+名)</option>
+                  <option value="en" className="bg-[#0f172a] text-white">Latin (given then surname)</option>
                 </select>
               </fieldset>
             ) : null}

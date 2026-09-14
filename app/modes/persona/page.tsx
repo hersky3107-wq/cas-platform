@@ -1129,13 +1129,13 @@ export default function PersonaModePage() {
                           }}
                           className={`${selectBase} w-full min-w-[10rem]`}
                         >
-                          <option value="">Select AI…</option>
+                          <option value="" className="bg-[#131c35] text-white">Select AI…</option>
                           {AI_ORDER.map((p) => (
                             <option
                               key={p}
                               value={p}
                               disabled={providersTaken.has(p)}
-                              className="bg-[#131c35]"
+                              className="bg-[#131c35] text-white"
                             >
                               {AI_LABEL[p]}
                             </option>
@@ -1171,11 +1171,11 @@ export default function PersonaModePage() {
                           className={`${selectBase} w-full min-w-[10rem]`}
                         >
                           {PRESET_ROLES.map((pr) => (
-                            <option key={pr} value={pr} className="bg-[#131c35]">
+                            <option key={pr} value={pr} className="bg-[#131c35] text-white">
                               {pr}
                             </option>
                           ))}
-                          <option value={ROLE_CUSTOM_SENTINEL} className="bg-[#131c35]">
+                          <option value={ROLE_CUSTOM_SENTINEL} className="bg-[#131c35] text-white">
                             ✏️ Custom…
                           </option>
                         </select>

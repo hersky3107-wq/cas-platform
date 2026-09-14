@@ -69,9 +69,9 @@ export default function MbtiEstimator({
             onChange={(event) => setKnown(event.target.value)}
             className="w-full rounded-2xl border border-white/14 bg-black/35 px-4 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
           >
-            <option value="">유형 선택</option>
+            <option value="" className="bg-[#0f172a] text-white">유형 선택</option>
             {MBTI_TYPES.map((type) => (
-              <option key={type} value={type}>
+              <option key={type} value={type} className="bg-[#0f172a] text-white">
                 {type}
               </option>
             ))}

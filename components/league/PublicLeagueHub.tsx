@@ -13,7 +13,7 @@ import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import type { CardData, ColorBucket, LockedCardPayload } from '@/lib/league/card-types'
 import { GENERATION_POLL_MS } from '@/lib/league/generation/policy'
 import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } from '@/lib/league/catalog'
-import { SIGNUP_COUNTRY_CODES } from '@/lib/league/jurisdiction/signup-countries'
+import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
@@ -563,7 +563,7 @@ function GenerationBanner({
 }
 
 function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
-  const { t } = useLeagueLocale()
+  const { t, locale } = useLeagueLocale()
   const [country, setCountry] = useState('KR')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -603,8 +603,8 @@ function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
           className="min-h-[40px] flex-1 rounded-xl border border-amber-200 bg-white px-3 text-xs text-slate-900"
         >
           {SIGNUP_COUNTRY_CODES.map((code) => (
-            <option key={code} value={code}>
-              {code}
+            <option key={code} value={code} className="bg-white text-slate-900">
+              {getSignupCountryLabel(code, locale)}
             </option>
           ))}
         </select>

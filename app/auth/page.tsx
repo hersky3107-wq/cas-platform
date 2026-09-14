@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/db/supabase'
-import { SIGNUP_COUNTRY_CODES } from '@/lib/league/jurisdiction/signup-countries'
+import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { getAuthCallbackUrl } from '@/lib/supabase/auth-urls'
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -48,13 +48,18 @@ function AuthForm() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
 
-  function requireCountry(): boolean {
-    if (!country) {
-      setMessage('거주 국가는 필수입니다. 허위로 등록하면 이용 제한이나 계정 문제가 생길 수 있습니다.')
-      return false
+  function persistCountryPreference(selected: string) {
+    if (typeof window === 'undefined') return
+    if (selected) {
+      window.sessionStorage.setItem('cas.declared_country', selected)
+    } else {
+      window.sessionStorage.removeItem('cas.declared_country')
     }
-    window.sessionStorage.setItem('cas.declared_country', country)
-    return true
+  }
+
+  function handleCountrySelect(val: string) {
+    setCountry(val)
+    persistCountryPreference(val)
   }
 
   const authCallbackBase = getAuthCallbackUrl(
@@ -65,7 +70,7 @@ function AuthForm() {
     : authCallbackBase
 
   async function handleGoogleLogin() {
-    if (!requireCountry()) return
+    if (country) persistCountryPreference(country)
     setMessage('')
     setGoogleLoading(true)
 
@@ -83,12 +88,12 @@ function AuthForm() {
   }
 
   async function handleLogin() {
-    if (!requireCountry()) return
     if (!email.trim()) {
       setMessage('Enter your email address.')
       return
     }
 
+    if (country) persistCountryPreference(country)
     setMessage('')
     setEmailLoading(true)
 
@@ -121,27 +126,26 @@ function AuthForm() {
         <p className="mt-1 text-sm text-slate-400">Continue with Google or a magic link</p>
 
         <label htmlFor="auth-country" className="mt-6 block text-xs font-semibold text-slate-300">
-          거주 국가
+          거주 국가 <span className="font-normal text-slate-400">(선택 / Optional)</span>
         </label>
         <select
           id="auth-country"
           value={country}
-          onChange={(e) => setCountry(e.target.value)}
+          onChange={(e) => handleCountrySelect(e.target.value)}
           disabled={googleLoading || emailLoading}
-          required
           className="mt-1 w-full rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-sm text-white focus:border-cyan-300/55 focus:outline-none disabled:opacity-60"
         >
-          <option value="" className="bg-[#131c35] text-slate-900">
-            Select country / 국가 선택
+          <option value="" className="bg-[#131c35] text-slate-200">
+            Select country / 국가 선택 (선택 사항)
           </option>
           {SIGNUP_COUNTRY_CODES.map((code) => (
-            <option key={code} value={code} className="bg-[#131c35] text-slate-900">
-              {code}
+            <option key={code} value={code} className="bg-[#131c35] text-white">
+              {getSignupCountryLabel(code, 'ko')}
             </option>
           ))}
         </select>
         <p className="mt-2 text-xs leading-relaxed text-slate-400">
-          거주 국가는 필수입니다. 허위로 등록하면 이용 제한이나 계정 문제가 생길 수 있습니다.
+          국가별 규제 적용을 위해 사용됩니다. 미선택 시 로그인 후 등록할 수 있습니다.
         </p>
 
         <button
