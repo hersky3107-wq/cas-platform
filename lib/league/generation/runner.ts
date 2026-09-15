@@ -66,6 +66,7 @@ export type GenerateTierChunk = (args: {
   tier: 'premier' | 'challenger' | 'world' | 'scout'
   excludeModelIds: string[]
   deadlineAtMs: number
+  tickBudgetMs: number
   onModelResult: (modelId: string) => void
 }) => Promise<void>
 
@@ -229,6 +230,7 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
           tier,
           excludeModelIds: [...written],
           deadlineAtMs,
+          tickBudgetMs,
           onModelResult: (modelId) => {
             written.add(modelId)
             produced += 1

@@ -6,7 +6,7 @@
  *
  * Deviations (reported):
  *   1. One hop per advance (not stage-chaining). A deep hop is already 78–93s;
- *      chaining four would blow the 240s tick budget and the 300s ceiling.
+ *      chaining four would blow the 300s tick budget and the 300s ceiling.
  *      Oracle also runs one chunk per advance — this matches oracle more
  *      closely than generation does.
  *   2. Own running cap (LEAGUE_DEEP_MAX_RUNNING=2), not the generation 3.

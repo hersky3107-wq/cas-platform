@@ -28,6 +28,8 @@ import {
   type ContractAnswer,
 } from '@/lib/league/answer-contract'
 import { persistAnchorPrice } from '@/lib/league/price-anchor'
+import { claimNextLaunchableIndex } from '@/lib/league/generation/launch-gate'
+import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -104,11 +106,22 @@ export type GenerateOptions = {
   excludeModelIds?: readonly string[]
   /**
    * WALL-CLOCK LAUNCH GATE (cron job runner): epoch ms after which no model
-   * whose own timeout cannot finish by this deadline is LAUNCHED. Models left
-   * unlaunched simply have no row yet and are picked up by the next tick.
-   * In-flight calls are never interrupted. Additive: absent = no gate.
+   * whose own timeout cannot finish by this deadline is LAUNCHED. An
+   * unlaunchable seat is skipped (deferred) so later shorter seats in the
+   * same roster can still launch; it is not treated as end-of-roster.
+   * A leftover seat whose timeout still fits a dedicated full tick is
+   * launched on a fresh chunk (see tickBudgetMs) so it cannot loop at
+   * models_produced=0 forever. Models left unlaunched simply have no row
+   * yet and are picked up by the next tick. In-flight calls are never
+   * interrupted. Additive: absent = no gate.
    */
   deadlineAtMs?: number
+  /**
+   * Full tick wall (ms). Used with deadlineAtMs so a seat with
+   * timeoutMs <= tick budget can still launch at chunk start after overhead.
+   * Additive: absent + deadline set → LEAGUE_JOB_TICK_BUDGET_MS.
+   */
+  tickBudgetMs?: number
   concurrency?: number
   timeoutMs?: number
   /** Override completion-token budget (premier-only runs default to 5000, others 3000; roster entries may override per model). */
@@ -880,7 +893,14 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   const results: ModelRunResult[] = []
   let runningCost = pkt.researchCostUsd
   let capped = false
-  let nextIndex = 0
+  const cursor = { nextIndex: 0 }
+  const launchedThisChunk = { launched: 0 }
+  const tickBudgetMs =
+    opts.tickBudgetMs && opts.tickBudgetMs > 0
+      ? opts.tickBudgetMs
+      : opts.deadlineAtMs !== undefined
+        ? LEAGUE_JOB_TICK_BUDGET_MS
+        : undefined
 
   const worker = async (): Promise<void> => {
     for (;;) {
@@ -890,16 +910,23 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
         return
       }
       // WALL-CLOCK GATE (job runner): only launch a model whose own timeout
-      // still fits inside the deadline. This peek→check→claim sequence is
-      // synchronous (no await between), so parallel workers can't double-claim
-      // an index. An unlaunched model simply has no row yet — the next cron
-      // tick picks it up from the resume state.
-      const i = nextIndex
-      if (i >= roster.length) return
+      // still fits inside the deadline. Unlaunchable seats are deferred
+      // (cursor advances, no claim) so later shorter seats still run in
+      // this chunk. A leftover seat that fits a dedicated full tick still
+      // launches on a fresh chunk (timeout <= tickBudget, nothing launched
+      // yet). Peek→check→claim is synchronous so parallel workers cannot
+      // double-claim. A deferred seat has no row — the next cron tick picks
+      // it up via excludeModelIds.
+      const i = claimNextLaunchableIndex(roster, cursor, {
+        nowMs: Date.now(),
+        deadlineAtMs: opts.deadlineAtMs,
+        defaultTimeoutMs: timeoutMs,
+        tickBudgetMs,
+        launchedThisChunk,
+      })
+      if (i === null) return
       const entry = roster[i]
       const entryTimeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : timeoutMs
-      if (opts.deadlineAtMs && Date.now() + entryTimeoutMs > opts.deadlineAtMs) return
-      nextIndex = i + 1
 
       const prompt = entry.league_tier === 'scout' ? prompts.scout : prompts.price
       const tokenBudget = resolveMaxCompletionTokensForEntry(entry, maxCompletionTokens)

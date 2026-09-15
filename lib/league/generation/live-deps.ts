@@ -24,10 +24,11 @@ import { runnerPriceAnchorGate } from '@/lib/league/price-anchor'
  * the Supabase client and pulls `server-only` code, which unit tests must
  * not need — tests hand the runner fakes instead.
  *
- * The tier chunk binds `generatePredictions` UNCHANGED apart from the two
- * additive knobs (excludeModelIds resume filter, deadlineAtMs launch gate):
- * same concurrency 6, same per-model timeouts and one-retry, same
- * kill-switch, same per-model row upserts. Refunds move credits with
+ * The tier chunk binds `generatePredictions` UNCHANGED apart from the
+ * additive knobs (excludeModelIds resume filter, deadlineAtMs launch gate,
+ * tickBudgetMs fresh-chunk solo): same concurrency 6, same per-model
+ * timeouts and one-retry, same kill-switch, same per-model row upserts.
+ * Refunds move credits with
  * `addCreditsBalance` — the exact primitive the deep-analysis `refundDeep`
  * path uses.
  */
@@ -44,7 +45,7 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
       listClaimableJobs: listClaimableGenerationJobs,
       countRunningJobs: countRunningGenerationJobs,
     },
-    generate: async ({ roundId, tier, excludeModelIds, deadlineAtMs, onModelResult }) => {
+    generate: async ({ roundId, tier, excludeModelIds, deadlineAtMs, tickBudgetMs, onModelResult }) => {
       // Cost cap is per ROUND, not per tick: subtract what previous ticks
       // already spent so a resumed job cannot spend the full cap again.
       const remainingCap = await remainingRoundCostCapUsd(roundId)
@@ -53,6 +54,7 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
         tiers: [tier],
         excludeModelIds,
         deadlineAtMs,
+        tickBudgetMs,
         costCapUsd: remainingCap,
         onModelResult: (result) => onModelResult(result.model_id),
       })

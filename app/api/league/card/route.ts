@@ -42,7 +42,10 @@ import { isUiHorizon } from '@/lib/league/horizon'
  *
  * AUTH: any logged-in user. Non-admin: RANKED rounds on CURATED instruments
  * in an allowed jurisdiction (see lib/league/public-access.ts). Admin: any
- * round, full card, no purchase needed (operator preview — deep-runs parity).
+ * existing round as a full card, no purchase needed (operator preview). A
+ * missing catalog chip+horizon returns the SAME synthetic locked payload as a
+ * public viewer so LockedRoundPanel can open the round; it does not change
+ * which existing round is selected or when grade-on-read fires.
  */
 export async function GET(req: Request) {
   const auth = await resolveLeagueViewer(req)
@@ -75,31 +78,9 @@ export async function GET(req: Request) {
       // must not learn that: serve the SAME locked shape they would get for
       // an existing unpaid round, with the proposition composed from the
       // same catalog metadata the generate press would use.
-      const gate = gatePublicGenerateInstrument(instrument, viewer, horizonRaw)
-      if (!gate.ok) {
-        return gate.status === 403
-          ? forbiddenResponse('jurisdiction_blocked')
-          : NextResponse.json({ error: 'Unknown instrument', code: gate.code }, { status: 400 })
-      }
-      const wouldOpen = buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
-      const catalogTone = findCatalogInstrument(gate.instrument)?.category.tone ?? 'yellow'
-      if (!wouldOpen) {
-        return NextResponse.json({ error: 'No ranked round available yet', code: 'no_round' }, { status: 404 })
-      }
-      lockedPreview = {
-        locked: true,
-        price: creditsForLeagueGenerate(),
-        round: {
-          round_id: null,
-          instrument: wouldOpen.instrument,
-          horizon: wouldOpen.horizon,
-          category: wouldOpen.category,
-          color_bucket: catalogTone,
-          proposition_text: wouldOpen.proposition_text,
-          resolves_at: wouldOpen.resolves_at,
-        },
-        refundedNotice: false,
-      }
+      const missing = catalogLockedPreview(instrument, horizonRaw, viewer)
+      if ('response' in missing) return missing.response
+      lockedPreview = missing.payload
     } else {
       return access.response
     }
@@ -149,6 +130,14 @@ export async function GET(req: Request) {
     return NextResponse.json(payload)
   } catch (e: unknown) {
     if (e instanceof CardNotFoundError) {
+      // Admin chip+horizon with no row used to 404 (empty "카드 없음"). Mirror
+      // the public missing-round locked payload so LockedRoundPanel can open
+      // it. round_id lookups and date-filtered lookups stay 404.
+      if (viewer.isAdmin && lookup && !('roundId' in lookup) && !lookup.date && lookup.horizon) {
+        const missing = catalogLockedPreview(lookup.instrument, lookup.horizon, viewer)
+        if ('payload' in missing) return NextResponse.json(missing.payload)
+        return missing.response
+      }
       return NextResponse.json({ error: e.message }, { status: 404 })
     }
     return NextResponse.json(
@@ -193,6 +182,50 @@ async function generationStateFor(card: CardData): Promise<CardGenerationState |
     }
   }
   return null
+}
+
+/**
+ * Synthetic locked card for a catalog chip+horizon that has no round row yet.
+ * Shared by public 404s and admin instrument+horizon misses so LockedRoundPanel
+ * can POST /api/league/generate. Does not invent a round id.
+ */
+function catalogLockedPreview(
+  instrument: string,
+  horizonRaw: string,
+  viewer: { isAdmin: boolean; jurisdiction: Parameters<typeof gatePublicGenerateInstrument>[1]['jurisdiction'] }
+): { payload: LockedCardPayload } | { response: NextResponse } {
+  const gate = gatePublicGenerateInstrument(instrument, viewer, horizonRaw)
+  if (!gate.ok) {
+    return {
+      response:
+        gate.status === 403
+          ? forbiddenResponse('jurisdiction_blocked')
+          : NextResponse.json({ error: 'Unknown instrument', code: gate.code }, { status: 400 }),
+    }
+  }
+  const wouldOpen = buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+  if (!wouldOpen) {
+    return {
+      response: NextResponse.json({ error: 'No ranked round available yet', code: 'no_round' }, { status: 404 }),
+    }
+  }
+  const catalogTone = findCatalogInstrument(gate.instrument)?.category.tone ?? 'yellow'
+  return {
+    payload: {
+      locked: true,
+      price: creditsForLeagueGenerate(),
+      round: {
+        round_id: null,
+        instrument: wouldOpen.instrument,
+        horizon: wouldOpen.horizon,
+        category: wouldOpen.category,
+        color_bucket: catalogTone,
+        proposition_text: wouldOpen.proposition_text,
+        resolves_at: wouldOpen.resolves_at,
+      },
+      refundedNotice: false,
+    },
+  }
 }
 
 function parseAdminLookup(searchParams: URLSearchParams): CardLookup | null {

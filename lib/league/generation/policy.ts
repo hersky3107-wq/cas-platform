@@ -51,14 +51,18 @@ export const LEAGUE_JOB_MAX_ACTIVE = 10
 
 /**
  * Wall-clock budget for one cron tick's chunk work. The route's maxDuration
- * is 300s; chunks stop LAUNCHING new model calls / new stages past this so
- * in-flight calls can finish inside the platform ceiling. A model is only
- * launched when `now + its own timeout` still fits inside the budget — the
- * one overrun risk left is the orchestrator's internal one-retry on a
- * transient failure, which can push past the wall; if the platform kills the
- * function, that model's row was never written and the sweeper re-runs it.
+ * is 300s. This MUST exceed every roster `timeoutMs` (longest today:
+ * deepseek-v4-pro / v3.2 / kimi-k2.6 at 240s) by a margin: after packet/DB
+ * overhead, `now + timeout > start + budget` is otherwise true for the
+ * whole tick and a leftover 240s seat is deferred forever (0-produced loop).
+ * Budget = longest timeout + 60s. A 240s call launched in the first ~60s
+ * still finishes inside the 300s function ceiling; remaining-time gating
+ * still refuses to start a long seat into a short remainder. The one
+ * overrun risk left is the orchestrator's internal one-retry on a
+ * transient failure; if the platform kills the function, that model's row
+ * was never written and the sweeper re-runs it.
  */
-export const LEAGUE_JOB_TICK_BUDGET_MS = 240_000
+export const LEAGUE_JOB_TICK_BUDGET_MS = 300_000
 
 /** Small margin between "may still launch" and the absolute function wall. */
 export const LEAGUE_JOB_LAUNCH_DEADLINE_MS = 285_000

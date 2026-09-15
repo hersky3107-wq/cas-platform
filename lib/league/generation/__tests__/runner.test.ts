@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LeagueGenerationJob } from '../job-store'
 import { LEAGUE_JOB_MAX_ATTEMPTS, LEAGUE_JOB_MAX_RUNNING } from '../policy'
+import { claimNextLaunchableIndex } from '../launch-gate'
 import {
   advanceLeagueGenerationJob,
   excludedModelIds,
@@ -148,7 +149,7 @@ function makeDeps(
     refundCredits: async (userId, amount) => {
       refunds.push({ userId, amount })
     },
-    tierModelIds: (tier) => [...TIERS[tier]],
+    tierModelIds: over.tierModelIds ?? ((tier) => [...TIERS[tier]]),
     priceAnchorGate: over.priceAnchorGate ?? (async () => 'proceed'),
     schedule: (task) => {
       scheduled.push(task)
@@ -252,6 +253,108 @@ describe('runner happy path', () => {
     }
     expect(fake.byId.get('job-1')!.status).toBe('done')
     expect(bundle.finalized).toEqual(['round-1'])
+  })
+
+  it('defers an over-budget seat, still runs later seats, and the next tick resumes it', async () => {
+    const premier = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9']
+    const fake = makeStore([makeJob()])
+    const generate: GenerateTierChunk = async ({ tier, excludeModelIds, deadlineAtMs, tickBudgetMs, onModelResult }) => {
+      const roster = (tier === 'premier' ? premier : [...TIERS[tier]])
+        .filter((id) => !excludeModelIds.includes(id))
+        .map((model_id) => ({ model_id, timeoutMs: model_id === 'p6' ? 240_000 : 60_000 }))
+      const cursor = { nextIndex: 0 }
+      const launchedThisChunk = { launched: 0 }
+      for (;;) {
+        const i = claimNextLaunchableIndex(roster, cursor, {
+          nowMs: Date.now(),
+          deadlineAtMs,
+          defaultTimeoutMs: 60_000,
+          tickBudgetMs,
+          launchedThisChunk,
+        })
+        if (i === null) return
+        const id = roster[i]!.model_id
+        fake.rows.push({ model_id: id, predicted_direction: 'up', predicted_at: new Date().toISOString() })
+        onModelResult(id)
+      }
+    }
+    const tierModelIds: LeagueRunnerDeps['tierModelIds'] = (tier) =>
+      tier === 'premier' ? [...premier] : [...TIERS[tier]]
+
+    const first = makeDeps(fake, { generate, tierModelIds, tickBudgetMs: 90_000 })
+    await advanceLeagueGenerationJob('job-1', first.deps)
+    await first.runScheduled()
+
+    const premierWritten = fake.rows.map((r) => r.model_id).filter((id) => premier.includes(id))
+    expect(premierWritten).toEqual(['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p7', 'p8', 'p9'])
+    expect(premierWritten).not.toContain('p6')
+    const afterFirst = fake.byId.get('job-1')!
+    expect(afterFirst.status).toBe('running')
+    expect(afterFirst.stage).toBe('packet')
+    expect(afterFirst.lease_until).toBeNull()
+
+    const second = makeDeps(fake, { generate, tierModelIds, tickBudgetMs: 300_000 })
+    await advanceLeagueGenerationJob('job-1', second.deps)
+    await second.runScheduled()
+    expect(fake.rows.map((r) => r.model_id)).toContain('p6')
+    expect(fake.byId.get('job-1')!.status).toBe('done')
+  })
+
+  it('last premier seat with timeout == tick budget launches; no infinite 0-produced loop', async () => {
+    const premier = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9']
+    const preRows = premier.slice(0, 9).map((id) => ({
+      model_id: id,
+      predicted_direction: 'up' as const,
+      predicted_at: '2026-09-13T00:00:00.000Z',
+    }))
+    const fake = makeStore([makeJob()], preRows)
+    const tickBudgetMs = 90_000
+    const generate: GenerateTierChunk = async ({
+      tier,
+      excludeModelIds,
+      deadlineAtMs,
+      tickBudgetMs: chunkBudget,
+      onModelResult,
+    }) => {
+      const roster = (tier === 'premier' ? premier : [...TIERS[tier]])
+        .filter((id) => !excludeModelIds.includes(id))
+        .map((model_id) => ({
+          model_id,
+          timeoutMs: model_id === 'p9' ? chunkBudget : 60_000,
+        }))
+      const cursor = { nextIndex: 0 }
+      const launchedThisChunk = { launched: 0 }
+      // Live leftover-deepseek chunks measured ~2173ms of overhead before claim.
+      const nowMs = deadlineAtMs - chunkBudget + 2_173
+      for (;;) {
+        const i = claimNextLaunchableIndex(roster, cursor, {
+          nowMs,
+          deadlineAtMs,
+          defaultTimeoutMs: 60_000,
+          tickBudgetMs: chunkBudget,
+          launchedThisChunk,
+        })
+        if (i === null) return
+        const id = roster[i]!.model_id
+        fake.rows.push({ model_id: id, predicted_direction: 'up', predicted_at: new Date().toISOString() })
+        onModelResult(id)
+      }
+    }
+    const tierModelIds: LeagueRunnerDeps['tierModelIds'] = (tier) =>
+      tier === 'premier' ? [...premier] : [...TIERS[tier]]
+
+    const bundle = makeDeps(fake, { generate, tierModelIds, tickBudgetMs })
+    let ticks = 0
+    while (fake.byId.get('job-1')!.stage === 'packet' && ticks < 5) {
+      await advanceLeagueGenerationJob('job-1', bundle.deps)
+      await bundle.runScheduled()
+      ticks += 1
+    }
+
+    expect(fake.rows.some((r) => r.model_id === 'p9')).toBe(true)
+    expect(fake.byId.get('job-1')!.stage).not.toBe('packet')
+    expect(ticks).toBeLessThan(5)
+    expect(ticks).toBeGreaterThan(0)
   })
 })
 
