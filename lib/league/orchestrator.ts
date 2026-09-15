@@ -30,6 +30,7 @@ import {
 import { persistAnchorPrice } from '@/lib/league/price-anchor'
 import { claimNextLaunchableIndex } from '@/lib/league/generation/launch-gate'
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
+import { emptyContentRetryBudgetMs, isEmptyContentError } from '@/lib/ai/empty-content-retry'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -353,6 +354,10 @@ async function persistConsensusAggregates(
 }
 
 function isTransient(errMsg: string): boolean {
+  // Empty-content 200s are retried inside callPlatformModel with a short abort.
+  // Do not treat them as a full-timeout transient here — that stacked a second
+  // roster-length call and produced live 537s chunks.
+  if (isEmptyContentError(errMsg)) return false
   const m = errMsg.toLowerCase()
   return (
     m.includes('timeout') ||
@@ -458,15 +463,20 @@ async function callOnce(
       toolFeeUsd: res.toolFeeUsd ?? null,
       error: res.error,
     }
-  }  // Platform caller has no built-in external timeout — race it here.
+  }
+  // Abort the HTTP (OpenRouter) at the roster timeout, and give the inner
+  // empty-content retries their own short budget so they cannot stack to
+  // a multi-minute chunk. Outer race is a backstop if abort is ignored.
+  const platformWallMs = timeoutMs + emptyContentRetryBudgetMs()
   const res = await withTimeout(
     callPlatformModel({
       id: entry.caller.platformId,
       systemPrompt: systemPromptFor(entry, contract),
       userPrompt,
       maxCompletionTokens,
+      timeoutMs,
     }),
-    timeoutMs,
+    platformWallMs,
     entry.model_id
   )
   return {
@@ -533,8 +543,10 @@ async function callWithRetry(
  * never collide on the (round_id, model_id) unique key.
  *
  * Timeouts: `callWithRetry` retries once on transient failure (including
- * timeout). Default timeout is DEFAULT_TIMEOUT_MS (60s); roster entries may
- * set `timeoutMs` per model (e.g. deepseek-v4-pro 240s, grok-4.6-livesearch 150s).
+ * timeout), except HTTP-200-empty-content which is retried inside
+ * callPlatformModel (up to 3 short aborted retries) then excluded. Default
+ * timeout is DEFAULT_TIMEOUT_MS (60s); roster entries may set `timeoutMs`
+ * per model (e.g. deepseek-v4-pro 240s, grok-4.6-livesearch 150s).
  */
 async function runOneModel(
   entry: RosterEntry,
@@ -584,6 +596,11 @@ async function runOneModel(
   })
 
   if (raw.error) {
+    if (isEmptyContentError(raw.error)) {
+      console.log(
+        `[league-generate] empty-content drop round=${roundId} model=${entry.model_id} platform=${entry.caller.kind === 'platform' ? entry.caller.platformId : entry.model_id} — excluded after bounded retries (no-opinion gate)`
+      )
+    }
     const status: ModelStatus = isTimeout(raw.error) ? 'timeout' : 'error'
     await upsertNullPrediction(roundId, entry)
     return {
@@ -612,6 +629,29 @@ async function runOneModel(
   // One-retry budget is shared. After retry, a valid side with a still-invalid
   // qualifier is persisted with a null qualifier so the model still counts as a call.
   let validation = contract.validate(answer, horizon)
+  // Empty-content already exhausted its short retries inside the platform
+  // caller. A direction-only second prompt would stack another full seat
+  // timeout — skip it and exclude via the no-opinion gate.
+  if (!validation.ok && raw.text == null) {
+    console.log(
+      `[league-generate] empty-content drop round=${roundId} model=${entry.model_id} — no parseable text after platform retries; excluded (no-opinion gate)`
+    )
+    await upsertNullPrediction(roundId, entry)
+    return {
+      ...base,
+      direction: null,
+      probability: null,
+      magnitude: null,
+      qualifier_text: null,
+      reasoning_snippet: null,
+      reasoning_text: null,
+      cost_usd: Number(totalCostUsd.toFixed(6)),
+      ...ledger(),
+      cost_source: costSource,
+      status: 'error',
+      error: raw.error ?? 'HTTP 200 empty message.content',
+    }
+  }
   if (!validation.ok) {
     const retryText =
       answer && isContractSide(answer.side, contract)

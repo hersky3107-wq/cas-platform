@@ -1,6 +1,11 @@
 import 'server-only'
 
 import { mergeExtraRequestParams } from '@/lib/ai/merge-extra-params'
+import {
+  EMPTY_CONTENT_MAX_ATTEMPTS,
+  EMPTY_CONTENT_RETRY_TIMEOUT_MS,
+  emptyContentRetryBackoffMs,
+} from '@/lib/ai/empty-content-retry'
 
 /**
  * PLATFORM-LEVEL LLM providers (OpenRouter, Meta Muse, You.com, NAVER CLOVA
@@ -300,7 +305,8 @@ type OpenAiCompatibleCallParams = {
   /**
    * Shared per-unit HTTP attempt budget. When set (oracle layer-1), each real
    * fetch decrements it and empty-content retries stop when it hits 0.
-   * Omitted for league / other callers — they keep the historical one retry.
+   * Omitted for league / other callers — they use the empty-content loop
+   * (up to 4 attempts, short abort on retries). Oracle still caps at 2 HTTP.
    */
   httpBudget?: {
     remaining: number
@@ -358,27 +364,48 @@ function maybeLogOracleDebugResponse(json: Record<string, unknown>): void {
  * left unspent (confirmed live 2026-08-10: minimax/minimax-m3 via the Novita
  * upstream failed this way roughly 1 call in 6, at max_tokens:160 while only
  * spending ~31 tokens). That is upstream flakiness, not a budget or config
- * problem, so a single retry is attempted before reporting failure — mirroring
- * the existing one-retry-on-network-error policy in `fetchWithRetry`.
+ * problem. Retry up to EMPTY_CONTENT_MAX_ATTEMPTS total tries with a short
+ * abort on each extra try so one flake cannot occupy a league chunk for
+ * minutes. Oracle layer-1 still shares a 2-HTTP httpBudget with the adapter.
  */
 async function callOpenAiCompatiblePlatformModel(
   params: OpenAiCompatibleCallParams
 ): Promise<PlatformCallResult> {
-  const first = await callOpenAiCompatibleOnce(params)
-  if (!first.emptyContent) return first.result
+  let last = await callOpenAiCompatibleOnce(params)
+  if (!last.emptyContent) return last.result
 
-  // Oracle layer-1 shares a per-unit budget of 2 HTTP calls with the adapter.
-  // When the budget is exhausted (or would be by a retry), skip the platform
-  // empty-content retry so the stack cannot reach 4 fetches.
-  if (params.httpBudget && params.httpBudget.remaining <= 0) {
-    return first.result
+  for (let attempt = 2; attempt <= EMPTY_CONTENT_MAX_ATTEMPTS; attempt++) {
+    // Oracle layer-1: stop when the shared per-unit HTTP budget is gone.
+    if (params.httpBudget && params.httpBudget.remaining <= 0) {
+      return last.result
+    }
+    const retryTimeoutMs = EMPTY_CONTENT_RETRY_TIMEOUT_MS
+    console.log(
+      `[platform-providers] ${params.model}: HTTP 200 with empty message.content — retry ${attempt - 1}/${EMPTY_CONTENT_MAX_ATTEMPTS - 1} (attempt ${attempt}/${EMPTY_CONTENT_MAX_ATTEMPTS}, abort ${retryTimeoutMs}ms).`
+    )
+    await new Promise((r) => setTimeout(r, emptyContentRetryBackoffMs(attempt - 2)))
+    last = await callOpenAiCompatibleOnce({
+      ...params,
+      signal: abortAfter(retryTimeoutMs, params.signal),
+    })
+    if (!last.emptyContent) return last.result
   }
 
   console.log(
-    `[platform-providers] ${params.model}: HTTP 200 with empty message.content — retrying once (known upstream flake).`
+    `[platform-providers] ${params.model}: HTTP 200 with empty message.content — giving up after ${EMPTY_CONTENT_MAX_ATTEMPTS} attempts.`
   )
-  const second = await callOpenAiCompatibleOnce(params)
-  return second.result
+  return last.result
+}
+
+function abortAfter(timeoutMs: number, existing?: AbortSignal): AbortSignal {
+  const next = AbortSignal.timeout(timeoutMs)
+  if (!existing) return next
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([existing, next])
+  return next
+}
+
+function optionalTimeoutSignal(timeoutMs?: number): AbortSignal | undefined {
+  return typeof timeoutMs === 'number' && timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined
 }
 
 async function callOpenAiCompatibleOnce(
@@ -758,10 +785,6 @@ export async function callPlatformModel(params: {
   }
 
   if (entry.provider === 'openrouter') {
-    const signal =
-      typeof timeoutMs === 'number' && timeoutMs > 0
-        ? AbortSignal.timeout(timeoutMs)
-        : undefined
     return callOpenAiCompatiblePlatformModel({
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey,
@@ -772,7 +795,7 @@ export async function callPlatformModel(params: {
       extraRequestParams: mergeExtraRequestParams(entry.extraRequestParams, extraRequestParams),
       // Get the real billed cost back in usage.cost (OpenRouter-specific).
       includeUsageCost: true,
-      signal,
+      signal: optionalTimeoutSignal(timeoutMs),
       debugRequestLabel,
       httpBudget,
     })
@@ -787,6 +810,7 @@ export async function callPlatformModel(params: {
       userPrompt,
       maxCompletionTokens,
       extraRequestParams: entry.extraRequestParams,
+      signal: optionalTimeoutSignal(timeoutMs),
     })
   }
 
@@ -799,6 +823,7 @@ export async function callPlatformModel(params: {
       userPrompt,
       maxCompletionTokens,
       extraRequestParams: entry.extraRequestParams,
+      signal: optionalTimeoutSignal(timeoutMs),
     })
   }
 
@@ -811,6 +836,7 @@ export async function callPlatformModel(params: {
       userPrompt,
       maxCompletionTokens,
       extraRequestParams: entry.extraRequestParams,
+      signal: optionalTimeoutSignal(timeoutMs),
     })
   }
 
@@ -884,8 +910,8 @@ export async function healthCheckPlatformModel(id: string): Promise<PlatformHeal
   // health-check failures with content:null, finish_reason:"length"/"stop".
   // 160 is still correct as of 2026-08-10 — the residual intermittent
   // content:null seen on minimax-m3 (~1 call in 6, with the budget barely
-  // touched) is upstream flakiness, handled by the empty-content retry in
-  // callOpenAiCompatiblePlatformModel, not by raising this number.
+  // touched) is upstream flakiness, handled by the empty-content retry loop
+  // in callOpenAiCompatiblePlatformModel, not by raising this number.
   const result = await callPlatformModel({
     id,
     userPrompt: 'Reply with exactly one word: OK',
