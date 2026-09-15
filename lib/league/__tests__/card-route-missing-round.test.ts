@@ -21,6 +21,15 @@ describe('GET /api/league/card missing catalog chip+horizon', () => {
     expect(CARD_ROUTE).toContain("!('roundId' in lookup) && !lookup.date && lookup.horizon")
   })
 
+  it('generation progress counts roster rows (incl. 결번), not tile count or a hardcoded 41', () => {
+    expect(CARD_ROUTE).not.toContain('const answered = card.models.length')
+    expect(CARD_ROUTE).not.toMatch(/rosterSize\s*=\s*41/)
+    expect(CARD_ROUTE).toContain('listRoundModelRows')
+    expect(CARD_ROUTE).toContain('rosterGenerationProgress')
+    expect(CARD_ROUTE).toContain('getRoster()')
+    expect(CARD_ROUTE).toContain('droppedModelIds')
+  })
+
   it('does not skip fetchCardData for an existing admin round (full card, grade-on-read unchanged)', () => {
     expect(CARD_ROUTE).toContain('lookup = parseAdminLookup(searchParams)')
     const fetch = CARD_ROUTE.indexOf('const card = await fetchCardData')

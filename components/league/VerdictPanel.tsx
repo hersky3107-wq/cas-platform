@@ -1,7 +1,3 @@
-'use client'
-
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { ChevronDown } from 'lucide-react'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { CardModelPrediction } from '@/lib/league/card-types'
 import type { VerdictGroupCount, VerdictPayload } from '@/lib/league/verdict-aggregate'
@@ -10,19 +6,20 @@ import { directionBadgeLabel } from '@/lib/league/compliance'
 import { FLAG_SRC, type CountryCode } from '@/lib/league/country'
 import type { ConsensusSummary } from '@/lib/league/card-types'
 import { ConsensusHero } from '@/components/league/ConsensusHero'
+import { DetailsDisclosure } from './DetailsDisclosure'
 
 /**
  * Final-verdict panel — RAW COUNTS ONLY.
  *
  * Hero order (graded cards):
- *  1. Two-line consensus hero (answer + magnitude, then supporting figures)
- *  2. Post-grading magnitude comparison (directly beneath hero)
- *  3. Hit record ("✓29/40 적중")
- *  4. Side distribution bar and breakdown sections
+ *  1. Glanceable direction counts + ratio bar + conclusion
+ *  2. Post-grading magnitude comparison (inside the hero)
+ *  3. Hit record ("✓29/40 적중") — smaller, never competing with the conclusion
+ *  4. Enthusiast hit-breakdowns behind a collapsed "자세히 보기"
  *
  * Every side word/glyph below flows through `labels` (the round's
- * `SideLabels`). Omitting `labels` = the price resolver — byte-identical to
- * the pre-resolver panel for up/down rounds (frozen-fixture proven).
+ * `SideLabels`). Omitting `labels` = the price resolver — same words/glyphs
+ * as the pre-resolver panel for up/down rounds.
  */
 export function VerdictPanel({
   verdict,
@@ -42,13 +39,12 @@ export function VerdictPanel({
   labels?: SideLabels
   magnitudeCompare?: { predictedPct: number; actualPct: number } | null
 }) {
-  const { hitRecord, distribution } = verdict
+  const { hitRecord } = verdict
   const graded = hitRecord.graded
   if (graded <= 0) return null
 
   const sl = labels ?? sideLabelsFor({}, t)
   const brandById = new Map(models.map((m) => [m.model_id, m.brand]))
-  const totalDir = distribution.up + distribution.down + distribution.noDirection
   const hasStreaks = Boolean(verdict.streaks && Object.keys(verdict.streaks).length > 0)
   const hasOverconfident = verdict.overconfident.length > 0
 
@@ -58,53 +54,39 @@ export function VerdictPanel({
       {consensus.totalModels > 0 ? (
         <ConsensusHero consensus={consensus} horizon={horizon} t={t} labels={sl} magnitudeCompare={magnitudeCompare} />
       ) : null}
-      <p className="mt-2 text-lg font-bold leading-snug text-league-fg md:text-xl">
+      <p className="mt-3 text-sm font-semibold leading-snug text-league-fg">
         {t.verdict.heroHits(hitRecord.hits, hitRecord.graded)}
       </p>
       {hitRecord.ungraded > 0 ? (
         <p className="mt-0.5 text-[11px] text-league-fg-muted">{t.verdict.ungradedNote(hitRecord.ungraded)}</p>
       ) : null}
 
-      {totalDir > 0 ? (
-        <DistributionBar
-          up={distribution.up}
-          down={distribution.down}
-          noDirection={distribution.noDirection}
-          total={totalDir}
-          t={t}
-          labels={sl}
-        />
-      ) : null}
-
       <p className="mt-2 text-[11px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
 
-      <div className="mt-3 space-y-1">
-        <VerdictSection id="camp" title={t.verdict.sectionCamp} defaultOpen t={t}>
-          <GroupRows
-            rows={verdict.byCamp}
-            labelOf={(key) => t.verdict.campLabels[key as keyof typeof t.verdict.campLabels] ?? key}
-            flagOf={(key) => (key === 'us' ? 'US' : key === 'china' ? 'CN' : 'INT')}
-            t={t}
-          />
-        </VerdictSection>
+      <DetailsDisclosure t={t}>
+        <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.sectionCamp}</p>
+        <GroupRows
+          rows={verdict.byCamp}
+          labelOf={(key) => t.verdict.campLabels[key as keyof typeof t.verdict.campLabels] ?? key}
+          flagOf={(key) => (key === 'us' ? 'US' : key === 'china' ? 'CN' : 'INT')}
+          t={t}
+        />
 
-        <VerdictSection id="tier" title={t.verdict.sectionTier} t={t}>
-          <GroupRows
-            rows={verdict.byTier}
-            labelOf={(key) => t.verdict.tierLabels[key as keyof typeof t.verdict.tierLabels] ?? key}
-            t={t}
-          />
-        </VerdictSection>
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.sectionTier}</p>
+        <GroupRows
+          rows={verdict.byTier}
+          labelOf={(key) => t.verdict.tierLabels[key as keyof typeof t.verdict.tierLabels] ?? key}
+          t={t}
+        />
 
-        <VerdictSection id="book" title={t.verdict.sectionBook} t={t}>
-          <GroupRows
-            rows={verdict.byBook}
-            labelOf={(key) => t.verdict.bookLabels[key as keyof typeof t.verdict.bookLabels] ?? key}
-            t={t}
-          />
-        </VerdictSection>
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.sectionBook}</p>
+        <GroupRows
+          rows={verdict.byBook}
+          labelOf={(key) => t.verdict.bookLabels[key as keyof typeof t.verdict.bookLabels] ?? key}
+          t={t}
+        />
 
-        <p className="px-3 py-1.5 text-[12px] leading-snug text-league-fg">
+        <p className="mt-3 text-[12px] leading-snug text-league-fg">
           {t.verdict.weightsLine(
             verdict.byWeights.find((row) => row.key === 'closed')?.hits ?? 0,
             verdict.byWeights.find((row) => row.key === 'closed')?.graded ?? 0,
@@ -113,19 +95,21 @@ export function VerdictPanel({
           )}
         </p>
 
-        <VerdictSection id="country" title={t.verdict.sectionCountry} accordion t={t}>
-          <p className="mb-2 text-[10px] leading-snug text-league-fg-muted">{t.verdict.sectionCountryCaution}</p>
-          <GroupRows
-            rows={verdict.byCountry}
-            labelOf={(key) => t.verdict.countryLabels[key as keyof typeof t.verdict.countryLabels] ?? key}
-            flagOf={(key) => (key in FLAG_SRC ? (key as CountryCode) : null)}
-            t={t}
-          />
-        </VerdictSection>
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.sectionCountry}</p>
+        <p className="mb-2 text-[10px] leading-snug text-league-fg-muted">{t.verdict.sectionCountryCaution}</p>
+        <GroupRows
+          rows={verdict.byCountry}
+          labelOf={(key) => t.verdict.countryLabels[key as keyof typeof t.verdict.countryLabels] ?? key}
+          flagOf={(key) => (key in FLAG_SRC ? (key as CountryCode) : null)}
+          t={t}
+        />
 
         {hasOverconfident ? (
-          <VerdictSection id="overconfident" title={t.verdict.sectionOverconfident} t={t}>
-            <ul className="space-y-1">
+          <>
+            <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">
+              {t.verdict.sectionOverconfident}
+            </p>
+            <ul className="mt-1 space-y-1">
               {verdict.overconfident.map((row) => {
                 const dirGlyph = row.direction ? sl.glyph(row.direction) : ''
                 const dirLabel = directionBadgeLabel(row.direction, t, sl)
@@ -149,75 +133,24 @@ export function VerdictPanel({
                 )
               })}
             </ul>
-          </VerdictSection>
+          </>
         ) : null}
 
         {hasStreaks ? (
-          <VerdictSection id="streaks" title={t.verdict.sectionStreaks} t={t}>
-            <ul className="space-y-1">
+          <>
+            <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">
+              {t.verdict.sectionStreaks}
+            </p>
+            <ul className="mt-1 space-y-1">
               {Object.entries(verdict.streaks!).map(([modelId, streak]) => (
                 <li key={modelId} className="text-[12px] text-league-fg">
                   {t.verdict.streakLine(brandById.get(modelId) ?? modelId, streak)}
                 </li>
               ))}
             </ul>
-          </VerdictSection>
+          </>
         ) : null}
-      </div>
-    </div>
-  )
-}
-
-/**
- * Side-count bar. GLYPH LAW: side counts render as `{n}{side glyph}` — never
- * a slash-over-total, never ✓/✗ — so they cannot be read as hit counts.
- * Bar/legend props are named up/down for the wire-compatible SLOT fields of
- * `VerdictDistribution` (side A / side B under any contract); the visible
- * glyphs and sr-only words come from the round's `labels`.
- */
-function DistributionBar({
-  up,
-  down,
-  noDirection,
-  total,
-  t,
-  labels,
-}: {
-  up: number
-  down: number
-  noDirection: number
-  total: number
-  t: LeagueUiPack
-  labels: SideLabels
-}) {
-  const upPct = (up / total) * 100
-  const downPct = (down / total) * 100
-  const nonePct = (noDirection / total) * 100
-  const price = labels.kind === 'binary_close_higher'
-  const heading = price ? t.verdict.distributionHeading : t.verdict.distributionHeadingSides
-  const srA = price ? t.verdict.distributionUp : labels.badge(labels.sides[0])
-  const srB = price ? t.verdict.distributionDown : labels.badge(labels.sides[1])
-  return (
-    <div className="mt-3">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{heading}</p>
-      <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-league-bg-elevated" aria-hidden>
-        {up > 0 ? <span className="bg-emerald-500" style={{ width: `${upPct}%` }} /> : null}
-        {down > 0 ? <span className="bg-rose-500" style={{ width: `${downPct}%` }} /> : null}
-        {noDirection > 0 ? <span className="bg-slate-400" style={{ width: `${nonePct}%` }} /> : null}
-      </div>
-      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px] tabular-nums text-league-fg-muted">
-        <span className="text-emerald-700">
-          {up}{labels.glyphs[0]} <span className="sr-only">{srA}</span>
-        </span>
-        <span className="text-rose-700">
-          {down}{labels.glyphs[1]} <span className="sr-only">{srB}</span>
-        </span>
-        {noDirection > 0 ? (
-          <span className="text-slate-600">
-            {noDirection}– <span className="sr-only">{t.verdict.distributionNoDirection}</span>
-          </span>
-        ) : null}
-      </div>
+      </DetailsDisclosure>
     </div>
   )
 }
@@ -235,7 +168,7 @@ function GroupRows({
 }) {
   if (rows.length === 0) return null
   return (
-    <ul className="space-y-1.5">
+    <ul className="mt-1.5 space-y-1.5">
       {rows.map((row) => {
         const code = flagOf?.(row.key) ?? null
         return (
@@ -263,86 +196,5 @@ function GroupRows({
         )
       })}
     </ul>
-  )
-}
-
-function useIsDesktop(): boolean {
-  const [desktop, setDesktop] = useState(false)
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)')
-    const apply = () => setDesktop(mq.matches)
-    apply()
-    mq.addEventListener('change', apply)
-    return () => mq.removeEventListener('change', apply)
-  }, [])
-  return desktop
-}
-
-function VerdictSection({
-  id,
-  title,
-  children,
-  defaultOpen = false,
-  accordion = false,
-  t,
-}: {
-  id: string
-  title: string
-  children: ReactNode
-  defaultOpen?: boolean
-  /** When true, stay collapsed-by-default on desktop too (국가별). */
-  accordion?: boolean
-  t: LeagueUiPack
-}) {
-  const desktop = useIsDesktop()
-  const [open, setOpen] = useState(defaultOpen)
-  const collapsible = accordion || !desktop
-  const expanded = collapsible ? open : true
-
-  function toggle() {
-    if (!collapsible) return
-    setOpen((v) => !v)
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (!collapsible) return
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      toggle()
-    }
-  }
-
-  return (
-    <section className="rounded-lg border border-league-border/40 bg-league-bg-elevated/60">
-      <div
-        role={collapsible ? 'button' : undefined}
-        tabIndex={collapsible ? 0 : undefined}
-        aria-expanded={collapsible ? expanded : undefined}
-        aria-controls={`verdict-section-${id}`}
-        onClick={toggle}
-        onKeyDown={onKeyDown}
-        className={
-          collapsible
-            ? 'flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-league-accent-soft/40 active:bg-league-accent-soft/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-league-accent'
-            : 'flex w-full items-center justify-between gap-2 px-3 py-2 text-left'
-        }
-      >
-        <h3 className="text-[11px] font-bold uppercase tracking-wide text-league-fg">{title}</h3>
-        {collapsible ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-league-accent-strong">
-            <ChevronDown
-              className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-              aria-hidden
-            />
-            {expanded ? t.verdict.collapseSection : t.verdict.expandSection}
-          </span>
-        ) : null}
-      </div>
-      {expanded ? (
-        <div id={`verdict-section-${id}`} className="border-t border-league-border/30 px-3 pb-2.5 pt-2">
-          {children}
-        </div>
-      ) : null}
-    </section>
   )
 }

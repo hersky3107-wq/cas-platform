@@ -133,9 +133,9 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   // only ships as seed-2.0-lite / seed-2.0-mini (smaller variants), no
   // unsuffixed flagship-equivalent to replace this with.
   { id: 'openrouter:seed-1.6', provider: 'openrouter', brand: 'ByteDance', displayName: 'Seed 1.6', model: 'bytedance-seed/seed-1.6', league: 'world', verified: true },
-  // 2026-09-14: WORLD seat replacing uncallable Baidu ERNIE (only VL existed on
-  // OpenRouter/Friendli). IBM Granite 4.2 8B text model on OpenRouter.
-  { id: 'openrouter:granite-4.2-8b', provider: 'openrouter', brand: 'IBM', displayName: 'Granite 4.2 8B', model: 'ibm-granite/granite-4.2-8b', league: 'world', verified: true },
+  // 2026-09-15: WORLD seat replacing flaky IBM Granite. Mistral Small 3.2 24B
+  // on OpenRouter (mistralai/mistral-small-3.2-24b-instruct).
+  { id: 'openrouter:mistral-small-3.2-24b', provider: 'openrouter', brand: 'Mistral', displayName: 'Mistral Small 3.2 24B', model: 'mistralai/mistral-small-3.2-24b-instruct', league: 'world', verified: true },
   // Deliberately NO extraRequestParams — confirmed live that adding
   // `reasoning: { effort: 'minimal' }` here BREAKS this model (see the note above).
   { id: 'openrouter:nova-2-lite', provider: 'openrouter', brand: 'Amazon', displayName: 'Nova 2 Lite', model: 'amazon/nova-2-lite-v1', league: 'world', verified: true },
@@ -218,8 +218,8 @@ export const PLATFORM_MODEL_REGISTRY_TODO: { requested: string; note: string }[]
     note: "No `seed-2.1` exists. The 2.0 generation only ships as `bytedance-seed/seed-2.0-lite` and `bytedance-seed/seed-2.0-mini` (smaller variants) — there is no unsuffixed full-size `seed-2.0` to replace the currently-registered `bytedance-seed/seed-1.6` flagship. Confirm with ByteDance/OpenRouter whether a full-size 2.0 is planned before downgrading to lite/mini.",
   },
   {
-    requested: 'Baidu ERNIE (OpenRouter/Friendli) — seat replaced 2026-09-14 by openrouter:granite-4.2-8b',
-    note: '2026-09-14: OpenRouter GET /models has only vision `baidu/ernie-4.5-vl-424b-a47b` (no text slug). Friendli serverless has no ERNIE endpoints. League WORLD seat swapped to IBM Granite (`ibm-granite/granite-4.2-8b`) on OpenRouter.',
+    requested: 'IBM Granite 4.2 8B — seat replaced 2026-09-15 by openrouter:mistral-small-3.2-24b',
+    note: '2026-09-15: Repeated HTTP 200 with empty message.content under load. League WORLD seat swapped to Mistral Small 3.2 24B (`mistralai/mistral-small-3.2-24b-instruct`) on OpenRouter.',
   },
 ]
 

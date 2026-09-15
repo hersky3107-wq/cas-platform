@@ -130,8 +130,11 @@ export async function runLeagueOpenAnalyses(params: {
   plan: LeagueOpenMeetingPlan
   briefing: string
   context: string
+  /** Optional subset — the durable pipeline batches seats across hops (resume-safe). */
+  roles?: LeagueDeepRole[]
 }): Promise<LeagueOpenAnalysis[]> {
-  const roles = params.plan.roles.length > 0 ? params.plan.roles : fallbackOpenPlan(params.question).roles
+  const planRoles = params.plan.roles.length > 0 ? params.plan.roles : fallbackOpenPlan(params.question).roles
+  const roles = params.roles && params.roles.length > 0 ? params.roles : planRoles
   const settled = await Promise.allSettled(
     roles.map(async (role) => {
       const called = await callLeagueDeepModel({

@@ -22,6 +22,7 @@ import {
   type DeepRunRow,
 } from './deep-store'
 import { decideDeepRunAction, placeholderUnseededState, runIsBusy } from './deep-run-policy'
+import { buildDeepSnapshot } from './deep-snapshot'
 import { createDeepRunnerDeps } from './generation/deep-live-deps'
 import { LEAGUE_DEEP_MAX_ACTIVE } from './generation/policy'
 import { advanceDeepRun } from './generation/deep-runner'
@@ -56,6 +57,9 @@ function replayPayload(row: DeepRunRow): NextResponse {
     created_at: row.created_at,
     stage: row.stage,
     refunded: row.refunded,
+    // Full sanitized process (plan, briefs, rounds, ballot) — the terminal
+    // `result` alone drops the debate transcript and per-voter ballots.
+    snapshot: buildDeepSnapshot(row.product, row.state),
     upstream_cost_usd: Number((row.billed_usd + row.estimated_usd).toFixed(4)),
     billed_usd: Number(row.billed_usd.toFixed(4)),
     estimated_usd: Number(row.estimated_usd.toFixed(4)),
@@ -75,6 +79,9 @@ function pendingPayload(row: DeepRunRow, stage: string): NextResponse {
     kind: row.product,
     roundId: row.round_id,
     refunded: row.refunded,
+    // Partial process so the card can render each stage as it lands
+    // (null until the seed hop persists the pipeline state).
+    snapshot: buildDeepSnapshot(row.product, row.state),
   })
 }
 
@@ -148,6 +155,8 @@ export async function handleDeepStatus(opts: {
       sessionId: existing.id,
       kind: existing.product,
       roundId: existing.round_id,
+      // Whatever completed before the failure — shown under the error note.
+      snapshot: buildDeepSnapshot(existing.product, existing.state),
     })
   }
   return pendingPayload(existing, existing.stage)

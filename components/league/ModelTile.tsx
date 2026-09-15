@@ -40,6 +40,7 @@ export function ModelTile({
   labels,
   roundGraded = false,
   translatedRationale = null,
+  rationalePending = false,
   showOriginal = false,
   actualMagnitudePct = null,
 }: {
@@ -49,6 +50,8 @@ export function ModelTile({
   labels?: SideLabels
   roundGraded?: boolean
   translatedRationale?: string | null
+  /** Locale needs a translation that has not landed yet — tile still shows the original. */
+  rationalePending?: boolean
   showOriginal?: boolean
   /** Round-level actual percent change, once graded. Display only — see `lib/league/magnitude.ts`. */
   actualMagnitudePct?: number | null
@@ -171,6 +174,12 @@ export function ModelTile({
           {model.model_identifier}
         </p>
         <CountryFlag brand={model.brand} camp={model.camp} />
+
+        {rationalePending ? (
+          <p className="text-[10px] font-semibold text-league-accent-strong" aria-live="polite">
+            {t.modelTile.translating}
+          </p>
+        ) : null}
 
         {rationale ? (
           <p className={`text-[11px] leading-snug italic text-league-fg-muted ${open ? '' : 'line-clamp-2'}`}>

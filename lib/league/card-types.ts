@@ -289,15 +289,34 @@ export type CardRoundMeta = {
  * `GET /api/league/card` — null once the round is complete (or when no work
  * job is relevant). The client POLLS the card while status is
  * queued/running; tiles fill as `models` grows between polls.
+ *
+ * Progress is seat-resolution, not tile count: `answered` includes 결번 /
+ * no-opinion null rows that `buildCardData` strips from `models`.
  */
 export type CardGenerationState = {
   status: 'queued' | 'running' | 'failed'
   /** Work stage: packet → premier → challenger → world → scout → finalize. */
   stage: string
-  /** Full roster target for this round (denominator of the progress line). */
+  /**
+   * Active roster seat count for this round's tiers (`getRoster`, never a
+   * hardcoded 41). Denominator of the hub progress line.
+   */
   rosterSize: number
-  /** Model rows written so far (numerator; includes 결번 rows). */
+  /**
+   * Roster seats that already have a prediction row (numerator). Includes
+   * 결번 / no-opinion null rows that never become tiles.
+   */
   answered: number
+  /**
+   * Every active seat is either rendered as a tile or definitively dropped.
+   * Independent of job finalize/consensus — those can still be in flight.
+   */
+  complete: boolean
+  /**
+   * Roster model_ids whose row is a null-direction drop (no-opinion gate).
+   * Display uses these to turn that tier's skeleton into a 미응답 slot.
+   */
+  droppedModelIds: string[]
   /**
    * failed only: this viewer's money already went back. A retry is a fresh
    * purchase — the locked state says so instead of a stuck button.

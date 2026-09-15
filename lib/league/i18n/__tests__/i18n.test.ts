@@ -136,6 +136,8 @@ describe('dictionary completeness', () => {
         hub.openRoundNote,
         hub.generationQueued,
         hub.generationProgress(12, 41),
+        hub.generationComplete(41),
+        hub.generationWaitingNote,
         hub.generationFailed,
         hub.generationFailedRefunded,
         hub.retryGeneration,
@@ -159,9 +161,29 @@ describe('dictionary completeness', () => {
         hub.deepStage('plan'),
         hub.deepStage('analyses'),
         hub.deepStage('synthesis'),
+        hub.deepStage('deliberate'),
+        hub.deepStage('vote'),
+        hub.deepStage('verdict'),
         hub.deepFailed,
         hub.deepFailedRefunded,
         hub.deepBusy,
+        hub.deepStepLabels.plan,
+        hub.deepStepLabels.briefing,
+        hub.deepStepLabels.analyses,
+        hub.deepStepLabels.synthesis,
+        hub.deepStepLabels.debate,
+        hub.deepStepLabels.vote,
+        hub.deepStepLabels.verdict,
+        hub.deepMinorityHeading,
+        hub.deepRoundLabel(1),
+        hub.deepConsensusLabel(62),
+        hub.deepVoteChoice.approve,
+        hub.deepVoteChoice.conditional,
+        hub.deepVoteChoice.oppose,
+        hub.deepVoteChoice.abstain,
+        hub.deepSeatPending,
+        hub.deepConcedesLabel,
+        hub.deepHoldsLabel,
         getLeagueUiPack(locale).gateway.submit,
         getLeagueUiPack(locale).gateway.retry,
         getLeagueUiPack(locale).gateway.refuseTitle,
@@ -206,6 +228,7 @@ describe('dictionary completeness', () => {
       // The progress line must carry both the numerator and the roster size.
       expect(hub.generationProgress(12, 41)).toContain('12')
       expect(hub.generationProgress(12, 41)).toContain('41')
+      expect(hub.generationComplete(41)).toContain('41')
       expect(hub.deepOpen(50)).toContain('50')
       expect(hub.deepDebate(70)).toContain('70')
       expect(getLeagueUiPack(locale).leaderboard.unlock(2)).toContain('2')
@@ -252,6 +275,18 @@ describe('dictionary completeness', () => {
       expect(pack.verdict.heroHits(29, 40)).toContain('\u271329/40')
       expect(pack.hitRate.roundResult(27, 37)).toContain('\u271327/37')
       expect(pack.verdict.distributionHeading.trim().length).toBeGreaterThan(0)
+      expect(pack.verdict.detailsToggle.trim().length).toBeGreaterThan(0)
+      expect(pack.verdict.pendingHeadline('Sep 18')).toContain('Sep 18')
+      expect(pack.hero.countLine(41, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).toContain('30')
+      expect(pack.hero.countLine(41, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).toContain('41')
+      expect(pack.hero.countLine(41, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).not.toMatch(/\d+\/\d+/)
+      expect(pack.hero.countLine(41, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).not.toMatch(/[✓✗]/)
+      expect(pack.hero.conclusion(pack.hero.answerVerb.up)).toContain(pack.hero.answerVerb.up)
+      expect(pack.hero.confidenceNote(58)).toContain('58')
+      expect(pack.hero.liveCountLine(6, pack.hero.answerVerb.up, 2, pack.hero.answerVerb.down, 4)).toContain('6')
+      expect(pack.hero.liveCountLine(6, pack.hero.answerVerb.up, 2, pack.hero.answerVerb.down, 4)).not.toMatch(/\d+\/\d+/)
+      expect(pack.hero.conclusionPending.trim().length).toBeGreaterThan(0)
+      expect(pack.predictions.inProgressNote.trim().length).toBeGreaterThan(0)
       expect(pack.verdict.overconfidentLine(65)).toMatch(/65/)
       expect(pack.verdict.overconfidentLine(65)).toMatch(/%/)
       const predLine = pack.predictions.axisLine(
@@ -284,6 +319,18 @@ describe('dictionary completeness', () => {
     )
     expect(ko.verdict.bookLabels.closed).toBe('자체추론')
     expect(ko.verdict.bookLabels.scout).toBe('웹검색')
+    expect(ko.hero.countLine(41, 30, '오른다', 9, '내린다')).toBe(
+      'AI 41개 중 30개가 오른다 · 9개가 내린다',
+    )
+    expect(ko.hero.conclusion('오른다')).toBe('종합 결론: 오른다')
+    expect(ko.hero.confidenceNote(58)).toBe('가중 확신 58%')
+    expect(ko.hero.liveCountLine(6, '오른다', 2, '내린다', 4)).toBe(
+      '현재 6개 응답 · 오른다 2 · 내린다 4',
+    )
+    expect(ko.hero.conclusionPending).toBe('집계 대기 중 · 응답 수집 후 확정')
+    expect(ko.predictions.inProgressNote).toBe('집계 중 — 아직 확정되지 않았습니다')
+    expect(ko.verdict.pendingHeadline('2026년 9월 18일')).toContain('아직 결과가 나오지 않았어요')
+    expect(ko.verdict.detailsToggle).toBe('자세히 보기')
     expect(ko.verdict.weightLabels.closed).toBe('폐쇄형')
     expect(ko.verdict.weightLabels.open).toBe('오픈웨이트')
     expect(ko.verdict.weightsLine(12, 22, 8, 19)).toBe('\u271312/22'.replace(/^/, '폐쇄형 ') + ' \u00b7 오픈웨이트 \u27138/19')
@@ -315,12 +362,15 @@ describe('dictionary completeness', () => {
       expect(pack.header.windowAnchorOnly('Aug 17', '$305.59')).toContain('305.59')
       expect(pack.header.windowNoSessionDates.trim().length).toBeGreaterThan(0)
       expect(pack.header.liveSecondary.trim().length).toBeGreaterThan(0)
+      expect(pack.header.metalsSpotNote.trim().length).toBeGreaterThan(0)
       expect(pack.hitRate.roundResult(27, 37)).toContain('27')
       expect(pack.hitRate.roundResult(27, 37)).toContain('37')
       expect(pack.modelList.ungraded.trim().length).toBeGreaterThan(0)
+      expect(pack.modelList.noResponse.trim().length).toBeGreaterThan(0)
       expect(pack.modelTile.showOriginal.trim().length).toBeGreaterThan(0)
       expect(pack.modelTile.hideOriginal.trim().length).toBeGreaterThan(0)
       expect(pack.modelTile.originalLabel.trim().length).toBeGreaterThan(0)
+      expect(pack.modelTile.translating.trim().length).toBeGreaterThan(0)
       expect(pack.grading.stalled.trim().length).toBeGreaterThan(0)
       expect(pack.grading.stalledNote.trim().length).toBeGreaterThan(0)
       expect(pack.grading.reason.missing_anchor.trim().length).toBeGreaterThan(0)
@@ -385,17 +435,19 @@ describe('dictionary completeness', () => {
     expect(ko.hero.weightedCallHelp).toBe(
       '가중 결론은 확신이 높은 모델에 더 큰 비중을 둡니다. 그래서 단순 다수와 달라질 수 있습니다.',
     )
+    // Benefit-first pre-purchase copy: lead with what the buyer gets, keep a
+    // short unscored disclaimer at the tail (2026-09 rewrite).
     expect(en.hub.deepOpenHint).toBe(
-      'Several models each write a brief from this round\u2019s packet, then one synthesis. Unscored commentary \u2014 not a league prediction, not on the leaderboard.',
+      'The AIs dig deeper into the reasoning behind this call \u2014 each writes its own detailed brief, then everything is merged into one report. For when you want to know why. Unscored commentary.',
     )
     expect(ko.hub.deepOpenHint).toBe(
-      '같은 라운드 자료를 여러 모델이 각자 브리핑한 뒤 하나로 합칩니다. 비채점 논평이며 리그 예측·리더보드가 아닙니다.',
+      'AI들이 이 예측의 근거를 더 깊이 파고들어 각자 상세 분석을 쓰고, 하나의 종합 리포트로 정리합니다. 왜 이런 결론인지 궁금할 때. 비채점 참고 자료입니다.',
     )
     expect(en.hub.deepDebateHint).toBe(
-      'Models argue both sides, vote, and a chair writes a verdict including the minority view. Unscored \u2014 not a league prediction.',
+      'The AIs split into pro and con, debate, then vote \u2014 and a chair writes the conclusion plus the minority view. For when you want both sides of the argument. Unscored commentary.',
     )
     expect(ko.hub.deepDebateHint).toBe(
-      '찬반으로 토론하고 투표한 뒤, 의장이 소수 의견까지 담아 판정합니다. 비채점이며 리그 예측이 아닙니다.',
+      'AI들을 찬성·반대로 나눠 토론시키고, 투표한 뒤 의장이 결론과 소수 의견까지 정리합니다. 양쪽 논리를 모두 보고 싶을 때. 비채점 참고 자료입니다.',
     )
     for (const locale of LEAGUE_LOCALES) {
       const pack = getLeagueUiPack(locale)

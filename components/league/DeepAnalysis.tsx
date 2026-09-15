@@ -6,6 +6,13 @@ import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import { creditsForLeagueDeepDebate, creditsForLeagueDeepOpen } from '@/lib/credits'
 import { DEEP_POLL_MS } from '@/lib/league/generation/policy'
+import {
+  deepBrandLabel,
+  type DeepDebateSnapshot,
+  type DeepOpenSnapshot,
+  type DeepSnapshot,
+  type DeepVoteSnapshot,
+} from '@/lib/league/deep-snapshot'
 import { CardCompliance, type ComplianceReceipt } from './CardCompliance'
 
 const OPEN_COST = creditsForLeagueDeepOpen()
@@ -46,6 +53,7 @@ type PollBody = DeepPayload & {
   stage?: string
   refunded?: boolean
   code?: string
+  snapshot?: DeepSnapshot | null
 }
 
 function pathFor(kind: DeepKind): string {
@@ -53,8 +61,13 @@ function pathFor(kind: DeepKind): string {
 }
 
 /**
- * Deep-analysis entry + result. POST starts the job (~1s); GET polls every 5s.
+ * Deep-analysis entry + FULL process view. POST starts the durable job
+ * (~1s); GET polls every 5s and carries a sanitized `snapshot` of the
+ * persisted pipeline state, so every stage renders as its hop completes:
+ *   open   — plan → per-model briefs (arrival order) → final report
+ *   debate — plan → debate rounds → ballot (yes:no) → chair verdict
  * Reopening the tab resumes from the row — the job is not held in this tab.
+ * Neutral analyst framing only; no ministry/warroom personas.
  */
 export function DeepAnalysis({
   roundId,
@@ -73,6 +86,7 @@ export function DeepAnalysis({
   const [error, setError] = useState<string | null>(null)
   const [refunded, setRefunded] = useState(false)
   const [result, setResult] = useState<DeepPayload | null>(null)
+  const [snapshot, setSnapshot] = useState<DeepSnapshot | null>(null)
 
   const applyPoll = useCallback(
     (kind: DeepKind, body: PollBody, status: number) => {
@@ -91,15 +105,18 @@ export function DeepAnalysis({
         setRunning(null)
         return 'stop'
       }
+      if (body.snapshot) setSnapshot(body.snapshot)
       if (!body.ok && body.done && body.refunded) {
         setError(t.hub.deepFailedRefunded)
         setRefunded(true)
+        setLastKind(kind)
         setRunning(null)
         return 'stop'
       }
       if (!body.ok && body.done) {
         setError(t.hub.deepFailed)
         setRefunded(false)
+        setLastKind(kind)
         setRunning(null)
         return 'stop'
       }
@@ -173,6 +190,7 @@ export function DeepAnalysis({
     setError(null)
     setRefunded(false)
     setResult(null)
+    setSnapshot(null)
     setStage('start')
     try {
       const res = await fetch(pathFor(kind), {
@@ -196,6 +214,8 @@ export function DeepAnalysis({
         ? t.hub.deepStage(stage)
         : t.hub.deepRunning
     : null
+
+  const showProcess = snapshot !== null || result !== null
 
   return (
     <div className="mt-4 flex flex-col gap-3">
@@ -244,67 +264,437 @@ export function DeepAnalysis({
           ) : null}
         </div>
       ) : null}
-      {result ? (
+      {showProcess ? (
         <CardCompliance colorBucket={colorBucket} t={t} category={category}>
-          {(receipt) => <DeepAnalysisBody receipt={receipt} result={result} t={t} />}
+          {(receipt) => (
+            <DeepProcessBody
+              receipt={receipt}
+              snapshot={snapshot}
+              result={result}
+              stage={stage}
+              running={running !== null}
+              t={t}
+            />
+          )}
         </CardCompliance>
       ) : null}
     </div>
   )
 }
 
-function DeepAnalysisBody({
+// ── Full-process body ─────────────────────────────────────────────────────────
+
+function DeepProcessBody({
   receipt,
+  snapshot,
   result,
+  stage,
+  running,
   t,
 }: {
   receipt: ComplianceReceipt
-  result: DeepPayload
+  snapshot: DeepSnapshot | null
+  result: DeepPayload | null
+  stage: string | null
+  running: boolean
   t: LeagueUiPack
 }) {
   void receipt
-  const title = result.kind === 'open' ? t.hub.deepOpenTitle : t.hub.deepDebateTitle
+  const snap = snapshot ?? (result ? snapshotFromResult(result) : null)
+  if (!snap) return null
+  const done = !running && result !== null
+  const title = snap.kind === 'open' ? t.hub.deepOpenTitle : t.hub.deepDebateTitle
+
   return (
-    <div className="px-4 py-4">
+    <div className="px-4 py-4" data-testid="deep-process">
       <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{title}</p>
-      <p className="mt-1 text-sm font-semibold text-league-fg">{result.instrument}</p>
-      <p className="mt-1 text-xs leading-relaxed text-league-fg-muted">{result.proposition}</p>
+      {snap.instrument ? <p className="mt-1 text-sm font-semibold text-league-fg">{snap.instrument}</p> : null}
+      {snap.proposition ? (
+        <p className="mt-1 text-xs leading-relaxed text-league-fg-muted">{snap.proposition}</p>
+      ) : null}
       <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
         {t.hub.deepUnscoredNote}
       </p>
-
-      {result.kind === 'open' ? (
-        <>
-          {result.synthesis ? (
-            <pre className="mt-3 whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-league-fg">{result.synthesis}</pre>
-          ) : null}
-          {result.briefing ? (
-            <details className="mt-3">
-              <summary className="cursor-pointer text-[11px] font-semibold text-league-fg-muted">Briefing</summary>
-              <pre className="mt-2 whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-league-fg-muted">
-                {result.briefing}
-              </pre>
-            </details>
-          ) : null}
-        </>
+      <StageStrip kind={snap.kind} stage={done ? 'done' : stage} t={t} />
+      {snap.kind === 'open' ? (
+        <OpenProcess snap={snap} running={running} t={t} />
       ) : (
-        <>
-          {result.verdict?.judgment ? (
-            <pre className="mt-3 whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-league-fg">
-              {result.verdict.judgment}
-            </pre>
-          ) : null}
-          {result.verdict?.keyIssues ? (
-            <p className="mt-2 text-[12px] leading-relaxed text-league-fg-muted">{result.verdict.keyIssues}</p>
-          ) : null}
-          {result.vote ? (
-            <p className="mt-2 font-mono text-[11px] text-league-fg-muted">{result.vote.summary}</p>
-          ) : null}
-          {result.verdict?.minorityReport ? (
-            <p className="mt-2 text-[12px] italic leading-relaxed text-league-fg-muted">{result.verdict.minorityReport}</p>
-          ) : null}
-        </>
+        <DebateProcess snap={snap} running={running} t={t} />
       )}
+    </div>
+  )
+}
+
+/** Old cached poll bodies carry only the terminal result — project it. */
+function snapshotFromResult(result: DeepPayload): DeepSnapshot {
+  if (result.kind === 'open') {
+    return {
+      kind: 'open',
+      instrument: result.instrument ?? null,
+      proposition: result.proposition ?? null,
+      plan: null,
+      briefing: result.briefing ?? null,
+      analyses: (result.analyses ?? []).map((a) => ({
+        roleId: a.provider,
+        roleLabel: a.roleLabel,
+        provider: a.provider,
+        brand: deepBrandLabel(a.provider),
+        content: a.content,
+        ok: a.ok,
+      })),
+      synthesis: result.synthesis ?? null,
+    }
+  }
+  return {
+    kind: 'debate',
+    instrument: result.instrument ?? null,
+    proposition: result.proposition ?? null,
+    plan: null,
+    briefing: result.briefing ?? null,
+    rounds: [],
+    vote: result.vote
+      ? {
+          approve: result.vote.approve,
+          conditional: result.vote.conditional,
+          oppose: result.vote.oppose,
+          abstain: result.vote.abstain,
+          summary: result.vote.summary,
+          votes: [],
+        }
+      : null,
+    verdict: result.verdict
+      ? { ...result.verdict, consensusScore: result.consensusScore ?? null }
+      : null,
+  }
+}
+
+// ── Stage strip ───────────────────────────────────────────────────────────────
+
+const OPEN_STAGE_ORDER = ['plan', 'report', 'analyses', 'synthesis'] as const
+const DEBATE_STAGE_ORDER = ['plan', 'report', 'deliberate', 'vote', 'verdict'] as const
+
+function stepLabel(key: string, t: LeagueUiPack): string {
+  const labels = t.hub.deepStepLabels
+  switch (key) {
+    case 'plan':
+      return labels.plan
+    case 'report':
+      return labels.briefing
+    case 'analyses':
+      return labels.analyses
+    case 'synthesis':
+      return labels.synthesis
+    case 'deliberate':
+      return labels.debate
+    case 'vote':
+      return labels.vote
+    case 'verdict':
+      return labels.verdict
+    default:
+      return key
+  }
+}
+
+function StageStrip({ kind, stage, t }: { kind: DeepKind; stage: string | null; t: LeagueUiPack }) {
+  const order: readonly string[] = kind === 'open' ? OPEN_STAGE_ORDER : DEBATE_STAGE_ORDER
+  const activeIdx = stage === 'done' ? order.length : stage ? order.indexOf(stage) : -1
+  return (
+    <ol className="mt-3 flex flex-wrap gap-1.5" data-testid="deep-stage-strip">
+      {order.map((key, i) => {
+        const isDone = activeIdx > i
+        const active = activeIdx === i
+        return (
+          <li
+            key={key}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+              isDone
+                ? 'bg-emerald-100 text-emerald-800'
+                : active
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            {isDone ? <span aria-hidden>✓</span> : null}
+            {active ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden /> : null}
+            {stepLabel(key, t)}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+// ── Shared section chrome ─────────────────────────────────────────────────────
+
+function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-4">
+      <h4 className="text-[11px] font-bold uppercase tracking-wide text-league-fg-muted">{heading}</h4>
+      <div className="mt-1.5">{children}</div>
+    </section>
+  )
+}
+
+function PendingLine({ text }: { text: string }) {
+  return (
+    <p className="flex items-center gap-1.5 text-[12px] text-league-fg-muted">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" aria-hidden />
+      {text}
+    </p>
+  )
+}
+
+function BriefingDetails({ briefing, t }: { briefing: string; t: LeagueUiPack }) {
+  return (
+    <Section heading={t.hub.deepStepLabels.briefing}>
+      <details className="rounded-lg border border-league-border/50 bg-league-bg-elevated/50">
+        <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-league-fg-muted">
+          {t.hub.deepStepLabels.briefing}
+        </summary>
+        <pre className="whitespace-pre-wrap border-t border-league-border/40 px-3 py-2 font-sans text-[12px] leading-relaxed text-league-fg-muted">
+          {briefing}
+        </pre>
+      </details>
+    </Section>
+  )
+}
+
+// ── Open process: plan → per-model briefs → final report ─────────────────────
+
+function OpenProcess({ snap, running, t }: { snap: DeepOpenSnapshot; running: boolean; t: LeagueUiPack }) {
+  const arrivedIds = new Set(snap.analyses.map((a) => a.roleId))
+  const pendingSeats = (snap.plan ?? []).filter((s) => !arrivedIds.has(s.roleId))
+  return (
+    <>
+      {snap.plan && snap.plan.length > 0 ? (
+        <Section heading={t.hub.deepStepLabels.plan}>
+          <ul className="space-y-1.5">
+            {snap.plan.map((seat) => (
+              <li key={seat.roleId} className="text-[12px] leading-snug text-league-fg">
+                <span className="font-semibold">{seat.brand}</span>
+                <span className="text-league-fg-muted"> · {seat.roleLabel}</span>
+                {seat.subQuestion ? (
+                  <span className="block text-[11px] text-league-fg-muted">{seat.subQuestion}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : running ? (
+        <Section heading={t.hub.deepStepLabels.plan}>
+          <PendingLine text={t.hub.deepStage('plan')} />
+        </Section>
+      ) : null}
+
+      {snap.briefing ? <BriefingDetails briefing={snap.briefing} t={t} /> : null}
+
+      {snap.analyses.length > 0 || (running && snap.plan) ? (
+        <Section heading={t.hub.deepStepLabels.analyses}>
+          <div className="space-y-3">
+            {snap.analyses.map((a) => (
+              <article
+                key={a.roleId}
+                className="rounded-lg border border-league-border/50 bg-league-bg-elevated/40 px-3 py-2.5"
+                data-testid="deep-analysis-seat"
+              >
+                <p className="text-[12px] font-semibold text-league-fg">
+                  {a.brand}
+                  <span className="font-normal text-league-fg-muted"> · {a.roleLabel}</span>
+                </p>
+                {a.ok && a.content ? (
+                  <pre className="mt-1.5 whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-league-fg">
+                    {a.content}
+                  </pre>
+                ) : (
+                  <p className="mt-1.5 text-[11px] italic text-league-fg-muted">{t.hub.deepSeatPending}</p>
+                )}
+              </article>
+            ))}
+            {running
+              ? pendingSeats.map((seat) => (
+                  <div
+                    key={seat.roleId}
+                    className="rounded-lg border border-dashed border-league-border/60 px-3 py-2.5"
+                  >
+                    <p className="text-[12px] font-semibold text-league-fg-muted">
+                      {seat.brand}
+                      <span className="font-normal"> · {seat.roleLabel}</span>
+                    </p>
+                    <PendingLine text={t.hub.deepSeatPending} />
+                  </div>
+                ))
+              : null}
+          </div>
+        </Section>
+      ) : null}
+
+      <Section heading={t.hub.deepStepLabels.synthesis}>
+        {snap.synthesis ? (
+          <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-league-fg" data-testid="deep-synthesis">
+            {snap.synthesis}
+          </pre>
+        ) : running ? (
+          <PendingLine text={t.hub.deepStage('synthesis')} />
+        ) : null}
+      </Section>
+    </>
+  )
+}
+
+// ── Debate process: plan → rounds → ballot → chair verdict ────────────────────
+
+function DebateProcess({ snap, running, t }: { snap: DeepDebateSnapshot; running: boolean; t: LeagueUiPack }) {
+  return (
+    <>
+      {snap.plan && snap.plan.length > 0 ? (
+        <Section heading={t.hub.deepStepLabels.plan}>
+          <ul className="space-y-1.5">
+            {snap.plan.map((seat) => (
+              <li key={seat.roleId} className="text-[12px] leading-snug text-league-fg">
+                <span className="font-semibold">{seat.brand}</span>
+                <span className="text-league-fg-muted"> · {seat.roleLabel}</span>
+                {seat.mandate ? (
+                  <span className="block text-[11px] text-league-fg-muted">{seat.mandate}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : running ? (
+        <Section heading={t.hub.deepStepLabels.plan}>
+          <PendingLine text={t.hub.deepStage('plan')} />
+        </Section>
+      ) : null}
+
+      {snap.briefing ? <BriefingDetails briefing={snap.briefing} t={t} /> : null}
+
+      {snap.rounds.length > 0 || running ? (
+        <Section heading={t.hub.deepStepLabels.debate}>
+          <div className="space-y-4">
+            {snap.rounds.map((round) => (
+              <div key={round.roundNumber} data-testid="deep-round">
+                <p className="text-[12px] font-bold text-league-fg">
+                  {t.hub.deepRoundLabel(round.roundNumber)}
+                  {round.consensusScore >= 0 ? (
+                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                      {t.hub.deepConsensusLabel(round.consensusScore)}
+                    </span>
+                  ) : null}
+                </p>
+                {round.summary ? (
+                  <p className="mt-1 text-[11px] leading-relaxed text-league-fg-muted">{round.summary}</p>
+                ) : null}
+                <div className="mt-2 space-y-2.5">
+                  {round.turns
+                    .filter((turn) => turn.ok && turn.position)
+                    .map((turn, i) => (
+                      <div key={`${turn.provider}-${i}`} className="border-s-2 border-league-border/60 ps-3">
+                        <p className="text-[12px] font-semibold text-league-fg">
+                          {turn.brand}
+                          <span className="font-normal text-league-fg-muted"> · {turn.roleLabel}</span>
+                        </p>
+                        <p className="mt-0.5 whitespace-pre-wrap text-[12px] leading-relaxed text-league-fg">
+                          {turn.position}
+                        </p>
+                        {turn.concedes ? (
+                          <p className="mt-0.5 text-[11px] text-league-fg-muted">
+                            <span className="font-semibold">{t.hub.deepConcedesLabel}:</span> {turn.concedes}
+                          </p>
+                        ) : null}
+                        {turn.holds ? (
+                          <p className="mt-0.5 text-[11px] text-league-fg-muted">
+                            <span className="font-semibold">{t.hub.deepHoldsLabel}:</span> {turn.holds}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))}
+            {running && !snap.vote && !snap.verdict ? <PendingLine text={t.hub.deepStage('deliberate')} /> : null}
+          </div>
+        </Section>
+      ) : null}
+
+      {snap.vote ? (
+        <Section heading={t.hub.deepStepLabels.vote}>
+          <VoteBlock vote={snap.vote} t={t} />
+        </Section>
+      ) : running && snap.rounds.length > 0 ? (
+        <Section heading={t.hub.deepStepLabels.vote}>
+          <PendingLine text={t.hub.deepStage('vote')} />
+        </Section>
+      ) : null}
+
+      <Section heading={t.hub.deepStepLabels.verdict}>
+        {snap.verdict?.judgment ? (
+          <div data-testid="deep-verdict">
+            {snap.verdict.consensusScore !== null && snap.verdict.consensusScore >= 0 ? (
+              <p className="mb-1.5 text-[11px] font-semibold text-league-fg-muted">
+                {t.hub.deepConsensusLabel(snap.verdict.consensusScore)}
+              </p>
+            ) : null}
+            <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-league-fg">
+              {snap.verdict.judgment}
+            </pre>
+            {snap.verdict.keyIssues ? (
+              <p className="mt-2 text-[12px] leading-relaxed text-league-fg-muted">{snap.verdict.keyIssues}</p>
+            ) : null}
+            {snap.verdict.minorityReport ? (
+              <div className="mt-3 rounded-lg border border-league-border/50 bg-league-bg-elevated/40 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">
+                  {t.hub.deepMinorityHeading}
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-[12px] italic leading-relaxed text-league-fg-muted">
+                  {snap.verdict.minorityReport}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : running ? (
+          <PendingLine text={t.hub.deepStage('verdict')} />
+        ) : null}
+      </Section>
+    </>
+  )
+}
+
+function VoteBlock({ vote, t }: { vote: DeepVoteSnapshot; t: LeagueUiPack }) {
+  const yes = vote.approve + vote.conditional
+  const choiceLabel = (choice: string | null): string => {
+    if (choice === 'approve') return t.hub.deepVoteChoice.approve
+    if (choice === 'conditional') return t.hub.deepVoteChoice.conditional
+    if (choice === 'oppose') return t.hub.deepVoteChoice.oppose
+    return t.hub.deepVoteChoice.abstain
+  }
+  const choiceTone = (choice: string | null): string => {
+    if (choice === 'approve') return 'text-emerald-700'
+    if (choice === 'conditional') return 'text-sky-700'
+    if (choice === 'oppose') return 'text-rose-700'
+    return 'text-amber-700'
+  }
+  return (
+    <div data-testid="deep-vote">
+      <p className="text-2xl font-black tabular-nums tracking-tight text-league-fg" dir="ltr">
+        {yes} : {vote.oppose}
+      </p>
+      <p className="mt-1 text-[11px] text-league-fg-muted">
+        {t.hub.deepVoteChoice.approve} {vote.approve} · {t.hub.deepVoteChoice.conditional} {vote.conditional} ·{' '}
+        {t.hub.deepVoteChoice.oppose} {vote.oppose} · {t.hub.deepVoteChoice.abstain} {vote.abstain}
+      </p>
+      {vote.votes.length > 0 ? (
+        <div className="mt-2 space-y-1.5">
+          {vote.votes
+            .filter((v) => v.ok || v.reason)
+            .map((v, i) => (
+              <div key={`${v.provider}-${i}`} className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px]">
+                <span className="w-20 shrink-0 font-semibold text-league-fg">{v.brand}</span>
+                <span className={`shrink-0 font-bold ${choiceTone(v.choice)}`}>{choiceLabel(v.choice)}</span>
+                {v.reason ? <span className="min-w-0 flex-1 text-league-fg-muted">{v.reason}</span> : null}
+              </div>
+            ))}
+        </div>
+      ) : null}
     </div>
   )
 }

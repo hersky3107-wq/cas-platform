@@ -79,9 +79,28 @@ export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack):
   return t.headline.majority(leanCount, totalModels, slot, probability)
 }
 
+export type ConsensusHeroCounts = {
+  countLine: string
+  upCount: number
+  downCount: number
+  noDirectionCount: number
+  upWord: string
+  downWord: string
+}
+
 export type ConsensusHeroPayload =
-  | { kind: 'answer'; line1: string; line2: string; diverged: boolean }
-  | { kind: 'fallback'; message: string }
+  | ({
+      kind: 'answer'
+      line1: string
+      line2: string
+      diverged: boolean
+      conclusionLine: string
+      conclusionVerb: string
+      signedMagnitude: string | null
+      horizonLabel: string | null
+      confidencePct: number | null
+    } & ConsensusHeroCounts)
+  | ({ kind: 'fallback'; message: string } & Partial<ConsensusHeroCounts>)
 
 function binarySlot(direction: ConsensusSummary['majorityDirection']): 'up' | 'down' | null {
   const slot = tallySlotOfToken(direction)
@@ -98,6 +117,17 @@ function headCountSlot(consensus: ConsensusSummary): 'up' | 'down' {
 function tokenForBinarySlot(slot: 'up' | 'down', labels?: SideLabels) {
   if (!labels) return slot
   return slot === 'up' ? labels.sides[0] : labels.sides[1]
+}
+
+/** Side-A / side-B answer words. Head-count chrome only — never a verdict. */
+export function heroSideWords(
+  t: LeagueUiPack,
+  labels?: SideLabels,
+): { upWord: string; downWord: string } {
+  if (labels && labels.kind !== 'binary_close_higher') {
+    return { upWord: labels.answer(labels.sides[0]), downWord: labels.answer(labels.sides[1]) }
+  }
+  return { upWord: t.hero.answerVerb.up, downWord: t.hero.answerVerb.down }
 }
 
 /**
@@ -126,21 +156,40 @@ export function buildConsensusHero(
 ): ConsensusHeroPayload | null {
   const { totalModels, respondedModels, tally, aggregateDirection, aggregateProbability, aggregateMagnitudePct } = consensus
 
+  const priceLike = !labels || labels.kind === 'binary_close_higher'
+  const upWord =
+    labels && labels.kind !== 'binary_close_higher' ? labels.answer(labels.sides[0]) : t.hero.answerVerb.up
+  const downWord =
+    labels && labels.kind !== 'binary_close_higher' ? labels.answer(labels.sides[1]) : t.hero.answerVerb.down
+  const counts: ConsensusHeroCounts = {
+    countLine: t.hero.countLine(totalModels, tally.up, upWord, tally.down, downWord),
+    upCount: tally.up,
+    downCount: tally.down,
+    noDirectionCount: tally.flat + tally.abstain,
+    upWord,
+    downWord,
+  }
+
   if (totalModels === 0) return { kind: 'fallback', message: t.hero.none }
-  if (respondedModels === 0) return { kind: 'fallback', message: t.hero.allAbstain(totalModels) }
-  if (!aggregateDirection) return { kind: 'fallback', message: t.hero.split(respondedModels, totalModels) }
+  if (respondedModels === 0) return { kind: 'fallback', message: t.hero.allAbstain(totalModels), ...counts }
+  if (!aggregateDirection) {
+    return { kind: 'fallback', message: t.hero.split(respondedModels, totalModels), ...counts }
+  }
 
   const aggregateSlot = binarySlot(aggregateDirection) ?? 'down'
   const majoritySlot = headCountSlot(consensus)
   const otherSlot: 'up' | 'down' = majoritySlot === 'up' ? 'down' : 'up'
   const diverged = majoritySlot !== aggregateSlot
-  const priceLike = !labels || labels.kind === 'binary_close_higher'
 
   const verb = priceLike
     ? diverged
       ? t.hero.weightedCallVerb[aggregateSlot]
       : t.hero.answerVerb[aggregateSlot]
-    : labels.answer(aggregateDirection)
+    : labels!.answer(aggregateDirection)
+  const conclusionVerb =
+    labels && labels.kind !== 'binary_close_higher'
+      ? labels.answer(aggregateDirection)
+      : t.hero.answerVerb[aggregateSlot]
   const prefix = diverged ? t.hero.weightedCallPrefix : ''
   const magnitudePart =
     aggregateMagnitudePct !== null
@@ -175,7 +224,18 @@ export function buildConsensusHero(
         : t.hero.supportLineNoConfidence(majorityWord, majorityCount, otherWord, otherCount)
   }
 
-  return { kind: 'answer', line1, line2, diverged }
+  return {
+    kind: 'answer',
+    line1,
+    line2,
+    diverged,
+    conclusionLine: diverged ? prefix + (priceLike ? t.hero.weightedCallVerb[aggregateSlot] : conclusionVerb) : t.hero.conclusion(conclusionVerb),
+    conclusionVerb,
+    signedMagnitude: aggregateMagnitudePct !== null ? formatSignedPercent(aggregateMagnitudePct) : null,
+    horizonLabel: aggregateMagnitudePct !== null ? t.catalog.horizons[isUiHorizon(horizon) ? horizon : '1d'] : null,
+    confidencePct: conf,
+    ...counts,
+  }
 }
 
 /** Magnitude qualifier fragment only — used by tests and legacy callers. */

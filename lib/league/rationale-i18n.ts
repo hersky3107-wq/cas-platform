@@ -13,9 +13,10 @@ import {
 /**
  * View-time rationale translation. Never called from generation.
  *
- * One batched model call per (round, locale) miss. Cache key is
- * (prediction_id, locale) plus a hash of the English original so a changed
- * snippet is retranslated. Failure/timeout returns the originals.
+ * Triggered from the card stream/read path (`useRoundRationaleTranslations`)
+ * as tiles appear. One batched model call per (round, locale) miss. Cache
+ * key is (prediction_id, locale) plus a hash of the English original so a
+ * changed snippet is retranslated. Failure/timeout returns the originals.
  */
 
 const TRANSLATE_PROVIDER = 'google' as const

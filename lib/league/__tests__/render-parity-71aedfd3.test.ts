@@ -24,10 +24,13 @@ import type { VerdictCrossRoundGrade } from '../verdict-aggregate'
  *
  * This test re-renders the same fixture data with the CURRENT code — in the
  * exact configuration the live card now uses, i.e. WITH the round's
- * `SideLabels` resolver threaded through (`CardBody` behavior) — and demands
- * byte equality. If any of these assertions fails, the refactor changed what
- * a price round looks like, which the contract forbids: ▲▼, 오른다/내린다,
- * every tally/hit string must be untouched.
+ * `SideLabels` resolver threaded through (`CardBody` behavior).
+ *
+ * Division-board tiles and the record-room CSV stay byte-identical to the
+ * freeze (side words/glyphs on every tile). The consensus hero / verdict
+ * panel were redesigned (2026-09-15) so a normal reader sees the conclusion
+ * first; those surfaces keep the same ▲▼ / 오른다/내린다 / ✓N/M contract
+ * but are no longer byte-frozen against the pre-redesign HTML.
  *
  * The label-less legacy call shape (scripts, old callers) is asserted too,
  * so BOTH paths through the components are pinned to the same bytes.
@@ -67,7 +70,7 @@ describe('render parity — round 71aedfd3 (binary_close_higher) before vs after
     const t = getLeagueUiPack(locale)
     const labels = sideLabelsFor(card.round, t)
 
-    it(`verdict panel [${locale}] — live shape (labels passed) is byte-identical`, () => {
+    it(`verdict panel [${locale}] — live shape keeps price-round side/hit glyphs and the new hierarchy`, () => {
       const html = renderToStaticMarkup(
         createElement(VerdictPanel, {
           verdict: card.verdict,
@@ -79,11 +82,31 @@ describe('render parity — round 71aedfd3 (binary_close_higher) before vs after
           magnitudeCompare,
         })
       )
-      expect(html).toBe(beforeBytes(`71aedfd3-verdict-panel.${locale}.html`))
+      expect(html).toContain(t.hero.answerVerb.up)
+      expect(html).toContain(t.hero.conclusion(t.hero.answerVerb.up))
+      expect(html).toContain(`${card.consensus.tally.up}▲`)
+      expect(html).toContain(`${card.consensus.tally.down}▼`)
+      expect(html).toContain(t.verdict.heroHits(card.verdict.hitRecord.hits, card.verdict.hitRecord.graded))
+      expect(html).toContain(t.verdict.detailsToggle)
+      expect(html).not.toMatch(/<details open/)
+      expect(html).toContain('\u2713')
+      const withoutHits = html.replace(/\u2713\d+\/\d+/g, '')
+      expect(withoutHits).not.toMatch(/\d+\/\d+/)
     })
 
-    it(`verdict panel [${locale}] — label-less legacy shape is byte-identical too`, () => {
-      const html = renderToStaticMarkup(
+    it(`verdict panel [${locale}] — label-less legacy shape matches the labeled live shape on price rounds`, () => {
+      const labeled = renderToStaticMarkup(
+        createElement(VerdictPanel, {
+          verdict: card.verdict,
+          models: card.models,
+          t,
+          labels,
+          consensus: card.consensus,
+          horizon: card.round.horizon,
+          magnitudeCompare,
+        })
+      )
+      const legacy = renderToStaticMarkup(
         createElement(VerdictPanel, {
           verdict: card.verdict,
           models: card.models,
@@ -93,10 +116,10 @@ describe('render parity — round 71aedfd3 (binary_close_higher) before vs after
           magnitudeCompare,
         })
       )
-      expect(html).toBe(beforeBytes(`71aedfd3-verdict-panel.${locale}.html`))
+      expect(legacy).toBe(labeled)
     })
 
-    it(`consensus hero [${locale}] — live shape (labels passed) is byte-identical`, () => {
+    it(`consensus hero [${locale}] — live shape keeps price-round side words and the new hierarchy`, () => {
       const html = renderToStaticMarkup(
         createElement(ConsensusHero, {
           consensus: card.consensus,
@@ -106,11 +129,32 @@ describe('render parity — round 71aedfd3 (binary_close_higher) before vs after
           magnitudeCompare,
         })
       )
-      expect(html).toBe(beforeBytes(`71aedfd3-hero.${locale}.html`))
+      expect(html).toContain(t.hero.countLine(
+        card.consensus.totalModels,
+        card.consensus.tally.up,
+        t.hero.answerVerb.up,
+        card.consensus.tally.down,
+        t.hero.answerVerb.down,
+      ))
+      expect(html).toContain(t.hero.conclusion(t.hero.answerVerb.up))
+      expect(html).toContain(`${card.consensus.tally.up}▲`)
+      expect(html).toContain(`${card.consensus.tally.down}▼`)
+      expect(html).toContain('data-testid="direction-ratio-bar"')
+      expect(html).not.toMatch(/[✓✗]/)
+      expect(html.replace(/\u2713\d+\/\d+/g, '')).not.toMatch(/\d+\/\d+/)
     })
 
-    it(`consensus hero [${locale}] — label-less legacy shape is byte-identical too`, () => {
-      const html = renderToStaticMarkup(
+    it(`consensus hero [${locale}] — label-less legacy shape matches the labeled live shape on price rounds`, () => {
+      const labeled = renderToStaticMarkup(
+        createElement(ConsensusHero, {
+          consensus: card.consensus,
+          horizon: card.round.horizon,
+          t,
+          labels,
+          magnitudeCompare,
+        })
+      )
+      const legacy = renderToStaticMarkup(
         createElement(ConsensusHero, {
           consensus: card.consensus,
           horizon: card.round.horizon,
@@ -118,7 +162,7 @@ describe('render parity — round 71aedfd3 (binary_close_higher) before vs after
           magnitudeCompare,
         })
       )
-      expect(html).toBe(beforeBytes(`71aedfd3-hero.${locale}.html`))
+      expect(legacy).toBe(labeled)
     })
 
     it(`division board (all model tiles) [${locale}] — live shape (labels passed) is byte-identical`, () => {

@@ -4,11 +4,13 @@ import { CardNotFoundError, fetchCardData, type CardLookup } from '@/lib/league/
 import type { CardData, CardGenerationState, LockedCardPayload } from '@/lib/league/card-types'
 import { gatePublicGenerateInstrument } from '@/lib/league/access-policy'
 import { buildCatalogRankedRoundInput, findCatalogInstrument } from '@/lib/league/catalog'
+import { droppedRosterModelIds, rosterGenerationProgress } from '@/lib/league/generation-progress'
 import {
   findActiveJobForRound,
   hasPaidRoundAccess,
   isRoundComplete,
   latestWorkJobForRound,
+  listRoundModelRows,
   wasRefundedForRound,
 } from '@/lib/league/generation/job-store'
 import { getRoster } from '@/lib/league/roster'
@@ -154,34 +156,46 @@ export async function GET(req: Request) {
  */
 async function generationStateFor(card: CardData): Promise<CardGenerationState | null> {
   const roundId = card.round.round_id
-  const rosterSize = getRoster().length
-  const answered = card.models.length
-
   const active = await findActiveJobForRound(roundId)
-  if (active) {
-    return {
-      status: active.status === 'queued' ? 'queued' : 'running',
-      stage: active.stage,
-      rosterSize,
-      answered,
-      refunded: false,
-    }
-  }
-
-  const complete = await isRoundComplete(roundId)
-  if (complete) return null
-
-  const latest = await latestWorkJobForRound(roundId)
-  if (latest && latest.status === 'failed') {
+  if (!active) {
+    const roundDone = await isRoundComplete(roundId)
+    if (roundDone) return null
+    const latest = await latestWorkJobForRound(roundId)
+    if (!latest || latest.status !== 'failed') return null
+    const progress = await rosterProgressForRound(roundId)
     return {
       status: 'failed',
       stage: latest.stage,
-      rosterSize,
-      answered,
+      ...progress,
       refunded: latest.refunded,
     }
   }
-  return null
+
+  const progress = await rosterProgressForRound(roundId)
+  return {
+    status: active.status === 'queued' ? 'queued' : 'running',
+    stage: active.stage,
+    ...progress,
+    refunded: false,
+  }
+}
+
+/**
+ * N / rosterSize for the hub banner. Public jobs run every live tier, so
+ * the denominator is `getRoster()` (currently 10+10+15+6). N is prediction
+ * rows whose model_id is on that roster — tiles *and* dropped null rows —
+ * so the fraction can reach 100% when seats fail the no-opinion gate.
+ */
+async function rosterProgressForRound(roundId: string) {
+  const rows = await listRoundModelRows(roundId)
+  const rosterIds = getRoster().map((entry) => entry.model_id)
+  return {
+    ...rosterGenerationProgress(
+      rosterIds,
+      rows.map((row) => row.model_id)
+    ),
+    droppedModelIds: droppedRosterModelIds(rosterIds, rows),
+  }
 }
 
 /**

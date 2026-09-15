@@ -298,8 +298,9 @@ describe('unresolvable rounds explain themselves — round 65192045 and the full
       expect(html).toContain(t.grading.reason.no_session_in_window)
       expect(html).toContain(t.grading.unresolvableNote)
       // The pending-round promises must be gone: this round never grades.
-      expect(html).not.toContain(t.verdict.pendingHeading)
       const resolvesDate = formatRoundOpenedDate(card.round.resolves_at, locale)
+      expect(html).not.toContain(t.verdict.pendingHeading)
+      expect(html).not.toContain(t.verdict.pendingHeadline(resolvesDate))
       expect(html).not.toContain(t.verdict.pendingResolvesLine(resolvesDate))
       expect(html).not.toContain(t.verdict.pendingDaysRemaining(0))
       expect(html).not.toMatch(/[✓✗]/)

@@ -3,6 +3,7 @@ import { CAMPS, LEAGUE_TIERS } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { SideLabels } from '@/lib/league/side-labels'
 import { predictionAxisLine } from '@/lib/league/compliance'
+import { DetailsDisclosure } from './DetailsDisclosure'
 
 /**
  * Pre-grading breakdown of every axis using PREDICTION counts.
@@ -10,6 +11,8 @@ import { predictionAxisLine } from '@/lib/league/compliance'
  * Shared chrome: every chip, every category. Graded cards keep VerdictPanel
  * (hit counts with ✓ + total). This panel must never look like that panel —
  * no ✓, no slash-over-total, heading says predictions not hits.
+ *
+ * Collapsed behind "자세히 보기" by default — these rows are for enthusiasts.
  */
 
 function modelCount(tally: DirectionTally): number {
@@ -30,7 +33,7 @@ function AxisBlock({
   const shown = rows.filter((row) => modelCount(row.tally) > 0)
   if (shown.length === 0) return null
   return (
-    <div className="mt-3">
+    <div className="mt-3 first:mt-0">
       <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{title}</p>
       <ul className="mt-1 space-y-0.5">
         {shown.map((row) => (
@@ -50,6 +53,7 @@ export function PredictionAxes({
   weightsSplit,
   t,
   labels,
+  inProgress = false,
 }: {
   campSplit: CampSplit
   tierSplit: TierSplit
@@ -57,9 +61,10 @@ export function PredictionAxes({
   weightsSplit: WeightsSplit
   t: LeagueUiPack
   labels: SideLabels
+  inProgress?: boolean
 }) {
   return (
-    <div className="mt-4 border-t border-league-border/60 pt-3">
+    <DetailsDisclosure t={t} inProgress={inProgress}>
       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-league-fg-muted">{t.predictions.heading}</p>
       <AxisBlock
         title={t.verdict.sectionCamp}
@@ -91,6 +96,6 @@ export function PredictionAxes({
         t={t}
         labels={labels}
       />
-    </div>
+    </DetailsDisclosure>
   )
 }

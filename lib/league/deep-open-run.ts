@@ -1,11 +1,13 @@
 import 'server-only'
 
 import {
+  fallbackOpenPlan,
   generateLeaguePreReport,
   planLeagueOpenMeeting,
   runLeagueOpenAnalyses,
   synthesizeLeagueOpenBrief,
 } from './deep-open-engine'
+import { openAnalysesComplete, openStageFor, pendingOpenAnalysisRoles } from './deep-pipeline'
 import { remapOpenPlanExaone } from './deep-open-replacement-policy'
 import type { LeagueDeepContext } from './deep-context'
 import type { LeagueLocale } from './i18n/locales'
@@ -53,10 +55,7 @@ export function seedOpenState(ctx: LeagueDeepContext): OpenPipelineState {
 }
 
 export function upcomingOpenStage(state: OpenPipelineState): string {
-  if (!state.plan) return 'plan'
-  if (!state.report) return 'report'
-  if (!state.analyses) return 'analyses'
-  return 'synthesis'
+  return openStageFor(state)
 }
 
 export function providersFromOpenState(state: OpenPipelineState): DeepProviderMeta[] {
@@ -117,25 +116,34 @@ export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAd
     return { done: false, stage: 'report', state: { ...state, report: pre.report } }
   }
 
-  if (!state.analyses) {
-    const analyses = await runLeagueOpenAnalyses({
+  // Analyses fill in resume-safe batches: one hop runs at most
+  // OPEN_ANALYSES_BATCH_SIZE seats, appends what it got, and persists.
+  // A killed worker re-runs only the seats that never landed, and the
+  // poll snapshot shows briefs arriving wave by wave.
+  const planRoles = state.plan.roles.length > 0 ? state.plan.roles : fallbackOpenPlan(state.question).roles
+  const priorAnalyses = state.analyses ?? []
+  if (!openAnalysesComplete(planRoles, priorAnalyses)) {
+    const batch = pendingOpenAnalysisRoles(planRoles, priorAnalyses)
+    const results = await runLeagueOpenAnalyses({
       question: state.question,
       plan: state.plan,
       briefing: state.report,
       context: state.context,
+      roles: batch,
     })
-    const anyOk = analyses.some((a) => a.ok)
-    if (!anyOk) {
+    const analyses = [...priorAnalyses, ...results]
+    if (openAnalysesComplete(planRoles, analyses) && !analyses.some((a) => a.ok)) {
       const result = failResult({ ...state, analyses }, 'all analyses failed')
       return { done: true, result, state: { ...state, analyses, result } }
     }
     return { done: false, stage: 'analyses', state: { ...state, analyses } }
   }
 
+  const finishedAnalyses = state.analyses ?? []
   const synthesis = await synthesizeLeagueOpenBrief({
     question: state.question,
     briefing: state.report,
-    analyses: state.analyses,
+    analyses: finishedAnalyses,
   })
   const result: DeepOpenResult = {
     ok: synthesis.ok,
@@ -143,7 +151,7 @@ export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAd
     instrument: state.instrument,
     proposition: state.proposition,
     briefing: state.report,
-    analyses: state.analyses.map((a) => ({
+    analyses: finishedAnalyses.map((a) => ({
       provider: a.provider,
       roleLabel: a.roleLabel,
       content: a.analysis,
@@ -158,7 +166,8 @@ export async function advanceOpenState(state: OpenPipelineState): Promise<OpenAd
 export async function runDeepOpen(ctx: LeagueDeepContext): Promise<DeepOpenResult> {
   return runWithOutputLanguage(ctx.outputLanguage, async () => {
     let state = seedOpenState(ctx)
-    for (let i = 0; i < 6; i += 1) {
+    // plan + report + ceil(8 / batch) analysis hops + synthesis; margin on top.
+    for (let i = 0; i < 10; i += 1) {
       const step = await advanceOpenState(state)
       if (step.done) return step.result
       state = step.state

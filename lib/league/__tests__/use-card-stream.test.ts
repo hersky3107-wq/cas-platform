@@ -169,7 +169,7 @@ describe('use-card-stream: live merge (Layer 4)', () => {
     expect(reconciled).toEqual(card)
   })
 
-  it('ignores a null/blank/flat incoming model — never a no-opinion tile', () => {
+  it('a null incoming model is not a tile — the stream hook records it as a drop instead', () => {
     const start = emptyCard()
     expect(mergeModel(start, liveModel({ direction: null })).models).toHaveLength(0)
     expect(mergeModel(start, liveModel({ direction: 'flat' })).models).toHaveLength(0)

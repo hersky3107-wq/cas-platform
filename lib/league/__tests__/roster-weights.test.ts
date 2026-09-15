@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { LEAGUE_LOCALES } from '../i18n/locales'
 import { getLeagueUiPack } from '../i18n/dictionary'
@@ -50,21 +48,28 @@ describe('roster weights classification', () => {
     expect(gemma?.caller).toMatchObject({ kind: 'platform', platformId: 'friendli:gemma-4-31b-it' })
   })
 
-  it('routes WORLD IBM to OpenRouter Granite text model', () => {
-    const granite = LEAGUE_ROSTER.find((e) => e.model_id === 'granite-4.2-8b')
-    expect(granite).toMatchObject({
-      brand: 'IBM',
-      product_alias: 'Granite',
-      camp: 'us',
+  it('routes both Mistral league seats first-party (core:mistral), not OpenRouter', () => {
+    const medium = LEAGUE_ROSTER.find((e) => e.model_id === 'mistral-medium-3.5')
+    const small = LEAGUE_ROSTER.find((e) => e.model_id === 'mistral-small-3.2-24b')
+    expect(medium).toMatchObject({
+      brand: 'Mistral',
+      camp: 'other',
+      league_tier: 'challenger',
+      weights: 'open',
+      provider_key: 'mistral',
+    })
+    expect(medium?.caller).toMatchObject({ kind: 'core', provider: 'mistral', modelOverride: 'mistral-medium-3.5' })
+    expect(small).toMatchObject({
+      brand: 'Mistral',
+      product_alias: 'Mistral Small',
+      camp: 'other',
       league_tier: 'world',
       weights: 'open',
-      provider_key: 'openrouter',
+      provider_key: 'mistral',
     })
-    expect(granite?.caller).toMatchObject({ kind: 'platform', platformId: 'openrouter:granite-4.2-8b' })
-    expect(LEAGUE_ROSTER.some((e) => e.model_id === 'ernie-4.5-vl' || e.model_id === 'ernie-4.5')).toBe(false)
-    const registry = readFileSync(join(process.cwd(), 'lib/ai/platform-providers.ts'), 'utf8')
-    expect(registry).toContain("id: 'openrouter:granite-4.2-8b'")
-    expect(registry).toContain("model: 'ibm-granite/granite-4.2-8b'")
+    expect(small?.caller).toMatchObject({ kind: 'core', provider: 'mistral', modelOverride: 'mistral-small-2603' })
+    expect(LEAGUE_ROSTER.some((e) => e.model_id === 'granite-4.2-8b' || e.model_id === 'ernie-4.5-vl' || e.model_id === 'ernie-4.5')).toBe(false)
+    expect(LEAGUE_ROSTER.filter((e) => e.brand === 'Mistral').every((e) => e.provider_key === 'mistral')).toBe(true)
   })
 
   it('correlated-note chrome tracks LEAGUE_ROSTER.length in every locale', () => {

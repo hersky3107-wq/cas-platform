@@ -9,12 +9,11 @@ import {
   leagueDeliberationSystemPrompt,
   leagueVoteSystemPrompt,
 } from './deep-prompts'
+import { decideDeliberationStop } from './deep-pipeline'
 import {
-  LEAGUE_CONSENSUS_TARGET,
   LEAGUE_CONSENSUS_UNAVAILABLE,
   LEAGUE_DELIBERATION_MAX_ROUNDS,
   LEAGUE_DELIBERATION_MIN_ROUNDS,
-  LEAGUE_STALL_DELTA,
   type LeagueChairVerdict,
   type LeagueDebateMeetingPlan,
   type LeagueDeepRole,
@@ -162,7 +161,8 @@ async function measureConsensus(turns: LeagueDeliberationTurn[]): Promise<{
   }
 }
 
-function buildDeliberationResult(
+/** Rolls accumulated rounds into the final deliberation payload. */
+export function assembleLeagueDeliberation(
   rounds: LeagueRoundResult[],
   stoppedReason: LeagueDeliberationStopReason,
   error?: string
@@ -181,6 +181,99 @@ function buildDeliberationResult(
   }
 }
 
+/**
+ * ONE deliberation round: every seat speaks once (parallel), then the
+ * consensus is measured. Extracted so the durable pipeline can run one
+ * round per hop (bounded by a single seat timeout) instead of bundling
+ * every round into one 18-call chunk.
+ */
+export async function runLeagueDeliberationRound(params: {
+  question: string
+  roles: LeagueDeepRole[]
+  seedAnalyses: { roleId: string; roleLabel: string; ok: boolean; revised: string | null }[]
+  priorRounds: LeagueRoundResult[]
+}): Promise<LeagueRoundResult> {
+  const roundNumber = params.priorRounds.length + 1
+  const prior = params.priorRounds[params.priorRounds.length - 1]?.turns ?? []
+  const peerContext = prior.length > 0 ? formatTurns(prior) : formatSeed(params.seedAnalyses)
+
+  const settled = await Promise.allSettled(
+    params.roles.map(async (role) => {
+      const ownPrior =
+        prior.find((t) => t.roleId === role.roleId && t.ok && t.position)?.position ??
+        params.seedAnalyses.find((s) => s.roleId === role.roleId && s.ok)?.revised ??
+        ''
+      const called = await callLeagueDeepModel({
+        provider: role.provider,
+        systemPrompt: leagueDeliberationSystemPrompt({
+          roleLabel: role.roleLabel,
+          mandate: role.mandate,
+          question: params.question,
+          roundNumber,
+        }),
+        userPrompt: [
+          '[Proposition]',
+          params.question,
+          '',
+          '[Your prior position]',
+          ownPrior || '(none)',
+          '',
+          '[Peer positions]',
+          peerContext || '(none)',
+          '',
+          'JSON only.',
+        ].join('\n'),
+        maxCompletionTokens: 1200,
+      })
+      const base: LeagueDeliberationTurn = {
+        roleId: role.roleId,
+        roleLabel: role.roleLabel,
+        provider: role.provider,
+        isRedTeam: role.isRedTeam === true,
+        ok: false,
+        position: null,
+        concedes: null,
+        holds: null,
+      }
+      if (called.error || !called.text || called.text.length < 20) {
+        return { ...base, error: called.error ?? 'empty deliberation turn' }
+      }
+      const parsed = parseDeliberationOutput(called.text)
+      if (!parsed.position) return { ...base, error: 'no position' }
+      return { ...base, ok: true, position: parsed.position, concedes: parsed.concedes, holds: parsed.holds }
+    })
+  )
+
+  const turns = settled.map((s, i) => {
+    if (s.status === 'fulfilled') return s.value
+    const role = params.roles[i]!
+    return {
+      roleId: role.roleId,
+      roleLabel: role.roleLabel,
+      provider: role.provider,
+      isRedTeam: role.isRedTeam === true,
+      ok: false,
+      position: null,
+      concedes: null,
+      holds: null,
+      error: s.reason instanceof Error ? s.reason.message : 'turn rejected',
+    }
+  })
+
+  const consensus = await measureConsensus(turns)
+  return {
+    roundNumber,
+    turns,
+    consensusScore: consensus.consensusScore,
+    agreedPoints: consensus.agreedPoints,
+    contestedPoints: consensus.contestedPoints,
+    summary: consensus.summary,
+    ok: turns.some((t) => t.ok),
+    ...(turns.some((t) => t.ok) ? {} : { error: 'no live turns' }),
+  }
+}
+
+/** One-shot loop (script/instrumentation path). Same stop rules as the per-hop pipeline. */
 export async function runLeagueDeliberation(params: {
   question: string
   roles: LeagueDeepRole[]
@@ -194,102 +287,25 @@ export async function runLeagueDeliberation(params: {
   const rounds: LeagueRoundResult[] = []
 
   try {
-    for (let roundNumber = 1; roundNumber <= maxRounds; roundNumber += 1) {
-      const prior = roundNumber > 1 ? rounds[rounds.length - 1]!.turns : []
-      const peerContext = prior.length > 0 ? formatTurns(prior) : formatSeed(params.seedAnalyses)
-
-      const settled = await Promise.allSettled(
-        params.roles.map(async (role) => {
-          const ownPrior =
-            prior.find((t) => t.roleId === role.roleId && t.ok && t.position)?.position ??
-            params.seedAnalyses.find((s) => s.roleId === role.roleId && s.ok)?.revised ??
-            ''
-          const called = await callLeagueDeepModel({
-            provider: role.provider,
-            systemPrompt: leagueDeliberationSystemPrompt({
-              roleLabel: role.roleLabel,
-              mandate: role.mandate,
-              question: params.question,
-              roundNumber,
-            }),
-            userPrompt: [
-              '[Proposition]',
-              params.question,
-              '',
-              '[Your prior position]',
-              ownPrior || '(none)',
-              '',
-              '[Peer positions]',
-              peerContext || '(none)',
-              '',
-              'JSON only.',
-            ].join('\n'),
-            maxCompletionTokens: 1200,
-          })
-          const base: LeagueDeliberationTurn = {
-            roleId: role.roleId,
-            roleLabel: role.roleLabel,
-            provider: role.provider,
-            isRedTeam: role.isRedTeam === true,
-            ok: false,
-            position: null,
-            concedes: null,
-            holds: null,
-          }
-          if (called.error || !called.text || called.text.length < 20) {
-            return { ...base, error: called.error ?? 'empty deliberation turn' }
-          }
-          const parsed = parseDeliberationOutput(called.text)
-          if (!parsed.position) return { ...base, error: 'no position' }
-          return { ...base, ok: true, position: parsed.position, concedes: parsed.concedes, holds: parsed.holds }
-        })
-      )
-
-      const turns = settled.map((s, i) => {
-        if (s.status === 'fulfilled') return s.value
-        const role = params.roles[i]!
-        return {
-          roleId: role.roleId,
-          roleLabel: role.roleLabel,
-          provider: role.provider,
-          isRedTeam: role.isRedTeam === true,
-          ok: false,
-          position: null,
-          concedes: null,
-          holds: null,
-          error: s.reason instanceof Error ? s.reason.message : 'turn rejected',
-        }
+    for (;;) {
+      const round = await runLeagueDeliberationRound({
+        question: params.question,
+        roles: params.roles,
+        seedAnalyses: params.seedAnalyses,
+        priorRounds: rounds,
       })
-
-      const consensus = await measureConsensus(turns)
-      const round: LeagueRoundResult = {
-        roundNumber,
-        turns,
-        consensusScore: consensus.consensusScore,
-        agreedPoints: consensus.agreedPoints,
-        contestedPoints: consensus.contestedPoints,
-        summary: consensus.summary,
-        ok: turns.some((t) => t.ok),
-        ...(turns.some((t) => t.ok) ? {} : { error: 'no live turns' }),
-      }
       rounds.push(round)
-
-      if (!round.ok || round.consensusScore === LEAGUE_CONSENSUS_UNAVAILABLE) {
-        return buildDeliberationResult(rounds, 'error', round.error ?? 'consensus failed')
-      }
-      if (roundNumber >= LEAGUE_DELIBERATION_MIN_ROUNDS) {
-        if (round.consensusScore >= LEAGUE_CONSENSUS_TARGET) {
-          return buildDeliberationResult(rounds, 'target_reached')
-        }
-        const prev = rounds[rounds.length - 2]?.consensusScore ?? round.consensusScore
-        if (round.consensusScore - prev < LEAGUE_STALL_DELTA) {
-          return buildDeliberationResult(rounds, 'stalled')
-        }
+      const decision = decideDeliberationStop(rounds, maxRounds)
+      if (decision.stop) {
+        return assembleLeagueDeliberation(
+          rounds,
+          decision.reason,
+          decision.reason === 'error' ? round.error ?? 'consensus failed' : undefined
+        )
       }
     }
-    return buildDeliberationResult(rounds, 'max_rounds')
   } catch (e: unknown) {
-    return buildDeliberationResult(rounds, 'error', e instanceof Error ? e.message : 'deliberation threw')
+    return assembleLeagueDeliberation(rounds, 'error', e instanceof Error ? e.message : 'deliberation threw')
   }
 }
 

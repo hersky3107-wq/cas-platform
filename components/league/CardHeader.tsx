@@ -82,6 +82,11 @@ export function CardHeader({
           </span>
         </p>
       ) : null}
+      {round.category === 'gold_metal' ? (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-league-fg-muted">
+          {t.header.metalsSpotNote}
+        </p>
+      ) : null}
     </div>
   )
 }

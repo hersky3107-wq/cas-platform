@@ -8,23 +8,11 @@ import { ConsensusHero } from '@/components/league/ConsensusHero'
 import { PredictionAxes } from '@/components/league/PredictionAxes'
 
 /**
- * Shown INSTEAD OF `VerdictPanel` while a round has zero graded predictions
- * (`hitRecord.graded <= 0` — see `VerdictPanel`'s own bail-out, which this
- * component does not touch). A 1-day round only sits here for hours, but a
- * 1-month or 3-month round sits here for WEEKS, so this can never be an
- * empty panel: it names the proposition, the anchor, and exactly when the
- * round grades, so the card stays worth reading before a single model call
- * has been scored.
+ * Shown INSTEAD OF `VerdictPanel` while a round has zero graded predictions.
  *
- * UNRESOLVABLE rounds land here too (they never grade, so graded stays 0).
- * For those, the "grades on {date}" promise is a lie — the panel instead
- * explains ITSELF: the no-result heading, the kind-aware plain-language
- * reason (`unresolvableReasonCopy`), and the no-winner note. That is the fix
- * for the round-65192045 card that said nothing.
- *
- * When `consensus` is supplied, renders the two-line hero (answer + magnitude,
- * then supporting tally + aggregate confidence) — same component as graded
- * cards use, minus the post-grading comparison and hit record.
+ * Hierarchy: pending kicker (plain language) → glanceable hero (the answer)
+ * → proposition/anchor as supporting notes → enthusiast breakdowns behind
+ * a collapsed "자세히 보기" toggle.
  */
 export function PendingVerdictPanel({
   round,
@@ -37,6 +25,8 @@ export function PendingVerdictPanel({
   bookSplit = null,
   weightsSplit = null,
   now = new Date(),
+  seatComplete = true,
+  answered,
 }: {
   round: CardRoundMeta
   t: LeagueUiPack
@@ -49,6 +39,9 @@ export function PendingVerdictPanel({
   bookSplit?: BookSplit | null
   weightsSplit?: WeightsSplit | null
   now?: Date
+  /** Seat-resolution flag. False while generation is still filling seats. */
+  seatComplete?: boolean
+  answered?: number
 }) {
   const anchorDate = round.anchorSessionDate
     ? formatSessionDate(round.anchorSessionDate, locale)
@@ -58,28 +51,36 @@ export function PendingVerdictPanel({
   const resolvesDate = formatRoundOpenedDate(round.resolves_at, locale)
   const daysRemaining = Math.max(0, Math.ceil((Date.parse(round.resolves_at) - now.getTime()) / 86_400_000))
   const unresolvable = round.gradingState === 'unresolvable'
+  const hasHero = Boolean(consensus && consensus.totalModels > 0)
 
   return (
     <div className="mx-2 mb-3 mt-1 rounded-xl border border-league-border bg-league-bg-elevated px-4 py-4 md:mx-3 md:px-5 md:py-5">
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-league-fg-muted">
-        {unresolvable ? t.grading.unresolvable : t.verdict.pendingHeading}
-      </p>
-      <p className="mt-1.5 text-sm font-semibold leading-snug text-league-fg md:text-base">
-        {round.proposition_text}
-      </p>
-      {consensus && consensus.totalModels > 0 ? (
-        <ConsensusHero consensus={consensus} horizon={round.horizon} t={t} labels={labels} />
-      ) : null}
-      {labels && campSplit && tierSplit && bookSplit && weightsSplit ? (
-        <PredictionAxes
-          campSplit={campSplit}
-          tierSplit={tierSplit}
-          bookSplit={bookSplit}
-          weightsSplit={weightsSplit}
+      {unresolvable ? (
+        <p className="text-[11px] font-semibold leading-snug text-league-fg-muted">{t.grading.unresolvable}</p>
+      ) : (
+        <p className="text-[13px] font-semibold leading-snug text-league-fg md:text-sm">
+          {t.verdict.pendingHeadline(resolvesDate)}
+        </p>
+      )}
+      {hasHero && consensus ? (
+        <ConsensusHero
+          consensus={consensus}
+          horizon={round.horizon}
           t={t}
           labels={labels}
+          seatComplete={seatComplete}
+          answered={answered}
         />
       ) : null}
+      <p
+        className={
+          hasHero
+            ? 'mt-3 text-[12px] leading-snug text-league-fg-muted'
+            : 'mt-1.5 text-sm font-semibold leading-snug text-league-fg md:text-base'
+        }
+      >
+        {round.proposition_text}
+      </p>
       {round.anchorPrice !== null && anchorDate ? (
         <p className="mt-2 text-[12px] text-league-fg-muted" dir="ltr">
           {t.verdict.pendingAnchorLine(formatInstrumentPrice(round.instrument, round.anchorPrice), anchorDate)}
@@ -94,9 +95,20 @@ export function PendingVerdictPanel({
         </>
       ) : (
         <p className="mt-1 text-[12px] text-league-fg-muted" dir="ltr">
-          {t.verdict.pendingResolvesLine(resolvesDate)} {'\u00b7'} {t.verdict.pendingDaysRemaining(daysRemaining)}
+          {t.verdict.pendingDaysRemaining(daysRemaining)}
         </p>
       )}
+      {labels && campSplit && tierSplit && bookSplit && weightsSplit ? (
+        <PredictionAxes
+          campSplit={campSplit}
+          tierSplit={tierSplit}
+          bookSplit={bookSplit}
+          weightsSplit={weightsSplit}
+          t={t}
+          labels={labels}
+          inProgress={!seatComplete}
+        />
+      ) : null}
     </div>
   )
 }

@@ -413,6 +413,10 @@ describe('buildConsensusHero — two-line card hero', () => {
     expect(hero.line1).not.toMatch(/lean/i)
     expect(hero.line2).not.toMatch(/\d+\/\d+/)
     expect(hero.line2).not.toMatch(/\d+ of \d+/)
+    expect(hero.countLine).toBe('34 of 40 AIs say Rises · 4 say Falls')
+    expect(hero.conclusionLine).toBe('Consensus: Rises')
+    expect(hero.signedMagnitude).toBe('+2.4%')
+    expect(hero.confidencePct).toBe(54)
   })
 
   it('Korean hero matches the approved copy pattern', () => {
@@ -421,6 +425,8 @@ describe('buildConsensusHero — two-line card hero', () => {
     if (hero.kind !== 'answer') return
     expect(hero.line1).toBe('오른다 · 1일 내 +2.4%')
     expect(hero.line2).toBe('다수가 상승 (34 상승 · 4 하락) · 가중 확신 54%')
+    expect(hero.countLine).toBe('AI 40개 중 34개가 오른다 · 4개가 내린다')
+    expect(hero.conclusionLine).toBe('종합 결론: 오른다')
   })
 
   it('divergent EN prefixes Weighted call and states both sides', () => {

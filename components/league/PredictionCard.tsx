@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { CardData } from '@/lib/league/card-types'
 import { GRADING_POLL_GIVE_UP_MS, GRADING_POLL_MS } from '@/lib/league/card-status'
 import { useCardStream, type CardStreamStartError } from '@/lib/league/use-card-stream'
+import { useRoundRationaleTranslations } from '@/lib/league/use-rationale-translations'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { CardCompliance } from './CardCompliance'
@@ -33,15 +34,16 @@ export type PredictionCardProps = {
  * component only ever deals with "how", never "whether", it renders.
  */
 export function PredictionCard({ initialData, live = false, devSignalsQuery }: PredictionCardProps) {
-  const { data, connection, liveProgress, startError, refetch } = useCardStream({
+  const { data, connection, liveProgress, startError, refetch, droppedModelIds } = useCardStream({
     roundId: initialData.round.round_id,
     initialData,
     live,
   })
+  const streaming = live && (connection === 'connecting' || connection === 'live')
   const { locale, t, dir, setLocale } = useLeagueLocale(devSignalsQuery)
   const [gradingStalled, setGradingStalled] = useState(false)
-  const [translations, setTranslations] = useState<Record<string, string> | null>(null)
-  const [showOriginal, setShowOriginal] = useState(false)
+  const { translations, inFlight: rationaleInFlight, showOriginal, onToggleOriginal } =
+    useRoundRationaleTranslations(data.round.round_id, locale, data.models)
 
   useEffect(() => {
     if (data.round.gradingState !== 'grading') {
@@ -60,35 +62,10 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
     return () => window.clearInterval(id)
   }, [data.round.gradingState, data.round.round_id, refetch])
 
-  useEffect(() => {
-    if (locale === 'en' || locale === 'pt') {
-      setTranslations(null)
-      setShowOriginal(false)
-      return
-    }
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/league/card/rationales?round_id=${encodeURIComponent(data.round.round_id)}&locale=${encodeURIComponent(locale)}`,
-          { credentials: 'include' }
-        )
-        const body = (await res.json()) as { translations?: Record<string, string> }
-        if (cancelled) return
-        setTranslations(body.translations && Object.keys(body.translations).length ? body.translations : null)
-      } catch {
-        if (!cancelled) setTranslations(null)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [data.round.round_id, locale])
-
   return (
     <div dir={dir}>
       <div className="flex items-center justify-between gap-2 pb-1">
-        <LiveStatusPill connection={connection} liveProgress={liveProgress} />
+        <LiveStatusPill connection={connection} />
         <LanguageToggle locale={locale} onChange={setLocale} label={t.languageToggleLabel} />
       </div>
       {startError ? (
@@ -105,8 +82,12 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
             locale={locale}
             gradingStalled={gradingStalled}
             translations={translations}
+            rationaleInFlight={rationaleInFlight}
             showOriginal={showOriginal}
-            onToggleOriginal={() => setShowOriginal((v) => !v)}
+            onToggleOriginal={onToggleOriginal}
+            streaming={streaming}
+            droppedModelIds={droppedModelIds}
+            liveProgress={liveProgress}
           />
         )}
       </CardCompliance>
@@ -136,10 +117,8 @@ function liveStartMessage(error: CardStreamStartError, t: LeagueUiPack): string 
  */
 function LiveStatusPill({
   connection,
-  liveProgress,
 }: {
   connection: 'static' | 'connecting' | 'live' | 'reconnecting' | 'error'
-  liveProgress: { answered: number; rosterSize: number } | null
 }) {
   if (connection === 'static') return null
 
@@ -147,9 +126,7 @@ function LiveStatusPill({
     connection === 'connecting'
       ? 'Connecting…'
       : connection === 'live'
-        ? liveProgress
-          ? `Live · ${liveProgress.answered}/${liveProgress.rosterSize} answered`
-          : 'Live'
+        ? 'Live'
         : connection === 'reconnecting'
           ? 'Reconnecting…'
           : 'Connection lost — reloading from server…'

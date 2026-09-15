@@ -136,15 +136,18 @@ describe('PendingVerdictPanel — magnitude qualifier on the headline (display o
   const t = getLeagueUiPack('en')
   const html = renderToStaticMarkup(createElement(PendingVerdictPanel, { round, t, locale: 'en', consensus, now }))
 
-  it('renders the two-line hero — verb answer + magnitude on line 1, tally + aggregate confidence on line 2', () => {
-    expect(html).toContain('Rises')
+  it('renders the glanceable hero — count line, ratio bar, conclusion, magnitude suffix, confidence', () => {
+    expect(html).toContain('6 of 8 AIs say Rises')
+    expect(html).toContain('1 say Falls')
+    expect(html).toContain('Consensus: Rises')
     expect(html).toContain('+2.4%')
-    expect(html).toContain('Most models called up')
-    expect(html).toContain('6 up')
-    expect(html).toContain('1 down')
-    expect(html).toContain('aggregate confidence 58%')
+    expect(html).toContain('6▲')
+    expect(html).toContain('1▼')
+    expect(html).toContain('Weighted confidence 58%')
+    expect(html).toContain(t.verdict.pendingHeading)
     expect(html).not.toContain('lean')
-    expect(html).not.toContain('6 of 8')
+    expect(html).not.toMatch(/[✓✗]/)
+    expect(html).not.toMatch(/\d+\/\d+/)
   })
 
   it('the magnitude qualifier never carries a checkmark/cross or a hit-style fraction', () => {
@@ -224,6 +227,9 @@ describe('PendingVerdictPanel — pre-grading prediction axes', () => {
 
   it('labels the axes as predictions, not hits, and never uses a slash-over-total', () => {
     expect(html).toContain(t.predictions.heading)
+    expect(html).toContain(t.verdict.detailsToggle)
+    expect(html).toContain('data-testid="verdict-details"')
+    expect(html).not.toMatch(/<details open/)
     expect(html).toContain('US · 14 models: 9 up · 5 down')
     expect(html).toContain('Own reasoning · 15 models: 10 up · 5 down')
     expect(html).toContain('Closed-weights · 12 models: 8 up · 4 down')
@@ -258,7 +264,7 @@ describe('ConsensusHero — weighted-call help only when diverged', () => {
     expect(html).toContain(t.hero.weightedCallHelp)
     expect(html).not.toMatch(/log-?odds|logit|inverse/i)
     expect(html).toContain('Most models said rise')
-    expect(html).toContain('<div class="text-lg font-bold leading-snug text-league-fg md:text-xl">')
+    expect(html).toContain('data-testid="consensus-conclusion"')
     expect(html).toContain('<details')
     expect(html).not.toMatch(/<p class="text-lg font-bold leading-snug text-league-fg md:text-xl">/)
     expect(html).not.toMatch(/<p class="absolute left-0 z-10/)
@@ -284,6 +290,114 @@ describe('ConsensusHero — weighted-call help only when diverged', () => {
     )
     expect(html).not.toContain('Weighted call')
     expect(html).not.toContain(t.hero.weightedCallHelp)
-    expect(html).toContain('Most models called up')
+    expect(html).toContain('Consensus: Rises')
+    expect(html).toContain('Weighted confidence 54%')
+  })
+})
+
+describe('seat-resolution gate — no locked conclusion from a partial set', () => {
+  const now = new Date('2026-08-21T20:00:00.000Z')
+  const seed = buildCatalogRankedRoundInput('AAPL', '1d', now)
+  if (!seed) throw new Error('AAPL is expected to be a catalog instrument')
+
+  const round: CardRoundMeta = {
+    round_id: 'partial-gen-round',
+    instrument: seed.instrument,
+    category: seed.category,
+    horizon: seed.horizon,
+    resolution_rule: seed.resolution_rule,
+    proposition_text: seed.proposition_text,
+    proposition_kind: 'binary_close_higher',
+    subject_label: null,
+    color_bucket: 'green',
+    resolves_at: seed.resolves_at,
+    opened_at: now.toISOString(),
+    resolved_at: null,
+    actual_outcome: null,
+    gradingState: 'not_due',
+    unresolvableReason: null,
+    anchorPrice: 231.45,
+    anchorPriceAt: now.toISOString(),
+    anchorSessionDate: '2026-08-21',
+    resolutionSessionDate: null,
+    resolutionPrice: null,
+    actualMagnitudePct: null,
+    livePrice: null,
+    livePriceAt: null,
+    operatorEvidence: null,
+  }
+
+  const partial: ConsensusSummary = {
+    tally: { up: 2, down: 4, flat: 0, abstain: 0 },
+    majorityDirection: 'down',
+    totalModels: 41,
+    respondedModels: 6,
+    avgProbability: 53,
+    aggregateDirection: 'down',
+    aggregateProbability: 53,
+    aggregateMagnitudePct: -1.2,
+    aggregateMagnitudeN: 4,
+  }
+
+  const ko = getLeagueUiPack('ko')
+  const labels = sideLabelsFor(round, ko)
+
+  it('a 6-of-41 partial never shows 종합 결론 / confidence / magnitude', () => {
+    const html = renderToStaticMarkup(
+      createElement(PendingVerdictPanel, {
+        round,
+        t: ko,
+        locale: 'ko',
+        labels,
+        consensus: partial,
+        now,
+        seatComplete: false,
+        answered: 6,
+        campSplit: {
+          us: { up: 1, down: 3, flat: 0, abstain: 0 },
+          china: { up: 1, down: 1, flat: 0, abstain: 0 },
+          other: emptyTally(),
+        },
+        tierSplit: {
+          premier: { up: 2, down: 4, flat: 0, abstain: 0 },
+          challenger: emptyTally(),
+          world: emptyTally(),
+          scout: emptyTally(),
+        },
+        bookSplit: { closed: { up: 2, down: 4, flat: 0, abstain: 0 }, scout: emptyTally() },
+        weightsSplit: { closed: { up: 2, down: 4, flat: 0, abstain: 0 }, open: emptyTally() },
+      }),
+    )
+    expect(html).toContain('현재 6개 응답 · 오른다 2 · 내린다 4')
+    expect(html).toContain('집계 대기 중 · 응답 수집 후 확정')
+    expect(html).toContain('data-seat-complete="false"')
+    expect(html).not.toContain('종합 결론')
+    expect(html).not.toContain('가중 확신')
+    expect(html).not.toContain('53%')
+    expect(html).not.toContain('-1.2%')
+    expect(html).not.toContain(ko.hero.conclusion(ko.hero.answerVerb.down))
+    expect(html).not.toContain('data-testid="consensus-conclusion"')
+    expect(html).toContain(ko.predictions.inProgressNote)
+    expect(html).toContain('data-in-progress="true"')
+  })
+
+  it('reveals the locked conclusion once seatComplete is true', () => {
+    const html = renderToStaticMarkup(
+      createElement(PendingVerdictPanel, {
+        round,
+        t: ko,
+        locale: 'ko',
+        labels,
+        consensus: partial,
+        now,
+        seatComplete: true,
+        answered: 41,
+      }),
+    )
+    expect(html).toContain('종합 결론: 내린다')
+    expect(html).toContain('가중 확신 53%')
+    expect(html).toContain('data-seat-complete="true"')
+    expect(html).not.toContain('집계 대기 중')
+    expect(html).not.toContain('현재 6개 응답')
   })
 })

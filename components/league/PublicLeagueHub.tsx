@@ -499,20 +499,7 @@ function GenerationBanner({
   const [notice, setNotice] = useState<string | null>(null)
   const generation = card.generation
 
-  if (!generation) return null
-
-  if (generation.status === 'queued' || generation.status === 'running') {
-    const label =
-      generation.status === 'queued'
-        ? t.hub.generationQueued
-        : t.hub.generationProgress(generation.answered, generation.rosterSize)
-    return (
-      <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
-        <p className="text-xs font-medium leading-relaxed text-emerald-900">{label}</p>
-      </div>
-    )
-  }
+  if (!generation || generation.status !== 'failed') return null
 
   async function retry() {
     if (busy) return

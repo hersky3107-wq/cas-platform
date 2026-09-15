@@ -257,7 +257,9 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // 2026-08-16) — 3000 left room for the visible JSON; 4500 adds room for
   // the mandatory visible reasoning block on top of hidden reasoning.
   { model_id: 'nemotron-3-ultra-550b', brand: 'NVIDIA', product_alias: 'Nemotron', camp: 'us', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:nemotron-3-ultra-550b' },     price: { inputPerMTokens: 0.5, outputPerMTokens: 2.2 } }, // NVIDIA Open Model License; nvidia/NVIDIA-Nemotron-3-Ultra-550B
-  { model_id: 'mistral-medium-3.5', brand: 'Mistral', camp: 'other', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' }, price: { inputPerMTokens: 1.5, outputPerMTokens: 7.5 } }, // FLAG resolved: Modified MIT; mistralai/Mistral-Medium-3.5-128B
+  // 2026-09-15: first-party api.mistral.ai GET /v1/models lists this exact id
+  // (also aliased as mistral-medium-3-5 / mistral-medium-latest).
+  { model_id: 'mistral-medium-3.5', brand: 'Mistral', camp: 'other', league_tier: 'challenger', weights: 'open', provider_key: 'mistral', reasoning: false, caller: { kind: 'core', provider: 'mistral', modelOverride: 'mistral-medium-3.5' }, price: { inputPerMTokens: 1.5, outputPerMTokens: 7.5 } }, // FLAG resolved: Modified MIT; mistralai/Mistral-Medium-3.5-128B; first-party 2026-09-15
   // Roster asked for "Command A+"; no A+ exists in the catalog — command-a is
   // the closest wired equivalent (substitution, flagged in the run report).
   { model_id: 'command-a', brand: 'Cohere', product_alias: 'Command', camp: 'other', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:command-a' }, price: { inputPerMTokens: 2.5, outputPerMTokens: 10 } }, // FLAG resolved: CC-BY-NC; CohereLabs/c4ai-command-a-03-2025 (this id, not A+)
@@ -294,9 +296,9 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // maxCompletionTokens to draw down idle Friendli credit; the model still
   // stops when the contract is done (probe finished at 270 completion tokens).
   { model_id: 'gemma-4-31b-it', brand: 'Google', product_alias: 'Gemma', camp: 'us', league_tier: 'world', weights: 'open', provider_key: 'friendli', reasoning: false, maxCompletionTokens: 16000, timeoutMs: 90_000, caller: { kind: 'platform', platformId: 'friendli:gemma-4-31b-it' }, price: { inputPerMTokens: 0.14, outputPerMTokens: 0.4 } }, // Gemma license; google/gemma-4-31B-it
-  // 2026-09-14: WORLD seat replacing uncallable Baidu ERNIE (only VL existed).
-  // OpenRouter list $0.06/$0.25; 131k context.
-  { model_id: 'granite-4.2-8b', brand: 'IBM', product_alias: 'Granite', camp: 'us', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:granite-4.2-8b' }, price: { inputPerMTokens: 0.06, outputPerMTokens: 0.25 } }, // Apache-2.0; ibm-granite/granite-4.2-8b
+  // 2026-09-15: first-party Small. api.mistral.ai has no 3.2 id — live Small
+  // is mistral-small-2603 (also mistral-small-latest). Slot id kept.
+  { model_id: 'mistral-small-3.2-24b', brand: 'Mistral', product_alias: 'Mistral Small', camp: 'other', league_tier: 'world', weights: 'open', provider_key: 'mistral', reasoning: false, caller: { kind: 'core', provider: 'mistral', modelOverride: 'mistral-small-2603' }, price: { inputPerMTokens: 0.075, outputPerMTokens: 0.2 } }, // Apache-2.0; first-party mistral-small-2603 (2026-09-15)
   { model_id: 'seed-1.6', brand: 'ByteDance', product_alias: 'Seed', camp: 'china', league_tier: 'world', weights: 'closed', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:seed-1.6' }, price: { inputPerMTokens: 0.25, outputPerMTokens: 2 } }, // API-only; Seed-OSS is a sibling, not this model
 
   // ── 🟣 SCOUT (6) — all genuinely search-capable, no padding. Graded on
@@ -328,6 +330,7 @@ const RETIRED_ROSTER_DISPLAY: Record<string, Pick<RosterEntry, 'brand' | 'produc
   'k-exaone-2.0': { brand: 'LG', product_alias: 'EXAONE' },
   'ernie-4.5-vl': { brand: 'Baidu', product_alias: 'ERNIE' },
   'ernie-4.5': { brand: 'Baidu', product_alias: 'ERNIE' },
+  'granite-4.2-8b': { brand: 'IBM', product_alias: 'Granite' },
 }
 
 /** Brand line for tiles — e.g. "OpenAI (ChatGPT)" when a product alias exists. */

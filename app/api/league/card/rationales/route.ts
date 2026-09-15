@@ -7,9 +7,10 @@ import { normalizeLeagueLocale } from '@/lib/league/i18n/locales'
 /**
  * GET /api/league/card/rationales?round_id=&locale=
  *
- * View-time rationale translations. Serves the cache when warm; one batched
- * cheap-model call on a miss. Never blocks generation. On failure the client
- * keeps the English originals.
+ * View-time rationale translations. The card client calls this whenever
+ * translatable snippets appear (hub poll / live stream), not only on first
+ * mount. Serves the cache when warm; one batched cheap-model call on a miss.
+ * Never blocks generation. On failure the client keeps the English originals.
  */
 export async function GET(req: Request) {
   const auth = await resolveLeagueViewer(req)
@@ -32,23 +33,34 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from('model_predictions')
-    .select('id, reasoning_snippet')
+    .select('id, model_id, reasoning_snippet')
     .eq('round_id', roundId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const items = (data ?? [])
-    .filter((row) => typeof row.reasoning_snippet === 'string' && row.reasoning_snippet.trim())
-    .map((row) => ({ predictionId: row.id as string, text: (row.reasoning_snippet as string).trim() }))
+  const rows = (data ?? []).filter(
+    (row) => typeof row.reasoning_snippet === 'string' && row.reasoning_snippet.trim()
+  )
+  const items = rows.map((row) => ({
+    predictionId: row.id as string,
+    text: (row.reasoning_snippet as string).trim(),
+  }))
 
   try {
     const result = await translateRoundRationales(items, locale)
+    const byModelId: Record<string, string> = {}
+    for (const row of rows) {
+      const text = result.translations[row.id as string]
+      const modelId = typeof row.model_id === 'string' ? row.model_id : ''
+      if (text && modelId) byModelId[modelId] = text
+    }
     return NextResponse.json({
       translations: result.translations,
+      byModelId,
       locale,
       fromCache: result.fromCache,
       translated: result.translated,
     })
   } catch {
-    return NextResponse.json({ translations: {}, locale })
+    return NextResponse.json({ translations: {}, byModelId: {}, locale })
   }
 }

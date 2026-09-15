@@ -130,6 +130,35 @@ export type LeagueUiPack = {
     allAbstain: (totalModels: number) => string
     split: (respondedModels: number, totalModels: number) => string
     none: string
+    /**
+     * Glanceable head-count line, e.g. "AI 41개 중 30개가 오른다 · 9개가 내린다".
+     * Side WORDS come from answer verbs (or the round's labels), never hit glyphs.
+     * Must never emit a slash-over-total or ✓/✗.
+     */
+    countLine: (
+      total: number,
+      upCount: number,
+      upWord: string,
+      downCount: number,
+      downWord: string,
+    ) => string
+    /** Takeaway, e.g. "종합 결론: 오른다". `verb` is already localized. */
+    conclusion: (verb: string) => string
+    /** Small sub-note. Confidence MUST be aggregateProbability (never avg). */
+    confidenceNote: (confidencePct: number) => string
+    /**
+     * Live tally while seats are still filling. Head counts only — never a
+     * locked verb, confidence, or magnitude. Must not emit slash-over-total or ✓.
+     */
+    liveCountLine: (
+      answered: number,
+      upWord: string,
+      upCount: number,
+      downWord: string,
+      downCount: number,
+    ) => string
+    /** Placeholder in place of the locked conclusion while generation.complete is false. */
+    conclusionPending: string
   }
   /** e.g. "US: 3 up · 1 down · 1 no call" — `label` (e.g. "US"/"Premier") is passed through untranslated (a proper-noun-ish group name). */
   groupTallyLine: (label: string, tally: DirectionTally) => string
@@ -146,6 +175,8 @@ export type LeagueUiPack = {
     /** Attach a count to a side word. Never a slash. */
     axisPart: (n: number, word: string) => string
     noCalls: string
+    /** Enthusiast breakdowns while seats are still filling. */
+    inProgressNote: string
   }
   disclaimer: {
     short: string
@@ -318,12 +349,16 @@ export type LeagueUiPack = {
     windowNoAnchor: string
     /** Connector for the secondary live quote, only shown once an anchor exists. */
     liveSecondary: string
+    /** Gold/silver/metals category note: spot price in USD/oz and local/domestic price differences. */
+    metalsSpotNote: string
   }
   modelList: {
     title: (count: number) => string
     tierTab: string
     campTab: string
     empty: string
+    /** Dropped no-opinion seat while the board is still streaming. */
+    noResponse: string
     correct: string
     missed: string
     /** Direction present, round graded, but this row has no is_correct. */
@@ -341,6 +376,8 @@ export type LeagueUiPack = {
     showOriginal: string
     hideOriginal: string
     originalLabel: string
+    /** Shown on a tile while view-time translation is in flight. Tile still shows the original. */
+    translating: string
   }
   /**
    * Cards-tab board chrome (division headers + final-verdict label).
@@ -388,9 +425,14 @@ export type LeagueUiPack = {
      * and the resolution date legible up front.
      */
     pendingHeading: string
+    /**
+     * Plain-language pending kicker with the comparison date, e.g.
+     * "아직 결과가 나오지 않았어요 · Sep 18에 실제 결과와 대조합니다".
+     */
+    pendingHeadline: (date: string) => string
     /** e.g. "Started at $305.59 (Aug 18)". `price` is pre-formatted by the caller. */
     pendingAnchorLine: (price: string, date: string) => string
-    /** e.g. "Grades on Sep 18". */
+    /** e.g. "We'll compare with the actual result on Sep 18". */
     pendingResolvesLine: (date: string) => string
     /** e.g. "26 days left". 0 when due today (grade-on-read/sweep will pick it up). */
     pendingDaysRemaining: (days: number) => string
@@ -426,6 +468,8 @@ export type LeagueUiPack = {
     streakLine: (label: string, streak: number) => string
     expandSection: string
     collapseSection: string
+    /** Enthusiast breakdowns (camp/tier/book/weights) — collapsed by default. */
+    detailsToggle: string
   }
   /**
    * Magnitude chrome — a DECORATION on the binary direction call, never a
@@ -574,8 +618,12 @@ export type LeagueUiPack = {
     openRoundNote: string
     /** Background job accepted, waiting for a runner slot. */
     generationQueued: string
-    /** Board filling: N of TOTAL models answered. */
+    /** Board filling: N of TOTAL roster seats resolved (tiles + dropped). */
     generationProgress: (answered: number, total: number) => string
+    /** Seat-resolution complete — every active seat rendered or dropped. */
+    generationComplete: (total: number) => string
+    /** Reassuring waiting note while models are generating. */
+    generationWaitingNote: string
     /** Job failed; viewer still holds paid access (retry is free). */
     generationFailed: string
     /** Job failed terminally; credits already went back. */
@@ -613,6 +661,25 @@ export type LeagueUiPack = {
     deepFailed: string
     deepFailedRefunded: string
     deepBusy: string
+    /** Short labels for the process strip + section headings (AX-style full-process view). */
+    deepStepLabels: {
+      plan: string
+      briefing: string
+      analyses: string
+      synthesis: string
+      debate: string
+      vote: string
+      verdict: string
+    }
+    deepMinorityHeading: string
+    deepRoundLabel: (n: number) => string
+    /** 0–100 agreement chip on each debate round and the chair verdict. */
+    deepConsensusLabel: (score: number) => string
+    deepVoteChoice: { approve: string; conditional: string; oppose: string; abstain: string }
+    /** Placeholder row while a seat's individual brief hasn't arrived. */
+    deepSeatPending: string
+    deepConcedesLabel: string
+    deepHoldsLabel: string
     balance: (credits: number) => string
   }
   /** Freeform box under the category chips. */
@@ -701,6 +768,13 @@ const en: LeagueUiPack = {
     allAbstain: (total) => `All ${total} AI models abstained on this round`,
     split: (responded, total) => `${responded} of ${total} AI models are split — no clear answer`,
     none: 'No AI models have reported for this round yet',
+    countLine: (total, upCount, upWord, downCount, downWord) =>
+      `${upCount} of ${total} AIs say ${upWord} \u00b7 ${downCount} say ${downWord}`,
+    conclusion: (verb) => `Consensus: ${verb}`,
+    confidenceNote: (confidencePct) => `Weighted confidence ${confidencePct}%`,
+    liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
+      `So far ${answered} replies \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
+    conclusionPending: 'Still tallying \u00b7 the call locks in when every seat has answered',
   },
   sides: {
     subjectOutcome: {
@@ -742,6 +816,7 @@ const en: LeagueUiPack = {
     axisLine: (label, n, parts) => `${label} \u00b7 ${n} models: ${parts}`,
     axisPart: (n, word) => `${n} ${word}`,
     noCalls: 'no calls yet',
+    inProgressNote: 'In progress \u2014 these splits are not final yet',
   },
   disclaimer: {
     short: 'Info only — not investment advice. You are responsible for your own decisions.',
@@ -874,12 +949,15 @@ const en: LeagueUiPack = {
     windowNoAnchor:
       'The starting price for this prediction was not recorded, so a live quote is not shown \u2014 it would be the wrong number to read these calls against.',
     liveSecondary: 'now',
+    metalsSpotNote:
+      'Based on international spot prices (USD/oz). Local retail prices may differ due to exchange rates, taxes, and dealer margins.',
   },
   modelList: {
     title: (n) => `Models (${n})`,
     tierTab: 'Tier',
     campTab: 'Camp',
     empty: 'No models have reported yet.',
+    noResponse: 'No reply',
     correct: 'Correct',
     missed: 'Missed',
     ungraded: 'Not scored',
@@ -891,6 +969,7 @@ const en: LeagueUiPack = {
     showOriginal: 'Show English original',
     hideOriginal: 'Hide English original',
     originalLabel: 'Original',
+    translating: 'Translating…',
   },
   bracket: {
     finalVerdict: 'Final verdict',
@@ -912,10 +991,11 @@ const en: LeagueUiPack = {
   verdict: {
     title: 'Final verdict',
     heroHits: (hits, graded) => `This round ${hitCount(hits, graded)} hit`,
-    pendingHeading: 'Round in progress \u2014 not graded yet',
+    pendingHeading: 'This is still a prediction',
+    pendingHeadline: (date) => `This is still a prediction \u00b7 we\u2019ll compare it with the actual result on ${date}`,
     pendingAnchorLine: (price, date) => `Started at ${price} (${date})`,
-    pendingResolvesLine: (date) => `Grades on ${date}`,
-    pendingDaysRemaining: (days) => (days <= 0 ? 'Grading due' : days === 1 ? '1 day left' : `${days} days left`),
+    pendingResolvesLine: (date) => `We\u2019ll compare it with the actual result on ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'Due today' : days === 1 ? '1 day left' : `${days} days left`),
     distributionHeading: 'Prediction mix (direction)',
     distributionHeadingSides: 'Prediction mix (answer)',
     distributionUp: 'Up',
@@ -949,6 +1029,7 @@ const en: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak}`,
     expandSection: 'Show',
     collapseSection: 'Hide',
+    detailsToggle: 'See details',
   },
   magnitude: {
     headlineQualifier: (horizonLabel, signedPct) => `within ${horizonLabel} ${signedPct}`,
@@ -1041,6 +1122,8 @@ const en: LeagueUiPack = {
     openRoundNote: 'One payment per round. Once opened, you can come back to it any time \u2014 including after grading \u2014 at no extra charge.',
     generationQueued: 'In line \u2014 your round starts shortly. You can close this screen; it keeps running.',
     generationProgress: (answered, total) => `Models answering \u00b7 ${answered}/${total}`,
+    generationComplete: (total) => `${total} predictions ready`,
+    generationWaitingNote: 'AIs are formulating predictions \u00b7 Please wait a moment',
     generationFailed: 'This run stopped before finishing. Your payment still covers this round \u2014 retry is free.',
     generationFailedRefunded: 'Generation failed, so your credits were refunded. You can try again.',
     retryGeneration: 'Retry',
@@ -1056,9 +1139,9 @@ const en: LeagueUiPack = {
     deepUnscoredNote:
       'Unscored commentary \u2014 not a league prediction. Does not enter the leaderboard or track record.',
     deepOpenHint:
-      'Several models each write a brief from this round\u2019s packet, then one synthesis. Unscored commentary \u2014 not a league prediction, not on the leaderboard.',
+      'The AIs dig deeper into the reasoning behind this call \u2014 each writes its own detailed brief, then everything is merged into one report. For when you want to know why. Unscored commentary.',
     deepDebateHint:
-      'Models argue both sides, vote, and a chair writes a verdict including the minority view. Unscored \u2014 not a league prediction.',
+      'The AIs split into pro and con, debate, then vote \u2014 and a chair writes the conclusion plus the minority view. For when you want both sides of the argument. Unscored commentary.',
     deepOpenTitle: 'Open analysis',
     deepDebateTitle: 'Pro/con debate',
     deepWaitNote:
@@ -1074,7 +1157,8 @@ const en: LeagueUiPack = {
           analyses: 'Collecting each model’s brief',
           synthesis: 'Combining the briefs into one',
           deliberate: 'The models are debating',
-          verdict: 'Vote and chair’s verdict',
+          vote: 'Casting the vote',
+          verdict: 'Writing the chair’s verdict',
           done: 'Done',
           error: 'Stopped',
           seed_failed: 'Stopped',
@@ -1083,6 +1167,22 @@ const en: LeagueUiPack = {
     deepFailed: 'This analysis stopped before finishing. Your payment still covers it — retry is free.',
     deepFailedRefunded: 'Analysis failed, so your credits were refunded. You can try again.',
     deepBusy: 'Heavy traffic on deep analysis right now. Please try again in a minute.',
+    deepStepLabels: {
+      plan: 'Plan',
+      briefing: 'Briefing',
+      analyses: 'Individual analyses',
+      synthesis: 'Final report',
+      debate: 'Debate',
+      vote: 'Vote',
+      verdict: 'Chair\u2019s verdict',
+    },
+    deepMinorityHeading: 'Minority view',
+    deepRoundLabel: (n) => `Round ${n}`,
+    deepConsensusLabel: (score) => `Consensus ${score}/100`,
+    deepVoteChoice: { approve: 'For', conditional: 'Conditional for', oppose: 'Against', abstain: 'Abstain' },
+    deepSeatPending: 'Waiting for this model\u2019s brief\u2026',
+    deepConcedesLabel: 'Concedes',
+    deepHoldsLabel: 'Holds',
   },
   gateway: {
     placeholder: {
@@ -1163,6 +1263,13 @@ const ko: LeagueUiPack = {
     allAbstain: (total) => `AI 모델 ${total}개 전원이 이번 라운드 의견을 유보했습니다`,
     split: (responded, total) => `AI 모델 ${total}개 중 ${responded}개가 응답했지만 방향이 갈립니다`,
     none: '아직 이번 라운드에 응답한 AI 모델이 없습니다',
+    countLine: (total, upCount, upWord, downCount, downWord) =>
+      `AI ${total}개 중 ${upCount}개가 ${upWord} \u00b7 ${downCount}개가 ${downWord}`,
+    conclusion: (verb) => `종합 결론: ${verb}`,
+    confidenceNote: (confidencePct) => `가중 확신 ${confidencePct}%`,
+    liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
+      `현재 ${answered}개 응답 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
+    conclusionPending: '집계 대기 중 \u00b7 응답 수집 후 확정',
   },
   sides: {
     subjectOutcome: {
@@ -1204,6 +1311,7 @@ const ko: LeagueUiPack = {
     axisLine: (label, n, parts) => `${label} \u00b7 ${n}개: ${parts}`,
     axisPart: (n, word) => `${word} ${n}`,
     noCalls: '아직 응답 없음',
+    inProgressNote: '집계 중 — 아직 확정되지 않았습니다',
   },
   disclaimer: {
     short: '정보 제공 목적일 뿐 투자 조언이 아닙니다. 모든 결정의 책임은 본인에게 있습니다.',
@@ -1334,12 +1442,15 @@ const ko: LeagueUiPack = {
     windowNoAnchor:
       '이 예측의 시작 가격이 기록되지 않아 실시간 시세는 표시하지 않습니다. 그 숫자를 기준으로 읽으면 잘못된 해석이 됩니다.',
     liveSecondary: '현재',
+    metalsSpotNote:
+      '국제 현물 시세(USD/온스) 기준입니다. 국내 금값은 환율·부가세·유통 마진으로 이 시세와 다를 수 있습니다.',
   },
   modelList: {
     title: (n) => `모델 (${n}개)`,
     tierTab: '티어',
     campTab: '진영',
     empty: '아직 응답한 모델이 없습니다.',
+    noResponse: '미응답',
     correct: '적중',
     missed: '실패',
     ungraded: '미채점',
@@ -1351,6 +1462,7 @@ const ko: LeagueUiPack = {
     showOriginal: '영어 원문 보기',
     hideOriginal: '영어 원문 숨기기',
     originalLabel: '원문',
+    translating: '번역 중…',
   },
   bracket: {
     finalVerdict: '최종 판정',
@@ -1371,10 +1483,11 @@ const ko: LeagueUiPack = {
   verdict: {
     title: '최종 판정',
     heroHits: (hits, graded) => `이번 라운드 ${hitCount(hits, graded)} 적중`,
-    pendingHeading: '라운드 진행 중 \u2014 아직 채점되지 않았습니다',
+    pendingHeading: '아직 결과가 나오지 않았어요',
+    pendingHeadline: (date) => `아직 결과가 나오지 않았어요 \u00b7 ${date}에 실제 결과와 대조합니다`,
     pendingAnchorLine: (price, date) => `${price}부터 시작 (${date} 기준)`,
-    pendingResolvesLine: (date) => `${date}에 채점됩니다`,
-    pendingDaysRemaining: (days) => (days <= 0 ? '채점 예정' : `${days}일 남음`),
+    pendingResolvesLine: (date) => `${date}에 실제 결과와 대조합니다`,
+    pendingDaysRemaining: (days) => (days <= 0 ? '오늘 대조해요' : `${days}일 남음`),
     distributionHeading: '예측 분포 (방향)',
     distributionHeadingSides: '예측 분포 (답변)',
     distributionUp: '상승',
@@ -1408,6 +1521,7 @@ const ko: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak}연승`,
     expandSection: '펼치기',
     collapseSection: '접기',
+    detailsToggle: '자세히 보기',
   },
   magnitude: {
     headlineQualifier: (horizonLabel, signedPct) => `${horizonLabel} 내 ${signedPct}`,
@@ -1500,6 +1614,8 @@ const ko: LeagueUiPack = {
     openRoundNote: '라운드당 1회 결제입니다. 한 번 열면 채점 이후를 포함해 언제든 추가 비용 없이 다시 볼 수 있습니다.',
     generationQueued: '대기열에 등록되었습니다 — 곧 시작됩니다. 화면을 닫아도 계속 진행됩니다.',
     generationProgress: (answered, total) => `모델 응답 수집 중 · ${answered}/${total}`,
+    generationComplete: (total) => `${total}개 예측 완료`,
+    generationWaitingNote: 'AI들이 예측 중입니다 · 잠시만 기다려 주세요',
     generationFailed: '실행이 중간에 멈췄습니다. 결제는 그대로 유효하므로 무료로 다시 시도할 수 있습니다.',
     generationFailedRefunded: '생성에 실패해 크레딧을 환불해 드렸습니다. 다시 시도할 수 있습니다.',
     retryGeneration: '다시 시도',
@@ -1514,8 +1630,9 @@ const ko: LeagueUiPack = {
     deepRunning: '심층 분석 진행 중\u2026',
     deepUnscoredNote: '비채점 논평입니다. 리그 예측이 아니며 리더보드와 전적에 반영되지 않습니다.',
     deepOpenHint:
-      '같은 라운드 자료를 여러 모델이 각자 브리핑한 뒤 하나로 합칩니다. 비채점 논평이며 리그 예측·리더보드가 아닙니다.',
-    deepDebateHint: '찬반으로 토론하고 투표한 뒤, 의장이 소수 의견까지 담아 판정합니다. 비채점이며 리그 예측이 아닙니다.',
+      'AI들이 이 예측의 근거를 더 깊이 파고들어 각자 상세 분석을 쓰고, 하나의 종합 리포트로 정리합니다. 왜 이런 결론인지 궁금할 때. 비채점 참고 자료입니다.',
+    deepDebateHint:
+      'AI들을 찬성·반대로 나눠 토론시키고, 투표한 뒤 의장이 결론과 소수 의견까지 정리합니다. 양쪽 논리를 모두 보고 싶을 때. 비채점 참고 자료입니다.',
     deepOpenTitle: '개방형 분석',
     deepDebateTitle: '찬반 토론',
     deepWaitNote:
@@ -1531,7 +1648,8 @@ const ko: LeagueUiPack = {
           analyses: '모델별 브리핑을 모으는 중입니다',
           synthesis: '여덟 편의 브리핑을 하나로 합치는 중입니다',
           deliberate: '찬반 토론이 진행 중입니다',
-          verdict: '투표와 의장 판정을 내는 중입니다',
+          vote: '투표를 진행하는 중입니다',
+          verdict: '의장 판정을 쓰는 중입니다',
           done: '완료',
           error: '중단됨',
           seed_failed: '중단됨',
@@ -1540,6 +1658,22 @@ const ko: LeagueUiPack = {
     deepFailed: '분석이 중간에 멈췄습니다. 결제는 그대로 유효하므로 무료로 다시 시도할 수 있습니다.',
     deepFailedRefunded: '분석에 실패해 크레딧을 환불해 드렸습니다. 다시 시도할 수 있습니다.',
     deepBusy: '지금 심층 분석 요청이 많습니다. 잠시 후 다시 시도해 주세요.',
+    deepStepLabels: {
+      plan: '계획',
+      briefing: '브리핑',
+      analyses: '개별 분석',
+      synthesis: '종합 리포트',
+      debate: '토론',
+      vote: '투표',
+      verdict: '의장 판정',
+    },
+    deepMinorityHeading: '소수 의견',
+    deepRoundLabel: (n) => `라운드 ${n}`,
+    deepConsensusLabel: (score) => `합의 점수 ${score}/100`,
+    deepVoteChoice: { approve: '찬성', conditional: '조건부 찬성', oppose: '반대', abstain: '기권' },
+    deepSeatPending: '이 모델의 분석을 기다리는 중\u2026',
+    deepConcedesLabel: '수용',
+    deepHoldsLabel: '견지',
   },
   gateway: {
     placeholder: {
@@ -1619,6 +1753,13 @@ const ja: LeagueUiPack = {
     allAbstain: (total) => `AIモデル${total}体全てが今回の判断を保留しました`,
     split: (responded, total) => `AIモデル${total}体中${responded}体が回答しましたが意見が分かれています`,
     none: 'このラウンドにはまだ回答したAIモデルがありません',
+    countLine: (total, upCount, upWord, downCount, downWord) =>
+      `AI ${total}件中 ${upCount}件が${upWord} \u00b7 ${downCount}件が${downWord}`,
+    conclusion: (verb) => `総合結論: ${verb}`,
+    confidenceNote: (confidencePct) => `加重確信度 ${confidencePct}%`,
+    liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
+      `現在 ${answered}件が応答 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
+    conclusionPending: '集計待ち \u00b7 全席の応答後に確定します',
   },
   sides: {
     subjectOutcome: {
@@ -1660,6 +1801,7 @@ const ja: LeagueUiPack = {
     axisLine: (label, n, parts) => `${label} \u00b7 ${n}モデル: ${parts}`,
     axisPart: (n, word) => `${word}${n}`,
     noCalls: 'まだ回答なし',
+    inProgressNote: '集計中 — まだ確定していません',
   },
   disclaimer: {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
@@ -1790,12 +1932,15 @@ const ja: LeagueUiPack = {
     windowNoAnchor:
       'この予測の開始価格が記録されていないため、リアルタイム相場は表示しません。その数字を基準に読むと誤ります。',
     liveSecondary: '現在',
+    metalsSpotNote:
+      '国際現物相場（USD/オンス）基準です。国内の店頭価格は為替レート・消費税・流通マージン等により異なる場合があります。',
   },
   modelList: {
     title: (n) => `モデル（${n}）`,
     tierTab: 'ティア',
     campTab: '陣営',
     empty: 'まだ回答したモデルがありません。',
+    noResponse: '未応答',
     correct: '的中',
     missed: '外れ',
     ungraded: '未採点',
@@ -1807,6 +1952,7 @@ const ja: LeagueUiPack = {
     showOriginal: '英語の原文を表示',
     hideOriginal: '英語の原文を隠す',
     originalLabel: '原文',
+    translating: '翻訳中…',
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -1827,10 +1973,11 @@ const ja: LeagueUiPack = {
   verdict: {
     title: '最終判定',
     heroHits: (hits, graded) => `今回のラウンド ${hitCount(hits, graded)} 的中`,
-    pendingHeading: 'ラウンド進行中 \u2014 まだ採点されていません',
+    pendingHeading: 'まだ結果は出ていません',
+    pendingHeadline: (date) => `まだ結果は出ていません \u00b7 ${date}に実際の結果と照合します`,
     pendingAnchorLine: (price, date) => `${price}からスタート（${date}時点）`,
-    pendingResolvesLine: (date) => `${date}に採点されます`,
-    pendingDaysRemaining: (days) => (days <= 0 ? '採点予定' : `残り${days}日`),
+    pendingResolvesLine: (date) => `${date}に実際の結果と照合します`,
+    pendingDaysRemaining: (days) => (days <= 0 ? '本日照合' : `残り${days}日`),
     distributionHeading: '予測の分布（方向）',
     distributionHeadingSides: '予測の分布（回答）',
     distributionUp: '上昇',
@@ -1864,6 +2011,7 @@ const ja: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak}連勝`,
     expandSection: '開く',
     collapseSection: '閉じる',
+    detailsToggle: '詳しく見る',
   },
   magnitude: {
     headlineQualifier: (horizonLabel, signedPct) => `${horizonLabel}以内 ${signedPct}`,
@@ -1954,6 +2102,8 @@ const ja: LeagueUiPack = {
     openRoundNote: 'ラウンドごとに1回のお支払いです。一度開けば、採点後も含めていつでも追加料金なしで再閲覧できます。',
     generationQueued: '順番待ちに登録されました — まもなく開始します。画面を閉じても処理は続きます。',
     generationProgress: (answered, total) => `モデルの回答を収集中・${answered}/${total}`,
+    generationComplete: (total) => `${total}件の予測が完了`,
+    generationWaitingNote: 'AIが予測を生成中です・少々お待ちください',
     generationFailed: '実行が途中で停止しました。お支払いは有効なので、無料で再試行できます。',
     generationFailedRefunded: '生成に失敗したため、クレジットは返金済みです。もう一度お試しいただけます。',
     retryGeneration: '再試行',
@@ -1968,8 +2118,9 @@ const ja: LeagueUiPack = {
     deepRunning: '深層分析を実行中\u2026',
     deepUnscoredNote: '採点対象外の論評です。リーグ予測ではなく、リーダーボードや戦績には入りません。',
     deepOpenHint:
-      '同じラウンドの資料を複数のモデルがそれぞれブリーフし、1つにまとめます。採点対象外の論評であり、リーグ予測でもリーダーボードでもありません。',
-    deepDebateHint: '賛否で議論し投票したあと、議長が少数意見まで含めて判定します。採点対象外であり、リーグ予測ではありません。',
+      'AIがこの予測の根拠を深掘りし、それぞれ詳細な分析を書いたうえで、1本の統合レポートにまとめます。「なぜこの結論なのか」を知りたいときに。採点対象外の参考資料です。',
+    deepDebateHint:
+      'AIを賛成・反対に分けて討論させ、投票のあと議長が結論と少数意見までまとめます。両方の論理を見たいときに。採点対象外の参考資料です。',
     deepOpenTitle: '自由分析',
     deepDebateTitle: '賛否討論',
     deepWaitNote:
@@ -1985,7 +2136,8 @@ const ja: LeagueUiPack = {
           analyses: '各モデルのブリーフィングを集めています',
           synthesis: '8本のブリーフィングを一つにまとめています',
           deliberate: '賛否の討論中です',
-          verdict: '投票と議長判定を出しています',
+          vote: '投票を行っています',
+          verdict: '議長判定をまとめています',
           done: '完了',
           error: '停止',
           seed_failed: '停止',
@@ -1994,6 +2146,22 @@ const ja: LeagueUiPack = {
     deepFailed: '分析が途中で止まりました。お支払いは有効なので、無料で再試行できます。',
     deepFailedRefunded: '分析に失敗したため、クレジットを返金しました。もう一度お試しいただけます。',
     deepBusy: 'ただいま深層分析の混雑です。しばらくしてからお試しください。',
+    deepStepLabels: {
+      plan: '計画',
+      briefing: 'ブリーフィング',
+      analyses: '個別分析',
+      synthesis: '統合レポート',
+      debate: '討論',
+      vote: '投票',
+      verdict: '議長判定',
+    },
+    deepMinorityHeading: '少数意見',
+    deepRoundLabel: (n) => `ラウンド${n}`,
+    deepConsensusLabel: (score) => `合意スコア ${score}/100`,
+    deepVoteChoice: { approve: '賛成', conditional: '条件付き賛成', oppose: '反対', abstain: '棄権' },
+    deepSeatPending: 'このモデルの分析を待っています\u2026',
+    deepConcedesLabel: '譲歩',
+    deepHoldsLabel: '堅持',
   },
   gateway: {
     placeholder: {
@@ -2072,6 +2240,13 @@ const zhTW: LeagueUiPack = {
     allAbstain: (total) => `全部 ${total} 個 AI 模型本輪均未表態`,
     split: (responded, total) => `${total} 個 AI 模型中有 ${responded} 個給出意見，但看法分歧`,
     none: '本輪目前尚無 AI 模型回應',
+    countLine: (total, upCount, upWord, downCount, downWord) =>
+      `${total} 個 AI 中有 ${upCount} 個認為${upWord} \u00b7 ${downCount} 個認為${downWord}`,
+    conclusion: (verb) => `綜合結論：${verb}`,
+    confidenceNote: (confidencePct) => `加權信心 ${confidencePct}%`,
+    liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
+      `目前 ${answered} 則回覆 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
+    conclusionPending: '統計中 \u00b7 收齊回覆後才會確定',
   },
   sides: {
     subjectOutcome: {
@@ -2113,6 +2288,7 @@ const zhTW: LeagueUiPack = {
     axisLine: (label, n, parts) => `${label} \u00b7 ${n} 個模型：${parts}`,
     axisPart: (n, word) => `${word} ${n}`,
     noCalls: '尚無回應',
+    inProgressNote: '統計中 — 尚未確定',
   },
   disclaimer: {
     short: '僅供參考，非投資建議。所有決定的責任由您自行承擔。',
@@ -2241,12 +2417,14 @@ const zhTW: LeagueUiPack = {
     windowNoSessionDates: '已有起始價格，但沒有交易日紀錄，因此不從時間戳推測日期。',
     windowNoAnchor: '本預測未記錄起始價格，因此不顯示即時報價——用那個數字解讀預測會誤導。',
     liveSecondary: '目前',
+    metalsSpotNote: '以國際現貨行情（USD/盎司）為準。各地零售金價可能因匯率、稅賦及經銷利差而有所差異。',
   },
   modelList: {
     title: (n) => `模型（${n}）`,
     tierTab: '級別',
     campTab: '陣營',
     empty: '目前尚無模型回應。',
+    noResponse: '未回應',
     correct: '命中',
     missed: '未命中',
     ungraded: '未評分',
@@ -2258,6 +2436,7 @@ const zhTW: LeagueUiPack = {
     showOriginal: '顯示英文原文',
     hideOriginal: '隱藏英文原文',
     originalLabel: '原文',
+    translating: '翻譯中…',
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -2278,10 +2457,11 @@ const zhTW: LeagueUiPack = {
   verdict: {
     title: '最終判定',
     heroHits: (hits, graded) => `本輪 ${hitCount(hits, graded)} 命中`,
-    pendingHeading: '輪次進行中 \u2014 尚未評分',
+    pendingHeading: '結果尚未出爐',
+    pendingHeadline: (date) => `結果尚未出爐 \u00b7 將於 ${date} 與實際結果對照`,
     pendingAnchorLine: (price, date) => `自 ${price} 起算（${date}）`,
-    pendingResolvesLine: (date) => `將於 ${date} 評分`,
-    pendingDaysRemaining: (days) => (days <= 0 ? '即將評分' : `尚餘 ${days} 天`),
+    pendingResolvesLine: (date) => `將於 ${date} 與實際結果對照`,
+    pendingDaysRemaining: (days) => (days <= 0 ? '今天對照' : `尚餘 ${days} 天`),
     distributionHeading: '預測分布（方向）',
     distributionHeadingSides: '預測分布（答案）',
     distributionUp: '上漲',
@@ -2315,6 +2495,7 @@ const zhTW: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak} 連勝`,
     expandSection: '展開',
     collapseSection: '收合',
+    detailsToggle: '查看詳情',
   },
   magnitude: {
     headlineQualifier: (horizonLabel, signedPct) => `${horizonLabel}內 ${signedPct}`,
@@ -2405,6 +2586,8 @@ const zhTW: LeagueUiPack = {
     openRoundNote: '每回合僅收費一次。開啟後可隨時重看（包含評分後），不再另外收費。',
     generationQueued: '已進入佇列 — 即將開始。關閉畫面也會繼續進行。',
     generationProgress: (answered, total) => `正在收集模型回覆・${answered}/${total}`,
+    generationComplete: (total) => `${total} 則預測完成`,
+    generationWaitingNote: 'AI 正在進行預測・請稍候',
     generationFailed: '執行中途停止。您的付款仍然有效，可免費重試。',
     generationFailedRefunded: '生成失敗，點數已退還。您可以再試一次。',
     retryGeneration: '重試',
@@ -2419,8 +2602,9 @@ const zhTW: LeagueUiPack = {
     deepRunning: '深度分析進行中\u2026',
     deepUnscoredNote: '未計分評論——不是聯盟預測，不會進入排行榜或戰績。',
     deepOpenHint:
-      '多個模型各自根據本回合資料撰寫簡報，再合成一份。未計分評論——不是聯盟預測，也不上排行榜。',
-    deepDebateHint: '正反辯論並投票後，主席寫出含少數意見的裁決。未計分——不是聯盟預測。',
+      '多個 AI 深入挖掘這項預測的依據，各自撰寫詳細分析，再彙整成一份綜合報告。想知道「為什麼是這個結論」時適用。非計分參考資料。',
+    deepDebateHint:
+      '把 AI 分成贊成與反對兩方辯論並投票，最後由主席整理結論與少數意見。想同時看到兩方論點時適用。非計分參考資料。',
     deepOpenTitle: '開放分析',
     deepDebateTitle: '正反辯論',
     deepWaitNote:
@@ -2436,7 +2620,8 @@ const zhTW: LeagueUiPack = {
           analyses: '正在收集各模型簡報',
           synthesis: '正在把八份簡報合成一份',
           deliberate: '正反辯論進行中',
-          verdict: '正在投票並由主席裁決',
+          vote: '正在進行投票',
+          verdict: '正在撰寫主席裁定',
           done: '完成',
           error: '已中止',
           seed_failed: '已中止',
@@ -2445,6 +2630,22 @@ const zhTW: LeagueUiPack = {
     deepFailed: '分析中途停止。付款仍然有效，可免費重試。',
     deepFailedRefunded: '分析失敗，點數已退還。可以再試一次。',
     deepBusy: '目前深度分析較多，請稍後再試。',
+    deepStepLabels: {
+      plan: '計畫',
+      briefing: '簡報',
+      analyses: '個別分析',
+      synthesis: '綜合報告',
+      debate: '辯論',
+      vote: '投票',
+      verdict: '主席裁定',
+    },
+    deepMinorityHeading: '少數意見',
+    deepRoundLabel: (n) => `第 ${n} 回合`,
+    deepConsensusLabel: (score) => `共識分數 ${score}/100`,
+    deepVoteChoice: { approve: '贊成', conditional: '有條件贊成', oppose: '反對', abstain: '棄權' },
+    deepSeatPending: '正在等待這個模型的分析\u2026',
+    deepConcedesLabel: '讓步',
+    deepHoldsLabel: '堅持',
   },
   gateway: {
     placeholder: {
@@ -2524,6 +2725,13 @@ const fr: LeagueUiPack = {
     allAbstain: (total) => `Les ${total} modèles IA se sont tous abstenus pour ce tour`,
     split: (responded, total) => `${responded} modèles IA sur ${total} ont répondu, mais les avis sont partagés`,
     none: 'Aucun modèle IA n\u2019a encore répondu pour ce tour',
+    countLine: (total, upCount, upWord, downCount, downWord) =>
+      `${upCount} IA sur ${total} disent ${upWord} \u00b7 ${downCount} disent ${downWord}`,
+    conclusion: (verb) => `Conclusion : ${verb}`,
+    confidenceNote: (confidencePct) => `Confiance pondérée ${confidencePct} %`,
+    liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
+      `${answered} réponses pour l\u2019instant \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
+    conclusionPending: 'Décompte en cours \u00b7 l\u2019appel se fige quand tous les sièges ont répondu',
   },
   sides: {
     subjectOutcome: {
@@ -2565,6 +2773,7 @@ const fr: LeagueUiPack = {
     axisLine: (label, n, parts) => `${label} \u00b7 ${n} mod\u00e8les : ${parts}`,
     axisPart: (n, word) => `${n} ${word}`,
     noCalls: 'aucune r\u00e9ponse pour le moment',
+    inProgressNote: 'En cours \u2014 ces répartitions ne sont pas encore définitives',
   },
   disclaimer: {
     short: 'Information uniquement, ceci n\u2019est pas un conseil en investissement. Vous êtes seul responsable de vos décisions.',
@@ -2698,12 +2907,15 @@ const fr: LeagueUiPack = {
     windowNoAnchor:
       'Le cours de départ de cette prédiction n\u2019a pas été enregistré, le cours en direct n\u2019est donc pas affiché \u2014 ce serait le mauvais chiffre pour lire ces appels.',
     liveSecondary: 'actuel',
+    metalsSpotNote:
+      'Basé sur les cours internationaux au comptant (USD/once). Les prix de détail locaux peuvent différer en raison des taux de change, taxes et marges de distribution.',
   },
   modelList: {
     title: (n) => `Modèles (${n})`,
     tierTab: 'Niveau',
     campTab: 'Camp',
     empty: 'Aucun modèle n\u2019a encore répondu.',
+    noResponse: 'Sans réponse',
     correct: 'Correct',
     missed: 'Manqué',
     ungraded: 'Non noté',
@@ -2715,6 +2927,7 @@ const fr: LeagueUiPack = {
     showOriginal: 'Afficher l\u2019original anglais',
     hideOriginal: 'Masquer l\u2019original anglais',
     originalLabel: 'Original',
+    translating: 'Traduction…',
   },
   bracket: {
     finalVerdict: 'Verdict final',
@@ -2736,10 +2949,11 @@ const fr: LeagueUiPack = {
   verdict: {
     title: 'Verdict final',
     heroHits: (hits, graded) => `Ce tour ${hitCount(hits, graded)} justes`,
-    pendingHeading: 'Tour en cours \u2014 pas encore noté',
+    pendingHeading: 'Ce n\u2019est encore qu\u2019une prédiction',
+    pendingHeadline: (date) => `Ce n\u2019est encore qu\u2019une prédiction \u00b7 nous la comparerons au résultat réel le ${date}`,
     pendingAnchorLine: (price, date) => `Départ à ${price} (${date})`,
-    pendingResolvesLine: (date) => `Noté le ${date}`,
-    pendingDaysRemaining: (days) => (days <= 0 ? 'Notation imminente' : days === 1 ? '1 jour restant' : `${days} jours restants`),
+    pendingResolvesLine: (date) => `Nous comparerons au résultat réel le ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'Échéance aujourd\u2019hui' : days === 1 ? '1 jour restant' : `${days} jours restants`),
     distributionHeading: 'Répartition des prédictions (direction)',
     distributionHeadingSides: 'Répartition des prédictions (réponse)',
     distributionUp: 'Hausse',
@@ -2773,6 +2987,7 @@ const fr: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak} d’affilée`,
     expandSection: 'Afficher',
     collapseSection: 'Masquer',
+    detailsToggle: 'Voir les détails',
   },
   magnitude: {
     headlineQualifier: (horizonLabel, signedPct) => `sous ${horizonLabel} ${signedPct}`,
@@ -2865,6 +3080,8 @@ const fr: LeagueUiPack = {
     openRoundNote: 'Paiement unique par manche. Une fois ouverte, vous pouvez y revenir à tout moment — même après notation — sans frais supplémentaires.',
     generationQueued: 'En file d\u2019attente — votre manche démarre sous peu. Vous pouvez fermer cet écran, le traitement continue.',
     generationProgress: (answered, total) => `Réponses des modèles \u00b7 ${answered}/${total}`,
+    generationComplete: (total) => `${total} prédictions prêtes`,
+    generationWaitingNote: 'Les IA génèrent leurs prédictions \u00b7 Veuillez patienter',
     generationFailed: 'L\u2019exécution s\u2019est arrêtée en cours. Votre paiement reste valable — réessayez sans frais.',
     generationFailedRefunded: 'La génération a échoué : vos crédits ont été remboursés. Vous pouvez réessayer.',
     retryGeneration: 'Réessayer',
@@ -2880,9 +3097,9 @@ const fr: LeagueUiPack = {
     deepUnscoredNote:
       'Commentaire non not\u00e9 \u2014 ce n\u2019est pas une pr\u00e9diction de ligue. N\u2019entre ni au classement ni au palmar\u00e8s.',
     deepOpenHint:
-      'Plusieurs modèles rédigent chacun une note à partir du dossier de ce tour, puis une synthèse. Commentaire non noté \u2014 pas une prédiction de ligue, pas au classement.',
+      'Les IA creusent les raisons de cette prévision : chacune rédige sa propre analyse détaillée, puis tout est fusionné en un rapport unique. Pour comprendre le pourquoi. Commentaire non noté.',
     deepDebateHint:
-      'Les modèles argumentent les deux camps, votent, et un président rédige un verdict incluant la minorité. Non noté \u2014 pas une prédiction de ligue.',
+      'Les IA se répartissent entre pour et contre, débattent puis votent \u2014 et un président rédige la conclusion avec l\u2019opinion minoritaire. Pour voir les deux camps. Commentaire non noté.',
     deepOpenTitle: 'Analyse ouverte',
     deepDebateTitle: 'D\u00e9bat pour/contre',
     deepWaitNote:
@@ -2898,7 +3115,8 @@ const fr: LeagueUiPack = {
           analyses: 'Collecte des notes de chaque modèle',
           synthesis: 'Fusion des notes en une synthèse',
           deliberate: 'Débat en cours',
-          verdict: 'Vote et verdict du président',
+          vote: 'Vote en cours',
+          verdict: 'Rédaction du verdict du président',
           done: 'Terminé',
           error: 'Interrompu',
           seed_failed: 'Interrompu',
@@ -2907,6 +3125,27 @@ const fr: LeagueUiPack = {
     deepFailed: 'L\u2019analyse s\u2019est arrêtée en cours. Votre paiement reste valable — réessayez sans frais.',
     deepFailedRefunded: 'L\u2019analyse a échoué : vos crédits ont été remboursés. Vous pouvez réessayer.',
     deepBusy: 'Trop de demandes d\u2019analyse approfondie. Réessayez dans un instant.',
+    deepStepLabels: {
+      plan: 'Plan',
+      briefing: 'Briefing',
+      analyses: 'Analyses individuelles',
+      synthesis: 'Rapport final',
+      debate: 'Débat',
+      vote: 'Vote',
+      verdict: 'Verdict du président',
+    },
+    deepMinorityHeading: 'Opinion minoritaire',
+    deepRoundLabel: (n) => `Manche ${n}`,
+    deepConsensusLabel: (score) => `Consensus ${score}/100`,
+    deepVoteChoice: {
+      approve: 'Pour',
+      conditional: 'Pour sous conditions',
+      oppose: 'Contre',
+      abstain: 'Abstention',
+    },
+    deepSeatPending: 'En attente de l\u2019analyse de ce modèle\u2026',
+    deepConcedesLabel: 'Concède',
+    deepHoldsLabel: 'Maintient',
   },
   gateway: {
     placeholder: {
@@ -2988,6 +3227,13 @@ const es: LeagueUiPack = {
     allAbstain: (total) => `Los ${total} modelos de IA se abstuvieron en esta ronda`,
     split: (responded, total) => `${responded} de ${total} modelos de IA respondieron, pero están divididos`,
     none: 'Todavía ningún modelo de IA respondió en esta ronda',
+    countLine: (total, upCount, upWord, downCount, downWord) =>
+      `${upCount} de ${total} IAs dicen ${upWord} \u00b7 ${downCount} dicen ${downWord}`,
+    conclusion: (verb) => `Conclusión: ${verb}`,
+    confidenceNote: (confidencePct) => `Confianza ponderada ${confidencePct}%`,
+    liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
+      `De momento ${answered} respuestas \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
+    conclusionPending: 'Recuento en curso \u00b7 la conclusión se fija cuando respondan todos los asientos',
   },
   sides: {
     subjectOutcome: {
@@ -3029,6 +3275,7 @@ const es: LeagueUiPack = {
     axisLine: (label, n, parts) => `${label} \u00b7 ${n} modelos: ${parts}`,
     axisPart: (n, word) => `${n} ${word}`,
     noCalls: 'sin respuestas todav\u00eda',
+    inProgressNote: 'En curso \u2014 estos desgloses aún no son definitivos',
   },
   disclaimer: {
     short: 'Solo información, no es asesoramiento de inversión. Usted es responsable de sus propias decisiones.',
@@ -3162,12 +3409,15 @@ const es: LeagueUiPack = {
     windowNoAnchor:
       'No se registró el precio de partida de esta predicción, así que no se muestra la cotización en vivo: sería el número equivocado para leer estas llamadas.',
     liveSecondary: 'ahora',
+    metalsSpotNote:
+      'Basado en cotizaciones spot internacionales (USD/onza). Los precios minoristas locales pueden variar por tipos de cambio, impuestos y márgenes de distribución.',
   },
   modelList: {
     title: (n) => `Modelos (${n})`,
     tierTab: 'Nivel',
     campTab: 'Bloque',
     empty: 'Todavía ningún modelo ha respondido.',
+    noResponse: 'Sin respuesta',
     correct: 'Acertó',
     missed: 'Falló',
     ungraded: 'Sin calificar',
@@ -3179,6 +3429,7 @@ const es: LeagueUiPack = {
     showOriginal: 'Mostrar original en inglés',
     hideOriginal: 'Ocultar original en inglés',
     originalLabel: 'Original',
+    translating: 'Traduciendo…',
   },
   bracket: {
     finalVerdict: 'Veredicto final',
@@ -3200,10 +3451,11 @@ const es: LeagueUiPack = {
   verdict: {
     title: 'Veredicto final',
     heroHits: (hits, graded) => `Esta ronda ${hitCount(hits, graded)} aciertos`,
-    pendingHeading: 'Ronda en curso \u2014 aún sin calificar',
+    pendingHeading: 'Esto sigue siendo una predicción',
+    pendingHeadline: (date) => `Esto sigue siendo una predicción \u00b7 la contrastaremos con el resultado real el ${date}`,
     pendingAnchorLine: (price, date) => `Inició en ${price} (${date})`,
-    pendingResolvesLine: (date) => `Se califica el ${date}`,
-    pendingDaysRemaining: (days) => (days <= 0 ? 'Calificación pendiente' : days === 1 ? 'Queda 1 día' : `Quedan ${days} días`),
+    pendingResolvesLine: (date) => `La contrastaremos con el resultado real el ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'Vence hoy' : days === 1 ? 'Queda 1 día' : `Quedan ${days} días`),
     distributionHeading: 'Distribución de predicciones (dirección)',
     distributionHeadingSides: 'Distribución de predicciones (respuesta)',
     distributionUp: 'Subida',
@@ -3237,6 +3489,7 @@ const es: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak} seguidas`,
     expandSection: 'Mostrar',
     collapseSection: 'Ocultar',
+    detailsToggle: 'Ver detalles',
   },
   magnitude: {
     headlineQualifier: (horizonLabel, signedPct) => `en ${horizonLabel} ${signedPct}`,
@@ -3329,6 +3582,8 @@ const es: LeagueUiPack = {
     openRoundNote: 'Pago único por ronda. Una vez abierta, puedes volver a verla cuando quieras — incluso tras la calificación — sin costo adicional.',
     generationQueued: 'En cola — tu ronda comienza en breve. Puedes cerrar esta pantalla; sigue en marcha.',
     generationProgress: (answered, total) => `Recogiendo respuestas de los modelos \u00b7 ${answered}/${total}`,
+    generationComplete: (total) => `${total} predicciones listas`,
+    generationWaitingNote: 'Las IA están generando predicciones \u00b7 Por favor, espera un momento',
     generationFailed: 'La ejecución se detuvo a medias. Tu pago sigue vigente: reintenta sin costo.',
     generationFailedRefunded: 'La generación falló y tus créditos fueron reembolsados. Puedes intentarlo de nuevo.',
     retryGeneration: 'Reintentar',
@@ -3344,9 +3599,9 @@ const es: LeagueUiPack = {
     deepUnscoredNote:
       'Comentario sin puntuaci\u00f3n: no es una predicci\u00f3n de la liga. No entra en la clasificaci\u00f3n ni en el historial.',
     deepOpenHint:
-      'Varios modelos escriben cada uno un informe con el paquete de esta ronda, luego una síntesis. Comentario sin puntuar \u2014 no es una predicción de la liga ni entra en la clasificación.',
+      'Las IA profundizan en las razones de esta predicción: cada una escribe su propio análisis detallado y luego todo se combina en un único informe. Para cuando quieres saber el porqué. Comentario sin puntuar.',
     deepDebateHint:
-      'Los modelos argumentan ambos lados, votan, y un presidente redacta un veredicto incluyendo la minoría. Sin puntuar \u2014 no es una predicción de la liga.',
+      'Las IA se dividen en a favor y en contra, debaten y votan; después una presidencia redacta la conclusión con la opinión minoritaria. Para ver ambos lados. Comentario sin puntuar.',
     deepOpenTitle: 'An\u00e1lisis abierto',
     deepDebateTitle: 'Debate a favor/en contra',
     deepWaitNote:
@@ -3362,7 +3617,8 @@ const es: LeagueUiPack = {
           analyses: 'Recogiendo el informe de cada modelo',
           synthesis: 'Uniendo los informes en uno',
           deliberate: 'El debate está en curso',
-          verdict: 'Voto y veredicto de la presidencia',
+          vote: 'Votación en curso',
+          verdict: 'Redactando el veredicto de la presidencia',
           done: 'Listo',
           error: 'Detenido',
           seed_failed: 'Detenido',
@@ -3371,6 +3627,27 @@ const es: LeagueUiPack = {
     deepFailed: 'El análisis se detuvo a medias. Tu pago sigue vigente: reintenta sin costo.',
     deepFailedRefunded: 'El análisis falló y tus créditos fueron reembolsados. Puedes intentarlo de nuevo.',
     deepBusy: 'Hay muchas solicitudes de análisis profundo. Inténtalo de nuevo en un momento.',
+    deepStepLabels: {
+      plan: 'Plan',
+      briefing: 'Briefing',
+      analyses: 'Análisis individuales',
+      synthesis: 'Informe final',
+      debate: 'Debate',
+      vote: 'Votación',
+      verdict: 'Veredicto de la presidencia',
+    },
+    deepMinorityHeading: 'Opinión minoritaria',
+    deepRoundLabel: (n) => `Ronda ${n}`,
+    deepConsensusLabel: (score) => `Consenso ${score}/100`,
+    deepVoteChoice: {
+      approve: 'A favor',
+      conditional: 'A favor con condiciones',
+      oppose: 'En contra',
+      abstain: 'Abstención',
+    },
+    deepSeatPending: 'Esperando el análisis de este modelo\u2026',
+    deepConcedesLabel: 'Concede',
+    deepHoldsLabel: 'Mantiene',
   },
   gateway: {
     placeholder: {
@@ -3452,6 +3729,13 @@ const ar: LeagueUiPack = {
     allAbstain: (total) => `امتنعت جميع نماذج الذكاء الاصطناعي البالغ عددها ${total} عن إبداء رأي في هذه الجولة`,
     split: (responded, total) => `أجاب ${responded} من ${total} من نماذج الذكاء الاصطناعي، لكن الآراء منقسمة`,
     none: 'لم يستجب أي نموذج ذكاء اصطناعي لهذه الجولة بعد',
+    countLine: (total, upCount, upWord, downCount, downWord) =>
+      `${upCount} من ${total} نموذجًا يقولون ${upWord} \u00b7 ${downCount} يقولون ${downWord}`,
+    conclusion: (verb) => `الخلاصة: ${verb}`,
+    confidenceNote: (confidencePct) => `الثقة المرجحة ${confidencePct}%`,
+    liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
+      `حتى الآن ${answered} ردود \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
+    conclusionPending: 'ما زال العد جاريًا \u00b7 تُثبَّت الخلاصة بعد اكتمال كل المقاعد',
   },
   sides: {
     subjectOutcome: {
@@ -3493,6 +3777,7 @@ const ar: LeagueUiPack = {
     axisLine: (label, n, parts) => `${label} \u00b7 ${n} نماذج: ${parts}`,
     axisPart: (n, word) => `${n} ${word}`,
     noCalls: 'لا توجد إجابات بعد',
+    inProgressNote: 'جارٍ الجمع — هذه التقسيمات ليست نهائية بعد',
   },
   disclaimer: {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
@@ -3623,12 +3908,15 @@ const ar: LeagueUiPack = {
     windowNoAnchor:
       'لم يُسجَّل سعر بداية هذا التنبؤ، لذلك لا يُعرض السعر المباشر — سيكون الرقم الخطأ لقراءة هذه التوقعات.',
     liveSecondary: 'الآن',
+    metalsSpotNote:
+      'يستند إلى أسعار المعادن الفورية العالمية (دولار/أونصة). قد تختلف أسعار التجزئة المحلية بسبب أسعار الصرف والضرائب وهوامش التوزيع.',
   },
   modelList: {
     title: (n) => `النماذج (${n})`,
     tierTab: 'الفئة',
     campTab: 'المعسكر',
     empty: 'لم يستجب أي نموذج بعد.',
+    noResponse: 'بلا رد',
     correct: 'إصابة',
     missed: 'خطأ',
     ungraded: 'غير مُقيَّم',
@@ -3640,6 +3928,7 @@ const ar: LeagueUiPack = {
     showOriginal: 'إظهار الأصل الإنجليزي',
     hideOriginal: 'إخفاء الأصل الإنجليزي',
     originalLabel: 'الأصل',
+    translating: 'جارٍ الترجمة…',
   },
   bracket: {
     finalVerdict: 'الحكم النهائي',
@@ -3660,10 +3949,11 @@ const ar: LeagueUiPack = {
   verdict: {
     title: 'الحكم النهائي',
     heroHits: (hits, graded) => `هذه الجولة ${hitCount(hits, graded)} إصابة`,
-    pendingHeading: 'الجولة جارية \u2014 لم يتم التقييم بعد',
+    pendingHeading: 'هذه ما تزال توقعات',
+    pendingHeadline: (date) => `هذه ما تزال توقعات \u00b7 سنقارنها بالنتيجة الفعلية في ${date}`,
     pendingAnchorLine: (price, date) => `بدأت عند ${price} (${date})`,
-    pendingResolvesLine: (date) => `سيتم التقييم في ${date}`,
-    pendingDaysRemaining: (days) => (days <= 0 ? 'التقييم قريباً' : `متبقٍ ${days} يوم`),
+    pendingResolvesLine: (date) => `سنقارنها بالنتيجة الفعلية في ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'اليوم موعد المقارنة' : `متبقٍ ${days} يوم`),
     distributionHeading: 'توزيع التوقعات (الاتجاه)',
     distributionHeadingSides: 'توزيع التوقعات (الإجابة)',
     distributionUp: 'صعود',
@@ -3697,6 +3987,7 @@ const ar: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak} متتالية`,
     expandSection: 'إظهار',
     collapseSection: 'إخفاء',
+    detailsToggle: 'عرض التفاصيل',
   },
   magnitude: {
     headlineQualifier: (horizonLabel, signedPct) => `خلال ${horizonLabel} ${signedPct}`,
@@ -3787,6 +4078,8 @@ const ar: LeagueUiPack = {
     openRoundNote: 'دفعة واحدة لكل جولة. بعد فتحها يمكنك العودة إليها في أي وقت — حتى بعد التقييم — دون رسوم إضافية.',
     generationQueued: 'في قائمة الانتظار — ستبدأ جولتك قريبًا. يمكنك إغلاق هذه الشاشة وسيستمر التنفيذ.',
     generationProgress: (answered, total) => `جارٍ جمع إجابات النماذج · ${answered}/${total}`,
+    generationComplete: (total) => `اكتملت ${total} تنبؤات`,
+    generationWaitingNote: 'النماذج الذكية تُجري التنبؤات الآن · يُرجى الانتظار قليلًا',
     generationFailed: 'توقف التنفيذ قبل الاكتمال. دفعتك ما تزال سارية — أعد المحاولة دون رسوم.',
     generationFailedRefunded: 'فشل التوليد وأُعيد رصيدك. يمكنك المحاولة مرة أخرى.',
     retryGeneration: 'إعادة المحاولة',
@@ -3801,9 +4094,9 @@ const ar: LeagueUiPack = {
     deepRunning: 'جارٍ التحليل المعمّق\u2026',
     deepUnscoredNote: 'تعليق غير مُقيَّم — ليس توقعًا للدوري ولا يدخل لوحة الصدارة أو السجل.',
     deepOpenHint:
-      'تكتب عدة نماذج كلٌّ منها موجزًا من ملف هذه الجولة، ثم يُجمع في تركيب واحد. تعليق غير مُقيَّم — ليس توقعًا للدوري ولا على لوحة الصدارة.',
+      'تتعمق النماذج في أسباب هذا التوقع — يكتب كلٌّ منها تحليلًا مفصلًا ثم يُدمج الجميع في تقرير واحد. لمن يريد معرفة السبب. مادة مرجعية غير مُقيَّمة.',
     deepDebateHint:
-      'تتناظر النماذج على الجانبين وتصوّت، ويكتب رئيس الجلسة حكمًا يشمل رأي الأقلية. غير مُقيَّم — ليس توقعًا للدوري.',
+      'تنقسم النماذج إلى مؤيد ومعارض فتتناظر ثم تصوّت، ويكتب رئيس الجلسة الخلاصة مع رأي الأقلية. لمن يريد رؤية الحجتين معًا. مادة مرجعية غير مُقيَّمة.',
     deepOpenTitle: 'تحليل مفتوح',
     deepDebateTitle: 'مناظرة مع/ضد',
     deepWaitNote:
@@ -3819,7 +4112,8 @@ const ar: LeagueUiPack = {
           analyses: 'جارٍ جمع موجز كل نموذج',
           synthesis: 'جارٍ دمج الموجزات في نص واحد',
           deliberate: 'المناظرة جارية',
-          verdict: 'التصويت وحكم رئيس الجلسة',
+          vote: 'جارٍ التصويت',
+          verdict: 'جارٍ كتابة حكم رئيس الجلسة',
           done: 'اكتمل',
           error: 'توقف',
           seed_failed: 'توقف',
@@ -3828,6 +4122,22 @@ const ar: LeagueUiPack = {
     deepFailed: 'توقف التحليل قبل الاكتمال. دفعتك ما تزال سارية — أعد المحاولة دون رسوم.',
     deepFailedRefunded: 'فشل التحليل وأُعيد رصيدك. يمكنك المحاولة مرة أخرى.',
     deepBusy: 'طلبات التحليل المعمّق كثيرة الآن. يرجى المحاولة بعد قليل.',
+    deepStepLabels: {
+      plan: 'الخطة',
+      briefing: 'الموجز',
+      analyses: 'التحليلات الفردية',
+      synthesis: 'التقرير النهائي',
+      debate: 'المناظرة',
+      vote: 'التصويت',
+      verdict: 'حكم الرئيس',
+    },
+    deepMinorityHeading: 'رأي الأقلية',
+    deepRoundLabel: (n) => `الجولة ${n}`,
+    deepConsensusLabel: (score) => `درجة التوافق ${score}/100`,
+    deepVoteChoice: { approve: 'مع', conditional: 'مع بشروط', oppose: 'ضد', abstain: 'امتناع' },
+    deepSeatPending: 'بانتظار تحليل هذا النموذج\u2026',
+    deepConcedesLabel: 'يقرّ',
+    deepHoldsLabel: 'يتمسك',
   },
   gateway: {
     placeholder: {
@@ -3914,6 +4224,13 @@ const pt: LeagueUiPack = {
     allAbstain: (total) => `Todos os ${total} modelos de IA se abstiveram nesta rodada`,
     split: (responded, total) => `${responded} de ${total} modelos de IA responderam, mas estão divididos`,
     none: 'Nenhum modelo de IA respondeu nesta rodada ainda',
+    countLine: (total, upCount, upWord, downCount, downWord) =>
+      `${upCount} de ${total} IAs dizem ${upWord} \u00b7 ${downCount} dizem ${downWord}`,
+    conclusion: (verb) => `Conclusão: ${verb}`,
+    confidenceNote: (confidencePct) => `Confiança ponderada ${confidencePct}%`,
+    liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
+      `Até agora ${answered} respostas \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
+    conclusionPending: 'Contagem em andamento \u00b7 a conclusão trava quando todos os assentos responderem',
   },
   sides: {
     subjectOutcome: {
@@ -3955,6 +4272,7 @@ const pt: LeagueUiPack = {
     axisLine: (label, n, parts) => `${label} \u00b7 ${n} modelos: ${parts}`,
     axisPart: (n, word) => `${n} ${word}`,
     noCalls: 'sem respostas ainda',
+    inProgressNote: 'Em andamento \u2014 estes recortes ainda não são definitivos',
   },
   disclaimer: {
     short: 'Apenas informação — não é recomendação de investimento. Você é responsável pelas próprias decisões.',
@@ -4087,12 +4405,15 @@ const pt: LeagueUiPack = {
     windowNoAnchor:
       'O preço inicial desta previsão não foi registrado, então a cotação ao vivo não é exibida \u2014 seria o número errado para ler estas previsões.',
     liveSecondary: 'agora',
+    metalsSpotNote:
+      'Baseado nas cotações spot internacionais (USD/onça). Os preços de varejo locais podem variar devido a taxas de câmbio, impostos e margens de distribuição.',
   },
   modelList: {
     title: (n) => `Modelos (${n})`,
     tierTab: 'Nível',
     campTab: 'Campo',
     empty: 'Nenhum modelo respondeu ainda.',
+    noResponse: 'Sem resposta',
     correct: 'Correta',
     missed: 'Errada',
     ungraded: 'Sem nota',
@@ -4104,6 +4425,7 @@ const pt: LeagueUiPack = {
     showOriginal: 'Mostrar original em inglês',
     hideOriginal: 'Ocultar original em inglês',
     originalLabel: 'Original',
+    translating: 'Traduzindo…',
   },
   bracket: {
     finalVerdict: 'Veredito final',
@@ -4125,10 +4447,11 @@ const pt: LeagueUiPack = {
   verdict: {
     title: 'Veredito final',
     heroHits: (hits, graded) => `Nesta rodada ${hitCount(hits, graded)} acertos`,
-    pendingHeading: 'Rodada em andamento \u2014 ainda não avaliada',
+    pendingHeading: 'Ainda é só uma previsão',
+    pendingHeadline: (date) => `Ainda é só uma previsão \u00b7 vamos comparar com o resultado real em ${date}`,
     pendingAnchorLine: (price, date) => `Começou em ${price} (${date})`,
-    pendingResolvesLine: (date) => `Avaliada em ${date}`,
-    pendingDaysRemaining: (days) => (days <= 0 ? 'Avaliação em breve' : days === 1 ? 'Falta 1 dia' : `Faltam ${days} dias`),
+    pendingResolvesLine: (date) => `Vamos comparar com o resultado real em ${date}`,
+    pendingDaysRemaining: (days) => (days <= 0 ? 'Vence hoje' : days === 1 ? 'Falta 1 dia' : `Faltam ${days} dias`),
     distributionHeading: 'Distribuição das previsões (direção)',
     distributionHeadingSides: 'Distribuição das previsões (resposta)',
     distributionUp: 'Alta',
@@ -4162,6 +4485,7 @@ const pt: LeagueUiPack = {
     streakLine: (label, streak) => `${label} · ${streak} seguidas`,
     expandSection: 'Mostrar',
     collapseSection: 'Ocultar',
+    detailsToggle: 'Ver detalhes',
   },
   magnitude: {
     headlineQualifier: (horizonLabel, signedPct) => `em ${horizonLabel} ${signedPct}`,
@@ -4254,6 +4578,8 @@ const pt: LeagueUiPack = {
     openRoundNote: 'Pagamento único por rodada. Depois de aberta, você pode revê-la a qualquer momento — inclusive após a avaliação — sem custo extra.',
     generationQueued: 'Na fila — sua rodada começa em instantes. Pode fechar esta tela; o processo continua.',
     generationProgress: (answered, total) => `Coletando respostas dos modelos \u00b7 ${answered}/${total}`,
+    generationComplete: (total) => `${total} previsões prontas`,
+    generationWaitingNote: 'As IAs estão gerando previsões \u00b7 Por favor, aguarde um momento',
     generationFailed: 'A execução parou no meio. Seu pagamento continua válido — tente novamente sem custo.',
     generationFailedRefunded: 'A geração falhou e seus créditos foram reembolsados. Você pode tentar de novo.',
     retryGeneration: 'Tentar novamente',
@@ -4269,9 +4595,9 @@ const pt: LeagueUiPack = {
     deepUnscoredNote:
       'Comentário sem nota \u2014 não é uma previsão da liga. Não entra na classificação nem no histórico.',
     deepOpenHint:
-      'Vários modelos escrevem cada um um briefing a partir do pacote desta rodada, depois uma síntese. Comentário sem pontuação \u2014 não é uma previsão da liga nem entra no ranking.',
+      'As IAs aprofundam as razões desta previsão: cada uma escreve sua própria análise detalhada e tudo é combinado em um único relatório. Para quando você quer saber o porquê. Comentário sem pontuação.',
     deepDebateHint:
-      'Os modelos argumentam os dois lados, votam, e um presidente redige um veredito incluindo a minoria. Sem pontuação \u2014 não é uma previsão da liga.',
+      'As IAs se dividem em prós e contras, debatem e votam; depois uma presidência escreve a conclusão com a opinião minoritária. Para ver os dois lados. Comentário sem pontuação.',
     deepOpenTitle: 'Análise aberta',
     deepDebateTitle: 'Debate prós/contras',
     deepWaitNote:
@@ -4287,7 +4613,8 @@ const pt: LeagueUiPack = {
           analyses: 'Coletando o briefing de cada modelo',
           synthesis: 'Unindo os briefings em um só',
           deliberate: 'O debate está em andamento',
-          verdict: 'Voto e veredito da presidência',
+          vote: 'Votação em andamento',
+          verdict: 'Escrevendo o veredito da presidência',
           done: 'Concluído',
           error: 'Interrompido',
           seed_failed: 'Interrompido',
@@ -4296,6 +4623,27 @@ const pt: LeagueUiPack = {
     deepFailed: 'A análise parou no meio. Seu pagamento continua válido — tente novamente sem custo.',
     deepFailedRefunded: 'A análise falhou e seus créditos foram reembolsados. Você pode tentar de novo.',
     deepBusy: 'Muitas solicitações de análise profunda agora. Tente novamente em instantes.',
+    deepStepLabels: {
+      plan: 'Plano',
+      briefing: 'Briefing',
+      analyses: 'Análises individuais',
+      synthesis: 'Relatório final',
+      debate: 'Debate',
+      vote: 'Votação',
+      verdict: 'Veredito da presidência',
+    },
+    deepMinorityHeading: 'Opinião minoritária',
+    deepRoundLabel: (n) => `Rodada ${n}`,
+    deepConsensusLabel: (score) => `Consenso ${score}/100`,
+    deepVoteChoice: {
+      approve: 'A favor',
+      conditional: 'A favor com condições',
+      oppose: 'Contra',
+      abstain: 'Abstenção',
+    },
+    deepSeatPending: 'Aguardando a análise deste modelo\u2026',
+    deepConcedesLabel: 'Concede',
+    deepHoldsLabel: 'Mantém',
   },
   gateway: {
     placeholder: {

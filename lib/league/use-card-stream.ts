@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CAMPS, LEAGUE_TIERS, type CardData, type CardModelPrediction } from './card-types'
 import { computeCardAggregates } from './card-aggregate'
+import { rosterGenerationProgress } from './generation-progress'
+import { getRoster } from './roster'
 import { hasCallableSide } from './side-labels'
 
 export type CardStreamState = 'static' | 'connecting' | 'live' | 'reconnecting' | 'error'
@@ -42,7 +44,9 @@ export type UseCardStreamResult = {
    * completes) — `data.models.length` is the durable "how many models does
    * this round have" answer at every other time.
    */
-  liveProgress: { answered: number; rosterSize: number } | null
+  liveProgress: { answered: number; rosterSize: number; complete: boolean } | null
+  /** Roster seats that resolved as a no-opinion drop (null direction). */
+  droppedModelIds: string[]
 }
 
 type RoundLine = { type: 'round'; round_id: string; created: boolean; roster_size: number }
@@ -136,7 +140,15 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
   const [data, setData] = useState<CardData>(initialData)
   const [connection, setConnection] = useState<CardStreamState>('static')
   const [startError, setStartError] = useState<CardStreamStartError | null>(null)
-  const [liveProgress, setLiveProgress] = useState<{ answered: number; rosterSize: number } | null>(null)
+  const [liveProgress, setLiveProgress] = useState<{
+    answered: number
+    rosterSize: number
+    complete: boolean
+  } | null>(null)
+  const [droppedModelIds, setDroppedModelIds] = useState<string[]>(
+    () => initialData.generation?.droppedModelIds ?? []
+  )
+  const writtenIdsRef = useRef<string[]>([])
   const roundIdRef = useRef(roundId)
   useEffect(() => {
     roundIdRef.current = roundId
@@ -148,7 +160,10 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
   // ignore every later snapshot and the tiles would never fill.
   useEffect(() => {
     setData(initialData)
-  }, [initialData])
+    const fromCard = initialData.generation?.droppedModelIds
+    if (fromCard) setDroppedModelIds(fromCard)
+    else if (!live) setDroppedModelIds([])
+  }, [initialData, live])
 
   const refetch = useCallback(async () => {
     try {
@@ -161,7 +176,9 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
       // was refunded after a failed run). The hub's own poll owns that
       // transition — here we just keep the last full snapshot.
       if ((fresh as { locked?: boolean }).locked) return
-      setData(fresh as CardData)
+      const card = fresh as CardData
+      setData(card)
+      if (card.generation?.droppedModelIds) setDroppedModelIds(card.generation.droppedModelIds)
       setConnection((prev) => (prev === 'live' || prev === 'connecting' ? prev : 'static'))
     } catch {
       setConnection('error')
@@ -198,7 +215,13 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
       setConnection('connecting')
       setStartError(null)
       setLiveProgress(null)
-      let answered = 0
+      setDroppedModelIds([])
+      writtenIdsRef.current = []
+      const rosterIds = getRoster().map((entry) => entry.model_id)
+      const pushWritten = (modelId: string) => {
+        if (!writtenIdsRef.current.includes(modelId)) writtenIdsRef.current.push(modelId)
+        return rosterGenerationProgress(rosterIds, writtenIdsRef.current)
+      }
       try {
         const res = await fetch('/api/league/generate-stream', {
           method: 'POST',
@@ -245,14 +268,20 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
             if (!isStreamLine(msg)) continue
 
             if (msg.type === 'round') {
-              setLiveProgress({ answered, rosterSize: msg.roster_size })
+              setLiveProgress(rosterGenerationProgress(rosterIds, writtenIdsRef.current))
             } else if (msg.type === 'model') {
               const { type: _type, status: _status, ...model } = msg
               void _type
               void _status
-              answered += 1
-              setLiveProgress((prev) => (prev ? { ...prev, answered } : { answered, rosterSize: answered }))
-              setData((prev) => mergeModel(prev, model))
+              const progress = pushWritten(model.model_id)
+              setLiveProgress(progress)
+              if (!hasCallableSide(model.direction)) {
+                setDroppedModelIds((prev) =>
+                  prev.includes(model.model_id) ? prev : [...prev, model.model_id]
+                )
+              } else {
+                setData((prev) => mergeModel(prev, model))
+              }
             } else if (msg.type === 'done') {
               sawDone = true
               setData((prev) => resort(prev))
@@ -289,5 +318,5 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
     }
   }, [live, roundId, refetch])
 
-  return { data, connection, startError, refetch, liveProgress }
+  return { data, connection, startError, refetch, liveProgress, droppedModelIds }
 }
