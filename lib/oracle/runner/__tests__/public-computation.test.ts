@@ -101,6 +101,103 @@ describe('publicComputation', () => {
     })
   })
 
+  it('keeps tarot card names, rune names, sukuyou relations, and tzolkin nawal names', () => {
+    const tarotRow = {
+      system: 'tarot',
+      engine_version: 'tarot-1',
+      axes: {},
+      result: {
+        draw: {
+          cards: [{ id: 0, name: 'The Fool', reversed: false }],
+        },
+      },
+    } as unknown as OracleComputation
+    expect(publicComputation(tarotRow).calculation).toEqual({
+      draw: {
+        cards: [{ id: 0, name: 'The Fool', reversed: false }],
+      },
+    })
+
+    const runesRow = {
+      system: 'runes',
+      engine_version: 'runes-1',
+      axes: {},
+      result: {
+        draw: {
+          runes: [{ id: 1, name: 'Fehu', glyph: 'ᚠ' }],
+        },
+      },
+    } as unknown as OracleComputation
+    expect(publicComputation(runesRow).calculation).toEqual({
+      draw: {
+        runes: [{ id: 1, name: 'Fehu', glyph: 'ᚠ' }],
+      },
+    })
+
+    const sukuyouRow = {
+      system: 'sukuyou',
+      engine_version: 'sukuyou-1',
+      axes: {},
+      result: {
+        natal: { index: 1, hanja: '昴', hangul: '모' },
+        sukuyouRelation: { offset: 0, name: '命', pair: '命' },
+      },
+    } as unknown as OracleComputation
+    expect(publicComputation(sukuyouRow).calculation).toEqual({
+      natal: { index: 1, hanja: '昴', hangul: '모' },
+      sukuyouRelation: { offset: 0, name: '命', pair: '命' },
+    })
+
+    const tzolkinRow = {
+      system: 'tzolkin',
+      engine_version: 'tzolkin-1',
+      axes: {},
+      result: {
+        natal: { nawal: 18, nawalName: "Etz'nab'", tone: 2 },
+      },
+    } as unknown as OracleComputation
+    expect(publicComputation(tzolkinRow).calculation).toEqual({
+      natal: { nawal: 18, nawalName: "Etz'nab'", tone: 2 },
+    })
+  })
+
+  it('keeps name engine stroke breakdown and subject glyphs', () => {
+    const nameRow = {
+      system: 'name',
+      engine_version: 'name-1',
+      axes: {},
+      result: {
+        reading: { supported: true, strokes: [9, 6, 8] },
+        subject: { written: '홍길동', glyphs: ['홍', '길', '동'] },
+      },
+    } as unknown as OracleComputation
+    expect(publicComputation(nameRow).calculation).toEqual({
+      reading: { supported: true, strokes: [9, 6, 8] },
+      subject: { written: '홍길동', glyphs: ['홍', '길', '동'] },
+    })
+  })
+
+  it('drops unallowlisted root keys and all PII attributes', () => {
+    const contaminatedRow = {
+      system: 'saju',
+      engine_version: 'saju-1',
+      axes: {},
+      result: {
+        pillars: { day: { ganzhi: '甲子' } },
+        raw_profile: { birthDate: '1990-01-01', lat: 37.5, lng: 127.0 },
+        user_info: { fullName: '홍길동', email: 'test@example.com', phone: '010-1234-5678' },
+      },
+    } as unknown as OracleComputation
+
+    const sanitized = publicComputation(contaminatedRow)
+    expect(sanitized.calculation).toEqual({
+      pillars: { day: { ganzhi: '甲子' } },
+    })
+    expect(JSON.stringify(sanitized)).not.toContain('1990-01-01')
+    expect(JSON.stringify(sanitized)).not.toContain('test@example.com')
+    expect(JSON.stringify(sanitized)).not.toContain('010-1234-5678')
+  })
+
   it('never exposes ai_payload or model identity', () => {
     const row = {
       system: 'saju',
