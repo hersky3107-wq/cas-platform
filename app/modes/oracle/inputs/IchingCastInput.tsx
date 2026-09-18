@@ -93,8 +93,8 @@ export default function IchingCastInput({
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">육효 던지기</p>
-          <p className="mt-1 text-[11px] text-white/40">
-            동전 세 닢을 여섯 번 던져 아래에서부터 효를 쌓습니다. 변효(노음·노양)가 변괘를 만듭니다.
+          <p className="mt-1 text-[12px] leading-relaxed text-white/50">
+            던질 때마다 마음을 가다듬고, 질문이 가라앉은 뒤에 손을 떼세요.
           </p>
         </div>
         {lines.length > 0 ? (

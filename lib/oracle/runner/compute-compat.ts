@@ -55,6 +55,7 @@ import { numerology, reducePythagorean } from '../engines/numerology'
 import { PRISM_ENGINE_VERSION, prismPairSketch } from '../engines/prism'
 import { ziweiChart } from '../engines/ziwei'
 import type { OracleProfile } from '../schema'
+import { inferNameScript, inferNameScriptFromText, nameEngineLocale } from '../name-script'
 import {
   ORACLE_DEFAULT_COORDS,
   ORACLE_DEFAULT_TIMEZONE,
@@ -149,6 +150,7 @@ type PersonCtx = {
   sex: 'male' | 'female'
   latinName: string | null
   nameParts: { surname: string; givenName: string } | null
+  nameLocale: string
 }
 
 function jsonObject(value: object): JsonObject {
@@ -541,8 +543,8 @@ function computeCompatSystem(system: SystemId, a: PersonCtx, b: PersonCtx, share
     case 'name': {
       if (!a.nameParts) return { unreadableCode: 'name.no_name_on_profile' }
       if (!b.nameParts) return { unreadableCode: 'compat.name.partner_name_missing' }
-      const readingA = nameReading({ ...a.nameParts, locale })
-      const readingB = nameReading({ ...b.nameParts, locale })
+      const readingA = nameReading({ ...a.nameParts, locale: a.nameLocale })
+      const readingB = nameReading({ ...b.nameParts, locale: b.nameLocale })
       if (!readingA.supported || !readingB.supported || !readingA.fiveElements || !readingB.fiveElements || !readingA.numerology81 || !readingB.numerology81) {
         return { unreadableCode: 'compat.name.unsupported_locale' }
       }
@@ -558,8 +560,8 @@ function computeCompatSystem(system: SystemId, a: PersonCtx, b: PersonCtx, share
       return {
         vote: blendPairVotes(
           'name',
-          projectName({ ...a.nameParts, locale }),
-          projectName({ ...b.nameParts, locale }),
+          projectName({ ...a.nameParts, locale: a.nameLocale }),
+          projectName({ ...b.nameParts, locale: b.nameLocale }),
           [`compat.name.in_${relation.inGyeok.relation}`],
         ),
         result: {
@@ -753,6 +755,7 @@ export function runCompatComputations(input: CompatComputeInput): ComputeOutput 
     sex: profile.sex === 'F' ? 'female' : 'male',
     latinName: profile.name_latin ?? null,
     nameParts: splitNameParts(profile.name_local, profile.name_hanja, profile.name_latin),
+    nameLocale: nameEngineLocale(inferNameScript(profile)),
   }
 
   const partnerClock = toClock(partner.birthTime ?? null)
@@ -768,6 +771,10 @@ export function runCompatComputations(input: CompatComputeInput): ComputeOutput 
     sex: partner.sex === 'F' ? 'female' : 'male',
     latinName: partner.name && /[A-Za-z]/.test(partner.name) ? partner.name : null,
     nameParts: partner.name ? splitNameParts(partner.name, null, null) : null,
+    nameLocale: (() => {
+      const script = inferNameScriptFromText(partner.name)
+      return script ? nameEngineLocale(script) : input.locale
+    })(),
   }
 
   const assumptions: ComputeAssumptions = {

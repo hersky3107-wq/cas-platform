@@ -80,6 +80,9 @@ export default function RunesDrawInput({
   const compatLabels = compat ? COMPAT_RUNE_LABELS[spread] : undefined;
   return (
     <div className="space-y-4">
+      <p className="text-[12px] leading-relaxed text-white/50">
+        질문을 품고, 천에 엎어 둔 돌 가운데 손이 가는 것을 집으세요.
+      </p>
       <div>
         <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">스프레드</p>
         <div className={`mt-2 grid gap-2 ${compat ? "grid-cols-2" : "grid-cols-3"}`}>

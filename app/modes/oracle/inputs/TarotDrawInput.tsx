@@ -61,6 +61,9 @@ export default function TarotDrawInput({
     (compat ? COMPAT_TAROT_LABELS[spread] : undefined) ?? TAROT_SPREAD_LABELS[spread];
   return (
     <div className="space-y-4">
+      <p className="text-[12px] leading-relaxed text-white/50">
+        질문을 마음에 담은 뒤, 고르지 말고 손이 가는 카드를 집으세요.
+      </p>
       <div>
         <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">스프레드</p>
         <div className={`mt-2 grid grid-cols-2 gap-2 ${compat ? "" : "sm:grid-cols-4"}`}>

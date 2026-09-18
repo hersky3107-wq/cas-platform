@@ -21,31 +21,26 @@ import MbtiEstimator from "../inputs/MbtiEstimator";
 import {
   isReadingSystemId,
   parseMissingParam,
-  PROFILE_FIELD_REASON,
   profileFieldsToShow,
   readingPath,
   type ProfileField,
 } from "@/lib/oracle/system-requirements";
 import type { SystemId } from "@/lib/oracle/axes/types";
 import { SINGLE_SYSTEM_BY_ID } from "@/lib/oracle/single-system-ui";
+import {
+  inferNameScript,
+  isNameScript,
+  splitNameFields,
+  type NameScript,
+} from "@/lib/oracle/name-script";
+import {
+  ORACLE_PROFILE_SURVEY_IDS,
+  getOracleProfileCopy,
+  type OracleProfileSurveyId,
+} from "@/lib/oracle/i18n";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
-
-const MONTH_NAMES = [
-  "Month",
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
+const copy = getOracleProfileCopy("ko");
 
 function isLeapYear(y: number): boolean {
   return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
@@ -97,21 +92,17 @@ function answersComplete(
   return SURVEY_QUESTIONS.every((q) => typeof answers[q.id] === "number");
 }
 
-function splitStoredName(local: string | null, latin: string | null): {
-  surname: string;
-  given: string;
-} {
-  if (local && local.trim().length >= 2) {
-    const value = local.trim();
-    return { surname: value.slice(0, 1), given: value.slice(1) };
+function nameMethodFor(script: NameScript): string {
+  switch (script) {
+    case "hangul":
+      return copy.nameMethodHangul;
+    case "hanja":
+      return copy.nameMethodHanja;
+    case "ja":
+      return copy.nameMethodJa;
+    case "latin":
+      return copy.nameMethodLatin;
   }
-  if (latin && latin.trim()) {
-    const parts = latin.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      return { surname: parts[parts.length - 1]!, given: parts.slice(0, -1).join(" ") };
-    }
-  }
-  return { surname: "", given: "" };
 }
 
 type ApproxPersist = ApproxBirthBand;
@@ -133,6 +124,8 @@ function OracleProfileForm() {
     !fields.includes("birth_date") &&
     !fields.includes("birth_place") &&
     !fields.includes("sex");
+  const showName = show("name") || show("name_latin");
+  const nameRequired = show("name");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -169,8 +162,9 @@ function OracleProfileForm() {
 
   const [nameSurname, setNameSurname] = useState("");
   const [nameGiven, setNameGiven] = useState("");
-  const [nameLocale, setNameLocale] = useState("ko");
-  const [nameLatin, setNameLatin] = useState("");
+  const [nameScript, setNameScript] = useState<NameScript>(
+    show("name_latin") && !show("name") ? "latin" : "hangul",
+  );
   const [mbti, setMbti] = useState("");
   const [mbtiEstimated, setMbtiEstimated] = useState(false);
 
@@ -208,7 +202,7 @@ function OracleProfileForm() {
             setErr(
               typeof (j as { error?: string }).error === "string"
                 ? (j as { error?: string }).error!
-                : "Could not infer birth time.",
+                : copy.inferFailed,
             );
             surveyAutoInferRef.current = false;
           }
@@ -220,11 +214,11 @@ function OracleProfileForm() {
           setInferredTime(hh ?? null);
           setInferredSijin(sj ?? null);
           if (hh) setBirthTime24h(hh);
-          setMessage("Birth time estimated — saved automatically ✓");
+          setMessage(copy.inferDone);
         }
       } catch {
         if (!cancelled) {
-          setErr("Infer request failed.");
+          setErr(copy.inferRequestFailed);
           surveyAutoInferRef.current = false;
         }
       } finally {
@@ -250,8 +244,10 @@ function OracleProfileForm() {
         runnerProfile?: {
           birth_date?: string | null;
           name_local?: string | null;
+          name_hanja?: string | null;
           name_latin?: string | null;
           mbti?: string | null;
+          derived?: Record<string, unknown> | null;
         } | null;
         placeholderBirthDate?: boolean;
         mbtiEstimated?: boolean;
@@ -288,7 +284,7 @@ function OracleProfileForm() {
           const sk = p.resolved_sijin_kr ?? null;
           setInferredSijin(sk);
           surveyAutoInferRef.current = true;
-          setMessage("Birth time estimated — saved automatically ✓");
+          setMessage(copy.inferDone);
         }
       } else if (j.runnerProfile?.birth_date && !j.placeholderBirthDate) {
         const parts = splitIsoToParts(j.runnerProfile.birth_date);
@@ -298,13 +294,22 @@ function OracleProfileForm() {
           setDobYear(parts.year);
         }
       }
-      const names = splitStoredName(
-        j.runnerProfile?.name_local ?? null,
-        j.runnerProfile?.name_latin ?? null,
+      const runner = j.runnerProfile;
+      const script = inferNameScript({
+        name_local: runner?.name_local ?? null,
+        name_hanja: runner?.name_hanja ?? null,
+        name_latin: runner?.name_latin ?? null,
+        derived: runner?.derived ?? null,
+      });
+      const names = splitNameFields(
+        script,
+        runner?.name_local ?? null,
+        runner?.name_hanja ?? null,
+        runner?.name_latin ?? null,
       );
+      setNameScript(script);
       setNameSurname(names.surname);
       setNameGiven(names.given);
-      setNameLatin(j.runnerProfile?.name_latin ?? "");
       setMbti(j.runnerProfile?.mbti ?? "");
       setMbtiEstimated(j.mbtiEstimated === true);
       setLoading(false);
@@ -336,21 +341,21 @@ function OracleProfileForm() {
         : null;
 
     if ((show("birth_date") || !extrasOnly) && !isoDob) {
-      setDobError("Please enter a valid date of birth");
+      setDobError(copy.dobInvalid);
       return;
     }
     setDobError(null);
 
     if (show("birth_place") && !birthCity.trim()) {
-      setErr("Birth city is required for astrology.");
+      setErr(copy.cityRequired);
       return;
     }
-    if (show("name") && (!nameSurname.trim() || !nameGiven.trim())) {
-      setErr("Enter both a surname and a given name.");
+    if (nameRequired && (!nameSurname.trim() || !nameGiven.trim())) {
+      setErr(copy.nameNeedBoth);
       return;
     }
     if (show("mbti") && !mbti) {
-      setErr("유형을 고르거나 추정 문항을 모두 답해 주세요.");
+      setErr(copy.mbtiRequired);
       return;
     }
 
@@ -358,12 +363,11 @@ function OracleProfileForm() {
     setMessage(null);
 
     const extras: Record<string, unknown> = {};
-    if (show("name")) {
+    if (showName && nameSurname.trim() && nameGiven.trim()) {
       extras.name_surname = nameSurname.trim();
       extras.name_given = nameGiven.trim();
-      extras.name_locale = nameLocale;
+      extras.name_script = nameScript;
     }
-    if (show("name_latin") && nameLatin.trim()) extras.name_latin = nameLatin.trim();
     if (show("mbti") && mbti) {
       extras.mbti = mbti;
       extras.mbti_estimated = mbtiEstimated;
@@ -406,14 +410,14 @@ function OracleProfileForm() {
           typeof j?.error === "string" ? j.error : null,
           typeof j?.hint === "string" ? j.hint : null,
         ].filter(Boolean);
-        setErr(parts.length ? parts.join(" ") : "저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        setErr(parts.length ? parts.join(" ") : copy.saveGenericError);
         setSaving(false);
         return;
       }
       setSaving(false);
       afterSave();
     } catch {
-      setErr("Save failed.");
+      setErr(copy.saveFailed);
       setSaving(false);
     }
   }
@@ -424,18 +428,19 @@ function OracleProfileForm() {
     (approxBandPersist ? false : inferBusy || !surveyReady || !inferredTime);
 
   const backHref = returnTo && returnTo.startsWith("/") ? returnTo : "/modes/oracle";
-  const reasons = missing.map((field) => PROFILE_FIELD_REASON[field].ko);
-  const title = system ? `${SINGLE_SYSTEM_BY_ID[system].shortName}에 필요한 정보` : "Birth sketch";
+  const reasons = missing.map((field) => copy.fieldReason[field]);
+  const title = system ? copy.titleForSystem(SINGLE_SYSTEM_BY_ID[system].shortName) : copy.titleFull;
+  const latinOrder = nameScript === "latin";
 
   return (
-    <main className={BG} lang="en">
+    <main className={BG} lang="ko">
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-5 pb-32 pt-8 sm:px-8">
         <Link
           href={backHref}
           className="inline-flex items-center gap-1 text-sm text-cyan-200/90 hover:text-cyan-100"
         >
           <ChevronLeft className="h-4 w-4" aria-hidden />{" "}
-          {system ? "읽기로 돌아가기" : "Oracle lobby"}
+          {system ? copy.backToReading : copy.backToLobby}
         </Link>
 
         <h1 className="mt-8 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h1>
@@ -451,32 +456,23 @@ function OracleProfileForm() {
             ))}
           </ul>
         ) : (
-          <p className="mt-2 text-sm text-slate-300">
-            {fullForm
-              ? "Local date · birthplace · exact time or 15‑question estimate (Q1 anchors your rhythm of day)."
-              : "이미 저장된 값은 다시 묻지 않습니다. 이 체계에 필요한 항목만 보여 줍니다."}
-          </p>
+          <p className="mt-2 text-sm text-slate-300">{fullForm ? copy.introFull : copy.introPartial}</p>
         )}
-        {fullForm ? (
-          <p className="mt-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[11px] text-slate-300/92">
-            Tip: Use Chrome&apos;s built-in translation for your language if you prefer.
-          </p>
-        ) : null}
 
         {loading ? (
-          <p className="mt-12 text-center text-sm text-white/55">Loading…</p>
+          <p className="mt-12 text-center text-sm text-white/55">{copy.loading}</p>
         ) : (
           <form className="mt-10 space-y-8 text-sm" onSubmit={submit}>
             {show("birth_date") ? (
-              <fieldset className="space-y-3" lang="en">
+              <fieldset className="space-y-3" lang="ko">
                 <label className="text-[11px] uppercase tracking-[0.2em] text-white/52">
-                  Date of birth (local)
+                  {copy.dobLabel}
                 </label>
-                <p className="text-[11px] text-white/42">MM / DD / YYYY</p>
+                <p className="text-[11px] text-white/42">{copy.dobHint}</p>
                 <div className="grid grid-cols-3 gap-3">
                   <select
                     value={dobMonth}
-                    aria-label="Birth month"
+                    aria-label={copy.dobMonthAria}
                     onChange={(e) => {
                       const next = Number(e.target.value);
                       setDobMonth(next);
@@ -488,22 +484,23 @@ function OracleProfileForm() {
                     }}
                     className="rounded-2xl border border-white/[0.14] bg-black/35 px-3 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                   >
-                    {MONTH_NAMES.map((label, ix) => (
-                      <option key={label} value={ix}>
+                    <option value={0}>{copy.monthPlaceholder}</option>
+                    {copy.months.map((label, ix) => (
+                      <option key={label} value={ix + 1}>
                         {label}
                       </option>
                     ))}
                   </select>
                   <select
                     value={dobDay}
-                    aria-label="Birth day"
+                    aria-label={copy.dobDayAria}
                     onChange={(e) => {
                       setDobDay(Number(e.target.value));
                       setDobError(null);
                     }}
                     className="rounded-2xl border border-white/[0.14] bg-black/35 px-3 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                   >
-                    <option value={0}>Day</option>
+                    <option value={0}>{copy.dayPlaceholder}</option>
                     {Array.from({ length: maxDay }, (_, i) => i + 1).map((d) => (
                       <option key={d} value={d}>
                         {d}
@@ -512,7 +509,7 @@ function OracleProfileForm() {
                   </select>
                   <select
                     value={dobYear}
-                    aria-label="Birth year"
+                    aria-label={copy.dobYearAria}
                     onChange={(e) => {
                       const next = Number(e.target.value);
                       setDobYear(next);
@@ -524,7 +521,7 @@ function OracleProfileForm() {
                     }}
                     className="rounded-2xl border border-white/[0.14] bg-black/35 px-3 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                   >
-                    <option value={0}>Year</option>
+                    <option value={0}>{copy.yearPlaceholder}</option>
                     {yearOptions.map((y) => (
                       <option key={y} value={y}>
                         {y}
@@ -539,94 +536,105 @@ function OracleProfileForm() {
             {show("birth_place") ? (
               <fieldset className="space-y-2">
                 <label className="text-[11px] uppercase tracking-[0.2em] text-white/52">
-                  City / region at birth (text)
+                  {copy.cityLabel}
                 </label>
                 <input
                   required
-                  placeholder="e.g. Seoul, South Korea / Tokyo, Japan / Paris, France"
+                  placeholder={copy.cityPlaceholder}
                   type="text"
                   value={birthCity}
                   onChange={(e) => setBirthCity(e.target.value)}
                   className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-300/50 focus:outline-none"
                 />
-                <p className="text-[11px] text-white/42">
-                  Include country name. Coordinates are geocoded from this city — Seoul is not
-                  assumed.
-                </p>
+                <p className="text-[11px] text-white/42">{copy.cityHint}</p>
               </fieldset>
             ) : null}
 
             {show("sex") ? (
               <fieldset className="space-y-2">
                 <label className="text-[11px] uppercase tracking-[0.2em] text-white/52">
-                  Gender presentation
+                  {copy.genderLabel}
                 </label>
                 <select
                   value={gender}
                   onChange={(e) => setGender(e.target.value as Gender)}
                   className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                 >
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="prefer_not_to_say">Prefer not to say</option>
+                  <option value="female">{copy.genderFemale}</option>
+                  <option value="male">{copy.genderMale}</option>
+                  <option value="prefer_not_to_say">{copy.genderPreferNot}</option>
                 </select>
               </fieldset>
             ) : null}
 
-            {show("name") ? (
+            {showName ? (
               <fieldset className="space-y-3">
-                <label className="text-[11px] uppercase tracking-[0.2em] text-white/52">Name</label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input
-                    required
-                    placeholder="Surname"
-                    value={nameSurname}
-                    onChange={(e) => setNameSurname(e.target.value)}
-                    className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-300/50 focus:outline-none"
-                  />
-                  <input
-                    required
-                    placeholder="Given name"
-                    value={nameGiven}
-                    onChange={(e) => setNameGiven(e.target.value)}
-                    className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-300/50 focus:outline-none"
-                  />
-                </div>
+                <label className="text-[11px] uppercase tracking-[0.2em] text-white/52">
+                  {copy.nameLabel}
+                </label>
+                <p className="text-[12px] leading-relaxed text-white/55">{copy.nameUsedBy}</p>
                 <select
-                  value={nameLocale}
-                  onChange={(e) => setNameLocale(e.target.value)}
+                  aria-label={copy.nameScriptLabel}
+                  value={nameScript}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (isNameScript(next)) setNameScript(next);
+                  }}
                   className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
                 >
-                  <option value="ko">한국어 (성+이름)</option>
-                  <option value="ja">日本語 (姓+名)</option>
-                  <option value="zh">中文 (姓+名)</option>
-                  <option value="en">Latin (given then surname)</option>
+                  <option value="hangul">{copy.nameScriptHangul}</option>
+                  <option value="hanja">{copy.nameScriptHanja}</option>
+                  <option value="ja">{copy.nameScriptJa}</option>
+                  <option value="latin">{copy.nameScriptLatin}</option>
                 </select>
-              </fieldset>
-            ) : null}
-
-            {show("name_latin") ? (
-              <fieldset className="space-y-2">
-                <label className="text-[11px] uppercase tracking-[0.2em] text-white/52">
-                  Latin name <span className="normal-case tracking-normal text-white/35">(optional)</span>
-                </label>
-                <input
-                  placeholder="Given Family"
-                  value={nameLatin}
-                  onChange={(e) => setNameLatin(e.target.value)}
-                  className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-300/50 focus:outline-none"
-                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {latinOrder ? (
+                    <>
+                      <input
+                        required={nameRequired}
+                        placeholder={copy.nameGiven}
+                        lang="en"
+                        value={nameGiven}
+                        onChange={(e) => setNameGiven(e.target.value)}
+                        className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-300/50 focus:outline-none"
+                      />
+                      <input
+                        required={nameRequired}
+                        placeholder={copy.nameFamily}
+                        lang="en"
+                        value={nameSurname}
+                        onChange={(e) => setNameSurname(e.target.value)}
+                        className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-300/50 focus:outline-none"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        required={nameRequired}
+                        placeholder={copy.nameFamily}
+                        lang={nameScript === "ja" ? "ja" : nameScript === "hanja" ? "zh" : "ko"}
+                        value={nameSurname}
+                        onChange={(e) => setNameSurname(e.target.value)}
+                        className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-300/50 focus:outline-none"
+                      />
+                      <input
+                        required={nameRequired}
+                        placeholder={copy.nameGiven}
+                        lang={nameScript === "ja" ? "ja" : nameScript === "hanja" ? "zh" : "ko"}
+                        value={nameGiven}
+                        onChange={(e) => setNameGiven(e.target.value)}
+                        className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-300/50 focus:outline-none"
+                      />
+                    </>
+                  )}
+                </div>
+                <p className="text-[12px] leading-relaxed text-white/50">{nameMethodFor(nameScript)}</p>
               </fieldset>
             ) : null}
 
             {show("mbti") ? (
               <fieldset className="space-y-3">
-                {mbti ? (
-                  <p className="text-sm text-slate-200">
-                    현재 {mbti}
-                    {mbtiEstimated ? " · 추정" : ""}
-                  </p>
-                ) : null}
+                {mbti ? <p className="text-sm text-slate-200">{copy.mbtiCurrent(mbti, mbtiEstimated)}</p> : null}
                 <MbtiEstimator
                   onResolved={(type, estimated) => {
                     setMbti(type);
@@ -639,7 +647,7 @@ function OracleProfileForm() {
             {fullForm ? (
               <fieldset className="space-y-4 rounded-3xl border border-white/[0.1] bg-white/[0.03] p-5">
                 <legend className="px-2 text-[12px] font-semibold uppercase tracking-[0.15em] text-white/72">
-                  Local birth time
+                  {copy.timeLegend}
                 </legend>
 
                 <label className="flex cursor-pointer items-center gap-3 text-[14px] text-slate-200">
@@ -655,7 +663,7 @@ function OracleProfileForm() {
                       setErr(null);
                     }}
                   />
-                  I know the exact time
+                  {copy.timeExact}
                 </label>
 
                 {timeKnowledge === "exact" ? (
@@ -663,7 +671,7 @@ function OracleProfileForm() {
                     required
                     type="time"
                     step={60}
-                    lang="en"
+                    lang="ko"
                     value={birth_time_24h}
                     onChange={(e) => setBirthTime24h(e.target.value)}
                     className="w-full rounded-2xl border border-white/[0.14] bg-black/35 px-4 py-2.5 font-mono text-white focus:border-cyan-300/50 focus:outline-none"
@@ -687,28 +695,20 @@ function OracleProfileForm() {
                       setErr(null);
                     }}
                   />
-                  I don&apos;t know my exact time
+                  {copy.timeUnknown}
                 </label>
 
                 {timeKnowledge === "unknown" ? (
                   <div className="space-y-4 pt-2">
                     {approxBandPersist ? (
                       <p className="rounded-xl border border-amber-300/35 bg-amber-950/20 px-3 py-2 text-[13px] text-amber-100">
-                        Approximate clock window on file (
-                        <span className="font-mono">midpoint {birth_time_24h}</span>
-                        ). Answer the questionnaire instead to refine with the new flow, or Save to
-                        keep this window.
+                        {copy.timeApproxOnFile(birth_time_24h)}
                       </p>
                     ) : (
                       <>
-                        <p className="text-[12px] leading-relaxed text-slate-400">
-                          Answer every question — Q1 maps your energetic time-of-day. When all fifteen
-                          are filled, birth time estimates automatically — no extra button.
-                        </p>
+                        <p className="text-[12px] leading-relaxed text-slate-400">{copy.surveyIntro}</p>
                         {inferBusy && !inferredTime ? (
-                          <p className="text-[12px] text-slate-400">
-                            Estimating birth time from your answers…
-                          </p>
+                          <p className="text-[12px] text-slate-400">{copy.inferBusy}</p>
                         ) : null}
                         {message && inferredTime ? (
                           <p className="rounded-xl border border-emerald-400/35 bg-emerald-950/20 px-3 py-2 text-[13px] text-emerald-100">
@@ -716,42 +716,43 @@ function OracleProfileForm() {
                           </p>
                         ) : null}
                         {!inferredTime && !inferBusy ? (
-                          <p className="text-[12px] text-slate-500">
-                            Complete all fifteen to auto-estimate.
-                          </p>
+                          <p className="text-[12px] text-slate-500">{copy.inferNeedAll}</p>
                         ) : null}
-                        {SURVEY_QUESTIONS.map((row) => (
-                          <div key={row.id} className="space-y-1.5">
-                            <div className="text-[13px] text-slate-100">{row.text}</div>
-                            <div className="grid gap-1.5">
-                              {row.choices.map((c, ix) => (
-                                <label
-                                  key={c}
-                                  className="flex cursor-pointer items-start gap-2 rounded-xl border border-white/[0.08] px-3 py-1.5 text-[12px] text-slate-200 hover:bg-white/[0.06]"
-                                >
-                                  <input
-                                    type="radio"
-                                    name={row.id}
-                                    checked={
-                                      surveyAnswers[row.id as keyof SurveyAnswersExpected] === ix
-                                    }
-                                    onChange={() => {
-                                      surveyAutoInferRef.current = false;
-                                      setInferredTime(null);
-                                      setInferredSijin(null);
-                                      setMessage(null);
-                                      setSurveyAnswers((prev) => ({
-                                        ...prev,
-                                        [row.id]: ix,
-                                      }));
-                                    }}
-                                  />
-                                  {c}
-                                </label>
-                              ))}
+                        {ORACLE_PROFILE_SURVEY_IDS.map((id: OracleProfileSurveyId) => {
+                          const row = copy.survey[id];
+                          return (
+                            <div key={id} className="space-y-1.5">
+                              <div className="text-[13px] text-slate-100">{row.text}</div>
+                              <div className="grid gap-1.5">
+                                {row.choices.map((choice, ix) => (
+                                  <label
+                                    key={choice}
+                                    className="flex cursor-pointer items-start gap-2 rounded-xl border border-white/[0.08] px-3 py-1.5 text-[12px] text-slate-200 hover:bg-white/[0.06]"
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={id}
+                                      checked={
+                                        surveyAnswers[id as keyof SurveyAnswersExpected] === ix
+                                      }
+                                      onChange={() => {
+                                        surveyAutoInferRef.current = false;
+                                        setInferredTime(null);
+                                        setInferredSijin(null);
+                                        setMessage(null);
+                                        setSurveyAnswers((prev) => ({
+                                          ...prev,
+                                          [id]: ix,
+                                        }));
+                                      }}
+                                    />
+                                    {choice}
+                                  </label>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </>
                     )}
                   </div>
@@ -770,7 +771,7 @@ function OracleProfileForm() {
               disabled={saving || unknownBlocked}
               className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-900/35 hover:brightness-[1.06] disabled:pointer-events-none disabled:opacity-42"
             >
-              {saving ? "Saving…" : fullForm ? "Save birth sketch" : "저장하고 읽기로"}
+              {saving ? copy.saving : fullForm ? copy.saveFull : copy.savePartial}
             </button>
           </form>
         )}

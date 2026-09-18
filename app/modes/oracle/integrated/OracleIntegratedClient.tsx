@@ -1209,7 +1209,11 @@ export default function OracleIntegratedClient({
                     {snapshot.birth_place ? (
                       <p className="text-slate-400">{snapshot.birth_place}</p>
                     ) : null}
-                    {snapshot.name_local ? <p className="text-slate-300">{snapshot.name_local}</p> : null}
+                    {snapshot.name_local || snapshot.name_hanja || snapshot.name_latin ? (
+                      <p className="text-slate-300">
+                        {snapshot.name_local || snapshot.name_hanja || snapshot.name_latin}
+                      </p>
+                    ) : null}
                     {snapshot.mbti ? (
                       <p className="text-slate-300">
                         MBTI {snapshot.mbti}
@@ -1230,6 +1234,24 @@ export default function OracleIntegratedClient({
                 </p>
               </div>
             ) : null}
+
+            <div className="mt-8 space-y-2">
+              <label
+                className="text-[11px] uppercase tracking-[0.2em] text-white/55"
+                htmlFor="integrated-question"
+              >
+                질문 <span className="normal-case tracking-normal text-white/35">(선택)</span>
+              </label>
+              <textarea
+                id="integrated-question"
+                rows={4}
+                maxLength={2000}
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="지금 가장 궁금한 일을 적어 주세요. 비워 두면 전반적인 흐름을 읽습니다."
+                className="w-full resize-y rounded-2xl border border-white/15 bg-black/35 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/55 focus:outline-none"
+              />
+            </div>
 
             <div className="mt-8">
               <TarotDrawInput
@@ -1341,21 +1363,6 @@ export default function OracleIntegratedClient({
             </div>
 
             <div className="mt-8 space-y-2">
-              <label
-                className="text-[11px] uppercase tracking-[0.2em] text-white/55"
-                htmlFor="integrated-question"
-              >
-                질문 <span className="normal-case tracking-normal text-white/35">(선택)</span>
-              </label>
-              <textarea
-                id="integrated-question"
-                rows={4}
-                maxLength={2000}
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder="지금 가장 궁금한 일을 적어 주세요. 비워 두면 전반적인 흐름을 읽습니다."
-                className="w-full resize-y rounded-2xl border border-white/15 bg-black/35 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/55 focus:outline-none"
-              />
               <button
                 type="button"
                 onClick={() => void startReading()}

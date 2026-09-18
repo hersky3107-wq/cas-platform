@@ -37,6 +37,7 @@ import type { TarotSpreadSize } from '../engines/draw/conventions'
 import type { FiveElement, LineValue } from '../engines/draw/tables'
 import { createRng } from '../engines/draw/rng'
 import { nameReading } from '../engines/name'
+import { inferNameScript, nameEngineLocale } from '../name-script'
 import { numerology } from '../engines/numerology'
 import { MBTI_TYPES, prism } from '../engines/prism'
 import type { MicroCheck, PrismColors } from '../engines/prism/types'
@@ -222,6 +223,8 @@ type SubjectContext = {
   sex: 'male' | 'female'
   asOfDate: string
   locale: string
+  /** 성명학 engine locale — from the stored name script, not the session UI locale. */
+  nameLocale: string
   seed: string
   latinName: string | null
   nameParts: { surname: string; givenName: string } | null
@@ -431,7 +434,7 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
     }
     case 'name': {
       if (!ctx.nameParts) return { unreadableCode: 'name.no_name_on_profile' }
-      const input = { ...ctx.nameParts, locale: ctx.locale }
+      const input = { ...ctx.nameParts, locale: ctx.nameLocale }
       return { vote: projectName(input), result: { reading: jsonObject(nameReading(input)) } }
     }
     case 'iching': {
@@ -525,6 +528,7 @@ export function runComputations(input: ComputeInput): ComputeOutput {
     sex: profile.sex === 'F' ? 'female' : 'male',
     asOfDate: input.asOfDate,
     locale: input.locale,
+    nameLocale: nameEngineLocale(inferNameScript(profile)),
     seed: input.seed,
     latinName: profile.name_latin ?? null,
     nameParts: splitName(profile, input.locale),

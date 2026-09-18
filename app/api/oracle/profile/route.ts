@@ -7,6 +7,12 @@ import { approxBandToMidpointHHMM } from '@/lib/oracle/sijin'
 import { geocodeBirthCity } from '@/lib/oracle/geocode'
 import { projectV1ToRunnerProfile } from '@/lib/oracle/runner-profile-projection'
 import { fetchOracleBirthProfileAdmin, oracleV1ToUsersJson } from '@/lib/oracle/users-oracle-storage'
+import {
+  composeStoredName,
+  isNameScript,
+  nameScriptFromLocaleTag,
+  type NameScript,
+} from '@/lib/oracle/name-script'
 
 const COLUMN_HINT_SQL =
   'ALTER TABLE users ADD COLUMN IF NOT EXISTS oracle_birth_profile JSONB;'
@@ -194,13 +200,13 @@ async function ensureStubRunner(userId: string): Promise<RunnerProfileRow | null
   return data as RunnerProfileRow
 }
 
-function composeLocalName(surname: string, given: string, locale: string): { name_local?: string; name_latin?: string } {
-  const family = surname.trim()
-  const personal = given.trim()
-  if (!family || !personal) return {}
-  const east = locale === 'ko' || locale === 'ja' || locale.startsWith('zh')
-  if (east) return { name_local: `${family}${personal}` }
-  return { name_latin: `${personal} ${family}` }
+function nameScriptFromBody(body: Record<string, unknown>): NameScript {
+  const rawScript = typeof body.name_script === 'string' ? body.name_script.trim() : ''
+  if (isNameScript(rawScript)) return rawScript
+  const fromLocale = nameScriptFromLocaleTag(
+    typeof body.name_locale === 'string' ? body.name_locale : null,
+  )
+  return fromLocale ?? 'hangul'
 }
 
 async function patchRunnerExtras(
@@ -248,9 +254,12 @@ export async function POST(req: Request) {
   const extrasPatch: Record<string, unknown> = {}
   const surname = typeof body.name_surname === 'string' ? body.name_surname.trim() : ''
   const given = typeof body.name_given === 'string' ? body.name_given.trim() : ''
-  const nameLocale = typeof body.name_locale === 'string' && body.name_locale.trim() ? body.name_locale.trim() : 'ko'
-  if (surname && given) Object.assign(extrasPatch, composeLocalName(surname, given, nameLocale))
-  if (typeof body.name_latin === 'string' && body.name_latin.trim()) {
+  const nameScript = nameScriptFromBody(body)
+  const derivedPatch: Record<string, unknown> = {}
+  if (surname && given) {
+    Object.assign(extrasPatch, composeStoredName(surname, given, nameScript))
+    derivedPatch.name_script = nameScript
+  } else if (typeof body.name_latin === 'string' && body.name_latin.trim()) {
     extrasPatch.name_latin = body.name_latin.trim()
   }
   if (typeof body.mbti === 'string' && body.mbti.trim()) {
@@ -259,8 +268,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'mbti must be a 4-letter MBTI type' }, { status: 400 })
     }
     extrasPatch.mbti = mbti
-    extrasPatch.derived = { mbti_estimated: body.mbti_estimated === true }
+    derivedPatch.mbti_estimated = body.mbti_estimated === true
   }
+  if (Object.keys(derivedPatch).length > 0) extrasPatch.derived = derivedPatch
 
   if (body.ensureStub === true) {
     const stub = await ensureStubRunner(user.id)

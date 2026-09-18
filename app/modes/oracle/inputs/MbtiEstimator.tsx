@@ -9,8 +9,11 @@ import {
   type MbtiEstimatorAnswers,
   type MbtiPole,
 } from "@/lib/oracle/mbti-estimator";
+import { getOracleProfileCopy, type OracleProfileMbtiId } from "@/lib/oracle/i18n";
 
 type Mode = "choose" | "known" | "estimate";
+
+const copy = getOracleProfileCopy("ko").mbti;
 
 export default function MbtiEstimator({
   onResolved,
@@ -31,10 +34,8 @@ export default function MbtiEstimator({
   return (
     <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <div>
-        <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">MBTI</p>
-        <p className="mt-1 text-sm text-slate-300">
-          유형을 알고 있으면 고르고, 모르면 짧은 문항으로 추정합니다. 외부 검사는 필요 없습니다.
-        </p>
+        <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">{copy.label}</p>
+        <p className="mt-1 text-sm text-slate-300">{copy.help}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -47,7 +48,7 @@ export default function MbtiEstimator({
               : "border-white/10 text-slate-300 hover:border-white/25"
           }`}
         >
-          알고 있어요
+          {copy.known}
         </button>
         <button
           type="button"
@@ -58,7 +59,7 @@ export default function MbtiEstimator({
               : "border-white/10 text-slate-300 hover:border-white/25"
           }`}
         >
-          모르겠어요
+          {copy.unknown}
         </button>
       </div>
 
@@ -69,7 +70,7 @@ export default function MbtiEstimator({
             onChange={(event) => setKnown(event.target.value)}
             className="w-full rounded-2xl border border-white/14 bg-black/35 px-4 py-2.5 text-white focus:border-cyan-300/50 focus:outline-none"
           >
-            <option value="">유형 선택</option>
+            <option value="">{copy.pickType}</option>
             {MBTI_TYPES.map((type) => (
               <option key={type} value={type}>
                 {type}
@@ -82,36 +83,44 @@ export default function MbtiEstimator({
             onClick={() => onResolved(known, false)}
             className="w-full rounded-xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15 disabled:opacity-40"
           >
-            이 유형으로 사용
+            {copy.useType}
           </button>
         </div>
       ) : null}
 
       {mode === "estimate" ? (
         <div className="space-y-5">
-          {MBTI_ESTIMATOR_QUESTIONS.map((question) => (
-            <div key={question.id} className="space-y-1.5">
-              <p className="text-[13px] text-slate-100">{question.prompt}</p>
-              <div className="grid gap-1.5">
-                {question.choices.map((choice) => (
-                  <label
-                    key={choice.pole + choice.label}
-                    className="flex cursor-pointer items-start gap-2 rounded-xl border border-white/[0.08] px-3 py-1.5 text-[12px] text-slate-200 hover:bg-white/[0.06]"
-                  >
-                    <input
-                      type="radio"
-                      name={question.id}
-                      checked={answers[question.id] === choice.pole}
-                      onChange={() =>
-                        setAnswers((prev) => ({ ...prev, [question.id]: choice.pole as MbtiPole }))
-                      }
-                    />
-                    {choice.label}
-                  </label>
-                ))}
+          {MBTI_ESTIMATOR_QUESTIONS.map((question) => {
+            const questionCopy = copy.questions[question.id as OracleProfileMbtiId];
+            const prompt = questionCopy?.prompt ?? question.prompt;
+            const labels = questionCopy?.choices ?? [
+              question.choices[0].label,
+              question.choices[1].label,
+            ];
+            return (
+              <div key={question.id} className="space-y-1.5">
+                <p className="text-[13px] text-slate-100">{prompt}</p>
+                <div className="grid gap-1.5">
+                  {question.choices.map((choice, index) => (
+                    <label
+                      key={choice.pole + labels[index]}
+                      className="flex cursor-pointer items-start gap-2 rounded-xl border border-white/[0.08] px-3 py-1.5 text-[12px] text-slate-200 hover:bg-white/[0.06]"
+                    >
+                      <input
+                        type="radio"
+                        name={question.id}
+                        checked={answers[question.id] === choice.pole}
+                        onChange={() =>
+                          setAnswers((prev) => ({ ...prev, [question.id]: choice.pole as MbtiPole }))
+                        }
+                      />
+                      {labels[index]}
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {estimated ? (
             <button
               type="button"
@@ -119,10 +128,10 @@ export default function MbtiEstimator({
               onClick={() => onResolved(estimated, true)}
               className="w-full rounded-xl bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15 disabled:opacity-40"
             >
-              추정 결과 {estimated} 사용
+              {copy.useEstimate(estimated)}
             </button>
           ) : (
-            <p className="text-[12px] text-white/40">여덟 문항을 모두 답하면 유형이 정해집니다.</p>
+            <p className="text-[12px] text-white/40">{copy.completeHint}</p>
           )}
         </div>
       ) : null}

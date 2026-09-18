@@ -203,10 +203,10 @@ export const PROFILE_FIELD_REASON: Record<ProfileField, { ko: string; en: string
     ko: '점성술은 출생 도시로 좌표를 잡습니다. 서울로 임의 지정하지 않습니다.',
     en: 'Astrology geocodes the birth city. It will not silently assume Seoul.',
   },
-  name: {
-    ko: '성명학은 성·이름·로케일이 필요합니다.',
-    en: 'Name reading needs a surname, given name, and locale.',
-  },
+    name: {
+      ko: '성명학은 문자(한글·한자·로마자)와 성·이름이 필요합니다.',
+      en: 'Name reading needs a script (Hangul, Hanja, or Latin) plus surname and given name.',
+    },
   name_latin: {
     ko: '수비학 이름 수는 로마자 이름이 있으면 더해집니다. 없어도 생년월일만으로 읽습니다.',
     en: 'Numerology can add a name number from a Latin name. Date-only still works.',
