@@ -266,6 +266,8 @@ describe('ConsensusHero — weighted-call help only when diverged', () => {
     expect(html).toContain('Most models said rise')
     expect(html).toContain('data-testid="consensus-conclusion"')
     expect(html).toContain('<details')
+    expect(html).not.toMatch(/<p[^>]*data-testid="consensus-conclusion"/)
+    expect(html).toMatch(/<div class="text-2xl font-extrabold leading-tight text-league-fg md:text-3xl" data-testid="consensus-conclusion">/)
     expect(html).not.toMatch(/<p class="text-lg font-bold leading-snug text-league-fg md:text-xl">/)
     expect(html).not.toMatch(/<p class="absolute left-0 z-10/)
   })

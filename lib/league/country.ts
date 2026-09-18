@@ -26,6 +26,7 @@ const BRAND_COUNTRY: Record<string, CountryCode> = {
   Xiaomi: 'CN',
   Baidu: 'CN',
   ByteDance: 'CN',
+  Tencent: 'CN',
   Upstage: 'KR',
   NAVER: 'KR',
   LG: 'KR',

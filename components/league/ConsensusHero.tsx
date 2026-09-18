@@ -138,7 +138,7 @@ export function ConsensusHero({
         heading={barHeading}
       />
       <div className="mt-3">
-        <p
+        <div
           className="text-2xl font-extrabold leading-tight text-league-fg md:text-3xl"
           data-testid="consensus-conclusion"
         >
@@ -167,7 +167,7 @@ export function ConsensusHero({
               {magSuffix}
             </>
           )}
-        </p>
+        </div>
         {hero.diverged ? (
           <p className="mt-1 text-[11px] font-medium leading-snug text-league-fg-muted">{hero.line2}</p>
         ) : hero.confidencePct !== null ? (

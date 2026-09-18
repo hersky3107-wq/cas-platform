@@ -52,7 +52,7 @@ export const LEAGUE_JOB_MAX_ACTIVE = 10
 /**
  * Wall-clock budget for one cron tick's chunk work. The route's maxDuration
  * is 300s. This MUST exceed every roster `timeoutMs` (longest today:
- * deepseek-v4-pro / v3.2 / kimi-k2.6 at 240s) by a margin: after packet/DB
+ * deepseek-v4-pro at 240s) by a margin: after packet/DB
  * overhead, `now + timeout > start + budget` is otherwise true for the
  * whole tick and a leftover 240s seat is deferred forever (0-produced loop).
  * Budget = longest timeout + 60s. A 240s call launched in the first ~60s

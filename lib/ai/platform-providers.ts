@@ -148,6 +148,8 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   { id: 'openrouter:deepseek-v4-pro', provider: 'openrouter', brand: 'DeepSeek', displayName: 'DeepSeek V4 Pro', model: 'deepseek/deepseek-v4-pro', league: 'premier', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   { id: 'openrouter:deepseek-v3.2', provider: 'openrouter', brand: 'DeepSeek', displayName: 'DeepSeek V3.2', model: 'deepseek/deepseek-v3.2', league: 'challenger', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   { id: 'openrouter:kimi-k2.6', provider: 'openrouter', brand: 'Moonshot AI', displayName: 'Kimi K2.6', model: 'moonshotai/kimi-k2.6', league: 'challenger', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  // 2026-09-18: live challenger seat. Fast chat (no reasoning-effort flag).
+  { id: 'openrouter:hunyuan-3', provider: 'openrouter', brand: 'Tencent', displayName: 'Hunyuan 3', model: 'tencent/hy3', league: 'challenger', verified: true },
   { id: 'openrouter:qwen3.5-plus', provider: 'openrouter', brand: 'Qwen', displayName: 'Qwen3.5 Plus', model: 'qwen/qwen3.5-plus-20260420', league: 'challenger', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   // NOTE: requested "Mistral Medium 3.5" — the catalog id is dashed
   // (`mistralai/mistral-medium-3-5`); `mistral-medium-3.1` also exists but is

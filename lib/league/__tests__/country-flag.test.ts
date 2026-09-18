@@ -31,5 +31,6 @@ describe('CountryFlag roster coverage', () => {
     expect(brandCountry('Thinking Machines (Inkling)', 'us')).toBe('US')
     expect(brandCountry('Mistral', 'other')).toBe('FR')
     expect(brandCountry('Cohere (Command)', 'other')).toBe('CA')
+    expect(brandCountry('Tencent (Hunyuan)', 'china')).toBe('CN')
   })
 })

@@ -137,9 +137,9 @@ export type RosterPrice = {
  *                fields × 1e6). Covers every remaining openrouter:* roster seat.
  *                thinkingmachines/inkling listed $1.00 / $4.05 (2026-09-07);
  *                endpoints DeepInfra $0.95/$4.05, BaseTen/Together $1.00/$4.05.
- *                deepseek-v3.2 stays on OpenRouter — first-party GET /models
- *                (2026-09-07) listed only deepseek-v4-pro / deepseek-v4-flash /
- *                deepseek-v4-flash-vision-exp. No v3.2 id; do not guess.
+ *                deepseek challenger and world route first-party deepseek-v4-flash;
+ *                premier routes first-party deepseek-v4-pro. DeepSeek is fully off OpenRouter.
+ *                tencent/hy3 listed $0.132 / $0.528 (2026-09-18).
  *   DeepSeek   — first-party api-docs.deepseek.com rate card (USD / 1M tokens),
  *                peak = 01:00–04:00 and 06:00–10:00 UTC Mon–Fri; off-peak is
  *                50% of peak (weekends all off-peak). Roster fallback uses
@@ -177,6 +177,10 @@ export type RosterPrice = {
  *   - India, Middle East, SEA, LatAm and Africa have zero models on
  *     OpenRouter today, so geographic diversity beyond US/CN/KR/FR/CA is
  *     currently not purchasable.
+ *   - 2026-09-18: challenger kimi-k2.6 (OpenRouter, 240s) monopolized the
+ *     challenger stage (~5 min). Replaced by Tencent Hunyuan 3
+ *     (openrouter:hunyuan-3 → tencent/hy3). Default 60s timeout. Premier
+ *     kimi-k3 is untouched. Tencent had 0 prior seats.
  *
  * WEIGHTS — classified 2026-09-07. Rule: 'open' means the SPECIFIC called
  * model has publicly downloadable weights. A previous generation or a
@@ -198,6 +202,8 @@ export type RosterPrice = {
  *     features the checkpoint does not have.
  *   nova-2-lite — FLAG: Amazon documents Nova as API-only; no public
  *     checkpoint found. Kept closed. Not guessed open.
+ *   hunyuan-3 — FLAG: tencent/hy3 is the hosted Hunyuan 3 API. Hunyuan-A13B
+ *     is a sibling, not this model. Kept closed. Not guessed open.
  *
  * Re-audit whenever a first-party page moves, or when an OpenRouter drift
  * script flags a seat off by >25%.
@@ -264,15 +270,12 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // the closest wired equivalent (substitution, flagged in the run report).
   { model_id: 'command-a', brand: 'Cohere', product_alias: 'Command', camp: 'other', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:command-a' }, price: { inputPerMTokens: 2.5, outputPerMTokens: 10 } }, // FLAG resolved: CC-BY-NC; CohereLabs/c4ai-command-a-03-2025 (this id, not A+)
   { model_id: 'qwen3.5-plus', brand: 'Qwen', camp: 'china', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:qwen3.5-plus' }, price: { inputPerMTokens: 0.3, outputPerMTokens: 1.8 } }, // Apache-2.0; hosted Plus ↔ Qwen/Qwen3.5-397B-A17B
-  // v3.2 timed out at the 60s default on the live 2026-08-28 reasoning round
-  // (hidden reasoning runs longer under the 4500 budget) — same fix as its
-  // siblings: 240s per-entry headroom.
-  { model_id: 'deepseek-v3.2', brand: 'DeepSeek', camp: 'china', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, timeoutMs: 240_000, caller: { kind: 'platform', platformId: 'openrouter:deepseek-v3.2' }, price: { inputPerMTokens: 0.269, outputPerMTokens: 0.4 } }, // MIT; deepseek-ai/DeepSeek-V3.2 — no first-party id (GET /models 2026-09-07)
-  // Same 3000-token reasoning exhaustion as deepseek-v4-pro (see above) —
-  // confirmed live 2026-08-16 that 8000 returns content (~1.1k used) on a
-  // league-sized prompt; the empty-content retry doubles latency under load,
-  // hence the 240s timeout.
-  { model_id: 'kimi-k2.6', brand: 'Moonshot AI', product_alias: 'Kimi', camp: 'china', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 8000, timeoutMs: 240_000, caller: { kind: 'platform', platformId: 'openrouter:kimi-k2.6' }, price: { inputPerMTokens: 0.95, outputPerMTokens: 4 } }, // Modified MIT; moonshotai/Kimi-K2.6
+  // 2026-09-18: first-party DeepSeek flash (api.deepseek.com serves deepseek-v4-pro / deepseek-v4-flash).
+  // Challenger rewired direct to deepseek-v4-flash off OpenRouter.
+  { model_id: 'deepseek-flash', brand: 'DeepSeek', camp: 'china', league_tier: 'challenger', weights: 'open', provider_key: 'deepseek', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'core', provider: 'deepseek', modelOverride: 'deepseek-v4-flash', extraPayload: DEEPSEEK_FIRST_PARTY_THINKING }, price: DEEPSEEK_V4_FLASH_PRICE }, // MIT; deepseek-ai/DeepSeek-V4-Flash; first-party
+  // 2026-09-18: replaces challenger kimi-k2.6 (OpenRouter 240s stall).
+  // Live probe 3.03s; default 60s timeout — no reasoning-exhaustion headroom.
+  { model_id: 'hunyuan-3', brand: 'Tencent', product_alias: 'Hunyuan', camp: 'china', league_tier: 'challenger', weights: 'closed', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:hunyuan-3' }, price: { inputPerMTokens: 0.132, outputPerMTokens: 0.528 } }, // FLAG: hosted tencent/hy3; Hunyuan-A13B is a sibling
 
   // ── 🟢 WORLD (14) — two Korean vendors (NAVER, Upstage); no sovereign tier ─
   { model_id: 'gpt-5.6-luna', brand: 'OpenAI', product_alias: 'ChatGPT', camp: 'us', league_tier: 'world', weights: 'closed', provider_key: 'openai', reasoning: true, caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-5.6-luna' }, price: { inputPerMTokens: 0.2, outputPerMTokens: 1.2 } }, // OpenAI API; no public checkpoint
@@ -327,6 +330,8 @@ const ROSTER_BY_MODEL_ID = new Map(LEAGUE_ROSTER.map((entry) => [entry.model_id,
  * brand that actually answered. Not a live seat — never called.
  */
 const RETIRED_ROSTER_DISPLAY: Record<string, Pick<RosterEntry, 'brand' | 'product_alias'>> = {
+  'deepseek-v3.2': { brand: 'DeepSeek' },
+  'kimi-k2.6': { brand: 'Moonshot AI', product_alias: 'Kimi' },
   'k-exaone-2.0': { brand: 'LG', product_alias: 'EXAONE' },
   'ernie-4.5-vl': { brand: 'Baidu', product_alias: 'ERNIE' },
   'ernie-4.5': { brand: 'Baidu', product_alias: 'ERNIE' },
