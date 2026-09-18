@@ -410,6 +410,68 @@ describe('createLayer1AiAdapter', () => {
     if (!result.ok) expect(result.message).toMatch(/no live registry entry/)
   })
 
+  it('judges a verdict against the panel-size runaway, not the reading ceiling', async () => {
+    // 1200 visible tokens is well under the reading guard (3000) but over the
+    // N=7 verdict guard (960). Before the wiring fix, a doubter inheriting
+    // Mistral/숙요 accepted this as a legitimate reading-sized answer.
+    let calls = 0
+    const call: Layer1Call = async ({ strictRetry }) => {
+      calls += 1
+      return okCall({
+        text: VALID_VERDICT_JSON,
+        tokensOut: 1200,
+        contentTokens: 1200,
+        brand: 'Mistral',
+        model: 'mistralai/mistral-medium-3-5',
+        strictRetry: strictRetry ?? false,
+      })
+    }
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(
+      { ...verdictRequest('doubter', 7), brand: 'Mistral' },
+      { timeoutMs: 60_000 },
+    )
+    expect(calls).toBe(2)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/1200 > 960/)
+  })
+
+  it('accepts the same 1200-token body as a reading (different yardstick)', async () => {
+    let calls = 0
+    const call: Layer1Call = async () => {
+      calls += 1
+      return okCall({ text: VALID_JSON, tokensOut: 1200, contentTokens: 1200 })
+    }
+    const adapter = createLayer1AiAdapter({ call })
+    const result = await adapter.run(readingRequest('sukuyou'), { timeoutMs: 60_000 })
+    expect(calls).toBe(1)
+    expect(result.ok).toBe(true)
+  })
+
+  it('logs a seer runaway under the seer slug, not the brand\'s home system', async () => {
+    const warns: string[] = []
+    const spy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warns.push(args.map(String).join(' '))
+    })
+    const adapter = createLayer1AiAdapter({
+      call: async ({ strictRetry }) =>
+        okCall({
+          text: VALID_VERDICT_JSON,
+          tokensOut: 2000,
+          contentTokens: 2000,
+          brand: 'Mistral',
+          model: 'mistralai/mistral-medium-3-5',
+          strictRetry: strictRetry ?? false,
+        }),
+    })
+    await adapter.run({ ...verdictRequest('doubter', 7), brand: 'Mistral' }, { timeoutMs: 60_000 })
+    spy.mockRestore()
+    const joined = warns.join('\n')
+    expect(joined).toMatch(/\[oracle\] doubter /)
+    expect(joined).not.toMatch(/sukuyou/)
+    expect(joined).not.toMatch(/tzolkin/)
+  })
+
   it('floors the runaway threshold higher for synthesis than for a reading, regardless of which brand seats it', async () => {
     let calls = 0
     const call: Layer1Call = async ({ strictRetry }) => {

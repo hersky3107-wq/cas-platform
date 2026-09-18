@@ -51,7 +51,8 @@ import {
   VERDICT_MAX_COMPLETION_TOKENS,
   VERDICT_STRICT_RETRY_INSTRUCTION,
 } from './prompts/verdict'
-import { layer1Entry, layer1EntryForBrand, type Layer1RegistryEntry } from './registry'
+import { resolveOracleCallEntry, type Layer1RegistryEntry } from './registry'
+import { verdictRunawayContentTokens } from './seer-roster'
 
 export type Layer1AdapterOptions = {
   call?: Layer1Call
@@ -75,14 +76,20 @@ export const LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS = 3600
  * `runawayContentTokens` — deliberately NOT a function of maxCompletionTokens
  * (see the comment on that field in registry.ts). Synthesis floors it to its
  * own longer-contract value regardless of which brand's seat is synthesizing.
+ * Verdicts use the panel-size line budget, never a reading ceiling: a
+ * 120-char N=7 ballot used to be judged against 3000 reading tokens
+ * (session 7f5ccc4b logged `[oracle] tzolkin runaway` for the doubter).
  */
 export function layer1RunawayContentThreshold(
   entry: Pick<Layer1RegistryEntry, 'runawayContentTokens'>,
-  kind: 'reading' | 'synthesis',
+  kind: 'reading' | 'synthesis' | 'verdict',
+  readerCount = 9,
 ): number {
-  return kind === 'synthesis'
-    ? Math.max(entry.runawayContentTokens, LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS)
-    : entry.runawayContentTokens
+  if (kind === 'synthesis') {
+    return Math.max(entry.runawayContentTokens, LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS)
+  }
+  if (kind === 'verdict') return verdictRunawayContentTokens(readerCount)
+  return entry.runawayContentTokens
 }
 export const LAYER1_STRICT_RETRY_INSTRUCTION =
   `\n\nSTRICT RETRY: Output ONLY the JSON object. No preamble, analysis, working, explanation outside fields, or text after the closing brace. narrative must be ${LAYER1_NARRATIVE_MIN}–${LAYER1_NARRATIVE_MAX} Unicode characters (aim ${LAYER1_NARRATIVE_TARGET}) — plain language, no raw numeric scores. Respect every field character limit.`
@@ -153,7 +160,7 @@ function failureDiagnostic(
 
 async function finalizeUnitCost(opts: {
   sessionId: string
-  entry: NonNullable<ReturnType<typeof layer1Entry>>
+  entry: Layer1RegistryEntry
   lastRaw: Layer1CallResult | null
   httpBudget: Layer1HttpBudget
   cumulativeMs: number
@@ -230,13 +237,12 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
 
   return {
     async run(request: OracleAiRequest, opts: { timeoutMs: number }): Promise<OracleAiResult> {
-      const entry =
-        request.brand != null
-          ? layer1EntryForBrand(request.brand)
-          : request.kind === 'reading'
-            ? layer1Entry(request.unit)
-            : null
-      if (!entry) {
+      const resolved = resolveOracleCallEntry({
+        kind: request.kind,
+        unit: request.unit,
+        brand: request.brand,
+      })
+      if (!resolved) {
         return failure(
           request.brand ?? 'unknown',
           'unknown',
@@ -245,6 +251,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           0,
         )
       }
+      const { entry, logUnit } = resolved
 
       const sessionKind = payloadKind(request.payload)
       const isDailyReading = request.kind === 'reading' && sessionKind === 'daily'
@@ -374,12 +381,13 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
 
         const runawayThreshold = layer1RunawayContentThreshold(
           effectiveEntry,
-          request.kind === 'synthesis' ? 'synthesis' : 'reading',
+          request.kind,
+          readerCount,
         )
         if ((raw.contentTokens ?? 0) > runawayThreshold) {
           lastError =
             `runaway visible content (${raw.contentTokens} > ${runawayThreshold} tokens)`
-          console.warn(`[oracle] ${effectiveEntry.system} ${lastError}`)
+          console.warn(`[oracle] ${logUnit} ${lastError}`)
           if (!strictRetryNext) {
             strictRetryNext = true
             continue

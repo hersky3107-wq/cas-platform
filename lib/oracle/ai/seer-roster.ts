@@ -171,3 +171,17 @@ export const SEER_MINORITY_OPINION_MAX = 160
 export function verdictLineBudget(readerCount: number): number {
   return SEER_VERDICT_LINE_BUDGETS[readerCount] ?? SEER_VERDICT_LINE_BUDGETS[9]!
 }
+
+/**
+ * Visible-content runaway for a seer ballot, in tokens. Derived from the
+ * panel-size verdict_line budget (400 at N=3 … 80 at N=9) plus minority and
+ * JSON overhead — NEVER from a layer-1 reading ceiling (3000) or from
+ * VERDICT_MAX_COMPLETION_TOKENS (a hidden-reasoning room, not a visible
+ * contract). CJK ≈ 1 token/char; 2× headroom matches the reading-guard
+ * pattern. A 5027-token DeepSeek dump still fails every panel size.
+ */
+export const VERDICT_JSON_OVERHEAD_CHARS = 200
+
+export function verdictRunawayContentTokens(readerCount: number): number {
+  return 2 * (verdictLineBudget(readerCount) + SEER_MINORITY_OPINION_MAX + VERDICT_JSON_OVERHEAD_CHARS)
+}

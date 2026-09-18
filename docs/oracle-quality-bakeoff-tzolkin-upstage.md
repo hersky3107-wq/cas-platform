@@ -1,0 +1,70 @@
+# Oracle family bakeoff (ziwei / runes / astro / numerology)
+
+- Prompt: `layer1-v4`
+- Brands included: Upstage
+- Brands skipped: MiniMax, Mistral, Meta, NAVER
+- **Total spend (whole pass):** $0.000000
+
+---
+
+# Bakeoff — tzolkin
+
+- **Prompt:** `layer1-v4`
+- **Phase tie:** no
+- **Session:** `20522433-8ecd-403a-9e1d-0e5c26748671`
+- **Profile:** 1988-11-23 04:17:00 (Asia/Seoul)
+- **System spend:** $0.000000
+- **Skipped brands:** MiniMax, Mistral, Meta, NAVER
+
+## Ranking
+
+| rank | brand | fab | leak | grounding | generic % | tie | length | dir/focus | cost_usd | seat |
+| ---: | --- | ---: | ---: | ---: | ---: | --- | --- | --- | ---: | --- |
+| 1 | Upstage | 0 | 0 | 0 | 100 | n/a | 422/421 | yes/yes | 0.000000 | ok |
+
+## Per-brand scores
+
+### Upstage
+- grounding=0; fab=none; leak=none; generic=100%; tie=n/a; len=422/421; cost=$0.000000
+
+## Raw outputs
+
+| brand | run | narrative | one_line | direction | focus | content | ms | cost_usd |
+| --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: |
+| Upstage | 1 | 올해 일의 방향을 잡으려면 태어난 날의 나왈인 킴(Kimi)과 오늘의 나왈인 벤(Ben)을 중심으로 생각하세요. 킴은 단단한 기반과 장기적인 계획을 의미하므로, 올해는 자신의 핵심 역량을 정리하고 안정적인 기반을 다지는 일에 집중해야 합니다. 벤은 변화와 전환의 기운을 담고 있어, 새로운 기회를 탐색하거나 기존 방식을 조정하려는 시도가 필요합니다. 두 나왈의 조합은 안정과 변화가 동시에 작용하는 시기임을 알려줍니다. 따라서 올해는 기존 프로젝트를 마무리하거나 내실을 다지는 동시에, 새로운 방향이나 협력 가능성을 열어두는 것이 좋습니다. 구체적인 행동으로는 월 초에 현재 진행 중인 업무의 성과를 정리하고, 중반에 새로운 파트너십이나 교육 프로그램을 모색해 보세요. 연말에는 지금까지의 성과를 바탕으로 다음 해의 큰 목표를 설정하는 것이 바람직합니다. | 킴의 안정을 바탕으로 벤의 변화를 잡아 올해 일과 방향을 설계하세요. | advance | work | 210 | 2234 | — |
+| Upstage | 2 | 올해는 톤 5의 나왈 Ben이 주도하는 시기이며, 당신의 근본 나왈 Kimi와 만나 조화로운 흐름을 만들어냅니다. Kimi는 내면의 직관과 전통을 중시하는 성향을 가지고 있어, 올해는 기존의 강점을 바탕으로 새로운 접근 방식을 모색하는 것이 중요합니다. Ben은 변화와 소통을 상징하므로, 현재 진행 중인 일에 유연함을 더하고 외부의 의견을 적극 수용하는 전략이 유리합니다. 두 나왈이 결합될 때, 당신의 업무 스타일은 보다 협업적이고 창의적인 방향으로 전환될 가능성이 높습니다. 동시에, Ben의 에너지가 강해지면 결정력이 다소 흐려질 수 있으므로, 중요한 사안은 명확한 기준과 기한을 설정해 진행하는 것이 좋습니다. 전체적으로는 기존 체계를 유지하면서 새로운 아이디어와 외부 네트워크를 활용하는 균형 잡힌 접근법이 올해의 직장 발전을 이끌 것입니다. | Kimi의 직관과 Ben의 소통을 동시에 활용해 협업과 창의적 프로젝트에 집중하라. | advance | work | 241 | 2113 | — |
+
+## Payload
+
+```json
+{
+  "runnerVersion": "1.0.0",
+  "axesLayerVersion": "1.0.0",
+  "kind": "personal",
+  "locale": "ko",
+  "readingScope": "question",
+  "readingInput": "native",
+  "system": "tzolkin",
+  "engineVersion": "1.5.0",
+  "chart": {
+    "태어난날": {
+      "톤": 11,
+      "나왈": "Kimi"
+    },
+    "오늘": {
+      "톤": 5,
+      "나왈": "Ben"
+    },
+    "의미": {
+      "출처": "AI 판단 요청",
+      "안내": "태어난날의 나왈과 톤 조합이 이 사람에게 무엇을 뜻하는지 말하라. 오행으로 옮기지 마라."
+    }
+  },
+  "context": {
+    "asOfDate": "2026-08-23",
+    "question": "올해 일의 방향을 어떻게 잡아야 하는가?"
+  }
+}
+```
+
+---

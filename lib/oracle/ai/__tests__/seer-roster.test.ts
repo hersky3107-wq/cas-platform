@@ -14,6 +14,7 @@ import {
   seerPersona,
   seerRosterFor,
   verdictLineBudget,
+  verdictRunawayContentTokens,
 } from '../seer-roster'
 
 describe('seer roster', () => {
@@ -103,5 +104,15 @@ describe('seer roster', () => {
       expect(total).toBeLessThanOrEqual(1300)
     }
     expect(seerBrandFor('nonexistent')).toBeNull()
+  })
+
+  it('derives the verdict runaway from the panel-size line budget, not a reading ceiling', () => {
+    expect(verdictRunawayContentTokens(3)).toBe(2 * (400 + 160 + 200))
+    expect(verdictRunawayContentTokens(5)).toBe(2 * (240 + 160 + 200))
+    expect(verdictRunawayContentTokens(7)).toBe(2 * (120 + 160 + 200))
+    expect(verdictRunawayContentTokens(9)).toBe(2 * (80 + 160 + 200))
+    expect(verdictRunawayContentTokens(7)).toBe(960)
+    expect(verdictRunawayContentTokens(3)).toBeLessThan(3000)
+    expect(verdictRunawayContentTokens(3)).toBeGreaterThan(verdictRunawayContentTokens(9))
   })
 })

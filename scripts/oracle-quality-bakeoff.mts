@@ -11,8 +11,13 @@ import type { BakeoffRunRow, BrandScore } from '../lib/oracle/ai/quality-bakeoff
 
 process.env.ORACLE_AI_MODE = 'live'
 
+const rawArgs = process.argv.slice(2)
+const brandsFlag = rawArgs.find((a) => a.startsWith('--brands='))?.slice('--brands='.length)
+const systemsFlag = rawArgs.find((a) => a.startsWith('--systems='))?.slice('--systems='.length)
+const outFlag = rawArgs.find((a) => a.startsWith('--out='))?.slice('--out='.length)
+
 /** Reader-candidate brands only — skipped MiniMax / Mistral / Meta / NAVER per roster exclusions. */
-const BAKEOFF_BRANDS = [
+const DEFAULT_BAKEOFF_BRANDS = [
   'Moonshot AI',
   'DeepSeek',
   'Z.ai',
@@ -25,27 +30,37 @@ const BAKEOFF_BRANDS = [
 
 const SKIPPED_BRANDS = ['MiniMax', 'Mistral', 'Meta', 'NAVER'] as const
 
-const SYSTEMS = ['ziwei', 'runes', 'astro', 'numerology'] as const
+const DEFAULT_SYSTEMS = ['ziwei', 'runes', 'astro', 'numerology'] as const
+const BAKEOFF_BRANDS = (
+  brandsFlag ? brandsFlag.split(',').map((b) => b.trim()).filter(Boolean) : [...DEFAULT_BAKEOFF_BRANDS]
+) as string[]
+const SYSTEMS = (
+  systemsFlag ? systemsFlag.split(',').map((s) => s.trim()).filter(Boolean) : [...DEFAULT_SYSTEMS]
+) as string[]
 const LOCALE = 'ko'
 const QUESTION = '올해 일의 방향을 어떻게 잡아야 하는가?'
 const AS_OF_DATE = '2026-08-23'
 const TIMEOUT_MS = 240_000
-const OUT_PATH = join(process.cwd(), 'docs', 'oracle-quality-bakeoff-families.md')
-const ROWS_JSON_PATH = join(process.cwd(), 'docs', 'oracle-quality-bakeoff-families-rows.json')
+const OUT_PATH = outFlag
+  ? outFlag.replace(/\.json$/, '.md')
+  : join(process.cwd(), 'docs', 'oracle-quality-bakeoff-families.md')
+const ROWS_JSON_PATH = outFlag
+  ? outFlag.replace(/\.md$/, '.json')
+  : join(process.cwd(), 'docs', 'oracle-quality-bakeoff-families-rows.json')
 
 const { callLayer1Model } = await import('../lib/oracle/ai/call')
 const { parseLayer1Json } = await import('../lib/oracle/ai/parse-layer1')
 const { buildLayer1SystemPrompt, buildLayer1UserPrompt, LAYER1_PROMPT_VERSION } = await import(
   '../lib/oracle/ai/prompts/layer1'
 )
-const { LAYER1_REGISTRY } = await import('../lib/oracle/ai/registry')
+const { layer1EntryForBrand } = await import('../lib/oracle/ai/registry')
 const { createLayer1HttpBudget } = await import('../lib/oracle/ai/http-budget')
 const { phaseHasTie, rankBrands, scoreBrand } = await import('../lib/oracle/ai/quality-bakeoff-score')
 const { personalDataFrom, runComputations } = await import('../lib/oracle/runner/compute')
 const { makeProfile } = await import('../lib/oracle/runner/__tests__/fakes')
 
 function entryForBrand(brand: string) {
-  const entry = Object.values(LAYER1_REGISTRY).find((row) => row.brand === brand)
+  const entry = layer1EntryForBrand(brand)
   if (!entry) throw new Error(`no registry entry for brand ${brand}`)
   return entry
 }
@@ -120,7 +135,7 @@ function appendSystemSection(opts: {
 }
 
 async function runSystem(opts: {
-  system: (typeof SYSTEMS)[number]
+  system: string
   profile: ReturnType<typeof makeProfile>
   personalData: ReturnType<typeof personalDataFrom>
 }) {

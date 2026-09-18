@@ -30,6 +30,7 @@ const brandsFlag = rawArgs.find((a) => a.startsWith('--brands='))?.slice('--bran
 const workloadFlag = rawArgs.find((a) => a.startsWith('--workload='))?.slice('--workload='.length) as
   | Workload
   | undefined
+const homeFlag = rawArgs.find((a) => a.startsWith('--home='))?.slice('--home='.length)
 const outFlag = rawArgs.find((a) => a.startsWith('--out='))?.slice('--out='.length)
 
 /** Brands on single-mode reader or synthesizer seats (family roster). */
@@ -113,8 +114,12 @@ function plansFor(brands: readonly string[]): BrandPlan[] {
         (brand === 'Z.ai' ? 'iching' : 'saju')
       return { brand, workload: 'synthesis' as const, homeSystem: home }
     }
-    // Reader seat → home-system reading prompt.
+    // Reader seat → home-system reading prompt. --home= pins the system so a
+    // brand not yet in LAYER1_REGISTRY is gated on the intended payload
+    // (iching / tzolkin), not a short saju fallback — that fallback is what
+    // let DeepSeek through four times.
     const home =
+      homeFlag ??
       Object.values(LAYER1_REGISTRY).find((e) => e.brand === brand)?.system ??
       resolveSingleSystemRoster('saju', 3).system
     return { brand, workload: 'reading' as const, homeSystem: home }
@@ -191,6 +196,8 @@ type RunRow = {
   contentTokens: number | null
   reasoningTokens: number | null
   textChars: number
+  payloadChars: number
+  latencyMs: number
   error: string | null
 }
 
@@ -199,6 +206,21 @@ const results: RunRow[] = []
 async function runBrand(plan: BrandPlan) {
   const entryBase = layer1EntryForBrand(plan.brand)
   if (!entryBase) throw new Error(`no registry entry for ${plan.brand}`)
+
+  const previewUserPrompt =
+    plan.workload === 'synthesis'
+      ? buildSynthesisUserPrompt(bakeoffInputs.single.synthesisPayload)
+      : plan.workload === 'verdict'
+        ? buildVerdictUserPrompt(verdictGatePayload, LOCALE)
+        : buildLayer1UserPrompt(
+            computed.systems.find((s) => s.system === plan.homeSystem)?.aiPayload ?? {},
+            LOCALE,
+            plan.homeSystem,
+          )
+  const payloadChars = previewUserPrompt.length
+  log(
+    `${plan.brand} ${plan.workload} home=${plan.homeSystem} payloadChars=${payloadChars} (integrated-length native chart, not a short prompt)`,
+  )
 
   for (let run = 1; run <= RUNS; run += 1) {
     const entry =
@@ -231,16 +253,7 @@ async function runBrand(plan: BrandPlan) {
         : plan.workload === 'verdict'
           ? buildVerdictSystemPrompt(LOCALE, 'contrarian', VERDICT_GATE_READER_COUNT)
           : buildLayer1SystemPrompt(LOCALE, plan.homeSystem)
-    const userPrompt =
-      plan.workload === 'synthesis'
-        ? buildSynthesisUserPrompt(bakeoffInputs.single.synthesisPayload)
-        : plan.workload === 'verdict'
-          ? buildVerdictUserPrompt(verdictGatePayload, LOCALE)
-          : buildLayer1UserPrompt(
-              computed.systems.find((s) => s.system === plan.homeSystem)?.aiPayload ?? {},
-              LOCALE,
-              plan.homeSystem,
-            )
+    const userPrompt = previewUserPrompt
 
     const parse = (text: string | null) =>
       plan.workload === 'synthesis'
@@ -287,11 +300,13 @@ async function runBrand(plan: BrandPlan) {
       contentTokens: raw.contentTokens,
       reasoningTokens: raw.reasoningTokens,
       textChars: (raw.text ?? '').length,
+      payloadChars,
+      latencyMs: raw.latencyMs,
       error: raw.error ?? null,
     }
     results.push(row)
     log(
-      `${plan.brand} ${plan.workload} ${run}/${RUNS} parsed=${parsed} finish=${raw.finishReason} tokens=${raw.contentTokens} reason=${raw.reasoningTokens}`,
+      `${plan.brand} ${plan.workload} ${run}/${RUNS} parsed=${parsed} finish=${raw.finishReason} tokens=${raw.contentTokens} reason=${raw.reasoningTokens} ms=${raw.latencyMs}`,
     )
   }
 }
@@ -319,6 +334,9 @@ for (const plan of plans) {
 const summary = [...new Set(results.map((r) => r.brand))].map((brand) => {
   const brandRows = results.filter((r) => r.brand === brand)
   const ok = brandRows.filter((r) => r.parsed).length
+  const meanLatencyMs = Math.round(
+    brandRows.reduce((sum, row) => sum + row.latencyMs, 0) / brandRows.length,
+  )
   return {
     brand,
     workload: brandRows[0]!.workload,
@@ -327,6 +345,8 @@ const summary = [...new Set(results.map((r) => r.brand))].map((brand) => {
     ok,
     total: brandRows.length,
     pass: ok >= 19,
+    payloadChars: brandRows[0]!.payloadChars,
+    meanLatencyMs,
   }
 })
 
@@ -336,12 +356,12 @@ const lines = [
   `- Gate: ≥19/20 parse success`,
   `- Mode: ${readersOnly ? 'readers/synths only' : integratedOnly ? 'integrated-only' : 'all'}`,
   '',
-  '| brand | workload | home | parsed | pass |',
-  '| --- | --- | --- | ---: | --- |',
+  '| brand | workload | home | parsed | pass | payload_chars | mean_ms |',
+  '| --- | --- | --- | ---: | --- | ---: | ---: |',
 ]
 for (const row of summary) {
   lines.push(
-    `| ${row.brand} | ${row.workload} | ${row.homeSystem} | ${row.parsed} | ${row.pass ? 'yes' : 'NO'} |`,
+    `| ${row.brand} | ${row.workload} | ${row.homeSystem} | ${row.parsed} | ${row.pass ? 'yes' : 'NO'} | ${row.payloadChars} | ${row.meanLatencyMs} |`,
   )
 }
 lines.push('')

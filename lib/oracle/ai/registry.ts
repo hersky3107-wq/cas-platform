@@ -273,25 +273,19 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   },
   tzolkin: {
     system: 'tzolkin',
-    brand: 'Google',
-    displayName: 'Gemini 3.6 Flash',
-    // DeepSeek is gone from integrated LAYER1 and seer seats after four
-    // consecutive paid empties, including first-party api.deepseek.com
-    // (session 7f5ccc4b: 3946 then 5027 visible tokens vs the 3000 runaway
-    // guard, then the 25s retry floor — the 80s unit wall never fired).
-    // No unused unique 20× brand remains (Z.ai is the integrated synthesizer,
-    // ByteDance is CONTRARIAN). Dual-seat Google with tarot: bakeoff
-    // integrated #3, self_ip family synthesizer, tarot 20/20 with
-    // thinkingLevel:minimal, ceiling 2200 so a live call cannot trip runaway.
-    model: 'gemini-3.6-flash',
-    pricingModel: 'google/gemini-3.6-flash',
-    officialPricing: { promptUsdPerToken: 0.0000015, completionUsdPerToken: 0.0000075 },
+    brand: 'Upstage',
+    displayName: 'Solar Pro 3',
+    // Replaces the Google dual-seat with tarot (12-distinct-brands rule).
+    // Sequential 20× on the integrated tzolkin native chart: 19/20 parse,
+    // mean 2586ms, payload 631 chars (docs/oracle-onboarding-20x-upstage-tzolkin.md).
+    // Quality bakeoff: fab=0 leak=0, both runs name Kimi/Ben, no 오행
+    // (docs/oracle-quality-bakeoff-tzolkin-upstage.md). TIER 2 nawal+tone;
+    // catalog reasoning_effort:low is the pin so the inference has room.
+    model: 'solar-pro3',
     caller: {
-      kind: 'core',
-      provider: 'google',
-      modelOverride: 'gemini-3.6-flash',
-      allowGeminiThinking: true,
-      geminiThinkingLevel: 'minimal',
+      kind: 'platform',
+      platformId: 'upstage:solar-pro3',
+      extraRequestParams: { reasoning_effort: 'low' },
     },
     maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
@@ -386,6 +380,59 @@ export function layer1Entry(system: string): Layer1RegistryEntry | null {
   return Object.prototype.hasOwnProperty.call(LAYER1_REGISTRY, system)
     ? LAYER1_REGISTRY[system as SystemId]
     : null
+}
+
+export type OracleCallKind = 'reading' | 'synthesis' | 'verdict'
+
+export type ResolvedOracleCall = {
+  /** Caller / model / ceilings. For a seer this is the brand's wire config. */
+  entry: Layer1RegistryEntry
+  /**
+   * Unit name for logs and diagnostics. A verdict is `doubter` / `reader`,
+   * never the LAYER1 home system that happens to share the brand (the
+   * 7f5ccc4b `[oracle] tzolkin runaway` leak).
+   */
+  logUnit: string
+}
+
+/**
+ * Resolve the live caller for a reading, synthesis, or seer verdict.
+ *
+ * Readings look up by system (or by brand when the daily weave pins one).
+ * Verdicts and synthesis look up by brand but do NOT inherit that brand's
+ * home-system identity: seat-only entries win, reading-only fields
+ * (`narrativeFloor`) are stripped, and `logUnit` is the request unit.
+ */
+export function resolveOracleCallEntry(opts: {
+  kind: OracleCallKind
+  unit: string
+  brand?: string | null
+}): ResolvedOracleCall | null {
+  const logUnit = opts.unit
+
+  if (opts.kind === 'reading' && opts.brand == null) {
+    const entry = layer1Entry(opts.unit)
+    return entry ? { entry, logUnit } : null
+  }
+  if (opts.brand == null) return null
+
+  if (opts.kind === 'verdict' || opts.kind === 'synthesis') {
+    const seatOnly = ORACLE_SEAT_ONLY_BRANDS[opts.brand]
+    const borrowed = Object.values(LAYER1_REGISTRY).find((entry) => entry.brand === opts.brand)
+    const source = seatOnly ?? borrowed
+    if (!source) return null
+    return {
+      entry: {
+        ...source,
+        // A ballot / synthesis is not a reading of the brand's home system.
+        narrativeFloor: undefined,
+      },
+      logUnit,
+    }
+  }
+
+  const entry = layer1EntryForBrand(opts.brand)
+  return entry ? { entry, logUnit } : null
 }
 
 /** Brands used as integrated (combined) one-model-per-system readers. */

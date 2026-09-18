@@ -7,6 +7,7 @@ import {
   applyOracleBrandPolicies,
   integratedReaderBrands,
   layer1Entry,
+  resolveOracleCallEntry,
 } from '../registry'
 import { LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS, layer1RunawayContentThreshold } from '../layer1-adapter'
 
@@ -43,7 +44,7 @@ const EXPECTED_CEILINGS: Record<string, number> = {
 }
 
 describe('LAYER1_REGISTRY', () => {
-  it('has one verified entry per system; DeepSeek is banned from integrated so tzolkin dual-seats Google', () => {
+  it('has one verified entry per system and twelve distinct brands', () => {
     expect(Object.keys(LAYER1_REGISTRY).sort()).toEqual([...SYSTEM_IDS].sort())
     for (const system of SYSTEM_IDS) {
       const entry = layer1Entry(system)
@@ -55,9 +56,9 @@ describe('LAYER1_REGISTRY', () => {
 
     const brands = Object.values(LAYER1_REGISTRY).map((entry) => entry.brand)
     expect(brands).toHaveLength(SYSTEM_IDS.length)
-    expect(new Set(brands).size).toBe(SYSTEM_IDS.length - 1)
+    expect(new Set(brands).size).toBe(SYSTEM_IDS.length)
     expect(LAYER1_REGISTRY.tarot.brand).toBe('Google')
-    expect(LAYER1_REGISTRY.tzolkin.brand).toBe('Google')
+    expect(LAYER1_REGISTRY.tzolkin.brand).toBe('Upstage')
     expect(brands).not.toContain('DeepSeek')
     expect(JSON.stringify(LAYER1_REGISTRY)).not.toContain('max_tokens')
     for (const banned of INTEGRATED_BANNED_BRANDS) {
@@ -91,8 +92,8 @@ describe('LAYER1_REGISTRY', () => {
       model: 'minimax/minimax-m3',
     })
     expect(LAYER1_REGISTRY.tzolkin).toMatchObject({
-      brand: 'Google',
-      model: 'gemini-3.6-flash',
+      brand: 'Upstage',
+      model: 'solar-pro3',
     })
     expect(LAYER1_REGISTRY.ninestar.caller.kind === 'platform' && LAYER1_REGISTRY.ninestar.caller.extraRequestParams).toBeFalsy()
   })
@@ -153,7 +154,7 @@ describe('LAYER1_REGISTRY', () => {
     expect(ninestar.kind).toBe('platform')
     expect(ziwei.kind).toBe('platform')
     expect(numerology.kind).toBe('platform')
-    expect(tzolkin.kind).toBe('core')
+    expect(tzolkin.kind).toBe('platform')
     if (saju.kind === 'platform' && ninestar.kind === 'platform' && ziwei.kind === 'platform') {
       expect(saju.extraRequestParams).toEqual({
         reasoning: { enabled: false },
@@ -170,11 +171,9 @@ describe('LAYER1_REGISTRY', () => {
         provider: { order: ['minimax'], allow_fallbacks: true },
       })
     }
-    if (tzolkin.kind === 'core') {
-      expect(tzolkin.provider).toBe('google')
-      expect(tzolkin.modelOverride).toBe('gemini-3.6-flash')
-      expect(tzolkin.allowGeminiThinking).toBe(true)
-      expect(tzolkin.geminiThinkingLevel).toBe('minimal')
+    if (tzolkin.kind === 'platform') {
+      expect(tzolkin.platformId).toBe('upstage:solar-pro3')
+      expect(tzolkin.extraRequestParams).toEqual({ reasoning_effort: 'low' })
     }
   })
 
@@ -212,6 +211,38 @@ describe('LAYER1_REGISTRY', () => {
     }
   })
 
+  it('gives a seer its own log unit instead of the brand\'s LAYER1 home system', () => {
+    const doubter = resolveOracleCallEntry({ kind: 'verdict', unit: 'doubter', brand: 'Mistral' })
+    expect(doubter).not.toBeNull()
+    expect(doubter!.logUnit).toBe('doubter')
+    expect(doubter!.entry.brand).toBe('Mistral')
+    expect(doubter!.entry.narrativeFloor).toBeUndefined()
+    expect(LAYER1_REGISTRY.sukuyou.brand).toBe('Mistral')
+    expect(doubter!.logUnit).not.toBe(LAYER1_REGISTRY.sukuyou.system)
+
+    const contrarian = resolveOracleCallEntry({
+      kind: 'verdict',
+      unit: 'contrarian',
+      brand: 'ByteDance',
+    })
+    expect(contrarian!.logUnit).toBe('contrarian')
+    expect(contrarian!.entry.model).toBe('bytedance-seed/seed-1.6')
+
+    const synth = resolveOracleCallEntry({ kind: 'synthesis', unit: 'synthesis', brand: 'Z.ai' })
+    expect(synth!.logUnit).toBe('synthesis')
+    expect(synth!.entry.brand).toBe('Z.ai')
+  })
+
+  it('judges a verdict runaway against the panel budget, not the 3000-token reading ceiling', () => {
+    const entry = LAYER1_REGISTRY.sukuyou
+    expect(layer1RunawayContentThreshold(entry, 'reading')).toBe(LAYER1_READING_RUNAWAY_CONTENT_TOKENS)
+    expect(layer1RunawayContentThreshold(entry, 'verdict', 7)).toBe(960)
+    expect(layer1RunawayContentThreshold(entry, 'verdict', 3)).toBe(1520)
+    expect(layer1RunawayContentThreshold(entry, 'verdict', 7)).toBeLessThan(
+      layer1RunawayContentThreshold(entry, 'reading'),
+    )
+  })
+
   it('pins official first-party prices on core-router estimates', () => {
     expect(LAYER1_REGISTRY.astro.officialPricing).toEqual({
       promptUsdPerToken: 0.000002,
@@ -221,7 +252,7 @@ describe('LAYER1_REGISTRY', () => {
       promptUsdPerToken: 0.0000015,
       completionUsdPerToken: 0.0000075,
     })
-    expect(LAYER1_REGISTRY.tzolkin.officialPricing).toEqual(LAYER1_REGISTRY.tarot.officialPricing)
+    expect(LAYER1_REGISTRY.tzolkin.officialPricing).toBeUndefined()
     expect(LAYER1_REGISTRY.runes.officialPricing).toEqual({
       promptUsdPerToken: 0.00000125,
       completionUsdPerToken: 0.0000025,
