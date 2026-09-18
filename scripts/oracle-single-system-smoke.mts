@@ -162,7 +162,7 @@ async function runSmoke(
   return { sessionId: session.id, status: session.status, synthesis, totalCostUsd: total, store, calls }
 }
 
-const deepseekEntry = LAYER1_REGISTRY.ziwei
+const deepseekEntry = LAYER1_REGISTRY.tzolkin
 console.log(
   `DeepSeek registry path: brand=${deepseekEntry.brand} model=${deepseekEntry.model} ` +
     `maxCompletionTokens=${deepseekEntry.maxCompletionTokens} ` +

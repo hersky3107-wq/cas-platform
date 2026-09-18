@@ -28,12 +28,14 @@ describe('layer1 prompts (v4)', () => {
     expect(prompt).toContain('코어 매트릭스')
   })
 
-  it('gives tarot its no-오행, name-every-card rule', () => {
+  it('gives tarot its no-오행, name-every-card, exact-spread rule', () => {
     const prompt = buildLayer1SystemPrompt('ko', 'tarot')
-    expect(prompt).toContain('name every card')
+    expect(prompt).toContain('Name every listed card')
+    expect(prompt).toContain('Never add a card that is not in 카드[]')
     expect(prompt).toContain('Tarot has no 오행')
     const user = buildLayer1UserPrompt({ system: 'tarot' }, 'ko', 'tarot')
     expect(user).toContain('name the cards')
+    expect(user).toContain('invents extra cards')
   })
 
   it('astro rule pins planets-vs-elements; sukuyou bans 명성 vocabulary (FIX 5c)', () => {
@@ -68,7 +70,7 @@ describe('layer1 prompts (v4)', () => {
     expect(personal).toContain('for one person')
   })
 
-  it('lets 구성 name 흉방/길방 only from chart fields, with no invented 吉 grade', () => {
+  it('lets 구성 name 흉방/길방 only from chart fields, with natal 일명성 ≠ 오늘.일', () => {
     const prompt = buildLayer1SystemPrompt('ko', 'ninestar')
     expect(prompt).toContain('오황살')
     expect(prompt).toContain('암검살')
@@ -79,6 +81,8 @@ describe('layer1 prompts (v4)', () => {
     expect(prompt).toContain('길방')
     expect(prompt).toContain('never by inferring a direction')
     expect(prompt).toContain('do not invent a 대길/소길 grade')
+    expect(prompt).toContain('never call 오늘.일 the 일명성')
+    expect(prompt).toContain('natal YEAR star')
   })
 
   it('lets 사주 name a TIER-1 용신 from 억부 and requires TIER-2 when 판정불가', () => {

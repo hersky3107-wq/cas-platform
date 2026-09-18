@@ -16,7 +16,7 @@ import type { SystemId } from '../axes/types'
  * Core-router brands used by layer 1. Local union so this file never imports
  * `lib/ai/router.ts` (stale defaults live there; tests must not load them).
  */
-export type Layer1CoreProvider = 'openai' | 'anthropic' | 'google' | 'xai'
+export type Layer1CoreProvider = 'openai' | 'anthropic' | 'google' | 'xai' | 'deepseek'
 
 export type Layer1Caller =
   | {
@@ -75,7 +75,7 @@ export type Layer1RegistryEntry = {
    * Visible-content runaway guard, in tokens. Set explicitly per entry —
    * NEVER computed from maxCompletionTokens. That ceiling is tuned per
    * system for a hidden-reasoning budget unrelated to visible output size
-   * (ziwei/DeepSeek needs 8000 so it has room to think even though its
+   * (ziwei/NVIDIA needs 4000 so it has room to think even though its
    * visible JSON answer is a few hundred tokens); deriving this guard from
    * it means every unrelated ceiling retune silently moves the runaway
    * catch (see the 2026-08-26 ziwei 3000->8000 bump, which silently moved
@@ -127,25 +127,19 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   },
   ziwei: {
     system: 'ziwei',
-    brand: 'DeepSeek',
-    displayName: 'DeepSeek V4 Pro',
-    model: 'deepseek/deepseek-v4-pro',
-    // Live metadata has no default_enabled=true. `reasoning:null` strips the
-    // platform catalog's effort default so no reasoning key is sent.
-    // DeepSeek first-party is absent from this model's live endpoint list;
-    // deliberately do not pin an upstream.
+    brand: 'NVIDIA',
+    displayName: 'Nemotron 3 Ultra',
+    model: 'nvidia/nemotron-3-ultra-550b-a55b',
+    // Replaces DeepSeek on ziwei (session 1923df36 and earlier integrated
+    // payloads hit the 80s unit wall via OpenRouter resellers). Family
+    // bakeoff rank #2 on ziwei (4–8s, fab=0); NVIDIA is already the
+    // east-asian SINGLE synthesizer, not the integrated one (Z.ai).
     caller: {
       kind: 'platform',
-      platformId: 'openrouter:deepseek-v4-pro',
-      // `reasoning:null` stripped catalog effort:minimal and the model then
-      // burned the entire 3000 budget on hidden thinking (finish=length,
-      // reasoning_tokens=3000/3000). Keep catalog-safe minimal.
+      platformId: 'openrouter:nemotron-3-ultra-550b',
       extraRequestParams: { reasoning: { effort: 'minimal' } },
     },
-    // Synthesis 20× @4500 still truncated (reasoning 4092–4451). Floor 8000.
-    // This is a hidden-reasoning budget, not a visible-content budget — the
-    // runaway guard stays at the shared reading value, not 8000 * 1.5.
-    maxCompletionTokens: 8000,
+    maxCompletionTokens: 4000,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   iching: {
@@ -175,20 +169,14 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   },
   sukuyou: {
     system: 'sukuyou',
-    brand: 'MiniMax',
-    displayName: 'MiniMax M3',
-    // TRAP (e): OpenRouter fans this out; Novita served content in the
-    // reasoning field (~1 in 6 empty). The registry entry pins
-    // provider.order:['minimax'] with allow_fallbacks:true.
-    model: 'minimax/minimax-m3',
-    caller: { kind: 'platform', platformId: 'openrouter:minimax-m3' },
-    // Under the v4 prompt M3's hidden reasoning runs much longer than the
-    // pre-v4 measurement, and 'reasoning effort minimal' (set on the platform
-    // entry) does NOT cap it — live 2026-09-05: successes reason 2000-2300,
-    // the tail blew through 3200 AND 4500 (finish=length). 6000 covers the
-    // observed tail (~4500 reasoning + ~800 content tokens for 1100 CJK
-    // chars). Runaway is guarded on CONTENT tokens, not this ceiling.
-    maxCompletionTokens: 6000,
+    brand: 'Mistral',
+    displayName: 'Mistral Medium 3.5',
+    // Replaces MiniMax M3, which also burned the 80s unit wall on integrated
+    // 숙요 (session 1923df36, 79.5s abort). Mistral has no reasoning param
+    // and already passed the 20× onboarding gate on numerology.
+    model: 'mistralai/mistral-medium-3-5',
+    caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' },
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   astro: {
@@ -244,17 +232,22 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   },
   numerology: {
     system: 'numerology',
-    brand: 'Mistral',
-    displayName: 'Mistral Medium 3.5',
-    // Catalog id is dashed (`mistral-medium-3-5`), not dotted. See
-    // PLATFORM_MODEL_REGISTRY note — 3.1 is the older minor.
-    model: 'mistralai/mistral-medium-3-5',
-    caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' },
+    brand: 'MiniMax',
+    displayName: 'MiniMax M3',
+    // Swapped off 숙요 (too heavy + uncapped hidden thinking). Numerology is
+    // the lighter home. Catalog `effort:minimal` does NOT cap M3 thinking
+    // (live 2026-09-05 tail finished=length at 4500); disable is absolute.
+    model: 'minimax/minimax-m3',
+    caller: {
+      kind: 'platform',
+      platformId: 'openrouter:minimax-m3',
+      extraRequestParams: {
+        reasoning: { enabled: false },
+        provider: { order: ['minimax'], allow_fallbacks: true },
+      },
+    },
     maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
-    // Measured 2026-09-05 (5 live sessions): typical 318-345 chars, best 473,
-    // even when the length retry names the shortfall. 300 accepts its usual
-    // output instead of 결번-ing numerology most combined sessions.
     narrativeFloor: 300,
   },
   name: {
@@ -280,19 +273,20 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   },
   tzolkin: {
     system: 'tzolkin',
-    brand: 'NVIDIA',
-    displayName: 'Nemotron 3 Ultra',
-    // Full catalog id is nemotron-3-ultra-550b-a55b (not the bare name).
-    model: 'nvidia/nemotron-3-ultra-550b-a55b',
+    brand: 'DeepSeek',
+    displayName: 'DeepSeek V4 Pro',
+    // OpenRouter has no DeepSeek first-party endpoint for v4-pro (resellers
+    // StreamLake/GMICloud; provider pin did not help). Oracle now calls
+    // api.deepseek.com directly — the same path league uses. Tzolkin is the
+    // lighter home after NVIDIA took ziwei.
+    model: 'deepseek-v4-pro',
+    pricingModel: 'deepseek/deepseek-v4-pro',
     caller: {
-      kind: 'platform',
-      platformId: 'openrouter:nemotron-3-ultra-550b',
-      extraRequestParams: { reasoning: { effort: 'minimal' } },
+      kind: 'core',
+      provider: 'deepseek',
+      modelOverride: 'deepseek-v4-pro',
     },
-    // Synthesis 20×: failed runs were finish=length with ~1743–1855 thinking
-    // into a 2000 ceiling (content truncated / JSON never closed). Hidden
-    // reasoning budget, not visible content — guard stays at the shared value.
-    maxCompletionTokens: 4000,
+    maxCompletionTokens: 8000,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   prism: {

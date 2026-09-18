@@ -22,7 +22,15 @@ import {
 } from '../seer-roster'
 import { INTERNAL_VOCAB_RULES, languageForLocale } from './layer1'
 
-export const VERDICT_PROMPT_VERSION = 'verdict-v2'
+export const VERDICT_PROMPT_VERSION = 'verdict-v3'
+
+export const VERDICT_ANGLE_DISCIPLINE = [
+  'ANGLE DISCIPLINE (mandatory — this is why the panel exists):',
+  'Your verdict_line must recommend a course of action that ONLY your decision rule would produce.',
+  'If another persona following a different rule could have written the same sentence, rewrite it.',
+  'Do not converge on a generic next step such as "pick one program, show it to a user, get feedback" unless that sentence is uniquely required by YOUR rule.',
+  'CONTRARIAN especially: if you vote against the tally leader, the TEXT must argue a different course, not the majority\'s action with a dissenting vote.',
+]
 
 /**
  * The direction is the ACTION the verdict recommends, not the mood of the
@@ -95,6 +103,7 @@ export function buildVerdictSystemPrompt(
     '- Never print raw numeric scores or percentages in verdict_line or minority_opinion — speak in plain language.',
     ...INTERNAL_VOCAB_RULES,
     ...(compat ? COMPAT_VERDICT_DIRECTION_CRITERIA : VERDICT_DIRECTION_CRITERIA),
+    ...VERDICT_ANGLE_DISCIPLINE,
     'verdict_line must be CONSISTENT with the direction you vote: a reader must be able to guess your direction from your text alone.',
     `Write user-facing text in ${language} (locale ${locale}).`,
     compat

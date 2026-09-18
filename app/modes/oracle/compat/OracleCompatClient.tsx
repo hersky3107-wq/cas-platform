@@ -32,8 +32,7 @@ import BrandBadge from "../runner/BrandBadge";
 import TarotDrawInput from "../inputs/TarotDrawInput";
 import RunesDrawInput from "../inputs/RunesDrawInput";
 import IchingCastInput from "../inputs/IchingCastInput";
-import RunesDrawChart from "../charts/RunesDrawChart";
-import IchingHexagramChart from "../charts/IchingHexagramChart";
+import OracleSystemChart from "../charts/OracleSystemChart";
 import { OracleSessionEndFlow } from "../OracleSessionEndFlow";
 import {
   useOracleRunnerSession,
@@ -661,10 +660,9 @@ function ConsensusMapSection({
                 {phase.oppositions.slice(0, 4).map((opposition) => (
                   <li key={`${opposition.a}-${opposition.b}`}>
                     <span className="font-semibold text-white">{systemShortName(opposition.a)}</span>
-                    와{" "}
+                    는 다가서라고 하고,{" "}
                     <span className="font-semibold text-white">{systemShortName(opposition.b)}</span>
-                    가 이 관계를 정반대로 봅니다{" "}
-                    <span className="tabular-nums text-white/40">(격차 {Math.round(opposition.gap)})</span>
+                    는 거리를 두라고 합니다.
                   </li>
                 ))}
               </ul>
@@ -715,15 +713,6 @@ function ConsensusMapSection({
 /* ③ Readings                                                          */
 /* ------------------------------------------------------------------ */
 
-function drawItems(calculation: JsonObject | null, key: "runes" | "cards"): JsonObject[] {
-  const draw = asRecord(calculation?.draw);
-  if (!draw || !Array.isArray(draw[key])) return [];
-  return (draw[key] as unknown[]).flatMap((item) => {
-    const record = asRecord(item);
-    return record ? [record] : [];
-  });
-}
-
 function ReadingsSection({
   systems,
   readings,
@@ -733,12 +722,17 @@ function ReadingsSection({
 }: {
   systems: readonly string[];
   readings: OracleRunnerReading[];
-  computations: Array<{ system: string; calculation: JsonObject | null }>;
+  computations: Array<{
+    system: string;
+    calculation: JsonObject | null;
+    engineVersion?: string | null;
+    unreadable?: boolean;
+  }>;
   terminal: boolean;
   stub: boolean;
 }) {
   const bySystem = new Map(readings.map((reading) => [reading.system, reading]));
-  const calcBySystem = new Map(computations.map((entry) => [entry.system, entry.calculation]));
+  const calcBySystem = new Map(computations.map((entry) => [entry.system, entry]));
   const done = readings.filter((reading) => reading.status === "done").length;
 
   return (
@@ -781,8 +775,15 @@ function ReadingsSection({
               </article>
             );
           }
-          const calculation = calcBySystem.get(system) ?? null;
-          const runeItems = system === "runes" ? drawItems(calculation, "runes") : [];
+          const computation = calcBySystem.get(system) ?? null;
+          const summary = asRecord(reading.summary);
+          const oneLine = typeof summary?.one_line === "string" ? summary.one_line.trim() : "";
+          const narrative = stub
+            ? "연습 모드의 자리 표시 문장입니다. 실제 해석이 아닙니다."
+            : (reading.narrative ??
+              (reading.status === "done"
+                ? "이 해석자는 본문을 남기지 않았습니다."
+                : "이 해석자는 이번 응답을 마치지 못했습니다."));
           return (
             <article key={system} className="rounded-[22px] border border-white/10 bg-[#10182b] p-5">
               <div className="flex items-center justify-between gap-3">
@@ -807,24 +808,28 @@ function ReadingsSection({
                   </span>
                 ) : null}
               </div>
-              {runeItems.length ? (
+              {computation?.calculation || computation?.unreadable ? (
                 <div className="mt-4">
-                  <RunesDrawChart runes={runeItems} />
+                  <OracleSystemChart
+                    system={system}
+                    calculation={computation.calculation}
+                    engineVersion={computation.engineVersion ?? null}
+                    unreadable={computation.unreadable}
+                    compact
+                    embedded
+                    readings={[{ brand: reading.brand, summary: reading.summary }]}
+                  />
                 </div>
               ) : null}
-              {system === "iching" && calculation ? (
-                <div className="mt-4">
-                  <IchingHexagramChart calculation={calculation} />
-                </div>
+              {oneLine && !stub ? (
+                <p className="mt-4 text-[17px] font-semibold leading-snug text-cyan-100">{oneLine}</p>
               ) : null}
-              <div className="mt-3 whitespace-pre-wrap text-[14px] leading-7 text-slate-100">
-                {stub
-                  ? "연습 모드의 자리 표시 문장입니다. 실제 해석이 아닙니다."
-                  : (reading.narrative ??
-                    (reading.status === "done"
-                      ? "이 해석자는 본문을 남기지 않았습니다."
-                      : "이 해석자는 이번 응답을 마치지 못했습니다."))}
-              </div>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-[12px] text-white/45 underline-offset-2 hover:text-white/70 hover:underline">
+                  본문 보기
+                </summary>
+                <div className="mt-2 whitespace-pre-wrap text-[14px] leading-7 text-slate-100">{narrative}</div>
+              </details>
             </article>
           );
         })}

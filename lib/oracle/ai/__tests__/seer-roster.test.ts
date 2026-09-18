@@ -87,6 +87,7 @@ describe('seer roster', () => {
     const rules = ORACLE_SEER_PERSONAS.map((p) => p.decisionRule)
     expect(new Set(rules).size).toBe(rules.length)
     expect(seerPersona('contrarian')!.decisionRule).toMatch(/WRONG|DISTRUST/i)
+    expect(seerPersona('contrarian')!.decisionRule).toMatch(/DIFFERENT COURSE/i)
     expect(seerPersona('mystic')!.decisionRule).toMatch(/NO digits|SYMBOLS/i)
     expect(seerPersona('witness')!.decisionRule).toMatch(/previous/i)
     expect(seerPersona('scholar')!.decisionRule).toMatch(/disagree|CONTRADICTIONS/i)

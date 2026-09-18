@@ -68,7 +68,7 @@ export const TIER_AUTHORITY_RULES = [
 
 const NATIVE_SYSTEM_RULES: Record<string, string> = {
   tarot:
-    'Tarot: name every card, its position label, and whether it is 정방향 or 역방향 — then say what that card in that position means for the question. Tarot has no 오행; never mention 오행 or elemental percentages. TIER 2: when a 메이저 card (or 의미.출처) is AI 판단 요청, say what that card means; fill JSON "inferred". Do not map the card to an 오행.',
+    'Tarot: the chart names the exact cards drawn. 장수 is the spread size. Name every listed card, its position label, and whether it is 정방향 or 역방향 — then say what that card in that position means for the question. Never add a card that is not in 카드[], never drop one. Tarot has no 오행; never mention 오행 or elemental percentages. TIER 2: when a 메이저 card (or 의미.출처) is AI 판단 요청, say what that card means; fill JSON "inferred". Do not map the card to an 오행.',
   runes:
     'Runes: name every rune (Korean name from the chart), its position, and 정방향/역방향 — a reversed rune reads as the stave\'s meaning blocked or turned inward, not as a random bad omen.',
   iching:
@@ -80,7 +80,7 @@ const NATIVE_SYSTEM_RULES: Record<string, string> = {
     'Astrology: name planets, signs, houses, aspects, and angles from the chart. Planets (목성, 화성...) are planets — never call a planet an element. The four sign elements are 불·흙·바람·물.',
   prism: 'PRISM: speak in MBTI, the three colours, weekday/season, and this year/month\'s cycle. Never say 코어 매트릭스. If colours are missing, stay silent on colour — do not invent them.',
   ninestar:
-    'Nine Star: name 본명성 / 월명성 / 일명성 and their 오행, and what today\'s star means against the natal star. The 연반 구궁 is the directional chart — name 오황살 / 암검살 / 본명살 / 본명적살 / 세파 / 월파 and 길방 only from those chart fields, never by inferring a direction from the star number alone. 길방 is 오행 상생 with 본명성 and free of those 흉방; do not invent a 대길/소길 grade.',
+    'Nine Star: 본명성 is the natal YEAR star; 월명성 natal MONTH; 일명성 natal DAY. 오늘.연 / 오늘.월 / 오늘.일 are TODAY\'s flying stars — never call 오늘.일 the 일명성, and never write two different stars as this person\'s 일명성. If 본명성 and 오늘.일 differ, that is expected; they are different fields. Name 본명성 / 월명성 / 일명성 and their 오행, then what TODAY\'s year/month/day stars mean against those natal stars. The 연반 구궁 is the directional chart — name 오황살 / 암검살 / 본명살 / 본명적살 / 세파 / 월파 and 길방 only from those chart fields, never by inferring a direction from the star number alone. 길방 is 오행 상생 with 본명성 and free of those 흉방; do not invent a 대길/소길 grade.',
   sukuyou:
     'Sukuyou: TIER 1 — copy the natal 宿, today\'s 宿, and 삼구 (命業胎 / 栄親 / 友衰 / 安壊 / 危成). 宿 are lunar mansions — never call them 명성 and never borrow 구성기학 vocabulary (본명성). TIER 2: when 성격.출처 is AI 판단 요청, characterise the 宿 and the 삼구 relation; fill JSON "inferred". Do not invent a 대길/소길 grade.',
   tzolkin:
@@ -174,7 +174,9 @@ export function buildLayer1UserPrompt(
     )
   }
   if (system === 'tarot') {
-    lines.push('Reminder: name the cards. A tarot reading that never names a card is wrong.')
+    lines.push(
+      'Reminder: name the cards in the chart and only those cards. A tarot reading that never names a card, or that invents extra cards, is wrong.',
+    )
   }
   return lines.join('\n')
 }

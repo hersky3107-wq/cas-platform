@@ -1,9 +1,12 @@
 "use client";
 
 /**
- * User-drawn tarot: spread picker + fanned 78-card tap UI.
- * Positions are 1-based indexes into the seeded shuffle — cards stay face-down
- * until the engine reveals them after session create.
+ * User-drawn tarot: spread picker + a visible 78-card grid.
+ *
+ * The old overlapping 36px fan clipped to empty on the integrated (max-w-3xl)
+ * screen — labels showed, nothing to tap. Runes on the same page use a cloth
+ * grid; tarot now does too. Positions are 1-based indexes into the seeded
+ * shuffle — cards stay face-down until the engine reveals them after create.
  */
 import {
   COMPAT_TAROT_LABELS,
@@ -20,7 +23,7 @@ const SPREAD_COPY: Record<TarotSpreadSize, { title: string; subtitle: string }> 
   10: { title: "10장", subtitle: "켈틱 크로스" },
 };
 
-/** 궁합: same fan, relationship positions. */
+/** 궁합: same grid, relationship positions. */
 const COMPAT_SPREAD_COPY: Partial<Record<TarotSpreadSize, { title: string; subtitle: string }>> = {
   3: { title: "3장", subtitle: "본인 · 상대 · 두 사람 사이" },
   5: { title: "5장", subtitle: "본인 · 상대 · 사이 · 걸림돌 · 흐름" },
@@ -90,44 +93,32 @@ export default function TarotDrawInput({
         <p className="mt-1 text-[11px] text-white/40">
           {labels.map((label, i) => `${i + 1}. ${label}`).join("  ·  ")}
         </p>
-        <div className="mt-4 overflow-x-auto pb-4">
-          <div className="relative mx-auto h-[168px] min-w-[720px] max-w-4xl">
-            {Array.from({ length: 78 }, (_, i) => i + 1).map((pos) => {
-              const selected = pickedPositions.includes(pos);
-              const order = pickedPositions.indexOf(pos);
-              const t = (pos - 1) / 77;
-              const rotate = (t - 0.5) * 52;
-              const x = t * 100;
-              return (
-                <button
-                  key={pos}
-                  type="button"
-                  aria-label={`카드 위치 ${pos}`}
-                  aria-pressed={selected}
-                  onClick={() => onToggle(pos)}
-                  className={`absolute bottom-0 origin-bottom rounded-md border shadow-md transition ${
-                    selected
-                      ? "z-20 border-cyan-300/80 ring-2 ring-cyan-300/60"
-                      : "z-10 border-white/15 hover:z-30 hover:-translate-y-2"
-                  }`}
-                  style={{
-                    left: `calc(${x}% - 18px)`,
-                    transform: `rotate(${rotate}deg)`,
-                    width: 36,
-                    height: 60,
-                    marginBottom: selected ? 18 : 0,
-                  }}
-                >
-                  <TarotBack />
-                  {selected ? (
-                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-cyan-100">
-                      {order + 1}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
+        <div className="mt-3 grid grid-cols-6 gap-1.5 sm:grid-cols-[repeat(13,minmax(0,1fr))] sm:gap-1">
+          {Array.from({ length: 78 }, (_, i) => i + 1).map((pos) => {
+            const selected = pickedPositions.includes(pos);
+            const order = pickedPositions.indexOf(pos);
+            return (
+              <button
+                key={pos}
+                type="button"
+                aria-label={`카드 위치 ${pos}`}
+                aria-pressed={selected}
+                onClick={() => onToggle(pos)}
+                className={`relative aspect-[100/170] w-full overflow-hidden rounded-md border shadow-sm transition ${
+                  selected
+                    ? "border-cyan-300/80 ring-2 ring-cyan-300/60"
+                    : "border-white/20 hover:border-cyan-200/50 hover:-translate-y-0.5"
+                }`}
+              >
+                <TarotBack />
+                {selected ? (
+                  <span className="absolute inset-x-0 top-0 bg-cyan-400/90 text-center text-[10px] font-bold leading-4 text-[#0a0f1e]">
+                    {order + 1}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

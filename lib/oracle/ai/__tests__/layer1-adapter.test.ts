@@ -332,8 +332,8 @@ describe('createLayer1AiAdapter', () => {
   })
 
   it('does not scale the runaway threshold with a system\'s completion ceiling', async () => {
-    // Regression: ziwei's maxCompletionTokens is 8000 — a hidden-reasoning
-    // budget for DeepSeek, unrelated to visible output size. If the guard
+    // Regression: tzolkin's maxCompletionTokens is 8000 — a hidden-reasoning
+    // budget for first-party DeepSeek, unrelated to visible output size. If the guard
     // were still derived as maxCompletionTokens * 1.5 (as it was before
     // the 2026-08-26 ziwei 3000->8000 bump), the threshold would silently
     // move to 12000 and 3200 content tokens would never trip it. It must
@@ -351,9 +351,9 @@ describe('createLayer1AiAdapter', () => {
     }
 
     const adapter = createLayer1AiAdapter({ call })
-    const result = await adapter.run(readingRequest('ziwei'), { timeoutMs: 60_000 })
+    const result = await adapter.run(readingRequest('tzolkin'), { timeoutMs: 60_000 })
 
-    expect(LAYER1_REGISTRY.ziwei.maxCompletionTokens).toBe(8000)
+    expect(LAYER1_REGISTRY.tzolkin.maxCompletionTokens).toBe(8000)
     expect(calls).toBe(2)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.message).toMatch(/3200 > 3000/)

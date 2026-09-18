@@ -35,7 +35,7 @@ export default function TarotSpreadChart({
   showJudgement = true,
 }: {
   cards: DrawnCard[]
-  size?: "default" | "hero"
+  size?: "default" | "hero" | "row"
   inferences?: TextInference[]
   showJudgement?: boolean
 }) {
@@ -44,14 +44,23 @@ export default function TarotSpreadChart({
   }
 
   const hero = size === "hero"
-  const width = hero ? 220 : 140
-  const height = hero ? 374 : 238
-  const imgClass = hero ? "h-auto w-[13.5rem] sm:w-[16rem]" : "h-auto w-[7.5rem]"
+  const row = size === "row"
+  const width = hero ? 220 : row ? 56 : 140
+  const height = hero ? 374 : row ? 96 : 238
+  const imgClass = hero ? "h-auto w-[13.5rem] sm:w-[16rem]" : row ? "h-24 w-[3.5rem]" : "h-auto w-[7.5rem]"
   const hasMajor = cards.some(isMajor)
 
   return (
     <div>
-      <ul className={hero ? "flex justify-center" : "grid grid-cols-2 gap-3 sm:grid-cols-3"}>
+      <ul
+        className={
+          hero
+            ? "flex justify-center"
+            : row
+              ? "flex flex-wrap justify-center gap-2"
+              : "grid grid-cols-2 gap-3 sm:grid-cols-3"
+        }
+      >
         {cards.map((card, index) => {
           const src = cardSrc(card.id)
           const deckName =
@@ -61,7 +70,9 @@ export default function TarotSpreadChart({
           return (
             <li
               key={`${position}-${index}`}
-              className={`flex flex-col items-center rounded-2xl border border-white/10 bg-black/20 ${hero ? "p-5" : "p-3"}`}
+              className={`flex flex-col items-center rounded-2xl border border-white/10 bg-black/20 ${
+                hero ? "p-5" : row ? "px-1.5 py-2" : "p-3"
+              }`}
             >
               <p className="text-[11px] font-medium tracking-wide text-cyan-100/80">{position}</p>
               <div className="mt-2 overflow-hidden rounded-lg border border-white/15 bg-[#1a0533]">
@@ -76,14 +87,22 @@ export default function TarotSpreadChart({
                 ) : (
                   <div
                     className={`flex items-center justify-center text-xs text-white/40 ${
-                      hero ? "h-[374px] w-[13.5rem] sm:w-[16rem]" : "h-[238px] w-[7.5rem]"
+                      hero
+                        ? "h-[374px] w-[13.5rem] sm:w-[16rem]"
+                        : row
+                          ? "h-24 w-[3.5rem]"
+                          : "h-[238px] w-[7.5rem]"
                     }`}
                   >
                     {nameKo}
                   </div>
                 )}
               </div>
-              <p className={`mt-2 text-center font-semibold text-white ${hero ? "text-lg" : "text-sm"}`}>
+              <p
+                className={`mt-2 text-center font-semibold text-white ${
+                  hero ? "text-lg" : row ? "max-w-[4.5rem] text-[11px] leading-tight" : "text-sm"
+                }`}
+              >
                 {nameKo}
               </p>
               {card.reversed ? (

@@ -1,9 +1,11 @@
 /**
  * Layer-2 seer panel: personas, decision rules, and brand seats.
  *
- * Personas differ by DECISION RULE, not tone. Every seer receives the same
- * twelve layer-1 readings plus the axis-projection consensus and returns ONE
- * ballot; what varies is how each one is instructed to weigh that input.
+ * Personas differ by DECISION RULE, not tone, and each rule now forces a
+ * different ANGLE (a different course of action), not just a different label.
+ * Every seer receives the same twelve layer-1 readings plus the
+ * axis-projection consensus and returns ONE ballot; restricting the view
+ * per persona is a product question reported separately, not implemented here.
  * Tallying is done in code (runner/ballot.ts) — never by an AI.
  *
  * Seat order IS the product: `seerRosterFor(n)` takes the first N in order,
@@ -58,7 +60,7 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     ruleKo: '가장 자신 없는 읽기부터 검토',
     brand: 'Moonshot AI',
     decisionRule:
-      'DECISION RULE — LEAST-CONFIDENT FIRST: Rank the readings by how tentative or hedged they are, and weigh the LEAST confident ones first. Your verdict must be the call that still stands even if the weakest, most uncertain readings turn out to be right.',
+      'DECISION RULE — LEAST-CONFIDENT FIRST: Rank the readings by how tentative or hedged they are, and weigh the LEAST confident ones first. Your verdict must be the conservative hedge that still stands if the weakest readings are right — name what to DELAY, shrink, or not start. Forbidden: a generic "pick one and try it" that any other persona could have written.',
     cite: 'synthesis bakeoff integrated #2 ok (Z.ai #1 is the same-session synthesizer); onboarding 19/20',
   },
   {
@@ -67,7 +69,7 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     ruleKo: '가장 강한 단일 신호에 베팅',
     brand: 'Google',
     decisionRule:
-      'DECISION RULE — STRONGEST SINGLE SIGNAL: Find the ONE clearest, most specific signal across all readings and stake the entire verdict on it. Name which system carried it (by its divination name, e.g. 타로, 사주). Ignore weak or ambiguous signals entirely.',
+      'DECISION RULE — STRONGEST SINGLE SIGNAL: Find the ONE clearest, most specific signal across all readings and stake the entire verdict on it. Name which system carried it (by its divination name, e.g. 타로, 사주) and the one concrete move that signal alone demands. Ignore weak or ambiguous signals entirely. Do not average, do not hedge into the panel\'s likely compromise.',
     cite: 'synthesis bakeoff integrated #3 ok; onboarding 20/20',
   },
   {
@@ -76,7 +78,7 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     ruleKo: '이번 주에 실행 가능한 것만',
     brand: 'xAI',
     decisionRule:
-      'DECISION RULE — ACTIONABLE THIS WEEK ONLY: Discard everything that cannot be acted on within seven days. Your verdict must be a concrete, doable call for this week; if a reading speaks only in years or fate-scale terms, it does not count as evidence for you.',
+      'DECISION RULE — ACTIONABLE THIS WEEK ONLY: Discard everything that cannot be acted on within seven days. Your verdict must name a concrete, calendar-bound move for this week (a day, a deliverable, a conversation). Strategy slogans and "get feedback" without a dated next step do not count as evidence for you. If a reading speaks only in years or fate-scale terms, it does not count.',
     cite: 'synthesis bakeoff integrated #4 ok; onboarding 20/20 (reading)',
   },
   {
@@ -85,7 +87,7 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     ruleKo: '고전 동양 술수의 눈',
     brand: 'NAVER',
     decisionRule:
-      'DECISION RULE — CLASSICAL EASTERN FRAME: Judge through classical East-Asian divination reasoning (음양, 오행 생극, 운의 흐름). Give the East-Asian calendrical systems (사주, 자미두수, 구성학, 수요, 성명학, 주역) primary weight and read the others as supporting voices.',
+      'DECISION RULE — CLASSICAL EASTERN FRAME: Judge through classical East-Asian divination reasoning (음양, 오행 생극, 운의 흐름). Give the East-Asian calendrical systems (사주, 자미두수, 구성학, 수요, 성명학, 주역) primary weight. The verdict names what to feed and what to starve in those terms — not startup-speak, not "ship a prototype".',
     cite: 'Korean-native seat (HyperCLOVA X); onboarding 20/20 (reading)',
   },
   {
@@ -94,7 +96,7 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     ruleKo: '다수 방향을 불신',
     brand: 'ByteDance',
     decisionRule:
-      'DECISION RULE — DISTRUST THE MAJORITY: Start from the assumption that the leading direction in the consensus tally is WRONG. Build the strongest case for the opposite call from the readings. Vote with the majority only if that contrary case collapses — and if it does, say what broke it.',
+      'DECISION RULE — DISTRUST THE MAJORITY: Start from the assumption that the leading direction in the consensus tally is WRONG. You must argue a DIFFERENT COURSE of action than the majority\'s implied move — not the same action with a dissenting vote. If the majority says ship one thing and get feedback, you argue why that is the wrong move and what to do instead (stop, reverse, wait, split, refuse the frame). Vote with the majority only if that contrary case collapses — and if it does, say what broke it. A hold vote whose text recommends the majority\'s action is a failed ballot.',
     cite: 'replaces retired Qwen; only seat with no layer-1 stake; sequential 20× gate — see docs/oracle-onboarding-20x.md',
   },
   {
@@ -103,7 +105,7 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     ruleKo: '체계 간 모순만 다룸',
     brand: 'NVIDIA',
     decisionRule:
-      'DECISION RULE — CONTRADICTIONS ONLY: Work exclusively from the places where systems disagree with each other. Name the sharpest contradiction (which two systems, what they each said) and derive your verdict from which side of it survives scrutiny. Agreements are not your material.',
+      'DECISION RULE — CONTRADICTIONS ONLY: Work exclusively from the places where systems disagree with each other. Name the sharpest contradiction (which two systems, what they each said) and derive your verdict from which side of it survives scrutiny. The action you recommend must follow from the surviving side of that clash, not from the overlap. Agreements are not your material.',
     cite: 'synthesis bakeoff single-panel #1 (0 univ DQ); onboarding 20/20',
   },
   {
@@ -112,7 +114,7 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     ruleKo: '모든 결론을 의심',
     brand: 'DeepSeek',
     decisionRule:
-      'DECISION RULE — QUESTION EVERY CONCLUSION: Interrogate each reading\'s conclusion: what would have to be true for it to hold? Discard any conclusion that fails the test. Your verdict is the direction that survives the most doubt, stated with exactly the confidence it earned and no more.',
+      'DECISION RULE — QUESTION EVERY CONCLUSION: Interrogate each reading\'s conclusion: what would have to be true for it to hold? Discard any conclusion that fails the test. Your verdict is only the direction that survives the most doubt, stated with exactly the confidence it earned and no more — name the falsifier, not a pep talk.',
     cite: 'synthesis clean re-run single DQ=false, ground=121; onboarding 20/20',
   },
   {
@@ -121,7 +123,7 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     ruleKo: '상징으로만, 숫자 없이',
     brand: 'Anthropic',
     decisionRule:
-      'DECISION RULE — SYMBOLS, NO NUMBERS: Read only the images and symbols the systems produced (cards, runes, 괘, stars, colours, animals). Your verdict_line and minority_opinion must contain NO digits, percentages, or counts — the ballot numbers are the only numbers you emit. Let the symbols agree or collide.',
+      'DECISION RULE — SYMBOLS, NO NUMBERS: Read only the images and symbols the systems produced (cards, runes, 괘, stars, colours, animals). Your verdict_line and minority_opinion must contain NO digits, percentages, or counts — the ballot numbers are the only numbers you emit. Let the symbols agree or collide, and let the action be what the images demand, not product language.',
     cite: 'synthesis bakeoff single-panel #2 ok; brand-level thinking disabled; onboarding 20/20',
   },
   {

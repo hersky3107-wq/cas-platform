@@ -20,6 +20,7 @@ import StructuredComputationPanel from "./StructuredComputationPanel";
 import TarotSpreadChart from "./TarotSpreadChart";
 import RunesDrawChart from "./RunesDrawChart";
 import IchingHexagramChart from "./IchingHexagramChart";
+import NineStarGridChart from "./NineStarGridChart";
 import AiJudgementNote from "./AiJudgementNote";
 import { inferredFromReadingSummaries, type TextInference } from "@/lib/oracle/tier2";
 
@@ -249,11 +250,16 @@ function ninestarSummary(calculation: Json) {
     );
   };
   return (
-    <Panel title="구성">
-      {cell("year", "본명성")}
-      {cell("month", "월명성")}
-      {cell("day", "일명성")}
-    </Panel>
+    <>
+      <Panel title="구성">
+        {cell("year", "본명성")}
+        {cell("month", "월명성")}
+        {cell("day", "일명성")}
+      </Panel>
+      <div className="mt-4">
+        <NineStarGridChart calculation={calculation} />
+      </div>
+    </>
   );
 }
 
@@ -361,7 +367,12 @@ function tarotCards(calculation: Json): Array<Record<string, unknown>> {
   return draw.cards.filter(isRecord);
 }
 
-function summaryFor(system: string, calculation: Json, inferences: TextInference[]) {
+function summaryFor(
+  system: string,
+  calculation: Json,
+  inferences: TextInference[],
+  compact: boolean,
+) {
   switch (system) {
     case "prism":
       return prismSummary(calculation);
@@ -384,7 +395,13 @@ function summaryFor(system: string, calculation: Json, inferences: TextInference
     case "ziwei":
       return ziweiSummary(calculation, inferences);
     case "tarot":
-      return <TarotSpreadChart cards={tarotCards(calculation)} inferences={inferences} />;
+      return (
+        <TarotSpreadChart
+          cards={tarotCards(calculation)}
+          inferences={inferences}
+          size={compact ? "row" : "default"}
+        />
+      );
     default:
       return <ComingSoon />;
   }
@@ -418,6 +435,8 @@ export default function ComputationSummary({
   engineVersion,
   unreadable,
   readings = [],
+  compact = false,
+  embedded = false,
 }: {
   system: string;
   systemName: string;
@@ -425,10 +444,13 @@ export default function ComputationSummary({
   engineVersion: string | null;
   unreadable?: boolean;
   readings?: Array<{ brand: string; summary: Record<string, unknown> | null }>;
+  compact?: boolean;
+  embedded?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const inferences = inferredFromReadingSummaries(readings);
-  const body = !calculation || unreadable ? <ComingSoon /> : summaryFor(system, calculation, inferences);
+  const body =
+    !calculation || unreadable ? <ComingSoon /> : summaryFor(system, calculation, inferences, compact);
   const detail =
     calculation && system === "tarot"
       ? stripDrawInternals(calculation, "cards")
@@ -436,10 +458,12 @@ export default function ComputationSummary({
         ? stripDrawInternals(calculation, "runes")
         : calculation;
 
-  return (
-    <article className="rounded-[22px] border border-white/10 bg-[#10182b] p-5">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/65">계산</p>
-      <div className="mt-3">{body}</div>
+  const chrome = (
+    <>
+      {embedded ? null : (
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/65">계산</p>
+      )}
+      <div className={embedded ? undefined : "mt-3"}>{body}</div>
       {detail && !unreadable ? (
         <div className="mt-4 border-t border-white/8 pt-3">
           <button
@@ -461,6 +485,9 @@ export default function ComputationSummary({
           ) : null}
         </div>
       ) : null}
-    </article>
+    </>
   );
+
+  if (embedded) return <div>{chrome}</div>;
+  return <article className="rounded-[22px] border border-white/10 bg-[#10182b] p-5">{chrome}</article>;
 }

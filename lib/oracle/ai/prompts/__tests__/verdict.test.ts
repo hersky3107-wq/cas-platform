@@ -24,6 +24,13 @@ describe('verdict prompts', () => {
     expect(three).toContain('"work" | "money" | "love" | "social" | "energy"')
   })
 
+  it('forces each persona onto a distinct angle so the panel does not converge', () => {
+    const prompt = buildVerdictSystemPrompt('ko', 'contrarian', 7)
+    expect(prompt).toContain('ANGLE DISCIPLINE')
+    expect(prompt).toContain('DIFFERENT COURSE')
+    expect(prompt).toContain('the TEXT must argue a different course')
+  })
+
   it('states that tallying happens in code — the seer never aggregates', () => {
     const prompt = buildVerdictSystemPrompt('ko', 'seer', 5)
     expect(prompt).toContain('counted in code')

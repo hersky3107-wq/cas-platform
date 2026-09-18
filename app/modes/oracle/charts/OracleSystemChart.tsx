@@ -3,8 +3,9 @@
 /**
  * Per-system calculation display.
  *
- * Saju keeps the 팔자표. Tarot shows drawn card images. Every other system
- * uses a curated Korean summary — engine internals stay behind 자세히 보기.
+ * Saju keeps the 팔자표 + 용신. Tarot shows drawn card images. Nine-star
+ * shows the 연반 3×3. Every other system uses a curated Korean summary —
+ * engine internals stay behind 자세히 보기.
  */
 import { oracleSystemDisplayName } from "@/lib/oracle/system-display";
 import SajuPillarsChart from "./SajuPillarsChart";
@@ -22,6 +23,9 @@ type ChartProps = {
   engineVersion: string | null;
   unreadable?: boolean;
   readings?: Array<{ brand: string; summary: Json | null }>;
+  /** Compact tarot row + nested chrome for the integrated reading cards. */
+  compact?: boolean;
+  embedded?: boolean;
 };
 
 export default function OracleSystemChart({
@@ -30,6 +34,8 @@ export default function OracleSystemChart({
   engineVersion,
   unreadable,
   readings,
+  compact = false,
+  embedded = false,
 }: ChartProps) {
   if (system === "saju") {
     const yongsinInferences: YongsinInference[] = inferencesFromReadingSummaries(readings ?? []);
@@ -49,6 +55,8 @@ export default function OracleSystemChart({
       engineVersion={engineVersion}
       unreadable={unreadable}
       readings={readings}
+      compact={compact}
+      embedded={embedded}
     />
   );
 }

@@ -16,21 +16,21 @@ const STALE_ROUTER_DEFAULTS = [
  * FIX 3 rescale: the v4 narrative budget is 700–1100 chars (~1600 CJK-heavy
  * completion tokens incl. JSON overhead), so the shared reading ceiling moved
  * 1200 → 2200. Systems with measured hidden-reasoning floors keep their own
- * larger ceilings (ziwei 8000, tzolkin 4000, sukuyou 3200); prism keeps a
+ * larger ceilings (tzolkin/DeepSeek 8000, ziwei/NVIDIA 4000); prism keeps a
  * tighter 1800 as the Claude length backstop.
  */
 const EXPECTED_CEILINGS: Record<string, number> = {
   saju: 2200,
-  ziwei: 8000,
+  ziwei: 4000,
   iching: 2200,
   ninestar: 2200,
-  sukuyou: 6000,
+  sukuyou: 2200,
   astro: 2200,
   tarot: 2200,
   runes: 2200,
   numerology: 2200,
   name: 2200,
-  tzolkin: 4000,
+  tzolkin: 8000,
   prism: 1800,
 }
 
@@ -58,14 +58,27 @@ describe('LAYER1_REGISTRY', () => {
       caller: { kind: 'platform', platformId: 'openrouter:kimi-k3' },
     })
     expect(LAYER1_REGISTRY.ziwei).toMatchObject({
-      brand: 'DeepSeek',
-      model: 'deepseek/deepseek-v4-pro',
-      caller: { kind: 'platform', platformId: 'openrouter:deepseek-v4-pro' },
+      brand: 'NVIDIA',
+      model: 'nvidia/nemotron-3-ultra-550b-a55b',
+      caller: { kind: 'platform', platformId: 'openrouter:nemotron-3-ultra-550b' },
     })
     expect(LAYER1_REGISTRY.ninestar).toMatchObject({
       brand: 'Meta',
       model: 'meta-llama/llama-4-maverick',
       caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' },
+    })
+    expect(LAYER1_REGISTRY.sukuyou).toMatchObject({
+      brand: 'Mistral',
+      model: 'mistralai/mistral-medium-3-5',
+      caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' },
+    })
+    expect(LAYER1_REGISTRY.numerology).toMatchObject({
+      brand: 'MiniMax',
+      model: 'minimax/minimax-m3',
+    })
+    expect(LAYER1_REGISTRY.tzolkin).toMatchObject({
+      brand: 'DeepSeek',
+      model: 'deepseek-v4-pro',
     })
     expect(LAYER1_REGISTRY.ninestar.caller.kind === 'platform' && LAYER1_REGISTRY.ninestar.caller.extraRequestParams).toBeFalsy()
   })
@@ -120,9 +133,13 @@ describe('LAYER1_REGISTRY', () => {
     const saju = LAYER1_REGISTRY.saju.caller
     const ninestar = LAYER1_REGISTRY.ninestar.caller
     const ziwei = LAYER1_REGISTRY.ziwei.caller
+    const numerology = LAYER1_REGISTRY.numerology.caller
+    const tzolkin = LAYER1_REGISTRY.tzolkin.caller
     expect(saju.kind).toBe('platform')
     expect(ninestar.kind).toBe('platform')
     expect(ziwei.kind).toBe('platform')
+    expect(numerology.kind).toBe('platform')
+    expect(tzolkin.kind).toBe('core')
     if (saju.kind === 'platform' && ninestar.kind === 'platform' && ziwei.kind === 'platform') {
       expect(saju.extraRequestParams).toEqual({
         reasoning: { enabled: false },
@@ -132,6 +149,16 @@ describe('LAYER1_REGISTRY', () => {
       expect(ziwei.extraRequestParams).toEqual({
         reasoning: { effort: 'minimal' },
       })
+    }
+    if (numerology.kind === 'platform') {
+      expect(numerology.extraRequestParams).toEqual({
+        reasoning: { enabled: false },
+        provider: { order: ['minimax'], allow_fallbacks: true },
+      })
+    }
+    if (tzolkin.kind === 'core') {
+      expect(tzolkin.provider).toBe('deepseek')
+      expect(tzolkin.modelOverride).toBe('deepseek-v4-pro')
     }
   })
 
