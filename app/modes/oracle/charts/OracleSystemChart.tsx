@@ -36,7 +36,8 @@ export default function OracleSystemChart({
   readings,
   compact = false,
   embedded = false,
-}: ChartProps) {
+  enteredName = null,
+}: ChartProps & { enteredName?: string | null }) {
   if (system === "saju") {
     const yongsinInferences: YongsinInference[] = inferencesFromReadingSummaries(readings ?? []);
     return (
@@ -57,6 +58,7 @@ export default function OracleSystemChart({
       readings={readings}
       compact={compact}
       embedded={embedded}
+      enteredName={enteredName}
     />
   );
 }

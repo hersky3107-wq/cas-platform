@@ -386,6 +386,22 @@ export const GYEOK_KO: Record<string, string> = {
   chong: '총격',
 }
 
+/** PRISM coreMatrix axes. Identity colour projects here; impulse/need do not. */
+export const PRISM_CORE_KO: Record<string, string> = {
+  drive: '추진',
+  stability: '안정',
+  relation: '관계',
+  control: '통제',
+  exploration: '탐험',
+  reflection: '성찰',
+}
+
+export const PRISM_COLOR_ROLE_KO: Record<string, string> = {
+  impulse: '충동',
+  need: '필요',
+  identity: '정체성',
+}
+
 export const PALACE_KO: Record<string, string> = {
   命: '명궁',
   兄弟: '형제궁',

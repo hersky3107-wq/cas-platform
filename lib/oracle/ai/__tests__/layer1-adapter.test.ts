@@ -332,13 +332,10 @@ describe('createLayer1AiAdapter', () => {
   })
 
   it('does not scale the runaway threshold with a system\'s completion ceiling', async () => {
-    // Regression: tzolkin's maxCompletionTokens is 8000 — a hidden-reasoning
-    // budget for first-party DeepSeek, unrelated to visible output size. If the guard
-    // were still derived as maxCompletionTokens * 1.5 (as it was before
-    // the 2026-08-26 ziwei 3000->8000 bump), the threshold would silently
-    // move to 12000 and 3200 content tokens would never trip it. It must
-    // stay at the shared reading contract value (3000, FIX 3 rescale)
-    // regardless of that ceiling.
+    // Regression: a seat's maxCompletionTokens is a hidden-reasoning budget,
+    // unrelated to visible output size. If the guard were still derived as
+    // maxCompletionTokens * 1.5, retuning a ceiling would silently move it.
+    // It must stay at the shared reading contract value (3000) regardless.
     let calls = 0
     const call: Layer1Call = async ({ strictRetry }) => {
       calls += 1
@@ -353,7 +350,7 @@ describe('createLayer1AiAdapter', () => {
     const adapter = createLayer1AiAdapter({ call })
     const result = await adapter.run(readingRequest('tzolkin'), { timeoutMs: 60_000 })
 
-    expect(LAYER1_REGISTRY.tzolkin.maxCompletionTokens).toBe(8000)
+    expect(LAYER1_REGISTRY.tzolkin.maxCompletionTokens).toBe(2200)
     expect(calls).toBe(2)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.message).toMatch(/3200 > 3000/)
@@ -515,7 +512,8 @@ describe('live layer-1 through a session', () => {
     }
     expect(body).not.toContain(SECRET_MODEL)
     expect(body).not.toContain('"model"')
-    expect(view.readings.some((row) => row.brand === 'DeepSeek')).toBe(true)
+    expect(view.readings.some((row) => row.brand === 'Google')).toBe(true)
+    expect(view.readings.every((row) => row.brand !== 'DeepSeek')).toBe(true)
     expect(store.readings.every((row) => row.model.length > 0)).toBe(true)
     // N=3 seer panel produced live ballots with seat brands, never 'stub'.
     expect(view.verdicts.map((row) => row.readerSlug).sort()).toEqual(['guide', 'reader', 'seer'])

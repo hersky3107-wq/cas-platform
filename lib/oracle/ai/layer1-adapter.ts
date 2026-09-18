@@ -132,6 +132,25 @@ function failure(
   return { ok: false, brand, model, status, message, latencyMs }
 }
 
+function tokenField(value: number | null | undefined): string {
+  return typeof value === 'number' ? String(value) : 'null'
+}
+
+function failureDiagnostic(
+  lastError: string,
+  lastRaw: Layer1CallResult | null,
+  remainingMs: number,
+  deadlineMs: number,
+): string {
+  return (
+    `${lastError}; insufficient time for retry (${remainingMs}ms < ${LAYER1_RETRY_MIN_REMAINING_MS}ms)` +
+    `; finish_reason=${lastRaw?.finishReason ?? 'null'}` +
+    `; reasoning_tokens=${tokenField(lastRaw?.reasoningTokens)}` +
+    `; content_tokens=${tokenField(lastRaw?.contentTokens)}` +
+    `; deadline_ms=${deadlineMs}`
+  )
+}
+
 async function finalizeUnitCost(opts: {
   sessionId: string
   entry: NonNullable<ReturnType<typeof layer1Entry>>
@@ -288,6 +307,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           const remainingMs = deadlineAt - Date.now()
           if (remainingMs < LAYER1_RETRY_MIN_REMAINING_MS) {
             const latencyMs = Date.now() - startedAt
+            const diagnostic = failureDiagnostic(lastError, lastRaw, remainingMs, opts.timeoutMs)
             await finalizeUnitCost({
               sessionId: request.sessionId,
               entry: effectiveEntry,
@@ -298,15 +318,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
               completionTokens: totalCompletionTokens,
               providerCostUsd: allAttemptsPriced ? totalReportedCostUsd : null,
               costIsEstimated: anyEstimatedCost,
-              errorText: `insufficient time for retry (${remainingMs}ms < ${LAYER1_RETRY_MIN_REMAINING_MS}ms)`,
+              errorText: diagnostic,
             })
-            return failure(
-              effectiveEntry.brand,
-              effectiveEntry.model,
-              'error',
-              `insufficient time for retry (${remainingMs}ms < ${LAYER1_RETRY_MIN_REMAINING_MS}ms)`,
-              latencyMs,
-            )
+            return failure(effectiveEntry.brand, effectiveEntry.model, 'error', diagnostic, latencyMs)
           }
           if (httpBudget.remaining < 1) break
         }
@@ -464,6 +478,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                   parsed: true,
                   finish_reason: raw.finishReason,
                   content_tokens: raw.contentTokens,
+                  ...(raw.reasoningTokens != null ? { reasoning_tokens: raw.reasoningTokens } : {}),
                 }
               : verdictParsed
                 ? {
@@ -481,12 +496,14 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                     parsed: true,
                     finish_reason: raw.finishReason,
                     content_tokens: raw.contentTokens,
+                    ...(raw.reasoningTokens != null ? { reasoning_tokens: raw.reasoningTokens } : {}),
                   }
                 : {
                     ...synthesisParsed!,
                     parsed: true,
                     finish_reason: raw.finishReason,
                     content_tokens: raw.contentTokens,
+                    ...(raw.reasoningTokens != null ? { reasoning_tokens: raw.reasoningTokens } : {}),
                   },
             latencyMs,
             tokensIn: raw.tokensIn,
@@ -522,6 +539,11 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
       }
 
       const latencyMs = Date.now() - startedAt
+      const diagnostic =
+        `${lastError}; finish_reason=${lastRaw?.finishReason ?? 'null'}` +
+        `; reasoning_tokens=${tokenField(lastRaw?.reasoningTokens)}` +
+        `; content_tokens=${tokenField(lastRaw?.contentTokens)}` +
+        `; deadline_ms=${opts.timeoutMs}`
       await finalizeUnitCost({
         sessionId: request.sessionId,
         entry: effectiveEntry,
@@ -532,9 +554,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         completionTokens: totalCompletionTokens,
         providerCostUsd: allAttemptsPriced ? totalReportedCostUsd : null,
         costIsEstimated: anyEstimatedCost,
-        errorText: lastError,
+        errorText: diagnostic,
       })
-      return failure(effectiveEntry.brand, effectiveEntry.model, 'error', lastError, latencyMs)
+      return failure(effectiveEntry.brand, effectiveEntry.model, 'error', diagnostic, latencyMs)
     },
   }
 }

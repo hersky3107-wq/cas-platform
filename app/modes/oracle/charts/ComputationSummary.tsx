@@ -7,6 +7,8 @@ import {
   ELEMENT_KO,
   GYEOK_KO,
   PALACE_KO,
+  PRISM_COLOR_ROLE_KO,
+  PRISM_CORE_KO,
   PRISM_CYCLE_KO,
   PRISM_RELATION_KO,
   SIGN_KO,
@@ -21,6 +23,7 @@ import TarotSpreadChart from "./TarotSpreadChart";
 import RunesDrawChart from "./RunesDrawChart";
 import IchingHexagramChart from "./IchingHexagramChart";
 import NineStarGridChart from "./NineStarGridChart";
+import ZiweiMingbanChart from "./ZiweiMingbanChart";
 import AiJudgementNote from "./AiJudgementNote";
 import { inferredFromReadingSummaries, type TextInference } from "@/lib/oracle/tier2";
 
@@ -70,20 +73,21 @@ function nest(value: unknown, ...keys: string[]): unknown {
 function prismSummary(calculation: Json) {
   const prism = nest(calculation, "prism");
   if (!isRecord(prism)) return null;
-  const colors = isRecord(prism.colors) ? prism.colors : null;
+  const nestedColors = isRecord(prism.colors) ? prism.colors : null;
+  const siblingColors = isRecord(calculation.colors) ? calculation.colors : null;
+  const colors = nestedColors ?? siblingColors;
+  const core = isRecord(prism.coreMatrix) ? prism.coreMatrix : null;
   const annual = isRecord(prism.annualCycle) ? prism.annualCycle : null;
   const monthly = isRecord(prism.monthlyCycle) ? prism.monthlyCycle : null;
   const rows: { label: string; value: string }[] = [];
 
-  const colorRow = (key: "impulse" | "need" | "identity", label: string) => {
-    const id = colors?.[key];
-    if (typeof id !== "string") return;
-    const ko = PRISM_COLOR_KO[id as PrismColor] ?? id;
-    rows.push({ label, value: ko });
-  };
-  colorRow("impulse", "충동");
-  colorRow("need", "필요");
-  colorRow("identity", "정체성");
+  if (core) {
+    for (const axis of ["drive", "stability", "relation", "control", "exploration", "reflection"] as const) {
+      const value = core[axis];
+      if (typeof value !== "number") continue;
+      rows.push({ label: PRISM_CORE_KO[axis] ?? axis, value: oneDecimal(value) });
+    }
+  }
 
   if (typeof prism.opportunityDomain === "string") {
     rows.push({
@@ -116,21 +120,30 @@ function prismSummary(calculation: Json) {
     rows.push({ label: "이달 주기", value: copy?.name ?? monthly.name });
   }
 
+  const colorRoles = ["impulse", "need", "identity"] as const;
+
   return (
     <Panel title="PRISM">
       {colors ? (
-        <div className="mb-3 flex gap-2">
-          {(["impulse", "need", "identity"] as const).map((key) => {
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          {colorRoles.map((key) => {
             const id = colors[key];
             if (typeof id !== "string") return null;
             const hex = PRISM_COLOR_HEX[id as PrismColor];
+            const ko = PRISM_COLOR_KO[id as PrismColor] ?? id;
             return (
-              <span
+              <div
                 key={key}
-                title={PRISM_COLOR_KO[id as PrismColor] ?? id}
-                className="h-7 w-7 rounded-full border border-white/25"
-                style={{ background: hex ?? "#888" }}
-              />
+                className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/20 px-2 py-3"
+              >
+                <span
+                  className="h-10 w-10 rounded-full border border-white/30"
+                  style={{ background: hex ?? "#888" }}
+                  aria-hidden
+                />
+                <span className="text-[11px] text-white/50">{PRISM_COLOR_ROLE_KO[key] ?? key}</span>
+                <span className="text-sm font-semibold text-white">{ko}</span>
+              </div>
             );
           })}
         </div>
@@ -193,14 +206,48 @@ function numerologySummary(calculation: Json) {
   );
 }
 
-function nameSummary(calculation: Json) {
+function nameGlyphs(
+  calculation: Json,
+  enteredName: string | null,
+): { written: string | null; glyphs: { glyph: string; strokes: number }[] } {
+  const reading = nest(calculation, "reading");
+  const strokes = isRecord(reading) && Array.isArray(reading.strokes)
+    ? reading.strokes.filter((value): value is number => typeof value === "number")
+    : [];
+  const subject = isRecord(calculation.subject) ? calculation.subject : null;
+  const storedWritten = subject && typeof subject.written === "string" ? subject.written : null;
+  const storedGlyphs = subject && Array.isArray(subject.glyphs)
+    ? subject.glyphs.filter((value): value is string => typeof value === "string")
+    : [];
+  const written = storedWritten || enteredName;
+  const chars = storedGlyphs.length
+    ? storedGlyphs
+    : written
+      ? Array.from(written.replace(/\s+/g, ""))
+      : [];
+  const glyphs = strokes.map((count, index) => ({
+    glyph: chars[index] ?? "·",
+    strokes: count,
+  }));
+  return { written, glyphs };
+}
+
+function nameSummary(calculation: Json, enteredName: string | null) {
   const reading = nest(calculation, "reading");
   if (!isRecord(reading) || reading.supported === false) return <ComingSoon />;
   const gyeok = isRecord(reading.gyeok) ? reading.gyeok : null;
   const suri = isRecord(reading.numerology81) ? reading.numerology81 : null;
   if (!gyeok) return <ComingSoon />;
+  const { written, glyphs } = nameGlyphs(calculation, enteredName);
   return (
     <Panel title="오격">
+      {written ? <Row label="이름" value={written} /> : null}
+      {glyphs.length ? (
+        <Row
+          label="획수"
+          value={glyphs.map((entry) => `${entry.glyph} ${entry.strokes}획`).join(" · ")}
+        />
+      ) : null}
       {(["cheon", "in", "ji", "oe", "chong"] as const).map((key) => {
         const n = gyeok[key];
         const entry = isRecord(suri?.[key]) ? suri[key] : null;
@@ -317,6 +364,8 @@ function ziweiSummary(calculation: Json, inferences: TextInference[]) {
   const ju = isRecord(chart.wuXingJu) ? chart.wuXingJu : null;
   const lunar = isRecord(chart.lunar) ? chart.lunar : null;
   const siHua = isRecord(chart.siHua) ? chart.siHua : null;
+  const daXian = isRecord(chart.daXian) ? chart.daXian : null;
+  const current = isRecord(daXian?.currentDaXian) ? daXian.currentDaXian : null;
   const limitations = Array.isArray(chart.limitations) ? chart.limitations : [];
   const noBirthTime = limitations.includes("no_birth_time");
   const rows: { label: string; value: string }[] = [];
@@ -328,12 +377,7 @@ function ziweiSummary(calculation: Json, inferences: TextInference[]) {
       .filter(Boolean);
     if (majors.length) rows.push({ label: PALACE_KO.命 ?? "명궁", value: majors.join(" · ") });
   }
-  if (noBirthTime && lunar) {
-    const stem = typeof lunar.yearStem === "string" ? lunar.yearStem : "";
-    const branch = typeof lunar.yearBranch === "string" ? lunar.yearBranch : "";
-    if (stem || branch) rows.push({ label: "연주", value: `${stem}${branch}` });
-  }
-  if (noBirthTime && siHua) {
+  if (siHua) {
     const lu = typeof siHua.lu === "string" ? siHua.lu : "";
     const quan = typeof siHua.quan === "string" ? siHua.quan : "";
     const ke = typeof siHua.ke === "string" ? siHua.ke : "";
@@ -346,14 +390,35 @@ function ziweiSummary(calculation: Json, inferences: TextInference[]) {
     ].filter(Boolean);
     if (stars.length) rows.push({ label: "사화", value: stars.join(" · ") });
   }
-  if (!rows.length) return <ComingSoon />;
+  if (current && typeof current.palaceName === "string") {
+    const ages =
+      typeof current.ageFrom === "number" && typeof current.ageTo === "number"
+        ? ` ${current.ageFrom}–${current.ageTo}세`
+        : "";
+    rows.push({
+      label: "대한",
+      value: `${PALACE_KO[current.palaceName] ?? current.palaceName}${ages}`,
+    });
+  }
+  if (noBirthTime && lunar) {
+    const stem = typeof lunar.yearStem === "string" ? lunar.yearStem : "";
+    const branch = typeof lunar.yearBranch === "string" ? lunar.yearBranch : "";
+    if (stem || branch) rows.push({ label: "연주", value: `${stem}${branch}` });
+  }
+  const hasMingban = Array.isArray(palaces) && palaces.length === 12;
+  if (!rows.length && !hasMingban) return <ComingSoon />;
   return (
     <>
-      <Panel title="자미두수">
-        {rows.map((row) => (
-          <Row key={row.label} label={row.label} value={row.value} />
-        ))}
-      </Panel>
+      {hasMingban ? <ZiweiMingbanChart calculation={calculation} /> : null}
+      {rows.length ? (
+        <div className="mt-4">
+          <Panel title="자미두수">
+            {rows.map((row) => (
+              <Row key={row.label} label={row.label} value={row.value} />
+            ))}
+          </Panel>
+        </div>
+      ) : null}
       {noBirthTime ? (
         <AiJudgementNote inferences={inferences} pending="연주·사화로 말할 수 있는 것 (신뢰도 낮음)" />
       ) : null}
@@ -372,6 +437,7 @@ function summaryFor(
   calculation: Json,
   inferences: TextInference[],
   compact: boolean,
+  enteredName: string | null,
 ) {
   switch (system) {
     case "prism":
@@ -381,7 +447,7 @@ function summaryFor(
     case "numerology":
       return numerologySummary(calculation);
     case "name":
-      return nameSummary(calculation);
+      return nameSummary(calculation, enteredName);
     case "iching":
       return ichingSummary(calculation);
     case "runes":
@@ -437,6 +503,7 @@ export default function ComputationSummary({
   readings = [],
   compact = false,
   embedded = false,
+  enteredName = null,
 }: {
   system: string;
   systemName: string;
@@ -446,11 +513,17 @@ export default function ComputationSummary({
   readings?: Array<{ brand: string; summary: Record<string, unknown> | null }>;
   compact?: boolean;
   embedded?: boolean;
+  /** Profile name as entered — 성명학 chart, including sessions computed before subject was stored. */
+  enteredName?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const inferences = inferredFromReadingSummaries(readings);
   const body =
-    !calculation || unreadable ? <ComingSoon /> : summaryFor(system, calculation, inferences, compact);
+    !calculation || unreadable ? (
+      <ComingSoon />
+    ) : (
+      summaryFor(system, calculation, inferences, compact, enteredName)
+    );
   const detail =
     calculation && system === "tarot"
       ? stripDrawInternals(calculation, "cards")

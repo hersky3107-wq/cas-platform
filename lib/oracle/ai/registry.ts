@@ -273,20 +273,27 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
   },
   tzolkin: {
     system: 'tzolkin',
-    brand: 'DeepSeek',
-    displayName: 'DeepSeek V4 Pro',
-    // OpenRouter has no DeepSeek first-party endpoint for v4-pro (resellers
-    // StreamLake/GMICloud; provider pin did not help). Oracle now calls
-    // api.deepseek.com directly — the same path league uses. Tzolkin is the
-    // lighter home after NVIDIA took ziwei.
-    model: 'deepseek-v4-pro',
-    pricingModel: 'deepseek/deepseek-v4-pro',
+    brand: 'Google',
+    displayName: 'Gemini 3.6 Flash',
+    // DeepSeek is gone from integrated LAYER1 and seer seats after four
+    // consecutive paid empties, including first-party api.deepseek.com
+    // (session 7f5ccc4b: 3946 then 5027 visible tokens vs the 3000 runaway
+    // guard, then the 25s retry floor — the 80s unit wall never fired).
+    // No unused unique 20× brand remains (Z.ai is the integrated synthesizer,
+    // ByteDance is CONTRARIAN). Dual-seat Google with tarot: bakeoff
+    // integrated #3, self_ip family synthesizer, tarot 20/20 with
+    // thinkingLevel:minimal, ceiling 2200 so a live call cannot trip runaway.
+    model: 'gemini-3.6-flash',
+    pricingModel: 'google/gemini-3.6-flash',
+    officialPricing: { promptUsdPerToken: 0.0000015, completionUsdPerToken: 0.0000075 },
     caller: {
       kind: 'core',
-      provider: 'deepseek',
-      modelOverride: 'deepseek-v4-pro',
+      provider: 'google',
+      modelOverride: 'gemini-3.6-flash',
+      allowGeminiThinking: true,
+      geminiThinkingLevel: 'minimal',
     },
-    maxCompletionTokens: 8000,
+    maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },
   prism: {
@@ -320,6 +327,14 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
  * Must never appear as a reader, synthesizer, or seat-only brand.
  */
 export const RETIRED_BRANDS = ['Qwen', 'Xiaomi MiMo'] as const
+
+/**
+ * Banned from integrated LAYER1 dedicated seats and seer seats after four
+ * consecutive paid combined-session failures (OpenRouter resellers, then
+ * first-party api.deepseek.com). Still allowed on single-system family
+ * rosters until those are re-seated in a later pass.
+ */
+export const INTEGRATED_BANNED_BRANDS = ['DeepSeek'] as const
 
 export function isRetiredBrand(brand: string): boolean {
   if ((RETIRED_BRANDS as readonly string[]).includes(brand)) return true

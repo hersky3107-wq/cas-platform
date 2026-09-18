@@ -597,6 +597,7 @@ export default function OracleSystemReadingClient({
                 brand: reading.brand,
                 summary: reading.summary,
               }))}
+              enteredName={snapshot.name_local || snapshot.name_hanja || snapshot.name_latin || null}
             />
 
             <section>

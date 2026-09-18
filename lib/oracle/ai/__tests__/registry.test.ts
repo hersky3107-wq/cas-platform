@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_IDS } from '../../axes/types'
-import { LAYER1_REGISTRY, LAYER1_READING_RUNAWAY_CONTENT_TOKENS, applyOracleBrandPolicies, layer1Entry } from '../registry'
+import {
+  INTEGRATED_BANNED_BRANDS,
+  LAYER1_REGISTRY,
+  LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
+  applyOracleBrandPolicies,
+  integratedReaderBrands,
+  layer1Entry,
+} from '../registry'
 import { LAYER1_SYNTHESIS_RUNAWAY_CONTENT_TOKENS, layer1RunawayContentThreshold } from '../layer1-adapter'
 
 const STALE_ROUTER_DEFAULTS = [
@@ -16,8 +23,9 @@ const STALE_ROUTER_DEFAULTS = [
  * FIX 3 rescale: the v4 narrative budget is 700–1100 chars (~1600 CJK-heavy
  * completion tokens incl. JSON overhead), so the shared reading ceiling moved
  * 1200 → 2200. Systems with measured hidden-reasoning floors keep their own
- * larger ceilings (tzolkin/DeepSeek 8000, ziwei/NVIDIA 4000); prism keeps a
- * tighter 1800 as the Claude length backstop.
+ * larger ceilings (ziwei/NVIDIA 4000); prism keeps a tighter 1800 as the
+ * Claude length backstop. tzolkin sits at the shared 2200 after DeepSeek
+ * left — Google's ceiling is under the 3000 runaway guard on purpose.
  */
 const EXPECTED_CEILINGS: Record<string, number> = {
   saju: 2200,
@@ -30,12 +38,12 @@ const EXPECTED_CEILINGS: Record<string, number> = {
   runes: 2200,
   numerology: 2200,
   name: 2200,
-  tzolkin: 8000,
+  tzolkin: 2200,
   prism: 1800,
 }
 
 describe('LAYER1_REGISTRY', () => {
-  it('has one verified entry per system and 12 distinct brands', () => {
+  it('has one verified entry per system; DeepSeek is banned from integrated so tzolkin dual-seats Google', () => {
     expect(Object.keys(LAYER1_REGISTRY).sort()).toEqual([...SYSTEM_IDS].sort())
     for (const system of SYSTEM_IDS) {
       const entry = layer1Entry(system)
@@ -47,8 +55,14 @@ describe('LAYER1_REGISTRY', () => {
 
     const brands = Object.values(LAYER1_REGISTRY).map((entry) => entry.brand)
     expect(brands).toHaveLength(SYSTEM_IDS.length)
-    expect(new Set(brands).size).toBe(SYSTEM_IDS.length)
+    expect(new Set(brands).size).toBe(SYSTEM_IDS.length - 1)
+    expect(LAYER1_REGISTRY.tarot.brand).toBe('Google')
+    expect(LAYER1_REGISTRY.tzolkin.brand).toBe('Google')
+    expect(brands).not.toContain('DeepSeek')
     expect(JSON.stringify(LAYER1_REGISTRY)).not.toContain('max_tokens')
+    for (const banned of INTEGRATED_BANNED_BRANDS) {
+      expect(integratedReaderBrands()).not.toContain(banned)
+    }
   })
 
   it('assigns the owner-approved brands including Llama 4 Maverick on ninestar', () => {
@@ -77,8 +91,8 @@ describe('LAYER1_REGISTRY', () => {
       model: 'minimax/minimax-m3',
     })
     expect(LAYER1_REGISTRY.tzolkin).toMatchObject({
-      brand: 'DeepSeek',
-      model: 'deepseek-v4-pro',
+      brand: 'Google',
+      model: 'gemini-3.6-flash',
     })
     expect(LAYER1_REGISTRY.ninestar.caller.kind === 'platform' && LAYER1_REGISTRY.ninestar.caller.extraRequestParams).toBeFalsy()
   })
@@ -157,8 +171,10 @@ describe('LAYER1_REGISTRY', () => {
       })
     }
     if (tzolkin.kind === 'core') {
-      expect(tzolkin.provider).toBe('deepseek')
-      expect(tzolkin.modelOverride).toBe('deepseek-v4-pro')
+      expect(tzolkin.provider).toBe('google')
+      expect(tzolkin.modelOverride).toBe('gemini-3.6-flash')
+      expect(tzolkin.allowGeminiThinking).toBe(true)
+      expect(tzolkin.geminiThinkingLevel).toBe('minimal')
     }
   })
 
@@ -205,6 +221,7 @@ describe('LAYER1_REGISTRY', () => {
       promptUsdPerToken: 0.0000015,
       completionUsdPerToken: 0.0000075,
     })
+    expect(LAYER1_REGISTRY.tzolkin.officialPricing).toEqual(LAYER1_REGISTRY.tarot.officialPricing)
     expect(LAYER1_REGISTRY.runes.officialPricing).toEqual({
       promptUsdPerToken: 0.00000125,
       completionUsdPerToken: 0.0000025,

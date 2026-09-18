@@ -112,10 +112,10 @@ export const ORACLE_SEER_PERSONAS: readonly OracleSeerPersona[] = [
     slug: 'doubter',
     nameKo: '회의자',
     ruleKo: '모든 결론을 의심',
-    brand: 'DeepSeek',
+    brand: 'Mistral',
     decisionRule:
       'DECISION RULE — QUESTION EVERY CONCLUSION: Interrogate each reading\'s conclusion: what would have to be true for it to hold? Discard any conclusion that fails the test. Your verdict is only the direction that survives the most doubt, stated with exactly the confidence it earned and no more — name the falsifier, not a pep talk.',
-    cite: 'synthesis clean re-run single DQ=false, ground=121; onboarding 20/20',
+    cite: 'replaces DeepSeek (7f5ccc4b: 5027 visible tokens vs 3000 runaway, then 25s retry floor on the tzolkin-homed entry); unused LAYER1 seer; no reasoning param; onboarding 20/20 reading; ceiling 2200',
   },
   {
     slug: 'mystic',

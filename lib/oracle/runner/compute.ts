@@ -435,7 +435,20 @@ function computeSystem(system: SystemId, ctx: SubjectContext): SystemOutcome {
     case 'name': {
       if (!ctx.nameParts) return { unreadableCode: 'name.no_name_on_profile' }
       const input = { ...ctx.nameParts, locale: ctx.nameLocale }
-      return { vote: projectName(input), result: { reading: jsonObject(nameReading(input)) } }
+      const reading = nameReading(input)
+      const glyphs = [...input.surname, ...input.givenName]
+      return {
+        vote: projectName(input),
+        result: {
+          reading: jsonObject(reading),
+          subject: {
+            written: `${input.surname}${input.givenName}`,
+            glyphs,
+            surnameGlyphs: [...input.surname],
+            givenGlyphs: [...input.givenName],
+          },
+        },
+      }
     }
     case 'iching': {
       const seed = drawSeed(ctx.seed, 'iching')

@@ -35,6 +35,42 @@ describe('publicComputation', () => {
     expect(JSON.stringify(view)).not.toContain('37.5')
   })
 
+  it('keeps 자미두수 palace and star names so a 명반 can render', () => {
+    const row = {
+      system: 'ziwei',
+      engine_version: 'ziwei-1',
+      axes: {},
+      result: {
+        chart: {
+          palaces: [{ index: 2, branch: '寅', name: '命', stars: [{ name: '武曲', category: 'major' }] }],
+          wuXingJu: { name: '木三局' },
+        },
+      },
+    } as unknown as OracleComputation
+
+    const view = publicComputation(row)
+    expect(JSON.stringify(view.calculation)).toContain('命')
+    expect(JSON.stringify(view.calculation)).toContain('武曲')
+  })
+
+  it('keeps PRISM cycle names and top-level colour picks', () => {
+    const row = {
+      system: 'prism',
+      engine_version: 'prism-1',
+      axes: {},
+      result: {
+        prism: { annualCycle: { name: 'Harvest' }, opportunityDomain: 'social' },
+        colors: { impulse: 'sand', need: 'scarlet', identity: 'silver' },
+      },
+    } as unknown as OracleComputation
+
+    const view = publicComputation(row)
+    expect(view.calculation).toMatchObject({
+      prism: { annualCycle: { name: 'Harvest' }, opportunityDomain: 'social' },
+      colors: { impulse: 'sand', need: 'scarlet', identity: 'silver' },
+    })
+  })
+
   it('never exposes ai_payload or model identity', () => {
     const row = {
       system: 'saju',

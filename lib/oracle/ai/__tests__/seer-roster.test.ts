@@ -81,6 +81,8 @@ describe('seer roster', () => {
       if (persona.slug === 'contrarian') continue
       expect(readerBrands.has(persona.brand), `${persona.slug} (${persona.brand})`).toBe(true)
     }
+    expect(seerPersona('doubter')!.brand).toBe('Mistral')
+    expect(ORACLE_SEER_PERSONAS.every((persona) => persona.brand !== 'DeepSeek')).toBe(true)
   })
 
   it('decision rules differ per persona and carry the rule, not a tone', () => {

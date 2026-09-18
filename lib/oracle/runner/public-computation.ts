@@ -16,10 +16,17 @@ const PRIVATE_KEYS = new Set([
   'birth_time',
   'birthplace',
   'birth_place',
-  'name',
+  // Do NOT strip generic `name`: 자미두수 palaces/stars and PRISM cycle
+  // snapshots use that key for tradition labels (命, 武曲, Harvest), not PII.
   'name_local',
   'name_hanja',
   'name_latin',
+  'fullname',
+  'full_name',
+  'givenname',
+  'given_name',
+  'latinname',
+  'latin_name',
 ])
 
 function sanitizeCalculation(value: unknown): unknown {

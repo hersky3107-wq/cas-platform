@@ -609,20 +609,59 @@ function oppositionPlainLine(
   const saidA = saidBySystem.get(a);
   const saidB = saidBySystem.get(b);
   if (saidA && saidB) {
-    return `${nameA}는 「${saidA}」, ${nameB}는 「${saidB}」 — 정반대입니다.`;
+    return `${nameA}는 「${saidA}」, ${nameB}는 「${saidB}」.`;
   }
   return `${nameA}는 나아가라고 하고, ${nameB}는 정리하라고 합니다.`;
+}
+
+function dominantPhaseOf(phase: Record<string, number>): Direction | null {
+  let best: Direction | null = null;
+  let bestVal = -Infinity;
+  for (const direction of DIRECTIONS) {
+    const value = phase[direction];
+    if (typeof value === "number" && value > bestVal) {
+      best = direction;
+      bestVal = value;
+    }
+  }
+  return best;
+}
+
+function polePairsFromAxes(
+  computations: Array<{ system: string; axes: JsonObject | null }>,
+): Array<{ a: string; b: string }> {
+  const advance: string[] = [];
+  const release: string[] = [];
+  for (const row of computations) {
+    const phase = asRecord(asRecord(row.axes)?.phase);
+    if (!phase) continue;
+    const dominant = dominantPhaseOf({
+      advance: typeof phase.advance === "number" ? phase.advance : 0,
+      hold: typeof phase.hold === "number" ? phase.hold : 0,
+      release: typeof phase.release === "number" ? phase.release : 0,
+    });
+    if (dominant === "advance") advance.push(row.system);
+    if (dominant === "release") release.push(row.system);
+  }
+  const count = Math.min(advance.length, release.length, 4);
+  const pairs: Array<{ a: string; b: string }> = [];
+  for (let i = 0; i < count; i += 1) {
+    pairs.push({ a: advance[i]!, b: release[i]! });
+  }
+  return pairs;
 }
 
 function ConsensusMapSection({
   consensus,
   readSystems,
   readings,
+  computations,
 }: {
   consensus: OracleRunnerConsensus;
   /** Systems that produced a completed reading below (FIX 5a). */
   readSystems: ReadonlySet<string>;
   readings: OracleRunnerReading[];
+  computations: Array<{ system: string; axes: JsonObject | null }>;
 }) {
   const phase = parsePhaseMap(consensus.systemAgreement);
   const tally = parseBallotTally(consensus.ballotTally);
@@ -643,6 +682,11 @@ function ConsensusMapSection({
       return said ? [[reading.system, said] as const] : [];
     }),
   );
+  const enginePairs = phase?.oppositions ?? [];
+  const splitPairs =
+    enginePairs.length > 0
+      ? enginePairs.map((row) => ({ a: row.a, b: row.b }))
+      : polePairsFromAxes(computations);
 
   return (
     <section>
@@ -690,9 +734,9 @@ function ConsensusMapSection({
                 ? ` 결번: ${phaseMissing.map(systemShortName).join(", ")}.`
                 : ""}
             </p>
-            {phase.oppositions.length ? (
+            {splitPairs.length ? (
               <ul className="mt-3 space-y-1.5 border-t border-white/8 pt-3 text-[13px] leading-relaxed text-slate-300">
-                {phase.oppositions.slice(0, 4).map((opposition) => (
+                {splitPairs.slice(0, 4).map((opposition) => (
                   <li key={`${opposition.a}-${opposition.b}`}>
                     {oppositionPlainLine(opposition.a, opposition.b, saidBySystem)}
                   </li>
@@ -748,6 +792,7 @@ function ReadingsSection({
   computations,
   terminal,
   stub,
+  enteredName,
 }: {
   readings: OracleRunnerReading[];
   computations: Array<{
@@ -755,9 +800,11 @@ function ReadingsSection({
     calculation: JsonObject | null;
     engineVersion?: string | null;
     unreadable?: boolean;
+    axes?: JsonObject | null;
   }>;
   terminal: boolean;
   stub: boolean;
+  enteredName: string | null;
 }) {
   const bySystem = new Map(readings.map((reading) => [reading.system, reading]));
   const calcBySystem = new Map(computations.map((entry) => [entry.system, entry]));
@@ -838,6 +885,7 @@ function ReadingsSection({
                     compact
                     embedded
                     readings={[{ brand: reading.brand, summary: reading.summary }]}
+                    enteredName={enteredName}
                   />
                 </div>
               ) : null}
@@ -1167,6 +1215,7 @@ export default function OracleIntegratedClient({
               <ConsensusMapSection
                 consensus={consensus}
                 readings={view?.readings ?? []}
+                computations={session.computations}
                 readSystems={
                   new Set(
                     (view?.readings ?? [])
@@ -1183,6 +1232,7 @@ export default function OracleIntegratedClient({
               computations={session.computations}
               terminal={session.terminal}
               stub={stub}
+              enteredName={snapshot.name_local || snapshot.name_hanja || snapshot.name_latin || null}
             />
 
             {/* ④ Talisman entry point. */}
