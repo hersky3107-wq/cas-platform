@@ -24,6 +24,11 @@ import RunesDrawChart from "./RunesDrawChart";
 import IchingHexagramChart from "./IchingHexagramChart";
 import NineStarGridChart from "./NineStarGridChart";
 import ZiweiMingbanChart from "./ZiweiMingbanChart";
+import AstrologyNatalWheelChart from "./AstrologyNatalWheelChart";
+import SukuyouWheelChart from "./SukuyouWheelChart";
+import TzolkinGridChart from "./TzolkinGridChart";
+import NumerologyCoreChart from "./NumerologyCoreChart";
+import PrismCoreHexagonChart from "./PrismCoreHexagonChart";
 import AiJudgementNote from "./AiJudgementNote";
 import { inferredFromReadingSummaries, type TextInference } from "@/lib/oracle/tier2";
 
@@ -124,6 +129,9 @@ function prismSummary(calculation: Json) {
 
   return (
     <Panel title="PRISM">
+      <div className="mb-4">
+        <PrismCoreHexagonChart calculation={calculation} />
+      </div>
       {colors ? (
         <div className="mb-4 grid grid-cols-3 gap-2">
           {colorRoles.map((key) => {
@@ -179,11 +187,16 @@ function astroSummary(calculation: Json) {
   }
   if (!rows.length) return <ComingSoon />;
   return (
-    <Panel title="출생 차트">
-      {rows.map((row) => (
-        <Row key={row.label} label={row.label} value={row.value} />
-      ))}
-    </Panel>
+    <>
+      <AstrologyNatalWheelChart calculation={calculation} />
+      <div className="mt-4">
+        <Panel title="출생 차트">
+          {rows.map((row) => (
+            <Row key={row.label} label={row.label} value={row.value} />
+          ))}
+        </Panel>
+      </div>
+    </>
   );
 }
 
@@ -198,11 +211,16 @@ function numerologySummary(calculation: Json) {
   ].filter(([, v]) => typeof v === "number") as [string, number][];
   if (!rows.length) return <ComingSoon />;
   return (
-    <Panel title="핵심 수">
-      {rows.map(([label, value]) => (
-        <Row key={label} label={label} value={String(value)} />
-      ))}
-    </Panel>
+    <>
+      <NumerologyCoreChart calculation={calculation} />
+      <div className="mt-4">
+        <Panel title="핵심 수">
+          {rows.map(([label, value]) => (
+            <Row key={label} label={label} value={String(value)} />
+          ))}
+        </Panel>
+      </div>
+    </>
   );
 }
 
@@ -325,15 +343,18 @@ function sukuyouSummary(calculation: Json, inferences: TextInference[]) {
       : null;
   return (
     <>
-      <Panel title="태어난 숙">
-        <Row label="숙" value={`${hanja} ${hangul}`.trim()} />
-        {relation ? (
-          <>
-            <Row label="삼구" value={relation.관계} />
-            <Row label="분류" value={relation.분류} />
-          </>
-        ) : null}
-      </Panel>
+      <SukuyouWheelChart calculation={calculation} />
+      <div className="mt-4">
+        <Panel title="태어난 숙">
+          <Row label="숙" value={`${hanja} ${hangul}`.trim()} />
+          {relation ? (
+            <>
+              <Row label="삼구" value={relation.관계} />
+              <Row label="분류" value={relation.분류} />
+            </>
+          ) : null}
+        </Panel>
+      </div>
       <AiJudgementNote inferences={inferences} pending="숙과 삼구 관계의 성격" />
     </>
   );
@@ -347,10 +368,13 @@ function tzolkinSummary(calculation: Json, inferences: TextInference[]) {
   if (!nawal && tone == null) return <ComingSoon />;
   return (
     <>
-      <Panel title="촐킨">
-        {typeof tone === "number" ? <Row label="톤" value={String(tone)} /> : null}
-        {nawal ? <Row label="날의 문양" value={nawal} /> : null}
-      </Panel>
+      <TzolkinGridChart calculation={calculation} />
+      <div className="mt-4">
+        <Panel title="촐킨">
+          {typeof tone === "number" ? <Row label="톤" value={String(tone)} /> : null}
+          {nawal ? <Row label="날의 문양" value={nawal} /> : null}
+        </Panel>
+      </div>
       <AiJudgementNote inferences={inferences} pending="나왈과 톤의 의미" />
     </>
   );
