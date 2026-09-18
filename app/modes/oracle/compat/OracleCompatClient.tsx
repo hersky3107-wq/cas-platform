@@ -57,6 +57,7 @@ import {
   type ProfileField,
   type ProfileSnapshot,
 } from "@/lib/oracle/system-requirements";
+import { uniqueOppositionPairs } from "@/lib/oracle/opposition-pairs";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 const STORAGE_KEY = "oracle.compat.active-session";
@@ -657,7 +658,7 @@ function ConsensusMapSection({
             </p>
             {phase.oppositions.length ? (
               <ul className="mt-3 space-y-1.5 border-t border-white/8 pt-3 text-[13px] leading-relaxed text-slate-300">
-                {phase.oppositions.slice(0, 4).map((opposition) => (
+                {uniqueOppositionPairs(phase.oppositions).map((opposition) => (
                   <li key={`${opposition.a}-${opposition.b}`}>
                     <span className="font-semibold text-white">{systemShortName(opposition.a)}</span>
                     는 다가서라고 하고,{" "}

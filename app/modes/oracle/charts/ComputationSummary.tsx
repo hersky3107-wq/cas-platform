@@ -2,17 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 import {
-  BODY_KO,
   DOMAIN_KO,
   ELEMENT_KO,
   GYEOK_KO,
   PALACE_KO,
   PRISM_COLOR_ROLE_KO,
-  PRISM_CORE_KO,
   PRISM_CYCLE_KO,
   PRISM_RELATION_KO,
-  SIGN_KO,
-  oneDecimal,
   sukuyouRelationNativeChart,
 } from "@/lib/oracle/display-copy";
 import { sukuyouRelation } from "@/lib/oracle/engines/calendar";
@@ -81,18 +77,9 @@ function prismSummary(calculation: Json) {
   const nestedColors = isRecord(prism.colors) ? prism.colors : null;
   const siblingColors = isRecord(calculation.colors) ? calculation.colors : null;
   const colors = nestedColors ?? siblingColors;
-  const core = isRecord(prism.coreMatrix) ? prism.coreMatrix : null;
   const annual = isRecord(prism.annualCycle) ? prism.annualCycle : null;
   const monthly = isRecord(prism.monthlyCycle) ? prism.monthlyCycle : null;
   const rows: { label: string; value: string }[] = [];
-
-  if (core) {
-    for (const axis of ["drive", "stability", "relation", "control", "exploration", "reflection"] as const) {
-      const value = core[axis];
-      if (typeof value !== "number") continue;
-      rows.push({ label: PRISM_CORE_KO[axis] ?? axis, value: oneDecimal(value) });
-    }
-  }
 
   if (typeof prism.opportunityDomain === "string") {
     rows.push({
@@ -168,36 +155,7 @@ function astroSummary(calculation: Json) {
   if (!isRecord(natal)) return null;
   const bodies = isRecord(natal.bodies) ? natal.bodies : null;
   if (!bodies) return <ComingSoon />;
-  const rows: { label: string; value: string }[] = [];
-  for (const key of ["Sun", "Moon"] as const) {
-    const body = isRecord(bodies[key]) ? bodies[key] : null;
-    if (!body || typeof body.sign !== "string") continue;
-    const deg = typeof body.degreeInSign === "number" ? ` ${oneDecimal(body.degreeInSign)}°` : "";
-    rows.push({
-      label: BODY_KO[key] ?? key,
-      value: `${SIGN_KO[body.sign] ?? body.sign}${deg}`,
-    });
-  }
-  const angles = isRecord(natal.angles) ? natal.angles : null;
-  if (angles && typeof angles.ascendant === "number") {
-    const signIndex = Math.floor((((angles.ascendant % 360) + 360) % 360) / 30);
-    const signs = Object.keys(SIGN_KO);
-    const sign = signs[signIndex];
-    if (sign) rows.push({ label: "상승", value: SIGN_KO[sign] ?? sign });
-  }
-  if (!rows.length) return <ComingSoon />;
-  return (
-    <>
-      <AstrologyNatalWheelChart calculation={calculation} />
-      <div className="mt-4">
-        <Panel title="출생 차트">
-          {rows.map((row) => (
-            <Row key={row.label} label={row.label} value={row.value} />
-          ))}
-        </Panel>
-      </div>
-    </>
-  );
+  return <AstrologyNatalWheelChart calculation={calculation} />;
 }
 
 function numerologySummary(calculation: Json) {
@@ -210,18 +168,7 @@ function numerologySummary(calculation: Json) {
     ["개인 월", numbers.personalMonth],
   ].filter(([, v]) => typeof v === "number") as [string, number][];
   if (!rows.length) return <ComingSoon />;
-  return (
-    <>
-      <NumerologyCoreChart calculation={calculation} />
-      <div className="mt-4">
-        <Panel title="핵심 수">
-          {rows.map(([label, value]) => (
-            <Row key={label} label={label} value={String(value)} />
-          ))}
-        </Panel>
-      </div>
-    </>
-  );
+  return <NumerologyCoreChart calculation={calculation} />;
 }
 
 function nameGlyphs(
@@ -369,12 +316,6 @@ function tzolkinSummary(calculation: Json, inferences: TextInference[]) {
   return (
     <>
       <TzolkinGridChart calculation={calculation} />
-      <div className="mt-4">
-        <Panel title="촐킨">
-          {typeof tone === "number" ? <Row label="톤" value={String(tone)} /> : null}
-          {nawal ? <Row label="날의 문양" value={nawal} /> : null}
-        </Panel>
-      </div>
       <AiJudgementNote inferences={inferences} pending="나왈과 톤의 의미" />
     </>
   );

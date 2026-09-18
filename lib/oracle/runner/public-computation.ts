@@ -29,14 +29,23 @@ const PRIVATE_KEYS = new Set([
   'latin_name',
 ])
 
-function sanitizeCalculation(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeCalculation)
+function isEclipticLongitudeKey(key: string, path: readonly string[]): boolean {
+  // Geographic longitude is `lng` (already private). A key named
+  // `longitude` under natal/transit `bodies` is ecliptic degrees 0–360 —
+  // the natal wheel cannot place a planet without it. Session 18cd2c9c
+  // stripped every `longitude` and the wheel unmounted.
+  return key === 'longitude' && path.includes('bodies')
+}
+
+function sanitizeCalculation(value: unknown, path: readonly string[] = []): unknown {
+  if (Array.isArray(value)) return value.map((entry) => sanitizeCalculation(entry, path))
   if (value === null || typeof value !== 'object') return value
 
   const clean: JsonObject = {}
   for (const [key, child] of Object.entries(value as JsonObject)) {
-    if (PRIVATE_KEYS.has(key.toLowerCase())) continue
-    clean[key] = sanitizeCalculation(child)
+    const lower = key.toLowerCase()
+    if (PRIVATE_KEYS.has(lower) && !isEclipticLongitudeKey(lower, path)) continue
+    clean[key] = sanitizeCalculation(child, [...path, lower])
   }
   return clean
 }

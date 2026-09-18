@@ -79,16 +79,34 @@ type Parsed = {
   aspects: { a: string; b: string; type: string }[];
 };
 
+const SIGN_ORDER = Object.keys(SIGN_KO);
+
+/** Ecliptic degrees from the stored longitude, or sign + degree-in-sign. */
+function bodyLongitude(value: Json): number | null {
+  if (typeof value.longitude === "number" && Number.isFinite(value.longitude)) {
+    return ((value.longitude % 360) + 360) % 360;
+  }
+  if (typeof value.sign === "string" && typeof value.degreeInSign === "number") {
+    const index = SIGN_ORDER.indexOf(value.sign);
+    if (index >= 0 && Number.isFinite(value.degreeInSign)) {
+      return (index * 30 + value.degreeInSign + 360) % 360;
+    }
+  }
+  return null;
+}
+
 function parseNatal(calculation: Json): Parsed | null {
   const natal = isRecord(calculation.natal) ? calculation.natal : null;
   if (!natal || !isRecord(natal.bodies)) return null;
 
   const bodies: Body[] = [];
   for (const [key, value] of Object.entries(natal.bodies)) {
-    if (!isRecord(value) || typeof value.longitude !== "number") continue;
+    if (!isRecord(value)) continue;
+    const longitude = bodyLongitude(value);
+    if (longitude == null) continue;
     bodies.push({
       key,
-      longitude: ((value.longitude % 360) + 360) % 360,
+      longitude,
       sign: typeof value.sign === "string" ? value.sign : "",
       degreeInSign: typeof value.degreeInSign === "number" ? value.degreeInSign : 0,
       retrograde: value.retrograde === true,

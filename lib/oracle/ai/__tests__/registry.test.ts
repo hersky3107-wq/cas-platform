@@ -231,6 +231,10 @@ describe('LAYER1_REGISTRY', () => {
     const synth = resolveOracleCallEntry({ kind: 'synthesis', unit: 'synthesis', brand: 'Z.ai' })
     expect(synth!.logUnit).toBe('synthesis')
     expect(synth!.entry.brand).toBe('Z.ai')
+    expect(synth!.entry.caller.kind).toBe('platform')
+    if (synth!.entry.caller.kind === 'platform') {
+      expect(synth!.entry.caller.extraRequestParams).toMatchObject({ reasoning: { enabled: false } })
+    }
   })
 
   it('judges a verdict runaway against the panel budget, not the 3000-token reading ceiling', () => {

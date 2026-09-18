@@ -288,6 +288,69 @@ describe('createLayer1AiAdapter', () => {
     }
   })
 
+  it('pins Z.ai synthesis to the contract ceiling and reasoning off', async () => {
+    const { SYNTHESIS_MAX_COMPLETION_TOKENS } = await import('../layer1-adapter')
+    let seen: Parameters<Layer1Call>[0]['entry'] | null = null
+    const adapter = createLayer1AiAdapter({
+      call: async (input) => {
+        seen = input.entry
+        return okCall({ text: VALID_SYNTHESIS_JSON, brand: 'Z.ai', model: 'z-ai/glm-5.2' })
+      },
+    })
+    const result = await adapter.run(
+      {
+        kind: 'synthesis',
+        sessionId: 'session-1',
+        unit: 'synthesis',
+        brand: 'Z.ai',
+        locale: 'ko',
+        seed: 'seed',
+        payload: { readings: [], consensus: {} },
+      },
+      { timeoutMs: 60_000 },
+    )
+    expect(result.ok).toBe(true)
+    expect(seen).not.toBeNull()
+    expect(seen!.maxCompletionTokens).toBe(SYNTHESIS_MAX_COMPLETION_TOKENS)
+    expect(seen!.caller.kind).toBe('platform')
+    if (seen!.caller.kind === 'platform') {
+      expect(seen!.caller.extraRequestParams).toMatchObject({ reasoning: { enabled: false } })
+    }
+  })
+
+  it('retries a truncated synthesis once with a higher ceiling', async () => {
+    const { SYNTHESIS_LENGTH_RETRY_TOKENS } = await import('../layer1-adapter')
+    const ceilings: number[] = []
+    const adapter = createLayer1AiAdapter({
+      call: async (input) => {
+        ceilings.push(input.entry.maxCompletionTokens)
+        if (ceilings.length === 1) {
+          return okCall({
+            text: '{"agreements":["겹친다"],"divergences":["속도"],"conclusion":"잘린',
+            finishReason: 'length',
+            brand: 'Z.ai',
+            model: 'z-ai/glm-5.2',
+          })
+        }
+        return okCall({ text: VALID_SYNTHESIS_JSON, brand: 'Z.ai', model: 'z-ai/glm-5.2' })
+      },
+    })
+    const result = await adapter.run(
+      {
+        kind: 'synthesis',
+        sessionId: 'session-1',
+        unit: 'synthesis',
+        brand: 'Z.ai',
+        locale: 'ko',
+        seed: 'seed',
+        payload: { readings: [], consensus: {} },
+      },
+      { timeoutMs: 60_000 },
+    )
+    expect(result.ok).toBe(true)
+    expect(ceilings).toEqual([3400, SYNTHESIS_LENGTH_RETRY_TOKENS])
+  })
+
   it('uses one strict retry after runaway visible content', async () => {
     const prompts: string[] = []
     const call: Layer1Call = async (input) => {

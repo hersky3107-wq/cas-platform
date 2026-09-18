@@ -348,7 +348,15 @@ export const ORACLE_SEAT_ONLY_BRANDS: Record<string, Layer1RegistryEntry> = {
     brand: 'Z.ai',
     displayName: 'GLM-5.2',
     model: 'z-ai/glm-5.2',
-    caller: { kind: 'platform', platformId: 'openrouter:glm-5.2' },
+    // GLM-5.2 thinks by default. Catalog `reasoning.effort:minimal` is NOT
+    // enough: session 18cd2c9c spent the entire 3400 synthesis ceiling on
+    // two finish=length attempts (79.5s / 80s unit wall) and the conclusion
+    // never arrived. Disable thinking so the budget is visible JSON.
+    caller: {
+      kind: 'platform',
+      platformId: 'openrouter:glm-5.2',
+      extraRequestParams: { reasoning: { enabled: false } },
+    },
     maxCompletionTokens: 2000,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
   },

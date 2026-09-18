@@ -35,6 +35,36 @@ describe('publicComputation', () => {
     expect(JSON.stringify(view)).not.toContain('37.5')
   })
 
+  it('keeps natal body ecliptic longitude so the wheel can place planets', () => {
+    const row = {
+      system: 'astro',
+      engine_version: 'astro-1',
+      axes: {},
+      result: {
+        natal: {
+          bodies: {
+            Sun: { longitude: 162.87, sign: 'Virgo', degreeInSign: 12.87 },
+          },
+          nested: {
+            longitude: 126.98,
+            latitude: 37.56,
+            house: 4,
+          },
+        },
+      },
+    } as unknown as OracleComputation
+
+    const view = publicComputation(row)
+    expect(view.calculation).toEqual({
+      natal: {
+        bodies: {
+          Sun: { longitude: 162.87, sign: 'Virgo', degreeInSign: 12.87 },
+        },
+        nested: { house: 4 },
+      },
+    })
+  })
+
   it('keeps 자미두수 palace and star names so a 명반 can render', () => {
     const row = {
       system: 'ziwei',

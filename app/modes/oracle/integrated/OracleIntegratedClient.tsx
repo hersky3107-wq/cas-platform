@@ -55,6 +55,7 @@ import {
   type ProfileField,
   type ProfileSnapshot,
 } from "@/lib/oracle/system-requirements";
+import { uniqueOppositionPairs } from "@/lib/oracle/opposition-pairs";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 const STORAGE_KEY = "oracle.integrated.active-session";
@@ -341,7 +342,7 @@ function verdictHeadline(tally: BallotTallyView): string {
   if (tally.leader === null) return "팽팽함 — 다수 없음";
   const label = DIRECTION_META[tally.leader].label;
   if (tally.unanimous) return `만장일치 · ${label}`;
-  return `${label} ${tally.leaderCount} / ${tally.participantCount}`;
+  return `${label} ${tally.leaderCount}표 · ${tally.participantCount}명 중`;
 }
 
 /**
@@ -683,10 +684,10 @@ function ConsensusMapSection({
     }),
   );
   const enginePairs = phase?.oppositions ?? [];
-  const splitPairs =
-    enginePairs.length > 0
-      ? enginePairs.map((row) => ({ a: row.a, b: row.b }))
-      : polePairsFromAxes(computations);
+  const splitPairs = uniqueOppositionPairs(
+    enginePairs.length > 0 ? enginePairs : polePairsFromAxes(computations),
+    saidBySystem,
+  );
 
   return (
     <section>
@@ -736,7 +737,7 @@ function ConsensusMapSection({
             </p>
             {splitPairs.length ? (
               <ul className="mt-3 space-y-1.5 border-t border-white/8 pt-3 text-[13px] leading-relaxed text-slate-300">
-                {splitPairs.slice(0, 4).map((opposition) => (
+                {splitPairs.map((opposition) => (
                   <li key={`${opposition.a}-${opposition.b}`}>
                     {oppositionPlainLine(opposition.a, opposition.b, saidBySystem)}
                   </li>

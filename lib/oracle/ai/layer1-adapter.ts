@@ -111,11 +111,15 @@ export const SYNTHESIS_STRICT_RETRY_INSTRUCTION =
 
 /**
  * Synthesis JSON is longer than a single reading; never inherit a reader's
- * ceiling. Sized for the FIX 3 contract (~3040 chars ≈ ~2400 tokens CJK)
- * PLUS the synthesizer's hidden reasoning — GLM emits reasoning tokens and
- * hit finish=length at 2600 in 1 of 5 live sessions (2026-09-05).
+ * ceiling. Sized for the FIX 3 contract (~3040 chars ≈ ~2400 tokens CJK).
+ * Hidden reasoning is PINNED OFF for the Z.ai synthesizer — raising this
+ * number while GLM still thinks just lets it fill the new ceiling
+ * (finish=length at 2600 on 2026-09-05, then output_tokens=3400 over
+ * 2 HTTP attempts on session 18cd2c9c / 79.5s of the 80s unit wall).
  */
 export const SYNTHESIS_MAX_COMPLETION_TOKENS = 3400
+/** Escape hatch if a thinking-off attempt still hits finish=length. */
+export const SYNTHESIS_LENGTH_RETRY_TOKENS = 4800
 
 /** Synthesis conclusion band miss: retry names the measured count. */
 export function synthesisLengthRetryInstruction(violation: { length: number; kind: 'short' | 'long' }): string {
@@ -232,6 +236,30 @@ export function applyDailyReaderPolicies(entry: Layer1RegistryEntry): Layer1Regi
   return capped
 }
 
+/**
+ * Paid synthesis is the one paragraph the product cannot drop. GLM-5.2's
+ * catalog `effort:minimal` still thinks; pin thinking off (Z.ai only — a
+ * blanket reasoning key breaks Amazon Nova) and floor the completion
+ * ceiling to the synthesis contract.
+ */
+export function applySynthesisPolicies(entry: Layer1RegistryEntry): Layer1RegistryEntry {
+  const capped = {
+    ...entry,
+    maxCompletionTokens: Math.max(entry.maxCompletionTokens, SYNTHESIS_MAX_COMPLETION_TOKENS),
+  }
+  if (capped.brand !== 'Z.ai' || capped.caller.kind !== 'platform') return capped
+  return {
+    ...capped,
+    caller: {
+      ...capped.caller,
+      extraRequestParams: {
+        ...capped.caller.extraRequestParams,
+        reasoning: { enabled: false },
+      },
+    },
+  }
+}
+
 export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): OracleAiAdapter {
   const call = options.call ?? defaultCall
 
@@ -255,12 +283,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
 
       const sessionKind = payloadKind(request.payload)
       const isDailyReading = request.kind === 'reading' && sessionKind === 'daily'
-      const effectiveEntry =
+      let effectiveEntry =
         request.kind === 'synthesis'
-          ? {
-              ...entry,
-              maxCompletionTokens: Math.max(entry.maxCompletionTokens, SYNTHESIS_MAX_COMPLETION_TOKENS),
-            }
+          ? applySynthesisPolicies(entry)
           : request.kind === 'verdict'
             ? {
                 ...entry,
@@ -376,6 +401,18 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
 
         if (raw.emptyContent || isEmptyModelText(raw.text)) {
           lastError = raw.error ?? 'empty content'
+          if (request.kind === 'synthesis' && raw.finishReason === 'length') {
+            lastError =
+              `empty content after finish_reason=length; reasoning_tokens=${tokenField(raw.reasoningTokens)}; content_tokens=${tokenField(raw.contentTokens)}`
+            effectiveEntry = applySynthesisPolicies({
+              ...effectiveEntry,
+              maxCompletionTokens: Math.max(
+                effectiveEntry.maxCompletionTokens,
+                SYNTHESIS_LENGTH_RETRY_TOKENS,
+              ),
+            })
+            console.warn(`[oracle] synthesis ${lastError} — length retry`)
+          }
           continue
         }
 
@@ -538,6 +575,17 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
           if (violation) {
             lastError = `synthesis conclusion out of band (${violation.length} chars, ${violation.kind}; band ${SYNTHESIS_CONCLUSION_MIN}–${SYNTHESIS_CONCLUSION_MAX})`
             lengthRetryInstruction = synthesisLengthRetryInstruction(violation)
+            console.warn(`[oracle] synthesis ${lastError} — length retry`)
+          } else if (raw.finishReason === 'length') {
+            lastError =
+              `synthesis truncated (finish_reason=length; reasoning_tokens=${tokenField(raw.reasoningTokens)}; content_tokens=${tokenField(raw.contentTokens)})`
+            effectiveEntry = applySynthesisPolicies({
+              ...effectiveEntry,
+              maxCompletionTokens: Math.max(
+                effectiveEntry.maxCompletionTokens,
+                SYNTHESIS_LENGTH_RETRY_TOKENS,
+              ),
+            })
             console.warn(`[oracle] synthesis ${lastError} — length retry`)
           }
         }
