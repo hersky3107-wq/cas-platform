@@ -56,6 +56,12 @@ import {
   type ProfileSnapshot,
 } from "@/lib/oracle/system-requirements";
 import { uniqueOppositionPairs } from "@/lib/oracle/opposition-pairs";
+import {
+  ballotDirectionLabel,
+  classifyOracleQuestion,
+  formatOppositionVoteLine,
+  type QuestionClassification,
+} from "@/lib/oracle/question-axis";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 const STORAGE_KEY = "oracle.integrated.active-session";
@@ -137,6 +143,10 @@ function ballotDirection(ballot: JsonObject | null): Direction | null {
     : null;
 }
 
+function ballotOption(ballot: JsonObject | null): string | null {
+  return typeof ballot?.option === "string" && ballot.option.trim() ? ballot.option.trim() : null;
+}
+
 function ballotFocus(ballot: JsonObject | null): string | null {
   const raw = ballot?.focus;
   return typeof raw === "string" && raw in FOCUS_LABELS ? raw : null;
@@ -152,6 +162,10 @@ type BallotTallyView = {
   focusCounts: Record<string, number>;
   domainMeans: Record<string, number | null>;
   minoritySlugs: string[];
+  questionKind: "action" | "prediction" | "choice";
+  options: string[];
+  optionCounts: Record<string, number>;
+  optionLeader: string | null;
 };
 
 function parseBallotTally(raw: unknown): BallotTallyView | null {
@@ -184,6 +198,17 @@ function parseBallotTally(raw: unknown): BallotTallyView | null {
     minoritySlugs: Array.isArray(record.minoritySlugs)
       ? record.minoritySlugs.filter((value): value is string => typeof value === "string")
       : [],
+    questionKind:
+      record.questionKind === "prediction" || record.questionKind === "choice"
+        ? record.questionKind
+        : "action",
+    options: Array.isArray(record.options)
+      ? record.options.filter((value): value is string => typeof value === "string")
+      : [],
+    optionCounts: asRecord(record.optionCounts)
+      ? (record.optionCounts as Record<string, number>)
+      : {},
+    optionLeader: typeof record.optionLeader === "string" ? record.optionLeader : null,
   };
 }
 
@@ -295,7 +320,22 @@ function looksLikeStubText(text: string | null | undefined): boolean {
 /* ① Final verdicts                                                    */
 /* ------------------------------------------------------------------ */
 
-function DirectionChip({ direction }: { direction: Direction | null }) {
+function DirectionChip({
+  direction,
+  option,
+  axis,
+}: {
+  direction: Direction | null;
+  option?: string | null;
+  axis: QuestionClassification;
+}) {
+  if (option) {
+    return (
+      <span className="inline-flex rounded-full border border-cyan-300/40 bg-cyan-400/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-100">
+        {option}
+      </span>
+    );
+  }
   if (!direction) {
     return (
       <span className="inline-flex rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-semibold text-white/50">
@@ -306,12 +346,52 @@ function DirectionChip({ direction }: { direction: Direction | null }) {
   const meta = DIRECTION_META[direction];
   return (
     <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.chip}`}>
-      {meta.label}
+      {ballotDirectionLabel(axis, direction)}
     </span>
   );
 }
 
-function VoteStrip({ counts, total }: { counts: Record<Direction, number>; total: number }) {
+const OPTION_BARS = ["bg-cyan-400/80", "bg-violet-400/80", "bg-amber-400/80", "bg-emerald-400/70", "bg-rose-400/70"];
+
+function VoteStrip({
+  counts,
+  total,
+  axis,
+  tally,
+}: {
+  counts: Record<Direction, number>;
+  total: number;
+  axis: QuestionClassification;
+  tally: BallotTallyView | null;
+}) {
+  if (axis.kind === "choice" && (tally?.options.length || axis.options.length)) {
+    const options = tally?.options.length ? tally.options : axis.options;
+    const optionCounts = tally?.optionCounts ?? {};
+    const optionTotal = options.reduce((sum, option) => sum + (optionCounts[option] ?? 0), 0);
+    return (
+      <div>
+        <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-white/8">
+          {options.map((option, index) =>
+            (optionCounts[option] ?? 0) > 0 ? (
+              <div
+                key={option}
+                className={OPTION_BARS[index % OPTION_BARS.length]}
+                style={{ width: `${((optionCounts[option] ?? 0) / Math.max(optionTotal, 1)) * 100}%` }}
+              />
+            ) : null,
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300">
+          {options.map((option, index) => (
+            <span key={option} className="inline-flex items-center gap-1.5 tabular-nums">
+              <span className={`h-2 w-2 rounded-full ${OPTION_BARS[index % OPTION_BARS.length]}`} />
+              {option} {optionCounts[option] ?? 0}표
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <div>
       <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-white/8">
@@ -329,7 +409,7 @@ function VoteStrip({ counts, total }: { counts: Record<Direction, number>; total
         {DIRECTIONS.map((direction) => (
           <span key={direction} className="inline-flex items-center gap-1.5 tabular-nums">
             <span className={`h-2 w-2 rounded-full ${DIRECTION_META[direction].bar}`} />
-            {DIRECTION_META[direction].label} {counts[direction]}표
+            {ballotDirectionLabel(axis, direction)} {counts[direction]}표
           </span>
         ))}
       </div>
@@ -337,10 +417,15 @@ function VoteStrip({ counts, total }: { counts: Record<Direction, number>; total
   );
 }
 
-function verdictHeadline(tally: BallotTallyView): string {
+function verdictHeadline(tally: BallotTallyView, axis: QuestionClassification): string {
   if (tally.participantCount === 0) return "판정 없음";
+  if (axis.kind === "choice") {
+    if (!tally.optionLeader) return "팽팽함 — 다수 없음";
+    if (tally.unanimous) return `만장일치 · ${tally.optionLeader}`;
+    return `${tally.optionLeader} ${tally.leaderCount}표 · ${tally.participantCount}명 중`;
+  }
   if (tally.leader === null) return "팽팽함 — 다수 없음";
-  const label = DIRECTION_META[tally.leader].label;
+  const label = ballotDirectionLabel(axis, tally.leader);
   if (tally.unanimous) return `만장일치 · ${label}`;
   return `${label} ${tally.leaderCount}표 · ${tally.participantCount}명 중`;
 }
@@ -366,14 +451,17 @@ function SeerVerdictCard({
   readerCount,
   minority,
   stub,
+  axis,
 }: {
   verdict: OracleRunnerVerdict;
   readerCount: CombinedCount;
   minority: boolean;
   stub: boolean;
+  axis: QuestionClassification;
 }) {
   const persona = seerPersona(verdict.readerSlug);
   const direction = ballotDirection(verdict.ballot);
+  const option = ballotOption(verdict.ballot);
   const focus = ballotFocus(verdict.ballot);
   const compact = readerCount >= 7;
   const failed = verdict.status !== "done";
@@ -388,7 +476,7 @@ function SeerVerdictCard({
         <span className="text-sm font-semibold text-white">{persona?.nameKo ?? verdict.readerSlug}</span>
         <span className="text-[11px] text-white/40">{persona?.ruleKo}</span>
         <span className="ml-auto flex items-center gap-2">
-          <DirectionChip direction={direction} />
+          <DirectionChip direction={direction} option={option} axis={axis} />
           {focus ? (
             <span className="rounded-full border border-white/12 bg-white/[0.04] px-2 py-0.5 text-[11px] text-slate-300">
               초점 {FOCUS_LABELS[focus]}
@@ -429,6 +517,7 @@ function FinalVerdictsSection({
   synthesizerBrand,
   terminal,
   stub,
+  axis,
 }: {
   verdicts: OracleRunnerVerdict[];
   readerRoster: string[];
@@ -437,17 +526,40 @@ function FinalVerdictsSection({
   synthesizerBrand: string;
   terminal: boolean;
   stub: boolean;
+  axis: QuestionClassification;
 }) {
   const finalTally = parseBallotTally(consensus?.ballotTally);
   // While seers are still voting the strip counts the landed ballots live;
   // the moment the finalize step writes the code tally, that becomes truth.
   const liveCounts: Record<Direction, number> = { advance: 0, hold: 0, release: 0 };
+  const liveOptionCounts: Record<string, number> = {};
   for (const verdict of verdicts) {
-    const direction = verdict.status === "done" ? ballotDirection(verdict.ballot) : null;
+    if (verdict.status !== "done") continue;
+    const direction = ballotDirection(verdict.ballot);
     if (direction) liveCounts[direction] += 1;
+    const option = ballotOption(verdict.ballot);
+    if (option) liveOptionCounts[option] = (liveOptionCounts[option] ?? 0) + 1;
   }
   const counts = finalTally?.counts ?? liveCounts;
   const total = DIRECTIONS.reduce((sum, direction) => sum + counts[direction], 0);
+  const liveChoiceTally: BallotTallyView | null =
+    axis.kind === "choice"
+      ? {
+          counts: liveCounts,
+          leader: null,
+          leaderCount: Math.max(0, ...axis.options.map((option) => liveOptionCounts[option] ?? 0)),
+          participantCount: Object.values(liveOptionCounts).reduce((sum, n) => sum + n, 0),
+          abstained: [],
+          unanimous: false,
+          focusCounts: {},
+          domainMeans: {},
+          minoritySlugs: [],
+          questionKind: "choice",
+          options: axis.options,
+          optionCounts: liveOptionCounts,
+          optionLeader: null,
+        }
+      : null;
   const minoritySet = new Set(finalTally?.minoritySlugs ?? []);
 
   const ordered = [...verdicts].sort(
@@ -472,10 +584,10 @@ function FinalVerdictsSection({
           )}
         </div>
         <h2 className="mt-2 text-2xl font-semibold text-white">
-          {finalTally ? verdictHeadline(finalTally) : terminal ? "판정 집계 실패" : "판정단이 투표하는 중"}
+          {finalTally ? verdictHeadline(finalTally, axis) : terminal ? "판정 집계 실패" : "판정단이 투표하는 중"}
         </h2>
         <div className="mt-4">
-          <VoteStrip counts={counts} total={total} />
+          <VoteStrip counts={counts} total={total} axis={axis} tally={finalTally ?? liveChoiceTally} />
         </div>
         {finalTally?.abstained.length ? (
           <p className="mt-2 text-[11px] text-white/40">
@@ -515,6 +627,7 @@ function FinalVerdictsSection({
             readerCount={readerCount}
             minority={minoritySet.has(verdict.readerSlug)}
             stub={stub}
+            axis={axis}
           />
         ))}
         {!terminal && ordered.length < readerCount ? (
@@ -594,25 +707,29 @@ function FinalVerdictsSection({
 /* ② Consensus map                                                     */
 /* ------------------------------------------------------------------ */
 
-function readingSaid(reading: OracleRunnerReading | undefined): string | null {
-  const summary = asRecord(reading?.summary);
-  const oneLine = typeof summary?.one_line === "string" ? summary.one_line.trim() : "";
-  return oneLine.length > 0 ? oneLine : null;
+function phaseOfComputation(
+  computations: Array<{ system: string; axes: JsonObject | null }>,
+  system: string,
+): Direction | null {
+  const row = computations.find((entry) => entry.system === system);
+  const phase = asRecord(asRecord(row?.axes)?.phase);
+  if (!phase) return null;
+  return dominantPhaseOf({
+    advance: typeof phase.advance === "number" ? phase.advance : 0,
+    hold: typeof phase.hold === "number" ? phase.hold : 0,
+    release: typeof phase.release === "number" ? phase.release : 0,
+  });
 }
 
-function oppositionPlainLine(
+function oppositionVoteLine(
   a: string,
   b: string,
-  saidBySystem: ReadonlyMap<string, string>,
-): string {
-  const nameA = systemShortName(a);
-  const nameB = systemShortName(b);
-  const saidA = saidBySystem.get(a);
-  const saidB = saidBySystem.get(b);
-  if (saidA && saidB) {
-    return `${nameA}는 「${saidA}」, ${nameB}는 「${saidB}」.`;
-  }
-  return `${nameA}는 나아가라고 하고, ${nameB}는 정리하라고 합니다.`;
+  computations: Array<{ system: string; axes: JsonObject | null }>,
+): string | null {
+  const dirA = phaseOfComputation(computations, a);
+  const dirB = phaseOfComputation(computations, b);
+  if (!dirA || !dirB) return null;
+  return formatOppositionVoteLine(systemShortName(a), dirA, systemShortName(b), dirB);
 }
 
 function dominantPhaseOf(phase: Record<string, number>): Direction | null {
@@ -655,13 +772,11 @@ function polePairsFromAxes(
 function ConsensusMapSection({
   consensus,
   readSystems,
-  readings,
   computations,
 }: {
   consensus: OracleRunnerConsensus;
   /** Systems that produced a completed reading below (FIX 5a). */
   readSystems: ReadonlySet<string>;
-  readings: OracleRunnerReading[];
   computations: Array<{ system: string; axes: JsonObject | null }>;
 }) {
   const phase = parsePhaseMap(consensus.systemAgreement);
@@ -677,17 +792,10 @@ function ConsensusMapSection({
   // 결번; reserve 결번 for systems that produced nothing at all.
   const phaseAbstained = phase ? phase.unreadable.filter((system) => readSystems.has(system)) : [];
   const phaseMissing = phase ? phase.unreadable.filter((system) => !readSystems.has(system)) : [];
-  const saidBySystem = new Map(
-    readings.flatMap((reading) => {
-      const said = readingSaid(reading);
-      return said ? [[reading.system, said] as const] : [];
-    }),
-  );
   const enginePairs = phase?.oppositions ?? [];
   const splitPairs = uniqueOppositionPairs(
     enginePairs.length > 0 ? enginePairs : polePairsFromAxes(computations),
-    saidBySystem,
-  );
+  ).filter((pair) => oppositionVoteLine(pair.a, pair.b, computations));
 
   return (
     <section>
@@ -739,7 +847,7 @@ function ConsensusMapSection({
               <ul className="mt-3 space-y-1.5 border-t border-white/8 pt-3 text-[13px] leading-relaxed text-slate-300">
                 {splitPairs.map((opposition) => (
                   <li key={`${opposition.a}-${opposition.b}`}>
-                    {oppositionPlainLine(opposition.a, opposition.b, saidBySystem)}
+                    {oppositionVoteLine(opposition.a, opposition.b, computations)}
                   </li>
                 ))}
               </ul>
@@ -850,7 +958,8 @@ function ReadingsSection({
             );
           }
           const computation = calcBySystem.get(system) ?? null;
-          const oneLine = readingSaid(reading);
+          const oneLine =
+            typeof reading.summary?.one_line === "string" ? reading.summary.one_line.trim() : "";
           const narrative = stub
             ? "연습 모드의 자리 표시 문장입니다. 실제 해석이 아닙니다."
             : (reading.narrative ??
@@ -1209,13 +1318,16 @@ export default function OracleIntegratedClient({
               synthesizerBrand={synthesizerBrand}
               terminal={session.terminal}
               stub={stub}
+              axis={
+                view?.questionAxis ??
+                classifyOracleQuestion(view?.question ?? null)
+              }
             />
 
             {/* ② Consensus map. */}
             {consensus ? (
               <ConsensusMapSection
                 consensus={consensus}
-                readings={view?.readings ?? []}
                 computations={session.computations}
                 readSystems={
                   new Set(

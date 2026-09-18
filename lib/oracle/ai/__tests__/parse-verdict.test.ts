@@ -14,6 +14,7 @@ describe('parseVerdictJson', () => {
     const parsed = parseVerdictJson(JSON.stringify(BALLOT), 3)
     expect(parsed).not.toBeNull()
     expect(parsed!.direction).toBe('advance')
+    expect(parsed!.option).toBeNull()
     expect(parsed!.focus).toBe('work')
     expect(parsed!.domains.energy).toBe(65)
     expect(parsed!.minority_opinion).toBeNull()
@@ -171,5 +172,28 @@ describe('verdictDirectionMismatch (kind=compat)', () => {
       direction: 'advance',
     })
     expect(check.mismatch).toBe(true)
+  })
+})
+
+describe('parseVerdictJson choice axis', () => {
+  const axis = {
+    kind: 'choice' as const,
+    options: ['이직', '남'],
+    confidence: 'certain' as const,
+    reason: 'test',
+  }
+
+  it('accepts a listed option and ignores direction', () => {
+    const parsed = parseVerdictJson(
+      JSON.stringify({ ...BALLOT, option: '이직', direction: undefined }),
+      3,
+      axis,
+    )
+    expect(parsed?.option).toBe('이직')
+    expect(parsed?.direction).toBeNull()
+  })
+
+  it('rejects an option that is not on the list', () => {
+    expect(parseVerdictJson(JSON.stringify({ ...BALLOT, option: '유학' }), 3, axis)).toBeNull()
   })
 })

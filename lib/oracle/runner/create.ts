@@ -38,6 +38,7 @@ import { OracleComputeError, personalDataFrom, resolveSystems, runComputations }
 import type { ComputeAssumptions, ComputeOutput } from './compute'
 import { isCompatSingleSystem, runCompatComputations } from './compute-compat'
 import { initialProgress, markUnitFailed, readingUnit } from './progress'
+import { classificationJson, classifyBallotAxis } from '../question-axis'
 import { OraclePrivacyError } from './privacy'
 import { publicComputation } from './public-computation'
 import {
@@ -313,6 +314,7 @@ export async function createOracleSession(
       systems,
       session_inputs: storedInputs,
       question_raw: question,
+      question_parsed: classificationJson(classifyBallotAxis(request.kind, question)),
       reader_count: request.readerCount,
       reader_roster: roster,
       status: 'computing',

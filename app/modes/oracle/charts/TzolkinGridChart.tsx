@@ -3,7 +3,7 @@
 /**
  * 촐킨 — two day-signs large (birth / today), Maya bar-and-dot tones,
  * Yucatec nawal names. The 20×13 board is a small positional reference
- * underneath: row N is tone N, column N is nawal N. No vertical labels.
+ * underneath: row N is tone N, abbreviated nawal names label each column.
  *
  * Built from oracle_computations.result.natal + result.current —
  * { nawal, nawalName, tone }.
@@ -19,6 +19,12 @@ const NAWALS = [
   "Imix", "Ik'", "Ak'b'al", "K'an", "Chikchan", "Kimi", "Manik'", "Lamat",
   "Muluk", "Ok", "Chuwen", "Eb'", "Ben", "Ix", "Men", "K'ib'", "Kaban",
   "Etz'nab'", "Kawak", "Ajaw",
+] as const;
+
+const NAWAL_ABBR = [
+  "Im", "Ik", "Ak", "Kn", "Ch", "Km", "Ma", "Lm",
+  "Mu", "Ok", "Cw", "Eb", "Bn", "Ix", "Me", "Kb", "Ka",
+  "Et", "Kw", "Aj",
 ] as const;
 
 type Parsed = {
@@ -127,9 +133,29 @@ export default function TzolkinGridChart({ calculation }: { calculation: Json })
       {/* Nested rows — not CSS `display:contents` — so tone 5 is visually row 5. */}
       <div className="mt-5" role="img" aria-label="촐킨 260일 위치">
         <p className="mb-2 text-[10px] text-white/35">
-          위치 · 가로 나왈 1–20 · 세로 톤 1–13 (1이 위)
+          위치 · 가로 나왈 · 세로 톤 1–13 (1이 위)
         </p>
         <div className="flex flex-col gap-[2px]">
+          <div className="flex items-end gap-[3px]">
+            <span className="w-3 shrink-0" aria-hidden />
+            <div className="grid min-w-0 flex-1 grid-cols-[repeat(20,minmax(0,1fr))] gap-[2px]">
+              {NAWAL_ABBR.map((abbr, col) => {
+                const nawal = col + 1;
+                const active = nawal === birthNawal || nawal === todayNawal;
+                return (
+                  <span
+                    key={abbr}
+                    title={NAWALS[col]}
+                    className={`block truncate text-center text-[8px] leading-none ${
+                      active ? "font-semibold text-amber-100" : "text-white/45"
+                    }`}
+                  >
+                    {abbr}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
           {Array.from({ length: 13 }, (_, row) => {
             const tone = row + 1;
             return (

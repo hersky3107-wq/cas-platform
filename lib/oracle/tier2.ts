@@ -28,6 +28,7 @@ export function formatAiJudgementLine(text: string): string {
   return `${text} · AI 판단`
 }
 
+/** @deprecated TIER 2 request labels are not rendered; an unanswered inference stays silent. */
 export function formatAiJudgementPending(detail: string): string {
   return `${detail} · AI 판단 요청`
 }

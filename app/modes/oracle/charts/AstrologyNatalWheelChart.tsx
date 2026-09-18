@@ -151,18 +151,64 @@ function parseNatal(calculation: Json): Parsed | null {
 /* ── geometry helpers ───────────────────────────────────────────────── */
 
 const SIZE = 320;
+const PAD = 20;
 const C = SIZE / 2;
 const R_SIGN_OUT = 150;
 const R_SIGN_IN = 132;
 const R_HOUSE_OUT = 130;
 const R_HOUSE_IN = 108;
-const R_PLANET = 92;
 const R_ASPECT = 88;
+const CLUSTER_DEG = 10;
+const PLANET_RADII = [94, 80, 66, 52] as const;
 
 /** Ecliptic longitude → SVG point. 0° Aries at left, counter-clockwise. */
 function polar(longitude: number, radius: number): { x: number; y: number } {
   const rad = ((180 - longitude) * Math.PI) / 180;
   return { x: C + radius * Math.cos(rad), y: C + radius * Math.sin(rad) };
+}
+
+function wrapGap(from: number, to: number): number {
+  return (to - from + 360) % 360;
+}
+
+/**
+ * Planets that sit inside CLUSTER_DEG stay on their true longitude and stack
+ * radially so a 천칭 cluster stays readable instead of becoming one blob.
+ */
+function placeBodiesRadially(bodies: Body[]): Map<string, { lon: number; radius: number }> {
+  const sorted = [...bodies].sort((a, b) => a.longitude - b.longitude);
+  const clusters: Body[][] = [];
+  if (sorted.length) {
+    let current = [sorted[0]!];
+    for (let i = 1; i < sorted.length; i += 1) {
+      const prev = sorted[i - 1]!;
+      const body = sorted[i]!;
+      if (wrapGap(prev.longitude, body.longitude) < CLUSTER_DEG) current.push(body);
+      else {
+        clusters.push(current);
+        current = [body];
+      }
+    }
+    clusters.push(current);
+    if (clusters.length > 1) {
+      const first = clusters[0]!;
+      const last = clusters[clusters.length - 1]!;
+      if (wrapGap(last[last.length - 1]!.longitude, first[0]!.longitude) < CLUSTER_DEG) {
+        clusters[0] = [...last, ...first];
+        clusters.pop();
+      }
+    }
+  }
+  const placed = new Map<string, { lon: number; radius: number }>();
+  for (const cluster of clusters) {
+    cluster.forEach((body, index) => {
+      placed.set(body.key, {
+        lon: body.longitude,
+        radius: PLANET_RADII[Math.min(index, PLANET_RADII.length - 1)]!,
+      });
+    });
+  }
+  return placed;
 }
 
 /* ── component ──────────────────────────────────────────────────────── */
@@ -173,17 +219,7 @@ export default function AstrologyNatalWheelChart({ calculation }: { calculation:
 
   const { timeKnown, bodies, angles, houses, aspects } = parsed;
   const byKey = new Map(bodies.map((b) => [b.key, b]));
-
-  // Spread planets that share a degree so glyphs don't overlap.
-  const sorted = [...bodies].sort((a, b) => a.longitude - b.longitude);
-  const placed = new Map<string, number>();
-  let lastLon = -Infinity;
-  for (const body of sorted) {
-    let lon = body.longitude;
-    if (lon - lastLon < 6) lon = lastLon + 6;
-    placed.set(body.key, lon);
-    lastLon = lon;
-  }
+  const placed = placeBodiesRadially(bodies);
 
   return (
     <div>
@@ -192,7 +228,7 @@ export default function AstrologyNatalWheelChart({ calculation }: { calculation:
         {timeKnown ? "상승점 기준 · 하우스 있음" : "시간 미상 — 하우스·앵글 없음"}
       </p>
       <svg
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        viewBox={`${-PAD} ${-PAD} ${SIZE + PAD * 2} ${SIZE + PAD * 2}`}
         className="mt-3 h-auto w-full text-white/80"
         role="img"
         aria-label="점성술 네이탈 휠"
@@ -275,7 +311,7 @@ export default function AstrologyNatalWheelChart({ calculation }: { calculation:
               const a = polar(lon, R_SIGN_OUT + 2);
               const b = polar(lon, R_HOUSE_IN - 4);
               const label = i === 0 ? "ASC" : "MC";
-              const lp = polar(lon, R_SIGN_OUT + 12);
+              const lp = polar(lon, R_SIGN_OUT + 16);
               return (
                 <g key={label}>
                   <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth="1.4" />
@@ -303,8 +339,8 @@ export default function AstrologyNatalWheelChart({ calculation }: { calculation:
             if (!a || !b) return null;
             const style = ASPECT_STYLE[aspect.type];
             if (!style) return null;
-            const pa = polar(placed.get(aspect.a)!, R_ASPECT);
-            const pb = polar(placed.get(aspect.b)!, R_ASPECT);
+            const pa = polar(placed.get(aspect.a)!.lon, R_ASPECT);
+            const pb = polar(placed.get(aspect.b)!.lon, R_ASPECT);
             return (
               <line
                 key={i}
@@ -323,8 +359,8 @@ export default function AstrologyNatalWheelChart({ calculation }: { calculation:
 
         {/* planet glyphs */}
         {bodies.map((body) => {
-          const lon = placed.get(body.key)!;
-          const p = polar(lon, R_PLANET);
+          const slot = placed.get(body.key)!;
+          const p = polar(slot.lon, slot.radius);
           const glyph = BODY_GLYPH[body.key] ?? "•";
           return (
             <g key={body.key}>

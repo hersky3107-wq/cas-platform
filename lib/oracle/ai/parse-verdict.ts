@@ -7,6 +7,7 @@
  * LAYER1_NARRATIVE_MAX. The panel tally is computed in code from these
  * ballots (runner/ballot.ts); no AI ever aggregates them.
  */
+import { matchChoiceOption, type QuestionClassification } from '../question-axis'
 import { extractJsonObject } from './parse-layer1'
 import { SEER_MINORITY_OPINION_MAX, verdictLineBudget } from './seer-roster'
 
@@ -21,7 +22,9 @@ export type VerdictDomain = (typeof VERDICT_DOMAINS)[number]
 
 export type VerdictJson = {
   verdict_line: string
-  direction: VerdictDirection
+  direction: VerdictDirection | null
+  /** Set when the question is a named-option choice. */
+  option: string | null
   focus: VerdictFocus
   /** 0–100 integers, all five domains present. */
   domains: Record<VerdictDomain, number>
@@ -45,7 +48,11 @@ function parseDomains(value: unknown): Record<VerdictDomain, number> | null {
  * `readerCount` sets the verdict_line budget (3→400 / 5→240 / 7→120 / 9→80
  * chars): the panel grows, each voice shrinks, total stays in one band.
  */
-export function parseVerdictJson(raw: string, readerCount: number): VerdictJson | null {
+export function parseVerdictJson(
+  raw: string,
+  readerCount: number,
+  axis?: QuestionClassification,
+): VerdictJson | null {
   const json = extractJsonObject(raw) ?? raw.trim()
   let parsed: unknown
   try {
@@ -60,9 +67,19 @@ export function parseVerdictJson(raw: string, readerCount: number): VerdictJson 
   const verdictLine = record.verdict_line.trim()
   if (!verdictLine || [...verdictLine].length > verdictLineBudget(readerCount)) return null
 
-  const direction = record.direction
-  if (typeof direction !== 'string' || !(VERDICT_DIRECTIONS as readonly string[]).includes(direction)) {
-    return null
+  const choice = axis?.kind === 'choice' && axis.options.length >= 2
+  let direction: VerdictDirection | null = null
+  let option: string | null = null
+  if (choice) {
+    if (typeof record.option !== 'string') return null
+    option = matchChoiceOption(record.option, axis.options)
+    if (!option) return null
+  } else {
+    const rawDirection = record.direction
+    if (typeof rawDirection !== 'string' || !(VERDICT_DIRECTIONS as readonly string[]).includes(rawDirection)) {
+      return null
+    }
+    direction = rawDirection as VerdictDirection
   }
 
   const focus = record.focus
@@ -87,7 +104,8 @@ export function parseVerdictJson(raw: string, readerCount: number): VerdictJson 
 
   return {
     verdict_line: verdictLine,
-    direction: direction as VerdictDirection,
+    direction,
+    option,
     focus: focus as VerdictFocus,
     domains,
     minority_opinion: minorityOpinion,
@@ -118,6 +136,12 @@ export const VERDICT_DIRECTION_KEYWORDS: Record<VerdictDirection, readonly strin
  * in a verdict about two people, and '거리를 두라' must count as release, not
  * as nothing.
  */
+export const PREDICTION_VERDICT_DIRECTION_KEYWORDS: Record<VerdictDirection, readonly string[]> = {
+  advance: ['가깝', '곧', '머지않', '조만간', '얼마 안', '올해 안', '빠르게 오', '곧잘'],
+  hold: ['조건', '달려', '경우에', '아직', '두고 보', '상황 따라', '조건부'],
+  release: ['멀다', '먼 ', '어렵', '늦', '당분간은', '몇 년은', '가능성이 낮'],
+}
+
 export const COMPAT_VERDICT_DIRECTION_KEYWORDS: Record<VerdictDirection, readonly string[]> = {
   advance: ['다가서', '다가가', '가까워', '가까이', '깊어', '깊게', '마음을 열', '고백', '표현하', '먼저 손', '진전', '나아가', '적극적으로'],
   hold: ['유지', '지금처럼', '이대로', '지키', '지켜', '기다리', '무르익', '천천히', '머무', '흐름을 타', '흐름에 맡'],
@@ -155,12 +179,21 @@ export type VerdictDirectionCheck = {
 export function verdictDirectionMismatch(
   verdict: {
     verdict_line: string
-    direction: VerdictDirection
+    direction: VerdictDirection | null
   },
   kind?: string,
+  axis?: QuestionClassification,
 ): VerdictDirectionCheck {
+  if (!verdict.direction || axis?.kind === 'choice') {
+    return { mismatch: false, textDirection: null }
+  }
   const text = verdict.verdict_line
-  const table = kind === 'compat' ? COMPAT_VERDICT_DIRECTION_KEYWORDS : VERDICT_DIRECTION_KEYWORDS
+  const table =
+    kind === 'compat'
+      ? COMPAT_VERDICT_DIRECTION_KEYWORDS
+      : axis?.kind === 'prediction'
+        ? PREDICTION_VERDICT_DIRECTION_KEYWORDS
+        : VERDICT_DIRECTION_KEYWORDS
   const affirmed: Record<VerdictDirection, boolean> = {
     advance: table.advance.some((kw) => affirms(text, kw)),
     hold: table.hold.some((kw) => affirms(text, kw)),

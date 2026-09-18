@@ -409,6 +409,7 @@ describe('createOracleSession (kind=daily)', () => {
     expect(outcome.session.reader_count).toBe(1)
     expect(outcome.session.reader_roster).toEqual(['Z.ai'])
     expect(outcome.session.question_raw).toBeNull()
+    expect(outcome.session.question_parsed).toMatchObject({ kind: 'none', confidence: 'certain' })
     expect(outcome.session.seed).toBe('daily:user-1:2026-08-20')
     expect(outcome.session.session_inputs).toMatchObject({ asOfDate: '2026-08-20' })
     expect(outcome.computations.map((row) => row.system)).toEqual([

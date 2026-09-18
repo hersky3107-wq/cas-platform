@@ -16,6 +16,11 @@ import type {
   OracleNextAction,
   OracleSessionStatus,
 } from '../schema'
+import {
+  classifyBallotAxis,
+  parseClassification,
+  type QuestionClassification,
+} from '../question-axis'
 import { ORACLE_PROMPT_VERSION } from './conventions'
 import { progressCounts } from './progress'
 import { publicComputation } from './public-computation'
@@ -143,6 +148,8 @@ export type OracleSessionView = {
   } | null
   /** 'stub' sessions must not be presented as live readings. */
   aiMode: OracleAiModeView
+  question: string | null
+  questionAxis: QuestionClassification
 }
 
 export async function readOracleSession(
@@ -202,5 +209,9 @@ export async function readOracleSession(
       : null,
     assumptions: publicAssumptions(consensus?.domain_stats ?? null),
     aiMode: sessionAiMode(session),
+    question: session.question_raw,
+    questionAxis:
+      parseClassification(session.question_parsed) ??
+      classifyBallotAxis(session.kind, session.question_raw),
   }
 }

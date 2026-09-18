@@ -82,6 +82,13 @@ export type OracleRunnerAssumptions = {
   partnerLocationAssumed?: boolean
 }
 
+export type OracleRunnerQuestionAxis = {
+  kind: "action" | "prediction" | "choice" | "none";
+  options: string[];
+  confidence: "certain" | "defaulted";
+  reason: string;
+};
+
 export type OracleRunnerView = {
   sessionId: string;
   status: OracleRunnerStatus;
@@ -99,6 +106,8 @@ export type OracleRunnerView = {
   consensus: OracleRunnerConsensus | null;
   assumptions: OracleRunnerAssumptions | null;
   aiMode: "stub" | "live";
+  question: string | null;
+  questionAxis: OracleRunnerQuestionAxis;
 };
 
 export type StartOracleSessionRequest = {

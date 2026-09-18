@@ -76,6 +76,32 @@ describe('verdict prompts', () => {
     expect(personal).not.toContain('궁합')
   })
 
+  it('prediction questions relabel the same enum as 가깝다 / 조건부 / 멀다', () => {
+    const prompt = buildVerdictSystemPrompt('ko', 'reader', 3, 'personal', {
+      kind: 'prediction',
+      options: [],
+      confidence: 'certain',
+      reason: 'test',
+    })
+    expect(prompt).toContain('가깝다')
+    expect(prompt).toContain('조건부')
+    expect(prompt).toContain('멀다')
+    expect(prompt).toContain('"advance" | "hold" | "release"')
+    expect(prompt).not.toContain('START or EXPAND')
+  })
+
+  it('choice questions tally named options, not the 3-way axis', () => {
+    const prompt = buildVerdictSystemPrompt('ko', 'reader', 3, 'personal', {
+      kind: 'choice',
+      options: ['이직', '남'],
+      confidence: 'certain',
+      reason: 'test',
+    })
+    expect(prompt).toContain('"이직" | "남"')
+    expect(prompt).toContain('"option"')
+    expect(prompt).not.toContain('"direction": "advance" | "hold" | "release"')
+  })
+
   it('kind=compat user prompt ballots on the relationship, not the period', () => {
     const compat = buildVerdictUserPrompt(
       { reader: { slug: 'reader', index: 1, of: 3 }, context: { asOfDate: '2026-09-05', question: null } },

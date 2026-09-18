@@ -88,8 +88,41 @@ describe('tallyBallots', () => {
       'focusCounts',
       'domainMeans',
       'minoritySlugs',
+      'questionKind',
     ]) {
       expect(json, key).toHaveProperty(key)
     }
+  })
+
+  it('tallies named options instead of the 3-way axis', () => {
+    const axis = {
+      kind: 'choice' as const,
+      options: ['이직', '남'],
+      confidence: 'certain' as const,
+      reason: 'test',
+    }
+    const tally = tallyBallots(
+      [
+        verdict({
+          reader_slug: 'reader',
+          ballot: { option: '이직', focus: 'work', domains: { work: 70, money: 50, love: 40, social: 50, energy: 50 } },
+        }),
+        verdict({
+          reader_slug: 'seer',
+          ballot: { option: '이직', focus: 'work', domains: { work: 60, money: 50, love: 40, social: 50, energy: 50 } },
+        }),
+        verdict({
+          reader_slug: 'guide',
+          ballot: { option: '남', focus: 'work', domains: { work: 55, money: 50, love: 40, social: 50, energy: 50 } },
+        }),
+      ],
+      axis,
+    )
+    expect(tally.questionKind).toBe('choice')
+    expect(tally.optionCounts).toEqual({ 이직: 2, 남: 1 })
+    expect(tally.optionLeader).toBe('이직')
+    expect(tally.leader).toBeNull()
+    expect(tally.counts).toEqual({ advance: 0, hold: 0, release: 0 })
+    expect(tally.minoritySlugs).toEqual(['guide'])
   })
 })

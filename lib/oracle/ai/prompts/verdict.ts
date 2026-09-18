@@ -14,6 +14,7 @@
  * stated meaning. The adapter now also validates direction-vs-text and retries
  * once with VERDICT_DIRECTION_RETRY_INSTRUCTION.
  */
+import type { QuestionClassification } from '../../question-axis'
 import type { JsonObject } from '../../runner/types'
 import {
   SEER_MINORITY_OPINION_MAX,
@@ -49,6 +50,20 @@ export const VERDICT_DIRECTION_CRITERIA = [
  * meaning is RELATIONSHIP MOTION — toward, steady, away — because
  * start/expand/finish-work language makes no sense for two people.
  */
+/**
+ * Prediction / timing questions. Same wire enum; meaning is proximity.
+ */
+export const PREDICTION_VERDICT_DIRECTION_CRITERIA = [
+  'DIRECTION CRITERIA — this ballot answers a WILL-IT / WHEN question, not "what should I do":',
+  '- "advance"  = 가깝다: it is near, soon, or likely within the asked window.',
+  '- "hold"     = 조건부: it depends — possible if a named condition holds, otherwise not yet.',
+  '- "release"  = 멀다: it is far, delayed, or unlikely in the asked window.',
+  'Do not prescribe an action (start / hold course / let go). Write verdict_line FIRST, then vote the proximity it actually states.',
+]
+
+export const PREDICTION_VERDICT_DIRECTION_RETRY_INSTRUCTION =
+  '\n\nDIRECTION RETRY: Your previous ballot\'s direction contradicted its own verdict_line. This question is prediction/timing — advance = 가깝다 (soon/likely); hold = 조건부 (depends); release = 멀다 (far/unlikely). Rewrite so the direction is the proximity your verdict_line actually states. Output ONLY the JSON object.'
+
 export const COMPAT_VERDICT_DIRECTION_CRITERIA = [
   'DIRECTION CRITERIA — this ballot judges a RELATIONSHIP between 본인 and 상대 (apply to your OWN verdict_line):',
   '- "advance"  = 다가서라: your verdict tells them to move CLOSER — invest more, open up, commit further, deepen the bond.',
@@ -83,11 +98,28 @@ export function buildVerdictSystemPrompt(
   readerSlug: string,
   readerCount: number,
   kind?: string,
+  axis?: QuestionClassification,
 ): string {
   const language = languageForLocale(locale)
   const persona = seerPersona(readerSlug)
   const lineBudget = verdictLineBudget(readerCount)
   const compat = kind === 'compat'
+  const prediction = !compat && axis?.kind === 'prediction'
+  const choice = !compat && axis?.kind === 'choice' && axis.options.length >= 2
+  const optionList = choice ? axis.options.map((option) => `"${option}"`).join(' | ') : ''
+
+  const directionCriteria = compat
+    ? COMPAT_VERDICT_DIRECTION_CRITERIA
+    : prediction
+      ? PREDICTION_VERDICT_DIRECTION_CRITERIA
+      : choice
+        ? [
+            'OPTION CRITERIA — this ballot picks ONE named option, not advance/hold/release:',
+            `- Vote exactly one of: ${optionList}. Copy the option string verbatim in JSON "option".`,
+            '- verdict_line must argue for that option. Do not invent a fourth path.',
+            '- Do not emit "direction". The panel tally is counted per option in code.',
+          ]
+        : VERDICT_DIRECTION_CRITERIA
 
   const lines = [
     compat
@@ -102,20 +134,28 @@ export function buildVerdictSystemPrompt(
     '- Cite systems by their divination names (사주, 타로, 룬, 주역, 점성술...). Never mention AI, models, brands, or other seers.',
     '- Never print raw numeric scores or percentages in verdict_line or minority_opinion — speak in plain language.',
     ...INTERNAL_VOCAB_RULES,
-    ...(compat ? COMPAT_VERDICT_DIRECTION_CRITERIA : VERDICT_DIRECTION_CRITERIA),
+    ...directionCriteria,
     ...VERDICT_ANGLE_DISCIPLINE,
-    'verdict_line must be CONSISTENT with the direction you vote: a reader must be able to guess your direction from your text alone.',
+    choice
+      ? 'verdict_line must be CONSISTENT with the option you vote: a reader must be able to guess your option from your text alone.'
+      : 'verdict_line must be CONSISTENT with the direction you vote: a reader must be able to guess your direction from your text alone.',
     `Write user-facing text in ${language} (locale ${locale}).`,
     compat
       ? 'If context.question is present, the ballot answers that question about the relationship; otherwise it judges the relationship in general.'
-      : 'If context.question is present, the ballot answers that question; otherwise it judges the period in general.',
+      : prediction
+        ? 'The ballot answers how near/conditional/far the asked event is — not what the person should do.'
+        : choice
+          ? `The ballot picks one of the named options (${axis!.options.join(' / ')}).`
+          : 'If context.question is present, the ballot answers that question; otherwise it judges the period in general.',
     'OUTPUT RULES (strict):',
     '- Respond with a single JSON object and nothing else.',
     '- No markdown fences, no preamble, no commentary, no visible working.',
     'Schema (character budgets are hard limits — stay under them):',
     '{',
     `  "verdict_line": string,  // your verdict; max ${lineBudget} characters; final prose only`,
-    '  "direction": "advance" | "hold" | "release",  // per DIRECTION CRITERIA — the action your verdict_line recommends',
+    choice
+      ? `  "option": ${optionList},  // the option your verdict_line chooses; copy verbatim`
+      : '  "direction": "advance" | "hold" | "release",  // per DIRECTION CRITERIA',
     '  "focus": "work" | "money" | "love" | "social" | "energy",  // the one domain your verdict turns on',
     compat
       ? '  "domains": {"work": int, "money": int, "love": int, "social": int, "energy": int},  // each 0-100, how this relationship bears on each domain of 본인\'s life'

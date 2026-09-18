@@ -101,6 +101,7 @@ export type SessionInsert = {
   systems: string[]
   session_inputs: OracleSessionInputs | null
   question_raw: string | null
+  question_parsed?: Record<string, unknown> | null
   reader_count: OracleReaderCount
   reader_roster: string[]
   status: OracleSessionStatus

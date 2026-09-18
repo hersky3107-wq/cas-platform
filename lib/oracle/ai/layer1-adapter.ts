@@ -26,6 +26,7 @@ import {
   SYNTHESIS_CONCLUSION_MIN,
   synthesisConclusionBandViolation,
 } from './parse-synthesis'
+import { classifyFromPayload } from '../question-axis'
 import { parseVerdictJson, verdictDirectionMismatch, type VerdictJson } from './parse-verdict'
 import { buildLayer1SystemPrompt, buildLayer1UserPrompt } from './prompts/layer1'
 import {
@@ -47,6 +48,7 @@ import {
   buildVerdictSystemPrompt,
   buildVerdictUserPrompt,
   COMPAT_VERDICT_DIRECTION_RETRY_INSTRUCTION,
+  PREDICTION_VERDICT_DIRECTION_RETRY_INSTRUCTION,
   VERDICT_DIRECTION_RETRY_INSTRUCTION,
   VERDICT_MAX_COMPLETION_TOKENS,
   VERDICT_STRICT_RETRY_INSTRUCTION,
@@ -296,11 +298,12 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
               : entry
 
       const readerCount = verdictReaderCount(request.payload)
+      const ballotAxis = classifyFromPayload(request.payload)
       const systemPrompt =
         request.kind === 'synthesis'
           ? buildSynthesisSystemPrompt(request.locale, sessionKind)
           : request.kind === 'verdict'
-            ? buildVerdictSystemPrompt(request.locale, request.unit, readerCount, sessionKind)
+            ? buildVerdictSystemPrompt(request.locale, request.unit, readerCount, sessionKind, ballotAxis)
             : isDailyReading
               ? buildDailySystemPrompt(request.locale)
               : buildLayer1SystemPrompt(request.locale, request.unit, sessionKind)
@@ -368,7 +371,9 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                     : directionRetryNext
                     ? sessionKind === 'compat'
                       ? COMPAT_VERDICT_DIRECTION_RETRY_INSTRUCTION
-                      : VERDICT_DIRECTION_RETRY_INSTRUCTION
+                      : ballotAxis.kind === 'prediction'
+                        ? PREDICTION_VERDICT_DIRECTION_RETRY_INSTRUCTION
+                        : VERDICT_DIRECTION_RETRY_INSTRUCTION
                     : request.kind === 'synthesis'
                       ? (lengthRetryInstruction ?? SYNTHESIS_STRICT_RETRY_INSTRUCTION)
                       : request.kind === 'verdict'
@@ -441,7 +446,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
             : null
         const synthesisParsed = request.kind === 'synthesis' ? parseSynthesisJson(raw.text ?? '') : null
         const verdictParsed: VerdictJson | null =
-          request.kind === 'verdict' ? parseVerdictJson(raw.text ?? '', readerCount) : null
+          request.kind === 'verdict' ? parseVerdictJson(raw.text ?? '', readerCount, ballotAxis) : null
 
         // FIX 4: the vote must not contradict its own text. On an obvious
         // keyword-level disagreement, retry ONCE with the direction-criteria
@@ -449,7 +454,7 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
         // an honest mismatch beats a silently relabelled vote.
         let directionMismatch = false
         if (verdictParsed) {
-          const check = verdictDirectionMismatch(verdictParsed, sessionKind)
+          const check = verdictDirectionMismatch(verdictParsed, sessionKind, ballotAxis)
           if (check.mismatch && !directionRetryUsed) {
             directionRetryUsed = true
             directionRetryNext = true
@@ -531,7 +536,8 @@ export function createLayer1AiAdapter(options: Layer1AdapterOptions = {}): Oracl
                     // writing oracle_verdicts; the tally in runner/ballot.ts
                     // reads ballot.direction / focus / domains.
                     ballot: {
-                      direction: verdictParsed.direction,
+                      ...(verdictParsed.direction ? { direction: verdictParsed.direction } : {}),
+                      ...(verdictParsed.option ? { option: verdictParsed.option } : {}),
                       focus: verdictParsed.focus,
                       domains: verdictParsed.domains,
                     },

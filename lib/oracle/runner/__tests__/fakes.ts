@@ -99,7 +99,7 @@ export function createFakeStore(options: { profiles?: OracleProfile[] } = {}): F
       const session: OracleJobSession = {
         id: id('session'),
         ...row,
-        question_parsed: null,
+        question_parsed: row.question_parsed ?? null,
         lease_until: null,
         attempt_count: 0,
         created_at: new Date(0).toISOString(),

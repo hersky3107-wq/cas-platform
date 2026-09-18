@@ -112,7 +112,9 @@ function YongsinPanel({
     <section className="mt-5 rounded-xl border border-cyan-300/20 bg-cyan-400/[0.06] px-3 py-3 sm:px-4">
       <div className="flex items-end justify-between gap-3">
         <h4 className="text-sm font-semibold text-white">용신</h4>
-        <span className="text-[10px] text-white/35">{eokbu.provenance}</span>
+        {eokbu.inferenceRequested && inferred.length === 0 ? null : (
+          <span className="text-[10px] text-white/35">{eokbu.provenance}</span>
+        )}
       </div>
       {computed ? (
         <p className="mt-2 text-sm leading-relaxed text-cyan-50">
@@ -128,13 +130,13 @@ function YongsinPanel({
           ))}
         </div>
       ) : eokbu.inferenceRequested ? (
-        <p className="mt-2 text-sm leading-relaxed text-amber-50">억부로는 판정되지 않음 · AI 판단 요청</p>
+        <p className="mt-2 text-sm leading-relaxed text-amber-50">억부로는 판정되지 않음</p>
       ) : (
         <p className="mt-2 text-sm leading-relaxed text-cyan-50">{eokbu.summary}</p>
       )}
       <p className="mt-2 text-[11px] leading-relaxed text-white/55">
         {eokbu.inferenceRequested
-          ? eokbu.summary
+          ? eokbu.summary.replace(/\s*[—·\-]\s*AI 판단 요청\.?/g, "").replace(/AI 판단 요청\.?/g, "").trim()
           : `${eokbu.strength} (득령 ${eokbu.deukryeong.relation}, 득지 ${eokbu.deukji.score}, 득세 ${eokbu.deukse.score})`}
         {eokbu.huisin !== "없음" || eokbu.gisin !== "없음"
           ? ` · 희신 ${eokbu.huisin} · 기신 ${eokbu.gisin}`

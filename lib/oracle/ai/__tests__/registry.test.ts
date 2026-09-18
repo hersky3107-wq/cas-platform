@@ -218,6 +218,7 @@ describe('LAYER1_REGISTRY', () => {
     expect(doubter!.entry.brand).toBe('Mistral')
     expect(doubter!.entry.narrativeFloor).toBeUndefined()
     expect(LAYER1_REGISTRY.sukuyou.brand).toBe('Mistral')
+    expect(LAYER1_REGISTRY.sukuyou.narrativeFloor).toBe(280)
     expect(doubter!.logUnit).not.toBe(LAYER1_REGISTRY.sukuyou.system)
 
     const contrarian = resolveOracleCallEntry({

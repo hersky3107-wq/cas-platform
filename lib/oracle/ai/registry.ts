@@ -178,6 +178,10 @@ export const LAYER1_REGISTRY: Record<SystemId, Layer1RegistryEntry> = {
     caller: { kind: 'platform', platformId: 'openrouter:mistral-medium-3.5' },
     maxCompletionTokens: 2200,
     runawayContentTokens: LAYER1_READING_RUNAWAY_CONTENT_TOKENS,
+    // TIER 2 seat (no 길흉 table). Session 9bbef47c: Mistral finished=stop
+    // at 333 chars / 292 content tokens and the shared 400 floor 결번'd it
+    // — same shape as MiniMax's earlier 숙요 miss. 280 matches 성명학.
+    narrativeFloor: 280,
   },
   astro: {
     system: 'astro',

@@ -31,6 +31,7 @@ import type {
   OracleReading,
   OracleSessionStatus,
 } from '../schema'
+import { classifyBallotAxis } from '../question-axis'
 import { ballotTallyJson, tallyBallots } from './ballot'
 import { personalDataFrom } from './compute'
 import { releaseAiSlots, tryAcquireAiSlots } from './concurrency'
@@ -571,7 +572,7 @@ async function finalizeSession(session: OracleJobSession, deps: AdvanceDeps, now
     deps.store.getConsensus(session.id),
   ])
 
-  const tally = tallyBallots(verdicts)
+  const tally = tallyBallots(verdicts, classifyBallotAxis(session.kind, session.question_raw))
   const readable = computations.filter((row) => row.axes !== null).length
   const readingsDone = readings.filter((row) => row.status === 'done').length
 
