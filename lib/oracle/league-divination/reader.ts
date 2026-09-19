@@ -4,6 +4,7 @@
  */
 import {
   LEAGUE_READER_BRAND,
+  LEAGUE_READER_ESTIMATED_COST_USD,
   LEAGUE_READER_EXTRA_REQUEST_PARAMS,
   LEAGUE_READER_MAX_COMPLETION_TOKENS,
   LEAGUE_READER_MODEL,
@@ -18,6 +19,8 @@ import { buildLeagueReaderSystemPrompt, buildLeagueReaderUserPrompt, LEAGUE_READ
 export type LeagueReaderCallResult = {
   text: string | null
   error?: string
+  costUsd?: number | null
+  costIsEstimated?: boolean
 }
 
 export type LeagueReaderCall = (input: {
@@ -34,6 +37,8 @@ export type LeagueReaderOutcome = {
   attempts: number
   brand: string
   model: string
+  costUsd: number | null
+  costIsEstimated: boolean
 }
 
 async function defaultCall(input: Parameters<LeagueReaderCall>[0]): Promise<LeagueReaderCallResult> {
@@ -47,7 +52,12 @@ async function defaultCall(input: Parameters<LeagueReaderCall>[0]): Promise<Leag
     debugRequestLabel: 'league-divination-reader',
     timeoutMs: input.timeoutMs,
   })
-  return { text: res.text ?? null, error: res.error }
+  return {
+    text: res.text ?? null,
+    error: res.error,
+    costUsd: typeof res.costUsd === 'number' ? res.costUsd : null,
+    costIsEstimated: res.costIsEstimated ?? false,
+  }
 }
 
 export async function runLeagueReader(
@@ -64,9 +74,18 @@ export async function runLeagueReader(
     timeoutMs: LEAGUE_READER_TIMEOUT_MS,
     strictRetry: false,
   })
+  const firstCost = typeof first.costUsd === 'number' ? first.costUsd : (first.text ? LEAGUE_READER_ESTIMATED_COST_USD : 0)
   const parsed = parseLeagueReaderRationale(first.text ?? '', pack.codeVerdict)
   if (parsed.ok) {
-    return { rationale: parsed.rationale, source: 'ai', attempts: 1, brand: LEAGUE_READER_BRAND, model: LEAGUE_READER_MODEL }
+    return {
+      rationale: parsed.rationale,
+      source: 'ai',
+      attempts: 1,
+      brand: LEAGUE_READER_BRAND,
+      model: LEAGUE_READER_MODEL,
+      costUsd: firstCost > 0 ? firstCost : null,
+      costIsEstimated: true,
+    }
   }
 
   const second = await call({
@@ -76,9 +95,19 @@ export async function runLeagueReader(
     timeoutMs: LEAGUE_READER_TIMEOUT_MS,
     strictRetry: true,
   })
+  const secondCost = typeof second.costUsd === 'number' ? second.costUsd : (second.text ? LEAGUE_READER_ESTIMATED_COST_USD : 0)
+  const totalCost = firstCost + secondCost
   const retried = parseLeagueReaderRationale(second.text ?? '', pack.codeVerdict)
   if (retried.ok) {
-    return { rationale: retried.rationale, source: 'ai', attempts: 2, brand: LEAGUE_READER_BRAND, model: LEAGUE_READER_MODEL }
+    return {
+      rationale: retried.rationale,
+      source: 'ai',
+      attempts: 2,
+      brand: LEAGUE_READER_BRAND,
+      model: LEAGUE_READER_MODEL,
+      costUsd: totalCost > 0 ? totalCost : null,
+      costIsEstimated: true,
+    }
   }
 
   return {
@@ -87,5 +116,7 @@ export async function runLeagueReader(
     attempts: 2,
     brand: LEAGUE_READER_BRAND,
     model: LEAGUE_READER_MODEL,
+    costUsd: totalCost > 0 ? totalCost : null,
+    costIsEstimated: true,
   }
 }

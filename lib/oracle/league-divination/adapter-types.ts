@@ -54,6 +54,10 @@ export type LeagueDivinationAdapterOutput = {
   pick: 'A' | 'B' | null
   rationale: string
   confidence: number
+  /** INTERNAL — estimated cost in USD for the AI reader call(s). */
+  costUsd?: number | null
+  /** INTERNAL — true when costUsd is estimated from token pricing. */
+  costIsEstimated?: boolean
   /** INTERNAL — never render. */
   votedCount: 1 | 2 | 3 | 4
   /** INTERNAL — never render. */

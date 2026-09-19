@@ -137,6 +137,8 @@ async function produce(
     pick: mapped.pick,
     rationale: reader.rationale,
     confidence: computed.aggregate.confidence,
+    costUsd: reader.costUsd,
+    costIsEstimated: reader.costIsEstimated,
     votedCount: computed.aggregate.votedCount,
     ichingAlone: computed.aggregate.ichingAlone,
     systems: systemsFromCompute(computed),

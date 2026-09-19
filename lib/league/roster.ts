@@ -161,7 +161,7 @@ export type RosterPrice = {
  *                request fee; billed total_cost already preferred in ledger)
  *   You.com    — you.com/docs/administration/billing lite $12/1k ($0.012/call);
  *                token price stays $0 — cost is the flat documented rate
- *   NAVER CLOVA — no public HCX-007 sheet (NCP console only); kept $0/$0
+ *   NAVER CLOVA — published NCP rate ₩0.005/token ($3.70 / 1M tokens); estimated
  *
  * SEAT-SWAP NOTES (keep for future sessions):
  *   - LG was lost because Friendli moved EXAONE to dedicated-only on
@@ -288,7 +288,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   { model_id: 'qwen3.5-flash', brand: 'Qwen', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:qwen3.5-flash' }, price: { inputPerMTokens: 0.065, outputPerMTokens: 0.26 } }, // Apache-2.0; hosted Flash ↔ Qwen/Qwen3.5-35B-A3B
   { model_id: 'mimo-v2.5', brand: 'Xiaomi', product_alias: 'MiMo', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4000, caller: { kind: 'platform', platformId: 'openrouter:mimo-v2.5' }, price: { inputPerMTokens: 0.14, outputPerMTokens: 0.28 } }, // MIT; XiaomiMiMo/MiMo-V2.5
   { model_id: 'solar-pro3', brand: 'Upstage', product_alias: 'Solar', camp: 'other', league_tier: 'world', weights: 'closed', provider_key: 'upstage', reasoning: true, caller: { kind: 'platform', platformId: 'upstage:solar-pro3' }, price: { inputPerMTokens: 0.15, outputPerMTokens: 0.6 } }, // FLAG resolved: API-only; Solar 10.7B is a previous gen
-  { model_id: 'hcx-007', brand: 'NAVER', product_alias: 'HyperCLOVA', camp: 'other', league_tier: 'world', weights: 'closed', provider_key: 'clova', reasoning: false, caller: { kind: 'platform', platformId: 'clova:hcx-007' }, price: { inputPerMTokens: 0, outputPerMTokens: 0 } }, // NAVER CLOVA Studio API; no public checkpoint
+  { model_id: 'hcx-007', brand: 'NAVER', product_alias: 'HyperCLOVA', camp: 'other', league_tier: 'world', weights: 'closed', provider_key: 'clova', reasoning: false, caller: { kind: 'platform', platformId: 'clova:hcx-007' }, price: { inputPerMTokens: 3.7, outputPerMTokens: 3.7 } }, // NAVER CLOVA Studio API; ₩0.005/token ($3.70/1M tokens)
   // 2026-09-07: replaces dead LG/EXAONE. OpenRouter list $1.00/$4.05.
   // effort:minimal — default effort on this packet billed $0.0107 and
   // returned empty content (2000 tokens of hidden reasoning). 4500 / 90s

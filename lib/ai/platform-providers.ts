@@ -742,13 +742,35 @@ async function callClovaStudio(params: {
     const content = json?.result?.message?.content
     const usage = json?.result?.usage ?? {}
 
+    const promptTokens =
+      typeof usage.promptTokens === 'number'
+        ? usage.promptTokens
+        : Math.ceil(((systemPrompt?.length ?? 0) + userPrompt.length) / 2)
+    const completionTokens =
+      typeof usage.completionTokens === 'number'
+        ? usage.completionTokens
+        : typeof content === 'string'
+          ? Math.ceil(content.length / 2)
+          : 0
+    const totalTokens =
+      typeof usage.totalTokens === 'number'
+        ? usage.totalTokens
+        : promptTokens + completionTokens
+
+    // NAVER CLOVA Studio published pricing for HyperCLOVA X (HCX-007):
+    // ₩0.005 / token (₩5,000 / 1M tokens) ≈ $0.0000037 / token at ~1,350 KRW/USD ($3.70 / 1M tokens).
+    const CLOVA_PRICE_PER_TOKEN_USD = 0.0000037
+    const costUsd = Math.round((promptTokens + completionTokens) * CLOVA_PRICE_PER_TOKEN_USD * 1e8) / 1e8
+
     return {
       text: typeof content === 'string' ? content : null,
       usage: {
-        promptTokens: typeof usage.promptTokens === 'number' ? usage.promptTokens : null,
-        completionTokens: typeof usage.completionTokens === 'number' ? usage.completionTokens : null,
-        totalTokens: typeof usage.totalTokens === 'number' ? usage.totalTokens : null,
+        promptTokens,
+        completionTokens,
+        totalTokens,
       },
+      costUsd,
+      costIsEstimated: true,
     }
   } catch (e: unknown) {
     const errorName = e instanceof Error ? e.name : ''

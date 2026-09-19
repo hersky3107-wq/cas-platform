@@ -63,12 +63,22 @@ export type LeagueDrawSeedSystem = (typeof LEAGUE_DRAW_SEED_SYSTEMS)[number]
  * gated 20/20 on oracle reading. Qwen 3.5 Flash failed this pack 0/20
  * (English CoT dumped into content, finish=length). thinking:none so the
  * 12s seat stays intact; oracle name-seat `thinking:low` measured 11–23s
- * and would miss the timeout. Roster price $0.
+ * and would miss the timeout.
+ *
+ * Cost: NAVER CLOVA does not return per-call billed USD. Published pricing is
+ * ₩0.005 / token ($3.70 / 1M tokens at ~1,350 KRW/USD). A typical league
+ * round runs ~600 prompt tokens + ~200 completion tokens (~800 tokens total),
+ * giving an estimated cost of ~$0.003 USD (~₩4.0 KRW) per round, flagged
+ * costIsEstimated: true.
  */
 export const LEAGUE_READER_BRAND = 'NAVER'
 export const LEAGUE_READER_DISPLAY_NAME = 'HyperCLOVA X HCX-007'
 export const LEAGUE_READER_MODEL = 'HCX-007'
 export const LEAGUE_READER_PLATFORM_ID = 'clova:hcx-007'
+export const LEAGUE_READER_PRICE_PER_M_TOKENS_USD = 3.7
+export const LEAGUE_READER_ESTIMATED_ROUND_TOKENS = 800
+export const LEAGUE_READER_ESTIMATED_COST_USD = 0.003
+export const LEAGUE_READER_COST_IS_ESTIMATED = true
 /** CLOVA honors `thinking.effort`; `none` is the 12s path. Do not raise to low. */
 export const LEAGUE_READER_EXTRA_REQUEST_PARAMS = { thinking: { effort: 'none' } } as const
 export const LEAGUE_READER_MAX_COMPLETION_TOKENS = 500
