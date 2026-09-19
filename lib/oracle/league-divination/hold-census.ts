@@ -24,6 +24,7 @@ export type HoldCensus = {
   fourVotedAndAgree: number
   confidence1: number
   confidence1ByVoted: { 1: number; 2: number; 3: number; 4: number }
+  confidenceSum: number
   up: number
   down: number
   ichingAlone: number
@@ -58,6 +59,7 @@ export function runHoldCensus(n = HOLD_CENSUS_N): HoldCensus {
     fourVotedAndAgree: 0,
     confidence1: 0,
     confidence1ByVoted: { 1: 0, 2: 0, 3: 0, 4: 0 },
+    confidenceSum: 0,
     up: 0,
     down: 0,
     ichingAlone: 0,
@@ -88,6 +90,7 @@ export function runHoldCensus(n = HOLD_CENSUS_N): HoldCensus {
     else out.voted4 += 1
     if (computed.aggregate.allVotersAgree) out.allVotersAgree += 1
     if (k === 4 && computed.aggregate.allVotersAgree) out.fourVotedAndAgree += 1
+    out.confidenceSum += computed.aggregate.confidence
     if (computed.aggregate.confidence === 1) {
       out.confidence1 += 1
       out.confidence1ByVoted[k] += 1
@@ -123,6 +126,7 @@ export function holdCensusRates(c: HoldCensus) {
     allVotersAgreePct: pct(c.allVotersAgree),
     fourVotedAndAgreePct: pct(c.fourVotedAndAgree),
     confidence1Pct: pct(c.confidence1),
+    confidenceMean: Number((c.confidenceSum / c.n).toFixed(3)),
     ichingAlonePct: pct(c.ichingAlone),
     drawSplitPct: pct(c.drawSplit),
     taeilCastsPct: pct(c.taeilCasts),

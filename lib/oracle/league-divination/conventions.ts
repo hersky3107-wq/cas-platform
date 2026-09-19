@@ -5,7 +5,7 @@
  *
  * Bump LEAGUE_DIVINATION_VERSION when a vote, seed, or aggregator rule changes.
  */
-export const LEAGUE_DIVINATION_VERSION = '1.3.0'
+export const LEAGUE_DIVINATION_VERSION = '1.4.0'
 
 /**
  * Pin every timing chart to Seoul so a cached pack cannot vary by viewer.
@@ -34,6 +34,14 @@ export const LEAGUE_VOTE_WEIGHTS = {
  * above does not change.
  */
 export const TAEIL_MONTH_OPPOSE_FACTOR = 0.5
+
+/**
+ * PRODUCT: confidence multiplies the weighted margin by head count / this
+ * seat count (votedCount / 4), not remainingWeight / 9. A lone 육효 seat
+ * must not read as maximum certainty — the weight-based version would
+ * score 3/9 = 0.33 and still look like a real four-seat reading.
+ */
+export const LEAGUE_CONFIDENCE_SEAT_COUNT = 4
 
 export const LEAGUE_DRAW_SYSTEMS = ['iching', 'tarot', 'runes'] as const
 export const LEAGUE_TIMING_SYSTEMS = ['taeil'] as const

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readLeagueDivination } from '../adapter'
 import {
+  LEAGUE_ADAPTER_CUSTOMER_KEYS,
   LEAGUE_DIVINATION_ADAPTER_INPUT_KEYS,
   type LeagueDivinationAdapterInput,
 } from '../adapter-types'
@@ -99,6 +100,8 @@ describe('readLeagueDivination', () => {
     expect(output.systems.find((row) => row.id === 'taeil')?.chart.label).toBe('택일')
     expect(output.votedCount).toBeGreaterThanOrEqual(1)
     expect(output.votedCount).toBeLessThanOrEqual(4)
+    expect([...LEAGUE_ADAPTER_CUSTOMER_KEYS]).toEqual(['verdict', 'pick', 'rationale', 'confidence'])
+    expect(output.rationale).not.toMatch(/결번|말을 아낌|말을 아꼈|표를 냄|홀로 표를/)
   })
 
   it('caches on roundId so a later viewer sees the identical packed result', async () => {

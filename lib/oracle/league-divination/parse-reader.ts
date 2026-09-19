@@ -47,8 +47,29 @@ const MINUS_KEYWORDS = ['하락', '내림', '내릴', '지다', '질 것', '불�
 export type ReaderParseOk = { ok: true; rationale: string }
 export type ReaderParseFail = {
   ok: false
-  reason: 'empty' | 'line_count' | 'too_long' | 'market_language' | 'direction_mismatch'
+  reason: 'empty' | 'line_count' | 'too_long' | 'market_language' | 'direction_mismatch' | 'customer_abstention'
   detail?: string
+}
+
+/** Customer-facing ban — 결번 / voter-roll wording must never render. */
+export const CUSTOMER_ABSTENTION_BAN: readonly string[] = [
+  '결번',
+  '말을 아낌',
+  '말을 아꼈',
+  '표를 냄',
+  '표를 낸',
+  '홀로 표를',
+  'ichingalone',
+  'voter roll',
+  'voterroll',
+]
+
+export function findCustomerAbstention(text: string): string | null {
+  const lower = text.toLowerCase()
+  for (const word of CUSTOMER_ABSTENTION_BAN) {
+    if (lower.includes(word.toLowerCase())) return word
+  }
+  return null
 }
 export type ReaderParseResult = ReaderParseOk | ReaderParseFail
 
@@ -100,6 +121,9 @@ export function parseLeagueReaderRationale(raw: string, codeVote: LeagueBinaryVo
 
   const banned = findMarketLanguage(rationale)
   if (banned) return { ok: false, reason: 'market_language', detail: banned }
+
+  const abstention = findCustomerAbstention(rationale)
+  if (abstention) return { ok: false, reason: 'customer_abstention', detail: abstention }
 
   const plus = isPlusVote(codeVote)
   const hasPlus = affirms(rationale, PLUS_KEYWORDS)

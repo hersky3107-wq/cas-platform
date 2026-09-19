@@ -1,6 +1,7 @@
 /**
  * Single-reader prompt. 4–5 lines of PURE DIVINATION REASONING.
  * The code already decided the verdict — the model explains it.
+ * Customer-facing: verdict + reasoning only. No 결번, no voter roll.
  */
 import { MARKET_LANGUAGE_BAN } from './parse-reader'
 import {
@@ -9,27 +10,26 @@ import {
   LEAGUE_READER_RATIONALE_MAX_CHARS,
 } from './conventions'
 import type { LeagueReaderCompactPack } from './compact-pack'
-import { LEAGUE_ABSTAIN_LABEL, LEAGUE_GYEOLBEON, LEAGUE_VOTED_LABEL } from './status'
 
-export const LEAGUE_READER_PROMPT_VERSION = 'league-reader-v5'
+export const LEAGUE_READER_PROMPT_VERSION = 'league-reader-v6'
 
 export const LEAGUE_READER_STRICT_RETRY =
-  `\n\nSTRICT RETRY: Output ONLY ${LEAGUE_READER_LINE_MIN}–${LEAGUE_READER_LINE_MAX} short Korean sentences, one per line. Under 500 characters. No wrap-up. No 전망. No English. No JSON. Explain the CODE verdict. Do not vote. Do not say four systems agreed unless the voter roll shows four ${LEAGUE_VOTED_LABEL}.`
+  `\n\nSTRICT RETRY: Output ONLY ${LEAGUE_READER_LINE_MIN}–${LEAGUE_READER_LINE_MAX} short Korean sentences, one per line. Under 500 characters. No wrap-up. No 전망. No English. No JSON. Explain the CODE verdict. Do not vote. Do not mention 결번, 말을 아킴, a voter roll, or who stayed quiet.`
 
 export function buildLeagueReaderSystemPrompt(): string {
   const ban = MARKET_LANGUAGE_BAN.join(', ')
   return [
-    'You are a divination reader. The CODE already computed a binary verdict from the systems that actually voted.',
+    'You are a divination reader. The CODE already computed a binary verdict.',
     'Write ONLY the rationale as a reading a league viewer can follow — name the concrete piece and say what it means, the way a daily reading does. Do not dump labels. Do not decide or restate a vote as if it were yours.',
     `Output exactly ${LEAGUE_READER_LINE_MIN} or ${LEAGUE_READER_LINE_MAX} lines of Korean prose, each a single sentence on its own line. Stay under 500 Unicode characters (parser cap is ${LEAGUE_READER_RATIONALE_MAX_CHARS} — do not use it).`,
     'No sixth wrap-up line. Do not start a sentence with 종합적으로, 결론적으로, or 따라서 전체.',
     'No English. No outline. No "Thinking Process". No constraint list. The first character of the reply must be Korean.',
     'Use the Korean tarot and rune names supplied in the pack (outcomeKo, futureKo). Never write English card names (King of Swords, Ten of Cups, Gebo, Othala).',
     'Speak in the systems\' own terms, then gloss them: 본괘/변괘/용신/월령, 타로 패와 정역, 룬 정역, 택일 일진·월건·용신 오행. 점성술 and 구성 are display-only — mention them at most as colour, never as a vote.',
-    `A system marked ${LEAGUE_GYEOLBEON} / ${LEAGUE_ABSTAIN_LABEL} did NOT vote. Never say it agreed, never give it a side, never count it among the voters. Name it as ${LEAGUE_ABSTAIN_LABEL} and use the reason already in the voter roll (its table gave no direction).`,
-    'Never write that four systems agreed unless votedCount is 4 and every ballot on the voter roll matches. If ichingAlone is true, say plainly that 타로·룬·택일은 말을 아꼈고 육효가 홀로 표를 냈다.',
+    'HARD BAN — never mention 결번, 말을 아킴, 말을 아꼈, 표를 냄, a voter roll, votedCount, ichingAlone, or that any system stayed quiet or voted alone. The viewer sees the verdict and the reasoning only.',
+    'Never write that four systems agreed, or that any count of systems agreed. Do not tally seats.',
     `HARD BAN — never use these words, even inside a denial or the phrase "긍정적인 전망": ${ban}.`,
-    'The 택일 ballot is 일진 vs the category 용신. 월건 is context — it can agree or oppose 일진, but it does not veto 택일 into 결번. Do not say 택일 말을 아꼈 because 일진 and 월건 disagreed.',
+    'The 택일 ballot is 일진 vs the category 용신. 월건 is context — it can agree or oppose 일진. Do not say 택일 stayed quiet because 일진 and 월건 disagreed.',
     'Do not mention prices, markets, news, or what will happen to money. Reason only from the charts.',
     'If CODE VERDICT is down or b, do not use 상승/오를/이기/유리/길한. If it is up or a, do not use 하락/내릴/불리/흉한.',
     'If hourPin.applied is true, you may note that the 야자시 hour was read as the previous hour so the day pillar does not fork — do not invent another reason.',
@@ -39,9 +39,6 @@ export function buildLeagueReaderSystemPrompt(): string {
 export function buildLeagueReaderUserPrompt(pack: LeagueReaderCompactPack): string {
   return [
     `CODE VERDICT (do not change this): ${pack.codeVerdict}`,
-    `votedCount: ${pack.votedCount}`,
-    `ichingAlone: ${pack.ichingAlone}`,
-    `Voter roll (voted=${LEAGUE_VOTED_LABEL}, ${LEAGUE_GYEOLBEON}=${LEAGUE_ABSTAIN_LABEL}): ${JSON.stringify(pack.voterRoll)}`,
     `Proposition: ${pack.proposition}`,
     `Subject: ${pack.subjectName}`,
     `Category: ${pack.category}`,
@@ -52,11 +49,19 @@ export function buildLeagueReaderUserPrompt(pack: LeagueReaderCompactPack): stri
       iching: pack.iching,
       tarot: pack.tarot,
       runes: pack.runes,
-      taeil: pack.taeil,
+      taeil: {
+        label: pack.taeil.label,
+        dayGanzhi: pack.taeil.dayGanzhi,
+        dayHangul: pack.taeil.dayHangul,
+        monthGanzhi: pack.taeil.monthGanzhi,
+        yongshenStem: pack.taeil.yongshenStem,
+        yongshenStemHangul: pack.taeil.yongshenStemHangul,
+        yongshenElement: pack.taeil.yongshenElement,
+        monthModifier: pack.taeil.monthModifier,
+      },
       astro: pack.astro,
       ninestar: pack.ninestar,
-      votes: pack.votes,
     })}`,
-    `Write ${LEAGUE_READER_LINE_MIN}–${LEAGUE_READER_LINE_MAX} Korean lines explaining why the code verdict follows from the systems that voted. Do not put a ballot in the mouth of a ${LEAGUE_GYEOLBEON} system.`,
+    `Write ${LEAGUE_READER_LINE_MIN}–${LEAGUE_READER_LINE_MAX} Korean lines explaining why the code verdict follows from the charts. Do not mention who voted or who stayed quiet.`,
   ].join('\n')
 }

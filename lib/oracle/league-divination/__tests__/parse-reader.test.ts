@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseLeagueReaderRationale, MARKET_LANGUAGE_BAN } from '../parse-reader'
+import { parseLeagueReaderRationale, MARKET_LANGUAGE_BAN, CUSTOMER_ABSTENTION_BAN } from '../parse-reader'
 
 const FOUR = [
   '육효 용신 妻财는 월령 왕이다.',
@@ -40,5 +40,20 @@ describe('parseLeagueReaderRationale', () => {
     ].join('\n')
     expect(parseLeagueReaderRationale(down, 'up')).toMatchObject({ ok: false, reason: 'direction_mismatch' })
     expect(parseLeagueReaderRationale(down, 'down').ok).toBe(true)
+  })
+
+  it('rejects customer-facing 결번 / voter-roll wording', () => {
+    expect(CUSTOMER_ABSTENTION_BAN).toContain('결번')
+    expect(CUSTOMER_ABSTENTION_BAN).toContain('말을 아낌')
+    const leaked = [
+      FOUR.split('\n')[0],
+      FOUR.split('\n')[1],
+      '타로는 말을 아꼈고 육효가 홀로 표를 냈다.',
+      FOUR.split('\n')[3],
+    ].join('\n')
+    expect(parseLeagueReaderRationale(leaked, 'up')).toMatchObject({
+      ok: false,
+      reason: 'customer_abstention',
+    })
   })
 })

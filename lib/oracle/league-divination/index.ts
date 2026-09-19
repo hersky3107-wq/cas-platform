@@ -3,9 +3,16 @@
  * does not extend PHASE_AXES. Live supabase wiring lives in ./live so tests
  * never load server-only.
  */
-export { LEAGUE_DIVINATION_VERSION, LEAGUE_SEOUL, LEAGUE_VOTE_WEIGHTS, TAEIL_MONTH_OPPOSE_FACTOR, LEAGUE_READER_BRAND } from './conventions'
+export {
+  LEAGUE_DIVINATION_VERSION,
+  LEAGUE_SEOUL,
+  LEAGUE_VOTE_WEIGHTS,
+  TAEIL_MONTH_OPPOSE_FACTOR,
+  LEAGUE_CONFIDENCE_SEAT_COUNT,
+  LEAGUE_READER_BRAND,
+} from './conventions'
 export { computeLeagueDivination } from './compute'
-export { aggregateLeagueVotes } from './aggregator'
+export { aggregateLeagueVotes, leagueConfidence } from './aggregator'
 export {
   CATEGORY_TO_LIUQIN,
   CATEGORY_TO_TAEIL_YONGSHEN,
@@ -18,7 +25,7 @@ export { voteTarotOutcome, voteRuneFuture, voteTaeil, taeilElementPolarity } fro
 export { computeAstroChartPack, computeNineStarChartPack } from './charts'
 export { readLeagueDivination, systemsFromCompute } from './adapter'
 export { createMemoryLeagueDivinationCache, createSupabaseLeagueDivinationCache } from './cache'
-export { parseLeagueReaderRationale, MARKET_LANGUAGE_BAN } from './parse-reader'
+export { parseLeagueReaderRationale, MARKET_LANGUAGE_BAN, CUSTOMER_ABSTENTION_BAN } from './parse-reader'
 export { compactReaderPack } from './compact-pack'
 export { fallbackRationale } from './fallback'
 export { tarotNameKo, runeNameKo } from './names'
@@ -53,5 +60,5 @@ export type {
   LeagueDivinationAdapterOutput,
   LeagueAdapterSystemEntry,
 } from './adapter-types'
-export { LEAGUE_DIVINATION_ADAPTER_INPUT_KEYS } from './adapter-types'
+export { LEAGUE_DIVINATION_ADAPTER_INPUT_KEYS, LEAGUE_ADAPTER_CUSTOMER_KEYS } from './adapter-types'
 export type { LeagueDivinationCache } from './cache'

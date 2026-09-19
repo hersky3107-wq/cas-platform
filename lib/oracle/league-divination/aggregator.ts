@@ -4,13 +4,12 @@
  * denominator (9 → 7 if tarot abstains, etc.). DRAW still dominates when it
  * is united, but when DRAW splits internally 택일 is the casting vote.
  * v1.3.0: 택일 일진 decides the ballot; 월건 scales applied weight.
- *
- * Confidence is |plus−minus| / remainingWeight (0..1). 1.000 means the
- * remaining voters are unanimous — not that four hats agreed.
+ * v1.4.0: confidence × (votedCount / 4) — PRODUCT participation.
  *
  * v1.0.0 used "DRAW wins disagreement". v1.1.0 replaced that with the sum.
  * v1.2.0: hold is 결번, not a copy of 육효.
  */
+import { LEAGUE_CONFIDENCE_SEAT_COUNT } from './conventions'
 import { hasBallot } from './status'
 import type {
   LeagueAggregate,
@@ -43,6 +42,21 @@ function plusVoteOf(sample: LeagueBinaryVote): LeagueBinaryVote {
 
 function minusVoteOf(sample: LeagueBinaryVote): LeagueBinaryVote {
   return sample === 'a' || sample === 'b' ? 'b' : 'down'
+}
+
+/**
+ * PRODUCT, not doctrine: margin among remaining weight, then scaled by
+ * how many of the four seats actually voted. Head count — not
+ * remainingWeight / 9 — so 육효 alone is 0.25, not 1.000 or 0.33.
+ */
+export function leagueConfidence(input: {
+  plusWeight: number
+  minusWeight: number
+  votedCount: number
+}): number {
+  const remaining = input.plusWeight + input.minusWeight
+  const margin = remaining === 0 ? 1 : Math.abs(input.plusWeight - input.minusWeight) / remaining
+  return margin * (input.votedCount / LEAGUE_CONFIDENCE_SEAT_COUNT)
 }
 
 export function aggregateLeagueVotes(input: {
@@ -84,7 +98,7 @@ export function aggregateLeagueVotes(input: {
   return {
     vote,
     axis: input.axis,
-    confidence: totalWeight === 0 ? 1 : Math.abs(plusWeight - minusWeight) / totalWeight,
+    confidence: leagueConfidence({ plusWeight, minusWeight, votedCount }),
     plusWeight,
     minusWeight,
     totalWeight,

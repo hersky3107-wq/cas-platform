@@ -40,7 +40,7 @@ describe('binary aggregator', () => {
     expect(result.drawCamp).toBe('up')
     expect(result.timingCamp).toBe('down')
     expect(result.usedYongshenTiebreak).toBe(false)
-    // 7 vs 2
+    // 7 vs 2, all four voted → participation 1
     expect(result.plusWeight).toBe(7)
     expect(result.minusWeight).toBe(2)
     expect(result.confidence).toBeCloseTo(5 / 9, 10)
@@ -62,6 +62,7 @@ describe('binary aggregator', () => {
     expect(withTaeilUp.plusWeight).toBe(5)
     expect(withTaeilUp.minusWeight).toBe(4)
     expect(withTaeilUp.confidence).toBeCloseTo(1 / 9, 10)
+    expect(withTaeilUp.votedCount).toBe(4)
 
     const withTaeilDown = aggregateLeagueVotes({ ...split, taeil: vote('taeil', 'down') })
     expect(withTaeilDown.vote).toBe('down')
@@ -114,7 +115,8 @@ describe('binary aggregator', () => {
     expect(result.votedCount).toBe(3)
     expect(result.plusWeight).toBe(5)
     expect(result.minusWeight).toBe(2)
-    expect(result.confidence).toBeCloseTo(3 / 7, 10)
+    // PRODUCT: (3/7) × (3/4)
+    expect(result.confidence).toBeCloseTo((3 / 7) * (3 / 4), 10)
     expect(result.vote).toBe('up')
     expect(result.timingCamp).toBe('down')
   })
@@ -132,7 +134,8 @@ describe('binary aggregator', () => {
     expect(result.ichingAlone).toBe(true)
     expect(result.votedCount).toBe(1)
     expect(result.totalWeight).toBe(3)
-    expect(result.confidence).toBe(1)
+    // PRODUCT: remaining-voter unanimity × (1/4) — a lone ballot is not 1.000
+    expect(result.confidence).toBeCloseTo(0.25, 10)
     expect(result.allVotersAgree).toBe(true)
     expect(result.timingCamp).toBeNull()
   })
@@ -174,5 +177,21 @@ describe('binary aggregator', () => {
     expect(full.minusWeight).toBe(4)
     expect(full.usedYongshenTiebreak).toBe(false)
     expect(full.vote).toBe('up')
+  })
+
+  it('PRODUCT participation: confidence = margin × (votedCount / 4), not remainingWeight / 9', () => {
+    const three = aggregateLeagueVotes({
+      axis: 'direction',
+      iching: vote('iching', 'up'),
+      tarot: vote('tarot', 'up'),
+      runes: vote('runes', 'up'),
+      taeil: vote('taeil', null),
+      yongshenVote: 'up',
+    })
+    expect(three.votedCount).toBe(3)
+    expect(three.totalWeight).toBe(7)
+    expect(three.allVotersAgree).toBe(true)
+    expect(three.confidence).toBeCloseTo(0.75, 10)
+    expect(three.confidence).not.toBeCloseTo(7 / 9, 10)
   })
 })

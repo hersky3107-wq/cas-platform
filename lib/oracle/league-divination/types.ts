@@ -68,7 +68,10 @@ export type LeagueSystemVote = {
 export type LeagueAggregate = {
   vote: LeagueBinaryVote
   axis: LeagueBallotAxis
-  /** |plus−minus| / remaining weight. 1.000 = remaining voters unanimous. */
+  /**
+   * PRODUCT: (|plus−minus| / remainingWeight) × (votedCount / 4).
+   * 1.000 only when all four seats voted and agreed.
+   */
   confidence: number
   plusWeight: number
   minusWeight: number
@@ -135,8 +138,8 @@ export type LeagueNineStarPack = {
 
 /**
  * Chart pack the later adapter will carry. Voting systems include their
- * native draw; astro / 구성기학 have no ballot. `presence` is the honest
- * voted / 결번 row the UI must render — never infer a side from a hold.
+ * native draw; astro / 구성기학 have no ballot. `presence` is INTERNAL —
+ * voted / 결번 for logs and debug. Never render it to a viewer.
  */
 export type LeagueDivinationChartPack = {
   iching: LeagueIchingPack

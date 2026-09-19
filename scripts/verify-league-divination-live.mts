@@ -643,11 +643,12 @@ md.push(`| DRAW split (육효 vs 타로+룬) | ${hold.drawSplit} | ${holdRates.d
 md.push(`| 택일 casts when DRAW splits | ${hold.taeilCasts} | ${holdRates.taeilCastsGivenDrawSplitPct}% of splits (${holdRates.taeilCastsPct}% of all rounds) |`)
 md.push(`| remaining voters unanimous | ${hold.allVotersAgree} | ${holdRates.allVotersAgreePct}% |`)
 md.push(`| all four voted and agree | ${hold.fourVotedAndAgree} | ${holdRates.fourVotedAndAgreePct}% |`)
-md.push(`| confidence 1.000 | ${hold.confidence1} | ${holdRates.confidence1Pct}% (of which 육효-alone ${hold.confidence1ByVoted[1]}) |`)
+md.push(`| confidence 1.000 | ${hold.confidence1} | ${holdRates.confidence1Pct}% |`)
+md.push(`| confidence mean | — | ${holdRates.confidenceMean} |`)
 md.push(`| up / down | ${hold.up} / ${hold.down} | — |`)
 md.push('')
 md.push(
-  '1.000 is remaining-voter unanimity. 육효-alone is genuine (one ballot) and still scores 1.000. The old 33.5% four-identical shape is gone — a 결번 seat no longer wears 육효\'s hat.',
+  'PRODUCT confidence = (|plus−minus| / remainingWeight) × (votedCount / 4). 1.000 only when all four seats voted and agreed. A lone 육효 ballot is 0.25.',
 )
 md.push('')
 

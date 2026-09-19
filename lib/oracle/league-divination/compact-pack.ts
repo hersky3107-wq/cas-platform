@@ -22,8 +22,11 @@ export type LeagueReaderCompactPack = {
   hourPin: LeagueDivinationResult['seoul']['hourPin']
   /** Already decided in code. The reader explains this; it does not vote. */
   codeVerdict: 'up' | 'down' | 'a' | 'b'
+  /** INTERNAL — fallback / logs. Never sent to the reader prompt. */
   votedCount: 1 | 2 | 3 | 4
+  /** INTERNAL — fallback / logs. Never sent to the reader prompt. */
   ichingAlone: boolean
+  /** INTERNAL — logs. Never sent to the reader prompt. */
   voterRoll: {
     id: 'iching' | 'tarot' | 'runes' | 'taeil'
     nameKo: string

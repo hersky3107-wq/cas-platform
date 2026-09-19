@@ -51,22 +51,21 @@ describe('fallbackRationale', () => {
     }
   })
 
-  it('names 결번 as 말을 아낌 and says 육효 alone when the other three abstain', () => {
-    const computed = computeLeagueDivination({
-      roundId: 'round-fixture-1',
-      firstViewIso: FIRST,
-      categoryId: 'stocks',
-      axis: 'direction',
-    })
-    const pack = compactReaderPack(computed, { proposition: 'q', subjectName: 's' })
-    const text = fallbackRationale(pack)
-    if (pack.votes.tarot.abstained || pack.votes.runes.abstained || pack.votes.taeil.abstained) {
-      expect(text).toMatch(/말을 아꼈/)
+  it('never mentions 결번, 말을 아킴, a voter roll, or who stayed quiet', () => {
+    for (const category of LEAGUE_ORACLE_CATEGORY_IDS) {
+      const pickOne = category === 'sports' || category === 'politics_election' || category === 'entertainment'
+      const computed = computeLeagueDivination({
+        roundId: `fallback-quiet-${category}`,
+        firstViewIso: FIRST,
+        categoryId: category,
+        axis: pickOne ? 'pick_one' : 'direction',
+      })
+      const pack = compactReaderPack(computed, { proposition: 'q', subjectName: 's' })
+      const text = fallbackRationale(pack)
+      expect(text).not.toMatch(/결번|말을 아낌|말을 아꼈|표를 냄|표를 낸|홀로 표를|voter roll|ichingAlone/i)
+      expect(text).not.toMatch(/네 체계가 같|네 시스템이 모두/)
+      expect(parseLeagueReaderRationale(text, pack.codeVerdict).ok).toBe(true)
     }
-    if (pack.ichingAlone) {
-      expect(text).toMatch(/육효가 홀로/)
-    }
-    expect(text).not.toMatch(/네 체계가 같|네 시스템이 모두/)
   })
 })
 
