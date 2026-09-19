@@ -48,3 +48,10 @@ next-env.d.ts
 scripts/last-deep-run.txt
 .next-dev-route-lock-check.log
 supabase/.temp/
+
+# test verification outputs & logs (never commit)
+docs/*verify*.log
+*verify*.log
+*verify*.json
+docs/league-divination-live-verify.*
+

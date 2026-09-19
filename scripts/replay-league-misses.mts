@@ -77,9 +77,9 @@ function summarize(label: string, computed: ReturnType<typeof computeLeagueDivin
   }
 }
 
-const gate = packOf('stocks', `live-verify-gate-${RUN_STAMP}`)
-const gold = packOf('gold_metals', `live-verify-${RUN_STAMP}-gold_metals`)
-const macro = packOf('macro_econ', `live-verify-${RUN_STAMP}-macro_econ`)
+const gate = packOf('stocks', `gate-check-gate-${RUN_STAMP}`)
+const gold = packOf('gold_metals', `gate-check-${RUN_STAMP}-gold_metals`)
+const macro = packOf('macro_econ', `gate-check-${RUN_STAMP}-macro_econ`)
 
 const gateSum = summarize('gate-stocks', gate.computed, gate.pack)
 const goldSum = summarize('gold_metals', gold.computed, gold.pack)

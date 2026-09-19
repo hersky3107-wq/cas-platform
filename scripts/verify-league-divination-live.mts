@@ -262,7 +262,7 @@ async function runGateTrial(run: number): Promise<GateRow> {
   const category = LEAGUE_ORACLE_CATEGORY_IDS[(run - 1) % LEAGUE_ORACLE_CATEGORY_IDS.length]!
   const event = CHIP_EVENTS[category]
   const computed = computeLeagueDivination({
-    roundId: `live-verify-gate-${RUN_STAMP}-${run}-${category}`,
+    roundId: `gate-check-gate-${RUN_STAMP}-${run}-${category}`,
     firstViewIso: FIRST_VIEW,
     categoryId: category,
     axis: event.propositionType === 'pick_one' ? 'pick_one' : 'direction',
@@ -396,7 +396,7 @@ const roundRows: RoundRow[] = []
 
 for (const category of LEAGUE_ORACLE_CATEGORY_IDS) {
   const event = CHIP_EVENTS[category]
-  const roundId = `live-verify-${RUN_STAMP}-${category}`
+  const roundId = `gate-check-${RUN_STAMP}-${category}`
   const computed = computeLeagueDivination({
     roundId,
     firstViewIso: FIRST_VIEW,
