@@ -12,7 +12,9 @@ describe('hold → 결번 census', () => {
     expect(c.fourVotedAndAgree).toBeLessThan(c.allVotersAgree)
     expect(c.tarotHold / c.n).toBeGreaterThan(0.25)
     expect(c.runeHold / c.n).toBeGreaterThan(0.25)
-    expect(c.taeilHold / c.n).toBeGreaterThan(0)
-    expect(c.taeilHold / c.n).toBeLessThan(0.5)
+    // 일진 decides; 월건 no longer vetoes. 오행 상생상극 has no leftover, so
+    // 택일 결번 should be rare (zero under the current 5-relation table).
+    expect(c.taeilHold / c.n).toBeLessThan(0.05)
+    expect(c.drawSplit).toBeGreaterThan(0)
   })
 })

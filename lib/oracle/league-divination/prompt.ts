@@ -11,7 +11,7 @@ import {
 import type { LeagueReaderCompactPack } from './compact-pack'
 import { LEAGUE_ABSTAIN_LABEL, LEAGUE_GYEOLBEON, LEAGUE_VOTED_LABEL } from './status'
 
-export const LEAGUE_READER_PROMPT_VERSION = 'league-reader-v4'
+export const LEAGUE_READER_PROMPT_VERSION = 'league-reader-v5'
 
 export const LEAGUE_READER_STRICT_RETRY =
   `\n\nSTRICT RETRY: Output ONLY ${LEAGUE_READER_LINE_MIN}–${LEAGUE_READER_LINE_MAX} short Korean sentences, one per line. Under 500 characters. No wrap-up. No 전망. No English. No JSON. Explain the CODE verdict. Do not vote. Do not say four systems agreed unless the voter roll shows four ${LEAGUE_VOTED_LABEL}.`
@@ -29,7 +29,7 @@ export function buildLeagueReaderSystemPrompt(): string {
     `A system marked ${LEAGUE_GYEOLBEON} / ${LEAGUE_ABSTAIN_LABEL} did NOT vote. Never say it agreed, never give it a side, never count it among the voters. Name it as ${LEAGUE_ABSTAIN_LABEL} and use the reason already in the voter roll (its table gave no direction).`,
     'Never write that four systems agreed unless votedCount is 4 and every ballot on the voter roll matches. If ichingAlone is true, say plainly that 타로·룬·택일은 말을 아꼈고 육효가 홀로 표를 냈다.',
     `HARD BAN — never use these words, even inside a denial or the phrase "긍정적인 전망": ${ban}.`,
-    'The 택일 label is 택일, never 명리. Do not mention 대운 or a person\'s 일간.',
+    'The 택일 ballot is 일진 vs the category 용신. 월건 is context — it can agree or oppose 일진, but it does not veto 택일 into 결번. Do not say 택일 말을 아꼈 because 일진 and 월건 disagreed.',
     'Do not mention prices, markets, news, or what will happen to money. Reason only from the charts.',
     'If CODE VERDICT is down or b, do not use 상승/오를/이기/유리/길한. If it is up or a, do not use 하락/내릴/불리/흉한.',
     'If hourPin.applied is true, you may note that the 야자시 hour was read as the previous hour so the day pillar does not fork — do not invent another reason.',

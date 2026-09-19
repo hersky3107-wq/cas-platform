@@ -63,8 +63,10 @@ export function fallbackRationale(pack: LeagueReaderCompactPack): string {
     ? `미래 룬 ${rune} — ${orient(pack.runes.reversed)} 있으나 표가 방향을 주지 않아 말을 아꼈습니다.`
     : `미래 룬 ${rune} — ${orient(pack.runes.reversed)} 있습니다. ${runeMeaning}입니다.`
   const taeilLine = pack.votes.taeil.abstained
-    ? `택일 일진 ${day}에 ${stem}(${element})이 용신이나, 일진과 월건이 갈려 말을 아꼈습니다.`
-    : `택일 일진 ${day}에 ${stem}(${element})이 용신으로 들어앉았습니다. ${elementMeaning}입니다.`
+    ? `택일 일진 ${day}에 ${stem}(${element})이 용신이나, 일진이 생·비화·극 어느 쪽도 주지 않아 말을 아꼈습니다.`
+    : pack.votes.taeil.monthModifier === 'oppose'
+      ? `택일 일진 ${day}에 ${stem}(${element})이 용신으로 들어앉았습니다. 월건은 다른 쪽이라 그 힘은 덜합니다.`
+      : `택일 일진 ${day}에 ${stem}(${element})이 용신으로 들어앉았습니다. ${elementMeaning}입니다.`
 
   const lines = [
     `육효 본괘 ${hex}의 용신은 ${relative}입니다. ${relative}는 ${relativeMeaning}이며, ${phaseClause}입니다.`,

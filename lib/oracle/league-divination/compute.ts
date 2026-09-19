@@ -60,6 +60,8 @@ export function computeLeagueDivination(input: LeagueDivinationInput): LeagueDiv
     abstained: false,
     unreadableCode: null,
     source: ichingBallot.source,
+    appliedWeight: LEAGUE_VOTE_WEIGHTS.iching,
+    monthModifier: null,
   }
   const tarotVote = voteTarotOutcome(tarot.cards, input.axis)
   const runeVote = voteRuneFuture(runes.runes, input.axis)

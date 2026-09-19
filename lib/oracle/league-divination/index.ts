@@ -3,7 +3,7 @@
  * does not extend PHASE_AXES. Live supabase wiring lives in ./live so tests
  * never load server-only.
  */
-export { LEAGUE_DIVINATION_VERSION, LEAGUE_SEOUL, LEAGUE_VOTE_WEIGHTS, LEAGUE_READER_BRAND } from './conventions'
+export { LEAGUE_DIVINATION_VERSION, LEAGUE_SEOUL, LEAGUE_VOTE_WEIGHTS, TAEIL_MONTH_OPPOSE_FACTOR, LEAGUE_READER_BRAND } from './conventions'
 export { computeLeagueDivination } from './compute'
 export { aggregateLeagueVotes } from './aggregator'
 export {
@@ -14,7 +14,7 @@ export {
 } from './category-tables'
 export { leagueDrawSeed, seoulClockFromFirstView } from './seed'
 export { voteIching, yongshenPolarity, compareShiYing, pickYongshenLine, polarityFromLine } from './yongshen'
-export { voteTarotOutcome, voteRuneFuture, voteTaeil } from './votes'
+export { voteTarotOutcome, voteRuneFuture, voteTaeil, taeilElementPolarity } from './votes'
 export { computeAstroChartPack, computeNineStarChartPack } from './charts'
 export { readLeagueDivination, systemsFromCompute } from './adapter'
 export { createMemoryLeagueDivinationCache, createSupabaseLeagueDivinationCache } from './cache'

@@ -55,6 +55,8 @@ export type LeagueReaderCompactPack = {
     yongshenStem: string
     yongshenStemHangul: string
     yongshenElement: string
+    monthModifier: 'agree' | 'oppose' | null
+    appliedWeight: number
   }
   astro: {
     ballot: null
@@ -138,6 +140,8 @@ export function compactReaderPack(
       yongshenStem: result.charts.taeil.yongshen.stemHanja,
       yongshenStemHangul: stemByHanja(result.charts.taeil.yongshen.stemHanja).hangul,
       yongshenElement: result.charts.taeil.yongshen.element,
+      monthModifier: result.votes.taeil.monthModifier,
+      appliedWeight: result.votes.taeil.appliedWeight,
     },
     astro: {
       ballot: null,

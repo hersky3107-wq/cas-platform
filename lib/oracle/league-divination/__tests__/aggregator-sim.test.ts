@@ -20,6 +20,8 @@ function vote(system: LeagueSystemVote['system'], ballot: LeagueBinaryVote | nul
     abstained: ballot === null,
     unreadableCode: ballot === null ? `${system}.hold_no_direction` : null,
     source: 'sim',
+    appliedWeight: ballot === null ? 0 : LEAGUE_VOTE_WEIGHTS[system],
+    monthModifier: null,
   }
 }
 

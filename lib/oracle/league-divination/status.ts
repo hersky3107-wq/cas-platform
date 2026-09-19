@@ -11,7 +11,7 @@ export const LEAGUE_VOTED_LABEL = '표를 냄' as const
 export const LEAGUE_UNREADABLE = {
   tarot: 'tarot.hold_no_direction',
   runes: 'runes.hold_no_direction',
-  taeil: 'taeil.day_month_split_no_direction',
+  taeil: 'taeil.day_neutral_no_direction',
   astro: 'horary_judgment_not_implemented',
   ninestar: 'five_yellow_and_auspicious_direction_not_implemented',
 } as const
@@ -19,7 +19,7 @@ export const LEAGUE_UNREADABLE = {
 export const LEAGUE_ABSTAIN_REASON_KO: Record<string, string> = {
   [LEAGUE_UNREADABLE.tarot]: '결과 패 표가 방향을 주지 않았다',
   [LEAGUE_UNREADABLE.runes]: '미래 룬 표가 방향을 주지 않았다',
-  [LEAGUE_UNREADABLE.taeil]: '일진과 월건이 갈려 방향을 주지 않았다',
+  [LEAGUE_UNREADABLE.taeil]: '일진이 용신에 생·비화·극 어느 쪽도 주지 않았다',
   [LEAGUE_UNREADABLE.astro]: '호라리 판단이 없어 방향을 주지 않았다',
   [LEAGUE_UNREADABLE.ninestar]: '오황살·길방이 없어 방향을 주지 않았다',
 }

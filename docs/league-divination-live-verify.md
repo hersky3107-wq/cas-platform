@@ -271,21 +271,22 @@ Fallback sentence fired: **0/12**. Market-language leak past parser (ban list or
 
 ## 4. Hold → 결번 census
 
-n=504 (same sample as the collapse census). Hold is now 결번 (말을 아낌); weight leaves the denom.
-
-The twelve-round table in §2 is the previous live reader run (collapse rule) and was not re-LLM'd this pass.
+n=504. 택일 일진 decides the ballot; 월건 no longer vetoes (it halves applied weight when it opposes). 오행 상생상극 has no leftover, so 택일 결번 is 0.
 
 | | count | share |
 | --- | ---: | ---: |
 | 타로 hold → 결번 | 185 | 36.7% |
 | 룬 hold → 결번 | 225 | 44.6% |
-| 택일 hold → 결번 | 236 | 46.8% |
-| systems voted 4 / 3 / 2 / 1 | 100 / 203 / 160 / 41 | 19.8% / 40.3% / 31.7% / 8.1% |
-| remaining voters unanimous | 179 | 35.5% (was 33.5% fake four-identical) |
-| all four voted and agree | 12 | 2.4% |
-| confidence 1.000 | 179 | 35.5% — of which 육효-alone 41, two-voter 73, three-voter 53, four-voter 12 |
-| 육효 votes alone | 41 | 8.1% |
-| up / down | 279 / 225 | — |
+| 택일 hold → 결번 | 0 | 0% (was 46.8%) |
+| systems voted 4 / 3 / 2 / 1 | 179 / 240 / 85 / 0 | 35.5% / 47.6% / 16.9% / 0% |
+| 육효 votes alone | 0 | 0% (was 8.1%) |
+| DRAW split (육효 vs 타로+룬) | 42 | 8.3% |
+| 택일 casts when DRAW splits | 22 | 52.4% of splits (4.4% of all rounds) |
+| remaining voters unanimous | 117 | 23.2% |
+| all four voted and agree | 28 | 5.6% |
+| confidence 1.000 | 117 | 23.2% |
+| up / down | 277 / 227 | — |
 
-1.000 is remaining-voter unanimity, so it did **not** drop vs 33.5% — 육효-alone and 2–3 remaining voters still score 1.000. The fake four-hat 1.000 is gone: only 2.4% of rounds have all four systems actually voting and agreeing.
+Confidence is still remaining-voter unanimity and was **not** changed this pass. 육효-alone is gone because 택일 now almost always votes; 육효+택일 unanimous still scores 1.000 (37 rounds).
+
 

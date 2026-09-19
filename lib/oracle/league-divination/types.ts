@@ -49,6 +49,13 @@ export type LeagueSystemVote = {
   camp: LeagueVoteCamp
   /** Nominal weight (3/2/2/2). Abstention does not change the table — the aggregator drops it from the denom. */
   weight: (typeof LEAGUE_VOTE_WEIGHTS)[LeagueVoteSystem]
+  /**
+   * Weight actually added to plus/minus. Equals `weight` except 택일, where
+   * 월건 opposing 일진 halves it (PRODUCT). 0 when abstained.
+   */
+  appliedWeight: number
+  /** 택일 only: 월건 vs 일진. Null on the other seats and on 결번. */
+  monthModifier: 'agree' | 'oppose' | null
   /** Null = 결번 (말을 아킴). 육효 never null. */
   vote: LeagueBinaryVote | null
   /** True when this system's table gave no direction and it did not inherit 육효. */
@@ -65,7 +72,7 @@ export type LeagueAggregate = {
   confidence: number
   plusWeight: number
   minusWeight: number
-  /** Remaining weight after 결번 seats are removed (9, 7, 5, or 3). */
+  /** Remaining applied weight after 결번 seats are removed. */
   totalWeight: number
   votedCount: 1 | 2 | 3 | 4
   /** True when 타로/룬/택일 all 결번 and 육효 is the only ballot. */

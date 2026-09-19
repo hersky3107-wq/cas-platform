@@ -1,10 +1,10 @@
 /**
  * Per-system binary votes for the league scope only.
  *
- * Hold in TAROT_MAJOR_PHASE / TAROT_MINOR_RANK_PHASE / RUNE_PHASE, and a
- * 택일 일진-vs-월건 split, is a 결번 (말을 아킴): the system abstains and
- * never inherits 육효. PRODUCT rule, not doctrine — the oracle 3-way axis
- * keeps `hold`.
+ * Hold in TAROT_MAJOR_PHASE / TAROT_MINOR_RANK_PHASE / RUNE_PHASE is a
+ * 결번 (말을 아킴). 택일 abstains only when 일진 itself is neutral toward
+ * the category 용신; 월건 no longer vetoes. PRODUCT, not doctrine — the
+ * oracle 3-way axis keeps `hold`.
  */
 import { elementPairRelation } from '../engines/calendar/relations'
 import type { FiveElement } from '../engines/calendar/types'
@@ -12,7 +12,7 @@ import type { FourPillars } from '../engines/calendar'
 import type { RuneDrawn, TarotDrawnCard } from '../engines/draw'
 import { TAROT_MAJOR_PHASE, TAROT_MINOR_RANK_PHASE, RUNE_PHASE } from '../axes/tables'
 import type { PhaseAxis } from '../axes/types'
-import { LEAGUE_RUNE_BALLOT_LABEL, LEAGUE_TAROT_BALLOT_LABEL, LEAGUE_VOTE_WEIGHTS } from './conventions'
+import { LEAGUE_RUNE_BALLOT_LABEL, LEAGUE_TAROT_BALLOT_LABEL, LEAGUE_VOTE_WEIGHTS, TAEIL_MONTH_OPPOSE_FACTOR } from './conventions'
 import { LEAGUE_UNREADABLE } from './status'
 import type { LeagueBallotAxis, LeaguePolarity, LeagueSystemVote, LeagueTaeilYongshen } from './types'
 import { mapPolarity } from './yongshen'
@@ -35,6 +35,8 @@ function gyeolbeon(unreadableCode: string): Omit<LeagueSystemVote, 'system' | 'c
     abstained: true,
     unreadableCode,
     source: unreadableCode,
+    appliedWeight: 0,
+    monthModifier: null,
   }
 }
 
@@ -74,6 +76,8 @@ export function voteTarotOutcome(
     abstained: false,
     unreadableCode: null,
     source: card.reversed ? 'tarot.outcome.reversed' : 'tarot.outcome.upright',
+    appliedWeight: LEAGUE_VOTE_WEIGHTS.tarot,
+    monthModifier: null,
   }
 }
 
@@ -103,22 +107,33 @@ export function voteRuneFuture(
     abstained: false,
     unreadableCode: null,
     source: stave.reversed ? 'runes.future.reversed' : 'runes.future.upright',
+    appliedWeight: LEAGUE_VOTE_WEIGHTS.runes,
+    monthModifier: null,
   }
 }
 
-function elementSupport(actor: FiveElement, yongshen: FiveElement): 'support' | 'oppose' {
+export type TaeilElementPolarity = 'support' | 'oppose' | 'neutral'
+
+/**
+ * 일진/월건 vs 용신. 생 (either direction) / 비화 → support, 극 (either
+ * direction) → oppose. 오행 상생상극 always yields one of those five
+ * relations — `neutral` is the leftover path and should not fire.
+ */
+export function taeilElementPolarity(actor: FiveElement, yongshen: FiveElement): TaeilElementPolarity {
   const rel = elementPairRelation(actor, yongshen)
   if (rel === 'same' || rel === 'a_generates_b' || rel === 'b_generates_a') return 'support'
-  return 'oppose'
+  if (rel === 'a_overcomes_b' || rel === 'b_overcomes_a') return 'oppose'
+  return 'neutral'
 }
 
 /**
- * 택일, never 명리: 일진 지지 and 월건 지지 vs the category 용신 오행.
- * 생 (either direction) / 비화 → plus, 극 (either direction) → minus.
+ * 택일, never 명리: 일진 지지 vs the category 용신 오행 decides the ballot.
+ * 월건 is context — it agrees or opposes 일진 and scales applied weight.
+ * It does not veto 일진 into 결번.
  *
  * Treating 설기 (용신 생 일진) as support is PRODUCT — classical 택일 would
- * often call that a leak. Disagreement between 일진 and 월건 is a 결번
- * (말을 아킴). It does not inherit 육효.
+ * often call that a leak. 택일 abstains only when 일진 itself is neutral
+ * toward the 용신 (neither 생/비화 nor 극).
  *
  * yinYang on the category bucket is not consulted (that would be 십신).
  */
@@ -127,9 +142,8 @@ export function voteTaeil(
   yongshen: LeagueTaeilYongshen,
   axis: LeagueBallotAxis,
 ): LeagueSystemVote {
-  const day = elementSupport(pillars.day.branch.element, yongshen.element)
-  const month = elementSupport(pillars.month.branch.element, yongshen.element)
-  if (day !== month) {
+  const day = taeilElementPolarity(pillars.day.branch.element, yongshen.element)
+  if (day === 'neutral') {
     return {
       system: 'taeil',
       camp: 'timing',
@@ -137,6 +151,12 @@ export function voteTaeil(
       ...gyeolbeon(LEAGUE_UNREADABLE.taeil),
     }
   }
+  const month = taeilElementPolarity(pillars.month.branch.element, yongshen.element)
+  const monthModifier: 'agree' | 'oppose' = month === 'neutral' || month === day ? 'agree' : 'oppose'
+  const appliedWeight =
+    monthModifier === 'oppose'
+      ? LEAGUE_VOTE_WEIGHTS.taeil * TAEIL_MONTH_OPPOSE_FACTOR
+      : LEAGUE_VOTE_WEIGHTS.taeil
   return {
     system: 'taeil',
     camp: 'timing',
@@ -144,6 +164,8 @@ export function voteTaeil(
     vote: mapPolarity(day === 'support' ? 'plus' : 'minus', axis),
     abstained: false,
     unreadableCode: null,
-    source: day === 'support' ? 'taeil.day_and_month.support' : 'taeil.day_and_month.oppose',
+    source: day === 'support' ? 'taeil.day.support' : 'taeil.day.oppose',
+    appliedWeight,
+    monthModifier,
   }
 }

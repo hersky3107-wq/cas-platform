@@ -20,6 +20,8 @@ function vote(
     abstained: ballot === null,
     unreadableCode: ballot === null ? `${system}.hold_no_direction` : null,
     source: 'test',
+    appliedWeight: ballot === null ? 0 : LEAGUE_VOTE_WEIGHTS[system],
+    monthModifier: null,
     ...extra,
   }
 }
@@ -84,7 +86,7 @@ describe('binary aggregator', () => {
   })
 
   it('residual numeric tie uses 육효 용신 왕쇠 — PRODUCT, not doctrine', () => {
-    const iching: LeagueSystemVote = { ...vote('iching', 'up'), weight: 2 as 3 }
+    const iching: LeagueSystemVote = { ...vote('iching', 'up'), weight: 2 as 3, appliedWeight: 2 }
     const result = aggregateLeagueVotes({
       axis: 'direction',
       iching,
@@ -147,5 +149,30 @@ describe('binary aggregator', () => {
     expect(result.timingCamp).toBeNull()
     expect(result.totalWeight).toBe(7)
     expect(result.vote).toBe('down')
+  })
+
+  it('월건 opposing 일진 halves 택일 applied weight and can leave a 3-vs-4 DRAW as a 육효 tie', () => {
+    const split = {
+      axis: 'direction' as const,
+      iching: vote('iching', 'up'),
+      tarot: vote('tarot', 'down'),
+      runes: vote('runes', 'down'),
+      yongshenVote: 'up' as const,
+    }
+    const weakened = aggregateLeagueVotes({
+      ...split,
+      taeil: vote('taeil', 'up', { appliedWeight: 1, monthModifier: 'oppose' }),
+    })
+    expect(weakened.plusWeight).toBe(4)
+    expect(weakened.minusWeight).toBe(4)
+    expect(weakened.usedYongshenTiebreak).toBe(true)
+    expect(weakened.vote).toBe('up')
+    expect(weakened.totalWeight).toBe(8)
+
+    const full = aggregateLeagueVotes({ ...split, taeil: vote('taeil', 'up') })
+    expect(full.plusWeight).toBe(5)
+    expect(full.minusWeight).toBe(4)
+    expect(full.usedYongshenTiebreak).toBe(false)
+    expect(full.vote).toBe('up')
   })
 })

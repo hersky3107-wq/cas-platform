@@ -84,6 +84,8 @@ export function systemsFromCompute(result: LeagueDivinationResult): LeagueAdapte
         monthGanzhi: result.charts.taeil.pillars.month.ganzhi,
         yongshen: result.charts.taeil.yongshen,
         hourPin: result.charts.taeil.hourPin,
+        monthModifier: result.votes.taeil.monthModifier,
+        appliedWeight: result.votes.taeil.appliedWeight,
         ...result.charts.presence.taeil,
       },
     },

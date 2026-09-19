@@ -104,6 +104,8 @@ describe('사주 택일 (not 명리)', () => {
     // 巳火 and 卯木 both 극 金 → down
     expect(stocks.vote).toBe('down')
     expect(stocks.abstained).toBe(false)
+    expect(stocks.monthModifier).toBe('agree')
+    expect(stocks.appliedWeight).toBe(2)
   })
 
   it('yinYang names the 천간 bucket and does not change the 오행 ballot', () => {
@@ -114,11 +116,13 @@ describe('사주 택일 (not 명리)', () => {
     expect(sports.vote).toBe('up')
   })
 
-  it('일진 vs 월건 split is 결번 — does not inherit 육효', () => {
+  it('일진 vs 월건 split still votes — 일진 decides, 월건 weakens applied weight', () => {
     const vote = voteTaeil(pillars, taeilYongshenForCategory('crypto'), 'direction')
-    // 火 vs 水 = 극, 木 vs 水 = 생 → split
-    expect(vote.abstained).toBe(true)
-    expect(vote.vote).toBeNull()
-    expect(vote.unreadableCode).toBe(LEAGUE_UNREADABLE.taeil)
+    // 火 vs 水 = 극 → 일진 oppose → down. 木 vs 水 = 생 → 월건 support → oppose modifier.
+    expect(vote.abstained).toBe(false)
+    expect(vote.vote).toBe('down')
+    expect(vote.monthModifier).toBe('oppose')
+    expect(vote.appliedWeight).toBe(1)
+    expect(vote.weight).toBe(2)
   })
 })

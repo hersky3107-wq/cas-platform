@@ -4,6 +4,7 @@
  */
 import { computeLeagueDivination } from './compute'
 import { hasBallot } from './status'
+import type { LeagueDivinationResult } from './types'
 import { LEAGUE_ORACLE_CATEGORY_IDS } from './types'
 import { isPlusVote } from './yongshen'
 
@@ -26,6 +27,15 @@ export type HoldCensus = {
   up: number
   down: number
   ichingAlone: number
+  drawSplit: number
+  taeilCasts: number
+}
+
+/** 육효 vs united 타로+룬 (3 vs 4) — the shape where 택일 is the casting vote. */
+function isDrawSplit(votes: LeagueDivinationResult['votes']): boolean {
+  if (!hasBallot(votes.iching) || !hasBallot(votes.tarot) || !hasBallot(votes.runes)) return false
+  if (isPlusVote(votes.tarot.vote) !== isPlusVote(votes.runes.vote)) return false
+  return isPlusVote(votes.iching.vote) !== isPlusVote(votes.tarot.vote)
 }
 
 /** Walk ~a year in 17-hour steps so 일진 and 월건 actually move. */
@@ -51,6 +61,8 @@ export function runHoldCensus(n = HOLD_CENSUS_N): HoldCensus {
     up: 0,
     down: 0,
     ichingAlone: 0,
+    drawSplit: 0,
+    taeilCasts: 0,
   }
   for (let i = 0; i < n; i += 1) {
     const categoryId = LEAGUE_ORACLE_CATEGORY_IDS[i % LEAGUE_ORACLE_CATEGORY_IDS.length]!
@@ -81,6 +93,16 @@ export function runHoldCensus(n = HOLD_CENSUS_N): HoldCensus {
       out.confidence1ByVoted[k] += 1
     }
     if (computed.aggregate.ichingAlone) out.ichingAlone += 1
+    const drawSplit = isDrawSplit(computed.votes)
+    if (drawSplit) out.drawSplit += 1
+    if (
+      drawSplit &&
+      hasBallot(computed.votes.taeil) &&
+      isPlusVote(computed.aggregate.vote) === isPlusVote(computed.votes.taeil.vote) &&
+      isPlusVote(computed.aggregate.vote) !== isPlusVote(computed.aggregate.drawCamp)
+    ) {
+      out.taeilCasts += 1
+    }
     if (isPlusVote(computed.aggregate.vote)) out.up += 1
     else out.down += 1
   }
@@ -102,6 +124,10 @@ export function holdCensusRates(c: HoldCensus) {
     fourVotedAndAgreePct: pct(c.fourVotedAndAgree),
     confidence1Pct: pct(c.confidence1),
     ichingAlonePct: pct(c.ichingAlone),
+    drawSplitPct: pct(c.drawSplit),
+    taeilCastsPct: pct(c.taeilCasts),
+    taeilCastsGivenDrawSplitPct:
+      c.drawSplit === 0 ? 0 : Number(((c.taeilCasts / c.drawSplit) * 100).toFixed(1)),
     up: c.up,
     down: c.down,
     allFourIdenticalBeforePct: HOLD_CENSUS_ALL_FOUR_IDENTICAL_BEFORE * 100,

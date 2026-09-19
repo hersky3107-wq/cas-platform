@@ -3,7 +3,7 @@
  * voted (육효 3 + 타로 2 + 룬 2 + 택일 2). A 결번 seat is removed from the
  * denominator (9 → 7 if tarot abstains, etc.). DRAW still dominates when it
  * is united, but when DRAW splits internally 택일 is the casting vote.
- * Residual numeric tie → 육효 용신 왕쇠. 육효 never abstains.
+ * v1.3.0: 택일 일진 decides the ballot; 월건 scales applied weight.
  *
  * Confidence is |plus−minus| / remainingWeight (0..1). 1.000 means the
  * remaining voters are unanimous — not that four hats agreed.
@@ -29,8 +29,8 @@ function campVote(
   let plus = 0
   let minus = 0
   for (const item of active) {
-    if (isPlusVote(item.vote)) plus += item.weight
-    else minus += item.weight
+    if (isPlusVote(item.vote)) plus += item.appliedWeight
+    else minus += item.appliedWeight
   }
   if (plus > minus) return { vote: plusVoteOf(fallback), tied: false }
   if (minus > plus) return { vote: minusVoteOf(fallback), tied: false }
@@ -62,8 +62,8 @@ export function aggregateLeagueVotes(input: {
   let plusWeight = 0
   let minusWeight = 0
   for (const item of voters) {
-    if (isPlusVote(item.vote)) plusWeight += item.weight
-    else minusWeight += item.weight
+    if (isPlusVote(item.vote)) plusWeight += item.appliedWeight
+    else minusWeight += item.appliedWeight
   }
   const totalWeight = plusWeight + minusWeight
   const votedCount = voters.length as 1 | 2 | 3 | 4

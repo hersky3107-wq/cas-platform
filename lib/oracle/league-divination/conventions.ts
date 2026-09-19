@@ -5,7 +5,7 @@
  *
  * Bump LEAGUE_DIVINATION_VERSION when a vote, seed, or aggregator rule changes.
  */
-export const LEAGUE_DIVINATION_VERSION = '1.2.0'
+export const LEAGUE_DIVINATION_VERSION = '1.3.0'
 
 /**
  * Pin every timing chart to Seoul so a cached pack cannot vary by viewer.
@@ -27,6 +27,13 @@ export const LEAGUE_VOTE_WEIGHTS = {
   runes: 2,
   taeil: 2,
 } as const
+
+/**
+ * PRODUCT: when 월건 opposes 일진, 택일 still votes (no veto) but its
+ * applied contribution is this fraction of the nominal weight. The table
+ * above does not change.
+ */
+export const TAEIL_MONTH_OPPOSE_FACTOR = 0.5
 
 export const LEAGUE_DRAW_SYSTEMS = ['iching', 'tarot', 'runes'] as const
 export const LEAGUE_TIMING_SYSTEMS = ['taeil'] as const
