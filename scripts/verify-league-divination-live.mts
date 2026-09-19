@@ -45,6 +45,7 @@ const {
   LEAGUE_READER_EXTRA_REQUEST_PARAMS,
 } = await import('../lib/oracle/league-divination/conventions')
 const { LEAGUE_ORACLE_CATEGORY_IDS } = await import('../lib/oracle/league-divination/types')
+const { runHoldCensus, holdCensusRates } = await import('../lib/oracle/league-divination/hold-census')
 const { readLeagueDivination } = await import('../lib/oracle/league-divination/adapter')
 const { createSupabaseLeagueDivinationCache } = await import('../lib/oracle/league-divination/cache')
 const { supabaseAdmin } = await import('../lib/supabase/server')
@@ -233,29 +234,16 @@ async function waitForCacheTable(timeoutMs: number): Promise<{ ok: boolean; mess
   return { ok: false, message: last }
 }
 
-// --- 1. Sequential 20× gate on a real compact pack -----------------------------
+// --- 1. Sequential 20× gate, cycling real chip payloads -----------------------
 
-const gateComputed = computeLeagueDivination({
-  roundId: `live-verify-gate-${RUN_STAMP}`,
-  firstViewIso: FIRST_VIEW,
-  categoryId: 'stocks',
-  axis: 'direction',
-})
-const gatePack = compactReaderPack(gateComputed, {
-  proposition: CHIP_EVENTS.stocks.proposition,
-  subjectName: CHIP_EVENTS.stocks.subjectName,
-})
 const gateSystem = buildLeagueReaderSystemPrompt()
-const gateUser = buildLeagueReaderUserPrompt(gatePack)
-
-log(
-  `gate payload: userChars=${gateUser.length} systemChars=${gateSystem.length} codeVerdict=${gatePack.codeVerdict} iching=${gatePack.iching.primary}→${gatePack.iching.resulting} tarot=${gatePack.tarot.outcome} rune=${gatePack.runes.future}`,
-)
 
 type GateRow = {
   run: number
+  category: string
   parsed: boolean
   parseReason: string | null
+  parseDetail: string | null
   attempts: number
   latencyMs: number
   firstAttemptMs: number
@@ -271,17 +259,38 @@ type GateRow = {
 const gateRows: GateRow[] = []
 
 async function runGateTrial(run: number): Promise<GateRow> {
+  const category = LEAGUE_ORACLE_CATEGORY_IDS[(run - 1) % LEAGUE_ORACLE_CATEGORY_IDS.length]!
+  const event = CHIP_EVENTS[category]
+  const computed = computeLeagueDivination({
+    roundId: `live-verify-gate-${RUN_STAMP}-${run}-${category}`,
+    firstViewIso: FIRST_VIEW,
+    categoryId: category,
+    axis: event.propositionType === 'pick_one' ? 'pick_one' : 'direction',
+  })
+  const pack = compactReaderPack(computed, {
+    proposition: event.proposition,
+    subjectName: event.subjectName,
+  })
+  const user = buildLeagueReaderUserPrompt(pack)
+  if (run === 1) {
+    log(
+      `gate cycles all ${LEAGUE_ORACLE_CATEGORY_IDS.length} chips (run i → chip[(i-1)%12]). first userChars=${user.length} codeVerdict=${pack.codeVerdict}`,
+    )
+  }
+
   const first = await callReaderOnce({
     systemPrompt: gateSystem,
-    userPrompt: gateUser,
+    userPrompt: user,
     timeoutMs: LEAGUE_READER_TIMEOUT_MS,
   })
-  const parsedFirst = parseLeagueReaderRationale(first.text ?? '', gatePack.codeVerdict)
+  const parsedFirst = parseLeagueReaderRationale(first.text ?? '', pack.codeVerdict)
   if (parsedFirst.ok) {
     return {
       run,
+      category,
       parsed: true,
       parseReason: null,
+      parseDetail: null,
       attempts: 1,
       latencyMs: first.meta.latencyMs,
       firstAttemptMs: first.meta.latencyMs,
@@ -295,20 +304,24 @@ async function runGateTrial(run: number): Promise<GateRow> {
     }
   }
 
+  const firstFail = parsedFirst.ok ? null : parsedFirst
   const second = await callReaderOnce({
     systemPrompt: gateSystem + LEAGUE_READER_STRICT_RETRY,
-    userPrompt: gateUser,
+    userPrompt: user,
     timeoutMs: LEAGUE_READER_TIMEOUT_MS,
   })
-  const parsedSecond = parseLeagueReaderRationale(second.text ?? '', gatePack.codeVerdict)
+  const parsedSecond = parseLeagueReaderRationale(second.text ?? '', pack.codeVerdict)
   const cost =
     first.meta.costUsd != null || second.meta.costUsd != null
       ? (first.meta.costUsd ?? 0) + (second.meta.costUsd ?? 0)
       : null
+  const secondFail = parsedSecond.ok ? null : parsedSecond
   return {
     run,
+    category,
     parsed: parsedSecond.ok,
-    parseReason: parsedSecond.ok ? null : parsedSecond.reason,
+    parseReason: parsedSecond.ok ? firstFail?.reason ?? null : secondFail?.reason ?? null,
+    parseDetail: parsedSecond.ok ? firstFail?.detail ?? null : secondFail?.detail ?? null,
     attempts: 2,
     latencyMs: first.meta.latencyMs + second.meta.latencyMs,
     firstAttemptMs: first.meta.latencyMs,
@@ -318,7 +331,7 @@ async function runGateTrial(run: number): Promise<GateRow> {
     finishReason: second.meta.finishReason ?? first.meta.finishReason,
     error: second.meta.error ?? first.meta.error,
     textChars: (second.text ?? first.text ?? '').length,
-    sample: parsedSecond.ok ? null : (second.text ?? first.text ?? '').slice(0, 800),
+    sample: parsedSecond.ok ? (first.text ?? '').slice(0, 400) : (second.text ?? first.text ?? '').slice(0, 800),
   }
 }
 
@@ -328,7 +341,7 @@ for (let run = 1; run <= GATE_N; run += 1) {
   const row = await runGateTrial(run)
   gateRows.push(row)
   log(
-    `gate ${run}/${GATE_N} parsed=${row.parsed} attempts=${row.attempts} ${row.latencyMs}ms cost=${usd(row.costUsd)} kinds=${row.kinds.join('+')} empty200log=${row.empty200Logged} finish=${row.finishReason} reason=${row.parseReason ?? '-'}`,
+    `gate ${run}/${GATE_N} ${row.category} parsed=${row.parsed} attempts=${row.attempts} ${row.latencyMs}ms kinds=${row.kinds.join('+')} reason=${row.parseReason ?? '-'}${row.parseDetail ? `/${row.parseDetail}` : ''}`,
   )
 }
 
@@ -416,6 +429,13 @@ for (const category of LEAGUE_ORACLE_CATEGORY_IDS) {
           timeoutMs: input.timeoutMs,
         })
         callMetas.push(meta)
+        const parsed = parseLeagueReaderRationale(text ?? '', pack.codeVerdict)
+        if (!parsed.ok) {
+          log(
+            `  parse miss ${category} attempt=${callMetas.length} reason=${parsed.reason}${parsed.detail ? `/${parsed.detail}` : ''} chars=${[...(text ?? '')].length} lines=${(text ?? '').split(/\n/).filter((l) => l.trim()).length}`,
+          )
+          log(`  --- raw miss ---\n${(text ?? '').slice(0, 800)}\n  ---`)
+        }
         return { text, error: meta.error ?? undefined }
       },
     },
@@ -549,7 +569,7 @@ const md: string[] = [
   `- Run: ${RUN_STAMP}`,
   `- Reader: ${LEAGUE_READER_BRAND} / ${LEAGUE_READER_DISPLAY_NAME} (\`${LEAGUE_READER_PLATFORM_ID}\`)`,
   `- Timeout: ${LEAGUE_READER_TIMEOUT_MS}ms, max tokens: ${LEAGUE_READER_MAX_COMPLETION_TOKENS}`,
-  `- Gate payload: compact chart pack, user ${gateUser.length} chars (not a short prompt). codeVerdict=${gatePack.codeVerdict}`,
+  `- Gate payload: cycles all 12 chips (run i → chip[(i-1)%12]), not a single stocks pack.`,
   '',
   '## 1. Sequential 20× gate',
   '',
@@ -606,6 +626,26 @@ md.push(`- Second call site: \`readLeagueDivinationLive\` vs first \`readLeagueD
 md.push(`- Result: **${cacheCheck.ok ? 'identical stored row' : 'FAILED'}** — ${cacheCheck.detail}`)
 md.push('')
 
+const hold = runHoldCensus()
+const holdRates = holdCensusRates(hold)
+md.push('## 4. Hold-collapse census')
+md.push('')
+md.push(`n=${hold.n} (varied firstViewIso + all 12 chips). Collapse rule unchanged.`)
+md.push('')
+md.push('| | count | share |')
+md.push('| --- | ---: | ---: |')
+md.push(`| 타로 hold before collapse | ${hold.tarotHold} | ${holdRates.tarotHoldPct}% |`)
+md.push(`| 룬 hold before collapse | ${hold.runeHold} | ${holdRates.runeHoldPct}% |`)
+md.push(`| 택일 hold before collapse | ${hold.taeilHold} | ${holdRates.taeilHoldPct}% |`)
+md.push(`| all four ballots identical | ${hold.allFourIdentical} | ${holdRates.allFourIdenticalPct}% |`)
+md.push(`| confidence 1.000 | ${hold.confidence1} | ${holdRates.confidence1Pct}% |`)
+md.push(`| up / down | ${hold.up} / ${hold.down} | — |`)
+md.push('')
+md.push(
+  'confidence 1.000 is exactly all-four-identical (weights 3+2+2+2). Reversal does not flip a hold row, so 타로/룬 often copy 육효. The product claim of four independent votes is weaker than it looks.',
+)
+md.push('')
+
 writeFileSync(OUT_MD, md.join('\n'))
 writeFileSync(
   OUT_JSON,
@@ -619,10 +659,9 @@ writeFileSync(
         meanLatencyMs: gateMeanMs,
         worstLatencyMs: gateWorstMs,
         clears12s,
-        empty200Trials: gateEmpty200,
+        empties: gateEmpty200,
         timeoutTrials: gateTimeout,
-        payloadUserChars: gateUser.length,
-        codeVerdict: gatePack.codeVerdict,
+        cyclesChips: true,
         failSample,
         rows: gateRows.map((r) => ({ ...r, sample: r.sample ? r.sample.slice(0, 400) : null })),
       },
@@ -632,6 +671,7 @@ writeFileSync(
       fallbackFired: fallbackCount,
       marketLeak: leakCount,
       cache: { table: tableWait, ...cacheCheck },
+      holdCensus: { ...hold, rates: holdRates },
     },
     null,
     2,

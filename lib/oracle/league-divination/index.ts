@@ -22,6 +22,7 @@ export { parseLeagueReaderRationale, MARKET_LANGUAGE_BAN } from './parse-reader'
 export { compactReaderPack } from './compact-pack'
 export { fallbackRationale } from './fallback'
 export { tarotNameKo, runeNameKo } from './names'
+export { runHoldCensus, holdCensusRates, HOLD_CENSUS_N } from './hold-census'
 
 export type {
   LeagueBinaryVote,
