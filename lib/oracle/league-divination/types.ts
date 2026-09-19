@@ -82,6 +82,20 @@ export type LeagueTaeilPack = {
   yongshen: LeagueTaeilYongshen
   dayBranchElement: FiveElement
   monthBranchElement: FiveElement
+  /**
+   * 23:xx Seoul is rewritten to 22:xx so 일진 never takes the 자시 fork.
+   * The UI can say the round used the previous hour's pillars when applied.
+   */
+  hourPin: LeagueHourPin
+}
+
+export type LeagueHourPin = {
+  applied: boolean
+  /** Civil HH:mm in Seoul before the 23→22 rewrite. */
+  originalTime: string
+  /** Civil HH:mm actually fed to fourPillars / 구성 / astro. */
+  usedTime: string
+  reason: 'zi_start_fork_avoided' | null
 }
 
 export type LeagueAstroPack = {
@@ -135,5 +149,10 @@ export type LeagueDivinationResult = {
   }
   aggregate: LeagueAggregate
   charts: LeagueDivinationChartPack
-  seoul: { date: string; time: string; tz: string }
+  seoul: {
+    date: string
+    time: string
+    tz: string
+    hourPin: LeagueHourPin
+  }
 }

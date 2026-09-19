@@ -54,6 +54,23 @@ describe('computeLeagueDivination', () => {
     expect(result.charts.ninestar.result.day.number).toBeLessThanOrEqual(9)
     expect(result.charts.taeil.label).toBe('택일')
     expect(result.votes.taeil.system).toBe('taeil')
+    expect(result.seoul.hourPin.applied).toBe(false)
+    expect(result.charts.taeil.hourPin.applied).toBe(false)
+  })
+
+  it('notes the 23:xx → 22:xx rewrite on the chart pack', () => {
+    const result = computeLeagueDivination({
+      ...INPUT,
+      firstViewIso: '1988-03-15T14:30:00.000Z',
+    })
+    expect(result.seoul.hourPin).toEqual({
+      applied: true,
+      originalTime: '23:30',
+      usedTime: '22:30',
+      reason: 'zi_start_fork_avoided',
+    })
+    expect(result.charts.taeil.hourPin.applied).toBe(true)
+    expect(result.charts.taeil.hourPin.reason).toBe('zi_start_fork_avoided')
   })
 
   it('pick_one emits only a/b', () => {

@@ -24,7 +24,12 @@ const STEM_HANJA: Record<FiveElement, Record<YinYang, LeagueTaeilYongshen['stemH
  *   官鬼 authority / competition / lawsuit
  *   父母 documents / property
  *   子孙 outcome / remedy (also pleasure)
- *   兄弟 rivals / partners — listed for completeness; no v1 chip uses it.
+ *   兄弟 rivals / partners — unused by v1 chips. sports/politics stay 官鬼
+ *   (competition / authority / lawsuit). Some schools read a contest through
+ *   兄弟 (the opposing camp as 劫财); that would make 세/응 the two sides
+ *   rather than the event as 관살. v1 keeps 官鬼 for sports — a match is
+ *   승부 (official contest), not a sibling/partner quarrel. Do not switch
+ *   without an explicit product decision.
  */
 export const CATEGORY_TO_LIUQIN: Record<LeagueOracleCategoryId, SixRelative> = {
   stocks: '妻财',

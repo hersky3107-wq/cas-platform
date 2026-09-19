@@ -1,11 +1,13 @@
 /**
- * Binary aggregator. DRAW (육효 3, 타로 2, 룬 2) vs TIMING (사주 택일 2).
+ * Binary aggregator. Straight weighted sum across all four ballots
+ * (육효 3 + 타로 2 + 룬 2 + 택일 2 = 9). DRAW still dominates when it is
+ * united (7 vs 2), but when DRAW splits internally (육효 3 against 타로+룬 4)
+ * 택일 is the casting vote. Residual numeric tie → 육효 용신 왕쇠.
  *
- * Each camp votes by weighted majority. When camps disagree, DRAW wins.
- * Residual DRAW-internal tie → 육효 용신 왕쇠. Output is never null.
+ * Confidence is |plus−minus| / totalWeight (0..1).
  *
- * Confidence is |plus−minus| / totalWeight over all four ballots (0..1).
- * 택일 dissent therefore lowers confidence without flipping a DRAW win.
+ * v1.0.0 used "DRAW wins disagreement", which made TIMING inert. v1.1.0
+ * replaced that PRODUCT hierarchy with this sum.
  */
 import { LEAGUE_VOTE_WEIGHTS } from './conventions'
 import type {
@@ -45,23 +47,28 @@ export function aggregateLeagueVotes(input: {
   tarot: LeagueSystemVote
   runes: LeagueSystemVote
   taeil: LeagueSystemVote
-  /** 육효 용신 왕쇠 — residual DRAW tie AND the hold-collapse already applied upstream. */
+  /** 육효 용신 왕쇠 — residual numeric tie. Hold-collapse already applied upstream. */
   yongshenVote: LeagueBinaryVote
 }): LeagueAggregate {
   const draw = campVote([input.iching, input.tarot, input.runes], input.yongshenVote)
   const timing = campVote([input.taeil], input.yongshenVote)
-
-  // Camps disagree → DRAW wins. PRODUCT hierarchy, not a 육효-over-만세력
-  // doctrine. TIMING therefore never flips the v1 ballot; it only moves
-  // confidence. Residual DRAW-internal tie → 육효 용신 왕쇠.
-  const vote = draw.tied ? input.yongshenVote : draw.vote
-  const usedYongshenTiebreak = draw.tied
 
   let plusWeight = 0
   let minusWeight = 0
   for (const item of [input.iching, input.tarot, input.runes, input.taeil]) {
     if (isPlusVote(item.vote)) plusWeight += item.weight
     else minusWeight += item.weight
+  }
+
+  let vote: LeagueBinaryVote
+  let usedYongshenTiebreak = false
+  if (plusWeight > minusWeight) {
+    vote = plusVoteOf(input.yongshenVote)
+  } else if (minusWeight > plusWeight) {
+    vote = minusVoteOf(input.yongshenVote)
+  } else {
+    vote = input.yongshenVote
+    usedYongshenTiebreak = true
   }
 
   return {
@@ -75,4 +82,20 @@ export function aggregateLeagueVotes(input: {
     timingCamp: timing.vote,
     usedYongshenTiebreak,
   }
+}
+
+/**
+ * v1.0.0 camp rule, kept for the change-rate simulation only.
+ * DRAW internal majority; TIMING never flips the ballot.
+ */
+export function aggregateLeagueVotesDrawWinsDisagreement(input: {
+  axis: LeagueBallotAxis
+  iching: LeagueSystemVote
+  tarot: LeagueSystemVote
+  runes: LeagueSystemVote
+  taeil: LeagueSystemVote
+  yongshenVote: LeagueBinaryVote
+}): LeagueBinaryVote {
+  const draw = campVote([input.iching, input.tarot, input.runes], input.yongshenVote)
+  return draw.tied ? input.yongshenVote : draw.vote
 }

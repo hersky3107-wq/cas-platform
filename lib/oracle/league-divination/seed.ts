@@ -15,6 +15,8 @@ import {
 export type SeoulCivilClock = {
   date: string
   time: string
+  /** Civil HH:mm before the 23→22 rewrite. Equal to `time` when not pinned. */
+  originalTime: string
   tz: typeof LEAGUE_SEOUL.tz
   lat: typeof LEAGUE_SEOUL.lat
   lng: typeof LEAGUE_SEOUL.lng
@@ -43,10 +45,12 @@ export function seoulClockFromFirstView(firstViewIso: string): SeoulCivilClock {
   }
   const civil = civilFieldsInZone(utc, LEAGUE_SEOUL.tz)
   const hourPinned = civil.h === 23
+  const originalTime = `${pad2(civil.h)}:${pad2(civil.mi)}`
   const hour = hourPinned ? LEAGUE_PINNED_LATE_HOUR : civil.h
   return {
     date: formatYmd(civil.y, civil.m, civil.d),
     time: `${pad2(hour)}:${pad2(civil.mi)}`,
+    originalTime,
     tz: LEAGUE_SEOUL.tz,
     lat: LEAGUE_SEOUL.lat,
     lng: LEAGUE_SEOUL.lng,

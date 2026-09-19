@@ -15,12 +15,18 @@ import {
 } from './conventions'
 import { computeAstroChartPack, computeNineStarChartPack } from './charts'
 import { leagueDrawSeed, seoulClockFromFirstView } from './seed'
-import type { LeagueDivinationInput, LeagueDivinationResult, LeagueSystemVote } from './types'
+import type { LeagueDivinationInput, LeagueDivinationResult, LeagueHourPin, LeagueSystemVote } from './types'
 import { voteRuneFuture, voteTaeil, voteTarotOutcome } from './votes'
 import { mapPolarity, voteIching, yongshenPolarity } from './yongshen'
 
 export function computeLeagueDivination(input: LeagueDivinationInput): LeagueDivinationResult {
   const clock = seoulClockFromFirstView(input.firstViewIso)
+  const hourPin: LeagueHourPin = {
+    applied: clock.hourPinned,
+    originalTime: clock.originalTime,
+    usedTime: clock.time,
+    reason: clock.hourPinned ? 'zi_start_fork_avoided' : null,
+  }
   const pillars = fourPillars({ date: clock.date, time: clock.time, timezone: clock.tz })
   const relative = liuqinForCategory(input.categoryId)
   const taeilYongshen = taeilYongshenForCategory(input.categoryId)
@@ -92,10 +98,11 @@ export function computeLeagueDivination(input: LeagueDivinationInput): LeagueDiv
         yongshen: taeilYongshen,
         dayBranchElement: pillars.day.branch.element,
         monthBranchElement: pillars.month.branch.element,
+        hourPin,
       },
       astro: computeAstroChartPack(clock),
       ninestar: computeNineStarChartPack(clock),
     },
-    seoul: { date: clock.date, time: clock.time, tz: clock.tz },
+    seoul: { date: clock.date, time: clock.time, tz: clock.tz, hourPin },
   }
 }

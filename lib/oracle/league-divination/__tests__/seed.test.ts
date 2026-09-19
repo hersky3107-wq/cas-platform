@@ -25,7 +25,7 @@ describe('Seoul pin + 23:xx 자시 fork', () => {
 
   it('rewrites 23:xx Seoul to 22:xx so 택일 does not fork', () => {
     const late = seoulClockFromFirstView('1988-03-15T14:30:00.000Z')
-    expect(late.date).toBe('1988-03-15')
+    expect(late.originalTime).toBe('23:30')
     expect(late.time).toBe('22:30')
     expect(late.hourPinned).toBe(true)
 

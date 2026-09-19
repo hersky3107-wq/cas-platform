@@ -5,7 +5,7 @@
  *
  * Bump LEAGUE_DIVINATION_VERSION when a vote, seed, or aggregator rule changes.
  */
-export const LEAGUE_DIVINATION_VERSION = '1.0.0'
+export const LEAGUE_DIVINATION_VERSION = '1.1.0'
 
 /**
  * Pin every timing chart to Seoul so a cached pack cannot vary by viewer.
@@ -42,3 +42,21 @@ export const LEAGUE_RUNE_BALLOT_LABEL = 'Future'
 
 export const LEAGUE_DRAW_SEED_SYSTEMS = ['iching', 'tarot', 'runes'] as const
 export type LeagueDrawSeedSystem = (typeof LEAGUE_DRAW_SEED_SYSTEMS)[number]
+
+/**
+ * Single reader seat. Qwen 3.5 Flash (openrouter:qwen3.5-flash) — CJK-native
+ * flash model, already verified in PLATFORM_MODEL_REGISTRY, list $0.065 /
+ * $0.26 per 1M. Compact pack ≈2k in + 400 out ≈ $0.00023, well under $0.002.
+ * Reasoning effort:minimal so hidden thinking cannot eat the 500-token cap.
+ * Phi-4 is a hair cheaper but weaker Korean; Gemini 3.6 Flash overshoots the
+ * cost cap on a 2k prompt.
+ */
+export const LEAGUE_READER_BRAND = 'Qwen'
+export const LEAGUE_READER_DISPLAY_NAME = 'Qwen3.5 Flash'
+export const LEAGUE_READER_MODEL = 'qwen/qwen3.5-flash-02-23'
+export const LEAGUE_READER_PLATFORM_ID = 'openrouter:qwen3.5-flash'
+export const LEAGUE_READER_MAX_COMPLETION_TOKENS = 500
+export const LEAGUE_READER_TIMEOUT_MS = 12_000
+export const LEAGUE_READER_LINE_MIN = 4
+export const LEAGUE_READER_LINE_MAX = 5
+export const LEAGUE_READER_RATIONALE_MAX_CHARS = 600

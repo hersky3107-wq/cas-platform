@@ -1,0 +1,3 @@
+drop policy if exists "oracle_league_divination_cache_select_authenticated" on public.oracle_league_divination_cache;
+drop policy if exists "oracle_league_divination_cache_service_write" on public.oracle_league_divination_cache;
+drop table if exists public.oracle_league_divination_cache;
