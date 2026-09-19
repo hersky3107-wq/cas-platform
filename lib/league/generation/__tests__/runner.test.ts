@@ -19,6 +19,7 @@ const TIERS = {
   challenger: ['c1', 'c2', 'c3'],
   world: ['w1', 'w2'],
   scout: ['s1', 's2'],
+  extra: [] as string[],
 } as const
 
 function makeJob(over: Partial<LeagueGenerationJob> = {}): LeagueGenerationJob {
@@ -246,7 +247,7 @@ describe('runner happy path', () => {
     expect(job.attempt_count).toBe(0) // progress was made → budget reset
 
     // Subsequent ticks pick up exactly where it stopped and finish:
-    // challenger → world → scout → finalize, one stage per (budgetless) tick.
+    // challenger → world → scout → extra → finalize, one stage per (budgetless) tick.
     for (let tick = 0; tick < 6 && fake.byId.get('job-1')!.status !== 'done'; tick++) {
       await advanceLeagueGenerationJob('job-1', bundle.deps)
       await bundle.runScheduled()

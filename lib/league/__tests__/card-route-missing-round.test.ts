@@ -26,7 +26,7 @@ describe('GET /api/league/card missing catalog chip+horizon', () => {
     expect(CARD_ROUTE).not.toMatch(/rosterSize\s*=\s*41/)
     expect(CARD_ROUTE).toContain('listRoundModelRows')
     expect(CARD_ROUTE).toContain('rosterGenerationProgress')
-    expect(CARD_ROUTE).toContain('getRoster()')
+    expect(CARD_ROUTE).toContain('getProgressRosterIds()')
     expect(CARD_ROUTE).toContain('droppedModelIds')
   })
 

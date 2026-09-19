@@ -1,4 +1,5 @@
 import type { CombinedMethodTrack, ConsensusSummary, DirectionTally, ModelSide } from './card-types'
+import { mentionsSixSystems } from './extra/copy'
 import type { LeagueUiPack } from './i18n/dictionary'
 import { tallySlotOfToken, type SideLabels } from './side-labels'
 import { formatWinRatePct } from './win-rate'
@@ -311,10 +312,24 @@ export function combinedTrackLine(track: CombinedMethodTrack, t: LeagueUiPack): 
  */
 const BANNED_TOKENS = ['buy now', 'sell now', 'price target', 'you should buy', 'you should sell', 'place a bet', 'odds of winning']
 
+export function extraExperimentalDisclaimer(t: LeagueUiPack): string {
+  return t.disclaimer.extraExperimental
+}
+
 export function assertApprovedCopy(text: string): void {
   const lower = text.toLowerCase()
   const hit = BANNED_TOKENS.find((t) => lower.includes(t))
   if (hit) {
     throw new Error(`league compliance: banned phrase "${hit}" in card copy: "${text}"`)
+  }
+  const six = mentionsSixSystems(text)
+  if (six) {
+    throw new Error(`league compliance: banned extra-tier phrase "${six}" in card copy: "${text}"`)
+  }
+}
+
+export function assertExtraExperimentalDisclaimer(text: string): void {
+  if (!text.trim()) {
+    throw new Error('league compliance: extra-tier experimental disclaimer missing')
   }
 }

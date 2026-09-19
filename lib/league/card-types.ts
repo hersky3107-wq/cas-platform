@@ -39,11 +39,14 @@ export type ModelSide = SideToken | 'flat'
 
 export type Direction = 'up' | 'down' | 'flat'
 export type Camp = 'us' | 'china' | 'other'
-export type LeagueTier = 'premier' | 'challenger' | 'world' | 'scout'
+export type MainLeagueTier = 'premier' | 'challenger' | 'world' | 'scout'
+export type LeagueTier = MainLeagueTier | 'extra'
 export type ColorBucket = 'green' | 'yellow' | 'red'
 
 export const CAMPS: readonly Camp[] = ['us', 'china', 'other']
-export const LEAGUE_TIERS: readonly LeagueTier[] = ['premier', 'challenger', 'world', 'scout']
+/** Official 41-model tiers. Extra is graded but isolated from this math. */
+export const MAIN_LEAGUE_TIERS: readonly MainLeagueTier[] = ['premier', 'challenger', 'world', 'scout']
+export const LEAGUE_TIERS: readonly LeagueTier[] = ['premier', 'challenger', 'world', 'scout', 'extra']
 
 export const CAMP_LABEL: Record<Camp, string> = {
   us: 'US',
@@ -56,6 +59,7 @@ export const TIER_LABEL: Record<LeagueTier, string> = {
   challenger: 'Challenger',
   world: 'World',
   scout: 'Scout',
+  extra: 'Extra',
 }
 
 /** One model's stored answer for this round, as read from `model_predictions`. */
@@ -295,7 +299,7 @@ export type CardRoundMeta = {
  */
 export type CardGenerationState = {
   status: 'queued' | 'running' | 'failed'
-  /** Work stage: packet → premier → challenger → world → scout → finalize. */
+  /** Work stage: packet → premier → challenger → world → scout → extra → finalize. */
   stage: string
   /**
    * Active roster seat count for this round's tiers (`getRoster`, never a

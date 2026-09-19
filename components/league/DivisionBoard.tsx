@@ -23,6 +23,7 @@ const DIVISION_DOT: Record<LeagueTier, string> = {
   challenger: 'bg-sky-500',
   world: 'bg-emerald-500',
   scout: 'bg-violet-500',
+  extra: 'bg-amber-500',
 }
 
 /**
@@ -36,8 +37,8 @@ const DIVISION_DOT: Record<LeagueTier, string> = {
  * a narrow viewport and as a multi-column grid from `md` up. Divisions
  * collapse on mobile (Premier starts open); `md:` always shows the grid.
  *
- * While `streaming`, all four tiers mount immediately with skeleton slots
- * sized from `getRoster([tier])`. Arriving tiles drop into their own tier
+ * While `streaming`, all five tiers mount immediately with skeleton slots
+ * sized from `rosterIdsForTier`. Arriving tiles drop into their own tier
  * in arrival order; dropped seats become a compact 미응답 placeholder.
  * Static / finished cards omit `streaming` so frozen render fixtures stay
  * byte-identical.
@@ -81,6 +82,7 @@ export function DivisionBoard({
     challenger: false,
     world: false,
     scout: false,
+    extra: true,
   })
 
   if (!streaming && models.length === 0) {

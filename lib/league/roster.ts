@@ -1,4 +1,5 @@
 import type { ExtendedAiProviderName } from '@/lib/ai/router'
+import { extraSeatIds, lookupExtraSeat } from './extra/seats'
 
 /**
  * AI Prediction League — model roster (CONFIG, not code).
@@ -28,7 +29,8 @@ import type { ExtendedAiProviderName } from '@/lib/ai/router'
  * DeepSeek first-party rewire are noted inline.
  */
 
-export type LeagueTier = 'premier' | 'challenger' | 'world' | 'scout'
+export type OfficialLeagueTier = 'premier' | 'challenger' | 'world' | 'scout'
+export type LeagueTier = OfficialLeagueTier | 'extra'
 export type Camp = 'us' | 'china' | 'other'
 /**
  * Whether THIS seat's weights are publicly downloadable (Hugging Face or
@@ -83,7 +85,7 @@ export type RosterEntry = {
   /** Consumer-facing product name shown as "Brand (Product)" when set. */
   product_alias?: string
   camp: Camp
-  league_tier: LeagueTier
+  league_tier: OfficialLeagueTier
   weights: WeightsKind
   /** Human-facing provider identity (openai, openrouter, youcom, …). */
   provider_key: string
@@ -352,10 +354,17 @@ export function lookupRosterEntry(modelId: string): RosterEntry | undefined {
   return ROSTER_BY_MODEL_ID.get(modelId)
 }
 
+/** Official 41 + extra 4 — generation progress and streaming shells. */
+export function getProgressRosterIds(): string[] {
+  return [...LEAGUE_ROSTER.map((entry) => entry.model_id), ...extraSeatIds()]
+}
+
 /** Live roster first; retired display alias if the seat has been replaced. */
 export function lookupRosterDisplay(modelId: string): { brand: string; model_id: string } | undefined {
   const live = lookupRosterEntry(modelId)
   if (live) return { brand: formatRosterBrand(live), model_id: rosterModelIdentifier(live) }
+  const extra = lookupExtraSeat(modelId)
+  if (extra) return { brand: extra.brand, model_id: extra.model_id }
   const retired = RETIRED_ROSTER_DISPLAY[modelId]
   if (!retired) return undefined
   return { brand: formatRosterBrand(retired), model_id: modelId }
@@ -364,7 +373,9 @@ export function lookupRosterDisplay(modelId: string): { brand: string; model_id:
 /** Roster subset by tier (e.g. run only 'world' first to keep the cost test cheap). */
 export function getRoster(tiers?: LeagueTier[]): RosterEntry[] {
   if (!tiers || tiers.length === 0) return LEAGUE_ROSTER
-  const set = new Set(tiers)
+  const official = tiers.filter((t): t is OfficialLeagueTier => t !== 'extra')
+  if (official.length === 0) return []
+  const set = new Set(official)
   return LEAGUE_ROSTER.filter((m) => set.has(m.league_tier))
 }
 

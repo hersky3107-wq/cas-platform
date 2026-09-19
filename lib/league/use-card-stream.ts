@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CAMPS, LEAGUE_TIERS, type CardData, type CardModelPrediction } from './card-types'
 import { computeCardAggregates } from './card-aggregate'
 import { rosterGenerationProgress } from './generation-progress'
-import { getRoster } from './roster'
+import { getProgressRosterIds } from './roster'
 import { hasCallableSide } from './side-labels'
 
 export type CardStreamState = 'static' | 'connecting' | 'live' | 'reconnecting' | 'error'
@@ -217,7 +217,7 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
       setLiveProgress(null)
       setDroppedModelIds([])
       writtenIdsRef.current = []
-      const rosterIds = getRoster().map((entry) => entry.model_id)
+      const rosterIds = getProgressRosterIds()
       const pushWritten = (modelId: string) => {
         if (!writtenIdsRef.current.includes(modelId)) writtenIdsRef.current.push(modelId)
         return rosterGenerationProgress(rosterIds, writtenIdsRef.current)

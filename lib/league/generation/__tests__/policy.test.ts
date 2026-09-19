@@ -43,8 +43,8 @@ describe('league generation press policy (paid view, 2026-09-14)', () => {
 })
 
 describe('league generation stage machine', () => {
-  it('walks packet → premier(within packet) → challenger → world → scout → finalize', () => {
-    expect(GENERATION_STAGES).toEqual(['packet', 'premier', 'challenger', 'world', 'scout', 'finalize'])
+  it('walks packet → premier(within packet) → challenger → world → scout → extra → finalize', () => {
+    expect(GENERATION_STAGES).toEqual(['packet', 'premier', 'challenger', 'world', 'scout', 'extra', 'finalize'])
     // 'packet' RUNS the premier tier (packet assembly happens inside that
     // first orchestrator call), so its successor skips 'premier'.
     expect(tierForStage('packet')).toBe('premier')
@@ -52,7 +52,8 @@ describe('league generation stage machine', () => {
     expect(nextGenerationStage('premier')).toBe('challenger')
     expect(nextGenerationStage('challenger')).toBe('world')
     expect(nextGenerationStage('world')).toBe('scout')
-    expect(nextGenerationStage('scout')).toBe('finalize')
+    expect(nextGenerationStage('scout')).toBe('extra')
+    expect(nextGenerationStage('extra')).toBe('finalize')
     expect(nextGenerationStage('finalize')).toBe(null)
   })
 

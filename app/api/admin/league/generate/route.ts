@@ -10,7 +10,7 @@ import type { LeagueTier } from '@/lib/league/roster'
 /** Fan-out across the roster with a per-call timeout; give it headroom. */
 export const maxDuration = 180
 
-const VALID_TIERS: LeagueTier[] = ['premier', 'challenger', 'world', 'scout']
+const VALID_TIERS: LeagueTier[] = ['premier', 'challenger', 'world', 'scout', 'extra']
 
 /**
  * Admin/service-role-only trigger for the AI Prediction League generation

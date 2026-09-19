@@ -183,6 +183,8 @@ export type LeagueUiPack = {
     long: string
     /** Extra line ONLY on real_estate cards — statistical reference, not an appraisal. */
     realEstate: string
+    /** Extra-tier entertainment / experimental disclaimer — always rendered. */
+    extraExperimental: string
   }
   /**
    * Shown on a card AFTER an operator-manual round has been graded from
@@ -453,7 +455,7 @@ export type LeagueUiPack = {
     sectionOverconfident: string
     sectionStreaks: string
     campLabels: { us: string; china: string; other: string }
-    tierLabels: { premier: string; challenger: string; world: string; scout: string }
+    tierLabels: Record<LeagueTier, string>
     bookLabels: { closed: string; scout: string }
     weightLabels: { closed: string; open: string }
     /** ONE integrated line — total closed vs total open. Not a country/camp/brand split. */
@@ -823,6 +825,7 @@ const en: LeagueUiPack = {
     long: 'These are AI model opinions shown for information and entertainment purposes only. They are not investment, financial, legal, or professional advice, and no model here is a licensed advisor. Markets are unpredictable and AI models can be — and often are — wrong. You are solely responsible for any decision you make.',
     realEstate:
       'Statistical reference only — not a formal appraisal. Region- and instrument-level outlook; not a valuation of any specific property.',
+    extraExperimental: 'For entertainment and experiment only — not a basis for investment decisions.',
   },
   operatorGrade: {
     verifiedLabel: 'Operator-verified',
@@ -978,6 +981,7 @@ const en: LeagueUiPack = {
       challenger: '2 · CHALLENGER',
       world: '3 · WORLD',
       scout: 'SCOUT',
+      extra: 'EXTRA',
     },
     compactTally,
     showReasoning: 'Show reasoning',
@@ -1010,7 +1014,7 @@ const en: LeagueUiPack = {
     sectionOverconfident: 'Wrong calls by confidence',
     sectionStreaks: 'Win streaks',
     campLabels: { us: 'US', china: 'China', other: 'Other' },
-    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT', extra: 'EXTRA' },
     bookLabels: { closed: 'Own reasoning', scout: 'Web search' },
     weightLabels: { closed: 'Closed-weights', open: 'Open-weights' },
     weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
@@ -1317,6 +1321,7 @@ const ko: LeagueUiPack = {
     short: '정보 제공 목적일 뿐 투자 조언이 아닙니다. 모든 결정의 책임은 본인에게 있습니다.',
     long: '본 콘텐츠는 여러 AI 모델의 의견을 정보 및 오락 목적으로 제공하는 것이며, 투자·금융·법률·전문 자문이 아닙니다. 여기 등장하는 어떤 모델도 인가받은 자문가가 아닙니다. 시장은 예측할 수 없으며 AI 모델의 예측은 자주, 그리고 크게 틀릴 수 있습니다. 이를 근거로 내리는 모든 결정의 책임은 전적으로 본인에게 있습니다.',
     realEstate: '통계적 참고용이며 감정평가가 아닙니다. 개별 부동산 가치 산정이 아닙니다.',
+    extraExperimental: '오락·실험 목적, 투자 판단 근거 아님',
   },
   operatorGrade: {
     verifiedLabel: '운영자 확인',
@@ -1471,6 +1476,7 @@ const ko: LeagueUiPack = {
       challenger: '2부 CHALLENGER',
       world: '3부 WORLD',
       scout: 'SCOUT',
+      extra: '엑스트라',
     },
     compactTally,
     showReasoning: '근거 보기',
@@ -1502,7 +1508,7 @@ const ko: LeagueUiPack = {
     sectionOverconfident: '허풍 랭킹',
     sectionStreaks: '연승',
     campLabels: { us: 'US', china: 'CN', other: '기타' },
-    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT', extra: 'EXTRA' },
     bookLabels: { closed: '자체추론', scout: '웹검색' },
     weightLabels: { closed: '폐쇄형', open: '오픈웨이트' },
     weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
@@ -1807,6 +1813,7 @@ const ja: LeagueUiPack = {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
     long: 'この内容は複数のAIモデルの見解を情報提供・娯楽目的で示したものであり、投資・金融・法律・専門的な助言ではありません。ここに登場するモデルはいずれも認可を受けたアドバイザーではありません。市場は予測不可能であり、AIモデルの予測は誤ることが多々あります。これに基づく判断の責任はすべてご自身が負うものとします。',
     realEstate: '統計的な参考情報であり、鑑定評価ではありません。個別不動産の価格算定ではありません。',
+    extraExperimental: '娯楽・実験目的であり、投資判断の根拠ではありません。',
   },
   operatorGrade: {
     verifiedLabel: '運営者確認済み',
@@ -1961,6 +1968,7 @@ const ja: LeagueUiPack = {
       challenger: '2部 CHALLENGER',
       world: '3部 WORLD',
       scout: 'SCOUT',
+      extra: 'EXTRA',
     },
     compactTally,
     showReasoning: '根拠を表示',
@@ -1992,7 +2000,7 @@ const ja: LeagueUiPack = {
     sectionOverconfident: '自信過剰ランキング',
     sectionStreaks: '連勝',
     campLabels: { us: 'US', china: 'CN', other: 'その他' },
-    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT', extra: 'EXTRA' },
     bookLabels: { closed: '自己推論', scout: 'ウェブ検索' },
     weightLabels: { closed: 'クローズドウェイト', open: 'オープンウェイト' },
     weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
@@ -2294,6 +2302,7 @@ const zhTW: LeagueUiPack = {
     short: '僅供參考，非投資建議。所有決定的責任由您自行承擔。',
     long: '本內容為多個 AI 模型的意見，僅供資訊與娛樂用途，並非投資、財務、法律或專業建議；此處任何模型皆非持牌顧問。市場無法預測，AI 模型的判斷經常出錯。您必須自行承擔依此做出之任何決定的全部責任。',
     realEstate: '僅供統計參考，並非正式估價。僅涵蓋區域／標的層級，不對個別不動產估價。',
+    extraExperimental: '僅供娛樂與實驗，不得作為投資判斷依據。',
   },
   operatorGrade: {
     verifiedLabel: '營運者已驗證',
@@ -2445,6 +2454,7 @@ const zhTW: LeagueUiPack = {
       challenger: '2級 CHALLENGER',
       world: '3級 WORLD',
       scout: 'SCOUT',
+      extra: 'EXTRA',
     },
     compactTally,
     showReasoning: '顯示理由',
@@ -2476,7 +2486,7 @@ const zhTW: LeagueUiPack = {
     sectionOverconfident: '虛張聲勢排名',
     sectionStreaks: '連勝',
     campLabels: { us: 'US', china: 'CN', other: '其他' },
-    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT', extra: 'EXTRA' },
     bookLabels: { closed: '自身推理', scout: '網路搜尋' },
     weightLabels: { closed: '封閉權重', open: '開放權重' },
     weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
@@ -2780,6 +2790,7 @@ const fr: LeagueUiPack = {
     long: 'Ce contenu présente les avis de plusieurs modèles d\u2019IA à titre purement informatif et de divertissement. Il ne s\u2019agit pas d\u2019un conseil en investissement, financier, juridique ou professionnel, et aucun modèle ici n\u2019est un conseiller agréé. Les marchés sont imprévisibles et les modèles d\u2019IA peuvent se tromper, et se trompent souvent. Vous assumez l\u2019entière responsabilité de toute décision prise sur cette base.',
     realEstate:
       'Référence statistique uniquement — pas une expertise immobilière. Horizon régional ou d\u2019instrument, pas une évaluation d\u2019un bien précis.',
+    extraExperimental: 'À des fins de divertissement et d’expérience uniquement — pas un fondement de décision d’investissement.',
   },
   operatorGrade: {
     verifiedLabel: 'Vérifié par l\u2019opérateur',
@@ -2936,6 +2947,7 @@ const fr: LeagueUiPack = {
       challenger: '2e · CHALLENGER',
       world: '3e · WORLD',
       scout: 'SCOUT',
+      extra: 'EXTRA',
     },
     compactTally,
     showReasoning: 'Voir le raisonnement',
@@ -2968,7 +2980,7 @@ const fr: LeagueUiPack = {
     sectionOverconfident: 'Appels faux par confiance',
     sectionStreaks: 'Séries de victoires',
     campLabels: { us: 'US', china: 'Chine', other: 'Autre' },
-    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT', extra: 'EXTRA' },
     bookLabels: { closed: 'Raisonnement interne', scout: 'Recherche web' },
     weightLabels: { closed: 'Poids fermés', open: 'Poids ouverts' },
     weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
@@ -3282,6 +3294,7 @@ const es: LeagueUiPack = {
     long: 'Este contenido muestra opiniones de varios modelos de IA con fines informativos y de entretenimiento únicamente. No constituye asesoramiento de inversión, financiero, legal ni profesional, y ninguno de estos modelos es un asesor autorizado. Los mercados son impredecibles y los modelos de IA pueden equivocarse, y a menudo lo hacen. Usted es el único responsable de cualquier decisión que tome con base en esta información.',
     realEstate:
       'Solo referencia estadística, no es una tasación formal. Perspectiva de región o instrumento, no la valoración de un inmueble concreto.',
+    extraExperimental: 'Solo entretenimiento y experimento — no es base para una decisión de inversión.',
   },
   operatorGrade: {
     verifiedLabel: 'Verificado por el operador',
@@ -3438,6 +3451,7 @@ const es: LeagueUiPack = {
       challenger: '2.ª · CHALLENGER',
       world: '3.ª · WORLD',
       scout: 'SCOUT',
+      extra: 'EXTRA',
     },
     compactTally,
     showReasoning: 'Ver el razonamiento',
@@ -3470,7 +3484,7 @@ const es: LeagueUiPack = {
     sectionOverconfident: 'Fallos por confianza',
     sectionStreaks: 'Rachas',
     campLabels: { us: 'EE. UU.', china: 'China', other: 'Otro' },
-    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT', extra: 'EXTRA' },
     bookLabels: { closed: 'Razonamiento propio', scout: 'Búsqueda web' },
     weightLabels: { closed: 'Pesos cerrados', open: 'Pesos abiertos' },
     weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
@@ -3783,6 +3797,7 @@ const ar: LeagueUiPack = {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
     long: 'يعرض هذا المحتوى آراء عدة نماذج ذكاء اصطناعي لأغراض المعلومات والترفيه فقط. وهو لا يمثل نصيحة استثمارية أو مالية أو قانونية أو مهنية، وليس أي نموذج هنا مستشارًا مرخصًا. الأسواق غير قابلة للتنبؤ، وقد تخطئ نماذج الذكاء الاصطناعي، بل وتخطئ كثيرًا. أنت وحدك المسؤول عن أي قرار تتخذه بناءً على ذلك.',
     realEstate: 'مرجع إحصائي فقط — وليس تقييمًا رسميًا. نظرة على المنطقة أو الأداة، لا تقدير لعقار بعينه.',
+    extraExperimental: 'للترفيه والتجربة فقط، وليس أساسًا لقرار استثماري.',
   },
   operatorGrade: {
     verifiedLabel: 'تم التحقق من قِبل المشغّل',
@@ -3937,6 +3952,7 @@ const ar: LeagueUiPack = {
       challenger: 'الثانية · CHALLENGER',
       world: 'الثالثة · WORLD',
       scout: 'SCOUT',
+      extra: 'EXTRA',
     },
     compactTally,
     showReasoning: 'عرض السبب',
@@ -3968,7 +3984,7 @@ const ar: LeagueUiPack = {
     sectionOverconfident: 'أخطاء حسب الثقة',
     sectionStreaks: 'سلاسل الفوز',
     campLabels: { us: 'الولايات المتحدة', china: 'الصين', other: 'أخرى' },
-    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT', extra: 'EXTRA' },
     bookLabels: { closed: 'استدلال ذاتي', scout: 'بحث ويب' },
     weightLabels: { closed: 'أوزان مغلقة', open: 'أوزان مفتوحة' },
     weightsLine: (closedHits, closedGraded, openHits, openGraded) =>
@@ -4279,6 +4295,7 @@ const pt: LeagueUiPack = {
     long: 'Estas são opiniões de modelos de IA exibidas apenas para fins informativos e de entretenimento. Não são aconselhamento de investimento, financeiro, jurídico ou profissional, e nenhum modelo aqui é um consultor licenciado. Os mercados são imprevisíveis e os modelos de IA podem errar — e erram com frequência. Você é o único responsável por qualquer decisão que tomar.',
     realEstate:
       'Referência estatística apenas — não é uma avaliação formal. Perspectiva por região e instrumento; não é a avaliação de nenhum imóvel específico.',
+    extraExperimental: 'Apenas entretenimento e experimento — não é base para decisão de investimento.',
   },
   operatorGrade: {
     verifiedLabel: 'Verificado pelo operador',
@@ -4434,6 +4451,7 @@ const pt: LeagueUiPack = {
       challenger: '2 · CHALLENGER',
       world: '3 · WORLD',
       scout: 'SCOUT',
+      extra: 'EXTRA',
     },
     compactTally,
     showReasoning: 'Mostrar raciocínio',
@@ -4466,7 +4484,7 @@ const pt: LeagueUiPack = {
     sectionOverconfident: 'Erros por confiança',
     sectionStreaks: 'Sequências',
     campLabels: { us: 'EUA', china: 'China', other: 'Outro' },
-    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT' },
+    tierLabels: { premier: 'PREMIER', challenger: 'CHALLENGER', world: 'WORLD', scout: 'SCOUT', extra: 'EXTRA' },
     bookLabels: { closed: 'Raciocínio próprio', scout: 'Busca na web' },
     weightLabels: { closed: 'Pesos fechados', open: 'Pesos abertos' },
     weightsLine: (closedHits, closedGraded, openHits, openGraded) =>

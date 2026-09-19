@@ -63,7 +63,7 @@ export type LeagueRunnerStore = {
 
 export type GenerateTierChunk = (args: {
   roundId: string
-  tier: 'premier' | 'challenger' | 'world' | 'scout'
+  tier: 'premier' | 'challenger' | 'world' | 'scout' | 'extra'
   excludeModelIds: string[]
   deadlineAtMs: number
   tickBudgetMs: number
@@ -79,7 +79,7 @@ export type LeagueRunnerDeps = {
   /** Money back — live wiring binds addCreditsBalance (the deep-analysis refund primitive). */
   refundCredits: (userId: string, amount: number) => Promise<void>
   /** Full model_id list per tier (roster order). */
-  tierModelIds: (tier: 'premier' | 'challenger' | 'world' | 'scout') => string[]
+  tierModelIds: (tier: 'premier' | 'challenger' | 'world' | 'scout' | 'extra') => string[]
   /**
    * Close-higher jobs must already have a persisted anchor. 'fail' trips
    * the same terminal-refund path as the attempt cap — never fan out 41

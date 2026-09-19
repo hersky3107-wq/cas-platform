@@ -1,5 +1,5 @@
 import type { CardData } from '@/lib/league/card-types'
-import { getRoster } from '@/lib/league/roster'
+import { getProgressRosterIds } from '@/lib/league/roster'
 import { revealConsensusConclusion } from '@/lib/league/generation-progress'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
@@ -82,7 +82,7 @@ export function CardBody({
         <GenerationProgressStrip
           queued={(data.generation?.status ?? (streaming ? 'running' : null)) === 'queued'}
           answered={data.generation?.answered ?? liveProgress?.answered ?? 0}
-          rosterSize={data.generation?.rosterSize ?? liveProgress?.rosterSize ?? getRoster().length}
+          rosterSize={data.generation?.rosterSize ?? liveProgress?.rosterSize ?? getProgressRosterIds().length}
           complete={data.generation?.complete ?? liveProgress?.complete ?? false}
           t={t}
         />

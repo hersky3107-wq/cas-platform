@@ -99,7 +99,7 @@ export const DEEP_POLL_MS = GENERATION_POLL_MS
  * 'view' is NOT a work stage: it marks an access-only purchase row (a user
  * buying permanent view access to a round that needed no work).
  */
-export const GENERATION_STAGES = ['packet', 'premier', 'challenger', 'world', 'scout', 'finalize'] as const
+export const GENERATION_STAGES = ['packet', 'premier', 'challenger', 'world', 'scout', 'extra', 'finalize'] as const
 export type GenerationStage = (typeof GENERATION_STAGES)[number] | 'done' | 'view'
 
 export type GenerationJobStatus = 'queued' | 'running' | 'done' | 'failed'
@@ -108,9 +108,9 @@ export const GENERATION_ACTIVE_STATUSES: readonly GenerationJobStatus[] = ['queu
 export const GENERATION_TERMINAL_STATUSES: readonly GenerationJobStatus[] = ['done', 'failed']
 
 /** Which roster tier a work stage runs. 'packet' runs premier (packet builds on entry). */
-export function tierForStage(stage: string): 'premier' | 'challenger' | 'world' | 'scout' | null {
+export function tierForStage(stage: string): 'premier' | 'challenger' | 'world' | 'scout' | 'extra' | null {
   if (stage === 'packet' || stage === 'premier') return 'premier'
-  if (stage === 'challenger' || stage === 'world' || stage === 'scout') return stage
+  if (stage === 'challenger' || stage === 'world' || stage === 'scout' || stage === 'extra') return stage
   return null
 }
 

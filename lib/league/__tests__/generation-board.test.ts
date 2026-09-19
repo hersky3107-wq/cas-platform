@@ -14,11 +14,12 @@ describe('generation-board seat plan', () => {
     expect(counts.challenger).toBe(getRoster(['challenger']).length)
     expect(counts.world).toBe(getRoster(['world']).length)
     expect(counts.scout).toBe(getRoster(['scout']).length)
+    expect(counts.extra).toBe(4)
     expect(counts.premier + counts.challenger + counts.world + counts.scout).toBe(getRoster().length)
   })
 
-  it('always plans all four tiers so they can mount empty and fill together', () => {
-    expect(streamingTiers()).toEqual(['premier', 'challenger', 'world', 'scout'])
+  it('always plans official tiers plus extra so they can mount empty and fill together', () => {
+    expect(streamingTiers()).toEqual(['premier', 'challenger', 'world', 'scout', 'extra'])
   })
 
   it('a world tile plus two drops leaves skeletons in world only — other tiers stay full-skeleton', () => {

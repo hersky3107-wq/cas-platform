@@ -8,6 +8,7 @@ import {
   type CombinedMethodTrack,
   type LeagueTier,
 } from './card-types'
+import { EXTRA_SEAT_IDS, isExtraSeat, officialRowsForConsensus } from './extra/seats'
 import { LEAGUE_ROSTER, WEIGHT_LABEL, WEIGHTS_KINDS, type WeightsKind } from './roster'
 import { buildBaselineSummary, emptyBaselineSummary, type BaselineSummary } from './baselines'
 import { toSideToken } from './side-labels'
@@ -187,6 +188,7 @@ function bucketOf(row: GradedPredictionRow, scope: LeaderboardScope): { key: str
       if (row.camp !== 'us' && row.camp !== 'china') return null
       return { key: row.camp, label: CAMP_LABEL[row.camp as Camp] ?? row.camp }
     case 'method':
+      if (isExtraSeat(row)) return null
       return row.league_tier === 'scout'
         ? { key: 'research', label: 'Research' }
         : { key: 'pure_reasoning', label: 'Pure reasoning' }
@@ -219,7 +221,12 @@ const ROSTER_BY_MODEL_ID = new Map(LEAGUE_ROSTER.map((entry) => [entry.model_id,
  * from where a low-sample row sits.
  */
 function unrankedOrderOf(row: LeaderboardRow, scope: LeaderboardScope): number {
-  if (scope === 'model') return ROSTER_ORDER.get(row.key) ?? Number.MAX_SAFE_INTEGER
+  if (scope === 'model') {
+    const official = ROSTER_ORDER.get(row.key)
+    if (official !== undefined) return official
+    const extra = EXTRA_SEAT_IDS.indexOf(row.key as (typeof EXTRA_SEAT_IDS)[number])
+    return extra === -1 ? Number.MAX_SAFE_INTEGER : LEAGUE_ROSTER.length + extra
+  }
   if (scope === 'tier') {
     const index = LEAGUE_TIERS.indexOf(row.key as LeagueTier)
     return index === -1 ? Number.MAX_SAFE_INTEGER : index
@@ -311,7 +318,7 @@ export function buildLeaderboardSlice(rows: readonly GradedPredictionRow[], scop
  */
 export function buildCombinedMethodTrack(rows: readonly GradedPredictionRow[]): CombinedMethodTrack {
   const byRound = new Map<string, GradedPredictionRow[]>()
-  for (const row of rows) {
+  for (const row of officialRowsForConsensus(rows)) {
     const list = byRound.get(row.round_id) ?? []
     list.push(row)
     byRound.set(row.round_id, list)
@@ -371,19 +378,20 @@ export function buildLeaderboardData(
   rows: readonly GradedPredictionRow[],
   coverage: RoundCoverage = emptyRoundCoverage()
 ): LeaderboardData {
+  const official = officialRowsForConsensus(rows)
   const model = buildLeaderboardSlice(rows, 'model')
   return {
     model,
-    campHeadline: buildLeaderboardSlice(rows, 'campHeadline'),
-    method: buildLeaderboardSlice(rows, 'method'),
-    camp: buildLeaderboardSlice(rows, 'camp'),
+    campHeadline: buildLeaderboardSlice(official, 'campHeadline'),
+    method: buildLeaderboardSlice(official, 'method'),
+    camp: buildLeaderboardSlice(official, 'camp'),
     tier: buildLeaderboardSlice(rows, 'tier'),
     brand: buildLeaderboardSlice(rows, 'brand'),
     category: buildLeaderboardSlice(rows, 'category'),
-    weights: buildLeaderboardSlice(rows, 'weights'),
-    korea: buildLeaderboardSlice(rows, 'korea'),
-    combined: buildCombinedMethodTrack(rows),
-    baselines: rows.length === 0 ? emptyBaselineSummary() : buildBaselineSummary(rows),
+    weights: buildLeaderboardSlice(official, 'weights'),
+    korea: buildLeaderboardSlice(official, 'korea'),
+    combined: buildCombinedMethodTrack(official),
+    baselines: official.length === 0 ? emptyBaselineSummary() : buildBaselineSummary(official),
     totalConsidered: rows.length,
     minSample: LEADERBOARD_MIN_SAMPLE,
     roundCoverage: coverage,

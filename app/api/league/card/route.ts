@@ -13,7 +13,7 @@ import {
   listRoundModelRows,
   wasRefundedForRound,
 } from '@/lib/league/generation/job-store'
-import { getRoster } from '@/lib/league/roster'
+import { getProgressRosterIds } from '@/lib/league/roster'
 import {
   authorizeRoundForViewer,
   forbiddenResponse,
@@ -182,13 +182,13 @@ async function generationStateFor(card: CardData): Promise<CardGenerationState |
 
 /**
  * N / rosterSize for the hub banner. Public jobs run every live tier, so
- * the denominator is `getRoster()` (currently 10+10+15+6). N is prediction
+ * the denominator is `getProgressRosterIds()` (41 official + 4 extra). N is prediction
  * rows whose model_id is on that roster — tiles *and* dropped null rows —
  * so the fraction can reach 100% when seats fail the no-opinion gate.
  */
 async function rosterProgressForRound(roundId: string) {
   const rows = await listRoundModelRows(roundId)
-  const rosterIds = getRoster().map((entry) => entry.model_id)
+  const rosterIds = getProgressRosterIds()
   return {
     ...rosterGenerationProgress(
       rosterIds,

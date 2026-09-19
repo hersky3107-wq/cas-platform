@@ -164,6 +164,7 @@ function toCamp(raw: string | null | undefined): Camp | null {
 }
 
 function toTier(raw: string | null | undefined): LeagueTier | null {
+  // Extra is a display/grade tier, never a verdict-panel group.
   return raw === 'premier' || raw === 'challenger' || raw === 'world' || raw === 'scout' ? raw : null
 }
 

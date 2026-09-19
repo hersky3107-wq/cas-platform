@@ -75,7 +75,7 @@ describe('DivisionBoard live streaming shells', () => {
     expect(html).not.toContain('seat-skeleton')
   })
 
-  it('streaming mounts all four tiers empty, with one skeleton per live seat', () => {
+  it('streaming mounts official tiers plus extra empty, with one skeleton per live seat', () => {
     const card = buildCardData(round(), [])
     const html = renderToStaticMarkup(
       createElement(DivisionBoard, {
@@ -89,12 +89,16 @@ describe('DivisionBoard live streaming shells', () => {
     expect(html).toContain('data-tier="challenger"')
     expect(html).toContain('data-tier="world"')
     expect(html).toContain('data-tier="scout"')
+    expect(html).toContain('data-tier="extra"')
     expect(html).toContain(t.bracket.division.premier)
     expect(html).toContain(t.bracket.division.challenger)
     expect(html).toContain(t.bracket.division.world)
     expect(html).toContain(t.bracket.division.scout)
+    expect(html).toContain(t.bracket.division.extra)
     expect(html).not.toContain(t.modelList.empty)
-    expect(html.match(/data-testid="seat-skeleton"/g)?.length).toBe(getRoster().length)
+    expect(html.match(/data-testid="seat-skeleton"/g)?.length).toBe(
+      counts.premier + counts.challenger + counts.world + counts.scout + counts.extra
+    )
   })
 
   it('a world tile fills world immediately — premier/challenger/scout stay mounted with their own skeletons', () => {
@@ -112,7 +116,7 @@ describe('DivisionBoard live streaming shells', () => {
     expect(html).toContain('data-tier="challenger"')
     expect(html).toContain('data-tier="scout"')
     expect(html.match(/data-testid="seat-skeleton"/g)?.length).toBe(
-      counts.premier + counts.challenger + (counts.world - 1) + counts.scout
+      counts.premier + counts.challenger + (counts.world - 1) + counts.scout + counts.extra
     )
   })
 
@@ -130,7 +134,9 @@ describe('DivisionBoard live streaming shells', () => {
     )
     expect(html).toContain(t.modelList.noResponse)
     expect(html.match(/data-testid="seat-no-response"/g)?.length).toBe(1)
-    expect(html.match(/data-testid="seat-skeleton"/g)?.length).toBe(getRoster().length - 1)
+    expect(html.match(/data-testid="seat-skeleton"/g)?.length).toBe(
+      counts.premier + counts.challenger + counts.world + counts.scout + counts.extra - 1
+    )
   })
 })
 

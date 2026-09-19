@@ -20,6 +20,7 @@ import {
 import { sidePairOf, tallySlotOfToken, toSideToken, hasCallableSide, type SideRoundContext } from './side-labels'
 import type { AnswerSide } from './answer-contract'
 import { gradingStateOf, type GradingState } from '../prediction/grading-state'
+import { isExtraSeat, officialRowsForConsensus } from './extra/seats'
 import { lookupRosterDisplay, lookupRosterEntry, LEAGUE_ROSTER } from './roster'
 import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
 import { roundHitRecord } from './round-hit'
@@ -278,16 +279,19 @@ export function computeCardAggregates(
     round?: SideRoundContext
   }
 ): CardAggregates {
-  const callable = models.filter((m) => hasCallableSide(m.direction))
+  const official = officialRowsForConsensus(models)
+  const officialCallable = official.filter((m) => hasCallableSide(m.direction))
+  const extra = models.filter((m) => !official.includes(m))
   const sides = sidePairOf(opts?.round ?? {})
   return {
-    consensus: buildConsensus(callable, sides),
-    campSplit: buildCampSplit(callable),
-    tierSplit: buildTierSplit(callable),
-    bookSplit: buildBookSplit(callable),
-    weightsSplit: buildWeightsSplit(callable),
-    hitRate: buildHitRate(resolvedAt, callable),
-    verdict: buildVerdict(callable, opts?.roundId ?? '', opts?.crossRound),
+    consensus: buildConsensus(officialCallable, sides),
+    campSplit: buildCampSplit(officialCallable),
+    // Extra strip is visible; extra votes never enter the 40-AI math above.
+    tierSplit: buildTierSplit([...officialCallable, ...extra]),
+    bookSplit: buildBookSplit(officialCallable),
+    weightsSplit: buildWeightsSplit(officialCallable),
+    hitRate: buildHitRate(resolvedAt, officialCallable),
+    verdict: buildVerdict(officialCallable, opts?.roundId ?? '', opts?.crossRound),
   }
 }
 
@@ -412,7 +416,9 @@ export function buildCardData(
   combinedTrack: CombinedMethodTrack = emptyCombinedTrack(),
   crossRound?: readonly VerdictCrossRoundGrade[]
 ): CardData {
-  const models = predictionRows.map(toCardModel).filter((m) => hasCallableSide(m.direction))
+  const models = predictionRows
+    .map(toCardModel)
+    .filter((m) => hasCallableSide(m.direction) || isExtraSeat(m))
   const nowMs = Date.now()
   return {
     round: toRoundMeta(roundRow, nowMs),

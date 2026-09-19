@@ -213,6 +213,7 @@ describe('PendingVerdictPanel — pre-grading prediction axes', () => {
         challenger: empty,
         world: empty,
         scout: { up: 2, down: 1, flat: 0, abstain: 0 },
+        extra: empty,
       },
       bookSplit: {
         closed: { up: 10, down: 5, flat: 0, abstain: 0 },
@@ -365,6 +366,7 @@ describe('seat-resolution gate — no locked conclusion from a partial set', () 
           challenger: emptyTally(),
           world: emptyTally(),
           scout: emptyTally(),
+          extra: emptyTally(),
         },
         bookSplit: { closed: { up: 2, down: 4, flat: 0, abstain: 0 }, scout: emptyTally() },
         weightsSplit: { closed: { up: 2, down: 4, flat: 0, abstain: 0 }, open: emptyTally() },

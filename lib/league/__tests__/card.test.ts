@@ -115,6 +115,7 @@ describe('buildCardData', () => {
     expect(card.tierSplit.world).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
     expect(card.tierSplit.scout).toEqual({ up: 0, down: 1, flat: 0, abstain: 0 })
     expect(card.tierSplit.challenger).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
+    expect(card.tierSplit.extra).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
   })
 
   it('splits prediction counts per book (closed vs scout) and per weight class', () => {

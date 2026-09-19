@@ -3,6 +3,7 @@ import 'server-only'
 import { addCreditsBalance } from '@/lib/credits-server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { generatePredictions, persistLeagueConsensusFromDb } from '@/lib/league/orchestrator'
+import { extraSeatIds } from '@/lib/league/extra/seats'
 import { getRoster, type LeagueTier } from '@/lib/league/roster'
 import {
   claimGenerationJobLease,
@@ -64,7 +65,8 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
       if (amount <= 0) return
       await addCreditsBalance(supabaseAdmin, userId, amount)
     },
-    tierModelIds: (tier: LeagueTier) => getRoster([tier]).map((entry) => entry.model_id),
+    tierModelIds: (tier: LeagueTier) =>
+      tier === 'extra' ? [...extraSeatIds()] : getRoster([tier]).map((entry) => entry.model_id),
     priceAnchorGate: runnerPriceAnchorGate,
     schedule,
   }

@@ -28,6 +28,8 @@ import {
   type ContractAnswer,
 } from '@/lib/league/answer-contract'
 import { persistAnchorPrice } from '@/lib/league/price-anchor'
+import { generateExtraSeats } from '@/lib/league/extra/run'
+import { extraSeatIds, officialRowsForConsensus } from '@/lib/league/extra/seats'
 import { claimNextLaunchableIndex } from '@/lib/league/generation/launch-gate'
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
 import { emptyContentRetryBudgetMs, isEmptyContentError } from '@/lib/ai/empty-content-retry'
@@ -838,11 +840,11 @@ export async function persistLeagueConsensusFromDb(roundId: string): Promise<voi
 
   const { data, error } = await supabaseAdmin
     .from('model_predictions')
-    .select('predicted_direction, predicted_value, predicted_magnitude_pct')
+    .select('model_id, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct')
     .eq('round_id', roundId)
   if (error) throw new Error(`persistLeagueConsensusFromDb: ${error.message}`)
 
-  const rows = (data ?? []).map((row) => ({
+  const rows = officialRowsForConsensus(data ?? []).map((row) => ({
     direction: (row as { predicted_direction: string | null }).predicted_direction as AnswerSide | null,
     probability: (row as { predicted_value: number | null }).predicted_value,
     magnitude: (row as { predicted_magnitude_pct: number | null }).predicted_magnitude_pct,
@@ -881,10 +883,44 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   // `excludeModelIds` (resume support) filters models whose row already
   // exists — see GenerateOptions.
   const excluded = new Set(opts.excludeModelIds ?? [])
-  const roster = getRoster(tiers).filter((entry) => !excluded.has(entry.model_id))
+  const wantsOfficial = !tiers || tiers.some((tier) => tier !== 'extra')
+  const wantsExtra = !tiers || tiers.includes('extra')
+  const roster = wantsOfficial ? getRoster(tiers).filter((entry) => !excluded.has(entry.model_id)) : []
+  const extraPending = wantsExtra
+    ? extraSeatIds().filter((id) => !excluded.has(id))
+    : []
 
   const { round, created } = await ensureRound(roundInput)
-  onRoundResolved?.({ id: round.id, created, rosterSize: roster.length })
+  onRoundResolved?.({ id: round.id, created, rosterSize: roster.length + extraPending.length })
+
+  if (!wantsOfficial) {
+    const extraResults = extraPending.length
+      ? await generateExtraSeats({
+          roundId: round.id,
+          excludeModelIds: opts.excludeModelIds,
+          onSeatResult: (result) => onModelResult?.(result as ModelRunResult),
+        })
+      : []
+    const extraCost = extraResults.reduce((sum, row) => sum + row.cost_usd, 0)
+    return {
+      round_id: round.id,
+      created,
+      data_packet: { available: false, error: 'extra_tier_no_packet' },
+      research: {
+        available: false,
+        cached: false,
+        costUsd: 0,
+        queries: [],
+        tier: 'none',
+        tierSignal: 'extra_isolated',
+      },
+      related_credits_spent: 0,
+      results: extraResults as ModelRunResult[],
+      total_cost_usd: Number(extraCost.toFixed(6)),
+      capped: false,
+      cost_cap_usd: costCap,
+    }
+  }
   // PACKET ASSEMBLY is CATEGORY JUDGMENT and lives behind
   // `CategoryAdapter.buildPacket` (stocks today; the other 11 chips fall back
   // to the same price-series builder until their adapters exist). The shell
@@ -983,6 +1019,18 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   await Promise.all(workers)
 
   await persistConsensusAggregates(round.id, results, contract.sides)
+
+  if (wantsExtra && extraPending.length > 0) {
+    const extraResults = await generateExtraSeats({
+      roundId: round.id,
+      excludeModelIds: opts.excludeModelIds,
+      onSeatResult: (result) => {
+        results.push(result as ModelRunResult)
+        onModelResult?.(result as ModelRunResult)
+      },
+    })
+    runningCost += extraResults.reduce((sum, row) => sum + row.cost_usd, 0)
+  }
 
   return {
     round_id: round.id,

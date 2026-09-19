@@ -1,5 +1,6 @@
 import type { LeagueTier } from './card-types'
 import { LEAGUE_TIERS } from './card-types'
+import { extraSeatIds } from './extra/seats'
 import { getRoster } from './roster'
 
 /**
@@ -16,7 +17,7 @@ export type StreamingTierFill = {
 }
 
 export function rosterIdsForTier(tier: LeagueTier): string[] {
-  return getRoster([tier]).map((entry) => entry.model_id)
+  return tier === 'extra' ? [...extraSeatIds()] : getRoster([tier]).map((entry) => entry.model_id)
 }
 
 export function rosterSeatCounts(): Record<LeagueTier, number> {
@@ -25,6 +26,7 @@ export function rosterSeatCounts(): Record<LeagueTier, number> {
     challenger: rosterIdsForTier('challenger').length,
     world: rosterIdsForTier('world').length,
     scout: rosterIdsForTier('scout').length,
+    extra: rosterIdsForTier('extra').length,
   }
 }
 
