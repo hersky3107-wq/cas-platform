@@ -4,6 +4,7 @@ import type { FiveElement } from '../engines/calendar/types'
 import type { IchingDrawResult, RuneDrawResult, TarotDrawResult } from '../engines/draw'
 import type { SixRelative } from '../engines/draw/tables'
 import type { LEAGUE_VOTE_WEIGHTS } from './conventions'
+import type { LeagueSystemPresence } from './status'
 
 /**
  * League chips. Duplicated here on purpose — oracle must not import lib/league.
@@ -26,7 +27,7 @@ export const LEAGUE_ORACLE_CATEGORY_IDS = [
 
 export type LeagueOracleCategoryId = (typeof LEAGUE_ORACLE_CATEGORY_IDS)[number]
 
-/** Parallel to PhaseAxis. No hold, no abstain. */
+/** Parallel to PhaseAxis. Binary when the system voted; 결번 is null on the vote row, not a fifth enum. */
 export type LeagueBinaryVote = 'up' | 'down' | 'a' | 'b'
 
 export type LeagueBallotAxis = 'direction' | 'pick_one'
@@ -46,25 +47,34 @@ export type LeagueTaeilYongshen = {
 export type LeagueSystemVote = {
   system: LeagueVoteSystem
   camp: LeagueVoteCamp
+  /** Nominal weight (3/2/2/2). Abstention does not change the table — the aggregator drops it from the denom. */
   weight: (typeof LEAGUE_VOTE_WEIGHTS)[LeagueVoteSystem]
-  vote: LeagueBinaryVote
-  /**
-   * True when the system's own table said `hold` (or 택일 일진/월건 split)
-   * and the ballot was filled from 육효 용신 왕쇠. PRODUCT rule, not doctrine.
-   */
-  collapsedFromHold: boolean
+  /** Null = 결번 (말을 아킴). 육효 never null. */
+  vote: LeagueBinaryVote | null
+  /** True when this system's table gave no direction and it did not inherit 육효. */
+  abstained: boolean
+  /** Oracle-shaped machine code when abstained; null when voted. */
+  unreadableCode: string | null
   source: string
 }
 
 export type LeagueAggregate = {
   vote: LeagueBinaryVote
   axis: LeagueBallotAxis
+  /** |plus−minus| / remaining weight. 1.000 = remaining voters unanimous. */
   confidence: number
   plusWeight: number
   minusWeight: number
+  /** Remaining weight after 결번 seats are removed (9, 7, 5, or 3). */
   totalWeight: number
+  votedCount: 1 | 2 | 3 | 4
+  /** True when 타로/룬/택일 all 결번 and 육효 is the only ballot. */
+  ichingAlone: boolean
+  /** Remaining voters all on the same side (includes 육효-alone). */
+  allVotersAgree: boolean
   drawCamp: LeagueBinaryVote
-  timingCamp: LeagueBinaryVote
+  /** Null when 택일 결번 — it does not inherit 육효. */
+  timingCamp: LeagueBinaryVote | null
   usedYongshenTiebreak: boolean
 }
 
@@ -118,7 +128,8 @@ export type LeagueNineStarPack = {
 
 /**
  * Chart pack the later adapter will carry. Voting systems include their
- * native draw; astro / 구성기학 have no ballot.
+ * native draw; astro / 구성기학 have no ballot. `presence` is the honest
+ * voted / 결번 row the UI must render — never infer a side from a hold.
  */
 export type LeagueDivinationChartPack = {
   iching: LeagueIchingPack
@@ -127,6 +138,14 @@ export type LeagueDivinationChartPack = {
   taeil: LeagueTaeilPack
   astro: LeagueAstroPack
   ninestar: LeagueNineStarPack
+  presence: {
+    iching: LeagueSystemPresence
+    tarot: LeagueSystemPresence
+    runes: LeagueSystemPresence
+    taeil: LeagueSystemPresence
+    astro: LeagueSystemPresence
+    ninestar: LeagueSystemPresence
+  }
 }
 
 export type LeagueDivinationInput = {

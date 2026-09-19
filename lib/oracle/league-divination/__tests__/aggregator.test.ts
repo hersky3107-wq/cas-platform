@@ -17,7 +17,8 @@ function vote(
     camp,
     weight: LEAGUE_VOTE_WEIGHTS[system],
     vote: ballot,
-    collapsedFromHold: false,
+    abstained: ballot === null,
+    unreadableCode: ballot === null ? `${system}.hold_no_direction` : null,
     source: 'test',
     ...extra,
   }
@@ -77,6 +78,9 @@ describe('binary aggregator', () => {
     })
     expect(result.vote).toBe('a')
     expect(result.confidence).toBe(1)
+    expect(result.votedCount).toBe(4)
+    expect(result.allVotersAgree).toBe(true)
+    expect(result.ichingAlone).toBe(false)
   })
 
   it('residual numeric tie uses 육효 용신 왕쇠 — PRODUCT, not doctrine', () => {
@@ -93,5 +97,55 @@ describe('binary aggregator', () => {
     expect(result.usedYongshenTiebreak).toBe(true)
     expect(result.vote).toBe('up')
     expect(result.plusWeight).toBe(result.minusWeight)
+  })
+
+  it('removes a 결번 seat from the denominator (9 → 7 if tarot abstains)', () => {
+    const result = aggregateLeagueVotes({
+      axis: 'direction',
+      iching: vote('iching', 'up'),
+      tarot: vote('tarot', null),
+      runes: vote('runes', 'up'),
+      taeil: vote('taeil', 'down'),
+      yongshenVote: 'up',
+    })
+    expect(result.totalWeight).toBe(7)
+    expect(result.votedCount).toBe(3)
+    expect(result.plusWeight).toBe(5)
+    expect(result.minusWeight).toBe(2)
+    expect(result.confidence).toBeCloseTo(3 / 7, 10)
+    expect(result.vote).toBe('up')
+    expect(result.timingCamp).toBe('down')
+  })
+
+  it('육효 alone when the other three 결번 — verdict is 육효 and the pack must say so', () => {
+    const result = aggregateLeagueVotes({
+      axis: 'direction',
+      iching: vote('iching', 'down'),
+      tarot: vote('tarot', null),
+      runes: vote('runes', null),
+      taeil: vote('taeil', null),
+      yongshenVote: 'down',
+    })
+    expect(result.vote).toBe('down')
+    expect(result.ichingAlone).toBe(true)
+    expect(result.votedCount).toBe(1)
+    expect(result.totalWeight).toBe(3)
+    expect(result.confidence).toBe(1)
+    expect(result.allVotersAgree).toBe(true)
+    expect(result.timingCamp).toBeNull()
+  })
+
+  it('택일 결번 does not inherit 육효 — timingCamp is null', () => {
+    const result = aggregateLeagueVotes({
+      axis: 'direction',
+      iching: vote('iching', 'up'),
+      tarot: vote('tarot', 'down'),
+      runes: vote('runes', 'down'),
+      taeil: vote('taeil', null),
+      yongshenVote: 'up',
+    })
+    expect(result.timingCamp).toBeNull()
+    expect(result.totalWeight).toBe(7)
+    expect(result.vote).toBe('down')
   })
 })

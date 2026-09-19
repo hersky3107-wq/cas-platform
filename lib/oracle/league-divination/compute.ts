@@ -15,6 +15,7 @@ import {
 } from './conventions'
 import { computeAstroChartPack, computeNineStarChartPack } from './charts'
 import { leagueDrawSeed, seoulClockFromFirstView } from './seed'
+import { LEAGUE_UNREADABLE, presenceFromVote, presenceGyeolbeon } from './status'
 import type { LeagueDivinationInput, LeagueDivinationResult, LeagueHourPin, LeagueSystemVote } from './types'
 import { voteRuneFuture, voteTaeil, voteTarotOutcome } from './votes'
 import { mapPolarity, voteIching, yongshenPolarity } from './yongshen'
@@ -56,12 +57,13 @@ export function computeLeagueDivination(input: LeagueDivinationInput): LeagueDiv
     camp: 'draw',
     weight: LEAGUE_VOTE_WEIGHTS.iching,
     vote: ichingBallot.vote,
-    collapsedFromHold: false,
+    abstained: false,
+    unreadableCode: null,
     source: ichingBallot.source,
   }
-  const tarotVote = voteTarotOutcome(tarot.cards, input.axis, yongshenVote)
-  const runeVote = voteRuneFuture(runes.runes, input.axis, yongshenVote)
-  const taeilVote = voteTaeil(pillars, taeilYongshen, input.axis, yongshenVote)
+  const tarotVote = voteTarotOutcome(tarot.cards, input.axis)
+  const runeVote = voteRuneFuture(runes.runes, input.axis)
+  const taeilVote = voteTaeil(pillars, taeilYongshen, input.axis)
 
   const aggregate = aggregateLeagueVotes({
     axis: input.axis,
@@ -102,6 +104,14 @@ export function computeLeagueDivination(input: LeagueDivinationInput): LeagueDiv
       },
       astro: computeAstroChartPack(clock),
       ninestar: computeNineStarChartPack(clock),
+      presence: {
+        iching: presenceFromVote(ichingVote),
+        tarot: presenceFromVote(tarotVote),
+        runes: presenceFromVote(runeVote),
+        taeil: presenceFromVote(taeilVote),
+        astro: presenceGyeolbeon(LEAGUE_UNREADABLE.astro),
+        ninestar: presenceGyeolbeon(LEAGUE_UNREADABLE.ninestar),
+      },
     },
     seoul: { date: clock.date, time: clock.time, tz: clock.tz, hourPin },
   }

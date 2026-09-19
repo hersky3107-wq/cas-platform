@@ -6,6 +6,7 @@ import { SIGNS } from '../engines/astro/tables'
 import { stemByHanja } from '../engines/calendar/tables'
 import type { LeagueDivinationResult } from './types'
 import { tarotNameKo, runeNameKo } from './names'
+import { presenceFromVote } from './status'
 import { isPlusVote } from './yongshen'
 
 function signFromLongitude(longitude: number): string {
@@ -21,6 +22,16 @@ export type LeagueReaderCompactPack = {
   hourPin: LeagueDivinationResult['seoul']['hourPin']
   /** Already decided in code. The reader explains this; it does not vote. */
   codeVerdict: 'up' | 'down' | 'a' | 'b'
+  votedCount: 1 | 2 | 3 | 4
+  ichingAlone: boolean
+  voterRoll: {
+    id: 'iching' | 'tarot' | 'runes' | 'taeil'
+    nameKo: string
+    status: 'voted' | '결번'
+    statusLabel: '표를 냄' | '말을 아낌'
+    ballot: 'up' | 'down' | 'a' | 'b' | null
+    reason: string | null
+  }[]
   votes: LeagueDivinationResult['votes']
   iching: {
     primary: string
@@ -76,6 +87,26 @@ export function compactReaderPack(
     seoul: { date: result.seoul.date, time: result.seoul.time, tz: result.seoul.tz },
     hourPin: result.seoul.hourPin,
     codeVerdict: result.aggregate.vote,
+    votedCount: result.aggregate.votedCount,
+    ichingAlone: result.aggregate.ichingAlone,
+    voterRoll: (
+      [
+        ['iching', '육효'],
+        ['tarot', '타로'],
+        ['runes', '룬'],
+        ['taeil', '택일'],
+      ] as const
+    ).map(([id, nameKo]) => {
+      const presence = presenceFromVote(result.votes[id])
+      return {
+        id,
+        nameKo,
+        status: presence.status,
+        statusLabel: presence.statusLabel,
+        ballot: presence.ballot,
+        reason: presence.reason,
+      }
+    }),
     votes: result.votes,
     iching: {
       primary: result.charts.iching.draw.primary.hanja,

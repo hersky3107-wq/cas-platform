@@ -30,8 +30,12 @@ export type LeagueAdapterSystemId = 'iching' | 'tarot' | 'runes' | 'taeil' | 'as
 export type LeagueAdapterSystemEntry = {
   id: LeagueAdapterSystemId
   ballot: 'up' | 'down' | 'a' | 'b' | null
+  /** Null when 결번 — weight is off the denominator. */
   weight: 3 | 2 | null
-  collapsedFromHold: boolean
+  status: 'voted' | '결번'
+  statusLabel: '표를 냄' | '말을 아낌'
+  reason: string | null
+  unreadableCode: string | null
   source: string | null
   /** Compact native facts for the UI. No market fields. */
   chart: Record<string, unknown>
@@ -43,5 +47,7 @@ export type LeagueDivinationAdapterOutput = {
   pick: 'A' | 'B' | null
   rationale: string
   confidence: number
+  votedCount: 1 | 2 | 3 | 4
+  ichingAlone: boolean
   systems: LeagueAdapterSystemEntry[]
 }

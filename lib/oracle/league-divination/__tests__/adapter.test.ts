@@ -92,8 +92,13 @@ describe('readLeagueDivination', () => {
     expect(output.pick).toBeNull()
     expect(output.rationale).toBe(FOUR_OK)
     expect(output.systems).toHaveLength(6)
-    expect(output.systems.filter((row) => row.ballot === null).map((row) => row.id).sort()).toEqual(['astro', 'ninestar'])
+    expect(output.systems.find((row) => row.id === 'iching')?.status).toBe('voted')
+    expect(output.systems.find((row) => row.id === 'astro')?.status).toBe('결번')
+    expect(output.systems.find((row) => row.id === 'astro')?.statusLabel).toBe('말을 아낌')
+    expect(output.systems.find((row) => row.id === 'ninestar')?.status).toBe('결번')
     expect(output.systems.find((row) => row.id === 'taeil')?.chart.label).toBe('택일')
+    expect(output.votedCount).toBeGreaterThanOrEqual(1)
+    expect(output.votedCount).toBeLessThanOrEqual(4)
   })
 
   it('caches on roundId so a later viewer sees the identical packed result', async () => {

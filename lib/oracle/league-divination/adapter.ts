@@ -11,6 +11,7 @@ import { compactReaderPack, codeVerdictToOutput } from './compact-pack'
 import { computeLeagueDivination } from './compute'
 import { runLeagueReader, type LeagueReaderCall } from './reader'
 import type { LeagueDivinationCache } from './cache'
+import { presenceFromVote, type LeagueSystemPresence } from './status'
 import type { LeagueDivinationResult, LeagueSystemVote } from './types'
 
 export type LeagueDivinationAdapterDeps = {
@@ -18,15 +19,28 @@ export type LeagueDivinationAdapterDeps = {
   reader?: LeagueReaderCall
 }
 
-function voteBallot(vote: LeagueSystemVote): LeagueAdapterSystemEntry {
+function entryFromPresence(
+  id: LeagueAdapterSystemEntry['id'],
+  presence: LeagueSystemPresence,
+  weight: 3 | 2 | null,
+  source: string | null,
+  chart: Record<string, unknown>,
+): LeagueAdapterSystemEntry {
   return {
-    id: vote.system,
-    ballot: vote.vote,
-    weight: vote.weight,
-    collapsedFromHold: vote.collapsedFromHold,
-    source: vote.source,
-    chart: { source: vote.source },
+    id,
+    ballot: presence.ballot,
+    weight: presence.status === '결번' ? null : weight,
+    status: presence.status,
+    statusLabel: presence.statusLabel,
+    reason: presence.reason,
+    unreadableCode: presence.unreadableCode,
+    source,
+    chart,
   }
+}
+
+function voteBallot(vote: LeagueSystemVote): LeagueAdapterSystemEntry {
+  return entryFromPresence(vote.system, presenceFromVote(vote), vote.weight, vote.source, { source: vote.source })
 }
 
 export function systemsFromCompute(result: LeagueDivinationResult): LeagueAdapterSystemEntry[] {
@@ -41,6 +55,7 @@ export function systemsFromCompute(result: LeagueDivinationResult): LeagueAdapte
         relative: result.charts.iching.relative,
         yongshenPosition: result.charts.iching.yongshenPosition,
         yongshenSource: result.charts.iching.yongshenSource,
+        ...result.charts.presence.iching,
       },
     },
     {
@@ -49,6 +64,7 @@ export function systemsFromCompute(result: LeagueDivinationResult): LeagueAdapte
         outcome: tarotOutcome?.name ?? null,
         reversed: tarotOutcome?.reversed ?? null,
         spread: result.charts.tarot.spread,
+        ...result.charts.presence.tarot,
       },
     },
     {
@@ -57,6 +73,7 @@ export function systemsFromCompute(result: LeagueDivinationResult): LeagueAdapte
         future: runeFuture?.name ?? null,
         reversed: runeFuture?.reversed ?? null,
         count: result.charts.runes.count,
+        ...result.charts.presence.runes,
       },
     },
     {
@@ -67,34 +84,33 @@ export function systemsFromCompute(result: LeagueDivinationResult): LeagueAdapte
         monthGanzhi: result.charts.taeil.pillars.month.ganzhi,
         yongshen: result.charts.taeil.yongshen,
         hourPin: result.charts.taeil.hourPin,
+        ...result.charts.presence.taeil,
       },
     },
-    {
-      id: 'astro',
-      ballot: null,
-      weight: null,
-      collapsedFromHold: false,
-      source: result.charts.astro.reason,
-      chart: {
-        reason: result.charts.astro.reason,
+    entryFromPresence(
+      'astro',
+      result.charts.presence.astro,
+      null,
+      result.charts.astro.reason,
+      {
+        ...result.charts.presence.astro,
         sunSign: result.charts.astro.chart.bodies.Sun.sign,
         moonSign: result.charts.astro.chart.bodies.Moon.sign,
         location: result.charts.astro.location,
       },
-    },
-    {
-      id: 'ninestar',
-      ballot: null,
-      weight: null,
-      collapsedFromHold: false,
-      source: result.charts.ninestar.reason,
-      chart: {
-        reason: result.charts.ninestar.reason,
+    ),
+    entryFromPresence(
+      'ninestar',
+      result.charts.presence.ninestar,
+      null,
+      result.charts.ninestar.reason,
+      {
+        ...result.charts.presence.ninestar,
         year: result.charts.ninestar.result.year,
         month: result.charts.ninestar.result.month,
         day: result.charts.ninestar.result.day,
       },
-    },
+    ),
   ]
 }
 
@@ -119,6 +135,8 @@ async function produce(
     pick: mapped.pick,
     rationale: reader.rationale,
     confidence: computed.aggregate.confidence,
+    votedCount: computed.aggregate.votedCount,
+    ichingAlone: computed.aggregate.ichingAlone,
     systems: systemsFromCompute(computed),
   }
 }

@@ -1,22 +1,31 @@
 /**
- * Hold-collapse census. Does not change the vote rule — it only counts how
- * often 타로 / 룬 / 택일 copy 육효 because their own table said hold.
+ * Hold / 결번 census. A system whose table yields hold abstains;
+ * it does not copy 육효. This file only counts — it does not change the rule.
  */
 import { computeLeagueDivination } from './compute'
+import { hasBallot } from './status'
 import { LEAGUE_ORACLE_CATEGORY_IDS } from './types'
 import { isPlusVote } from './yongshen'
 
 export const HOLD_CENSUS_N = 504
+export const HOLD_CENSUS_ALL_FOUR_IDENTICAL_BEFORE = 0.335
 
 export type HoldCensus = {
   n: number
   tarotHold: number
   runeHold: number
   taeilHold: number
-  allFourIdentical: number
+  voted1: number
+  voted2: number
+  voted3: number
+  voted4: number
+  allVotersAgree: number
+  fourVotedAndAgree: number
   confidence1: number
+  confidence1ByVoted: { 1: number; 2: number; 3: number; 4: number }
   up: number
   down: number
+  ichingAlone: number
 }
 
 /** Walk ~a year in 17-hour steps so 일진 and 월건 actually move. */
@@ -31,10 +40,17 @@ export function runHoldCensus(n = HOLD_CENSUS_N): HoldCensus {
     tarotHold: 0,
     runeHold: 0,
     taeilHold: 0,
-    allFourIdentical: 0,
+    voted1: 0,
+    voted2: 0,
+    voted3: 0,
+    voted4: 0,
+    allVotersAgree: 0,
+    fourVotedAndAgree: 0,
     confidence1: 0,
+    confidence1ByVoted: { 1: 0, 2: 0, 3: 0, 4: 0 },
     up: 0,
     down: 0,
+    ichingAlone: 0,
   }
   for (let i = 0; i < n; i += 1) {
     const categoryId = LEAGUE_ORACLE_CATEGORY_IDS[i % LEAGUE_ORACLE_CATEGORY_IDS.length]!
@@ -44,17 +60,27 @@ export function runHoldCensus(n = HOLD_CENSUS_N): HoldCensus {
       categoryId,
       axis: i % 5 === 0 ? 'pick_one' : 'direction',
     })
-    if (computed.votes.tarot.collapsedFromHold) out.tarotHold += 1
-    if (computed.votes.runes.collapsedFromHold) out.runeHold += 1
-    if (computed.votes.taeil.collapsedFromHold) out.taeilHold += 1
-    const pluses = [
-      isPlusVote(computed.votes.iching.vote),
-      isPlusVote(computed.votes.tarot.vote),
-      isPlusVote(computed.votes.runes.vote),
-      isPlusVote(computed.votes.taeil.vote),
-    ]
-    if (pluses.every((p) => p === pluses[0])) out.allFourIdentical += 1
-    if (computed.aggregate.confidence === 1) out.confidence1 += 1
+    if (computed.votes.tarot.abstained) out.tarotHold += 1
+    if (computed.votes.runes.abstained) out.runeHold += 1
+    if (computed.votes.taeil.abstained) out.taeilHold += 1
+    const voted = [
+      computed.votes.iching,
+      computed.votes.tarot,
+      computed.votes.runes,
+      computed.votes.taeil,
+    ].filter(hasBallot)
+    const k = voted.length as 1 | 2 | 3 | 4
+    if (k === 1) out.voted1 += 1
+    else if (k === 2) out.voted2 += 1
+    else if (k === 3) out.voted3 += 1
+    else out.voted4 += 1
+    if (computed.aggregate.allVotersAgree) out.allVotersAgree += 1
+    if (k === 4 && computed.aggregate.allVotersAgree) out.fourVotedAndAgree += 1
+    if (computed.aggregate.confidence === 1) {
+      out.confidence1 += 1
+      out.confidence1ByVoted[k] += 1
+    }
+    if (computed.aggregate.ichingAlone) out.ichingAlone += 1
     if (isPlusVote(computed.aggregate.vote)) out.up += 1
     else out.down += 1
   }
@@ -68,9 +94,16 @@ export function holdCensusRates(c: HoldCensus) {
     tarotHoldPct: pct(c.tarotHold),
     runeHoldPct: pct(c.runeHold),
     taeilHoldPct: pct(c.taeilHold),
-    allFourIdenticalPct: pct(c.allFourIdentical),
+    voted1Pct: pct(c.voted1),
+    voted2Pct: pct(c.voted2),
+    voted3Pct: pct(c.voted3),
+    voted4Pct: pct(c.voted4),
+    allVotersAgreePct: pct(c.allVotersAgree),
+    fourVotedAndAgreePct: pct(c.fourVotedAndAgree),
     confidence1Pct: pct(c.confidence1),
+    ichingAlonePct: pct(c.ichingAlone),
     up: c.up,
     down: c.down,
+    allFourIdenticalBeforePct: HOLD_CENSUS_ALL_FOUR_IDENTICAL_BEFORE * 100,
   }
 }

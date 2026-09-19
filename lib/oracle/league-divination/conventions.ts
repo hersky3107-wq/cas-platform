@@ -5,7 +5,7 @@
  *
  * Bump LEAGUE_DIVINATION_VERSION when a vote, seed, or aggregator rule changes.
  */
-export const LEAGUE_DIVINATION_VERSION = '1.1.0'
+export const LEAGUE_DIVINATION_VERSION = '1.2.0'
 
 /**
  * Pin every timing chart to Seoul so a cached pack cannot vary by viewer.

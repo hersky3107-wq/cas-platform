@@ -269,17 +269,23 @@ Fallback sentence fired: **0/12**. Market-language leak past parser (ban list or
 - Second call site: `readLeagueDivinationLive` vs first `readLeagueDivination` + raw row
 - Result: **identical stored row** — sameRationale=true sameDraw=true sameVerdict=true stored=true
 
-## 4. Hold-collapse census
+## 4. Hold → 결번 census
 
-n=504 (varied firstViewIso + all 12 chips). Collapse rule unchanged.
+n=504 (same sample as the collapse census). Hold is now 결번 (말을 아낌); weight leaves the denom.
+
+The twelve-round table in §2 is the previous live reader run (collapse rule) and was not re-LLM'd this pass.
 
 | | count | share |
 | --- | ---: | ---: |
-| 타로 hold before collapse | 185 | 36.7% |
-| 룬 hold before collapse | 225 | 44.6% |
-| 택일 hold before collapse | 236 | 46.8% |
-| all four ballots identical | 169 | 33.5% |
-| confidence 1.000 | 169 | 33.5% |
-| up / down | 270 / 234 | — |
+| 타로 hold → 결번 | 185 | 36.7% |
+| 룬 hold → 결번 | 225 | 44.6% |
+| 택일 hold → 결번 | 236 | 46.8% |
+| systems voted 4 / 3 / 2 / 1 | 100 / 203 / 160 / 41 | 19.8% / 40.3% / 31.7% / 8.1% |
+| remaining voters unanimous | 179 | 35.5% (was 33.5% fake four-identical) |
+| all four voted and agree | 12 | 2.4% |
+| confidence 1.000 | 179 | 35.5% — of which 육효-alone 41, two-voter 73, three-voter 53, four-voter 12 |
+| 육효 votes alone | 41 | 8.1% |
+| up / down | 279 / 225 | — |
 
-confidence 1.000 is exactly all-four-identical (weights 3+2+2+2). Reversal does not flip a hold row, so 타로/룬 often copy 육효. The product claim of four independent votes is weaker than it looks.
+1.000 is remaining-voter unanimity, so it did **not** drop vs 33.5% — 육효-alone and 2–3 remaining voters still score 1.000. The fake four-hat 1.000 is gone: only 2.4% of rounds have all four systems actually voting and agreeing.
+

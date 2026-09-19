@@ -27,6 +27,7 @@ describe('fallbackRationale', () => {
     if (/[A-Za-z]{3,}/.test(pack.runes.future)) expect(text).not.toContain(pack.runes.future)
     expect(text).toMatch(/용신은 .+입니다/)
     expect(text).not.toMatch(/King of |Queen of |Ten of |Cups|Swords|Wands|Pentacles|The [A-Z]/)
+    expect(text).not.toMatch(/네 체계|네 시스템|네 개 체계가 같/)
   })
 
   it('passes the parser for every chip without English card names', () => {
@@ -48,6 +49,24 @@ describe('fallbackRationale', () => {
       expect(text).toContain(pack.tarot.outcomeKo)
       expect(text).toContain(pack.runes.futureKo)
     }
+  })
+
+  it('names 결번 as 말을 아낌 and says 육효 alone when the other three abstain', () => {
+    const computed = computeLeagueDivination({
+      roundId: 'round-fixture-1',
+      firstViewIso: FIRST,
+      categoryId: 'stocks',
+      axis: 'direction',
+    })
+    const pack = compactReaderPack(computed, { proposition: 'q', subjectName: 's' })
+    const text = fallbackRationale(pack)
+    if (pack.votes.tarot.abstained || pack.votes.runes.abstained || pack.votes.taeil.abstained) {
+      expect(text).toMatch(/말을 아꼈/)
+    }
+    if (pack.ichingAlone) {
+      expect(text).toMatch(/육효가 홀로/)
+    }
+    expect(text).not.toMatch(/네 체계가 같|네 시스템이 모두/)
   })
 })
 

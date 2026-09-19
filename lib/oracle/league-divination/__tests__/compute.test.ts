@@ -73,11 +73,15 @@ describe('computeLeagueDivination', () => {
     expect(result.charts.taeil.hourPin.reason).toBe('zi_start_fork_avoided')
   })
 
-  it('pick_one emits only a/b', () => {
+  it('pick_one emits only a/b from systems that voted; 육효 never 결번', () => {
     const result = computeLeagueDivination({ ...INPUT, axis: 'pick_one', categoryId: 'sports' })
     expect(result.aggregate.vote === 'a' || result.aggregate.vote === 'b').toBe(true)
+    expect(result.votes.iching.vote === 'a' || result.votes.iching.vote === 'b').toBe(true)
+    expect(result.votes.iching.abstained).toBe(false)
     for (const item of Object.values(result.votes)) {
-      expect(item.vote === 'a' || item.vote === 'b').toBe(true)
+      expect(item.vote === 'a' || item.vote === 'b' || item.vote === null).toBe(true)
+      if (item.vote === null) expect(item.abstained).toBe(true)
     }
+    expect(result.charts.presence.iching.status).toBe('voted')
   })
 })

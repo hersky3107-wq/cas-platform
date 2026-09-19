@@ -64,9 +64,9 @@ function summarize(label: string, computed: ReturnType<typeof computeLeagueDivin
     rune: `${pack.runes.futureKo} (${pack.runes.future}) reversed=${pack.runes.reversed}`,
     taeil: `${pack.taeil.dayHangul} stem=${pack.taeil.yongshenStemHangul}(${pack.taeil.yongshenElement})`,
     holds: {
-      tarot: votes.tarot.collapsedFromHold,
-      runes: votes.runes.collapsedFromHold,
-      taeil: votes.taeil.collapsedFromHold,
+      tarot: votes.tarot.abstained,
+      runes: votes.runes.abstained,
+      taeil: votes.taeil.abstained,
     },
     ballots: {
       iching: votes.iching.vote,
