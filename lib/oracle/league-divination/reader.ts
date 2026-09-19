@@ -4,6 +4,7 @@
  */
 import {
   LEAGUE_READER_BRAND,
+  LEAGUE_READER_EXTRA_REQUEST_PARAMS,
   LEAGUE_READER_MAX_COMPLETION_TOKENS,
   LEAGUE_READER_MODEL,
   LEAGUE_READER_PLATFORM_ID,
@@ -42,7 +43,7 @@ async function defaultCall(input: Parameters<LeagueReaderCall>[0]): Promise<Leag
     systemPrompt: input.systemPrompt,
     userPrompt: input.userPrompt,
     maxCompletionTokens: input.maxCompletionTokens,
-    extraRequestParams: { reasoning: { effort: 'minimal' } },
+    extraRequestParams: { ...LEAGUE_READER_EXTRA_REQUEST_PARAMS },
     debugRequestLabel: 'league-divination-reader',
     timeoutMs: input.timeoutMs,
   })

@@ -693,8 +693,9 @@ async function callClovaStudio(params: {
   maxCompletionTokens?: number
   /** 'none' disables the HCX-007 reasoning pass — cheapest/fastest, used for health checks. */
   thinkingEffort?: 'none' | 'low' | 'medium' | 'high'
+  signal?: AbortSignal
 }): Promise<PlatformCallResult> {
-  const { apiKey, model, systemPrompt, userPrompt, maxCompletionTokens, thinkingEffort } = params
+  const { apiKey, model, systemPrompt, userPrompt, maxCompletionTokens, thinkingEffort, signal } = params
 
   const payload: Record<string, unknown> = {
     messages: [
@@ -717,6 +718,7 @@ async function callClovaStudio(params: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal,
       }
     )
 
@@ -749,7 +751,18 @@ async function callClovaStudio(params: {
       },
     }
   } catch (e: unknown) {
-    return { text: null, error: e instanceof Error ? e.message : 'unknown error calling CLOVA Studio' }
+    const errorName = e instanceof Error ? e.name : ''
+    return {
+      text: null,
+      error: e instanceof Error ? e.message : 'unknown error calling CLOVA Studio',
+      diagnostics: {
+        errorClass:
+          errorName === 'TimeoutError' || errorName === 'AbortError' ? 'TimeoutError' : 'NetworkError',
+        httpStatus: null,
+        responseBody: null,
+        provider: 'clova',
+      },
+    }
   }
 }
 
@@ -868,6 +881,7 @@ export async function callPlatformModel(params: {
     userPrompt,
     maxCompletionTokens,
     thinkingEffort: clovaThinking,
+    signal: optionalTimeoutSignal(timeoutMs),
   })
 }
 

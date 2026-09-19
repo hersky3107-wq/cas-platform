@@ -3,7 +3,9 @@
  * timestamp + native facts. No price, volume, news, packet.
  */
 import { SIGNS } from '../engines/astro/tables'
+import { stemByHanja } from '../engines/calendar/tables'
 import type { LeagueDivinationResult } from './types'
+import { tarotNameKo, runeNameKo } from './names'
 import { isPlusVote } from './yongshen'
 
 function signFromLongitude(longitude: number): string {
@@ -22,7 +24,9 @@ export type LeagueReaderCompactPack = {
   votes: LeagueDivinationResult['votes']
   iching: {
     primary: string
+    primaryHangul: string
     resulting: string
+    resultingHangul: string
     relative: string
     yongshenPosition: number
     yongshenMonthPhase: string | null
@@ -30,13 +34,15 @@ export type LeagueReaderCompactPack = {
     ying: number
     hiddenRelatives: string[]
   }
-  tarot: { outcome: string; reversed: boolean }
-  runes: { future: string; reversed: boolean }
+  tarot: { outcome: string; outcomeKo: string; reversed: boolean }
+  runes: { future: string; futureKo: string; reversed: boolean }
   taeil: {
     label: '택일'
     dayGanzhi: string
+    dayHangul: string
     monthGanzhi: string
     yongshenStem: string
+    yongshenStemHangul: string
     yongshenElement: string
   }
   astro: {
@@ -73,7 +79,9 @@ export function compactReaderPack(
     votes: result.votes,
     iching: {
       primary: result.charts.iching.draw.primary.hanja,
+      primaryHangul: result.charts.iching.draw.primary.hangul,
       resulting: result.charts.iching.draw.resulting.hanja,
+      resultingHangul: result.charts.iching.draw.resulting.hangul,
       relative: result.charts.iching.relative,
       yongshenPosition: result.charts.iching.yongshenPosition,
       yongshenMonthPhase: yongshenLine?.monthPhase ?? null,
@@ -83,17 +91,21 @@ export function compactReaderPack(
     },
     tarot: {
       outcome: outcome?.name ?? '',
+      outcomeKo: outcome ? tarotNameKo(outcome.name, outcome.id) : '',
       reversed: outcome?.reversed ?? false,
     },
     runes: {
       future: future?.name ?? '',
+      futureKo: future ? runeNameKo(future.name) : '',
       reversed: future?.reversed ?? false,
     },
     taeil: {
       label: '택일',
       dayGanzhi: result.charts.taeil.pillars.day.ganzhi,
+      dayHangul: `${result.charts.taeil.pillars.day.stem.hangul}${result.charts.taeil.pillars.day.branch.hangul}`,
       monthGanzhi: result.charts.taeil.pillars.month.ganzhi,
       yongshenStem: result.charts.taeil.yongshen.stemHanja,
+      yongshenStemHangul: stemByHanja(result.charts.taeil.yongshen.stemHanja).hangul,
       yongshenElement: result.charts.taeil.yongshen.element,
     },
     astro: {

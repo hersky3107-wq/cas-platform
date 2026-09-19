@@ -21,6 +21,7 @@ export { createMemoryLeagueDivinationCache, createSupabaseLeagueDivinationCache 
 export { parseLeagueReaderRationale, MARKET_LANGUAGE_BAN } from './parse-reader'
 export { compactReaderPack } from './compact-pack'
 export { fallbackRationale } from './fallback'
+export { tarotNameKo, runeNameKo } from './names'
 
 export type {
   LeagueBinaryVote,

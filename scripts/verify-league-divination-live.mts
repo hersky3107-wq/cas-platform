@@ -1,9 +1,9 @@
 /**
- * Live verification of the league-divination adapter. No product changes.
+ * Live verification of the league-divination adapter.
  *
  *   npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/verify-league-divination-live.mts
  *
- * 1. Sequential 20× parse gate on Qwen 3.5 Flash with a real compact chart pack.
+ * 1. Sequential 20× parse gate on the seated reader with a real compact chart pack.
  * 2. Twelve live rounds — one per category chip — through the adapter.
  * 3. Cache E2E: same roundId from adapter.ts vs live.ts against the real table.
  */
@@ -42,6 +42,7 @@ const {
   LEAGUE_READER_PLATFORM_ID,
   LEAGUE_READER_MAX_COMPLETION_TOKENS,
   LEAGUE_READER_TIMEOUT_MS,
+  LEAGUE_READER_EXTRA_REQUEST_PARAMS,
 } = await import('../lib/oracle/league-divination/conventions')
 const { LEAGUE_ORACLE_CATEGORY_IDS } = await import('../lib/oracle/league-divination/types')
 const { readLeagueDivination } = await import('../lib/oracle/league-divination/adapter')
@@ -180,7 +181,7 @@ async function callReaderOnce(input: {
     systemPrompt: input.systemPrompt,
     userPrompt: input.userPrompt,
     maxCompletionTokens: LEAGUE_READER_MAX_COMPLETION_TOKENS,
-    extraRequestParams: { reasoning: { effort: 'minimal' } },
+    extraRequestParams: { ...LEAGUE_READER_EXTRA_REQUEST_PARAMS },
     debugRequestLabel: 'league-divination-reader',
     timeoutMs: input.timeoutMs,
   })
@@ -257,12 +258,14 @@ type GateRow = {
   parseReason: string | null
   attempts: number
   latencyMs: number
+  firstAttemptMs: number
   costUsd: number | null
   kinds: CallKind[]
   empty200Logged: number
   finishReason: string | null
   error: string | null
   textChars: number
+  sample: string | null
 }
 
 const gateRows: GateRow[] = []
@@ -281,12 +284,14 @@ async function runGateTrial(run: number): Promise<GateRow> {
       parseReason: null,
       attempts: 1,
       latencyMs: first.meta.latencyMs,
+      firstAttemptMs: first.meta.latencyMs,
       costUsd: first.meta.costUsd,
       kinds: [first.meta.kind],
       empty200Logged: first.meta.empty200Logged,
       finishReason: first.meta.finishReason,
       error: first.meta.error,
       textChars: (first.text ?? '').length,
+      sample: null,
     }
   }
 
@@ -306,12 +311,14 @@ async function runGateTrial(run: number): Promise<GateRow> {
     parseReason: parsedSecond.ok ? null : parsedSecond.reason,
     attempts: 2,
     latencyMs: first.meta.latencyMs + second.meta.latencyMs,
+    firstAttemptMs: first.meta.latencyMs,
     costUsd: cost,
     kinds: [first.meta.kind, second.meta.kind],
     empty200Logged: first.meta.empty200Logged + second.meta.empty200Logged,
     finishReason: second.meta.finishReason ?? first.meta.finishReason,
     error: second.meta.error ?? first.meta.error,
     textChars: (second.text ?? first.text ?? '').length,
+    sample: parsedSecond.ok ? null : (second.text ?? first.text ?? '').slice(0, 800),
   }
 }
 
@@ -328,18 +335,23 @@ for (let run = 1; run <= GATE_N; run += 1) {
 const gateParsed = gateRows.filter((r) => r.parsed).length
 const gateEmpty200 = gateRows.filter((r) => r.kinds.includes('empty-200') || r.empty200Logged > 0).length
 const gateTimeout = gateRows.filter((r) => r.kinds.includes('timeout')).length
-const gateMeanMs = mean(gateRows.map((r) => r.latencyMs))
+const firstAttempts = gateRows.map((r) => r.firstAttemptMs)
+const gateMeanMs = mean(firstAttempts)
+const gateWorstMs = Math.max(...firstAttempts)
+const clears12s = gateTimeout === 0 && gateWorstMs <= LEAGUE_READER_TIMEOUT_MS
 const gatePass = gateParsed >= GATE_PASS_AT
+const failSample = gateRows.find((r) => r.sample)?.sample ?? null
 
 log(
-  `GATE ${gateParsed}/${GATE_N} pass=${gatePass} mean=${Math.round(gateMeanMs)}ms empty-200=${gateEmpty200}/${GATE_N} timeout=${gateTimeout}/${GATE_N}`,
+  `GATE ${gateParsed}/${GATE_N} pass=${gatePass} mean=${Math.round(gateMeanMs)}ms worst=${Math.round(gateWorstMs)}ms clears12s=${clears12s} empty-200=${gateEmpty200}/${GATE_N} timeout=${gateTimeout}/${GATE_N}`,
 )
+if (failSample) log(`--- first fail sample ---\n${failSample}\n---`)
 
 const REPLACEMENT = {
-  brand: 'NAVER',
-  displayName: 'HyperCLOVA X HCX-007',
-  platformId: 'clova:hcx-007',
-  why: 'NAVER already passed the oracle reading 20× gate (20/20). Korean-native, 3.7s on this pack, four Korean lines, no CoT dump into content, roster price $0. MiniMax M3 is gated and under the $0.002 cap but empty-200’d on a live probe of this same pack (the failure that retired Qwen from layer-1). Cohere Command A replaced Qwen on the iching dedicated seat but overshoots the cost cap (~$0.009) and collapsed to one paragraph here. Do not swap in this pass — proposal only.',
+  brand: 'Meta',
+  displayName: 'Llama 4 Maverick',
+  platformId: 'openrouter:llama-4-maverick',
+  why: 'Meta already passed the oracle reading 20× gate (20/20). Live probe on this pack: 6.8s, five Korean lines, under the $0.002 cap. Do not raise the 12s timeout; NAVER oracle name-seat thinking:low measured 11–23s.',
 }
 
 // --- 2. Twelve live category rounds -------------------------------------------
@@ -525,9 +537,11 @@ if (!tableWait.ok) {
 
 // --- Report --------------------------------------------------------------------
 
-const replacementLine = gatePass
-  ? 'Qwen 3.5 Flash passed 19/20. No replacement.'
-  : `Qwen 3.5 Flash failed ${gateParsed}/${GATE_N}. Replacement: **${REPLACEMENT.brand} ${REPLACEMENT.displayName}** (\`${REPLACEMENT.platformId}\`). ${REPLACEMENT.why}`
+const replacementLine = gatePass && clears12s
+  ? `${LEAGUE_READER_DISPLAY_NAME} passed ${gateParsed}/${GATE_N} and clears the 12s timeout (mean ${Math.round(gateMeanMs)}ms, worst ${Math.round(gateWorstMs)}ms).`
+  : gatePass && !clears12s
+    ? `${LEAGUE_READER_DISPLAY_NAME} parsed ${gateParsed}/${GATE_N} but does **not** clear 12s (mean ${Math.round(gateMeanMs)}ms, worst ${Math.round(gateWorstMs)}ms, timeouts ${gateTimeout}/20). Timeout not raised. Next candidate: **${REPLACEMENT.brand} ${REPLACEMENT.displayName}** (\`${REPLACEMENT.platformId}\`). ${REPLACEMENT.why}`
+    : `${LEAGUE_READER_DISPLAY_NAME} failed ${gateParsed}/${GATE_N} (mean ${Math.round(gateMeanMs)}ms, worst ${Math.round(gateWorstMs)}ms, clears12s=${clears12s}). Next candidate: **${REPLACEMENT.brand} ${REPLACEMENT.displayName}** (\`${REPLACEMENT.platformId}\`). ${REPLACEMENT.why}`
 
 const md: string[] = [
   '# League divination live verify',
@@ -539,9 +553,9 @@ const md: string[] = [
   '',
   '## 1. Sequential 20× gate',
   '',
-  `| parsed | pass (≥19/20) | mean latency | empty-200 trials | timeout trials |`,
-  `| ---: | --- | ---: | ---: | ---: |`,
-  `| ${gateParsed}/${GATE_N} | ${gatePass ? 'yes' : 'NO'} | ${Math.round(gateMeanMs)}ms | ${gateEmpty200}/${GATE_N} | ${gateTimeout}/${GATE_N} |`,
+  `| parsed | pass (≥19/20) | mean (1st) | worst (1st) | clears 12s | empty-200 | timeout |`,
+  `| ---: | --- | ---: | ---: | --- | ---: | ---: |`,
+  `| ${gateParsed}/${GATE_N} | ${gatePass ? 'yes' : 'NO'} | ${Math.round(gateMeanMs)}ms | ${Math.round(gateWorstMs)}ms | ${clears12s ? 'yes' : 'NO'} | ${gateEmpty200}/${GATE_N} | ${gateTimeout}/${GATE_N} |`,
   '',
   replacementLine,
   '',
@@ -559,9 +573,23 @@ for (const r of roundRows) {
 md.push('')
 md.push(`Verdict distribution: **${upCount} up / ${downCount} down**.${biased ? ' 12-one-way — ballot looks biased.' : ' Not a 12-up or 12-down sweep.'}`)
 md.push('')
+md.push(`Reader vs fallback: **${12 - fallbackCount} reader / ${fallbackCount} fallback**.`)
+md.push('')
 md.push(`Fallback sentence fired: **${fallbackCount}/12**. Market-language leak past parser (ban list or extra eye words): **${leakCount}/12**.`)
 md.push('')
-md.push('### Rationales')
+const sampleRounds = roundRows.filter((r) => !r.fallbackFired).slice(0, 3)
+const rationaleSamples = sampleRounds.length === 3 ? sampleRounds : roundRows.slice(0, 3)
+md.push('### Three full rationales')
+md.push('')
+for (const r of rationaleSamples) {
+  md.push(`#### ${r.category} (${r.source})`)
+  md.push('')
+  md.push('```')
+  md.push(r.rationale)
+  md.push('```')
+  md.push('')
+}
+md.push('### All rationales')
 md.push('')
 for (const r of roundRows) {
   md.push(`#### ${r.category}`)
@@ -589,13 +617,16 @@ writeFileSync(
         total: GATE_N,
         pass: gatePass,
         meanLatencyMs: gateMeanMs,
+        worstLatencyMs: gateWorstMs,
+        clears12s,
         empty200Trials: gateEmpty200,
         timeoutTrials: gateTimeout,
         payloadUserChars: gateUser.length,
         codeVerdict: gatePack.codeVerdict,
-        rows: gateRows,
+        failSample,
+        rows: gateRows.map((r) => ({ ...r, sample: r.sample ? r.sample.slice(0, 400) : null })),
       },
-      replacement: gatePass ? null : REPLACEMENT,
+      replacement: gatePass && clears12s ? null : REPLACEMENT,
       rounds: roundRows,
       distribution: { up: upCount, down: downCount, biased },
       fallbackFired: fallbackCount,
@@ -607,5 +638,5 @@ writeFileSync(
   ),
 )
 log(`wrote ${OUT_MD}`)
-if (!gatePass) log(`REPLACEMENT: ${REPLACEMENT.brand} ${REPLACEMENT.displayName} (${REPLACEMENT.platformId})`)
-process.exitCode = gatePass && cacheCheck.ok ? 0 : 1
+if (!gatePass || !clears12s) log(`REPLACEMENT: ${REPLACEMENT.brand} ${REPLACEMENT.displayName} (${REPLACEMENT.platformId})`)
+process.exitCode = gatePass && clears12s && cacheCheck.ok ? 0 : 1
