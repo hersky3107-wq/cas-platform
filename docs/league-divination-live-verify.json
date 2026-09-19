@@ -1,0 +1,613 @@
+{
+  "runStamp": "2026-09-19T09-29-02-463Z",
+  "gate": {
+    "parsed": 0,
+    "total": 20,
+    "pass": false,
+    "meanLatencyMs": 7289.4,
+    "empty200Trials": 0,
+    "timeoutTrials": 0,
+    "payloadUserChars": 1357,
+    "codeVerdict": "down",
+    "rows": [
+      {
+        "run": 1,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6836,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1620
+      },
+      {
+        "run": 2,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6725,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1619
+      },
+      {
+        "run": 3,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 7580,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1688
+      },
+      {
+        "run": 4,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6823,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1572
+      },
+      {
+        "run": 5,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 7198,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1664
+      },
+      {
+        "run": 6,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6779,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1602
+      },
+      {
+        "run": 7,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 7073,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1563
+      },
+      {
+        "run": 8,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6883,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1762
+      },
+      {
+        "run": 9,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 7693,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1521
+      },
+      {
+        "run": 10,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 7680,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1582
+      },
+      {
+        "run": 11,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 7192,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1520
+      },
+      {
+        "run": 12,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 7389,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1569
+      },
+      {
+        "run": 13,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6638,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1655
+      },
+      {
+        "run": 14,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6395,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1542
+      },
+      {
+        "run": 15,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6054,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1624
+      },
+      {
+        "run": 16,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 7006,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1590
+      },
+      {
+        "run": 17,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 8039,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1561
+      },
+      {
+        "run": 18,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 10095,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1620
+      },
+      {
+        "run": 19,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 9558,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1655
+      },
+      {
+        "run": 20,
+        "parsed": false,
+        "parseReason": "line_count",
+        "attempts": 2,
+        "latencyMs": 6152,
+        "costUsd": 0.000359255,
+        "kinds": [
+          "ok",
+          "ok"
+        ],
+        "empty200Logged": 0,
+        "finishReason": "length",
+        "error": null,
+        "textChars": 1647
+      }
+    ]
+  },
+  "replacement": {
+    "brand": "NAVER",
+    "displayName": "HyperCLOVA X HCX-007",
+    "platformId": "clova:hcx-007",
+    "why": "NAVER already passed the oracle reading 20× gate (20/20). Korean-native, 3.7s on this pack, four Korean lines, no CoT dump into content, roster price $0. MiniMax M3 is gated and under the $0.002 cap but empty-200’d on a live probe of this same pack (the failure that retired Qwen from layer-1). Cohere Command A replaced Qwen on the iching dedicated seat but overshoots the cost cap (~$0.009) and collapsed to one paragraph here. Do not swap in this pass — proposal only."
+  },
+  "rounds": [
+    {
+      "category": "sports",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-sports",
+      "verdict": "down",
+      "pick": "B",
+      "confidence": 1,
+      "latencyMs": 7049,
+      "costUsd": 0.000359775,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 遯·용신 官鬼는 월령 死이다.\n타로 결과 패는 King of Swords 역방향이다.\n룬 미래는 Gebo 정방향이다.\n택일 일진 丙申를 용신 甲(wood)에 읽는다.\n코드가 합한 방향은 응효(B)이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "crypto",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-crypto",
+      "verdict": "up",
+      "pick": null,
+      "confidence": 1,
+      "latencyMs": 8046,
+      "costUsd": 0.000358215,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 睽·용신 妻财는 월령 旺이다.\n타로 결과 패는 Ten of Cups 역방향이다.\n룬 미래는 Othala 역방향이다.\n택일 일진 丙申를 용신 壬(water)에 읽는다.\n코드가 합한 방향은 강·길 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "stocks",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-stocks",
+      "verdict": "down",
+      "pick": null,
+      "confidence": 0.5555555555555556,
+      "latencyMs": 7424,
+      "costUsd": 0.000357825,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 坎·용신 妻财는 월령 死이다.\n타로 결과 패는 King of Wands 역방향이다.\n룬 미래는 Ehwaz 역방향이다.\n택일 일진 丙申를 용신 庚(metal)에 읽는다.\n코드가 합한 방향은 약·흉 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "fx",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-fx",
+      "verdict": "up",
+      "pick": null,
+      "confidence": 1,
+      "latencyMs": 8858,
+      "costUsd": 0.000358605,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 無妄·용신 妻财는 월령 休이다.\n타로 결과 패는 Five of Cups 정방향이다.\n룬 미래는 Jera 정방향이다.\n택일 일진 丙申를 용신 辛(metal)에 읽는다.\n코드가 합한 방향은 강·길 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "gold_metals",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-gold_metals",
+      "verdict": "down",
+      "pick": null,
+      "confidence": 0.5555555555555556,
+      "latencyMs": 8058,
+      "costUsd": 0.000358735,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 坎·용신 妻财는 월령 死이다.\n타로 결과 패는 Five of Swords 정방향이다.\n룬 미래는 Ingwaz 정방향이다.\n택일 일진 丙申를 용신 庚(metal)에 읽는다.\n코드가 합한 방향은 약·흉 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "index_etf",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-index_etf",
+      "verdict": "up",
+      "pick": null,
+      "confidence": 0.5555555555555556,
+      "latencyMs": 8351,
+      "costUsd": 0.000358475,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 大壯·용신 妻财는 월령 相이다.\n타로 결과 패는 Queen of Wands 정방향이다.\n룬 미래는 Ansuz 역방향이다.\n택일 일진 丙申를 용신 戊(earth)에 읽는다.\n코드가 합한 방향은 강·길 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "commodities_energy",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-commodities_energy",
+      "verdict": "down",
+      "pick": null,
+      "confidence": 1,
+      "latencyMs": 7374,
+      "costUsd": 0.000358215,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 坎·용신 妻财는 월령 死이다.\n타로 결과 패는 Nine of Swords 정방향이다.\n룬 미래는 Ingwaz 정방향이다.\n택일 일진 丙申를 용신 丙(fire)에 읽는다.\n코드가 합한 방향은 약·흉 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "politics_election",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-politics_election",
+      "verdict": "up",
+      "pick": "A",
+      "confidence": 0.5555555555555556,
+      "latencyMs": 6830,
+      "costUsd": 0.000357435,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 坎·용신 官鬼는 월령 休이다.\n타로 결과 패는 Ace of Swords 정방향이다.\n룬 미래는 Tiwaz 정방향이다.\n택일 일진 丙申를 용신 丁(fire)에 읽는다.\n코드가 합한 방향은 세효(A)이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "entertainment",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-entertainment",
+      "verdict": "down",
+      "pick": "B",
+      "confidence": 0.1111111111111111,
+      "latencyMs": 7020,
+      "costUsd": 0.000359515,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 井·용신 子孙는 월령 休이다.\n타로 결과 패는 Queen of Swords 역방향이다.\n룬 미래는 Nauthiz 정방향이다.\n택일 일진 丙申를 용신 乙(wood)에 읽는다.\n코드가 합한 방향은 응효(B)이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "memecoin",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-memecoin",
+      "verdict": "up",
+      "pick": null,
+      "confidence": 0.5555555555555556,
+      "latencyMs": 7835,
+      "costUsd": 0.000358475,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 既濟·용신 妻财는 월령 相이다.\n타로 결과 패는 Six of Swords 역방향이다.\n룬 미래는 Fehu 역방향이다.\n택일 일진 丙申를 용신 癸(water)에 읽는다.\n코드가 합한 방향은 강·길 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "real_estate",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-real_estate",
+      "verdict": "up",
+      "pick": null,
+      "confidence": 1,
+      "latencyMs": 7526,
+      "costUsd": 0.000359255,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 歸妹·용신 父母는 월령 休이다.\n타로 결과 패는 The Hierophant 역방향이다.\n룬 미래는 Algiz 정방향이다.\n택일 일진 丙申를 용신 己(earth)에 읽는다.\n코드가 합한 방향은 강·길 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    },
+    {
+      "category": "macro_econ",
+      "roundId": "live-verify-2026-09-19T09-29-02-463Z-macro_econ",
+      "verdict": "up",
+      "pick": null,
+      "confidence": 1,
+      "latencyMs": 7001,
+      "costUsd": 0.000358475,
+      "source": "fallback",
+      "attempts": 2,
+      "rationale": "육효 본괘 咸·용신 父母는 월령 休이다.\n타로 결과 패는 The High Priestess 역방향이다.\n룬 미래는 Sowilo 정방향이다.\n택일 일진 丙申를 용신 戊(earth)에 읽는다.\n코드가 합한 방향은 강·길 쪽이다.",
+      "parserBanHit": null,
+      "eyeExtra": [],
+      "fallbackFired": true,
+      "kinds": [
+        "ok",
+        "ok"
+      ],
+      "empty200Logged": 0
+    }
+  ],
+  "distribution": {
+    "up": 7,
+    "down": 5,
+    "biased": false
+  },
+  "fallbackFired": 12,
+  "marketLeak": 0,
+  "cache": {
+    "table": {
+      "ok": true,
+      "message": "table reachable"
+    },
+    "ok": true,
+    "detail": "sameRationale=true sameDraw=true sameVerdict=true stored=true",
+    "firstIching": {
+      "primary": "遯",
+      "relative": "官鬼",
+      "resulting": "隨",
+      "yongshenSource": "yongshen",
+      "yongshenPosition": 2
+    },
+    "secondIching": {
+      "primary": "遯",
+      "relative": "官鬼",
+      "resulting": "隨",
+      "yongshenSource": "yongshen",
+      "yongshenPosition": 2
+    },
+    "rationaleMatch": true
+  }
+}
