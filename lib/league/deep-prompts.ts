@@ -5,7 +5,8 @@
  * or AX/JEJU/MOTIE warroom framing. No national-institution data sources.
  */
 
-import { activeLanguageDirective } from './deep-output-language'
+import { deepSectionHeadersFor } from './deep-display'
+import { activeLanguageDirective, getOutputLanguage } from './deep-output-language'
 
 export const LEAGUE_DEEP_OPEN_ROSTER = [
   'openai',
@@ -58,6 +59,7 @@ const FORBIDDEN_SEATS =
   'Never assign seats named after governments, ministries, regulators, or public corporations (examples forbidden: 외교부, 산업통상자원부, 기획재정부, 한국석유공사, 한국전력, 한국가스공사, 원안위, KOTRA, 관세청). Use private-analyst lenses only (price path, research quality, resolution risk, crowding, tail risk, methodology).'
 
 export function leagueAnalystSystemPrompt(roleLabel: string, mandate: string): string {
+  const headings = deepSectionHeadersFor(getOutputLanguage())
   return [
     'You are an independent market/forecast analyst on an AI Prediction League commentary panel.',
     `Your seat: ${roleLabel}.`,
@@ -70,8 +72,8 @@ export function leagueAnalystSystemPrompt(roleLabel: string, mandate: string): s
     activeLanguageDirective(),
     '',
     'Output two sections only:',
-    '## Key findings',
-    '## Evidence from the packets',
+    `## ${headings.keyFindings}`,
+    `## ${headings.evidence}`,
   ].join('\n')
 }
 
@@ -152,6 +154,7 @@ export function leagueDebateOrchestratorSystemPrompt(): string {
 }
 
 export function leaguePreReportSystemPrompt(): string {
+  const headings = deepSectionHeadersFor(getOutputLanguage())
   return [
     'You are the lead briefing writer for an AI Prediction League deep commentary.',
     'Write one structured briefing from the supplied league packets only.',
@@ -160,10 +163,10 @@ export function leaguePreReportSystemPrompt(): string {
     ANALYST_DISCIPLINE,
     '',
     'Sections:',
-    '1) Proposition and resolution clock',
-    '2) What the price/research packets actually contain',
-    '3) Open questions the packets do not settle',
-    '4) What a later analyst should weigh',
+    `1) ${headings.propositionClock}`,
+    `2) ${headings.packetsContain}`,
+    `3) ${headings.openQuestions}`,
+    `4) ${headings.laterWeigh}`,
     '',
     LEAGUE_DEEP_DISCLAIMER,
     '',
@@ -172,6 +175,7 @@ export function leaguePreReportSystemPrompt(): string {
 }
 
 export function leagueSynthesisSystemPrompt(): string {
+  const headings = deepSectionHeadersFor(getOutputLanguage())
   return [
     'You are the closing synthesizer for an AI Prediction League open commentary.',
     'Read the packet briefing and the independent analyst notes. Produce one integrated commentary.',
@@ -180,11 +184,11 @@ export function leagueSynthesisSystemPrompt(): string {
     ANALYST_DISCIPLINE,
     '',
     'Use these headings:',
-    '1) Core summary',
-    '2) Where the analysts agree',
-    '3) Where they diverge',
-    '4) Commentary options (A/B/C) — interpretive readings, not trades',
-    '5) Packet gaps',
+    `1) ${headings.coreSummary}`,
+    `2) ${headings.analystsAgree}`,
+    `3) ${headings.analystsDiverge}`,
+    `4) ${headings.commentaryOptions}`,
+    `5) ${headings.packetGaps}`,
     '',
     `Close with: "${LEAGUE_DEEP_DISCLAIMER}"`,
     '',
@@ -248,6 +252,7 @@ export function leagueVoteSystemPrompt(): string {
 }
 
 export function leagueChairSystemPrompt(): string {
+  const headings = deepSectionHeadersFor(getOutputLanguage())
   return [
     'You are the closing chair of an AI Prediction League commentary panel.',
     'You synthesize the briefing, debate, and advisory ballot into unscored commentary.',
@@ -256,9 +261,9 @@ export function leagueChairSystemPrompt(): string {
     ANALYST_DISCIPLINE,
     '',
     'Write these headings:',
-    '## Judgment',
-    '## Key issues',
-    '## Minority report',
+    `## ${headings.judgment}`,
+    `## ${headings.keyIssues}`,
+    `## ${headings.minorityReport}`,
     '',
     `Close the judgment with: "${LEAGUE_DEEP_DISCLAIMER}"`,
     '',

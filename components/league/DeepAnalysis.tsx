@@ -13,6 +13,8 @@ import {
   type DeepSnapshot,
   type DeepVoteSnapshot,
 } from '@/lib/league/deep-snapshot'
+import { overlayDeepTranslations } from '@/lib/league/deep-display'
+import { useDeepTranslations } from '@/lib/league/use-deep-translations'
 import { CardCompliance, type ComplianceReceipt } from './CardCompliance'
 
 const OPEN_COST = creditsForLeagueDeepOpen()
@@ -87,6 +89,16 @@ export function DeepAnalysis({
   const [refunded, setRefunded] = useState(false)
   const [result, setResult] = useState<DeepPayload | null>(null)
   const [snapshot, setSnapshot] = useState<DeepSnapshot | null>(null)
+  const liveSnap = snapshot ?? (result ? snapshotFromResult(result) : null)
+  const { translations, inFlight: deepI18nInFlight, showOriginal, onToggleOriginal } = useDeepTranslations(
+    roundId,
+    locale,
+    liveSnap
+  )
+  const displaySnap = liveSnap
+    ? overlayDeepTranslations(liveSnap, translations, { locale, showOriginal })
+    : null
+  const hasTranslation = Boolean(translations && Object.keys(translations).length > 0)
 
   const applyPoll = useCallback(
     (kind: DeepKind, body: PollBody, status: number) => {
@@ -269,11 +281,15 @@ export function DeepAnalysis({
           {(receipt) => (
             <DeepProcessBody
               receipt={receipt}
-              snapshot={snapshot}
+              snapshot={displaySnap}
               result={result}
               stage={stage}
               running={running !== null}
               t={t}
+              hasTranslation={hasTranslation}
+              showOriginal={showOriginal}
+              onToggleOriginal={onToggleOriginal}
+              translating={deepI18nInFlight}
             />
           )}
         </CardCompliance>
@@ -291,6 +307,10 @@ function DeepProcessBody({
   stage,
   running,
   t,
+  hasTranslation,
+  showOriginal,
+  onToggleOriginal,
+  translating,
 }: {
   receipt: ComplianceReceipt
   snapshot: DeepSnapshot | null
@@ -298,6 +318,10 @@ function DeepProcessBody({
   stage: string | null
   running: boolean
   t: LeagueUiPack
+  hasTranslation: boolean
+  showOriginal: boolean
+  onToggleOriginal: () => void
+  translating: boolean
 }) {
   void receipt
   const snap = snapshot ?? (result ? snapshotFromResult(result) : null)
@@ -315,6 +339,21 @@ function DeepProcessBody({
       <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
         {t.hub.deepUnscoredNote}
       </p>
+      {hasTranslation ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleOriginal}
+            className="text-[11px] font-semibold text-league-accent-strong underline-offset-2 hover:underline"
+          >
+            {showOriginal ? t.modelTile.hideOriginal : t.modelTile.showOriginal}
+          </button>
+        </div>
+      ) : translating ? (
+        <p className="mt-2 text-[11px] font-semibold text-league-accent-strong" aria-live="polite">
+          {t.modelTile.translating}
+        </p>
+      ) : null}
       <StageStrip kind={snap.kind} stage={done ? 'done' : stage} t={t} />
       {snap.kind === 'open' ? (
         <OpenProcess snap={snap} running={running} t={t} />

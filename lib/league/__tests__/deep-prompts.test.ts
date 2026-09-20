@@ -16,6 +16,7 @@ import {
   leagueSynthesisSystemPrompt,
   leagueVoteSystemPrompt,
 } from '../deep-prompts'
+import { runWithOutputLanguage } from '../deep-output-language'
 
 const AX_PERSONA_MARKERS = [
   '자원·에너지 정책 보좌',
@@ -72,6 +73,8 @@ describe('league-local deep prompts', () => {
     expect(blobs).not.toMatch(/You are a (national|government|ministry)/i)
     expect(blobs).toMatch(/Do not cite or request/)
     expect(blobs).toMatch(/Never assign seats named after governments/)
+    expect(blobs).toContain('## Key findings')
+    expect(blobs).toContain('## Evidence from the packets')
   })
 
   it('severs motie/jeju/gunpo imports from the league deep path', () => {
@@ -84,5 +87,15 @@ describe('league-local deep prompts', () => {
       expect(src, file).not.toMatch(/@\/lib\/gunpo/)
       expect(src, file).not.toMatch(/from '\.\.\/motie/)
     }
+  })
+
+  it('asks Korean sessions for 핵심 발견 / 패킷 근거, not English section chrome', async () => {
+    const prompt = await runWithOutputLanguage('ko', async () =>
+      leagueAnalystSystemPrompt('Price-path analyst', 'read the packet')
+    )
+    expect(prompt).toContain('## 핵심 발견')
+    expect(prompt).toContain('## 패킷 근거')
+    expect(prompt).not.toContain('## Key findings')
+    expect(prompt).not.toContain('## Evidence from the packets')
   })
 })

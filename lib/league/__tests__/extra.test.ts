@@ -18,6 +18,8 @@ import {
   DIVINATION_CUSTOMER_KEYS,
   DIVINATION_VOTING_SYSTEM_COUNT,
   EXTRA_EXPERIMENTAL_DISCLAIMER_KO,
+  divinationConfidenceLabel,
+  divinationConfidenceTier,
   mentionsSixSystems,
 } from '../extra/copy'
 import {
@@ -252,6 +254,56 @@ describe('extra experimental disclaimer', () => {
       const line = extraExperimentalDisclaimer(getLeagueUiPack(locale))
       assertExtraExperimentalDisclaimer(line)
       expect(mentionsSixSystems(line)).toBeNull()
+    }
+  })
+})
+
+describe('divination confidence qualitative display', () => {
+  it('maps confidence values to weak, moderate, strong tiers on both unit and ledger scales', () => {
+    // Unit scale (0..1)
+    expect(divinationConfidenceTier(0.11)).toBe('weak')
+    expect(divinationConfidenceTier(0.24)).toBe('weak')
+    expect(divinationConfidenceTier(0.25)).toBe('moderate')
+    expect(divinationConfidenceTier(0.38)).toBe('moderate')
+    expect(divinationConfidenceTier(0.50)).toBe('moderate')
+    expect(divinationConfidenceTier(0.51)).toBe('strong')
+    expect(divinationConfidenceTier(0.85)).toBe('strong')
+
+    // Ledger scale (0..100)
+    expect(divinationConfidenceTier(11)).toBe('weak')
+    expect(divinationConfidenceTier(24)).toBe('weak')
+    expect(divinationConfidenceTier(25)).toBe('moderate')
+    expect(divinationConfidenceTier(38)).toBe('moderate')
+    expect(divinationConfidenceTier(50)).toBe('moderate')
+    expect(divinationConfidenceTier(51)).toBe('strong')
+    expect(divinationConfidenceTier(85)).toBe('strong')
+
+    // Invalid / null
+    expect(divinationConfidenceTier(null)).toBeNull()
+    expect(divinationConfidenceTier(undefined)).toBeNull()
+    expect(divinationConfidenceTier(Number.NaN)).toBeNull()
+  })
+
+  it('renders qualitative Korean labels and never raw percentages', () => {
+    const ko = getLeagueUiPack('ko')
+    expect(divinationConfidenceLabel(11, ko)).toBe('약한 점괘')
+    expect(divinationConfidenceLabel(38, ko)).toBe('보통 점괘')
+    expect(divinationConfidenceLabel(65, ko)).toBe('강한 점괘')
+    expect(divinationConfidenceLabel(null, ko)).toBeNull()
+  })
+
+  it('renders localized qualitative labels across all 8 locales', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const pack = getLeagueUiPack(locale)
+      const weak = divinationConfidenceLabel(11, pack)
+      const moderate = divinationConfidenceLabel(38, pack)
+      const strong = divinationConfidenceLabel(65, pack)
+      expect(weak).toBeTruthy()
+      expect(moderate).toBeTruthy()
+      expect(strong).toBeTruthy()
+      expect(weak).not.toMatch(/%/)
+      expect(moderate).not.toMatch(/%/)
+      expect(strong).not.toMatch(/%/)
     }
   })
 })

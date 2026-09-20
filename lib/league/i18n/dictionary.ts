@@ -401,6 +401,12 @@ export type LeagueUiPack = {
     hideReasoning: string
     /** Short label making clear the % is the model's OWN confidence in its call. */
     confidence: string
+    /** Qualitative strength label for the divination seat (replaces raw numeric confidence %). */
+    divinationConfidence: {
+      weak: string
+      moderate: string
+      strong: string
+    }
     /** Legend for the correct/missed markers — only rendered once a round is resolved. */
     resultLegend: string
     /**
@@ -987,6 +993,11 @@ const en: LeagueUiPack = {
     showReasoning: 'Show reasoning',
     hideReasoning: 'Hide reasoning',
     confidence: 'confidence',
+    divinationConfidence: {
+      weak: 'Subtle reading',
+      moderate: 'Moderate reading',
+      strong: 'Strong reading',
+    },
     resultLegend:
       '✓ correct — the AI\u2019s call matched the actual outcome · ✗ missed — it didn\u2019t. Shown only after the round resolves.',
     combinedTrack: (pct, n) => `this combined method\u2019s past accuracy ${pct}% (n=${n})`,
@@ -1482,6 +1493,11 @@ const ko: LeagueUiPack = {
     showReasoning: '근거 보기',
     hideReasoning: '근거 숨기기',
     confidence: '확신도',
+    divinationConfidence: {
+      weak: '약한 점괘',
+      moderate: '보통 점괘',
+      strong: '강한 점괘',
+    },
     resultLegend: '✓ 적중 — AI 예측이 실제 결과와 일치 · ✗ 실패 — 불일치. 라운드 확정 후에만 표시됩니다.',
     combinedTrack: (pct, n) => `이 결합 방식의 과거 적중률 ${pct}% (n=${n})`,
     combinedTrackPending: '이 결합 방식은 아직 성적표를 쌓는 중입니다',
@@ -1974,6 +1990,11 @@ const ja: LeagueUiPack = {
     showReasoning: '根拠を表示',
     hideReasoning: '根拠を隠す',
     confidence: '確信度',
+    divinationConfidence: {
+      weak: '控えめな占断',
+      moderate: '中庸な占断',
+      strong: '力強い占断',
+    },
     resultLegend: '✓ 的中 — AIの予測が実際の結果と一致 · ✗ 不的中 — 不一致。ラウンド確定後のみ表示されます。',
     combinedTrack: (pct, n) => `この合成方式の過去的中率 ${pct}%（n=${n}）`,
     combinedTrackPending: 'この合成方式はまだ成績を蓄積しています',
@@ -2460,6 +2481,11 @@ const zhTW: LeagueUiPack = {
     showReasoning: '顯示理由',
     hideReasoning: '隱藏理由',
     confidence: '信心度',
+    divinationConfidence: {
+      weak: '微弱占象',
+      moderate: '平穩占象',
+      strong: '鮮明占象',
+    },
     resultLegend: '✓ 命中 — AI 預測與實際結果一致 · ✗ 未中 — 不一致。僅在回合結算後顯示。',
     combinedTrack: (pct, n) => `此綜合方式的過往命中率 ${pct}%（n=${n}）`,
     combinedTrackPending: '此綜合方式仍在累積紀錄',
@@ -2953,6 +2979,11 @@ const fr: LeagueUiPack = {
     showReasoning: 'Voir le raisonnement',
     hideReasoning: 'Masquer le raisonnement',
     confidence: 'confiance',
+    divinationConfidence: {
+      weak: 'Présage discret',
+      moderate: 'Présage modéré',
+      strong: 'Présage prononcé',
+    },
     resultLegend:
       '✓ correct — la prédiction de l\u2019IA correspond au résultat réel · ✗ manqué — sinon. Affiché uniquement après la résolution.',
     combinedTrack: (pct, n) => `précision passée de cette méthode combinée ${pct}% (n=${n})`,
@@ -3457,6 +3488,11 @@ const es: LeagueUiPack = {
     showReasoning: 'Ver el razonamiento',
     hideReasoning: 'Ocultar el razonamiento',
     confidence: 'confianza',
+    divinationConfidence: {
+      weak: 'Presagio sutil',
+      moderate: 'Presagio moderado',
+      strong: 'Presagio claro',
+    },
     resultLegend:
       '✓ acierto — la predicción de la IA coincide con el resultado real · ✗ fallo — no coincide. Solo se muestra tras la resolución.',
     combinedTrack: (pct, n) => `precisión pasada de este método combinado ${pct}% (n=${n})`,
@@ -3958,6 +3994,11 @@ const ar: LeagueUiPack = {
     showReasoning: 'عرض السبب',
     hideReasoning: 'إخفاء السبب',
     confidence: 'الثقة',
+    divinationConfidence: {
+      weak: 'قراءة خفيفة',
+      moderate: 'قراءة معتدلة',
+      strong: 'قراءة واضحة',
+    },
     resultLegend: '✓ صحيح — توقّع الذكاء الاصطناعي طابق النتيجة الفعلية · ✗ خاطئ — لم يطابقها. يُعرض فقط بعد حسم الجولة.',
     combinedTrack: (pct, n) => `دقة هذه الطريقة المجمّعة سابقًا ${pct}% (n=${n})`,
     combinedTrackPending: 'هذه الطريقة المجمّعة ما زالت تجمع سجلها',
@@ -4457,6 +4498,11 @@ const pt: LeagueUiPack = {
     showReasoning: 'Mostrar raciocínio',
     hideReasoning: 'Ocultar raciocínio',
     confidence: 'confiança',
+    divinationConfidence: {
+      weak: 'Presságio sutil',
+      moderate: 'Presságio moderado',
+      strong: 'Presságio forte',
+    },
     resultLegend:
       '✓ correta — a previsão da IA coincidiu com o resultado real · ✗ errada — não coincidiu. Exibido apenas após a resolução da rodada.',
     combinedTrack: (pct, n) => `precisão passada deste método combinado: ${pct}% (n=${n})`,

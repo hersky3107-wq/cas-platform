@@ -9,6 +9,7 @@ import type { SideLabels, SideSlot } from '@/lib/league/side-labels'
 import { formatSignedPercent } from '@/lib/league/magnitude'
 import { sanitizeScoutRationaleDisplay } from '@/lib/league/prediction-parse'
 import { CountryFlag } from '@/components/league/CountryFlag'
+import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
 
 /**
  * One AI as a team card / ticker tile.
@@ -78,7 +79,15 @@ export function ModelTile({
   const dirStyle = SLOT_STYLE[slot]
   const glyph = labels ? labels.glyph(model.direction) : LEGACY_GLYPH[slot]
   const badge = directionBadgeLabel(model.direction, t, labels)
-  const pct = model.direction && model.probability !== null ? `${Math.round(model.probability)}%` : null
+  const isDivination = model.model_id === 'divination'
+  const divinationLabel =
+    isDivination && model.direction && model.probability !== null
+      ? divinationConfidenceLabel(model.probability, t)
+      : null
+  const pct =
+    !isDivination && model.direction && model.probability !== null
+      ? `${Math.round(model.probability)}%`
+      : null
   // ONE qualifier next to the badge: numeric magnitude on price rounds,
   // adapter-provided qualifier text (scoreline, margin) on the others.
   const magnitudeText =
@@ -204,9 +213,14 @@ export function ModelTile({
           </span>
         ) : null}
 
-        {open && pct ? (
+        {open && (pct || divinationLabel) ? (
           <p className="text-[10px] font-medium text-league-fg-muted">
-            {t.bracket.confidence} <span className="tabular-nums">{pct}</span>
+            {t.bracket.confidence}{' '}
+            {isDivination ? (
+              <span className="font-semibold text-league-fg">{divinationLabel}</span>
+            ) : (
+              <span className="tabular-nums">{pct}</span>
+            )}
           </p>
         ) : null}
 
