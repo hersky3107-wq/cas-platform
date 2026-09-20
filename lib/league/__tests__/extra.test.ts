@@ -195,12 +195,12 @@ describe('consensus isolation', () => {
     expect(withExtra.consensus.avgProbability).not.toBe(57.7)
   })
 
-  it('keeps unwired extra stubs on the board as 미응답, not as invented votes', () => {
+  it('keeps an extra 미응답 row on the board as no vote, not as an invented ballot', () => {
     const card = buildCardData(round(), [
       pred({ model_id: 'gpt-5.6-sol', predicted_direction: 'up', predicted_value: 70 }),
       pred({
-        model_id: 'sentiment',
-        brand: '📰 심리·내러티브',
+        model_id: 'consensus',
+        brand: '💰 돈이 매긴 확률',
         camp: 'other',
         league_tier: 'extra',
         predicted_direction: null,
@@ -208,7 +208,7 @@ describe('consensus isolation', () => {
         reasoning_snippet: 'engine not wired',
       }),
     ])
-    expect(card.models.some((m) => m.model_id === 'sentiment' && m.direction === null)).toBe(true)
+    expect(card.models.some((m) => m.model_id === 'consensus' && m.direction === null)).toBe(true)
     expect(card.tierSplit.extra.abstain).toBe(1)
     expect(card.consensus.respondedModels).toBe(1)
   })
@@ -297,6 +297,7 @@ describe('extra vs 40-AI comparison (display only)', () => {
       vsCrowd: 'pending',
     })
     expect(view.seats.find((s) => s.id === 'history')?.direction).toBeNull()
+    expect(view.seats.find((s) => s.id === 'consensus')?.direction).toBeNull()
     expect(view.hasAnyRecord).toBe(false)
     expect(card.consensus.totalModels).toBe(2)
     expect(card.consensus.majorityDirection).toBe('up')

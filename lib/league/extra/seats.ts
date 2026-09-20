@@ -34,7 +34,7 @@ export type ExtraSeat = {
 
 /**
  * Four extra seats. Official LEAGUE_ROSTER stays 40 — these are not on it.
- * Divination is wired; the other three persist stub rows until their engines land.
+ * All four extra seats are wired (divination, sentiment, history, consensus).
  */
 export const LEAGUE_EXTRA_ROSTER: readonly ExtraSeat[] = [
   {
