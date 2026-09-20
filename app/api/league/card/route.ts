@@ -182,7 +182,7 @@ async function generationStateFor(card: CardData): Promise<CardGenerationState |
 
 /**
  * N / rosterSize for the hub banner. Public jobs run every live tier, so
- * the denominator is `getProgressRosterIds()` (41 official + 4 extra). N is prediction
+ * the denominator is `getProgressRosterIds()` (40 official + 4 extra = 44). N is prediction
  * rows whose model_id is on that roster — tiles *and* dropped null rows —
  * so the fraction can reach 100% when seats fail the no-opinion gate.
  */

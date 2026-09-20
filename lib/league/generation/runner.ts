@@ -82,7 +82,7 @@ export type LeagueRunnerDeps = {
   tierModelIds: (tier: 'premier' | 'challenger' | 'world' | 'scout' | 'extra') => string[]
   /**
    * Close-higher jobs must already have a persisted anchor. 'fail' trips
-   * the same terminal-refund path as the attempt cap — never fan out 41
+   * the same terminal-refund path as the attempt cap — never fan out 40
    * models on an empty packet. Tests default this to 'proceed'.
    */
   priceAnchorGate: (roundId: string) => Promise<'proceed' | 'fail'>

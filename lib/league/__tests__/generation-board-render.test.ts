@@ -149,14 +149,14 @@ describe('GenerationProgressStrip waiting and completion notes', () => {
       createElement(GenerationProgressStrip, {
         queued: false,
         answered: 12,
-        rosterSize: 41,
+        rosterSize: 44,
         complete: false,
         t,
       })
     )
     expect(html).toContain('AI들이 예측 중입니다 · 잠시만 기다려 주세요')
-    expect(html).toContain('12/41')
-    expect(html).not.toContain('41개 예측 완료')
+    expect(html).toContain('12/44')
+    expect(html).not.toContain('44개 예측 완료')
   })
 
   it('renders the subtle waiting note while generation is in progress (English)', () => {
@@ -164,27 +164,27 @@ describe('GenerationProgressStrip waiting and completion notes', () => {
       createElement(GenerationProgressStrip, {
         queued: false,
         answered: 20,
-        rosterSize: 41,
+        rosterSize: 44,
         complete: false,
         t: en,
       })
     )
     expect(html).toContain('AIs are formulating predictions · Please wait a moment')
-    expect(html).toContain('20/41')
-    expect(html).not.toContain('41 predictions ready')
+    expect(html).toContain('20/44')
+    expect(html).not.toContain('44 predictions ready')
   })
 
   it('swaps to the completion state when complete is true', () => {
     const html = renderToStaticMarkup(
       createElement(GenerationProgressStrip, {
         queued: false,
-        answered: 41,
-        rosterSize: 41,
+        answered: 44,
+        rosterSize: 44,
         complete: true,
         t,
       })
     )
-    expect(html).toContain('41개 예측 완료')
+    expect(html).toContain('44개 예측 완료')
     expect(html).not.toContain('AI들이 예측 중입니다 · 잠시만 기다려 주세요')
   })
 })

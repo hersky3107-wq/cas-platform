@@ -136,8 +136,8 @@ describe('dictionary completeness', () => {
         hub.openingRound,
         hub.openRoundNote,
         hub.generationQueued,
-        hub.generationProgress(12, 41),
-        hub.generationComplete(41),
+        hub.generationProgress(12, 44),
+        hub.generationComplete(44),
         hub.generationWaitingNote,
         hub.generationFailed,
         hub.generationFailedRefunded,
@@ -157,6 +157,8 @@ describe('dictionary completeness', () => {
         hub.deepDebateHint,
         hub.deepOpenTitle,
         hub.deepDebateTitle,
+        hub.deepReportTitle,
+        hub.deepWorkingNote,
         hub.deepWaitNote,
         hub.deepQueued,
         hub.deepStage('plan'),
@@ -231,9 +233,9 @@ describe('dictionary completeness', () => {
       expect(hub.openRound(30)).toContain('30')
       expect(hub.insufficientCredits(30, 0)).toContain('30')
       // The progress line must carry both the numerator and the roster size.
-      expect(hub.generationProgress(12, 41)).toContain('12')
-      expect(hub.generationProgress(12, 41)).toContain('41')
-      expect(hub.generationComplete(41)).toContain('41')
+      expect(hub.generationProgress(12, 44)).toContain('12')
+      expect(hub.generationProgress(12, 44)).toContain('44')
+      expect(hub.generationComplete(44)).toContain('44')
       expect(hub.deepOpen(50)).toContain('50')
       expect(hub.deepDebate(70)).toContain('70')
       expect(getLeagueUiPack(locale).leaderboard.unlock(2)).toContain('2')
@@ -264,7 +266,7 @@ describe('dictionary completeness', () => {
       expect(pack.leaderboard.unlockNote.trim().length).toBeGreaterThan(0)
       expect(pack.recordRoom.unlockNote(30)).toContain('30')
       expect(pack.headline.correlatedNote.trim().length).toBeGreaterThan(0)
-      expect(pack.headline.correlatedNote).toMatch(/41/)
+      expect(pack.headline.correlatedNote).toMatch(/40/)
       expect(pack.leaderboard.alwaysUp.trim().length).toBeGreaterThan(0)
       expect(pack.leaderboard.coinFlip.trim().length).toBeGreaterThan(0)
       expect(pack.leaderboard.beatingAlwaysUp(3, 40)).toContain('3')
@@ -282,10 +284,10 @@ describe('dictionary completeness', () => {
       expect(pack.verdict.distributionHeading.trim().length).toBeGreaterThan(0)
       expect(pack.verdict.detailsToggle.trim().length).toBeGreaterThan(0)
       expect(pack.verdict.pendingHeadline('Sep 18')).toContain('Sep 18')
-      expect(pack.hero.countLine(41, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).toContain('30')
-      expect(pack.hero.countLine(41, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).toContain('41')
-      expect(pack.hero.countLine(41, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).not.toMatch(/\d+\/\d+/)
-      expect(pack.hero.countLine(41, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).not.toMatch(/[✓✗]/)
+      expect(pack.hero.countLine(40, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).toContain('30')
+      expect(pack.hero.countLine(40, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).toContain('40')
+      expect(pack.hero.countLine(40, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).not.toMatch(/\d+\/\d+/)
+      expect(pack.hero.countLine(40, 30, pack.hero.answerVerb.up, 9, pack.hero.answerVerb.down)).not.toMatch(/[✓✗]/)
       expect(pack.hero.conclusion(pack.hero.answerVerb.up)).toContain(pack.hero.answerVerb.up)
       expect(pack.hero.confidenceNote(58)).toContain('58')
       expect(pack.hero.liveCountLine(6, pack.hero.answerVerb.up, 2, pack.hero.answerVerb.down, 4)).toContain('6')
@@ -324,8 +326,8 @@ describe('dictionary completeness', () => {
     )
     expect(ko.verdict.bookLabels.closed).toBe('자체추론')
     expect(ko.verdict.bookLabels.scout).toBe('웹검색')
-    expect(ko.hero.countLine(41, 30, '오른다', 9, '내린다')).toBe(
-      'AI 41개 중 30개가 오른다 · 9개가 내린다',
+    expect(ko.hero.countLine(40, 30, '오른다', 9, '내린다')).toBe(
+      'AI 40개 중 30개가 오른다 · 9개가 내린다',
     )
     expect(ko.hero.conclusion('오른다')).toBe('종합 결론: 오른다')
     expect(ko.hero.confidenceNote(58)).toBe('가중 확신 58%')

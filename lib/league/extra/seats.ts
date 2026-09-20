@@ -1,6 +1,6 @@
 /**
  * Extra league tier — special-character seats BELOW scout, separate from
- * the official 41-model roster. Extra seats are graded (오라클 승률) but
+ * the official 40-model roster. Extra seats are graded (오라클 승률) but
  * isolated from the 40-AI consensus / hero / camp-tier / book / weights math.
  *
  * CONSENSUS-ISOLATION BOUNDARY:
@@ -33,7 +33,7 @@ export type ExtraSeat = {
 }
 
 /**
- * Four extra seats. Official LEAGUE_ROSTER stays 41 — these are not on it.
+ * Four extra seats. Official LEAGUE_ROSTER stays 40 — these are not on it.
  * Divination is wired; the other three persist stub rows until their engines land.
  */
 export const LEAGUE_EXTRA_ROSTER: readonly ExtraSeat[] = [
@@ -111,12 +111,12 @@ export function getExtraSeatIds(): ExtraSeatId[] {
   return [...EXTRA_SEAT_IDS]
 }
 
-/** Progress / streaming denominator: official 41 + 4 extra. */
+/** Progress / streaming denominator: official 40 + 4 extra (44). */
 export function extraSeatIds(): readonly string[] {
   return EXTRA_SEAT_IDS
 }
 
-/** Official 41-AI math only — extra seats never enter this set. */
+/** Official 40-AI math only — extra seats never enter this set. */
 export function officialRowsForConsensus<T extends { model_id?: string | null; league_tier?: string | null }>(
   rows: readonly T[],
 ): T[] {

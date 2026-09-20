@@ -44,7 +44,7 @@ export type LeagueTier = MainLeagueTier | 'extra'
 export type ColorBucket = 'green' | 'yellow' | 'red'
 
 export const CAMPS: readonly Camp[] = ['us', 'china', 'other']
-/** Official 41-model tiers. Extra is graded but isolated from this math. */
+/** Official 40-model tiers. Extra is graded but isolated from this math. */
 export const MAIN_LEAGUE_TIERS: readonly MainLeagueTier[] = ['premier', 'challenger', 'world', 'scout']
 export const LEAGUE_TIERS: readonly LeagueTier[] = ['premier', 'challenger', 'world', 'scout', 'extra']
 
@@ -303,7 +303,7 @@ export type CardGenerationState = {
   stage: string
   /**
    * Active roster seat count for this round's tiers (`getRoster`, never a
-   * hardcoded 41). Denominator of the hub progress line.
+   * hardcoded 40). Denominator of the hub progress line.
    */
   rosterSize: number
   /**

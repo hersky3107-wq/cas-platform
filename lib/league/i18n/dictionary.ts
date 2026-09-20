@@ -74,8 +74,8 @@ export type LeagueUiPack = {
     none: string
     /**
      * Shown under any figure that collapses one round into a single number
-     * ("29 of 41 lean up"). Tiers 1–3 share one research packet, so those
-     * calls are correlated — the UI must not imply 41 independent forecasts.
+     * ("29 of 40 lean up"). Tiers 1–3 share one research packet, so those
+     * calls are correlated — the UI must not imply 40 independent forecasts.
      */
     correlatedNote: string
   }
@@ -131,7 +131,7 @@ export type LeagueUiPack = {
     split: (respondedModels: number, totalModels: number) => string
     none: string
     /**
-     * Glanceable head-count line, e.g. "AI 41개 중 30개가 오른다 · 9개가 내린다".
+     * Glanceable head-count line, e.g. "AI 40개 중 30개가 오른다 · 9개가 내린다".
      * Side WORDS come from answer verbs (or the round's labels), never hit glyphs.
      * Must never emit a slash-over-total or ✓/✗.
      */
@@ -657,6 +657,10 @@ export type LeagueUiPack = {
     deepDebateHint: string
     deepOpenTitle: string
     deepDebateTitle: string
+    /** Large section heading above the deep-analysis block. */
+    deepReportTitle: string
+    /** Short live-wait line: working · 5–6 min · safe to close. */
+    deepWorkingNote: string
     /**
      * Sets the 5–6 minute wait as deliberate. Must say the user can close
      * the screen and come back.
@@ -756,7 +760,7 @@ const en: LeagueUiPack = {
     split: (responded, total) => `${responded} of ${total} AI models are split — no clear lean`,
     none: 'No AI models have reported for this round yet',
     correlatedNote:
-      'Premier, Challenger and World all read the same research packet, so this is one event with correlated inputs — not 41 independent forecasts.',
+      'Premier, Challenger and World all read the same research packet, so this is one event with correlated inputs — not 40 independent forecasts.',
   },
   hero: {
     answerVerb: { up: 'Rises', down: 'Falls' },
@@ -1159,6 +1163,8 @@ const en: LeagueUiPack = {
       'The AIs split into pro and con, debate, then vote \u2014 and a chair writes the conclusion plus the minority view. For when you want both sides of the argument. Unscored commentary.',
     deepOpenTitle: 'Open analysis',
     deepDebateTitle: 'Pro/con debate',
+    deepReportTitle: 'Deep report',
+    deepWorkingNote: 'The AIs are analyzing \u00b7 takes 5\u20136 minutes \u00b7 you can close this screen',
     deepWaitNote:
       'Several models read and write in sequence. This usually takes 5–6 minutes. You can lock or close this screen — it keeps running, and reopening picks up where it left off.',
     deepQueued: 'In line — your analysis starts shortly. You can close this screen.',
@@ -1258,7 +1264,7 @@ const ko: LeagueUiPack = {
     split: (responded, total) => `AI 모델 ${total}개 중 ${responded}개가 의견을 냈지만 방향이 갈립니다 — 뚜렷한 우세 없음`,
     none: '아직 이번 라운드에 응답한 AI 모델이 없습니다',
     correlatedNote:
-      '프리미어·챌린저·월드 모델은 같은 리서치 패킷을 받습니다. 이 숫자는 서로 독립된 41개 예측이 아니라, 입력이 상관된 한 번의 사건입니다.',
+      '프리미어·챌린저·월드 모델은 같은 리서치 패킷을 받습니다. 이 숫자는 서로 독립된 40개 예측이 아니라, 입력이 상관된 한 번의 사건입니다.',
   },
   hero: {
     answerVerb: { up: '오른다', down: '내린다' },
@@ -1657,6 +1663,8 @@ const ko: LeagueUiPack = {
       'AI들을 찬성·반대로 나눠 토론시키고, 투표한 뒤 의장이 결론과 소수 의견까지 정리합니다. 양쪽 논리를 모두 보고 싶을 때. 비채점 참고 자료입니다.',
     deepOpenTitle: '개방형 분석',
     deepDebateTitle: '찬반 토론',
+    deepReportTitle: '심층 리포트',
+    deepWorkingNote: 'AI들이 분석 중입니다 \u00b7 5~6분 걸립니다 \u00b7 화면을 닫아도 계속됩니다',
     deepWaitNote:
       '여러 모델이 차례로 읽고 씁니다. 보통 5–6분 걸립니다. 화면을 닫거나 잠가도 계속 진행되며, 다시 열면 이어서 보입니다.',
     deepQueued: '대기열에 등록되었습니다 — 곧 시작됩니다. 화면을 닫아도 됩니다.',
@@ -1755,7 +1763,7 @@ const ja: LeagueUiPack = {
     split: (responded, total) => `AIモデル${total}体中${responded}体が回答しましたが意見が分かれ、明確な優勢はありません`,
     none: 'このラウンドにはまだ回答したAIモデルがありません',
     correlatedNote:
-      'プレミア・チャレンジャー・ワールドは同じリサーチパケットを読むため、これは41件の独立した予測ではなく、入力が相関した一つの出来事です。',
+      'プレミア・チャレンジャー・ワールドは同じリサーチパケットを読むため、これは40件の独立した予測ではなく、入力が相関した一つの出来事です。',
   },
   hero: {
     answerVerb: { up: '上昇', down: '下落' },
@@ -2152,6 +2160,8 @@ const ja: LeagueUiPack = {
       'AIを賛成・反対に分けて討論させ、投票のあと議長が結論と少数意見までまとめます。両方の論理を見たいときに。採点対象外の参考資料です。',
     deepOpenTitle: '自由分析',
     deepDebateTitle: '賛否討論',
+    deepReportTitle: '深層レポート',
+    deepWorkingNote: 'AIが分析中です \u00b7 5〜6分かかります \u00b7 画面を閉じても続きます',
     deepWaitNote:
       '複数のモデルが順に読み、書きます。通常5〜6分かかります。画面を閉じても処理は続き、開き直せば続きから表示されます。',
     deepQueued: '順番待ちです — まもなく開始します。画面を閉じても構いません。',
@@ -2250,7 +2260,7 @@ const zhTW: LeagueUiPack = {
     split: (responded, total) => `${total} 個 AI 模型中有 ${responded} 個給出意見，但看法分歧，沒有明顯多數`,
     none: '本輪目前尚無 AI 模型回應',
     correlatedNote:
-      'Premier、Challenger、World 都讀同一份研究資料包，因此這是輸入相關的單一事件，不是 41 個獨立預測。',
+      'Premier、Challenger、World 都讀同一份研究資料包，因此這是輸入相關的單一事件，不是 40 個獨立預測。',
   },
   hero: {
     answerVerb: { up: '看漲', down: '看跌' },
@@ -2643,6 +2653,8 @@ const zhTW: LeagueUiPack = {
       '把 AI 分成贊成與反對兩方辯論並投票，最後由主席整理結論與少數意見。想同時看到兩方論點時適用。非計分參考資料。',
     deepOpenTitle: '開放分析',
     deepDebateTitle: '正反辯論',
+    deepReportTitle: '深度報告',
+    deepWorkingNote: 'AI 正在分析 \u00b7 約需 5–6 分鐘 \u00b7 關閉畫面也會繼續',
     deepWaitNote:
       '多個模型依序讀寫。通常需要 5–6 分鐘。關閉或鎖定畫面也會繼續進行，重新打開即可接續。',
     deepQueued: '已進入佇列 — 即將開始。可以關閉畫面。',
@@ -2741,7 +2753,7 @@ const fr: LeagueUiPack = {
     split: (responded, total) => `${responded} modèles IA sur ${total} ont répondu, mais les avis sont partagés — aucune tendance claire`,
     none: 'Aucun modèle IA n\u2019a encore répondu pour ce tour',
     correlatedNote:
-      'Premier, Challenger et World lisent le même dossier de recherche : c\u2019est un seul événement à entrées corrélées, pas 41 prévisions indépendantes.',
+      'Premier, Challenger et World lisent le même dossier de recherche : c\u2019est un seul événement à entrées corrélées, pas 40 prévisions indépendantes.',
   },
   hero: {
     answerVerb: { up: 'Hausse', down: 'Baisse' },
@@ -3145,6 +3157,8 @@ const fr: LeagueUiPack = {
       'Les IA se répartissent entre pour et contre, débattent puis votent \u2014 et un président rédige la conclusion avec l\u2019opinion minoritaire. Pour voir les deux camps. Commentaire non noté.',
     deepOpenTitle: 'Analyse ouverte',
     deepDebateTitle: 'D\u00e9bat pour/contre',
+    deepReportTitle: 'Rapport approfondi',
+    deepWorkingNote: 'Les IA analysent \u00b7 5\u20136 minutes \u00b7 vous pouvez fermer cet \u00e9cran',
     deepWaitNote:
       'Plusieurs modèles lisent et écrivent à tour de rôle. Comptez 5 à 6 minutes. Vous pouvez verrouiller ou fermer cet écran : le travail continue, et le rouvrir reprend là où il en était.',
     deepQueued: 'En file d\u2019attente — l\u2019analyse démarre sous peu. Vous pouvez fermer cet écran.',
@@ -3250,7 +3264,7 @@ const es: LeagueUiPack = {
     split: (responded, total) => `${responded} de ${total} modelos de IA respondieron, pero están divididos — sin tendencia clara`,
     none: 'Todavía ningún modelo de IA respondió en esta ronda',
     correlatedNote:
-      'Premier, Challenger y World leen el mismo paquete de investigación: esto es un solo evento con entradas correlacionadas, no 41 pronósticos independientes.',
+      'Premier, Challenger y World leen el mismo paquete de investigación: esto es un solo evento con entradas correlacionadas, no 40 pronósticos independientes.',
   },
   hero: {
     answerVerb: { up: 'Sube', down: 'Baja' },
@@ -3654,6 +3668,8 @@ const es: LeagueUiPack = {
       'Las IA se dividen en a favor y en contra, debaten y votan; después una presidencia redacta la conclusión con la opinión minoritaria. Para ver ambos lados. Comentario sin puntuar.',
     deepOpenTitle: 'An\u00e1lisis abierto',
     deepDebateTitle: 'Debate a favor/en contra',
+    deepReportTitle: 'Informe en profundidad',
+    deepWorkingNote: 'Las IA est\u00e1n analizando \u00b7 tarda 5\u20136 minutos \u00b7 puedes cerrar esta pantalla',
     deepWaitNote:
       'Varios modelos leen y escriben por turnos. Suele tardar 5–6 minutos. Puedes bloquear o cerrar esta pantalla: sigue en marcha, y al reabrir retomas el punto.',
     deepQueued: 'En cola — tu análisis empieza en breve. Puedes cerrar esta pantalla.',
@@ -3759,7 +3775,7 @@ const ar: LeagueUiPack = {
     split: (responded, total) => `أجاب ${responded} من أصل ${total} من نماذج الذكاء الاصطناعي، لكن الآراء منقسمة — لا يوجد اتجاه واضح`,
     none: 'لم يستجب أي نموذج ذكاء اصطناعي لهذه الجولة بعد',
     correlatedNote:
-      'Premier و Challenger و World يقرأون حزمة البحث نفسها، فهذه حادثة واحدة بمدخلات مترابطة — وليست 41 توقّعًا مستقلًا.',
+      'Premier و Challenger و World يقرأون حزمة البحث نفسها، فهذه حادثة واحدة بمدخلات مترابطة — وليست 40 توقّعًا مستقلًا.',
   },
   hero: {
     answerVerb: { up: 'صعود', down: 'هبوط' },
@@ -4156,6 +4172,8 @@ const ar: LeagueUiPack = {
       'تنقسم النماذج إلى مؤيد ومعارض فتتناظر ثم تصوّت، ويكتب رئيس الجلسة الخلاصة مع رأي الأقلية. لمن يريد رؤية الحجتين معًا. مادة مرجعية غير مُقيَّمة.',
     deepOpenTitle: 'تحليل مفتوح',
     deepDebateTitle: 'مناظرة مع/ضد',
+    deepReportTitle: 'تقرير معمّق',
+    deepWorkingNote: 'النماذج تحلل الآن \u00b7 يستغرق 5–6 دقائق \u00b7 يمكنك إغلاق الشاشة',
     deepWaitNote:
       'تقرأ النماذج وتكتب بالدور. يستغرق ذلك عادة 5–6 دقائق. يمكنك إغلاق الشاشة أو قفلها — يستمر التنفيذ، وإعادة الفتح تستأنف من حيث توقفت.',
     deepQueued: 'في قائمة الانتظار — سيبدأ تحليلك قريبًا. يمكنك إغلاق هذه الشاشة.',
@@ -4261,7 +4279,7 @@ const pt: LeagueUiPack = {
     split: (responded, total) => `${responded} de ${total} modelos de IA responderam, mas estão divididos — sem inclinação clara`,
     none: 'Nenhum modelo de IA respondeu nesta rodada ainda',
     correlatedNote:
-      'Premier, Challenger e World leem o mesmo pacote de pesquisa, então isto é um evento com entradas correlacionadas — não 41 previsões independentes.',
+      'Premier, Challenger e World leem o mesmo pacote de pesquisa, então isto é um evento com entradas correlacionadas — não 40 previsões independentes.',
   },
   hero: {
     answerVerb: { up: 'Sobe', down: 'Desce' },
@@ -4664,6 +4682,8 @@ const pt: LeagueUiPack = {
       'As IAs se dividem em prós e contras, debatem e votam; depois uma presidência escreve a conclusão com a opinião minoritária. Para ver os dois lados. Comentário sem pontuação.',
     deepOpenTitle: 'Análise aberta',
     deepDebateTitle: 'Debate prós/contras',
+    deepReportTitle: 'Relatório aprofundado',
+    deepWorkingNote: 'As IAs estão analisando \u00b7 leva 5–6 minutos \u00b7 você pode fechar esta tela',
     deepWaitNote:
       'Vários modelos leem e escrevem em sequência. Costuma levar 5–6 minutos. Você pode bloquear ou fechar esta tela — o processo continua, e reabrir retoma de onde parou.',
     deepQueued: 'Na fila — sua análise começa em instantes. Pode fechar esta tela.',

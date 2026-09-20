@@ -19,7 +19,7 @@ import { extraSeatIds, lookupExtraSeat } from './extra/seats'
  * only ever sees its own provider's key — the orchestrator adds nothing that
  * would cross that boundary.
  *
- * OFFICIAL ROSTER (41 models): 10 premier / 10 challenger / 15 world / 6 scout.
+ * OFFICIAL ROSTER (40 models): 10 premier / 10 challenger / 14 world / 6 scout.
  * World holds the two remaining Korean vendors (NAVER, Upstage), Thinking
  * Machines (Inkling) in the former LG seat, and Friendli Gemma 4 31B-IT —
  * see PRICE AUDIT. No sovereign tier exists in the ledger schema. Scout is
@@ -271,19 +271,19 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // Roster asked for "Command A+"; no A+ exists in the catalog — command-a is
   // the closest wired equivalent (substitution, flagged in the run report).
   { model_id: 'command-a', brand: 'Cohere', product_alias: 'Command', camp: 'other', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:command-a' }, price: { inputPerMTokens: 2.5, outputPerMTokens: 10 } }, // FLAG resolved: CC-BY-NC; CohereLabs/c4ai-command-a-03-2025 (this id, not A+)
-  { model_id: 'qwen3.5-plus', brand: 'Qwen', camp: 'china', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:qwen3.5-plus' }, price: { inputPerMTokens: 0.3, outputPerMTokens: 1.8 } }, // Apache-2.0; hosted Plus ↔ Qwen/Qwen3.5-397B-A17B
   // 2026-09-18: first-party DeepSeek flash (api.deepseek.com serves deepseek-v4-pro / deepseek-v4-flash).
   // Challenger rewired direct to deepseek-v4-flash off OpenRouter.
   { model_id: 'deepseek-flash', brand: 'DeepSeek', camp: 'china', league_tier: 'challenger', weights: 'open', provider_key: 'deepseek', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'core', provider: 'deepseek', modelOverride: 'deepseek-v4-flash', extraPayload: DEEPSEEK_FIRST_PARTY_THINKING }, price: DEEPSEEK_V4_FLASH_PRICE }, // MIT; deepseek-ai/DeepSeek-V4-Flash; first-party
   // 2026-09-18: replaces challenger kimi-k2.6 (OpenRouter 240s stall).
   // Live probe 3.03s; default 60s timeout — no reasoning-exhaustion headroom.
   { model_id: 'hunyuan-3', brand: 'Tencent', product_alias: 'Hunyuan', camp: 'china', league_tier: 'challenger', weights: 'closed', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:hunyuan-3' }, price: { inputPerMTokens: 0.132, outputPerMTokens: 0.528 } }, // FLAG: hosted tencent/hy3; Hunyuan-A13B is a sibling
+  // 2026-09-20: promoted from WORLD to Challenger (replaces qwen3.5-plus to eliminate OpenRouter 429 tail).
+  { model_id: 'llama-4-maverick', brand: 'Meta', product_alias: 'Llama', camp: 'us', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' }, price: { inputPerMTokens: 0.2, outputPerMTokens: 0.8 } }, // Llama 4 Community License; meta-llama/Llama-4-Maverick
 
   // ── 🟢 WORLD (14) — two Korean vendors (NAVER, Upstage); no sovereign tier ─
   { model_id: 'gpt-5.6-luna', brand: 'OpenAI', product_alias: 'ChatGPT', camp: 'us', league_tier: 'world', weights: 'closed', provider_key: 'openai', reasoning: true, caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-5.6-luna' }, price: { inputPerMTokens: 0.2, outputPerMTokens: 1.2 } }, // OpenAI API; no public checkpoint
   { model_id: 'claude-haiku-4.5', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'world', weights: 'closed', provider_key: 'anthropic', reasoning: false, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-haiku-4-5-20251001' }, price: { inputPerMTokens: 1, outputPerMTokens: 5 } }, // Anthropic API; no public checkpoint
   { model_id: 'gemini-3.5-flash-lite', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'world', weights: 'closed', provider_key: 'google', reasoning: true, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.5-flash-lite', allowGeminiThinking: true }, price: { inputPerMTokens: 0.3, outputPerMTokens: 2.5 } }, // Gemini API; Gemma is a sibling
-  { model_id: 'llama-4-maverick', brand: 'Meta', product_alias: 'Llama', camp: 'us', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' }, price: { inputPerMTokens: 0.2, outputPerMTokens: 0.8 } }, // Llama 4 Community License; meta-llama/Llama-4-Maverick
   { model_id: 'nova-2-lite', brand: 'Amazon', product_alias: 'Nova', camp: 'us', league_tier: 'world', weights: 'closed', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:nova-2-lite' }, price: { inputPerMTokens: 0.3, outputPerMTokens: 2.5 } }, // FLAG: Amazon Nova API-only; no public checkpoint found
   { model_id: 'phi-4', brand: 'Microsoft', product_alias: 'Phi', camp: 'us', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:phi-4' }, price: { inputPerMTokens: 0.07, outputPerMTokens: 0.14 } }, // MIT; microsoft/phi-4
   { model_id: 'deepseek-v4-flash', brand: 'DeepSeek', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'deepseek', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'core', provider: 'deepseek', modelOverride: 'deepseek-v4-flash', extraPayload: DEEPSEEK_FIRST_PARTY_THINKING }, price: DEEPSEEK_V4_FLASH_PRICE }, // MIT; deepseek-ai/DeepSeek-V4-Flash; first-party 2026-09-07
@@ -316,9 +316,8 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   { model_id: 'gemini-3.6-flash-grounded', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'scout', weights: 'closed', provider_key: 'google', reasoning: true, maxCompletionTokens: 2500, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.6-flash', allowGeminiThinking: true, searchTool: true }, price: { inputPerMTokens: 1.5, outputPerMTokens: 7.5 } }, // same Gemini 3.6 Flash weights — closed
   // Scout Grok runs the newest grok-4.6 (premier/challenger slots use 4.5/4.3
   // per the official roster; scout only specifies "Grok + live search").
-  // Agent Tools web_search runs long (>60s default timeout, confirmed live
-  // 2026-08-16) — per-entry 150s headroom.
-  { model_id: 'grok-4.6-livesearch', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'scout', weights: 'closed', provider_key: 'xai', reasoning: true, maxCompletionTokens: 2500, timeoutMs: 150_000, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.6', searchTool: true, maxTurns: 3 }, price: XAI_GROK_46_PRICE }, // FLAG: grok-4.6 API-only; Grok-1 is a previous gen
+  // Agent Tools web_search runs maxTurns: 1 (~25s) with 150s safety timeout.
+  { model_id: 'grok-4.6-livesearch', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'scout', weights: 'closed', provider_key: 'xai', reasoning: true, maxCompletionTokens: 2500, timeoutMs: 150_000, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.6', searchTool: true, maxTurns: 1 }, price: XAI_GROK_46_PRICE }, // FLAG: grok-4.6 API-only; Grok-1 is a previous gen
   { model_id: 'claude-sonnet-5-websearch', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'scout', weights: 'closed', provider_key: 'anthropic', reasoning: false, maxCompletionTokens: 1600, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-sonnet-5', searchTool: true }, price: { inputPerMTokens: 2, outputPerMTokens: 10 } }, // Anthropic API; no public checkpoint
   { model_id: 'sonar-reasoning-pro', brand: 'Perplexity', product_alias: 'Sonar', camp: 'us', league_tier: 'scout', weights: 'closed', provider_key: 'perplexity', reasoning: true, maxCompletionTokens: 1600, caller: { kind: 'core', provider: 'perplexity', modelOverride: 'sonar-reasoning-pro' }, price: { inputPerMTokens: 2, outputPerMTokens: 8 } }, // Perplexity search API; no public checkpoint
   { model_id: 'youcom-research', brand: 'You.com', camp: 'us', league_tier: 'scout', weights: 'closed', provider_key: 'youcom', reasoning: true, caller: { kind: 'platform', platformId: 'youcom:research' }, price: { inputPerMTokens: 0, outputPerMTokens: 0 } }, // You.com research agent; no public checkpoint
@@ -332,6 +331,7 @@ const ROSTER_BY_MODEL_ID = new Map(LEAGUE_ROSTER.map((entry) => [entry.model_id,
  * brand that actually answered. Not a live seat — never called.
  */
 const RETIRED_ROSTER_DISPLAY: Record<string, Pick<RosterEntry, 'brand' | 'product_alias'>> = {
+  'qwen3.5-plus': { brand: 'Qwen' },
   'deepseek-v3.2': { brand: 'DeepSeek' },
   'kimi-k2.6': { brand: 'Moonshot AI', product_alias: 'Kimi' },
   'k-exaone-2.0': { brand: 'LG', product_alias: 'EXAONE' },
@@ -354,7 +354,7 @@ export function lookupRosterEntry(modelId: string): RosterEntry | undefined {
   return ROSTER_BY_MODEL_ID.get(modelId)
 }
 
-/** Official 41 + extra 4 — generation progress and streaming shells. */
+/** Official 40 + extra 4 — generation progress and streaming shells. */
 export function getProgressRosterIds(): string[] {
   return [...LEAGUE_ROSTER.map((entry) => entry.model_id), ...extraSeatIds()]
 }

@@ -26,10 +26,10 @@ describe('computeCostUsd — grok tiered list price', () => {
     expect(under).toBeCloseTo((141_604 * 2 + 2_407 * 6) / 1e6, 6)
   })
 
-  it('exposes max_turns: 3 on the livesearch caller', () => {
+  it('exposes max_turns: 1 on the livesearch caller', () => {
     const caller = grok().caller
     expect(caller.kind).toBe('core')
-    if (caller.kind === 'core') expect(caller.maxTurns).toBe(3)
+    if (caller.kind === 'core') expect(caller.maxTurns).toBe(1)
   })
 })
 

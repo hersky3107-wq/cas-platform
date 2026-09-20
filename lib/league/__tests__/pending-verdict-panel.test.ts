@@ -333,7 +333,7 @@ describe('seat-resolution gate — no locked conclusion from a partial set', () 
   const partial: ConsensusSummary = {
     tally: { up: 2, down: 4, flat: 0, abstain: 0 },
     majorityDirection: 'down',
-    totalModels: 41,
+    totalModels: 40,
     respondedModels: 6,
     avgProbability: 53,
     aggregateDirection: 'down',
@@ -345,7 +345,7 @@ describe('seat-resolution gate — no locked conclusion from a partial set', () 
   const ko = getLeagueUiPack('ko')
   const labels = sideLabelsFor(round, ko)
 
-  it('a 6-of-41 partial never shows 종합 결론 / confidence / magnitude', () => {
+  it('a 6-of-40 partial never shows 종합 결론 / confidence / magnitude', () => {
     const html = renderToStaticMarkup(
       createElement(PendingVerdictPanel, {
         round,
@@ -395,7 +395,7 @@ describe('seat-resolution gate — no locked conclusion from a partial set', () 
         consensus: partial,
         now,
         seatComplete: true,
-        answered: 41,
+        answered: 40,
       }),
     )
     expect(html).toContain('종합 결론: 내린다')

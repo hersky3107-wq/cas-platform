@@ -139,7 +139,7 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   // Deliberately NO extraRequestParams — confirmed live that adding
   // `reasoning: { effort: 'minimal' }` here BREAKS this model (see the note above).
   { id: 'openrouter:nova-2-lite', provider: 'openrouter', brand: 'Amazon', displayName: 'Nova 2 Lite', model: 'amazon/nova-2-lite-v1', league: 'world', verified: true },
-  { id: 'openrouter:llama-4-maverick', provider: 'openrouter', brand: 'Meta', displayName: 'Llama 4 Maverick', model: 'meta-llama/llama-4-maverick', league: 'world', verified: true },
+  { id: 'openrouter:llama-4-maverick', provider: 'openrouter', brand: 'Meta', displayName: 'Llama 4 Maverick', model: 'meta-llama/llama-4-maverick', league: 'challenger', verified: true },
   { id: 'openrouter:phi-4', provider: 'openrouter', brand: 'Microsoft', displayName: 'Phi-4', model: 'microsoft/phi-4', league: 'world', verified: true },
   // --- 2026-08-16 roster expansion (official 40-model league). All model
   // strings below confirmed present in the live OpenRouter catalog

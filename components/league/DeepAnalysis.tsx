@@ -13,7 +13,15 @@ import {
   type DeepSnapshot,
   type DeepVoteSnapshot,
 } from '@/lib/league/deep-snapshot'
-import { overlayDeepTranslations } from '@/lib/league/deep-display'
+import {
+  DEEP_OPEN_SEAT_SHELLS,
+  emptyDebateSnapshot,
+  emptyOpenSnapshot,
+  mergeDeepSnapshots,
+  overlayDeepTranslations,
+  pendingDebateSeats,
+  pendingOpenSeats,
+} from '@/lib/league/deep-display'
 import { useDeepTranslations } from '@/lib/league/use-deep-translations'
 import { CardCompliance, type ComplianceReceipt } from './CardCompliance'
 
@@ -117,7 +125,7 @@ export function DeepAnalysis({
         setRunning(null)
         return 'stop'
       }
-      if (body.snapshot) setSnapshot(body.snapshot)
+      if (body.snapshot) setSnapshot((prev) => mergeDeepSnapshots(prev, body.snapshot ?? null))
       if (!body.ok && body.done && body.refunded) {
         setError(t.hub.deepFailedRefunded)
         setRefunded(true)
@@ -227,10 +235,16 @@ export function DeepAnalysis({
         : t.hub.deepRunning
     : null
 
-  const showProcess = snapshot !== null || result !== null
+  const showProcess = running !== null || snapshot !== null || result !== null
 
   return (
     <div className="mt-4 flex flex-col gap-3">
+      <h2
+        className="text-xl font-black tracking-tight text-league-fg md:text-2xl"
+        data-testid="deep-report-title"
+      >
+        {t.hub.deepReportTitle}
+      </h2>
       <p className="text-[11px] leading-relaxed text-slate-500">{t.hub.deepUnscoredNote}</p>
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="flex-1">
@@ -257,10 +271,10 @@ export function DeepAnalysis({
         </div>
       </div>
       {running ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-          <p className="text-[12px] font-medium text-slate-800">{progressLine}</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{t.hub.deepWaitNote}</p>
-        </div>
+        <DeepWorkingBanner
+          headline={progressLine ?? t.hub.deepRunning}
+          note={waiting ? t.hub.deepQueued : t.hub.deepWorkingNote}
+        />
       ) : null}
       {error ? (
         <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -285,6 +299,7 @@ export function DeepAnalysis({
               result={result}
               stage={stage}
               running={running !== null}
+              kind={running ?? lastKind}
               t={t}
               hasTranslation={hasTranslation}
               showOriginal={showOriginal}
@@ -306,6 +321,7 @@ function DeepProcessBody({
   result,
   stage,
   running,
+  kind,
   t,
   hasTranslation,
   showOriginal,
@@ -317,6 +333,7 @@ function DeepProcessBody({
   result: DeepPayload | null
   stage: string | null
   running: boolean
+  kind: DeepKind
   t: LeagueUiPack
   hasTranslation: boolean
   showOriginal: boolean
@@ -324,8 +341,9 @@ function DeepProcessBody({
   translating: boolean
 }) {
   void receipt
-  const snap = snapshot ?? (result ? snapshotFromResult(result) : null)
-  if (!snap) return null
+  const snap =
+    snapshot ?? (result ? snapshotFromResult(result) : kind === 'open' ? emptyOpenSnapshot() : emptyDebateSnapshot())
+  if (!running && !snapshot && !result) return null
   const done = !running && result !== null
   const title = snap.kind === 'open' ? t.hub.deepOpenTitle : t.hub.deepDebateTitle
 
@@ -354,7 +372,7 @@ function DeepProcessBody({
           {t.modelTile.translating}
         </p>
       ) : null}
-      <StageStrip kind={snap.kind} stage={done ? 'done' : stage} t={t} />
+      <StageStrip kind={snap.kind} stage={done ? 'done' : stage} running={running} t={t} />
       {snap.kind === 'open' ? (
         <OpenProcess snap={snap} running={running} t={t} />
       ) : (
@@ -434,27 +452,45 @@ function stepLabel(key: string, t: LeagueUiPack): string {
   }
 }
 
-function StageStrip({ kind, stage, t }: { kind: DeepKind; stage: string | null; t: LeagueUiPack }) {
+function stageIndex(stage: string | null, order: readonly string[]): number {
+  if (stage === 'done') return order.length
+  if (!stage) return -1
+  if (stage === 'start' || stage === 'seed_retry') return 0
+  return order.indexOf(stage)
+}
+
+function StageStrip({
+  kind,
+  stage,
+  running,
+  t,
+}: {
+  kind: DeepKind
+  stage: string | null
+  running: boolean
+  t: LeagueUiPack
+}) {
   const order: readonly string[] = kind === 'open' ? OPEN_STAGE_ORDER : DEBATE_STAGE_ORDER
-  const activeIdx = stage === 'done' ? order.length : stage ? order.indexOf(stage) : -1
+  const activeIdx = stageIndex(stage, order)
   return (
     <ol className="mt-3 flex flex-wrap gap-1.5" data-testid="deep-stage-strip">
       {order.map((key, i) => {
         const isDone = activeIdx > i
-        const active = activeIdx === i
+        const active = running && activeIdx === i
         return (
           <li
             key={key}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
               isDone
                 ? 'bg-emerald-100 text-emerald-800'
                 : active
-                  ? 'bg-slate-800 text-white'
+                  ? 'bg-slate-800 text-white shadow-sm ring-2 ring-emerald-400/70'
                   : 'bg-slate-100 text-slate-500'
             }`}
+            data-active={active ? 'true' : undefined}
           >
             {isDone ? <span aria-hidden>✓</span> : null}
-            {active ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden /> : null}
+            {active ? <HourglassMotif size="sm" /> : null}
             {stepLabel(key, t)}
           </li>
         )
@@ -477,9 +513,36 @@ function Section({ heading, children }: { heading: string; children: React.React
 function PendingLine({ text }: { text: string }) {
   return (
     <p className="flex items-center gap-1.5 text-[12px] text-league-fg-muted">
-      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" aria-hidden />
+      <HourglassMotif size="sm" />
       {text}
     </p>
+  )
+}
+
+function PendingSeat({
+  brand,
+  roleLabel,
+  waiting,
+}: {
+  brand?: string
+  roleLabel?: string
+  waiting: string
+}) {
+  return (
+    <div
+      className="league-gen-skeleton rounded-lg border border-dashed border-league-border/60 px-3 py-2.5"
+      data-testid="deep-analysis-pending"
+    >
+      {brand ? (
+        <p className="text-[12px] font-semibold text-league-fg-muted">
+          {brand}
+          {roleLabel ? <span className="font-normal"> · {roleLabel}</span> : null}
+        </p>
+      ) : (
+        <p className="h-3 w-28 rounded bg-slate-300/40" aria-hidden />
+      )}
+      <PendingLine text={waiting} />
+    </div>
   )
 }
 
@@ -501,8 +564,9 @@ function BriefingDetails({ briefing, t }: { briefing: string; t: LeagueUiPack })
 // ── Open process: plan → per-model briefs → final report ─────────────────────
 
 function OpenProcess({ snap, running, t }: { snap: DeepOpenSnapshot; running: boolean; t: LeagueUiPack }) {
-  const arrivedIds = new Set(snap.analyses.map((a) => a.roleId))
-  const pendingSeats = (snap.plan ?? []).filter((s) => !arrivedIds.has(s.roleId))
+  const pendingSeats = pendingOpenSeats(snap)
+  const shellCount =
+    running && pendingSeats.length === 0 && snap.analyses.length === 0 ? DEEP_OPEN_SEAT_SHELLS : 0
   return (
     <>
       {snap.plan && snap.plan.length > 0 ? (
@@ -527,13 +591,13 @@ function OpenProcess({ snap, running, t }: { snap: DeepOpenSnapshot; running: bo
 
       {snap.briefing ? <BriefingDetails briefing={snap.briefing} t={t} /> : null}
 
-      {snap.analyses.length > 0 || (running && snap.plan) ? (
+      {snap.analyses.length > 0 || pendingSeats.length > 0 || shellCount > 0 ? (
         <Section heading={t.hub.deepStepLabels.analyses}>
           <div className="space-y-3">
             {snap.analyses.map((a) => (
               <article
                 key={a.roleId}
-                className="rounded-lg border border-league-border/50 bg-league-bg-elevated/40 px-3 py-2.5"
+                className={`${running ? 'league-gen-pop' : ''} rounded-lg border border-league-border/50 bg-league-bg-elevated/40 px-3 py-2.5`}
                 data-testid="deep-analysis-seat"
               >
                 <p className="text-[12px] font-semibold text-league-fg">
@@ -545,22 +609,23 @@ function OpenProcess({ snap, running, t }: { snap: DeepOpenSnapshot; running: bo
                     {a.content}
                   </pre>
                 ) : (
-                  <p className="mt-1.5 text-[11px] italic text-league-fg-muted">{t.hub.deepSeatPending}</p>
+                  <PendingLine text={t.hub.deepSeatPending} />
                 )}
               </article>
             ))}
             {running
               ? pendingSeats.map((seat) => (
-                  <div
+                  <PendingSeat
                     key={seat.roleId}
-                    className="rounded-lg border border-dashed border-league-border/60 px-3 py-2.5"
-                  >
-                    <p className="text-[12px] font-semibold text-league-fg-muted">
-                      {seat.brand}
-                      <span className="font-normal"> · {seat.roleLabel}</span>
-                    </p>
-                    <PendingLine text={t.hub.deepSeatPending} />
-                  </div>
+                    brand={seat.brand}
+                    roleLabel={seat.roleLabel}
+                    waiting={t.hub.deepSeatPending}
+                  />
+                ))
+              : null}
+            {running
+              ? Array.from({ length: shellCount }, (_, i) => (
+                  <PendingSeat key={`shell-${i}`} waiting={t.hub.deepSeatPending} />
                 ))
               : null}
           </div>
@@ -583,6 +648,7 @@ function OpenProcess({ snap, running, t }: { snap: DeepOpenSnapshot; running: bo
 // ── Debate process: plan → rounds → ballot → chair verdict ────────────────────
 
 function DebateProcess({ snap, running, t }: { snap: DeepDebateSnapshot; running: boolean; t: LeagueUiPack }) {
+  const pendingSeats = pendingDebateSeats(snap)
   return (
     <>
       {snap.plan && snap.plan.length > 0 ? (
@@ -650,7 +716,19 @@ function DebateProcess({ snap, running, t }: { snap: DeepDebateSnapshot; running
                 </div>
               </div>
             ))}
-            {running && !snap.vote && !snap.verdict ? <PendingLine text={t.hub.deepStage('deliberate')} /> : null}
+            {running && pendingSeats.length > 0
+              ? pendingSeats.map((seat) => (
+                  <PendingSeat
+                    key={seat.roleId}
+                    brand={seat.brand}
+                    roleLabel={seat.roleLabel}
+                    waiting={t.hub.deepSeatPending}
+                  />
+                ))
+              : null}
+            {running && !snap.vote && !snap.verdict && pendingSeats.length === 0 && snap.rounds.length === 0 ? (
+              <PendingLine text={t.hub.deepStage('deliberate')} />
+            ) : null}
           </div>
         </Section>
       ) : null}
@@ -695,6 +773,47 @@ function DebateProcess({ snap, running, t }: { snap: DeepDebateSnapshot; running
         ) : null}
       </Section>
     </>
+  )
+}
+
+function DeepWorkingBanner({ headline, note }: { headline: string; note: string }) {
+  return (
+    <div
+      className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      data-testid="deep-working"
+    >
+      <div className="flex items-start gap-2.5">
+        <HourglassMotif />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold leading-snug text-emerald-950">{headline}</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-emerald-800/90">{note}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HourglassMotif({ size = 'md' }: { size?: 'sm' | 'md' }) {
+  const wrap = size === 'sm' ? 'h-4 w-4' : 'h-8 w-8'
+  const orbit = size === 'sm' ? 'h-4 w-4' : 'h-8 w-8'
+  const icon = size === 'sm' ? 'h-2.5 w-2.5' : 'h-4 w-4'
+  return (
+    <span className={`relative inline-flex ${wrap} shrink-0 items-center justify-center`} aria-hidden>
+      <svg viewBox="0 0 32 32" className={`league-gen-orbit ${orbit} text-emerald-500`}>
+        <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+        <circle cx="16" cy="3" r="2.2" fill="currentColor" />
+      </svg>
+      <svg viewBox="0 0 24 24" className={`absolute ${icon} text-emerald-800`}>
+        <path
+          fill="currentColor"
+          d="M6 3h12v3.2c0 2.1-1.2 4-3.1 5L15 12l-.1.8c1.9 1 3.1 2.9 3.1 5V21H6v-3.2c0-2.1 1.2-4 3.1-5L9 12l.1-.8C7.2 10.2 6 8.3 6 6.2V3zm2 2v1.2c0 1.5.9 2.9 2.3 3.5L12 10.4l1.7-.7C15.1 9.1 16 7.7 16 6.2V5H8zm0 14h8v-1.2c0-1.5-.9-2.9-2.3-3.5L12 13.6l-1.7.7C8.9 14.9 8 16.3 8 17.8V19z"
+        />
+        <rect className="league-gen-sand" x="10" y="6.2" width="4" height="3" rx="0.6" fill="currentColor" opacity="0.85" />
+      </svg>
+    </span>
   )
 }
 

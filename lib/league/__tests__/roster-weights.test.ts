@@ -5,13 +5,13 @@ import { LEAGUE_ROSTER, type WeightsKind } from '../roster'
 
 describe('roster weights classification', () => {
   it('has exactly 40 seats and every seat is binary open|closed', () => {
-    expect(LEAGUE_ROSTER).toHaveLength(41)
+    expect(LEAGUE_ROSTER).toHaveLength(40)
     for (const entry of LEAGUE_ROSTER) {
       expect(entry.weights === 'open' || entry.weights === 'closed', entry.model_id).toBe(true)
     }
   })
 
-  it('splits 18 open / 23 closed and never invents a third value', () => {
+  it('splits 17 open / 23 closed and never invents a third value', () => {
     const counts = LEAGUE_ROSTER.reduce(
       (acc, e) => {
         acc[e.weights] += 1
@@ -19,7 +19,7 @@ describe('roster weights classification', () => {
       },
       { open: 0, closed: 0 } as Record<WeightsKind, number>
     )
-    expect(counts).toEqual({ open: 18, closed: 23 })
+    expect(counts).toEqual({ open: 17, closed: 23 })
   })
 
   it('keeps scout entirely closed — search APIs, not a weights comparison', () => {

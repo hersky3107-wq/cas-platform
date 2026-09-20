@@ -56,7 +56,7 @@ import { MARKET_DATA_UNAVAILABLE_CODE } from '@/lib/league/price-anchor-policy'
  * (or receipt consume, or nothing when access is already held) → job/access
  * row insert → respond with { round_id, state }.
  *
- * QUEUED (background, oracle-runner pattern): packet assembly, the 41-model
+ * QUEUED (background, oracle-runner pattern): packet assembly, the 40-model
  * fan-out (chunked by tier), consensus persistence. The first chunk is
  * scheduled from THIS request via `after()` so a healthy round starts within
  * seconds; the every-minute cron (`/api/cron/league-generate`) resumes it if

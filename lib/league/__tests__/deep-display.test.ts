@@ -5,8 +5,11 @@ import {
   deepSectionHeadersFor,
   deepTranslationFingerprint,
   localizeDeepMarkdownHeaders,
+  mergeDeepSnapshots,
   overlayDeepTranslations,
   partitionCachedDeepTranslations,
+  pendingDebateSeats,
+  pendingOpenSeats,
   shouldTranslateDeepLocale,
 } from '../deep-display'
 
@@ -195,5 +198,104 @@ describe('debate overlay keys', () => {
     expect(overlaid.verdict?.judgment).toContain('## 판정')
     expect(overlaid.verdict?.judgment).toContain('## 쟁점')
     expect(overlaid.verdict?.minorityReport).toContain('## 소수 의견')
+  })
+})
+
+describe('mergeDeepSnapshots arrival order', () => {
+  it('keeps the first-seen analyst and appends later arrivals', () => {
+    const first = openSnap({
+      analyses: [
+        {
+          roleId: 'price-a',
+          roleLabel: 'Price-path analyst',
+          provider: 'openai',
+          brand: 'ChatGPT',
+          content: ANALYST_EN,
+          ok: true,
+        },
+      ],
+    })
+    const second = openSnap({
+      analyses: [
+        {
+          roleId: 'risk',
+          roleLabel: 'Risk analyst',
+          provider: 'xai',
+          brand: 'Grok',
+          content: '## Key findings\nTail risk.',
+          ok: true,
+        },
+      ],
+    })
+    const merged = mergeDeepSnapshots(first, second)
+    if (merged?.kind !== 'open') throw new Error('expected open')
+    expect(merged.analyses.map((a) => a.roleId)).toEqual(['price-a', 'risk'])
+    expect(merged.analyses[0]!.content).toContain('AAPL is bid')
+  })
+
+  it('does not drop a brief if a later poll omits it', () => {
+    const first = openSnap()
+    const later = openSnap({ analyses: [] })
+    const merged = mergeDeepSnapshots(first, later)
+    if (merged?.kind !== 'open') throw new Error('expected open')
+    expect(merged.analyses).toHaveLength(1)
+    expect(merged.analyses[0]!.roleId).toBe('price-a')
+  })
+
+  it('lists pending open seats after arrived ones', () => {
+    const snap = openSnap({
+      plan: [
+        {
+          roleId: 'price-a',
+          roleLabel: 'Price-path analyst',
+          provider: 'openai',
+          brand: 'ChatGPT',
+          subQuestion: 'What moved?',
+        },
+        {
+          roleId: 'risk',
+          roleLabel: 'Risk analyst',
+          provider: 'xai',
+          brand: 'Grok',
+          subQuestion: 'What breaks?',
+        },
+      ],
+    })
+    expect(pendingOpenSeats(snap).map((s) => s.roleId)).toEqual(['risk'])
+  })
+
+  it('lists debate seats that have not spoken in the live round', () => {
+    const snap: DeepSnapshot = {
+      kind: 'debate',
+      instrument: 'AAPL',
+      proposition: 'Will AAPL close higher?',
+      plan: [
+        { roleId: 'a', roleLabel: 'A', provider: 'openai', brand: 'ChatGPT', mandate: 'm' },
+        { roleId: 'b', roleLabel: 'B', provider: 'xai', brand: 'Grok', mandate: 'm' },
+      ],
+      briefing: null,
+      rounds: [
+        {
+          roundNumber: 1,
+          consensusScore: -1,
+          summary: '',
+          turns: [
+            {
+              roleLabel: 'A',
+              provider: 'openai',
+              brand: 'ChatGPT',
+              position: 'Up.',
+              concedes: null,
+              holds: null,
+              ok: true,
+            },
+          ],
+        },
+      ],
+      vote: null,
+      verdict: null,
+    }
+    if (snap.kind !== 'debate') throw new Error('expected debate')
+    expect(pendingDebateSeats(snap).map((s) => s.provider)).toEqual(['xai'])
   })
 })

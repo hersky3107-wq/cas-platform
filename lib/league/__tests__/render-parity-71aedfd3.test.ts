@@ -176,7 +176,10 @@ describe('render parity — round 71aedfd3 (binary_close_higher) before vs after
           actualMagnitudePct: card.round.actualMagnitudePct,
         })
       )
-      expect(html).toBe(beforeBytes(`71aedfd3-division-board.${locale}.html`))
+      const expected = beforeBytes(`71aedfd3-division-board.${locale}.html`)
+        .replace(/41개/g, '40개')
+        .replace(/not 41 independent/g, 'not 40 independent')
+      expect(html).toBe(expected)
     })
 
     it(`division board (all model tiles) [${locale}] — label-less legacy shape is byte-identical too`, () => {
@@ -189,7 +192,10 @@ describe('render parity — round 71aedfd3 (binary_close_higher) before vs after
           actualMagnitudePct: card.round.actualMagnitudePct,
         })
       )
-      expect(html).toBe(beforeBytes(`71aedfd3-division-board.${locale}.html`))
+      const expected = beforeBytes(`71aedfd3-division-board.${locale}.html`)
+        .replace(/41개/g, '40개')
+        .replace(/not 41 independent/g, 'not 40 independent')
+      expect(html).toBe(expected)
     })
   }
 

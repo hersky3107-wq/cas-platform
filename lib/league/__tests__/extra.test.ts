@@ -93,8 +93,8 @@ function adapterOut(over: Partial<LeagueDivinationAdapterOutput> = {}): LeagueDi
 }
 
 describe('extra roster', () => {
-  it('keeps the official 41 and adds four extra seats below scout', () => {
-    expect(LEAGUE_ROSTER).toHaveLength(41)
+  it('keeps the official 40 and adds four extra seats below scout', () => {
+    expect(LEAGUE_ROSTER).toHaveLength(40)
     expect(LEAGUE_EXTRA_ROSTER).toHaveLength(4)
     expect(EXTRA_SEAT_IDS).toEqual(['divination', 'sentiment', 'history', 'consensus'])
     expect(LEAGUE_EXTRA_ROSTER.map((s) => s.badge)).toEqual(['🔮', '📰', '📜', '💰'])

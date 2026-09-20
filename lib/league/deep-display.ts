@@ -18,11 +18,15 @@ import type {
   DeepDebateSnapshot,
   DeepOpenSnapshot,
   DeepRoundSnapshot,
+  DeepSeatSnapshot,
   DeepSnapshot,
   DeepTurnSnapshot,
   DeepVerdictSnapshot,
   DeepVoteSnapshot,
 } from './deep-snapshot'
+
+/** Open product mounts this many waiting shells before the plan lands. */
+export const DEEP_OPEN_SEAT_SHELLS = 8
 
 export function shouldTranslateDeepLocale(locale: LeagueLocale): locale is Exclude<LeagueLocale, 'en' | 'pt'> {
   return shouldTranslateRationaleLocale(locale)
@@ -407,5 +411,117 @@ function overlayVerdict(
     judgment: field('verdict:judgment', verdict.judgment),
     keyIssues: field('verdict:keyIssues', verdict.keyIssues),
     minorityReport: field('verdict:minorityReport', verdict.minorityReport),
+  }
+}
+
+/**
+ * Poll snapshots replace the whole process view. Merge so a later hop
+ * never drops an analyst brief (or debate turn) the card already showed.
+ * Arrival order is the first time we saw each seat.
+ */
+export function mergeDeepSnapshots(
+  prev: DeepSnapshot | null,
+  next: DeepSnapshot | null
+): DeepSnapshot | null {
+  if (!next) return prev
+  if (!prev || prev.kind !== next.kind) return next
+  if (prev.kind === 'open' && next.kind === 'open') {
+    return {
+      ...next,
+      instrument: next.instrument ?? prev.instrument,
+      proposition: next.proposition ?? prev.proposition,
+      plan: next.plan ?? prev.plan,
+      briefing: next.briefing ?? prev.briefing,
+      analyses: mergeOpenAnalyses(prev.analyses, next.analyses),
+      synthesis: next.synthesis ?? prev.synthesis,
+    }
+  }
+  if (prev.kind === 'debate' && next.kind === 'debate') {
+    return {
+      ...next,
+      instrument: next.instrument ?? prev.instrument,
+      proposition: next.proposition ?? prev.proposition,
+      plan: next.plan ?? prev.plan,
+      briefing: next.briefing ?? prev.briefing,
+      rounds: mergeDebateRounds(prev.rounds, next.rounds),
+      vote: next.vote ?? prev.vote,
+      verdict: next.verdict ?? prev.verdict,
+    }
+  }
+  return next
+}
+
+function mergeOpenAnalyses(
+  prev: DeepAnalysisSnapshot[],
+  next: DeepAnalysisSnapshot[]
+): DeepAnalysisSnapshot[] {
+  const byId = new Map<string, DeepAnalysisSnapshot>()
+  const order: string[] = []
+  for (const analysis of prev) {
+    byId.set(analysis.roleId, analysis)
+    order.push(analysis.roleId)
+  }
+  for (const analysis of next) {
+    if (!byId.has(analysis.roleId)) order.push(analysis.roleId)
+    byId.set(analysis.roleId, analysis)
+  }
+  return order.map((id) => byId.get(id)!)
+}
+
+function mergeDebateRounds(prev: DeepRoundSnapshot[], next: DeepRoundSnapshot[]): DeepRoundSnapshot[] {
+  const byNum = new Map<number, DeepRoundSnapshot>()
+  for (const round of prev) byNum.set(round.roundNumber, round)
+  for (const round of next) {
+    const old = byNum.get(round.roundNumber)
+    if (!old) {
+      byNum.set(round.roundNumber, round)
+      continue
+    }
+    byNum.set(round.roundNumber, {
+      ...round,
+      summary: round.summary || old.summary,
+      turns: round.turns.length >= old.turns.length ? round.turns : old.turns,
+    })
+  }
+  return [...byNum.values()].sort((a, b) => a.roundNumber - b.roundNumber)
+}
+
+export function pendingOpenSeats(snap: DeepOpenSnapshot): DeepSeatSnapshot[] {
+  const arrived = new Set(snap.analyses.map((a) => a.roleId))
+  return (snap.plan ?? []).filter((seat) => !arrived.has(seat.roleId))
+}
+
+/** Seats that have not spoken in the latest live debate round. */
+export function pendingDebateSeats(snap: DeepDebateSnapshot): DeepSeatSnapshot[] {
+  if (!snap.plan?.length) return []
+  if (snap.vote || snap.verdict) return []
+  const latest = snap.rounds[snap.rounds.length - 1]
+  if (!latest) return snap.plan
+  const spoken = new Set(latest.turns.filter((turn) => turn.ok && turn.position).map((turn) => turn.provider))
+  return snap.plan.filter((seat) => !spoken.has(seat.provider))
+}
+
+export function emptyOpenSnapshot(): DeepOpenSnapshot {
+  return {
+    kind: 'open',
+    instrument: null,
+    proposition: null,
+    plan: null,
+    briefing: null,
+    analyses: [],
+    synthesis: null,
+  }
+}
+
+export function emptyDebateSnapshot(): DeepDebateSnapshot {
+  return {
+    kind: 'debate',
+    instrument: null,
+    proposition: null,
+    plan: null,
+    briefing: null,
+    rounds: [],
+    vote: null,
+    verdict: null,
   }
 }

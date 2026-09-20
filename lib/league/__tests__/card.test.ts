@@ -377,7 +377,7 @@ describe('compliance: approved phrasing helpers', () => {
 
   it('states that a round-level tally is one correlated event, not independent forecasts', () => {
     expect(en.headline.correlatedNote.toLowerCase()).toMatch(/correlated/)
-    expect(en.headline.correlatedNote.toLowerCase()).toMatch(/not 41 independent/)
+    expect(en.headline.correlatedNote.toLowerCase()).toMatch(/not 40 independent/)
     expect(en.headline.correlatedNote.toLowerCase()).not.toMatch(/\b(buy|sell|bet)\b/)
   })
 
@@ -436,8 +436,8 @@ describe('buildConsensusHero — two-line card hero', () => {
         ...baseConsensus,
         tally: { up: 24, down: 16, flat: 1, abstain: 0 },
         majorityDirection: 'up',
-        totalModels: 41,
-        respondedModels: 41,
+        totalModels: 40,
+        respondedModels: 40,
         aggregateDirection: 'down',
         aggregateProbability: 50,
         aggregateMagnitudePct: -0.4,
@@ -460,8 +460,8 @@ describe('buildConsensusHero — two-line card hero', () => {
         ...baseConsensus,
         tally: { up: 24, down: 16, flat: 1, abstain: 0 },
         majorityDirection: 'up',
-        totalModels: 41,
-        respondedModels: 41,
+        totalModels: 40,
+        respondedModels: 40,
         aggregateDirection: 'down',
         aggregateProbability: 50,
         aggregateMagnitudePct: -0.4,
