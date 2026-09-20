@@ -307,6 +307,14 @@ describe('dictionary completeness', () => {
       expect(predLine).not.toMatch(/\//)
       expect(predLine).not.toMatch(/[✓✗]/)
       expect(pack.predictions.heading.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.title.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.crowd(40)).toContain('40')
+      expect(pack.extraCompare.crowdPending.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.recordPending.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.seat.divination.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.seat.sentiment.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.seat.history.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.seat.consensus.trim().length).toBeGreaterThan(0)
     }
     const ko = getLeagueUiPack('ko')
     expect(ko.gateway.refusal.prompt_not_available).toBe(
@@ -326,6 +334,8 @@ describe('dictionary completeness', () => {
     )
     expect(ko.verdict.bookLabels.closed).toBe('자체추론')
     expect(ko.verdict.bookLabels.scout).toBe('웹검색')
+    expect(ko.extraCompare.recordPending).toBe('채점 후 성적 집계')
+    expect(ko.extraCompare.title).toBe('엑스트라 vs 40 AI')
     expect(ko.hero.countLine(40, 30, '오른다', 9, '내린다')).toBe(
       'AI 40개 중 30개가 오른다 · 9개가 내린다',
     )

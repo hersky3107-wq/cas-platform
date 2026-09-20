@@ -12,6 +12,7 @@ import { DivisionBoard } from './DivisionBoard'
 import { GenerationProgressStrip } from './GenerationProgressStrip'
 import { VerdictPanel } from './VerdictPanel'
 import { PendingVerdictPanel } from './PendingVerdictPanel'
+import { ExtraCompare } from './ExtraCompare'
 
 /**
  * The actual prediction content (header, division board, final verdict).
@@ -116,6 +117,7 @@ export function CardBody({
           droppedModelIds.length > 0 ? droppedModelIds : (data.generation?.droppedModelIds ?? [])
         }
       />
+      <ExtraCompare models={data.models} consensus={data.consensus} t={t} labels={labels} />
       {data.hitRate.graded > 0 ? (
         <p className="border-t border-league-border/50 px-3 py-2 text-[10px] leading-snug text-league-fg-muted md:px-4">
           {t.bracket.resultLegend}

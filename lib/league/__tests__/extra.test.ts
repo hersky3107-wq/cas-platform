@@ -33,6 +33,7 @@ import { LEAGUE_UI, getLeagueUiPack } from '../i18n/dictionary'
 import { LEAGUE_LOCALES } from '../i18n/locales'
 import { buildLeaderboardData, type GradedPredictionRow } from '../leaderboard-aggregate'
 import { LEAGUE_ROSTER } from '../roster'
+import { buildExtraCompareView, extraRecordsFromModels, hasExtraCompareModels } from '../extra-compare'
 import type { LeagueDivinationAdapterOutput } from '@/lib/oracle/league-divination/adapter-types'
 
 function round(): RoundRow {
@@ -244,6 +245,96 @@ describe('consensus isolation', () => {
     expect(data.combined.correct).toBe(1)
     expect(officialRowsForConsensus(rows)).toHaveLength(1)
     expect(isExtraSeat(rows[1]!)).toBe(true)
+  })
+})
+
+describe('extra vs 40-AI comparison (display only)', () => {
+  it('contrasts extra seats with official consensus without changing the 40-AI math', () => {
+    const official = [
+      pred({ model_id: 'gpt-5.6-sol', predicted_direction: 'up', predicted_value: 70 }),
+      pred({
+        model_id: 'qwen3.8-max',
+        brand: 'Qwen',
+        camp: 'china',
+        league_tier: 'premier',
+        predicted_direction: 'up',
+        predicted_value: 65,
+      }),
+    ]
+    const card = buildCardData(round(), [
+      ...official,
+      pred({
+        model_id: 'divination',
+        brand: '🔮 점술',
+        camp: 'other',
+        league_tier: 'extra',
+        predicted_direction: 'down',
+        predicted_value: 38,
+      }),
+      pred({
+        model_id: 'sentiment',
+        brand: '📰 심리·내러티브',
+        camp: 'other',
+        league_tier: 'extra',
+        predicted_direction: null,
+        predicted_value: null,
+        reasoning_snippet: 'engine not wired',
+      }),
+    ])
+    const view = buildExtraCompareView(card.models, card.consensus)
+    expect(hasExtraCompareModels(card.models)).toBe(true)
+    expect(view.crowdDirection).toBe('up')
+    expect(view.crowdCount).toBe(card.consensus.totalModels)
+    expect(view.crowdCount).toBe(2)
+    expect(view.seats.map((s) => s.id)).toEqual(['divination', 'sentiment', 'history', 'consensus'])
+    expect(view.seats.find((s) => s.id === 'divination')).toMatchObject({
+      direction: 'down',
+      vsCrowd: 'diverge',
+      record: null,
+    })
+    expect(view.seats.find((s) => s.id === 'sentiment')).toMatchObject({
+      direction: null,
+      vsCrowd: 'pending',
+    })
+    expect(view.seats.find((s) => s.id === 'history')?.direction).toBeNull()
+    expect(view.hasAnyRecord).toBe(false)
+    expect(card.consensus.totalModels).toBe(2)
+    expect(card.consensus.majorityDirection).toBe('up')
+  })
+
+  it('does not invent extra win-rates — empty track until a real is_correct exists', () => {
+    const card = buildCardData(round(), [
+      pred({ model_id: 'gpt-5.6-sol', predicted_direction: 'up', predicted_value: 70 }),
+      pred({
+        model_id: 'divination',
+        brand: '🔮 점술',
+        camp: 'other',
+        league_tier: 'extra',
+        predicted_direction: 'up',
+        predicted_value: 38,
+        is_correct: null,
+      }),
+    ])
+    expect(extraRecordsFromModels(card.models)).toEqual({})
+    expect(buildExtraCompareView(card.models, card.consensus).hasAnyRecord).toBe(false)
+
+    const graded = buildCardData(round(), [
+      pred({ model_id: 'gpt-5.6-sol', predicted_direction: 'up', predicted_value: 70, is_correct: true }),
+      pred({
+        model_id: 'divination',
+        brand: '🔮 점술',
+        camp: 'other',
+        league_tier: 'extra',
+        predicted_direction: 'up',
+        predicted_value: 38,
+        is_correct: true,
+      }),
+    ])
+    expect(extraRecordsFromModels(graded.models)).toEqual({ divination: { correct: 1, graded: 1 } })
+    const view = buildExtraCompareView(graded.models, graded.consensus)
+    expect(view.hasAnyRecord).toBe(true)
+    expect(view.seats.find((s) => s.id === 'divination')?.record).toEqual({ correct: 1, graded: 1 })
+    expect(view.seats.find((s) => s.id === 'sentiment')?.record).toBeNull()
   })
 })
 

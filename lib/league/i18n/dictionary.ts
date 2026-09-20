@@ -178,6 +178,20 @@ export type LeagueUiPack = {
     /** Enthusiast breakdowns while seats are still filling. */
     inProgressNote: string
   }
+  /**
+   * Extra-vs-main comparison chrome. DISPLAY ONLY — never feeds consensus math.
+   * Win-rate lines must use `winRateLabel`; empty track → `recordPending`.
+   */
+  extraCompare: {
+    title: string
+    crowd: (n: number) => string
+    crowdPending: string
+    agree: string
+    diverge: string
+    recordTitle: string
+    recordPending: string
+    seat: Record<'divination' | 'sentiment' | 'history' | 'consensus', string>
+  }
   disclaimer: {
     short: string
     long: string
@@ -830,6 +844,16 @@ const en: LeagueUiPack = {
     noCalls: 'no calls yet',
     inProgressNote: 'In progress \u2014 these splits are not final yet',
   },
+  extraCompare: {
+    title: 'Extra vs the 40 AIs',
+    crowd: (n) => `${n}-AI consensus`,
+    crowdPending: '40-AI consensus: pending',
+    agree: 'agrees',
+    diverge: 'differs',
+    recordTitle: 'Extra record',
+    recordPending: 'Record after grading',
+    seat: { divination: 'Fortune', sentiment: 'Sentiment', history: 'History', consensus: 'Market odds' },
+  },
   disclaimer: {
     short: 'Info only — not investment advice. You are responsible for your own decisions.',
     long: 'These are AI model opinions shown for information and entertainment purposes only. They are not investment, financial, legal, or professional advice, and no model here is a licensed advisor. Markets are unpredictable and AI models can be — and often are — wrong. You are solely responsible for any decision you make.',
@@ -1334,6 +1358,16 @@ const ko: LeagueUiPack = {
     noCalls: '아직 응답 없음',
     inProgressNote: '집계 중 — 아직 확정되지 않았습니다',
   },
+  extraCompare: {
+    title: '엑스트라 vs 40 AI',
+    crowd: (n) => `${n} AI 종합`,
+    crowdPending: '40 AI 종합: 집계 대기',
+    agree: '일치',
+    diverge: '다름',
+    recordTitle: '엑스트라 성적',
+    recordPending: '채점 후 성적 집계',
+    seat: { divination: '점술', sentiment: '심리', history: '역사', consensus: '컨센서스' },
+  },
   disclaimer: {
     short: '정보 제공 목적일 뿐 투자 조언이 아닙니다. 모든 결정의 책임은 본인에게 있습니다.',
     long: '본 콘텐츠는 여러 AI 모델의 의견을 정보 및 오락 목적으로 제공하는 것이며, 투자·금융·법률·전문 자문이 아닙니다. 여기 등장하는 어떤 모델도 인가받은 자문가가 아닙니다. 시장은 예측할 수 없으며 AI 모델의 예측은 자주, 그리고 크게 틀릴 수 있습니다. 이를 근거로 내리는 모든 결정의 책임은 전적으로 본인에게 있습니다.',
@@ -1833,6 +1867,16 @@ const ja: LeagueUiPack = {
     noCalls: 'まだ回答なし',
     inProgressNote: '集計中 — まだ確定していません',
   },
+  extraCompare: {
+    title: 'エクストラ vs 40 AI',
+    crowd: (n) => `${n} AI総合`,
+    crowdPending: '40 AI総合：集計待ち',
+    agree: '一致',
+    diverge: '相違',
+    recordTitle: 'エクストラ成績',
+    recordPending: '採点後に成績を集計',
+    seat: { divination: '占い', sentiment: '心理', history: '歴史', consensus: 'コンセンサス' },
+  },
   disclaimer: {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
     long: 'この内容は複数のAIモデルの見解を情報提供・娯楽目的で示したものであり、投資・金融・法律・専門的な助言ではありません。ここに登場するモデルはいずれも認可を受けたアドバイザーではありません。市場は予測不可能であり、AIモデルの予測は誤ることが多々あります。これに基づく判断の責任はすべてご自身が負うものとします。',
@@ -2329,6 +2373,16 @@ const zhTW: LeagueUiPack = {
     noCalls: '尚無回應',
     inProgressNote: '統計中 — 尚未確定',
   },
+  extraCompare: {
+    title: 'Extra vs 40 AI',
+    crowd: (n) => `${n} AI 綜合`,
+    crowdPending: '40 AI 綜合：待彙整',
+    agree: '一致',
+    diverge: '不同',
+    recordTitle: 'Extra 成績',
+    recordPending: '評分後再彙整成績',
+    seat: { divination: '占卜', sentiment: '心理', history: '歷史', consensus: '共識' },
+  },
   disclaimer: {
     short: '僅供參考，非投資建議。所有決定的責任由您自行承擔。',
     long: '本內容為多個 AI 模型的意見，僅供資訊與娛樂用途，並非投資、財務、法律或專業建議；此處任何模型皆非持牌顧問。市場無法預測，AI 模型的判斷經常出錯。您必須自行承擔依此做出之任何決定的全部責任。',
@@ -2822,6 +2876,16 @@ const fr: LeagueUiPack = {
     axisPart: (n, word) => `${n} ${word}`,
     noCalls: 'aucune r\u00e9ponse pour le moment',
     inProgressNote: 'En cours \u2014 ces répartitions ne sont pas encore définitives',
+  },
+  extraCompare: {
+    title: 'Extra vs les 40 IA',
+    crowd: (n) => `consensus ${n} IA`,
+    crowdPending: 'consensus 40 IA : en attente',
+    agree: 'd\u2019accord',
+    diverge: 'diverge',
+    recordTitle: 'Bilan Extra',
+    recordPending: 'Bilan après notation',
+    seat: { divination: 'Divination', sentiment: 'Sentiment', history: 'Histoire', consensus: 'Consensus' },
   },
   disclaimer: {
     short: 'Information uniquement, ceci n\u2019est pas un conseil en investissement. Vous êtes seul responsable de vos décisions.',
@@ -3334,6 +3398,16 @@ const es: LeagueUiPack = {
     noCalls: 'sin respuestas todav\u00eda',
     inProgressNote: 'En curso \u2014 estos desgloses aún no son definitivos',
   },
+  extraCompare: {
+    title: 'Extra vs las 40 IA',
+    crowd: (n) => `consenso ${n} IA`,
+    crowdPending: 'consenso 40 IA: pendiente',
+    agree: 'coincide',
+    diverge: 'difiere',
+    recordTitle: 'Historial Extra',
+    recordPending: 'Historial tras la calificación',
+    seat: { divination: 'Adivinación', sentiment: 'Sentimiento', history: 'Historia', consensus: 'Consenso' },
+  },
   disclaimer: {
     short: 'Solo información, no es asesoramiento de inversión. Usted es responsable de sus propias decisiones.',
     long: 'Este contenido muestra opiniones de varios modelos de IA con fines informativos y de entretenimiento únicamente. No constituye asesoramiento de inversión, financiero, legal ni profesional, y ninguno de estos modelos es un asesor autorizado. Los mercados son impredecibles y los modelos de IA pueden equivocarse, y a menudo lo hacen. Usted es el único responsable de cualquier decisión que tome con base en esta información.',
@@ -3845,6 +3919,16 @@ const ar: LeagueUiPack = {
     noCalls: 'لا توجد إجابات بعد',
     inProgressNote: 'جارٍ الجمع — هذه التقسيمات ليست نهائية بعد',
   },
+  extraCompare: {
+    title: 'إكسترا مقابل 40 نموذجًا',
+    crowd: (n) => `إجماع ${n} نموذجًا`,
+    crowdPending: 'إجماع 40 نموذجًا: قيد الانتظار',
+    agree: 'يتوافق',
+    diverge: 'يختلف',
+    recordTitle: 'سجل إكسترا',
+    recordPending: 'يُجمع السجل بعد التقييم',
+    seat: { divination: 'عرافة', sentiment: 'مشاعر', history: 'تاريخ', consensus: 'إجماع السوق' },
+  },
   disclaimer: {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
     long: 'يعرض هذا المحتوى آراء عدة نماذج ذكاء اصطناعي لأغراض المعلومات والترفيه فقط. وهو لا يمثل نصيحة استثمارية أو مالية أو قانونية أو مهنية، وليس أي نموذج هنا مستشارًا مرخصًا. الأسواق غير قابلة للتنبؤ، وقد تخطئ نماذج الذكاء الاصطناعي، بل وتخطئ كثيرًا. أنت وحدك المسؤول عن أي قرار تتخذه بناءً على ذلك.',
@@ -4348,6 +4432,16 @@ const pt: LeagueUiPack = {
     axisPart: (n, word) => `${n} ${word}`,
     noCalls: 'sem respostas ainda',
     inProgressNote: 'Em andamento \u2014 estes recortes ainda não são definitivos',
+  },
+  extraCompare: {
+    title: 'Extra vs as 40 IAs',
+    crowd: (n) => `consenso ${n} IAs`,
+    crowdPending: 'consenso 40 IAs: pendente',
+    agree: 'concorda',
+    diverge: 'diverge',
+    recordTitle: 'Histórico Extra',
+    recordPending: 'Histórico após a pontuação',
+    seat: { divination: 'Adivinhação', sentiment: 'Sentimento', history: 'História', consensus: 'Consenso' },
   },
   disclaimer: {
     short: 'Apenas informação — não é recomendação de investimento. Você é responsável pelas próprias decisões.',

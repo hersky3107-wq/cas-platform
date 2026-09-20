@@ -5,6 +5,7 @@ import { sideLabelsFor, type SideLabels } from '@/lib/league/side-labels'
 import { directionBadgeLabel } from '@/lib/league/compliance'
 import { FLAG_SRC, type CountryCode } from '@/lib/league/country'
 import type { ConsensusSummary } from '@/lib/league/card-types'
+import { BOOK_ACCENT, CAMP_ACCENT, TIER_ACCENT, WEIGHT_ACCENT } from '@/lib/league/breakdown-display'
 import { ConsensusHero } from '@/components/league/ConsensusHero'
 import { DetailsDisclosure } from './DetailsDisclosure'
 
@@ -64,39 +65,41 @@ export function VerdictPanel({
       <p className="mt-2 text-[11px] leading-snug text-league-fg-muted">{t.headline.correlatedNote}</p>
 
       <DetailsDisclosure t={t}>
-        <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.sectionCamp}</p>
+        <p className="text-[13px] font-bold tracking-wide text-league-fg md:text-sm">{t.verdict.sectionCamp}</p>
         <GroupRows
           rows={verdict.byCamp}
           labelOf={(key) => t.verdict.campLabels[key as keyof typeof t.verdict.campLabels] ?? key}
           flagOf={(key) => (key === 'us' ? 'US' : key === 'china' ? 'CN' : 'INT')}
+          accentOf={(key) => CAMP_ACCENT[key as keyof typeof CAMP_ACCENT] ?? 'bg-slate-400'}
           t={t}
         />
 
-        <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.sectionTier}</p>
+        <p className="mt-4 text-[13px] font-bold tracking-wide text-league-fg md:text-sm">{t.verdict.sectionTier}</p>
         <GroupRows
           rows={verdict.byTier}
           labelOf={(key) => t.verdict.tierLabels[key as keyof typeof t.verdict.tierLabels] ?? key}
+          accentOf={(key) => TIER_ACCENT[key as keyof typeof TIER_ACCENT] ?? 'bg-slate-400'}
           t={t}
         />
 
-        <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.sectionBook}</p>
+        <p className="mt-4 text-[13px] font-bold tracking-wide text-league-fg md:text-sm">{t.verdict.sectionBook}</p>
         <GroupRows
           rows={verdict.byBook}
           labelOf={(key) => t.verdict.bookLabels[key as keyof typeof t.verdict.bookLabels] ?? key}
+          accentOf={(key) => BOOK_ACCENT[key as keyof typeof BOOK_ACCENT] ?? 'bg-slate-400'}
           t={t}
         />
 
-        <p className="mt-3 text-[12px] leading-snug text-league-fg">
-          {t.verdict.weightsLine(
-            verdict.byWeights.find((row) => row.key === 'closed')?.hits ?? 0,
-            verdict.byWeights.find((row) => row.key === 'closed')?.graded ?? 0,
-            verdict.byWeights.find((row) => row.key === 'open')?.hits ?? 0,
-            verdict.byWeights.find((row) => row.key === 'open')?.graded ?? 0,
-          )}
-        </p>
+        <p className="mt-4 text-[13px] font-bold tracking-wide text-league-fg md:text-sm">{t.verdict.sectionWeights}</p>
+        <GroupRows
+          rows={verdict.byWeights}
+          labelOf={(key) => t.verdict.weightLabels[key as keyof typeof t.verdict.weightLabels] ?? key}
+          accentOf={(key) => WEIGHT_ACCENT[key as keyof typeof WEIGHT_ACCENT] ?? 'bg-slate-400'}
+          t={t}
+        />
 
-        <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{t.verdict.sectionCountry}</p>
-        <p className="mb-2 text-[10px] leading-snug text-league-fg-muted">{t.verdict.sectionCountryCaution}</p>
+        <p className="mt-4 text-[13px] font-bold tracking-wide text-league-fg md:text-sm">{t.verdict.sectionCountry}</p>
+        <p className="mb-2 text-[12px] leading-snug text-league-fg-muted">{t.verdict.sectionCountryCaution}</p>
         <GroupRows
           rows={verdict.byCountry}
           labelOf={(key) => t.verdict.countryLabels[key as keyof typeof t.verdict.countryLabels] ?? key}
@@ -159,21 +162,28 @@ function GroupRows({
   rows,
   labelOf,
   flagOf,
+  accentOf,
   t,
 }: {
   rows: VerdictGroupCount[]
   labelOf: (key: string) => string
   flagOf?: (key: string) => CountryCode | null
+  accentOf?: (key: string) => string
   t: LeagueUiPack
 }) {
   if (rows.length === 0) return null
   return (
-    <ul className="mt-1.5 space-y-1.5">
+    <ul className="mt-2 space-y-2">
       {rows.map((row) => {
         const code = flagOf?.(row.key) ?? null
+        const accent = accentOf?.(row.key)
         return (
-          <li key={row.key} className="flex items-center justify-between gap-2 text-[12px] text-league-fg">
-            <span className="inline-flex min-w-0 items-center gap-1.5">
+          <li
+            key={row.key}
+            className="flex items-center justify-between gap-2 rounded-lg bg-white/70 px-2.5 py-2 text-[14px] text-league-fg ring-1 ring-league-border/40"
+          >
+            <span className="inline-flex min-w-0 items-center gap-2">
+              {accent ? <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${accent}`} aria-hidden /> : null}
               {code ? (
                 // eslint-disable-next-line @next/next/no-img-element -- local static SVG
                 <img
@@ -184,12 +194,12 @@ function GroupRows({
                   className="h-3 w-[18px] rounded-[2px] object-cover ring-1 ring-inset ring-black/10"
                 />
               ) : null}
-              <span className="truncate font-medium">{labelOf(row.key)}</span>
+              <span className="truncate font-semibold">{labelOf(row.key)}</span>
             </span>
-            <span className="shrink-0 font-mono tabular-nums">
+            <span className="shrink-0 font-mono text-[14px] font-semibold tabular-nums">
               {t.verdict.rawCount(row.hits, row.graded)}
               {row.ungraded > 0 ? (
-                <span className="ml-1.5 text-[10px] text-league-fg-muted">{t.verdict.ungradedNote(row.ungraded)}</span>
+                <span className="ml-1.5 text-[12px] font-medium text-league-fg-muted">{t.verdict.ungradedNote(row.ungraded)}</span>
               ) : null}
             </span>
           </li>
