@@ -6,6 +6,22 @@ export function shouldTranslateRationaleLocale(locale: LeagueLocale): boolean {
   return locale !== 'en' && locale !== 'pt'
 }
 
+/** Hangul syllable block. Native-Korean extra seats (divination) already write this. */
+export const HANGUL_RE = /[가-힣]/
+
+export function isNativeKoreanText(text: string): boolean {
+  return HANGUL_RE.test(text)
+}
+
+/**
+ * ko-view: skip LLM translation when the snippet is already Korean.
+ * Gemini otherwise re-translates Hangul → English and caches that as `ko`.
+ * Other locales (ja/zh/fr/…) still translate Hangul sources.
+ */
+export function skipKoTranslationLlm(locale: LeagueLocale, text: string): boolean {
+  return locale === 'ko' && isNativeKoreanText(text)
+}
+
 /**
  * Changes when a translatable snippet appears, disappears, or is rewritten.
  * Drives view-time translation on the stream/read path (not only first mount).

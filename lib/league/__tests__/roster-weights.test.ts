@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { LEAGUE_LOCALES } from '../i18n/locales'
 import { getLeagueUiPack } from '../i18n/dictionary'
-import { LEAGUE_ROSTER, type WeightsKind } from '../roster'
+import { EXTRA_ENGINE_ROSTER, LEAGUE_ROSTER, lookupRosterEntry, type WeightsKind } from '../roster'
 
 describe('roster weights classification', () => {
   it('has exactly 40 seats and every seat is binary open|closed', () => {
@@ -26,6 +26,16 @@ describe('roster weights classification', () => {
     const scout = LEAGUE_ROSTER.filter((e) => e.league_tier === 'scout')
     expect(scout).toHaveLength(6)
     expect(scout.every((e) => e.weights === 'closed')).toBe(true)
+    expect(scout.map((e) => e.model_id)).toContain('sonar-reasoning-pro')
+    expect(scout.map((e) => e.model_id)).not.toContain('sonar')
+  })
+
+  it('looks up extra-engine sonar without adding a 41st official seat', () => {
+    expect(LEAGUE_ROSTER).toHaveLength(40)
+    expect(LEAGUE_ROSTER.some((e) => e.model_id === 'sonar')).toBe(false)
+    expect(EXTRA_ENGINE_ROSTER.map((e) => e.model_id)).toEqual(['sonar'])
+    const engine = lookupRosterEntry('sonar')
+    expect(engine?.caller).toMatchObject({ kind: 'core', provider: 'perplexity', modelOverride: 'sonar' })
   })
 
   it('routes v4-pro, challenger flash, and world flash first-party; all DeepSeek seats first-party; Friendli Gemma is WORLD', () => {

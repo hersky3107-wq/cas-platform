@@ -323,7 +323,20 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   { model_id: 'youcom-research', brand: 'You.com', camp: 'us', league_tier: 'scout', weights: 'closed', provider_key: 'youcom', reasoning: true, caller: { kind: 'platform', platformId: 'youcom:research' }, price: { inputPerMTokens: 0, outputPerMTokens: 0 } }, // You.com research agent; no public checkpoint
 ]
 
-const ROSTER_BY_MODEL_ID = new Map(LEAGUE_ROSTER.map((entry) => [entry.model_id, entry]))
+/**
+ * Extra-seat engines that are NOT official 40-AI seats. `getRoster()` never
+ * returns these. `lookupRosterEntry` finds them so extra callers can reuse
+ * timeout / price / provider wiring. Official scout Perplexity stays
+ * `sonar-reasoning-pro`; extra 📰/💰 use plain `sonar` (reasoning-pro
+ * returns empty content on the extra JSON contract).
+ */
+export const EXTRA_ENGINE_ROSTER: RosterEntry[] = [
+  { model_id: 'sonar', brand: 'Perplexity', product_alias: 'Sonar', camp: 'us', league_tier: 'scout', weights: 'closed', provider_key: 'perplexity', reasoning: false, maxCompletionTokens: 1600, caller: { kind: 'core', provider: 'perplexity', modelOverride: 'sonar' }, price: { inputPerMTokens: 1, outputPerMTokens: 1 } },
+]
+
+const ROSTER_BY_MODEL_ID = new Map(
+  [...LEAGUE_ROSTER, ...EXTRA_ENGINE_ROSTER].map((entry) => [entry.model_id, entry]),
+)
 
 /**
  * Display-only aliases for model_ids that left the live roster. Historical

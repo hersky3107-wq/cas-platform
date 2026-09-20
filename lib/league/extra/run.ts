@@ -119,9 +119,9 @@ export type GenerateExtraSeatsOpts = {
   divinationReader?: DivinationReader
   /** Test seam — default calls challenger Claude Sonnet 5. */
   historyCaller?: HistoryCaller
-  /** Test seam — default calls scout Perplexity sonar-reasoning-pro. */
+  /** Test seam — default calls extra Perplexity `sonar`. */
   sentimentCaller?: SentimentCaller
-  /** Test seam — default calls scout Perplexity sonar-reasoning-pro (money signals). */
+  /** Test seam — default calls extra Perplexity `sonar` (money signals). */
   consensusCaller?: ConsensusCaller
   /**
    * Official-run reuse: dates + closes already fetched for the shared packet.

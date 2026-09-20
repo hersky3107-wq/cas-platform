@@ -66,16 +66,17 @@ function sampleInput() {
 }
 
 describe('consensus extra seat — engine + contract', () => {
-  it('is powered by Perplexity sonar-reasoning-pro, not Grok', () => {
+  it('is powered by Perplexity sonar, not reasoning-pro or Grok', () => {
     const engine = lookupRosterEntry(CONSENSUS_ENGINE_MODEL_ID)
-    expect(CONSENSUS_ENGINE_MODEL_ID).toBe('sonar-reasoning-pro')
+    expect(CONSENSUS_ENGINE_MODEL_ID).toBe('sonar')
     expect(engine?.league_tier).toBe('scout')
     if (engine?.caller.kind === 'core') {
       expect(engine.caller.provider).toBe('perplexity')
-      expect(engine.caller.modelOverride).toBe('sonar-reasoning-pro')
+      expect(engine.caller.modelOverride).toBe('sonar')
     }
     expect(CONSENSUS_FORBIDDEN_ENGINES).toContain('grok-4.6-livesearch')
     expect(CONSENSUS_ENGINE_MODEL_ID).not.toMatch(/grok/i)
+    expect(CONSENSUS_ENGINE_MODEL_ID).not.toBe('sonar-reasoning-pro')
   })
 
   it('persona searches money-positioning signals in market-priced language', () => {
@@ -147,7 +148,7 @@ describe('consensus extra seat — engine + contract', () => {
 
   it('documents 1 Perplexity search call / round in the same cheap band as sentiment', () => {
     const cost = expectedConsensusCostUsdPerRound()
-    expect(cost.engine).toBe('sonar-reasoning-pro')
+    expect(cost.engine).toBe('sonar')
     expect(cost.calls).toBe(1)
     expect(cost.searchSource).toBe('perplexity-web-index')
     expect(cost.notGrok).toBe(true)

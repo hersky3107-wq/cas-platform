@@ -7,15 +7,17 @@
  * prediction-market API, no new keys.
  *
  * NOT charts (history), NOT news-mood (sentiment), NOT the research packet.
- * Engine: scout Perplexity `sonar-reasoning-pro` (1 search call / round).
- * Ledger model_id stays `consensus`. Isolated from the official 40-AI verdict.
- * Abstain if no money-positioning signal — never invent.
+ * Engine: extra Perplexity `sonar` (1 search call / round). Not
+ * `sonar-reasoning-pro` — that model returns empty content on strict JSON
+ * prompts (false abstention). Ledger model_id stays `consensus`. Isolated
+ * from the official 40-AI verdict. Abstain if no money-positioning signal
+ * — never invent.
  */
 import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
 
-export const CONSENSUS_ENGINE_MODEL_ID = 'sonar-reasoning-pro'
+export const CONSENSUS_ENGINE_MODEL_ID = 'sonar'
 
 export const CONSENSUS_FORBIDDEN_ENGINES = ['grok-4.6-livesearch', 'grok-4.3', 'grok-4.5'] as const
 

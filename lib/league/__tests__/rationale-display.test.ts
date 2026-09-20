@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { CardModelPrediction } from '../card-types'
 import {
+  isNativeKoreanText,
   isRationaleTranslationPending,
   lookupTranslatedRationale,
   rationaleSourceFingerprint,
   shouldTranslateRationaleLocale,
+  skipKoTranslationLlm,
 } from '../rationale-display'
 
 function model(overrides: Partial<CardModelPrediction> = {}): CardModelPrediction {
@@ -92,5 +94,17 @@ describe('rationale display / stream trigger helpers', () => {
         inFlight: true,
       })
     ).toBe(false)
+  })
+
+  it('skips the ko LLM when the snippet already has Hangul; still translates Hangul for ja/fr', () => {
+    const korean =
+      '본괘인 고는 갈등과 혼란의 상황을 나타내지만, 변괘 환은 변화와 해소를 의미합니다.'
+    expect(isNativeKoreanText(korean)).toBe(true)
+    expect(isNativeKoreanText('Last close ~4378 (FXEmpire 19Sep).')).toBe(false)
+    expect(skipKoTranslationLlm('ko', korean)).toBe(true)
+    expect(skipKoTranslationLlm('ja', korean)).toBe(false)
+    expect(skipKoTranslationLlm('zh-TW', korean)).toBe(false)
+    expect(skipKoTranslationLlm('fr', korean)).toBe(false)
+    expect(skipKoTranslationLlm('ko', 'Gold trades near $4,378 with weekly gains.')).toBe(false)
   })
 })

@@ -7,16 +7,18 @@
  * X/Twitter comments or unindexed threads — this is "web-visible crowd
  * sentiment", not exhaustive comment scraping.
  *
- * Engine: scout Perplexity `sonar-reasoning-pro` (1 search call / round).
- * Not Grok — avoid the 60k-token X-crawl. Ledger model_id stays `sentiment`.
- * Isolated from the official 40-AI consensus. Abstain if no signal — never invent.
+ * Engine: extra Perplexity `sonar` (1 search call / round). Not
+ * `sonar-reasoning-pro` — that model returns empty content on strict JSON
+ * prompts (false abstention). Not Grok — avoid the 60k-token X-crawl.
+ * Ledger model_id stays `sentiment`. Isolated from the official 40-AI
+ * consensus. Abstain if no signal — never invent.
  */
 import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
 
-/** Scout roster id — powers the seat; the ledger row is still `sentiment`. */
-export const SENTIMENT_ENGINE_MODEL_ID = 'sonar-reasoning-pro'
+/** Extra-engine id — powers the seat; the ledger row is still `sentiment`. */
+export const SENTIMENT_ENGINE_MODEL_ID = 'sonar'
 
 /** Confirmed: this seat must never call Grok live-search / X-crawl. */
 export const SENTIMENT_FORBIDDEN_ENGINES = ['grok-4.6-livesearch', 'grok-4.3', 'grok-4.5'] as const
@@ -328,7 +330,7 @@ export const SENTIMENT_NO_SIGNAL_REASON =
   '검색으로 드러난 뉴스·여론이 없어 심리 판단을 하지 않습니다. 심리·내러티브 좌석은 웹에 보이는 여론이 있을 때만 답합니다.'
 
 /**
- * Roster list price for sonar-reasoning-pro. Perplexity folds the search
+ * Roster list price for extra-engine `sonar`. Perplexity folds the search
  * request fee into billed `usage.cost.total_cost` — prefer that on the ledger.
  * Typical 1-call extra round: ~$0.01–$0.03 (tokens + search request).
  * Not Grok live-search (that path burned tens of thousands of X-crawl tokens).

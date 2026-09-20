@@ -64,18 +64,19 @@ function sampleInput() {
 }
 
 describe('sentiment extra seat — engine + contract', () => {
-  it('is powered by Perplexity sonar-reasoning-pro, not Grok X-crawl', () => {
+  it('is powered by Perplexity sonar, not reasoning-pro or Grok X-crawl', () => {
     const engine = lookupRosterEntry(SENTIMENT_ENGINE_MODEL_ID)
-    expect(SENTIMENT_ENGINE_MODEL_ID).toBe('sonar-reasoning-pro')
+    expect(SENTIMENT_ENGINE_MODEL_ID).toBe('sonar')
     expect(engine?.league_tier).toBe('scout')
     expect(engine?.caller.kind).toBe('core')
     if (engine?.caller.kind === 'core') {
       expect(engine.caller.provider).toBe('perplexity')
-      expect(engine.caller.modelOverride).toBe('sonar-reasoning-pro')
+      expect(engine.caller.modelOverride).toBe('sonar')
       expect(engine.caller.searchTool).toBeFalsy()
     }
     expect(SENTIMENT_FORBIDDEN_ENGINES).toContain('grok-4.6-livesearch')
     expect(SENTIMENT_ENGINE_MODEL_ID).not.toMatch(/grok/i)
+    expect(SENTIMENT_ENGINE_MODEL_ID).not.toBe('sonar-reasoning-pro')
   })
 
   it('persona asks for news/web-visible opinion in sentiment language only', () => {
@@ -146,7 +147,7 @@ describe('sentiment extra seat — engine + contract', () => {
 
   it('documents 1 Perplexity search call / round and a cheap band vs Grok', () => {
     const cost = expectedSentimentCostUsdPerRound()
-    expect(cost.engine).toBe('sonar-reasoning-pro')
+    expect(cost.engine).toBe('sonar')
     expect(cost.calls).toBe(1)
     expect(cost.searchSource).toBe('perplexity-web-index')
     expect(cost.notGrok).toBe(true)

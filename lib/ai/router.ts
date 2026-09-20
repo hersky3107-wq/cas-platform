@@ -7,6 +7,7 @@ import {
   anthropicWebSearchFeeFromUsage,
   OPENAI_WEB_SEARCH_USD_PER_CALL,
 } from '@/lib/ai/provider-billed-cost'
+import { xaiSystemLengthSuffix } from '@/lib/ai/xai-search-prompt'
 
 const UNIVERSAL_LANGUAGE_PROMPT_RULE = `IMPORTANT: Always respond in the same language the user wrote their message in. If the user writes in Japanese, respond in Japanese. If in French, respond in French. If in English, respond in English. Match the user's language exactly.`
 const MISTRAL_NON_LATIN_LANGUAGE_REINFORCEMENT =
@@ -918,9 +919,7 @@ async function callProvider({
     ? prompt
     : `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${prompt}`
 
-  const grokLengthSuffix = provider === 'xai'
-    ? '\n\nIMPORTANT: Write a thorough, detailed response. Do NOT cut your response short. Use your full available token capacity. A short response is a failure.'
-    : ''
+  const grokLengthSuffix = provider === 'xai' ? xaiSystemLengthSuffix({ searchTool }) : ''
 
   const todayStr = new Date().toISOString().split('T')[0]
   const injectedSystemPrompt = `Today's date is ${todayStr}.\n\n` + (systemPrompt || '') + grokLengthSuffix

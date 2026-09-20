@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { runSingleAiProvider } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { LeagueLocale } from './i18n/locales'
+import { skipKoTranslationLlm } from './rationale-display'
 import {
   persistRationaleTranslations,
   logRationaleCacheError,
@@ -127,7 +128,18 @@ export async function translateRoundRationales(
 
   const translations: Record<string, string> = {}
   const missing: RationaleToTranslate[] = []
+  const nativeWrites: { prediction_id: string; locale: string; translated_text: string; source_hash: string }[] = []
   for (const item of usable) {
+    if (skipKoTranslationLlm(locale, item.text)) {
+      translations[item.predictionId] = item.text
+      nativeWrites.push({
+        prediction_id: item.predictionId,
+        locale,
+        translated_text: item.text,
+        source_hash: sourceHash(item.text),
+      })
+      continue
+    }
     const hit = cached.get(item.predictionId)
     if (hit && hit.source_hash === sourceHash(item.text) && hit.translated_text.trim()) {
       translations[item.predictionId] = hit.translated_text
@@ -136,11 +148,16 @@ export async function translateRoundRationales(
     }
   }
 
+  if (nativeWrites.length) {
+    await persistRationaleTranslations(nativeWrites, store)
+  }
+
   if (missing.length === 0) {
     return {
       ...empty,
       translations,
-      fromCache: usable.length,
+      fromCache: usable.length - nativeWrites.length,
+      translated: nativeWrites.length,
       latencyMs: Date.now() - started,
     }
   }
@@ -213,8 +230,8 @@ export async function translateRoundRationales(
 
   return {
     translations,
-    fromCache: usable.length - missing.length,
-    translated,
+    fromCache: usable.length - missing.length - nativeWrites.length,
+    translated: translated + nativeWrites.length,
     failed,
     latencyMs: Date.now() - started,
     costUsd,
