@@ -308,7 +308,7 @@ type OpenAiCompatibleCallParams = {
    * Shared per-unit HTTP attempt budget. When set (oracle layer-1), each real
    * fetch decrements it and empty-content retries stop when it hits 0.
    * Omitted for league / other callers — they use the empty-content loop
-   * (up to 4 attempts, short abort on retries). Oracle still caps at 2 HTTP.
+   * (up to 6 attempts, 35s abort on retries). Oracle still caps at 2 HTTP.
    */
   httpBudget?: {
     remaining: number
@@ -366,9 +366,11 @@ function maybeLogOracleDebugResponse(json: Record<string, unknown>): void {
  * left unspent (confirmed live 2026-08-10: minimax/minimax-m3 via the Novita
  * upstream failed this way roughly 1 call in 6, at max_tokens:160 while only
  * spending ~31 tokens). That is upstream flakiness, not a budget or config
- * problem. Retry up to EMPTY_CONTENT_MAX_ATTEMPTS total tries with a short
- * abort on each extra try so one flake cannot occupy a league chunk for
- * minutes. Oracle layer-1 still shares a 2-HTTP httpBudget with the adapter.
+ * problem. Retry up to EMPTY_CONTENT_MAX_ATTEMPTS total tries with a 35s
+ * abort on each extra try so a 22–26s reasoning response can finish, without
+ * occupying a league chunk for minutes. Each retry uses a fresh abort — the
+ * first-attempt roster timeout must not steal leftover wall from retries.
+ * Oracle layer-1 still shares a 2-HTTP httpBudget with the adapter.
  */
 async function callOpenAiCompatiblePlatformModel(
   params: OpenAiCompatibleCallParams
@@ -388,7 +390,7 @@ async function callOpenAiCompatiblePlatformModel(
     await new Promise((r) => setTimeout(r, emptyContentRetryBackoffMs(attempt - 2)))
     last = await callOpenAiCompatibleOnce({
       ...params,
-      signal: abortAfter(retryTimeoutMs, params.signal),
+      signal: abortAfter(retryTimeoutMs),
     })
     if (!last.emptyContent) return last.result
   }

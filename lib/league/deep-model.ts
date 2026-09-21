@@ -26,7 +26,7 @@ function noDbSupabase(): SupabaseClient {
  *     empty-content retry loop (the league-gen 537s fix) applies inside.
  *   - router seats: leagueDeepTimeoutMs wall (120s default, 240s DeepSeek)
  *     raced inside runSingleAiProvider, PLUS the same bounded
- *     empty-content retries (20s abort each) so one flaky seat cannot
+ *     empty-content retries (35s abort each) so one flaky seat cannot
  *     hold a Promise.allSettled hop for minutes.
  */
 export async function callLeagueDeepModel(params: {

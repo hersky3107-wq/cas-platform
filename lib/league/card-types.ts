@@ -295,7 +295,8 @@ export type CardRoundMeta = {
  * queued/running; tiles fill as `models` grows between polls.
  *
  * Progress is seat-resolution, not tile count: `answered` includes 결번 /
- * no-opinion null rows that `buildCardData` strips from `models`.
+ * no-opinion null rows that `buildCardData` strips from `models` (those ids
+ * are also on `CardData.droppedModelIds` for finished-card 미응답 tiles).
  */
 export type CardGenerationState = {
   status: 'queued' | 'running' | 'failed'
@@ -384,6 +385,13 @@ export type CardData = {
   combinedTrack: CombinedMethodTrack
   /** ISO timestamp this snapshot was assembled — lets the UI show "as of". */
   generatedAt: string
+  /**
+   * Official-roster model_ids whose prediction row is a null-direction drop
+   * (no-opinion gate). Lives on the card itself so a FINISHED round (where
+   * `generation` is null) can still render 미응답 dashed tiles. Extra seats
+   * stay on `models` as tiles; they are not listed here.
+   */
+  droppedModelIds: string[]
   /**
    * Non-null while a background generation job is queued/running (or failed
    * without a completed round). Attached by the card ROUTE, not by

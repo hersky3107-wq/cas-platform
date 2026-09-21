@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CAMPS, LEAGUE_TIERS, type CardData, type CardModelPrediction } from './card-types'
-import { computeCardAggregates } from './card-aggregate'
+import { computeCardAggregates, withDroppedSeatTotal } from './card-aggregate'
 import { rosterGenerationProgress } from './generation-progress'
-import { getProgressRosterIds } from './roster'
+import { getProgressRosterIds, lookupRosterEntry } from './roster'
 import { hasCallableSide } from './side-labels'
 
 export type CardStreamState = 'static' | 'connecting' | 'live' | 'reconnecting' | 'error'
@@ -59,6 +59,20 @@ function isStreamLine(v: unknown): v is StreamLine {
   return !!v && typeof v === 'object' && typeof (v as { type?: unknown }).type === 'string'
 }
 
+function uniqueDroppedIds(...lists: Array<readonly string[] | null | undefined>): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const list of lists) {
+    if (!list) continue
+    for (const id of list) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      out.push(id)
+    }
+  }
+  return out
+}
+
 const TIER_ORDER = new Map(LEAGUE_TIERS.map((t, i) => [t, i]))
 const CAMP_ORDER = new Map(CAMPS.map((c, i) => [c, i]))
 
@@ -85,20 +99,49 @@ function sortByTierThenCamp(models: CardModelPrediction[]): CardModelPrediction[
  */
 export function mergeModel(prev: CardData, incoming: CardModelPrediction): CardData {
   // Null/blank/unparseable/flat never land on tiles or in live aggregates —
-  // same gate as `buildCardData`. A failed stream row is a no-op, not "no opinion".
-  if (!hasCallableSide(incoming.direction)) return prev
+  // same gate as `buildCardData`. Official drops stay on droppedModelIds so
+  // finished and live boards can render 미응답; extra nulls stay a no-op here
+  // (extra tiles come from buildCardData's isExtraSeat exception on refetch).
+  if (!hasCallableSide(incoming.direction)) {
+    if (!lookupRosterEntry(incoming.model_id)) return prev
+    if (prev.models.some((m) => m.model_id === incoming.model_id && hasCallableSide(m.direction))) {
+      return prev
+    }
+    const droppedModelIds = prev.droppedModelIds.includes(incoming.model_id)
+      ? prev.droppedModelIds
+      : [...prev.droppedModelIds, incoming.model_id]
+    const aggregates = computeCardAggregates(prev.models, prev.round.resolved_at, { round: prev.round })
+    return {
+      ...prev,
+      droppedModelIds,
+      ...aggregates,
+      consensus: withDroppedSeatTotal(aggregates.consensus, droppedModelIds.length),
+    }
+  }
   const byId = new Map(prev.models.map((m) => [m.model_id, m] as const))
   byId.set(incoming.model_id, incoming)
   const models = Array.from(byId.values())
-  // `round: prev.round` so a live subject/threshold round aggregates under its
-  // own side pair, not the up/down default.
-  return { ...prev, models, ...computeCardAggregates(models, prev.round.resolved_at, { round: prev.round }) }
+  const droppedModelIds = prev.droppedModelIds.filter((id) => id !== incoming.model_id)
+  const aggregates = computeCardAggregates(models, prev.round.resolved_at, { round: prev.round })
+  return {
+    ...prev,
+    models,
+    droppedModelIds,
+    ...aggregates,
+    consensus: withDroppedSeatTotal(aggregates.consensus, droppedModelIds.length),
+  }
 }
 
 /** Exported for the same reason as `mergeModel` — see its doc comment. */
 export function resort(prev: CardData): CardData {
   const models = sortByTierThenCamp(prev.models)
-  return { ...prev, models, ...computeCardAggregates(models, prev.round.resolved_at, { round: prev.round }) }
+  const aggregates = computeCardAggregates(models, prev.round.resolved_at, { round: prev.round })
+  return {
+    ...prev,
+    models,
+    ...aggregates,
+    consensus: withDroppedSeatTotal(aggregates.consensus, prev.droppedModelIds.length),
+  }
 }
 
 /**
@@ -146,7 +189,7 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
     complete: boolean
   } | null>(null)
   const [droppedModelIds, setDroppedModelIds] = useState<string[]>(
-    () => initialData.generation?.droppedModelIds ?? []
+    () => uniqueDroppedIds(initialData.droppedModelIds, initialData.generation?.droppedModelIds)
   )
   const writtenIdsRef = useRef<string[]>([])
   const roundIdRef = useRef(roundId)
@@ -160,10 +203,8 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
   // ignore every later snapshot and the tiles would never fill.
   useEffect(() => {
     setData(initialData)
-    const fromCard = initialData.generation?.droppedModelIds
-    if (fromCard) setDroppedModelIds(fromCard)
-    else if (!live) setDroppedModelIds([])
-  }, [initialData, live])
+    setDroppedModelIds(uniqueDroppedIds(initialData.droppedModelIds, initialData.generation?.droppedModelIds))
+  }, [initialData])
 
   const refetch = useCallback(async () => {
     try {
@@ -178,7 +219,7 @@ export function useCardStream({ roundId, initialData, live = false }: UseCardStr
       if ((fresh as { locked?: boolean }).locked) return
       const card = fresh as CardData
       setData(card)
-      if (card.generation?.droppedModelIds) setDroppedModelIds(card.generation.droppedModelIds)
+      setDroppedModelIds(uniqueDroppedIds(card.droppedModelIds, card.generation?.droppedModelIds))
       setConnection((prev) => (prev === 'live' || prev === 'connecting' ? prev : 'static'))
     } catch {
       setConnection('error')

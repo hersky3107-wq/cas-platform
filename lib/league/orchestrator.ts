@@ -467,8 +467,9 @@ async function callOnce(
     }
   }
   // Abort the HTTP (OpenRouter) at the roster timeout, and give the inner
-  // empty-content retries their own short budget so they cannot stack to
-  // a multi-minute chunk. Outer race is a backstop if abort is ignored.
+  // empty-content retries their own budget (`emptyContentRetryBudgetMs`:
+  // 5 × 35s + backoff) so they cannot stack full seat timeouts. Outer race
+  // is a backstop if abort is ignored.
   const platformWallMs = timeoutMs + emptyContentRetryBudgetMs()
   const res = await withTimeout(
     callPlatformModel({
@@ -546,7 +547,7 @@ async function callWithRetry(
  *
  * Timeouts: `callWithRetry` retries once on transient failure (including
  * timeout), except HTTP-200-empty-content which is retried inside
- * callPlatformModel (up to 3 short aborted retries) then excluded. Default
+ * callPlatformModel (up to 5 retries at 35s each) then excluded. Default
  * timeout is DEFAULT_TIMEOUT_MS (60s); roster entries may set `timeoutMs`
  * per model (e.g. deepseek-v4-pro 240s, grok-4.6-livesearch 150s).
  */

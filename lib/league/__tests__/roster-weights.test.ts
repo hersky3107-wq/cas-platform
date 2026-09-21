@@ -104,6 +104,14 @@ describe('roster weights classification', () => {
       league_tier: 'premier',
       provider_key: 'openrouter',
     })
+    expect(k3?.caller).toMatchObject({ kind: 'platform', platformId: 'openrouter:kimi-k3' })
+    const mimo = LEAGUE_ROSTER.find((e) => e.model_id === 'mimo-v2.5')
+    expect(mimo).toMatchObject({
+      brand: 'Xiaomi',
+      league_tier: 'world',
+      provider_key: 'openrouter',
+    })
+    expect(mimo?.caller).toMatchObject({ kind: 'platform', platformId: 'openrouter:mimo-v2.5' })
     expect(LEAGUE_ROSTER.filter((e) => e.brand === 'Tencent')).toHaveLength(1)
     expect(LEAGUE_ROSTER.filter((e) => e.timeoutMs === 240_000).map((e) => e.model_id)).toEqual(['deepseek-v4-pro'])
   })

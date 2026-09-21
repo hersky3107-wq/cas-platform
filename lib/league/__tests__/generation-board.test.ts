@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   droppedCountForTier,
+  droppedIdsForTier,
+  noResponseSeatLabel,
   rosterSeatCounts,
   streamingTierFill,
   streamingTiers,
@@ -43,5 +45,13 @@ describe('generation-board seat plan', () => {
     expect(droppedCountForTier('premier', [premier[0]!, world[0]!])).toBe(1)
     expect(droppedCountForTier('world', [premier[0]!, world[0]!])).toBe(1)
     expect(droppedCountForTier('scout', [premier[0]!])).toBe(0)
+  })
+
+  it('labels an official drop with product alias + 미응답', () => {
+    expect(droppedIdsForTier('premier', ['kimi-k3', 'mimo-v2.5'])).toEqual(['kimi-k3'])
+    expect(droppedIdsForTier('world', ['kimi-k3', 'mimo-v2.5'])).toEqual(['mimo-v2.5'])
+    expect(noResponseSeatLabel('kimi-k3', '미응답')).toBe('Kimi 미응답')
+    expect(noResponseSeatLabel('mimo-v2.5', '미응답')).toBe('MiMo 미응답')
+    expect(noResponseSeatLabel('unknown-seat', '미응답')).toBe('미응답')
   })
 })

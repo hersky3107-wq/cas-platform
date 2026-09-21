@@ -9,6 +9,8 @@ import {
 } from '@/lib/league/card-types'
 import {
   droppedCountForTier,
+  droppedIdsForTier,
+  noResponseSeatLabel,
   rosterIdsForTier,
   streamingTierFill,
 } from '@/lib/league/generation-board'
@@ -40,8 +42,9 @@ const DIVISION_DOT: Record<LeagueTier, string> = {
  * While `streaming`, all five tiers mount immediately with skeleton slots
  * sized from `rosterIdsForTier`. Arriving tiles drop into their own tier
  * in arrival order; dropped seats become a compact 미응답 placeholder.
- * Static / finished cards omit `streaming` so frozen render fixtures stay
- * byte-identical.
+ * Finished cards with `droppedModelIds` keep those 미응답 slots so a
+ * null-direction official seat does not shrink the board. Frozen fixtures
+ * that omit `droppedModelIds` stay byte-identical.
  */
 export function DivisionBoard({
   models,
@@ -74,8 +77,11 @@ export function DivisionBoard({
   droppedModelIds?: readonly string[]
 }) {
   const groups = useMemo(
-    () => (streaming ? groupByTierStreaming(models) : groupByTier(models)),
-    [models, streaming]
+    () =>
+      streaming
+        ? groupByTierStreaming(models)
+        : groupByTier(models, droppedModelIds),
+    [models, streaming, droppedModelIds]
   )
   const [open, setOpen] = useState<Record<LeagueTier, boolean>>({
     premier: true,
@@ -85,7 +91,7 @@ export function DivisionBoard({
     extra: true,
   })
 
-  if (!streaming && models.length === 0) {
+  if (!streaming && models.length === 0 && droppedModelIds.length === 0) {
     return <p className="px-4 py-6 text-center text-xs text-league-fg-muted">{t.modelList.empty}</p>
   }
 
@@ -94,13 +100,13 @@ export function DivisionBoard({
       <OverallStrip groups={groups} tierSplit={tierSplit} t={t} labels={labels} />
       {groups.map((group) => {
         const expanded = streaming ? true : open[group.tier]
+        const droppedIds = droppedIdsForTier(group.tier, droppedModelIds)
         const fill = streaming
-          ? streamingTierFill(
-              rosterIdsForTier(group.tier).length,
-              group.models.length,
-              droppedCountForTier(group.tier, droppedModelIds)
-            )
-          : null
+          ? streamingTierFill(rosterIdsForTier(group.tier).length, group.models.length, droppedIds.length)
+          : droppedIds.length > 0
+            ? { expected: rosterIdsForTier(group.tier).length, noResponse: droppedIds.length, skeletons: 0 }
+            : null
+        const noResponseIds = fill ? droppedIds.slice(0, fill.noResponse) : []
         return (
           <section
             key={group.tier}
@@ -153,11 +159,12 @@ export function DivisionBoard({
                   />
                 )
               })}
-              {fill
-                ? Array.from({ length: fill.noResponse }, (_, i) => (
-                    <NoResponseSeat key={`${group.tier}-drop-${i}`} label={t.modelList.noResponse} />
-                  ))
-                : null}
+              {noResponseIds.map((id) => (
+                <NoResponseSeat
+                  key={`${group.tier}-drop-${id}`}
+                  label={noResponseSeatLabel(id, t.modelList.noResponse)}
+                />
+              ))}
               {fill
                 ? Array.from({ length: fill.skeletons }, (_, i) => (
                     <SeatSkeleton key={`${group.tier}-sk-${i}`} />
@@ -219,11 +226,14 @@ function OverallStrip({
   )
 }
 
-function groupByTier(models: CardModelPrediction[]): { tier: LeagueTier; models: CardModelPrediction[] }[] {
+function groupByTier(
+  models: CardModelPrediction[],
+  droppedModelIds: readonly string[] = []
+): { tier: LeagueTier; models: CardModelPrediction[] }[] {
   return LEAGUE_TIERS.map((tier) => ({
     tier,
     models: models.filter((m) => m.league_tier === tier),
-  })).filter((g) => g.models.length > 0)
+  })).filter((g) => g.models.length > 0 || droppedCountForTier(g.tier, droppedModelIds) > 0)
 }
 
 function groupByTierStreaming(models: CardModelPrediction[]): { tier: LeagueTier; models: CardModelPrediction[] }[] {

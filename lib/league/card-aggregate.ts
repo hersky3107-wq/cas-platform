@@ -21,6 +21,7 @@ import { sidePairOf, tallySlotOfToken, toSideToken, hasCallableSide, type SideRo
 import type { AnswerSide } from './answer-contract'
 import { gradingStateOf, type GradingState } from '../prediction/grading-state'
 import { isExtraSeat, officialRowsForConsensus } from './extra/seats'
+import { droppedRosterModelIds } from './generation-progress'
 import { lookupRosterDisplay, lookupRosterEntry, LEAGUE_ROSTER } from './roster'
 import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
 import { roundHitRecord } from './round-hit'
@@ -164,6 +165,20 @@ function buildConsensus(models: CardModelPrediction[], sides: readonly [AnswerSi
     aggregateMagnitudePct: magnitude.medianPct,
     aggregateMagnitudeN: magnitude.n,
   }
+}
+
+/**
+ * Display denominator only: official dropped seats (null direction) count in
+ * `totalModels` so the hero says "AI 40개 중" instead of shrinking to 38.
+ * Vote tallies, majority, log-odds, hit rate stay on callable rows — pass
+ * those through `computeCardAggregates` unchanged, then apply this.
+ */
+export function withDroppedSeatTotal(
+  consensus: ConsensusSummary,
+  droppedOfficialCount: number
+): ConsensusSummary {
+  if (droppedOfficialCount <= 0) return consensus
+  return { ...consensus, totalModels: consensus.totalModels + droppedOfficialCount }
 }
 
 function buildCampSplit(models: CardModelPrediction[]): CampSplit {
@@ -419,15 +434,23 @@ export function buildCardData(
   const models = predictionRows
     .map(toCardModel)
     .filter((m) => hasCallableSide(m.direction) || isExtraSeat(m))
+  // Official 40 only — extra nulls stay on `models` as tiles, not dashed drops.
+  const droppedModelIds = droppedRosterModelIds(
+    LEAGUE_ROSTER.map((entry) => entry.model_id),
+    predictionRows
+  )
   const nowMs = Date.now()
+  const aggregates = computeCardAggregates(models, roundRow.resolved_at, {
+    roundId: roundRow.id,
+    crossRound,
+    round: roundRow,
+  })
   return {
     round: toRoundMeta(roundRow, nowMs),
     models,
-    ...computeCardAggregates(models, roundRow.resolved_at, {
-      roundId: roundRow.id,
-      crossRound,
-      round: roundRow,
-    }),
+    ...aggregates,
+    consensus: withDroppedSeatTotal(aggregates.consensus, droppedModelIds.length),
+    droppedModelIds,
     combinedTrack,
     generatedAt: new Date().toISOString(),
   }

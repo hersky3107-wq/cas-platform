@@ -138,6 +138,43 @@ describe('DivisionBoard live streaming shells', () => {
       counts.premier + counts.challenger + counts.world + counts.scout + counts.extra - 1
     )
   })
+
+  it('finished cards keep dropped official seats as 미응답 dashed tiles', () => {
+    const card = buildCardData(round(), [
+      pred({ model_id: 'gpt-5.6-sol', predicted_direction: 'up', league_tier: 'premier' }),
+      pred({
+        model_id: 'kimi-k3',
+        brand: 'Moonshot AI',
+        camp: 'china',
+        league_tier: 'premier',
+        predicted_direction: null,
+        predicted_value: null,
+      }),
+      pred({
+        model_id: 'mimo-v2.5',
+        brand: 'Xiaomi',
+        camp: 'china',
+        league_tier: 'world',
+        predicted_direction: null,
+        predicted_value: null,
+      }),
+    ])
+    const html = renderToStaticMarkup(
+      createElement(DivisionBoard, {
+        models: card.models,
+        tierSplit: card.tierSplit,
+        t,
+        droppedModelIds: card.droppedModelIds,
+      })
+    )
+    expect(html).not.toContain(t.modelList.empty)
+    expect(html).toContain('gpt-5.6-sol')
+    expect(html).toContain('Kimi 미응답')
+    expect(html).toContain('MiMo 미응답')
+    expect(html.match(/data-testid="seat-no-response"/g)?.length).toBe(2)
+    expect(html).not.toContain('seat-skeleton')
+    expect(html).not.toContain('data-tier')
+  })
 })
 
 describe('GenerationProgressStrip waiting and completion notes', () => {

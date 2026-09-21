@@ -114,7 +114,11 @@ export function CardBody({
           streaming || data.generation?.status === 'queued' || data.generation?.status === 'running'
         }
         droppedModelIds={
-          droppedModelIds.length > 0 ? droppedModelIds : (data.generation?.droppedModelIds ?? [])
+          droppedModelIds.length > 0
+            ? droppedModelIds
+            : (data.droppedModelIds ?? []).length > 0
+              ? data.droppedModelIds
+              : (data.generation?.droppedModelIds ?? [])
         }
       />
       <ExtraCompare models={data.models} consensus={data.consensus} t={t} labels={labels} />

@@ -179,4 +179,21 @@ describe('use-card-stream: live merge (Layer 4)', () => {
     expect(afterFail.models).toHaveLength(1)
     expect(afterFail.models[0]!.direction).toBe('up')
   })
+
+  it('records an official null-direction seat as a drop for the 40-count denominator', () => {
+    const start = emptyCard()
+    const next = mergeModel(start, liveModel({ model_id: 'kimi-k3', direction: null }))
+    expect(next.models).toHaveLength(0)
+    expect(next.droppedModelIds).toEqual(['kimi-k3'])
+    expect(next.consensus.totalModels).toBe(1)
+    expect(next.consensus.tally).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
+    expect(next.consensus.respondedModels).toBe(0)
+
+    const withCall = mergeModel(start, liveModel({ model_id: 'gpt-5.6-sol', direction: 'up' }))
+    const withDrop = mergeModel(withCall, liveModel({ model_id: 'kimi-k3', direction: null }))
+    expect(withDrop.models).toHaveLength(1)
+    expect(withDrop.consensus.tally.up).toBe(1)
+    expect(withDrop.consensus.totalModels).toBe(2)
+    expect(withDrop.droppedModelIds).toEqual(['kimi-k3'])
+  })
 })

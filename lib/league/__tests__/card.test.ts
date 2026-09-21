@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildCardData } from '../card-aggregate'
 import { combinedTrackLine, buildConsensusHero, consensusHeadline, directionBadgeLabel, groupTallyLine, predictionAxisLine } from '../compliance'
 import { LEAGUE_UI } from '../i18n/dictionary'
+import { getRoster } from '../roster'
 import { sideLabelsFor } from '../side-labels'
 import { MIN_GRADED_ROUNDS_FOR_WIN_RATE } from '../credits'
 import type { CardModelPrediction, ConsensusSummary } from '../card-types'
@@ -55,6 +56,7 @@ describe('buildCardData', () => {
     const card = buildCardData(round(), rows)
     expect(card.models).toHaveLength(3)
     expect(card.models.every((m) => m.direction === 'up' || m.direction === 'down')).toBe(true)
+    expect(card.droppedModelIds).toEqual([])
     expect(card.consensus.tally).toEqual({ up: 2, down: 1, flat: 0, abstain: 0 })
     expect(card.consensus.majorityDirection).toBe('up')
     expect(card.consensus.totalModels).toBe(3)
@@ -88,6 +90,39 @@ describe('buildCardData', () => {
     expect(card.consensus.majorityDirection).toBeNull()
     expect(card.consensus.avgProbability).toBeNull()
     expect(card.consensus.respondedModels).toBe(0)
+  })
+
+  it('counts official null-direction drops in the hero denominator, not in vote tallies', () => {
+    const rows: PredictionRow[] = getRoster().map((entry) =>
+      entry.model_id === 'kimi-k3' || entry.model_id === 'mimo-v2.5'
+        ? pred({
+            model_id: entry.model_id,
+            brand: entry.brand,
+            camp: entry.camp,
+            league_tier: entry.league_tier,
+            predicted_direction: null,
+            predicted_value: null,
+          })
+        : pred({
+            model_id: entry.model_id,
+            brand: entry.brand,
+            camp: entry.camp,
+            league_tier: entry.league_tier,
+            predicted_direction: 'up',
+            predicted_value: 60,
+          })
+    )
+    const card = buildCardData(round(), rows)
+    expect(card.models).toHaveLength(38)
+    expect(card.models.some((m) => m.model_id === 'kimi-k3' || m.model_id === 'mimo-v2.5')).toBe(false)
+    expect(card.droppedModelIds).toEqual(['kimi-k3', 'mimo-v2.5'])
+    expect(card.consensus.tally).toEqual({ up: 38, down: 0, flat: 0, abstain: 0 })
+    expect(card.consensus.respondedModels).toBe(38)
+    expect(card.consensus.totalModels).toBe(40)
+    expect(card.tierSplit.premier.up).toBe(9)
+    expect(card.tierSplit.world.up).toBe(13)
+    const hero = buildConsensusHero(card.consensus, '1d', LEAGUE_UI.ko)
+    expect(hero?.countLine).toBe('AI 40개 중 38개가 오른다 · 0개가 내린다')
   })
 
   it('splits direction tallies per camp (us/china/other)', () => {

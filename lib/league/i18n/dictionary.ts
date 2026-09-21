@@ -373,7 +373,7 @@ export type LeagueUiPack = {
     tierTab: string
     campTab: string
     empty: string
-    /** Dropped no-opinion seat while the board is still streaming. */
+    /** Dropped no-opinion seat (streaming or finished card). */
     noResponse: string
     correct: string
     missed: string
