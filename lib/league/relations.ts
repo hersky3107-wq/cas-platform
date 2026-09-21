@@ -197,6 +197,7 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
   {
     instrument: 'XAG/USD',
     related: [
+      { symbol: 'TAN', role: 'sector_etf', note: 'Invesco Solar ETF — silver industrial (PV) demand proxy' },
       { symbol: 'SLV', role: 'peer', note: 'iShares silver ETF — US-listed, NYSE session' },
       { symbol: 'XAU/USD', role: 'peer', note: 'spot gold — co-moving metal' },
       { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — co-moving metal ETF' },
@@ -209,6 +210,7 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
   {
     instrument: 'XPT/USD',
     related: [
+      { symbol: 'PALL', role: 'peer', note: 'abrdn physical palladium ETF — Pt/Pd substitute metal' },
       { symbol: 'XAU/USD', role: 'peer', note: 'spot gold — co-moving precious metal' },
       { symbol: 'XAG/USD', role: 'peer', note: 'spot silver — co-moving precious metal' },
       { symbol: 'GLD', role: 'peer', note: 'SPDR gold ETF — co-moving metal ETF' },

@@ -32,6 +32,44 @@ export function quoteMatchesIdentity(
   return tokens.every((t) => t.trim().length > 0 && hay.includes(t.trim().toLowerCase()))
 }
 
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const t = value.trim()
+  return t.length ? t : null
+}
+
+/** Vendor JSON identity fields (Twelve Data `/quote` and `/time_series`). */
+export type VendorIdentityJson = {
+  name?: unknown
+  symbol?: unknown
+  meta?: {
+    name?: unknown
+    symbol?: unknown
+    currency_base?: unknown
+    currency_quote?: unknown
+    type?: unknown
+  }
+}
+
+/**
+ * Display name for catalog token matching.
+ * Equity `/quote` uses `name`. Commodity `/time_series` omits `name` and
+ * puts the metal in `meta.currency_base` (e.g. "Gold Spot").
+ */
+export function resolvedVendorIdentity(json: VendorIdentityJson | undefined): string | null {
+  const name = asTrimmedString(json?.name) ?? asTrimmedString(json?.meta?.name)
+  if (name) return name
+  const base = asTrimmedString(json?.meta?.currency_base)
+  if (!base) return null
+  const quote = asTrimmedString(json?.meta?.currency_quote)
+  if (/\bspot\b/i.test(base)) return quote ? `${base} / ${quote}` : base
+  return quote ? `${base} Spot / ${quote}` : `${base} Spot`
+}
+
+export function vendorSymbolOf(json: VendorIdentityJson | undefined): string | null {
+  return asTrimmedString(json?.meta?.symbol) ?? asTrimmedString(json?.symbol)
+}
+
 export function identityMismatchMessage(
   instrument: string,
   resolvedName: string | null | undefined,

@@ -36,6 +36,7 @@ import {
   leagueSideFromHistory,
   parseHistoryOutput,
   type HistoryCaller,
+  type HistoryCallResult,
   type HistoryLeagueInput,
   type HistorySeriesBar,
 } from './history'
@@ -50,6 +51,7 @@ import {
   sentimentRetryInstruction,
   leagueSideFromSentiment,
   parseSentimentOutput,
+  type SentimentCallResult,
   type SentimentCaller,
   type SentimentLeagueInput,
 } from './sentiment'
@@ -278,6 +280,7 @@ function defaultHistoryCaller(): HistoryCaller {
   if (!entry || entry.caller.kind !== 'core') {
     throw new Error(`history seat: engine ${HISTORY_ENGINE_MODEL_ID} is not a core roster caller`)
   }
+  const caller = entry.caller
   const timeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : 60_000
   const maxCompletionTokens = entry.maxCompletionTokens && entry.maxCompletionTokens > 0 ? entry.maxCompletionTokens : 2000
   return async ({ systemPrompt, userPrompt }) => {
@@ -286,15 +289,15 @@ function defaultHistoryCaller(): HistoryCaller {
       authSupabase: supabaseAdmin,
       sessionId: null,
       userId: null,
-      provider: entry.caller.provider,
+      provider: caller.provider,
       prompt: userPrompt,
       systemPrompt,
       skipLanguageInjection: true,
       maxCompletionTokens,
-      modelOverride: entry.caller.modelOverride,
-      allowGeminiThinking: entry.caller.allowGeminiThinking,
+      modelOverride: caller.modelOverride,
+      allowGeminiThinking: caller.allowGeminiThinking,
       // Closed-book extra seat — never enable scout search.
-      extraPayload: entry.caller.extraPayload,
+      extraPayload: caller.extraPayload,
       timeoutMs,
     })
     const estimate = computeCostUsd(entry, res.promptTokens, res.completionTokens)
@@ -428,6 +431,7 @@ function defaultSentimentCaller(): SentimentCaller {
   if (!entry || entry.caller.kind !== 'core' || entry.caller.provider !== 'perplexity') {
     throw new Error(`sentiment seat: engine ${SENTIMENT_ENGINE_MODEL_ID} is not the Perplexity scout caller`)
   }
+  const caller = entry.caller
   const timeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : 60_000
   const maxCompletionTokens = entry.maxCompletionTokens && entry.maxCompletionTokens > 0 ? entry.maxCompletionTokens : 1600
   return async ({ systemPrompt, userPrompt }) => {
@@ -441,7 +445,7 @@ function defaultSentimentCaller(): SentimentCaller {
       systemPrompt,
       skipLanguageInjection: true,
       maxCompletionTokens,
-      modelOverride: entry.caller.modelOverride,
+      modelOverride: caller.modelOverride,
       timeoutMs,
     })
     const estimate = computeCostUsd(entry, res.promptTokens, res.completionTokens)
@@ -601,6 +605,7 @@ function defaultConsensusCaller(): ConsensusCaller {
   if (!entry || entry.caller.kind !== 'core' || entry.caller.provider !== 'perplexity') {
     throw new Error(`consensus seat: engine ${CONSENSUS_ENGINE_MODEL_ID} is not the Perplexity scout caller`)
   }
+  const caller = entry.caller
   const timeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : 60_000
   const maxCompletionTokens = entry.maxCompletionTokens && entry.maxCompletionTokens > 0 ? entry.maxCompletionTokens : 1600
   return async ({ systemPrompt, userPrompt }) => {
@@ -614,7 +619,7 @@ function defaultConsensusCaller(): ConsensusCaller {
       systemPrompt,
       skipLanguageInjection: true,
       maxCompletionTokens,
-      modelOverride: entry.caller.modelOverride,
+      modelOverride: caller.modelOverride,
       timeoutMs,
     })
     const estimate = computeCostUsd(entry, res.promptTokens, res.completionTokens)

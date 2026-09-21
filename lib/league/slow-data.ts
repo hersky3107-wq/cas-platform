@@ -12,7 +12,10 @@ import { fetchMetalsSlowFields } from './metals-data'
  *     live 2026-08-28: reliable, pipe-delimited, walk-back to last trading day)
  *  2. CBOE daily put/call ratios     — cboe.com daily market-statistics page;
  *     ratios are embedded as JSON in the page markup (probed live: reliable;
- *     the day's data appears with a lag, so walk-back is required)
+ *     the day's data appears with a lag, so walk-back is required).
+ *     Categories: stock, etf_index, real_estate, gold_metal.
+ *  5. Gold/metals (gold_metal only)  — CFTC COT, Treasury TIPS, GLD/SLV
+ *     holdings, FRED GVZ/INDPRO/IPG3344S via `metals-data.ts`.
  *  3. Farside BTC spot ETF flows     — PROBED UNRELIABLE (HTTP 403 Cloudflare
  *     even with browser headers). Still attempted once per day so a future
  *     unblock starts working, but expect a labeled UNAVAILABLE line.
@@ -326,7 +329,7 @@ async function fetchInsider(symbol: string): Promise<Insider | Fail> {
 // ── entry point ─────────────────────────────────────────────────────────────
 
 const SHORT_VOLUME_CATEGORIES = new Set(['stock', 'etf_index', 'real_estate'])
-const PUT_CALL_CATEGORIES = new Set(['stock', 'etf_index', 'real_estate'])
+const PUT_CALL_CATEGORIES = new Set(['stock', 'etf_index', 'real_estate', 'gold_metal'])
 const CRYPTO_CATEGORIES = new Set(['crypto_spot', 'crypto_perps', 'memecoin'])
 const INSIDER_CATEGORIES = new Set(['stock'])
 const METALS_CATEGORIES = new Set(['gold_metal'])
@@ -339,8 +342,9 @@ const METALS_CATEGORIES = new Set(['gold_metal'])
 export async function fetchSlowData(args: {
   category: string
   symbol?: string
+  instrument?: string
 }): Promise<SlowDataSnapshot | null> {
-  const { category, symbol } = args
+  const { category, symbol, instrument } = args
   const isUsTicker = !!symbol && /^[A-Z.]{1,6}$/.test(symbol)
 
   const wantsShort = SHORT_VOLUME_CATEGORIES.has(category) && isUsTicker
@@ -356,7 +360,7 @@ export async function fetchSlowData(args: {
     wantsPutCall ? fetchPutCall() : Promise.resolve(null),
     wantsBtcFlow ? fetchBtcEtfFlow() : Promise.resolve(null),
     wantsInsider ? fetchInsider(symbol!) : Promise.resolve(null),
-    wantsMetals ? fetchMetalsSlowFields(category) : Promise.resolve(null),
+    wantsMetals ? fetchMetalsSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
   ])
 
   return {

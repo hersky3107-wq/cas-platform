@@ -154,6 +154,56 @@ describe('closed-book packet v2 — new sections', () => {
     expect(text).not.toContain('ETF-share proxy')
   })
 
+  it('renders GVZ, industrial production, and platinum/palladium COT', () => {
+    const text = assembleClosedBookInjection(
+      input({
+        instrument: 'XPT/USD',
+        category: 'gold_metal',
+        slow: {
+          fetchedAt: '2026-09-21T00:00:00.000Z',
+          shortVolume: null,
+          putCall: { date: '2026-09-18', total: 0.81, index: 1.02, equity: 0.7 },
+          btcEtfFlow: null,
+          insider: null,
+          gvz: { date: '2026-09-17', value: 24.98 },
+          indpro: { date: '2026-08-01', value: 103.0682 },
+          semiProduction: { date: '2026-08-01', value: 99.4 },
+          cotPlatinum: {
+            contract: 'PLATINUM - NEW YORK MERCANTILE EXCHANGE',
+            date: '2026-09-15',
+            openInterest: 65478,
+            managedMoneyLong: 15220,
+            managedMoneyShort: 3100,
+            managedMoneyNet: 12120,
+          },
+          cotPalladium: {
+            contract: 'PALLADIUM - NEW YORK MERCANTILE EXCHANGE',
+            date: '2026-09-15',
+            openInterest: 16707,
+            managedMoneyLong: 4000,
+            managedMoneyShort: 1200,
+            managedMoneyNet: 2800,
+          },
+          gldHoldings: {
+            date: '2026-09-18',
+            tonnes: 1057.122,
+            ounces: 33987513.34,
+            source: 'SPDR Gold Shares api.spdrgoldshares.com',
+          },
+        },
+      }),
+    )
+    expect(text).toContain('CBOE gold ETF volatility GVZ (2026-09-17): 24.98')
+    expect(text).toContain('FRED GVZCLS')
+    expect(text).toContain('US industrial production (2026-08-01): 103.07')
+    expect(text).toContain('FRED INDPRO')
+    expect(text).toContain('US semiconductor production (2026-08-01): 99.40')
+    expect(text).toContain('CFTC platinum managed-money (2026-09-15): managed-money net 12,120 contracts')
+    expect(text).toContain('CFTC palladium managed-money')
+    expect(text).toContain('put/call ratios (2026-09-18): total 0.81')
+    expect(text).toContain('SPDR Gold Shares api.spdrgoldshares.com')
+  })
+
   it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {
     expect(isOzOzGoldSilverRatio(7.21)).toBe(false)
     expect(isOzOzGoldSilverRatio(72.9)).toBe(true)

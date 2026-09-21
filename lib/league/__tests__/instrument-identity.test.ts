@@ -4,6 +4,7 @@ import {
   isPoisonTicker,
   POISON_TICKERS,
   quoteMatchesIdentity,
+  resolvedVendorIdentity,
 } from '../instrument-identity'
 
 describe('instrument identity', () => {
@@ -46,5 +47,25 @@ describe('instrument identity', () => {
     expect(catalogIdentityError('SPY', 'SPDR S&P 500 ETF Trust')).toBeNull()
     expect(quoteMatchesIdentity('Platinum Spot / US Dollar', ['Platinum', 'Spot'])).toBe(true)
     expect(catalogIdentityError('XPT/USD', 'Platinum Spot / US Dollar')).toBeNull()
+  })
+
+  it('accepts Twelve Data commodity time_series identity via currency_base', () => {
+    const xau = resolvedVendorIdentity({
+      meta: { currency_base: 'Gold Spot', currency_quote: 'US Dollar', symbol: 'XAU/USD' },
+    })
+    expect(xau).toBe('Gold Spot / US Dollar')
+    expect(catalogIdentityError('XAU/USD', xau, 'XAU/USD')).toBeNull()
+    expect(catalogIdentityError('XAG/USD', resolvedVendorIdentity({
+      meta: { currency_base: 'Silver Spot', currency_quote: 'US Dollar' },
+    }))).toBeNull()
+    expect(catalogIdentityError('XPT/USD', resolvedVendorIdentity({
+      meta: { currency_base: 'Platinum Spot', currency_quote: 'US Dollar' },
+    }))).toBeNull()
+  })
+
+  it('accepts a missing display name when the vendor echoed the same ticker', () => {
+    expect(catalogIdentityError('GLD', null, 'GLD')).toBeNull()
+    expect(catalogIdentityError('GLD', null, 'SLV')).toMatch(/identity mismatch/)
+    expect(catalogIdentityError('GLD', null)).toMatch(/missing name/)
   })
 })

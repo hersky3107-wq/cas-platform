@@ -1,4 +1,4 @@
-import type { CotPositioning } from './closed-book-packet'
+import type { CotPositioning, EtfHoldings } from './closed-book-packet'
 
 /**
  * Pure parsers for gold/metals packet feeds. No fetches — so unit tests
@@ -101,6 +101,165 @@ function toIsoDate(raw: string): string | null {
   const mdy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (!mdy) return null
   return `${mdy[3]}-${mdy[1]!.padStart(2, '0')}-${mdy[2]!.padStart(2, '0')}`
+}
+
+export const TROY_OZ_PER_TONNE = 32150.7466
+/** Fallback oz-per-share when the issuer does not publish metal entitlement. */
+export const GLD_OZ_PER_SHARE = 0.093
+export const SLV_OZ_PER_SHARE = 0.92
+
+const MONTH_NUM: Record<string, string> = {
+  jan: '01',
+  january: '01',
+  feb: '02',
+  february: '02',
+  mar: '03',
+  march: '03',
+  apr: '04',
+  april: '04',
+  may: '05',
+  jun: '06',
+  june: '06',
+  jul: '07',
+  july: '07',
+  aug: '08',
+  august: '08',
+  sep: '09',
+  sept: '09',
+  september: '09',
+  oct: '10',
+  october: '10',
+  nov: '11',
+  november: '11',
+  dec: '12',
+  december: '12',
+}
+
+export function parseEnglishDate(raw: string): string | null {
+  const iso = toIsoDate(raw)
+  if (iso) return iso
+  const m = raw.trim().match(/^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$/)
+  if (!m) return null
+  const mon = MONTH_NUM[m[1]!.toLowerCase()]
+  if (!mon) return null
+  return `${m[3]}-${mon}-${m[2]!.padStart(2, '0')}`
+}
+
+export function parseSpdrNumeric(raw: string): number | null {
+  const cleaned = raw.replace(/US\$/gi, '').replace(/,/g, '').replace(/%/g, '').trim()
+  if (!cleaned || cleaned === '.' || cleaned === '-') return null
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : null
+}
+
+function spdrField(
+  data: Record<string, { value?: unknown; date?: unknown } | undefined>,
+  key: string,
+): { value: number | null; date: string | null } {
+  const rec = data[key]
+  const value = rec?.value == null ? null : parseSpdrNumeric(String(rec.value))
+  const date = rec?.date == null ? null : parseEnglishDate(String(rec.date))
+  return { value, date }
+}
+
+/** Official SPDR Gold Shares JSON (`api.spdrgoldshares.com/api/v1/data`). */
+export function parseSpdrGoldData(json: unknown): Exclude<EtfHoldings, { unavailable: string }> | null {
+  if (!json || typeof json !== 'object') return null
+  const data = (json as { data?: Record<string, { value?: unknown; date?: unknown }> }).data
+  if (!data || typeof data !== 'object') return null
+  const ounces = spdrField(data, 'total_ounces')
+  const tonnes = spdrField(data, 'total_tonnes')
+  const shares = spdrField(data, 'shares_outstanding')
+  const date = ounces.date ?? tonnes.date ?? shares.date
+  if (!date) return null
+  let oz = ounces.value
+  let t = tonnes.value
+  if (oz == null && t != null) oz = t * TROY_OZ_PER_TONNE
+  if (t == null && oz != null) t = oz / TROY_OZ_PER_TONNE
+  if (oz == null && t == null && shares.value != null) {
+    oz = shares.value * GLD_OZ_PER_SHARE
+    t = oz / TROY_OZ_PER_TONNE
+  }
+  if (oz == null && t == null) return null
+  return {
+    date,
+    tonnes: t,
+    ounces: oz,
+    source: 'SPDR Gold Shares api.spdrgoldshares.com',
+  }
+}
+
+export function holdingsFromShares(
+  date: string,
+  shares: number,
+  ozPerShare: number,
+  source: string,
+): Exclude<EtfHoldings, { unavailable: string }> | null {
+  if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(ozPerShare) || ozPerShare <= 0) return null
+  const ounces = shares * ozPerShare
+  return {
+    date,
+    ounces,
+    tonnes: ounces / TROY_OZ_PER_TONNE,
+    source,
+  }
+}
+
+function pickShareNumber(json: Record<string, unknown>): number | null {
+  for (const key of ['shares_outstanding', 'sharesOutstanding', 'sharesoutstanding']) {
+    const n = Number(json[key])
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
+/** Twelve Data `/quote` — Grow plan often omits this; keep the probe so it works if they add it. */
+export function parseTwelveDataSharesOutstanding(json: unknown): number | null {
+  if (!json || typeof json !== 'object') return null
+  const rec = json as Record<string, unknown>
+  const direct = pickShareNumber(rec)
+  if (direct != null) return direct
+  const stats = rec.statistics
+  if (stats && typeof stats === 'object') {
+    const nested = pickShareNumber(stats as Record<string, unknown>)
+    if (nested != null) return nested
+  }
+  return null
+}
+
+/**
+ * iShares product page embeds HTML-escaped JSON with sharesOutstanding.
+ * The ajax holdings CSV/JSON is Cloudflare-walled; this HTML field is not.
+ */
+export function parseIsharesSharesOutstanding(html: string): { date: string; shares: number } | null {
+  const unescaped = html.replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+  const block = unescaped.match(/sharesOutstanding"\s*:\s*\{([^}]+)\}/)
+  if (!block) return null
+  const inner = block[1] ?? ''
+  const value = inner.match(/"formattedValue"\s*:\s*"([^"]+)"/)
+  const asOf = inner.match(/"formattedAsOfDate"\s*:\s*"([^"]+)"/)
+  if (!value || !asOf) return null
+  const shares = parseSpdrNumeric(value[1]!)
+  const date = parseEnglishDate(asOf[1]!)
+  if (shares == null || shares <= 0 || !date) return null
+  return { date, shares }
+}
+
+/** FRED `fredgraph.csv` — last numeric observation (`.` is a missing value). */
+export function parseFredCsvLast(text: string): { date: string; value: number } | null {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  if (lines.length < 2) return null
+  let best: { date: string; value: number } | null = null
+  for (const line of lines.slice(1)) {
+    const cols = splitCsvLine(line)
+    const date = (cols[0] ?? '').trim()
+    const raw = (cols[1] ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || raw === '.' || raw === '') continue
+    const value = Number(raw)
+    if (!Number.isFinite(value)) continue
+    if (!best || date > best.date) best = { date, value }
+  }
+  return best
 }
 
 export function parseTreasuryRealYield10y(xml: unknown): { date: string; yieldPct: number } | null {

@@ -329,13 +329,23 @@ export function catalogById(id: string): PublicCategoryDef | null {
  * Fetch/grade guard. Poison tickers never hit the vendor. Catalog chips
  * must match expected_name. Related-only symbols (not in the catalog) skip.
  */
-export function catalogIdentityError(instrument: string, resolvedName: string | null | undefined): string | null {
+export function catalogIdentityError(
+  instrument: string,
+  resolvedName: string | null | undefined,
+  vendorSymbol?: string | null,
+): string | null {
   if (isPoisonTicker(instrument)) {
     return identityMismatchMessage(instrument, resolvedName, [])
   }
   const found = findCatalogInstrument(instrument)
   if (!found) return null
   if (quoteMatchesIdentity(resolvedName, found.entry.expected_name)) return null
+  // Commodity/ETF `/time_series` often omits a display name. If the vendor
+  // echoed the same ticker we asked for, that is identity — poison tickers
+  // always arrive with a misleading name and never take this branch.
+  const asked = instrument.trim().toUpperCase()
+  const echoed = vendorSymbol?.trim().toUpperCase()
+  if (!resolvedName?.trim() && echoed && echoed === asked) return null
   return identityMismatchMessage(instrument, resolvedName, found.entry.expected_name)
 }
 

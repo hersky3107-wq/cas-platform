@@ -80,7 +80,7 @@ export type CotPositioning =
   | { unavailable: string }
 
 export type EtfHoldings =
-  | { date: string; tonnes: number | null; ounces: number | null }
+  | { date: string; tonnes: number | null; ounces: number | null; source?: string }
   | { unavailable: string }
 
 export type SlowDataSnapshot = {
@@ -123,6 +123,14 @@ export type SlowDataSnapshot = {
     | { ratio: number; goldLast: number; silverLast: number; goldSymbol: string; silverSymbol: string; asOf: string }
     | { unavailable: string }
     | null
+  /** CBOE Gold ETF Volatility Index (GVZ) via FRED GVZCLS. Gold/metals only. */
+  gvz?: { date: string; value: number } | { unavailable: string } | null
+  /** FRED INDPRO — US industrial production (silver industrial-demand proxy). */
+  indpro?: { date: string; value: number } | { unavailable: string } | null
+  /** FRED IPG3344S — US semiconductor production (silver electronics proxy). */
+  semiProduction?: { date: string; value: number } | { unavailable: string } | null
+  cotPlatinum?: CotPositioning | null
+  cotPalladium?: CotPositioning | null
 }
 
 /** Packet v2 (B): a native-language research finding (original + English gloss). */
@@ -563,7 +571,8 @@ function formatHoldings(label: string, h: EtfHoldings): string {
   if ('unavailable' in h) return `  ${unavailable(label, h.unavailable)}`
   const tonnes = h.tonnes == null ? 'n/a t' : `${fmt(h.tonnes, 2)} t`
   const ounces = h.ounces == null ? '' : ` / ${fmt(h.ounces, 0)} oz`
-  return `  ${label} (${h.date}): ${tonnes}${ounces} (source: issuer holdings file; informative horizon: weeks)`
+  const source = h.source ?? 'issuer holdings file'
+  return `  ${label} (${h.date}): ${tonnes}${ounces} (source: ${source}; informative horizon: weeks)`
 }
 
 function formatCot(label: string, cot: CotPositioning): string {
@@ -617,8 +626,31 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
   }
   if (slow.cotGold) lines.push(formatCot('CFTC gold managed-money', slow.cotGold))
   if (slow.cotSilver) lines.push(formatCot('CFTC silver managed-money', slow.cotSilver))
+  if (slow.cotPlatinum) lines.push(formatCot('CFTC platinum managed-money', slow.cotPlatinum))
+  if (slow.cotPalladium) lines.push(formatCot('CFTC palladium managed-money', slow.cotPalladium))
   if (slow.gldHoldings) lines.push(formatHoldings('GLD holdings', slow.gldHoldings))
   if (slow.slvHoldings) lines.push(formatHoldings('SLV holdings', slow.slvHoldings))
+  if (slow.gvz) {
+    lines.push(
+      'unavailable' in slow.gvz
+        ? `  ${unavailable('CBOE gold ETF volatility GVZ', slow.gvz.unavailable)}`
+        : `  CBOE gold ETF volatility GVZ (${slow.gvz.date}): ${fmt(slow.gvz.value, 2)} (source: FRED GVZCLS; informative horizon: days — options-IV proxy)`,
+    )
+  }
+  if (slow.indpro) {
+    lines.push(
+      'unavailable' in slow.indpro
+        ? `  ${unavailable('US industrial production', slow.indpro.unavailable)}`
+        : `  US industrial production (${slow.indpro.date}): ${fmt(slow.indpro.value, 2)} (source: FRED INDPRO; informative horizon: months — silver industrial demand proxy)`,
+    )
+  }
+  if (slow.semiProduction) {
+    lines.push(
+      'unavailable' in slow.semiProduction
+        ? `  ${unavailable('US semiconductor production', slow.semiProduction.unavailable)}`
+        : `  US semiconductor production (${slow.semiProduction.date}): ${fmt(slow.semiProduction.value, 2)} (source: FRED IPG3344S; informative horizon: months — silver electronics demand proxy)`,
+    )
+  }
   if (slow.goldSilverRatio) {
     lines.push(
       'unavailable' in slow.goldSilverRatio

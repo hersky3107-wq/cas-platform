@@ -145,6 +145,29 @@ describe('research director — two-stage parse', () => {
     expect(text).toContain('1.82')
   })
 
+  it('inventory lists GVZ / industrial / platinum COT when present', () => {
+    const text = buildPacketInventory({
+      ...inventory,
+      slow: {
+        ...inventory.slow!,
+        gvz: { date: '2026-09-17', value: 24.98 },
+        indpro: { date: '2026-08-01', value: 103.07 },
+        cotPlatinum: {
+          contract: 'PLATINUM',
+          date: '2026-09-15',
+          openInterest: 1,
+          managedMoneyLong: 2,
+          managedMoneyShort: 1,
+          managedMoneyNet: 1,
+        },
+      },
+    })
+    expect(text).toContain('gvz_gold_vol:')
+    expect(text).toContain('24.98')
+    expect(text).toContain('us_indpro:')
+    expect(text).toContain('cot_platinum:')
+  })
+
   it('Stage 2 prompt still carries the 2026-08-28 dispersion budgets', () => {
     expect(buildStage2Prompt('tight', [])).toContain('Cap English missing queries at 2')
     expect(buildStage2Prompt('normal', [])).toContain('Cap English missing queries at 4')

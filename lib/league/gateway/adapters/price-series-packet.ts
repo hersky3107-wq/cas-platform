@@ -48,7 +48,7 @@ export type PriceSeriesIo = {
     instrument: string,
     anchorSeries: readonly SeriesBar[],
   ): Promise<RelatedInstrumentsResult | null>
-  fetchSlowData(args: { category: string; symbol?: string }): Promise<SlowDataSnapshot | null>
+  fetchSlowData(args: { category: string; symbol?: string; instrument?: string }): Promise<SlowDataSnapshot | null>
 }
 
 /**
@@ -159,7 +159,7 @@ export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceS
   // overlap the Twelve Data throttle wait — extra latency, fewer wasted searches.
   const [related, slow] = await Promise.all([
     io.fetchRelatedInstruments(round.instrument, packet.series ?? []),
-    io.fetchSlowData({ category: round.category, symbol: packet.symbol }),
+    io.fetchSlowData({ category: round.category, symbol: packet.symbol, instrument: round.instrument }),
   ])
   const research = await io.getResearchPacket({
     round,

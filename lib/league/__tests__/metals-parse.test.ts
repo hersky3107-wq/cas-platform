@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  holdingsFromShares,
   parseCftcManagedMoney,
+  parseFredCsvLast,
+  parseIsharesSharesOutstanding,
+  parseSpdrGoldData,
   parseTreasuryRealYield10y,
   parseTreasuryRealYieldCsv,
+  parseTwelveDataSharesOutstanding,
+  SLV_OZ_PER_SHARE,
   splitCsvLine,
 } from '../metals-parse'
 
@@ -25,6 +31,20 @@ describe('CFTC disagg parser', () => {
 
   it('returns null for a different contract code', () => {
     expect(parseCftcManagedMoney(GOLD_COT_PREFIX, '084691')).toBeNull()
+  })
+
+  it('parses NYMEX platinum (076651) from the same disagg layout', () => {
+    const platinum =
+      '"PLATINUM - NEW YORK MERCANTILE EXCHANGE",260915,2026-09-15,076651,NYME,01,076,65478,2832,14801,16263,0,0,15220,3100'
+    const parsed = parseCftcManagedMoney(platinum, '076651')
+    expect(parsed).toEqual({
+      contract: 'PLATINUM - NEW YORK MERCANTILE EXCHANGE',
+      date: '2026-09-15',
+      openInterest: 65478,
+      managedMoneyLong: 15220,
+      managedMoneyShort: 3100,
+      managedMoneyNet: 12120,
+    })
   })
 
   it('splitCsvLine keeps the quoted market name intact', () => {
@@ -53,5 +73,42 @@ describe('Treasury real-yield parsers', () => {
       },
     }
     expect(parseTreasuryRealYield10y(xml)).toEqual({ date: '2026-09-11', yieldPct: 1.82 })
+  })
+})
+
+describe('FRED / SPDR / iShares metals parsers', () => {
+  it('picks the last numeric FRED observation and skips dots', () => {
+    const csv = ['DATE,GVZCLS', '2026-09-15,26.90', '2026-09-16,.', '2026-09-17,24.98'].join('\n')
+    expect(parseFredCsvLast(csv)).toEqual({ date: '2026-09-17', value: 24.98 })
+  })
+
+  it('reads official SPDR GLD JSON ounces and tonnes', () => {
+    const parsed = parseSpdrGoldData({
+      data: {
+        total_ounces: { value: '33,987,513.34', date: 'September 18, 2026' },
+        total_tonnes: { value: '1,057.122', date: 'September 18, 2026' },
+        shares_outstanding: { value: '370,600,000', date: 'September 18, 2026' },
+      },
+    })
+    expect(parsed).toMatchObject({
+      date: '2026-09-18',
+      ounces: 33987513.34,
+      tonnes: 1057.122,
+      source: 'SPDR Gold Shares api.spdrgoldshares.com',
+    })
+  })
+
+  it('reads iShares HTML-escaped sharesOutstanding and converts to ounces', () => {
+    const html =
+      'sharesOutstanding&quot;:{&quot;visible&quot;:true,&quot;label&quot;:&quot;Shares Outstanding&quot;,&quot;formattedValue&quot;:&quot;541,850,000&quot;,&quot;sortOrder&quot;:44,&quot;prefix&quot;:null,&quot;infoBubble&quot;:&quot;&quot;,&quot;formattedAsOfDate&quot;:&quot;Sep 18, 2026&quot;}'
+    const shares = parseIsharesSharesOutstanding(html)
+    expect(shares).toEqual({ date: '2026-09-18', shares: 541850000 })
+    const holdings = holdingsFromShares(shares!.date, shares!.shares, SLV_OZ_PER_SHARE, 'test')
+    expect(holdings?.ounces).toBeCloseTo(541850000 * 0.92)
+  })
+
+  it('reads Twelve Data shares_outstanding when the quote carries it', () => {
+    expect(parseTwelveDataSharesOutstanding({ shares_outstanding: 370600000 })).toBe(370600000)
+    expect(parseTwelveDataSharesOutstanding({ name: 'SPDR Gold Shares' })).toBeNull()
   })
 })

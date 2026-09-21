@@ -2,7 +2,7 @@ import 'server-only'
 
 import { mapInstrumentToTwelveData, twelveDataGet } from './market-data'
 import { catalogIdentityError } from './catalog'
-import { isPoisonTicker } from './instrument-identity'
+import { isPoisonTicker, resolvedVendorIdentity, vendorSymbolOf } from './instrument-identity'
 import { relationsFor } from './relations'
 import { computeRelatedStats } from './related-stats'
 import type { RelatedInstrumentStat, SeriesBar } from './closed-book-packet'
@@ -62,8 +62,8 @@ async function fetchRelatedSeries(symbol: string): Promise<{ bars: SeriesBar[]; 
 
   const res = await twelveDataGet('time_series', params)
   if (!res.ok) return { error: res.error }
-  const metaName = typeof res.json?.meta?.name === 'string' ? res.json.meta.name : null
-  const idErr = catalogIdentityError(symbol, metaName)
+  const vendor = res.json as { name?: unknown; symbol?: unknown; meta?: { name?: unknown; symbol?: unknown; currency_base?: unknown; currency_quote?: unknown } }
+  const idErr = catalogIdentityError(symbol, resolvedVendorIdentity(vendor), vendorSymbolOf(vendor))
   if (idErr) return { error: idErr }
 
   const values: unknown[] = Array.isArray(res.json?.values) ? res.json.values : []

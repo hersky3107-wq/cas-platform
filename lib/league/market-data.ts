@@ -13,7 +13,7 @@ import {
 } from '@/lib/prediction/resolution'
 import { PRINTED_SESSION_COUNT, SERIES_OUTPUT_SIZE } from './closed-book-packet'
 import { catalogIdentityError } from './catalog'
-import { identityMismatchMessage, isPoisonTicker } from './instrument-identity'
+import { identityMismatchMessage, isPoisonTicker, resolvedVendorIdentity, vendorSymbolOf } from './instrument-identity'
 
 /**
  * AI Prediction League — market-data adapter (Twelve Data).
@@ -167,10 +167,9 @@ function num(v: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
-function resolvedInstrumentName(json: { name?: unknown; meta?: { name?: unknown } } | undefined): string | null {
-  if (typeof json?.name === 'string' && json.name.trim()) return json.name
-  if (typeof json?.meta?.name === 'string' && json.meta.name.trim()) return json.meta.name
-  return null
+function identityFromVendorJson(json: unknown): { name: string | null; symbol: string | null } {
+  const rec = json as { name?: unknown; symbol?: unknown; meta?: { name?: unknown; symbol?: unknown; currency_base?: unknown; currency_quote?: unknown } } | undefined
+  return { name: resolvedVendorIdentity(rec), symbol: vendorSymbolOf(rec) }
 }
 
 /**
@@ -198,7 +197,8 @@ export async function fetchDataPacket(instrument: string, days = DEFAULT_SERIES_
   }
 
   const q = quoteRes.ok ? quoteRes.json : {}
-  const idErr = catalogIdentityError(instrument, resolvedInstrumentName(quoteRes.ok ? q : seriesRes.ok ? seriesRes.json : undefined))
+  const vendor = identityFromVendorJson(quoteRes.ok ? q : seriesRes.ok ? seriesRes.json : undefined)
+  const idErr = catalogIdentityError(instrument, vendor.name, vendor.symbol)
   if (idErr) {
     return { available: false, instrument, symbol: mapped.symbol, error: idErr }
   }
@@ -274,7 +274,8 @@ export async function fetchLiveQuote(instrument: string): Promise<{ price: numbe
 
   const res = await twelveDataGet('quote', params)
   if (!res.ok) return null
-  if (catalogIdentityError(instrument, resolvedInstrumentName(res.json))) return null
+  const vendor = identityFromVendorJson(res.json)
+  if (catalogIdentityError(instrument, vendor.name, vendor.symbol)) return null
 
   const price = num(res.json?.close)
   if (typeof price !== 'number') return null
@@ -312,7 +313,8 @@ export async function fetchDailyCloses(
 
   const res = await twelveDataGet('time_series', params)
   if (!res.ok) return { ok: false, error: res.error }
-  const idErr = catalogIdentityError(instrument, resolvedInstrumentName(res.json))
+  const vendor = identityFromVendorJson(res.json)
+  const idErr = catalogIdentityError(instrument, vendor.name, vendor.symbol)
   if (idErr) return { ok: false, error: idErr }
 
   const values: any[] = Array.isArray(res.json?.values) ? res.json.values : []

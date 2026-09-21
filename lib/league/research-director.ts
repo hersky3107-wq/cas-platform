@@ -124,6 +124,11 @@ export function buildPacketInventory(input: PacketInventoryInput): string {
       ['gld_holdings_tonnes', slow.gldHoldings],
       ['slv_holdings_tonnes', slow.slvHoldings],
       ['gold_silver_ratio', slow.goldSilverRatio],
+      ['gvz_gold_vol', slow.gvz],
+      ['us_indpro', slow.indpro],
+      ['us_semiconductor_production', slow.semiProduction],
+      ['cot_platinum', slow.cotPlatinum],
+      ['cot_palladium', slow.cotPalladium],
     ] as const) {
       const line = snapLine(key, field)
       if (line) lines.push(line)
