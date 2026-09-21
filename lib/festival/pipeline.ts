@@ -48,6 +48,7 @@ import {
 import {
   searchFestivalOfficial,
   formatOfficialFestivalsForPrompt,
+  stripFestivalBenchmarkChatOffer,
 } from '@/lib/festival/connectors'
 
 /**
@@ -652,7 +653,7 @@ export async function runFestivalBenchmark(
     }
   }
 
-  const facts = [officialBlock, '', '[웹 검색 — Perplexity] 위 공식 목록(또는 유사 축제)의 실제 성과·평판:', text.trim()].join(
+  const facts = [officialBlock, '', '[웹 검색 — Perplexity] 위 공식 목록(또는 유사 축제)의 실제 성과·평판:', stripFestivalBenchmarkChatOffer(text.trim())].join(
     '\n'
   )
   return { ok: true, facts, officialOk, officialCount, fallbackUsed }

@@ -15,16 +15,17 @@ import 'server-only'
  *     byte-for-byte identical.
  *
  * Endpoints used (https://apis.data.go.kr/B551011/KorService2):
- *   - areaCode2       — 지역코드 조회. No `areaCode` param → depth-1 시/도 list.
- *                       With `areaCode=<sido>` → depth-2 시/군/구 list. Used ONLY
- *                       to resolve a free-text region string into the legacy
- *                       areaCode/sigunguCode pair that searchFestival2 expects
- *                       (searchFestival2 does NOT accept the newer 법정동
- *                       lDongRegnCd/lDongSignguCd codes from ldongCode2, so
- *                       areaCode2 — not ldongCode2 — is the correct resolver
- *                       for this specific downstream call). VERIFIED against a
- *                       live serviceKey: parsing + field casing confirmed correct.
- *   - searchFestival2 — 공식 축제/행사 검색 (제목·기간·지역).
+ *   - ldongCode2      — 법정동 지역코드. No `lDongRegnCd` → depth-1 시/도 list
+ *                       (`code` = lDongRegnCd, `name`). With `lDongRegnCd=<sido>`
+ *                       → depth-2 시/군/구 (`code` = lDongSignguCd, `name`).
+ *                       This is the resolver searchFestival2 actually filters on.
+ *                       Live 2026-09: 경주 items carry lDongRegnCd/lDongSignguCd
+ *                       (47/130) and often have EMPTY areacode/sigungucode —
+ *                       the legacy areaCode2 pair (35/2) makes searchFestival2
+ *                       return totalCount=0 even though Gyeongju festivals exist.
+ *   - searchFestival2 — 공식 축제/행사 검색. Region filter params are
+ *                       lDongRegnCd + lDongSignguCd (areaCode/sigunguCode are
+ *                       unused / scheduled for deletion on KorService2).
  *
  * DESIGN NOTE — why this queries the PAST, not the plan's own dates:
  *   A festival plan almost always describes a FUTURE event. Querying
@@ -51,15 +52,15 @@ import 'server-only'
  *   fetchFestivalCandidates() by dropping any item whose own eventStartDate
  *   is after today.
  *
- *   Region-agnostic sigungu fallback: a sigungu-scoped query (e.g. areaCode=
- *   39 + sigunguCode=4 for 서귀포시) can legitimately return 0 rows even when
- *   the wider 시/도 has plenty of festivals on record — TourAPI's sigungu
- *   tagging coverage varies by region and this is nationwide (경주/경북,
- *   부산, ... not just Jeju). So when the sigungu-scoped query returns zero
- *   raw items, searchFestivalOfficial() retries with the SAME resolved
- *   areaCode and no sigunguCode — never a hardcoded region — and tags the
- *   fallback results generically from resolved.areaName (e.g. "[제주 전역
- *   유사 축제]", "[경북 전역 유사 축제]").
+ *   Region-agnostic sigungu fallback: a sigungu-scoped query (e.g.
+ *   lDongRegnCd=50 + lDongSignguCd=130 for 서귀포시) can legitimately return
+ *   0 rows even when the wider 시/도 has festivals on record. When the
+ *   sigungu-scoped query returns zero raw items, searchFestivalOfficial()
+ *   retries with the SAME resolved lDongRegnCd and no lDongSignguCd — never
+ *   a hardcoded region — and tags the fallback from resolved.areaName
+ *   (e.g. "[제주특별자치도 전역 유사 축제]", "[경상북도 전역 유사 축제]").
+ *   Do NOT fall back just because past-window ranking dropped future-dated
+ *   rows; fallback is only for a true empty API page.
  *
  *   searchFestival2 params (verified live): do NOT send `listYN` (KorService2
  *   rejects with resultCode=10 INVALID_REQUEST_PARAMETER_ERROR). Do NOT send
@@ -125,7 +126,7 @@ type KorServiceEnvelope = {
 async function fetchKorService2<T>(
   path: string,
   params: Record<string, string>
-): Promise<{ ok: true; data: T[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; data: T[]; totalCount: number } | { ok: false; error: string }> {
   const url = buildKorServiceUrl(path, params)
   if (!url) return { ok: false, error: 'TourAPI 서비스키가 설정되지 않았습니다 (DATA_GO_KR_KEY).' }
 
@@ -161,7 +162,7 @@ async function fetchKorService2<T>(
     if (header?.resultCode && header.resultCode !== '0000' && header.resultCode !== '00') {
       // NODATA is a valid empty result, not a failure.
       if (/NODATA/i.test(header.resultMsg ?? '') || header.resultCode === '03') {
-        return { ok: true, data: [] }
+        return { ok: true, data: [], totalCount: 0 }
       }
       console.error(`[festival:connectors] resultCode=${header.resultCode} (${header.resultMsg ?? ''}) for ${masked(url)}`)
       return { ok: false, error: header.resultMsg || 'TourAPI 오류' }
@@ -169,7 +170,17 @@ async function fetchKorService2<T>(
 
     const rawItems = json.response?.body?.items
     const item = rawItems && typeof rawItems === 'object' ? rawItems.item : undefined
-    return { ok: true, data: asArray<T>(item) }
+    const data = asArray<T>(item)
+    const bodyTotal = json.response?.body?.totalCount
+    const totalCount = typeof bodyTotal === 'number' ? bodyTotal : data.length
+    const first = data[0] as Record<string, unknown> | undefined
+    console.info(
+      `[festival:connectors] ${path} ${masked(url)} totalCount=${totalCount} items=${data.length}` +
+        (first
+          ? ` first={title:${str(first.title) ?? str(first.name) ?? ''}, areacode:${str(first.areacode) ?? ''}, sigungucode:${str(first.sigungucode) ?? ''}, lDongRegnCd:${str(first.lDongRegnCd) ?? ''}, lDongSignguCd:${str(first.lDongSignguCd) ?? ''}, code:${str(first.code) ?? ''}}`
+          : '')
+    )
+    return { ok: true, data, totalCount }
   } catch (e) {
     const aborted = (e as { name?: string })?.name === 'AbortError'
     console.error(`[festival:connectors] ${aborted ? 'timeout' : 'fetch error'} for ${masked(url)}`)
@@ -180,7 +191,8 @@ async function fetchKorService2<T>(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Region resolver — free-text "시/도 시/군/구" → { areaCode, sigunguCode }
+// Region resolver — free-text "시/도 시/군/구" → { lDongRegnCd, lDongSignguCd }
+// (stored on FestivalRegionResolution.areaCode / .sigunguCode for callers)
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AreaEntry = { code: string; name: string }
@@ -191,7 +203,7 @@ const sigunguCache = new Map<string, AreaEntry[]>()
 
 async function fetchSidoList(): Promise<AreaEntry[]> {
   if (sidoCache) return sidoCache
-  const r = await fetchKorService2<{ code?: unknown; name?: unknown }>('areaCode2', { numOfRows: '30' })
+  const r = await fetchKorService2<{ code?: unknown; name?: unknown }>('ldongCode2', { numOfRows: '30' })
   if (!r.ok) return []
   const list = r.data
     .map((it) => ({ code: str(it.code) ?? '', name: str(it.name) ?? '' }))
@@ -203,9 +215,9 @@ async function fetchSidoList(): Promise<AreaEntry[]> {
 async function fetchSigunguList(areaCode: string): Promise<AreaEntry[]> {
   const cached = sigunguCache.get(areaCode)
   if (cached) return cached
-  const r = await fetchKorService2<{ code?: unknown; name?: unknown }>('areaCode2', {
-    areaCode,
-    numOfRows: '60',
+  const r = await fetchKorService2<{ code?: unknown; name?: unknown }>('ldongCode2', {
+    lDongRegnCd: areaCode,
+    numOfRows: '80',
   })
   if (!r.ok) return []
   const list = r.data
@@ -305,8 +317,9 @@ export type FestivalRegionResolution = {
 }
 
 /**
- * Resolves a free-text region string into TourAPI's legacy
- * areaCode/sigunguCode pair via areaCode2. Never throws. Two input shapes:
+ * Resolves a free-text region string into TourAPI's legal-dong
+ * lDongRegnCd/lDongSignguCd pair via ldongCode2 (exposed as areaCode /
+ * sigunguCode on the result). Never throws. Two input shapes:
  * - "시/도 시/군/구" (e.g. "제주특별자치도 서귀포시") — the normal path.
  * - Bare 시/군/구 only (e.g. "경주시", "전주시", "여수시"), no 시/도 prefix —
  *   when the first token doesn't match any 시/도, and it looks like a
@@ -420,6 +433,15 @@ export type OfficialFestivalEvent = {
   seasonalDistance: number | null
 }
 
+export type FestivalScheduleConflict = {
+  title: string
+  addr: string | null
+  eventStartDate: string | null
+  eventEndDate: string | null
+  overlapDays: number
+  kind: 'current' | 'last_year'
+}
+
 export type OfficialFestivalSearchResult =
   | {
       ok: true
@@ -430,6 +452,9 @@ export type OfficialFestivalSearchResult =
       windowEnd: string
       /** True when the sigungu-scoped query returned nothing and results are from the wider 시/도 instead. */
       fallbackUsed: boolean
+      conflicts: FestivalScheduleConflict[]
+      /** eventStartDate sent for the current-window conflict query, YYYYMMDD. */
+      conflictQueryStart: string
       note?: string
     }
   | { ok: false; error: string; areaName?: string | null; sigunguName?: string | null }
@@ -454,6 +479,57 @@ function ymd(date: Date): string {
   const m = String(date.getUTCMonth() + 1).padStart(2, '0')
   const d = String(date.getUTCDate()).padStart(2, '0')
   return `${y}${m}${d}`
+}
+
+type YmdParts = { y: number; m: number; d: number }
+
+/** 'YYYY-MM-DD' or 'YYYYMMDD' → calendar parts, or null. */
+export function parseYmdParts(dateStr: string | null | undefined): YmdParts | null {
+  if (!dateStr) return null
+  const digits = dateStr.replace(/-/g, '')
+  if (!/^\d{8}$/.test(digits)) return null
+  const y = parseInt(digits.slice(0, 4), 10)
+  const m = parseInt(digits.slice(4, 6), 10)
+  const d = parseInt(digits.slice(6, 8), 10)
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null
+  return { y, m, d }
+}
+
+export function formatYmdParts(p: YmdParts, sep = ''): string {
+  const raw = `${p.y}${String(p.m).padStart(2, '0')}${String(p.d).padStart(2, '0')}`
+  if (sep === '-') return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+  return raw
+}
+
+function addDaysParts(p: YmdParts, days: number): YmdParts {
+  const dt = new Date(Date.UTC(p.y, p.m - 1, p.d + days))
+  return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() }
+}
+
+function shiftYearParts(p: YmdParts, deltaYears: number): YmdParts {
+  const y = p.y + deltaYears
+  const lastDay = new Date(Date.UTC(y, p.m, 0)).getUTCDate()
+  return { y, m: p.m, d: Math.min(p.d, lastDay) }
+}
+
+function cmpYmd(a: YmdParts, b: YmdParts): number {
+  if (a.y !== b.y) return a.y - b.y
+  if (a.m !== b.m) return a.m - b.m
+  return a.d - b.d
+}
+
+/** Inclusive overlapping calendar days between two [start, end] ranges. 0 if none. */
+export function overlapInclusiveDays(
+  aStart: YmdParts,
+  aEnd: YmdParts,
+  bStart: YmdParts,
+  bEnd: YmdParts
+): number {
+  const start = cmpYmd(aStart, bStart) >= 0 ? aStart : bStart
+  const end = cmpYmd(aEnd, bEnd) <= 0 ? aEnd : bEnd
+  if (cmpYmd(start, end) > 0) return 0
+  const ms = Date.UTC(end.y, end.m - 1, end.d) - Date.UTC(start.y, start.m - 1, start.d)
+  return Math.floor(ms / 86_400_000) + 1
 }
 
 /** [eventStartDate, eventEndDate] for the past PAST_WINDOW_YEARS up to today, YYYYMMDD. */
@@ -486,6 +562,15 @@ type SearchFestivalItem = {
   eventstartdate?: unknown
   eventenddate?: unknown
   contentid?: unknown
+  areacode?: unknown
+  sigungucode?: unknown
+  lDongRegnCd?: unknown
+  lDongSignguCd?: unknown
+}
+
+function itemAddr(it: SearchFestivalItem): string | null {
+  const addrParts = [str(it.addr1), str(it.addr2)].filter(Boolean)
+  return addrParts.length > 0 ? addrParts.join(' ') : null
 }
 
 /** Raw searchFestival2 call + parse into candidates (no ranking yet). Never throws. */
@@ -524,7 +609,6 @@ async function fetchFestivalCandidates(
       continue
     }
 
-    const addrParts = [str(it.addr1), str(it.addr2)].filter(Boolean)
     const eventMonth = extractMonth(eventStartDate)
     const seasonalDistance =
       eventMonth === null || targetMonthStart === null
@@ -535,7 +619,7 @@ async function fetchFestivalCandidates(
           )
     candidates.push({
       title,
-      addr: addrParts.length > 0 ? addrParts.join(' ') : null,
+      addr: itemAddr(it),
       eventStartDate,
       eventEndDate: str(it.eventenddate),
       contentId,
@@ -568,8 +652,8 @@ function rankFestivalCandidates(candidates: OfficialFestivalEvent[]): OfficialFe
  * not an error.
  *
  * If the sigungu-scoped query returns zero raw items, retries with the same
- * resolved areaCode and no sigunguCode (nationwide-safe — never hardcoded to
- * any specific region; see file-level DESIGN NOTE).
+ * resolved lDongRegnCd and no lDongSignguCd (nationwide-safe — never hardcoded
+ * to any specific region; see file-level DESIGN NOTE).
  *
  * `dateStart`/`dateEnd` here are the PLAN's own (future) dates — used ONLY to
  * derive the target month(s) for seasonal ranking, NEVER as the query window
@@ -611,9 +695,11 @@ export async function searchFestivalOfficial(params: {
     eventStartDate: windowStart,
     numOfRows: SEARCH_POOL_ROWS,
   }
-  if (resolved.areaCode) baseQuery.areaCode = resolved.areaCode
+  if (resolved.areaCode) baseQuery.lDongRegnCd = resolved.areaCode
 
-  const sigunguQuery = resolved.sigunguCode ? { ...baseQuery, sigunguCode: resolved.sigunguCode } : baseQuery
+  const sigunguQuery = resolved.sigunguCode
+    ? { ...baseQuery, lDongSignguCd: resolved.sigunguCode }
+    : baseQuery
 
   const first = await fetchFestivalCandidates(sigunguQuery, keywords, targetMonthStart, targetMonthEnd, windowEnd)
   if (!first.ok) {
@@ -646,6 +732,12 @@ export async function searchFestivalOfficial(params: {
 
   const note = [scopeNote, truncationNote].filter(Boolean).join(' · ') || resolved.note
 
+  const { conflicts, conflictQueryStart } = await searchFestivalScheduleConflicts({
+    resolved,
+    dateStart,
+    dateEnd,
+  })
+
   return {
     ok: true,
     events,
@@ -654,8 +746,96 @@ export async function searchFestivalOfficial(params: {
     windowStart,
     windowEnd,
     fallbackUsed,
+    conflicts,
+    conflictQueryStart,
     ...(note ? { note } : {}),
   }
+}
+
+const MAX_CONFLICT_ROWS = '100'
+const MAX_CONFLICTS_SHOWN = 12
+
+/**
+ * Same-sigungu schedule conflicts for the plan window (±7d) and the same
+ * calendar window last year. Queries searchFestival2 with
+ * eventStartDate = planStart − 30d (current) and lastYearStart − 30d.
+ * Does NOT drop future-dated events — those are the point of a clash check.
+ */
+async function searchFestivalScheduleConflicts(params: {
+  resolved: FestivalRegionResolution
+  dateStart: string
+  dateEnd?: string
+}): Promise<{ conflicts: FestivalScheduleConflict[]; conflictQueryStart: string }> {
+  const planStart = parseYmdParts(params.dateStart)
+  const planEnd = parseYmdParts(params.dateEnd) ?? planStart
+  if (!planStart || !planEnd) {
+    return { conflicts: [], conflictQueryStart: '' }
+  }
+
+  const currentWindow = { start: addDaysParts(planStart, -7), end: addDaysParts(planEnd, 7) }
+  const lastYearWindow = {
+    start: addDaysParts(shiftYearParts(planStart, -1), -7),
+    end: addDaysParts(shiftYearParts(planEnd, -1), 7),
+  }
+  const currentQueryStart = addDaysParts(planStart, -30)
+  const lastYearQueryStart = addDaysParts(shiftYearParts(planStart, -1), -30)
+  const conflictQueryStart = formatYmdParts(currentQueryStart)
+
+  const regionQuery: Record<string, string> = { numOfRows: MAX_CONFLICT_ROWS }
+  if (params.resolved.areaCode) regionQuery.lDongRegnCd = params.resolved.areaCode
+  if (params.resolved.sigunguCode) regionQuery.lDongSignguCd = params.resolved.sigunguCode
+
+  const [currentRaw, lastYearRaw] = await Promise.all([
+    fetchKorService2<SearchFestivalItem>('searchFestival2', {
+      ...regionQuery,
+      eventStartDate: formatYmdParts(currentQueryStart),
+    }),
+    fetchKorService2<SearchFestivalItem>('searchFestival2', {
+      ...regionQuery,
+      eventStartDate: formatYmdParts(lastYearQueryStart),
+    }),
+  ])
+
+  const seen = new Set<string>()
+  const conflicts: FestivalScheduleConflict[] = []
+
+  const ingest = (
+    items: SearchFestivalItem[],
+    window: { start: YmdParts; end: YmdParts },
+    kind: FestivalScheduleConflict['kind']
+  ) => {
+    for (const it of items) {
+      const title = str(it.title)
+      if (!title) continue
+      const evStart = parseYmdParts(str(it.eventstartdate))
+      const evEnd = parseYmdParts(str(it.eventenddate)) ?? evStart
+      if (!evStart || !evEnd) continue
+      const overlapDays = overlapInclusiveDays(evStart, evEnd, window.start, window.end)
+      if (overlapDays <= 0) continue
+      const contentId = str(it.contentid)
+      const dedupeKey = `${kind}:${contentId ?? title}:${str(it.eventstartdate) ?? ''}`
+      if (seen.has(dedupeKey)) continue
+      seen.add(dedupeKey)
+      conflicts.push({
+        title,
+        addr: itemAddr(it),
+        eventStartDate: str(it.eventstartdate),
+        eventEndDate: str(it.eventenddate),
+        overlapDays,
+        kind,
+      })
+    }
+  }
+
+  if (currentRaw.ok) ingest(currentRaw.data, currentWindow, 'current')
+  if (lastYearRaw.ok) ingest(lastYearRaw.data, lastYearWindow, 'last_year')
+
+  conflicts.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'current' ? -1 : 1
+    return b.overlapDays - a.overlapDays
+  })
+
+  return { conflicts: conflicts.slice(0, MAX_CONFLICTS_SHOWN), conflictQueryStart }
 }
 
 /**
@@ -663,6 +843,30 @@ export async function searchFestivalOfficial(params: {
  * the single source of truth for that provenance tag, consumed directly by
  * the festival benchmark stage (lib/festival/pipeline.ts).
  */
+function formatConflictLine(c: FestivalScheduleConflict): string {
+  const period = `${c.eventStartDate ?? '?'}~${c.eventEndDate ?? '?'}`
+  const inside = c.addr ? `${period}, ${c.addr}` : period
+  const tail =
+    c.kind === 'last_year'
+      ? `전년 동기 ${c.overlapDays}일 겹침`
+      : `계획 기간과 ${c.overlapDays}일 겹침`
+  return `⚠ 개최 시기 충돌 (공사 데이터): ${c.title} (${inside}) — ${tail}`
+}
+
+function formatConflictBlock(result: Extract<OfficialFestivalSearchResult, { ok: true }>): string[] {
+  const asOf = result.conflictQueryStart
+    ? result.conflictQueryStart.length === 8
+      ? `${result.conflictQueryStart.slice(0, 4)}-${result.conflictQueryStart.slice(4, 6)}-${result.conflictQueryStart.slice(6, 8)}`
+      : result.conflictQueryStart
+    : ''
+  if (result.conflicts.length === 0) {
+    return [
+      `개최 시기 충돌: 같은 시군구·같은 기간 공사 등록 행사 없음 (조회 기준일 ${asOf || '미상'})`,
+    ]
+  }
+  return result.conflicts.map(formatConflictLine)
+}
+
 export function formatOfficialFestivalsForPrompt(result: OfficialFestivalSearchResult): string {
   if (!result.ok) {
     return `[공식 데이터 — 한국관광공사 TourAPI] 조회 실패: ${result.error}`
@@ -680,8 +884,15 @@ export function formatOfficialFestivalsForPrompt(result: OfficialFestivalSearchR
     ymdStr.length === 8 ? `${ymdStr.slice(0, 4)}-${ymdStr.slice(4, 6)}-${ymdStr.slice(6, 8)}` : ymdStr
   const windowLabel = `${fmtWindow(result.windowStart)}~${fmtWindow(result.windowEnd)}`
 
+  const header = '[공식 데이터 — 한국관광공사 TourAPI]'
+  const conflictLines = formatConflictBlock(result)
+
   if (result.events.length === 0) {
-    return `[공식 데이터 — 한국관광공사 TourAPI] ${scopeTag}${scope}, 과거 ${windowLabel} 기간에 등록된 유사 축제/행사가 없습니다(searchFestival2 기준).${result.note ? ` (${result.note})` : ''}`
+    return [
+      header,
+      ...conflictLines,
+      `${scopeTag}${scope}, 과거 ${windowLabel} 기간에 등록된 유사 축제/행사가 없습니다(searchFestival2 기준).${result.note ? ` (${result.note})` : ''}`,
+    ].join('\n')
   }
   const lines = result.events.map((e) => {
     const tags = [
@@ -692,7 +903,19 @@ export function formatOfficialFestivalsForPrompt(result: OfficialFestivalSearchR
     return `- ${e.title} (${e.eventStartDate ?? '?'}~${e.eventEndDate ?? '?'}${e.addr ? `, ${e.addr}` : ''})${tagStr}`
   })
   return [
-    `[공식 데이터 — 한국관광공사 TourAPI] ${scopeTag}${scope}, 과거 ${windowLabel} 기간의 유사 축제/행사 (searchFestival2 기준, 축제유형·계절 유사도 순)${result.note ? ` — ${result.note}` : ''}:`,
+    header,
+    ...conflictLines,
+    `${scopeTag}${scope}, 과거 ${windowLabel} 기간의 유사 축제/행사 (searchFestival2 기준, 축제유형·계절 유사도 순)${result.note ? ` — ${result.note}` : ''}:`,
     ...lines,
   ].join('\n')
+}
+
+/** Drops trailing Perplexity chatbot-offer lines ("원하시면 …"). */
+export function stripFestivalBenchmarkChatOffer(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*원하시면/.test(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }

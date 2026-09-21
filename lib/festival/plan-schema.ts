@@ -265,7 +265,7 @@ export function validateFestivalPlan(plan: FestivalPlan): string[] {
 // Two examples on purpose: this is a NATIONWIDE tool, not Jeju-only. Example 1
 // stays on Jeju (매칭 for lib/festival/connectors.ts's original test region);
 // Example 2 uses a different region (경주, 경상북도) so the region resolver
-// (areaCode2-based, see lib/festival/connectors.ts) and TourAPI benchmark path
+// (ldongCode2-based, see lib/festival/connectors.ts) and TourAPI benchmark path
 // are visibly exercised outside Jeju too.
 
 /**
