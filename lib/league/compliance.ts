@@ -196,7 +196,7 @@ export function buildConsensusHero(
     aggregateMagnitudePct !== null
       ? t.magnitude.headlineQualifier(
           t.catalog.horizons[isUiHorizon(horizon) ? horizon : '1d'],
-          formatSignedPercent(aggregateMagnitudePct),
+          formatSignedPercent(aggregateMagnitudePct, 1, aggregateSlot),
         )
       : null
   const line1 = prefix + (magnitudePart ? `${verb} · ${magnitudePart}` : verb)
@@ -232,7 +232,7 @@ export function buildConsensusHero(
     diverged,
     conclusionLine: diverged ? prefix + (priceLike ? t.hero.weightedCallVerb[aggregateSlot] : conclusionVerb) : t.hero.conclusion(conclusionVerb),
     conclusionVerb,
-    signedMagnitude: aggregateMagnitudePct !== null ? formatSignedPercent(aggregateMagnitudePct) : null,
+    signedMagnitude: aggregateMagnitudePct !== null ? formatSignedPercent(aggregateMagnitudePct, 1, aggregateSlot) : null,
     horizonLabel: aggregateMagnitudePct !== null ? t.catalog.horizons[isUiHorizon(horizon) ? horizon : '1d'] : null,
     confidencePct: conf,
     ...counts,
@@ -243,7 +243,11 @@ export function buildConsensusHero(
 export function magnitudeHeadlineQualifier(consensus: ConsensusSummary, horizon: string, t: LeagueUiPack): string | null {
   if (consensus.aggregateMagnitudePct === null) return null
   const horizonLabel = t.catalog.horizons[isUiHorizon(horizon) ? horizon : '1d']
-  return t.magnitude.headlineQualifier(horizonLabel, formatSignedPercent(consensus.aggregateMagnitudePct))
+  const signDir =
+    consensus.aggregateDirection === 'up' || consensus.aggregateDirection === 'down'
+      ? consensus.aggregateDirection
+      : null
+  return t.magnitude.headlineQualifier(horizonLabel, formatSignedPercent(consensus.aggregateMagnitudePct, 1, signDir))
 }
 
 /**

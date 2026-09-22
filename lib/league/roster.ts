@@ -274,9 +274,11 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // 2026-09-18: first-party DeepSeek flash (api.deepseek.com serves deepseek-v4-pro / deepseek-v4-flash).
   // Challenger rewired direct to deepseek-v4-flash off OpenRouter.
   { model_id: 'deepseek-flash', brand: 'DeepSeek', camp: 'china', league_tier: 'challenger', weights: 'open', provider_key: 'deepseek', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'core', provider: 'deepseek', modelOverride: 'deepseek-v4-flash', extraPayload: DEEPSEEK_FIRST_PARTY_THINKING }, price: DEEPSEEK_V4_FLASH_PRICE }, // MIT; deepseek-ai/DeepSeek-V4-Flash; first-party
-  // 2026-09-18: replaces challenger kimi-k2.6 (OpenRouter 240s stall).
-  // Live probe 3.03s; default 60s timeout — no reasoning-exhaustion headroom.
-  { model_id: 'hunyuan-3', brand: 'Tencent', product_alias: 'Hunyuan', camp: 'china', league_tier: 'challenger', weights: 'closed', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:hunyuan-3' }, price: { inputPerMTokens: 0.132, outputPerMTokens: 0.528 } }, // FLAG: hosted tencent/hy3; Hunyuan-A13B is a sibling
+  // 2026-09-22: DeepInfra now runs tencent/hy3 as a reasoning model — hidden
+  // reasoning ate the default content budget (HTTP 200, content null).
+  // effort:minimal (platform-providers) + 4000 completion tokens returns
+  // visible JSON in ~370ms. Keep the seat; do not replace.
+  { model_id: 'hunyuan-3', brand: 'Tencent', product_alias: 'Hunyuan', camp: 'china', league_tier: 'challenger', weights: 'closed', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4000, caller: { kind: 'platform', platformId: 'openrouter:hunyuan-3' }, price: { inputPerMTokens: 0.132, outputPerMTokens: 0.528 } }, // FLAG: hosted tencent/hy3; Hunyuan-A13B is a sibling
   // 2026-09-20: promoted from WORLD to Challenger (replaces qwen3.5-plus to eliminate OpenRouter 429 tail).
   { model_id: 'llama-4-maverick', brand: 'Meta', product_alias: 'Llama', camp: 'us', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' }, price: { inputPerMTokens: 0.2, outputPerMTokens: 0.8 } }, // Llama 4 Community License; meta-llama/Llama-4-Maverick
 

@@ -94,7 +94,8 @@ describe('roster weights classification', () => {
       league_tier: 'challenger',
       weights: 'closed',
       provider_key: 'openrouter',
-      reasoning: false,
+      reasoning: true,
+      maxCompletionTokens: 4000,
     })
     expect(hunyuan?.caller).toMatchObject({ kind: 'platform', platformId: 'openrouter:hunyuan-3' })
     expect(hunyuan?.timeoutMs).toBeUndefined()

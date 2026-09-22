@@ -3,6 +3,8 @@ import { buildCardData, type PredictionRow, type RoundRow } from '../card-aggreg
 import {
   CONSENSUS_ENGINE_MODEL_ID,
   CONSENSUS_FORBIDDEN_ENGINES,
+  CONSENSUS_CRYPTO_MONEY_HINTS,
+  CONSENSUS_INDEX_MONEY_HINTS,
   CONSENSUS_MONEY_SIGNALS,
   CONSENSUS_NO_SIGNAL_REASON,
   CONSENSUS_PERSONA,
@@ -10,6 +12,7 @@ import {
   buildConsensusInput,
   buildConsensusSystemPrompt,
   buildConsensusUserPrompt,
+  consensusMoneySearchHints,
   expectedConsensusCostUsdPerRound,
   findConsensusChartLeak,
   findConsensusMoneyLanguage,
@@ -86,11 +89,51 @@ describe('consensus extra seat — engine + contract', () => {
     expect(system).toContain('Polymarket')
     expect(system).toContain('Kalshi')
     expect(system).toContain('COT')
+    expect(system).toContain('funding rate')
+    expect(system).toContain('Deribit')
+    expect(system).toContain('VIX')
+    expect(system).toContain('etf_index')
+    expect(system).toContain('crypto_spot')
     expect(system).toContain('found":false')
     expect(CONSENSUS_MONEY_SIGNALS.join(' ')).toMatch(/implied probability/)
     expect(CONSENSUS_MONEY_SIGNALS.join(' ')).toMatch(/Polymarket/)
     expect(CONSENSUS_MONEY_SIGNALS.join(' ')).toMatch(/COT/)
     expect(CONSENSUS_MONEY_SIGNALS.join(' ')).toMatch(/institutional/)
+  })
+
+  it('user prompt names category-specific money signals for index ETFs and crypto', () => {
+    const indexUser = buildConsensusUserPrompt(
+      buildConsensusInput({
+        proposition_text: 'Will DIA close higher by 2026-09-23 than its last close?',
+        category: 'etf_index',
+        instrument: 'DIA',
+        horizon: '1d',
+        subject_label: 'DIA',
+        proposition_kind: 'binary_close_higher',
+      }),
+    )
+    expect(indexUser).toContain('YM')
+    expect(indexUser).toContain('CBOE')
+    expect(indexUser).toContain('VIX')
+    expect(indexUser).toMatch(/do not abstain/i)
+    expect(CONSENSUS_INDEX_MONEY_HINTS.join(' ')).toMatch(/YM/)
+
+    const cryptoUser = buildConsensusUserPrompt(
+      buildConsensusInput({
+        proposition_text: 'Will DOGE/USD close higher by 2026-09-23 than its last close?',
+        category: 'memecoin',
+        instrument: 'DOGE/USD',
+        horizon: '1d',
+        subject_label: 'DOGE/USD',
+        proposition_kind: 'binary_close_higher',
+      }),
+    )
+    expect(cryptoUser).toContain('funding')
+    expect(cryptoUser).toContain('Deribit')
+    expect(cryptoUser).toContain('taker')
+    expect(cryptoUser).toMatch(/do not abstain/i)
+    expect(consensusMoneySearchHints('crypto_spot')).toContain('funding')
+    expect(CONSENSUS_CRYPTO_MONEY_HINTS.join(' ')).toMatch(/funding/)
   })
 
   it('feeds only the proposition — no price series, packet, or TIPS', () => {
@@ -144,6 +187,9 @@ describe('consensus extra seat — engine + contract', () => {
     expect(consensusRationaleNeedsRetry('분위기는 낙관 쪽이다')).toBe(true)
     expect(consensusRationaleNeedsRetry('TIPS 2.68%')).toBe(true)
     expect(consensusRationaleNeedsRetry('예측시장 배당은 상승 쪽에 걸려 있다')).toBe(false)
+    expect(findConsensusMoneyLanguage('펀딩비가 양수라 롱이 숏에게 지불한다')).toBeTruthy()
+    expect(findConsensusMoneyLanguage('VIX 스큐가 풋 쪽으로 기울어 있다')).toBeTruthy()
+    expect(consensusRationaleNeedsRetry('바이낸스 펀딩비는 음수다')).toBe(false)
   })
 
   it('documents 1 Perplexity search call / round in the same cheap band as sentiment', () => {

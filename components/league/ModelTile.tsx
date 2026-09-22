@@ -92,7 +92,11 @@ export function ModelTile({
   // adapter-provided qualifier text (scoreline, margin) on the others.
   const magnitudeText =
     model.direction && model.magnitude !== null
-      ? formatSignedPercent(model.magnitude)
+      ? formatSignedPercent(
+          model.magnitude,
+          1,
+          model.direction === 'up' || model.direction === 'down' ? model.direction : null,
+        )
       : model.direction && model.qualifierText
         ? model.qualifierText
         : null

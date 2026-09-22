@@ -81,7 +81,52 @@ export const CONSENSUS_LANGUAGE_ALIASES = [
   'price target',
   '미결제',
   'open interest',
+  '펀딩',
+  'funding',
+  'deribit',
+  '롱숏',
+  'long/short',
+  'long-short',
+  'taker',
+  '테이커',
+  'vix',
+  'cboe',
 ] as const
+
+/** Category-specific money signals — equity COT/targets do not exist for crypto or index ETFs. */
+export const CONSENSUS_CRYPTO_MONEY_HINTS = [
+  'Binance/Bybit funding rate (positive = longs pay, negative = shorts pay)',
+  'Deribit options skew / implied volatility',
+  'top-trader long/short ratio',
+  'taker buy/sell volume',
+  'crypto prediction-market odds (Polymarket, Kalshi)',
+] as const
+
+export const CONSENSUS_INDEX_MONEY_HINTS = [
+  'index-futures COT positioning (YM for DIA, ES for SPY, NQ for QQQ)',
+  'CBOE put/call ratio',
+  'VIX volatility premium / skew',
+] as const
+
+export function consensusMoneySearchHints(category: string): string {
+  const key = category.trim().toLowerCase()
+  if (key === 'crypto_spot' || key === 'crypto_perps' || key === 'memecoin') {
+    return [
+      'For this crypto/memecoin category, search THESE money-positioning signals — equity analyst targets and CFTC COT usually do not exist here; do not abstain just because those are missing:',
+      ...CONSENSUS_CRYPTO_MONEY_HINTS.map((hint) => `- ${hint}`),
+    ].join('\n')
+  }
+  if (key === 'etf_index') {
+    return [
+      'For this index-ETF category, search THESE money-positioning signals — single-stock analyst targets are the wrong object; do not abstain just because those are missing:',
+      ...CONSENSUS_INDEX_MONEY_HINTS.map((hint) => `- ${hint}`),
+      '- options implied probability / put-call skew on the ETF or the underlying index',
+    ].join('\n')
+  }
+  return [
+    'Search money-positioning for this asset: options implied probability / put-call skew, Polymarket/Kalshi odds, futures COT, institutional consensus targets.',
+  ].join('\n')
+}
 
 const CHART_PATTERN_LEAKS = [
   '엘리어트',
@@ -214,19 +259,19 @@ export function buildConsensusSystemPrompt(): string {
     '',
     'You are the 💰 돈이 매긴 확률 extra seat in a prediction league. You answer ALONE.',
     'Use your built-in web search to FIND money-positioning signals for this subject. No prediction-market API is attached — search the public web.',
-    'Search specifically for:',
-    '- options implied probability / put-call skew / options-implied direction',
-    '- prediction-market odds if any exist (Polymarket, Kalshi)',
-    '- futures COT / speculative vs commercial positioning',
-    '- analyst or institutional consensus price targets',
+    'Search the signals that exist for THIS category — not a canned equity list:',
+    '- gold / FX / commodities / metals: options implied probability / put-call skew, futures COT, Polymarket/Kalshi, institutional consensus targets',
+    '- index ETFs (etf_index): index-futures COT (YM/ES/NQ), CBOE put/call, VIX vol premium/skew — not single-stock price targets',
+    '- crypto_spot / memecoin: Binance/Bybit funding rate (positive/negative), Deribit options skew/IV, top-trader long/short, taker buy/sell, crypto prediction markets — not equity COT or analyst targets',
     'Read what the MARKET has priced with money. Not chart shapes. Not news mood.',
     '',
     'How to judge:',
     '- Name which money signal you found.',
-    '- Write in market-priced language: "옵션 시장은 ~%를 반영", "선물 포지션은 ~로 기울어", "예측시장 배당은 ~".',
+    '- Write in market-priced language: "옵션 시장은 ~%를 반영", "선물 포지션은 ~로 기울어", "예측시장 배당은 ~", "펀딩비는 ~", "VIX/풋콜은 ~".',
     '- Then pick a direction for THIS proposition and horizon.',
     '',
-    'If search finds no money-positioning data (common for obscure assets), do NOT invent odds. Abstain.',
+    'If search finds no money-positioning data for THIS category after searching the category-appropriate signals, do NOT invent odds. Abstain.',
+    'Do not abstain just because equity analyst targets or CFTC COT are missing — those are not the money signals for crypto or index ETFs.',
     'Abstain JSON (last line): {"direction":null,"found":false,"probability":null,"rationale":"시장이 돈으로 매긴 확률 신호를 찾지 못했습니다."}',
     '',
     'When you DO have a signal, last line MUST be:',
@@ -246,18 +291,19 @@ export function buildConsensusUserPrompt(input: ConsensusLeagueInput): string {
     `HORIZON: ${input.horizon}`,
     `CATEGORY: ${input.category}`,
     '',
-    'Search the live web for money-positioning: options implied probability, put-call skew, Polymarket/Kalshi odds, futures COT, institutional consensus targets.',
+    consensusMoneySearchHints(input.category),
     'Judge what money has priced. No charts, no news-mood, no packet macro.',
-    'If nothing is priced for this asset, abstain — do not invent odds.',
+    'If nothing is priced for this asset after those category-specific searches, abstain — do not invent odds.',
   ].join('\n')
 }
 
 export function consensusRetryInstruction(): string {
   return [
     'RETRY: Rewrite as the 돈이 매긴 확률 seat.',
-    'Use only options / prediction-market odds / COT positioning / institutional target language.',
+    'Use only money-positioning language for THIS category: options / prediction-market odds / COT / institutional targets (gold/FX/commodities); YM/ES/NQ COT, CBOE put-call, VIX (index ETFs); funding rate, Deribit skew/IV, top-trader long/short, taker buy/sell (crypto/memecoin).',
     'Do not name chart patterns. Do not write 분위기/여론/루머. Do not cite TIPS or CPI.',
-    'If there is no money-positioning signal, output found:false and direction null.',
+    'Do not abstain just because equity targets or CFTC COT are missing on crypto or index ETFs.',
+    'If there is no money-positioning signal after the category-appropriate search, output found:false and direction null.',
     'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
   ].join(' ')
 }

@@ -71,12 +71,29 @@ export function validateMagnitude(
   return { ok: true, value: roundMagnitude(magnitude) }
 }
 
-/** '+2.4%' / '-1.1%' / '+0.0%' — ASCII sign, fixed decimals. Numerals + '%' read the same in all 8 league locales (like `formatInstrumentPrice`), so this is not routed through `LeagueUiPack`. */
-export function formatSignedPercent(value: number, decimals = 1): string {
+/**
+ * '+2.4%' / '-1.1%' / '+0.0%' — ASCII sign, fixed decimals. Numerals + '%'
+ * read the same in all 8 league locales (like `formatInstrumentPrice`), so
+ * this is not routed through `LeagueUiPack`.
+ *
+ * Sign follows the ORIGINAL value (and optional direction), not
+ * `rounded < 0`. A tiny down move like -0.02% rounds to IEEE -0, and
+ * JavaScript `-0 < 0` is false — that used to print "하락 +0.0%".
+ * `Object.is(..., -0)` and `value < 0` keep the minus. When the caller
+ * knows the vote is down, an exact 0 also prints minus so the badge and
+ * qualifier never contradict.
+ */
+export function formatSignedPercent(
+  value: number,
+  decimals = 1,
+  direction?: MagnitudeDirection | null,
+): string {
   const scale = 10 ** decimals
   const rounded = Math.round(value * scale) / scale
   const text = Math.abs(rounded).toFixed(decimals)
-  return rounded < 0 ? `-${text}%` : `+${text}%`
+  const negative =
+    direction === 'down' || value < 0 || Object.is(value, -0) || Object.is(rounded, -0)
+  return negative ? `-${text}%` : `+${text}%`
 }
 
 function medianOf(values: readonly number[]): number | null {

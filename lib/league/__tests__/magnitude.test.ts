@@ -76,7 +76,16 @@ describe('formatSignedPercent', () => {
 
   it('respects the decimals argument', () => {
     expect(formatSignedPercent(2.449, 1)).toBe('+2.4%')
-    expect(formatSignedPercent(-0.001, 1)).toBe('+0.0%')
+    expect(formatSignedPercent(0.04, 1)).toBe('+0.0%')
+  })
+
+  it('keeps the minus when a tiny down move rounds to IEEE -0 (the 하락 +0.0% bug)', () => {
+    expect(formatSignedPercent(-0.02)).toBe('-0.0%')
+    expect(formatSignedPercent(-0.001, 1)).toBe('-0.0%')
+    expect(formatSignedPercent(-0)).toBe('-0.0%')
+    expect(formatSignedPercent(0, 1, 'down')).toBe('-0.0%')
+    expect(formatSignedPercent(0, 1, 'up')).toBe('+0.0%')
+    expect(`${formatSignedPercent(-0.02)}`).not.toBe('+0.0%')
   })
 })
 
