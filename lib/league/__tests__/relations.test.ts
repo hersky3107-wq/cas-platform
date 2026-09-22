@@ -33,6 +33,21 @@ describe('commodities_energy related ETFs', () => {
     ])
   })
 
+  it('CPER maps to COPX, FCX, XLB, UUP, VIXY — not EIA crude peers', () => {
+    expect(relationsFor('CPER')!.related.map((r) => r.symbol)).toEqual(['COPX', 'FCX', 'XLB', 'UUP', 'VIXY'])
+  })
+
+  it('grains map to sibling grain ETFs + DBA + UUP', () => {
+    expect(relationsFor('CORN')!.related.map((r) => r.symbol)).toEqual(['WEAT', 'SOYB', 'DBA', 'UUP'])
+    expect(relationsFor('WEAT')!.related.map((r) => r.symbol)).toEqual(['CORN', 'SOYB', 'DBA', 'UUP'])
+    expect(relationsFor('SOYB')!.related.map((r) => r.symbol)).toEqual(['CORN', 'WEAT', 'DBA', 'UUP'])
+  })
+
+  it('COFF maps to DBA + UUP (JO is delisted)', () => {
+    expect(relationsFor('COFF')!.related.map((r) => r.symbol)).toEqual(['DBA', 'UUP'])
+    expect(relationsFor('JO')).toBeNull()
+  })
+
   it('does not drop gold_metal TAN / GLD relations', () => {
     expect(relationsFor('XAG/USD')!.related.map((r) => r.symbol)).toContain('TAN')
     expect(relationsFor('XAU/USD')!.related.map((r) => r.symbol)).toContain('GLD')

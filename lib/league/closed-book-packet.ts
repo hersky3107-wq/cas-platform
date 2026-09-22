@@ -165,6 +165,17 @@ export type SlowDataSnapshot = {
   brentSpotFred?: { date: string; value: number } | { unavailable: string } | null
   henryHubSpotFred?: { date: string; value: number } | { unavailable: string } | null
   gasolineRetail?: { date: string; value: number } | { unavailable: string } | null
+  cotCopper?: CotPositioning | null
+  cotCorn?: CotPositioning | null
+  cotWheat?: CotPositioning | null
+  cotSoybean?: CotPositioning | null
+  cotCoffee?: CotPositioning | null
+  /** IMF global copper price via FRED PCOPPUSDM. Copper only. */
+  copperSpotFred?: { date: string; value: number } | { unavailable: string } | null
+  cornSpotFred?: { date: string; value: number } | { unavailable: string } | null
+  wheatSpotFred?: { date: string; value: number } | { unavailable: string } | null
+  soybeanSpotFred?: { date: string; value: number } | { unavailable: string } | null
+  coffeeSpotFred?: { date: string; value: number } | { unavailable: string } | null
 }
 
 /** Packet v2 (B): a native-language research finding (original + English gloss). */
@@ -750,6 +761,46 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
       'unavailable' in slow.gasolineRetail
         ? `  ${unavailable('US retail gasoline', slow.gasolineRetail.unavailable)}`
         : `  US retail gasoline (${slow.gasolineRetail.date}): ${fmt(slow.gasolineRetail.value, 3)} USD/gal (source: FRED GASREGW; informative horizon: weeks — crude product demand proxy)`,
+    )
+  }
+  if (slow.cotCopper) lines.push(formatCot('CFTC copper managed-money', slow.cotCopper))
+  if (slow.cotCorn) lines.push(formatCot('CFTC corn managed-money', slow.cotCorn))
+  if (slow.cotWheat) lines.push(formatCot('CFTC SRW wheat managed-money', slow.cotWheat))
+  if (slow.cotSoybean) lines.push(formatCot('CFTC soybean managed-money', slow.cotSoybean))
+  if (slow.cotCoffee) lines.push(formatCot('CFTC coffee C managed-money', slow.cotCoffee))
+  if (slow.copperSpotFred) {
+    lines.push(
+      'unavailable' in slow.copperSpotFred
+        ? `  ${unavailable('IMF copper price', slow.copperSpotFred.unavailable)}`
+        : `  IMF copper price (${slow.copperSpotFred.date}): ${fmt(slow.copperSpotFred.value, 2)} USD/metric ton (source: FRED PCOPPUSDM; informative horizon: months — lags the ETF)`,
+    )
+  }
+  if (slow.cornSpotFred) {
+    lines.push(
+      'unavailable' in slow.cornSpotFred
+        ? `  ${unavailable('IMF corn price', slow.cornSpotFred.unavailable)}`
+        : `  IMF corn price (${slow.cornSpotFred.date}): ${fmt(slow.cornSpotFred.value, 2)} USD/metric ton (source: FRED PMAIZMTUSDM; informative horizon: months — lags the ETF)`,
+    )
+  }
+  if (slow.wheatSpotFred) {
+    lines.push(
+      'unavailable' in slow.wheatSpotFred
+        ? `  ${unavailable('IMF wheat price', slow.wheatSpotFred.unavailable)}`
+        : `  IMF wheat price (${slow.wheatSpotFred.date}): ${fmt(slow.wheatSpotFred.value, 2)} USD/metric ton (source: FRED PWHEAMTUSDM; informative horizon: months — lags the ETF)`,
+    )
+  }
+  if (slow.soybeanSpotFred) {
+    lines.push(
+      'unavailable' in slow.soybeanSpotFred
+        ? `  ${unavailable('IMF soybean price', slow.soybeanSpotFred.unavailable)}`
+        : `  IMF soybean price (${slow.soybeanSpotFred.date}): ${fmt(slow.soybeanSpotFred.value, 2)} USD/metric ton (source: FRED PSOYBUSDM; informative horizon: months — lags the ETF)`,
+    )
+  }
+  if (slow.coffeeSpotFred) {
+    lines.push(
+      'unavailable' in slow.coffeeSpotFred
+        ? `  ${unavailable('IMF other-mild arabica coffee', slow.coffeeSpotFred.unavailable)}`
+        : `  IMF other-mild arabica coffee (${slow.coffeeSpotFred.date}): ${fmt(slow.coffeeSpotFred.value, 2)} US cents/lb (source: FRED PCOFFOTMUSDM; informative horizon: months — lags the ETF)`,
     )
   }
   // Only the header would remain → treat as no section.

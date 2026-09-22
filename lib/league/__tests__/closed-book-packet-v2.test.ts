@@ -290,6 +290,93 @@ describe('closed-book packet v2 — new sections', () => {
     expect(ung).not.toContain('OVX')
   })
 
+  it('renders copper/grain/coffee fields without EIA crude or OVX', () => {
+    const copper = assembleClosedBookInjection(
+      input({
+        instrument: 'CPER',
+        category: 'commodity_energy',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: { date: '2026-09-21', shortShares: 200, totalShares: 1000, shortPct: 20 },
+          putCall: { date: '2026-09-21', total: 0.74, index: 0.8, equity: 0.53 },
+          btcEtfFlow: null,
+          insider: null,
+          cotCopper: {
+            contract: 'COPPER- #1 - COMMODITY EXCHANGE INC.',
+            date: '2026-09-15',
+            openInterest: 289463,
+            managedMoneyLong: 83704,
+            managedMoneyShort: 18598,
+            managedMoneyNet: 65106,
+          },
+          copperSpotFred: { date: '2026-07-01', value: 13542.82 },
+        },
+      }),
+    )
+    expect(copper).toContain('CFTC copper managed-money (2026-09-15): managed-money net 65,106 contracts')
+    expect(copper).toContain('IMF copper price (2026-07-01): 13542.82 USD/metric ton')
+    expect(copper).toContain('FRED PCOPPUSDM')
+    expect(copper).toContain('20.0% short-volume ratio')
+    expect(copper).not.toContain('EIA US commercial crude')
+    expect(copper).not.toContain('OVX')
+    expect(copper).not.toContain('working gas storage')
+
+    const corn = assembleClosedBookInjection(
+      input({
+        instrument: 'CORN',
+        category: 'commodity_energy',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: null,
+          insider: null,
+          cotCorn: {
+            contract: 'CORN - CHICAGO BOARD OF TRADE',
+            date: '2026-09-15',
+            openInterest: 1843824,
+            managedMoneyLong: 483738,
+            managedMoneyShort: 69278,
+            managedMoneyNet: 414460,
+          },
+          cornSpotFred: { date: '2026-07-01', value: 213.19 },
+        },
+      }),
+    )
+    expect(corn).toContain('CFTC corn managed-money')
+    expect(corn).toContain('414,460 contracts')
+    expect(corn).toContain('IMF corn price (2026-07-01): 213.19 USD/metric ton')
+    expect(corn).not.toContain('OVX')
+    expect(corn).not.toContain('EIA US')
+
+    const coffee = assembleClosedBookInjection(
+      input({
+        instrument: 'COFF',
+        category: 'commodity_energy',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: null,
+          insider: null,
+          cotCoffee: {
+            contract: 'COFFEE C - ICE FUTURES U.S.',
+            date: '2026-09-15',
+            openInterest: 150458,
+            managedMoneyLong: 35227,
+            managedMoneyShort: 14566,
+            managedMoneyNet: 20661,
+          },
+          coffeeSpotFred: { date: '2026-07-01', value: 359.16 },
+        },
+      }),
+    )
+    expect(coffee).toContain('CFTC coffee C managed-money')
+    expect(coffee).toContain('IMF other-mild arabica coffee (2026-07-01): 359.16 US cents/lb')
+    expect(coffee).not.toContain('EIA')
+    expect(coffee).not.toContain('OVX')
+  })
+
   it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {
     expect(isOzOzGoldSilverRatio(7.21)).toBe(false)
     expect(isOzOzGoldSilverRatio(72.9)).toBe(true)

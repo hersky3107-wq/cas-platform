@@ -47,7 +47,7 @@ export function isUiHorizon(value: unknown): value is UiHorizon {
  * under gold_metals (underlying asset), not index_etf.
  *
  * commodity_energy mixes clocks: WTI/USD and XBR/USD are spots (calendar);
- * UNG is a NYSE ETF and uses the equity session clock via SESSION_CLOCK_INSTRUMENTS.
+ * UNG/CPER/CORN/WEAT/SOYB/COFF are listed ETFs and use the session clock.
  * real_estate chips are NYSE REIT ETFs (VNQ, SCHH) via the category set below.
  */
 const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set([
@@ -59,9 +59,18 @@ const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set([
 /**
  * US-listed equity tickers whose ledger category is NOT stock/etf_index
  * but whose grading close is the NYSE/Nasdaq session. Catalog files them
- * by underlying asset (GLD/SLV → gold_metal; UNG → commodity_energy).
+ * by underlying asset (GLD/SLV → gold_metal; UNG/CPER/grains/COFF → commodity_energy).
  */
-export const SESSION_CLOCK_INSTRUMENTS: ReadonlySet<string> = new Set(['GLD', 'SLV', 'UNG'])
+export const SESSION_CLOCK_INSTRUMENTS: ReadonlySet<string> = new Set([
+  'GLD',
+  'SLV',
+  'UNG',
+  'CPER',
+  'CORN',
+  'WEAT',
+  'SOYB',
+  'COFF',
+])
 
 export function usesTradingSessions(
   category: PredictionCategory | string,

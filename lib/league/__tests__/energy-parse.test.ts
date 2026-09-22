@@ -117,4 +117,37 @@ describe('CFTC energy contract codes', () => {
       managedMoneyNet: 7896,
     })
   })
+
+  it('parses COMEX copper (085692), CBOT grains, and ICE coffee C', () => {
+    expect(
+      parseCftcManagedMoney(
+        '"COPPER- #1 - COMMODITY EXCHANGE INC.",260915,2026-09-15,085692,CMX,01,085,289463,0,0,0,0,0,83704,18598',
+        '085692',
+      ),
+    ).toMatchObject({ managedMoneyNet: 65106, openInterest: 289463 })
+    expect(
+      parseCftcManagedMoney(
+        '"CORN - CHICAGO BOARD OF TRADE",260915,2026-09-15,002602,CBT,01,002,1843824,0,0,0,0,0,483738,69278',
+        '002602',
+      ),
+    ).toMatchObject({ managedMoneyNet: 414460 })
+    expect(
+      parseCftcManagedMoney(
+        '"WHEAT-SRW - CHICAGO BOARD OF TRADE",260915,2026-09-15,001602,CBT,01,001,485138,0,0,0,0,0,95798,99472',
+        '001602',
+      ),
+    ).toMatchObject({ managedMoneyNet: -3674 })
+    expect(
+      parseCftcManagedMoney(
+        '"SOYBEANS - CHICAGO BOARD OF TRADE",260915,2026-09-15,005602,CBT,01,005,1104880,0,0,0,0,0,282581,41080',
+        '005602',
+      ),
+    ).toMatchObject({ managedMoneyNet: 241501 })
+    expect(
+      parseCftcManagedMoney(
+        '"COFFEE C - ICE FUTURES U.S.",260915,2026-09-15,083731,NYBT,01,083,150458,0,0,0,0,0,35227,14566',
+        '083731',
+      ),
+    ).toMatchObject({ managedMoneyNet: 20661 })
+  })
 })

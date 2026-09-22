@@ -17,8 +17,8 @@ import { fetchMetalsSlowFields } from './metals-data'
  *     Categories: stock, etf_index, real_estate, gold_metal, commodity_energy.
  *  5. Gold/metals (gold_metal only)  — CFTC COT, Treasury TIPS, GLD/SLV
  *     holdings, FRED GVZ/INDPRO/IPG3344S via `metals-data.ts`.
- *  6. Energy (commodity_energy only) — EIA WPSR/WNGSR, CFTC WTI/Brent/NG COT,
- *     FRED OVX, DCOILWTICO, DCOILBRENTEU, DHHNGSP, GASREGW via `energy-data.ts`.
+ *  6. Energy/softs (commodity_energy) — EIA WPSR/WNGSR, CFTC energy+copper+
+ *     grain+coffee COT, FRED OVX/spots/IMF prices via `energy-data.ts`.
  *  3. Farside BTC spot ETF flows     — PROBED UNRELIABLE (HTTP 403 Cloudflare
  *     even with browser headers). Still attempted once per day so a future
  *     unblock starts working, but expect a labeled UNAVAILABLE line.

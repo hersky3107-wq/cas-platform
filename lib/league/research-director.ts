@@ -139,6 +139,16 @@ export function buildPacketInventory(input: PacketInventoryInput): string {
       ['fred_brent_spot', slow.brentSpotFred],
       ['fred_henry_hub_spot', slow.henryHubSpotFred],
       ['fred_retail_gasoline', slow.gasolineRetail],
+      ['cot_copper', slow.cotCopper],
+      ['cot_corn', slow.cotCorn],
+      ['cot_wheat', slow.cotWheat],
+      ['cot_soybean', slow.cotSoybean],
+      ['cot_coffee', slow.cotCoffee],
+      ['fred_imf_copper', slow.copperSpotFred],
+      ['fred_imf_corn', slow.cornSpotFred],
+      ['fred_imf_wheat', slow.wheatSpotFred],
+      ['fred_imf_soybean', slow.soybeanSpotFred],
+      ['fred_imf_coffee', slow.coffeeSpotFred],
     ] as const) {
       const line = snapLine(key, field)
       if (line) lines.push(line)

@@ -152,6 +152,11 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
       { instrument: 'WTI/USD', resolution_rule: 'WTI/USD spot close vs prior close', chip_visible: true, expected_name: ['WTI'] },
       { instrument: 'XBR/USD', resolution_rule: 'XBR/USD spot close vs prior close', chip_visible: true, expected_name: ['Brent'] },
       { instrument: 'UNG', resolution_rule: 'UNG regular-session close vs prior close', chip_visible: true, expected_name: ['Natural Gas'] },
+      { instrument: 'CPER', resolution_rule: 'CPER regular-session close vs prior close', chip_visible: true, expected_name: ['Copper'] },
+      { instrument: 'CORN', resolution_rule: 'CORN regular-session close vs prior close', chip_visible: true, expected_name: ['Corn'] },
+      { instrument: 'WEAT', resolution_rule: 'WEAT regular-session close vs prior close', chip_visible: true, expected_name: ['Wheat'] },
+      { instrument: 'SOYB', resolution_rule: 'SOYB regular-session close vs prior close', chip_visible: true, expected_name: ['Soybean'] },
+      { instrument: 'COFF', resolution_rule: 'COFF regular-session close vs prior close', chip_visible: true, expected_name: ['Coffee'] },
     ],
   },
   {

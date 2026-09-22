@@ -276,6 +276,55 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     asiaLinks: [],
   },
   {
+    instrument: 'CPER',
+    related: [
+      { symbol: 'COPX', role: 'sector_etf', note: 'Global X copper miners — China/Chile mine-equity beta' },
+      { symbol: 'FCX', role: 'peer', note: 'Freeport-McMoRan — largest listed copper producer' },
+      { symbol: 'XLB', role: 'sector_etf', note: 'materials sector' },
+      DOLLAR,
+      VOL,
+    ],
+    asiaLinks: ['zh'],
+  },
+  {
+    instrument: 'CORN',
+    related: [
+      { symbol: 'WEAT', role: 'peer', note: 'Teucrium wheat — co-moving grain' },
+      { symbol: 'SOYB', role: 'peer', note: 'Teucrium soybean — co-moving grain' },
+      { symbol: 'DBA', role: 'commodity_proxy', note: 'Invesco DB Agriculture — broad ag basket' },
+      DOLLAR,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'WEAT',
+    related: [
+      { symbol: 'CORN', role: 'peer', note: 'Teucrium corn — co-moving grain' },
+      { symbol: 'SOYB', role: 'peer', note: 'Teucrium soybean — co-moving grain' },
+      { symbol: 'DBA', role: 'commodity_proxy', note: 'Invesco DB Agriculture — broad ag basket' },
+      DOLLAR,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'SOYB',
+    related: [
+      { symbol: 'CORN', role: 'peer', note: 'Teucrium corn — co-moving grain' },
+      { symbol: 'WEAT', role: 'peer', note: 'Teucrium wheat — co-moving grain' },
+      { symbol: 'DBA', role: 'commodity_proxy', note: 'Invesco DB Agriculture — broad ag basket' },
+      DOLLAR,
+    ],
+    asiaLinks: ['zh'],
+  },
+  {
+    instrument: 'COFF',
+    related: [
+      { symbol: 'DBA', role: 'commodity_proxy', note: 'Invesco DB Agriculture — coffee is a softs sleeve' },
+      DOLLAR,
+    ],
+    asiaLinks: [],
+  },
+  {
     instrument: 'DOGE/USD',
     related: [
       { symbol: 'BTC/USD', role: 'peer', note: 'crypto benchmark — memecoins beta to BTC' },

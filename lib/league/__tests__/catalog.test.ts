@@ -76,12 +76,25 @@ describe('PUBLIC_CATALOG', () => {
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('NDX')
   })
 
-  it('commodities_energy chips are WTI/USD, XBR/USD, UNG — no invalid WTICO/NATGAS aliases', () => {
+  it('commodities_energy chips are WTI/Brent/UNG plus copper/grains/coffee ETFs', () => {
     const energy = PUBLIC_CATALOG.find((c) => c.id === 'commodities_energy')!
-    expect(energy.instruments.map((i) => i.instrument)).toEqual(['WTI/USD', 'XBR/USD', 'UNG'])
+    expect(energy.instruments.map((i) => i.instrument)).toEqual([
+      'WTI/USD',
+      'XBR/USD',
+      'UNG',
+      'CPER',
+      'CORN',
+      'WEAT',
+      'SOYB',
+      'COFF',
+    ])
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('WTICO/USD')
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('NATGAS/USD')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('JO')
     expect(findCatalogInstrument('UNG')?.entry.resolution_rule).toMatch(/regular-session/)
+    expect(findCatalogInstrument('CPER')?.entry.resolution_rule).toMatch(/regular-session/)
+    expect(findCatalogInstrument('CORN')?.entry.expected_name).toEqual(['Corn'])
+    expect(findCatalogInstrument('COFF')?.entry.expected_name).toEqual(['Coffee'])
     expect(findCatalogInstrument('WTI/USD')?.entry.resolution_rule).toMatch(/spot/)
   })
 
@@ -167,6 +180,11 @@ describe('catalog i18n', () => {
     expect(getLeagueUiPack('ko').catalog.instruments['XAU/USD']).toBe('금 현물')
     expect(getLeagueUiPack('ko').catalog.instruments.GLD).toBe('금 ETF')
     expect(getLeagueUiPack('ko').catalog.instruments['XPT/USD']).toBe('백금 현물')
+    expect(getLeagueUiPack('ko').catalog.instruments.CPER).toBe('구리')
+    expect(getLeagueUiPack('ko').catalog.instruments.CORN).toBe('옥수수')
+    expect(getLeagueUiPack('ko').catalog.instruments.WEAT).toBe('밀')
+    expect(getLeagueUiPack('ko').catalog.instruments.SOYB).toBe('대두')
+    expect(getLeagueUiPack('ko').catalog.instruments.COFF).toBe('커피')
   })
 
   it('spot vs ETF note is shown for mixed-clock categories, not for session-only or calendar-only', () => {

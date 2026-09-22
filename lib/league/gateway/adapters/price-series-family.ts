@@ -260,6 +260,23 @@ export const COMMODITY_ENERGY_SYNONYMS: Record<string, string> = {
   'natgas/usd': 'UNG',
   천연가스: 'UNG',
   가스: 'UNG',
+  copper: 'CPER',
+  cper: 'CPER',
+  구리: 'CPER',
+  동: 'CPER',
+  corn: 'CORN',
+  옥수수: 'CORN',
+  wheat: 'WEAT',
+  weat: 'WEAT',
+  밀: 'WEAT',
+  soybean: 'SOYB',
+  soy: 'SOYB',
+  soyb: 'SOYB',
+  대두: 'SOYB',
+  콩: 'SOYB',
+  coffee: 'COFF',
+  coff: 'COFF',
+  커피: 'COFF',
 }
 
 export const FX_SYNONYMS: Record<string, string> = {

@@ -69,6 +69,11 @@ describe('price-series family — Korean / English synonyms', () => {
     ['gold_metals', family.gold_metals, '은', 'XAG/USD'],
     ['gold_metals', family.gold_metals, '백금', 'XPT/USD'],
     ['commodities_energy', family.commodities_energy, '원유', 'WTI/USD'],
+    ['commodities_energy', family.commodities_energy, '구리', 'CPER'],
+    ['commodities_energy', family.commodities_energy, '옥수수', 'CORN'],
+    ['commodities_energy', family.commodities_energy, '밀', 'WEAT'],
+    ['commodities_energy', family.commodities_energy, '대두', 'SOYB'],
+    ['commodities_energy', family.commodities_energy, '커피', 'COFF'],
     ['fx', family.fx, '달러원', 'USD/KRW'],
     ['crypto', family.crypto, '비트코인', 'BTC/USD'],
     ['memecoin', family.memecoin, '도지코인', 'DOGE/USD'],
@@ -172,6 +177,8 @@ describe('price-series family — clocks', () => {
     expect(usesTradingSessions('gold_metal', 'XPT/USD')).toBe(false)
     expect(usesTradingSessions('gold_metal', 'XAG/USD')).toBe(false)
     expect(usesTradingSessions('commodity_energy', 'UNG')).toBe(true)
+    expect(usesTradingSessions('commodity_energy', 'CPER')).toBe(true)
+    expect(usesTradingSessions('commodity_energy', 'CORN')).toBe(true)
     expect(usesTradingSessions('commodity_energy', 'WTI/USD')).toBe(false)
   })
 })

@@ -208,6 +208,35 @@ describe('research director — two-stage parse', () => {
     expect(text).not.toContain('eia_us_natgas_storage:')
   })
 
+  it('inventory lists copper COT / IMF copper without crude EIA', () => {
+    const text = buildPacketInventory({
+      ...inventory,
+      instrument: 'CPER',
+      category: 'commodity_energy',
+      slow: {
+        fetchedAt: '2026-09-22T00:00:00.000Z',
+        shortVolume: { date: '2026-09-21', shortShares: 1, totalShares: 4, shortPct: 25 },
+        putCall: { date: '2026-09-21', total: 0.74, index: null, equity: null },
+        btcEtfFlow: null,
+        insider: null,
+        cotCopper: {
+          contract: 'COPPER- #1',
+          date: '2026-09-15',
+          openInterest: 1,
+          managedMoneyLong: 2,
+          managedMoneyShort: 1,
+          managedMoneyNet: 1,
+        },
+        copperSpotFred: { date: '2026-07-01', value: 13542.82 },
+      },
+    })
+    expect(text).toContain('cot_copper:')
+    expect(text).toContain('fred_imf_copper:')
+    expect(text).toContain('13542.82')
+    expect(text).not.toContain('eia_us_crude_stocks_supply:')
+    expect(text).not.toContain('ovx_crude_vol:')
+  })
+
   it('Stage 2 prompt still carries the 2026-08-28 dispersion budgets', () => {
     expect(buildStage2Prompt('tight', [])).toContain('Cap English missing queries at 2')
     expect(buildStage2Prompt('normal', [])).toContain('Cap English missing queries at 4')

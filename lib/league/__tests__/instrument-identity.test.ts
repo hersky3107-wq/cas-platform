@@ -47,6 +47,11 @@ describe('instrument identity', () => {
     expect(catalogIdentityError('SPY', 'SPDR S&P 500 ETF Trust')).toBeNull()
     expect(quoteMatchesIdentity('Platinum Spot / US Dollar', ['Platinum', 'Spot'])).toBe(true)
     expect(catalogIdentityError('XPT/USD', 'Platinum Spot / US Dollar')).toBeNull()
+    expect(catalogIdentityError('CPER', 'United States Copper Index Fund')).toBeNull()
+    expect(catalogIdentityError('CORN', 'Teucrium Corn Fund')).toBeNull()
+    expect(catalogIdentityError('WEAT', 'Teucrium Wheat Fund')).toBeNull()
+    expect(catalogIdentityError('SOYB', 'Teucrium Soybean Fund')).toBeNull()
+    expect(catalogIdentityError('COFF', 'WisdomTree Coffee')).toBeNull()
   })
 
   it('accepts Twelve Data commodity time_series identity via currency_base', () => {
