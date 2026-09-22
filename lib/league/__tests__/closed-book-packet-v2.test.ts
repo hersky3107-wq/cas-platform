@@ -202,6 +202,92 @@ describe('closed-book packet v2 — new sections', () => {
     expect(text).toContain('CFTC palladium managed-money')
     expect(text).toContain('put/call ratios (2026-09-18): total 0.81')
     expect(text).toContain('SPDR Gold Shares api.spdrgoldshares.com')
+    expect(text).not.toContain('EIA US commercial crude')
+    expect(text).not.toContain('CFTC WTI')
+    expect(text).not.toContain('OVXCLS')
+  })
+
+  it('renders energy slow fields per-commodity and UNAVAILABLE on failure', () => {
+    const wti = assembleClosedBookInjection(
+      input({
+        instrument: 'WTI/USD',
+        category: 'commodity_energy',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: { date: '2026-09-21', total: 0.9, index: 1.1, equity: 0.7 },
+          btcEtfFlow: null,
+          insider: null,
+          eiaCrude: {
+            weekEnding: '2026-09-11',
+            commercialStocksMMbbl: 423.429,
+            commercialWowChangeMMbbl: -0.64,
+            sprMMbbl: 284.957,
+            productionKbpd: 13944,
+            refineryRunsKbpd: 17330,
+            productSuppliedKbpd: 21255,
+          },
+          cotWti: {
+            contract: 'WTI-PHYSICAL - NEW YORK MERCANTILE EXCHANGE',
+            date: '2026-09-15',
+            openInterest: 1955764,
+            managedMoneyLong: 221896,
+            managedMoneyShort: 115617,
+            managedMoneyNet: 106279,
+          },
+          ovx: { date: '2026-09-18', value: 50.39 },
+          wtiSpotFred: { date: '2026-09-15', value: 107.02 },
+          gasolineRetail: { date: '2026-09-07', value: 4.157 },
+        },
+      }),
+    )
+    expect(wti).toContain('EIA US commercial crude stocks ex-SPR (2026-09-11): 423.43 million bbl (wow -0.64')
+    expect(wti).toContain('SPR 284.96 million bbl')
+    expect(wti).toContain('EIA US crude production (2026-09-11): 13,944 thousand b/d')
+    expect(wti).toContain('refinery runs 17,330 thousand b/d')
+    expect(wti).toContain('products supplied 21,255 thousand b/d')
+    expect(wti).toContain('CFTC WTI managed-money (2026-09-15): managed-money net 106,279 contracts')
+    expect(wti).toContain('CBOE crude oil volatility OVX (2026-09-18): 50.39')
+    expect(wti).toContain('FRED OVXCLS')
+    expect(wti).toContain('FRED WTI Cushing spot (2026-09-15): 107.02 USD/bbl')
+    expect(wti).toContain('US retail gasoline (2026-09-07): 4.157 USD/gal')
+    expect(wti).toContain('put/call ratios (2026-09-21): total 0.90')
+    expect(wti).not.toContain('working gas storage')
+    expect(wti).not.toContain('CFTC natural-gas')
+    expect(wti).not.toContain('10Y TIPS')
+    expect(wti).not.toContain('GVZCLS')
+
+    const ung = assembleClosedBookInjection(
+      input({
+        instrument: 'UNG',
+        category: 'commodity_energy',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: { date: '2026-09-21', shortShares: 1000, totalShares: 4000, shortPct: 25 },
+          putCall: { unavailable: 'CBOE daily market statistics: timeout' },
+          btcEtfFlow: null,
+          insider: null,
+          eiaNatgas: {
+            weekEnding: '2026-09-11',
+            storageBcf: 3298,
+            netChangeBcf: 44,
+            vs5yrAvgPct: 3.7,
+            vsYearAgoPct: -3.6,
+            fiveYearAvgBcf: 3180,
+          },
+          cotNatgas: { unavailable: 'CFTC f_disagg.txt: HTTP 500' },
+          henryHubSpotFred: { date: '2026-09-15', value: 2.97 },
+        },
+      }),
+    )
+    expect(ung).toContain('EIA US working gas storage (2026-09-11): 3,298 Bcf (net +44 Bcf; vs 5yr avg +3.7%; vs year-ago -3.6%')
+    expect(ung).toContain('25.0% short-volume ratio')
+    expect(ung).toMatch(/CFTC natural-gas managed-money: UNAVAILABLE/)
+    expect(ung).toMatch(/put\/call ratios: UNAVAILABLE/)
+    expect(ung).toContain('FRED Henry Hub spot (2026-09-15): 2.97 USD/MMBtu')
+    expect(ung).not.toContain('commercial crude stocks')
+    expect(ung).not.toContain('CFTC WTI')
+    expect(ung).not.toContain('OVX')
   })
 
   it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {

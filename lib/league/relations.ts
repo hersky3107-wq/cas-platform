@@ -244,9 +244,10 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
   {
     instrument: 'WTI/USD',
     related: [
-      { symbol: 'XLE', role: 'sector_etf', note: 'energy equities' },
+      { symbol: 'USO', role: 'peer', note: 'US Oil Fund — WTI futures ETF' },
       { symbol: 'XBR/USD', role: 'peer', note: 'Brent spot — co-moving crude' },
-      { symbol: 'UNG', role: 'peer', note: 'US natural gas ETF (no spot symbol on this vendor)' },
+      { symbol: 'XLE', role: 'sector_etf', note: 'energy equities' },
+      { symbol: 'XOP', role: 'sector_etf', note: 'oil & gas E&P equities' },
       DOLLAR,
       VOL,
     ],
@@ -255,6 +256,7 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
   {
     instrument: 'XBR/USD',
     related: [
+      { symbol: 'BNO', role: 'peer', note: 'US Brent Oil Fund — Brent futures ETF' },
       { symbol: 'WTI/USD', role: 'peer', note: 'WTI spot — co-moving crude' },
       { symbol: 'XLE', role: 'sector_etf', note: 'energy equities' },
       DOLLAR,
@@ -266,6 +268,8 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     instrument: 'UNG',
     related: [
       { symbol: 'WTI/USD', role: 'peer', note: 'WTI spot — co-moving energy' },
+      { symbol: 'BOIL', role: 'peer', note: '2x Bloomberg natgas — bullish sentiment proxy' },
+      { symbol: 'KOLD', role: 'peer', note: '-2x Bloomberg natgas — bearish sentiment proxy' },
       { symbol: 'XLE', role: 'sector_etf', note: 'energy equities' },
       DOLLAR,
     ],

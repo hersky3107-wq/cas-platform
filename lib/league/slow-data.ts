@@ -2,6 +2,7 @@ import 'server-only'
 
 import { XMLParser } from 'fast-xml-parser'
 import type { SlowDataSnapshot } from './closed-book-packet'
+import { fetchEnergySlowFields } from './energy-data'
 import { fetchMetalsSlowFields } from './metals-data'
 
 /**
@@ -13,9 +14,11 @@ import { fetchMetalsSlowFields } from './metals-data'
  *  2. CBOE daily put/call ratios     — cboe.com daily market-statistics page;
  *     ratios are embedded as JSON in the page markup (probed live: reliable;
  *     the day's data appears with a lag, so walk-back is required).
- *     Categories: stock, etf_index, real_estate, gold_metal.
+ *     Categories: stock, etf_index, real_estate, gold_metal, commodity_energy.
  *  5. Gold/metals (gold_metal only)  — CFTC COT, Treasury TIPS, GLD/SLV
  *     holdings, FRED GVZ/INDPRO/IPG3344S via `metals-data.ts`.
+ *  6. Energy (commodity_energy only) — EIA WPSR/WNGSR, CFTC WTI/Brent/NG COT,
+ *     FRED OVX, DCOILWTICO, DCOILBRENTEU, DHHNGSP, GASREGW via `energy-data.ts`.
  *  3. Farside BTC spot ETF flows     — PROBED UNRELIABLE (HTTP 403 Cloudflare
  *     even with browser headers). Still attempted once per day so a future
  *     unblock starts working, but expect a labeled UNAVAILABLE line.
@@ -328,15 +331,29 @@ async function fetchInsider(symbol: string): Promise<Insider | Fail> {
 
 // ── entry point ─────────────────────────────────────────────────────────────
 
-const SHORT_VOLUME_CATEGORIES = new Set(['stock', 'etf_index', 'real_estate'])
-const PUT_CALL_CATEGORIES = new Set(['stock', 'etf_index', 'real_estate', 'gold_metal'])
+const SHORT_VOLUME_CATEGORIES = new Set([
+  'stock',
+  'etf_index',
+  'real_estate',
+  'commodity_energy',
+  'commodities_energy',
+])
+const PUT_CALL_CATEGORIES = new Set([
+  'stock',
+  'etf_index',
+  'real_estate',
+  'gold_metal',
+  'commodity_energy',
+  'commodities_energy',
+])
 const CRYPTO_CATEGORIES = new Set(['crypto_spot', 'crypto_perps', 'memecoin'])
 const INSIDER_CATEGORIES = new Set(['stock'])
 const METALS_CATEGORIES = new Set(['gold_metal'])
+const ENERGY_CATEGORIES = new Set(['commodity_energy', 'commodities_energy'])
 
 /**
  * Slow-data snapshot for one round. Returns null when NOTHING applies to the
- * category (fx, metals, commodities…) so the packet omits the section.
+ * category (fx, …) so the packet omits the section.
  * `symbol` is the Twelve Data symbol (plain US ticker) when known.
  */
 export async function fetchSlowData(args: {
@@ -352,15 +369,17 @@ export async function fetchSlowData(args: {
   const wantsBtcFlow = CRYPTO_CATEGORIES.has(category)
   const wantsInsider = INSIDER_CATEGORIES.has(category) && isUsTicker
   const wantsMetals = METALS_CATEGORIES.has(category)
+  const wantsEnergy = ENERGY_CATEGORIES.has(category)
 
-  if (!wantsShort && !wantsPutCall && !wantsBtcFlow && !wantsInsider && !wantsMetals) return null
+  if (!wantsShort && !wantsPutCall && !wantsBtcFlow && !wantsInsider && !wantsMetals && !wantsEnergy) return null
 
-  const [shortVolume, putCall, btcEtfFlow, insider, metals] = await Promise.all([
+  const [shortVolume, putCall, btcEtfFlow, insider, metals, energy] = await Promise.all([
     wantsShort ? fetchShortVolume(symbol!) : Promise.resolve(null),
     wantsPutCall ? fetchPutCall() : Promise.resolve(null),
     wantsBtcFlow ? fetchBtcEtfFlow() : Promise.resolve(null),
     wantsInsider ? fetchInsider(symbol!) : Promise.resolve(null),
     wantsMetals ? fetchMetalsSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+    wantsEnergy ? fetchEnergySlowFields(category, instrument ?? symbol) : Promise.resolve(null),
   ])
 
   return {
@@ -370,5 +389,6 @@ export async function fetchSlowData(args: {
     btcEtfFlow,
     insider,
     ...(metals ?? {}),
+    ...(energy ?? {}),
   }
 }

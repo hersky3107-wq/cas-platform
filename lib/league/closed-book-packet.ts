@@ -131,6 +131,40 @@ export type SlowDataSnapshot = {
   semiProduction?: { date: string; value: number } | { unavailable: string } | null
   cotPlatinum?: CotPositioning | null
   cotPalladium?: CotPositioning | null
+  /** EIA Weekly Petroleum Status Report — crude (WTI/Brent) only. */
+  eiaCrude?:
+    | {
+        weekEnding: string
+        commercialStocksMMbbl: number
+        commercialWowChangeMMbbl: number
+        sprMMbbl: number
+        productionKbpd: number
+        refineryRunsKbpd: number
+        productSuppliedKbpd: number
+      }
+    | { unavailable: string }
+    | null
+  /** EIA Weekly Natural Gas Storage Report — UNG only. */
+  eiaNatgas?:
+    | {
+        weekEnding: string
+        storageBcf: number
+        netChangeBcf: number
+        vs5yrAvgPct: number
+        vsYearAgoPct: number
+        fiveYearAvgBcf: number
+      }
+    | { unavailable: string }
+    | null
+  cotWti?: CotPositioning | null
+  cotBrent?: CotPositioning | null
+  cotNatgas?: CotPositioning | null
+  /** CBOE Crude Oil Volatility Index (OVX) via FRED OVXCLS. Crude only. */
+  ovx?: { date: string; value: number } | { unavailable: string } | null
+  wtiSpotFred?: { date: string; value: number } | { unavailable: string } | null
+  brentSpotFred?: { date: string; value: number } | { unavailable: string } | null
+  henryHubSpotFred?: { date: string; value: number } | { unavailable: string } | null
+  gasolineRetail?: { date: string; value: number } | { unavailable: string } | null
 }
 
 /** Packet v2 (B): a native-language research finding (original + English gloss). */
@@ -658,6 +692,64 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
         : isOzOzGoldSilverRatio(slow.goldSilverRatio.ratio)
           ? `  gold/silver ratio (${slow.goldSilverRatio.asOf}): ${fmt(slow.goldSilverRatio.ratio, 1)} oz silver per oz gold (source: ${slow.goldSilverRatio.goldSymbol}/${slow.goldSilverRatio.silverSymbol} implied spot; informative horizon: days)`
           : `  ${unavailable('gold/silver ratio', 'value is not ounces of silver per ounce of gold (historical ~65-90); an ETF share-price quotient is not this number')}`,
+    )
+  }
+  if (slow.eiaCrude) {
+    if ('unavailable' in slow.eiaCrude) {
+      lines.push(`  ${unavailable('EIA US crude stocks/supply', slow.eiaCrude.unavailable)}`)
+    } else {
+      const c = slow.eiaCrude
+      lines.push(
+        `  EIA US commercial crude stocks ex-SPR (${c.weekEnding}): ${fmt(c.commercialStocksMMbbl, 2)} million bbl (wow ${signed(c.commercialWowChangeMMbbl, 2)}; SPR ${fmt(c.sprMMbbl, 2)} million bbl) (source: EIA WPSR table1.csv; informative horizon: weeks)`,
+      )
+      lines.push(
+        `  EIA US crude production (${c.weekEnding}): ${fmtShares(c.productionKbpd)} thousand b/d; refinery runs ${fmtShares(c.refineryRunsKbpd)} thousand b/d; products supplied ${fmtShares(c.productSuppliedKbpd)} thousand b/d (source: EIA WPSR table1.csv; informative horizon: weeks — demand proxy)`,
+      )
+    }
+  }
+  if (slow.eiaNatgas) {
+    lines.push(
+      'unavailable' in slow.eiaNatgas
+        ? `  ${unavailable('EIA US working gas storage', slow.eiaNatgas.unavailable)}`
+        : `  EIA US working gas storage (${slow.eiaNatgas.weekEnding}): ${fmtShares(slow.eiaNatgas.storageBcf)} Bcf (net ${signed(slow.eiaNatgas.netChangeBcf, 0)} Bcf; vs 5yr avg ${pct(slow.eiaNatgas.vs5yrAvgPct)}; vs year-ago ${pct(slow.eiaNatgas.vsYearAgoPct)}; 5yr avg ${fmtShares(slow.eiaNatgas.fiveYearAvgBcf)} Bcf) (source: EIA WNGSR wngsr.json; informative horizon: weeks)`,
+    )
+  }
+  if (slow.cotWti) lines.push(formatCot('CFTC WTI managed-money', slow.cotWti))
+  if (slow.cotBrent) lines.push(formatCot('CFTC Brent managed-money', slow.cotBrent))
+  if (slow.cotNatgas) lines.push(formatCot('CFTC natural-gas managed-money', slow.cotNatgas))
+  if (slow.ovx) {
+    lines.push(
+      'unavailable' in slow.ovx
+        ? `  ${unavailable('CBOE crude oil volatility OVX', slow.ovx.unavailable)}`
+        : `  CBOE crude oil volatility OVX (${slow.ovx.date}): ${fmt(slow.ovx.value, 2)} (source: FRED OVXCLS; informative horizon: days — options-IV proxy)`,
+    )
+  }
+  if (slow.wtiSpotFred) {
+    lines.push(
+      'unavailable' in slow.wtiSpotFred
+        ? `  ${unavailable('FRED WTI Cushing spot', slow.wtiSpotFred.unavailable)}`
+        : `  FRED WTI Cushing spot (${slow.wtiSpotFred.date}): ${fmt(slow.wtiSpotFred.value, 2)} USD/bbl (source: FRED DCOILWTICO; official EIA benchmark — may lag the Twelve Data series above; informative horizon: days)`,
+    )
+  }
+  if (slow.brentSpotFred) {
+    lines.push(
+      'unavailable' in slow.brentSpotFred
+        ? `  ${unavailable('FRED Brent spot', slow.brentSpotFred.unavailable)}`
+        : `  FRED Brent spot (${slow.brentSpotFred.date}): ${fmt(slow.brentSpotFred.value, 2)} USD/bbl (source: FRED DCOILBRENTEU; official EIA benchmark — may lag the Twelve Data series above; informative horizon: days)`,
+    )
+  }
+  if (slow.henryHubSpotFred) {
+    lines.push(
+      'unavailable' in slow.henryHubSpotFred
+        ? `  ${unavailable('FRED Henry Hub spot', slow.henryHubSpotFred.unavailable)}`
+        : `  FRED Henry Hub spot (${slow.henryHubSpotFred.date}): ${fmt(slow.henryHubSpotFred.value, 2)} USD/MMBtu (source: FRED DHHNGSP; informative horizon: days)`,
+    )
+  }
+  if (slow.gasolineRetail) {
+    lines.push(
+      'unavailable' in slow.gasolineRetail
+        ? `  ${unavailable('US retail gasoline', slow.gasolineRetail.unavailable)}`
+        : `  US retail gasoline (${slow.gasolineRetail.date}): ${fmt(slow.gasolineRetail.value, 3)} USD/gal (source: FRED GASREGW; informative horizon: weeks — crude product demand proxy)`,
     )
   }
   // Only the header would remain → treat as no section.

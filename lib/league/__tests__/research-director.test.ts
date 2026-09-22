@@ -168,6 +168,46 @@ describe('research director — two-stage parse', () => {
     expect(text).toContain('cot_platinum:')
   })
 
+  it('inventory lists EIA crude / natgas / OVX / energy COT when present', () => {
+    const text = buildPacketInventory({
+      ...inventory,
+      instrument: 'WTI/USD',
+      category: 'commodity_energy',
+      slow: {
+        fetchedAt: '2026-09-22T00:00:00.000Z',
+        shortVolume: null,
+        putCall: { date: '2026-09-21', total: 0.9, index: null, equity: null },
+        btcEtfFlow: null,
+        insider: null,
+        eiaCrude: {
+          weekEnding: '2026-09-11',
+          commercialStocksMMbbl: 423.429,
+          commercialWowChangeMMbbl: -0.64,
+          sprMMbbl: 284.957,
+          productionKbpd: 13944,
+          refineryRunsKbpd: 17330,
+          productSuppliedKbpd: 21255,
+        },
+        cotWti: {
+          contract: 'WTI-PHYSICAL',
+          date: '2026-09-15',
+          openInterest: 1,
+          managedMoneyLong: 2,
+          managedMoneyShort: 1,
+          managedMoneyNet: 1,
+        },
+        ovx: { date: '2026-09-18', value: 50.39 },
+      },
+    })
+    expect(text).toContain('eia_us_crude_stocks_supply:')
+    expect(text).toContain('423.429')
+    expect(text).toContain('cot_wti:')
+    expect(text).toContain('ovx_crude_vol:')
+    expect(text).toContain('50.39')
+    expect(text).toContain('put_call:')
+    expect(text).not.toContain('eia_us_natgas_storage:')
+  })
+
   it('Stage 2 prompt still carries the 2026-08-28 dispersion budgets', () => {
     expect(buildStage2Prompt('tight', [])).toContain('Cap English missing queries at 2')
     expect(buildStage2Prompt('normal', [])).toContain('Cap English missing queries at 4')
