@@ -5,6 +5,7 @@ import type { SlowDataSnapshot } from './closed-book-packet'
 import { fetchEnergySlowFields } from './energy-data'
 import { fetchFxSlowFields, fxFinraTickers } from './fx-data'
 import { fetchIndexEtfSlowFields } from './index-etf-data'
+import { fetchMemecoinSlowFields } from './memecoin-data'
 import { fetchMetalsSlowFields } from './metals-data'
 
 /**
@@ -23,6 +24,8 @@ import { fetchMetalsSlowFields } from './metals-data'
  *     grain+coffee COT, FRED OVX/spots/IMF prices via `energy-data.ts`.
  *  7. FX (fx only) — FRED rates/CPI/DXY + CFTC TFF FinFutWk.txt via `fx-data.ts`.
  *  8. Index/ETF (etf_index) — FRED VIXCLS + cash prints + CFTC TFF ES/NQ/YM/Nikkei/VIX via `index-etf-data.ts`.
+ *  9. Memecoin — Binance top-trader L/S + taker ratio + Alternative.me Fear
+ *     & Greed via `memecoin-data.ts` (funding/OI stay in CryptoSnapshot).
  *  3. Farside BTC spot ETF flows     — PROBED UNRELIABLE (HTTP 403 Cloudflare
  *     even with browser headers). Still attempted once per day so a future
  *     unblock starts working, but expect a labeled UNAVAILABLE line.
@@ -357,6 +360,7 @@ const METALS_CATEGORIES = new Set(['gold_metal'])
 const ENERGY_CATEGORIES = new Set(['commodity_energy', 'commodities_energy'])
 const FX_CATEGORIES = new Set(['fx'])
 const INDEX_ETF_CATEGORIES = new Set(['etf_index'])
+const MEMECOIN_SLOW_CATEGORIES = new Set(['memecoin'])
 
 /**
  * Slow-data snapshot for one round. Returns null when NOTHING applies to the
@@ -379,6 +383,7 @@ export async function fetchSlowData(args: {
   const wantsEnergy = ENERGY_CATEGORIES.has(category)
   const wantsFx = FX_CATEGORIES.has(category)
   const wantsIndexEtf = INDEX_ETF_CATEGORIES.has(category)
+  const wantsMemecoin = MEMECOIN_SLOW_CATEGORIES.has(category)
   const fxTickers = wantsFx ? fxFinraTickers(instrument ?? symbol) : []
 
   if (
@@ -389,12 +394,13 @@ export async function fetchSlowData(args: {
     !wantsMetals &&
     !wantsEnergy &&
     !wantsFx &&
-    !wantsIndexEtf
+    !wantsIndexEtf &&
+    !wantsMemecoin
   ) {
     return null
   }
 
-  const [shortVolume, putCall, btcEtfFlow, insider, metals, energy, fx, indexEtf, fxEtfShortVolume] = await Promise.all([
+  const [shortVolume, putCall, btcEtfFlow, insider, metals, energy, fx, indexEtf, memecoin, fxEtfShortVolume] = await Promise.all([
     wantsShort ? fetchShortVolume(symbol!) : Promise.resolve(null),
     wantsPutCall ? fetchPutCall() : Promise.resolve(null),
     wantsBtcFlow ? fetchBtcEtfFlow() : Promise.resolve(null),
@@ -403,6 +409,7 @@ export async function fetchSlowData(args: {
     wantsEnergy ? fetchEnergySlowFields(category, instrument ?? symbol) : Promise.resolve(null),
     wantsFx ? fetchFxSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
     wantsIndexEtf ? fetchIndexEtfSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+    wantsMemecoin ? fetchMemecoinSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
     fxTickers.length
       ? Promise.all(
           fxTickers.map(async (ticker) => {
@@ -423,6 +430,7 @@ export async function fetchSlowData(args: {
     ...(energy ?? {}),
     ...(fx ?? {}),
     ...(indexEtf ?? {}),
+    ...(memecoin ?? {}),
     ...(fxEtfShortVolume ? { fxEtfShortVolume } : {}),
   }
 }

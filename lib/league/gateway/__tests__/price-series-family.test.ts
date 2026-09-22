@@ -81,6 +81,8 @@ describe('price-series family — Korean / English synonyms', () => {
     ['fx', family.fx, '파운드엔', 'GBP/JPY'],
     ['crypto', family.crypto, '비트코인', 'BTC/USD'],
     ['memecoin', family.memecoin, '도지코인', 'DOGE/USD'],
+    ['memecoin', family.memecoin, '페페', 'PEPE/USD'],
+    ['memecoin', family.memecoin, '봉크', 'BONK/USD'],
     ['real_estate', family.real_estate, 'vnq', 'VNQ'],
   ] as const)('%s resolves the synonym', async (_id, adapter, mention, ticker) => {
     const r = await adapter.resolveEntity(mention, 'ko')

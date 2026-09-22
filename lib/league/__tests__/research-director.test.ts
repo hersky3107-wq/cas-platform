@@ -308,6 +308,55 @@ describe('research director — two-stage parse', () => {
     expect(text).not.toContain('fed_funds:')
   })
 
+  it('inventory lists memecoin fear-greed / L-S / taker so director does not re-search them', () => {
+    const text = buildPacketInventory({
+      ...inventory,
+      instrument: 'WIF/USD',
+      category: 'memecoin',
+      crypto: {
+        fetchedAt: '2026-09-22T00:00:00.000Z',
+        funding: { rate: 0.00012, nextFundingTime: null },
+        openInterest: { contracts: 99 },
+        markIv: { unavailable: 'no Deribit currency mapping for WIF/USD' },
+      },
+      slow: {
+        fetchedAt: '2026-09-22T00:00:00.000Z',
+        shortVolume: null,
+        putCall: null,
+        btcEtfFlow: { date: '22 Sep 2026', netFlowUsdM: 10 },
+        insider: null,
+        fearGreed: {
+          latest: { date: '2026-09-22', value: 28, classification: 'Fear' },
+          week: [{ date: '2026-09-22', value: 28, classification: 'Fear' }],
+        },
+        topTraderLs: {
+          symbol: 'WIFUSDT',
+          timestamp: '2026-09-22T01:00:00.000Z',
+          period: '1h',
+          longShortRatio: 0.9,
+        },
+        takerRatio: {
+          symbol: 'WIFUSDT',
+          timestamp: '2026-09-22T01:00:00.000Z',
+          period: '1h',
+          buySellRatio: 0.88,
+        },
+      },
+    })
+    expect(text).toContain('crypto.funding:')
+    expect(text).toContain('crypto.funding_rate:')
+    expect(text).toContain('crypto.open_interest:')
+    expect(text).toContain('crypto.fear_greed:')
+    expect(text).toContain('"value":28')
+    expect(text).toContain('crypto.top_trader_ls:')
+    expect(text).toContain('WIFUSDT')
+    expect(text).toContain('crypto.taker_ratio:')
+    expect(text).toContain('btc_etf_flow:')
+    expect(text).not.toContain('eia_us_crude_stocks_supply:')
+    expect(text).not.toContain('gvz_gold_vol:')
+    expect(text).not.toContain('fed_funds:')
+  })
+
   it('Stage 2 prompt still carries the 2026-08-28 dispersion budgets', () => {
     expect(buildStage2Prompt('tight', [])).toContain('Cap English missing queries at 2')
     expect(buildStage2Prompt('normal', [])).toContain('Cap English missing queries at 4')

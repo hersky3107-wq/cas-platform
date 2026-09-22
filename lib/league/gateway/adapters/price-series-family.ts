@@ -384,6 +384,16 @@ export const MEMECOIN_SYNONYMS: Record<string, string> = {
   'shib/usd': 'SHIB/USD',
   시바: 'SHIB/USD',
   시바이누: 'SHIB/USD',
+  pepe: 'PEPE/USD',
+  'pepe/usd': 'PEPE/USD',
+  페페: 'PEPE/USD',
+  wif: 'WIF/USD',
+  dogwifhat: 'WIF/USD',
+  'wif/usd': 'WIF/USD',
+  위프: 'WIF/USD',
+  bonk: 'BONK/USD',
+  'bonk/usd': 'BONK/USD',
+  봉크: 'BONK/USD',
 }
 
 export const REAL_ESTATE_SYNONYMS: Record<string, string> = {

@@ -500,10 +500,39 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     instrument: 'SHIB/USD',
     related: [
       { symbol: 'BTC/USD', role: 'peer', note: 'crypto benchmark' },
-      { symbol: 'DOGE/USD', role: 'peer', note: 'co-moving memecoin' },
       { symbol: 'ETH/USD', role: 'peer', note: 'major-alt benchmark' },
+      { symbol: 'DOGE/USD', role: 'peer', note: 'co-moving memecoin' },
     ],
     asiaLinks: ['ko'],
+  },
+  {
+    instrument: 'PEPE/USD',
+    related: [
+      { symbol: 'ETH/USD', role: 'peer', note: 'ERC-20 host-chain beta — PEPE follows ETH, not SOL' },
+      { symbol: 'DOGE/USD', role: 'peer', note: 'meme-complex co-move' },
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'WIF/USD',
+    related: [
+      { symbol: 'SOL/USD', role: 'peer', note: 'Solana host-chain beta — WIF is not BTC-only' },
+      { symbol: 'BTC/USD', role: 'peer', note: 'crypto risk-on overlay' },
+      { symbol: 'BONK/USD', role: 'peer', note: 'co-moving Solana memecoin' },
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'BONK/USD',
+    related: [
+      { symbol: 'SOL/USD', role: 'peer', note: 'Solana host-chain beta — BONK is not BTC-only' },
+      { symbol: 'BTC/USD', role: 'peer', note: 'crypto risk-on overlay' },
+      { symbol: 'WIF/USD', role: 'peer', note: 'co-moving Solana memecoin' },
+      VOL,
+    ],
+    asiaLinks: [],
   },
   {
     instrument: 'VNQ',

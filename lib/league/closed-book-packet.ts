@@ -247,6 +247,40 @@ export type SlowDataSnapshot = {
   cotVix?: CotPositioning | null
   indexEtfCotGap?: { note: string } | null
   indexEtfIdentityNote?: { note: string } | null
+  /**
+   * Memecoin extras (memecoin category only). Fear & Greed is market-wide;
+   * L/S and taker are per Binance USDT-M contract (1000x map for SHIB/PEPE/BONK).
+   * Funding / OI stay in CryptoSnapshot (CRYPTO POSITIONING).
+   */
+  fearGreed?:
+    | {
+        latest: { date: string; value: number; classification: string }
+        week: readonly { date: string; value: number; classification: string }[]
+      }
+    | { unavailable: string }
+    | null
+  topTraderLs?:
+    | {
+        symbol: string
+        timestamp: string
+        period: string
+        longAccountPct?: number
+        shortAccountPct?: number
+        longShortRatio?: number
+      }
+    | { unavailable: string }
+    | null
+  takerRatio?:
+    | {
+        symbol: string
+        timestamp: string
+        period: string
+        buySellRatio?: number
+        buyVol?: number
+        sellVol?: number
+      }
+    | { unavailable: string }
+    | null
 }
 
 /** Packet v2 (B): a native-language research finding (original + English gloss). */
@@ -1015,6 +1049,42 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
         'days — lagged cash print; EWJ is MSCI Japan, not Nikkei',
       ),
     )
+  }
+  if (slow.fearGreed) {
+    if ('unavailable' in slow.fearGreed) {
+      lines.push(`  ${unavailable('Crypto Fear & Greed', slow.fearGreed.unavailable)}`)
+    } else {
+      const week = slow.fearGreed.week.map((p) => `${fmt(p.value, 0)}`).join(', ')
+      lines.push(
+        `  Crypto Fear & Greed (${slow.fearGreed.latest.date}): ${fmt(slow.fearGreed.latest.value, 0)} ${slow.fearGreed.latest.classification}; 7d: ${week} (source: Alternative.me /fng; informative horizon: days — market-wide, not coin-specific)`,
+      )
+    }
+  }
+  if (slow.topTraderLs) {
+    if ('unavailable' in slow.topTraderLs) {
+      lines.push(`  ${unavailable('Binance top-trader long/short', slow.topTraderLs.unavailable)}`)
+    } else {
+      const t = slow.topTraderLs
+      const long = t.longAccountPct == null ? 'n/a' : `${fmt(t.longAccountPct, 1)}%`
+      const short = t.shortAccountPct == null ? 'n/a' : `${fmt(t.shortAccountPct, 1)}%`
+      const ratio = t.longShortRatio == null ? 'n/a' : fmt(t.longShortRatio, 3)
+      lines.push(
+        `  Binance top-trader long/short (${t.symbol}, ${t.period}): long ${long} / short ${short} (ratio ${ratio}; as-of ${t.timestamp}) (source: Binance /futures/data/topLongShortPositionRatio; informative horizon: hours)`,
+      )
+    }
+  }
+  if (slow.takerRatio) {
+    if ('unavailable' in slow.takerRatio) {
+      lines.push(`  ${unavailable('Binance taker buy/sell', slow.takerRatio.unavailable)}`)
+    } else {
+      const t = slow.takerRatio
+      const ratio = t.buySellRatio == null ? 'n/a' : fmt(t.buySellRatio, 3)
+      const buy = t.buyVol == null ? 'n/a' : fmt(t.buyVol, 0)
+      const sell = t.sellVol == null ? 'n/a' : fmt(t.sellVol, 0)
+      lines.push(
+        `  Binance taker buy/sell (${t.symbol}, ${t.period}): ratio ${ratio} (buyVol ${buy} / sellVol ${sell}; as-of ${t.timestamp}) (source: Binance /futures/data/takerlongshortRatio; informative horizon: hours)`,
+      )
+    }
   }
   if (slow.cotEs) lines.push(formatCot('CFTC E-mini S&P 500 leveraged-funds', slow.cotEs))
   if (slow.cotNq) lines.push(formatCot('CFTC Nasdaq mini leveraged-funds', slow.cotNq))

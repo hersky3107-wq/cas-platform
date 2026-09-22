@@ -2,6 +2,7 @@ import 'server-only'
 
 import { twelveDataGet } from './market-data'
 import type { ConsensusSnapshot, CryptoSnapshot } from './closed-book-packet'
+import { binancePerpSymbol } from './memecoin-parse'
 
 /**
  * Extra numeric context for the closed-book packet. NO AI CALLS.
@@ -103,16 +104,7 @@ export async function fetchMarketConsensus(symbol: string): Promise<ConsensusSna
 }
 
 function binanceSymbol(instrument: string): string | null {
-  const raw = instrument.trim().toUpperCase().replace('-', '/')
-  if (raw === 'BTC/USD' || raw === 'BTCUSDT') return 'BTCUSDT'
-  if (raw === 'ETH/USD' || raw === 'ETHUSDT') return 'ETHUSDT'
-  if (raw === 'SOL/USD' || raw === 'SOLUSDT') return 'SOLUSDT'
-  if (raw === 'DOGE/USD' || raw === 'DOGEUSDT') return 'DOGEUSDT'
-  if (raw.includes('/')) {
-    const [base, quote] = raw.split('/')
-    if (quote === 'USD' || quote === 'USDT') return `${base}USDT`
-  }
-  return null
+  return binancePerpSymbol(instrument)
 }
 
 function deribitCurrency(instrument: string): string | null {

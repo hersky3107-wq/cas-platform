@@ -607,6 +607,64 @@ describe('closed-book packet v2 — new sections', () => {
     expect(ewy).not.toContain('FRED S&P 500 cash')
   })
 
+  it('renders memecoin Fear & Greed + Binance L/S + taker; no EIA/GVZ/Fed leak', () => {
+    const text = assembleClosedBookInjection(
+      input({
+        instrument: 'SHIB/USD',
+        category: 'memecoin',
+        crypto: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          funding: { rate: 0.0001, nextFundingTime: '2026-09-22T08:00:00.000Z' },
+          openInterest: { contracts: 12345.5 },
+          markIv: { unavailable: 'no Deribit currency mapping for SHIB/USD' },
+        },
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: { date: '22 Sep 2026', netFlowUsdM: 120.5 },
+          insider: null,
+          fearGreed: {
+            latest: { date: '2026-09-22', value: 64, classification: 'Greed' },
+            week: [
+              { date: '2026-09-22', value: 64, classification: 'Greed' },
+              { date: '2026-09-21', value: 58, classification: 'Greed' },
+            ],
+          },
+          topTraderLs: {
+            symbol: '1000SHIBUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            longAccountPct: 55.5,
+            shortAccountPct: 44.5,
+            longShortRatio: 1.247,
+          },
+          takerRatio: {
+            symbol: '1000SHIBUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            buySellRatio: 1.08,
+            buyVol: 1000,
+            sellVol: 900,
+          },
+        },
+      }),
+    )
+    expect(text).toContain('CRYPTO POSITIONING')
+    expect(text).toContain('funding: 0.0100%')
+    expect(text).toContain('open interest: 12345.500 contracts')
+    expect(text).toContain('1000SHIBUSDT')
+    expect(text).toContain('Crypto Fear & Greed (2026-09-22): 64 Greed')
+    expect(text).toContain('Alternative.me /fng')
+    expect(text).toContain('Binance top-trader long/short (1000SHIBUSDT, 1h): long 55.5% / short 44.5% (ratio 1.247')
+    expect(text).toContain('Binance taker buy/sell (1000SHIBUSDT, 1h): ratio 1.080')
+    expect(text).toContain('BTC spot ETF net flow')
+    expect(text).not.toContain('EIA US commercial crude')
+    expect(text).not.toContain('GVZ')
+    expect(text).not.toContain('Fed funds effective')
+    expect(text).not.toContain('CFTC E-mini S&P 500')
+  })
+
   it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {
     expect(isOzOzGoldSilverRatio(7.21)).toBe(false)
     expect(isOzOzGoldSilverRatio(72.9)).toBe(true)

@@ -240,6 +240,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     instruments: [
       { instrument: 'DOGE/USD', resolution_rule: 'DOGE/USD spot close vs prior close', chip_visible: true, expected_name: ['Dogecoin'] },
       { instrument: 'SHIB/USD', resolution_rule: 'SHIB/USD spot close vs prior close', chip_visible: true, expected_name: ['Shiba'] },
+      { instrument: 'PEPE/USD', resolution_rule: 'PEPE/USD spot close vs prior close', chip_visible: true, expected_name: ['Pepe'] },
+      { instrument: 'WIF/USD', resolution_rule: 'WIF/USD spot close vs prior close', chip_visible: true, expected_name: ['wif'] },
+      { instrument: 'BONK/USD', resolution_rule: 'BONK/USD spot close vs prior close', chip_visible: true, expected_name: ['Bonk'] },
     ],
   },
   {

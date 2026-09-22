@@ -77,6 +77,12 @@ describe('instrument identity', () => {
     expect(catalogIdentityError('SPXU', 'ProShares UltraPro Short S&P 500')).toBeNull()
     expect(catalogIdentityError('SPXU', 'Invesco S&P 500 UCITS ETF Acc')).toMatch(/identity mismatch/)
     expect(catalogIdentityError('SPXS', 'Invesco S&P 500 UCITS ETF Acc')).toMatch(/refusing SPXS/)
+    expect(catalogIdentityError('DOGE/USD', 'Dogecoin')).toBeNull()
+    expect(catalogIdentityError('SHIB/USD', 'Shiba Inu')).toBeNull()
+    expect(catalogIdentityError('PEPE/USD', 'Pepe')).toBeNull()
+    expect(catalogIdentityError('WIF/USD', 'dogwifhat')).toBeNull()
+    expect(catalogIdentityError('BONK/USD', 'Bonk')).toBeNull()
+    expect(catalogIdentityError('PEPE/USD', 'Dogecoin')).toMatch(/identity mismatch/)
   })
 
   it('accepts Twelve Data commodity time_series identity via currency_base', () => {

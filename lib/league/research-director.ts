@@ -93,6 +93,7 @@ export function buildPacketInventory(input: PacketInventoryInput): string {
   }
   if (input.crypto) {
     lines.push(snapLine('crypto.funding', input.crypto.funding) ?? 'crypto.funding: n/a')
+    lines.push(snapLine('crypto.funding_rate', input.crypto.funding) ?? 'crypto.funding_rate: n/a')
     lines.push(snapLine('crypto.open_interest', input.crypto.openInterest) ?? 'crypto.open_interest: n/a')
     lines.push(snapLine('crypto.mark_iv', input.crypto.markIv) ?? 'crypto.mark_iv: n/a')
   }
@@ -191,6 +192,9 @@ export function buildPacketInventory(input: PacketInventoryInput): string {
       ['cot_vix', slow.cotVix],
       ['index_etf_cot_gap', slow.indexEtfCotGap],
       ['index_etf_identity_note', slow.indexEtfIdentityNote],
+      ['crypto.fear_greed', slow.fearGreed],
+      ['crypto.top_trader_ls', slow.topTraderLs],
+      ['crypto.taker_ratio', slow.takerRatio],
     ] as const) {
       const line = snapLine(key, field)
       if (line) lines.push(line)

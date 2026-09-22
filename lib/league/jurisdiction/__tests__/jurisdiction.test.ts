@@ -115,6 +115,12 @@ describe('matrix default-deny shape (data-table sanity)', () => {
   it('Korea blocks memecoin as a category, not only the prompt', () => {
     expect(isCategoryAllowedForGroup('KR', 'memecoin')).toBe(false)
     expect(isCategoryAllowed('memecoin', { declaredCountry: 'KR', ipCountry: 'KR' })).toBe(false)
+    expect(isCategoryAllowedForGroup('EU', 'memecoin')).toBe(false)
+    expect(isCategoryAllowedForGroup('UK', 'memecoin')).toBe(false)
+    expect(isCategoryAllowedForGroup('ME', 'memecoin')).toBe(false)
+    expect(isCategoryAllowedForGroup('OTHER', 'memecoin')).toBe(false)
+    expect(isCategoryAllowedForGroup('US', 'memecoin')).toBe(true)
+    expect(isCategoryAllowedForGroup('JP', 'memecoin')).toBe(true)
   })
 
   it('an unknown/unlisted category string is denied everywhere, never throws', () => {

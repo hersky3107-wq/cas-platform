@@ -180,6 +180,25 @@ describe('PUBLIC_CATALOG', () => {
     ])
   })
 
+  it('memecoin chips are DOGE/SHIB/PEPE/WIF/BONK with no instrument deniedGroups (KR is category-level)', () => {
+    const meme = PUBLIC_CATALOG.find((c) => c.id === 'memecoin')!
+    expect(meme.ledgerCategory).toBe('memecoin')
+    expect(meme.instruments.map((i) => i.instrument)).toEqual([
+      'DOGE/USD',
+      'SHIB/USD',
+      'PEPE/USD',
+      'WIF/USD',
+      'BONK/USD',
+    ])
+    for (const entry of meme.instruments) {
+      expect(entry.deniedGroups, entry.instrument).toBeUndefined()
+      expect(entry.chip_visible).toBe(true)
+    }
+    expect(findCatalogInstrument('PEPE/USD')?.entry.expected_name).toEqual(['Pepe'])
+    expect(findCatalogInstrument('WIF/USD')?.entry.expected_name).toEqual(['wif'])
+    expect(findCatalogInstrument('BONK/USD')?.entry.expected_name).toEqual(['Bonk'])
+  })
+
   it('keeps instrument ids unique and includes the existing AAPL / BTC/USD / EUR/USD keys', () => {
     expect(new Set(CATALOG_INSTRUMENT_IDS).size).toBe(CATALOG_INSTRUMENT_IDS.length)
     expect(CATALOG_INSTRUMENT_IDS).toContain('AAPL')
@@ -263,6 +282,9 @@ describe('catalog i18n', () => {
     expect(getLeagueUiPack('ko').catalog.instruments['USD/CNH']).toBe('달러/위안')
     expect(getLeagueUiPack('ko').catalog.instruments.EWY).toBe('한국 ETF (EWY)')
     expect(getLeagueUiPack('ko').catalog.instruments.TQQQ).toBe('나스닥 3배 (TQQQ)')
+    expect(getLeagueUiPack('en').catalog.instruments['PEPE/USD']).toBe('Pepe (PEPE)')
+    expect(getLeagueUiPack('ko').catalog.instruments['WIF/USD']).toBe('도그위프햇 (WIF)')
+    expect(getLeagueUiPack('ko').catalog.instruments['BONK/USD']).toBe('봉크 (BONK)')
   })
 
   it('spot vs ETF note is shown for mixed-clock categories, not for session-only or calendar-only', () => {
