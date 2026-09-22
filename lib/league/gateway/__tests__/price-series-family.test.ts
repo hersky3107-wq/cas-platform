@@ -80,6 +80,8 @@ describe('price-series family — Korean / English synonyms', () => {
     ['fx', family.fx, '엔원', 'JPY/KRW'],
     ['fx', family.fx, '파운드엔', 'GBP/JPY'],
     ['crypto', family.crypto, '비트코인', 'BTC/USD'],
+    ['crypto', family.crypto, '리플', 'XRP/USD'],
+    ['crypto', family.crypto, 'bnb', 'BNB/USD'],
     ['memecoin', family.memecoin, '도지코인', 'DOGE/USD'],
     ['memecoin', family.memecoin, '페페', 'PEPE/USD'],
     ['memecoin', family.memecoin, '봉크', 'BONK/USD'],

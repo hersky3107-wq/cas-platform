@@ -371,6 +371,17 @@ export const CRYPTO_SYNONYMS: Record<string, string> = {
   solana: 'SOL/USD',
   'sol/usd': 'SOL/USD',
   솔라나: 'SOL/USD',
+  xrp: 'XRP/USD',
+  ripple: 'XRP/USD',
+  'xrp/usd': 'XRP/USD',
+  리플: 'XRP/USD',
+  瑞波: 'XRP/USD',
+  bnb: 'BNB/USD',
+  'bnb/usd': 'BNB/USD',
+  바이낸스코인: 'BNB/USD',
+  바이낸스: 'BNB/USD',
+  币安币: 'BNB/USD',
+  幣安幣: 'BNB/USD',
 }
 
 export const MEMECOIN_SYNONYMS: Record<string, string> = {

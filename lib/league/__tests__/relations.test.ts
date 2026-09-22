@@ -110,6 +110,24 @@ describe('index_etf related ETFs', () => {
   })
 })
 
+describe('crypto major related isolation', () => {
+  it('BTC keeps QQQ/GLD/UUP/VIXY; ETH keeps BTC/SOL; SOL/XRP/BNB are BTC/ETH beta', () => {
+    expect(relationsFor('BTC/USD')!.related.map((r) => r.symbol)).toEqual([
+      'ETH/USD',
+      'QQQ',
+      'VIXY',
+      'UUP',
+      'GLD',
+    ])
+    expect(relationsFor('ETH/USD')!.related.map((r) => r.symbol)).toEqual(['BTC/USD', 'SOL/USD', 'QQQ', 'UUP'])
+    expect(relationsFor('SOL/USD')!.related.map((r) => r.symbol)).toEqual(['BTC/USD', 'ETH/USD', 'VIXY'])
+    expect(relationsFor('XRP/USD')!.related.map((r) => r.symbol)).toEqual(['BTC/USD', 'ETH/USD', 'VIXY'])
+    expect(relationsFor('BNB/USD')!.related.map((r) => r.symbol)).toEqual(['BTC/USD', 'ETH/USD', 'VIXY'])
+    expect(relationsFor('XRP/USD')!.related.map((r) => r.symbol)).not.toContain('SOL/USD')
+    expect(relationsFor('BNB/USD')!.related.map((r) => r.symbol)).not.toContain('QQQ')
+  })
+})
+
 describe('memecoin related isolation', () => {
   it('DOGE/SHIB keep BTC+ETH; PEPE is ETH not SOL; WIF/BONK are SOL not ETH', () => {
     expect(relationsFor('DOGE/USD')!.related.map((r) => r.symbol)).toEqual(['BTC/USD', 'ETH/USD', 'SHIB/USD', 'VIXY'])

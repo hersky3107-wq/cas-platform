@@ -124,7 +124,24 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     related: [
       { symbol: 'BTC/USD', role: 'peer', note: 'crypto benchmark' },
       { symbol: 'ETH/USD', role: 'peer', note: 'competing L1' },
-      DOLLAR,
+      VOL,
+    ],
+    asiaLinks: ['ko'],
+  },
+  {
+    instrument: 'XRP/USD',
+    related: [
+      { symbol: 'BTC/USD', role: 'peer', note: 'crypto benchmark — XRP beta' },
+      { symbol: 'ETH/USD', role: 'peer', note: 'major-alt benchmark' },
+      VOL,
+    ],
+    asiaLinks: ['ko'],
+  },
+  {
+    instrument: 'BNB/USD',
+    related: [
+      { symbol: 'BTC/USD', role: 'peer', note: 'crypto benchmark — BNB beta' },
+      { symbol: 'ETH/USD', role: 'peer', note: 'major-alt benchmark' },
       VOL,
     ],
     asiaLinks: ['ko'],

@@ -24,6 +24,8 @@ describe('Binance 1000x perp mapping', () => {
     expect(binancePerpSymbol('BTC/USD')).toBe('BTCUSDT')
     expect(binancePerpSymbol('ETH/USD')).toBe('ETHUSDT')
     expect(binancePerpSymbol('SOL/USD')).toBe('SOLUSDT')
+    expect(binancePerpSymbol('XRP/USD')).toBe('XRPUSDT')
+    expect(binancePerpSymbol('BNB/USD')).toBe('BNBUSDT')
   })
 })
 

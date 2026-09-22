@@ -248,9 +248,11 @@ export type SlowDataSnapshot = {
   indexEtfCotGap?: { note: string } | null
   indexEtfIdentityNote?: { note: string } | null
   /**
-   * Memecoin extras (memecoin category only). Fear & Greed is market-wide;
+   * Crypto extras (memecoin + crypto_spot). Fear & Greed is market-wide;
    * L/S and taker are per Binance USDT-M contract (1000x map for SHIB/PEPE/BONK).
    * Funding / OI stay in CryptoSnapshot (CRYPTO POSITIONING).
+   * On-chain / dominance / ETH ETF flow / IBIT-FBTC-ETHA shorts are crypto_spot
+   * majors only (BTC/ETH isolation).
    */
   fearGreed?:
     | {
@@ -281,6 +283,20 @@ export type SlowDataSnapshot = {
       }
     | { unavailable: string }
     | null
+  hashRate?: { date: string; value: number; unit?: string } | { unavailable: string } | null
+  activeAddresses?: { date: string; value: number; unit?: string } | { unavailable: string } | null
+  difficultyAdjustment?:
+    | { progressPct: number; changePct: number; estimatedDate: string | null; remainingBlocks: number | null }
+    | { unavailable: string }
+    | null
+  mempoolFees?:
+    | { fastest: number; halfHour: number; hour: number; economy: number; unit: string }
+    | { unavailable: string }
+    | null
+  btcDominance?: { date: string; pct: number } | { unavailable: string } | null
+  ethDominance?: { date: string; pct: number } | { unavailable: string } | null
+  ethEtfFlow?: { date: string; netFlowUsdM: number } | { unavailable: string } | null
+  cryptoEtfShortVolume?: FxEtfShortVolume[] | null
 }
 
 /** Packet v2 (B): a native-language research finding (original + English gloss). */
@@ -768,6 +784,13 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
         : `  BTC spot ETF net flow (${slow.btcEtfFlow.date}): ${signed(slow.btcEtfFlow.netFlowUsdM, 1)} US$m (source: Farside Investors; informative horizon: days-weeks)`,
     )
   }
+  if (slow.ethEtfFlow) {
+    lines.push(
+      'unavailable' in slow.ethEtfFlow
+        ? `  ${unavailable('ETH spot ETF flows', slow.ethEtfFlow.unavailable)}`
+        : `  ETH spot ETF net flow (${slow.ethEtfFlow.date}): ${signed(slow.ethEtfFlow.netFlowUsdM, 1)} US$m (source: Farside Investors; informative horizon: days-weeks)`,
+    )
+  }
   if (slow.insider) {
     lines.push(
       'unavailable' in slow.insider
@@ -1084,6 +1107,68 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
       lines.push(
         `  Binance taker buy/sell (${t.symbol}, ${t.period}): ratio ${ratio} (buyVol ${buy} / sellVol ${sell}; as-of ${t.timestamp}) (source: Binance /futures/data/takerlongshortRatio; informative horizon: hours)`,
       )
+    }
+  }
+  if (slow.hashRate) {
+    lines.push(
+      'unavailable' in slow.hashRate
+        ? `  ${unavailable('BTC hash rate', slow.hashRate.unavailable)}`
+        : `  BTC hash rate (${slow.hashRate.date}): ${fmt(slow.hashRate.value, 2)}${slow.hashRate.unit ? ` ${slow.hashRate.unit}` : ''} (source: blockchain.info /charts/hash-rate; informative horizon: days)`,
+    )
+  }
+  if (slow.activeAddresses) {
+    lines.push(
+      'unavailable' in slow.activeAddresses
+        ? `  ${unavailable('BTC active addresses', slow.activeAddresses.unavailable)}`
+        : `  BTC active addresses (${slow.activeAddresses.date}): ${fmt(slow.activeAddresses.value, 0)} (source: blockchain.info /charts/n-unique-addresses; informative horizon: days)`,
+    )
+  }
+  if (slow.difficultyAdjustment) {
+    if ('unavailable' in slow.difficultyAdjustment) {
+      lines.push(`  ${unavailable('BTC difficulty adjustment', slow.difficultyAdjustment.unavailable)}`)
+    } else {
+      const d = slow.difficultyAdjustment
+      const eta = d.estimatedDate ? `; next ${d.estimatedDate}` : ''
+      const left = d.remainingBlocks == null ? '' : `; ${fmt(d.remainingBlocks, 0)} blocks left`
+      lines.push(
+        `  BTC difficulty adjustment: ${fmt(d.progressPct, 1)}% through epoch, estimated change ${signed(d.changePct, 2)}%${eta}${left} (source: mempool.space /difficulty-adjustment; informative horizon: days)`,
+      )
+    }
+  }
+  if (slow.mempoolFees) {
+    if ('unavailable' in slow.mempoolFees) {
+      lines.push(`  ${unavailable('BTC mempool fees', slow.mempoolFees.unavailable)}`)
+    } else {
+      const f = slow.mempoolFees
+      lines.push(
+        `  BTC mempool fees: fastest ${fmt(f.fastest, 0)} / half-hour ${fmt(f.halfHour, 0)} / hour ${fmt(f.hour, 0)} / economy ${fmt(f.economy, 0)} ${f.unit} (source: mempool.space /fees/recommended; informative horizon: hours)`,
+      )
+    }
+  }
+  if (slow.btcDominance) {
+    lines.push(
+      'unavailable' in slow.btcDominance
+        ? `  ${unavailable('BTC dominance', slow.btcDominance.unavailable)}`
+        : `  BTC dominance (${slow.btcDominance.date}): ${fmt(slow.btcDominance.pct, 2)}% (source: CoinGecko /global; informative horizon: days)`,
+    )
+  }
+  if (slow.ethDominance) {
+    lines.push(
+      'unavailable' in slow.ethDominance
+        ? `  ${unavailable('ETH dominance', slow.ethDominance.unavailable)}`
+        : `  ETH dominance (${slow.ethDominance.date}): ${fmt(slow.ethDominance.pct, 2)}% (source: CoinGecko /global; informative horizon: days)`,
+    )
+  }
+  if (slow.cryptoEtfShortVolume) {
+    for (const row of slow.cryptoEtfShortVolume) {
+      const label = `FINRA short-sale volume ${row.symbol} (crypto spot ETF proxy)`
+      if ('unavailable' in row) {
+        lines.push(`  ${unavailable(label, row.unavailable)}`)
+      } else {
+        lines.push(
+          `  ${label} (${row.date}): short ${fmtShares(row.shortShares)} / total ${fmtShares(row.totalShares)} = ${fmt(row.shortPct, 1)}% short-volume ratio (source: FINRA CNMS daily file; informative horizon: days-weeks)`,
+        )
+      }
     }
   }
   if (slow.cotEs) lines.push(formatCot('CFTC E-mini S&P 500 leveraged-funds', slow.cotEs))

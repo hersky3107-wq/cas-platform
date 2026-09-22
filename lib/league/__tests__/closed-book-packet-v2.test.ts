@@ -665,6 +665,160 @@ describe('closed-book packet v2 — new sections', () => {
     expect(text).not.toContain('CFTC E-mini S&P 500')
   })
 
+  it('renders crypto_spot BTC on-chain + dominance + IBIT short; XRP has no on-chain leak', () => {
+    const btc = assembleClosedBookInjection(
+      input({
+        instrument: 'BTC/USD',
+        category: 'crypto_spot',
+        crypto: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          funding: { rate: 0.00008, nextFundingTime: null },
+          openInterest: { contracts: 109000 },
+          markIv: { ivPct: 48.2, instrument: 'BTC-27SEP26-100000-C' },
+        },
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: { date: '22 Sep 2026', netFlowUsdM: 210 },
+          insider: null,
+          fearGreed: {
+            latest: { date: '2026-09-22', value: 72, classification: 'Greed' },
+            week: [{ date: '2026-09-22', value: 72, classification: 'Greed' }],
+          },
+          topTraderLs: {
+            symbol: 'BTCUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            longShortRatio: 2.24,
+          },
+          takerRatio: {
+            symbol: 'BTCUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            buySellRatio: 0.86,
+          },
+          hashRate: { date: '2026-09-22', value: 720.5, unit: 'TH/s' },
+          activeAddresses: { date: '2026-09-22', value: 812000 },
+          difficultyAdjustment: {
+            progressPct: 45.2,
+            changePct: 2.1,
+            estimatedDate: '2026-09-28T00:00:00.000Z',
+            remainingBlocks: 1100,
+          },
+          mempoolFees: { fastest: 8, halfHour: 5, hour: 3, economy: 1, unit: 'sat/vB' },
+          btcDominance: { date: '2026-09-22', pct: 57.2 },
+          cryptoEtfShortVolume: [
+            { symbol: 'IBIT', date: '2026-09-19', shortShares: 1_000_000, totalShares: 4_000_000, shortPct: 25 },
+          ],
+        },
+      }),
+    )
+    expect(btc).toContain('CRYPTO POSITIONING')
+    expect(btc).toContain('funding: 0.0080%')
+    expect(btc).toContain('mark_iv: 48.20%')
+    expect(btc).toContain('BTC hash rate (2026-09-22): 720.50 TH/s')
+    expect(btc).toContain('BTC active addresses')
+    expect(btc).toContain('BTC difficulty adjustment')
+    expect(btc).toContain('BTC mempool fees')
+    expect(btc).toContain('BTC dominance (2026-09-22): 57.20%')
+    expect(btc).toContain('FINRA short-sale volume IBIT')
+    expect(btc).toContain('Crypto Fear & Greed')
+    expect(btc).not.toContain('ETH dominance')
+    expect(btc).not.toContain('EIA US commercial crude')
+
+    const xrp = assembleClosedBookInjection(
+      input({
+        instrument: 'XRP/USD',
+        category: 'crypto_spot',
+        crypto: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          funding: { rate: 0.0001, nextFundingTime: null },
+          openInterest: { contracts: 1 },
+          markIv: { unavailable: 'no Deribit currency mapping for XRP/USD' },
+        },
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: { unavailable: 'Farside farside.co.uk/btc: HTTP 403 (Cloudflare-blocked at probe time 2026-08-28)' },
+          insider: null,
+          fearGreed: {
+            latest: { date: '2026-09-22', value: 72, classification: 'Greed' },
+            week: [{ date: '2026-09-22', value: 72, classification: 'Greed' }],
+          },
+          topTraderLs: {
+            symbol: 'XRPUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            longShortRatio: 2.25,
+          },
+          takerRatio: {
+            symbol: 'XRPUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            buySellRatio: 0.85,
+          },
+        },
+      }),
+    )
+    expect(xrp).toContain('XRPUSDT')
+    expect(xrp).toContain('no Deribit currency mapping for XRP/USD')
+    expect(xrp).toContain('Crypto Fear & Greed')
+    expect(xrp).toContain('BTC spot ETF flows')
+    expect(xrp).not.toContain('BTC hash rate')
+    expect(xrp).not.toContain('BTC dominance')
+    expect(xrp).not.toContain('IBIT')
+
+    const eth = assembleClosedBookInjection(
+      input({
+        instrument: 'ETH/USD',
+        category: 'crypto_spot',
+        crypto: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          funding: { rate: 0.00005, nextFundingTime: null },
+          openInterest: { contracts: 88000 },
+          markIv: { ivPct: 62.4, instrument: 'ETH-27SEP26-4000-C' },
+        },
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: { date: '22 Sep 2026', netFlowUsdM: 210 },
+          insider: null,
+          fearGreed: {
+            latest: { date: '2026-09-22', value: 72, classification: 'Greed' },
+            week: [{ date: '2026-09-22', value: 72, classification: 'Greed' }],
+          },
+          topTraderLs: {
+            symbol: 'ETHUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            longShortRatio: 1.41,
+          },
+          takerRatio: {
+            symbol: 'ETHUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            buySellRatio: 1.02,
+          },
+          ethDominance: { date: '2026-09-22', pct: 12.4 },
+          ethEtfFlow: { date: '22 Sep 2026', netFlowUsdM: 84 },
+          cryptoEtfShortVolume: [
+            { symbol: 'ETHA', date: '2026-09-19', shortShares: 400_000, totalShares: 2_000_000, shortPct: 20 },
+          ],
+        },
+      }),
+    )
+    expect(eth).toContain('mark_iv: 62.40%')
+    expect(eth).toContain('ETH dominance (2026-09-22): 12.40%')
+    expect(eth).toContain('ETH spot ETF net flow')
+    expect(eth).toContain('FINRA short-sale volume ETHA')
+    expect(eth).not.toContain('BTC hash rate')
+    expect(eth).not.toContain('IBIT')
+    expect(eth).not.toContain('BTC dominance')
+  })
+
   it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {
     expect(isOzOzGoldSilverRatio(7.21)).toBe(false)
     expect(isOzOzGoldSilverRatio(72.9)).toBe(true)

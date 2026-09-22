@@ -357,6 +357,63 @@ describe('research director — two-stage parse', () => {
     expect(text).not.toContain('fed_funds:')
   })
 
+  it('inventory lists crypto_spot on-chain / dominance / ETF shorts so director does not re-search them', () => {
+    const text = buildPacketInventory({
+      ...inventory,
+      instrument: 'BTC/USD',
+      category: 'crypto_spot',
+      crypto: {
+        fetchedAt: '2026-09-22T00:00:00.000Z',
+        funding: { rate: 0.00008, nextFundingTime: null },
+        openInterest: { contracts: 109000 },
+        markIv: { ivPct: 48.2, instrument: 'BTC-27SEP26-100000-C' },
+      },
+      slow: {
+        fetchedAt: '2026-09-22T00:00:00.000Z',
+        shortVolume: null,
+        putCall: null,
+        btcEtfFlow: { date: '22 Sep 2026', netFlowUsdM: 210 },
+        insider: null,
+        fearGreed: {
+          latest: { date: '2026-09-22', value: 72, classification: 'Greed' },
+          week: [{ date: '2026-09-22', value: 72, classification: 'Greed' }],
+        },
+        topTraderLs: {
+          symbol: 'BTCUSDT',
+          timestamp: '2026-09-22T01:00:00.000Z',
+          period: '1h',
+          longShortRatio: 2.24,
+        },
+        takerRatio: {
+          symbol: 'BTCUSDT',
+          timestamp: '2026-09-22T01:00:00.000Z',
+          period: '1h',
+          buySellRatio: 0.86,
+        },
+        hashRate: { date: '2026-09-22', value: 720.5, unit: 'TH/s' },
+        activeAddresses: { date: '2026-09-22', value: 812000 },
+        difficultyAdjustment: { progressPct: 45.2, changePct: 2.1, estimatedDate: null, remainingBlocks: 1100 },
+        mempoolFees: { fastest: 8, halfHour: 5, hour: 3, economy: 1, unit: 'sat/vB' },
+        btcDominance: { date: '2026-09-22', pct: 57.2 },
+        cryptoEtfShortVolume: [
+          { symbol: 'IBIT', date: '2026-09-19', shortShares: 1_000_000, totalShares: 4_000_000, shortPct: 25 },
+        ],
+      },
+    })
+    expect(text).toContain('crypto.funding:')
+    expect(text).toContain('crypto.mark_iv:')
+    expect(text).toContain('crypto.fear_greed:')
+    expect(text).toContain('crypto.hash_rate:')
+    expect(text).toContain('crypto.active_addresses:')
+    expect(text).toContain('crypto.difficulty_adjustment:')
+    expect(text).toContain('crypto.mempool_fees:')
+    expect(text).toContain('crypto.btc_dominance:')
+    expect(text).toContain('crypto_etf_short_volume:')
+    expect(text).toContain('IBIT')
+    expect(text).not.toContain('eia_us_crude_stocks_supply:')
+    expect(text).not.toContain('gvz_gold_vol:')
+  })
+
   it('Stage 2 prompt still carries the 2026-08-28 dispersion budgets', () => {
     expect(buildStage2Prompt('tight', [])).toContain('Cap English missing queries at 2')
     expect(buildStage2Prompt('normal', [])).toContain('Cap English missing queries at 4')

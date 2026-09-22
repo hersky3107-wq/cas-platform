@@ -15,6 +15,7 @@ import type { SlowDataSnapshot } from './closed-book-packet'
  * same 1000x map) + top-trader L/S + taker buy/sell + Alternative.me Fear
  * & Greed. Farside BTC ETF flows stay in slow-data.ts (CRYPTO_CATEGORIES).
  * Per-chip isolation of BTC/ETH/SOL beta is relations, not extra HTTP.
+ * Fear & Greed + L/S + taker also serve crypto_spot majors (same free feeds).
  */
 
 const FETCH_TIMEOUT_MS = 15_000
@@ -22,7 +23,7 @@ const UA = 'cas-platform-league-research/1.0 (contact: admin@cas-platform.exampl
 const BINANCE_FAPI = 'https://fapi.binance.com'
 const FNG_URL = 'https://api.alternative.me/fng/?limit=7'
 const RATIO_PERIOD = '1h'
-const MEMECOIN_CATEGORIES = new Set(['memecoin'])
+const BINANCE_RATIO_CATEGORIES = new Set(['memecoin', 'crypto_spot'])
 
 type Fail = { unavailable: string }
 
@@ -95,7 +96,7 @@ export async function fetchMemecoinSlowFields(
   topTraderLs?: SlowDataSnapshot['topTraderLs']
   takerRatio?: SlowDataSnapshot['takerRatio']
 } | null> {
-  if (!MEMECOIN_CATEGORIES.has(category)) return null
+  if (!BINANCE_RATIO_CATEGORIES.has(category)) return null
   const plan = memecoinFieldPlan(instrument)
   const symbol = plan?.binanceSymbol ?? binancePerpSymbol(instrument)
   const [fearGreed, topTraderLs, takerRatio] = await Promise.all([

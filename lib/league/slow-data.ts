@@ -5,6 +5,8 @@ import type { SlowDataSnapshot } from './closed-book-packet'
 import { fetchEnergySlowFields } from './energy-data'
 import { fetchFxSlowFields, fxFinraTickers } from './fx-data'
 import { fetchIndexEtfSlowFields } from './index-etf-data'
+import { fetchCryptoSpotSlowFields } from './crypto-data'
+import { cryptoSpotEtfTickers } from './crypto-parse'
 import { fetchMemecoinSlowFields } from './memecoin-data'
 import { fetchMetalsSlowFields } from './metals-data'
 
@@ -24,8 +26,10 @@ import { fetchMetalsSlowFields } from './metals-data'
  *     grain+coffee COT, FRED OVX/spots/IMF prices via `energy-data.ts`.
  *  7. FX (fx only) — FRED rates/CPI/DXY + CFTC TFF FinFutWk.txt via `fx-data.ts`.
  *  8. Index/ETF (etf_index) — FRED VIXCLS + cash prints + CFTC TFF ES/NQ/YM/Nikkei/VIX via `index-etf-data.ts`.
- *  9. Memecoin — Binance top-trader L/S + taker ratio + Alternative.me Fear
- *     & Greed via `memecoin-data.ts` (funding/OI stay in CryptoSnapshot).
+ *  9. Memecoin / crypto_spot — Binance top-trader L/S + taker + Alternative.me
+ *     Fear & Greed via `memecoin-data.ts` (funding/OI stay in CryptoSnapshot).
+ *     crypto_spot also adds on-chain / dominance via `crypto-data.ts` and
+ *     IBIT/FBTC/ETHA FINRA short-volume as an ETF proxy.
  *  3. Farside BTC spot ETF flows     — PROBED UNRELIABLE (HTTP 403 Cloudflare
  *     even with browser headers). Still attempted once per day so a future
  *     unblock starts working, but expect a labeled UNAVAILABLE line.
@@ -191,12 +195,13 @@ function parseFarsideCell(raw: string): number | null {
   return neg ? -n : n
 }
 
-async function fetchBtcEtfFlow(): Promise<BtcEtfFlow | Fail> {
-  return memoDaily('farside-btc', async () => {
-    const res = await getText('https://farside.co.uk/btc/', { Accept: 'text/html' })
-    if ('error' in res) return { unavailable: `Farside farside.co.uk/btc: ${res.error}` }
+async function fetchFarsideEtfFlow(kind: 'btc' | 'eth'): Promise<BtcEtfFlow | Fail> {
+  return memoDaily(`farside-${kind}`, async () => {
+    const path = kind === 'eth' ? 'eth' : 'btc'
+    const res = await getText(`https://farside.co.uk/${path}/`, { Accept: 'text/html' })
+    if ('error' in res) return { unavailable: `Farside farside.co.uk/${path}: ${res.error}` }
     if (res.status !== 200) {
-      return { unavailable: `Farside farside.co.uk/btc: HTTP ${res.status} (Cloudflare-blocked at probe time 2026-08-28)` }
+      return { unavailable: `Farside farside.co.uk/${path}: HTTP ${res.status} (Cloudflare-blocked at probe time 2026-08-28)` }
     }
     const rows = res.text.match(/<tr[\s\S]*?<\/tr>/gi) ?? []
     const dataRows = rows.filter((r) => /\d{1,2} \w{3} \d{4}/.test(r))
@@ -360,7 +365,8 @@ const METALS_CATEGORIES = new Set(['gold_metal'])
 const ENERGY_CATEGORIES = new Set(['commodity_energy', 'commodities_energy'])
 const FX_CATEGORIES = new Set(['fx'])
 const INDEX_ETF_CATEGORIES = new Set(['etf_index'])
-const MEMECOIN_SLOW_CATEGORIES = new Set(['memecoin'])
+const BINANCE_RATIO_SLOW_CATEGORIES = new Set(['memecoin', 'crypto_spot'])
+const CRYPTO_SPOT_SLOW = 'crypto_spot'
 
 /**
  * Slow-data snapshot for one round. Returns null when NOTHING applies to the
@@ -378,47 +384,63 @@ export async function fetchSlowData(args: {
   const wantsShort = SHORT_VOLUME_CATEGORIES.has(category) && isUsTicker
   const wantsPutCall = PUT_CALL_CATEGORIES.has(category)
   const wantsBtcFlow = CRYPTO_CATEGORIES.has(category)
+  const wantsEthFlow = category === CRYPTO_SPOT_SLOW && cryptoSpotEtfTickers(instrument ?? symbol).includes('ETHA')
   const wantsInsider = INSIDER_CATEGORIES.has(category) && isUsTicker
   const wantsMetals = METALS_CATEGORIES.has(category)
   const wantsEnergy = ENERGY_CATEGORIES.has(category)
   const wantsFx = FX_CATEGORIES.has(category)
   const wantsIndexEtf = INDEX_ETF_CATEGORIES.has(category)
-  const wantsMemecoin = MEMECOIN_SLOW_CATEGORIES.has(category)
+  const wantsBinanceRatios = BINANCE_RATIO_SLOW_CATEGORIES.has(category)
+  const wantsCryptoSpot = category === CRYPTO_SPOT_SLOW
   const fxTickers = wantsFx ? fxFinraTickers(instrument ?? symbol) : []
+  const cryptoEtfTickers = wantsCryptoSpot ? [...cryptoSpotEtfTickers(instrument ?? symbol)] : []
 
   if (
     !wantsShort &&
     !wantsPutCall &&
     !wantsBtcFlow &&
+    !wantsEthFlow &&
     !wantsInsider &&
     !wantsMetals &&
     !wantsEnergy &&
     !wantsFx &&
     !wantsIndexEtf &&
-    !wantsMemecoin
+    !wantsBinanceRatios &&
+    !wantsCryptoSpot
   ) {
     return null
   }
 
-  const [shortVolume, putCall, btcEtfFlow, insider, metals, energy, fx, indexEtf, memecoin, fxEtfShortVolume] = await Promise.all([
-    wantsShort ? fetchShortVolume(symbol!) : Promise.resolve(null),
-    wantsPutCall ? fetchPutCall() : Promise.resolve(null),
-    wantsBtcFlow ? fetchBtcEtfFlow() : Promise.resolve(null),
-    wantsInsider ? fetchInsider(symbol!) : Promise.resolve(null),
-    wantsMetals ? fetchMetalsSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
-    wantsEnergy ? fetchEnergySlowFields(category, instrument ?? symbol) : Promise.resolve(null),
-    wantsFx ? fetchFxSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
-    wantsIndexEtf ? fetchIndexEtfSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
-    wantsMemecoin ? fetchMemecoinSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
-    fxTickers.length
-      ? Promise.all(
-          fxTickers.map(async (ticker) => {
-            const row = await fetchShortVolume(ticker)
-            return { symbol: ticker, ...row }
-          }),
-        )
-      : Promise.resolve(null),
-  ])
+  const [shortVolume, putCall, btcEtfFlow, ethEtfFlow, insider, metals, energy, fx, indexEtf, binanceRatios, cryptoSpot, fxEtfShortVolume, cryptoEtfShortVolume] =
+    await Promise.all([
+      wantsShort ? fetchShortVolume(symbol!) : Promise.resolve(null),
+      wantsPutCall ? fetchPutCall() : Promise.resolve(null),
+      wantsBtcFlow ? fetchFarsideEtfFlow('btc') : Promise.resolve(null),
+      wantsEthFlow ? fetchFarsideEtfFlow('eth') : Promise.resolve(null),
+      wantsInsider ? fetchInsider(symbol!) : Promise.resolve(null),
+      wantsMetals ? fetchMetalsSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+      wantsEnergy ? fetchEnergySlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+      wantsFx ? fetchFxSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+      wantsIndexEtf ? fetchIndexEtfSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+      wantsBinanceRatios ? fetchMemecoinSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+      wantsCryptoSpot ? fetchCryptoSpotSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+      fxTickers.length
+        ? Promise.all(
+            fxTickers.map(async (ticker) => {
+              const row = await fetchShortVolume(ticker)
+              return { symbol: ticker, ...row }
+            }),
+          )
+        : Promise.resolve(null),
+      cryptoEtfTickers.length
+        ? Promise.all(
+            cryptoEtfTickers.map(async (ticker) => {
+              const row = await fetchShortVolume(ticker)
+              return { symbol: ticker, ...row }
+            }),
+          )
+        : Promise.resolve(null),
+    ])
 
   return {
     fetchedAt: new Date().toISOString(),
@@ -426,11 +448,14 @@ export async function fetchSlowData(args: {
     putCall,
     btcEtfFlow,
     insider,
+    ...(ethEtfFlow ? { ethEtfFlow } : {}),
     ...(metals ?? {}),
     ...(energy ?? {}),
     ...(fx ?? {}),
     ...(indexEtf ?? {}),
-    ...(memecoin ?? {}),
+    ...(binanceRatios ?? {}),
+    ...(cryptoSpot ?? {}),
     ...(fxEtfShortVolume ? { fxEtfShortVolume } : {}),
+    ...(cryptoEtfShortVolume ? { cryptoEtfShortVolume } : {}),
   }
 }

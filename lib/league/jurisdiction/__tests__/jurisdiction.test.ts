@@ -112,6 +112,19 @@ describe('matrix default-deny shape (data-table sanity)', () => {
     }
   })
 
+  it('crypto_spot stays open in Korea and other mainstream groups (CN/UNKNOWN still blocked)', () => {
+    expect(isCategoryAllowedForGroup('KR', 'crypto_spot')).toBe(true)
+    expect(isCategoryAllowed('crypto_spot', { declaredCountry: 'KR', ipCountry: 'KR' })).toBe(true)
+    expect(isCategoryAllowedForGroup('US', 'crypto_spot')).toBe(true)
+    expect(isCategoryAllowedForGroup('EU', 'crypto_spot')).toBe(true)
+    expect(isCategoryAllowedForGroup('UK', 'crypto_spot')).toBe(true)
+    expect(isCategoryAllowedForGroup('JP', 'crypto_spot')).toBe(true)
+    expect(isCategoryAllowedForGroup('ME', 'crypto_spot')).toBe(true)
+    expect(isCategoryAllowedForGroup('OTHER', 'crypto_spot')).toBe(true)
+    expect(isCategoryAllowedForGroup('CN', 'crypto_spot')).toBe(false)
+    expect(isCategoryAllowedForGroup('UNKNOWN', 'crypto_spot')).toBe(false)
+  })
+
   it('Korea blocks memecoin as a category, not only the prompt', () => {
     expect(isCategoryAllowedForGroup('KR', 'memecoin')).toBe(false)
     expect(isCategoryAllowed('memecoin', { declaredCountry: 'KR', ipCountry: 'KR' })).toBe(false)

@@ -16,6 +16,8 @@ export const BINANCE_PERP_BY_BASE: Record<string, string> = {
   BTC: 'BTCUSDT',
   ETH: 'ETHUSDT',
   SOL: 'SOLUSDT',
+  XRP: 'XRPUSDT',
+  BNB: 'BNBUSDT',
   DOGE: 'DOGEUSDT',
   SHIB: '1000SHIBUSDT',
   PEPE: '1000PEPEUSDT',

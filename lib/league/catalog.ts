@@ -109,6 +109,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
       { instrument: 'BTC/USD', resolution_rule: 'BTC/USD spot close vs prior close', chip_visible: true, expected_name: ['Bitcoin'] },
       { instrument: 'ETH/USD', resolution_rule: 'ETH/USD spot close vs prior close', chip_visible: true, expected_name: ['Ethereum'] },
       { instrument: 'SOL/USD', resolution_rule: 'SOL/USD spot close vs prior close', chip_visible: true, expected_name: ['Solana'] },
+      { instrument: 'XRP/USD', resolution_rule: 'XRP/USD spot close vs prior close', chip_visible: true, expected_name: ['XRP'] },
+      { instrument: 'BNB/USD', resolution_rule: 'BNB/USD spot close vs prior close', chip_visible: true, expected_name: ['Binance'] },
     ],
   },
   {

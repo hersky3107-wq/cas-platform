@@ -195,6 +195,14 @@ export function buildPacketInventory(input: PacketInventoryInput): string {
       ['crypto.fear_greed', slow.fearGreed],
       ['crypto.top_trader_ls', slow.topTraderLs],
       ['crypto.taker_ratio', slow.takerRatio],
+      ['crypto.hash_rate', slow.hashRate],
+      ['crypto.active_addresses', slow.activeAddresses],
+      ['crypto.difficulty_adjustment', slow.difficultyAdjustment],
+      ['crypto.mempool_fees', slow.mempoolFees],
+      ['crypto.btc_dominance', slow.btcDominance],
+      ['crypto.eth_dominance', slow.ethDominance],
+      ['eth_etf_flow', slow.ethEtfFlow],
+      ['crypto_etf_short_volume', slow.cryptoEtfShortVolume],
     ] as const) {
       const line = snapLine(key, field)
       if (line) lines.push(line)
