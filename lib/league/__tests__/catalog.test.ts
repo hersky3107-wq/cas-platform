@@ -180,7 +180,7 @@ describe('PUBLIC_CATALOG', () => {
     ])
   })
 
-  it('crypto majors are BTC/ETH/SOL/XRP/BNB with no instrument deniedGroups (KR stays category-open)', () => {
+  it('crypto majors are BTC/ETH/SOL/XRP/BNB/ADA with no instrument deniedGroups (KR stays category-open)', () => {
     const crypto = PUBLIC_CATALOG.find((c) => c.id === 'crypto')!
     expect(crypto.ledgerCategory).toBe('crypto_spot')
     expect(crypto.instruments.map((i) => i.instrument)).toEqual([
@@ -189,6 +189,7 @@ describe('PUBLIC_CATALOG', () => {
       'SOL/USD',
       'XRP/USD',
       'BNB/USD',
+      'ADA/USD',
     ])
     for (const entry of crypto.instruments) {
       expect(entry.deniedGroups, entry.instrument).toBeUndefined()
@@ -196,6 +197,7 @@ describe('PUBLIC_CATALOG', () => {
     }
     expect(findCatalogInstrument('XRP/USD')?.entry.expected_name).toEqual(['XRP'])
     expect(findCatalogInstrument('BNB/USD')?.entry.expected_name).toEqual(['Binance'])
+    expect(findCatalogInstrument('ADA/USD')?.entry.expected_name).toEqual(['Cardano'])
   })
 
   it('memecoin chips are DOGE/SHIB/PEPE/WIF/BONK with no instrument deniedGroups (KR is category-level)', () => {
@@ -306,6 +308,8 @@ describe('catalog i18n', () => {
     expect(getLeagueUiPack('en').catalog.instruments['XRP/USD']).toBe('XRP (XRP)')
     expect(getLeagueUiPack('ko').catalog.instruments['XRP/USD']).toBe('리플 (XRP)')
     expect(getLeagueUiPack('ko').catalog.instruments['BNB/USD']).toBe('바이낸스 코인 (BNB)')
+    expect(getLeagueUiPack('en').catalog.instruments['ADA/USD']).toBe('Cardano (ADA)')
+    expect(getLeagueUiPack('ko').catalog.instruments['ADA/USD']).toBe('카르다노 (ADA)')
   })
 
   it('spot vs ETF note is shown for mixed-clock categories, not for session-only or calendar-only', () => {

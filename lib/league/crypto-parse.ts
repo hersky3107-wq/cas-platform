@@ -1,11 +1,11 @@
 /**
  * Pure crypto-major packet helpers. No fetches — unit tests never import
  * `server-only`. Per-chip isolation: BTC gets on-chain + dominance + IBIT/FBTC;
- * ETH gets ETH dominance + ETHA; SOL/XRP/BNB get Binance positioning + beta
- * via relations. Deribit IV is BTC/ETH/SOL only (XRP/BNB have no options).
+ * ETH gets ETH dominance + ETHA; SOL/XRP/BNB/ADA get Binance positioning + beta
+ * via relations. Deribit IV is BTC/ETH/SOL only (XRP/BNB/ADA have no options).
  */
 
-export type CryptoMajorFamily = 'btc' | 'eth' | 'sol' | 'xrp' | 'bnb'
+export type CryptoMajorFamily = 'btc' | 'eth' | 'sol' | 'xrp' | 'bnb' | 'ada'
 
 export type CryptoMajorFieldPlan = {
   family: CryptoMajorFamily
@@ -46,6 +46,8 @@ export function classifyCryptoMajorInstrument(instrument?: string): CryptoMajorF
       return 'xrp'
     case 'BNB':
       return 'bnb'
+    case 'ADA':
+      return 'ada'
     default:
       return null
   }
@@ -63,7 +65,9 @@ export function cryptoMajorFieldPlan(instrument?: string): CryptoMajorFieldPlan 
           ? 'SOLUSDT'
           : family === 'xrp'
             ? 'XRPUSDT'
-            : 'BNBUSDT'
+            : family === 'bnb'
+              ? 'BNBUSDT'
+              : 'ADAUSDT'
   return {
     family,
     binanceSymbol,

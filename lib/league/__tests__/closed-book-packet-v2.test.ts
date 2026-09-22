@@ -817,6 +817,50 @@ describe('closed-book packet v2 — new sections', () => {
     expect(eth).not.toContain('BTC hash rate')
     expect(eth).not.toContain('IBIT')
     expect(eth).not.toContain('BTC dominance')
+
+    const ada = assembleClosedBookInjection(
+      input({
+        instrument: 'ADA/USD',
+        category: 'crypto_spot',
+        crypto: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          funding: { rate: 0.0001, nextFundingTime: null },
+          openInterest: { contracts: 429000000 },
+          markIv: { unavailable: 'no Deribit currency mapping for ADA/USD' },
+        },
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: { unavailable: 'Farside farside.co.uk/btc: HTTP 403 (Cloudflare-blocked at probe time 2026-08-28)' },
+          insider: null,
+          fearGreed: {
+            latest: { date: '2026-09-22', value: 72, classification: 'Greed' },
+            week: [{ date: '2026-09-22', value: 72, classification: 'Greed' }],
+          },
+          topTraderLs: {
+            symbol: 'ADAUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            longShortRatio: 1.75,
+          },
+          takerRatio: {
+            symbol: 'ADAUSDT',
+            timestamp: '2026-09-22T01:00:00.000Z',
+            period: '1h',
+            buySellRatio: 0.92,
+          },
+        },
+      }),
+    )
+    expect(ada).toContain('ADAUSDT')
+    expect(ada).toContain('no Deribit currency mapping for ADA/USD')
+    expect(ada).toContain('Crypto Fear & Greed')
+    expect(ada).not.toContain('BTC hash rate')
+    expect(ada).not.toContain('BTC dominance')
+    expect(ada).not.toContain('ETH dominance')
+    expect(ada).not.toContain('IBIT')
+    expect(ada).not.toContain('ETHA')
   })
 
   it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {

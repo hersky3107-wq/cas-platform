@@ -147,6 +147,16 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     asiaLinks: ['ko'],
   },
   {
+    instrument: 'ADA/USD',
+    related: [
+      { symbol: 'BTC/USD', role: 'peer', note: 'crypto benchmark — ADA beta' },
+      { symbol: 'ETH/USD', role: 'peer', note: 'major-alt benchmark' },
+      VOL,
+      DOLLAR,
+    ],
+    asiaLinks: ['ko'],
+  },
+  {
     instrument: 'EUR/USD',
     related: [
       { symbol: 'FXE', role: 'peer', note: 'CurrencyShares Euro Trust — listed euro proxy' },

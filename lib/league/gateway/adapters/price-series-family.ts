@@ -382,6 +382,15 @@ export const CRYPTO_SYNONYMS: Record<string, string> = {
   바이낸스: 'BNB/USD',
   币安币: 'BNB/USD',
   幣安幣: 'BNB/USD',
+  ada: 'ADA/USD',
+  cardano: 'ADA/USD',
+  'ada/usd': 'ADA/USD',
+  카르다노: 'ADA/USD',
+  에이다: 'ADA/USD',
+  '카르다노(에이다)': 'ADA/USD',
+  卡尔达诺: 'ADA/USD',
+  卡爾達諾: 'ADA/USD',
+  カルダノ: 'ADA/USD',
 }
 
 export const MEMECOIN_SYNONYMS: Record<string, string> = {

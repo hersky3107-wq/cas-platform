@@ -11,24 +11,27 @@ import {
 import { binancePerpSymbol } from '../memecoin-parse'
 
 describe('crypto major isolation', () => {
-  it('classifies the five catalog chips and rejects memecoins/gold', () => {
+  it('classifies the six catalog chips and rejects memecoins/gold', () => {
     expect(classifyCryptoMajorInstrument('BTC/USD')).toBe('btc')
     expect(classifyCryptoMajorInstrument('ETH/USD')).toBe('eth')
     expect(classifyCryptoMajorInstrument('SOL/USD')).toBe('sol')
     expect(classifyCryptoMajorInstrument('XRP/USD')).toBe('xrp')
     expect(classifyCryptoMajorInstrument('BNB/USD')).toBe('bnb')
+    expect(classifyCryptoMajorInstrument('ADA/USD')).toBe('ada')
     expect(classifyCryptoMajorInstrument('DOGE/USD')).toBeNull()
     expect(classifyCryptoMajorInstrument('XAU/USD')).toBeNull()
   })
 
-  it('maps all five onto 1:1 Binance USDT-M (no 1000x)', () => {
+  it('maps all onto 1:1 Binance USDT-M (no 1000x)', () => {
     expect(binancePerpSymbol('XRP/USD')).toBe('XRPUSDT')
     expect(binancePerpSymbol('BNB/USD')).toBe('BNBUSDT')
+    expect(binancePerpSymbol('ADA/USD')).toBe('ADAUSDT')
     expect(cryptoMajorFieldPlan('XRP/USD')!.binanceSymbol).toBe('XRPUSDT')
     expect(cryptoMajorFieldPlan('BNB/USD')!.binanceSymbol).toBe('BNBUSDT')
+    expect(cryptoMajorFieldPlan('ADA/USD')!.binanceSymbol).toBe('ADAUSDT')
   })
 
-  it('BTC gets on-chain + dominance + IBIT/FBTC; ETH gets ETH dominance + ETHA; SOL/XRP/BNB skip both', () => {
+  it('BTC gets on-chain + dominance + IBIT/FBTC; ETH gets ETH dominance + ETHA; SOL/XRP/BNB/ADA skip both', () => {
     const btc = cryptoMajorFieldPlan('BTC/USD')!
     expect(btc.onChainBtc).toBe(true)
     expect(btc.btcDominance).toBe(true)
@@ -46,7 +49,7 @@ describe('crypto major isolation', () => {
     expect(eth.etfTickers).toEqual(['ETHA'])
     expect(eth.farsideEth).toBe(true)
 
-    for (const id of ['SOL/USD', 'XRP/USD', 'BNB/USD'] as const) {
+    for (const id of ['SOL/USD', 'XRP/USD', 'BNB/USD', 'ADA/USD'] as const) {
       const plan = cryptoMajorFieldPlan(id)!
       expect(plan.onChainBtc, id).toBe(false)
       expect(plan.btcDominance, id).toBe(false)
@@ -57,6 +60,7 @@ describe('crypto major isolation', () => {
     expect(cryptoMajorFieldPlan('SOL/USD')!.deribitIv).toBe(true)
     expect(cryptoMajorFieldPlan('XRP/USD')!.deribitIv).toBe(false)
     expect(cryptoMajorFieldPlan('BNB/USD')!.deribitIv).toBe(false)
+    expect(cryptoMajorFieldPlan('ADA/USD')!.deribitIv).toBe(false)
   })
 })
 

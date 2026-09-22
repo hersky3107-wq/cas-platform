@@ -111,6 +111,7 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
       { instrument: 'SOL/USD', resolution_rule: 'SOL/USD spot close vs prior close', chip_visible: true, expected_name: ['Solana'] },
       { instrument: 'XRP/USD', resolution_rule: 'XRP/USD spot close vs prior close', chip_visible: true, expected_name: ['XRP'] },
       { instrument: 'BNB/USD', resolution_rule: 'BNB/USD spot close vs prior close', chip_visible: true, expected_name: ['Binance'] },
+      { instrument: 'ADA/USD', resolution_rule: 'ADA/USD spot close vs prior close', chip_visible: true, expected_name: ['Cardano'] },
     ],
   },
   {
