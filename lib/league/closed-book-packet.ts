@@ -230,6 +230,23 @@ export type SlowDataSnapshot = {
   /** Honest "no COT" / "component legs only" label for KRW and crosses. */
   fxCotGap?: { note: string } | null
   fxEtfShortVolume?: FxEtfShortVolume[] | null
+  /**
+   * Index / ETF (etf_index). Per-chip isolation: VIX on every chip; ES COT
+   * only on SPY/UPRO/SPXU; NQ only on QQQ/TQQQ/SQQQ; YM on DIA; Nikkei on
+   * EWJ. EWY/EWT/FEZ/SOXL have no matching futures COT (labeled).
+   */
+  vixcls?: FredObs | null
+  sp500Fred?: FredObs | null
+  nasdaqComFred?: FredObs | null
+  djiaFred?: FredObs | null
+  nikkei225Fred?: FredObs | null
+  cotEs?: CotPositioning | null
+  cotNq?: CotPositioning | null
+  cotYm?: CotPositioning | null
+  cotNikkei?: CotPositioning | null
+  cotVix?: CotPositioning | null
+  indexEtfCotGap?: { note: string } | null
+  indexEtfIdentityNote?: { note: string } | null
 }
 
 /** Packet v2 (B): a native-language research finding (original + English gloss). */
@@ -956,6 +973,54 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
       }
     }
   }
+  if (slow.indexEtfIdentityNote) {
+    lines.push(`  Index/ETF identity note: ${slow.indexEtfIdentityNote.note}`)
+  }
+  if (slow.indexEtfCotGap) {
+    lines.push(`  CFTC index positioning note: ${slow.indexEtfCotGap.note}`)
+  }
+  if (slow.vixcls) lines.push(formatFredObs('CBOE VIX', 'VIXCLS', slow.vixcls, '', 'days — cash VIX, not VIXY'))
+  if (slow.sp500Fred) {
+    lines.push(
+      formatFredObs(
+        'FRED S&P 500 cash index',
+        'SP500',
+        slow.sp500Fred,
+        '',
+        'days — official print, may lag the ETF',
+      ),
+    )
+  }
+  if (slow.nasdaqComFred) {
+    lines.push(
+      formatFredObs(
+        'FRED Nasdaq Composite',
+        'NASDAQCOM',
+        slow.nasdaqComFred,
+        '',
+        'days — Composite, not Nasdaq-100; may lag the ETF',
+      ),
+    )
+  }
+  if (slow.djiaFred) {
+    lines.push(formatFredObs('FRED Dow Jones Industrial Average', 'DJIA', slow.djiaFred, '', 'days — may lag DIA'))
+  }
+  if (slow.nikkei225Fred) {
+    lines.push(
+      formatFredObs(
+        'FRED Nikkei 225 cash index',
+        'NIKKEI225',
+        slow.nikkei225Fred,
+        '',
+        'days — lagged cash print; EWJ is MSCI Japan, not Nikkei',
+      ),
+    )
+  }
+  if (slow.cotEs) lines.push(formatCot('CFTC E-mini S&P 500 leveraged-funds', slow.cotEs))
+  if (slow.cotNq) lines.push(formatCot('CFTC Nasdaq mini leveraged-funds', slow.cotNq))
+  if (slow.cotYm) lines.push(formatCot('CFTC Dow Jones ($5) leveraged-funds', slow.cotYm))
+  if (slow.cotNikkei) lines.push(formatCot('CFTC Nikkei 225 yen-denominated leveraged-funds', slow.cotNikkei))
+  if (slow.cotVix) lines.push(formatCot('CFTC VIX futures leveraged-funds', slow.cotVix))
   // Only the header would remain → treat as no section.
   return lines.length > 1 ? lines.join('\n') : ''
 }

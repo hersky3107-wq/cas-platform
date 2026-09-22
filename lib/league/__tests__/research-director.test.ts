@@ -267,6 +267,47 @@ describe('research director — two-stage parse', () => {
     expect(text).not.toContain('cot_gold:')
   })
 
+  it('inventory lists index_etf VIX/COT fields without energy EIA or gold GVZ', () => {
+    const text = buildPacketInventory({
+      ...inventory,
+      instrument: 'TQQQ',
+      category: 'etf_index',
+      slow: {
+        fetchedAt: '2026-09-22T00:00:00.000Z',
+        shortVolume: { date: '2026-09-21', shortShares: 1, totalShares: 4, shortPct: 25 },
+        putCall: { date: '2026-09-21', total: 0.81, index: null, equity: null },
+        btcEtfFlow: null,
+        insider: null,
+        vixcls: { date: '2026-09-18', value: 14.81 },
+        nasdaqComFred: { date: '2026-09-18', value: 27122.09 },
+        cotNq: {
+          contract: 'NASDAQ MINI',
+          date: '2026-09-15',
+          openInterest: 1,
+          managedMoneyLong: 2,
+          managedMoneyShort: 3,
+          managedMoneyNet: -1,
+        },
+        cotVix: {
+          contract: 'VIX',
+          date: '2026-09-15',
+          openInterest: 1,
+          managedMoneyLong: 1,
+          managedMoneyShort: 2,
+          managedMoneyNet: -1,
+        },
+      },
+    })
+    expect(text).toContain('vixcls:')
+    expect(text).toContain('fred_nasdaq_composite:')
+    expect(text).toContain('cot_nq:')
+    expect(text).toContain('cot_vix:')
+    expect(text).not.toContain('cot_es:')
+    expect(text).not.toContain('eia_us_crude_stocks_supply:')
+    expect(text).not.toContain('gvz_gold_vol:')
+    expect(text).not.toContain('fed_funds:')
+  })
+
   it('Stage 2 prompt still carries the 2026-08-28 dispersion budgets', () => {
     expect(buildStage2Prompt('tight', [])).toContain('Cap English missing queries at 2')
     expect(buildStage2Prompt('normal', [])).toContain('Cap English missing queries at 4')

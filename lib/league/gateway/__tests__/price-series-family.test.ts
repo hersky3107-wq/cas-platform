@@ -65,6 +65,8 @@ function slots(adapter: CategoryAdapter, entity_id: string, over: Partial<Normal
 describe('price-series family — Korean / English synonyms', () => {
   it.each([
     ['index_etf', family.index_etf, '나스닥', 'QQQ'],
+    ['index_etf', family.index_etf, '다우', 'DIA'],
+    ['index_etf', family.index_etf, 'tqqq', 'TQQQ'],
     ['gold_metals', family.gold_metals, '금', 'XAU/USD'],
     ['gold_metals', family.gold_metals, '은', 'XAG/USD'],
     ['gold_metals', family.gold_metals, '백금', 'XPT/USD'],
@@ -96,6 +98,17 @@ describe('price-series family — Korean / English synonyms', () => {
     } else {
       throw new Error('expected clarify chips for 달러')
     }
+  })
+
+  it('KR viewer is refused TQQQ at resolveEntity but still resolves SPY', async () => {
+    const kr = { userId: 'u', isAdmin: false, jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' } }
+    const tqqq = await family.index_etf.resolveEntity('TQQQ', 'en', kr)
+    expect(tqqq.ok).toBe(false)
+    if (!tqqq.ok && 'refuse' in tqqq) expect(tqqq.refuse.code).toBe('jurisdiction_blocked')
+    const spy = await family.index_etf.resolveEntity('SPY', 'en', kr)
+    expect(spy).toMatchObject({ ok: true, entity_id: 'SPY' })
+    const us = { userId: 'u', isAdmin: false, jurisdiction: { ipCountry: 'US' } }
+    expect(await family.index_etf.resolveEntity('TQQQ', 'en', us)).toMatchObject({ ok: true, entity_id: 'TQQQ' })
   })
 })
 

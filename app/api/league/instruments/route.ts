@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { isPromptAllowed } from '@/lib/league/jurisdiction/resolve'
 import { jurisdictionNotices } from '@/lib/league/gateway/admission'
-import { categoryHasMixedResolutionClocks, visibleChipEntries } from '@/lib/league/catalog'
+import { categoryHasMixedResolutionClocks, visibleChipEntriesForViewer } from '@/lib/league/catalog'
 import { resolveLeagueViewer, viewerCatalog } from '@/lib/league/public-access'
 
 /**
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     tone: c.tone,
     kind: c.kind,
     promptAllowed: isPromptAllowed(c.id, viewer.jurisdiction),
-    instruments: visibleChipEntries(c).map((i) => ({
+    instruments: visibleChipEntriesForViewer(c, viewer).map((i) => ({
       instrument: i.instrument,
     })),
     mixedResolutionClocks: categoryHasMixedResolutionClocks(c),

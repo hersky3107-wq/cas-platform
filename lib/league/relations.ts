@@ -10,8 +10,9 @@
  *
  * CONSTRAINT: every symbol here must be fetchable on the current Twelve Data
  * Grow plan — US equities/ETFs, FX, crypto, commodity spots (XAU/XAG/XPT/WTI/XBR).
- * Cash-index tickers (SPX/NDX/VIX) are poison: they HTTP-200 as unrelated
- * equities. The catalog therefore lists SPY/QQQ, never SPX/NDX.
+ * Cash-index tickers (SPX/NDX/VIX) and SPXS are poison: they HTTP-200 as
+ * unrelated equities. The catalog lists SPY/QQQ/DIA and country ETFs, never
+ * SPX/NDX/DJI, and never SPXS (UCITS identity trap).
  * A symbol the plan rejects, or whose resolved NAME fails expected_name,
  * degrades to an UNAVAILABLE line, never a guess.
  *
@@ -284,6 +285,7 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     instrument: 'SPY',
     related: [
       { symbol: 'QQQ', role: 'index_proxy', note: 'Nasdaq-100 ETF (risk-asset peer)' },
+      { symbol: 'XLF', role: 'sector_etf', note: 'financials — S&P heavyweight sector' },
       VOL,
       RATES,
       { symbol: 'HYG', role: 'index_proxy', note: 'high-yield credit ETF (risk stress gauge)' },
@@ -296,6 +298,106 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
     related: [
       { symbol: 'SPY', role: 'index_proxy', note: 'S&P 500 ETF (broad-market peer)' },
       { symbol: 'SMH', role: 'sector_etf', note: 'semis — QQQ heavyweight sector' },
+      { symbol: 'XLK', role: 'sector_etf', note: 'S&P tech sector' },
+      VOL,
+      RATES,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'DIA',
+    related: [
+      { symbol: 'SPY', role: 'index_proxy', note: 'S&P 500 ETF (broad-market peer)' },
+      { symbol: 'XLF', role: 'sector_etf', note: 'financials — Dow heavyweight sector' },
+      VOL,
+      RATES,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'EWJ',
+    related: [
+      { symbol: 'FXY', role: 'fx', note: 'CurrencyShares Yen Trust — yen proxy' },
+      { symbol: 'USD/JPY', role: 'fx', note: 'dollar-yen — Japan risk/rate pair' },
+      VOL,
+      RATES,
+    ],
+    asiaLinks: ['ja'],
+  },
+  {
+    instrument: 'EWY',
+    related: [
+      { symbol: 'USD/KRW', role: 'fx', note: 'dollar-won — Korea risk pair' },
+      { symbol: 'FXI', role: 'index_proxy', note: 'China large-cap — regional equity beta' },
+      { symbol: 'SPY', role: 'index_proxy', note: 'US beta (Korea trades with global risk)' },
+      VOL,
+    ],
+    asiaLinks: ['ko'],
+  },
+  {
+    instrument: 'FEZ',
+    related: [
+      { symbol: 'EZU', role: 'index_proxy', note: 'MSCI Eurozone — broader euro-area peer' },
+      { symbol: 'FXE', role: 'fx', note: 'CurrencyShares Euro Trust' },
+      { symbol: 'SPY', role: 'index_proxy', note: 'US beta' },
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'EWT',
+    related: [
+      { symbol: 'SMH', role: 'sector_etf', note: 'semis — TSMC is EWT’s heavyweight' },
+      { symbol: 'FXI', role: 'index_proxy', note: 'China large-cap — regional peer' },
+      VOL,
+    ],
+    asiaLinks: ['zh'],
+  },
+  {
+    instrument: 'TQQQ',
+    related: [
+      { symbol: 'QQQ', role: 'index_proxy', note: 'unlevered Nasdaq-100 — TQQQ is +3x this' },
+      { symbol: 'SMH', role: 'sector_etf', note: 'semis — QQQ/TQQQ heavyweight sector' },
+      { symbol: 'XLK', role: 'sector_etf', note: 'S&P tech sector' },
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'SQQQ',
+    related: [
+      { symbol: 'QQQ', role: 'index_proxy', note: 'unlevered Nasdaq-100 — SQQQ is −3x this' },
+      { symbol: 'SMH', role: 'sector_etf', note: 'semis — QQQ/SQQQ heavyweight sector' },
+      { symbol: 'XLK', role: 'sector_etf', note: 'S&P tech sector' },
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'SOXL',
+    related: [
+      { symbol: 'SMH', role: 'sector_etf', note: 'unlevered semis — SOXL is +3x this' },
+      { symbol: 'SOXS', role: 'peer', note: 'Direxion semis −3x — inverse peer' },
+      { symbol: 'XLK', role: 'sector_etf', note: 'S&P tech sector' },
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'UPRO',
+    related: [
+      { symbol: 'SPY', role: 'index_proxy', note: 'unlevered S&P 500 — UPRO is +3x this' },
+      { symbol: 'XLF', role: 'sector_etf', note: 'financials — S&P heavyweight sector' },
+      VOL,
+      RATES,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'SPXU',
+    related: [
+      { symbol: 'SPY', role: 'index_proxy', note: 'unlevered S&P 500 — SPXU is −3x this' },
+      { symbol: 'XLF', role: 'sector_etf', note: 'financials — S&P heavyweight sector' },
       VOL,
       RATES,
     ],

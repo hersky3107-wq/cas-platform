@@ -3,13 +3,16 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   CATALOG_INSTRUMENT_IDS,
+  KR_LEVERAGE_DENIED_GROUPS,
   PUBLIC_CATALOG,
   PUBLIC_CATEGORY_IDS,
   categoryHasMixedResolutionClocks,
   defaultCatalogCategoryId,
   buildCatalogRankedRoundInput,
   findCatalogInstrument,
+  isCatalogInstrumentAllowed,
   visibleChipEntries,
+  visibleChipEntriesForViewer,
   type CatalogInstrument,
 } from '../catalog'
 import { LEAGUE_LOCALES, LEAGUE_SELECTABLE_LOCALES } from '../i18n/locales'
@@ -70,10 +73,25 @@ describe('PUBLIC_CATALOG', () => {
     expect(findCatalogInstrument('XAG/USD')?.category.ledgerCategory).toBe('gold_metal')
     expect(findCatalogInstrument('XPT/USD')?.entry.expected_name).toEqual(['Platinum', 'Spot'])
     const index = PUBLIC_CATALOG.find((c) => c.id === 'index_etf')!
-    expect(index.instruments.map((i) => i.instrument)).toEqual(['SPY', 'QQQ'])
+    expect(index.instruments.map((i) => i.instrument)).toEqual([
+      'SPY',
+      'QQQ',
+      'DIA',
+      'EWJ',
+      'EWY',
+      'FEZ',
+      'EWT',
+      'TQQQ',
+      'SQQQ',
+      'SOXL',
+      'UPRO',
+      'SPXU',
+    ])
     expect(index.instruments.map((i) => i.instrument)).not.toContain('GLD')
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('SPX')
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('NDX')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('DJI')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('SPXS')
   })
 
   it('fx chips are 6 USD-majors plus 3 non-USD crosses', () => {
@@ -124,6 +142,42 @@ describe('PUBLIC_CATALOG', () => {
     }
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('SPX')
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('NDX')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('DJI')
+    expect(CATALOG_INSTRUMENT_IDS).not.toContain('SPXS')
+  })
+
+  it('gates Layer-2 leverage/inverse with deniedGroups KR; Layer 1 has no deny list', () => {
+    const index = PUBLIC_CATALOG.find((c) => c.id === 'index_etf')!
+    const layer1 = ['SPY', 'QQQ', 'DIA', 'EWJ', 'EWY', 'FEZ', 'EWT']
+    const layer2 = ['TQQQ', 'SQQQ', 'SOXL', 'UPRO', 'SPXU']
+    for (const id of layer1) {
+      expect(findCatalogInstrument(id)!.entry.deniedGroups, id).toBeUndefined()
+    }
+    for (const id of layer2) {
+      expect(findCatalogInstrument(id)!.entry.deniedGroups, id).toEqual(KR_LEVERAGE_DENIED_GROUPS)
+    }
+    const kr = { isAdmin: false, jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' } }
+    const us = { isAdmin: false, jurisdiction: { declaredCountry: 'US', ipCountry: 'US' } }
+    const krChips = visibleChipEntriesForViewer(index, kr).map((i) => i.instrument)
+    const usChips = visibleChipEntriesForViewer(index, us).map((i) => i.instrument)
+    expect(krChips).toEqual(layer1)
+    expect(usChips).toEqual([...layer1, ...layer2])
+    expect(isCatalogInstrumentAllowed('SPY', kr.jurisdiction)).toBe(true)
+    expect(isCatalogInstrumentAllowed('TQQQ', kr.jurisdiction)).toBe(false)
+    expect(isCatalogInstrumentAllowed('TQQQ', us.jurisdiction)).toBe(true)
+    expect(isCatalogInstrumentAllowed('SPY', { declaredCountry: 'KR', ipCountry: 'US' })).toBe(true)
+    expect(isCatalogInstrumentAllowed('TQQQ', { declaredCountry: 'KR', ipCountry: 'US' })).toBe(false)
+    expect(isCatalogInstrumentAllowed('TQQQ', { declaredCountry: 'US', ipCountry: 'KR' })).toBe(false)
+    expect(visibleChipEntriesForViewer(index, { isAdmin: true, jurisdiction: kr.jurisdiction }).map((i) => i.instrument)).toEqual(
+      [...layer1, ...layer2],
+    )
+    expect(PUBLIC_CATALOG.find((c) => c.id === 'gold_metals')!.instruments.map((i) => i.instrument)).toEqual([
+      'XAU/USD',
+      'XAG/USD',
+      'XPT/USD',
+      'GLD',
+      'SLV',
+    ])
   })
 
   it('keeps instrument ids unique and includes the existing AAPL / BTC/USD / EUR/USD keys', () => {
@@ -207,6 +261,8 @@ describe('catalog i18n', () => {
     expect(getLeagueUiPack('ko').catalog.instruments['JPY/KRW']).toBe('엔/원')
     expect(getLeagueUiPack('ko').catalog.instruments['GBP/USD']).toBe('파운드/달러')
     expect(getLeagueUiPack('ko').catalog.instruments['USD/CNH']).toBe('달러/위안')
+    expect(getLeagueUiPack('ko').catalog.instruments.EWY).toBe('한국 ETF (EWY)')
+    expect(getLeagueUiPack('ko').catalog.instruments.TQQQ).toBe('나스닥 3배 (TQQQ)')
   })
 
   it('spot vs ETF note is shown for mixed-clock categories, not for session-only or calendar-only', () => {

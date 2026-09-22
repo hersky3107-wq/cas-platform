@@ -11,7 +11,8 @@ import {
   buildCatalogRankedRoundInput,
   CATALOG_INSTRUMENT_IDS,
   PUBLIC_CATALOG,
-  visibleChipEntries,
+  isCatalogInstrumentAllowed,
+  visibleChipEntriesForViewer,
   type CatalogRankedRoundInput,
   type PublicCategoryDef,
 } from './catalog'
@@ -168,7 +169,7 @@ export function viewerCatalog(viewer: LeagueViewer): PublicCategoryDef[] {
 /** Flattened currently-open chips this viewer may see. Hidden catalog members are omitted. */
 export function viewerInstruments(viewer: LeagueViewer) {
   return viewerCatalog(viewer).flatMap((c) =>
-    visibleChipEntries(c).map((i) => ({
+    visibleChipEntriesForViewer(c, viewer).map((i) => ({
       instrument: i.instrument,
       category: c.ledgerCategory,
       label: i.instrument,
@@ -248,6 +249,9 @@ export async function authorizeRoundForViewer(viewer: LeagueViewer, roundIdRaw: 
       return { ok: false, response: forbiddenResponse('not_public') }
     }
     if (!isCategoryAllowed(round.category, viewer.jurisdiction)) {
+      return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
+    }
+    if (!isCatalogInstrumentAllowed(round.instrument, viewer.jurisdiction)) {
       return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
     }
   }

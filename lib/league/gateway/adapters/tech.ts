@@ -102,7 +102,7 @@ export function createTechAdapter(io: TechPacketIo): CategoryAdapter {
     entity_kinds: ['company'],
     observation_shape: 'occurrence',
 
-    async resolveEntity(raw: string, _locale: string): Promise<EntityResolution> {
+    async resolveEntity(raw: string, _locale: string, _viewer?: GatewayViewer): Promise<EntityResolution> {
       const hit = resolveCompanyMention(raw)
       if (!hit) {
         return {

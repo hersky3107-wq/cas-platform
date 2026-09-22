@@ -179,6 +179,18 @@ export function buildPacketInventory(input: PacketInventoryInput): string {
       ['cot_dxy', slow.cotDxy],
       ['fx_cot_gap', slow.fxCotGap],
       ['fx_etf_short_volume', slow.fxEtfShortVolume],
+      ['vixcls', slow.vixcls],
+      ['fred_sp500', slow.sp500Fred],
+      ['fred_nasdaq_composite', slow.nasdaqComFred],
+      ['fred_djia', slow.djiaFred],
+      ['fred_nikkei225', slow.nikkei225Fred],
+      ['cot_es', slow.cotEs],
+      ['cot_nq', slow.cotNq],
+      ['cot_ym', slow.cotYm],
+      ['cot_nikkei', slow.cotNikkei],
+      ['cot_vix', slow.cotVix],
+      ['index_etf_cot_gap', slow.indexEtfCotGap],
+      ['index_etf_identity_note', slow.indexEtfIdentityNote],
     ] as const) {
       const line = snapLine(key, field)
       if (line) lines.push(line)

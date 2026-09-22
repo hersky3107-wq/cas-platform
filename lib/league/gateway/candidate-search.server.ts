@@ -2,11 +2,11 @@ import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { runSingleAiProvider } from '@/lib/ai/router'
-import { catalogById, visibleChipEntries } from '../catalog'
+import { catalogById, isCatalogInstrumentAllowed, visibleChipEntries } from '../catalog'
 import { bumpSearchCircuit, circuitAllowsSearch } from './abuse.server'
 import { extractCandidateTokens, pickResolvedInCatalogOrder, scanCatalogMentions } from './candidate-search'
 import type { CandidateSearchHit } from './shell'
-import type { CategoryAdapter } from './types'
+import type { CategoryAdapter, GatewayViewer } from './types'
 
 /** Perplexity Sonar list price used when billed USD is absent (same as research). */
 export const CANDIDATE_SEARCH_PRICE = { inputPerMTokens: 1, outputPerMTokens: 1 }
@@ -17,10 +17,15 @@ export async function searchCategoryCandidates(args: {
   raw_text: string
   locale: string
   adapter: CategoryAdapter
+  viewer: GatewayViewer
 }): Promise<CandidateSearchHit[] | null> {
   if (!(await circuitAllowsSearch())) return null
   const cat = catalogById(String(args.adapter.category_id))
-  const catalog = cat ? visibleChipEntries(cat).map((i) => i.instrument) : []
+  const catalog = cat
+    ? visibleChipEntries(cat)
+        .map((i) => i.instrument)
+        .filter((id) => args.viewer.isAdmin || isCatalogInstrumentAllowed(id, args.viewer.jurisdiction))
+    : []
   if (catalog.length === 0) return null
 
   await bumpSearchCircuit()
@@ -56,7 +61,7 @@ export async function searchCategoryCandidates(args: {
   ]
   const resolved: string[] = []
   for (const token of tokens) {
-    const hit = await args.adapter.resolveEntity(token, args.locale)
+    const hit = await args.adapter.resolveEntity(token, args.locale, args.viewer)
     if (hit.ok && catalog.includes(hit.entity_id) && !resolved.includes(hit.entity_id)) {
       resolved.push(hit.entity_id)
     }

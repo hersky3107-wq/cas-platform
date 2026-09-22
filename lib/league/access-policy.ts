@@ -2,7 +2,7 @@ import type { PredictionCategory } from '@/lib/prediction/categories'
 import type { LeagueTier } from '@/lib/league/roster'
 import type { RateLimitRule } from '@/lib/rate-limit'
 import { findCatalogInstrument } from './catalog'
-import { isCategoryAllowed, type JurisdictionInput } from './jurisdiction/resolve'
+import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
 import { isUiHorizon, type UiHorizon } from './horizon'
 
 /**
@@ -108,6 +108,9 @@ export function gatePublicGenerateInstrument(
 
   const category = found.category.ledgerCategory
   if (!viewer.isAdmin && !isCategoryAllowed(category, viewer.jurisdiction)) {
+    return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+  }
+  if (!viewer.isAdmin && !isInstrumentAllowed(found.entry.deniedGroups, viewer.jurisdiction)) {
     return { ok: false, status: 403, code: 'jurisdiction_blocked' }
   }
   return { ok: true, instrument: found.entry.instrument, category, horizon }

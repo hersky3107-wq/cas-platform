@@ -525,6 +525,88 @@ describe('closed-book packet v2 — new sections', () => {
     expect(usdkrw).not.toContain('CFTC yen leveraged-funds')
   })
 
+  it('renders index_etf FRED/CFTC per-chip: TQQQ gets NQ not ES; EWY has no COT; no EIA/GVZ leak', () => {
+    const tqqq = assembleClosedBookInjection(
+      input({
+        instrument: 'TQQQ',
+        category: 'etf_index',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: { date: '2026-09-21', shortShares: 10, totalShares: 100, shortPct: 10 },
+          putCall: { date: '2026-09-21', total: 0.81, index: 0.9, equity: 0.6 },
+          btcEtfFlow: null,
+          insider: null,
+          vixcls: { date: '2026-09-18', value: 14.81 },
+          nasdaqComFred: { date: '2026-09-18', value: 27122.09 },
+          cotNq: {
+            contract: 'NASDAQ MINI - CHICAGO MERCANTILE EXCHANGE',
+            date: '2026-09-15',
+            openInterest: 325784,
+            managedMoneyLong: 100,
+            managedMoneyShort: 6387,
+            managedMoneyNet: -6287,
+            source: 'CFTC TFF FinFutWk.txt (leveraged-funds ≈ managed-money analog)',
+          },
+          cotVix: {
+            contract: 'VIX FUTURES - CBOE FUTURES EXCHANGE',
+            date: '2026-09-15',
+            openInterest: 446060,
+            managedMoneyLong: 1,
+            managedMoneyShort: 16505,
+            managedMoneyNet: -16504,
+            source: 'CFTC TFF FinFutWk.txt (leveraged-funds ≈ managed-money analog)',
+          },
+        },
+      }),
+    )
+    expect(tqqq).toContain('CBOE VIX (2026-09-18): 14.81')
+    expect(tqqq).toContain('FRED VIXCLS')
+    expect(tqqq).toContain('FRED Nasdaq Composite (2026-09-18): 27122.09')
+    expect(tqqq).toContain('CFTC Nasdaq mini leveraged-funds')
+    expect(tqqq).toContain('CFTC VIX futures leveraged-funds')
+    expect(tqqq).toContain('put/call ratios')
+    expect(tqqq).not.toContain('CFTC E-mini S&P 500')
+    expect(tqqq).not.toContain('FRED S&P 500 cash')
+    expect(tqqq).not.toContain('EIA US commercial crude')
+    expect(tqqq).not.toContain('GVZ')
+    expect(tqqq).not.toContain('Fed funds effective')
+
+    const ewy = assembleClosedBookInjection(
+      input({
+        instrument: 'EWY',
+        category: 'etf_index',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: { date: '2026-09-21', total: 0.81, index: null, equity: null },
+          btcEtfFlow: null,
+          insider: null,
+          vixcls: { date: '2026-09-18', value: 14.81 },
+          cotVix: {
+            contract: 'VIX FUTURES - CBOE FUTURES EXCHANGE',
+            date: '2026-09-15',
+            openInterest: 1,
+            managedMoneyLong: 1,
+            managedMoneyShort: 2,
+            managedMoneyNet: -1,
+          },
+          indexEtfCotGap: {
+            note: 'CFTC KOSPI/Korea: none in FinFutWk. EWY is a US-listed MSCI Korea ETF, not KOSPI 200 / KODEX 200. No Korea-index COT.',
+          },
+          indexEtfIdentityNote: {
+            note: 'EWY is iShares MSCI Korea (US-listed country ETF), not a KOSPI cash index. No free KOSPI series on FRED.',
+          },
+        },
+      }),
+    )
+    expect(ewy).toContain('CFTC KOSPI/Korea: none')
+    expect(ewy).toContain('iShares MSCI Korea')
+    expect(ewy).toContain('CBOE VIX')
+    expect(ewy).not.toContain('CFTC E-mini S&P 500')
+    expect(ewy).not.toContain('CFTC Nasdaq mini')
+    expect(ewy).not.toContain('FRED S&P 500 cash')
+  })
+
   it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {
     expect(isOzOzGoldSilverRatio(7.21)).toBe(false)
     expect(isOzOzGoldSilverRatio(72.9)).toBe(true)

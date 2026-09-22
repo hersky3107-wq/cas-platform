@@ -93,3 +93,32 @@ export function isPromptAllowed(category: string, input: JurisdictionInput): boo
   const ipOk = hasIp ? isPromptAllowedForGroup(ipGroup, category) : true
   return declaredOk && ipOk
 }
+
+/**
+ * Instrument-level overlay on the category matrix. Default-allow: omitted
+ * or empty `deniedGroups` means the instrument is visible wherever its
+ * category is. HIDE when EITHER the declared-country group OR the IP
+ * group is in the list (deny on any listed signal — same stricter-of-two
+ * AND as categories, inverted: one hitting signal is enough to hide).
+ *
+ * Generic on purpose: KR leverage/inverse ETFs are the first caller;
+ * later EU/UK PRIIPs or stock-category leverage reuse the same list.
+ * UNKNOWN (no geo signal) only hides when `UNKNOWN` itself is listed.
+ */
+export function isInstrumentAllowed(
+  deniedGroups: readonly JurisdictionGroup[] | undefined,
+  input: JurisdictionInput,
+): boolean {
+  if (!deniedGroups || deniedGroups.length === 0) return true
+
+  const hasDeclared = Boolean(input.declaredCountry?.trim())
+  const hasIp = Boolean(input.ipCountry?.trim())
+  if (!hasDeclared && !hasIp) {
+    return !deniedGroups.includes('UNKNOWN')
+  }
+
+  const { declaredGroup, ipGroup } = resolveJurisdictionGroups(input)
+  if (hasDeclared && deniedGroups.includes(declaredGroup)) return false
+  if (hasIp && deniedGroups.includes(ipGroup)) return false
+  return true
+}

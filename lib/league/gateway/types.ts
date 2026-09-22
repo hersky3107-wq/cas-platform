@@ -227,7 +227,7 @@ export interface CategoryAdapter {
   readonly observation_shape: ObservationShape | null
 
   /** Resolve a freeform mention → canonical entity, or ask / refuse. */
-  resolveEntity(raw: string, locale: string): Promise<EntityResolution>
+  resolveEntity(raw: string, locale: string, viewer?: GatewayViewer): Promise<EntityResolution>
 
   /** Slots that must be filled before a proposition is decidable. */
   requiredSlots(entity: { entity_id: string; entity_kind: EntityKind }): readonly string[]

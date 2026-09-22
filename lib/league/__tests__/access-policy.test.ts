@@ -154,6 +154,40 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
     })
   })
 
+  it('hides KR-denied leverage ETFs for Korea (either signal) and keeps SPY visible', () => {
+    expect(gatePublicGenerateInstrument('SPY', krPublic)).toEqual({
+      ok: true,
+      instrument: 'SPY',
+      category: 'etf_index',
+      horizon: '1d',
+    })
+    expect(gatePublicGenerateInstrument('QQQ', { isAdmin: false, jurisdiction: { declaredCountry: 'KR' } })).toMatchObject({
+      ok: true,
+      instrument: 'QQQ',
+    })
+    expect(gatePublicGenerateInstrument('TQQQ', krPublic)).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
+    })
+    expect(gatePublicGenerateInstrument('TQQQ', { isAdmin: false, jurisdiction: { declaredCountry: 'KR', ipCountry: 'US' } })).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
+    })
+    expect(gatePublicGenerateInstrument('SQQQ', { isAdmin: false, jurisdiction: { declaredCountry: 'US', ipCountry: 'KR' } })).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
+    })
+    expect(gatePublicGenerateInstrument('TQQQ', { isAdmin: false, jurisdiction: { ipCountry: 'US' } })).toMatchObject({
+      ok: true,
+      instrument: 'TQQQ',
+      category: 'etf_index',
+    })
+    expect(gatePublicGenerateInstrument('UPRO', adminInCn)).toMatchObject({ ok: true, instrument: 'UPRO' })
+  })
+
   it('generate-stream charges only after resolveTarget, so a failed gate is zero cost', () => {
     const route = readFileSync(join(__dirname, '../../../app/api/league/generate-stream/route.ts'), 'utf8')
     const targetAt = route.indexOf('const target = await resolveTarget(')

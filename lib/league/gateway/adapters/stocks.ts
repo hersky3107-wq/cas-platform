@@ -95,7 +95,7 @@ export function createStocksAdapter(io: PriceSeriesIo): CategoryAdapter {
     entity_kinds: ['ticker'],
     observation_shape: null,
 
-    async resolveEntity(raw: string, _locale: string): Promise<EntityResolution> {
+    async resolveEntity(raw: string, _locale: string, _viewer?: GatewayViewer): Promise<EntityResolution> {
       const catalog = stockInstruments()
       const needle = normalizeMention(raw)
       if (!needle) return { ok: false, refuse: refuse('unsupported_entity', { supported: catalog.join(', ') }) }

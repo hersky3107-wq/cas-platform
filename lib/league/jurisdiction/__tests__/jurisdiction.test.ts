@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { groupForCountry } from '../country-groups'
-import { isCategoryAllowed, isPromptAllowed, resolveJurisdictionGroups } from '../resolve'
+import { isCategoryAllowed, isInstrumentAllowed, isPromptAllowed, resolveJurisdictionGroups } from '../resolve'
 import { isCategoryAllowedForGroup } from '../matrix'
 import {
   FINANCIAL_PROMPT_CATEGORIES,
@@ -120,6 +120,31 @@ describe('matrix default-deny shape (data-table sanity)', () => {
   it('an unknown/unlisted category string is denied everywhere, never throws', () => {
     expect(isCategoryAllowedForGroup('US', 'not_a_real_category')).toBe(false)
     expect(isCategoryAllowed('not_a_real_category', { ipCountry: 'US' })).toBe(false)
+  })
+})
+
+describe('isInstrumentAllowed — default-allow + deny-on-any-listed-signal', () => {
+  it('allows when deniedGroups is omitted or empty', () => {
+    expect(isInstrumentAllowed(undefined, { ipCountry: 'KR' })).toBe(true)
+    expect(isInstrumentAllowed([], { declaredCountry: 'KR', ipCountry: 'KR' })).toBe(true)
+  })
+
+  it('hides when either declared or IP group is listed (KR leverage)', () => {
+    const denied = ['KR'] as const
+    expect(isInstrumentAllowed(denied, { declaredCountry: 'KR', ipCountry: 'KR' })).toBe(false)
+    expect(isInstrumentAllowed(denied, { declaredCountry: 'KR' })).toBe(false)
+    expect(isInstrumentAllowed(denied, { ipCountry: 'KR' })).toBe(false)
+    expect(isInstrumentAllowed(denied, { declaredCountry: 'KR', ipCountry: 'US' })).toBe(false)
+    expect(isInstrumentAllowed(denied, { declaredCountry: 'US', ipCountry: 'KR' })).toBe(false)
+    expect(isInstrumentAllowed(denied, { declaredCountry: 'US', ipCountry: 'US' })).toBe(true)
+    expect(isInstrumentAllowed(denied, { ipCountry: 'JP' })).toBe(true)
+    expect(isInstrumentAllowed(denied, {})).toBe(true)
+  })
+
+  it('is generic: listing EU later would hide on a DE IP without changing the helper', () => {
+    expect(isInstrumentAllowed(['EU', 'UK'], { ipCountry: 'DE' })).toBe(false)
+    expect(isInstrumentAllowed(['EU', 'UK'], { ipCountry: 'GB' })).toBe(false)
+    expect(isInstrumentAllowed(['EU', 'UK'], { ipCountry: 'US' })).toBe(true)
   })
 })
 

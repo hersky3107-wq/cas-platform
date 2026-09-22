@@ -14,7 +14,9 @@ describe('instrument identity', () => {
     expect(isPoisonTicker('SPX:INDEX')).toBe(true)
     expect(isPoisonTicker('SPY')).toBe(false)
     expect(isPoisonTicker('QQQ')).toBe(false)
-    expect(POISON_TICKERS).toEqual(['SPX', 'NDX', 'DJI', 'RUT'])
+    expect(POISON_TICKERS).toEqual(['SPX', 'NDX', 'DJI', 'RUT', 'SPXS'])
+    expect(isPoisonTicker('SPXS')).toBe(true)
+    expect(isPoisonTicker('SPXU')).toBe(false)
   })
 
   it('rejects the live SPX/NDX mis-resolutions against index tokens', () => {
@@ -60,6 +62,21 @@ describe('instrument identity', () => {
     expect(catalogIdentityError('GBP/JPY', 'British Pound / Japanese Yen')).toBeNull()
     expect(catalogIdentityError('EUR/JPY', 'Euro / US Dollar')).toMatch(/identity mismatch/)
     expect(catalogIdentityError('JPY/KRW', 'US Dollar / Japanese Yen')).toMatch(/identity mismatch/)
+    expect(catalogIdentityError('DIA', 'SPDR Dow Jones Industrial Average ETF Trust')).toBeNull()
+    expect(catalogIdentityError('EWJ', 'iShares MSCI Japan ETF')).toBeNull()
+    expect(catalogIdentityError('EWY', 'iShares MSCI Korea ETF')).toBeNull()
+    expect(catalogIdentityError('FEZ', 'SPDR EURO STOXX 50 ETF')).toBeNull()
+    expect(catalogIdentityError('EWT', 'iShares MSCI Taiwan ETF')).toBeNull()
+    expect(catalogIdentityError('TQQQ', 'ProShares UltraPro QQQ')).toBeNull()
+    expect(catalogIdentityError('TQQQ', 'ProShares UltraPro Short QQQ')).toMatch(/identity mismatch/)
+    expect(catalogIdentityError('SQQQ', 'ProShares UltraPro Short QQQ')).toBeNull()
+    expect(catalogIdentityError('SOXL', 'Direxion Daily Semiconductor Bull 3X Shares')).toBeNull()
+    expect(catalogIdentityError('SOXL', 'Direxion Daily Semiconductor Bear 3X Shares')).toMatch(/identity mismatch/)
+    expect(catalogIdentityError('UPRO', 'ProShares UltraPro S&P 500')).toBeNull()
+    expect(catalogIdentityError('UPRO', 'ProShares UltraPro Short S&P 500')).toMatch(/identity mismatch/)
+    expect(catalogIdentityError('SPXU', 'ProShares UltraPro Short S&P 500')).toBeNull()
+    expect(catalogIdentityError('SPXU', 'Invesco S&P 500 UCITS ETF Acc')).toMatch(/identity mismatch/)
+    expect(catalogIdentityError('SPXS', 'Invesco S&P 500 UCITS ETF Acc')).toMatch(/refusing SPXS/)
   })
 
   it('accepts Twelve Data commodity time_series identity via currency_base', () => {

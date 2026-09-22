@@ -4,7 +4,7 @@ import { LEAGUE_GENERATE_CREDITS } from '../../credits'
 import { createStubNormalizer, validateNormalizerOutput } from '../normalizer'
 import { runLeagueGateway, type GatewayDeps, type GatewayRequest } from '../shell'
 import { createStocksAdapter } from '../adapters/stocks'
-import { createMemecoinAdapter } from '../adapters/price-series-family'
+import { createMemecoinAdapter, createIndexEtfAdapter } from '../adapters/price-series-family'
 import type { PriceSeriesIo } from '../adapters/price-series-packet'
 import type { CategoryAdapter, GatewayViewer } from '../types'
 
@@ -318,6 +318,62 @@ describe('gateway shell — jurisdiction × category prompt gate (before normali
     expect(result).toMatchObject({ status: 'refused', refusal: { code: 'jurisdiction_blocked' } })
     expect(normalizeSpy).not.toHaveBeenCalled()
     expect(chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('instrument-level deny in resolveEntity: US can ready TQQQ; KR signal refuses TQQQ after a US-declared prompt-ok pair is impossible so adapter+shell both check', async () => {
+    const index = createIndexEtfAdapter(DEAD_IO)
+    const normalizeSpy = vi.fn(async () => ({
+      category_id: 'index_etf',
+      entity_mention: 'tqqq',
+      entity_id_hint: 'TQQQ',
+      horizon: '1d',
+      proposition_kind: 'binary_close_higher',
+      slots: {},
+      confidence: 0.91,
+      needs_slot: null,
+    }))
+    const chargeSpy = vi.fn(async () => ({ ok: true }))
+    const usReady = await runLeagueGateway(
+      {
+        viewer: US_VIEWER,
+        category_id: 'index_etf',
+        raw_text: 'TQQQ tomorrow',
+        locale: 'en',
+        answered_slots: { entity_confirmed: 'true' },
+      },
+      {
+        adapterFor: (id) => (id === 'index_etf' ? index : null),
+        normalizer: { normalize: normalizeSpy },
+        deductCredits: chargeSpy,
+        now: () => NOW,
+      },
+    )
+    expect(usReady.status).toBe('ready')
+    if (usReady.status !== 'ready') throw new Error('unreachable')
+    expect(usReady.round.instrument).toBe('TQQQ')
+
+    const mixed = await runLeagueGateway(
+      {
+        viewer: { userId: 'u-mix', isAdmin: false, jurisdiction: { declaredCountry: 'US', ipCountry: 'KR' } },
+        category_id: 'index_etf',
+        raw_text: 'TQQQ tomorrow',
+        locale: 'en',
+        answered_slots: { entity_confirmed: 'true' },
+      },
+      {
+        adapterFor: (id) => (id === 'index_etf' ? index : null),
+        normalizer: { normalize: normalizeSpy },
+        deductCredits: chargeSpy,
+        now: () => NOW,
+      },
+    )
+    // US declared + KR IP: prompt matrix is stricter-of-two so KR prompt-off
+    // fires first. Instrument deny would also hide TQQQ on either KR signal.
+    expect(mixed).toMatchObject({ status: 'refused' })
+    if (mixed.status === 'refused') {
+      expect(['jurisdiction_blocked', 'prompt_not_available']).toContain(mixed.refusal.code)
+    }
+    expect(chargeSpy).toHaveBeenCalledTimes(1)
   })
 })
 

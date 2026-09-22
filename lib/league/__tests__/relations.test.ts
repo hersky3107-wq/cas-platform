@@ -82,3 +82,30 @@ describe('fx related ETFs', () => {
     expect(relationsFor('AUD/USD')!.related.map((r) => r.symbol)).toEqual(['USD/CNH', 'USD/JPY', 'UUP'])
   })
 })
+
+describe('index_etf related ETFs', () => {
+  it('SPY includes XLF; QQQ includes SMH+XLK', () => {
+    expect(relationsFor('SPY')!.related.map((r) => r.symbol)).toEqual(['QQQ', 'XLF', 'VIXY', 'TLT', 'HYG', 'UUP'])
+    expect(relationsFor('QQQ')!.related.map((r) => r.symbol)).toEqual(['SPY', 'SMH', 'XLK', 'VIXY', 'TLT'])
+  })
+
+  it('leverage isolation: TQQQ/SQQQ stay on Nasdaq peers; UPRO/SPXU stay on S&P; SOXL stays on semis', () => {
+    expect(relationsFor('TQQQ')!.related.map((r) => r.symbol)).toEqual(['QQQ', 'SMH', 'XLK', 'VIXY'])
+    expect(relationsFor('SQQQ')!.related.map((r) => r.symbol)).toEqual(['QQQ', 'SMH', 'XLK', 'VIXY'])
+    expect(relationsFor('TQQQ')!.related.map((r) => r.symbol)).not.toContain('SPY')
+    expect(relationsFor('UPRO')!.related.map((r) => r.symbol)).toEqual(['SPY', 'XLF', 'VIXY', 'TLT'])
+    expect(relationsFor('SPXU')!.related.map((r) => r.symbol)).toEqual(['SPY', 'XLF', 'VIXY', 'TLT'])
+    expect(relationsFor('UPRO')!.related.map((r) => r.symbol)).not.toContain('QQQ')
+    expect(relationsFor('SOXL')!.related.map((r) => r.symbol)).toEqual(['SMH', 'SOXS', 'XLK', 'VIXY'])
+    expect(relationsFor('SOXL')!.related.map((r) => r.symbol)).not.toContain('SPY')
+    expect(relationsFor('SOXL')!.related.map((r) => r.symbol)).not.toContain('QQQ')
+  })
+
+  it('country ETFs keep regional peers and asia links', () => {
+    expect(relationsFor('EWJ')!.related.map((r) => r.symbol)).toEqual(['FXY', 'USD/JPY', 'VIXY', 'TLT'])
+    expect(relationsFor('EWJ')!.asiaLinks).toEqual(['ja'])
+    expect(relationsFor('EWY')!.asiaLinks).toEqual(['ko'])
+    expect(relationsFor('EWT')!.asiaLinks).toEqual(['zh'])
+    expect(relationsFor('FEZ')!.related.map((r) => r.symbol)).toContain('EZU')
+  })
+})

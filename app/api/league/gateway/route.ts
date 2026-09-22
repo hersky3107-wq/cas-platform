@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { addCreditsBalance } from '@/lib/credits-server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { LEAGUE_GATEWAY_RATE_RULE } from '@/lib/league/access-policy'
-import { PUBLIC_CATEGORY_IDS, visibleChipInstrumentIds } from '@/lib/league/catalog'
+import { PUBLIC_CATEGORY_IDS, visibleChipInstrumentIdsForViewer } from '@/lib/league/catalog'
 import { admissionForPublicCategory } from '@/lib/league/gateway/admission'
 import { issueGatewayReceipt } from '@/lib/league/gateway/charge-receipt'
 import { writeGatewayAudit } from '@/lib/league/gateway/abuse.server'
@@ -14,6 +14,7 @@ import type { ClarifyingQuestion, RefusalCode } from '@/lib/league/gateway/types
 import { getLeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { normalizeLeagueLocale, type LeagueLocale } from '@/lib/league/i18n/locales'
 import { enforceRateLimit, resolveLeagueViewer } from '@/lib/league/public-access'
+import type { JurisdictionInput } from '@/lib/league/jurisdiction/resolve'
 
 /**
  * POST /api/league/gateway
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
 
   const gatewayViewer = { userId: viewer.userId, isAdmin: viewer.isAdmin, jurisdiction: viewer.jurisdiction }
   const admission = admissionForPublicCategory(gatewayViewer, categoryId)
-  if (admission) return jsonRefused(admission, locale, categoryId)
+  if (admission) return jsonRefused(admission, locale, categoryId, gatewayViewer)
 
   void writeGatewayAudit({
     userId: viewer.userId,
@@ -130,12 +131,17 @@ export async function POST(req: Request) {
   })
 }
 
-function jsonRefused(code: RefusalCode, locale: LeagueLocale, categoryId?: string) {
+function jsonRefused(
+  code: RefusalCode,
+  locale: LeagueLocale,
+  categoryId?: string,
+  viewer?: { isAdmin?: boolean; jurisdiction: JurisdictionInput },
+) {
   const pack = getLeagueUiPack(locale)
   const message = refusalCopy(pack, code, refusalMessageForKey(refusalMessageKey(code), locale))
   const chipIds =
-    (code === 'unsupported_entity' || code === 'prompt_not_available') && categoryId
-      ? visibleChipInstrumentIds(categoryId)
+    (code === 'unsupported_entity' || code === 'prompt_not_available') && categoryId && viewer
+      ? visibleChipInstrumentIdsForViewer(categoryId, viewer)
       : []
   return NextResponse.json({
     status: 'refused',

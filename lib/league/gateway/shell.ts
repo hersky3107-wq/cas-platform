@@ -1,5 +1,5 @@
 import { LEAGUE_GENERATE_CREDITS } from '../credits'
-import { visibleChipInstrumentIds } from '../catalog'
+import { isCatalogInstrumentAllowed, visibleChipInstrumentIdsForViewer } from '../catalog'
 import type { PublicCategoryId } from '../catalog'
 import { leagueGatewayAdmission } from './admission'
 import { validateNormalizerOutput, type PromptNormalizer } from './normalizer'
@@ -78,14 +78,26 @@ export type GatewayDeps = {
     raw_text: string
     locale: string
     adapter: CategoryAdapter
+    viewer: GatewayViewer
   }): Promise<CandidateSearchHit[] | null>
 }
 
-function catalogChipsFor(categoryId: string): { id: string; label_i18n_key: string }[] {
-  return visibleChipInstrumentIds(categoryId).map((id) => ({
+function catalogChipsFor(categoryId: string, viewer: GatewayViewer): { id: string; label_i18n_key: string }[] {
+  return visibleChipInstrumentIdsForViewer(categoryId, viewer).map((id) => ({
     id,
     label_i18n_key: `league.catalog.instruments.${id}`,
   }))
+}
+
+function filterEntityOptions(
+  question: ClarifyingQuestion,
+  viewer: GatewayViewer,
+): ClarifyingQuestion {
+  if (question.slot !== 'entity_id' || !question.options) return question
+  const options = question.options.filter(
+    (o) => viewer.isAdmin || isCatalogInstrumentAllowed(o.id, viewer.jurisdiction),
+  )
+  return { ...question, options }
 }
 
 function refused(
@@ -93,6 +105,7 @@ function refused(
   locale: string,
   safe_facts?: Record<string, string>,
   categoryId?: string,
+  viewer?: GatewayViewer,
 ): GatewayResult {
   const key = refusalMessageKey(code)
   const refusal: Refusal & { message: string } = {
@@ -102,16 +115,16 @@ function refused(
     ...(safe_facts ? { safe_facts } : {}),
   }
   const chips =
-    (code === 'unsupported_entity' || code === 'prompt_not_available') && categoryId
-      ? catalogChipsFor(categoryId)
+    (code === 'unsupported_entity' || code === 'prompt_not_available') && categoryId && viewer
+      ? catalogChipsFor(categoryId, viewer)
       : undefined
   return { status: 'refused', refusal, ...(chips && chips.length > 0 ? { catalog_chips: chips } : {}) }
 }
 
-function refusedFrom(refusal: Refusal, locale: string, categoryId?: string): GatewayResult {
+function refusedFrom(refusal: Refusal, locale: string, categoryId?: string, viewer?: GatewayViewer): GatewayResult {
   const chips =
-    (refusal.code === 'unsupported_entity' || refusal.code === 'prompt_not_available') && categoryId
-      ? catalogChipsFor(categoryId)
+    (refusal.code === 'unsupported_entity' || refusal.code === 'prompt_not_available') && categoryId && viewer
+      ? catalogChipsFor(categoryId, viewer)
       : undefined
   return {
     status: 'refused',
@@ -141,10 +154,14 @@ function clarifyOrCap(
   partial: Partial<NormalizeSlots>,
   used: number,
   locale: string,
+  viewer: GatewayViewer,
 ): GatewayResult {
   if (used >= MAX_CLARIFY_ROUNDS) return refused('missing_slot', locale)
-  const first = questions[0]
+  const first = questions[0] ? filterEntityOptions(questions[0], viewer) : undefined
   if (!first) return refused('missing_slot', locale)
+  if (first.slot === 'entity_id' && first.options && first.options.length === 0) {
+    return refused('jurisdiction_blocked', locale)
+  }
   return { status: 'clarify', questions: [oneQuestion(first)], partial }
 }
 
@@ -162,9 +179,9 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   //    promptAllowed(jurisdiction × category). Before prefilter / normalize /
   //    charge. Admin bypasses. Adapter overlay may still add category rules.
   const admission = leagueGatewayAdmission(viewer, adapter.category_id, adapter.ledger_category, now.getTime())
-  if (admission) return refused(admission, locale, undefined, adapter.category_id)
+  if (admission) return refused(admission, locale, undefined, adapter.category_id, viewer)
   const overlay = adapter.jurisdictionGate(viewer, now)
-  if (overlay) return refusedFrom(overlay, locale, adapter.category_id)
+  if (overlay) return refusedFrom(overlay, locale, adapter.category_id, viewer)
 
   // 4½. Layer-0 pre-filters — zero LLM cost for junk.
   if (prefilterRejects(req.raw_text)) return refused('low_confidence', locale)
@@ -195,14 +212,21 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   let entityAsk: ClarifyingQuestion | null = null
   let entityRefusal: Refusal | null = null
   for (const candidate of mentionCandidates) {
-    const resolution = await adapter.resolveEntity(candidate, locale)
+    const resolution = await adapter.resolveEntity(candidate, locale, viewer)
     if (resolution.ok) {
+      if (!viewer.isAdmin && !isCatalogInstrumentAllowed(resolution.entity_id, viewer.jurisdiction)) {
+        entityRefusal = {
+          code: 'jurisdiction_blocked',
+          message_i18n_key: refusalMessageKey('jurisdiction_blocked'),
+        }
+        continue
+      }
       entity = { entity_id: resolution.entity_id, entity_kind: resolution.entity_kind, label: resolution.label }
       entityAsk = null
       entityRefusal = null
       break
     }
-    if ('need' in resolution && !entityAsk) entityAsk = resolution.need
+    if ('need' in resolution && !entityAsk) entityAsk = filterEntityOptions(resolution.need, viewer)
     if ('refuse' in resolution && !entityRefusal) entityRefusal = resolution.refuse
   }
 
@@ -210,7 +234,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     mentionCandidates.length === 0 || normalized.slots.open_question === 'true' || normalized.needs_slot === 'entity_id'
 
   if (!entity && openQuestion && mentionCandidates.length === 0 && deps.searchCandidates) {
-    const hits = await deps.searchCandidates({ raw_text: req.raw_text, locale, adapter })
+    const hits = await deps.searchCandidates({ raw_text: req.raw_text, locale, adapter, viewer })
     if (!hits || hits.length === 0) return refused('low_confidence', locale)
     return clarifyOrCap(
       [
@@ -224,15 +248,17 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
       { horizon: normalized.horizon },
       used,
       locale,
+      viewer,
     )
   }
 
   if (!entity) {
-    if (entityAsk) return clarifyOrCap([entityAsk], { horizon: normalized.horizon }, used, locale)
+    if (entityAsk) return clarifyOrCap([entityAsk], { horizon: normalized.horizon }, used, locale, viewer)
     return refusedFrom(
       entityRefusal ?? { code: 'unsupported_entity', message_i18n_key: refusalMessageKey('unsupported_entity') },
       locale,
       adapter.category_id,
+      viewer,
     )
   }
 
@@ -257,7 +283,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   // 6c. Decidability — the charge gate. Missing slots become one clarify chip.
   if (!adapter.isDecidable(slots)) {
     const questions = adapter.clarifyingQuestions(slots)
-    if (questions.length > 0) return clarifyOrCap(questions, slots, used, locale)
+    if (questions.length > 0) return clarifyOrCap(questions, slots, used, locale, viewer)
     return refused('missing_slot', locale)
   }
 

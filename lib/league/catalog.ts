@@ -8,6 +8,8 @@ import {
   type UiHorizon,
 } from './horizon'
 import { identityMismatchMessage, isPoisonTicker, quoteMatchesIdentity } from './instrument-identity'
+import { isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
+import type { JurisdictionGroup } from './jurisdiction/types'
 
 /**
  * AI Prediction League — PUBLIC CATEGORY → INSTRUMENT CATALOG.
@@ -68,7 +70,18 @@ export type CatalogInstrument = {
    * grade paths refuse a quote whose name does not contain every token.
    */
   expected_name: readonly string[]
+  /**
+   * Jurisdiction groups that must NOT see this instrument. Omitted / empty
+   * = default-allow wherever the category is allowed. HIDE when either the
+   * account-declared group or the IP group is listed (deny on any listed
+   * signal). Reusable: KR leverage/inverse now; EU/UK or stock 3x later.
+   * Independent of `chip_visible` (rotation is global, not geo).
+   */
+  deniedGroups?: readonly JurisdictionGroup[]
 }
+
+/** First caller of instrument-level gating: US 3x / inverse ETFs hidden in Korea. */
+export const KR_LEVERAGE_DENIED_GROUPS: readonly JurisdictionGroup[] = ['KR']
 
 export type PublicCategoryDef = {
   id: PublicCategoryId
@@ -147,6 +160,46 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     instruments: [
       { instrument: 'SPY', resolution_rule: 'SPY regular-session close vs prior close', chip_visible: true, expected_name: ['S&P 500'] },
       { instrument: 'QQQ', resolution_rule: 'QQQ regular-session close vs prior close', chip_visible: true, expected_name: ['Invesco'] },
+      { instrument: 'DIA', resolution_rule: 'DIA regular-session close vs prior close', chip_visible: true, expected_name: ['Dow'] },
+      { instrument: 'EWJ', resolution_rule: 'EWJ regular-session close vs prior close', chip_visible: true, expected_name: ['MSCI', 'Japan'] },
+      { instrument: 'EWY', resolution_rule: 'EWY regular-session close vs prior close', chip_visible: true, expected_name: ['MSCI', 'Korea'] },
+      { instrument: 'FEZ', resolution_rule: 'FEZ regular-session close vs prior close', chip_visible: true, expected_name: ['STOXX 50'] },
+      { instrument: 'EWT', resolution_rule: 'EWT regular-session close vs prior close', chip_visible: true, expected_name: ['MSCI', 'Taiwan'] },
+      {
+        instrument: 'TQQQ',
+        resolution_rule: 'TQQQ regular-session close vs prior close',
+        chip_visible: true,
+        expected_name: ['UltraPro QQQ'],
+        deniedGroups: KR_LEVERAGE_DENIED_GROUPS,
+      },
+      {
+        instrument: 'SQQQ',
+        resolution_rule: 'SQQQ regular-session close vs prior close',
+        chip_visible: true,
+        expected_name: ['UltraPro Short QQQ'],
+        deniedGroups: KR_LEVERAGE_DENIED_GROUPS,
+      },
+      {
+        instrument: 'SOXL',
+        resolution_rule: 'SOXL regular-session close vs prior close',
+        chip_visible: true,
+        expected_name: ['Semiconductor Bull'],
+        deniedGroups: KR_LEVERAGE_DENIED_GROUPS,
+      },
+      {
+        instrument: 'UPRO',
+        resolution_rule: 'UPRO regular-session close vs prior close',
+        chip_visible: true,
+        expected_name: ['UltraPro S&P'],
+        deniedGroups: KR_LEVERAGE_DENIED_GROUPS,
+      },
+      {
+        instrument: 'SPXU',
+        resolution_rule: 'SPXU regular-session close vs prior close',
+        chip_visible: true,
+        expected_name: ['UltraPro Short S&P'],
+        deniedGroups: KR_LEVERAGE_DENIED_GROUPS,
+      },
     ],
   },
   {
@@ -222,6 +275,23 @@ export function visibleChipEntries(category: PublicCategoryDef): CatalogInstrume
   return category.instruments.filter(isChipVisible)
 }
 
+/** Chip rotation PLUS instrument-level jurisdiction. Admin sees every open chip. */
+export function visibleChipEntriesForViewer(
+  category: PublicCategoryDef,
+  viewer: { isAdmin?: boolean; jurisdiction: JurisdictionInput },
+): CatalogInstrument[] {
+  const chips = visibleChipEntries(category)
+  if (viewer.isAdmin) return chips
+  return chips.filter((entry) => isInstrumentAllowed(entry.deniedGroups, viewer.jurisdiction))
+}
+
+/** Default-allow catalog lookup used by generate / round-read / gateway. */
+export function isCatalogInstrumentAllowed(instrument: string, input: JurisdictionInput): boolean {
+  const found = findCatalogInstrument(instrument)
+  if (!found) return true
+  return isInstrumentAllowed(found.entry.deniedGroups, input)
+}
+
 /**
  * True when visible chips in this category mix a calendar-day clock (spot)
  * with an exchange-session clock (ETF). Used to show the reusable
@@ -244,6 +314,14 @@ export function categoryHasMixedResolutionClocks(category: PublicCategoryDef): b
 export function visibleChipInstrumentIds(categoryId: string): string[] {
   const category = catalogById(categoryId)
   return category ? visibleChipEntries(category).map((i) => i.instrument) : []
+}
+
+export function visibleChipInstrumentIdsForViewer(
+  categoryId: string,
+  viewer: { isAdmin?: boolean; jurisdiction: JurisdictionInput },
+): string[] {
+  const category = catalogById(categoryId)
+  return category ? visibleChipEntriesForViewer(category, viewer).map((i) => i.instrument) : []
 }
 
 /** All catalog members for a category, visible or not. */

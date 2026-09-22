@@ -12,7 +12,7 @@
  */
 
 /** Tickers Twelve Data silently binds to an unrelated equity. Never catalog. */
-export const POISON_TICKERS = ['SPX', 'NDX', 'DJI', 'RUT'] as const
+export const POISON_TICKERS = ['SPX', 'NDX', 'DJI', 'RUT', 'SPXS'] as const
 
 export function isPoisonTicker(instrument: string): boolean {
   const base = instrument.trim().toUpperCase().split(':')[0] ?? ''

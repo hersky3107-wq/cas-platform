@@ -1,4 +1,4 @@
-import { buildCatalogRankedRoundInput, catalogById, visibleChipEntries } from '../../catalog'
+import { buildCatalogRankedRoundInput, catalogById, isCatalogInstrumentAllowed, visibleChipEntries } from '../../catalog'
 import type { PublicCategoryId } from '../../catalog'
 import { isUiHorizon, UI_HORIZONS } from '../../horizon'
 import type { PredictionCategory } from '@/lib/prediction/categories'
@@ -87,7 +87,7 @@ export function createPriceSeriesFamilyAdapter(cfg: PriceSeriesFamilyConfig, io:
     entity_kinds: [cfg.entity_kind],
     observation_shape: null,
 
-    async resolveEntity(raw: string, _locale: string): Promise<EntityResolution> {
+    async resolveEntity(raw: string, _locale: string, viewer?: GatewayViewer): Promise<EntityResolution> {
       const catalog = instruments()
       const needle = normalizeMention(raw)
       if (!needle) return { ok: false, refuse: refuse('unsupported_entity', { supported: catalog.join(', ') }) }
@@ -97,6 +97,9 @@ export function createPriceSeriesFamilyAdapter(cfg: PriceSeriesFamilyConfig, io:
 
       const exact = cfg.synonyms[needle] ?? (catalog.includes(needle.toUpperCase()) ? needle.toUpperCase() : null)
       if (exact && catalog.includes(exact)) {
+        if (viewer && !viewer.isAdmin && !isCatalogInstrumentAllowed(exact, viewer.jurisdiction)) {
+          return { ok: false, refuse: refuse('jurisdiction_blocked') }
+        }
         return { ok: true, entity_id: exact, entity_kind: cfg.entity_kind, label: exact }
       }
 
@@ -105,7 +108,8 @@ export function createPriceSeriesFamilyAdapter(cfg: PriceSeriesFamilyConfig, io:
           Object.entries(cfg.synonyms)
             .filter(([key]) => key.startsWith(needle) && key !== needle)
             .map(([, ticker]) => ticker)
-            .filter((t) => catalog.includes(t)),
+            .filter((t) => catalog.includes(t))
+            .filter((t) => !viewer || viewer.isAdmin || isCatalogInstrumentAllowed(t, viewer.jurisdiction)),
         ),
       ]
       if (candidates.length > 0) {
@@ -218,6 +222,35 @@ export const INDEX_ETF_SYNONYMS: Record<string, string> = {
   nasdaq100: 'QQQ',
   나스닥: 'QQQ',
   나스닥100: 'QQQ',
+  dia: 'DIA',
+  dow: 'DIA',
+  다우: 'DIA',
+  다우존스: 'DIA',
+  ewj: 'EWJ',
+  japan: 'EWJ',
+  nikkei: 'EWJ',
+  닛케이: 'EWJ',
+  일본: 'EWJ',
+  ewy: 'EWY',
+  korea: 'EWY',
+  kospi: 'EWY',
+  코스피: 'EWY',
+  한국: 'EWY',
+  fez: 'FEZ',
+  eurostoxx: 'FEZ',
+  eurostoxx50: 'FEZ',
+  stoxx50: 'FEZ',
+  유럽: 'FEZ',
+  ewt: 'EWT',
+  taiwan: 'EWT',
+  taiex: 'EWT',
+  대만: 'EWT',
+  tqqq: 'TQQQ',
+  sqqq: 'SQQQ',
+  soxl: 'SOXL',
+  반도체3배: 'SOXL',
+  upro: 'UPRO',
+  spxu: 'SPXU',
 }
 
 export const GOLD_METAL_SYNONYMS: Record<string, string> = {
