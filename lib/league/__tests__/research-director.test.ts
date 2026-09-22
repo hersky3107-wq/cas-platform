@@ -237,6 +237,36 @@ describe('research director — two-stage parse', () => {
     expect(text).not.toContain('ovx_crude_vol:')
   })
 
+  it('inventory lists FX FRED/COT fields without energy EIA', () => {
+    const text = buildPacketInventory({
+      ...inventory,
+      instrument: 'EUR/USD',
+      category: 'fx',
+      slow: {
+        fetchedAt: '2026-09-22T00:00:00.000Z',
+        shortVolume: null,
+        putCall: { date: '2026-09-21', total: 0.81, index: null, equity: null },
+        btcEtfFlow: null,
+        insider: null,
+        fedFunds: { date: '2026-09-18', value: 3.88 },
+        cotEur: {
+          contract: 'EURO FX',
+          date: '2026-09-15',
+          openInterest: 1,
+          managedMoneyLong: 2,
+          managedMoneyShort: 3,
+          managedMoneyNet: -1,
+        },
+        fxCotGap: { note: 'none' },
+      },
+    })
+    expect(text).toContain('fed_funds:')
+    expect(text).toContain('cot_eur:')
+    expect(text).toContain('fx_cot_gap:')
+    expect(text).not.toContain('eia_us_crude_stocks_supply:')
+    expect(text).not.toContain('cot_gold:')
+  })
+
   it('Stage 2 prompt still carries the 2026-08-28 dispersion budgets', () => {
     expect(buildStage2Prompt('tight', [])).toContain('Cap English missing queries at 2')
     expect(buildStage2Prompt('normal', [])).toContain('Cap English missing queries at 4')

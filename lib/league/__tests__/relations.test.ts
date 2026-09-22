@@ -53,3 +53,32 @@ describe('commodities_energy related ETFs', () => {
     expect(relationsFor('XAU/USD')!.related.map((r) => r.symbol)).toContain('GLD')
   })
 })
+
+describe('fx related ETFs', () => {
+  it('EUR/USD maps to FXE, EZU, GBP/USD, UUP, VIXY', () => {
+    expect(relationsFor('EUR/USD')!.related.map((r) => r.symbol)).toEqual(['FXE', 'EZU', 'GBP/USD', 'UUP', 'VIXY'])
+  })
+
+  it('USD/JPY maps to FXY, EWJ, UUP, TLT, USD/KRW', () => {
+    expect(relationsFor('USD/JPY')!.related.map((r) => r.symbol)).toEqual(['FXY', 'EWJ', 'UUP', 'TLT', 'USD/KRW'])
+  })
+
+  it('USD/KRW maps to EWY plus Asia dollar peers and UUP', () => {
+    expect(relationsFor('USD/KRW')!.related.map((r) => r.symbol)).toEqual(['EWY', 'USD/JPY', 'USD/CNH', 'UUP'])
+  })
+
+  it('crosses map to both legs’ ETFs and omit UUP', () => {
+    expect(relationsFor('JPY/KRW')!.related.map((r) => r.symbol)).toEqual(['EWY', 'EWJ', 'USD/KRW', 'USD/JPY'])
+    expect(relationsFor('EUR/JPY')!.related.map((r) => r.symbol)).toEqual(['FXE', 'FXY', 'EUR/USD', 'USD/JPY'])
+    expect(relationsFor('GBP/JPY')!.related.map((r) => r.symbol)).toEqual(['FXB', 'FXY', 'GBP/USD', 'USD/JPY'])
+    expect(relationsFor('JPY/KRW')!.related.map((r) => r.symbol)).not.toContain('UUP')
+    expect(relationsFor('EUR/JPY')!.asiaLinks).toEqual(['ja'])
+    expect(relationsFor('JPY/KRW')!.asiaLinks).toEqual(['ko', 'ja'])
+  })
+
+  it('GBP/USD, USD/CNH, AUD/USD are catalogued', () => {
+    expect(relationsFor('GBP/USD')!.related.map((r) => r.symbol)).toEqual(['FXB', 'EUR/USD', 'UUP', 'VIXY'])
+    expect(relationsFor('USD/CNH')!.related.map((r) => r.symbol)).toEqual(['USD/KRW', 'USD/JPY', 'UUP'])
+    expect(relationsFor('AUD/USD')!.related.map((r) => r.symbol)).toEqual(['USD/CNH', 'USD/JPY', 'UUP'])
+  })
+})

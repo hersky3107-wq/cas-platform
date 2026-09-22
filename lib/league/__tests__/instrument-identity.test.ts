@@ -52,6 +52,14 @@ describe('instrument identity', () => {
     expect(catalogIdentityError('WEAT', 'Teucrium Wheat Fund')).toBeNull()
     expect(catalogIdentityError('SOYB', 'Teucrium Soybean Fund')).toBeNull()
     expect(catalogIdentityError('COFF', 'WisdomTree Coffee')).toBeNull()
+    expect(catalogIdentityError('GBP/USD', 'British Pound / US Dollar')).toBeNull()
+    expect(catalogIdentityError('USD/CNH', 'US Dollar / Chinese Yuan Offshore')).toBeNull()
+    expect(catalogIdentityError('AUD/USD', 'Australian Dollar / US Dollar')).toBeNull()
+    expect(catalogIdentityError('JPY/KRW', 'Japanese Yen / Korean Won')).toBeNull()
+    expect(catalogIdentityError('EUR/JPY', 'Euro / Japanese Yen')).toBeNull()
+    expect(catalogIdentityError('GBP/JPY', 'British Pound / Japanese Yen')).toBeNull()
+    expect(catalogIdentityError('EUR/JPY', 'Euro / US Dollar')).toMatch(/identity mismatch/)
+    expect(catalogIdentityError('JPY/KRW', 'US Dollar / Japanese Yen')).toMatch(/identity mismatch/)
   })
 
   it('accepts Twelve Data commodity time_series identity via currency_base', () => {

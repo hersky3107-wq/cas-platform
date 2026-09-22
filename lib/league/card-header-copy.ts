@@ -37,14 +37,16 @@ export function formatToday(locale: LeagueLocale, now: Date = new Date()): strin
 
 /**
  * Best-effort currency glyph from the instrument string. Presentation only —
- * `USD/KRW` and `USD/JPY` quote in the SECOND currency (Twelve Data
- * base/quote convention), everything else in this catalog quotes in USD.
+ * quote currency is the SECOND code (Twelve Data base/quote). USD/KRW and
+ * JPY/KRW quote in won; USD/JPY, EUR/JPY, GBP/JPY quote in yen; USD/CNH in
+ * offshore yuan; USD-quoted pairs (EUR/USD, GBP/USD, AUD/USD, XAU/USD) in $.
  */
 export function currencyGlyph(instrument: string): string {
   if (instrument.includes('/')) {
     const quote = instrument.split('/')[1]?.toUpperCase()
     if (quote === 'KRW') return '\u20a9'
     if (quote === 'JPY') return '\u00a5'
+    if (quote === 'CNH' || quote === 'CNY') return 'CN\u00a5'
     if (quote === 'USD') return '$'
     return ''
   }

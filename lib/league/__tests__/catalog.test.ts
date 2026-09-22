@@ -76,6 +76,25 @@ describe('PUBLIC_CATALOG', () => {
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('NDX')
   })
 
+  it('fx chips are 6 USD-majors plus 3 non-USD crosses', () => {
+    const fx = PUBLIC_CATALOG.find((c) => c.id === 'fx')!
+    expect(fx.instruments.map((i) => i.instrument)).toEqual([
+      'EUR/USD',
+      'USD/KRW',
+      'USD/JPY',
+      'GBP/USD',
+      'USD/CNH',
+      'AUD/USD',
+      'JPY/KRW',
+      'EUR/JPY',
+      'GBP/JPY',
+    ])
+    expect(findCatalogInstrument('JPY/KRW')?.entry.expected_name).toEqual(['Yen', 'Won'])
+    expect(findCatalogInstrument('EUR/JPY')?.entry.expected_name).toEqual(['Euro', 'Yen'])
+    expect(findCatalogInstrument('GBP/USD')?.entry.resolution_rule).toMatch(/spot/)
+    expect(findCatalogInstrument('USD/CNH')?.entry.expected_name).toEqual(['Yuan'])
+  })
+
   it('commodities_energy chips are WTI/Brent/UNG plus copper/grains/coffee ETFs', () => {
     const energy = PUBLIC_CATALOG.find((c) => c.id === 'commodities_energy')!
     expect(energy.instruments.map((i) => i.instrument)).toEqual([
@@ -185,6 +204,9 @@ describe('catalog i18n', () => {
     expect(getLeagueUiPack('ko').catalog.instruments.WEAT).toBe('밀')
     expect(getLeagueUiPack('ko').catalog.instruments.SOYB).toBe('대두')
     expect(getLeagueUiPack('ko').catalog.instruments.COFF).toBe('커피')
+    expect(getLeagueUiPack('ko').catalog.instruments['JPY/KRW']).toBe('엔/원')
+    expect(getLeagueUiPack('ko').catalog.instruments['GBP/USD']).toBe('파운드/달러')
+    expect(getLeagueUiPack('ko').catalog.instruments['USD/CNH']).toBe('달러/위안')
   })
 
   it('spot vs ETF note is shown for mixed-clock categories, not for session-only or calendar-only', () => {

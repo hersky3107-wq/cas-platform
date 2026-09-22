@@ -3,6 +3,7 @@ import 'server-only'
 import { XMLParser } from 'fast-xml-parser'
 import type { SlowDataSnapshot } from './closed-book-packet'
 import { fetchEnergySlowFields } from './energy-data'
+import { fetchFxSlowFields, fxFinraTickers } from './fx-data'
 import { fetchMetalsSlowFields } from './metals-data'
 
 /**
@@ -14,11 +15,12 @@ import { fetchMetalsSlowFields } from './metals-data'
  *  2. CBOE daily put/call ratios     — cboe.com daily market-statistics page;
  *     ratios are embedded as JSON in the page markup (probed live: reliable;
  *     the day's data appears with a lag, so walk-back is required).
- *     Categories: stock, etf_index, real_estate, gold_metal, commodity_energy.
+ *     Categories: stock, etf_index, real_estate, gold_metal, commodity_energy, fx.
  *  5. Gold/metals (gold_metal only)  — CFTC COT, Treasury TIPS, GLD/SLV
  *     holdings, FRED GVZ/INDPRO/IPG3344S via `metals-data.ts`.
  *  6. Energy/softs (commodity_energy) — EIA WPSR/WNGSR, CFTC energy+copper+
  *     grain+coffee COT, FRED OVX/spots/IMF prices via `energy-data.ts`.
+ *  7. FX (fx only) — FRED rates/CPI/DXY + CFTC TFF FinFutWk.txt via `fx-data.ts`.
  *  3. Farside BTC spot ETF flows     — PROBED UNRELIABLE (HTTP 403 Cloudflare
  *     even with browser headers). Still attempted once per day so a future
  *     unblock starts working, but expect a labeled UNAVAILABLE line.
@@ -345,15 +347,17 @@ const PUT_CALL_CATEGORIES = new Set([
   'gold_metal',
   'commodity_energy',
   'commodities_energy',
+  'fx',
 ])
 const CRYPTO_CATEGORIES = new Set(['crypto_spot', 'crypto_perps', 'memecoin'])
 const INSIDER_CATEGORIES = new Set(['stock'])
 const METALS_CATEGORIES = new Set(['gold_metal'])
 const ENERGY_CATEGORIES = new Set(['commodity_energy', 'commodities_energy'])
+const FX_CATEGORIES = new Set(['fx'])
 
 /**
  * Slow-data snapshot for one round. Returns null when NOTHING applies to the
- * category (fx, …) so the packet omits the section.
+ * category so the packet omits the section.
  * `symbol` is the Twelve Data symbol (plain US ticker) when known.
  */
 export async function fetchSlowData(args: {
@@ -370,16 +374,37 @@ export async function fetchSlowData(args: {
   const wantsInsider = INSIDER_CATEGORIES.has(category) && isUsTicker
   const wantsMetals = METALS_CATEGORIES.has(category)
   const wantsEnergy = ENERGY_CATEGORIES.has(category)
+  const wantsFx = FX_CATEGORIES.has(category)
+  const fxTickers = wantsFx ? fxFinraTickers(instrument ?? symbol) : []
 
-  if (!wantsShort && !wantsPutCall && !wantsBtcFlow && !wantsInsider && !wantsMetals && !wantsEnergy) return null
+  if (
+    !wantsShort &&
+    !wantsPutCall &&
+    !wantsBtcFlow &&
+    !wantsInsider &&
+    !wantsMetals &&
+    !wantsEnergy &&
+    !wantsFx
+  ) {
+    return null
+  }
 
-  const [shortVolume, putCall, btcEtfFlow, insider, metals, energy] = await Promise.all([
+  const [shortVolume, putCall, btcEtfFlow, insider, metals, energy, fx, fxEtfShortVolume] = await Promise.all([
     wantsShort ? fetchShortVolume(symbol!) : Promise.resolve(null),
     wantsPutCall ? fetchPutCall() : Promise.resolve(null),
     wantsBtcFlow ? fetchBtcEtfFlow() : Promise.resolve(null),
     wantsInsider ? fetchInsider(symbol!) : Promise.resolve(null),
     wantsMetals ? fetchMetalsSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
     wantsEnergy ? fetchEnergySlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+    wantsFx ? fetchFxSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+    fxTickers.length
+      ? Promise.all(
+          fxTickers.map(async (ticker) => {
+            const row = await fetchShortVolume(ticker)
+            return { symbol: ticker, ...row }
+          }),
+        )
+      : Promise.resolve(null),
   ])
 
   return {
@@ -390,5 +415,7 @@ export async function fetchSlowData(args: {
     insider,
     ...(metals ?? {}),
     ...(energy ?? {}),
+    ...(fx ?? {}),
+    ...(fxEtfShortVolume ? { fxEtfShortVolume } : {}),
   }
 }

@@ -76,8 +76,26 @@ export type CotPositioning =
       managedMoneyLong: number
       managedMoneyShort: number
       managedMoneyNet: number
+      /** Override the default f_disagg.txt attribution (FX uses TFF/legacy). */
+      source?: string
     }
   | { unavailable: string }
+
+export type FredObs = { date: string; value: number } | { unavailable: string }
+
+export type FxRateDiff = {
+  leftLabel: string
+  rightLabel: string
+  leftValue: number
+  rightValue: number
+  leftDate: string
+  rightDate: string
+  diffPp: number
+}
+
+export type FxEtfShortVolume =
+  | { symbol: string; date: string; shortShares: number; totalShares: number; shortPct: number }
+  | { symbol: string; unavailable: string }
 
 export type EtfHoldings =
   | { date: string; tonnes: number | null; ounces: number | null; source?: string }
@@ -176,6 +194,42 @@ export type SlowDataSnapshot = {
   wheatSpotFred?: { date: string; value: number } | { unavailable: string } | null
   soybeanSpotFred?: { date: string; value: number } | { unavailable: string } | null
   coffeeSpotFred?: { date: string; value: number } | { unavailable: string } | null
+  /**
+   * FX (fx category). Per-pair isolation: USD pairs get US vs that country;
+   * non-USD crosses get the two legs only (no US-centric DXY/Fed). Null/omitted
+   * = not applicable to this pair.
+   */
+  fedFunds?: FredObs | null
+  ust2y?: FredObs | null
+  ust10y?: FredObs | null
+  ust10y2y?: FredObs | null
+  tips10yFred?: FredObs | null
+  dxyBroad?: FredObs | null
+  dxyAfe?: FredObs | null
+  dxyEme?: FredObs | null
+  ecbDeposit?: FredObs | null
+  ecbRefi?: FredObs | null
+  germanBund10y?: FredObs | null
+  euroHicp?: FredObs | null
+  bojPolicy?: FredObs | null
+  jgb10y?: FredObs | null
+  tibor3m?: FredObs | null
+  bokRate?: FredObs | null
+  ktb10y?: FredObs | null
+  krwCd3m?: FredObs | null
+  krwCpi?: FredObs | null
+  sonia?: FredObs | null
+  gilt10y?: FredObs | null
+  policyRateDiff?: FxRateDiff | null
+  yield10yDiff?: FxRateDiff | null
+  cotEur?: CotPositioning | null
+  cotJpy?: CotPositioning | null
+  cotGbp?: CotPositioning | null
+  cotAud?: CotPositioning | null
+  cotDxy?: CotPositioning | null
+  /** Honest "no COT" / "component legs only" label for KRW and crosses. */
+  fxCotGap?: { note: string } | null
+  fxEtfShortVolume?: FxEtfShortVolume[] | null
 }
 
 /** Packet v2 (B): a native-language research finding (original + English gloss). */
@@ -622,7 +676,17 @@ function formatHoldings(label: string, h: EtfHoldings): string {
 
 function formatCot(label: string, cot: CotPositioning): string {
   if ('unavailable' in cot) return `  ${unavailable(label, cot.unavailable)}`
-  return `  ${label} (${cot.date}): managed-money net ${fmtShares(cot.managedMoneyNet)} contracts (long ${fmtShares(cot.managedMoneyLong)} / short ${fmtShares(cot.managedMoneyShort)}; OI ${fmtShares(cot.openInterest)}; ${cot.contract}) (source: CFTC disaggregated COT f_disagg.txt; informative horizon: weeks)`
+  const source = cot.source ?? 'CFTC disaggregated COT f_disagg.txt'
+  return `  ${label} (${cot.date}): managed-money net ${fmtShares(cot.managedMoneyNet)} contracts (long ${fmtShares(cot.managedMoneyLong)} / short ${fmtShares(cot.managedMoneyShort)}; OI ${fmtShares(cot.openInterest)}; ${cot.contract}) (source: ${source}; informative horizon: weeks)`
+}
+
+function formatFredObs(label: string, seriesId: string, point: FredObs, unit: string, horizon: string): string {
+  if ('unavailable' in point) return `  ${unavailable(label, point.unavailable)}`
+  return `  ${label} (${point.date}): ${fmt(point.value, 2)}${unit} (source: FRED ${seriesId}; informative horizon: ${horizon})`
+}
+
+function formatRateDiff(label: string, d: FxRateDiff): string {
+  return `  ${label}: ${d.leftLabel} ${fmt(d.leftValue, 2)}% (${d.leftDate}) − ${d.rightLabel} ${fmt(d.rightValue, 2)}% (${d.rightDate}) = ${signed(d.diffPp, 2)} pp (source: FRED; informative horizon: days-months — mixed print frequencies)`
 }
 
 function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
@@ -802,6 +866,95 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
         ? `  ${unavailable('IMF other-mild arabica coffee', slow.coffeeSpotFred.unavailable)}`
         : `  IMF other-mild arabica coffee (${slow.coffeeSpotFred.date}): ${fmt(slow.coffeeSpotFred.value, 2)} US cents/lb (source: FRED PCOFFOTMUSDM; informative horizon: months — lags the ETF)`,
     )
+  }
+  if (slow.fxCotGap) {
+    lines.push(`  CFTC FX positioning note: ${slow.fxCotGap.note}`)
+  }
+  if (slow.fedFunds) lines.push(formatFredObs('Fed funds effective', 'DFF', slow.fedFunds, '%', 'days'))
+  if (slow.ust2y) lines.push(formatFredObs('US 2Y Treasury', 'DGS2', slow.ust2y, '%', 'days'))
+  if (slow.ust10y) lines.push(formatFredObs('US 10Y Treasury', 'DGS10', slow.ust10y, '%', 'days'))
+  if (slow.ust10y2y) lines.push(formatFredObs('US 10Y−2Y spread', 'T10Y2Y', slow.ust10y2y, ' pp', 'days'))
+  if (slow.tips10yFred) lines.push(formatFredObs('US 10Y TIPS real yield', 'DFII10', slow.tips10yFred, '%', 'days'))
+  if (slow.dxyBroad) lines.push(formatFredObs('Trade-weighted USD broad', 'DTWEXBGS', slow.dxyBroad, '', 'days'))
+  if (slow.dxyAfe) {
+    lines.push(formatFredObs('Trade-weighted USD advanced-economies', 'DTWEXAFEGS', slow.dxyAfe, '', 'days'))
+  }
+  if (slow.dxyEme) {
+    lines.push(formatFredObs('Trade-weighted USD emerging-markets', 'DTWEXEMEGS', slow.dxyEme, '', 'days'))
+  }
+  if (slow.ecbDeposit) lines.push(formatFredObs('ECB deposit facility rate', 'ECBDFR', slow.ecbDeposit, '%', 'days'))
+  if (slow.ecbRefi) lines.push(formatFredObs('ECB main refinancing rate', 'ECBMRRFR', slow.ecbRefi, '%', 'days'))
+  if (slow.germanBund10y) {
+    lines.push(formatFredObs('German 10Y bund yield', 'IRLTLT01DEM156N', slow.germanBund10y, '%', 'months'))
+  }
+  if (slow.euroHicp) {
+    lines.push(
+      formatFredObs('Euro-area HICP (index)', 'CP0000EZ19M086NEST', slow.euroHicp, '', 'months — not a YoY rate'),
+    )
+  }
+  if (slow.bojPolicy) {
+    lines.push(formatFredObs('BOJ policy rate', 'IRSTCB01JPM156N', slow.bojPolicy, '%', 'months — series may lag'))
+  }
+  if (slow.jgb10y) lines.push(formatFredObs('Japan 10Y JGB yield', 'IRLTLT01JPM156N', slow.jgb10y, '%', 'months'))
+  if (slow.tibor3m) lines.push(formatFredObs('Japan 3M TIBOR', 'IR3TIB01JPM156N', slow.tibor3m, '%', 'months'))
+  if (slow.bokRate) {
+    lines.push(formatFredObs('Bank of Korea policy/discount rate', 'INTDSRKRM193N', slow.bokRate, '%', 'months'))
+  }
+  if (slow.ktb10y) lines.push(formatFredObs('Korea 10Y treasury yield', 'IRLTLT01KRM156N', slow.ktb10y, '%', 'months'))
+  if (slow.krwCd3m) lines.push(formatFredObs('Korea 3M CD/interbank', 'IR3TIB01KRM156N', slow.krwCd3m, '%', 'months'))
+  if (slow.krwCpi) {
+    lines.push(
+      formatFredObs('Korea CPI (monthly rate)', 'CPALTT01KRM657N', slow.krwCpi, '%', 'months — series may lag'),
+    )
+  }
+  if (slow.sonia) lines.push(formatFredObs('UK SONIA overnight', 'IUDSOIA', slow.sonia, '%', 'days'))
+  if (slow.gilt10y) lines.push(formatFredObs('UK 10Y gilt yield', 'IRLTLT01GBM156N', slow.gilt10y, '%', 'months'))
+  if (slow.policyRateDiff) lines.push(formatRateDiff('Policy-rate differential', slow.policyRateDiff))
+  if (slow.yield10yDiff) lines.push(formatRateDiff('10Y yield differential', slow.yield10yDiff))
+  const fxComponentLegs = !!slow.fxCotGap
+  if (slow.cotEur) {
+    lines.push(
+      formatCot(
+        fxComponentLegs
+          ? 'CFTC euro FX leveraged-funds (component leg, not a cross COT)'
+          : 'CFTC euro FX leveraged-funds',
+        slow.cotEur,
+      ),
+    )
+  }
+  if (slow.cotJpy) {
+    lines.push(
+      formatCot(
+        fxComponentLegs
+          ? 'CFTC yen leveraged-funds (component leg, not a cross COT)'
+          : 'CFTC yen leveraged-funds',
+        slow.cotJpy,
+      ),
+    )
+  }
+  if (slow.cotGbp) {
+    lines.push(
+      formatCot(
+        fxComponentLegs
+          ? 'CFTC sterling leveraged-funds (component leg, not a cross COT)'
+          : 'CFTC sterling leveraged-funds',
+        slow.cotGbp,
+      ),
+    )
+  }
+  if (slow.cotAud) lines.push(formatCot('CFTC Australian dollar leveraged-funds', slow.cotAud))
+  if (slow.cotDxy) lines.push(formatCot('CFTC USD index (DXY) leveraged-funds', slow.cotDxy))
+  if (slow.fxEtfShortVolume) {
+    for (const row of slow.fxEtfShortVolume) {
+      const label = `FINRA short-sale volume ${row.symbol}`
+      if ('unavailable' in row) {
+        lines.push(`  ${unavailable(label, row.unavailable)}`)
+      } else {
+        lines.push(
+          `  ${label} (${row.date}): short ${fmtShares(row.shortShares)} / total ${fmtShares(row.totalShares)} = ${fmt(row.shortPct, 1)}% short-volume ratio (source: FINRA CNMS daily file; informative horizon: days-weeks)`,
+        )
+      }
+    }
   }
   // Only the header would remain → treat as no section.
   return lines.length > 1 ? lines.join('\n') : ''

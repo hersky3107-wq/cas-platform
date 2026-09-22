@@ -75,6 +75,8 @@ describe('price-series family — Korean / English synonyms', () => {
     ['commodities_energy', family.commodities_energy, '대두', 'SOYB'],
     ['commodities_energy', family.commodities_energy, '커피', 'COFF'],
     ['fx', family.fx, '달러원', 'USD/KRW'],
+    ['fx', family.fx, '엔원', 'JPY/KRW'],
+    ['fx', family.fx, '파운드엔', 'GBP/JPY'],
     ['crypto', family.crypto, '비트코인', 'BTC/USD'],
     ['memecoin', family.memecoin, '도지코인', 'DOGE/USD'],
     ['real_estate', family.real_estate, 'vnq', 'VNQ'],
@@ -90,7 +92,7 @@ describe('price-series family — Korean / English synonyms', () => {
     const prefix = await family.fx.resolveEntity('달러', 'ko')
     expect(prefix.ok).toBe(false)
     if (!prefix.ok && 'need' in prefix) {
-      expect(prefix.need.options?.map((o) => o.id).sort()).toEqual(['USD/JPY', 'USD/KRW'])
+      expect(prefix.need.options?.map((o) => o.id).sort()).toEqual(['USD/CNH', 'USD/JPY', 'USD/KRW'])
     } else {
       throw new Error('expected clarify chips for 달러')
     }

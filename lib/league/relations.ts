@@ -131,9 +131,10 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
   {
     instrument: 'EUR/USD',
     related: [
-      DOLLAR,
+      { symbol: 'FXE', role: 'peer', note: 'CurrencyShares Euro Trust — listed euro proxy' },
+      { symbol: 'EZU', role: 'index_proxy', note: 'iShares MSCI Eurozone — euro-area equity beta' },
       { symbol: 'GBP/USD', role: 'peer', note: 'co-moving European pair' },
-      { symbol: 'USD/CHF', role: 'peer', note: 'inverse-correlated franc pair' },
+      DOLLAR,
       VOL,
     ],
     asiaLinks: [],
@@ -141,9 +142,9 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
   {
     instrument: 'USD/KRW',
     related: [
+      { symbol: 'EWY', role: 'index_proxy', note: 'Korea equity ETF (won risk sentiment)' },
       { symbol: 'USD/JPY', role: 'peer', note: 'co-moving Asian dollar pair' },
       { symbol: 'USD/CNH', role: 'peer', note: 'yuan — KRW tracks CNH regionally' },
-      { symbol: 'EWY', role: 'index_proxy', note: 'Korea equity ETF (won risk sentiment)' },
       DOLLAR,
     ],
     asiaLinks: ['ko'],
@@ -151,10 +152,69 @@ export const RELATIONS_MAP: readonly RelationsEntry[] = [
   {
     instrument: 'USD/JPY',
     related: [
+      { symbol: 'FXY', role: 'peer', note: 'CurrencyShares Yen Trust — listed yen proxy' },
+      { symbol: 'EWJ', role: 'index_proxy', note: 'Japan equity ETF' },
       DOLLAR,
       RATES,
-      { symbol: 'EWJ', role: 'index_proxy', note: 'Japan equity ETF' },
       { symbol: 'USD/KRW', role: 'peer', note: 'co-moving Asian dollar pair' },
+    ],
+    asiaLinks: ['ja'],
+  },
+  {
+    instrument: 'GBP/USD',
+    related: [
+      { symbol: 'FXB', role: 'peer', note: 'CurrencyShares Pound Trust — listed sterling proxy' },
+      { symbol: 'EUR/USD', role: 'peer', note: 'co-moving European pair' },
+      DOLLAR,
+      VOL,
+    ],
+    asiaLinks: [],
+  },
+  {
+    instrument: 'USD/CNH',
+    related: [
+      { symbol: 'USD/KRW', role: 'peer', note: 'KRW — regional dollar/Asia EM pair' },
+      { symbol: 'USD/JPY', role: 'peer', note: 'JPY — Asia dollar pair' },
+      DOLLAR,
+    ],
+    asiaLinks: ['zh'],
+  },
+  {
+    instrument: 'AUD/USD',
+    related: [
+      { symbol: 'USD/CNH', role: 'fx', note: 'offshore yuan — China demand for Australian exports' },
+      { symbol: 'USD/JPY', role: 'peer', note: 'risk-sensitive dollar pair' },
+      DOLLAR,
+    ],
+    asiaLinks: ['zh'],
+  },
+  {
+    instrument: 'JPY/KRW',
+    related: [
+      { symbol: 'EWY', role: 'index_proxy', note: 'Korea equity ETF — won risk sentiment' },
+      { symbol: 'EWJ', role: 'index_proxy', note: 'Japan equity ETF — yen risk sentiment' },
+      { symbol: 'USD/KRW', role: 'peer', note: 'USD/KRW leg of the cross' },
+      { symbol: 'USD/JPY', role: 'peer', note: 'USD/JPY leg of the cross' },
+    ],
+    asiaLinks: ['ko', 'ja'],
+  },
+  {
+    instrument: 'EUR/JPY',
+    related: [
+      { symbol: 'FXE', role: 'peer', note: 'CurrencyShares Euro Trust' },
+      { symbol: 'FXY', role: 'peer', note: 'CurrencyShares Yen Trust' },
+      { symbol: 'EUR/USD', role: 'peer', note: 'EUR/USD leg of the cross' },
+      { symbol: 'USD/JPY', role: 'peer', note: 'USD/JPY leg of the cross' },
+    ],
+    asiaLinks: ['ja'],
+  },
+  {
+    instrument: 'GBP/JPY',
+    related: [
+      { symbol: 'FXB', role: 'peer', note: 'CurrencyShares Pound Trust' },
+      { symbol: 'FXY', role: 'peer', note: 'CurrencyShares Yen Trust' },
+      { symbol: 'GBP/USD', role: 'peer', note: 'GBP/USD leg of the cross' },
+      { symbol: 'USD/JPY', role: 'peer', note: 'USD/JPY leg of the cross' },
     ],
     asiaLinks: ['ja'],
   },

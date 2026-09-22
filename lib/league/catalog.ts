@@ -118,6 +118,12 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
       { instrument: 'EUR/USD', resolution_rule: 'EUR/USD spot close vs prior close', chip_visible: true, expected_name: ['Euro'] },
       { instrument: 'USD/KRW', resolution_rule: 'USD/KRW spot close vs prior close', chip_visible: true, expected_name: ['Won'] },
       { instrument: 'USD/JPY', resolution_rule: 'USD/JPY spot close vs prior close', chip_visible: true, expected_name: ['Yen'] },
+      { instrument: 'GBP/USD', resolution_rule: 'GBP/USD spot close vs prior close', chip_visible: true, expected_name: ['Pound'] },
+      { instrument: 'USD/CNH', resolution_rule: 'USD/CNH spot close vs prior close', chip_visible: true, expected_name: ['Yuan'] },
+      { instrument: 'AUD/USD', resolution_rule: 'AUD/USD spot close vs prior close', chip_visible: true, expected_name: ['Australian'] },
+      { instrument: 'JPY/KRW', resolution_rule: 'JPY/KRW spot close vs prior close', chip_visible: true, expected_name: ['Yen', 'Won'] },
+      { instrument: 'EUR/JPY', resolution_rule: 'EUR/JPY spot close vs prior close', chip_visible: true, expected_name: ['Euro', 'Yen'] },
+      { instrument: 'GBP/JPY', resolution_rule: 'GBP/JPY spot close vs prior close', chip_visible: true, expected_name: ['Pound', 'Yen'] },
     ],
   },
   {

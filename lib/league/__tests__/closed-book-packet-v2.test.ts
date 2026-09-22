@@ -377,6 +377,154 @@ describe('closed-book packet v2 — new sections', () => {
     expect(coffee).not.toContain('OVX')
   })
 
+  it('renders FX fields per-pair: USD pair vs KRW/cross isolation', () => {
+    const eurusd = assembleClosedBookInjection(
+      input({
+        instrument: 'EUR/USD',
+        category: 'fx',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: { date: '2026-09-21', total: 0.81, index: 0.9, equity: 0.6 },
+          btcEtfFlow: null,
+          insider: null,
+          fedFunds: { date: '2026-09-18', value: 3.88 },
+          ust10y: { date: '2026-09-18', value: 5.01 },
+          ecbDeposit: { date: '2026-09-21', value: 2.5 },
+          germanBund10y: { date: '2026-08-01', value: 3.18 },
+          euroHicp: { date: '2026-08-01', value: 103.66 },
+          policyRateDiff: {
+            leftLabel: 'Fed funds',
+            rightLabel: 'ECB deposit',
+            leftValue: 3.88,
+            rightValue: 2.5,
+            leftDate: '2026-09-18',
+            rightDate: '2026-09-21',
+            diffPp: 1.38,
+          },
+          cotEur: {
+            contract: 'EURO FX - CHICAGO MERCANTILE EXCHANGE',
+            date: '2026-09-15',
+            openInterest: 920035,
+            managedMoneyLong: 103260,
+            managedMoneyShort: 131416,
+            managedMoneyNet: -28156,
+            source: 'CFTC TFF FinFutWk.txt (leveraged-funds ≈ managed-money analog)',
+          },
+          cotDxy: {
+            contract: 'USD INDEX - ICE FUTURES U.S.',
+            date: '2026-09-15',
+            openInterest: 43744,
+            managedMoneyLong: 25971,
+            managedMoneyShort: 15378,
+            managedMoneyNet: 10593,
+            source: 'CFTC TFF FinFutWk.txt (leveraged-funds ≈ managed-money analog)',
+          },
+          fxEtfShortVolume: [{ symbol: 'FXE', date: '2026-09-21', shortShares: 100, totalShares: 1000, shortPct: 10 }],
+        },
+      }),
+    )
+    expect(eurusd).toContain('Fed funds effective (2026-09-18): 3.88%')
+    expect(eurusd).toContain('FRED DFF')
+    expect(eurusd).toContain('ECB deposit facility rate (2026-09-21): 2.50%')
+    expect(eurusd).toContain('Policy-rate differential: Fed funds 3.88% (2026-09-18) − ECB deposit 2.50% (2026-09-21) = +1.38 pp')
+    expect(eurusd).toContain('CFTC euro FX leveraged-funds (2026-09-15): managed-money net -28,156 contracts')
+    expect(eurusd).toContain('FinFutWk.txt')
+    expect(eurusd).toContain('CFTC USD index (DXY) leveraged-funds')
+    expect(eurusd).toContain('FINRA short-sale volume FXE')
+    expect(eurusd).toContain('put/call ratios (2026-09-21): total 0.81')
+    expect(eurusd).not.toContain('BOK')
+    expect(eurusd).not.toContain('JGB')
+    expect(eurusd).not.toContain('EIA US commercial crude')
+    expect(eurusd).not.toContain('GVZ')
+    expect(eurusd).not.toContain('component leg')
+
+    const jpykrw = assembleClosedBookInjection(
+      input({
+        instrument: 'JPY/KRW',
+        category: 'fx',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: { date: '2026-09-21', total: 0.81, index: null, equity: null },
+          btcEtfFlow: null,
+          insider: null,
+          bojPolicy: { date: '2023-12-01', value: 0.3 },
+          jgb10y: { date: '2026-08-01', value: 2.94 },
+          bokRate: { date: '2026-06-01', value: 1 },
+          ktb10y: { date: '2026-08-01', value: 4.286 },
+          yield10yDiff: {
+            leftLabel: 'KTB 10Y',
+            rightLabel: 'JGB 10Y',
+            leftValue: 4.286,
+            rightValue: 2.94,
+            leftDate: '2026-08-01',
+            rightDate: '2026-08-01',
+            diffPp: 1.346,
+          },
+          cotJpy: {
+            contract: 'JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE',
+            date: '2026-09-15',
+            openInterest: 542802,
+            managedMoneyLong: 110000,
+            managedMoneyShort: 50000,
+            managedMoneyNet: 60000,
+            source: 'CFTC TFF FinFutWk.txt (leveraged-funds ≈ managed-money analog)',
+          },
+          fxCotGap: {
+            note: 'CFTC JPY/KRW cross: none. KRW has no CME futures. JPY TFF below is the JPY leg only, not a cross COT.',
+          },
+        },
+      }),
+    )
+    expect(jpykrw).toContain('Korea 10Y treasury yield (2026-08-01): 4.29%')
+    expect(jpykrw).toContain('Japan 10Y JGB yield (2026-08-01): 2.94%')
+    expect(jpykrw).toContain('10Y yield differential: KTB 10Y 4.29% (2026-08-01) − JGB 10Y 2.94% (2026-08-01) = +1.35 pp')
+    expect(jpykrw).toContain('CFTC JPY/KRW cross: none')
+    expect(jpykrw).toContain('CFTC yen leveraged-funds (component leg, not a cross COT)')
+    expect(jpykrw).not.toContain('Fed funds effective')
+    expect(jpykrw).not.toContain('DTWEXBGS')
+    expect(jpykrw).not.toContain('USD index (DXY)')
+    expect(jpykrw).not.toContain('ECB deposit')
+    expect(jpykrw).not.toContain('EIA US')
+    expect(jpykrw).not.toContain('OVX')
+
+    const usdkrw = assembleClosedBookInjection(
+      input({
+        instrument: 'USD/KRW',
+        category: 'fx',
+        slow: {
+          fetchedAt: '2026-09-22T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: null,
+          insider: null,
+          fedFunds: { date: '2026-09-18', value: 3.88 },
+          bokRate: { date: '2026-06-01', value: 1 },
+          dxyEme: { date: '2026-09-18', value: 127.666 },
+          fxCotGap: {
+            note: 'CFTC KRW futures: none — CME does not list KRW (offshore NDF). No KRW COT. DXY TFF below is the USD-index contract, not KRW.',
+          },
+          cotDxy: {
+            contract: 'USD INDEX - ICE FUTURES U.S.',
+            date: '2026-09-15',
+            openInterest: 43744,
+            managedMoneyLong: 25971,
+            managedMoneyShort: 15378,
+            managedMoneyNet: 10593,
+          },
+        },
+      }),
+    )
+    expect(usdkrw).toContain('CFTC KRW futures: none')
+    expect(usdkrw).toContain('Fed funds effective')
+    expect(usdkrw).toContain('Bank of Korea')
+    expect(usdkrw).toContain('emerging-markets')
+    expect(usdkrw).not.toContain('ECB deposit')
+    expect(usdkrw).not.toContain('CFTC euro FX')
+    expect(usdkrw).not.toContain('CFTC yen leveraged-funds')
+  })
+
   it('prints gold/silver ratio only when the number is ounces of silver per ounce of gold', () => {
     expect(isOzOzGoldSilverRatio(7.21)).toBe(false)
     expect(isOzOzGoldSilverRatio(72.9)).toBe(true)
