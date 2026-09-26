@@ -180,13 +180,34 @@ describe('constructed centre fixtures', () => {
     )
     expect(html).toContain('data-centre="balanced"')
     expect(html).toContain('data-spine="kept"')
-    for (const mark of ['>G<', '>ds²<', '>W Z<', '>SU(3)<', '>γ<']) {
-      expect(html).toContain(mark)
-    }
+    expect(html).not.toContain('>G<')
+    expect(html).not.toContain('>ds²<')
     expect(html).not.toContain('土')
     expect(html).not.toContain('黃龍')
     expect(html).not.toContain('5 · 10')
     expect(html).not.toContain('#c4a35a')
+    expect(html).not.toContain('SIGILLVM')
+  })
+
+  it('strips decorative hanja and keeps only the centre glyph plus 符膽', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財', purposeWealth: true }, frame: TALISMAN_FRAMES[2]!, uid: 'dehanja' }),
+    )
+    const texts = [...html.matchAll(/<text\b[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]!.trim()).filter(Boolean)
+    expect(html).toContain('>火<')
+    expect(html).toContain('>財<')
+    expect(html).not.toContain('靑龍')
+    expect(html).not.toContain('朱雀')
+    expect(html).not.toContain('黃龍')
+    expect(html).not.toContain('白虎')
+    expect(html).not.toContain('玄武')
+    expect(html).not.toContain('SIGILLVM')
+    expect(html).not.toContain('>命<')
+    expect(html).toContain('data-palace-mark=')
+    expect(html).toContain('feGaussianBlur')
+    expect(html).toContain('opacity="0.45"')
+    expect(texts.filter((t) => t === '火' || t === '財').length).toBeGreaterThan(0)
   })
 
   it('secondary fixture picks natal 금 and emphasises luoshu 4·9', () => {

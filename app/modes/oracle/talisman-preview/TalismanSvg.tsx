@@ -1,7 +1,7 @@
 /**
  * Concentric 부적. Three zones:
  *   dense carved core / textured middle (all scripts) / sparse rim
- * Seals BIND with closed locks. Bindrune and Latin sit in the middle at readable size.
+ * Seals BIND with closed locks. Hanja only at the centre 오행 and the 符膽.
  */
 import type { ReactNode } from 'react'
 import { isPrismColor } from '@/lib/oracle/engines/prism/tables'
@@ -17,7 +17,7 @@ function prismHex(id: string | undefined): string | null {
 const CX = 500
 const CY = 500
 
-const SW = { hair: 0.7, base: 1.2, emph: 2.4 } as const
+const SW = { hair: 0.7, med: 2.0 } as const
 const INK = {
   faint: 'rgba(255,255,255,0.14)',
   hair: 'rgba(255,255,255,0.3)',
@@ -59,8 +59,6 @@ const TRIGRAMS: readonly { bits: readonly boolean[] }[] = [
 ]
 const LUOSHU = [4, 9, 2, 3, 5, 7, 8, 1, 6] as const
 /** Classical caps, V for U. */
-const LATIN = 'SIGILLVM STELLARVM · NON VNA TERRA ·'
-
 type Pt = { x: number; y: number }
 
 function round(n: number): number {
@@ -187,7 +185,7 @@ function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string
   return (
     <g transform={`translate(${CX} ${CY + 8})`} stroke={accent} fill="none" strokeLinecap="butt">
       {element === 'water' ? (
-        <g strokeWidth={2.6}>
+        <g strokeWidth={SW.med}>
           <path d="M-40 8 L0 38 L40 8" />
           <path d="M-26 -4 L0 16 L26 -4" />
           <circle cy="38" r="4" fill={accent} stroke="none" />
@@ -197,7 +195,7 @@ function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string
         </g>
       ) : null}
       {element === 'wood' ? (
-        <g strokeWidth={2.6}>
+        <g strokeWidth={SW.med}>
           <line x1="0" y1="-36" x2="0" y2="32" />
           <line x1="-30" y1="-30" x2="30" y2="30" />
           <line x1="30" y1="-30" x2="-30" y2="30" />
@@ -207,7 +205,7 @@ function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string
         </g>
       ) : null}
       {element === 'earth' ? (
-        <g strokeWidth={2.6}>
+        <g strokeWidth={SW.med}>
           <line x1="0" y1="-34" x2="0" y2="4" />
           <line x1="0" y1="4" x2="-26" y2="34" />
           <line x1="0" y1="4" x2="26" y2="34" />
@@ -218,7 +216,7 @@ function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string
         </g>
       ) : null}
       {element === 'metal' ? (
-        <g strokeWidth={2.4}>
+        <g strokeWidth={SW.med}>
           <circle cx="0" cy="-18" r="9" />
           <circle cx="-18" cy="18" r="9" />
           <circle cx="18" cy="18" r="9" />
@@ -231,7 +229,7 @@ function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string
         </g>
       ) : null}
       {element === 'fire' ? (
-        <g strokeWidth={2.6}>
+        <g strokeWidth={SW.med}>
           <polyline points="-42,8 -32,-2 -22,8 -12,-2 -2,8 8,-2 18,8 28,-2 38,8" />
           <polyline points="0,-34 -10,-24 0,-14 -10,-4 0,6 -10,16 0,26 -10,36 0,44" />
           <text x="18" y="-16" fontSize="32" fontFamily="ui-serif, serif" stroke="none" fill={accent}>
@@ -244,36 +242,23 @@ function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string
 }
 
 function GuardianMark({ element, accent }: { element: ElementKey; accent: string }) {
-  const meta = ELEMENT_META[element]
   return (
     <g transform={`translate(${CX} ${CY + 108})`} stroke={accent} fill="none" strokeLinecap="butt">
       {element === 'fire' ? (
-        <polyline points="-16,-6 -8,-14 0,-4 8,-14 16,-6 0,10 -16,-6" strokeWidth={1.6} />
+        <polyline points="-16,-6 -8,-14 0,-4 8,-14 16,-6 0,10 -16,-6" strokeWidth={SW.med} />
       ) : null}
       {element === 'water' ? (
-        <path d="M-14 4 C-14 -10 0 -16 0 -2 C0 -16 14 -10 14 4 C8 16 0 18 -14 4" strokeWidth={1.6} />
+        <path d="M-14 4 C-14 -10 0 -16 0 -2 C0 -16 14 -10 14 4 C8 16 0 18 -14 4" strokeWidth={SW.med} />
       ) : null}
       {element === 'wood' ? (
-        <polyline points="0,12 0,-14 -10,-4 0,-14 10,-4" strokeWidth={1.6} />
+        <polyline points="0,12 0,-14 -10,-4 0,-14 10,-4" strokeWidth={SW.med} />
       ) : null}
       {element === 'metal' ? (
-        <polygon points="0,-12 10,0 0,12 -10,0" strokeWidth={1.6} />
+        <polygon points="0,-12 10,0 0,12 -10,0" strokeWidth={SW.med} />
       ) : null}
       {element === 'earth' ? (
-        <path d="M-12 8 L0 -12 L12 8 Z M-8 8 H8" strokeWidth={1.6} />
+        <path d="M-12 8 L0 -12 L12 8 Z M-8 8 H8" strokeWidth={SW.med} />
       ) : null}
-      <text
-        x="0"
-        y="28"
-        textAnchor="middle"
-        fill={accent}
-        stroke="none"
-        fontSize="16"
-        fontFamily="ui-serif, 'Noto Serif CJK KR', serif"
-        letterSpacing="2.4"
-      >
-        {meta.guardian}  {meta.numbers}
-      </text>
     </g>
   )
 }
@@ -281,33 +266,12 @@ function GuardianMark({ element, accent }: { element: ElementKey; accent: string
 function BalancedCore(): ReactNode {
   const radius = 78
   const rot = 90
-  const marks = [
-    { key: 'water', label: 'G' },
-    { key: 'wood', label: 'ds²' },
-    { key: 'earth', label: 'W Z' },
-    { key: 'metal', label: 'SU(3)' },
-    { key: 'fire', label: 'γ' },
-  ] as const
   return (
     <g data-centre="balanced">
-      <polygon points={polyPoints(5, radius, rot)} fill="none" stroke={INK.base} strokeWidth={1.1} />
-      {marks.map((mark, i) => {
+      <polygon points={polyPoints(5, radius, rot)} fill="none" stroke={INK.base} strokeWidth={SW.hair} />
+      {Array.from({ length: 5 }, (_, i) => {
         const p = polarJ(radius, rot + (i * 360) / 5, i)
-        return (
-          <text
-            key={mark.key}
-            x={p.x}
-            y={p.y}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fill={INK.strong}
-            stroke="none"
-            fontSize="13"
-            fontFamily="ui-monospace, monospace"
-          >
-            {mark.label}
-          </text>
-        )
+        return <circle key={i} cx={p.x} cy={p.y} r="2.2" fill={INK.strong} stroke="none" />
       })}
     </g>
   )
@@ -327,7 +291,7 @@ function FollowSpiral({ accent }: { accent: string }) {
       points={pts.join(' ')}
       fill="none"
       stroke={accent}
-      strokeWidth={2.2}
+      strokeWidth={SW.med}
       strokeLinecap="butt"
     />
   )
@@ -353,24 +317,24 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
           points={arcPoly(r, gap1 + i * 4, gap0 + 352 - i * 3, i)}
           fill="none"
           stroke={accent}
-          strokeWidth={i % 2 === 0 ? 1.1 : 0.7}
+          strokeWidth={SW.hair}
           opacity={0.85}
         />
       ))}
-      <polyline points={arcPoly(CORE, gap1, gap0 + 360, 1)} fill="none" stroke={accent} strokeWidth={2.8} />
+      <polyline points={arcPoly(CORE, gap1, gap0 + 360, 1)} fill="none" stroke={accent} strokeWidth={SW.med} />
       {Array.from({ length: 24 }, (_, i) => {
         const a = aim - 90 + i * 7.5
         const a0 = polar(42, a)
         const a1 = polar(CORE - 8, a)
-        return <line key={i} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={0.7} opacity={0.55} />
+        return <line key={i} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.hair} opacity={0.55} />
       })}
-      <polygon points={polyPoints(8, 58, 22)} fill="none" stroke={accent} strokeWidth={1.1} />
+      <polygon points={polyPoints(8, 58, 22)} fill="none" stroke={accent} strokeWidth={SW.hair} />
       {drain
         ? Array.from({ length: 12 }, (_, i) => {
             const a = aim - 66 + i * 11
             const a0 = polar(CORE + 2, a)
             const a1 = polar(CORE + 42, a)
-            return <line key={`d${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.emph} />
+            return <line key={`d${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.med} />
           })
         : null}
       {follow ? <FollowSpiral accent={accent} /> : null}
@@ -379,36 +343,6 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         {meta.hanja}
       </Hanjatext>
       <GuardianMark element={element} accent={accent} />
-    </g>
-  )
-}
-
-function LatinRing() {
-  const chars = LATIN.split('')
-  const step = 360 / chars.length
-  return (
-    <g>
-      {chars.map((ch, i) => {
-        const a = 90 - i * step
-        const p = polar(LATIN_R, a)
-        const rot = 90 - a
-        return (
-          <text
-            key={`${ch}-${i}`}
-            x={p.x}
-            y={p.y}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill={INK.strong}
-            fontSize="26"
-            fontFamily="ui-serif, Georgia, 'Times New Roman', serif"
-            letterSpacing="1"
-            transform={`rotate(${rot} ${p.x} ${p.y})`}
-          >
-            {ch}
-          </text>
-        )
-      })}
     </g>
   )
 }
@@ -425,8 +359,8 @@ function SectorRays({ element, accent }: { element: ElementKey; accent: string }
   const edge1 = polarJ(ZIWEI_OUT + 10, aim + 17, 5)
   return (
     <g>
-      <line x1={inner.x} y1={inner.y} x2={edge0.x} y2={edge0.y} stroke={accent} strokeWidth={2.6} />
-      <line x1={inner.x} y1={inner.y} x2={edge1.x} y2={edge1.y} stroke={accent} strokeWidth={2.6} />
+      <line x1={inner.x} y1={inner.y} x2={edge0.x} y2={edge0.y} stroke={accent} strokeWidth={SW.med} />
+      <line x1={inner.x} y1={inner.y} x2={edge1.x} y2={edge1.y} stroke={accent} strokeWidth={SW.med} />
     </g>
   )
 }
@@ -448,14 +382,14 @@ function Spine({
       <rect x={CX - 4} y={18} width={8} height={CY - gap - 18} />
       <rect x={CX - 4} y={CY + gap} width={8} height={980 - (CY + gap)} />
       <rect x={CX - 30} y={10} width={60} height={6} />
-      <polygon points={`${CX - 18},30 ${CX},14 ${CX + 18},30`} fill="none" strokeWidth={SW.emph} />
+      <polygon points={`${CX - 18},30 ${CX},14 ${CX + 18},30`} fill="none" strokeWidth={SW.med} />
       {fudanGlyph ? (
         <Hanjatext x={CX} y={92} size={fudanSize} fill={accent}>
           {fudanGlyph}
         </Hanjatext>
       ) : null}
       {bindrune ? <BindruneMark x={CX} y={runeY} accent={accent} /> : null}
-      <polygon points={`${CX - 16},972 ${CX},992 ${CX + 16},972`} fill="none" strokeWidth={SW.emph} />
+      <polygon points={`${CX - 16},972 ${CX},992 ${CX + 16},972`} fill="none" strokeWidth={SW.med} />
       <rect x={CX - 24} y={988} width={48} height={4} />
     </g>
   )
@@ -485,7 +419,7 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         <path key={`c${a}-${b}`} d={bow(pts[a]!, pts[b]!)} fill="none" stroke={INK.base} strokeWidth={SW.hair} />
       ))}
       {spec.sajuHap.map(([a, b]) => (
-        <path key={`h${a}-${b}`} d={bow(pts[a]!, pts[b]!)} fill="none" stroke={accent} strokeWidth={SW.base} />
+        <path key={`h${a}-${b}`} d={bow(pts[a]!, pts[b]!)} fill="none" stroke={accent} strokeWidth={SW.med} />
       ))}
       {pts.map((p, i) => (
         <line
@@ -503,13 +437,15 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         return (
           <g key={`${ch.hanja}-${i}`}>
             {ch.isDayMaster ? (
-              <rect x={p.x - 20} y={p.y - 20} width={40} height={40} fill={GROUND} stroke={accent} strokeWidth={SW.emph} />
+              <rect x={p.x - 20} y={p.y - 20} width={40} height={40} fill={GROUND} stroke={accent} strokeWidth={SW.med} />
             ) : (
               <circle cx={p.x} cy={p.y} r={20} fill={GROUND} stroke={INK.hair} strokeWidth={SW.hair} />
             )}
-            <Hanjatext x={p.x} y={p.y} size={32} fill={ch.isDayMaster ? accent : INK.strong} dy={11}>
-              {ch.hanja}
-            </Hanjatext>
+            <g opacity={0.45}>
+              <Hanjatext x={p.x} y={p.y} size={19.2} fill={ch.isDayMaster ? accent : INK.strong} dy={7}>
+                {ch.hanja}
+              </Hanjatext>
+            </g>
           </g>
         )
       })}
@@ -524,11 +460,11 @@ function HexagramStack({ lines }: { lines: readonly boolean[] }) {
     <g stroke={INK.strong} strokeLinecap="butt">
       {lines.map((yang, i) => {
         const y = y0 + i * 14
-        if (yang) return <line key={i} x1={x - 28} y1={y} x2={x + 28} y2={y} strokeWidth={3.4} />
+        if (yang) return <line key={i} x1={x - 28} y1={y} x2={x + 28} y2={y} strokeWidth={SW.med} />
         return (
           <g key={i}>
-            <line x1={x - 28} y1={y} x2={x - 5} y2={y} strokeWidth={3.4} />
-            <line x1={x + 5} y1={y} x2={x + 28} y2={y} strokeWidth={3.4} />
+            <line x1={x - 28} y1={y} x2={x - 5} y2={y} strokeWidth={SW.med} />
+            <line x1={x + 5} y1={y} x2={x + 28} y2={y} strokeWidth={SW.med} />
           </g>
         )
       })}
@@ -604,7 +540,7 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         height={half * 2}
         fill="none"
         stroke={earthHit ? INK.strong : INK.faint}
-        strokeWidth={earthHit ? SW.base : SW.hair}
+        strokeWidth={earthHit ? SW.med : SW.hair}
         data-secondary-sector={earthHit ? 'earth' : undefined}
       />
       {LUOSHU.map((palace, i) => {
@@ -640,7 +576,7 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
               height={cell}
               fill="none"
               stroke={hit ? INK.strong : INK.faint}
-              strokeWidth={hit ? SW.base : SW.hair}
+              strokeWidth={hit ? SW.med : SW.hair}
             />
             {covered ? null : (
               <text
@@ -773,13 +709,13 @@ function MiddleScripts({ spec }: { spec: TalismanSpec }) {
         return (
           <g key={`miss-${digit}`} data-numerology-missing={digit}>
             {digit <= 2 ? (
-              <circle cx={label.x} cy={label.y} r={digit === 1 ? 10 : 14} fill="none" stroke={INK.base} strokeWidth={SW.base} strokeDasharray="3 4" />
+              <circle cx={label.x} cy={label.y} r={digit === 1 ? 10 : 14} fill="none" stroke={INK.base} strokeWidth={SW.hair} strokeDasharray="3 4" />
             ) : (
               <polygon
                 points={polyPoints(sides, r, rot)}
                 fill="none"
                 stroke={INK.base}
-                strokeWidth={SW.base}
+                strokeWidth={SW.hair}
                 strokeDasharray="3 4"
               />
             )}
@@ -810,8 +746,8 @@ function VacantCrown() {
   const outer = ZIWEI_OUT - 6
   return (
     <g>
-      <polyline points={arcPoly(inner, 14, 172, 6)} fill="none" stroke={INK.hair} strokeWidth={SW.base} />
-      <polyline points={arcPoly(inner, 196, 348, 6)} fill="none" stroke={INK.hair} strokeWidth={SW.base} />
+      <polyline points={arcPoly(inner, 14, 172, 6)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
+      <polyline points={arcPoly(inner, 196, 348, 6)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
       <polyline points={arcPoly(outer, -8, 154, 7)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
       <polyline points={arcPoly(outer, 178, 332, 7)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
       {Array.from({ length: 12 }, (_, i) => {
@@ -826,6 +762,18 @@ function VacantCrown() {
         const p = polar((inner + outer) / 2, a)
         return <circle key={`seat-${i}`} cx={p.x} cy={p.y} r={2.2} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
       })}
+    </g>
+  )
+}
+
+function PalaceIndexMark({ index, x, y }: { index: number; x: number; y: number }) {
+  const dots = index % 3
+  return (
+    <g data-palace-mark={index} transform={`translate(${x} ${y})`} stroke={INK.strong} fill={INK.strong}>
+      <line x1="0" y1="-9" x2="0" y2="7" strokeWidth={SW.hair} />
+      {Array.from({ length: dots }, (_, i) => (
+        <circle key={i} cx={(i - (dots - 1) / 2) * 5.5} cy="11" r="1.5" stroke="none" />
+      ))}
     </g>
   )
 }
@@ -856,7 +804,7 @@ function PalaceHatch({
         x2={x}
         y2={1400}
         stroke={weight === 1 ? INK.hair : INK.base}
-        strokeWidth={weight === 1 ? 1.1 : 1.8}
+        strokeWidth={weight === 1 ? SW.hair : SW.med}
       />,
     )
   }
@@ -898,7 +846,7 @@ function ZiweiRing({
                 points={arcPoly(rOut + 4, a0 + 2, a1 - 2, i)}
                 fill="none"
                 stroke={accent}
-                strokeWidth={SW.base}
+                strokeWidth={SW.hair}
               />
               <polyline
                 points={arcPoly(ZIWEI_IN, a0 + 2, a1 - 2, i)}
@@ -923,11 +871,9 @@ function ZiweiRing({
               points={arcPoly(rOut, a0 + 1.2, a1 - 1.2, i)}
               fill="none"
               stroke={INK.hair}
-              strokeWidth={hatchWeight === 0 ? SW.hair : SW.base}
+              strokeWidth={hatchWeight === 0 ? SW.hair : SW.hair}
             />
-            <Hanjatext x={mid.x} y={mid.y} size={26} fill={INK.strong} dy={9}>
-              {palace.name}
-            </Hanjatext>
+            <PalaceIndexMark index={i} x={mid.x} y={mid.y} />
           </g>
         )
       })}
@@ -955,7 +901,7 @@ function ZiweiSignals({ palaces }: { palaces: TalismanSpec['palaces'] }) {
               x2={tip.x}
               y2={tip.y}
               stroke={INK.strong}
-              strokeWidth={SW.emph}
+              strokeWidth={SW.med}
               strokeLinecap="butt"
             />,
           )
@@ -1105,7 +1051,7 @@ function AstroRing({
           x2={polarJ(ZIWEI_OUT + 6, 180 - ascendant, 3).x}
           y2={polarJ(ZIWEI_OUT + 6, 180 - ascendant, 3).y}
           stroke={accent}
-          strokeWidth={SW.emph}
+          strokeWidth={SW.med}
         />
       ) : (
         Array.from({ length: 12 }, (_, i) => {
@@ -1182,7 +1128,7 @@ function MinorRim({ spec }: { spec: TalismanSpec }) {
         const a = 90 - spec.sukuyouIndex * 13
         const p0 = polar(454, a)
         const p1 = polar(468, a)
-        return <line x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke={INK.strong} strokeWidth={SW.base} />
+        return <line x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke={INK.strong} strokeWidth={SW.hair} />
       })()}
       <polyline points={arcPoly(470, -20, 140, 9)} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
       <polyline points={arcPoly(470, 168, 310, 9)} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
@@ -1320,6 +1266,31 @@ export function TalismanSvg({
         <clipPath id={`${uid}-frame`}>
           <rect x={vx} y={vy} width={vw} height={vh} />
         </clipPath>
+        {element ? (
+          <>
+            <filter id={`${uid}-glow-core`} x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.8" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <filter id={`${uid}-glow-mid`} x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="1.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <filter id={`${uid}-glow-soft`} x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="0.7" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </>
+        ) : null}
       </defs>
       <rect x={vx} y={vy} width={vw} height={vh} fill={GROUND} />
       <g clipPath={`url(#${uid}-frame)`}>
@@ -1336,21 +1307,28 @@ export function TalismanSvg({
           {spec.palaces != null || spec.numerology.length > 0 ? <MiddleScripts spec={spec} /> : null}
           <IchingGaps emptySeats={spec.bokjangEmpty} />
           <HexagramStack lines={spec.ichingLines} />
-          <LatinRing />
           <ZiweiRing palaces={spec.palaces} accent={accent} uid={uid} />
           <SajuRing spec={spec} accent={accent} />
-          <Spine
-            accent={accent}
-            fudanGlyph={spec.fudanGlyph ?? (spec.purposeWealth ? '財' : null)}
-            bindrune={spec.bindrune}
-          />
+          <g filter={element ? `url(#${uid}-glow-mid)` : undefined}>
+            <Spine
+              accent={accent}
+              fudanGlyph={spec.fudanGlyph ?? (spec.purposeWealth ? '財' : null)}
+              bindrune={spec.bindrune}
+            />
+          </g>
           <TextureCuts spec={spec} />
           <ZiweiSignals palaces={spec.palaces} />
           <LuoshuLocks sealed={spec.luoshuSealed} accent={accent} />
           <SpreadLocks angles={spec.spreadLocks ?? []} accent={accent} />
           <HyungNotches spec={spec} />
-          <Centre spec={spec} accent={accent} />
-          {element ? <SectorRays element={element} accent={accent} /> : null}
+          <g filter={element ? `url(#${uid}-glow-core)` : undefined}>
+            <Centre spec={spec} accent={accent} />
+          </g>
+          {element ? (
+            <g filter={`url(#${uid}-glow-soft)`}>
+              <SectorRays element={element} accent={accent} />
+            </g>
+          ) : null}
           <text
             x={CX}
             y={964}
