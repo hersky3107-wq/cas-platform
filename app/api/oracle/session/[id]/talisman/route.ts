@@ -74,7 +74,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       purpose,
       computation: result.computation,
       spec,
-      stats: talismanStats(result.computation),
+      stats: talismanStats(result.computation, result.charts),
       arrival: result.arrival,
     })
   } catch (e: unknown) {

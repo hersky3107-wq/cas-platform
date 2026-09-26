@@ -8,11 +8,13 @@ import { LUOSHU_PALACES, type CompassDirection } from '@/lib/oracle/engines/cale
 import { SIX_RELATIVES } from '@/lib/oracle/engines/draw/tables'
 import type { TalismanCharts, TalismanComputation, TalismanPurpose } from '@/lib/oracle/talisman'
 import type { GyeokSeat, SealTarget } from '@/lib/oracle/talisman/types'
+import type { PalaceName, PlacedStar, StarBrightness, ZiweiChart } from '@/lib/oracle/engines/ziwei/types'
 import { CORE_AXES } from '@/lib/oracle/engines/prism/tables'
 import {
   ELEMENT_KEYS,
   type ElementKey,
   type NameSeal,
+  type PalaceBrightness,
   type PalaceMark,
   type PlanetMark,
   type SajuChar,
@@ -98,20 +100,60 @@ function luoshuSealed(seals: SealTarget[]): number[] {
   return [...nums]
 }
 
-function palacesFrom(computation: TalismanComputation): PalaceMark[] | null {
-  const ziwei = computation.layers.ziwei
-  if (!ziwei || ziwei.palacesUnavailable) return null
-  const empty = new Set(ziwei.emptyPalaces.map((p) => p.name))
+const BRIGHTNESS_RANK: Record<StarBrightness, number> = {
+  庙: 6,
+  旺: 5,
+  得: 4,
+  利: 3,
+  平: 2,
+  不: 1,
+  陷: 0,
+}
+
+function majorBrightness(stars: readonly PlacedStar[]): PalaceBrightness {
+  const majors = stars.filter((star) => star.category === 'major')
+  let dimmest: StarBrightness | null = null
+  for (const star of majors) {
+    const value = star.brightness
+    if (!value) continue
+    if (dimmest == null || BRIGHTNESS_RANK[value] < BRIGHTNESS_RANK[dimmest]) dimmest = value
+  }
+  if (dimmest === '庙' || dimmest === '旺') return 'solid'
+  if (dimmest === '不' || dimmest === '陷') return 'faint'
+  return 'mid'
+}
+
+function currentDaXianName(chart: ZiweiChart): PalaceName | null {
+  if (!chart.daXian) return null
+  return chart.daXian.currentDaXian?.palaceName ?? null
+}
+
+/** Palace marks from the sanitized chart, not the seal-subtracted layer. */
+export function palacesFrom(computation: TalismanComputation, charts: TalismanCharts): PalaceMark[] | null {
+  const chart = charts.ziwei
+  if (!chart || chart.palaces.length === 0) return null
   const sealed = new Set(
     computation.seals
       .filter((seal) => seal.sector.frame === 'ziwei')
       .map((seal) => (seal.sector.frame === 'ziwei' ? seal.sector.palace : '')),
   )
-  return PALACE_ORDER.map((name) => ({
-    name: PALACE_SHORT[name] ?? name,
-    empty: empty.has(name),
-    sealed: sealed.has(name),
-  }))
+  const ji = chart.siHua.ji
+  const daXian = currentDaXianName(chart)
+  return PALACE_ORDER.map((name) => {
+    const palace = chart.palaces.find((entry) => entry.name === name)
+    const stars = palace?.stars ?? []
+    const empty = !stars.some((star) => star.category === 'major')
+    const isSealed = sealed.has(name)
+    return {
+      name: PALACE_SHORT[name] ?? name,
+      empty,
+      sealed: isSealed,
+      maleficCount: stars.filter((star) => star.category === 'malefic').length,
+      brightness: empty ? 'mid' : majorBrightness(stars),
+      huaJi: !isSealed && stars.some((star) => star.name === ji),
+      daXian: daXian === name,
+    }
+  })
 }
 
 function nameSealsFrom(computation: TalismanComputation): NameSeal[] {
@@ -168,8 +210,10 @@ function reversedSuitsFrom(charts: TalismanCharts): Array<'wands' | 'cups' | 'sw
   return [...suits]
 }
 
-export function talismanStats(computation: TalismanComputation) {
-  const emptyPalaces = computation.layers.ziwei?.emptyPalaces.length ?? 0
+export function talismanStats(computation: TalismanComputation, charts?: TalismanCharts) {
+  const emptyPalaces = charts
+    ? (palacesFrom(computation, charts)?.filter((palace) => palace.empty).length ?? 0)
+    : (computation.layers.ziwei?.emptyPalaces.length ?? 0)
   const hyungbang = computation.seals.filter((seal) => seal.kind === 'ninestar-killing').length
   return {
     seals: computation.seals.length,
@@ -227,7 +271,7 @@ export function specFromComputation(
     nameSeals: nameSealsFrom(computation),
     planets: planetsFrom(charts),
     ascendant: housesMissing ? null : (charts.astro?.angles?.ascendant ?? null),
-    palaces: palacesFrom(computation),
+    palaces: palacesFrom(computation, charts),
     sukuyouIndex: charts.sukuyou?.index ?? 8,
     tzolkinTone: charts.tzolkin?.tone ?? 9,
     tzolkinNawal: charts.tzolkin?.nawal ?? 7,

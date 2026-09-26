@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TalismanSvg } from "./TalismanSvg";
 import { TALISMAN_FRAMES, TALISMAN_VARIANTS, type FrameSpec, type TalismanSpec } from "./variants";
@@ -52,35 +52,25 @@ function FrameCard({ spec, frame }: { spec: TalismanSpec; frame: FrameSpec }) {
 export default function TalismanPreviewClient({
   sessionId,
   purpose: purposeParam,
+  fixture,
+  sinkangSpec,
+  sinkangStats,
+  sessionPayload,
 }: {
   sessionId: string | null;
   purpose: string | null;
+  fixture: string | null;
+  sinkangSpec: TalismanSpec;
+  sinkangStats: SessionPayload["stats"];
+  sessionPayload: SessionPayload | null;
 }) {
   const [active, setActive] = useState(0);
-  const [purpose, setPurpose] = useState(purposeParam ?? "");
-  const [payload, setPayload] = useState<SessionPayload | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [showSinkang, setShowSinkang] = useState(fixture === "sinkang");
   const hardcoded = TALISMAN_VARIANTS[active] ?? TALISMAN_VARIANTS[0]!;
+  const payload = sessionPayload;
+  const purpose = purposeParam ?? "";
 
-  useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    const query = purpose ? `?purpose=${encodeURIComponent(purpose)}` : "";
-    fetch(`/api/oracle/session/${sessionId}/talisman${query}`)
-      .then(async (res) => {
-        const body = (await res.json()) as SessionPayload & { error?: string };
-        if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-        if (!cancelled) setPayload(body);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : "load failed");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, purpose]);
-
-  const spec = sessionId ? payload?.spec ?? null : hardcoded;
+  const spec = sessionId ? payload?.spec ?? null : showSinkang ? sinkangSpec : hardcoded;
   const live = Boolean(sessionId);
 
   const sessionHref = useMemo(() => {
@@ -129,10 +119,6 @@ export default function TalismanPreviewClient({
                       ? `/modes/oracle/talisman-preview?session=${sessionId}&purpose=${item.id}`
                       : `/modes/oracle/talisman-preview?session=${sessionId}`
                   }
-                  onClick={(event) => {
-                    event.preventDefault();
-                    setPurpose(item.id);
-                  }}
                   className={`rounded-full border px-3 py-1.5 text-[11px] tracking-[0.08em] ${
                     purpose === item.id
                       ? "border-white/40 bg-white/10 text-white"
@@ -143,7 +129,6 @@ export default function TalismanPreviewClient({
                 </a>
               ))}
             </div>
-            {loadError ? <p className="mt-3 text-sm text-rose-300">{loadError}</p> : null}
             {payload && !payload.ok ? (
               <p className="mt-3 text-sm text-amber-200">gate: {payload.reason ?? "refused"}</p>
             ) : null}
@@ -166,13 +151,27 @@ export default function TalismanPreviewClient({
           </section>
         ) : (
           <nav className="mt-6 flex flex-wrap gap-2" aria-label="variants">
+            <button
+              type="button"
+              onClick={() => setShowSinkang(true)}
+              className={`rounded-full border px-3 py-1.5 text-left text-[11px] tracking-[0.08em] transition ${
+                showSinkang
+                  ? "border-white/40 bg-white/10 text-white"
+                  : "border-white/10 text-white/55 hover:border-white/25 hover:text-white/80"
+              }`}
+            >
+              constructed 신강 · drain
+            </button>
             {TALISMAN_VARIANTS.map((item, index) => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setActive(index)}
+                onClick={() => {
+                  setShowSinkang(false);
+                  setActive(index);
+                }}
                 className={`rounded-full border px-3 py-1.5 text-left text-[11px] tracking-[0.08em] transition ${
-                  index === active
+                  !showSinkang && index === active
                     ? "border-white/40 bg-white/10 text-white"
                     : "border-white/10 text-white/55 hover:border-white/25 hover:text-white/80"
                 }`}
@@ -182,7 +181,20 @@ export default function TalismanPreviewClient({
             ))}
           </nav>
         )}
-        <p className="mt-3 text-sm text-slate-300">{spec?.note ?? (live ? "loading…" : hardcoded.note)}</p>
+        <p className="mt-3 text-sm text-slate-300">
+          {showSinkang && !live
+            ? sinkangSpec.note
+            : spec?.note ?? (live ? "loading…" : hardcoded.note)}
+        </p>
+        {showSinkang && !live && sinkangStats ? (
+          <dl className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-white/70 md:grid-cols-3">
+            <div>seals {sinkangStats.seals}</div>
+            <div>empty 宮 {sinkangStats.emptyPalaces}</div>
+            <div>centre {sinkangStats.centreSource}</div>
+            <div>mode {sinkangStats.centreMode}</div>
+            <div>element {sinkangStats.centreElement ?? "none"}</div>
+          </dl>
+        ) : null}
 
         {spec ? (
           <section className="mt-8">
@@ -195,11 +207,39 @@ export default function TalismanPreviewClient({
           </section>
         ) : null}
 
+        {live ? (
+          <section className="mt-14">
+            <h2 className="text-[10px] tracking-[0.28em] text-white/40 uppercase">
+              Constructed 신강 · drain core
+            </h2>
+            <p className="mt-2 text-sm text-slate-400">{sinkangSpec.note}</p>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-white/70 md:grid-cols-3">
+              <div>seals {sinkangStats?.seals}</div>
+              <div>centre {sinkangStats?.centreSource}</div>
+              <div>mode {sinkangStats?.centreMode}</div>
+              <div>element {sinkangStats?.centreElement ?? "none"}</div>
+            </dl>
+            <div className="mt-4 flex flex-wrap items-end justify-center gap-8">
+              {TALISMAN_FRAMES.filter((frame) => frame.id === "phone" || frame.id === "square").map((frame) => (
+                <FrameCard key={`sinkang-${frame.id}`} spec={sinkangSpec} frame={frame} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="mt-14">
           <h2 className="text-[10px] tracking-[0.28em] text-white/40 uppercase">Six variants · square</h2>
           <div className="mt-4 grid grid-cols-2 gap-5 md:grid-cols-3">
             {TALISMAN_VARIANTS.map((item, index) => (
-              <button key={item.id} type="button" onClick={() => setActive(index)} className="text-left">
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setShowSinkang(false);
+                  setActive(index);
+                }}
+                className="text-left"
+              >
                 <div className="overflow-hidden border border-white/10 bg-[#07080c]" style={{ aspectRatio: "1 / 1" }}>
                   <TalismanSvg spec={item} frame={TALISMAN_FRAMES[2]!} uid={`thumb-${item.id}`} />
                 </div>

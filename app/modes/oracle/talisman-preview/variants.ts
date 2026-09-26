@@ -18,10 +18,20 @@ export type PlanetMark = {
   longitude: number
 }
 
+/** 主星 묘왕리함 collapsed for fill opacity. */
+export type PalaceBrightness = 'solid' | 'mid' | 'faint'
+
 export type PalaceMark = {
   name: string
   empty: boolean
   sealed: boolean
+  /** 살성 count. 0 = hairline, 1 = light hatch, 2+ = heavier. Not a lock. */
+  maleficCount: number
+  brightness: PalaceBrightness
+  /** 化忌 in this palace, and the palace is not already locked. */
+  huaJi: boolean
+  /** Current 大限 sits here. Drawn even on a 空宮. */
+  daXian: boolean
 }
 
 export type NameSeal = 'ok' | 'hyung' | 'empty'
@@ -102,6 +112,10 @@ function palaces(emptyIdx: readonly number[], sealedIdx: readonly number[]): Pal
     name,
     empty: emptyIdx.includes(index),
     sealed: sealedIdx.includes(index),
+    maleficCount: 0,
+    brightness: 'mid',
+    huaJi: false,
+    daXian: false,
   }))
 }
 

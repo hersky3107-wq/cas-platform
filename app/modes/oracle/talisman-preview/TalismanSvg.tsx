@@ -4,7 +4,7 @@
  * Seals BIND with closed locks. Bindrune and Latin sit in the middle at readable size.
  */
 import type { ReactNode } from 'react'
-import { ELEMENT_META, type ElementKey, type FrameSpec, type PlanetMark, type TalismanSpec } from './variants'
+import { ELEMENT_META, type ElementKey, type FrameSpec, type PalaceMark, type PlanetMark, type TalismanSpec } from './variants'
 
 const CX = 500
 const CY = 500
@@ -693,7 +693,57 @@ function VacantCrown() {
   )
 }
 
-function ZiweiRing({ palaces, accent }: { palaces: TalismanSpec['palaces']; accent: string }) {
+function palaceFillOpacity(brightness: PalaceMark['brightness'] | undefined): number {
+  if (brightness === 'solid') return 0.24
+  if (brightness === 'faint') return 0.045
+  return 0.11
+}
+
+function PalaceHatch({
+  d,
+  clipId,
+  weight,
+}: {
+  d: string
+  clipId: string
+  weight: 1 | 2
+}) {
+  const step = weight === 1 ? 20 : 11
+  const lines: ReactNode[] = []
+  for (let x = -400; x < 1600; x += step) {
+    lines.push(
+      <line
+        key={x}
+        x1={x}
+        y1={-400}
+        x2={x}
+        y2={1400}
+        stroke={weight === 1 ? INK.hair : INK.base}
+        strokeWidth={weight === 1 ? 1.1 : 1.8}
+      />,
+    )
+  }
+  return (
+    <g>
+      <clipPath id={clipId}>
+        <path d={d} />
+      </clipPath>
+      <g clipPath={`url(#${clipId})`}>
+        <g transform={`rotate(34 ${CX} ${CY})`}>{lines}</g>
+      </g>
+    </g>
+  )
+}
+
+function ZiweiRing({
+  palaces,
+  accent,
+  uid,
+}: {
+  palaces: TalismanSpec['palaces']
+  accent: string
+  uid: string
+}) {
   if (palaces == null) return <VacantCrown />
   return (
     <g>
@@ -723,20 +773,63 @@ function ZiweiRing({ palaces, accent }: { palaces: TalismanSpec['palaces']; acce
             </g>
           )
         }
+        const band = bandPath(ZIWEI_IN, rOut, a0 + 1.2, a1 - 1.2, i)
+        const malefic = palace.maleficCount ?? 0
+        const hatchWeight: 1 | 2 | 0 = malefic <= 0 ? 0 : malefic === 1 ? 1 : 2
         return (
           <g key={palace.name}>
-            <path d={bandPath(ZIWEI_IN, rOut, a0 + 1.2, a1 - 1.2, i)} fill={INK.strong} opacity={0.1} />
+            <path d={band} fill={INK.strong} opacity={palaceFillOpacity(palace.brightness)} />
+            {hatchWeight ? (
+              <PalaceHatch d={band} clipId={`${uid}-hatch-${i}`} weight={hatchWeight} />
+            ) : null}
             <polyline
               points={arcPoly(rOut, a0 + 1.2, a1 - 1.2, i)}
               fill="none"
               stroke={INK.hair}
-              strokeWidth={SW.base}
+              strokeWidth={hatchWeight === 0 ? SW.hair : SW.base}
             />
             <Hanjatext x={mid.x} y={mid.y} size={26} fill={INK.strong} dy={9}>
               {palace.name}
             </Hanjatext>
           </g>
         )
+      })}
+    </g>
+  )
+}
+
+/** 化忌 dot and 대한 tick sit above TextureCuts so a 空宮 gap does not erase them. */
+function ZiweiSignals({ palaces }: { palaces: TalismanSpec['palaces'] }) {
+  if (palaces == null) return null
+  return (
+    <g>
+      {palaces.map((palace, i) => {
+        const mid = -90 + i * 30 + 15
+        const marks: ReactNode[] = []
+        if (palace.daXian) {
+          const a = palace.huaJi ? mid - 5 : mid
+          const inner = polar(ZIWEI_IN - 4, a)
+          const tip = polar(ZIWEI_IN + 18, a)
+          marks.push(
+            <line
+              key={`daxian-${palace.name}`}
+              x1={inner.x}
+              y1={inner.y}
+              x2={tip.x}
+              y2={tip.y}
+              stroke={INK.strong}
+              strokeWidth={SW.emph}
+              strokeLinecap="butt"
+            />,
+          )
+        }
+        if (palace.huaJi) {
+          const a = palace.daXian ? mid + 6 : mid
+          const p = polar(ZIWEI_IN + 11, a)
+          marks.push(<circle key={`huaji-${palace.name}`} cx={p.x} cy={p.y} r={8.5} fill={INK.strong} />)
+        }
+        if (marks.length === 0) return null
+        return <g key={`sig-${palace.name}`}>{marks}</g>
       })}
     </g>
   )
@@ -1060,7 +1153,7 @@ export function TalismanSvg({
           <IchingGaps emptySeats={spec.bokjangEmpty} />
           <HexagramStack lines={spec.ichingLines} />
           <LatinRing />
-          <ZiweiRing palaces={spec.palaces} accent={accent} />
+          <ZiweiRing palaces={spec.palaces} accent={accent} uid={uid} />
           <SajuRing spec={spec} accent={accent} />
           <Spine
             accent={accent}
@@ -1068,6 +1161,7 @@ export function TalismanSvg({
             bindrune={spec.bindrune}
           />
           <TextureCuts spec={spec} />
+          <ZiweiSignals palaces={spec.palaces} />
           <LuoshuLocks sealed={spec.luoshuSealed} accent={accent} />
           <SpreadLocks angles={spec.spreadLocks ?? []} accent={accent} />
           <HyungNotches spec={spec} />
