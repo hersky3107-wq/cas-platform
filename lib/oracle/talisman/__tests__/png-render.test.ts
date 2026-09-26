@@ -30,7 +30,7 @@ describe('talisman PNG renderer', () => {
     expect(TALISMAN_PNG_FONT_LICENCE).toBe('SIL Open Font License, Version 1.1')
     const times: Record<string, number> = {}
     for (const format of TALISMAN_PNG_FORMATS) {
-      const svg = talismanSvgForPng(row.spec, format)
+      const svg = await talismanSvgForPng(row.spec, format)
       expect(svg).toContain('font-family="Noto Sans"')
       expect(svg).not.toContain('ui-monospace')
       const text = collectSvgText(svg)

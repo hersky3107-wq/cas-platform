@@ -1,5 +1,4 @@
 import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { TalismanSvg } from '@/app/modes/oracle/talisman-preview/TalismanSvg'
 import type { TalismanSpec } from '@/app/modes/oracle/talisman-preview/variants'
 import { loadResvg, type TalismanPngEngine } from './engine'
@@ -47,7 +46,10 @@ function wrapExact(
 </svg>`
 }
 
-export function talismanSvgForPng(spec: TalismanSpec, format: TalismanPngFormat): string {
+export async function talismanSvgForPng(spec: TalismanSpec, format: TalismanPngFormat): Promise<string> {
+  // Dynamic import: Next 16 / Turbopack rejects a static react-dom/server import
+  // from an App Router route. Route handlers still need the markup string for resvg.
+  const { renderToStaticMarkup } = await import('react-dom/server')
   const frame = frameForPng(format)
   const size = TALISMAN_PNG_SIZE[format]
   const raw = renderToStaticMarkup(
@@ -64,7 +66,7 @@ export function collectSvgText(svg: string): string {
 
 export async function renderTalismanPng(spec: TalismanSpec, format: TalismanPngFormat): Promise<TalismanPngResult> {
   const size = TALISMAN_PNG_SIZE[format]
-  const svg = talismanSvgForPng(spec, format)
+  const svg = await talismanSvgForPng(spec, format)
   const { Resvg, engine } = await loadResvg()
   const started = Date.now()
   const resvg = new Resvg(svg, {
