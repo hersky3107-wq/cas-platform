@@ -18,6 +18,7 @@ import {
   type PalaceBrightness,
   type PalaceMark,
   type PlanetMark,
+  type PurposeFilter,
   type SajuChar,
   type TalismanSpec,
   PHYSICS_CAPTION,
@@ -203,6 +204,21 @@ function bokjangSeats(computation: TalismanComputation): number[] {
     .filter((i) => i >= 0)
 }
 
+function purposeFilterFrom(computation: TalismanComputation): PurposeFilter | null {
+  const active = computation.purpose.active
+  if (!active) return null
+  const table = computation.purpose.tables[active]
+  return {
+    purpose: active,
+    ziwei: table.ziwei.status === 'hit' ? (PALACE_SHORT[table.ziwei.value.name] ?? table.ziwei.value.name) : null,
+    saju: table.saju.status === 'hit',
+    prism: table.prism.status === 'hit',
+    iching: table.iching.status === 'hit',
+    ninestar: table.ninestar.status === 'hit',
+    name: table.name.status === 'hit',
+  }
+}
+
 function reversedSuitsFrom(charts: TalismanCharts): Array<'wands' | 'cups' | 'swords' | 'pentacles'> {
   const suits = new Set<'wands' | 'cups' | 'swords' | 'pentacles'>()
   for (const card of charts.tarot?.cards ?? []) {
@@ -258,6 +274,7 @@ export function specFromComputation(
     absentElements: [...computation.absentElements],
     purposeWealth: computation.fudan.kind === 'hanja' && (computation.fudan.purpose as TalismanPurpose) === 'wealth',
     fudanGlyph,
+    purposeFilter: purposeFilterFrom(computation),
     tarotSuits: (['wands', 'cups', 'swords', 'pentacles'] as const).filter((suit) => presentSuits.size === 0 || presentSuits.has(suit)),
     tarotReversedSuits: reversedSuitsFrom(charts),
     housesMissing,

@@ -313,4 +313,47 @@ describe('constructed centre fixtures', () => {
       expect(html).toContain(`data-numerology-missing="${digit}"`)
     }
   })
+
+  it('applies each purpose table as layer emphasis and a swapped 符膽', () => {
+    const sinkang = rows.find((item) => item.id === 'sinkang')!
+    expect(sinkang.spec.purposeFilter).toBeNull()
+    expect(sinkang.spec.fudanGlyph).toBeNull()
+    const sinkangHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: sinkang.spec, frame: TALISMAN_FRAMES[2]!, uid: 'no-purpose' }),
+    )
+    expect(sinkangHtml).not.toContain('data-purpose-hit=')
+    expect(sinkangHtml).not.toContain('data-fudan=')
+
+    const expected = [
+      { id: 'purpose-wealth' as const, glyph: '財', hits: ['ziwei', 'saju', 'prism', 'iching'], miss: ['ninestar', 'name'] },
+      { id: 'purpose-love' as const, glyph: '和合', hits: ['ziwei', 'prism'], miss: ['saju', 'iching', 'ninestar'] },
+      { id: 'purpose-promotion' as const, glyph: '登科', hits: ['ziwei', 'saju', 'prism', 'iching'], miss: ['ninestar'] },
+      { id: 'purpose-health' as const, glyph: '康寧', hits: ['ziwei', 'prism'], miss: ['saju', 'iching', 'ninestar'] },
+      { id: 'purpose-exorcism' as const, glyph: '鎭', hits: ['ziwei', 'iching', 'ninestar'], miss: ['saju', 'prism'] },
+    ]
+    for (const row of expected) {
+      const item = rows.find((entry) => entry.id === row.id)!
+      expect(item.spec.fudanGlyph).toBe(row.glyph)
+      expect(item.spec.purposeFilter?.purpose).toBe(row.id.replace('purpose-', ''))
+      const html = renderToStaticMarkup(
+        createElement(TalismanSvg, { spec: item.spec, frame: TALISMAN_FRAMES[2]!, uid: row.id }),
+      )
+      expect(html).toContain(`data-fudan="${row.glyph}"`)
+      for (const hit of row.hits) expect(html).toContain(`data-purpose-hit="${hit}"`)
+      for (const miss of row.miss) expect(html).not.toContain(`data-purpose-hit="${miss}"`)
+    }
+    expect(rows.find((item) => item.id === 'purpose-wealth')!.spec.purposeFilter?.ziwei).toBe('財')
+    expect(rows.find((item) => item.id === 'purpose-love')!.spec.purposeFilter?.ziwei).toBe('夫')
+    expect(rows.find((item) => item.id === 'purpose-promotion')!.spec.purposeFilter?.ziwei).toBe('官')
+    expect(rows.find((item) => item.id === 'purpose-health')!.spec.purposeFilter?.ziwei).toBe('疾')
+    expect(rows.find((item) => item.id === 'purpose-exorcism')!.spec.fudanGlyph).toBe('鎭')
+    const exorcismHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, {
+        spec: rows.find((item) => item.id === 'purpose-exorcism')!.spec,
+        frame: TALISMAN_FRAMES[2]!,
+        uid: 'ex-size',
+      }),
+    )
+    expect(exorcismHtml).toContain('data-fudan-size="80"')
+  })
 })

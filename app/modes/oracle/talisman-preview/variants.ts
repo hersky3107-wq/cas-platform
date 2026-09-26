@@ -36,6 +36,16 @@ export type PalaceMark = {
 
 export type NameSeal = 'ok' | 'hyung' | 'empty'
 
+export type PurposeFilter = {
+  purpose: 'wealth' | 'love' | 'promotion' | 'health' | 'exorcism'
+  ziwei: string | null
+  saju: boolean
+  prism: boolean
+  iching: boolean
+  ninestar: boolean
+  name: boolean
+}
+
 export type TalismanSpec = {
   id: string
   title: string
@@ -78,6 +88,8 @@ export type TalismanSpec = {
   bindruneRunes?: readonly { name: string; reversed: boolean }[] | null
   /** 符膽 on the spine. Kept readable next to the bindrune. */
   fudanGlyph?: string | null
+  /** Active purpose table applied as brightness / stroke only. Null = deficiency. */
+  purposeFilter?: PurposeFilter | null
   /** Suits still present in the spread; omitted = draw all four. */
   tarotSuits?: readonly ('wands' | 'cups' | 'swords' | 'pentacles')[]
   /** Suits whose drawn card landed reversed — rotate the glyph, do not lock. */

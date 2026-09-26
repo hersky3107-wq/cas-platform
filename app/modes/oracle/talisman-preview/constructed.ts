@@ -44,6 +44,11 @@ export type ConstructedPreview = {
     | 'bindrune-3'
     | 'bindrune-5'
     | 'bindrune-reversed'
+    | 'purpose-wealth'
+    | 'purpose-love'
+    | 'purpose-promotion'
+    | 'purpose-health'
+    | 'purpose-exorcism'
   label: string
   spec: TalismanSpec
   stats: ReturnType<typeof talismanStats>
@@ -288,6 +293,61 @@ export function constructedPreviews(): ConstructedPreview[] {
       runeCount: 3,
       runeSeed: 'br-0',
       purpose: 'wealth',
+    }),
+    build({
+      id: 'purpose-wealth',
+      label: 'purpose · 재물 財',
+      birth: { date: '1984-02-10', time: '12:00' },
+      seed: 'purpose-wealth',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'purpose wealth',
+      note: 'purpose 재물 · 財帛 / 재성 / money / 妻财. 符膽 財.',
+      purpose: 'wealth',
+    }),
+    build({
+      id: 'purpose-love',
+      label: 'purpose · 연애 和合',
+      birth: { date: '1984-02-10', time: '12:00' },
+      seed: 'purpose-love',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'purpose love',
+      note: 'purpose 연애 · 夫妻 / love. 符膽 和合.',
+      purpose: 'love',
+    }),
+    build({
+      id: 'purpose-promotion',
+      label: 'purpose · 승진 登科',
+      birth: { date: '1984-02-10', time: '12:00' },
+      seed: 'purpose-promotion',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'purpose promotion',
+      note: 'purpose 승진 · 官祿 / 관성 / work / 官鬼. 符膽 登科.',
+      purpose: 'promotion',
+    }),
+    build({
+      id: 'purpose-health',
+      label: 'purpose · 건강 康寧',
+      birth: { date: '1984-02-10', time: '12:00' },
+      seed: 'purpose-health',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'purpose health',
+      note: 'purpose 건강 · 疾厄 / energy. 符膽 康寧.',
+      purpose: 'health',
+    }),
+    build({
+      id: 'purpose-exorcism',
+      label: 'purpose · 파마 鎭',
+      birth: { date: '1984-02-10', time: '12:00' },
+      seed: 'purpose-exorcism',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'purpose exorcism',
+      note: 'purpose 파마 · 살성/化忌 / 대흉 / 子孙·官鬼. 符膽 鎭.',
+      purpose: 'exorcism',
     }),
   ]
 }

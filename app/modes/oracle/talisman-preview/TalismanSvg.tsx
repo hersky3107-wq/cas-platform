@@ -469,8 +469,9 @@ function bow(a: Pt, b: Pt): string {
 
 function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   const pts = spec.sajuChars.map((_, i) => polarJ(SAJU_R, -67.5 + i * 45, i))
+  const hot = Boolean(spec.purposeFilter?.saju)
   return (
-    <g>
+    <g data-purpose-hit={hot ? 'saju' : undefined}>
       {spec.sajuChung.map(([a, b]) => (
         <path key={`c${a}-${b}`} d={bow(pts[a]!, pts[b]!)} fill="none" stroke={INK.base} strokeWidth={SW.hair} />
       ))}
@@ -495,9 +496,9 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
             {ch.isDayMaster ? (
               <rect x={p.x - 20} y={p.y - 20} width={40} height={40} fill={GROUND} stroke={accent} strokeWidth={SW.med} />
             ) : (
-              <circle cx={p.x} cy={p.y} r={20} fill={GROUND} stroke={INK.hair} strokeWidth={SW.hair} />
+              <circle cx={p.x} cy={p.y} r={20} fill={GROUND} stroke={hot ? INK.base : INK.hair} strokeWidth={hot ? SW.med : SW.hair} />
             )}
-            <g opacity={0.45}>
+            <g opacity={hot ? 0.85 : 0.45}>
               <HanjaGlyph x={p.x} y={p.y} size={19.2} fill={ch.isDayMaster ? accent : INK.strong} dy={7}>
                 {ch.hanja}
               </HanjaGlyph>
@@ -509,18 +510,19 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   )
 }
 
-function HexagramStack({ lines }: { lines: readonly boolean[] }) {
+function HexagramStack({ lines, hot }: { lines: readonly boolean[]; hot?: boolean }) {
   const x = CX - 118
   const y0 = CY - 52
+  const weight = hot ? 3.2 : SW.med
   return (
-    <g stroke={INK.strong} strokeLinecap="butt">
+    <g stroke={INK.strong} strokeLinecap="butt" data-purpose-hit={hot ? 'iching' : undefined}>
       {lines.map((yang, i) => {
         const y = y0 + i * 14
-        if (yang) return <line key={i} x1={x - 28} y1={y} x2={x + 28} y2={y} strokeWidth={SW.med} />
+        if (yang) return <line key={i} x1={x - 28} y1={y} x2={x + 28} y2={y} strokeWidth={weight} />
         return (
           <g key={i}>
-            <line x1={x - 28} y1={y} x2={x - 5} y2={y} strokeWidth={SW.med} />
-            <line x1={x + 5} y1={y} x2={x + 28} y2={y} strokeWidth={SW.med} />
+            <line x1={x - 28} y1={y} x2={x - 5} y2={y} strokeWidth={weight} />
+            <line x1={x + 5} y1={y} x2={x + 28} y2={y} strokeWidth={weight} />
           </g>
         )
       })}
@@ -582,6 +584,7 @@ const LUOSHU_ELEMENT: Record<(typeof LUOSHU)[number], ElementKey> = {
 function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   const sealed = spec.luoshuSealed
   const secondary = spec.secondaryElement ?? null
+  const starHot = Boolean(spec.purposeFilter?.ninestar)
   const half = LUOSHU_HALF
   const cell = round((half * 2) / 3)
   const originX = round(CX - half)
@@ -595,9 +598,10 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         width={half * 2}
         height={half * 2}
         fill="none"
-        stroke={earthHit ? INK.strong : INK.faint}
-        strokeWidth={earthHit ? SW.med : SW.hair}
+        stroke={earthHit || starHot ? INK.strong : INK.faint}
+        strokeWidth={earthHit || starHot ? SW.med : SW.hair}
         data-secondary-sector={earthHit ? 'earth' : undefined}
+        data-purpose-hit={starHot ? 'ninestar' : undefined}
       />
       {LUOSHU.map((palace, i) => {
         const col = i % 3
@@ -631,8 +635,8 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
               width={cell}
               height={cell}
               fill="none"
-              stroke={hit ? INK.strong : INK.faint}
-              strokeWidth={hit ? SW.med : SW.hair}
+              stroke={hit || starHot ? INK.strong : INK.faint}
+              strokeWidth={hit || starHot ? SW.med : SW.hair}
             />
             {covered ? null : (
               <text
@@ -834,10 +838,9 @@ function PalaceIndexMark({ index, x, y }: { index: number; x: number; y: number 
   )
 }
 
-function palaceFillOpacity(brightness: PalaceMark['brightness'] | undefined): number {
-  if (brightness === 'solid') return 0.24
-  if (brightness === 'faint') return 0.045
-  return 0.11
+function palaceFillOpacity(brightness: PalaceMark['brightness'] | undefined, emphasised = false): number {
+  const base = brightness === 'solid' ? 0.24 : brightness === 'faint' ? 0.045 : 0.11
+  return emphasised ? Math.min(0.42, base + 0.18) : base
 }
 
 function PalaceHatch({
@@ -880,10 +883,12 @@ function ZiweiRing({
   palaces,
   accent,
   uid,
+  emphasise,
 }: {
   palaces: TalismanSpec['palaces']
   accent: string
   uid: string
+  emphasise?: string | null
 }) {
   if (palaces == null) return <VacantCrown />
   return (
@@ -894,21 +899,22 @@ function ZiweiRing({
         const bulge = 10 * Math.sin(i * 1.7 + 0.5)
         const rOut = ZIWEI_OUT + bulge
         const mid = polarJ((ZIWEI_IN + rOut) / 2, a0 + 15, i)
-        if (palace.empty) return null
+        const hot = emphasise != null && palace.name === emphasise
+        if (palace.empty && !hot) return null
         if (palace.sealed) {
           return (
-            <g key={palace.name}>
+            <g key={palace.name} data-purpose-hit={hot ? 'ziwei' : undefined}>
               <polyline
                 points={arcPoly(rOut + 4, a0 + 2, a1 - 2, i)}
                 fill="none"
                 stroke={accent}
-                strokeWidth={SW.hair}
+                strokeWidth={hot ? SW.med : SW.hair}
               />
               <polyline
                 points={arcPoly(ZIWEI_IN, a0 + 2, a1 - 2, i)}
                 fill="none"
                 stroke={accent}
-                strokeWidth={SW.hair}
+                strokeWidth={hot ? SW.med : SW.hair}
               />
               <Lock x={mid.x} y={mid.y} accent={accent} scale={0.55} />
             </g>
@@ -918,16 +924,16 @@ function ZiweiRing({
         const malefic = palace.maleficCount ?? 0
         const hatchWeight: 1 | 2 | 0 = malefic <= 0 ? 0 : malefic === 1 ? 1 : 2
         return (
-          <g key={palace.name}>
-            <path d={band} fill={INK.strong} opacity={palaceFillOpacity(palace.brightness)} />
+          <g key={palace.name} data-purpose-hit={hot ? 'ziwei' : undefined}>
+            <path d={band} fill={INK.strong} opacity={palaceFillOpacity(palace.brightness, hot)} />
             {hatchWeight ? (
               <PalaceHatch d={band} clipId={`${uid}-hatch-${i}`} weight={hatchWeight} />
             ) : null}
             <polyline
               points={arcPoly(rOut, a0 + 1.2, a1 - 1.2, i)}
               fill="none"
-              stroke={INK.hair}
-              strokeWidth={hatchWeight === 0 ? SW.hair : SW.hair}
+              stroke={hot ? INK.strong : INK.hair}
+              strokeWidth={hot ? SW.med : SW.hair}
             />
             <PalaceIndexMark index={i} x={mid.x} y={mid.y} />
           </g>
@@ -975,8 +981,9 @@ function ZiweiSignals({ palaces }: { palaces: TalismanSpec['palaces'] }) {
 }
 
 function HyungNotches({ spec }: { spec: TalismanSpec }) {
+  const hot = Boolean(spec.purposeFilter?.name)
   return (
-    <g>
+    <g data-purpose-hit={hot ? 'name' : undefined}>
       {spec.nameSeals.map((seal, i) => {
         if (seal !== 'hyung') return null
         const a = -90 + i * 72
@@ -989,8 +996,8 @@ function HyungNotches({ spec }: { spec: TalismanSpec }) {
             <path
               d={`M${p1.x},${p1.y} L${p2.x},${p2.y} L${p3.x},${p3.y} Z`}
               fill={GROUND}
-              stroke={INK.hair}
-              strokeWidth={SW.hair}
+              stroke={hot ? INK.strong : INK.hair}
+              strokeWidth={hot ? SW.med : SW.hair}
             />
             <Lock x={seat.x} y={seat.y} accent={INK.strong} scale={0.58} />
           </g>
@@ -1127,6 +1134,7 @@ function MinorRim({ spec }: { spec: TalismanSpec }) {
   const need = prismHex(spec.prismColors?.need)
   const impulse = prismHex(spec.prismColors?.impulse)
   const painted = dent != null && identity != null && need != null && impulse != null
+  const hot = Boolean(spec.purposeFilter?.prism)
   const hex: string[] = []
   let dentPt: Pt | null = null
   if (painted) {
@@ -1138,7 +1146,7 @@ function MinorRim({ spec }: { spec: TalismanSpec }) {
     }
   }
   return (
-    <g opacity={0.28}>
+    <g opacity={hot ? 0.55 : 0.28} data-purpose-hit={hot ? 'prism' : undefined}>
       {painted ? (
         <>
           <path
@@ -1362,8 +1370,8 @@ export function TalismanSvg({
           ) : null}
           {spec.palaces != null || spec.numerology.length > 0 ? <MiddleScripts spec={spec} /> : null}
           <IchingGaps emptySeats={spec.bokjangEmpty} />
-          <HexagramStack lines={spec.ichingLines} />
-          <ZiweiRing palaces={spec.palaces} accent={accent} uid={uid} />
+          <HexagramStack lines={spec.ichingLines} hot={Boolean(spec.purposeFilter?.iching)} />
+          <ZiweiRing palaces={spec.palaces} accent={accent} uid={uid} emphasise={spec.purposeFilter?.ziwei} />
           <SajuRing spec={spec} accent={accent} />
           <g filter={element ? `url(#${uid}-glow-mid)` : undefined}>
             <Spine
