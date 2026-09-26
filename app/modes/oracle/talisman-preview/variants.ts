@@ -172,6 +172,7 @@ const BASE: Pick<
   | 'tzolkinNawal'
   | 'dateLabel'
   | 'sessionId'
+  | 'serial'
 > = {
   numerology: [3, 4, 7, 11],
   prismDentAxis: 4,
