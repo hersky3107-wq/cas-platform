@@ -4,6 +4,7 @@ import { computeTalisman } from '../index'
 import { fudanSpec, purposeBundle } from '../purpose'
 import { extractNativeFindings } from '../native'
 import { describeCentre, describeCentreFromDeficiency } from '../copy'
+import { LAYER1_PROMPT_VERSION } from '../../ai/prompts/layer1'
 import { ORACLE_PROMPT_VERSION } from '../../runner/conventions'
 import { charts1988, EMPTY_CHARTS, fakeConsensus, LIVE_ACCESS } from './fixture'
 
@@ -13,6 +14,12 @@ describe('access gate', () => {
     expect(canComputeTalisman({ status: 'done', promptVersion: ORACLE_PROMPT_VERSION, hasConsensus: true })).toBe(false)
     expect(canComputeTalisman({ status: 'done', promptVersion: 'layer1-live', hasConsensus: false })).toBe(false)
     expect(canComputeTalisman(LIVE_ACCESS)).toBe(true)
+  })
+
+  it('allows the current live prompt and older live prompts, and refuses the stub stamp', () => {
+    expect(canComputeTalisman({ status: 'done', promptVersion: LAYER1_PROMPT_VERSION, hasConsensus: true })).toBe(true)
+    expect(canComputeTalisman({ status: 'done', promptVersion: 'layer1-v3', hasConsensus: true })).toBe(true)
+    expect(canComputeTalisman({ status: 'done', promptVersion: ORACLE_PROMPT_VERSION, hasConsensus: true })).toBe(false)
   })
 
   it('computeTalisman returns null when the gate fails', () => {
