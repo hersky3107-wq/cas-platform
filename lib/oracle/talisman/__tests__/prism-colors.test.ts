@@ -48,6 +48,12 @@ describe('talisman prism colour read path', () => {
     expect(spec.prismColors).toBeNull()
   })
 
+  it('maps colour ids through PRISM_COLOR_HEX and leaves a blank seat when they are missing', () => {
+    const svg = readFileSync('app/modes/oracle/talisman-preview/TalismanSvg.tsx', 'utf8')
+    expect(svg).toContain('PRISM_COLOR_HEX')
+    expect(svg).not.toContain('#6b5b8c')
+  })
+
   it('does not hand the colour ids to an AI payload builder', () => {
     const route = readFileSync('app/api/oracle/session/[id]/talisman/route.ts', 'utf8')
     const preview = readFileSync('app/modes/oracle/talisman-preview/preview-session.ts', 'utf8')

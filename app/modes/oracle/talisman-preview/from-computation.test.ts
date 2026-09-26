@@ -139,7 +139,28 @@ describe('constructed centre fixtures', () => {
   it('no-PRISM fixture does not invent a dent', () => {
     const row = rows.find((item) => item.id === 'no-prism')!
     expect(row.spec.prismDentAxis).toBeNull()
+    expect(row.spec.prismColors).toBeNull()
     expect(row.stats.centreMode).toBe('drain')
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'blank-rim' }),
+    )
+    expect(html).toContain('data-prism="blank"')
+    expect(html).not.toContain('#6b5b8c')
+  })
+
+  it('paints identity wash, need outline, and impulse dent from the PRISM palette', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    expect(row.spec.prismColors).toEqual({ impulse: 'crimson', need: 'gold', identity: 'indigo' })
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'prism-rim' }),
+    )
+    expect(html).toContain('data-prism="identity"')
+    expect(html).toContain('data-prism="need"')
+    expect(html).toContain('data-prism="impulse"')
+    expect(html).toContain('#4B0082')
+    expect(html).toContain('#D4AF37')
+    expect(html).toContain('#9B1B30')
+    expect(html).not.toContain('#6b5b8c')
   })
 
   it('draws a neutral pentagon and keeps the spine when the element is null', () => {

@@ -55,8 +55,8 @@ export type TalismanSpec = {
   /** Null when the session has no PRISM coreMatrix. Do not invent a dent. */
   prismDentAxis: 0 | 1 | 2 | 3 | 4 | 5 | null
   /**
-   * session_inputs.prism colour ids. Carried for a later render pass.
-   * Not drawn. Never forwarded to a model payload.
+   * session_inputs.prism colour ids. Identity wash / need stroke / impulse dent.
+   * Missing → dashed blank seat. Never forwarded to a model payload.
    */
   prismColors?: { impulse: string; need: string; identity: string } | null
   luoshuSealed: readonly number[]
@@ -137,6 +137,7 @@ const BASE: Pick<
   TalismanSpec,
   | 'numerology'
   | 'prismDentAxis'
+  | 'prismColors'
   | 'ichingLines'
   | 'bokjangEmpty'
   | 'sajuChars'
@@ -151,6 +152,7 @@ const BASE: Pick<
 > = {
   numerology: [3, 4, 7, 11],
   prismDentAxis: 4,
+  prismColors: { impulse: 'crimson', need: 'gold', identity: 'indigo' },
   ichingLines: [true, false, true, true, false, true],
   bokjangEmpty: [2],
   sajuChars: SAJU_WEB,

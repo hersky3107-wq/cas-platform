@@ -4,7 +4,14 @@
  * Seals BIND with closed locks. Bindrune and Latin sit in the middle at readable size.
  */
 import type { ReactNode } from 'react'
+import { isPrismColor } from '@/lib/oracle/engines/prism/tables'
+import { PRISM_COLOR_HEX } from '@/lib/oracle/prism-swatches'
 import { ELEMENT_META, type ElementKey, type FrameSpec, type PalaceMark, type PlanetMark, type TalismanSpec } from './variants'
+
+function prismHex(id: string | undefined): string | null {
+  if (!id || !isPrismColor(id)) return null
+  return PRISM_COLOR_HEX[id]
+}
 
 const CX = 500
 const CY = 500
@@ -1115,20 +1122,60 @@ function AstroRing({
 
 function MinorRim({ spec }: { spec: TalismanSpec }) {
   const dent = spec.prismDentAxis
+  const identity = prismHex(spec.prismColors?.identity)
+  const need = prismHex(spec.prismColors?.need)
+  const impulse = prismHex(spec.prismColors?.impulse)
+  const painted = dent != null && identity != null && need != null && impulse != null
   const hex: string[] = []
-  if (dent != null) {
+  let dentPt: Pt | null = null
+  if (painted) {
     for (let i = 0; i < 6; i += 1) {
       const r = i === dent ? 418 : 448 + (i % 2 === 0 ? 6 : -4)
       const p = polarJ(r, -90 + i * 60, i)
       hex.push(`${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
+      if (i === dent) dentPt = p
     }
   }
   return (
     <g opacity={0.28}>
-      {dent == null ? (
-        <circle cx={CX} cy={CY} r={448} fill="none" stroke={INK.faint} strokeWidth={SW.hair} strokeDasharray="2 6" />
+      {painted ? (
+        <>
+          <path
+            d={`${hex.join(' ')} Z`}
+            fill={identity}
+            fillOpacity={0.22}
+            stroke="none"
+            data-prism="identity"
+          />
+          <path
+            d={`${hex.join(' ')} Z`}
+            fill="none"
+            stroke={need}
+            strokeWidth={SW.hair}
+            data-prism="need"
+          />
+          {dentPt ? (
+            <circle
+              cx={dentPt.x}
+              cy={dentPt.y}
+              r="4"
+              fill={impulse}
+              stroke="none"
+              data-prism="impulse"
+            />
+          ) : null}
+        </>
       ) : (
-        <path d={`${hex.join(' ')} Z`} fill="#6b5b8c" fillOpacity={0.1} stroke={INK.faint} strokeWidth={SW.hair} />
+        <circle
+          cx={CX}
+          cy={CY}
+          r={448}
+          fill="none"
+          stroke={INK.faint}
+          strokeWidth={SW.hair}
+          strokeDasharray="2 6"
+          data-prism="blank"
+        />
       )}
       <polyline points={arcPoly(458, 12, 198, 8)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
       <polyline points={arcPoly(458, 224, 352, 8)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />

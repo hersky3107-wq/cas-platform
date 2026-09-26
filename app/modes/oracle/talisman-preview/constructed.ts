@@ -118,6 +118,9 @@ function build(input: {
     access: ACCESS,
     charts,
     consensus: deficiency(input.deficiency),
+    prismColors: input.withPrism
+      ? { impulse: 'crimson', need: 'gold', identity: 'indigo' }
+      : null,
   })
   if (!computation) throw new Error(`constructed ${input.id}: computeTalisman refused`)
   return {

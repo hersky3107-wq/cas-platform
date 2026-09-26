@@ -298,7 +298,7 @@ export type TalismanComputation = {
   purpose: PurposeBundle
   fudan: FudanSpec
   independence: IndependenceCensus
-  /** session_inputs.prism colour ids. Not drawn. Not sent to a model. */
+  /** session_inputs.prism colour ids. Drawn on the rim. Never sent to a model. */
   prismColors: TalismanPrismColors | null
   /**
    * Natal pillar character with count 0, excluding the centre 오행.
