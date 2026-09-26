@@ -26,4 +26,17 @@ describe('remaining UI boxes', () => {
     )
     expect(liveHtml).toContain('data-seal-knot="true"')
   })
+
+  it('drops the tzolkin card frame left of the core and keeps the kin marks', () => {
+    const row = constructedPreviews().find((item) => item.id === 'lean-strong')!
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[0]!, uid: 'water-box' }),
+    )
+    expect(row.spec.element).toBe('water')
+    expect(html).toContain('data-mark="nawal"')
+    expect(html).toContain('data-nawal=')
+    expect(html).not.toContain('width="80" height="96"')
+    expect(html).not.toContain('width="40" height="40"')
+    expect(html).toContain('data-saju-seat="day"')
+  })
 })

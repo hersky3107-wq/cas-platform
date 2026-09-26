@@ -463,23 +463,39 @@ function Centre({ spec, accent, tall }: { spec: TalismanSpec; accent: string; ta
             return <line key={`in-${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.med} data-ray="in" />
           })}
       {follow ? <FollowSpiral accent={accent} /> : null}
-      <circle
-        cx={CX}
-        cy={CY}
-        r={PHYSICS_DISC}
-        fill={plate}
-        stroke={accent}
-        strokeWidth={SW.hair}
-        data-physics-disc="true"
-        data-physics-plate={plate}
-      />
-      <PhysicsGlyph element={element} accent={accent} ink={ink} outline={!drain} height={tall ? 120 : 90} />
-      {tall ? null : (
-        <g data-centre-hanja={meta.hanja} data-centre-hanja-size="140">
-          <HanjaGlyph x={CX} y={CY - 36} size={140} fill={accent}>
-            {meta.hanja}
-          </HanjaGlyph>
-        </g>
+      {tall ? (
+        <>
+          <circle
+            cx={CX}
+            cy={CY}
+            r={PHYSICS_DISC}
+            fill={plate}
+            stroke={accent}
+            strokeWidth={SW.hair}
+            data-physics-disc="true"
+            data-physics-plate={plate}
+          />
+          <PhysicsGlyph element={element} accent={accent} ink={ink} outline={!drain} height={120} />
+        </>
+      ) : (
+        <>
+          <g data-centre-hanja={meta.hanja} data-centre-hanja-size="140">
+            <HanjaGlyph x={CX} y={CY - 28} size={140} fill={accent}>
+              {meta.hanja}
+            </HanjaGlyph>
+          </g>
+          <circle
+            cx={CX}
+            cy={CY + 82}
+            r={32}
+            fill={plate}
+            stroke={accent}
+            strokeWidth={SW.hair}
+            data-physics-disc="true"
+            data-physics-plate={plate}
+          />
+          <PhysicsGlyph element={element} accent={accent} ink={ink} outline={!drain} x={CX} y={CY + 82} height={50} />
+        </>
       )}
     </g>
   )
@@ -753,11 +769,15 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         const p = pts[i]!
         return (
           <g key={`${ch.hanja}-${i}`}>
-            {ch.isDayMaster ? (
-              <rect x={p.x - 20} y={p.y - 20} width={40} height={40} fill={GROUND} stroke={accent} strokeWidth={SW.med} />
-            ) : (
-              <circle cx={p.x} cy={p.y} r={20} fill={GROUND} stroke={hot ? INK.base : INK.hair} strokeWidth={hot ? SW.med : SW.hair} />
-            )}
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={20}
+              fill={GROUND}
+              stroke={ch.isDayMaster ? accent : hot ? INK.base : INK.hair}
+              strokeWidth={ch.isDayMaster || hot ? SW.med : SW.hair}
+              data-saju-seat={ch.isDayMaster ? 'day' : 'pillar'}
+            />
             <g opacity={hot ? 0.85 : 0.45}>
               <HanjaGlyph x={p.x} y={p.y} size={19.2} fill={ch.isDayMaster ? accent : INK.strong} dy={7}>
                 {ch.hanja}
@@ -940,7 +960,7 @@ function MayaKin({ tone, nawal, x, y }: { tone: number; nawal: number; x: number
   const dots = tone % 5
   return (
     <g transform={`translate(${x} ${y})`} stroke={INK.strong} fill="none" strokeLinecap="butt" data-mark="nawal">
-      <rect x="-40" y="-48" width="80" height="96" rx="6" strokeWidth={SW.med} />
+      {/* no frame — the kin is the bars, dots, and nawal, not a UI card */}
       {Array.from({ length: bars }, (_, i) => (
         <rect key={`b${i}`} x="-24" y={-38 + i * 12} width="48" height="9" fill={INK.strong} stroke="none" />
       ))}

@@ -22,6 +22,6 @@ describe('core layout', () => {
     expect(phone).toContain('data-hanja="火"')
     expect(square).toContain('data-centre-hanja="火"')
     expect(square).toContain('data-centre-hanja-size="140"')
-    expect(square).toContain('data-physics-height="90"')
+    expect(square).toContain('data-physics-height="50"')
   })
 })
