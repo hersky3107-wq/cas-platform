@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NUMEROLOGY_ENGINE_VERSION, numerology, reducePythagorean } from '..'
+import { NUMEROLOGY_ENGINE_VERSION, birthDigitGrid, numerology, reducePythagorean } from '..'
 
 describe('numerology engine version', () => {
   it('exports NUMEROLOGY_ENGINE_VERSION', () => {
@@ -46,6 +46,28 @@ describe('missing latin name', () => {
     const result = numerology({ birthDate: '1990-03-29', latinName: '김민수', atDate: '2026-08-15' })
     expect(result.expression).toBeNull()
     expect(result.limitations).toEqual(['no_latin_name'])
+  })
+})
+
+describe('birth-digit grid (missing / repeated, zeros ignored)', () => {
+  it('1988-03-15 → missing 2 4 6 7, repeated 1 8', () => {
+    expect(birthDigitGrid('1988-03-15')).toMatchObject({ missing: [2, 4, 6, 7], repeated: [1, 8] })
+  })
+
+  it('1990-01-01 → missing 2–8, repeated 1 9', () => {
+    expect(birthDigitGrid('1990-01-01')).toMatchObject({ missing: [2, 3, 4, 5, 6, 7, 8], repeated: [1, 9] })
+  })
+
+  it('2009-11-07 → missing 3 4 5 6 8, repeated 1', () => {
+    expect(birthDigitGrid('2009-11-07')).toMatchObject({ missing: [3, 4, 5, 6, 8], repeated: [1] })
+  })
+
+  it('numerology() carries the grid and never maps it to 오행', () => {
+    const result = numerology({ birthDate: '1988-03-15', atDate: '2026-01-01' })
+    expect(result.missingDigits).toEqual([2, 4, 6, 7])
+    expect(result.repeatedDigits).toEqual([1, 8])
+    expect(result).not.toHaveProperty('element')
+    expect(JSON.stringify(result)).not.toMatch(/wood|fire|earth|metal|water/)
   })
 })
 
