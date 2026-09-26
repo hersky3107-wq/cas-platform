@@ -35,7 +35,7 @@ describe('resolveCentre', () => {
   })
 
   it('종격 yongsin null → consensus deficiency argmax', () => {
-    const p = fourPillars({ date: '1984-02-10', time: '04:30', timezone: 'Asia/Seoul' })
+    const p = fourPillars({ date: '1980-01-08', time: '04:30', timezone: 'Asia/Seoul' })
     expect(eokbu(p).yongsin).toBeNull()
     const centre = resolveCentre({ eokbu: eokbu(p), deficiency: fakeConsensus({ water: 9 }).elements.deficiency })
     expect(centre).toEqual({ source: 'consensus', mode: 'fill', element: 'water' })
