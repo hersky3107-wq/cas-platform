@@ -59,7 +59,7 @@ export const ELEMENT_META: Record<
   { hanja: string; guardian: string; numbers: string; accent: string }
 > = {
   wood: { hanja: '木', guardian: '靑龍', numbers: '3 · 8', accent: '#7dba6a' },
-  fire: { hanja: '火', guardian: '朱雀', numbers: '2 · 7', accent: '#e08a3c' },
+  fire: { hanja: '火', guardian: '朱雀', numbers: '2 · 7', accent: '#8f4e24' },
   earth: { hanja: '土', guardian: '黃龍', numbers: '5 · 10', accent: '#c4a35a' },
   metal: { hanja: '金', guardian: '白虎', numbers: '4 · 9', accent: '#d4c7a1' },
   water: { hanja: '水', guardian: '玄武', numbers: '1 · 6', accent: '#6a9bb8' },
