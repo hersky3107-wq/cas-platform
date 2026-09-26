@@ -54,6 +54,8 @@ export type TalismanSpec = {
   fudanGlyph?: string | null
   /** Suits still present in the spread; omitted = draw all four. */
   tarotSuits?: readonly ('wands' | 'cups' | 'swords' | 'pentacles')[]
+  /** Suits whose drawn card landed reversed — rotate the glyph, do not lock. */
+  tarotReversedSuits?: readonly ('wands' | 'cups' | 'swords' | 'pentacles')[]
   /** When true, the house band is cut even if palaces exist. */
   housesMissing?: boolean
   spreadLocks?: readonly number[]

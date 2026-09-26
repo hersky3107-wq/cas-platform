@@ -172,7 +172,7 @@ export const FORM_ONLY_LAYERS: Record<FormOnlyLayer['system'], FormOnlyLayer> = 
   runes: {
     kind: 'form-only',
     system: 'runes',
-    reason: '룬은 부적 네이티브 소견이 없다. 형태만 기여한다. 역배 위치는 봉인 대상으로만 쓴다.',
+    reason: '룬은 부적 네이티브 소견이 없다. 형태만 기여한다. 역배는 제자리 회전이지 봉인이 아니다.',
   },
 }
 
@@ -213,7 +213,7 @@ export type TalismanSector =
   | { frame: 'gyeok'; seat: GyeokSeat }
   | { frame: 'spread'; system: 'tarot' | 'runes'; index: number; label: string }
 
-export type SealKind = 'ninestar-killing' | 'ziwei-malefic' | 'name-daehyung' | 'tarot-reversed' | 'rune-reversed'
+export type SealKind = 'ninestar-killing' | 'ziwei-malefic' | 'ziwei-huaji' | 'name-daehyung'
 
 export type SealTarget = {
   id: string

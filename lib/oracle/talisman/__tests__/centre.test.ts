@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { eokbu, fourPillars } from '../../engines/calendar'
+import { eokbu, fourPillars, tenGods } from '../../engines/calendar'
 import { pickDeficiencyLeader, resolveCentre } from '../centre'
-import { fakeConsensus } from './fixture'
+import { computeTalisman } from '../compute'
+import { charts1988, fakeConsensus, LIVE_ACCESS } from './fixture'
 
 describe('pickDeficiencyLeader', () => {
   it('returns the argmax and breaks ties by ELEMENT_AXES order', () => {
@@ -41,3 +42,45 @@ describe('resolveCentre', () => {
     expect(centre).toEqual({ source: 'consensus', mode: 'fill', element: 'water' })
   })
 })
+
+describe('computeTalisman centre paths from distinct 사주', () => {
+  it('신약 / 신강 / 중화 each produce a different centre.source or mode', () => {
+    const weak = computeTalisman({
+      access: LIVE_ACCESS,
+      charts: charts1988(),
+      consensus: fakeConsensus({ metal: 20 }),
+    })
+    expect(weak!.centre).toEqual({ source: 'eokbu', mode: 'fill', element: 'fire', strength: 'weak' })
+
+    const strongPillars = fourPillars({ date: '1984-02-10', time: '12:00', timezone: 'Asia/Seoul' })
+    const strong = computeTalisman({
+      access: LIVE_ACCESS,
+      charts: charts1988({
+        saju: { eokbu: eokbu(strongPillars), tenGods: tenGods(strongPillars.day.stem, strongPillars), pillars: strongPillars },
+      }),
+      consensus: fakeConsensus({ water: 20 }),
+    })
+    expect(strong!.centre).toEqual({ source: 'eokbu', mode: 'drain', element: 'fire', strength: 'strong' })
+
+    const balancedPillars = fourPillars({ date: '1984-02-15', time: '12:00', timezone: 'Asia/Seoul' })
+    const balanced = computeTalisman({
+      access: LIVE_ACCESS,
+      charts: charts1988({
+        saju: { eokbu: eokbu(balancedPillars), tenGods: tenGods(balancedPillars.day.stem, balancedPillars), pillars: balancedPillars },
+      }),
+      consensus: fakeConsensus({ metal: 11, wood: 3 }),
+    })
+    expect(balanced!.centre).toEqual({ source: 'consensus', mode: 'fill', element: 'metal' })
+
+    const jongPillars = fourPillars({ date: '1980-01-08', time: '04:30', timezone: 'Asia/Seoul' })
+    const jong = computeTalisman({
+      access: LIVE_ACCESS,
+      charts: charts1988({
+        saju: { eokbu: eokbu(jongPillars), tenGods: tenGods(jongPillars.day.stem, jongPillars), pillars: jongPillars },
+      }),
+      consensus: fakeConsensus({ water: 9 }),
+    })
+    expect(jong!.centre).toEqual({ source: 'consensus', mode: 'fill', element: 'water' })
+  })
+})
+

@@ -98,4 +98,19 @@ describe('computeTalisman', () => {
     expect(result?.fudan.glyph).toBe('鎭')
     expect(result?.seals).toEqual([])
   })
+
+  it('does not seal reversed tarot or runes; reversals stay on the layer', () => {
+    const charts = charts1988()
+    const reversedCards = charts.tarot?.cards.filter((card) => card.reversed).length ?? 0
+    const reversedRunes = charts.runes?.runes.filter((rune) => rune.reversed).length ?? 0
+    expect(reversedCards + reversedRunes).toBeGreaterThan(0)
+    const result = computeTalisman({
+      access: LIVE_ACCESS,
+      charts,
+      consensus: fakeConsensus({ water: 8 }),
+    })
+    expect(result!.seals.some((seal) => (seal.kind as string) === 'tarot-reversed' || (seal.kind as string) === 'rune-reversed')).toBe(false)
+    expect(result!.seals.every((seal) => ['ninestar-killing', 'ziwei-malefic', 'ziwei-huaji', 'name-daehyung'].includes(seal.kind))).toBe(true)
+    expect(result!.layers.tarot?.reversed).toHaveLength(reversedCards)
+  })
 })

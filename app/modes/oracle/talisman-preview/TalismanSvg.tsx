@@ -553,9 +553,20 @@ function Luoshu({ sealed, accent }: { sealed: readonly number[]; accent: string 
   )
 }
 
-function TarotMark({ mark, x, y }: { mark: 'wands' | 'cups' | 'swords' | 'pentacles'; x: number; y: number }) {
+function TarotMark({
+  mark,
+  x,
+  y,
+  reversed,
+}: {
+  mark: 'wands' | 'cups' | 'swords' | 'pentacles'
+  x: number
+  y: number
+  reversed?: boolean
+}) {
+  const turn = reversed ? ' rotate(180)' : ''
   return (
-    <g transform={`translate(${x} ${y})`} stroke={INK.strong} fill="none" strokeWidth={1.8} strokeLinecap="butt">
+    <g transform={`translate(${x} ${y})${turn}`} stroke={INK.strong} fill="none" strokeWidth={1.8} strokeLinecap="butt">
       {mark === 'wands' ? (
         <>
           <line x1="0" y1="-22" x2="0" y2="22" />
@@ -614,9 +625,11 @@ function MayaKin({ tone, nawal, x, y }: { tone: number; nawal: number; x: number
 }
 
 function MiddleScripts({ spec }: { spec: TalismanSpec }) {
+  const reversed = new Set(spec.tarotReversedSuits ?? [])
   const suits = (spec.tarotSuits ?? ['wands', 'cups', 'swords', 'pentacles']).map((mark) => ({
     mark,
     a: mark === 'wands' ? 128 : mark === 'cups' ? 52 : mark === 'swords' ? -128 : -52,
+    reversed: reversed.has(mark),
   }))
   const kin = polar(SCRIPT_R, 200)
   return (
@@ -648,7 +661,7 @@ function MiddleScripts({ spec }: { spec: TalismanSpec }) {
       })}
       {suits.map((s) => {
         const p = polar(SCRIPT_R, s.a)
-        return <TarotMark key={s.mark} mark={s.mark} x={p.x} y={p.y} />
+        return <TarotMark key={s.mark} mark={s.mark} x={p.x} y={p.y} reversed={s.reversed} />
       })}
       <MayaKin tone={spec.tzolkinTone} nawal={spec.tzolkinNawal} x={kin.x} y={kin.y} />
     </g>

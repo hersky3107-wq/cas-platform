@@ -20,7 +20,7 @@ export function computeTalisman(input: {
     deficiency: input.consensus?.elements.deficiency,
   })
   const raw = extractNativeFindings(input.charts)
-  const seals = collectSeals(input.charts, raw)
+  const seals = collectSeals(raw)
   const layers = subtractSealed(raw, seals)
   const purpose = purposeBundle(raw, {
     active: input.purpose ?? null,

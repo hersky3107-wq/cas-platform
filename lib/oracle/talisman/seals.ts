@@ -1,15 +1,19 @@
 /**
  * Seal targets: the subset of native findings the talisman covers rather than
  * draws. Whatever a seal covers is removed from every layer that crosses that
- * sector. 구성 흉방 cells, 자미 살성 palaces, 성명 대흉 seats, reversed
- * tarot/rune positions.
+ * sector.
+ *
+ * Seals are genuine inauspicious findings only:
+ *   구성 흉방 cells, 자미 살성 palaces, 자미 化忌 palace, 성명 대흉 seats.
+ * A reversed tarot card or rune inverts a meaning; it is not 흉 and does not
+ * get a lock. Reversals stay on their own layer as a rotated glyph.
  *
  * 중궁 (구성 본명살이 가운데에 앉은 경우) is not sealed — the core is the 용신.
  */
 
 import { BRANCH_PALACE, LUOSHU_PALACES } from '../engines/calendar'
 import type { CompassDirection } from '../engines/calendar'
-import type { NativeFindings, SealTarget, TalismanCharts, TalismanSector } from './types'
+import type { NativeFindings, SealTarget, TalismanSector } from './types'
 
 function directionForBranch(branchIndex: number): CompassDirection {
   const palace = BRANCH_PALACE[branchIndex]!
@@ -33,7 +37,7 @@ function luoshuOverlapKey(sector: TalismanSector): string | null {
   return null
 }
 
-export function collectSeals(charts: TalismanCharts, findings: NativeFindings): SealTarget[] {
+export function collectSeals(findings: NativeFindings): SealTarget[] {
   const seals: SealTarget[] = []
   const takenLuoshu = new Set<string>()
 
@@ -67,6 +71,15 @@ export function collectSeals(charts: TalismanCharts, findings: NativeFindings): 
         sector: { frame: 'ziwei', palace: palace.name, branchIndex: palace.branchIndex },
       })
     }
+    const ji = findings.ziwei.huaJiPalace
+    if (ji) {
+      push({
+        id: `ziwei-huaji:${ji.name}`,
+        kind: 'ziwei-huaji',
+        rule: `化忌 ${ji.star}`,
+        sector: { frame: 'ziwei', palace: ji.name, branchIndex: ji.branchIndex },
+      })
+    }
   }
 
   if (findings.name) {
@@ -78,29 +91,6 @@ export function collectSeals(charts: TalismanCharts, findings: NativeFindings): 
         sector: { frame: 'gyeok', seat: hit.seat },
       })
     }
-  }
-
-  if (findings.tarot) {
-    for (const card of findings.tarot.reversed) {
-      push({
-        id: `tarot-reversed:${card.index}`,
-        kind: 'tarot-reversed',
-        rule: `역배 ${card.name}`,
-        sector: { frame: 'spread', system: 'tarot', index: card.index, label: card.positionLabel },
-      })
-    }
-  }
-
-  if (charts.runes) {
-    charts.runes.runes.forEach((rune, index) => {
-      if (!rune.reversed) return
-      push({
-        id: `rune-reversed:${index}`,
-        kind: 'rune-reversed',
-        rule: `역배 ${rune.name}`,
-        sector: { frame: 'spread', system: 'runes', index, label: rune.positionLabel },
-      })
-    })
   }
 
   return seals
@@ -122,6 +112,7 @@ function sealedKeys(seals: SealTarget[]): Set<string> {
 /**
  * Strip covered items from every layer that crosses a sealed sector.
  * Seals themselves stay; the layer no longer draws what the lock covers.
+ * Tarot/rune reversals are never sealed, so they stay on the layer.
  */
 export function subtractSealed(findings: NativeFindings, seals: SealTarget[]): NativeFindings {
   const keys = sealedKeys(seals)
@@ -164,12 +155,5 @@ export function subtractSealed(findings: NativeFindings, seals: SealTarget[]): N
       }
     : null
 
-  const tarot = findings.tarot
-    ? {
-        ...findings.tarot,
-        reversed: findings.tarot.reversed.filter((card) => !keys.has(`spread:tarot:${card.index}`)),
-      }
-    : null
-
-  return { ...findings, ninestar, ziwei, name, tarot }
+  return { ...findings, ninestar, ziwei, name }
 }

@@ -157,6 +157,17 @@ function bokjangSeats(computation: TalismanComputation): number[] {
     .filter((i) => i >= 0)
 }
 
+function reversedSuitsFrom(charts: TalismanCharts): Array<'wands' | 'cups' | 'swords' | 'pentacles'> {
+  const suits = new Set<'wands' | 'cups' | 'swords' | 'pentacles'>()
+  for (const card of charts.tarot?.cards ?? []) {
+    if (!card.reversed) continue
+    if (card.suit === 'wands' || card.suit === 'cups' || card.suit === 'swords' || card.suit === 'pentacles') {
+      suits.add(card.suit)
+    }
+  }
+  return [...suits]
+}
+
 export function talismanStats(computation: TalismanComputation) {
   const emptyPalaces = computation.layers.ziwei?.emptyPalaces.length ?? 0
   const hyungbang = computation.seals.filter((seal) => seal.kind === 'ninestar-killing').length
@@ -192,6 +203,7 @@ export function specFromComputation(
     purposeWealth: computation.fudan.kind === 'hanja' && (computation.fudan.purpose as TalismanPurpose) === 'wealth',
     fudanGlyph,
     tarotSuits: (['wands', 'cups', 'swords', 'pentacles'] as const).filter((suit) => presentSuits.size === 0 || presentSuits.has(suit)),
+    tarotReversedSuits: reversedSuitsFrom(charts),
     housesMissing,
     numerology: charts.numerology
       ? [charts.numerology.lifePath, charts.numerology.birthdayNumber, charts.numerology.personalYear, charts.numerology.personalMonth]
@@ -220,9 +232,6 @@ export function specFromComputation(
     tzolkinTone: charts.tzolkin?.tone ?? 9,
     tzolkinNawal: charts.tzolkin?.nawal ?? 7,
     bindrune: computation.fudan.kind === 'bindrune',
-    spreadLocks: computation.seals
-      .filter((seal) => seal.sector.frame === 'spread')
-      .map((_, i) => 200 + i * 22),
     dateLabel: meta.dateLabel,
     sessionId: meta.sessionId.slice(0, 8).toUpperCase(),
   }
