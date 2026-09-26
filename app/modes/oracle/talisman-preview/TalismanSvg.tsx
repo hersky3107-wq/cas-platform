@@ -504,38 +504,45 @@ function TallTop({ spec, accent }: { spec: TalismanSpec; accent: string }) {
 
 const SEAL_VERMILION = '#c23b22'
 const SEAL_FIRE = '#8f1d14'
+const SEAL_CREAM = '#f3ead8'
 
 function sealInk(element: TalismanSpec['element']): string {
   return element === 'fire' ? SEAL_FIRE : SEAL_VERMILION
 }
 
+/** Clean rounded square; edge wander stays ≤ 3. */
 function stampedSquare(size: number): string {
   const h = size / 2
-  const pts: string[] = []
-  const n = 36
-  for (let i = 0; i <= n; i += 1) {
-    const t = (i / n) * 4
-    const side = Math.floor(t) % 4
-    const u = t - Math.floor(t)
-    const wob = 5 * Math.sin(i * 1.71 + side * 0.9)
-    let x = 0
-    let y = 0
-    if (side === 0) {
-      x = -h + u * size
-      y = -h + wob
-    } else if (side === 1) {
-      x = h + wob
-      y = -h + u * size
-    } else if (side === 2) {
-      x = h - u * size
-      y = h + wob
-    } else {
-      x = -h + wob
-      y = h - u * size
+  const r = 6
+  const steps = 8
+  const parts: string[] = []
+  const sides = [
+    { x0: -h + r, y0: -h, x1: h - r, y1: -h, nx: 0, ny: -1, phase: 0.4 },
+    { x0: h, y0: -h + r, x1: h, y1: h - r, nx: 1, ny: 0, phase: 1.1 },
+    { x0: h - r, y0: h, x1: -h + r, y1: h, nx: 0, ny: 1, phase: 2.2 },
+    { x0: -h, y0: h - r, x1: -h, y1: -h + r, nx: -1, ny: 0, phase: 3.3 },
+  ] as const
+  const corners = [
+    { cx: h - r, cy: -h + r, a0: -90, a1: 0 },
+    { cx: h - r, cy: h - r, a0: 0, a1: 90 },
+    { cx: -h + r, cy: h - r, a0: 90, a1: 180 },
+    { cx: -h + r, cy: -h + r, a0: 180, a1: 270 },
+  ] as const
+  sides.forEach((side, s) => {
+    for (let i = 0; i <= steps; i += 1) {
+      const t = i / steps
+      const wob = Math.max(-3, Math.min(3, 2.2 * Math.sin(t * Math.PI * 2 + side.phase)))
+      const x = side.x0 + (side.x1 - side.x0) * t + side.nx * wob
+      const y = side.y0 + (side.y1 - side.y0) * t + side.ny * wob
+      parts.push(`${s === 0 && i === 0 ? 'M' : 'L'}${round(x)},${round(y)}`)
     }
-    pts.push(`${i === 0 ? 'M' : 'L'}${round(x)},${round(y)}`)
-  }
-  return `${pts.join('')}Z`
+    const c = corners[s]!
+    for (let i = 1; i <= 4; i += 1) {
+      const a = ((c.a0 + ((c.a1 - c.a0) * i) / 4) * Math.PI) / 180
+      parts.push(`L${round(c.cx + r * Math.cos(a))},${round(c.cy + r * Math.sin(a))}`)
+    }
+  })
+  return `${parts.join('')}Z`
 }
 
 function SealStamp({
@@ -550,29 +557,27 @@ function SealStamp({
   size?: number
 }) {
   const ink = sealInk(spec.element)
-  const runes = spec.bindruneRunes
-  const hasRunes = Boolean(runes && runes.length > 0)
-  const inner = size * 0.36
+  const serial = spec.serial ?? ''
+  const runeScale = (size * 0.36) / 80
+  const serialSize = Math.max(26, size * 0.14)
   return (
-    <g data-seal-stamp="true" data-seal-ink={ink} transform={`translate(${x} ${y})`}>
-      <path d={stampedSquare(size)} fill={ink} stroke={ink} strokeWidth={2} />
-      {hasRunes ? (
-        <g transform={`scale(${inner / 40})`} stroke="#2a0a08" fill="none">
-          <BindruneSigil stones={runes} x={0} y={0} accent="#2a0a08" />
-        </g>
-      ) : (
-        <text
-          x={0}
-          y={8}
-          textAnchor="middle"
-          fill="#f6e6d8"
-          fontSize={size >= 180 ? 32 : 22}
-          fontFamily="ui-monospace, monospace"
-          letterSpacing="1.4"
-        >
-          {spec.serial ?? ''}
-        </text>
-      )}
+    <g data-seal-stamp="true" data-seal-ink={ink} data-seal-edge="square" transform={`translate(${x} ${y})`}>
+      <path d={stampedSquare(size)} fill={ink} stroke="none" data-seal-face="true" />
+      <g transform={`translate(0 ${-size * 0.1}) scale(${runeScale})`} data-seal-cutout="bindrune">
+        <BindruneSigil stones={spec.bindruneRunes} x={0} y={0} accent={SEAL_CREAM} />
+      </g>
+      <text
+        x={0}
+        y={round(size * 0.34)}
+        textAnchor="middle"
+        fill={SEAL_CREAM}
+        fontSize={serialSize}
+        fontFamily="ui-monospace, monospace"
+        letterSpacing="1.2"
+        data-seal-serial="true"
+      >
+        {serial}
+      </text>
     </g>
   )
 }
