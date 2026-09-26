@@ -1046,8 +1046,8 @@ function PalaceIndexMark({
 }
 
 function palaceFillOpacity(brightness: PalaceMark['brightness'] | undefined, emphasised = false): number {
-  const base = brightness === 'solid' ? 0.24 : brightness === 'faint' ? 0.045 : 0.11
-  return emphasised ? Math.min(0.42, base + 0.18) : base
+  const base = brightness === 'solid' ? 0.2 : brightness === 'faint' ? 0.06 : 0.12
+  return emphasised ? Math.min(0.32, base + 0.1) : base
 }
 
 function PalaceHatch({
@@ -1132,7 +1132,7 @@ function ZiweiRing({
         const hatchWeight: 1 | 2 | 0 = malefic <= 0 ? 0 : malefic === 1 ? 1 : 2
         return (
           <g key={palace.name} data-purpose-hit={hot ? 'ziwei' : undefined}>
-            <path d={band} fill={INK.strong} opacity={palaceFillOpacity(palace.brightness, hot)} />
+            <path d={band} fill={accent} opacity={palaceFillOpacity(palace.brightness, hot)} data-palace-tint="true" />
             {hatchWeight ? (
               <PalaceHatch d={band} clipId={`${uid}-hatch-${i}`} weight={hatchWeight} />
             ) : null}
