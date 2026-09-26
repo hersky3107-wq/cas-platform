@@ -48,3 +48,8 @@ next-env.d.ts
 scripts/last-deep-run.txt
 .next-dev-route-lock-check.log
 supabase/.temp/
+
+# local talisman calibration probes (service-role lookups, not committed)
+scripts/dump-talisman-calibration.ts
+scripts/probe-festival-benchmark-once.ts
+scripts/probe-talisman-sessions.ts
