@@ -32,7 +32,7 @@ describe('nawal geometric glyphs', () => {
       createElement(TalismanSvg, { spec, frame: TALISMAN_FRAMES[2]!, uid: 'kin' }),
     )
     expect(html).toContain('data-nawal="7"')
-    expect(html).toContain('width="32" height="6"')
+    expect(html).toContain('width="48" height="9"')
     expect(html).not.toContain('M-14 10 L-4 2 L6 10 L14 4 L8 22 L-8 22 Z')
   })
 })

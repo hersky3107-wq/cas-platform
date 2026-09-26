@@ -31,7 +31,14 @@ function prismHex(id: string | undefined): string | null {
 const CX = 500
 const CY = 500
 
-const SW = { hair: 0.7, med: 2.0 } as const
+const SW = { hair: 1.2, med: 3.0 } as const
+export const TALISMAN_SW = SW
+export const PHONE_RENDER_WIDTH = 390
+export const SIZE_FLOOR_PX = 10
+/** Canvas units that render as 10px on a 390-wide phone. */
+export const SIZE_FLOOR_CANVAS = (SIZE_FLOOR_PX * 1000) / PHONE_RENDER_WIDTH
+/** Local circle units after CIRCLE_SCALE 0.9. */
+export const SIZE_FLOOR_CIRCLE = SIZE_FLOOR_CANVAS / CIRCLE_SCALE
 const INK = {
   faint: 'rgba(255,255,255,0.14)',
   hair: 'rgba(255,255,255,0.3)',
@@ -239,8 +246,8 @@ function PhysicsGlyph({
         <g strokeWidth={SW.med}>
           <path d="M-40 8 L0 38 L40 8" />
           <path d="M-26 -4 L0 16 L26 -4" />
-          <circle cy="38" r="4" fill={accent} stroke="none" />
-          <text x="22" y="-10" fontSize="28" letterSpacing="1" {...label}>
+          <circle cy="38" r="7" fill={accent} stroke="none" />
+          <text x="22" y="-10" fontSize="36" letterSpacing="1" {...label}>
             G
           </text>
         </g>
@@ -250,7 +257,7 @@ function PhysicsGlyph({
           <line x1="0" y1="-36" x2="0" y2="32" />
           <line x1="-30" y1="-30" x2="30" y2="30" />
           <line x1="30" y1="-30" x2="-30" y2="30" />
-          <text x="16" y="22" fontSize="18" letterSpacing="0.8" {...label}>
+          <text x="16" y="22" fontSize="36" letterSpacing="0.8" {...label}>
             ds²
           </text>
         </g>
@@ -261,7 +268,7 @@ function PhysicsGlyph({
           <line x1="0" y1="4" x2="-26" y2="34" />
           <line x1="0" y1="4" x2="26" y2="34" />
           <path d="M18 -10 H36 L28 2 H40" />
-          <text x="-52" y="-10" fontSize="18" letterSpacing="1.4" {...label}>
+          <text x="-52" y="-10" fontSize="36" letterSpacing="1.4" {...label}>
             W Z
           </text>
         </g>
@@ -274,7 +281,7 @@ function PhysicsGlyph({
           <line x1="0" y1="-9" x2="-13" y2="12" />
           <line x1="0" y1="-9" x2="13" y2="12" />
           <line x1="-10" y1="18" x2="10" y2="18" />
-          <text x="28" y="6" fontSize="16" letterSpacing="0.6" {...label}>
+          <text x="28" y="6" fontSize="36" letterSpacing="0.6" {...label}>
             SU(3)
           </text>
         </g>
@@ -283,32 +290,10 @@ function PhysicsGlyph({
         <g strokeWidth={SW.med}>
           <polyline points="-42,8 -32,-2 -22,8 -12,-2 -2,8 8,-2 18,8 28,-2 38,8" />
           <polyline points="0,-34 -10,-24 0,-14 -10,-4 0,6 -10,16 0,26 -10,36 0,44" />
-          <text x="18" y="-16" fontSize="32" fontFamily="ui-serif, serif" stroke="none" fill={accent}>
+          <text x="18" y="-16" fontSize="40" fontFamily="ui-serif, serif" stroke="none" fill={accent}>
             γ
           </text>
         </g>
-      ) : null}
-    </g>
-  )
-}
-
-function GuardianMark({ element, accent }: { element: ElementKey; accent: string }) {
-  return (
-    <g transform={`translate(${CX} ${CY + 108})`} stroke={accent} fill="none" strokeLinecap="butt">
-      {element === 'fire' ? (
-        <polyline points="-16,-6 -8,-14 0,-4 8,-14 16,-6 0,10 -16,-6" strokeWidth={SW.med} />
-      ) : null}
-      {element === 'water' ? (
-        <path d="M-14 4 C-14 -10 0 -16 0 -2 C0 -16 14 -10 14 4 C8 16 0 18 -14 4" strokeWidth={SW.med} />
-      ) : null}
-      {element === 'wood' ? (
-        <polyline points="0,12 0,-14 -10,-4 0,-14 10,-4" strokeWidth={SW.med} />
-      ) : null}
-      {element === 'metal' ? (
-        <polygon points="0,-12 10,0 0,12 -10,0" strokeWidth={SW.med} />
-      ) : null}
-      {element === 'earth' ? (
-        <path d="M-12 8 L0 -12 L12 8 Z M-8 8 H8" strokeWidth={SW.med} />
       ) : null}
     </g>
   )
@@ -322,7 +307,7 @@ function BalancedCore(): ReactNode {
       <polygon points={polyPoints(5, radius, rot)} fill="none" stroke={INK.base} strokeWidth={SW.hair} />
       {Array.from({ length: 5 }, (_, i) => {
         const p = polarJ(radius, rot + (i * 360) / 5, i)
-        return <circle key={i} cx={p.x} cy={p.y} r="2.2" fill={INK.strong} stroke="none" />
+        return <circle key={i} cx={p.x} cy={p.y} r="8" fill={INK.strong} stroke="none" />
       })}
     </g>
   )
@@ -389,11 +374,12 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
           })
         : null}
       {follow ? <FollowSpiral accent={accent} /> : null}
-      <PhysicsGlyph element={element} accent={accent} />
-      <HanjaGlyph x={CX} y={CY - 78} size={58} fill={accent}>
-        {meta.hanja}
-      </HanjaGlyph>
-      <GuardianMark element={element} accent={accent} />
+      <PhysicsGlyph element={element} accent={accent} height={90} />
+      <g data-centre-hanja={meta.hanja} data-centre-hanja-size="140">
+        <HanjaGlyph x={CX} y={CY - 36} size={140} fill={accent}>
+          {meta.hanja}
+        </HanjaGlyph>
+      </g>
     </g>
   )
 }
@@ -540,7 +526,7 @@ function TallBottom({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         y={2048}
         textAnchor="middle"
         fill={INK.hair}
-        fontSize="28"
+        fontSize="32"
         fontFamily="ui-monospace, monospace"
         letterSpacing="3"
         data-serial="true"
@@ -748,7 +734,7 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
                 y={cy + 7}
                 textAnchor="middle"
                 fill={hit ? INK.strong : INK.hair}
-                fontSize="16"
+                fontSize="32"
                 fontFamily="ui-serif, serif"
               >
                 {palace}
@@ -804,15 +790,15 @@ function MayaKin({ tone, nawal, x, y }: { tone: number; nawal: number; x: number
   const bars = Math.floor(tone / 5)
   const dots = tone % 5
   return (
-    <g transform={`translate(${x} ${y})`} stroke={INK.strong} fill="none" strokeLinecap="butt">
-      <rect x="-28" y="-34" width="56" height="68" rx="4" strokeWidth={1.6} />
+    <g transform={`translate(${x} ${y})`} stroke={INK.strong} fill="none" strokeLinecap="butt" data-mark="nawal">
+      <rect x="-40" y="-48" width="80" height="96" rx="6" strokeWidth={SW.med} />
       {Array.from({ length: bars }, (_, i) => (
-        <rect key={`b${i}`} x="-16" y={-26 + i * 9} width="32" height="6" fill={INK.strong} stroke="none" />
+        <rect key={`b${i}`} x="-24" y={-38 + i * 12} width="48" height="9" fill={INK.strong} stroke="none" />
       ))}
       {Array.from({ length: dots }, (_, i) => (
-        <circle key={`d${i}`} cx={-12 + i * 8} cy={-26 + bars * 9 + 8} r="3.2" fill={INK.strong} stroke="none" />
+        <circle key={`d${i}`} cx={-16 + i * 10} cy={-38 + bars * 12 + 12} r="5" fill={INK.strong} stroke="none" />
       ))}
-      <g transform={`translate(-12 ${8 + (bars > 0 ? 4 : 0)})`} color={INK.strong}>
+      <g transform={`translate(-21 ${4 + (bars > 0 ? 4 : 0)}) scale(1.75)`} color={INK.strong}>
         <NawalGlyph nawal={nawal} />
       </g>
       <text
@@ -821,7 +807,7 @@ function MayaKin({ tone, nawal, x, y }: { tone: number; nawal: number; x: number
         textAnchor="middle"
         fill={INK.base}
         stroke="none"
-        fontSize="11"
+        fontSize="32"
         fontFamily="ui-monospace, monospace"
       >
         {tone} · {nawal}
@@ -857,7 +843,7 @@ function MiddleScripts({ spec }: { spec: TalismanSpec }) {
               y={label.y + 5}
               textAnchor="middle"
               fill={INK.base}
-              fontSize="14"
+              fontSize="32"
               fontFamily="ui-monospace, monospace"
             >
               {digit}
@@ -888,7 +874,7 @@ function MiddleScripts({ spec }: { spec: TalismanSpec }) {
               y={label.y + 4}
               textAnchor="middle"
               fill={INK.base}
-              fontSize="13"
+              fontSize="32"
               fontFamily="ui-monospace, monospace"
             >
               {digit}
@@ -934,9 +920,9 @@ function PalaceIndexMark({ index, x, y }: { index: number; x: number; y: number 
   const dots = index % 3
   return (
     <g data-palace-mark={index} transform={`translate(${x} ${y})`} stroke={INK.strong} fill={INK.strong}>
-      <line x1="0" y1="-9" x2="0" y2="7" strokeWidth={SW.hair} />
+      <line x1="0" y1="-16" x2="0" y2="12" strokeWidth={SW.med} />
       {Array.from({ length: dots }, (_, i) => (
-        <circle key={i} cx={(i - (dots - 1) / 2) * 5.5} cy="11" r="1.5" stroke="none" />
+        <circle key={i} cx={(i - (dots - 1) / 2) * 10} cy="18" r="4.5" stroke="none" />
       ))}
     </g>
   )
@@ -1075,7 +1061,7 @@ function ZiweiSignals({ palaces }: { palaces: TalismanSpec['palaces'] }) {
         if (palace.huaJi) {
           const a = palace.daXian ? mid + 6 : mid
           const p = polar(ZIWEI_IN + 11, a)
-          marks.push(<circle key={`huaji-${palace.name}`} cx={p.x} cy={p.y} r={8.5} fill={INK.strong} />)
+          marks.push(<circle key={`huaji-${palace.name}`} cx={p.x} cy={p.y} r={16} fill={INK.strong} />)
         }
         if (marks.length === 0) return null
         return <g key={`sig-${palace.name}`}>{marks}</g>
@@ -1113,7 +1099,7 @@ function HyungNotches({ spec }: { spec: TalismanSpec }) {
 
 function PlanetGlyph({ id, x, y }: { id: string; x: number; y: number }) {
   return (
-    <g transform={`translate(${x} ${y}) scale(1.7)`} stroke={INK.base} fill="none" strokeWidth={1.1} strokeLinecap="butt">
+    <g transform={`translate(${x} ${y}) scale(3.4)`} stroke={INK.base} fill="none" strokeWidth={1.2} strokeLinecap="butt">
       {id === 'sun' ? (
         <>
           <circle r="3.2" />
@@ -1200,7 +1186,7 @@ function AstroRing({
             y={p.y + 5}
             textAnchor="middle"
             fill={INK.base}
-            fontSize="14"
+            fontSize="32"
             fontFamily="ui-serif, Georgia, serif"
             letterSpacing="1"
           >
@@ -1271,7 +1257,7 @@ function MinorRim({ spec }: { spec: TalismanSpec }) {
             <circle
               cx={dentPt.x}
               cy={dentPt.y}
-              r="4"
+              r="16"
               fill={impulse}
               stroke="none"
               data-prism="impulse"
