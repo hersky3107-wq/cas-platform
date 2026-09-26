@@ -270,10 +270,47 @@ function GuardianMark({ element, accent }: { element: ElementKey; accent: string
   )
 }
 
+function BalancedCore(): ReactNode {
+  const radius = 78
+  const rot = 90
+  const marks = [
+    { key: 'water', label: 'G' },
+    { key: 'wood', label: 'ds²' },
+    { key: 'earth', label: 'W Z' },
+    { key: 'metal', label: 'SU(3)' },
+    { key: 'fire', label: 'γ' },
+  ] as const
+  return (
+    <g data-centre="balanced">
+      <polygon points={polyPoints(5, radius, rot)} fill="none" stroke={INK.base} strokeWidth={1.1} />
+      {marks.map((mark, i) => {
+        const p = polarJ(radius, rot + (i * 360) / 5, i)
+        return (
+          <text
+            key={mark.key}
+            x={p.x}
+            y={p.y}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill={INK.strong}
+            stroke="none"
+            fontSize="13"
+            fontFamily="ui-monospace, monospace"
+          >
+            {mark.label}
+          </text>
+        )
+      })}
+    </g>
+  )
+}
+
 function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
-  const meta = ELEMENT_META[spec.element]
+  if (spec.element == null) return <BalancedCore />
+  const element = spec.element
+  const meta = ELEMENT_META[element]
   const drain = spec.mode === 'drain'
-  const aim = ELEMENT_AIM[spec.element]
+  const aim = ELEMENT_AIM[element]
   const gap0 = (aim + 150) % 360
   const gap1 = gap0 + 38
   const rings = [36, 52, 68, 84, 100, 116, 132]
@@ -306,11 +343,11 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
             return <line key={`d${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.emph} />
           })
         : null}
-      <PhysicsGlyph element={spec.element} accent={accent} />
+      <PhysicsGlyph element={element} accent={accent} />
       <Hanjatext x={CX} y={CY - 78} size={58} fill={accent}>
         {meta.hanja}
       </Hanjatext>
-      <GuardianMark element={spec.element} accent={accent} />
+      <GuardianMark element={element} accent={accent} />
     </g>
   )
 }
@@ -376,7 +413,7 @@ function Spine({
   const runeY = fudanGlyph ? CY - CORE - 118 : CY - CORE - 62
   const fudanSize = fudanGlyph && fudanGlyph.length > 1 ? 46 : 72
   return (
-    <g fill={accent} stroke={accent} strokeLinecap="butt">
+    <g fill={accent} stroke={accent} strokeLinecap="butt" data-spine="kept">
       <rect x={CX - 4} y={18} width={8} height={CY - gap - 18} />
       <rect x={CX - 4} y={CY + gap} width={8} height={980 - (CY + gap)} />
       <rect x={CX - 30} y={10} width={60} height={6} />
@@ -1128,7 +1165,8 @@ export function TalismanSvg({
   frame: FrameSpec
   uid: string
 }) {
-  const accent = ELEMENT_META[spec.element].accent
+  const element = spec.element
+  const accent = element ? ELEMENT_META[element].accent : INK.strong
   const [vx, vy, vw, vh] = frame.viewBox
   return (
     <svg
@@ -1146,8 +1184,8 @@ export function TalismanSvg({
       <rect x={vx} y={vy} width={vw} height={vh} fill={GROUND} />
       <g clipPath={`url(#${uid}-frame)`}>
         <BleedGrid />
-        <g transform={leanTransform(spec.element, spec.mode === 'drain')}>
-          <ElementSector element={spec.element} accent={accent} />
+        <g transform={element ? leanTransform(element, spec.mode === 'drain') : undefined}>
+          {element ? <ElementSector element={element} accent={accent} /> : null}
           <Luoshu sealed={spec.luoshuSealed} accent={accent} />
           <MinorRim spec={spec} />
           {spec.planets.length > 0 ? (
@@ -1172,7 +1210,7 @@ export function TalismanSvg({
           <SpreadLocks angles={spec.spreadLocks ?? []} accent={accent} />
           <HyungNotches spec={spec} />
           <Centre spec={spec} accent={accent} />
-          <SectorRays element={spec.element} accent={accent} />
+          {element ? <SectorRays element={element} accent={accent} /> : null}
           <text
             x={CX}
             y={964}

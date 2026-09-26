@@ -54,8 +54,9 @@ function palaceNumber(direction: CompassDirection): number {
   return LUOSHU_PALACES.find((cell) => cell.direction === direction)?.palace ?? 5
 }
 
-function asElement(value: string | null | undefined): ElementKey {
-  return value && (ELEMENT_KEYS as readonly string[]).includes(value) ? (value as ElementKey) : 'earth'
+function asElement(value: string | null | undefined): ElementKey | null {
+  if (value == null) return null
+  return (ELEMENT_KEYS as readonly string[]).includes(value) ? (value as ElementKey) : 'earth'
 }
 
 function sajuWeb(charts: TalismanCharts): { chars: SajuChar[]; hap: [number, number][]; chung: [number, number][] } {

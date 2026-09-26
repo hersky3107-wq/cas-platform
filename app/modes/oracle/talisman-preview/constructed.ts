@@ -162,7 +162,7 @@ export function constructedPreviews(): ConstructedPreview[] {
       withPrism: true,
       deficiency: {},
       title: 'consensus element null',
-      note: 'consensus · fill · element null. SVG asElement falls back to earth, so the centre draws 土.',
+      note: 'consensus · fill · element null. Balanced core: five physics marks, no element wash.',
     }),
     build({
       id: 'no-prism',

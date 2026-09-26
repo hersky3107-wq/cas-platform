@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { computeTalisman } from '@/lib/oracle/talisman'
 import { ziweiChart } from '@/lib/oracle/engines/ziwei'
 import { palacesFrom, specFromComputation } from './from-computation'
 import { constructedPreviews, constructedSinkang } from './constructed'
+import { TALISMAN_FRAMES } from './variants'
+import { TalismanSvg } from './TalismanSvg'
 import { charts1988, fakeConsensus, LIVE_ACCESS } from '@/lib/oracle/talisman/__tests__/fixture'
 
 describe('palacesFrom ziwei ring signals', () => {
@@ -89,11 +93,11 @@ describe('constructed centre fixtures', () => {
     expect(jonggyeok.spec.element).toBe('water')
   })
 
-  it('consensus with no leader keeps a null element and the SVG spec falls back to earth', () => {
+  it('consensus with no leader keeps a null element and draws no earth centre', () => {
     const row = rows.find((item) => item.id === 'consensus-null')!
     expect(row.stats.centreElement).toBeNull()
     expect(row.stats.centreSource).toBe('consensus')
-    expect(row.spec.element).toBe('earth')
+    expect(row.spec.element).toBeNull()
     expect(row.spec.mode).toBe('fill')
   })
 
@@ -101,5 +105,21 @@ describe('constructed centre fixtures', () => {
     const row = rows.find((item) => item.id === 'no-prism')!
     expect(row.spec.prismDentAxis).toBeNull()
     expect(row.stats.centreMode).toBe('drain')
+  })
+
+  it('draws a neutral pentagon and keeps the spine when the element is null', () => {
+    const row = rows.find((item) => item.id === 'consensus-null')!
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'null-core' }),
+    )
+    expect(html).toContain('data-centre="balanced"')
+    expect(html).toContain('data-spine="kept"')
+    for (const mark of ['>G<', '>ds²<', '>W Z<', '>SU(3)<', '>γ<']) {
+      expect(html).toContain(mark)
+    }
+    expect(html).not.toContain('土')
+    expect(html).not.toContain('黃龍')
+    expect(html).not.toContain('5 · 10')
+    expect(html).not.toContain('#c4a35a')
   })
 })

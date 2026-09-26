@@ -40,7 +40,8 @@ export type TalismanSpec = {
   id: string
   title: string
   note: string
-  element: ElementKey
+  /** Null when consensus deficiency has no leader. The SVG draws a balanced core. */
+  element: ElementKey | null
   mode: TalismanMode
   purposeWealth: boolean
   numerology: readonly number[]
