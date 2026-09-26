@@ -1,8 +1,14 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
+const RESVG_PACKAGES = ['@resvg/resvg-js', '@resvg/resvg-wasm'] as const
+
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['@resvg/resvg-js', '@resvg/resvg-wasm'],
+  // Next 15+: top-level. Next 14 name kept so the native binary stays unbundled.
+  serverExternalPackages: [...RESVG_PACKAGES],
+  experimental: {
+    serverComponentsExternalPackages: [...RESVG_PACKAGES],
+  },
   // Expose site URL to the client when set in Vercel (e.g. https://aimani.ai).
   env: {
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
