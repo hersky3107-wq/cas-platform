@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { computeTalisman } from '@/lib/oracle/talisman'
 import { ziweiChart } from '@/lib/oracle/engines/ziwei'
 import { palacesFrom, specFromComputation } from './from-computation'
-import { constructedSinkang } from './constructed'
+import { constructedPreviews, constructedSinkang } from './constructed'
 import { charts1988, fakeConsensus, LIVE_ACCESS } from '@/lib/oracle/talisman/__tests__/fixture'
 
 describe('palacesFrom ziwei ring signals', () => {
@@ -74,5 +74,32 @@ describe('constructed 신강 preview fixture', () => {
     expect(spec.mode).toBe('drain')
     expect(spec.palaces).toHaveLength(12)
     expect(spec.palaces?.some((palace) => palace.daXian)).toBe(true)
+  })
+})
+
+describe('constructed centre fixtures', () => {
+  const rows = constructedPreviews()
+
+  it('중화 and 종격 fall back to consensus with an element', () => {
+    const junghwa = rows.find((row) => row.id === 'junghwa')!
+    const jonggyeok = rows.find((row) => row.id === 'jonggyeok')!
+    expect(junghwa.stats).toMatchObject({ centreSource: 'consensus', centreMode: 'fill', centreElement: 'metal' })
+    expect(junghwa.spec.element).toBe('metal')
+    expect(jonggyeok.stats).toMatchObject({ centreSource: 'consensus', centreMode: 'fill', centreElement: 'water' })
+    expect(jonggyeok.spec.element).toBe('water')
+  })
+
+  it('consensus with no leader keeps a null element and the SVG spec falls back to earth', () => {
+    const row = rows.find((item) => item.id === 'consensus-null')!
+    expect(row.stats.centreElement).toBeNull()
+    expect(row.stats.centreSource).toBe('consensus')
+    expect(row.spec.element).toBe('earth')
+    expect(row.spec.mode).toBe('fill')
+  })
+
+  it('no-PRISM fixture does not invent a dent', () => {
+    const row = rows.find((item) => item.id === 'no-prism')!
+    expect(row.spec.prismDentAxis).toBeNull()
+    expect(row.stats.centreMode).toBe('drain')
   })
 })

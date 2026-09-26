@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TalismanSvg } from "./TalismanSvg";
+import type { ConstructedPreview } from "./constructed";
 import { TALISMAN_FRAMES, TALISMAN_VARIANTS, type FrameSpec, type TalismanSpec } from "./variants";
 import type { TalismanPurpose } from "@/lib/oracle/talisman";
 
@@ -53,6 +54,7 @@ export default function TalismanPreviewClient({
   sessionId,
   purpose: purposeParam,
   fixture,
+  fixtures,
   sinkangSpec,
   sinkangStats,
   sessionPayload,
@@ -60,17 +62,20 @@ export default function TalismanPreviewClient({
   sessionId: string | null;
   purpose: string | null;
   fixture: string | null;
+  fixtures: readonly ConstructedPreview[];
   sinkangSpec: TalismanSpec;
   sinkangStats: SessionPayload["stats"];
   sessionPayload: SessionPayload | null;
 }) {
+  const initialFixture = fixtures.some((item) => item.id === fixture) ? fixture : null;
   const [active, setActive] = useState(0);
-  const [showSinkang, setShowSinkang] = useState(fixture === "sinkang");
+  const [pickedFixture, setPickedFixture] = useState<string | null>(initialFixture);
   const hardcoded = TALISMAN_VARIANTS[active] ?? TALISMAN_VARIANTS[0]!;
   const payload = sessionPayload;
   const purpose = purposeParam ?? "";
 
-  const spec = sessionId ? payload?.spec ?? null : showSinkang ? sinkangSpec : hardcoded;
+  const constructed = fixtures.find((item) => item.id === pickedFixture) ?? null;
+  const spec = sessionId ? payload?.spec ?? null : constructed ? constructed.spec : hardcoded;
   const live = Boolean(sessionId);
 
   const sessionHref = useMemo(() => {
@@ -151,27 +156,30 @@ export default function TalismanPreviewClient({
           </section>
         ) : (
           <nav className="mt-6 flex flex-wrap gap-2" aria-label="variants">
-            <button
-              type="button"
-              onClick={() => setShowSinkang(true)}
-              className={`rounded-full border px-3 py-1.5 text-left text-[11px] tracking-[0.08em] transition ${
-                showSinkang
-                  ? "border-white/40 bg-white/10 text-white"
-                  : "border-white/10 text-white/55 hover:border-white/25 hover:text-white/80"
-              }`}
-            >
-              constructed 신강 · drain
-            </button>
+            {fixtures.map((item) => (
+              <a
+                key={item.id}
+                href={`/modes/oracle/talisman-preview?fixture=${item.id}`}
+                onClick={() => setPickedFixture(item.id)}
+                className={`rounded-full border px-3 py-1.5 text-left text-[11px] tracking-[0.08em] transition ${
+                  pickedFixture === item.id
+                    ? "border-white/40 bg-white/10 text-white"
+                    : "border-white/10 text-white/55 hover:border-white/25 hover:text-white/80"
+                }`}
+              >
+                {item.label}
+              </a>
+            ))}
             {TALISMAN_VARIANTS.map((item, index) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => {
-                  setShowSinkang(false);
+                  setPickedFixture(null);
                   setActive(index);
                 }}
                 className={`rounded-full border px-3 py-1.5 text-left text-[11px] tracking-[0.08em] transition ${
-                  !showSinkang && index === active
+                  !pickedFixture && index === active
                     ? "border-white/40 bg-white/10 text-white"
                     : "border-white/10 text-white/55 hover:border-white/25 hover:text-white/80"
                 }`}
@@ -182,17 +190,17 @@ export default function TalismanPreviewClient({
           </nav>
         )}
         <p className="mt-3 text-sm text-slate-300">
-          {showSinkang && !live
-            ? sinkangSpec.note
+          {!live && constructed
+            ? constructed.spec.note
             : spec?.note ?? (live ? "loading…" : hardcoded.note)}
         </p>
-        {showSinkang && !live && sinkangStats ? (
+        {!live && constructed ? (
           <dl className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-white/70 md:grid-cols-3">
-            <div>seals {sinkangStats.seals}</div>
-            <div>empty 宮 {sinkangStats.emptyPalaces}</div>
-            <div>centre {sinkangStats.centreSource}</div>
-            <div>mode {sinkangStats.centreMode}</div>
-            <div>element {sinkangStats.centreElement ?? "none"}</div>
+            <div>seals {constructed.stats.seals}</div>
+            <div>empty 宮 {constructed.stats.emptyPalaces}</div>
+            <div>centre {constructed.stats.centreSource}</div>
+            <div>mode {constructed.stats.centreMode}</div>
+            <div>element {constructed.stats.centreElement ?? "none"}</div>
           </dl>
         ) : null}
 
@@ -235,7 +243,7 @@ export default function TalismanPreviewClient({
                 key={item.id}
                 type="button"
                 onClick={() => {
-                  setShowSinkang(false);
+                  setPickedFixture(null);
                   setActive(index);
                 }}
                 className="text-left"

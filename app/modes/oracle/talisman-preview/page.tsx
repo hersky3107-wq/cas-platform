@@ -1,5 +1,5 @@
 import TalismanPreviewClient from "./TalismanPreviewClient";
-import { constructedSinkang } from "./constructed";
+import { constructedPreviews } from "./constructed";
 import { previewFromStoredSession } from "./preview-session";
 import { createSupabaseRouteAuthClient } from "@/lib/supabase/route-auth";
 
@@ -19,7 +19,9 @@ export default async function TalismanPreviewPage({
   searchParams: Promise<{ session?: string; purpose?: string; fixture?: string }>;
 }) {
   const params = await searchParams;
-  const sinkang = constructedSinkang();
+  const fixtures = constructedPreviews();
+  const sinkang = fixtures.find((item) => item.id === "sinkang");
+  if (!sinkang) throw new Error("constructed 신강 missing");
   const sessionPayload = params.session
     ? await previewFromStoredSession(params.session, params.purpose ?? null, await signedInUserId())
     : null;
@@ -28,6 +30,7 @@ export default async function TalismanPreviewPage({
       sessionId={params.session ?? null}
       purpose={params.purpose ?? null}
       fixture={params.fixture ?? null}
+      fixtures={fixtures}
       sinkangSpec={sinkang.spec}
       sinkangStats={sinkang.stats}
       sessionPayload={sessionPayload}
