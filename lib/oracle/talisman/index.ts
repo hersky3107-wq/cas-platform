@@ -16,11 +16,12 @@ export type {
   PurposeBundle,
   CentreMode,
   CentreSource,
+  CentreIntensity,
   IndependenceCensus,
 } from './types'
 
 export { canComputeTalisman } from './access'
-export { resolveCentre, pickDeficiencyLeader } from './centre'
+export { resolveCentre, pickDeficiencyLeader, centrePathLabel } from './centre'
 export { describeCentre, describeCentreFromDeficiency, ELEMENT_KO } from './copy'
 export { extractNativeFindings } from './native'
 export { collectSeals, subtractSealed } from './seals'

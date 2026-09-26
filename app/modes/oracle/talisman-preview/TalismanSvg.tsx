@@ -305,18 +305,40 @@ function BalancedCore(): ReactNode {
   )
 }
 
+function FollowSpiral({ accent }: { accent: string }) {
+  const pts: string[] = []
+  for (let i = 0; i <= 80; i += 1) {
+    const t = i / 80
+    const r = 22 + t * (CORE - 28)
+    const p = polar(r, t * 900)
+    pts.push(`${p.x},${p.y}`)
+  }
+  return (
+    <polyline
+      data-centre="follow-spiral"
+      points={pts.join(' ')}
+      fill="none"
+      stroke={accent}
+      strokeWidth={2.2}
+      strokeLinecap="butt"
+    />
+  )
+}
+
 function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   if (spec.element == null) return <BalancedCore />
   const element = spec.element
   const meta = ELEMENT_META[element]
   const drain = spec.mode === 'drain'
+  const follow = spec.mode === 'follow'
   const aim = ELEMENT_AIM[element]
   const gap0 = (aim + 150) % 360
   const gap1 = gap0 + 38
   const rings = [36, 52, 68, 84, 100, 116, 132]
+  const wash = spec.intensity === 'soft' ? 0.045 : 0.12
   return (
-    <g>
-      {drain ? null : <circle cx={CX} cy={CY} r={CORE} fill={accent} fillOpacity={0.12} stroke="none" />}
+    <g data-centre={follow ? 'follow' : spec.intensity === 'soft' ? 'soft' : 'full'} data-intensity={spec.intensity ?? 'full'}>
+      {drain ? null : <circle cx={CX} cy={CY} r={CORE} fill={accent} fillOpacity={wash} stroke="none" />}
       {rings.map((r, i) => (
         <polyline
           key={r}
@@ -343,6 +365,7 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
             return <line key={`d${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.emph} />
           })
         : null}
+      {follow ? <FollowSpiral accent={accent} /> : null}
       <PhysicsGlyph element={element} accent={accent} />
       <Hanjatext x={CX} y={CY - 78} size={58} fill={accent}>
         {meta.hanja}
@@ -689,6 +712,37 @@ function MiddleScripts({ spec }: { spec: TalismanSpec }) {
               textAnchor="middle"
               fill={INK.base}
               fontSize="14"
+              fontFamily="ui-monospace, monospace"
+            >
+              {digit}
+            </text>
+          </g>
+        )
+      })}
+      {(spec.numerologyMissing ?? []).map((digit, i) => {
+        const r = 236
+        const rot = 48 + i * 22
+        const label = polar(r, rot)
+        const sides = Math.max(3, Math.min(digit, 9))
+        return (
+          <g key={`miss-${digit}`} data-numerology-missing={digit}>
+            {digit <= 2 ? (
+              <circle cx={label.x} cy={label.y} r={digit === 1 ? 10 : 14} fill="none" stroke={INK.base} strokeWidth={SW.base} strokeDasharray="3 4" />
+            ) : (
+              <polygon
+                points={polyPoints(sides, r, rot)}
+                fill="none"
+                stroke={INK.base}
+                strokeWidth={SW.base}
+                strokeDasharray="3 4"
+              />
+            )}
+            <text
+              x={label.x}
+              y={label.y + 4}
+              textAnchor="middle"
+              fill={INK.base}
+              fontSize="13"
               fontFamily="ui-monospace, monospace"
             >
               {digit}

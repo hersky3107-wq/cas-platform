@@ -20,6 +20,8 @@
  *     8글자 → 5, 시주 없으면 6글자 → 4. 절반(4/8)은 흔하고, 辰戌丑未가
  *     전부 토라 "4+격차 2"는 토 종격을 남발한다. Cutoff varies by primer;
  *     a wrong 용신 is worse than none.
+ *     Known limitation: this 종격 detection ignores day-stem rooting
+ *     (일간 통근). Do not change the cutoff here to compensate.
  */
 import { fiveElementBalance } from './five-elements'
 import { HIDDEN_STEMS, STEMS, producedBy } from './tables'
@@ -31,6 +33,7 @@ import type {
   EokbuRootRole,
   EokbuStrength,
   FiveElement,
+  TalismanLean,
   FourPillars,
   Pillar,
   StemInfo,
@@ -41,7 +44,7 @@ const ELEMENT_CYCLE: FiveElement[] = ['wood', 'fire', 'earth', 'metal', 'water']
 
 const WEAK_MAX = 2
 const STRONG_MIN = 5
-/** 종격: count >= ceil(chars * 5/8) and lead >= 2. */
+/** 종격: count >= ceil(chars * 5/8) and lead >= 2. Ignores day-stem rooting. */
 export const EOKBU_JONGGYEOK = { numerator: 5, denominator: 8, minLead: 2 } as const
 
 function producerOf(element: FiveElement): FiveElement {
@@ -144,6 +147,7 @@ function dominantElement(pillars: FourPillars): { element: FiveElement; count: n
 }
 
 function isJonggyeok(pillars: FourPillars): EokbuResult['inapplicable'] {
+  // Known limitation: counts 오행 only. Day-stem 통근 is not a veto.
   const { element, count, second, chars } = dominantElement(pillars)
   const minCount = Math.ceil((chars * EOKBU_JONGGYEOK.numerator) / EOKBU_JONGGYEOK.denominator)
   if (count >= minCount && count - second >= EOKBU_JONGGYEOK.minLead) {
@@ -159,7 +163,7 @@ function labelOf(total: number): EokbuStrength {
 }
 
 function yongsinSet(
-  strength: EokbuStrength,
+  strength: Exclude<EokbuStrength, 'balanced'>,
   day: FiveElement,
 ): { yongsin: FiveElement; huisin: FiveElement; gisin: FiveElement } {
   // 억부 직결만. 신약: 용신=인성, 희신=비겁, 기신=재성.
@@ -168,6 +172,34 @@ function yongsinSet(
     return { yongsin: producerOf(day), huisin: day, gisin: wealthOf(day) }
   }
   return { yongsin: outputOf(day), huisin: wealthOf(day), gisin: producerOf(day) }
+}
+
+/**
+ * Talisman centre lean. Does not change strength / yongsin / inapplicable.
+ * `day` is required only to break a 중화 tie (yongsinSet for the lean side).
+ */
+export function talismanLeanFrom(
+  result: Pick<EokbuResult, 'strength' | 'yongsin' | 'deukryeong' | 'inapplicable'>,
+  day?: FiveElement | null,
+): TalismanLean | null {
+  if (result.inapplicable?.code === 'jonggyeok_dominant') {
+    return { mode: 'follow', element: result.inapplicable.element, intensity: 'full' }
+  }
+  if (result.strength === 'weak' && result.yongsin) {
+    return { mode: 'fill', element: result.yongsin, intensity: 'full' }
+  }
+  if (result.strength === 'strong' && result.yongsin) {
+    return { mode: 'drain', element: result.yongsin, intensity: 'full' }
+  }
+  if (result.strength === 'balanced' && day) {
+    const lean = result.deukryeong.score > 0 ? 'strong' : 'weak'
+    return {
+      mode: lean === 'strong' ? 'drain' : 'fill',
+      element: yongsinSet(lean, day).yongsin,
+      intensity: 'soft',
+    }
+  }
+  return null
 }
 
 export function eokbu(pillars: FourPillars): EokbuResult {
@@ -181,8 +213,8 @@ export function eokbu(pillars: FourPillars): EokbuResult {
   const jong = isJonggyeok(pillars)
 
   if (jong) {
-    return {
-      school: 'eokbu',
+    const row = {
+      school: 'eokbu' as const,
       strength: null,
       deukryeong,
       deukji,
@@ -194,12 +226,13 @@ export function eokbu(pillars: FourPillars): EokbuResult {
       inapplicable: jong,
       hourUnknown,
     }
+    return { ...row, talismanLean: talismanLeanFrom(row, day)! }
   }
 
   const strength = labelOf(total)
   const gods = strength === 'balanced' ? null : yongsinSet(strength, day)
-  return {
-    school: 'eokbu',
+  const row = {
+    school: 'eokbu' as const,
     strength,
     deukryeong,
     deukji,
@@ -211,6 +244,7 @@ export function eokbu(pillars: FourPillars): EokbuResult {
     inapplicable: null,
     hourUnknown,
   }
+  return { ...row, talismanLean: talismanLeanFrom(row, day)! }
 }
 
 export const EOKBU_THRESHOLD = { weakMax: WEAK_MAX, strongMin: STRONG_MIN } as const

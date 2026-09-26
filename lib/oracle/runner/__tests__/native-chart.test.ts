@@ -148,6 +148,38 @@ describe('buildNativeChart', () => {
     expect(blob).not.toContain('deukryeong')
   })
 
+  it('talismanLean is omitted from the Korean 용신 chart — byte-identical with the field stripped', () => {
+    const pillars = fourPillars({ date: '1988-03-15', time: '04:30', timezone: 'Asia/Seoul' })
+    const full = eokbu(pillars)
+    expect(full.talismanLean).toEqual({ mode: 'fill', element: 'fire', intensity: 'full' })
+    const { talismanLean: _lean, ...stripped } = full
+    const withLean = buildNativeChart(
+      'saju',
+      {
+        pillars,
+        fiveElements: fiveElementBalance(pillars),
+        tenGods: tenGods(pillars.day.stem, pillars),
+        eokbu: full,
+      } as unknown as JsonObject,
+      { locale: 'ko', nominalAge: 39 },
+    )
+    const withoutLean = buildNativeChart(
+      'saju',
+      {
+        pillars,
+        fiveElements: fiveElementBalance(pillars),
+        tenGods: tenGods(pillars.day.stem, pillars),
+        eokbu: stripped,
+      } as unknown as JsonObject,
+      { locale: 'ko', nominalAge: 39 },
+    )
+    expect(withLean).toEqual(withoutLean)
+    const blob = JSON.stringify(withLean)
+    expect(blob).not.toContain('talismanLean')
+    expect(blob).not.toContain('"soft"')
+    expect(blob).not.toContain('"follow"')
+  })
+
   it('on 편왕 판정불가 still ships 일간·십신분포·편왕 and asks for AI 판단', () => {
     const pillars = fourPillars({ date: '1980-01-08', time: '04:30', timezone: 'Asia/Seoul' })
     const chart = buildNativeChart(

@@ -19,6 +19,7 @@ export function computeTalisman(input: {
   const centre = resolveCentre({
     eokbu: input.charts.saju?.eokbu,
     deficiency: input.consensus?.elements.deficiency,
+    dayElement: input.charts.saju?.pillars?.day.stem.element ?? null,
   })
   const raw = extractNativeFindings(input.charts)
   const seals = collectSeals(raw)

@@ -1,13 +1,15 @@
 /**
  * Centre policy: one native judgement. Never "12 systems agree".
  *
- * Priority: 억부 용신 when eokbu.yongsin is non-null.
- *   신약 → FILL that element (인성)
- *   신강 → DRAIN that element (식상) — hollow core
- * Fallback when 중화 or 종격 leaves yongsin null: consensus.elements.deficiency
- * argmax. Marked `source: 'consensus'` internally; copy must not claim agreement.
+ * Priority: eokbu.talismanLean when 사주 pillars exist.
+ *   신약 → FILL, intensity full
+ *   신강 → DRAIN, intensity full
+ *   중화 → 득령 tie-break, intensity soft (억부 경향)
+ *   종격 → FOLLOW the dominant element, intensity full
+ * Consensus fallback only when there is no 사주 / no lean at all.
  */
 
+import { talismanLeanFrom } from '../engines/calendar'
 import { ELEMENT_AXES, type ElementVector } from '../axes/types'
 import type { EokbuResult, FiveElement } from '../engines/calendar'
 import type { TalismanCentre } from './types'
@@ -29,23 +31,46 @@ export function pickDeficiencyLeader(
   return best > 0 ? leader : null
 }
 
+export function centrePathLabel(centre: TalismanCentre): string {
+  if (centre.source === 'eokbu') return '억부'
+  if (centre.source === 'eokbu-lean') return '억부 경향'
+  if (centre.source === 'jonggyeok') return '종격 follow'
+  return 'fallback'
+}
+
 export function resolveCentre(input: {
   eokbu: EokbuResult | null | undefined
   deficiency: ElementVector | Partial<Record<FiveElement, number>> | Record<string, unknown> | null | undefined
+  dayElement?: FiveElement | null
 }): TalismanCentre {
-  const yongsin = input.eokbu?.yongsin ?? null
-  const strength = input.eokbu?.strength ?? null
-  if (yongsin && (strength === 'weak' || strength === 'strong')) {
+  const lean = input.eokbu
+    ? (input.eokbu.talismanLean ?? talismanLeanFrom(input.eokbu, input.dayElement ?? null))
+    : null
+  if (lean) {
+    if (lean.mode === 'follow') {
+      return { source: 'jonggyeok', mode: 'follow', element: lean.element, intensity: 'full' }
+    }
+    if (lean.intensity === 'soft') {
+      return {
+        source: 'eokbu-lean',
+        mode: lean.mode,
+        element: lean.element,
+        strength: 'balanced',
+        intensity: 'soft',
+      }
+    }
     return {
       source: 'eokbu',
-      mode: strength === 'weak' ? 'fill' : 'drain',
-      element: yongsin,
-      strength,
+      mode: lean.mode,
+      element: lean.element,
+      strength: lean.mode === 'drain' ? 'strong' : 'weak',
+      intensity: 'full',
     }
   }
   return {
     source: 'consensus',
     mode: 'fill',
     element: pickDeficiencyLeader(input.deficiency),
+    intensity: 'full',
   }
 }

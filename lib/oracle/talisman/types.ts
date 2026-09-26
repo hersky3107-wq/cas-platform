@@ -3,8 +3,9 @@
  * draw. Native findings are each system's own language — never a second vote
  * on the centre 오행.
  *
- * 수비 / 촐킨 / 숙요 / 룬 have no native finding (feasibility: not S). They
+ * 촐킨 / 숙요 / 룬 have no native finding (feasibility: not S). They
  * contribute FORM ONLY. 룬 reversed positions are still seal targets.
+ * 수비 now has a native judgement: missing / repeated birth-date digits.
  */
 
 import type { SystemId } from '../axes/types'
@@ -38,7 +39,7 @@ export const TALISMAN_LAYER_KIND: Record<SystemId, 'native' | 'form-only'> = {
   astro: 'native',
   prism: 'native',
   ziwei: 'native',
-  numerology: 'form-only',
+  numerology: 'native',
   name: 'native',
   iching: 'native',
   tarot: 'native',
@@ -61,25 +62,42 @@ export function independenceCensus(): IndependenceCensus {
   return { native: nativeIds.length, formOnly: formOnlyIds.length, nativeIds, formOnlyIds }
 }
 
-export type CentreMode = 'fill' | 'drain'
-export type CentreSource = 'eokbu' | 'consensus'
+export type CentreMode = 'fill' | 'drain' | 'follow'
+export type CentreSource = 'eokbu' | 'eokbu-lean' | 'jonggyeok' | 'consensus'
+export type CentreIntensity = 'full' | 'soft'
 
 /**
  * One native judgement for the core. `source` is internal — never present
  * consensus as twelve systems agreeing. `drain` means the SVG draws a hollow
  * core (신강 식상); `fill` is a solid 인성 core (신약) or the fallback 결핍.
+ * `follow` is 종격: fill the dominant element with a spiral marker.
  */
 export type TalismanCentre =
   | {
       source: 'eokbu'
-      mode: CentreMode
+      mode: 'fill' | 'drain'
       element: FiveElement
       strength: 'weak' | 'strong'
+      intensity: 'full'
+    }
+  | {
+      source: 'eokbu-lean'
+      mode: 'fill' | 'drain'
+      element: FiveElement
+      strength: 'balanced'
+      intensity: 'soft'
+    }
+  | {
+      source: 'jonggyeok'
+      mode: 'follow'
+      element: FiveElement
+      intensity: 'full'
     }
   | {
       source: 'consensus'
       mode: 'fill'
       element: FiveElement | null
+      intensity: 'full'
     }
 
 export type TenGodGroupName = '비겁' | '식상' | '재성' | '관성' | '인성'
@@ -149,16 +167,11 @@ export type NinestarNative = {
 /** Explicit: this system has no native finding. SVG may still use it as form. */
 export type FormOnlyLayer = {
   kind: 'form-only'
-  system: 'numerology' | 'sukuyou' | 'tzolkin' | 'runes'
+  system: 'sukuyou' | 'tzolkin' | 'runes'
   reason: string
 }
 
 export const FORM_ONLY_LAYERS: Record<FormOnlyLayer['system'], FormOnlyLayer> = {
-  numerology: {
-    kind: 'form-only',
-    system: 'numerology',
-    reason: '수비는 부적 네이티브 소견이 없다. 형태만 기여한다.',
-  },
   sukuyou: {
     kind: 'form-only',
     system: 'sukuyou',
@@ -176,6 +189,11 @@ export const FORM_ONLY_LAYERS: Record<FormOnlyLayer['system'], FormOnlyLayer> = 
   },
 }
 
+export type NumerologyNative = {
+  missing: readonly number[]
+  repeated: readonly number[]
+}
+
 export type NativeFindings = {
   saju: SajuNative | null
   astro: AstroNative | null
@@ -185,7 +203,7 @@ export type NativeFindings = {
   tarot: TarotNative | null
   name: NameNative | null
   ninestar: NinestarNative | null
-  numerology: FormOnlyLayer
+  numerology: NumerologyNative | null
   sukuyou: FormOnlyLayer
   tzolkin: FormOnlyLayer
   runes: FormOnlyLayer
@@ -201,7 +219,7 @@ export type TalismanCharts = {
   name: NameResult | null
   ninestar: NineStarResult | null
   runes: RuneDrawResult | null
-  /** Form only — no native finding. */
+  /** Native: missing / repeated birth-date digits. Not 오행. */
   numerology: NumerologyResult | null
   sukuyou: SukuyouResult | null
   tzolkin: TzolkinResult | null

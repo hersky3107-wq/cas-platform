@@ -30,7 +30,7 @@ const AT = '2026-09-26'
 const TZ = 'Asia/Seoul'
 
 export type ConstructedPreview = {
-  id: 'sinkang' | 'junghwa' | 'jonggyeok' | 'consensus-null' | 'no-prism'
+  id: 'sinkang' | 'junghwa' | 'jonggyeok' | 'consensus-null' | 'no-prism' | 'lean-weak' | 'lean-strong' | 'follow'
   label: string
   spec: TalismanSpec
   stats: ReturnType<typeof talismanStats>
@@ -101,8 +101,10 @@ function build(input: {
   deficiency: Partial<Record<FiveElement, number>>
   title: string
   note: string
+  noSaju?: boolean
 }): ConstructedPreview {
   const charts = chartsFor(input.birth, input.seed, input.withPrism)
+  if (input.noSaju) charts.saju = null
   const computation = computeTalisman({
     access: ACCESS,
     charts,
@@ -136,33 +138,64 @@ export function constructedPreviews(): ConstructedPreview[] {
     }),
     build({
       id: 'junghwa',
-      label: 'constructed 중화 · consensus',
+      label: 'constructed 중화 · 억부 경향',
       birth: { date: '1984-02-15', time: '12:00' },
       seed: 'junghwa',
       withPrism: true,
       deficiency: { metal: 11, wood: 3 },
       title: 'constructed 중화',
-      note: 'consensus · fill · 용신 null, deficiency metal',
+      note: '억부 경향 · soft fill · 득령 0 → 신약 lean, 용신 화',
     }),
     build({
       id: 'jonggyeok',
-      label: 'constructed 종격 · consensus',
+      label: 'constructed 종격 · follow',
       birth: { date: '1980-01-08', time: '04:30' },
       seed: 'jonggyeok',
       withPrism: true,
       deficiency: { water: 9 },
       title: 'constructed 종격',
-      note: 'consensus · fill · 용신 null, deficiency water',
+      note: '종격 follow · fill earth with spiral. 용신 null, dominant 토',
+    }),
+    build({
+      id: 'lean-weak',
+      label: 'lean-weak · 억부 경향 fill',
+      birth: { date: '1984-02-15', time: '12:00' },
+      seed: 'lean-weak',
+      withPrism: true,
+      deficiency: { metal: 11 },
+      title: 'lean-weak',
+      note: '억부 경향 · soft fill fire (중화, 득령 없음)',
+    }),
+    build({
+      id: 'lean-strong',
+      label: 'lean-strong · 억부 경향 drain',
+      birth: { date: '1960-01-13', time: '12:00' },
+      seed: 'lean-strong',
+      withPrism: true,
+      deficiency: { wood: 11 },
+      title: 'lean-strong',
+      note: '억부 경향 · soft drain water (중화, 득령 있음)',
+    }),
+    build({
+      id: 'follow',
+      label: 'follow · 종격',
+      birth: { date: '1980-01-08', time: '04:30' },
+      seed: 'follow',
+      withPrism: true,
+      deficiency: { water: 9 },
+      title: 'follow',
+      note: '종격 follow · earth core with outward spiral',
     }),
     build({
       id: 'consensus-null',
-      label: 'consensus · element null',
+      label: 'fallback · no 사주',
       birth: { date: '1984-02-15', time: '12:00' },
       seed: 'consensus-null',
       withPrism: true,
       deficiency: {},
-      title: 'consensus element null',
-      note: 'consensus · fill · element null. Balanced core: five physics marks, no element wash.',
+      title: 'fallback no pillars',
+      note: 'fallback · no 사주 pillars. Balanced core when deficiency has no leader.',
+      noSaju: true,
     }),
     build({
       id: 'no-prism',

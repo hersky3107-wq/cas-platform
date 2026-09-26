@@ -169,6 +169,13 @@ function extractNinestar(charts: TalismanCharts): NativeFindings['ninestar'] {
   }
 }
 
+function extractNumerology(charts: TalismanCharts): NativeFindings['numerology'] {
+  if (!charts.numerology) return null
+  const missing = charts.numerology.missingDigits ?? []
+  const repeated = charts.numerology.repeatedDigits ?? []
+  return { missing, repeated }
+}
+
 export function extractNativeFindings(charts: TalismanCharts): NativeFindings {
   return {
     saju: extractSaju(charts),
@@ -179,7 +186,7 @@ export function extractNativeFindings(charts: TalismanCharts): NativeFindings {
     tarot: extractTarot(charts),
     name: extractName(charts),
     ninestar: extractNinestar(charts),
-    numerology: FORM_ONLY_LAYERS.numerology,
+    numerology: extractNumerology(charts),
     sukuyou: FORM_ONLY_LAYERS.sukuyou,
     tzolkin: FORM_ONLY_LAYERS.tzolkin,
     runes: FORM_ONLY_LAYERS.runes,

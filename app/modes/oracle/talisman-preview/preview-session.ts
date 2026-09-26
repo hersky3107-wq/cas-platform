@@ -25,6 +25,8 @@ export type PreviewSessionPayload = {
     centreSource: string
     centreMode: string
     centreElement: string | null
+    centrePath?: string
+    centreIntensity?: string
   }
   arrival?: { nativeMissing: Array<{ system: string; field: string }> }
 }

@@ -84,19 +84,54 @@ describe('constructed 신강 preview fixture', () => {
 describe('constructed centre fixtures', () => {
   const rows = constructedPreviews()
 
-  it('중화 and 종격 fall back to consensus with an element', () => {
+  it('중화 and 종격 use 억부 lean / follow, not consensus', () => {
     const junghwa = rows.find((row) => row.id === 'junghwa')!
     const jonggyeok = rows.find((row) => row.id === 'jonggyeok')!
-    expect(junghwa.stats).toMatchObject({ centreSource: 'consensus', centreMode: 'fill', centreElement: 'metal' })
-    expect(junghwa.spec.element).toBe('metal')
-    expect(jonggyeok.stats).toMatchObject({ centreSource: 'consensus', centreMode: 'fill', centreElement: 'water' })
-    expect(jonggyeok.spec.element).toBe('water')
+    expect(junghwa.stats).toMatchObject({
+      centreSource: 'eokbu-lean',
+      centreMode: 'fill',
+      centreElement: 'fire',
+      centrePath: '억부 경향',
+      centreIntensity: 'soft',
+    })
+    expect(junghwa.spec.element).toBe('fire')
+    expect(junghwa.spec.intensity).toBe('soft')
+    expect(jonggyeok.stats).toMatchObject({
+      centreSource: 'jonggyeok',
+      centreMode: 'follow',
+      centreElement: 'earth',
+      centrePath: '종격 follow',
+    })
+    expect(jonggyeok.spec.mode).toBe('follow')
+  })
+
+  it('lean-weak, lean-strong, and follow fixtures match the named paths', () => {
+    const weak = rows.find((row) => row.id === 'lean-weak')!
+    const strong = rows.find((row) => row.id === 'lean-strong')!
+    const follow = rows.find((row) => row.id === 'follow')!
+    expect(weak.stats.centrePath).toBe('억부 경향')
+    expect(weak.spec.mode).toBe('fill')
+    expect(weak.spec.intensity).toBe('soft')
+    expect(strong.stats.centrePath).toBe('억부 경향')
+    expect(strong.spec.mode).toBe('drain')
+    expect(strong.spec.intensity).toBe('soft')
+    expect(follow.stats.centrePath).toBe('종격 follow')
+    expect(follow.spec.mode).toBe('follow')
+    const followHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: follow.spec, frame: TALISMAN_FRAMES[2]!, uid: 'follow-core' }),
+    )
+    expect(followHtml).toContain('data-centre="follow-spiral"')
+    const softHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: weak.spec, frame: TALISMAN_FRAMES[2]!, uid: 'soft-core' }),
+    )
+    expect(softHtml).toContain('data-intensity="soft"')
   })
 
   it('consensus with no leader keeps a null element and draws no earth centre', () => {
     const row = rows.find((item) => item.id === 'consensus-null')!
     expect(row.stats.centreElement).toBeNull()
     expect(row.stats.centreSource).toBe('consensus')
+    expect(row.stats.centrePath).toBe('fallback')
     expect(row.spec.element).toBeNull()
     expect(row.spec.mode).toBe('fill')
   })
@@ -121,5 +156,16 @@ describe('constructed centre fixtures', () => {
     expect(html).not.toContain('黃龍')
     expect(html).not.toContain('5 · 10')
     expect(html).not.toContain('#c4a35a')
+  })
+
+  it('draws missing birth digits as empty polygons in the numerology band', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    expect(row.spec.numerologyMissing).toEqual([3, 5, 6, 7])
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'num-miss' }),
+    )
+    for (const digit of [3, 5, 6, 7]) {
+      expect(html).toContain(`data-numerology-missing="${digit}"`)
+    }
   })
 })

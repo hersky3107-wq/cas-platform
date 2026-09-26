@@ -10,7 +10,7 @@
 
 import { sanitizeCalculation } from '../runner/public-computation'
 import type { JsonObject } from '../runner/types'
-import type { EokbuResult, FourPillars, NineStarResult, SukuyouResult, TenGodsResult, TzolkinResult } from '../engines/calendar'
+import { talismanLeanFrom, type EokbuResult, type FourPillars, type NineStarResult, type SukuyouResult, type TenGodsResult, type TzolkinResult } from '../engines/calendar'
 import type { NatalChart } from '../engines/astro/types'
 import type { IchingDrawResult, RuneDrawResult, TarotDrawResult } from '../engines/draw/types'
 import type { NameResult } from '../engines/name/types'
@@ -107,10 +107,17 @@ function parseSaju(result: unknown): TalismanCharts['saju'] {
   const strength = eokbu.strength
   if (strength !== 'weak' && strength !== 'balanced' && strength !== 'strong' && strength !== null) return null
   return {
-    eokbu: eokbu as unknown as EokbuResult,
+    eokbu: attachTalismanLean(eokbu as unknown as EokbuResult, asRecord(root?.pillars) as unknown as FourPillars | null),
     tenGods: tenGods as unknown as TenGodsResult,
     pillars: (asRecord(root?.pillars) as unknown as FourPillars) ?? null,
   }
+}
+
+function attachTalismanLean(eokbu: EokbuResult, pillars: FourPillars | null): EokbuResult {
+  if (eokbu.talismanLean) return eokbu
+  const day = pillars?.day.stem.element ?? null
+  const lean = talismanLeanFrom(eokbu, day)
+  return lean ? { ...eokbu, talismanLean: lean } : eokbu
 }
 
 function parseZiwei(result: unknown): ZiweiChart | null {

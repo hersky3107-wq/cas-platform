@@ -2,6 +2,7 @@ import { eokbu, fourPillars, nineStar, tenGods } from '../../engines/calendar'
 import { natalChart } from '../../engines/astro'
 import { ichingDraw, runeDraw, tarotDraw } from '../../engines/draw'
 import { nameReading } from '../../engines/name'
+import { numerology } from '../../engines/numerology'
 import { prism } from '../../engines/prism'
 import { ziweiChart } from '../../engines/ziwei'
 import type { AxisConsensus } from '../../axes/types'
@@ -73,7 +74,7 @@ export function charts1988(overrides: Partial<TalismanCharts> = {}): TalismanCha
     name: nameReading({ surname: '김', givenName: '지수', locale: 'ko' }),
     ninestar: nineStar({ date: '1988-03-15', time: '12:00', timezone: 'Asia/Seoul' }),
     runes: runeDraw({ seed: 'talisman-runes-1988', count: 3, pickedPositions: [1, 2, 3] }),
-    numerology: null,
+    numerology: numerology({ birthDate: '1988-03-15', latinName: 'Kim Jisu', atDate: '2026-08-15' }),
     sukuyou: null,
     tzolkin: null,
     ...overrides,

@@ -9,13 +9,13 @@ import { charts1988, EMPTY_CHARTS } from './fixture'
 import { ORACLE_DEFAULT_COORDS } from '../../runner/conventions'
 
 describe('independence census', () => {
-  it('counts 8 native findings and 4 form-only across the twelve systems', () => {
+  it('counts 9 native findings and 3 form-only across the twelve systems', () => {
     const census = independenceCensus()
     expect(census.native + census.formOnly).toBe(12)
-    expect(census.native).toBe(8)
-    expect(census.formOnly).toBe(4)
-    expect(census.nativeIds).toEqual(['saju', 'astro', 'prism', 'ziwei', 'name', 'iching', 'tarot', 'ninestar'])
-    expect(census.formOnlyIds).toEqual(['numerology', 'runes', 'sukuyou', 'tzolkin'])
+    expect(census.native).toBe(9)
+    expect(census.formOnly).toBe(3)
+    expect(census.nativeIds).toEqual(['saju', 'astro', 'prism', 'ziwei', 'numerology', 'name', 'iching', 'tarot', 'ninestar'])
+    expect(census.formOnlyIds).toEqual(['runes', 'sukuyou', 'tzolkin'])
     expect(SYSTEM_IDS.every((id) => TALISMAN_LAYER_KIND[id] != null)).toBe(true)
   })
 })
@@ -29,9 +29,9 @@ describe('extractNativeFindings', () => {
     expect(extractNativeFindings.length).toBe(1)
   })
 
-  it('marks 수비/숙요/촐킨/룬 as form-only even when a rune draw exists', () => {
+  it('marks 숙요/촐킨/룬 as form-only and 수비 as missing/repeated digits', () => {
     const findings = extractNativeFindings(charts1988())
-    expect(findings.numerology.kind).toBe('form-only')
+    expect(findings.numerology).toEqual({ missing: [2, 4, 6, 7], repeated: [1, 8] })
     expect(findings.sukuyou.kind).toBe('form-only')
     expect(findings.tzolkin.kind).toBe('form-only')
     expect(findings.runes.kind).toBe('form-only')
@@ -87,5 +87,6 @@ describe('extractNativeFindings', () => {
     expect(findings.ziwei).toBeNull()
     expect(findings.ninestar).toBeNull()
     expect(findings.runes.kind).toBe('form-only')
+    expect(findings.numerology).toBeNull()
   })
 })

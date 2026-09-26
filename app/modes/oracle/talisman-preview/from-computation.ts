@@ -6,6 +6,7 @@
 import { branchPairRelation } from '@/lib/oracle/engines/calendar'
 import { LUOSHU_PALACES, type CompassDirection } from '@/lib/oracle/engines/calendar/luoshu'
 import { SIX_RELATIVES } from '@/lib/oracle/engines/draw/tables'
+import { centrePathLabel } from '@/lib/oracle/talisman'
 import type { TalismanCharts, TalismanComputation, TalismanPurpose } from '@/lib/oracle/talisman'
 import type { GyeokSeat, SealTarget } from '@/lib/oracle/talisman/types'
 import type { PalaceName, PlacedStar, StarBrightness, ZiweiChart } from '@/lib/oracle/engines/ziwei/types'
@@ -223,6 +224,8 @@ export function talismanStats(computation: TalismanComputation, charts?: Talisma
     centreSource: computation.centre.source,
     centreMode: computation.centre.mode,
     centreElement: computation.centre.element,
+    centrePath: centrePathLabel(computation.centre),
+    centreIntensity: computation.centre.intensity,
   }
 }
 
@@ -244,7 +247,8 @@ export function specFromComputation(
     title: meta.title ?? 'session',
     note: meta.note ?? '',
     element,
-    mode: computation.centre.mode,
+    mode: computation.centre.mode === 'follow' ? 'follow' : computation.centre.mode,
+    intensity: computation.centre.intensity,
     prismColors: computation.prismColors,
     purposeWealth: computation.fudan.kind === 'hanja' && (computation.fudan.purpose as TalismanPurpose) === 'wealth',
     fudanGlyph,
@@ -254,6 +258,7 @@ export function specFromComputation(
     numerology: charts.numerology
       ? [charts.numerology.lifePath, charts.numerology.birthdayNumber, charts.numerology.personalYear, charts.numerology.personalMonth]
       : [3, 4, 7, 11],
+    numerologyMissing: computation.layers.numerology?.missing ?? [],
     prismDentAxis: prismDent(charts),
     luoshuSealed: luoshuSealed(computation.seals),
     ichingLines: lines.length === 6 ? lines : [true, false, true, true, false, true],

@@ -6,7 +6,7 @@
 export const ELEMENT_KEYS = ['wood', 'fire', 'earth', 'metal', 'water'] as const
 export type ElementKey = (typeof ELEMENT_KEYS)[number]
 
-export type TalismanMode = 'fill' | 'drain'
+export type TalismanMode = 'fill' | 'drain' | 'follow'
 
 export type SajuChar = {
   hanja: string
@@ -43,8 +43,11 @@ export type TalismanSpec = {
   /** Null when consensus deficiency has no leader. The SVG draws a balanced core. */
   element: ElementKey | null
   mode: TalismanMode
+  intensity?: 'full' | 'soft'
   purposeWealth: boolean
   numerology: readonly number[]
+  /** Missing birth-date digits 1–9. Empty polygons in the numerology band. */
+  numerologyMissing?: readonly number[]
   /** Null when the session has no PRISM coreMatrix. Do not invent a dent. */
   prismDentAxis: 0 | 1 | 2 | 3 | 4 | 5 | null
   /**

@@ -141,6 +141,13 @@ export interface EokbuHelper {
   hanja: string
 }
 
+/** Talisman-only lean. Oracle readings ignore this field. */
+export type TalismanLean = {
+  mode: 'fill' | 'drain' | 'follow'
+  element: FiveElement
+  intensity: 'full' | 'soft'
+}
+
 export interface EokbuResult {
   school: 'eokbu'
   strength: EokbuStrength | null
@@ -164,6 +171,11 @@ export interface EokbuResult {
   gisin: FiveElement | null
   inapplicable: EokbuInapplicable | null
   hourUnknown: boolean
+  /**
+   * Additive. Never written into native charts or AI payloads.
+   * Existing strength / yongsin / inapplicable stay the reading of record.
+   */
+  talismanLean: TalismanLean
 }
 
 export interface GreatLuckPeriod {

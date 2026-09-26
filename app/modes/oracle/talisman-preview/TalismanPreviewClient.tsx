@@ -19,6 +19,8 @@ type SessionPayload = {
     centreSource: string;
     centreMode: string;
     centreElement: string | null;
+    centrePath?: string;
+    centreIntensity?: string;
   };
   arrival?: {
     nativeMissing: Array<{ system: string; field: string }>;
@@ -142,7 +144,7 @@ export default function TalismanPreviewClient({
                 <div>seals {payload.stats.seals}</div>
                 <div>empty 宮 {payload.stats.emptyPalaces}</div>
                 <div>흉방 {payload.stats.hyungbang}</div>
-                <div>centre {payload.stats.centreSource}</div>
+                <div>centre {payload.stats.centrePath ?? payload.stats.centreSource}</div>
                 <div>mode {payload.stats.centreMode}</div>
                 <div>element {payload.stats.centreElement ?? "none"}</div>
               </dl>
@@ -198,7 +200,7 @@ export default function TalismanPreviewClient({
           <dl className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-white/70 md:grid-cols-3">
             <div>seals {constructed.stats.seals}</div>
             <div>empty 宮 {constructed.stats.emptyPalaces}</div>
-            <div>centre {constructed.stats.centreSource}</div>
+            <div>centre {constructed.stats.centrePath ?? constructed.stats.centreSource}</div>
             <div>mode {constructed.stats.centreMode}</div>
             <div>element {constructed.stats.centreElement ?? "none"}</div>
           </dl>

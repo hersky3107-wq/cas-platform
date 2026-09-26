@@ -15,4 +15,14 @@ export type NumerologyResult = {
   soulUrge: number | null
   personality: number | null
   limitations: Array<'no_latin_name'>
+  /** Birth-date digits 1–9 that never appear. Zeros ignored. Not 오행. */
+  missingDigits: number[]
+  /** Birth-date digits 1–9 that appear more than once. */
+  repeatedDigits: number[]
+}
+
+export type BirthDigitGrid = {
+  missing: number[]
+  repeated: number[]
+  counts: Record<number, number>
 }

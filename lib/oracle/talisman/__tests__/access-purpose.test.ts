@@ -66,11 +66,21 @@ describe('centre copy', () => {
     expect(consensus.headline).toContain('화(火)')
     expect(consensus.body).not.toContain('열두 체계의 오행 합산')
     expect(consensus.body).toContain('투영 한 줄')
-    const fill = describeCentre({ source: 'eokbu', mode: 'fill', element: 'fire', strength: 'weak' })
+    const fill = describeCentre({ source: 'eokbu', mode: 'fill', element: 'fire', strength: 'weak', intensity: 'full' })
     expect(fill.body).toContain('신약')
     expect(fill.body).toContain('열두 체계가 합의한 값이 아닙니다')
-    const drain = describeCentre({ source: 'eokbu', mode: 'drain', element: 'fire', strength: 'strong' })
+    const drain = describeCentre({ source: 'eokbu', mode: 'drain', element: 'fire', strength: 'strong', intensity: 'full' })
     expect(drain.body).toContain('속이 빈 핵')
+    const lean = describeCentre({
+      source: 'eokbu-lean',
+      mode: 'fill',
+      element: 'fire',
+      strength: 'balanced',
+      intensity: 'soft',
+    })
+    expect(lean.headline).toContain('경향')
+    const follow = describeCentre({ source: 'jonggyeok', mode: 'follow', element: 'earth', intensity: 'full' })
+    expect(follow.headline).toContain('종격')
   })
 })
 
@@ -82,15 +92,15 @@ describe('computeTalisman', () => {
       consensus: fakeConsensus({ water: 20 }),
     })
     expect(result).not.toBeNull()
-    expect(result!.centre).toEqual({ source: 'eokbu', mode: 'fill', element: 'fire', strength: 'weak' })
+    expect(result!.centre).toEqual({ source: 'eokbu', mode: 'fill', element: 'fire', strength: 'weak', intensity: 'full' })
     expect(result!.fudan).toEqual({ kind: 'bindrune', purpose: null, glyph: 'BINDRUNE' })
     expect(result!.seals.some((seal) => seal.kind === 'ninestar-killing')).toBe(true)
     expect(result!.layers.ninestar?.killings.some((k) => k.name === '오황살')).toBe(false)
     expect(result!.independence).toEqual({
-      native: 8,
-      formOnly: 4,
-      nativeIds: ['saju', 'astro', 'prism', 'ziwei', 'name', 'iching', 'tarot', 'ninestar'],
-      formOnlyIds: ['numerology', 'runes', 'sukuyou', 'tzolkin'],
+      native: 9,
+      formOnly: 3,
+      nativeIds: ['saju', 'astro', 'prism', 'ziwei', 'numerology', 'name', 'iching', 'tarot', 'ninestar'],
+      formOnlyIds: ['runes', 'sukuyou', 'tzolkin'],
     })
   })
 
@@ -101,7 +111,7 @@ describe('computeTalisman', () => {
       consensus: fakeConsensus({ earth: 7 }),
       purpose: 'exorcism',
     })
-    expect(result?.centre).toEqual({ source: 'consensus', mode: 'fill', element: 'earth' })
+    expect(result?.centre).toEqual({ source: 'consensus', mode: 'fill', element: 'earth', intensity: 'full' })
     expect(result?.fudan.glyph).toBe('鎭')
     expect(result?.seals).toEqual([])
   })

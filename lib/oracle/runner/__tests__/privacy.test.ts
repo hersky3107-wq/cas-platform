@@ -467,6 +467,24 @@ describe('single-scope native charts', () => {
     expect(chart.색.충동).not.toBe(PRISM_COLORS[0])
   })
 
+  it('saju AI payload is unchanged by talismanLean', () => {
+    const payload = computeSingle('saju').systems[0]!.aiPayload!
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('talismanLean')
+    expect(serialized).not.toContain('"intensity"')
+    const chart = payload.chart as { 용신: { 강약: string; 용신: string; 판정불가: string } }
+    expect(chart.용신.강약).toBeTruthy()
+    expect(chart.용신).not.toHaveProperty('talismanLean')
+  })
+
+  it('numerology AI payload does not carry birth-digit grid fields', () => {
+    const payload = computeSingle('numerology').systems[0]!.aiPayload!
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('missingDigits')
+    expect(serialized).not.toContain('repeatedDigits')
+    expect(serialized).not.toContain('digitGrid')
+  })
+
   it('tzolkin chart uses the Yucatec nawal spelling, not maya.nawal.kim', () => {
     const payload = computeSingle('tzolkin').systems[0]!.aiPayload!
     const serialized = JSON.stringify(payload)

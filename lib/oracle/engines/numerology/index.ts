@@ -3,11 +3,11 @@
  * Does not transliterate non-Latin names.
  */
 import { CORE_VOWELS, MASTER_NUMBERS, NUMEROLOGY_ENGINE_VERSION, PYTHAGOREAN_VALUES } from './conventions'
-import type { NumerologyInput, NumerologyResult } from './types'
+import type { BirthDigitGrid, NumerologyInput, NumerologyResult } from './types'
 
 export { NUMEROLOGY_ENGINE_VERSION }
 export { MASTER_NUMBERS, PYTHAGOREAN_VALUES } from './tables'
-export type { NumerologyInput, NumerologyResult } from './types'
+export type { BirthDigitGrid, NumerologyInput, NumerologyResult } from './types'
 
 function parseYmd(value: string, label: string): { y: number; m: number; d: number } {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
@@ -84,9 +84,33 @@ function nameNumbers(latinName: string): { expression: number; soulUrge: number;
   }
 }
 
+/**
+ * Place YYYYMMDD digits into the 1–9 grid. Zeros are ignored.
+ * Missing = never present. Repeated = count > 1. Own language: digits, not 오행.
+ */
+export function birthDigitGrid(birthDate: string): BirthDigitGrid {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate)
+  if (!match) throw new RangeError('numerology: birthDate must be YYYY-MM-DD')
+  const digits = `${match[1]}${match[2]}${match[3]}`
+  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 }
+  for (const ch of digits) {
+    const n = Number(ch)
+    if (n >= 1 && n <= 9) counts[n] = (counts[n] ?? 0) + 1
+  }
+  const missing: number[] = []
+  const repeated: number[] = []
+  for (let d = 1; d <= 9; d += 1) {
+    const count = counts[d] ?? 0
+    if (count === 0) missing.push(d)
+    else if (count > 1) repeated.push(d)
+  }
+  return { missing, repeated, counts }
+}
+
 export function numerology(input: NumerologyInput): NumerologyResult {
   const birth = parseYmd(input.birthDate, 'birthDate')
   const at = parseYmd(input.atDate, 'atDate')
+  const grid = birthDigitGrid(input.birthDate)
 
   const lifePath = reducePythagorean(
     reducePythagorean(birth.m) + reducePythagorean(birth.d) + reducePythagorean(sumDigits(birth.y)),
@@ -109,6 +133,8 @@ export function numerology(input: NumerologyInput): NumerologyResult {
       soulUrge: null,
       personality: null,
       limitations: ['no_latin_name'],
+      missingDigits: grid.missing,
+      repeatedDigits: grid.repeated,
     }
   }
 
@@ -120,5 +146,7 @@ export function numerology(input: NumerologyInput): NumerologyResult {
     personalMonth,
     ...names,
     limitations: [],
+    missingDigits: grid.missing,
+    repeatedDigits: grid.repeated,
   }
 }

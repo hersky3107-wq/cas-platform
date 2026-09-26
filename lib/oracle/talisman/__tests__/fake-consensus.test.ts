@@ -32,7 +32,7 @@ describe('fake-consensus guard', () => {
     expect(wood!.centre.source).toBe('eokbu')
   })
 
-  it('중화 fallback lets the centre follow deficiency, but layers still ignore it', () => {
+  it('중화 경향 keeps the centre on 억부 even when deficiency is swapped', () => {
     const pillars = fourPillars({ date: '1984-02-15', time: '12:00', timezone: 'Asia/Seoul' })
     const charts = charts1988({
       saju: { eokbu: eokbu(pillars), tenGods: tenGods(pillars.day.stem, pillars), pillars },
@@ -48,8 +48,14 @@ describe('fake-consensus guard', () => {
       charts,
       consensus: fakeConsensus({ water: 14 }),
     })
-    expect(metal!.centre).toEqual({ source: 'consensus', mode: 'fill', element: 'metal' })
-    expect(water!.centre).toEqual({ source: 'consensus', mode: 'fill', element: 'water' })
+    expect(metal!.centre).toEqual(water!.centre)
+    expect(metal!.centre).toEqual({
+      source: 'eokbu-lean',
+      mode: 'fill',
+      element: 'fire',
+      strength: 'balanced',
+      intensity: 'soft',
+    })
     expect(metal!.layers).toEqual(water!.layers)
     expect(metal!.seals).toEqual(water!.seals)
     const raw = extractNativeFindings(charts)
@@ -57,14 +63,14 @@ describe('fake-consensus guard', () => {
     expect(raw.ninestar).not.toBeNull()
   })
 
-  it('reports 8 independent native findings vs 4 form-only, never derived from consensus.elements', () => {
+  it('reports 9 independent native findings vs 3 form-only, never derived from consensus.elements', () => {
     const result = computeTalisman({
       access: LIVE_ACCESS,
       charts: charts1988(),
       consensus: fakeConsensus({ wood: 20 }),
     })
-    expect(result!.independence.native).toBe(8)
-    expect(result!.independence.formOnly).toBe(4)
+    expect(result!.independence.native).toBe(9)
+    expect(result!.independence.formOnly).toBe(3)
     expect(result!.layers.saju).not.toBeNull()
     expect(result!.layers.astro).not.toBeNull()
     expect(result!.layers.prism).not.toBeNull()
@@ -73,7 +79,7 @@ describe('fake-consensus guard', () => {
     expect(result!.layers.tarot).not.toBeNull()
     expect(result!.layers.name).not.toBeNull()
     expect(result!.layers.ninestar).not.toBeNull()
-    expect(result!.layers.numerology.kind).toBe('form-only')
+    expect(result!.layers.numerology).toEqual({ missing: [2, 4, 6, 7], repeated: [1, 8] })
     expect(result!.layers.sukuyou.kind).toBe('form-only')
     expect(result!.layers.tzolkin.kind).toBe('form-only')
     expect(result!.layers.runes.kind).toBe('form-only')
