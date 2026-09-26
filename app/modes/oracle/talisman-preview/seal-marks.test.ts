@@ -20,7 +20,10 @@ describe('seal marks', () => {
     expect(html).not.toContain('data-lock=')
     expect(html).toContain('data-sealed-cell=')
     expect(html).toContain('data-sealed-hatch="true"')
+    expect(html).toContain('opacity="0.7"')
+    expect(html).toContain('data-knot-scale="0.75"')
     expect(html).not.toMatch(/data-sealed-cell="\d+"[^>]*>\s*<rect\b[^>]*stroke=/)
+    expect(html).not.toContain('data-hyung-box')
     const hex = html.match(/data-iching-hex="true"[^>]*>([\s\S]*?)<\/g>/)?.[1] ?? ''
     expect(html).toContain('data-iching-hex="true"')
     expect(hex).not.toContain('<rect')
