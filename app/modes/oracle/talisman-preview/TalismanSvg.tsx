@@ -279,7 +279,7 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   const rings = [36, 52, 68, 84, 100, 116, 132]
   return (
     <g>
-      {drain ? null : <circle cx={CX} cy={CY} r={CORE} fill={accent} fillOpacity={0.18} stroke="none" />}
+      {drain ? null : <circle cx={CX} cy={CY} r={CORE} fill={accent} fillOpacity={0.12} stroke="none" />}
       {rings.map((r, i) => (
         <polyline
           key={r}
@@ -347,7 +347,7 @@ function LatinRing() {
 
 function ElementSector({ element, accent }: { element: ElementKey; accent: string }) {
   const aim = ELEMENT_AIM[element]
-  return <path d={bandPath(CORE + 2, ZIWEI_OUT + 8, aim - 16, aim + 16, 2)} fill={accent} opacity={0.14} />
+  return <path d={bandPath(CORE + 2, ZIWEI_OUT + 8, aim - 16, aim + 16, 2)} fill={accent} opacity={0.1} />
 }
 
 function SectorRays({ element, accent }: { element: ElementKey; accent: string }) {
@@ -532,18 +532,11 @@ function Luoshu({ sealed, accent }: { sealed: readonly number[]; accent: string 
         return (
           <g key={palace}>
             <rect x={x} y={y} width={cell} height={cell} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
-            <text
-              x={cx}
-              y={cy + 7}
-              textAnchor="middle"
-              fill={INK.hair}
-              fontSize="16"
-              fontFamily="ui-serif, serif"
-              opacity={covered ? 0.45 : 1}
-            >
-              {palace}
-            </text>
-            {covered ? <Lock x={cx} y={cy} accent={accent} scale={0.92} /> : null}
+            {covered ? null : (
+              <text x={cx} y={cy + 7} textAnchor="middle" fill={INK.hair} fontSize="16" fontFamily="ui-serif, serif">
+                {palace}
+              </text>
+            )}
           </g>
         )
       })}
@@ -690,18 +683,7 @@ function ZiweiRing({ palaces, accent }: { palaces: TalismanSpec['palaces']; acce
         const bulge = 10 * Math.sin(i * 1.7 + 0.5)
         const rOut = ZIWEI_OUT + bulge
         const mid = polarJ((ZIWEI_IN + rOut) / 2, a0 + 15, i)
-        if (palace.empty) {
-          const edgeL = polar(ZIWEI_IN, a0 + 3)
-          const edgeR = polar(ZIWEI_IN, a1 - 3)
-          const rimL = polar(rOut + 8, a0 + 3)
-          const rimR = polar(rOut + 8, a1 - 3)
-          return (
-            <g key={palace.name} opacity={0.45}>
-              <line x1={edgeL.x} y1={edgeL.y} x2={rimL.x} y2={rimL.y} stroke={INK.hair} strokeWidth={SW.hair} />
-              <line x1={edgeR.x} y1={edgeR.y} x2={rimR.x} y2={rimR.y} stroke={INK.hair} strokeWidth={SW.hair} />
-            </g>
-          )
-        }
+        if (palace.empty) return null
         if (palace.sealed) {
           return (
             <g key={palace.name}>
@@ -912,6 +894,80 @@ function MinorRim({ spec }: { spec: TalismanSpec }) {
   )
 }
 
+function luoshuCell(index: number): { x: number; y: number; w: number; cx: number; cy: number } {
+  const half = LUOSHU_HALF
+  const w = round((half * 2) / 3)
+  const x = round(CX - half) + (index % 3) * w
+  const y = round(CY - half) + Math.floor(index / 3) * w
+  return { x, y, w, cx: x + w / 2, cy: y + w / 2 }
+}
+
+/** Value-removals cut through every layer in that sector, not only the owning ring. */
+function TextureCuts({ spec }: { spec: TalismanSpec }) {
+  const houseInner = SIGN_R - 26
+  const houseOuter = ZIWEI_IN - 2
+  return (
+    <g>
+      {spec.palaces == null ? (
+        <path
+          fill={GROUND}
+          fillRule="evenodd"
+          d={`M ${CX - houseOuter} ${CY} a ${houseOuter} ${houseOuter} 0 1 0 ${houseOuter * 2} 0 a ${houseOuter} ${houseOuter} 0 1 0 ${-houseOuter * 2} 0 M ${CX - houseInner} ${CY} a ${houseInner} ${houseInner} 0 1 1 ${houseInner * 2} 0 a ${houseInner} ${houseInner} 0 1 1 ${-houseInner * 2} 0`}
+        />
+      ) : (
+        spec.palaces.map((palace, i) => {
+          const a0 = -90 + i * 30
+          if (palace.empty) {
+            const left = polar(LATIN_R - 8, a0 + 1)
+            const leftO = polar(ZIWEI_OUT + 18, a0 + 1)
+            const right = polar(LATIN_R - 8, a0 + 29)
+            const rightO = polar(ZIWEI_OUT + 18, a0 + 29)
+            return (
+              <g key={`empty-${palace.name}`}>
+                <path d={bandPath(LATIN_R - 10, ZIWEI_OUT + 24, a0 + 0.4, a0 + 29.6, i)} fill={GROUND} />
+                <line x1={left.x} y1={left.y} x2={leftO.x} y2={leftO.y} stroke={INK.hair} strokeWidth={SW.hair} />
+                <line x1={right.x} y1={right.y} x2={rightO.x} y2={rightO.y} stroke={INK.hair} strokeWidth={SW.hair} />
+              </g>
+            )
+          }
+          if (palace.sealed) {
+            return (
+              <path
+                key={`sealed-${palace.name}`}
+                d={bandPath(LATIN_R - 10, ZIWEI_IN + 2, a0 + 0.4, a0 + 29.6, i)}
+                fill={GROUND}
+              />
+            )
+          }
+          return null
+        })
+      )}
+      {LUOSHU.map((palace, i) => {
+        if (palace === 5 || !spec.luoshuSealed.includes(palace)) return null
+        const c = luoshuCell(i)
+        return <rect key={`luo-${palace}`} x={c.x} y={c.y} width={c.w} height={c.w} fill={GROUND} />
+      })}
+    </g>
+  )
+}
+
+function LuoshuLocks({ sealed, accent }: { sealed: readonly number[]; accent: string }) {
+  return (
+    <g>
+      {LUOSHU.map((palace, i) => {
+        if (palace === 5 || !sealed.includes(palace)) return null
+        const c = luoshuCell(i)
+        return (
+          <g key={`lock-${palace}`}>
+            <rect x={c.x} y={c.y} width={c.w} height={c.w} fill="none" stroke={accent} strokeWidth={SW.hair} />
+            <Lock x={c.cx} y={c.cy} accent={accent} scale={0.92} />
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
 function BleedGrid(): ReactNode {
   const lines: ReactNode[] = []
   for (let v = -200; v <= 1200; v += 50) {
@@ -963,15 +1019,19 @@ export function TalismanSvg({
           <ElementSector element={spec.element} accent={accent} />
           <Luoshu sealed={spec.luoshuSealed} accent={accent} />
           <MinorRim spec={spec} />
-          <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
-          <MiddleScripts spec={spec} />
+          {spec.palaces != null ? (
+            <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
+          ) : null}
+          {spec.palaces != null ? <MiddleScripts spec={spec} /> : null}
           <IchingGaps emptySeats={spec.bokjangEmpty} />
           <HexagramStack lines={spec.ichingLines} />
           <LatinRing />
           <ZiweiRing palaces={spec.palaces} accent={accent} />
-          <HyungNotches spec={spec} />
           <SajuRing spec={spec} accent={accent} />
           <Spine accent={accent} wealth={spec.purposeWealth} bindrune={spec.bindrune} />
+          <TextureCuts spec={spec} />
+          <LuoshuLocks sealed={spec.luoshuSealed} accent={accent} />
+          <HyungNotches spec={spec} />
           <Centre spec={spec} accent={accent} />
           <SectorRays element={spec.element} accent={accent} />
           <text

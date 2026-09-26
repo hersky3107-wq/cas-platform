@@ -116,8 +116,9 @@ export default function TalismanPreviewClient() {
               read. The bindrune sits on the spine. Variant 5 keeps empty ring-rules.
             </li>
             <li>
-              Density peaks at the core. The piece leans toward the deficiency; a few
-              rings stay broken.
+              An empty palace or sealed cell cuts through every layer in that sector,
+              not only the ring that owns it. Missing birth time removes the house ring
+              of texture and leaves empty crown seats.
             </li>
           </ul>
         </section>
