@@ -74,7 +74,9 @@ export type TalismanSpec = {
   tzolkinTone: number
   tzolkinNawal: number
   bindrune: boolean
-  /** 符膽 on the spine. Null when the bindrune placeholder is used instead. */
+  /** Stored Elder Futhark draw. Null/omitted → bare stave, no invented runes. */
+  bindruneRunes?: readonly { name: string; reversed: boolean }[] | null
+  /** 符膽 on the spine. Kept readable next to the bindrune. */
   fudanGlyph?: string | null
   /** Suits still present in the spread; omitted = draw all four. */
   tarotSuits?: readonly ('wands' | 'cups' | 'swords' | 'pentacles')[]

@@ -13,6 +13,7 @@ import { numerology } from '@/lib/oracle/engines/numerology'
 import { prism } from '@/lib/oracle/engines/prism'
 import { ziweiChart } from '@/lib/oracle/engines/ziwei'
 import { computeTalisman } from '@/lib/oracle/talisman'
+import type { TalismanPurpose } from '@/lib/oracle/talisman'
 import type { SystemId } from '@/lib/oracle/axes/types'
 import type { FiveElement } from '@/lib/oracle/engines/calendar'
 import { ORACLE_DEFAULT_COORDS } from '@/lib/oracle/runner/conventions'
@@ -40,6 +41,9 @@ export type ConstructedPreview = {
     | 'lean-strong'
     | 'follow'
     | 'secondary'
+    | 'bindrune-3'
+    | 'bindrune-5'
+    | 'bindrune-reversed'
   label: string
   spec: TalismanSpec
   stats: ReturnType<typeof talismanStats>
@@ -49,6 +53,7 @@ function chartsFor(
   birth: { date: string; time: string },
   seed: string,
   withPrism: boolean,
+  runes?: { seed: string; count: number } | null,
 ): TalismanCharts {
   const clock = { ...birth, timezone: TZ }
   const pillars = fourPillars(clock)
@@ -82,7 +87,14 @@ function chartsFor(
       : null,
     name: nameReading({ surname: '김', givenName: '지수', locale: 'ko' }),
     ninestar: nineStar({ date: birth.date, time: '12:00', timezone: TZ }),
-    runes: runeDraw({ seed: `talisman-runes-${seed}`, count: 3, pickedPositions: [1, 2, 3] }),
+    runes:
+      runes === null
+        ? null
+        : runeDraw({
+            seed: runes?.seed ?? `talisman-runes-${seed}`,
+            count: runes?.count ?? 3,
+            pickedPositions: Array.from({ length: runes?.count ?? 3 }, (_, i) => i + 1),
+          }),
     numerology: numerology({ birthDate: birth.date, latinName: 'Kim Jisu', atDate: AT }),
     sukuyou: sukuyou({ date: birth.date, time: '12:00', timezone: TZ }),
     tzolkin: tzolkin({ date: birth.date }),
@@ -111,13 +123,23 @@ function build(input: {
   title: string
   note: string
   noSaju?: boolean
+  noRunes?: boolean
+  runeCount?: number
+  runeSeed?: string
+  purpose?: TalismanPurpose
 }): ConstructedPreview {
-  const charts = chartsFor(input.birth, input.seed, input.withPrism)
+  const charts = chartsFor(
+    input.birth,
+    input.seed,
+    input.withPrism,
+    input.noRunes ? null : input.runeCount || input.runeSeed ? { seed: input.runeSeed ?? `talisman-runes-${input.seed}`, count: input.runeCount ?? 3 } : undefined,
+  )
   if (input.noSaju) charts.saju = null
   const computation = computeTalisman({
     access: ACCESS,
     charts,
     consensus: deficiency(input.deficiency),
+    purpose: input.purpose ?? null,
     prismColors: input.withPrism
       ? { impulse: 'crimson', need: 'gold', identity: 'indigo' }
       : null,
@@ -228,6 +250,43 @@ export function constructedPreviews(): ConstructedPreview[] {
       deficiency: { water: 20 },
       title: 'secondary',
       note: 'natal 금·수 결. secondary 금 (木火土金水). consensus water ignored.',
+    }),
+    build({
+      id: 'bindrune-3',
+      label: 'bindrune · 3',
+      birth: { date: '1984-02-10', time: '12:00' },
+      seed: 'bindrune-3',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'bindrune-3',
+      note: '3-stone bindrune from the stored draw. Same seed, same path.',
+      runeCount: 3,
+      runeSeed: 'talisman-runes-bindrune-3',
+    }),
+    build({
+      id: 'bindrune-5',
+      label: 'bindrune · 5',
+      birth: { date: '1984-02-10', time: '12:00' },
+      seed: 'bindrune-5',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'bindrune-5',
+      note: '5-stone bindrune. Shared stave, merged arms.',
+      runeCount: 5,
+      runeSeed: 'talisman-runes-bindrune-5',
+    }),
+    build({
+      id: 'bindrune-reversed',
+      label: 'bindrune · merkstave',
+      birth: { date: '1984-02-10', time: '12:00' },
+      seed: 'bindrune-reversed',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'bindrune-reversed',
+      note: 'Kenaz reversed is mirrored on the stave. 財 stays readable above.',
+      runeCount: 3,
+      runeSeed: 'br-0',
+      purpose: 'wealth',
     }),
   ]
 }

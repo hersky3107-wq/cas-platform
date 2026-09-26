@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react'
 import { isPrismColor } from '@/lib/oracle/engines/prism/tables'
 import { PRISM_COLOR_HEX } from '@/lib/oracle/prism-swatches'
+import { bindruneCenterY, composeBindrune } from '@/lib/oracle/talisman/bindrune'
 import { NawalGlyph } from './nawal-glyphs'
 import { ELEMENT_META, type ElementKey, type FrameSpec, type PalaceMark, type PlanetMark, type TalismanSpec } from './variants'
 
@@ -164,19 +165,28 @@ function Lock({ x, y, accent, scale = 1 }: { x: number; y: number; accent: strin
   )
 }
 
-/** Overlapped runes: Tiwaz + Algiz + Othala, bound by rings. */
-function BindruneMark({ x, y, accent }: { x: number; y: number; accent: string }) {
+function BindruneSigil({
+  stones,
+  x,
+  y,
+  accent,
+}: {
+  stones: TalismanSpec['bindruneRunes']
+  x: number
+  y: number
+  accent: string
+}) {
+  const mark = composeBindrune(stones)
   return (
-    <g transform={`translate(${x} ${y})`} stroke={accent} fill="none" strokeLinecap="butt">
-      <circle r="48" strokeWidth={2.2} />
-      <circle r="56" strokeWidth={1.1} />
-      <line x1="0" y1="-46" x2="0" y2="44" strokeWidth={3.2} />
-      <polyline points="-20,-22 0,-46 20,-22" strokeWidth={2.8} />
-      <polyline points="-24,6 0,-18 24,6" strokeWidth={2.6} />
-      <polygon points="0,-6 -16,14 0,32 16,14" strokeWidth={2.4} />
-      <line x1="-18" y1="22" x2="22" y2="-4" strokeWidth={2} />
-      <line x1="-14" y1="36" x2="14" y2="36" strokeWidth={2} />
-    </g>
+    <path
+      data-bindrune={mark.staveOnly ? 'stave' : 'merged'}
+      transform={`translate(${x} ${y})`}
+      d={mark.d}
+      fill="none"
+      stroke={accent}
+      strokeWidth={SW.med}
+      strokeLinecap="butt"
+    />
   )
 }
 
@@ -368,14 +378,14 @@ function SectorRays({ element, accent }: { element: ElementKey; accent: string }
 function Spine({
   accent,
   fudanGlyph,
-  bindrune,
+  stones,
 }: {
   accent: string
   fudanGlyph: string | null
-  bindrune: boolean
+  stones: TalismanSpec['bindruneRunes']
 }) {
   const gap = CORE + 4
-  const runeY = fudanGlyph ? CY - CORE - 118 : CY - CORE - 62
+  const runeY = bindruneCenterY(Boolean(fudanGlyph))
   const fudanSize = fudanGlyph && fudanGlyph.length > 1 ? 46 : 72
   return (
     <g fill={accent} stroke={accent} strokeLinecap="butt" data-spine="kept">
@@ -388,7 +398,7 @@ function Spine({
           {fudanGlyph}
         </Hanjatext>
       ) : null}
-      {bindrune ? <BindruneMark x={CX} y={runeY} accent={accent} /> : null}
+      <BindruneSigil stones={stones} x={CX} y={runeY} accent={accent} />
       <polygon points={`${CX - 16},972 ${CX},992 ${CX + 16},972`} fill="none" strokeWidth={SW.med} />
       <rect x={CX - 24} y={988} width={48} height={4} />
     </g>
@@ -1313,7 +1323,7 @@ export function TalismanSvg({
             <Spine
               accent={accent}
               fudanGlyph={spec.fudanGlyph ?? (spec.purposeWealth ? '財' : null)}
-              bindrune={spec.bindrune}
+              stones={spec.bindruneRunes}
             />
           </g>
           <TextureCuts spec={spec} />

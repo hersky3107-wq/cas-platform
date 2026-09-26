@@ -288,6 +288,9 @@ export function specFromComputation(
     tzolkinTone: charts.tzolkin?.tone ?? 9,
     tzolkinNawal: charts.tzolkin?.nawal ?? 7,
     bindrune: computation.fudan.kind === 'bindrune',
+    bindruneRunes: charts.runes
+      ? charts.runes.runes.map((rune) => ({ name: rune.name, reversed: rune.reversed }))
+      : null,
     dateLabel: meta.dateLabel,
     sessionId: meta.sessionId.slice(0, 8).toUpperCase(),
     physicsCaption: PHYSICS_CAPTION,

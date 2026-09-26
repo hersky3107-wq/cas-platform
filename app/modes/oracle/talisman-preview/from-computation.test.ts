@@ -224,6 +224,38 @@ describe('constructed centre fixtures', () => {
     expect(html).not.toContain('data-secondary-sector="1"')
   })
 
+  it('bindrune fixtures merge the stored draw and leave a bare stave when runes are missing', () => {
+    const three = rows.find((item) => item.id === 'bindrune-3')!
+    const five = rows.find((item) => item.id === 'bindrune-5')!
+    const reversed = rows.find((item) => item.id === 'bindrune-reversed')!
+    expect(three.spec.bindruneRunes).toHaveLength(3)
+    expect(five.spec.bindruneRunes).toHaveLength(5)
+    expect(reversed.spec.bindruneRunes?.some((rune) => rune.reversed)).toBe(true)
+    expect(reversed.spec.fudanGlyph).toBe('財')
+    const threeHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: three.spec, frame: TALISMAN_FRAMES[2]!, uid: 'br3' }),
+    )
+    const fiveHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: five.spec, frame: TALISMAN_FRAMES[2]!, uid: 'br5' }),
+    )
+    const revHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: reversed.spec, frame: TALISMAN_FRAMES[2]!, uid: 'brr' }),
+    )
+    expect(threeHtml).toContain('data-bindrune="merged"')
+    expect(fiveHtml).toContain('data-bindrune="merged"')
+    expect(revHtml).toContain('data-bindrune="merged"')
+    expect(revHtml).toContain('>財<')
+    expect(threeHtml).not.toEqual(fiveHtml)
+    const blank = renderToStaticMarkup(
+      createElement(TalismanSvg, {
+        spec: { ...three.spec, bindruneRunes: null },
+        frame: TALISMAN_FRAMES[2]!,
+        uid: 'bare',
+      }),
+    )
+    expect(blank).toContain('data-bindrune="stave"')
+  })
+
   it('draws missing birth digits as empty polygons in the numerology band', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     expect(row.spec.numerologyMissing).toEqual([3, 5, 6, 7])
