@@ -27,6 +27,8 @@ export type PreviewSessionPayload = {
     centreElement: string | null
     centrePath?: string
     centreIntensity?: string
+    secondaryElement?: string | null
+    absentElements?: readonly string[]
   }
   arrival?: { nativeMissing: Array<{ system: string; field: string }> }
 }

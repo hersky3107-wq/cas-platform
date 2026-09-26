@@ -30,7 +30,16 @@ const AT = '2026-09-26'
 const TZ = 'Asia/Seoul'
 
 export type ConstructedPreview = {
-  id: 'sinkang' | 'junghwa' | 'jonggyeok' | 'consensus-null' | 'no-prism' | 'lean-weak' | 'lean-strong' | 'follow'
+  id:
+    | 'sinkang'
+    | 'junghwa'
+    | 'jonggyeok'
+    | 'consensus-null'
+    | 'no-prism'
+    | 'lean-weak'
+    | 'lean-strong'
+    | 'follow'
+    | 'secondary'
   label: string
   spec: TalismanSpec
   stats: ReturnType<typeof talismanStats>
@@ -206,6 +215,16 @@ export function constructedPreviews(): ConstructedPreview[] {
       deficiency: { water: 20 },
       title: 'no PRISM',
       note: 'eokbu · drain · prism coreMatrix absent, rim is an empty seat',
+    }),
+    build({
+      id: 'secondary',
+      label: 'secondary · 금 결',
+      birth: { date: '1988-03-15', time: '04:30' },
+      seed: 'secondary',
+      withPrism: true,
+      deficiency: { water: 20 },
+      title: 'secondary',
+      note: 'natal 금·수 결. secondary 금 (木火土金水). consensus water ignored.',
     }),
   ]
 }

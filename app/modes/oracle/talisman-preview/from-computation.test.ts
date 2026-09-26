@@ -158,6 +158,20 @@ describe('constructed centre fixtures', () => {
     expect(html).not.toContain('#c4a35a')
   })
 
+  it('secondary fixture picks natal 금 and emphasises luoshu 4·9', () => {
+    const row = rows.find((item) => item.id === 'secondary')!
+    expect(row.stats.secondaryElement).toBe('metal')
+    expect(row.stats.absentElements).toEqual(['metal', 'water'])
+    expect(row.spec.secondaryElement).toBe('metal')
+    expect(row.spec.absentElements).toEqual(['metal', 'water'])
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'sec' }),
+    )
+    expect(html).toContain('data-secondary-sector="4"')
+    expect(html).toContain('data-secondary-sector="9"')
+    expect(html).not.toContain('data-secondary-sector="1"')
+  })
+
   it('draws missing birth digits as empty polygons in the numerology band', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     expect(row.spec.numerologyMissing).toEqual([3, 5, 6, 7])

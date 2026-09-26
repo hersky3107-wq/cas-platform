@@ -226,6 +226,8 @@ export function talismanStats(computation: TalismanComputation, charts?: Talisma
     centreElement: computation.centre.element,
     centrePath: centrePathLabel(computation.centre),
     centreIntensity: computation.centre.intensity,
+    secondaryElement: computation.secondary?.element ?? null,
+    absentElements: computation.absentElements,
   }
 }
 
@@ -250,6 +252,8 @@ export function specFromComputation(
     mode: computation.centre.mode === 'follow' ? 'follow' : computation.centre.mode,
     intensity: computation.centre.intensity,
     prismColors: computation.prismColors,
+    secondaryElement: computation.secondary?.element ?? null,
+    absentElements: [...computation.absentElements],
     purposeWealth: computation.fudan.kind === 'hanja' && (computation.fudan.purpose as TalismanPurpose) === 'wealth',
     fudanGlyph,
     tarotSuits: (['wands', 'cups', 'swords', 'pentacles'] as const).filter((suit) => presentSuits.size === 0 || presentSuits.has(suit)),

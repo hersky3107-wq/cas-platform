@@ -3,6 +3,7 @@ import { resolveCentre } from './centre'
 import { extractNativeFindings } from './native'
 import { collectSeals, subtractSealed } from './seals'
 import { fudanSpec, purposeBundle } from './purpose'
+import { absentFromPillars, resolveSecondary } from './secondary'
 import { independenceCensus } from './types'
 import type { AxisConsensus } from '../axes/types'
 import type { TalismanAccessInput, TalismanCharts, TalismanComputation, TalismanPrismColors, TalismanPurpose } from './types'
@@ -29,6 +30,7 @@ export function computeTalisman(input: {
     prismScores: input.charts.prism?.domainScores,
   })
 
+  const pillars = input.charts.saju?.pillars
   return {
     centre,
     layers,
@@ -37,5 +39,7 @@ export function computeTalisman(input: {
     fudan: fudanSpec(input.purpose ?? null),
     independence: independenceCensus(),
     prismColors: input.prismColors ?? null,
+    secondary: resolveSecondary({ pillars, centreElement: centre.element }),
+    absentElements: absentFromPillars(pillars),
   }
 }

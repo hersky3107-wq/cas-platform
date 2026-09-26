@@ -29,6 +29,8 @@ describe('fake-consensus guard', () => {
     expect(wood!.layers).toEqual(water!.layers)
     expect(wood!.seals).toEqual(water!.seals)
     expect(wood!.centre).toEqual(water!.centre)
+    expect(wood!.secondary).toEqual(water!.secondary)
+    expect(wood!.absentElements).toEqual(water!.absentElements)
     expect(wood!.centre.source).toBe('eokbu')
   })
 

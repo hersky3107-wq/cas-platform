@@ -300,4 +300,11 @@ export type TalismanComputation = {
   independence: IndependenceCensus
   /** session_inputs.prism colour ids. Not drawn. Not sent to a model. */
   prismColors: TalismanPrismColors | null
+  /**
+   * Natal pillar character with count 0, excluding the centre 오행.
+   * Null when every counted element is present, or there are no pillars.
+   */
+  secondary: { element: FiveElement; source: 'saju-absent' } | null
+  /** Every natal element with count 0 (木火土金水). Empty when none. */
+  absentElements: readonly FiveElement[]
 }

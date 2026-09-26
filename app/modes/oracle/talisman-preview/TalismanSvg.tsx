@@ -567,14 +567,38 @@ function IchingGaps({ emptySeats }: { emptySeats: readonly number[] }) {
   )
 }
 
-function Luoshu({ sealed, accent }: { sealed: readonly number[]; accent: string }) {
+const LUOSHU_ELEMENT: Record<(typeof LUOSHU)[number], ElementKey> = {
+  1: 'water',
+  2: 'fire',
+  3: 'wood',
+  4: 'metal',
+  5: 'earth',
+  6: 'water',
+  7: 'fire',
+  8: 'wood',
+  9: 'metal',
+}
+
+function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
+  const sealed = spec.luoshuSealed
+  const secondary = spec.secondaryElement ?? null
   const half = LUOSHU_HALF
   const cell = round((half * 2) / 3)
   const originX = round(CX - half)
   const originY = round(CY - half)
+  const earthHit = secondary === 'earth'
   return (
     <g>
-      <rect x={originX} y={originY} width={half * 2} height={half * 2} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
+      <rect
+        x={originX}
+        y={originY}
+        width={half * 2}
+        height={half * 2}
+        fill="none"
+        stroke={earthHit ? INK.strong : INK.faint}
+        strokeWidth={earthHit ? SW.base : SW.hair}
+        data-secondary-sector={earthHit ? 'earth' : undefined}
+      />
       {LUOSHU.map((palace, i) => {
         const col = i % 3
         const row = Math.floor(i / 3)
@@ -583,6 +607,7 @@ function Luoshu({ sealed, accent }: { sealed: readonly number[]; accent: string 
         const cx = x + cell / 2
         const cy = y + cell / 2
         const covered = sealed.includes(palace)
+        const hit = secondary != null && LUOSHU_ELEMENT[palace] === secondary && palace !== 5
         if (palace === 5) {
           if (!covered) return null
           return (
@@ -599,10 +624,25 @@ function Luoshu({ sealed, accent }: { sealed: readonly number[]; accent: string 
           )
         }
         return (
-          <g key={palace}>
-            <rect x={x} y={y} width={cell} height={cell} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
+          <g key={palace} data-secondary-sector={hit ? palace : undefined}>
+            <rect
+              x={x}
+              y={y}
+              width={cell}
+              height={cell}
+              fill="none"
+              stroke={hit ? INK.strong : INK.faint}
+              strokeWidth={hit ? SW.base : SW.hair}
+            />
             {covered ? null : (
-              <text x={cx} y={cy + 7} textAnchor="middle" fill={INK.hair} fontSize="16" fontFamily="ui-serif, serif">
+              <text
+                x={cx}
+                y={cy + 7}
+                textAnchor="middle"
+                fill={hit ? INK.strong : INK.hair}
+                fontSize="16"
+                fontFamily="ui-serif, serif"
+              >
                 {palace}
               </text>
             )}
@@ -1240,7 +1280,7 @@ export function TalismanSvg({
         <BleedGrid />
         <g transform={element ? leanTransform(element, spec.mode === 'drain') : undefined}>
           {element ? <ElementSector element={element} accent={accent} /> : null}
-          <Luoshu sealed={spec.luoshuSealed} accent={accent} />
+          <Luoshu spec={spec} accent={accent} />
           <MinorRim spec={spec} />
           {spec.planets.length > 0 ? (
             <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />

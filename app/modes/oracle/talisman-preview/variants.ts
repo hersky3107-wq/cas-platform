@@ -48,6 +48,10 @@ export type TalismanSpec = {
   numerology: readonly number[]
   /** Missing birth-date digits 1–9. Empty polygons in the numerology band. */
   numerologyMissing?: readonly number[]
+  /** Natal 오행 with count 0, excluding the centre. Null when none. */
+  secondaryElement?: ElementKey | null
+  /** Full natal absence list (木火土金水). */
+  absentElements?: readonly ElementKey[]
   /** Null when the session has no PRISM coreMatrix. Do not invent a dent. */
   prismDentAxis: 0 | 1 | 2 | 3 | 4 | 5 | null
   /**

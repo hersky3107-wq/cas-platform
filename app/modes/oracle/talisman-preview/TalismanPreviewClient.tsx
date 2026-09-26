@@ -21,6 +21,8 @@ type SessionPayload = {
     centreElement: string | null;
     centrePath?: string;
     centreIntensity?: string;
+    secondaryElement?: string | null;
+    absentElements?: readonly string[];
   };
   arrival?: {
     nativeMissing: Array<{ system: string; field: string }>;
@@ -147,6 +149,12 @@ export default function TalismanPreviewClient({
                 <div>centre {payload.stats.centrePath ?? payload.stats.centreSource}</div>
                 <div>mode {payload.stats.centreMode}</div>
                 <div>element {payload.stats.centreElement ?? "none"}</div>
+                <div>
+                  secondary {payload.stats.secondaryElement ?? "none"}
+                  {payload.stats.absentElements?.length
+                    ? ` · absent ${payload.stats.absentElements.join(" ")}`
+                    : ""}
+                </div>
               </dl>
             ) : null}
             {payload?.arrival?.nativeMissing?.length ? (
@@ -203,6 +211,12 @@ export default function TalismanPreviewClient({
             <div>centre {constructed.stats.centrePath ?? constructed.stats.centreSource}</div>
             <div>mode {constructed.stats.centreMode}</div>
             <div>element {constructed.stats.centreElement ?? "none"}</div>
+            <div>
+              secondary {constructed.stats.secondaryElement ?? "none"}
+              {constructed.stats.absentElements?.length
+                ? ` · absent ${constructed.stats.absentElements.join(" ")}`
+                : ""}
+            </div>
           </dl>
         ) : null}
 
