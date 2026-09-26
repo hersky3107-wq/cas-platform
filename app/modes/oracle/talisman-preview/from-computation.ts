@@ -20,6 +20,7 @@ import {
   type PlanetMark,
   type SajuChar,
   type TalismanSpec,
+  PHYSICS_CAPTION,
 } from './variants'
 
 const PALACE_SHORT: Record<string, string> = {
@@ -289,5 +290,6 @@ export function specFromComputation(
     bindrune: computation.fudan.kind === 'bindrune',
     dateLabel: meta.dateLabel,
     sessionId: meta.sessionId.slice(0, 8).toUpperCase(),
+    physicsCaption: PHYSICS_CAPTION,
   }
 }

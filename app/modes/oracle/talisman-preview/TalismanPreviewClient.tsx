@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TalismanSvg } from "./TalismanSvg";
 import type { ConstructedPreview } from "./constructed";
-import { TALISMAN_FRAMES, TALISMAN_VARIANTS, type FrameSpec, type TalismanSpec } from "./variants";
+import { PHYSICS_CAPTION, TALISMAN_FRAMES, TALISMAN_VARIANTS, type FrameSpec, type TalismanSpec } from "./variants";
 import type { TalismanPurpose } from "@/lib/oracle/talisman";
 
 type SessionPayload = {
@@ -228,6 +228,9 @@ export default function TalismanPreviewClient({
                 <FrameCard key={frame.id} spec={spec} frame={frame} />
               ))}
             </div>
+            <p className="mx-auto mt-4 max-w-3xl text-center text-[11px] leading-relaxed text-white/40">
+              {spec.physicsCaption ?? PHYSICS_CAPTION}
+            </p>
           </section>
         ) : null}
 

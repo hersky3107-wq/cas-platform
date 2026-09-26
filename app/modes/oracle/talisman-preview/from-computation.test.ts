@@ -5,7 +5,7 @@ import { computeTalisman } from '@/lib/oracle/talisman'
 import { ziweiChart } from '@/lib/oracle/engines/ziwei'
 import { palacesFrom, specFromComputation } from './from-computation'
 import { constructedPreviews, constructedSinkang } from './constructed'
-import { TALISMAN_FRAMES } from './variants'
+import { PHYSICS_CAPTION, TALISMAN_FRAMES } from './variants'
 import { TalismanSvg } from './TalismanSvg'
 import { charts1988, fakeConsensus, LIVE_ACCESS } from '@/lib/oracle/talisman/__tests__/fixture'
 
@@ -146,6 +146,16 @@ describe('constructed centre fixtures', () => {
     )
     expect(html).toContain('data-prism="blank"')
     expect(html).not.toContain('#6b5b8c')
+  })
+
+  it('carries the physics caption on the spec and never draws it inside the SVG', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    expect(row.spec.physicsCaption).toBe(PHYSICS_CAPTION)
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'phys' }),
+    )
+    expect(html).not.toContain('물리학적 주장')
+    expect(html).not.toContain('오행-물리 대응')
   })
 
   it('paints identity wash, need outline, and impulse dent from the PRISM palette', () => {

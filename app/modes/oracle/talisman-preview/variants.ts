@@ -85,7 +85,14 @@ export type TalismanSpec = {
   spreadLocks?: readonly number[]
   dateLabel: string
   sessionId: string
+  /**
+   * Explanation-screen caption. Preview page only — never drawn inside the SVG.
+   */
+  physicsCaption?: string
 }
+
+export const PHYSICS_CAPTION =
+  '오행-물리 대응: 수 G 중력 · 목 ds² 시공간 · 토 W Z 약한 핵력 · 금 SU(3) 강한 핵력 · 화 γ 전자기력 — 동양 오행 해석 계열의 상징적 대응이며 물리학적 주장이 아닙니다.'
 
 export const ELEMENT_META: Record<
   ElementKey,
