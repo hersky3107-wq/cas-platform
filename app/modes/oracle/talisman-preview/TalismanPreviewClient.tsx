@@ -106,18 +106,18 @@ export default function TalismanPreviewClient() {
           <h2 className="text-[10px] tracking-[0.28em] text-white/40 uppercase">Legibility notes</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5">
             <li>
-              Major type is sized for phone: core 오행 hanja, eight 사주 characters, 자미
-              palace names. Minor rim engraving stays small on purpose.
+              Three zones: a carved core (concentric rules, 사신수, physics glyph, hanja
+              over structure), a textured middle (사주 web, 주역, 낙서, aspect chords,
+              bindrune, Latin caps, tarot suits, Maya kin), and a sparse rim. 흉방 seals
+              are closed locks — rings and a wrapping cord — not a strike-through.
             </li>
             <li>
-              A 흉방 seal is a lattice and crossing strokes over the cell, not a filled
-              panel. Empty 자미 palaces leave an open sector; a 대흉 seat still notches
-              the rim. Variant 5 keeps the crown as empty ring-rules and ticks — seats
-              without occupants — so the absence is drawn, not missing.
+              Runes and Latin are drawn larger than the hanja so their few strokes still
+              read. The bindrune sits on the spine. Variant 5 keeps empty ring-rules.
             </li>
             <li>
-              Density peaks at the core. The crown is outline plus type. The whole piece
-              leans toward the deficiency sector; a few rings are broken rather than closed.
+              Density peaks at the core. The piece leans toward the deficiency; a few
+              rings stay broken.
             </li>
           </ul>
         </section>
