@@ -255,6 +255,12 @@ export type PurposeBundle = {
   tables: Record<TalismanPurpose, PurposeTable>
 }
 
+export type TalismanPrismColors = {
+  impulse: string
+  need: string
+  identity: string
+}
+
 export type TalismanAccessInput = {
   status: string
   promptVersion: string | null
@@ -274,4 +280,6 @@ export type TalismanComputation = {
   purpose: PurposeBundle
   fudan: FudanSpec
   independence: IndependenceCensus
+  /** session_inputs.prism colour ids. Not drawn. Not sent to a model. */
+  prismColors: TalismanPrismColors | null
 }

@@ -5,13 +5,14 @@ import { collectSeals, subtractSealed } from './seals'
 import { fudanSpec, purposeBundle } from './purpose'
 import { independenceCensus } from './types'
 import type { AxisConsensus } from '../axes/types'
-import type { TalismanAccessInput, TalismanCharts, TalismanComputation, TalismanPurpose } from './types'
+import type { TalismanAccessInput, TalismanCharts, TalismanComputation, TalismanPrismColors, TalismanPurpose } from './types'
 
 export function computeTalisman(input: {
   access: TalismanAccessInput
   charts: TalismanCharts
   consensus: Pick<AxisConsensus, 'elements'> | null
   purpose?: TalismanPurpose | null
+  prismColors?: TalismanPrismColors | null
 }): TalismanComputation | null {
   if (!canComputeTalisman(input.access)) return null
 
@@ -34,5 +35,6 @@ export function computeTalisman(input: {
     purpose,
     fudan: fudanSpec(input.purpose ?? null),
     independence: independenceCensus(),
+    prismColors: input.prismColors ?? null,
   }
 }

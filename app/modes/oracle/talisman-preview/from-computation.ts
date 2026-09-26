@@ -245,6 +245,7 @@ export function specFromComputation(
     note: meta.note ?? '',
     element,
     mode: computation.centre.mode,
+    prismColors: computation.prismColors,
     purposeWealth: computation.fudan.kind === 'hanja' && (computation.fudan.purpose as TalismanPurpose) === 'wealth',
     fudanGlyph,
     tarotSuits: (['wands', 'cups', 'swords', 'pentacles'] as const).filter((suit) => presentSuits.size === 0 || presentSuits.has(suit)),

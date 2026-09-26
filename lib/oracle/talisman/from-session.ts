@@ -4,10 +4,10 @@
  * deficiency. No new session kind, no credits.
  */
 
-import type { OracleComputation, OracleJobSession } from '../schema'
+import type { OracleComputation, OracleJobSession, OracleSessionInputs } from '../schema'
 import { computeTalisman } from './compute'
 import { chartsFromComputations, type ArrivalReport } from './charts'
-import type { TalismanCharts, TalismanComputation, TalismanPurpose } from './types'
+import type { TalismanCharts, TalismanComputation, TalismanPrismColors, TalismanPurpose } from './types'
 
 export type TalismanSessionResult = {
   computation: TalismanComputation | null
@@ -17,7 +17,9 @@ export type TalismanSessionResult = {
 }
 
 export function talismanFromStoredSession(input: {
-  session: Pick<OracleJobSession, 'status' | 'prompt_version'>
+  session: Pick<OracleJobSession, 'status' | 'prompt_version'> & {
+    session_inputs?: OracleSessionInputs | null
+  }
   computations: readonly Pick<OracleComputation, 'system' | 'result'>[]
   deficiency: Record<string, unknown> | null
   purpose?: TalismanPurpose | null
@@ -49,6 +51,7 @@ export function talismanFromStoredSession(input: {
         }
       : null,
     purpose: input.purpose ?? null,
+    prismColors: readPrismColors(input.session.session_inputs),
   })
   return {
     computation,
@@ -60,4 +63,13 @@ export function talismanFromStoredSession(input: {
 
 function num(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function readPrismColors(inputs: OracleSessionInputs | null | undefined): TalismanPrismColors | null {
+  const prism = inputs?.prism
+  if (!prism) return null
+  const { impulse, need, identity } = prism
+  if (typeof impulse !== 'string' || typeof need !== 'string' || typeof identity !== 'string') return null
+  if (!impulse || !need || !identity) return null
+  return { impulse, need, identity }
 }

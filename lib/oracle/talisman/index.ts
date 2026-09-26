@@ -9,6 +9,7 @@ export type {
   TalismanCentre,
   TalismanAccessInput,
   TalismanPurpose,
+  TalismanPrismColors,
   NativeFindings,
   SealTarget,
   FudanSpec,

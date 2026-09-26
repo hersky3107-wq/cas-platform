@@ -42,7 +42,7 @@ export async function previewFromStoredSession(
     : null
   let query = supabaseAdmin
     .from('oracle_job_sessions')
-    .select('id, user_id, status, prompt_version, created_at')
+    .select('id, user_id, status, prompt_version, created_at, session_inputs')
     .eq('id', id)
   if (gate.userId) query = query.eq('user_id', gate.userId)
   const { data: session, error } = await query.maybeSingle()

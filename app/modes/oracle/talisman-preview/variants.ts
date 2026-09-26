@@ -47,6 +47,11 @@ export type TalismanSpec = {
   numerology: readonly number[]
   /** Null when the session has no PRISM coreMatrix. Do not invent a dent. */
   prismDentAxis: 0 | 1 | 2 | 3 | 4 | 5 | null
+  /**
+   * session_inputs.prism colour ids. Carried for a later render pass.
+   * Not drawn. Never forwarded to a model payload.
+   */
+  prismColors?: { impulse: string; need: string; identity: string } | null
   luoshuSealed: readonly number[]
   ichingLines: readonly boolean[]
   bokjangEmpty: readonly number[]
