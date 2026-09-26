@@ -128,6 +128,18 @@ export const ORACLE_DAILY_SESSION_CREDIT_PRICES: Record<OracleSessionScope, Part
   combined: { 1: 2 },
 }
 
+/**
+ * Provisional product prices. First deficiency phone is free once per user
+ * lifetime, on the earliest finished integrated session — this table is
+ * never 0. A purchase unlocks all four formats for that (session, purpose)
+ * pair; re-download is free because of the UNIQUE purchase row, not because
+ * a price here is 0.
+ */
+export const TALISMAN_PRICE = { deficiency: 6, purpose: 8 } as const
+
+/** `credit_logs.module` for 부적 unlock charges. */
+export const ORACLE_TALISMAN_CREDITS_MODULE = 'oracle_talisman'
+
 export function creditsForOracleSession(
   scope: OracleSessionScope,
   readerCount: number,

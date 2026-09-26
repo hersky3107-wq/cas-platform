@@ -13,7 +13,7 @@
  *      (consensus/lean/split headline labels were abolished; see
  *      PhaseConsensus in lib/oracle/axes/types.ts for the numbers behind it)
  *   ③ all twelve system readings (one_line lead, narrative collapsed)
- *   ④ talisman entry point (centre copy; calc is not wired to the preview yet)
+ *   ④ talisman entry point (centre copy → /modes/oracle/talisman)
  *
  * Brand names are shown; model names never reach this bundle.
  */
@@ -25,7 +25,6 @@ import {
   ChevronLeft,
   CircleAlert,
   LoaderCircle,
-  Lock,
   RotateCcw,
   Scale,
   Sparkles,
@@ -1013,7 +1012,13 @@ function ReadingsSection({
 /* ④ Talisman entry point                                              */
 /* ------------------------------------------------------------------ */
 
-function TalismanEntrySection({ consensus }: { consensus: OracleRunnerConsensus }) {
+function TalismanEntrySection({
+  consensus,
+  sessionId,
+}: {
+  consensus: OracleRunnerConsensus;
+  sessionId: string;
+}) {
   const copy = describeCentreFromDeficiency(asRecord(consensus.deficiencyVector));
 
   return (
@@ -1025,9 +1030,12 @@ function TalismanEntrySection({ consensus }: { consensus: OracleRunnerConsensus 
             <h2 className="text-lg font-semibold text-white">{copy.headline}</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-300">{copy.body}</p>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/55">
-            <Lock className="h-3 w-3" aria-hidden /> 준비 중
-          </span>
+          <Link
+            href={`/modes/oracle/talisman?session=${sessionId}`}
+            className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2.5 py-1 text-[11px] font-medium text-amber-50 hover:bg-amber-400/25"
+          >
+            부적 받기
+          </Link>
         </div>
       </article>
     </section>
@@ -1324,7 +1332,9 @@ export default function OracleIntegratedClient({
             />
 
             {/* ④ Talisman entry point. */}
-            {finished && !stub && consensus ? <TalismanEntrySection consensus={consensus} /> : null}
+            {finished && !stub && consensus && session.sessionId ? (
+              <TalismanEntrySection consensus={consensus} sessionId={session.sessionId} />
+            ) : null}
           </section>
         ) : (
           <section>

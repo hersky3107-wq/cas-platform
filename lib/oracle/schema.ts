@@ -189,6 +189,16 @@ export type OracleConsensus = {
   computed_at: string
 }
 
+/** public.talisman_purchases — one paid unlock per (user, session, purpose) */
+export type OracleTalismanPurchase = {
+  id: string
+  user_id: string
+  session_id: string
+  purpose: 'deficiency' | 'wealth' | 'love' | 'promotion' | 'health' | 'exorcism'
+  credits_charged: number
+  created_at: string
+}
+
 /** public.oracle_daily_cache — one row per (user_id, civil date) */
 export type OracleDailyCache = {
   user_id: string
