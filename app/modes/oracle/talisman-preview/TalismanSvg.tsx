@@ -180,22 +180,15 @@ function HanjaGlyph({
   )
 }
 
-/** Closed lock — concentric rings and a wrapping cord. No strike-through. */
-function Lock({ x, y, accent, scale = 1 }: { x: number; y: number; accent: string; scale?: number }) {
+/** Stamped knot — circle bound by crossed cords. Replaces the lock/square UI. */
+function SealKnot({ x, y, accent, scale = 1 }: { x: number; y: number; accent: string; scale?: number }) {
   return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`} stroke={accent} fill="none" strokeLinecap="butt">
-      <circle r="36" strokeWidth={2.6} />
-      <circle r="27" strokeWidth={1.3} />
-      <circle r="16" strokeWidth={2} />
-      <path d="M-20,-6 C-10,-26 10,-26 20,-6" strokeWidth={2.2} />
-      <path d="M-20,6 C-10,26 10,26 20,6" strokeWidth={2.2} />
-      <rect x="-10" y="-10" width="20" height="20" strokeWidth={1.7} transform="rotate(45)" />
-      {Array.from({ length: 12 }, (_, i) => {
-        const a = i * 30
-        const p0 = polar(32, a)
-        const p1 = polar(36, a)
-        return <line key={i} x1={p0.x - CX} y1={p0.y - CY} x2={p1.x - CX} y2={p1.y - CY} strokeWidth={1.2} />
-      })}
+    <g data-seal-knot="true" transform={`translate(${x} ${y}) scale(${scale})`} stroke={accent} fill="none" strokeLinecap="butt">
+      <circle r="18" strokeWidth={SW.med} />
+      <line x1="-13" y1="-13" x2="13" y2="13" strokeWidth={SW.med} />
+      <line x1="13" y1="-13" x2="-13" y2="13" strokeWidth={SW.med} />
+      <line x1="-16" y1="0" x2="16" y2="0" strokeWidth={SW.hair} />
+      <line x1="0" y1="-16" x2="0" y2="16" strokeWidth={SW.hair} />
     </g>
   )
 }
@@ -340,39 +333,34 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   const drain = spec.mode === 'drain'
   const follow = spec.mode === 'follow'
   const aim = ELEMENT_AIM[element]
-  const gap0 = (aim + 150) % 360
-  const gap1 = gap0 + 38
-  const rings = [36, 52, 68, 84, 100, 116, 132]
-  const wash = spec.intensity === 'soft' ? 0.045 : 0.12
+  const wash = spec.intensity === 'soft' ? 0.22 : 0.42
   return (
-    <g data-centre={follow ? 'follow' : spec.intensity === 'soft' ? 'soft' : 'full'} data-intensity={spec.intensity ?? 'full'}>
-      {drain ? null : <circle cx={CX} cy={CY} r={CORE} fill={accent} fillOpacity={wash} stroke="none" />}
-      {rings.map((r, i) => (
-        <polyline
-          key={r}
-          points={arcPoly(r, gap1 + i * 4, gap0 + 352 - i * 3, i)}
-          fill="none"
-          stroke={accent}
-          strokeWidth={SW.hair}
-          opacity={0.85}
-        />
-      ))}
-      <polyline points={arcPoly(CORE, gap1, gap0 + 360, 1)} fill="none" stroke={accent} strokeWidth={SW.med} />
-      {Array.from({ length: 24 }, (_, i) => {
-        const a = aim - 90 + i * 7.5
-        const a0 = polar(42, a)
-        const a1 = polar(CORE - 8, a)
-        return <line key={i} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.hair} opacity={0.55} />
-      })}
-      <polygon points={polyPoints(8, 58, 22)} fill="none" stroke={accent} strokeWidth={SW.hair} />
+    <g
+      data-centre={follow ? 'follow' : spec.intensity === 'soft' ? 'soft' : 'full'}
+      data-intensity={spec.intensity ?? 'full'}
+      data-core={drain ? 'drain' : 'fill'}
+    >
+      {drain ? (
+        <>
+          <circle cx={CX} cy={CY} r={CORE} fill={GROUND} stroke={accent} strokeWidth={SW.med} data-drain-shell="true" />
+          <circle cx={CX} cy={CY} r={CORE - 18} fill="none" stroke={accent} strokeWidth={SW.hair} data-drain-gap="true" />
+        </>
+      ) : (
+        <circle cx={CX} cy={CY} r={CORE} fill={accent} fillOpacity={wash} stroke="none" data-fill-core="true" />
+      )}
       {drain
-        ? Array.from({ length: 12 }, (_, i) => {
-            const a = aim - 66 + i * 11
-            const a0 = polar(CORE + 2, a)
-            const a1 = polar(CORE + 42, a)
-            return <line key={`d${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.med} />
+        ? Array.from({ length: 14 }, (_, i) => {
+            const a = aim - 70 + i * (140 / 13)
+            const a0 = polar(CORE + 4, a)
+            const a1 = polar(CORE + 52, a)
+            return <line key={`vent-${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.med} data-ray="out" />
           })
-        : null}
+        : Array.from({ length: 16 }, (_, i) => {
+            const a = aim - 80 + i * 10
+            const a0 = polar(CORE - 6, a)
+            const a1 = polar(36, a)
+            return <line key={`in-${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.med} data-ray="in" />
+          })}
       {follow ? <FollowSpiral accent={accent} /> : null}
       <PhysicsGlyph element={element} accent={accent} height={90} />
       <g data-centre-hanja={meta.hanja} data-centre-hanja-size="140">
@@ -514,13 +502,89 @@ function TallTop({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   )
 }
 
+const SEAL_VERMILION = '#c23b22'
+const SEAL_FIRE = '#8f1d14'
+
+function sealInk(element: TalismanSpec['element']): string {
+  return element === 'fire' ? SEAL_FIRE : SEAL_VERMILION
+}
+
+function stampedSquare(size: number): string {
+  const h = size / 2
+  const pts: string[] = []
+  const n = 36
+  for (let i = 0; i <= n; i += 1) {
+    const t = (i / n) * 4
+    const side = Math.floor(t) % 4
+    const u = t - Math.floor(t)
+    const wob = 5 * Math.sin(i * 1.71 + side * 0.9)
+    let x = 0
+    let y = 0
+    if (side === 0) {
+      x = -h + u * size
+      y = -h + wob
+    } else if (side === 1) {
+      x = h + wob
+      y = -h + u * size
+    } else if (side === 2) {
+      x = h - u * size
+      y = h + wob
+    } else {
+      x = -h + wob
+      y = h - u * size
+    }
+    pts.push(`${i === 0 ? 'M' : 'L'}${round(x)},${round(y)}`)
+  }
+  return `${pts.join('')}Z`
+}
+
+function SealStamp({
+  spec,
+  x,
+  y,
+  size = 200,
+}: {
+  spec: TalismanSpec
+  x: number
+  y: number
+  size?: number
+}) {
+  const ink = sealInk(spec.element)
+  const runes = spec.bindruneRunes
+  const hasRunes = Boolean(runes && runes.length > 0)
+  const inner = size * 0.36
+  return (
+    <g data-seal-stamp="true" data-seal-ink={ink} transform={`translate(${x} ${y})`}>
+      <path d={stampedSquare(size)} fill={ink} stroke={ink} strokeWidth={2} />
+      {hasRunes ? (
+        <g transform={`scale(${inner / 40})`} stroke="#2a0a08" fill="none">
+          <BindruneSigil stones={runes} x={0} y={0} accent="#2a0a08" />
+        </g>
+      ) : (
+        <text
+          x={0}
+          y={8}
+          textAnchor="middle"
+          fill="#f6e6d8"
+          fontSize={size >= 180 ? 32 : 22}
+          fontFamily="ui-monospace, monospace"
+          letterSpacing="1.4"
+        >
+          {spec.serial ?? ''}
+        </text>
+      )}
+    </g>
+  )
+}
+
 function TallBottom({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   const serial = spec.serial ? `No. ${spec.serial}` : ''
   return (
     <g data-zone="bottom">
-      <g transform="translate(500 1730) scale(3.25)" data-bindrune-slot="true">
+      <g transform="translate(500 1688) scale(3.25)" data-bindrune-slot="true">
         <BindruneSigil stones={spec.bindruneRunes} x={0} y={0} accent={accent} />
       </g>
+      <SealStamp spec={spec} x={CIRCLE_CX} y={1936} size={200} />
       <text
         x={CIRCLE_CX}
         y={2048}
@@ -1006,7 +1070,7 @@ function ZiweiRing({
                 stroke={accent}
                 strokeWidth={hot ? SW.med : SW.hair}
               />
-              <Lock x={mid.x} y={mid.y} accent={accent} scale={0.55} />
+              <SealKnot x={mid.x} y={mid.y} accent={accent} scale={1} />
             </g>
           )
         }
@@ -1089,7 +1153,7 @@ function HyungNotches({ spec }: { spec: TalismanSpec }) {
               stroke={hot ? INK.strong : INK.hair}
               strokeWidth={hot ? SW.med : SW.hair}
             />
-            <Lock x={seat.x} y={seat.y} accent={INK.strong} scale={0.58} />
+            <SealKnot x={seat.x} y={seat.y} accent={INK.strong} scale={1} />
           </g>
         )
       })}
@@ -1357,7 +1421,7 @@ function LuoshuLocks({ sealed, accent }: { sealed: readonly number[]; accent: st
         return (
           <g key={`lock-${palace}`}>
             <rect x={c.x} y={c.y} width={c.w} height={c.w} fill="none" stroke={accent} strokeWidth={SW.hair} />
-            <Lock x={c.cx} y={c.cy} accent={accent} scale={0.92} />
+            <SealKnot x={c.cx} y={c.cy} accent={accent} scale={1.15} />
           </g>
         )
       })}
@@ -1370,7 +1434,7 @@ function SpreadLocks({ angles, accent }: { angles: readonly number[]; accent: st
     <g>
       {angles.map((a, i) => {
         const p = polar(SCRIPT_R, a)
-        return <Lock key={`spread-${i}`} x={p.x} y={p.y} accent={accent} scale={0.42} />
+        return <SealKnot key={`spread-${i}`} x={p.x} y={p.y} accent={accent} scale={1} />
       })}
     </g>
   )
@@ -1488,7 +1552,9 @@ export function TalismanSvg({
             ) : null}
           </g>
         </g>
-        {tall ? <TallBottom spec={spec} accent={accent} /> : null}
+        {tall ? <TallBottom spec={spec} accent={accent} /> : (
+          <SealStamp spec={spec} x={CIRCLE_CX + 330} y={CIRCLE_CY + 330} size={120} />
+        )}
       </g>
     </svg>
   )

@@ -126,10 +126,20 @@ describe('constructed centre fixtures', () => {
       createElement(TalismanSvg, { spec: follow.spec, frame: SQUARE, uid: 'follow-core' }),
     )
     expect(followHtml).toContain('data-centre="follow-spiral"')
+    expect(followHtml).toContain('data-ray="in"')
     const softHtml = renderToStaticMarkup(
       createElement(TalismanSvg, { spec: weak.spec, frame: SQUARE, uid: 'soft-core' }),
     )
     expect(softHtml).toContain('data-intensity="soft"')
+    expect(softHtml).toContain('data-fill-core="true"')
+    expect(softHtml).toContain('data-ray="in"')
+    const drainHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: strong.spec, frame: SQUARE, uid: 'drain-core' }),
+    )
+    expect(drainHtml).toContain('data-core="drain"')
+    expect(drainHtml).toContain('data-drain-gap="true"')
+    expect(drainHtml).toContain('data-ray="out"')
+    expect(drainHtml).not.toContain('data-fill-core="true"')
   })
 
   it('consensus with no leader keeps a null element and draws no earth centre', () => {
@@ -395,6 +405,33 @@ describe('constructed centre fixtures', () => {
       }),
     )
     expect(exorcismHtml).toContain('data-fudan-size="460"')
+  })
+
+  it('stamps a vermilion seal on every talisman and uses the fire ink for 화', () => {
+    const sinkang = rows.find((item) => item.id === 'sinkang')!
+    const phone = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: sinkang.spec, frame: PHONE, uid: 'seal-phone' }),
+    )
+    const square = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: sinkang.spec, frame: SQUARE, uid: 'seal-sq' }),
+    )
+    expect(phone).toContain('data-seal-knot="true"')
+    expect(phone).toContain('data-seal-stamp="true"')
+    expect(square).toContain('data-seal-stamp="true"')
+    expect(phone).toContain('data-seal-ink="#8f1d14"')
+    const earth = rows.find((item) => item.id === 'follow')!
+    const earthHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: earth.spec, frame: PHONE, uid: 'seal-earth' }),
+    )
+    expect(earthHtml).toContain('data-seal-ink="#c23b22"')
+    const blank = renderToStaticMarkup(
+      createElement(TalismanSvg, {
+        spec: { ...sinkang.spec, bindruneRunes: null },
+        frame: PHONE,
+        uid: 'seal-serial',
+      }),
+    )
+    expect(blank).toContain('7f2a19')
   })
 
   it('uses the tall master for phone/wallet and the circle-only crop for square/16:9', () => {
