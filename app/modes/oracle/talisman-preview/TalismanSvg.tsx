@@ -363,18 +363,27 @@ function SectorRays({ element, accent }: { element: ElementKey; accent: string }
   )
 }
 
-function Spine({ accent, wealth, bindrune }: { accent: string; wealth: boolean; bindrune: boolean }) {
+function Spine({
+  accent,
+  fudanGlyph,
+  bindrune,
+}: {
+  accent: string
+  fudanGlyph: string | null
+  bindrune: boolean
+}) {
   const gap = CORE + 4
-  const runeY = wealth ? CY - CORE - 118 : CY - CORE - 62
+  const runeY = fudanGlyph ? CY - CORE - 118 : CY - CORE - 62
+  const fudanSize = fudanGlyph && fudanGlyph.length > 1 ? 46 : 72
   return (
     <g fill={accent} stroke={accent} strokeLinecap="butt">
       <rect x={CX - 4} y={18} width={8} height={CY - gap - 18} />
       <rect x={CX - 4} y={CY + gap} width={8} height={980 - (CY + gap)} />
       <rect x={CX - 30} y={10} width={60} height={6} />
       <polygon points={`${CX - 18},30 ${CX},14 ${CX + 18},30`} fill="none" strokeWidth={SW.emph} />
-      {wealth ? (
-        <Hanjatext x={CX} y={92} size={72} fill={accent}>
-          財
+      {fudanGlyph ? (
+        <Hanjatext x={CX} y={92} size={fudanSize} fill={accent}>
+          {fudanGlyph}
         </Hanjatext>
       ) : null}
       {bindrune ? <BindruneMark x={CX} y={runeY} accent={accent} /> : null}
@@ -605,12 +614,10 @@ function MayaKin({ tone, nawal, x, y }: { tone: number; nawal: number; x: number
 }
 
 function MiddleScripts({ spec }: { spec: TalismanSpec }) {
-  const suits = [
-    { mark: 'wands' as const, a: 128 },
-    { mark: 'cups' as const, a: 52 },
-    { mark: 'swords' as const, a: -128 },
-    { mark: 'pentacles' as const, a: -52 },
-  ]
+  const suits = (spec.tarotSuits ?? ['wands', 'cups', 'swords', 'pentacles']).map((mark) => ({
+    mark,
+    a: mark === 'wands' ? 128 : mark === 'cups' ? 52 : mark === 'swords' ? -128 : -52,
+  }))
   const kin = polar(SCRIPT_R, 200)
   return (
     <g>
@@ -906,16 +913,17 @@ function luoshuCell(index: number): { x: number; y: number; w: number; cx: numbe
 function TextureCuts({ spec }: { spec: TalismanSpec }) {
   const houseInner = SIGN_R - 26
   const houseOuter = ZIWEI_IN - 2
+  const cutHouses = spec.housesMissing ?? spec.palaces == null
   return (
     <g>
-      {spec.palaces == null ? (
+      {cutHouses ? (
         <path
           fill={GROUND}
           fillRule="evenodd"
           d={`M ${CX - houseOuter} ${CY} a ${houseOuter} ${houseOuter} 0 1 0 ${houseOuter * 2} 0 a ${houseOuter} ${houseOuter} 0 1 0 ${-houseOuter * 2} 0 M ${CX - houseInner} ${CY} a ${houseInner} ${houseInner} 0 1 1 ${houseInner * 2} 0 a ${houseInner} ${houseInner} 0 1 1 ${-houseInner * 2} 0`}
         />
       ) : (
-        spec.palaces.map((palace, i) => {
+        (spec.palaces ?? []).map((palace, i) => {
           const a0 = -90 + i * 30
           if (palace.empty) {
             const left = polar(LATIN_R - 8, a0 + 1)
@@ -963,6 +971,17 @@ function LuoshuLocks({ sealed, accent }: { sealed: readonly number[]; accent: st
             <Lock x={c.cx} y={c.cy} accent={accent} scale={0.92} />
           </g>
         )
+      })}
+    </g>
+  )
+}
+
+function SpreadLocks({ angles, accent }: { angles: readonly number[]; accent: string }) {
+  return (
+    <g>
+      {angles.map((a, i) => {
+        const p = polar(SCRIPT_R, a)
+        return <Lock key={`spread-${i}`} x={p.x} y={p.y} accent={accent} scale={0.42} />
       })}
     </g>
   )
@@ -1019,18 +1038,25 @@ export function TalismanSvg({
           <ElementSector element={spec.element} accent={accent} />
           <Luoshu sealed={spec.luoshuSealed} accent={accent} />
           <MinorRim spec={spec} />
-          {spec.palaces != null ? (
+          {spec.planets.length > 0 ? (
+            <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
+          ) : spec.palaces != null ? (
             <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
           ) : null}
-          {spec.palaces != null ? <MiddleScripts spec={spec} /> : null}
+          {spec.palaces != null || spec.numerology.length > 0 ? <MiddleScripts spec={spec} /> : null}
           <IchingGaps emptySeats={spec.bokjangEmpty} />
           <HexagramStack lines={spec.ichingLines} />
           <LatinRing />
           <ZiweiRing palaces={spec.palaces} accent={accent} />
           <SajuRing spec={spec} accent={accent} />
-          <Spine accent={accent} wealth={spec.purposeWealth} bindrune={spec.bindrune} />
+          <Spine
+            accent={accent}
+            fudanGlyph={spec.fudanGlyph ?? (spec.purposeWealth ? '財' : null)}
+            bindrune={spec.bindrune}
+          />
           <TextureCuts spec={spec} />
           <LuoshuLocks sealed={spec.luoshuSealed} accent={accent} />
+          <SpreadLocks angles={spec.spreadLocks ?? []} accent={accent} />
           <HyungNotches spec={spec} />
           <Centre spec={spec} accent={accent} />
           <SectorRays element={spec.element} accent={accent} />

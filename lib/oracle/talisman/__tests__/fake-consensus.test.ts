@@ -35,7 +35,7 @@ describe('fake-consensus guard', () => {
   it('중화 fallback lets the centre follow deficiency, but layers still ignore it', () => {
     const pillars = fourPillars({ date: '1984-02-15', time: '12:00', timezone: 'Asia/Seoul' })
     const charts = charts1988({
-      saju: { eokbu: eokbu(pillars), tenGods: tenGods(pillars.day.stem, pillars) },
+      saju: { eokbu: eokbu(pillars), tenGods: tenGods(pillars.day.stem, pillars), pillars },
     })
     expect(charts.saju?.eokbu.yongsin).toBeNull()
     const metal = computeTalisman({

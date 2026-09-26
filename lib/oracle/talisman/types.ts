@@ -9,11 +9,21 @@
 
 import type { SystemId } from '../axes/types'
 import { SYSTEM_IDS } from '../axes/types'
-import type { CompassDirection, EokbuResult, FiveElement, NineStarResult, TenGodsResult } from '../engines/calendar'
+import type {
+  CompassDirection,
+  EokbuResult,
+  FiveElement,
+  FourPillars,
+  NineStarResult,
+  SukuyouResult,
+  TenGodsResult,
+  TzolkinResult,
+} from '../engines/calendar'
 import type { NatalChart } from '../engines/astro/types'
 import type { IchingDrawResult, RuneDrawResult, TarotDrawResult } from '../engines/draw/types'
 import type { SixRelative, TarotSuit } from '../engines/draw/tables'
 import type { NameResult, SuriLabel } from '../engines/name/types'
+import type { NumerologyResult } from '../engines/numerology/types'
 import type { PrismResult } from '../engines/prism/types'
 import type { DomainName } from '../engines/prism/tables'
 import type { PalaceName as ZiweiPalaceName, ZiweiChart } from '../engines/ziwei/types'
@@ -182,7 +192,7 @@ export type NativeFindings = {
 }
 
 export type TalismanCharts = {
-  saju: { eokbu: EokbuResult; tenGods: TenGodsResult } | null
+  saju: { eokbu: EokbuResult; tenGods: TenGodsResult; pillars: FourPillars | null } | null
   ziwei: ZiweiChart | null
   astro: NatalChart | null
   iching: IchingDrawResult | null
@@ -191,6 +201,10 @@ export type TalismanCharts = {
   name: NameResult | null
   ninestar: NineStarResult | null
   runes: RuneDrawResult | null
+  /** Form only — no native finding. */
+  numerology: NumerologyResult | null
+  sukuyou: SukuyouResult | null
+  tzolkin: TzolkinResult | null
 }
 
 export type TalismanSector =
@@ -248,8 +262,8 @@ export type TalismanAccessInput = {
 }
 
 /**
- * Shape the SVG will consume. Preview stays hard-coded until a later pass
- * wires this onto the session.
+ * Shape the SVG consumes. Preview variants remain hard-coded; session mode
+ * fills this from computeTalisman.
  */
 export type TalismanComputation = {
   centre: TalismanCentre

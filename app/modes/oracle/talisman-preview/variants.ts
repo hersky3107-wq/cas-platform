@@ -50,6 +50,13 @@ export type TalismanSpec = {
   tzolkinTone: number
   tzolkinNawal: number
   bindrune: boolean
+  /** 符膽 on the spine. Null when the bindrune placeholder is used instead. */
+  fudanGlyph?: string | null
+  /** Suits still present in the spread; omitted = draw all four. */
+  tarotSuits?: readonly ('wands' | 'cups' | 'swords' | 'pentacles')[]
+  /** When true, the house band is cut even if palaces exist. */
+  housesMissing?: boolean
+  spreadLocks?: readonly number[]
   dateLabel: string
   sessionId: string
 }

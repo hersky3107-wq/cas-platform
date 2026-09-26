@@ -25,6 +25,9 @@ export const EMPTY_CHARTS: TalismanCharts = {
   name: null,
   ninestar: null,
   runes: null,
+  numerology: null,
+  sukuyou: null,
+  tzolkin: null,
 }
 
 export function fakeConsensus(deficiency: Partial<Record<FiveElement, number>>): Pick<AxisConsensus, 'elements'> {
@@ -43,7 +46,7 @@ export function fakeConsensus(deficiency: Partial<Record<FiveElement, number>>):
 export function charts1988(overrides: Partial<TalismanCharts> = {}): TalismanCharts {
   const pillars = fourPillars({ date: '1988-03-15', time: '04:30', timezone: 'Asia/Seoul' })
   return {
-    saju: { eokbu: eokbu(pillars), tenGods: tenGods(pillars.day.stem, pillars) },
+    saju: { eokbu: eokbu(pillars), tenGods: tenGods(pillars.day.stem, pillars), pillars },
     ziwei: ziweiChart({
       birthDate: '1988-03-15',
       birthTime: '04:30',
@@ -70,6 +73,9 @@ export function charts1988(overrides: Partial<TalismanCharts> = {}): TalismanCha
     name: nameReading({ surname: '김', givenName: '지수', locale: 'ko' }),
     ninestar: nineStar({ date: '1988-03-15', time: '12:00', timezone: 'Asia/Seoul' }),
     runes: runeDraw({ seed: 'talisman-runes-1988', count: 3, pickedPositions: [1, 2, 3] }),
+    numerology: null,
+    sukuyou: null,
+    tzolkin: null,
     ...overrides,
   }
 }
