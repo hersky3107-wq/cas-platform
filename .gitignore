@@ -53,3 +53,6 @@ supabase/.temp/
 scripts/dump-talisman-calibration.ts
 scripts/probe-festival-benchmark-once.ts
 scripts/probe-talisman-sessions.ts
+
+# OFL CJK font used only by scripts/build-talisman-glyphs.ts
+/third_party/fonts/

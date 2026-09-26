@@ -207,8 +207,8 @@ describe('constructed centre fixtures', () => {
       createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財', purposeWealth: true }, frame: TALISMAN_FRAMES[2]!, uid: 'dehanja' }),
     )
     const texts = [...html.matchAll(/<text\b[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]!.trim()).filter(Boolean)
-    expect(html).toContain('>火<')
-    expect(html).toContain('>財<')
+    expect(html).toContain('data-hanja="火"')
+    expect(html).toContain('data-hanja="財"')
     expect(html).not.toContain('靑龍')
     expect(html).not.toContain('朱雀')
     expect(html).not.toContain('黃龍')
@@ -219,7 +219,22 @@ describe('constructed centre fixtures', () => {
     expect(html).toContain('data-palace-mark=')
     expect(html).toContain('feGaussianBlur')
     expect(html).toContain('opacity="0.45"')
-    expect(texts.filter((t) => t === '火' || t === '財').length).toBeGreaterThan(0)
+    expect(texts.some((t) => /[\u3400-\u9FFF]/.test(t))).toBe(false)
+  })
+
+  it('renders zero CJK text nodes after hanja-to-path', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '和合' }, frame: TALISMAN_FRAMES[2]!, uid: 'nockj' }),
+    )
+    const texts = [...html.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)].map((m) => m[1] ?? '')
+    expect(texts.some((t) => /[\u3400-\u9FFF\uF900-\uFAFF]/.test(t))).toBe(false)
+    expect(html).toContain('data-hanja="火"')
+    expect(html).toContain('data-hanja="和"')
+    expect(html).toContain('data-hanja="合"')
+    expect(html.match(/<text\b[^>]*>[\s\S]*?<\/text>/g)?.some((node) => /[\u3400-\u9FFF\uF900-\uFAFF]/.test(node))).toBe(
+      false,
+    )
   })
 
   it('secondary fixture picks natal 금 and emphasises luoshu 4·9', () => {
@@ -256,7 +271,7 @@ describe('constructed centre fixtures', () => {
     expect(threeHtml).toContain('data-bindrune="merged"')
     expect(fiveHtml).toContain('data-bindrune="merged"')
     expect(revHtml).toContain('data-bindrune="merged"')
-    expect(revHtml).toContain('>財<')
+    expect(revHtml).toContain('data-hanja="財"')
     expect(threeHtml).not.toEqual(fiveHtml)
     const blank = renderToStaticMarkup(
       createElement(TalismanSvg, {

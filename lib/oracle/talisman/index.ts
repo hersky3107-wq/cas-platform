@@ -28,6 +28,14 @@ export { collectSeals, subtractSealed } from './seals'
 export { purposeBundle, fudanSpec } from './purpose'
 export { computeTalisman } from './compute'
 export { talismanSerial, talismanSerialFromEnv, FAKE_TALISMAN_SERIAL } from './serial'
+export {
+  TALISMAN_HANJA,
+  TALISMAN_GLYPHS,
+  TALISMAN_GLYPH_FONT,
+  TALISMAN_GLYPH_VERSION,
+  TALISMAN_GLYPH_LICENCE,
+  talismanGlyph,
+} from './glyphs'
 export { composeBindrune, bindruneCenterY, mergeSegments, stoneSegments } from './bindrune'
 export type { BindruneStone } from './bindrune'
 export { resolveSecondary, absentFromPillars, SAJU_ABSENT_ORDER } from './secondary'

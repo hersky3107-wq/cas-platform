@@ -1,12 +1,13 @@
 /**
  * Concentric 부적. Three zones:
  *   dense carved core / textured middle (all scripts) / sparse rim
- * Seals BIND with closed locks. Hanja only at the centre 오행 and the 符膽.
+ * Seals BIND with closed locks. Hanja is OFL path data, never a CJK <text>.
  */
 import type { ReactNode } from 'react'
 import { isPrismColor } from '@/lib/oracle/engines/prism/tables'
 import { PRISM_COLOR_HEX } from '@/lib/oracle/prism-swatches'
 import { bindruneCenterY, composeBindrune } from '@/lib/oracle/talisman/bindrune'
+import { TALISMAN_GLYPH_UNITS, talismanGlyph } from '@/lib/oracle/talisman/glyphs'
 import { NawalGlyph } from './nawal-glyphs'
 import { ELEMENT_META, type ElementKey, type FrameSpec, type PalaceMark, type PlanetMark, type TalismanSpec } from './variants'
 
@@ -113,7 +114,7 @@ function polyPoints(n: number, r: number, rotDeg: number): string {
   return pts.join(' ')
 }
 
-function Hanjatext({
+function HanjaGlyph({
   x,
   y,
   size,
@@ -128,20 +129,23 @@ function Hanjatext({
   children: string
   dy?: number
 }) {
+  const chars = [...children]
+  const scale = size / TALISMAN_GLYPH_UNITS
+  const total = chars.reduce((sum, ch) => sum + talismanGlyph(ch).advance * scale, 0)
+  let cursor = -total / 2
   return (
-    <text
-      x={x}
-      y={y + dy}
-      textAnchor="middle"
-      fill={fill}
-      stroke={GROUND}
-      strokeWidth={size * 0.08}
-      paintOrder="stroke"
-      fontSize={size}
-      fontFamily="ui-serif, 'Noto Serif CJK KR', 'Source Han Serif KR', serif"
-    >
-      {children}
-    </text>
+    <g transform={`translate(${x} ${y + dy})`} fill={fill} stroke={GROUND} paintOrder="stroke">
+      {chars.map((ch, i) => {
+        const glyph = talismanGlyph(ch)
+        const node = (
+          <g key={`${ch}-${i}`} transform={`translate(${cursor} 0) scale(${scale})`}>
+            <path data-hanja={ch} d={glyph.d} strokeWidth={TALISMAN_GLYPH_UNITS * 0.08} />
+          </g>
+        )
+        cursor += glyph.advance * scale
+        return node
+      })}
+    </g>
   )
 }
 
@@ -349,9 +353,9 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         : null}
       {follow ? <FollowSpiral accent={accent} /> : null}
       <PhysicsGlyph element={element} accent={accent} />
-      <Hanjatext x={CX} y={CY - 78} size={58} fill={accent}>
+      <HanjaGlyph x={CX} y={CY - 78} size={58} fill={accent}>
         {meta.hanja}
-      </Hanjatext>
+      </HanjaGlyph>
       <GuardianMark element={element} accent={accent} />
     </g>
   )
@@ -394,9 +398,9 @@ function Spine({
       <rect x={CX - 30} y={10} width={60} height={6} />
       <polygon points={`${CX - 18},30 ${CX},14 ${CX + 18},30`} fill="none" strokeWidth={SW.med} />
       {fudanGlyph ? (
-        <Hanjatext x={CX} y={92} size={fudanSize} fill={accent}>
+        <HanjaGlyph x={CX} y={92} size={fudanSize} fill={accent}>
           {fudanGlyph}
-        </Hanjatext>
+        </HanjaGlyph>
       ) : null}
       <BindruneSigil stones={stones} x={CX} y={runeY} accent={accent} />
       <polygon points={`${CX - 16},972 ${CX},992 ${CX + 16},972`} fill="none" strokeWidth={SW.med} />
@@ -452,9 +456,9 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
               <circle cx={p.x} cy={p.y} r={20} fill={GROUND} stroke={INK.hair} strokeWidth={SW.hair} />
             )}
             <g opacity={0.45}>
-              <Hanjatext x={p.x} y={p.y} size={19.2} fill={ch.isDayMaster ? accent : INK.strong} dy={7}>
+              <HanjaGlyph x={p.x} y={p.y} size={19.2} fill={ch.isDayMaster ? accent : INK.strong} dy={7}>
                 {ch.hanja}
-              </Hanjatext>
+              </HanjaGlyph>
             </g>
           </g>
         )
