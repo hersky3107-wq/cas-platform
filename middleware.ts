@@ -47,7 +47,8 @@ export async function middleware(request: NextRequest) {
     return withOptionalBypassCookie(NextResponse.next({ request }), setBypassCookie)
   }
 
-  // Throwaway 부적 SVG preview — no session, no credits. Remove with the route.
+  // Throwaway 부적 SVG preview — fixtures need no login. ?session= is gated
+  // in the page: production loads a row only when the signed-in user owns it.
   if (pathname === '/modes/oracle/talisman-preview') {
     return withOptionalBypassCookie(NextResponse.next({ request }), setBypassCookie)
   }

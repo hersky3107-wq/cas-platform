@@ -1,6 +1,8 @@
 /**
- * Throwaway preview only. Loads a stored session through supabaseAdmin so the
- * calibration page can render without the browser cookie the API requires.
+ * Throwaway preview loader. Uses the service-role client because the preview
+ * page is outside the session API. Ownership is enforced here:
+ * production requires the authenticated user id; non-production may load any
+ * id so calibration can run without a browser cookie.
  */
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { talismanFromStoredSession } from '@/lib/oracle/talisman'
@@ -28,15 +30,20 @@ export type PreviewSessionPayload = {
 export async function previewFromStoredSession(
   id: string,
   purposeRaw: string | null,
+  ownerUserId: string | null,
 ): Promise<PreviewSessionPayload> {
+  const production = process.env.NODE_ENV === 'production'
+  if (production && !ownerUserId) return { ok: false, reason: 'forbidden' }
+
   const purpose = purposeRaw && (PURPOSES as readonly string[]).includes(purposeRaw)
     ? (purposeRaw as TalismanPurpose)
     : null
-  const { data: session, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('oracle_job_sessions')
-    .select('id, status, prompt_version, created_at')
+    .select('id, user_id, status, prompt_version, created_at')
     .eq('id', id)
-    .maybeSingle()
+  if (production && ownerUserId) query = query.eq('user_id', ownerUserId)
+  const { data: session, error } = await query.maybeSingle()
   if (error) return { ok: false, reason: error.message }
   if (!session) return { ok: false, reason: 'not-found' }
 
