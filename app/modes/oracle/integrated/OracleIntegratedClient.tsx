@@ -13,7 +13,7 @@
  *      (consensus/lean/split headline labels were abolished; see
  *      PhaseConsensus in lib/oracle/axes/types.ts for the numbers behind it)
  *   ③ all twelve system readings (one_line lead, narrative collapsed)
- *   ④ talisman entry point (deficiency vector)
+ *   ④ talisman entry point (centre copy; calc is not wired to the preview yet)
  *
  * Brand names are shown; model names never reach this bundle.
  */
@@ -46,6 +46,7 @@ import {
 import { ORACLE_SEER_PERSONAS, seerPersona } from "@/lib/oracle/ai/seer-roster";
 import { ORACLE_SESSION_CREDIT_PRICES } from "@/lib/oracle/runner/conventions";
 import { SYSTEM_IDS, type SystemId } from "@/lib/oracle/axes/types";
+import { describeCentreFromDeficiency } from "@/lib/oracle/talisman/copy";
 import type { OracleBirthProfileV1 } from "@/lib/oracle/types";
 import type { RuneSpreadSize, TarotSpreadSize } from "@/lib/oracle/engines/draw/conventions";
 import type { LineValue } from "@/lib/oracle/engines/draw";
@@ -107,14 +108,6 @@ const FOCUS_LABELS: Record<string, string> = {
   energy: "기력",
 };
 const FOCUS_KEYS = ["work", "money", "love", "social", "energy"] as const;
-
-const ELEMENT_LABELS: Record<string, string> = {
-  wood: "목(木)",
-  fire: "화(火)",
-  earth: "토(土)",
-  metal: "금(金)",
-  water: "수(水)",
-};
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
@@ -1021,17 +1014,7 @@ function ReadingsSection({
 /* ------------------------------------------------------------------ */
 
 function TalismanEntrySection({ consensus }: { consensus: OracleRunnerConsensus }) {
-  const deficiency = asRecord(consensus.deficiencyVector);
-  let topElement: string | null = null;
-  let topGap = 0;
-  if (deficiency) {
-    for (const [element, value] of Object.entries(deficiency)) {
-      if (typeof value === "number" && value > topGap && element in ELEMENT_LABELS) {
-        topElement = element;
-        topGap = value;
-      }
-    }
-  }
+  const copy = describeCentreFromDeficiency(asRecord(consensus.deficiencyVector));
 
   return (
     <section>
@@ -1039,16 +1022,8 @@ function TalismanEntrySection({ consensus }: { consensus: OracleRunnerConsensus 
       <article className="mt-2 rounded-[22px] border border-white/10 bg-gradient-to-br from-amber-500/10 via-[#11172b] to-[#10182b] p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-md">
-            <h2 className="text-lg font-semibold text-white">
-              {topElement
-                ? `이번 판독에서 가장 부족한 기운은 ${ELEMENT_LABELS[topElement]}입니다`
-                : "이번 판독에서는 크게 부족한 기운이 없습니다"}
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-300">
-              {topElement
-                ? "부적은 이 결핍을 겨냥해 만들어집니다. 열두 체계의 오행 합산에서 나온 값으로, 해석이 아니라 계산입니다."
-                : "오행 합산이 기준선 위에 있습니다. 부족을 채우는 부적보다는 흐름을 지키는 쪽입니다."}
-            </p>
+            <h2 className="text-lg font-semibold text-white">{copy.headline}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-300">{copy.body}</p>
           </div>
           <span className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/55">
             <Lock className="h-3 w-3" aria-hidden /> 준비 중
