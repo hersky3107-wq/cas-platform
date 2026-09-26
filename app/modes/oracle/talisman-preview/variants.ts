@@ -233,10 +233,10 @@ export type FrameSpec = {
 }
 
 /**
- * Master drawing is 1000×1000, core at (500,500).
- * Phone 9:19.5 — core ~55% down, side bleed.
- * Wallet 54×85.6mm — full composition inside the card.
- * Square — tight; inscribed circle keeps the core.
+ * Master drawing is 1000×1000, core at (500,500), square grid inset ~26.
+ * Phone 9:19.5 — core ~55% down, side cells bleed.
+ * Wallet 54×85.6mm — full square inside the card.
+ * Square — the whole grid, so thumbnail deformations stay in frame.
  * Desktop 16:9 — left/right bleed, core uncropped.
  */
 export const TALISMAN_FRAMES: readonly FrameSpec[] = [
@@ -244,28 +244,28 @@ export const TALISMAN_FRAMES: readonly FrameSpec[] = [
     id: 'phone',
     label: '9 : 19.5',
     sub: 'phone wallpaper',
-    viewBox: [190, -252, 620, 1343],
+    viewBox: [200, -215, 600, 1300],
     aspect: 9 / 19.5,
   },
   {
     id: 'wallet',
     label: '54 × 85.6 mm',
     sub: 'wallet card · fully contained',
-    viewBox: [40, -229, 920, 1458],
+    viewBox: [0, -260, 1000, 1585],
     aspect: 54 / 85.6,
   },
   {
     id: 'square',
     label: '1 : 1',
     sub: 'avatar crop',
-    viewBox: [180, 180, 640, 640],
+    viewBox: [0, 0, 1000, 1000],
     aspect: 1,
   },
   {
     id: 'desktop',
     label: '16 : 9',
     sub: 'desktop',
-    viewBox: [-140, 140, 1280, 720],
+    viewBox: [-140, 150, 1280, 720],
     aspect: 16 / 9,
   },
 ]

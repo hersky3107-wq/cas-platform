@@ -106,22 +106,19 @@ export default function TalismanPreviewClient() {
           <h2 className="text-[10px] tracking-[0.28em] text-white/40 uppercase">Legibility notes</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5">
             <li>
-              Hardest at phone width: 수비 digits on nested polygons, 점성술 Roman house
-              numerals, 숙요 27 ticks vs 촐킨 13/20. They become texture, not readable marks.
+              Major, meant to read: core, eight 사주 characters, 자미 teeth, 낙서 cells,
+              the six 주역 bars in the lower core, twelve sign labels. Minor, rim only:
+              수비 polygons, a faint PRISM hex, two dashed calendar rings, four suit marks,
+              a bindrune. No house numerals, no polygon digits, no 27 / 13 / 20 ticks.
             </li>
             <li>
-              Collisions: PRISM hex vs 낙서 square share the same band — the square sides
-              cut the hex. 주역 trigrams vs 육친 seats vs 사주 characters crowd 160–210.
-              符膽 spine crosses 일간 and the ASC tick on purpose; at phone size the 財
-              glyph on variant 6 collides with ring 5–6.
+              Thumbnail test is the silhouette. Empty 자미 palaces drop a tooth. A sealed
+              흉방 fills its cell. A 대흉 seat notches the rim. A missing 육친 opens a gap
+              in the trigram band. Variant 5 has no teeth. Variant 3 is a hollow core.
             </li>
             <li>
-              Square avatar crop clips 숙요/촐킨 and the 符頭/符腳. Wallet contains
-              everything; phone and 16:9 bleed the grid and outer ticks only.
-            </li>
-            <li>
-              Drain core (variant 3) reads if the hollow ring and outward ticks stay
-              emphasis-weight. Fill vs drain collapses if both use the same disc fill.
+              The 財 on variant 6 sits on the upper spine and covers the top cell&apos;s digit.
+              Phone and 16:9 bleed the side cells; the square crop keeps the whole grid.
             </li>
           </ul>
         </section>
