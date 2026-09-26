@@ -166,6 +166,23 @@ export default function TalismanPreviewClient({
               </p>
             ) : null}
             <p className="mt-2 text-[10px] tracking-[0.14em] text-white/30">{sessionHref}</p>
+            {payload?.ok && spec ? (
+              <div className="mt-4 flex flex-wrap gap-2" data-png-downloads="true">
+                {(['phone', 'wallet', 'square', 'desktop'] as const).map((format) => {
+                  const q = new URLSearchParams({ format })
+                  if (purpose) q.set('purpose', purpose)
+                  return (
+                    <a
+                      key={format}
+                      href={`/api/oracle/session/${sessionId}/talisman/png?${q.toString()}`}
+                      className="rounded-full border border-white/20 px-3 py-1.5 text-[11px] tracking-[0.08em] text-white/70 hover:border-white/40 hover:text-white"
+                    >
+                      PNG {format}
+                    </a>
+                  )
+                })}
+              </div>
+            ) : null}
           </section>
         ) : (
           <nav className="mt-6 flex flex-wrap gap-2" aria-label="variants">
