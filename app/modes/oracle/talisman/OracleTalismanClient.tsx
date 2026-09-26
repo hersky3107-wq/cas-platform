@@ -19,12 +19,18 @@ const BG = "min-h-screen bg-[#0a0f1e] text-white";
 
 const FORMAT_LABELS: Record<TalismanPngFormat, string> = {
   phone: "휴대폰",
-  wallet: "지갑",
+  wallet: "지갑카드",
   square: "정사각",
   desktop: "화면",
 };
 
 const FORMATS: TalismanPngFormat[] = ["phone", "wallet", "square", "desktop"];
+
+type TalismanSessionOption = {
+  id: string;
+  createdAt: string;
+  label: string;
+};
 
 type TalismanPayload = {
   ok?: boolean;
@@ -35,9 +41,12 @@ type TalismanPayload = {
   physicsCaption?: string;
   purchased?: boolean;
   isFirstIntegratedSession?: boolean;
+  readingDateLabel?: string;
+  sessions?: TalismanSessionOption[];
   unlockedFormats?: TalismanPngFormat[];
   purchasedPurposes?: TalismanBuyPurpose[];
   price?: number;
+  prices?: Record<TalismanBuyPurpose, number>;
   error?: string;
 };
 
@@ -56,6 +65,7 @@ export default function OracleTalismanClient() {
 
   const [ready, setReady] = useState(false);
   const [payload, setPayload] = useState<TalismanPayload | null>(null);
+  const [buying, setBuying] = useState(false);
   const [busyFormat, setBusyFormat] = useState<TalismanPngFormat | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -86,10 +96,18 @@ export default function OracleTalismanClient() {
   const sessionId = payload?.sessionId ?? sessionParam;
   const purchased = Boolean(payload?.purchased);
   const isFirst = Boolean(payload?.isFirstIntegratedSession);
-  const unlocked = new Set(payload?.unlockedFormats ?? []);
   const caption = payload?.physicsCaption ?? spec?.physicsCaption ?? PHYSICS_CAPTION;
-  const price = purpose === "deficiency" ? TALISMAN_PRICE.deficiency : TALISMAN_PRICE.purpose;
+  const price = payload?.price ?? (purpose === "deficiency" ? TALISMAN_PRICE.deficiency : TALISMAN_PRICE.purpose);
   const frame = useMemo(() => phoneFrame(), []);
+  const readingDate =
+    payload?.readingDateLabel ?? (spec?.dateLabel ? `${spec.dateLabel} 통합 판독 기준` : "");
+  const freePhone =
+    !purchased &&
+    isFreePhoneGrant({
+      purpose,
+      format: "phone",
+      isFirstIntegratedSession: isFirst,
+    });
 
   function hrefFor(next: TalismanBuyPurpose) {
     const q = new URLSearchParams();
@@ -98,36 +116,42 @@ export default function OracleTalismanClient() {
     return `/modes/oracle/talisman?${q.toString()}`;
   }
 
+  function switchSession(nextId: string) {
+    const q = new URLSearchParams();
+    q.set("session", nextId);
+    if (purpose !== "deficiency") q.set("purpose", purpose);
+    router.replace(`/modes/oracle/talisman?${q.toString()}`);
+  }
+
+  async function buyAll() {
+    if (!sessionId) return;
+    setMessage(null);
+    setBuying(true);
+    const res = await fetch("/api/oracle/talisman", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, purpose }),
+    }).catch(() => null);
+    setBuying(false);
+    if (res?.status === 402) {
+      setMessage("크레딧이 부족합니다.");
+      return;
+    }
+    if (!res?.ok) {
+      setMessage("받을 수 없습니다.");
+      return;
+    }
+    const json = (await res.json().catch(() => null)) as TalismanPayload | null;
+    setPayload((prev) => ({
+      ...prev,
+      purchased: true,
+      unlockedFormats: json?.unlockedFormats ?? FORMATS,
+    }));
+  }
+
   async function download(format: TalismanPngFormat) {
     if (!sessionId) return;
     setMessage(null);
-    const already =
-      purchased ||
-      unlocked.has(format) ||
-      isFreePhoneGrant({ purpose, format, isFirstIntegratedSession: isFirst });
-    if (!already) {
-      setBusyFormat(format);
-      const res = await fetch("/api/oracle/talisman", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, purpose }),
-      }).catch(() => null);
-      setBusyFormat(null);
-      if (res?.status === 402) {
-        setMessage("크레딧이 부족합니다.");
-        return;
-      }
-      if (!res?.ok) {
-        setMessage("받을 수 없습니다.");
-        return;
-      }
-      const json = (await res.json().catch(() => null)) as TalismanPayload | null;
-      setPayload((prev) => ({
-        ...prev,
-        purchased: true,
-        unlockedFormats: json?.unlockedFormats ?? FORMATS,
-      }));
-    }
     const q = new URLSearchParams({ format });
     if (purpose !== "deficiency") q.set("purpose", purpose);
     window.location.href = `/api/oracle/session/${sessionId}/talisman/png?${q.toString()}`;
@@ -177,7 +201,27 @@ export default function OracleTalismanClient() {
           </section>
         ) : (
           <>
-            <nav className="mt-6 flex flex-wrap gap-2" aria-label="부적 종류">
+            {readingDate ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-white/50">
+                <span>{readingDate}</span>
+                {payload?.sessions && payload.sessions.length > 1 ? (
+                  <select
+                    value={sessionId ?? ""}
+                    onChange={(e) => switchSession(e.target.value)}
+                    className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white/80 focus:border-white/40 focus:outline-none"
+                    aria-label="판독 선택"
+                  >
+                    {payload.sessions.map((s) => (
+                      <option key={s.id} value={s.id} className="bg-[#0a0f1e] text-white">
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
+            ) : null}
+
+            <nav className="mt-4 flex flex-wrap gap-2" aria-label="부적 종류">
               {TALISMAN_BUY_PURPOSES.map((id) => (
                 <Link
                   key={id}
@@ -205,29 +249,56 @@ export default function OracleTalismanClient() {
               </figcaption>
             </figure>
 
-            <div className="mt-6 grid grid-cols-2 gap-2">
-              {FORMATS.map((format) => {
-                const free = isFreePhoneGrant({
-                  purpose,
-                  format,
-                  isFirstIntegratedSession: isFirst,
-                });
-                const open = purchased || unlocked.has(format) || free;
-                const label = FORMAT_LABELS[format];
-                const hint = open ? (free && !purchased ? "무료" : "받기") : `${price}크레딧`;
-                return (
+            <div className="mt-6 flex flex-col gap-2.5">
+              {purchased ? (
+                <>
+                  <div className="flex items-center justify-center gap-1.5 text-xs text-white/50">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    구매 완료
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {FORMATS.map((format) => (
+                      <button
+                        key={format}
+                        type="button"
+                        disabled={busyFormat === format}
+                        onClick={() => void download(format)}
+                        className="rounded-2xl border border-white/15 bg-white/[0.04] px-4 py-3 text-sm font-medium hover:border-white/30 disabled:opacity-50 transition"
+                      >
+                        {FORMAT_LABELS[format]}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {freePhone ? (
+                    <button
+                      type="button"
+                      disabled={busyFormat === "phone"}
+                      onClick={() => void download("phone")}
+                      className="w-full rounded-2xl border border-white/20 bg-white/[0.07] px-4 py-3 text-sm font-medium text-white hover:border-white/40 hover:bg-white/[0.12] disabled:opacity-50 transition"
+                    >
+                      휴대폰 배경화면 무료로 받기
+                    </button>
+                  ) : null}
                   <button
-                    key={format}
                     type="button"
-                    disabled={busyFormat === format}
-                    onClick={() => void download(format)}
-                    className="rounded-2xl border border-white/15 bg-white/[0.04] px-3 py-3 text-sm hover:border-white/30 disabled:opacity-50"
+                    disabled={buying}
+                    onClick={() => void buyAll()}
+                    className="w-full rounded-2xl border border-amber-300/40 bg-amber-400/20 px-4 py-3.5 text-sm font-semibold text-amber-50 hover:bg-amber-400/30 disabled:opacity-50 transition shadow-lg shadow-amber-950/20"
                   >
-                    {label}
-                    <span className="mt-1 block text-[11px] text-white/45">{hint}</span>
+                    {buying ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <LoaderCircle className="h-4 w-4 animate-spin text-amber-200" />
+                        결제 중...
+                      </span>
+                    ) : (
+                      `${price}크레딧으로 4가지 형식 모두 받기`
+                    )}
                   </button>
-                );
-              })}
+                </>
+              )}
             </div>
             {message ? <p className="mt-3 text-center text-sm text-amber-200">{message}</p> : null}
           </>

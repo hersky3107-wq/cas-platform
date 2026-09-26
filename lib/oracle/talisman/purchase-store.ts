@@ -58,23 +58,68 @@ export function createTalismanSourceStore(): TalismanSourcePort {
   }
 }
 
-export async function loadIntegratedTalismanSession(
+export type EligibleTalismanSession = {
+  id: string
+  created_at: string
+}
+
+export async function loadEligibleIntegratedSessions(
   userId: string,
-  sessionId?: string | null,
-): Promise<OracleJobSession | null> {
-  let query = supabaseAdmin
+): Promise<EligibleTalismanSession[]> {
+  const { data, error } = await supabaseAdmin
     .from(SESSIONS)
-    .select('*')
+    .select('id, user_id, kind, scope, status, prompt_version, created_at')
     .eq('user_id', userId)
     .eq('kind', 'personal')
     .eq('scope', 'combined')
     .eq('status', 'done')
-  if (sessionId) {
-    query = query.eq('id', sessionId)
-  } else {
-    query = query.order('completed_at', { ascending: false, nullsFirst: false }).limit(1)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(`loadEligibleIntegratedSessions: ${error.message}`)
+  const sessions = (data ?? []) as Array<{
+    id: string
+    user_id: string
+    kind: string
+    scope: string
+    status: string
+    prompt_version: string | null
+    created_at: string
+  }>
+  if (sessions.length === 0) return []
+
+  const { data: consensusRows, error: consensusError } = await supabaseAdmin
+    .from(CONSENSUS)
+    .select('session_id')
+    .in(
+      'session_id',
+      sessions.map((row) => row.id),
+    )
+  if (consensusError) throw new Error(`loadEligibleIntegratedSessions consensus: ${consensusError.message}`)
+  const withConsensus = new Set((consensusRows ?? []).map((row) => row.session_id as string))
+  return sessions.filter((session) =>
+    isIntegratedTalismanSource(session, userId, withConsensus.has(session.id)),
+  )
+}
+
+export async function loadIntegratedTalismanSession(
+  userId: string,
+  sessionId?: string | null,
+): Promise<OracleJobSession | null> {
+  let targetId = sessionId
+  if (!targetId) {
+    const eligible = await loadEligibleIntegratedSessions(userId)
+    if (eligible.length === 0) return null
+    targetId = eligible[0]!.id
   }
-  const { data, error } = await query.maybeSingle()
+
+  const { data, error } = await supabaseAdmin
+    .from(SESSIONS)
+    .select('*')
+    .eq('user_id', userId)
+    .eq('id', targetId)
+    .eq('kind', 'personal')
+    .eq('scope', 'combined')
+    .eq('status', 'done')
+    .maybeSingle()
   if (error) throw new Error(`loadIntegratedTalismanSession: ${error.message}`)
   const session = (data as OracleJobSession | undefined) ?? null
   if (!session) return null
@@ -91,38 +136,7 @@ export async function loadIntegratedTalismanSession(
 }
 
 export async function loadFirstIntegratedSessionId(userId: string): Promise<string | null> {
-  const { data, error } = await supabaseAdmin
-    .from(SESSIONS)
-    .select('id, user_id, kind, scope, status, prompt_version, created_at')
-    .eq('user_id', userId)
-    .eq('kind', 'personal')
-    .eq('scope', 'combined')
-    .eq('status', 'done')
-    .order('created_at', { ascending: true })
-  if (error) throw new Error(`loadFirstIntegratedSessionId: ${error.message}`)
-  const sessions = (data ?? []) as Array<{
-    id: string
-    user_id: string
-    kind: string
-    scope: string
-    status: string
-    prompt_version: string | null
-    created_at: string
-  }>
-  if (sessions.length === 0) return null
-
-  const { data: consensusRows, error: consensusError } = await supabaseAdmin
-    .from(CONSENSUS)
-    .select('session_id')
-    .in(
-      'session_id',
-      sessions.map((row) => row.id),
-    )
-  if (consensusError) throw new Error(`loadFirstIntegratedSessionId consensus: ${consensusError.message}`)
-  const withConsensus = new Set((consensusRows ?? []).map((row) => row.session_id as string))
-  const eligible = sessions.filter((session) =>
-    isIntegratedTalismanSource(session, userId, withConsensus.has(session.id)),
-  )
+  const eligible = await loadEligibleIntegratedSessions(userId)
   return earliestIntegratedSessionId(eligible)
 }
 

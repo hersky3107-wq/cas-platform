@@ -27,4 +27,21 @@ describe('talismanSerial', () => {
     expect(() => talismanSerialFromEnv('session', { VERCEL: '1' })).toThrow(message)
     expect(() => talismanSerialFromEnv('session', { VERCEL: '1', NODE_ENV: 'development' })).toThrow(message)
   })
+
+  it('with VERCEL set and a salt, output ≠ 7f2a19; with VERCEL set and no salt, throws', () => {
+    const serial = talismanSerialFromEnv('test-session-id', {
+      VERCEL: '1',
+      TALISMAN_SERIAL_SALT: 'prod-salt-secret',
+    })
+    expect(serial).not.toBe(FAKE_TALISMAN_SERIAL)
+    expect(serial).toHaveLength(6)
+    expect(serial).toMatch(/^[0-9a-f]{6}$/)
+
+    const message =
+      'TALISMAN_SERIAL_SALT is required in production and on Vercel. Set it once and do not rotate — rotating changes every talisman serial.'
+    expect(() => talismanSerialFromEnv('test-session-id', { VERCEL: '1' })).toThrow(message)
+    expect(() =>
+      talismanSerialFromEnv('test-session-id', { VERCEL: '1', TALISMAN_SERIAL_SALT: '' }),
+    ).toThrow(message)
+  })
 })

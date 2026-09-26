@@ -8,7 +8,7 @@ import { PHYSICS_CAPTION } from '@/lib/oracle/talisman/variants'
 import { createCreditsPort } from '@/lib/oracle/runner/credits'
 import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'
 import { TALISMAN_PRICE } from '@/lib/oracle/runner/conventions'
-import { talismanFromStoredSession } from '@/lib/oracle/talisman'
+import { talismanFromStoredSession, talismanSerialFromEnv } from '@/lib/oracle/talisman'
 import {
   parseTalismanBuyPurpose,
   talismanComputePurpose,
@@ -19,7 +19,7 @@ import { purchaseTalismanUnlock } from '@/lib/oracle/talisman/purchase'
 import {
   createTalismanPurchaseStore,
   createTalismanSourceStore,
-  loadFirstIntegratedSessionId,
+  loadEligibleIntegratedSessions,
   loadIntegratedTalismanSession,
 } from '@/lib/oracle/talisman/purchase-store'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
@@ -47,7 +47,26 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const purpose = parseTalismanBuyPurpose(url.searchParams.get('purpose'))
     const requested = url.searchParams.get('session')
-    const session = await loadIntegratedTalismanSession(auth.user.id, requested)
+
+    const eligibleSessions = await loadEligibleIntegratedSessions(auth.user.id)
+    if (eligibleSessions.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        hasReading: false,
+        purpose,
+        price: talismanPriceFor(purpose),
+        prices: TALISMAN_PRICE,
+        purchased: false,
+        isFirstIntegratedSession: false,
+        unlockedFormats: [],
+        sessions: [],
+      })
+    }
+
+    const matched = requested ? eligibleSessions.find((s) => s.id === requested) : null
+    const targetSessionId = matched ? matched.id : eligibleSessions[0]!.id
+
+    const session = await loadIntegratedTalismanSession(auth.user.id, targetSessionId)
     if (!session) {
       return NextResponse.json({
         ok: true,
@@ -58,23 +77,37 @@ export async function GET(req: Request) {
         purchased: false,
         isFirstIntegratedSession: false,
         unlockedFormats: [],
+        sessions: [],
       })
     }
 
     const store = createSupabaseRunnerStore()
-    const [computations, consensus, purchases, firstSessionId] = await Promise.all([
+    const [computations, consensus, purchases] = await Promise.all([
       store.listComputations(session.id),
       store.getConsensus(session.id),
       createTalismanPurchaseStore().list(auth.user.id, session.id),
-      loadFirstIntegratedSessionId(auth.user.id),
     ])
-    const isFirst = session.id === firstSessionId
+
+    const earliestSession = eligibleSessions[eligibleSessions.length - 1]!
+    const isFirst = session.id === earliestSession.id
 
     const result = talismanFromStoredSession({
       session,
       computations,
       deficiency: consensus?.deficiency_vector ?? null,
       purpose: talismanComputePurpose(purpose),
+    })
+
+    const [y, m, d] = session.created_at.slice(0, 10).split('-')
+    const readingDateLabel = `${Number(y)}.${Number(m)}.${Number(d)} 통합 판독 기준`
+
+    const sessions = eligibleSessions.map((s) => {
+      const [sy, sm, sd] = s.created_at.slice(0, 10).split('-')
+      return {
+        id: s.id,
+        createdAt: s.created_at,
+        label: `${Number(sy)}.${Number(sm)}.${Number(sd)} 통합 판독`,
+      }
     })
 
     const purchased = purchases.some((row) => row.purpose === purpose)
@@ -87,6 +120,8 @@ export async function GET(req: Request) {
       prices: TALISMAN_PRICE,
       purchased,
       isFirstIntegratedSession: isFirst,
+      readingDateLabel,
+      sessions,
       unlockedFormats: unlockedTalismanFormats({
         purchased,
         purpose,
@@ -106,6 +141,7 @@ export async function GET(req: Request) {
     const spec = specFromComputation(result.computation, result.charts, {
       sessionId: session.id,
       dateLabel: session.created_at.slice(0, 10).replaceAll('-', '.'),
+      serial: talismanSerialFromEnv(session.id),
       title: 'session',
       note: `${result.computation.centre.source} · ${result.computation.centre.mode}`,
     })

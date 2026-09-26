@@ -22,6 +22,14 @@ describe('access gate', () => {
     expect(canComputeTalisman({ status: 'done', promptVersion: ORACLE_PROMPT_VERSION, hasConsensus: true })).toBe(false)
   })
 
+  it('refuses null, empty, stub prefix, and legacy prompt versions', () => {
+    expect(canComputeTalisman({ status: 'done', promptVersion: null, hasConsensus: true })).toBe(false)
+    expect(canComputeTalisman({ status: 'done', promptVersion: '', hasConsensus: true })).toBe(false)
+    expect(canComputeTalisman({ status: 'done', promptVersion: 'stub-custom', hasConsensus: true })).toBe(false)
+    expect(canComputeTalisman({ status: 'done', promptVersion: 'legacy', hasConsensus: true })).toBe(false)
+    expect(canComputeTalisman({ status: 'done', promptVersion: 'legacy-v1', hasConsensus: true })).toBe(false)
+  })
+
   it('computeTalisman returns null when the gate fails', () => {
     expect(
       computeTalisman({

@@ -6,7 +6,7 @@
  */
 import { NextResponse } from 'next/server'
 import { specFromComputation, talismanStats } from '@/lib/oracle/talisman/from-computation'
-import { talismanFromStoredSession } from '@/lib/oracle/talisman'
+import { talismanFromStoredSession, talismanSerialFromEnv } from '@/lib/oracle/talisman'
 import type { TalismanPurpose } from '@/lib/oracle/talisman'
 import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'
 import { missingSupabaseEnv, resolveRouteAuth } from '@/lib/supabase/route-auth'
@@ -64,6 +64,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const spec = specFromComputation(result.computation, result.charts, {
       sessionId: session.id,
       dateLabel: session.created_at.slice(0, 10).replaceAll('-', '.'),
+      serial: talismanSerialFromEnv(session.id),
       title: 'session',
       note: `${result.computation.centre.source} · ${result.computation.centre.mode}`,
     })

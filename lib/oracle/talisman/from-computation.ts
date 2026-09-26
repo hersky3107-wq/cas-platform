@@ -23,7 +23,7 @@ import {
   type TalismanSpec,
   PHYSICS_CAPTION,
 } from './variants'
-import { FAKE_TALISMAN_SERIAL } from '@/lib/oracle/talisman/serial'
+import { talismanSerialFromEnv } from '@/lib/oracle/talisman/serial'
 
 const PALACE_SHORT: Record<string, string> = {
   命: '命',
@@ -311,7 +311,7 @@ export function specFromComputation(
       : null,
     dateLabel: meta.dateLabel,
     sessionId: meta.sessionId.slice(0, 8).toUpperCase(),
-    serial: meta.serial ?? FAKE_TALISMAN_SERIAL,
+    serial: meta.serial ?? talismanSerialFromEnv(meta.sessionId),
     physicsCaption: PHYSICS_CAPTION,
   }
 }

@@ -15,7 +15,9 @@ import type { TalismanAccessInput } from './types'
 
 export function canComputeTalisman(input: TalismanAccessInput): boolean {
   if (input.status !== 'done') return false
-  if (input.promptVersion === ORACLE_PROMPT_VERSION) return false
+  if (!input.promptVersion) return false
+  if (input.promptVersion === ORACLE_PROMPT_VERSION || input.promptVersion.startsWith('stub')) return false
+  if (input.promptVersion === 'legacy' || input.promptVersion.startsWith('legacy')) return false
   if (!input.hasConsensus) return false
   return true
 }
