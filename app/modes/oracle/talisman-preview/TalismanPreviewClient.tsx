@@ -106,19 +106,18 @@ export default function TalismanPreviewClient() {
           <h2 className="text-[10px] tracking-[0.28em] text-white/40 uppercase">Legibility notes</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5">
             <li>
-              Major, meant to read: core, eight 사주 characters, 자미 teeth, 낙서 cells,
-              the six 주역 bars in the lower core, twelve sign labels. Minor, rim only:
-              수비 polygons, a faint PRISM hex, two dashed calendar rings, four suit marks,
-              a bindrune. No house numerals, no polygon digits, no 27 / 13 / 20 ticks.
+              Major type is sized for phone: core 오행 hanja, eight 사주 characters, 자미
+              palace names. Minor rim engraving stays small on purpose.
             </li>
             <li>
-              Thumbnail test is the silhouette. Empty 자미 palaces drop a tooth. A sealed
-              흉방 fills its cell. A 대흉 seat notches the rim. A missing 육친 opens a gap
-              in the trigram band. Variant 5 has no teeth. Variant 3 is a hollow core.
+              A 흉방 seal is a lattice and crossing strokes over the cell, not a filled
+              panel. Empty 자미 palaces leave an open sector; a 대흉 seat still notches
+              the rim. Variant 5 keeps the crown as empty ring-rules and ticks — seats
+              without occupants — so the absence is drawn, not missing.
             </li>
             <li>
-              The 財 on variant 6 sits on the upper spine and covers the top cell&apos;s digit.
-              Phone and 16:9 bleed the side cells; the square crop keeps the whole grid.
+              Density peaks at the core. The crown is outline plus type. The whole piece
+              leans toward the deficiency sector; a few rings are broken rather than closed.
             </li>
           </ul>
         </section>

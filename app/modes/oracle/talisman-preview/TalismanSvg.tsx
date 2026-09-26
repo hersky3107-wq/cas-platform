@@ -1,8 +1,8 @@
 /**
  * Concentric 부적. Two weights:
- * major — core, 사주, 자미, 낙서, 주역, 점성 (large enough to deform)
+ * major — core, 사주, 자미, 낙서, 주역, 점성 (type sized for phone)
  * minor — 수비, PRISM, 숙요, 촐킨, 타로, 룬 (rim engraving, no labels)
- * Value changes remove sectors, notch the rim, or fill a whole cell.
+ * Seals cover with lattice, not filled planes. Density peaks at the core.
  */
 import type { ReactNode } from 'react'
 import { ELEMENT_META, type ElementKey, type FrameSpec, type PlanetMark, type TalismanSpec } from './variants'
@@ -10,12 +10,12 @@ import { ELEMENT_META, type ElementKey, type FrameSpec, type PlanetMark, type Ta
 const CX = 500
 const CY = 500
 
-const SW = { hair: 0.7, base: 1.15, emph: 2.2 } as const
+const SW = { hair: 0.7, base: 1.2, emph: 2.4 } as const
 const INK = {
-  faint: 'rgba(255,255,255,0.16)',
-  hair: 'rgba(255,255,255,0.34)',
-  base: 'rgba(255,255,255,0.62)',
-  strong: 'rgba(255,255,255,0.92)',
+  faint: 'rgba(255,255,255,0.14)',
+  hair: 'rgba(255,255,255,0.3)',
+  base: 'rgba(255,255,255,0.58)',
+  strong: 'rgba(255,255,255,0.9)',
 } as const
 const GROUND = '#07080c'
 
@@ -30,15 +30,14 @@ const ELEMENT_AIM: Record<ElementKey, number> = {
 
 const ORIGIN = 26
 const CELL = 316
-const CORE = 154
-const SAJU_R = 198
-const TRIGRAM_R = 236
-const SIGN_R = 278
-const ZIWEI_IN = 314
-const ZIWEI_OUT = 430
+const CORE = 158
+const SAJU_R = 204
+const TRIGRAM_R = 248
+const SIGN_R = 286
+const ZIWEI_IN = 332
+const ZIWEI_OUT = 398
 
 const SIGN_ABBR = ['AR', 'TA', 'GE', 'CN', 'LE', 'VI', 'LI', 'SC', 'SG', 'CP', 'AQ', 'PI'] as const
-/** 육친 index → which trigram segment it vacates. */
 const BOKJANG_TRI = [1, 3, 4, 6, 7]
 const TRIGRAMS: readonly { bits: readonly boolean[] }[] = [
   { bits: [true, true, true] },
@@ -67,24 +66,40 @@ function polar(r: number, degFromEastCc: number): Pt {
   return { x: round(CX + r * Math.cos(rad)), y: round(CY - r * Math.sin(rad)) }
 }
 
-function bandPath(r0: number, r1: number, a0: number, a1: number): string {
-  const steps = 8
+/** Slight, deterministic radius jitter — not a perfect arithmetic series. */
+function polarJ(r: number, deg: number, k: number): Pt {
+  const j = 1 + 0.022 * Math.sin(deg * 0.067 + k * 1.17)
+  return polar(r * j, deg)
+}
+
+function bandPath(r0: number, r1: number, a0: number, a1: number, k = 0): string {
+  const steps = 10
   const outer: string[] = []
   const inner: string[] = []
   for (let i = 0; i <= steps; i += 1) {
     const t = a0 + ((a1 - a0) * i) / steps
-    const o = polar(r1, t)
-    const inn = polar(r0, t)
+    const o = polarJ(r1, t, k)
+    const inn = polarJ(r0, t, k + 1)
     outer.push(`${o.x},${o.y}`)
     inner.push(`${inn.x},${inn.y}`)
   }
   return `M${outer.join(' L')} L${[...inner].reverse().join(' L')} Z`
 }
 
+function arcPoly(r: number, a0: number, a1: number, k = 0, steps = 28): string {
+  const pts: string[] = []
+  for (let i = 0; i <= steps; i += 1) {
+    const t = a0 + ((a1 - a0) * i) / steps
+    const p = polarJ(r, t, k)
+    pts.push(`${p.x},${p.y}`)
+  }
+  return pts.join(' ')
+}
+
 function polyPoints(n: number, r: number, rotDeg: number): string {
   const pts: string[] = []
   for (let i = 0; i < n; i += 1) {
-    const p = polar(r, rotDeg + (i * 360) / n)
+    const p = polarJ(r, rotDeg + (i * 360) / n, i)
     pts.push(`${p.x},${p.y}`)
   }
   return pts.join(' ')
@@ -97,56 +112,56 @@ function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string
     fontFamily: 'ui-monospace, monospace',
   }
   return (
-    <g transform={`translate(${CX} ${CY - 36})`} stroke={accent} fill="none" strokeLinecap="butt">
+    <g transform={`translate(${CX} ${CY - 38})`} stroke={accent} fill="none" strokeLinecap="butt">
       {element === 'water' ? (
-        <g strokeWidth={2.2}>
+        <g strokeWidth={2.4}>
           <path d="M-34 10 L0 34 L34 10" />
           <path d="M-22 0 L0 16 L22 0" />
           <circle cy="34" r="3.5" fill={accent} stroke="none" />
-          <text x="18" y="-6" fontSize="22" letterSpacing="1" {...label}>
+          <text x="18" y="-6" fontSize="24" letterSpacing="1" {...label}>
             G
           </text>
         </g>
       ) : null}
       {element === 'wood' ? (
-        <g strokeWidth={2.2}>
+        <g strokeWidth={2.4}>
           <line x1="0" y1="-32" x2="0" y2="28" />
           <line x1="-26" y1="-26" x2="26" y2="26" />
           <line x1="26" y1="-26" x2="-26" y2="26" />
-          <text x="14" y="18" fontSize="15" letterSpacing="0.8" {...label}>
+          <text x="14" y="18" fontSize="16" letterSpacing="0.8" {...label}>
             ds²
           </text>
         </g>
       ) : null}
       {element === 'earth' ? (
-        <g strokeWidth={2.2}>
+        <g strokeWidth={2.4}>
           <line x1="0" y1="-30" x2="0" y2="4" />
           <line x1="0" y1="4" x2="-22" y2="30" />
           <line x1="0" y1="4" x2="22" y2="30" />
           <path d="M16 -8 H30 L24 2 H34" />
-          <text x="-46" y="-8" fontSize="14" letterSpacing="1.4" {...label}>
+          <text x="-46" y="-8" fontSize="15" letterSpacing="1.4" {...label}>
             W Z
           </text>
         </g>
       ) : null}
       {element === 'metal' ? (
-        <g strokeWidth={2}>
+        <g strokeWidth={2.2}>
           <circle cx="0" cy="-16" r="7" />
           <circle cx="-16" cy="16" r="7" />
           <circle cx="16" cy="16" r="7" />
           <line x1="0" y1="-9" x2="-12" y2="10" />
           <line x1="0" y1="-9" x2="12" y2="10" />
           <line x1="-9" y1="16" x2="9" y2="16" />
-          <text x="26" y="4" fontSize="13" letterSpacing="0.6" {...label}>
+          <text x="26" y="4" fontSize="14" letterSpacing="0.6" {...label}>
             SU(3)
           </text>
         </g>
       ) : null}
       {element === 'fire' ? (
-        <g strokeWidth={2.2}>
+        <g strokeWidth={2.4}>
           <polyline points="-36,6 -28,-2 -20,6 -12,-2 -4,6 4,-2 12,6 20,-2 28,6 36,-2" />
           <polyline points="0,-28 -8,-20 0,-12 -8,-4 0,4 -8,12 0,20 -8,28 0,36" />
-          <text x="16" y="-14" fontSize="26" fontFamily="ui-serif, serif" stroke="none" fill={accent}>
+          <text x="16" y="-14" fontSize="28" fontFamily="ui-serif, serif" stroke="none" fill={accent}>
             γ
           </text>
         </g>
@@ -156,16 +171,16 @@ function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string
 }
 
 function Trigram({ bits, x, y }: { bits: readonly boolean[]; x: number; y: number }) {
-  const w = 16
+  const w = 18
   return (
-    <g transform={`translate(${x} ${y})`} stroke={GROUND} strokeWidth={1.8} strokeLinecap="butt">
+    <g transform={`translate(${x} ${y})`} stroke={INK.strong} strokeWidth={1.8} strokeLinecap="butt">
       {bits.map((yang, i) => {
-        const yy = (i - 1) * 5.2
+        const yy = (i - 1) * 5.6
         if (yang) return <line key={i} x1={-w / 2} y1={yy} x2={w / 2} y2={yy} />
         return (
           <g key={i}>
-            <line x1={-w / 2} y1={yy} x2={-2.2} y2={yy} />
-            <line x1={2.2} y1={yy} x2={w / 2} y2={yy} />
+            <line x1={-w / 2} y1={yy} x2={-2.4} y2={yy} />
+            <line x1={2.4} y1={yy} x2={w / 2} y2={yy} />
           </g>
         )
       })}
@@ -227,65 +242,109 @@ function PlanetGlyph({ id, x, y }: { id: string; x: number; y: number }) {
   )
 }
 
+function Hanjatext({
+  x,
+  y,
+  size,
+  fill,
+  children,
+  dy = 0,
+}: {
+  x: number
+  y: number
+  size: number
+  fill: string
+  children: string
+  dy?: number
+}) {
+  return (
+    <text
+      x={x}
+      y={y + dy}
+      textAnchor="middle"
+      fill={fill}
+      stroke={GROUND}
+      strokeWidth={size * 0.08}
+      paintOrder="stroke"
+      fontSize={size}
+      fontFamily="ui-serif, 'Noto Serif CJK KR', 'Source Han Serif KR', serif"
+    >
+      {children}
+    </text>
+  )
+}
+
 function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   const meta = ELEMENT_META[spec.element]
   const drain = spec.mode === 'drain'
-  const barsTop = CY + 16
+  const barsTop = CY + 22
+  const aim = ELEMENT_AIM[spec.element]
+  const gap0 = (aim + 150) % 360
+  const gap1 = gap0 + 38
   return (
     <g>
       {drain ? (
         <>
-          <circle cx={CX} cy={CY} r={CORE} fill={GROUND} stroke={accent} strokeWidth={3.2} />
-          <circle cx={CX} cy={CY} r={CORE - 10} fill="none" stroke={accent} strokeWidth={1.2} />
-          {Array.from({ length: 16 }, (_, i) => {
-            const a = i * 22.5
+          <polyline
+            points={arcPoly(CORE, gap1, gap0 + 360, 2)}
+            fill="none"
+            stroke={accent}
+            strokeWidth={3.4}
+          />
+          <polyline
+            points={arcPoly(CORE - 12, gap1 + 8, gap0 + 348, 3)}
+            fill="none"
+            stroke={accent}
+            strokeWidth={1.2}
+          />
+          {Array.from({ length: 14 }, (_, i) => {
+            const a = aim - 70 + i * 10
             const a0 = polar(CORE + 2, a)
-            const a1 = polar(CORE + 46, a)
+            const a1 = polar(CORE + 48, a)
             return <line key={i} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.emph} />
           })}
         </>
       ) : (
         <>
-          <circle cx={CX} cy={CY} r={CORE} fill={accent} fillOpacity={0.5} stroke={accent} strokeWidth={3} />
-          {Array.from({ length: 10 }, (_, i) => {
-            const a = -20 + i * 18
-            const a0 = polar(CORE - 16, a)
-            const a1 = polar(CORE - 4, a)
+          <circle cx={CX} cy={CY} r={CORE} fill={accent} fillOpacity={0.62} stroke="none" />
+          <polyline
+            points={arcPoly(CORE, gap1, gap0 + 360, 1)}
+            fill="none"
+            stroke={accent}
+            strokeWidth={3.2}
+          />
+          {Array.from({ length: 9 }, (_, i) => {
+            const a = aim - 36 + i * 9
+            const a0 = polar(CORE - 18, a)
+            const a1 = polar(CORE - 5, a)
             return <line key={i} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.base} />
           })}
         </>
       )}
       <g fill={drain ? INK.strong : '#fff'}>
         {spec.ichingLines.map((yang, i) => {
-          const y = barsTop + i * 16
-          const x0 = CX - 62
-          const x1 = CX + 62
-          if (yang) return <rect key={i} x={x0} y={y} width={x1 - x0} height={7} />
+          const y = barsTop + i * 17
+          const x0 = CX - 70
+          const x1 = CX + 70
+          if (yang) return <rect key={i} x={x0} y={y} width={x1 - x0} height={8} />
           return (
             <g key={i}>
-              <rect x={x0} y={y} width={50} height={7} />
-              <rect x={x1 - 50} y={y} width={50} height={7} />
+              <rect x={x0} y={y} width={56} height={8} />
+              <rect x={x1 - 56} y={y} width={56} height={8} />
             </g>
           )
         })}
       </g>
       <PhysicsGlyph element={spec.element} accent={accent} />
-      <text
-        x={CX}
-        y={CY - 108}
-        textAnchor="middle"
-        fill={accent}
-        fontSize="40"
-        fontFamily="ui-serif, 'Noto Serif CJK KR', serif"
-      >
+      <Hanjatext x={CX} y={CY - 104} size={62} fill={accent}>
         {meta.hanja}
-      </text>
+      </Hanjatext>
       <text
         x={CX}
-        y={CY + 128}
+        y={CY + 136}
         textAnchor="middle"
         fill={accent}
-        fontSize="15"
+        fontSize="18"
         fontFamily="ui-serif, 'Noto Serif CJK KR', serif"
         letterSpacing="3"
       >
@@ -297,18 +356,18 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
 
 function ElementSector({ element, accent }: { element: ElementKey; accent: string }) {
   const aim = ELEMENT_AIM[element]
-  return <path d={bandPath(CORE + 2, ZIWEI_OUT, aim - 18, aim + 18)} fill={accent} opacity={0.2} />
+  return <path d={bandPath(CORE + 2, ZIWEI_OUT + 8, aim - 16, aim + 16, 2)} fill={accent} opacity={0.16} />
 }
 
 function SectorRays({ element, accent }: { element: ElementKey; accent: string }) {
   const aim = ELEMENT_AIM[element]
   const inner = polar(CORE + 2, aim)
-  const edge0 = polar(ZIWEI_OUT + 6, aim - 18)
-  const edge1 = polar(ZIWEI_OUT + 6, aim + 18)
+  const edge0 = polarJ(ZIWEI_OUT + 10, aim - 17, 4)
+  const edge1 = polarJ(ZIWEI_OUT + 10, aim + 17, 5)
   return (
     <g>
-      <line x1={inner.x} y1={inner.y} x2={edge0.x} y2={edge0.y} stroke={accent} strokeWidth={2.6} />
-      <line x1={inner.x} y1={inner.y} x2={edge1.x} y2={edge1.y} stroke={accent} strokeWidth={2.6} />
+      <line x1={inner.x} y1={inner.y} x2={edge0.x} y2={edge0.y} stroke={accent} strokeWidth={2.8} />
+      <line x1={inner.x} y1={inner.y} x2={edge1.x} y2={edge1.y} stroke={accent} strokeWidth={2.8} />
     </g>
   )
 }
@@ -317,24 +376,16 @@ function Spine({ accent, wealth }: { accent: string; wealth: boolean }) {
   const gap = CORE + 4
   return (
     <g fill={accent} stroke={accent} strokeLinecap="butt">
-      <rect x={CX - 3.5} y={18} width={7} height={CY - gap - 18} />
-      <rect x={CX - 3.5} y={CY + gap} width={7} height={980 - (CY + gap)} />
-      <rect x={CX - 28} y={10} width={56} height={5} />
+      <rect x={CX - 4} y={18} width={8} height={CY - gap - 18} />
+      <rect x={CX - 4} y={CY + gap} width={8} height={980 - (CY + gap)} />
+      <rect x={CX - 30} y={10} width={60} height={6} />
       <polygon points={`${CX - 18},30 ${CX},14 ${CX + 18},30`} fill="none" strokeWidth={SW.emph} />
       {wealth ? (
         <>
-          <rect x={CX - 70} y={24} width={140} height={118} fill={GROUND} stroke="none" />
-          <text
-            x={CX}
-            y={118}
-            textAnchor="middle"
-            fill={accent}
-            stroke="none"
-            fontSize="96"
-            fontFamily="ui-serif, 'Noto Serif CJK KR', serif"
-          >
+          <rect x={CX - 72} y={22} width={144} height={122} fill={GROUND} stroke="none" />
+          <Hanjatext x={CX} y={118} size={96} fill={accent}>
             財
-          </text>
+          </Hanjatext>
         </>
       ) : null}
       <polygon points={`${CX - 16},972 ${CX},992 ${CX + 16},972`} fill="none" strokeWidth={SW.emph} />
@@ -360,7 +411,7 @@ function bow(a: Pt, b: Pt): string {
 }
 
 function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
-  const pts = spec.sajuChars.map((_, i) => polar(SAJU_R, -67.5 + i * 45))
+  const pts = spec.sajuChars.map((_, i) => polarJ(SAJU_R, -67.5 + i * 45, i))
   return (
     <g>
       {spec.sajuChung.map(([a, b]) => (
@@ -374,20 +425,13 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         return (
           <g key={`${ch.hanja}-${i}`}>
             {ch.isDayMaster ? (
-              <rect x={p.x - 16} y={p.y - 16} width={32} height={32} fill={GROUND} stroke={accent} strokeWidth={SW.emph} />
+              <rect x={p.x - 22} y={p.y - 22} width={44} height={44} fill={GROUND} stroke={accent} strokeWidth={SW.emph} />
             ) : (
-              <circle cx={p.x} cy={p.y} r={15} fill={GROUND} stroke={INK.strong} strokeWidth={SW.base} />
+              <circle cx={p.x} cy={p.y} r={22} fill={GROUND} stroke={INK.hair} strokeWidth={SW.hair} />
             )}
-            <text
-              x={p.x}
-              y={p.y + 6}
-              textAnchor="middle"
-              fill={ch.isDayMaster ? accent : INK.strong}
-              fontSize="18"
-              fontFamily="ui-serif, 'Noto Serif CJK KR', serif"
-            >
+            <Hanjatext x={p.x} y={p.y} size={34} fill={ch.isDayMaster ? accent : INK.strong} dy={12}>
               {ch.hanja}
-            </text>
+            </Hanjatext>
           </g>
         )
       })}
@@ -396,26 +440,27 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
 }
 
 function IchingGaps({ emptySeats }: { emptySeats: readonly number[] }) {
-  const vacant = new Set(
-    emptySeats.map((i) => BOKJANG_TRI[i]).filter((n): n is number => n != null),
-  )
+  const vacant = new Set(emptySeats.map((i) => BOKJANG_TRI[i]).filter((n): n is number => n != null))
   return (
     <g>
       {TRIGRAMS.map((tri, i) => {
         const a0 = -90 + i * 45
         if (vacant.has(i)) {
+          const left = polarJ(TRIGRAM_R - 22, a0 + 4, i)
+          const right = polarJ(TRIGRAM_R - 22, a0 + 41, i)
+          const leftO = polarJ(TRIGRAM_R + 22, a0 + 4, i)
+          const rightO = polarJ(TRIGRAM_R + 22, a0 + 41, i)
           return (
-            <path
-              key={`gap-${i}`}
-              d={bandPath(TRIGRAM_R - 36, SIGN_R + 18, a0 - 4, a0 + 49)}
-              fill={GROUND}
-            />
+            <g key={`gap-${i}`}>
+              <line x1={left.x} y1={left.y} x2={leftO.x} y2={leftO.y} stroke={INK.hair} strokeWidth={SW.hair} />
+              <line x1={right.x} y1={right.y} x2={rightO.x} y2={rightO.y} stroke={INK.hair} strokeWidth={SW.hair} />
+            </g>
           )
         }
-        const mid = polar(TRIGRAM_R, a0 + 22.5)
+        const mid = polarJ(TRIGRAM_R, a0 + 22.5, i)
         return (
-          <g key={i}>
-            <path d={bandPath(TRIGRAM_R - 20, TRIGRAM_R + 20, a0 + 2, a0 + 43)} fill={INK.strong} />
+          <g key={i} opacity={0.7}>
+            <path d={bandPath(TRIGRAM_R - 16, TRIGRAM_R + 16, a0 + 3, a0 + 42, i)} fill="none" stroke={INK.base} strokeWidth={SW.hair} />
             <Trigram bits={tri.bits} x={mid.x} y={mid.y} />
           </g>
         )
@@ -424,7 +469,47 @@ function IchingGaps({ emptySeats }: { emptySeats: readonly number[] }) {
   )
 }
 
-function Luoshu({ sealed, accent }: { sealed: readonly number[]; accent: string }) {
+function CellSeal({
+  x,
+  y,
+  w,
+  h,
+  accent,
+  hatchId,
+}: {
+  x: number
+  y: number
+  w: number
+  h: number
+  accent: string
+  hatchId: string
+}) {
+  const pad = 22
+  const cx = x + w / 2
+  const cy = y + h / 2
+  return (
+    <g>
+      <rect x={x + 8} y={y + 8} width={w - 16} height={h - 16} fill={`url(#${hatchId})`} stroke="none" />
+      <line x1={x + pad} y1={y + pad} x2={x + w - pad} y2={y + h - pad} stroke={accent} strokeWidth={5.5} />
+      <line x1={x + w - pad} y1={y + pad} x2={x + pad} y2={y + h - pad} stroke={accent} strokeWidth={5.5} />
+      <rect
+        x={cx - 20}
+        y={cy - 20}
+        width={40}
+        height={40}
+        fill="none"
+        stroke={accent}
+        strokeWidth={2.2}
+        transform={`rotate(45 ${cx} ${cy})`}
+      />
+      <line x1={cx - 34} y1={cy} x2={cx + 34} y2={cy} stroke={accent} strokeWidth={1.6} />
+      <line x1={cx} y1={cy - 34} x2={cx} y2={cy + 34} stroke={accent} strokeWidth={1.6} />
+      <rect x={x} y={y} width={w} height={h} fill="none" stroke={accent} strokeWidth={1.6} />
+    </g>
+  )
+}
+
+function Luoshu({ sealed, accent, hatchId }: { sealed: readonly number[]; accent: string; hatchId: string }) {
   return (
     <g>
       {LUOSHU.map((palace, i) => {
@@ -444,38 +529,19 @@ function Luoshu({ sealed, accent }: { sealed: readonly number[]; accent: string 
               height={frame * 2}
               fill="none"
               stroke={covered ? accent : INK.faint}
-              strokeWidth={covered ? 4 : SW.hair}
+              strokeWidth={covered ? 3.2 : SW.hair}
             />
           )
         }
-        const dx = col === 0 ? x + 46 : col === 2 ? x + CELL - 46 : x + CELL / 2
-        const dy = row === 0 ? y + 42 : row === 2 ? y + CELL - 32 : y + CELL / 2
+        const dx = col === 0 ? x + 52 : col === 2 ? x + CELL - 52 : x + CELL / 2
+        const dy = row === 0 ? y + 58 : row === 2 ? y + CELL - 36 : y + CELL / 2
         return (
           <g key={palace}>
-            <rect
-              x={x}
-              y={y}
-              width={CELL}
-              height={CELL}
-              fill={covered ? accent : 'none'}
-              fillOpacity={covered ? 0.38 : 0}
-              stroke={covered ? accent : INK.faint}
-              strokeWidth={covered ? 2.4 : SW.hair}
-            />
+            <rect x={x} y={y} width={CELL} height={CELL} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
             {covered ? (
-              <>
-                <line x1={x + 28} y1={y + 28} x2={x + CELL - 28} y2={y + CELL - 28} stroke={accent} strokeWidth={8} />
-                <line x1={x + CELL - 28} y1={y + 28} x2={x + 28} y2={y + CELL - 28} stroke={GROUND} strokeWidth={3} />
-              </>
+              <CellSeal x={x} y={y} w={CELL} h={CELL} accent={accent} hatchId={hatchId} />
             ) : (
-              <text
-                x={dx}
-                y={dy}
-                textAnchor="middle"
-                fill={INK.strong}
-                fontSize="28"
-                fontFamily="ui-serif, serif"
-              >
+              <text x={dx} y={dy} textAnchor="middle" fill={INK.base} fontSize="30" fontFamily="ui-serif, serif">
                 {palace}
               </text>
             )}
@@ -486,61 +552,95 @@ function Luoshu({ sealed, accent }: { sealed: readonly number[]; accent: string 
   )
 }
 
-function PalaceVoids({ palaces }: { palaces: TalismanSpec['palaces'] }) {
-  if (palaces == null) return null
+function VacantCrown() {
+  const inner = ZIWEI_IN + 4
+  const outer = ZIWEI_OUT - 6
   return (
     <g>
-      {palaces.map((palace, i) => {
-        if (!palace.empty) return null
-        const a0 = -90 + i * 30
-        const edgeL = polar(ZIWEI_IN, a0)
-        const edgeR = polar(ZIWEI_IN, a0 + 30)
-        const rimL = polar(520, a0)
-        const rimR = polar(520, a0 + 30)
-        return (
-          <g key={`void-${palace.name}`}>
-            <path d={bandPath(ZIWEI_IN - 6, 530, a0 - 0.4, a0 + 30.4)} fill={GROUND} />
-            <line x1={edgeL.x} y1={edgeL.y} x2={rimL.x} y2={rimL.y} stroke={INK.strong} strokeWidth={1.6} />
-            <line x1={edgeR.x} y1={edgeR.y} x2={rimR.x} y2={rimR.y} stroke={INK.strong} strokeWidth={1.6} />
-          </g>
-        )
+      <polyline points={arcPoly(inner, 14, 172, 6)} fill="none" stroke={INK.hair} strokeWidth={SW.base} />
+      <polyline points={arcPoly(inner, 196, 348, 6)} fill="none" stroke={INK.hair} strokeWidth={SW.base} />
+      <polyline points={arcPoly(outer, -8, 154, 7)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
+      <polyline points={arcPoly(outer, 178, 332, 7)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
+      {Array.from({ length: 12 }, (_, i) => {
+        const a = -90 + i * 30
+        const wob = 7 * Math.sin(i * 1.31 + 0.4)
+        const p0 = polar(inner - 2, a)
+        const p1 = polar(outer + 6 + wob, a)
+        return <line key={i} x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke={INK.hair} strokeWidth={SW.hair} />
+      })}
+      {Array.from({ length: 12 }, (_, i) => {
+        const a = -90 + i * 30 + 15
+        const p = polar((inner + outer) / 2, a)
+        return <circle key={`seat-${i}`} cx={p.x} cy={p.y} r={2.2} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
       })}
     </g>
   )
 }
 
-function ZiweiRing({ palaces, accent }: { palaces: TalismanSpec['palaces']; accent: string }) {
-  if (palaces == null) return null
+function ZiweiRing({
+  palaces,
+  accent,
+  hatchId,
+}: {
+  palaces: TalismanSpec['palaces']
+  accent: string
+  hatchId: string
+}) {
+  if (palaces == null) return <VacantCrown />
   return (
     <g>
       {palaces.map((palace, i) => {
         const a0 = -90 + i * 30
         const a1 = a0 + 30
-        const mid = polar((ZIWEI_IN + ZIWEI_OUT) / 2, a0 + 15)
-        if (palace.empty) return null
+        const bulge = 10 * Math.sin(i * 1.7 + 0.5)
+        const rOut = ZIWEI_OUT + bulge
+        const mid = polarJ((ZIWEI_IN + rOut) / 2, a0 + 15, i)
+        if (palace.empty) {
+          const edgeL = polar(ZIWEI_IN, a0 + 3)
+          const edgeR = polar(ZIWEI_IN, a1 - 3)
+          const rimL = polar(rOut + 8, a0 + 3)
+          const rimR = polar(rOut + 8, a1 - 3)
+          return (
+            <g key={palace.name} opacity={0.45}>
+              <line x1={edgeL.x} y1={edgeL.y} x2={rimL.x} y2={rimL.y} stroke={INK.hair} strokeWidth={SW.hair} />
+              <line x1={edgeR.x} y1={edgeR.y} x2={rimR.x} y2={rimR.y} stroke={INK.hair} strokeWidth={SW.hair} />
+            </g>
+          )
+        }
         if (palace.sealed) {
-          const c0 = polar(ZIWEI_IN - 4, a0 + 6)
-          const c1 = polar(ZIWEI_OUT + 16, a1 - 6)
+          const c0 = polarJ(ZIWEI_IN, a0 + 8, i)
+          const c1 = polarJ(rOut + 8, a1 - 8, i + 3)
           return (
             <g key={palace.name}>
-              <path d={bandPath(ZIWEI_IN - 8, ZIWEI_OUT + 26, a0 + 0.8, a1 - 0.8)} fill={accent} />
-              <line x1={c0.x} y1={c0.y} x2={c1.x} y2={c1.y} stroke={GROUND} strokeWidth={7} />
+              <path d={bandPath(ZIWEI_IN, rOut + 10, a0 + 1, a1 - 1, i)} fill={`url(#${hatchId})`} />
+              <line x1={c0.x} y1={c0.y} x2={c1.x} y2={c1.y} stroke={accent} strokeWidth={4.5} />
+              <polyline
+                points={arcPoly(rOut + 4, a0 + 2, a1 - 2, i)}
+                fill="none"
+                stroke={accent}
+                strokeWidth={SW.base}
+              />
             </g>
           )
         }
         return (
           <g key={palace.name}>
-            <path d={bandPath(ZIWEI_IN, ZIWEI_OUT, a0 + 0.8, a1 - 0.8)} fill={INK.strong} opacity={0.78} />
-            <text
-              x={mid.x}
-              y={mid.y + 5}
-              textAnchor="middle"
-              fill={GROUND}
-              fontSize="16"
-              fontFamily="ui-serif, 'Noto Serif CJK KR', serif"
-            >
+            <path d={bandPath(ZIWEI_IN, rOut, a0 + 1.2, a1 - 1.2, i)} fill={INK.strong} opacity={0.12} />
+            <polyline
+              points={arcPoly(rOut, a0 + 1.2, a1 - 1.2, i)}
+              fill="none"
+              stroke={INK.hair}
+              strokeWidth={SW.base}
+            />
+            <polyline
+              points={arcPoly(ZIWEI_IN, a0 + 1.2, a1 - 1.2, i + 1)}
+              fill="none"
+              stroke={INK.faint}
+              strokeWidth={SW.hair}
+            />
+            <Hanjatext x={mid.x} y={mid.y} size={28} fill={INK.strong} dy={10}>
               {palace.name}
-            </text>
+            </Hanjatext>
           </g>
         )
       })}
@@ -554,14 +654,28 @@ function HyungNotches({ spec }: { spec: TalismanSpec }) {
       {spec.nameSeals.map((seal, i) => {
         if (seal !== 'hyung') return null
         const a = -90 + i * 72
-        const p1 = polar(ZIWEI_OUT + 28, a - 15)
-        const p2 = polar(ZIWEI_IN - 28, a)
-        const p3 = polar(ZIWEI_OUT + 28, a + 15)
-        const seat = polar(ZIWEI_IN - 8, a)
+        const p1 = polarJ(ZIWEI_OUT + 22, a - 13, i)
+        const p2 = polarJ(ZIWEI_IN - 18, a, i)
+        const p3 = polarJ(ZIWEI_OUT + 22, a + 13, i)
+        const seat = polar(ZIWEI_IN + 6, a)
         return (
           <g key={i}>
-            <path d={`M${p1.x},${p1.y} L${p2.x},${p2.y} L${p3.x},${p3.y} Z`} fill={GROUND} stroke={INK.strong} strokeWidth={SW.emph} />
-            <rect x={seat.x - 11} y={seat.y - 11} width={22} height={22} fill={INK.strong} transform={`rotate(45 ${seat.x} ${seat.y})`} />
+            <path
+              d={`M${p1.x},${p1.y} L${p2.x},${p2.y} L${p3.x},${p3.y} Z`}
+              fill={GROUND}
+              stroke={INK.strong}
+              strokeWidth={SW.emph}
+            />
+            <rect
+              x={seat.x - 9}
+              y={seat.y - 9}
+              width={18}
+              height={18}
+              fill="none"
+              stroke={INK.strong}
+              strokeWidth={SW.base}
+              transform={`rotate(45 ${seat.x} ${seat.y})`}
+            />
           </g>
         )
       })}
@@ -569,20 +683,28 @@ function HyungNotches({ spec }: { spec: TalismanSpec }) {
   )
 }
 
-function AstroRing({ planets, ascendant, accent }: { planets: readonly PlanetMark[]; ascendant: number | null; accent: string }) {
+function AstroRing({
+  planets,
+  ascendant,
+  accent,
+}: {
+  planets: readonly PlanetMark[]
+  ascendant: number | null
+  accent: string
+}) {
   return (
     <g>
       {SIGN_ABBR.map((label, i) => {
         const mid = i * 30 + 15
-        const p = polar(SIGN_R, 180 - mid)
+        const p = polarJ(SIGN_R, 180 - mid, i)
         return (
           <text
             key={label}
             x={p.x}
-            y={p.y + 4}
+            y={p.y + 5}
             textAnchor="middle"
-            fill={INK.strong}
-            fontSize="13"
+            fill={INK.base}
+            fontSize="15"
             fontFamily="ui-monospace, monospace"
             letterSpacing="1"
           >
@@ -591,19 +713,26 @@ function AstroRing({ planets, ascendant, accent }: { planets: readonly PlanetMar
         )
       })}
       {planets.map((planet) => {
-        const p = polar(SIGN_R + 22, 180 - planet.longitude)
+        const p = polarJ(SIGN_R + 24, 180 - planet.longitude, 2)
         return <PlanetGlyph key={planet.id} id={planet.id} x={p.x} y={p.y} />
       })}
       {ascendant != null ? (
         <line
           x1={polar(CORE + 8, 180 - ascendant).x}
           y1={polar(CORE + 8, 180 - ascendant).y}
-          x2={polar(ZIWEI_OUT + 8, 180 - ascendant).x}
-          y2={polar(ZIWEI_OUT + 8, 180 - ascendant).y}
+          x2={polarJ(ZIWEI_OUT + 6, 180 - ascendant, 3).x}
+          y2={polarJ(ZIWEI_OUT + 6, 180 - ascendant, 3).y}
           stroke={accent}
           strokeWidth={SW.emph}
         />
-      ) : null}
+      ) : (
+        Array.from({ length: 12 }, (_, i) => {
+          const a = 180 - i * 30
+          const p0 = polar(SIGN_R - 18, a)
+          const p1 = polar(SIGN_R - 8, a)
+          return <line key={`h${i}`} x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke={INK.faint} strokeWidth={SW.hair} />
+        })
+      )}
     </g>
   )
 }
@@ -612,30 +741,32 @@ function MinorRim({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   const dent = spec.prismDentAxis
   const hex: string[] = []
   for (let i = 0; i < 6; i += 1) {
-    const r = i === dent ? 430 : 458
-    const p = polar(r, -90 + i * 60)
+    const r = i === dent ? 418 : 448 + (i % 2 === 0 ? 6 : -4)
+    const p = polarJ(r, -90 + i * 60, i)
     hex.push(`${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
   }
   return (
-    <g opacity={0.28}>
+    <g opacity={0.26}>
       {spec.numerology.map((digit, i) => (
         <polygon
           key={digit + '-' + i}
-          points={polyPoints(Math.max(3, Math.min(digit, 12)), 448 + i * 5, -80 + i * 9)}
+          points={polyPoints(Math.max(3, Math.min(digit, 12)), 440 + i * 6, -80 + i * 9)}
           fill="none"
           stroke={INK.hair}
           strokeWidth={SW.hair}
         />
       ))}
-      <path d={`${hex.join(' ')} Z`} fill="#6b5b8c" fillOpacity={0.12} stroke={INK.faint} strokeWidth={SW.hair} />
-      <circle cx={CX} cy={CY} r={466} fill="none" stroke={INK.hair} strokeWidth={SW.hair} strokeDasharray="1.5 7" />
+      <path d={`${hex.join(' ')} Z`} fill="#6b5b8c" fillOpacity={0.1} stroke={INK.faint} strokeWidth={SW.hair} />
+      <polyline points={arcPoly(458, 12, 198, 8)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
+      <polyline points={arcPoly(458, 224, 352, 8)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
       {(() => {
         const a = 90 - spec.sukuyouIndex * 13
-        const p0 = polar(462, a)
-        const p1 = polar(474, a)
+        const p0 = polar(454, a)
+        const p1 = polar(468, a)
         return <line x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke={INK.strong} strokeWidth={SW.base} />
       })()}
-      <circle cx={CX} cy={CY} r={474} fill="none" stroke={INK.faint} strokeWidth={SW.hair} strokeDasharray="1 5" />
+      <polyline points={arcPoly(470, -20, 140, 9)} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
+      <polyline points={arcPoly(470, 168, 310, 9)} fill="none" stroke={INK.faint} strokeWidth={SW.hair} />
       {(
         [
           ['wands', -1, -1],
@@ -644,8 +775,8 @@ function MinorRim({ spec, accent }: { spec: TalismanSpec; accent: string }) {
           ['pentacles', 1, 1],
         ] as const
       ).map(([mark, sx, sy]) => {
-        const x = CX + sx * 455
-        const y = CY + sy * 455
+        const x = CX + sx * 448
+        const y = CY + sy * 448
         return (
           <g key={mark} transform={`translate(${x} ${y})`} stroke={INK.hair} fill="none" strokeWidth={SW.hair} opacity={0.8}>
             {mark === 'wands' ? <polyline points="0,-7 0,7 M-3,-2 0,-7 3,-2" /> : null}
@@ -656,7 +787,7 @@ function MinorRim({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         )
       })}
       {spec.bindrune ? (
-        <g transform={`translate(${CX + 468} ${CY})`} stroke={accent} fill="none" strokeWidth={SW.base}>
+        <g transform={`translate(${CX + 456} ${CY + 8})`} stroke={accent} fill="none" strokeWidth={SW.base}>
           <line x1="0" y1="-12" x2="0" y2="12" />
           <polyline points="-6,-2 0,-9 6,-2" />
           <line x1="0" y1="-4" x2="8" y2="-10" />
@@ -675,7 +806,16 @@ function BleedGrid(): ReactNode {
       <line key={`h${v}`} x1={-200} y1={v} x2={1200} y2={v} stroke={INK.faint} strokeWidth={SW.hair} />,
     )
   }
-  return <g opacity={0.28}>{lines}</g>
+  return <g opacity={0.22}>{lines}</g>
+}
+
+function leanTransform(element: ElementKey, drain: boolean): string {
+  const aim = ELEMENT_AIM[element]
+  const lean = drain ? -5.4 : 5.2
+  const pull = drain ? 12 : 18
+  const ox = Math.cos(degToRad(aim)) * pull
+  const oy = -Math.sin(degToRad(aim)) * pull
+  return `translate(${round(ox)} ${round(oy)}) rotate(${lean} ${CX} ${CY})`
 }
 
 export function TalismanSvg({
@@ -689,6 +829,7 @@ export function TalismanSvg({
 }) {
   const accent = ELEMENT_META[spec.element].accent
   const [vx, vy, vw, vh] = frame.viewBox
+  const hatchId = `${uid}-hatch`
   return (
     <svg
       className="talisman-svg"
@@ -701,33 +842,38 @@ export function TalismanSvg({
         <clipPath id={`${uid}-frame`}>
           <rect x={vx} y={vy} width={vw} height={vh} />
         </clipPath>
+        <pattern id={hatchId} patternUnits="userSpaceOnUse" width="11" height="11" patternTransform="rotate(38)">
+          <path d="M0 0 L0 11" stroke={accent} strokeWidth="2.1" />
+          <path d="M0 0 L11 0" stroke={accent} strokeWidth="0.7" opacity="0.55" />
+        </pattern>
       </defs>
       <rect x={vx} y={vy} width={vw} height={vh} fill={GROUND} />
       <g clipPath={`url(#${uid}-frame)`}>
         <BleedGrid />
-        <ElementSector element={spec.element} accent={accent} />
-        <Luoshu sealed={spec.luoshuSealed} accent={accent} />
-        <MinorRim spec={spec} accent={accent} />
-        <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
-        <ZiweiRing palaces={spec.palaces} accent={accent} />
-        <IchingGaps emptySeats={spec.bokjangEmpty} />
-        <PalaceVoids palaces={spec.palaces} />
-        <HyungNotches spec={spec} />
-        <SajuRing spec={spec} accent={accent} />
-        <Spine accent={accent} wealth={spec.purposeWealth} />
-        <Centre spec={spec} accent={accent} />
-        <SectorRays element={spec.element} accent={accent} />
-        <text
-          x={CX}
-          y={964}
-          textAnchor="middle"
-          fill={INK.hair}
-          fontSize="11"
-          fontFamily="ui-monospace, monospace"
-          letterSpacing="2.4"
-        >
-          {spec.dateLabel} · {spec.sessionId}
-        </text>
+        <g transform={leanTransform(spec.element, spec.mode === 'drain')}>
+          <ElementSector element={spec.element} accent={accent} />
+          <Luoshu sealed={spec.luoshuSealed} accent={accent} hatchId={hatchId} />
+          <MinorRim spec={spec} accent={accent} />
+          <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
+          <ZiweiRing palaces={spec.palaces} accent={accent} hatchId={hatchId} />
+          <IchingGaps emptySeats={spec.bokjangEmpty} />
+          <HyungNotches spec={spec} />
+          <SajuRing spec={spec} accent={accent} />
+          <Spine accent={accent} wealth={spec.purposeWealth} />
+          <Centre spec={spec} accent={accent} />
+          <SectorRays element={spec.element} accent={accent} />
+          <text
+            x={CX}
+            y={964}
+            textAnchor="middle"
+            fill={INK.hair}
+            fontSize="11"
+            fontFamily="ui-monospace, monospace"
+            letterSpacing="2.4"
+          >
+            {spec.dateLabel} · {spec.sessionId}
+          </text>
+        </g>
       </g>
     </svg>
   )
