@@ -6,7 +6,7 @@
  * else return the same payload.
  */
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { talismanFromStoredSession } from '@/lib/oracle/talisman'
+import { talismanFromStoredSession, talismanSerialFromEnv } from '@/lib/oracle/talisman'
 import type { TalismanPurpose } from '@/lib/oracle/talisman'
 import { specFromComputation, talismanStats } from './from-computation'
 import { PREVIEW_SESSION_MISS, previewSessionGate } from './preview-access'
@@ -71,7 +71,8 @@ export async function previewFromStoredSession(
     ok: true,
     spec: specFromComputation(result.computation, result.charts, {
       sessionId: session.id,
-      dateLabel: String(session.created_at).slice(0, 10).replaceAll('-', '.'),
+      dateLabel: '',
+      serial: talismanSerialFromEnv(session.id),
       title: 'session',
       note: `${result.computation.centre.source} · ${result.computation.centre.mode}`,
     }),

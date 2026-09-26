@@ -1347,8 +1347,9 @@ export function TalismanSvg({
             fontSize="11"
             fontFamily="ui-monospace, monospace"
             letterSpacing="2.4"
+            data-serial="true"
           >
-            {spec.dateLabel} · {spec.sessionId}
+            {spec.serial ? `No. ${spec.serial}` : ''}
           </text>
         </g>
       </g>

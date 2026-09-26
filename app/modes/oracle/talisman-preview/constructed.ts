@@ -12,7 +12,7 @@ import { nameReading } from '@/lib/oracle/engines/name'
 import { numerology } from '@/lib/oracle/engines/numerology'
 import { prism } from '@/lib/oracle/engines/prism'
 import { ziweiChart } from '@/lib/oracle/engines/ziwei'
-import { computeTalisman } from '@/lib/oracle/talisman'
+import { computeTalisman, FAKE_TALISMAN_SERIAL } from '@/lib/oracle/talisman'
 import type { TalismanPurpose } from '@/lib/oracle/talisman'
 import type { SystemId } from '@/lib/oracle/axes/types'
 import type { FiveElement } from '@/lib/oracle/engines/calendar'
@@ -150,7 +150,8 @@ function build(input: {
     label: input.label,
     spec: specFromComputation(computation, charts, {
       sessionId: input.id,
-      dateLabel: input.birth.date.replaceAll('-', '.'),
+      dateLabel: '',
+      serial: FAKE_TALISMAN_SERIAL,
       title: input.title,
       note: input.note,
     }),

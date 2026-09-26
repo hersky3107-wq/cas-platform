@@ -87,6 +87,8 @@ export type TalismanSpec = {
   spreadLocks?: readonly number[]
   dateLabel: string
   sessionId: string
+  /** Non-reversible image serial. Rendered as "No. xxxxxx". */
+  serial?: string
   /**
    * Explanation-screen caption. Preview page only — never drawn inside the SVG.
    */
@@ -176,6 +178,7 @@ const BASE: Pick<
   tzolkinNawal: 7,
   dateLabel: '2026.09.26',
   sessionId: 'ORC-7F2A-19C4',
+  serial: '7f2a19',
 }
 
 export const TALISMAN_VARIANTS: readonly TalismanSpec[] = [

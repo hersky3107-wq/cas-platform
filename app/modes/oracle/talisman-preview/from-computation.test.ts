@@ -5,6 +5,7 @@ import { computeTalisman } from '@/lib/oracle/talisman'
 import { ziweiChart } from '@/lib/oracle/engines/ziwei'
 import { palacesFrom, specFromComputation } from './from-computation'
 import { constructedPreviews, constructedSinkang } from './constructed'
+import { FAKE_TALISMAN_SERIAL } from '@/lib/oracle/talisman'
 import { PHYSICS_CAPTION, TALISMAN_FRAMES } from './variants'
 import { TalismanSvg } from './TalismanSvg'
 import { charts1988, fakeConsensus, LIVE_ACCESS } from '@/lib/oracle/talisman/__tests__/fixture'
@@ -187,6 +188,17 @@ describe('constructed centre fixtures', () => {
     expect(html).not.toContain('5 · 10')
     expect(html).not.toContain('#c4a35a')
     expect(html).not.toContain('SIGILLVM')
+  })
+
+  it('prints a fake serial and no birth date on constructed fixtures', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    expect(row.spec.serial).toBe(FAKE_TALISMAN_SERIAL)
+    const html = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'serial' }),
+    )
+    expect(html).toContain('No. 7f2a19')
+    expect(html).not.toContain('1984')
+    expect(html).not.toContain(row.spec.sessionId)
   })
 
   it('strips decorative hanja and keeps only the centre glyph plus 符膽', () => {
