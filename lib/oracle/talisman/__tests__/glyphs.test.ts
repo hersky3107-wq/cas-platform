@@ -55,9 +55,16 @@ describe('talisman OFL glyphs', () => {
     for (const ch of TALISMAN_HANJA) {
       const glyph = talismanGlyph(ch)
       expect(glyph.d.startsWith('M')).toBe(true)
+      expect(glyph.d.includes('Z')).toBe(true)
       expect(glyph.advance).toBeGreaterThan(0)
+      expect(glyph.codepoint).toBe(ch.codePointAt(0))
+      expect(glyph.bbox.h).toBeGreaterThan(100)
     }
     expect(Object.keys(TALISMAN_GLYPHS)).toEqual([...TALISMAN_HANJA])
+    expect(TALISMAN_GLYPHS['土']!.codepoint).toBe(0x571f)
+    expect(TALISMAN_GLYPHS['火']!.codepoint).toBe(0x706b)
+    expect(TALISMAN_GLYPHS['土']!.codepoint).not.toBe('上'.codePointAt(0))
+    expect(TALISMAN_GLYPHS['火']!.codepoint).not.toBe('七'.codePointAt(0))
   })
 
   it('keeps the OFL header on the generated module', () => {

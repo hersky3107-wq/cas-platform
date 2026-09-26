@@ -121,6 +121,8 @@ function HanjaGlyph({
   fill,
   children,
   dy = 0,
+  stroke,
+  strokeWidth = 0,
 }: {
   x: number
   y: number
@@ -128,18 +130,28 @@ function HanjaGlyph({
   fill: string
   children: string
   dy?: number
+  stroke?: string
+  strokeWidth?: number
 }) {
   const chars = [...children]
-  const scale = size / TALISMAN_GLYPH_UNITS
+  const maxH = Math.max(...chars.map((ch) => talismanGlyph(ch).bbox.h))
+  const scale = size / maxH
   const total = chars.reduce((sum, ch) => sum + talismanGlyph(ch).advance * scale, 0)
   let cursor = -total / 2
   return (
-    <g transform={`translate(${x} ${y + dy})`} fill={fill} stroke={GROUND} paintOrder="stroke">
+    <g transform={`translate(${x} ${y + dy})`} fill={fill} stroke={stroke ?? 'none'} fillRule="evenodd">
       {chars.map((ch, i) => {
         const glyph = talismanGlyph(ch)
+        const cx = glyph.bbox.x + glyph.bbox.w / 2
+        const cy = glyph.bbox.y + glyph.bbox.h / 2
         const node = (
-          <g key={`${ch}-${i}`} transform={`translate(${cursor} 0) scale(${scale})`}>
-            <path data-hanja={ch} d={glyph.d} strokeWidth={TALISMAN_GLYPH_UNITS * 0.08} />
+          <g key={`${ch}-${i}`} transform={`translate(${cursor + (glyph.advance * scale) / 2} 0) scale(${scale}) translate(${-cx} ${-cy})`}>
+            <path
+              data-hanja={ch}
+              data-hanja-codepoint={glyph.codepoint}
+              d={glyph.d}
+              strokeWidth={strokeWidth / scale}
+            />
           </g>
         )
         cursor += glyph.advance * scale
@@ -410,12 +422,14 @@ function FudanMark({ glyph, accent }: { glyph: string; accent: string }) {
         stroke={accent}
         strokeWidth={SW.hair}
       />
-      <g fill={accent} stroke={accent} strokeLinecap="square" strokeLinejoin="miter" paintOrder="stroke">
+      <g fill={accent} stroke={accent} strokeLinecap="square" strokeLinejoin="miter" fillRule="evenodd">
         {chars.map((ch, i) => {
           const path = talismanGlyph(ch)
+          const cx = path.bbox.x + path.bbox.w / 2
+          const cy = path.bbox.y + path.bbox.h / 2
           const node = (
-            <g key={`${ch}-${i}`} transform={`translate(${cursor} 0) scale(${scale})`}>
-              <path data-hanja={ch} d={path.d} strokeWidth={TALISMAN_GLYPH_UNITS * 0.045} />
+            <g key={`${ch}-${i}`} transform={`translate(${cursor + (path.advance * scale) / 2} 0) scale(${scale}) translate(${-cx} ${-cy})`}>
+              <path data-hanja={ch} data-hanja-codepoint={path.codepoint} d={path.d} strokeWidth={TALISMAN_GLYPH_UNITS * 0.028} />
             </g>
           )
           cursor += path.advance * scale

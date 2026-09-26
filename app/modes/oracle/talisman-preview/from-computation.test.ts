@@ -6,7 +6,8 @@ import { ziweiChart } from '@/lib/oracle/engines/ziwei'
 import { palacesFrom, specFromComputation } from './from-computation'
 import { constructedPreviews, constructedSinkang } from './constructed'
 import { FAKE_TALISMAN_SERIAL } from '@/lib/oracle/talisman'
-import { PHYSICS_CAPTION, TALISMAN_FRAMES } from './variants'
+import { TALISMAN_GLYPHS } from '@/lib/oracle/talisman/glyphs'
+import { PHYSICS_CAPTION, TALISMAN_FRAMES, type ElementKey } from './variants'
 import { TalismanSvg } from './TalismanSvg'
 import { charts1988, fakeConsensus, LIVE_ACCESS } from '@/lib/oracle/talisman/__tests__/fixture'
 
@@ -220,6 +221,42 @@ describe('constructed centre fixtures', () => {
     expect(html).toContain('feGaussianBlur')
     expect(html).toContain('opacity="0.45"')
     expect(texts.some((t) => /[\u3400-\u9FFF]/.test(t))).toBe(false)
+  })
+
+  it('paints each 오행 from the matching generated codepoint path', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    const expected: Array<[ElementKey, string, number]> = [
+      ['wood', '木', 0x6728],
+      ['fire', '火', 0x706b],
+      ['earth', '土', 0x571f],
+      ['metal', '金', 0x91d1],
+      ['water', '水', 0x6c34],
+    ]
+    for (const [element, hanja, code] of expected) {
+      const glyph = TALISMAN_GLYPHS[hanja]!
+      expect(glyph.codepoint).toBe(code)
+      const html = renderToStaticMarkup(
+        createElement(TalismanSvg, {
+          spec: { ...row.spec, element, fudanGlyph: null },
+          frame: TALISMAN_FRAMES[2]!,
+          uid: `glyph-${hanja}`,
+        }),
+      )
+      expect(html).toContain(`data-hanja="${hanja}"`)
+      expect(html).toContain(`data-hanja-codepoint="${code}"`)
+      expect(html).toContain(`d="${glyph.d}"`)
+      expect(html).toContain('fill-rule="evenodd"')
+      expect(html).not.toContain('data-hanja="七"')
+      expect(html).not.toContain('data-hanja="上"')
+    }
+    const follow = rows.find((item) => item.id === 'follow')!
+    const followHtml = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: follow.spec, frame: TALISMAN_FRAMES[2]!, uid: 'follow-earth' }),
+    )
+    expect(follow.spec.element).toBe('earth')
+    expect(followHtml).toContain('data-hanja="土"')
+    expect(followHtml).toContain(`data-hanja-codepoint="${0x571f}"`)
+    expect(followHtml).toContain(`d="${TALISMAN_GLYPHS['土']!.d}"`)
   })
 
   it('renders zero CJK text nodes after hanja-to-path', () => {

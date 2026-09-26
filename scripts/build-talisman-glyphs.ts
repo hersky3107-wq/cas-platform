@@ -5,6 +5,9 @@
  * Licence: SIL Open Font License 1.1 — commercial or unknown-licence seal fonts
  * are not allowed here.
  *
+ * Contours are closed and meant to be filled with fill-rule="evenodd" so
+ * counters (holes) stay open.
+ *
  * Run: npx tsx scripts/build-talisman-glyphs.ts
  * Expects: third_party/fonts/NotoSerifKR-Regular.otf (gitignored).
  */
@@ -64,16 +67,57 @@ function nameEn(names: opentype.Font['names'], key: string): string {
   return table.windows?.[key]?.en ?? table.macintosh?.[key]?.en ?? ''
 }
 
-function pathData(font: opentype.Font, ch: string): { d: string; advance: number } {
+function round(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+/** Close every contour. opentype.js toPathData() drops Z on CFF fonts. */
+function closedPathData(path: opentype.Path): string {
+  const parts: string[] = []
+  let open = false
+  for (const cmd of path.commands) {
+    if (cmd.type === 'M') {
+      if (open) parts.push('Z')
+      parts.push(`M${round(cmd.x)} ${round(cmd.y)}`)
+      open = true
+    } else if (cmd.type === 'L') {
+      parts.push(`L${round(cmd.x)} ${round(cmd.y)}`)
+    } else if (cmd.type === 'C') {
+      parts.push(
+        `C${round(cmd.x1)} ${round(cmd.y1)} ${round(cmd.x2)} ${round(cmd.y2)} ${round(cmd.x)} ${round(cmd.y)}`,
+      )
+    } else if (cmd.type === 'Q') {
+      parts.push(`Q${round(cmd.x1)} ${round(cmd.y1)} ${round(cmd.x)} ${round(cmd.y)}`)
+    } else if (cmd.type === 'Z') {
+      parts.push('Z')
+      open = false
+    }
+  }
+  if (open) parts.push('Z')
+  return parts.join('')
+}
+
+function pathData(font: opentype.Font, ch: string) {
   const glyph = font.charToGlyph(ch)
   if (!glyph || glyph.index === 0 || glyph.name === '.notdef') {
     throw new Error(`Noto Serif KR Regular is missing ${ch} (U+${ch.codePointAt(0)!.toString(16).toUpperCase()})`)
   }
   const path = glyph.getPath(0, 0, UNITS)
-  const d = path.toPathData(2)
+  const d = closedPathData(path)
   if (!d) throw new Error(`empty path for ${ch}`)
+  const box = path.getBoundingBox()
   const advance = Math.round((glyph.advanceWidth / font.unitsPerEm) * UNITS)
-  return { d, advance }
+  return {
+    d,
+    advance,
+    codepoint: ch.codePointAt(0)!,
+    bbox: {
+      x: round(box.x1),
+      y: round(box.y1),
+      w: round(box.x2 - box.x1),
+      h: round(box.y2 - box.y1),
+    },
+  }
 }
 
 function main() {
@@ -90,8 +134,8 @@ function main() {
   }
 
   const rows = GLYPH_SET.map((ch) => {
-    const { d, advance } = pathData(font, ch)
-    return `  ${JSON.stringify(ch)}: { d: ${JSON.stringify(d)}, advance: ${advance} },`
+    const glyph = pathData(font, ch)
+    return `  ${JSON.stringify(ch)}: ${JSON.stringify(glyph)},`
   })
 
   const body = `/**
@@ -106,6 +150,8 @@ function main() {
  * ${family} is the Korean region-specific subset of Noto Serif CJK
  * (Adobe Source Han Serif), OFL-1.1. No commercial or unknown-licence
  * calligraphy / seal font was used.
+ *
+ * Paths are closed contours for fill-rule="evenodd".
  */
 
 export const TALISMAN_GLYPH_FONT = ${JSON.stringify(`${family} ${subfamily}`)}
@@ -116,6 +162,8 @@ export const TALISMAN_GLYPH_UNITS = ${UNITS}
 export type TalismanGlyphPath = {
   d: string
   advance: number
+  codepoint: number
+  bbox: { x: number; y: number; w: number; h: number }
 }
 
 export const TALISMAN_GLYPHS: Record<string, TalismanGlyphPath> = {
