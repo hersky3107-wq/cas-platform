@@ -2,8 +2,8 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { constructedPreviews } from './constructed'
-import { TALISMAN_FRAMES } from './variants'
-import { TalismanSvg } from './TalismanSvg'
+import { TALISMAN_FRAMES } from '../variants'
+import { TalismanSvg } from '../TalismanSvg'
 
 const SQUARE = TALISMAN_FRAMES[2]!
 

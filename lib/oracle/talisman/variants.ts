@@ -1,6 +1,7 @@
 /**
- * Throwaway 부적 preview — hard-coded sample charts only.
- * Delete or rewire with this route; do not import from engines.
+ * SVG-facing 부적 spec and the four crop frames.
+ * Hard-coded TALISMAN_VARIANTS stay as test fixtures; live sessions use
+ * from-computation.
  */
 
 export const ELEMENT_KEYS = ['wood', 'fire', 'earth', 'metal', 'water'] as const

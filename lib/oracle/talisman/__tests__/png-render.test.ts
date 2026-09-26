@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import opentype from 'opentype.js'
 import { describe, expect, it } from 'vitest'
-import { constructedPreviews } from '@/app/modes/oracle/talisman-preview/constructed'
+import { constructedPreviews } from '@/lib/oracle/talisman/__tests__/constructed'
 import {
   TALISMAN_PNG_FONT_LICENCE,
   TALISMAN_PNG_FONT_PATH,

@@ -1,6 +1,6 @@
 import { createElement } from 'react'
-import { TalismanSvg } from '@/app/modes/oracle/talisman-preview/TalismanSvg'
-import type { TalismanSpec } from '@/app/modes/oracle/talisman-preview/variants'
+import { TalismanSvg } from '@/lib/oracle/talisman/TalismanSvg'
+import type { TalismanSpec } from '@/lib/oracle/talisman/variants'
 import { loadResvg, type TalismanPngEngine } from './engine'
 import { frameForPng, TALISMAN_PNG_SIZE, type TalismanPngFormat } from './formats'
 import { TALISMAN_PNG_FONT_FAMILY, TALISMAN_PNG_FONT_PATH } from './font'

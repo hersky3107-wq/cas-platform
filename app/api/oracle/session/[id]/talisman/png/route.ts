@@ -3,8 +3,8 @@
  * Owner-only PNG. Same not-found payload as the preview for a non-owner.
  */
 import { NextResponse } from 'next/server'
-import { previewFromStoredSession } from '@/app/modes/oracle/talisman-preview/preview-session'
-import { PREVIEW_SESSION_MISS } from '@/app/modes/oracle/talisman-preview/preview-access'
+import { previewFromStoredSession } from '@/lib/oracle/talisman/preview-session'
+import { PREVIEW_SESSION_MISS } from '@/lib/oracle/talisman/preview-access'
 import { parseTalismanPngFormat, renderTalismanPng } from '@/lib/oracle/talisman/png'
 import { canDownloadTalismanFormat, parseTalismanBuyPurpose } from '@/lib/oracle/talisman/entitlement'
 import { hasTalismanPurchase, loadFirstIntegratedSessionId } from '@/lib/oracle/talisman/purchase-store'

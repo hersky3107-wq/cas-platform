@@ -2,9 +2,9 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { constructedPreviews } from './constructed'
-import { PHONE_RENDER_WIDTH, SIZE_FLOOR_PX } from './TalismanSvg'
-import { TALISMAN_FRAMES } from './variants'
-import { TalismanSvg } from './TalismanSvg'
+import { PHONE_RENDER_WIDTH, SIZE_FLOOR_PX } from '../TalismanSvg'
+import { TALISMAN_FRAMES } from '../variants'
+import { TalismanSvg } from '../TalismanSvg'
 
 const PHONE = TALISMAN_FRAMES[0]!
 

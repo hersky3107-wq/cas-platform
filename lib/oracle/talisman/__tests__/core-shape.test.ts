@@ -7,9 +7,9 @@ import {
   TALISMAN_GROUND,
   contrastRatio,
   physicsPlate,
-} from './TalismanSvg'
-import { ELEMENT_META, ELEMENT_KEYS, TALISMAN_FRAMES } from './variants'
-import { TalismanSvg } from './TalismanSvg'
+} from '../TalismanSvg'
+import { ELEMENT_META, ELEMENT_KEYS, TALISMAN_FRAMES } from '../variants'
+import { TalismanSvg } from '../TalismanSvg'
 
 const PHONE = TALISMAN_FRAMES[0]!
 const SQUARE = TALISMAN_FRAMES[2]!

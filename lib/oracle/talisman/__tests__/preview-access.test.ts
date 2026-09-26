@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PREVIEW_SESSION_MISS, openTalismanPreviewLookup, selectPreviewSession } from './preview-access'
+import { PREVIEW_SESSION_MISS, openTalismanPreviewLookup, selectPreviewSession } from '../preview-access'
 
 const rows = [{ id: 'sess', user_id: 'owner' }] as const
 

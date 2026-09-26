@@ -12,8 +12,8 @@ import {
   type TalismanBuyPurpose,
 } from "@/lib/oracle/talisman/entitlement";
 import type { TalismanPngFormat } from "@/lib/oracle/talisman/png/formats";
-import { PHYSICS_CAPTION, TALISMAN_FRAMES, type TalismanSpec } from "../talisman-preview/variants";
-import { TalismanSvg } from "../talisman-preview/TalismanSvg";
+import { PHYSICS_CAPTION, TALISMAN_FRAMES, type TalismanSpec } from "@/lib/oracle/talisman/variants";
+import { TalismanSvg } from "@/lib/oracle/talisman/TalismanSvg";
 
 const BG = "min-h-screen bg-[#0a0f1e] text-white";
 

@@ -1,4 +1,4 @@
-import { TALISMAN_FRAMES, type FrameSpec } from '@/app/modes/oracle/talisman-preview/variants'
+import { TALISMAN_FRAMES, type FrameSpec } from '@/lib/oracle/talisman/variants'
 
 export const TALISMAN_PNG_FORMATS = ['phone', 'wallet', 'square', 'desktop'] as const
 export type TalismanPngFormat = (typeof TALISMAN_PNG_FORMATS)[number]

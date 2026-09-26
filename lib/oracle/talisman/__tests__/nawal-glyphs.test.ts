@@ -2,9 +2,9 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { TZOLKIN_NAWAL } from '@/lib/oracle/engines/calendar/tables'
-import { NawalGlyph, NawalSheet } from './nawal-glyphs'
-import { TALISMAN_FRAMES, TALISMAN_VARIANTS } from './variants'
-import { TalismanSvg } from './TalismanSvg'
+import { NawalGlyph, NawalSheet } from '../nawal-glyphs'
+import { TALISMAN_FRAMES, TALISMAN_VARIANTS } from '../variants'
+import { TalismanSvg } from '../TalismanSvg'
 
 describe('nawal geometric glyphs', () => {
   it('draws twenty distinct marks and lists them on the sheet', () => {

@@ -3,8 +3,8 @@
  * POST /api/oracle/talisman — charge then unlock all four formats for (session, purpose).
  */
 import { NextResponse } from 'next/server'
-import { specFromComputation, talismanStats } from '@/app/modes/oracle/talisman-preview/from-computation'
-import { PHYSICS_CAPTION } from '@/app/modes/oracle/talisman-preview/variants'
+import { specFromComputation, talismanStats } from '@/lib/oracle/talisman/from-computation'
+import { PHYSICS_CAPTION } from '@/lib/oracle/talisman/variants'
 import { createCreditsPort } from '@/lib/oracle/runner/credits'
 import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'
 import { TALISMAN_PRICE } from '@/lib/oracle/runner/conventions'

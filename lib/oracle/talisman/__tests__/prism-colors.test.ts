@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { specFromComputation } from '@/app/modes/oracle/talisman-preview/from-computation'
+import { specFromComputation } from '@/lib/oracle/talisman/from-computation'
 import { computeTalisman, talismanFromStoredSession } from '@/lib/oracle/talisman'
 import { EMPTY_CHARTS, LIVE_ACCESS, fakeConsensus } from './fixture'
 
@@ -49,14 +49,14 @@ describe('talisman prism colour read path', () => {
   })
 
   it('maps colour ids through PRISM_COLOR_HEX and leaves a blank seat when they are missing', () => {
-    const svg = readFileSync('app/modes/oracle/talisman-preview/TalismanSvg.tsx', 'utf8')
+    const svg = readFileSync('lib/oracle/talisman/TalismanSvg.tsx', 'utf8')
     expect(svg).toContain('PRISM_COLOR_HEX')
     expect(svg).not.toContain('#6b5b8c')
   })
 
   it('does not hand the colour ids to an AI payload builder', () => {
     const route = readFileSync('app/api/oracle/session/[id]/talisman/route.ts', 'utf8')
-    const preview = readFileSync('app/modes/oracle/talisman-preview/preview-session.ts', 'utf8')
+    const preview = readFileSync('lib/oracle/talisman/preview-session.ts', 'utf8')
     expect(route).not.toMatch(/buildReadingPayload|buildSynthesisPayload|buildVerdictPayload|aiPayload/)
     expect(preview).not.toMatch(/buildReadingPayload|buildSynthesisPayload|buildVerdictPayload|aiPayload/)
   })

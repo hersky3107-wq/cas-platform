@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { PREVIEW_SESSION_MISS } from '@/app/modes/oracle/talisman-preview/preview-access'
+import { PREVIEW_SESSION_MISS } from '@/lib/oracle/talisman/preview-access'
 import { talismanSerialFromEnv } from '@/lib/oracle/talisman/serial'
 
 const previewFromStoredSession = vi.fn()
@@ -8,7 +8,7 @@ const hasTalismanPurchase = vi.fn()
 const insertTalismanPurchase = vi.fn()
 const loadFirstIntegratedSessionId = vi.fn()
 
-vi.mock('@/app/modes/oracle/talisman-preview/preview-session', () => ({
+vi.mock('@/lib/oracle/talisman/preview-session', () => ({
   previewFromStoredSession: (...args: unknown[]) => previewFromStoredSession(...args),
 }))
 

@@ -4,8 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { TALISMAN_ZODIAC, TALISMAN_ZODIAC_FONT, TALISMAN_ZODIAC_IDS, TALISMAN_ZODIAC_LICENCE } from '@/lib/oracle/talisman/zodiac'
 import { constructedPreviews } from './constructed'
-import { TALISMAN_FRAMES } from './variants'
-import { TalismanSvg } from './TalismanSvg'
+import { TALISMAN_FRAMES } from '../variants'
+import { TalismanSvg } from '../TalismanSvg'
 
 const SQUARE = TALISMAN_FRAMES[2]!
 const LATIN = ['AR', 'TA', 'GE', 'CN', 'LE', 'VI', 'LI', 'SC', 'SG', 'CP', 'AQ', 'PI'] as const

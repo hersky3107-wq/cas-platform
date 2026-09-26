@@ -18,8 +18,8 @@ import type { SystemId } from '@/lib/oracle/axes/types'
 import type { FiveElement } from '@/lib/oracle/engines/calendar'
 import { ORACLE_DEFAULT_COORDS } from '@/lib/oracle/runner/conventions'
 import type { TalismanCharts } from '@/lib/oracle/talisman'
-import { specFromComputation, talismanStats } from './from-computation'
-import type { TalismanSpec } from './variants'
+import { specFromComputation, talismanStats } from '../from-computation'
+import type { TalismanSpec } from '../variants'
 
 const ACCESS = {
   status: 'done' as const,

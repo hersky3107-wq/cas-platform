@@ -5,7 +5,7 @@
  * Does not charge credits. Does not create a session kind.
  */
 import { NextResponse } from 'next/server'
-import { specFromComputation, talismanStats } from '@/app/modes/oracle/talisman-preview/from-computation'
+import { specFromComputation, talismanStats } from '@/lib/oracle/talisman/from-computation'
 import { talismanFromStoredSession } from '@/lib/oracle/talisman'
 import type { TalismanPurpose } from '@/lib/oracle/talisman'
 import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'

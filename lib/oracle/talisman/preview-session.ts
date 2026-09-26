@@ -1,9 +1,7 @@
 /**
- * Throwaway preview loader. Uses the service-role client because the preview
- * page is outside the session API. An open (no-owner) lookup is allowed only
- * when VERCEL is unset and NODE_ENV is not production. Every other process
- * requires the authenticated owner. A missing row and a row owned by someone
- * else return the same payload.
+ * Load a 부적 spec from a stored integrated session. Open (no-owner) lookup
+ * is local development only. Vercel / production require the owner. A
+ * missing row and a row owned by someone else return the same payload.
  */
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { talismanFromStoredSession, talismanSerialFromEnv } from '@/lib/oracle/talisman'
