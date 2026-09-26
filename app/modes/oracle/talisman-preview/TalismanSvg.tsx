@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react'
 import { isPrismColor } from '@/lib/oracle/engines/prism/tables'
 import { PRISM_COLOR_HEX } from '@/lib/oracle/prism-swatches'
+import { NawalGlyph } from './nawal-glyphs'
 import { ELEMENT_META, type ElementKey, type FrameSpec, type PalaceMark, type PlanetMark, type TalismanSpec } from './variants'
 
 function prismHex(id: string | undefined): string | null {
@@ -711,11 +712,9 @@ function MayaKin({ tone, nawal, x, y }: { tone: number; nawal: number; x: number
       {Array.from({ length: dots }, (_, i) => (
         <circle key={`d${i}`} cx={-12 + i * 8} cy={-26 + bars * 9 + 8} r="3.2" fill={INK.strong} stroke="none" />
       ))}
-      <path
-        d="M-14 10 L-4 2 L6 10 L14 4 L8 22 L-8 22 Z"
-        strokeWidth={1.6}
-        transform={`translate(0 ${bars > 0 ? 4 : 0})`}
-      />
+      <g transform={`translate(-12 ${8 + (bars > 0 ? 4 : 0)})`} color={INK.strong}>
+        <NawalGlyph nawal={nawal} />
+      </g>
       <text
         x="0"
         y="38"

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TalismanSvg } from "./TalismanSvg";
 import type { ConstructedPreview } from "./constructed";
+import { NawalSheet } from "./nawal-glyphs";
 import { PHYSICS_CAPTION, TALISMAN_FRAMES, TALISMAN_VARIANTS, type FrameSpec, type TalismanSpec } from "./variants";
 import type { TalismanPurpose } from "@/lib/oracle/talisman";
 
@@ -71,15 +72,17 @@ export default function TalismanPreviewClient({
   sinkangStats: SessionPayload["stats"];
   sessionPayload: SessionPayload | null;
 }) {
-  const initialFixture = fixtures.some((item) => item.id === fixture) ? fixture : null;
+  const initialFixture =
+    fixture === "nawal-sheet" || fixtures.some((item) => item.id === fixture) ? fixture : null;
   const [active, setActive] = useState(0);
   const [pickedFixture, setPickedFixture] = useState<string | null>(initialFixture);
   const hardcoded = TALISMAN_VARIANTS[active] ?? TALISMAN_VARIANTS[0]!;
   const payload = sessionPayload;
   const purpose = purposeParam ?? "";
 
-  const constructed = fixtures.find((item) => item.id === pickedFixture) ?? null;
-  const spec = sessionId ? payload?.spec ?? null : constructed ? constructed.spec : hardcoded;
+  const constructed = pickedFixture === "nawal-sheet" ? null : fixtures.find((item) => item.id === pickedFixture) ?? null;
+  const showNawalSheet = !sessionId && pickedFixture === "nawal-sheet";
+  const spec = sessionId ? payload?.spec ?? null : constructed ? constructed.spec : showNawalSheet ? null : hardcoded;
   const live = Boolean(sessionId);
 
   const sessionHref = useMemo(() => {
@@ -180,6 +183,17 @@ export default function TalismanPreviewClient({
                 {item.label}
               </a>
             ))}
+            <a
+              href="/modes/oracle/talisman-preview?fixture=nawal-sheet"
+              onClick={() => setPickedFixture("nawal-sheet")}
+              className={`rounded-full border px-3 py-1.5 text-left text-[11px] tracking-[0.08em] transition ${
+                pickedFixture === "nawal-sheet"
+                  ? "border-white/40 bg-white/10 text-white"
+                  : "border-white/10 text-white/55 hover:border-white/25 hover:text-white/80"
+              }`}
+            >
+              nawal-sheet · 20 glyphs
+            </a>
             {TALISMAN_VARIANTS.map((item, index) => (
               <button
                 key={item.id}
@@ -200,9 +214,11 @@ export default function TalismanPreviewClient({
           </nav>
         )}
         <p className="mt-3 text-sm text-slate-300">
-          {!live && constructed
-            ? constructed.spec.note
-            : spec?.note ?? (live ? "loading…" : hardcoded.note)}
+          {showNawalSheet
+            ? "20 geometric nawal marks on a 24×24 grid. Tone bars stay on the kin."
+            : !live && constructed
+              ? constructed.spec.note
+              : spec?.note ?? (live ? "loading…" : hardcoded.note)}
         </p>
         {!live && constructed ? (
           <dl className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-white/70 md:grid-cols-3">
@@ -219,6 +235,8 @@ export default function TalismanPreviewClient({
             </div>
           </dl>
         ) : null}
+
+        {showNawalSheet ? <NawalSheet /> : null}
 
         {spec ? (
           <section className="mt-8">
