@@ -1,13 +1,15 @@
 /**
  * Throwaway preview loader. Uses the service-role client because the preview
- * page is outside the session API. Ownership is enforced here:
- * production requires the authenticated user id; non-production may load any
- * id so calibration can run without a browser cookie.
+ * page is outside the session API. An open (no-owner) lookup is allowed only
+ * when VERCEL is unset and NODE_ENV is not production. Every other process
+ * requires the authenticated owner. A missing row and a row owned by someone
+ * else return the same payload.
  */
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { talismanFromStoredSession } from '@/lib/oracle/talisman'
 import type { TalismanPurpose } from '@/lib/oracle/talisman'
 import { specFromComputation, talismanStats } from './from-computation'
+import { PREVIEW_SESSION_MISS, previewSessionGate } from './preview-access'
 import type { TalismanSpec } from './variants'
 
 const PURPOSES: readonly TalismanPurpose[] = ['wealth', 'love', 'promotion', 'health', 'exorcism']
@@ -32,8 +34,8 @@ export async function previewFromStoredSession(
   purposeRaw: string | null,
   ownerUserId: string | null,
 ): Promise<PreviewSessionPayload> {
-  const production = process.env.NODE_ENV === 'production'
-  if (production && !ownerUserId) return { ok: false, reason: 'forbidden' }
+  const gate = previewSessionGate(process.env, ownerUserId)
+  if (!gate.proceed) return PREVIEW_SESSION_MISS
 
   const purpose = purposeRaw && (PURPOSES as readonly string[]).includes(purposeRaw)
     ? (purposeRaw as TalismanPurpose)
@@ -42,10 +44,10 @@ export async function previewFromStoredSession(
     .from('oracle_job_sessions')
     .select('id, user_id, status, prompt_version, created_at')
     .eq('id', id)
-  if (production && ownerUserId) query = query.eq('user_id', ownerUserId)
+  if (gate.userId) query = query.eq('user_id', gate.userId)
   const { data: session, error } = await query.maybeSingle()
   if (error) return { ok: false, reason: error.message }
-  if (!session) return { ok: false, reason: 'not-found' }
+  if (!session) return PREVIEW_SESSION_MISS
 
   const [{ data: computations }, { data: consensus }] = await Promise.all([
     supabaseAdmin.from('oracle_computations').select('system, result').eq('session_id', id),
