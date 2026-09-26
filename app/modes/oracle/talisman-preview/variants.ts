@@ -287,6 +287,8 @@ export const TALISMAN_VARIANTS: readonly TalismanSpec[] = [
 
 export type FrameId = 'phone' | 'wallet' | 'square' | 'desktop'
 
+export type FrameLayout = 'tall' | 'circle'
+
 export type FrameSpec = {
   id: FrameId
   label: string
@@ -294,42 +296,55 @@ export type FrameSpec = {
   viewBox: readonly [number, number, number, number]
   /** CSS width/height. */
   aspect: number
+  layout: FrameLayout
 }
 
+/** Tall master. Phone and wallet crop this whole sheet. */
+export const MASTER_W = 1000
+export const MASTER_H = 2166
+export const CIRCLE_CX = 500
+export const CIRCLE_CY = 1100
+export const CIRCLE_D = 900
+export const CIRCLE_R = CIRCLE_D / 2
+/** Local 1000×1000 drawing (core at 500,500) scaled into the 900 circle. */
+export const CIRCLE_SCALE = CIRCLE_D / 1000
+
 /**
- * Master drawing is 1000×1000, core at (500,500), square grid inset ~26.
- * Phone 9:19.5 — core ~55% down, side cells bleed.
- * Wallet 54×85.6mm — full square inside the card.
- * Square — the whole grid, so thumbnail deformations stay in frame.
- * Desktop 16:9 — left/right bleed, core uncropped.
+ * Phone 9:19.5 — the 1000×2166 master, circle unclipped.
+ * Wallet — same vertical sheet, meet-fit so top/bottom stay filled.
+ * Square / 16:9 — the circle only, plus a corner seal.
  */
 export const TALISMAN_FRAMES: readonly FrameSpec[] = [
   {
     id: 'phone',
     label: '9 : 19.5',
     sub: 'phone wallpaper',
-    viewBox: [200, -215, 600, 1300],
+    viewBox: [0, 0, MASTER_W, MASTER_H],
     aspect: 9 / 19.5,
+    layout: 'tall',
   },
   {
     id: 'wallet',
     label: '54 × 85.6 mm',
     sub: 'wallet card · fully contained',
-    viewBox: [0, -260, 1000, 1585],
+    viewBox: [0, 0, MASTER_W, MASTER_H],
     aspect: 54 / 85.6,
+    layout: 'tall',
   },
   {
     id: 'square',
     label: '1 : 1',
     sub: 'avatar crop',
-    viewBox: [0, 0, 1000, 1000],
+    viewBox: [CIRCLE_CX - CIRCLE_R, CIRCLE_CY - CIRCLE_R, CIRCLE_D, CIRCLE_D],
     aspect: 1,
+    layout: 'circle',
   },
   {
     id: 'desktop',
     label: '16 : 9',
     sub: 'desktop',
-    viewBox: [-140, 150, 1280, 720],
+    viewBox: [CIRCLE_CX - (CIRCLE_D * 16) / 18, CIRCLE_CY - CIRCLE_R, (CIRCLE_D * 16) / 9, CIRCLE_D],
     aspect: 16 / 9,
+    layout: 'circle',
   },
 ]

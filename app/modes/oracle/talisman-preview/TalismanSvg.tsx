@@ -6,10 +6,22 @@
 import type { ReactNode } from 'react'
 import { isPrismColor } from '@/lib/oracle/engines/prism/tables'
 import { PRISM_COLOR_HEX } from '@/lib/oracle/prism-swatches'
-import { bindruneCenterY, composeBindrune } from '@/lib/oracle/talisman/bindrune'
+import { composeBindrune } from '@/lib/oracle/talisman/bindrune'
 import { TALISMAN_GLYPH_UNITS, talismanGlyph } from '@/lib/oracle/talisman/glyphs'
 import { NawalGlyph } from './nawal-glyphs'
-import { ELEMENT_META, type ElementKey, type FrameSpec, type PalaceMark, type PlanetMark, type TalismanSpec } from './variants'
+import {
+  CIRCLE_CX,
+  CIRCLE_CY,
+  CIRCLE_SCALE,
+  ELEMENT_META,
+  MASTER_H,
+  MASTER_W,
+  type ElementKey,
+  type FrameSpec,
+  type PalaceMark,
+  type PlanetMark,
+  type TalismanSpec,
+} from './variants'
 
 function prismHex(id: string | undefined): string | null {
   if (!id || !isPrismColor(id)) return null
@@ -206,10 +218,23 @@ function BindruneSigil({
   )
 }
 
-function PhysicsGlyph({ element, accent }: { element: ElementKey; accent: string }) {
+function PhysicsGlyph({
+  element,
+  accent,
+  x = CX,
+  y = CY + 8,
+  height = 70,
+}: {
+  element: ElementKey
+  accent: string
+  x?: number
+  y?: number
+  height?: number
+}) {
   const label = { fill: accent, stroke: 'none' as const, fontFamily: 'ui-monospace, monospace' }
+  const scale = height / 80
   return (
-    <g transform={`translate(${CX} ${CY + 8})`} stroke={accent} fill="none" strokeLinecap="butt">
+    <g transform={`translate(${x} ${y}) scale(${scale})`} stroke={accent} fill="none" strokeLinecap="butt" data-physics="true">
       {element === 'water' ? (
         <g strokeWidth={SW.med}>
           <path d="M-40 8 L0 38 L40 8" />
@@ -391,29 +416,40 @@ function SectorRays({ element, accent }: { element: ElementKey; accent: string }
   )
 }
 
-const FUDAN_BASE_SIZE = 50
-const FUDAN_EXORCISM_SIZE = FUDAN_BASE_SIZE * 1.6
+const FUDAN_BASE_SIZE = 380
+const FUDAN_EXORCISM_SIZE = 460
 
 function fudanSizeFor(glyph: string): number {
   return glyph === '鎭' ? FUDAN_EXORCISM_SIZE : FUDAN_BASE_SIZE
 }
 
-function FudanMark({ glyph, accent }: { glyph: string; accent: string }) {
-  const size = fudanSizeFor(glyph)
+function FudanMark({
+  glyph,
+  accent,
+  x = CX,
+  y = 370,
+  height,
+}: {
+  glyph: string
+  accent: string
+  x?: number
+  y?: number
+  height?: number
+}) {
+  const size = height ?? fudanSizeFor(glyph)
   const chars = [...glyph]
-  const scale = size / TALISMAN_GLYPH_UNITS
+  const maxH = Math.max(...chars.map((ch) => talismanGlyph(ch).bbox.h))
+  const scale = size / maxH
   const total = chars.reduce((sum, ch) => sum + talismanGlyph(ch).advance * scale, 0)
-  const padX = size * 0.28
-  const top = size * 0.9
-  const bot = size * 0.2
+  const padX = size * 0.18
   const w = total + padX * 2
-  const h = top + bot
+  const h = size + size * 0.22
   let cursor = -total / 2
   return (
-    <g data-fudan={glyph} data-fudan-size={String(size)} transform={`translate(${CX} 92)`}>
+    <g data-fudan={glyph} data-fudan-size={String(size)} transform={`translate(${x} ${y})`}>
       <rect
         x={-w / 2}
-        y={-top}
+        y={-h / 2}
         width={w}
         height={h}
         rx={8}
@@ -440,29 +476,83 @@ function FudanMark({ glyph, accent }: { glyph: string; accent: string }) {
   )
 }
 
-function Spine({
-  accent,
-  fudanGlyph,
-  stones,
-}: {
-  accent: string
-  fudanGlyph: string | null
-  stones: TalismanSpec['bindruneRunes']
-}) {
-  const gap = CORE + 4
-  const runeY = bindruneCenterY(Boolean(fudanGlyph))
+function Spine({ accent }: { accent: string }) {
+  const gap = CORE + 8
   return (
     <g fill={accent} stroke={accent} strokeLinecap="butt" data-spine="kept">
-      <rect x={CX - 4} y={18} width={8} height={CY - gap - 18} />
-      <rect x={CX - 4} y={CY + gap} width={8} height={980 - (CY + gap)} />
-      <rect x={CX - 30} y={10} width={60} height={6} />
-      <polygon points={`${CX - 18},30 ${CX},14 ${CX + 18},30`} fill="none" strokeWidth={SW.med} />
-      {fudanGlyph ? <FudanMark glyph={fudanGlyph} accent={accent} /> : null}
-      <BindruneSigil stones={stones} x={CX} y={runeY} accent={accent} />
-      <polygon points={`${CX - 16},972 ${CX},992 ${CX + 16},972`} fill="none" strokeWidth={SW.med} />
-      <rect x={CX - 24} y={988} width={48} height={4} />
+      <rect x={CX - 3} y={CY - ZIWEI_IN + 8} width={6} height={ZIWEI_IN - CORE - 16} />
+      <rect x={CX - 3} y={CY + gap} width={6} height={ZIWEI_IN - CORE - 16} />
     </g>
   )
+}
+
+function TallFrame() {
+  return (
+    <g data-tall-frame="true" fill="none">
+      <rect x={40} y={40} width={MASTER_W - 80} height={MASTER_H - 80} stroke={INK.hair} strokeWidth={SW.hair} />
+      <rect x={52} y={52} width={MASTER_W - 104} height={MASTER_H - 104} stroke={INK.base} strokeWidth={SW.hair} />
+      {(
+        [
+          [52, 52, 1, 1],
+          [MASTER_W - 52, 52, -1, 1],
+          [52, MASTER_H - 52, 1, -1],
+          [MASTER_W - 52, MASTER_H - 52, -1, -1],
+        ] as const
+      ).map(([x, y, dx, dy], i) => (
+        <g key={i} stroke={INK.strong} strokeWidth={SW.med}>
+          <line x1={x} y1={y} x2={x + dx * 28} y2={y} />
+          <line x1={x} y1={y} x2={x} y2={y + dy * 28} />
+        </g>
+      ))}
+    </g>
+  )
+}
+
+function TallTop({ spec, accent }: { spec: TalismanSpec; accent: string }) {
+  const fudan = spec.fudanGlyph ?? (spec.purposeWealth ? '財' : null)
+  if (fudan) {
+    return (
+      <g data-zone="top">
+        <FudanMark glyph={fudan} accent={accent} x={CIRCLE_CX} y={370} />
+      </g>
+    )
+  }
+  if (!spec.element) return <g data-zone="top" />
+  return (
+    <g data-zone="top">
+      <HanjaGlyph x={CIRCLE_CX} y={280} size={300} fill={accent}>
+        {ELEMENT_META[spec.element].hanja}
+      </HanjaGlyph>
+      <PhysicsGlyph element={spec.element} accent={accent} x={CIRCLE_CX} y={520} height={90} />
+    </g>
+  )
+}
+
+function TallBottom({ spec, accent }: { spec: TalismanSpec; accent: string }) {
+  const serial = spec.serial ? `No. ${spec.serial}` : ''
+  return (
+    <g data-zone="bottom">
+      <g transform="translate(500 1730) scale(3.25)" data-bindrune-slot="true">
+        <BindruneSigil stones={spec.bindruneRunes} x={0} y={0} accent={accent} />
+      </g>
+      <text
+        x={CIRCLE_CX}
+        y={2048}
+        textAnchor="middle"
+        fill={INK.hair}
+        fontSize="28"
+        fontFamily="ui-monospace, monospace"
+        letterSpacing="3"
+        data-serial="true"
+      >
+        {serial}
+      </text>
+    </g>
+  )
+}
+
+function circleTransform(): string {
+  return `translate(${CIRCLE_CX} ${CIRCLE_CY}) scale(${CIRCLE_SCALE}) translate(${-CX} ${-CY})`
 }
 
 function bow(a: Pt, b: Pt): string {
@@ -1332,12 +1422,15 @@ export function TalismanSvg({
   const element = spec.element
   const accent = element ? ELEMENT_META[element].accent : INK.strong
   const [vx, vy, vw, vh] = frame.viewBox
+  const tall = frame.layout === 'tall'
   return (
     <svg
       className="talisman-svg"
       viewBox={`${vx} ${vy} ${vw} ${vh}`}
       role="img"
       aria-label={`${spec.title} ${frame.label}`}
+      data-layout={frame.layout}
+      preserveAspectRatio="xMidYMid meet"
       style={{ width: '100%', height: '100%', display: 'block', background: GROUND }}
     >
       <defs>
@@ -1372,54 +1465,44 @@ export function TalismanSvg({
       </defs>
       <rect x={vx} y={vy} width={vw} height={vh} fill={GROUND} />
       <g clipPath={`url(#${uid}-frame)`}>
-        <BleedGrid />
-        <g transform={element ? leanTransform(element, spec.mode === 'drain') : undefined}>
-          {element ? <ElementSector element={element} accent={accent} /> : null}
-          <Luoshu spec={spec} accent={accent} />
-          <MinorRim spec={spec} />
-          {spec.planets.length > 0 ? (
-            <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
-          ) : spec.palaces != null ? (
-            <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
-          ) : null}
-          {spec.palaces != null || spec.numerology.length > 0 ? <MiddleScripts spec={spec} /> : null}
-          <IchingGaps emptySeats={spec.bokjangEmpty} />
-          <HexagramStack lines={spec.ichingLines} hot={Boolean(spec.purposeFilter?.iching)} />
-          <ZiweiRing palaces={spec.palaces} accent={accent} uid={uid} emphasise={spec.purposeFilter?.ziwei} />
-          <SajuRing spec={spec} accent={accent} />
-          <g filter={element ? `url(#${uid}-glow-mid)` : undefined}>
-            <Spine
-              accent={accent}
-              fudanGlyph={spec.fudanGlyph ?? (spec.purposeWealth ? '財' : null)}
-              stones={spec.bindruneRunes}
-            />
-          </g>
-          <TextureCuts spec={spec} />
-          <ZiweiSignals palaces={spec.palaces} />
-          <LuoshuLocks sealed={spec.luoshuSealed} accent={accent} />
-          <SpreadLocks angles={spec.spreadLocks ?? []} accent={accent} />
-          <HyungNotches spec={spec} />
-          <g filter={element ? `url(#${uid}-glow-core)` : undefined}>
-            <Centre spec={spec} accent={accent} />
-          </g>
-          {element ? (
-            <g filter={`url(#${uid}-glow-soft)`}>
-              <SectorRays element={element} accent={accent} />
+        {tall ? <TallFrame /> : null}
+        {tall ? <TallTop spec={spec} accent={accent} /> : null}
+        <g data-zone="circle" transform={circleTransform()}>
+          <circle cx={CX} cy={CY} r={500} fill="none" stroke={INK.hair} strokeWidth={SW.hair} data-circle="900" />
+          <BleedGrid />
+          <g transform={element ? leanTransform(element, spec.mode === 'drain') : undefined}>
+            {element ? <ElementSector element={element} accent={accent} /> : null}
+            <Luoshu spec={spec} accent={accent} />
+            <MinorRim spec={spec} />
+            {spec.planets.length > 0 ? (
+              <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
+            ) : spec.palaces != null ? (
+              <AstroRing planets={spec.planets} ascendant={spec.ascendant} accent={accent} />
+            ) : null}
+            {spec.palaces != null || spec.numerology.length > 0 ? <MiddleScripts spec={spec} /> : null}
+            <IchingGaps emptySeats={spec.bokjangEmpty} />
+            <HexagramStack lines={spec.ichingLines} hot={Boolean(spec.purposeFilter?.iching)} />
+            <ZiweiRing palaces={spec.palaces} accent={accent} uid={uid} emphasise={spec.purposeFilter?.ziwei} />
+            <SajuRing spec={spec} accent={accent} />
+            <g filter={element ? `url(#${uid}-glow-mid)` : undefined}>
+              <Spine accent={accent} />
             </g>
-          ) : null}
-          <text
-            x={CX}
-            y={964}
-            textAnchor="middle"
-            fill={INK.hair}
-            fontSize="11"
-            fontFamily="ui-monospace, monospace"
-            letterSpacing="2.4"
-            data-serial="true"
-          >
-            {spec.serial ? `No. ${spec.serial}` : ''}
-          </text>
+            <TextureCuts spec={spec} />
+            <ZiweiSignals palaces={spec.palaces} />
+            <LuoshuLocks sealed={spec.luoshuSealed} accent={accent} />
+            <SpreadLocks angles={spec.spreadLocks ?? []} accent={accent} />
+            <HyungNotches spec={spec} />
+            <g filter={element ? `url(#${uid}-glow-core)` : undefined}>
+              <Centre spec={spec} accent={accent} />
+            </g>
+            {element ? (
+              <g filter={`url(#${uid}-glow-soft)`}>
+                <SectorRays element={element} accent={accent} />
+              </g>
+            ) : null}
+          </g>
         </g>
+        {tall ? <TallBottom spec={spec} accent={accent} /> : null}
       </g>
     </svg>
   )

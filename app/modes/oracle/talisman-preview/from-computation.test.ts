@@ -11,6 +11,9 @@ import { PHYSICS_CAPTION, TALISMAN_FRAMES, type ElementKey } from './variants'
 import { TalismanSvg } from './TalismanSvg'
 import { charts1988, fakeConsensus, LIVE_ACCESS } from '@/lib/oracle/talisman/__tests__/fixture'
 
+const PHONE = TALISMAN_FRAMES[0]!
+const SQUARE = TALISMAN_FRAMES[2]!
+
 describe('palacesFrom ziwei ring signals', () => {
   it('reads 살성 count, 主星 brightness, 化忌, and 대한 from the sanitized chart', () => {
     const charts = charts1988({
@@ -120,11 +123,11 @@ describe('constructed centre fixtures', () => {
     expect(follow.stats.centrePath).toBe('종격 follow')
     expect(follow.spec.mode).toBe('follow')
     const followHtml = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: follow.spec, frame: TALISMAN_FRAMES[2]!, uid: 'follow-core' }),
+      createElement(TalismanSvg, { spec: follow.spec, frame: SQUARE, uid: 'follow-core' }),
     )
     expect(followHtml).toContain('data-centre="follow-spiral"')
     const softHtml = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: weak.spec, frame: TALISMAN_FRAMES[2]!, uid: 'soft-core' }),
+      createElement(TalismanSvg, { spec: weak.spec, frame: SQUARE, uid: 'soft-core' }),
     )
     expect(softHtml).toContain('data-intensity="soft"')
   })
@@ -144,7 +147,7 @@ describe('constructed centre fixtures', () => {
     expect(row.spec.prismColors).toBeNull()
     expect(row.stats.centreMode).toBe('drain')
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'blank-rim' }),
+      createElement(TalismanSvg, { spec: row.spec, frame: SQUARE, uid: 'blank-rim' }),
     )
     expect(html).toContain('data-prism="blank"')
     expect(html).not.toContain('#6b5b8c')
@@ -154,7 +157,7 @@ describe('constructed centre fixtures', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     expect(row.spec.physicsCaption).toBe(PHYSICS_CAPTION)
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'phys' }),
+      createElement(TalismanSvg, { spec: row.spec, frame: SQUARE, uid: 'phys' }),
     )
     expect(html).not.toContain('물리학적 주장')
     expect(html).not.toContain('오행-물리 대응')
@@ -164,7 +167,7 @@ describe('constructed centre fixtures', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     expect(row.spec.prismColors).toEqual({ impulse: 'crimson', need: 'gold', identity: 'indigo' })
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'prism-rim' }),
+      createElement(TalismanSvg, { spec: row.spec, frame: SQUARE, uid: 'prism-rim' }),
     )
     expect(html).toContain('data-prism="identity"')
     expect(html).toContain('data-prism="need"')
@@ -178,7 +181,7 @@ describe('constructed centre fixtures', () => {
   it('draws a neutral pentagon and keeps the spine when the element is null', () => {
     const row = rows.find((item) => item.id === 'consensus-null')!
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'null-core' }),
+      createElement(TalismanSvg, { spec: row.spec, frame: SQUARE, uid: 'null-core' }),
     )
     expect(html).toContain('data-centre="balanced"')
     expect(html).toContain('data-spine="kept"')
@@ -195,7 +198,7 @@ describe('constructed centre fixtures', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     expect(row.spec.serial).toBe(FAKE_TALISMAN_SERIAL)
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'serial' }),
+      createElement(TalismanSvg, { spec: row.spec, frame: PHONE, uid: 'serial' }),
     )
     expect(html).toContain('No. 7f2a19')
     expect(html).not.toContain('1984')
@@ -205,7 +208,7 @@ describe('constructed centre fixtures', () => {
   it('strips decorative hanja and keeps only the centre glyph plus 符膽', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財', purposeWealth: true }, frame: TALISMAN_FRAMES[2]!, uid: 'dehanja' }),
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財', purposeWealth: true }, frame: PHONE, uid: 'dehanja' }),
     )
     const texts = [...html.matchAll(/<text\b[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]!.trim()).filter(Boolean)
     expect(html).toContain('data-hanja="火"')
@@ -238,7 +241,7 @@ describe('constructed centre fixtures', () => {
       const html = renderToStaticMarkup(
         createElement(TalismanSvg, {
           spec: { ...row.spec, element, fudanGlyph: null },
-          frame: TALISMAN_FRAMES[2]!,
+          frame: SQUARE,
           uid: `glyph-${hanja}`,
         }),
       )
@@ -251,7 +254,7 @@ describe('constructed centre fixtures', () => {
     }
     const follow = rows.find((item) => item.id === 'follow')!
     const followHtml = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: follow.spec, frame: TALISMAN_FRAMES[2]!, uid: 'follow-earth' }),
+      createElement(TalismanSvg, { spec: follow.spec, frame: SQUARE, uid: 'follow-earth' }),
     )
     expect(follow.spec.element).toBe('earth')
     expect(followHtml).toContain('data-hanja="土"')
@@ -262,7 +265,7 @@ describe('constructed centre fixtures', () => {
   it('renders zero CJK text nodes after hanja-to-path', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '和合' }, frame: TALISMAN_FRAMES[2]!, uid: 'nockj' }),
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '和合' }, frame: PHONE, uid: 'nockj' }),
     )
     const texts = [...html.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)].map((m) => m[1] ?? '')
     expect(texts.some((t) => /[\u3400-\u9FFF\uF900-\uFAFF]/.test(t))).toBe(false)
@@ -281,7 +284,7 @@ describe('constructed centre fixtures', () => {
     expect(row.spec.secondaryElement).toBe('metal')
     expect(row.spec.absentElements).toEqual(['metal', 'water'])
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'sec' }),
+      createElement(TalismanSvg, { spec: row.spec, frame: SQUARE, uid: 'sec' }),
     )
     expect(html).toContain('data-secondary-sector="4"')
     expect(html).toContain('data-secondary-sector="9"')
@@ -291,19 +294,19 @@ describe('constructed centre fixtures', () => {
   it('frames the 符膽 path and draws 鎭 larger than the other purposes', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     const wealth = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財' }, frame: TALISMAN_FRAMES[2]!, uid: 'fudan-w' }),
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財' }, frame: PHONE, uid: 'fudan-w' }),
     )
     const love = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '和合' }, frame: TALISMAN_FRAMES[2]!, uid: 'fudan-l' }),
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '和合' }, frame: PHONE, uid: 'fudan-l' }),
     )
     const exorcism = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '鎭' }, frame: TALISMAN_FRAMES[2]!, uid: 'fudan-x' }),
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '鎭' }, frame: PHONE, uid: 'fudan-x' }),
     )
     expect(wealth).toContain('data-fudan="財"')
-    expect(wealth).toContain('data-fudan-size="50"')
-    expect(love).toContain('data-fudan-size="50"')
+    expect(wealth).toContain('data-fudan-size="380"')
+    expect(love).toContain('data-fudan-size="380"')
     expect(exorcism).toContain('data-fudan="鎭"')
-    expect(exorcism).toContain('data-fudan-size="80"')
+    expect(exorcism).toContain('data-fudan-size="460"')
     expect(wealth).toContain('stroke-linecap="square"')
     expect(wealth).toContain('rx="8"')
   })
@@ -317,13 +320,13 @@ describe('constructed centre fixtures', () => {
     expect(reversed.spec.bindruneRunes?.some((rune) => rune.reversed)).toBe(true)
     expect(reversed.spec.fudanGlyph).toBe('財')
     const threeHtml = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: three.spec, frame: TALISMAN_FRAMES[2]!, uid: 'br3' }),
+      createElement(TalismanSvg, { spec: three.spec, frame: PHONE, uid: 'br3' }),
     )
     const fiveHtml = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: five.spec, frame: TALISMAN_FRAMES[2]!, uid: 'br5' }),
+      createElement(TalismanSvg, { spec: five.spec, frame: PHONE, uid: 'br5' }),
     )
     const revHtml = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: reversed.spec, frame: TALISMAN_FRAMES[2]!, uid: 'brr' }),
+      createElement(TalismanSvg, { spec: reversed.spec, frame: PHONE, uid: 'brr' }),
     )
     expect(threeHtml).toContain('data-bindrune="merged"')
     expect(fiveHtml).toContain('data-bindrune="merged"')
@@ -333,7 +336,7 @@ describe('constructed centre fixtures', () => {
     const blank = renderToStaticMarkup(
       createElement(TalismanSvg, {
         spec: { ...three.spec, bindruneRunes: null },
-        frame: TALISMAN_FRAMES[2]!,
+        frame: PHONE,
         uid: 'bare',
       }),
     )
@@ -344,7 +347,7 @@ describe('constructed centre fixtures', () => {
     const row = rows.find((item) => item.id === 'sinkang')!
     expect(row.spec.numerologyMissing).toEqual([3, 5, 6, 7])
     const html = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[2]!, uid: 'num-miss' }),
+      createElement(TalismanSvg, { spec: row.spec, frame: SQUARE, uid: 'num-miss' }),
     )
     for (const digit of [3, 5, 6, 7]) {
       expect(html).toContain(`data-numerology-missing="${digit}"`)
@@ -356,7 +359,7 @@ describe('constructed centre fixtures', () => {
     expect(sinkang.spec.purposeFilter).toBeNull()
     expect(sinkang.spec.fudanGlyph).toBeNull()
     const sinkangHtml = renderToStaticMarkup(
-      createElement(TalismanSvg, { spec: sinkang.spec, frame: TALISMAN_FRAMES[2]!, uid: 'no-purpose' }),
+      createElement(TalismanSvg, { spec: sinkang.spec, frame: PHONE, uid: 'no-purpose' }),
     )
     expect(sinkangHtml).not.toContain('data-purpose-hit=')
     expect(sinkangHtml).not.toContain('data-fudan=')
@@ -373,7 +376,7 @@ describe('constructed centre fixtures', () => {
       expect(item.spec.fudanGlyph).toBe(row.glyph)
       expect(item.spec.purposeFilter?.purpose).toBe(row.id.replace('purpose-', ''))
       const html = renderToStaticMarkup(
-        createElement(TalismanSvg, { spec: item.spec, frame: TALISMAN_FRAMES[2]!, uid: row.id }),
+        createElement(TalismanSvg, { spec: item.spec, frame: PHONE, uid: row.id }),
       )
       expect(html).toContain(`data-fudan="${row.glyph}"`)
       for (const hit of row.hits) expect(html).toContain(`data-purpose-hit="${hit}"`)
@@ -387,10 +390,41 @@ describe('constructed centre fixtures', () => {
     const exorcismHtml = renderToStaticMarkup(
       createElement(TalismanSvg, {
         spec: rows.find((item) => item.id === 'purpose-exorcism')!.spec,
-        frame: TALISMAN_FRAMES[2]!,
+        frame: PHONE,
         uid: 'ex-size',
       }),
     )
-    expect(exorcismHtml).toContain('data-fudan-size="80"')
+    expect(exorcismHtml).toContain('data-fudan-size="460"')
+  })
+
+  it('uses the tall master for phone/wallet and the circle-only crop for square/16:9', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    const phone = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: PHONE, uid: 'comp-phone' }),
+    )
+    const wallet = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[1]!, uid: 'comp-wallet' }),
+    )
+    const square = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: SQUARE, uid: 'comp-square' }),
+    )
+    const desktop = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: row.spec, frame: TALISMAN_FRAMES[3]!, uid: 'comp-desk' }),
+    )
+    expect(PHONE.viewBox).toEqual([0, 0, 1000, 2166])
+    expect(TALISMAN_FRAMES[1]!.viewBox).toEqual([0, 0, 1000, 2166])
+    expect(phone).toContain('data-layout="tall"')
+    expect(phone).toContain('data-tall-frame="true"')
+    expect(phone).toContain('data-zone="top"')
+    expect(phone).toContain('data-zone="circle"')
+    expect(phone).toContain('data-zone="bottom"')
+    expect(phone).toContain('data-circle="900"')
+    expect(phone).toContain('viewBox="0 0 1000 2166"')
+    expect(wallet).toContain('viewBox="0 0 1000 2166"')
+    expect(square).toContain('data-layout="circle"')
+    expect(square).not.toContain('data-tall-frame="true"')
+    expect(square).not.toContain('data-serial="true"')
+    expect(desktop).toContain('data-layout="circle"')
+    expect(square).toContain('viewBox="50 650 900 900"')
   })
 })
