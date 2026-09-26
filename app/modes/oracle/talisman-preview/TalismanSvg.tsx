@@ -8,6 +8,7 @@ import { isPrismColor } from '@/lib/oracle/engines/prism/tables'
 import { PRISM_COLOR_HEX } from '@/lib/oracle/prism-swatches'
 import { composeBindrune } from '@/lib/oracle/talisman/bindrune'
 import { TALISMAN_GLYPH_UNITS, talismanGlyph } from '@/lib/oracle/talisman/glyphs'
+import { TALISMAN_ZODIAC_IDS, talismanZodiac } from '@/lib/oracle/talisman/zodiac'
 import { NawalGlyph } from './nawal-glyphs'
 import {
   CIRCLE_CX,
@@ -66,7 +67,6 @@ const SIGN_R = 300
 const ZIWEI_IN = 332
 const ZIWEI_OUT = 396
 
-const SIGN_ABBR = ['AR', 'TA', 'GE', 'CN', 'LE', 'VI', 'LI', 'SC', 'SG', 'CP', 'AQ', 'PI'] as const
 const BOKJANG_TRI = [1, 3, 4, 6, 7]
 const TRIGRAMS: readonly { bits: readonly boolean[] }[] = [
   { bits: [true, true, true] },
@@ -1176,6 +1176,19 @@ function HyungNotches({ spec }: { spec: TalismanSpec }) {
   )
 }
 
+function ZodiacMark({ id, x, y }: { id: (typeof TALISMAN_ZODIAC_IDS)[number]; x: number; y: number }) {
+  const glyph = talismanZodiac(id)
+  const size = 36
+  const scale = size / Math.max(glyph.bbox.h, glyph.bbox.w)
+  const cx = glyph.bbox.x + glyph.bbox.w / 2
+  const cy = glyph.bbox.y + glyph.bbox.h / 2
+  return (
+    <g data-zodiac={id} data-zodiac-codepoint={glyph.codepoint} transform={`translate(${x} ${y}) scale(${scale}) translate(${-cx} ${-cy})`}>
+      <path d={glyph.d} fill={INK.base} stroke="none" fillRule="evenodd" />
+    </g>
+  )
+}
+
 function PlanetGlyph({ id, x, y }: { id: string; x: number; y: number }) {
   return (
     <g transform={`translate(${x} ${y}) scale(3.4)`} stroke={INK.base} fill="none" strokeWidth={1.2} strokeLinecap="butt">
@@ -1255,23 +1268,10 @@ function AstroRing({
           />
         )),
       )}
-      {SIGN_ABBR.map((label, i) => {
+      {TALISMAN_ZODIAC_IDS.map((id, i) => {
         const mid = i * 30 + 15
         const p = polarJ(SIGN_R, 180 - mid, i)
-        return (
-          <text
-            key={label}
-            x={p.x}
-            y={p.y + 5}
-            textAnchor="middle"
-            fill={INK.base}
-            fontSize="32"
-            fontFamily="ui-serif, Georgia, serif"
-            letterSpacing="1"
-          >
-            {label}
-          </text>
-        )
+        return <ZodiacMark key={id} id={id} x={p.x} y={p.y} />
       })}
       {pts.map((planet) => (
         <PlanetGlyph key={planet.id} id={planet.id} x={planet.p.x} y={planet.p.y} />
