@@ -220,9 +220,14 @@ describe('constructed centre fixtures', () => {
     const html = renderToStaticMarkup(
       createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財', purposeWealth: true }, frame: PHONE, uid: 'dehanja' }),
     )
+    const square = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財', purposeWealth: true }, frame: SQUARE, uid: 'dehanja-sq' }),
+    )
     const texts = [...html.matchAll(/<text\b[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]!.trim()).filter(Boolean)
-    expect(html).toContain('data-hanja="火"')
     expect(html).toContain('data-hanja="財"')
+    expect(html).not.toContain('data-centre-hanja=')
+    expect(square).toContain('data-hanja="火"')
+    expect(square).toContain('data-centre-hanja="火"')
     expect(html).not.toContain('靑龍')
     expect(html).not.toContain('朱雀')
     expect(html).not.toContain('黃龍')
@@ -279,7 +284,6 @@ describe('constructed centre fixtures', () => {
     )
     const texts = [...html.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)].map((m) => m[1] ?? '')
     expect(texts.some((t) => /[\u3400-\u9FFF\uF900-\uFAFF]/.test(t))).toBe(false)
-    expect(html).toContain('data-hanja="火"')
     expect(html).toContain('data-hanja="和"')
     expect(html).toContain('data-hanja="合"')
     expect(html.match(/<text\b[^>]*>[\s\S]*?<\/text>/g)?.some((node) => /[\u3400-\u9FFF\uF900-\uFAFF]/.test(node))).toBe(

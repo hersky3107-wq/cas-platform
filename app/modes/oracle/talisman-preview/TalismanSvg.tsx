@@ -264,7 +264,7 @@ function PhysicsGlyph({
   const label = { fill: accent, stroke: 'none' as const, fontFamily: 'ui-monospace, monospace' }
   const scale = height / 80
   return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`} stroke={accent} fill="none" strokeLinecap="butt" data-physics="true">
+    <g transform={`translate(${x} ${y}) scale(${scale})`} stroke={accent} fill="none" strokeLinecap="butt" data-physics="true" data-physics-height={height}>
       {element === 'water' ? (
         <g strokeWidth={SW.med}>
           <path d="M-40 8 L0 38 L40 8" />
@@ -356,7 +356,7 @@ function FollowSpiral({ accent }: { accent: string }) {
   )
 }
 
-function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
+function Centre({ spec, accent, tall }: { spec: TalismanSpec; accent: string; tall: boolean }) {
   if (spec.element == null) return <BalancedCore />
   const element = spec.element
   const meta = ELEMENT_META[element]
@@ -392,12 +392,14 @@ function Centre({ spec, accent }: { spec: TalismanSpec; accent: string }) {
             return <line key={`in-${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.med} data-ray="in" />
           })}
       {follow ? <FollowSpiral accent={accent} /> : null}
-      <PhysicsGlyph element={element} accent={accent} height={90} />
-      <g data-centre-hanja={meta.hanja} data-centre-hanja-size="140">
-        <HanjaGlyph x={CX} y={CY - 36} size={140} fill={accent}>
-          {meta.hanja}
-        </HanjaGlyph>
-      </g>
+      <PhysicsGlyph element={element} accent={accent} height={tall ? 120 : 90} />
+      {tall ? null : (
+        <g data-centre-hanja={meta.hanja} data-centre-hanja-size="140">
+          <HanjaGlyph x={CX} y={CY - 36} size={140} fill={accent}>
+            {meta.hanja}
+          </HanjaGlyph>
+        </g>
+      )}
     </g>
   )
 }
@@ -524,10 +526,9 @@ function TallTop({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   if (!spec.element) return <g data-zone="top" />
   return (
     <g data-zone="top">
-      <HanjaGlyph x={CIRCLE_CX} y={280} size={300} fill={accent}>
+      <HanjaGlyph x={CIRCLE_CX} y={370} size={300} fill={accent}>
         {ELEMENT_META[spec.element].hanja}
       </HanjaGlyph>
-      <PhysicsGlyph element={spec.element} accent={accent} x={CIRCLE_CX} y={520} height={90} />
     </g>
   )
 }
@@ -589,7 +590,7 @@ function SealStamp({
   const ink = sealInk(spec.element)
   const serial = spec.serial ?? ''
   const runeScale = (size * 0.36) / 80
-  const serialSize = Math.max(26, size * 0.14)
+  const serialSize = Math.max(32, size * 0.16)
   return (
     <g data-seal-stamp="true" data-seal-ink={ink} data-seal-edge="square" transform={`translate(${x} ${y})`}>
       <path d={stampedSquare(size)} fill={ink} stroke="none" data-seal-face="true" />
@@ -1608,7 +1609,7 @@ export function TalismanSvg({
             <SpreadLocks angles={spec.spreadLocks ?? []} accent={accent} />
             <HyungNotches spec={spec} />
             <g filter={element ? `url(#${uid}-glow-core)` : undefined}>
-              <Centre spec={spec} accent={accent} />
+              <Centre spec={spec} accent={accent} tall={tall} />
             </g>
             {element ? (
               <g filter={`url(#${uid}-glow-soft)`}>

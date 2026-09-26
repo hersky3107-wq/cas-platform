@@ -20,9 +20,10 @@ describe('talisman size floor', () => {
       createElement(TalismanSvg, { spec: row.spec, frame: PHONE, uid: 'floor' }),
     )
     expect(PHONE.viewBox[2]).toBe(1000)
-    expect(html).toContain('data-centre-hanja-size="140"')
-    const centrePx = (140 * CIRCLE_SCALE * PHONE_RENDER_WIDTH) / 1000
-    expect(centrePx).toBeGreaterThanOrEqual(SIZE_FLOOR_PX)
+    expect(html).toContain('data-physics-height="120"')
+    expect(html).not.toContain('data-centre-hanja-size="140"')
+    const physicsPx = (120 * CIRCLE_SCALE * PHONE_RENDER_WIDTH) / 1000
+    expect(physicsPx).toBeGreaterThanOrEqual(SIZE_FLOOR_PX)
 
     const fonts = [...html.matchAll(/font-size="([0-9.]+)"/g)].map((m) => Number(m[1]))
     expect(fonts.length).toBeGreaterThan(0)
