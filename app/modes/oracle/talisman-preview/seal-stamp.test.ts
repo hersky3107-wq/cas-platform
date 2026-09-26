@@ -17,6 +17,8 @@ describe('seal stamp', () => {
     expect(html).toContain('data-seal-stamp="true"')
     expect(html).toContain('data-seal-edge="square"')
     expect(html).toContain('data-seal-cutout="bindrune"')
+    expect(html).toContain('data-seal-rune-height="0.7"')
+    expect(html).not.toContain('No. 7f2a19')
     expect(html).toContain('data-seal-serial="true"')
     expect(html).toContain('#f3ead8')
     expect(html).toContain('data-seal-ink="#8f1d14"')

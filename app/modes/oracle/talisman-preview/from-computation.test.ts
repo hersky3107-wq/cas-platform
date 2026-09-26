@@ -210,7 +210,9 @@ describe('constructed centre fixtures', () => {
     const html = renderToStaticMarkup(
       createElement(TalismanSvg, { spec: row.spec, frame: PHONE, uid: 'serial' }),
     )
-    expect(html).toContain('No. 7f2a19')
+    expect(html).toContain('data-seal-serial="true"')
+    expect(html).toContain('7f2a19')
+    expect(html).not.toContain('No. 7f2a19')
     expect(html).not.toContain('1984')
     expect(html).not.toContain(row.spec.sessionId)
   })
