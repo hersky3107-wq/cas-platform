@@ -47,6 +47,48 @@ const INK = {
   strong: 'rgba(255,255,255,0.9)',
 } as const
 const GROUND = '#07080c'
+export const TALISMAN_GROUND = GROUND
+/** Clear plate under the physics mark. Rays must start outside this radius. */
+export const PHYSICS_DISC = 72
+
+export function hexLuminance(hex: string): number {
+  const n = hex.replace('#', '')
+  const r = parseInt(n.slice(0, 2), 16) / 255
+  const g = parseInt(n.slice(2, 4), 16) / 255
+  const b = parseInt(n.slice(4, 6), 16) / 255
+  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const l1 = hexLuminance(a)
+  const l2 = hexLuminance(b)
+  const hi = Math.max(l1, l2)
+  const lo = Math.min(l1, l2)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+function mixHex(a: string, b: string, t: number): string {
+  const parse = (hex: string) => {
+    const n = hex.replace('#', '')
+    return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)] as const
+  }
+  const A = parse(a)
+  const B = parse(b)
+  const ch = (i: number) => Math.round(A[i]! * (1 - t) + B[i]! * t)
+    .toString(16)
+    .padStart(2, '0')
+  return `#${ch(0)}${ch(1)}${ch(2)}`
+}
+
+/** Lighten an 오행 plate until GROUND ink clears 3:1. */
+export function physicsPlate(accent: string): string {
+  let plate = accent
+  for (let t = 0; t <= 0.85 && contrastRatio(GROUND, plate) < 3; t += 0.05) {
+    plate = mixHex(accent, '#f3ead8', t)
+  }
+  return plate
+}
 
 /** 0° east, 90° north. Matches polar(). */
 const ELEMENT_AIM: Record<ElementKey, number> = {
@@ -209,10 +251,12 @@ function SealKnot({ x, y, accent, scale = 1 }: { x: number; y: number; accent: s
     <g
       data-seal-knot="true"
       data-knot-style="cord"
+      data-knot-scale={scale}
       transform={`translate(${x} ${y}) scale(${scale})`}
       stroke={accent}
       fill="none"
       strokeLinecap="butt"
+      opacity={0.7}
     >
       <circle r="16" strokeWidth={SW.med} />
       <line data-knot-cord="true" x1={-reach} y1={-reach} x2={reach} y2={reach} strokeWidth={SW.med} />
@@ -248,28 +292,15 @@ function BindruneSigil({
   )
 }
 
-function PhysicsGlyph({
-  element,
-  accent,
-  x = CX,
-  y = CY + 8,
-  height = 70,
-}: {
-  element: ElementKey
-  accent: string
-  x?: number
-  y?: number
-  height?: number
-}) {
-  const label = { fill: accent, stroke: 'none' as const, fontFamily: 'ui-monospace, monospace' }
-  const scale = height / 80
+function PhysicsMarks({ element, fill }: { element: ElementKey; fill: string }) {
+  const label = { fill, stroke: 'none' as const, fontFamily: 'ui-monospace, monospace' }
   return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`} stroke={accent} fill="none" strokeLinecap="butt" data-physics="true" data-physics-height={height}>
+    <>
       {element === 'water' ? (
         <g strokeWidth={SW.med}>
           <path d="M-40 8 L0 38 L40 8" />
           <path d="M-26 -4 L0 16 L26 -4" />
-          <circle cy="38" r="7" fill={accent} stroke="none" />
+          <circle cy="38" r="7" fill={fill} stroke="none" />
           <text x="22" y="-10" fontSize="36" letterSpacing="1" {...label}>
             G
           </text>
@@ -310,14 +341,51 @@ function PhysicsGlyph({
         </g>
       ) : null}
       {element === 'fire' ? (
-        <g strokeWidth={SW.med}>
-          <polyline points="-42,8 -32,-2 -22,8 -12,-2 -2,8 8,-2 18,8 28,-2 38,8" />
-          <polyline points="0,-34 -10,-24 0,-14 -10,-4 0,6 -10,16 0,26 -10,36 0,44" />
-          <text x="18" y="-16" fontSize="40" fontFamily="ui-serif, serif" stroke="none" fill={accent}>
+        <g strokeWidth={SW.med} data-physics-fire="wave">
+          <polyline data-physics-wave="true" points="-40,14 -26,-2 -10,12 6,-2 22,12 36,-4" />
+          <text x="8" y="-18" fontSize="40" fontFamily="ui-serif, serif" stroke="none" fill={fill}>
             γ
           </text>
         </g>
       ) : null}
+    </>
+  )
+}
+
+function PhysicsGlyph({
+  element,
+  accent,
+  ink,
+  outline,
+  x = CX,
+  y = CY,
+  height = 70,
+}: {
+  element: ElementKey
+  accent: string
+  ink: string
+  outline?: boolean
+  x?: number
+  y?: number
+  height?: number
+}) {
+  const scale = height / 80
+  return (
+    <g
+      transform={`translate(${x} ${y}) scale(${scale})`}
+      stroke={ink}
+      fill="none"
+      strokeLinecap="butt"
+      data-physics="true"
+      data-physics-height={height}
+      data-physics-ink={ink}
+    >
+      {outline ? (
+        <g stroke={accent} fill="none" strokeWidth={SW.med + 1.8} data-physics-outline="true">
+          <PhysicsMarks element={element} fill="none" />
+        </g>
+      ) : null}
+      <PhysicsMarks element={element} fill={ink} />
     </g>
   )
 }
@@ -340,7 +408,7 @@ function FollowSpiral({ accent }: { accent: string }) {
   const pts: string[] = []
   for (let i = 0; i <= 80; i += 1) {
     const t = i / 80
-    const r = 22 + t * (CORE - 28)
+    const r = PHYSICS_DISC + 6 + t * (CORE - PHYSICS_DISC - 16)
     const p = polar(r, t * 900)
     pts.push(`${p.x},${p.y}`)
   }
@@ -364,6 +432,9 @@ function Centre({ spec, accent, tall }: { spec: TalismanSpec; accent: string; ta
   const follow = spec.mode === 'follow'
   const aim = ELEMENT_AIM[element]
   const wash = spec.intensity === 'soft' ? 0.22 : 0.42
+  const plate = drain ? GROUND : physicsPlate(accent)
+  const ink = drain ? accent : GROUND
+  const rayInner = PHYSICS_DISC + 8
   return (
     <g
       data-centre={follow ? 'follow' : spec.intensity === 'soft' ? 'soft' : 'full'}
@@ -388,11 +459,21 @@ function Centre({ spec, accent, tall }: { spec: TalismanSpec; accent: string; ta
         : Array.from({ length: 16 }, (_, i) => {
             const a = aim - 80 + i * 10
             const a0 = polar(CORE - 6, a)
-            const a1 = polar(36, a)
+            const a1 = polar(rayInner, a)
             return <line key={`in-${i}`} x1={a0.x} y1={a0.y} x2={a1.x} y2={a1.y} stroke={accent} strokeWidth={SW.med} data-ray="in" />
           })}
       {follow ? <FollowSpiral accent={accent} /> : null}
-      <PhysicsGlyph element={element} accent={accent} height={tall ? 120 : 90} />
+      <circle
+        cx={CX}
+        cy={CY}
+        r={PHYSICS_DISC}
+        fill={plate}
+        stroke={accent}
+        strokeWidth={SW.hair}
+        data-physics-disc="true"
+        data-physics-plate={plate}
+      />
+      <PhysicsGlyph element={element} accent={accent} ink={ink} outline={!drain} height={tall ? 120 : 90} />
       {tall ? null : (
         <g data-centre-hanja={meta.hanja} data-centre-hanja-size="140">
           <HanjaGlyph x={CX} y={CY - 36} size={140} fill={accent}>
@@ -589,12 +670,14 @@ function SealStamp({
 }) {
   const ink = sealInk(spec.element)
   const serial = spec.serial ?? ''
-  const runeScale = (size * 0.36) / 80
+  const runeH = size * 0.7
+  const runeScale = runeH / 80
+  const runeCy = -size / 2 + runeH / 2 + 2
   const serialSize = Math.max(32, size * 0.16)
   return (
     <g data-seal-stamp="true" data-seal-ink={ink} data-seal-edge="square" transform={`translate(${x} ${y})`}>
       <path d={stampedSquare(size)} fill={ink} stroke="none" data-seal-face="true" />
-      <g transform={`translate(0 ${-size * 0.1}) scale(${runeScale})`} data-seal-cutout="bindrune">
+      <g transform={`translate(0 ${round(runeCy)}) scale(${runeScale})`} data-seal-cutout="bindrune" data-seal-rune-height="0.7">
         <BindruneSigil stones={spec.bindruneRunes} x={0} y={0} accent={SEAL_CREAM} />
       </g>
       <text
@@ -614,25 +697,12 @@ function SealStamp({
 }
 
 function TallBottom({ spec, accent }: { spec: TalismanSpec; accent: string }) {
-  const serial = spec.serial ? `No. ${spec.serial}` : ''
   return (
     <g data-zone="bottom">
       <g transform="translate(500 1688) scale(3.25)" data-bindrune-slot="true">
         <BindruneSigil stones={spec.bindruneRunes} x={0} y={0} accent={accent} />
       </g>
       <SealStamp spec={spec} x={CIRCLE_CX} y={1936} size={200} />
-      <text
-        x={CIRCLE_CX}
-        y={2048}
-        textAnchor="middle"
-        fill={INK.hair}
-        fontSize="32"
-        fontFamily="ui-monospace, monospace"
-        letterSpacing="3"
-        data-serial="true"
-      >
-        {serial}
-      </text>
     </g>
   )
 }
@@ -781,18 +851,7 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
   const originY = round(CY - half)
   const earthHit = secondary === 'earth'
   return (
-    <g>
-      <rect
-        x={originX}
-        y={originY}
-        width={half * 2}
-        height={half * 2}
-        fill="none"
-        stroke={earthHit || starHot ? INK.strong : INK.faint}
-        strokeWidth={earthHit || starHot ? SW.med : SW.hair}
-        data-secondary-sector={earthHit ? 'earth' : undefined}
-        data-purpose-hit={starHot ? 'ninestar' : undefined}
-      />
+    <g data-luoshu="true" data-secondary-sector={earthHit ? 'earth' : undefined} data-purpose-hit={starHot ? 'ninestar' : undefined}>
       {LUOSHU.map((palace, i) => {
         const col = i % 3
         const row = Math.floor(i / 3)
@@ -820,15 +879,6 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
         if (covered) return null
         return (
           <g key={palace} data-secondary-sector={hit ? palace : undefined}>
-            <rect
-              x={x}
-              y={y}
-              width={cell}
-              height={cell}
-              fill="none"
-              stroke={hit || starHot ? INK.strong : INK.faint}
-              strokeWidth={hit || starHot ? SW.med : SW.hair}
-            />
             <text
               x={cx}
               y={cy + 7}
@@ -1123,7 +1173,7 @@ function ZiweiRing({
                 stroke={accent}
                 strokeWidth={hot ? SW.med : SW.hair}
               />
-              <SealKnot x={mid.x} y={mid.y} accent={accent} scale={0.42} />
+              <SealKnot x={mid.x} y={mid.y} accent={accent} scale={0.315} />
             </g>
           )
         }
@@ -1191,19 +1241,10 @@ function HyungNotches({ spec }: { spec: TalismanSpec }) {
       {spec.nameSeals.map((seal, i) => {
         if (seal !== 'hyung') return null
         const a = -90 + i * 72
-        const p1 = polarJ(ZIWEI_OUT + 6, a - 9, i)
-        const p2 = polarJ(ZIWEI_IN + 24, a, i)
-        const p3 = polarJ(ZIWEI_OUT + 6, a + 9, i)
         const seat = polar((ZIWEI_IN + ZIWEI_OUT) / 2, a)
         return (
-          <g key={i}>
-            <path
-              d={`M${p1.x},${p1.y} L${p2.x},${p2.y} L${p3.x},${p3.y} Z`}
-              fill={GROUND}
-              stroke={hot ? INK.strong : INK.hair}
-              strokeWidth={hot ? SW.med : SW.hair}
-            />
-            <SealKnot x={seat.x} y={seat.y} accent={INK.strong} scale={0.42} />
+          <g key={i} data-hyung-knot="true">
+            <SealKnot x={seat.x} y={seat.y} accent={INK.strong} scale={0.315} />
           </g>
         )
       })}
@@ -1487,7 +1528,7 @@ function LuoshuLocks({
             <g clipPath={`url(#${clipId})`} opacity={0.15} data-sealed-hatch="true">
               {lines}
             </g>
-            <SealKnot x={c.cx} y={c.cy} accent={accent} scale={1} />
+            <SealKnot x={c.cx} y={c.cy} accent={accent} scale={0.75} />
           </g>
         )
       })}
@@ -1500,7 +1541,7 @@ function SpreadLocks({ angles, accent }: { angles: readonly number[]; accent: st
     <g>
       {angles.map((a, i) => {
         const p = polar(SCRIPT_R, a)
-        return <SealKnot key={`spread-${i}`} x={p.x} y={p.y} accent={accent} scale={0.42} />
+        return <SealKnot key={`spread-${i}`} x={p.x} y={p.y} accent={accent} scale={0.315} />
       })}
     </g>
   )
