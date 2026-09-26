@@ -180,15 +180,45 @@ function HanjaGlyph({
   )
 }
 
-/** Stamped knot — circle bound by crossed cords. Replaces the lock/square UI. */
+/** Binding knot: a small circle with two diagonal cords that run past it. */
 function SealKnot({ x, y, accent, scale = 1 }: { x: number; y: number; accent: string; scale?: number }) {
+  const reach = 50
+  const u = 1 / Math.SQRT2
+  const ties = (
+    ux: number,
+    uy: number,
+  ) =>
+    [32, -32].map((dist) => {
+      const cx = ux * dist
+      const cy = uy * dist
+      const px = -uy * 8
+      const py = ux * 8
+      return (
+        <line
+          key={`${ux}-${uy}-${dist}`}
+          data-knot-tie="true"
+          x1={cx - px}
+          y1={cy - py}
+          x2={cx + px}
+          y2={cy + py}
+          strokeWidth={SW.med}
+        />
+      )
+    })
   return (
-    <g data-seal-knot="true" transform={`translate(${x} ${y}) scale(${scale})`} stroke={accent} fill="none" strokeLinecap="butt">
-      <circle r="18" strokeWidth={SW.med} />
-      <line x1="-13" y1="-13" x2="13" y2="13" strokeWidth={SW.med} />
-      <line x1="13" y1="-13" x2="-13" y2="13" strokeWidth={SW.med} />
-      <line x1="-16" y1="0" x2="16" y2="0" strokeWidth={SW.hair} />
-      <line x1="0" y1="-16" x2="0" y2="16" strokeWidth={SW.hair} />
+    <g
+      data-seal-knot="true"
+      data-knot-style="cord"
+      transform={`translate(${x} ${y}) scale(${scale})`}
+      stroke={accent}
+      fill="none"
+      strokeLinecap="butt"
+    >
+      <circle r="16" strokeWidth={SW.med} />
+      <line data-knot-cord="true" x1={-reach} y1={-reach} x2={reach} y2={reach} strokeWidth={SW.med} />
+      <line data-knot-cord="true" x1={reach} y1={-reach} x2={-reach} y2={reach} strokeWidth={SW.med} />
+      {ties(u, u)}
+      {ties(u, -u)}
     </g>
   )
 }
@@ -670,11 +700,11 @@ function SajuRing({ spec, accent }: { spec: TalismanSpec; accent: string }) {
 }
 
 function HexagramStack({ lines, hot }: { lines: readonly boolean[]; hot?: boolean }) {
-  const x = CX - 118
+  const x = CX - LUOSHU_HALF - 40
   const y0 = CY - 52
   const weight = hot ? 3.2 : SW.med
   return (
-    <g stroke={INK.strong} strokeLinecap="butt" data-purpose-hit={hot ? 'iching' : undefined}>
+    <g stroke={INK.strong} strokeLinecap="butt" data-iching-hex="true" data-purpose-hit={hot ? 'iching' : undefined}>
       {lines.map((yang, i) => {
         const y = y0 + i * 14
         if (yang) return <line key={i} x1={x - 28} y1={y} x2={x + 28} y2={y} strokeWidth={weight} />
@@ -786,6 +816,7 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
             </g>
           )
         }
+        if (covered) return null
         return (
           <g key={palace} data-secondary-sector={hit ? palace : undefined}>
             <rect
@@ -797,18 +828,16 @@ function Luoshu({ spec, accent }: { spec: TalismanSpec; accent: string }) {
               stroke={hit || starHot ? INK.strong : INK.faint}
               strokeWidth={hit || starHot ? SW.med : SW.hair}
             />
-            {covered ? null : (
-              <text
-                x={cx}
-                y={cy + 7}
-                textAnchor="middle"
-                fill={hit ? INK.strong : INK.hair}
-                fontSize="32"
-                fontFamily="ui-serif, serif"
-              >
-                {palace}
-              </text>
-            )}
+            <text
+              x={cx}
+              y={cy + 7}
+              textAnchor="middle"
+              fill={hit ? INK.strong : INK.hair}
+              fontSize="32"
+              fontFamily="ui-serif, serif"
+            >
+              {palace}
+            </text>
           </g>
         )
       })}
@@ -1093,7 +1122,7 @@ function ZiweiRing({
                 stroke={accent}
                 strokeWidth={hot ? SW.med : SW.hair}
               />
-              <SealKnot x={mid.x} y={mid.y} accent={accent} scale={1} />
+              <SealKnot x={mid.x} y={mid.y} accent={accent} scale={0.42} />
             </g>
           )
         }
@@ -1173,7 +1202,7 @@ function HyungNotches({ spec }: { spec: TalismanSpec }) {
               stroke={hot ? INK.strong : INK.hair}
               strokeWidth={hot ? SW.med : SW.hair}
             />
-            <SealKnot x={seat.x} y={seat.y} accent={INK.strong} scale={1} />
+            <SealKnot x={seat.x} y={seat.y} accent={INK.strong} scale={0.42} />
           </g>
         )
       })}
@@ -1423,25 +1452,41 @@ function TextureCuts({ spec }: { spec: TalismanSpec }) {
           return null
         })
       )}
-      {LUOSHU.map((palace, i) => {
-        if (palace === 5 || !spec.luoshuSealed.includes(palace)) return null
-        const c = luoshuCell(i)
-        return <rect key={`luo-${palace}`} x={c.x} y={c.y} width={c.w} height={c.w} fill={GROUND} />
-      })}
     </g>
   )
 }
 
-function LuoshuLocks({ sealed, accent }: { sealed: readonly number[]; accent: string }) {
+function LuoshuLocks({
+  sealed,
+  accent,
+  uid,
+}: {
+  sealed: readonly number[]
+  accent: string
+  uid: string
+}) {
   return (
     <g>
       {LUOSHU.map((palace, i) => {
         if (palace === 5 || !sealed.includes(palace)) return null
         const c = luoshuCell(i)
+        const clipId = `${uid}-luo-seal-${palace}`
+        const step = 11
+        const lines: ReactNode[] = []
+        for (let x = c.x - c.w; x < c.x + c.w * 2; x += step) {
+          lines.push(
+            <line key={x} x1={x} y1={c.y} x2={x + c.w} y2={c.y + c.w} stroke={accent} strokeWidth={SW.hair} />,
+          )
+        }
         return (
-          <g key={`lock-${palace}`}>
-            <rect x={c.x} y={c.y} width={c.w} height={c.w} fill="none" stroke={accent} strokeWidth={SW.hair} />
-            <SealKnot x={c.cx} y={c.cy} accent={accent} scale={1.15} />
+          <g key={`lock-${palace}`} data-sealed-cell={palace}>
+            <clipPath id={clipId}>
+              <rect x={c.x} y={c.y} width={c.w} height={c.w} />
+            </clipPath>
+            <g clipPath={`url(#${clipId})`} opacity={0.15} data-sealed-hatch="true">
+              {lines}
+            </g>
+            <SealKnot x={c.cx} y={c.cy} accent={accent} scale={1} />
           </g>
         )
       })}
@@ -1454,7 +1499,7 @@ function SpreadLocks({ angles, accent }: { angles: readonly number[]; accent: st
     <g>
       {angles.map((a, i) => {
         const p = polar(SCRIPT_R, a)
-        return <SealKnot key={`spread-${i}`} x={p.x} y={p.y} accent={accent} scale={1} />
+        return <SealKnot key={`spread-${i}`} x={p.x} y={p.y} accent={accent} scale={0.42} />
       })}
     </g>
   )
@@ -1559,7 +1604,7 @@ export function TalismanSvg({
             </g>
             <TextureCuts spec={spec} />
             <ZiweiSignals palaces={spec.palaces} />
-            <LuoshuLocks sealed={spec.luoshuSealed} accent={accent} />
+            <LuoshuLocks sealed={spec.luoshuSealed} accent={accent} uid={uid} />
             <SpreadLocks angles={spec.spreadLocks ?? []} accent={accent} />
             <HyungNotches spec={spec} />
             <g filter={element ? `url(#${uid}-glow-core)` : undefined}>
