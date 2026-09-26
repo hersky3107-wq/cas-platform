@@ -44,7 +44,13 @@ export { chartsFromComputations } from './charts'
 export type { ArrivalReport, FieldArrival, ComputationRow } from './charts'
 export { talismanFromStoredSession } from './from-session'
 export type { TalismanSessionResult } from './from-session'
-export { canDownloadTalismanFormat, parseTalismanBuyPurpose, talismanPriceFor } from './entitlement'
+export {
+  canDownloadTalismanFormat,
+  formatTalismanReadingDate,
+  parseTalismanBuyPurpose,
+  shouldShowFreePhoneHint,
+  talismanPriceFor,
+} from './entitlement'
 export type { TalismanBuyPurpose } from './entitlement'
 export { isIntegratedTalismanSource } from './source-session'
 export { purchaseTalismanUnlock } from './purchase'

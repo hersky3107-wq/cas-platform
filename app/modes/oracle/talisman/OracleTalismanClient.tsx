@@ -9,6 +9,7 @@ import {
   TALISMAN_BUY_PURPOSES,
   TALISMAN_PURPOSE_LABELS,
   isFreePhoneGrant,
+  shouldShowFreePhoneHint,
   type TalismanBuyPurpose,
 } from "@/lib/oracle/talisman/entitlement";
 import type { TalismanPngFormat } from "@/lib/oracle/talisman/png/formats";
@@ -41,6 +42,12 @@ type TalismanPayload = {
   physicsCaption?: string;
   purchased?: boolean;
   isFirstIntegratedSession?: boolean;
+  firstEligibleSession?: {
+    id: string;
+    createdAt: string;
+    dateLabel: string;
+    purchased?: boolean;
+  } | null;
   readingDateLabel?: string;
   sessions?: TalismanSessionOption[];
   unlockedFormats?: TalismanPngFormat[];
@@ -109,6 +116,23 @@ export default function OracleTalismanClient() {
       isFirstIntegratedSession: isFirst,
     });
 
+  const firstEligible =
+    payload?.firstEligibleSession ??
+    (payload?.sessions && payload.sessions.length > 0
+      ? {
+          id: payload.sessions[payload.sessions.length - 1]!.id,
+          createdAt: payload.sessions[payload.sessions.length - 1]!.createdAt,
+          dateLabel: payload.sessions[payload.sessions.length - 1]!.label.replace(" 통합 판독", ""),
+          purchased: false,
+        }
+      : null);
+
+  const showFreeHint = shouldShowFreePhoneHint({
+    selectedSessionId: sessionId,
+    firstEligibleSessionId: firstEligible?.id,
+    firstEligiblePurchased: firstEligible?.purchased,
+  });
+
   function hrefFor(next: TalismanBuyPurpose) {
     const q = new URLSearchParams();
     if (sessionId) q.set("session", sessionId);
@@ -116,10 +140,11 @@ export default function OracleTalismanClient() {
     return `/modes/oracle/talisman?${q.toString()}`;
   }
 
-  function switchSession(nextId: string) {
+  function switchSession(nextId: string, nextPurpose?: TalismanBuyPurpose) {
+    const targetPurpose = nextPurpose ?? purpose;
     const q = new URLSearchParams();
     q.set("session", nextId);
-    if (purpose !== "deficiency") q.set("purpose", purpose);
+    if (targetPurpose !== "deficiency") q.set("purpose", targetPurpose);
     router.replace(`/modes/oracle/talisman?${q.toString()}`);
   }
 
@@ -249,7 +274,19 @@ export default function OracleTalismanClient() {
               </figcaption>
             </figure>
 
-            <div className="mt-6 flex flex-col gap-2.5">
+            {showFreeHint && firstEligible ? (
+              <p className="mt-6 text-center text-xs text-white/60">
+                <button
+                  type="button"
+                  onClick={() => switchSession(firstEligible.id, "deficiency")}
+                  className="text-amber-300 underline underline-offset-2 hover:text-amber-200 transition cursor-pointer"
+                >
+                  첫 통합 판독({firstEligible.dateLabel})으로 휴대폰 부적을 무료로 받을 수 있어요
+                </button>
+              </p>
+            ) : null}
+
+            <div className={`${showFreeHint ? "mt-3" : "mt-6"} flex flex-col gap-2.5`}>
               {purchased ? (
                 <>
                   <div className="flex items-center justify-center gap-1.5 text-xs text-white/50">

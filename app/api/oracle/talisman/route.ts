@@ -10,6 +10,7 @@ import { createSupabaseRunnerStore } from '@/lib/oracle/runner/store'
 import { TALISMAN_PRICE } from '@/lib/oracle/runner/conventions'
 import { talismanFromStoredSession, talismanSerialFromEnv } from '@/lib/oracle/talisman'
 import {
+  formatTalismanReadingDate,
   parseTalismanBuyPurpose,
   talismanComputePurpose,
   talismanPriceFor,
@@ -58,6 +59,7 @@ export async function GET(req: Request) {
         prices: TALISMAN_PRICE,
         purchased: false,
         isFirstIntegratedSession: false,
+        firstEligibleSession: null,
         unlockedFormats: [],
         sessions: [],
       })
@@ -76,6 +78,7 @@ export async function GET(req: Request) {
         prices: TALISMAN_PRICE,
         purchased: false,
         isFirstIntegratedSession: false,
+        firstEligibleSession: null,
         unlockedFormats: [],
         sessions: [],
       })
@@ -91,6 +94,18 @@ export async function GET(req: Request) {
     const earliestSession = eligibleSessions[eligibleSessions.length - 1]!
     const isFirst = session.id === earliestSession.id
 
+    const earliestPurchases = isFirst
+      ? purchases
+      : await createTalismanPurchaseStore().list(auth.user.id, earliestSession.id)
+    const firstSessionPurchased = earliestPurchases.some((row) => row.purpose === 'deficiency')
+
+    const firstEligibleSession = {
+      id: earliestSession.id,
+      createdAt: earliestSession.created_at,
+      dateLabel: formatTalismanReadingDate(earliestSession.created_at),
+      purchased: firstSessionPurchased,
+    }
+
     const result = talismanFromStoredSession({
       session,
       computations,
@@ -98,17 +113,13 @@ export async function GET(req: Request) {
       purpose: talismanComputePurpose(purpose),
     })
 
-    const [y, m, d] = session.created_at.slice(0, 10).split('-')
-    const readingDateLabel = `${Number(y)}.${Number(m)}.${Number(d)} 통합 판독 기준`
+    const readingDateLabel = `${formatTalismanReadingDate(session.created_at)} 통합 판독 기준`
 
-    const sessions = eligibleSessions.map((s) => {
-      const [sy, sm, sd] = s.created_at.slice(0, 10).split('-')
-      return {
-        id: s.id,
-        createdAt: s.created_at,
-        label: `${Number(sy)}.${Number(sm)}.${Number(sd)} 통합 판독`,
-      }
-    })
+    const sessions = eligibleSessions.map((s) => ({
+      id: s.id,
+      createdAt: s.created_at,
+      label: `${formatTalismanReadingDate(s.created_at)} 통합 판독`,
+    }))
 
     const purchased = purchases.some((row) => row.purpose === purpose)
     const payload = {
@@ -120,6 +131,7 @@ export async function GET(req: Request) {
       prices: TALISMAN_PRICE,
       purchased,
       isFirstIntegratedSession: isFirst,
+      firstEligibleSession,
       readingDateLabel,
       sessions,
       unlockedFormats: unlockedTalismanFormats({

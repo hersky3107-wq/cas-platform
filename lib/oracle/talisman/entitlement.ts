@@ -70,6 +70,22 @@ export function canDownloadTalismanFormat(input: {
   return isFreePhoneGrant(input)
 }
 
+export function formatTalismanReadingDate(isoDate: string): string {
+  const [y, m, d] = isoDate.slice(0, 10).split('-')
+  return `${Number(y)}.${Number(m)}.${Number(d)}`
+}
+
+export function shouldShowFreePhoneHint(input: {
+  selectedSessionId?: string | null
+  firstEligibleSessionId?: string | null
+  firstEligiblePurchased?: boolean
+}): boolean {
+  if (!input.selectedSessionId || !input.firstEligibleSessionId) return false
+  if (input.selectedSessionId === input.firstEligibleSessionId) return false
+  if (input.firstEligiblePurchased) return false
+  return true
+}
+
 export function unlockedTalismanFormats(input: {
   purchased: boolean
   purpose: TalismanBuyPurpose

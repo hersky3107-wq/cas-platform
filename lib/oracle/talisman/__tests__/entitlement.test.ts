@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { TALISMAN_PRICE } from '../../runner/conventions'
 import {
   canDownloadTalismanFormat,
+  formatTalismanReadingDate,
   isFreePhoneGrant,
   parseTalismanBuyPurpose,
+  shouldShowFreePhoneHint,
   talismanDownloadGate,
   talismanPriceFor,
   unlockedTalismanFormats,
@@ -246,6 +248,54 @@ describe('talisman download gate', () => {
         purpose: 'deficiency',
         format: 'phone',
         isFirstIntegratedSession: isFirstForThird,
+      }),
+    ).toBe(false)
+  })
+
+  it('formats reading date as YYYY.M.D', () => {
+    expect(formatTalismanReadingDate('2026-09-05T09:26:58.012027+00:00')).toBe('2026.9.5')
+    expect(formatTalismanReadingDate('2026-11-20T00:00:00Z')).toBe('2026.11.20')
+  })
+
+  it('shouldShowFreePhoneHint shows hint on later session and hides on the free session', () => {
+    // Later session selected, first session not purchased -> show hint
+    expect(
+      shouldShowFreePhoneHint({
+        selectedSessionId: 'sess-later',
+        firstEligibleSessionId: 'sess-first',
+        firstEligiblePurchased: false,
+      }),
+    ).toBe(true)
+
+    // Free session selected -> hide hint
+    expect(
+      shouldShowFreePhoneHint({
+        selectedSessionId: 'sess-first',
+        firstEligibleSessionId: 'sess-first',
+        firstEligiblePurchased: false,
+      }),
+    ).toBe(false)
+
+    // First session already purchased -> hide hint
+    expect(
+      shouldShowFreePhoneHint({
+        selectedSessionId: 'sess-later',
+        firstEligibleSessionId: 'sess-first',
+        firstEligiblePurchased: true,
+      }),
+    ).toBe(false)
+
+    // Missing sessions -> hide hint
+    expect(
+      shouldShowFreePhoneHint({
+        selectedSessionId: null,
+        firstEligibleSessionId: 'sess-first',
+      }),
+    ).toBe(false)
+    expect(
+      shouldShowFreePhoneHint({
+        selectedSessionId: 'sess-later',
+        firstEligibleSessionId: null,
       }),
     ).toBe(false)
   })
