@@ -251,6 +251,26 @@ describe('constructed centre fixtures', () => {
     expect(html).not.toContain('data-secondary-sector="1"')
   })
 
+  it('frames the 符膽 path and draws 鎭 larger than the other purposes', () => {
+    const row = rows.find((item) => item.id === 'sinkang')!
+    const wealth = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '財' }, frame: TALISMAN_FRAMES[2]!, uid: 'fudan-w' }),
+    )
+    const love = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '和合' }, frame: TALISMAN_FRAMES[2]!, uid: 'fudan-l' }),
+    )
+    const exorcism = renderToStaticMarkup(
+      createElement(TalismanSvg, { spec: { ...row.spec, fudanGlyph: '鎭' }, frame: TALISMAN_FRAMES[2]!, uid: 'fudan-x' }),
+    )
+    expect(wealth).toContain('data-fudan="財"')
+    expect(wealth).toContain('data-fudan-size="50"')
+    expect(love).toContain('data-fudan-size="50"')
+    expect(exorcism).toContain('data-fudan="鎭"')
+    expect(exorcism).toContain('data-fudan-size="80"')
+    expect(wealth).toContain('stroke-linecap="square"')
+    expect(wealth).toContain('rx="8"')
+  })
+
   it('bindrune fixtures merge the stored draw and leave a bare stave when runes are missing', () => {
     const three = rows.find((item) => item.id === 'bindrune-3')!
     const five = rows.find((item) => item.id === 'bindrune-5')!

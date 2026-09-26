@@ -379,6 +379,53 @@ function SectorRays({ element, accent }: { element: ElementKey; accent: string }
   )
 }
 
+const FUDAN_BASE_SIZE = 50
+const FUDAN_EXORCISM_SIZE = FUDAN_BASE_SIZE * 1.6
+
+function fudanSizeFor(glyph: string): number {
+  return glyph === '鎭' ? FUDAN_EXORCISM_SIZE : FUDAN_BASE_SIZE
+}
+
+function FudanMark({ glyph, accent }: { glyph: string; accent: string }) {
+  const size = fudanSizeFor(glyph)
+  const chars = [...glyph]
+  const scale = size / TALISMAN_GLYPH_UNITS
+  const total = chars.reduce((sum, ch) => sum + talismanGlyph(ch).advance * scale, 0)
+  const padX = size * 0.28
+  const top = size * 0.9
+  const bot = size * 0.2
+  const w = total + padX * 2
+  const h = top + bot
+  let cursor = -total / 2
+  return (
+    <g data-fudan={glyph} data-fudan-size={String(size)} transform={`translate(${CX} 92)`}>
+      <rect
+        x={-w / 2}
+        y={-top}
+        width={w}
+        height={h}
+        rx={8}
+        ry={8}
+        fill="none"
+        stroke={accent}
+        strokeWidth={SW.hair}
+      />
+      <g fill={accent} stroke={accent} strokeLinecap="square" strokeLinejoin="miter" paintOrder="stroke">
+        {chars.map((ch, i) => {
+          const path = talismanGlyph(ch)
+          const node = (
+            <g key={`${ch}-${i}`} transform={`translate(${cursor} 0) scale(${scale})`}>
+              <path data-hanja={ch} d={path.d} strokeWidth={TALISMAN_GLYPH_UNITS * 0.045} />
+            </g>
+          )
+          cursor += path.advance * scale
+          return node
+        })}
+      </g>
+    </g>
+  )
+}
+
 function Spine({
   accent,
   fudanGlyph,
@@ -390,18 +437,13 @@ function Spine({
 }) {
   const gap = CORE + 4
   const runeY = bindruneCenterY(Boolean(fudanGlyph))
-  const fudanSize = fudanGlyph && fudanGlyph.length > 1 ? 46 : 72
   return (
     <g fill={accent} stroke={accent} strokeLinecap="butt" data-spine="kept">
       <rect x={CX - 4} y={18} width={8} height={CY - gap - 18} />
       <rect x={CX - 4} y={CY + gap} width={8} height={980 - (CY + gap)} />
       <rect x={CX - 30} y={10} width={60} height={6} />
       <polygon points={`${CX - 18},30 ${CX},14 ${CX + 18},30`} fill="none" strokeWidth={SW.med} />
-      {fudanGlyph ? (
-        <HanjaGlyph x={CX} y={92} size={fudanSize} fill={accent}>
-          {fudanGlyph}
-        </HanjaGlyph>
-      ) : null}
+      {fudanGlyph ? <FudanMark glyph={fudanGlyph} accent={accent} /> : null}
       <BindruneSigil stones={stones} x={CX} y={runeY} accent={accent} />
       <polygon points={`${CX - 16},972 ${CX},992 ${CX + 16},972`} fill="none" strokeWidth={SW.med} />
       <rect x={CX - 24} y={988} width={48} height={4} />
