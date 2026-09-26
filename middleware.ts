@@ -47,6 +47,11 @@ export async function middleware(request: NextRequest) {
     return withOptionalBypassCookie(NextResponse.next({ request }), setBypassCookie)
   }
 
+  // Throwaway 부적 SVG preview — no session, no credits. Remove with the route.
+  if (pathname === '/modes/oracle/talisman-preview') {
+    return withOptionalBypassCookie(NextResponse.next({ request }), setBypassCookie)
+  }
+
   // Do NOT redirect www ↔ apex here. Vercel already redirects aimani.ai → www.aimani.ai;
   // a www → apex redirect in middleware caused ERR_TOO_MANY_REDIRECTS.
 
