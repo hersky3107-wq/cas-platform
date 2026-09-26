@@ -44,7 +44,8 @@ export type TalismanSpec = {
   mode: TalismanMode
   purposeWealth: boolean
   numerology: readonly number[]
-  prismDentAxis: 0 | 1 | 2 | 3 | 4 | 5
+  /** Null when the session has no PRISM coreMatrix. Do not invent a dent. */
+  prismDentAxis: 0 | 1 | 2 | 3 | 4 | 5 | null
   luoshuSealed: readonly number[]
   ichingLines: readonly boolean[]
   bokjangEmpty: readonly number[]

@@ -53,6 +53,19 @@ describe('palacesFrom ziwei ring signals', () => {
   })
 })
 
+describe('PRISM absence', () => {
+  it('leaves the dent null when coreMatrix is missing', () => {
+    const charts = charts1988({ prism: null })
+    const computation = computeTalisman({
+      access: LIVE_ACCESS,
+      charts,
+      consensus: fakeConsensus({ water: 8 }),
+    })
+    const spec = specFromComputation(computation!, charts, { sessionId: 'no-prism', dateLabel: '2026.08.15' })
+    expect(spec.prismDentAxis).toBeNull()
+  })
+})
+
 describe('constructed 신강 preview fixture', () => {
   it('drains from 억부 용신', () => {
     const { spec, stats } = constructedSinkang()

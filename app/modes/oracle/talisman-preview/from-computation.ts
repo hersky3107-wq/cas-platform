@@ -177,9 +177,9 @@ function planetsFrom(charts: TalismanCharts): PlanetMark[] {
   return out
 }
 
-function prismDent(charts: TalismanCharts): 0 | 1 | 2 | 3 | 4 | 5 {
+function prismDent(charts: TalismanCharts): 0 | 1 | 2 | 3 | 4 | 5 | null {
   const core = charts.prism?.coreMatrix
-  if (!core) return 4
+  if (!core) return null
   let min = Infinity
   let idx = 4
   CORE_AXES.forEach((axis, i) => {

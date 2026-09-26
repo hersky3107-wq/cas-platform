@@ -985,14 +985,20 @@ function AstroRing({
 function MinorRim({ spec }: { spec: TalismanSpec }) {
   const dent = spec.prismDentAxis
   const hex: string[] = []
-  for (let i = 0; i < 6; i += 1) {
-    const r = i === dent ? 418 : 448 + (i % 2 === 0 ? 6 : -4)
-    const p = polarJ(r, -90 + i * 60, i)
-    hex.push(`${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
+  if (dent != null) {
+    for (let i = 0; i < 6; i += 1) {
+      const r = i === dent ? 418 : 448 + (i % 2 === 0 ? 6 : -4)
+      const p = polarJ(r, -90 + i * 60, i)
+      hex.push(`${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
+    }
   }
   return (
     <g opacity={0.28}>
-      <path d={`${hex.join(' ')} Z`} fill="#6b5b8c" fillOpacity={0.1} stroke={INK.faint} strokeWidth={SW.hair} />
+      {dent == null ? (
+        <circle cx={CX} cy={CY} r={448} fill="none" stroke={INK.faint} strokeWidth={SW.hair} strokeDasharray="2 6" />
+      ) : (
+        <path d={`${hex.join(' ')} Z`} fill="#6b5b8c" fillOpacity={0.1} stroke={INK.faint} strokeWidth={SW.hair} />
+      )}
       <polyline points={arcPoly(458, 12, 198, 8)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
       <polyline points={arcPoly(458, 224, 352, 8)} fill="none" stroke={INK.hair} strokeWidth={SW.hair} />
       {(() => {
