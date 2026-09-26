@@ -980,14 +980,32 @@ function VacantCrown() {
   )
 }
 
-function PalaceIndexMark({ index, x, y }: { index: number; x: number; y: number }) {
-  const dots = index % 3
+function diamondPoints(size: number): string {
+  const h = size / 2
+  return `0,${-h} ${h},0 0,${h} ${-h},0`
+}
+
+/** 1–3 filled diamonds along the palace arc. Never a tick-over-dot. */
+function PalaceIndexMark({
+  index,
+  x,
+  y,
+  bearing,
+}: {
+  index: number
+  x: number
+  y: number
+  bearing: number
+}) {
+  const count = (index % 3) + 1
+  const size = 30
+  const r = Math.hypot(x - CX, y - CY)
   return (
-    <g data-palace-mark={index} transform={`translate(${x} ${y})`} stroke={INK.strong} fill={INK.strong}>
-      <line x1="0" y1="-16" x2="0" y2="12" strokeWidth={SW.med} />
-      {Array.from({ length: dots }, (_, i) => (
-        <circle key={i} cx={(i - (dots - 1) / 2) * 10} cy="18" r="4.5" stroke="none" />
-      ))}
+    <g data-palace-mark={index} data-palace-diamonds={count} fill={INK.strong} stroke="none">
+      {Array.from({ length: count }, (_, i) => {
+        const p = polar(r, bearing + (i - (count - 1) / 2) * 7)
+        return <polygon key={i} data-palace-diamond="true" points={diamondPoints(size)} transform={`translate(${p.x} ${p.y})`} />
+      })}
     </g>
   )
 }
@@ -1089,7 +1107,7 @@ function ZiweiRing({
               stroke={hot ? INK.strong : INK.hair}
               strokeWidth={hot ? SW.med : SW.hair}
             />
-            <PalaceIndexMark index={i} x={mid.x} y={mid.y} />
+            <PalaceIndexMark index={i} x={mid.x} y={mid.y} bearing={a0 + 15} />
           </g>
         )
       })}
@@ -1107,18 +1125,15 @@ function ZiweiSignals({ palaces }: { palaces: TalismanSpec['palaces'] }) {
         const marks: ReactNode[] = []
         if (palace.daXian) {
           const a = palace.huaJi ? mid - 5 : mid
-          const inner = polar(ZIWEI_IN - 4, a)
-          const tip = polar(ZIWEI_IN + 18, a)
+          const p = polar(ZIWEI_IN + 8, a)
           marks.push(
-            <line
+            <polygon
               key={`daxian-${palace.name}`}
-              x1={inner.x}
-              y1={inner.y}
-              x2={tip.x}
-              y2={tip.y}
-              stroke={INK.strong}
-              strokeWidth={SW.med}
-              strokeLinecap="butt"
+              data-daxian="true"
+              points={diamondPoints(22)}
+              transform={`translate(${p.x} ${p.y})`}
+              fill={INK.strong}
+              stroke="none"
             />,
           )
         }
