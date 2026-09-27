@@ -71,6 +71,7 @@ import {
   type ConsensusLeagueInput,
 } from './consensus'
 import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeatId } from './seats'
+import { isSportsLedgerCategory } from './sports-category'
 
 export type ExtraSeatOutcome = {
   model_id: ExtraSeatId
@@ -320,9 +321,9 @@ async function callHistoryOnce(
   retry = false,
 ): Promise<HistoryCallResult> {
   const userPrompt = retry
-    ? `${buildHistoryUserPrompt(input)}\n\n${historyRetryInstruction()}`
+    ? `${buildHistoryUserPrompt(input)}\n\n${historyRetryInstruction(input.category)}`
     : buildHistoryUserPrompt(input)
-  return call({ systemPrompt: buildHistorySystemPrompt(), userPrompt })
+  return call({ systemPrompt: buildHistorySystemPrompt(input.category), userPrompt })
 }
 
 async function runHistorySeat(
@@ -331,7 +332,10 @@ async function runHistorySeat(
   providedSeries: ExtraPriceSeries | null | undefined,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('history')!
-  const series = await resolveHistorySeries(round.instrument, providedSeries)
+  const sports = isSportsLedgerCategory(round.category)
+  const series = sports
+    ? { bars: [] as HistorySeriesBar[], latestClose: null as number | null, asOf: round.opened_at ?? null }
+    : await resolveHistorySeries(round.instrument, providedSeries)
   if (!series) {
     await upsertExtraPrediction({
       roundId: round.id,
@@ -358,7 +362,7 @@ async function runHistorySeat(
     let raw = await callHistoryOnce(call, input, false)
     if (raw.error) throw new Error(raw.error)
     let parsed = parseHistoryOutput(raw.text)
-    if (!parsed || historyRationaleNeedsRetry(parsed.rationale)) {
+    if (!parsed || historyRationaleNeedsRetry(parsed.rationale, round.category)) {
       const retryRaw = await callHistoryOnce(call, input, true)
       if (!retryRaw.error) {
         raw = {
@@ -642,7 +646,7 @@ async function callConsensusOnce(
   retry = false,
 ): Promise<ConsensusCallResult> {
   const userPrompt = retry
-    ? `${buildConsensusUserPrompt(input)}\n\n${consensusRetryInstruction()}`
+    ? `${buildConsensusUserPrompt(input)}\n\n${consensusRetryInstruction(input.category)}`
     : buildConsensusUserPrompt(input)
   return call({ systemPrompt: buildConsensusSystemPrompt(), userPrompt })
 }

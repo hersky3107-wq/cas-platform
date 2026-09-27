@@ -13,6 +13,7 @@
 import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
+import { isSportsLedgerCategory } from './sports-category'
 
 /** Challenger roster id — powers the seat; the ledger row is still `history`. */
 export const HISTORY_ENGINE_MODEL_ID = 'claude-sonnet-5'
@@ -115,6 +116,22 @@ export const HISTORY_PATTERN_VOCABULARY = [
 
 export const HISTORY_PERSONA =
   '역사·패턴 분석가 — 당신은 세상에 알려진 차트 패턴(엘리어트 파동, 헤드앤숄더, 쌍바닥, 컵앤핸들, 데드크로스, 신고가 돌파, 추세선 등)과 금융 역사의 반복 법칙을 아는 전문가다. 현재 가격 흐름이 어떤 알려진 패턴에 해당하는지 식별하고, \'역사적으로 이런 패턴/국면에서는 이렇게 되었다\'는 근거로 방향을 판단한다. 실시간 뉴스·펀더멘털·거시지표는 보지 않는다 — 오직 차트 패턴과 역사적 선례만.'
+
+export const HISTORY_SPORTS_VOCABULARY = [
+  {
+    id: 'h2h',
+    label: '맞대결 전적',
+    aliases: ['맞대결', 'h2h', 'head-to-head', 'head to head', '전적'],
+  },
+  {
+    id: 'form',
+    label: '최근 폼',
+    aliases: ['최근 폼', 'form', 'unbeaten', '연승', '연패', 'streak', 'last five', '최근 5'],
+  },
+] as const
+
+export const HISTORY_SPORTS_PERSONA =
+  '스포츠 역사·패턴 분석가 — 차트 패턴이 아니라 맞대결(H2H) 전적과 최근 폼(연승·연패·최근 5경기)으로 판단한다. 실시간 뉴스·부상자 명단·시장 기준선은 보지 않는다.'
 
 const NEWS_FUNDAMENTAL_LEAKS = [
   'tips',
@@ -251,7 +268,24 @@ export function historyPatternVocabularyLine(): string {
   return HISTORY_PATTERN_VOCABULARY.map((row) => row.label).join(', ')
 }
 
-export function buildHistorySystemPrompt(): string {
+export function buildHistorySystemPrompt(category?: string): string {
+  if (isSportsLedgerCategory(category)) {
+    return [
+      HISTORY_SPORTS_PERSONA,
+      '',
+      'You are the 📜 역사·패턴 extra seat. For SPORTS you answer from H2H record + recent form only — never chart patterns (Elliott, H&S, cup-and-handle, crosses).',
+      'Do not browse the web. Do not invent live injury lists or market-implied percents.',
+      '',
+      'Pattern vocabulary — NAME one of: 맞대결 전적, 최근 폼.',
+      'State the historical tendency in prose. Then pick a direction for THIS proposition.',
+      'FORBIDDEN: fake per-pattern win rates; chart-pattern names; TIPS/CPI/packet-macro.',
+      '',
+      'Visible output: brief H2H/form reasoning, then exactly ONE JSON line as the LAST line:',
+      '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
+      'direction is up or down only. For yes/no, up = the first/affirmative side, down = the other.',
+      'rationale: 1–2 sentences, max 400 characters. Name H2H or recent form. No invented win-rate percents.',
+    ].join('\n')
+  }
   const vocab = historyPatternVocabularyLine()
   return [
     HISTORY_PERSONA,
@@ -284,6 +318,17 @@ export function buildHistorySystemPrompt(): string {
 
 export function buildHistoryUserPrompt(input: HistoryLeagueInput): string {
   assertHistoryInputShape(input)
+  if (isSportsLedgerCategory(input.category)) {
+    return [
+      `PROPOSITION: ${input.proposition}`,
+      `SUBJECT: ${input.subjectName}`,
+      `INSTRUMENT: ${input.instrument}`,
+      `HORIZON: ${input.horizon}`,
+      `CATEGORY: ${input.category}`,
+      '',
+      'Judge from H2H record + recent form (not a price chart). Name 맞대결 or 최근 폼, then output the JSON line.',
+    ].join('\n')
+  }
   return [
     `PROPOSITION: ${input.proposition}`,
     `SUBJECT: ${input.subjectName}`,
@@ -298,7 +343,14 @@ export function buildHistoryUserPrompt(input: HistoryLeagueInput): string {
   ].join('\n')
 }
 
-export function historyRetryInstruction(): string {
+export function historyRetryInstruction(category?: string): string {
+  if (isSportsLedgerCategory(category)) {
+    return [
+      'RETRY: Rewrite as the sports 역사·패턴 seat.',
+      'Name 맞대결 전적 or 최근 폼. Do not name chart patterns. Do not invent a win rate.',
+      'Last line must be JSON: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
+    ].join(' ')
+  }
   return [
     'RETRY: Rewrite as the 역사·패턴 seat.',
     'Name one pattern from the vocabulary. State the historical tendency in words.',
@@ -336,9 +388,25 @@ export function findFakePatternWinRate(text: string | null | undefined): string 
   return null
 }
 
-export function historyRationaleNeedsRetry(rationale: string | null): boolean {
+export function findNamedSportsHistoryPattern(text: string | null | undefined): string | null {
+  if (!text) return null
+  const lower = text.toLowerCase()
+  for (const row of HISTORY_SPORTS_VOCABULARY) {
+    for (const alias of row.aliases) {
+      if (lower.includes(alias.toLowerCase())) return row.label
+    }
+  }
+  return null
+}
+
+export function historyRationaleNeedsRetry(rationale: string | null, category?: string): boolean {
   if (!rationale) return true
   if (findFakePatternWinRate(rationale)) return true
+  if (isSportsLedgerCategory(category)) {
+    if (findNamedHistoryPattern(rationale) && !findNamedSportsHistoryPattern(rationale)) return true
+    if (!findNamedSportsHistoryPattern(rationale)) return true
+    return false
+  }
   if (findHistoryNewsFundamentalLeak(rationale) && !findNamedHistoryPattern(rationale)) return true
   if (!findNamedHistoryPattern(rationale)) return true
   return false
@@ -364,7 +432,7 @@ export function parseHistoryOutput(text: string | null): HistoryEngineOutput | n
     verdict: parsed.direction,
     rationale,
     confidence: parsed.probability,
-    namedPattern: findNamedHistoryPattern(rationale),
+    namedPattern: findNamedHistoryPattern(rationale) ?? findNamedSportsHistoryPattern(rationale),
   }
 }
 

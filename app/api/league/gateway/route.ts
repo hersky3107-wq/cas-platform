@@ -174,7 +174,7 @@ function localizeQuestion(q: ClarifyingQuestion, pack: ReturnType<typeof getLeag
     allow_free_input: Boolean(q.allow_free_input),
     options: (q.options ?? []).map((o) => ({
       id: o.id,
-      label: optionLabel(o.id, o.label_i18n_key, pack),
+      label: o.label?.trim() || optionLabel(o.id, o.label_i18n_key, pack),
     })),
   }
 }

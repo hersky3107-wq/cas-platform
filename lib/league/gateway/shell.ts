@@ -4,6 +4,7 @@ import type { PublicCategoryId } from '../catalog'
 import { leagueGatewayAdmission } from './admission'
 import { validateNormalizerOutput, type PromptNormalizer } from './normalizer'
 import { MAX_CANDIDATE_CHIPS } from './candidate-search'
+import { detectBettingFraming } from './betting-framing'
 import { prefilterRejects } from './prefilter'
 import { refusalMessageForKey, refusalMessageKey } from './refusal-copy'
 import type {
@@ -185,6 +186,9 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
 
   // 4½. Layer-0 pre-filters — zero LLM cost for junk.
   if (prefilterRejects(req.raw_text)) return refused('low_confidence', locale)
+  // Betting framing (국민체육진흥법) is a first-class refusal, not junk.
+  // Detected here from RAW text so a stripped entity mention cannot bypass it.
+  if (detectBettingFraming(req.raw_text)) return refused('betting_framing', locale)
 
   // 5. Normalize + strict schema gate. Malformed output is a refusal, not a 500.
   const rawOutput = await deps.normalizer.normalize({
@@ -227,7 +231,12 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
       break
     }
     if ('need' in resolution && !entityAsk) entityAsk = filterEntityOptions(resolution.need, viewer)
-    if ('refuse' in resolution && !entityRefusal) entityRefusal = resolution.refuse
+    if ('refuse' in resolution) {
+      if (resolution.refuse.code === 'betting_framing') {
+        return refusedFrom(resolution.refuse, locale, adapter.category_id, viewer)
+      }
+      if (!entityRefusal) entityRefusal = resolution.refuse
+    }
   }
 
   const openQuestion =

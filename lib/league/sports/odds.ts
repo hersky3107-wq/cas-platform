@@ -9,6 +9,8 @@ const ODDS_API = 'https://api.the-odds-api.com/v4/sports'
 
 const REGION: Record<SportsLeagueKey, string> = {
   soccer_epl: 'eu',
+  soccer_uefa_champs_league: 'eu',
+  soccer_spain_la_liga: 'eu',
   baseball_mlb: 'us',
   basketball_nba: 'us',
 }

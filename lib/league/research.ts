@@ -395,11 +395,19 @@ export async function getResearchPacket(args: {
   languages?: readonly ResearchLang[]
   /** Packet field inventory for Stage 2. Omit → every Stage 1 need is missing. */
   inventory?: PacketInventoryInput
+  /**
+   * Skip the director and run these queries (capped at 6). Sports uses this
+   * for the high-tier lineup/news budget. Other categories omit it.
+   */
+  forcedQueries?: readonly { q: string; lang: string }[]
 }): Promise<ResearchPacket> {
   const { round, budgetRemainingUsd } = args
   const tier: ResearchTier = args.tier ?? 'normal'
   const languages = args.languages ?? []
-  const cacheKey = researchCacheKey(round.instrument, round.horizon, new Date(), tier, languages)
+  const forcedTag = args.forcedQueries?.length
+    ? `|fq:${args.forcedQueries.map((q) => q.q).join('~').slice(0, 80)}`
+    : ''
+  const cacheKey = `${researchCacheKey(round.instrument, round.horizon, new Date(), tier, languages)}${forcedTag}`
 
   const miss: ResearchPacket = {
     available: false,
@@ -427,31 +435,40 @@ export async function getResearchPacket(args: {
     return durableHit
   }
 
-  const director = await runDirector(round, tier, languages, args.inventory)
-  let costUsd = director.costUsd
-  if (!director.queries.length) {
-    if (director.allPresent) {
-      const packet: ResearchPacket = {
-        available: true,
-        cached: false,
-        cacheKey,
-        directorModel: DIRECTOR_MODEL,
-        queries: [],
-        findings: [],
-        promptBlock: '',
-        costUsd,
-        tier,
-        synthesis: null,
+  let costUsd = 0
+  let queryList: Array<{ q: string; lang: string }>
+  let directorModel: string | null = DIRECTOR_MODEL
+  if (args.forcedQueries && args.forcedQueries.length > 0) {
+    queryList = args.forcedQueries.slice(0, 6).map((q) => ({ q: q.q, lang: q.lang }))
+    directorModel = null
+  } else {
+    const director = await runDirector(round, tier, languages, args.inventory)
+    costUsd = director.costUsd
+    if (!director.queries.length) {
+      if (director.allPresent) {
+        const packet: ResearchPacket = {
+          available: true,
+          cached: false,
+          cacheKey,
+          directorModel: DIRECTOR_MODEL,
+          queries: [],
+          findings: [],
+          promptBlock: '',
+          costUsd,
+          tier,
+          synthesis: null,
+        }
+        memoryCache.set(cacheKey, { packet, at: Date.now() })
+        await writeDurableCache(cacheKey, round, packet)
+        return packet
       }
-      memoryCache.set(cacheKey, { packet, at: Date.now() })
-      await writeDurableCache(cacheKey, round, packet)
-      return packet
+      return { ...miss, costUsd, directorModel: DIRECTOR_MODEL, error: director.error ?? 'no queries' }
     }
-    return { ...miss, costUsd, directorModel: DIRECTOR_MODEL, error: director.error ?? 'no queries' }
+    queryList = director.queries
   }
 
   const findings: ResearchFinding[] = []
-  for (const query of director.queries) {
+  for (const query of queryList) {
     if (costUsd >= budgetRemainingUsd) break // kill-switch: stop spending mid-assembly
     const r = await runQuery(round, query)
     costUsd += r.costUsd
@@ -476,8 +493,8 @@ export async function getResearchPacket(args: {
     return {
       ...miss,
       costUsd,
-      directorModel: DIRECTOR_MODEL,
-      queries: director.queries.map((q) => q.q),
+      directorModel,
+      queries: queryList.map((q) => q.q),
       error: 'all research queries failed',
     }
   }
@@ -500,8 +517,8 @@ export async function getResearchPacket(args: {
     available: true,
     cached: false,
     cacheKey,
-    directorModel: DIRECTOR_MODEL,
-    queries: director.queries.map((q) => q.q),
+    directorModel,
+    queries: queryList.map((q) => q.q),
     findings,
     promptBlock,
     costUsd,

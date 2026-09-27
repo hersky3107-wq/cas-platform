@@ -7,6 +7,10 @@ import { buildCardData, type PredictionRow, type RoundRow } from './card-aggrega
 import type { CardData } from './card-types'
 import { fetchLeaderboardData, type LeaderboardScope } from './leaderboard'
 import { getCachedLivePrice } from './live-price-cache'
+import { buildSportsMarketView } from './sports-market'
+import { decodeSportsInstrument, subjectTeamOf } from './gateway/adapters/sports-catalog'
+import { subjectImpliedPct } from './gateway/adapters/sports-packet'
+import { readFixtureCache } from './sports/cache'
 import type { VerdictCrossRoundGrade } from './verdict-aggregate'
 
 /**
@@ -322,5 +326,20 @@ export async function fetchCardData(lookup: CardLookup, scope?: LeaderboardScope
     card.round.livePrice = live.price
     card.round.livePriceAt = live.asOf
   }
+  if (round.category === 'sports' || round.instrument.startsWith('MATCH:')) {
+    card.sportsMarket = await loadSportsMarket(card, round.instrument).catch(() =>
+      buildSportsMarketView({ consensus: card.consensus, marketBaselinePct: null }),
+    )
+  }
   return card
+}
+
+async function loadSportsMarket(card: CardData, instrument: string) {
+  const parts = decodeSportsInstrument(instrument)
+  let marketBaselinePct: number | null = null
+  if (parts) {
+    const row = await readFixtureCache(parts.eventId)
+    marketBaselinePct = subjectImpliedPct(row?.devigged_odds ?? null, subjectTeamOf(parts))
+  }
+  return buildSportsMarketView({ consensus: card.consensus, marketBaselinePct })
 }

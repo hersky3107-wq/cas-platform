@@ -72,6 +72,11 @@ export const SENTIMENT_LANGUAGE_ALIASES = [
   'narrative',
   'mood',
   'crowd',
+  '부상자',
+  '결장',
+  'injury',
+  'buzz',
+  'momentum',
 ] as const
 
 /** History-seat chart language — not this seat's job. */
@@ -230,7 +235,9 @@ export function buildSentimentUserPrompt(input: SentimentLeagueInput): string {
     `CATEGORY: ${input.category}`,
     '',
     'Search the live web for news + indexed blog/forum/social opinion about this subject.',
-    'Judge web-visible crowd sentiment only. No charts, no price tape, no packet macro.',
+    input.category.trim().toLowerCase() === 'sports'
+      ? 'For sports: search fan/media buzz, injury rumors, and momentum narrative. Not charts, not market-implied percents.'
+      : 'Judge web-visible crowd sentiment only. No charts, no price tape, no packet macro.',
     'If nothing meaningful is indexed, abstain — do not invent a mood.',
   ].join('\n')
 }

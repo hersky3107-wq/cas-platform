@@ -18,7 +18,8 @@ export function DisclaimerFooter({
   t: LeagueUiPack
   category?: string
 }) {
-  const extra = category === 'real_estate' ? t.disclaimer.realEstate : null
+  const extra =
+    category === 'real_estate' ? t.disclaimer.realEstate : category === 'sports' ? t.disclaimer.sports : null
   const extraExperimental = t.disclaimer.extraExperimental
 
   if (tone.disclaimerWeight === 'default') {

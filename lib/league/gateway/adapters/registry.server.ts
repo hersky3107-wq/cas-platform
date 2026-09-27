@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { createSportsAdapter } from './sports'
+import { LIVE_SPORTS_IO } from './sports-io.server'
 import { createStocksAdapter } from './stocks'
 import { createTechAdapter } from './tech'
 import {
@@ -34,6 +36,7 @@ export const techAdapter: CategoryAdapter = createTechAdapter({
   getResearchPacket: ({ round, budgetRemainingUsd, tier }) =>
     getResearchPacket({ round, budgetRemainingUsd, tier }),
 })
+export const sportsAdapter: CategoryAdapter = createSportsAdapter(LIVE_SPORTS_IO)
 
 const ADAPTERS: readonly CategoryAdapter[] = [
   stocksAdapter,
@@ -45,6 +48,7 @@ const ADAPTERS: readonly CategoryAdapter[] = [
   memecoinAdapter,
   realEstateAdapter,
   techAdapter,
+  sportsAdapter,
 ]
 
 export function adapterForCategoryId(id: PublicCategoryId | string): CategoryAdapter | null {
@@ -64,6 +68,7 @@ export function adapterForLedgerCategory(category: string): CategoryAdapter | nu
  */
 export function adapterForInstrument(instrument: string): CategoryAdapter | null {
   if (instrument.startsWith('TECH:')) return adapterForLedgerCategory('tech')
+  if (instrument.startsWith('MATCH:')) return adapterForLedgerCategory('sports')
   const hit = findCatalogInstrument(instrument)
   return hit ? adapterForCategoryId(hit.category.id) : null
 }

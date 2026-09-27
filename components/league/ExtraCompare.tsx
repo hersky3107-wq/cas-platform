@@ -22,17 +22,21 @@ export function ExtraCompare({
   consensus,
   t,
   labels,
+  category,
 }: {
   models: readonly CardModelPrediction[]
   consensus: ConsensusSummary
   t: LeagueUiPack
   labels?: SideLabels
+  category?: string
 }) {
   if (!hasExtraCompareModels(models)) return null
   const view = buildExtraCompareView(models, consensus, extraRecordsFromModels(models))
   const crowdWord = view.crowdDirection
     ? directionBadgeLabel(view.crowdDirection, t, labels)
     : null
+  const seatName = (id: ExtraSeatId) =>
+    id === 'consensus' && category === 'sports' ? t.sportsMarket.consensusSeat : t.extraCompare.seat[id]
 
   return (
     <section
@@ -66,7 +70,7 @@ export function ExtraCompare({
             >
               <span>
                 {seat.badge}
-                {t.extraCompare.seat[seat.id as ExtraSeatId]}
+                {seatName(seat.id as ExtraSeatId)}
               </span>
               <span className={seat.direction ? 'text-league-fg' : 'text-league-fg-muted'}>{word}</span>
               {vs ? <span className="text-[11px] font-medium text-league-fg-muted">{vs}</span> : null}
@@ -83,14 +87,14 @@ export function ExtraCompare({
                 return (
                   <li key={seat.id} className="text-[12px] text-league-fg-muted">
                     {seat.badge}
-                    {t.extraCompare.seat[seat.id]} · {t.extraCompare.recordPending}
+                    {seatName(seat.id)} · {t.extraCompare.recordPending}
                   </li>
                 )
               }
               return (
                 <li key={seat.id} className="text-[12px] text-league-fg">
                   {seat.badge}
-                  {t.extraCompare.seat[seat.id]} · {winRateLabel(winRateDisplay(seat.record.correct, seat.record.graded), t)}
+                  {seatName(seat.id)} · {winRateLabel(winRateDisplay(seat.record.correct, seat.record.graded), t)}
                 </li>
               )
             })}

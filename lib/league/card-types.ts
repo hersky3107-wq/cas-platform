@@ -398,4 +398,9 @@ export type CardData = {
    * `buildCardData` — pure card assembly stays job-agnostic.
    */
   generation?: CardGenerationState | null
+  /**
+   * Sports dual-display (AI ensemble vs market baseline). Null on every
+   * non-sports card. Computed at read time from consensus + fixture cache.
+   */
+  sportsMarket?: import('./sports-market').SportsMarketView | null
 }

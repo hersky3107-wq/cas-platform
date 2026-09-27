@@ -98,7 +98,7 @@ export type ClarifyingQuestion = {
   /** i18n key for the user-facing question — copy lives in `refusal-copy.ts`. */
   prompt_i18n_key: string
   /** Chip answers when the option set is finite. Capped at 3 by the shell. */
-  options?: { id: string; label_i18n_key: string }[]
+  options?: { id: string; label_i18n_key: string; /** Server string for dynamic chips (MATCH fixtures). */ label?: string }[]
   /** Open-question / entity clarifies offer a 직접 입력 field (still a lookup key). */
   allow_free_input?: boolean
 }

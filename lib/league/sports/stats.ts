@@ -57,11 +57,22 @@ function sportOf(league: string): FixtureStats['sport'] {
   return 'football'
 }
 
+function understatLeagueOf(league: string): string | null {
+  if (league === 'soccer_epl') return 'EPL'
+  if (league === 'soccer_spain_la_liga') return 'La_liga'
+  if (league === 'soccer_uefa_champs_league') return 'CL'
+  return null
+}
+
 async function footballStats(row: SportsFixtureCacheRow, now: Date, fetchImpl: typeof fetch): Promise<FixtureStats> {
   const year = understatSeasonYear(row.kickoff, now)
+  const understatLeague = understatLeagueOf(row.league)
+  if (!understatLeague) {
+    return { sport: 'football', fetchedAt: now.toISOString(), unavailable: `no Understat table for ${row.league}` }
+  }
   const res = await fetchJson(
-    `${UNDERSTAT}/EPL/${year}`,
-    { headers: { ...BROWSER, 'x-requested-with': 'XMLHttpRequest', Referer: `https://understat.com/league/EPL/${year}` } },
+    `${UNDERSTAT}/${understatLeague}/${year}`,
+    { headers: { ...BROWSER, 'x-requested-with': 'XMLHttpRequest', Referer: `https://understat.com/league/${understatLeague}/${year}` } },
     fetchImpl
   )
   if (!res.ok) {

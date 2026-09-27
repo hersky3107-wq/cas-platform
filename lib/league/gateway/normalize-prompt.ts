@@ -29,7 +29,7 @@ export const CATEGORY_PROPOSITION_KIND: Record<PublicCategoryId, PropositionKind
 }
 
 const SLOT_HINT: Record<PublicCategoryId, string> = {
-  sports: 'entity_mention = the ONE named team or athlete who must win (yes) or not (no). Never two sides as the output.',
+  sports: 'entity_mention = the ONE named team or athlete who must win (yes) or not (no). Never two sides as the output. Never betting/toto/handicap framing.',
   crypto: 'entity_mention = the coin/pair the user named (btc, eth, sol…). Empty if they named none.',
   stocks: 'entity_mention = the company or ticker the user named (apple, nvda…). Empty if they named none.',
   fx: 'entity_mention = the FX pair the user named (eurusd, usdkrw, usdjpy, gbpusd, usdcnh, audusd, jpykrw, eurjpy, gbpjpy…). Empty if they named none.',

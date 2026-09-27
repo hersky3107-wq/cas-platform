@@ -15,7 +15,18 @@ export const LINEUP_CONFIRMED_WITHIN_MS = 60 * 60 * 1000
 export const SHARP_BOOK_KEYS = ['pinnacle', 'betfair_ex_eu', 'betfair_ex_uk', 'matchbook', 'smarkets'] as const
 export type SharpBookKey = (typeof SHARP_BOOK_KEYS)[number]
 
-export type SportsLeagueKey = 'soccer_epl' | 'baseball_mlb' | 'basketball_nba'
+export const LAUNCH_SPORTS_LEAGUES = [
+  'soccer_epl',
+  'soccer_uefa_champs_league',
+  'soccer_spain_la_liga',
+  'baseball_mlb',
+  'basketball_nba',
+] as const
+export type SportsLeagueKey = (typeof LAUNCH_SPORTS_LEAGUES)[number]
+
+export function isSportsLeagueKey(value: string): value is SportsLeagueKey {
+  return (LAUNCH_SPORTS_LEAGUES as readonly string[]).includes(value)
+}
 
 export type LineupConfidence = 'projected' | 'pending' | 'confirmed'
 

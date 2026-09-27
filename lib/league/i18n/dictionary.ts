@@ -192,6 +192,20 @@ export type LeagueUiPack = {
     recordPending: string
     seat: Record<'divination' | 'sentiment' | 'history' | 'consensus', string>
   }
+  /**
+   * Sports dual display — AI ensemble vs market baseline. Never uses
+   * 토토 / 배당 / 핸디캡 / 픽 / 베팅.
+   */
+  sportsMarket: {
+    ensembleLabel: string
+    marketBaselineLabel: string
+    divergenceLabel: (pp: string) => string
+    fractureIron: string
+    fractureWarn: string
+    agreement: (pct: string) => string
+    consensusSeat: string
+    disclaimer: string
+  }
   disclaimer: {
     short: string
     long: string
@@ -199,6 +213,8 @@ export type LeagueUiPack = {
     realEstate: string
     /** Extra-tier entertainment / experimental disclaimer — always rendered. */
     extraExperimental: string
+    /** Extra line ONLY on sports cards — informational analysis, not gambling advice. */
+    sports: string
   }
   /**
    * Shown on a card AFTER an operator-manual round has been graded from
@@ -854,12 +870,23 @@ const en: LeagueUiPack = {
     recordPending: 'Record after grading',
     seat: { divination: 'Fortune', sentiment: 'Sentiment', history: 'History', consensus: 'Market odds' },
   },
+  sportsMarket: {
+    ensembleLabel: 'AI ensemble win probability',
+    marketBaselineLabel: 'Market baseline',
+    divergenceLabel: (pp) => `Statistical divergence ${pp}p`,
+    fractureIron: 'Ironclad agreement',
+    fractureWarn: 'AI split alert',
+    agreement: (pct) => `${pct}% agreement`,
+    consensusSeat: 'Market baseline',
+    disclaimer: 'Informational analysis only. This is not gambling advice.',
+  },
   disclaimer: {
     short: 'Info only — not investment advice. You are responsible for your own decisions.',
     long: 'These are AI model opinions shown for information and entertainment purposes only. They are not investment, financial, legal, or professional advice, and no model here is a licensed advisor. Markets are unpredictable and AI models can be — and often are — wrong. You are solely responsible for any decision you make.',
     realEstate:
       'Statistical reference only — not a formal appraisal. Region- and instrument-level outlook; not a valuation of any specific property.',
     extraExperimental: 'For entertainment and experiment only — not a basis for investment decisions.',
+    sports: 'Informational analysis only. This is not gambling advice.',
   },
   operatorGrade: {
     verifiedLabel: 'Operator-verified',
@@ -1395,11 +1422,22 @@ const ko: LeagueUiPack = {
     recordPending: '채점 후 성적 집계',
     seat: { divination: '점술', sentiment: '심리', history: '역사', consensus: '컨센서스' },
   },
+  sportsMarket: {
+    ensembleLabel: 'AI 앙상블 승리 확률',
+    marketBaselineLabel: '시장 기준선',
+    divergenceLabel: (pp) => `통계적 괴리율 ${pp}%p`,
+    fractureIron: '철벽 합의',
+    fractureWarn: 'AI 분열 경보',
+    agreement: (pct) => `합의 ${pct}%`,
+    consensusSeat: '시장 기준선',
+    disclaimer: '정보성 분석입니다. 도박을 권유하지 않습니다.',
+  },
   disclaimer: {
     short: '정보 제공 목적일 뿐 투자 조언이 아닙니다. 모든 결정의 책임은 본인에게 있습니다.',
     long: '본 콘텐츠는 여러 AI 모델의 의견을 정보 및 오락 목적으로 제공하는 것이며, 투자·금융·법률·전문 자문이 아닙니다. 여기 등장하는 어떤 모델도 인가받은 자문가가 아닙니다. 시장은 예측할 수 없으며 AI 모델의 예측은 자주, 그리고 크게 틀릴 수 있습니다. 이를 근거로 내리는 모든 결정의 책임은 전적으로 본인에게 있습니다.',
     realEstate: '통계적 참고용이며 감정평가가 아닙니다. 개별 부동산 가치 산정이 아닙니다.',
     extraExperimental: '오락·실험 목적, 투자 판단 근거 아님',
+    sports: '정보성 분석입니다. 도박을 권유하지 않습니다.',
   },
   operatorGrade: {
     verifiedLabel: '운영자 확인',
@@ -1931,11 +1969,22 @@ const ja: LeagueUiPack = {
     recordPending: '採点後に成績を集計',
     seat: { divination: '占い', sentiment: '心理', history: '歴史', consensus: 'コンセンサス' },
   },
+  sportsMarket: {
+    ensembleLabel: 'AIアンサンブル勝率',
+    marketBaselineLabel: '市場基準線',
+    divergenceLabel: (pp) => `統計的乖離 ${pp}p`,
+    fractureIron: '堅い合意',
+    fractureWarn: 'AI分裂アラート',
+    agreement: (pct) => `合意 ${pct}%`,
+    consensusSeat: '市場基準線',
+    disclaimer: '情報分析です。賭博の勧誘ではありません。',
+  },
   disclaimer: {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
     long: 'この内容は複数のAIモデルの見解を情報提供・娯楽目的で示したものであり、投資・金融・法律・専門的な助言ではありません。ここに登場するモデルはいずれも認可を受けたアドバイザーではありません。市場は予測不可能であり、AIモデルの予測は誤ることが多々あります。これに基づく判断の責任はすべてご自身が負うものとします。',
     realEstate: '統計的な参考情報であり、鑑定評価ではありません。個別不動産の価格算定ではありません。',
     extraExperimental: '娯楽・実験目的であり、投資判断の根拠ではありません。',
+    sports: '情報分析です。賭博の勧誘ではありません。',
   },
   operatorGrade: {
     verifiedLabel: '運営者確認済み',
@@ -2464,11 +2513,22 @@ const zhTW: LeagueUiPack = {
     recordPending: '評分後再彙整成績',
     seat: { divination: '占卜', sentiment: '心理', history: '歷史', consensus: '共識' },
   },
+  sportsMarket: {
+    ensembleLabel: 'AI 集成勝率',
+    marketBaselineLabel: '市場基準線',
+    divergenceLabel: (pp) => `統計乖離 ${pp}p`,
+    fractureIron: '高度共識',
+    fractureWarn: 'AI 分裂警示',
+    agreement: (pct) => `共識 ${pct}%`,
+    consensusSeat: '市場基準線',
+    disclaimer: '僅供資訊分析，並非賭博勸誘。',
+  },
   disclaimer: {
     short: '僅供參考，非投資建議。所有決定的責任由您自行承擔。',
     long: '本內容為多個 AI 模型的意見，僅供資訊與娛樂用途，並非投資、財務、法律或專業建議；此處任何模型皆非持牌顧問。市場無法預測，AI 模型的判斷經常出錯。您必須自行承擔依此做出之任何決定的全部責任。',
     realEstate: '僅供統計參考，並非正式估價。僅涵蓋區域／標的層級，不對個別不動產估價。',
     extraExperimental: '僅供娛樂與實驗，不得作為投資判斷依據。',
+    sports: '僅供資訊分析，並非賭博勸誘。',
   },
   operatorGrade: {
     verifiedLabel: '營運者已驗證',
@@ -2995,12 +3055,23 @@ const fr: LeagueUiPack = {
     recordPending: 'Bilan après notation',
     seat: { divination: 'Divination', sentiment: 'Sentiment', history: 'Histoire', consensus: 'Consensus' },
   },
+  sportsMarket: {
+    ensembleLabel: 'Probabilité de victoire de l’ensemble IA',
+    marketBaselineLabel: 'Référence de marché',
+    divergenceLabel: (pp) => `Écart statistique ${pp}p`,
+    fractureIron: 'Accord solide',
+    fractureWarn: 'Alerte de fracture IA',
+    agreement: (pct) => `accord ${pct} %`,
+    consensusSeat: 'Référence de marché',
+    disclaimer: 'Analyse informative uniquement. Ceci n’est pas une incitation au jeu.',
+  },
   disclaimer: {
     short: 'Information uniquement, ceci n\u2019est pas un conseil en investissement. Vous êtes seul responsable de vos décisions.',
     long: 'Ce contenu présente les avis de plusieurs modèles d\u2019IA à titre purement informatif et de divertissement. Il ne s\u2019agit pas d\u2019un conseil en investissement, financier, juridique ou professionnel, et aucun modèle ici n\u2019est un conseiller agréé. Les marchés sont imprévisibles et les modèles d\u2019IA peuvent se tromper, et se trompent souvent. Vous assumez l\u2019entière responsabilité de toute décision prise sur cette base.',
     realEstate:
       'Référence statistique uniquement — pas une expertise immobilière. Horizon régional ou d\u2019instrument, pas une évaluation d\u2019un bien précis.',
     extraExperimental: 'À des fins de divertissement et d’expérience uniquement — pas un fondement de décision d’investissement.',
+    sports: 'Analyse informative uniquement. Ceci n’est pas une incitation au jeu.',
   },
   operatorGrade: {
     verifiedLabel: 'Vérifié par l\u2019opérateur',
@@ -3543,12 +3614,23 @@ const es: LeagueUiPack = {
     recordPending: 'Historial tras la calificación',
     seat: { divination: 'Adivinación', sentiment: 'Sentimiento', history: 'Historia', consensus: 'Consenso' },
   },
+  sportsMarket: {
+    ensembleLabel: 'Probabilidad de victoria del ensamble de IA',
+    marketBaselineLabel: 'Línea de mercado',
+    divergenceLabel: (pp) => `Divergencia estadística ${pp}p`,
+    fractureIron: 'Acuerdo sólido',
+    fractureWarn: 'Alerta de fractura de IA',
+    agreement: (pct) => `${pct}% de acuerdo`,
+    consensusSeat: 'Línea de mercado',
+    disclaimer: 'Análisis informativo. No es una incitación al juego.',
+  },
   disclaimer: {
     short: 'Solo información, no es asesoramiento de inversión. Usted es responsable de sus propias decisiones.',
     long: 'Este contenido muestra opiniones de varios modelos de IA con fines informativos y de entretenimiento únicamente. No constituye asesoramiento de inversión, financiero, legal ni profesional, y ninguno de estos modelos es un asesor autorizado. Los mercados son impredecibles y los modelos de IA pueden equivocarse, y a menudo lo hacen. Usted es el único responsable de cualquier decisión que tome con base en esta información.',
     realEstate:
       'Solo referencia estadística, no es una tasación formal. Perspectiva de región o instrumento, no la valoración de un inmueble concreto.',
     extraExperimental: 'Solo entretenimiento y experimento — no es base para una decisión de inversión.',
+    sports: 'Análisis informativo. No es una incitación al juego.',
   },
   operatorGrade: {
     verifiedLabel: 'Verificado por el operador',
@@ -4091,11 +4173,22 @@ const ar: LeagueUiPack = {
     recordPending: 'يُجمع السجل بعد التقييم',
     seat: { divination: 'عرافة', sentiment: 'مشاعر', history: 'تاريخ', consensus: 'إجماع السوق' },
   },
+  sportsMarket: {
+    ensembleLabel: 'احتمال فوز مجموعة الذكاء الاصطناعي',
+    marketBaselineLabel: 'خط السوق المرجعي',
+    divergenceLabel: (pp) => `الانحراف الإحصائي ${pp}p`,
+    fractureIron: 'اتفاق راسخ',
+    fractureWarn: 'تنبيه انقسام الذكاء الاصطناعي',
+    agreement: (pct) => `اتفاق ${pct}%`,
+    consensusSeat: 'خط السوق المرجعي',
+    disclaimer: 'تحليل معلوماتي فقط. ليس دعوة للمقامرة.',
+  },
   disclaimer: {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
     long: 'يعرض هذا المحتوى آراء عدة نماذج ذكاء اصطناعي لأغراض المعلومات والترفيه فقط. وهو لا يمثل نصيحة استثمارية أو مالية أو قانونية أو مهنية، وليس أي نموذج هنا مستشارًا مرخصًا. الأسواق غير قابلة للتنبؤ، وقد تخطئ نماذج الذكاء الاصطناعي، بل وتخطئ كثيرًا. أنت وحدك المسؤول عن أي قرار تتخذه بناءً على ذلك.',
     realEstate: 'مرجع إحصائي فقط — وليس تقييمًا رسميًا. نظرة على المنطقة أو الأداة، لا تقدير لعقار بعينه.',
     extraExperimental: 'للترفيه والتجربة فقط، وليس أساسًا لقرار استثماري.',
+    sports: 'تحليل معلوماتي فقط. ليس دعوة للمقامرة.',
   },
   operatorGrade: {
     verifiedLabel: 'تم التحقق من قِبل المشغّل',
@@ -4632,12 +4725,23 @@ const pt: LeagueUiPack = {
     recordPending: 'Histórico após a pontuação',
     seat: { divination: 'Adivinhação', sentiment: 'Sentimento', history: 'História', consensus: 'Consenso' },
   },
+  sportsMarket: {
+    ensembleLabel: 'Probabilidade de vitória do conjunto de IA',
+    marketBaselineLabel: 'Linha de mercado',
+    divergenceLabel: (pp) => `Divergência estatística ${pp}p`,
+    fractureIron: 'Acordo sólido',
+    fractureWarn: 'Alerta de cisão da IA',
+    agreement: (pct) => `${pct}% de acordo`,
+    consensusSeat: 'Linha de mercado',
+    disclaimer: 'Análise informativa. Não é incentivo a jogo.',
+  },
   disclaimer: {
     short: 'Apenas informação — não é recomendação de investimento. Você é responsável pelas próprias decisões.',
     long: 'Estas são opiniões de modelos de IA exibidas apenas para fins informativos e de entretenimento. Não são aconselhamento de investimento, financeiro, jurídico ou profissional, e nenhum modelo aqui é um consultor licenciado. Os mercados são imprevisíveis e os modelos de IA podem errar — e erram com frequência. Você é o único responsável por qualquer decisão que tomar.',
     realEstate:
       'Referência estatística apenas — não é uma avaliação formal. Perspectiva por região e instrumento; não é a avaliação de nenhum imóvel específico.',
     extraExperimental: 'Apenas entretenimento e experimento — não é base para decisão de investimento.',
+    sports: 'Análise informativa. Não é incentivo a jogo.',
   },
   operatorGrade: {
     verifiedLabel: 'Verificado pelo operador',
