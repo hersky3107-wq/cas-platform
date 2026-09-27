@@ -5,9 +5,18 @@
  * MLB / NBA: named team wins the official result (regulation + extras).
  */
 
-import type { UiHorizon } from '../../horizon'
+import { isUiHorizon, type UiHorizon } from '../../horizon'
+import type { ComposedRound } from '../types'
 import type { SportsInstrumentParts } from './sports-catalog'
-import { isSoccerLeague, leagueLabelEn, opponentTeamOf, subjectTeamOf } from './sports-catalog'
+import {
+  decodeSportsInstrument,
+  encodeSportsInstrument,
+  isSoccerLeague,
+  leagueLabelEn,
+  opponentTeamOf,
+  SPORTS_RESOLVES_AFTER_KICKOFF_MS,
+  subjectTeamOf,
+} from './sports-catalog'
 
 export const SPORTS_PROPOSITION_TEMPLATE_SOCCER_EN =
   'Will {subject} win the {competition} match against {opponent} in regular time (90 minutes plus stoppage; a draw is No)?'
@@ -51,3 +60,31 @@ export function sportsResolutionRule(parts: SportsInstrumentParts): string {
     `Otherwise No. Graded from a published box-score URL.`
   )
 }
+
+export function buildSportsRankedRoundInput(
+  instrument: string,
+  uiHorizon?: UiHorizon,
+  now: Date = new Date()
+): ComposedRound | null {
+  const parts = decodeSportsInstrument(instrument)
+  if (!parts) return null
+  const kickoffIso = new Date(parts.kickoffMs).toISOString()
+  const resolvesAt = new Date(parts.kickoffMs + SPORTS_RESOLVES_AFTER_KICKOFF_MS).toISOString()
+  const subject = subjectTeamOf(parts)
+  const horizon = uiHorizon && isUiHorizon(uiHorizon) ? uiHorizon : horizonForKickoff(kickoffIso, now)
+  const encoded = encodeSportsInstrument(parts)
+  return {
+    proposition_text: formatSportsProposition(parts),
+    category: 'sports',
+    instrument: encoded,
+    horizon,
+    resolution_rule: sportsResolutionRule(parts),
+    resolves_at: resolvesAt,
+    item_type: 'ranked',
+    cache_key: `sports|${encoded}`,
+    proposition_kind: 'binary_subject_outcome',
+    subject_label: subject,
+    observation_shape: 'name_match',
+  }
+}
+

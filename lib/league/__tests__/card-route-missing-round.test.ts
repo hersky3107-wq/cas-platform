@@ -59,4 +59,11 @@ describe('chip+horizon generate persistence', () => {
     expect(GENERATE_ROUTE).toContain('ensureLeagueRound(target.round)')
     expect(GENERATE_ROUTE).not.toContain("item_type: 'on_demand'")
   })
+
+  it('GET /api/league/instruments route queries recent sports rounds and surfaces them', () => {
+    const INSTRUMENTS_ROUTE = readFileSync(join(__dirname, '../../../app/api/league/instruments/route.ts'), 'utf8')
+    expect(INSTRUMENTS_ROUTE).toContain("category', 'sports'")
+    expect(INSTRUMENTS_ROUTE).toContain("item_type', 'ranked'")
+    expect(INSTRUMENTS_ROUTE).toContain("c.id === 'sports'")
+  })
 })

@@ -74,4 +74,79 @@ describe('sports extra-seat redefinition', () => {
     expect(historyRationaleNeedsRetry('맞대결 전적에서 앞선다', 'sports')).toBe(false)
     expect(historyRationaleNeedsRetry('쌍바닥 넥라인 돌파', 'sports')).toBe(true)
   })
+
+  it('renders PredictionCard with sportsMarket, devigged odds baseline, and divergence cleanly', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const { createElement } = await import('react')
+    const { PredictionCard } = await import('../../../components/league/PredictionCard')
+    const { buildCardData } = await import('../card-aggregate')
+
+    const mockRound: any = {
+      id: 'mock-sports-round',
+      opened_at: '2026-09-27T08:00:00.000Z',
+      resolves_at: '2026-09-28T02:00:00.000Z',
+      category: 'sports',
+      item_type: 'ranked',
+      proposition_kind: 'binary_subject_outcome',
+      subject_label: 'Los Angeles Dodgers',
+      instrument: 'MATCH:baseball_mlb:12345:away:1790535960000:San%20Francisco%20Giants:Los%20Angeles%20Dodgers',
+      horizon: '1d',
+      resolution_rule: 'Dodgers win official result',
+      proposition_text: 'Will Los Angeles Dodgers win the MLB game against San Francisco Giants?',
+      anchor_price: null,
+      anchor_price_at: null,
+      anchor_session_date: null,
+      resolution_price: null,
+      resolution_session_date: null,
+      actual_outcome: null,
+      resolved_at: null,
+      status: 'pending',
+    }
+
+    const mockPredictions: any[] = [
+      {
+        model_id: 'gpt-4o',
+        brand: 'OpenAI',
+        model_identifier: 'gpt-4o',
+        camp: 'us',
+        league_tier: 'premier',
+        direction: 'yes',
+        probability: 75,
+        target_price: null,
+        rationale: 'Solid pitching rotation',
+        is_correct: null,
+        settled_at: null,
+      },
+      {
+        model_id: 'claude-3-5-sonnet',
+        brand: 'Anthropic',
+        model_identifier: 'claude-3-5-sonnet',
+        camp: 'us',
+        league_tier: 'premier',
+        direction: 'yes',
+        probability: 80,
+        target_price: null,
+        rationale: 'Offensive advantage',
+        is_correct: null,
+        settled_at: null,
+      },
+    ]
+
+    const card = buildCardData(mockRound, mockPredictions, [], [])
+    card.sportsMarket = {
+      ensembleWinPct: 77.5,
+      marketBaselinePct: 70.4,
+      divergencePp: 7.1,
+      agreementPct: 100,
+      fracture: 'iron',
+    }
+
+    const html = renderToStaticMarkup(createElement(PredictionCard, { initialData: card }))
+    expect(html).toContain('Will Los Angeles Dodgers win the MLB game')
+    expect(html).toContain('77.5%')
+    expect(html).toContain('70.4%')
+    expect(html).toContain('Statistical divergence +7.1p')
+    expect(html).toContain('Dodgers vs San Francisco Giants')
+    expect(html).toContain('Informational analysis only. This is not gambling advice.')
+  })
 })

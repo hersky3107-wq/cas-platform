@@ -202,4 +202,18 @@ describe('header honesty', () => {
     )
     expect(goldHtml).toContain('Based on international spot prices (USD/oz)')
   })
+
+  it('formats MATCH:... sports instruments nicely in the card headline', () => {
+    const headline = headerHeadline({
+      roundDate: 'Aug 18, 2026',
+      instrument: 'MATCH:baseball_mlb:12345:away:1790535960000:San%20Francisco%20Giants:Los%20Angeles%20Dodgers',
+      anchorPrice: null,
+      anchorSessionDate: null,
+      propositionKind: 'binary_subject_outcome',
+      locale: 'en',
+      t,
+    })
+    expect(headline).toContain('Los Angeles Dodgers vs San Francisco Giants')
+    expect(headline).not.toContain('MATCH:baseball_mlb')
+  })
 })

@@ -4,6 +4,8 @@ import { CardNotFoundError, fetchCardData, type CardLookup } from '@/lib/league/
 import type { CardData, CardGenerationState, LockedCardPayload } from '@/lib/league/card-types'
 import { gatePublicGenerateInstrument } from '@/lib/league/access-policy'
 import { buildCatalogRankedRoundInput, findCatalogInstrument } from '@/lib/league/catalog'
+import { decodeSportsInstrument } from '@/lib/league/gateway/adapters/sports-catalog'
+import { buildSportsRankedRoundInput } from '@/lib/league/gateway/adapters/sports-compose'
 import { droppedRosterModelIds, rosterGenerationProgress } from '@/lib/league/generation-progress'
 import {
   findActiveJobForRound,
@@ -217,13 +219,18 @@ function catalogLockedPreview(
           : NextResponse.json({ error: 'Unknown instrument', code: gate.code }, { status: 400 }),
     }
   }
-  const wouldOpen = buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+  const sportsParts = decodeSportsInstrument(gate.instrument)
+  const wouldOpen = sportsParts
+    ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
+    : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
   if (!wouldOpen) {
     return {
       response: NextResponse.json({ error: 'No ranked round available yet', code: 'no_round' }, { status: 404 }),
     }
   }
-  const catalogTone = findCatalogInstrument(gate.instrument)?.category.tone ?? 'yellow'
+  const catalogTone = sportsParts
+    ? 'red'
+    : (findCatalogInstrument(gate.instrument)?.category.tone ?? 'yellow')
   return {
     payload: {
       locked: true,

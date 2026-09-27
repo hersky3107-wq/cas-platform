@@ -264,3 +264,21 @@ describe('sports mentions', () => {
     ])
   })
 })
+
+describe('sports instrument display', () => {
+  it('decodes MATCH:... instruments for human display', () => {
+    const parts = {
+      league: 'baseball_mlb' as const,
+      eventId: '12345',
+      side: 'away' as const,
+      kickoffMs: 1790535960000,
+      home: 'San Francisco Giants',
+      away: 'Los Angeles Dodgers',
+    }
+    const inst = encodeSportsInstrument(parts)
+    const decoded = decodeSportsInstrument(inst)
+    expect(decoded).not.toBeNull()
+    expect(decoded?.home).toBe('San Francisco Giants')
+    expect(decoded?.away).toBe('Los Angeles Dodgers')
+  })
+})

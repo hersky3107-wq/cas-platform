@@ -8,6 +8,11 @@ import {
   tuningForViewer,
   visibleCategoriesFor,
 } from '../access-policy'
+import {
+  decodeSportsInstrument,
+  encodeSportsInstrument,
+} from '../gateway/adapters/sports-catalog'
+import { buildSportsRankedRoundInput } from '../gateway/adapters/sports-compose'
 
 const CURATED = ['AAPL', 'NVDA', 'BTC/USD', 'EUR/USD'] as const
 
@@ -186,6 +191,49 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
       category: 'etf_index',
     })
     expect(gatePublicGenerateInstrument('UPRO', adminInCn)).toMatchObject({ ok: true, instrument: 'UPRO' })
+  })
+
+  it('accepts valid MATCH:... sports fixtures without a catalog chip', () => {
+    const fixture = encodeSportsInstrument({
+      league: 'baseball_mlb',
+      eventId: 'evt-lad-sfg',
+      side: 'home',
+      kickoffMs: Date.now() + 86400000,
+      home: 'Los Angeles Dodgers',
+      away: 'San Francisco Giants',
+    })
+
+    const gate = gatePublicGenerateInstrument(fixture, { isAdmin: false, jurisdiction: { ipCountry: 'US' } }, '1d')
+    expect(gate).toEqual({
+      ok: true,
+      instrument: fixture,
+      category: 'sports',
+      horizon: '1d',
+    })
+
+    // Malformed MATCH:... fixture is rejected with 400 unknown_instrument
+    expect(
+      gatePublicGenerateInstrument('MATCH:not:enough:parts', { isAdmin: false, jurisdiction: { ipCountry: 'US' } })
+    ).toEqual({
+      ok: false,
+      status: 400,
+      code: 'unknown_instrument',
+    })
+
+    // Build sports ranked round from the fixture
+    const created = buildSportsRankedRoundInput(fixture, '1d')
+    expect(created).toMatchObject({
+      category: 'sports',
+      instrument: fixture,
+      horizon: '1d',
+      proposition_kind: 'binary_subject_outcome',
+      subject_label: 'Los Angeles Dodgers',
+      observation_shape: 'name_match',
+      item_type: 'ranked',
+      cache_key: `sports|${fixture}`,
+    })
+    expect(created?.proposition_text).toContain('Los Angeles Dodgers')
+    expect(created?.proposition_text).toContain('San Francisco Giants')
   })
 
   it('generate-stream charges only after resolveTarget, so a failed gate is zero cost', () => {

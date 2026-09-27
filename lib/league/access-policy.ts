@@ -2,6 +2,7 @@ import type { PredictionCategory } from '@/lib/prediction/categories'
 import type { LeagueTier } from '@/lib/league/roster'
 import type { RateLimitRule } from '@/lib/rate-limit'
 import { findCatalogInstrument } from './catalog'
+import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
 import { isUiHorizon, type UiHorizon } from './horizon'
 
@@ -102,6 +103,14 @@ export function gatePublicGenerateInstrument(
 
   const horizon = typeof horizonRaw === 'string' ? horizonRaw.trim() : horizonRaw
   if (!isUiHorizon(horizon)) return { ok: false, status: 400, code: 'unknown_horizon' }
+
+  const sportsParts = decodeSportsInstrument(instrument)
+  if (sportsParts) {
+    if (!viewer.isAdmin && !isCategoryAllowed('sports', viewer.jurisdiction)) {
+      return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+    }
+    return { ok: true, instrument, category: 'sports', horizon }
+  }
 
   const found = findCatalogInstrument(instrument)
   if (!found) return { ok: false, status: 400, code: 'unknown_instrument' }

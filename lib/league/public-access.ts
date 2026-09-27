@@ -19,6 +19,9 @@ import {
 import { gatePublicGenerateInstrument, isCuratedInstrument, visibleCategoriesFor } from './access-policy'
 import { isUiHorizon, type UiHorizon } from './horizon'
 import type { PredictionCategory } from '@/lib/prediction/categories'
+import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
+import { buildSportsRankedRoundInput } from './gateway/adapters/sports-compose'
+import type { ComposedRound } from './gateway/types'
 
 /**
  * AI Prediction League — PUBLIC PATH ENFORCEMENT (server-side).
@@ -62,6 +65,11 @@ export type ViewerResult = { ok: true; viewer: LeagueViewer } | { ok: false; res
 
 /** Curated ranked instrument strings — the only instruments a public user may reach. */
 export const CURATED_INSTRUMENTS: readonly string[] = CATALOG_INSTRUMENT_IDS
+
+/** Public ranked instruments include static catalog chips and verified sports fixtures. */
+export function isPublicRankedInstrument(instrument: string): boolean {
+  return isCuratedInstrument(instrument, CURATED_INSTRUMENTS) || decodeSportsInstrument(instrument) !== null
+}
 
 function jsonError(status: number, error: string, code: string, extra?: Record<string, unknown>): NextResponse {
   return NextResponse.json({ error, code, ...extra }, { status })
@@ -245,7 +253,7 @@ export async function authorizeRoundForViewer(viewer: LeagueViewer, roundIdRaw: 
   }
 
   if (!viewer.isAdmin) {
-    if (round.item_type !== 'ranked' || !isCuratedInstrument(round.instrument, CURATED_INSTRUMENTS)) {
+    if (round.item_type !== 'ranked' || !isPublicRankedInstrument(round.instrument)) {
       return { ok: false, response: forbiddenResponse('not_public') }
     }
     if (!isCategoryAllowed(round.category, viewer.jurisdiction)) {
@@ -281,7 +289,7 @@ export async function resolvePublicInstrumentRound(
   if (!isUiHorizon(uiHorizon)) {
     return { ok: false, response: jsonError(400, 'Unknown horizon', 'unknown_horizon') }
   }
-  if (!isCuratedInstrument(instrument, CURATED_INSTRUMENTS)) {
+  if (!isPublicRankedInstrument(instrument)) {
     // On-demand / arbitrary-instrument search is a later product piece — not open.
     return { ok: false, response: forbiddenResponse('not_public') }
   }
@@ -294,7 +302,7 @@ export async function resolvePublicInstrumentRound(
 
 export type PublicInstrumentGenerateTarget =
   | { ok: true; round: { roundId: string } }
-  | { ok: true; round: CatalogRankedRoundInput }
+  | { ok: true; round: CatalogRankedRoundInput | ComposedRound }
   | { ok: false; response: NextResponse }
 
 /**
@@ -330,7 +338,10 @@ export async function resolvePublicInstrumentGenerateTarget(
   if (existing.ok) return { ok: true, round: { roundId: existing.roundId } }
   if (existing.response.status !== 404) return existing
 
-  const created = buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+  const sportsParts = decodeSportsInstrument(gate.instrument)
+  const created = sportsParts
+    ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
+    : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
   if (!created) {
     return { ok: false, response: jsonError(404, 'No ranked round available yet', 'no_round') }
   }

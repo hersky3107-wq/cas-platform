@@ -28,7 +28,12 @@ import {
   subjectTeamOf,
   type SportsFixtureLite,
 } from './sports-catalog'
-import { formatSportsProposition, horizonForKickoff, sportsResolutionRule } from './sports-compose'
+import {
+  buildSportsRankedRoundInput,
+  formatSportsProposition,
+  horizonForKickoff,
+  sportsResolutionRule,
+} from './sports-compose'
 import { buildSportsPacket, type SportsPacketIo } from './sports-packet'
 
 /**
@@ -172,24 +177,15 @@ export function createSportsAdapter(io: SportsPacketIo): CategoryAdapter {
       if (!parts) {
         throw new Error('sports.composeProposition called with undecidable slots — shell must gate on isDecidable')
       }
-      const instrument = encodeSportsInstrument(parts)
-      const kickoffIso = new Date(parts.kickoffMs).toISOString()
-      const resolvesAt = new Date(parts.kickoffMs + SPORTS_RESOLVES_AFTER_KICKOFF_MS).toISOString()
-      const subject = subjectTeamOf(parts)
-      void now
-      return {
-        proposition_text: formatSportsProposition(parts),
-        category: 'sports',
-        instrument,
-        horizon: horizonForKickoff(kickoffIso, now),
-        resolution_rule: sportsResolutionRule(parts),
-        resolves_at: resolvesAt,
-        item_type: 'ranked',
-        cache_key: `sports|${instrument}`,
-        proposition_kind: 'binary_subject_outcome',
-        subject_label: subject,
-        observation_shape: 'name_match',
+      const built = buildSportsRankedRoundInput(
+        encodeSportsInstrument(parts),
+        isUiHorizon(slots.horizon) ? slots.horizon : undefined,
+        now
+      )
+      if (!built) {
+        throw new Error('sports.composeProposition failed to build sports ranked round')
       }
+      return built
     },
 
     gradeSources(_slots: NormalizeSlots): readonly [GradeSource, GradeSource, GradeSource] {

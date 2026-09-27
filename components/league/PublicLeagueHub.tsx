@@ -13,6 +13,7 @@ import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import type { CardData, ColorBucket, LockedCardPayload } from '@/lib/league/card-types'
 import { GENERATION_POLL_MS } from '@/lib/league/generation/policy'
 import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } from '@/lib/league/catalog'
+import { decodeSportsInstrument, opponentTeamOf, subjectTeamOf } from '@/lib/league/gateway/adapters/sports-catalog'
 import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
@@ -227,7 +228,7 @@ function CardsPanel() {
     if (!categories) return
     const next = categories.find((c) => c.id === id)
     setSelectedCategory(id)
-    if (!next || next.kind === 'coming_soon' || next.instruments.length === 0) {
+    if (!next || (next.kind === 'coming_soon' && next.instruments.length === 0) || next.instruments.length === 0) {
       setSelectedInstrument(null)
       setView({ kind: 'none' })
       return
@@ -299,16 +300,29 @@ function CardsPanel() {
           onRoundOpened={(instrument, nextHorizon) => {
             setHorizon(nextHorizon)
             setSelectedInstrument(instrument)
+            setCategories((prev) => {
+              if (!prev) return prev
+              return prev.map((cat) => {
+                if (cat.id !== selectedCategory) return cat
+                const exists = cat.instruments.some((i) => i.instrument === instrument)
+                const nextInsts = exists ? cat.instruments : [{ instrument }, ...cat.instruments]
+                return {
+                  ...cat,
+                  kind: 'instruments' as const,
+                  instruments: nextInsts,
+                }
+              })
+            })
             void loadCard(instrument, nextHorizon)
           }}
         />
       ) : null}
 
-      {active?.kind === 'coming_soon' ? (
+      {active?.kind === 'coming_soon' && view.kind !== 'card' && view.kind !== 'locked' ? (
         <ComingSoonPanel categoryId={active.id} />
       ) : null}
 
-      {active?.kind === 'instruments' ? (
+      {(active?.kind === 'instruments' || (active?.instruments && active.instruments.length > 0)) ? (
         <div className="flex flex-wrap gap-1.5">
           {active.instruments.map((i) => {
             const selected = selectedInstrument === i.instrument
@@ -332,7 +346,7 @@ function CardsPanel() {
         <p className="text-[11px] leading-relaxed text-slate-500">{t.catalog.spotVsEtfNote}</p>
       ) : null}
 
-      {active?.kind === 'instruments' ? (
+      {(active?.kind === 'instruments' || (active?.instruments && active.instruments.length > 0)) && active?.id !== 'sports' ? (
         <div className="flex gap-1.5" role="group" aria-label="Horizon">
           {UI_HORIZONS.map((h) => (
             <button
@@ -350,20 +364,20 @@ function CardsPanel() {
         </div>
       ) : null}
 
-      {active?.kind === 'instruments' && view.kind === 'loading' ? (
+      {view.kind === 'loading' ? (
         <PanelMessage text={t.hub.loading} />
       ) : null}
-      {active?.kind === 'instruments' && view.kind === 'blocked' ? (
+      {view.kind === 'blocked' ? (
         <PanelMessage text={t.gating.unavailable} />
       ) : null}
       {active?.kind === 'instruments' && view.kind === 'none' ? (
         <PanelMessage text={t.catalog.noCardYet} />
       ) : null}
-      {active?.kind === 'instruments' && view.kind === 'error' ? (
+      {view.kind === 'error' ? (
         <PanelMessage text={t.hub.genericError} tone="error" />
       ) : null}
 
-      {active?.kind === 'instruments' && view.kind === 'locked' && selectedInstrument ? (
+      {view.kind === 'locked' && selectedInstrument ? (
         <LockedRoundPanel
           locked={view.locked}
           instrument={selectedInstrument}
@@ -373,7 +387,7 @@ function CardsPanel() {
         />
       ) : null}
 
-      {active?.kind === 'instruments' && view.kind === 'card' && selectedInstrument ? (
+      {view.kind === 'card' && selectedInstrument ? (
         <>
           <GenerationBanner
             card={view.card}
@@ -623,6 +637,10 @@ function ComingSoonPanel({ categoryId }: { categoryId: PublicCategoryId }) {
 }
 
 function instrumentLabel(t: { catalog: { instruments: Record<string, string> } }, instrument: string): string {
+  const sports = decodeSportsInstrument(instrument)
+  if (sports) {
+    return `${subjectTeamOf(sports)} vs ${opponentTeamOf(sports)}`
+  }
   return t.catalog.instruments[instrument] ?? instrument
 }
 

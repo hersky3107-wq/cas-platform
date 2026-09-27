@@ -37,7 +37,10 @@ import {
   persistAnchorPrice,
   probeObtainablePriceAnchor,
 } from '@/lib/league/price-anchor'
-import { MARKET_DATA_UNAVAILABLE_CODE } from '@/lib/league/price-anchor-policy'
+import {
+  MARKET_DATA_UNAVAILABLE_CODE,
+  propositionNeedsPriceAnchor,
+} from '@/lib/league/price-anchor-policy'
 
 /**
  * POST /api/league/generate — open (view-purchase) a league round. THE PAID
@@ -105,16 +108,24 @@ export async function POST(req: Request) {
     if ('roundId' in target.round) {
       roundId = target.round.roundId
     } else {
-      const probed = await probeObtainablePriceAnchor(target.round.instrument)
-      if (!probed.ok) {
-        return await marketDataUnavailableResponse(locale, viewer.userId, body, instrument, horizon, cost)
+      const needsAnchor = propositionNeedsPriceAnchor(
+        'proposition_kind' in target.round ? target.round.proposition_kind : undefined
+      )
+      let probed: Awaited<ReturnType<typeof probeObtainablePriceAnchor>> | null = null
+      if (needsAnchor) {
+        probed = await probeObtainablePriceAnchor(target.round.instrument)
+        if (!probed.ok) {
+          return await marketDataUnavailableResponse(locale, viewer.userId, body, instrument, horizon, cost)
+        }
       }
       try {
         const { round } = await ensureLeagueRound(target.round)
         roundId = round.id
-        const stamped = await persistAnchorPrice(roundId, probed.price, probed.sessionDate)
-        if (!stamped) {
-          return await marketDataUnavailableResponse(locale, viewer.userId, body, instrument, horizon, cost)
+        if (needsAnchor && probed && probed.ok) {
+          const stamped = await persistAnchorPrice(roundId, probed.price, probed.sessionDate)
+          if (!stamped) {
+            return await marketDataUnavailableResponse(locale, viewer.userId, body, instrument, horizon, cost)
+          }
         }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : ''
