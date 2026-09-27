@@ -47,15 +47,15 @@ async function runChunkWorkers(
 /** Premier-shaped 10-seat roster: index 6 is the 240s DeepSeek seat. */
 function premierLikeRoster() {
   const ids = [
-    'gpt-5.6-sol',
-    'claude-fable-5',
+    'gpt-6-astra',
+    'claude-fable-5.1',
     'gemini-3.1-pro',
-    'grok-4.5',
+    'grok-4.7',
     'muse-spark-1.2',
     'qwen3.8-max',
     'deepseek-v4-pro',
     'kimi-k3',
-    'glm-5.2',
+    'glm-5.3',
     'minimax-m3',
   ]
   return ids.map((model_id, i) => ({
@@ -79,14 +79,14 @@ describe('claimNextLaunchableIndex (generatePredictions worker gate)', () => {
     })
 
     expect(launched).toEqual([
-      'gpt-5.6-sol',
-      'claude-fable-5',
+      'gpt-6-astra',
+      'claude-fable-5.1',
       'gemini-3.1-pro',
-      'grok-4.5',
+      'grok-4.7',
       'muse-spark-1.2',
       'qwen3.8-max',
       'kimi-k3',
-      'glm-5.2',
+      'glm-5.3',
       'minimax-m3',
     ])
     expect(launched).not.toContain('deepseek-v4-pro')

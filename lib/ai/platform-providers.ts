@@ -94,7 +94,7 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   // error. Confirmed fixes, one per model (do not copy blindly — a fix that
   // works for one model can silently regress another, see nova-2-lite):
   //   - `reasoning: { effort: 'minimal' }` reliably leaves room for content
-  //     on qwen3.8-max, kimi-k3, glm-5.2, minimax-m3, mimo-v2.5,
+  //     on qwen3.8-max, kimi-k3, glm-5.2, glm-5.3, minimax-m3, mimo-v2.5,
   //     nemotron-3-ultra-550b (confirmed via repeated live calls).
   //   - `reasoning: { enabled: false }` is REJECTED (HTTP 400 "Reasoning is
   //     mandatory for this endpoint and cannot be disabled") on qwen3.8-max
@@ -116,6 +116,10 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   { id: 'openrouter:qwen3.8-max', provider: 'openrouter', brand: 'Qwen', displayName: 'Qwen3.8 Max', model: 'qwen/qwen3.8-max', league: 'premier', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   { id: 'openrouter:kimi-k3', provider: 'openrouter', brand: 'Moonshot AI', displayName: 'Kimi K3', model: 'moonshotai/kimi-k3', league: 'premier', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   { id: 'openrouter:glm-5.2', provider: 'openrouter', brand: 'Z.ai', displayName: 'GLM-5.2', model: 'z-ai/glm-5.2', league: 'premier', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  // 2026-09-27: premier Z.ai seat swapped glm-5.2 → glm-5.3. Live-probed
+  // z-ai/glm-5.3 with effort:minimal (valid JSON, 1.8s, 21 reasoning tokens).
+  // Keep glm-5.2 registered — league Deep open-replacement still uses it.
+  { id: 'openrouter:glm-5.3', provider: 'openrouter', brand: 'Z.ai', displayName: 'GLM-5.3', model: 'z-ai/glm-5.3', league: 'premier', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
   // `provider.order: ['minimax']` pins the first-party MiniMax upstream.
   // Reason (measured live 2026-08-10): of the 10 upstreams OpenRouter routes
   // this model to, Novita intermittently mis-splits the model's think block

@@ -138,7 +138,7 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
   it('surfaces ungraded models in every group denominator display', () => {
     const mixed: VerdictPredictionRow[] = [
       {
-        model_id: 'gpt-5.6-sol',
+        model_id: 'gpt-6-astra',
         brand: 'OpenAI',
         predicted_direction: 'up',
         predicted_value: 60,
@@ -177,7 +177,7 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
   it('returns an empty array for empty groups — never a zero-filled row', () => {
     const onlyUs: VerdictPredictionRow[] = [
       {
-        model_id: 'gpt-5.6-sol',
+        model_id: 'gpt-6-astra',
         brand: 'OpenAI',
         predicted_direction: 'up',
         predicted_value: 60,
@@ -233,7 +233,7 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
   it('hides 허풍 ranking when nobody is meaningfully above the round median', () => {
     const clustered: VerdictPredictionRow[] = [
       {
-        model_id: 'gpt-5.6-sol',
+        model_id: 'gpt-6-astra',
         brand: 'OpenAI',
         predicted_direction: 'up',
         predicted_value: 55,
@@ -265,7 +265,7 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
   it('does not pad the overconfident list to a fixed length', () => {
     const oneLoudWrong: VerdictPredictionRow[] = [
       {
-        model_id: 'gpt-5.6-sol',
+        model_id: 'gpt-6-astra',
         brand: 'OpenAI',
         predicted_direction: 'down',
         predicted_value: 80,
@@ -292,7 +292,7 @@ describe('buildVerdictPayload — fffc1716 fixture', () => {
       roster: ROSTER,
     })
     expect(payload.overconfident).toHaveLength(1)
-    expect(payload.overconfident[0]!.model_id).toBe('gpt-5.6-sol')
+    expect(payload.overconfident[0]!.model_id).toBe('gpt-6-astra')
   })
 
   it('omits streaks keys when graded rounds < 2 or streak is 0/1', () => {

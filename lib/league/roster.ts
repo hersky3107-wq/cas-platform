@@ -127,13 +127,13 @@ export type RosterPrice = {
  * PRICE AUDIT — last verified 2026-09-07 (DeepSeek first-party + Friendli Gemma).
  *
  * Sources used (per provider):
- *   OpenAI     — developers.openai.com/api/docs/models/{gpt-5.6-sol,terra,luna}
- *                + /api/docs/pricing (incl. web search $10/1k calls)
+ *   OpenAI     — developers.openai.com/api/docs/models/{gpt-6-astra,gpt-5.6-terra,luna}
+ *                + /api/docs/pricing (Astra $10/$50; long-context ≥272k $20/$75)
  *   Anthropic  — platform.claude.com/docs/en/about-claude/pricing
  *                + web_search tool docs ($10/1k searches)
  *   Google     — ai.google.dev/gemini-api/docs/pricing (3.1 Pro / 3.6 Flash /
  *                3.5 Flash-Lite; Pro long-context ≥200k)
- *   xAI        — docs.x.ai models table (grok-4.6/4.5 $2/$6 & $4/$12 @200k;
+ *   xAI        — docs.x.ai models table (grok-4.7/4.6/4.5 $2/$6 & $4/$12 @200k;
  *                grok-4.3 $1.25/$2.50 & $2.50/$5 @200k; web_search $5/1k)
  *   OpenRouter — live GET https://openrouter.ai/api/v1/models (prompt/completion
  *                fields × 1e6). Covers every remaining openrouter:* roster seat.
@@ -183,13 +183,19 @@ export type RosterPrice = {
  *     challenger stage (~5 min). Replaced by Tencent Hunyuan 3
  *     (openrouter:hunyuan-3 → tencent/hy3). Default 60s timeout. Premier
  *     kimi-k3 is untouched. Tencent had 0 prior seats.
+ *   - 2026-09-27: premier flagship refresh (live-probed before swap):
+ *     gpt-5.6-sol → gpt-6-astra (first-party; OpenRouter openai/gpt-6-astra also OK),
+ *     grok-4.5 → grok-4.7 (first-party; OpenRouter x-ai/grok-4.7 also OK),
+ *     glm-5.2 → glm-5.3 (OpenRouter z-ai/glm-5.3, effort:minimal),
+ *     claude-fable-5 → claude-fable-5.1 (first-party id claude-fable-5-1).
+ *     Seat ids unchanged. Challenger/world/scout untouched.
  *
  * WEIGHTS — classified 2026-09-07. Rule: 'open' means the SPECIFIC called
  * model has publicly downloadable weights. A previous generation or a
  * smaller sibling does not count. Open ≠ OSI license.
  *
  * FLAG seats (named ambiguities + one extra):
- *   grok-4.5 / grok-4.3 / grok-4.6-livesearch — Grok-1 is open (Apache-2.0);
+ *   grok-4.7 / grok-4.5 / grok-4.3 / grok-4.6-livesearch — Grok-1 is open (Apache-2.0);
  *     4.x listings show Open weights: No. Closed.
  *   muse-spark-1.2 — Meta announced Spark 1.2 weights "in the coming weeks"
  *     on 2026-08-10; as of 2026-09-07 no HF repo. Glimmer 30B is a sibling.
@@ -210,11 +216,18 @@ export type RosterPrice = {
  * Re-audit whenever a first-party page moves, or when an OpenRouter drift
  * script flags a seat off by >25%.
  */
-/** Official grok-4.5 / grok-4.6 list price (docs.x.ai, 2026-08). */
+/** Official grok-4.7 / grok-4.6 / grok-4.5 list price (docs.x.ai, 2026-09). */
 const XAI_GROK_46_PRICE: RosterPrice = {
   inputPerMTokens: 2,
   outputPerMTokens: 6,
   longContext: { promptTokens: 200_000, inputPerMTokens: 4, outputPerMTokens: 12 },
+}
+
+/** Official gpt-6-astra standard list (developers.openai.com/api/docs/pricing, 2026-09). */
+const OPENAI_GPT6_ASTRA_PRICE: RosterPrice = {
+  inputPerMTokens: 10,
+  outputPerMTokens: 50,
+  longContext: { promptTokens: 272_000, inputPerMTokens: 20, outputPerMTokens: 75 },
 }
 
 /** Official grok-4.3 list price (docs.x.ai, 2026-08). */
@@ -236,11 +249,11 @@ const DEEPSEEK_V4_FLASH_PRICE: RosterPrice = { inputPerMTokens: 0.22, outputPerM
 
 export const LEAGUE_ROSTER: RosterEntry[] = [
   // ── 🔴 PREMIER (10) — US 5 : CN 5 ────────────────────────────────────────
-  { model_id: 'gpt-5.6-sol', brand: 'OpenAI', product_alias: 'ChatGPT', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'openai', reasoning: true, caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-5.6-sol' }, price: { inputPerMTokens: 4, outputPerMTokens: 20 } }, // OpenAI API; no public checkpoint
-  { model_id: 'claude-fable-5', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'anthropic', reasoning: false, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-fable-5' }, price: { inputPerMTokens: 10, outputPerMTokens: 50 } }, // Anthropic API; no public checkpoint
+  { model_id: 'gpt-6-astra', brand: 'OpenAI', product_alias: 'ChatGPT', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'openai', reasoning: true, caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-6-astra' }, price: OPENAI_GPT6_ASTRA_PRICE }, // OpenAI API gpt-6-astra; live-probed 2026-09-27 (valid JSON, 6.8s, 42 reasoning tokens)
+  { model_id: 'claude-fable-5.1', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'anthropic', reasoning: false, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-fable-5-1' }, price: { inputPerMTokens: 10, outputPerMTokens: 50 } }, // Anthropic API id is hyphenated claude-fable-5-1; live-probed 2026-09-27
   // Catalog id carries the -preview suffix; that IS the Gemini 3.1 Pro endpoint.
   { model_id: 'gemini-3.1-pro', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'google', reasoning: true, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.1-pro-preview', allowGeminiThinking: true }, price: { inputPerMTokens: 2, outputPerMTokens: 12, longContext: { promptTokens: 200_000, inputPerMTokens: 4, outputPerMTokens: 18 } } }, // Gemini API; Gemma is a sibling, not this model
-  { model_id: 'grok-4.5', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'xai', reasoning: true, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.5' }, price: XAI_GROK_46_PRICE }, // FLAG: only Grok-1 weights exist; 4.x is API-only
+  { model_id: 'grok-4.7', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'xai', reasoning: true, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.7' }, price: XAI_GROK_46_PRICE }, // FLAG: only Grok-1 weights exist; 4.x is API-only. Live-probed 2026-09-27 (valid JSON, 8.9s)
   { model_id: 'muse-spark-1.2', brand: 'Meta Muse', product_alias: 'Muse', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'meta-muse', reasoning: true, caller: { kind: 'platform', platformId: 'meta-muse:muse-spark-1.2' }, price: { inputPerMTokens: 1.25, outputPerMTokens: 4.25 } }, // FLAG: Spark 1.2 weights promised 2026-08-10, not shipped; Glimmer is a sibling
   { model_id: 'qwen3.8-max', brand: 'Qwen', camp: 'china', league_tier: 'premier', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:qwen3.8-max' }, price: { inputPerMTokens: 2, outputPerMTokens: 6 } }, // FLAG: Qwen/Qwen3.8-2.4T-A95B (custom qwen3.8-max license); hosted Max may add 1M/vision
   // v4-pro spends any budget ≤3000 entirely on hidden reasoning (confirmed
@@ -249,7 +262,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // budget; 7500 adds headroom for the mandatory visible reasoning block.
   { model_id: 'deepseek-v4-pro', brand: 'DeepSeek', camp: 'china', league_tier: 'premier', weights: 'open', provider_key: 'deepseek', reasoning: true, maxCompletionTokens: 7500, timeoutMs: 240_000, caller: { kind: 'core', provider: 'deepseek', modelOverride: 'deepseek-v4-pro', extraPayload: DEEPSEEK_FIRST_PARTY_THINKING }, price: DEEPSEEK_V4_PRO_PRICE }, // MIT; deepseek-ai/DeepSeek-V4-Pro; first-party 2026-09-07
   { model_id: 'kimi-k3', brand: 'Moonshot AI', product_alias: 'Kimi', camp: 'china', league_tier: 'premier', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:kimi-k3' }, price: { inputPerMTokens: 3, outputPerMTokens: 15 } }, // Kimi K3 License; moonshotai/Kimi-K3
-  { model_id: 'glm-5.2', brand: 'Z.ai', product_alias: 'GLM', camp: 'china', league_tier: 'premier', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:glm-5.2' }, price: { inputPerMTokens: 1.19, outputPerMTokens: 3.74 } }, // MIT; z-ai/GLM-5.2
+  { model_id: 'glm-5.3', brand: 'Z.ai', product_alias: 'GLM', camp: 'china', league_tier: 'premier', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:glm-5.3' }, price: { inputPerMTokens: 0.378, outputPerMTokens: 1.188 } }, // MIT; z-ai/GLM-5.3; live-probed 2026-09-27 with effort:minimal
   { model_id: 'minimax-m3', brand: 'MiniMax', camp: 'china', league_tier: 'premier', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:minimax-m3' }, price: { inputPerMTokens: 0.3, outputPerMTokens: 1.2 } }, // MiniMax Community License
 
   // ── 🔵 CHALLENGER (10) ───────────────────────────────────────────────────
@@ -259,7 +272,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // thinkingConfig:{thinkingBudget:0} (HTTP 400 INVALID_ARGUMENT), so they
   // run with allowGeminiThinking (default thinking mode) like 3.1-pro.
   { model_id: 'gemini-3.6-flash', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'challenger', weights: 'closed', provider_key: 'google', reasoning: true, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.6-flash', allowGeminiThinking: true }, price: { inputPerMTokens: 1.5, outputPerMTokens: 7.5 } }, // Gemini API; Gemma is a sibling
-  { model_id: 'grok-4.3', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'challenger', weights: 'closed', provider_key: 'xai', reasoning: true, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.3' }, price: XAI_GROK_43_PRICE }, // FLAG: same as grok-4.5 — 4.x API-only
+  { model_id: 'grok-4.3', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'challenger', weights: 'closed', provider_key: 'xai', reasoning: true, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.3' }, price: XAI_GROK_43_PRICE }, // FLAG: same as grok-4.7 — 4.x API-only
   // Reasoning-heavy challengers: a 1200-token budget was consumed ENTIRELY
   // by hidden reasoning (content null, finish_reason=length, confirmed live
   // 2026-08-16) — 3000 left room for the visible JSON; 4500 adds room for
@@ -353,6 +366,10 @@ const RETIRED_ROSTER_DISPLAY: Record<string, Pick<RosterEntry, 'brand' | 'produc
   'ernie-4.5-vl': { brand: 'Baidu', product_alias: 'ERNIE' },
   'ernie-4.5': { brand: 'Baidu', product_alias: 'ERNIE' },
   'granite-4.2-8b': { brand: 'IBM', product_alias: 'Granite' },
+  'gpt-5.6-sol': { brand: 'OpenAI', product_alias: 'ChatGPT' },
+  'claude-fable-5': { brand: 'Anthropic', product_alias: 'Claude' },
+  'grok-4.5': { brand: 'xAI', product_alias: 'Grok' },
+  'glm-5.2': { brand: 'Z.ai', product_alias: 'GLM' },
 }
 
 /** Brand line for tiles — e.g. "OpenAI (ChatGPT)" when a product alias exists. */

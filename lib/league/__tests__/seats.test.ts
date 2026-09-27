@@ -68,7 +68,7 @@ describe('LEAGUE_SEATS registry', () => {
     expect(status.currentModelId).toBe('inkling')
     expect(status.lastSwapDate).toBe('2026-09-07')
 
-    const unswappedSeat = lookupSeat('premier:anthropic')!
+    const unswappedSeat = lookupSeat('premier:google')!
     const unswappedStatus = formatSeatSwapStatus(unswappedSeat)
     expect(unswappedStatus.isSwapped).toBe(false)
     expect(unswappedStatus.lastSwapDate).toBeUndefined()
@@ -87,7 +87,35 @@ describe('LEAGUE_SEATS registry', () => {
 
   it('derives canonical seat ID via seatIdForModel', () => {
     expect(seatIdForModel('gpt-5.6-sol', 'premier')).toBe('premier:openai')
+    expect(seatIdForModel('gpt-6-astra', 'premier')).toBe('premier:openai')
     expect(seatIdForModel('k-exaone-2.0', 'world')).toBe('world:thinking-machines')
     expect(seatIdForModel('unknown-model', 'challenger')).toBe('challenger:unknown-model')
+  })
+
+  it('keeps premier seat_id continuous across the 2026-09-27 flagship swaps', () => {
+    const openai = lookupSeat('premier:openai')!
+    expect(openai.currentModelId).toBe('gpt-6-astra')
+    expect(seatForModelId('gpt-5.6-sol', 'premier')?.seatId).toBe('premier:openai')
+    expect(seatForModelId('gpt-6-astra', 'premier')?.seatId).toBe('premier:openai')
+    expect(formatSeatSwapStatus(openai).isSwapped).toBe(true)
+    expect(formatSeatSwapStatus(openai).lastSwapDate).toBe('2026-09-27')
+
+    const anthropic = lookupSeat('premier:anthropic')!
+    expect(anthropic.currentModelId).toBe('claude-fable-5.1')
+    expect(seatForModelId('claude-fable-5', 'premier')?.seatId).toBe('premier:anthropic')
+
+    const xai = lookupSeat('premier:xai')!
+    expect(xai.currentModelId).toBe('grok-4.7')
+    expect(seatForModelId('grok-4.5', 'premier')?.seatId).toBe('premier:xai')
+
+    const zai = lookupSeat('premier:z-ai')!
+    expect(zai.currentModelId).toBe('glm-5.3')
+    expect(seatForModelId('glm-5.2', 'premier')?.seatId).toBe('premier:z-ai')
+
+    const retired = getRetiredTenures()
+    expect(retired.find((r) => r.modelId === 'gpt-5.6-sol')?.reason).toContain('GPT-6 Astra')
+    expect(retired.find((r) => r.modelId === 'claude-fable-5')?.retiredAt).toBe('2026-09-27')
+    expect(retired.find((r) => r.modelId === 'grok-4.5')?.seatId).toBe('premier:xai')
+    expect(retired.find((r) => r.modelId === 'glm-5.2')?.seatId).toBe('premier:z-ai')
   })
 })

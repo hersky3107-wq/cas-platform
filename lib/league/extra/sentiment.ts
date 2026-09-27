@@ -21,7 +21,7 @@ import { leagueSideFromDivination } from './divination'
 export const SENTIMENT_ENGINE_MODEL_ID = 'sonar'
 
 /** Confirmed: this seat must never call Grok live-search / X-crawl. */
-export const SENTIMENT_FORBIDDEN_ENGINES = ['grok-4.6-livesearch', 'grok-4.3', 'grok-4.5'] as const
+export const SENTIMENT_FORBIDDEN_ENGINES = ['grok-4.6-livesearch', 'grok-4.3', 'grok-4.5', 'grok-4.7'] as const
 
 export const SENTIMENT_INPUT_KEYS = [
   'proposition',

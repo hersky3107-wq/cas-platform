@@ -19,7 +19,7 @@ import { leagueSideFromDivination } from './divination'
 
 export const CONSENSUS_ENGINE_MODEL_ID = 'sonar'
 
-export const CONSENSUS_FORBIDDEN_ENGINES = ['grok-4.6-livesearch', 'grok-4.3', 'grok-4.5'] as const
+export const CONSENSUS_FORBIDDEN_ENGINES = ['grok-4.6-livesearch', 'grok-4.3', 'grok-4.5', 'grok-4.7'] as const
 
 export const CONSENSUS_MONEY_SIGNALS = [
   'options implied probability / put-call skew',

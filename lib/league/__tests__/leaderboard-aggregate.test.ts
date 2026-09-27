@@ -93,12 +93,12 @@ describe('buildLeaderboardSlice', () => {
   it('orders unranked rows by roster position, not by their (hidden) win rate', () => {
     // Two low-sample rows: the perfect one must not float to the top of the
     // unranked block, or its position becomes the ranking claim all over again.
-    const rows = [...rowsFor('gpt-5.6-sol', 2, 0), ...rowsFor('claude-fable-5', 2, 2)]
+    const rows = [...rowsFor('gpt-6-astra', 2, 0), ...rowsFor('claude-fable-5.1', 2, 2)]
     const slice = buildLeaderboardSlice(rows, 'model')
     expect(slice.rows.every((r) => r.rank === null && r.winRatePct === null)).toBe(true)
-    const perfect = slice.rows.findIndex((r) => r.key === 'claude-fable-5')
-    const zero = slice.rows.findIndex((r) => r.key === 'gpt-5.6-sol')
-    // Roster order (gpt-5.6-sol is listed first), i.e. unrelated to performance.
+    const perfect = slice.rows.findIndex((r) => r.key === 'claude-fable-5.1')
+    const zero = slice.rows.findIndex((r) => r.key === 'gpt-6-astra')
+    // Roster order (gpt-6-astra is listed first), i.e. unrelated to performance.
     expect(zero).toBeLessThan(perfect)
   })
 
@@ -146,7 +146,7 @@ describe('buildLeaderboardSlice', () => {
 
   it('weights slice splits closed vs open from the live roster and drops unknown ids', () => {
     const rows = [
-      row({ model_id: 'gpt-5.6-sol', is_correct: true }),
+      row({ model_id: 'gpt-6-astra', is_correct: true }),
       row({ model_id: 'llama-4-maverick', is_correct: false }),
       row({ model_id: 'retired-unknown', is_correct: true }),
     ]
@@ -304,6 +304,21 @@ describe('buildLeaderboardData', () => {
     expect(seatRow?.correct).toBe(2)
     expect(seatRow?.seatMeta?.isSwapped).toBe(true)
     expect(seatRow?.seatMeta?.currentModelId).toBe('inkling')
+  })
+
+  it('keeps premier:openai seat record continuous across gpt-5.6-sol → gpt-6-astra', () => {
+    const rows = [
+      row({ model_id: 'gpt-5.6-sol', brand: 'OpenAI', league_tier: 'premier', is_correct: true }),
+      row({ model_id: 'gpt-5.6-sol', brand: 'OpenAI', league_tier: 'premier', is_correct: false }),
+      row({ model_id: 'gpt-6-astra', brand: 'OpenAI', league_tier: 'premier', is_correct: true }),
+    ]
+    const data = buildLeaderboardData(rows)
+    const seatRow = data.seat.rows.find((r) => r.key === 'premier:openai')
+    expect(seatRow).toBeDefined()
+    expect(seatRow?.resolved).toBe(3)
+    expect(seatRow?.correct).toBe(2)
+    expect(seatRow?.seatMeta?.currentModelId).toBe('gpt-6-astra')
+    expect(data.model.rows.map((r) => r.key).sort()).toEqual(['gpt-5.6-sol', 'gpt-6-astra'])
   })
 
   it('fixes the OpenAI label bug: model benchmark shows distinct product aliases instead of identical brand', () => {
