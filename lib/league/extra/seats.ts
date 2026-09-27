@@ -13,7 +13,7 @@
 export const EXTRA_TIER = 'extra' as const
 export type ExtraTier = typeof EXTRA_TIER
 
-export const EXTRA_SEAT_IDS = ['divination', 'sentiment', 'history', 'consensus'] as const
+export const EXTRA_SEAT_IDS = ['divination', 'sentiment', 'history', 'consensus', 'crow'] as const
 export type ExtraSeatId = (typeof EXTRA_SEAT_IDS)[number]
 
 export type ExtraSeatKind = ExtraSeatId
@@ -23,7 +23,7 @@ export type ExtraSeat = {
   /** Stored brand line — badge + Korean product name. Existing tiles render this as-is. */
   brand: string
   product_alias: string
-  badge: '🔮' | '📰' | '📜' | '💰'
+  badge: '🔮' | '📰' | '📜' | '💰' | '🐦‍⬛'
   kind: ExtraSeatKind
   league_tier: ExtraTier
   camp: 'other'
@@ -33,8 +33,8 @@ export type ExtraSeat = {
 }
 
 /**
- * Four extra seats. Official LEAGUE_ROSTER stays 40 — these are not on it.
- * All four extra seats are wired (divination, sentiment, history, consensus).
+ * Five extra seats. Official LEAGUE_ROSTER stays 40 — these are not on it.
+ * All five are wired (divination, sentiment, history, consensus, crow).
  */
 export const LEAGUE_EXTRA_ROSTER: readonly ExtraSeat[] = [
   {
@@ -78,6 +78,16 @@ export const LEAGUE_EXTRA_ROSTER: readonly ExtraSeat[] = [
     camp: 'other',
     weights: 'closed',
   },
+  {
+    model_id: 'crow',
+    brand: '🐦‍⬛ 까마귀',
+    product_alias: '엑스트라',
+    badge: '🐦‍⬛',
+    kind: 'crow',
+    league_tier: EXTRA_TIER,
+    camp: 'other',
+    weights: 'closed',
+  },
 ] as const
 
 const EXTRA_BY_ID = new Map(LEAGUE_EXTRA_ROSTER.map((seat) => [seat.model_id, seat]))
@@ -111,7 +121,7 @@ export function getExtraSeatIds(): ExtraSeatId[] {
   return [...EXTRA_SEAT_IDS]
 }
 
-/** Progress / streaming denominator: official 40 + 4 extra (44). */
+/** Progress / streaming denominator: official 40 + 5 extra (45). */
 export function extraSeatIds(): readonly string[] {
   return EXTRA_SEAT_IDS
 }

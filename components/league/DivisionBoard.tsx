@@ -17,7 +17,7 @@ import {
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { isRationaleTranslationPending, lookupTranslatedRationale } from '@/lib/league/rationale-display'
-import type { SideLabels } from '@/lib/league/side-labels'
+import { compactSideTally, type SideLabels } from '@/lib/league/side-labels'
 import { ModelTile } from './ModelTile'
 
 const DIVISION_DOT: Record<LeagueTier, string> = {
@@ -127,7 +127,7 @@ export function DivisionBoard({
                 {t.bracket.division[group.tier]}
               </span>
               <span className="shrink-0 font-mono text-[11px] font-semibold tabular-nums text-league-fg-muted">
-                {t.bracket.compactTally(tierSplit[group.tier], labels?.glyphs)}
+                {labels ? compactSideTally(tierSplit[group.tier], labels, t) : t.bracket.compactTally(tierSplit[group.tier])}
               </span>
               {streaming ? null : (
                 <span className="text-[10px] text-league-fg-muted md:hidden" aria-hidden>
@@ -217,7 +217,7 @@ function OverallStrip({
           <span key={group.tier} className="inline-flex items-center gap-1.5 font-mono text-[10px] tabular-nums text-league-fg-muted">
             <span className={`h-1.5 w-1.5 rounded-full ${DIVISION_DOT[group.tier]}`} aria-hidden />
             <span className="font-sans font-bold uppercase tracking-wide">{t.bracket.division[group.tier]}</span>
-            <span>{t.bracket.compactTally(tierSplit[group.tier], labels?.glyphs)}</span>
+            <span>{labels ? compactSideTally(tierSplit[group.tier], labels, t) : t.bracket.compactTally(tierSplit[group.tier])}</span>
           </span>
         ))}
       </div>

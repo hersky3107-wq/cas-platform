@@ -79,6 +79,8 @@ describe('ExtraCompare render', () => {
     expect(html).toContain(t.extraCompare.diverge)
     expect(html).toContain(t.modelList.noResponse)
     expect(html).toContain(t.extraCompare.recordPending)
+    expect(html).toContain(t.extraCompare.seat.crow)
+    expect(html).toContain(t.extraCompare.crowNote)
     expect(html).not.toMatch(/100%/)
     expect(html).not.toContain('data-testid="extra-compare-invented-rate"')
   })

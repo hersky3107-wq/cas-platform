@@ -6,6 +6,7 @@ import { validateNormalizerOutput, type PromptNormalizer } from './normalizer'
 import { MAX_CANDIDATE_CHIPS } from './candidate-search'
 import { detectBettingFraming } from './betting-framing'
 import { prefilterRejects } from './prefilter'
+import { decodeSportsInstrument } from './adapters/sports-catalog'
 import { refusalMessageForKey, refusalMessageKey } from './refusal-copy'
 import type {
   CategoryAdapter,
@@ -296,10 +297,15 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     return refused('missing_slot', locale)
   }
 
-  // 6½. Confirm is unconditional. The 2-round cap is for missing slots
-  //     (entity / horizon). Confirm is the regulatory approval of the
-  //     server-composed proposition and is never skipped.
-  if (slots.slots.entity_confirmed !== 'true') {
+  // 6½. Confirm approves the server-composed proposition. A sports fixture
+  //     chip already names the MATCH instrument — that click is the choice,
+  //     so it opens the round (the client then calls generate). A single
+  //     resolved team still stops on "네, 맞아요". Stocks/horizon chips
+  //     still confirm.
+  const picked = typeof answered.entity_id === 'string' ? answered.entity_id.trim() : ''
+  const fixturePick =
+    picked.length > 0 && entity.entity_id === picked && decodeSportsInstrument(picked) !== null
+  if (slots.slots.entity_confirmed !== 'true' && !fixturePick) {
     const preview = adapter.composeProposition(slots, now)
     return {
       status: 'clarify',

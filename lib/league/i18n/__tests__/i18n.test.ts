@@ -318,6 +318,8 @@ describe('dictionary completeness', () => {
       expect(pack.extraCompare.seat.sentiment.trim().length).toBeGreaterThan(0)
       expect(pack.extraCompare.seat.history.trim().length).toBeGreaterThan(0)
       expect(pack.extraCompare.seat.consensus.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.seat.crow.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.crowNote.trim().length).toBeGreaterThan(0)
     }
     const ko = getLeagueUiPack('ko')
     expect(ko.gateway.refusal.prompt_not_available).toBe(

@@ -61,7 +61,7 @@ export function CardBody({
   const hasTranslation = Boolean(translations && Object.keys(translations).length > 0)
   // ONE resolver per card: every side word/glyph below (tiles, tallies,
   // verdict, hero) derives from this round's (kind, subject_label, category).
-  const labels = sideLabelsFor(data.round, t)
+  const labels = sideLabelsFor(data.round, t, locale)
   const generating =
     streaming || data.generation?.status === 'queued' || data.generation?.status === 'running'
   const seatComplete = revealConsensusConclusion(

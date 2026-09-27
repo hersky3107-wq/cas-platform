@@ -2,7 +2,8 @@ import type { LeagueLocale } from './i18n/locales'
 import type { LeagueUiPack } from './i18n/dictionary'
 import { propositionKindOf } from './side-labels'
 import { normalizeSessionDate } from '../prediction/resolution'
-import { decodeSportsInstrument, opponentTeamOf, subjectTeamOf } from './gateway/adapters/sports-catalog'
+import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
+import { sportsVsLabel } from './sports-display'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
 export function localeTag(locale: LeagueLocale): string {
@@ -73,10 +74,8 @@ export function formatRoundOpenedDate(openedAt: string, locale: LeagueLocale): s
   return labeled || ymd
 }
 
-export function sportsInstrumentDisplay(instrument: string): string | null {
-  const parts = decodeSportsInstrument(instrument)
-  if (!parts) return null
-  return `${subjectTeamOf(parts)} vs ${opponentTeamOf(parts)}`
+export function sportsInstrumentDisplay(instrument: string, locale: LeagueLocale = 'en'): string | null {
+  return sportsVsLabel(instrument, locale)
 }
 
 export function headerHeadline(args: {
@@ -92,7 +91,7 @@ export function headerHeadline(args: {
   if (propositionKindOf({ proposition_kind: args.propositionKind }) !== 'binary_close_higher') {
     // Non-price contract: no anchor price EXISTS, so neither the price form
     // nor the "starting price unavailable" apology is the truth.
-    const displayInst = sportsInstrumentDisplay(args.instrument) ?? args.instrument
+    const displayInst = sportsInstrumentDisplay(args.instrument, args.locale) ?? args.instrument
     return args.t.header.headlinePlain(args.roundDate, displayInst)
   }
   if (args.anchorPrice === null) {

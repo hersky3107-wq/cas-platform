@@ -4,6 +4,8 @@
  * Sentiment searches web-visible news/opinion only — no series, no packet.
  * Consensus searches money-positioning (options / prediction markets / COT /
  * institutional targets) only — no series, no packet.
+ * Crow reads a fact brief only: sports cache baseline + both sides, or the
+ * price path. Never the research packet, never invented numbers.
  * Oracle owns divination cache — this file does not write one.
  */
 import 'server-only'
@@ -72,6 +74,24 @@ import {
 } from './consensus'
 import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeatId } from './seats'
 import { isSportsLedgerCategory } from './sports-category'
+import { decodeSportsInstrument } from '../gateway/adapters/sports-catalog'
+import { formatSportsCrowBrief } from '../gateway/adapters/sports-packet'
+import { readFixtureCache } from '../sports/cache'
+import {
+  CROW_ENGINE_MODEL_ID,
+  CROW_MAX_COMPLETION_TOKENS,
+  CROW_TIMEOUT_MS,
+  buildCrowInput,
+  buildCrowSystemPrompt,
+  buildCrowUserPrompt,
+  crowRetryInstruction,
+  formatFinanceCrowBrief,
+  leagueSideFromCrow,
+  parseCrowOutput,
+  type CrowCaller,
+  type CrowCallResult,
+  type CrowLeagueInput,
+} from './crow'
 
 export type ExtraSeatOutcome = {
   model_id: ExtraSeatId
@@ -126,6 +146,8 @@ export type GenerateExtraSeatsOpts = {
   sentimentCaller?: SentimentCaller
   /** Test seam — default calls extra Perplexity `sonar` (money signals). */
   consensusCaller?: ConsensusCaller
+  /** Test seam — default calls first-party Mistral Medium 3.5. */
+  crowCaller?: CrowCaller
   /**
    * Official-run reuse: dates + closes already fetched for the shared packet.
    * Extra-only / extra-stage ticks fetch the series themselves when omitted.
@@ -300,6 +322,7 @@ function defaultHistoryCaller(): HistoryCaller {
       allowGeminiThinking: caller.allowGeminiThinking,
       // Closed-book extra seat — never enable scout search.
       extraPayload: caller.extraPayload,
+      anthropicThinking: caller.anthropicThinking,
       timeoutMs,
     })
     const estimate = computeCostUsd(entry, res.promptTokens, res.completionTokens)
@@ -779,6 +802,135 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
   }
 }
 
+function defaultCrowCaller(): CrowCaller {
+  const entry = lookupRosterEntry(CROW_ENGINE_MODEL_ID)
+  if (!entry || entry.caller.kind !== 'core' || entry.caller.provider !== 'mistral') {
+    throw new Error(`crow seat: engine ${CROW_ENGINE_MODEL_ID} is not the Mistral caller`)
+  }
+  const caller = entry.caller
+  return async ({ systemPrompt, userPrompt }) => {
+    const res = await runSingleAiProvider({
+      supabase: supabaseAdmin,
+      authSupabase: supabaseAdmin,
+      sessionId: null,
+      userId: null,
+      provider: 'mistral',
+      prompt: userPrompt,
+      systemPrompt,
+      skipLanguageInjection: true,
+      maxCompletionTokens: CROW_MAX_COMPLETION_TOKENS,
+      modelOverride: caller.modelOverride,
+      timeoutMs: CROW_TIMEOUT_MS,
+    })
+    const estimate = computeCostUsd(entry, res.promptTokens, res.completionTokens)
+    const billed = typeof res.costUsd === 'number' ? res.costUsd : null
+    return {
+      text: res.text,
+      promptTokens: res.promptTokens,
+      completionTokens: res.completionTokens,
+      costUsd: billed ?? estimate,
+      costIsEstimated: billed == null,
+      error: res.error,
+    }
+  }
+}
+
+async function resolveCrowBrief(
+  round: ExtraRoundRow,
+  providedSeries: ExtraPriceSeries | null | undefined,
+): Promise<string> {
+  if (isSportsLedgerCategory(round.category)) {
+    const parts = decodeSportsInstrument(round.instrument)
+    if (!parts) return 'SPORTS FACTS: instrument undecodable. Do not invent odds.'
+    const cache = await readFixtureCache(parts.eventId).catch(() => null)
+    return formatSportsCrowBrief(parts, cache)
+  }
+  const series = await resolveHistorySeries(round.instrument, providedSeries)
+  return formatFinanceCrowBrief(series)
+}
+
+async function callCrowOnce(call: CrowCaller, input: CrowLeagueInput, retry = false): Promise<CrowCallResult> {
+  const userPrompt = retry
+    ? `${buildCrowUserPrompt(input)}\n\n${crowRetryInstruction()}`
+    : buildCrowUserPrompt(input)
+  return call({ systemPrompt: buildCrowSystemPrompt(input.category), userPrompt })
+}
+
+async function runCrowSeat(
+  round: ExtraRoundRow,
+  call: CrowCaller,
+  providedSeries: ExtraPriceSeries | null | undefined,
+): Promise<ExtraSeatOutcome> {
+  const seat = lookupExtraSeat('crow')!
+  const factBrief = await resolveCrowBrief(round, providedSeries)
+  const input = buildCrowInput(round, factBrief)
+  try {
+    let raw = await callCrowOnce(call, input, false)
+    if (raw.error) throw new Error(raw.error)
+    let parsed = parseCrowOutput(raw.text)
+    if (!parsed) {
+      const retryRaw = await callCrowOnce(call, input, true)
+      if (!retryRaw.error) {
+        raw = {
+          ...retryRaw,
+          promptTokens: (raw.promptTokens ?? 0) + (retryRaw.promptTokens ?? 0),
+          completionTokens: (raw.completionTokens ?? 0) + (retryRaw.completionTokens ?? 0),
+          costUsd: (raw.costUsd ?? 0) + (retryRaw.costUsd ?? 0),
+          costIsEstimated: raw.costIsEstimated && retryRaw.costIsEstimated,
+        }
+        parsed = parseCrowOutput(retryRaw.text)
+      }
+    }
+    if (!parsed) throw new Error('crow seat: empty or unparseable response')
+    const costUsd = Number((raw.costUsd ?? 0).toFixed(6))
+    const entry = lookupRosterEntry(CROW_ENGINE_MODEL_ID)
+    const estimated = entry
+      ? Number(computeCostUsd(entry, raw.promptTokens, raw.completionTokens).toFixed(6))
+      : costUsd
+    const direction = leagueSideFromCrow(parsed.verdict, round.proposition_kind)
+    await upsertExtraPrediction({
+      roundId: round.id,
+      model_id: 'crow',
+      brand: seat.brand,
+      direction,
+      probability: parsed.confidence,
+      qualifier_text: null,
+      reasoning_snippet: parsed.rationale,
+      cost_usd: costUsd,
+      estimated_cost_usd: estimated,
+      prompt_tokens: raw.promptTokens,
+      completion_tokens: raw.completionTokens,
+    })
+    return {
+      ...baseOutcome('crow', seat.brand),
+      actual_model: CROW_ENGINE_MODEL_ID,
+      direction,
+      probability: parsed.confidence,
+      reasoning_snippet: parsed.rationale,
+      cost_usd: costUsd,
+      estimated_cost_usd: estimated,
+      cost_source: raw.costIsEstimated ? 'estimated' : 'billed',
+      prompt_tokens: raw.promptTokens,
+      completion_tokens: raw.completionTokens,
+      status: 'ok',
+    }
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'crow seat failed'
+    await upsertExtraPrediction({
+      roundId: round.id,
+      model_id: 'crow',
+      brand: seat.brand,
+      direction: null,
+      probability: null,
+      qualifier_text: null,
+      reasoning_snippet: null,
+      cost_usd: 0,
+      estimated_cost_usd: 0,
+    })
+    return { ...baseOutcome('crow', seat.brand), status: 'error', error: message.slice(0, 500) }
+  }
+}
+
 export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<ExtraSeatOutcome[]> {
   const excluded = new Set(opts.excludeModelIds ?? [])
   const pending = getExtraRoster().filter((seat) => !excluded.has(seat.model_id))
@@ -792,6 +944,7 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
   const historyCall = opts.historyCaller ?? defaultHistoryCaller()
   const sentimentCall = opts.sentimentCaller ?? defaultSentimentCaller()
   const consensusCall = opts.consensusCaller ?? defaultConsensusCaller()
+  const crowCall = opts.crowCaller ?? defaultCrowCaller()
   const out: ExtraSeatOutcome[] = []
 
   for (const seat of pending) {
@@ -802,7 +955,9 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
           ? await runHistorySeat(round, historyCall, opts.priceSeries)
           : seat.kind === 'sentiment'
             ? await runSentimentSeat(round, sentimentCall)
-            : await runConsensusSeat(round, consensusCall)
+            : seat.kind === 'consensus'
+              ? await runConsensusSeat(round, consensusCall)
+              : await runCrowSeat(round, crowCall, opts.priceSeries)
     out.push(result)
     opts.onSeatResult?.(result)
   }

@@ -7,6 +7,7 @@ import {
   streamingTierFill,
   streamingTiers,
 } from '../generation-board'
+import { extraSeatIds } from '../extra/seats'
 import { getRoster } from '../roster'
 
 describe('generation-board seat plan', () => {
@@ -16,7 +17,7 @@ describe('generation-board seat plan', () => {
     expect(counts.challenger).toBe(getRoster(['challenger']).length)
     expect(counts.world).toBe(getRoster(['world']).length)
     expect(counts.scout).toBe(getRoster(['scout']).length)
-    expect(counts.extra).toBe(4)
+    expect(counts.extra).toBe(extraSeatIds().length)
     expect(counts.premier + counts.challenger + counts.world + counts.scout).toBe(getRoster().length)
   })
 

@@ -125,20 +125,19 @@ describe('binary_subject_outcome — the round\u2019s own pair drives every word
     })
   )
 
-  it('tiles show the domain pair 승/패 with Y/N glyphs — no price words, no ▲▼', () => {
-    expect(boardHtml).toContain('승')
-    expect(boardHtml).toContain('패')
+  it('tiles show named 승/패 — no bare Y/N, no price words, no ▲▼', () => {
+    expect(boardHtml).toContain('맨체스터 유나이티드 승')
+    expect(boardHtml).toContain('맨체스터 유나이티드 패')
     expect(boardHtml).not.toContain('\u25b2')
     expect(boardHtml).not.toContain('\u25bc')
     expect(boardHtml).not.toContain('상승')
     expect(boardHtml).not.toContain('하락')
   })
 
-  it('side tallies use per-kind glyph counts, never a slash-over-total; ✓ appears only with hit fractions', () => {
-    // compactTally style: "6Y 2N" — glyph-suffixed counts.
-    expect(boardHtml).toMatch(/\dY/)
-    // No side count may render as n/total in the VISIBLE copy. (Hit fractions
-    // live in the verdict panel, not on this board.)
+  it('side tallies name WHO, never a slash-over-total; ✓ appears only with hit fractions', () => {
+    expect(boardHtml).toContain('맨체스터 유나이티드 승')
+    expect(boardHtml).toContain('맨체스터 유나이티드 패')
+    expect(boardHtml).toMatch(/\d 맨체스터 유나이티드 승/)
     expect(visibleText(boardHtml)).not.toMatch(/\d+\s*\/\s*\d+/)
   })
 
@@ -163,11 +162,10 @@ describe('binary_subject_outcome — the round\u2019s own pair drives every word
     })
   )
 
-  it('verdict panel: hero answers "{subject} 승", distribution legend uses Y/N, hit record keeps ✓ + total', () => {
+  it('verdict panel: hero answers "{subject} 승", distribution names the sides, hit record keeps ✓ + total', () => {
     expect(verdictHtml).toContain('맨체스터 유나이티드 승')
     expect(verdictHtml).toContain(t.verdict.distributionHeadingSides)
-    expect(verdictHtml).toContain('6Y')
-    expect(verdictHtml).toContain('2N')
+    expect(verdictHtml).toContain('맨체스터 유나이티드 패')
     // Hit record is the ONE fraction, and it carries ✓ (heroHits template).
     expect(verdictHtml).toContain(t.verdict.heroHits(6, 8))
     expect(verdictHtml).not.toContain('\u25b2')

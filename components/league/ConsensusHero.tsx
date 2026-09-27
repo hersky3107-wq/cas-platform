@@ -223,7 +223,7 @@ function DirectionRatioBar({
         <div className="min-w-0">
           <p className="text-3xl font-black tabular-nums tracking-tight text-emerald-600 md:text-4xl">
             {up}
-            {labels.glyphs[0]}
+            {labels.namedSides ? null : labels.glyphs[0]}
             <span className="sr-only"> {srA}</span>
           </p>
           <p className="mt-0.5 truncate text-[11px] font-semibold text-emerald-800">{upWord}</p>
@@ -231,7 +231,7 @@ function DirectionRatioBar({
         <div className="min-w-0 text-right">
           <p className="text-3xl font-black tabular-nums tracking-tight text-rose-600 md:text-4xl">
             {down}
-            {labels.glyphs[1]}
+            {labels.namedSides ? null : labels.glyphs[1]}
             <span className="sr-only"> {srB}</span>
           </p>
           <p className="mt-0.5 truncate text-[11px] font-semibold text-rose-800">{downWord}</p>

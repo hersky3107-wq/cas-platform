@@ -102,6 +102,9 @@ export function ExtraCompare({
         ) : (
           <p className="mt-0.5 text-[12px] text-league-fg-muted">{t.extraCompare.recordPending}</p>
         )}
+        <p className="mt-1 text-[11px] leading-snug text-league-fg-muted" data-testid="crow-note">
+          {t.extraCompare.crowNote}
+        </p>
       </div>
     </section>
   )

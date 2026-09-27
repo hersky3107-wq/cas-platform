@@ -515,8 +515,8 @@ async function callAnthropic({
   chatMessages?: CompareChatMessage[]
   /** Enables the server-side web_search tool (Scout tier). max_uses caps searches per call for cost control. */
   searchTool?: boolean
-  /** Oracle-only; league leaves undefined (provider default). */
-  anthropicThinking?: 'disabled' | 'enabled'
+  /** Oracle-only; league leaves undefined except Fable (`adaptive`). */
+  anthropicThinking?: 'disabled' | 'enabled' | 'adaptive'
 }) {
   const capped =
     typeof maxCompletionTokens === 'number' && maxCompletionTokens > 0
@@ -538,10 +538,13 @@ async function callAnthropic({
   }
   if (anthropicThinking === 'disabled') {
     anthropicBody.thinking = { type: 'disabled' }
+  } else if (anthropicThinking === 'adaptive') {
+    // Fable 5.1 rejects thinking.type.disabled (HTTP 400) and requires adaptive.
+    anthropicBody.thinking = { type: 'adaptive' }
   } else if (anthropicThinking === 'enabled') {
     anthropicBody.thinking = {
       type: 'enabled',
-      budget_tokens: Math.min(8000, Math.max(1024, capped - 256)),
+      budget_tokens: Math.min(8000, Math.max(1024, capped - 1500)),
     }
   }
 
@@ -893,7 +896,7 @@ async function callProvider({
   allowGeminiThinking?: boolean
   geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
   /** Forwarded to callAnthropic; ignored by non-anthropic providers. */
-  anthropicThinking?: 'disabled' | 'enabled'
+  anthropicThinking?: 'disabled' | 'enabled' | 'adaptive'
   /**
    * Scout-tier live web search. Only meaningful for xai (Agent Tools
    * web_search), anthropic (web_search tool) and google (Search
@@ -919,7 +922,8 @@ async function callProvider({
     ? prompt
     : `${UNIVERSAL_LANGUAGE_PROMPT_RULE}\n\n${prompt}`
 
-  const grokLengthSuffix = provider === 'xai' ? xaiSystemLengthSuffix({ searchTool }) : ''
+  const grokLengthSuffix =
+    provider === 'xai' && extraPayload?.reasoning_effort == null ? xaiSystemLengthSuffix({ searchTool }) : ''
 
   const todayStr = new Date().toISOString().split('T')[0]
   const injectedSystemPrompt = `Today's date is ${todayStr}.\n\n` + (systemPrompt || '') + grokLengthSuffix
@@ -1038,6 +1042,7 @@ async function callProvider({
       systemPrompt: injectedSystemPrompt,
       temperature,
       maxCompletionTokens,
+      extraPayload,
       ...chatOpts,
     })
     return { model, text, usage, citations, searchResults }
@@ -1212,8 +1217,8 @@ export type RunSingleProviderParams = {
   allowGeminiThinking?: boolean
   /** Gemini 3 thinkingLevel; oracle may set 'minimal' to protect maxOutputTokens. */
   geminiThinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
-  /** Oracle-only Anthropic thinking control; league leaves unset. */
-  anthropicThinking?: 'disabled' | 'enabled'
+  /** Oracle-only Anthropic thinking control; league leaves unset except Fable (adaptive). */
+  anthropicThinking?: 'disabled' | 'enabled' | 'adaptive'
   /** Extra body fields for OpenAI-compatible providers (e.g. DeepSeek `thinking`). */
   extraPayload?: Record<string, unknown>
 }

@@ -450,6 +450,7 @@ async function callOnce(
       searchTool: entry.caller.searchTool,
       maxTurns: entry.caller.maxTurns,
       extraPayload: entry.caller.extraPayload,
+      anthropicThinking: entry.caller.anthropicThinking,
       timeoutMs,
     })
     return {

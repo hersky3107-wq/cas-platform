@@ -79,6 +79,7 @@ export function ModelTile({
   const dirStyle = SLOT_STYLE[slot]
   const glyph = labels ? labels.glyph(model.direction) : LEGACY_GLYPH[slot]
   const badge = directionBadgeLabel(model.direction, t, labels)
+  const showGlyph = !(labels?.namedSides)
   const isDivination = model.model_id === 'divination'
   const divinationLabel =
     isDivination && model.direction && model.probability !== null
@@ -151,9 +152,11 @@ export function ModelTile({
               dir="ltr"
               className={`flex shrink-0 items-center justify-center gap-1 rounded-md px-2 py-0.5 ${dirStyle}`}
             >
-              <span className="text-[12px] font-black leading-none" aria-hidden>
-                {glyph}
-              </span>
+              {showGlyph ? (
+                <span className="text-[12px] font-black leading-none" aria-hidden>
+                  {glyph}
+                </span>
+              ) : null}
               <span className="text-[10px] font-semibold uppercase tracking-wide">{badge}</span>
               {magnitudeText ? (
                 <span className="text-[10px] font-semibold tabular-nums" aria-hidden>
@@ -167,9 +170,11 @@ export function ModelTile({
             dir="ltr"
             className={`flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 md:flex-row md:justify-center md:gap-1.5 md:py-2 ${dirStyle}`}
           >
-            <span className="text-[30px] font-black leading-none md:text-2xl" aria-hidden>
-              {glyph}
-            </span>
+            {showGlyph ? (
+              <span className="text-[30px] font-black leading-none md:text-2xl" aria-hidden>
+                {glyph}
+              </span>
+            ) : null}
             <span className="text-[10px] font-bold uppercase tracking-wide md:text-xs">{badge}</span>
             {magnitudeText ? (
               <span className="text-[10px] font-semibold tabular-nums" aria-hidden>

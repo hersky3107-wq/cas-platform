@@ -190,7 +190,9 @@ export type LeagueUiPack = {
     diverge: string
     recordTitle: string
     recordPending: string
-    seat: Record<'divination' | 'sentiment' | 'history' | 'consensus', string>
+    seat: Record<'divination' | 'sentiment' | 'history' | 'consensus' | 'crow', string>
+    /** Crow identity: a lower hit rate is expected. Not a defect. */
+    crowNote: string
   }
   /**
    * Sports dual display — AI ensemble vs market baseline. Never uses
@@ -821,8 +823,8 @@ const en: LeagueUiPack = {
   sides: {
     subjectOutcome: {
       win: {
-        badge: { yes: 'Wins', no: 'Fails to win' },
-        answer: { yes: (s) => `${s} wins`, no: (s) => `${s} fails to win` },
+        badge: { yes: 'Wins', no: 'Loses' },
+        answer: { yes: (s) => `${s} win`, no: (s) => `${s} lose` },
       },
       elected: {
         badge: { yes: 'Elected', no: 'Not elected' },
@@ -868,7 +870,8 @@ const en: LeagueUiPack = {
     diverge: 'differs',
     recordTitle: 'Extra record',
     recordPending: 'Record after grading',
-    seat: { divination: 'Fortune', sentiment: 'Sentiment', history: 'History', consensus: 'Market odds' },
+    seat: { divination: 'Fortune', sentiment: 'Sentiment', history: 'History', consensus: 'Market odds', crow: 'Crow' },
+    crowNote: 'The crow watches the risk the crowd skips. A lower hit rate is its identity.',
   },
   sportsMarket: {
     ensembleLabel: 'AI ensemble win probability',
@@ -1374,7 +1377,7 @@ const ko: LeagueUiPack = {
     subjectOutcome: {
       win: {
         badge: { yes: '승', no: '패' },
-        answer: { yes: (s) => `${s} 승`, no: (s) => `${s} 승 실패` },
+        answer: { yes: (s) => `${s} 승`, no: (s) => `${s} 패` },
       },
       elected: {
         badge: { yes: '당선', no: '낙선' },
@@ -1420,7 +1423,8 @@ const ko: LeagueUiPack = {
     diverge: '다름',
     recordTitle: '엑스트라 성적',
     recordPending: '채점 후 성적 집계',
-    seat: { divination: '점술', sentiment: '심리', history: '역사', consensus: '컨센서스' },
+    seat: { divination: '점술', sentiment: '심리', history: '역사', consensus: '컨센서스', crow: '까마귀' },
+    crowNote: '까마귀는 군중이 놓친 위험을 본다. 승률이 낮은 편이 이 자리의 정체다.',
   },
   sportsMarket: {
     ensembleLabel: 'AI 앙상블 승리 확률',
@@ -1967,7 +1971,8 @@ const ja: LeagueUiPack = {
     diverge: '相違',
     recordTitle: 'エクストラ成績',
     recordPending: '採点後に成績を集計',
-    seat: { divination: '占い', sentiment: '心理', history: '歴史', consensus: 'コンセンサス' },
+    seat: { divination: '占い', sentiment: '心理', history: '歴史', consensus: 'コンセンサス', crow: 'カラス' },
+    crowNote: 'カラスは群衆が見落とすリスクを見る。的中率が低めなのがこの席の性質。',
   },
   sportsMarket: {
     ensembleLabel: 'AIアンサンブル勝率',
@@ -2511,7 +2516,8 @@ const zhTW: LeagueUiPack = {
     diverge: '不同',
     recordTitle: 'Extra 成績',
     recordPending: '評分後再彙整成績',
-    seat: { divination: '占卜', sentiment: '心理', history: '歷史', consensus: '共識' },
+    seat: { divination: '占卜', sentiment: '心理', history: '歷史', consensus: '共識', crow: '烏鴉' },
+    crowNote: '烏鴉看的是群眾忽略的風險。勝率偏低是這個席位的本色。',
   },
   sportsMarket: {
     ensembleLabel: 'AI 集成勝率',
@@ -3053,7 +3059,8 @@ const fr: LeagueUiPack = {
     diverge: 'diverge',
     recordTitle: 'Bilan Extra',
     recordPending: 'Bilan après notation',
-    seat: { divination: 'Divination', sentiment: 'Sentiment', history: 'Histoire', consensus: 'Consensus' },
+    seat: { divination: 'Divination', sentiment: 'Sentiment', history: 'Histoire', consensus: 'Consensus', crow: 'Corbeau' },
+    crowNote: 'Le corbeau voit le risque que la foule oublie. Un taux plus bas est son identité.',
   },
   sportsMarket: {
     ensembleLabel: 'Probabilité de victoire de l’ensemble IA',
@@ -3612,7 +3619,8 @@ const es: LeagueUiPack = {
     diverge: 'difiere',
     recordTitle: 'Historial Extra',
     recordPending: 'Historial tras la calificación',
-    seat: { divination: 'Adivinación', sentiment: 'Sentimiento', history: 'Historia', consensus: 'Consenso' },
+    seat: { divination: 'Adivinación', sentiment: 'Sentimiento', history: 'Historia', consensus: 'Consenso', crow: 'Cuervo' },
+    crowNote: 'El cuervo ve el riesgo que la multitud pasa por alto. Una tasa más baja es su identidad.',
   },
   sportsMarket: {
     ensembleLabel: 'Probabilidad de victoria del ensamble de IA',
@@ -4171,7 +4179,8 @@ const ar: LeagueUiPack = {
     diverge: 'يختلف',
     recordTitle: 'سجل إكسترا',
     recordPending: 'يُجمع السجل بعد التقييم',
-    seat: { divination: 'عرافة', sentiment: 'مشاعر', history: 'تاريخ', consensus: 'إجماع السوق' },
+    seat: { divination: 'عرافة', sentiment: 'مشاعر', history: 'تاريخ', consensus: 'إجماع السوق', crow: 'غراب' },
+    crowNote: 'الغراب يرى الخطر الذي يغفل عنه الجمهور. معدل إصابة أدنى هو هويته.',
   },
   sportsMarket: {
     ensembleLabel: 'احتمال فوز مجموعة الذكاء الاصطناعي',
@@ -4723,7 +4732,8 @@ const pt: LeagueUiPack = {
     diverge: 'diverge',
     recordTitle: 'Histórico Extra',
     recordPending: 'Histórico após a pontuação',
-    seat: { divination: 'Adivinhação', sentiment: 'Sentimento', history: 'História', consensus: 'Consenso' },
+    seat: { divination: 'Adivinhação', sentiment: 'Sentimento', history: 'História', consensus: 'Consenso', crow: 'Corvo' },
+    crowNote: 'O corvo vê o risco que a multidão ignora. Uma taxa mais baixa é a identidade dele.',
   },
   sportsMarket: {
     ensembleLabel: 'Probabilidade de vitória do conjunto de IA',

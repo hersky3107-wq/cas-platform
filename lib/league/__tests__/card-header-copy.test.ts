@@ -216,4 +216,18 @@ describe('header honesty', () => {
     expect(headline).toContain('Los Angeles Dodgers vs San Francisco Giants')
     expect(headline).not.toContain('MATCH:baseball_mlb')
   })
+
+  it('formats MATCH:... sports instruments in Korean short names', () => {
+    const headline = headerHeadline({
+      roundDate: '2026년 8월 18일',
+      instrument: 'MATCH:baseball_mlb:12345:away:1790535960000:San%20Francisco%20Giants:Los%20Angeles%20Dodgers',
+      anchorPrice: null,
+      anchorSessionDate: null,
+      propositionKind: 'binary_subject_outcome',
+      locale: 'ko',
+      t: ko,
+    })
+    expect(headline).toContain('LA 다저스 vs SF 자이언츠')
+    expect(headline).not.toContain('Los Angeles Dodgers')
+  })
 })

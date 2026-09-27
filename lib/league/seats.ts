@@ -793,7 +793,7 @@ export const LEAGUE_SEATS: readonly LeagueSeat[] = [
   },
 
   // ==========================================================================
-  // EXTRA (외전 - 4 Seats)
+  // EXTRA (외전 - 5 Seats)
   // ==========================================================================
   {
     seatId: 'extra:divination',
@@ -856,6 +856,22 @@ export const LEAGUE_SEATS: readonly LeagueSeat[] = [
         modelId: 'consensus',
         modelLabel: '40개 모델 다수결',
         activeFrom: '2026-08-01',
+      },
+    ],
+  },
+  {
+    seatId: 'extra:crow',
+    tier: 'extra',
+    brand: '까마귀',
+    brandSlug: 'crow',
+    camp: 'other',
+    currentModelId: 'crow',
+    displayName: '까마귀',
+    tenures: [
+      {
+        modelId: 'crow',
+        modelLabel: '까마귀',
+        activeFrom: '2026-09-27',
       },
     ],
   },

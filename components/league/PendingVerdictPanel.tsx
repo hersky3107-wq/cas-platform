@@ -4,6 +4,7 @@ import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import type { SideLabels } from '@/lib/league/side-labels'
 import { unresolvableReasonCopy } from '@/lib/league/card-status'
 import { formatInstrumentPrice, formatRoundOpenedDate, formatSessionDate } from '@/lib/league/card-header-copy'
+import { sportsPropositionDisplay } from '@/lib/league/sports-display'
 import { ConsensusHero } from '@/components/league/ConsensusHero'
 import { PredictionAxes } from '@/components/league/PredictionAxes'
 
@@ -79,7 +80,7 @@ export function PendingVerdictPanel({
             : 'mt-1.5 text-sm font-semibold leading-snug text-league-fg md:text-base'
         }
       >
-        {round.proposition_text}
+        {sportsPropositionDisplay(round.instrument, round.proposition_text, locale)}
       </p>
       {round.anchorPrice !== null && anchorDate ? (
         <p className="mt-2 text-[12px] text-league-fg-muted" dir="ltr">

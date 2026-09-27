@@ -66,8 +66,10 @@ export type LeagueCaller =
        * equivalent — that field is Anthropic-only.
        */
       maxTurns?: number
-      /** Extra body fields for OpenAI-compatible core callers (e.g. DeepSeek thinking). */
+      /** Extra body fields for OpenAI-compatible core callers (e.g. DeepSeek thinking, xAI reasoning_effort). */
       extraPayload?: Record<string, unknown>
+      /** Anthropic thinking control. Fable-class models default-on thinking burns max_tokens. */
+      anthropicThinking?: 'disabled' | 'enabled' | 'adaptive'
     }
   | {
       kind: 'platform'
@@ -237,6 +239,10 @@ const XAI_GROK_43_PRICE: RosterPrice = {
   longContext: { promptTokens: 200_000, inputPerMTokens: 2.5, outputPerMTokens: 5 },
 }
 
+export const XAI_REASONING_LOW: Record<string, unknown> = {
+  reasoning_effort: 'low',
+}
+
 /** First-party DeepSeek thinking — confirmed live 2026-09-07 (CHAIN/JSON in content). */
 export const DEEPSEEK_FIRST_PARTY_THINKING: Record<string, unknown> = {
   thinking: { type: 'enabled' },
@@ -250,10 +256,10 @@ const DEEPSEEK_V4_FLASH_PRICE: RosterPrice = { inputPerMTokens: 0.22, outputPerM
 export const LEAGUE_ROSTER: RosterEntry[] = [
   // ── 🔴 PREMIER (10) — US 5 : CN 5 ────────────────────────────────────────
   { model_id: 'gpt-6-astra', brand: 'OpenAI', product_alias: 'ChatGPT', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'openai', reasoning: true, caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-6-astra' }, price: OPENAI_GPT6_ASTRA_PRICE }, // OpenAI API gpt-6-astra; live-probed 2026-09-27 (valid JSON, 6.8s, 42 reasoning tokens)
-  { model_id: 'claude-fable-5.1', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'anthropic', reasoning: false, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-fable-5-1' }, price: { inputPerMTokens: 10, outputPerMTokens: 50 } }, // Anthropic API id is hyphenated claude-fable-5-1; live-probed 2026-09-27
+  { model_id: 'claude-fable-5.1', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'anthropic', reasoning: true, maxCompletionTokens: 8000, timeoutMs: 90_000, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-fable-5-1', anthropicThinking: 'adaptive' }, price: { inputPerMTokens: 10, outputPerMTokens: 50 } }, // Fable 5.1 rejects thinking.type.disabled (HTTP 400, use adaptive). Default-on adaptive thinking + 5000 max_tokens produced empty-content drops on sports packets. adaptive + 8000 leaves room for the JSON. Live-probed 2026-09-27.
   // Catalog id carries the -preview suffix; that IS the Gemini 3.1 Pro endpoint.
   { model_id: 'gemini-3.1-pro', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'google', reasoning: true, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.1-pro-preview', allowGeminiThinking: true }, price: { inputPerMTokens: 2, outputPerMTokens: 12, longContext: { promptTokens: 200_000, inputPerMTokens: 4, outputPerMTokens: 18 } } }, // Gemini API; Gemma is a sibling, not this model
-  { model_id: 'grok-4.7', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'xai', reasoning: true, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.7' }, price: XAI_GROK_46_PRICE }, // FLAG: only Grok-1 weights exist; 4.x is API-only. Live-probed 2026-09-27 (valid JSON, 8.9s)
+  { model_id: 'grok-4.7', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'xai', reasoning: true, maxCompletionTokens: 6000, timeoutMs: 90_000, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.7', extraPayload: XAI_REASONING_LOW }, price: XAI_GROK_46_PRICE }, // Hidden reasoning + "use full token capacity" suffix timed out at 90s (미응답). reasoning_effort:low + 6000 returns visible JSON in ~10s. Live-probed 2026-09-27.
   { model_id: 'muse-spark-1.2', brand: 'Meta Muse', product_alias: 'Muse', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'meta-muse', reasoning: true, caller: { kind: 'platform', platformId: 'meta-muse:muse-spark-1.2' }, price: { inputPerMTokens: 1.25, outputPerMTokens: 4.25 } }, // FLAG: Spark 1.2 weights promised 2026-08-10, not shipped; Glimmer is a sibling
   { model_id: 'qwen3.8-max', brand: 'Qwen', camp: 'china', league_tier: 'premier', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:qwen3.8-max' }, price: { inputPerMTokens: 2, outputPerMTokens: 6 } }, // FLAG: Qwen/Qwen3.8-2.4T-A95B (custom qwen3.8-max license); hosted Max may add 1M/vision
   // v4-pro spends any budget ≤3000 entirely on hidden reasoning (confirmed
@@ -272,7 +278,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // thinkingConfig:{thinkingBudget:0} (HTTP 400 INVALID_ARGUMENT), so they
   // run with allowGeminiThinking (default thinking mode) like 3.1-pro.
   { model_id: 'gemini-3.6-flash', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'challenger', weights: 'closed', provider_key: 'google', reasoning: true, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.6-flash', allowGeminiThinking: true }, price: { inputPerMTokens: 1.5, outputPerMTokens: 7.5 } }, // Gemini API; Gemma is a sibling
-  { model_id: 'grok-4.3', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'challenger', weights: 'closed', provider_key: 'xai', reasoning: true, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.3' }, price: XAI_GROK_43_PRICE }, // FLAG: same as grok-4.7 — 4.x API-only
+  { model_id: 'grok-4.3', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'challenger', weights: 'closed', provider_key: 'xai', reasoning: true, maxCompletionTokens: 6000, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.3', extraPayload: XAI_REASONING_LOW }, price: XAI_GROK_43_PRICE }, // Same empty-content pattern as grok-4.7 — 4.x API-only
   // Reasoning-heavy challengers: a 1200-token budget was consumed ENTIRELY
   // by hidden reasoning (content null, finish_reason=length, confirmed live
   // 2026-08-16) — 3000 left room for the visible JSON; 4500 adds room for
@@ -291,7 +297,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   // reasoning ate the default content budget (HTTP 200, content null).
   // effort:minimal (platform-providers) + 4000 completion tokens returns
   // visible JSON in ~370ms. Keep the seat; do not replace.
-  { model_id: 'hunyuan-3', brand: 'Tencent', product_alias: 'Hunyuan', camp: 'china', league_tier: 'challenger', weights: 'closed', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4000, caller: { kind: 'platform', platformId: 'openrouter:hunyuan-3' }, price: { inputPerMTokens: 0.132, outputPerMTokens: 0.528 } }, // FLAG: hosted tencent/hy3; Hunyuan-A13B is a sibling
+  { model_id: 'hunyuan-3', brand: 'Tencent', product_alias: 'Hunyuan', camp: 'china', league_tier: 'challenger', weights: 'closed', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 6000, caller: { kind: 'platform', platformId: 'openrouter:hunyuan-3' }, price: { inputPerMTokens: 0.132, outputPerMTokens: 0.528 } }, // FLAG: hosted tencent/hy3; Hunyuan-A13B is a sibling. effort:minimal (platform-providers) + 6000 completion tokens.
   // 2026-09-20: promoted from WORLD to Challenger (replaces qwen3.5-plus to eliminate OpenRouter 429 tail).
   { model_id: 'llama-4-maverick', brand: 'Meta', product_alias: 'Llama', camp: 'us', league_tier: 'challenger', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:llama-4-maverick' }, price: { inputPerMTokens: 0.2, outputPerMTokens: 0.8 } }, // Llama 4 Community License; meta-llama/Llama-4-Maverick
 
@@ -303,7 +309,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   { model_id: 'phi-4', brand: 'Microsoft', product_alias: 'Phi', camp: 'us', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: false, caller: { kind: 'platform', platformId: 'openrouter:phi-4' }, price: { inputPerMTokens: 0.07, outputPerMTokens: 0.14 } }, // MIT; microsoft/phi-4
   { model_id: 'deepseek-v4-flash', brand: 'DeepSeek', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'deepseek', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'core', provider: 'deepseek', modelOverride: 'deepseek-v4-flash', extraPayload: DEEPSEEK_FIRST_PARTY_THINKING }, price: DEEPSEEK_V4_FLASH_PRICE }, // MIT; deepseek-ai/DeepSeek-V4-Flash; first-party 2026-09-07
   { model_id: 'qwen3.5-flash', brand: 'Qwen', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:qwen3.5-flash' }, price: { inputPerMTokens: 0.065, outputPerMTokens: 0.26 } }, // Apache-2.0; hosted Flash ↔ Qwen/Qwen3.5-35B-A3B
-  { model_id: 'mimo-v2.5', brand: 'Xiaomi', product_alias: 'MiMo', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4000, caller: { kind: 'platform', platformId: 'openrouter:mimo-v2.5' }, price: { inputPerMTokens: 0.14, outputPerMTokens: 0.28 } }, // MIT; XiaomiMiMo/MiMo-V2.5
+  { model_id: 'mimo-v2.5', brand: 'Xiaomi', product_alias: 'MiMo', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 6000, timeoutMs: 90_000, caller: { kind: 'platform', platformId: 'openrouter:mimo-v2.5' }, price: { inputPerMTokens: 0.14, outputPerMTokens: 0.28 } }, // MIT; XiaomiMiMo/MiMo-V2.5. Recurring empty-content on sports packets; 6000 + 90s + effort:minimal.
   { model_id: 'solar-pro3', brand: 'Upstage', product_alias: 'Solar', camp: 'other', league_tier: 'world', weights: 'closed', provider_key: 'upstage', reasoning: true, caller: { kind: 'platform', platformId: 'upstage:solar-pro3' }, price: { inputPerMTokens: 0.15, outputPerMTokens: 0.6 } }, // FLAG resolved: API-only; Solar 10.7B is a previous gen
   { model_id: 'hcx-007', brand: 'NAVER', product_alias: 'HyperCLOVA', camp: 'other', league_tier: 'world', weights: 'closed', provider_key: 'clova', reasoning: false, caller: { kind: 'platform', platformId: 'clova:hcx-007' }, price: { inputPerMTokens: 3.7, outputPerMTokens: 3.7 } }, // NAVER CLOVA Studio API; ₩0.005/token ($3.70/1M tokens)
   // 2026-09-07: replaces dead LG/EXAONE. OpenRouter list $1.00/$4.05.

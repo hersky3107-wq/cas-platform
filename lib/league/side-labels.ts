@@ -1,7 +1,10 @@
 import { isPropositionKind, sidePairForKind, type AnswerSide } from './answer-contract'
 import type { PropositionKind } from './gateway/types'
 import type { LeagueUiPack, SubjectOutcomeFamilyKey } from './i18n/dictionary'
-import type { ModelSide, SideToken } from './card-types'
+import type { LeagueLocale } from './i18n/locales'
+import type { DirectionTally, ModelSide, SideToken } from './card-types'
+import { decodeSportsInstrument, opponentTeamOf } from './gateway/adapters/sports-catalog'
+import { displaySportsTeam } from './sports-display'
 
 /**
  * AI Prediction League — THE side-label resolver (pure, client-safe).
@@ -15,9 +18,9 @@ import type { ModelSide, SideToken } from './card-types'
  *                                       the pre-resolver dictionary fields —
  *                                       proven by the 71aedfd3 frozen-fixture
  *                                       parity test)
- *   binary_subject_outcome yes|no       "{subject} 승" / "{subject} 승 실패",
+ *   binary_subject_outcome yes|no       "{subject} 승" / "{opponent} 승" (or "{subject} 패"),
  *                                       domain pair from the round's category
- *                                       (승/패, 당선/낙선, 수상/불발), glyphs Y/N
+ *                                       (승/패, 당선/낙선, 수상/불발); sports tiles hide Y/N
  *   binary_threshold       above|below  상회/하회 (+ threshold when the round
  *                                       carries one), glyphs >/<
  *
@@ -130,6 +133,7 @@ export type SideRoundContext = {
   proposition_kind?: string | null
   subject_label?: string | null
   category?: string | null
+  instrument?: string | null
 }
 
 /** The round's own side pair, [side A, side B]. Unknown/legacy kind → up/down. */
@@ -161,6 +165,11 @@ export type SideLabels = {
   answer: (side: SideToken) => string
   /** Lowercase word for tally sentences (groupTallyLine style). */
   tallyWord: (side: ModelSide | null) => string
+  /**
+   * Sports win/lose (and any subject-outcome row that names WHO). Tiles and
+   * the hero then show the named badge instead of a bare Y/N glyph.
+   */
+  namedSides: boolean
 }
 
 /** Narrow a persisted kind; unknown/legacy → close_higher (a fact — every pre-kind round is a price round). */
@@ -173,7 +182,11 @@ export function propositionKindOf(round: SideRoundContext): PropositionKind {
  * never assemble side words themselves (same architecture as
  * `lib/league/compliance.ts` for directional sentences).
  */
-export function sideLabelsFor(round: SideRoundContext, t: LeagueUiPack): SideLabels {
+export function sideLabelsFor(
+  round: SideRoundContext,
+  t: LeagueUiPack,
+  locale: LeagueLocale = 'en',
+): SideLabels {
   const kind = propositionKindOf(round)
   const sides = sidePairForKind(kind)
   const glyphs = KIND_GLYPHS[kind]
@@ -197,11 +210,19 @@ export function sideLabelsFor(round: SideRoundContext, t: LeagueUiPack): SideLab
   if (kind === 'binary_subject_outcome') {
     const family = subjectOutcomeFamily(round.category)
     const pair = t.sides.subjectOutcome[family]
-    const subject = round.subject_label?.trim() || null
+    const rawSubject = round.subject_label?.trim() || null
+    const sports = round.category === 'sports' ? decodeSportsInstrument(round.instrument) : null
+    const subject = rawSubject ? displaySportsTeam(rawSubject, locale, 'short') : null
+    const opponentRaw = sports ? opponentTeamOf(sports) : null
+    const opponent = opponentRaw ? displaySportsTeam(opponentRaw, locale, 'short') : null
+    const named = Boolean(subject)
+    const yesWord = subject ? pair.answer.yes(subject) : pair.badge.yes
+    const noWord =
+      subject && opponent ? pair.answer.yes(opponent) : subject ? pair.answer.no(subject) : pair.badge.no
     const badge = (side: ModelSide | null): string => {
       const s = slot(side)
-      if (s === 'a') return pair.badge.yes
-      if (s === 'b') return pair.badge.no
+      if (s === 'a') return yesWord
+      if (s === 'b') return noWord
       return t.direction.noCallBadge
     }
     return {
@@ -211,13 +232,9 @@ export function sideLabelsFor(round: SideRoundContext, t: LeagueUiPack): SideLab
       slot,
       glyph,
       badge,
-      answer: (side) =>
-        subject
-          ? side === 'yes'
-            ? pair.answer.yes(subject)
-            : pair.answer.no(subject)
-          : badge(side),
+      answer: (side) => (side === 'yes' ? yesWord : noWord),
       tallyWord: (side) => (slot(side) === 'none' ? t.direction.noCallTally : badge(side)),
+      namedSides: named,
     }
   }
 
@@ -239,6 +256,7 @@ export function sideLabelsFor(round: SideRoundContext, t: LeagueUiPack): SideLab
       answer: (side) =>
         side === 'above' ? t.sides.threshold.answer.above(threshold) : t.sides.threshold.answer.below(threshold),
       tallyWord: (side) => (slot(side) === 'none' ? t.direction.noCallTally : badge(side)),
+      namedSides: false,
     }
   }
 
@@ -265,6 +283,21 @@ export function sideLabelsFor(round: SideRoundContext, t: LeagueUiPack): SideLab
       if (s === 'flat') return t.direction.tally.flat
       return t.direction.noCallTally
     },
+    namedSides: false,
   }
+}
+
+/** Compact division/hero count. Named sports sides print WHO, not Y/N. */
+export function compactSideTally(tally: DirectionTally, labels: SideLabels, t: LeagueUiPack): string {
+  if (labels.namedSides) {
+    const parts = [
+      `${tally.up} ${labels.tallyWord(labels.sides[0])}`,
+      `${tally.down} ${labels.tallyWord(labels.sides[1])}`,
+    ]
+    if (tally.flat) parts.push(`${tally.flat}\u25a0`)
+    if (tally.abstain) parts.push(`${tally.abstain}\u2013`)
+    return parts.join(' · ')
+  }
+  return t.bracket.compactTally(tally, labels.glyphs)
 }
 

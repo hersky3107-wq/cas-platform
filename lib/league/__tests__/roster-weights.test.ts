@@ -95,7 +95,7 @@ describe('roster weights classification', () => {
       weights: 'closed',
       provider_key: 'openrouter',
       reasoning: true,
-      maxCompletionTokens: 4000,
+      maxCompletionTokens: 6000,
     })
     expect(hunyuan?.caller).toMatchObject({ kind: 'platform', platformId: 'openrouter:hunyuan-3' })
     expect(hunyuan?.timeoutMs).toBeUndefined()
@@ -115,6 +115,31 @@ describe('roster weights classification', () => {
     expect(mimo?.caller).toMatchObject({ kind: 'platform', platformId: 'openrouter:mimo-v2.5' })
     expect(LEAGUE_ROSTER.filter((e) => e.brand === 'Tencent')).toHaveLength(1)
     expect(LEAGUE_ROSTER.filter((e) => e.timeoutMs === 240_000).map((e) => e.model_id)).toEqual(['deepseek-v4-pro'])
+  })
+
+  it('gives fable-5.1 adaptive thinking and grok-4.7 reasoning_effort:low so sports packets return content', () => {
+    const fable = LEAGUE_ROSTER.find((e) => e.model_id === 'claude-fable-5.1')
+    const grok = LEAGUE_ROSTER.find((e) => e.model_id === 'grok-4.7')
+    expect(fable).toMatchObject({
+      reasoning: true,
+      maxCompletionTokens: 8000,
+      timeoutMs: 90_000,
+    })
+    expect(fable?.caller).toMatchObject({
+      kind: 'core',
+      provider: 'anthropic',
+      anthropicThinking: 'adaptive',
+    })
+    expect(grok).toMatchObject({
+      reasoning: true,
+      maxCompletionTokens: 6000,
+      timeoutMs: 90_000,
+    })
+    expect(grok?.caller).toMatchObject({
+      kind: 'core',
+      provider: 'xai',
+      extraPayload: { reasoning_effort: 'low' },
+    })
   })
 
   it('correlated-note chrome tracks LEAGUE_ROSTER.length in every locale', () => {

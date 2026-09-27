@@ -87,6 +87,7 @@ const TEAM_ALIASES: readonly AliasRow[] = [
   { aliases: ['ac milan', 'milan', '밀란'], canonical: 'AC Milan' },
   { aliases: ['juventus', '유벤투스'], canonical: 'Juventus' },
   { aliases: ['borussia dortmund', 'dortmund', '도르트문트'], canonical: 'Borussia Dortmund' },
+  { aliases: ['san francisco giants', 'giants', '자이언츠'], canonical: 'San Francisco Giants' },
   { aliases: ['los angeles dodgers', 'dodgers', '다저스'], canonical: 'Los Angeles Dodgers' },
   { aliases: ['new york yankees', 'yankees', '양키스'], canonical: 'New York Yankees' },
   { aliases: ['boston red sox', 'red sox', '레드삭스'], canonical: 'Boston Red Sox' },

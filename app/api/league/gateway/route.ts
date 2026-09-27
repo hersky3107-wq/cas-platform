@@ -9,6 +9,7 @@ import { writeGatewayAudit } from '@/lib/league/gateway/abuse.server'
 import { createLiveGatewayDeps, reserveNormalizeQuota } from '@/lib/league/gateway/live-deps.server'
 import { prefilterRejects } from '@/lib/league/gateway/prefilter'
 import { refusalMessageForKey, refusalMessageKey } from '@/lib/league/gateway/refusal-copy'
+import { parseAnsweredSlots } from '@/lib/league/gateway/answered-slots'
 import { runLeagueGateway } from '@/lib/league/gateway/shell'
 import type { ClarifyingQuestion, RefusalCode } from '@/lib/league/gateway/types'
 import { getLeagueUiPack } from '@/lib/league/i18n/dictionary'
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
   const rawText = typeof body.raw_text === 'string' ? body.raw_text : ''
   const localeTag = typeof body.locale === 'string' ? body.locale : 'en'
   const locale: LeagueLocale = normalizeLeagueLocale(localeTag) ?? 'en'
-  const answered = parseAnswered(body.answered_slots)
+  const answered = parseAnsweredSlots(body.answered_slots)
   const clarifyRound = Number.isFinite(Number(body.clarify_round)) ? Math.max(0, Math.floor(Number(body.clarify_round))) : 0
 
   if (!(PUBLIC_CATEGORY_IDS as readonly string[]).includes(categoryId)) {
@@ -156,15 +157,6 @@ function jsonRefused(
 function refusalCopy(pack: ReturnType<typeof getLeagueUiPack>, code: string, fallback: string): string {
   const table = pack.gateway.refusal as Record<string, string>
   return table[code] ?? table.generic ?? fallback
-}
-
-function parseAnswered(raw: unknown): Record<string, string> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === 'string' && v.trim() && k.length <= 40) out[k] = v.trim().slice(0, 80)
-  }
-  return out
 }
 
 function localizeQuestion(q: ClarifyingQuestion, pack: ReturnType<typeof getLeagueUiPack>, locale: string) {

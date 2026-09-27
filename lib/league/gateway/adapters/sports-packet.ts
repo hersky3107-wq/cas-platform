@@ -16,7 +16,7 @@ import {
   type SportsInstrumentParts,
 } from './sports-catalog'
 
-export const SPORTS_SEARCH_QUERY_MAX = 6
+export const SPORTS_SEARCH_QUERY_MAX = 8
 export const SPORTS_PACKET_FRESH_COST_USD = 0.06
 
 export type SportsResearchFinding = {
@@ -69,6 +69,16 @@ export function sportsSearchQueries(parts: SportsInstrumentParts): Array<{ q: st
       lang: 'en',
     })
   }
+  // Real counterweights, not a scripted upset: home/travel and workload
+  // exist for every fixture. Models may use them only when search returns them.
+  queries.push({
+    q: `${parts.home} home advantage rest days travel vs ${parts.away} ${kickoffDay}`,
+    lang: 'en',
+  })
+  queries.push({
+    q: `${parts.home} ${parts.away} bullpen workload rotation resting starters late season ${kickoffDay}`,
+    lang: 'en',
+  })
   return queries.slice(0, SPORTS_SEARCH_QUERY_MAX)
 }
 
@@ -84,7 +94,7 @@ function pct(p: number): string {
 }
 
 function formatMarketBaseline(devig: DevigResult | null | undefined, subject: string): string[] {
-  const lines = ['MARKET BASELINE (Shin-devigged sharp book — #1 anchor)']
+  const lines = ['MARKET BASELINE (Shin-devigged sharp book — a price, not a required vote)']
   if (!devig) {
     lines.push('UNAVAILABLE')
     return lines
@@ -143,6 +153,92 @@ function formatStats(stats: FixtureStats | null | undefined, home: string, away:
   return lines
 }
 
+/**
+ * Favorite edge AND the underdog's priced chance, from the same book.
+ * Structural facts (home side, single-game variance) are properties of the
+ * fixture. Workload, rest, and fatigue are named only as a checklist the
+ * search section must actually fill — this function never invents them.
+ */
+export function formatBothSides(
+  parts: SportsInstrumentParts,
+  devig: DevigResult | null | undefined,
+  stats: FixtureStats | null | undefined,
+): string[] {
+  const lines = [
+    'BOTH SIDES — real factors only. Do not invent balance.',
+    'The baseline is an input, not a vote you must copy. A strong favorite can still be the right call. Weigh that measured edge against the underdog\'s priced chance and the structural facts below. Use rest, bullpen, or rotation only when the news section states them.',
+  ]
+  const teams = (devig?.outcomes ?? [])
+    .filter((o) => !/^draw$/i.test(o.name) && Number.isFinite(o.probability))
+    .slice()
+    .sort((a, b) => b.probability - a.probability)
+  if (!devig || teams.length < 2) {
+    lines.push('Priced favorite / underdog: UNAVAILABLE. Do not invent odds.')
+  } else {
+    const fav = teams[0]!
+    const dog = teams[teams.length - 1]!
+    const gap = (fav.probability - dog.probability) * 100
+    lines.push(
+      `Favorite edge: ${fav.name} ${pct(fav.probability)} vs ${dog.name} ${pct(dog.probability)} (gap ${gap.toFixed(1)} points).`,
+    )
+    lines.push(
+      `Underdog live chance: ${dog.name} is still priced at ${pct(dog.probability)} for this single game. That residual is the upset's probability in the same book.`,
+    )
+  }
+  const draw = devig?.outcomes.find((o) => /^draw$/i.test(o.name))
+  if (draw && Number.isFinite(draw.probability)) {
+    lines.push(
+      `Draw is priced at ${pct(draw.probability)}. On a win proposition a draw resolves as No.`,
+    )
+  }
+  lines.push(
+    `Home side: ${parts.home}. Away side: ${parts.away}. Home advantage in this single game belongs to ${parts.home}.`,
+  )
+  if (parts.league === 'baseball_mlb') {
+    lines.push(
+      'Single-game variance (MLB): one night is one starter plus a bullpen. Season FIP or ERA does not settle the game.',
+    )
+  } else if (parts.league === 'basketball_nba') {
+    lines.push(
+      'Single-game variance (NBA): one game compresses a season net-rating edge. Rest and back-to-backs matter only when the news section states them.',
+    )
+  } else {
+    lines.push(
+      'Single-game variance: one match compresses a season edge. A draw is a live result.',
+    )
+  }
+  lines.push(...measuredStatContrast(stats))
+  return lines
+}
+
+function measuredStatContrast(stats: FixtureStats | null | undefined): string[] {
+  if (!stats || stats.unavailable) {
+    return ['Measured stat contrast: UNAVAILABLE. Do not invent xG, FIP, or net rating.']
+  }
+  if (stats.football?.home && stats.football?.away) {
+    const h = stats.football.home
+    const a = stats.football.away
+    return [
+      `Measured chance contrast: ${h.team} xG ${h.xg.toFixed(2)} xGA ${h.xga.toFixed(2)} vs ${a.team} xG ${a.xg.toFixed(2)} xGA ${a.xga.toFixed(2)}. The lower-xG side still has a live chance in one match.`,
+    ]
+  }
+  if (stats.baseball?.home && stats.baseball?.away) {
+    const h = stats.baseball.home
+    const a = stats.baseball.away
+    return [
+      `Measured chance contrast: ${h.team} FIP ${h.fip ?? 'n/a'} ERA ${h.era ?? 'n/a'} vs ${a.team} FIP ${a.fip ?? 'n/a'} ERA ${a.era ?? 'n/a'}. One starter can flip a season edge.`,
+    ]
+  }
+  if (stats.basketball?.home && stats.basketball?.away) {
+    const h = stats.basketball.home
+    const a = stats.basketball.away
+    return [
+      `Measured chance contrast: ${h.team} net rating ${h.netRating ?? 'n/a'} vs ${a.team} net rating ${a.netRating ?? 'n/a'}. One game compresses that gap.`,
+    ]
+  }
+  return ['Measured stat contrast: UNAVAILABLE. Do not invent xG, FIP, or net rating.']
+}
+
 function formatFindings(research: SportsResearchPacket): string[] {
   const lines = ['LINEUPS / ABSENCES / NEWS (search — projected until a confirmed XI exists)']
   if (!research.available) {
@@ -183,7 +279,7 @@ export function assembleSportsInjection(args: {
     ? 'Regular time 90 minutes + stoppage. Draw = No.'
     : 'Official final result (extras count when they are official).'
   const lines: string[] = [
-    'SPORTS PACKET — closed book. Numbers first, search last. Informational analysis only. Not gambling advice.',
+    'SPORTS PACKET — closed book. Read the favorite edge AND the underdog\'s priced chance. Informational analysis only. Not gambling advice.',
     `Proposition: ${args.round.proposition_text}`,
     `Subject: ${subject}`,
     `Opponent: ${opponent}`,
@@ -193,11 +289,30 @@ export function assembleSportsInjection(args: {
     '',
     ...formatMarketBaseline(args.cache?.devigged_odds ?? null, subject),
     '',
+    ...formatBothSides(parts, args.cache?.devigged_odds ?? null, args.stats ?? args.cache?.stats ?? null),
+    '',
     ...formatStats(args.stats ?? args.cache?.stats ?? null, parts.home, parts.away),
     '',
     ...formatFindings(args.research),
   ]
   return lines.join('\n')
+}
+
+/** Compact real brief for the crow seat — baseline, both sides, cache stats. No search prose. */
+export function formatSportsCrowBrief(
+  parts: SportsInstrumentParts,
+  cache: SportsFixtureCacheRow | null,
+): string {
+  const subject = subjectTeamOf(parts)
+  return [
+    `Subject: ${subject}`,
+    `Opponent: ${opponentTeamOf(parts)}`,
+    ...formatMarketBaseline(cache?.devigged_odds ?? null, subject),
+    '',
+    ...formatBothSides(parts, cache?.devigged_odds ?? null, cache?.stats ?? null),
+    '',
+    ...formatStats(cache?.stats ?? null, parts.home, parts.away),
+  ].join('\n')
 }
 
 export async function buildSportsPacket(ctx: PacketBuildContext, io: SportsPacketIo): Promise<CategoryPacket> {

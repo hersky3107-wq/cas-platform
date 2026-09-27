@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { creditsForLeagueGenerate } from '@/lib/credits'
+import { nextClarifySubmission } from '@/lib/league/gateway/clarify-answer'
 import type { PublicCategoryId } from '@/lib/league/catalog'
 import type { UiHorizon } from '@/lib/league/horizon'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
@@ -167,10 +168,11 @@ export function FreeformPromptBox({
   function tapOption(optionId: string) {
     const slot = question?.slot
     if (!slot) return
-    const next = { ...answered, [slot]: optionId }
-    // Confirm is not a slot-clarify; it must not consume the 2-round cap.
-    const nextRound = slot === 'entity_confirmed' ? clarifyRound : clarifyRound + 1
-    void submit(next, nextRound)
+    // A fixture chip's id is the MATCH instrument. That click confirms the
+    // game and submit() proceeds to generate when the gateway returns ready.
+    // "네, 맞아요" on a single team stays a confirm and does not burn a round.
+    const next = nextClarifySubmission(answered, slot, optionId, clarifyRound)
+    void submit(next.answered, next.clarifyRound)
   }
 
   function tapFreeInput() {

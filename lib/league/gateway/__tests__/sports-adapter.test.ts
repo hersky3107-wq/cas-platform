@@ -165,7 +165,9 @@ describe('sports packet assembly', () => {
     )!
     const queries = sportsSearchQueries(parts)
     expect(queries.length).toBeGreaterThanOrEqual(4)
-    expect(queries.length).toBeLessThanOrEqual(6)
+    expect(queries.length).toBeLessThanOrEqual(8)
+    expect(queries.some((q) => /home advantage rest days/.test(q.q))).toBe(true)
+    expect(queries.some((q) => /bullpen workload/.test(q.q))).toBe(true)
     expect(queries.some((q) => /예상 선발 부상자/.test(q.q))).toBe(true)
     expect(queries.some((q) => /head-to-head/.test(q.q))).toBe(true)
 
@@ -231,6 +233,10 @@ describe('sports packet assembly', () => {
       },
     })
     expect(injection).toContain('MARKET BASELINE')
+    expect(injection).toContain('not a required vote')
+    expect(injection).toContain('BOTH SIDES')
+    expect(injection).toContain('Underdog live chance: Tottenham Hotspur is still priced at 11.5%')
+    expect(injection).toContain('Home advantage in this single game belongs to Arsenal')
     expect(injection).toContain('Pinnacle')
     expect(injection).toContain('70.0%')
     expect(injection).toContain('xG')
@@ -251,7 +257,7 @@ describe('sports packet assembly', () => {
     )!
     const q = sportsSearchQueries(parts)
     expect(q.some((row) => /starting pitcher/.test(row.q))).toBe(true)
-    expect(q.length).toBe(6)
+    expect(q.length).toBe(8)
   })
 })
 

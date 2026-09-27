@@ -13,7 +13,8 @@ import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import type { CardData, ColorBucket, LockedCardPayload } from '@/lib/league/card-types'
 import { GENERATION_POLL_MS } from '@/lib/league/generation/policy'
 import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } from '@/lib/league/catalog'
-import { decodeSportsInstrument, opponentTeamOf, subjectTeamOf } from '@/lib/league/gateway/adapters/sports-catalog'
+import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import { sportsPropositionDisplay, sportsVsLabel } from '@/lib/league/sports-display'
 import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
@@ -336,7 +337,7 @@ function CardsPanel() {
                   selected ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 shadow-sm hover:bg-slate-100'
                 }`}
               >
-                <span className="block text-sm">{instrumentLabel(t, i.instrument)}</span>
+                <span className="block text-sm">{instrumentLabel(t, i.instrument, locale)}</span>
               </button>
             )
           })}
@@ -424,7 +425,7 @@ function LockedRoundPanel({
   locked: LockedCardPayload
   instrument: string
   horizon: UiHorizon
-  locale: string
+  locale: LeagueLocale
   onOpened: () => void
 }) {
   const { t } = useLeagueLocale()
@@ -471,7 +472,9 @@ function LockedRoundPanel({
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6">
-      <p className="text-sm font-semibold leading-relaxed text-slate-900">{locked.round.proposition_text}</p>
+      <p className="text-sm font-semibold leading-relaxed text-slate-900">
+        {sportsPropositionDisplay(instrument, locked.round.proposition_text, locale)}
+      </p>
       {locked.refundedNotice ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
           {t.hub.generationFailedRefunded}
@@ -636,11 +639,13 @@ function ComingSoonPanel({ categoryId }: { categoryId: PublicCategoryId }) {
   )
 }
 
-function instrumentLabel(t: { catalog: { instruments: Record<string, string> } }, instrument: string): string {
-  const sports = decodeSportsInstrument(instrument)
-  if (sports) {
-    return `${subjectTeamOf(sports)} vs ${opponentTeamOf(sports)}`
-  }
+function instrumentLabel(
+  t: { catalog: { instruments: Record<string, string> } },
+  instrument: string,
+  locale: LeagueLocale,
+): string {
+  const sports = sportsVsLabel(instrument, locale)
+  if (sports) return sports
   return t.catalog.instruments[instrument] ?? instrument
 }
 
