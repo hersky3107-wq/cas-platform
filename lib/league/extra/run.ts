@@ -161,6 +161,7 @@ async function upsertExtraPrediction(row: {
   const { error } = await supabaseAdmin.from('model_predictions').upsert(
     {
       round_id: row.roundId,
+      seat_id: `extra:${row.model_id}`,
       model_id: row.model_id,
       brand: row.brand,
       camp: 'other',

@@ -9,6 +9,7 @@ import {
   type LeaderboardData,
   type RoundCoverage,
 } from './leaderboard-aggregate'
+import { seatIdForModel } from './seats'
 
 export { buildLeaderboardData }
 export type { LeaderboardData }
@@ -39,6 +40,7 @@ export type { LeaderboardData }
  */
 
 type GradedQueryRow = {
+  seat_id?: string | null
   model_id: string
   brand: string
   camp: string
@@ -110,7 +112,7 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
   let query = supabaseAdmin
     .from('model_predictions')
     .select(
-      'model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)'
+      'seat_id, model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)'
     )
     .not('is_correct', 'is', null)
 
@@ -118,15 +120,32 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
     query = query.in('prediction_rounds.category', scope.categories as string[])
   }
 
-  const { data, error } = await query
+  let { data, error } = await query
+  let resultData: unknown = data
+
+  // Graceful fallback if the manual migration has not yet been executed in SQL Editor
+  if (error && error.message?.includes('seat_id')) {
+    const fallbackQuery = supabaseAdmin
+      .from('model_predictions')
+      .select(
+        'model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)'
+      )
+      .not('is_correct', 'is', null)
+    const fallbackRes = scope?.categories
+      ? await fallbackQuery.in('prediction_rounds.category', scope.categories as string[])
+      : await fallbackQuery
+    resultData = fallbackRes.data
+    error = fallbackRes.error
+  }
 
   if (error) throw new Error(`league leaderboard: query failed (${error.message})`)
 
-  const rows: GradedPredictionRow[] = ((data ?? []) as unknown as GradedQueryRow[])
+  const rows: GradedPredictionRow[] = ((resultData ?? []) as unknown as GradedQueryRow[])
     .filter((row): row is GradedQueryRow & { is_correct: boolean; prediction_rounds: { category: string; item_type: string } } =>
       row.is_correct !== null && row.prediction_rounds !== null
     )
     .map((row) => ({
+      seat_id: row.seat_id ?? seatIdForModel(row.model_id, row.league_tier),
       model_id: row.model_id,
       brand: row.brand,
       camp: row.camp,

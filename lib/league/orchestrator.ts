@@ -33,6 +33,7 @@ import { extraSeatIds, officialRowsForConsensus } from '@/lib/league/extra/seats
 import { claimNextLaunchableIndex } from '@/lib/league/generation/launch-gate'
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
 import { emptyContentRetryBudgetMs, isEmptyContentError } from '@/lib/ai/empty-content-retry'
+import { seatIdForModel } from '@/lib/league/seats'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -729,12 +730,14 @@ async function runOneModel(
   // display-only detail. Neither is read by grading.
   const direction = validation.side
   const ledger_fields = contract.ledgerFields(validation)
+  const seatId = seatIdForModel(entry.model_id, entry.league_tier)
 
   await supabaseAdmin
     .from('model_predictions')
     .upsert(
       {
         round_id: roundId,
+        seat_id: seatId,
         model_id: entry.model_id,
         brand: entry.brand,
         camp: entry.camp,
@@ -777,11 +780,13 @@ async function runOneModel(
 }
 
 async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promise<void> {
+  const seatId = seatIdForModel(entry.model_id, entry.league_tier)
   await supabaseAdmin
     .from('model_predictions')
     .upsert(
       {
         round_id: roundId,
+        seat_id: seatId,
         model_id: entry.model_id,
         brand: entry.brand,
         camp: entry.camp,

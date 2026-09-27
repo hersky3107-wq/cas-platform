@@ -288,6 +288,64 @@ describe('buildLeaderboardData', () => {
     }
   })
 
+  it('aggregates track record continuously per seat across model swaps', () => {
+    // k-exaone-2.0 retired -> inkling current in world:thinking-machines
+    const rows = [
+      row({ model_id: 'k-exaone-2.0', league_tier: 'world', brand: 'LG', is_correct: true }),
+      row({ model_id: 'k-exaone-2.0', league_tier: 'world', brand: 'LG', is_correct: false }),
+      row({ model_id: 'inkling', league_tier: 'world', brand: 'Thinking Machines', is_correct: true }),
+    ]
+    const data = buildLeaderboardData(rows)
+    const seatRow = data.seat.rows.find((r) => r.key === 'world:thinking-machines')
+    expect(seatRow).toBeDefined()
+    // Combined resolved: 2 from exaone + 1 from inkling = 3
+    expect(seatRow?.resolved).toBe(3)
+    // Combined correct: 1 from exaone + 1 from inkling = 2
+    expect(seatRow?.correct).toBe(2)
+    expect(seatRow?.seatMeta?.isSwapped).toBe(true)
+    expect(seatRow?.seatMeta?.currentModelId).toBe('inkling')
+  })
+
+  it('fixes the OpenAI label bug: model benchmark shows distinct product aliases instead of identical brand', () => {
+    const rows = [
+      row({ model_id: 'gpt-5.6-sol', brand: 'OpenAI', league_tier: 'premier' }),
+      row({ model_id: 'gpt-5.6-terra', brand: 'OpenAI', league_tier: 'challenger' }),
+      row({ model_id: 'gpt-5.6-luna', brand: 'OpenAI', league_tier: 'world' }),
+    ]
+    const data = buildLeaderboardData(rows)
+    const modelLabels = data.model.rows.map((r) => r.label)
+    // Each OpenAI model should have a distinct, informative label
+    const uniqueLabels = new Set(modelLabels)
+    expect(uniqueLabels.size).toBe(3)
+    expect(modelLabels.some((l) => l.includes('GPT-5.6 Sol'))).toBe(true)
+    expect(modelLabels.some((l) => l.includes('GPT-5.6 Terra'))).toBe(true)
+    expect(modelLabels.some((l) => l.includes('GPT-5.6 Luna'))).toBe(true)
+  })
+
+  it('builds retired model archive with W-L and retirement reasons', () => {
+    const rows = [
+      row({ model_id: 'k-exaone-2.0', league_tier: 'world', is_correct: true }),
+      row({ model_id: 'k-exaone-2.0', league_tier: 'world', is_correct: false }),
+      row({ model_id: 'kimi-k2.6', league_tier: 'challenger', is_correct: true }),
+    ]
+    const data = buildLeaderboardData(rows)
+    expect(data.retiredArchive.length).toBeGreaterThanOrEqual(6)
+
+    const exaone = data.retiredArchive.find((e) => e.modelId === 'k-exaone-2.0')!
+    expect(exaone).toBeDefined()
+    expect(exaone.resolved).toBe(2)
+    expect(exaone.correct).toBe(1)
+    expect(exaone.winRatePct).toBe(50)
+    expect(exaone.activeFrom).toBe('2026-08-01')
+    expect(exaone.retiredAt).toBe('2026-09-07')
+
+    const kimi = data.retiredArchive.find((e) => e.modelId === 'kimi-k2.6')!
+    expect(kimi).toBeDefined()
+    expect(kimi.resolved).toBe(1)
+    expect(kimi.correct).toBe(1)
+    expect(kimi.winRatePct).toBe(100)
+  })
+
   it('empty input yields empty slices everywhere, never throws', () => {
     const data = buildLeaderboardData([])
     expect(data.model.rows).toEqual([])

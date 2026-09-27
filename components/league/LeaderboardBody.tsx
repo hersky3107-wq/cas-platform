@@ -3,13 +3,18 @@
 import { useState } from 'react'
 import type { BaselineRow, BaselineSummary } from '@/lib/league/baselines'
 import { COIN_FLIP_EXPECTED_PCT } from '@/lib/league/baselines'
-import type { LeaderboardData, LeaderboardRow, LeaderboardScope } from '@/lib/league/leaderboard-aggregate'
+import type {
+  LeaderboardData,
+  LeaderboardRow,
+  LeaderboardScope,
+  RetiredModelArchiveEntry,
+} from '@/lib/league/leaderboard-aggregate'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { ComplianceReceipt } from './CardCompliance'
 import { LeaderboardCampHeadline } from './LeaderboardCampHeadline'
 import { WinRateFigure, WinRateRecord } from './WinRateFigure'
 
-const SECONDARY_SCOPES: Exclude<LeaderboardScope, 'model' | 'campHeadline' | 'method' | 'weights'>[] = [
+const SECONDARY_SCOPES: Exclude<LeaderboardScope, 'seat' | 'model' | 'campHeadline' | 'method' | 'weights'>[] = [
   'camp',
   'tier',
   'brand',
@@ -17,9 +22,15 @@ const SECONDARY_SCOPES: Exclude<LeaderboardScope, 'model' | 'campHeadline' | 'me
   'korea',
 ]
 
+type PrimaryView = 'seat' | 'model' | 'retired'
+
 /**
- * Primary views always visible: US vs China, pure-reasoning vs research,
- * per-model ranking. Secondary comparisons sit behind a collapsible tab strip.
+ * Primary views:
+ *   - Official Seat Rankings (continuous across model swaps)
+ *   - Individual Model Benchmark (flagship vs compact analysis)
+ *   - Retired Model Archive (tenures, W-L records, swap reasons)
+ * Plus US vs China, pure-reasoning vs research headlines.
+ * Secondary comparisons sit behind a collapsible tab strip.
  */
 export function LeaderboardBody({
   data,
@@ -31,12 +42,22 @@ export function LeaderboardBody({
   t: LeagueUiPack
 }) {
   void receipt
+  const [primaryView, setPrimaryView] = useState<PrimaryView>('seat')
   const [showMore, setShowMore] = useState(false)
   const [scope, setScope] = useState<(typeof SECONDARY_SCOPES)[number]>('camp')
   const secondary = data[scope]
-  // Any unranked row means the reader is looking at a partially- or fully-unranked
-  // board, and has to be told why rather than left to assume the order means something.
-  const anyUnranked = data.model.rows.some((r) => r.rank === null) || secondary.rows.some((r) => r.rank === null)
+
+  const activeSlice = primaryView === 'seat' ? (data.seat ?? data.model) : data.model
+  const anyUnranked =
+    primaryView !== 'retired' &&
+    (activeSlice.rows.some((r) => r.rank === null) || secondary.rows.some((r) => r.rank === null))
+
+  const isKo = t.languageToggleLabel === '언어'
+  const viewLabels = {
+    seat: isKo ? '공식 리그 순위 (좌석별)' : 'Official Seat Rankings',
+    model: isKo ? '개별 모델 벤치마크' : 'Model Benchmark',
+    retired: isKo ? '은퇴 모델 기록실' : 'Retired Archive',
+  }
 
   return (
     <>
@@ -49,8 +70,56 @@ export function LeaderboardBody({
       <LeaderboardCampHeadline slice={data.campHeadline} t={t} />
       <MethodHeadline slice={data.method} t={t} />
 
-      <LeaderboardTable slice={data.model.rows} t={t} labelFor={modelLabel} />
-      <BaselineTable baselines={data.baselines} t={t} />
+      {/* Primary view switcher: Seat vs Model Benchmark vs Retired Archive */}
+      <div className="flex gap-1.5 overflow-x-auto px-4 pb-2 pt-1 text-xs">
+        <button
+          type="button"
+          onClick={() => setPrimaryView('seat')}
+          className={`shrink-0 rounded-lg px-3 py-1.5 font-semibold transition ${
+            primaryView === 'seat'
+              ? 'bg-league-accent text-white shadow-sm'
+              : 'bg-league-bg-elevated text-league-fg-muted hover:text-league-fg'
+          }`}
+        >
+          {viewLabels.seat}
+        </button>
+        <button
+          type="button"
+          onClick={() => setPrimaryView('model')}
+          className={`shrink-0 rounded-lg px-3 py-1.5 font-semibold transition ${
+            primaryView === 'model'
+              ? 'bg-league-accent text-white shadow-sm'
+              : 'bg-league-bg-elevated text-league-fg-muted hover:text-league-fg'
+          }`}
+        >
+          {viewLabels.model}
+        </button>
+        <button
+          type="button"
+          onClick={() => setPrimaryView('retired')}
+          className={`shrink-0 rounded-lg px-3 py-1.5 font-semibold transition ${
+            primaryView === 'retired'
+              ? 'bg-league-accent text-white shadow-sm'
+              : 'bg-league-bg-elevated text-league-fg-muted hover:text-league-fg'
+          }`}
+        >
+          {viewLabels.retired}
+        </button>
+      </div>
+
+      {primaryView === 'seat' ? (
+        <>
+          <LeaderboardTable slice={data.seat?.rows ?? data.model.rows} t={t} labelFor={(r) => r.label} />
+          <BaselineTable baselines={data.baselines} t={t} />
+        </>
+      ) : primaryView === 'model' ? (
+        <>
+          <LeaderboardTable slice={data.model.rows} t={t} labelFor={(r) => r.label} />
+          <BaselineTable baselines={data.baselines} t={t} />
+        </>
+      ) : (
+        <RetiredArchiveTable entries={data.retiredArchive ?? []} t={t} />
+      )}
 
       <div className="px-4 pb-2 pt-3">
         <button
@@ -99,10 +168,6 @@ function tabLabelKey(scope: (typeof SECONDARY_SCOPES)[number]): keyof LeagueUiPa
   return scope === 'camp' ? 'camp3' : scope
 }
 
-function modelLabel(row: LeaderboardRow): string {
-  return row.label
-}
-
 function secondaryLabel(
   row: LeaderboardRow,
   scope: (typeof SECONDARY_SCOPES)[number],
@@ -126,11 +191,6 @@ function MethodHeadline({ slice, t }: { slice: LeaderboardData['method']; t: Lea
       <p className="pb-2 text-center text-[10px] font-semibold uppercase tracking-wide text-league-fg-muted">
         {t.leaderboard.methodHeadline}
       </p>
-      {/*
-        No separate sample-size line here: `WinRateFigure` carries n inside the
-        percentage string itself, so there is no layout in which the rate is
-        visible and its sample size is not.
-      */}
       <div className="grid grid-cols-2 gap-2">
         <div className="text-center">
           <p className="text-[11px] font-medium text-league-fg-muted">{t.leaderboard.methodLabels.pure_reasoning}</p>
@@ -268,7 +328,14 @@ function LeaderboardTable({
               at the top of the unranked block cannot read as "#1".
             */}
             <td className="px-4 py-2 text-league-fg-muted">{row.rank ?? '—'}</td>
-            <td className="max-w-[8rem] truncate py-2 font-medium text-league-fg">{labelFor(row)}</td>
+            <td className="max-w-[14rem] py-2 font-medium text-league-fg">
+              <span className="block truncate">{labelFor(row)}</span>
+              {row.seatMeta?.isSwapped ? (
+                <span className="block text-[10px] font-normal text-amber-600 dark:text-amber-400">
+                  [현역: {row.seatMeta.currentModelLabel} · {row.seatMeta.lastSwapDate} 교체]
+                </span>
+              ) : null}
+            </td>
             <td className="py-2 text-right">
               <WinRateFigure row={row} t={t} size="table" recordShownSeparately />
             </td>
@@ -279,5 +346,57 @@ function LeaderboardTable({
         ))}
       </tbody>
     </table>
+  )
+}
+
+function RetiredArchiveTable({
+  entries,
+  t,
+}: {
+  entries: RetiredModelArchiveEntry[]
+  t: LeagueUiPack
+}) {
+  if (entries.length === 0) {
+    return <p className="px-4 py-6 text-center text-xs text-league-fg-muted">{t.leaderboard.emptyState}</p>
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-league-border/40 text-[10px] font-semibold uppercase tracking-wide text-league-fg-muted">
+            <th className="px-4 py-1.5 text-left">퇴역 모델</th>
+            <th className="py-1.5 text-left">좌석</th>
+            <th className="py-1.5 text-left">활동 기간</th>
+            <th className="py-1.5 text-right">{t.leaderboard.columns.winRate}</th>
+            <th className="px-4 py-1.5 text-right">{t.leaderboard.columns.record}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry) => (
+            <tr key={`${entry.seatId}-${entry.modelId}`} className="border-b border-league-border/20 last:border-b-0">
+              <td className="px-4 py-2 font-medium text-league-fg">
+                <span className="block">{entry.brand} ({entry.modelLabel})</span>
+                {entry.reason ? (
+                  <span className="block text-[10px] text-league-fg-muted leading-tight">{entry.reason}</span>
+                ) : null}
+              </td>
+              <td className="py-2 text-league-fg-muted whitespace-nowrap">
+                {entry.seatLabel}
+              </td>
+              <td className="py-2 text-league-fg-muted font-mono text-[10px] whitespace-nowrap">
+                {entry.activeFrom} ~ {entry.retiredAt}
+              </td>
+              <td className="py-2 text-right font-semibold text-league-fg">
+                {entry.winRatePct !== null ? `${entry.winRatePct}%` : '—'}
+              </td>
+              <td className="px-4 py-2 text-right text-league-fg-muted whitespace-nowrap">
+                {entry.correct}W {entry.resolved - entry.correct}L
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

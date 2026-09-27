@@ -13,6 +13,17 @@ import { LEAGUE_ROSTER, WEIGHT_LABEL, WEIGHTS_KINDS, type WeightsKind } from './
 import { buildBaselineSummary, emptyBaselineSummary, type BaselineSummary } from './baselines'
 import { toSideToken } from './side-labels'
 import { isDisplayableWinRate, winRatePctForDisplay, WIN_RATE_MIN_SAMPLE } from './win-rate'
+import {
+  formatSeatLabel,
+  formatSeatSwapStatus,
+  getAllSeats,
+  getRetiredTenures,
+  lookupSeat,
+  seatForModelId,
+  seatIdForModel,
+  type RetiredTenureArchiveEntry,
+  type SeatSwapStatus,
+} from './seats'
 
 /**
  * AI Prediction League — LEADERBOARD aggregation (read-only).
@@ -34,9 +45,9 @@ import { isDisplayableWinRate, winRatePctForDisplay, WIN_RATE_MIN_SAMPLE } from 
  * `./win-rate.ts`).
  *
  * SORT ORDER: ranked rows first, by win rate; below-threshold rows after them in
- * a deliberately NON-PERFORMANCE order (roster order for models, tier order for
- * tiers, camp order for camps, else alphabetical) so their position says nothing
- * about who is winning.
+ * a deliberately NON-PERFORMANCE order (seat order for seats, roster order for
+ * models, tier order for tiers, camp order for camps, else alphabetical) so their
+ * position says nothing about who is winning.
  *
  * SCOPE of a "graded" row (applied by the caller at query time):
  *   - `is_correct` is non-null
@@ -52,6 +63,7 @@ export const LEADERBOARD_MIN_SAMPLE = WIN_RATE_MIN_SAMPLE
 export const KOREA_BRANDS = ['Upstage', 'NAVER'] as const
 
 export type LeaderboardScope =
+  | 'seat'
   | 'model'
   | 'campHeadline'
   | 'method'
@@ -64,6 +76,7 @@ export type LeaderboardScope =
 
 /** One graded, in-scope prediction — the minimal shape this module needs. */
 export type GradedPredictionRow = {
+  seat_id?: string | null
   model_id: string
   brand: string
   camp: string
@@ -100,6 +113,17 @@ export type LeaderboardRow = {
   rank: number | null
   /** true when `n < LEADERBOARD_MIN_SAMPLE` (equivalently: `winRatePct === null`). */
   provisional: boolean
+  /** Optional metadata when this row represents a seat slot. */
+  seatMeta?: SeatSwapStatus
+  /** Optional canonical model ID when this row represents a specific model. */
+  modelId?: string
+}
+
+export type RetiredModelArchiveEntry = RetiredTenureArchiveEntry & {
+  correct: number
+  resolved: number
+  n: number
+  winRatePct: number | null
 }
 
 export type LeaderboardSlice = {
@@ -135,8 +159,12 @@ export function emptyRoundCoverage(): RoundCoverage {
 }
 
 export type LeaderboardData = {
-  /** PRIMARY: per-model ranking (all models that have at least one graded row). */
+  /** PRIMARY: official league ranking by SEAT (continuous across model swaps). */
+  seat: LeaderboardSlice
+  /** INDIVIDUAL BENCHMARK: per-model ranking (flagship vs compact comparison). */
   model: LeaderboardSlice
+  /** RETIRED ARCHIVE: historical tenures of models that have retired. */
+  retiredArchive: RetiredModelArchiveEntry[]
   /** PRIMARY headline: US vs China only. */
   campHeadline: LeaderboardSlice
   /** PRIMARY: PURE-REASONING (tiers 1/2/3) vs RESEARCH (scout). */
@@ -180,10 +208,33 @@ function formatCategory(category: string): string {
   return category.replace(/_/g, ' ')
 }
 
-function bucketOf(row: GradedPredictionRow, scope: LeaderboardScope): { key: string; label: string } | null {
+function bucketOf(
+  row: GradedPredictionRow,
+  scope: LeaderboardScope
+): { key: string; label: string; seatMeta?: SeatSwapStatus; modelId?: string } | null {
   switch (scope) {
-    case 'model':
-      return { key: row.model_id, label: row.brand }
+    case 'seat': {
+      const seatId = row.seat_id || seatIdForModel(row.model_id, row.league_tier)
+      const seat = lookupSeat(seatId)
+      const label = seat ? formatSeatLabel(seat) : `${row.brand} (${row.league_tier})`
+      const seatMeta = seat ? formatSeatSwapStatus(seat) : undefined
+      return { key: seatId, label, seatMeta }
+    }
+    case 'model': {
+      const entry = ROSTER_BY_MODEL_ID.get(row.model_id)
+      const seat = seatForModelId(row.model_id, row.league_tier)
+      const tenure = seat?.tenures.find((t) => t.modelId === row.model_id)
+      const brand = entry?.brand || seat?.brand || row.brand
+      let label = `${brand} · ${row.model_id}`
+      if (tenure) {
+        label = `${brand} (${tenure.modelLabel})`
+      } else if (entry) {
+        label = entry.product_alias && entry.product_alias !== 'ChatGPT'
+          ? `${brand} (${entry.product_alias}) · ${row.model_id}`
+          : `${brand} · ${row.model_id}`
+      }
+      return { key: row.model_id, label, modelId: row.model_id }
+    }
     case 'campHeadline':
       if (row.camp !== 'us' && row.camp !== 'china') return null
       return { key: row.camp, label: CAMP_LABEL[row.camp as Camp] ?? row.camp }
@@ -215,12 +266,17 @@ const ROSTER_ORDER = new Map(LEAGUE_ROSTER.map((entry, index) => [entry.model_id
 const ROSTER_BY_MODEL_ID = new Map(LEAGUE_ROSTER.map((entry) => [entry.model_id, entry]))
 
 /**
- * Position of an UNRANKED row. Deliberately unrelated to performance: roster
- * order for models, the league's own tier/camp order for those slices, and
- * alphabetical everywhere else. A reader must not be able to infer a ranking
+ * Position of an UNRANKED row. Deliberately unrelated to performance: seat order
+ * for seats, roster order for models, the league's own tier/camp order for those slices,
+ * and alphabetical everywhere else. A reader must not be able to infer a ranking
  * from where a low-sample row sits.
  */
 function unrankedOrderOf(row: LeaderboardRow, scope: LeaderboardScope): number {
+  if (scope === 'seat') {
+    const allSeats = getAllSeats()
+    const index = allSeats.findIndex((s) => s.seatId === row.key)
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index
+  }
   if (scope === 'model') {
     const official = ROSTER_ORDER.get(row.key)
     if (official !== undefined) return official
@@ -269,7 +325,10 @@ function orderAndRank(rows: LeaderboardRow[], scope: LeaderboardScope): Leaderbo
   return [...ranked, ...unranked]
 }
 
-function toRow(key: string, b: { label: string; correct: number; resolved: number }): LeaderboardRow {
+function toRow(
+  key: string,
+  b: { label: string; correct: number; resolved: number; seatMeta?: SeatSwapStatus; modelId?: string }
+): LeaderboardRow {
   return {
     key,
     label: b.label,
@@ -279,20 +338,33 @@ function toRow(key: string, b: { label: string; correct: number; resolved: numbe
     winRatePct: winRatePctForDisplay(b.correct, b.resolved),
     rank: null,
     provisional: !isDisplayableWinRate(b.resolved),
+    seatMeta: b.seatMeta,
+    modelId: b.modelId,
   }
 }
 
 /** Builds one slice from the full graded-row set. Keys that never appear are omitted. */
 export function buildLeaderboardSlice(rows: readonly GradedPredictionRow[], scope: LeaderboardScope): LeaderboardSlice {
-  const buckets = new Map<string, { label: string; correct: number; resolved: number }>()
+  const buckets = new Map<
+    string,
+    { label: string; correct: number; resolved: number; seatMeta?: SeatSwapStatus; modelId?: string }
+  >()
   let considered = 0
   for (const row of rows) {
     const bucketKey = bucketOf(row, scope)
     if (!bucketKey) continue
     considered += 1
-    const bucket = buckets.get(bucketKey.key) ?? { label: bucketKey.label, correct: 0, resolved: 0 }
+    const bucket = buckets.get(bucketKey.key) ?? {
+      label: bucketKey.label,
+      correct: 0,
+      resolved: 0,
+      seatMeta: bucketKey.seatMeta,
+      modelId: bucketKey.modelId,
+    }
     bucket.resolved += 1
     if (row.is_correct) bucket.correct += 1
+    if (bucketKey.seatMeta && !bucket.seatMeta) bucket.seatMeta = bucketKey.seatMeta
+    if (bucketKey.modelId && !bucket.modelId) bucket.modelId = bucketKey.modelId
     buckets.set(bucketKey.key, bucket)
   }
 
@@ -307,6 +379,31 @@ export function buildLeaderboardSlice(rows: readonly GradedPredictionRow[], scop
     totalResolved: considered,
     rankedRows: ordered.filter((row) => row.rank !== null).length,
   }
+}
+
+/**
+ * Historical archive of all retired model tenures and their lifetime W-L record.
+ */
+export function buildRetiredArchive(rows: readonly GradedPredictionRow[]): RetiredModelArchiveEntry[] {
+  const retired = getRetiredTenures()
+  const results: RetiredModelArchiveEntry[] = []
+
+  for (const item of retired) {
+    const matchingRows = rows.filter((r) => r.model_id === item.modelId)
+    const resolved = matchingRows.length
+    const correct = matchingRows.filter((r) => r.is_correct).length
+    const winRatePct = resolved > 0 ? Number(((correct / resolved) * 100).toFixed(1)) : null
+
+    results.push({
+      ...item,
+      correct,
+      resolved,
+      n: resolved,
+      winRatePct,
+    })
+  }
+
+  return results
 }
 
 /**
@@ -379,9 +476,14 @@ export function buildLeaderboardData(
   coverage: RoundCoverage = emptyRoundCoverage()
 ): LeaderboardData {
   const official = officialRowsForConsensus(rows)
+  const seat = buildLeaderboardSlice(rows, 'seat')
   const model = buildLeaderboardSlice(rows, 'model')
+  const retiredArchive = buildRetiredArchive(rows)
+
   return {
+    seat,
     model,
+    retiredArchive,
     campHeadline: buildLeaderboardSlice(official, 'campHeadline'),
     method: buildLeaderboardSlice(official, 'method'),
     camp: buildLeaderboardSlice(official, 'camp'),
@@ -398,4 +500,3 @@ export function buildLeaderboardData(
     generatedAt: new Date().toISOString(),
   }
 }
-
