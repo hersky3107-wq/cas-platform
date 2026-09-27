@@ -92,8 +92,8 @@ type CoreProviderConfig = {
 const CORE_PROVIDERS: CoreProviderConfig[] = [
   // League name "GPT-6 Astra" -> confirmed exact id `gpt-6-astra` in GET /v1/models.
   { provider: 'openai', brand: 'OpenAI', league: 'premier', topTier: { model: 'gpt-6-astra' } },
-  // League name "Claude Fable 5.1" -> confirmed exact id `claude-fable-5-1` in GET /v1/models.
-  { provider: 'anthropic', brand: 'Anthropic', league: 'premier', topTier: { model: 'claude-fable-5-1' } },
+  // League premier Anthropic seat — Fable 5 (reverted from 5.1 2026-09-27).
+  { provider: 'anthropic', brand: 'Anthropic', league: 'premier', topTier: { model: 'claude-fable-5' } },
   // League name "Gemini 3.1 Pro" -> only live id is the preview SKU
   // `gemini-3.1-pro-preview` (confirmed in ListModels); there is no
   // non-preview "gemini-3.1-pro" yet. Requires allowGeminiThinking:true —

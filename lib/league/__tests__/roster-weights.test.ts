@@ -117,19 +117,19 @@ describe('roster weights classification', () => {
     expect(LEAGUE_ROSTER.filter((e) => e.timeoutMs === 240_000).map((e) => e.model_id)).toEqual(['deepseek-v4-pro'])
   })
 
-  it('gives fable-5.1 adaptive thinking and grok-4.7 reasoning_effort:low so sports packets return content', () => {
-    const fable = LEAGUE_ROSTER.find((e) => e.model_id === 'claude-fable-5.1')
+  it('keeps premier Fable 5 on stable defaults and grok-4.7 reasoning_effort:low for sports packets', () => {
+    const fable = LEAGUE_ROSTER.find((e) => e.model_id === 'claude-fable-5')
     const grok = LEAGUE_ROSTER.find((e) => e.model_id === 'grok-4.7')
     expect(fable).toMatchObject({
-      reasoning: true,
-      maxCompletionTokens: 8000,
-      timeoutMs: 90_000,
+      reasoning: false,
+      league_tier: 'premier',
     })
     expect(fable?.caller).toMatchObject({
       kind: 'core',
       provider: 'anthropic',
-      anthropicThinking: 'adaptive',
+      modelOverride: 'claude-fable-5',
     })
+    expect(fable?.caller).not.toHaveProperty('anthropicThinking')
     expect(grok).toMatchObject({
       reasoning: true,
       maxCompletionTokens: 6000,

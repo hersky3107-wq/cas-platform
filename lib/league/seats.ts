@@ -98,7 +98,7 @@ export const LEAGUE_SEATS: readonly LeagueSeat[] = [
     brand: 'Anthropic',
     brandSlug: 'anthropic',
     camp: 'us',
-    currentModelId: 'claude-fable-5.1',
+    currentModelId: 'claude-fable-5',
     displayName: 'Anthropic 1부',
     tenures: [
       {
@@ -111,6 +111,13 @@ export const LEAGUE_SEATS: readonly LeagueSeat[] = [
       {
         modelId: 'claude-fable-5.1',
         modelLabel: 'Claude Fable 5.1',
+        activeFrom: '2026-09-27',
+        retiredAt: '2026-09-27',
+        reason: 'Empty-content/미응답 on league rounds; reverted to Fable 5',
+      },
+      {
+        modelId: 'claude-fable-5',
+        modelLabel: 'Claude Fable 5',
         activeFrom: '2026-09-27',
       },
     ],

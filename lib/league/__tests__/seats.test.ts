@@ -101,8 +101,9 @@ describe('LEAGUE_SEATS registry', () => {
     expect(formatSeatSwapStatus(openai).lastSwapDate).toBe('2026-09-27')
 
     const anthropic = lookupSeat('premier:anthropic')!
-    expect(anthropic.currentModelId).toBe('claude-fable-5.1')
+    expect(anthropic.currentModelId).toBe('claude-fable-5')
     expect(seatForModelId('claude-fable-5', 'premier')?.seatId).toBe('premier:anthropic')
+    expect(seatForModelId('claude-fable-5.1', 'premier')?.seatId).toBe('premier:anthropic')
 
     const xai = lookupSeat('premier:xai')!
     expect(xai.currentModelId).toBe('grok-4.7')

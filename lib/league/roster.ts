@@ -189,7 +189,8 @@ export type RosterPrice = {
  *     gpt-5.6-sol → gpt-6-astra (first-party; OpenRouter openai/gpt-6-astra also OK),
  *     grok-4.5 → grok-4.7 (first-party; OpenRouter x-ai/grok-4.7 also OK),
  *     glm-5.2 → glm-5.3 (OpenRouter z-ai/glm-5.3, effort:minimal),
- *     claude-fable-5 → claude-fable-5.1 (first-party id claude-fable-5-1).
+ *     claude-fable-5 → claude-fable-5.1 (2026-09-27) reverted same day — 5.1
+ *     empty-content/미응답 on league rounds despite adaptive+8000; Fable 5 stable.
  *     Seat ids unchanged. Challenger/world/scout untouched.
  *
  * WEIGHTS — classified 2026-09-07. Rule: 'open' means the SPECIFIC called
@@ -256,7 +257,7 @@ const DEEPSEEK_V4_FLASH_PRICE: RosterPrice = { inputPerMTokens: 0.22, outputPerM
 export const LEAGUE_ROSTER: RosterEntry[] = [
   // ── 🔴 PREMIER (10) — US 5 : CN 5 ────────────────────────────────────────
   { model_id: 'gpt-6-astra', brand: 'OpenAI', product_alias: 'ChatGPT', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'openai', reasoning: true, caller: { kind: 'core', provider: 'openai', modelOverride: 'gpt-6-astra' }, price: OPENAI_GPT6_ASTRA_PRICE }, // OpenAI API gpt-6-astra; live-probed 2026-09-27 (valid JSON, 6.8s, 42 reasoning tokens)
-  { model_id: 'claude-fable-5.1', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'anthropic', reasoning: true, maxCompletionTokens: 8000, timeoutMs: 90_000, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-fable-5-1', anthropicThinking: 'adaptive' }, price: { inputPerMTokens: 10, outputPerMTokens: 50 } }, // Fable 5.1 rejects thinking.type.disabled (HTTP 400, use adaptive). Default-on adaptive thinking + 5000 max_tokens produced empty-content drops on sports packets. adaptive + 8000 leaves room for the JSON. Live-probed 2026-09-27.
+  { model_id: 'claude-fable-5', brand: 'Anthropic', product_alias: 'Claude', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'anthropic', reasoning: false, caller: { kind: 'core', provider: 'anthropic', modelOverride: 'claude-fable-5' }, price: { inputPerMTokens: 10, outputPerMTokens: 50 } }, // Reverted from Fable 5.1 (2026-09-27) — stable JSON on league rounds. Anthropic API; no public checkpoint.
   // Catalog id carries the -preview suffix; that IS the Gemini 3.1 Pro endpoint.
   { model_id: 'gemini-3.1-pro', brand: 'Google', product_alias: 'Gemini', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'google', reasoning: true, caller: { kind: 'core', provider: 'google', modelOverride: 'gemini-3.1-pro-preview', allowGeminiThinking: true }, price: { inputPerMTokens: 2, outputPerMTokens: 12, longContext: { promptTokens: 200_000, inputPerMTokens: 4, outputPerMTokens: 18 } } }, // Gemini API; Gemma is a sibling, not this model
   { model_id: 'grok-4.7', brand: 'xAI', product_alias: 'Grok', camp: 'us', league_tier: 'premier', weights: 'closed', provider_key: 'xai', reasoning: true, maxCompletionTokens: 6000, timeoutMs: 90_000, caller: { kind: 'core', provider: 'xai', modelOverride: 'grok-4.7', extraPayload: XAI_REASONING_LOW }, price: XAI_GROK_46_PRICE }, // Hidden reasoning + "use full token capacity" suffix timed out at 90s (미응답). reasoning_effort:low + 6000 returns visible JSON in ~10s. Live-probed 2026-09-27.
@@ -373,7 +374,7 @@ const RETIRED_ROSTER_DISPLAY: Record<string, Pick<RosterEntry, 'brand' | 'produc
   'ernie-4.5': { brand: 'Baidu', product_alias: 'ERNIE' },
   'granite-4.2-8b': { brand: 'IBM', product_alias: 'Granite' },
   'gpt-5.6-sol': { brand: 'OpenAI', product_alias: 'ChatGPT' },
-  'claude-fable-5': { brand: 'Anthropic', product_alias: 'Claude' },
+  'claude-fable-5.1': { brand: 'Anthropic', product_alias: 'Claude' },
   'grok-4.5': { brand: 'xAI', product_alias: 'Grok' },
   'glm-5.2': { brand: 'Z.ai', product_alias: 'GLM' },
 }

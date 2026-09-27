@@ -48,7 +48,7 @@ async function runChunkWorkers(
 function premierLikeRoster() {
   const ids = [
     'gpt-6-astra',
-    'claude-fable-5.1',
+    'claude-fable-5',
     'gemini-3.1-pro',
     'grok-4.7',
     'muse-spark-1.2',
@@ -80,7 +80,7 @@ describe('claimNextLaunchableIndex (generatePredictions worker gate)', () => {
 
     expect(launched).toEqual([
       'gpt-6-astra',
-      'claude-fable-5.1',
+      'claude-fable-5',
       'gemini-3.1-pro',
       'grok-4.7',
       'muse-spark-1.2',
