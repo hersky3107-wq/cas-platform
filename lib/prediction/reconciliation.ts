@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { fetchDailyCloses, mapInstrumentToTwelveData } from '@/lib/league/market-data'
 import { adapterForInstrument } from '@/lib/league/gateway/adapters/registry.server'
 import { gradePlanFor } from '@/lib/league/gateway/grade-plan'
-import { planForRound } from '@/lib/league/gateway/plan-for-round'
+import { parkRoundForManual } from '@/lib/league/manual-grade/queue'
 import {
   createGradingEngine,
   GRADING_SWEEP_SCAN_CAP,
@@ -57,7 +57,7 @@ export { GRADING_SWEEP_SCAN_CAP } from './grading-core'
 
 const ROUND_COLUMNS =
   'id, instrument, category, resolves_at, anchor_price, anchor_price_at, actual_outcome, resolved_at, ' +
-  'grading_busy_until, grading_attempted_at, unresolvable_reason'
+  'grading_busy_until, grading_attempted_at, unresolvable_reason, grading_status'
 
 function asRecord(row: Record<string, unknown>): GradingRoundRecord {
   return {
@@ -72,6 +72,13 @@ function asRecord(row: Record<string, unknown>): GradingRoundRecord {
     grading_busy_until: typeof row.grading_busy_until === 'string' ? row.grading_busy_until : null,
     grading_attempted_at: typeof row.grading_attempted_at === 'string' ? row.grading_attempted_at : null,
     unresolvable_reason: typeof row.unresolvable_reason === 'string' ? row.unresolvable_reason : null,
+    grading_status:
+      row.grading_status === 'needs_grading' ||
+      row.grading_status === 'graded' ||
+      row.grading_status === 'voided' ||
+      row.grading_status === 'auto'
+        ? row.grading_status
+        : 'auto',
   }
 }
 
@@ -114,6 +121,9 @@ function migrationHint(message: string): string {
   if (isMissingColumnError(message, 'resolution_price') || isMissingColumnError(message, 'resolution_session_date')) {
     return `${message} — apply migration 20260821000001_prediction_resolution_audit.sql; grading is not recorded without its audit trail`
   }
+  if (isMissingColumnError(message, 'grading_status')) {
+    return `${message} — apply migration 20260927000002_prediction_manual_grading.sql; freeform rounds need grading_status`
+  }
   return message
 }
 
@@ -129,20 +139,16 @@ export const supabaseGradingStore: GradingStore = {
   },
 
   async listDueUngraded(cap) {
-    // Over-fetch so operator_manual rows (skipped below) cannot hide a
-    // price-round that sits behind them in deadline order.
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
       .select(ROUND_COLUMNS)
       .lt('resolves_at', new Date().toISOString())
       .is('actual_outcome', null)
+      .eq('grading_status', 'auto')
       .order('resolves_at', { ascending: true })
-      .limit(Math.min(cap * 3, GRADING_SWEEP_SCAN_CAP * 3))
+      .limit(cap)
     if (error) throw new Error(migrationHint(error.message))
-    return ((data ?? []) as unknown as Record<string, unknown>[])
-      .map(asRecord)
-      .filter((row) => planForRound(row.instrument, row.category).source !== 'operator_manual')
-      .slice(0, cap)
+    return ((data ?? []) as unknown as Record<string, unknown>[]).map(asRecord)
   },
 
   /**
@@ -181,6 +187,7 @@ export const supabaseGradingStore: GradingStore = {
         resolution_price: outcome.resolutionPrice,
         resolution_session_date: outcome.resolutionSessionDate,
         resolved_at: nowIso,
+        grading_status: 'graded',
         unresolvable_reason: null,
         unresolvable_detail: null,
         grading_busy_until: null,
@@ -221,6 +228,25 @@ export const supabaseGradingStore: GradingStore = {
 
   async releaseClaim(roundId) {
     await supabaseAdmin.from('prediction_rounds').update({ grading_busy_until: null }).eq('id', roundId)
+  },
+
+  async parkForManual(roundId, nowIso) {
+    const { data: row } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select('proposition_text, category, resolves_at')
+      .eq('id', roundId)
+      .maybeSingle()
+    return parkRoundForManual(
+      roundId,
+      nowIso,
+      row
+        ? {
+            proposition: String((row as { proposition_text?: string }).proposition_text ?? ''),
+            category: String((row as { category?: string }).category ?? ''),
+            resolvesAt: String((row as { resolves_at?: string }).resolves_at ?? ''),
+          }
+        : undefined
+    )
   },
 
   /**
@@ -285,25 +311,18 @@ const engine = createGradingEngine({
  * THE ONLY TWO GRADING ENTRY POINTS. Neither takes a selector — see the
  * contract at the top of `./grading-core.ts`.
  *
- * `gradeRoundOnRead` is wrapped: an operator_manual round is refused here
- * BEFORE the engine claims or writes. GradingRejection has no "awaiting
- * operator" token; `not_due` writes nothing and leaves the row pending.
- * A card view therefore cannot stamp `not_price_instrument`.
+ * Freeform (no Twelve Data executor) rounds are parked as `needs_grading`
+ * inside the engine (`parkForManual`) — never price-graded, never retried
+ * against a feed. Telegram fires once on the first park.
  */
 export async function gradeRoundOnRead(roundId: string) {
-  const round = await supabaseGradingStore.loadRound(roundId)
-  if (round && planForRound(round.instrument, round.category).source === 'operator_manual') {
-    return {
-      outcome: 'rejected' as const,
-      roundId: round.id,
-      instrument: round.instrument,
-      reason: 'not_due' as const,
-      state: gradingStateOf(round, Date.now()),
-    }
-  }
   return engine.gradeRoundOnRead(roundId)
 }
-export const gradeAllDueRounds = engine.gradeAllDueRounds
+
+export async function gradeAllDueRounds() {
+  const report = await engine.gradeAllDueRounds()
+  return report
+}
 
 /**
  * Fire-and-forget grade-on-read for a page that lists MANY rounds (the record

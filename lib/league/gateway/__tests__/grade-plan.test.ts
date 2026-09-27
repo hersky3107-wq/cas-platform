@@ -115,9 +115,9 @@ describe('the reconciliation engine actually consults the plan (consumption proo
     expect(src).toContain('return fetchDailyCloses(instrument, startDate, endDate)')
   })
 
-  it('gradeRoundOnRead is wrapped so operator_manual is refused before the engine claims', () => {
-    expect(src).toContain("planForRound(round.instrument, round.category).source === 'operator_manual'")
+  it('gradeRoundOnRead parks freeform rounds instead of claiming a price feed', () => {
+    expect(src).toContain('parkRoundForManual')
     expect(src).toContain('return engine.gradeRoundOnRead(roundId)')
-    expect(src).toContain("reason: 'not_due'")
+    expect(src).toContain("grading_status: 'graded'")
   })
 })

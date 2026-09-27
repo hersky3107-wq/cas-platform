@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/db/supabase";
+import { AdminNav } from "@/app/admin/AdminNav";
 
 const OWNER_EMAIL = "hersky3107@gmail.com";
 
@@ -35,7 +36,7 @@ type AdminStory = {
  * decided, including the rounds it REFUSED to grade and why.
  */
 type GradingRoundResult = {
-  outcome: "graded" | "unresolvable" | "rejected" | "error";
+  outcome: "graded" | "unresolvable" | "queued_manual" | "rejected" | "error";
   roundId: string;
   instrument: string | null;
   direction?: "up" | "down";
@@ -51,6 +52,7 @@ type GradingReport = {
   scanned: number;
   graded: number;
   unresolvable: number;
+  queuedManual?: number;
   rejected: number;
   failed: number;
   childrenGraded: number;
@@ -334,12 +336,15 @@ export default function AdminPage() {
             <h1 className="text-2xl font-bold tracking-tight">ADMIN DASHBOARD</h1>
             <p className="mt-1 text-sm text-slate-400">Overview, credits, signups, and site announcement.</p>
           </div>
-          <a
-            href="/admin/platform-health"
-            className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/15"
-          >
-            Platform health →
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminNav />
+            <a
+              href="/admin/platform-health"
+              className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/15"
+            >
+              Platform health →
+            </a>
+          </div>
         </div>
 
         {dashError ? (
@@ -532,8 +537,9 @@ export default function AdminPage() {
               {gradingReport ? (
                 <span className="text-xs text-slate-400">
                   {gradingReport.scanned} scanned · {gradingReport.graded} graded ({gradingReport.childrenGraded}{" "}
-                  predictions) · {gradingReport.unresolvable} unresolvable · {gradingReport.rejected} rejected ·{" "}
-                  {gradingReport.failed} failed · {gradingReport.seriesCalls} price call(s)
+                  predictions) · {gradingReport.unresolvable} unresolvable · {gradingReport.queuedManual ?? 0} queued
+                  manual · {gradingReport.rejected} rejected · {gradingReport.failed} failed ·{" "}
+                  {gradingReport.seriesCalls} price call(s)
                   {gradingReport.truncated ? " · more remain, run again" : ""}
                 </span>
               ) : null}

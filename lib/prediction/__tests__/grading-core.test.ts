@@ -32,6 +32,7 @@ function dueRound(overrides: Partial<GradingRoundRecord> = {}): GradingRoundReco
     grading_busy_until: null,
     grading_attempted_at: null,
     unresolvable_reason: null,
+    grading_status: 'auto',
     ...overrides,
   }
 }
@@ -49,6 +50,7 @@ type FakeStore = GradingStore & {
     saveGraded: number
     saveUnresolvable: number
     releaseClaim: number
+    parkForManual: number
     gradeChildren: number
   }
   gradedWith: { roundId: string; outcome: ResolvedOutcome }[]
@@ -66,7 +68,7 @@ function createFakeStore(
   opts: { failSaveGraded?: boolean; yieldOnLoad?: boolean } = {}
 ): FakeStore {
   const map = new Map(rows.map((r) => [r.id, { ...r }]))
-  const calls = { claims: 0, saveGraded: 0, saveUnresolvable: 0, releaseClaim: 0, gradeChildren: 0 }
+  const calls = { claims: 0, saveGraded: 0, saveUnresolvable: 0, releaseClaim: 0, parkForManual: 0, gradeChildren: 0 }
   const gradedWith: { roundId: string; outcome: ResolvedOutcome }[] = []
   const unresolvableWith: { roundId: string; reason: string; detail: string }[] = []
 
@@ -84,7 +86,13 @@ function createFakeStore(
 
     async listDueUngraded(cap) {
       return [...map.values()]
-        .filter((r) => r.actual_outcome === null && Date.parse(r.resolves_at) < NOW)
+        .filter(
+          (r) =>
+            r.actual_outcome === null &&
+            Date.parse(r.resolves_at) < NOW &&
+            r.grading_status !== 'needs_grading' &&
+            r.grading_status !== 'voided'
+        )
         .sort((a, b) => a.resolves_at.localeCompare(b.resolves_at))
         .slice(0, cap)
         .map((r) => ({ ...r }))
@@ -129,6 +137,19 @@ function createFakeStore(
       calls.releaseClaim += 1
       const row = map.get(roundId)
       if (row) row.grading_busy_until = null
+    },
+
+    async parkForManual(roundId, nowIso) {
+      calls.parkForManual += 1
+      const row = map.get(roundId)
+      if (!row || row.actual_outcome !== null) return { newlyQueued: false }
+      if (row.grading_status === 'needs_grading' || row.grading_status === 'voided' || row.grading_status === 'graded') {
+        return { newlyQueued: false }
+      }
+      row.grading_status = 'needs_grading'
+      row.grading_attempted_at = nowIso
+      row.grading_busy_until = null
+      return { newlyQueued: true }
     },
 
     async gradeChildren() {
@@ -313,7 +334,8 @@ describe('sweep — every due round, one series call per instrument', () => {
 
     expect(report.graded).toBe(2)
     expect(report.childrenGraded).toBe(80)
-    expect(report.unresolvable).toBe(3)
+    expect(report.unresolvable).toBe(2)
+    expect(report.queuedManual).toBe(1)
     expect(report.failed).toBe(0)
     expect(report.truncated).toBe(false)
 
@@ -321,8 +343,9 @@ describe('sweep — every due round, one series call per instrument', () => {
     expect(byId.get('aapl-up')).toMatchObject({ outcome: 'graded', direction: 'up', resolutionPrice: 105 })
     expect(byId.get('aapl-down')).toMatchObject({ outcome: 'graded', direction: 'down', resolutionPrice: 105 })
     expect(byId.get('no-anchor')).toMatchObject({ outcome: 'unresolvable', reason: 'missing_anchor' })
-    expect(byId.get('sports')).toMatchObject({ outcome: 'unresolvable', reason: 'not_price_instrument' })
+    expect(byId.get('sports')).toMatchObject({ outcome: 'queued_manual', newlyQueued: true })
     expect(byId.get('tie')).toMatchObject({ outcome: 'unresolvable', reason: 'equal_close' })
+    expect(store.rows.get('sports')?.grading_status).toBe('needs_grading')
 
     // BATCHING: two AAPL rounds share ONE call; the sports handle and the
     // anchor-less round cost nothing.
@@ -350,11 +373,13 @@ describe('sweep — every due round, one series call per instrument', () => {
     await engine.gradeAllDueRounds()
     const second = await engine.gradeAllDueRounds()
 
-    // The two graded rounds are gone from the scan; the unresolvable ones stay
-    // visible and are retried (the sweep is not throttled), still refusing.
+    // Graded rounds are gone; parked freeform rounds are not re-scanned;
+    // unresolvable price rounds stay visible and are retried.
     expect(second.graded).toBe(0)
-    expect(second.scanned).toBe(3)
-    expect(second.unresolvable).toBe(3)
+    expect(second.queuedManual).toBe(0)
+    expect(second.scanned).toBe(2)
+    expect(second.unresolvable).toBe(2)
+    expect(store.calls.parkForManual).toBe(1)
   })
 
   it('reports a feed failure per round instead of grading against nothing', async () => {
@@ -405,5 +430,28 @@ describe('planSeriesFetches', () => {
       (instrument) => !instrument.startsWith('MATCH:')
     )
     expect(plan.size).toBe(0)
+  })
+})
+
+describe('grade-on-read — freeform park', () => {
+  it('parks a due MATCH handle as needs_grading instead of not_price_instrument', async () => {
+    const store = createFakeStore([dueRound({ id: 'sports', instrument: 'MATCH:KOR-JPN', category: 'sports' })])
+    const { engine, series } = engineFor(store)
+    const result = await engine.gradeRoundOnRead('sports')
+    expect(result.outcome).toBe('queued_manual')
+    if (result.outcome === 'queued_manual') expect(result.newlyQueued).toBe(true)
+    expect(store.rows.get('sports')?.grading_status).toBe('needs_grading')
+    expect(store.calls.saveUnresolvable).toBe(0)
+    expect(series.requests).toHaveLength(0)
+  })
+
+  it('does not re-park a round already waiting for admin', async () => {
+    const store = createFakeStore([
+      dueRound({ id: 'sports', instrument: 'MATCH:KOR-JPN', category: 'sports', grading_status: 'needs_grading' }),
+    ])
+    const { engine } = engineFor(store)
+    const result = await engine.gradeRoundOnRead('sports')
+    expect(result).toMatchObject({ outcome: 'queued_manual', newlyQueued: false })
+    expect(store.calls.claims).toBe(0)
   })
 })

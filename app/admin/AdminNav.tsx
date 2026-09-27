@@ -1,0 +1,44 @@
+'use client'
+
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+
+export function AdminNav() {
+  const [pending, setPending] = useState<number | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/admin/league/grade/count', { credentials: 'include' })
+        const body = (await res.json().catch(() => null)) as { pendingCount?: number }
+        if (res.ok && typeof body?.pendingCount === 'number') setPending(body.pendingCount)
+      } catch {
+        setPending(null)
+      }
+    })()
+  }, [])
+
+  return (
+    <nav className="flex flex-wrap items-center gap-2 text-sm">
+      <Link href="/admin" className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-slate-200 hover:bg-white/8">
+        Dashboard
+      </Link>
+      <Link
+        href="/admin/league/grade"
+        className="inline-flex items-center gap-2 rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-slate-200 hover:bg-white/8"
+      >
+        채점
+        {pending !== null && pending > 0 ? (
+          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
+            채점 대기 {pending}건
+          </span>
+        ) : (
+          <span className="text-[11px] text-slate-500">채점 대기 0건</span>
+        )}
+      </Link>
+      <Link href="/admin/platform-health" className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-slate-200 hover:bg-white/8">
+        Health
+      </Link>
+    </nav>
+  )
+}

@@ -99,3 +99,6 @@ export const LEAGUE_DEEP_OPEN_MODULE = 'league_deep_open'
 
 /** credit_logs.module for a deep-debate deduction. */
 export const LEAGUE_DEEP_DEBATE_MODULE = 'league_deep_debate'
+
+/** credit_logs.module for a voided freeform round refund. */
+export const LEAGUE_VOID_REFUND_MODULE = 'league_void_refund'

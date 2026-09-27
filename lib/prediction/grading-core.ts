@@ -49,6 +49,8 @@ import { GRADING_CLAIM_MS, gradingStateOf, isReadCooldownActive, type GradingSta
 export const GRADING_SWEEP_SCAN_CAP = 500
 
 /** The round fields the trigger layer reads. Grading inputs come from `./resolution.ts`. */
+export type GradingStatus = 'auto' | 'needs_grading' | 'graded' | 'voided'
+
 export type GradingRoundRecord = {
   id: string
   instrument: string
@@ -61,6 +63,8 @@ export type GradingRoundRecord = {
   grading_busy_until: string | null
   grading_attempted_at: string | null
   unresolvable_reason: string | null
+  /** Default 'auto'. Freeform rounds are parked as 'needs_grading'. */
+  grading_status?: GradingStatus
 }
 
 /** Why a grading attempt was refused BEFORE any price data was considered. */
@@ -87,6 +91,13 @@ export type RoundGradingResult =
       childrenGraded: number
     }
   | { outcome: 'unresolvable'; roundId: string; instrument: string; reason: UnresolvableReason; detail: string }
+  | {
+      outcome: 'queued_manual'
+      roundId: string
+      instrument: string
+      /** True only on the first park — later sweeps/reads are no-ops. */
+      newlyQueued: boolean
+    }
   | { outcome: 'rejected'; roundId: string; instrument: string | null; reason: GradingRejection; state: GradingState | null }
   | { outcome: 'error'; roundId: string; instrument: string; error: string }
 
@@ -94,6 +105,7 @@ export type GradingSweepReport = {
   scanned: number
   graded: number
   unresolvable: number
+  queuedManual: number
   rejected: number
   failed: number
   childrenGraded: number
@@ -125,6 +137,12 @@ export type GradingStore = {
   saveUnresolvable(roundId: string, reason: UnresolvableReason, detail: string, nowIso: string): Promise<void>
   /** Releases the claim without recording anything (transient failure). */
   releaseClaim(roundId: string): Promise<void>
+  /**
+   * Parks a due non-price round for admin YES/NO/VOID. Idempotent: a row
+   * already in needs_grading / voided / graded is a no-op. Must not fetch
+   * any market API.
+   */
+  parkForManual(roundId: string, nowIso: string): Promise<{ newlyQueued: boolean }>
   /** Grades the round's up/down children. Returns how many rows were graded. */
   gradeChildren(roundId: string, direction: ResolutionDirection): Promise<number>
 }
@@ -220,7 +238,14 @@ export function createGradingEngine(deps: GradingDeps) {
     const input = toResolutionInput(round)
 
     if (!deps.isPriceInstrument(round.instrument)) {
-      return recordUnresolvable(round, 'not_price_instrument', `${round.instrument} has no price symbol mapping`)
+      const parked = await deps.store.parkForManual(round.id, nowDate().toISOString())
+      await deps.store.releaseClaim(round.id)
+      return {
+        outcome: 'queued_manual',
+        roundId: round.id,
+        instrument: round.instrument,
+        newlyQueued: parked.newlyQueued,
+      }
     }
 
     // Refuse before spending a feed credit on a round that can never be graded.
@@ -297,6 +322,17 @@ export function createGradingEngine(deps: GradingDeps) {
 
     const state = gradingStateOf(round, nowDate().getTime())
     if (state === 'graded') return rejected(round.id, round.instrument, 'already_graded', state)
+    if (round.grading_status === 'voided') {
+      return rejected(round.id, round.instrument, 'already_graded', state)
+    }
+    if (round.grading_status === 'needs_grading') {
+      return {
+        outcome: 'queued_manual',
+        roundId: round.id,
+        instrument: round.instrument,
+        newlyQueued: false,
+      }
+    }
     if (state === 'not_due') return rejected(round.id, round.instrument, 'not_due', state)
     if (state === 'grading') return rejected(round.id, round.instrument, 'claim_held', state)
     if (isReadCooldownActive(round, nowDate().getTime())) {
@@ -342,6 +378,7 @@ export function createGradingEngine(deps: GradingDeps) {
       scanned: due.length,
       graded: rounds.filter((r) => r.outcome === 'graded').length,
       unresolvable: rounds.filter((r) => r.outcome === 'unresolvable').length,
+      queuedManual: rounds.filter((r) => r.outcome === 'queued_manual').length,
       rejected: rounds.filter((r) => r.outcome === 'rejected').length,
       failed: rounds.filter((r) => r.outcome === 'error').length,
       childrenGraded: rounds.reduce((sum, r) => sum + (r.outcome === 'graded' ? r.childrenGraded : 0), 0),
