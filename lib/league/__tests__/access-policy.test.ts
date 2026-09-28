@@ -9,6 +9,11 @@ import {
   visibleCategoriesFor,
 } from '../access-policy'
 import {
+  decodePoliticsInstrument,
+  encodePoliticsInstrument,
+} from '../gateway/adapters/politics-catalog'
+import { buildPoliticsRankedRoundInput } from '../gateway/adapters/politics-compose'
+import {
   decodeSportsInstrument,
   encodeSportsInstrument,
 } from '../gateway/adapters/sports-catalog'
@@ -234,6 +239,47 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
     })
     expect(created?.proposition_text).toContain('Los Angeles Dodgers')
     expect(created?.proposition_text).toContain('San Francisco Giants')
+  })
+
+  it('accepts valid ELECTION:... picks without a catalog chip', () => {
+    const fixture = encodePoliticsInstrument({
+      jurisdiction: 'US',
+      office: 'governor',
+      cycle: '2026',
+      district: 'GA',
+      candidate: 'Andre Dickens',
+      pollCloseMs: Date.parse('2026-11-03T01:00:00.000Z'),
+    })
+
+    const gate = gatePublicGenerateInstrument(fixture, { isAdmin: false, jurisdiction: { ipCountry: 'US' } }, '3m')
+    expect(gate).toEqual({
+      ok: true,
+      instrument: fixture,
+      category: 'politics_election',
+      horizon: '3m',
+    })
+
+    expect(
+      gatePublicGenerateInstrument('ELECTION:not:enough:parts', { isAdmin: false, jurisdiction: { ipCountry: 'US' } })
+    ).toEqual({
+      ok: false,
+      status: 400,
+      code: 'unknown_instrument',
+    })
+
+    const created = buildPoliticsRankedRoundInput(fixture, '3m')
+    expect(created).toMatchObject({
+      category: 'politics_election',
+      instrument: fixture,
+      horizon: '3m',
+      proposition_kind: 'binary_subject_outcome',
+      subject_label: 'Andre Dickens',
+      observation_shape: 'name_match',
+      item_type: 'ranked',
+      cache_key: `politics|${fixture}`,
+    })
+    expect(decodePoliticsInstrument(fixture)?.candidate).toBe('Andre Dickens')
+    expect(created?.proposition_text).toContain('Andre Dickens')
   })
 
   it('generate-stream charges only after resolveTarget, so a failed gate is zero cost', () => {

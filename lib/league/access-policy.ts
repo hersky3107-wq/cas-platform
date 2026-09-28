@@ -2,6 +2,7 @@ import type { PredictionCategory } from '@/lib/prediction/categories'
 import type { LeagueTier } from '@/lib/league/roster'
 import type { RateLimitRule } from '@/lib/rate-limit'
 import { findCatalogInstrument } from './catalog'
+import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
 import { isUiHorizon, type UiHorizon } from './horizon'
@@ -110,6 +111,14 @@ export function gatePublicGenerateInstrument(
       return { ok: false, status: 403, code: 'jurisdiction_blocked' }
     }
     return { ok: true, instrument, category: 'sports', horizon }
+  }
+
+  const electionParts = decodePoliticsInstrument(instrument)
+  if (electionParts) {
+    if (!viewer.isAdmin && !isCategoryAllowed('politics_election', viewer.jurisdiction)) {
+      return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+    }
+    return { ok: true, instrument, category: 'politics_election', horizon }
   }
 
   const found = findCatalogInstrument(instrument)
