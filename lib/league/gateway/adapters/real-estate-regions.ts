@@ -77,8 +77,8 @@ const KR_SALE = {
 }
 
 export const PROPERTY_REGIONS: readonly PropertyRegion[] = [
-  region({ country: 'KR', code: 'NAT', nameKo: '전국', nameEn: 'Korea', aliases: ['전국', '한국', '대한민국'], chip: true, ...KR_SALE }),
-  region({ country: 'KR', code: '11', nameKo: '서울', nameEn: 'Seoul', aliases: ['서울', '서울특별시'], chip: true, ...KR_SALE }),
+  region({ country: 'KR', code: 'NAT', nameKo: '전국', nameEn: 'Korea', aliases: ['전국', '한국', '대한민국', '한국전국'], chip: true, ...KR_SALE }),
+  region({ country: 'KR', code: '11', nameKo: '서울', nameEn: 'Seoul', aliases: ['서울', '서울특별시', '서울전체', '서울시전체'], chip: true, ...KR_SALE }),
   region({ country: 'KR', code: '26', nameKo: '부산', nameEn: 'Busan', aliases: ['부산', '부산광역시'], ...KR_SALE }),
   region({ country: 'KR', code: '27', nameKo: '대구', nameEn: 'Daegu', aliases: ['대구', '대구광역시'], ...KR_SALE }),
   region({ country: 'KR', code: '28', nameKo: '인천', nameEn: 'Incheon', aliases: ['인천', '인천광역시'], ...KR_SALE }),
@@ -153,7 +153,7 @@ export const PROPERTY_REGIONS: readonly PropertyRegion[] = [
     code: 'CSUSHPINSA',
     nameKo: '미국',
     nameEn: 'United States',
-    aliases: ['미국', '미국부동산', 'us', 'usa', 'america', 'national'],
+    aliases: ['미국', '미국부동산', '미국전국', 'us', 'usa', 'america', 'national', 'usnational'],
     chip: true,
     cadence: 'month',
     lagMonths: 2,
@@ -173,7 +173,7 @@ export const PROPERTY_REGIONS: readonly PropertyRegion[] = [
     code: 'K02000001',
     nameKo: '영국',
     nameEn: 'United Kingdom',
-    aliases: ['영국', 'uk', 'unitedkingdom'],
+    aliases: ['영국', '영국전국', 'uk', 'unitedkingdom'],
     chip: true,
     ...UK_HPI,
   }),
@@ -189,7 +189,7 @@ export const PROPERTY_REGIONS: readonly PropertyRegion[] = [
   region({ country: 'UK', code: 'E09000028', nameKo: '사우스워크', nameEn: 'Southwark', aliases: ['사우스워크', 'southwark'], ...UK_HPI }),
   region({ country: 'UK', code: 'E09000030', nameKo: '타워햄릿', nameEn: 'Tower Hamlets', aliases: ['타워햄릿'], ...UK_HPI }),
 
-  region({ country: 'JP', code: 'NAT', nameKo: '일본', nameEn: 'Japan', aliases: ['일본', 'japan'], chip: true, ...JP_HPI }),
+  region({ country: 'JP', code: 'NAT', nameKo: '일본', nameEn: 'Japan', aliases: ['일본', '일본전국', 'japan'], chip: true, ...JP_HPI }),
   region({ country: 'JP', code: 'HOKKAIDO', nameKo: '홋카이도', nameEn: 'Hokkaido', aliases: ['홋카이도', 'hokkaido'], ...JP_HPI }),
   region({ country: 'JP', code: 'TOHOKU', nameKo: '도호쿠', nameEn: 'Tohoku', aliases: ['도호쿠', 'tohoku'], ...JP_HPI }),
   region({ country: 'JP', code: 'KANTO', nameKo: '간토', nameEn: 'Kanto', aliases: ['간토', 'kanto'], ...JP_HPI }),
@@ -206,7 +206,7 @@ export const PROPERTY_REGIONS: readonly PropertyRegion[] = [
   region({ country: 'JP', code: '23', nameKo: '아이치현', nameEn: 'Aichi', aliases: ['아이치', '아이치현', 'aichi'], ...JP_HPI }),
   region({ country: 'JP', code: '27', nameKo: '오사카부', nameEn: 'Osaka', aliases: ['오사카', '오사카부', 'osaka'], ...JP_HPI }),
 
-  region({ country: 'AU', code: 'AUS', nameKo: '호주', nameEn: 'Australia', aliases: ['호주', 'australia', '호주부동산'], chip: true, ...AU_RPPI }),
+  region({ country: 'AU', code: 'AUS', nameKo: '호주', nameEn: 'Australia', aliases: ['호주', '호주전국', '호주부동산', 'australia'], chip: true, ...AU_RPPI }),
   region({ country: 'AU', code: 'SYD', nameKo: '시드니', nameEn: 'Sydney', aliases: ['시드니', 'sydney'], chip: true, ...AU_RPPI }),
   region({ country: 'AU', code: 'MEL', nameKo: '멜버른', nameEn: 'Melbourne', aliases: ['멜버른', 'melbourne'], chip: true, ...AU_RPPI }),
   region({ country: 'AU', code: 'BRI', nameKo: '브리즈번', nameEn: 'Brisbane', aliases: ['브리즈번', 'brisbane'], ...AU_RPPI }),
@@ -322,4 +322,90 @@ export function propertyRegion(country: string, code: string): PropertyRegion | 
 
 export function chipPropertyRegions(): readonly PropertyRegion[] {
   return PROPERTY_REGIONS.filter((row) => row.chip)
+}
+
+const US_CITY_ORDER = [
+  'NYXRNSA',
+  'LXXRNSA',
+  'MIXRNSA',
+  'CHXRNSA',
+  'SFXRNSA',
+  'BOXRNSA',
+  'SEXRNSA',
+  'WDXRNSA',
+  'SDXRNSA',
+  'LVXRNSA',
+  'DNXRNSA',
+  'ATXRNSA',
+  'DAXRNSA',
+  'PHXRNSA',
+  'POXRNSA',
+  'TPXRNSA',
+  'MNXRNSA',
+  'DEXRNSA',
+  'CRXRNSA',
+  'CEXRNSA',
+] as const
+
+function byCodeOrder(rows: PropertyRegion[], order: readonly string[]): PropertyRegion[] {
+  const rank = new Map(order.map((code, i) => [code, i]))
+  return [...rows].sort((a, b) => (rank.get(a.code) ?? 99) - (rank.get(b.code) ?? 99))
+}
+
+function seoulGu(): PropertyRegion[] {
+  return PROPERTY_REGIONS.filter((row) => row.country === 'KR' && /^\d{5}$/.test(row.code) && row.code.startsWith('11'))
+}
+
+function sido(): PropertyRegion[] {
+  return PROPERTY_REGIONS.filter((row) => row.country === 'KR' && /^\d{2}$/.test(row.code))
+}
+
+function caseShillerCitiesOnly(): PropertyRegion[] {
+  const codes = new Set<string>(US_CITY_ORDER)
+  return PROPERTY_REGIONS.filter((row) => row.country === 'US' && codes.has(row.code))
+}
+
+/** Country/metro queries that should not auto-open the national print. */
+export function broadPropertyChildren(region: PropertyRegion): PropertyRegion[] | null {
+  const key = `${region.country}:${region.code}`
+  if (key === 'US:CSUSHPINSA') return [...byCodeOrder(caseShillerCitiesOnly(), US_CITY_ORDER), region]
+  if (key === 'JP:NAT') {
+    const codes = new Set(['13', '27', '23'])
+    const cities = PROPERTY_REGIONS.filter((row) => row.country === 'JP' && codes.has(row.code))
+    return [...byCodeOrder(cities, ['13', '27', '23']), region]
+  }
+  if (key === 'AU:AUS') {
+    const caps = PROPERTY_REGIONS.filter((row) => row.country === 'AU' && row.code !== 'AUS')
+    return [...caps, region]
+  }
+  if (key === 'UK:K02000001') {
+    const codes = new Set(['E12000007', 'E92000001', 'W92000004', 'S92000003', 'N92000002'])
+    const kids = PROPERTY_REGIONS.filter((row) => row.country === 'UK' && codes.has(row.code))
+    return [...byCodeOrder(kids, ['E12000007', 'E92000001', 'S92000003', 'W92000004', 'N92000002']), region]
+  }
+  if (key === 'KR:NAT') return [...sido().sort((a, b) => a.code.localeCompare(b.code)), region]
+  if (key === 'KR:11') {
+    const prefer = ['11680', '11650', '11710', '11170', '11440']
+    return [...byCodeOrder(seoulGu(), prefer), region]
+  }
+  if (key === 'KR:26') {
+    const kids = PROPERTY_REGIONS.filter((row) => row.country === 'KR' && /^\d{5}$/.test(row.code) && row.code.startsWith('26'))
+    return kids.length > 0 ? [...kids, region] : null
+  }
+  if (key === 'KR:28') {
+    const kids = PROPERTY_REGIONS.filter((row) => row.country === 'KR' && /^\d{5}$/.test(row.code) && row.code.startsWith('28'))
+    return kids.length > 0 ? [...kids, region] : null
+  }
+  return null
+}
+
+export function broadPickLabel(row: PropertyRegion, parent: PropertyRegion): string {
+  if (row.country !== parent.country || row.code !== parent.code) return row.nameKo
+  if (parent.country === 'KR' && parent.code === '11') return '서울 전체'
+  if (parent.country === 'KR' && parent.code === 'NAT') return '한국 전국'
+  if (parent.country === 'US') return '미국 전국'
+  if (parent.country === 'JP') return '일본 전국'
+  if (parent.country === 'UK') return '영국 전국'
+  if (parent.country === 'AU') return '호주 전국'
+  return `${parent.nameKo} 전체`
 }

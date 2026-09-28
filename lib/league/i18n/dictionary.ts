@@ -25,12 +25,12 @@ export type LeagueDirectionWord = 'up' | 'down' | 'flat'
 /**
  * Outcome-word family for binary_subject_outcome side pairs, picked from the
  * round's own category by `lib/league/side-labels.ts` (sports → 'win',
- * politics_election → 'elected', entertainment → 'awarded', tech → 'achieved',
- * else 'achieved').
+ * politics_election → 'elected', entertainment → 'awarded', real_estate → 'indexRise',
+ * tech → 'achieved', else 'achieved').
  * The pair is an i18n KEY resolved per locale — never display text stored on
  * the round.
  */
-export type SubjectOutcomeFamilyKey = 'win' | 'elected' | 'awarded' | 'achieved'
+export type SubjectOutcomeFamilyKey = 'win' | 'elected' | 'awarded' | 'achieved' | 'indexRise'
 
 export type LeagueUiPack = {
   direction: {
@@ -224,6 +224,8 @@ export type LeagueUiPack = {
     long: string
     /** Extra line ONLY on real_estate cards — statistical reference, not an appraisal. */
     realEstate: string
+    /** Extra line ONLY on real_estate cards — no complexes / listings / addresses. */
+    realEstateScope: string
     /** Extra-tier entertainment / experimental disclaimer — always rendered. */
     extraExperimental: string
     /** Extra line ONLY on sports cards — informational analysis, not gambling advice. */
@@ -396,6 +398,11 @@ export type LeagueUiPack = {
     liveSecondary: string
     /** Gold/silver/metals category note: spot price in USD/oz and local/domestic price differences. */
     metalsSpotNote: string
+    /** real_estate header: publication cadence instead of 1d/1m. */
+    realEstateHorizonMonthly: string
+    realEstateHorizonQuarterly: string
+    /** `daysLeft` > 0 remaining, 0 today, < 0 publication date already passed. */
+    realEstateGrade: (pubDate: string, daysLeft: number) => string
   }
   modelList: {
     title: (count: number) => string
@@ -854,6 +861,10 @@ const en: LeagueUiPack = {
         badge: { yes: 'Achieves it', no: 'Falls short' },
         answer: { yes: (s) => `${s} achieves it`, no: (s) => `${s} falls short` },
       },
+      indexRise: {
+        badge: { yes: 'Rise', no: 'Fall' },
+        answer: { yes: (s) => `${s} rise`, no: (s) => `${s} fall` },
+      },
     },
     threshold: {
       badge: { above: 'Above', below: 'Below' },
@@ -904,6 +915,7 @@ const en: LeagueUiPack = {
     long: 'These are AI model opinions shown for information and entertainment purposes only. They are not investment, financial, legal, or professional advice, and no model here is a licensed advisor. Markets are unpredictable and AI models can be — and often are — wrong. You are solely responsible for any decision you make.',
     realEstate:
       'Statistical reference only — not a formal appraisal. Region- and instrument-level outlook; not a valuation of any specific property.',
+    realEstateScope: 'Specific complexes, listings, and addresses are not predicted. Official regional indexes only.',
     extraExperimental: 'For entertainment and experiment only — not a basis for investment decisions.',
     sports: 'Informational analysis only. This is not gambling advice.',
   },
@@ -1061,6 +1073,14 @@ const en: LeagueUiPack = {
     liveSecondary: 'now',
     metalsSpotNote:
       'Based on international spot prices (USD/oz). Local retail prices may differ due to exchange rates, taxes, and dealer margins.',
+    realEstateHorizonMonthly: 'Monthly print',
+    realEstateHorizonQuarterly: 'Quarterly print',
+    realEstateGrade: (pubDate, daysLeft) =>
+      daysLeft > 0
+        ? `Grades on the ${pubDate} release (${daysLeft} days left)`
+        : daysLeft === 0
+          ? `Grades on the ${pubDate} release (today)`
+          : `Grades on the ${pubDate} release`,
   },
   modelList: {
     title: (n) => `Models (${n})`,
@@ -1412,6 +1432,10 @@ const ko: LeagueUiPack = {
         badge: { yes: '실현', no: '불발' },
         answer: { yes: (s) => `${s} 실현`, no: (s) => `${s} 불발` },
       },
+      indexRise: {
+        badge: { yes: '상승', no: '하락' },
+        answer: { yes: (s) => `${s} 상승`, no: (s) => `${s} 하락` },
+      },
     },
     threshold: {
       badge: { above: '상회', below: '하회' },
@@ -1461,6 +1485,7 @@ const ko: LeagueUiPack = {
     short: '정보 제공 목적일 뿐 투자 조언이 아닙니다. 모든 결정의 책임은 본인에게 있습니다.',
     long: '본 콘텐츠는 여러 AI 모델의 의견을 정보 및 오락 목적으로 제공하는 것이며, 투자·금융·법률·전문 자문이 아닙니다. 여기 등장하는 어떤 모델도 인가받은 자문가가 아닙니다. 시장은 예측할 수 없으며 AI 모델의 예측은 자주, 그리고 크게 틀릴 수 있습니다. 이를 근거로 내리는 모든 결정의 책임은 전적으로 본인에게 있습니다.',
     realEstate: '통계적 참고용이며 감정평가가 아닙니다. 개별 부동산 가치 산정이 아닙니다.',
+    realEstateScope: '특정 단지·매물·주소는 예측하지 않습니다. 지역 공식 지수만 다룹니다.',
     extraExperimental: '오락·실험 목적, 투자 판단 근거 아님',
     sports: '정보성 분석입니다. 도박을 권유하지 않습니다.',
   },
@@ -1617,6 +1642,14 @@ const ko: LeagueUiPack = {
     liveSecondary: '현재',
     metalsSpotNote:
       '국제 현물 시세(USD/온스) 기준입니다. 국내 금값은 환율·부가세·유통 마진으로 이 시세와 다를 수 있습니다.',
+    realEstateHorizonMonthly: '월간 공표',
+    realEstateHorizonQuarterly: '분기 공표',
+    realEstateGrade: (pubDate, daysLeft) =>
+      daysLeft > 0
+        ? `채점: ${pubDate} 공표분 기준 (${daysLeft}일 남음)`
+        : daysLeft === 0
+          ? `채점: ${pubDate} 공표분 기준 (오늘)`
+          : `채점: ${pubDate} 공표분 기준`,
   },
   modelList: {
     title: (n) => `모델 (${n}개)`,
@@ -1965,6 +1998,10 @@ const ja: LeagueUiPack = {
         badge: { yes: '実現', no: '実現せず' },
         answer: { yes: (s) => `${s}が実現する`, no: (s) => `${s}は実現しない` },
       },
+      indexRise: {
+        badge: { yes: '上昇', no: '下落' },
+        answer: { yes: (s) => `${s} 上昇`, no: (s) => `${s} 下落` },
+      },
     },
     threshold: {
       badge: { above: '上回る', below: '下回る' },
@@ -2014,6 +2051,7 @@ const ja: LeagueUiPack = {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
     long: 'この内容は複数のAIモデルの見解を情報提供・娯楽目的で示したものであり、投資・金融・法律・専門的な助言ではありません。ここに登場するモデルはいずれも認可を受けたアドバイザーではありません。市場は予測不可能であり、AIモデルの予測は誤ることが多々あります。これに基づく判断の責任はすべてご自身が負うものとします。',
     realEstate: '統計的な参考情報であり、鑑定評価ではありません。個別不動産の価格算定ではありません。',
+    realEstateScope: '特定の団地・物件・住所は予測しません。地域の公式指数のみを扱います。',
     extraExperimental: '娯楽・実験目的であり、投資判断の根拠ではありません。',
     sports: '情報分析です。賭博の勧誘ではありません。',
   },
@@ -2170,6 +2208,14 @@ const ja: LeagueUiPack = {
     liveSecondary: '現在',
     metalsSpotNote:
       '国際現物相場（USD/オンス）基準です。国内の店頭価格は為替レート・消費税・流通マージン等により異なる場合があります。',
+    realEstateHorizonMonthly: '月次公表',
+    realEstateHorizonQuarterly: '四半期公表',
+    realEstateGrade: (pubDate, daysLeft) =>
+      daysLeft > 0
+        ? `採点: ${pubDate} 公表分（残り${daysLeft}日）`
+        : daysLeft === 0
+          ? `採点: ${pubDate} 公表分（本日）`
+          : `採点: ${pubDate} 公表分`,
   },
   modelList: {
     title: (n) => `モデル（${n}）`,
@@ -2515,6 +2561,10 @@ const zhTW: LeagueUiPack = {
         badge: { yes: '達成', no: '未達成' },
         answer: { yes: (s) => `${s} 達成`, no: (s) => `${s} 未達成` },
       },
+      indexRise: {
+        badge: { yes: '上漲', no: '下跌' },
+        answer: { yes: (s) => `${s} 上漲`, no: (s) => `${s} 下跌` },
+      },
     },
     threshold: {
       badge: { above: '高於', below: '低於' },
@@ -2564,6 +2614,7 @@ const zhTW: LeagueUiPack = {
     short: '僅供參考，非投資建議。所有決定的責任由您自行承擔。',
     long: '本內容為多個 AI 模型的意見，僅供資訊與娛樂用途，並非投資、財務、法律或專業建議；此處任何模型皆非持牌顧問。市場無法預測，AI 模型的判斷經常出錯。您必須自行承擔依此做出之任何決定的全部責任。',
     realEstate: '僅供統計參考，並非正式估價。僅涵蓋區域／標的層級，不對個別不動產估價。',
+    realEstateScope: '不預測特定社區、物件或地址。僅涵蓋地區官方指數。',
     extraExperimental: '僅供娛樂與實驗，不得作為投資判斷依據。',
     sports: '僅供資訊分析，並非賭博勸誘。',
   },
@@ -2717,6 +2768,14 @@ const zhTW: LeagueUiPack = {
     windowNoAnchor: '本預測未記錄起始價格，因此不顯示即時報價——用那個數字解讀預測會誤導。',
     liveSecondary: '目前',
     metalsSpotNote: '以國際現貨行情（USD/盎司）為準。各地零售金價可能因匯率、稅賦及經銷利差而有所差異。',
+    realEstateHorizonMonthly: '每月公布',
+    realEstateHorizonQuarterly: '每季公布',
+    realEstateGrade: (pubDate, daysLeft) =>
+      daysLeft > 0
+        ? `評分：${pubDate} 公布分（剩 ${daysLeft} 天）`
+        : daysLeft === 0
+          ? `評分：${pubDate} 公布分（今天）`
+          : `評分：${pubDate} 公布分`,
   },
   modelList: {
     title: (n) => `模型（${n}）`,
@@ -3063,6 +3122,10 @@ const fr: LeagueUiPack = {
         badge: { yes: 'Réussit', no: 'Échoue' },
         answer: { yes: (s) => `${s} y parvient`, no: (s) => `${s} n\u2019y parvient pas` },
       },
+      indexRise: {
+        badge: { yes: 'Hausse', no: 'Baisse' },
+        answer: { yes: (s) => `${s} en hausse`, no: (s) => `${s} en baisse` },
+      },
     },
     threshold: {
       badge: { above: 'Au-dessus', below: 'En dessous' },
@@ -3113,6 +3176,7 @@ const fr: LeagueUiPack = {
     long: 'Ce contenu présente les avis de plusieurs modèles d\u2019IA à titre purement informatif et de divertissement. Il ne s\u2019agit pas d\u2019un conseil en investissement, financier, juridique ou professionnel, et aucun modèle ici n\u2019est un conseiller agréé. Les marchés sont imprévisibles et les modèles d\u2019IA peuvent se tromper, et se trompent souvent. Vous assumez l\u2019entière responsabilité de toute décision prise sur cette base.',
     realEstate:
       'Référence statistique uniquement — pas une expertise immobilière. Horizon régional ou d\u2019instrument, pas une évaluation d\u2019un bien précis.',
+    realEstateScope: 'Les complexes, annonces et adresses précises ne sont pas prédits. Index régionaux officiels uniquement.',
     extraExperimental: 'À des fins de divertissement et d’expérience uniquement — pas un fondement de décision d’investissement.',
     sports: 'Analyse informative uniquement. Ceci n’est pas une incitation au jeu.',
   },
@@ -3271,6 +3335,14 @@ const fr: LeagueUiPack = {
     liveSecondary: 'actuel',
     metalsSpotNote:
       'Basé sur les cours internationaux au comptant (USD/once). Les prix de détail locaux peuvent différer en raison des taux de change, taxes et marges de distribution.',
+    realEstateHorizonMonthly: 'Parution mensuelle',
+    realEstateHorizonQuarterly: 'Parution trimestrielle',
+    realEstateGrade: (pubDate, daysLeft) =>
+      daysLeft > 0
+        ? `Notation : parution du ${pubDate} (J-${daysLeft})`
+        : daysLeft === 0
+          ? `Notation : parution du ${pubDate} (aujourd’hui)`
+          : `Notation : parution du ${pubDate}`,
   },
   modelList: {
     title: (n) => `Modèles (${n})`,
@@ -3628,6 +3700,10 @@ const es: LeagueUiPack = {
         badge: { yes: 'Lo logra', no: 'No lo logra' },
         answer: { yes: (s) => `${s} lo logra`, no: (s) => `${s} no lo logra` },
       },
+      indexRise: {
+        badge: { yes: 'Sube', no: 'Baja' },
+        answer: { yes: (s) => `${s} sube`, no: (s) => `${s} baja` },
+      },
     },
     threshold: {
       badge: { above: 'Por encima', below: 'Por debajo' },
@@ -3678,6 +3754,7 @@ const es: LeagueUiPack = {
     long: 'Este contenido muestra opiniones de varios modelos de IA con fines informativos y de entretenimiento únicamente. No constituye asesoramiento de inversión, financiero, legal ni profesional, y ninguno de estos modelos es un asesor autorizado. Los mercados son impredecibles y los modelos de IA pueden equivocarse, y a menudo lo hacen. Usted es el único responsable de cualquier decisión que tome con base en esta información.',
     realEstate:
       'Solo referencia estadística, no es una tasación formal. Perspectiva de región o instrumento, no la valoración de un inmueble concreto.',
+    realEstateScope: 'No se predicen complejos, anuncios ni direcciones concretas. Solo índices regionales oficiales.',
     extraExperimental: 'Solo entretenimiento y experimento — no es base para una decisión de inversión.',
     sports: 'Análisis informativo. No es una incitación al juego.',
   },
@@ -3836,6 +3913,14 @@ const es: LeagueUiPack = {
     liveSecondary: 'ahora',
     metalsSpotNote:
       'Basado en cotizaciones spot internacionales (USD/onza). Los precios minoristas locales pueden variar por tipos de cambio, impuestos y márgenes de distribución.',
+    realEstateHorizonMonthly: 'Publicación mensual',
+    realEstateHorizonQuarterly: 'Publicación trimestral',
+    realEstateGrade: (pubDate, daysLeft) =>
+      daysLeft > 0
+        ? `Nota: publicación del ${pubDate} (${daysLeft} días)`
+        : daysLeft === 0
+          ? `Nota: publicación del ${pubDate} (hoy)`
+          : `Nota: publicación del ${pubDate}`,
   },
   modelList: {
     title: (n) => `Modelos (${n})`,
@@ -4193,6 +4278,10 @@ const ar: LeagueUiPack = {
         badge: { yes: 'يتحقق', no: 'لا يتحقق' },
         answer: { yes: (s) => `يحقق ${s} ذلك`, no: (s) => `لا يحقق ${s} ذلك` },
       },
+      indexRise: {
+        badge: { yes: 'ارتفاع', no: 'انخفاض' },
+        answer: { yes: (s) => `ارتفاع ${s}`, no: (s) => `انخفاض ${s}` },
+      },
     },
     threshold: {
       badge: { above: 'أعلى', below: 'أدنى' },
@@ -4242,6 +4331,7 @@ const ar: LeagueUiPack = {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
     long: 'يعرض هذا المحتوى آراء عدة نماذج ذكاء اصطناعي لأغراض المعلومات والترفيه فقط. وهو لا يمثل نصيحة استثمارية أو مالية أو قانونية أو مهنية، وليس أي نموذج هنا مستشارًا مرخصًا. الأسواق غير قابلة للتنبؤ، وقد تخطئ نماذج الذكاء الاصطناعي، بل وتخطئ كثيرًا. أنت وحدك المسؤول عن أي قرار تتخذه بناءً على ذلك.',
     realEstate: 'مرجع إحصائي فقط — وليس تقييمًا رسميًا. نظرة على المنطقة أو الأداة، لا تقدير لعقار بعينه.',
+    realEstateScope: 'لا نتنبأ بمجمعات أو عروض أو عناوين محددة. المؤشرات الإقليمية الرسمية فقط.',
     extraExperimental: 'للترفيه والتجربة فقط، وليس أساسًا لقرار استثماري.',
     sports: 'تحليل معلوماتي فقط. ليس دعوة للمقامرة.',
   },
@@ -4398,6 +4488,14 @@ const ar: LeagueUiPack = {
     liveSecondary: 'الآن',
     metalsSpotNote:
       'يستند إلى أسعار المعادن الفورية العالمية (دولار/أونصة). قد تختلف أسعار التجزئة المحلية بسبب أسعار الصرف والضرائب وهوامش التوزيع.',
+    realEstateHorizonMonthly: 'نشر شهري',
+    realEstateHorizonQuarterly: 'نشر ربع سنوي',
+    realEstateGrade: (pubDate, daysLeft) =>
+      daysLeft > 0
+        ? `التقييم: إصدار ${pubDate} (بقي ${daysLeft} يومًا)`
+        : daysLeft === 0
+          ? `التقييم: إصدار ${pubDate} (اليوم)`
+          : `التقييم: إصدار ${pubDate}`,
   },
   modelList: {
     title: (n) => `النماذج (${n})`,
@@ -4751,6 +4849,10 @@ const pt: LeagueUiPack = {
         badge: { yes: 'Consegue', no: 'Não consegue' },
         answer: { yes: (s) => `${s} consegue`, no: (s) => `${s} não consegue` },
       },
+      indexRise: {
+        badge: { yes: 'Sobe', no: 'Cai' },
+        answer: { yes: (s) => `${s} sobe`, no: (s) => `${s} cai` },
+      },
     },
     threshold: {
       badge: { above: 'Acima', below: 'Abaixo' },
@@ -4801,6 +4903,7 @@ const pt: LeagueUiPack = {
     long: 'Estas são opiniões de modelos de IA exibidas apenas para fins informativos e de entretenimento. Não são aconselhamento de investimento, financeiro, jurídico ou profissional, e nenhum modelo aqui é um consultor licenciado. Os mercados são imprevisíveis e os modelos de IA podem errar — e erram com frequência. Você é o único responsável por qualquer decisão que tomar.',
     realEstate:
       'Referência estatística apenas — não é uma avaliação formal. Perspectiva por região e instrumento; não é a avaliação de nenhum imóvel específico.',
+    realEstateScope: 'Não prevemos condomínios, anúncios ou endereços específicos. Somente índices regionais oficiais.',
     extraExperimental: 'Apenas entretenimento e experimento — não é base para decisão de investimento.',
     sports: 'Análise informativa. Não é incentivo a jogo.',
   },
@@ -4958,6 +5061,14 @@ const pt: LeagueUiPack = {
     liveSecondary: 'agora',
     metalsSpotNote:
       'Baseado nas cotações spot internacionais (USD/onça). Os preços de varejo locais podem variar devido a taxas de câmbio, impostos e margens de distribuição.',
+    realEstateHorizonMonthly: 'Publicação mensal',
+    realEstateHorizonQuarterly: 'Publicação trimestral',
+    realEstateGrade: (pubDate, daysLeft) =>
+      daysLeft > 0
+        ? `Nota: publicação de ${pubDate} (${daysLeft} dias)`
+        : daysLeft === 0
+          ? `Nota: publicação de ${pubDate} (hoje)`
+          : `Nota: publicação de ${pubDate}`,
   },
   modelList: {
     title: (n) => `Modelos (${n})`,

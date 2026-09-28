@@ -101,6 +101,13 @@ export const CONSENSUS_LANGUAGE_ALIASES = [
   'market baseline',
   '괴리',
   'sharp',
+  '거래량',
+  '실거래',
+  '실거래가',
+  'existing-home',
+  'existing home',
+  'molit',
+  '국토부',
 ] as const
 
 /** Category-specific money signals — equity COT/targets do not exist for crypto or index ETFs. */
@@ -137,9 +144,15 @@ export function consensusMoneySearchHints(category: string): string {
   }
   if (isRealEstateLedgerCategory(key)) {
     return [
-      'For HOUSING INDEXES, ABSTAIN.',
-      'CME Case-Shiller futures are too thin to be a probability, and most regions have no housing-index market.',
-      'Do not invent a percent. Do not use REIT ETF prices as the money signal.',
+      'For HOUSING INDEXES the money signal is TRANSACTION ACTIVITY, not a futures book.',
+      'Search official 실거래 거래량 (transaction volume) and 실거래가 (actual transacted-price) trend for the NAMED region.',
+      'Korea: MOLIT/국토부 실거래가 open data — monthly volume and median/mean price change for that 시군구 or metro.',
+      'US: NAR existing-home sales volume and median existing-home price for that metro (or national only if the user picked 전국).',
+      'UK/JP/AU: official transaction-count or sales-volume series plus transacted-price trend for that region.',
+      'Speak as 실거래 거래량 / 실거래가 추이. That is the priced market activity.',
+      'Do NOT use REIT ETF prices (VNQ/SCHH) or CME Case-Shiller futures (too thin) as the signal.',
+      'Do not name a complex, listing, or street address.',
+      'ABSTAIN only if search finds no usable volume or transacted-price series for THIS region. Do not invent a percent.',
     ].join('\n')
   }
   if (isEntertainmentLedgerCategory(key)) {
@@ -313,7 +326,7 @@ export function buildConsensusSystemPrompt(): string {
     '- sports: Pinnacle / sharp-book implied win probability (juice removed) as 시장 기준선. Never 토토/배당/핸디캡/픽/베팅/오버언더. Informational only.',
     '- politics_election: Polymarket (해외 예측시장 데이터) and Kalshi implied probability as 예측시장 내재 확률. Never 지지율/베팅/배당/토토.',
     '- entertainment_awards: Polymarket/Kalshi award implied probability, or published studio tracking. If neither exists, abstain — never invent a gross or a percent.',
-    '- real_estate: ABSTAIN. No usable housing-index market. Do not price a REIT ETF or a named complex.',
+    '- real_estate: 실거래 거래량 + 실거래가 trend (MOLIT / NAR existing-home sales / official sales volume). Not REIT ETFs, not thin housing futures. Abstain only if that activity data is missing for the named region.',
     'Read what the MARKET has priced with money. Not chart shapes. Not news mood.',
     '',
     'How to judge:',
@@ -355,6 +368,15 @@ export function consensusRetryInstruction(category?: string): string {
       'Use only 예측시장 내재 확률 / Polymarket / Kalshi / 시장 기준선. Polymarket is 해외 예측시장 데이터.',
       'Never 지지율, 베팅, 배당, 토토, or a poll percentage.',
       'If there is no market-implied baseline after search, output found:false and direction null.',
+      'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
+    ].join(' ')
+  }
+  if (isRealEstateLedgerCategory(category)) {
+    return [
+      'RETRY: Rewrite as the 돈이 매긴 확률 seat for HOUSING INDEXES.',
+      'Use only 실거래 거래량 / 실거래가 / existing-home sales volume language. Not REIT ETFs, not housing futures.',
+      'Do not name a complex or address. Do not write 분위기/여론/루머.',
+      'If there is no volume or transacted-price series for THIS region after search, output found:false and direction null.',
       'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
     ].join(' ')
   }

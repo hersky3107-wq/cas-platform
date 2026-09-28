@@ -300,6 +300,7 @@ describe('catalog i18n', () => {
         expect(label.trim().length).toBeGreaterThan(0)
       }
       expect(pack.disclaimer.realEstate.trim().length).toBeGreaterThan(0)
+      expect(pack.disclaimer.realEstateScope.trim().length).toBeGreaterThan(0)
       expect(pack.catalog.spotVsEtfNote.trim().length).toBeGreaterThan(0)
       expect(pack.predictions.heading.trim().length).toBeGreaterThan(0)
     }

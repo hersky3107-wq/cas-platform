@@ -20,6 +20,7 @@ export function DisclaimerFooter({
 }) {
   const extra =
     category === 'real_estate' ? t.disclaimer.realEstate : category === 'sports' ? t.disclaimer.sports : null
+  const scope = category === 'real_estate' ? t.disclaimer.realEstateScope : null
   const extraExperimental = t.disclaimer.extraExperimental
 
   if (tone.disclaimerWeight === 'default') {
@@ -28,6 +29,7 @@ export function DisclaimerFooter({
         <p>{t.disclaimer.short}</p>
         <p className="mt-1.5">{extraExperimental}</p>
         {extra ? <p className="mt-1.5 font-medium text-league-fg">{extra}</p> : null}
+        {scope ? <p className="mt-1 font-medium text-league-fg">{scope}</p> : null}
       </div>
     )
   }
@@ -42,6 +44,7 @@ export function DisclaimerFooter({
       <p className={prominent ? 'text-xs' : 'text-[11px]'}>{t.disclaimer.long}</p>
       <p className="mt-1.5 text-[11px]">{extraExperimental}</p>
       {extra ? <p className="mt-1.5 text-[11px] font-medium text-league-fg">{extra}</p> : null}
+      {scope ? <p className="mt-1 text-[11px] font-medium text-league-fg">{scope}</p> : null}
     </div>
   )
 }

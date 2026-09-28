@@ -197,6 +197,33 @@ describe('header honesty', () => {
     expect(stockHtml).not.toContain('국제 현물 시세')
   })
 
+  it('real_estate header shows publication cadence and grade deadline, not 1d/1m', () => {
+    const reRound = roundMeta({
+      category: 'real_estate',
+      instrument: 'PROPERTY:KR:11680:apt_sale_mom:2026-09',
+      horizon: '1m',
+      proposition_kind: 'binary_subject_outcome',
+      subject_label: '강남구',
+      resolves_at: '2026-10-15T00:00:00.000Z',
+      anchorPrice: null,
+      livePrice: null,
+    })
+    const html = renderToStaticMarkup(
+      createElement(CardHeader, {
+        round: reRound,
+        hitRate,
+        tone,
+        t: ko,
+        locale: 'ko',
+      }),
+    )
+    expect(html).toContain('월간 공표')
+    expect(html).not.toContain('>1m<')
+    expect(html).toContain('공표분')
+    expect(html).toContain('채점:')
+    expect(html).not.toContain('국제 현물 시세')
+  })
+
   it('renders international metalsSpotNote in English on gold_metal rounds', () => {
     const goldRound = roundMeta({ category: 'gold_metal', instrument: 'GLD' })
     const goldHtml = renderToStaticMarkup(

@@ -1,6 +1,6 @@
 /**
- * Housing-index packet. Consensus has no usable market (CME housing futures
- * are too thin, and most regions have none) — the money line stays unavailable.
+ * Housing-index packet. Money signal is 실거래 거래량 + 실거래가 trend
+ * (not a futures book). Rates / supply / policy stay in the research block.
  */
 
 import type { CategoryPacket, PacketBuildContext, PacketRound } from '../types'
@@ -18,9 +18,26 @@ export type RealEstatePacketIo = {
 
 export function propertySearchQueries(parts: PropertyParts): Array<{ q: string; lang: string }> {
   const name = parts.region.nameEn
+  const ko = parts.region.nameKo
+  const tx =
+    parts.country === 'KR'
+      ? [
+          { q: `${ko} 실거래가 거래량 국토교통부 중위 ${parts.refMonth}`, lang: 'ko' },
+          { q: `${ko} apartment transaction volume median price MOLIT ${parts.refMonth}`, lang: 'en' },
+        ]
+      : parts.country === 'US'
+        ? [
+            { q: `${name} existing home sales volume median price NAR ${parts.refMonth}`, lang: 'en' },
+            { q: `${ko} 기존주택 거래량 실거래 중위가 ${parts.refMonth}`, lang: 'ko' },
+          ]
+        : [
+            { q: `${name} housing transaction volume sales count median price ${parts.refMonth}`, lang: 'en' },
+            { q: `${ko} 주택 거래량 실거래가 추이 ${parts.refMonth}`, lang: 'ko' },
+          ]
   return [
+    ...tx,
     { q: `${name} housing policy mortgage rate supply permits ${parts.refMonth}`, lang: 'en' },
-    { q: `${parts.region.nameKo} 주택 금리 입주 인허가 규제 ${parts.refMonth}`, lang: 'ko' },
+    { q: `${ko} 주택 금리 입주 인허가 규제 ${parts.refMonth}`, lang: 'ko' },
     { q: `30 year mortgage rate housing supply ${name}`, lang: 'en' },
   ]
 }
@@ -31,7 +48,7 @@ export function formatPropertyCrowBrief(parts: PropertyParts): string {
     `Index: ${parts.region.seriesEn}`,
     `Reference period: ${parts.refMonth}`,
     `Publication: ${new Date(parts.resolvesAtMs).toISOString().slice(0, 10)}`,
-    'MONEY BASELINE: UNAVAILABLE. CME Case-Shiller futures are too thin to be a probability, and this region has no housing-index market.',
+    'MONEY / ACTIVITY: 실거래 거래량 and 실거래가 (transacted-price) trend for this region. Not REIT ETFs. Not thin housing futures.',
     'Crow lens: regional overheating or correction risk on this official index. Do not name a complex, address, or unit.',
   ].join('\n')
 }
@@ -51,6 +68,8 @@ export async function buildRealEstatePacket(ctx: PacketBuildContext, io: RealEst
         `PROPOSITION: ${formatPropertyProposition(parts)}`,
         formatPropertyCrowBrief(parts),
         '',
+        'TRANSACTION VOLUME / 실거래가',
+        'Use published 거래량 and transacted-price trend as the market-activity input.',
         'POLICY / RATES / SUPPLY',
         findings,
         'Do not cite a named apartment complex or a street address.',
@@ -63,7 +82,7 @@ export async function buildRealEstatePacket(ctx: PacketBuildContext, io: RealEst
     dataPacket: {
       available: false,
       symbol: ctx.round.instrument,
-      error: 'no housing-index futures baseline',
+      error: 'no housing-index futures book; use 거래량/실거래가 research',
     },
     research: {
       available: research.available,
@@ -71,7 +90,7 @@ export async function buildRealEstatePacket(ctx: PacketBuildContext, io: RealEst
       costUsd: Number(research.costUsd.toFixed(6)),
       queries: research.queries,
       tier: research.tier,
-      tierSignal: `real_estate: rates/supply/policy ${queries.length} queries; consensus abstains`,
+      tierSignal: `real_estate: 거래량/실거래가 + rates/supply/policy ${queries.length} queries`,
       error: research.error,
     },
     relatedCreditsSpent: 0,

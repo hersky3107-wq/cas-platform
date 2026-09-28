@@ -134,8 +134,20 @@ export function propertyClarifyOptions(now: Date = new Date()): Array<{ id: stri
 const FILLER =
   /아파트|집값|부동산|주택|매매|가격지수|가격|지수|오를까|오르까|오를지|상승|하락|할까|넘길까|전월비|전월대비|전분기대비|\d+(?:\.\d+)?\s*%/g
 
+export function compactPropertyQuery(raw: string): string {
+  return raw.toLowerCase().replace(/\s+/g, '').replace(FILLER, '')
+}
+
+/** User already named the aggregate print (전국/전체), not just the country. */
+export function isExplicitBroadAsk(compact: string): boolean {
+  if (/전체|nationwide/.test(compact)) return true
+  if (compact.includes('전국')) return true
+  if (compact.includes('national') && compact !== 'national') return true
+  return false
+}
+
 export function matchPropertyRegion(raw: string): PropertyRegion | PropertyRegion[] | null {
-  const compact = raw.toLowerCase().replace(/\s+/g, '').replace(FILLER, '')
+  const compact = compactPropertyQuery(raw)
   if (!compact) return null
   let bestLen = 0
   const hits: PropertyRegion[] = []

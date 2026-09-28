@@ -11,6 +11,7 @@ import { decodePoliticsInstrument } from './adapters/politics-catalog'
 import { decodePropertyInstrument } from './adapters/real-estate-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
 import { propositionKindFor } from './normalize-prompt'
+import { MAX_PROPERTY_PICKS } from './adapters/real-estate-target'
 import { MAX_TARGET_PICKS } from './target-resolve'
 import { refusalMessageForKey, refusalMessageKey } from './refusal-copy'
 import type {
@@ -273,7 +274,8 @@ function oneQuestion(question: ClarifyingQuestion): ClarifyingQuestion {
     question.options?.some(
       (o) => isFreeformInstrument(o.id),
     )
-  const cap = fixturePicks ? MAX_TARGET_PICKS : MAX_CANDIDATE_CHIPS
+  const propertyPicks = fixturePicks && question.options?.some((o) => decodePropertyInstrument(o.id) !== null)
+  const cap = propertyPicks ? MAX_PROPERTY_PICKS : fixturePicks ? MAX_TARGET_PICKS : MAX_CANDIDATE_CHIPS
   const options = question.slot === 'entity_id' ? question.options?.slice(0, cap) : question.options
   return {
     ...question,

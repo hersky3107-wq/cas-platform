@@ -8,13 +8,17 @@ import { consensusMoneySearchHints } from '../../extra/consensus'
 import { buildCrowSystemPrompt } from '../../extra/crow'
 import { buildHistorySystemPrompt } from '../../extra/history'
 import { buildSentimentUserPrompt, buildSentimentInput } from '../../extra/sentiment'
+import { getLeagueUiPack } from '../../i18n/dictionary'
 import { isPromptAllowedForGroup } from '../../jurisdiction/prompt-matrix'
+import { formatPropertyGradeLine, formatPropertyHorizonLabel } from '../../real-estate-display'
+import { sideLabelsFor } from '../../side-labels'
 import { gradePlanFor } from '../grade-plan'
 import { refusalMessageForKey } from '../refusal-copy'
 import { isSlateBackedCategory, runLeagueGateway } from '../shell'
 import { createRealEstateAdapter } from '../adapters/real-estate'
 import { buildRealEstateRankedRoundInput } from '../adapters/real-estate-compose'
-import { propertyHeadlineLabel } from '../adapters/real-estate-catalog'
+import { decodePropertyInstrument, propertyHeadlineLabel } from '../adapters/real-estate-catalog'
+import { propertySearchQueries } from '../adapters/real-estate-packet'
 import type { RealEstatePacketIo } from '../adapters/real-estate-packet'
 import type { GatewayViewer } from '../types'
 
@@ -47,20 +51,44 @@ describe('real estate housing index', () => {
     expect(gradePlanFor(adapter, round!.instrument)).toEqual({ source: 'operator_manual' })
   })
 
-  it('parses a percent threshold and the US national index', async () => {
+  it('parses a percent threshold and named cities, but country queries become picks', async () => {
     const gangnam = await adapter.resolveEntity('강남 전월비 1% 넘길까', 'ko')
     expect(gangnam).toMatchObject({
       ok: true,
       entity_id: 'PROPERTY:KR:11680:apt_sale_mom_gt100:2026-09',
     })
     const us = await adapter.resolveEntity('미국 부동산 오를까', 'ko')
-    expect(us).toMatchObject({ ok: true, entity_id: 'PROPERTY:US:CSUSHPINSA:hpi_mom:2026-07' })
+    expect(us.ok).toBe(false)
+    if (!us.ok && 'need' in us) {
+      const ids = us.need.options?.map((o) => o.id) ?? []
+      expect(ids.some((id) => id.includes(':NYXRNSA:'))).toBe(true)
+      expect(ids.some((id) => id.includes(':LXXRNSA:'))).toBe(true)
+      expect(ids.some((id) => id.includes(':CSUSHPINSA:'))).toBe(true)
+      expect(ids.at(-1)).toContain(':CSUSHPINSA:')
+      expect(us.need.options?.at(-1)?.label).toBe('미국 전국')
+    }
+    const usNation = await adapter.resolveEntity('미국 전국 오를까', 'ko')
+    expect(usNation).toMatchObject({ ok: true, entity_id: 'PROPERTY:US:CSUSHPINSA:hpi_mom:2026-07' })
+    const seoul = await adapter.resolveEntity('서울 아파트 가격지수 오를까', 'ko')
+    expect(seoul.ok).toBe(false)
+    if (!seoul.ok && 'need' in seoul) {
+      expect(seoul.need.options?.some((o) => o.id.includes(':11680:'))).toBe(true)
+      expect(seoul.need.options?.at(-1)?.label).toBe('서울 전체')
+    }
+    const jp = await adapter.resolveEntity('일본 집값 오를까', 'ko')
+    expect(jp.ok).toBe(false)
+    if (!jp.ok && 'need' in jp) {
+      const labels = jp.need.options?.map((o) => o.label) ?? []
+      expect(labels).toEqual(expect.arrayContaining(['도쿄도', '오사카부', '아이치현', '일본 전국']))
+    }
     const sydney = await adapter.resolveEntity('시드니 집값 오를까', 'ko')
     expect(sydney).toMatchObject({ ok: true, entity_id: 'PROPERTY:AU:SYD:hpi_qoq:2026-09' })
     const tokyo = await adapter.resolveEntity('도쿄 집값 오를까', 'ko')
     expect(tokyo).toMatchObject({ ok: true, entity_id: 'PROPERTY:JP:13:hpi_mom:2026-07' })
     const london = await adapter.resolveEntity('런던 집값 오를까', 'ko')
     expect(london).toMatchObject({ ok: true, entity_id: 'PROPERTY:UK:E12000007:hpi_mom:2026-08' })
+    const ny = await adapter.resolveEntity('뉴욕 오를까', 'ko')
+    expect(ny).toMatchObject({ ok: true, label: '뉴욕' })
   })
 
   it('refuses a dong, a complex, a trading area, and brokerage', async () => {
@@ -103,8 +131,11 @@ describe('real estate housing index', () => {
     })
   })
 
-  it('extras: consensus abstains, crow stays regional, divination uses the publication date', () => {
-    expect(consensusMoneySearchHints('real_estate')).toMatch(/ABSTAIN/)
+  it('extras: consensus uses 거래량/실거래가, crow stays regional, divination uses the publication date', () => {
+    expect(consensusMoneySearchHints('real_estate')).toMatch(/실거래/)
+    expect(consensusMoneySearchHints('real_estate')).toMatch(/existing-home/)
+    expect(consensusMoneySearchHints('real_estate')).toMatch(/ABSTAIN only if/)
+    expect(consensusMoneySearchHints('real_estate')).not.toMatch(/For HOUSING INDEXES, ABSTAIN/)
     expect(buildCrowSystemPrompt('real_estate')).toMatch(/overheating/)
     expect(buildCrowSystemPrompt('real_estate')).toMatch(/complex/)
     expect(buildHistorySystemPrompt('real_estate')).toMatch(/상승기/)
@@ -148,18 +179,73 @@ describe('real estate housing index', () => {
       deductCredits: charge,
       now: () => NOW,
     }
-    for (const raw of ['강남 오를까', '서울 아파트 가격지수 오를까']) {
-      const result = await runLeagueGateway(
-        { viewer: KR, category_id: 'real_estate', raw_text: raw, locale: 'ko' },
-        deps,
-      )
-      expect(result.status).toBe('ready')
-      if (result.status !== 'ready') continue
-      expect(result.round.instrument.startsWith('PROPERTY:KR:')).toBe(true)
-      expect(result.round.proposition_text).not.toContain('PROPERTY:')
-      expect(result.round.resolves_at.slice(0, 10)).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    const ready = await runLeagueGateway(
+      { viewer: KR, category_id: 'real_estate', raw_text: '강남 오를까', locale: 'ko' },
+      deps,
+    )
+    expect(ready.status).toBe('ready')
+    if (ready.status === 'ready') {
+      expect(ready.round.instrument).toBe('PROPERTY:KR:11680:apt_sale_mom:2026-09')
+      expect(ready.round.proposition_text).not.toContain('PROPERTY:')
     }
-    expect(charge).toHaveBeenCalledTimes(2)
+    const seoul = await runLeagueGateway(
+      { viewer: KR, category_id: 'real_estate', raw_text: '서울 아파트 가격지수 오를까', locale: 'ko' },
+      deps,
+    )
+    expect(seoul.status).toBe('clarify')
+    if (seoul.status === 'clarify') {
+      expect(seoul.questions[0]?.options?.some((o) => o.id.includes(':11680:'))).toBe(true)
+    }
+    expect(charge).toHaveBeenCalledOnce()
+  })
+
+  it('side labels are 상승/하락 and the card names the publication deadline', () => {
+    const t = getLeagueUiPack('ko')
+    const labels = sideLabelsFor(
+      {
+        proposition_kind: 'binary_subject_outcome',
+        category: 'real_estate',
+        subject_label: '강남구',
+        instrument: 'PROPERTY:KR:11680:apt_sale_mom:2026-09',
+      },
+      t,
+      'ko',
+    )
+    expect(labels.answer('yes')).toBe('강남구 상승')
+    expect(labels.answer('no')).toBe('강남구 하락')
+    expect(labels.badge('yes')).toBe('강남구 상승')
+    const us = sideLabelsFor(
+      {
+        proposition_kind: 'binary_subject_outcome',
+        category: 'real_estate',
+        subject_label: '미국',
+        instrument: 'PROPERTY:US:CSUSHPINSA:hpi_mom:2026-07',
+      },
+      t,
+      'ko',
+    )
+    expect(us.answer('yes')).toBe('미국 상승')
+    expect(us.answer('no')).toBe('미국 하락')
+    const tech = sideLabelsFor(
+      { proposition_kind: 'binary_subject_outcome', category: 'tech', subject_label: 'Apple' },
+      t,
+      'ko',
+    )
+    expect(tech.answer('yes')).toBe('Apple 실현')
+    const inst = 'PROPERTY:KR:11680:apt_sale_mom:2026-09'
+    expect(formatPropertyHorizonLabel(inst, t)).toBe('월간 공표')
+    expect(formatPropertyHorizonLabel('PROPERTY:AU:SYD:hpi_qoq:2026-09', t)).toBe('분기 공표')
+    const grade = formatPropertyGradeLine({
+      instrument: inst,
+      resolvesAt: '2026-10-15T00:00:00.000Z',
+      locale: 'ko',
+      t,
+      now: NOW,
+    })
+    expect(grade).toBe('채점: 2026년 10월 15일 공표분 기준 (17일 남음)')
+    expect(t.disclaimer.realEstateScope).toContain('단지')
+    const parts = decodePropertyInstrument(inst)!
+    expect(propertySearchQueries(parts).some((q) => /실거래|existing home/i.test(q.q))).toBe(true)
   })
 
   it('hub stays coming_soon: no injected region chips, no horizon selector', () => {

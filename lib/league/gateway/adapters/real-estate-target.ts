@@ -1,14 +1,19 @@
 import type { ClarifyingQuestion } from '../types'
 import {
+  compactPropertyQuery,
   decodePropertyInstrument,
   instrumentForRegion,
   isBrokerageAsk,
   isDongOrComplex,
+  isExplicitBroadAsk,
   matchPropertyRegion,
   parseMomThresholdBp,
   propertyClarifyOptions,
 } from './real-estate-catalog'
-import type { PropertyRegion } from './real-estate-regions'
+import { broadPickLabel, broadPropertyChildren, type PropertyRegion } from './real-estate-regions'
+
+/** Seoul 구 + 20-city Case-Shiller + 시도. Higher than sports fixture cap. */
+export const MAX_PROPERTY_PICKS = 28
 
 export type PropertyHit =
   | { kind: 'ready'; entityId: string; label: string }
@@ -43,6 +48,19 @@ export function resolvePropertyTarget(raw: string, now: Date): PropertyHit {
         id: instrumentForRegion(row, text, thresholdBp, now),
         label: row.nameKo,
       })),
+    }
+  }
+  const compact = compactPropertyQuery(text)
+  if (!isExplicitBroadAsk(compact)) {
+    const children = broadPropertyChildren(matched)
+    if (children && children.length > 1) {
+      return {
+        kind: 'picks',
+        options: children.map((row) => ({
+          id: instrumentForRegion(row, text, thresholdBp, now),
+          label: broadPickLabel(row, matched),
+        })),
+      }
     }
   }
   return ready(matched, text, thresholdBp, now)

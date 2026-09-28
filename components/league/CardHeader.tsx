@@ -8,6 +8,7 @@ import {
 } from '@/lib/league/card-header-copy'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import { formatPropertyGradeLine, formatPropertyHorizonLabel } from '@/lib/league/real-estate-display'
 import type { ToneTokens } from '@/lib/league/tone'
 
 /**
@@ -33,6 +34,16 @@ export function CardHeader({
 }) {
   void tone
   const roundDate = formatRoundOpenedDate(round.opened_at, locale)
+  const propertyHorizon = round.category === 'real_estate' ? formatPropertyHorizonLabel(round.instrument, t) : null
+  const propertyGrade =
+    round.category === 'real_estate'
+      ? formatPropertyGradeLine({
+          instrument: round.instrument,
+          resolvesAt: round.resolves_at,
+          locale,
+          t,
+        })
+      : null
   const headline = headerHeadline({
     roundDate,
     instrument: round.instrument,
@@ -62,13 +73,16 @@ export function CardHeader({
           <div className="min-w-0">
             <p className="text-sm font-bold leading-snug text-league-fg md:text-lg">{headline}</p>
             <p className="mt-0.5 text-[11px] text-league-fg-muted">
-              {round.horizon} · {formatCategory(round.category)}
+              {propertyHorizon ?? round.horizon} · {formatCategory(round.category)}
             </p>
           </div>
         </div>
         <StatusBadge round={round} hitRate={hitRate} t={t} stalled={gradingStalled} />
       </div>
       {window ? <p className="mt-2 text-[12px] leading-snug text-league-fg">{window}</p> : null}
+      {propertyGrade ? (
+        <p className="mt-1.5 text-[12px] font-semibold leading-snug text-league-fg">{propertyGrade}</p>
+      ) : null}
       {round.anchorPrice !== null && round.livePrice !== null ? (
         <p className="mt-1 text-[11px] text-league-fg-muted" dir="ltr">
           <span className="font-semibold text-league-fg">
