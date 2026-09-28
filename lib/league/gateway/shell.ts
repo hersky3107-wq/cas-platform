@@ -8,6 +8,7 @@ import { detectBettingFraming } from './betting-framing'
 import { prefilterRejects } from './prefilter'
 import { decodeEntertainmentInstrument, parseAdmissionsThreshold } from './adapters/entertainment-catalog'
 import { decodePoliticsInstrument } from './adapters/politics-catalog'
+import { decodePropertyInstrument } from './adapters/real-estate-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
 import { propositionKindFor } from './normalize-prompt'
 import { MAX_TARGET_PICKS } from './target-resolve'
@@ -50,8 +51,26 @@ import type {
 
 export const MAX_CLARIFY_ROUNDS = 2
 
-/** Categories whose adapter resolves races/fixtures from raw text without the normalizer. */
-const SLATE_BACKED_CATEGORIES = new Set<string>(['politics_election', 'sports', 'entertainment'])
+/** Categories whose adapter resolves races/fixtures/regions from raw text without the normalizer. */
+const SLATE_BACKED_CATEGORIES = new Set<string>([
+  'politics_election',
+  'sports',
+  'entertainment',
+  'real_estate',
+])
+
+export function isSlateBackedCategory(id: string): boolean {
+  return SLATE_BACKED_CATEGORIES.has(id)
+}
+
+function isFreeformInstrument(id: string): boolean {
+  return (
+    decodeSportsInstrument(id) !== null ||
+    decodePoliticsInstrument(id) !== null ||
+    decodeEntertainmentInstrument(id) !== null ||
+    decodePropertyInstrument(id) !== null
+  )
+}
 
 const GATEWAY_DEBUG =
   typeof process !== 'undefined' && (process.env.LEAGUE_GATEWAY_DEBUG === '1' || process.env.LEAGUE_GATEWAY_DEBUG === 'true')
@@ -75,7 +94,9 @@ function entityRefusalIsImmediate(code: RefusalCode): boolean {
     code === 'vague_show' ||
     code === 'past_show' ||
     code === 'unsupported_show' ||
-    code === 'no_result_source'
+    code === 'no_result_source' ||
+    code === 'specific_property' ||
+    code === 'brokerage_advice'
   )
 }
 
@@ -250,7 +271,7 @@ function oneQuestion(question: ClarifyingQuestion): ClarifyingQuestion {
   const fixturePicks =
     question.slot === 'entity_id' &&
     question.options?.some(
-      (o) => decodeSportsInstrument(o.id) || decodePoliticsInstrument(o.id) || decodeEntertainmentInstrument(o.id),
+      (o) => isFreeformInstrument(o.id),
     )
   const cap = fixturePicks ? MAX_TARGET_PICKS : MAX_CANDIDATE_CHIPS
   const options = question.slot === 'entity_id' ? question.options?.slice(0, cap) : question.options
@@ -302,8 +323,8 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   if (detectBettingFraming(req.raw_text)) return refused('betting_framing', locale)
 
   // 5. Normalize + strict schema gate. Malformed output is a refusal, not a 500.
-  // Slate-backed categories (sports, politics) may recover from a weak parse via
-  // adapter.resolveEntity on the raw sentence (office-only → candidate picks).
+  // Slate-backed categories (sports, politics, entertainment, real_estate) may
+  // recover from a weak parse via adapter.resolveEntity on the raw sentence.
   const normalizedOrEarly = await normalizeForGateway(req, adapter, deps, locale, viewer)
   if (normalizedOrEarly && 'earlyRefusal' in normalizedOrEarly) {
     return refusedFrom(normalizedOrEarly.earlyRefusal, locale, adapter.category_id, viewer)
@@ -323,11 +344,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     normalized.entity_mention,
   ])
   const answeredEntity = typeof answered.entity_id === 'string' ? answered.entity_id.trim() : ''
-  const answeredIsFixture =
-    answeredEntity.length > 0 &&
-    (decodeSportsInstrument(answeredEntity) !== null ||
-      decodePoliticsInstrument(answeredEntity) !== null ||
-      decodeEntertainmentInstrument(answeredEntity) !== null)
+  const answeredIsFixture = answeredEntity.length > 0 && isFreeformInstrument(answeredEntity)
   // 직접 입력 "200만 넘길까" is not a title — resolve it against the original sentence.
   const thresholdOverride =
     answeredEntity && !answeredIsFixture && parseAdmissionsThreshold(answeredEntity) != null
@@ -455,12 +472,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   //     resolved team still stops on "네, 맞아요". Stocks/horizon chips
   //     still confirm.
   const picked = typeof answered.entity_id === 'string' ? answered.entity_id.trim() : ''
-  const fixturePick =
-    picked.length > 0 &&
-    entity.entity_id === picked &&
-    (decodeSportsInstrument(picked) !== null ||
-      decodePoliticsInstrument(picked) !== null ||
-      decodeEntertainmentInstrument(picked) !== null)
+  const fixturePick = picked.length > 0 && entity.entity_id === picked && isFreeformInstrument(picked)
   if (slots.slots.entity_confirmed !== 'true' && !fixturePick && !entity.skip_confirm) {
     const preview = adapter.composeProposition(slots, now)
     return {

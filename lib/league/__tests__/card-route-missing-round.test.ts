@@ -65,5 +65,7 @@ describe('chip+horizon generate persistence', () => {
     expect(INSTRUMENTS_ROUTE).toContain("category', 'sports'")
     expect(INSTRUMENTS_ROUTE).toContain("item_type', 'ranked'")
     expect(INSTRUMENTS_ROUTE).toContain("c.id === 'sports'")
+    expect(INSTRUMENTS_ROUTE).not.toContain('headlinePropertyInstruments')
+    expect(INSTRUMENTS_ROUTE).not.toContain("c.id === 'real_estate'")
   })
 })

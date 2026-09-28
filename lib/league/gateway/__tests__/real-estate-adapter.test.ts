@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
 import { gatePublicGenerateInstrument } from '../../access-policy'
 import { assertApprovedCopy } from '../../compliance'
 import { buildDivinationInput } from '../../extra/divination'
@@ -9,10 +11,12 @@ import { buildSentimentUserPrompt, buildSentimentInput } from '../../extra/senti
 import { isPromptAllowedForGroup } from '../../jurisdiction/prompt-matrix'
 import { gradePlanFor } from '../grade-plan'
 import { refusalMessageForKey } from '../refusal-copy'
+import { isSlateBackedCategory, runLeagueGateway } from '../shell'
 import { createRealEstateAdapter } from '../adapters/real-estate'
 import { buildRealEstateRankedRoundInput } from '../adapters/real-estate-compose'
 import { propertyHeadlineLabel } from '../adapters/real-estate-catalog'
 import type { RealEstatePacketIo } from '../adapters/real-estate-packet'
+import type { GatewayViewer } from '../types'
 
 const NOW = new Date('2026-09-28T09:00:00.000Z')
 const io: RealEstatePacketIo = {
@@ -125,5 +129,46 @@ describe('real estate housing index', () => {
     })
     expect(divination.firstViewedAt.slice(0, 10)).toBe('2026-10-15')
     expect(divination.propositionType).toBe('binary')
+  })
+
+  it('is slate-backed freeform: typed region generates without catalog chips', async () => {
+    expect(isSlateBackedCategory('real_estate')).toBe(true)
+    expect(isSlateBackedCategory('sports')).toBe(true)
+    expect(isSlateBackedCategory('gold_metals')).toBe(false)
+    const KR: GatewayViewer = {
+      userId: 'user-kr',
+      isAdmin: false,
+      jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' },
+    }
+    const charge = vi.fn(async () => ({ ok: true }))
+    const deps = {
+      adapterFor: (id: string) => (id === 'real_estate' ? adapter : null),
+      normalizer: { normalize: async () => null },
+      searchCandidates: async () => null,
+      deductCredits: charge,
+      now: () => NOW,
+    }
+    for (const raw of ['강남 오를까', '서울 아파트 가격지수 오를까']) {
+      const result = await runLeagueGateway(
+        { viewer: KR, category_id: 'real_estate', raw_text: raw, locale: 'ko' },
+        deps,
+      )
+      expect(result.status).toBe('ready')
+      if (result.status !== 'ready') continue
+      expect(result.round.instrument.startsWith('PROPERTY:KR:')).toBe(true)
+      expect(result.round.proposition_text).not.toContain('PROPERTY:')
+      expect(result.round.resolves_at.slice(0, 10)).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    }
+    expect(charge).toHaveBeenCalledTimes(2)
+  })
+
+  it('hub stays coming_soon: no injected region chips, no horizon selector', () => {
+    const instrumentsRoute = readFileSync(join(__dirname, '../../../../app/api/league/instruments/route.ts'), 'utf8')
+    const hub = readFileSync(join(__dirname, '../../../../components/league/PublicLeagueHub.tsx'), 'utf8')
+    expect(instrumentsRoute).not.toContain('headlinePropertyInstruments')
+    expect(instrumentsRoute).not.toContain("c.id === 'real_estate'")
+    expect(hub).toContain("cat.id === 'real_estate'")
+    expect(hub).toContain("active?.id !== 'real_estate'")
+    expect(hub).toContain('usesHorizonChipRow(active.id)')
   })
 })

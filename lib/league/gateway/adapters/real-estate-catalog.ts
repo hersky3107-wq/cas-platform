@@ -103,6 +103,7 @@ export function propertyHeadlineLabel(instrument: string, locale: 'ko' | 'en' = 
   return `${name} · ${change} ${parts.refMonth}`
 }
 
+/** Clarify-pick ids only — not the hub chip rail (real_estate is freeform search). */
 export function headlinePropertyInstruments(now: Date = new Date()): string[] {
   return chipPropertyRegions().map((row) => instrumentForRegion(row, '', null, now))
 }

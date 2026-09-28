@@ -12,7 +12,12 @@ import { RecordRoom } from '@/components/league/RecordRoom'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import type { CardData, ColorBucket, LockedCardPayload } from '@/lib/league/card-types'
 import { GENERATION_POLL_MS } from '@/lib/league/generation/policy'
-import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } from '@/lib/league/catalog'
+import {
+  defaultCatalogCategoryId,
+  usesHorizonChipRow,
+  type CatalogKind,
+  type PublicCategoryId,
+} from '@/lib/league/catalog'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { rankedPropositionDisplay } from '@/lib/league/card-header-copy'
 import { sportsVsLabel } from '@/lib/league/sports-display'
@@ -307,6 +312,8 @@ function CardsPanel() {
               if (!prev) return prev
               return prev.map((cat) => {
                 if (cat.id !== selectedCategory) return cat
+                // real_estate stays coming_soon: regions are searched, not listed.
+                if (cat.id === 'real_estate') return cat
                 const exists = cat.instruments.some((i) => i.instrument === instrument)
                 const nextInsts = exists ? cat.instruments : [{ instrument }, ...cat.instruments]
                 return {
@@ -325,7 +332,8 @@ function CardsPanel() {
         <ComingSoonPanel categoryId={active.id} />
       ) : null}
 
-      {(active?.kind === 'instruments' || (active?.instruments && active.instruments.length > 0)) ? (
+      {(active?.kind === 'instruments' || (active?.instruments && active.instruments.length > 0)) &&
+      active?.id !== 'real_estate' ? (
         <div className="flex flex-wrap gap-1.5">
           {active.instruments.map((i) => {
             const selected = selectedInstrument === i.instrument
@@ -349,7 +357,9 @@ function CardsPanel() {
         <p className="text-[11px] leading-relaxed text-slate-500">{t.catalog.spotVsEtfNote}</p>
       ) : null}
 
-      {(active?.kind === 'instruments' || (active?.instruments && active.instruments.length > 0)) && active?.id !== 'sports' ? (
+      {(active?.kind === 'instruments' || (active?.instruments && active.instruments.length > 0)) &&
+      active &&
+      usesHorizonChipRow(active.id) ? (
         <div className="flex gap-1.5" role="group" aria-label="Horizon">
           {UI_HORIZONS.map((h) => (
             <button

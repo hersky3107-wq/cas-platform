@@ -7,6 +7,7 @@
  */
 import { decodeEntertainmentInstrument } from './adapters/entertainment-catalog'
 import { decodePoliticsInstrument } from './adapters/politics-catalog'
+import { decodePropertyInstrument } from './adapters/real-estate-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
 
 export function nextClarifySubmission(
@@ -19,7 +20,8 @@ export function nextClarifySubmission(
     slot === 'entity_id' &&
     (decodeSportsInstrument(optionId) !== null ||
       decodePoliticsInstrument(optionId) !== null ||
-      decodeEntertainmentInstrument(optionId) !== null)
+      decodeEntertainmentInstrument(optionId) !== null ||
+      decodePropertyInstrument(optionId) !== null)
   const next = fixturePick
     ? { ...answered, [slot]: optionId, entity_confirmed: 'true' }
     : { ...answered, [slot]: optionId }

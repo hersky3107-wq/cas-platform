@@ -11,6 +11,8 @@ import {
   buildCatalogRankedRoundInput,
   findCatalogInstrument,
   isCatalogInstrumentAllowed,
+  isFreeformSearchCategory,
+  usesHorizonChipRow,
   visibleChipEntries,
   visibleChipEntriesForViewer,
   type CatalogInstrument,
@@ -60,6 +62,19 @@ describe('PUBLIC_CATALOG', () => {
       expect(c.kind).toBe('coming_soon')
       expect(c.instruments).toEqual([])
     }
+  })
+
+  it('real_estate is freeform search (no catalog chips, no trading-horizon row)', () => {
+    expect(isFreeformSearchCategory('real_estate')).toBe(true)
+    expect(isFreeformSearchCategory('sports')).toBe(true)
+    expect(isFreeformSearchCategory('politics_election')).toBe(true)
+    expect(isFreeformSearchCategory('entertainment')).toBe(true)
+    expect(isFreeformSearchCategory('gold_metals')).toBe(false)
+    expect(isFreeformSearchCategory('crypto')).toBe(false)
+    expect(usesHorizonChipRow('real_estate')).toBe(false)
+    expect(usesHorizonChipRow('sports')).toBe(false)
+    expect(usesHorizonChipRow('gold_metals')).toBe(true)
+    expect(usesHorizonChipRow('crypto')).toBe(true)
   })
 
   it('gold_metals chips are XAU/USD, XAG/USD, XPT/USD, GLD, SLV — spots and ETFs side by side; ETFs filed by underlying', () => {

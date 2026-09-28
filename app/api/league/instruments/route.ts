@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { isPromptAllowed } from '@/lib/league/jurisdiction/resolve'
 import { jurisdictionNotices } from '@/lib/league/gateway/admission'
 import { categoryHasMixedResolutionClocks, visibleChipEntriesForViewer } from '@/lib/league/catalog'
-import { headlinePropertyInstruments } from '@/lib/league/gateway/adapters/real-estate-catalog'
 import { resolveLeagueViewer, viewerCatalog } from '@/lib/league/public-access'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
@@ -51,17 +50,6 @@ export async function GET(req: Request) {
   }
 
   const categories = viewerCatalog(viewer).map((c) => {
-    if (c.id === 'real_estate') {
-      return {
-        id: c.id,
-        ledgerCategory: c.ledgerCategory,
-        tone: c.tone,
-        kind: 'instruments' as const,
-        promptAllowed: isPromptAllowed(c.id, viewer.jurisdiction),
-        instruments: headlinePropertyInstruments().map((instrument) => ({ instrument })),
-        mixedResolutionClocks: false,
-      }
-    }
     if (c.id === 'sports' && sportsInstruments.length > 0) {
       return {
         id: c.id,

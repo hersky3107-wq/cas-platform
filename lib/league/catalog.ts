@@ -51,6 +51,28 @@ export const PUBLIC_CATEGORY_IDS = [
 
 export type PublicCategoryId = (typeof PUBLIC_CATEGORY_IDS)[number]
 
+/**
+ * Search → resolve → generate. These stay `coming_soon` in the catalog
+ * (empty chip list + "준비 중") and never render a static instrument grid.
+ * Sports may later surface live fixtures as chips; real_estate does not —
+ * regions are typed ("강남 오를까"), not listed.
+ */
+export const FREEFORM_SEARCH_CATEGORY_IDS = [
+  'sports',
+  'politics_election',
+  'entertainment',
+  'real_estate',
+] as const
+
+export function isFreeformSearchCategory(id: string): boolean {
+  return (FREEFORM_SEARCH_CATEGORY_IDS as readonly string[]).includes(id)
+}
+
+/** Trading 1d/1w/1m/3m chips. Publication-date / event-date categories hide them. */
+export function usesHorizonChipRow(id: string): boolean {
+  return id !== 'sports' && id !== 'real_estate'
+}
+
 export type CatalogKind = 'instruments' | 'coming_soon'
 
 export type CatalogInstrument = {
