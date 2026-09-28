@@ -4,6 +4,7 @@ import type { RateLimitRule } from '@/lib/rate-limit'
 import { findCatalogInstrument } from './catalog'
 import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
+import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
 import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
 import { isUiHorizon, type UiHorizon } from './horizon'
 
@@ -119,6 +120,14 @@ export function gatePublicGenerateInstrument(
       return { ok: false, status: 403, code: 'jurisdiction_blocked' }
     }
     return { ok: true, instrument, category: 'politics_election', horizon }
+  }
+
+  const showParts = decodeEntertainmentInstrument(instrument)
+  if (showParts) {
+    if (!viewer.isAdmin && !isCategoryAllowed('entertainment_awards', viewer.jurisdiction)) {
+      return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+    }
+    return { ok: true, instrument, category: 'entertainment_awards', horizon }
   }
 
   const found = findCatalogInstrument(instrument)

@@ -40,6 +40,7 @@ export type GradePlan =
       tier1: GradeSource | 'legacy'
     }
   | { source: 'operator_manual' }
+  | { source: 'kobis'; tier1: GradeSource }
   | { source: 'unsupported'; tier1Kind: string }
 
 /**
@@ -80,6 +81,9 @@ export function gradePlanFor(adapter: CategoryAdapter | null, instrument: string
   const [tier1] = sources
   if (tier1.tier === 1 && tier1.kind === 'twelve_data') {
     return { source: 'price_series', tier1 }
+  }
+  if (tier1.tier === 1 && tier1.kind === 'official_api' && tier1.endpoint.startsWith('kobis:')) {
+    return { source: 'kobis', tier1 }
   }
   if (sources.some((s) => s.kind === 'operator_manual')) {
     return { source: 'operator_manual' }

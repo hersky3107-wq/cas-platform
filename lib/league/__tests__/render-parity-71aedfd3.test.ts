@@ -142,6 +142,7 @@ describe('render parity — round 71aedfd3 (binary_close_higher) before vs after
       expect(html).toContain('data-testid="direction-ratio-bar"')
       expect(html).not.toMatch(/[✓✗]/)
       expect(html.replace(/\u2713\d+\/\d+/g, '')).not.toMatch(/\d+\/\d+/)
+      expect(html).not.toContain('data-testid="consensus-confidence-tier"')
     })
 
     it(`consensus hero [${locale}] — label-less legacy shape matches the labeled live shape on price rounds`, () => {

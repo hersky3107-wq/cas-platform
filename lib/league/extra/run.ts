@@ -73,8 +73,11 @@ import {
   type ConsensusLeagueInput,
 } from './consensus'
 import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeatId } from './seats'
+import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
+import { decodeEntertainmentInstrument } from '../gateway/adapters/entertainment-catalog'
+import { formatEntertainmentCrowBrief } from '../gateway/adapters/entertainment-packet'
 import { decodePoliticsInstrument } from '../gateway/adapters/politics-catalog'
 import { formatPoliticsCrowBrief } from '../gateway/adapters/politics-packet'
 import { decodeSportsInstrument } from '../gateway/adapters/sports-catalog'
@@ -359,8 +362,11 @@ async function runHistorySeat(
   providedSeries: ExtraPriceSeries | null | undefined,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('history')!
-  const sports = isSportsLedgerCategory(round.category) || isPoliticsLedgerCategory(round.category)
-  const series = sports
+  const nonPrice =
+    isSportsLedgerCategory(round.category) ||
+    isPoliticsLedgerCategory(round.category) ||
+    isEntertainmentLedgerCategory(round.category)
+  const series = nonPrice
     ? { bars: [] as HistorySeriesBar[], latestClose: null as number | null, asOf: round.opened_at ?? null }
     : await resolveHistorySeries(round.instrument, providedSeries)
   if (!series) {
@@ -860,6 +866,11 @@ async function resolveCrowBrief(
         item.candidate.toLowerCase() === parts.candidate.toLowerCase(),
     )
     return formatPoliticsCrowBrief(parts, row ? { kalshiPct: row.kalshiPct, polymarketPct: row.polymarketPct } : null)
+  }
+  if (isEntertainmentLedgerCategory(round.category)) {
+    const parts = decodeEntertainmentInstrument(round.instrument)
+    if (!parts) return 'ENTERTAINMENT FACTS: instrument undecodable. Do not invent grosses or odds.'
+    return formatEntertainmentCrowBrief(parts, { marketPct: null, trackingNote: null })
   }
   const series = await resolveHistorySeries(round.instrument, providedSeries)
   return formatFinanceCrowBrief(series)

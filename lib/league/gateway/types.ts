@@ -70,6 +70,11 @@ export type RefusalCode =
   | 'prompt_not_available'
   | 'registered_country_missing'
   | 'country_mismatch'
+  | 'celebrity_private'
+  | 'subjective_show'
+  | 'vague_show'
+  | 'past_show'
+  | 'unsupported_show'
 
 /**
  * Adapter id: public chips plus ledger-only adapters that are not on the

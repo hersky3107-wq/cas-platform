@@ -19,6 +19,7 @@ import { decodePoliticsInstrument } from '../gateway/adapters/politics-catalog'
 import { raceBlackoutActive } from '../politics/kr-calendar'
 import { containsPollPercentage } from '../politics/poll-redact'
 import { leagueSideFromDivination } from './divination'
+import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isPoliticsLedgerCategory } from './politics-category'
 
 /** Extra-engine id — powers the seat; the ledger row is still `sentiment`. */
@@ -254,6 +255,9 @@ export function buildSentimentUserPrompt(input: SentimentLeagueInput): string {
 function sentimentSearchLine(input: SentimentLeagueInput): string {
   if (input.category.trim().toLowerCase() === 'sports') {
     return 'For sports: search fan/media buzz, injury rumors, and momentum narrative. Not charts, not market-implied percents.'
+  }
+  if (isEntertainmentLedgerCategory(input.category)) {
+    return 'For entertainment: search trailer buzz, reviews, social chatter, and festival heat. Not box-office dollars unless already published, and not betting odds.'
   }
   if (isPoliticsLedgerCategory(input.category)) {
     const parts = decodePoliticsInstrument(input.instrument)

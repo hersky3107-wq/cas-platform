@@ -6,6 +6,7 @@ import { validateNormalizerOutput, type PromptNormalizer, type ValidatedNormaliz
 import { MAX_CANDIDATE_CHIPS } from './candidate-search'
 import { detectBettingFraming } from './betting-framing'
 import { prefilterRejects } from './prefilter'
+import { decodeEntertainmentInstrument } from './adapters/entertainment-catalog'
 import { decodePoliticsInstrument } from './adapters/politics-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
 import { propositionKindFor } from './normalize-prompt'
@@ -50,7 +51,7 @@ import type {
 export const MAX_CLARIFY_ROUNDS = 2
 
 /** Categories whose adapter resolves races/fixtures from raw text without the normalizer. */
-const SLATE_BACKED_CATEGORIES = new Set<string>(['politics_election', 'sports'])
+const SLATE_BACKED_CATEGORIES = new Set<string>(['politics_election', 'sports', 'entertainment'])
 
 const GATEWAY_DEBUG =
   typeof process !== 'undefined' && (process.env.LEAGUE_GATEWAY_DEBUG === '1' || process.env.LEAGUE_GATEWAY_DEBUG === 'true')
@@ -68,7 +69,13 @@ function entityRefusalIsImmediate(code: RefusalCode): boolean {
     code === 'vague_election' ||
     code === 'past_election' ||
     code === 'politics_window' ||
-    code === 'unsupported_election'
+    code === 'unsupported_election' ||
+    code === 'celebrity_private' ||
+    code === 'subjective_show' ||
+    code === 'vague_show' ||
+    code === 'past_show' ||
+    code === 'unsupported_show' ||
+    code === 'no_result_source'
   )
 }
 
@@ -241,7 +248,9 @@ function roundsUsed(req: GatewayRequest): number {
 function oneQuestion(question: ClarifyingQuestion): ClarifyingQuestion {
   const fixturePicks =
     question.slot === 'entity_id' &&
-    question.options?.some((o) => decodeSportsInstrument(o.id) || decodePoliticsInstrument(o.id))
+    question.options?.some(
+      (o) => decodeSportsInstrument(o.id) || decodePoliticsInstrument(o.id) || decodeEntertainmentInstrument(o.id),
+    )
   const cap = fixturePicks ? MAX_TARGET_PICKS : MAX_CANDIDATE_CHIPS
   const options = question.slot === 'entity_id' ? question.options?.slice(0, cap) : question.options
   return {
@@ -435,7 +444,9 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   const fixturePick =
     picked.length > 0 &&
     entity.entity_id === picked &&
-    (decodeSportsInstrument(picked) !== null || decodePoliticsInstrument(picked) !== null)
+    (decodeSportsInstrument(picked) !== null ||
+      decodePoliticsInstrument(picked) !== null ||
+      decodeEntertainmentInstrument(picked) !== null)
   if (slots.slots.entity_confirmed !== 'true' && !fixturePick && !entity.skip_confirm) {
     const preview = adapter.composeProposition(slots, now)
     return {

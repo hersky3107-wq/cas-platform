@@ -121,6 +121,8 @@ export function ConsensusHero({
 
   const tier = hero.confidenceTier
   const tierLabel = hero.confidenceTierLabel
+  /** 접전/우세/압도 badges are for subject-outcome rounds only — not price ▲▼ cards. */
+  const showConfidenceTier = Boolean(tierLabel && !price)
   const tierStyle =
     tier === 'close'
       ? 'border-amber-500 bg-amber-50 text-amber-800 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-200'
@@ -176,7 +178,7 @@ export function ConsensusHero({
               {magSuffix}
             </>
           )}
-          {tierLabel ? (
+          {showConfidenceTier ? (
             <span
               className={`ml-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold tracking-wide align-middle md:text-sm ${tierStyle}`}
               data-testid="consensus-confidence-tier"
@@ -188,12 +190,12 @@ export function ConsensusHero({
         {hero.diverged ? (
           <p className="mt-1 text-[11px] font-medium leading-snug text-league-fg-muted">
             {hero.line2}
-            {tierLabel ? <span className="ml-1.5 font-semibold text-league-fg">({tierLabel})</span> : null}
+            {showConfidenceTier ? <span className="ml-1.5 font-semibold text-league-fg">({tierLabel})</span> : null}
           </p>
         ) : hero.confidencePct !== null ? (
           <p className="mt-1 text-[11px] font-medium leading-snug text-league-fg-muted">
             {t.hero.confidenceNote(hero.confidencePct)}
-            {tierLabel ? <span className="ml-1.5 font-semibold text-league-fg">({tierLabel})</span> : null}
+            {showConfidenceTier ? <span className="ml-1.5 font-semibold text-league-fg">({tierLabel})</span> : null}
           </p>
         ) : null}
       </div>

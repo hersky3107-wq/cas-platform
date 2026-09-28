@@ -153,6 +153,11 @@ export type GradingDeps = {
   fetchSeries: (instrument: string, startDate: string, endDate: string) => Promise<SeriesResult>
   /** False for handles with no price symbol (e.g. 'MATCH:…') — refused without a feed call. */
   isPriceInstrument: (instrument: string) => boolean
+  /**
+   * Official-list grade (KOBIS weekend box office). Return null to park for
+   * the operator instead of guessing.
+   */
+  resolveOfficialOutcome?: (instrument: string) => Promise<ResolvedOutcome | null>
   now?: () => Date
 }
 
@@ -238,6 +243,26 @@ export function createGradingEngine(deps: GradingDeps) {
     const input = toResolutionInput(round)
 
     if (!deps.isPriceInstrument(round.instrument)) {
+      if (deps.resolveOfficialOutcome) {
+        const official = await deps.resolveOfficialOutcome(round.instrument)
+        if (official) {
+          const childrenGraded = await deps.store.gradeChildren(round.id, official.actualDirection)
+          const saved = await deps.store.saveGraded(round.id, official, nowDate().toISOString())
+          if (!saved.ok) {
+            await deps.store.releaseClaim(round.id)
+            return { outcome: 'error', roundId: round.id, instrument: round.instrument, error: saved.error }
+          }
+          return {
+            outcome: 'graded',
+            roundId: round.id,
+            instrument: round.instrument,
+            direction: official.actualDirection,
+            resolutionPrice: official.resolutionPrice,
+            resolutionSessionDate: official.resolutionSessionDate,
+            childrenGraded,
+          }
+        }
+      }
       const parked = await deps.store.parkForManual(round.id, nowDate().toISOString())
       await deps.store.releaseClaim(round.id)
       return {

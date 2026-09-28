@@ -16,6 +16,7 @@
 import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
+import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 
@@ -131,6 +132,13 @@ export function consensusMoneySearchHints(category: string): string {
       'NEVER write 지지율, 베팅, 배당, 토토, or a poll percentage.',
       '- Polymarket implied probability (해외 예측시장 데이터)',
       '- Kalshi implied probability for the named candidate',
+    ].join('\n')
+  }
+  if (isEntertainmentLedgerCategory(key)) {
+    return [
+      'For ENTERTAINMENT, money is a prediction-market implied probability on a major award (Polymarket/Kalshi: Oscars, Grammys, Emmys, Game Awards) OR a published studio-tracking gross (Boxoffice Pro, Deadline).',
+      'If neither a live book nor a published tracking number exists, ABSTAIN. Do not invent a percent. Korean admissions usually have no book — abstain.',
+      'Speak as 예측시장 내재 확률 or 스튜디오 트래킹. Never 베팅/배당/토토.',
     ].join('\n')
   }
   if (isSportsLedgerCategory(key)) {
@@ -296,6 +304,7 @@ export function buildConsensusSystemPrompt(): string {
     '- crypto_spot / memecoin: Binance/Bybit funding rate (positive/negative), Deribit options skew/IV, top-trader long/short, taker buy/sell, crypto prediction markets — not equity COT or analyst targets',
     '- sports: Pinnacle / sharp-book implied win probability (juice removed) as 시장 기준선. Never 토토/배당/핸디캡/픽/베팅/오버언더. Informational only.',
     '- politics_election: Polymarket (해외 예측시장 데이터) and Kalshi implied probability as 예측시장 내재 확률. Never 지지율/베팅/배당/토토.',
+    '- entertainment_awards: Polymarket/Kalshi award implied probability, or published studio tracking. If neither exists, abstain — never invent a gross or a percent.',
     'Read what the MARKET has priced with money. Not chart shapes. Not news mood.',
     '',
     'How to judge:',

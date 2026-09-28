@@ -19,6 +19,8 @@ import {
 import { gatePublicGenerateInstrument, isCuratedInstrument, visibleCategoriesFor } from './access-policy'
 import { isUiHorizon, type UiHorizon } from './horizon'
 import type { PredictionCategory } from '@/lib/prediction/categories'
+import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
+import { buildEntertainmentRankedRoundInput } from './gateway/adapters/entertainment-compose'
 import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
 import { buildPoliticsRankedRoundInput } from './gateway/adapters/politics-compose'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
@@ -68,12 +70,13 @@ export type ViewerResult = { ok: true; viewer: LeagueViewer } | { ok: false; res
 /** Curated ranked instrument strings — the only instruments a public user may reach. */
 export const CURATED_INSTRUMENTS: readonly string[] = CATALOG_INSTRUMENT_IDS
 
-/** Public ranked instruments include catalog chips, sports fixtures, and election picks. */
+/** Public ranked instruments include catalog chips, sports fixtures, elections, and shows. */
 export function isPublicRankedInstrument(instrument: string): boolean {
   return (
     isCuratedInstrument(instrument, CURATED_INSTRUMENTS) ||
     decodeSportsInstrument(instrument) !== null ||
-    decodePoliticsInstrument(instrument) !== null
+    decodePoliticsInstrument(instrument) !== null ||
+    decodeEntertainmentInstrument(instrument) !== null
   )
 }
 
@@ -346,11 +349,14 @@ export async function resolvePublicInstrumentGenerateTarget(
 
   const sportsParts = decodeSportsInstrument(gate.instrument)
   const electionParts = decodePoliticsInstrument(gate.instrument)
+  const showParts = decodeEntertainmentInstrument(gate.instrument)
   const created = sportsParts
     ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
     : electionParts
       ? buildPoliticsRankedRoundInput(gate.instrument, gate.horizon)
-      : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+      : showParts
+        ? buildEntertainmentRankedRoundInput(gate.instrument, gate.horizon)
+        : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
   if (!created) {
     return { ok: false, response: jsonError(404, 'No ranked round available yet', 'no_round') }
   }

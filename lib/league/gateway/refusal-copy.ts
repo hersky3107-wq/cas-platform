@@ -129,6 +129,26 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     ko: '한 개의 공개 링크로 확인할 수 없는 질문은 열 수 없습니다. 공식 출처·대상·날짜를 특정해 주세요.',
     en: 'A claim that cannot be checked from one published link cannot be opened. Name the official source, the object, and the date.',
   },
+  celebrity_private: {
+    ko: '사생활·범죄·연애·의료에 관한 질문은 열 수 없습니다. 박스오피스, 차트, 시상식처럼 공식 공개 기록만 예측할 수 있습니다.',
+    en: 'Private life, crime, romance, and medical questions cannot be opened. Only official public results — box office, charts, awards — can be predicted.',
+  },
+  subjective_show: {
+    ko: '재밌을까·명작일까·평점은 판정할 수 없습니다. 예: 치이카와 첫 주말 1위 / 뉴진스 멜론 1위 / 올해의 게임',
+    en: 'Taste and review scores cannot be graded. Try: Chiikawa opening weekend #1 / NewJeans Melon #1 / Game of the Year.',
+  },
+  vague_show: {
+    ko: '작품과 공식 기준을 함께 입력해 주세요. 예: 치이카와 첫 주말 1위 / 뉴진스 멜론 1위 / 올해의 게임',
+    en: 'Name the title and an official metric. e.g. Chiikawa opening weekend #1 / NewJeans Melon #1 / Game of the Year.',
+  },
+  past_show: {
+    ko: '이미 개봉했거나 끝난 시상식은 예측할 수 없습니다.',
+    en: 'Predictions are only available for releases and ceremonies that have not finished.',
+  },
+  unsupported_show: {
+    ko: '3개월 안에 결과가 나오는 박스오피스·차트·시상식만 열 수 있습니다. 예: 치이카와 첫 주말 1위, 헝거게임 오프닝 1위, 게임 어워드 올해의 게임.',
+    en: 'Only box office, charts, and awards with a result inside 3 months can be opened. e.g. Chiikawa opening #1, Hunger Games opening #1, Game Awards Game of the Year.',
+  },
 }
 
 /** Clarify prompts + option labels, keyed by full i18n key. */

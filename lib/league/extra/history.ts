@@ -13,6 +13,7 @@
 import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
+import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 
@@ -284,6 +285,18 @@ export function buildHistorySystemPrompt(category?: string): string {
       '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
     ].join('\n')
   }
+  if (isEntertainmentLedgerCategory(category)) {
+    return [
+      'You are the 📜 역사·패턴 extra seat. For ENTERTAINMENT answer from comparable titles only: same director, franchise, or genre opening, or the guild-to-award path.',
+      'Do not use price charts. Do not invent a hit rate.',
+      '',
+      'Name one of: 비교작, 프랜차이즈, 길드 경로.',
+      'Then pick a direction for THIS proposition.',
+      '',
+      'Last line MUST be JSON:',
+      '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
+    ].join('\n')
+  }
   if (isSportsLedgerCategory(category)) {
     return [
       HISTORY_SPORTS_PERSONA,
@@ -342,6 +355,17 @@ export function buildHistoryUserPrompt(input: HistoryLeagueInput): string {
       `CATEGORY: ${input.category}`,
       '',
       'Judge from incumbency and the previous comparable election. Name 현직 or 지난 선거. Do not cite 지지율.',
+    ].join('\n')
+  }
+  if (isEntertainmentLedgerCategory(input.category)) {
+    return [
+      `PROPOSITION: ${input.proposition}`,
+      `SUBJECT: ${input.subjectName}`,
+      `INSTRUMENT: ${input.instrument}`,
+      `HORIZON: ${input.horizon}`,
+      `CATEGORY: ${input.category}`,
+      '',
+      'Judge from comparable films or the guild-to-award path. Name 비교작, 프랜차이즈, or 길드 경로. Do not cite a price chart.',
     ].join('\n')
   }
   if (isSportsLedgerCategory(input.category)) {

@@ -2,9 +2,11 @@ import type { LeagueLocale } from './i18n/locales'
 import type { LeagueUiPack } from './i18n/dictionary'
 import { propositionKindOf } from './side-labels'
 import { normalizeSessionDate } from '../prediction/resolution'
+import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
 import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { electionHeadlineLabel, politicsPropositionDisplay } from './politics-display'
+import { entertainmentHeadlineLabel, entertainmentPropositionDisplay } from './entertainment-display'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
@@ -84,14 +86,24 @@ export function electionInstrumentDisplay(instrument: string, locale: LeagueLoca
   return electionHeadlineLabel(instrument, locale)
 }
 
+export function showInstrumentDisplay(instrument: string, locale: LeagueLocale = 'en'): string | null {
+  return entertainmentHeadlineLabel(instrument, locale)
+}
+
 function nonPriceInstrumentDisplay(instrument: string, locale: LeagueLocale): string {
-  return sportsInstrumentDisplay(instrument, locale) ?? electionInstrumentDisplay(instrument, locale) ?? instrument
+  return (
+    sportsInstrumentDisplay(instrument, locale) ??
+    electionInstrumentDisplay(instrument, locale) ??
+    showInstrumentDisplay(instrument, locale) ??
+    instrument
+  )
 }
 
 /** Localized proposition for curated sports fixtures and election picks. */
 export function rankedPropositionDisplay(instrument: string, stored: string, locale: LeagueLocale): string {
   if (decodeSportsInstrument(instrument)) return sportsPropositionDisplay(instrument, stored, locale)
   if (decodePoliticsInstrument(instrument)) return politicsPropositionDisplay(instrument, stored, locale)
+  if (decodeEntertainmentInstrument(instrument)) return entertainmentPropositionDisplay(instrument, stored, locale)
   return stored
 }
 

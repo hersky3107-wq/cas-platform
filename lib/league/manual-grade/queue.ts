@@ -111,7 +111,7 @@ export async function parkDueManualRounds(now = new Date()): Promise<{ scanned: 
   const due = data ?? []
   for (const row of due) {
     const plan = planForRound(String(row.instrument), String(row.category))
-    if (plan.source === 'price_series') continue
+    if (plan.source === 'price_series' || plan.source === 'kobis') continue
     const parked = await parkRoundForManual(String(row.id), nowIso, {
       proposition: String(row.proposition_text ?? ''),
       category: String(row.category ?? ''),

@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { fetchDailyCloses, mapInstrumentToTwelveData } from '@/lib/league/market-data'
 import { adapterForInstrument } from '@/lib/league/gateway/adapters/registry.server'
 import { gradePlanFor } from '@/lib/league/gateway/grade-plan'
+import { gradeKrBoxOfficeInstrument } from '@/lib/league/entertainment/kobis'
 import { parkRoundForManual } from '@/lib/league/manual-grade/queue'
 import {
   createGradingEngine,
@@ -293,10 +294,25 @@ async function fetchSeriesViaGradePlan(instrument: string, startDate: string, en
   }
   // operator_manual is a real grade source, not a missing executor. The
   // price engine never fetches a series for it (isPriceInstrument is false).
-  if (plan.source === 'operator_manual') {
+  if (plan.source === 'operator_manual' || plan.source === 'kobis') {
     return { ok: false as const, error: 'operator_manual: awaiting published evidence' }
   }
   return { ok: false as const, error: `no grading executor for tier-1 source '${plan.tier1Kind}' yet` }
+}
+
+async function resolveOfficialOutcome(instrument: string): Promise<ResolvedOutcome | null> {
+  const plan = gradePlanFor(adapterForInstrument(instrument), instrument)
+  if (plan.source !== 'kobis') return null
+  const grade = await gradeKrBoxOfficeInstrument(instrument)
+  if (!grade) return null
+  return {
+    rawOutcome: grade.rawOutcome,
+    actualDirection: grade.direction,
+    anchorPrice: 0,
+    anchorPriceAt: new Date().toISOString(),
+    resolutionPrice: grade.resolutionPrice,
+    resolutionSessionDate: grade.resolutionSessionDate,
+  }
 }
 
 const engine = createGradingEngine({
@@ -305,6 +321,7 @@ const engine = createGradingEngine({
   isPriceInstrument: (instrument) =>
     gradePlanFor(adapterForInstrument(instrument), instrument).source === 'price_series' &&
     mapInstrumentToTwelveData(instrument) !== null,
+  resolveOfficialOutcome,
 })
 
 /**

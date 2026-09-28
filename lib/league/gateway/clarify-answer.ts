@@ -5,6 +5,7 @@
  * The single-team "네, 맞아요" chip stays a plain confirm and does not
  * consume another clarify round.
  */
+import { decodeEntertainmentInstrument } from './adapters/entertainment-catalog'
 import { decodePoliticsInstrument } from './adapters/politics-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
 
@@ -16,7 +17,9 @@ export function nextClarifySubmission(
 ): { answered: Record<string, string>; clarifyRound: number } {
   const fixturePick =
     slot === 'entity_id' &&
-    (decodeSportsInstrument(optionId) !== null || decodePoliticsInstrument(optionId) !== null)
+    (decodeSportsInstrument(optionId) !== null ||
+      decodePoliticsInstrument(optionId) !== null ||
+      decodeEntertainmentInstrument(optionId) !== null)
   const next = fixturePick
     ? { ...answered, [slot]: optionId, entity_confirmed: 'true' }
     : { ...answered, [slot]: optionId }
