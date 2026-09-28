@@ -32,6 +32,7 @@
  */
 
 import type { PropositionKind } from './gateway/types'
+import { isPoliticsLedgerCategory } from './extra/politics-category'
 import { isSportsLedgerCategory } from './extra/sports-category'
 import {
   isBinaryDirection,
@@ -99,6 +100,10 @@ export type AnswerContract = {
   sportsClosedBookSystemPrompt?: string
   /** Sports rounds calibration variant for scout tier. */
   sportsScoutSystemPrompt?: string
+  /** Politics rounds calibration variant for closed-book tiers. */
+  politicsClosedBookSystemPrompt?: string
+  /** Politics rounds calibration variant for scout tier. */
+  politicsScoutSystemPrompt?: string
   /** Appended once when the first answer fails `validate`. */
   retryInstruction: string
   /**
@@ -444,6 +449,17 @@ const SPORTS_SUBJECT_OUTCOME_CONFIG: PromptConfig = {
   ],
 }
 
+export const POLITICS_CALIBRATION_GUIDANCE =
+  'This is one election inside the next three months. If the market baseline is 80%+, the named candidate is a strong favorite — pick that side unless the packet states a concrete reversal (withdrawal, ballot removal, or a documented scandal with a real consequence). When the race is close (~55%), weigh news, debate reaction, endorsements, and turnout. You MAY pick the underdog when those reasons are real. Do NOT pick the underdog just to be contrarian, and do NOT invent scandals or poll numbers. Match confidence to the edge: heavy favorite ~85-90%, coin-flip ~55%. Frame the call as 당선 가능성 and prediction-market implied probability, never as 지지율 and never as a bet.'
+
+const POLITICS_SUBJECT_OUTCOME_CONFIG: PromptConfig = {
+  ...SUBJECT_OUTCOME_CONFIG,
+  fieldRules: [
+    ...SUBJECT_OUTCOME_CONFIG.fieldRules,
+    `- confidence calibration: ${POLITICS_CALIBRATION_GUIDANCE}`,
+  ],
+}
+
 const BINARY_SUBJECT_OUTCOME: AnswerContract = {
   kind: 'binary_subject_outcome',
   sides: SUBJECT_OUTCOME_CONFIG.sides,
@@ -452,6 +468,8 @@ const BINARY_SUBJECT_OUTCOME: AnswerContract = {
   scoutSystemPrompt: composeScoutPrompt(SUBJECT_OUTCOME_CONFIG),
   sportsClosedBookSystemPrompt: composeClosedBookPrompt(SPORTS_SUBJECT_OUTCOME_CONFIG),
   sportsScoutSystemPrompt: composeScoutPrompt(SPORTS_SUBJECT_OUTCOME_CONFIG),
+  politicsClosedBookSystemPrompt: composeClosedBookPrompt(POLITICS_SUBJECT_OUTCOME_CONFIG),
+  politicsScoutSystemPrompt: composeScoutPrompt(POLITICS_SUBJECT_OUTCOME_CONFIG),
   retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"yes"|"no","probability":0-100,"qualifier":"<short string>","rationale":"..."}. side must be exactly "yes" or "no" — whether the named subject achieves the stated outcome; any other result (including a draw) is "no". Never abstain, never a name. qualifier is required: a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) with your predicted detail (scoreline, margin, gap).`,
   directionOnlyRetryInstruction:
     'RETRY: Previous answer had no valid side. Output EXACTLY one JSON line and nothing else: {"side":"yes"} or {"side":"no"}. Never abstain, empty, a name, or any other value.',
@@ -607,7 +625,9 @@ export function buildRoundPrompts(
   const sportsGuidance =
     isSportsLedgerCategory(round.category) && contract.kind === 'binary_subject_outcome'
       ? SPORTS_CALIBRATION_GUIDANCE
-      : null
+      : isPoliticsLedgerCategory(round.category) && contract.kind === 'binary_subject_outcome'
+        ? POLITICS_CALIBRATION_GUIDANCE
+        : null
 
   let price: string
   if (injection) {
@@ -657,6 +677,11 @@ export function systemPromptFor(
     return entry.league_tier === 'scout'
       ? (contract.sportsScoutSystemPrompt ?? contract.scoutSystemPrompt)
       : (contract.sportsClosedBookSystemPrompt ?? contract.closedBookSystemPrompt)
+  }
+  if (isPoliticsLedgerCategory(category) && contract.kind === 'binary_subject_outcome') {
+    return entry.league_tier === 'scout'
+      ? (contract.politicsScoutSystemPrompt ?? contract.scoutSystemPrompt)
+      : (contract.politicsClosedBookSystemPrompt ?? contract.closedBookSystemPrompt)
   }
   return entry.league_tier === 'scout' ? contract.scoutSystemPrompt : contract.closedBookSystemPrompt
 }

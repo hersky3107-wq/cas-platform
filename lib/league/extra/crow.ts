@@ -13,6 +13,7 @@ import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import type { HistorySeriesBar } from './history'
 import { leagueSideFromDivination } from './divination'
+import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 
 /** Challenger roster id — powers the seat; the ledger row is still `crow`. */
@@ -85,9 +86,12 @@ export function buildCrowInput(
 
 export function buildCrowSystemPrompt(category: string): string {
   const sports = isSportsLedgerCategory(category)
+  const politics = isPoliticsLedgerCategory(category)
   const lens = sports
     ? 'Sports lens: the underdog\'s uprising and single-game chaos. Home advantage, the book\'s residual on the dog, and one-night variance are real. Rest, bullpen, and rotation count only when the brief states them.'
-    : 'Finance lens: the crowd\'s euphoria, overheating, and mean-reversion risk. A steep measured run is a real downside. A flat path is not a reversal. Do not invent yields, funding, or macro prints.'
+    : politics
+      ? 'Politics lens: the overlooked reversal in a close race — a documented scandal, withdrawal, or turnout shift that the market baseline has not fully priced. A heavy favorite can still be the right call. Do not invent poll numbers or 지지율.'
+      : 'Finance lens: the crowd\'s euphoria, overheating, and mean-reversion risk. A steep measured run is a real downside. A flat path is not a reversal. Do not invent yields, funding, or macro prints.'
   return [
     CROW_PERSONA,
     '',

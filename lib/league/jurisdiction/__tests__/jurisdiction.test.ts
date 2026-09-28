@@ -191,6 +191,12 @@ describe('promptAllowed — every cell is data', () => {
     }
   })
 
+  it('keeps politics prompts off in CN and ME', () => {
+    expect(isPromptAllowedForGroup('CN', 'politics_election')).toBe(false)
+    expect(isPromptAllowedForGroup('ME', 'politics_election')).toBe(false)
+    expect(isPromptAllowed('politics_election', { declaredCountry: 'CN', ipCountry: 'KR' })).toBe(false)
+  })
+
   it('applies stricter-of-the-two and never silently picks one country', () => {
     expect(isPromptAllowed('stocks', { declaredCountry: 'US', ipCountry: 'KR' })).toBe(false)
     expect(isPromptAllowed('stocks', { declaredCountry: 'KR', ipCountry: 'US' })).toBe(false)

@@ -16,6 +16,7 @@
 import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
+import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 
 export const CONSENSUS_ENGINE_MODEL_ID = 'sonar'
@@ -123,6 +124,15 @@ export const CONSENSUS_SPORTS_MONEY_HINTS = [
 
 export function consensusMoneySearchHints(category: string): string {
   const key = category.trim().toLowerCase()
+  if (isPoliticsLedgerCategory(key)) {
+    return [
+      'For POLITICS, the money signal is the prediction-market implied probability (Polymarket and Kalshi).',
+      'Polymarket is 해외 예측시장 데이터. Speak as 예측시장 내재 확률 / 시장 기준선. Informational only.',
+      'NEVER write 지지율, 베팅, 배당, 토토, or a poll percentage.',
+      '- Polymarket implied probability (해외 예측시장 데이터)',
+      '- Kalshi implied probability for the named candidate',
+    ].join('\n')
+  }
   if (isSportsLedgerCategory(key)) {
     return [
       'For SPORTS, the money signal is the SHARP-BOOK MARKET BASELINE (Pinnacle implied probability, juice removed). Search the current market-implied win probability for the NAMED team.',
@@ -285,6 +295,7 @@ export function buildConsensusSystemPrompt(): string {
     '- index ETFs (etf_index): index-futures COT (YM/ES/NQ), CBOE put/call, VIX vol premium/skew — not single-stock price targets',
     '- crypto_spot / memecoin: Binance/Bybit funding rate (positive/negative), Deribit options skew/IV, top-trader long/short, taker buy/sell, crypto prediction markets — not equity COT or analyst targets',
     '- sports: Pinnacle / sharp-book implied win probability (juice removed) as 시장 기준선. Never 토토/배당/핸디캡/픽/베팅/오버언더. Informational only.',
+    '- politics_election: Polymarket (해외 예측시장 데이터) and Kalshi implied probability as 예측시장 내재 확률. Never 지지율/베팅/배당/토토.',
     'Read what the MARKET has priced with money. Not chart shapes. Not news mood.',
     '',
     'How to judge:',
@@ -320,6 +331,15 @@ export function buildConsensusUserPrompt(input: ConsensusLeagueInput): string {
 }
 
 export function consensusRetryInstruction(category?: string): string {
+  if (isPoliticsLedgerCategory(category)) {
+    return [
+      'RETRY: Rewrite as the 돈이 매긴 확률 seat for POLITICS.',
+      'Use only 예측시장 내재 확률 / Polymarket / Kalshi / 시장 기준선. Polymarket is 해외 예측시장 데이터.',
+      'Never 지지율, 베팅, 배당, 토토, or a poll percentage.',
+      'If there is no market-implied baseline after search, output found:false and direction null.',
+      'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
+    ].join(' ')
+  }
   if (isSportsLedgerCategory(category)) {
     return [
       'RETRY: Rewrite as the 돈이 매긴 확률 seat for SPORTS.',
@@ -389,8 +409,9 @@ function parseFoundFlag(text: string): boolean | null {
   return match[1]!.toLowerCase() === 'true'
 }
 
-export function consensusRationaleNeedsRetry(rationale: string | null): boolean {
+export function consensusRationaleNeedsRetry(rationale: string | null, category?: string): boolean {
   if (!rationale) return true
+  if (isPoliticsLedgerCategory(category) && /지지율|베팅|토토|배당/.test(rationale)) return true
   if (findConsensusChartLeak(rationale)) return true
   if (findConsensusNewsMoodLeak(rationale)) return true
   if (findConsensusPacketLeak(rationale)) return true

@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { createPoliticsAdapter } from './politics'
+import { LIVE_POLITICS_IO } from './politics-io.server'
 import { createSportsAdapter } from './sports'
 import { LIVE_SPORTS_IO } from './sports-io.server'
 import { createStocksAdapter } from './stocks'
@@ -37,6 +39,7 @@ export const techAdapter: CategoryAdapter = createTechAdapter({
     getResearchPacket({ round, budgetRemainingUsd, tier }),
 })
 export const sportsAdapter: CategoryAdapter = createSportsAdapter(LIVE_SPORTS_IO)
+export const politicsAdapter: CategoryAdapter = createPoliticsAdapter(LIVE_POLITICS_IO)
 
 const ADAPTERS: readonly CategoryAdapter[] = [
   stocksAdapter,
@@ -49,6 +52,7 @@ const ADAPTERS: readonly CategoryAdapter[] = [
   realEstateAdapter,
   techAdapter,
   sportsAdapter,
+  politicsAdapter,
 ]
 
 export function adapterForCategoryId(id: PublicCategoryId | string): CategoryAdapter | null {
@@ -69,6 +73,7 @@ export function adapterForLedgerCategory(category: string): CategoryAdapter | nu
 export function adapterForInstrument(instrument: string): CategoryAdapter | null {
   if (instrument.startsWith('TECH:')) return adapterForLedgerCategory('tech')
   if (instrument.startsWith('MATCH:')) return adapterForLedgerCategory('sports')
+  if (instrument.startsWith('ELECTION:')) return adapterForLedgerCategory('politics_election')
   const hit = findCatalogInstrument(instrument)
   return hit ? adapterForCategoryId(hit.category.id) : null
 }

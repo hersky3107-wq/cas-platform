@@ -258,7 +258,11 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
       if (
         resolution.refuse.code === 'betting_framing' ||
         resolution.refuse.code === 'vague_target' ||
-        resolution.refuse.code === 'past_event'
+        resolution.refuse.code === 'past_event' ||
+        resolution.refuse.code === 'vague_election' ||
+        resolution.refuse.code === 'past_election' ||
+        resolution.refuse.code === 'politics_window' ||
+        resolution.refuse.code === 'unsupported_election'
       ) {
         return refusedFrom(resolution.refuse, locale, adapter.category_id, viewer)
       }

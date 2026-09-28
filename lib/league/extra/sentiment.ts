@@ -15,7 +15,11 @@
  */
 import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
+import { decodePoliticsInstrument } from '../gateway/adapters/politics-catalog'
+import { raceBlackoutActive } from '../politics/kr-calendar'
+import { containsPollPercentage } from '../politics/poll-redact'
 import { leagueSideFromDivination } from './divination'
+import { isPoliticsLedgerCategory } from './politics-category'
 
 /** Extra-engine id — powers the seat; the ledger row is still `sentiment`. */
 export const SENTIMENT_ENGINE_MODEL_ID = 'sonar'
@@ -77,6 +81,13 @@ export const SENTIMENT_LANGUAGE_ALIASES = [
   'injury',
   'buzz',
   'momentum',
+  '스캔들',
+  'scandal',
+  '토론',
+  'debate',
+  '사퇴',
+  'withdrawal',
+  '모멘텀',
 ] as const
 
 /** History-seat chart language — not this seat's job. */
@@ -235,14 +246,39 @@ export function buildSentimentUserPrompt(input: SentimentLeagueInput): string {
     `CATEGORY: ${input.category}`,
     '',
     'Search the live web for news + indexed blog/forum/social opinion about this subject.',
-    input.category.trim().toLowerCase() === 'sports'
-      ? 'For sports: search fan/media buzz, injury rumors, and momentum narrative. Not charts, not market-implied percents.'
-      : 'Judge web-visible crowd sentiment only. No charts, no price tape, no packet macro.',
+    sentimentSearchLine(input),
     'If nothing meaningful is indexed, abstain — do not invent a mood.',
   ].join('\n')
 }
 
-export function sentimentRetryInstruction(): string {
+function sentimentSearchLine(input: SentimentLeagueInput): string {
+  if (input.category.trim().toLowerCase() === 'sports') {
+    return 'For sports: search fan/media buzz, injury rumors, and momentum narrative. Not charts, not market-implied percents.'
+  }
+  if (isPoliticsLedgerCategory(input.category)) {
+    const parts = decodePoliticsInstrument(input.instrument)
+    const krBlackout = Boolean(
+      parts && parts.jurisdiction === 'KR' && raceBlackoutActive(new Date(parts.pollCloseMs).toISOString(), Date.now()),
+    )
+    const base =
+      'For politics: search breaking news (scandals, withdrawals, endorsements, replacements), debate reactions, media narrative, momentum, and turnout mood. Not charts and not betting odds.'
+    if (krBlackout || parts?.jurisdiction === 'KR') {
+      return `${base} For this Korean race do NOT cite poll percentages or 지지율. Factual event news is allowed.`
+    }
+    return base
+  }
+  return 'Judge web-visible crowd sentiment only. No charts, no price tape, no packet macro.'
+}
+
+export function sentimentRetryInstruction(category?: string): string {
+  if (isPoliticsLedgerCategory(category)) {
+    return [
+      'RETRY: Rewrite as the 심리·내러티브 seat for politics.',
+      'Use mood / 여론 / 스캔들 / 토론 / 모멘텀 language. Do not cite 지지율 percentages or betting odds.',
+      'If there is no indexed sentiment, output found:false and direction null.',
+      'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
+    ].join(' ')
+  }
   return [
     'RETRY: Rewrite as the 심리·내러티브 seat.',
     'Use only mood / 여론 / 루머 / 화제 language from web-visible sources.',
@@ -293,11 +329,19 @@ function parseFoundFlag(text: string): boolean | null {
   return match[1]!.toLowerCase() === 'true'
 }
 
-export function sentimentRationaleNeedsRetry(rationale: string | null): boolean {
+export function sentimentRationaleNeedsRetry(
+  rationale: string | null,
+  category?: string,
+  instrument?: string,
+): boolean {
   if (!rationale) return true
   if (findSentimentChartLeak(rationale)) return true
   if (findSentimentPriceFundamentalLeak(rationale)) return true
   if (!findSentimentLanguage(rationale)) return true
+  if (isPoliticsLedgerCategory(category) && containsPollPercentage(rationale)) {
+    const parts = instrument ? decodePoliticsInstrument(instrument) : null
+    if (!parts || parts.jurisdiction === 'KR') return true
+  }
   return false
 }
 

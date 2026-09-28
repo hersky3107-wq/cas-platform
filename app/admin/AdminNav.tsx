@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 export function AdminNav() {
   const [pending, setPending] = useState<number | null>(null)
+  const [blackouts, setBlackouts] = useState<number>(0)
 
   useEffect(() => {
     void (async () => {
@@ -14,6 +15,13 @@ export function AdminNav() {
         if (res.ok && typeof body?.pendingCount === 'number') setPending(body.pendingCount)
       } catch {
         setPending(null)
+      }
+      try {
+        const res = await fetch('/api/admin/league/blackout', { credentials: 'include' })
+        const body = (await res.json().catch(() => null)) as { count?: number }
+        if (res.ok && typeof body?.count === 'number') setBlackouts(body.count)
+      } catch {
+        setBlackouts(0)
       }
     })()
   }, [])
@@ -28,6 +36,11 @@ export function AdminNav() {
         className="inline-flex items-center gap-2 rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-slate-200 hover:bg-white/8"
       >
         채점
+        {blackouts > 0 ? (
+          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
+            선거 블랙아웃 {blackouts}
+          </span>
+        ) : null}
         {pending !== null && pending > 0 ? (
           <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
             채점 대기 {pending}건

@@ -73,9 +73,13 @@ import {
   type ConsensusLeagueInput,
 } from './consensus'
 import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeatId } from './seats'
+import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
+import { decodePoliticsInstrument } from '../gateway/adapters/politics-catalog'
+import { formatPoliticsCrowBrief } from '../gateway/adapters/politics-packet'
 import { decodeSportsInstrument } from '../gateway/adapters/sports-catalog'
 import { formatSportsCrowBrief } from '../gateway/adapters/sports-packet'
+import { readPoliticsSlateCache } from '../politics/slate-cache'
 import { readFixtureCache } from '../sports/cache'
 import {
   CROW_ENGINE_MODEL_ID,
@@ -355,7 +359,7 @@ async function runHistorySeat(
   providedSeries: ExtraPriceSeries | null | undefined,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('history')!
-  const sports = isSportsLedgerCategory(round.category)
+  const sports = isSportsLedgerCategory(round.category) || isPoliticsLedgerCategory(round.category)
   const series = sports
     ? { bars: [] as HistorySeriesBar[], latestClose: null as number | null, asOf: round.opened_at ?? null }
     : await resolveHistorySeries(round.instrument, providedSeries)
@@ -495,7 +499,7 @@ async function callSentimentOnce(
   retry = false,
 ): Promise<SentimentCallResult> {
   const userPrompt = retry
-    ? `${buildSentimentUserPrompt(input)}\n\n${sentimentRetryInstruction()}`
+    ? `${buildSentimentUserPrompt(input)}\n\n${sentimentRetryInstruction(input.category)}`
     : buildSentimentUserPrompt(input)
   return call({ systemPrompt: buildSentimentSystemPrompt(), userPrompt })
 }
@@ -544,7 +548,7 @@ async function runSentimentSeat(round: ExtraRoundRow, call: SentimentCaller): Pr
 
     const needsRetry =
       !parsed ||
-      (parsed.kind === 'verdict' && sentimentRationaleNeedsRetry(parsed.rationale))
+      (parsed.kind === 'verdict' && sentimentRationaleNeedsRetry(parsed.rationale, round.category, round.instrument))
 
     if (needsRetry) {
       const retryRaw = await callSentimentOnce(call, input, true)
@@ -580,7 +584,7 @@ async function runSentimentSeat(round: ExtraRoundRow, call: SentimentCaller): Pr
     if (parsed.kind === 'abstain') {
       return persistSentimentAbstain(round.id, seat.brand, parsed.rationale, cost)
     }
-    if (sentimentRationaleNeedsRetry(parsed.rationale)) {
+    if (sentimentRationaleNeedsRetry(parsed.rationale, round.category, round.instrument)) {
       return persistSentimentAbstain(round.id, seat.brand, SENTIMENT_NO_SIGNAL_REASON, cost)
     }
 
@@ -718,7 +722,7 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
 
     const needsRetry =
       !parsed ||
-      (parsed.kind === 'verdict' && consensusRationaleNeedsRetry(parsed.rationale))
+      (parsed.kind === 'verdict' && consensusRationaleNeedsRetry(parsed.rationale, round.category))
 
     if (needsRetry) {
       const retryRaw = await callConsensusOnce(call, input, true)
@@ -754,7 +758,7 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
     if (parsed.kind === 'abstain') {
       return persistConsensusAbstain(round.id, seat.brand, parsed.rationale, cost)
     }
-    if (consensusRationaleNeedsRetry(parsed.rationale)) {
+    if (consensusRationaleNeedsRetry(parsed.rationale, round.category)) {
       return persistConsensusAbstain(round.id, seat.brand, CONSENSUS_NO_SIGNAL_REASON, cost)
     }
 
@@ -844,6 +848,18 @@ async function resolveCrowBrief(
     if (!parts) return 'SPORTS FACTS: instrument undecodable. Do not invent odds.'
     const cache = await readFixtureCache(parts.eventId).catch(() => null)
     return formatSportsCrowBrief(parts, cache)
+  }
+  if (isPoliticsLedgerCategory(round.category)) {
+    const parts = decodePoliticsInstrument(round.instrument)
+    if (!parts) return 'POLITICS FACTS: instrument undecodable. Do not invent odds.'
+    const slate = readPoliticsSlateCache() ?? []
+    const row = slate.find(
+      (item) =>
+        item.jurisdiction === parts.jurisdiction &&
+        item.office === parts.office &&
+        item.candidate.toLowerCase() === parts.candidate.toLowerCase(),
+    )
+    return formatPoliticsCrowBrief(parts, row ? { kalshiPct: row.kalshiPct, polymarketPct: row.polymarketPct } : null)
   }
   const series = await resolveHistorySeries(round.instrument, providedSeries)
   return formatFinanceCrowBrief(series)

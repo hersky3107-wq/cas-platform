@@ -13,6 +13,7 @@
 import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
+import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 
 /** Challenger roster id — powers the seat; the ledger row is still `history`. */
@@ -269,6 +270,20 @@ export function historyPatternVocabularyLine(): string {
 }
 
 export function buildHistorySystemPrompt(category?: string): string {
+  if (isPoliticsLedgerCategory(category)) {
+    return [
+      '선거 역사·패턴 분석가 — 차트 패턴이 아니라 현직 여부, 재선 기록, 지난 같은 선거로 판단한다. 지지율 수치는 쓰지 않는다.',
+      '',
+      'You are the 📜 역사·패턴 extra seat. For POLITICS answer from incumbency and the previous comparable election only.',
+      'Do not browse the web. Do not invent poll percentages or 지지율.',
+      '',
+      'Name one of: 현직, 지난 선거.',
+      'Then pick a direction for THIS proposition.',
+      '',
+      'Last line MUST be JSON:',
+      '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
+    ].join('\n')
+  }
   if (isSportsLedgerCategory(category)) {
     return [
       HISTORY_SPORTS_PERSONA,
@@ -318,6 +333,17 @@ export function buildHistorySystemPrompt(category?: string): string {
 
 export function buildHistoryUserPrompt(input: HistoryLeagueInput): string {
   assertHistoryInputShape(input)
+  if (isPoliticsLedgerCategory(input.category)) {
+    return [
+      `PROPOSITION: ${input.proposition}`,
+      `SUBJECT: ${input.subjectName}`,
+      `INSTRUMENT: ${input.instrument}`,
+      `HORIZON: ${input.horizon}`,
+      `CATEGORY: ${input.category}`,
+      '',
+      'Judge from incumbency and the previous comparable election. Name 현직 or 지난 선거. Do not cite 지지율.',
+    ].join('\n')
+  }
   if (isSportsLedgerCategory(input.category)) {
     return [
       `PROPOSITION: ${input.proposition}`,
@@ -344,6 +370,13 @@ export function buildHistoryUserPrompt(input: HistoryLeagueInput): string {
 }
 
 export function historyRetryInstruction(category?: string): string {
+  if (isPoliticsLedgerCategory(category)) {
+    return [
+      'RETRY: Rewrite as the politics 역사·패턴 seat.',
+      'Name 현직 or 지난 선거. Do not cite 지지율 or chart patterns. Do not invent a win rate.',
+      'Last line must be JSON: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
+    ].join(' ')
+  }
   if (isSportsLedgerCategory(category)) {
     return [
       'RETRY: Rewrite as the sports 역사·패턴 seat.',
@@ -402,6 +435,9 @@ export function findNamedSportsHistoryPattern(text: string | null | undefined): 
 export function historyRationaleNeedsRetry(rationale: string | null, category?: string): boolean {
   if (!rationale) return true
   if (findFakePatternWinRate(rationale)) return true
+  if (isPoliticsLedgerCategory(category)) {
+    return !/현직|지난 선거|incumbent|previous election/i.test(rationale)
+  }
   if (isSportsLedgerCategory(category)) {
     if (findNamedHistoryPattern(rationale) && !findNamedSportsHistoryPattern(rationale)) return true
     if (!findNamedSportsHistoryPattern(rationale)) return true
