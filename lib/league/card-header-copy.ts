@@ -2,8 +2,10 @@ import type { LeagueLocale } from './i18n/locales'
 import type { LeagueUiPack } from './i18n/dictionary'
 import { propositionKindOf } from './side-labels'
 import { normalizeSessionDate } from '../prediction/resolution'
+import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
-import { sportsVsLabel } from './sports-display'
+import { electionHeadlineLabel, politicsPropositionDisplay } from './politics-display'
+import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
 export function localeTag(locale: LeagueLocale): string {
@@ -78,6 +80,21 @@ export function sportsInstrumentDisplay(instrument: string, locale: LeagueLocale
   return sportsVsLabel(instrument, locale)
 }
 
+export function electionInstrumentDisplay(instrument: string, locale: LeagueLocale = 'en'): string | null {
+  return electionHeadlineLabel(instrument, locale)
+}
+
+function nonPriceInstrumentDisplay(instrument: string, locale: LeagueLocale): string {
+  return sportsInstrumentDisplay(instrument, locale) ?? electionInstrumentDisplay(instrument, locale) ?? instrument
+}
+
+/** Localized proposition for curated sports fixtures and election picks. */
+export function rankedPropositionDisplay(instrument: string, stored: string, locale: LeagueLocale): string {
+  if (decodeSportsInstrument(instrument)) return sportsPropositionDisplay(instrument, stored, locale)
+  if (decodePoliticsInstrument(instrument)) return politicsPropositionDisplay(instrument, stored, locale)
+  return stored
+}
+
 export function headerHeadline(args: {
   roundDate: string
   instrument: string
@@ -91,7 +108,7 @@ export function headerHeadline(args: {
   if (propositionKindOf({ proposition_kind: args.propositionKind }) !== 'binary_close_higher') {
     // Non-price contract: no anchor price EXISTS, so neither the price form
     // nor the "starting price unavailable" apology is the truth.
-    const displayInst = sportsInstrumentDisplay(args.instrument, args.locale) ?? args.instrument
+    const displayInst = nonPriceInstrumentDisplay(args.instrument, args.locale)
     return args.t.header.headlinePlain(args.roundDate, displayInst)
   }
   if (args.anchorPrice === null) {

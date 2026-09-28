@@ -2,7 +2,15 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { CardHeader } from '../../../components/league/CardHeader'
-import { formatRoundOpenedDate, formatSessionDate, headerHeadline, headerWindow } from '../card-header-copy'
+import { encodePoliticsInstrument } from '../gateway/adapters/politics-catalog'
+import {
+  electionInstrumentDisplay,
+  formatRoundOpenedDate,
+  formatSessionDate,
+  headerHeadline,
+  headerWindow,
+  rankedPropositionDisplay,
+} from '../card-header-copy'
 import { LEAGUE_UI } from '../i18n/dictionary'
 import { toneFor } from '../tone'
 import type { CardRoundMeta, HitRateSummary } from '../card-types'
@@ -229,5 +237,44 @@ describe('header honesty', () => {
     })
     expect(headline).toContain('LA 다저스 vs SF 자이언츠')
     expect(headline).not.toContain('Los Angeles Dodgers')
+  })
+
+  it('formats ELECTION:... politics instruments in the card headline (Korean)', () => {
+    const instrument = encodePoliticsInstrument({
+      jurisdiction: 'US',
+      office: 'governor',
+      cycle: '2026',
+      district: 'GA',
+      candidate: 'Keisha Lance Bottoms',
+      pollCloseMs: 1793746800000,
+    })
+    expect(electionInstrumentDisplay(instrument, 'ko')).toBe('2026 미국 조지아 주지사 · Keisha Lance Bottoms 당선')
+
+    const headline = headerHeadline({
+      roundDate: '2026년 11월 3일',
+      instrument,
+      anchorPrice: null,
+      anchorSessionDate: null,
+      propositionKind: 'binary_subject_outcome',
+      locale: 'ko',
+      t: ko,
+    })
+    expect(headline).toContain('2026 미국 조지아 주지사 · Keisha Lance Bottoms 당선')
+    expect(headline).not.toContain('ELECTION:')
+    expect(headline).not.toContain('%20')
+  })
+
+  it('rankedPropositionDisplay decodes politics when stored proposition is the instrument id', () => {
+    const instrument = encodePoliticsInstrument({
+      jurisdiction: 'US',
+      office: 'governor',
+      cycle: '2026',
+      district: 'GA',
+      candidate: 'Rick Jackson',
+      pollCloseMs: 1793746800000,
+    })
+    const text = rankedPropositionDisplay(instrument, instrument, 'ko')
+    expect(text).toBe('2026 미국 조지아 주지사 Rick Jackson 당선')
+    expect(text).not.toContain('ELECTION:')
   })
 })

@@ -14,7 +14,8 @@ import type { CardData, ColorBucket, LockedCardPayload } from '@/lib/league/card
 import { GENERATION_POLL_MS } from '@/lib/league/generation/policy'
 import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } from '@/lib/league/catalog'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
-import { sportsPropositionDisplay, sportsVsLabel } from '@/lib/league/sports-display'
+import { rankedPropositionDisplay } from '@/lib/league/card-header-copy'
+import { sportsVsLabel } from '@/lib/league/sports-display'
 import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
@@ -473,7 +474,7 @@ function LockedRoundPanel({
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6">
       <p className="text-sm font-semibold leading-relaxed text-slate-900">
-        {sportsPropositionDisplay(instrument, locked.round.proposition_text, locale)}
+        {rankedPropositionDisplay(instrument, locked.round.proposition_text, locale)}
       </p>
       {locked.refundedNotice ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
