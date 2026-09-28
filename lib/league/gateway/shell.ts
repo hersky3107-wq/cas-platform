@@ -2,11 +2,13 @@ import { LEAGUE_GENERATE_CREDITS } from '../credits'
 import { isCatalogInstrumentAllowed, visibleChipInstrumentIdsForViewer } from '../catalog'
 import type { PublicCategoryId } from '../catalog'
 import { leagueGatewayAdmission } from './admission'
-import { validateNormalizerOutput, type PromptNormalizer } from './normalizer'
+import { validateNormalizerOutput, type PromptNormalizer, type ValidatedNormalizerOutput } from './normalizer'
 import { MAX_CANDIDATE_CHIPS } from './candidate-search'
 import { detectBettingFraming } from './betting-framing'
 import { prefilterRejects } from './prefilter'
+import { decodePoliticsInstrument } from './adapters/politics-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
+import { propositionKindFor } from './normalize-prompt'
 import { MAX_TARGET_PICKS } from './target-resolve'
 import { refusalMessageForKey, refusalMessageKey } from './refusal-copy'
 import type {
@@ -46,6 +48,61 @@ import type {
  */
 
 export const MAX_CLARIFY_ROUNDS = 2
+
+/** Categories whose adapter resolves races/fixtures from raw text without the normalizer. */
+const SLATE_BACKED_CATEGORIES = new Set<string>(['politics_election', 'sports'])
+
+function entityRefusalIsImmediate(code: RefusalCode): boolean {
+  return (
+    code === 'betting_framing' ||
+    code === 'vague_target' ||
+    code === 'past_event' ||
+    code === 'vague_election' ||
+    code === 'past_election' ||
+    code === 'politics_window' ||
+    code === 'unsupported_election'
+  )
+}
+
+async function normalizeForGateway(
+  req: GatewayRequest,
+  adapter: CategoryAdapter,
+  deps: GatewayDeps,
+  locale: string,
+  viewer: GatewayViewer,
+): Promise<ValidatedNormalizerOutput | null | { earlyRefusal: Refusal }> {
+  const rawOutput = await deps.normalizer.normalize({
+    raw_text: req.raw_text,
+    category_id: adapter.category_id,
+    locale,
+  })
+  const parsed = rawOutput === null ? null : validateNormalizerOutput(rawOutput)
+  const categoryMatches = parsed !== null && parsed.category_id === adapter.category_id
+  if (categoryMatches && parsed.confidence >= 0.55) return parsed
+
+  if (SLATE_BACKED_CATEGORIES.has(adapter.category_id)) {
+    const resolution = await adapter.resolveEntity(req.raw_text, locale, viewer)
+    if (resolution.ok || ('need' in resolution && (resolution.need.options?.length ?? 0) > 0)) {
+      return {
+        category_id: adapter.category_id as ValidatedNormalizerOutput['category_id'],
+        entity_mention: categoryMatches ? parsed!.entity_mention : '',
+        entity_id_hint: categoryMatches ? parsed!.entity_id_hint : null,
+        horizon: categoryMatches ? parsed!.horizon : null,
+        proposition_kind: propositionKindFor(adapter.category_id as ValidatedNormalizerOutput['category_id']),
+        slots: categoryMatches ? parsed!.slots : {},
+        confidence: 0.75,
+        needs_slot: null,
+      }
+    }
+    if ('refuse' in resolution && entityRefusalIsImmediate(resolution.refuse.code)) {
+      return { earlyRefusal: resolution.refuse }
+    }
+  }
+
+  if (!parsed || !categoryMatches) return null
+  if (parsed.confidence < 0.55) return null
+  return parsed
+}
 
 export type GatewayRequest = {
   viewer: GatewayViewer
@@ -143,7 +200,9 @@ function roundsUsed(req: GatewayRequest): number {
 }
 
 function oneQuestion(question: ClarifyingQuestion): ClarifyingQuestion {
-  const fixturePicks = question.slot === 'entity_id' && question.options?.some((o) => decodeSportsInstrument(o.id))
+  const fixturePicks =
+    question.slot === 'entity_id' &&
+    question.options?.some((o) => decodeSportsInstrument(o.id) || decodePoliticsInstrument(o.id))
   const cap = fixturePicks ? MAX_TARGET_PICKS : MAX_CANDIDATE_CHIPS
   const options = question.slot === 'entity_id' ? question.options?.slice(0, cap) : question.options
   return {
@@ -194,19 +253,14 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   if (detectBettingFraming(req.raw_text)) return refused('betting_framing', locale)
 
   // 5. Normalize + strict schema gate. Malformed output is a refusal, not a 500.
-  const rawOutput = await deps.normalizer.normalize({
-    raw_text: req.raw_text,
-    category_id: adapter.category_id,
-    locale,
-  })
-  const normalized = rawOutput === null ? null : validateNormalizerOutput(rawOutput)
+  // Slate-backed categories (sports, politics) may recover from a weak parse via
+  // adapter.resolveEntity on the raw sentence (office-only → candidate picks).
+  const normalizedOrEarly = await normalizeForGateway(req, adapter, deps, locale, viewer)
+  if (normalizedOrEarly && 'earlyRefusal' in normalizedOrEarly) {
+    return refusedFrom(normalizedOrEarly.earlyRefusal, locale, adapter.category_id, viewer)
+  }
+  const normalized = normalizedOrEarly
   if (!normalized) return refused('low_confidence', locale)
-
-  // The chip is authoritative; a normalizer that disagrees about the category
-  // is a wrong parse, not a routing instruction.
-  if (normalized.category_id !== adapter.category_id) return refused('low_confidence', locale)
-
-  if (normalized.confidence < 0.55) return refused('low_confidence', locale)
 
   const answered = req.answered_slots ?? {}
 
@@ -255,15 +309,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     }
     if ('need' in resolution && !entityAsk) entityAsk = filterEntityOptions(resolution.need, viewer)
     if ('refuse' in resolution) {
-      if (
-        resolution.refuse.code === 'betting_framing' ||
-        resolution.refuse.code === 'vague_target' ||
-        resolution.refuse.code === 'past_event' ||
-        resolution.refuse.code === 'vague_election' ||
-        resolution.refuse.code === 'past_election' ||
-        resolution.refuse.code === 'politics_window' ||
-        resolution.refuse.code === 'unsupported_election'
-      ) {
+      if (entityRefusalIsImmediate(resolution.refuse.code)) {
         return refusedFrom(resolution.refuse, locale, adapter.category_id, viewer)
       }
       if (!entityRefusal) entityRefusal = resolution.refuse
@@ -334,7 +380,9 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   //     still confirm.
   const picked = typeof answered.entity_id === 'string' ? answered.entity_id.trim() : ''
   const fixturePick =
-    picked.length > 0 && entity.entity_id === picked && decodeSportsInstrument(picked) !== null
+    picked.length > 0 &&
+    entity.entity_id === picked &&
+    (decodeSportsInstrument(picked) !== null || decodePoliticsInstrument(picked) !== null)
   if (slots.slots.entity_confirmed !== 'true' && !fixturePick && !entity.skip_confirm) {
     const preview = adapter.composeProposition(slots, now)
     return {
