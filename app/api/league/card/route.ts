@@ -6,6 +6,8 @@ import { gatePublicGenerateInstrument } from '@/lib/league/access-policy'
 import { buildCatalogRankedRoundInput, findCatalogInstrument } from '@/lib/league/catalog'
 import { decodeSportsInstrument } from '@/lib/league/gateway/adapters/sports-catalog'
 import { buildSportsRankedRoundInput } from '@/lib/league/gateway/adapters/sports-compose'
+import { decodePropertyInstrument } from '@/lib/league/gateway/adapters/real-estate-catalog'
+import { buildRealEstateRankedRoundInput } from '@/lib/league/gateway/adapters/real-estate-compose'
 import { droppedRosterModelIds, rosterGenerationProgress } from '@/lib/league/generation-progress'
 import {
   findActiveJobForRound,
@@ -220,9 +222,12 @@ function catalogLockedPreview(
     }
   }
   const sportsParts = decodeSportsInstrument(gate.instrument)
+  const propertyParts = decodePropertyInstrument(gate.instrument)
   const wouldOpen = sportsParts
     ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
-    : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+    : propertyParts
+      ? buildRealEstateRankedRoundInput(gate.instrument, gate.horizon)
+      : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
   if (!wouldOpen) {
     return {
       response: NextResponse.json({ error: 'No ranked round available yet', code: 'no_round' }, { status: 404 }),

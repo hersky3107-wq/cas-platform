@@ -62,8 +62,8 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     en: 'Questions framed around betting cannot be opened. Please rephrase as an informational prediction.',
   },
   specific_property: {
-    ko: '특정 부동산(주소·매물)에 대한 가치 판단은 제공하지 않습니다.',
-    en: 'Valuations of specific properties are not provided.',
+    ko: '단지·주소·동 단위는 예측하지 않습니다. 공식 지수 예: 강남구, 서울, 금천구.',
+    en: 'Named complexes, addresses, and neighborhoods are not predicted. Official indexes: Gangnam-gu, Seoul, Geumcheon-gu.',
   },
   brokerage_advice: {
     ko: '중개·매매 권유에 해당하는 질문은 제공하지 않습니다.',

@@ -21,6 +21,8 @@ import { LEAGUE_ORACLE_CATEGORY_IDS } from '@/lib/oracle/league-divination/types
 import { LEAGUE_READER_COST_IS_ESTIMATED, LEAGUE_READER_ESTIMATED_COST_USD } from '@/lib/oracle/league-divination/conventions'
 import type { AnswerSide } from '../answer-contract'
 import { PUBLIC_CATEGORY_IDS } from '../catalog'
+import { decodePropertyInstrument } from '../gateway/adapters/real-estate-catalog'
+import { isRealEstateLedgerCategory } from './real-estate-category'
 import { DIVINATION_CUSTOMER_KEYS, DIVINATION_INTERNAL_KEYS } from './copy'
 
 export const DIVINATION_PACKET_BAN = [
@@ -92,6 +94,7 @@ export function oraclePropositionType(input: {
   category: string
   propositionKind?: string | null
 }): 'binary' | 'pick_one' {
+  if (isRealEstateLedgerCategory(input.category)) return 'binary'
   if (input.propositionKind === 'binary_subject_outcome') return 'pick_one'
   const oracle = oracleCategoryFromLedger(input.category)
   return PICK_ONE_CATEGORIES.has(oracle) ? 'pick_one' : 'binary'
@@ -106,14 +109,19 @@ export function buildDivinationInput(round: {
   opened_at?: string | null
   created_at?: string | null
   proposition_kind?: string | null
+  resolves_at?: string | null
 }): DivinationLeagueInput {
   const category = oracleCategoryFromLedger(round.category)
+  const published = isRealEstateLedgerCategory(round.category)
+    ? decodePropertyInstrument(round.instrument)?.resolvesAtMs
+    : null
+  const eventDate = published ? new Date(published).toISOString() : null
   return {
     proposition: round.proposition_text,
     propositionType: oraclePropositionType({ category: round.category, propositionKind: round.proposition_kind }),
     category,
     subjectName: round.subject_label?.trim() || round.instrument,
-    firstViewedAt: round.opened_at || round.created_at || new Date().toISOString(),
+    firstViewedAt: eventDate || round.resolves_at || round.opened_at || round.created_at || new Date().toISOString(),
     roundId: round.id,
   }
 }

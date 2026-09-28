@@ -14,6 +14,7 @@ import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
+import { isRealEstateLedgerCategory } from './real-estate-category'
 import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 
@@ -285,6 +286,18 @@ export function buildHistorySystemPrompt(category?: string): string {
       '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
     ].join('\n')
   }
+  if (isRealEstateLedgerCategory(category)) {
+    return [
+      'You are the 📜 역사·패턴 extra seat. For HOUSING answer from that region\'s official index cycle only: past rising spells and corrections.',
+      'Do not use a stock chart. Do not name an apartment complex.',
+      '',
+      'Name one of: 상승기, 조정기.',
+      'Then pick a direction for THIS proposition.',
+      '',
+      'Last line MUST be JSON:',
+      '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
+    ].join('\n')
+  }
   if (isEntertainmentLedgerCategory(category)) {
     return [
       'You are the 📜 역사·패턴 extra seat. For ENTERTAINMENT answer from comparable titles only: same director, franchise, or genre opening, or the guild-to-award path.',
@@ -355,6 +368,17 @@ export function buildHistoryUserPrompt(input: HistoryLeagueInput): string {
       `CATEGORY: ${input.category}`,
       '',
       'Judge from incumbency and the previous comparable election. Name 현직 or 지난 선거. Do not cite 지지율.',
+    ].join('\n')
+  }
+  if (isRealEstateLedgerCategory(input.category)) {
+    return [
+      `PROPOSITION: ${input.proposition}`,
+      `SUBJECT: ${input.subjectName}`,
+      `INSTRUMENT: ${input.instrument}`,
+      `HORIZON: ${input.horizon}`,
+      `CATEGORY: ${input.category}`,
+      '',
+      'Judge from this region\'s official house-price index cycle. Name 상승기 or 조정기. Do not cite a complex or a stock chart.',
     ].join('\n')
   }
   if (isEntertainmentLedgerCategory(input.category)) {

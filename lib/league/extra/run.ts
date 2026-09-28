@@ -74,10 +74,13 @@ import {
 } from './consensus'
 import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeatId } from './seats'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
+import { isRealEstateLedgerCategory } from './real-estate-category'
 import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 import { decodeEntertainmentInstrument } from '../gateway/adapters/entertainment-catalog'
 import { formatEntertainmentCrowBrief } from '../gateway/adapters/entertainment-packet'
+import { decodePropertyInstrument } from '../gateway/adapters/real-estate-catalog'
+import { formatPropertyCrowBrief } from '../gateway/adapters/real-estate-packet'
 import { decodePoliticsInstrument } from '../gateway/adapters/politics-catalog'
 import { formatPoliticsCrowBrief } from '../gateway/adapters/politics-packet'
 import { decodeSportsInstrument } from '../gateway/adapters/sports-catalog'
@@ -365,7 +368,8 @@ async function runHistorySeat(
   const nonPrice =
     isSportsLedgerCategory(round.category) ||
     isPoliticsLedgerCategory(round.category) ||
-    isEntertainmentLedgerCategory(round.category)
+    isEntertainmentLedgerCategory(round.category) ||
+    isRealEstateLedgerCategory(round.category)
   const series = nonPrice
     ? { bars: [] as HistorySeriesBar[], latestClose: null as number | null, asOf: round.opened_at ?? null }
     : await resolveHistorySeries(round.instrument, providedSeries)
@@ -718,6 +722,13 @@ async function persistConsensusAbstain(
 
 async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('consensus')!
+  if (isRealEstateLedgerCategory(round.category)) {
+    return persistConsensusAbstain(
+      round.id,
+      seat.brand,
+      'CME Case-Shiller futures are too thin, and most regions have no housing-index market. Consensus abstains.',
+    )
+  }
   const input = buildConsensusInput(round)
   assertConsensusInputShape(input)
 
@@ -871,6 +882,11 @@ async function resolveCrowBrief(
     const parts = decodeEntertainmentInstrument(round.instrument)
     if (!parts) return 'ENTERTAINMENT FACTS: instrument undecodable. Do not invent grosses or odds.'
     return formatEntertainmentCrowBrief(parts, { marketPct: null, trackingNote: null })
+  }
+  if (isRealEstateLedgerCategory(round.category)) {
+    const parts = decodePropertyInstrument(round.instrument)
+    if (!parts) return 'HOUSING FACTS: instrument undecodable. Do not invent an index or name a complex.'
+    return formatPropertyCrowBrief(parts)
   }
   const series = await resolveHistorySeries(round.instrument, providedSeries)
   return formatFinanceCrowBrief(series)

@@ -17,6 +17,7 @@ import type { AnswerSide } from '../answer-contract'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
+import { isRealEstateLedgerCategory } from './real-estate-category'
 import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 
@@ -132,6 +133,13 @@ export function consensusMoneySearchHints(category: string): string {
       'NEVER write 지지율, 베팅, 배당, 토토, or a poll percentage.',
       '- Polymarket implied probability (해외 예측시장 데이터)',
       '- Kalshi implied probability for the named candidate',
+    ].join('\n')
+  }
+  if (isRealEstateLedgerCategory(key)) {
+    return [
+      'For HOUSING INDEXES, ABSTAIN.',
+      'CME Case-Shiller futures are too thin to be a probability, and most regions have no housing-index market.',
+      'Do not invent a percent. Do not use REIT ETF prices as the money signal.',
     ].join('\n')
   }
   if (isEntertainmentLedgerCategory(key)) {
@@ -305,6 +313,7 @@ export function buildConsensusSystemPrompt(): string {
     '- sports: Pinnacle / sharp-book implied win probability (juice removed) as 시장 기준선. Never 토토/배당/핸디캡/픽/베팅/오버언더. Informational only.',
     '- politics_election: Polymarket (해외 예측시장 데이터) and Kalshi implied probability as 예측시장 내재 확률. Never 지지율/베팅/배당/토토.',
     '- entertainment_awards: Polymarket/Kalshi award implied probability, or published studio tracking. If neither exists, abstain — never invent a gross or a percent.',
+    '- real_estate: ABSTAIN. No usable housing-index market. Do not price a REIT ETF or a named complex.',
     'Read what the MARKET has priced with money. Not chart shapes. Not news mood.',
     '',
     'How to judge:',

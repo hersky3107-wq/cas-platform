@@ -48,12 +48,12 @@ export function isUiHorizon(value: unknown): value is UiHorizon {
  *
  * commodity_energy mixes clocks: WTI/USD and XBR/USD are spots (calendar);
  * UNG/CPER/CORN/WEAT/SOYB/COFF are listed ETFs and use the session clock.
- * real_estate chips are NYSE REIT ETFs (VNQ, SCHH) via the category set below.
+ * REIT ETFs (VNQ, SCHH) live on etf_index. real_estate is a published
+ * house-price index and resolves on its publication date, not a session close.
  */
 const TRADING_SESSION_CATEGORIES: ReadonlySet<PredictionCategory> = new Set([
   'stock',
   'etf_index',
-  'real_estate',
 ])
 
 /**

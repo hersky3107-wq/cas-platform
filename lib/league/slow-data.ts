@@ -19,7 +19,8 @@ import { fetchMetalsSlowFields } from './metals-data'
  *  2. CBOE daily put/call ratios     — cboe.com daily market-statistics page;
  *     ratios are embedded as JSON in the page markup (probed live: reliable;
  *     the day's data appears with a lag, so walk-back is required).
- *     Categories: stock, etf_index, real_estate, gold_metal, commodity_energy, fx.
+ *     Categories: stock, etf_index, gold_metal, commodity_energy, fx.
+ *     real_estate is a published house-price index, not an equity ETF.
  *  5. Gold/metals (gold_metal only)  — CFTC COT, Treasury TIPS, GLD/SLV
  *     holdings, FRED GVZ/INDPRO/IPG3344S via `metals-data.ts`.
  *  6. Energy/softs (commodity_energy) — EIA WPSR/WNGSR, CFTC energy+copper+
@@ -346,14 +347,12 @@ async function fetchInsider(symbol: string): Promise<Insider | Fail> {
 const SHORT_VOLUME_CATEGORIES = new Set([
   'stock',
   'etf_index',
-  'real_estate',
   'commodity_energy',
   'commodities_energy',
 ])
 const PUT_CALL_CATEGORIES = new Set([
   'stock',
   'etf_index',
-  'real_estate',
   'gold_metal',
   'commodity_energy',
   'commodities_energy',

@@ -24,7 +24,7 @@ export const CATEGORY_PROPOSITION_KIND: Record<PublicCategoryId, PropositionKind
   politics_election: 'binary_subject_outcome',
   entertainment: 'binary_subject_outcome',
   memecoin: PRICE_KIND,
-  real_estate: PRICE_KIND,
+  real_estate: 'binary_subject_outcome',
   macro_econ: 'binary_threshold',
 }
 
@@ -34,13 +34,13 @@ const SLOT_HINT: Record<PublicCategoryId, string> = {
   stocks: 'entity_mention = the company or ticker the user named (apple, nvda…). Empty if they named none.',
   fx: 'entity_mention = the FX pair the user named (eurusd, usdkrw, usdjpy, gbpusd, usdcnh, audusd, jpykrw, eurjpy, gbpjpy…). Empty if they named none.',
   gold_metals: 'entity_mention = gold, silver, platinum, XAU/USD, XAG/USD, XPT/USD, GLD, or SLV. Empty if they named none.',
-  index_etf: 'entity_mention = the index or ETF the user named (spy, qqq, dia, ewj, ewy, fez, ewt, tqqq, sqqq, soxl, upro, spxu…). Empty if they named none.',
+  index_etf: 'entity_mention = the index or ETF the user named (spy, qqq, dia, ewj, ewy, fez, ewt, tqqq, sqqq, soxl, upro, spxu, vnq, schh…). Empty if they named none.',
   commodities_energy: 'entity_mention = oil/gas/copper/grain/coffee (wti, brent, ung, cper, corn, weat, soyb, coff…). Empty if they named none.',
   politics_election:
     'entity_mention = the ONE named candidate when named; otherwise the race/office (e.g. Georgia governor, 조지아 주지사, Illinois senate). Office-only with no candidate is valid — set confidence 0.75+ and needs_slot null; the server will list candidates.',
   entertainment: 'entity_mention = the ONE named work, artist, or nominee. A subjective hit question (대박/흥행) still names that subject. Never a nominee list as the output.',
   memecoin: 'entity_mention = doge, shib, pepe, wif, or bonk. Empty if they named none.',
-  real_estate: 'entity_mention = a REIT ETF (vnq, schh), never a street address.',
+  real_estate: 'entity_mention = a published housing region (강남구, 서울, Case-Shiller city, London borough). Never a complex name, address, or dong.',
   macro_econ: 'entity_mention = the named indicator. Empty if they named none.',
 }
 

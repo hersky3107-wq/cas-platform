@@ -44,7 +44,6 @@ export const FINANCIAL_PROMPT_CATEGORIES: readonly PromptCategoryId[] = [
   'fx',
   'crypto',
   'memecoin',
-  'real_estate',
 ]
 
 export const NON_FINANCIAL_PROMPT_CATEGORIES: readonly PromptCategoryId[] = [
@@ -54,13 +53,15 @@ export const NON_FINANCIAL_PROMPT_CATEGORIES: readonly PromptCategoryId[] = [
   'tech',
   'ai_models',
   'macro_econ',
+  'real_estate',
 ]
 
 type PromptRow = Record<PromptCategoryId, boolean>
 
 /**
  * Initial cells (2026-09-09):
- *  - KR: prompt OFF for every financial category (chips only).
+ *  - KR: prompt OFF for financial tickers (chips only). real_estate is ON:
+ *    a published house-price index, not a REIT and not a named property.
  *  - Non-financial: prompt ON everywhere, pending per-category review.
  *  - Other jurisdictions: financial prompt ON except gold_metals (chips-only
  *    everywhere — finite instrument set, freeform names nothing extra).
@@ -126,7 +127,7 @@ export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
     politics_election: true,
     entertainment: true,
     memecoin: false,
-    real_estate: false,
+    real_estate: true,
     macro_econ: true,
     tech: true,
     ai_models: true,

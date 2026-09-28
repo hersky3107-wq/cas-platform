@@ -86,6 +86,7 @@ describe('gradePlanFor — resolution asks the adapter', () => {
     expect(withCategoryFallback(legacy, 'politics_election')).toEqual({ source: 'operator_manual' })
     expect(withCategoryFallback(legacy, 'entertainment_awards')).toEqual({ source: 'operator_manual' })
     expect(withCategoryFallback(legacy, 'tech')).toEqual({ source: 'operator_manual' })
+    expect(withCategoryFallback(legacy, 'real_estate')).toEqual({ source: 'operator_manual' })
     expect(withCategoryFallback(legacy, 'stock')).toEqual(legacy)
   })
 

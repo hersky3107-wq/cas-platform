@@ -203,6 +203,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
         expected_name: ['UltraPro Short S&P'],
         deniedGroups: KR_LEVERAGE_DENIED_GROUPS,
       },
+      { instrument: 'VNQ', resolution_rule: 'VNQ regular-session close vs prior close', chip_visible: true, expected_name: ['Vanguard'] },
+      { instrument: 'SCHH', resolution_rule: 'SCHH regular-session close vs prior close', chip_visible: true, expected_name: ['Schwab'] },
     ],
   },
   {
@@ -252,11 +254,8 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     id: 'real_estate',
     ledgerCategory: 'real_estate',
     tone: 'yellow',
-    kind: 'instruments',
-    instruments: [
-      { instrument: 'VNQ', resolution_rule: 'VNQ regular-session close vs prior close', chip_visible: true, expected_name: ['Vanguard'] },
-      { instrument: 'SCHH', resolution_rule: 'SCHH regular-session close vs prior close', chip_visible: true, expected_name: ['Schwab'] },
-    ],
+    kind: 'coming_soon',
+    instruments: [],
   },
   {
     id: 'macro_econ',

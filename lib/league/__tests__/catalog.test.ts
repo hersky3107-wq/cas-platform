@@ -26,10 +26,9 @@ const FINANCIAL = [
   'index_etf',
   'commodities_energy',
   'memecoin',
-  'real_estate',
 ] as const
 
-const COMING_SOON = ['sports', 'politics_election', 'entertainment', 'macro_econ'] as const
+const COMING_SOON = ['sports', 'politics_election', 'entertainment', 'macro_econ', 'real_estate'] as const
 
 describe('PUBLIC_CATALOG', () => {
   it('is exactly the 12 final public categories, in the product order', () => {
@@ -86,6 +85,8 @@ describe('PUBLIC_CATALOG', () => {
       'SOXL',
       'UPRO',
       'SPXU',
+      'VNQ',
+      'SCHH',
     ])
     expect(index.instruments.map((i) => i.instrument)).not.toContain('GLD')
     expect(CATALOG_INSTRUMENT_IDS).not.toContain('SPX')
@@ -148,7 +149,7 @@ describe('PUBLIC_CATALOG', () => {
 
   it('gates Layer-2 leverage/inverse with deniedGroups KR; Layer 1 has no deny list', () => {
     const index = PUBLIC_CATALOG.find((c) => c.id === 'index_etf')!
-    const layer1 = ['SPY', 'QQQ', 'DIA', 'EWJ', 'EWY', 'FEZ', 'EWT']
+    const layer1 = ['SPY', 'QQQ', 'DIA', 'EWJ', 'EWY', 'FEZ', 'EWT', 'VNQ', 'SCHH']
     const layer2 = ['TQQQ', 'SQQQ', 'SOXL', 'UPRO', 'SPXU']
     for (const id of layer1) {
       expect(findCatalogInstrument(id)!.entry.deniedGroups, id).toBeUndefined()
@@ -161,7 +162,7 @@ describe('PUBLIC_CATALOG', () => {
     const krChips = visibleChipEntriesForViewer(index, kr).map((i) => i.instrument)
     const usChips = visibleChipEntriesForViewer(index, us).map((i) => i.instrument)
     expect(krChips).toEqual(layer1)
-    expect(usChips).toEqual([...layer1, ...layer2])
+    expect(usChips).toEqual(['SPY', 'QQQ', 'DIA', 'EWJ', 'EWY', 'FEZ', 'EWT', ...layer2, 'VNQ', 'SCHH'])
     expect(isCatalogInstrumentAllowed('SPY', kr.jurisdiction)).toBe(true)
     expect(isCatalogInstrumentAllowed('TQQQ', kr.jurisdiction)).toBe(false)
     expect(isCatalogInstrumentAllowed('TQQQ', us.jurisdiction)).toBe(true)
@@ -169,7 +170,7 @@ describe('PUBLIC_CATALOG', () => {
     expect(isCatalogInstrumentAllowed('TQQQ', { declaredCountry: 'KR', ipCountry: 'US' })).toBe(false)
     expect(isCatalogInstrumentAllowed('TQQQ', { declaredCountry: 'US', ipCountry: 'KR' })).toBe(false)
     expect(visibleChipEntriesForViewer(index, { isAdmin: true, jurisdiction: kr.jurisdiction }).map((i) => i.instrument)).toEqual(
-      [...layer1, ...layer2],
+      ['SPY', 'QQQ', 'DIA', 'EWJ', 'EWY', 'FEZ', 'EWT', ...layer2, 'VNQ', 'SCHH'],
     )
     expect(PUBLIC_CATALOG.find((c) => c.id === 'gold_metals')!.instruments.map((i) => i.instrument)).toEqual([
       'XAU/USD',
@@ -334,7 +335,7 @@ describe('catalog i18n', () => {
     const input = buildCatalogRankedRoundInput('VNQ', '1d', now)
     expect(input).toMatchObject({
       instrument: 'VNQ',
-      category: 'real_estate',
+      category: 'etf_index',
       horizon: '1d',
       item_type: 'ranked',
       cache_key: 'daily|VNQ|1d|2026-08-24',

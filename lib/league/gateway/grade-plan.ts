@@ -53,6 +53,7 @@ export const OPERATOR_FALLBACK_CATEGORIES: readonly string[] = [
   'politics_election',
   'entertainment_awards',
   'tech',
+  'real_estate',
 ]
 
 export function withCategoryFallback(plan: GradePlan, category: string): GradePlan {

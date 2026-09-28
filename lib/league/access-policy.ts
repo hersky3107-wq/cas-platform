@@ -5,6 +5,7 @@ import { findCatalogInstrument } from './catalog'
 import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
+import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
 import { isUiHorizon, type UiHorizon } from './horizon'
 
@@ -128,6 +129,14 @@ export function gatePublicGenerateInstrument(
       return { ok: false, status: 403, code: 'jurisdiction_blocked' }
     }
     return { ok: true, instrument, category: 'entertainment_awards', horizon }
+  }
+
+  const propertyParts = decodePropertyInstrument(instrument)
+  if (propertyParts) {
+    if (!viewer.isAdmin && !isCategoryAllowed('real_estate', viewer.jurisdiction)) {
+      return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+    }
+    return { ok: true, instrument, category: 'real_estate', horizon }
   }
 
   const found = findCatalogInstrument(instrument)

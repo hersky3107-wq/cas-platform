@@ -15,8 +15,9 @@ import {
   createGoldMetalAdapter,
   createIndexEtfAdapter,
   createMemecoinAdapter,
-  createRealEstateAdapter,
 } from './price-series-family'
+import { createRealEstateAdapter } from './real-estate'
+import { LIVE_REAL_ESTATE_IO } from './real-estate-io.server'
 import { LIVE_PRICE_SERIES_IO } from './price-series-io.server'
 import { getResearchPacket } from '../../research'
 import { findCatalogInstrument, type PublicCategoryId } from '../../catalog'
@@ -35,7 +36,7 @@ export const commodityEnergyAdapter: CategoryAdapter = createCommodityEnergyAdap
 export const fxAdapter: CategoryAdapter = createFxAdapter(LIVE_PRICE_SERIES_IO)
 export const cryptoAdapter: CategoryAdapter = createCryptoAdapter(LIVE_PRICE_SERIES_IO)
 export const memecoinAdapter: CategoryAdapter = createMemecoinAdapter(LIVE_PRICE_SERIES_IO)
-export const realEstateAdapter: CategoryAdapter = createRealEstateAdapter(LIVE_PRICE_SERIES_IO)
+export const realEstateAdapter: CategoryAdapter = createRealEstateAdapter(LIVE_REAL_ESTATE_IO)
 export const techAdapter: CategoryAdapter = createTechAdapter({
   getResearchPacket: ({ round, budgetRemainingUsd, tier }) =>
     getResearchPacket({ round, budgetRemainingUsd, tier }),
@@ -79,6 +80,7 @@ export function adapterForInstrument(instrument: string): CategoryAdapter | null
   if (instrument.startsWith('MATCH:')) return adapterForLedgerCategory('sports')
   if (instrument.startsWith('ELECTION:')) return adapterForLedgerCategory('politics_election')
   if (instrument.startsWith('SHOW:')) return adapterForLedgerCategory('entertainment_awards')
+  if (instrument.startsWith('PROPERTY:')) return adapterForLedgerCategory('real_estate')
   const hit = findCatalogInstrument(instrument)
   return hit ? adapterForCategoryId(hit.category.id) : null
 }

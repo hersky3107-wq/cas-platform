@@ -251,6 +251,10 @@ export const INDEX_ETF_SYNONYMS: Record<string, string> = {
   반도체3배: 'SOXL',
   upro: 'UPRO',
   spxu: 'SPXU',
+  vnq: 'VNQ',
+  뱅가드리츠: 'VNQ',
+  schh: 'SCHH',
+  슈왑리츠: 'SCHH',
 }
 
 export const GOLD_METAL_SYNONYMS: Record<string, string> = {
@@ -416,27 +420,6 @@ export const MEMECOIN_SYNONYMS: Record<string, string> = {
   봉크: 'BONK/USD',
 }
 
-export const REAL_ESTATE_SYNONYMS: Record<string, string> = {
-  vnq: 'VNQ',
-  뱅가드리츠: 'VNQ',
-  뱅가드: 'VNQ',
-  schh: 'SCHH',
-  슈왑리츠: 'SCHH',
-  슈왑: 'SCHH',
-}
-
-const PROPERTY_RE =
-  /아파트|오피스텔|빌라|단독주택|매물|전세|월세|매매가|시세|평당|주소|단지|apartment|condo|house|appraisal|listing|address/i
-const BROKERAGE_RE =
-  /중개사|중개수수료|매수추천|매도추천|매수하세요|매도하세요|사야해|팔아야|brokerage|realtor|shouldibuy|shouldisell/i
-
-export function refuseRealEstateMention(raw: string, normalized: string): Refusal | null {
-  const hay = `${raw} ${normalized}`
-  if (PROPERTY_RE.test(hay)) return refuse('specific_property')
-  if (BROKERAGE_RE.test(hay)) return refuse('brokerage_advice')
-  return null
-}
-
 export function createIndexEtfAdapter(io: PriceSeriesIo): CategoryAdapter {
   return createPriceSeriesFamilyAdapter(
     {
@@ -510,21 +493,6 @@ export function createMemecoinAdapter(io: PriceSeriesIo): CategoryAdapter {
       entity_kind: 'pair',
       synonyms: MEMECOIN_SYNONYMS,
       gradeCloseLabel: SPOT_CLOSE,
-    },
-    io,
-  )
-}
-
-export function createRealEstateAdapter(io: PriceSeriesIo): CategoryAdapter {
-  return createPriceSeriesFamilyAdapter(
-    {
-      category_id: 'real_estate',
-      ledger_category: 'real_estate',
-      entity_kind: 'etf',
-      synonyms: REAL_ESTATE_SYNONYMS,
-      extraRefusals: ['specific_property', 'brokerage_advice'],
-      refuseMention: refuseRealEstateMention,
-      gradeCloseLabel: SESSION_CLOSE,
     },
     io,
   )

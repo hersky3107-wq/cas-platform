@@ -20,6 +20,7 @@ import { raceBlackoutActive } from '../politics/kr-calendar'
 import { containsPollPercentage } from '../politics/poll-redact'
 import { leagueSideFromDivination } from './divination'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
+import { isRealEstateLedgerCategory } from './real-estate-category'
 import { isPoliticsLedgerCategory } from './politics-category'
 
 /** Extra-engine id — powers the seat; the ledger row is still `sentiment`. */
@@ -258,6 +259,9 @@ function sentimentSearchLine(input: SentimentLeagueInput): string {
   }
   if (isEntertainmentLedgerCategory(input.category)) {
     return 'For entertainment: search trailer buzz, reviews, social chatter, and festival heat. Not box-office dollars unless already published, and not betting odds.'
+  }
+  if (isRealEstateLedgerCategory(input.category)) {
+    return 'For housing indexes: search mortgage rates, housing supply (permits, completions, 입주), and policy or regulation news for the NAMED region. Do not cite a named apartment complex, a street address, or a complex asking price.'
   }
   if (isPoliticsLedgerCategory(input.category)) {
     const parts = decodePoliticsInstrument(input.instrument)

@@ -7,6 +7,8 @@ import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { electionHeadlineLabel, politicsPropositionDisplay } from './politics-display'
 import { entertainmentHeadlineLabel, entertainmentPropositionDisplay } from './entertainment-display'
+import { propertyInstrumentDisplay, propertyPropositionDisplay } from './real-estate-display'
+import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
@@ -95,6 +97,7 @@ function nonPriceInstrumentDisplay(instrument: string, locale: LeagueLocale): st
     sportsInstrumentDisplay(instrument, locale) ??
     electionInstrumentDisplay(instrument, locale) ??
     showInstrumentDisplay(instrument, locale) ??
+    propertyInstrumentDisplay(instrument, locale) ??
     instrument
   )
 }
@@ -104,6 +107,7 @@ export function rankedPropositionDisplay(instrument: string, stored: string, loc
   if (decodeSportsInstrument(instrument)) return sportsPropositionDisplay(instrument, stored, locale)
   if (decodePoliticsInstrument(instrument)) return politicsPropositionDisplay(instrument, stored, locale)
   if (decodeEntertainmentInstrument(instrument)) return entertainmentPropositionDisplay(instrument, stored, locale)
+  if (decodePropertyInstrument(instrument)) return propertyPropositionDisplay(instrument, stored, locale)
   return stored
 }
 

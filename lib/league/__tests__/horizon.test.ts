@@ -30,10 +30,11 @@ describe('isUiHorizon', () => {
 })
 
 describe('usesTradingSessions', () => {
-  it('is true for stock / etf_index / real_estate (REIT ETFs share the equity clock)', () => {
+  it('is true for stock / etf_index; house-price indexes are not a trading session', () => {
     expect(usesTradingSessions('stock')).toBe(true)
     expect(usesTradingSessions('etf_index')).toBe(true)
-    expect(usesTradingSessions('real_estate')).toBe(true)
+    expect(usesTradingSessions('etf_index', 'VNQ')).toBe(true)
+    expect(usesTradingSessions('real_estate')).toBe(false)
     expect(usesTradingSessions('crypto_spot')).toBe(false)
     expect(usesTradingSessions('fx')).toBe(false)
     expect(usesTradingSessions('gold_metal')).toBe(false)
@@ -110,11 +111,12 @@ describe('computeResolvesAt', () => {
     expect(computeResolvesAt('crypto_spot', '3m', weekendMorning)).toBe('2026-11-27T09:43:16.752Z')
   })
 
-  it('etf_index and real_estate match stock (same session-counted path)', () => {
+  it('etf_index including VNQ matches stock; house-price indexes use calendar days', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
     for (const h of UI_HORIZONS) {
       expect(computeResolvesAt('etf_index', h, weekendMorning)).toBe(computeResolvesAt('stock', h, weekendMorning))
-      expect(computeResolvesAt('real_estate', h, weekendMorning)).toBe(computeResolvesAt('stock', h, weekendMorning))
+      expect(computeResolvesAt('etf_index', h, weekendMorning, 'VNQ')).toBe(computeResolvesAt('stock', h, weekendMorning))
+      expect(computeResolvesAt('real_estate', h, weekendMorning)).not.toBe(computeResolvesAt('stock', h, weekendMorning))
     }
   })
 
@@ -202,7 +204,8 @@ describe('tradingApproximationNote', () => {
     for (const h of ['1w', '1m', '3m'] as const) {
       expect(tradingApproximationNote('stock', h)).toMatch(/weekday/)
       expect(tradingApproximationNote('etf_index', h)).toMatch(/holiday calendar/)
-      expect(tradingApproximationNote('real_estate', h)).toMatch(/weekday/)
+      expect(tradingApproximationNote('etf_index', h, 'VNQ')).toMatch(/weekday/)
+      expect(tradingApproximationNote('real_estate', h)).toBeNull()
       expect(tradingApproximationNote('gold_metal', h, 'GLD')).toMatch(/weekday/)
       expect(tradingApproximationNote('gold_metal', h, 'SLV')).toMatch(/weekday/)
       expect(tradingApproximationNote('commodity_energy', h, 'UNG')).toMatch(/weekday/)

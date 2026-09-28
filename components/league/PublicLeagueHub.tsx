@@ -16,6 +16,7 @@ import { defaultCatalogCategoryId, type CatalogKind, type PublicCategoryId } fro
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { rankedPropositionDisplay } from '@/lib/league/card-header-copy'
 import { sportsVsLabel } from '@/lib/league/sports-display'
+import { propertyInstrumentDisplay } from '@/lib/league/real-estate-display'
 import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
@@ -647,6 +648,8 @@ function instrumentLabel(
 ): string {
   const sports = sportsVsLabel(instrument, locale)
   if (sports) return sports
+  const property = propertyInstrumentDisplay(instrument, locale)
+  if (property) return property
   return t.catalog.instruments[instrument] ?? instrument
 }
 
