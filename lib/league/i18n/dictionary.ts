@@ -1865,7 +1865,7 @@ const ko: LeagueUiPack = {
       gold_metals: '금 이번 달 오를까?',
       index_etf: 'SPY 내일 오를까?',
       commodities_energy: 'WTI 유가 이번 주 오를까?',
-      politics_election: '예: 트럼프 2026, 조지아 주지사',
+      politics_election: '예: 조지아 주지사, 텍사스 주지사',
       entertainment: '이 작품이 작품상을 받을까?',
       memecoin: '도지코인 내일 오를까?',
       real_estate: 'VNQ 이번 달 오를까?',

@@ -28,6 +28,20 @@ const OFFICE_KO: Record<PoliticsOffice, string> = {
   other: '선거',
 }
 
+const STATE_EN: Record<string, string> = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+  CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
+  HI: 'Hawaii', IA: 'Iowa', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana',
+  KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', MA: 'Massachusetts', MD: 'Maryland',
+  ME: 'Maine', MI: 'Michigan', MN: 'Minnesota', MO: 'Missouri', MS: 'Mississippi',
+  MT: 'Montana', NC: 'North Carolina', ND: 'North Dakota', NE: 'Nebraska', NH: 'New Hampshire',
+  NJ: 'New Jersey', NM: 'New Mexico', NV: 'Nevada', NY: 'New York', OH: 'Ohio',
+  OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+  SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VA: 'Virginia',
+  VT: 'Vermont', WA: 'Washington', WI: 'Wisconsin', WV: 'West Virginia', WY: 'Wyoming',
+  DC: 'District of Columbia',
+}
+
 const STATE_KO: Record<string, string> = {
   AL: '앨라배마', AK: '알래스카', AZ: '애리조나', AR: '아칸소', CA: '캘리포니아',
   CO: '콜로라도', CT: '코네티컷', DE: '델라웨어', FL: '플로리다', GA: '조지아',
@@ -58,19 +72,75 @@ const PERSON_ALIASES: readonly Alias[] = [
   { aliases: ['donald trump', 'trump', '트럼프', '도널드 트럼프'], canonical: 'Donald Trump' },
   { aliases: ['kamala harris', 'harris', '해리스', '카말라 해리스'], canonical: 'Kamala Harris' },
   { aliases: ['lee jae-myung', 'lee jae myung', '이재명'], canonical: 'Lee Jae-myung' },
+  { aliases: ['keisha lance bottoms', 'keisha bottoms', '케이샤 랜스 바텀스', '케이샤 바텀스', '바텀스'], canonical: 'Keisha Lance Bottoms' },
+  { aliases: ['rick jackson', '릭 잭슨', '잭슨'], canonical: 'Rick Jackson' },
+  { aliases: ['jon ossoff', 'ossoff', '존 오소프', '오소프'], canonical: 'Jon Ossoff' },
+  { aliases: ['mike collins', '마이크 콜린스'], canonical: 'Mike Collins' },
+  { aliases: ['greg abbott', 'abbott', '그렉 애벗', '그렉 애보트', '애벗'], canonical: 'Greg Abbott' },
+  { aliases: ['kathy hochul', 'hochul', '캐시 호컬', '호컬'], canonical: 'Kathy Hochul' },
+  { aliases: ['josh shapiro', 'shapiro', '조시 샤피로', '샤피로'], canonical: 'Josh Shapiro' },
+  { aliases: ['jb pritzker', 'pritzker', '프리츠커', 'J.B. 프리츠커'], canonical: 'JB Pritzker' },
 ]
 
 type OfficeAlias = { aliases: readonly string[]; office: PoliticsOffice; district: string }
 
-const OFFICE_ALIASES: readonly OfficeAlias[] = [
-  { aliases: ['조지아 주지사', 'georgia governor', 'ga governor'], office: 'governor', district: 'GA' },
-  { aliases: ['일리노이 상원', 'illinois senate', 'il senate'], office: 'senate', district: 'IL' },
-  { aliases: ['애리조나 하원', 'arizona house', 'az-06', 'az-6'], office: 'house', district: 'AZ-6' },
-  { aliases: ['대선', 'presidential', 'president'], office: 'president', district: '_' },
-  { aliases: ['주지사', 'governor'], office: 'governor', district: '_' },
-  { aliases: ['상원', 'senate'], office: 'senate', district: '_' },
-  { aliases: ['하원', 'house race', 'u.s. house'], office: 'house', district: '_' },
-]
+function buildOfficeAliases(): readonly OfficeAlias[] {
+  const list: OfficeAlias[] = []
+
+  // Generic offices
+  list.push({ aliases: ['대선', '대통령 선거', 'presidential', 'president', '미국 대선'], office: 'president', district: '_' })
+  list.push({ aliases: ['주지사', 'governor', 'gubernatorial'], office: 'governor', district: '_' })
+  list.push({ aliases: ['상원', '상원의원', 'senate', 'senator'], office: 'senate', district: '_' })
+  list.push({ aliases: ['하원', '하원의원', 'house race', 'u.s. house', 'congressman', 'representative'], office: 'house', district: '_' })
+  list.push({ aliases: ['시장', '시장 선거', 'mayor', 'mayoral'], office: 'mayor', district: '_' })
+
+  // State-specific governor and senate aliases (e.g. "조지아 주지사", "Georgia Governor", "조지아 상원", "Georgia Senate")
+  for (const [code, koName] of Object.entries(STATE_KO)) {
+    const enName = STATE_EN[code]?.toLowerCase() ?? ''
+    const codeLower = code.toLowerCase()
+    // Governor
+    const govAliases = [
+      `${koName} 주지사`,
+      `${koName}주지사`,
+      `${koName} 주지사 선거`,
+      `${codeLower} governor`,
+      `${code} governor`,
+    ]
+    if (enName) {
+      govAliases.push(`${enName} governor`, `${enName} gubernatorial`)
+    }
+    list.push({
+      aliases: govAliases,
+      office: 'governor',
+      district: code,
+    })
+    // Senate
+    const senAliases = [
+      `${koName} 상원`,
+      `${koName}상원`,
+      `${koName} 상원의원`,
+      `${koName} 상원 선거`,
+      `${codeLower} senate`,
+      `${code} senate`,
+    ]
+    if (enName) {
+      senAliases.push(`${enName} senate`, `${enName} senator`)
+    }
+    list.push({
+      aliases: senAliases,
+      office: 'senate',
+      district: code,
+    })
+  }
+
+  // Pre-seed known house districts if common
+  list.push({ aliases: ['애리조나 하원', 'arizona house', 'az-06', 'az-6'], office: 'house', district: 'AZ-6' })
+  list.push({ aliases: ['뉴저지 5구역 하원', 'nj-5 house', 'nj-05 house'], office: 'house', district: 'NJ-5' })
+
+  return list
+}
+
+const OFFICE_ALIASES: readonly OfficeAlias[] = buildOfficeAliases()
 
 export function isPoliticsOffice(value: string): value is PoliticsOffice {
   return (OFFICES as readonly string[]).includes(value)

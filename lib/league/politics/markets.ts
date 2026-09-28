@@ -87,14 +87,14 @@ function cycleYearFromTicker(ticker: string): number | null {
 }
 
 function officeFromTicker(ticker: string): { office: PoliticsOffice; district: string } | null {
-  const senate = ticker.match(/^SENATE([A-Z]{2})/)
-  if (senate) return { office: 'senate', district: senate[1]! }
-  const house = ticker.match(/^HOUSE([A-Z]{2})(\d+)/)
-  if (house) return { office: 'house', district: `${house[1]}-${house[2]}` }
-  const gov = ticker.match(/^(?:GOV|GOVERNOR)([A-Z]{2})/)
-  if (gov) return { office: 'governor', district: gov[1]! }
-  if (/PRES|PRESIDENT/.test(ticker)) return { office: 'president', district: '_' }
-  if (/MAYOR/.test(ticker)) return { office: 'mayor', district: '_' }
+  const senate = ticker.match(/(?:^|\b)(?:KX)?SENATE(?:PARTY)?([A-Z]{2})\b/i)
+  if (senate) return { office: 'senate', district: senate[1]!.toUpperCase() }
+  const house = ticker.match(/(?:^|\b)(?:KX)?HOUSE(?:PARTY)?([A-Z]{2})(\d+)\b/i)
+  if (house) return { office: 'house', district: `${house[1]!.toUpperCase()}-${parseInt(house[2]!, 10)}` }
+  const gov = ticker.match(/(?:^|\b)(?:KX)?GOV(?:ERNOR)?(?:PARTY)?([A-Z]{2})\b/i)
+  if (gov) return { office: 'governor', district: gov[1]!.toUpperCase() }
+  if (/(?:^|\b)(?:KX)?(?:PRES|PRESIDENT)\b/i.test(ticker)) return { office: 'president', district: '_' }
+  if (/(?:^|\b)(?:KX)?MAYOR\b/i.test(ticker)) return { office: 'mayor', district: '_' }
   return null
 }
 
@@ -292,22 +292,39 @@ export async function fetchKalshiElectionSlate(now: Date, fetchImpl: typeof fetc
   const tickers: string[] = []
   let cursor = ''
   for (let page = 0; page < 3; page++) {
-    const url = `${KALSHI_TRADE_ORIGIN}/series?category=Elections&limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
+    const url = `${KALSHI_TRADE_ORIGIN}/series?category=Elections&limit=1000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
     const body = (await fetchJsonRetry(url, fetchImpl, 2)) as {
       series?: Array<{ ticker?: string }>
       cursor?: string
     }
     for (const row of body.series ?? []) {
-      const ticker = row.ticker ?? ''
-      if (/SENATE|HOUSE|GOV|PRES/i.test(ticker) && /26/.test(ticker)) tickers.push(ticker)
+      const ticker = (row.ticker ?? '').toUpperCase()
+      if (/^GOVPARTY[A-Z]{2}$/.test(ticker) || /^SENATE[A-Z]{2}$/.test(ticker) || /^HOUSE[A-Z]{2}\d+$/.test(ticker)) {
+        tickers.push(ticker)
+      }
     }
     cursor = body.cursor ?? ''
     if (!cursor) break
   }
-  const chosen = tickers.slice(0, 36)
+
+  // Priority sort: high-interest state governor/senate races first
+  const PRIORITY_FIRST = new Set([
+    'GOVPARTYGA', 'SENATEGA', 'GOVPARTYTX', 'SENATETX', 'GOVPARTYCA', 'GOVPARTYNY',
+    'GOVPARTYFL', 'SENATEFL', 'GOVPARTYPA', 'SENATEPA', 'GOVPARTYMI', 'SENATEMI',
+    'GOVPARTYAZ', 'SENATEAZ', 'GOVPARTYWI', 'SENATEWI', 'GOVPARTYNC', 'SENATENC',
+    'GOVPARTYNV', 'SENATENV', 'SENATEIL', 'SENATESC', 'SENATELA', 'HOUSENJ5', 'HOUSECA21',
+  ])
+  tickers.sort((a, b) => {
+    const pa = PRIORITY_FIRST.has(a) ? 1 : 0
+    const pb = PRIORITY_FIRST.has(b) ? 1 : 0
+    return pb - pa
+  })
+
+  // Limit to 45 series, fetched in small batches with short delays to avoid 429 rate limits
+  const chosen = tickers.slice(0, 45)
   const payloads: unknown[] = []
-  for (let i = 0; i < chosen.length; i += 6) {
-    const chunk = chosen.slice(i, i + 6)
+  for (let i = 0; i < chosen.length; i += 5) {
+    const chunk = chosen.slice(i, i + 5)
     const pages = await Promise.all(
       chunk.map(async (ticker) => {
         try {
@@ -322,6 +339,9 @@ export async function fetchKalshiElectionSlate(now: Date, fetchImpl: typeof fetc
       }),
     )
     for (const page of pages) if (page) payloads.push(page)
+    if (i + 5 < chosen.length) {
+      await new Promise((r) => setTimeout(r, 120))
+    }
   }
   return payloads.flatMap((page) => parseKalshiElectionEvents(page, now))
 }

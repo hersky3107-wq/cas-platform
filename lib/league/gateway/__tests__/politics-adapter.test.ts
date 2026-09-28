@@ -120,7 +120,7 @@ describe('politics markets + blackout', () => {
     expect(usGeneralElectionIso(2026)).toBe('2026-11-03T23:00:00.000Z')
   })
 
-  it('parses Kalshi senate prices onto the general-election day inside the window', () => {
+  it('parses Kalshi senate and governor prices onto the general-election day inside the window', () => {
     const rows = parseKalshiElectionEvents(
       {
         events: [
@@ -139,11 +139,26 @@ describe('politics markets + blackout', () => {
               },
             ],
           },
+          {
+            category: 'Elections',
+            title: 'Georgia Governor winner?',
+            event_ticker: 'GOVPARTYGA-26',
+            series_ticker: 'GOVPARTYGA',
+            markets: [
+              {
+                status: 'active',
+                yes_sub_title: 'Keisha Lance Bottoms',
+                close_time: '2027-11-03T15:00:00Z',
+                yes_bid_dollars: '0.500',
+                yes_ask_dollars: '0.510',
+              },
+            ],
+          },
         ],
       },
       NOW,
     )
-    expect(rows).toHaveLength(1)
+    expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
       jurisdiction: 'US',
       office: 'senate',
@@ -151,6 +166,14 @@ describe('politics markets + blackout', () => {
       candidate: 'Juliana Stratton',
       pollCloseIso: POLL,
       kalshiPct: 97.5,
+    })
+    expect(rows[1]).toMatchObject({
+      jurisdiction: 'US',
+      office: 'governor',
+      district: 'GA',
+      candidate: 'Keisha Lance Bottoms',
+      pollCloseIso: POLL,
+      kalshiPct: 50.5,
     })
   })
 
@@ -221,7 +244,7 @@ describe('politics CategoryAdapter', () => {
     expect(vague.ok).toBe(false)
     if (!vague.ok && 'refuse' in vague) {
       expect(vague.refuse.code).toBe('vague_election')
-      expect(refusalMessageForKey(vague.refuse.message_i18n_key, 'ko')).toContain('트럼프 2026')
+      expect(refusalMessageForKey(vague.refuse.message_i18n_key, 'ko')).toContain('조지아 주지사')
     }
   })
 
@@ -232,6 +255,14 @@ describe('politics CategoryAdapter', () => {
       expect(hit.need.options?.length).toBe(2)
       expect(hit.need.options?.[0]?.label).toContain('Juliana Stratton')
     }
+
+    const gaHit = await adapter.resolveEntity('조지아 상원', 'ko', usViewer)
+    // In test SLATE, GA governor is present but GA senate is not in mock slate, so returns unsupported
+    expect(gaHit.ok).toBe(false)
+
+    // And Georgia Governor returns picks for Stacey Abrams
+    const gaGov = await adapter.resolveEntity('조지아 주지사', 'ko', usViewer)
+    expect(gaGov.ok).toBe(true)
   })
 
   it('blocks only KR races for KR viewers during that race D-6, and leaves US races open', async () => {

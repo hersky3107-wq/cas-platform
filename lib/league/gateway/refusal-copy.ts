@@ -74,16 +74,16 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     en: 'This question cannot be opened now due to that country’s election-period rules.',
   },
   vague_election: {
-    ko: '후보 이름과 선거를 함께 입력해주세요. 예: 트럼프 2026 / 조지아 주지사',
-    en: 'Enter a candidate and the election together. e.g. Trump 2026 / Georgia governor',
+    ko: '후보 이름이나 선거를 입력해주세요. 예: 조지아 주지사 / 텍사스 주지사 / 일리노이 상원',
+    en: 'Enter a candidate or election. e.g. Georgia governor / Texas governor / Illinois senate',
   },
   past_election: {
     ko: '이미 끝난 선거는 예측할 수 없습니다.',
     en: 'Predictions are only available for elections that have not finished.',
   },
   unsupported_election: {
-    ko: '3개월 안에 열리는 예측시장 선거만 열 수 있습니다. 예: 트럼프 2026, 조지아 주지사',
-    en: 'Only elections on the prediction-market slate inside the next 3 months can be opened. e.g. Trump 2026, Georgia governor',
+    ko: '3개월 안에 열리는 예측시장 선거만 열 수 있습니다. 예: 조지아 주지사, 텍사스 주지사, 일리노이 상원',
+    en: 'Only elections on the prediction-market slate inside the next 3 months can be opened. e.g. Georgia governor, Texas governor, Illinois senate',
   },
   non_public_fixture: {
     ko: '지원 범위: EPL·챔스·라리가·세리에·NBA·MLB·UFC + 주요 국제대회. 지원하지 않는 경기입니다.',
