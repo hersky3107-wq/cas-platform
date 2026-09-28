@@ -10,7 +10,11 @@ import { LEAGUE_UI } from '../../i18n/dictionary'
 import { gradePlanFor } from '../grade-plan'
 import { runLeagueGateway, type GatewayDeps } from '../shell'
 import { createEntertainmentAdapter } from '../adapters/entertainment'
-import { encodeEntertainmentInstrument } from '../adapters/entertainment-catalog'
+import {
+  decodeEntertainmentInstrument,
+  encodeEntertainmentInstrument,
+  parseAdmissionsThreshold,
+} from '../adapters/entertainment-catalog'
 import { buildEntertainmentRankedRoundInput } from '../adapters/entertainment-compose'
 import type { EntertainmentPacketIo } from '../adapters/entertainment-packet'
 import { resolveEntertainmentTarget } from '../adapters/entertainment-target'
@@ -44,6 +48,16 @@ function io(): EntertainmentPacketIo {
 
 describe('entertainment subjective → objective', () => {
   const adapter = createEntertainmentAdapter(io(), () => NOW)
+
+  it('parses 만/억 thresholds and rejects absurd N', () => {
+    expect(parseAdmissionsThreshold('200만 넘길까')).toBe(2_000_000)
+    expect(parseAdmissionsThreshold('누적 500만')).toBe(5_000_000)
+    expect(parseAdmissionsThreshold('1.5억')).toBeNull()
+    expect(parseAdmissionsThreshold('5만')).toBeNull()
+    expect(parseAdmissionsThreshold('999억')).toBeNull()
+    expect(parseAdmissionsThreshold('2,000,000')).toBe(2_000_000)
+    expect(parseAdmissionsThreshold('대박날까')).toBeNull()
+  })
 
   it('turns 대박 into opening-weekend and admissions picks', async () => {
     const hit = await adapter.resolveEntity('치이카와 대박날까', 'ko', US)
@@ -97,6 +111,33 @@ describe('entertainment subjective → objective', () => {
       ok: false,
       refuse: { code: 'vague_show' },
     })
+  })
+
+  it('honors a typed admissions N over the slate 300만 chip', () => {
+    const hit = resolveEntertainmentTarget('치이카와 200만 넘길까', ENTERTAINMENT_SLATE, NOW)
+    expect(hit.kind).toBe('ready')
+    if (hit.kind !== 'ready') return
+    const parts = decodeEntertainmentInstrument(hit.entityId)
+    expect(parts).toMatchObject({
+      kind: 'boxoffice',
+      venue: 'KR',
+      event: 'admissions_2000000',
+      subject: '치이카와',
+    })
+    expect(hit.label).toContain('200만')
+    expect(hit.label).not.toContain('300만')
+  })
+
+  it('keeps opening + 300만 chips when the user does not type a custom N', () => {
+    const hit = resolveEntertainmentTarget('치이카와 대박날까', ENTERTAINMENT_SLATE, NOW)
+    expect(hit.kind).toBe('picks')
+    if (hit.kind === 'picks') {
+      expect(hit.options.map((o) => o.label)).toEqual([
+        '치이카와 · 개봉 첫 주말 박스오피스 1위',
+        '치이카와 · 누적 300만 관객 돌파',
+      ])
+      expect(hit.options[1]?.id).toContain('admissions_3000000')
+    }
   })
 
   it('composes a threshold round and a readable headline, and generate accepts SHOW:', () => {
@@ -210,18 +251,21 @@ describe('entertainment extras do not fall through to price charts', () => {
 })
 
 describe('entertainment gateway clarify', () => {
-  it('returns objective picks instead of low_confidence', async () => {
-    const charge = vi.fn(async () => ({ ok: true }))
-    const deps: GatewayDeps = {
+  function entertainmentDeps(charge: ReturnType<typeof vi.fn>): GatewayDeps {
+    return {
       adapterFor: (id) => (id === 'entertainment' ? createEntertainmentAdapter(io(), () => NOW) : null),
       normalizer: { normalize: async () => null },
       searchCandidates: async () => null,
       deductCredits: charge,
       now: () => NOW,
     }
+  }
+
+  it('returns objective picks instead of low_confidence', async () => {
+    const charge = vi.fn(async () => ({ ok: true }))
     const result = await runLeagueGateway(
       { viewer: US, category_id: 'entertainment', raw_text: '치이카와 대박날까', locale: 'ko' },
-      deps,
+      entertainmentDeps(charge),
     )
     expect(result.status).toBe('clarify')
     if (result.status === 'clarify') {
@@ -229,5 +273,62 @@ describe('entertainment gateway clarify', () => {
       expect(result.questions[0]?.options?.[0]?.id.startsWith('SHOW:')).toBe(true)
     }
     expect(charge).not.toHaveBeenCalled()
+    if (result.status === 'clarify') {
+      expect(result.questions[0]?.allow_free_input).toBe(true)
+    }
+  })
+
+  it('직접 입력 200만 overrides the 300만 chip and encodes admissions_2000000', async () => {
+    const charge = vi.fn(async () => ({ ok: true }))
+    const result = await runLeagueGateway(
+      {
+        viewer: US,
+        category_id: 'entertainment',
+        raw_text: '치이카와 대박날까',
+        locale: 'ko',
+        answered_slots: { entity_id: '200만 넘길까' },
+        clarify_round: 1,
+      },
+      entertainmentDeps(charge),
+    )
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') return
+    const parts = decodeEntertainmentInstrument(result.round.instrument)
+    expect(parts).toMatchObject({
+      kind: 'boxoffice',
+      venue: 'KR',
+      event: 'admissions_2000000',
+      subject: '치이카와',
+    })
+    expect(result.round.proposition_text).toContain('200만')
+    expect(result.round.proposition_text).not.toContain('300만')
+    expect(charge).toHaveBeenCalledOnce()
+  })
+
+  it('chip-select still opens the slate 300만 instrument', async () => {
+    const charge = vi.fn(async () => ({ ok: true }))
+    const first = await runLeagueGateway(
+      { viewer: US, category_id: 'entertainment', raw_text: '치이카와 대박날까', locale: 'ko' },
+      entertainmentDeps(charge),
+    )
+    expect(first.status).toBe('clarify')
+    if (first.status !== 'clarify') return
+    const chip = first.questions[0]?.options?.find((o) => o.id.includes('admissions_3000000'))
+    expect(chip?.id).toBeTruthy()
+    const second = await runLeagueGateway(
+      {
+        viewer: US,
+        category_id: 'entertainment',
+        raw_text: '치이카와 대박날까',
+        locale: 'ko',
+        answered_slots: { entity_id: chip!.id, entity_confirmed: 'true' },
+        clarify_round: 1,
+      },
+      entertainmentDeps(charge),
+    )
+    expect(second.status).toBe('ready')
+    if (second.status !== 'ready') return
+    expect(decodeEntertainmentInstrument(second.round.instrument)?.event).toBe('admissions_3000000')
+    expect(second.round.proposition_text).toContain('300만')
   })
 })

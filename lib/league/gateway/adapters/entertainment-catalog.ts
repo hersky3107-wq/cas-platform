@@ -63,6 +63,37 @@ export function admissionsThreshold(event: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+/** Theatrical admissions: 10만–5,000만. Below that is noise; above that is not a real Korean run. */
+export const MIN_CUSTOM_ADMISSIONS = 100_000
+export const MAX_CUSTOM_ADMISSIONS = 50_000_000
+const ADMISSIONS_STEP = 10_000
+
+export function sanitizeAdmissionsThreshold(raw: number): number | null {
+  if (!Number.isFinite(raw) || raw <= 0) return null
+  const rounded = Math.round(raw / ADMISSIONS_STEP) * ADMISSIONS_STEP
+  if (rounded < MIN_CUSTOM_ADMISSIONS || rounded > MAX_CUSTOM_ADMISSIONS) return null
+  return rounded
+}
+
+/**
+ * User-typed box-office N: "200만", "200만 넘길까", "1.5억", "2,000,000".
+ * Returns sanitized admissions or null (no number / absurd).
+ */
+export function parseAdmissionsThreshold(text: string): number | null {
+  const compact = text.replace(/,/g, '')
+  const eok = /(\d+(?:\.\d+)?)\s*억/.exec(compact)
+  if (eok) return sanitizeAdmissionsThreshold(Number(eok[1]) * 100_000_000)
+  const man = /(\d+(?:\.\d+)?)\s*만/.exec(compact)
+  if (man) return sanitizeAdmissionsThreshold(Number(man[1]) * 10_000)
+  const plain = /(?<!\d)(\d{6,8})(?!\d)/.exec(compact.replace(/\s+/g, ''))
+  if (plain) return sanitizeAdmissionsThreshold(Number(plain[1]))
+  return null
+}
+
+export function admissionsEventFor(n: number): string {
+  return `admissions_${n}`
+}
+
 export function propositionKindForShow(parts: ShowParts): 'binary_subject_outcome' | 'binary_threshold' {
   return admissionsThreshold(parts.event) != null ? 'binary_threshold' : 'binary_subject_outcome'
 }

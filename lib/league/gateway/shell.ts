@@ -6,7 +6,7 @@ import { validateNormalizerOutput, type PromptNormalizer, type ValidatedNormaliz
 import { MAX_CANDIDATE_CHIPS } from './candidate-search'
 import { detectBettingFraming } from './betting-framing'
 import { prefilterRejects } from './prefilter'
-import { decodeEntertainmentInstrument } from './adapters/entertainment-catalog'
+import { decodeEntertainmentInstrument, parseAdmissionsThreshold } from './adapters/entertainment-catalog'
 import { decodePoliticsInstrument } from './adapters/politics-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
 import { propositionKindFor } from './normalize-prompt'
@@ -158,7 +158,8 @@ export type GatewayRequest = {
   locale: string
   /**
    * Answers from a previous `clarify` round-trip, keyed by question slot.
-   * Chip ids, or a 직접 입력 mention for `entity_id` — still only a lookup key.
+   * Chip ids, or a 직접 입력 mention for `entity_id` — a lookup key, or a
+   * numeric threshold (e.g. 200만) applied to the original question.
    */
   answered_slots?: Record<string, string>
   /** How many clarify answers have already been submitted (0 on first send). */
@@ -321,7 +322,20 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     normalized.entity_id_hint,
     normalized.entity_mention,
   ])
+  const answeredEntity = typeof answered.entity_id === 'string' ? answered.entity_id.trim() : ''
+  const answeredIsFixture =
+    answeredEntity.length > 0 &&
+    (decodeSportsInstrument(answeredEntity) !== null ||
+      decodePoliticsInstrument(answeredEntity) !== null ||
+      decodeEntertainmentInstrument(answeredEntity) !== null)
+  // 직접 입력 "200만 넘길까" is not a title — resolve it against the original sentence.
+  const thresholdOverride =
+    answeredEntity && !answeredIsFixture && parseAdmissionsThreshold(answeredEntity) != null
+      ? `${req.raw_text} ${answeredEntity}`
+      : null
   const mentionCandidates = uniqueCandidates([
+    answeredIsFixture ? answeredEntity : null,
+    thresholdOverride,
     answered.entity_id,
     req.raw_text,
     normalized.entity_id_hint,

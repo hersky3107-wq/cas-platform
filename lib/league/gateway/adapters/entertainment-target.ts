@@ -11,7 +11,12 @@ import {
   withinShowHorizon,
   type ShowMetric,
 } from '../../entertainment/slate'
-import { instrumentForMetric, showChipLabel } from './entertainment-catalog'
+import {
+  admissionsEventFor,
+  instrumentForMetric,
+  parseAdmissionsThreshold,
+  showChipLabel,
+} from './entertainment-catalog'
 
 const PRIVATE =
   /이혼|마약|열애|고소|사망|불륜|스캔들|임신|구속|divorce|arrested|dating rumor/i
@@ -113,6 +118,15 @@ export function resolveEntertainmentTarget(
   }
 
   if (upcoming.length > 0) {
+    const customN = parseAdmissionsThreshold(text)
+    if (customN != null) {
+      const template =
+        upcoming.find((row) => row.kind === 'boxoffice' && row.venue === 'KR' && row.event.startsWith('admissions_')) ??
+        upcoming.find((row) => row.kind === 'boxoffice' && row.venue === 'KR')
+      if (template) {
+        return picksFor([{ ...template, event: admissionsEventFor(customN) }])
+      }
+    }
     const narrowed = wantsAward ? upcoming.filter((row) => row.kind === 'award') : upcoming
     const pool = narrowed.length > 0 ? narrowed : upcoming
     const specific = pool.filter((row) => {

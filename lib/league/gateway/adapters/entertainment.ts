@@ -103,7 +103,7 @@ export function createEntertainmentAdapter(
           need: {
             slot: 'entity_id',
             prompt_i18n_key: 'league.gateway.clarify.entity',
-            allow_free_input: false,
+            allow_free_input: true,
             options: hit.options.map((o) => ({
               id: o.id,
               label_i18n_key: 'league.gateway.clarify.entity',
