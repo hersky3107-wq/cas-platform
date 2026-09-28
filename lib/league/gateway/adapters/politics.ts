@@ -99,6 +99,18 @@ export function createPoliticsAdapter(io: PoliticsPacketIo, nowFn: () => Date = 
 
       const slate = await io.listUpcoming(now)
       const hit = resolvePoliticsTarget(raw, slate, now)
+      if (process.env.LEAGUE_GATEWAY_DEBUG === '1' || process.env.LEAGUE_GATEWAY_DEBUG === 'true') {
+        console.log(
+          '[league-gateway] politics.resolveEntity',
+          JSON.stringify({
+            raw: raw.slice(0, 120),
+            slate_size: slate.length,
+            ga_governor: slate.filter((r) => r.office === 'governor' && r.district === 'GA').length,
+            target_kind: hit.kind,
+            pick_count: hit.kind === 'picks' ? hit.options.length : 0,
+          }),
+        )
+      }
       if (hit.kind === 'picks') {
         const open = hit.options.filter((opt) => {
           const parts = decodePoliticsInstrument(opt.id)

@@ -20,7 +20,18 @@ async function loadSlate(now: Date): Promise<ElectionCandidateLite[]> {
     fetchPolymarketPolitics(now).catch(() => [] as ElectionCandidateLite[]),
   ])
   const rows = mergeElectionSlate([...kalshi, ...poly])
-  writePoliticsSlateCache(rows, now.getTime())
+  if (process.env.LEAGUE_GATEWAY_DEBUG === '1' || process.env.LEAGUE_GATEWAY_DEBUG === 'true') {
+    console.log(
+      '[league-gateway] politics.loadSlate',
+      JSON.stringify({
+        kalshi_count: kalshi.length,
+        poly_count: poly.length,
+        merged_count: rows.length,
+        ga_governor: rows.filter((r) => r.office === 'governor' && r.district === 'GA').length,
+      }),
+    )
+  }
+  if (rows.length > 0) writePoliticsSlateCache(rows, now.getTime())
   return rows
 }
 

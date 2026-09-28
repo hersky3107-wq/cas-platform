@@ -52,6 +52,14 @@ export const MAX_CLARIFY_ROUNDS = 2
 /** Categories whose adapter resolves races/fixtures from raw text without the normalizer. */
 const SLATE_BACKED_CATEGORIES = new Set<string>(['politics_election', 'sports'])
 
+const GATEWAY_DEBUG =
+  typeof process !== 'undefined' && (process.env.LEAGUE_GATEWAY_DEBUG === '1' || process.env.LEAGUE_GATEWAY_DEBUG === 'true')
+
+function gwDebug(label: string, payload: Record<string, unknown>): void {
+  if (!GATEWAY_DEBUG) return
+  console.log(`[league-gateway] ${label}`, JSON.stringify(payload))
+}
+
 function entityRefusalIsImmediate(code: RefusalCode): boolean {
   return (
     code === 'betting_framing' ||
@@ -78,10 +86,35 @@ async function normalizeForGateway(
   })
   const parsed = rawOutput === null ? null : validateNormalizerOutput(rawOutput)
   const categoryMatches = parsed !== null && parsed.category_id === adapter.category_id
-  if (categoryMatches && parsed.confidence >= 0.55) return parsed
+  gwDebug('normalizeForGateway:after-llm', {
+    raw_text: req.raw_text,
+    category_id: adapter.category_id,
+    parsed_null: parsed === null,
+    category_matches: categoryMatches,
+    confidence: parsed?.confidence ?? null,
+    entity_mention: parsed?.entity_mention ?? null,
+    needs_slot: parsed?.needs_slot ?? null,
+    open_question: parsed?.slots?.open_question ?? null,
+  })
+  if (categoryMatches && parsed.confidence >= 0.55) {
+    gwDebug('normalizeForGateway:accept-llm', { path: 'high_confidence_llm' })
+    return parsed
+  }
 
   if (SLATE_BACKED_CATEGORIES.has(adapter.category_id)) {
+    gwDebug('normalizeForGateway:slate-fallback', { calling_resolveEntity: true })
     const resolution = await adapter.resolveEntity(req.raw_text, locale, viewer)
+    const resolutionKind = resolution.ok
+      ? 'ready'
+      : 'need' in resolution
+        ? 'need'
+        : 'refuse' in resolution
+          ? resolution.refuse.code
+          : 'unknown'
+    gwDebug('normalizeForGateway:resolveEntity-result', {
+      kind: resolutionKind,
+      pick_count: 'need' in resolution ? resolution.need.options?.length ?? 0 : 0,
+    })
     if (resolution.ok || ('need' in resolution && (resolution.need.options?.length ?? 0) > 0)) {
       return {
         category_id: adapter.category_id as ValidatedNormalizerOutput['category_id'],
@@ -99,8 +132,14 @@ async function normalizeForGateway(
     }
   }
 
-  if (!parsed || !categoryMatches) return null
-  if (parsed.confidence < 0.55) return null
+  if (!parsed || !categoryMatches) {
+    gwDebug('normalizeForGateway:reject', { path: 'null_or_category_mismatch' })
+    return null
+  }
+  if (parsed.confidence < 0.55) {
+    gwDebug('normalizeForGateway:reject', { path: 'low_confidence_no_recovery' })
+    return null
+  }
   return parsed
 }
 
@@ -319,8 +358,22 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   const openQuestion =
     namedCandidates.length === 0 || normalized.slots.open_question === 'true' || normalized.needs_slot === 'entity_id'
 
-  if (!entity && openQuestion && namedCandidates.length === 0 && deps.searchCandidates) {
+  gwDebug('entity-resolution:summary', {
+    raw_text: req.raw_text,
+    category_id: adapter.category_id,
+    has_entity: entity !== null,
+    has_entityAsk: entityAsk !== null,
+    entityAsk_options: entityAsk?.options?.length ?? 0,
+    openQuestion,
+    namedCandidates_len: namedCandidates.length,
+    has_searchCandidates: Boolean(deps.searchCandidates),
+  })
+
+  // Adapter already chose candidates (e.g. politics office → Kalshi picks). Do not
+  // run catalog open-question search first — politics has no catalog instruments yet.
+  if (!entity && !entityAsk && openQuestion && namedCandidates.length === 0 && deps.searchCandidates) {
     const hits = await deps.searchCandidates({ raw_text: req.raw_text, locale, adapter, viewer })
+    gwDebug('open-question-search', { hit_count: hits?.length ?? 0 })
     if (!hits || hits.length === 0) return refused('low_confidence', locale)
     return clarifyOrCap(
       [

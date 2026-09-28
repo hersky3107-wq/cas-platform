@@ -61,7 +61,12 @@ export async function POST(req: Request) {
     rawText,
   })
 
-  if (prefilterRejects(rawText)) return jsonRefused('low_confidence', locale)
+  if (prefilterRejects(rawText)) {
+    if (process.env.LEAGUE_GATEWAY_DEBUG === '1' || process.env.LEAGUE_GATEWAY_DEBUG === 'true') {
+      console.log('[league-gateway] route refuse', JSON.stringify({ stage: 'prefilter', rawText }))
+    }
+    return jsonRefused('low_confidence', locale)
+  }
 
   const reserved = await reserveNormalizeQuota({
     userId: viewer.userId,
@@ -70,7 +75,12 @@ export async function POST(req: Request) {
     locale,
     isClarification: Object.keys(answered).length > 0,
   })
-  if (!reserved.ok) return jsonRefused('low_confidence', locale)
+  if (!reserved.ok) {
+    if (process.env.LEAGUE_GATEWAY_DEBUG === '1' || process.env.LEAGUE_GATEWAY_DEBUG === 'true') {
+      console.log('[league-gateway] route refuse', JSON.stringify({ stage: 'normalize_quota', rawText, categoryId }))
+    }
+    return jsonRefused('low_confidence', locale)
+  }
 
   const result = await runLeagueGateway(
     {

@@ -54,21 +54,27 @@ function io(slate: readonly ElectionCandidateLite[]): PoliticsPacketIo {
   }
 }
 
-function deps(slate: readonly ElectionCandidateLite[], charge: ReturnType<typeof vi.fn>): GatewayDeps {
+function deps(
+  slate: readonly ElectionCandidateLite[],
+  charge: ReturnType<typeof vi.fn>,
+  normalizer: GatewayDeps['normalizer'] = {
+    normalize: async () => ({
+      category_id: 'politics_election',
+      entity_mention: '',
+      entity_id_hint: null,
+      horizon: null,
+      proposition_kind: 'binary_subject_outcome',
+      slots: {},
+      confidence: 0.35,
+      needs_slot: null,
+    }),
+  },
+): GatewayDeps {
   return {
     adapterFor: (id) => (id === 'politics_election' ? createPoliticsAdapter(io(slate), () => NOW) : null),
-    normalizer: {
-      normalize: async () => ({
-        category_id: 'politics_election',
-        entity_mention: '',
-        entity_id_hint: null,
-        horizon: null,
-        proposition_kind: 'binary_subject_outcome',
-        slots: {},
-        confidence: 0.35,
-        needs_slot: null,
-      }),
-    },
+    normalizer,
+    /** Live gateway always wires this; politics catalog is empty so it returns null. */
+    searchCandidates: async () => null,
     deductCredits: charge,
     now: () => NOW,
   }
@@ -95,6 +101,27 @@ describe('politics gateway — office-only query survives weak normalizer', () =
       'Keisha Lance Bottoms · 2026 미국 조지아 주지사',
       'Rick Jackson · 2026 미국 조지아 주지사',
     ])
+    expect(charge).not.toHaveBeenCalled()
+  })
+
+  it('returns clarify (not low_confidence) when LLM sets needs_slot and searchCandidates is wired like prod', async () => {
+    const charge = vi.fn(async () => ({ ok: true }))
+    const normalizer = {
+      normalize: async () => ({
+        category_id: 'politics_election',
+        entity_mention: '',
+        entity_id_hint: null,
+        horizon: null,
+        proposition_kind: 'binary_subject_outcome',
+        slots: {},
+        confidence: 0.82,
+        needs_slot: 'entity_id',
+      }),
+    }
+    const result = await runLeagueGateway(request(), deps(GA_SLATE, charge, normalizer))
+    expect(result.status).toBe('clarify')
+    if (result.status !== 'clarify') throw new Error('unreachable')
+    expect(result.questions[0]?.options?.length).toBe(2)
     expect(charge).not.toHaveBeenCalled()
   })
 
