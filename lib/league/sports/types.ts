@@ -19,8 +19,11 @@ export const LAUNCH_SPORTS_LEAGUES = [
   'soccer_epl',
   'soccer_uefa_champs_league',
   'soccer_spain_la_liga',
+  'soccer_italy_serie_a',
+  'soccer_uefa_nations_league',
   'baseball_mlb',
   'basketball_nba',
+  'mma_mixed_martial_arts',
 ] as const
 export type SportsLeagueKey = (typeof LAUNCH_SPORTS_LEAGUES)[number]
 

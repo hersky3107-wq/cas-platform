@@ -19,6 +19,8 @@ import {
   buildRoundPrompts,
   isContractSide,
   QUALIFIER_TEXT_MAX_CHARS,
+  SPORTS_CALIBRATION_GUIDANCE,
+  systemPromptFor,
   type AnswerContract,
 } from '../answer-contract'
 import type { PropositionKind } from '../gateway/types'
@@ -318,5 +320,77 @@ describe('ledgerFields — the two qualifier columns split by contract', () => {
         expect(fields.magnitudePct === null || fields.qualifierText === null, kind).toBe(true)
       }
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Sports honest calibration system prompt + round prompt
+// ---------------------------------------------------------------------------
+
+describe('sports calibration prompt injection', () => {
+  const contract = answerContractFor('binary_subject_outcome')
+
+  it('contains the exact calibration guidance text', () => {
+    expect(SPORTS_CALIBRATION_GUIDANCE).toContain(
+      'If one side is a strong favorite (80%+), pick that side — it will very likely win.',
+    )
+    expect(SPORTS_CALIBRATION_GUIDANCE).toContain(
+      "BUT when it's close (e.g. 55%), remember the 45% side wins nearly half the time.",
+    )
+    expect(SPORTS_CALIBRATION_GUIDANCE).toContain(
+      'you MAY pick the underdog — this is allowed and encouraged when the case is real.',
+    )
+    expect(SPORTS_CALIBRATION_GUIDANCE).toContain(
+      "Do NOT pick the underdog just to be contrarian (that's wrong), and do NOT invent reasons that aren't there.",
+    )
+    expect(SPORTS_CALIBRATION_GUIDANCE).toContain(
+      'But do NOT blindly follow the favorite in a coin-flip when real reversal factors exist.',
+    )
+    expect(SPORTS_CALIBRATION_GUIDANCE).toContain('blowout ~85-90%, coin-flip ~55%')
+    expect(SPORTS_CALIBRATION_GUIDANCE).not.toContain('You may still pick the favorite')
+  })
+
+  it('injects calibration into closed-book and scout system prompts for sports', () => {
+    const closed = systemPromptFor({ league_tier: 'premier' }, contract, 'sports')
+    expect(closed).toContain(SPORTS_CALIBRATION_GUIDANCE)
+
+    const scout = systemPromptFor({ league_tier: 'scout' }, contract, 'sports')
+    expect(scout).toContain(SPORTS_CALIBRATION_GUIDANCE)
+  })
+
+  it('never injects sports calibration into non-sports categories (stocks, crypto, tech, politics)', () => {
+    for (const cat of ['stocks', 'crypto', 'tech', 'politics_election', 'macro', 'entertainment']) {
+      const closed = systemPromptFor({ league_tier: 'premier' }, contract, cat)
+      expect(closed).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
+
+      const scout = systemPromptFor({ league_tier: 'scout' }, contract, cat)
+      expect(scout).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
+    }
+  })
+
+  it('buildRoundPrompts injects calibration for sports and excludes it for tech', () => {
+    const sportsRound = {
+      proposition_text: 'Will New York Yankees win vs Boston Red Sox?',
+      instrument: 'MATCH:BOS-NYY-20260928',
+      category: 'sports',
+      horizon: '1d',
+      resolution_rule: 'yes iff Yankees win; otherwise no',
+      resolves_at: '2026-09-28T23:00:00.000Z',
+    }
+    const sportsPrompts = buildRoundPrompts(contract, sportsRound, 'PACKET DATA')
+    expect(sportsPrompts.price).toContain(SPORTS_CALIBRATION_GUIDANCE)
+    expect(sportsPrompts.scout).toContain(SPORTS_CALIBRATION_GUIDANCE)
+
+    const techRound = {
+      proposition_text: 'Will Apple ship product X before Dec 31?',
+      instrument: 'TECH:AAPL-X-2026',
+      category: 'tech',
+      horizon: '1m',
+      resolution_rule: 'yes iff shipped; otherwise no',
+      resolves_at: '2026-12-31T23:59:59.000Z',
+    }
+    const techPrompts = buildRoundPrompts(contract, techRound, 'PACKET DATA')
+    expect(techPrompts.price).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
+    expect(techPrompts.scout).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
   })
 })

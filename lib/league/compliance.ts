@@ -5,6 +5,9 @@ import { tallySlotOfToken, type SideLabels } from './side-labels'
 import { formatWinRatePct } from './win-rate'
 import { isUiHorizon } from './horizon'
 import { formatSignedPercent } from './magnitude'
+import { ensembleConfidenceTier, type ConfidenceTier } from './confidence-tier'
+
+export { ensembleConfidenceTier, type ConfidenceTier }
 
 /**
  * AI Prediction League — REGULATORY / COMPLIANCE LAYER (Layer 2).
@@ -100,6 +103,8 @@ export type ConsensusHeroPayload =
       signedMagnitude: string | null
       horizonLabel: string | null
       confidencePct: number | null
+      confidenceTier: ConfidenceTier | null
+      confidenceTierLabel: string | null
     } & ConsensusHeroCounts)
   | ({ kind: 'fallback'; message: string } & Partial<ConsensusHeroCounts>)
 
@@ -211,6 +216,8 @@ export function buildConsensusHero(
   const majorityCount = tally[majoritySlot]
   const otherCount = tally[otherSlot]
   const conf = aggregateProbability !== null ? Math.round(aggregateProbability) : null
+  const tier = ensembleConfidenceTier(aggregateProbability)
+  const tierLabel = tier ? t.hero.confidenceTier[tier] : null
 
   let line2: string
   if (diverged) {
@@ -235,6 +242,8 @@ export function buildConsensusHero(
     signedMagnitude: aggregateMagnitudePct !== null ? formatSignedPercent(aggregateMagnitudePct, 1, aggregateSlot) : null,
     horizonLabel: aggregateMagnitudePct !== null ? t.catalog.horizons[isUiHorizon(horizon) ? horizon : '1d'] : null,
     confidencePct: conf,
+    confidenceTier: tier,
+    confidenceTierLabel: tierLabel,
     ...counts,
   }
 }

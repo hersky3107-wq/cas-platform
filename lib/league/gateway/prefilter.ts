@@ -4,7 +4,7 @@
  * tell "filtered cheaply" from "normalized and refused".
  */
 
-export const MIN_RAW_CHARS = 4
+export const MIN_WORD_CHARS = 2
 export const MAX_RAW_CHARS = 200
 
 const HAS_WORD = /[A-Za-z0-9\uAC00-\uD7A3]/
@@ -12,6 +12,7 @@ const HAS_WORD = /[A-Za-z0-9\uAC00-\uD7A3]/
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/
 const URL = /https?:\/\/\S+|www\.\S+/gi
 const REPEATED_RUN = /(.)\1{9,}/u
+const WORD_CHAR = /[A-Za-z0-9\uAC00-\uD7A3]/g
 
 export function normalizeCacheText(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').toLowerCase()
@@ -19,7 +20,8 @@ export function normalizeCacheText(raw: string): string {
 
 export function prefilterRejects(rawText: string): boolean {
   const text = rawText.trim()
-  if (text.length < MIN_RAW_CHARS || text.length > MAX_RAW_CHARS) return true
+  const wordChars = text.match(WORD_CHAR) ?? []
+  if (wordChars.length < MIN_WORD_CHARS || text.length > MAX_RAW_CHARS) return true
   if (!HAS_WORD.test(text)) return true
   if (CONTROL.test(text)) return true
   const withoutUrls = text.replace(URL, '').trim()

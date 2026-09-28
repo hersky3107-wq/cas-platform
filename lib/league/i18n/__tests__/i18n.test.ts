@@ -109,6 +109,7 @@ describe('dictionary completeness', () => {
     expect(pt.hub.subtitle).not.toBe(en.hub.subtitle)
     expect(pt.gateway.submit).not.toBe(en.gateway.submit)
     expect(pt.gateway.placeholder.stocks).not.toBe(en.gateway.placeholder.stocks)
+    expect(pt.gateway.placeholder.sports).not.toBe(en.gateway.placeholder.sports)
     expect(pt.disclaimer.long).not.toBe(en.disclaimer.long)
     expect(pt.operatorGrade.verifiedLabel).not.toBe(en.operatorGrade.verifiedLabel)
     expect(pt.operatorGrade.gradedOn('7 set 2026')).not.toBe(en.operatorGrade.gradedOn('7 set 2026'))

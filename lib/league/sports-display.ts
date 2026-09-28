@@ -63,6 +63,17 @@ const TEAM_KO: Record<string, TeamKo> = {
   'Inter Milan': { short: '인터 밀란', full: '인터 밀란' },
   'AC Milan': { short: '밀란', full: 'AC 밀란' },
   Juventus: { short: '유벤투스', full: '유벤투스' },
+  Napoli: { short: '나폴리', full: '나폴리' },
+  'AS Roma': { short: '로마', full: 'AS 로마' },
+  'South Korea': { short: '한국', full: '대한민국' },
+  Japan: { short: '일본', full: '일본' },
+  France: { short: '프랑스', full: '프랑스' },
+  England: { short: '잉글랜드', full: '잉글랜드' },
+  Spain: { short: '스페인', full: '스페인' },
+  Germany: { short: '독일', full: '독일' },
+  Italy: { short: '이탈리아', full: '이탈리아' },
+  Portugal: { short: '포르투갈', full: '포르투갈' },
+  Netherlands: { short: '네덜란드', full: '네덜란드' },
   'Borussia Dortmund': { short: '도르트문트', full: '도르트문트' },
 }
 
@@ -70,8 +81,11 @@ const LEAGUE_KO: Record<SportsLeagueKey, string> = {
   soccer_epl: '프리미어리그',
   soccer_uefa_champs_league: '챔피언스리그',
   soccer_spain_la_liga: '라리가',
+  soccer_italy_serie_a: '세리에 A',
+  soccer_uefa_nations_league: '네이션스리그',
   baseball_mlb: 'MLB',
   basketball_nba: 'NBA',
+  mma_mixed_martial_arts: 'UFC',
 }
 
 function lookupKo(name: string): TeamKo | null {

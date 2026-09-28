@@ -43,9 +43,17 @@ const US: GatewayViewer = {
   jurisdiction: { declaredCountry: 'US', ipCountry: 'US' },
 }
 
-function io(slate: typeof YANKEES_SLATE): SportsPacketIo {
+type SlateRow = {
+  fixture_id: string
+  league: string
+  home: string
+  away: string
+  kickoff: string
+}
+
+function io(slate: readonly SlateRow[]): SportsPacketIo {
   return {
-    listUpcomingFixtures: async () => slate,
+    listUpcomingFixtures: async () => [...slate],
     readFixture: async () => null,
     fetchFixtureStats: async () => null,
     getResearchPacket: async () => {
@@ -54,9 +62,9 @@ function io(slate: typeof YANKEES_SLATE): SportsPacketIo {
   }
 }
 
-function deps(slate: typeof YANKEES_SLATE, charge: ReturnType<typeof vi.fn>): GatewayDeps {
+function deps(slate: readonly SlateRow[], charge: ReturnType<typeof vi.fn>): GatewayDeps {
   return {
-    adapterFor: (id) => (id === 'sports' ? createSportsAdapter(io(slate)) : null),
+    adapterFor: (id) => (id === 'sports' ? createSportsAdapter(io(slate), () => NOW) : null),
     normalizer: {
       normalize: async () => ({
         category_id: 'sports',
@@ -177,6 +185,40 @@ describe('sports multi-fixture clarify reaches generate', () => {
     expect(second.status).toBe('ready')
     if (second.status !== 'ready') throw new Error('unreachable')
     expect(decodeSportsInstrument(second.round.instrument)?.away).toBe('Los Angeles Dodgers')
+    expect(charge).toHaveBeenCalledTimes(1)
+  })
+
+  it('team + opponent on the slate opens the round without a browse list or which-Yes chips', async () => {
+    const charge = vi.fn(async () => ({ ok: true }))
+    const slate = [
+      {
+        fixture_id: 'epl-ars-tot',
+        league: 'soccer_epl',
+        home: 'Arsenal',
+        away: 'Tottenham Hotspur',
+        kickoff: '2026-10-04T14:00:00.000Z',
+      },
+    ]
+    const gateway = deps(slate, charge)
+    gateway.normalizer = {
+      normalize: async () => ({
+        category_id: 'sports',
+        entity_mention: '토트넘',
+        entity_id_hint: null,
+        horizon: '1w',
+        proposition_kind: 'binary_subject_outcome',
+        slots: {},
+        confidence: 0.92,
+        needs_slot: null,
+      }),
+    }
+    const result = await runLeagueGateway(request({ raw_text: '토트넘 아스날' }), gateway)
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') throw new Error('unreachable')
+    const parts = decodeSportsInstrument(result.round.instrument)
+    expect(parts?.side).toBe('away')
+    expect(parts?.away).toBe('Tottenham Hotspur')
+    expect(result.round.proposition_text).toContain('Tottenham Hotspur')
     expect(charge).toHaveBeenCalledTimes(1)
   })
 })

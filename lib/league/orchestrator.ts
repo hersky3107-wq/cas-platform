@@ -23,6 +23,7 @@ import {
   buildRoundPrompts,
   isContractSide,
   isPropositionKind,
+  systemPromptFor,
   type AnswerContract,
   type AnswerSide,
   type ContractAnswer,
@@ -416,12 +417,6 @@ type RawCall = {
   error?: string
 }
 
-/** Tier-appropriate system prompt from the round's answer contract: closed-book
- *  tiers carry the mandatory reasoning-block variant; scout keeps the JSON-only variant. */
-function systemPromptFor(entry: RosterEntry, contract: AnswerContract): string {
-  return entry.league_tier === 'scout' ? contract.scoutSystemPrompt : contract.closedBookSystemPrompt
-}
-
 /** Single provider call via the appropriate EXISTING utility (no timeout/retry here). */
 async function callOnce(
   entry: RosterEntry,
@@ -429,7 +424,8 @@ async function callOnce(
   userPrompt: string,
   timeoutMs: number,
   userId: string | null,
-  maxCompletionTokens: number
+  maxCompletionTokens: number,
+  category?: string
 ): Promise<RawCall> {
   if (entry.caller.kind === 'core') {
     const res = await runSingleAiProvider({
@@ -440,7 +436,7 @@ async function callOnce(
       userId: userId ?? null,
       provider: entry.caller.provider,
       prompt: userPrompt,
-      systemPrompt: systemPromptFor(entry, contract),
+      systemPrompt: systemPromptFor(entry, contract, category),
       // Truthy only to enable an admin BYOK lookup; RLS bypass is via supabaseAdmin.
       supabaseAccessToken: userId ? 'league-admin' : undefined,
       skipLanguageInjection: true,
@@ -476,7 +472,7 @@ async function callOnce(
   const res = await withTimeout(
     callPlatformModel({
       id: entry.caller.platformId,
-      systemPrompt: systemPromptFor(entry, contract),
+      systemPrompt: systemPromptFor(entry, contract, category),
       userPrompt,
       maxCompletionTokens,
       timeoutMs,
@@ -505,12 +501,13 @@ async function callWithRetry(
   userPrompt: string,
   timeoutMs: number,
   userId: string | null,
-  maxCompletionTokens: number
+  maxCompletionTokens: number,
+  category?: string
 ): Promise<RawCall> {
   try {
-    const first = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens)
+    const first = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
     if (first.error && isTransient(first.error)) {
-      const second = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens)
+      const second = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
       return second
     }
     return first
@@ -518,7 +515,7 @@ async function callWithRetry(
     const msg = e instanceof Error ? e.message : 'unknown error'
     if (isTransient(msg)) {
       try {
-        return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens)
+        return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
       } catch (e2: unknown) {
         return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
       }
@@ -561,9 +558,10 @@ async function runOneModel(
   timeoutMs: number,
   userId: string | null,
   maxCompletionTokens: number,
-  horizon: string
+  horizon: string,
+  category?: string
 ): Promise<ModelRunResult> {
-  let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens)
+  let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
   let totalCostUsd = 0
   let estimatedCostUsd = 0
   let toolsUsed: number | null = null
@@ -663,7 +661,7 @@ async function runOneModel(
         ? contract.retryInstruction
         : contract.directionOnlyRetryInstruction
     const retryPrompt = `${userPrompt}\n\n${retryText}`
-    const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens)
+    const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens, category)
     if (retryRaw.error) {
       await upsertNullPrediction(roundId, entry)
       return {
@@ -1013,7 +1011,17 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
 
       const prompt = entry.league_tier === 'scout' ? prompts.scout : prompts.price
       const tokenBudget = resolveMaxCompletionTokensForEntry(entry, maxCompletionTokens)
-      const outcome = await runOneModel(entry, contract, round.id, prompt, entryTimeoutMs, userId ?? null, tokenBudget, round.horizon)
+      const outcome = await runOneModel(
+        entry,
+        contract,
+        round.id,
+        prompt,
+        entryTimeoutMs,
+        userId ?? null,
+        tokenBudget,
+        round.horizon,
+        round.category,
+      )
       runningCost += outcome.cost_usd
       results.push(outcome)
       // Fires AFTER the DB write inside runOneModel — see onModelResult's doc

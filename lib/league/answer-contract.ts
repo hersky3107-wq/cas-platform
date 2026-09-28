@@ -32,6 +32,7 @@
  */
 
 import type { PropositionKind } from './gateway/types'
+import { isSportsLedgerCategory } from './extra/sports-category'
 import {
   isBinaryDirection,
   parsePrediction,
@@ -94,6 +95,10 @@ export type AnswerContract = {
   closedBookSystemPrompt: string
   /** Scout tier: JSON-only output, self-directed web search. */
   scoutSystemPrompt: string
+  /** Sports rounds calibration variant for closed-book tiers. */
+  sportsClosedBookSystemPrompt?: string
+  /** Sports rounds calibration variant for scout tier. */
+  sportsScoutSystemPrompt?: string
   /** Appended once when the first answer fails `validate`. */
   retryInstruction: string
   /**
@@ -428,12 +433,25 @@ const SUBJECT_OUTCOME_CONFIG: PromptConfig = {
   scoutRationaleRule: SCOUT_RATIONALE_RULE,
 }
 
+export const SPORTS_CALIBRATION_GUIDANCE =
+  "This is a single-game outcome. If one side is a strong favorite (80%+), pick that side — it will very likely win. BUT when it's close (e.g. 55%), remember the 45% side wins nearly half the time. In close games, seriously weigh the REASONS the underdog could win (injuries recovering, momentum, matchup quirks, single-game variance, situational factors). If those reversal reasons are genuinely strong or the variance is high, you MAY pick the underdog — this is allowed and encouraged when the case is real. Do NOT pick the underdog just to be contrarian (that's wrong), and do NOT invent reasons that aren't there. But do NOT blindly follow the favorite in a coin-flip when real reversal factors exist. Match confidence to the actual edge: blowout ~85-90%, coin-flip ~55%."
+
+const SPORTS_SUBJECT_OUTCOME_CONFIG: PromptConfig = {
+  ...SUBJECT_OUTCOME_CONFIG,
+  fieldRules: [
+    ...SUBJECT_OUTCOME_CONFIG.fieldRules,
+    `- confidence calibration: ${SPORTS_CALIBRATION_GUIDANCE}`,
+  ],
+}
+
 const BINARY_SUBJECT_OUTCOME: AnswerContract = {
   kind: 'binary_subject_outcome',
   sides: SUBJECT_OUTCOME_CONFIG.sides,
   jsonKeys: SUBJECT_OUTCOME_CONFIG.jsonKeys,
   closedBookSystemPrompt: composeClosedBookPrompt(SUBJECT_OUTCOME_CONFIG),
   scoutSystemPrompt: composeScoutPrompt(SUBJECT_OUTCOME_CONFIG),
+  sportsClosedBookSystemPrompt: composeClosedBookPrompt(SPORTS_SUBJECT_OUTCOME_CONFIG),
+  sportsScoutSystemPrompt: composeScoutPrompt(SPORTS_SUBJECT_OUTCOME_CONFIG),
   retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"yes"|"no","probability":0-100,"qualifier":"<short string>","rationale":"..."}. side must be exactly "yes" or "no" — whether the named subject achieves the stated outcome; any other result (including a draw) is "no". Never abstain, never a name. qualifier is required: a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) with your predicted detail (scoreline, margin, gap).`,
   directionOnlyRetryInstruction:
     'RETRY: Previous answer had no valid side. Output EXACTLY one JSON line and nothing else: {"side":"yes"} or {"side":"no"}. Never abstain, empty, a name, or any other value.',
@@ -586,15 +604,59 @@ export function buildRoundPrompts(
   packetError?: string
 ): { price: string; scout: string } {
   const block = buildPropositionBlock(round)
+  const sportsGuidance =
+    isSportsLedgerCategory(round.category) && contract.kind === 'binary_subject_outcome'
+      ? SPORTS_CALIBRATION_GUIDANCE
+      : null
 
   let price: string
   if (injection) {
-    price = [block, '', injection, '', contract.packetAnswerGuidance, CLOSED_BOOK_CLOSER].join('\n')
+    price = [
+      block,
+      '',
+      injection,
+      '',
+      contract.packetAnswerGuidance,
+      ...(sportsGuidance ? ['', sportsGuidance] : []),
+      CLOSED_BOOK_CLOSER,
+    ].join('\n')
   } else {
-    price = [block, '', contract.noPacketAnswerGuidance(packetError), CLOSED_BOOK_CLOSER].join('\n')
+    price = [
+      block,
+      '',
+      contract.noPacketAnswerGuidance(packetError),
+      ...(sportsGuidance ? ['', sportsGuidance] : []),
+      CLOSED_BOOK_CLOSER,
+    ].join('\n')
   }
 
-  const scout = [block, '', contract.scoutAnswerGuidance, SCOUT_CLOSER].join('\n')
+  const scout = [
+    block,
+    '',
+    contract.scoutAnswerGuidance,
+    ...(sportsGuidance ? ['', sportsGuidance] : []),
+    SCOUT_CLOSER,
+  ].join('\n')
 
   return { price, scout }
+}
+
+/**
+ * Tier-appropriate system prompt from the round's answer contract.
+ * For sports binary_subject_outcome rounds, injects single-game calibration:
+ * blowouts stay with the favorite; close games may pick the underdog when
+ * reversal reasons are real — never as a forced contrarian.
+ */
+export function systemPromptFor(
+  entry: { league_tier: string },
+  contract: AnswerContract,
+  category?: string | null,
+): string {
+  const isSports = isSportsLedgerCategory(category)
+  if (isSports && contract.kind === 'binary_subject_outcome') {
+    return entry.league_tier === 'scout'
+      ? (contract.sportsScoutSystemPrompt ?? contract.scoutSystemPrompt)
+      : (contract.sportsClosedBookSystemPrompt ?? contract.closedBookSystemPrompt)
+  }
+  return entry.league_tier === 'scout' ? contract.scoutSystemPrompt : contract.closedBookSystemPrompt
 }

@@ -12,7 +12,7 @@ export {
 } from './types'
 export { multiplicativeDevig, shinDevig, devigOutcomes, toDevigResult } from './devig'
 export { pickPreferredBook, isSharpBook } from './books'
-export { parseOddsApiEvents, cacheRowFromOddsEvent, mergeOddsIntoRow, oddsCacheFresh } from './odds-logic'
+export { parseOddsApiEvents, cacheRowFromOddsEvent, cacheRowFromScheduleEvent, mergeOddsIntoRow, mergeScheduleIntoRow, oddsCacheFresh, eventsCacheFresh } from './odds-logic'
 export { lineupConfidence, inApiSportsFreeDateWindow, parseFootballLineups, normalizeTeamName } from './lineup-logic'
 export {
   parseUnderstatLeague,

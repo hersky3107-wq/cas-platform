@@ -156,7 +156,7 @@ function jsonRefused(
 
 function refusalCopy(pack: ReturnType<typeof getLeagueUiPack>, code: string, fallback: string): string {
   const table = pack.gateway.refusal as Record<string, string>
-  return table[code] ?? table.generic ?? fallback
+  return table[code] ?? fallback
 }
 
 function localizeQuestion(q: ClarifyingQuestion, pack: ReturnType<typeof getLeagueUiPack>, locale: string) {

@@ -9,6 +9,8 @@ describe('gateway layer-0 prefilter', () => {
 
   it('rejects length, emoji-only, control, url-only, and repeated junk', () => {
     expect(prefilterRejects('오?')).toBe(true)
+    expect(prefilterRejects('토트넘')).toBe(false)
+    expect(prefilterRejects('맨유')).toBe(false)
     expect(prefilterRejects('🚀🚀🚀🚀🚀')).toBe(true)
     expect(prefilterRejects('https://evil.example/aaaa')).toBe(true)
     expect(prefilterRejects('aaaaaaaaaa')).toBe(true)

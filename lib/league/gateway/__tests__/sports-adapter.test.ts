@@ -56,7 +56,7 @@ const SLATE_IO: SportsPacketIo = {
   listUpcomingFixtures: async () => SLATE,
 }
 
-const adapter = createSportsAdapter(SLATE_IO)
+const adapter = createSportsAdapter(SLATE_IO, () => new Date('2026-09-27T00:00:00.000Z'))
 
 function slotsFor(instrument: string): NormalizeSlots {
   return adapter.slotsForRound({
@@ -97,23 +97,44 @@ describe('sports CategoryAdapter', () => {
     expect(hit.label).toBe('Tottenham Hotspur')
   })
 
-  it('asks which named team is the Yes subject when two clubs are mentioned', async () => {
+  it('opens the named matchup with the first-mentioned team as Yes', async () => {
     const hit = await adapter.resolveEntity('토트넘 아스날', 'ko')
-    expect(hit.ok).toBe(false)
-    if (!hit.ok && 'need' in hit) {
-      expect(hit.need.slot).toBe('entity_id')
-      expect(hit.need.options).toHaveLength(2)
-      const ids = hit.need.options!.map((o) => o.id)
-      expect(ids.every((id) => decodeSportsInstrument(id))).toBe(true)
-      expect(hit.need.options!.map((o) => o.label).join(' ')).toMatch(/Arsenal/)
-      expect(hit.need.options!.map((o) => o.label).join(' ')).toMatch(/Tottenham/)
+    expect(hit.ok).toBe(true)
+    if (!hit.ok) return
+    const parts = decodeSportsInstrument(hit.entity_id)
+    expect(parts?.away).toBe('Tottenham Hotspur')
+    expect(parts?.side).toBe('away')
+    expect(hit.skip_confirm).toBe(true)
+    expect(hit.label).toBe('Tottenham Hotspur')
+  })
+
+  it('refuses vague input and a past date with the sports guidance copy', async () => {
+    const vague = await adapter.resolveEntity('손흥민 이길까', 'ko')
+    expect(vague.ok).toBe(false)
+    if (!vague.ok && 'refuse' in vague) {
+      expect(vague.refuse.code).toBe('vague_target')
+      expect(refusalMessageForKey(vague.refuse.message_i18n_key, 'ko')).toBe(
+        '팀 이름과 상대 팀을 함께 입력해주세요. 예: 토트넘 아스날 / 양키스 레드삭스',
+      )
+    }
+    const today = await adapter.resolveEntity('오늘 경기', 'ko')
+    expect(today.ok).toBe(false)
+    if (!today.ok && 'refuse' in today) expect(today.refuse.code).toBe('vague_target')
+    const past = await adapter.resolveEntity('토트넘 아스날 3월 10일', 'ko')
+    expect(past.ok).toBe(false)
+    if (!past.ok && 'refuse' in past) {
+      expect(past.refuse.code).toBe('past_event')
+      expect(refusalMessageForKey(past.refuse.message_i18n_key, 'ko')).toBe('예측은 앞으로 열릴 경기만 가능합니다.')
     }
   })
 
   it('refuses when the named club is not on the public slate', async () => {
     const hit = await adapter.resolveEntity('이강인 다음 경기', 'ko')
     expect(hit.ok).toBe(false)
-    if (!hit.ok && 'refuse' in hit) expect(hit.refuse.code).toBe('non_public_fixture')
+    if (!hit.ok && 'refuse' in hit) {
+      expect(hit.refuse.code).toBe('non_public_fixture')
+      expect(refusalMessageForKey(hit.refuse.message_i18n_key, 'ko')).toMatch(/지원 범위/)
+    }
   })
 
   it('composes a 90-minute win / draw=No proposition with zero user substrings', async () => {
@@ -267,6 +288,10 @@ describe('sports mentions', () => {
     expect(extractSportsMentions('토트넘 아스날').map((m) => m.canonical)).toEqual([
       'Tottenham Hotspur',
       'Arsenal',
+    ])
+    expect(extractSportsMentions('아스날 토트넘').map((m) => m.canonical)).toEqual([
+      'Arsenal',
+      'Tottenham Hotspur',
     ])
   })
 })

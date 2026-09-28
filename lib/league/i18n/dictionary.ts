@@ -147,6 +147,17 @@ export type LeagueUiPack = {
     /** Small sub-note. Confidence MUST be aggregateProbability (never avg). */
     confidenceNote: (confidencePct: number) => string
     /**
+     * Confidence tiers:
+     *   < 60%: close ("접전" / "Close")
+     *   60–75%: favored ("우세" / "Favored")
+     *   > 75%: dominant ("압도" / "Dominant")
+     */
+    confidenceTier: {
+      close: string
+      favored: string
+      dominant: string
+    }
+    /**
      * Live tally while seats are still filling. Head counts only — never a
      * locked verb, confidence, or magnitude. Must not emit slash-over-total or ✓.
      */
@@ -816,6 +827,11 @@ const en: LeagueUiPack = {
       `${upCount} of ${total} AIs say ${upWord} \u00b7 ${downCount} say ${downWord}`,
     conclusion: (verb) => `Consensus: ${verb}`,
     confidenceNote: (confidencePct) => `Weighted confidence ${confidencePct}%`,
+    confidenceTier: {
+      close: 'Close',
+      favored: 'Favored',
+      dominant: 'Dominant',
+    },
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `So far ${answered} replies \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Still tallying \u00b7 the call locks in when every seat has answered',
@@ -1288,7 +1304,7 @@ const en: LeagueUiPack = {
   },
   gateway: {
     placeholder: {
-      sports: 'Will this named team win tonight?',
+      sports: 'e.g. Tottenham Arsenal, Yankees Red Sox',
       crypto: 'Will Bitcoin go up this week?',
       stocks: 'Will Apple close higher tomorrow?',
       fx: 'Will EUR/USD rise this week?',
@@ -1369,6 +1385,11 @@ const ko: LeagueUiPack = {
       `AI ${total}개 중 ${upCount}개가 ${upWord} \u00b7 ${downCount}개가 ${downWord}`,
     conclusion: (verb) => `종합 결론: ${verb}`,
     confidenceNote: (confidencePct) => `가중 확신 ${confidencePct}%`,
+    confidenceTier: {
+      close: '접전',
+      favored: '우세',
+      dominant: '압도',
+    },
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `현재 ${answered}개 응답 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '집계 대기 중 \u00b7 응답 수집 후 확정',
@@ -1837,7 +1858,7 @@ const ko: LeagueUiPack = {
   },
   gateway: {
     placeholder: {
-      sports: '오늘 밤 이 팀이 이길까?',
+      sports: '예: 토트넘 아스날, 양키스 레드삭스',
       crypto: '비트코인 이번 주 오를까?',
       stocks: '애플 내일 오를까?',
       fx: '유로달러 이번 주 오를까?',
@@ -1917,6 +1938,11 @@ const ja: LeagueUiPack = {
       `AI ${total}件中 ${upCount}件が${upWord} \u00b7 ${downCount}件が${downWord}`,
     conclusion: (verb) => `総合結論: ${verb}`,
     confidenceNote: (confidencePct) => `加重確信度 ${confidencePct}%`,
+    confidenceTier: {
+      close: '接戦',
+      favored: '優勢',
+      dominant: '圧倒',
+    },
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `現在 ${answered}件が応答 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '集計待ち \u00b7 全席の応答後に確定します',
@@ -2383,7 +2409,7 @@ const ja: LeagueUiPack = {
   },
   gateway: {
     placeholder: {
-      sports: '今夜、このチームは勝つ？',
+      sports: '例: トッテナム アーセナル、ヤンキース レッドソックス',
       crypto: 'ビットコインは今週上がる？',
       stocks: 'アップルは明日上がる？',
       fx: 'ユーロドルは今週上がる？',
@@ -2462,6 +2488,11 @@ const zhTW: LeagueUiPack = {
       `${total} 個 AI 中有 ${upCount} 個認為${upWord} \u00b7 ${downCount} 個認為${downWord}`,
     conclusion: (verb) => `綜合結論：${verb}`,
     confidenceNote: (confidencePct) => `加權信心 ${confidencePct}%`,
+    confidenceTier: {
+      close: '拉鋸',
+      favored: '優勢',
+      dominant: '壓倒',
+    },
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `目前 ${answered} 則回覆 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '統計中 \u00b7 收齊回覆後才會確定',
@@ -2925,7 +2956,7 @@ const zhTW: LeagueUiPack = {
   },
   gateway: {
     placeholder: {
-      sports: '今晚這支球隊會贏嗎？',
+      sports: '例：托特納姆 阿森納、洋基 紅襪',
       crypto: '比特幣這週會漲嗎？',
       stocks: '蘋果明天會漲嗎？',
       fx: '歐元美元這週會升嗎？',
@@ -3005,6 +3036,11 @@ const fr: LeagueUiPack = {
       `${upCount} IA sur ${total} disent ${upWord} \u00b7 ${downCount} disent ${downWord}`,
     conclusion: (verb) => `Conclusion : ${verb}`,
     confidenceNote: (confidencePct) => `Confiance pondérée ${confidencePct} %`,
+    confidenceTier: {
+      close: 'Serré',
+      favored: 'Favorisé',
+      dominant: 'Écrasant',
+    },
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `${answered} réponses pour l\u2019instant \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Décompte en cours \u00b7 l\u2019appel se fige quand tous les sièges ont répondu',
@@ -3483,7 +3519,7 @@ const fr: LeagueUiPack = {
   },
   gateway: {
     placeholder: {
-      sports: 'Cette \u00e9quipe va-t-elle gagner ce soir ?',
+      sports: 'ex. Tottenham Arsenal, Yankees Red Sox',
       crypto: 'Le bitcoin va-t-il monter cette semaine ?',
       stocks: 'Apple va-t-il cl\u00f4turer plus haut demain ?',
       fx: 'L\u2019EUR/USD va-t-il monter cette semaine ?',
@@ -3565,6 +3601,11 @@ const es: LeagueUiPack = {
       `${upCount} de ${total} IAs dicen ${upWord} \u00b7 ${downCount} dicen ${downWord}`,
     conclusion: (verb) => `Conclusión: ${verb}`,
     confidenceNote: (confidencePct) => `Confianza ponderada ${confidencePct}%`,
+    confidenceTier: {
+      close: 'Apretado',
+      favored: 'Favorable',
+      dominant: 'Dominante',
+    },
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `De momento ${answered} respuestas \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Recuento en curso \u00b7 la conclusión se fija cuando respondan todos los asientos',
@@ -4043,7 +4084,7 @@ const es: LeagueUiPack = {
   },
   gateway: {
     placeholder: {
-      sports: '\u00bfGanar\u00e1 este equipo esta noche?',
+      sports: 'ej. Tottenham Arsenal, Yankees Red Sox',
       crypto: '\u00bfSubir\u00e1 bitcoin esta semana?',
       stocks: '\u00bfApple cerrar\u00e1 m\u00e1s alto ma\u00f1ana?',
       fx: '\u00bfSubir\u00e1 el EUR/USD esta semana?',
@@ -4125,6 +4166,11 @@ const ar: LeagueUiPack = {
       `${upCount} من ${total} نموذجًا يقولون ${upWord} \u00b7 ${downCount} يقولون ${downWord}`,
     conclusion: (verb) => `الخلاصة: ${verb}`,
     confidenceNote: (confidencePct) => `الثقة المرجحة ${confidencePct}%`,
+    confidenceTier: {
+      close: 'متقارب',
+      favored: 'أفضلية',
+      dominant: 'اكتساح',
+    },
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `حتى الآن ${answered} ردود \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'ما زال العد جاريًا \u00b7 تُثبَّت الخلاصة بعد اكتمال كل المقاعد',
@@ -4591,7 +4637,7 @@ const ar: LeagueUiPack = {
   },
   gateway: {
     placeholder: {
-      sports: 'هل سيفوز هذا الفريق الليلة؟',
+      sports: 'مثال: توتنهام آرسنال، يانكيز ريد سوكس',
       crypto: 'هل سيرتفع البيتكوين هذا الأسبوع؟',
       stocks: 'هل ستغلق أبل أعلى غدًا؟',
       fx: 'هل سيرتفع اليورو/دولار هذا الأسبوع؟',
@@ -4678,6 +4724,11 @@ const pt: LeagueUiPack = {
       `${upCount} de ${total} IAs dizem ${upWord} \u00b7 ${downCount} dizem ${downWord}`,
     conclusion: (verb) => `Conclusão: ${verb}`,
     confidenceNote: (confidencePct) => `Confiança ponderada ${confidencePct}%`,
+    confidenceTier: {
+      close: 'Apertado',
+      favored: 'Favorecido',
+      dominant: 'Dominante',
+    },
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `Até agora ${answered} respostas \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Contagem em andamento \u00b7 a conclusão trava quando todos os assentos responderem',
@@ -5155,7 +5206,7 @@ const pt: LeagueUiPack = {
   },
   gateway: {
     placeholder: {
-      sports: 'Esse time vai ganhar hoje à noite?',
+      sports: 'ex.: Tottenham Arsenal, Yankees Red Sox',
       crypto: 'O bitcoin sobe nesta semana?',
       stocks: 'A Apple fecha mais alta amanhã?',
       fx: 'O EUR/USD sobe nesta semana?',

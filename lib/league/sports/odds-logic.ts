@@ -102,10 +102,36 @@ export function cacheRowFromOddsEvent(
   }
 }
 
-export function oddsCacheFresh(row: { ttl: string } | null, now: Date): boolean {
+/** `/events` rows have no books — discovery only. Generate still fetches `/odds`. */
+export function cacheRowFromScheduleEvent(
+  event: Pick<OddsEvent, 'id' | 'home' | 'away' | 'commenceTime'>,
+  now: Date,
+  league: string
+): SportsFixtureCacheRow | null {
+  if (!event.id || !event.home || !event.away || !event.commenceTime) return null
+  const nowIso = now.toISOString()
+  return {
+    fixture_id: event.id,
+    league,
+    teams: { home: event.home, away: event.away },
+    kickoff: event.commenceTime,
+    devigged_odds: null,
+    lineups: null,
+    stats: null,
+    fetched_at: nowIso,
+    ttl: new Date(now.getTime() + SPORTS_ODDS_TTL_MS).toISOString(),
+  }
+}
+
+export function eventsCacheFresh(row: { ttl: string } | null, now: Date): boolean {
   if (!row) return false
   const ms = Date.parse(row.ttl)
   return Number.isFinite(ms) && ms > now.getTime()
+}
+
+export function oddsCacheFresh(row: { ttl: string; devigged_odds?: unknown } | null, now: Date): boolean {
+  if (!row || row.devigged_odds == null) return false
+  return eventsCacheFresh(row, now)
 }
 
 /** Merge a new odds snapshot onto an existing cache row without wiping confirmed lineups. */
@@ -121,6 +147,22 @@ export function mergeOddsIntoRow(
       : next.stats ?? existing.stats
   return {
     ...next,
+    lineups: keepLineups,
+    stats: keepStats,
+  }
+}
+
+/** Overlay a 0-credit `/events` snapshot without wiping a priced `/odds` row. */
+export function mergeScheduleIntoRow(
+  existing: SportsFixtureCacheRow | null,
+  next: SportsFixtureCacheRow
+): SportsFixtureCacheRow {
+  if (!existing) return next
+  const keepLineups = existing.lineups?.immutable ? existing.lineups : existing.lineups ?? next.lineups
+  const keepStats = existing.stats ?? next.stats
+  return {
+    ...next,
+    devigged_odds: existing.devigged_odds ?? next.devigged_odds,
     lineups: keepLineups,
     stats: keepStats,
   }

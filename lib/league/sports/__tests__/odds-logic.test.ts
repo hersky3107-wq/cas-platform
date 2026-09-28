@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pickPreferredBook, isSharpBook } from '../books'
-import { cacheRowFromOddsEvent, mergeOddsIntoRow, parseOddsApiEvents } from '../odds-logic'
+import { cacheRowFromOddsEvent, cacheRowFromScheduleEvent, mergeOddsIntoRow, mergeScheduleIntoRow, oddsCacheFresh, parseOddsApiEvents } from '../odds-logic'
 import type { OddsBookmaker, SportsFixtureCacheRow } from '../types'
 
 const pinnacle: OddsBookmaker = {
@@ -88,5 +88,27 @@ describe('odds payload → cache row', () => {
       ttl: '2026-10-10T21:00:00Z',
     }
     expect(mergeOddsIntoRow(existing, next).lineups?.immutable).toBe(true)
+  })
+
+  it('keeps a schedule row without books and does not treat it as a fresh odds cache', () => {
+    const events = parseOddsApiEvents([
+      {
+        id: 'evt-1',
+        sport_key: 'soccer_epl',
+        home_team: 'Arsenal',
+        away_team: 'Leeds United',
+        commence_time: '2026-10-10T11:30:00Z',
+      },
+    ])
+    const now = new Date('2026-09-27T06:00:00Z')
+    const scheduled = cacheRowFromScheduleEvent(events[0]!, now, 'soccer_epl')
+    expect(scheduled?.devigged_odds).toBeNull()
+    expect(oddsCacheFresh(scheduled, now)).toBe(false)
+    const priced = cacheRowFromOddsEvent(
+      { ...events[0]!, bookmakers: [pinnacle] },
+      now,
+      'soccer_epl',
+    )
+    expect(mergeScheduleIntoRow(priced, scheduled!).devigged_odds?.bookKey).toBe('pinnacle')
   })
 })

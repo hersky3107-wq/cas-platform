@@ -36,6 +36,9 @@ export async function fetchFixtureStats(
   if (statsFresh(row.stats, now)) return row.stats as FixtureStats
 
   const sport = sportOf(row.league)
+  if (!sport) {
+    return { sport: 'football', fetchedAt: now.toISOString(), unavailable: `no stats table for ${row.league}` }
+  }
   const stats =
     sport === 'football'
       ? await footballStats(row, now, fetchImpl)
@@ -51,7 +54,8 @@ export async function fetchFixtureStats(
   return stats
 }
 
-function sportOf(league: string): FixtureStats['sport'] {
+function sportOf(league: string): FixtureStats['sport'] | null {
+  if (league === 'mma_mixed_martial_arts') return null
   if (league === 'baseball_mlb') return 'baseball'
   if (league === 'basketball_nba') return 'basketball'
   return 'football'
@@ -61,6 +65,7 @@ function understatLeagueOf(league: string): string | null {
   if (league === 'soccer_epl') return 'EPL'
   if (league === 'soccer_spain_la_liga') return 'La_liga'
   if (league === 'soccer_uefa_champs_league') return 'CL'
+  if (league === 'soccer_italy_serie_a') return 'Serie_A'
   return null
 }
 

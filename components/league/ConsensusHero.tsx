@@ -119,6 +119,15 @@ export function ConsensusHero({
       <span className="ml-1.5 text-base font-semibold text-league-fg-muted md:text-lg">{hero.signedMagnitude}</span>
     ) : null
 
+  const tier = hero.confidenceTier
+  const tierLabel = hero.confidenceTierLabel
+  const tierStyle =
+    tier === 'close'
+      ? 'border-amber-500 bg-amber-50 text-amber-800 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-200'
+      : tier === 'favored'
+        ? 'border-sky-500 bg-sky-50 text-sky-800 dark:border-sky-600 dark:bg-sky-950 dark:text-sky-200'
+        : 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950 dark:text-emerald-200'
+
   return (
     <div className="mt-3" data-testid="consensus-hero" data-seat-complete="true">
       <p
@@ -167,12 +176,24 @@ export function ConsensusHero({
               {magSuffix}
             </>
           )}
+          {tierLabel ? (
+            <span
+              className={`ml-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold tracking-wide align-middle md:text-sm ${tierStyle}`}
+              data-testid="consensus-confidence-tier"
+            >
+              {tierLabel}
+            </span>
+          ) : null}
         </div>
         {hero.diverged ? (
-          <p className="mt-1 text-[11px] font-medium leading-snug text-league-fg-muted">{hero.line2}</p>
+          <p className="mt-1 text-[11px] font-medium leading-snug text-league-fg-muted">
+            {hero.line2}
+            {tierLabel ? <span className="ml-1.5 font-semibold text-league-fg">({tierLabel})</span> : null}
+          </p>
         ) : hero.confidencePct !== null ? (
           <p className="mt-1 text-[11px] font-medium leading-snug text-league-fg-muted">
             {t.hero.confidenceNote(hero.confidencePct)}
+            {tierLabel ? <span className="ml-1.5 font-semibold text-league-fg">({tierLabel})</span> : null}
           </p>
         ) : null}
       </div>

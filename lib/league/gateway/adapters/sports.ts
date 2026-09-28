@@ -2,6 +2,7 @@ import { isUiHorizon } from '../../horizon'
 import { isSportsLeagueKey } from '../../sports/types'
 import { detectBettingFraming } from '../betting-framing'
 import { refusalMessageKey } from '../refusal-copy'
+import { targetRefusalCode } from '../target-resolve'
 import type {
   CategoryAdapter,
   ClarifyingQuestion,
@@ -18,36 +19,31 @@ import type {
 import {
   decodeSportsInstrument,
   encodeSportsInstrument,
-  extractSportsMentions,
-  fixtureChipLabel,
-  fixtureForBoth,
-  fixturesForTeam,
-  partsFromFixture,
-  sideForTeam,
-  SPORTS_RESOLVES_AFTER_KICKOFF_MS,
   subjectTeamOf,
   type SportsFixtureLite,
 } from './sports-catalog'
+import { resolveSportsTarget } from './sports-target'
 import {
   buildSportsRankedRoundInput,
-  formatSportsProposition,
   horizonForKickoff,
-  sportsResolutionRule,
 } from './sports-compose'
 import { buildSportsPacket, type SportsPacketIo } from './sports-packet'
 
 /**
  * SPORTS adapter — binary_subject_outcome, name_match.
  *
- * Freeform resolves onto a concrete upcoming fixture from the Odds API slate
- * (cached). Athlete → club → next fixture. Two named teams → clarify chips
- * for which team is the Yes subject. No slate hit → non_public_fixture.
- * Betting framing (국민체육진흥법) → refuse. Grading parks to operator_manual.
+ * Freeform is a prediction search, not a browse list: team+opponent (or a
+ * dated pair) resolves onto the Odds-API slate and opens; team-alone offers
+ * that club’s upcoming fixtures as picks. Vague input is refused with
+ * guidance. Betting framing (국민체육진흥법) → refuse. Grading parks to
+ * operator_manual.
  */
 
 const SPORTS_REFUSALS: readonly RefusalCode[] = [
   'betting_framing',
   'non_public_fixture',
+  'vague_target',
+  'past_event',
   'ambiguous_entity',
   'unsupported_entity',
   'missing_slot',
@@ -78,15 +74,6 @@ function asLaunchSlate(
   return out
 }
 
-function instrumentChip(fixture: SportsFixtureLite, team: string): { id: string; label: string } {
-  const side = sideForTeam(fixture, team) ?? 'home'
-  const parts = partsFromFixture(fixture, side)
-  return {
-    id: encodeSportsInstrument(parts),
-    label: fixtureChipLabel(fixture, subjectTeamOf(parts)),
-  }
-}
-
 function clarifyInstruments(options: Array<{ id: string; label: string }>): EntityResolution {
   return {
     ok: false,
@@ -103,7 +90,7 @@ function clarifyInstruments(options: Array<{ id: string; label: string }>): Enti
   }
 }
 
-export function createSportsAdapter(io: SportsPacketIo): CategoryAdapter {
+export function createSportsAdapter(io: SportsPacketIo, nowFn: () => Date = () => new Date()): CategoryAdapter {
   return {
     category_id: 'sports',
     ledger_category: 'sports',
@@ -115,37 +102,28 @@ export function createSportsAdapter(io: SportsPacketIo): CategoryAdapter {
 
       const decoded = decodeSportsInstrument(raw.trim())
       if (decoded) {
-        return { ok: true, entity_id: raw.trim(), entity_kind: 'team_or_match', label: subjectTeamOf(decoded) }
+        return {
+          ok: true,
+          entity_id: raw.trim(),
+          entity_kind: 'team_or_match',
+          label: subjectTeamOf(decoded),
+          skip_confirm: true,
+        }
       }
 
-      const slate = asLaunchSlate(await io.listUpcomingFixtures(new Date()))
-      const mentions = extractSportsMentions(raw)
-      const teams = [...new Set(mentions.map((m) => m.canonical))]
-
-      if (teams.length >= 2) {
-        const fixture = fixtureForBoth(slate, teams[0]!, teams[1]!, new Date())
-        if (!fixture) {
-          return { ok: false, refuse: refuse('non_public_fixture', { teams: `${teams[0]} vs ${teams[1]}` }) }
-        }
-        return clarifyInstruments([instrumentChip(fixture, teams[0]!), instrumentChip(fixture, teams[1]!)])
+      const now = nowFn()
+      const slate = asLaunchSlate(await io.listUpcomingFixtures(now))
+      const hit = resolveSportsTarget(raw, slate, now)
+      if (hit.kind === 'picks') return clarifyInstruments(hit.options)
+      if (hit.kind !== 'ready') return { ok: false, refuse: refuse(targetRefusalCode(hit.kind)) }
+      const parts = decodeSportsInstrument(hit.entityId)
+      return {
+        ok: true,
+        entity_id: hit.entityId,
+        entity_kind: 'team_or_match',
+        label: parts ? subjectTeamOf(parts) : hit.label,
+        ...(hit.skipConfirm ? { skip_confirm: true } : {}),
       }
-
-      if (teams.length === 1) {
-        const team = teams[0]!
-        const fixtures = fixturesForTeam(slate, team, new Date())
-        if (fixtures.length === 0) {
-          return { ok: false, refuse: refuse('non_public_fixture', { team }) }
-        }
-        if (fixtures.length > 1) {
-          return clarifyInstruments(fixtures.slice(0, 3).map((f) => instrumentChip(f, team)))
-        }
-        const fixture = fixtures[0]!
-        const chip = instrumentChip(fixture, team)
-        return { ok: true, entity_id: chip.id, entity_kind: 'team_or_match', label: subjectTeamOf(decodeSportsInstrument(chip.id)!) }
-      }
-
-      if (slate.length === 0) return { ok: false, refuse: refuse('non_public_fixture') }
-      return { ok: false, refuse: refuse('unsupported_entity') }
     },
 
     requiredSlots(entity): readonly string[] {

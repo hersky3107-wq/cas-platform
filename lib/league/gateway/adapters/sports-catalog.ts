@@ -1,7 +1,8 @@
 /**
- * Sports entity world — launch slates only (EPL / UCL / La Liga / MLB / NBA).
- * Aliases + athletes resolve onto Odds-API team names, then onto a fixture
- * already on the cached slate. Never invents a match that is not public.
+ * Sports entity world — launch slates only (EPL / UCL / La Liga / Serie A /
+ * Nations League / MLB / NBA / UFC). Aliases + athletes resolve onto Odds-API
+ * team names, then onto a fixture already on the cached slate. Never invents
+ * a match that is not public.
  */
 
 import { teamsMatch } from '../../sports/lineup-logic'
@@ -33,25 +34,33 @@ export const SOCCER_LEAGUES: readonly SportsLeagueKey[] = [
   'soccer_epl',
   'soccer_uefa_champs_league',
   'soccer_spain_la_liga',
+  'soccer_italy_serie_a',
+  'soccer_uefa_nations_league',
 ]
+
+export const MMA_LEAGUES: readonly SportsLeagueKey[] = ['mma_mixed_martial_arts']
 
 export function isSoccerLeague(league: string): boolean {
   return (SOCCER_LEAGUES as readonly string[]).includes(league)
 }
 
+export function isMmaLeague(league: string): boolean {
+  return (MMA_LEAGUES as readonly string[]).includes(league)
+}
+
+const LEAGUE_LABEL_EN: Record<SportsLeagueKey, string> = {
+  soccer_epl: 'Premier League',
+  soccer_uefa_champs_league: 'UEFA Champions League',
+  soccer_spain_la_liga: 'La Liga',
+  soccer_italy_serie_a: 'Serie A',
+  soccer_uefa_nations_league: 'UEFA Nations League',
+  baseball_mlb: 'MLB',
+  basketball_nba: 'NBA',
+  mma_mixed_martial_arts: 'UFC',
+}
+
 export function leagueLabelEn(league: SportsLeagueKey): string {
-  switch (league) {
-    case 'soccer_epl':
-      return 'Premier League'
-    case 'soccer_uefa_champs_league':
-      return 'UEFA Champions League'
-    case 'soccer_spain_la_liga':
-      return 'La Liga'
-    case 'baseball_mlb':
-      return 'MLB'
-    case 'basketball_nba':
-      return 'NBA'
-  }
+  return LEAGUE_LABEL_EN[league]
 }
 
 type AliasRow = { aliases: readonly string[]; canonical: string }
@@ -86,7 +95,24 @@ const TEAM_ALIASES: readonly AliasRow[] = [
   { aliases: ['inter milan', 'internazionale', 'inter', '인터 밀란', '인터밀란'], canonical: 'Inter Milan' },
   { aliases: ['ac milan', 'milan', '밀란'], canonical: 'AC Milan' },
   { aliases: ['juventus', '유벤투스'], canonical: 'Juventus' },
-  { aliases: ['borussia dortmund', 'dortmund', '도르트문트'], canonical: 'Borussia Dortmund' },
+  { aliases: ['napoli', '나폴리'], canonical: 'Napoli' },
+  { aliases: ['as roma', 'roma', '로마'], canonical: 'AS Roma' },
+  { aliases: ['ipswich town', 'ipswich', '입스위치'], canonical: 'Ipswich Town' },
+  { aliases: ['hull city', 'hull', '헐시티', '헐'], canonical: 'Hull City' },
+  { aliases: ['coventry city', 'coventry', '코번트리'], canonical: 'Coventry City' },
+  { aliases: ['south korea', 'korea', '대한민국', '한국'], canonical: 'South Korea' },
+  { aliases: ['japan', '일본'], canonical: 'Japan' },
+  { aliases: ['france', '프랑스'], canonical: 'France' },
+  { aliases: ['england', '잉글랜드'], canonical: 'England' },
+  { aliases: ['spain', '스페인'], canonical: 'Spain' },
+  { aliases: ['germany', '독일'], canonical: 'Germany' },
+  { aliases: ['italy', '이탈리아'], canonical: 'Italy' },
+  { aliases: ['portugal', '포르투갈'], canonical: 'Portugal' },
+  { aliases: ['netherlands', 'holland', '네덜란드'], canonical: 'Netherlands' },
+  { aliases: ['belgium', '벨기에'], canonical: 'Belgium' },
+  { aliases: ['croatia', '크로아티아'], canonical: 'Croatia' },
+  { aliases: ['serbia', '세르비아'], canonical: 'Serbia' },
+  { aliases: ['denmark', '덴마크'], canonical: 'Denmark' },
   { aliases: ['san francisco giants', 'giants', '자이언츠'], canonical: 'San Francisco Giants' },
   { aliases: ['los angeles dodgers', 'dodgers', '다저스'], canonical: 'Los Angeles Dodgers' },
   { aliases: ['new york yankees', 'yankees', '양키스'], canonical: 'New York Yankees' },
@@ -166,7 +192,7 @@ export type MentionHit = { canonical: string; kind: 'athlete' | 'team' }
 
 export function extractSportsMentions(raw: string): MentionHit[] {
   const lower = raw.toLowerCase()
-  const hits: MentionHit[] = []
+  const hits: Array<MentionHit & { at: number }> = []
   const used = new Set<string>()
   const occupied: Array<[number, number]> = []
   for (const row of ALIAS_INDEX) {
@@ -181,11 +207,12 @@ export function extractSportsMentions(raw: string): MentionHit[] {
       occupied.push([at, end])
       if (used.has(row.canonical)) break
       used.add(row.canonical)
-      hits.push({ canonical: row.canonical, kind: row.kind })
+      hits.push({ canonical: row.canonical, kind: row.kind, at })
       break
     }
   }
-  return hits
+  hits.sort((a, b) => a.at - b.at)
+  return hits.map(({ canonical, kind }) => ({ canonical, kind }))
 }
 
 export function fixturesForTeam(slate: readonly SportsFixtureLite[], team: string, now: Date): SportsFixtureLite[] {

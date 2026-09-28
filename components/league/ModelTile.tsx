@@ -89,6 +89,7 @@ export function ModelTile({
     !isDivination && model.direction && model.probability !== null
       ? `${Math.round(model.probability)}%`
       : null
+  const showConfidenceBadge = Boolean(pct && labels && labels.kind !== 'binary_close_higher')
   // ONE qualifier next to the badge: numeric magnitude on price rounds,
   // adapter-provided qualifier text (scoreline, margin) on the others.
   const magnitudeText =
@@ -158,6 +159,14 @@ export function ModelTile({
                 </span>
               ) : null}
               <span className="text-[10px] font-semibold uppercase tracking-wide">{badge}</span>
+              {showConfidenceBadge ? (
+                <span
+                  className="rounded bg-black/10 px-1 py-0.5 text-[10px] font-bold tabular-nums dark:bg-white/15"
+                  data-testid="model-tile-confidence"
+                >
+                  {pct}
+                </span>
+              ) : null}
               {magnitudeText ? (
                 <span className="text-[10px] font-semibold tabular-nums" aria-hidden>
                   {magnitudeText}
@@ -176,6 +185,14 @@ export function ModelTile({
               </span>
             ) : null}
             <span className="text-[10px] font-bold uppercase tracking-wide md:text-xs">{badge}</span>
+            {showConfidenceBadge ? (
+              <span
+                className="rounded bg-black/10 px-1 py-0.5 text-[10px] font-bold tabular-nums dark:bg-white/15 md:text-xs"
+                data-testid="model-tile-confidence"
+              >
+                {pct}
+              </span>
+            ) : null}
             {magnitudeText ? (
               <span className="text-[10px] font-semibold tabular-nums" aria-hidden>
                 {magnitudeText}

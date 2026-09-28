@@ -74,8 +74,16 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     en: 'This question cannot be opened now due to that country’s election-period rules.',
   },
   non_public_fixture: {
-    ko: '공식 일정에서 확인되지 않는 경기는 열 수 없습니다.',
-    en: 'Fixtures not confirmed on an official schedule cannot be opened.',
+    ko: '지원 범위: EPL·챔스·라리가·세리에·NBA·MLB·UFC + 주요 국제대회. 지원하지 않는 경기입니다.',
+    en: 'Coverage: EPL, Champions League, La Liga, Serie A, NBA, MLB, UFC, plus major internationals. This fixture is not supported.',
+  },
+  vague_target: {
+    ko: '팀 이름과 상대 팀을 함께 입력해주세요. 예: 토트넘 아스날 / 양키스 레드삭스',
+    en: 'Enter a team name and the opponent together. e.g. Tottenham Arsenal / Yankees Red Sox',
+  },
+  past_event: {
+    ko: '예측은 앞으로 열릴 경기만 가능합니다.',
+    en: 'Predictions are only available for upcoming games.',
   },
   no_result_source: {
     ko: '결과를 확인할 공식 출처가 없어 이 질문은 열 수 없습니다.',

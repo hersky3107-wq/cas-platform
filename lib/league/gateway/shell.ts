@@ -7,6 +7,7 @@ import { MAX_CANDIDATE_CHIPS } from './candidate-search'
 import { detectBettingFraming } from './betting-framing'
 import { prefilterRejects } from './prefilter'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
+import { MAX_TARGET_PICKS } from './target-resolve'
 import { refusalMessageForKey, refusalMessageKey } from './refusal-copy'
 import type {
   CategoryAdapter,
@@ -142,8 +143,9 @@ function roundsUsed(req: GatewayRequest): number {
 }
 
 function oneQuestion(question: ClarifyingQuestion): ClarifyingQuestion {
-  const options =
-    question.slot === 'entity_id' ? question.options?.slice(0, MAX_CANDIDATE_CHIPS) : question.options
+  const fixturePicks = question.slot === 'entity_id' && question.options?.some((o) => decodeSportsInstrument(o.id))
+  const cap = fixturePicks ? MAX_TARGET_PICKS : MAX_CANDIDATE_CHIPS
+  const options = question.slot === 'entity_id' ? question.options?.slice(0, cap) : question.options
   return {
     ...question,
     ...(options ? { options } : {}),
@@ -209,11 +211,26 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   const answered = req.answered_slots ?? {}
 
   // 6a. Entity resolution — server-side resolver only. Priority: an answered
-  //     clarify chip (or 직접 입력) beats the hint, the hint beats the mention.
-  const mentionCandidates = [answered.entity_id, normalized.entity_id_hint, normalized.entity_mention].filter(
-    (v): v is string => typeof v === 'string' && v.trim().length > 0,
-  )
-  let entity: { entity_id: string; entity_kind: NormalizeSlots['entity_kind']; label: string } | null = null
+  //     clarify chip, then the full raw sentence (sports dates / opponents),
+  //     then the hint, then the mention. Open-question catalog search still
+  //     keys off named slots so a typed sentence is not treated as a subject.
+  const namedCandidates = uniqueCandidates([
+    answered.entity_id,
+    normalized.entity_id_hint,
+    normalized.entity_mention,
+  ])
+  const mentionCandidates = uniqueCandidates([
+    answered.entity_id,
+    req.raw_text,
+    normalized.entity_id_hint,
+    normalized.entity_mention,
+  ])
+  let entity: {
+    entity_id: string
+    entity_kind: NormalizeSlots['entity_kind']
+    label: string
+    skip_confirm?: boolean
+  } | null = null
   let entityAsk: ClarifyingQuestion | null = null
   let entityRefusal: Refusal | null = null
   for (const candidate of mentionCandidates) {
@@ -226,14 +243,23 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
         }
         continue
       }
-      entity = { entity_id: resolution.entity_id, entity_kind: resolution.entity_kind, label: resolution.label }
+      entity = {
+        entity_id: resolution.entity_id,
+        entity_kind: resolution.entity_kind,
+        label: resolution.label,
+        skip_confirm: resolution.skip_confirm,
+      }
       entityAsk = null
       entityRefusal = null
       break
     }
     if ('need' in resolution && !entityAsk) entityAsk = filterEntityOptions(resolution.need, viewer)
     if ('refuse' in resolution) {
-      if (resolution.refuse.code === 'betting_framing') {
+      if (
+        resolution.refuse.code === 'betting_framing' ||
+        resolution.refuse.code === 'vague_target' ||
+        resolution.refuse.code === 'past_event'
+      ) {
         return refusedFrom(resolution.refuse, locale, adapter.category_id, viewer)
       }
       if (!entityRefusal) entityRefusal = resolution.refuse
@@ -241,9 +267,9 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   }
 
   const openQuestion =
-    mentionCandidates.length === 0 || normalized.slots.open_question === 'true' || normalized.needs_slot === 'entity_id'
+    namedCandidates.length === 0 || normalized.slots.open_question === 'true' || normalized.needs_slot === 'entity_id'
 
-  if (!entity && openQuestion && mentionCandidates.length === 0 && deps.searchCandidates) {
+  if (!entity && openQuestion && namedCandidates.length === 0 && deps.searchCandidates) {
     const hits = await deps.searchCandidates({ raw_text: req.raw_text, locale, adapter, viewer })
     if (!hits || hits.length === 0) return refused('low_confidence', locale)
     return clarifyOrCap(
@@ -305,7 +331,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   const picked = typeof answered.entity_id === 'string' ? answered.entity_id.trim() : ''
   const fixturePick =
     picked.length > 0 && entity.entity_id === picked && decodeSportsInstrument(picked) !== null
-  if (slots.slots.entity_confirmed !== 'true' && !fixturePick) {
+  if (slots.slots.entity_confirmed !== 'true' && !fixturePick && !entity.skip_confirm) {
     const preview = adapter.composeProposition(slots, now)
     return {
       status: 'clarify',
@@ -334,4 +360,18 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     charged_credits: LEAGUE_GENERATE_CREDITS,
     grade_sources: adapter.gradeSources(slots),
   }
+}
+
+function uniqueCandidates(values: Array<string | null | undefined>): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const value of values) {
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(trimmed)
+  }
+  return out
 }

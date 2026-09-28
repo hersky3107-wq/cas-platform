@@ -1,12 +1,12 @@
 import 'server-only'
 
 import { getResearchPacket } from '../../research'
-import { fetchOddsSlate, fetchFixtureStats, listLeagueCache, readFixtureCache } from '../../sports/server'
+import { fetchOddsEvents, fetchFixtureStats, listLeagueCache, readFixtureCache } from '../../sports/server'
 import { LAUNCH_SPORTS_LEAGUES, isSportsLeagueKey } from '../../sports/types'
 import type { SportsPacketIo } from './sports-packet'
 
 async function listUpcomingFixtures(now = new Date()) {
-  await Promise.all(LAUNCH_SPORTS_LEAGUES.map((league) => fetchOddsSlate(league, now).catch(() => null)))
+  await Promise.all(LAUNCH_SPORTS_LEAGUES.map((league) => fetchOddsEvents(league, now).catch(() => null)))
   const rows = (
     await Promise.all(LAUNCH_SPORTS_LEAGUES.map((league) => listLeagueCache(league).catch(() => [])))
   ).flat()
