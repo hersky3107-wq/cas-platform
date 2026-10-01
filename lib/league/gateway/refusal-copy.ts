@@ -169,6 +169,10 @@ const CLARIFY_COPY: Record<string, Copy> = {
     ko: '어느 기간의 예측을 원하시나요?',
     en: 'Which horizon do you want the prediction for?',
   },
+  'league.gateway.clarify.horizon.stocks': {
+    ko: '기간 선택',
+    en: 'Select horizon',
+  },
   'league.gateway.clarify.entity': {
     ko: '어떤 종목을 말씀하시나요?',
     en: 'Which instrument do you mean?',

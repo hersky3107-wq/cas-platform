@@ -75,7 +75,20 @@ function harness(opts: {
   adapter?: CategoryAdapter
 } = {}): Harness {
   const log: string[] = []
-  const base = opts.adapter ?? createStocksAdapter(DEAD_IO)
+  const rawBase = opts.adapter ?? createStocksAdapter(DEAD_IO)
+  const base: CategoryAdapter = opts.adapter
+    ? rawBase
+    : {
+        ...rawBase,
+        async resolveEntity(...args) {
+          const res = await rawBase.resolveEntity(...args)
+          if (res.ok) {
+            const { skip_confirm: _, ...rest } = res
+            return rest
+          }
+          return res
+        },
+      }
   // Instrumented wrapper so charge ORDERING relative to the adapter's
   // decidability + compose calls is assertable.
   const instrumented: CategoryAdapter = {

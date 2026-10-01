@@ -10,7 +10,7 @@ import { decodeEntertainmentInstrument, parseAdmissionsThreshold } from './adapt
 import { decodePoliticsInstrument } from './adapters/politics-catalog'
 import { decodePropertyInstrument } from './adapters/real-estate-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
-import { decodeStockInstrument } from './adapters/stock-catalog'
+import { decodeStockInstrument, parseStockHorizonFromQuery } from './adapters/stock-catalog'
 import { propositionKindFor } from './normalize-prompt'
 import { MAX_PROPERTY_PICKS } from './adapters/real-estate-target'
 import { MAX_TARGET_PICKS } from './target-resolve'
@@ -441,8 +441,11 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     )
   }
 
+  const parsedStockHorizon =
+    adapter.category_id === 'stocks' ? parseStockHorizonFromQuery(req.raw_text) : null
+
   if (!entity) {
-    if (entityAsk) return clarifyOrCap([entityAsk], { horizon: normalized.horizon }, used, locale, viewer)
+    if (entityAsk) return clarifyOrCap([entityAsk], { horizon: parsedStockHorizon ?? normalized.horizon }, used, locale, viewer)
     return refusedFrom(
       entityRefusal ?? { code: 'unsupported_entity', message_i18n_key: refusalMessageKey('unsupported_entity') },
       locale,
@@ -452,17 +455,19 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   }
 
   // 6b. Assemble slots: normalizer fields + clarify answers. Horizon answers
-  //     are enum-gated the same way the normalizer's horizon was.
+  //     are enum-gated the same way the normalizer's horizon was. Stock lane
+  //     heuristics parse freeform query horizons directly (Flow C).
   const answeredHorizon =
     answered.horizon === '1d' || answered.horizon === '1w' || answered.horizon === '1m' || answered.horizon === '3m'
       ? answered.horizon
       : null
+  const effectiveHorizon = answeredHorizon ?? parsedStockHorizon ?? normalized.horizon
   const slots: NormalizeSlots = {
     category_id: adapter.category_id,
     entity_id: entity.entity_id,
     entity_kind: entity.entity_kind,
     entity_label: entity.label,
-    horizon: answeredHorizon ?? normalized.horizon,
+    horizon: effectiveHorizon,
     resolve_by: null,
     proposition_kind: normalized.proposition_kind,
     slots: { ...normalized.slots, ...answered },

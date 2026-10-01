@@ -9,6 +9,8 @@ import {
   equitySearchQuery,
   mentionsKoreaListing,
   mentionsLocalNonUsListing,
+  parseStockHorizonFromQuery,
+  stripStockHorizonFromQuery,
   stockAugmentationQueries,
   stockQuoteSymbol,
 } from './stock-catalog'
@@ -58,7 +60,7 @@ const STOCK_SYNONYMS: Record<string, string> = {
 
 const HORIZON_QUESTION: ClarifyingQuestion = {
   slot: 'horizon',
-  prompt_i18n_key: 'league.gateway.clarify.horizon',
+  prompt_i18n_key: 'league.gateway.clarify.horizon.stocks',
   options: UI_HORIZONS.map((h) => ({ id: h, label_i18n_key: `league.gateway.horizon.${h}` })),
 }
 
@@ -158,57 +160,75 @@ export function createStocksAdapter(
         return { ok: false, refuse: refuse('non_us_listing') }
       }
 
+      const decoded = decodeStockInstrument(raw.trim())
+      if (decoded) {
+        return {
+          ok: true,
+          entity_id: raw.trim(),
+          entity_kind: 'ticker',
+          label: decoded.symbol,
+          skip_confirm: true,
+        }
+      }
+
       const exact = synonymHits(raw)
       if (exact.length === 1) {
-        return { ok: true, entity_id: exact[0]!, entity_kind: 'ticker', label: exact[0]! }
+        return { ok: true, entity_id: exact[0]!, entity_kind: 'ticker', label: exact[0]!, skip_confirm: true }
       }
       if (exact.length > 1) {
         return { ok: false, need: chipQuestion(exact) }
       }
 
-      const prefixes = prefixHits(raw)
-      if (prefixes.length > 0) {
-        return { ok: false, need: chipQuestion(prefixes) }
+      const cleaned = stripStockHorizonFromQuery(raw)
+      const candidates = cleaned && cleaned !== raw ? [raw, cleaned] : [raw]
+
+      for (const text of candidates) {
+        const prefixes = prefixHits(text)
+        if (prefixes.length > 0) {
+          return { ok: false, need: chipQuestion(prefixes) }
+        }
       }
 
-      const query = equitySearchQuery(raw)
-      if (query) {
-        const found = await search(query)
-        if (found.koreaOnly) return { ok: false, refuse: refuse('korea_listing') }
-        if (found.nonUsOnly) return { ok: false, refuse: refuse('non_us_listing') }
-        const us = found.hits.filter((hit) => !isPoisonTicker(hit.symbol))
-        const exact = us.filter((hit) => hit.symbol === query.toUpperCase())
-        const single = us.length === 1 ? us[0] : exact.length === 1 ? exact[0] : undefined
-        if (single) {
-          const hit = single
-          if (catalog.includes(hit.symbol)) {
-            return { ok: true, entity_id: hit.symbol, entity_kind: 'ticker', label: hit.symbol }
+      for (const text of candidates) {
+        const query = equitySearchQuery(text)
+        if (query) {
+          const found = await search(query)
+          if (found.koreaOnly) return { ok: false, refuse: refuse('korea_listing') }
+          if (found.nonUsOnly) return { ok: false, refuse: refuse('non_us_listing') }
+          const us = found.hits.filter((hit) => !isPoisonTicker(hit.symbol))
+          const exact = us.filter((hit) => hit.symbol === query.toUpperCase())
+          const single = us.length === 1 ? us[0] : exact.length === 1 ? exact[0] : undefined
+          if (single) {
+            const hit = single
+            if (catalog.includes(hit.symbol)) {
+              return { ok: true, entity_id: hit.symbol, entity_kind: 'ticker', label: hit.symbol, skip_confirm: true }
+            }
+            const id = encodeStockInstrument(hit)
+            if (id) {
+              return { ok: true, entity_id: id, entity_kind: 'ticker', label: hit.name, skip_confirm: true }
+            }
           }
-          const id = encodeStockInstrument(hit)
-          if (id) {
-            return { ok: true, entity_id: id, entity_kind: 'ticker', label: hit.name }
-          }
-        }
-        if (us.length > 1) {
-          const options = us.flatMap((hit) => {
-            const id = catalog.includes(hit.symbol) ? hit.symbol : encodeStockInstrument(hit)
-            if (!id) return []
-            return [
-              {
-                id,
-                label_i18n_key: 'league.gateway.clarify.entity',
-                label: `${hit.name} (${hit.symbol} · ${hit.exchange})`,
-              },
-            ]
-          })
-          if (options.length > 0) {
-            return {
-              ok: false,
-              need: {
-                slot: 'entity_id',
-                prompt_i18n_key: 'league.gateway.clarify.entity',
-                options,
-              },
+          if (us.length > 1) {
+            const options = us.flatMap((hit) => {
+              const id = catalog.includes(hit.symbol) ? hit.symbol : encodeStockInstrument(hit)
+              if (!id) return []
+              return [
+                {
+                  id,
+                  label_i18n_key: 'league.gateway.clarify.entity',
+                  label: `${hit.name} (${hit.symbol} · ${hit.exchange})`,
+                },
+              ]
+            })
+            if (options.length > 0) {
+              return {
+                ok: false,
+                need: {
+                  slot: 'entity_id',
+                  prompt_i18n_key: 'league.gateway.clarify.entity',
+                  options,
+                },
+              }
             }
           }
         }

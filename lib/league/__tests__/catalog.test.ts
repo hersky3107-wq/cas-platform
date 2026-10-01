@@ -73,6 +73,7 @@ describe('PUBLIC_CATALOG', () => {
     expect(isFreeformSearchCategory('crypto')).toBe(false)
     expect(usesHorizonChipRow('real_estate')).toBe(false)
     expect(usesHorizonChipRow('sports')).toBe(false)
+    expect(usesHorizonChipRow('stocks')).toBe(false)
     expect(usesHorizonChipRow('gold_metals')).toBe(true)
     expect(usesHorizonChipRow('crypto')).toBe(true)
   })

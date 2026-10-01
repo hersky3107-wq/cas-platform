@@ -70,7 +70,7 @@ export function isFreeformSearchCategory(id: string): boolean {
 
 /** Trading 1d/1w/1m/3m chips. Publication-date / event-date categories hide them. */
 export function usesHorizonChipRow(id: string): boolean {
-  return id !== 'sports' && id !== 'real_estate'
+  return id !== 'sports' && id !== 'real_estate' && id !== 'stocks'
 }
 
 export type CatalogKind = 'instruments' | 'coming_soon'

@@ -1,12 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildCatalogRankedRoundInput } from '../../catalog'
 import { assertApprovedCopy } from '../../compliance'
 import { consensusMoneySearchHints } from '../../extra/consensus'
 import { createStocksAdapter } from '../adapters/stocks'
+import { parseStockHorizonFromQuery } from '../adapters/stock-catalog'
 import type { PriceSeriesIo } from '../adapters/price-series-packet'
-import type { PacketBuildContext, PacketRound } from '../types'
-import { refusalMessageForKey } from '../refusal-copy'
+import type { GatewayDeps, GatewayRequest, GatewayViewer, PacketBuildContext, PacketRound } from '../types'
+import { clarifyCopyForKey, refusalMessageForKey } from '../refusal-copy'
 import type { NormalizeSlots } from '../types'
+import { runLeagueGateway } from '../shell'
+import { LEAGUE_GENERATE_CREDITS } from '../../credits'
 
 /** io that must never be touched — these tests exercise pure judgment only. */
 const DEAD_IO: PriceSeriesIo = {
@@ -50,7 +53,7 @@ function slots(over: Partial<NormalizeSlots> = {}): NormalizeSlots {
 describe('stocks adapter — entity resolution', () => {
   it('resolves the Korean synonym 애플 → AAPL', async () => {
     const r = await adapter.resolveEntity('애플', 'ko')
-    expect(r).toEqual({ ok: true, entity_id: 'AAPL', entity_kind: 'ticker', label: 'AAPL' })
+    expect(r).toEqual({ ok: true, entity_id: 'AAPL', entity_kind: 'ticker', label: 'AAPL', skip_confirm: true })
   })
 
   it('resolves english names and tickers case-insensitively', async () => {
@@ -360,5 +363,262 @@ describe('stocks adapter — Ultra packet (catalog + STOCK: share one path)', ()
     expect(pkt.injection).toMatch(/CONSENSUS/)
     if (prev === undefined) delete process.env.TWELVE_DATA_STOCK_UNIVERSE
     else process.env.TWELVE_DATA_STOCK_UNIVERSE = prev
+  })
+})
+
+describe('stocks adapter — query horizon parser (KO / EN)', () => {
+  it('parses 1d phrases correctly', () => {
+    for (const phrase of ['내일', '오늘', '하루', '1일', '익일', '당일', 'tomorrow', 'today', '1d', '1 day', '24h']) {
+      expect(parseStockHorizonFromQuery(`엔비디아 ${phrase}`), `testing "${phrase}"`).toBe('1d')
+    }
+  })
+
+  it('parses 1w phrases correctly', () => {
+    for (const phrase of ['다음주', '다음 주', '일주일', '1주일', '1주', '이번주', '이번 주', '한주', '한 주', 'next week', 'this week', '1w', '1 week', '7d']) {
+      expect(parseStockHorizonFromQuery(`엔비디아 ${phrase}`), `testing "${phrase}"`).toBe('1w')
+    }
+  })
+
+  it('parses 1m phrases correctly', () => {
+    for (const phrase of ['한달', '한 달', '1달', '1개월', '일개월', '다음달', '다음 달', '이번달', '이번 달', 'next month', 'this month', '1m', '1 month', '30d']) {
+      expect(parseStockHorizonFromQuery(`엔비디아 ${phrase}`), `testing "${phrase}"`).toBe('1m')
+    }
+  })
+
+  it('parses 3m phrases correctly', () => {
+    for (const phrase of ['3개월', '삼개월', '3달', '세달', '세 달', '석달', '석 달', '분기', '이번 분기', '다음 분기', '1분기', '3m', '3 months', '3 month', 'quarter', '1 quarter', '90d']) {
+      expect(parseStockHorizonFromQuery(`엔비디아 ${phrase}`), `testing "${phrase}"`).toBe('3m')
+    }
+  })
+
+  it('returns null when no horizon is present', () => {
+    expect(parseStockHorizonFromQuery('엔비디아')).toBeNull()
+    expect(parseStockHorizonFromQuery('엔비디아 오를까')).toBeNull()
+    expect(parseStockHorizonFromQuery('Tesla')).toBeNull()
+    expect(parseStockHorizonFromQuery('Apple stock price')).toBeNull()
+  })
+
+  it('protects against edge cases (company 3M, calendar dates, turning points)', () => {
+    expect(parseStockHorizonFromQuery('3M')).toBeNull()
+    expect(parseStockHorizonFromQuery('mmm')).toBeNull()
+    expect(parseStockHorizonFromQuery('엔비디아 10월 1일')).toBeNull()
+    expect(parseStockHorizonFromQuery('분기점')).toBeNull()
+    expect(parseStockHorizonFromQuery('하루종일')).toBeNull()
+  })
+})
+
+describe('stocks adapter — Flow A, Flow C, and ambiguous ticker flows', () => {
+  const US_VIEWER: GatewayViewer = {
+    userId: 'u_stock_flow',
+    isAdmin: false,
+    jurisdiction: { declaredCountry: 'US', ipCountry: 'US' },
+  }
+  const NOW = new Date('2026-08-28T09:00:00.000Z')
+
+  function gatewayHarness() {
+    const chargeSpy = vi.fn(async () => ({ ok: true }))
+    const deps: GatewayDeps = {
+      adapterFor: (id) => (id === 'stocks' ? adapter : null),
+      normalizer: {
+        normalize: async (req) => {
+          // Emulate a standard LLM normalizer or return null (slate-fallback handles it)
+          const horizon = parseStockHorizonFromQuery(req.raw_text)
+          return {
+            category_id: 'stocks',
+            entity_mention: '',
+            entity_id_hint: null,
+            horizon,
+            proposition_kind: 'binary_close_higher',
+            slots: {},
+            confidence: 0.9,
+            needs_slot: null,
+          }
+        },
+      },
+      deductCredits: chargeSpy,
+      now: () => NOW,
+    }
+    return { deps, chargeSpy }
+  }
+
+  it('Flow A (default): no horizon upfront → ticker confirms → clarify horizon step → pick → generate', async () => {
+    const { deps, chargeSpy } = gatewayHarness()
+
+    // Step 1: User types "엔비디아" (no horizon)
+    const turn1 = await runLeagueGateway(
+      {
+        viewer: US_VIEWER,
+        category_id: 'stocks',
+        raw_text: '엔비디아 오를까',
+        locale: 'ko',
+      },
+      deps,
+    )
+
+    // Shell resolves ticker to NVDA, sees missing horizon, returns clarify question
+    expect(turn1.status).toBe('clarify')
+    if (turn1.status !== 'clarify') throw new Error('expected clarify')
+    expect(turn1.questions).toHaveLength(1)
+    expect(turn1.questions[0]!.slot).toBe('horizon')
+    expect(turn1.questions[0]!.prompt_i18n_key).toBe('league.gateway.clarify.horizon.stocks')
+    expect(clarifyCopyForKey(turn1.questions[0]!.prompt_i18n_key, 'ko')).toBe('기간 선택')
+    expect(turn1.questions[0]!.options.map((o) => o.id)).toEqual(['1d', '1w', '1m', '3m'])
+    expect(turn1.questions[0]!.options.map((o) => clarifyCopyForKey(o.label_i18n_key!, 'ko'))).toEqual([
+      '1일',
+      '1주',
+      '1개월',
+      '3개월',
+    ])
+    expect(chargeSpy).not.toHaveBeenCalled()
+
+    // Step 2: User picks "1주" (1w)
+    const turn2 = await runLeagueGateway(
+      {
+        viewer: US_VIEWER,
+        category_id: 'stocks',
+        raw_text: '엔비디아 오를까',
+        answered_slots: { horizon: '1w' },
+        clarify_round: 1,
+        locale: 'ko',
+      },
+      deps,
+    )
+
+    // Goes straight to ready / generate without extra confirm step!
+    expect(turn2.status).toBe('ready')
+    if (turn2.status !== 'ready') throw new Error('expected ready')
+    expect(turn2.round.instrument).toBe('NVDA')
+    expect(turn2.round.horizon).toBe('1w')
+    expect(turn2.charged_credits).toBe(LEAGUE_GENERATE_CREDITS)
+    expect(chargeSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('Flow C (skip step): query already contains horizon → straight to generate without clarify', async () => {
+    const cases = [
+      { text: '엔비디아 3개월', expectedTicker: 'NVDA', expectedHorizon: '3m' },
+      { text: '엔비디아 내일', expectedTicker: 'NVDA', expectedHorizon: '1d' },
+      { text: '엔비디아 다음주', expectedTicker: 'NVDA', expectedHorizon: '1w' },
+      { text: '엔비디아 한달', expectedTicker: 'NVDA', expectedHorizon: '1m' },
+      { text: 'Tesla 3 months', expectedTicker: 'TSLA', expectedHorizon: '3m' },
+    ]
+
+    for (const c of cases) {
+      const { deps, chargeSpy } = gatewayHarness()
+      const res = await runLeagueGateway(
+        {
+          viewer: US_VIEWER,
+          category_id: 'stocks',
+          raw_text: c.text,
+          locale: 'ko',
+        },
+        deps,
+      )
+
+      expect(res.status, `failed on ${c.text}`).toBe('ready')
+      if (res.status !== 'ready') throw new Error(`expected ready for ${c.text}`)
+      expect(res.round.instrument).toBe(c.expectedTicker)
+      expect(res.round.horizon).toBe(c.expectedHorizon)
+      expect(chargeSpy).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('Ambiguous ticker without horizon: pick-a-chip first, then horizon clarify', async () => {
+    const { deps, chargeSpy } = gatewayHarness()
+
+    // Step 1: User types "테슬" (prefix match, no horizon)
+    const turn1 = await runLeagueGateway(
+      {
+        viewer: US_VIEWER,
+        category_id: 'stocks',
+        raw_text: '테슬',
+        locale: 'ko',
+      },
+      deps,
+    )
+
+    expect(turn1.status).toBe('clarify')
+    if (turn1.status !== 'clarify') throw new Error('expected clarify')
+    expect(turn1.questions[0]!.slot).toBe('entity_id')
+    expect(turn1.questions[0]!.options.map((o) => o.id)).toEqual(['TSLA'])
+    expect(chargeSpy).not.toHaveBeenCalled()
+
+    // Step 2: User picks TSLA chip
+    const turn2 = await runLeagueGateway(
+      {
+        viewer: US_VIEWER,
+        category_id: 'stocks',
+        raw_text: '테슬',
+        answered_slots: { entity_id: 'TSLA' },
+        clarify_round: 1,
+        locale: 'ko',
+      },
+      deps,
+    )
+
+    // Now entity is confirmed, but horizon is still needed → horizon clarify
+    expect(turn2.status).toBe('clarify')
+    if (turn2.status !== 'clarify') throw new Error('expected clarify')
+    expect(turn2.questions[0]!.slot).toBe('horizon')
+    expect(turn2.questions[0]!.prompt_i18n_key).toBe('league.gateway.clarify.horizon.stocks')
+    expect(clarifyCopyForKey(turn2.questions[0]!.prompt_i18n_key, 'ko')).toBe('기간 선택')
+    expect(chargeSpy).not.toHaveBeenCalled()
+
+    // Step 3: User picks 1개월 (1m)
+    const turn3 = await runLeagueGateway(
+      {
+        viewer: US_VIEWER,
+        category_id: 'stocks',
+        raw_text: '테슬',
+        answered_slots: { entity_id: 'TSLA', horizon: '1m' },
+        clarify_round: 2,
+        locale: 'ko',
+      },
+      deps,
+    )
+
+    expect(turn3.status).toBe('ready')
+    if (turn3.status !== 'ready') throw new Error('expected ready')
+    expect(turn3.round.instrument).toBe('TSLA')
+    expect(turn3.round.horizon).toBe('1m')
+    expect(chargeSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('Ambiguous ticker with horizon: pick-a-chip first, then straight to generate', async () => {
+    const { deps, chargeSpy } = gatewayHarness()
+
+    // Step 1: User types "테슬 3개월" (prefix match + horizon)
+    const turn1 = await runLeagueGateway(
+      {
+        viewer: US_VIEWER,
+        category_id: 'stocks',
+        raw_text: '테슬 3개월',
+        locale: 'ko',
+      },
+      deps,
+    )
+
+    expect(turn1.status).toBe('clarify')
+    if (turn1.status !== 'clarify') throw new Error('expected clarify')
+    expect(turn1.questions[0]!.slot).toBe('entity_id')
+    expect(turn1.questions[0]!.options.map((o) => o.id)).toEqual(['TSLA'])
+
+    // Step 2: User picks TSLA chip → horizon was already in query text → straight to ready!
+    const turn2 = await runLeagueGateway(
+      {
+        viewer: US_VIEWER,
+        category_id: 'stocks',
+        raw_text: '테슬 3개월',
+        answered_slots: { entity_id: 'TSLA' },
+        clarify_round: 1,
+        locale: 'ko',
+      },
+      deps,
+    )
+
+    expect(turn2.status).toBe('ready')
+    if (turn2.status !== 'ready') throw new Error('expected ready')
+    expect(turn2.round.instrument).toBe('TSLA')
+    expect(turn2.round.horizon).toBe('3m')
+    expect(chargeSpy).toHaveBeenCalledTimes(1)
   })
 })
