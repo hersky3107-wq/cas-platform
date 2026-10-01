@@ -182,6 +182,9 @@ function localizeQuestion(q: ClarifyingQuestion, pack: ReturnType<typeof getLeag
 }
 
 function promptFor(key: string, pack: ReturnType<typeof getLeagueUiPack>, locale: string): string {
+  if (key === 'league.gateway.clarify.horizon.stocks') {
+    return locale.startsWith('ko') ? '기간 선택' : 'Select horizon'
+  }
   if (key === 'league.gateway.clarify.horizon') return pack.gateway.askHorizon
   if (key === 'league.gateway.clarify.entity') return pack.gateway.askEntity
   if (key === 'league.gateway.clarify.confirm_entity') return pack.gateway.askConfirm
