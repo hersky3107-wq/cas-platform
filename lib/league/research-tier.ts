@@ -38,7 +38,7 @@ export type TierDecision = {
 const EQUITY_CATEGORIES = new Set(['stock', 'etf_index'])
 const CRYPTO_CATEGORIES = new Set(['crypto_spot', 'crypto_perps', 'memecoin'])
 
-function equityTier(consensus: ConsensusSnapshot, anchorClose: number | null): TierDecision | null {
+function equityTier(category: string, consensus: ConsensusSnapshot, anchorClose: number | null): TierDecision | null {
   if ('unavailable' in consensus.priceTarget) return null
   const t = consensus.priceTarget
   const scale = anchorClose ?? t.current
@@ -64,6 +64,12 @@ function equityTier(consensus: ConsensusSnapshot, anchorClose: number | null): T
     return { tier: 'high', signal: `equity target dispersion ${dispersionPct.toFixed(1)}% >= ${EQUITY_DISPERSION_HIGH_MIN_PCT}%` }
   }
   if (dispersionPct < EQUITY_DISPERSION_TIGHT_MAX_PCT) {
+    if (category === 'stock') {
+      return {
+        tier: 'normal',
+        signal: `equity target dispersion ${dispersionPct.toFixed(1)}% < ${EQUITY_DISPERSION_TIGHT_MAX_PCT}% — single-stock floor is normal (news/catalysts still searched)`,
+      }
+    }
     return { tier: 'tight', signal: `equity target dispersion ${dispersionPct.toFixed(1)}% < ${EQUITY_DISPERSION_TIGHT_MAX_PCT}%` }
   }
   return { tier: 'normal', signal: `equity target dispersion ${dispersionPct.toFixed(1)}% in [${EQUITY_DISPERSION_TIGHT_MAX_PCT}, ${EQUITY_DISPERSION_HIGH_MIN_PCT})` }
@@ -100,7 +106,7 @@ export function decideResearchTier(args: {
   const { category, consensus, crypto, closes, anchorClose } = args
 
   if (EQUITY_CATEGORIES.has(category) && consensus) {
-    const d = equityTier(consensus, anchorClose)
+    const d = equityTier(category, consensus, anchorClose)
     if (d) return d
   }
   if (CRYPTO_CATEGORIES.has(category) && crypto) {

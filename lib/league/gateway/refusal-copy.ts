@@ -113,6 +113,10 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     ko: '한국 주식은 종목 칩으로 엽니다. 지금은 준비 중입니다.',
     en: 'Korean stocks open from the chip grid. That grid is not ready yet.',
   },
+  non_us_listing: {
+    ko: '해외 현지 상장 종목은 아직 열 수 없습니다. 미국 상장 ADR(예: TSM, TM, BABA)로 입력하거나, 한국 종목은 한국 레인을 이용해 주세요.',
+    en: 'Local non-US listings cannot be opened yet. Enter the US-listed ADR (e.g. TSM, TM, BABA), or use the Korea lane for Korean stocks.',
+  },
   prompt_not_available: {
     ko: '이 지역에서는 직접 입력으로 이 카테고리 질문을 열 수 없습니다. 아래 종목 칩을 이용해 주세요.',
     en: 'Typed questions are not available for this category in your region. Please use the instrument chips.',

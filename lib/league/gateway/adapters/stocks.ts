@@ -6,7 +6,10 @@ import {
   buildStockRankedRoundInput,
   decodeStockInstrument,
   encodeStockInstrument,
+  equitySearchQuery,
   mentionsKoreaListing,
+  mentionsLocalNonUsListing,
+  stockAugmentationQueries,
   stockQuoteSymbol,
 } from './stock-catalog'
 import { searchUsListings, stockUniverseDataEnabled, type UsListingSearchResult } from './stock-search'
@@ -31,13 +34,13 @@ import type {
  *
  * AAPL / NVDA / TSLA still resolve from the synonym table onto the catalog
  * tickers (plain instrument ids, same proposition as the old chips). Any
- * other US listing resolves to STOCK:{exchange}:{symbol} once
- * /symbol_search is switched on. Korean listings are refused toward the
- * Korea lane and are never opened here.
+ * other US listing or ADR resolves to STOCK:{exchange}:{symbol} through
+ * /symbol_search. Korean listings are refused toward the Korea lane; local
+ * non-US listings (7203 / 2330 / 0700) are refused toward the ADR.
  *
- * Quote + series + analyst stay on the existing price-series packet for
- * catalog tickers. STOCK: rows do not call Twelve Data until
- * TWELVE_DATA_STOCK_UNIVERSE=ultra.
+ * Catalog tickers and STOCK: rows share one Ultra packet: quote + series
+ * (with volume) + analyst pack + statistics, plus always-run Perplexity
+ * seeds. TWELVE_DATA_STOCK_UNIVERSE=off stubs STOCK: rows only.
  */
 
 const STOCK_SYNONYMS: Record<string, string> = {
@@ -62,26 +65,13 @@ const HORIZON_QUESTION: ClarifyingQuestion = {
 const STOCKS_REFUSALS: readonly RefusalCode[] = [
   'unsupported_entity',
   'korea_listing',
+  'non_us_listing',
   'ambiguous_entity',
   'missing_slot',
   'horizon_incompatible',
   'jurisdiction_blocked',
   'low_confidence',
 ]
-
-const SEARCH_STOP = new Set([
-  'will',
-  'close',
-  'higher',
-  'stock',
-  'stocks',
-  'the',
-  'and',
-  'tomorrow',
-  'today',
-  'up',
-  'down',
-])
 
 function refuse(code: RefusalCode, safe_facts?: Record<string, string>): Refusal {
   return { code, message_i18n_key: refusalMessageKey(code), ...(safe_facts ? { safe_facts } : {}) }
@@ -138,18 +128,6 @@ function prefixHits(raw: string): string[] {
   ]
 }
 
-function searchQuery(raw: string): string | null {
-  const latin = raw.match(/[A-Za-z][A-Za-z0-9.]{1,20}/g)
-  if (!latin) return null
-  const ranked = [...latin].sort((a, b) => b.length - a.length)
-  for (const token of ranked) {
-    if (token.length < 2) continue
-    if (SEARCH_STOP.has(token.toLowerCase())) continue
-    return token
-  }
-  return null
-}
-
 function chipQuestion(ids: string[]): ClarifyingQuestion {
   return {
     slot: 'entity_id',
@@ -176,6 +154,9 @@ export function createStocksAdapter(
       if (mentionsKoreaListing(raw)) {
         return { ok: false, refuse: refuse('korea_listing') }
       }
+      if (mentionsLocalNonUsListing(raw)) {
+        return { ok: false, refuse: refuse('non_us_listing') }
+      }
 
       const exact = synonymHits(raw)
       if (exact.length === 1) {
@@ -190,13 +171,16 @@ export function createStocksAdapter(
         return { ok: false, need: chipQuestion(prefixes) }
       }
 
-      const query = searchQuery(raw)
+      const query = equitySearchQuery(raw)
       if (query) {
         const found = await search(query)
         if (found.koreaOnly) return { ok: false, refuse: refuse('korea_listing') }
+        if (found.nonUsOnly) return { ok: false, refuse: refuse('non_us_listing') }
         const us = found.hits.filter((hit) => !isPoisonTicker(hit.symbol))
-        if (us.length === 1) {
-          const hit = us[0]!
+        const exact = us.filter((hit) => hit.symbol === query.toUpperCase())
+        const single = us.length === 1 ? us[0] : exact.length === 1 ? exact[0] : undefined
+        if (single) {
+          const hit = single
           if (catalog.includes(hit.symbol)) {
             return { ok: true, entity_id: hit.symbol, entity_kind: 'ticker', label: hit.symbol }
           }
@@ -306,8 +290,7 @@ export function createStocksAdapter(
 
     async buildPacket(_slots: NormalizeSlots, ctx: PacketBuildContext): Promise<CategoryPacket> {
       const listing = decodeStockInstrument(ctx.round.instrument)
-      if (!listing) return buildPriceSeriesPacket(ctx, io)
-      if (!stockUniverseDataEnabled()) {
+      if (listing && !stockUniverseDataEnabled()) {
         return {
           injection: null,
           researchCacheKey: `stock-universe-off|${ctx.round.instrument}`,
@@ -328,10 +311,18 @@ export function createStocksAdapter(
           relatedCreditsSpent: 0,
         }
       }
-      return buildPriceSeriesPacket(
-        { ...ctx, round: { ...ctx.round, instrument: listing.symbol } },
-        io,
-      )
+      const augmented: PriceSeriesIo = {
+        ...io,
+        getResearchPacket: (args) =>
+          io.getResearchPacket({
+            ...args,
+            extraQueries: stockAugmentationQueries({
+              instrument: args.round.instrument,
+              category: args.round.category,
+            }),
+          }),
+      }
+      return buildPriceSeriesPacket(ctx, augmented)
     },
   }
 }

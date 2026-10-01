@@ -66,6 +66,7 @@ export type RefusalCode =
   | 'unsupported_entity'
   | 'korea_listing'
   | 'korea_stock_lane'
+  | 'non_us_listing'
   | 'horizon_incompatible'
   | 'price_or_earnings'
   | 'vague_claim'

@@ -34,11 +34,17 @@ const flatCloses = Array.from({ length: 30 }, () => 100)
 const wildCloses = Array.from({ length: 30 }, (_, i) => (i % 2 === 0 ? 100 : 105))
 
 describe('research tier — dispersion-triggered budget (v2 D)', () => {
-  it('equity: tight below the dispersion floor', () => {
+  it('equity: index ETFs go tight below the dispersion floor', () => {
     // (105-95)/100 = 10% < 15%
-    const d = decideResearchTier({ category: 'stock', consensus: consensusWith(105, 95), crypto: null, closes: [], anchorClose: 100 })
+    const d = decideResearchTier({ category: 'etf_index', consensus: consensusWith(105, 95), crypto: null, closes: [], anchorClose: 100 })
     expect(d.tier).toBe('tight')
     expect(d.signal).toContain(`${EQUITY_DISPERSION_TIGHT_MAX_PCT}%`)
+  })
+
+  it('equity: single stocks floor at normal even when targets are tight', () => {
+    const d = decideResearchTier({ category: 'stock', consensus: consensusWith(105, 95), crypto: null, closes: [], anchorClose: 100 })
+    expect(d.tier).toBe('normal')
+    expect(d.signal).toMatch(/single-stock floor/)
   })
 
   it('equity: high above the dispersion ceiling', () => {

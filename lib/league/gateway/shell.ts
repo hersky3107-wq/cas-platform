@@ -101,7 +101,8 @@ function entityRefusalIsImmediate(code: RefusalCode): boolean {
     code === 'no_result_source' ||
     code === 'specific_property' ||
     code === 'brokerage_advice' ||
-    code === 'korea_listing'
+    code === 'korea_listing' ||
+    code === 'non_us_listing'
   )
 }
 

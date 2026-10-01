@@ -136,6 +136,44 @@ export function crowRetryInstruction(): string {
   ].join(' ')
 }
 
+function rsi14(closes: readonly number[]): number | null {
+  if (closes.length < 15) return null
+  const window = closes.slice(-15)
+  let gain = 0
+  let loss = 0
+  for (let i = 1; i < window.length; i++) {
+    const d = window[i]! - window[i - 1]!
+    if (d >= 0) gain += d
+    else loss -= d
+  }
+  if (gain + loss === 0) return 50
+  if (loss === 0) return 100
+  const rs = gain / 14 / (loss / 14)
+  return 100 - 100 / (1 + rs)
+}
+
+/** Run length, stretch vs SMA50, distance from the 52w high, RSI14. */
+export function overheatingLines(closes: readonly number[]): string[] {
+  const out: string[] = []
+  const last = closes[closes.length - 1]
+  if (last == null || !Number.isFinite(last)) return out
+  if (closes.length >= 21) {
+    const base = closes[closes.length - 21]!
+    out.push(`- 20-session change: ${(((last - base) / base) * 100).toFixed(2)}%`)
+  }
+  if (closes.length >= 50) {
+    const sma50 = closes.slice(-50).reduce((s, c) => s + c, 0) / 50
+    out.push(`- vs SMA50: ${(((last - sma50) / sma50) * 100).toFixed(2)}%`)
+  }
+  if (closes.length >= 252) {
+    const high = Math.max(...closes.slice(-252))
+    out.push(`- from 52w high: ${(((last - high) / high) * 100).toFixed(2)}%`)
+  }
+  const rsi = rsi14(closes)
+  if (rsi != null) out.push(`- RSI14: ${rsi.toFixed(0)} (>70 stretched, <30 washed out)`)
+  return out
+}
+
 /** Dates and closes only. No invented macro. */
 export function formatFinanceCrowBrief(
   series: { bars: HistorySeriesBar[]; latestClose?: number | null } | null | undefined,
@@ -159,6 +197,8 @@ export function formatFinanceCrowBrief(
     `${first.date} ${first.close} → ${last.date} ${last.close} (${change.toFixed(2)}% over ${bars.length} closes).`,
   ]
   if (tailChange != null) lines.push(`Last ${tail.length} closes: ${tailChange.toFixed(2)}%.`)
+  const heat = overheatingLines(bars.map((b) => b.close))
+  if (heat.length) lines.push('OVERHEATING GAUGES (computed from these closes only):', ...heat)
   lines.push(
     'Crowd euphoria is real only when this path is a steep run. Mean-reversion is the ignored downside of that run, not a required fade. A flat path is not a reversal.',
   )

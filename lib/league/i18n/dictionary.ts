@@ -772,6 +772,7 @@ export type LeagueUiPack = {
       prompt_not_available: string
       korea_stock_lane: string
       korea_listing: string
+      non_us_listing: string
       registered_country_missing: string
       country_mismatch: string
       generic: string
@@ -1367,6 +1368,7 @@ const en: LeagueUiPack = {
       prompt_not_available: 'Typed questions are not available for this category in your region. Please use the instrument chips.',
       korea_stock_lane: 'Korean stocks open from the chip grid. That grid is not ready yet.',
       korea_listing: 'Korean listings open only for a Korean account or a Korea connection.',
+      non_us_listing: 'Local non-US listings cannot be opened yet. Enter the US-listed ADR (e.g. TSM, TM, BABA), or use the Korea lane for Korean stocks.',
       registered_country_missing: 'Your account has no registered country. Register your country of residence, then try again.',
       country_mismatch:
         'Your registered country and connection country differ. The stricter of the two applies; the league stays available.',
@@ -1939,6 +1941,7 @@ const ko: LeagueUiPack = {
       prompt_not_available: '이 지역에서는 직접 입력으로 이 카테고리 질문을 열 수 없습니다. 아래 종목 칩을 이용해 주세요.',
       korea_stock_lane: '한국 주식은 종목 칩으로 엽니다. 지금은 준비 중입니다.',
       korea_listing: '한국 상장 종목은 한국 계정 또는 한국 접속에서만 열립니다.',
+      non_us_listing: '해외 현지 상장 종목은 아직 열 수 없습니다. 미국 상장 ADR(예: TSM, TM, BABA)로 입력하거나, 한국 종목은 한국 레인을 이용해 주세요.',
       registered_country_missing: '등록 국가가 없습니다. 계정에 거주 국가를 등록한 뒤에 이용해 주세요.',
       country_mismatch: '등록 국가와 접속 국가가 다릅니다. 두 지역 중 더 엄격한 기준을 적용하며, 리그 이용은 가능합니다.',
       generic: '이 질문은 열 수 없습니다. 다시 입력해 주세요.',
@@ -2508,6 +2511,7 @@ const ja: LeagueUiPack = {
       prompt_not_available: 'この地域ではこのカテゴリへの入力質問は開けません。下のチップを使ってください。',
       korea_stock_lane: '韓国株は銘柄チップから開きます。チップは準備中です。',
       korea_listing: '韓国上場銘柄は韓国アカウントまたは韓国からの接続でのみ開きます。',
+      non_us_listing: '米国外の現地上場銘柄はまだ開けません。米国上場ADR（例: TSM、TM、BABA）で入力するか、韓国株は韓国レーンをご利用ください。',
       registered_country_missing: '登録国がありません。居住国を登録してからご利用ください。',
       country_mismatch: '登録国と接続国が異なります。より厳しい方を適用します。リーグ自体は利用できます。',
       generic: 'この質問は開けません。書き直してください。',
@@ -3073,6 +3077,7 @@ const zhTW: LeagueUiPack = {
       prompt_not_available: '此地區無法以輸入方式開啟此類別。請使用下方籌碼。',
       korea_stock_lane: '韓國股票從籌碼開啟。籌碼尚未就緒。',
       korea_listing: '韓國上市股票僅限韓國帳號或韓國連線開啟。',
+      non_us_listing: '美國以外的當地上市股票尚無法開啟。請輸入美國上市ADR（例：TSM、TM、BABA），韓國股票請使用韓國通道。',
       registered_country_missing: '尚未登記國家。請先登記居住國家再使用。',
       country_mismatch: '登記國家與連線國家不同。將套用較嚴格的一方；聯盟仍可使用。',
       generic: '這個問題無法開啟。請再試一次。',
@@ -3655,6 +3660,7 @@ const fr: LeagueUiPack = {
         'Les questions tapées ne sont pas disponibles pour cette cat\u00e9gorie dans votre région. Utilisez les jetons.',
       korea_stock_lane: 'Les actions coréennes s’ouvrent depuis la grille. Cette grille n’est pas prête.',
       korea_listing: 'Les cotations coréennes s’ouvrent seulement avec un compte coréen ou une connexion depuis la Corée.',
+      non_us_listing: 'Les cotations locales hors États-Unis ne s’ouvrent pas encore. Saisissez l’ADR coté aux États-Unis (ex. TSM, TM, BABA), ou utilisez la voie Corée pour les actions coréennes.',
       registered_country_missing: 'Aucun pays n\u2019est enregistré. Enregistrez votre pays de résidence, puis réessayez.',
       country_mismatch:
         'Votre pays enregistré et votre pays de connexion diffèrent. Le plus strict des deux s\u2019applique ; la ligue reste disponible.',
@@ -4238,6 +4244,7 @@ const es: LeagueUiPack = {
         'En tu región no se pueden abrir preguntas escritas en esta categor\u00eda. Usa las fichas de abajo.',
       korea_stock_lane: 'Las acciones coreanas se abren desde la cuadrícula. Esa cuadrícula aún no está lista.',
       korea_listing: 'Las cotizaciones coreanas se abren solo con una cuenta coreana o una conexión desde Corea.',
+      non_us_listing: 'Las cotizaciones locales fuera de EE. UU. aún no se pueden abrir. Escribe el ADR que cotiza en EE. UU. (p. ej., TSM, TM, BABA), o usa el carril de Corea para acciones coreanas.',
       registered_country_missing: 'No hay país registrado. Registra tu país de residencia y vuelve a intentarlo.',
       country_mismatch:
         'Tu país registrado y el de conexión no coinciden. Se aplica el más estricto de los dos; la liga sigue disponible.',
@@ -4808,6 +4815,7 @@ const ar: LeagueUiPack = {
       prompt_not_available: 'لا يمكن فتح أسئلة مكتوبة لهذه الفئة في منطقتك. استخدم الرقائق أدناه.',
       korea_stock_lane: 'أسهم كوريا تُفتح من الشبكة. الشبكة غير جاهزة بعد.',
       korea_listing: 'إدراجات كوريا تُفتح فقط بحساب كوري أو اتصال من كوريا.',
+      non_us_listing: 'لا يمكن فتح الإدراجات المحلية خارج الولايات المتحدة بعد. أدخل شهادة الإيداع الأمريكية (مثل TSM وTM وBABA)، أو استخدم مسار كوريا للأسهم الكورية.',
       registered_country_missing: 'لا يوجد بلد مسجَّل. سجّل بلد إقامتك ثم أعد المحاولة.',
       country_mismatch: 'بلد التسجيل وبلد الاتصال مختلفان. يُطبَّق الأشد منهما؛ الدوري يبقى متاحًا.',
       generic: 'تعذر فتح هذا السؤال. أعد المحاولة.',
@@ -5396,6 +5404,7 @@ const pt: LeagueUiPack = {
         'Nesta região não é possível abrir perguntas digitadas nesta categoria. Use as fichas abaixo.',
       korea_stock_lane: 'Ações coreanas abrem na grade de fichas. Essa grade ainda não está pronta.',
       korea_listing: 'Listagens coreanas abrem só com uma conta coreana ou uma conexão da Coreia.',
+      non_us_listing: 'Listagens locais fora dos EUA ainda não podem ser abertas. Digite o ADR listado nos EUA (ex.: TSM, TM, BABA), ou use a faixa da Coreia para ações coreanas.',
       registered_country_missing: 'Não há país registrado. Registre o país de residência e tente de novo.',
       country_mismatch:
         'O país registrado e o país da conexão diferem. Vale o mais restritivo dos dois; a liga continua disponível.',

@@ -143,6 +143,7 @@ describe('stocks adapter — jurisdiction, refusal taxonomy, grade sources', () 
     expect(taxonomy.map((t) => t.code)).toEqual([
       'unsupported_entity',
       'korea_listing',
+      'non_us_listing',
       'ambiguous_entity',
       'missing_slot',
       'horizon_incompatible',
@@ -195,7 +196,7 @@ describe('stocks adapter — slots from a persisted round (orchestrator re-runs)
   })
 })
 
-describe('stocks adapter — symbol search is wired and inert until Ultra', () => {
+describe('stocks adapter — symbol search (Ultra, on by default)', () => {
   it('asks the caller to pick when search returns more than one US listing', async () => {
     const searching = createStocksAdapter(DEAD_IO, async () => ({
       koreaOnly: false,
@@ -214,9 +215,9 @@ describe('stocks adapter — symbol search is wired and inert until Ultra', () =
     }
   })
 
-  it('does not call Twelve Data for a STOCK: packet until the Ultra flag is on', async () => {
+  it('does not call Twelve Data for a STOCK: packet when the universe flag is off', async () => {
     const prev = process.env.TWELVE_DATA_STOCK_UNIVERSE
-    delete process.env.TWELVE_DATA_STOCK_UNIVERSE
+    process.env.TWELVE_DATA_STOCK_UNIVERSE = 'off'
     const round = adapter.composeProposition(
       slots({ entity_id: 'STOCK:NASDAQ:MSFT', entity_label: 'Microsoft' }),
       new Date('2026-08-28T09:00:00.000Z'),
@@ -235,5 +236,129 @@ describe('stocks adapter — symbol search is wired and inert until Ultra', () =
     const r = await searching.resolveEntity('Hyundai Motor', 'en')
     expect(r.ok).toBe(false)
     if (!r.ok && 'refuse' in r) expect(r.refuse.code).toBe('korea_listing')
+  })
+
+  it('opens a single US-tape ADR hit as STOCK:{exchange}:{symbol}', async () => {
+    const searching = createStocksAdapter(DEAD_IO, async (q) => {
+      expect(q).toBe('TSM')
+      return {
+        koreaOnly: false,
+        hits: [
+          { symbol: 'TSM', exchange: 'NYSE', name: 'Taiwan Semiconductor Manufacturing Company Limited', instrumentType: 'American Depositary Receipt' },
+          { symbol: 'TSMX', exchange: 'NASDAQ', name: 'Other', instrumentType: 'Common Stock' },
+        ],
+      }
+    })
+    expect(await searching.resolveEntity('대만반도체 다음주 오를까', 'ko')).toMatchObject({
+      ok: true,
+      entity_id: 'STOCK:NYSE:TSM',
+    })
+  })
+
+  it('refuses local non-US listings toward the ADR (typed code or search-only-local)', async () => {
+    for (const raw of ['7203', '2330.TW', '0700.HK', '2330']) {
+      const r = await adapter.resolveEntity(raw, 'en')
+      expect(r.ok, raw).toBe(false)
+      if (!r.ok && 'refuse' in r) expect(r.refuse.code, raw).toBe('non_us_listing')
+      else throw new Error(`expected refusal for ${raw}`)
+    }
+    const localOnly = createStocksAdapter(DEAD_IO, async () => ({ koreaOnly: false, hits: [], nonUsOnly: true }))
+    const r = await localOnly.resolveEntity('Hon Hai Precision', 'en')
+    expect(r.ok).toBe(false)
+    if (!r.ok && 'refuse' in r) expect(r.refuse.code).toBe('non_us_listing')
+    expect(refusalMessageForKey('league.gateway.refusal.non_us_listing', 'ko')).toContain('ADR')
+  })
+})
+
+describe('stocks adapter — Ultra packet (catalog + STOCK: share one path)', () => {
+  type ResearchArgs = Parameters<PriceSeriesIo['getResearchPacket']>[0]
+
+  function recordingIo(log: { data: string[]; consensus: Array<[string, string | undefined]>; research: ResearchArgs[] }): PriceSeriesIo {
+    return {
+      fetchDataPacket: async (instrument) => {
+        log.data.push(instrument)
+        const exchange = instrument.startsWith('STOCK:') ? instrument.split(':')[1] : undefined
+        const symbol = instrument.startsWith('STOCK:') ? instrument.split(':')[2]! : instrument
+        const series = Array.from({ length: 60 }, (_, i) => ({
+          date: `2026-07-${String((i % 28) + 1).padStart(2, '0')}`,
+          close: 100 + i,
+          volume: 1_000_000 + i * 1000,
+        }))
+        return { available: true, instrument, symbol, ...(exchange ? { exchange } : {}), latestClose: 159, asOf: '2026-08-27', series }
+      },
+      fetchMarketConsensus: async (symbol, exchange) => {
+        log.consensus.push([symbol, exchange])
+        return {
+          fetchedAt: '2026-08-28T00:00:00.000Z',
+          priceTarget: { high: 250, median: 200, low: 150, average: 201, current: 159, currency: 'USD' },
+          recommendations: { strongBuy: 10, buy: 20, hold: 5, sell: 1, strongSell: 0 },
+          lastEarnings: { date: '2026-07-30', actual: 1.2, estimate: 1.1, surprisePct: 9.1 },
+          latestRating: { date: '2026-08-10', firm: 'Firm', rating: 'Buy' },
+          epsTrend: { period: 'current_quarter', currentEstimate: 1.3 },
+          statistics: { pe: 45.2, pb: 30.1, revenueTtm: 130_000_000_000, marketCap: 4_000_000_000_000 },
+        }
+      },
+      fetchCryptoContext: async () => {
+        throw new Error('no crypto for stocks')
+      },
+      getResearchPacket: async (args) => {
+        log.research.push(args)
+        return {
+          available: false,
+          cached: false,
+          cacheKey: 'k',
+          directorModel: null,
+          queries: [],
+          findings: [],
+          promptBlock: '',
+          costUsd: 0,
+          tier: args.tier ?? 'normal',
+          synthesis: null,
+        }
+      },
+      fetchRelatedInstruments: async () => null,
+      fetchSlowData: async () => null,
+    }
+  }
+
+  it('NVDA (catalog) gets quote/series/volume + the analyst pack + statistics + Perplexity seeds', async () => {
+    const log = { data: [] as string[], consensus: [] as Array<[string, string | undefined]>, research: [] as ResearchArgs[] }
+    const live = createStocksAdapter(recordingIo(log), async () => ({ hits: [], koreaOnly: false }))
+    const round = live.composeProposition(slots({ entity_id: 'NVDA', entity_label: 'NVDA' }), new Date('2026-08-28T09:00:00.000Z'))
+    const pkt = await live.buildPacket(slots({ entity_id: 'NVDA' }), { round: round as PacketRound, costCapUsd: 1 })
+    expect(log.data).toEqual(['NVDA'])
+    expect(log.consensus).toEqual([['NVDA', undefined]])
+    const seeds = (log.research[0]?.extraQueries ?? []).map((q) => q.q).join('\n')
+    expect(seeds).toMatch(/NVDA stock latest news and catalysts/)
+    expect(seeds).toMatch(/earnings call/)
+    expect(seeds).toMatch(/overbought or oversold/)
+    expect(seeds).toMatch(/upgrades downgrades/)
+    expect(seeds).toMatch(/서학개미/)
+    expect(pkt.injection).toMatch(/price target: hi 250\.00 \/ median 200\.00 \/ lo 150\.00/)
+    expect(pkt.injection).toMatch(/statistics: trailing PE 45\.2 \/ P\/B 30\.1 \/ revenue TTM 130\.00B \/ market cap 4\.00T/)
+    expect(pkt.injection).toMatch(/session volume: last 1\.1M/)
+    expect(pkt.injection).toMatch(/SMA50/)
+    expect(pkt.injection).toMatch(/BASE RATE/)
+    expect(pkt.injection).toMatch(/do NOT quote these target/)
+  })
+
+  it('STOCK:NYSE:TSM fetches with its exchange preserved through quote and analyst calls', async () => {
+    const prev = process.env.TWELVE_DATA_STOCK_UNIVERSE
+    process.env.TWELVE_DATA_STOCK_UNIVERSE = 'ultra'
+    const log = { data: [] as string[], consensus: [] as Array<[string, string | undefined]>, research: [] as ResearchArgs[] }
+    const live = createStocksAdapter(recordingIo(log), async () => ({ hits: [], koreaOnly: false }))
+    const round = live.composeProposition(
+      slots({ entity_id: 'STOCK:NYSE:TSM', entity_label: 'Taiwan Semiconductor' }),
+      new Date('2026-08-28T09:00:00.000Z'),
+    )
+    const pkt = await live.buildPacket(slots({ entity_id: 'STOCK:NYSE:TSM' }), { round: round as PacketRound, costCapUsd: 1 })
+    expect(log.data).toEqual(['STOCK:NYSE:TSM'])
+    expect(log.consensus).toEqual([['TSM', 'NYSE']])
+    expect(log.research[0]?.round.instrument).toBe('STOCK:NYSE:TSM')
+    expect((log.research[0]?.extraQueries ?? [])[0]?.q).toMatch(/^TSM stock latest news/)
+    expect(pkt.dataPacket.available).toBe(true)
+    expect(pkt.injection).toMatch(/CONSENSUS/)
+    if (prev === undefined) delete process.env.TWELVE_DATA_STOCK_UNIVERSE
+    else process.env.TWELVE_DATA_STOCK_UNIVERSE = prev
   })
 })

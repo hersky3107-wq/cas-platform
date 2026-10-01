@@ -304,11 +304,10 @@ async function resolveHistorySeries(
   if (provided && provided.bars.length > 0) return provided
   const listing = decodeStockInstrument(instrument)
   if (listing && !stockUniverseDataEnabled()) return null
-  const symbol = listing?.symbol ?? instrument
-  const packet = await fetchDataPacket(symbol)
+  const packet = await fetchDataPacket(instrument)
   if (!packet.available || !packet.series?.length) return null
   return {
-    bars: packet.series,
+    bars: packet.series.map((b) => ({ date: b.date, close: b.close })),
     latestClose: packet.latestClose ?? null,
     asOf: packet.asOf ?? null,
   }

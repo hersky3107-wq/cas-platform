@@ -90,6 +90,9 @@ export function buildPacketInventory(input: PacketInventoryInput): string {
     lines.push(snapLine('consensus.last_earnings', input.consensus.lastEarnings) ?? 'consensus.last_earnings: n/a')
     lines.push(snapLine('consensus.latest_rating', input.consensus.latestRating) ?? 'consensus.latest_rating: n/a')
     lines.push(snapLine('consensus.eps_trend', input.consensus.epsTrend) ?? 'consensus.eps_trend: n/a')
+    if (input.consensus.statistics) {
+      lines.push(snapLine('consensus.statistics', input.consensus.statistics) ?? 'consensus.statistics: n/a')
+    }
   }
   if (input.crypto) {
     lines.push(snapLine('crypto.funding', input.crypto.funding) ?? 'crypto.funding: n/a')
@@ -341,6 +344,24 @@ export function parseStage2Coverage(rawText: string): DirectorCoverage[] | { err
   }
   if (!coverage.length) return { error: 'director stage 2 produced zero coverage rows' }
   return coverage
+}
+
+/** Director picks first, then caller extras not already asked (case-insensitive). */
+export function mergeExtraQueries(
+  base: readonly DirectorQuery[],
+  extra: readonly DirectorQuery[] | undefined,
+): DirectorQuery[] {
+  const out = [...base]
+  if (!extra?.length) return out
+  const seen = new Set(base.map((q) => q.q.trim().toLowerCase()))
+  for (const q of extra) {
+    const text = q.q.trim()
+    const key = text.toLowerCase()
+    if (!text || seen.has(key)) continue
+    seen.add(key)
+    out.push({ q: text, lang: q.lang || 'en' })
+  }
+  return out
 }
 
 /**

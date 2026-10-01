@@ -15,6 +15,7 @@ import {
   buildStage1Prompt,
   buildStage2Prompt,
   isAdmissibleFinding,
+  mergeExtraQueries,
   parseStage1Needs,
   parseStage2Coverage,
   selectQueriesFromCoverage,
@@ -400,6 +401,12 @@ export async function getResearchPacket(args: {
    * for the high-tier lineup/news budget. Other categories omit it.
    */
   forcedQueries?: readonly { q: string; lang: string }[]
+  /**
+   * Always-run queries appended after the director's picks (deduped). They
+   * fire even when the director marks every need present — stocks use this
+   * for news / catalysts / earnings tone / positioning every round.
+   */
+  extraQueries?: readonly { q: string; lang: string }[]
 }): Promise<ResearchPacket> {
   const { round, budgetRemainingUsd } = args
   const tier: ResearchTier = args.tier ?? 'normal'
@@ -407,7 +414,8 @@ export async function getResearchPacket(args: {
   const forcedTag = args.forcedQueries?.length
     ? `|fq:${args.forcedQueries.map((q) => q.q).join('~').slice(0, 80)}`
     : ''
-  const cacheKey = `${researchCacheKey(round.instrument, round.horizon, new Date(), tier, languages)}${forcedTag}`
+  const extraTag = args.extraQueries?.length ? `|eq${args.extraQueries.length}` : ''
+  const cacheKey = `${researchCacheKey(round.instrument, round.horizon, new Date(), tier, languages)}${forcedTag}${extraTag}`
 
   const miss: ResearchPacket = {
     available: false,
@@ -439,12 +447,18 @@ export async function getResearchPacket(args: {
   let queryList: Array<{ q: string; lang: string }>
   let directorModel: string | null = DIRECTOR_MODEL
   if (args.forcedQueries && args.forcedQueries.length > 0) {
-    queryList = args.forcedQueries.slice(0, 6).map((q) => ({ q: q.q, lang: q.lang }))
+    queryList = mergeExtraQueries(
+      args.forcedQueries.slice(0, 6).map((q) => ({ q: q.q, lang: q.lang })),
+      args.extraQueries,
+    )
     directorModel = null
   } else {
     const director = await runDirector(round, tier, languages, args.inventory)
     costUsd = director.costUsd
-    if (!director.queries.length) {
+    const extras = mergeExtraQueries([], args.extraQueries)
+    if (!director.queries.length && extras.length) {
+      queryList = extras
+    } else if (!director.queries.length) {
       if (director.allPresent) {
         const packet: ResearchPacket = {
           available: true,
@@ -463,8 +477,9 @@ export async function getResearchPacket(args: {
         return packet
       }
       return { ...miss, costUsd, directorModel: DIRECTOR_MODEL, error: director.error ?? 'no queries' }
+    } else {
+      queryList = mergeExtraQueries(director.queries, args.extraQueries)
     }
-    queryList = director.queries
   }
 
   const findings: ResearchFinding[] = []

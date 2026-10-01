@@ -35,7 +35,7 @@ import type { CategoryPacket, PacketBuildContext, PacketRound } from '../types'
 
 export type PriceSeriesIo = {
   fetchDataPacket(instrument: string): Promise<DataPacket>
-  fetchMarketConsensus(symbol: string): Promise<ConsensusSnapshot>
+  fetchMarketConsensus(symbol: string, exchange?: string): Promise<ConsensusSnapshot>
   fetchCryptoContext(instrument: string): Promise<CryptoSnapshot>
   getResearchPacket(args: {
     round: PacketRound
@@ -43,6 +43,7 @@ export type PriceSeriesIo = {
     tier?: ResearchTier
     languages?: readonly ResearchLang[]
     inventory?: PacketInventoryInput
+    extraQueries?: readonly { q: string; lang: string }[]
   }): Promise<ResearchPacket>
   fetchRelatedInstruments(
     instrument: string,
@@ -124,7 +125,7 @@ export function toClosedBookInput(
 export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceSeriesIo): Promise<CategoryPacket> {
   const round = ctx.round
   // One packet fetch per ROUND (quote + long time_series = 2 Twelve Data
-  // credits). Consensus adds 5 more for equities (throttled to Grow's 55/min; we pace at 48).
+  // credits). The analyst pack adds 6 more for equities (Ultra; paced in market-data).
   const packet = await io.fetchDataPacket(round.instrument)
   // ANCHOR price event — emitted at the exact point the pre-adapter
   // orchestrator persisted it (before the consensus fetch). The shell decides
@@ -138,11 +139,13 @@ export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceS
   }
   // v2 (D): consensus/crypto are fetched BEFORE research so the dispersion
   // signal can set the research budget tier. Twelve Data order within the
-  // 48-credit/min window: quote+series (2) → consensus (5) → related series
+  // per-minute credit window: quote+series (2) → analyst pack (6) → related series
   // (below) → director Stage 1/2. Related no longer overlaps research latency.
   const [consensus, crypto] = await Promise.all([
     packet.available && wantsConsensus(round.category) && packet.symbol
-      ? io.fetchMarketConsensus(packet.symbol)
+      ? packet.exchange
+        ? io.fetchMarketConsensus(packet.symbol, packet.exchange)
+        : io.fetchMarketConsensus(packet.symbol)
       : Promise.resolve(null),
     wantsCryptoContext(round.category) ? io.fetchCryptoContext(round.instrument) : Promise.resolve(null),
   ])

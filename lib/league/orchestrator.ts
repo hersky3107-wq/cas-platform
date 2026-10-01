@@ -15,6 +15,7 @@ import { buildPriceSeriesPacket } from '@/lib/league/gateway/adapters/price-seri
 import { LIVE_PRICE_SERIES_IO } from '@/lib/league/gateway/adapters/price-series-io.server'
 import type { CategoryPacket, PacketBuildContext } from '@/lib/league/gateway/types'
 import { sanitizeRationale } from '@/lib/league/prediction-parse'
+import { scrubAnalystDisclosure, scrubsAnalystDisclosure } from '@/lib/league/analyst-disclosure'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 import { aggregateMagnitude } from '@/lib/league/magnitude'
@@ -714,9 +715,10 @@ async function runOneModel(
     }
   }
 
-  const rationale =
+  const rawRationale =
     sanitizeRationale(answer!.rationale) ??
     sanitizeRationale(raw.text ? raw.text.trim().slice(0, 500) : null)
+  const rationale = scrubsAnalystDisclosure(category) ? scrubAnalystDisclosure(rawRationale) : rawRationale
   // Visible reasoning block (everything before the final answer JSON). Stored
   // for every tier — scout's pre-JSON prose (citations) is raw material too.
   // reasoning_snippet stays the one-line display rationale; this is the full text.

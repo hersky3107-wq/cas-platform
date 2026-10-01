@@ -275,6 +275,10 @@ function sentimentSearchLine(input: SentimentLeagueInput): string {
     }
     return base
   }
+  const key = input.category.trim().toLowerCase()
+  if (key === 'stock' || key === 'stocks') {
+    return 'For this stock: search the latest company news headlines, earnings-reaction chatter, product/regulatory rumors, and retail buzz (Reddit, StockTwits, X, 종토방/서학개미). Judge where the crowd mood leans. No charts, no price tape, no analyst targets.'
+  }
   return 'Judge web-visible crowd sentiment only. No charts, no price tape, no packet macro.'
 }
 

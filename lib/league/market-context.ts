@@ -3,10 +3,13 @@ import 'server-only'
 import { twelveDataGet } from './market-data'
 import type { ConsensusSnapshot, CryptoSnapshot } from './closed-book-packet'
 import { binancePerpSymbol } from './memecoin-parse'
+import { parseTwelveDataStatistics } from './stock-statistics-parse'
 
 /**
  * Extra numeric context for the closed-book packet. NO AI CALLS.
- * Twelve Data consensus: 5 credits (Basic endpoints confirmed live).
+ * Twelve Data analyst pack (Ultra): price_target, recommendations,
+ * analyst_ratings/light, eps_trend, earnings, statistics — packet-only
+ * model inputs, never rendered on the card.
  * Crypto: Binance + Deribit public, $0, no key.
  */
 
@@ -17,14 +20,16 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-export async function fetchMarketConsensus(symbol: string): Promise<ConsensusSnapshot> {
+export async function fetchMarketConsensus(symbol: string, exchange?: string): Promise<ConsensusSnapshot> {
   const fetchedAt = new Date().toISOString()
-  const [targetRes, recRes, ratingsRes, epsRes, earnRes] = await Promise.all([
-    twelveDataGet('price_target', { symbol }),
-    twelveDataGet('recommendations', { symbol }),
-    twelveDataGet('analyst_ratings/light', { symbol }),
-    twelveDataGet('eps_trend', { symbol }),
-    twelveDataGet('earnings', { symbol }),
+  const params: Record<string, string> = exchange ? { symbol, exchange } : { symbol }
+  const [targetRes, recRes, ratingsRes, epsRes, earnRes, statsRes] = await Promise.all([
+    twelveDataGet('price_target', params),
+    twelveDataGet('recommendations', params),
+    twelveDataGet('analyst_ratings/light', params),
+    twelveDataGet('eps_trend', params),
+    twelveDataGet('earnings', params),
+    twelveDataGet('statistics', params),
   ])
 
   const priceTarget = !targetRes.ok
@@ -100,7 +105,11 @@ export async function fetchMarketConsensus(symbol: string): Promise<ConsensusSna
         }
       })()
 
-  return { fetchedAt, priceTarget, recommendations, lastEarnings, latestRating, epsTrend }
+  const statistics = !statsRes.ok
+    ? { unavailable: `Twelve Data /statistics: ${statsRes.error}` }
+    : parseTwelveDataStatistics(statsRes.json)
+
+  return { fetchedAt, priceTarget, recommendations, lastEarnings, latestRating, epsTrend, statistics }
 }
 
 function binanceSymbol(instrument: string): string | null {

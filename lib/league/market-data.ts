@@ -14,6 +14,7 @@ import {
 import { PRINTED_SESSION_COUNT, SERIES_OUTPUT_SIZE } from './closed-book-packet'
 import { catalogIdentityError } from './catalog'
 import { identityMismatchMessage, isPoisonTicker, resolvedVendorIdentity, vendorSymbolOf } from './instrument-identity'
+import { decodeStockInstrument } from './gateway/adapters/stock-catalog'
 
 /**
  * AI Prediction League — market-data adapter (Twelve Data).
@@ -31,11 +32,10 @@ import { identityMismatchMessage, isPoisonTicker, resolvedVendorIdentity, vendor
  *
  * Key: process.env.TWELVE_DATA_API_KEY (add to .env.local; full restart after).
  *
- * FREE (Grow) TIER SCOPE: US equities, forex, crypto, commodity spots
- * (XAU/XAG/WTI/XBR), and EOD Western Europe/Canada/India/Brazil equities.
- * Local Asia (KRX / TSE / TWSE / HKEX / SIX) still needs Pro — a Grow key
- * gets "not available on your plan", the packet is marked unavailable, and
- * price-tier models see "no live data" (and may abstain).
+ * LIVE PLAN: Ultra. US equities + ADRs with the analyst endpoints
+ * (price_target / recommendations / eps_trend / earnings / statistics),
+ * forex, crypto, commodity spots. The global stock lane opens US tape only;
+ * local Asia venues are refused upstream, not fetched here.
  * Ambiguous tickers (SPX/NDX) are refused by identity, not trusted on HTTP 200.
  */
 
@@ -43,8 +43,8 @@ const TWELVE_DATA_BASE = 'https://api.twelvedata.com'
 /** Prompt series: enough bars for 3m base rates (see SERIES_OUTPUT_SIZE). Live quote is a separate 1-credit call. */
 const DEFAULT_SERIES_DAYS = SERIES_OUTPUT_SIZE
 const FETCH_TIMEOUT_MS = 15_000
-/** Grow is 55 credits/min. Leave 7 spare so a concurrent live-quote / second generate cannot 429 a packet fetch. */
-export const TD_CREDITS_PER_MIN = 48
+/** Ultra is 2584 credits/min. Pace well under it so concurrent rounds and live quotes cannot 429 each other. */
+export const TD_CREDITS_PER_MIN = 2000
 const creditStamps: number[] = []
 let creditLock: Promise<void> = Promise.resolve()
 
@@ -88,10 +88,13 @@ export type MappedInstrument = {
  *  - 'EUR/USD'              → fx pair (slash kept)
  *  - '005930.KS' / '.KQ'    → symbol '005930', exchange 'KRX' (Korea)
  *  - 'AAPL'                 → US stock, as-is
+ *  - 'STOCK:NYSE:TSM'       → symbol 'TSM', exchange 'NYSE' (resolved US listing)
  * Returns null for non-market instruments (e.g. 'MATCH:TOT-vs-ARS').
  */
 export function mapInstrumentToTwelveData(instrument: string): MappedInstrument | null {
   const raw = instrument.trim()
+  const listing = decodeStockInstrument(raw)
+  if (listing) return { symbol: listing.symbol, exchange: listing.exchange, kind: 'stock' }
   if (!raw || raw.includes(':')) return null // e.g. 'MATCH:...' sports handles are not price instruments
 
   if (raw.endsWith('.KS') || raw.endsWith('.KQ')) {
@@ -152,13 +155,15 @@ export type DataPacket = {
   available: boolean
   instrument: string
   symbol?: string
+  /** Twelve Data exchange param used for the fetch (STOCK: listings). */
+  exchange?: string
   currency?: string
   asOf?: string
   latestClose?: number
   previousClose?: number
   percentChange?: number
-  /** Oldest→newest daily closes. */
-  series?: { date: string; close: number }[]
+  /** Oldest→newest daily closes; equities also carry session volume. */
+  series?: { date: string; close: number; volume?: number }[]
   error?: string
 }
 
@@ -205,9 +210,17 @@ export async function fetchDataPacket(instrument: string, days = DEFAULT_SERIES_
 
   const values: any[] = seriesRes.ok && Array.isArray(seriesRes.json?.values) ? seriesRes.json.values : []
   // Twelve Data returns values newest-first; flip to oldest→newest for readability.
+  const keepVolume = mapped.kind === 'stock'
   const series = values
-    .map((v) => ({ date: String(v?.datetime ?? ''), close: num(v?.close) }))
-    .filter((v): v is { date: string; close: number } => typeof v.close === 'number' && !!v.date)
+    .map((v) => {
+      const volume = keepVolume ? num(v?.volume) : undefined
+      return {
+        date: String(v?.datetime ?? ''),
+        close: num(v?.close),
+        ...(typeof volume === 'number' ? { volume } : {}),
+      }
+    })
+    .filter((v): v is { date: string; close: number; volume?: number } => typeof v.close === 'number' && !!v.date)
     .reverse()
 
   const latestClose = num(q?.close) ?? series[series.length - 1]?.close
@@ -218,6 +231,7 @@ export async function fetchDataPacket(instrument: string, days = DEFAULT_SERIES_
     available: typeof latestClose === 'number',
     instrument,
     symbol: mapped.symbol,
+    ...(mapped.exchange ? { exchange: mapped.exchange } : {}),
     currency: typeof q?.currency === 'string' ? q.currency : seriesRes.ok ? seriesRes.json?.meta?.currency : undefined,
     asOf: typeof q?.datetime === 'string' ? q.datetime : series[series.length - 1]?.date,
     latestClose,

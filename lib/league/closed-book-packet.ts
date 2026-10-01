@@ -18,7 +18,11 @@ export const BASE_RATE_TREND_NOTE_MIN_PCT = 60
  */
 export const SERIES_OUTPUT_SIZE = 1083
 
-export type SeriesBar = { date: string; close: number }
+export type SeriesBar = { date: string; close: number; volume?: number }
+
+export type StatisticsSnapshot =
+  | { pe: number | null; pb: number | null; revenueTtm: number | null; marketCap: number | null }
+  | { unavailable: string }
 
 export type ConsensusSnapshot = {
   fetchedAt: string
@@ -33,6 +37,8 @@ export type ConsensusSnapshot = {
     | { unavailable: string }
   latestRating: { date: string; firm: string; rating: string } | { unavailable: string }
   epsTrend: { period: string; currentEstimate: number } | { unavailable: string }
+  /** /statistics valuation (Ultra). Omitted on legacy snapshots — line not printed. */
+  statistics?: StatisticsSnapshot
 }
 
 export type CryptoSnapshot = {
@@ -495,6 +501,30 @@ function unavailable(label: string, reason: string): string {
   return `${label}: UNAVAILABLE (${reason})`
 }
 
+function fmtBig(n: number): string {
+  const abs = Math.abs(n)
+  if (abs >= 1e12) return `${fmt(n / 1e12, 2)}T`
+  if (abs >= 1e9) return `${fmt(n / 1e9, 2)}B`
+  if (abs >= 1e6) return `${fmt(n / 1e6, 1)}M`
+  if (abs >= 1e3) return `${fmt(n / 1e3, 0)}K`
+  return fmt(n, 0)
+}
+
+function formatVolume(bars: readonly SeriesBar[], src: string, asOf: string): string | null {
+  const withVol = bars.filter((b): b is SeriesBar & { volume: number } => typeof b.volume === 'number')
+  if (withVol.length === 0) return null
+  const last = withVol[withVol.length - 1]!
+  const window = withVol.slice(-21, -1)
+  if (window.length < 20) {
+    return `session volume: last ${fmtBig(last.volume)} on ${last.date} (20-session avg needs 21 bars; had ${withVol.length}; source: ${src}; as-of ${asOf})`
+  }
+  const avg = window.reduce((s, b) => s + b.volume, 0) / window.length
+  const ratio = avg > 0 ? last.volume / avg : null
+  return `session volume: last ${fmtBig(last.volume)} on ${last.date}; prior 20-session avg ${fmtBig(avg)}${
+    ratio == null ? '' : ` (${fmt(ratio, 2)}x avg)`
+  } (source: ${src}; as-of ${asOf})`
+}
+
 function formatNumericMarket(input: ClosedBookPacketInput): string {
   const bars = input.series
   const closes = bars.map((b) => b.close)
@@ -517,10 +547,16 @@ function formatNumericMarket(input: ClosedBookPacketInput): string {
   const printed = bars.slice(-PRINTED_SESSION_COUNT)
   if (printed.length) {
     lines.push(`Last ${printed.length} session closes (oldest→newest):`)
-    for (const b of printed) lines.push(`  ${b.date}: ${fmt(b.close)}`)
+    for (const b of printed) {
+      lines.push(
+        typeof b.volume === 'number' ? `  ${b.date}: ${fmt(b.close)}  vol ${fmtBig(b.volume)}` : `  ${b.date}: ${fmt(b.close)}`,
+      )
+    }
   } else {
     lines.push(unavailable('session closes', `${src} series empty; as-of ${asOf}`))
   }
+  const volumeLine = formatVolume(bars, src, asOf)
+  if (volumeLine) lines.push(volumeLine)
 
   const vol = computeRealizedVol(closes, 20)
   lines.push(
@@ -595,12 +631,19 @@ function formatBaseRate(input: ClosedBookPacketInput): string {
   return lines.join('\n')
 }
 
+/** Analyst data is model input only; the rationale is user-facing. */
+export const CONSENSUS_USAGE_RULE =
+  'USE: analysis input only. In your rationale do NOT name the data vendor and do NOT quote these target, rating-count, EPS, or valuation numbers — state your own reasoning (e.g. "the Street skews bullish", "valuation is stretched").'
+
 function formatConsensus(c: ConsensusSnapshot | null, instrument: string, last: number | null): string {
   if (!c) {
     return unavailable('CONSENSUS', 'not fetched for this category')
   }
   const asOf = c.fetchedAt
-  const lines: string[] = [`CONSENSUS (source: Twelve Data; as-of ${asOf})`]
+  const lines: string[] = [
+    `CONSENSUS (source: Twelve Data; as-of ${asOf})`,
+    CONSENSUS_USAGE_RULE,
+  ]
 
   if ('unavailable' in c.priceTarget) {
     lines.push(unavailable('price target', `${c.priceTarget.unavailable}; as-of ${asOf}`))
@@ -653,6 +696,25 @@ function formatConsensus(c: ConsensusSnapshot | null, instrument: string, last: 
   } else {
     const r = c.latestRating
     lines.push(`latest rating: ${r.firm} ${r.rating} on ${r.date} (source: Twelve Data /analyst_ratings/light; as-of ${asOf})`)
+  }
+
+  if (c.statistics) {
+    if ('unavailable' in c.statistics) {
+      lines.push(unavailable('statistics', `${c.statistics.unavailable}; as-of ${asOf}`))
+    } else {
+      const s = c.statistics
+      const bits = [
+        s.pe == null ? null : `trailing PE ${fmt(s.pe, 1)}`,
+        s.pb == null ? null : `P/B ${fmt(s.pb, 1)}`,
+        s.revenueTtm == null ? null : `revenue TTM ${fmtBig(s.revenueTtm)}`,
+        s.marketCap == null ? null : `market cap ${fmtBig(s.marketCap)}`,
+      ].filter((b): b is string => b !== null)
+      lines.push(
+        bits.length
+          ? `statistics: ${bits.join(' / ')} (source: Twelve Data /statistics; as-of ${asOf})`
+          : unavailable('statistics', `Twelve Data /statistics returned no PE/PB/revenue; as-of ${asOf}`),
+      )
+    }
   }
 
   void instrument

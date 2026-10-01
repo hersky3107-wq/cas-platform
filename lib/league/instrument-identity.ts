@@ -15,7 +15,8 @@
 export const POISON_TICKERS = ['SPX', 'NDX', 'DJI', 'RUT', 'SPXS'] as const
 
 export function isPoisonTicker(instrument: string): boolean {
-  const base = instrument.trim().toUpperCase().split(':')[0] ?? ''
+  const parts = instrument.trim().toUpperCase().split(':')
+  const base = (parts[0] === 'STOCK' ? parts[parts.length - 1] : parts[0]) ?? ''
   return (POISON_TICKERS as readonly string[]).includes(base)
 }
 

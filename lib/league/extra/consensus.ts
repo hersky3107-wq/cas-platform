@@ -95,6 +95,10 @@ export const CONSENSUS_LANGUAGE_ALIASES = [
   '테이커',
   'vix',
   'cboe',
+  'finra',
+  'short interest',
+  'short-sale',
+  '공매도',
   'pinnacle',
   '시장 기준선',
   '기준선',
@@ -117,6 +121,13 @@ export const CONSENSUS_CRYPTO_MONEY_HINTS = [
   'top-trader long/short ratio',
   'taker buy/sell volume',
   'crypto prediction-market odds (Polymarket, Kalshi)',
+] as const
+
+export const CONSENSUS_STOCK_MONEY_HINTS = [
+  'Street analyst price target consensus (high / median / low) and buy-hold-sell mix, with recent upgrades/downgrades',
+  'options implied probability / put-call skew on this single name',
+  'FINRA daily short-sale volume ratio and reported short interest (% of float, days to cover)',
+  'CBOE equity put/call ratio (market-wide fear vs greed backdrop)',
 ] as const
 
 export const CONSENSUS_INDEX_MONEY_HINTS = [
@@ -174,6 +185,13 @@ export function consensusMoneySearchHints(category: string): string {
     return [
       'For this crypto/memecoin category, search THESE money-positioning signals — equity analyst targets and CFTC COT usually do not exist here; do not abstain just because those are missing:',
       ...CONSENSUS_CRYPTO_MONEY_HINTS.map((hint) => `- ${hint}`),
+    ].join('\n')
+  }
+  if (key === 'stock' || key === 'stocks') {
+    return [
+      'For this US-listed stock (or ADR), the money signal is Street consensus PLUS options and short positioning. Search THESE; do not abstain just because one is missing:',
+      ...CONSENSUS_STOCK_MONEY_HINTS.map((hint) => `- ${hint}`),
+      'Speak as 목표가 컨센서스 / 옵션 시장은 ~%를 반영 / 공매도 비중. Informational only — never 매수하세요 or brokerage advice.',
     ].join('\n')
   }
   if (key === 'etf_index') {
