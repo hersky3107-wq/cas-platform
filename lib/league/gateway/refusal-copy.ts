@@ -105,6 +105,14 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     ko: '이 카테고리에서 지금 열 수 있는 대상은 아래와 같습니다.',
     en: 'That subject is not in this category’s open list. Pick one of the instruments below.',
   },
+  korea_listing: {
+    ko: '한국 상장 종목은 한국 계정 또는 한국 접속에서만 열립니다.',
+    en: 'Korean listings open only for a Korean account or a Korea connection.',
+  },
+  korea_stock_lane: {
+    ko: '한국 주식은 종목 칩으로 엽니다. 지금은 준비 중입니다.',
+    en: 'Korean stocks open from the chip grid. That grid is not ready yet.',
+  },
   prompt_not_available: {
     ko: '이 지역에서는 직접 입력으로 이 카테고리 질문을 열 수 없습니다. 아래 종목 칩을 이용해 주세요.',
     en: 'Typed questions are not available for this category in your region. Please use the instrument chips.',

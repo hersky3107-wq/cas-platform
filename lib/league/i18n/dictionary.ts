@@ -250,6 +250,10 @@ export type LeagueUiPack = {
     instruments: Record<string, string>
     comingSoon: string
     comingSoonHint: string
+    /** Korea stock lane skeleton — chip grid, no prompt. */
+    koreaStocksHint: string
+    stockLaneAdminGlobal: string
+    stockLaneAdminKorea: string
     /** Academic framing for the macro_econ coming-soon panel. */
     macroEconHint: string
     noCardYet: string
@@ -766,6 +770,8 @@ export type LeagueUiPack = {
       insufficient_credits: string
       ungradeable: string
       prompt_not_available: string
+      korea_stock_lane: string
+      korea_listing: string
       registered_country_missing: string
       country_mismatch: string
       generic: string
@@ -993,6 +999,9 @@ const en: LeagueUiPack = {
     },
     comingSoon: 'Coming soon',
     comingSoonHint: 'Event picker and prompt-search will live here. No fixed instruments for this category.',
+    koreaStocksHint: 'Korean listings are not open yet. This lane has no search box.',
+    stockLaneAdminGlobal: 'Global',
+    stockLaneAdminKorea: 'Korea',
     macroEconHint: 'Expert market outlook — rates, inflation, bonds. Depth, not dopamine.',
     noCardYet: 'No prediction card for this instrument yet.',
     horizons: { '1d': '1 day', '1w': '1 week', '1m': '1 month', '3m': '3 months' },
@@ -1356,6 +1365,8 @@ const en: LeagueUiPack = {
       insufficient_credits: 'Not enough credits to open this round.',
       ungradeable: 'This question cannot be graded objectively.',
       prompt_not_available: 'Typed questions are not available for this category in your region. Please use the instrument chips.',
+      korea_stock_lane: 'Korean stocks open from the chip grid. That grid is not ready yet.',
+      korea_listing: 'Korean listings open only for a Korean account or a Korea connection.',
       registered_country_missing: 'Your account has no registered country. Register your country of residence, then try again.',
       country_mismatch:
         'Your registered country and connection country differ. The stricter of the two applies; the league stays available.',
@@ -1563,6 +1574,9 @@ const ko: LeagueUiPack = {
     },
     comingSoon: '준비 중',
     comingSoonHint: '앞으로 이벤트 선택과 질문 검색이 여기에 들어갑니다. 이 카테고리에는 고정 종목이 없습니다.',
+    koreaStocksHint: '한국 상장 종목 칩은 준비 중입니다. 이 화면에는 검색창이 없습니다.',
+    stockLaneAdminGlobal: '글로벌',
+    stockLaneAdminKorea: '한국',
     macroEconHint: '금리·물가·채권 등 전문가용 시장 전망. 자극이 아니라 깊이입니다.',
     noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
     horizons: { '1d': '1일', '1w': '1주', '1m': '1개월', '3m': '3개월' },
@@ -1923,6 +1937,8 @@ const ko: LeagueUiPack = {
       insufficient_credits: '크레딧이 부족합니다.',
       ungradeable: '객관적으로 판정할 수 없는 질문입니다.',
       prompt_not_available: '이 지역에서는 직접 입력으로 이 카테고리 질문을 열 수 없습니다. 아래 종목 칩을 이용해 주세요.',
+      korea_stock_lane: '한국 주식은 종목 칩으로 엽니다. 지금은 준비 중입니다.',
+      korea_listing: '한국 상장 종목은 한국 계정 또는 한국 접속에서만 열립니다.',
       registered_country_missing: '등록 국가가 없습니다. 계정에 거주 국가를 등록한 뒤에 이용해 주세요.',
       country_mismatch: '등록 국가와 접속 국가가 다릅니다. 두 지역 중 더 엄격한 기준을 적용하며, 리그 이용은 가능합니다.',
       generic: '이 질문은 열 수 없습니다. 다시 입력해 주세요.',
@@ -2129,6 +2145,9 @@ const ja: LeagueUiPack = {
     },
     comingSoon: '近日公開',
     comingSoonHint: 'イベント選択とプロンプト検索はここに入ります。このカテゴリに固定銘柄はありません。',
+    koreaStocksHint: '韓国上場銘柄のチップは準備中です。この画面に検索欄はありません。',
+    stockLaneAdminGlobal: 'グローバル',
+    stockLaneAdminKorea: '韓国',
     macroEconHint: '金利・物価・債券など、専門家向けの市場見通し。刺激ではなく深さです。',
     noCardYet: 'この銘柄の予測カードはまだありません。',
     horizons: { '1d': '1日', '1w': '1週間', '1m': '1か月', '3m': '3か月' },
@@ -2487,6 +2506,8 @@ const ja: LeagueUiPack = {
       insufficient_credits: 'クレジットが不足しています。',
       ungradeable: '客観的に判定できない質問です。',
       prompt_not_available: 'この地域ではこのカテゴリへの入力質問は開けません。下のチップを使ってください。',
+      korea_stock_lane: '韓国株は銘柄チップから開きます。チップは準備中です。',
+      korea_listing: '韓国上場銘柄は韓国アカウントまたは韓国からの接続でのみ開きます。',
       registered_country_missing: '登録国がありません。居住国を登録してからご利用ください。',
       country_mismatch: '登録国と接続国が異なります。より厳しい方を適用します。リーグ自体は利用できます。',
       generic: 'この質問は開けません。書き直してください。',
@@ -2692,6 +2713,9 @@ const zhTW: LeagueUiPack = {
     },
     comingSoon: '即將推出',
     comingSoonHint: '活動選擇與提問搜尋將放在這裡。此類別沒有固定標的。',
+    koreaStocksHint: '韓國上市股票籌碼準備中。此畫面沒有搜尋框。',
+    stockLaneAdminGlobal: '全球',
+    stockLaneAdminKorea: '韓國',
     macroEconHint: '利率、通膨、債券等專業市場展望。重深度，不重刺激。',
     noCardYet: '此標的尚無預測卡。',
     horizons: { '1d': '1天', '1w': '1週', '1m': '1個月', '3m': '3個月' },
@@ -3047,6 +3071,8 @@ const zhTW: LeagueUiPack = {
       insufficient_credits: '點數不足。',
       ungradeable: '這個問題無法客觀評分。',
       prompt_not_available: '此地區無法以輸入方式開啟此類別。請使用下方籌碼。',
+      korea_stock_lane: '韓國股票從籌碼開啟。籌碼尚未就緒。',
+      korea_listing: '韓國上市股票僅限韓國帳號或韓國連線開啟。',
       registered_country_missing: '尚未登記國家。請先登記居住國家再使用。',
       country_mismatch: '登記國家與連線國家不同。將套用較嚴格的一方；聯盟仍可使用。',
       generic: '這個問題無法開啟。請再試一次。',
@@ -3254,6 +3280,9 @@ const fr: LeagueUiPack = {
     },
     comingSoon: 'Bientôt',
     comingSoonHint: 'Le sélecteur d\u2019événements et la recherche par question seront ici. Pas d\u2019instruments fixes pour cette catégorie.',
+    koreaStocksHint: 'Les actions coréennes ne sont pas encore ouvertes. Cette voie n’a pas de champ de recherche.',
+    stockLaneAdminGlobal: 'Monde',
+    stockLaneAdminKorea: 'Corée',
     macroEconHint: 'Perspectives de marché pour experts — taux, inflation, obligations. De la profondeur, pas du spectacle.',
     noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
     horizons: { '1d': '1 jour', '1w': '1 semaine', '1m': '1 mois', '3m': '3 mois' },
@@ -3624,6 +3653,8 @@ const fr: LeagueUiPack = {
       ungradeable: 'Cette question ne peut pas \u00eatre not\u00e9e objectivement.',
       prompt_not_available:
         'Les questions tapées ne sont pas disponibles pour cette cat\u00e9gorie dans votre région. Utilisez les jetons.',
+      korea_stock_lane: 'Les actions coréennes s’ouvrent depuis la grille. Cette grille n’est pas prête.',
+      korea_listing: 'Les cotations coréennes s’ouvrent seulement avec un compte coréen ou une connexion depuis la Corée.',
       registered_country_missing: 'Aucun pays n\u2019est enregistré. Enregistrez votre pays de résidence, puis réessayez.',
       country_mismatch:
         'Votre pays enregistré et votre pays de connexion diffèrent. Le plus strict des deux s\u2019applique ; la ligue reste disponible.',
@@ -3832,6 +3863,9 @@ const es: LeagueUiPack = {
     },
     comingSoon: 'Próximamente',
     comingSoonHint: 'El selector de eventos y la búsqueda por pregunta estarán aquí. Esta categoría no tiene instrumentos fijos.',
+    koreaStocksHint: 'Las acciones coreanas aún no están abiertas. Este carril no tiene búsqueda.',
+    stockLaneAdminGlobal: 'Global',
+    stockLaneAdminKorea: 'Corea',
     macroEconHint: 'Perspectiva de mercado para expertos: tipos, inflación, bonos. Profundidad, no dopamina.',
     noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
     horizons: { '1d': '1 día', '1w': '1 semana', '1m': '1 mes', '3m': '3 meses' },
@@ -4202,6 +4236,8 @@ const es: LeagueUiPack = {
       ungradeable: 'Esta pregunta no se puede calificar con objetividad.',
       prompt_not_available:
         'En tu región no se pueden abrir preguntas escritas en esta categor\u00eda. Usa las fichas de abajo.',
+      korea_stock_lane: 'Las acciones coreanas se abren desde la cuadrícula. Esa cuadrícula aún no está lista.',
+      korea_listing: 'Las cotizaciones coreanas se abren solo con una cuenta coreana o una conexión desde Corea.',
       registered_country_missing: 'No hay país registrado. Registra tu país de residencia y vuelve a intentarlo.',
       country_mismatch:
         'Tu país registrado y el de conexión no coinciden. Se aplica el más estricto de los dos; la liga sigue disponible.',
@@ -4409,6 +4445,9 @@ const ar: LeagueUiPack = {
     },
     comingSoon: 'قريبًا',
     comingSoonHint: 'سيظهر هنا اختيار الأحداث والبحث بالسؤال. لا أدوات ثابتة لهذه الفئة.',
+    koreaStocksHint: 'أسهم كوريا غير جاهزة بعد. هذا المسار بلا مربع بحث.',
+    stockLaneAdminGlobal: 'عالمي',
+    stockLaneAdminKorea: 'كوريا',
     macroEconHint: 'نظرة سوقية للخبراء — أسعار الفائدة والتضخم والسندات. عمق لا إثارة.',
     noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
     horizons: { '1d': 'يوم واحد', '1w': 'أسبوع واحد', '1m': 'شهر واحد', '3m': '3 أشهر' },
@@ -4767,6 +4806,8 @@ const ar: LeagueUiPack = {
       insufficient_credits: 'الرصيد غير كافٍ.',
       ungradeable: 'لا يمكن تحكيم هذا السؤال بموضوعية.',
       prompt_not_available: 'لا يمكن فتح أسئلة مكتوبة لهذه الفئة في منطقتك. استخدم الرقائق أدناه.',
+      korea_stock_lane: 'أسهم كوريا تُفتح من الشبكة. الشبكة غير جاهزة بعد.',
+      korea_listing: 'إدراجات كوريا تُفتح فقط بحساب كوري أو اتصال من كوريا.',
       registered_country_missing: 'لا يوجد بلد مسجَّل. سجّل بلد إقامتك ثم أعد المحاولة.',
       country_mismatch: 'بلد التسجيل وبلد الاتصال مختلفان. يُطبَّق الأشد منهما؛ الدوري يبقى متاحًا.',
       generic: 'تعذر فتح هذا السؤال. أعد المحاولة.',
@@ -4981,6 +5022,9 @@ const pt: LeagueUiPack = {
     },
     comingSoon: 'Em breve',
     comingSoonHint: 'O seletor de eventos e a busca por pergunta ficarão aqui. Sem instrumentos fixos para esta categoria.',
+    koreaStocksHint: 'As ações coreanas ainda não estão abertas. Esta faixa não tem busca.',
+    stockLaneAdminGlobal: 'Global',
+    stockLaneAdminKorea: 'Coreia',
     macroEconHint: 'Visão de mercado para especialistas — juros, inflação, títulos. Profundidade, não dopamina.',
     noCardYet: 'Ainda não há cartão de previsão para este instrumento.',
     horizons: { '1d': '1 dia', '1w': '1 semana', '1m': '1 mês', '3m': '3 meses' },
@@ -5350,6 +5394,8 @@ const pt: LeagueUiPack = {
       ungradeable: 'Esta pergunta não pode ser pontuada com objetividade.',
       prompt_not_available:
         'Nesta região não é possível abrir perguntas digitadas nesta categoria. Use as fichas abaixo.',
+      korea_stock_lane: 'Ações coreanas abrem na grade de fichas. Essa grade ainda não está pronta.',
+      korea_listing: 'Listagens coreanas abrem só com uma conta coreana ou uma conexão da Coreia.',
       registered_country_missing: 'Não há país registrado. Registre o país de residência e tente de novo.',
       country_mismatch:
         'O país registrado e o país da conexão diferem. Vale o mais restritivo dos dois; a liga continua disponível.',

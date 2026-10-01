@@ -15,6 +15,8 @@ import { readLeagueDivinationLive } from '@/lib/oracle/league-divination/live'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { AnswerSide } from '../answer-contract'
 import { fetchDataPacket } from '../market-data'
+import { decodeStockInstrument } from '../gateway/adapters/stock-catalog'
+import { stockUniverseDataEnabled } from '../gateway/adapters/stock-search'
 import { computeCostUsd, lookupRosterEntry } from '../roster'
 import {
   buildDivinationInput,
@@ -300,7 +302,10 @@ async function resolveHistorySeries(
   provided: ExtraPriceSeries | null | undefined,
 ): Promise<ExtraPriceSeries | null> {
   if (provided && provided.bars.length > 0) return provided
-  const packet = await fetchDataPacket(instrument)
+  const listing = decodeStockInstrument(instrument)
+  if (listing && !stockUniverseDataEnabled()) return null
+  const symbol = listing?.symbol ?? instrument
+  const packet = await fetchDataPacket(symbol)
   if (!packet.available || !packet.series?.length) return null
   return {
     bars: packet.series,

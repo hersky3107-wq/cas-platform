@@ -254,7 +254,7 @@ describe('real estate housing index', () => {
     expect(instrumentsRoute).not.toContain('headlinePropertyInstruments')
     expect(instrumentsRoute).not.toContain("c.id === 'real_estate'")
     expect(hub).toContain("cat.id === 'real_estate'")
-    expect(hub).toContain("active?.id !== 'real_estate'")
+    expect(hub).toContain("active.id !== 'real_estate'")
     expect(hub).toContain('usesHorizonChipRow(active.id)')
   })
 })

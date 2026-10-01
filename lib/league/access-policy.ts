@@ -6,6 +6,8 @@ import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
+import { decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { admissionStockLane } from './stock-lane'
 import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
 import { isUiHorizon, type UiHorizon } from './horizon'
 
@@ -107,6 +109,14 @@ export function gatePublicGenerateInstrument(
   const horizon = typeof horizonRaw === 'string' ? horizonRaw.trim() : horizonRaw
   if (!isUiHorizon(horizon)) return { ok: false, status: 400, code: 'unknown_horizon' }
 
+  if (
+    !viewer.isAdmin &&
+    admissionStockLane(viewer.jurisdiction) === 'korea' &&
+    (decodeStockInstrument(instrument) !== null || findCatalogInstrument(instrument)?.category.id === 'stocks')
+  ) {
+    return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+  }
+
   const sportsParts = decodeSportsInstrument(instrument)
   if (sportsParts) {
     if (!viewer.isAdmin && !isCategoryAllowed('sports', viewer.jurisdiction)) {
@@ -137,6 +147,14 @@ export function gatePublicGenerateInstrument(
       return { ok: false, status: 403, code: 'jurisdiction_blocked' }
     }
     return { ok: true, instrument, category: 'real_estate', horizon }
+  }
+
+  const stockParts = decodeStockInstrument(instrument)
+  if (stockParts) {
+    if (!viewer.isAdmin && !isCategoryAllowed('stock', viewer.jurisdiction)) {
+      return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+    }
+    return { ok: true, instrument, category: 'stock', horizon }
   }
 
   const found = findCatalogInstrument(instrument)

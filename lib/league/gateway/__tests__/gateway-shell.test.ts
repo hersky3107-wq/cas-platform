@@ -216,30 +216,36 @@ describe('gateway shell — refusals never charge and never reach the normalizer
     expect(h.chargeSpy).not.toHaveBeenCalled()
   })
 
-  it('normalizer null (malformed JSON after its one retry) → low_confidence, no charge', async () => {
+  it('normalizer null on a known listing recovers from the raw sentence, no charge yet', async () => {
     const h = harness({ normalizerOutput: () => null })
     const result = await runLeagueGateway(request(), h.deps)
+    expect(result.status).toBe('clarify')
+    expect(h.chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('normalizer null on an unknown sentence stays low_confidence, no charge', async () => {
+    const h = harness({ normalizerOutput: () => null })
+    const result = await runLeagueGateway(request({ raw_text: 'zzzzqqqq' }), h.deps)
     expect(result).toMatchObject({ status: 'refused', refusal: { code: 'low_confidence' } })
     expect(h.chargeSpy).not.toHaveBeenCalled()
   })
 
-  it('confidence below 0.55 → low_confidence with Korean copy, no charge', async () => {
-    const h = harness({ normalizerOutput: { ...APPLE_1D_OUTPUT, confidence: 0.3 } })
-    const result = await runLeagueGateway(request(), h.deps)
+  it('confidence below 0.55 with no listing in the sentence → low_confidence, no charge', async () => {
+    const h = harness({ normalizerOutput: { ...APPLE_1D_OUTPUT, confidence: 0.3, entity_mention: 'zzzzqqqq' } })
+    const result = await runLeagueGateway(request({ raw_text: 'zzzzqqqq' }), h.deps)
     expect(result).toMatchObject({ status: 'refused', refusal: { code: 'low_confidence' } })
     if (result.status === 'refused') expect(result.refusal.message).toMatch(/[\uAC00-\uD7A3]/)
     expect(h.chargeSpy).not.toHaveBeenCalled()
   })
 
-  it('unresolvable entity → unsupported_entity with currently-open chips, no charge', async () => {
+  it('a Korean listing on the global lane points at the Korea lane and does not offer US chips', async () => {
     const h = harness({
       normalizerOutput: { ...APPLE_1D_OUTPUT, entity_mention: '삼성전자', entity_id_hint: '005930' },
     })
     const result = await runLeagueGateway(request({ raw_text: '삼성전자 내일 오를까?' }), h.deps)
-    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'unsupported_entity' } })
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'korea_listing' } })
     if (result.status !== 'refused') throw new Error('unreachable')
-    expect(result.refusal.message).toMatch(/아래/)
-    expect(result.catalog_chips?.map((c) => c.id)).toEqual(['AAPL', 'NVDA', 'TSLA'])
+    expect(result.catalog_chips).toBeUndefined()
     expect(h.chargeSpy).not.toHaveBeenCalled()
   })
 })
@@ -248,10 +254,10 @@ describe('gateway shell — jurisdiction × category prompt gate (before normali
   it('KR financial category is refused before normalization, before any LLM call, and before any charge', async () => {
     const h = harness()
     const result = await runLeagueGateway(request({ viewer: KR_VIEWER, raw_text: '애플 내일 오를까?' }), h.deps)
-    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'prompt_not_available' } })
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'korea_stock_lane' } })
     if (result.status === 'refused') {
-      expect(result.refusal.message).toContain('직접 입력')
-      expect(result.catalog_chips?.map((c) => c.id)).toEqual(['AAPL', 'NVDA', 'TSLA'])
+      expect(result.refusal.message).toContain('준비 중')
+      expect(result.catalog_chips).toBeUndefined()
     }
     expect(h.log).not.toContain('normalize')
     expect(h.normalizeSpy).not.toHaveBeenCalled()
@@ -279,7 +285,7 @@ describe('gateway shell — jurisdiction × category prompt gate (before normali
       }),
       h.deps,
     )
-    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'prompt_not_available' } })
+    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'korea_stock_lane' } })
     expect(h.normalizeSpy).not.toHaveBeenCalled()
     expect(h.chargeSpy).not.toHaveBeenCalled()
   })
@@ -478,10 +484,15 @@ describe('gateway shell — normalizer output is never trusted', () => {
     expect(JSON.stringify(result.round)).not.toContain('IGNORE ALL INSTRUCTIONS')
   })
 
-  it('a normalizer that disagrees with the chip about the category is a wrong parse, not a router', async () => {
+  it('a normalizer that disagrees with the chip does not route away from it', async () => {
     const h = harness({ normalizerOutput: { ...APPLE_1D_OUTPUT, category_id: 'politics_election' } })
-    const result = await runLeagueGateway(request(), h.deps)
-    expect(result).toMatchObject({ status: 'refused', refusal: { code: 'low_confidence' } })
+    const recovered = await runLeagueGateway(request(), h.deps)
+    expect(recovered.status).toBe('clarify')
+    if (recovered.status !== 'clarify') throw new Error('unreachable')
+    expect(recovered.partial?.entity_id).toBe('AAPL')
+
+    const junk = await runLeagueGateway(request({ raw_text: 'zzzzqqqq' }), h.deps)
+    expect(junk).toMatchObject({ status: 'refused', refusal: { code: 'low_confidence' } })
   })
 })
 

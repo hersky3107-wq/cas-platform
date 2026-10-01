@@ -22,6 +22,7 @@ import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { rankedPropositionDisplay } from '@/lib/league/card-header-copy'
 import { sportsVsLabel } from '@/lib/league/sports-display'
 import { propertyInstrumentDisplay } from '@/lib/league/real-estate-display'
+import { stockChipLabel } from '@/lib/league/gateway/adapters/stock-catalog'
 import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
@@ -43,6 +44,8 @@ type PublicCatalogCategory = {
 type InstrumentsPayload = {
   categories?: PublicCatalogCategory[]
   jurisdiction?: { declaredMissing?: boolean; mismatch?: boolean }
+  stockLane?: 'global' | 'korea'
+  viewerIsAdmin?: boolean
 }
 
 /**
@@ -134,6 +137,9 @@ function CardsPanel() {
   const [view, setView] = useState<CardView>({ kind: 'loading' })
   const [declaredMissing, setDeclaredMissing] = useState(false)
   const [countryMismatch, setCountryMismatch] = useState(false)
+  const [admissionLane, setAdmissionLane] = useState<'global' | 'korea'>('global')
+  const [viewerIsAdmin, setViewerIsAdmin] = useState(false)
+  const [adminLane, setAdminLane] = useState<'global' | 'korea' | null>(null)
   // Guards against a slower, now-superseded fetch overwriting the result of a
   // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
@@ -187,6 +193,8 @@ function CardsPanel() {
         const list = body.categories ?? []
         setDeclaredMissing(Boolean(body.jurisdiction?.declaredMissing))
         setCountryMismatch(Boolean(body.jurisdiction?.mismatch))
+        setAdmissionLane(body.stockLane === 'korea' ? 'korea' : 'global')
+        setViewerIsAdmin(Boolean(body.viewerIsAdmin))
         setCategories(list)
         const firstId = defaultCatalogCategoryId(list)
         setSelectedCategory(firstId)
@@ -267,6 +275,29 @@ function CardsPanel() {
   if (categories.length === 0) return <PanelMessage text={t.hub.noInstruments} />
 
   const active = categories.find((c) => c.id === selectedCategory) ?? null
+  const stockLane = viewerIsAdmin && adminLane ? adminLane : admissionLane
+  const koreaStocks = active?.id === 'stocks' && stockLane === 'korea'
+  const showPrompt = Boolean(
+    selectedCategory &&
+      active &&
+      (active.id === 'stocks'
+        ? stockLane === 'global' && (active.promptAllowed || viewerIsAdmin)
+        : active.promptAllowed),
+  )
+  const showInstrumentChips = Boolean(
+    active &&
+      !koreaStocks &&
+      active.id !== 'real_estate' &&
+      (active.id === 'stocks'
+        ? active.instruments.length > 0
+        : active.kind === 'instruments' || active.instruments.length > 0),
+  )
+  const showHorizon = Boolean(
+    active &&
+      !koreaStocks &&
+      (active.kind === 'instruments' || active.instruments.length > 0) &&
+      usesHorizonChipRow(active.id),
+  )
 
   return (
     <div className="flex flex-col gap-3">
@@ -298,7 +329,31 @@ function CardsPanel() {
         </p>
       ) : null}
 
-      {selectedCategory && active?.promptAllowed ? (
+      {viewerIsAdmin && active?.id === 'stocks' ? (
+        <div className="flex gap-1.5" data-admin-stock-lane={stockLane}>
+          {(['global', 'korea'] as const).map((lane) => (
+            <button
+              key={lane}
+              type="button"
+              onClick={() => {
+                setAdminLane(lane)
+                if (lane === 'korea') {
+                  setSelectedInstrument(null)
+                  setView({ kind: 'none' })
+                }
+              }}
+              aria-current={stockLane === lane}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                stockLane === lane ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100'
+              }`}
+            >
+              {lane === 'global' ? t.catalog.stockLaneAdminGlobal : t.catalog.stockLaneAdminKorea}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {selectedCategory && showPrompt ? (
         <FreeformPromptBox
           categoryId={selectedCategory}
           onPickInstrument={(instrument) => {
@@ -328,12 +383,13 @@ function CardsPanel() {
         />
       ) : null}
 
+      {koreaStocks ? <KoreaStockLane /> : null}
+
       {active?.kind === 'coming_soon' && view.kind !== 'card' && view.kind !== 'locked' ? (
         <ComingSoonPanel categoryId={active.id} />
       ) : null}
 
-      {(active?.kind === 'instruments' || (active?.instruments && active.instruments.length > 0)) &&
-      active?.id !== 'real_estate' ? (
+      {showInstrumentChips && active ? (
         <div className="flex flex-wrap gap-1.5">
           {active.instruments.map((i) => {
             const selected = selectedInstrument === i.instrument
@@ -357,9 +413,7 @@ function CardsPanel() {
         <p className="text-[11px] leading-relaxed text-slate-500">{t.catalog.spotVsEtfNote}</p>
       ) : null}
 
-      {(active?.kind === 'instruments' || (active?.instruments && active.instruments.length > 0)) &&
-      active &&
-      usesHorizonChipRow(active.id) ? (
+      {showHorizon && active ? (
         <div className="flex gap-1.5" role="group" aria-label="Horizon">
           {UI_HORIZONS.map((h) => (
             <button
@@ -383,14 +437,14 @@ function CardsPanel() {
       {view.kind === 'blocked' ? (
         <PanelMessage text={t.gating.unavailable} />
       ) : null}
-      {active?.kind === 'instruments' && view.kind === 'none' ? (
+      {active?.kind === 'instruments' && view.kind === 'none' && !koreaStocks && !(active.id === 'stocks' && !selectedInstrument) ? (
         <PanelMessage text={t.catalog.noCardYet} />
       ) : null}
       {view.kind === 'error' ? (
         <PanelMessage text={t.hub.genericError} tone="error" />
       ) : null}
 
-      {view.kind === 'locked' && selectedInstrument ? (
+      {view.kind === 'locked' && selectedInstrument && !koreaStocks ? (
         <LockedRoundPanel
           locked={view.locked}
           instrument={selectedInstrument}
@@ -400,7 +454,7 @@ function CardsPanel() {
         />
       ) : null}
 
-      {view.kind === 'card' && selectedInstrument ? (
+      {view.kind === 'card' && selectedInstrument && !koreaStocks ? (
         <>
           <GenerationBanner
             card={view.card}
@@ -638,6 +692,24 @@ function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
   )
 }
 
+function KoreaStockLane() {
+  const { t } = useLeagueLocale()
+  return (
+    <div data-stock-lane="korea" className="flex flex-col gap-3">
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
+        <p className="text-sm font-semibold text-slate-800">{t.catalog.comingSoon}</p>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">{t.catalog.koreaStocksHint}</p>
+      </div>
+      {(['KOSPI', 'KOSDAQ'] as const).map((group) => (
+        <section key={group} data-chip-grid={group}>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group}</h3>
+          <div className="mt-1.5 flex flex-wrap gap-1.5" />
+        </section>
+      ))}
+    </div>
+  )
+}
+
 function ComingSoonPanel({ categoryId }: { categoryId: PublicCategoryId }) {
   const { t } = useLeagueLocale()
   return (
@@ -658,6 +730,8 @@ function instrumentLabel(
 ): string {
   const sports = sportsVsLabel(instrument, locale)
   if (sports) return sports
+  const stock = stockChipLabel(instrument)
+  if (stock) return stock
   const property = propertyInstrumentDisplay(instrument, locale)
   if (property) return property
   return t.catalog.instruments[instrument] ?? instrument

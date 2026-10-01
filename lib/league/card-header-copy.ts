@@ -9,6 +9,7 @@ import { electionHeadlineLabel, politicsPropositionDisplay } from './politics-di
 import { entertainmentHeadlineLabel, entertainmentPropositionDisplay } from './entertainment-display'
 import { propertyInstrumentDisplay, propertyPropositionDisplay } from './real-estate-display'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
+import { stockQuoteSymbol, decodeStockInstrument } from './gateway/adapters/stock-catalog'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
@@ -128,12 +129,14 @@ export function headerHeadline(args: {
     return args.t.header.headlinePlain(args.roundDate, displayInst)
   }
   if (args.anchorPrice === null) {
-    return args.t.header.headlineNoAnchor(args.roundDate, args.instrument)
+    const shown = decodeStockInstrument(args.instrument) ? stockQuoteSymbol(args.instrument) : args.instrument
+    return args.t.header.headlineNoAnchor(args.roundDate, shown)
   }
   const session = args.anchorSessionDate ? formatSessionDate(args.anchorSessionDate, args.locale) : ''
+  const shown = decodeStockInstrument(args.instrument) ? stockQuoteSymbol(args.instrument) : args.instrument
   return args.t.header.headlineWithAnchor(
     args.roundDate,
-    args.instrument,
+    shown,
     formatInstrumentPrice(args.instrument, args.anchorPrice),
     session
   )

@@ -10,7 +10,7 @@ const KR: GatewayViewer = {
 
 describe('leagueGatewayAdmission', () => {
   it('refuses a KR financial prompt before any later gateway step', () => {
-    expect(leagueGatewayAdmission(KR, 'stocks', 'stock')).toBe('prompt_not_available')
+    expect(leagueGatewayAdmission(KR, 'stocks', 'stock')).toBe('korea_stock_lane')
     expect(leagueGatewayAdmission(KR, 'crypto', 'crypto_spot')).toBe('prompt_not_available')
     expect(leagueGatewayAdmission(KR, 'fx', 'fx')).toBe('prompt_not_available')
   })
@@ -29,13 +29,13 @@ describe('leagueGatewayAdmission', () => {
     ).toBe('registered_country_missing')
   })
 
-  it('does not let admin bypass the prompt matrix', () => {
+  it('does not let admin bypass the prompt matrix, except the stocks lane toggle', () => {
     const US = {
       userId: 'u',
       isAdmin: true as const,
       jurisdiction: { declaredCountry: 'US', ipCountry: 'US' },
     }
-    expect(leagueGatewayAdmission({ ...KR, isAdmin: true }, 'stocks', 'stock')).toBe('prompt_not_available')
+    expect(leagueGatewayAdmission({ ...KR, isAdmin: true }, 'stocks', 'stock')).toBeNull()
     expect(leagueGatewayAdmission({ ...KR, isAdmin: true }, 'memecoin', 'memecoin')).toBe('prompt_not_available')
     expect(leagueGatewayAdmission(US, 'gold_metals', 'gold_metal')).toBe('prompt_not_available')
     expect(leagueGatewayAdmission(US, 'stocks', 'stock')).toBeNull()

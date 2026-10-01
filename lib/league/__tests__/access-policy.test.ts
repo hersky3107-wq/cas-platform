@@ -59,6 +59,7 @@ describe('visibleCategoriesFor', () => {
 
 describe('gatePublicGenerateInstrument — generate-stream { instrument }', () => {
   const krPublic = { isAdmin: false, jurisdiction: { ipCountry: 'KR' } }
+  const usPublic = { isAdmin: false, jurisdiction: { declaredCountry: 'US', ipCountry: 'US' } }
   const gbPublic = { isAdmin: false, jurisdiction: { ipCountry: 'GB' } }
   const cnPublic = { isAdmin: false, jurisdiction: { declaredCountry: 'CN' } }
   const adminInCn = { isAdmin: true, jurisdiction: { declaredCountry: 'CN' } }
@@ -106,11 +107,16 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
   })
 
   it('accepts an exact catalog key that the viewer may see', () => {
-    expect(gatePublicGenerateInstrument('  AAPL  ', krPublic)).toEqual({
+    expect(gatePublicGenerateInstrument('  AAPL  ', usPublic)).toEqual({
       ok: true,
       instrument: 'AAPL',
       category: 'stock',
       horizon: '1d',
+    })
+    expect(gatePublicGenerateInstrument('AAPL', krPublic)).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
     })
     expect(gatePublicGenerateInstrument('BTC/USD', krPublic)).toEqual({
       ok: true,
@@ -118,6 +124,17 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
       category: 'crypto_spot',
       horizon: '1d',
     })
+    expect(gatePublicGenerateInstrument('STOCK:NASDAQ:MSFT', usPublic)).toMatchObject({
+      ok: true,
+      instrument: 'STOCK:NASDAQ:MSFT',
+      category: 'stock',
+    })
+    expect(gatePublicGenerateInstrument('STOCK:NASDAQ:MSFT', krPublic)).toEqual({
+      ok: false,
+      status: 403,
+      code: 'jurisdiction_blocked',
+    })
+    expect(gatePublicGenerateInstrument('XAU/USD', krPublic)).toMatchObject({ ok: true, category: 'gold_metal' })
   })
 
   it('lets admin skip the jurisdiction matrix but not invent a catalog key', () => {
@@ -146,7 +163,7 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
 
   it('accepts every one of the 4 fixed horizon codes for a valid instrument', () => {
     for (const horizon of ['1d', '1w', '1m', '3m']) {
-      expect(gatePublicGenerateInstrument('AAPL', krPublic, horizon)).toEqual({
+      expect(gatePublicGenerateInstrument('AAPL', usPublic, horizon)).toEqual({
         ok: true,
         instrument: 'AAPL',
         category: 'stock',
@@ -156,7 +173,7 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
   })
 
   it('defaults to 1d when horizon is omitted (every pre-horizon-selection caller)', () => {
-    expect(gatePublicGenerateInstrument('AAPL', krPublic)).toEqual({
+    expect(gatePublicGenerateInstrument('AAPL', usPublic)).toEqual({
       ok: true,
       instrument: 'AAPL',
       category: 'stock',

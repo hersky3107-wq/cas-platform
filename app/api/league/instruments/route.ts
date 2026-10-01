@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { isPromptAllowed } from '@/lib/league/jurisdiction/resolve'
 import { jurisdictionNotices } from '@/lib/league/gateway/admission'
 import { categoryHasMixedResolutionClocks, visibleChipEntriesForViewer } from '@/lib/league/catalog'
+import { admissionStockLane } from '@/lib/league/stock-lane'
 import { resolveLeagueViewer, viewerCatalog } from '@/lib/league/public-access'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
@@ -24,6 +25,7 @@ export async function GET(req: Request) {
     isAdmin: viewer.isAdmin,
     jurisdiction: viewer.jurisdiction,
   })
+  const stockLane = admissionStockLane(viewer.jurisdiction)
 
   // Load recent ranked sports rounds so existing fixtures show as discoverable chips
   let sportsInstruments: { instrument: string }[] = []
@@ -67,9 +69,12 @@ export async function GET(req: Request) {
       tone: c.tone,
       kind: c.kind,
       promptAllowed: isPromptAllowed(c.id, viewer.jurisdiction),
-      instruments: visibleChipEntriesForViewer(c, viewer).map((i) => ({
-        instrument: i.instrument,
-      })),
+      instruments:
+        c.id === 'stocks'
+          ? []
+          : visibleChipEntriesForViewer(c, viewer).map((i) => ({
+              instrument: i.instrument,
+            })),
       mixedResolutionClocks: categoryHasMixedResolutionClocks(c),
     }
   })
@@ -77,5 +82,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     categories,
     jurisdiction: notices,
+    stockLane,
+    viewerIsAdmin: viewer.isAdmin,
   })
 }

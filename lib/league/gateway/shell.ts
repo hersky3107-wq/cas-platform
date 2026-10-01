@@ -10,6 +10,7 @@ import { decodeEntertainmentInstrument, parseAdmissionsThreshold } from './adapt
 import { decodePoliticsInstrument } from './adapters/politics-catalog'
 import { decodePropertyInstrument } from './adapters/real-estate-catalog'
 import { decodeSportsInstrument } from './adapters/sports-catalog'
+import { decodeStockInstrument } from './adapters/stock-catalog'
 import { propositionKindFor } from './normalize-prompt'
 import { MAX_PROPERTY_PICKS } from './adapters/real-estate-target'
 import { MAX_TARGET_PICKS } from './target-resolve'
@@ -58,6 +59,7 @@ const SLATE_BACKED_CATEGORIES = new Set<string>([
   'sports',
   'entertainment',
   'real_estate',
+  'stocks',
 ])
 
 export function isSlateBackedCategory(id: string): boolean {
@@ -69,7 +71,8 @@ function isFreeformInstrument(id: string): boolean {
     decodeSportsInstrument(id) !== null ||
     decodePoliticsInstrument(id) !== null ||
     decodeEntertainmentInstrument(id) !== null ||
-    decodePropertyInstrument(id) !== null
+    decodePropertyInstrument(id) !== null ||
+    decodeStockInstrument(id) !== null
   )
 }
 
@@ -97,7 +100,8 @@ function entityRefusalIsImmediate(code: RefusalCode): boolean {
     code === 'unsupported_show' ||
     code === 'no_result_source' ||
     code === 'specific_property' ||
-    code === 'brokerage_advice'
+    code === 'brokerage_advice' ||
+    code === 'korea_listing'
   )
 }
 
@@ -212,6 +216,9 @@ export type GatewayDeps = {
 }
 
 function catalogChipsFor(categoryId: string, viewer: GatewayViewer): { id: string; label_i18n_key: string }[] {
+  // Stocks no longer has a closed chip catalog. A miss must not offer AAPL/NVDA/TSLA
+  // as the whole universe; those names still resolve from the sentence itself.
+  if (categoryId === 'stocks') return []
   return visibleChipInstrumentIdsForViewer(categoryId, viewer).map((id) => ({
     id,
     label_i18n_key: `league.catalog.instruments.${id}`,

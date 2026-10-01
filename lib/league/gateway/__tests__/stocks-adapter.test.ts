@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { buildCatalogRankedRoundInput } from '../../catalog'
 import { assertApprovedCopy } from '../../compliance'
+import { consensusMoneySearchHints } from '../../extra/consensus'
 import { createStocksAdapter } from '../adapters/stocks'
 import type { PriceSeriesIo } from '../adapters/price-series-packet'
+import type { PacketBuildContext, PacketRound } from '../types'
 import { refusalMessageForKey } from '../refusal-copy'
 import type { NormalizeSlots } from '../types'
 
@@ -68,15 +70,22 @@ describe('stocks adapter — entity resolution', () => {
     }
   })
 
-  it('an unknown instrument refuses with unsupported_entity and lists the supported set as safe facts', async () => {
-    const r = await adapter.resolveEntity('삼성전자', 'ko')
-    expect(r.ok).toBe(false)
-    if (!r.ok && 'refuse' in r) {
-      expect(r.refuse.code).toBe('unsupported_entity')
-      expect(r.refuse.safe_facts?.supported).toContain('AAPL')
-    } else {
-      throw new Error('expected a refusal')
+  it('삼성전자 and 005930 point at the Korea lane and do not open a global ticker', async () => {
+    for (const raw of ['삼성전자', '005930', 'Samsung', '005930.KS']) {
+      const r = await adapter.resolveEntity(raw, 'ko')
+      expect(r.ok, raw).toBe(false)
+      if (!r.ok && 'refuse' in r) {
+        expect(r.refuse.code, raw).toBe('korea_listing')
+      } else {
+        throw new Error(`expected a refusal for ${raw}`)
+      }
     }
+  })
+
+  it('resolves a full sentence the way the slate fallback sends it', async () => {
+    expect(await adapter.resolveEntity('애플 내일 오를까?', 'ko')).toMatchObject({ ok: true, entity_id: 'AAPL' })
+    expect(await adapter.resolveEntity('엔비디아', 'ko')).toMatchObject({ ok: true, entity_id: 'NVDA' })
+    expect(await adapter.resolveEntity('Tesla', 'en')).toMatchObject({ ok: true, entity_id: 'TSLA' })
   })
 })
 
@@ -85,10 +94,11 @@ describe('stocks adapter — slots, decidability, clarifying questions', () => {
     expect(adapter.requiredSlots({ entity_id: 'AAPL', entity_kind: 'ticker' })).toEqual(['horizon'])
   })
 
-  it('is decidable only with a catalog ticker AND a valid horizon', () => {
+  it('is decidable for a catalog ticker or a resolved US listing, not a bare unknown symbol', () => {
     expect(adapter.isDecidable(slots())).toBe(true)
     expect(adapter.isDecidable(slots({ horizon: null }))).toBe(false)
     expect(adapter.isDecidable(slots({ entity_id: 'MSFT' }))).toBe(false)
+    expect(adapter.isDecidable(slots({ entity_id: 'STOCK:NASDAQ:MSFT', entity_label: 'Microsoft' }))).toBe(true)
   })
 
   it('asks for the horizon with the four fixed chips when missing', () => {
@@ -132,6 +142,7 @@ describe('stocks adapter — jurisdiction, refusal taxonomy, grade sources', () 
     const taxonomy = adapter.refusalTaxonomy()
     expect(taxonomy.map((t) => t.code)).toEqual([
       'unsupported_entity',
+      'korea_listing',
       'ambiguous_entity',
       'missing_slot',
       'horizon_incompatible',
@@ -166,5 +177,63 @@ describe('stocks adapter — slots from a persisted round (orchestrator re-runs)
     expect(s.horizon).toBe('1w')
     expect(s.category_id).toBe('stocks')
     expect(adapter.isDecidable(s)).toBe(true)
+  })
+
+  it('keeps the stock ledger for a freeform listing so extra seats still key off stock', () => {
+    const round = adapter.composeProposition(
+      slots({ entity_id: 'STOCK:NASDAQ:MSFT', entity_label: 'Microsoft' }),
+      new Date('2026-08-28T09:00:00.000Z'),
+    )
+    expect(round.category).toBe('stock')
+    expect(round.instrument).toBe('STOCK:NASDAQ:MSFT')
+    expect(round.proposition_text).toMatch(/^Will MSFT close higher by \d{4}-\d{2}-\d{2}/)
+    expect(round.resolution_rule).toContain('Identity: Microsoft')
+    const rebuilt = adapter.slotsForRound(round)
+    expect(rebuilt.category_id).toBe('stocks')
+    expect(adapter.isDecidable(rebuilt)).toBe(true)
+    expect(consensusMoneySearchHints('stock')).toMatch(/price target|options|목표가/)
+  })
+})
+
+describe('stocks adapter — symbol search is wired and inert until Ultra', () => {
+  it('asks the caller to pick when search returns more than one US listing', async () => {
+    const searching = createStocksAdapter(DEAD_IO, async () => ({
+      koreaOnly: false,
+      hits: [
+        { symbol: 'MSFT', exchange: 'NASDAQ', name: 'Microsoft', instrumentType: 'Common Stock' },
+        { symbol: 'MS', exchange: 'NYSE', name: 'Morgan Stanley', instrumentType: 'Common Stock' },
+      ],
+    }))
+    const r = await searching.resolveEntity('Microsoft', 'en')
+    expect(r.ok).toBe(false)
+    if (!r.ok && 'need' in r) {
+      expect(r.need.options?.map((o) => o.id)).toEqual(['STOCK:NASDAQ:MSFT', 'STOCK:NYSE:MS'])
+      expect(r.need.options?.[0]?.label).toContain('Microsoft')
+    } else {
+      throw new Error('expected chips')
+    }
+  })
+
+  it('does not call Twelve Data for a STOCK: packet until the Ultra flag is on', async () => {
+    const prev = process.env.TWELVE_DATA_STOCK_UNIVERSE
+    delete process.env.TWELVE_DATA_STOCK_UNIVERSE
+    const round = adapter.composeProposition(
+      slots({ entity_id: 'STOCK:NASDAQ:MSFT', entity_label: 'Microsoft' }),
+      new Date('2026-08-28T09:00:00.000Z'),
+    )
+    const ctx: PacketBuildContext = { round: round as PacketRound, costCapUsd: 1 }
+    const packet = await adapter.buildPacket(slots({ entity_id: 'STOCK:NASDAQ:MSFT' }), ctx)
+    expect(packet.dataPacket.available).toBe(false)
+    expect(packet.dataPacket.error).toBe('twelve_data_ultra_not_connected')
+    expect(packet.injection).toBeNull()
+    if (prev === undefined) delete process.env.TWELVE_DATA_STOCK_UNIVERSE
+    else process.env.TWELVE_DATA_STOCK_UNIVERSE = prev
+  })
+
+  it('sends a Korea-only search result back to the Korea lane', async () => {
+    const searching = createStocksAdapter(DEAD_IO, async () => ({ koreaOnly: true, hits: [] }))
+    const r = await searching.resolveEntity('Hyundai Motor', 'en')
+    expect(r.ok).toBe(false)
+    if (!r.ok && 'refuse' in r) expect(r.refuse.code).toBe('korea_listing')
   })
 })

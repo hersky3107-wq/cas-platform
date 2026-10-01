@@ -26,6 +26,8 @@ import { buildPoliticsRankedRoundInput } from './gateway/adapters/politics-compo
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { buildSportsRankedRoundInput } from './gateway/adapters/sports-compose'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
+import { buildStockRankedRoundInput, decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { admissionStockLane, isGlobalStockInstrument } from './stock-lane'
 import { buildRealEstateRankedRoundInput } from './gateway/adapters/real-estate-compose'
 import type { ComposedRound } from './gateway/types'
 
@@ -79,7 +81,8 @@ export function isPublicRankedInstrument(instrument: string): boolean {
     decodeSportsInstrument(instrument) !== null ||
     decodePoliticsInstrument(instrument) !== null ||
     decodeEntertainmentInstrument(instrument) !== null ||
-    decodePropertyInstrument(instrument) !== null
+    decodePropertyInstrument(instrument) !== null ||
+    decodeStockInstrument(instrument) !== null
   )
 }
 
@@ -274,6 +277,14 @@ export async function authorizeRoundForViewer(viewer: LeagueViewer, roundIdRaw: 
     if (!isCatalogInstrumentAllowed(round.instrument, viewer.jurisdiction)) {
       return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
     }
+    const lane = admissionStockLane(viewer.jurisdiction)
+    const globalStock = isGlobalStockInstrument(round.instrument)
+    if (round.category === 'stock' && lane === 'korea' && globalStock) {
+      return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
+    }
+    if (round.category === 'stock' && lane === 'global' && !globalStock) {
+      return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
+    }
   }
 
   return { ok: true, roundId: round.id, category: round.category, instrument: round.instrument }
@@ -354,6 +365,7 @@ export async function resolvePublicInstrumentGenerateTarget(
   const electionParts = decodePoliticsInstrument(gate.instrument)
   const showParts = decodeEntertainmentInstrument(gate.instrument)
   const propertyParts = decodePropertyInstrument(gate.instrument)
+  const stockParts = decodeStockInstrument(gate.instrument)
   const created = sportsParts
     ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
     : electionParts
@@ -362,7 +374,9 @@ export async function resolvePublicInstrumentGenerateTarget(
         ? buildEntertainmentRankedRoundInput(gate.instrument, gate.horizon)
         : propertyParts
           ? buildRealEstateRankedRoundInput(gate.instrument, gate.horizon)
-          : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+          : stockParts
+            ? buildStockRankedRoundInput(gate.instrument, gate.horizon)
+            : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
   if (!created) {
     return { ok: false, response: jsonError(404, 'No ranked round available yet', 'no_round') }
   }
