@@ -438,6 +438,15 @@ const SUBJECT_OUTCOME_CONFIG: PromptConfig = {
   scoutRationaleRule: SCOUT_RATIONALE_RULE,
 }
 
+/**
+ * Shared across every category. A stated confidence of ~59% is a coin-flip
+ * with a lean — the field must split, not go 40:0. Near-unanimity is only
+ * for a high-confidence lean (80%+). Clear data may still lean; it may not
+ * manufacture unanimity on a close call.
+ */
+export const CONFIDENCE_DISTRIBUTION_GUIDANCE =
+  'Match your direction choice to your confidence. If your confidence is 55-65% (near coin-flip), the opposite outcome happens 35-45% of the time — do NOT reflexively pick the slightly-favored side. If the opposite scenario is genuinely plausible, picking it is correct and expected. Only when confidence is high (80%+) should the field be near-unanimous. At 55-65% confidence, the AIs should naturally split (e.g. 60-70% one way, 30-40% the other), not 100-0. Overheating/mean-reversion, single-event variance, and priced-in news are real reasons the favored side fails. When the data clearly favors one side, leaning that way is correct — but near-unanimity is appropriate only at high confidence (80%+). A close call must split.'
+
 export const SPORTS_CALIBRATION_GUIDANCE =
   "This is a single-game outcome. If one side is a strong favorite (80%+), pick that side — it will very likely win. BUT when it's close (e.g. 55%), remember the 45% side wins nearly half the time. In close games, seriously weigh the REASONS the underdog could win (injuries recovering, momentum, matchup quirks, single-game variance, situational factors). If those reversal reasons are genuinely strong or the variance is high, you MAY pick the underdog — this is allowed and encouraged when the case is real. Do NOT pick the underdog just to be contrarian (that's wrong), and do NOT invent reasons that aren't there. But do NOT blindly follow the favorite in a coin-flip when real reversal factors exist. Match confidence to the actual edge: blowout ~85-90%, coin-flip ~55%."
 
@@ -628,6 +637,7 @@ export function buildRoundPrompts(
       : isPoliticsLedgerCategory(round.category) && contract.kind === 'binary_subject_outcome'
         ? POLITICS_CALIBRATION_GUIDANCE
         : null
+  const distribution = ['', CONFIDENCE_DISTRIBUTION_GUIDANCE]
 
   let price: string
   if (injection) {
@@ -638,6 +648,7 @@ export function buildRoundPrompts(
       '',
       contract.packetAnswerGuidance,
       ...(sportsGuidance ? ['', sportsGuidance] : []),
+      ...distribution,
       CLOSED_BOOK_CLOSER,
     ].join('\n')
   } else {
@@ -646,6 +657,7 @@ export function buildRoundPrompts(
       '',
       contract.noPacketAnswerGuidance(packetError),
       ...(sportsGuidance ? ['', sportsGuidance] : []),
+      ...distribution,
       CLOSED_BOOK_CLOSER,
     ].join('\n')
   }
@@ -655,17 +667,23 @@ export function buildRoundPrompts(
     '',
     contract.scoutAnswerGuidance,
     ...(sportsGuidance ? ['', sportsGuidance] : []),
+    ...distribution,
     SCOUT_CLOSER,
   ].join('\n')
 
   return { price, scout }
 }
 
+function withConfidenceDistribution(prompt: string): string {
+  if (prompt.includes(CONFIDENCE_DISTRIBUTION_GUIDANCE)) return prompt
+  return `${prompt}\n\n- confidence distribution: ${CONFIDENCE_DISTRIBUTION_GUIDANCE}`
+}
+
 /**
  * Tier-appropriate system prompt from the round's answer contract.
- * For sports binary_subject_outcome rounds, injects single-game calibration:
- * blowouts stay with the favorite; close games may pick the underdog when
- * reversal reasons are real — never as a forced contrarian.
+ * Sports and politics keep their category calibration. Every category also
+ * gets the shared confidence-distribution rule: a 55-65% lean must split;
+ * near-unanimity is only for an 80%+ lean.
  */
 export function systemPromptFor(
   entry: { league_tier: string },
@@ -673,15 +691,19 @@ export function systemPromptFor(
   category?: string | null,
 ): string {
   const isSports = isSportsLedgerCategory(category)
+  let base: string
   if (isSports && contract.kind === 'binary_subject_outcome') {
-    return entry.league_tier === 'scout'
-      ? (contract.sportsScoutSystemPrompt ?? contract.scoutSystemPrompt)
-      : (contract.sportsClosedBookSystemPrompt ?? contract.closedBookSystemPrompt)
+    base =
+      entry.league_tier === 'scout'
+        ? (contract.sportsScoutSystemPrompt ?? contract.scoutSystemPrompt)
+        : (contract.sportsClosedBookSystemPrompt ?? contract.closedBookSystemPrompt)
+  } else if (isPoliticsLedgerCategory(category) && contract.kind === 'binary_subject_outcome') {
+    base =
+      entry.league_tier === 'scout'
+        ? (contract.politicsScoutSystemPrompt ?? contract.scoutSystemPrompt)
+        : (contract.politicsClosedBookSystemPrompt ?? contract.closedBookSystemPrompt)
+  } else {
+    base = entry.league_tier === 'scout' ? contract.scoutSystemPrompt : contract.closedBookSystemPrompt
   }
-  if (isPoliticsLedgerCategory(category) && contract.kind === 'binary_subject_outcome') {
-    return entry.league_tier === 'scout'
-      ? (contract.politicsScoutSystemPrompt ?? contract.scoutSystemPrompt)
-      : (contract.politicsClosedBookSystemPrompt ?? contract.closedBookSystemPrompt)
-  }
-  return entry.league_tier === 'scout' ? contract.scoutSystemPrompt : contract.closedBookSystemPrompt
+  return withConfidenceDistribution(base)
 }

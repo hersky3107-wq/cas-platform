@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { answerContractFor, buildRoundPrompts, type PromptRound } from '../answer-contract'
+import { answerContractFor, buildRoundPrompts, CONFIDENCE_DISTRIBUTION_GUIDANCE, type PromptRound } from '../answer-contract'
 import { isBinaryDirection, parsePrediction, splitReasoningAndJson, type ParsedPrediction } from '../prediction-parse'
 import { validateMagnitude } from '../magnitude'
 
@@ -147,26 +147,37 @@ describe('binary_close_higher system prompts — byte-identical to the frozen or
   })
 })
 
-describe('binary_close_higher round prompts — byte-identical to the frozen buildPrompts', () => {
+const PRICE_CLOSER =
+  'Write the four-line reasoning block (CHAIN / EVIDENCE / BASE RATE / COUNTER), then the single-line JSON object as the LAST line, exactly as described in the system message.'
+const SCOUT_CLOSER = 'Respond with the single-line JSON object described in the system message.'
+
+/** Frozen schema stays; the shared distribution line is the only addition, just before the closer. */
+function expectFrozenPlusDistribution(actual: string, frozen: string, closer: string) {
+  expect(frozen.endsWith(closer)).toBe(true)
+  const head = frozen.slice(0, frozen.length - closer.length).replace(/\n$/, '')
+  expect(actual).toBe([head, '', CONFIDENCE_DISTRIBUTION_GUIDANCE, closer].join('\n'))
+}
+
+describe('binary_close_higher round prompts — frozen schema plus the shared distribution line', () => {
   it('with a packet injection', () => {
     const frozen = frozenBuildPrompts(ROUND, INJECTION)
     const current = buildRoundPrompts(contract, ROUND, INJECTION)
-    expect(current.price).toBe(frozen.price)
-    expect(current.scout).toBe(frozen.scout)
+    expectFrozenPlusDistribution(current.price, frozen.price, PRICE_CLOSER)
+    expectFrozenPlusDistribution(current.scout, frozen.scout, SCOUT_CLOSER)
   })
 
   it('without a packet, no error detail', () => {
     const frozen = frozenBuildPrompts(ROUND, null)
     const current = buildRoundPrompts(contract, ROUND, null)
-    expect(current.price).toBe(frozen.price)
-    expect(current.scout).toBe(frozen.scout)
+    expectFrozenPlusDistribution(current.price, frozen.price, PRICE_CLOSER)
+    expectFrozenPlusDistribution(current.scout, frozen.scout, SCOUT_CLOSER)
   })
 
   it('without a packet, with an error detail', () => {
     const frozen = frozenBuildPrompts(ROUND, null, 'twelve_data timeout')
     const current = buildRoundPrompts(contract, ROUND, null, 'twelve_data timeout')
-    expect(current.price).toBe(frozen.price)
-    expect(current.scout).toBe(frozen.scout)
+    expectFrozenPlusDistribution(current.price, frozen.price, PRICE_CLOSER)
+    expectFrozenPlusDistribution(current.scout, frozen.scout, SCOUT_CLOSER)
   })
 })
 

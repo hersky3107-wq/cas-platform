@@ -19,6 +19,8 @@ import {
   buildRoundPrompts,
   isContractSide,
   QUALIFIER_TEXT_MAX_CHARS,
+  CONFIDENCE_DISTRIBUTION_GUIDANCE,
+  POLITICS_CALIBRATION_GUIDANCE,
   SPORTS_CALIBRATION_GUIDANCE,
   systemPromptFor,
   type AnswerContract,
@@ -392,5 +394,78 @@ describe('sports calibration prompt injection', () => {
     const techPrompts = buildRoundPrompts(contract, techRound, 'PACKET DATA')
     expect(techPrompts.price).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
     expect(techPrompts.scout).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
+  })
+})
+
+describe('confidence-distribution guidance — every category', () => {
+  const categories = [
+    'stock',
+    'gold_metal',
+    'crypto_spot',
+    'fx',
+    'etf_index',
+    'commodity_energy',
+    'memecoin',
+    'sports',
+    'politics_election',
+    'entertainment_awards',
+    'real_estate',
+  ] as const
+
+  it('states the split law and keeps the clear-data lean', () => {
+    expect(CONFIDENCE_DISTRIBUTION_GUIDANCE).toContain('55-65%')
+    expect(CONFIDENCE_DISTRIBUTION_GUIDANCE).toContain('not 100-0')
+    expect(CONFIDENCE_DISTRIBUTION_GUIDANCE).toContain('80%+')
+    expect(CONFIDENCE_DISTRIBUTION_GUIDANCE).toContain('When the data clearly favors one side, leaning that way is correct')
+    expect(CONFIDENCE_DISTRIBUTION_GUIDANCE).toContain('A close call must split')
+  })
+
+  it('injects the shared block into system and round prompts for every category, and keeps sports/politics text', () => {
+    const closeHigher = answerContractFor('binary_close_higher')
+    const subject = answerContractFor('binary_subject_outcome')
+    const threshold = answerContractFor('binary_threshold')
+    for (const category of categories) {
+      const contract =
+        category === 'sports' || category === 'politics_election' || category === 'entertainment_awards' || category === 'real_estate'
+          ? subject
+          : closeHigher
+      for (const tier of ['premier', 'scout'] as const) {
+        const system = systemPromptFor({ league_tier: tier }, contract, category)
+        expect(system, `${category}/${tier}`).toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)
+      }
+      const prompts = buildRoundPrompts(
+        contract,
+        {
+          proposition_text: 'probe',
+          instrument: 'PROBE',
+          category,
+          horizon: '1d',
+          resolution_rule: 'probe',
+          resolves_at: '2026-10-02T00:00:00.000Z',
+        },
+        'PACKET',
+      )
+      expect(prompts.price, category).toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)
+      expect(prompts.scout, category).toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)
+    }
+
+    const sportsSystem = systemPromptFor({ league_tier: 'premier' }, subject, 'sports')
+    expect(sportsSystem).toContain(SPORTS_CALIBRATION_GUIDANCE)
+    expect(sportsSystem.indexOf(SPORTS_CALIBRATION_GUIDANCE)).toBeLessThan(
+      sportsSystem.indexOf(CONFIDENCE_DISTRIBUTION_GUIDANCE),
+    )
+    const politicsSystem = systemPromptFor({ league_tier: 'premier' }, subject, 'politics_election')
+    expect(politicsSystem).toContain(POLITICS_CALIBRATION_GUIDANCE)
+    expect(politicsSystem).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
+
+    const stockSystem = systemPromptFor({ league_tier: 'premier' }, closeHigher, 'stock')
+    expect(stockSystem).toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)
+    expect(stockSystem).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
+    expect(stockSystem).not.toContain(POLITICS_CALIBRATION_GUIDANCE)
+    expect(closeHigher.closedBookSystemPrompt).not.toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)
+
+    const thresholdSystem = systemPromptFor({ league_tier: 'premier' }, threshold, 'entertainment_awards')
+    expect(thresholdSystem).toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)
+    expect(thresholdSystem).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
   })
 })
