@@ -246,6 +246,7 @@ describe('real estate housing index', () => {
     expect(t.disclaimer.realEstateScope).toContain('단지')
     const parts = decodePropertyInstrument(inst)!
     expect(propertySearchQueries(parts).some((q) => /실거래|existing home/i.test(q.q))).toBe(true)
+    expect(propertySearchQueries(parts).some((q) => /correction risk|supply overhang/i.test(q.q))).toBe(true)
   })
 
   it('hub stays coming_soon: no injected region chips, no horizon selector', () => {

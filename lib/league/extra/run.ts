@@ -5,7 +5,8 @@
  * Consensus searches money-positioning (options / prediction markets / COT /
  * institutional targets) only — no series, no packet.
  * Crow reads a fact brief only: sports cache baseline + both sides, or the
- * price path. Never the research packet, never invented numbers.
+ * price path plus the packet's computed CROWDING block. Never the research
+ * prose, never invented numbers.
  * Oracle owns divination cache — this file does not write one.
  */
 import 'server-only'
@@ -98,6 +99,7 @@ import {
   buildCrowUserPrompt,
   crowRetryInstruction,
   formatFinanceCrowBrief,
+  withCrowdingBlock,
   leagueSideFromCrow,
   parseCrowOutput,
   type CrowCaller,
@@ -138,6 +140,8 @@ type ExtraRoundRow = {
   created_at: string | null
   proposition_kind: string | null
   subject_label: string | null
+  /** Crow reads only its computed CROWDING block; other seats never touch it. */
+  closed_book_packet_text?: string | null
 }
 
 export type ExtraPriceSeries = {
@@ -171,7 +175,7 @@ export type GenerateExtraSeatsOpts = {
 async function loadRound(roundId: string): Promise<ExtraRoundRow> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .select('id, proposition_text, category, instrument, horizon, opened_at, created_at, proposition_kind, subject_label')
+    .select('id, proposition_text, category, instrument, horizon, opened_at, created_at, proposition_kind, subject_label, closed_book_packet_text')
     .eq('id', roundId)
     .single()
   if (error || !data) {
@@ -893,7 +897,7 @@ async function resolveCrowBrief(
     return formatPropertyCrowBrief(parts)
   }
   const series = await resolveHistorySeries(round.instrument, providedSeries)
-  return formatFinanceCrowBrief(series)
+  return withCrowdingBlock(formatFinanceCrowBrief(series), round.closed_book_packet_text)
 }
 
 async function callCrowOnce(call: CrowCaller, input: CrowLeagueInput, retry = false): Promise<CrowCallResult> {

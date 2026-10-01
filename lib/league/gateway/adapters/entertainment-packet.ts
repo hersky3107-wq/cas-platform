@@ -37,6 +37,7 @@ export function entertainmentSearchQueries(parts: ShowParts): Array<{ q: string;
     { q: `${parts.subject} ${event} buzz reviews festival trailer ${day}`, lang: 'en' },
     { q: `${parts.subject} comparable opening director franchise genre`, lang: 'en' },
     { q: `${parts.subject} ${event} 예매 반응 흥행 전망 ${day}`, lang: 'ko' },
+    { q: `${parts.subject} ${event} competition counter-programming weak tracking flop or upset risk ${day}`, lang: 'en' },
   ]
 }
 
@@ -58,6 +59,12 @@ function assembleInjection(parts: ShowParts, baseline: EntertainmentBaseline | n
   return [
     `PROPOSITION: ${formatShowProposition(parts)}`,
     formatEntertainmentCrowBrief(parts, baseline),
+    '',
+    'BOTH SIDES — real factors only. Do not invent balance.',
+    baseline?.marketPct != null
+      ? `Priced: yes ${baseline.marketPct.toFixed(1)}% · no ${(100 - baseline.marketPct).toFixed(1)}% — the smaller side still happens about that often.`
+      : 'Priced yes / no: UNAVAILABLE. Do not invent odds.',
+    'Weigh buzz, reviews, and comps against competition, counter-programming, and weak tracking — only those the BUZZ section states. A clear favorite with no stated risk can still be the call.',
     '',
     'COMPS',
     'Same director, franchise, or genre opening is context only. Do not invent a historical hit rate.',

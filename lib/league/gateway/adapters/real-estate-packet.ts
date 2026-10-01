@@ -39,6 +39,7 @@ export function propertySearchQueries(parts: PropertyParts): Array<{ q: string; 
     { q: `${name} housing policy mortgage rate supply permits ${parts.refMonth}`, lang: 'en' },
     { q: `${ko} 주택 금리 입주 인허가 규제 ${parts.refMonth}`, lang: 'ko' },
     { q: `30 year mortgage rate housing supply ${name}`, lang: 'en' },
+    { q: `${name} housing correction risk falling transactions supply overhang affordability ${parts.refMonth}`, lang: 'en' },
   ]
 }
 
@@ -72,6 +73,8 @@ export async function buildRealEstatePacket(ctx: PacketBuildContext, io: RealEst
         'Use published 거래량 and transacted-price trend as the market-activity input.',
         'POLICY / RATES / SUPPLY',
         findings,
+        'BOTH SIDES — real factors only. Do not invent balance.',
+        'Weigh upside drivers (rate cuts, tight supply, rising 거래량) against downside drivers (rate pressure, 입주 supply overhang, falling 거래량, tightening policy, stretched affordability) — only those the findings state. A one-way index trend with no stated counter-factor can still be the call.',
         'Do not cite a named apartment complex or a street address.',
       ].join('\n')
     : `REAL ESTATE PACKET — UNAVAILABLE (instrument ${ctx.round.instrument})`

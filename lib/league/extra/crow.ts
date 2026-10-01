@@ -10,6 +10,7 @@
  * Ledger model_id stays `crow`. All ledger categories.
  */
 import type { AnswerSide } from '../answer-contract'
+import { extractCrowdingBlock, rsi14 } from '../crowding'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import type { HistorySeriesBar } from './history'
 import { leagueSideFromDivination } from './divination'
@@ -99,7 +100,7 @@ export function buildCrowSystemPrompt(category: string): string {
         ? 'Entertainment lens: flop risk, an awards upset, or a #1 stolen by counter-programming. A heavy favorite can still be right. Do not invent grosses or odds that are not in the brief.'
         : realEstate
           ? 'Housing-index lens: regional overheating or a correction in the published price index. Do not name an apartment complex, address, or unit. A flat index is not a crash.'
-          : 'Finance lens: the crowd\'s euphoria, overheating, and mean-reversion risk. A steep measured run is a real downside. A flat path is not a reversal. Do not invent yields, funding, or macro prints.'
+          : 'Finance lens: you are the sharpest reader of crowding. Read the CROWDING & OVERHEATING block first when it is in the brief: hot funding, crowded long accounts, call-heavy put/call, extreme greed, lopsided speculator COT, an overbought run stretched far above SMA50 — that is your reversal / mean-reversion evidence. Crowded shorts, negative funding, and washed-out readings are the squeeze / bounce case. Weigh the BOTH SIDES lines; name the factor the crowd is ignoring. "세력" / manipulation is a hypothesis you may raise, never a fact — there is no order-book depth. When the block says "none measured", a clean trend can be your call. Do not invent yields, funding, or macro prints.'
   return [
     CROW_PERSONA,
     '',
@@ -134,22 +135,6 @@ export function crowRetryInstruction(): string {
     'RETRY: You are 까마귀. Last line must be {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
     'Do not be contrarian for its own sake. Do not invent numbers. Do not return an empty answer.',
   ].join(' ')
-}
-
-function rsi14(closes: readonly number[]): number | null {
-  if (closes.length < 15) return null
-  const window = closes.slice(-15)
-  let gain = 0
-  let loss = 0
-  for (let i = 1; i < window.length; i++) {
-    const d = window[i]! - window[i - 1]!
-    if (d >= 0) gain += d
-    else loss -= d
-  }
-  if (gain + loss === 0) return 50
-  if (loss === 0) return 100
-  const rs = gain / 14 / (loss / 14)
-  return 100 - 100 / (1 + rs)
 }
 
 /** Run length, stretch vs SMA50, distance from the 52w high, RSI14. */
@@ -203,6 +188,16 @@ export function formatFinanceCrowBrief(
     'Crowd euphoria is real only when this path is a steep run. Mean-reversion is the ignored downside of that run, not a required fade. A flat path is not a reversal.',
   )
   return lines.join('\n')
+}
+
+/**
+ * Finance brief plus the round's shared crowding block (computed numbers only —
+ * never the research prose of the packet).
+ */
+export function withCrowdingBlock(brief: string, closedBookPacketText: string | null | undefined): string {
+  const block = extractCrowdingBlock(closedBookPacketText)
+  if (!block) return brief
+  return [brief, '', 'SHARED POSITIONING (same computed block the 40 models saw):', block].join('\n')
 }
 
 export function parseCrowOutput(text: string | null): CrowEngineOutput | null {

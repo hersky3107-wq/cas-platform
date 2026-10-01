@@ -62,7 +62,7 @@ export function politicsSearchQueries(
       lang: 'en',
     },
     {
-      q: `${parts.candidate} debate performance media narrative momentum favorable coverage ${day}`,
+      q: `${parts.candidate} debate performance media narrative momentum favorable and critical coverage weaknesses ${day}`,
       lang: 'en',
     },
     {
@@ -124,6 +124,20 @@ function formatBaseline(baseline: Pick<ElectionCandidateLite, 'kalshiPct' | 'pol
   const implied = subjectImpliedPct(baseline)
   lines.push(`Subject implied (yes = ${candidate} wins): ${implied == null ? 'UNAVAILABLE' : `${implied.toFixed(1)}%`}`)
   return lines
+}
+
+export function formatPoliticsBothSides(
+  baseline: Pick<ElectionCandidateLite, 'kalshiPct' | 'polymarketPct'> | null,
+  candidate: string,
+): string[] {
+  const implied = baseline ? subjectImpliedPct(baseline) : null
+  return [
+    'BOTH SIDES — real factors only. Do not invent balance.',
+    implied == null
+      ? 'Priced subject / other side: UNAVAILABLE. Do not invent odds.'
+      : `Priced: ${candidate} ${implied.toFixed(1)}% · not-${candidate} ${(100 - implied).toFixed(1)}% — the smaller side still happens about that often.`,
+    'Weigh documented strengths (endorsements, momentum, turnout edge) against documented risks (scandal, weak debate, withdrawal, turnout gap) — only those the news section states. A heavy favorite with no stated risk can still be the call.',
+  ]
 }
 
 function formatPolls(polls: PoliticsPollSnippet[], hide: boolean): string[] {
@@ -190,6 +204,8 @@ export function assemblePoliticsInjection(args: {
   lines.push(
     '',
     ...formatBaseline(args.baseline, parts.candidate),
+    '',
+    ...formatPoliticsBothSides(args.baseline, parts.candidate),
     '',
     ...formatPolls(args.polls, hidePolls),
     '',

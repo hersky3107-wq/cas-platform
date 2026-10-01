@@ -1,3 +1,4 @@
+import { formatCrowding } from './crowding'
 import { isUiHorizon, sessionsForHorizon, usesTradingSessions, type UiHorizon } from './horizon'
 
 /**
@@ -1295,6 +1296,8 @@ export function assembleClosedBookInjection(input: ClosedBookPacketInput): strin
   if (related) parts.push('', related)
   const slow = formatSlowData(input.slow)
   if (slow) parts.push('', slow)
+  const crowding = formatCrowding(input)
+  if (crowding) parts.push('', crowding)
   const numericBlockText = parts.join('\n')
   const nonEnglish = formatNonEnglish(input.nonEnglishFindings)
   if (nonEnglish) parts.push('', nonEnglish)
