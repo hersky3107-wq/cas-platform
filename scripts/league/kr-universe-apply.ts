@@ -21,7 +21,10 @@ import {
   parseKrGroupMap,
   planUniverseApply,
   toUniverseDbWrite,
+  universeMapKey,
+  type KrGroupMap,
   type LeagueKrUniverseDbRow,
+  type UniverseApplyPlan,
   type UniverseRecord,
   type UniverseSnapshotRow,
 } from '@/lib/league/korea-universe-apply'
@@ -106,27 +109,72 @@ async function writeRows(rows: UniverseRecord[]): Promise<void> {
   if (error) throw new Error(`league_kr_universe upsert: ${error.message}`)
 }
 
-function printPlan(
-  plan: ReturnType<typeof planUniverseApply>,
-  opts: { dryRun: boolean; mapCreated: boolean; csvPath: string },
+function countByMarket(rows: UniverseRecord[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const row of rows) out[row.market] = (out[row.market] ?? 0) + 1
+  return out
+}
+
+function printMarketCounts(label: string, rows: UniverseRecord[]): void {
+  const by = countByMarket(rows)
+  const keys = Object.keys(by).sort()
+  if (keys.length === 0) {
+    console.log(`  ${label}: (none)`)
+    return
+  }
+  console.log(`  ${label}: ${keys.map((m) => `${m}=${by[m]}`).join(', ')}`)
+}
+
+export function printPlan(
+  plan: UniverseApplyPlan,
+  opts: {
+    dryRun: boolean
+    mapCreated: boolean
+    csvPath: string
+    snapshot: UniverseSnapshotRow[]
+    groupMap: KrGroupMap
+  },
 ): void {
+  const snapByKey = new Map(opts.snapshot.map((row) => [universeMapKey(row.market, row.code), row]))
   const mode = opts.dryRun ? 'dry-run' : 'APPLY'
   console.log(`league_kr_universe apply [${mode}]`)
   console.log(`  csv: ${opts.csvPath}`)
   console.log(`  group map: ${GROUP_MAP_PATH}${opts.mapCreated ? ' (created empty {})' : ''}`)
   console.log(`  writes:    ${plan.writes.length}`)
   console.log(`  entering:  ${plan.entering.length}`)
+  printMarketCounts('entering by market', plan.entering)
   console.log(`  staying:   ${plan.staying.length}`)
+  printMarketCounts('staying by market', plan.staying)
   console.log(`  leaving:   ${plan.leaving.length}`)
+  printMarketCounts('leaving by market', plan.leaving)
   console.log(`  unmapped:  ${plan.unmapped.length}`)
   if (plan.unmapped.length > 0) {
-    const preview = plan.unmapped.slice(0, 40)
-    console.log(`  unmapped list (${plan.unmapped.length}):`)
-    for (const key of preview) console.log(`    ${key}`)
-    if (plan.unmapped.length > preview.length) {
-      console.log(`    … ${plan.unmapped.length - preview.length} more`)
+    console.log(`  unmapped list (${plan.unmapped.length}): market, rank, code, name, mktcap_eok`)
+    for (const key of plan.unmapped) {
+      const snap = snapByKey.get(key)
+      if (snap) {
+        console.log(`    ${snap.market}, ${snap.rank}, ${snap.code}, ${snap.name}, ${snap.mktcapEok}`)
+      } else {
+        console.log(`    ${key} (not in CSV — DB-only row)`)
+      }
     }
   }
+  if (plan.invalidGroups.length > 0) {
+    console.log(`  invalid group ids (coerced to other): ${plan.invalidGroups.length}`)
+    for (const key of plan.invalidGroups) {
+      const bad = opts.groupMap[key]?.group ?? '?'
+      console.log(`    ${key}  group="${bad}"`)
+    }
+  }
+  const visibleByGroup: Record<string, number> = {}
+  for (const row of plan.writes) {
+    if (!row.visible) continue
+    const g = row.groupId ?? '(null)'
+    visibleByGroup[g] = (visibleByGroup[g] ?? 0) + 1
+  }
+  const groupKeys = Object.keys(visibleByGroup).sort()
+  console.log(`  visible group counts (${groupKeys.reduce((n, k) => n + visibleByGroup[k]!, 0)} rows):`)
+  for (const g of groupKeys) console.log(`    ${g}: ${visibleByGroup[g]}`)
 }
 
 async function main(): Promise<void> {
@@ -144,6 +192,10 @@ async function main(): Promise<void> {
   }
 
   const { map, created } = loadOrCreateGroupMap()
+  if (!created && Object.keys(map).length === 0) {
+    console.error('data/league/kr-group-map.json is still {} — populate the map before running apply.')
+    process.exit(1)
+  }
   const dryRun = !apply || created
   if (created && apply) {
     console.log('group map was missing — created {} and staying in dry-run')
@@ -165,7 +217,7 @@ async function main(): Promise<void> {
 
   const now = new Date().toISOString()
   const plan = planUniverseApply({ existing, snapshot, groupMap: map, now })
-  printPlan(plan, { dryRun, mapCreated: created, csvPath })
+  printPlan(plan, { dryRun, mapCreated: created, csvPath, snapshot, groupMap: map })
 
   if (dryRun) return
   await writeRows(plan.writes)

@@ -48,6 +48,8 @@ export type UniverseApplyPlan = {
   staying: UniverseRecord[]
   leaving: UniverseRecord[]
   unmapped: string[]
+  /** Map key present but `group` is not a KR_GROUPS id (coerced to other). */
+  invalidGroups: string[]
 }
 
 export function universeMapKey(market: UniverseMarket, code: string): string {
@@ -94,15 +96,18 @@ function resolveGroup(
   market: UniverseMarket,
   code: string,
   map: KrGroupMap,
-): { groupId: KrGroupId | null; flags: string[] | undefined; unmapped: boolean } {
+): { groupId: KrGroupId | null; flags: string[] | undefined; unmapped: boolean; invalidGroup: boolean } {
   const entry = map[universeMapKey(market, code)]
   if (market === 'US') {
-    return { groupId: null, flags: entry?.flags, unmapped: false }
+    return { groupId: null, flags: entry?.flags, unmapped: false, invalidGroup: false }
   }
-  if (!entry || !isKrGroupId(entry.group)) {
-    return { groupId: 'other', flags: entry?.flags, unmapped: true }
+  if (!entry) {
+    return { groupId: 'other', flags: undefined, unmapped: true, invalidGroup: false }
   }
-  return { groupId: entry.group, flags: entry.flags, unmapped: false }
+  if (!isKrGroupId(entry.group)) {
+    return { groupId: 'other', flags: entry.flags, unmapped: false, invalidGroup: true }
+  }
+  return { groupId: entry.group, flags: entry.flags, unmapped: false, invalidGroup: false }
 }
 
 export function planUniverseApply(input: {
@@ -120,6 +125,7 @@ export function planUniverseApply(input: {
   const staying: UniverseRecord[] = []
   const leaving: UniverseRecord[] = []
   const unmapped: string[] = []
+  const invalidGroups: string[] = []
 
   for (const key of [...keys].sort()) {
     const existing = existingByKey.get(key)
@@ -128,6 +134,7 @@ export function planUniverseApply(input: {
     const code = snap?.code ?? existing!.code
     const resolved = resolveGroup(market, code, input.groupMap)
     if (resolved.unmapped) unmapped.push(key)
+    if (resolved.invalidGroup) invalidGroups.push(key)
 
     const status: UniverseStatus = existing?.status ?? 'auto'
     const next: UniverseRecord = {
@@ -156,7 +163,7 @@ export function planUniverseApply(input: {
     else if (!decision.visible && wasVisible) leaving.push(next)
   }
 
-  return { writes, entering, staying, leaving, unmapped }
+  return { writes, entering, staying, leaving, unmapped, invalidGroups }
 }
 
 export type LeagueKrUniverseDbRow = {

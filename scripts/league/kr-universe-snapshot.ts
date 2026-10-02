@@ -18,6 +18,8 @@ const LOOKBACK_CALENDAR_DAYS = 40
 const KEEP_PER_MARKET = 220
 const NEW_LISTING_DAYS = 30
 const EOK = 100_000_000
+/** Minimum market cap (억원) on the latest session before ranking. Override: --min-mktcap=<eok> */
+export const KR_MIN_MKTCAP_EOK = 3000
 
 const TRADE = {
   KOSPI: '/stk_bydd_trd',
@@ -136,6 +138,8 @@ type FilterCounts = {
   afterNameBan: number
   afterListAge: number
   afterHalt: number
+  mktcapFloorRemoved: number
+  afterMktcapFloor: number
   afterTop: number
 }
 
@@ -149,6 +153,15 @@ type RankedRow = {
   listDd: string
 }
 
+function parseSnapshotArgs(argv: string[]): { minMktcapEok: number } {
+  let minMktcapEok = KR_MIN_MKTCAP_EOK
+  for (const arg of argv) {
+    const m = arg.match(/^--min-mktcap=(\d+)$/)
+    if (m) minMktcapEok = Number(m[1])
+  }
+  return { minMktcapEok }
+}
+
 function filterAndRank(
   market: Market,
   latestTrades: KrxRow[],
@@ -157,6 +170,7 @@ function filterAndRank(
   baseRows: KrxRow[],
   latestYmd: string,
   joinVia: { trade: Record<string, number>; base: Record<string, number> },
+  minMktcapEok: number,
 ): { ranked: RankedRow[]; counts: FilterCounts; secugrp: Map<string, number>; keptSecugrp: Set<string> } {
   const baseByCode = new Map<string, { row: KrxRow; via: string }>()
   for (const row of baseRows) {
@@ -196,6 +210,8 @@ function filterAndRank(
     afterNameBan: 0,
     afterListAge: 0,
     afterHalt: 0,
+    mktcapFloorRemoved: 0,
+    afterMktcapFloor: 0,
     afterTop: 0,
   }
 
@@ -229,11 +245,18 @@ function filterAndRank(
     if (latestVal == null || latestVal === 0) continue
     counts.afterHalt += 1
 
+    const mktcap = parseNum(trade.row.MKTCAP) ?? 0
+    const mktcapEok = Math.round(mktcap / EOK)
+    if (mktcapEok < minMktcapEok) {
+      counts.mktcapFloorRemoved += 1
+      continue
+    }
+    counts.afterMktcapFloor += 1
+
     const byDate = trdvalByCodeDate.get(code)
     let sum = 0
     for (const date of dates) sum += byDate?.get(date) ?? 0
     const avgTrdval = sum / dates.length
-    const mktcap = parseNum(trade.row.MKTCAP) ?? 0
 
     passed.push({
       market,
@@ -266,6 +289,8 @@ function printMarketSummary(
   console.log(`  after name ban (스팩/리츠): ${counts.afterNameBan}`)
   console.log(`  after LIST_DD >= 30d:       ${counts.afterListAge}`)
   console.log(`  after ACC_TRDVAL≠0 latest:  ${counts.afterHalt}`)
+  console.log(`  removed mktcap floor:       ${counts.mktcapFloorRemoved}`)
+  console.log(`  after mktcap floor:         ${counts.afterMktcapFloor}`)
   console.log(`  after top ${KEEP_PER_MARKET}:              ${counts.afterTop}`)
   console.log(`  SECUGRP_NM seen (joined):`)
   for (const [name, n] of [...secugrp.entries()].sort((a, b) => b[1] - a[1])) {
@@ -317,6 +342,8 @@ async function collectTradingDates(): Promise<{
 
 async function main() {
   if (!process.env.KRX_API_KEY?.trim()) throw new Error('KRX_API_KEY not set')
+  const { minMktcapEok } = parseSnapshotArgs(process.argv.slice(2))
+  console.log(`Market-cap floor: ${minMktcapEok}억 (latest session MKTCAP)`)
 
   const { dates, kospi, kosdaq } = await collectTradingDates()
   const latest = dates[0]!
@@ -333,8 +360,26 @@ async function main() {
     kosdaq: { trade: {} as Record<string, number>, base: {} as Record<string, number> },
   }
 
-  const kp = filterAndRank('KOSPI', kospi.get(latest) ?? [], kospi, dates, kospiBase.rows, latest, joinVia.kospi)
-  const kq = filterAndRank('KOSDAQ', kosdaq.get(latest) ?? [], kosdaq, dates, kosdaqBase.rows, latest, joinVia.kosdaq)
+  const kp = filterAndRank(
+    'KOSPI',
+    kospi.get(latest) ?? [],
+    kospi,
+    dates,
+    kospiBase.rows,
+    latest,
+    joinVia.kospi,
+    minMktcapEok,
+  )
+  const kq = filterAndRank(
+    'KOSDAQ',
+    kosdaq.get(latest) ?? [],
+    kosdaq,
+    dates,
+    kosdaqBase.rows,
+    latest,
+    joinVia.kosdaq,
+    minMktcapEok,
+  )
 
   console.log('\n--- Join key ---')
   console.log(

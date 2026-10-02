@@ -61,11 +61,13 @@ describe('KR_GROUPS', () => {
   it('lists sector groups in product order', () => {
     expect(KR_GROUPS.map((g) => g.id)).toEqual([
       'semis',
+      'electronics',
       'battery',
       'auto',
       'bio',
       'ship_defense',
       'power_machinery',
+      'robot_ai',
       'internet_ent',
       'finance',
       'materials_energy',

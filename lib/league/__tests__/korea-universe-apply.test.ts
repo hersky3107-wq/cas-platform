@@ -194,6 +194,18 @@ describe('planUniverseApply — pinned / hidden / unmapped', () => {
     expect(plan.writes).toHaveLength(2)
   })
 
+  it('coerces unknown map group ids to other and lists invalidGroups', () => {
+    const plan = planUniverseApply({
+      existing: [],
+      snapshot: [snap({ rank: 1 })],
+      groupMap: parseKrGroupMap({ 'KOSPI:005930': { group: 'legacy_sector', flags: [] } }),
+      now: NOW,
+    })
+    expect(plan.invalidGroups).toEqual(['KOSPI:005930'])
+    expect(plan.unmapped).toEqual([])
+    expect(plan.writes[0]?.groupId).toBe('other')
+  })
+
   it('maps unmapped KR codes to other and lists them', () => {
     const plan = planUniverseApply({
       existing: [],

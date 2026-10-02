@@ -29,11 +29,13 @@ export interface UniverseRow {
 
 export const KR_GROUPS = [
   { id: 'semis', label: '반도체·장비' },
+  { id: 'electronics', label: '전자부품·통신장비' },
   { id: 'battery', label: '2차전지' },
   { id: 'auto', label: '자동차·부품' },
   { id: 'bio', label: '바이오·헬스케어' },
   { id: 'ship_defense', label: '조선·방산·우주' },
   { id: 'power_machinery', label: '전력·원전·기계' },
+  { id: 'robot_ai', label: '로봇·AI·소프트웨어' },
   { id: 'internet_ent', label: '인터넷·게임·엔터' },
   { id: 'finance', label: '금융·지주' },
   { id: 'materials_energy', label: '화학·철강·에너지' },
