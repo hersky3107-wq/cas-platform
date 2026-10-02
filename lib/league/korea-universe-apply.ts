@@ -28,6 +28,8 @@ export type UniverseRecord = {
   removedAt: string | null
   flags: string[]
   updatedAt: string
+  /** US listing venue (NASDAQ / NYSE). Null for KOSPI/KOSDAQ. */
+  exchange: string | null
 }
 
 export type UniverseSnapshotRow = {
@@ -150,6 +152,7 @@ export function planUniverseApply(input: {
       removedAt: existing?.removedAt ?? null,
       flags: resolved.flags ?? existing?.flags ?? [],
       updatedAt: input.now,
+      exchange: existing?.exchange ?? null,
     }
 
     const decision = decideUniverseStatus(hysteresisPrev(existing ? { ...existing, status } : undefined), snap?.rank ?? null, false, input.now)
@@ -179,6 +182,7 @@ export type LeagueKrUniverseDbRow = {
   removed_at: string | null
   flags: string[] | null
   updated_at: string
+  exchange: string | null
 }
 
 function asMarket(value: string): UniverseMarket | null {
@@ -209,6 +213,7 @@ export function mapUniverseDbRow(row: LeagueKrUniverseDbRow): UniverseRecord | n
     removedAt: row.removed_at,
     flags: Array.isArray(row.flags) ? row.flags : [],
     updatedAt: row.updated_at,
+    exchange: typeof row.exchange === 'string' && row.exchange.trim() ? row.exchange.trim().toUpperCase() : null,
   }
 }
 
@@ -226,5 +231,6 @@ export function toUniverseDbWrite(row: UniverseRecord): LeagueKrUniverseDbRow {
     removed_at: row.removedAt,
     flags: row.flags,
     updated_at: row.updatedAt,
+    exchange: row.exchange,
   }
 }

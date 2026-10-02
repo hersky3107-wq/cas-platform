@@ -28,6 +28,7 @@ function rec(over: Partial<UniverseRecord> = {}): UniverseRecord {
     removedAt: null,
     flags: [],
     updatedAt: '2026-09-01T00:00:00.000Z',
+    exchange: null,
     ...over,
   }
 }

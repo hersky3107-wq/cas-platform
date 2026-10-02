@@ -99,11 +99,17 @@ export type PublicGenerateInstrumentGate =
   | { ok: false; status: 400; code: 'missing_target' | 'unknown_instrument' | 'unknown_horizon' }
   | { ok: false; status: 403; code: 'jurisdiction_blocked' | 'kr_election_manual_close' }
 
+export type PublicGenerateUniverseLookup = {
+  /** Visible US `league_kr_universe` code. Fail-closed when omitted on the Korean STOCK path. */
+  isUsUniverseVisible?: (code: string) => boolean
+}
+
 export function gatePublicGenerateInstrument(
   instrumentRaw: string,
   viewer: { isAdmin: boolean; jurisdiction: JurisdictionInput },
   horizonRaw: unknown = '1d',
   closeFlag?: KrManualCloseFlag,
+  universe?: PublicGenerateUniverseLookup,
 ): PublicGenerateInstrumentGate {
   const instrument = instrumentRaw.trim()
   if (!instrument) return { ok: false, status: 400, code: 'missing_target' }
@@ -111,15 +117,22 @@ export function gatePublicGenerateInstrument(
   const horizon = typeof horizonRaw === 'string' ? horizonRaw.trim() : horizonRaw
   if (!isUiHorizon(horizon)) return { ok: false, status: 400, code: 'unknown_horizon' }
 
-  // Korean stock lane: admin-override-only while isKrLanePublicReady() is false.
-  // Non-admin Korean users keep the current placeholder and cannot generate.
-  if (
-    !viewer.isAdmin &&
-    (!isKrLanePublicReady() || admissionStockLane(viewer.jurisdiction) === 'korea') &&
-    admissionStockLane(viewer.jurisdiction) === 'korea' &&
-    (decodeStockInstrument(instrument) !== null || findCatalogInstrument(instrument)?.category.id === 'stocks')
-  ) {
-    return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+  const koreaLane = admissionStockLane(viewer.jurisdiction) === 'korea'
+  const stockListing = decodeStockInstrument(instrument)
+  const catalogStock = findCatalogInstrument(instrument)?.category.id === 'stocks'
+  if (koreaLane && (stockListing || catalogStock)) {
+    // Registration gate from 92cc538: non-admin KR users cannot generate stocks
+    // until KR_ADVISORY_REG_NO is set.
+    if (!viewer.isAdmin && !isKrLanePublicReady()) {
+      return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+    }
+    if (stockListing) {
+      if (universe?.isUsUniverseVisible?.(stockListing.symbol) !== true) {
+        return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+      }
+    } else if (!viewer.isAdmin) {
+      return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+    }
   }
 
   const sportsParts = decodeSportsInstrument(instrument)

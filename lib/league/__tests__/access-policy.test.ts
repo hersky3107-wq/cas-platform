@@ -323,7 +323,7 @@ describe('gatePublicGenerateInstrument — generate-stream { instrument }', () =
     const paSrc = readFileSync(join(__dirname, '../public-access.ts'), 'utf8')
     const genStart = paSrc.indexOf('export async function resolvePublicInstrumentGenerateTarget')
     const genBody = paSrc.slice(genStart, paSrc.indexOf('\n}', paSrc.lastIndexOf('return { ok: true, round: created }')))
-    const gateCallAt = genBody.indexOf('gatePublicGenerateInstrument(')
+    const gateCallAt = genBody.indexOf('gatePublicGenerateInstrumentForViewer(')
     const dbLookupAt = genBody.indexOf('resolvePublicInstrumentRound(')
     expect(gateCallAt).toBeGreaterThan(0)
     expect(dbLookupAt).toBeGreaterThan(gateCallAt)

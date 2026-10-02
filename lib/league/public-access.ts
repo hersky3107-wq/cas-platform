@@ -16,7 +16,7 @@ import {
   type CatalogRankedRoundInput,
   type PublicCategoryDef,
 } from './catalog'
-import { gatePublicGenerateInstrument, isCuratedInstrument, visibleCategoriesFor } from './access-policy'
+import { gatePublicGenerateInstrument, isCuratedInstrument, visibleCategoriesFor, type PublicGenerateInstrumentGate } from './access-policy'
 import { isUiHorizon, type UiHorizon } from './horizon'
 import type { PredictionCategory } from '@/lib/prediction/categories'
 import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
@@ -28,7 +28,8 @@ import { buildSportsRankedRoundInput } from './gateway/adapters/sports-compose'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { buildStockRankedRoundInput, decodeStockInstrument } from './gateway/adapters/stock-catalog'
 import { admissionStockLane, isGlobalStockInstrument } from './stock-lane'
-import { krElectionAccessDenied } from './politics/kr-manual-close'
+import { isUniverseCodeVisible } from './korea-universe-store'
+import { krElectionAccessDenied, type KrManualCloseFlag } from './politics/kr-manual-close'
 import { loadKrManualCloseFlag } from './politics/kr-election-store'
 import { buildRealEstateRankedRoundInput } from './gateway/adapters/real-estate-compose'
 import type { ComposedRound } from './gateway/types'
@@ -289,7 +290,11 @@ export async function authorizeRoundForViewer(viewer: LeagueViewer, roundIdRaw: 
     const lane = admissionStockLane(viewer.jurisdiction)
     const globalStock = isGlobalStockInstrument(round.instrument)
     if (round.category === 'stock' && lane === 'korea' && globalStock) {
-      return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
+      const listing = decodeStockInstrument(round.instrument)
+      const allowed = listing ? await isUniverseCodeVisible('US', listing.symbol) : false
+      if (!allowed) {
+        return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
+      }
     }
     if (round.category === 'stock' && lane === 'global' && !globalStock) {
       return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
@@ -332,6 +337,22 @@ export async function resolvePublicInstrumentRound(
   return authorizeRoundForViewer(viewer, roundId)
 }
 
+export async function gatePublicGenerateInstrumentForViewer(
+  instrumentRaw: string,
+  viewer: { isAdmin: boolean; jurisdiction: JurisdictionInput },
+  horizonRaw: unknown = '1d',
+  closeFlag?: KrManualCloseFlag,
+): Promise<PublicGenerateInstrumentGate> {
+  const listing = decodeStockInstrument(instrumentRaw.trim())
+  const koreaLane = admissionStockLane(viewer.jurisdiction) === 'korea'
+  let isUsUniverseVisible: ((code: string) => boolean) | undefined
+  if (koreaLane && listing) {
+    const visible = await isUniverseCodeVisible('US', listing.symbol)
+    isUsUniverseVisible = (code) => code.toUpperCase() === listing.symbol && visible
+  }
+  return gatePublicGenerateInstrument(instrumentRaw, viewer, horizonRaw, closeFlag, { isUsUniverseVisible })
+}
+
 export type PublicInstrumentGenerateTarget =
   | { ok: true; round: { roundId: string } }
   | { ok: true; round: CatalogRankedRoundInput | ComposedRound }
@@ -353,7 +374,7 @@ export async function resolvePublicInstrumentGenerateTarget(
   horizonRaw: unknown = '1d'
 ): Promise<PublicInstrumentGenerateTarget> {
   const closeFlag = await loadKrManualCloseFlag()
-  const gate = gatePublicGenerateInstrument(instrumentRaw, viewer, horizonRaw, closeFlag)
+  const gate = await gatePublicGenerateInstrumentForViewer(instrumentRaw, viewer, horizonRaw, closeFlag)
   if (!gate.ok) {
     if (gate.status === 400) {
       const message =

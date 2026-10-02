@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { creditsForLeagueGenerate } from '@/lib/credits'
 import { CardNotFoundError, fetchCardData, type CardLookup } from '@/lib/league/card'
 import type { CardData, CardGenerationState, LockedCardPayload } from '@/lib/league/card-types'
-import { gatePublicGenerateInstrument } from '@/lib/league/access-policy'
+import { buildStockRankedRoundInput, decodeStockInstrument } from '@/lib/league/gateway/adapters/stock-catalog'
 import { buildCatalogRankedRoundInput, findCatalogInstrument } from '@/lib/league/catalog'
 import { decodeSportsInstrument } from '@/lib/league/gateway/adapters/sports-catalog'
 import { buildSportsRankedRoundInput } from '@/lib/league/gateway/adapters/sports-compose'
@@ -21,6 +21,7 @@ import { getProgressRosterIds } from '@/lib/league/roster'
 import {
   authorizeRoundForViewer,
   forbiddenResponse,
+  gatePublicGenerateInstrumentForViewer,
   resolveLeagueViewer,
   resolvePublicInstrumentRound,
 } from '@/lib/league/public-access'
@@ -84,7 +85,7 @@ export async function GET(req: Request) {
       // must not learn that: serve the SAME locked shape they would get for
       // an existing unpaid round, with the proposition composed from the
       // same catalog metadata the generate press would use.
-      const missing = catalogLockedPreview(instrument, horizonRaw, viewer)
+      const missing = await catalogLockedPreview(instrument, horizonRaw, viewer)
       if ('response' in missing) return missing.response
       lockedPreview = missing.payload
     } else {
@@ -140,7 +141,7 @@ export async function GET(req: Request) {
       // the public missing-round locked payload so LockedRoundPanel can open
       // it. round_id lookups and date-filtered lookups stay 404.
       if (viewer.isAdmin && lookup && !('roundId' in lookup) && !lookup.date && lookup.horizon) {
-        const missing = catalogLockedPreview(lookup.instrument, lookup.horizon, viewer)
+        const missing = await catalogLockedPreview(lookup.instrument, lookup.horizon, viewer)
         if ('payload' in missing) return NextResponse.json(missing.payload)
         return missing.response
       }
@@ -207,12 +208,12 @@ async function rosterProgressForRound(roundId: string) {
  * Shared by public 404s and admin instrument+horizon misses so LockedRoundPanel
  * can POST /api/league/generate. Does not invent a round id.
  */
-function catalogLockedPreview(
+async function catalogLockedPreview(
   instrument: string,
   horizonRaw: string,
-  viewer: { isAdmin: boolean; jurisdiction: Parameters<typeof gatePublicGenerateInstrument>[1]['jurisdiction'] }
-): { payload: LockedCardPayload } | { response: NextResponse } {
-  const gate = gatePublicGenerateInstrument(instrument, viewer, horizonRaw)
+  viewer: { isAdmin: boolean; jurisdiction: Parameters<typeof gatePublicGenerateInstrumentForViewer>[1]['jurisdiction'] },
+): Promise<{ payload: LockedCardPayload } | { response: NextResponse }> {
+  const gate = await gatePublicGenerateInstrumentForViewer(instrument, viewer, horizonRaw)
   if (!gate.ok) {
     return {
       response:
@@ -223,11 +224,14 @@ function catalogLockedPreview(
   }
   const sportsParts = decodeSportsInstrument(gate.instrument)
   const propertyParts = decodePropertyInstrument(gate.instrument)
+  const stockParts = decodeStockInstrument(gate.instrument)
   const wouldOpen = sportsParts
     ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
     : propertyParts
       ? buildRealEstateRankedRoundInput(gate.instrument, gate.horizon)
-      : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+      : stockParts
+        ? buildStockRankedRoundInput(gate.instrument, gate.horizon)
+        : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
   if (!wouldOpen) {
     return {
       response: NextResponse.json({ error: 'No ranked round available yet', code: 'no_round' }, { status: 404 }),
