@@ -7,7 +7,9 @@ import { useMotieMode } from '@/components/motie/mode-context'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { aiProductName, aiProductNameWithGloss } from '@/components/motie/aiProviderLabel'
 import { SupplementCard } from '@/app/motie/governance/_components/SupplementCard'
+import { MotieFreeTextProgramClosed } from '@/components/motie/MotieFreeTextProgramClosed'
 import type { MotieSupplement } from '@/lib/motie/supplements'
+import { useMotieFreeTextAccess } from '@/lib/motie/use-motie-free-text-access'
 
 // ── Local types (shape-compatible with app/api/jeju/deliberate/route.ts) ──────
 
@@ -700,6 +702,7 @@ function VerdictBlock({
 
 export function DeliberateSection() {
   const { t } = useJejuUi()
+  const { loading: accessLoading, isAdmin } = useMotieFreeTextAccess()
 
   const [question, setQuestion] = useState('')
   const [stage, setStage] = useState<StageKey>('idle')
@@ -991,6 +994,10 @@ export function DeliberateSection() {
   ).sort((a, b) => a - b)
 
   // ── Render ──────────────────────────────────────────────────────────────────
+
+  if (!accessLoading && !isAdmin) {
+    return <MotieFreeTextProgramClosed />
+  }
 
   return (
     <>

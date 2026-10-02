@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
-import { creditsForLeagueOpen } from '@/lib/credits'
+import { creditsForLeagueOpen, isAdminEmail } from '@/lib/credits'
+import { MOTIE_FREE_TEXT_CLOSED_ERROR } from '@/lib/motie/free-text-program'
 import { deductCreditsBalance } from '@/lib/credits-server'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { LEAGUE_DEEP_RATE_RULE } from '@/lib/league/access-policy'
@@ -126,6 +127,10 @@ export async function POST(req: Request): Promise<Response> {
   const { user, error: authErr } = await resolveRouteAuth(req, body)
   if (authErr || !user) {
     return json({ ok: false, stage: action || 'unknown', error: 'Invalid session' }, 401)
+  }
+
+  if (!isAdminEmail(user.email)) {
+    return json({ error: MOTIE_FREE_TEXT_CLOSED_ERROR }, 403)
   }
 
   // ── ACTION: start — snapshot + context ───────────────────────────────────────

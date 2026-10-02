@@ -7,7 +7,9 @@ import { useMotieMode } from '@/components/motie/mode-context'
 import { useJejuUi } from '@/components/motie/useJejuUi'
 import { aiProductNameWithGloss } from '@/components/motie/aiProviderLabel'
 import { SupplementCard } from '@/app/motie/governance/_components/SupplementCard'
+import { MotieFreeTextProgramClosed } from '@/components/motie/MotieFreeTextProgramClosed'
 import type { MotieSupplement } from '@/lib/motie/supplements'
+import { useMotieFreeTextAccess } from '@/lib/motie/use-motie-free-text-access'
 
 // ── Local types (shape-compatible with the brief route) ───────────────────────
 
@@ -379,6 +381,7 @@ function AnalysisCard({
 
 export function BriefSection() {
   const { t } = useJejuUi()
+  const { loading: accessLoading, isAdmin } = useMotieFreeTextAccess()
 
   const [error, setError] = useState<string | null>(null)
   const [failedStage, setFailedStage] = useState<string | null>(null)
@@ -580,6 +583,10 @@ export function BriefSection() {
         ...(localOpinionSearch.ok ? {} : { error: localOpinionSearch.error }),
       }
     : null
+
+  if (!accessLoading && !isAdmin) {
+    return <MotieFreeTextProgramClosed />
+  }
 
   return (
     <div className="flex flex-col gap-6">
