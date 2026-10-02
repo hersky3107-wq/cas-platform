@@ -99,7 +99,6 @@ export const CONSENSUS_LANGUAGE_ALIASES = [
   'short interest',
   'short-sale',
   '공매도',
-  'pinnacle',
   '시장 기준선',
   '기준선',
   'market baseline',
@@ -137,7 +136,7 @@ export const CONSENSUS_INDEX_MONEY_HINTS = [
 ] as const
 
 export const CONSENSUS_SPORTS_MONEY_HINTS = [
-  'Pinnacle (or equivalent sharp-book) implied win probability AFTER removing the overround (Shin / multiplicative)',
+  'the betting-market-implied probability AFTER removing the overround (Shin / multiplicative)',
   'the market baseline — 시장 기준선 / 돈이 매긴 확률 — informational only',
   'statistical divergence vs that baseline',
 ] as const
@@ -175,8 +174,8 @@ export function consensusMoneySearchHints(category: string): string {
   }
   if (isSportsLedgerCategory(key)) {
     return [
-      'For SPORTS, the money signal is the SHARP-BOOK MARKET BASELINE (Pinnacle implied probability, juice removed). Search the current market-implied win probability for the NAMED team.',
-      'Speak as 시장 기준선 / Pinnacle implied / 돈이 매긴 확률. Informational market baseline only — never advice to gamble.',
+      'For SPORTS, the money signal is the MARKET BASELINE (the betting-market-implied probability, juice removed). Search the current market-implied win probability for the NAMED team.',
+      'Speak as 시장 기준선 / market baseline / the betting-market-implied probability. Informational market baseline only — never advice to gamble. Do not name a bookmaker.',
       'NEVER write 토토, 배당, 핸디캡, 픽, 베팅, 오버언더.',
       ...CONSENSUS_SPORTS_MONEY_HINTS.map((hint) => `- ${hint}`),
     ].join('\n')
@@ -341,7 +340,7 @@ export function buildConsensusSystemPrompt(): string {
     '- gold / FX / commodities / metals: options implied probability / put-call skew, futures COT, Polymarket/Kalshi, institutional consensus targets',
     '- index ETFs (etf_index): index-futures COT (YM/ES/NQ), CBOE put/call, VIX vol premium/skew — not single-stock price targets',
     '- crypto_spot / memecoin: Binance/Bybit funding rate (positive/negative), Deribit options skew/IV, top-trader long/short, taker buy/sell, crypto prediction markets — not equity COT or analyst targets',
-    '- sports: Pinnacle / sharp-book implied win probability (juice removed) as 시장 기준선. Never 토토/배당/핸디캡/픽/베팅/오버언더. Informational only.',
+    '- sports: market baseline / the betting-market-implied probability (juice removed) as 시장 기준선. Never name a bookmaker. Never 토토/배당/핸디캡/픽/베팅/오버언더. Informational only.',
     '- politics_election: Polymarket (해외 예측시장 데이터) and Kalshi implied probability as 예측시장 내재 확률. Never 지지율/베팅/배당/토토.',
     '- entertainment_awards: Polymarket/Kalshi award implied probability, or published studio tracking. If neither exists, abstain — never invent a gross or a percent.',
     '- real_estate: 실거래 거래량 + 실거래가 trend (MOLIT / NAR existing-home sales / official sales volume). Not REIT ETFs, not thin housing futures. Abstain only if that activity data is missing for the named region.',
@@ -401,7 +400,7 @@ export function consensusRetryInstruction(category?: string): string {
   if (isSportsLedgerCategory(category)) {
     return [
       'RETRY: Rewrite as the 돈이 매긴 확률 seat for SPORTS.',
-      'Use only 시장 기준선 / Pinnacle implied / sharp-book language. Never 토토, 배당, 핸디캡, 픽, 베팅, 오버언더.',
+      'Use only 시장 기준선 / market baseline / the betting-market-implied probability. Never name a bookmaker. Never 토토, 배당, 핸디캡, 픽, 베팅, 오버언더.',
       'Do not name chart patterns. Do not write 분위기/여론/루머.',
       'If there is no market-implied baseline after search, output found:false and direction null.',
       'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',

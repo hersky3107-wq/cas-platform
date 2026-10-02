@@ -45,6 +45,19 @@ export const LEAGUE_DEEP_BRAND_LABEL: Record<string, string> = {
 export const LEAGUE_DEEP_DISCLAIMER =
   'This is unscored commentary on an already-opened AI Prediction League proposition. It is not a new scored prediction and not investment advice. Do not instruct the reader to buy, sell, or bet.'
 
+export const REAL_ESTATE_DEEP_GUARD =
+  'Do not name specific apartment complexes, buildings, or addresses, and do not advise when to buy or sell property.'
+
+export const SPORTS_DEEP_GUARD = 'Do not name bookmakers or quote betting odds.'
+
+export function categoryDeepGuards(category: string | null | undefined): string[] {
+  const key = (category ?? '').trim().toLowerCase()
+  const lines: string[] = []
+  if (key === 'real_estate') lines.push(REAL_ESTATE_DEEP_GUARD)
+  if (key === 'sports') lines.push(SPORTS_DEEP_GUARD)
+  return lines
+}
+
 const ANALYST_DISCIPLINE = [
   'Analyst rules:',
   '- Use only the league proposition, resolution rule, price packet, and research packet provided in this request.',
@@ -53,6 +66,8 @@ const ANALYST_DISCIPLINE = [
   '- Do not role-play as a government ministry, public corporation, regulator, or policy aide.',
   '- Separate fact (packet-cited) from inference. Prefix unsupported forecasts with [estimate].',
   '- Grammatical subject = the analysis / the models. Never tell the reader to transact.',
+  `- ${REAL_ESTATE_DEEP_GUARD}`,
+  `- ${SPORTS_DEEP_GUARD}`,
 ].join('\n')
 
 const FORBIDDEN_SEATS =

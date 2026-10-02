@@ -94,6 +94,8 @@ describe('consensus extra seat — engine + contract', () => {
     expect(system).toContain('VIX')
     expect(system).toContain('etf_index')
     expect(system).toContain('crypto_spot')
+    expect(system).toContain('시장 기준선')
+    expect(system).not.toMatch(/Pinnacle implied|sharp-book/i)
     expect(system).toContain('found":false')
     expect(CONSENSUS_MONEY_SIGNALS.join(' ')).toMatch(/implied probability/)
     expect(CONSENSUS_MONEY_SIGNALS.join(' ')).toMatch(/Polymarket/)

@@ -75,6 +75,8 @@ describe('league-local deep prompts', () => {
     expect(blobs).toMatch(/Never assign seats named after governments/)
     expect(blobs).toContain('## Key findings')
     expect(blobs).toContain('## Evidence from the packets')
+    expect(blobs).toContain('Do not name specific apartment complexes, buildings, or addresses, and do not advise when to buy or sell property.')
+    expect(blobs).toContain('Do not name bookmakers or quote betting odds.')
   })
 
   it('severs motie/jeju/gunpo imports from the league deep path', () => {

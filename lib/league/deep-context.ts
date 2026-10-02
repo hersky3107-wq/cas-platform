@@ -5,6 +5,7 @@ import { fetchDataPacket, formatDataPacketForPrompt } from '@/lib/league/market-
 import { getResearchPacket } from '@/lib/league/research'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { OUTPUT_LANGUAGE_NAME } from './deep-output-language'
+import { categoryDeepGuards } from './deep-prompts'
 import type { LeagueDeepSnapshot } from './deep-types'
 
 /**
@@ -85,6 +86,7 @@ export async function buildLeagueDeepContext(
     `Write in ${language}.`,
     'This is UNSCORED COMMENTARY on an already-opened AI Prediction League proposition — not a new prediction, not a scored league call, and not investment advice.',
     'Grammatical subject = the analysis / the models. Never instruct the reader to buy, sell, or place a bet.',
+    ...categoryDeepGuards(round.category),
     '',
     `Proposition: ${round.proposition_text}`,
   ].join('\n')

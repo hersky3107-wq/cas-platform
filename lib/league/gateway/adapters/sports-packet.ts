@@ -94,13 +94,11 @@ function pct(p: number): string {
 }
 
 function formatMarketBaseline(devig: DevigResult | null | undefined, subject: string): string[] {
-  const lines = ['MARKET BASELINE (Shin-devigged sharp book — a price, not a required vote)']
+  const lines = ['MARKET BASELINE (a price, not a required vote)']
   if (!devig) {
     lines.push('UNAVAILABLE')
     return lines
   }
-  lines.push(`Book: ${devig.bookTitle} (${devig.bookClass})`)
-  lines.push(`Method: ${devig.method}${devig.shinZ != null ? ` z=${devig.shinZ.toFixed(3)}` : ''}`)
   for (const o of devig.outcomes) {
     lines.push(`${o.name}: ${pct(o.probability)}`)
   }
@@ -110,7 +108,6 @@ function formatMarketBaseline(devig: DevigResult | null | undefined, subject: st
       subjectPct == null ? 'UNAVAILABLE' : `${subjectPct.toFixed(1)}%`
     }`,
   )
-  if (devig.limitation) lines.push(`Limitation: ${devig.limitation}`)
   return lines
 }
 

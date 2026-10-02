@@ -76,6 +76,7 @@ import {
   type ConsensusLeagueInput,
 } from './consensus'
 import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeatId } from './seats'
+import { scrubSportsDisclosure } from '../sports-disclosure'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isRealEstateLedgerCategory } from './real-estate-category'
 import { isPoliticsLedgerCategory } from './politics-category'
@@ -209,7 +210,7 @@ async function upsertExtraPrediction(row: {
       predicted_value: row.probability,
       predicted_magnitude_pct: null,
       predicted_qualifier_text: row.qualifier_text,
-      reasoning_snippet: row.reasoning_snippet,
+      reasoning_snippet: scrubSportsDisclosure(row.reasoning_snippet),
       reasoning_text: null,
       prompt_tokens: row.prompt_tokens ?? null,
       completion_tokens: row.completion_tokens ?? null,

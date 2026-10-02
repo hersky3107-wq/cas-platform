@@ -14,6 +14,8 @@
  * never enter a client bundle.
  */
 
+import { sportsVisibleText } from './sports-disclosure'
+
 export type DeepSeatSnapshot = {
   roleId: string
   roleLabel: string
@@ -113,6 +115,12 @@ function str(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v : null
 }
 
+function vis(category: string | undefined, v: unknown): string | null {
+  const raw = str(v)
+  if (!raw) return null
+  return sportsVisibleText(category, raw)
+}
+
 function seatFrom(raw: Record<string, unknown>, kind: 'open' | 'debate'): DeepSeatSnapshot {
   const provider = str(raw.provider) ?? 'unknown'
   return {
@@ -134,7 +142,7 @@ function planSeats(plan: unknown, kind: 'open' | 'debate'): DeepSeatSnapshot[] |
     .map((r) => seatFrom(r, kind))
 }
 
-function turnsFrom(raw: unknown): DeepTurnSnapshot[] {
+function turnsFrom(raw: unknown, category?: string): DeepTurnSnapshot[] {
   if (!Array.isArray(raw)) return []
   return raw
     .filter((t): t is Record<string, unknown> => !!t && typeof t === 'object')
@@ -144,23 +152,23 @@ function turnsFrom(raw: unknown): DeepTurnSnapshot[] {
         roleLabel: str(t.roleLabel) ?? 'Analyst',
         provider,
         brand: deepBrandLabel(provider),
-        position: str(t.position),
-        concedes: str(t.concedes),
-        holds: str(t.holds),
+        position: vis(category, t.position),
+        concedes: vis(category, t.concedes),
+        holds: vis(category, t.holds),
         ok: t.ok === true,
       }
     })
 }
 
-function roundsFrom(raw: unknown): DeepRoundSnapshot[] {
+function roundsFrom(raw: unknown, category?: string): DeepRoundSnapshot[] {
   if (!Array.isArray(raw)) return []
   return raw
     .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
     .map((r) => ({
       roundNumber: typeof r.roundNumber === 'number' ? r.roundNumber : 0,
       consensusScore: typeof r.consensusScore === 'number' ? r.consensusScore : -1,
-      summary: str(r.summary) ?? '',
-      turns: turnsFrom(r.turns),
+      summary: vis(category, r.summary) ?? '',
+      turns: turnsFrom(r.turns, category),
     }))
 }
 
@@ -178,6 +186,7 @@ export function buildDeepSnapshot(
 }
 
 function buildOpenSnapshot(state: Record<string, unknown>): DeepOpenSnapshot {
+  const category = str(state.category) ?? undefined
   const analysesRaw = Array.isArray(state.analyses) ? state.analyses : []
   const result = (state.result ?? null) as { synthesis?: unknown } | null
   return {
@@ -185,7 +194,7 @@ function buildOpenSnapshot(state: Record<string, unknown>): DeepOpenSnapshot {
     instrument: str(state.instrument),
     proposition: str(state.proposition),
     plan: planSeats(state.plan, 'open'),
-    briefing: str(state.report),
+    briefing: vis(category, state.report),
     analyses: analysesRaw
       .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
       .map((a) => {
@@ -195,16 +204,17 @@ function buildOpenSnapshot(state: Record<string, unknown>): DeepOpenSnapshot {
           roleLabel: str(a.roleLabel) ?? 'Analyst',
           provider,
           brand: deepBrandLabel(provider),
-          content: str(a.analysis),
+          content: vis(category, a.analysis),
           ok: a.ok === true,
           ...(str(a.error) ? { error: str(a.error)! } : {}),
         }
       }),
-    synthesis: result ? str(result.synthesis) : null,
+    synthesis: result ? vis(category, result.synthesis) : null,
   }
 }
 
 function buildDebateSnapshot(state: Record<string, unknown>): DeepDebateSnapshot {
+  const category = str(state.category) ?? undefined
   const deliberation = (state.deliberation ?? null) as { rounds?: unknown; finalScore?: unknown } | null
   const result = (state.result ?? null) as {
     consensusScore?: unknown
@@ -214,7 +224,7 @@ function buildDebateSnapshot(state: Record<string, unknown>): DeepDebateSnapshot
 
   // New pipeline persists rounds incrementally; pre-split rows only have
   // them inside the assembled deliberation. Prefer the live list.
-  const rounds = roundsFrom(Array.isArray(state.rounds) ? state.rounds : deliberation?.rounds)
+  const rounds = roundsFrom(Array.isArray(state.rounds) ? state.rounds : deliberation?.rounds, category)
 
   const voteState = (state.vote ?? null) as {
     votes?: unknown
@@ -233,7 +243,7 @@ function buildDebateSnapshot(state: Record<string, unknown>): DeepDebateSnapshot
       conditional: typeof voteState.conditionalCount === 'number' ? voteState.conditionalCount : 0,
       oppose: typeof voteState.opposeCount === 'number' ? voteState.opposeCount : 0,
       abstain: typeof voteState.abstainCount === 'number' ? voteState.abstainCount : 0,
-      summary: str(voteState.summary) ?? '',
+      summary: vis(category, voteState.summary) ?? '',
       votes: votesRaw
         .filter((v): v is Record<string, unknown> => !!v && typeof v === 'object')
         .map((v) => {
@@ -242,7 +252,7 @@ function buildDebateSnapshot(state: Record<string, unknown>): DeepDebateSnapshot
             provider,
             brand: deepBrandLabel(provider),
             choice: str(v.choice),
-            reason: str(v.reason),
+            reason: vis(category, v.reason),
             ok: v.ok === true,
           }
         }),
@@ -255,7 +265,7 @@ function buildDebateSnapshot(state: Record<string, unknown>): DeepDebateSnapshot
       conditional: typeof rv.conditional === 'number' ? rv.conditional : 0,
       oppose: typeof rv.oppose === 'number' ? rv.oppose : 0,
       abstain: typeof rv.abstain === 'number' ? rv.abstain : 0,
-      summary: str(rv.summary) ?? '',
+      summary: vis(category, rv.summary) ?? '',
       votes: [],
     }
   }
@@ -263,9 +273,9 @@ function buildDebateSnapshot(state: Record<string, unknown>): DeepDebateSnapshot
   const verdict: DeepVerdictSnapshot | null =
     result?.verdict && typeof result.verdict === 'object'
       ? {
-          judgment: str(result.verdict.judgment),
-          keyIssues: str(result.verdict.keyIssues),
-          minorityReport: str(result.verdict.minorityReport),
+          judgment: vis(category, result.verdict.judgment),
+          keyIssues: vis(category, result.verdict.keyIssues),
+          minorityReport: vis(category, result.verdict.minorityReport),
           consensusScore:
             typeof result.consensusScore === 'number'
               ? result.consensusScore
@@ -280,7 +290,7 @@ function buildDebateSnapshot(state: Record<string, unknown>): DeepDebateSnapshot
     instrument: str(state.instrument),
     proposition: str(state.proposition),
     plan: planSeats(state.plan, 'debate'),
-    briefing: str(state.report),
+    briefing: vis(category, state.report),
     rounds,
     vote,
     verdict,

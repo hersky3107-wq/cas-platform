@@ -5,6 +5,7 @@ import { runSingleAiProvider } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { LeagueLocale } from './i18n/locales'
 import { skipKoTranslationLlm } from './rationale-display'
+import { scrubSportsDisclosure } from './sports-disclosure'
 import {
   persistRationaleTranslations,
   logRationaleCacheError,
@@ -113,7 +114,9 @@ export async function translateRoundRationales(
     model: TRANSLATE_MODEL,
   }
 
-  const usable = items.filter((i) => i.text.trim().length > 0)
+  const usable = items
+    .map((i) => ({ ...i, text: scrubSportsDisclosure(i.text) ?? '' }))
+    .filter((i) => i.text.trim().length > 0)
   if (!shouldTranslateLocale(locale) || usable.length === 0) {
     return { ...empty, latencyMs: Date.now() - started }
   }

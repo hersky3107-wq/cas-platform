@@ -61,8 +61,9 @@ describe('sports market dual-display', () => {
 describe('sports extra-seat redefinition', () => {
   it('consensus seat searches the market baseline, not chart or 배당 language', () => {
     const hints = consensusMoneySearchHints('sports')
-    expect(hints).toMatch(/시장 기준선|Pinnacle/)
+    expect(hints).toMatch(/시장 기준선|market baseline|betting-market-implied/)
     expect(hints).toMatch(/NEVER write/)
+    expect(hints).not.toMatch(/Pinnacle|DraftKings|FanDuel|Bet365/i)
     expect(hints).not.toMatch(/Polymarket/)
   })
 
