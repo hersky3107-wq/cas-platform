@@ -2,6 +2,9 @@ import { findCatalogInstrument } from './catalog'
 import { decodeStockInstrument } from './gateway/adapters/stock-catalog'
 import { groupForCountry } from './jurisdiction/country-groups'
 import type { JurisdictionInput } from './jurisdiction/resolve'
+import { isKrLanePublicReady } from './korea-disclosure'
+
+export { isKrLanePublicReady } from './korea-disclosure'
 
 /**
  * Which 주식 surface this account may see.
@@ -10,7 +13,9 @@ import type { JurisdictionInput } from './jurisdiction/resolve'
  * declared Korean nationality OR a Korea IP → Korea lane only.
  * Otherwise → global lane only. The other lane is not a hidden tab.
  *
- * The admin override lives in the hub and is not part of this function.
+ * The Korean stock lane is admin-override-only when isKrLanePublicReady() is false
+ * (non-admin Korean users keep the current placeholder and cannot generate).
+ * Admin override lives in the hub and generate auth.
  */
 export type StockLane = 'global' | 'korea'
 

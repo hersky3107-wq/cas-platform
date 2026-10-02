@@ -28,6 +28,7 @@ import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
 import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/league/view-purchase-policy'
+import { KR_DISCLOSURE, fillDisclosure } from '@/lib/league/korea-disclosure'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -46,6 +47,8 @@ type InstrumentsPayload = {
   jurisdiction?: { declaredMissing?: boolean; mismatch?: boolean }
   stockLane?: 'global' | 'korea'
   viewerIsAdmin?: boolean
+  krAdvisoryRegNo?: string
+  krBizNo?: string
 }
 
 /**
@@ -140,6 +143,8 @@ function CardsPanel() {
   const [admissionLane, setAdmissionLane] = useState<'global' | 'korea'>('global')
   const [viewerIsAdmin, setViewerIsAdmin] = useState(false)
   const [adminLane, setAdminLane] = useState<'global' | 'korea' | null>(null)
+  const [krAdvisoryRegNo, setKrAdvisoryRegNo] = useState<string | undefined>()
+  const [krBizNo, setKrBizNo] = useState<string | undefined>()
   // Guards against a slower, now-superseded fetch overwriting the result of a
   // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
@@ -195,6 +200,8 @@ function CardsPanel() {
         setCountryMismatch(Boolean(body.jurisdiction?.mismatch))
         setAdmissionLane(body.stockLane === 'korea' ? 'korea' : 'global')
         setViewerIsAdmin(Boolean(body.viewerIsAdmin))
+        if (body.krAdvisoryRegNo) setKrAdvisoryRegNo(body.krAdvisoryRegNo)
+        if (body.krBizNo) setKrBizNo(body.krBizNo)
         setCategories(list)
         const firstId = defaultCatalogCategoryId(list)
         setSelectedCategory(firstId)
@@ -383,7 +390,7 @@ function CardsPanel() {
         />
       ) : null}
 
-      {koreaStocks ? <KoreaStockLane /> : null}
+      {koreaStocks ? <KoreaStockLane regNo={krAdvisoryRegNo} bizNo={krBizNo} /> : null}
 
       {active?.kind === 'coming_soon' && view.kind !== 'card' && view.kind !== 'locked' ? (
         <ComingSoonPanel categoryId={active.id} />
@@ -692,10 +699,30 @@ function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
   )
 }
 
-function KoreaStockLane() {
+export function KoreaStockLane({ regNo, bizNo }: { regNo?: string; bizNo?: string } = {}) {
   const { t } = useLeagueLocale()
+  const bannerRegText = fillDisclosure(KR_DISCLOSURE.laneBannerReg, { REG_NO: regNo })
+  const footerText = fillDisclosure(KR_DISCLOSURE.footer, { REG_NO: regNo, BIZ_NO: bizNo })
+
   return (
     <div data-stock-lane="korea" className="flex flex-col gap-3">
+      {/* Non-dismissible top disclosure banner (normal body text size, above chips) */}
+      <div
+        data-testid="kr-lane-banner"
+        className="rounded-2xl border border-amber-300 bg-amber-50/90 p-4 text-sm leading-relaxed text-slate-800 shadow-sm"
+      >
+        <p className="font-semibold text-slate-900">{KR_DISCLOSURE.laneBanner}</p>
+        <p className="mt-2 text-sm text-slate-700">{bannerRegText}</p>
+      </div>
+
+      {/* Generate guidance */}
+      <div
+        data-testid="kr-lane-generate"
+        className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600"
+      >
+        {KR_DISCLOSURE.generate}
+      </div>
+
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
         <p className="text-sm font-semibold text-slate-800">{t.catalog.comingSoon}</p>
         <p className="mt-1 text-xs leading-relaxed text-slate-500">{t.catalog.koreaStocksHint}</p>
@@ -706,6 +733,14 @@ function KoreaStockLane() {
           <div className="mt-1.5 flex flex-wrap gap-1.5" />
         </section>
       ))}
+
+      {/* Mandatory footer disclosure */}
+      <div
+        data-testid="kr-lane-footer"
+        className="mt-2 border-t border-slate-200 pt-3 text-xs leading-relaxed text-slate-500"
+      >
+        {footerText}
+      </div>
     </div>
   )
 }
