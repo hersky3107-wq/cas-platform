@@ -7,6 +7,7 @@ import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { envKrManualCloseFlag, krElectionAccessDenied, type KrManualCloseFlag } from './politics/kr-manual-close'
 import { admissionStockLane, isKrLanePublicReady } from './stock-lane'
 import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
 import { isUiHorizon, type UiHorizon } from './horizon'
@@ -96,12 +97,13 @@ export function isCuratedInstrument(instrument: string, curated: readonly string
 export type PublicGenerateInstrumentGate =
   | { ok: true; instrument: string; category: PredictionCategory; horizon: UiHorizon }
   | { ok: false; status: 400; code: 'missing_target' | 'unknown_instrument' | 'unknown_horizon' }
-  | { ok: false; status: 403; code: 'jurisdiction_blocked' }
+  | { ok: false; status: 403; code: 'jurisdiction_blocked' | 'kr_election_manual_close' }
 
 export function gatePublicGenerateInstrument(
   instrumentRaw: string,
   viewer: { isAdmin: boolean; jurisdiction: JurisdictionInput },
-  horizonRaw: unknown = '1d'
+  horizonRaw: unknown = '1d',
+  closeFlag?: KrManualCloseFlag,
 ): PublicGenerateInstrumentGate {
   const instrument = instrumentRaw.trim()
   if (!instrument) return { ok: false, status: 400, code: 'missing_target' }
@@ -130,6 +132,10 @@ export function gatePublicGenerateInstrument(
 
   const electionParts = decodePoliticsInstrument(instrument)
   if (electionParts) {
+    const flag = closeFlag ?? envKrManualCloseFlag()
+    if (krElectionAccessDenied(viewer, instrument, flag)) {
+      return { ok: false, status: 403, code: 'kr_election_manual_close' }
+    }
     if (!viewer.isAdmin && !isCategoryAllowed('politics_election', viewer.jurisdiction)) {
       return { ok: false, status: 403, code: 'jurisdiction_blocked' }
     }

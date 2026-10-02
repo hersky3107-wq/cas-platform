@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 export function AdminNav() {
   const [pending, setPending] = useState<number | null>(null)
   const [blackouts, setBlackouts] = useState<number>(0)
+  const [switchOn, setSwitchOn] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -18,8 +19,9 @@ export function AdminNav() {
       }
       try {
         const res = await fetch('/api/admin/league/blackout', { credentials: 'include' })
-        const body = (await res.json().catch(() => null)) as { count?: number }
+        const body = (await res.json().catch(() => null)) as { count?: number; switch?: { on?: boolean } }
         if (res.ok && typeof body?.count === 'number') setBlackouts(body.count)
+        if (res.ok) setSwitchOn(Boolean(body.switch?.on))
       } catch {
         setBlackouts(0)
       }
@@ -39,7 +41,10 @@ export function AdminNav() {
         {blackouts > 0 ? (
           <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
             선거 블랙아웃 {blackouts}
+            {switchOn ? ' · 차단 ON' : ' · 차단 OFF'}
           </span>
+        ) : switchOn ? (
+          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">한국 선거 차단 ON</span>
         ) : null}
         {pending !== null && pending > 0 ? (
           <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">

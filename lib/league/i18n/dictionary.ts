@@ -230,6 +230,8 @@ export type LeagueUiPack = {
     extraExperimental: string
     /** Extra line ONLY on sports cards — informational analysis, not gambling advice. */
     sports: string
+    /** KR election manual close — no tiles / rationale / deep. */
+    electionManualClose: string
   }
   /**
    * Shown on a card AFTER an operator-manual round has been graded from
@@ -925,6 +927,7 @@ const en: LeagueUiPack = {
     realEstateScope: 'Specific complexes, listings, and addresses are not predicted. Official regional indexes only.',
     extraExperimental: 'For entertainment and experiment only — not a basis for investment decisions.',
     sports: 'Informational analysis only. This is not gambling advice.',
+    electionManualClose: 'Under election law, this prediction is not shown until voting ends.',
   },
   operatorGrade: {
     verifiedLabel: 'Operator-verified',
@@ -1501,6 +1504,7 @@ const ko: LeagueUiPack = {
     realEstateScope: '특정 단지·매물·주소는 예측하지 않습니다. 지역 공식 지수만 다룹니다.',
     extraExperimental: '오락·실험 목적, 투자 판단 근거 아님',
     sports: '정보성 분석입니다. 도박을 권유하지 않습니다.',
+    electionManualClose: '선거 관련 법령에 따라 투표 종료 시까지 이 예측은 공개되지 않습니다.',
   },
   operatorGrade: {
     verifiedLabel: '운영자 확인',
@@ -2073,6 +2077,7 @@ const ja: LeagueUiPack = {
     realEstateScope: '特定の団地・物件・住所は予測しません。地域の公式指数のみを扱います。',
     extraExperimental: '娯楽・実験目的であり、投資判断の根拠ではありません。',
     sports: '情報分析です。賭博の勧誘ではありません。',
+    electionManualClose: '選挙関連法令により、投票終了までこの予測は公開されません。',
   },
   operatorGrade: {
     verifiedLabel: '運営者確認済み',
@@ -2642,6 +2647,7 @@ const zhTW: LeagueUiPack = {
     realEstateScope: '不預測特定社區、物件或地址。僅涵蓋地區官方指數。',
     extraExperimental: '僅供娛樂與實驗，不得作為投資判斷依據。',
     sports: '僅供資訊分析，並非賭博勸誘。',
+    electionManualClose: '依選舉相關法令，投票結束前不公開此預測。',
   },
   operatorGrade: {
     verifiedLabel: '營運者已驗證',
@@ -3210,6 +3216,7 @@ const fr: LeagueUiPack = {
     realEstateScope: 'Les complexes, annonces et adresses précises ne sont pas prédits. Index régionaux officiels uniquement.',
     extraExperimental: 'À des fins de divertissement et d’expérience uniquement — pas un fondement de décision d’investissement.',
     sports: 'Analyse informative uniquement. Ceci n’est pas une incitation au jeu.',
+    electionManualClose: 'Conformément au droit électoral, cette prédiction n’est pas affichée avant la clôture du scrutin.',
   },
   operatorGrade: {
     verifiedLabel: 'Vérifié par l\u2019opérateur',
@@ -3794,6 +3801,7 @@ const es: LeagueUiPack = {
     realEstateScope: 'No se predicen complejos, anuncios ni direcciones concretas. Solo índices regionales oficiales.',
     extraExperimental: 'Solo entretenimiento y experimento — no es base para una decisión de inversión.',
     sports: 'Análisis informativo. No es una incitación al juego.',
+    electionManualClose: 'Conforme a la ley electoral, esta predicción no se muestra hasta que termine la votación.',
   },
   operatorGrade: {
     verifiedLabel: 'Verificado por el operador',
@@ -4377,6 +4385,7 @@ const ar: LeagueUiPack = {
     realEstateScope: 'لا نتنبأ بمجمعات أو عروض أو عناوين محددة. المؤشرات الإقليمية الرسمية فقط.',
     extraExperimental: 'للترفيه والتجربة فقط، وليس أساسًا لقرار استثماري.',
     sports: 'تحليل معلوماتي فقط. ليس دعوة للمقامرة.',
+    electionManualClose: 'وفق قوانين الانتخابات، لا يُعرض هذا التوقع حتى انتهاء التصويت.',
   },
   operatorGrade: {
     verifiedLabel: 'تم التحقق من قِبل المشغّل',
@@ -4955,6 +4964,7 @@ const pt: LeagueUiPack = {
     realEstateScope: 'Não prevemos condomínios, anúncios ou endereços específicos. Somente índices regionais oficiais.',
     extraExperimental: 'Apenas entretenimento e experimento — não é base para decisão de investimento.',
     sports: 'Análise informativa. Não é incentivo a jogo.',
+    electionManualClose: 'De acordo com a legislação eleitoral, esta previsão não é exibida até o fim da votação.',
   },
   operatorGrade: {
     verifiedLabel: 'Verificado pelo operador',

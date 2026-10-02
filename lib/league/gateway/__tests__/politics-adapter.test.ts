@@ -216,7 +216,7 @@ describe('politics markets + blackout', () => {
     expect(isCategoryAllowed('politics_election', { ipCountry: 'US' }, during)).toBe(true)
     const alerts = listKrBlackoutAlerts(during)
     expect(alerts[0]?.text).toBe(buildElectionBlackoutAlertText('제9회 전국동시지방선거'))
-    expect(alerts[0]?.text).toContain('한국 노출 중단')
+    expect(alerts[0]?.text).toContain('지금 차단 필요')
     expect(listKrBlackoutAlerts(NOW.getTime())).toEqual([])
   })
 

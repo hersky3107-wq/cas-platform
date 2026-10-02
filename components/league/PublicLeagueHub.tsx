@@ -127,6 +127,7 @@ type CardView =
   | { kind: 'card'; card: CardData }
   | { kind: 'locked'; locked: LockedCardPayload }
   | { kind: 'blocked' }
+  | { kind: 'electionClosed' }
   | { kind: 'none' }
   | { kind: 'error' }
 
@@ -168,7 +169,9 @@ function CardsPanel() {
           | { error: string; code?: string }
         if (requestId !== requestIdRef.current) return
         if (!res.ok) {
-          if ('code' in body && body.code === 'jurisdiction_blocked') {
+          if ('code' in body && body.code === 'kr_election_manual_close') {
+            setView({ kind: 'electionClosed' })
+          } else if ('code' in body && body.code === 'jurisdiction_blocked') {
             setView({ kind: 'blocked' })
           } else if (res.status === 404 || ('code' in body && body.code === 'no_round')) {
             setView({ kind: 'none' })
@@ -444,6 +447,9 @@ function CardsPanel() {
       ) : null}
       {view.kind === 'blocked' ? (
         <PanelMessage text={t.gating.unavailable} />
+      ) : null}
+      {view.kind === 'electionClosed' ? (
+        <PanelMessage text={t.disclaimer.electionManualClose} />
       ) : null}
       {active?.kind === 'instruments' && view.kind === 'none' && !koreaStocks && !(active.id === 'stocks' && !selectedInstrument) ? (
         <PanelMessage text={t.catalog.noCardYet} />

@@ -27,6 +27,13 @@ export default function LeagueManualGradePage() {
   const [suggestions, setSuggestions] = useState<Record<string, ManualSuggestion>>({})
   const [suggestingIds, setSuggestingIds] = useState<Record<string, boolean>>({})
   const [bulkMode, setBulkMode] = useState(false)
+  const [electionBanner, setElectionBanner] = useState<{
+    active: boolean
+    titles: string[]
+    switchOn: boolean
+    switchValue: string
+    saving?: boolean
+  } | null>(null)
 
   const selected = useMemo(() => rounds.find((r) => r.id === selectedId) ?? rounds[0] ?? null, [rounds, selectedId])
 
@@ -59,6 +66,24 @@ export default function LeagueManualGradePage() {
       }
       setAuthState('allowed')
       await load()
+      try {
+        const res = await fetch('/api/admin/league/blackout', { credentials: 'include' })
+        const body = (await res.json().catch(() => null)) as {
+          active?: boolean
+          windows?: Array<{ title: string }>
+          switch?: { on?: boolean; value?: string }
+        }
+        if (res.ok) {
+          setElectionBanner({
+            active: Boolean(body.active),
+            titles: (body.windows ?? []).map((w) => w.title),
+            switchOn: Boolean(body.switch?.on),
+            switchValue: body.switch?.value ?? 'off',
+          })
+        }
+      } catch {
+        setElectionBanner(null)
+      }
     })()
   }, [load])
 
@@ -209,6 +234,89 @@ export default function LeagueManualGradePage() {
   return (
     <main className="min-h-screen bg-[#0a0f1e] px-4 py-8 text-white">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        {electionBanner?.active ? (
+          <div className="rounded-2xl border border-red-500/50 bg-red-600/20 px-4 py-3 text-sm text-red-50">
+            <p className="font-bold">
+              공직선거법 D-6 창 진행 중
+              {electionBanner.titles.length ? `: ${electionBanner.titles.join(', ')}` : ''}
+            </p>
+            <p className="mt-1">
+              수동 차단 스위치: {electionBanner.switchOn ? 'ON' : 'OFF'}
+              {electionBanner.switchOn ? ' — 한국 선거 라운드는 전 이용자에게 닫혀 있습니다.' : ' — 아직 닫히지 않았습니다. 지금 차단하세요.'}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
+          <p className="font-semibold text-slate-100">한국 선거 수동 차단</p>
+          <p className="mt-1 text-slate-400">
+            자동 차단은 없습니다. ON이면 모든 이용자(한국·세계)의 KR 선거 카드/생성/딥이 닫힙니다. 미국 선거는 영향 없습니다.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={electionBanner?.saving}
+              onClick={() => {
+                void (async () => {
+                  setElectionBanner((prev) => (prev ? { ...prev, saving: true } : prev))
+                  const res = await fetch('/api/admin/league/blackout', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ value: 'all_kr' }),
+                  })
+                  const body = (await res.json().catch(() => null)) as { switch?: { on?: boolean; value?: string } }
+                  setElectionBanner((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          saving: false,
+                          switchOn: Boolean(body.switch?.on),
+                          switchValue: body.switch?.value ?? 'all_kr',
+                        }
+                      : {
+                          active: false,
+                          titles: [],
+                          switchOn: true,
+                          switchValue: 'all_kr',
+                        },
+                  )
+                })()
+              }}
+              className="rounded-xl bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-500"
+            >
+              한국 선거 전부 차단
+            </button>
+            <button
+              type="button"
+              disabled={electionBanner?.saving}
+              onClick={() => {
+                void (async () => {
+                  setElectionBanner((prev) => (prev ? { ...prev, saving: true } : prev))
+                  const res = await fetch('/api/admin/league/blackout', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ value: 'off' }),
+                  })
+                  const body = (await res.json().catch(() => null)) as { switch?: { on?: boolean; value?: string } }
+                  setElectionBanner((prev) =>
+                    prev
+                      ? { ...prev, saving: false, switchOn: Boolean(body.switch?.on), switchValue: body.switch?.value ?? 'off' }
+                      : { active: false, titles: [], switchOn: false, switchValue: 'off' },
+                  )
+                })()
+              }}
+              className="rounded-xl border border-white/12 bg-white/6 px-3 py-1.5 text-xs font-semibold hover:bg-white/8"
+            >
+              차단 해제
+            </button>
+            <span className="self-center text-xs text-slate-400">
+              현재: {electionBanner?.switchOn ? 'ON' : 'OFF'} ({electionBanner?.switchValue ?? '…'})
+            </span>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">League — 수동 채점</h1>

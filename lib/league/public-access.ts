@@ -28,6 +28,8 @@ import { buildSportsRankedRoundInput } from './gateway/adapters/sports-compose'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { buildStockRankedRoundInput, decodeStockInstrument } from './gateway/adapters/stock-catalog'
 import { admissionStockLane, isGlobalStockInstrument } from './stock-lane'
+import { krElectionAccessDenied } from './politics/kr-manual-close'
+import { loadKrManualCloseFlag } from './politics/kr-election-store'
 import { buildRealEstateRankedRoundInput } from './gateway/adapters/real-estate-compose'
 import type { ComposedRound } from './gateway/types'
 
@@ -100,7 +102,9 @@ export function unauthorizedResponse(): NextResponse {
  * instrument is not curated: a public caller learns "no", not which internal
  * rule said no.
  */
-export function forbiddenResponse(code: 'jurisdiction_blocked' | 'not_public' = 'jurisdiction_blocked'): NextResponse {
+export function forbiddenResponse(
+  code: 'jurisdiction_blocked' | 'not_public' | 'kr_election_manual_close' = 'jurisdiction_blocked',
+): NextResponse {
   return jsonError(403, 'Not available for your account or region', code)
 }
 
@@ -267,6 +271,11 @@ export async function authorizeRoundForViewer(viewer: LeagueViewer, roundIdRaw: 
     return { ok: false, response: jsonError(404, 'Round not found', 'no_round') }
   }
 
+  const closeFlag = await loadKrManualCloseFlag()
+  if (krElectionAccessDenied(viewer, round.instrument, closeFlag)) {
+    return { ok: false, response: forbiddenResponse('kr_election_manual_close') }
+  }
+
   if (!viewer.isAdmin) {
     if (round.item_type !== 'ranked' || !isPublicRankedInstrument(round.instrument)) {
       return { ok: false, response: forbiddenResponse('not_public') }
@@ -343,7 +352,8 @@ export async function resolvePublicInstrumentGenerateTarget(
   instrumentRaw: string,
   horizonRaw: unknown = '1d'
 ): Promise<PublicInstrumentGenerateTarget> {
-  const gate = gatePublicGenerateInstrument(instrumentRaw, viewer, horizonRaw)
+  const closeFlag = await loadKrManualCloseFlag()
+  const gate = gatePublicGenerateInstrument(instrumentRaw, viewer, horizonRaw, closeFlag)
   if (!gate.ok) {
     if (gate.status === 400) {
       const message =
@@ -354,7 +364,10 @@ export async function resolvePublicInstrumentGenerateTarget(
             : 'Unknown instrument'
       return { ok: false, response: jsonError(400, message, gate.code) }
     }
-    return { ok: false, response: forbiddenResponse('jurisdiction_blocked') }
+    return {
+      ok: false,
+      response: forbiddenResponse(gate.code === 'kr_election_manual_close' ? 'kr_election_manual_close' : 'jurisdiction_blocked'),
+    }
   }
 
   const existing = await resolvePublicInstrumentRound(viewer, gate.instrument, gate.horizon)

@@ -91,6 +91,7 @@ describe('dictionary completeness', () => {
       expect(getLeagueUiPack(locale).disclaimer.realEstate.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).disclaimer.realEstateScope.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).disclaimer.sports.length).toBeGreaterThan(0)
+      expect(getLeagueUiPack(locale).disclaimer.electionManualClose.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).sides.subjectOutcome.indexRise.badge.yes.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).header.realEstateHorizonMonthly.length).toBeGreaterThan(0)
       expect(getLeagueUiPack(locale).header.realEstateGrade('2026-10-15', 17).length).toBeGreaterThan(0)

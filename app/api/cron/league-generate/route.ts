@@ -18,6 +18,8 @@ import { createLeagueRunnerDeps } from '@/lib/league/generation/live-deps'
 import { LEAGUE_JOB_SWEEP_BATCH_SIZE } from '@/lib/league/generation/policy'
 import { sweepLeagueDeepRuns } from '@/lib/league/generation/deep-runner'
 import { sweepLeagueGenerationJobs } from '@/lib/league/generation/runner'
+import { dispatchKrElectionAlerts } from '@/lib/league/politics/kr-election-alerts'
+import { supabaseKrElectionAlertStore } from '@/lib/league/politics/kr-election-store'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -37,8 +39,11 @@ export async function GET(req: Request) {
     const schedule = (task: () => Promise<void>) => after(task)
     const generation = await sweepLeagueGenerationJobs(createLeagueRunnerDeps(schedule), limit)
     const deep = await sweepLeagueDeepRuns(createDeepRunnerDeps(schedule), limit)
+    const electionAlerts = await dispatchKrElectionAlerts({
+      store: supabaseKrElectionAlertStore(),
+    }).catch(() => ({ sent: [] }))
 
-    return NextResponse.json({ ok: true, summary: { generation, deep } })
+    return NextResponse.json({ ok: true, summary: { generation, deep, electionAlerts } })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })
