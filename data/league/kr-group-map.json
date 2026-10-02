@@ -1,1 +1,2246 @@
-{}
+{
+ "KOSPI:000660": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:005930": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:009150": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:402340": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:034020": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:006400": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:105560": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:005380": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:042700": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:047040": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:001820": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:316140": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:096770": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:066570": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:047050": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:012450": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:035420": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:329180": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:028260": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:055550": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:353200": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:012330": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:000150": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:373220": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:011070": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:052690": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:298040": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:086790": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:000270": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:009830": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:000720": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:028050": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:004310": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:032830": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:000990": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:000500": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:278470": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:003490": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:267260": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:017900": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:010120": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:001440": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:007660": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:034730": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:005490": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:068270": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:017670": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:010140": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:010950": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:000810": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:066970": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:003230": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:010060": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:336260": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:093370": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:006360": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:128940": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:042660": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:009540": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:079550": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:062040": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:003670": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:051910": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:207940": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:002990": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:035720": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:015760": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:078930": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:475150": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:272210": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:005830": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:001210": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:161890": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:064350": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:033780": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:082740": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:375500": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:267250": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:322000": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:007810": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:006260": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:267270": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:006340": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:006800": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:018260": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSPI:064400": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSPI:003550": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:071050": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:047810": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:086280": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:352820": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:022100": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSPI:004170": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:090430": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:003350": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:192820": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:483650": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:103590": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:003160": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:034220": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:088350": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:004020": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:443060": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:016360": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:090460": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:251270": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:217590": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:001450": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:003280": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:0220W0": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:021240": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:036570": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:092790": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:010130": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:454910": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSPI:051900": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:005690": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:024110": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:039490": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:112610": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:023530": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:307950": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:138930": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:011200": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:028670": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:175330": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:323410": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:018880": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:161390": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:000880": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:000100": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:011790": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:008930": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:259960": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:001040": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:281820": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:229640": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:030200": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:457190": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:011170": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:010580": {
+  "group": "battery",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:032640": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:100090": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:0126Z0": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:204320": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:009420": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:181710": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:069960": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:271560": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:014680": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:180640": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:004710": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:002380": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:100840": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:377300": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:005940": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:317400": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:120110": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:020150": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:073240": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:192650": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:004370": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:011780": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:361610": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:130660": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:097950": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:004090": {
+  "group": "materials_energy",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:195870": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:006110": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:450080": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:241560": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:326030": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:071970": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:030000": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:139130": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:489790": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSPI:103140": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:249420": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:465770": {
+  "group": "infra",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:008770": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:003530": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:002710": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:248170": {
+  "group": "consumer",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:005090": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:139480": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:004770": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:071090": {
+  "group": "materials_energy",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:051600": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:105840": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:036460": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:282330": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:003010": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:017800": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:001430": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:000370": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:452260": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:007340": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:053690": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:012750": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:001510": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:000670": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:079900": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSPI:058730": {
+  "group": "infra",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSPI:005180": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:006650": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:004490": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:008970": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:081660": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:005070": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSPI:298020": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:007070": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:001740": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:007540": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:014280": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:020120": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSPI:001120": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:029780": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:005440": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:089860": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:111770": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSDAQ:036930": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:010170": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:196170": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:240810": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:403870": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:108490": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:043260": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:222800": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:356680": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:032820": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:069540": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:080220": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:067290": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:067310": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:030530": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:036540": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:012210": {
+  "group": "power_machinery",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:024060": {
+  "group": "materials_energy",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:095610": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:039030": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:072950": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:058470": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:014950": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:387690": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:327260": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:319660": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:086520": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:046970": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:440110": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:247540": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:131290": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:028300": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:178320": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:232140": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:079650": {
+  "group": "infra",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:089970": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:058610": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:098460": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:257720": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSDAQ:201490": {
+  "group": "internet_ent",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:214450": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:119850": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:089030": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:218410": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:053260": {
+  "group": "materials_energy",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:095340": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:031980": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:131970": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:032940": {
+  "group": "other",
+  "flags": [
+   "theme_smallcap",
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:490470": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:277810": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:083650": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:0039P0": {
+  "group": "internet_ent",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:115440": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:437730": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:356860": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:204270": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:226950": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:084370": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:347700": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSDAQ:457370": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:203650": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:347850": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:456010": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:452190": {
+  "group": "power_machinery",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:319400": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:332570": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:396300": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:033790": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:125490": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSDAQ:298380": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:439960": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:041190": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:087010": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:064290": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:388050": {
+  "group": "power_machinery",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:187660": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:052710": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:064760": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:323280": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:0155E0": {
+  "group": "other",
+  "flags": [
+   "theme_smallcap",
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:062970": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:005290": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:161580": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:126730": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:417840": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:0011A0": {
+  "group": "other",
+  "flags": [
+   "theme_smallcap",
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:042510": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:478340": {
+  "group": "ship_defense",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:183300": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:141080": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:024840": {
+  "group": "materials_energy",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:443670": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:000250": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:420770": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:417200": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:413630": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:092870": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:234340": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:256840": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:241710": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSDAQ:441270": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:321370": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:452280": {
+  "group": "power_machinery",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:417030": {
+  "group": "ship_defense",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:042370": {
+  "group": "power_machinery",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:162300": {
+  "group": "materials_energy",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:475830": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:462860": {
+  "group": "finance",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:033160": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:044490": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:027360": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:252990": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:025980": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSDAQ:459550": {
+  "group": "other",
+  "flags": [
+   "theme_smallcap",
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:425040": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:411080": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:0015N0": {
+  "group": "consumer",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:310210": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:050890": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:078350": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:145020": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:357780": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:274090": {
+  "group": "ship_defense",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:126340": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:158430": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:054920": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:477850": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:122640": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:303810": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:228340": {
+  "group": "infra",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:077360": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:138080": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:048410": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:101490": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:144960": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:041510": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:290650": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:082920": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:253590": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:160190": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:488280": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:078600": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:124500": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:086450": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:263750": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:234690": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:052260": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:446540": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:096530": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:005160": {
+  "group": "materials_energy",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:295310": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSDAQ:100790": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:393210": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:237690": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:090360": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:425420": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:328130": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:046120": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:166090": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:098120": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:006910": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:100590": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:080580": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:263860": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:200470": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:048770": {
+  "group": "robot_ai",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:047770": {
+  "group": "consumer",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:486990": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:059090": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:123330": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSDAQ:047920": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:198440": {
+  "group": "other",
+  "flags": [
+   "theme_smallcap",
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:170920": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:049080": {
+  "group": "electronics",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:475040": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSDAQ:140860": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:090710": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:290550": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:127120": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSDAQ:476830": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:064550": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:456160": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:019210": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:059120": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:267320": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:140410": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:491000": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:348340": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:035900": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:382900": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:0007C0": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:083450": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:024850": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:419050": {
+  "group": "battery",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:014620": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSDAQ:354320": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSDAQ:023160": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSDAQ:466100": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:091580": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:033640": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:289080": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:064260": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:159010": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:213420": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:079370": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:330860": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:294570": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:125020": {
+  "group": "other",
+  "flags": [
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:053800": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:091590": {
+  "group": "infra",
+  "flags": [
+   "theme_smallcap"
+  ]
+ },
+ "KOSDAQ:0007J0": {
+  "group": "bio",
+  "flags": [
+   "theme_smallcap",
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:468530": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:0010F0": {
+  "group": "other",
+  "flags": [
+   "theme_smallcap",
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:399720": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:251970": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSDAQ:089890": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:074600": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:224060": {
+  "group": "other",
+  "flags": [
+   "theme_smallcap",
+   "needs_review"
+  ]
+ },
+ "KOSDAQ:476060": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:0009K0": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:007390": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:039200": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:041830": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:041960": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:042520": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:067630": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:068760": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:115180": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:174900": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:195940": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:214150": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:214370": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:358570": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:376900": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:389470": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:397030": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:424870": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:445680": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:458870": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSPI:019170": {
+  "group": "bio",
+  "flags": []
+ },
+ "KOSDAQ:003380": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSDAQ:204620": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:035250": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSPI:383220": {
+  "group": "consumer",
+  "flags": []
+ },
+ "KOSDAQ:006730": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSPI:294870": {
+  "group": "infra",
+  "flags": []
+ },
+ "KOSDAQ:030520": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:056080": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:056190": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:079940": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:388720": {
+  "group": "robot_ai",
+  "flags": []
+ },
+ "KOSDAQ:031330": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:036200": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:036810": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:036830": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:045100": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:053610": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:086390": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:094170": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:102710": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:104830": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:114810": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:160980": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:200710": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:219130": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:281740": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:348210": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:388210": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSPI:108320": {
+  "group": "semis",
+  "flags": []
+ },
+ "KOSDAQ:032500": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:046890": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:065350": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:089010": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:171090": {
+  "group": "electronics",
+  "flags": []
+ },
+ "KOSDAQ:033100": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:060370": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:448900": {
+  "group": "power_machinery",
+  "flags": []
+ },
+ "KOSDAQ:035760": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:042000": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:078340": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:101730": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:112040": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:122870": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:293490": {
+  "group": "internet_ent",
+  "flags": []
+ },
+ "KOSDAQ:052400": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:060250": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:000210": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:003690": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:004800": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:004990": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSPI:279570": {
+  "group": "finance",
+  "flags": []
+ },
+ "KOSDAQ:099320": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSDAQ:189300": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:017960": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:077970": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSPI:097230": {
+  "group": "ship_defense",
+  "flags": []
+ },
+ "KOSDAQ:107640": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:121600": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:137400": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:222080": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:348370": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:393890": {
+  "group": "battery",
+  "flags": []
+ },
+ "KOSDAQ:383310": {
+  "group": "materials_energy",
+  "flags": []
+ },
+ "KOSPI:005850": {
+  "group": "auto",
+  "flags": []
+ },
+ "KOSPI:011210": {
+  "group": "auto",
+  "flags": []
+ }
+}
