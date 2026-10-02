@@ -10,6 +10,7 @@ import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { formatPropertyGradeLine, formatPropertyHorizonLabel } from '@/lib/league/real-estate-display'
 import type { ToneTokens } from '@/lib/league/tone'
+import { KrDataNotice } from '@/components/league/KrLaneDisclosureBlocks'
 
 /**
  * Header: the ROUND's opened date + instrument + ANCHOR (or "unavailable"),
@@ -24,6 +25,7 @@ export function CardHeader({
   t,
   locale,
   gradingStalled = false,
+  showKrDataNotice = false,
 }: {
   round: CardRoundMeta
   hitRate: HitRateSummary
@@ -31,6 +33,7 @@ export function CardHeader({
   t: LeagueUiPack
   locale: LeagueLocale
   gradingStalled?: boolean
+  showKrDataNotice?: boolean
 }) {
   void tone
   const roundDate = formatRoundOpenedDate(round.opened_at, locale)
@@ -96,6 +99,7 @@ export function CardHeader({
           </span>
         </p>
       ) : null}
+      {showKrDataNotice ? <KrDataNotice /> : null}
       {round.category === 'gold_metal' ? (
         <p className="mt-1.5 text-[11px] leading-relaxed text-league-fg-muted">
           {t.header.metalsSpotNote}

@@ -83,8 +83,9 @@ describe('Korean-lane chip browser (UI contract)', () => {
     expect(bannerIdx).toBeGreaterThanOrEqual(0)
     expect(browserIdx).toBeGreaterThan(bannerIdx)
     expect(footerIdx).toBeGreaterThan(browserIdx)
-    expect(html).toContain('유사투자자문업자')
+    expect(html).toContain('신고 절차를 진행 중')
     expect(html).toContain('상호 PRAY · 대표 허민재')
+    expect(html).not.toMatch(/\{[A-Z0-9_]+\}/)
 
     expect(browserSrc).toContain('kr-chip-skeleton')
     expect(browserSrc).toContain('표시할 종목이 없습니다.')

@@ -41,6 +41,7 @@ export function CardBody({
   streaming = false,
   droppedModelIds = [],
   liveProgress = null,
+  showKrDataNotice = false,
 }: {
   data: CardData
   receipt: ComplianceReceipt
@@ -55,6 +56,8 @@ export function CardBody({
   streaming?: boolean
   droppedModelIds?: readonly string[]
   liveProgress?: { answered: number; rosterSize: number; complete: boolean } | null
+  /** Korean-lane mandatory data disclaimer near the price header. */
+  showKrDataNotice?: boolean
 }) {
   void receipt
   const tone = toneFor(data.round.color_bucket)
@@ -78,6 +81,7 @@ export function CardBody({
         t={t}
         locale={locale}
         gradingStalled={gradingStalled}
+        showKrDataNotice={showKrDataNotice}
       />
       <OperatorEvidenceNote evidence={data.round.operatorEvidence} t={t} locale={locale} />
       {streaming || data.generation?.status === 'queued' || data.generation?.status === 'running' ? (

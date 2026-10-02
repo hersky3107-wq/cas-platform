@@ -6,6 +6,13 @@
  * Placeholders stay literal and are filled by `fillDisclosure(text, vars)`.
  */
 
+/** Pre-registration copy when `KR_ADVISORY_REG_NO` is unset (never show `{REG_NO}` / `{BIZ_NO}`). */
+export const KR_DISCLOSURE_PRE_REGISTRATION = Object.freeze({
+  laneBanner:
+    'PRAY(아이마니)는 유사투자자문업 신고 절차를 진행 중이며, 투자자문업·투자일임업 등록을 한 정식 금융투자업자가 아닙니다. 개별적인 투자상담과 자금운용은 불가능합니다. 모든 투자에는 원금손실 가능성이 있으며, 투자 결과와 손실은 투자자 본인에게 귀속됩니다.',
+  laneBannerReg: '유사투자자문업 신고번호는 신고 수리 후 표시됩니다.',
+} as const)
+
 export const KR_DISCLOSURE = Object.freeze({
   laneBanner:
     'PRAY(아이마니)는 금융위원회에 신고한 유사투자자문업자이며, 투자자문업·투자일임업 등록을 한 정식 금융투자업자가 아닙니다. 개별적인 투자상담과 자금운용은 불가능합니다. 모든 투자에는 원금손실 가능성이 있으며, 투자 결과와 손실은 투자자 본인에게 귀속됩니다.',
@@ -29,6 +36,13 @@ export const KR_DISCLOSURE = Object.freeze({
     '가격·거래 데이터는 지연되거나 오류가 있을 수 있으며, 실제 거래 화면의 시세와 다를 수 있습니다.',
   footer:
     '상호 PRAY · 대표 허민재 · 사업자등록번호 {BIZ_NO} · 유사투자자문업 신고번호 {REG_NO}. 투자 관련 개별 문의에는 답변하지 않습니다.',
+  usageNotice: Object.freeze([
+    'AI 모델들의 예측 능력을 비교·기록하는 콘텐츠입니다.',
+    '이 화면은 모든 이용자에게 같은 내용을 일방향으로 제공합니다. 채팅·댓글·질문 입력 기능이 없으며, 이용자와 개별적으로 연락하거나 소통하지 않습니다.',
+    '투자 성향, 보유 종목, 자산 규모 등 개인의 투자 정보를 묻지 않으며, 이용자를 대신해 매매하거나 자금을 운용하지 않습니다.',
+    '어떠한 경우에도 수익을 보장하거나 손실을 보전하지 않습니다. 적중 기록은 과거 결과이며 투자 수익률이 아닙니다.',
+    'PRAY(아이마니)는 카카오톡·텔레그램·문자 등으로 종목을 추천하거나 유료 회원방을 운영하지 않습니다. 이를 사칭한 연락에 주의하세요.',
+  ] as const),
 } as const)
 
 export type KrDisclosureKey = keyof typeof KR_DISCLOSURE
@@ -68,4 +82,87 @@ export function getKrAdvisoryRegNo(): string {
 export function getKrBizNo(): string {
   if (typeof process === 'undefined') return ''
   return process.env.KR_BIZ_NO?.trim() ?? ''
+}
+
+export function resolveKrLaneBanner(regNo?: string | null): { main: string; regLine: string } {
+  const reg = regNo?.trim() ?? ''
+  if (reg.length > 0) {
+    return {
+      main: KR_DISCLOSURE.laneBanner,
+      regLine: fillDisclosure(KR_DISCLOSURE.laneBannerReg, { REG_NO: reg }),
+    }
+  }
+  return {
+    main: KR_DISCLOSURE_PRE_REGISTRATION.laneBanner,
+    regLine: KR_DISCLOSURE_PRE_REGISTRATION.laneBannerReg,
+  }
+}
+
+/**
+ * Footer without literal `{REG_NO}` / `{BIZ_NO}` when values are missing.
+ * When both are set, matches the registered `KR_DISCLOSURE.footer` template exactly.
+ */
+export function resolveKrLaneFooter(regNo?: string | null, bizNo?: string | null): string {
+  const reg = regNo?.trim() ?? ''
+  const biz = bizNo?.trim() ?? ''
+  if (reg && biz) {
+    return fillDisclosure(KR_DISCLOSURE.footer, { REG_NO: reg, BIZ_NO: biz })
+  }
+  let line = '상호 PRAY · 대표 허민재'
+  if (biz) line += ` · 사업자등록번호 ${biz}`
+  if (reg) line += ` · 유사투자자문업 신고번호 ${reg}`
+  return `${line}. 투자 관련 개별 문의에는 답변하지 않습니다.`
+}
+
+/**
+ * Track-record copy for Korean-lane leaderboard / record room.
+ * Omits placeholder clauses when `startDate` or `n` is unknown.
+ */
+export function formatKrTrackRecord(vars: {
+  startDate?: string | null
+  n?: number | null
+}): string {
+  const start = vars.startDate?.trim() ?? ''
+  const hasStart = start.length > 0
+  const hasN = vars.n != null && Number.isFinite(vars.n)
+
+  let middle: string
+  if (hasStart && hasN) {
+    middle = `집계 시작일(${start})부터 채점된 모든 라운드(${vars.n}건)를 기간 선별 없이 반영한 과거 결과`
+  } else if (hasN) {
+    middle = `채점된 모든 라운드(${vars.n}건)를 기간 선별 없이 반영한 과거 결과`
+  } else if (hasStart) {
+    middle = `집계 시작일(${start})부터 채점된 라운드를 기간 선별 없이 반영한 과거 결과`
+  } else {
+    middle = '채점된 라운드를 기간 선별 없이 반영한 과거 결과'
+  }
+  return `${middle}이며, 미래의 적중이나 수익을 보장하지 않습니다. 적중률은 투자 수익률이 아닙니다.`
+}
+
+/** Format ISO resolved/open date for track-record disclosure (YYYY-MM-DD). */
+export function formatKrTrackRecordStartDate(iso: string | null | undefined): string | null {
+  if (!iso?.trim()) return null
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return null
+    return d.toISOString().slice(0, 10)
+  } catch {
+    return null
+  }
+}
+
+/** Earliest graded round date and graded-round count from a record-room page payload. */
+export function trackRecordVarsFromRecordRoom(rounds: readonly { resolved_at: string; gradedCount: number }[]): {
+  startDate: string | null
+  n: number
+} {
+  let earliest: string | null = null
+  let n = 0
+  for (const row of rounds) {
+    if (row.gradedCount <= 0) continue
+    n += 1
+    const start = formatKrTrackRecordStartDate(row.resolved_at)
+    if (start && (!earliest || start < earliest)) earliest = start
+  }
+  return { startDate: earliest, n }
 }

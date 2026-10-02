@@ -6,6 +6,9 @@ import { GRADING_POLL_GIVE_UP_MS, GRADING_POLL_MS } from '@/lib/league/card-stat
 import { useCardStream, type CardStreamStartError } from '@/lib/league/use-card-stream'
 import { useRoundRationaleTranslations } from '@/lib/league/use-rationale-translations'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
+import { useLeagueRequestSignals } from '@/lib/league/use-league-request-signals'
+import { admissionStockLane } from '@/lib/league/stock-lane'
+import { KrCardDisclosureFooter } from '@/components/league/KrLaneDisclosureBlocks'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { CardCompliance } from './CardCompliance'
 import { CardBody } from './CardBody'
@@ -41,6 +44,12 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
   })
   const streaming = live && (connection === 'connecting' || connection === 'live')
   const { locale, t, dir, setLocale, showLanguageToggle } = useLeagueLocale(devSignalsQuery)
+  const signals = useLeagueRequestSignals(devSignalsQuery)
+  const koreaLaneViewer =
+    admissionStockLane({
+      declaredCountry: signals.declaredCountry,
+      ipCountry: signals.ipCountry,
+    }) === 'korea'
   const [gradingStalled, setGradingStalled] = useState(false)
   const { translations, inFlight: rationaleInFlight, showOriginal, onToggleOriginal } =
     useRoundRationaleTranslations(data.round.round_id, locale, data.models)
@@ -77,20 +86,24 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
       ) : null}
       <CardCompliance colorBucket={data.round.color_bucket} t={t} category={data.round.category}>
         {(receipt) => (
-          <CardBody
-            data={data}
-            receipt={receipt}
-            t={t}
-            locale={locale}
-            gradingStalled={gradingStalled}
-            translations={translations}
-            rationaleInFlight={rationaleInFlight}
-            showOriginal={showOriginal}
-            onToggleOriginal={onToggleOriginal}
-            streaming={streaming}
-            droppedModelIds={droppedModelIds}
-            liveProgress={liveProgress}
-          />
+          <>
+            <CardBody
+              data={data}
+              receipt={receipt}
+              t={t}
+              locale={locale}
+              gradingStalled={gradingStalled}
+              translations={translations}
+              rationaleInFlight={rationaleInFlight}
+              showOriginal={showOriginal}
+              onToggleOriginal={onToggleOriginal}
+              streaming={streaming}
+              droppedModelIds={droppedModelIds}
+              liveProgress={liveProgress}
+              showKrDataNotice={koreaLaneViewer}
+            />
+            {koreaLaneViewer ? <KrCardDisclosureFooter /> : null}
+          </>
         )}
       </CardCompliance>
     </div>

@@ -2,6 +2,10 @@
 
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
+import { useLeagueRequestSignals } from '@/lib/league/use-league-request-signals'
+import { admissionStockLane } from '@/lib/league/stock-lane'
+import { formatKrTrackRecord } from '@/lib/league/korea-disclosure'
+import { KrTrackRecordNotice } from '@/components/league/KrLaneDisclosureBlocks'
 import { CardCompliance } from './CardCompliance'
 import { LeaderboardBody } from './LeaderboardBody'
 import { LanguageToggle } from './LanguageToggle'
@@ -30,6 +34,13 @@ export type LeaderboardProps = {
  */
 export function Leaderboard({ data, devSignalsQuery }: LeaderboardProps) {
   const { locale, t, dir, setLocale, showLanguageToggle } = useLeagueLocale(devSignalsQuery)
+  const signals = useLeagueRequestSignals(devSignalsQuery)
+  const koreaLaneViewer =
+    admissionStockLane({
+      declaredCountry: signals.declaredCountry,
+      ipCountry: signals.ipCountry,
+    }) === 'korea'
+  const trackRecordText = formatKrTrackRecord({ n: data.roundCoverage.graded })
 
   return (
     <div dir={dir}>
@@ -40,7 +51,12 @@ export function Leaderboard({ data, devSignalsQuery }: LeaderboardProps) {
         ) : null}
       </div>
       <CardCompliance colorBucket="green" t={t}>
-        {(receipt) => <LeaderboardBody data={data} receipt={receipt} t={t} />}
+        {(receipt) => (
+          <>
+            <LeaderboardBody data={data} receipt={receipt} t={t} />
+            {koreaLaneViewer ? <KrTrackRecordNotice text={trackRecordText} /> : null}
+          </>
+        )}
       </CardCompliance>
     </div>
   )

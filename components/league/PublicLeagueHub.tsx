@@ -28,7 +28,8 @@ import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
 import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/league/view-purchase-policy'
-import { KR_DISCLOSURE, fillDisclosure } from '@/lib/league/korea-disclosure'
+import { KR_DISCLOSURE, resolveKrLaneBanner, resolveKrLaneFooter } from '@/lib/league/korea-disclosure'
+import { KrUsageNoticeList } from '@/components/league/KrLaneDisclosureBlocks'
 import { isDeepDisabledForViewer } from '@/lib/league/korea-lane-features'
 import { KrUniverseChipBrowser } from '@/components/league/KrUniverseChipBrowser'
 
@@ -737,8 +738,8 @@ export function KoreaStockLane({
   bizNo?: string
   onSelectUsInstrument?: (instrument: string, horizon: UiHorizon) => void
 } = {}) {
-  const bannerRegText = fillDisclosure(KR_DISCLOSURE.laneBannerReg, { REG_NO: regNo })
-  const footerText = fillDisclosure(KR_DISCLOSURE.footer, { REG_NO: regNo, BIZ_NO: bizNo })
+  const { main: bannerMain, regLine: bannerRegText } = resolveKrLaneBanner(regNo)
+  const footerText = resolveKrLaneFooter(regNo, bizNo)
 
   return (
     <div data-stock-lane="korea" className="flex flex-col gap-3">
@@ -747,7 +748,7 @@ export function KoreaStockLane({
         data-testid="kr-lane-banner"
         className="rounded-2xl border border-amber-300 bg-amber-50/90 p-4 text-sm leading-relaxed text-slate-800 shadow-sm"
       >
-        <p className="font-semibold text-slate-900">{KR_DISCLOSURE.laneBanner}</p>
+        <p className="font-semibold text-slate-900">{bannerMain}</p>
         <p className="mt-2 text-sm text-slate-700">{bannerRegText}</p>
       </div>
 
@@ -757,6 +758,7 @@ export function KoreaStockLane({
         className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600"
       >
         {KR_DISCLOSURE.generate}
+        <KrUsageNoticeList />
       </div>
 
       <KrUniverseChipBrowser

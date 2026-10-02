@@ -5,6 +5,10 @@ import { creditsForLeagueArchive, creditsForLeagueRecordRoom } from '@/lib/credi
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
 import { RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/league/view-purchase-policy'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
+import { useLeagueRequestSignals } from '@/lib/league/use-league-request-signals'
+import { admissionStockLane } from '@/lib/league/stock-lane'
+import { formatKrTrackRecord, trackRecordVarsFromRecordRoom } from '@/lib/league/korea-disclosure'
+import { KrTrackRecordNotice } from '@/components/league/KrLaneDisclosureBlocks'
 import { CardCompliance } from './CardCompliance'
 import { RecordRoomBody } from './RecordRoomBody'
 import { LanguageToggle } from './LanguageToggle'
@@ -26,6 +30,17 @@ const ROOM_COST = creditsForLeagueRecordRoom()
  */
 export function RecordRoom({ initialData, devSignalsQuery, onRefreshWindow, refreshing }: RecordRoomProps) {
   const { locale, t, dir, setLocale, showLanguageToggle } = useLeagueLocale(devSignalsQuery)
+  const signals = useLeagueRequestSignals(devSignalsQuery)
+  const koreaLaneViewer =
+    admissionStockLane({
+      declaredCountry: signals.declaredCountry,
+      ipCountry: signals.ipCountry,
+    }) === 'korea'
+  const trackRecordMeta = trackRecordVarsFromRecordRoom(data.rounds)
+  const trackRecordText = formatKrTrackRecord({
+    startDate: trackRecordMeta.startDate,
+    n: trackRecordMeta.n > 0 ? trackRecordMeta.n : null,
+  })
   const [data, setData] = useState(initialData)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -108,25 +123,28 @@ export function RecordRoom({ initialData, devSignalsQuery, onRefreshWindow, refr
       </div>
       <CardCompliance colorBucket="green" t={t}>
         {(receipt) => (
-          <RecordRoomBody
-            data={data}
-            receipt={receipt}
-            t={t}
-            locale={locale}
-            archiveCost={ARCHIVE_COST}
-            roomCost={ROOM_COST}
-            windowRounds={data.window?.roundLimit ?? RECORD_ROOM_PURCHASE_ROUND_LIMIT}
-            loading={loading || refreshing === true}
-            modelId={modelId}
-            from={from}
-            to={to}
-            onModelIdChange={setModelId}
-            onFromChange={setFrom}
-            onToChange={setTo}
-            onPageChange={(page) => void loadPage(page)}
-            onExportCsv={() => void exportCsv()}
-            onRefreshWindow={onRefreshWindow}
-          />
+          <>
+            <RecordRoomBody
+              data={data}
+              receipt={receipt}
+              t={t}
+              locale={locale}
+              archiveCost={ARCHIVE_COST}
+              roomCost={ROOM_COST}
+              windowRounds={data.window?.roundLimit ?? RECORD_ROOM_PURCHASE_ROUND_LIMIT}
+              loading={loading || refreshing === true}
+              modelId={modelId}
+              from={from}
+              to={to}
+              onModelIdChange={setModelId}
+              onFromChange={setFrom}
+              onToChange={setTo}
+              onPageChange={(page) => void loadPage(page)}
+              onExportCsv={() => void exportCsv()}
+              onRefreshWindow={onRefreshWindow}
+            />
+            {koreaLaneViewer ? <KrTrackRecordNotice text={trackRecordText} /> : null}
+          </>
         )}
       </CardCompliance>
     </div>
