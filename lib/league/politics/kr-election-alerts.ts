@@ -8,6 +8,19 @@ import { telegramConfigured } from '../manual-grade/telegram'
 const TELEGRAM_API = 'https://api.telegram.org'
 const DAY_MS = 86_400_000
 
+let telegramOptionalLogged = false
+
+/** Test seam. */
+export function resetKrElectionTelegramOptionalLog(): void {
+  telegramOptionalLogged = false
+}
+
+function logTelegramOptionalOnce(): void {
+  if (telegramOptionalLogged) return
+  telegramOptionalLogged = true
+  console.log('telegram not configured; admin banner only')
+}
+
 export const KR_ELECTION_MILESTONES = ['d14', 'd7', 'd6', 'poll_close'] as const
 export type KrElectionMilestone = (typeof KR_ELECTION_MILESTONES)[number]
 
@@ -99,7 +112,10 @@ export async function dispatchKrElectionAlerts(opts: {
   const fetchImpl = opts.fetchImpl ?? fetch
   const token = env.TELEGRAM_BOT_TOKEN?.trim()
   const chatId = env.TELEGRAM_ADMIN_CHAT_ID?.trim()
-  if (!telegramConfigured(env) || !token || !chatId) return { sent: [] }
+  if (!telegramConfigured(env) || !token || !chatId) {
+    logTelegramOptionalOnce()
+    return { sent: [] }
+  }
 
   const sent: Array<{ electionId: string; milestone: KrElectionMilestone }> = []
   for (const row of KR_ELECTION_CALENDAR) {

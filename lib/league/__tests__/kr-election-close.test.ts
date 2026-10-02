@@ -8,8 +8,10 @@ import {
   dueKrElectionMilestones,
   krElectionMilestoneAt,
   resetKrElectionAlertMemory,
+  resetKrElectionTelegramOptionalLog,
   memoryKrElectionAlertStore,
 } from '../politics/kr-election-alerts'
+import { listKrElectionAdminBanners } from '../politics/kr-election-admin-banner'
 import { KR_ELECTION_CALENDAR } from '../politics/kr-calendar'
 import {
   envKrManualCloseFlag,
@@ -90,6 +92,7 @@ describe('KR election alert milestones', () => {
 
   beforeEach(() => {
     resetKrElectionAlertMemory()
+    resetKrElectionTelegramOptionalLog()
   })
 
   it('D-14 / D-7 / D-6 / poll close are ordered and due after each clock', () => {
@@ -127,6 +130,78 @@ describe('KR election alert milestones', () => {
     const afterCloseAgain = await dispatchKrElectionAlerts({ atMs: close, store, env, fetchImpl })
     expect(afterCloseAgain.sent).toEqual([])
   })
+
+  it('with Telegram env missing, does not send or record alert_sent rows', async () => {
+    const logs: string[] = []
+    const origLog = console.log
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(' '))
+    }
+    try {
+      let markCalls = 0
+      let hasCalls = 0
+      const store = {
+        async hasSent() {
+          hasCalls += 1
+          return false
+        },
+        async markSent() {
+          markCalls += 1
+        },
+      }
+      const fetchImpl: typeof fetch = async () => {
+        throw new Error('fetch should not run')
+      }
+      const result = await dispatchKrElectionAlerts({ atMs: d6, store, env: {}, fetchImpl })
+      expect(result.sent).toEqual([])
+      expect(markCalls).toBe(0)
+      expect(hasCalls).toBe(0)
+      expect(logs.some((l) => l.includes('telegram not configured; admin banner only'))).toBe(true)
+      await dispatchKrElectionAlerts({ atMs: d6, store, env: {}, fetchImpl })
+      expect(logs.filter((l) => l.includes('telegram not configured')).length).toBe(1)
+    } finally {
+      console.log = origLog
+    }
+  })
+})
+
+describe('KR election admin stage banners', () => {
+  const row = KR_ELECTION_CALENDAR[0]!
+  const d14 = krElectionMilestoneAt(row.pollCloseIso, 'd14')!
+  const d7 = krElectionMilestoneAt(row.pollCloseIso, 'd7')!
+  const d6 = krElectionMilestoneAt(row.pollCloseIso, 'd6')!
+  const close = krElectionMilestoneAt(row.pollCloseIso, 'poll_close')!
+
+  it('shows yellow / orange / red / green in order and nothing outside windows', () => {
+    expect(listKrElectionAdminBanners(d14 - 1, false)).toEqual([])
+
+    const prepare = listKrElectionAdminBanners(d14, false)[0]
+    expect(prepare?.stage).toBe('prepare')
+    expect(prepare?.color).toBe('yellow')
+    expect(prepare?.text).toContain('차단 준비')
+    expect(prepare?.text).toContain('투표일 2026-06-03')
+
+    const warn = listKrElectionAdminBanners(d7, false)[0]
+    expect(warn?.stage).toBe('warn')
+    expect(warn?.color).toBe('orange')
+    expect(warn?.text).toContain('다음 단계에서 차단 필요')
+
+    const blackoutOff = listKrElectionAdminBanners(d6, false)[0]
+    expect(blackoutOff?.stage).toBe('blackout')
+    expect(blackoutOff?.color).toBe('red')
+    expect(blackoutOff?.text).toContain('수동 차단 스위치: OFF')
+    expect(blackoutOff?.showToggle).toBe(true)
+
+    const blackoutOn = listKrElectionAdminBanners(d6, true)[0]
+    expect(blackoutOn?.text).toContain('수동 차단 스위치: ON')
+
+    const post = listKrElectionAdminBanners(close + 1, false)[0]
+    expect(post?.stage).toBe('post')
+    expect(post?.color).toBe('green')
+    expect(post?.text).toContain('투표 종료 — 차단 해제 가능')
+
+    expect(listKrElectionAdminBanners(close + 25 * 60 * 60 * 1000, false)).toEqual([])
+  })
 })
 
 describe('wiring — authorize, hub, cron', () => {
@@ -150,5 +225,15 @@ describe('wiring — authorize, hub, cron', () => {
   it('league-generate cron dispatches KR election alerts', () => {
     const src = readFileSync(join(ROOT, 'app/api/cron/league-generate/route.ts'), 'utf8')
     expect(src).toContain('dispatchKrElectionAlerts')
+  })
+
+  it('admin layout renders election stage banners on every admin page', () => {
+    const layout = readFileSync(join(ROOT, 'app/admin/layout.tsx'), 'utf8')
+    expect(layout).toContain('KrElectionAdminBanners')
+    const banners = readFileSync(join(ROOT, 'app/admin/KrElectionAdminBanners.tsx'), 'utf8')
+    expect(banners).toContain('banners')
+    expect(banners).toContain('한국 선거 전부 차단')
+    const route = readFileSync(join(ROOT, 'app/api/admin/league/blackout/route.ts'), 'utf8')
+    expect(route).toContain('listKrElectionAdminBanners')
   })
 })

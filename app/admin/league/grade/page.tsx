@@ -28,8 +28,6 @@ export default function LeagueManualGradePage() {
   const [suggestingIds, setSuggestingIds] = useState<Record<string, boolean>>({})
   const [bulkMode, setBulkMode] = useState(false)
   const [electionBanner, setElectionBanner] = useState<{
-    active: boolean
-    titles: string[]
     switchOn: boolean
     switchValue: string
     saving?: boolean
@@ -69,16 +67,12 @@ export default function LeagueManualGradePage() {
       try {
         const res = await fetch('/api/admin/league/blackout', { credentials: 'include' })
         const body = (await res.json().catch(() => null)) as {
-          active?: boolean
-          windows?: Array<{ title: string }>
           switch?: { on?: boolean; value?: string }
         }
         if (res.ok) {
           setElectionBanner({
-            active: Boolean(body.active),
-            titles: (body.windows ?? []).map((w) => w.title),
-            switchOn: Boolean(body.switch?.on),
-            switchValue: body.switch?.value ?? 'off',
+            switchOn: Boolean(body?.switch?.on),
+            switchValue: body?.switch?.value ?? 'off',
           })
         }
       } catch {
@@ -234,19 +228,6 @@ export default function LeagueManualGradePage() {
   return (
     <main className="min-h-screen bg-[#0a0f1e] px-4 py-8 text-white">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        {electionBanner?.active ? (
-          <div className="rounded-2xl border border-red-500/50 bg-red-600/20 px-4 py-3 text-sm text-red-50">
-            <p className="font-bold">
-              공직선거법 D-6 창 진행 중
-              {electionBanner.titles.length ? `: ${electionBanner.titles.join(', ')}` : ''}
-            </p>
-            <p className="mt-1">
-              수동 차단 스위치: {electionBanner.switchOn ? 'ON' : 'OFF'}
-              {electionBanner.switchOn ? ' — 한국 선거 라운드는 전 이용자에게 닫혀 있습니다.' : ' — 아직 닫히지 않았습니다. 지금 차단하세요.'}
-            </p>
-          </div>
-        ) : null}
-
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
           <p className="font-semibold text-slate-100">한국 선거 수동 차단</p>
           <p className="mt-1 text-slate-400">
@@ -275,8 +256,6 @@ export default function LeagueManualGradePage() {
                           switchValue: body.switch?.value ?? 'all_kr',
                         }
                       : {
-                          active: false,
-                          titles: [],
                           switchOn: true,
                           switchValue: 'all_kr',
                         },
@@ -303,7 +282,7 @@ export default function LeagueManualGradePage() {
                   setElectionBanner((prev) =>
                     prev
                       ? { ...prev, saving: false, switchOn: Boolean(body.switch?.on), switchValue: body.switch?.value ?? 'off' }
-                      : { active: false, titles: [], switchOn: false, switchValue: 'off' },
+                      : { switchOn: false, switchValue: 'off' },
                   )
                 })()
               }}

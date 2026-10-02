@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin/require-admin'
 import { listKrBlackoutAlerts } from '@/lib/league/politics/blackout-alert'
+import { listKrElectionAdminBanners } from '@/lib/league/politics/kr-election-admin-banner'
 import { dispatchKrElectionAlerts, listKrElectionRiskWindows } from '@/lib/league/politics/kr-election-alerts'
 import {
   krManualCloseIsOn,
@@ -23,14 +24,17 @@ export async function GET(req: Request) {
     atMs,
     store: supabaseKrElectionAlertStore(),
   }).catch(() => ({ sent: [] as Array<{ electionId: string; milestone: string }> }))
+  const switchOn = krManualCloseIsOn(closeFlag)
+  const banners = listKrElectionAdminBanners(atMs, switchOn)
   return NextResponse.json({
     active: windows.length > 0,
     count: windows.length || alerts.length,
     alerts,
     windows,
+    banners,
     telegramSent: telegram.sent,
     switch: {
-      on: krManualCloseIsOn(closeFlag),
+      on: switchOn,
       value: serializeKrManualCloseFlag(closeFlag),
     },
   })
