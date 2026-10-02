@@ -30,6 +30,7 @@ import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
 import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/league/view-purchase-policy'
 import { KR_DISCLOSURE, fillDisclosure } from '@/lib/league/korea-disclosure'
 import { isDeepDisabledForViewer } from '@/lib/league/korea-lane-features'
+import { KrUniverseChipBrowser } from '@/components/league/KrUniverseChipBrowser'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -394,7 +395,17 @@ function CardsPanel() {
         />
       ) : null}
 
-      {koreaStocks ? <KoreaStockLane regNo={krAdvisoryRegNo} bizNo={krBizNo} /> : null}
+      {koreaStocks ? (
+        <KoreaStockLane
+          regNo={krAdvisoryRegNo}
+          bizNo={krBizNo}
+          onSelectUsInstrument={(instrument, nextHorizon) => {
+            setHorizon(nextHorizon)
+            setSelectedInstrument(instrument)
+            void loadCard(instrument, nextHorizon)
+          }}
+        />
+      ) : null}
 
       {active?.kind === 'coming_soon' && view.kind !== 'card' && view.kind !== 'locked' ? (
         <ComingSoonPanel categoryId={active.id} />
@@ -458,7 +469,7 @@ function CardsPanel() {
         <PanelMessage text={t.hub.genericError} tone="error" />
       ) : null}
 
-      {view.kind === 'locked' && selectedInstrument && !koreaStocks ? (
+      {view.kind === 'locked' && selectedInstrument && (!koreaStocks || selectedInstrument.startsWith('STOCK:')) ? (
         <LockedRoundPanel
           locked={view.locked}
           instrument={selectedInstrument}
@@ -468,7 +479,7 @@ function CardsPanel() {
         />
       ) : null}
 
-      {view.kind === 'card' && selectedInstrument && !koreaStocks ? (
+      {view.kind === 'card' && selectedInstrument && (!koreaStocks || selectedInstrument.startsWith('STOCK:')) ? (
         <>
           <GenerationBanner
             card={view.card}
@@ -717,8 +728,15 @@ function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
   )
 }
 
-export function KoreaStockLane({ regNo, bizNo }: { regNo?: string; bizNo?: string } = {}) {
-  const { t } = useLeagueLocale()
+export function KoreaStockLane({
+  regNo,
+  bizNo,
+  onSelectUsInstrument,
+}: {
+  regNo?: string
+  bizNo?: string
+  onSelectUsInstrument?: (instrument: string, horizon: UiHorizon) => void
+} = {}) {
   const bannerRegText = fillDisclosure(KR_DISCLOSURE.laneBannerReg, { REG_NO: regNo })
   const footerText = fillDisclosure(KR_DISCLOSURE.footer, { REG_NO: regNo, BIZ_NO: bizNo })
 
@@ -741,16 +759,9 @@ export function KoreaStockLane({ regNo, bizNo }: { regNo?: string; bizNo?: strin
         {KR_DISCLOSURE.generate}
       </div>
 
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
-        <p className="text-sm font-semibold text-slate-800">{t.catalog.comingSoon}</p>
-        <p className="mt-1 text-xs leading-relaxed text-slate-500">{t.catalog.koreaStocksHint}</p>
-      </div>
-      {(['KOSPI', 'KOSDAQ'] as const).map((group) => (
-        <section key={group} data-chip-grid={group}>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group}</h3>
-          <div className="mt-1.5 flex flex-wrap gap-1.5" />
-        </section>
-      ))}
+      <KrUniverseChipBrowser
+        onSelectUsInstrument={(instrument, horizon) => onSelectUsInstrument?.(instrument, horizon)}
+      />
 
       {/* Mandatory footer disclosure */}
       <div
