@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { KR_GROUPS, type KrGroupId, type UniverseMarket } from '@/lib/league/korea-equity-catalog'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
+import { KR_GROUP_VISUALS, KrGroupDot, KrGroupIcon } from '@/components/league/KrGroupVisuals'
 
 export type KrUniverseRow = {
   market: UniverseMarket
@@ -22,43 +23,172 @@ const TAB_LABEL: Record<MarketTab, string> = {
   US: '미국',
 }
 
+/** Per-market accent for the segmented tab control. */
+const TAB_ACCENT: Record<MarketTab, { active: string; dot: string }> = {
+  KOSPI: { active: 'bg-blue-700 text-white shadow-sm', dot: 'bg-blue-600' },
+  KOSDAQ: { active: 'bg-violet-700 text-white shadow-sm', dot: 'bg-violet-600' },
+  US: { active: 'bg-emerald-700 text-white shadow-sm', dot: 'bg-emerald-600' },
+}
+
 const ALL_GROUPS = 'all' as const
 type GroupFilter = KrGroupId | typeof ALL_GROUPS
+
+/** Chips shown before "더보기" per group section. */
+const GROUP_PREVIEW_COUNT = 8
+/** Hot strip size per tab. */
+const HOT_STRIP_COUNT = 12
 
 function krTickerFromInstrument(instrument: string): string {
   const parts = instrument.split(':')
   return parts.length === 3 ? parts[2]! : instrument
 }
 
-function Chip({
+/** 1–2 letter monogram from a ticker (US chips). */
+function tickerMonogram(ticker: string): string {
+  const clean = ticker.replace(/[^A-Za-z]/g, '')
+  return (clean.slice(0, 2) || ticker.slice(0, 2)).toUpperCase()
+}
+
+/**
+ * Uniform stock chip: fixed height, full-width within the grid cell, name
+ * truncated with ellipsis (full name in `title`). Selected = accent ring +
+ * filled tint — never color alone (the check glyph + aria-pressed carry it).
+ */
+function StockChip({
+  name,
   selected,
   onClick,
-  children,
+  visual,
 }: {
+  name: string
   selected: boolean
   onClick: () => void
-  children: React.ReactNode
+  visual: { tint: string; ring: string }
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className={`min-h-[44px] rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
-        selected ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 shadow-sm hover:bg-slate-100'
+      title={name}
+      className={`flex h-[44px] w-full items-center justify-center gap-1 rounded-xl px-2 text-sm font-semibold transition ${
+        selected
+          ? `${visual.tint} text-slate-900 ring-2 ${visual.ring} dark:text-slate-100`
+          : 'bg-white text-slate-700 shadow-sm hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
       }`}
     >
-      {children}
+      {selected ? (
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
+          <path d="M2 6.5 4.8 9.3 10 3.5" />
+        </svg>
+      ) : null}
+      <span className="truncate">{name}</span>
     </button>
   )
 }
 
-function SkeletonChips() {
+/** Hot-strip chip: slightly larger, horizontal-scroll row item. */
+function HotChip({
+  name,
+  sub,
+  selected,
+  onClick,
+  accent,
+}: {
+  name: string
+  sub?: string
+  selected: boolean
+  onClick: () => void
+  accent: { tint: string; ring: string }
+}) {
   return (
-    <div className="flex flex-wrap gap-1.5" data-testid="kr-chip-skeleton">
-      {Array.from({ length: 12 }, (_, i) => (
-        <div key={i} className="h-[44px] w-24 animate-pulse rounded-xl bg-slate-200" />
-      ))}
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      title={name}
+      className={`flex h-[52px] shrink-0 flex-col justify-center rounded-xl px-3.5 text-left transition ${
+        selected
+          ? `${accent.tint} text-slate-900 ring-2 ${accent.ring} dark:text-slate-100`
+          : 'bg-white text-slate-700 shadow-sm hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+      }`}
+    >
+      <span className="max-w-[140px] truncate text-sm font-semibold leading-tight">{name}</span>
+      {sub ? (
+        <span className="mt-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">{sub}</span>
+      ) : null}
+    </button>
+  )
+}
+
+/** US chip: circular monogram + Korean name + muted ticker. */
+function UsChip({
+  name,
+  ticker,
+  selected,
+  onClick,
+}: {
+  name: string
+  ticker: string
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      title={`${name} (${ticker})`}
+      className={`flex h-[56px] w-full items-center gap-2 rounded-xl px-2.5 text-left transition ${
+        selected
+          ? 'bg-emerald-50 text-slate-900 ring-2 ring-emerald-600 dark:bg-emerald-950/40 dark:text-slate-100 dark:ring-emerald-400'
+          : 'bg-white text-slate-700 shadow-sm hover:bg-emerald-50/60 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+      }`}
+    >
+      <span
+        aria-hidden
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200"
+      >
+        {tickerMonogram(ticker)}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold leading-tight">{name}</span>
+        <span className="mt-0.5 block text-[11px] font-medium text-slate-400 dark:text-slate-500">
+          {ticker}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+/** Uniform responsive grid: 2–3 cols mobile, 4 tablet, 6 desktop. */
+const GRID_CLASS = 'grid grid-cols-2 gap-2 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-6'
+
+/** Loading skeleton that mirrors the loaded layout (no layout shift). */
+function SkeletonBrowser() {
+  return (
+    <div data-testid="kr-chip-skeleton" className="flex flex-col gap-6">
+      {/* Hot strip skeleton */}
+      <div className="flex gap-2 overflow-hidden">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="h-[52px] w-[120px] shrink-0 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
+        ))}
+      </div>
+      {/* Filter row skeleton */}
+      <div className="flex gap-2 overflow-hidden">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className="h-[36px] w-20 shrink-0 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+        ))}
+      </div>
+      {/* Group card skeleton */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+        <div className="mb-3 h-5 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className={GRID_CLASS}>
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="h-[44px] animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -80,6 +210,7 @@ export function KrUniverseChipBrowser({
   const [groupFilter, setGroupFilter] = useState<GroupFilter>(ALL_GROUPS)
   const [selected, setSelected] = useState<KrUniverseRow | null>(null)
   const [horizon, setHorizon] = useState<UiHorizon>('1d')
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<KrGroupId>>(new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -87,6 +218,7 @@ export function KrUniverseChipBrowser({
     setError(false)
     setSelected(null)
     setGroupFilter(ALL_GROUPS)
+    setExpandedGroups(new Set())
     void (async () => {
       try {
         const res = await fetch(`/api/league/kr-universe?market=${tab}`, { credentials: 'include' })
@@ -124,6 +256,10 @@ export function KrUniverseChipBrowser({
     }
   }
 
+  function expandGroup(id: KrGroupId) {
+    setExpandedGroups((prev) => new Set(prev).add(id))
+  }
+
   const groupsPresent =
     rows && tab !== 'US'
       ? KR_GROUPS.filter((g) => rows.some((row) => (row.groupId ?? 'other') === g.id))
@@ -132,83 +268,180 @@ export function KrUniverseChipBrowser({
     rows && tab !== 'US'
       ? groupsPresent.filter((g) => groupFilter === ALL_GROUPS || groupFilter === g.id)
       : []
+  const hotRows = rows ? rows.slice(0, HOT_STRIP_COUNT) : []
+  const loaded = rows !== null && !error && rows.length > 0
 
   return (
-    <div data-testid="kr-universe-browser" className="flex flex-col gap-3">
-      {/* Market tabs */}
-      <div className="flex gap-1 rounded-full bg-white p-1 shadow-sm" role="tablist" aria-label="시장">
-        {(Object.keys(TAB_LABEL) as MarketTab[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            onClick={() => setTab(key)}
-            className={`min-h-[44px] flex-1 rounded-full px-2 py-2 text-xs font-semibold transition ${
-              tab === key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {TAB_LABEL[key]}
-          </button>
-        ))}
+    <div data-testid="kr-universe-browser" className="flex flex-col gap-6">
+      {/* Market tabs — sticky segmented control with per-market accent */}
+      <div
+        className="sticky top-0 z-10 -mx-1 bg-slate-50/95 px-1 py-1 backdrop-blur-sm dark:bg-slate-900/95"
+      >
+        <div
+          className="flex gap-1 rounded-2xl bg-white p-1 shadow-sm dark:bg-slate-800"
+          role="tablist"
+          aria-label="시장"
+        >
+          {(Object.keys(TAB_LABEL) as MarketTab[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
+              className={`flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-sm font-semibold transition ${
+                tab === key
+                  ? TAB_ACCENT[key].active
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`h-1.5 w-1.5 rounded-full ${tab === key ? 'bg-white/80' : TAB_ACCENT[key].dot}`}
+              />
+              {TAB_LABEL[key]}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {rows === null && !error ? <SkeletonChips /> : null}
+      {rows === null && !error ? <SkeletonBrowser /> : null}
       {error ? (
-        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
           종목을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
         </p>
       ) : null}
       {rows !== null && !error && rows.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 bg-white px-3 py-4 text-center text-sm text-slate-500">
+        <p className="rounded-xl border border-slate-200 bg-white px-3 py-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
           표시할 종목이 없습니다.
         </p>
       ) : null}
 
-      {rows !== null && !error && rows.length > 0 && tab !== 'US' ? (
+      {loaded ? (
+        <section aria-label="지금 거래가 몰리는 종목">
+          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">
+            지금 거래가 몰리는 종목
+          </h3>
+          <div
+            data-testid="kr-hot-strip"
+            className="-mx-3 mt-2 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0"
+          >
+            {hotRows.map((row) => (
+              <HotChip
+                key={row.code}
+                name={row.name}
+                sub={tab === 'US' ? krTickerFromInstrument(row.instrument) : undefined}
+                selected={selected?.code === row.code}
+                onClick={() => pick(row)}
+                accent={
+                  tab === 'US'
+                    ? { tint: 'bg-emerald-50 dark:bg-emerald-950/40', ring: 'ring-emerald-600 dark:ring-emerald-400' }
+                    : KR_GROUP_VISUALS[(row.groupId ?? 'other') as KrGroupId]
+                }
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {loaded && tab !== 'US' ? (
         <>
-          {/* Group filter chips */}
-          <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
-            <Chip selected={groupFilter === ALL_GROUPS} onClick={() => setGroupFilter(ALL_GROUPS)}>
+          {/* Group filter — one horizontally scrollable row, never wraps */}
+          <div
+            className="-mx-3 flex flex-nowrap gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0"
+            role="group"
+            aria-label="업종 필터"
+          >
+            <button
+              type="button"
+              onClick={() => setGroupFilter(ALL_GROUPS)}
+              aria-pressed={groupFilter === ALL_GROUPS}
+              className={`flex h-[36px] shrink-0 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition ${
+                groupFilter === ALL_GROUPS
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+              }`}
+            >
               전체
-            </Chip>
+            </button>
             {groupsPresent.map((g) => (
-              <Chip key={g.id} selected={groupFilter === g.id} onClick={() => setGroupFilter(g.id)}>
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => setGroupFilter(g.id)}
+                aria-pressed={groupFilter === g.id}
+                className={`flex h-[36px] shrink-0 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition ${
+                  groupFilter === g.id
+                    ? `${KR_GROUP_VISUALS[g.id].tint} text-slate-900 ring-2 ${KR_GROUP_VISUALS[g.id].ring} dark:text-slate-100`
+                    : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                <KrGroupDot groupId={g.id} />
                 {g.label}
-              </Chip>
+              </button>
             ))}
           </div>
 
-          {visibleSections.map((group) => (
-            <section key={group.id} data-kr-group={group.id}>
-              <h3 className="text-xs font-semibold tracking-wide text-slate-500">{group.label}</h3>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {rows
-                  .filter((row) => (row.groupId ?? 'other') === group.id)
-                  .map((row) => (
-                    <Chip
+          {visibleSections.map((group) => {
+            const visual = KR_GROUP_VISUALS[group.id]
+            const groupRows = rows.filter((row) => (row.groupId ?? 'other') === group.id)
+            const expanded = groupFilter === group.id || expandedGroups.has(group.id)
+            const shown = expanded ? groupRows : groupRows.slice(0, GROUP_PREVIEW_COUNT)
+            const hiddenCount = groupRows.length - shown.length
+            return (
+              <section
+                key={group.id}
+                data-kr-group={group.id}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
+              >
+                <header className={`flex items-center gap-2 border-l-4 px-4 pb-2 pt-3 ${visual.ring.replace('ring-', 'border-')}`}>
+                  <span className={visual.accent}>
+                    <KrGroupIcon groupId={group.id} />
+                  </span>
+                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">
+                    {group.label}
+                  </h3>
+                  <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                    {groupRows.length}종목
+                  </span>
+                </header>
+                <div className={`px-4 pb-3 pt-1 ${GRID_CLASS}`}>
+                  {shown.map((row) => (
+                    <StockChip
                       key={row.code}
+                      name={row.name}
                       selected={selected?.code === row.code}
                       onClick={() => pick(row)}
-                    >
-                      {row.name}
-                    </Chip>
+                      visual={visual}
+                    />
                   ))}
-              </div>
-            </section>
-          ))}
+                </div>
+                {hiddenCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => expandGroup(group.id)}
+                    aria-expanded={false}
+                    className="block w-full border-t border-slate-100 px-4 py-2.5 text-center text-xs font-semibold text-slate-500 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/60"
+                  >
+                    더보기 (+{hiddenCount})
+                  </button>
+                ) : null}
+              </section>
+            )
+          })}
         </>
       ) : null}
 
-      {rows !== null && !error && rows.length > 0 && tab === 'US' ? (
-        <div className="flex flex-wrap gap-1.5">
+      {loaded && tab === 'US' ? (
+        <div className={GRID_CLASS}>
           {rows.map((row) => (
-            <Chip key={row.code} selected={selected?.code === row.code} onClick={() => pick(row)}>
-              <span className="block text-sm">{row.name}</span>
-              <span className="mt-0.5 block text-[11px] font-medium text-slate-400">
-                {krTickerFromInstrument(row.instrument)}
-              </span>
-            </Chip>
+            <UsChip
+              key={row.code}
+              name={row.name}
+              ticker={krTickerFromInstrument(row.instrument)}
+              selected={selected?.code === row.code}
+              onClick={() => pick(row)}
+            />
           ))}
         </div>
       ) : null}
@@ -222,7 +455,9 @@ export function KrUniverseChipBrowser({
               onClick={() => pickHorizon(h)}
               aria-current={horizon === h}
               className={`min-h-[44px] rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                horizon === h ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100'
+                horizon === h
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
               }`}
             >
               {t.catalog.horizons[h]}
@@ -234,7 +469,7 @@ export function KrUniverseChipBrowser({
       {selected && selected.market !== 'US' ? (
         <p
           data-testid="kr-chip-pending"
-          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500"
+          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
         >
           국내 종목 예측은 준비 중입니다.
         </p>

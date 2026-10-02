@@ -15,6 +15,10 @@ const hubSrc = readFileSync(
   join(process.cwd(), 'components', 'league', 'PublicLeagueHub.tsx'),
   'utf8',
 )
+const visualsSrc = readFileSync(
+  join(process.cwd(), 'components', 'league', 'KrGroupVisuals.tsx'),
+  'utf8',
+)
 
 describe('Korean-lane chip browser (UI contract)', () => {
   it('has three tabs (코스피/코스닥/미국) and fetches only the active tab', () => {
@@ -46,6 +50,7 @@ describe('Korean-lane chip browser (UI contract)', () => {
 
   it('renders no <input> or <textarea> anywhere in the Korean lane', () => {
     expect(browserSrc).not.toMatch(/<(input|textarea|select)[\s>]/i)
+    expect(visualsSrc).not.toMatch(/<(input|textarea|select)[\s>]/i)
     expect(hubSrc).not.toMatch(/<(input|textarea)[\s>]/i)
     const html = renderToStaticMarkup(createElement(KoreaStockLane))
     expect(html).not.toMatch(/<(input|textarea)[\s>]/i)
@@ -90,5 +95,86 @@ describe('Korean-lane chip browser (UI contract)', () => {
     expect(browserSrc).toContain('kr-chip-skeleton')
     expect(browserSrc).toContain('표시할 종목이 없습니다.')
     expect(browserSrc).toContain('종목을 불러오지 못했습니다.')
+  })
+})
+
+describe('Korean-lane chip browser (redesign)', () => {
+  it('hot strip shows the first 12 rows by server order and never renders rank numbers', () => {
+    expect(browserSrc).toContain('지금 거래가 몰리는 종목')
+    expect(browserSrc).toContain('data-testid="kr-hot-strip"')
+    expect(browserSrc).toContain('rows.slice(0, HOT_STRIP_COUNT)')
+    expect(browserSrc).toContain('HOT_STRIP_COUNT = 12')
+    // popularityRank is never rendered as text
+    expect(browserSrc).not.toMatch(/>\s*\{[^}]*popularityRank[^}]*\}\s*</)
+    expect(browserSrc).not.toContain('순위')
+  })
+
+  it('group sections show 8 chips then expand via "더보기 (+N)"; active filter expands fully', () => {
+    expect(browserSrc).toContain('GROUP_PREVIEW_COUNT = 8')
+    expect(browserSrc).toContain('groupRows.slice(0, GROUP_PREVIEW_COUNT)')
+    expect(browserSrc).toContain('더보기 (+{hiddenCount})')
+    expect(browserSrc).toContain('groupFilter === group.id || expandedGroups.has(group.id)')
+    expect(browserSrc).toContain('expandGroup')
+  })
+
+  it('group filter row is a single horizontally scrollable row that never wraps', () => {
+    expect(browserSrc).toContain('flex flex-nowrap gap-2 overflow-x-auto')
+    // No flex-wrap anywhere in the filter row markup
+    const filterBlock = browserSrc.slice(
+      browserSrc.indexOf('업종 필터'),
+      browserSrc.indexOf('{visibleSections.map'),
+    )
+    expect(filterBlock).not.toContain('flex-wrap')
+  })
+
+  it('defines a fixed color + inline SVG icon per group for all 14 groups', () => {
+    for (const g of KR_GROUPS) {
+      expect(visualsSrc).toContain(`${g.id}:`)
+    }
+    expect(visualsSrc).toContain('Record<KrGroupId, KrGroupVisual>')
+    expect(visualsSrc).toContain('<svg')
+    // No emoji or external image assets
+    expect(visualsSrc).not.toMatch(/<img/i)
+    expect(visualsSrc).not.toMatch(/[←-⇿⌀-➿⬀-⯿️]/u)
+  })
+
+  it('market tabs are a sticky segmented control with per-market accents', () => {
+    expect(browserSrc).toContain('sticky top-0')
+    expect(browserSrc).toContain('role="tablist"')
+    expect(browserSrc).toContain('bg-blue-700')
+    expect(browserSrc).toContain('bg-violet-700')
+    expect(browserSrc).toContain('bg-emerald-700')
+  })
+
+  it('uses a uniform responsive grid and fixed-height truncated chips with title attributes', () => {
+    expect(browserSrc).toContain('grid grid-cols-2')
+    expect(browserSrc).toContain('md:grid-cols-4')
+    expect(browserSrc).toContain('lg:grid-cols-6')
+    expect(browserSrc).toContain('title={name}')
+    expect(browserSrc).toContain('truncate')
+    expect(browserSrc).toContain('h-[44px]')
+  })
+
+  it('US chips show a circular monogram + Korean name + muted ticker, no logos', () => {
+    expect(browserSrc).toContain('tickerMonogram')
+    expect(browserSrc).toContain('rounded-full bg-emerald-100')
+    expect(browserSrc).not.toMatch(/<img/i)
+  })
+
+  it('chips are buttons with aria-pressed; selected state uses ring + tint, not color alone', () => {
+    expect(browserSrc).toContain('aria-pressed={selected}')
+    expect(browserSrc).toContain('ring-2')
+    // Selected chips also carry a check glyph (non-color signal)
+    expect(browserSrc).toContain('M2 6.5 4.8 9.3 10 3.5')
+  })
+
+  it('skeleton mirrors the loaded grid to avoid layout shift', () => {
+    const skeletonBlock = browserSrc.slice(
+      browserSrc.indexOf('function SkeletonBrowser'),
+      browserSrc.indexOf('/**', browserSrc.indexOf('function SkeletonBrowser')),
+    )
+    expect(skeletonBlock).toContain('GRID_CLASS')
+    expect(skeletonBlock).toContain('h-[44px]')
+    expect(skeletonBlock).toContain('h-[52px]')
   })
 })

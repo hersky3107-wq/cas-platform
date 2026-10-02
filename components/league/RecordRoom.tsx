@@ -36,12 +36,12 @@ export function RecordRoom({ initialData, devSignalsQuery, onRefreshWindow, refr
       declaredCountry: signals.declaredCountry,
       ipCountry: signals.ipCountry,
     }) === 'korea'
+  const [data, setData] = useState(initialData)
   const trackRecordMeta = trackRecordVarsFromRecordRoom(data.rounds)
   const trackRecordText = formatKrTrackRecord({
     startDate: trackRecordMeta.startDate,
     n: trackRecordMeta.n > 0 ? trackRecordMeta.n : null,
   })
-  const [data, setData] = useState(initialData)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [modelId, setModelId] = useState('')
