@@ -17,36 +17,33 @@ type LaneViewer = {
   jurisdiction: JurisdictionInput
 }
 
-/**
- * Flip these later. `hide` = no 개방형 분석 / 찬반 토론.
- * Rows marked GRAY default-hide pending legal confirmation.
- */
-const KR_DEEP_CATEGORY_TABLE: Record<string, KrDeepPolicy | 'by_instrument'> = {
-  // Financial investment products — always hide
+/** `hide` = no 개방형 분석 / 찬반 토론 for Korean-lane viewers. */
+const KR_DEEP_CATEGORY_TABLE: Record<string, KrDeepPolicy> = {
   stock: 'hide',
   stocks: 'hide',
   etf_index: 'hide',
   index_etf: 'hide',
   memecoin: 'hide',
-
-  // GRAY — pending legal confirmation; default hide
   fx: 'hide',
-  crypto_spot: 'hide',
-  crypto: 'hide',
-  crypto_perps: 'hide',
+  gold_metal: 'hide',
+  gold_metals: 'hide',
+  commodity_energy: 'hide',
+  commodities_energy: 'hide',
+  // pending product meeting after KR stocks
+  macro_econ: 'hide',
+  macro: 'hide',
+  ai_models: 'hide',
 
-  // Non-financial — keep deep/debate
+  crypto: 'allow',
+  crypto_spot: 'allow',
+  crypto_perps: 'allow',
   sports: 'allow',
   politics_election: 'allow',
   entertainment: 'allow',
   entertainment_awards: 'allow',
   real_estate: 'allow',
-
-  // Mixed ledgers: gold spots vs ETFs, commodity spots vs ETFs
-  gold_metal: 'by_instrument',
-  gold_metals: 'by_instrument',
-  commodity_energy: 'by_instrument',
-  commodities_energy: 'by_instrument',
+  // category not built yet
+  tech: 'allow',
 }
 
 /** All index_etf chips in catalog.ts. */
@@ -70,13 +67,11 @@ const INDEX_ETF_SYMBOLS = new Set([
 /** Gold/silver ETFs in gold_metals (catalog.ts). Spots are XAU/XAG/XPT. */
 const GOLD_ETF_SYMBOLS = new Set(['GLD', 'SLV'])
 
-/** GRAY — pending legal confirmation. */
 const GOLD_SPOT_SYMBOLS = new Set(['XAU/USD', 'XAG/USD', 'XPT/USD'])
 
 /** ETF chips in commodities_energy (catalog.ts). */
 const COMMODITY_ETF_SYMBOLS = new Set(['UNG', 'CPER', 'CORN', 'WEAT', 'SOYB', 'COFF'])
 
-/** GRAY — pending legal confirmation. */
 const COMMODITY_SPOT_SYMBOLS = new Set(['WTI/USD', 'XBR/USD'])
 
 const ETF_SYMBOLS = new Set([...INDEX_ETF_SYMBOLS, ...GOLD_ETF_SYMBOLS, ...COMMODITY_ETF_SYMBOLS])
@@ -101,6 +96,11 @@ function isEtfSymbol(instrument: string): boolean {
   return ETF_SYMBOLS.has(instrument.trim().toUpperCase())
 }
 
+function isHiddenCommodityOrMetalSpot(instrument: string): boolean {
+  const key = instrument.trim().toUpperCase()
+  return GOLD_SPOT_SYMBOLS.has(key) || COMMODITY_SPOT_SYMBOLS.has(key)
+}
+
 /**
  * Per-instrument deep/debate policy. World-lane callers never consult this;
  * Korean-lane viewers hide when this returns `"hide"`.
@@ -114,21 +114,11 @@ export function krDeepPolicyForInstrument(
 
   if (isStockInstrument(inst) || cat === 'stock' || cat === 'stocks') return 'hide'
   if (isEtfSymbol(inst) || cat === 'etf_index' || cat === 'index_etf') return 'hide'
+  if (isHiddenCommodityOrMetalSpot(inst)) return 'hide'
 
   const row = cat ? KR_DEEP_CATEGORY_TABLE[cat] : undefined
   if (row === 'allow') return 'allow'
   if (row === 'hide') return 'hide'
-
-  if (row === 'by_instrument') {
-    const key = inst.toUpperCase()
-    if (GOLD_ETF_SYMBOLS.has(key) || COMMODITY_ETF_SYMBOLS.has(key)) return 'hide'
-    if (GOLD_SPOT_SYMBOLS.has(key) || COMMODITY_SPOT_SYMBOLS.has(key)) {
-      // GRAY — pending legal confirmation
-      return 'hide'
-    }
-    logUnknownOnce(cat || '(empty)', inst || '(empty)')
-    return 'hide'
-  }
 
   logUnknownOnce(cat || '(empty)', inst || '(empty)')
   return 'hide'

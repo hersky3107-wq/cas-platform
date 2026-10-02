@@ -61,14 +61,18 @@ type Viewer = {
 
 const HIDE_ROUNDS = [
   { category: 'stock', instrument: 'STOCK:NASDAQ:AAPL' },
-  { category: 'etf_index', instrument: 'QQQ' },
-  { category: 'gold_metal', instrument: 'GLD' },
-  { category: 'gold_metal', instrument: 'XAU/USD' },
-  { category: 'crypto_spot', instrument: 'BTC/USD' },
+  { category: 'stock', instrument: 'KRSTOCK:KRX:005930' },
+  { category: 'index_etf', instrument: 'SPY' },
   { category: 'fx', instrument: 'EUR/USD' },
+  { category: 'gold_metal', instrument: 'XAU/USD' },
+  { category: 'gold_metal', instrument: 'GLD' },
+  { category: 'commodities_energy', instrument: 'WTI/USD' },
+  { category: 'macro_econ', instrument: 'MACRO:US:CPI:1' },
+  { category: 'not_a_category', instrument: 'ZZZ' },
 ] as const
 
 const ALLOW_ROUNDS = [
+  { category: 'crypto_spot', instrument: 'BTC/USD' },
   { category: 'sports', instrument: 'MATCH:baseball_mlb:evt:home:1' },
   { category: 'politics_election', instrument: 'ELECTION:us:evt:1' },
   { category: 'entertainment_awards', instrument: 'SHOW:oscars:evt:1' },
@@ -107,22 +111,27 @@ const kr = { jurisdiction: { declaredCountry: 'KR' as const, ipCountry: 'KR' as 
 const us = { isAdmin: false, jurisdiction: { declaredCountry: 'US' as const, ipCountry: 'US' as const } }
 
 describe('krDeepPolicyForInstrument', () => {
-  it('hides stocks, index ETFs, gold ETFs, gray-zone spots/FX/crypto, and memecoin', () => {
+  it('hides stocks, index ETFs, FX, gold/commodity spots and ETFs, macro, memecoin, and unknown categories', () => {
     expect(krDeepPolicyForInstrument('stock', 'STOCK:NASDAQ:AAPL')).toBe('hide')
+    expect(krDeepPolicyForInstrument('stock', 'KRSTOCK:KRX:005930')).toBe('hide')
     expect(krDeepPolicyForInstrument('stock', 'AAPL')).toBe('hide')
-    expect(krDeepPolicyForInstrument('etf_index', 'QQQ')).toBe('hide')
     expect(krDeepPolicyForInstrument('index_etf', 'SPY')).toBe('hide')
+    expect(krDeepPolicyForInstrument('etf_index', 'QQQ')).toBe('hide')
     expect(krDeepPolicyForInstrument('gold_metal', 'GLD')).toBe('hide')
-    expect(krDeepPolicyForInstrument('gold_metal', 'SLV')).toBe('hide')
     expect(krDeepPolicyForInstrument('gold_metal', 'XAU/USD')).toBe('hide')
+    expect(krDeepPolicyForInstrument('commodities_energy', 'WTI/USD')).toBe('hide')
     expect(krDeepPolicyForInstrument('commodity_energy', 'UNG')).toBe('hide')
-    expect(krDeepPolicyForInstrument('commodity_energy', 'WTI/USD')).toBe('hide')
     expect(krDeepPolicyForInstrument('fx', 'EUR/USD')).toBe('hide')
-    expect(krDeepPolicyForInstrument('crypto_spot', 'BTC/USD')).toBe('hide')
+    expect(krDeepPolicyForInstrument('macro_econ', 'MACRO:US:CPI:1')).toBe('hide')
+    expect(krDeepPolicyForInstrument('ai_models', 'MODEL:gpt:1')).toBe('hide')
     expect(krDeepPolicyForInstrument('memecoin', 'DOGE/USD')).toBe('hide')
+    expect(krDeepPolicyForInstrument('not_a_category', 'ZZZ')).toBe('hide')
   })
 
-  it('allows sports, politics, entertainment, and real_estate', () => {
+  it('allows crypto, sports, politics, entertainment, real_estate, and tech', () => {
+    expect(krDeepPolicyForInstrument('crypto_spot', 'BTC/USD')).toBe('allow')
+    expect(krDeepPolicyForInstrument('crypto', 'ETH/USD')).toBe('allow')
+    expect(krDeepPolicyForInstrument('tech', 'CHIP:nvda:1')).toBe('allow')
     for (const round of ALLOW_ROUNDS) {
       expect(krDeepPolicyForInstrument(round.category, round.instrument), round.category).toBe('allow')
     }
@@ -130,15 +139,15 @@ describe('krDeepPolicyForInstrument', () => {
 
   it('unknown category or instrument fail-closed hides and logs once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(krDeepPolicyForInstrument('not_a_category', 'ZZZ')).toBe('hide')
-    expect(krDeepPolicyForInstrument('not_a_category', 'ZZZ')).toBe('hide')
+    expect(krDeepPolicyForInstrument('fail_closed_unknown_cat', 'MYSTERY')).toBe('hide')
+    expect(krDeepPolicyForInstrument('fail_closed_unknown_cat', 'MYSTERY')).toBe('hide')
     expect(warn).toHaveBeenCalledTimes(1)
     warn.mockRestore()
   })
 })
 
 describe('isDeepDisabledForViewer / isKrLaneDeepApiBlocked', () => {
-  it('Korean-lane hides deep/debate on financial chips including admin UI; API exempts admin', () => {
+  it('Korean-lane hides deep/debate on blocked categories including admin UI; API exempts admin', () => {
     const krAdmin = { isAdmin: true, jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' } }
     const krUser = { isAdmin: false, jurisdiction: { declaredCountry: 'KR', ipCountry: 'US' } }
     const ipOnly = { isAdmin: false, jurisdiction: { declaredCountry: null, ipCountry: 'KR' } }
@@ -150,7 +159,7 @@ describe('isDeepDisabledForViewer / isKrLaneDeepApiBlocked', () => {
     }
   })
 
-  it('Korean-lane keeps deep/debate on non-financial categories', () => {
+  it('Korean-lane keeps deep/debate on allowlisted categories', () => {
     for (const round of ALLOW_ROUNDS) {
       expect(isDeepDisabledForViewer(kr, round.category, round.instrument), round.category).toBe(false)
       expect(isKrLaneDeepApiBlocked({ isAdmin: false, ...kr }, round.category, round.instrument), round.category).toBe(
@@ -352,11 +361,28 @@ describe('POST /api/league/deep-open and deep-debate — per-instrument KR polic
     },
   )
 
-  it('Admin from KR → API allowed on a financial round', async () => {
+  it('Admin from KR → API allowed on a hidden-category round', async () => {
     const { open, debate } = await postBoth(krViewer(true), 'stock', 'STOCK:NASDAQ:AAPL')
     expect(open.status).toBe(200)
     expect(debate.status).toBe(200)
     expect(mocks.handleDeepAnalysis).toHaveBeenCalledTimes(2)
+  })
+
+  it('jurisdiction-blocked round stops deep-open/deep-debate before KR policy (world lane has no extra blocklist)', async () => {
+    mocks.resolveLeagueViewer.mockResolvedValue({ ok: true, viewer: usViewer() })
+    mocks.authorizeRoundForViewer.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: 'jurisdiction_blocked', code: 'jurisdiction_blocked' }, { status: 403 }),
+    })
+    const { POST: openPost } = await import('@/app/api/league/deep-open/route')
+    const { POST: debatePost } = await import('@/app/api/league/deep-debate/route')
+    const open = await openPost(postReq('/api/league/deep-open', { roundId: 'round-blocked' }))
+    const debate = await debatePost(postReq('/api/league/deep-debate', { roundId: 'round-blocked' }))
+    expect(open.status).toBe(403)
+    expect(debate.status).toBe(403)
+    expect(await open.json()).toMatchObject({ code: 'jurisdiction_blocked' })
+    expect(mocks.handleDeepAnalysis).not.toHaveBeenCalled()
+    expect(mocks.chargeDeep).not.toHaveBeenCalled()
   })
 
   it('route files call the KR gate with category + instrument before roundHasCards / handleDeepAnalysis', () => {
