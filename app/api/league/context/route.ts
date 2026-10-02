@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { isAdminEmail } from '@/lib/credits'
 import { getIpCountryFromHeaders } from '@/lib/geo/ip-country'
 import { resolveRouteAuth } from '@/lib/supabase/route-auth'
 import { supabaseAdmin } from '@/lib/supabase/server'
@@ -12,6 +13,8 @@ import { supabaseAdmin } from '@/lib/supabase/server'
  *  - `acceptLanguage` / `ipCountry`: read from the request/platform.
  *  - `profileLocale` / `declaredCountry`: read from the caller's OWN
  *    `users` row, if logged in.
+ *  - `isAdmin`: whether the caller's email is the operator account (raw
+ *    fact, not a locale/visibility decision).
  *
  * The actual policy (`resolveLeagueLocale`, `isCategoryAllowed`) runs
  * client-side (or could run server-side elsewhere) as pure functions over
@@ -44,6 +47,7 @@ export async function GET(req: Request) {
   let declaredCountry: string | null = devDeclaredCountry ? devDeclaredCountry.toUpperCase() : null
 
   const { user } = await resolveRouteAuth(req)
+  const isAdmin = isAdminEmail(user?.email)
   if (user?.id) {
     // `declared_country` requires the 20260816000001_users_declared_country.sql
     // migration. Guarded separately from `ui_locale` (long-standing column) so a
@@ -63,5 +67,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ acceptLanguage, ipCountry, profileLocale, declaredCountry })
+  return NextResponse.json({ acceptLanguage, ipCountry, profileLocale, declaredCountry, isAdmin })
 }

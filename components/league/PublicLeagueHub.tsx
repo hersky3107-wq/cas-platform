@@ -30,7 +30,6 @@ import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
 import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/league/view-purchase-policy'
 import { KR_DISCLOSURE, fillDisclosure } from '@/lib/league/korea-disclosure'
 import { isDeepDisabledForViewer } from '@/lib/league/korea-lane-features'
-import { getLeagueUiPack } from '@/lib/league/i18n/dictionary'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -479,6 +478,7 @@ function CardsPanel() {
               },
             },
             view.card.round.category,
+            view.card.round.instrument,
           ) ? null : (
             <DeepAnalysis
               roundId={view.card.round.round_id}
@@ -712,7 +712,7 @@ function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
 }
 
 export function KoreaStockLane({ regNo, bizNo }: { regNo?: string; bizNo?: string } = {}) {
-  const t = getLeagueUiPack('ko')
+  const { t } = useLeagueLocale()
   const bannerRegText = fillDisclosure(KR_DISCLOSURE.laneBannerReg, { REG_NO: regNo })
   const footerText = fillDisclosure(KR_DISCLOSURE.footer, { REG_NO: regNo, BIZ_NO: bizNo })
 

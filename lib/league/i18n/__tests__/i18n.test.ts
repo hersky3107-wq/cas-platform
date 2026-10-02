@@ -40,8 +40,29 @@ describe('resolveLeagueLocale (priority order)', () => {
   })
 
   it('falls back to an IP-region hint when Accept-Language is absent/unparseable', () => {
-    const locale = resolveLeagueLocale({ profileLocale: null, acceptLanguage: null, ipCountry: 'KR' })
-    expect(locale).toBe('ko')
+    const locale = resolveLeagueLocale({ profileLocale: null, acceptLanguage: null, ipCountry: 'JP' })
+    expect(locale).toBe('ja')
+  })
+
+  it("Korean-lane viewers resolve to 'ko' before profile locale and Accept-Language", () => {
+    expect(
+      resolveLeagueLocale({
+        profileLocale: 'en',
+        acceptLanguage: 'en-US',
+        ipCountry: 'KR',
+        declaredCountry: 'KR',
+      }),
+    ).toBe('ko')
+  })
+
+  it('world viewers still prefer the logged-in profile locale', () => {
+    const locale = resolveLeagueLocale({
+      profileLocale: 'fr',
+      acceptLanguage: 'en-US',
+      ipCountry: 'US',
+      declaredCountry: 'US',
+    })
+    expect(locale).toBe('fr')
   })
 
   it('defaults to English when no signal resolves to anything', () => {

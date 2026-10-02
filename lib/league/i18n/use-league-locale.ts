@@ -11,6 +11,7 @@ import {
   subscribeLeagueLocaleOverride,
 } from './locale-store'
 import { resolveLeagueLocale } from './resolve-locale'
+import { shouldShowLeagueLanguageToggle } from '../korea-lane-features'
 
 export type UseLeagueLocaleResult = {
   locale: LeagueLocale
@@ -19,18 +20,18 @@ export type UseLeagueLocaleResult = {
   /** True once the manual toggle has been used (vs. still on the auto-resolved locale). */
   isOverridden: boolean
   setLocale: (locale: LeagueLocale | null) => void
+  /** False for Korean-lane non-admins — selector is absent, not disabled. */
+  showLanguageToggle: boolean
 }
 
 /**
  * Layer A: resolves + exposes the card's current language.
  *
- * Priority: manual toggle override (this session/device) > logged-in
- * preference > Accept-Language > IP-region hint > 'en'. The auto part is the
- * pure `resolveLeagueLocale`; this hook's only job is wiring it to live
- * signals + the toggle's override store.
- *
- * Deliberately has no knowledge of jurisdiction/visibility — see
- * `lib/league/jurisdiction/use-jurisdiction.ts` for the fully separate Layer B hook.
+ * Priority: Korean-lane lock to `'ko'` (via `resolveLeagueLocale` /
+ * `admissionStockLane`) then, for viewers who may change language, a manual
+ * toggle override > logged-in preference > Accept-Language > IP-region hint
+ * > 'en'. Korean-lane non-admins cannot override. Visibility of categories
+ * is still Layer B (`use-jurisdiction.ts`).
  */
 export function useLeagueLocale(devQuery?: string): UseLeagueLocaleResult {
   const signals = useLeagueRequestSignals(devQuery)
@@ -44,14 +45,23 @@ export function useLeagueLocale(devQuery?: string): UseLeagueLocaleResult {
     profileLocale: signals.profileLocale,
     acceptLanguage: signals.acceptLanguage,
     ipCountry: signals.ipCountry,
+    declaredCountry: signals.declaredCountry,
   })
-  const locale = override ?? auto
+  const showLanguageToggle = shouldShowLeagueLanguageToggle({
+    isAdmin: signals.isAdmin,
+    jurisdiction: {
+      declaredCountry: signals.declaredCountry,
+      ipCountry: signals.ipCountry,
+    },
+  })
+  const locale = (showLanguageToggle ? override : null) ?? auto
 
   return {
     locale,
     t: getLeagueUiPack(locale),
     dir: localeDir(locale),
-    isOverridden: override !== null,
+    isOverridden: showLanguageToggle && override !== null,
     setLocale: setLeagueLocaleOverride,
+    showLanguageToggle,
   }
 }

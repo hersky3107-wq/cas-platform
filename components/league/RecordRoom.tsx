@@ -25,7 +25,7 @@ const ROOM_COST = creditsForLeagueRecordRoom()
  * CSV of that same window is a separate higher charge (POST /deep).
  */
 export function RecordRoom({ initialData, devSignalsQuery, onRefreshWindow, refreshing }: RecordRoomProps) {
-  const { locale, t, dir, setLocale } = useLeagueLocale(devSignalsQuery)
+  const { locale, t, dir, setLocale, showLanguageToggle } = useLeagueLocale(devSignalsQuery)
   const [data, setData] = useState(initialData)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -102,7 +102,9 @@ export function RecordRoom({ initialData, devSignalsQuery, onRefreshWindow, refr
     <div dir={dir}>
       <div className="flex items-center justify-between gap-2 pb-1">
         <p className="truncate text-[11px] text-rose-600">{error ?? ''}</p>
-        <LanguageToggle locale={locale} onChange={setLocale} label={t.languageToggleLabel} />
+        {showLanguageToggle ? (
+          <LanguageToggle locale={locale} onChange={setLocale} label={t.languageToggleLabel} />
+        ) : null}
       </div>
       <CardCompliance colorBucket="green" t={t}>
         {(receipt) => (

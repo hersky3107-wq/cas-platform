@@ -15,6 +15,8 @@ export type LeagueRequestSignals = {
   ipCountry: string | null
   profileLocale: string | null
   declaredCountry: string | null
+  /** Operator account. Used only to show the language selector to KR-lane admins. */
+  isAdmin: boolean
 }
 
 const EMPTY_SIGNALS: LeagueRequestSignals = {
@@ -22,6 +24,7 @@ const EMPTY_SIGNALS: LeagueRequestSignals = {
   ipCountry: null,
   profileLocale: null,
   declaredCountry: null,
+  isAdmin: false,
 }
 
 export type LeagueRequestSignalsState = LeagueRequestSignals & {
@@ -44,7 +47,7 @@ export function useLeagueRequestSignals(devQuery?: string): LeagueRequestSignals
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? (res.json() as Promise<LeagueRequestSignals>) : EMPTY_SIGNALS))
       .then((data) => {
-        if (!cancelled) setState({ ...data, loading: false })
+        if (!cancelled) setState({ ...EMPTY_SIGNALS, ...data, loading: false })
       })
       .catch(() => {
         if (!cancelled) setState({ ...EMPTY_SIGNALS, loading: false })

@@ -29,13 +29,15 @@ export type LeaderboardProps = {
  * container the page provides.
  */
 export function Leaderboard({ data, devSignalsQuery }: LeaderboardProps) {
-  const { locale, t, dir, setLocale } = useLeagueLocale(devSignalsQuery)
+  const { locale, t, dir, setLocale, showLanguageToggle } = useLeagueLocale(devSignalsQuery)
 
   return (
     <div dir={dir}>
       <div className="flex items-center justify-between gap-2 pb-1">
         <p className="text-[11px] text-league-fg-muted">{t.leaderboard.asOf(formatAsOf(data.generatedAt))}</p>
-        <LanguageToggle locale={locale} onChange={setLocale} label={t.languageToggleLabel} />
+        {showLanguageToggle ? (
+          <LanguageToggle locale={locale} onChange={setLocale} label={t.languageToggleLabel} />
+        ) : null}
       </div>
       <CardCompliance colorBucket="green" t={t}>
         {(receipt) => <LeaderboardBody data={data} receipt={receipt} t={t} />}

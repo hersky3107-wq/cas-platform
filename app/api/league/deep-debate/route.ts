@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   const access = await authorizeRoundForViewer(auth.viewer, parsed.request.roundId)
   if (!access.ok) return access.response
 
-  if (isKrLaneDeepApiBlocked(auth.viewer, access.category)) {
+  if (isKrLaneDeepApiBlocked(auth.viewer, access.category, access.instrument)) {
     return NextResponse.json({ error: 'kr_lane_deep_disabled' }, { status: 403 })
   }
 
@@ -71,7 +71,7 @@ export async function GET(req: Request) {
   const access = await authorizeRoundForViewer(auth.viewer, parsed.request.roundId)
   if (!access.ok) return access.response
 
-  if (isKrLaneDeepApiBlocked(auth.viewer, access.category)) {
+  if (isKrLaneDeepApiBlocked(auth.viewer, access.category, access.instrument)) {
     return NextResponse.json({ error: 'kr_lane_deep_disabled' }, { status: 403 })
   }
 

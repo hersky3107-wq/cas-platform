@@ -1,12 +1,15 @@
 import { normalizeLeagueLocale, type LeagueLocale } from './locales'
+import { admissionStockLane } from '../stock-lane'
 
 /**
  * AI Prediction League — locale RESOLUTION (Layer A), pure.
  *
- * Priority order (per spec): logged-in preference first, else
- * Accept-Language, else an IP-region hint, else 'en'. A live toggle override
- * sits ABOVE all of this and is handled by the client hook
- * (`use-league-locale.ts`) — this function only computes the "auto" locale.
+ * Priority order (per spec): Korean-lane viewers (declared KR or KR IP via
+ * `admissionStockLane`) resolve to `'ko'` first, then logged-in preference,
+ * else Accept-Language, else an IP-region hint, else 'en'. A live toggle
+ * override sits ABOVE all of this for world-lane / KR-admin viewers and is
+ * handled by the client hook (`use-league-locale.ts`) — this function only
+ * computes the "auto" locale.
  *
  * Pure and synchronous: takes already-extracted signals rather than reading
  * headers/DB itself, so it is trivially unit-testable and reusable from
@@ -14,12 +17,14 @@ import { normalizeLeagueLocale, type LeagueLocale } from './locales'
  * context (given signals fetched from `/api/league/context`).
  */
 export type LeagueLocaleSignals = {
-  /** e.g. `users.ui_locale` for the logged-in user. Highest priority. */
+  /** e.g. `users.ui_locale` for the logged-in user. Highest priority after Korean-lane lock. */
   profileLocale?: string | null
   /** Raw `Accept-Language` header value, e.g. "fr-FR,fr;q=0.9,en;q=0.8". */
   acceptLanguage?: string | null
   /** ISO 3166-1 alpha-2 country from IP geolocation (e.g. Vercel's `x-vercel-ip-country`). */
   ipCountry?: string | null
+  /** Account-declared nationality (signup country). Used with ipCountry for Korean-lane lock. */
+  declaredCountry?: string | null
 }
 
 /** Only used as a last-resort hint when Accept-Language is absent/unparseable. Deliberately small and conservative. */
@@ -57,6 +62,15 @@ function parseAcceptLanguage(header: string): LeagueLocale | null {
 }
 
 export function resolveLeagueLocale(signals: LeagueLocaleSignals): LeagueLocale {
+  if (
+    admissionStockLane({
+      declaredCountry: signals.declaredCountry ?? null,
+      ipCountry: signals.ipCountry ?? null,
+    }) === 'korea'
+  ) {
+    return 'ko'
+  }
+
   const fromProfile = normalizeLeagueLocale(signals.profileLocale)
   if (fromProfile) return fromProfile
 

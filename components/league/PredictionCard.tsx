@@ -40,7 +40,7 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
     live,
   })
   const streaming = live && (connection === 'connecting' || connection === 'live')
-  const { locale, t, dir, setLocale } = useLeagueLocale(devSignalsQuery)
+  const { locale, t, dir, setLocale, showLanguageToggle } = useLeagueLocale(devSignalsQuery)
   const [gradingStalled, setGradingStalled] = useState(false)
   const { translations, inFlight: rationaleInFlight, showOriginal, onToggleOriginal } =
     useRoundRationaleTranslations(data.round.round_id, locale, data.models)
@@ -66,7 +66,9 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
     <div dir={dir}>
       <div className="flex items-center justify-between gap-2 pb-1">
         <LiveStatusPill connection={connection} />
-        <LanguageToggle locale={locale} onChange={setLocale} label={t.languageToggleLabel} />
+        {showLanguageToggle ? (
+          <LanguageToggle locale={locale} onChange={setLocale} label={t.languageToggleLabel} />
+        ) : null}
       </div>
       {startError ? (
         <p className="mb-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
