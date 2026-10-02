@@ -3,6 +3,7 @@ import { authorizeRoundForViewer, resolveLeagueViewer } from '@/lib/league/publi
 import { parseDeepRequest } from '@/lib/league/deep-request'
 import { roundHasCards } from '@/lib/league/deep-context'
 import { handleDeepAnalysis, handleDeepStatus } from '@/lib/league/deep-http'
+import { isKrLaneDeepApiBlocked } from '@/lib/league/korea-lane-features'
 
 export const maxDuration = 300
 
@@ -33,6 +34,10 @@ export async function POST(req: Request) {
 
   const access = await authorizeRoundForViewer(auth.viewer, parsed.request.roundId)
   if (!access.ok) return access.response
+
+  if (isKrLaneDeepApiBlocked(auth.viewer, access.category)) {
+    return NextResponse.json({ error: 'kr_lane_deep_disabled' }, { status: 403 })
+  }
 
   if (!(await roundHasCards(access.roundId))) {
     return NextResponse.json(
@@ -65,6 +70,10 @@ export async function GET(req: Request) {
 
   const access = await authorizeRoundForViewer(auth.viewer, parsed.request.roundId)
   if (!access.ok) return access.response
+
+  if (isKrLaneDeepApiBlocked(auth.viewer, access.category)) {
+    return NextResponse.json({ error: 'kr_lane_deep_disabled' }, { status: 403 })
+  }
 
   return handleDeepStatus({ product: 'open', viewer: auth.viewer, roundId: access.roundId })
 }

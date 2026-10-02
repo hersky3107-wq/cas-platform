@@ -29,6 +29,8 @@ import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
 import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/league/view-purchase-policy'
 import { KR_DISCLOSURE, fillDisclosure } from '@/lib/league/korea-disclosure'
+import { isDeepDisabledForViewer } from '@/lib/league/korea-lane-features'
+import { getLeagueUiPack } from '@/lib/league/i18n/dictionary'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -469,11 +471,21 @@ function CardsPanel() {
             onRetried={() => void loadCard(selectedInstrument, horizon)}
           />
           <PredictionCard key={view.card.round.round_id} initialData={view.card} />
-          <DeepAnalysis
-            roundId={view.card.round.round_id}
-            category={view.card.round.category}
-            colorBucket={view.card.round.color_bucket}
-          />
+          {isDeepDisabledForViewer(
+            {
+              jurisdiction: {
+                declaredCountry: admissionLane === 'korea' ? 'KR' : null,
+                ipCountry: admissionLane === 'korea' ? 'KR' : null,
+              },
+            },
+            view.card.round.category,
+          ) ? null : (
+            <DeepAnalysis
+              roundId={view.card.round.round_id}
+              category={view.card.round.category}
+              colorBucket={view.card.round.color_bucket}
+            />
+          )}
         </>
       ) : null}
     </div>
@@ -700,7 +712,7 @@ function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
 }
 
 export function KoreaStockLane({ regNo, bizNo }: { regNo?: string; bizNo?: string } = {}) {
-  const { t } = useLeagueLocale()
+  const t = getLeagueUiPack('ko')
   const bannerRegText = fillDisclosure(KR_DISCLOSURE.laneBannerReg, { REG_NO: regNo })
   const footerText = fillDisclosure(KR_DISCLOSURE.footer, { REG_NO: regNo, BIZ_NO: bizNo })
 
