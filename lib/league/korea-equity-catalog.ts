@@ -44,6 +44,13 @@ export const KR_GROUPS = [
 
 export type KrGroupId = (typeof KR_GROUPS)[number]['id']
 
+const KR_GROUP_IDS = new Set<string>(KR_GROUPS.map((g) => g.id))
+const KR_GROUP_ORDER = new Map<string, number>(KR_GROUPS.map((g, i) => [g.id, i]))
+
+export function isKrGroupId(value: string): value is KrGroupId {
+  return KR_GROUP_IDS.has(value)
+}
+
 /** Enter the auto universe at or below this rank (per market). */
 export const KR_ENTER_RANK = 175
 
@@ -111,4 +118,38 @@ export function decideUniverseStatus(
   }
 
   return { visible: false, removedAt: now }
+}
+
+/**
+ * Visible-universe sort: KR by KR_GROUPS product order then popularity_rank;
+ * US by popularity_rank. Missing ranks sort last; ties break on code.
+ */
+export function orderVisibleUniverseRows<
+  T extends {
+    market: UniverseMarket
+    groupId: KrGroupId | null
+    popularityRank: number | null
+    code: string
+  },
+>(rows: T[], market: UniverseMarket): T[] {
+  const copy = [...rows]
+  if (market === 'US') {
+    return copy.sort((a, b) => compareRankThenCode(a, b))
+  }
+  return copy.sort((a, b) => {
+    const ga = KR_GROUP_ORDER.get(a.groupId ?? 'other') ?? KR_GROUPS.length
+    const gb = KR_GROUP_ORDER.get(b.groupId ?? 'other') ?? KR_GROUPS.length
+    if (ga !== gb) return ga - gb
+    return compareRankThenCode(a, b)
+  })
+}
+
+function compareRankThenCode(
+  a: { popularityRank: number | null; code: string },
+  b: { popularityRank: number | null; code: string },
+): number {
+  const ra = a.popularityRank ?? Number.POSITIVE_INFINITY
+  const rb = b.popularityRank ?? Number.POSITIVE_INFINITY
+  if (ra !== rb) return ra - rb
+  return a.code.localeCompare(b.code)
 }
