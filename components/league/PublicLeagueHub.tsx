@@ -31,7 +31,7 @@ import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/lea
 import { KR_DISCLOSURE, resolveKrLaneBanner, resolveKrLaneFooter } from '@/lib/league/korea-disclosure'
 import { KrUsageNoticeList } from '@/components/league/KrLaneDisclosureBlocks'
 import { isDeepDisabledForViewer } from '@/lib/league/korea-lane-features'
-import { KrUniverseChipBrowser } from '@/components/league/KrUniverseChipBrowser'
+import { KrUniverseChipBrowser, krStockRefusalMessage } from '@/components/league/KrUniverseChipBrowser'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -132,6 +132,18 @@ type CardView =
   | { kind: 'electionClosed' }
   | { kind: 'none' }
   | { kind: 'error' }
+  | { kind: 'krNotice'; text: string }
+
+function koreaLaneShowsInstrumentPanel(
+  koreaStocks: boolean,
+  isAdmin: boolean,
+  instrument: string | null,
+): boolean {
+  if (!instrument) return false
+  if (!koreaStocks) return true
+  if (instrument.startsWith('STOCK:')) return true
+  return isAdmin && instrument.startsWith('KRSTOCK:')
+}
 
 function CardsPanel() {
   const { t, locale } = useLeagueLocale()
@@ -171,6 +183,12 @@ function CardsPanel() {
           | { error: string; code?: string }
         if (requestId !== requestIdRef.current) return
         if (!res.ok) {
+          const errBody = body as { error?: string; code?: string }
+          const refusal = krStockRefusalMessage(errBody.code ?? errBody.error)
+          if (refusal) {
+            setView({ kind: 'krNotice', text: refusal })
+            return
+          }
           if ('code' in body && body.code === 'kr_election_manual_close') {
             setView({ kind: 'electionClosed' })
           } else if ('code' in body && body.code === 'jurisdiction_blocked') {
@@ -400,6 +418,7 @@ function CardsPanel() {
         <KoreaStockLane
           regNo={krAdvisoryRegNo}
           bizNo={krBizNo}
+          isAdmin={viewerIsAdmin}
           onSelectUsInstrument={(instrument, nextHorizon) => {
             setHorizon(nextHorizon)
             setSelectedInstrument(instrument)
@@ -469,8 +488,18 @@ function CardsPanel() {
       {view.kind === 'error' ? (
         <PanelMessage text={t.hub.genericError} tone="error" />
       ) : null}
+      {view.kind === 'krNotice' ? (
+        <p
+          data-testid="kr-chip-pending"
+          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+        >
+          {view.text}
+        </p>
+      ) : null}
 
-      {view.kind === 'locked' && selectedInstrument && (!koreaStocks || selectedInstrument.startsWith('STOCK:')) ? (
+      {view.kind === 'locked' &&
+      selectedInstrument &&
+      koreaLaneShowsInstrumentPanel(koreaStocks, viewerIsAdmin, selectedInstrument) ? (
         <LockedRoundPanel
           locked={view.locked}
           instrument={selectedInstrument}
@@ -480,7 +509,9 @@ function CardsPanel() {
         />
       ) : null}
 
-      {view.kind === 'card' && selectedInstrument && (!koreaStocks || selectedInstrument.startsWith('STOCK:')) ? (
+      {view.kind === 'card' &&
+      selectedInstrument &&
+      koreaLaneShowsInstrumentPanel(koreaStocks, viewerIsAdmin, selectedInstrument) ? (
         <>
           <GenerationBanner
             card={view.card}
@@ -548,7 +579,7 @@ function LockedRoundPanel({
       })
       if (!res.ok) {
         const detail = (await res.json().catch(() => null)) as
-          | { balance?: number; required?: number; code?: string }
+          | { balance?: number; required?: number; code?: string; error?: string }
           | null
         if (res.status === 402) {
           setNotice(t.hub.insufficientCredits(detail?.required ?? locked.price, detail?.balance ?? 0))
@@ -558,10 +589,15 @@ function LockedRoundPanel({
           setNotice(t.hub.generationBusy)
         } else if (res.status === 503 && detail?.code === 'market_data_unavailable') {
           setNotice(t.hub.marketDataUnavailable)
-        } else if (res.status === 403) {
-          setNotice(t.gating.unavailable)
         } else {
-          setNotice(t.hub.genericError)
+          const refusal = krStockRefusalMessage(detail?.code ?? detail?.error)
+          if (refusal) {
+            setNotice(refusal)
+          } else if (res.status === 403) {
+            setNotice(t.gating.unavailable)
+          } else {
+            setNotice(t.hub.genericError)
+          }
         }
         return
       }
@@ -732,10 +768,12 @@ function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
 export function KoreaStockLane({
   regNo,
   bizNo,
+  isAdmin = false,
   onSelectUsInstrument,
 }: {
   regNo?: string
   bizNo?: string
+  isAdmin?: boolean
   onSelectUsInstrument?: (instrument: string, horizon: UiHorizon) => void
 } = {}) {
   const { main: bannerMain, regLine: bannerRegText } = resolveKrLaneBanner(regNo)
@@ -762,6 +800,7 @@ export function KoreaStockLane({
       </div>
 
       <KrUniverseChipBrowser
+        isAdmin={isAdmin}
         onSelectUsInstrument={(instrument, horizon) => onSelectUsInstrument?.(instrument, horizon)}
       />
 

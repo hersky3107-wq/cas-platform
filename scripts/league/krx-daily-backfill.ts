@@ -1,19 +1,25 @@
 /**
  * Backfill official KRX daily closes into public.league_krx_daily.
  *
- * Default is dry-run (fetch + print row counts, no writes).
- * Only --apply upserts.
+ * Default is dry-run: prints planned dates, planned calls, and the total
+ * planned request count. Dry-run makes NO network request.
+ * Only --apply fetches, upserts, and prints row counts.
  *
  *   npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/league/krx-daily-backfill.ts
  *   npx tsx --env-file=.env.local --import ./scripts/stubs/register-server-only.mjs scripts/league/krx-daily-backfill.ts --apply
  */
-import { emptyKrxFetchOutcome, ensureKrxDay, fetchKrxDay, toCompactBasDd } from '@/lib/league/korea-market-data'
+import { ensureKrxDay } from '@/lib/league/korea-market-data'
 import { lastCompletedKrxSession, lastNKrxSessionDates } from '@/lib/league/krx-calendar'
 
 const SESSIONS = 90
 const DELAY_MS = 350
 
-function parseArgs(argv: string[]): { apply: boolean } {
+const DAILY_CALLS = [
+  { market: 'KOSPI', path: '/stk_bydd_trd' },
+  { market: 'KOSDAQ', path: '/ksq_bydd_trd' },
+] as const
+
+export function parseKrxDailyBackfillArgs(argv: string[]): { apply: boolean } {
   let apply = false
   for (const arg of argv) {
     if (arg === '--apply') apply = true
@@ -22,21 +28,53 @@ function parseArgs(argv: string[]): { apply: boolean } {
   return { apply }
 }
 
-function sleep(ms: number): Promise<void> {
+export function planKrxDailyCalls(isoDate: string): { label: string }[] {
+  return DAILY_CALLS.map((call) => ({ label: `${isoDate} ${call.market} ${call.path}` }))
+}
+
+export type KrxDailyBackfillIo = {
+  now?: () => Date
+  log?: (message: string) => void
+  sleep?: (ms: number) => Promise<void>
+  fetchDay?: (basDd: string) => Promise<unknown>
+  ensureDay?: typeof ensureKrxDay
+}
+
+function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function main(): Promise<void> {
-  const { apply } = parseArgs(process.argv.slice(2))
+export async function runKrxDailyBackfill(
+  argv: string[] = process.argv.slice(2),
+  io: KrxDailyBackfillIo = {},
+): Promise<void> {
+  const { apply } = parseKrxDailyBackfillArgs(argv)
   const dryRun = !apply
-  const last = lastCompletedKrxSession(new Date())
+  const log = io.log ?? ((message: string) => console.log(message))
+  const last = lastCompletedKrxSession((io.now ?? (() => new Date()))())
   if (!last.ok) {
     throw new Error(`cannot backfill: ${last.reason}`)
   }
   const dates = lastNKrxSessionDates(last.date, SESSIONS)
-  console.log(
+  log(
     `KRX daily backfill: ${dates[0]} → ${dates[dates.length - 1]} (${dates.length} sessions) ${dryRun ? 'dry-run' : 'APPLY'}`,
   )
+
+  let plannedTotal = 0
+  for (const date of dates) {
+    const planned = planKrxDailyCalls(date)
+    plannedTotal += planned.length
+    log(`${date}  planned_calls=${planned.length}`)
+    for (const call of planned) log(`  ${call.label}`)
+  }
+
+  if (dryRun) {
+    log(`done  total_planned_requests=${plannedTotal}`)
+    return
+  }
+
+  const ensureDay = io.ensureDay ?? ensureKrxDay
+  const sleep = io.sleep ?? defaultSleep
 
   let ok = 0
   let holiday = 0
@@ -46,35 +84,20 @@ async function main(): Promise<void> {
 
   for (const date of dates) {
     try {
-      if (dryRun) {
-        const rows = await fetchKrxDay(toCompactBasDd(date))
-        if (rows.length === 0) {
-          const outcome = emptyKrxFetchOutcome(date)
-          if (outcome === 'holiday') holiday += 1
-          else notPublished += 1
-          console.log(`${date}  rows=0  ${outcome}`)
-        } else {
-          ok += 1
-          const kospi = rows.filter((r) => r.market === 'KOSPI').length
-          const kosdaq = rows.filter((r) => r.market === 'KOSDAQ').length
-          console.log(`${date}  rows=${rows.length}  KOSPI=${kospi}  KOSDAQ=${kosdaq}`)
-        }
-      } else {
-        const result = await ensureKrxDay(date)
-        if (result === 'ok') ok += 1
-        else if (result === 'cached') cached += 1
-        else if (result === 'holiday') holiday += 1
-        else notPublished += 1
-        console.log(`${date}  ${result}`)
-      }
+      const result = await ensureDay(date)
+      if (result === 'ok') ok += 1
+      else if (result === 'cached') cached += 1
+      else if (result === 'holiday') holiday += 1
+      else notPublished += 1
+      log(`${date}  ${result}`)
     } catch (err) {
       failed += 1
-      console.log(`${date}  error: ${err instanceof Error ? err.message : String(err)}`)
+      log(`${date}  error: ${err instanceof Error ? err.message : String(err)}`)
     }
     await sleep(DELAY_MS)
   }
 
-  console.log(
+  log(
     `done  ok=${ok} cached=${cached} holiday=${holiday} not_published=${notPublished} failed=${failed}`,
   )
   if (failed > 0) process.exitCode = 1
@@ -82,7 +105,7 @@ async function main(): Promise<void> {
 
 const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('scripts/league/krx-daily-backfill.ts')
 if (isMain) {
-  main().catch((err) => {
+  runKrxDailyBackfill().catch((err) => {
     console.error(err)
     process.exit(1)
   })

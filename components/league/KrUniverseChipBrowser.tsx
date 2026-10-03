@@ -272,13 +272,25 @@ function SkeletonBrowser() {
 
 /**
  * Korean-lane chip browser. KOSPI/KOSDAQ group sections; US is one grid.
- * No search box. KR chips show a 준비 중 notice; US chips hand the STOCK
- * instrument to the existing card/generate flow.
+ * Non-admin KR chips show a 준비 중 notice. Admin KR chips and US chips
+ * hand the instrument to the existing card/generate flow.
  */
+export const KR_STOCK_PENDING_NOTICE = '국내 종목 예측은 준비 중입니다.'
+
+export function krStockRefusalMessage(code: string | null | undefined): string | null {
+  if (code === 'krx_calendar_unverified') return '국내 거래 일정 확인 중입니다.'
+  if (code === 'anchor_unavailable') return '기준가를 아직 확인할 수 없습니다. 잠시 후 다시 시도하세요.'
+  if (code === 'kr_stock_not_open') return KR_STOCK_PENDING_NOTICE
+  return null
+}
+
 export function KrUniverseChipBrowser({
   onSelectUsInstrument,
+  isAdmin = false,
 }: {
   onSelectUsInstrument: (instrument: string, horizon: UiHorizon) => void
+  /** Hub `viewerIsAdmin`. Admin KR chips generate like US chips. */
+  isAdmin?: boolean
 }) {
   const { t } = useLeagueLocale()
   const [tab, setTab] = useState<MarketTab>('KOSPI')
@@ -319,16 +331,20 @@ export function KrUniverseChipBrowser({
     }
   }, [tab])
 
+  function generatesOnSelect(row: KrUniverseRow): boolean {
+    return row.market === 'US' || isAdmin
+  }
+
   function pick(row: KrUniverseRow) {
     setSelected(row)
-    if (row.market === 'US') {
+    if (generatesOnSelect(row)) {
       onSelectUsInstrument(row.instrument, horizon)
     }
   }
 
   function pickHorizon(next: UiHorizon) {
     setHorizon(next)
-    if (selected?.market === 'US') {
+    if (selected && generatesOnSelect(selected)) {
       onSelectUsInstrument(selected.instrument, next)
     }
   }
@@ -517,7 +533,7 @@ export function KrUniverseChipBrowser({
         </div>
       ) : null}
 
-      {selected?.market === 'US' ? (
+      {selected && generatesOnSelect(selected) ? (
         <div className="flex gap-1.5" role="group" aria-label="Horizon">
           {UI_HORIZONS.map((h) => (
             <button
@@ -537,12 +553,12 @@ export function KrUniverseChipBrowser({
         </div>
       ) : null}
 
-      {selected && selected.market !== 'US' ? (
+      {selected && selected.market !== 'US' && !isAdmin ? (
         <p
           data-testid="kr-chip-pending"
           className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
         >
-          국내 종목 예측은 준비 중입니다.
+          {KR_STOCK_PENDING_NOTICE}
         </p>
       ) : null}
     </div>

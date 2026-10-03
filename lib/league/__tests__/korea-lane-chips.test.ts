@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { KR_GROUPS } from '../korea-equity-catalog'
 import { KoreaStockLane } from '@/components/league/PublicLeagueHub'
-import { KrUniverseChipBrowser, hotStripFromRows, type KrUniverseRow } from '@/components/league/KrUniverseChipBrowser'
+import { KrUniverseChipBrowser, hotStripFromRows, krStockRefusalMessage, type KrUniverseRow } from '@/components/league/KrUniverseChipBrowser'
 
 const browserSrc = readFileSync(
   join(process.cwd(), 'components', 'league', 'KrUniverseChipBrowser.tsx'),
@@ -61,23 +61,46 @@ describe('Korean-lane chip browser (UI contract)', () => {
   })
 
   it('US chip selection shows the world-lane horizon row and hands the STOCK instrument to the card flow', () => {
-    expect(browserSrc).toContain("selected?.market === 'US'")
+    expect(browserSrc).toContain("row.market === 'US' || isAdmin")
     expect(browserSrc).toContain('UI_HORIZONS.map')
     expect(browserSrc).toContain('t.catalog.horizons[h]')
     expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
     // Hub wires the callback into the same loadCard flow the world lane uses
     expect(hubSrc).toContain('void loadCard(instrument, nextHorizon)')
-    expect(hubSrc).toContain("selectedInstrument.startsWith('STOCK:')")
+    expect(hubSrc).toContain("instrument.startsWith('STOCK:')")
   })
 
-  it('KR chip selection shows the 준비 중 notice and never calls generate', () => {
+  it('non-admin KR chip selection shows the 준비 중 notice and never calls generate', () => {
     expect(browserSrc).toContain('국내 종목 예측은 준비 중입니다.')
     expect(browserSrc).toContain('data-testid="kr-chip-pending"')
-    // The browser never posts to generate itself
+    expect(browserSrc).toContain("selected.market !== 'US' && !isAdmin")
+    expect(browserSrc).toContain('row.market === \'US\' || isAdmin')
+    expect(browserSrc).toMatch(/if \(generatesOnSelect\(row\)\) \{\s*onSelectUsInstrument/)
     expect(browserSrc).not.toContain('/api/league/generate')
     expect(browserSrc).not.toContain('/api/league/card')
-    // The notice only renders for non-US selections; horizon row only for US
-    expect(browserSrc).toContain("selected && selected.market !== 'US'")
+  })
+
+  it('admin KR chip shows the horizon row and hands KRSTOCK to the existing generate flow', () => {
+    expect(browserSrc).toContain('isAdmin = false')
+    expect(browserSrc).toContain('row.market === \'US\' || isAdmin')
+    expect(browserSrc).toContain('selected && generatesOnSelect(selected)')
+    expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
+    expect(browserSrc).toContain('t.catalog.horizons[h]')
+    expect(hubSrc).toContain('isAdmin={viewerIsAdmin}')
+    expect(hubSrc).toContain("instrument.startsWith('KRSTOCK:')")
+    expect(hubSrc).toContain("JSON.stringify({ instrument, horizon, locale })")
+    expect(hubSrc).toContain('/api/league/generate')
+    expect(hubSrc).toContain('/api/league/card?instrument=${encodeURIComponent(instrument)}')
+  })
+
+  it('maps server KRSTOCK refusals to Korean copy', () => {
+    expect(krStockRefusalMessage('krx_calendar_unverified')).toBe('국내 거래 일정 확인 중입니다.')
+    expect(krStockRefusalMessage('anchor_unavailable')).toBe(
+      '기준가를 아직 확인할 수 없습니다. 잠시 후 다시 시도하세요.',
+    )
+    expect(krStockRefusalMessage('kr_stock_not_open')).toBe('국내 종목 예측은 준비 중입니다.')
+    expect(krStockRefusalMessage('jurisdiction_blocked')).toBeNull()
+    expect(hubSrc).toContain('krStockRefusalMessage')
   })
 
   it('keeps the disclosure banner first and the footer last, with loading skeletons and Korean empty/error text', () => {
