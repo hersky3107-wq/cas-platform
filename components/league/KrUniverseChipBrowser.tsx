@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { KR_GROUPS, type KrGroupId, type UniverseMarket } from '@/lib/league/korea-equity-catalog'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
@@ -37,6 +37,23 @@ type GroupFilter = KrGroupId | typeof ALL_GROUPS
 const GROUP_PREVIEW_COUNT = 8
 /** Hot strip size per tab. */
 const HOT_STRIP_COUNT = 12
+
+/** Global popularity order for the hot strip (section grids keep server order). */
+export function hotStripFromRows<T extends { popularityRank: number | null }>(
+  rows: readonly T[],
+  limit = HOT_STRIP_COUNT,
+): T[] {
+  return [...rows]
+    .sort((a, b) => {
+      const ra = a.popularityRank
+      const rb = b.popularityRank
+      if (ra == null && rb == null) return 0
+      if (ra == null) return 1
+      if (rb == null) return -1
+      return ra - rb
+    })
+    .slice(0, limit)
+}
 
 function krTickerFromInstrument(instrument: string): string {
   const parts = instrument.split(':')
@@ -164,6 +181,66 @@ function UsChip({
 /** Uniform responsive grid: 2–3 cols mobile, 4 tablet, 6 desktop. */
 const GRID_CLASS = 'grid grid-cols-2 gap-2 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-6'
 
+/** Horizontally scrollable group filter with hidden scrollbar and edge fades. */
+function GroupFilterScrollRow({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [fade, setFade] = useState({ left: false, right: false })
+
+  const updateFade = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const { scrollLeft, scrollWidth, clientWidth } = el
+    const overflow = scrollWidth > clientWidth + 1
+    setFade({
+      left: overflow && scrollLeft > 2,
+      right: overflow && scrollLeft + clientWidth < scrollWidth - 2,
+    })
+  }, [])
+
+  useEffect(() => {
+    updateFade()
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => updateFade())
+    ro.observe(el)
+    el.addEventListener('scroll', updateFade, { passive: true })
+    return () => {
+      ro.disconnect()
+      el.removeEventListener('scroll', updateFade)
+    }
+  }, [updateFade, children])
+
+  return (
+    <div className={`relative ${className}`}>
+      {fade.left ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-0 top-0 z-10 h-full w-8 bg-gradient-to-r from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80"
+        />
+      ) : null}
+      {fade.right ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80"
+        />
+      ) : null}
+      <div
+        ref={scrollRef}
+        data-testid="kr-group-filter-scroll"
+        className="kr-group-filter-scroll flex flex-nowrap gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
 /** Loading skeleton that mirrors the loaded layout (no layout shift). */
 function SkeletonBrowser() {
   return (
@@ -268,8 +345,9 @@ export function KrUniverseChipBrowser({
     rows && tab !== 'US'
       ? groupsPresent.filter((g) => groupFilter === ALL_GROUPS || groupFilter === g.id)
       : []
-  const hotRows = rows ? rows.slice(0, HOT_STRIP_COUNT) : []
+  const hotRows = rows && tab !== 'US' ? hotStripFromRows(rows) : []
   const loaded = rows !== null && !error && rows.length > 0
+  const showHotStrip = loaded && tab !== 'US'
 
   return (
     <div data-testid="kr-universe-browser" className="flex flex-col gap-6">
@@ -317,7 +395,7 @@ export function KrUniverseChipBrowser({
         </p>
       ) : null}
 
-      {loaded ? (
+      {showHotStrip ? (
         <section aria-label="지금 거래가 몰리는 종목">
           <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">
             지금 거래가 몰리는 종목
@@ -330,14 +408,9 @@ export function KrUniverseChipBrowser({
               <HotChip
                 key={row.code}
                 name={row.name}
-                sub={tab === 'US' ? krTickerFromInstrument(row.instrument) : undefined}
                 selected={selected?.code === row.code}
                 onClick={() => pick(row)}
-                accent={
-                  tab === 'US'
-                    ? { tint: 'bg-emerald-50 dark:bg-emerald-950/40', ring: 'ring-emerald-600 dark:ring-emerald-400' }
-                    : KR_GROUP_VISUALS[(row.groupId ?? 'other') as KrGroupId]
-                }
+                accent={KR_GROUP_VISUALS[(row.groupId ?? 'other') as KrGroupId]}
               />
             ))}
           </div>
@@ -347,11 +420,8 @@ export function KrUniverseChipBrowser({
       {loaded && tab !== 'US' ? (
         <>
           {/* Group filter — one horizontally scrollable row, never wraps */}
-          <div
-            className="-mx-3 flex flex-nowrap gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0"
-            role="group"
-            aria-label="업종 필터"
-          >
+          <div role="group" aria-label="업종 필터">
+            <GroupFilterScrollRow className="-mx-3 px-3 sm:mx-0 sm:px-0">
             <button
               type="button"
               onClick={() => setGroupFilter(ALL_GROUPS)}
@@ -380,6 +450,7 @@ export function KrUniverseChipBrowser({
                 {g.label}
               </button>
             ))}
+            </GroupFilterScrollRow>
           </div>
 
           {visibleSections.map((group) => {

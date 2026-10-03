@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { KR_GROUPS } from '../korea-equity-catalog'
 import { KoreaStockLane } from '@/components/league/PublicLeagueHub'
-import { KrUniverseChipBrowser } from '@/components/league/KrUniverseChipBrowser'
+import { KrUniverseChipBrowser, hotStripFromRows, type KrUniverseRow } from '@/components/league/KrUniverseChipBrowser'
 
 const browserSrc = readFileSync(
   join(process.cwd(), 'components', 'league', 'KrUniverseChipBrowser.tsx'),
@@ -99,14 +99,55 @@ describe('Korean-lane chip browser (UI contract)', () => {
 })
 
 describe('Korean-lane chip browser (redesign)', () => {
-  it('hot strip shows the first 12 rows by server order and never renders rank numbers', () => {
-    expect(browserSrc).toContain('지금 거래가 몰리는 종목')
-    expect(browserSrc).toContain('data-testid="kr-hot-strip"')
-    expect(browserSrc).toContain('rows.slice(0, HOT_STRIP_COUNT)')
+  it('hot strip uses global popularityRank (nulls last), not first rows in server order', () => {
+    expect(browserSrc).toContain('hotStripFromRows(rows)')
+    expect(browserSrc).toContain('showHotStrip')
+    expect(browserSrc).toContain('tab !== \'US\'')
     expect(browserSrc).toContain('HOT_STRIP_COUNT = 12')
-    // popularityRank is never rendered as text
+    expect(browserSrc).not.toContain('rows.slice(0, HOT_STRIP_COUNT)')
     expect(browserSrc).not.toMatch(/>\s*\{[^}]*popularityRank[^}]*\}\s*</)
     expect(browserSrc).not.toContain('순위')
+
+    // Mixed groups in server (group-first) order — strip picks 12 lowest ranks globally
+    const fixture: KrUniverseRow[] = []
+    for (let g = 0; g < 3; g++) {
+      for (let r = 1; r <= 8; r++) {
+        fixture.push({
+          market: 'KOSPI',
+          code: `G${g}-R${r}`,
+          name: `종목 ${g}-${r}`,
+          groupId: g === 0 ? 'semis' : g === 1 ? 'battery' : 'finance',
+          popularityRank: g * 10 + r,
+          instrument: `KRSTOCK:KOSPI:G${g}R${r}`,
+        })
+      }
+    }
+    const strip = hotStripFromRows(fixture)
+    expect(strip).toHaveLength(12)
+    const ranks = strip.map((row) => row.popularityRank)
+    expect(ranks).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14])
+    expect(new Set(strip.map((row) => row.groupId)).size).toBeGreaterThan(1)
+  })
+
+  it('미국 tab does not render the hot strip', () => {
+    expect(browserSrc).toContain('const showHotStrip = loaded && tab !== \'US\'')
+    const usBlock = browserSrc.slice(browserSrc.indexOf('loaded && tab === \'US\''))
+    expect(usBlock).not.toContain('kr-hot-strip')
+    expect(browserSrc).toMatch(/showHotStrip \? \([\s\S]*?data-testid="kr-hot-strip"/)
+  })
+
+  it('group filter row hides the native scrollbar and uses overflow edge fades', () => {
+    expect(browserSrc).toContain('kr-group-filter-scroll')
+    expect(browserSrc).toContain('[scrollbar-width:none]')
+    expect(browserSrc).toContain('[&::-webkit-scrollbar]:hidden')
+    expect(browserSrc).toContain('bg-gradient-to-r')
+    expect(browserSrc).toContain('bg-gradient-to-l')
+    const filterBlock = browserSrc.slice(
+      browserSrc.indexOf('function GroupFilterScrollRow'),
+      browserSrc.indexOf('function SkeletonBrowser'),
+    )
+    expect(filterBlock).toContain('flex flex-nowrap')
+    expect(filterBlock).not.toContain('flex-wrap')
   })
 
   it('group sections show 8 chips then expand via "더보기 (+N)"; active filter expands fully', () => {
@@ -118,12 +159,12 @@ describe('Korean-lane chip browser (redesign)', () => {
   })
 
   it('group filter row is a single horizontally scrollable row that never wraps', () => {
-    expect(browserSrc).toContain('flex flex-nowrap gap-2 overflow-x-auto')
-    // No flex-wrap anywhere in the filter row markup
+    expect(browserSrc).toContain('data-testid="kr-group-filter-scroll"')
     const filterBlock = browserSrc.slice(
-      browserSrc.indexOf('업종 필터'),
-      browserSrc.indexOf('{visibleSections.map'),
+      browserSrc.indexOf('function GroupFilterScrollRow'),
+      browserSrc.indexOf('function SkeletonBrowser'),
     )
+    expect(filterBlock).toContain('flex flex-nowrap')
     expect(filterBlock).not.toContain('flex-wrap')
   })
 
