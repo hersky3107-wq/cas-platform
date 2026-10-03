@@ -34,3 +34,20 @@ export async function isUniverseCodeVisible(market: UniverseMarket, code: string
   if (error) throw new Error(`league_kr_universe isUniverseCodeVisible: ${error.message}`)
   return data?.visible === true
 }
+
+export async function getVisibleUniverseRow(
+  market: UniverseMarket,
+  code: string,
+): Promise<UniverseRecord | null> {
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .select('*')
+    .eq('market', market)
+    .eq('code', code)
+    .eq('visible', true)
+    .maybeSingle()
+
+  if (error) throw new Error(`league_kr_universe getVisibleUniverseRow: ${error.message}`)
+  if (!data) return null
+  return mapUniverseDbRow(data as LeagueKrUniverseDbRow)
+}

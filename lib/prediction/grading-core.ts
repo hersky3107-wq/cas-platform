@@ -158,6 +158,13 @@ export type GradingDeps = {
    * the operator instead of guessing.
    */
   resolveOfficialOutcome?: (instrument: string) => Promise<ResolvedOutcome | null>
+  /**
+   * Optional hook after claim, before the price/manual decision. Used by
+   * KRSTOCK to verify a Twelve Data fallback anchor against official KRX.
+   * `park` uses the existing manual queue; `defer` leaves the round auto so
+   * the sweep retries when official data appears.
+   */
+  beforeGrade?: (round: GradingRoundRecord) => Promise<'continue' | 'park' | 'defer'>
   now?: () => Date
 }
 
@@ -240,6 +247,27 @@ export function createGradingEngine(deps: GradingDeps) {
     round: GradingRoundRecord,
     prefetched: SeriesResult | null
   ): Promise<RoundGradingResult> {
+    if (deps.beforeGrade) {
+      const decision = await deps.beforeGrade(round)
+      if (decision === 'park') {
+        const parked = await deps.store.parkForManual(round.id, nowDate().toISOString())
+        await deps.store.releaseClaim(round.id)
+        return {
+          outcome: 'queued_manual',
+          roundId: round.id,
+          instrument: round.instrument,
+          newlyQueued: parked.newlyQueued,
+        }
+      }
+      if (decision === 'defer') {
+        return recordUnresolvable(
+          round,
+          'series_unavailable',
+          'official KRX close for the Twelve Data anchor date is not yet published',
+        )
+      }
+    }
+
     const input = toResolutionInput(round)
 
     if (!deps.isPriceInstrument(round.instrument)) {

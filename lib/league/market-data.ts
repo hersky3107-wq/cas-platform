@@ -15,6 +15,7 @@ import { PRINTED_SESSION_COUNT, SERIES_OUTPUT_SIZE } from './closed-book-packet'
 import { catalogIdentityError } from './catalog'
 import { identityMismatchMessage, isPoisonTicker, resolvedVendorIdentity, vendorSymbolOf } from './instrument-identity'
 import { decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { decodeKrStockInstrument } from './korea-equity-catalog'
 
 /**
  * AI Prediction League — market-data adapter (Twelve Data).
@@ -95,6 +96,8 @@ export function mapInstrumentToTwelveData(instrument: string): MappedInstrument 
   const raw = instrument.trim()
   const listing = decodeStockInstrument(raw)
   if (listing) return { symbol: listing.symbol, exchange: listing.exchange, kind: 'stock' }
+  const krListing = decodeKrStockInstrument(raw)
+  if (krListing) return { symbol: krListing.code, exchange: 'KRX', kind: 'stock' }
   if (!raw || raw.includes(':')) return null // e.g. 'MATCH:...' sports handles are not price instruments
 
   if (raw.endsWith('.KS') || raw.endsWith('.KQ')) {
@@ -164,6 +167,8 @@ export type DataPacket = {
   percentChange?: number
   /** Oldest→newest daily closes; equities also carry session volume. */
   series?: { date: string; close: number; volume?: number }[]
+  /** Override the closed-book series source line. Absent → Twelve Data. */
+  seriesSource?: string
   error?: string
 }
 
@@ -308,6 +313,9 @@ export async function fetchDailyCloses(
   startDate: string,
   endDate: string
 ): Promise<SeriesResult> {
+  if (decodeKrStockInstrument(instrument)) {
+    return { ok: false, error: 'krx_official_required' }
+  }
   if (isPoisonTicker(instrument)) {
     return { ok: false, error: identityMismatchMessage(instrument, null, []) }
   }
@@ -341,6 +349,34 @@ export async function fetchDailyCloses(
 }
 
 /**
+ * Twelve Data daily close for one KRX session date. Used only as a generate-time
+ * ANCHOR fallback when `league_krx_daily` has not published yet — never for grading.
+ */
+export async function fetchTwelveDataSessionClose(
+  symbol: string,
+  exchange: string,
+  sessionDate: string,
+): Promise<number | null> {
+  const res = await twelveDataGet('time_series', {
+    symbol,
+    exchange,
+    interval: '1day',
+    start_date: sessionDate,
+    end_date: sessionDate,
+    outputsize: '5',
+  })
+  if (!res.ok) return null
+  const values: unknown[] = Array.isArray(res.json?.values) ? res.json.values : []
+  for (const raw of values) {
+    const v = raw as { datetime?: unknown; close?: unknown }
+    const date = normalizeSessionDate(v?.datetime)
+    const close = num(v?.close)
+    if (date === sessionDate && typeof close === 'number' && close > 0) return close
+  }
+  return null
+}
+
+/**
  * GRADING ENTRY POINT. Resolves ONE round against its own persisted baseline
  * and its own deadline:
  *   baseline   = round.anchorPrice (observed at round.anchorPriceAt)
@@ -352,6 +388,13 @@ export async function fetchDailyCloses(
  * re-derived baseline: a round we cannot grade correctly stays ungraded.
  */
 export async function resolveActualOutcome(round: RoundResolutionInput): Promise<ResolutionResult> {
+  if (decodeKrStockInstrument(round.instrument)) {
+    return {
+      ok: false,
+      reason: 'series_unavailable',
+      detail: 'KRSTOCK grades from official KRX closes only — not Twelve Data',
+    }
+  }
   if (!mapInstrumentToTwelveData(round.instrument)) {
     return { ok: false, reason: 'not_price_instrument', detail: `${round.instrument} has no price symbol mapping` }
   }

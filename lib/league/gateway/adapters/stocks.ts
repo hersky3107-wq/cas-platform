@@ -1,6 +1,10 @@
 import { buildCatalogRankedRoundInput, catalogById, visibleChipEntries } from '../../catalog'
 import { isPoisonTicker } from '../../instrument-identity'
-import { isUiHorizon, UI_HORIZONS } from '../../horizon'
+import { isUiHorizon, UI_HORIZONS, cacheBucketFor, computeResolvesAt } from '../../horizon'
+import { decodeKrStockInstrument } from '../../korea-equity-catalog'
+import { krStockAugmentationQueries, krStockPropositionEn, parseKrStockProposition } from '../../korea-stock-display'
+import { krxBarsToDataPacket } from '../../korea-stock-packet'
+import { lastCompletedKrxSession } from '../../krx-calendar'
 import { refusalMessageKey } from '../refusal-copy'
 import {
   buildStockRankedRoundInput,
@@ -95,7 +99,8 @@ function normalizeMention(raw: string): string {
 function isDecidableSlots(slots: NormalizeSlots): boolean {
   if (!isUiHorizon(slots.horizon)) return false
   if (stockInstruments().includes(slots.entity_id)) return true
-  return decodeStockInstrument(slots.entity_id) !== null
+  if (decodeStockInstrument(slots.entity_id)) return true
+  return decodeKrStockInstrument(slots.entity_id) !== null
 }
 
 function synonymHits(raw: string): string[] {
@@ -262,6 +267,31 @@ export function createStocksAdapter(
       if (!isDecidableSlots(slots)) {
         throw new Error('stocks.composeProposition called with undecidable slots — shell must gate on isDecidable')
       }
+      const kr = decodeKrStockInstrument(slots.entity_id)
+      if (kr) {
+        const computed = computeResolvesAt('stock', slots.horizon!, now.toISOString(), slots.entity_id)
+        if (!computed.ok) {
+          throw new Error(`stocks.composeProposition: ${computed.reason}`)
+        }
+        const last = lastCompletedKrxSession(now)
+        if (!last.ok) {
+          throw new Error(`stocks.composeProposition: ${last.reason}`)
+        }
+        const name = (slots.entity_label ?? kr.code).replace(/[\r\n]/g, ' ').trim().slice(0, 80) || kr.code
+        const resolveDate = computed.resolvesAt.slice(0, 10)
+        const bucket = cacheBucketFor(slots.horizon!, now)
+        return {
+          proposition_text: krStockPropositionEn({ name, code: kr.code, resolveDate, anchorDate: last.date }),
+          category: 'stock',
+          instrument: slots.entity_id,
+          horizon: slots.horizon!,
+          resolution_rule: `KRX ${kr.market} regular-session close (15:30 KST). Identity: ${name}.`,
+          resolves_at: computed.resolvesAt,
+          item_type: 'ranked',
+          cache_key: `daily|${slots.entity_id}|${slots.horizon}|${bucket}`,
+          subject_label: name,
+        }
+      }
       if (decodeStockInstrument(slots.entity_id)) {
         const round = buildStockRankedRoundInput(slots.entity_id, slots.horizon!, now, slots.entity_label)
         if (!round) {
@@ -277,6 +307,18 @@ export function createStocksAdapter(
     },
 
     gradeSources(slots: NormalizeSlots): readonly [GradeSource, GradeSource, GradeSource] {
+      const kr = decodeKrStockInstrument(slots.entity_id)
+      if (kr) {
+        return [
+          {
+            tier: 1,
+            kind: 'krx_official',
+            endpoint: `krx:league_krx_daily TDD_CLSPRC ${kr.market} ${kr.code}`,
+          },
+          { tier: 2, kind: 'perplexity_sourced', require_url: true },
+          { tier: 3, kind: 'operator_manual', require_url: true },
+        ]
+      }
       const symbol = stockQuoteSymbol(slots.entity_id)
       return [
         {
@@ -294,12 +336,13 @@ export function createStocksAdapter(
     },
 
     slotsForRound(round: PacketRound): NormalizeSlots {
-      const symbol = stockQuoteSymbol(round.instrument)
+      const kr = decodeKrStockInstrument(round.instrument)
+      const symbol = kr ? kr.code : stockQuoteSymbol(round.instrument)
       return {
         category_id: 'stocks',
         entity_id: round.instrument,
         entity_kind: 'ticker',
-        entity_label: symbol,
+        entity_label: kr ? kr.code : symbol,
         horizon: isUiHorizon(round.horizon) ? round.horizon : null,
         resolve_by: round.resolves_at || null,
         proposition_kind: 'binary_close_higher',
@@ -309,6 +352,33 @@ export function createStocksAdapter(
     },
 
     async buildPacket(_slots: NormalizeSlots, ctx: PacketBuildContext): Promise<CategoryPacket> {
+      const kr = decodeKrStockInstrument(ctx.round.instrument)
+      if (kr) {
+        const { getKrxCloseSeries } = await import('../../korea-market-data')
+        const fetched = await getKrxCloseSeries(kr.market, kr.code, 60)
+        const packet = krxBarsToDataPacket(ctx.round.instrument, fetched.series)
+        const name = parseKrStockProposition(ctx.round.proposition_text)?.name || kr.code
+        const krIo: PriceSeriesIo = {
+          ...io,
+          fetchDataPacket: async () => packet,
+          fetchMarketConsensus: async () =>
+            ({
+              fetchedAt: new Date().toISOString(),
+              priceTarget: { unavailable: 'krx_no_street_consensus' },
+              recommendations: { unavailable: 'krx_no_street_consensus' },
+              lastEarnings: { unavailable: 'krx_no_street_consensus' },
+              latestRating: { unavailable: 'krx_no_street_consensus' },
+              epsTrend: { unavailable: 'krx_no_street_consensus' },
+            }),
+          fetchRelatedInstruments: async () => null,
+          getResearchPacket: (args) =>
+            io.getResearchPacket({
+              ...args,
+              extraQueries: krStockAugmentationQueries(name, kr.code),
+            }),
+        }
+        return buildPriceSeriesPacket(ctx, krIo)
+      }
       const listing = decodeStockInstrument(ctx.round.instrument)
       if (listing && !stockUniverseDataEnabled()) {
         return {

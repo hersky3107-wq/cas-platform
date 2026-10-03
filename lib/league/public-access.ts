@@ -27,6 +27,8 @@ import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { buildSportsRankedRoundInput } from './gateway/adapters/sports-compose'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { buildStockRankedRoundInput, decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { decodeKrStockInstrument } from './korea-equity-catalog'
+import { buildKrStockRankedRoundInput } from './korea-stock-round'
 import { admissionStockLane, isGlobalStockInstrument } from './stock-lane'
 import { isUniverseCodeVisible } from './korea-universe-store'
 import { krElectionAccessDenied, type KrManualCloseFlag } from './politics/kr-manual-close'
@@ -85,7 +87,8 @@ export function isPublicRankedInstrument(instrument: string): boolean {
     decodePoliticsInstrument(instrument) !== null ||
     decodeEntertainmentInstrument(instrument) !== null ||
     decodePropertyInstrument(instrument) !== null ||
-    decodeStockInstrument(instrument) !== null
+    decodeStockInstrument(instrument) !== null ||
+    decodeKrStockInstrument(instrument) !== null
   )
 }
 
@@ -104,8 +107,11 @@ export function unauthorizedResponse(): NextResponse {
  * rule said no.
  */
 export function forbiddenResponse(
-  code: 'jurisdiction_blocked' | 'not_public' | 'kr_election_manual_close' = 'jurisdiction_blocked',
+  code: 'jurisdiction_blocked' | 'not_public' | 'kr_election_manual_close' | 'kr_stock_not_open' = 'jurisdiction_blocked',
 ): NextResponse {
+  if (code === 'kr_stock_not_open') {
+    return NextResponse.json({ error: 'kr_stock_not_open' }, { status: 403 })
+  }
   return jsonError(403, 'Not available for your account or region', code)
 }
 
@@ -344,13 +350,23 @@ export async function gatePublicGenerateInstrumentForViewer(
   closeFlag?: KrManualCloseFlag,
 ): Promise<PublicGenerateInstrumentGate> {
   const listing = decodeStockInstrument(instrumentRaw.trim())
+  const krListing = decodeKrStockInstrument(instrumentRaw.trim())
   const koreaLane = admissionStockLane(viewer.jurisdiction) === 'korea'
   let isUsUniverseVisible: ((code: string) => boolean) | undefined
   if (koreaLane && listing) {
     const visible = await isUniverseCodeVisible('US', listing.symbol)
     isUsUniverseVisible = (code) => code.toUpperCase() === listing.symbol && visible
   }
-  return gatePublicGenerateInstrument(instrumentRaw, viewer, horizonRaw, closeFlag, { isUsUniverseVisible })
+  let isKrUniverseVisible: ((market: 'KOSPI' | 'KOSDAQ', code: string) => boolean) | undefined
+  if (krListing) {
+    const visible = await isUniverseCodeVisible(krListing.market, krListing.code)
+    isKrUniverseVisible = (market, code) =>
+      market === krListing.market && code === krListing.code && visible
+  }
+  return gatePublicGenerateInstrument(instrumentRaw, viewer, horizonRaw, closeFlag, {
+    isUsUniverseVisible,
+    isKrUniverseVisible,
+  })
 }
 
 export type PublicInstrumentGenerateTarget =
@@ -387,7 +403,10 @@ export async function resolvePublicInstrumentGenerateTarget(
     }
     return {
       ok: false,
-      response: forbiddenResponse(gate.code === 'kr_election_manual_close' ? 'kr_election_manual_close' : 'jurisdiction_blocked'),
+      response:
+        gate.code === 'kr_stock_not_open'
+          ? forbiddenResponse('kr_stock_not_open')
+          : forbiddenResponse(gate.code === 'kr_election_manual_close' ? 'kr_election_manual_close' : 'jurisdiction_blocked'),
     }
   }
 
@@ -400,6 +419,16 @@ export async function resolvePublicInstrumentGenerateTarget(
   const showParts = decodeEntertainmentInstrument(gate.instrument)
   const propertyParts = decodePropertyInstrument(gate.instrument)
   const stockParts = decodeStockInstrument(gate.instrument)
+  const krStockParts = decodeKrStockInstrument(gate.instrument)
+
+  if (krStockParts) {
+    const built = await buildKrStockRankedRoundInput(gate.instrument, gate.horizon)
+    if (!built.ok) {
+      return { ok: false, response: jsonError(400, built.reason, built.reason) }
+    }
+    return { ok: true, round: built.input }
+  }
+
   const created = sportsParts
     ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
     : electionParts

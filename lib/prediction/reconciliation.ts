@@ -6,6 +6,9 @@ import { adapterForInstrument } from '@/lib/league/gateway/adapters/registry.ser
 import { gradePlanFor } from '@/lib/league/gateway/grade-plan'
 import { gradeKrBoxOfficeInstrument } from '@/lib/league/entertainment/kobis'
 import { parkRoundForManual } from '@/lib/league/manual-grade/queue'
+import { decodeKrStockInstrument } from '@/lib/league/korea-equity-catalog'
+import { getOfficialClose, getOfficialClosesBetween } from '@/lib/league/korea-market-data'
+import { reconcileTwelfthDataAnchor } from '@/lib/league/korea-stock-reconcile'
 import {
   createGradingEngine,
   GRADING_SWEEP_SCAN_CAP,
@@ -124,6 +127,9 @@ function migrationHint(message: string): string {
   }
   if (isMissingColumnError(message, 'grading_status')) {
     return `${message} — apply migration 20260927000002_prediction_manual_grading.sql; freeform rounds need grading_status`
+  }
+  if (isMissingColumnError(message, 'anchor_source')) {
+    return `${message} — apply migration 20261003000003_prediction_rounds_anchor_source.sql; KRSTOCK needs anchor_source`
   }
   return message
 }
@@ -287,9 +293,80 @@ export const supabaseGradingStore: GradingStore = {
  * source with no executor yet fails the series fetch explicitly, leaving the
  * round honestly ungraded instead of graded against the wrong feed.
  */
+async function loadKrStockAnchorFacts(roundId: string): Promise<{
+  anchorSource: string | null
+  anchorSessionDate: string | null
+} | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select('anchor_source, anchor_session_date')
+      .eq('id', roundId)
+      .maybeSingle()
+    if (error) {
+      if (isMissingColumnError(error.message, 'anchor_source')) return null
+      throw new Error(migrationHint(error.message))
+    }
+    if (!data) return null
+    const row = data as { anchor_source?: unknown; anchor_session_date?: unknown }
+    return {
+      anchorSource: typeof row.anchor_source === 'string' ? row.anchor_source : null,
+      anchorSessionDate:
+        typeof row.anchor_session_date === 'string' ? row.anchor_session_date.slice(0, 10) : null,
+    }
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : ''
+    if (isMissingColumnError(message, 'anchor_source')) return null
+    throw e
+  }
+}
+
+async function markAnchorOfficialVerified(roundId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('prediction_rounds')
+    .update({ anchor_source: 'krx_official_verified' })
+    .eq('id', roundId)
+    .eq('anchor_source', 'twelvedata')
+  if (error && !isMissingColumnError(error.message, 'anchor_source')) {
+    console.warn(`[prediction/grading] round ${roundId} could not mark krx_official_verified: ${error.message}`)
+  }
+}
+
+async function beforeGradeKrStock(round: GradingRoundRecord): Promise<'continue' | 'park' | 'defer'> {
+  const parts = decodeKrStockInstrument(round.instrument)
+  if (!parts) return 'continue'
+  const facts = await loadKrStockAnchorFacts(round.id)
+  if (!facts || facts.anchorSource !== 'twelvedata') return 'continue'
+  if (!facts.anchorSessionDate) return 'defer'
+  if (!Number.isFinite(round.anchor_price) || (round.anchor_price ?? 0) <= 0) return 'defer'
+  const official = await getOfficialClose(parts.market, parts.code, facts.anchorSessionDate)
+  const decision = reconcileTwelfthDataAnchor({
+    anchorSource: facts.anchorSource,
+    storedAnchor: round.anchor_price as number,
+    official,
+  })
+  if (decision.action === 'verify') {
+    await markAnchorOfficialVerified(round.id)
+    return 'continue'
+  }
+  if (decision.action === 'park_manual') return 'park'
+  if (decision.action === 'wait') return 'defer'
+  return 'continue'
+}
+
+async function fetchKrxOfficialCloses(instrument: string, startDate: string, endDate: string) {
+  const parts = decodeKrStockInstrument(instrument)
+  if (!parts) return { ok: false as const, error: 'not a KRSTOCK instrument' }
+  const bars = await getOfficialClosesBetween(parts.market, parts.code, startDate, endDate)
+  return { ok: true as const, bars }
+}
+
 async function fetchSeriesViaGradePlan(instrument: string, startDate: string, endDate: string) {
   const plan = gradePlanFor(adapterForInstrument(instrument), instrument)
   if (plan.source === 'price_series') {
+    if (decodeKrStockInstrument(instrument)) {
+      return fetchKrxOfficialCloses(instrument, startDate, endDate)
+    }
     return fetchDailyCloses(instrument, startDate, endDate)
   }
   // operator_manual is a real grade source, not a missing executor. The
@@ -320,8 +397,9 @@ const engine = createGradingEngine({
   fetchSeries: fetchSeriesViaGradePlan,
   isPriceInstrument: (instrument) =>
     gradePlanFor(adapterForInstrument(instrument), instrument).source === 'price_series' &&
-    mapInstrumentToTwelveData(instrument) !== null,
+    (decodeKrStockInstrument(instrument) !== null || mapInstrumentToTwelveData(instrument) !== null),
   resolveOfficialOutcome,
+  beforeGrade: beforeGradeKrStock,
 })
 
 /**

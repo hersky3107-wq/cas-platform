@@ -242,11 +242,28 @@ describe('Korean-lane STOCK generate allowlist', () => {
     }
   })
 
-  it('still rejects KRSTOCK', () => {
+  it('KRSTOCK is admin-only: visible code is 403 for the public and ok for admin', () => {
     const instrument = encodeKrStockInstrument('KOSPI', '005930')!
-    expect(
-      gatePublicGenerateInstrument(instrument, krAdmin, '1d', undefined, visible),
-    ).toEqual({ ok: false, status: 400, code: 'unknown_instrument' })
+    const krVisible = {
+      ...visible,
+      isKrUniverseVisible: (market: 'KOSPI' | 'KOSDAQ', code: string) => market === 'KOSPI' && code === '005930',
+    }
+    expect(gatePublicGenerateInstrument(instrument, krViewer, '1d', undefined, krVisible)).toEqual({
+      ok: false,
+      status: 403,
+      code: 'kr_stock_not_open',
+    })
+    expect(gatePublicGenerateInstrument(instrument, krAdmin, '1d', undefined, krVisible)).toEqual({
+      ok: true,
+      instrument,
+      category: 'stock',
+      horizon: '1d',
+    })
+    expect(gatePublicGenerateInstrument('KRSTOCK:KOSDAQ:247540', krAdmin, '1d', undefined, krVisible)).toEqual({
+      ok: false,
+      status: 400,
+      code: 'unknown_instrument',
+    })
   })
 })
 

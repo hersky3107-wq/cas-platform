@@ -145,15 +145,46 @@ describe('decideUniverseStatus — pinned, hidden, excluded', () => {
   })
 })
 
-describe('generate path — KRSTOCK not public yet', () => {
-  it('gatePublicGenerateInstrument rejects a valid KRSTOCK instrument today', () => {
-    const instrument = encodeKrStockInstrument('KOSPI', '005930')!
+describe('generate path — KRSTOCK admin-only', () => {
+  const instrument = encodeKrStockInstrument('KOSPI', '005930')!
+  const visible = {
+    isKrUniverseVisible: (market: 'KOSPI' | 'KOSDAQ', code: string) => market === 'KOSPI' && code === '005930',
+  }
+  const krPublic = { isAdmin: false, jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' } }
+  const usPublic = { isAdmin: false, jurisdiction: { declaredCountry: 'US', ipCountry: 'US' } }
+  const admin = { isAdmin: true, jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' } }
+
+  it('non-admin is 403 kr_stock_not_open on both lanes when the code is visible', () => {
     expect(decodeKrStockInstrument(instrument)).not.toBeNull()
+    expect(gatePublicGenerateInstrument(instrument, krPublic, '1d', undefined, visible)).toEqual({
+      ok: false,
+      status: 403,
+      code: 'kr_stock_not_open',
+    })
+    expect(gatePublicGenerateInstrument(instrument, usPublic, '1d', undefined, visible)).toEqual({
+      ok: false,
+      status: 403,
+      code: 'kr_stock_not_open',
+    })
+  })
+
+  it('admin with a visible universe code is allowed', () => {
+    expect(gatePublicGenerateInstrument(instrument, admin, '1d', undefined, visible)).toEqual({
+      ok: true,
+      instrument,
+      category: 'stock',
+      horizon: '1d',
+    })
+  })
+
+  it('a code missing from the visible universe is 400 unknown_instrument even for admin', () => {
     expect(
-      gatePublicGenerateInstrument(instrument, {
-        isAdmin: false,
-        jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' },
-      }),
+      gatePublicGenerateInstrument('KRSTOCK:KOSDAQ:247540', admin, '1d', undefined, visible),
     ).toEqual({ ok: false, status: 400, code: 'unknown_instrument' })
+    expect(gatePublicGenerateInstrument(instrument, admin, '1d')).toEqual({
+      ok: false,
+      status: 400,
+      code: 'unknown_instrument',
+    })
   })
 })

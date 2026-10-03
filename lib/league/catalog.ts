@@ -367,6 +367,11 @@ export type CatalogRankedRoundInput = {
   resolves_at: string
   item_type: 'ranked'
   cache_key: string
+  subject_label?: string | null
+  anchor_price?: number
+  anchor_price_at?: string
+  anchor_session_date?: string
+  anchor_source?: string
 }
 
 /**

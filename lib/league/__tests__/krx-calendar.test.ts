@@ -91,6 +91,17 @@ describe('KRX calendar + KRSTOCK session math', () => {
     }
   })
 
+  it('2026-06-03 (local election) and 2026-07-17 (제헌절) are KRX holidays', () => {
+    expect(isKrxTradingDay('2026-06-03')).toBe(false)
+    expect(isKrxTradingDay('2026-07-17')).toBe(false)
+    const afterElection = kst('2026-06-02', '16:00')
+    expect(lastCompletedKrxSession(afterElection)).toEqual({ ok: true, date: '2026-06-02' })
+    expect(nthFutureKrxSessionDate('2026-06-02', 1)).toEqual({ ok: true, date: '2026-06-04' })
+    const afterConstitution = kst('2026-07-16', '16:00')
+    expect(lastCompletedKrxSession(afterConstitution)).toEqual({ ok: true, date: '2026-07-16' })
+    expect(nthFutureKrxSessionDate('2026-07-16', 1)).toEqual({ ok: true, date: '2026-07-20' })
+  })
+
   it('open-phase reports closed on 2026-10-05 and 2026-10-09 (KRX holidays)', () => {
     expect(isKrxTradingDay('2026-10-05')).toBe(false)
     expect(isKrxTradingDay('2026-10-09')).toBe(false)

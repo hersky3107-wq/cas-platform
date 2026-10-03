@@ -1,10 +1,10 @@
 /**
  * KRX (Korea Exchange) trading-day calendar. Pure — no network.
  *
- * Earlier 2026 dates omitted (not needed for forward generation). 2026 from
- * 2026-08-17 is from the KRX holiday notice. 2027 is provisional (government
- * 월력요항, published 2026-06-29) until the KRX annual notice (usually
- * December) is reconciled.
+ * 2026-06-03 (local election) and 2026-07-17 (제헌절) confirmed closed (KRX
+ * returned no data). 2026 from 2026-08-17 is from the KRX holiday notice.
+ * 2027 is provisional (government 월력요항, published 2026-06-29) until the
+ * KRX annual notice (usually December) is reconciled.
  */
 
 export const KRX_TIME_ZONE = 'Asia/Seoul'
@@ -18,12 +18,13 @@ export const KRX_PROVISIONAL_FROM = '2027-01-01'
 export const KRX_CALENDAR_VALID_THROUGH = '2027-12-31'
 
 /**
- * KST dates "YYYY-MM-DD". Verified 2026 holidays from 2026-08-17 onward, plus
- * provisional 2027 weekday closures. Earlier 2026 dates omitted (not needed
- * for forward generation). Source: KRX holiday notice (2026); government
- * 2027 calendar (월력요항, published 2026-06-29).
+ * KST dates "YYYY-MM-DD". 2026-06-03 and 2026-07-17 confirmed closed by KRX
+ * (no data). Remaining 2026 dates from the KRX holiday notice. 2027 weekday
+ * closures are provisional (월력요항, published 2026-06-29).
  */
 export const KRX_HOLIDAYS: ReadonlySet<string> = new Set([
+  '2026-06-03',
+  '2026-07-17',
   '2026-08-17',
   '2026-09-24',
   '2026-09-25',

@@ -10,6 +10,8 @@ import { entertainmentHeadlineLabel, entertainmentPropositionDisplay } from './e
 import { propertyInstrumentDisplay, propertyPropositionDisplay } from './real-estate-display'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { stockQuoteSymbol, decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { decodeKrStockInstrument } from './korea-equity-catalog'
+import { krStockPropositionDisplay } from './korea-stock-display'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
@@ -51,6 +53,7 @@ export function formatToday(locale: LeagueLocale, now: Date = new Date()): strin
  * offshore yuan; USD-quoted pairs (EUR/USD, GBP/USD, AUD/USD, XAU/USD) in $.
  */
 export function currencyGlyph(instrument: string): string {
+  if (decodeKrStockInstrument(instrument)) return '\u20a9'
   if (instrument.includes('/')) {
     const quote = instrument.split('/')[1]?.toUpperCase()
     if (quote === 'KRW') return '\u20a9'
@@ -93,6 +96,12 @@ export function showInstrumentDisplay(instrument: string, locale: LeagueLocale =
   return entertainmentHeadlineLabel(instrument, locale)
 }
 
+function shownPriceInstrument(instrument: string): string {
+  const kr = decodeKrStockInstrument(instrument)
+  if (kr) return kr.code
+  return decodeStockInstrument(instrument) ? stockQuoteSymbol(instrument) : instrument
+}
+
 function nonPriceInstrumentDisplay(instrument: string, locale: LeagueLocale): string {
   return (
     sportsInstrumentDisplay(instrument, locale) ??
@@ -109,6 +118,7 @@ export function rankedPropositionDisplay(instrument: string, stored: string, loc
   if (decodePoliticsInstrument(instrument)) return politicsPropositionDisplay(instrument, stored, locale)
   if (decodeEntertainmentInstrument(instrument)) return entertainmentPropositionDisplay(instrument, stored, locale)
   if (decodePropertyInstrument(instrument)) return propertyPropositionDisplay(instrument, stored, locale)
+  if (decodeKrStockInstrument(instrument)) return krStockPropositionDisplay(instrument, stored, locale)
   return stored
 }
 
@@ -129,11 +139,11 @@ export function headerHeadline(args: {
     return args.t.header.headlinePlain(args.roundDate, displayInst)
   }
   if (args.anchorPrice === null) {
-    const shown = decodeStockInstrument(args.instrument) ? stockQuoteSymbol(args.instrument) : args.instrument
+    const shown = shownPriceInstrument(args.instrument)
     return args.t.header.headlineNoAnchor(args.roundDate, shown)
   }
   const session = args.anchorSessionDate ? formatSessionDate(args.anchorSessionDate, args.locale) : ''
-  const shown = decodeStockInstrument(args.instrument) ? stockQuoteSymbol(args.instrument) : args.instrument
+  const shown = shownPriceInstrument(args.instrument)
   return args.t.header.headlineWithAnchor(
     args.roundDate,
     shown,

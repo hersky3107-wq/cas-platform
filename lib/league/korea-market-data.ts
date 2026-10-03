@@ -322,3 +322,31 @@ export async function getKrxCloseSeries(
   }
   return { series, notPublished, unverified: false }
 }
+
+function nextIsoDate(iso: string): string {
+  return new Date(Date.parse(`${iso}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * Official KRX daily closes in [startIso, endIso], oldest→newest.
+ * Unpublished trading days are omitted (never empty-cached).
+ */
+export async function getOfficialClosesBetween(
+  market: KrxMarket,
+  code: string,
+  startIso: string,
+  endIso: string,
+  io?: Partial<KrxDailyIo>,
+): Promise<{ sessionDate: string; close: number }[]> {
+  const deps = resolveIo(io)
+  const bars: { sessionDate: string; close: number }[] = []
+  for (let date = startIso.slice(0, 10); date <= endIso.slice(0, 10); date = nextIsoDate(date)) {
+    if (!isKrxTradingDay(date)) continue
+    const ensured = await ensureKrxDay(date, deps)
+    if (ensured === 'not_published' || ensured === 'holiday') continue
+    const row = await deps.getRow(market, code, date)
+    if (!row) continue
+    bars.push({ sessionDate: row.date, close: row.close })
+  }
+  return bars
+}

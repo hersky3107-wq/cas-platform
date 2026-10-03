@@ -80,7 +80,7 @@ export function gradePlanFor(adapter: CategoryAdapter | null, instrument: string
   })
   const sources = adapter.gradeSources(slots)
   const [tier1] = sources
-  if (tier1.tier === 1 && tier1.kind === 'twelve_data') {
+  if (tier1.tier === 1 && (tier1.kind === 'twelve_data' || tier1.kind === 'krx_official')) {
     return { source: 'price_series', tier1 }
   }
   if (tier1.tier === 1 && tier1.kind === 'official_api' && tier1.endpoint.startsWith('kobis:')) {

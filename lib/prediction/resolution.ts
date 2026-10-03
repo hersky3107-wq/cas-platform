@@ -93,8 +93,17 @@ export function normalizeSessionDate(raw: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
 }
 
-/** End of UTC day D — see the SESSION-CLOSE CONVENTION note above. */
-function sessionCloseMs(sessionDate: string): number {
+/** End of UTC day D — US/world equities. KRSTOCK uses the 15:30 KST close. */
+function sessionCloseMs(sessionDate: string, instrument?: string): number {
+  if (instrument && instrument.startsWith('KRSTOCK:')) {
+    const { year, month, day } = {
+      year: Number(sessionDate.slice(0, 4)),
+      month: Number(sessionDate.slice(5, 7)),
+      day: Number(sessionDate.slice(8, 10)),
+    }
+    // 15:30 Asia/Seoul = 06:30 UTC (no DST). Matches `krxSessionCloseMs`.
+    return Date.UTC(year, month - 1, day, 6, 30, 0, 0)
+  }
   return Date.parse(`${sessionDate}T23:59:59.999Z`)
 }
 
@@ -158,12 +167,17 @@ export function precheckResolutionWindow(
  * The last session that closed inside (anchorPriceAt, resolvesAt]. Null when
  * the window contains no session at all (weekend / holiday / too-short window).
  */
-export function selectResolutionSession(bars: DailyBar[], anchorPriceAtMs: number, resolvesAtMs: number): DailyBar | null {
+export function selectResolutionSession(
+  bars: DailyBar[],
+  anchorPriceAtMs: number,
+  resolvesAtMs: number,
+  instrument?: string,
+): DailyBar | null {
   let selected: DailyBar | null = null
   let selectedMs = -Infinity
 
   for (const bar of bars) {
-    const closeMs = sessionCloseMs(bar.sessionDate)
+    const closeMs = sessionCloseMs(bar.sessionDate, instrument)
     if (!Number.isFinite(closeMs)) continue
     if (closeMs <= anchorPriceAtMs) continue
     if (closeMs > resolvesAtMs) continue
@@ -213,7 +227,7 @@ export function resolveRoundOutcome(input: RoundResolutionInput & { series: Seri
     return { ok: false, reason: 'no_series_data', detail: 'price series returned no usable daily closes' }
   }
 
-  const session = selectResolutionSession(bars, anchorMs, resolvesMs)
+  const session = selectResolutionSession(bars, anchorMs, resolvesMs, input.instrument)
   if (!session) {
     return {
       ok: false,

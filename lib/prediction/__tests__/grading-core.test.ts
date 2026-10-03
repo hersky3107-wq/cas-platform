@@ -455,3 +455,39 @@ describe('grade-on-read — freeform park', () => {
     expect(store.calls.claims).toBe(0)
   })
 })
+
+describe('beforeGrade hook', () => {
+  it('parks for admin review and does not fetch a series', async () => {
+    const store = createFakeStore([dueRound()])
+    const series = createFakeSeries({ AAPL: AAPL_BARS })
+    const engine = createGradingEngine({
+      store,
+      fetchSeries: series.fetchSeries,
+      isPriceInstrument: () => true,
+      beforeGrade: async () => 'park',
+      now: () => new Date(NOW),
+    })
+    const result = await engine.gradeRoundOnRead('round-a')
+    expect(result.outcome).toBe('queued_manual')
+    expect(store.rows.get('round-a')?.grading_status).toBe('needs_grading')
+    expect(series.requests).toHaveLength(0)
+    expect(store.calls.saveGraded).toBe(0)
+  })
+
+  it('defers with series_unavailable so the sweep can retry', async () => {
+    const store = createFakeStore([dueRound()])
+    const series = createFakeSeries({ AAPL: AAPL_BARS })
+    const engine = createGradingEngine({
+      store,
+      fetchSeries: series.fetchSeries,
+      isPriceInstrument: () => true,
+      beforeGrade: async () => 'defer',
+      now: () => new Date(NOW),
+    })
+    const result = await engine.gradeRoundOnRead('round-a')
+    expect(result.outcome).toBe('unresolvable')
+    if (result.outcome === 'unresolvable') expect(result.reason).toBe('series_unavailable')
+    expect(store.calls.saveGraded).toBe(0)
+    expect(series.requests).toHaveLength(0)
+  })
+})

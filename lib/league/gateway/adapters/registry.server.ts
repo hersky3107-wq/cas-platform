@@ -81,6 +81,9 @@ export function adapterForInstrument(instrument: string): CategoryAdapter | null
   if (instrument.startsWith('ELECTION:')) return adapterForLedgerCategory('politics_election')
   if (instrument.startsWith('SHOW:')) return adapterForLedgerCategory('entertainment_awards')
   if (instrument.startsWith('PROPERTY:')) return adapterForLedgerCategory('real_estate')
+  if (instrument.startsWith('STOCK:') || instrument.startsWith('KRSTOCK:')) {
+    return adapterForLedgerCategory('stock')
+  }
   const hit = findCatalogInstrument(instrument)
   return hit ? adapterForCategoryId(hit.category.id) : null
 }

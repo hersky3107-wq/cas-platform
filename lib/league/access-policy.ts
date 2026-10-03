@@ -7,6 +7,7 @@ import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
 import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { decodeKrStockInstrument } from './korea-equity-catalog'
 import { envKrManualCloseFlag, krElectionAccessDenied, type KrManualCloseFlag } from './politics/kr-manual-close'
 import { admissionStockLane, isKrLanePublicReady } from './stock-lane'
 import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
@@ -97,11 +98,13 @@ export function isCuratedInstrument(instrument: string, curated: readonly string
 export type PublicGenerateInstrumentGate =
   | { ok: true; instrument: string; category: PredictionCategory; horizon: UiHorizon }
   | { ok: false; status: 400; code: 'missing_target' | 'unknown_instrument' | 'unknown_horizon' }
-  | { ok: false; status: 403; code: 'jurisdiction_blocked' | 'kr_election_manual_close' }
+  | { ok: false; status: 403; code: 'jurisdiction_blocked' | 'kr_election_manual_close' | 'kr_stock_not_open' }
 
 export type PublicGenerateUniverseLookup = {
   /** Visible US `league_kr_universe` code. Fail-closed when omitted on the Korean STOCK path. */
   isUsUniverseVisible?: (code: string) => boolean
+  /** Visible KOSPI/KOSDAQ `league_kr_universe` code. Fail-closed when omitted on KRSTOCK. */
+  isKrUniverseVisible?: (market: 'KOSPI' | 'KOSDAQ', code: string) => boolean
 }
 
 export function gatePublicGenerateInstrument(
@@ -133,6 +136,17 @@ export function gatePublicGenerateInstrument(
     } else if (!viewer.isAdmin) {
       return { ok: false, status: 403, code: 'jurisdiction_blocked' }
     }
+  }
+
+  const krStock = decodeKrStockInstrument(instrument)
+  if (krStock) {
+    if (universe?.isKrUniverseVisible?.(krStock.market, krStock.code) !== true) {
+      return { ok: false, status: 400, code: 'unknown_instrument' }
+    }
+    if (!viewer.isAdmin) {
+      return { ok: false, status: 403, code: 'kr_stock_not_open' }
+    }
+    return { ok: true, instrument, category: 'stock', horizon }
   }
 
   const sportsParts = decodeSportsInstrument(instrument)

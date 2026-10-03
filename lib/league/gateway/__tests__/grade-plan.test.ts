@@ -64,6 +64,16 @@ const noFallbackAdapter = {
 } as unknown as CategoryAdapter
 
 describe('gradePlanFor — resolution asks the adapter', () => {
+  it('KRSTOCK krx_official tier-1 still takes the price-series executor (official KRX, not TD)', () => {
+    const plan = gradePlanFor(stocks, 'KRSTOCK:KOSPI:005930')
+    expect(plan.source).toBe('price_series')
+    if (plan.source === 'price_series' && plan.tier1 !== 'legacy') {
+      expect(plan.tier1).toMatchObject({ tier: 1, kind: 'krx_official' })
+    } else {
+      throw new Error('expected krx_official tier-1')
+    }
+  })
+
   it('stocks (twelve_data tier-1) → the existing price-series path', () => {
     const plan = gradePlanFor(stocks, 'AAPL')
     expect(plan.source).toBe('price_series')
@@ -114,6 +124,7 @@ describe('the reconciliation engine actually consults the plan (consumption proo
 
   it('the twelve_data executor is still the hardened fetchDailyCloses — no new price path', () => {
     expect(src).toContain('return fetchDailyCloses(instrument, startDate, endDate)')
+    expect(src).toContain('fetchKrxOfficialCloses')
   })
 
   it('gradeRoundOnRead parks freeform rounds instead of claiming a price feed', () => {

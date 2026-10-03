@@ -125,7 +125,7 @@ export type Refusal = {
 }
 
 export type GradeSource =
-  | { tier: 1; kind: 'twelve_data' | 'official_api'; endpoint: string }
+  | { tier: 1; kind: 'twelve_data' | 'official_api' | 'krx_official'; endpoint: string }
   | { tier: 1; kind: 'perplexity_sourced'; require_url: true }
   | { tier: 2; kind: 'perplexity_sourced'; require_url: true }
   | { tier: 3; kind: 'operator_manual'; require_url: true }

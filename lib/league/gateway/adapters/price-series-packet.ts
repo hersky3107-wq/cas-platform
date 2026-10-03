@@ -105,7 +105,7 @@ export function toClosedBookInput(
     category: round.category,
     horizon: round.horizon,
     series,
-    seriesSource: 'Twelve Data /time_series+quote',
+    seriesSource: packet.seriesSource ?? 'Twelve Data /time_series+quote',
     seriesAsOf: packet.asOf ?? series[series.length - 1]?.date ?? null,
     anchorClose,
     anchorSessionDate: anchorClose != null ? sessionDateForClose(packet, anchorClose) : null,
