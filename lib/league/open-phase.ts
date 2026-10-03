@@ -1,3 +1,5 @@
+import { isKrxTradingDay, kstCivilDate } from '@/lib/league/krx-calendar'
+
 /**
  * Market-session phase at round open — tagging only (no generate gating).
  *
@@ -49,8 +51,9 @@ const FX_WEEKDAY: SessionSpec = {
 /** Mirrors `mapInstrumentToTwelveData` kind/exchange rules without importing server-only. */
 function sessionForInstrument(instrument: string): SessionSpec | 'crypto_247' {
   const raw = instrument.trim()
-  if (!raw || raw.includes(':')) return US_EQUITY
-  if (raw.endsWith('.KS') || raw.endsWith('.KQ')) return KRX_EQUITY
+  if (!raw) return US_EQUITY
+  if (raw.startsWith('KRSTOCK:') || raw.endsWith('.KS') || raw.endsWith('.KQ')) return KRX_EQUITY
+  if (raw.includes(':')) return US_EQUITY
   if (raw.includes('/')) {
     const [base, quote] = raw.split('/')
     const fiat = new Set(['USD', 'EUR', 'JPY', 'KRW', 'GBP', 'CNY', 'AUD', 'CAD', 'CHF', 'HKD'])
@@ -91,6 +94,7 @@ export function resolveOpenPhase(instrument: string, at: Date = new Date()): Ope
 
   const { weekday, minutes } = localParts(at, session.timeZone)
   if (session.closesOnWeekend && (weekday === 0 || weekday === 6)) return 'weekend'
+  if (session === KRX_EQUITY && !isKrxTradingDay(kstCivilDate(at))) return 'weekend'
   if (minutes < session.openMinutes) return 'pre_open'
   if (minutes >= session.closeMinutes) return 'after_close'
   return 'intraday'

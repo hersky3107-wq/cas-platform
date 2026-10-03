@@ -1,4 +1,10 @@
 import type { PredictionCategory } from '@/lib/prediction/categories'
+import { isKrStockInstrument } from '@/lib/league/korea-equity-catalog'
+import {
+  krxSessionCloseIso,
+  lastCompletedKrxSession,
+  nthFutureKrxSessionDate,
+} from '@/lib/league/krx-calendar'
 
 /**
  * AI Prediction League — HORIZON SELECTION (pure).
@@ -259,10 +265,18 @@ export function addTradingDays(fromMs: number, n: number): number {
   return ms
 }
 
+export type ComputeResolvesAtResult =
+  | { ok: true; resolvesAt: string }
+  | { ok: false; reason: 'krx_calendar_unverified' }
+
 /**
  * `resolves_at` for a NEW round, from its anchor observation time.
  *
- *  - equities/ETF (`usesTradingSessions`): Nth future exchange session
+ *  - KRSTOCK: Nth future KRX session after `lastCompletedKrxSession(anchor)`,
+ *    pinned to that day's 15:30 KST close. Refuses with
+ *    `krx_calendar_unverified` past the published holiday calendar — never
+ *    throws, never guesses 2027+.
+ *  - equities/ETF (`usesTradingSessions`): Nth future US exchange session
  *    (Mon–Fri whose 16:00 ET close is strictly after the anchor), with
  *    `resolves_at` pinned past that session's close — see
  *    `EQUITY_SESSION_RESOLVES_AT_SUFFIX`. Does NOT keep the anchor's clock
@@ -270,19 +284,29 @@ export function addTradingDays(fromMs: number, n: number): number {
  *    before Monday's graded close at 23:59:59.999Z).
  *  - crypto/FX and everything else: anchor + N calendar days, SAME clock
  *    time (these trade, and are graded, every day of the week).
+ *
+ * Session counts (US and KRSTOCK share `TRADING_SESSION_COUNT`):
+ *   1d = 1, 1w = 5, 1m = 21, 3m = 63.
  */
 export function computeResolvesAt(
   category: PredictionCategory | string,
   horizon: UiHorizon,
   anchorIso: string,
   instrument?: string | null,
-): string {
+): ComputeResolvesAtResult {
+  if (instrument && isKrStockInstrument(instrument)) {
+    const last = lastCompletedKrxSession(new Date(anchorIso))
+    if (!last.ok) return last
+    const future = nthFutureKrxSessionDate(last.date, TRADING_SESSION_COUNT[horizon])
+    if (!future.ok) return future
+    return { ok: true, resolvesAt: krxSessionCloseIso(future.date) }
+  }
   const anchorMs = Date.parse(anchorIso)
   if (!usesTradingSessions(category, instrument)) {
-    return new Date(anchorMs + CALENDAR_DAY_COUNT[horizon] * DAY_MS).toISOString()
+    return { ok: true, resolvesAt: new Date(anchorMs + CALENDAR_DAY_COUNT[horizon] * DAY_MS).toISOString() }
   }
   const sessionDate = nthFutureUsEquitySessionDate(anchorIso, TRADING_SESSION_COUNT[horizon])
-  return `${sessionDate}${EQUITY_SESSION_RESOLVES_AT_SUFFIX}`
+  return { ok: true, resolvesAt: `${sessionDate}${EQUITY_SESSION_RESOLVES_AT_SUFFIX}` }
 }
 
 /**
@@ -303,6 +327,7 @@ export function tradingApproximationNote(
   horizon: UiHorizon,
   instrument?: string | null,
 ): string | null {
+  if (instrument && isKrStockInstrument(instrument)) return null
   if (horizon === '1d') return null
   if (!usesTradingSessions(category, instrument)) return null
   return 'this date is estimated by counting weekdays, not an exchange holiday calendar'

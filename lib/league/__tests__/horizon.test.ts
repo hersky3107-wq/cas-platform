@@ -16,6 +16,17 @@ import {
   type UiHorizon,
 } from '../horizon'
 
+function at(
+  category: Parameters<typeof computeResolvesAt>[0],
+  horizon: Parameters<typeof computeResolvesAt>[1],
+  anchorIso: string,
+  instrument?: string | null,
+): string {
+  const r = computeResolvesAt(category, horizon, anchorIso, instrument)
+  if (!r.ok) throw new Error(r.reason)
+  return r.resolvesAt
+}
+
 describe('isUiHorizon', () => {
   it('accepts exactly the 4 fixed codes', () => {
     for (const h of UI_HORIZONS) expect(isUiHorizon(h)).toBe(true)
@@ -76,19 +87,19 @@ describe('computeResolvesAt', () => {
   const anchor = '2026-08-21T20:00:00.000Z' // a Friday
 
   it('equities/ETF: 1d resolves at the next trading session (skips the weekend)', () => {
-    const resolvesAt = computeResolvesAt('stock', '1d', anchor)
+    const resolvesAt = at('stock', '1d', anchor)
     expect(resolvesAt.slice(0, 10)).toBe('2026-08-24')
   })
 
   it('crypto/FX: 1d resolves exactly 1 calendar day later, weekend included', () => {
-    const resolvesAt = computeResolvesAt('crypto_spot', '1d', anchor)
+    const resolvesAt = at('crypto_spot', '1d', anchor)
     expect(resolvesAt.slice(0, 10)).toBe('2026-08-22')
   })
 
   it('equities: 1w/1m/3m use trading-session counts (5/21/63), never plain calendar days', () => {
-    const oneWeek = computeResolvesAt('stock', '1w', anchor)
-    const oneMonth = computeResolvesAt('stock', '1m', anchor)
-    const threeMonths = computeResolvesAt('stock', '3m', anchor)
+    const oneWeek = at('stock', '1w', anchor)
+    const oneMonth = at('stock', '1m', anchor)
+    const threeMonths = at('stock', '3m', anchor)
     // 5 trading days from a Friday anchor is more than 5 calendar days out.
     expect(Date.parse(oneWeek) - Date.parse(anchor)).toBeGreaterThan(6 * 24 * 60 * 60 * 1000)
     expect(Date.parse(oneMonth)).toBeGreaterThan(Date.parse(oneWeek))
@@ -97,38 +108,38 @@ describe('computeResolvesAt', () => {
 
   it('crypto/FX: 1w/1m/3m are flat calendar-day counts (7/30/90)', () => {
     const base = Date.parse(anchor)
-    expect(computeResolvesAt('fx', '1w', anchor)).toBe(new Date(base + 7 * 86_400_000).toISOString())
-    expect(computeResolvesAt('fx', '1m', anchor)).toBe(new Date(base + 30 * 86_400_000).toISOString())
-    expect(computeResolvesAt('fx', '3m', anchor)).toBe(new Date(base + 90 * 86_400_000).toISOString())
+    expect(at('fx', '1w', anchor)).toBe(new Date(base + 7 * 86_400_000).toISOString())
+    expect(at('fx', '1m', anchor)).toBe(new Date(base + 30 * 86_400_000).toISOString())
+    expect(at('fx', '3m', anchor)).toBe(new Date(base + 90 * 86_400_000).toISOString())
   })
 
   it('crypto/FX keep the anchor clock time even on a weekend morning UTC open (the equity failure case)', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
-    expect(computeResolvesAt('crypto_spot', '1d', weekendMorning)).toBe('2026-08-30T09:43:16.752Z')
-    expect(computeResolvesAt('fx', '1d', weekendMorning)).toBe('2026-08-30T09:43:16.752Z')
-    expect(computeResolvesAt('crypto_spot', '1w', weekendMorning)).toBe('2026-09-05T09:43:16.752Z')
-    expect(computeResolvesAt('fx', '1m', weekendMorning)).toBe('2026-09-28T09:43:16.752Z')
-    expect(computeResolvesAt('crypto_spot', '3m', weekendMorning)).toBe('2026-11-27T09:43:16.752Z')
+    expect(at('crypto_spot', '1d', weekendMorning)).toBe('2026-08-30T09:43:16.752Z')
+    expect(at('fx', '1d', weekendMorning)).toBe('2026-08-30T09:43:16.752Z')
+    expect(at('crypto_spot', '1w', weekendMorning)).toBe('2026-09-05T09:43:16.752Z')
+    expect(at('fx', '1m', weekendMorning)).toBe('2026-09-28T09:43:16.752Z')
+    expect(at('crypto_spot', '3m', weekendMorning)).toBe('2026-11-27T09:43:16.752Z')
   })
 
   it('etf_index including VNQ matches stock; house-price indexes use calendar days', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
     for (const h of UI_HORIZONS) {
-      expect(computeResolvesAt('etf_index', h, weekendMorning)).toBe(computeResolvesAt('stock', h, weekendMorning))
-      expect(computeResolvesAt('etf_index', h, weekendMorning, 'VNQ')).toBe(computeResolvesAt('stock', h, weekendMorning))
-      expect(computeResolvesAt('real_estate', h, weekendMorning)).not.toBe(computeResolvesAt('stock', h, weekendMorning))
+      expect(at('etf_index', h, weekendMorning)).toBe(at('stock', h, weekendMorning))
+      expect(at('etf_index', h, weekendMorning, 'VNQ')).toBe(at('stock', h, weekendMorning))
+      expect(at('real_estate', h, weekendMorning)).not.toBe(at('stock', h, weekendMorning))
     }
   })
 
   it('gold / energy stay on the crypto/FX calendar-day path', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
     for (const h of UI_HORIZONS) {
-      expect(computeResolvesAt('gold_metal', h, weekendMorning)).toBe(computeResolvesAt('crypto_spot', h, weekendMorning))
-      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'XAU/USD')).toBe(
-        computeResolvesAt('crypto_spot', h, weekendMorning),
+      expect(at('gold_metal', h, weekendMorning)).toBe(at('crypto_spot', h, weekendMorning))
+      expect(at('gold_metal', h, weekendMorning, 'XAU/USD')).toBe(
+        at('crypto_spot', h, weekendMorning),
       )
-      expect(computeResolvesAt('commodity_energy', h, weekendMorning)).toBe(
-        computeResolvesAt('crypto_spot', h, weekendMorning),
+      expect(at('commodity_energy', h, weekendMorning)).toBe(
+        at('crypto_spot', h, weekendMorning),
       )
     }
   })
@@ -136,16 +147,16 @@ describe('computeResolvesAt', () => {
   it('GLD and SLV use the equity session clock even though they are filed under gold_metal', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
     for (const h of UI_HORIZONS) {
-      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'GLD')).toBe(computeResolvesAt('stock', h, weekendMorning))
-      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'SLV')).toBe(computeResolvesAt('stock', h, weekendMorning))
-      expect(computeResolvesAt('commodity_energy', h, weekendMorning, 'UNG')).toBe(
-        computeResolvesAt('stock', h, weekendMorning),
+      expect(at('gold_metal', h, weekendMorning, 'GLD')).toBe(at('stock', h, weekendMorning))
+      expect(at('gold_metal', h, weekendMorning, 'SLV')).toBe(at('stock', h, weekendMorning))
+      expect(at('commodity_energy', h, weekendMorning, 'UNG')).toBe(
+        at('stock', h, weekendMorning),
       )
-      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'XAG/USD')).toBe(
-        computeResolvesAt('crypto_spot', h, weekendMorning),
+      expect(at('gold_metal', h, weekendMorning, 'XAG/USD')).toBe(
+        at('crypto_spot', h, weekendMorning),
       )
-      expect(computeResolvesAt('gold_metal', h, weekendMorning, 'XPT/USD')).toBe(
-        computeResolvesAt('crypto_spot', h, weekendMorning),
+      expect(at('gold_metal', h, weekendMorning, 'XPT/USD')).toBe(
+        at('crypto_spot', h, weekendMorning),
       )
     }
   })
@@ -211,6 +222,7 @@ describe('tradingApproximationNote', () => {
       expect(tradingApproximationNote('commodity_energy', h, 'UNG')).toMatch(/weekday/)
       expect(tradingApproximationNote('gold_metal', h, 'XAG/USD')).toBeNull()
       expect(tradingApproximationNote('gold_metal', h, 'XPT/USD')).toBeNull()
+      expect(tradingApproximationNote('stock', h, 'KRSTOCK:KOSPI:005930')).toBeNull()
     }
   })
 })
@@ -313,7 +325,7 @@ describe('computeResolvesAt — session-counted equities pin past the target clo
     for (const horizon of UI_HORIZONS) {
       const n = TRADING_SESSION_COUNT[horizon]
       for (const { phase, anchorIso } of PHASE_FIXTURES) {
-        const resolvesAt = computeResolvesAt('stock', horizon, anchorIso)
+        const resolvesAt = at('stock', horizon, anchorIso)
         const expectedDate = independentNthUsSessionDate(anchorIso, n)
         expect(nthFutureUsEquitySessionDate(anchorIso, n)).toBe(expectedDate)
         expect(resolvesAt).toBe(`${expectedDate}${EQUITY_SESSION_RESOLVES_AT_SUFFIX}`)
@@ -342,7 +354,7 @@ describe('computeResolvesAt — session-counted equities pin past the target clo
 
   it("round 65192045 clock (Sat 2026-08-29 09:43 UTC, 1d) now includes Monday's graded close", () => {
     const anchorIso = '2026-08-29T09:43:16.752Z'
-    const resolvesAt = computeResolvesAt('stock', '1d', anchorIso)
+    const resolvesAt = at('stock', '1d', anchorIso)
     expect(resolvesAt).toBe('2026-08-31T23:59:59.999Z')
 
     const anchorMs = Date.parse(anchorIso)

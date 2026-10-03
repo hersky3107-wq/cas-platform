@@ -401,12 +401,14 @@ export function buildCatalogRankedRoundInput(
   const found = findCatalogInstrument(instrument)
   if (!found) return null
   const bucket = cacheBucketFor(uiHorizon, now)
-  const resolvesAt = computeResolvesAt(
+  const computed = computeResolvesAt(
     found.category.ledgerCategory,
     uiHorizon,
     now.toISOString(),
     found.entry.instrument,
   )
+  if (!computed.ok) return null
+  const resolvesAt = computed.resolvesAt
   const resolveDate = resolvesAt.slice(0, 10)
   const note = tradingApproximationNote(found.category.ledgerCategory, uiHorizon, found.entry.instrument)
   const proposition_text = `Will ${found.entry.instrument} close higher by ${resolveDate} than its last close?${

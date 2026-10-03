@@ -226,7 +226,9 @@ export function buildStockRankedRoundInput(
   const parts = decodeStockInstrument(instrument)
   if (!parts) return null
   const bucket = cacheBucketFor(uiHorizon, now)
-  const resolvesAt = computeResolvesAt('stock', uiHorizon, now.toISOString(), parts.symbol)
+  const computed = computeResolvesAt('stock', uiHorizon, now.toISOString(), parts.symbol)
+  if (!computed.ok) return null
+  const resolvesAt = computed.resolvesAt
   const resolveDate = resolvesAt.slice(0, 10)
   const note = tradingApproximationNote('stock', uiHorizon, parts.symbol)
   const name = (expectedName ?? parts.symbol).replace(/[\r\n]/g, ' ').trim().slice(0, 80) || parts.symbol
