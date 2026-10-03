@@ -33,7 +33,7 @@ import {
 import { persistAnchorPrice } from '@/lib/league/price-anchor'
 import { generateExtraSeats } from '@/lib/league/extra/run'
 import { extraSeatIds, officialRowsForConsensus } from '@/lib/league/extra/seats'
-import { claimNextLaunchableIndex } from '@/lib/league/generation/launch-gate'
+import { claimNextLaunchableIndex, LAUNCH_GATE_FRESH_CHUNK_MS } from '@/lib/league/generation/launch-gate'
 import { coalesceRoundPacketBuild } from '@/lib/league/generation/parallel-policy'
 import { rosterProviderRoute, type ProviderCallGate } from '@/lib/league/generation/provider-gate'
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
@@ -164,8 +164,9 @@ export type GenerateOptions = {
    */
   onModelResult?: (result: ModelRunResult) => void
   /**
-   * Parallel official tiers only. Load the write-once closed-book text
-   * instead of building research again. Absent on the sequential path.
+   * Load the write-once closed-book text when it already exists.
+   * The job runner sets this on every chunk (sequential and parallel).
+   * Research/packet build runs only when the text is still absent.
    */
   reusePersistedPacket?: boolean
   /** Parallel official tiers only. Finalize reads the full board from the DB. */
@@ -236,6 +237,15 @@ export type GenerateResult = {
   /** Present only when trackChunkStats was set. */
   deferredSeats?: number
   http429?: number
+  /** Seats skipped by the tick launch gate. */
+  deferredModelIds?: string[]
+  /**
+   * Deferred while the chunk still had a fresh full budget (elapsed within
+   * LAUNCH_GATE_FRESH_CHUNK_MS). A later chunk cannot fit these either
+   * unless the tick budget itself grows. Budget leftovers after packet
+   * time or earlier seats are deferredModelIds only.
+   */
+  fullBudgetDeferralIds?: string[]
 }
 
 type ResolvedRound = {
@@ -1036,7 +1046,7 @@ export async function ensureLeagueRoundPacket(
   const started = Date.now()
   const { round } = await ensureRound({ roundId })
   const existing = await readPersistedInjection(round.id)
-  if (existing) return { built: false, packetMs: Date.now() - started }
+  if (existing) return { built: false, packetMs: 0 }
   await coalesceRoundPacketBuild(round.id, () => buildAndPersistRoundPacket(round, resolveCostCap(costCapUsd)))
   return { built: true, packetMs: Date.now() - started }
 }
@@ -1103,8 +1113,8 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       ? adapter.slotsForRound(round).proposition_kind
       : 'binary_close_higher'
   const contract = answerContractFor(propositionKind)
-  // Sequential path always builds. Parallel tiers reuse the write-once text
-  // (or join a single in-flight build if it is not persisted yet).
+  // Job chunks pass reusePersistedPacket so a round that already has
+  // closed_book_packet_text never rebuilds research. First chunk builds.
   const pkt: CategoryPacket = opts.reusePersistedPacket
     ? await loadOrBuildPersistedPacket(round, costCap)
     : await buildAndPersistRoundPacket(round, costCap)
@@ -1114,6 +1124,8 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   let runningCost = pkt.researchCostUsd
   let capped = false
   let deferredSeats = 0
+  const deferredModelIds: string[] = []
+  const fullBudgetDeferralIds: string[] = []
   const http429 = { n: 0 }
   const cursor = { nextIndex: 0 }
   const launchedThisChunk = { launched: 0 }
@@ -1146,6 +1158,16 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
         defaultTimeoutMs: timeoutMs,
         tickBudgetMs,
         launchedThisChunk,
+        onDeferred: (index) => {
+          const skipped = roster[index]
+          if (!skipped || !opts.trackChunkStats) return
+          deferredModelIds.push(skipped.model_id)
+          if (opts.deadlineAtMs === undefined || tickBudgetMs === undefined) return
+          const elapsed = tickBudgetMs - (opts.deadlineAtMs - Date.now())
+          if (elapsed >= 0 && elapsed <= LAUNCH_GATE_FRESH_CHUNK_MS) {
+            fullBudgetDeferralIds.push(skipped.model_id)
+          }
+        },
       })
       if (i === null) {
         deferredSeats += Math.max(0, roster.length - before)
@@ -1207,6 +1229,8 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
     total_cost_usd: Number(runningCost.toFixed(6)),
     capped,
     cost_cap_usd: costCap,
-    ...(opts.trackChunkStats ? { deferredSeats, http429: http429.n } : {}),
+    ...(opts.trackChunkStats
+      ? { deferredSeats, http429: http429.n, deferredModelIds, fullBudgetDeferralIds }
+      : {}),
   }
 }

@@ -61,6 +61,8 @@ export type KrxDailyIo = {
   marketsPresent: (isoDate: string) => Promise<{ KOSPI: boolean; KOSDAQ: boolean }>
   upsertRows: (rows: KrxDailyBar[]) => Promise<void>
   getRow: (market: KrxMarket, code: string, isoDate: string) => Promise<KrxDailyBar | null>
+  /** One read for many session dates. Missing dates are not an error. */
+  listCodeRows: (market: KrxMarket, code: string, isoDates: readonly string[]) => Promise<KrxDailyBar[]>
   now: () => Date
 }
 
@@ -215,20 +217,22 @@ async function defaultUpsertRows(rows: KrxDailyBar[]): Promise<void> {
   if (error) throw new Error(`league_krx_daily upsert: ${error.message}`)
 }
 
-async function defaultGetRow(
-  market: KrxMarket,
-  code: string,
-  isoDate: string,
-): Promise<KrxDailyBar | null> {
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .select('bas_dd, market, code, name, open, high, low, close, volume, trdval, mktcap')
-    .eq('bas_dd', isoDate)
-    .eq('market', market)
-    .eq('code', code)
-    .maybeSingle()
-  if (error) throw new Error(`league_krx_daily getRow: ${error.message}`)
-  if (!data || data.close == null) return null
+function barFromDailyRow(data: {
+  bas_dd: unknown
+  market: unknown
+  code: unknown
+  name: unknown
+  open: unknown
+  high: unknown
+  low: unknown
+  close: unknown
+  volume: unknown
+  trdval: unknown
+  mktcap: unknown
+}): KrxDailyBar | null {
+  if (data.close == null) return null
+  const market = data.market === 'KOSDAQ' ? 'KOSDAQ' : data.market === 'KOSPI' ? 'KOSPI' : null
+  if (!market) return null
   return {
     date: String(data.bas_dd).slice(0, 10),
     market,
@@ -244,12 +248,53 @@ async function defaultGetRow(
   }
 }
 
+const DAILY_COLUMNS = 'bas_dd, market, code, name, open, high, low, close, volume, trdval, mktcap'
+
+async function defaultGetRow(
+  market: KrxMarket,
+  code: string,
+  isoDate: string,
+): Promise<KrxDailyBar | null> {
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .select(DAILY_COLUMNS)
+    .eq('bas_dd', isoDate)
+    .eq('market', market)
+    .eq('code', code)
+    .maybeSingle()
+  if (error) throw new Error(`league_krx_daily getRow: ${error.message}`)
+  if (!data) return null
+  return barFromDailyRow(data)
+}
+
+async function defaultListCodeRows(
+  market: KrxMarket,
+  code: string,
+  isoDates: readonly string[],
+): Promise<KrxDailyBar[]> {
+  if (isoDates.length === 0) return []
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .select(DAILY_COLUMNS)
+    .eq('market', market)
+    .eq('code', code)
+    .in('bas_dd', [...isoDates])
+  if (error) throw new Error(`league_krx_daily listCodeRows: ${error.message}`)
+  const bars: KrxDailyBar[] = []
+  for (const row of data ?? []) {
+    const bar = barFromDailyRow(row)
+    if (bar) bars.push(bar)
+  }
+  return bars
+}
+
 function resolveIo(io?: Partial<KrxDailyIo>): KrxDailyIo {
   return {
     fetchDay: io?.fetchDay ?? fetchKrxDay,
     marketsPresent: io?.marketsPresent ?? defaultMarketsPresent,
     upsertRows: io?.upsertRows ?? defaultUpsertRows,
     getRow: io?.getRow ?? defaultGetRow,
+    listCodeRows: io?.listCodeRows ?? defaultListCodeRows,
     now: io?.now ?? (() => new Date()),
   }
 }
@@ -300,16 +345,22 @@ export async function getKrxCloseSeries(
     return { series: [], notPublished: [], unverified: true }
   }
   const dates = lastNKrxSessionDates(last.date, sessions)
+  const tradingDates = dates.filter((date) => isKrxTradingDay(date))
+  const cached = await deps.listCodeRows(market, code, tradingDates)
+  const byDate = new Map(cached.map((row) => [row.date, row]))
   const series: KrxCloseBar[] = []
   const notPublished: string[] = []
-  for (const date of dates) {
-    const ensured = await ensureKrxDay(date, deps)
-    if (ensured === 'not_published') {
-      notPublished.push(date)
-      continue
+  for (const date of tradingDates) {
+    let row = byDate.get(date) ?? null
+    if (!row) {
+      const ensured = await ensureKrxDay(date, deps)
+      if (ensured === 'not_published') {
+        notPublished.push(date)
+        continue
+      }
+      if (ensured === 'holiday') continue
+      row = await deps.getRow(market, code, date)
     }
-    if (ensured === 'holiday') continue
-    const row = await deps.getRow(market, code, date)
     if (!row) continue
     series.push({
       date: row.date,

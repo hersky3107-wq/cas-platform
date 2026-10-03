@@ -77,7 +77,12 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
         trackChunkStats,
       })
       if (!trackChunkStats) return
-      return { deferred: result.deferredSeats ?? 0, http429: result.http429 ?? 0 }
+      return {
+        deferred: result.deferredSeats ?? 0,
+        http429: result.http429 ?? 0,
+        deferredModelIds: result.deferredModelIds ?? [],
+        fullBudgetDeferralIds: result.fullBudgetDeferralIds ?? [],
+      }
     },
     finalizeConsensus: persistLeagueConsensusFromDb,
     refundCredits: async (userId, amount) => {

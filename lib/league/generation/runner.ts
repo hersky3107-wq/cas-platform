@@ -68,7 +68,47 @@ export type LeagueRunnerStore = {
   countRunningJobs(nowIso: string): Promise<number>
 }
 
-export type TierChunkStats = { deferred: number; http429: number }
+export type TierChunkStats = {
+  deferred: number
+  http429: number
+  deferredModelIds?: string[]
+  /** Seats that could not launch even though the chunk still had a fresh full budget. */
+  fullBudgetDeferralIds?: string[]
+}
+
+/**
+ * Fruitless budget leftovers (packet time or earlier seats ate the tick) do
+ * not consume the claim. A seat deferred while the chunk still had a fresh
+ * full budget is a real failure and keeps the claim's attempt.
+ * Progress (any model row) resets the budget to 0, same as before.
+ */
+export function resolveAttemptCount(
+  claimedAttemptCount: number,
+  produced: number,
+  deferredModelIds: readonly string[],
+  fullBudgetDeferralIds: readonly string[],
+): number {
+  if (produced > 0) return 0
+  const genuine = new Set(fullBudgetDeferralIds)
+  const budgetOnly =
+    deferredModelIds.length > 0 && deferredModelIds.every((id) => !genuine.has(id))
+  if (budgetOnly) return Math.max(0, claimedAttemptCount - 1)
+  return claimedAttemptCount
+}
+
+/** How many times this job has full-budget-deferred each seat (process-local). */
+const fullBudgetDeferralCounts = new Map<string, number>()
+
+export function recordFullBudgetDeferral(jobId: string, modelId: string): number {
+  const key = `${jobId}\0${modelId}`
+  const next = (fullBudgetDeferralCounts.get(key) ?? 0) + 1
+  fullBudgetDeferralCounts.set(key, next)
+  return next
+}
+
+export function fullBudgetDeferralCount(jobId: string, modelId: string): number {
+  return fullBudgetDeferralCounts.get(`${jobId}\0${modelId}`) ?? 0
+}
 
 export type GenerateTierChunk = (args: {
   roundId: string
@@ -206,29 +246,53 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
   }, LEAGUE_JOB_HEARTBEAT_SECONDS * 1_000)
 
   let produced = 0
+  let packetMs = 0
+  let reusedPacket = false
+  const deferredModelIds: string[] = []
+  const fullBudgetDeferralIds: string[] = []
+
+  const absorbStats = (stats: void | TierChunkStats): void => {
+    if (!stats) return
+    if (stats.deferredModelIds) deferredModelIds.push(...stats.deferredModelIds)
+    if (stats.fullBudgetDeferralIds) fullBudgetDeferralIds.push(...stats.fullBudgetDeferralIds)
+  }
 
   const endChunk = async (patch: RunnerJobPatch): Promise<void> => {
+    const attempt_count =
+      patch.attempt_count ??
+      resolveAttemptCount(job.attempt_count, produced, deferredModelIds, fullBudgetDeferralIds)
     await deps.store.updateJob(job.id, {
       lease_until: null,
       last_heartbeat_at: now().toISOString(),
-      // Progress resets the attempt budget; a stalled job keeps its count.
-      attempt_count: produced > 0 ? 0 : job.attempt_count,
       ...patch,
+      attempt_count,
     })
   }
 
   try {
+    const loaded = await loadClosedBookPacket(job.round_id, deps)
+    packetMs = loaded.packetMs
+    reusedPacket = loaded.reused
+
     const rows = await deps.store.listRoundModelRows(job.round_id)
     const written = excludedModelIds(rows, job.created_at)
 
     let stage = job.stage
     for (;;) {
       if (deps.parallelTiers === true && isOfficialGenerationStage(stage)) {
-        const finished = await runOfficialTiersInParallel(job, deps, written, deadlineAtMs, tickBudgetMs, (modelId) => {
-          written.add(modelId)
-          produced += 1
-          void deps.store.touchHeartbeat(job.id, now().toISOString())
-        })
+        const finished = await runOfficialTiersInParallel(
+          job,
+          deps,
+          written,
+          deadlineAtMs,
+          tickBudgetMs,
+          (modelId) => {
+            written.add(modelId)
+            produced += 1
+            void deps.store.touchHeartbeat(job.id, now().toISOString())
+          },
+          absorbStats,
+        )
         if (!finished) {
           await endChunk({ stage })
           return
@@ -267,7 +331,7 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
       const outstanding = tierIds.filter((id) => !written.has(id))
 
       if (outstanding.length > 0) {
-        await deps.generate({
+        const stats = await deps.generate({
           roundId: job.round_id,
           tier,
           excludeModelIds: [...written],
@@ -279,7 +343,10 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
             // Heartbeat per unit, so the sweeper can tell alive from stuck.
             void deps.store.touchHeartbeat(job.id, now().toISOString())
           },
+          reusePersistedPacket: true,
+          trackChunkStats: true,
         })
+        absorbStats(stats)
       }
 
       const remaining = tierIds.filter((id) => !written.has(id))
@@ -311,11 +378,36 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
   } finally {
     clearInterval(heartbeat)
     // Per-tick wall time + volume, for measuring chunk sizing in production.
+    const deferredLabel = uniqueIds(deferredModelIds).join(',') || '-'
+    const fullBudgetLabel = fullBudgetDeferralLabel(job.id, fullBudgetDeferralIds)
     console.log(
       `[league-generate] job=${job.id} round=${job.round_id} stage_in=${job.stage} ` +
-        `models_produced=${produced} tick_ms=${Date.now() - startedAtMs}`
+        `models_produced=${produced} tick_ms=${Date.now() - startedAtMs} ` +
+        `packet_ms=${packetMs} reused_packet=${reusedPacket} deferred=${deferredLabel} ` +
+        `full_budget_defer=${fullBudgetLabel}`
     )
   }
+}
+
+async function loadClosedBookPacket(
+  roundId: string,
+  deps: LeagueRunnerDeps,
+): Promise<{ reused: boolean; packetMs: number }> {
+  if (!deps.ensurePacket) return { reused: false, packetMs: 0 }
+  const info = await deps.ensurePacket(roundId)
+  if (info && info.built === false) return { reused: true, packetMs: 0 }
+  const packetMs = info && typeof info.packetMs === 'number' ? info.packetMs : 0
+  return { reused: false, packetMs }
+}
+
+function uniqueIds(ids: readonly string[]): string[] {
+  return [...new Set(ids)]
+}
+
+function fullBudgetDeferralLabel(jobId: string, ids: readonly string[]): string {
+  const unique = uniqueIds(ids)
+  if (unique.length === 0) return '-'
+  return unique.map((id) => `${id}:${recordFullBudgetDeferral(jobId, id)}`).join(',')
 }
 
 /**
@@ -330,20 +422,13 @@ async function runOfficialTiersInParallel(
   deadlineAtMs: number,
   tickBudgetMs: number,
   onModelResult: (modelId: string) => void,
+  absorbStats: (stats: void | TierChunkStats) => void,
 ): Promise<boolean> {
   const officialIds = OFFICIAL_GENERATION_TIERS.flatMap((tier) => deps.tierModelIds(tier))
   const outstanding = () => officialIds.filter((id) => !written.has(id))
   if (outstanding().length === 0) return true
 
   const phaseStart = Date.now()
-  if (deps.ensurePacket) {
-    const t0 = Date.now()
-    const info = await deps.ensurePacket(job.round_id)
-    const packetMs = info && typeof info.packetMs === 'number' ? info.packetMs : Date.now() - t0
-    const built = info && info.built ? 1 : 0
-    console.log(`[league-parallel] round=${job.round_id} packet_ms=${packetMs} built=${built}`)
-  }
-
   const gate = deps.createCallGate?.()
   let deferred = 0
   let http429 = 0
@@ -365,6 +450,7 @@ async function runOfficialTiersInParallel(
           trackChunkStats: true,
         })
         .then((stats) => {
+          absorbStats(stats)
           const end = Date.now()
           const tierDeferred = stats?.deferred ?? 0
           const tier429 = stats?.http429 ?? 0

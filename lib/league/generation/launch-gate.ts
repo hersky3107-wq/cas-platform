@@ -38,6 +38,8 @@ export type LaunchGateOpts = {
   /** Full tick budget (deadline − chunk start). Required for the solo/fresh rule. */
   tickBudgetMs?: number
   launchedThisChunk?: LaunchChunkState
+  /** Seat skipped because it cannot finish inside the remaining tick. */
+  onDeferred?: (index: number) => void
 }
 
 export function entryTimeoutMs(entry: LaunchGateEntry, defaultTimeoutMs: number): number {
@@ -84,6 +86,7 @@ export function claimNextLaunchableIndex(
     const entry = roster[i]!
     const timeoutMs = entryTimeoutMs(entry, opts.defaultTimeoutMs)
     if (!seatCanLaunch(timeoutMs, opts)) {
+      opts.onDeferred?.(i)
       cursor.nextIndex = i + 1
       continue
     }

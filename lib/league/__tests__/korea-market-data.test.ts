@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/server', () => ({ supabaseAdmin: { from: vi.fn() } }))
 
+import { lastNKrxSessionDates } from '../krx-calendar'
 import {
   emptyKrxFetchOutcome,
   ensureKrxDay,
@@ -69,11 +70,13 @@ function bar(
 function memoryIo(opts?: {
   fetchByDate?: Record<string, KrxDailyBar[]>
   nowIso?: string
-}): { io: KrxDailyIo; upserted: KrxDailyBar[]; fetchCalls: string[] } {
+}): { io: KrxDailyIo; upserted: KrxDailyBar[]; fetchCalls: string[]; listCalls: string[][]; presentCalls: number } {
   const table = new Map<string, KrxDailyBar>()
   const keyOf = (market: string, code: string, date: string) => `${date}|${market}|${code}`
   const upserted: KrxDailyBar[] = []
   const fetchCalls: string[] = []
+  const listCalls: string[][] = []
+  let presentCalls = 0
   const io: KrxDailyIo = {
     now: () => fromZonedTime(opts?.nowIso ?? '2026-10-02 16:00:00', 'Asia/Seoul'),
     fetchDay: async (compact) => {
@@ -82,6 +85,7 @@ function memoryIo(opts?: {
       return opts?.fetchByDate?.[iso] ?? opts?.fetchByDate?.[compact] ?? []
     },
     marketsPresent: async (isoDate) => {
+      presentCalls += 1
       const present = { KOSPI: false, KOSDAQ: false }
       for (const row of table.values()) {
         if (row.date !== isoDate) continue
@@ -96,8 +100,23 @@ function memoryIo(opts?: {
       }
     },
     getRow: async (market, code, isoDate) => table.get(keyOf(market, code, isoDate)) ?? null,
+    listCodeRows: async (market, code, isoDates) => {
+      listCalls.push([...isoDates])
+      const want = new Set(isoDates)
+      return [...table.values()]
+        .filter((row) => row.market === market && row.code === code && want.has(row.date))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    },
   }
-  return { io, upserted, fetchCalls }
+  return {
+    io,
+    upserted,
+    fetchCalls,
+    listCalls,
+    get presentCalls() {
+      return presentCalls
+    },
+  }
 }
 
 describe('korea-market-data source contract', () => {
@@ -208,5 +227,40 @@ describe('getKrxCloseSeries', () => {
       ['2026-09-30', 100],
       ['2026-10-02', 110],
     ])
+  })
+
+  it('uses one list when every session is cached and fetches only missing dates', async () => {
+    const mem = memoryIo({ nowIso: '2026-10-02 16:00:00' })
+    const dates = lastNKrxSessionDates('2026-10-02', 3)
+    for (const date of dates) {
+      if (date === '2026-10-01') continue
+      await mem.io.upsertRows([
+        bar({ date, market: 'KOSPI', code: '005930', close: 100 }),
+        bar({ date, market: 'KOSDAQ', code: '247540', close: 1 }),
+      ])
+    }
+    const beforePresent = mem.presentCalls
+    const result = await getKrxCloseSeries('KOSPI', '005930', 3, mem.io)
+    expect(mem.listCalls).toHaveLength(1)
+    expect(mem.listCalls[0]).toEqual(dates)
+    expect(mem.fetchCalls).toEqual(['20261001'])
+    expect(mem.presentCalls - beforePresent).toBe(1)
+    expect(result.notPublished).toEqual(['2026-10-01'])
+    expect(result.series.map((b) => b.date)).toEqual(dates.filter((date) => date !== '2026-10-01'))
+  })
+
+  it('does not call ensureKrxDay when the batched rows already cover every session', async () => {
+    const mem = memoryIo({ nowIso: '2026-10-02 16:00:00' })
+    const dates = lastNKrxSessionDates('2026-10-02', 3)
+    for (const date of dates) {
+      await mem.io.upsertRows([bar({ date, market: 'KOSPI', code: '005930', close: 50 })])
+    }
+    const beforePresent = mem.presentCalls
+    const result = await getKrxCloseSeries('KOSPI', '005930', 3, mem.io)
+    expect(mem.listCalls).toHaveLength(1)
+    expect(mem.fetchCalls).toEqual([])
+    expect(mem.presentCalls - beforePresent).toBe(0)
+    expect(result.series).toHaveLength(3)
+    expect(result.notPublished).toEqual([])
   })
 })

@@ -9,6 +9,8 @@ import { officialRowsForConsensus } from '@/lib/league/extra/seats'
 import {
   advanceLeagueGenerationJob,
   excludedModelIds,
+  fullBudgetDeferralCount,
+  resolveAttemptCount,
   runLeagueGenerationChunk,
   sweepLeagueGenerationJobs,
   type GenerateTierChunk,
@@ -518,7 +520,7 @@ describe('LEAGUE_PARALLEL_TIERS off (default)', () => {
     await advanceLeagueGenerationJob('job-1', bundle.deps)
     await bundle.runScheduled()
     expect(bundle.generateCalls.map((c) => c.tier)).toEqual(['premier', 'challenger', 'world', 'scout'])
-    expect(bundle.generateCalls.every((c) => c.reuse === false && c.skipConsensus === false)).toBe(true)
+    expect(bundle.generateCalls.every((c) => c.reuse === true && c.skipConsensus === false)).toBe(true)
     expect(bundle.finalized).toEqual(['round-1'])
     expect(fake.byId.get('job-1')!.status).toBe('done')
   })
@@ -739,5 +741,163 @@ describe('LEAGUE_PARALLEL_TIERS on', () => {
     await retry()
     await retry()
     expect(attempts).toBe(2)
+  })
+})
+
+describe('persisted packet reuse and budget deferrals', () => {
+  function packetSpy() {
+    let text: string | null = null
+    let builds = 0
+    const ensurePacket: LeagueRunnerDeps['ensurePacket'] = async () => {
+      if (text) return { built: false, packetMs: 40 }
+      builds += 1
+      text = 'closed-book'
+      return { built: true, packetMs: 180_000 }
+    }
+    return { ensurePacket, builds: () => builds }
+  }
+
+  async function twoChunks(
+    parallel: boolean,
+    generate: GenerateTierChunk,
+  ): Promise<{ builds: number; reuse: boolean[] }> {
+    const fake = makeStore([makeJob({ id: parallel ? 'job-par' : 'job-seq', round_id: parallel ? 'round-par' : 'round-seq' })])
+    const spy = packetSpy()
+    let second = false
+    const bundle = makeDeps(fake, {
+      parallelTiers: parallel,
+      ensurePacket: spy.ensurePacket,
+      tickBudgetMs: 300_000,
+      generate: async (args) => {
+        if (!second) {
+          return {
+            deferred: 1,
+            http429: 0,
+            deferredModelIds: ['p1'],
+            fullBudgetDeferralIds: [],
+          }
+        }
+        return generate(args)
+      },
+    })
+    await advanceLeagueGenerationJob(fake.byId.keys().next().value as string, bundle.deps)
+    await bundle.runScheduled()
+    expect(spy.builds()).toBe(1)
+    second = true
+    await advanceLeagueGenerationJob(fake.byId.keys().next().value as string, bundle.deps)
+    await bundle.runScheduled()
+    return { builds: spy.builds(), reuse: bundle.generateCalls.map((call) => call.reuse) }
+  }
+
+  it('second sequential chunk reuses the packet and does not call the builder', async () => {
+    const result = await twoChunks(false, answeringGenerate([]))
+    expect(result.builds).toBe(1)
+    expect(result.reuse.every(Boolean)).toBe(true)
+  })
+
+  it('second parallel chunk reuses the packet and does not call the builder', async () => {
+    const fakeRows: ModelRowFact[] = []
+    const result = await twoChunks(true, answeringGenerate(fakeRows))
+    expect(result.builds).toBe(1)
+    expect(result.reuse.every(Boolean)).toBe(true)
+  })
+
+  it('a 240s seat launches when the packet was reused', async () => {
+    const fake = makeStore([makeJob({ id: 'job-240', round_id: 'round-240' })])
+    const tickBudgetMs = 300_000
+    const launched: string[] = []
+    const bundle = makeDeps(fake, {
+      tickBudgetMs,
+      tierModelIds: (tier) => (tier === 'premier' ? ['deepseek-v4-pro'] : [...TIERS[tier]]),
+      ensurePacket: async () => ({ built: false, packetMs: 180_000 }),
+      generate: async ({ tier, excludeModelIds, deadlineAtMs, onModelResult, reusePersistedPacket }) => {
+        expect(reusePersistedPacket).toBe(true)
+        if (tier !== 'premier') {
+          for (const id of TIERS[tier]) {
+            if (excludeModelIds.includes(id)) continue
+            fake.rows.push({ model_id: id, predicted_direction: 'up', predicted_at: new Date().toISOString() })
+            onModelResult(id)
+          }
+          return
+        }
+        const roster = [{ model_id: 'deepseek-v4-pro', timeoutMs: 240_000 }]
+        const cursor = { nextIndex: 0 }
+        const i = claimNextLaunchableIndex(roster, cursor, {
+          nowMs: Date.now(),
+          deadlineAtMs,
+          defaultTimeoutMs: 60_000,
+          tickBudgetMs,
+          launchedThisChunk: { launched: 0 },
+        })
+        expect(i).toBe(0)
+        launched.push(roster[0]!.model_id)
+        fake.rows.push({
+          model_id: 'deepseek-v4-pro',
+          predicted_direction: 'up',
+          predicted_at: new Date().toISOString(),
+        })
+        onModelResult('deepseek-v4-pro')
+      },
+    })
+    await advanceLeagueGenerationJob('job-240', bundle.deps)
+    await bundle.runScheduled()
+    expect(launched).toEqual(['deepseek-v4-pro'])
+    expect(fake.rows.some((row) => row.model_id === 'deepseek-v4-pro')).toBe(true)
+  })
+
+  it('a budget-only deferral does not consume an attempt', async () => {
+    const fake = makeStore([makeJob({ id: 'job-budget', round_id: 'round-budget' })])
+    const logs: string[] = []
+    const original = console.log
+    console.log = ((message?: unknown, ...rest: unknown[]) => {
+      if (typeof message === 'string' && message.startsWith('[league-generate]')) logs.push(message)
+      original(message, ...rest)
+    }) as typeof console.log
+    try {
+      const bundle = makeDeps(fake, {
+        ensurePacket: async () => ({ built: false, packetMs: 1 }),
+        generate: async () => ({
+          deferred: 1,
+          http429: 0,
+          deferredModelIds: ['deepseek-v4-pro'],
+          fullBudgetDeferralIds: [],
+        }),
+      })
+      await advanceLeagueGenerationJob('job-budget', bundle.deps)
+      await bundle.runScheduled()
+    } finally {
+      console.log = original
+    }
+    const job = fake.byId.get('job-budget')!
+    expect(job.attempt_count).toBe(0)
+    expect(job.status).toBe('running')
+    expect(logs.some((line) => line.includes('packet_ms=0') && line.includes('reused_packet=true') && line.includes('deferred=deepseek-v4-pro') && line.includes('models_produced=0'))).toBe(true)
+    expect(resolveAttemptCount(1, 0, ['deepseek-v4-pro'], [])).toBe(0)
+    expect(resolveAttemptCount(3, 2, ['deepseek-v4-pro'], [])).toBe(0)
+  })
+
+  it('repeated full-budget deferral of the same seat still hits the attempt cap', async () => {
+    const fake = makeStore([makeJob({ id: 'job-cap', round_id: 'round-cap' })])
+    const before = fullBudgetDeferralCount('job-cap', 'deepseek-v4-pro')
+    const bundle = makeDeps(fake, {
+      ensurePacket: async () => ({ built: false, packetMs: 0 }),
+      generate: async () => ({
+        deferred: 1,
+        http429: 0,
+        deferredModelIds: ['deepseek-v4-pro'],
+        fullBudgetDeferralIds: ['deepseek-v4-pro'],
+      }),
+    })
+    let claims = 0
+    while (fake.byId.get('job-cap')!.status !== 'failed' && claims < 8) {
+      await advanceLeagueGenerationJob('job-cap', bundle.deps)
+      await bundle.runScheduled()
+      claims += 1
+    }
+    expect(fake.byId.get('job-cap')!.status).toBe('failed')
+    expect(fake.byId.get('job-cap')!.last_error).toContain('attempt cap')
+    expect(claims).toBe(LEAGUE_JOB_MAX_ATTEMPTS + 1)
+    expect(bundle.generateCalls).toHaveLength(LEAGUE_JOB_MAX_ATTEMPTS)
+    expect(fullBudgetDeferralCount('job-cap', 'deepseek-v4-pro')).toBe(before + LEAGUE_JOB_MAX_ATTEMPTS)
   })
 })
