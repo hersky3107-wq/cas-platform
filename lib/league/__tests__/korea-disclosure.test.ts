@@ -1,17 +1,8 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import {
-  KR_DISCLOSURE,
-  fillDisclosure,
-  formatKrTrackRecord,
-  getKrAdvisoryRegNo,
-  getKrBizNo,
-  isKrLanePublicReady,
-  resolveKrLaneBanner,
-  resolveKrLaneFooter,
-  trackRecordVarsFromRecordRoom,
-} from '../korea-disclosure'
+import { KR_DISCLOSURE, fillDisclosure, formatKrTrackRecord, getKrAdvisoryRegNo, getKrBizNo, isKrLanePublicReady, resolveKrLaneBanner, resolveKrLaneFooter, trackRecordVarsFromRecordRoom } from '../korea-disclosure'
+import { getLeagueUiPack } from '../i18n/dictionary'
 import { admissionStockLane } from '../stock-lane'
 import { gatePublicGenerateInstrument } from '../access-policy'
 import { KoreaStockLane } from '@/components/league/PublicLeagueHub'
@@ -241,7 +232,8 @@ describe('Korean-lane card disclosures (PredictionCard)', () => {
       id: 'kr-stock-round',
       opened_at: '2026-09-27T08:00:00.000Z',
       resolves_at: '2026-09-28T02:00:00.000Z',
-      category: 'stocks',
+      category: 'stock',
+      color_bucket: 'green',
       item_type: 'ranked',
       proposition_kind: 'close_higher',
       subject_label: null,
@@ -270,9 +262,12 @@ describe('Korean-lane card disclosures (PredictionCard)', () => {
       loading: false,
     })
     const krHtml = renderToStaticMarkup(el(PredictionCard, { initialData: card }))
+    const koPack = getLeagueUiPack('ko')
     expect(krHtml).toContain('data-testid="kr-card-disclosure"')
     expect(krHtml).toContain(KR_DISCLOSURE.card.slice(0, 24))
     expect(krHtml).toContain(KR_DISCLOSURE.confidence.slice(0, 24))
+    expect(krHtml).not.toContain(koPack.disclaimer.extraExperimental)
+    expect(krHtml).not.toContain(koPack.disclaimer.short)
 
     signalsMock.useLeagueRequestSignals.mockReturnValue({
       acceptLanguage: 'en',
@@ -283,8 +278,11 @@ describe('Korean-lane card disclosures (PredictionCard)', () => {
       loading: false,
     })
     const worldHtml = renderToStaticMarkup(el(PredictionCard, { initialData: card }))
+    const enPack = getLeagueUiPack('en')
     expect(worldHtml).not.toContain('data-testid="kr-card-disclosure"')
     expect(worldHtml).not.toContain(KR_DISCLOSURE.card.slice(0, 40))
+    expect(worldHtml).toContain(enPack.disclaimer.short.slice(0, 40))
+    expect(worldHtml).toContain(enPack.disclaimer.extraExperimental)
   })
 })
 

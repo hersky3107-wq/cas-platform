@@ -13,21 +13,24 @@ export function DisclaimerFooter({
   tone,
   t,
   category,
+  omitLegacyDisclaimer = false,
 }: {
   tone: ToneTokens
   t: LeagueUiPack
   category?: string
+  omitLegacyDisclaimer?: boolean
 }) {
   const extra =
     category === 'real_estate' ? t.disclaimer.realEstate : category === 'sports' ? t.disclaimer.sports : null
   const scope = category === 'real_estate' ? t.disclaimer.realEstateScope : null
-  const extraExperimental = t.disclaimer.extraExperimental
+  const extraExperimental = omitLegacyDisclaimer ? null : t.disclaimer.extraExperimental
 
   if (tone.disclaimerWeight === 'default') {
+    if (omitLegacyDisclaimer && !extra && !scope) return null
     return (
       <div className="border-t border-league-border/60 px-4 py-2.5 text-center text-[11px] leading-snug text-league-fg-muted">
-        <p>{t.disclaimer.short}</p>
-        <p className="mt-1.5">{extraExperimental}</p>
+        {omitLegacyDisclaimer ? null : <p>{t.disclaimer.short}</p>}
+        {extraExperimental ? <p className={omitLegacyDisclaimer ? '' : 'mt-1.5'}>{extraExperimental}</p> : null}
         {extra ? <p className="mt-1.5 font-medium text-league-fg">{extra}</p> : null}
         {scope ? <p className="mt-1 font-medium text-league-fg">{scope}</p> : null}
       </div>
@@ -35,14 +38,17 @@ export function DisclaimerFooter({
   }
 
   const prominent = tone.disclaimerWeight === 'prominent'
+  if (omitLegacyDisclaimer && !extra && !scope) return null
   return (
     <div
       className={`border-t px-4 py-3 text-center leading-snug border-league-border ${
         prominent ? 'bg-league-accent-soft font-medium text-league-fg' : 'text-league-fg-muted'
       }`}
     >
-      <p className={prominent ? 'text-xs' : 'text-[11px]'}>{t.disclaimer.long}</p>
-      <p className="mt-1.5 text-[11px]">{extraExperimental}</p>
+      {omitLegacyDisclaimer ? null : (
+        <p className={prominent ? 'text-xs' : 'text-[11px]'}>{t.disclaimer.long}</p>
+      )}
+      {extraExperimental ? <p className="mt-1.5 text-[11px]">{extraExperimental}</p> : null}
       {extra ? <p className="mt-1.5 text-[11px] font-medium text-league-fg">{extra}</p> : null}
       {scope ? <p className="mt-1 text-[11px] font-medium text-league-fg">{scope}</p> : null}
     </div>

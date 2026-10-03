@@ -84,7 +84,12 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
           {liveStartMessage(startError, t)}
         </p>
       ) : null}
-      <CardCompliance colorBucket={data.round.color_bucket} t={t} category={data.round.category}>
+      <CardCompliance
+        colorBucket={data.round.color_bucket}
+        t={t}
+        category={data.round.category}
+        omitLegacyDisclaimer={koreaLaneViewer}
+      >
         {(receipt) => (
           <>
             <CardBody

@@ -48,11 +48,19 @@ export type CardComplianceProps = {
   t: LeagueUiPack
   /** Ledger category — unlocks the extra real_estate appraisal disclaimer. */
   category?: string
+  /** Korean stock lane: KR_DISCLOSURE on the card replaces Layer A short/long + extraExperimental. */
+  omitLegacyDisclaimer?: boolean
   /** Render-prop: receives the receipt that unlocks `CardBody`. */
   children: (receipt: ComplianceReceipt) => ReactNode
 }
 
-export function CardCompliance({ colorBucket, t, category, children }: CardComplianceProps) {
+export function CardCompliance({
+  colorBucket,
+  t,
+  category,
+  omitLegacyDisclaimer = false,
+  children,
+}: CardComplianceProps) {
   const tone = toneFor(colorBucket)
   return (
     <div
@@ -60,7 +68,12 @@ export function CardCompliance({ colorBucket, t, category, children }: CardCompl
       className="flex flex-col overflow-hidden rounded-2xl border border-league-border bg-league-bg text-league-fg"
     >
       {children(RECEIPT)}
-      <DisclaimerFooter tone={tone} t={t} category={category} />
+      <DisclaimerFooter
+        tone={tone}
+        t={t}
+        category={category}
+        omitLegacyDisclaimer={omitLegacyDisclaimer}
+      />
     </div>
   )
 }
