@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { KR_GROUPS } from '../korea-equity-catalog'
 import { KoreaStockLane } from '@/components/league/PublicLeagueHub'
-import { KrUniverseChipBrowser, hotStripFromRows, krStockRefusalMessage, type KrUniverseRow } from '@/components/league/KrUniverseChipBrowser'
+import { KrUniverseChipBrowser, KrSelectionBar, hotStripFromRows, krStockRefusalMessage, type KrUniverseRow } from '@/components/league/KrUniverseChipBrowser'
 
 const browserSrc = readFileSync(
   join(process.cwd(), 'components', 'league', 'KrUniverseChipBrowser.tsx'),
@@ -60,17 +60,21 @@ describe('Korean-lane chip browser (UI contract)', () => {
     expect(browserHtml).not.toMatch(/<(input|textarea)[\s>]/i)
   })
 
-  it('US chip selection shows the world-lane horizon row and hands the STOCK instrument to the card flow', () => {
+  it('US chip selection shows the sticky selection bar and hands the STOCK instrument to the card flow', () => {
     expect(browserSrc).toContain("row.market === 'US' || isAdmin")
+    expect(browserSrc).toContain('data-testid="kr-selection-bar"')
     expect(browserSrc).toContain('UI_HORIZONS.map')
-    expect(browserSrc).toContain('t.catalog.horizons[h]')
     expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
-    // Hub wires the callback into the same loadCard flow the world lane uses
+    expect(browserSrc).toContain('scrollToLeagueRoundCard')
     expect(hubSrc).toContain('void loadCard(instrument, nextHorizon)')
+    expect(hubSrc).toContain('data-testid="league-round-card"')
     expect(hubSrc).toContain("instrument.startsWith('STOCK:')")
+    // Bar replaced the leftover grid-bottom horizon row
+    const afterUsGrid = browserSrc.slice(browserSrc.indexOf("loaded && tab === 'US'"))
+    expect(afterUsGrid).not.toMatch(/selected && generatesOnSelect\(selected\) \? \([\s\S]*role="group" aria-label="Horizon"/)
   })
 
-  it('non-admin KR chip selection shows the 준비 중 notice and never calls generate', () => {
+  it('non-admin KR chip selection shows the 준비 중 notice in the bar and never calls generate', () => {
     expect(browserSrc).toContain('국내 종목 예측은 준비 중입니다.')
     expect(browserSrc).toContain('data-testid="kr-chip-pending"')
     expect(browserSrc).toContain("selected.market !== 'US' && !isAdmin")
@@ -80,17 +84,90 @@ describe('Korean-lane chip browser (UI contract)', () => {
     expect(browserSrc).not.toContain('/api/league/card')
   })
 
-  it('admin KR chip shows the horizon row and hands KRSTOCK to the existing generate flow', () => {
+  it('admin KR chip shows the selection-bar horizons and hands KRSTOCK to the existing generate flow', () => {
     expect(browserSrc).toContain('isAdmin = false')
     expect(browserSrc).toContain('row.market === \'US\' || isAdmin')
-    expect(browserSrc).toContain('selected && generatesOnSelect(selected)')
+    expect(browserSrc).toContain('showHorizons={generatesOnSelect(selected)}')
     expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
-    expect(browserSrc).toContain('t.catalog.horizons[h]')
     expect(hubSrc).toContain('isAdmin={viewerIsAdmin}')
     expect(hubSrc).toContain("instrument.startsWith('KRSTOCK:')")
     expect(hubSrc).toContain("JSON.stringify({ instrument, horizon, locale })")
     expect(hubSrc).toContain('/api/league/generate')
     expect(hubSrc).toContain('/api/league/card?instrument=${encodeURIComponent(instrument)}')
+  })
+
+  it('selection bar appears with the four horizons; non-admin KR bar shows the notice instead', () => {
+    const horizonLabels = { '1d': '1일', '1w': '1주', '1m': '1개월', '3m': '3개월' } as const
+    const usRow: KrUniverseRow = {
+      market: 'US',
+      code: 'AAPL',
+      name: '애플',
+      groupId: null,
+      popularityRank: 1,
+      instrument: 'STOCK:NASDAQ:AAPL',
+    }
+    const krRow: KrUniverseRow = {
+      market: 'KOSPI',
+      code: '005930',
+      name: '삼성전자',
+      groupId: 'electronics',
+      popularityRank: 1,
+      instrument: 'KRSTOCK:KOSPI:005930',
+    }
+    const usHtml = renderToStaticMarkup(
+      createElement(KrSelectionBar, {
+        selected: usRow,
+        showHorizons: true,
+        horizon: '1d',
+        horizonLabels,
+        pendingNotice: null,
+        onPickHorizon: () => {},
+        onClose: () => {},
+      }),
+    )
+    expect(usHtml).toContain('kr-selection-bar')
+    expect(usHtml).toContain('애플')
+    expect(usHtml).toContain('AAPL')
+    expect(usHtml).toContain('1일')
+    expect(usHtml).toContain('1주')
+    expect(usHtml).toContain('1개월')
+    expect(usHtml).toContain('3개월')
+    expect(usHtml).not.toContain('국내 종목 예측은 준비 중입니다.')
+
+    const pendingHtml = renderToStaticMarkup(
+      createElement(KrSelectionBar, {
+        selected: krRow,
+        showHorizons: false,
+        horizon: '1d',
+        horizonLabels,
+        pendingNotice: '국내 종목 예측은 준비 중입니다.',
+        onPickHorizon: () => {},
+        onClose: () => {},
+      }),
+    )
+    expect(pendingHtml).toContain('kr-selection-bar')
+    expect(pendingHtml).toContain('삼성전자')
+    expect(pendingHtml).toContain('005930')
+    expect(pendingHtml).toContain('국내 종목 예측은 준비 중입니다.')
+    expect(pendingHtml).not.toContain('1일')
+    expect(pendingHtml).not.toContain('1주')
+
+    const adminKrHtml = renderToStaticMarkup(
+      createElement(KrSelectionBar, {
+        selected: krRow,
+        showHorizons: true,
+        horizon: '1w',
+        horizonLabels,
+        pendingNotice: null,
+        onPickHorizon: () => {},
+        onClose: () => {},
+      }),
+    )
+    expect(adminKrHtml).toContain('1일')
+    expect(adminKrHtml).toContain('1주')
+    expect(adminKrHtml).toContain('1개월')
+    expect(adminKrHtml).toContain('3개월')
+    expect(adminKrHtml).not.toContain('국내 종목 예측은 준비 중입니다.')
   })
 
   it('maps server KRSTOCK refusals to Korean copy', () => {

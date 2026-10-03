@@ -11,7 +11,7 @@ import { propertyInstrumentDisplay, propertyPropositionDisplay } from './real-es
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { stockQuoteSymbol, decodeStockInstrument } from './gateway/adapters/stock-catalog'
 import { decodeKrStockInstrument } from './korea-equity-catalog'
-import { krStockPropositionDisplay } from './korea-stock-display'
+import { krStockPropositionDisplay, parseKrStockProposition } from './korea-stock-display'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
@@ -66,12 +66,30 @@ export function currencyGlyph(instrument: string): string {
 }
 
 export function formatInstrumentPrice(instrument: string, value: number): string {
+  if (decodeKrStockInstrument(instrument)) {
+    return `${Math.round(value).toLocaleString('ko-KR')}원`
+  }
   const decimals = Math.abs(value) < 10 ? 4 : 2
   const formatted = value.toLocaleString(undefined, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })
   return `${currencyGlyph(instrument)}${formatted}`
+}
+
+/** Card header instrument for KRSTOCK: "{Korean name}({code})", never the bare code. */
+export function krStockCardTitle(
+  instrument: string,
+  subjectLabel?: string | null,
+  propositionText?: string | null,
+): string | null {
+  const kr = decodeKrStockInstrument(instrument)
+  if (!kr) return null
+  const fromLabel = subjectLabel?.trim()
+  if (fromLabel) return `${fromLabel}(${kr.code})`
+  const parsed = propositionText ? parseKrStockProposition(propositionText) : null
+  if (parsed?.name.trim()) return `${parsed.name.trim()}(${parsed.code})`
+  return null
 }
 
 /**
@@ -96,9 +114,13 @@ export function showInstrumentDisplay(instrument: string, locale: LeagueLocale =
   return entertainmentHeadlineLabel(instrument, locale)
 }
 
-function shownPriceInstrument(instrument: string): string {
-  const kr = decodeKrStockInstrument(instrument)
-  if (kr) return kr.code
+function shownPriceInstrument(
+  instrument: string,
+  subjectLabel?: string | null,
+  propositionText?: string | null,
+): string {
+  const titled = krStockCardTitle(instrument, subjectLabel, propositionText)
+  if (titled) return titled
   return decodeStockInstrument(instrument) ? stockQuoteSymbol(instrument) : instrument
 }
 
@@ -129,6 +151,9 @@ export function headerHeadline(args: {
   anchorSessionDate: string | null
   /** The round's proposition_kind. Omitted/unknown = close_higher, so every existing caller is byte-identical. */
   propositionKind?: string | null
+  /** KRSTOCK: universe / stored Korean name for "{name}({code})". */
+  subjectLabel?: string | null
+  propositionText?: string | null
   locale: LeagueLocale
   t: LeagueUiPack
 }): string {
@@ -139,11 +164,11 @@ export function headerHeadline(args: {
     return args.t.header.headlinePlain(args.roundDate, displayInst)
   }
   if (args.anchorPrice === null) {
-    const shown = shownPriceInstrument(args.instrument)
+    const shown = shownPriceInstrument(args.instrument, args.subjectLabel, args.propositionText)
     return args.t.header.headlineNoAnchor(args.roundDate, shown)
   }
   const session = args.anchorSessionDate ? formatSessionDate(args.anchorSessionDate, args.locale) : ''
-  const shown = shownPriceInstrument(args.instrument)
+  const shown = shownPriceInstrument(args.instrument, args.subjectLabel, args.propositionText)
   return args.t.header.headlineWithAnchor(
     args.roundDate,
     shown,

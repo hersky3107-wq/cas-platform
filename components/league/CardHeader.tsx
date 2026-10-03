@@ -53,6 +53,8 @@ export function CardHeader({
     anchorPrice: round.anchorPrice,
     anchorSessionDate: round.anchorSessionDate,
     propositionKind: round.proposition_kind,
+    subjectLabel: round.subject_label,
+    propositionText: round.proposition_text,
     locale,
     t,
   })

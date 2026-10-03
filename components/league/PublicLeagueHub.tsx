@@ -497,45 +497,45 @@ function CardsPanel() {
         </p>
       ) : null}
 
-      {view.kind === 'locked' &&
+      {(view.kind === 'locked' || view.kind === 'card') &&
       selectedInstrument &&
       koreaLaneShowsInstrumentPanel(koreaStocks, viewerIsAdmin, selectedInstrument) ? (
-        <LockedRoundPanel
-          locked={view.locked}
-          instrument={selectedInstrument}
-          horizon={horizon}
-          locale={locale}
-          onOpened={() => void loadCard(selectedInstrument, horizon)}
-        />
-      ) : null}
-
-      {view.kind === 'card' &&
-      selectedInstrument &&
-      koreaLaneShowsInstrumentPanel(koreaStocks, viewerIsAdmin, selectedInstrument) ? (
-        <>
-          <GenerationBanner
-            card={view.card}
-            locale={locale}
-            onRetried={() => void loadCard(selectedInstrument, horizon)}
-          />
-          <PredictionCard key={view.card.round.round_id} initialData={view.card} />
-          {isDeepDisabledForViewer(
-            {
-              jurisdiction: {
-                declaredCountry: admissionLane === 'korea' ? 'KR' : null,
-                ipCountry: admissionLane === 'korea' ? 'KR' : null,
-              },
-            },
-            view.card.round.category,
-            view.card.round.instrument,
-          ) ? null : (
-            <DeepAnalysis
-              roundId={view.card.round.round_id}
-              category={view.card.round.category}
-              colorBucket={view.card.round.color_bucket}
+        <div data-testid="league-round-card">
+          {view.kind === 'locked' ? (
+            <LockedRoundPanel
+              locked={view.locked}
+              instrument={selectedInstrument}
+              horizon={horizon}
+              locale={locale}
+              onOpened={() => void loadCard(selectedInstrument, horizon)}
             />
+          ) : (
+            <>
+              <GenerationBanner
+                card={view.card}
+                locale={locale}
+                onRetried={() => void loadCard(selectedInstrument, horizon)}
+              />
+              <PredictionCard key={view.card.round.round_id} initialData={view.card} />
+              {isDeepDisabledForViewer(
+                {
+                  jurisdiction: {
+                    declaredCountry: admissionLane === 'korea' ? 'KR' : null,
+                    ipCountry: admissionLane === 'korea' ? 'KR' : null,
+                  },
+                },
+                view.card.round.category,
+                view.card.round.instrument,
+              ) ? null : (
+                <DeepAnalysis
+                  roundId={view.card.round.round_id}
+                  category={view.card.round.category}
+                  colorBucket={view.card.round.color_bucket}
+                />
+              )}
+            </>
           )}
-        </>
+        </div>
       ) : null}
     </div>
   )

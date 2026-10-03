@@ -284,6 +284,83 @@ export function krStockRefusalMessage(code: string | null | undefined): string |
   return null
 }
 
+export function scrollToLeagueRoundCard() {
+  if (typeof document === 'undefined') return
+  document.querySelector('[data-testid="league-round-card"]')?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
+}
+
+export function KrSelectionBar({
+  selected,
+  showHorizons,
+  horizon,
+  horizonLabels,
+  pendingNotice,
+  onPickHorizon,
+  onClose,
+}: {
+  selected: KrUniverseRow
+  showHorizons: boolean
+  horizon: UiHorizon
+  horizonLabels: Record<UiHorizon, string>
+  pendingNotice: string | null
+  onPickHorizon: (next: UiHorizon) => void
+  onClose: () => void
+}) {
+  const ticker = selected.market === 'US' ? krTickerFromInstrument(selected.instrument) : selected.code
+  return (
+    <div
+      data-testid="kr-selection-bar"
+      className="sticky bottom-0 z-20 -mx-1 mt-3 border-t border-slate-200 bg-white/95 px-3 pt-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+    >
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {selected.name}
+            <span className="ml-1.5 text-xs font-medium text-slate-400 dark:text-slate-500">{ticker}</span>
+          </p>
+          {showHorizons ? (
+            <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Horizon">
+              {UI_HORIZONS.map((h) => (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => onPickHorizon(h)}
+                  aria-current={horizon === h}
+                  className={`min-h-[44px] rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    horizon === h
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {horizonLabels[h]}
+                </button>
+              ))}
+            </div>
+          ) : pendingNotice ? (
+            <p
+              data-testid="kr-chip-pending"
+              className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400"
+            >
+              {pendingNotice}
+            </p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          aria-label="선택 해제"
+          onClick={onClose}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg leading-none text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function KrUniverseChipBrowser({
   onSelectUsInstrument,
   isAdmin = false,
@@ -346,6 +423,7 @@ export function KrUniverseChipBrowser({
     setHorizon(next)
     if (selected && generatesOnSelect(selected)) {
       onSelectUsInstrument(selected.instrument, next)
+      scrollToLeagueRoundCard()
     }
   }
 
@@ -533,33 +611,16 @@ export function KrUniverseChipBrowser({
         </div>
       ) : null}
 
-      {selected && generatesOnSelect(selected) ? (
-        <div className="flex gap-1.5" role="group" aria-label="Horizon">
-          {UI_HORIZONS.map((h) => (
-            <button
-              key={h}
-              type="button"
-              onClick={() => pickHorizon(h)}
-              aria-current={horizon === h}
-              className={`min-h-[44px] rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                horizon === h
-                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                  : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-              }`}
-            >
-              {t.catalog.horizons[h]}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {selected && selected.market !== 'US' && !isAdmin ? (
-        <p
-          data-testid="kr-chip-pending"
-          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-        >
-          {KR_STOCK_PENDING_NOTICE}
-        </p>
+      {selected ? (
+        <KrSelectionBar
+          selected={selected}
+          showHorizons={generatesOnSelect(selected)}
+          horizon={horizon}
+          horizonLabels={t.catalog.horizons}
+          pendingNotice={selected.market !== 'US' && !isAdmin ? KR_STOCK_PENDING_NOTICE : null}
+          onPickHorizon={pickHorizon}
+          onClose={() => setSelected(null)}
+        />
       ) : null}
     </div>
   )

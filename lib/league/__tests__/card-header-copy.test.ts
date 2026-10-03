@@ -5,10 +5,12 @@ import { CardHeader } from '../../../components/league/CardHeader'
 import { encodePoliticsInstrument } from '../gateway/adapters/politics-catalog'
 import {
   electionInstrumentDisplay,
+  formatInstrumentPrice,
   formatRoundOpenedDate,
   formatSessionDate,
   headerHeadline,
   headerWindow,
+  krStockCardTitle,
   rankedPropositionDisplay,
 } from '../card-header-copy'
 import { LEAGUE_UI } from '../i18n/dictionary'
@@ -289,6 +291,51 @@ describe('header honesty', () => {
     expect(headline).toContain('2026 미국 조지아 주지사 · Keisha Lance Bottoms 당선')
     expect(headline).not.toContain('ELECTION:')
     expect(headline).not.toContain('%20')
+  })
+
+  it('formats KRSTOCK prices as won with thousands separators and no decimals', () => {
+    expect(formatInstrumentPrice('KRSTOCK:KOSPI:005930', 276000)).toBe('276,000원')
+    expect(formatInstrumentPrice('KRSTOCK:KOSDAQ:247540', 276000.4)).toBe('276,000원')
+    expect(formatInstrumentPrice('AAPL', 305.59)).toBe('$305.59')
+    expect(formatInstrumentPrice('XAU/USD', 2500)).toBe('$2,500.00')
+  })
+
+  it('KRSTOCK card header shows 삼성전자(005930) and 276,000원', () => {
+    expect(krStockCardTitle('KRSTOCK:KOSPI:005930', '삼성전자')).toBe('삼성전자(005930)')
+    const headline = headerHeadline({
+      roundDate: '2026년 10월 2일',
+      instrument: 'KRSTOCK:KOSPI:005930',
+      anchorPrice: 276000,
+      anchorSessionDate: '2026-10-02',
+      subjectLabel: '삼성전자',
+      locale: 'ko',
+      t: ko,
+    })
+    expect(headline).toContain('삼성전자(005930)')
+    expect(headline).toContain('276,000원')
+    expect(headline).not.toMatch(/005930(?!\))/)
+
+    const html = renderToStaticMarkup(
+      createElement(CardHeader, {
+        round: roundMeta({
+          instrument: 'KRSTOCK:KOSPI:005930',
+          category: 'stock',
+          subject_label: '삼성전자',
+          proposition_text: 'Will 삼성전자 (005930) close higher at the KRX regular-session close on 2026-10-06 than at its KRX regular-session close on 2026-10-02?',
+          anchorPrice: 276000,
+          livePrice: 280000,
+          anchorSessionDate: '2026-10-02',
+        }),
+        hitRate,
+        tone,
+        t: ko,
+        locale: 'ko',
+      }),
+    )
+    expect(html).toContain('삼성전자(005930)')
+    expect(html).toContain('276,000원')
+    expect(html).toContain('280,000원')
+    expect(html).not.toContain('₩')
   })
 
   it('rankedPropositionDisplay decodes politics when stored proposition is the instrument id', () => {
