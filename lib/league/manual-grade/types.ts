@@ -60,6 +60,8 @@ export type ManualQueueItem = {
   charged_credits: number
   side_a: string
   side_b: string
+  /** Admin-only: official/extra seats with a null direction. */
+  null_seats: Array<{ model_id: string; fail_reason: string | null }>
 }
 
 export type ManualSuggestion = {

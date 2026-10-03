@@ -163,7 +163,7 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   // the older minor, so 3-5 is the closer match to the roster slot.
   { id: 'openrouter:mistral-medium-3.5', provider: 'openrouter', brand: 'Mistral', displayName: 'Mistral Medium 3.5', model: 'mistralai/mistral-medium-3-5', league: 'challenger', verified: true },
   { id: 'openrouter:deepseek-v4-flash', provider: 'openrouter', brand: 'DeepSeek', displayName: 'DeepSeek V4 Flash', model: 'deepseek/deepseek-v4-flash', league: 'world', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
-  { id: 'openrouter:qwen3.5-flash', provider: 'openrouter', brand: 'Qwen', displayName: 'Qwen3.5 Flash', model: 'qwen/qwen3.5-flash-02-23', league: 'world', verified: true, extraRequestParams: { reasoning: { effort: 'minimal' } } },
+  { id: 'openrouter:qwen3.5-flash', provider: 'openrouter', brand: 'Qwen', displayName: 'Qwen3.5 Flash', model: 'qwen/qwen3.5-flash-02-23', league: 'world', verified: true, extraRequestParams: { reasoning: { exclude: true }, chat_template_kwargs: { enable_thinking: false } } },
   // 2026-09-07: WORLD seat replacing dead Friendli EXAONE. Default effort on
   // a league packet billed $0.0107 with content null; effort:minimal billed
   // $0.0034 and returned a clean CHAIN/JSON contract. See roster PRICE AUDIT.

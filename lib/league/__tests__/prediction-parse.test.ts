@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { answerContractFor } from '../answer-contract'
 import {
   isPlaceholderRationale,
   parsePrediction,
@@ -224,5 +225,36 @@ describe('sanitizeScoutRationaleDisplay — display-time only', () => {
 
   it('leaves non-numeric brackets and the rest of the sentence', () => {
     expect(sanitizeScoutRationaleDisplay('The [Fed] cut is priced in.')).toBe('The [Fed] cut is priced in.')
+  })
+})
+
+describe('reasoning-trace leak — no-answer, nothing stored as rationale', () => {
+  const LEAKED_QWEN_SAMPLE =
+    'Thinking Process: 1. **Analyze the Request:** The user wants a WORLD-seat forecast. I should weigh the packet then emit JSON. Wait. Let me outline. {"direction": "up", "probability": 72, "rationale": "Moment'
+
+  it('rejects the exact leaked qwen3.5-flash sample as no-answer with no user-visible rationale', () => {
+    const parsed = parsePrediction(LEAKED_QWEN_SAMPLE)
+    expect(parsed?.direction).toBeNull()
+    expect(parsed?.rationale).toBeNull()
+    expect(parsed?.parseFailure).toBe('reasoning_leak')
+    expect(sanitizeRationale(LEAKED_QWEN_SAMPLE)).toBeNull()
+    const split = splitReasoningAndJson(LEAKED_QWEN_SAMPLE)
+    expect(split.parsed?.direction).toBeNull()
+    expect(split.parsed?.rationale).toBeNull()
+    expect(split.reasoning).toBeNull()
+    const contract = answerContractFor('binary_close_higher')
+    const answer = contract.parse(LEAKED_QWEN_SAMPLE)
+    expect(answer?.side).toBeNull()
+    expect(answer?.rationale).toBeNull()
+    expect(answer?.parseFailure).toBe('reasoning_leak')
+    expect(contract.validate(answer, '1d')).toEqual({ ok: false, reason: 'reasoning_leak' })
+  })
+
+  it('does not infer a direction from truncated CoT that exceeds the snippet cap', () => {
+    const long = `${'x'.repeat(520)} direction: up probability: 80`
+    const parsed = parsePrediction(long)
+    expect(parsed?.direction).toBeNull()
+    expect(parsed?.rationale).toBeNull()
+    expect(parsed?.parseFailure).toBe('unparseable')
   })
 })

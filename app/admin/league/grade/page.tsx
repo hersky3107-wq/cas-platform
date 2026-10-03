@@ -437,6 +437,23 @@ export default function LeagueManualGradePage() {
                   Side A / YES: {selected.side_a} · Side B / NO: {selected.side_b}
                 </p>
 
+                {selected.null_seats.length > 0 ? (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">미응답 좌석 (admin)</p>
+                    <ul className="mt-2 space-y-1">
+                      {selected.null_seats.map((seat) => (
+                        <li key={seat.model_id} className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-mono text-slate-200">{seat.model_id}</span>
+                          <span className="text-slate-500">미응답</span>
+                          {seat.fail_reason ? (
+                            <span className="font-mono text-amber-300">{seat.fail_reason}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
                 <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-3 text-sm">
                   <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">AI 제안 (자동 적용 안 함)</p>
                   {suggestingIds[selected.id] && !suggestions[selected.id] ? (

@@ -174,6 +174,45 @@ describe('DivisionBoard live streaming shells', () => {
     expect(html.match(/data-testid="seat-no-response"/g)?.length).toBe(2)
     expect(html).not.toContain('seat-skeleton')
     expect(html).not.toContain('data-tier')
+    expect(html).not.toContain('seat-fail-reason')
+  })
+
+  it('admin fail_reason renders next to a 미응답 seat; omitted without the map', () => {
+    const tKo = getLeagueUiPack('ko')
+    const card = buildCardData(round(), [
+      pred({
+        model_id: 'kimi-k3',
+        brand: 'Moonshot AI',
+        camp: 'china',
+        league_tier: 'premier',
+        predicted_direction: null,
+        predicted_value: null,
+        fail_reason: 'timeout',
+      }),
+    ])
+    expect(card.droppedFailReasons).toEqual({ 'kimi-k3': 'timeout' })
+    const admin = renderToStaticMarkup(
+      createElement(DivisionBoard, {
+        models: card.models,
+        tierSplit: card.tierSplit,
+        t: tKo,
+        droppedModelIds: card.droppedModelIds,
+        droppedFailReasons: card.droppedFailReasons,
+      }),
+    )
+    expect(admin).toContain('Kimi 미응답')
+    expect(admin).toContain('timeout')
+    const publicHtml = renderToStaticMarkup(
+      createElement(DivisionBoard, {
+        models: card.models,
+        tierSplit: card.tierSplit,
+        t: tKo,
+        droppedModelIds: card.droppedModelIds,
+      }),
+    )
+    expect(publicHtml).toContain('Kimi 미응답')
+    expect(publicHtml).not.toContain('timeout')
+    expect(publicHtml).not.toContain('seat-fail-reason')
   })
 })
 

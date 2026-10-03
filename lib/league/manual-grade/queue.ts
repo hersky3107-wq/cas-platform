@@ -34,6 +34,7 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
 
   const ids = rows.map((r) => String(r.id))
   const jobsByRound = await loadChargedJobs(ids)
+  const nullSeatsByRound = await loadNullSeats(ids)
   const t = LEAGUE_UI.ko
 
   return rows.map((row) => {
@@ -63,8 +64,44 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
       charged_credits: charged,
       side_a: labels.badge(labels.sides[0]),
       side_b: labels.badge(labels.sides[1]),
+      null_seats: nullSeatsByRound.get(String(row.id)) ?? [],
     }
   })
+}
+
+async function loadNullSeats(roundIds: string[]) {
+  const { data, error } = await supabaseAdmin
+    .from('model_predictions')
+    .select('round_id, model_id, fail_reason')
+    .in('round_id', roundIds)
+    .is('predicted_direction', null)
+  if (error) {
+    const fallback = await supabaseAdmin
+      .from('model_predictions')
+      .select('round_id, model_id')
+      .in('round_id', roundIds)
+      .is('predicted_direction', null)
+    if (fallback.error) throw new Error(fallback.error.message)
+    const map = new Map<string, Array<{ model_id: string; fail_reason: string | null }>>()
+    for (const row of fallback.data ?? []) {
+      const rid = String(row.round_id)
+      const list = map.get(rid) ?? []
+      list.push({ model_id: String(row.model_id), fail_reason: null })
+      map.set(rid, list)
+    }
+    return map
+  }
+  const map = new Map<string, Array<{ model_id: string; fail_reason: string | null }>>()
+  for (const row of data ?? []) {
+    const rid = String(row.round_id)
+    const list = map.get(rid) ?? []
+    list.push({
+      model_id: String(row.model_id),
+      fail_reason: typeof row.fail_reason === 'string' ? row.fail_reason : null,
+    })
+    map.set(rid, list)
+  }
+  return map
 }
 
 async function loadChargedJobs(roundIds: string[]) {

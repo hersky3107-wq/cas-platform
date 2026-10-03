@@ -14,6 +14,7 @@ import 'server-only'
 import { runSingleAiProvider } from '@/lib/ai/router'
 import { readLeagueDivinationLive } from '@/lib/oracle/league-divination/live'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { classifyNoAnswerFailReason, type NoAnswerFailReason } from '../fail-reason'
 import type { AnswerSide } from '../answer-contract'
 import { fetchDataPacket } from '../market-data'
 import { decodeStockInstrument } from '../gateway/adapters/stock-catalog'
@@ -197,6 +198,8 @@ async function upsertExtraPrediction(row: {
   estimated_cost_usd: number
   prompt_tokens?: number | null
   completion_tokens?: number | null
+  fail_reason?: NoAnswerFailReason | null
+  error?: string | null
 }): Promise<void> {
   const { error } = await supabaseAdmin.from('model_predictions').upsert(
     {
@@ -219,6 +222,10 @@ async function upsertExtraPrediction(row: {
       estimated_cost_usd: row.estimated_cost_usd,
       server_side_tools_used: null,
       predicted_at: new Date().toISOString(),
+      fail_reason:
+        row.direction == null
+          ? (row.fail_reason ?? classifyNoAnswerFailReason({ error: row.error }))
+          : null,
     },
     { onConflict: 'round_id,model_id' },
   )
@@ -297,6 +304,7 @@ async function runDivinationSeat(
       reasoning_snippet: null,
       cost_usd: 0,
       estimated_cost_usd: 0,
+      error: message,
     })
     return { ...baseOutcome('divination', seat.brand), status: 'error', error: message.slice(0, 500) }
   }
@@ -472,6 +480,7 @@ async function runHistorySeat(
       reasoning_snippet: null,
       cost_usd: 0,
       estimated_cost_usd: 0,
+      error: message,
     })
     return { ...baseOutcome('history', seat.brand), status: 'error', error: message.slice(0, 500) }
   }
@@ -646,6 +655,7 @@ async function runSentimentSeat(round: ExtraRoundRow, call: SentimentCaller): Pr
       reasoning_snippet: null,
       cost_usd: 0,
       estimated_cost_usd: 0,
+      error: message,
     })
     return { ...baseOutcome('sentiment', seat.brand), status: 'error', error: message.slice(0, 500) }
   }
@@ -827,6 +837,7 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
       reasoning_snippet: null,
       cost_usd: 0,
       estimated_cost_usd: 0,
+      error: message,
     })
     return { ...baseOutcome('consensus', seat.brand), status: 'error', error: message.slice(0, 500) }
   }
@@ -978,6 +989,7 @@ async function runCrowSeat(
       reasoning_snippet: null,
       cost_usd: 0,
       estimated_cost_usd: 0,
+      error: message,
     })
     return { ...baseOutcome('crow', seat.brand), status: 'error', error: message.slice(0, 500) }
   }

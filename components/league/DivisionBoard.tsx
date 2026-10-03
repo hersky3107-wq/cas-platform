@@ -59,6 +59,7 @@ export function DivisionBoard({
   actualMagnitudePct = null,
   streaming = false,
   droppedModelIds = [],
+  droppedFailReasons = {},
 }: {
   models: CardModelPrediction[]
   tierSplit: TierSplit
@@ -75,6 +76,8 @@ export function DivisionBoard({
   /** Live generation: mount every tier now and fill concurrently. */
   streaming?: boolean
   droppedModelIds?: readonly string[]
+  /** Admin-only machine codes next to 미응답 seats. */
+  droppedFailReasons?: Record<string, string>
 }) {
   const groups = useMemo(
     () =>
@@ -163,6 +166,7 @@ export function DivisionBoard({
                 <NoResponseSeat
                   key={`${group.tier}-drop-${id}`}
                   label={noResponseSeatLabel(id, t.modelList.noResponse)}
+                  failReason={droppedFailReasons[id]}
                 />
               ))}
               {fill
@@ -188,13 +192,18 @@ function SeatSkeleton() {
   )
 }
 
-function NoResponseSeat({ label }: { label: string }) {
+function NoResponseSeat({ label, failReason }: { label: string; failReason?: string }) {
   return (
     <li
-      className="flex h-[36px] items-center justify-center rounded-lg border border-dashed border-league-border/50 bg-league-bg-elevated/60 md:h-[40px]"
+      className="flex h-[36px] items-center justify-center gap-1.5 rounded-lg border border-dashed border-league-border/50 bg-league-bg-elevated/60 md:h-[40px]"
       data-testid="seat-no-response"
     >
       <span className="text-[10px] font-medium tracking-wide text-league-fg-muted">{label}</span>
+      {failReason ? (
+        <span className="font-mono text-[10px] text-amber-700/90" data-testid="seat-fail-reason">
+          {failReason}
+        </span>
+      ) : null}
     </li>
   )
 }

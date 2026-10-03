@@ -98,6 +98,8 @@ export type CardModelPrediction = {
   is_correct: boolean | null
   cost_usd: number | null
   predicted_at: string
+  /** Admin-only. Machine no-answer code. Never sent on the public card. */
+  fail_reason?: string | null
 }
 
 /**
@@ -392,6 +394,11 @@ export type CardData = {
    * stay on `models` as tiles; they are not listed here.
    */
   droppedModelIds: string[]
+  /**
+   * Admin-only. fail_reason for official 미응답 seats. Omitted on the public
+   * card so users still see "미응답" with no machine code.
+   */
+  droppedFailReasons?: Record<string, string>
   /**
    * Non-null while a background generation job is queued/running (or failed
    * without a completed round). Attached by the card ROUTE, not by

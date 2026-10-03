@@ -109,7 +109,8 @@ export async function GET(req: Request) {
     // paywall branch so grading stays read-driven even for locked viewers.
     const card = await fetchCardData(
       lookup,
-      viewer.isAdmin ? undefined : { categories: viewer.visibleCategories }
+      viewer.isAdmin ? undefined : { categories: viewer.visibleCategories },
+      { includeFailReasons: viewer.isAdmin },
     )
 
     if (!viewer.isAdmin) {

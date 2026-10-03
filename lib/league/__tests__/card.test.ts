@@ -116,6 +116,7 @@ describe('buildCardData', () => {
     expect(card.models).toHaveLength(38)
     expect(card.models.some((m) => m.model_id === 'kimi-k3' || m.model_id === 'mimo-v2.5')).toBe(false)
     expect(card.droppedModelIds).toEqual(['kimi-k3', 'mimo-v2.5'])
+    expect(card.droppedFailReasons).toBeUndefined()
     expect(card.consensus.tally).toEqual({ up: 38, down: 0, flat: 0, abstain: 0 })
     expect(card.consensus.respondedModels).toBe(38)
     expect(card.consensus.totalModels).toBe(40)
@@ -123,6 +124,36 @@ describe('buildCardData', () => {
     expect(card.tierSplit.world.up).toBe(13)
     const hero = buildConsensusHero(card.consensus, '1d', LEAGUE_UI.ko)
     expect(hero?.countLine).toBe('AI 40개 중 38개가 오른다 · 0개가 내린다')
+  })
+
+  it('admin-only droppedFailReasons maps null seats; omitted when the column is absent', () => {
+    const rows = getRoster().map((entry) =>
+      entry.model_id === 'gpt-5-search-api'
+        ? pred({
+            model_id: entry.model_id,
+            brand: entry.brand,
+            camp: entry.camp,
+            league_tier: entry.league_tier,
+            predicted_direction: null,
+            predicted_value: null,
+            fail_reason: 'empty_content',
+          })
+        : pred({
+            model_id: entry.model_id,
+            brand: entry.brand,
+            camp: entry.camp,
+            league_tier: entry.league_tier,
+            predicted_direction: 'up',
+            predicted_value: 60,
+          }),
+    )
+    const admin = buildCardData(round(), rows)
+    expect(admin.droppedModelIds).toEqual(['gpt-5-search-api'])
+    expect(admin.droppedFailReasons).toEqual({ 'gpt-5-search-api': 'empty_content' })
+    const publicRows = rows.map(({ fail_reason: _ignored, ...rest }) => rest)
+    const publicCard = buildCardData(round(), publicRows)
+    expect(publicCard.droppedModelIds).toEqual(['gpt-5-search-api'])
+    expect(publicCard.droppedFailReasons).toBeUndefined()
   })
 
   it('splits direction tallies per camp (us/china/other)', () => {

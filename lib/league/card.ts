@@ -35,6 +35,8 @@ const ROUND_COLUMNS =
   'id, proposition_text, category, color_bucket, instrument, horizon, resolution_rule, resolves_at, opened_at, actual_outcome, resolved_at'
 const PREDICTION_COLUMNS =
   'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at'
+const PREDICTION_COLUMNS_ADMIN =
+  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at, fail_reason'
 
 /** Pre-20260829000002 environments lack `predicted_qualifier_text`; retried without it (see `loadPredictions`). */
 const PREDICTION_COLUMNS_LEGACY =
@@ -209,24 +211,31 @@ async function loadOperatorEvidence(
   }
 }
 
-async function loadPredictions(roundId: string): Promise<PredictionRow[]> {
+async function loadPredictions(roundId: string, includeFailReasons = false): Promise<PredictionRow[]> {
+  const columns = includeFailReasons ? PREDICTION_COLUMNS_ADMIN : PREDICTION_COLUMNS
   const { data, error } = await supabaseAdmin
     .from('model_predictions')
-    .select(PREDICTION_COLUMNS)
+    .select(columns)
     .eq('round_id', roundId)
     .order('predicted_at', { ascending: true })
-  if (error) {
-    // Same degrade-not-break stance as `loadOptionalColumns`: a DB that
-    // predates 20260829000002 renders qualifiers as null, not a broken card.
-    const fallback = await supabaseAdmin
+  if (!error) return (data ?? []) as PredictionRow[]
+  if (includeFailReasons) {
+    const withoutFail = await supabaseAdmin
       .from('model_predictions')
-      .select(PREDICTION_COLUMNS_LEGACY)
+      .select(PREDICTION_COLUMNS)
       .eq('round_id', roundId)
       .order('predicted_at', { ascending: true })
-    if (fallback.error) throw new Error(`league card: predictions lookup failed (${error.message})`)
-    return (fallback.data ?? []) as PredictionRow[]
+    if (!withoutFail.error) return (withoutFail.data ?? []) as PredictionRow[]
   }
-  return (data ?? []) as PredictionRow[]
+  // Same degrade-not-break stance as `loadOptionalColumns`: a DB that
+  // predates 20260829000002 renders qualifiers as null, not a broken card.
+  const fallback = await supabaseAdmin
+    .from('model_predictions')
+    .select(PREDICTION_COLUMNS_LEGACY)
+    .eq('round_id', roundId)
+    .order('predicted_at', { ascending: true })
+  if (fallback.error) throw new Error(`league card: predictions lookup failed (${error.message})`)
+  return (fallback.data ?? []) as PredictionRow[]
 }
 
 type CrossRoundQueryRow = {
@@ -295,11 +304,15 @@ function startGradingOnRead(roundId: string): void {
 }
 
 /** Full read path: resolve the round, load its predictions, assemble CardData. */
-export async function fetchCardData(lookup: CardLookup, scope?: LeaderboardScope): Promise<CardData> {
+export async function fetchCardData(
+  lookup: CardLookup,
+  scope?: LeaderboardScope,
+  opts?: { includeFailReasons?: boolean },
+): Promise<CardData> {
   const round = await loadRound(lookup)
   const optional = await loadOptionalColumns(round.id)
   const [predictions, board, crossRound, operatorEvidence] = await Promise.all([
-    loadPredictions(round.id),
+    loadPredictions(round.id, opts?.includeFailReasons === true),
     fetchLeaderboardData(scope),
     loadCrossRoundGrades(round.instrument),
     loadOperatorEvidence(round.id),

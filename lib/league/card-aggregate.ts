@@ -103,6 +103,7 @@ export type PredictionRow = {
   is_correct: boolean | null
   cost_usd: number | null
   predicted_at: string
+  fail_reason?: string | null
 }
 
 function toColorBucket(raw: string): ColorBucket {
@@ -331,6 +332,7 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
     is_correct: row.is_correct,
     cost_usd: row.cost_usd,
     predicted_at: row.predicted_at,
+    ...(row.fail_reason ? { fail_reason: row.fail_reason } : {}),
   }
 }
 
@@ -445,12 +447,19 @@ export function buildCardData(
     crossRound,
     round: roundRow,
   })
+  const droppedFailReasons: Record<string, string> = {}
+  for (const row of predictionRows) {
+    if (row.predicted_direction !== null) continue
+    if (!row.fail_reason) continue
+    droppedFailReasons[row.model_id] = row.fail_reason
+  }
   return {
     round: toRoundMeta(roundRow, nowMs),
     models,
     ...aggregates,
     consensus: withDroppedSeatTotal(aggregates.consensus, droppedModelIds.length),
     droppedModelIds,
+    ...(Object.keys(droppedFailReasons).length > 0 ? { droppedFailReasons } : {}),
     combinedTrack,
     generatedAt: new Date().toISOString(),
   }

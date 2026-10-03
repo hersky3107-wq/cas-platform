@@ -8,6 +8,8 @@
 
 export type BinaryDirection = 'up' | 'down'
 
+export type ParseFailure = 'reasoning_leak' | 'unparseable'
+
 export type ParsedPrediction = {
   direction: BinaryDirection | null
   probability: number | null
@@ -22,10 +24,54 @@ export type ParsedPrediction = {
   rationale: string | null
   /** True when the model named a non-binary direction (flat/abstain/neutral/…). */
   rejectedDirection: boolean
+  /** Set when the output is a no-answer (leak or truncated CoT). */
+  parseFailure?: ParseFailure
 }
 
 const BINARY = new Set(['up', 'down'])
 const REJECTED = new Set(['flat', 'abstain', 'neutral', 'sideways', 'unchanged', 'none', 'n/a', 'na'])
+
+/** Display rationale cap — also the cutoff for inferring a direction from prose. */
+export const RATIONALE_SNIPPET_MAX_CHARS = 500
+
+const REASONING_TRACE_MARKERS: readonly RegExp[] = [
+  /Thinking Process/i,
+  /Analyze the Request/i,
+  /<think>/i,
+  /Let's count/i,
+  /\bWait\./,
+]
+
+export function hasReasoningTrace(text: string): boolean {
+  return REASONING_TRACE_MARKERS.some((re) => re.test(text))
+}
+
+/** Drop hidden-thinking wrappers so a trailing answer JSON can still be found. */
+export function stripReasoningTracePreamble(text: string): string {
+  return text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '').replace(/<think\b[^>]*>[\s\S]*$/gi, '').trim()
+}
+
+function leakedPrediction(): ParsedPrediction {
+  return {
+    direction: null,
+    probability: null,
+    magnitude: null,
+    rationale: null,
+    rejectedDirection: true,
+    parseFailure: 'reasoning_leak',
+  }
+}
+
+function unparseablePrediction(): ParsedPrediction {
+  return {
+    direction: null,
+    probability: null,
+    magnitude: null,
+    rationale: null,
+    rejectedDirection: true,
+    parseFailure: 'unparseable',
+  }
+}
 
 export function isBinaryDirection(value: unknown): value is BinaryDirection {
   return value === 'up' || value === 'down'
@@ -45,8 +91,8 @@ export function isPlaceholderRationale(text: string): boolean {
 
 export function sanitizeRationale(raw: string | null | undefined): string | null {
   if (typeof raw !== 'string') return null
-  const trimmed = raw.trim().slice(0, 500)
-  if (!trimmed || isPlaceholderRationale(trimmed)) return null
+  const trimmed = raw.trim().slice(0, RATIONALE_SNIPPET_MAX_CHARS)
+  if (!trimmed || isPlaceholderRationale(trimmed) || hasReasoningTrace(trimmed)) return null
   return trimmed
 }
 
@@ -93,7 +139,7 @@ export function sanitizeReasoningText(raw: string | null | undefined): string | 
     .trim()
     .slice(0, REASONING_TEXT_MAX_CHARS)
     .trim()
-  if (!cleaned || isPlaceholderRationale(cleaned)) return null
+  if (!cleaned || isPlaceholderRationale(cleaned) || hasReasoningTrace(cleaned)) return null
   return cleaned
 }
 
@@ -155,10 +201,13 @@ export type SplitPrediction = {
  */
 export function splitReasoningAndJson(text: string | null): SplitPrediction {
   if (!text) return { reasoning: null, parsed: null }
-  const last = findLastAnswerJson(text)
-  if (!last) return { reasoning: null, parsed: parsePrediction(text) }
-  const parsed = normalizeParsedFields(last.obj) ?? parsePrediction(text)
-  return { reasoning: sanitizeReasoningText(text.slice(0, last.start)), parsed }
+  const parsed = parsePrediction(text)
+  if (parsed?.parseFailure) return { reasoning: null, parsed }
+  const last = findLastAnswerJson(stripReasoningTracePreamble(text))
+  if (!last) return { reasoning: null, parsed }
+  const reasoning = sanitizeReasoningText(text.slice(0, last.start))
+  if (reasoning && hasReasoningTrace(reasoning)) return { reasoning: null, parsed }
+  return { reasoning, parsed }
 }
 
 /** Extracts direction/probability/rationale from model output. Handles strict JSON,
@@ -166,28 +215,34 @@ export function splitReasoningAndJson(text: string | null): SplitPrediction {
  *  reasoning-block-then-JSON shape (last parseable JSON with a direction key wins). */
 export function parsePrediction(text: string | null): ParsedPrediction | null {
   if (!text) return null
+  const stripped = stripReasoningTracePreamble(text)
 
   // v2 shape first: the answer is the LAST JSON object carrying "direction".
-  const last = findLastAnswerJson(text)
+  const last = findLastAnswerJson(stripped)
   if (last) {
     const parsed = normalizeParsedFields(last.obj)
+    if (parsed?.parseFailure === 'reasoning_leak') return leakedPrediction()
     if (parsed) return parsed
   }
 
+  if (hasReasoningTrace(text) || hasReasoningTrace(stripped)) return leakedPrediction()
+  if (stripped.length > RATIONALE_SNIPPET_MAX_CHARS && !last) return unparseablePrediction()
+
   const candidates: string[] = []
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const fenced = stripped.match(/```(?:json)?\s*([\s\S]*?)```/i)
   if (fenced?.[1]?.trim()) candidates.push(fenced[1].trim())
-  const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
-  candidates.push(stripped)
-  const blocks = stripped.match(/\{[\s\S]*\}/g)
+  const unfenced = stripped.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+  candidates.push(unfenced)
+  const blocks = unfenced.match(/\{[\s\S]*\}/g)
   if (blocks) candidates.push(...blocks)
 
   for (const chunk of candidates) {
     const parsed = parseJsonPredictionBlock(chunk)
+    if (parsed?.parseFailure === 'reasoning_leak') return leakedPrediction()
     if (parsed) return parsed
   }
 
-  return parseProsePredictionFallback(stripped)
+  return parseProsePredictionFallback(unfenced)
 }
 
 function parseJsonPredictionBlock(raw: string): ParsedPrediction | null {
@@ -244,7 +299,9 @@ function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction |
     if (Number.isFinite(m)) magnitude = m
   }
 
-  const rationale = sanitizeRationale(typeof obj.rationale === 'string' ? obj.rationale : null)
+  const rationaleRaw = typeof obj.rationale === 'string' ? obj.rationale : null
+  if (rationaleRaw && hasReasoningTrace(rationaleRaw)) return leakedPrediction()
+  const rationale = sanitizeRationale(rationaleRaw)
 
   if (!direction && !rationale && probability === null && magnitude === null && !rejectedDirection) return null
   return { direction, probability, magnitude, rationale, rejectedDirection }

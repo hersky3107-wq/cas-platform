@@ -40,6 +40,17 @@ describe('GET /api/league/card missing catalog chip+horizon', () => {
     expect(gradeComment).toBeGreaterThan(-1)
     expect(gradeComment).toBeLessThan(fetch)
   })
+
+  it('loads fail_reason only for admin card reads', () => {
+    expect(CARD_ROUTE).toContain('{ includeFailReasons: viewer.isAdmin }')
+    const CARD_TS = readFileSync(join(__dirname, '../card.ts'), 'utf8')
+    expect(CARD_TS).toContain('PREDICTION_COLUMNS_ADMIN')
+    const publicCols = CARD_TS.match(/const PREDICTION_COLUMNS =\s*'([^']+)'/)?.[1] ?? ''
+    expect(publicCols).toContain('reasoning_snippet')
+    expect(publicCols).not.toContain('fail_reason')
+    const adminCols = CARD_TS.match(/const PREDICTION_COLUMNS_ADMIN =\s*'([^']+)'/)?.[1] ?? ''
+    expect(adminCols).toContain('fail_reason')
+  })
 })
 
 describe('chip+horizon generate persistence', () => {

@@ -210,6 +210,12 @@ export function ModelTile({
         </p>
         <CountryFlag brand={model.brand} camp={model.camp} />
 
+        {model.fail_reason && !model.direction ? (
+          <p className="font-mono text-[10px] text-amber-700/90" data-testid="seat-fail-reason">
+            {model.fail_reason}
+          </p>
+        ) : null}
+
         {rationalePending ? (
           <p className="text-[10px] font-semibold text-league-accent-strong" aria-live="polite">
             {t.modelTile.translating}

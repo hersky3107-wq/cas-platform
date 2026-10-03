@@ -40,6 +40,9 @@ import {
   sanitizeRationale,
   sanitizeReasoningText,
   splitReasoningAndJson,
+  hasReasoningTrace,
+  stripReasoningTracePreamble,
+  RATIONALE_SNIPPET_MAX_CHARS,
 } from './prediction-parse'
 import { roundMagnitude, validateMagnitude } from './magnitude'
 
@@ -58,6 +61,7 @@ export type ContractAnswer = {
   rationale: string | null
   /** True when the model named a third value (flat/draw/abstain/a name/…). */
   rejectedSide: boolean
+  parseFailure?: import('./prediction-parse').ParseFailure
 }
 
 export type AnswerValidation =
@@ -294,6 +298,9 @@ function normalizeSideFields(
     qualifierText,
     rationale: sanitizeRationale(typeof obj.rationale === 'string' ? obj.rationale : null),
     rejectedSide: side === null,
+    ...(typeof obj.rationale === 'string' && hasReasoningTrace(obj.rationale)
+      ? { parseFailure: 'reasoning_leak' as const, rationale: null, side: null, rejectedSide: true }
+      : {}),
   }
 }
 
@@ -304,12 +311,42 @@ function parseSideAnswer(
   qualifierShape: 'text' | 'number'
 ): ContractAnswer | null {
   if (!text) return null
-  const last = findLastSideJson(text)
-  if (last) return normalizeSideFields(last.obj, sides, qualifierKey, qualifierShape)
+  const stripped = stripReasoningTracePreamble(text)
+  const last = findLastSideJson(stripped)
+  if (last) {
+    const parsed = normalizeSideFields(last.obj, sides, qualifierKey, qualifierShape)
+    if (parsed.parseFailure === 'reasoning_leak') {
+      return { ...parsed, side: null, rationale: null, rejectedSide: true, parseFailure: 'reasoning_leak' }
+    }
+    return parsed
+  }
+
+  if (hasReasoningTrace(text) || hasReasoningTrace(stripped)) {
+    return {
+      side: null,
+      probability: null,
+      qualifierNumber: null,
+      qualifierText: null,
+      rationale: null,
+      rejectedSide: true,
+      parseFailure: 'reasoning_leak',
+    }
+  }
+  if (stripped.length > RATIONALE_SNIPPET_MAX_CHARS) {
+    return {
+      side: null,
+      probability: null,
+      qualifierNumber: null,
+      qualifierText: null,
+      rationale: null,
+      rejectedSide: true,
+      parseFailure: 'unparseable',
+    }
+  }
 
   // Fence-stripped / embedded JSON fallback, mirroring the legacy parser's tolerance.
-  const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
-  const blocks = stripped.match(/\{[\s\S]*?\}/g) ?? []
+  const unfenced = stripped.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+  const blocks = unfenced.match(/\{[\s\S]*?\}/g) ?? []
   for (const block of blocks.reverse()) {
     try {
       const obj = JSON.parse(block) as Record<string, unknown>
@@ -323,28 +360,30 @@ function parseSideAnswer(
 
   // Prose fallback: a "side": "yes" fragment inside citations/markdown.
   const sideMatch =
-    stripped.match(/"side"\s*:\s*"([a-z]+)"/i) ?? stripped.match(/\bside\b\s*[:=]\s*["']?([a-z]+)["']?/i)
+    unfenced.match(/"side"\s*:\s*"([a-z]+)"/i) ?? unfenced.match(/\bside\b\s*[:=]\s*["']?([a-z]+)["']?/i)
   if (!sideMatch) return null
-  const probMatch = stripped.match(/"probability"\s*:\s*(\d+)/i)
+  const probMatch = unfenced.match(/"probability"\s*:\s*(\d+)/i)
   const obj: Record<string, unknown> = {
     side: sideMatch[1],
     ...(probMatch ? { probability: Number(probMatch[1]) } : {}),
   }
   const qMatch =
     qualifierShape === 'number'
-      ? stripped.match(new RegExp(`"${qualifierKey}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`, 'i'))
-      : stripped.match(new RegExp(`"${qualifierKey}"\\s*:\\s*"([^"]+)"`, 'i'))
+      ? unfenced.match(new RegExp(`"${qualifierKey}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`, 'i'))
+      : unfenced.match(new RegExp(`"${qualifierKey}"\\s*:\\s*"([^"]+)"`, 'i'))
   if (qMatch) obj[qualifierKey] = qualifierShape === 'number' ? Number(qMatch[1]) : qMatch[1]
-  const rationaleMatch = stripped.match(/"rationale"\s*:\s*"([^"]+)"/i)
+  const rationaleMatch = unfenced.match(/"rationale"\s*:\s*"([^"]+)"/i)
   if (rationaleMatch) obj.rationale = rationaleMatch[1]
   return normalizeSideFields(obj, sides, qualifierKey, qualifierShape)
 }
 
 function splitSideReasoning(text: string | null): string | null {
   if (!text) return null
-  const last = findLastSideJson(text)
+  const last = findLastSideJson(stripReasoningTracePreamble(text))
   if (!last) return null
-  return sanitizeReasoningText(text.slice(0, last.start))
+  const reasoning = sanitizeReasoningText(text.slice(0, last.start))
+  if (reasoning && hasReasoningTrace(reasoning)) return null
+  return reasoning
 }
 
 // ---------------------------------------------------------------------------
@@ -394,17 +433,19 @@ const BINARY_CLOSE_HIGHER: AnswerContract = {
     const parsed = parsePrediction(text)
     if (!parsed) return null
     return {
-      side: parsed.direction,
-      probability: parsed.probability,
-      qualifierNumber: parsed.magnitude,
+      side: parsed.parseFailure ? null : parsed.direction,
+      probability: parsed.parseFailure ? null : parsed.probability,
+      qualifierNumber: parsed.parseFailure ? null : parsed.magnitude,
       qualifierText: null,
-      rationale: parsed.rationale,
-      rejectedSide: parsed.rejectedDirection,
+      rationale: parsed.parseFailure ? null : parsed.rationale,
+      rejectedSide: parsed.parseFailure ? true : parsed.rejectedDirection,
+      parseFailure: parsed.parseFailure,
     }
   },
   validate(answer, horizon) {
     // Reproduces the historical predictionInvalidReason gate exactly,
     // including the reason tokens persisted to ModelRunResult.error.
+    if (answer?.parseFailure) return { ok: false, reason: answer.parseFailure }
     if (!answer || !isBinaryDirection(answer.side)) return { ok: false, reason: 'non_binary_direction' }
     const mv = validateMagnitude(answer.side, answer.qualifierNumber, horizon)
     if (!mv.ok) return { ok: false, reason: `invalid_magnitude:${mv.reason}` }
@@ -492,6 +533,7 @@ const BINARY_SUBJECT_OUTCOME: AnswerContract = {
     return parseSideAnswer(text, SUBJECT_OUTCOME_CONFIG.sides, 'qualifier', 'text')
   },
   validate(answer) {
+    if (answer?.parseFailure) return { ok: false, reason: answer.parseFailure }
     if (!answer || (answer.side !== 'yes' && answer.side !== 'no')) {
       return { ok: false, reason: 'non_binary_side' }
     }
@@ -543,6 +585,7 @@ const BINARY_THRESHOLD: AnswerContract = {
     return parseSideAnswer(text, THRESHOLD_CONFIG.sides, 'predicted_value', 'number')
   },
   validate(answer) {
+    if (answer?.parseFailure) return { ok: false, reason: answer.parseFailure }
     if (!answer || (answer.side !== 'above' && answer.side !== 'below')) {
       return { ok: false, reason: 'non_binary_side' }
     }

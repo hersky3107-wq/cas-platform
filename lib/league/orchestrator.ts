@@ -39,6 +39,7 @@ import { rosterProviderRoute, type ProviderCallGate } from '@/lib/league/generat
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
 import { emptyContentRetryBudgetMs, isEmptyContentError } from '@/lib/ai/empty-content-retry'
 import { seatIdForModel } from '@/lib/league/seats'
+import { classifyNoAnswerFailReason, type NoAnswerFailReason } from '@/lib/league/fail-reason'
 
 /**
  * AI Prediction League — generation orchestrator (server engine only).
@@ -212,6 +213,7 @@ export type ModelRunResult = {
   cost_source: 'billed' | 'estimated'
   status: ModelStatus
   error?: string
+  fail_reason?: NoAnswerFailReason | null
 }
 
 export type GenerateResult = {
@@ -702,7 +704,12 @@ async function runOneModel(
       )
     }
     const status: ModelStatus = isTimeout(raw.error) ? 'timeout' : 'error'
-    await upsertNullPrediction(roundId, entry)
+    const failReason = classifyNoAnswerFailReason({
+      error: raw.error,
+      parseFailure: isEmptyContentError(raw.error) ? null : undefined,
+    })
+    await upsertNullPrediction(roundId, entry, failReason)
+    logNoAnswer(roundId, entry, failReason)
     return {
       ...base,
       direction: null,
@@ -717,6 +724,7 @@ async function runOneModel(
       cost_source: 'estimated',
       status,
       error: raw.error,
+      fail_reason: failReason,
     }
   }
 
@@ -736,7 +744,11 @@ async function runOneModel(
     console.log(
       `[league-generate] empty-content drop round=${roundId} model=${entry.model_id} — no parseable text after platform retries; excluded (no-opinion gate)`
     )
-    await upsertNullPrediction(roundId, entry)
+    const failReason = classifyNoAnswerFailReason({
+      error: raw.error ?? 'HTTP 200 empty message.content',
+    })
+    await upsertNullPrediction(roundId, entry, failReason)
+    logNoAnswer(roundId, entry, failReason)
     return {
       ...base,
       direction: null,
@@ -750,6 +762,7 @@ async function runOneModel(
       cost_source: costSource,
       status: 'error',
       error: raw.error ?? 'HTTP 200 empty message.content',
+      fail_reason: failReason,
     }
   }
   if (!validation.ok) {
@@ -760,7 +773,9 @@ async function runOneModel(
     const retryPrompt = `${userPrompt}\n\n${retryText}`
     const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429)
     if (retryRaw.error) {
-      await upsertNullPrediction(roundId, entry)
+      const failReason = classifyNoAnswerFailReason({ error: retryRaw.error })
+      await upsertNullPrediction(roundId, entry, failReason)
+      logNoAnswer(roundId, entry, failReason)
       return {
         ...base,
         actual_model: retryRaw.actualModel,
@@ -775,6 +790,7 @@ async function runOneModel(
         cost_source: costSource,
         status: isTimeout(retryRaw.error) ? 'timeout' : 'error',
         error: retryRaw.error,
+        fail_reason: failReason,
       }
     }
     accumulateCost(retryRaw)
@@ -792,7 +808,14 @@ async function runOneModel(
         qualifierText: null,
       }
     } else {
-      await upsertNullPrediction(roundId, entry)
+      const failReason = classifyNoAnswerFailReason({
+        parseFailure:
+          answer?.parseFailure === 'reasoning_leak' || answer?.parseFailure === 'unparseable'
+            ? answer.parseFailure
+            : 'unparseable',
+      })
+      await upsertNullPrediction(roundId, entry, failReason)
+      logNoAnswer(roundId, entry, failReason)
       return {
         ...base,
         actual_model: raw.actualModel,
@@ -807,6 +830,7 @@ async function runOneModel(
         cost_source: costSource,
         status: 'error',
         error: validation.reason,
+        fail_reason: failReason,
       }
     }
   }
@@ -857,6 +881,7 @@ async function runOneModel(
         // reads this: a null row is only re-attempted by a NEW job when its
         // last attempt predates that job.
         predicted_at: new Date().toISOString(),
+        fail_reason: null,
       },
       { onConflict: 'round_id,model_id' }
     )
@@ -877,7 +902,11 @@ async function runOneModel(
   }
 }
 
-async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promise<void> {
+async function upsertNullPrediction(
+  roundId: string,
+  entry: RosterEntry,
+  failReason: NoAnswerFailReason,
+): Promise<void> {
   const seatId = seatIdForModel(entry.model_id, entry.league_tier)
   await supabaseAdmin
     .from('model_predictions')
@@ -905,9 +934,17 @@ async function upsertNullPrediction(roundId: string, entry: RosterEntry): Promis
         // LAST attempt time, and the upsert UPDATE branch keeps stale values
         // for columns missing from the payload.
         predicted_at: new Date().toISOString(),
+        fail_reason: failReason,
       },
       { onConflict: 'round_id,model_id' }
     )
+}
+
+function logNoAnswer(roundId: string, entry: RosterEntry, failReason: NoAnswerFailReason): void {
+  const seat = seatIdForModel(entry.model_id, entry.league_tier)
+  console.log(
+    `[league-generate] no-answer round=${roundId} seat=${seat} model=${entry.model_id} fail_reason=${failReason}`,
+  )
 }
 
 /**
