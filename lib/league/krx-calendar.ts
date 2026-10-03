@@ -1,9 +1,10 @@
 /**
  * KRX (Korea Exchange) trading-day calendar. Pure — no network.
  *
- * Earlier 2026 dates omitted (not needed for forward generation). 2027 must be
- * added when KRX publishes its annual holiday notice (usually December).
- * Source: KRX holiday notice.
+ * Earlier 2026 dates omitted (not needed for forward generation). 2026 from
+ * 2026-08-17 is from the KRX holiday notice. 2027 is provisional (government
+ * 월력요항, published 2026-06-29) until the KRX annual notice (usually
+ * December) is reconciled.
  */
 
 export const KRX_TIME_ZONE = 'Asia/Seoul'
@@ -12,13 +13,15 @@ export const KRX_OPEN_MINUTE = 0
 export const KRX_CLOSE_HOUR = 15
 export const KRX_CLOSE_MINUTE = 30
 
-export const KRX_CALENDAR_VALID_THROUGH = '2026-12-31'
+/** First date whose holidays are provisional (government 월력요항, not KRX). */
+export const KRX_PROVISIONAL_FROM = '2027-01-01'
+export const KRX_CALENDAR_VALID_THROUGH = '2027-12-31'
 
 /**
- * KST dates "YYYY-MM-DD". Verified 2026 holidays from 2026-08-17 onward.
- * Earlier 2026 dates omitted (not needed for forward generation). 2027 must
- * be added when KRX publishes its annual holiday notice (usually December).
- * Source: KRX holiday notice.
+ * KST dates "YYYY-MM-DD". Verified 2026 holidays from 2026-08-17 onward, plus
+ * provisional 2027 weekday closures. Earlier 2026 dates omitted (not needed
+ * for forward generation). Source: KRX holiday notice (2026); government
+ * 2027 calendar (월력요항, published 2026-06-29).
  */
 export const KRX_HOLIDAYS: ReadonlySet<string> = new Set([
   '2026-08-17',
@@ -28,6 +31,23 @@ export const KRX_HOLIDAYS: ReadonlySet<string> = new Set([
   '2026-10-09',
   '2026-12-25',
   '2026-12-31',
+  // Provisional 2027 (weekday closures only). Reconcile when KRX publishes.
+  '2027-01-01',
+  '2027-02-08',
+  '2027-02-09',
+  '2027-03-01',
+  '2027-05-03',
+  '2027-05-05',
+  '2027-05-13',
+  '2027-07-19',
+  '2027-08-16',
+  '2027-09-14',
+  '2027-09-15',
+  '2027-09-16',
+  '2027-10-04',
+  '2027-10-11',
+  '2027-12-27',
+  '2027-12-31',
 ])
 
 /**
@@ -133,6 +153,14 @@ export function isKrxTradingDay(kstDate: string): boolean {
 }
 
 /**
+ * 2027 is provisional until the KRX annual notice (December 2026); 12-31
+ * year-end closure assumed by convention.
+ */
+export function isProvisionalKrxDate(date: string): boolean {
+  return date >= KRX_PROVISIONAL_FROM && date <= KRX_CALENDAR_VALID_THROUGH
+}
+
+/**
  * Most recent KST trading date whose 15:30 close is <= `now`.
  * Does not guess dates after `KRX_CALENDAR_VALID_THROUGH`.
  */
@@ -180,6 +208,38 @@ export function previousKrxSessionDate(date: string, n: number): string {
       counted += 1
       if (counted === n) return cursor
     }
+  }
+  return cursor
+}
+
+/**
+ * Last `n` trading days ending at `fromSessionDate` (inclusive if it is a
+ * trading day), oldest→newest.
+ */
+export function lastNKrxSessionDates(fromSessionDate: string, n: number): string[] {
+  if (n <= 0) return []
+  const dates: string[] = []
+  if (isKrxTradingDay(fromSessionDate)) dates.push(fromSessionDate)
+  for (let i = 1; dates.length < n; i++) {
+    dates.push(previousKrxSessionDate(fromSessionDate, i))
+  }
+  return dates.reverse()
+}
+
+/**
+ * Grading guard for later use (not wired). If `resolvesAtDate` is not a
+ * trading day (e.g. an unexpected 임시공휴일 added after the round was
+ * created), return the last trading day before it; otherwise return it.
+ */
+export function resolveKrxGradingSession(
+  resolvesAtDate: string,
+  isTradingDay: (date: string) => boolean,
+): string {
+  if (isTradingDay(resolvesAtDate)) return resolvesAtDate
+  let cursor = resolvesAtDate
+  for (let i = 0; i < 370; i++) {
+    cursor = addCivilDays(cursor, -1)
+    if (isTradingDay(cursor)) return cursor
   }
   return cursor
 }
