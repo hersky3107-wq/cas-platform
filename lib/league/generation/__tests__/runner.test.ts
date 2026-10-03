@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { LeagueGenerationJob } from '../job-store'
 import { LEAGUE_JOB_MAX_ATTEMPTS, LEAGUE_JOB_MAX_RUNNING } from '../policy'
+import { generationClaimBudget, coalesceRoundPacketBuild } from '../parallel-policy'
+import { createProviderCallGate } from '../provider-gate'
 import { claimNextLaunchableIndex } from '../launch-gate'
+import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
+import { officialRowsForConsensus } from '@/lib/league/extra/seats'
 import {
   advanceLeagueGenerationJob,
   excludedModelIds,
@@ -111,7 +115,7 @@ function makeStore(jobs: LeagueGenerationJob[], modelRows: ModelRowFact[] = []) 
 type DepsBundle = {
   deps: LeagueRunnerDeps
   refunds: Array<{ userId: string; amount: number }>
-  generateCalls: Array<{ tier: string; exclude: string[] }>
+  generateCalls: Array<{ tier: string; exclude: string[]; reuse: boolean; skipConsensus: boolean }>
   finalized: string[]
   runScheduled: () => Promise<void>
 }
@@ -141,8 +145,13 @@ function makeDeps(
   const deps: LeagueRunnerDeps = {
     store: fake.store,
     generate: async (args) => {
-      generateCalls.push({ tier: args.tier, exclude: [...args.excludeModelIds].sort() })
-      await (over.generate ?? baseGenerate)(args)
+      generateCalls.push({
+        tier: args.tier,
+        exclude: [...args.excludeModelIds].sort(),
+        reuse: args.reusePersistedPacket === true,
+        skipConsensus: args.skipConsensusPersist === true,
+      })
+      return (over.generate ?? baseGenerate)(args)
     },
     finalizeConsensus: async (roundId) => {
       finalized.push(roundId)
@@ -157,6 +166,9 @@ function makeDeps(
     },
     ...('now' in over ? { now: over.now } : {}),
     ...('tickBudgetMs' in over ? { tickBudgetMs: over.tickBudgetMs } : {}),
+    ...(over.parallelTiers !== undefined ? { parallelTiers: over.parallelTiers } : {}),
+    ...(over.ensurePacket ? { ensurePacket: over.ensurePacket } : {}),
+    ...(over.createCallGate ? { createCallGate: over.createCallGate } : {}),
   }
 
   const runScheduled = async () => {
@@ -496,5 +508,236 @@ describe('sweep global concurrency cap', () => {
     expect(fake.byId.get('q-2')!.status).toBe('queued')
     await bundle.runScheduled()
     expect(fake.byId.get('q-1')!.status).toBe('done')
+  })
+})
+
+describe('LEAGUE_PARALLEL_TIERS off (default)', () => {
+  it('keeps the sequential tier call order', async () => {
+    const fake = makeStore([makeJob()])
+    const bundle = makeDeps(fake)
+    await advanceLeagueGenerationJob('job-1', bundle.deps)
+    await bundle.runScheduled()
+    expect(bundle.generateCalls.map((c) => c.tier)).toEqual(['premier', 'challenger', 'world', 'scout'])
+    expect(bundle.generateCalls.every((c) => c.reuse === false && c.skipConsensus === false)).toBe(true)
+    expect(bundle.finalized).toEqual(['round-1'])
+    expect(fake.byId.get('job-1')!.status).toBe('done')
+  })
+})
+
+describe('LEAGUE_PARALLEL_TIERS on', () => {
+  it('builds the packet once and starts all four official tiers before any finishes', async () => {
+    const fake = makeStore([makeJob()])
+    let packetBuilds = 0
+    let started = 0
+    let release: () => void = () => {}
+    const allStarted = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const finishedTiers: string[] = []
+    const bundle = makeDeps(fake, {
+      parallelTiers: true,
+      ensurePacket: async () => {
+        packetBuilds += 1
+        return { built: true, packetMs: 5 }
+      },
+      generate: async ({ tier, onModelResult }) => {
+        started += 1
+        if (started === 4) release()
+        await allStarted
+        if (tier === 'extra') {
+          finishedTiers.push(tier)
+          return { deferred: 0, http429: 0 }
+        }
+        for (const id of TIERS[tier as keyof typeof TIERS]) {
+          fake.rows.push({ model_id: id, predicted_direction: 'up', predicted_at: new Date().toISOString() })
+          onModelResult(id)
+        }
+        finishedTiers.push(tier)
+        return { deferred: 0, http429: 0 }
+      },
+    })
+
+    await advanceLeagueGenerationJob('job-1', bundle.deps)
+    await bundle.runScheduled()
+
+    expect(packetBuilds).toBe(1)
+    expect(bundle.generateCalls.slice(0, 4).map((c) => c.tier)).toEqual(['premier', 'challenger', 'world', 'scout'])
+    expect(bundle.generateCalls.slice(0, 4).every((c) => c.reuse && c.skipConsensus)).toBe(true)
+    expect(finishedTiers.indexOf('extra')).toBe(-1)
+    expect(bundle.generateCalls.some((c) => c.tier === 'extra')).toBe(false)
+    expect(bundle.finalized).toEqual(['round-1'])
+    expect(fake.byId.get('job-1')!.stage).toBe('done')
+  })
+
+  it('defers an over-budget seat and resumes it on the next chunk before extras', async () => {
+    const premier = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9']
+    const fake = makeStore([makeJob()])
+    const tierModelIds: LeagueRunnerDeps['tierModelIds'] = (tier) => {
+      if (tier === 'premier') return [...premier]
+      if (tier === 'extra') return ['crow']
+      return [...TIERS[tier]]
+    }
+    const generate: GenerateTierChunk = async ({
+      tier,
+      excludeModelIds,
+      deadlineAtMs,
+      tickBudgetMs: chunkBudget,
+      onModelResult,
+    }) => {
+      const ids = (tier === 'premier' ? premier : tier === 'extra' ? ['crow'] : [...TIERS[tier]]).filter(
+        (id) => !excludeModelIds.includes(id),
+      )
+      const roster = ids.map((model_id) => ({
+        model_id,
+        timeoutMs: model_id === 'p6' ? 240_000 : 1_000,
+      }))
+      const cursor = { nextIndex: 0 }
+      const launchedThisChunk = { launched: 0 }
+      let deferred = 0
+      for (;;) {
+        const before = cursor.nextIndex
+        const i = claimNextLaunchableIndex(roster, cursor, {
+          nowMs: Date.now(),
+          deadlineAtMs,
+          defaultTimeoutMs: 1_000,
+          tickBudgetMs: chunkBudget,
+          launchedThisChunk,
+        })
+        if (i === null) {
+          deferred += Math.max(0, roster.length - before)
+          return { deferred, http429: 0 }
+        }
+        deferred += Math.max(0, i - before)
+        const id = roster[i]!.model_id
+        fake.rows.push({
+          model_id: id,
+          predicted_direction: id === 'p1' ? null : 'up',
+          predicted_at: new Date().toISOString(),
+        })
+        onModelResult(id)
+      }
+    }
+
+    const first = makeDeps(fake, { parallelTiers: true, generate, tierModelIds, tickBudgetMs: 90_000 })
+    await advanceLeagueGenerationJob('job-1', first.deps)
+    await first.runScheduled()
+
+    expect(fake.rows.some((r) => r.model_id === 'p6')).toBe(false)
+    expect(first.generateCalls.some((c) => c.tier === 'extra')).toBe(false)
+    expect(fake.byId.get('job-1')!.stage).toBe('packet')
+    expect(first.finalized).toEqual([])
+
+    const second = makeDeps(fake, { parallelTiers: true, generate, tierModelIds, tickBudgetMs: 300_000 })
+    await advanceLeagueGenerationJob('job-1', second.deps)
+    await second.runScheduled()
+
+    expect(fake.rows.some((r) => r.model_id === 'p6')).toBe(true)
+    const extraAt = second.generateCalls.findIndex((c) => c.tier === 'extra')
+    const official = second.generateCalls.filter((c) => c.tier !== 'extra')
+    expect(official.length).toBeGreaterThan(0)
+    expect(extraAt).toBe(official.length)
+    expect(second.finalized).toEqual(['round-1'])
+    expect(fake.byId.get('job-1')!.status).toBe('done')
+  })
+
+  it('counts a parallel job as weight 2 against the running cap', async () => {
+    expect(generationClaimBudget(0, false)).toBe(LEAGUE_JOB_MAX_RUNNING)
+    expect(generationClaimBudget(1, false)).toBe(LEAGUE_JOB_MAX_RUNNING - 1)
+    expect(generationClaimBudget(0, true)).toBe(1)
+    expect(generationClaimBudget(1, true)).toBe(0)
+
+    const future = new Date(Date.now() + 60_000).toISOString()
+    const fake = makeStore([
+      makeJob({ id: 'run-1', round_id: 'round-run', status: 'running', lease_until: future }),
+      makeJob({ id: 'q-1', round_id: 'round-q1' }),
+    ])
+    const bundle = makeDeps(fake, { parallelTiers: true })
+    const blocked = await sweepLeagueGenerationJobs(bundle.deps)
+    expect(blocked.runningBefore).toBe(1)
+    expect(blocked.claimed).toBe(0)
+    expect(fake.byId.get('q-1')!.status).toBe('queued')
+
+    const open = makeStore([makeJob({ id: 'q-1' }), makeJob({ id: 'q-2', round_id: 'round-q2' })])
+    const openBundle = makeDeps(open, { parallelTiers: true })
+    const summary = await sweepLeagueGenerationJobs(openBundle.deps)
+    expect(summary.claimed).toBe(1)
+    expect(open.byId.get('q-2')!.status).toBe('queued')
+  })
+
+  it('finalizes consensus from official rows and ignores null failures and extra seats', () => {
+    const rows = [
+      { model_id: 'p1', league_tier: 'premier', direction: 'up', probability: 70 },
+      { model_id: 'p2', league_tier: 'premier', direction: null, probability: null },
+      { model_id: 'c1', league_tier: 'challenger', direction: 'up', probability: 60 },
+      { model_id: 'crow', league_tier: 'extra', direction: 'down', probability: 90 },
+    ]
+    const official = officialRowsForConsensus(rows)
+    expect(official.map((row) => row.model_id)).toEqual(['p1', 'p2', 'c1'])
+    const dual = dualConsensus(binaryCallsFromModels(official))
+    expect(dual.majority.direction).toBe('up')
+    expect(dual.aggregate.direction).toBe('up')
+  })
+
+  it('shares one packet build and never exceeds the in-flight caps, including a retry acquire', async () => {
+    let builds = 0
+    const first = coalesceRoundPacketBuild('round-1', async () => {
+      builds += 1
+      await new Promise((resolve) => setTimeout(resolve, 15))
+      return 'packet'
+    })
+    const second = coalesceRoundPacketBuild('round-1', async () => {
+      builds += 1
+      return 'other'
+    })
+    await expect(Promise.all([first, second])).resolves.toEqual(['packet', 'packet'])
+    expect(builds).toBe(1)
+
+    const gate = createProviderCallGate()
+    for (let i = 0; i < 8; i++) await gate.acquire('openrouter')
+    for (let i = 0; i < 8; i++) await gate.acquire('openai')
+    expect(gate.inFlight).toBe(16)
+    expect(gate.openRouterInFlight).toBe(8)
+
+    let extraOpenRouter = false
+    const waitingOr = gate.acquire('openrouter').then(() => {
+      extraOpenRouter = true
+    })
+    let extraOpenAi = false
+    const waitingOai = gate.acquire('openai').then(() => {
+      extraOpenAi = true
+    })
+    await Promise.resolve()
+    expect(extraOpenRouter).toBe(false)
+    expect(extraOpenAi).toBe(false)
+    expect(gate.maxInFlightSeen).toBe(16)
+    expect(gate.maxOpenRouterSeen).toBe(8)
+
+    gate.release('openai')
+    await waitingOai
+    expect(extraOpenAi).toBe(true)
+    expect(extraOpenRouter).toBe(false)
+    expect(gate.inFlight).toBe(16)
+    expect(gate.openRouterInFlight).toBe(8)
+
+    gate.release('openrouter')
+    await waitingOr
+    expect(extraOpenRouter).toBe(true)
+    expect(gate.openRouterInFlight).toBe(8)
+    expect(gate.maxInFlightSeen).toBeLessThanOrEqual(16)
+    expect(gate.maxOpenRouterSeen).toBeLessThanOrEqual(8)
+    while (gate.inFlight > 0) {
+      if (gate.openRouterInFlight > 0) gate.release('openrouter')
+      else gate.release('openai')
+    }
+
+    let attempts = 0
+    const retry = async () => {
+      await gate.acquire('openrouter')
+      attempts += 1
+      gate.release('openrouter')
+    }
+    await retry()
+    await retry()
+    expect(attempts).toBe(2)
   })
 })

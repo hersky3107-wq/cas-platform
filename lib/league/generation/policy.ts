@@ -38,6 +38,10 @@ export const LEAGUE_JOB_SWEEP_BATCH_SIZE = 10
  * Data consumer) stays at ~a few calls per job start, far under the 55/min
  * plan cap. Jobs over the cap stay 'queued' and are claimed by a later tick;
  * the card shows the queued state, the user is never errored.
+ *
+ * LEAGUE_PARALLEL_TIERS=true counts each running job as weight 2 against
+ * this cap (see generationClaimBudget) so a 16-wide job cannot stack like
+ * three sequential jobs.
  */
 export const LEAGUE_JOB_MAX_RUNNING = 3
 

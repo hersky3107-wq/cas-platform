@@ -29,6 +29,13 @@
  */
 import type { LeagueGenerationJob } from './job-store'
 import {
+  generationClaimBudget,
+  isOfficialGenerationStage,
+  OFFICIAL_GENERATION_TIERS,
+  type OfficialGenerationTier,
+} from './parallel-policy'
+import type { ProviderCallGate } from './provider-gate'
+import {
   LEAGUE_JOB_HEARTBEAT_SECONDS,
   LEAGUE_JOB_LEASE_SECONDS,
   LEAGUE_JOB_MAX_ATTEMPTS,
@@ -61,6 +68,8 @@ export type LeagueRunnerStore = {
   countRunningJobs(nowIso: string): Promise<number>
 }
 
+export type TierChunkStats = { deferred: number; http429: number }
+
 export type GenerateTierChunk = (args: {
   roundId: string
   tier: 'premier' | 'challenger' | 'world' | 'scout' | 'extra'
@@ -68,7 +77,12 @@ export type GenerateTierChunk = (args: {
   deadlineAtMs: number
   tickBudgetMs: number
   onModelResult: (modelId: string) => void
-}) => Promise<void>
+  /** Parallel path only. Sequential calls omit these. */
+  reusePersistedPacket?: boolean
+  skipConsensusPersist?: boolean
+  callGate?: ProviderCallGate
+  trackChunkStats?: boolean
+}) => Promise<void | TierChunkStats>
 
 export type LeagueRunnerDeps = {
   store: LeagueRunnerStore
@@ -91,6 +105,15 @@ export type LeagueRunnerDeps = {
   now?: () => Date
   /** Test override for the stage-chaining wall clock. */
   tickBudgetMs?: number
+  /**
+   * Exact opt-in. Undefined/false keeps the sequential stage walk.
+   * Live wiring sets this from LEAGUE_PARALLEL_TIERS === 'true'.
+   */
+  parallelTiers?: boolean
+  /** Build or load the closed-book packet once before official tiers. Parallel only. */
+  ensurePacket?: (roundId: string) => Promise<{ built: boolean; packetMs: number } | void>
+  /** Shared in-flight cap for one parallel chunk. Parallel only. */
+  createCallGate?: () => ProviderCallGate
 }
 
 export type AdvanceJobOutcome = {
@@ -200,6 +223,25 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
 
     let stage = job.stage
     for (;;) {
+      if (deps.parallelTiers === true && isOfficialGenerationStage(stage)) {
+        const finished = await runOfficialTiersInParallel(job, deps, written, deadlineAtMs, tickBudgetMs, (modelId) => {
+          written.add(modelId)
+          produced += 1
+          void deps.store.touchHeartbeat(job.id, now().toISOString())
+        })
+        if (!finished) {
+          await endChunk({ stage })
+          return
+        }
+        stage = 'extra'
+        await deps.store.updateJob(job.id, { stage, last_heartbeat_at: now().toISOString() })
+        if (Date.now() - startedAtMs > tickBudgetMs) {
+          await endChunk({ stage })
+          return
+        }
+        continue
+      }
+
       if (stage === 'finalize') {
         await deps.finalizeConsensus(job.round_id)
         await endChunk({
@@ -277,6 +319,80 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
 }
 
 /**
+ * Flag-on official phase: packet once, then premier/challenger/world/scout
+ * together. Returns true when every official seat has a row (answer or
+ * terminal 결번). Extras stay on the sequential path after this returns.
+ */
+async function runOfficialTiersInParallel(
+  job: LeagueGenerationJob,
+  deps: LeagueRunnerDeps,
+  written: Set<string>,
+  deadlineAtMs: number,
+  tickBudgetMs: number,
+  onModelResult: (modelId: string) => void,
+): Promise<boolean> {
+  const officialIds = OFFICIAL_GENERATION_TIERS.flatMap((tier) => deps.tierModelIds(tier))
+  const outstanding = () => officialIds.filter((id) => !written.has(id))
+  if (outstanding().length === 0) return true
+
+  const phaseStart = Date.now()
+  if (deps.ensurePacket) {
+    const t0 = Date.now()
+    const info = await deps.ensurePacket(job.round_id)
+    const packetMs = info && typeof info.packetMs === 'number' ? info.packetMs : Date.now() - t0
+    const built = info && info.built ? 1 : 0
+    console.log(`[league-parallel] round=${job.round_id} packet_ms=${packetMs} built=${built}`)
+  }
+
+  const gate = deps.createCallGate?.()
+  let deferred = 0
+  let http429 = 0
+  const settled = await Promise.allSettled(
+    OFFICIAL_GENERATION_TIERS.map((tier: OfficialGenerationTier) => {
+      const start = Date.now()
+      console.log(`[league-parallel] round=${job.round_id} tier=${tier} start_ms=${start - phaseStart}`)
+      return deps
+        .generate({
+          roundId: job.round_id,
+          tier,
+          excludeModelIds: [...written],
+          deadlineAtMs,
+          tickBudgetMs,
+          onModelResult,
+          reusePersistedPacket: true,
+          skipConsensusPersist: true,
+          callGate: gate,
+          trackChunkStats: true,
+        })
+        .then((stats) => {
+          const end = Date.now()
+          const tierDeferred = stats?.deferred ?? 0
+          const tier429 = stats?.http429 ?? 0
+          deferred += tierDeferred
+          http429 += tier429
+          console.log(
+            `[league-parallel] round=${job.round_id} tier=${tier} end_ms=${end - phaseStart} elapsed_ms=${end - start} deferred=${tierDeferred} http_429=${tier429}`,
+          )
+        })
+    }),
+  )
+  console.log(
+    `[league-parallel] round=${job.round_id} wall_ms=${Date.now() - phaseStart} deferred=${deferred} http_429=${http429}`,
+  )
+
+  const rejected = settled.filter((item) => item.status === 'rejected')
+  if (rejected.length === OFFICIAL_GENERATION_TIERS.length) {
+    const reason = rejected[0]
+    const message =
+      reason && reason.status === 'rejected' && reason.reason instanceof Error
+        ? reason.reason.message
+        : 'official tiers failed'
+    throw new Error(message)
+  }
+  return outstanding().length === 0
+}
+
+/**
  * Out of attempts: the job is failed and EVERY purchase row on the round that
  * still holds money is refunded — exactly once each, enforced by the
  * conditional flip in `markJobRefundedOnce`. Uses the deep-analysis refund
@@ -349,7 +465,8 @@ export async function sweepLeagueGenerationJobs(
   const staleBefore = new Date(now.getTime() - LEAGUE_JOB_STALE_HEARTBEAT_SECONDS * 1_000)
 
   const runningBefore = await deps.store.countRunningJobs(now.toISOString())
-  const budget = Math.max(0, LEAGUE_JOB_MAX_RUNNING - runningBefore)
+  const parallel = deps.parallelTiers === true
+  const budget = generationClaimBudget(runningBefore, parallel, LEAGUE_JOB_MAX_RUNNING)
   if (budget === 0) {
     return { candidates: 0, claimed: 0, runningBefore, results: [] }
   }

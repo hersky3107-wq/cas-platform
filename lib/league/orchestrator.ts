@@ -34,6 +34,8 @@ import { persistAnchorPrice } from '@/lib/league/price-anchor'
 import { generateExtraSeats } from '@/lib/league/extra/run'
 import { extraSeatIds, officialRowsForConsensus } from '@/lib/league/extra/seats'
 import { claimNextLaunchableIndex } from '@/lib/league/generation/launch-gate'
+import { coalesceRoundPacketBuild } from '@/lib/league/generation/parallel-policy'
+import { rosterProviderRoute, type ProviderCallGate } from '@/lib/league/generation/provider-gate'
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
 import { emptyContentRetryBudgetMs, isEmptyContentError } from '@/lib/ai/empty-content-retry'
 import { seatIdForModel } from '@/lib/league/seats'
@@ -161,6 +163,17 @@ export type GenerateOptions = {
    * side-effect tap on the existing `results.push(outcome)` in the worker loop.
    */
   onModelResult?: (result: ModelRunResult) => void
+  /**
+   * Parallel official tiers only. Load the write-once closed-book text
+   * instead of building research again. Absent on the sequential path.
+   */
+  reusePersistedPacket?: boolean
+  /** Parallel official tiers only. Finalize reads the full board from the DB. */
+  skipConsensusPersist?: boolean
+  /** Parallel official tiers only. Shared per-job in-flight cap. */
+  callGate?: ProviderCallGate
+  /** When true, the result includes deferredSeats and http429. */
+  trackChunkStats?: boolean
 }
 
 type ModelStatus = 'ok' | 'abstain' | 'timeout' | 'error'
@@ -220,6 +233,9 @@ export type GenerateResult = {
   total_cost_usd: number
   capped: boolean
   cost_cap_usd: number
+  /** Present only when trackChunkStats was set. */
+  deferredSeats?: number
+  http429?: number
 }
 
 type ResolvedRound = {
@@ -509,6 +525,31 @@ async function callOnce(
   }
 }
 
+function isHttp429(message: string | undefined): boolean {
+  return !!message && message.toLowerCase().includes('429')
+}
+
+/** One provider call. With a gate, the permit covers only this attempt. */
+async function callOncePermitted(
+  entry: RosterEntry,
+  contract: AnswerContract,
+  userPrompt: string,
+  timeoutMs: number,
+  userId: string | null,
+  maxCompletionTokens: number,
+  category: string | undefined,
+  gate: ProviderCallGate | undefined,
+): Promise<RawCall> {
+  if (!gate) return callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
+  const route = rosterProviderRoute(entry)
+  await gate.acquire(route)
+  try {
+    return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
+  } finally {
+    gate.release(route)
+  }
+}
+
 /** Call with a single retry on transient failure. Timeouts surface as errors, not throws. */
 async function callWithRetry(
   entry: RosterEntry,
@@ -517,20 +558,49 @@ async function callWithRetry(
   timeoutMs: number,
   userId: string | null,
   maxCompletionTokens: number,
-  category?: string
+  category?: string,
+  gate?: ProviderCallGate,
+  http429?: { n: number },
 ): Promise<RawCall> {
+  if (!gate) {
+    try {
+      const first = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
+      if (first.error && isTransient(first.error)) {
+        const second = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
+        return second
+      }
+      return first
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'unknown error'
+      if (isTransient(msg)) {
+        try {
+          return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
+        } catch (e2: unknown) {
+          return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
+        }
+      }
+      return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: msg }
+    }
+  }
+
+  const attempt = async (): Promise<RawCall> =>
+    callOncePermitted(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category, gate)
+
   try {
-    const first = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
+    const first = await attempt()
     if (first.error && isTransient(first.error)) {
-      const second = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
-      return second
+      if (isHttp429(first.error)) {
+        if (http429) http429.n += 1
+      }
+      return await attempt()
     }
     return first
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'unknown error'
     if (isTransient(msg)) {
+      if (isHttp429(msg) && http429) http429.n += 1
       try {
-        return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
+        return await attempt()
       } catch (e2: unknown) {
         return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
       }
@@ -574,9 +644,11 @@ async function runOneModel(
   userId: string | null,
   maxCompletionTokens: number,
   horizon: string,
-  category?: string
+  category?: string,
+  gate?: ProviderCallGate,
+  http429?: { n: number },
 ): Promise<ModelRunResult> {
-  let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
+  let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429)
   let totalCostUsd = 0
   let estimatedCostUsd = 0
   let toolsUsed: number | null = null
@@ -676,7 +748,7 @@ async function runOneModel(
         ? contract.retryInstruction
         : contract.directionOnlyRetryInstruction
     const retryPrompt = `${userPrompt}\n\n${retryText}`
-    const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens, category)
+    const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429)
     if (retryRaw.error) {
       await upsertNullPrediction(roundId, entry)
       return {
@@ -893,6 +965,82 @@ function resolveMaxCompletionTokensForEntry(entry: RosterEntry, runDefault: numb
     : runDefault
 }
 
+/**
+ * PACKET ASSEMBLY is CATEGORY JUDGMENT and lives behind
+ * `CategoryAdapter.buildPacket`. The shell keeps only the DB side effects
+ * the adapter requests via events (write-once anchor, write-once closed book).
+ */
+async function buildAndPersistRoundPacket(round: ResolvedRound, costCap: number): Promise<CategoryPacket> {
+  const packetCtx: PacketBuildContext = {
+    round,
+    costCapUsd: costCap,
+    onEvent: async (event) => {
+      if (event.kind === 'anchor_price') {
+        await persistAnchorPrice(round.id, event.price, event.sessionDate)
+      }
+    },
+  }
+  const adapter = adapterForLedgerCategory(round.category)
+  const pkt: CategoryPacket = adapter
+    ? await adapter.buildPacket(adapter.slotsForRound(round), packetCtx)
+    : await buildPriceSeriesPacket(packetCtx, LIVE_PRICE_SERIES_IO)
+  if (pkt.injection) {
+    await persistClosedBookPacket(round.id, pkt.researchCacheKey, pkt.injection)
+  }
+  return pkt
+}
+
+async function readPersistedInjection(roundId: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from('prediction_rounds')
+    .select('closed_book_packet_text')
+    .eq('id', roundId)
+    .maybeSingle()
+  if (error) throw new Error(`readPersistedInjection: ${error.message}`)
+  const text = (data as { closed_book_packet_text?: string | null } | null)?.closed_book_packet_text
+  return text && text.length > 0 ? text : null
+}
+
+function packetFromPersistedInjection(text: string): CategoryPacket {
+  return {
+    injection: text,
+    researchCacheKey: '',
+    researchCostUsd: 0,
+    dataPacket: { available: true },
+    research: {
+      available: false,
+      cached: true,
+      costUsd: 0,
+      queries: [],
+      tier: 'none',
+      tierSignal: 'persisted_packet',
+    },
+    relatedCreditsSpent: 0,
+  }
+}
+
+async function loadOrBuildPersistedPacket(round: ResolvedRound, costCap: number): Promise<CategoryPacket> {
+  const text = await readPersistedInjection(round.id)
+  if (text) return packetFromPersistedInjection(text)
+  return coalesceRoundPacketBuild(round.id, () => buildAndPersistRoundPacket(round, costCap))
+}
+
+/**
+ * Parallel path: build the closed-book packet once per round, or load it
+ * when a previous chunk already persisted it. Never starts model calls.
+ */
+export async function ensureLeagueRoundPacket(
+  roundId: string,
+  costCapUsd?: number,
+): Promise<{ built: boolean; packetMs: number }> {
+  const started = Date.now()
+  const { round } = await ensureRound({ roundId })
+  const existing = await readPersistedInjection(round.id)
+  if (existing) return { built: false, packetMs: Date.now() - started }
+  await coalesceRoundPacketBuild(round.id, () => buildAndPersistRoundPacket(round, resolveCostCap(costCapUsd)))
+  return { built: true, packetMs: Date.now() - started }
+}
+
 export async function generatePredictions(opts: GenerateOptions): Promise<GenerateResult> {
   const { round: roundInput, tiers, userId, onRoundResolved, onModelResult } = opts
   const concurrency = opts.concurrency && opts.concurrency > 0 ? opts.concurrency : DEFAULT_CONCURRENCY
@@ -943,29 +1091,6 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       cost_cap_usd: costCap,
     }
   }
-  // PACKET ASSEMBLY is CATEGORY JUDGMENT and lives behind
-  // `CategoryAdapter.buildPacket` (stocks today; the other 11 chips fall back
-  // to the same price-series builder until their adapters exist). The shell
-  // keeps only the DB side effects the adapter requests via events:
-  //  - anchor_price: persist the ANCHOR price (best-effort, presentation only
-  //    — never read by grading/reconciliation): the card header shows "what
-  //    the instrument was at when this round opened" so a model's up/down
-  //    call is legible. Only stamped once, at creation — never overwritten on
-  //    a re-run of an existing round (`{ roundId }` input skips `created`),
-  //    so the anchor always reflects the ORIGINAL open.
-  const packetCtx: PacketBuildContext = {
-    round,
-    costCapUsd: costCap,
-    onEvent: async (event) => {
-      // Not gated on `created` anymore: persistAnchorPrice is write-once via
-      // a DB null-guard, so rounds inserted by the inline generate route
-      // (which this function then sees as pre-existing) still get an anchor
-      // on their first packet build, and re-runs still can't move it.
-      if (event.kind === 'anchor_price') {
-        await persistAnchorPrice(round.id, event.price, event.sessionDate)
-      }
-    },
-  }
   const adapter = adapterForLedgerCategory(round.category)
   // ANSWER CONTRACT: how models respond is decided by the round's persisted
   // proposition_kind, NEVER per adapter/category — twelve adapters share
@@ -978,19 +1103,18 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       ? adapter.slotsForRound(round).proposition_kind
       : 'binary_close_higher'
   const contract = answerContractFor(propositionKind)
-  const pkt: CategoryPacket = adapter
-    ? await adapter.buildPacket(adapter.slotsForRound(round), packetCtx)
-    : await buildPriceSeriesPacket(packetCtx, LIVE_PRICE_SERIES_IO)
-  // INPUT audit trail: freeze the exact text closed-book models are about to
-  // see, BEFORE any model call. Write-once (null-guard).
-  if (pkt.injection) {
-    await persistClosedBookPacket(round.id, pkt.researchCacheKey, pkt.injection)
-  }
+  // Sequential path always builds. Parallel tiers reuse the write-once text
+  // (or join a single in-flight build if it is not persisted yet).
+  const pkt: CategoryPacket = opts.reusePersistedPacket
+    ? await loadOrBuildPersistedPacket(round, costCap)
+    : await buildAndPersistRoundPacket(round, costCap)
   const prompts = buildRoundPrompts(contract, round, pkt.injection, pkt.dataPacket.error)
 
   const results: ModelRunResult[] = []
   let runningCost = pkt.researchCostUsd
   let capped = false
+  let deferredSeats = 0
+  const http429 = { n: 0 }
   const cursor = { nextIndex: 0 }
   const launchedThisChunk = { launched: 0 }
   const tickBudgetMs =
@@ -1015,6 +1139,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       // yet). Peek→check→claim is synchronous so parallel workers cannot
       // double-claim. A deferred seat has no row — the next cron tick picks
       // it up via excludeModelIds.
+      const before = cursor.nextIndex
       const i = claimNextLaunchableIndex(roster, cursor, {
         nowMs: Date.now(),
         deadlineAtMs: opts.deadlineAtMs,
@@ -1022,7 +1147,11 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
         tickBudgetMs,
         launchedThisChunk,
       })
-      if (i === null) return
+      if (i === null) {
+        deferredSeats += Math.max(0, roster.length - before)
+        return
+      }
+      deferredSeats += Math.max(0, i - before)
       const entry = roster[i]
       const entryTimeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : timeoutMs
 
@@ -1038,6 +1167,8 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
         tokenBudget,
         round.horizon,
         round.category,
+        opts.callGate,
+        http429,
       )
       runningCost += outcome.cost_usd
       results.push(outcome)
@@ -1050,7 +1181,9 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   const workers = Array.from({ length: Math.min(concurrency, roster.length) }, () => worker())
   await Promise.all(workers)
 
-  await persistConsensusAggregates(round.id, results, contract.sides)
+  if (!opts.skipConsensusPersist) {
+    await persistConsensusAggregates(round.id, results, contract.sides)
+  }
 
   if (wantsExtra && extraPending.length > 0) {
     const extraResults = await generateExtraSeats({
@@ -1074,5 +1207,6 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
     total_cost_usd: Number(runningCost.toFixed(6)),
     capped,
     cost_cap_usd: costCap,
+    ...(opts.trackChunkStats ? { deferredSeats, http429: http429.n } : {}),
   }
 }

@@ -2,7 +2,9 @@ import 'server-only'
 
 import { addCreditsBalance } from '@/lib/credits-server'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { generatePredictions, persistLeagueConsensusFromDb } from '@/lib/league/orchestrator'
+import { ensureLeagueRoundPacket, generatePredictions, persistLeagueConsensusFromDb } from '@/lib/league/orchestrator'
+import { leagueParallelTiersEnabled } from '@/lib/league/generation/parallel-policy'
+import { createProviderCallGate } from '@/lib/league/generation/provider-gate'
 import { extraSeatIds } from '@/lib/league/extra/seats'
 import { getRoster, type LeagueTier } from '@/lib/league/roster'
 import {
@@ -46,11 +48,22 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
       listClaimableJobs: listClaimableGenerationJobs,
       countRunningJobs: countRunningGenerationJobs,
     },
-    generate: async ({ roundId, tier, excludeModelIds, deadlineAtMs, tickBudgetMs, onModelResult }) => {
+    generate: async ({
+      roundId,
+      tier,
+      excludeModelIds,
+      deadlineAtMs,
+      tickBudgetMs,
+      onModelResult,
+      reusePersistedPacket,
+      skipConsensusPersist,
+      callGate,
+      trackChunkStats,
+    }) => {
       // Cost cap is per ROUND, not per tick: subtract what previous ticks
       // already spent so a resumed job cannot spend the full cap again.
       const remainingCap = await remainingRoundCostCapUsd(roundId)
-      await generatePredictions({
+      const result = await generatePredictions({
         round: { roundId },
         tiers: [tier],
         excludeModelIds,
@@ -58,7 +71,13 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
         tickBudgetMs,
         costCapUsd: remainingCap,
         onModelResult: (result) => onModelResult(result.model_id),
+        reusePersistedPacket,
+        skipConsensusPersist,
+        callGate,
+        trackChunkStats,
       })
+      if (!trackChunkStats) return
+      return { deferred: result.deferredSeats ?? 0, http429: result.http429 ?? 0 }
     },
     finalizeConsensus: persistLeagueConsensusFromDb,
     refundCredits: async (userId, amount) => {
@@ -69,6 +88,9 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
       tier === 'extra' ? [...extraSeatIds()] : getRoster([tier]).map((entry) => entry.model_id),
     priceAnchorGate: runnerPriceAnchorGate,
     schedule,
+    parallelTiers: leagueParallelTiersEnabled(),
+    ensurePacket: (roundId) => ensureLeagueRoundPacket(roundId),
+    createCallGate: () => createProviderCallGate(),
   }
 }
 
