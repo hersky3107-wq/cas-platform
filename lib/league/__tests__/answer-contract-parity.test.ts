@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { answerContractFor, buildRoundPrompts, CONFIDENCE_DISTRIBUTION_GUIDANCE, type PromptRound } from '../answer-contract'
+import { answerContractFor, buildRoundPrompts, CONFIDENCE_DISTRIBUTION_GUIDANCE, OUTSIDE_VIEW_PREMORTEM_GUIDANCE, type PromptRound } from '../answer-contract'
 import { isBinaryDirection, parsePrediction, splitReasoningAndJson, type ParsedPrediction } from '../prediction-parse'
 import { validateMagnitude } from '../magnitude'
 
@@ -33,30 +33,32 @@ COUNTER: the strongest argument AGAINST your own conclusion.
 
 PART 2 — ANSWER: exactly ONE line of strict JSON as the LAST line of your output, nothing after it.
 
-Required JSON keys: direction, probability, magnitude, rationale.
+Required JSON keys: direction, probability, magnitude, rationale, strongest_counter.
 
 Example shape (replace values with your own forecast — do not copy this example verbatim):
-{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close."}
+{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close.","strongest_counter":"The earnings beat is already priced in."}
 
 - direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
 - probability: your confidence in the stated direction, integer 0 through 100.
 - magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.
+- strongest_counter: the single most plausible reason your chosen direction would be wrong, 20 words or fewer.
 - rationale: one concise sentence distilled from your reasoning (200 characters or fewer). Write your actual conclusion — never repeat these instructions, schema labels, or placeholder text.`
 
 const FROZEN_SCOUT_SYSTEM_PROMPT = `You are an independent forecasting model in a prediction league. You answer ALONE; you never see any other model's answer. You may reason internally, but your VISIBLE output MUST be exactly ONE line of strict JSON and nothing else — no markdown, no code fences, no preamble, no trailing text.
 
-Required JSON keys: direction, probability, magnitude, rationale.
+Required JSON keys: direction, probability, magnitude, rationale, strongest_counter.
 
 Example shape (replace values with your own forecast — do not copy this example verbatim):
-{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close."}
+{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close.","strongest_counter":"The earnings beat is already priced in."}
 
 - direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
 - probability: your confidence in the stated direction, integer 0 through 100.
 - magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.
+- strongest_counter: the single most plausible reason your chosen direction would be wrong, 20 words or fewer.
 - rationale: one concise sentence of reasoning or a key citation in plain prose (200 characters or fewer). Write your actual reasoning — never repeat these instructions, schema labels, or placeholder text.
 Return the JSON object only.`
 
-const FROZEN_PREDICTION_RETRY_INSTRUCTION = `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"..."}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`
+const FROZEN_PREDICTION_RETRY_INSTRUCTION = `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"...","strongest_counter":"<20 words>"}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`
 
 /** FROZEN copy of the pre-refactor orchestrator buildPropositionBlock + buildPrompts. */
 function frozenBuildPropositionBlock(round: PromptRound): string {
@@ -151,11 +153,13 @@ const PRICE_CLOSER =
   'Write the four-line reasoning block (CHAIN / EVIDENCE / BASE RATE / COUNTER), then the single-line JSON object as the LAST line, exactly as described in the system message.'
 const SCOUT_CLOSER = 'Respond with the single-line JSON object described in the system message.'
 
-/** Frozen schema stays; the shared distribution line is the only addition, just before the closer. */
+/** Frozen schema stays; distribution line then the outside-view / pre-mortem rule, just before the closer. */
 function expectFrozenPlusDistribution(actual: string, frozen: string, closer: string) {
   expect(frozen.endsWith(closer)).toBe(true)
   const head = frozen.slice(0, frozen.length - closer.length).replace(/\n$/, '')
-  expect(actual).toBe([head, '', CONFIDENCE_DISTRIBUTION_GUIDANCE, closer].join('\n'))
+  expect(actual).toBe(
+    [head, '', CONFIDENCE_DISTRIBUTION_GUIDANCE, '', OUTSIDE_VIEW_PREMORTEM_GUIDANCE, closer].join('\n'),
+  )
 }
 
 describe('binary_close_higher round prompts — frozen schema plus the shared distribution line', () => {

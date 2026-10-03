@@ -2,6 +2,7 @@ import type { ConsensusSummary } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { sideLabelsFor, type SideLabels } from '@/lib/league/side-labels'
 import { buildConsensusHero, heroSideWords, magnitudeCompareLine } from '@/lib/league/compliance'
+import { isWeakConfidenceCrowding } from '@/lib/league/weak-crowding'
 
 /**
  * Glanceable consensus hero — count first, conclusion second, confidence last.
@@ -78,6 +79,11 @@ export function ConsensusHero({
 
   const hero = buildConsensusHero(consensus, horizon, t, labels)
   if (!hero) return null
+  const weakCrowding = isWeakConfidenceCrowding({
+    up: consensus.tally.up,
+    down: consensus.tally.down,
+    weightedConfidencePct: consensus.aggregateProbability,
+  })
 
   if (hero.kind === 'fallback') {
     const hasBar = (hero.upCount ?? 0) + (hero.downCount ?? 0) > 0
@@ -85,12 +91,7 @@ export function ConsensusHero({
       <div className="mt-3" data-testid="consensus-hero" data-seat-complete="true">
         {hasBar && hero.countLine ? (
           <>
-            <p
-              className="text-xl font-extrabold leading-tight text-league-fg md:text-2xl"
-              data-testid="consensus-count-line"
-            >
-              {hero.countLine}
-            </p>
+            <CountLine text={hero.countLine} weakLabel={weakCrowding ? t.hero.weakConfidenceCrowding : null} />
             <DirectionRatioBar
               up={hero.upCount ?? 0}
               down={hero.downCount ?? 0}
@@ -132,12 +133,7 @@ export function ConsensusHero({
 
   return (
     <div className="mt-3" data-testid="consensus-hero" data-seat-complete="true">
-      <p
-        className="text-xl font-extrabold leading-tight text-league-fg md:text-2xl"
-        data-testid="consensus-count-line"
-      >
-        {hero.countLine}
-      </p>
+      <CountLine text={hero.countLine} weakLabel={weakCrowding ? t.hero.weakConfidenceCrowding : null} />
       <DirectionRatioBar
         up={hero.upCount}
         down={hero.downCount}
@@ -205,6 +201,22 @@ export function ConsensusHero({
         </p>
       ) : null}
     </div>
+  )
+}
+
+function CountLine({ text, weakLabel }: { text: string; weakLabel: string | null }) {
+  return (
+    <p className="text-xl font-extrabold leading-tight text-league-fg md:text-2xl" data-testid="consensus-count-line">
+      {text}
+      {weakLabel ? (
+        <span
+          className="ml-2 inline-block align-middle rounded-full border border-league-border px-2 py-0.5 text-[11px] font-medium leading-snug text-league-fg-muted"
+          data-testid="weak-confidence-crowding"
+        >
+          {weakLabel}
+        </span>
+      ) : null}
+    </p>
   )
 }
 

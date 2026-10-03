@@ -41,6 +41,7 @@ import {
   sanitizeReasoningText,
   splitReasoningAndJson,
   hasReasoningTrace,
+  isPlaceholderRationale,
   stripReasoningTracePreamble,
   RATIONALE_SNIPPET_MAX_CHARS,
 } from './prediction-parse'
@@ -59,6 +60,15 @@ export type ContractAnswer = {
   /** Text qualifier (scoreline, margin, gap) — raw, unvalidated. */
   qualifierText: string | null
   rationale: string | null
+  /**
+   * Pre-mortem reason, clipped to 20 words. Null when omitted. Never a drop.
+   */
+  strongestCounter: string | null
+  /**
+   * True only on an accepted side that omitted strongest_counter. Callers log
+   * it and still store fail_reason null. Never set on a rejected parse.
+   */
+  counterMissing: boolean
   /** True when the model named a third value (flat/draw/abstain/a name/…). */
   rejectedSide: boolean
   parseFailure?: import('./prediction-parse').ParseFailure
@@ -95,7 +105,7 @@ export type AnswerContract = {
   /** The exactly-two sides, in prompt order. */
   sides: readonly [AnswerSide, AnswerSide]
   /** Required keys of the single-line answer JSON, in schema order. */
-  jsonKeys: readonly [string, string, string, string]
+  jsonKeys: readonly string[]
   /** Closed-book tiers: PART 1 reasoning block + PART 2 answer JSON. */
   closedBookSystemPrompt: string
   /** Scout tier: JSON-only output, self-directed web search. */
@@ -173,7 +183,7 @@ const EXAMPLE_HEADER =
 
 type PromptConfig = {
   sides: readonly [AnswerSide, AnswerSide]
-  jsonKeys: readonly [string, string, string, string]
+  jsonKeys: readonly string[]
   exampleJson: string
   /** Field rules shared by both tiers (all but the rationale line). */
   fieldRules: readonly string[]
@@ -266,6 +276,75 @@ function clampProbability(raw: unknown): number | null {
   return Number.isFinite(p) ? Math.max(0, Math.min(100, Math.round(p))) : null
 }
 
+/** Pre-mortem field cap. Extra words are clipped; the seat is still accepted. */
+export const STRONGEST_COUNTER_MAX_WORDS = 20
+
+const NO_COUNTER = { strongestCounter: null, counterMissing: false } as const
+
+/**
+ * Reads strongest_counter from an answer object. Missing, blank, placeholder,
+ * or a reasoning-trace is `counterMissing` with a null value — the side still
+ * stands. Present text is clipped to 20 words.
+ */
+export function readStrongestCounter(obj: Record<string, unknown> | null): {
+  strongestCounter: string | null
+  counterMissing: boolean
+} {
+  const missing = { strongestCounter: null, counterMissing: true }
+  if (!obj || !Object.prototype.hasOwnProperty.call(obj, 'strongest_counter')) return missing
+  const raw = obj.strongest_counter
+  if (typeof raw !== 'string') return missing
+  const trimmed = raw.trim()
+  if (!trimmed || isPlaceholderRationale(trimmed) || hasReasoningTrace(trimmed)) return missing
+  const words = trimmed.split(/\s+/).filter(Boolean).slice(0, STRONGEST_COUNTER_MAX_WORDS)
+  if (words.length === 0) return missing
+  return { strongestCounter: words.join(' '), counterMissing: false }
+}
+
+function answerObjectOf(text: string): Record<string, unknown> | null {
+  const opens: number[] = []
+  for (let i = 0; i < text.length; i++) if (text[i] === '{') opens.push(i)
+  for (let c = opens.length - 1; c >= 0; c--) {
+    const start = opens[c]!
+    let depth = 0
+    let inString = false
+    let escaped = false
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i]
+      if (inString) {
+        if (escaped) escaped = false
+        else if (ch === '\\') escaped = true
+        else if (ch === '"') inString = false
+        continue
+      }
+      if (ch === '"') inString = true
+      else if (ch === '{') depth++
+      else if (ch === '}') {
+        depth--
+        if (depth === 0) {
+          try {
+            const obj = JSON.parse(text.slice(start, i + 1)) as Record<string, unknown>
+            if (obj && typeof obj === 'object' && ('direction' in obj || 'side' in obj)) return obj
+          } catch {
+            // try the previous open brace
+          }
+          break
+        }
+      }
+    }
+  }
+  return null
+}
+
+function counterFromText(text: string | null): { strongestCounter: string | null; counterMissing: boolean } {
+  if (!text) return { strongestCounter: null, counterMissing: true }
+  const obj = answerObjectOf(text)
+  if (obj) return readStrongestCounter(obj)
+  const match = text.match(/"strongest_counter"\s*:\s*"([^"]+)"/i)
+  if (!match) return { strongestCounter: null, counterMissing: true }
+  return readStrongestCounter({ strongest_counter: match[1] })
+}
+
 function normalizeSideFields(
   obj: Record<string, unknown>,
   sides: readonly [AnswerSide, AnswerSide],
@@ -291,17 +370,18 @@ function normalizeSideFields(
     qualifierText = String(qRaw)
   }
 
-  return {
-    side,
+  const rationaleLeak = typeof obj.rationale === 'string' && hasReasoningTrace(obj.rationale)
+  const base = {
+    side: rationaleLeak ? null : side,
     probability: clampProbability(obj.probability),
     qualifierNumber,
     qualifierText,
-    rationale: sanitizeRationale(typeof obj.rationale === 'string' ? obj.rationale : null),
-    rejectedSide: side === null,
-    ...(typeof obj.rationale === 'string' && hasReasoningTrace(obj.rationale)
-      ? { parseFailure: 'reasoning_leak' as const, rationale: null, side: null, rejectedSide: true }
-      : {}),
+    rationale: rationaleLeak ? null : sanitizeRationale(typeof obj.rationale === 'string' ? obj.rationale : null),
+    rejectedSide: rationaleLeak ? true : side === null,
+    ...(rationaleLeak ? { parseFailure: 'reasoning_leak' as const } : {}),
   }
+  if (rationaleLeak || base.side == null) return { ...base, ...NO_COUNTER }
+  return { ...base, ...readStrongestCounter(obj) }
 }
 
 function parseSideAnswer(
@@ -328,6 +408,7 @@ function parseSideAnswer(
       qualifierNumber: null,
       qualifierText: null,
       rationale: null,
+      ...NO_COUNTER,
       rejectedSide: true,
       parseFailure: 'reasoning_leak',
     }
@@ -339,6 +420,7 @@ function parseSideAnswer(
       qualifierNumber: null,
       qualifierText: null,
       rationale: null,
+      ...NO_COUNTER,
       rejectedSide: true,
       parseFailure: 'unparseable',
     }
@@ -374,6 +456,8 @@ function parseSideAnswer(
   if (qMatch) obj[qualifierKey] = qualifierShape === 'number' ? Number(qMatch[1]) : qMatch[1]
   const rationaleMatch = unfenced.match(/"rationale"\s*:\s*"([^"]+)"/i)
   if (rationaleMatch) obj.rationale = rationaleMatch[1]
+  const counterMatch = unfenced.match(/"strongest_counter"\s*:\s*"([^"]+)"/i)
+  if (counterMatch) obj.strongest_counter = counterMatch[1]
   return normalizeSideFields(obj, sides, qualifierKey, qualifierShape)
 }
 
@@ -398,15 +482,19 @@ export const QUALIFIER_TEXT_MAX_CHARS = 40
  *  catches garbled output, not a fitted range. */
 export const THRESHOLD_VALUE_ABS_MAX = 1e12
 
+const STRONGEST_COUNTER_RULE =
+  '- strongest_counter: the single most plausible reason your chosen direction would be wrong, 20 words or fewer.'
+
 const CLOSE_HIGHER_CONFIG: PromptConfig = {
   sides: ['up', 'down'],
-  jsonKeys: ['direction', 'probability', 'magnitude', 'rationale'],
+  jsonKeys: ['direction', 'probability', 'magnitude', 'rationale', 'strongest_counter'],
   exampleJson:
-    '{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close."}',
+    '{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close.","strongest_counter":"The earnings beat is already priced in."}',
   fieldRules: [
     '- direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).',
     '- probability: your confidence in the stated direction, integer 0 through 100.',
     '- magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.',
+    STRONGEST_COUNTER_RULE,
   ],
   closedBookRationaleRule: CLOSED_BOOK_RATIONALE_RULE,
   scoutRationaleRule: SCOUT_RATIONALE_RULE,
@@ -418,7 +506,7 @@ const BINARY_CLOSE_HIGHER: AnswerContract = {
   jsonKeys: CLOSE_HIGHER_CONFIG.jsonKeys,
   closedBookSystemPrompt: composeClosedBookPrompt(CLOSE_HIGHER_CONFIG),
   scoutSystemPrompt: composeScoutPrompt(CLOSE_HIGHER_CONFIG),
-  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"..."}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`,
+  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"...","strongest_counter":"<20 words>"}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`,
   directionOnlyRetryInstruction:
     'RETRY: Previous answer had no valid direction. Output EXACTLY one JSON line and nothing else: {"direction":"up"} or {"direction":"down"}. Never flat, abstain, empty, or any other value.',
   packetAnswerGuidance:
@@ -432,12 +520,14 @@ const BINARY_CLOSE_HIGHER: AnswerContract = {
     // stocks path (direction-keyed JSON, fences, prose fallbacks).
     const parsed = parsePrediction(text)
     if (!parsed) return null
+    const accepted = !parsed.parseFailure && parsed.direction != null
     return {
       side: parsed.parseFailure ? null : parsed.direction,
       probability: parsed.parseFailure ? null : parsed.probability,
       qualifierNumber: parsed.parseFailure ? null : parsed.magnitude,
       qualifierText: null,
       rationale: parsed.parseFailure ? null : parsed.rationale,
+      ...(accepted ? counterFromText(text) : NO_COUNTER),
       rejectedSide: parsed.parseFailure ? true : parsed.rejectedDirection,
       parseFailure: parsed.parseFailure,
     }
@@ -467,13 +557,14 @@ const BINARY_CLOSE_HIGHER: AnswerContract = {
 
 const SUBJECT_OUTCOME_CONFIG: PromptConfig = {
   sides: ['yes', 'no'],
-  jsonKeys: ['side', 'probability', 'qualifier', 'rationale'],
+  jsonKeys: ['side', 'probability', 'qualifier', 'rationale', 'strongest_counter'],
   exampleJson:
-    '{"side":"yes","probability":64,"qualifier":"2-1","rationale":"Stronger recent form and a rest advantage support the stated outcome."}',
+    '{"side":"yes","probability":64,"qualifier":"2-1","rationale":"Stronger recent form and a rest advantage support the stated outcome.","strongest_counter":"A derby draw is still a live result."}',
   fieldRules: [
     '- side: exactly one of "yes" or "no" — whether the NAMED subject achieves the stated outcome. Exactly two answers exist — any result that is not the stated outcome (including a draw) is "no". Never abstain, never a name, never any other value.',
     '- probability: your confidence in the stated side, integer 0 through 100.',
     `- qualifier: the concrete detail behind your call, as a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) — e.g. a predicted final scoreline "2-1", a predicted vote margin in points "4.5", a predicted confidence gap. Required; it is never graded.`,
+    STRONGEST_COUNTER_RULE,
   ],
   closedBookRationaleRule: CLOSED_BOOK_RATIONALE_RULE,
   scoutRationaleRule: SCOUT_RATIONALE_RULE,
@@ -487,6 +578,14 @@ const SUBJECT_OUTCOME_CONFIG: PromptConfig = {
  */
 export const CONFIDENCE_DISTRIBUTION_GUIDANCE =
   'Match your direction choice to your confidence. If your confidence is 55-65% (near coin-flip), the opposite outcome happens 35-45% of the time — do NOT reflexively pick the slightly-favored side. If the opposite scenario is genuinely plausible, picking it is correct and expected. Only when confidence is high (80%+) should the field be near-unanimous. At 55-65% confidence, the AIs should naturally split (e.g. 60-70% one way, 30-40% the other), not 100-0. Overheating/mean-reversion, single-event variance, and priced-in news are real reasons the favored side fails. When the data clearly favors one side, leaning that way is correct — but near-unanimity is appropriate only at high confidence (80%+). A close call must split.'
+
+/**
+ * Same instruction as CONFIDENCE_DISTRIBUTION_GUIDANCE, stated as the two
+ * steps that produce it. Not a quota and not a second, competing rule.
+ * Appended after the distribution line on every official and scout prompt.
+ */
+export const OUTSIDE_VIEW_PREMORTEM_GUIDANCE =
+  'Before you commit, two steps set the probability — this is the same rule as the confidence distribution above, not a second quota and not an assignment to balance the field. Outside view first: start from the base rate given in the packet, or about 50% if none is given, then adjust only for the specific evidence. The stated confidence must reflect the size of that adjustment, not the strength of the narrative. Pre-mortem: before answering, identify the single most plausible reason the chosen direction would be wrong, and lower confidence if that reason is supported by the packet. A 55-65% lean stays a small adjustment, so close calls split because each model follows its own evidence. Do not pick a direction to be contrarian, to balance other models, or with any reference to what other models might answer.'
 
 export const SPORTS_CALIBRATION_GUIDANCE =
   "This is a single-game outcome. If one side is a strong favorite (80%+), pick that side — it will very likely win. BUT when it's close (e.g. 55%), remember the 45% side wins nearly half the time. In close games, seriously weigh the REASONS the underdog could win (injuries recovering, momentum, matchup quirks, single-game variance, situational factors). If those reversal reasons are genuinely strong or the variance is high, you MAY pick the underdog — this is allowed and encouraged when the case is real. Do NOT pick the underdog just to be contrarian (that's wrong), and do NOT invent reasons that aren't there. But do NOT blindly follow the favorite in a coin-flip when real reversal factors exist. Match confidence to the actual edge: blowout ~85-90%, coin-flip ~55%."
@@ -520,7 +619,7 @@ const BINARY_SUBJECT_OUTCOME: AnswerContract = {
   sportsScoutSystemPrompt: composeScoutPrompt(SPORTS_SUBJECT_OUTCOME_CONFIG),
   politicsClosedBookSystemPrompt: composeClosedBookPrompt(POLITICS_SUBJECT_OUTCOME_CONFIG),
   politicsScoutSystemPrompt: composeScoutPrompt(POLITICS_SUBJECT_OUTCOME_CONFIG),
-  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"yes"|"no","probability":0-100,"qualifier":"<short string>","rationale":"..."}. side must be exactly "yes" or "no" — whether the named subject achieves the stated outcome; any other result (including a draw) is "no". Never abstain, never a name. qualifier is required: a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) with your predicted detail (scoreline, margin, gap).`,
+  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"yes"|"no","probability":0-100,"qualifier":"<short string>","rationale":"...","strongest_counter":"<20 words>"}. side must be exactly "yes" or "no" — whether the named subject achieves the stated outcome; any other result (including a draw) is "no". Never abstain, never a name. qualifier is required: a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) with your predicted detail (scoreline, margin, gap).`,
   directionOnlyRetryInstruction:
     'RETRY: Previous answer had no valid side. Output EXACTLY one JSON line and nothing else: {"side":"yes"} or {"side":"no"}. Never abstain, empty, a name, or any other value.',
   packetAnswerGuidance:
@@ -554,13 +653,14 @@ const BINARY_SUBJECT_OUTCOME: AnswerContract = {
 
 const THRESHOLD_CONFIG: PromptConfig = {
   sides: ['above', 'below'],
-  jsonKeys: ['side', 'probability', 'predicted_value', 'rationale'],
+  jsonKeys: ['side', 'probability', 'predicted_value', 'rationale', 'strongest_counter'],
   exampleJson:
-    '{"side":"above","probability":58,"predicted_value":3.4,"rationale":"Recent tracking data runs ahead of the consensus line."}',
+    '{"side":"above","probability":58,"predicted_value":3.4,"rationale":"Recent tracking data runs ahead of the consensus line.","strongest_counter":"One soft print would slip back under the line."}',
   fieldRules: [
     '- side: exactly one of "above" or "below" the threshold named in the proposition. Exactly two answers exist — never at, equal, abstain, or any other value. If you expect a value near the line, still pick the closer side; an exact tie resolves per the stated resolution rule.',
     '- probability: your confidence in the stated side, integer 0 through 100.',
     '- predicted_value: your predicted actual value as a plain number, in the same units as the proposition\'s threshold. Required; it is never graded.',
+    STRONGEST_COUNTER_RULE,
   ],
   closedBookRationaleRule: CLOSED_BOOK_RATIONALE_RULE,
   scoutRationaleRule: SCOUT_RATIONALE_RULE,
@@ -572,7 +672,7 @@ const BINARY_THRESHOLD: AnswerContract = {
   jsonKeys: THRESHOLD_CONFIG.jsonKeys,
   closedBookSystemPrompt: composeClosedBookPrompt(THRESHOLD_CONFIG),
   scoutSystemPrompt: composeScoutPrompt(THRESHOLD_CONFIG),
-  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"above"|"below","probability":0-100,"predicted_value":<number>,"rationale":"..."}. side must be exactly "above" or "below" — never at, equal, abstain, or any other value. predicted_value is required: a plain number in the same units as the proposition's threshold.`,
+  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"above"|"below","probability":0-100,"predicted_value":<number>,"rationale":"...","strongest_counter":"<20 words>"}. side must be exactly "above" or "below" — never at, equal, abstain, or any other value. predicted_value is required: a plain number in the same units as the proposition's threshold.`,
   directionOnlyRetryInstruction:
     'RETRY: Previous answer had no valid side. Output EXACTLY one JSON line and nothing else: {"side":"above"} or {"side":"below"}. Never at, equal, abstain, empty, or any other value.',
   packetAnswerGuidance:
@@ -680,7 +780,7 @@ export function buildRoundPrompts(
       : isPoliticsLedgerCategory(round.category) && contract.kind === 'binary_subject_outcome'
         ? POLITICS_CALIBRATION_GUIDANCE
         : null
-  const distribution = ['', CONFIDENCE_DISTRIBUTION_GUIDANCE]
+  const distribution = ['', CONFIDENCE_DISTRIBUTION_GUIDANCE, '', OUTSIDE_VIEW_PREMORTEM_GUIDANCE]
 
   let price: string
   if (injection) {
@@ -718,8 +818,14 @@ export function buildRoundPrompts(
 }
 
 function withConfidenceDistribution(prompt: string): string {
-  if (prompt.includes(CONFIDENCE_DISTRIBUTION_GUIDANCE)) return prompt
-  return `${prompt}\n\n- confidence distribution: ${CONFIDENCE_DISTRIBUTION_GUIDANCE}`
+  let next = prompt
+  if (!next.includes(CONFIDENCE_DISTRIBUTION_GUIDANCE)) {
+    next = `${next}\n\n- confidence distribution: ${CONFIDENCE_DISTRIBUTION_GUIDANCE}`
+  }
+  if (!next.includes(OUTSIDE_VIEW_PREMORTEM_GUIDANCE)) {
+    next = `${next}\n\n${OUTSIDE_VIEW_PREMORTEM_GUIDANCE}`
+  }
+  return next
 }
 
 /**

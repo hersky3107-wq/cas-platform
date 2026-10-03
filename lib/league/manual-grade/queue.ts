@@ -35,6 +35,7 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
   const ids = rows.map((r) => String(r.id))
   const jobsByRound = await loadChargedJobs(ids)
   const nullSeatsByRound = await loadNullSeats(ids)
+  const countersByRound = await loadSeatCounters(ids)
   const t = LEAGUE_UI.ko
 
   return rows.map((row) => {
@@ -65,6 +66,7 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
       side_a: labels.badge(labels.sides[0]),
       side_b: labels.badge(labels.sides[1]),
       null_seats: nullSeatsByRound.get(String(row.id)) ?? [],
+      seat_counters: countersByRound.get(String(row.id)) ?? [],
     }
   })
 }
@@ -99,6 +101,25 @@ async function loadNullSeats(roundIds: string[]) {
       model_id: String(row.model_id),
       fail_reason: typeof row.fail_reason === 'string' ? row.fail_reason : null,
     })
+    map.set(rid, list)
+  }
+  return map
+}
+
+async function loadSeatCounters(roundIds: string[]) {
+  const { data, error } = await supabaseAdmin
+    .from('model_predictions')
+    .select('round_id, model_id, strongest_counter')
+    .in('round_id', roundIds)
+    .not('strongest_counter', 'is', null)
+  if (error) return new Map<string, Array<{ model_id: string; strongest_counter: string }>>()
+  const map = new Map<string, Array<{ model_id: string; strongest_counter: string }>>()
+  for (const row of data ?? []) {
+    const text = typeof row.strongest_counter === 'string' ? row.strongest_counter.trim() : ''
+    if (!text) continue
+    const rid = String(row.round_id)
+    const list = map.get(rid) ?? []
+    list.push({ model_id: String(row.model_id), strongest_counter: text })
     map.set(rid, list)
   }
   return map

@@ -62,6 +62,8 @@ export type ManualQueueItem = {
   side_b: string
   /** Admin-only: official/extra seats with a null direction. */
   null_seats: Array<{ model_id: string; fail_reason: string | null }>
+  /** Admin-only pre-mortem text. Empty when the column is absent or unused. */
+  seat_counters: Array<{ model_id: string; strongest_counter: string }>
 }
 
 export type ManualSuggestion = {

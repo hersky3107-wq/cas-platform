@@ -454,6 +454,21 @@ export default function LeagueManualGradePage() {
                   </div>
                 ) : null}
 
+                {selected.seat_counters.length > 0 ? (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">strongest_counter (admin)</p>
+                    <ul className="mt-2 space-y-1">
+                      {selected.seat_counters.map((seat) => (
+                        <li key={seat.model_id} className="text-xs text-slate-300">
+                          <span className="font-mono text-slate-200">{seat.model_id}</span>
+                          <span className="mx-2 text-slate-600">·</span>
+                          {seat.strongest_counter}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
                 <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-3 text-sm">
                   <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">AI 제안 (자동 적용 안 함)</p>
                   {suggestingIds[selected.id] && !suggestions[selected.id] ? (

@@ -882,9 +882,12 @@ async function runOneModel(
         // last attempt predates that job.
         predicted_at: new Date().toISOString(),
         fail_reason: null,
+        strongest_counter: answer!.strongestCounter,
       },
       { onConflict: 'round_id,model_id' }
     )
+
+  if (answer!.counterMissing) logCounterMissing(roundId, entry)
 
   return {
     ...base,
@@ -935,6 +938,7 @@ async function upsertNullPrediction(
         // for columns missing from the payload.
         predicted_at: new Date().toISOString(),
         fail_reason: failReason,
+        strongest_counter: null,
       },
       { onConflict: 'round_id,model_id' }
     )
@@ -944,6 +948,14 @@ function logNoAnswer(roundId: string, entry: RosterEntry, failReason: NoAnswerFa
   const seat = seatIdForModel(entry.model_id, entry.league_tier)
   console.log(
     `[league-generate] no-answer round=${roundId} seat=${seat} model=${entry.model_id} fail_reason=${failReason}`,
+  )
+}
+
+/** Accepted answer with no strongest_counter. Log only — fail_reason stays null, seat is kept. */
+function logCounterMissing(roundId: string, entry: RosterEntry): void {
+  const seat = seatIdForModel(entry.model_id, entry.league_tier)
+  console.log(
+    `[league-generate] counter_missing round=${roundId} seat=${seat} model=${entry.model_id} fail_reason=null`,
   )
 }
 

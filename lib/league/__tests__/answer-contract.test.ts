@@ -103,8 +103,8 @@ describe('binary_subject_outcome', () => {
   const c: AnswerContract = answerContractFor('binary_subject_outcome')
 
   it('schema: side, probability, qualifier, rationale', () => {
-    expect(c.jsonKeys).toEqual(['side', 'probability', 'qualifier', 'rationale'])
-    expect(c.closedBookSystemPrompt).toContain('Required JSON keys: side, probability, qualifier, rationale.')
+    expect(c.jsonKeys).toEqual(['side', 'probability', 'qualifier', 'rationale', 'strongest_counter'])
+    expect(c.closedBookSystemPrompt).toContain('Required JSON keys: side, probability, qualifier, rationale, strongest_counter.')
   })
 
   it('prompt states the law: never "A vs B", a draw is NO', () => {
@@ -182,8 +182,10 @@ describe('binary_threshold', () => {
   const c: AnswerContract = answerContractFor('binary_threshold')
 
   it('schema: side, probability, predicted_value, rationale', () => {
-    expect(c.jsonKeys).toEqual(['side', 'probability', 'predicted_value', 'rationale'])
-    expect(c.closedBookSystemPrompt).toContain('Required JSON keys: side, probability, predicted_value, rationale.')
+    expect(c.jsonKeys).toEqual(['side', 'probability', 'predicted_value', 'rationale', 'strongest_counter'])
+    expect(c.closedBookSystemPrompt).toContain(
+      'Required JSON keys: side, probability, predicted_value, rationale, strongest_counter.',
+    )
   })
 
   it('parses a valid above call with a predicted value', () => {

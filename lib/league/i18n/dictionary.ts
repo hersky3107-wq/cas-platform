@@ -170,6 +170,11 @@ export type LeagueUiPack = {
     ) => string
     /** Placeholder in place of the locked conclusion while generation.complete is false. */
     conclusionPending: string
+    /**
+     * Muted badge beside the head-count line when the official majority share
+     * is high and the weighted confidence is low. Never replaces that line.
+     */
+    weakConfidenceCrowding: string
   }
   /** e.g. "US: 3 up · 1 down · 1 no call" — `label` (e.g. "US"/"Premier") is passed through untranslated (a proper-noun-ish group name). */
   groupTallyLine: (label: string, tally: DirectionTally) => string
@@ -851,6 +856,7 @@ const en: LeagueUiPack = {
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `So far ${answered} replies \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Still tallying \u00b7 the call locks in when every seat has answered',
+    weakConfidenceCrowding: 'Crowded on weak confidence — this may be close',
   },
   sides: {
     subjectOutcome: {
@@ -1429,6 +1435,7 @@ const ko: LeagueUiPack = {
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `현재 ${answered}개 응답 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '집계 대기 중 \u00b7 응답 수집 후 확정',
+    weakConfidenceCrowding: '약한 확신의 쏠림 — 박빙일 수 있음',
   },
   sides: {
     subjectOutcome: {
@@ -2002,6 +2009,7 @@ const ja: LeagueUiPack = {
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `現在 ${answered}件が応答 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '集計待ち \u00b7 全席の応答後に確定します',
+    weakConfidenceCrowding: '弱い確信への偏り — 接戦の可能性があります',
   },
   sides: {
     subjectOutcome: {
@@ -2572,6 +2580,7 @@ const zhTW: LeagueUiPack = {
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `目前 ${answered} 則回覆 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '統計中 \u00b7 收齊回覆後才會確定',
+    weakConfidenceCrowding: '弱信心的一邊倒 — 可能是五五波',
   },
   sides: {
     subjectOutcome: {
@@ -3140,6 +3149,7 @@ const fr: LeagueUiPack = {
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `${answered} réponses pour l\u2019instant \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Décompte en cours \u00b7 l\u2019appel se fige quand tous les sièges ont répondu',
+    weakConfidenceCrowding: 'Foule à faible confiance — l\u2019issue peut être serrée',
   },
   sides: {
     subjectOutcome: {
@@ -3725,6 +3735,7 @@ const es: LeagueUiPack = {
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `De momento ${answered} respuestas \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Recuento en curso \u00b7 la conclusión se fija cuando respondan todos los asientos',
+    weakConfidenceCrowding: 'Aglomeración con poca confianza — puede estar reñido',
   },
   sides: {
     subjectOutcome: {
@@ -4310,6 +4321,7 @@ const ar: LeagueUiPack = {
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `حتى الآن ${answered} ردود \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'ما زال العد جاريًا \u00b7 تُثبَّت الخلاصة بعد اكتمال كل المقاعد',
+    weakConfidenceCrowding: 'تزاحم بثقة ضعيفة — قد تكون النتيجة متقاربة',
   },
   sides: {
     subjectOutcome: {
@@ -4888,6 +4900,7 @@ const pt: LeagueUiPack = {
     liveCountLine: (answered, upWord, upCount, downWord, downCount) =>
       `Até agora ${answered} respostas \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Contagem em andamento \u00b7 a conclusão trava quando todos os assentos responderem',
+    weakConfidenceCrowding: 'Aglomeração com pouca confiança — pode ser apertado',
   },
   sides: {
     subjectOutcome: {
