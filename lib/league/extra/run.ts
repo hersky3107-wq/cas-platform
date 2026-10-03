@@ -4,9 +4,9 @@
  * Sentiment searches web-visible news/opinion only — no series, no packet.
  * Consensus searches money-positioning (options / prediction markets / COT /
  * institutional targets) only — no series, no packet.
- * Crow reads a fact brief only: sports cache baseline + both sides, or the
- * price path plus the packet's computed CROWDING block. Never the research
- * prose, never invented numbers.
+ * Crow reads a fact brief only: sports cache baseline + both sides, the KRSTOCK
+ * price path plus the investor-flows block, or the price path plus the packet's
+ * computed CROWDING block. Never the research prose, never invented numbers.
  * Oracle owns divination cache — this file does not write one.
  */
 import 'server-only'
@@ -101,6 +101,8 @@ import {
   buildCrowUserPrompt,
   crowRetryInstruction,
   formatFinanceCrowBrief,
+  isKrEquityCrowInstrument,
+  krEquityCrowBrief,
   withCrowdingBlock,
   leagueSideFromCrow,
   parseCrowOutput,
@@ -909,14 +911,18 @@ async function resolveCrowBrief(
     return formatPropertyCrowBrief(parts)
   }
   const series = await resolveHistorySeries(round.instrument, providedSeries)
-  return withCrowdingBlock(formatFinanceCrowBrief(series), round.closed_book_packet_text)
+  const priceBrief = formatFinanceCrowBrief(series)
+  if (isKrEquityCrowInstrument(round.instrument)) {
+    return krEquityCrowBrief(priceBrief, round.closed_book_packet_text)
+  }
+  return withCrowdingBlock(priceBrief, round.closed_book_packet_text)
 }
 
 async function callCrowOnce(call: CrowCaller, input: CrowLeagueInput, retry = false): Promise<CrowCallResult> {
   const userPrompt = retry
     ? `${buildCrowUserPrompt(input)}\n\n${crowRetryInstruction()}`
     : buildCrowUserPrompt(input)
-  return call({ systemPrompt: buildCrowSystemPrompt(input.category), userPrompt })
+  return call({ systemPrompt: buildCrowSystemPrompt(input.category, input.instrument), userPrompt })
 }
 
 async function runCrowSeat(

@@ -11,6 +11,7 @@
  */
 import type { AnswerSide } from '../answer-contract'
 import { extractCrowdingBlock, rsi14 } from '../crowding'
+import { extractKrFlowsBlock } from '../korea-flows-signals'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import type { HistorySeriesBar } from './history'
 import { leagueSideFromDivination } from './divination'
@@ -87,12 +88,30 @@ export function buildCrowInput(
   }
 }
 
-export function buildCrowSystemPrompt(category: string): string {
+export const KR_EQUITY_CROW_LENS_LABEL = '과열·쏠림 경계'
+
+/**
+ * Korean-equity crow lens. Replaces the finance lens, which may raise
+ * "세력" as a hypothesis. These sentences are the prompt rules.
+ */
+export const KR_EQUITY_CROW_RULES = [
+  `Korean-equity lens (${KR_EQUITY_CROW_LENS_LABEL}): use crowdingLevel and the Investor flows & positioning block.`,
+  'Allowed framing: one-sided buying followed by profit-taking risk, extended selling streaks, short-ratio spikes, price far above moving averages.',
+  'Forbidden: do not name or imply any party\'s intent. Do not use or imply "세력", "작전", manipulation, or coordinated activity.',
+].join(' ')
+
+export function isKrEquityCrowInstrument(instrument: string | null | undefined): boolean {
+  return typeof instrument === 'string' && instrument.startsWith('KRSTOCK:')
+}
+
+export function buildCrowSystemPrompt(category: string, instrument?: string | null): string {
   const sports = isSportsLedgerCategory(category)
   const politics = isPoliticsLedgerCategory(category)
   const entertainment = isEntertainmentLedgerCategory(category)
   const realEstate = isRealEstateLedgerCategory(category)
-  const lens = sports
+  const lens = isKrEquityCrowInstrument(instrument)
+    ? KR_EQUITY_CROW_RULES
+    : sports
     ? 'Sports lens: the underdog\'s uprising and single-game chaos. Home advantage, the book\'s residual on the dog, and one-night variance are real. Rest, bullpen, and rotation count only when the brief states them.'
     : politics
       ? 'Politics lens: the overlooked reversal in a close race — a documented scandal, withdrawal, or turnout shift that the market baseline has not fully priced. A heavy favorite can still be the right call. Do not invent poll numbers or 지지율.'
@@ -188,6 +207,21 @@ export function formatFinanceCrowBrief(
     'Crowd euphoria is real only when this path is a steep run. Mean-reversion is the ignored downside of that run, not a required fade. A flat path is not a reversal.',
   )
   return lines.join('\n')
+}
+
+/** Price path plus the KR flows block. Does not attach the US crowding usage line. */
+export function krEquityCrowBrief(
+  priceBrief: string,
+  closedBookPacketText: string | null | undefined,
+): string {
+  const block = extractKrFlowsBlock(closedBookPacketText)
+  const level = block?.match(/crowdingLevel: (low|medium|high)/)?.[1] ?? null
+  return [
+    priceBrief.trim(),
+    '',
+    `${KR_EQUITY_CROW_LENS_LABEL} crowdingLevel: ${level ?? 'none measured'}`,
+    block ?? 'Investor flows & positioning: none measured.',
+  ].join('\n')
 }
 
 /**

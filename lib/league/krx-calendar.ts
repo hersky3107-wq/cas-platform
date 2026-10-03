@@ -125,16 +125,30 @@ function utcMsFromZonedLocal(
 }
 
 export function kstCivilDate(at: Date): string {
+  return kstClock(at).date
+}
+
+/** KST civil date and clock. Hour 24 from some Intl builds is normalized to 0. */
+export function kstClock(at: Date): { date: string; hour: number; minute: number } {
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: KRX_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
   })
   const parts = Object.fromEntries(
     fmt.formatToParts(at).filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]),
   )
-  return `${parts.year}-${parts.month}-${parts.day}`
+  let hour = Number(parts.hour)
+  if (hour === 24) hour = 0
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    hour,
+    minute: Number(parts.minute),
+  }
 }
 
 export function krxSessionCloseMs(ymd: string): number {

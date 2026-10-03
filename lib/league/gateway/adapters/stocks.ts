@@ -3,6 +3,11 @@ import { isPoisonTicker } from '../../instrument-identity'
 import { isUiHorizon, UI_HORIZONS, cacheBucketFor, computeResolvesAt } from '../../horizon'
 import { decodeKrStockInstrument } from '../../korea-equity-catalog'
 import { krStockAugmentationQueries, krStockPropositionEn, parseKrStockProposition } from '../../korea-stock-display'
+import {
+  logKrFlowsFallbackOnce,
+  missingKrFlowSignals,
+  planKrFlowsPacket,
+} from '../../korea-flows-signals'
 import { krxBarsToDataPacket } from '../../korea-stock-packet'
 import { lastCompletedKrxSession } from '../../krx-calendar'
 import { refusalMessageKey } from '../refusal-copy'
@@ -358,6 +363,34 @@ export function createStocksAdapter(
         const fetched = await getKrxCloseSeries(kr.market, kr.code, 60)
         const packet = krxBarsToDataPacket(ctx.round.instrument, fetched.series)
         const name = parseKrStockProposition(ctx.round.proposition_text)?.name || kr.code
+        const anchor = lastCompletedKrxSession(new Date())
+        const asOf = anchor.ok ? anchor.date : packet.available ? packet.asOf : null
+        let flowsPlan: ReturnType<typeof planKrFlowsPacket> | null = null
+        if (asOf) {
+          try {
+            const { loadKrFlowSignals } = await import('../../korea-flows-load')
+            const signals = await loadKrFlowSignals({ market: kr.market, code: kr.code, asOf })
+            flowsPlan = planKrFlowsPacket(signals, name, kr.code)
+          } catch {
+            flowsPlan = planKrFlowsPacket(
+              missingKrFlowSignals({ market: kr.market, code: kr.code, asOf }),
+              name,
+              kr.code,
+            )
+          }
+          if (flowsPlan.fallbackReason) {
+            logKrFlowsFallbackOnce({
+              roundId: ctx.round.id ?? '',
+              instrument: ctx.round.instrument,
+              asOf,
+              reason: flowsPlan.fallbackReason,
+            })
+          }
+        }
+        const extraQueries = [
+          ...krStockAugmentationQueries(name, kr.code),
+          ...(flowsPlan?.extraQuery ? [flowsPlan.extraQuery] : []),
+        ]
         const krIo: PriceSeriesIo = {
           ...io,
           fetchDataPacket: async () => packet,
@@ -374,10 +407,15 @@ export function createStocksAdapter(
           getResearchPacket: (args) =>
             io.getResearchPacket({
               ...args,
-              extraQueries: krStockAugmentationQueries(name, kr.code),
+              extraQueries,
             }),
         }
-        return buildPriceSeriesPacket(ctx, krIo)
+        const built = await buildPriceSeriesPacket(ctx, krIo)
+        if (!flowsPlan) return built
+        return {
+          ...built,
+          injection: built.injection ? `${built.injection}\n\n${flowsPlan.section}` : flowsPlan.section,
+        }
       }
       const listing = decodeStockInstrument(ctx.round.instrument)
       if (listing && !stockUniverseDataEnabled()) {

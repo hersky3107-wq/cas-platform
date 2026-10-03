@@ -18,6 +18,7 @@ import { createLeagueRunnerDeps } from '@/lib/league/generation/live-deps'
 import { LEAGUE_JOB_SWEEP_BATCH_SIZE } from '@/lib/league/generation/policy'
 import { sweepLeagueDeepRuns } from '@/lib/league/generation/deep-runner'
 import { sweepLeagueGenerationJobs } from '@/lib/league/generation/runner'
+import { refreshKrxDailyData } from '@/lib/league/krx-daily-refresh-live'
 import { dispatchKrElectionAlerts } from '@/lib/league/politics/kr-election-alerts'
 import { supabaseKrElectionAlertStore } from '@/lib/league/politics/kr-election-store'
 
@@ -42,8 +43,12 @@ export async function GET(req: Request) {
     const electionAlerts = await dispatchKrElectionAlerts({
       store: supabaseKrElectionAlertStore(),
     }).catch(() => ({ sent: [] }))
+    const krxRefresh = await refreshKrxDailyData().catch(() => {
+      console.log('[league-generate] krx-daily-refresh skipped reason=error')
+      return { action: 'skip' as const, reason: 'error' as const, flowRequests: 0 }
+    })
 
-    return NextResponse.json({ ok: true, summary: { generation, deep, electionAlerts } })
+    return NextResponse.json({ ok: true, summary: { generation, deep, electionAlerts, krxRefresh } })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { computeResolvesAt } from '../horizon'
 import {
   isKrxTradingDay,
+  KRX_HOLIDAYS,
   isProvisionalKrxDate,
   krxSessionCloseIso,
   lastCompletedKrxSession,
@@ -92,6 +93,8 @@ describe('KRX calendar + KRSTOCK session math', () => {
   })
 
   it('2026-06-03 (local election) and 2026-07-17 (제헌절) are KRX holidays', () => {
+    expect(KRX_HOLIDAYS.has('2026-06-03')).toBe(true)
+    expect(KRX_HOLIDAYS.has('2026-07-17')).toBe(true)
     expect(isKrxTradingDay('2026-06-03')).toBe(false)
     expect(isKrxTradingDay('2026-07-17')).toBe(false)
     const afterElection = kst('2026-06-02', '16:00')
