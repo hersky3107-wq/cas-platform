@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -16,12 +16,17 @@ import {
   ARTIFICIAL_ANALYSIS_INGEST,
   BACKFILL_ARENAS,
   brandRanking,
+  cacheKeyForUrl,
+  createRateLimitedFetch,
+  downloadParquetFileWithCache,
   ingestAiLeaderboard,
   LMARENA_ATTRIBUTION,
   LMARENA_HAS_KOREAN_CATEGORY,
   LMARENA_LICENSE,
   LMARENA_TEXT_CATEGORIES,
   mapLmarenaRow,
+  parseParquetRows,
+  parseRetryAfter,
   planAiLeaderboardIngest,
   refreshAiLeaderboardDaily,
   type AiLeaderboardRow,
@@ -31,7 +36,8 @@ import {
   runAiLeaderboardBackfill,
 } from '../../../../scripts/league/ai-leaderboard-backfill'
 
-const ROOT = join(__dirname, '../../../..')
+const ROOT = path.join(__dirname, '../../../..')
+const FIXTURE_PARQUET = path.join(__dirname, 'fixtures/sample.parquet')
 
 function row(partial: Partial<AiLeaderboardRow> & Pick<AiLeaderboardRow, 'model' | 'brand' | 'rank'>): AiLeaderboardRow {
   return {
@@ -58,8 +64,8 @@ describe('LMArena license + Artificial Analysis', () => {
   })
 })
 
-describe('vendor brand mapping', () => {
-  it('maps known organizations and leaves unknown orgs as 기타', () => {
+describe('vendor brand mapping (including additions)', () => {
+  it('maps known organizations including Baidu, StepFun, Meituan, Ant Group, IBM, AllenAI, Thinking Machines', () => {
     expect(mapVendorBrand('openai', 'gpt-6-astra').brand).toBe('OpenAI')
     expect(mapVendorBrand('google', 'gemini-3.8-flash-high').brand).toBe('Google')
     expect(mapVendorBrand('anthropic', 'claude-fable-5.1-max').brand).toBe('Anthropic')
@@ -82,17 +88,36 @@ describe('vendor brand mapping', () => {
     expect(mapVendorBrand('upstage', 'solar-pro4').brand).toBe('Upstage')
     expect(mapVendorBrand('naver', 'hcx-007').brand).toBe('NAVER')
 
-    const unknown = mapVendorBrand('stepfun', 'Step 5 Preview')
-    expect(unknown.brand).toBe(OTHER_VENDOR_BRAND)
-    expect(unknown.unmappedOrganization).toBe('stepfun')
-    expect(mapVendorBrand('thinky', 'inkling').unmappedOrganization).toBe('thinky')
-    expect(mapVendorBrand('ibm', 'granite-4.2-8b').unmappedOrganization).toBe('ibm')
-    expect(mapVendorBrand(null, 'gpt-6-astra').brand).toBe('OpenAI')
-    expect(mapVendorBrand('', 'claude-sonnet-5').brand).toBe('Anthropic')
-    expect(mapVendorBrand(null, 'unknown-local-model').brand).toBe(OTHER_VENDOR_BRAND)
+    // Added brands
+    expect(mapVendorBrand('baidu', 'ernie-5.0').brand).toBe('Baidu')
+    expect(mapVendorBrand('stepfun', 'Step 5 Preview').brand).toBe('StepFun')
+    expect(mapVendorBrand('step fun', 'step-3').brand).toBe('StepFun')
+    expect(mapVendorBrand('meituan', 'longcat-flash-chat').brand).toBe('Meituan')
+    expect(mapVendorBrand('ant-group', 'ling-flash-2.0').brand).toBe('Ant Group')
+    expect(mapVendorBrand('ant group', 'ring-flash-2.0').brand).toBe('Ant Group')
+    expect(mapVendorBrand('ibm', 'granite-4.2-8b').brand).toBe('IBM')
+    expect(mapVendorBrand('allenai', 'olmo-3.1-32b-think').brand).toBe('AllenAI')
+    expect(mapVendorBrand('ai2', 'tulu-3-70b').brand).toBe('AllenAI')
+    expect(mapVendorBrand('allenai/uw', 'olmo-2').brand).toBe('AllenAI')
+    expect(mapVendorBrand('thinky', 'inkling').brand).toBe('Thinking Machines')
+    expect(mapVendorBrand('thinking machines', 'inkling').brand).toBe('Thinking Machines')
+
+    // Unmapped orgs are reported, not guessed
+    const unmapped = mapVendorBrand('somelab-ai', 'lab-model')
+    expect(unmapped.brand).toBe(OTHER_VENDOR_BRAND)
+    expect(unmapped.unmappedOrganization).toBe('somelab-ai')
+
+    // Empty org falls back to model name heuristics
+    expect(mapVendorBrand(null, 'ernie-4.5').brand).toBe('Baidu')
+    expect(mapVendorBrand('', 'step-3').brand).toBe('StepFun')
+    expect(mapVendorBrand(null, 'longcat-flash').brand).toBe('Meituan')
+    expect(mapVendorBrand(null, 'granite-3.0').brand).toBe('IBM')
+    expect(mapVendorBrand(null, 'olmo-7b').brand).toBe('AllenAI')
+    expect(mapVendorBrand(null, 'inkling-small').brand).toBe('Thinking Machines')
+    expect(mapVendorBrand(null, 'unknown-model-xyz').brand).toBe(OTHER_VENDOR_BRAND)
   })
 
-  it('exports a vendor brand for every official roster seat', () => {
+  it('exports a vendor brand for every official roster seat and maps Thinking Machines seat', () => {
     const seats = leagueRosterVendorBrands()
     expect(seats).toHaveLength(LEAGUE_ROSTER.length)
     const byId = new Map(seats.map((seat) => [seat.model_id, seat]))
@@ -102,9 +127,260 @@ describe('vendor brand mapping', () => {
     expect(byId.get('kimi-k3')?.vendorBrand).toBe('Moonshot')
     expect(byId.get('glm-5.3')?.vendorBrand).toBe('Zhipu/GLM')
     expect(byId.get('hcx-007')?.vendorBrand).toBe('NAVER')
-    expect(byId.get('inkling')?.vendorBrand).toBe(OTHER_VENDOR_BRAND)
+    expect(byId.get('inkling')?.vendorBrand).toBe('Thinking Machines')
     expect(byId.get('sonar-reasoning-pro')?.vendorBrand).toBe(OTHER_VENDOR_BRAND)
     expect(byId.get('youcom-research')?.vendorBrand).toBe(OTHER_VENDOR_BRAND)
+  })
+})
+
+describe('parquet parsing on a small fixture file', () => {
+  it('parses local parquet fixture rows via hyparquet without native build', async () => {
+    expect(fs.existsSync(FIXTURE_PARQUET)).toBe(true)
+    const buf = fs.readFileSync(FIXTURE_PARQUET)
+    const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+
+    const rows = await parseParquetRows(arrayBuf)
+    expect(rows.length).toBeGreaterThan(0)
+    const first = rows[0]
+    expect(first).toHaveProperty('model_name')
+    expect(first).toHaveProperty('organization')
+    expect(first).toHaveProperty('rank')
+    expect(first).toHaveProperty('category')
+    expect(first).toHaveProperty('leaderboard_publish_date')
+
+    const mapped = mapLmarenaRow('search', first, '2026-10-04T00:00:00.000Z')
+    expect(mapped).not.toBeNull()
+    expect(typeof mapped?.rank).toBe('number')
+    expect(mapped?.arena).toBe('search')
+    expect(mapped?.category).toBe('overall')
+  })
+})
+
+describe('date-window filter', () => {
+  it('filters rows outside the requested date window after parsing', async () => {
+    const rawRows = [
+      {
+        model_name: 'model-early',
+        organization: 'openai',
+        category: 'overall',
+        leaderboard_publish_date: '2026-04-01',
+        rank: 1,
+        rating: 1200,
+        vote_count: 50,
+      },
+      {
+        model_name: 'model-in-window',
+        organization: 'anthropic',
+        category: 'overall',
+        leaderboard_publish_date: '2026-06-15',
+        rank: 2,
+        rating: 1210,
+        vote_count: 60,
+      },
+      {
+        model_name: 'model-late',
+        organization: 'google',
+        category: 'overall',
+        leaderboard_publish_date: '2026-10-10',
+        rank: 3,
+        rating: 1220,
+        vote_count: 70,
+      },
+    ]
+
+    const upsertedRows: AiLeaderboardRow[] = []
+    const io = {
+      now: () => new Date('2026-10-04T00:00:00.000Z'),
+      listParquetFiles: async () => ({ text: { full: ['https://example.com/text.parquet'] } }),
+      downloadParquetFile: async () => ({
+        buffer: new ArrayBuffer(0),
+        cacheHit: false,
+      }),
+      parseParquetRows: async () => rawRows,
+      upsertRows: async (rows: AiLeaderboardRow[]) => {
+        upsertedRows.push(...rows)
+      },
+      log: () => {},
+    }
+
+    const report = await ingestAiLeaderboard({
+      arenas: ['text'],
+      split: 'full',
+      sinceDate: '2026-05-01',
+      untilDate: '2026-09-01',
+      io,
+    })
+    expect(upsertedRows).toHaveLength(1)
+    expect(upsertedRows[0].model).toBe('model-in-window')
+    expect(upsertedRows[0].publish_date).toBe('2026-06-15')
+    expect(report.skipped).toBe(2)
+  })
+})
+
+describe('cache hit skips download', () => {
+  it('skips GET request when remote ETag matches cached meta', async () => {
+    const tmpDir = path.join(ROOT, 'node_modules/.tmp-hf-cache-test')
+    fs.mkdirSync(tmpDir, { recursive: true })
+    const url = 'https://huggingface.co/mock/0.parquet'
+    const key = cacheKeyForUrl(url)
+    const parquetFile = path.join(tmpDir, `${key}.parquet`)
+    const metaFile = path.join(tmpDir, `${key}.meta.json`)
+
+    const mockContent = Buffer.from('cached-parquet-bytes')
+    fs.writeFileSync(parquetFile, mockContent)
+    fs.writeFileSync(
+      metaFile,
+      JSON.stringify({ url, etag: '"etag-abc"', lastModified: 'Fri, 02 Oct 2026', cachedAt: '2026-10-02' }),
+    )
+
+    const getSpy = vi.fn()
+    const headSpy = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 200,
+        headers: { etag: '"etag-abc"', 'last-modified': 'Fri, 02 Oct 2026' },
+      }),
+    )
+
+    const mockFetch = async (_u: string, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return headSpy()
+      getSpy()
+      return new Response('fresh-bytes', { status: 200, headers: { etag: '"etag-new"' } })
+    }
+
+    const res = await downloadParquetFileWithCache(url, mockFetch as any, { cacheDir: tmpDir })
+    expect(res.cacheHit).toBe(true)
+    expect(Buffer.from(res.buffer).toString()).toBe('cached-parquet-bytes')
+    expect(headSpy).toHaveBeenCalledTimes(1)
+    expect(getSpy).not.toHaveBeenCalled()
+
+    // When etag changes, GET is executed and cache updated
+    headSpy.mockResolvedValueOnce(
+      new Response(null, {
+        status: 200,
+        headers: { etag: '"etag-updated"' },
+      }),
+    )
+
+    const res2 = await downloadParquetFileWithCache(url, mockFetch as any, { cacheDir: tmpDir })
+    expect(res2.cacheHit).toBe(false)
+    expect(Buffer.from(res2.buffer).toString()).toBe('fresh-bytes')
+    expect(getSpy).toHaveBeenCalledTimes(1)
+
+    // Clean up
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+})
+
+describe('backoff schedule and Retry-After handling', () => {
+  it('parses Retry-After header with seconds or HTTP date', () => {
+    expect(parseRetryAfter(null)).toBeNull()
+    expect(parseRetryAfter('')).toBeNull()
+    expect(parseRetryAfter('10')).toBe(10_000)
+    expect(parseRetryAfter('0')).toBe(0)
+
+    const now = 1700000000000
+    const httpDate = new Date(now + 25000).toUTCString()
+    expect(parseRetryAfter(httpDate, now)).toBe(25_000)
+  })
+
+  it('retries on 429/5xx with exponential backoff and honors Retry-After', async () => {
+    const sleeps: number[] = []
+    const sleep = async (ms: number) => {
+      sleeps.push(ms)
+    }
+
+    let calls = 0
+    const mockFetch = vi.fn(async () => {
+      calls += 1
+      if (calls === 1) {
+        return new Response('busy', { status: 429, headers: { 'retry-after': '5' } })
+      }
+      if (calls === 2) {
+        return new Response('error', { status: 503 })
+      }
+      if (calls === 3) {
+        return new Response('gateway timeout', { status: 504 })
+      }
+      return new Response('ok', { status: 200 })
+    })
+
+    const fetchWithBackoff = createRateLimitedFetch({
+      fetch: mockFetch as any,
+      sleep,
+      minGapMs: 0,
+      backoffDelays: [2000, 4000, 8000, 16000],
+    })
+
+    const res = await fetchWithBackoff('https://example.com/data')
+    expect(res.status).toBe(200)
+    expect(calls).toBe(4)
+    // 1st retry: Retry-After is 5s (5000ms), max(5000, 2000) = 5000
+    // 2nd retry: 4000ms
+    // 3rd retry: 8000ms
+    expect(sleeps).toEqual([5000, 4000, 8000])
+  })
+
+  it('fails after max 5 attempts on persistent 429', async () => {
+    const sleep = async () => {}
+    const mockFetch = vi.fn(async () => new Response('rate limited', { status: 429 }))
+
+    const fetchWithBackoff = createRateLimitedFetch({
+      fetch: mockFetch as any,
+      sleep,
+      minGapMs: 0,
+      maxTries: 5,
+    })
+
+    await expect(fetchWithBackoff('https://example.com/busy')).rejects.toThrow(/HTTP 429 after 5 attempts/)
+    expect(mockFetch).toHaveBeenCalledTimes(5)
+  })
+
+  it('sends HF_TOKEN as Bearer token when present and omits when not', async () => {
+    let sentHeaders: Headers | undefined
+    const mockFetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      sentHeaders = new Headers(init?.headers)
+      return new Response('ok', { status: 200 })
+    })
+
+    const fetchWithToken = createRateLimitedFetch({
+      fetch: mockFetch as any,
+      getHfToken: () => 'hf_test_secret_token_123',
+      minGapMs: 0,
+    })
+    await fetchWithToken('https://example.com/token-check')
+    expect(sentHeaders?.get('Authorization')).toBe('Bearer hf_test_secret_token_123')
+
+    const fetchWithoutToken = createRateLimitedFetch({
+      fetch: mockFetch as any,
+      getHfToken: () => undefined,
+      minGapMs: 0,
+    })
+    await fetchWithoutToken('https://example.com/no-token-check')
+    expect(sentHeaders?.get('Authorization')).toBeNull()
+  })
+
+  it('enforces sequential request gap (at most one request per second)', async () => {
+    const sleeps: number[] = []
+    let currentTime = 1000
+    const now = () => new Date(currentTime)
+    const sleep = async (ms: number) => {
+      sleeps.push(ms)
+      currentTime += ms
+    }
+
+    const mockFetch = vi.fn(async () => new Response('ok', { status: 200 }))
+    const fetchThrottled = createRateLimitedFetch({
+      fetch: mockFetch as any,
+      sleep,
+      now,
+      minGapMs: 1000,
+    })
+
+    await fetchThrottled('https://example.com/req1')
+    currentTime += 200 // Only 200ms elapsed
+    await fetchThrottled('https://example.com/req2')
+
+    expect(sleeps).toEqual([800])
   })
 })
 
@@ -135,16 +411,16 @@ describe('brandRanking', () => {
   })
 })
 
-describe('dry-run makes no network calls', () => {
-  it('default argv is dry-run and never fetches', async () => {
+describe('dry-run makes no network calls and prints planned files', () => {
+  it('default argv is dry-run and prints planned parquet files', async () => {
     expect(parseAiLeaderboardBackfillArgs([]).apply).toBe(false)
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
-    const fetchJson = vi.fn(async () => {
-      throw new Error('fetchJson must not run in dry-run')
+    const listParquetFiles = vi.fn(async () => {
+      throw new Error('listParquetFiles must not run in dry-run')
     })
-    const listArenas = vi.fn(async () => {
-      throw new Error('listArenas must not run in dry-run')
+    const downloadParquetFile = vi.fn(async () => {
+      throw new Error('download must not run in dry-run')
     })
     const upsertRows = vi.fn(async () => {
       throw new Error('upsert must not run in dry-run')
@@ -153,18 +429,20 @@ describe('dry-run makes no network calls', () => {
     await runAiLeaderboardBackfill([], {
       now: () => new Date('2026-10-04T03:00:00.000Z'),
       log: (message) => lines.push(message),
-      fetchJson,
-      listArenas,
+      listParquetFiles,
+      downloadParquetFile,
       upsertRows,
     })
     expect(fetchSpy).not.toHaveBeenCalled()
-    expect(fetchJson).not.toHaveBeenCalled()
-    expect(listArenas).not.toHaveBeenCalled()
+    expect(listParquetFiles).not.toHaveBeenCalled()
+    expect(downloadParquetFile).not.toHaveBeenCalled()
     expect(upsertRows).not.toHaveBeenCalled()
     expect(lines[0]).toContain('dry-run')
     expect(lines[0]).toContain('No request sent')
     expect(lines[0]).toContain('2026-04-04')
-    expect(planAiLeaderboardIngest(new Date('2026-10-04T03:00:00.000Z')).sinceDate).toBe('2026-04-04')
+    expect(lines[0]).toContain('Planned parquet files:')
+    expect(lines[0]).toContain('text/full/0.parquet')
+    expect(lines[0]).toContain('webdev/full/0.parquet')
     vi.unstubAllGlobals()
   })
 })
@@ -192,22 +470,23 @@ describe('ingest idempotency on fixtures', () => {
         vote_count: 200,
       },
     ]
+
     const io = {
       now: () => new Date('2026-10-04T03:00:00.000Z'),
       log: () => {},
-      listArenas: async () => ['text', 'webdev'],
-      fetchPage: async (page: { config: string; offset: number }) => {
-        if (page.config !== 'text' || page.offset > 0) return []
-        return fixture
-      },
+      listParquetFiles: async () => ({ text: { latest: ['https://example.com/text.parquet'] } }),
+      downloadParquetFile: async () => ({ buffer: new ArrayBuffer(0), cacheHit: false }),
+      parseParquetRows: async () => fixture,
       upsertRows: async (rows: AiLeaderboardRow[]) => {
         for (const item of rows) {
           store.set(`${item.source}|${item.arena}|${item.category}|${item.publish_date}|${item.model}`, item)
         }
       },
     }
+
     const first = await ingestAiLeaderboard({ split: 'latest', io })
     const second = await ingestAiLeaderboard({ split: 'latest', io })
+
     expect(first.upserted).toBe(2)
     expect(second.upserted).toBe(2)
     expect(store.size).toBe(2)
@@ -217,54 +496,26 @@ describe('ingest idempotency on fixtures', () => {
       'lmarena|text|overall|2026-10-02|gpt-6-astra',
     ])
   })
-
-  it('maps a fixture row onto the table shape', () => {
-    const mapped = mapLmarenaRow(
-      'text',
-      {
-        model_name: 'kimi-k3-max',
-        organization: 'moonshot',
-        category: 'korean',
-        leaderboard_publish_date: '2026-10-02 00:00:00',
-        rank: 14,
-        rating: 0.04,
-        vote_count: 132505,
-      },
-      '2026-10-04T03:00:00.000Z',
-    )
-    expect(mapped).toMatchObject({
-      source: 'lmarena',
-      arena: 'text',
-      category: 'korean',
-      publish_date: '2026-10-02',
-      model: 'kimi-k3-max',
-      organization: 'moonshot',
-      brand: 'Moonshot',
-      rank: 14,
-      score: 0.04,
-      votes: 132505,
-    })
-  })
 })
 
-describe('daily refresh', () => {
+describe('daily refresh in cron', () => {
   it('skips when a fetch already landed today', async () => {
     const now = new Date('2026-10-04T15:00:00.000Z')
     expect(alreadyRefreshedToday(now, '2026-10-04T01:00:00.000Z')).toBe(true)
     expect(alreadyRefreshedToday(now, '2026-10-03T23:00:00.000Z')).toBe(false)
-    const listArenas = vi.fn(async () => ['text'])
+    const listParquetFiles = vi.fn(async () => ({}))
     const result = await refreshAiLeaderboardDaily({
       now: () => now,
       lastFetchedAt: async () => '2026-10-04T01:11:00.000Z',
-      listArenas,
+      listParquetFiles,
       log: () => {},
     })
     expect(result).toEqual({ action: 'skip', reason: 'already_today' })
-    expect(listArenas).not.toHaveBeenCalled()
+    expect(listParquetFiles).not.toHaveBeenCalled()
   })
 
   it('wires the once-per-day step into league-generate', () => {
-    const cron = readFileSync(join(ROOT, 'app/api/cron/league-generate/route.ts'), 'utf8')
+    const cron = fs.readFileSync(path.join(ROOT, 'app/api/cron/league-generate/route.ts'), 'utf8')
     expect(cron).toContain('refreshAiLeaderboardDaily')
   })
 })

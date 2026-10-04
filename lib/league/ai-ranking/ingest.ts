@@ -1,11 +1,23 @@
 /**
- * LMArena leaderboard ingest. Server-only writes. Dry-run planning is pure
- * and makes no network call. Apply fetches the public Hugging Face
- * datasets-server API (no lmarena.ai scraping).
+ * LMArena leaderboard ingest via Hugging Face parquet files.
+ *
+ * Server-only writes. Dry-run planning is pure and makes NO network call.
+ * Apply downloads auto-converted parquet files directly from Hugging Face with:
+ *   - Sequential downloads, at most one request per second
+ *   - Retry on 429/5xx with exponential backoff (2s, 4s, 8s, 16s; max 5 tries)
+ *     honoring Retry-After when present
+ *   - Bearer auth when HF_TOKEN is set (never printed)
+ *   - Local filesystem cache under scripts/league/out/hf-cache/ keyed by URL + ETag/last-modified
+ *   - Pure-JS parquet parsing via hyparquet
+ *   - Date filtering by publish_date after parsing
  */
 
 import 'server-only'
 
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { parquetReadObjects } from 'hyparquet'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { mapVendorBrand, OTHER_VENDOR_BRAND, type MappedVendorBrand } from './brands'
 
@@ -33,13 +45,15 @@ export const BACKFILL_ARENAS = [
 
 export type BackfillArena = (typeof BACKFILL_ARENAS)[number]
 export const BACKFILL_MONTHS = 6
-export const HF_PAGE_SIZE = 100
 export const UPSERT_CHUNK = 200
 
+export const RATE_LIMIT_MIN_GAP_MS = 1000
+export const BACKOFF_DELAYS_MS = [2000, 4000, 8000, 16000] as const
+export const MAX_RETRY_TRIES = 5
+
 const TABLE = 'league_ai_leaderboard'
-const HF_SPLITS = `https://datasets-server.huggingface.co/splits?dataset=${LMARENA_DATASET}`
-const HF_ROWS = 'https://datasets-server.huggingface.co/rows'
-const HF_FILTER = 'https://datasets-server.huggingface.co/filter'
+export const HF_PARQUET_LISTING_URL = `https://huggingface.co/api/datasets/${LMARENA_DATASET}/parquet`
+export const DEFAULT_CACHE_DIR = path.resolve(process.cwd(), 'scripts/league/out/hf-cache')
 
 export const LMARENA_TEXT_CATEGORIES = [
   'overall',
@@ -100,9 +114,11 @@ export type IngestPlan = {
   source: typeof LMARENA_SOURCE
   dataset: typeof LMARENA_DATASET
   arenas: readonly BackfillArena[]
+  split: 'full' | 'latest'
   sinceDate: string
   untilDate: string
   months: typeof BACKFILL_MONTHS
+  plannedFiles: string[]
   attribution: typeof LMARENA_ATTRIBUTION
   artificialAnalysis: typeof ARTIFICIAL_ANALYSIS_INGEST
 }
@@ -111,26 +127,29 @@ export type IngestReport = {
   upserted: number
   skipped: number
   arenas: string[]
+  cacheHits: number
+  downloads: number
   unmappedOrganizations: string[]
 }
 
-export type HfArenaPage = {
-  config: string
-  split: string
-  offset: number
-  length: number
-  sinceDate?: string
-}
+export type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 export type AiLeaderboardIo = {
   now?: () => Date
-  fetchJson?: (url: string) => Promise<unknown>
-  listArenas?: () => Promise<string[]>
-  fetchPage?: (page: HfArenaPage) => Promise<Record<string, unknown>[]>
+  fetch?: FetchFn
+  sleep?: (ms: number) => Promise<void>
+  cacheDir?: string
+  getHfToken?: () => string | undefined
+  listParquetFiles?: () => Promise<Record<string, Record<string, string[]>>>
+  downloadParquetFile?: (url: string, io: AiLeaderboardIo) => Promise<{ buffer: ArrayBuffer; cacheHit: boolean }>
+  parseParquetRows?: (file: ArrayBuffer | Uint8Array) => Promise<Record<string, unknown>[]>
   upsertRows?: (rows: AiLeaderboardRow[]) => Promise<void>
   loadRows?: (source: string, arena: string, category: string, date: string) => Promise<AiLeaderboardRow[]>
   lastFetchedAt?: () => Promise<string | null>
   log?: (message: string) => void
+  minGapMs?: number
+  backoffDelays?: readonly number[]
+  maxTries?: number
 }
 
 export function utcDate(now: Date): string {
@@ -143,15 +162,22 @@ export function addUtcMonths(ymd: string, months: number): string {
   return utcDate(dt)
 }
 
-export function planAiLeaderboardIngest(now: Date = new Date()): IngestPlan {
+export function standardParquetUrl(arena: string, split: 'full' | 'latest', index: number = 0): string {
+  return `https://huggingface.co/api/datasets/${LMARENA_DATASET}/parquet/${arena}/${split}/${index}.parquet`
+}
+
+export function planAiLeaderboardIngest(now: Date = new Date(), split: 'full' | 'latest' = 'full'): IngestPlan {
   const untilDate = utcDate(now)
+  const plannedFiles = BACKFILL_ARENAS.map((arena) => standardParquetUrl(arena, split, 0))
   return {
     source: LMARENA_SOURCE,
     dataset: LMARENA_DATASET,
     arenas: BACKFILL_ARENAS,
+    split,
     sinceDate: addUtcMonths(untilDate, -BACKFILL_MONTHS),
     untilDate,
     months: BACKFILL_MONTHS,
+    plannedFiles,
     attribution: LMARENA_ATTRIBUTION,
     artificialAnalysis: ARTIFICIAL_ANALYSIS_INGEST,
   }
@@ -162,17 +188,15 @@ export function alreadyRefreshedToday(now: Date, lastFetchedAt: string | null): 
   return lastFetchedAt.slice(0, 10) === utcDate(now)
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
-}
-
 function asString(value: unknown): string | null {
   if (typeof value === 'string' && value.trim()) return value.trim()
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'bigint') return String(value)
   return null
 }
 
 function asNumber(value: unknown): number | null {
+  if (typeof value === 'bigint') return Number(value)
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.trim()) {
     const n = Number(value)
@@ -182,6 +206,9 @@ function asNumber(value: unknown): number | null {
 }
 
 export function publishDateOf(value: unknown): string | null {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10)
+  }
   const raw = asString(value)
   if (!raw) return null
   const match = raw.match(/^(\d{4}-\d{2}-\d{2})/)
@@ -221,11 +248,6 @@ export function collectUnmappedOrganizations(rows: readonly Pick<AiLeaderboardRo
   return [...seen].sort((a, b) => a.localeCompare(b))
 }
 
-/**
- * Brands ordered by their best model's rank (lower is better). Same-rank
- * brands sort by brand name. Same-brand models keep the better rank, then
- * the earlier model name.
- */
 export function brandRanking(
   source: string,
   arena: string,
@@ -247,75 +269,159 @@ export function brandRanking(
   return [...best.values()].sort((a, b) => a.rank - b.rank || a.brand.localeCompare(b.brand))
 }
 
-async function defaultFetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': 'cas-platform-league-ai-ranking/1.0' },
-  })
-  if (!res.ok) throw new Error(`Hugging Face datasets-server ${res.status} for ${url}`)
-  return res.json()
-}
-
-function splitsOf(payload: unknown): string[] {
-  const root = asRecord(payload)
-  const splits = Array.isArray(root?.splits) ? root.splits : []
-  const names = new Set<string>()
-  for (const item of splits) {
-    const row = asRecord(item)
-    const config = asString(row?.config)
-    if (config) names.add(config)
+export function parseRetryAfter(header: string | null | undefined, nowMs: number = Date.now()): number | null {
+  if (!header || !header.trim()) return null
+  const trimmed = header.trim()
+  if (/^\d+$/.test(trimmed)) {
+    const sec = parseInt(trimmed, 10)
+    return Number.isFinite(sec) && sec >= 0 ? sec * 1000 : null
   }
-  return [...names]
-}
-
-function pageRowsOf(payload: unknown): Record<string, unknown>[] {
-  const root = asRecord(payload)
-  const rows = Array.isArray(root?.rows) ? root.rows : []
-  const out: Record<string, unknown>[] = []
-  for (const item of rows) {
-    const wrapper = asRecord(item)
-    const row = asRecord(wrapper?.row) ?? wrapper
-    if (row) out.push(row)
+  const dateMs = Date.parse(trimmed)
+  if (!Number.isNaN(dateMs)) {
+    const diff = dateMs - nowMs
+    return diff > 0 ? diff : 0
   }
-  return out
+  return null
 }
 
-function rowsUrl(page: HfArenaPage): string {
-  const url = new URL(HF_ROWS)
-  url.searchParams.set('dataset', LMARENA_DATASET)
-  url.searchParams.set('config', page.config)
-  url.searchParams.set('split', page.split)
-  url.searchParams.set('offset', String(page.offset))
-  url.searchParams.set('length', String(page.length))
-  return url.toString()
+export function createRateLimitedFetch(opts: {
+  fetch?: FetchFn
+  sleep?: (ms: number) => Promise<void>
+  now?: () => Date
+  minGapMs?: number
+  backoffDelays?: readonly number[]
+  maxTries?: number
+  getHfToken?: () => string | undefined
+}) {
+  const fetchFn = opts.fetch ?? fetch
+  const sleepFn = opts.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)))
+  const nowFn = opts.now ?? (() => new Date())
+  const minGap = opts.minGapMs ?? RATE_LIMIT_MIN_GAP_MS
+  const backoffDelays = opts.backoffDelays ?? BACKOFF_DELAYS_MS
+  const maxTries = opts.maxTries ?? MAX_RETRY_TRIES
+
+  let lastRequestAtMs = 0
+
+  return async function rateLimitedFetch(url: string, init?: RequestInit): Promise<Response> {
+    const token = opts.getHfToken?.() ?? process.env.HF_TOKEN
+    const headers = new Headers(init?.headers)
+    if (!headers.has('User-Agent')) {
+      headers.set('User-Agent', 'cas-platform-league-ai-ranking/1.0')
+    }
+    if (token?.trim() && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token.trim()}`)
+    }
+
+    for (let attempt = 0; attempt < maxTries; attempt++) {
+      const nowMs = nowFn().getTime()
+      const gap = nowMs - lastRequestAtMs
+      if (lastRequestAtMs > 0 && gap < minGap) {
+        await sleepFn(minGap - gap)
+      }
+      lastRequestAtMs = nowFn().getTime()
+
+      const res = await fetchFn(url, { ...init, headers })
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt === maxTries - 1) {
+          throw new Error(`HTTP ${res.status} after ${maxTries} attempts for ${url}`)
+        }
+        const retryAfter = parseRetryAfter(res.headers.get('retry-after'), nowFn().getTime())
+        const baseDelay = backoffDelays[attempt] ?? 16000
+        const delay = retryAfter != null ? Math.max(retryAfter, baseDelay) : baseDelay
+        await sleepFn(delay)
+        continue
+      }
+      if (!res.ok) {
+        throw new Error(`Hugging Face request failed (${res.status}) for ${url}`)
+      }
+      return res
+    }
+    throw new Error(`Request failed after ${maxTries} attempts for ${url}`)
+  }
 }
 
-function filterUrl(page: HfArenaPage): string {
-  const url = new URL(HF_FILTER)
-  url.searchParams.set('dataset', LMARENA_DATASET)
-  url.searchParams.set('config', page.config)
-  url.searchParams.set('split', page.split)
-  url.searchParams.set('offset', String(page.offset))
-  url.searchParams.set('length', String(page.length))
-  if (page.sinceDate) url.searchParams.set('where', `leaderboard_publish_date>='${page.sinceDate}'`)
-  return url.toString()
+export function cacheKeyForUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    const sanitizedPath = u.pathname.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-40)
+    const hash = crypto.createHash('sha256').update(url).digest('hex').slice(0, 12)
+    return `${sanitizedPath}_${hash}`
+  } catch {
+    const hash = crypto.createHash('sha256').update(url).digest('hex').slice(0, 16)
+    return `parquet_${hash}`
+  }
 }
 
-async function defaultListArenas(fetchJson: (url: string) => Promise<unknown>): Promise<string[]> {
-  return splitsOf(await fetchJson(HF_SPLITS))
-}
+export async function downloadParquetFileWithCache(
+  url: string,
+  rateLimitedFetch: (url: string, init?: RequestInit) => Promise<Response>,
+  io: AiLeaderboardIo = {},
+): Promise<{ buffer: ArrayBuffer; cacheHit: boolean }> {
+  const cacheDir = io.cacheDir ?? DEFAULT_CACHE_DIR
+  const key = cacheKeyForUrl(url)
+  const parquetPath = path.join(cacheDir, `${key}.parquet`)
+  const metaPath = path.join(cacheDir, `${key}.meta.json`)
 
-async function defaultFetchPage(
-  page: HfArenaPage,
-  fetchJson: (url: string) => Promise<unknown>,
-): Promise<Record<string, unknown>[]> {
-  if (page.sinceDate) {
+  if (fs.existsSync(parquetPath) && fs.existsSync(metaPath)) {
     try {
-      return pageRowsOf(await fetchJson(filterUrl(page)))
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { etag?: string | null; lastModified?: string | null }
+      const headRes = await rateLimitedFetch(url, { method: 'HEAD' })
+      const remoteEtag = headRes.headers.get('etag')
+      const remoteLastModified = headRes.headers.get('last-modified')
+
+      const etagMatches = Boolean(remoteEtag && meta.etag && remoteEtag === meta.etag)
+      const dateMatches = Boolean(!remoteEtag && remoteLastModified && meta.lastModified && remoteLastModified === meta.lastModified)
+
+      if (etagMatches || dateMatches) {
+        const fileBuf = fs.readFileSync(parquetPath)
+        const arrayBuffer = fileBuf.buffer.slice(fileBuf.byteOffset, fileBuf.byteOffset + fileBuf.byteLength)
+        return { buffer: arrayBuffer, cacheHit: true }
+      }
     } catch {
-      // datasets-server /filter where-syntax varies; fall back to /rows.
+      // On HEAD failure or corrupted cache, proceed to fresh download
     }
   }
-  return pageRowsOf(await fetchJson(rowsUrl(page)))
+
+  const getRes = await rateLimitedFetch(url, { method: 'GET' })
+  const arrayBuffer = await getRes.arrayBuffer()
+  const etag = getRes.headers.get('etag')
+  const lastModified = getRes.headers.get('last-modified')
+
+  try {
+    fs.mkdirSync(cacheDir, { recursive: true })
+    fs.writeFileSync(parquetPath, Buffer.from(arrayBuffer))
+    fs.writeFileSync(
+      metaPath,
+      JSON.stringify(
+        {
+          url,
+          etag,
+          lastModified,
+          cachedAt: (io.now?.() ?? new Date()).toISOString(),
+        },
+        null,
+        2,
+      ),
+    )
+  } catch {
+    // Non-fatal if filesystem cache isn't writable in serverless runtime
+  }
+
+  return { buffer: arrayBuffer, cacheHit: false }
+}
+
+export async function parseParquetRows(file: ArrayBuffer | Uint8Array): Promise<Record<string, unknown>[]> {
+  const rows = await parquetReadObjects({ file })
+  return rows as Record<string, unknown>[]
+}
+
+async function defaultListParquetFiles(
+  rateLimitedFetch: (url: string, init?: RequestInit) => Promise<Response>,
+): Promise<Record<string, Record<string, string[]>>> {
+  const res = await rateLimitedFetch(HF_PARQUET_LISTING_URL, {
+    headers: { Accept: 'application/json' },
+  })
+  return res.json()
 }
 
 async function defaultUpsertRows(rows: AiLeaderboardRow[]): Promise<void> {
@@ -380,12 +486,25 @@ async function defaultLastFetchedAt(): Promise<string | null> {
 }
 
 function bindIo(io: AiLeaderboardIo = {}) {
-  const fetchJson = io.fetchJson ?? defaultFetchJson
+  const now = io.now ?? (() => new Date())
+  const rateLimitedFetch = createRateLimitedFetch({
+    fetch: io.fetch,
+    sleep: io.sleep,
+    now,
+    minGapMs: io.minGapMs,
+    backoffDelays: io.backoffDelays,
+    maxTries: io.maxTries,
+    getHfToken: io.getHfToken,
+  })
+
   return {
-    now: io.now ?? (() => new Date()),
-    fetchJson,
-    listArenas: io.listArenas ?? (() => defaultListArenas(fetchJson)),
-    fetchPage: io.fetchPage ?? ((page: HfArenaPage) => defaultFetchPage(page, fetchJson)),
+    now,
+    fetch: rateLimitedFetch,
+    cacheDir: io.cacheDir ?? DEFAULT_CACHE_DIR,
+    listParquetFiles: io.listParquetFiles ?? (() => defaultListParquetFiles(rateLimitedFetch)),
+    downloadParquetFile:
+      io.downloadParquetFile ?? ((url: string) => downloadParquetFileWithCache(url, rateLimitedFetch, io)),
+    parseParquetRows: io.parseParquetRows ?? parseParquetRows,
     upsertRows: io.upsertRows ?? defaultUpsertRows,
     loadRows: io.loadRows ?? defaultLoadRows,
     lastFetchedAt: io.lastFetchedAt ?? defaultLastFetchedAt,
@@ -393,77 +512,94 @@ function bindIo(io: AiLeaderboardIo = {}) {
   }
 }
 
-export async function ingestArenaWindow(args: {
-  arena: string
-  split: 'full' | 'latest'
-  sinceDate?: string
-  fetchedAt: string
-  io?: AiLeaderboardIo
-}): Promise<{ rows: AiLeaderboardRow[]; skipped: number }> {
-  const io = bindIo(args.io)
-  const rows: AiLeaderboardRow[] = []
-  let skipped = 0
-  let offset = 0
-  for (;;) {
-    const page = await io.fetchPage({
-      config: args.arena,
-      split: args.split,
-      offset,
-      length: HF_PAGE_SIZE,
-      sinceDate: args.sinceDate,
-    })
-    if (page.length === 0) break
-    for (const raw of page) {
-      const mapped = mapLmarenaRow(args.arena, raw, args.fetchedAt)
-      if (!mapped) {
-        skipped += 1
-        continue
-      }
-      if (args.sinceDate && mapped.publish_date < args.sinceDate) {
-        skipped += 1
-        continue
-      }
-      rows.push(mapped)
-    }
-    offset += page.length
-    if (page.length < HF_PAGE_SIZE) break
-  }
-  return { rows, skipped }
-}
-
 export async function ingestAiLeaderboard(args: {
   arenas?: readonly string[]
-  split: 'full' | 'latest'
+  split?: 'full' | 'latest'
   sinceDate?: string
+  untilDate?: string
   io?: AiLeaderboardIo
 }): Promise<IngestReport> {
   const io = bindIo(args.io)
+  const split = args.split ?? 'full'
   const fetchedAt = io.now().toISOString()
-  const available = new Set(await io.listArenas())
-  const wanted = args.arenas ?? BACKFILL_ARENAS
-  const arenas = wanted.filter((name) => available.has(name))
+
+  let listing: Record<string, Record<string, string[]>> = {}
+  try {
+    listing = await io.listParquetFiles()
+  } catch (err) {
+    io.log(`[ai-leaderboard] listing lookup failed, using fallback URLs: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  const requestedArenas = args.arenas ?? BACKFILL_ARENAS
+  const targetArenas = requestedArenas.filter((arena) => {
+    if (Object.keys(listing).length === 0) return true
+    return Boolean(listing[arena]?.[split]?.length)
+  })
+
   let upserted = 0
   let skipped = 0
+  let cacheHits = 0
+  let downloads = 0
   const allRows: AiLeaderboardRow[] = []
-  for (const arena of arenas) {
-    const batch = await ingestArenaWindow({
-      arena,
-      split: args.split,
-      sinceDate: args.sinceDate,
-      fetchedAt,
-      io: args.io,
-    })
-    skipped += batch.skipped
-    if (batch.rows.length === 0) continue
-    await io.upsertRows(batch.rows)
-    upserted += batch.rows.length
-    allRows.push(...batch.rows)
-    io.log(`[ai-leaderboard] arena=${arena} upserted=${batch.rows.length} skipped=${batch.skipped}`)
+
+  for (const arena of targetArenas) {
+    const urls = listing[arena]?.[split] ?? [standardParquetUrl(arena, split, 0)]
+    let arenaUpserted = 0
+    let arenaSkipped = 0
+
+    for (const url of urls) {
+      const { buffer, cacheHit } = await io.downloadParquetFile(url, args.io ?? {})
+      if (cacheHit) cacheHits += 1
+      else downloads += 1
+
+      const rawRows = await io.parseParquetRows(buffer)
+      const mappedBatch: AiLeaderboardRow[] = []
+
+      for (const raw of rawRows) {
+        const pubDate = publishDateOf(raw.leaderboard_publish_date) ?? publishDateOf(raw.publish_date)
+        if (args.sinceDate && pubDate && pubDate < args.sinceDate) {
+          arenaSkipped += 1
+          continue
+        }
+        if (args.untilDate && pubDate && pubDate > args.untilDate) {
+          arenaSkipped += 1
+          continue
+        }
+
+        const mapped = mapLmarenaRow(arena, raw, fetchedAt)
+        if (!mapped) {
+          arenaSkipped += 1
+          continue
+        }
+        if (args.sinceDate && mapped.publish_date < args.sinceDate) {
+          arenaSkipped += 1
+          continue
+        }
+        if (args.untilDate && mapped.publish_date > args.untilDate) {
+          arenaSkipped += 1
+          continue
+        }
+        mappedBatch.push(mapped)
+      }
+
+      if (mappedBatch.length > 0) {
+        await io.upsertRows(mappedBatch)
+        arenaUpserted += mappedBatch.length
+        allRows.push(...mappedBatch)
+      }
+    }
+
+    upserted += arenaUpserted
+    skipped += arenaSkipped
+    io.log(`[ai-leaderboard] arena=${arena} split=${split} upserted=${arenaUpserted} skipped=${arenaSkipped}`)
   }
+
   return {
     upserted,
     skipped,
-    arenas,
+    arenas: targetArenas,
+    cacheHits,
+    downloads,
     unmappedOrganizations: collectUnmappedOrganizations(allRows),
   }
 }
@@ -494,7 +630,7 @@ export async function refreshAiLeaderboardDaily(io: AiLeaderboardIo = {}): Promi
       return { action: 'skip', reason: 'already_today' }
     }
     const report = await ingestAiLeaderboard({ split: 'latest', io })
-    bound.log(`[league-generate] ai-leaderboard fetched upserted=${report.upserted}`)
+    bound.log(`[league-generate] ai-leaderboard fetched upserted=${report.upserted} cacheHits=${report.cacheHits} downloads=${report.downloads}`)
     return { action: 'fetched', upserted: report.upserted }
   } catch {
     bound.log('[league-generate] ai-leaderboard skipped reason=error')

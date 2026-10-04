@@ -27,6 +27,13 @@ export const AI_VENDOR_BRANDS = [
   'Cohere',
   'Upstage',
   'NAVER',
+  'Baidu',
+  'StepFun',
+  'Meituan',
+  'Ant Group',
+  'IBM',
+  'AllenAI',
+  'Thinking Machines',
 ] as const
 
 export type AiVendorBrand = (typeof AI_VENDOR_BRANDS)[number]
@@ -66,6 +73,22 @@ const ORG_ALIASES: Record<string, AiVendorBrand> = {
   upstage: 'Upstage',
   'upstage ai': 'Upstage',
   naver: 'NAVER',
+  baidu: 'Baidu',
+  stepfun: 'StepFun',
+  'step fun': 'StepFun',
+  meituan: 'Meituan',
+  'ant group': 'Ant Group',
+  'ant-group': 'Ant Group',
+  antgroup: 'Ant Group',
+  ibm: 'IBM',
+  allenai: 'AllenAI',
+  ai2: 'AllenAI',
+  'allen ai': 'AllenAI',
+  'allenai/uw': 'AllenAI',
+  'allenai uw': 'AllenAI',
+  thinky: 'Thinking Machines',
+  'thinking machines': 'Thinking Machines',
+  thinkingmachines: 'Thinking Machines',
 }
 
 function fold(value: string): string {
@@ -116,6 +139,13 @@ export function brandFromModelName(model: string): AiVendorBrand | null {
   if (key.includes('command')) return 'Cohere'
   if (key.includes('solar')) return 'Upstage'
   if (key.includes('hyperclova') || key.includes('hcx') || key.includes('clova')) return 'NAVER'
+  if (key.includes('ernie')) return 'Baidu'
+  if (key.includes('step-') || key.startsWith('step ')) return 'StepFun'
+  if (key.includes('longcat')) return 'Meituan'
+  if (key.includes('inkling')) return 'Thinking Machines'
+  if (/(^|[\s_-])(ling|ring)[-_]/.test(key)) return 'Ant Group'
+  if (key.includes('granite')) return 'IBM'
+  if (key.includes('olmo') || key.includes('tulu')) return 'AllenAI'
   return null
 }
 
