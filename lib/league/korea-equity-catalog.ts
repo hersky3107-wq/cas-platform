@@ -53,6 +53,11 @@ export function isKrGroupId(value: string): value is KrGroupId {
   return KR_GROUP_IDS.has(value)
 }
 
+export function krGroupLabel(groupId: string | null | undefined): string | null {
+  if (!groupId) return null
+  return KR_GROUPS.find((group) => group.id === groupId)?.label ?? null
+}
+
 /** Enter the auto universe at or below this rank (per market). */
 export const KR_ENTER_RANK = 175
 

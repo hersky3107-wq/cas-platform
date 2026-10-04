@@ -130,6 +130,28 @@ export function researchCacheKey(
   return `rp_v4|${instrument}|${horizon}|${tier}|${langs}|${timeBucket(now)}`
 }
 
+/** Same key as `getResearchPacket`. `querySetVersion` is the only extra suffix. */
+export function buildResearchCacheKey(args: {
+  instrument: string
+  horizon: string
+  now?: Date
+  tier?: ResearchTier
+  languages?: readonly ResearchLang[]
+  forcedQueries?: readonly { q: string }[]
+  extraQueries?: readonly { q: string }[]
+  querySetVersion?: string | null
+}): string {
+  const tier = args.tier ?? 'normal'
+  const languages = args.languages ?? []
+  const forcedTag = args.forcedQueries?.length
+    ? `|fq:${args.forcedQueries.map((q) => q.q).join('~').slice(0, 80)}`
+    : ''
+  const extraTag = args.extraQueries?.length ? `|eq${args.extraQueries.length}` : ''
+  const version = args.querySetVersion?.trim() ?? ''
+  const querySetTag = /^[a-z0-9]{1,16}$/.test(version) ? `|${version}` : ''
+  return `${researchCacheKey(args.instrument, args.horizon, args.now ?? new Date(), tier, languages)}${forcedTag}${extraTag}${querySetTag}`
+}
+
 function estimateUsd(
   price: { inputPerMTokens: number; outputPerMTokens: number },
   promptTokens: number | null,
@@ -407,15 +429,24 @@ export async function getResearchPacket(args: {
    * for news / catalysts / earnings tone / positioning every round.
    */
   extraQueries?: readonly { q: string; lang: string }[]
+  /**
+   * Query-set version suffix only. Omitted callers keep the previous key.
+   * KRSTOCK passes `qs2` after the company-news query text changed.
+   */
+  querySetVersion?: string
 }): Promise<ResearchPacket> {
   const { round, budgetRemainingUsd } = args
   const tier: ResearchTier = args.tier ?? 'normal'
   const languages = args.languages ?? []
-  const forcedTag = args.forcedQueries?.length
-    ? `|fq:${args.forcedQueries.map((q) => q.q).join('~').slice(0, 80)}`
-    : ''
-  const extraTag = args.extraQueries?.length ? `|eq${args.extraQueries.length}` : ''
-  const cacheKey = `${researchCacheKey(round.instrument, round.horizon, new Date(), tier, languages)}${forcedTag}${extraTag}`
+  const cacheKey = buildResearchCacheKey({
+    instrument: round.instrument,
+    horizon: round.horizon,
+    tier,
+    languages,
+    forcedQueries: args.forcedQueries,
+    extraQueries: args.extraQueries,
+    querySetVersion: args.querySetVersion,
+  })
 
   const miss: ResearchPacket = {
     available: false,

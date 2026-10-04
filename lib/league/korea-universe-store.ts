@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { orderVisibleUniverseRows, type UniverseMarket } from './korea-equity-catalog'
+import { isKrGroupId, orderVisibleUniverseRows, type KrGroupId, type UniverseMarket } from './korea-equity-catalog'
 import { mapUniverseDbRow, type LeagueKrUniverseDbRow, type UniverseRecord } from './korea-universe-apply'
 
 const TABLE = 'league_kr_universe'
@@ -33,6 +33,19 @@ export async function isUniverseCodeVisible(market: UniverseMarket, code: string
 
   if (error) throw new Error(`league_kr_universe isUniverseCodeVisible: ${error.message}`)
   return data?.visible === true
+}
+
+export async function getUniverseGroupId(market: UniverseMarket, code: string): Promise<KrGroupId | null> {
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .select('group_id')
+    .eq('market', market)
+    .eq('code', code)
+    .maybeSingle()
+
+  if (error) throw new Error(`league_kr_universe getUniverseGroupId: ${error.message}`)
+  const groupId = (data as { group_id?: unknown } | null)?.group_id
+  return typeof groupId === 'string' && isKrGroupId(groupId) ? groupId : null
 }
 
 export async function getVisibleUniverseRow(

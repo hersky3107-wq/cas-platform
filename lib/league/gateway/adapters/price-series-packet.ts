@@ -44,6 +44,7 @@ export type PriceSeriesIo = {
     languages?: readonly ResearchLang[]
     inventory?: PacketInventoryInput
     extraQueries?: readonly { q: string; lang: string }[]
+    querySetVersion?: string
   }): Promise<ResearchPacket>
   fetchRelatedInstruments(
     instrument: string,

@@ -1,13 +1,14 @@
 import { buildCatalogRankedRoundInput, catalogById, visibleChipEntries } from '../../catalog'
 import { isPoisonTicker } from '../../instrument-identity'
 import { isUiHorizon, UI_HORIZONS, cacheBucketFor, computeResolvesAt } from '../../horizon'
-import { decodeKrStockInstrument } from '../../korea-equity-catalog'
-import { krStockAugmentationQueries, krStockPropositionEn, parseKrStockProposition } from '../../korea-stock-display'
+import { decodeKrStockInstrument, krGroupLabel } from '../../korea-equity-catalog'
+import { krStockAugmentationQueries, KR_STOCK_QUERY_SET_VERSION, krStockPropositionEn, parseKrStockProposition } from '../../korea-stock-display'
 import {
   logKrFlowsFallbackOnce,
   missingKrFlowSignals,
   planKrFlowsPacket,
 } from '../../korea-flows-signals'
+import { formatKrDartPacket } from '../../korea-dart-model'
 import { krxBarsToDataPacket } from '../../korea-stock-packet'
 import { lastCompletedKrxSession } from '../../krx-calendar'
 import { refusalMessageKey } from '../refusal-copy'
@@ -363,6 +364,13 @@ export function createStocksAdapter(
         const fetched = await getKrxCloseSeries(kr.market, kr.code, KRX_SERIES_LOOKBACK_SESSIONS)
         const packet = krxBarsToDataPacket(ctx.round.instrument, fetched.series)
         const name = parseKrStockProposition(ctx.round.proposition_text)?.name || kr.code
+        let groupLabel: string | null = null
+        try {
+          const { getUniverseGroupId } = await import('../../korea-universe-store')
+          groupLabel = krGroupLabel(await getUniverseGroupId(kr.market, kr.code))
+        } catch {
+          groupLabel = null
+        }
         const anchor = lastCompletedKrxSession(new Date())
         const asOf = anchor.ok ? anchor.date : packet.available ? packet.asOf : null
         let flowsPlan: ReturnType<typeof planKrFlowsPacket> | null = null
@@ -388,7 +396,7 @@ export function createStocksAdapter(
           }
         }
         const extraQueries = [
-          ...krStockAugmentationQueries(name, kr.code),
+          ...krStockAugmentationQueries(name, kr.code, groupLabel),
           ...(flowsPlan?.extraQuery ? [flowsPlan.extraQuery] : []),
         ]
         const krIo: PriceSeriesIo = {
@@ -408,13 +416,27 @@ export function createStocksAdapter(
             io.getResearchPacket({
               ...args,
               extraQueries,
+              querySetVersion: KR_STOCK_QUERY_SET_VERSION,
             }),
         }
         const built = await buildPriceSeriesPacket(ctx, krIo)
-        if (!flowsPlan) return built
+        let dartSection: string
+        try {
+          const { loadKrDartPacketSection } = await import('../../korea-dart')
+          dartSection = await loadKrDartPacketSection({ stockCode: kr.code, horizon: ctx.round.horizon })
+        } catch {
+          dartSection = formatKrDartPacket({
+            horizon: ctx.round.horizon,
+            disclosures: 'unavailable',
+            fundamentals: 'unavailable',
+          })
+        }
+        const chunks = [built.injection, flowsPlan?.section, dartSection].filter(
+          (part): part is string => typeof part === 'string' && part.trim().length > 0,
+        )
         return {
           ...built,
-          injection: built.injection ? `${built.injection}\n\n${flowsPlan.section}` : flowsPlan.section,
+          injection: chunks.length ? chunks.join('\n\n') : null,
         }
       }
       const listing = decodeStockInstrument(ctx.round.instrument)

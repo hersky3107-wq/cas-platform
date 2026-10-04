@@ -46,12 +46,24 @@ export function krStockPropositionDisplay(instrument: string, stored: string, lo
   return krStockPropositionKo(parsed)
 }
 
-export function krStockAugmentationQueries(name: string, code: string): { q: string; lang: string }[] {
-  const label = `${name}(${code})`
+/**
+ * Bumped when this KRSTOCK extra-query text changes. The research cache key
+ * stays `rp_v4|…|eqN` and only gains this suffix, so old rows miss.
+ * Count stays 3 — these replace the generic news/earnings/catalyst seeds.
+ */
+export const KR_STOCK_QUERY_SET_VERSION = 'qs2'
+
+export function krStockAugmentationQueries(
+  name: string,
+  code: string,
+  groupLabel?: string | null,
+): { q: string; lang: string }[] {
+  const company = name.trim() || code
+  const sector = groupLabel?.trim() || '해당 업종'
   return [
-    { q: `${label} 최근 뉴스와 주가 촉매 (실적, 규제, 매크로, 가이던스)`, lang: 'ko' },
-    { q: `${label} 최근 실적발표 톤 가이던스 서프라이즈 컨퍼런스콜`, lang: 'ko' },
-    { q: `${label} 예정된 촉매 실적발표일 투자자의 날 신제품 수주`, lang: 'ko' },
+    { q: `최근 7일 ${company} 핵심 악재·호재`, lang: 'ko' },
+    { q: `${company} 공시·유상증자·전환사채·수주·소송·규제`, lang: 'ko' },
+    { q: `${sector} 업황 최근 동향`, lang: 'ko' },
   ]
 }
 
