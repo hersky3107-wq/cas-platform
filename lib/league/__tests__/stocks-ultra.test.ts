@@ -187,7 +187,7 @@ describe('🔴 analyst data stays packet-only', () => {
 
   it('the orchestrator applies the scrub before writing reasoning_snippet', () => {
     const src = readFileSync(join(ROOT, 'lib/league/orchestrator.ts'), 'utf8')
-    const scrubAt = src.indexOf('scrubAnalystDisclosure(rawRationale)')
+    const scrubAt = src.indexOf('visibleLeagueText(category, rawRationale)')
     const writeAt = src.indexOf('reasoning_snippet: rationale,')
     expect(scrubAt).toBeGreaterThan(0)
     expect(writeAt).toBeGreaterThan(scrubAt)

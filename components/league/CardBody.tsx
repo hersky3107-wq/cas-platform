@@ -126,6 +126,7 @@ export function CardBody({
               : (data.generation?.droppedModelIds ?? [])
         }
         droppedFailReasons={data.droppedFailReasons}
+        category={data.round.category}
       />
       <ExtraCompare
         models={data.models}

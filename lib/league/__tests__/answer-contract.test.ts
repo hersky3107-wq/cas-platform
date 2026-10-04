@@ -20,6 +20,7 @@ import {
   isContractSide,
   QUALIFIER_TEXT_MAX_CHARS,
   CONFIDENCE_DISTRIBUTION_GUIDANCE,
+  EQUITY_QUALITATIVE_GUIDANCE,
   POLITICS_CALIBRATION_GUIDANCE,
   SPORTS_CALIBRATION_GUIDANCE,
   systemPromptFor,
@@ -462,9 +463,11 @@ describe('confidence-distribution guidance — every category', () => {
 
     const stockSystem = systemPromptFor({ league_tier: 'premier' }, closeHigher, 'stock')
     expect(stockSystem).toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)
+    expect(stockSystem).toContain(EQUITY_QUALITATIVE_GUIDANCE)
     expect(stockSystem).not.toContain(SPORTS_CALIBRATION_GUIDANCE)
     expect(stockSystem).not.toContain(POLITICS_CALIBRATION_GUIDANCE)
     expect(closeHigher.closedBookSystemPrompt).not.toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)
+    expect(sportsSystem).not.toContain(EQUITY_QUALITATIVE_GUIDANCE)
 
     const thresholdSystem = systemPromptFor({ league_tier: 'premier' }, threshold, 'entertainment_awards')
     expect(thresholdSystem).toContain(CONFIDENCE_DISTRIBUTION_GUIDANCE)

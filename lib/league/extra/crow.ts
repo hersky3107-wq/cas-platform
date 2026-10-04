@@ -9,6 +9,7 @@
  * Engine: first-party Mistral Medium 3.5 (no hidden reasoning, fast).
  * Ledger model_id stays `crow`. All ledger categories.
  */
+import { EQUITY_QUALITATIVE_GUIDANCE, scrubsAnalystDisclosure } from '../analyst-disclosure'
 import type { AnswerSide } from '../answer-contract'
 import { extractCrowdingBlock, rsi14 } from '../crowding'
 import { extractKrFlowsBlock } from '../korea-flows-signals'
@@ -127,6 +128,7 @@ export function buildCrowSystemPrompt(category: string, instrument?: string | nu
     lens,
     'If the overlooked side has no genuine factor in the brief, agree with the measured edge. A strong favorite or a strong trend can still be your call.',
     'Never invent odds, injuries, prices, or a win rate for yourself.',
+    ...(scrubsAnalystDisclosure(category) ? [EQUITY_QUALITATIVE_GUIDANCE] : []),
     '',
     'Last line MUST be JSON:',
     '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',

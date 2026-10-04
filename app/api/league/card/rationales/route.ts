@@ -31,10 +31,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ translations: {}, locale })
   }
 
-  const { data, error } = await supabaseAdmin
-    .from('model_predictions')
-    .select('id, model_id, reasoning_snippet')
-    .eq('round_id', roundId)
+  const [{ data, error }, roundRow] = await Promise.all([
+    supabaseAdmin.from('model_predictions').select('id, model_id, reasoning_snippet').eq('round_id', roundId),
+    supabaseAdmin.from('prediction_rounds').select('category').eq('id', roundId).maybeSingle(),
+  ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const rows = (data ?? []).filter(
@@ -44,9 +44,10 @@ export async function GET(req: Request) {
     predictionId: row.id as string,
     text: (row.reasoning_snippet as string).trim(),
   }))
+  const category = typeof roundRow.data?.category === 'string' ? roundRow.data.category : null
 
   try {
-    const result = await translateRoundRationales(items, locale)
+    const result = await translateRoundRationales(items, locale, undefined, category)
     const byModelId: Record<string, string> = {}
     for (const row of rows) {
       const text = result.translations[row.id as string]

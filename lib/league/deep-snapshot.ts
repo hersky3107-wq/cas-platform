@@ -14,7 +14,7 @@
  * never enter a client bundle.
  */
 
-import { sportsVisibleText } from './sports-disclosure'
+import { visibleLeagueText } from './visible-disclosure'
 
 export type DeepSeatSnapshot = {
   roleId: string
@@ -118,7 +118,7 @@ function str(v: unknown): string | null {
 function vis(category: string | undefined, v: unknown): string | null {
   const raw = str(v)
   if (!raw) return null
-  return sportsVisibleText(category, raw)
+  return visibleLeagueText(category, raw)
 }
 
 function seatFrom(raw: Record<string, unknown>, kind: 'open' | 'debate'): DeepSeatSnapshot {

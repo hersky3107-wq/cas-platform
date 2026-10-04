@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import type { LeagueLocale } from './i18n/locales'
 import { skipKoTranslationLlm } from './rationale-display'
 import { scrubSportsDisclosure } from './sports-disclosure'
+import { visibleLeagueText } from './visible-disclosure'
 import {
   persistRationaleTranslations,
   logRationaleCacheError,
@@ -99,7 +100,8 @@ const defaultStore: RationaleTranslationStore = {
 export async function translateRoundRationales(
   items: RationaleToTranslate[],
   locale: LeagueLocale,
-  store: RationaleTranslationStore = defaultStore
+  store: RationaleTranslationStore = defaultStore,
+  category?: string | null,
 ): Promise<TranslateRationalesResult> {
   const started = Date.now()
   const empty: TranslateRationalesResult = {
@@ -115,7 +117,11 @@ export async function translateRoundRationales(
   }
 
   const usable = items
-    .map((i) => ({ ...i, text: scrubSportsDisclosure(i.text) ?? '' }))
+    .map((i) => {
+      const sports = scrubSportsDisclosure(i.text) ?? ''
+      const text = visibleLeagueText(category, sports) ?? sports
+      return { ...i, text }
+    })
     .filter((i) => i.text.trim().length > 0)
   if (!shouldTranslateLocale(locale) || usable.length === 0) {
     return { ...empty, latencyMs: Date.now() - started }
@@ -134,18 +140,19 @@ export async function translateRoundRationales(
   const nativeWrites: { prediction_id: string; locale: string; translated_text: string; source_hash: string }[] = []
   for (const item of usable) {
     if (skipKoTranslationLlm(locale, item.text)) {
-      translations[item.predictionId] = item.text
+      const visible = visibleLeagueText(category, item.text) ?? item.text
+      translations[item.predictionId] = visible
       nativeWrites.push({
         prediction_id: item.predictionId,
         locale,
-        translated_text: item.text,
+        translated_text: visible,
         source_hash: sourceHash(item.text),
       })
       continue
     }
     const hit = cached.get(item.predictionId)
     if (hit && hit.source_hash === sourceHash(item.text) && hit.translated_text.trim()) {
-      translations[item.predictionId] = hit.translated_text
+      translations[item.predictionId] = visibleLeagueText(category, hit.translated_text) ?? hit.translated_text
     } else {
       missing.push(item)
     }
@@ -212,11 +219,12 @@ export async function translateRoundRationales(
           const text = byId.get(i)
           if (!text) continue
           const item = missing[i]!
-          translations[item.predictionId] = text
+          const visible = visibleLeagueText(category, text) ?? text
+          translations[item.predictionId] = visible
           writes.push({
             prediction_id: item.predictionId,
             locale,
-            translated_text: text,
+            translated_text: visible,
             source_hash: sourceHash(item.text),
           })
         }

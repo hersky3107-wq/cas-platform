@@ -8,6 +8,7 @@ import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { SideLabels, SideSlot } from '@/lib/league/side-labels'
 import { formatSignedPercent } from '@/lib/league/magnitude'
 import { sanitizeScoutRationaleDisplay } from '@/lib/league/prediction-parse'
+import { visibleLeagueText } from '@/lib/league/visible-disclosure'
 import { CountryFlag } from '@/components/league/CountryFlag'
 import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
 
@@ -44,6 +45,7 @@ export function ModelTile({
   rationalePending = false,
   showOriginal = false,
   actualMagnitudePct = null,
+  category = null,
 }: {
   model: CardModelPrediction
   t: LeagueUiPack
@@ -56,15 +58,19 @@ export function ModelTile({
   showOriginal?: boolean
   /** Round-level actual percent change, once graded. Display only — see `lib/league/magnitude.ts`. */
   actualMagnitudePct?: number | null
+  /** Ledger category — display-layer scrub of flow/analyst/book figures. */
+  category?: string | null
 }) {
   const [open, setOpen] = useState(false)
   const isScout = model.league_tier === 'scout'
-  const original = isScout
-    ? sanitizeScoutRationaleDisplay(model.reasoning_snippet)
-    : model.reasoning_snippet?.trim() || null
-  const translated = isScout
-    ? sanitizeScoutRationaleDisplay(translatedRationale)
-    : translatedRationale?.trim() || null
+  const original = visibleLeagueText(
+    category,
+    isScout ? sanitizeScoutRationaleDisplay(model.reasoning_snippet) : model.reasoning_snippet,
+  )
+  const translated = visibleLeagueText(
+    category,
+    isScout ? sanitizeScoutRationaleDisplay(translatedRationale) : translatedRationale,
+  )
   const rationale = translated || original
   const hasReasoning = Boolean(rationale)
   const slot: SideSlot = labels

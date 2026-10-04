@@ -14,6 +14,7 @@
  * — never invent.
  */
 import type { AnswerSide } from '../answer-contract'
+import { EQUITY_QUALITATIVE_GUIDANCE, scrubsAnalystDisclosure } from '../analyst-disclosure'
 import { parsePrediction, sanitizeRationale } from '../prediction-parse'
 import { leagueSideFromDivination } from './divination'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
@@ -330,7 +331,7 @@ export function assertConsensusInputShape(input: object): asserts input is Conse
   }
 }
 
-export function buildConsensusSystemPrompt(): string {
+export function buildConsensusSystemPrompt(category?: string | null): string {
   return [
     CONSENSUS_PERSONA,
     '',
@@ -350,6 +351,7 @@ export function buildConsensusSystemPrompt(): string {
     '- Name which money signal you found.',
     '- Write in market-priced language: "옵션 시장은 ~%를 반영", "선물 포지션은 ~로 기울어", "예측시장 배당은 ~", "펀딩비는 ~", "VIX/풋콜은 ~".',
     '- Then pick a direction for THIS proposition and horizon.',
+    ...(scrubsAnalystDisclosure(category) ? [EQUITY_QUALITATIVE_GUIDANCE] : []),
     '',
     'If search finds no money-positioning data for THIS category after searching the category-appropriate signals, do NOT invent odds. Abstain.',
     'Do not abstain just because equity analyst targets or CFTC COT are missing — those are not the money signals for crypto or index ETFs.',
@@ -411,6 +413,7 @@ export function consensusRetryInstruction(category?: string): string {
     'Use only money-positioning language for THIS category: options / prediction-market odds / COT / institutional targets (gold/FX/commodities); YM/ES/NQ COT, CBOE put-call, VIX (index ETFs); funding rate, Deribit skew/IV, top-trader long/short, taker buy/sell (crypto/memecoin).',
     'Do not name chart patterns. Do not write 분위기/여론/루머. Do not cite TIPS or CPI.',
     'Do not abstain just because equity targets or CFTC COT are missing on crypto or index ETFs.',
+    ...(scrubsAnalystDisclosure(category) ? [EQUITY_QUALITATIVE_GUIDANCE] : []),
     'If there is no money-positioning signal after the category-appropriate search, output found:false and direction null.',
     'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
   ].join(' ')

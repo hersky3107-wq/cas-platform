@@ -96,7 +96,7 @@ describe('rationale display / stream trigger helpers', () => {
     ).toBe(false)
   })
 
-  it('skips the ko LLM when the snippet already has Hangul; still translates Hangul for ja/fr', () => {
+  it('skips the ko LLM when the snippet is mostly Korean; leftover English still translates', () => {
     const korean =
       '본괘인 고는 갈등과 혼란의 상황을 나타내지만, 변괘 환은 변화와 해소를 의미합니다.'
     expect(isNativeKoreanText(korean)).toBe(true)
@@ -106,5 +106,11 @@ describe('rationale display / stream trigger helpers', () => {
     expect(skipKoTranslationLlm('zh-TW', korean)).toBe(false)
     expect(skipKoTranslationLlm('fr', korean)).toBe(false)
     expect(skipKoTranslationLlm('ko', 'Gold trades near $4,378 with weekly gains.')).toBe(false)
+    expect(
+      skipKoTranslationLlm(
+        'ko',
+        'KRX data show a 10-02 close near 115,700 and a 1.2조 rights issue…',
+      ),
+    ).toBe(false)
   })
 })

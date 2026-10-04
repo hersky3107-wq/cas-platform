@@ -60,6 +60,7 @@ export function DivisionBoard({
   streaming = false,
   droppedModelIds = [],
   droppedFailReasons = {},
+  category = null,
 }: {
   models: CardModelPrediction[]
   tierSplit: TierSplit
@@ -78,6 +79,7 @@ export function DivisionBoard({
   droppedModelIds?: readonly string[]
   /** Admin-only machine codes next to 미응답 seats. */
   droppedFailReasons?: Record<string, string>
+  category?: string | null
 }) {
   const groups = useMemo(
     () =>
@@ -159,6 +161,7 @@ export function DivisionBoard({
                     })}
                     showOriginal={showOriginal}
                     actualMagnitudePct={actualMagnitudePct}
+                    category={category}
                   />
                 )
               })}

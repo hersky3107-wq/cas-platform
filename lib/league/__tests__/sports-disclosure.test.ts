@@ -140,7 +140,7 @@ describe('deep prompt guards', () => {
 describe('write-path wiring', () => {
   it('orchestrator applies the sports scrub next to the analyst scrub before reasoning_snippet', () => {
     const src = readFileSync(join(ROOT, 'lib/league/orchestrator.ts'), 'utf8')
-    const sportsAt = src.indexOf('scrubSportsDisclosure(rationale)')
+    const sportsAt = src.indexOf('visibleLeagueText(category, rawRationale)')
     const writeAt = src.indexOf('reasoning_snippet: rationale,')
     expect(sportsAt).toBeGreaterThan(0)
     expect(writeAt).toBeGreaterThan(sportsAt)
@@ -148,7 +148,7 @@ describe('write-path wiring', () => {
 
   it('deep persist scrubs sports state before storage', () => {
     const src = readFileSync(join(ROOT, 'lib/league/deep-store.ts'), 'utf8')
-    expect(src).toContain('scrubSportsDeepState(opts.state)')
+    expect(src).toContain('scrubVisibleDeepState(opts.state)')
   })
 })
 

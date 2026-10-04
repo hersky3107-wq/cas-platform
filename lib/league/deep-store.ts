@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { scrubSportsDeepState } from './sports-disclosure'
+import { scrubVisibleDeepState } from './visible-disclosure'
 import { freeBusyFilter, freeLeaseFilter } from './generation/lease'
 import {
   decideDeepRunAction,
@@ -237,11 +237,11 @@ export async function saveDeepRunProgress(opts: {
   providerCalls: number
   refunded?: boolean
 }): Promise<void> {
-  const state = scrubSportsDeepState(opts.state)
+  const state = scrubVisibleDeepState(opts.state)
   const category = typeof state.category === 'string' ? state.category : ''
   const result = opts.result
     ? (() => {
-        const scrubbed = scrubSportsDeepState({ category, ...opts.result })
+        const scrubbed = scrubVisibleDeepState({ category, ...opts.result })
         if (!('category' in opts.result!)) delete scrubbed.category
         return scrubbed
       })()

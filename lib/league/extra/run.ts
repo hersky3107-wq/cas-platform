@@ -77,7 +77,7 @@ import {
   type ConsensusLeagueInput,
 } from './consensus'
 import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeatId } from './seats'
-import { scrubSportsDisclosure } from '../sports-disclosure'
+import { visibleLeagueText } from '../visible-disclosure'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isRealEstateLedgerCategory } from './real-estate-category'
 import { isPoliticsLedgerCategory } from './politics-category'
@@ -190,6 +190,7 @@ async function loadRound(roundId: string): Promise<ExtraRoundRow> {
 
 async function upsertExtraPrediction(row: {
   roundId: string
+  category?: string | null
   model_id: ExtraSeatId
   brand: string
   direction: AnswerSide | null
@@ -215,7 +216,7 @@ async function upsertExtraPrediction(row: {
       predicted_value: row.probability,
       predicted_magnitude_pct: null,
       predicted_qualifier_text: row.qualifier_text,
-      reasoning_snippet: scrubSportsDisclosure(row.reasoning_snippet),
+      reasoning_snippet: visibleLeagueText(row.category, row.reasoning_snippet),
       reasoning_text: null,
       prompt_tokens: row.prompt_tokens ?? null,
       completion_tokens: row.completion_tokens ?? null,
@@ -275,6 +276,7 @@ async function runDivinationSeat(
     const qualifier = customer.pick
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'divination',
       brand: seat.brand,
       direction,
@@ -298,6 +300,7 @@ async function runDivinationSeat(
     const message = e instanceof Error ? e.message : 'divination seat failed'
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'divination',
       brand: seat.brand,
       direction: null,
@@ -395,6 +398,7 @@ async function runHistorySeat(
   if (!series) {
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'history',
       brand: seat.brand,
       direction: null,
@@ -445,6 +449,7 @@ async function runHistorySeat(
 
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'history',
       brand: seat.brand,
       direction,
@@ -474,6 +479,7 @@ async function runHistorySeat(
     const message = e instanceof Error ? e.message : 'history seat failed'
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'history',
       brand: seat.brand,
       direction: null,
@@ -536,12 +542,14 @@ async function callSentimentOnce(
 
 async function persistSentimentAbstain(
   roundId: string,
+  category: string,
   brand: string,
   rationale: string,
   cost?: { costUsd: number; estimated: number; promptTokens: number | null; completionTokens: number | null; costIsEstimated: boolean },
 ): Promise<ExtraSeatOutcome> {
   await upsertExtraPrediction({
     roundId,
+    category,
     model_id: 'sentiment',
     brand,
     direction: null,
@@ -609,18 +617,19 @@ async function runSentimentSeat(round: ExtraRoundRow, call: SentimentCaller): Pr
     }
 
     if (!parsed) {
-      return persistSentimentAbstain(round.id, seat.brand, SENTIMENT_NO_SIGNAL_REASON, cost)
+      return persistSentimentAbstain(round.id, round.category, seat.brand, SENTIMENT_NO_SIGNAL_REASON, cost)
     }
     if (parsed.kind === 'abstain') {
-      return persistSentimentAbstain(round.id, seat.brand, parsed.rationale, cost)
+      return persistSentimentAbstain(round.id, round.category, seat.brand, parsed.rationale, cost)
     }
     if (sentimentRationaleNeedsRetry(parsed.rationale, round.category, round.instrument)) {
-      return persistSentimentAbstain(round.id, seat.brand, SENTIMENT_NO_SIGNAL_REASON, cost)
+      return persistSentimentAbstain(round.id, round.category, seat.brand, SENTIMENT_NO_SIGNAL_REASON, cost)
     }
 
     const direction = leagueSideFromSentiment(parsed.verdict, round.proposition_kind)
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'sentiment',
       brand: seat.brand,
       direction,
@@ -649,6 +658,7 @@ async function runSentimentSeat(round: ExtraRoundRow, call: SentimentCaller): Pr
     const message = e instanceof Error ? e.message : 'sentiment seat failed'
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'sentiment',
       brand: seat.brand,
       direction: null,
@@ -706,17 +716,19 @@ async function callConsensusOnce(
   const userPrompt = retry
     ? `${buildConsensusUserPrompt(input)}\n\n${consensusRetryInstruction(input.category)}`
     : buildConsensusUserPrompt(input)
-  return call({ systemPrompt: buildConsensusSystemPrompt(), userPrompt })
+  return call({ systemPrompt: buildConsensusSystemPrompt(input.category), userPrompt })
 }
 
 async function persistConsensusAbstain(
   roundId: string,
+  category: string,
   brand: string,
   rationale: string,
   cost?: { costUsd: number; estimated: number; promptTokens: number | null; completionTokens: number | null; costIsEstimated: boolean },
 ): Promise<ExtraSeatOutcome> {
   await upsertExtraPrediction({
     roundId,
+    category,
     model_id: 'consensus',
     brand,
     direction: null,
@@ -746,6 +758,7 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
   if (isRealEstateLedgerCategory(round.category)) {
     return persistConsensusAbstain(
       round.id,
+      round.category,
       seat.brand,
       'CME Case-Shiller futures are too thin, and most regions have no housing-index market. Consensus abstains.',
     )
@@ -791,18 +804,19 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
     }
 
     if (!parsed) {
-      return persistConsensusAbstain(round.id, seat.brand, CONSENSUS_NO_SIGNAL_REASON, cost)
+      return persistConsensusAbstain(round.id, round.category, seat.brand, CONSENSUS_NO_SIGNAL_REASON, cost)
     }
     if (parsed.kind === 'abstain') {
-      return persistConsensusAbstain(round.id, seat.brand, parsed.rationale, cost)
+      return persistConsensusAbstain(round.id, round.category, seat.brand, parsed.rationale, cost)
     }
     if (consensusRationaleNeedsRetry(parsed.rationale, round.category)) {
-      return persistConsensusAbstain(round.id, seat.brand, CONSENSUS_NO_SIGNAL_REASON, cost)
+      return persistConsensusAbstain(round.id, round.category, seat.brand, CONSENSUS_NO_SIGNAL_REASON, cost)
     }
 
     const direction = leagueSideFromConsensus(parsed.verdict, round.proposition_kind)
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'consensus',
       brand: seat.brand,
       direction,
@@ -831,6 +845,7 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
     const message = e instanceof Error ? e.message : 'consensus seat failed'
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'consensus',
       brand: seat.brand,
       direction: null,
@@ -959,6 +974,7 @@ async function runCrowSeat(
     const direction = leagueSideFromCrow(parsed.verdict, round.proposition_kind)
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'crow',
       brand: seat.brand,
       direction,
@@ -987,6 +1003,7 @@ async function runCrowSeat(
     const message = e instanceof Error ? e.message : 'crow seat failed'
     await upsertExtraPrediction({
       roundId: round.id,
+      category: round.category,
       model_id: 'crow',
       brand: seat.brand,
       direction: null,

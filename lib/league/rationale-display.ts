@@ -8,18 +8,30 @@ export function shouldTranslateRationaleLocale(locale: LeagueLocale): boolean {
 
 /** Hangul syllable block. Native-Korean extra seats (divination) already write this. */
 export const HANGUL_RE = /[가-힣]/
+const HANGUL_ALL_RE = /[가-힣]/g
+const LATIN_RE = /[A-Za-z]/g
 
 export function isNativeKoreanText(text: string): boolean {
   return HANGUL_RE.test(text)
+}
+
+/** Latin letters dominate Hangul — leftover English that still needs a ko translation. */
+export function isMostlyEnglish(text: string): boolean {
+  const hangul = (text.match(HANGUL_ALL_RE) ?? []).length
+  const latin = (text.match(LATIN_RE) ?? []).length
+  if (latin === 0) return false
+  return latin >= 8 && latin >= hangul * 2
 }
 
 /**
  * ko-view: skip LLM translation when the snippet is already Korean.
  * Gemini otherwise re-translates Hangul → English and caches that as `ko`.
  * Other locales (ja/zh/fr/…) still translate Hangul sources.
+ * A leftover-English line that happens to contain one Hangul unit (e.g. 조)
+ * still goes through translation.
  */
 export function skipKoTranslationLlm(locale: LeagueLocale, text: string): boolean {
-  return locale === 'ko' && isNativeKoreanText(text)
+  return locale === 'ko' && isNativeKoreanText(text) && !isMostlyEnglish(text)
 }
 
 /**

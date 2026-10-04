@@ -32,6 +32,7 @@
  */
 
 import type { PropositionKind } from './gateway/types'
+import { EQUITY_QUALITATIVE_GUIDANCE, scrubsAnalystDisclosure } from './analyst-disclosure'
 import { isPoliticsLedgerCategory } from './extra/politics-category'
 import { isSportsLedgerCategory } from './extra/sports-category'
 import {
@@ -48,6 +49,8 @@ import {
 import { roundMagnitude, validateMagnitude } from './magnitude'
 
 export type AnswerSide = 'up' | 'down' | 'yes' | 'no' | 'above' | 'below'
+
+export { EQUITY_QUALITATIVE_GUIDANCE }
 
 /** Raw extraction from model output — validation happens in `AnswerContract.validate`. */
 export type ContractAnswer = {
@@ -817,13 +820,16 @@ export function buildRoundPrompts(
   return { price, scout }
 }
 
-function withConfidenceDistribution(prompt: string): string {
+function withConfidenceDistribution(prompt: string, category?: string | null): string {
   let next = prompt
   if (!next.includes(CONFIDENCE_DISTRIBUTION_GUIDANCE)) {
     next = `${next}\n\n- confidence distribution: ${CONFIDENCE_DISTRIBUTION_GUIDANCE}`
   }
   if (!next.includes(OUTSIDE_VIEW_PREMORTEM_GUIDANCE)) {
     next = `${next}\n\n${OUTSIDE_VIEW_PREMORTEM_GUIDANCE}`
+  }
+  if (scrubsAnalystDisclosure(category) && !next.includes(EQUITY_QUALITATIVE_GUIDANCE)) {
+    next = `${next}\n\n${EQUITY_QUALITATIVE_GUIDANCE}`
   }
   return next
 }
@@ -854,5 +860,5 @@ export function systemPromptFor(
   } else {
     base = entry.league_tier === 'scout' ? contract.scoutSystemPrompt : contract.closedBookSystemPrompt
   }
-  return withConfidenceDistribution(base)
+  return withConfidenceDistribution(base, category)
 }
