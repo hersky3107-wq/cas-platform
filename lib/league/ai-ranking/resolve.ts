@@ -12,6 +12,7 @@ import {
 } from './brands'
 import {
   AIRANK_LEDGER_CATEGORY,
+  airankAllPropositions,
   airankPropositionText,
   airankResolutionRule,
   airankSubjectLabel,
@@ -510,5 +511,6 @@ export function buildAirankRankedRoundInput(
     proposition_kind: 'binary_subject_outcome' as const,
     subject_label: airankSubjectLabel(parts, loc),
     observation_shape: 'occurrence' as const,
+    propositions: airankAllPropositions(parts),
   }
 }

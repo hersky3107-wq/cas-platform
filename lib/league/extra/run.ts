@@ -85,6 +85,9 @@ import {
 import { rosterProviderRoute, type ProviderCallGate } from '../generation/provider-gate'
 import { visibleLeagueText } from '../visible-disclosure'
 import { selfVendorFlags } from '../ai-ranking/self-vendor'
+import { isAirankInstrument, parseAirankInstrument } from '../ai-ranking/instrument'
+import { leaderboardStoreArena, LMARENA_SOURCE } from '../ai-ranking/ingest'
+import { brandsInCamp, isAirankCamp } from '../ai-ranking/brands'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isRealEstateLedgerCategory } from './real-estate-category'
 import { isPoliticsLedgerCategory } from './politics-category'
@@ -411,21 +414,84 @@ async function callHistoryOnce(
   return call({ systemPrompt: buildHistorySystemPrompt(input.category), userPrompt })
 }
 
-async function runHistorySeat(
+export async function resolveAiModelRankSeries(
+  instrument: string,
+  asOfIso?: string | null,
+): Promise<{ bars: HistorySeriesBar[]; latestClose: number | null; asOf: string | null } | null> {
+  const parts = parseAirankInstrument(instrument)
+  if (!parts) return null
+
+  const asOfYmd = asOfIso ? asOfIso.slice(0, 10) : null
+  const storeArena = leaderboardStoreArena(parts.arena)
+
+  let query = supabaseAdmin
+    .from('league_ai_leaderboard')
+    .select('publish_date, rank, brand, model')
+    .eq('source', LMARENA_SOURCE)
+    .eq('arena', storeArena)
+    .eq('category', parts.category)
+
+  if (asOfYmd) {
+    query = query.lte('publish_date', asOfYmd)
+  }
+
+  if (parts.kind === 'camp_rank1' || parts.kind === 'camp_topn') {
+    const camp = isAirankCamp(parts.subject) ? parts.subject : null
+    if (!camp) return null
+    const campBrands = brandsInCamp(camp)
+    query = query.in('brand', campBrands)
+  } else if (parts.kind === 'model_rank1') {
+    query = query.eq('model', parts.subject)
+  } else {
+    query = query.eq('brand', parts.subject)
+  }
+
+  query = query.order('publish_date', { ascending: true }).order('rank', { ascending: true })
+
+  const { data, error } = await query
+  if (error || !data || data.length === 0) return null
+
+  const dateMap = new Map<string, number>()
+  for (const row of data) {
+    const d = String(row.publish_date).slice(0, 10)
+    const r = Number(row.rank)
+    if (!dateMap.has(d) || r < dateMap.get(d)!) {
+      dateMap.set(d, r)
+    }
+  }
+
+  const bars: HistorySeriesBar[] = [...dateMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, close]) => ({ date, close }))
+
+  if (bars.length === 0) return null
+
+  return {
+    bars,
+    latestClose: bars[bars.length - 1].close,
+    asOf: bars[bars.length - 1].date,
+  }
+}
+
+export async function runHistorySeat(
   round: ExtraRoundRow,
   call: HistoryCaller,
   providedSeries: ExtraPriceSeries | null | undefined,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('history')!
+  const isAiModels = round.category === 'ai_models' || isAirankInstrument(round.instrument)
   const nonPrice =
     isSportsLedgerCategory(round.category) ||
     isPoliticsLedgerCategory(round.category) ||
     isEntertainmentLedgerCategory(round.category) ||
     isRealEstateLedgerCategory(round.category)
-  const series = nonPrice
-    ? { bars: [] as HistorySeriesBar[], latestClose: null as number | null, asOf: round.opened_at ?? null }
-    : await resolveHistorySeries(round.instrument, providedSeries)
-  if (!series) {
+  const series = isAiModels
+    ? await resolveAiModelRankSeries(round.instrument, round.opened_at)
+    : nonPrice
+      ? { bars: [] as HistorySeriesBar[], latestClose: null as number | null, asOf: round.opened_at ?? null }
+      : await resolveHistorySeries(round.instrument, providedSeries)
+  if (!series || (isAiModels && series.bars.length === 0)) {
+    const abstainReason = isAiModels ? null : HISTORY_NO_SERIES_REASON
     await upsertExtraPrediction({
       roundId: round.id,
       category: round.category,
@@ -434,13 +500,13 @@ async function runHistorySeat(
       direction: null,
       probability: null,
       qualifier_text: null,
-      reasoning_snippet: HISTORY_NO_SERIES_REASON,
+      reasoning_snippet: abstainReason,
       cost_usd: 0,
       estimated_cost_usd: 0,
     })
     return {
       ...baseOutcome('history', seat.brand),
-      reasoning_snippet: HISTORY_NO_SERIES_REASON,
+      reasoning_snippet: abstainReason,
       status: 'abstain',
     }
   }

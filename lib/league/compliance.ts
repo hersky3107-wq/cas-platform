@@ -9,6 +9,21 @@ import { ensembleConfidenceTier, type ConfidenceTier } from './confidence-tier'
 
 export { ensembleConfidenceTier, type ConfidenceTier }
 
+export const NON_FINANCIAL_CATEGORIES: ReadonlySet<string> = new Set([
+  'ai_models',
+  'tech',
+  'sports',
+  'entertainment',
+  'entertainment_awards',
+  'politics_election',
+  'real_estate',
+])
+
+export function isNonFinancialCategory(category: string | null | undefined): boolean {
+  if (!category) return false
+  return NON_FINANCIAL_CATEGORIES.has(category.trim().toLowerCase())
+}
+
 /**
  * AI Prediction League — REGULATORY / COMPLIANCE LAYER (Layer 2).
  *

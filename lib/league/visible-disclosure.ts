@@ -9,6 +9,53 @@ import { scrubAnalystDisclosure, scrubsAnalystDisclosure } from './analyst-discl
 import { scrubAirankDisclosure, scrubsAirankDisclosure } from './ai-ranking/disclosure'
 import { scrubSportsDisclosure, scrubsSportsDisclosure } from './sports-disclosure'
 
+export const COMMON_TLDS =
+  'com|org|net|io|ai|co|kr|me|app|xyz|dev|info|biz|cc|tv|so|ca|uk|jp|cn|de|fr|edu|gov|ly|us'
+
+/** Strip citation markers like [1], [14], [1-3], 【1】, 【출처】 across ALL categories. */
+export function scrubCitationMarkers(text: string): string {
+  return text
+    .replace(/\[\d+(?:[,\s–-]+\d+)*\]/g, '')
+    .replace(/【[^】]+】/g, '')
+    .replace(/\[(?:출처|source|citation|ref|reference)[:\s][^\]]*\]/gi, '')
+}
+
+/** Strip markdown link residue like [](/foo), [foo](http://...), and raw URLs. */
+export function scrubLinkResidue(text: string): string {
+  return text
+    // Empty markdown links: [](/...) or [](url)
+    .replace(/\[\s*\]\([^)]*\)/g, '')
+    // Markdown links with text: [text](url) -> text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Raw URLs: https://... or http://...
+    .replace(/https?:\/\/[^\s)\]]+/gi, '')
+}
+
+/** Strip bare and parenthesized web domains like (benchleader.com), benchleader.com. */
+export function scrubDomains(text: string): string {
+  // Parenthesized domains: (benchleader.com), (www.lmarena.ai/leaderboard)
+  const parenDomainRe = new RegExp(
+    `\\(\\s*(?:https?:\\/\\/)?(?:www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]*(?:\\.[a-zA-Z0-9][-a-zA-Z0-9]*)*\\.(?:${COMMON_TLDS})(?:\\/[^\\s)\\]]*)?\\s*\\)`,
+    'gi',
+  )
+  // Bare domains: benchleader.com, lmarena.ai (ensure not part of email or model number like gpt-4.5)
+  const bareDomainRe = new RegExp(
+    `(?<![@\\w./])(?:www\\.)?[a-zA-Z0-9][-a-zA-Z0-9]*(?:\\.[a-zA-Z0-9][-a-zA-Z0-9]*)*\\.(?:${COMMON_TLDS})(?:\\/[^\\s)\\]]*)?`,
+    'gi',
+  )
+  return text.replace(parenDomainRe, '').replace(bareDomainRe, '')
+}
+
+/** Generic display scrub applied to ALL categories. */
+export function scrubGenericDisclosure(text: string | null | undefined): string | null {
+  if (typeof text !== 'string') return null
+  let out = text
+  out = scrubCitationMarkers(out)
+  out = scrubLinkResidue(out)
+  out = scrubDomains(out)
+  return out || null
+}
+
 export function visibleLeagueText(
   category: string | null | undefined,
   text: string | null | undefined,
@@ -24,6 +71,7 @@ export function visibleLeagueText(
   if (scrubsAirankDisclosure(category)) {
     out = scrubAirankDisclosure(out)
   }
+  out = scrubGenericDisclosure(out)
   return out
 }
 
@@ -46,8 +94,5 @@ function scrubDeepValue(category: string, key: string, value: unknown): unknown 
 /** Scrub user-visible strings on a deep-open / deep-debate state blob before persist or return. */
 export function scrubVisibleDeepState(state: Record<string, unknown>): Record<string, unknown> {
   const category = typeof state.category === 'string' ? state.category : ''
-  if (!scrubsSportsDisclosure(category) && !scrubsAnalystDisclosure(category) && !scrubsAirankDisclosure(category)) {
-    return state
-  }
   return scrubDeepValue(category, '', state) as Record<string, unknown>
 }

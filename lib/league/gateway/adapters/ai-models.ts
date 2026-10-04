@@ -20,6 +20,7 @@ import type {
 } from '../types'
 import {
   AIRANK_LEDGER_CATEGORY,
+  airankAllPropositions,
   airankPropositionText,
   airankResolutionRule,
   airankSubjectLabel,
@@ -119,6 +120,7 @@ export function createAiModelsAdapter(io: AirankAdapterIo, nowFn: () => Date = (
         proposition_kind: 'binary_subject_outcome',
         subject_label: airankSubjectLabel(parts, locale),
         observation_shape: 'occurrence',
+        propositions: airankAllPropositions(parts),
       }
     },
 

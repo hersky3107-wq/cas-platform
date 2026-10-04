@@ -325,18 +325,117 @@ export function horizonDays(horizon: AirankHorizon): number {
   return 90
 }
 
-const FIELD_LABEL: Record<string, { ko: string; en: string }> = {
-  'text/overall': { ko: '종합', en: 'overall' },
-  'text/coding': { ko: '코딩', en: 'coding' },
-  'text/math': { ko: '수학', en: 'math' },
-  'text/creative_writing': { ko: '글쓰기', en: 'creative writing' },
-  'text/hard_prompts': { ko: '추론', en: 'hard prompts' },
-  'text/instruction_following': { ko: '지시 따르기', en: 'instruction following' },
-  'webdev/overall': { ko: '웹개발', en: 'webdev' },
-  'text_to_image/overall': { ko: '이미지 생성', en: 'image generation' },
-  'text_to_video/overall': { ko: '영상 생성', en: 'video' },
-  'vision/overall': { ko: '이미지 이해', en: 'vision' },
-  'search/overall': { ko: '검색', en: 'search' },
+const FIELD_LABEL: Record<string, Record<LeagueLocale, string>> = {
+  'text/overall': {
+    ko: '종합',
+    en: 'overall',
+    ja: '総合',
+    'zh-TW': '綜合',
+    fr: 'général',
+    es: 'general',
+    pt: 'geral',
+    ar: 'عام',
+  },
+  'text/coding': {
+    ko: '코딩',
+    en: 'coding',
+    ja: 'コーディング',
+    'zh-TW': '程式編寫',
+    fr: 'programmation',
+    es: 'código',
+    pt: 'programação',
+    ar: 'برمجة',
+  },
+  'text/math': {
+    ko: '수학',
+    en: 'math',
+    ja: '数学',
+    'zh-TW': '數學',
+    fr: 'mathématiques',
+    es: 'matemáticas',
+    pt: 'matemática',
+    ar: 'رياضيات',
+  },
+  'text/creative_writing': {
+    ko: '글쓰기',
+    en: 'creative writing',
+    ja: '文章作成',
+    'zh-TW': '創意寫作',
+    fr: 'écriture créative',
+    es: 'escritura creativa',
+    pt: 'escrita criativa',
+    ar: 'كتابة إبداعية',
+  },
+  'text/hard_prompts': {
+    ko: '추론',
+    en: 'hard prompts',
+    ja: '難問・推論',
+    'zh-TW': '高難度難題',
+    fr: 'invites difficiles',
+    es: 'razonamiento difícil',
+    pt: 'raciocínio avançado',
+    ar: 'استدلال متقدم',
+  },
+  'text/instruction_following': {
+    ko: '지시 따르기',
+    en: 'instruction following',
+    ja: '指示遵守',
+    'zh-TW': '指令遵循',
+    fr: 'suivi des instructions',
+    es: 'cumplimiento de instrucciones',
+    pt: 'seguir instruções',
+    ar: 'اتباع التعليمات',
+  },
+  'webdev/overall': {
+    ko: '웹개발',
+    en: 'webdev',
+    ja: 'Web開発',
+    'zh-TW': '網站開發',
+    fr: 'développement web',
+    es: 'desarrollo web',
+    pt: 'desenvolvimento web',
+    ar: 'تطوير الويب',
+  },
+  'text_to_image/overall': {
+    ko: '이미지 생성',
+    en: 'image generation',
+    ja: '画像生成',
+    'zh-TW': '圖片生成',
+    fr: 'génération d\'images',
+    es: 'generación de imágenes',
+    pt: 'geração de imagens',
+    ar: 'توليد الصور',
+  },
+  'text_to_video/overall': {
+    ko: '영상 생성',
+    en: 'video',
+    ja: '動画生成',
+    'zh-TW': '影片生成',
+    fr: 'vidéo',
+    es: 'vídeo',
+    pt: 'vídeo',
+    ar: 'فيديو',
+  },
+  'vision/overall': {
+    ko: '이미지 이해',
+    en: 'vision',
+    ja: '画像認識',
+    'zh-TW': '視覺理解',
+    fr: 'vision',
+    es: 'visión',
+    pt: 'visão',
+    ar: 'رؤية حاسوبية',
+  },
+  'search/overall': {
+    ko: '검색',
+    en: 'search',
+    ja: '検索',
+    'zh-TW': '搜尋',
+    fr: 'recherche',
+    es: 'búsqueda',
+    pt: 'pesquisa',
+    ar: 'بحث',
+  },
 }
 
 const BRAND_LABEL_KO: Record<string, string> = {
@@ -363,50 +462,78 @@ const BRAND_LABEL_KO: Record<string, string> = {
   Amazon: '아마존',
 }
 
-const CAMP_LABEL: Record<AirankCamp, { ko: string; en: string }> = {
-  us: { ko: '미국 AI', en: 'US AI' },
-  china: { ko: '중국 AI', en: 'Chinese AI' },
-  europe: { ko: '유럽 AI', en: 'European AI' },
+const CAMP_LABEL: Record<AirankCamp, Record<LeagueLocale, string>> = {
+  us: {
+    ko: '미국 AI',
+    en: 'US AI',
+    ja: '米国AI',
+    'zh-TW': '美國AI',
+    fr: 'IA américaine',
+    es: 'IA estadounidense',
+    pt: 'IA dos EUA',
+    ar: 'ذكاء اصطناعي أمريكي',
+  },
+  china: {
+    ko: '중국 AI',
+    en: 'Chinese AI',
+    ja: '中国AI',
+    'zh-TW': '中國AI',
+    fr: 'IA chinoise',
+    es: 'IA china',
+    pt: 'IA chinesa',
+    ar: 'ذكاء اصطناعي صيني',
+  },
+  europe: {
+    ko: '유럽 AI',
+    en: 'European AI',
+    ja: '欧州AI',
+    'zh-TW': '歐洲AI',
+    fr: 'IA européenne',
+    es: 'IA europea',
+    pt: 'IA europeia',
+    ar: 'ذكاء اصطناعي أوروبي',
+  },
 }
 
-function fieldLabel(parts: AirankParts, locale: 'ko' | 'en'): string {
+export function fieldLabel(parts: AirankParts, locale: LeagueLocale = 'en'): string {
   const hit = FIELD_LABEL[`${parts.arena}/${parts.category}`]
-  return hit ? hit[locale] : parts.category
+  return hit ? hit[locale] ?? hit.en : parts.category
 }
 
-function iGa(name: string): '이' | '가' {
+function iGa(name: string | null | undefined): '이' | '가' {
+  if (!name || typeof name !== 'string' || name.length === 0) return '가'
   const last = name.charCodeAt(name.length - 1)
   if (last >= 0xac00 && last <= 0xd7a3) return (last - 0xac00) % 28 === 0 ? '가' : '이'
   return '가'
 }
 
-export function airankSubjectLabel(parts: AirankParts, locale: 'ko' | 'en' = 'en'): string {
+export function airankSubjectLabel(parts: AirankParts, locale: LeagueLocale = 'en'): string {
   if (parts.kind === 'camp_rank1' || parts.kind === 'camp_topn') {
     const camp = isAirankCamp(parts.subject) ? CAMP_LABEL[parts.subject] : null
-    return camp ? camp[locale] : parts.subject
+    return camp ? camp[locale] ?? camp.en : parts.subject
   }
   if (parts.kind === 'model_rank1') return parts.subject
-  if (locale === 'ko') return BRAND_LABEL_KO[parts.subject] ?? parts.subject
-  if (parts.subject === 'Black Forest Labs') return 'Flux'
-  if (parts.subject === 'Anthropic') return 'Claude'
-  if (parts.subject === 'Google') return 'Gemini'
-  if (parts.subject === 'OpenAI') return 'GPT'
-  if (parts.subject === 'xAI') return 'Grok'
-  return parts.subject
+  const norm =
+    Object.keys(BRAND_LABEL_KO).find((k) => k.toLowerCase() === parts.subject.toLowerCase()) ?? parts.subject
+  if (locale === 'ko') {
+    return BRAND_LABEL_KO[norm] ?? norm
+  }
+  return norm
 }
 
-export function airankResolutionRule(parts: AirankParts, locale: 'ko' | 'en' = 'en'): string {
+export function airankResolutionRule(parts: AirankParts, locale: LeagueLocale = 'en'): string {
   if (locale === 'ko') {
     return `${parts.deadlineYmd} 이후 처음 발표되는 LMArena 스냅샷으로 판정합니다. 라운드가 열린 날보다 이른 스냅샷은 쓰지 않습니다.`
   }
   return `First LMArena snapshot published on or after ${parts.deadlineYmd} (never a snapshot from before the round opened). YES if the queried ranking holds; ties on brand_above are NO. Camp kinds are YES if any brand of that camp meets the condition.`
 }
 
-/** Server-composed proposition — no user substring. The first-snapshot rule is visible. */
-export function airankPropositionText(parts: AirankParts, locale: 'ko' | 'en' = 'en'): string {
+/** Server-composed proposition — no user substring. The first-snapshot rule is visible. Localized across all 8 locales. */
+export function airankPropositionText(parts: AirankParts, locale: LeagueLocale = 'en'): string {
   const field = fieldLabel(parts, locale)
   const subject = airankSubjectLabel(parts, locale)
   const deadline = parts.deadlineYmd
+
   if (locale === 'ko') {
     const particle = iGa(subject)
     if (parts.kind === 'brand_rank1' || parts.kind === 'model_rank1' || parts.kind === 'camp_rank1') {
@@ -418,6 +545,98 @@ export function airankPropositionText(parts: AirankParts, locale: 'ko' | 'en' = 
     const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'ko')
     return `${subject}${particle} ${deadline} 이후 처음 발표되는 LMArena ${field} 순위에서 ${other}보다 위일까?`
   }
+
+  if (locale === 'ja') {
+    const first = `${deadline}以降に最初に発表されるLMArena ${field}ランキング`
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return `${subject}は${first}で1位になるか？`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `モデル名に「${parts.subject}」を含むモデルは${first}で1位になるか？`
+    }
+    if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+      return `${subject}は${first}で${parts.param}位以内に入るか？`
+    }
+    const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'ja')
+    return `${subject}は${first}で${other}より上位になるか？`
+  }
+
+  if (locale === 'zh-TW') {
+    const first = `${deadline}之後首次發布的LMArena ${field}排名`
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return `${subject}在${first}中會是第1名嗎？`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `名稱包含「${parts.subject}」的模型在${first}中會是第1名嗎？`
+    }
+    if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+      return `${subject}在${first}中會進入前${parts.param}名嗎？`
+    }
+    const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'zh-TW')
+    return `${subject}在${first}中會排在${other}之前嗎？`
+  }
+
+  if (locale === 'fr') {
+    const first = `le premier classement LMArena ${field} publié à partir du ${deadline}`
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return `${subject} sera-t-il n°1 dans ${first} ?`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `Un modèle dont le nom contient « ${parts.subject} » sera-t-il n°1 dans ${first} ?`
+    }
+    if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+      return `${subject} figurera-t-il dans le top ${parts.param} de ${first} ?`
+    }
+    const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'fr')
+    return `${subject} sera-t-il classé devant ${other} dans ${first} ?`
+  }
+
+  if (locale === 'es') {
+    const first = `el primer ranking LMArena de ${field} publicado a partir del ${deadline}`
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return `¿Será ${subject} el n.° 1 en ${first}?`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `¿Será el n.° 1 un modelo cuyo nombre contenga "${parts.subject}" en ${first}?`
+    }
+    if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+      return `¿Estará ${subject} entre los primeros ${parts.param} en ${first}?`
+    }
+    const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'es')
+    return `¿Estará ${subject} por encima de ${other} en ${first}?`
+  }
+
+  if (locale === 'pt') {
+    const first = `o primeiro ranking LMArena de ${field} publicado a partir de ${deadline}`
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return `O ${subject} será o nº 1 em ${first}?`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `Um modelo cujo nome contenha "${parts.subject}" será o nº 1 em ${first}?`
+    }
+    if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+      return `O ${subject} ficará entre os ${parts.param} primeiros em ${first}?`
+    }
+    const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'pt')
+    return `O ${subject} ficará acima de ${other} em ${first}?`
+  }
+
+  if (locale === 'ar') {
+    const first = `أول تصنيف LMArena لـ ${field} يصدر في أو بعد ${deadline}`
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return `هل سيحتل ${subject} المركز الأول في ${first}؟`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `هل سيحتل نموذج يحتوي اسمه على "${parts.subject}" المركز الأول في ${first}؟`
+    }
+    if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+      return `هل سيكون ${subject} ضمن أفضل ${parts.param} في ${first}؟`
+    }
+    const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'ar')
+    return `هل سيتقدم ${subject} على ${other} في ${first}؟`
+  }
+
+  // Default English ('en')
   const first = `the first LMArena ${field} ranking published on or after ${deadline}`
   if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
     return `Will ${subject} be #1 on ${first}?`
@@ -430,4 +649,17 @@ export function airankPropositionText(parts: AirankParts, locale: 'ko' | 'en' = 
     return `Will ${subject} rank above ${other} on ${first}?`
   }
   return `Will a model whose name contains "${parts.subject}" be #1 on ${first}?`
+}
+
+export function airankAllPropositions(parts: AirankParts): Record<LeagueLocale, string> {
+  return {
+    ko: airankPropositionText(parts, 'ko'),
+    en: airankPropositionText(parts, 'en'),
+    ja: airankPropositionText(parts, 'ja'),
+    'zh-TW': airankPropositionText(parts, 'zh-TW'),
+    fr: airankPropositionText(parts, 'fr'),
+    es: airankPropositionText(parts, 'es'),
+    pt: airankPropositionText(parts, 'pt'),
+    ar: airankPropositionText(parts, 'ar'),
+  }
 }

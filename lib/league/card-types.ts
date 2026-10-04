@@ -287,6 +287,8 @@ export type CardRoundMeta = {
    * every price-path round and on operator_manual rounds still waiting.
    */
   operatorEvidence: { sourceUrl: string; gradedAt: string } | null
+  /** Per-locale proposition text, when available (AIRANK codec / TECH compose). */
+  propositions?: Record<string, string> | null
 }
 
 /**

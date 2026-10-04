@@ -1,5 +1,6 @@
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { ToneTokens } from '@/lib/league/tone'
+import { isNonFinancialCategory } from '@/lib/league/compliance'
 
 /**
  * The mandatory disclaimer slot. Rendered by `CardCompliance` ONLY — see that
@@ -15,17 +16,33 @@ export function DisclaimerFooter({
   category,
   omitLegacyDisclaimer = false,
 }: {
-  tone: ToneTokens
+  tone?: ToneTokens
   t: LeagueUiPack
   category?: string
   omitLegacyDisclaimer?: boolean
 }) {
+  const nonFinancial = isNonFinancialCategory(category)
   const extra =
     category === 'real_estate' ? t.disclaimer.realEstate : category === 'sports' ? t.disclaimer.sports : null
   const scope = category === 'real_estate' ? t.disclaimer.realEstateScope : null
-  const extraExperimental = omitLegacyDisclaimer ? null : t.disclaimer.extraExperimental
+  const extraExperimental = nonFinancial || omitLegacyDisclaimer ? null : t.disclaimer.extraExperimental
 
-  if (tone.disclaimerWeight === 'default') {
+  if (nonFinancial) {
+    return (
+      <div
+        className="border-t border-league-border/60 px-4 py-2.5 text-center text-[11px] leading-snug text-league-fg-muted"
+        data-testid="disclaimer-non-financial"
+      >
+        <p>{t.disclaimer.neutralReference}</p>
+        {extra ? <p className="mt-1.5 font-medium text-league-fg">{extra}</p> : null}
+        {scope ? <p className="mt-1 font-medium text-league-fg">{scope}</p> : null}
+      </div>
+    )
+  }
+
+  const weight = tone?.disclaimerWeight ?? 'default'
+
+  if (weight === 'default') {
     if (omitLegacyDisclaimer && !extra && !scope) return null
     return (
       <div className="border-t border-league-border/60 px-4 py-2.5 text-center text-[11px] leading-snug text-league-fg-muted">

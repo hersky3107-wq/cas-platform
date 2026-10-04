@@ -40,11 +40,22 @@ export const DIVINATION_CONFIDENCE_THRESHOLDS = {
  * Classifies divination confidence into a qualitative tier (weak / moderate / strong).
  * Divination confidence averages ~0.38 and is LOWER by design than LLMs.
  * Handles both 0..1 unit scale (oracle adapter) and 0..100 ledger scale (model.probability).
+ * Also maps letter grades (e.g. "A", "B", "C") or returns null (hide) so letters never render to users.
  */
 export function divinationConfidenceTier(
-  probabilityOrConfidence: number | null | undefined,
+  probabilityOrConfidence: number | string | null | undefined,
 ): DivinationConfidenceTier | null {
-  if (probabilityOrConfidence == null || !Number.isFinite(probabilityOrConfidence)) return null
+  if (probabilityOrConfidence == null) return null
+  if (typeof probabilityOrConfidence === 'string') {
+    const s = probabilityOrConfidence.trim().toUpperCase()
+    if (s === 'A' || s === 'A+' || s === 'STRONG') return 'strong'
+    if (s === 'B' || s === 'MODERATE') return 'moderate'
+    if (s === 'C' || s === 'WEAK') return 'weak'
+    const parsed = Number(s)
+    if (!Number.isFinite(parsed)) return null
+    probabilityOrConfidence = parsed
+  }
+  if (typeof probabilityOrConfidence !== 'number' || !Number.isFinite(probabilityOrConfidence)) return null
   const unit = probabilityOrConfidence > 1 ? probabilityOrConfidence / 100 : probabilityOrConfidence
   if (unit < DIVINATION_CONFIDENCE_THRESHOLDS.WEAK_MAX) return 'weak'
   if (unit <= DIVINATION_CONFIDENCE_THRESHOLDS.MODERATE_MAX) return 'moderate'
@@ -53,10 +64,10 @@ export function divinationConfidenceTier(
 
 /**
  * Customer-facing qualitative label for divination confidence (e.g. "보통 점괘", "약한 점괘", "강한 점괘").
- * Raw numeric percentages ("확신도 11%") are never shown for divination.
+ * Raw numeric percentages ("확신도 11%") or raw letter codes ("A") are never shown for divination.
  */
 export function divinationConfidenceLabel(
-  probabilityOrConfidence: number | null | undefined,
+  probabilityOrConfidence: number | string | null | undefined,
   t: LeagueUiPack,
 ): string | null {
   const tier = divinationConfidenceTier(probabilityOrConfidence)

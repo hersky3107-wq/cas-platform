@@ -237,6 +237,8 @@ export type LeagueUiPack = {
     sports: string
     /** KR election manual close — no tiles / rationale / deep. */
     electionManualClose: string
+    /** Neutral reference footer for non-financial categories (ai_models, tech, sports, entertainment, politics, real estate). */
+    neutralReference: string
   }
   /**
    * Shown on a card AFTER an operator-manual round has been graded from
@@ -946,6 +948,7 @@ const en: LeagueUiPack = {
     extraExperimental: 'For entertainment and experiment only — not a basis for investment decisions.',
     sports: 'Informational analysis only. This is not gambling advice.',
     electionManualClose: 'Under election law, this prediction is not shown until voting ends.',
+    neutralReference: 'Reference material comparing AI model forecasts; results are not guaranteed.',
   },
   operatorGrade: {
     verifiedLabel: 'Operator-verified',
@@ -1565,6 +1568,7 @@ const ko: LeagueUiPack = {
     extraExperimental: '오락·실험 목적, 투자 판단 근거 아님',
     sports: '정보성 분석입니다. 도박을 권유하지 않습니다.',
     electionManualClose: '선거 관련 법령에 따라 투표 종료 시까지 이 예측은 공개되지 않습니다.',
+    neutralReference: 'AI 모델들의 예측을 비교하는 참고 자료이며 결과를 보장하지 않습니다.',
   },
   operatorGrade: {
     verifiedLabel: '운영자 확인',
@@ -2180,6 +2184,7 @@ const ja: LeagueUiPack = {
     extraExperimental: '娯楽・実験目的であり、投資判断の根拠ではありません。',
     sports: '情報分析です。賭博の勧誘ではありません。',
     electionManualClose: '選挙関連法令により、投票終了までこの予測は公開されません。',
+    neutralReference: 'AIモデルの予測を比較する参考資料であり、結果を保証するものではありません。',
   },
   operatorGrade: {
     verifiedLabel: '運営者確認済み',
@@ -2792,6 +2797,7 @@ const zhTW: LeagueUiPack = {
     extraExperimental: '僅供娛樂與實驗，不得作為投資判斷依據。',
     sports: '僅供資訊分析，並非賭博勸誘。',
     electionManualClose: '依選舉相關法令，投票結束前不公開此預測。',
+    neutralReference: '本內容為比較各AI模型預測之參考資料，不保證預測結果。',
   },
   operatorGrade: {
     verifiedLabel: '營運者已驗證',
@@ -3403,6 +3409,7 @@ const fr: LeagueUiPack = {
     extraExperimental: 'À des fins de divertissement et d’expérience uniquement — pas un fondement de décision d’investissement.',
     sports: 'Analyse informative uniquement. Ceci n’est pas une incitation au jeu.',
     electionManualClose: 'Conformément au droit électoral, cette prédiction n’est pas affichée avant la clôture du scrutin.',
+    neutralReference: 'Document de référence comparant les prévisions des modèles d\'IA ; les résultats ne sont pas garantis.',
   },
   operatorGrade: {
     verifiedLabel: 'Vérifié par l\u2019opérateur',
@@ -4030,6 +4037,7 @@ const es: LeagueUiPack = {
     extraExperimental: 'Solo entretenimiento y experimento — no es base para una decisión de inversión.',
     sports: 'Análisis informativo. No es una incitación al juego.',
     electionManualClose: 'Conforme a la ley electoral, esta predicción no se muestra hasta que termine la votación.',
+    neutralReference: 'Material de referencia que compara pronósticos de modelos de IA; no se garantizan los resultados.',
   },
   operatorGrade: {
     verifiedLabel: 'Verificado por el operador',
@@ -4656,6 +4664,7 @@ const ar: LeagueUiPack = {
     extraExperimental: 'للترفيه والتجربة فقط، وليس أساسًا لقرار استثماري.',
     sports: 'تحليل معلوماتي فقط. ليس دعوة للمقامرة.',
     electionManualClose: 'وفق قوانين الانتخابات، لا يُعرض هذا التوقع حتى انتهاء التصويت.',
+    neutralReference: 'مادة مرجعية لمقارنة توقعات نماذج الذكاء الاصطناعي؛ النتائج غير مضمونة.',
   },
   operatorGrade: {
     verifiedLabel: 'تم التحقق من قِبل المشغّل',
@@ -5277,6 +5286,7 @@ const pt: LeagueUiPack = {
     extraExperimental: 'Apenas entretenimento e experimento — não é base para decisão de investimento.',
     sports: 'Análise informativa. Não é incentivo a jogo.',
     electionManualClose: 'De acordo com a legislação eleitoral, esta previsão não é exibida até o fim da votação.',
+    neutralReference: 'Material de referência comparando previsões de modelos de IA; os resultados não são garantidos.',
   },
   operatorGrade: {
     verifiedLabel: 'Verificado pelo operador',

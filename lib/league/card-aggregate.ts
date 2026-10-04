@@ -86,6 +86,7 @@ export type RoundRow = {
   anchor_session_date?: string | null
   resolution_session_date?: string | null
   resolution_price?: number | null
+  propositions?: Record<string, string> | null
 }
 
 export type PredictionRow = {
@@ -429,6 +430,7 @@ function toRoundMeta(row: RoundRow, nowMs: number): CardRoundMeta {
     livePrice: null,
     livePriceAt: null,
     operatorEvidence: null,
+    propositions: row.propositions ?? null,
   }
 }
 

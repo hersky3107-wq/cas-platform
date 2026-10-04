@@ -327,6 +327,22 @@ export function buildHistorySystemPrompt(category?: string): string {
       'rationale: 1–2 sentences, max 400 characters. Name H2H or recent form. No invented win-rate percents.',
     ].join('\n')
   }
+  if (category === 'ai_models') {
+    return [
+      'You are the 📜 역사·패턴 extra seat in a prediction league. You evaluate AI model and brand leaderboard rankings over time.',
+      'Read ONLY the historical rank path below (dates and ranks, where 1 is best) plus your knowledge of AI model release cycles and leaderboard dynamics.',
+      'Do not browse the web. Do not invent live benchmark scores or unreleased model claims.',
+      '',
+      'Pattern vocabulary — identify the ranking trend and NAME one of: 상승세, 하락세, 1위 수성, 박빙, 역전, 정체기.',
+      'State the historical tendency in prose: "과거 순위 추이상 이런 흐름은 ~하는 경향".',
+      'Then pick a direction for THIS proposition.',
+      '',
+      'Last line MUST be JSON:',
+      '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
+      'direction is up or down only. For yes/no or ahead/behind, up = the affirmative side (achieving the rank / remaining ahead), down = the other.',
+      'rationale: 1–2 sentences, max 400 characters in Korean. Name the ranking trend. No fake win-rate percents.',
+    ].join('\n')
+  }
   const vocab = historyPatternVocabularyLine()
   return [
     HISTORY_PERSONA,
@@ -403,6 +419,23 @@ export function buildHistoryUserPrompt(input: HistoryLeagueInput): string {
       'Judge from H2H record + recent form (not a price chart). Name 맞대결 or 최근 폼, then output the JSON line.',
     ].join('\n')
   }
+  if (input.category === 'ai_models') {
+    const bars = input.series.filter((bar) => typeof bar.close === 'number' && bar.date)
+    const printed = bars.slice(-HISTORY_SERIES_PRINT_BARS)
+    const rows = printed.map((bar) => `  ${bar.date}: rank ${bar.close}`).join('\n')
+    return [
+      `PROPOSITION: ${input.proposition}`,
+      `SUBJECT: ${input.subjectName}`,
+      `INSTRUMENT: ${input.instrument}`,
+      `HORIZON: ${input.horizon}`,
+      `CATEGORY: ${input.category}`,
+      '',
+      'LEADERBOARD RANK SERIES (oldest→newest, rank 1 is highest):',
+      rows || '(no series)',
+      '',
+      'Judge from the ranking trajectory. Name one of: 상승세, 하락세, 1위 수성, 박빙, 역전, 정체기, then output the JSON line.',
+    ].join('\n')
+  }
   return [
     `PROPOSITION: ${input.proposition}`,
     `SUBJECT: ${input.subjectName}`,
@@ -429,6 +462,14 @@ export function historyRetryInstruction(category?: string): string {
     return [
       'RETRY: Rewrite as the sports 역사·패턴 seat.',
       'Name 맞대결 전적 or 최근 폼. Do not name chart patterns. Do not invent a win rate.',
+      'Last line must be JSON: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
+    ].join(' ')
+  }
+  if (category === 'ai_models') {
+    return [
+      'RETRY: Rewrite as the ai_models 역사·패턴 seat.',
+      'Name one of: 상승세, 하락세, 1위 수성, 박빙, 역전, 정체기. State the ranking tendency in words.',
+      'Do not invent a win rate.',
       'Last line must be JSON: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
     ].join(' ')
   }
@@ -490,6 +531,9 @@ export function historyRationaleNeedsRetry(rationale: string | null, category?: 
     if (findNamedHistoryPattern(rationale) && !findNamedSportsHistoryPattern(rationale)) return true
     if (!findNamedSportsHistoryPattern(rationale)) return true
     return false
+  }
+  if (category === 'ai_models') {
+    return !/상승세|하락세|1위 수성|박빙|역전|정체기|추이|순위|랭킹|rank|trend/i.test(rationale)
   }
   if (findHistoryNewsFundamentalLeak(rationale) && !findNamedHistoryPattern(rationale)) return true
   if (!findNamedHistoryPattern(rationale)) return true

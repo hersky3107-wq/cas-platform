@@ -5,6 +5,7 @@
  */
 
 import type { UiHorizon } from '../../horizon'
+import type { LeagueLocale } from '../../i18n/locales'
 import { horizonForResolveDate } from './tech-compose'
 import { companyById, TECH_COMPANIES, type TechCompany } from './tech-catalog'
 import type { RefusalCode } from '../types'
@@ -97,6 +98,72 @@ const EVENT_KO: Record<TechEventId, string> = {
   file: '제출',
   acquire: '인수',
   publish: '공개',
+}
+
+const EVENT_JA: Record<TechEventId, string> = {
+  launch: '打ち上げ',
+  announce: '発表',
+  ship: '出荷',
+  release: 'リリース',
+  approve: '承認',
+  file: '提出',
+  acquire: '買収',
+  publish: '公開',
+}
+
+const EVENT_ZH: Record<TechEventId, string> = {
+  launch: '發射',
+  announce: '宣佈',
+  ship: '出貨',
+  release: '發佈',
+  approve: '批准',
+  file: '提交',
+  acquire: '收購',
+  publish: '公開',
+}
+
+const EVENT_FR: Record<TechEventId, string> = {
+  launch: 'lancer',
+  announce: 'annoncer',
+  ship: 'expédier',
+  release: 'sortir',
+  approve: 'approuver',
+  file: 'déposer',
+  acquire: 'acquérir',
+  publish: 'publier',
+}
+
+const EVENT_ES: Record<TechEventId, string> = {
+  launch: 'lanzar',
+  announce: 'anunciar',
+  ship: 'enviar',
+  release: 'lanzar',
+  approve: 'aprobar',
+  file: 'presentar',
+  acquire: 'adquirir',
+  publish: 'publicar',
+}
+
+const EVENT_PT: Record<TechEventId, string> = {
+  launch: 'lançar',
+  announce: 'anunciar',
+  ship: 'enviar',
+  release: 'lançar',
+  approve: 'aprovar',
+  file: 'submeter',
+  acquire: 'adquirir',
+  publish: 'publicar',
+}
+
+const EVENT_AR: Record<TechEventId, string> = {
+  launch: 'إطلاق',
+  announce: 'إعلان',
+  ship: 'شحن',
+  release: 'إصدار',
+  approve: 'الموافقة على',
+  file: 'تقديم',
+  acquire: 'الاستحواذ على',
+  publish: 'نشر',
 }
 
 const VERIFY_EN: Record<TechVerificationId, string> = {
@@ -357,6 +424,21 @@ export function formatOpenTechProposition(claim: OpenTechClaim): string {
   return `Will ${claim.subjectLabel} ${EVENT_EN[claim.event]} ${claim.object} by ${claim.deadline}?`
 }
 
+export function formatOpenTechPropositionAllLocales(claim: OpenTechClaim): Record<LeagueLocale, string> {
+  const en = `Will ${claim.subjectLabel} ${EVENT_EN[claim.event]} ${claim.object} by ${claim.deadline}?`
+  const ko = `${claim.subjectLabel}, ${claim.deadline}까지 ${claim.object}를 ${EVENT_KO[claim.event]}할까?`
+  return {
+    en,
+    ko,
+    ja: `${claim.subjectLabel}は${claim.deadline}までに${claim.object}を${EVENT_JA[claim.event]}するか？`,
+    'zh-TW': `${claim.subjectLabel}會在${claim.deadline}之前${EVENT_ZH[claim.event]}${claim.object}嗎？`,
+    fr: `${claim.subjectLabel} va-t-il ${EVENT_FR[claim.event]} ${claim.object} d'ici le ${claim.deadline} ?`,
+    es: `¿${claim.subjectLabel} va a ${EVENT_ES[claim.event]} ${claim.object} para el ${claim.deadline}?`,
+    pt: `O ${claim.subjectLabel} vai ${EVENT_PT[claim.event]} ${claim.object} até ${claim.deadline}?`,
+    ar: `هل ستعلن/تطلق ${claim.subjectLabel} ${claim.object} بحلول ${claim.deadline}؟`,
+  }
+}
+
 export function openTechResolutionRule(claim: OpenTechClaim): string {
   return (
     `Occurred if ${claim.subjectLabel} ${EVENT_EN_3SG[claim.event]} ${claim.object} on or before ${claim.deadline}. ` +
@@ -384,6 +466,7 @@ export function buildOpenTechRankedRoundInput(
     proposition_kind: 'binary_subject_outcome' as const,
     subject_label: localized.subjectLabel,
     observation_shape: 'occurrence' as const,
+    propositions: formatOpenTechPropositionAllLocales(localized),
   }
 }
 

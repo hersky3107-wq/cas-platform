@@ -112,7 +112,7 @@ describe('AIRANK prompt routing from the tech free-prompt', () => {
     })
     expect(en.composed.horizon).toBe('3m')
     expect(en.composed.proposition_text).toBe(
-      'Will Gemini be #1 on the first LMArena math ranking published on or after 2026-11-30?',
+      'Will Google be #1 on the first LMArena math ranking published on or after 2026-11-30?',
     )
   })
 

@@ -3,8 +3,66 @@ import type { PropositionKind } from './gateway/types'
 import type { LeagueUiPack, SubjectOutcomeFamilyKey } from './i18n/dictionary'
 import type { LeagueLocale } from './i18n/locales'
 import type { DirectionTally, ModelSide, SideToken } from './card-types'
+import { decodeAirankInstrument, isAirankInstrument, airankSubjectLabel } from './ai-ranking/instrument'
 import { decodeSportsInstrument, opponentTeamOf } from './gateway/adapters/sports-catalog'
 import { displaySportsTeam } from './sports-display'
+
+export function iGa(name: string | null | undefined): '이' | '가' {
+  if (!name || typeof name !== 'string' || name.length === 0) return '가'
+  const last = name.charCodeAt(name.length - 1)
+  if (last >= 0xac00 && last <= 0xd7a3) return (last - 0xac00) % 28 === 0 ? '가' : '이'
+  return '가'
+}
+
+const AIRANK_SIDE_LABELS: Record<
+  LeagueLocale,
+  {
+    rank1: { yes: string; no: string }
+    topn: { yes: (n: string | number) => string; no: (n: string | number) => string }
+    above: { a: (subject: string) => string; b: (param: string) => string }
+  }
+> = {
+  ko: {
+    rank1: { yes: '1위 함', no: '1위 못 함' },
+    topn: { yes: (n) => `${n}위 안`, no: (n) => `${n}위 밖` },
+    above: { a: (s) => `${s}${iGa(s)} 위`, b: (p) => `${p}${iGa(p)} 위` },
+  },
+  en: {
+    rank1: { yes: '#1', no: 'Not #1' },
+    topn: { yes: (n) => `Top ${n}`, no: (n) => `Outside top ${n}` },
+    above: { a: (s) => `${s} ahead`, b: (p) => `${p} ahead` },
+  },
+  ja: {
+    rank1: { yes: '1位達成', no: '1位ならず' },
+    topn: { yes: (n) => `${n}位以内`, no: (n) => `${n}位圏外` },
+    above: { a: (s) => `${s}が上位`, b: (p) => `${p}が上位` },
+  },
+  'zh-TW': {
+    rank1: { yes: '第1名', no: '未獲第1' },
+    topn: { yes: (n) => `前${n}名`, no: (n) => `前${n}名以外` },
+    above: { a: (s) => `${s}領先`, b: (p) => `${p}領先` },
+  },
+  fr: {
+    rank1: { yes: '1ère place', no: 'Pas 1er' },
+    topn: { yes: (n) => `Top ${n}`, no: (n) => `Hors top ${n}` },
+    above: { a: (s) => `${s} devant`, b: (p) => `${p} devant` },
+  },
+  es: {
+    rank1: { yes: 'N.° 1', no: 'No n.° 1' },
+    topn: { yes: (n) => `Top ${n}`, no: (n) => `Fuera del top ${n}` },
+    above: { a: (s) => `${s} arriba`, b: (p) => `${p} arriba` },
+  },
+  pt: {
+    rank1: { yes: '1º lugar', no: 'Não fica em 1º' },
+    topn: { yes: (n) => `Top ${n}`, no: (n) => `Fora do top ${n}` },
+    above: { a: (s) => `${s} à frente`, b: (p) => `${p} à frente` },
+  },
+  ar: {
+    rank1: { yes: 'المركز الأول', no: 'ليس الأول' },
+    topn: { yes: (n) => `ضمن أفضل ${n}`, no: (n) => `خارج أفضل ${n}` },
+    above: { a: (s) => `${s} في المقدمة`, b: (p) => `${p} في المقدمة` },
+  },
+}
 
 /**
  * AI Prediction League — THE side-label resolver (pure, client-safe).
@@ -184,6 +242,17 @@ export function propositionKindOf(round: SideRoundContext): PropositionKind {
  * never assemble side words themselves (same architecture as
  * `lib/league/compliance.ts` for directional sentences).
  */
+function airankSideSubject(subjectOrParam: string, locale: LeagueLocale): string {
+  const norm = subjectOrParam.trim()
+  if (locale === 'ko') {
+    if (norm.toLowerCase() === 'anthropic') return '앤트로픽'
+    if (norm.toLowerCase() === 'openai') return '오픈AI'
+    if (norm.toLowerCase() === 'google') return '구글'
+    if (norm.toLowerCase() === 'meta') return '메타'
+  }
+  return norm
+}
+
 export function sideLabelsFor(
   round: SideRoundContext,
   t: LeagueUiPack,
@@ -196,8 +265,9 @@ export function sideLabelsFor(
   const slot = (side: ModelSide | null): SideSlot => {
     if (side === null) return 'none'
     if (side === 'flat') return 'flat'
-    if (side === sides[0]) return 'a'
-    if (side === sides[1]) return 'b'
+    const tokenSlot = tallySlotOfToken(side)
+    if (tokenSlot === 'up') return 'a'
+    if (tokenSlot === 'down') return 'b'
     return 'none'
   }
 
@@ -210,6 +280,47 @@ export function sideLabelsFor(
   }
 
   if (kind === 'binary_subject_outcome') {
+    if (round.category === 'ai_models' || (round.instrument && isAirankInstrument(round.instrument))) {
+      const parts = round.instrument ? decodeAirankInstrument(round.instrument) : null
+      const pack = AIRANK_SIDE_LABELS[locale] ?? AIRANK_SIDE_LABELS.en
+      let yesWord = pack.rank1.yes
+      let noWord = pack.rank1.no
+      let named = false
+
+      if (parts?.kind === 'brand_above') {
+        const subject = airankSideSubject(parts.subject, locale)
+        const other = airankSideSubject(parts.param ?? '', locale)
+        yesWord = pack.above.a(subject)
+        noWord = pack.above.b(other)
+        named = true
+      } else if (parts?.kind === 'brand_topn' || parts?.kind === 'camp_topn') {
+        const n = parts.param ?? '3'
+        yesWord = pack.topn.yes(n)
+        noWord = pack.topn.no(n)
+      } else {
+        yesWord = pack.rank1.yes
+        noWord = pack.rank1.no
+      }
+
+      const badge = (side: ModelSide | null): string => {
+        const s = slot(side)
+        if (s === 'a') return yesWord
+        if (s === 'b') return noWord
+        return t.direction.noCallBadge
+      }
+      return {
+        kind,
+        sides,
+        glyphs,
+        slot,
+        glyph,
+        badge,
+        answer: (side) => (side === 'yes' ? yesWord : noWord),
+        tallyWord: (side) => (slot(side) === 'none' ? t.direction.noCallTally : badge(side)),
+        namedSides: named,
+      }
+    }
+
     const family = subjectOutcomeFamily(round.category)
     const pair = t.sides.subjectOutcome[family]
     const rawSubject = round.subject_label?.trim() || null

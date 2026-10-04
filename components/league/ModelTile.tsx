@@ -66,10 +66,11 @@ export function ModelTile({
   const isScout = model.league_tier === 'scout'
   const snippetForDisplay = (text: string | null | undefined) => {
     const coerced = coerceStoredRationaleSnippet(text)
-    return isScout ? sanitizeScoutRationaleDisplay(coerced) : coerced
+    const sanitized = isScout ? sanitizeScoutRationaleDisplay(coerced) : coerced
+    return category ? visibleLeagueText(category, sanitized) : sanitized
   }
-  const original = visibleLeagueText(category, snippetForDisplay(model.reasoning_snippet))
-  const translated = visibleLeagueText(category, snippetForDisplay(translatedRationale))
+  const original = snippetForDisplay(model.reasoning_snippet)
+  const translated = snippetForDisplay(translatedRationale)
   const rationale = translated || original
   const showNoRationale = !rationale && hasCallableSide(model.direction)
   const hasReasoning = Boolean(rationale)
@@ -88,8 +89,8 @@ export function ModelTile({
   const showGlyph = !(labels?.namedSides)
   const isDivination = model.model_id === 'divination'
   const divinationLabel =
-    isDivination && model.direction && model.probability !== null
-      ? divinationConfidenceLabel(model.probability, t)
+    isDivination && model.direction
+      ? divinationConfidenceLabel(model.probability ?? model.qualifierText, t)
       : null
   const pct =
     !isDivination && model.direction && model.probability !== null

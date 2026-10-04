@@ -14,6 +14,13 @@ import { decodeKrStockInstrument } from './korea-equity-catalog'
 import { krStockPropositionDisplay, parseKrStockProposition } from './korea-stock-display'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 import { publicFacingLabel } from './public-label'
+import {
+  decodeAirankInstrument,
+  isAirankInstrument,
+  airankSubjectLabel,
+  fieldLabel,
+  airankPropositionText,
+} from './ai-ranking/instrument'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
 export function localeTag(locale: LeagueLocale): string {
@@ -125,9 +132,92 @@ function shownPriceInstrument(
   return decodeStockInstrument(instrument) ? stockQuoteSymbol(instrument) : instrument
 }
 
-function nonPriceInstrumentDisplay(instrument: string, locale: LeagueLocale): string {
+export function formatAirankHorizonLabel(
+  horizon: string | null | undefined,
+  locale: LeagueLocale,
+  t?: LeagueUiPack,
+): string {
+  const hz = horizon?.trim() || '1m'
+  if (t?.horizon?.[hz as '1d' | '1w' | '1m' | '3m']) {
+    return t.horizon[hz as '1d' | '1w' | '1m' | '3m']
+  }
+  const HORIZONS: Record<LeagueLocale, Record<string, string>> = {
+    ko: { '1w': '1주일', '1m': '1개월', '3m': '3개월' },
+    en: { '1w': '1 week', '1m': '1 month', '3m': '3 months' },
+    ja: { '1w': '1週間', '1m': '1ヶ月', '3m': '3ヶ月' },
+    'zh-TW': { '1w': '1週', '1m': '1個月', '3m': '3個月' },
+    fr: { '1w': '1 semaine', '1m': '1 mois', '3m': '3 mois' },
+    es: { '1w': '1 semana', '1m': '1 mes', '3m': '3 meses' },
+    pt: { '1w': '1 semana', '1m': '1 mês', '3m': '3 meses' },
+    ar: { '1w': 'أسبوع', '1m': 'شهر', '3m': '3 أشهر' },
+  }
+  return HORIZONS[locale]?.[hz] ?? hz
+}
+
+const RANK_WORD: Record<LeagueLocale, string> = {
+  ko: '순위',
+  en: 'rank',
+  ja: '順位',
+  'zh-TW': '排名',
+  fr: 'classement',
+  es: 'ranking',
+  pt: 'ranking',
+  ar: 'تصنيف',
+}
+
+function airankHeaderSubject(subjectOrParam: string, locale: LeagueLocale): string {
+  const norm = subjectOrParam.trim()
+  if (locale === 'ko') {
+    if (norm.toLowerCase() === 'anthropic') return '앤트로픽'
+    if (norm.toLowerCase() === 'openai') return '오픈AI'
+    if (norm.toLowerCase() === 'google') return '구글'
+    if (norm.toLowerCase() === 'meta') return '메타'
+  }
+  return norm
+}
+
+export function airankInstrumentDisplay(
+  instrument: string,
+  locale: LeagueLocale = 'en',
+  horizon?: string | null,
+  t?: LeagueUiPack,
+): string | null {
+  if (!isAirankInstrument(instrument)) return null
+  const parts = decodeAirankInstrument(instrument)
+  if (!parts) return null
+
+  const subject = airankHeaderSubject(parts.subject, locale)
+  const field = fieldLabel(parts, locale)
+  const horizonLabel = formatAirankHorizonLabel(horizon ?? parts.horizon ?? '1m', locale, t)
+  const rankWord = RANK_WORD[locale] ?? RANK_WORD.en
+
+  if (parts.kind === 'brand_above') {
+    const other = airankHeaderSubject(parts.param ?? '', locale)
+    return `${subject} vs ${other} · ${field} ${rankWord} · ${horizonLabel}`
+  }
+  if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+    const n = parts.param ?? '3'
+    if (locale === 'ko') return `${subject} · ${field} ${n}위 안 · ${horizonLabel}`
+    if (locale === 'ja') return `${subject} · ${field} ${n}位以内 · ${horizonLabel}`
+    if (locale === 'zh-TW') return `${subject} · ${field} 前${n}名 · ${horizonLabel}`
+    return `${subject} · ${field} top ${n} · ${horizonLabel}`
+  }
+  // brand_rank1 / model_rank1 / camp_rank1
+  if (locale === 'ko') return `${subject} · ${field} 1위 · ${horizonLabel}`
+  if (locale === 'ja') return `${subject} · ${field} 1位 · ${horizonLabel}`
+  if (locale === 'zh-TW') return `${subject} · ${field} 第1名 · ${horizonLabel}`
+  return `${subject} · ${field} #1 · ${horizonLabel}`
+}
+
+export function nonPriceInstrumentDisplay(
+  instrument: string,
+  locale: LeagueLocale,
+  horizon?: string | null,
+  t?: LeagueUiPack,
+): string {
   return publicFacingLabel(
-    sportsInstrumentDisplay(instrument, locale) ??
+    airankInstrumentDisplay(instrument, locale, horizon, t) ??
+      sportsInstrumentDisplay(instrument, locale) ??
       electionInstrumentDisplay(instrument, locale) ??
       showInstrumentDisplay(instrument, locale) ??
       propertyInstrumentDisplay(instrument, locale) ??
@@ -137,7 +227,21 @@ function nonPriceInstrumentDisplay(instrument: string, locale: LeagueLocale): st
 }
 
 /** Localized proposition for curated sports fixtures and election picks. */
-export function rankedPropositionDisplay(instrument: string, stored: string, locale: LeagueLocale): string {
+export function rankedPropositionDisplay(
+  instrument: string,
+  stored: string,
+  locale: LeagueLocale,
+  propositions?: Record<string, string> | null,
+): string {
+  if (propositions && typeof propositions === 'object') {
+    if (propositions[locale]?.trim()) return publicFacingLabel(propositions[locale].trim(), stored)
+    if (propositions.en?.trim()) return publicFacingLabel(propositions.en.trim(), stored)
+    if (propositions.ko?.trim()) return publicFacingLabel(propositions.ko.trim(), stored)
+  }
+  if (isAirankInstrument(instrument)) {
+    const parts = decodeAirankInstrument(instrument)
+    if (parts) return airankPropositionText(parts, locale)
+  }
   if (decodeSportsInstrument(instrument)) {
     return publicFacingLabel(sportsPropositionDisplay(instrument, stored, locale), stored)
   }
@@ -166,6 +270,7 @@ export function headerHeadline(args: {
   /** KRSTOCK: universe / stored Korean name for "{name}({code})". */
   subjectLabel?: string | null
   propositionText?: string | null
+  horizon?: string | null
   locale: LeagueLocale
   t: LeagueUiPack
 }): string {
@@ -173,7 +278,7 @@ export function headerHeadline(args: {
     // Non-price contract: no anchor price EXISTS, so neither the price form
     // nor the "starting price unavailable" apology is the truth.
     const displayInst = publicFacingLabel(
-      nonPriceInstrumentDisplay(args.instrument, args.locale),
+      nonPriceInstrumentDisplay(args.instrument, args.locale, args.horizon, args.t),
       args.subjectLabel || args.propositionText || '',
     )
     return args.t.header.headlinePlain(args.roundDate, displayInst)

@@ -9,6 +9,7 @@ import {
   formatSessionDate,
   rankedPropositionDisplay,
 } from '@/lib/league/card-header-copy'
+import { resolveLocalizedProposition } from '@/lib/league/proposition-i18n'
 import { ConsensusHero } from '@/components/league/ConsensusHero'
 import { PredictionAxes } from '@/components/league/PredictionAxes'
 
@@ -84,7 +85,12 @@ export function PendingVerdictPanel({
             : 'mt-1.5 text-sm font-semibold leading-snug text-league-fg md:text-base'
         }
       >
-        {rankedPropositionDisplay(round.instrument, round.proposition_text, locale)}
+        {rankedPropositionDisplay(
+          round.instrument,
+          resolveLocalizedProposition(round, locale),
+          locale,
+          round.propositions,
+        )}
       </p>
       {round.anchorPrice !== null && anchorDate ? (
         <p className="mt-2 text-[12px] text-league-fg-muted" dir="ltr">

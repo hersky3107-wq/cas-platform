@@ -106,6 +106,7 @@ export type RoundInput =
       anchor_price_at?: string
       anchor_session_date?: string
       anchor_source?: string
+      propositions?: Record<string, string> | null
     }
 
 export type GenerateOptions = {
@@ -309,35 +310,49 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
 
   const itemType: ItemType = input.item_type ?? 'ranked'
   const openPhase = resolveOpenPhase(input.instrument, new Date())
-  const { data, error } = await supabaseAdmin
+  const insertPayload = {
+    proposition_text: input.proposition_text,
+    category: input.category,
+    color_bucket: colorForCategory(input.category),
+    item_type: itemType,
+    instrument: input.instrument,
+    horizon: input.horizon,
+    resolution_rule: input.resolution_rule,
+    resolves_at: input.resolves_at,
+    season_id: input.season_id ?? null,
+    cache_key: input.cache_key ?? null,
+    open_phase: openPhase,
+    // DB default is 'binary_close_higher' — only set when the caller names one.
+    ...(input.proposition_kind ? { proposition_kind: input.proposition_kind } : {}),
+    ...(input.subject_label ? { subject_label: input.subject_label } : {}),
+    ...(input.observation_shape ? { observation_shape: input.observation_shape } : {}),
+    ...(input.propositions ? { propositions: input.propositions } : {}),
+    ...(typeof input.anchor_price === 'number' && Number.isFinite(input.anchor_price)
+      ? {
+          anchor_price: input.anchor_price,
+          ...(input.anchor_price_at ? { anchor_price_at: input.anchor_price_at } : {}),
+          ...(input.anchor_session_date ? { anchor_session_date: input.anchor_session_date } : {}),
+          ...(input.anchor_source ? { anchor_source: input.anchor_source } : {}),
+        }
+      : {}),
+  }
+
+  let { data, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .insert({
-      proposition_text: input.proposition_text,
-      category: input.category,
-      color_bucket: colorForCategory(input.category),
-      item_type: itemType,
-      instrument: input.instrument,
-      horizon: input.horizon,
-      resolution_rule: input.resolution_rule,
-      resolves_at: input.resolves_at,
-      season_id: input.season_id ?? null,
-      cache_key: input.cache_key ?? null,
-      open_phase: openPhase,
-      // DB default is 'binary_close_higher' — only set when the caller names one.
-      ...(input.proposition_kind ? { proposition_kind: input.proposition_kind } : {}),
-      ...(input.subject_label ? { subject_label: input.subject_label } : {}),
-      ...(input.observation_shape ? { observation_shape: input.observation_shape } : {}),
-      ...(typeof input.anchor_price === 'number' && Number.isFinite(input.anchor_price)
-        ? {
-            anchor_price: input.anchor_price,
-            ...(input.anchor_price_at ? { anchor_price_at: input.anchor_price_at } : {}),
-            ...(input.anchor_session_date ? { anchor_session_date: input.anchor_session_date } : {}),
-            ...(input.anchor_source ? { anchor_source: input.anchor_source } : {}),
-          }
-        : {}),
-    })
+    .insert(insertPayload)
     .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at, proposition_kind')
     .single()
+
+  if (error && error.message.includes('propositions')) {
+    const { propositions: _omitted, ...safePayload } = insertPayload
+    const retry = await supabaseAdmin
+      .from('prediction_rounds')
+      .insert(safePayload)
+      .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at, proposition_kind')
+      .single()
+    data = retry.data
+    error = retry.error
+  }
 
   if (error || !data) throw new Error(`Failed to create round: ${error?.message ?? 'unknown'}`)
   return { round: data as ResolvedRound, created: true }

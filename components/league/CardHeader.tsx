@@ -7,11 +7,14 @@ import {
   headerWindow,
 } from '@/lib/league/card-header-copy'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
+import { getLeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { formatPropertyGradeLine, formatPropertyHorizonLabel } from '@/lib/league/real-estate-display'
 import type { ToneTokens } from '@/lib/league/tone'
 import { KrDataNotice } from '@/components/league/KrLaneDisclosureBlocks'
 import { airankAttributionLine } from '@/lib/league/ai-ranking/instrument'
+import { isNonFinancialCategory } from '@/lib/league/compliance'
+import { resolveLocalizedProposition } from '@/lib/league/proposition-i18n'
 
 /**
  * Header: the ROUND's opened date + instrument + ANCHOR (or "unavailable"),
@@ -23,7 +26,7 @@ export function CardHeader({
   round,
   hitRate,
   tone,
-  t,
+  t: tProp,
   locale,
   gradingStalled = false,
   showKrDataNotice = false,
@@ -31,12 +34,13 @@ export function CardHeader({
   round: CardRoundMeta
   hitRate: HitRateSummary
   tone: ToneTokens
-  t: LeagueUiPack
+  t?: LeagueUiPack
   locale: LeagueLocale
   gradingStalled?: boolean
   showKrDataNotice?: boolean
 }) {
   void tone
+  const t = tProp ?? getLeagueUiPack(locale)
   const roundDate = formatRoundOpenedDate(round.opened_at, locale)
   const propertyHorizon = round.category === 'real_estate' ? formatPropertyHorizonLabel(round.instrument, t) : null
   const propertyGrade =
@@ -55,7 +59,8 @@ export function CardHeader({
     anchorSessionDate: round.anchorSessionDate,
     propositionKind: round.proposition_kind,
     subjectLabel: round.subject_label,
-    propositionText: round.proposition_text,
+    propositionText: resolveLocalizedProposition(round, locale),
+    horizon: round.horizon,
     locale,
     t,
   })
@@ -78,9 +83,11 @@ export function CardHeader({
           <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-league-accent" aria-hidden />
           <div className="min-w-0">
             <p className="text-sm font-bold leading-snug text-league-fg md:text-lg">{headline}</p>
-            <p className="mt-0.5 text-[11px] text-league-fg-muted">
-              {propertyHorizon ?? round.horizon} · {formatCategory(round.category)}
-            </p>
+            {round.category === 'ai_models' ? null : (
+              <p className="mt-0.5 text-[11px] text-league-fg-muted">
+                {propertyHorizon ?? t.horizon?.[round.horizon as '1d' | '1w' | '1m' | '3m'] ?? round.horizon} · {formatCategory(round.category)}
+              </p>
+            )}
           </div>
         </div>
         <StatusBadge round={round} hitRate={hitRate} t={t} stalled={gradingStalled} />
@@ -102,7 +109,7 @@ export function CardHeader({
           </span>
         </p>
       ) : null}
-      {showKrDataNotice ? <KrDataNotice /> : null}
+      {showKrDataNotice && !isNonFinancialCategory(round.category) ? <KrDataNotice /> : null}
       {round.category === 'ai_models' ? (
         <p className="mt-1.5 text-[11px] leading-relaxed text-league-fg-muted">{airankAttributionLine(locale)}</p>
       ) : null}

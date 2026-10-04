@@ -12,6 +12,13 @@ import { decodeSportsInstrument, subjectTeamOf } from './gateway/adapters/sports
 import { subjectImpliedPct } from './gateway/adapters/sports-packet'
 import { readFixtureCache } from './sports/cache'
 import type { VerdictCrossRoundGrade } from './verdict-aggregate'
+import {
+  isAirankInstrument,
+  parseAirankInstrument,
+  decodeAirankInstrument,
+  airankAllPropositions,
+} from './ai-ranking/instrument'
+import { backfillTechPropositions } from './proposition-i18n'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), DB read path.
@@ -106,6 +113,7 @@ type OptionalRoundColumns = {
   /** 20260829000002 — null/absent means close_higher (every pre-kind round is a price round). */
   proposition_kind: string | null
   subject_label: string | null
+  propositions: Record<string, string> | null
 }
 
 const EMPTY_OPTIONAL_COLUMNS: OptionalRoundColumns = {
@@ -119,6 +127,7 @@ const EMPTY_OPTIONAL_COLUMNS: OptionalRoundColumns = {
   resolution_price: null,
   proposition_kind: null,
   subject_label: null,
+  propositions: null,
 }
 
 /**
@@ -137,11 +146,33 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
     const { data, error } = await supabaseAdmin
       .from('prediction_rounds')
       .select(
-        'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, anchor_session_date, resolution_session_date, resolution_price, proposition_kind, subject_label'
+        'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, anchor_session_date, resolution_session_date, resolution_price, proposition_kind, subject_label, propositions'
       )
       .eq('id', roundId)
       .maybeSingle()
     if (error) {
+      const fallbackWithKind = await supabaseAdmin
+        .from('prediction_rounds')
+        .select(
+          'anchor_price, anchor_price_at, grading_busy_until, grading_attempted_at, unresolvable_reason, anchor_session_date, resolution_session_date, resolution_price, proposition_kind, subject_label'
+        )
+        .eq('id', roundId)
+        .maybeSingle()
+      if (!fallbackWithKind.error && fallbackWithKind.data) {
+        return {
+          anchor_price: fallbackWithKind.data.anchor_price ?? null,
+          anchor_price_at: fallbackWithKind.data.anchor_price_at ?? null,
+          grading_busy_until: fallbackWithKind.data.grading_busy_until ?? null,
+          grading_attempted_at: fallbackWithKind.data.grading_attempted_at ?? null,
+          unresolvable_reason: fallbackWithKind.data.unresolvable_reason ?? null,
+          anchor_session_date: fallbackWithKind.data.anchor_session_date ?? null,
+          resolution_session_date: fallbackWithKind.data.resolution_session_date ?? null,
+          resolution_price: fallbackWithKind.data.resolution_price ?? null,
+          proposition_kind: fallbackWithKind.data.proposition_kind ?? null,
+          subject_label: fallbackWithKind.data.subject_label ?? null,
+          propositions: null,
+        }
+      }
       const fallback = await supabaseAdmin
         .from('prediction_rounds')
         .select(
@@ -162,6 +193,7 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
           // Pre-20260829000002 environment: every round is a price round.
           proposition_kind: null,
           subject_label: null,
+          propositions: null,
         }
       }
       if (!warnedMissingAnchorColumns) {
@@ -311,6 +343,37 @@ export async function fetchCardData(
 ): Promise<CardData> {
   const round = await loadRound(lookup)
   const optional = await loadOptionalColumns(round.id)
+
+  const isOpen = round.actual_outcome === null
+  const isAiModels = round.category === 'ai_models' || isAirankInstrument(round.instrument)
+  const isTech = round.category === 'tech'
+
+  if (isOpen && (isAiModels || isTech)) {
+    if (!optional.propositions || Object.keys(optional.propositions).length === 0) {
+      if (isAiModels) {
+        const parts = decodeAirankInstrument(round.instrument) ?? parseAirankInstrument(round.instrument)
+        if (parts) {
+          optional.propositions = airankAllPropositions(parts)
+          void supabaseAdmin
+            .from('prediction_rounds')
+            .update({ propositions: optional.propositions })
+            .eq('id', round.id)
+            .then(() => {}, () => {})
+        }
+      } else if (isTech) {
+        const localized = await backfillTechPropositions(round.proposition_text, round.instrument)
+        if (localized) {
+          optional.propositions = localized
+          void supabaseAdmin
+            .from('prediction_rounds')
+            .update({ propositions: localized })
+            .eq('id', round.id)
+            .then(() => {}, () => {})
+        }
+      }
+    }
+  }
+
   const [predictions, board, crossRound, operatorEvidence] = await Promise.all([
     loadPredictions(round.id, opts?.includeFailReasons === true),
     fetchLeaderboardData(scope),

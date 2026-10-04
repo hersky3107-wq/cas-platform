@@ -8,6 +8,7 @@ import { useRoundRationaleTranslations } from '@/lib/league/use-rationale-transl
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import { useLeagueRequestSignals } from '@/lib/league/use-league-request-signals'
 import { admissionStockLane } from '@/lib/league/stock-lane'
+import { isNonFinancialCategory } from '@/lib/league/compliance'
 import { KrCardDisclosureFooter } from '@/components/league/KrLaneDisclosureBlocks'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { CardCompliance } from './CardCompliance'
@@ -50,6 +51,8 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
       declaredCountry: signals.declaredCountry,
       ipCountry: signals.ipCountry,
     }) === 'korea'
+  const isNonFinancial = isNonFinancialCategory(data.round.category)
+  const showKrDisclosures = koreaLaneViewer && !isNonFinancial
   const [gradingStalled, setGradingStalled] = useState(false)
   const { translations, inFlight: rationaleInFlight, showOriginal, onToggleOriginal } =
     useRoundRationaleTranslations(data.round.round_id, locale, data.models)
@@ -88,7 +91,7 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
         colorBucket={data.round.color_bucket}
         t={t}
         category={data.round.category}
-        omitLegacyDisclaimer={koreaLaneViewer}
+        omitLegacyDisclaimer={showKrDisclosures}
       >
         {(receipt) => (
           <>
@@ -105,9 +108,9 @@ export function PredictionCard({ initialData, live = false, devSignalsQuery }: P
               streaming={streaming}
               droppedModelIds={droppedModelIds}
               liveProgress={liveProgress}
-              showKrDataNotice={koreaLaneViewer}
+              showKrDataNotice={showKrDisclosures}
             />
-            {koreaLaneViewer ? <KrCardDisclosureFooter /> : null}
+            {showKrDisclosures ? <KrCardDisclosureFooter /> : null}
           </>
         )}
       </CardCompliance>

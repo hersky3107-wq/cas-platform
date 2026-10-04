@@ -43,11 +43,13 @@ import {
   claimFromOpenInstrument,
   decodeOpenTechInstrument,
   formatOpenTechProposition,
+  formatOpenTechPropositionAllLocales,
   openTechResolutionRule,
   parseOpenTechPrompt,
 } from './tech-resolve'
 import {
   AIRANK_LEDGER_CATEGORY,
+  airankAllPropositions,
   airankPropositionText,
   airankResolutionRule,
   airankSubjectLabel,
@@ -292,6 +294,7 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
           proposition_kind: 'binary_subject_outcome',
           subject_label: airankSubjectLabel(parts, locale),
           observation_shape: 'occurrence',
+          propositions: airankAllPropositions(parts),
         }
       }
       const open = claimFromOpenInstrument(slots.entity_id, slots.entity_label, now)
@@ -308,6 +311,7 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
           proposition_kind: 'binary_subject_outcome',
           subject_label: open.subjectLabel,
           observation_shape: 'occurrence',
+          propositions: formatOpenTechPropositionAllLocales(open),
         }
       }
       if (isPriceOrEarningsKind(claimKindOf(slots))) {

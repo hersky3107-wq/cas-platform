@@ -11,6 +11,9 @@
  * experiment and any other script-opened row.
  */
 
+import type { LeagueLocale } from './i18n/locales'
+import { resolveLocalizedProposition } from './proposition-i18n'
+
 export const FREEFORM_RECENT_LIMIT = 6
 
 export const PUBLIC_GATEWAY_CACHE_PREFIXES = [
@@ -33,6 +36,7 @@ export type FreeformRecentRow = {
   actual_outcome?: string | null
   cache_key?: string | null
   horizon?: string | null
+  propositions?: Record<string, string> | null
 }
 
 export type FreeformRecentItem = {
@@ -41,6 +45,7 @@ export type FreeformRecentItem = {
   horizon: string
   proposition_text: string
   resolves_at: string
+  propositions?: Record<string, string> | null
 }
 
 const PUBLIC_GATEWAY_INSTRUMENT =
@@ -80,6 +85,7 @@ export function selectRecentPublicFreeformRounds(
   jobRoundIds: ReadonlySet<string>,
   now: Date = new Date(),
   limit: number = FREEFORM_RECENT_LIMIT,
+  locale?: LeagueLocale,
 ): FreeformRecentItem[] {
   const picked: FreeformRecentItem[] = []
   for (const row of rows) {
@@ -91,8 +97,9 @@ export function selectRecentPublicFreeformRounds(
       round_id: row.id,
       instrument: row.instrument,
       horizon: row.horizon && row.horizon.trim() ? row.horizon : '1m',
-      proposition_text: row.proposition_text,
+      proposition_text: locale ? resolveLocalizedProposition(row, locale) : row.proposition_text,
       resolves_at: row.resolves_at,
+      propositions: row.propositions ?? null,
     })
     if (picked.length >= limit) break
   }

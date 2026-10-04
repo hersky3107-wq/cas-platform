@@ -5,6 +5,7 @@ import { categoryHasMixedResolutionClocks, visibleChipEntriesForViewer } from '@
 import { admissionStockLane } from '@/lib/league/stock-lane'
 import { resolveLeagueViewer, viewerCatalog } from '@/lib/league/public-access'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { normalizeLeagueLocale, type LeagueLocale } from '@/lib/league/i18n/locales'
 import {
   FREEFORM_RECENT_LIMIT,
   publicCategoryForLedger,
@@ -22,7 +23,10 @@ const FREEFORM_LEDGER_CATEGORIES = [
   'ai_models',
 ] as const
 
-async function loadRecentPublicFreeformRounds(now: Date): Promise<Record<string, FreeformRecentItem[]>> {
+async function loadRecentPublicFreeformRounds(
+  now: Date,
+  locale: LeagueLocale = 'en',
+): Promise<Record<string, FreeformRecentItem[]>> {
   const empty: Record<string, FreeformRecentItem[]> = {
     sports: [],
     politics_election: [],
@@ -31,10 +35,11 @@ async function loadRecentPublicFreeformRounds(now: Date): Promise<Record<string,
     tech: [],
   }
   try {
-    const { data } = await supabaseAdmin
+    let rows: FreeformRecentRow[] = []
+    const withProps = await supabaseAdmin
       .from('prediction_rounds')
       .select(
-        'id, instrument, proposition_text, resolves_at, category, created_at, grading_status, actual_outcome, cache_key, horizon',
+        'id, instrument, proposition_text, resolves_at, category, created_at, grading_status, actual_outcome, cache_key, horizon, propositions',
       )
       .in('category', [...FREEFORM_LEDGER_CATEGORIES])
       .eq('item_type', 'ranked')
@@ -42,7 +47,22 @@ async function loadRecentPublicFreeformRounds(now: Date): Promise<Record<string,
       .order('created_at', { ascending: false })
       .limit(48)
 
-    const rows = (data ?? []) as FreeformRecentRow[]
+    if (!withProps.error && withProps.data) {
+      rows = withProps.data as FreeformRecentRow[]
+    } else {
+      const { data } = await supabaseAdmin
+        .from('prediction_rounds')
+        .select(
+          'id, instrument, proposition_text, resolves_at, category, created_at, grading_status, actual_outcome, cache_key, horizon',
+        )
+        .in('category', [...FREEFORM_LEDGER_CATEGORIES])
+        .eq('item_type', 'ranked')
+        .gt('resolves_at', now.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(48)
+      rows = (data ?? []) as FreeformRecentRow[]
+    }
+
     const ids = rows.map((row) => row.id)
     const jobRoundIds = new Set<string>()
     if (ids.length > 0) {
@@ -65,7 +85,7 @@ async function loadRecentPublicFreeformRounds(now: Date): Promise<Record<string,
       grouped[publicId].push(row)
     }
     for (const key of Object.keys(empty)) {
-      empty[key] = selectRecentPublicFreeformRounds(grouped[key] ?? [], jobRoundIds, now, FREEFORM_RECENT_LIMIT)
+      empty[key] = selectRecentPublicFreeformRounds(grouped[key] ?? [], jobRoundIds, now, FREEFORM_RECENT_LIMIT, locale)
     }
     return empty
   } catch (err) {
@@ -97,7 +117,9 @@ export async function GET(req: Request) {
     jurisdiction: viewer.jurisdiction,
   })
   const stockLane = admissionStockLane(viewer.jurisdiction)
-  const recent = await loadRecentPublicFreeformRounds(new Date())
+  const url = new URL(req.url)
+  const locale = normalizeLeagueLocale(url.searchParams.get('locale')) ?? 'en'
+  const recent = await loadRecentPublicFreeformRounds(new Date(), locale)
 
   const categories = viewerCatalog(viewer).map((c) => {
     return {
