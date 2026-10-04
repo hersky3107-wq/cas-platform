@@ -117,6 +117,59 @@ describe('equity display-layer scrub — leaked samples', () => {
   })
 })
 
+describe('equity display-layer scrub — whole tokens, ranges, outlets, residue', () => {
+  it('does not match broker letters inside common words', () => {
+    const keep = ['AMPC subsidy', 'subsidies', 'citizen', 'citation', 'Jefferson', 'goldmine', 'UBSAN', 'KB국민카드 이벤트']
+    for (const sample of keep) {
+      expect(scrubAnalystDisclosure(sample), sample).toBe(sample)
+    }
+    expect(scrubAnalystDisclosure('AMPC subsidy')).not.toContain('일부 증권사')
+    expect(scrubAnalystDisclosure('AMPC subsidy')).not.toMatch(/s일부 증권사idy/)
+    const citi = readable(scrubAnalystDisclosure('Citigroup cut the name'))
+    expect(citi).not.toMatch(/Citigroup/i)
+    expect(citi).toContain('일부 증권사')
+    const nomura = readable(scrubAnalystDisclosure('nomura raised the name'))
+    expect(nomura).not.toMatch(/nomura/i)
+    expect(nomura).toContain('일부 증권사')
+  })
+
+  it('scrubs target ranges, % upside, outlets, markdown, and citations from today samples', () => {
+    const range = readable(scrubAnalystDisclosure('애널리스트들의 낙관적인 목표가(190k-270k)가'))
+    expect(range).not.toMatch(/\d/)
+    expect(range).toContain('목표가')
+    expect(readable(scrubAnalystDisclosure('PT 190k–270k'))).not.toMatch(/190|270/)
+    expect(readable(scrubAnalystDisclosure('목표주가 19만~27만원'))).not.toMatch(/19|27/)
+    expect(readable(scrubAnalystDisclosure('$190-270 target'))).not.toMatch(/190|270/)
+
+    const koUp = readable(scrubAnalystDisclosure('목표가 컨센서스가 현재가 대비 약 33% 상방'))
+    expect(koUp).not.toMatch(/%/)
+    expect(koUp).not.toMatch(/33/)
+    expect(koUp).toBe('목표가 컨센서스가 현재가보다 높음')
+    const enUp = readable(scrubAnalystDisclosure('consensus target implies 33% upside'))
+    expect(enUp).not.toMatch(/%/)
+    expect(enUp).not.toMatch(/33/)
+    expect(enUp).toBe('목표가 컨센서스가 현재가보다 높음')
+
+    const mk = readable(scrubAnalystDisclosure('수급 과열 (MK 주식 시세 페이지)'))
+    expect(mk).not.toMatch(/MK|시세 페이지/)
+    expect(mk).toContain('수급 과열')
+    for (const outlet of ['매일경제', '한국경제', '머니투데이', '이데일리', '연합뉴스', 'Reuters', 'Bloomberg', 'Yahoo Finance', 'Investing.com', 'Naver 증권']) {
+      const out = readable(scrubAnalystDisclosure(`상승 ${outlet} 보도`))
+      expect(out, outlet).not.toContain(outlet)
+      expect(out, outlet).toContain('상승')
+    }
+
+    expect(readable(scrubAnalystDisclosure('예정된 ₩1.2조 유상증자'))).toContain('1.2조 유상증자')
+    expect(scrubAnalystDisclosure('외국인의 5d 순매수')).toBe('외국인의 5d 순매수')
+    expect(readable(scrubAnalystDisclosure('링크 ([](/media/release/30407 끝'))).not.toMatch(/media\/release|30407|\[\]\(/)
+    expect(readable(scrubAnalystDisclosure('([](/inv/38890 과 ([](/equities/kia-motors 다음'))).not.toMatch(/inv\/38890|equities\/kia-motors/)
+    expect(readable(scrubAnalystDisclosure('메모 [](…) 남김'))).not.toMatch(/\[\]\(|…/)
+    expect(readable(scrubAnalystDisclosure('인용 [1][3][14] 그리고 【2】 끝'))).not.toMatch(/\[1\]|\[3\]|\[14\]|【2】/)
+    expect(readable(scrubAnalystDisclosure('₩유상증자'))).toBe('유상증자')
+    expect(readable(scrubAnalystDisclosure('$ 매수세'))).toBe('매수세')
+  })
+})
+
 describe('equity qualitative prompt line', () => {
   it('is the same sentence on official, crow, and consensus equity prompts', () => {
     expect(CONTRACT_EQUITY_LINE).toBe(EQUITY_QUALITATIVE_GUIDANCE)
