@@ -342,6 +342,8 @@ export type BaseRate = {
   n: number
   upCount: number
   upPct: number
+  rawUpPct: number
+  shrunk: boolean
 }
 
 export function computeRealizedVol(closes: number[], window: number): number | null {
@@ -384,10 +386,17 @@ export function range52w(bars: SeriesBar[]): { high: number; low: number; highDa
   return { high, low, highDate, lowDate }
 }
 
+/** Minimum sessions in series required before outside-view base rate is used without shrinkage. */
+export const MIN_SESSIONS_SHRINKAGE = 250
+
 /**
  * Historical frequency that the close `sessionsAhead` bars later was HIGHER.
  * Uses the last `lookback` pairs from `bars` (oldest→newest). Per-horizon:
  * callers MUST pass this round's session count — never reuse a 1d rate for 3m.
+ *
+ * Outside-view shrinkage: if fewer than 250 sessions exist in the series,
+ * shrink toward 50% with weight n / (n + 250) so a short trending window does
+ * not masquerade as an outside-view base rate.
  */
 export function computeBaseRate(
   bars: SeriesBar[],
@@ -403,13 +412,19 @@ export function computeBaseRate(
   for (let i = start; i < start + n; i++) {
     if (bars[i + sessionsAhead].close > bars[i].close) upCount += 1
   }
+  const rawPct = (upCount / n) * 100
+  const shrunk = bars.length < MIN_SESSIONS_SHRINKAGE
+  const weight = n / (n + MIN_SESSIONS_SHRINKAGE)
+  const upPct = shrunk ? weight * rawPct + (1 - weight) * 50 : rawPct
   return {
     horizon,
     sessionsAhead,
     lookbackSessions: n,
     n,
     upCount,
-    upPct: (upCount / n) * 100,
+    upPct,
+    rawUpPct: rawPct,
+    shrunk,
   }
 }
 
@@ -618,11 +633,14 @@ function formatBaseRate(input: ClosedBookPacketInput): string {
       : `${ahead} calendar days later`
   const windowNoun = sessionClock ? 'sessions' : 'calendar days'
   const pctStr = fmt(rate.upPct, 1)
+  const sampleNote = rate.shrunk
+    ? `base rate, n=${rate.n}, shrunk toward 50%; lookback=${rate.lookbackSessions} pairs; source: ${src}; as-of ${asOf}`
+    : `n=${rate.n}; lookback=${rate.lookbackSessions} pairs; source: ${src}; as-of ${asOf}`
   const lines = [
     sessionClock
       ? `BASE RATE (${h} — ${aheadLabel}, not calendar days)`
       : `BASE RATE (${h} — ${aheadLabel}, not trading sessions)`,
-    `over the last ${rate.n} ${windowNoun}, ${input.instrument} closed higher ${unit} ${pctStr}% of the time (n=${rate.n}; lookback=${rate.lookbackSessions} pairs; source: ${src}; as-of ${asOf})`,
+    `over the last ${rate.n} ${windowNoun}, ${input.instrument} closed higher ${unit} ${pctStr}% of the time (${sampleNote})`,
   ]
   if (rate.upPct > BASE_RATE_TREND_NOTE_MIN_PCT) {
     lines.push(

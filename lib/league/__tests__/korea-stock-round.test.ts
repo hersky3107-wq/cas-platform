@@ -203,9 +203,9 @@ describe('KRSTOCK packet uses KRX series and shared calculators', () => {
     }
   })
 
-  it('KRSTOCK packet path reuses buildPriceSeriesPacket and 60 KRX sessions', () => {
+  it('KRSTOCK packet path reuses buildPriceSeriesPacket and long-window KRX sessions', () => {
     const src = readFileSync(join(__dirname, '../gateway/adapters/stocks.ts'), 'utf8')
-    expect(src).toContain('getKrxCloseSeries(kr.market, kr.code, 60)')
+    expect(src).toContain('getKrxCloseSeries(kr.market, kr.code, KRX_SERIES_LOOKBACK_SESSIONS)')
     expect(src).toContain('buildPriceSeriesPacket(ctx, krIo)')
     expect(src).toContain('krStockAugmentationQueries')
   })

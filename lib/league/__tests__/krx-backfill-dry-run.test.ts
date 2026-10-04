@@ -79,4 +79,22 @@ describe('KRX backfill dry-run never touches the network', () => {
     expect(lines.some((line) => /rows=/.test(line))).toBe(false)
     vi.unstubAllGlobals()
   })
+
+  it('daily backfill supports --sessions=500 and plans 1000 requests', async () => {
+    expect(parseKrxDailyBackfillArgs(['--sessions=500']).sessions).toBe(500)
+    expect(parseKrxDailyBackfillArgs(['--apply', '--sessions=500'])).toEqual({ apply: true, sessions: 500 })
+
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const lines: string[] = []
+    await runKrxDailyBackfill(['--dry-run', '--sessions=500'], {
+      now: () => kst('2026-10-02', '16:00'),
+      log: (message) => lines.push(message),
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(lines[0]).toContain('(500 sessions)')
+    expect(lines[0]).toContain('dry-run')
+    expect(lines.at(-1)).toBe('done  total_planned_requests=1000')
+    vi.unstubAllGlobals()
+  })
 })

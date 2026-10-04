@@ -333,10 +333,13 @@ export async function getOfficialClose(
   return row.close
 }
 
+export const KRX_SERIES_LOOKBACK_SESSIONS = 500
+export const KRX_SERIES_MAX_ENSURE_RECENT = 3
+
 export async function getKrxCloseSeries(
   market: KrxMarket,
   code: string,
-  sessions: number,
+  sessions: number = KRX_SERIES_LOOKBACK_SESSIONS,
   io?: Partial<KrxDailyIo>,
 ): Promise<KrxCloseSeriesResult> {
   const deps = resolveIo(io)
@@ -350,9 +353,11 @@ export async function getKrxCloseSeries(
   const byDate = new Map(cached.map((row) => [row.date, row]))
   const series: KrxCloseBar[] = []
   const notPublished: string[] = []
-  for (const date of tradingDates) {
+  const recentCutoffIndex = Math.max(0, tradingDates.length - KRX_SERIES_MAX_ENSURE_RECENT)
+  for (let i = 0; i < tradingDates.length; i++) {
+    const date = tradingDates[i]
     let row = byDate.get(date) ?? null
-    if (!row) {
+    if (!row && i >= recentCutoffIndex) {
       const ensured = await ensureKrxDay(date, deps)
       if (ensured === 'not_published') {
         notPublished.push(date)

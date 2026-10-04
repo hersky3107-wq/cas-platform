@@ -359,8 +359,8 @@ export function createStocksAdapter(
     async buildPacket(_slots: NormalizeSlots, ctx: PacketBuildContext): Promise<CategoryPacket> {
       const kr = decodeKrStockInstrument(ctx.round.instrument)
       if (kr) {
-        const { getKrxCloseSeries } = await import('../../korea-market-data')
-        const fetched = await getKrxCloseSeries(kr.market, kr.code, 60)
+        const { getKrxCloseSeries, KRX_SERIES_LOOKBACK_SESSIONS } = await import('../../korea-market-data')
+        const fetched = await getKrxCloseSeries(kr.market, kr.code, KRX_SERIES_LOOKBACK_SESSIONS)
         const packet = krxBarsToDataPacket(ctx.round.instrument, fetched.series)
         const name = parseKrStockProposition(ctx.round.proposition_text)?.name || kr.code
         const anchor = lastCompletedKrxSession(new Date())

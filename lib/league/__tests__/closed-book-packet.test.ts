@@ -133,6 +133,76 @@ describe('closed-book packet — numbers first', () => {
     expect(d1!.upPct).not.toBe(m3!.upPct)
   })
 
+  it('short-window sample shrinks toward 50% with weight n / (n + 250)', () => {
+    // 60-bar fixture with 15 up out of 55 5-session pairs (mirrors 현대차 1w downtrend sample)
+    const series: SeriesBar[] = []
+    let px = 680000
+    for (let i = 0; i < 60; i++) {
+      if (i < 40) px -= 8000
+      else px += 2000
+      series.push({ date: `2026-07-${String((i % 28) + 1).padStart(2, '0')}`, close: px })
+    }
+    const ahead = 5
+    const rate = computeBaseRate(series, ahead, 1000, '1w')
+    expect(rate).not.toBeNull()
+    expect(rate!.n).toBe(55)
+    expect(rate!.shrunk).toBe(true)
+    // Weight = 55 / (55 + 250) = 55 / 305
+    const weight = 55 / 305
+    const expectedShrunk = weight * rate!.rawUpPct + (1 - weight) * 50
+    expect(rate!.upPct).toBeCloseTo(expectedShrunk, 4)
+    // Shrunk rate moves significantly toward 50% from raw ~27.3%
+    expect(rate!.upPct).toBeGreaterThan(40)
+    expect(rate!.upPct).toBeLessThan(50)
+  })
+
+  it('long-window computation (>= 250 sessions) does not shrink', () => {
+    const series = bars(500, 200)
+    const ahead = 5
+    const rate = computeBaseRate(series, ahead, 1000, '1w')
+    expect(rate).not.toBeNull()
+    expect(rate!.shrunk).toBe(false)
+    expect(rate!.n).toBe(495)
+    expect(rate!.upPct).toBe(rate!.rawUpPct)
+  })
+
+  it('packet text shows n and the shrinkage note for short-window series', () => {
+    const series: SeriesBar[] = []
+    let px = 680000
+    for (let i = 0; i < 60; i++) {
+      if (i < 40) px -= 8000
+      else px += 2000
+      series.push({ date: `2026-07-${String((i % 28) + 1).padStart(2, '0')}`, close: px })
+    }
+    const text = assembleClosedBookInjection(
+      input({
+        category: 'stock',
+        instrument: 'KRSTOCK:KOSPI:005380',
+        horizon: '1w',
+        series,
+        seriesSource: 'KRX league_krx_daily TDD_CLSPRC (정규장 종가)',
+        consensus: null,
+      }),
+    )
+    expect(text).toContain('base rate, n=55, shrunk toward 50%')
+    expect(text).toMatch(/closed higher 5 sessions later \d+\.\d% of the time \(base rate, n=55, shrunk toward 50%/)
+    expect(text).not.toContain('27.3%')
+  })
+
+  it('STOCK (US) path still uses its existing long Twelve Data history without shrinkage', () => {
+    const text = assembleClosedBookInjection(
+      input({
+        category: 'stock',
+        instrument: 'AAPL',
+        horizon: '1d',
+        series: bars(1083, 200),
+        seriesSource: 'Twelve Data /time_series+quote',
+      }),
+    )
+    expect(text).toMatch(/over the last 1000 sessions, AAPL closed higher 1 session later \d+\.\d% of the time \(n=1000; lookback=1000 pairs; source: Twelve Data \/time_series\+quote; as-of \d{4}-\d{2}-\d{2}\)/)
+    expect(text).not.toContain('shrunk toward 50%')
+  })
+
   it('drops absence-of-news findings and keeps numeric ones, capped at 2', () => {
     expect(isAbsenceFinding(findings[1].summary)).toBe(true)
     expect(hasNumericFact(findings[0].summary)).toBe(true)

@@ -11,7 +11,7 @@
 import { ensureKrxDay } from '@/lib/league/korea-market-data'
 import { lastCompletedKrxSession, lastNKrxSessionDates } from '@/lib/league/krx-calendar'
 
-const SESSIONS = 90
+export const DEFAULT_KRX_BACKFILL_SESSIONS = 90
 const DELAY_MS = 350
 
 const DAILY_CALLS = [
@@ -19,13 +19,22 @@ const DAILY_CALLS = [
   { market: 'KOSDAQ', path: '/ksq_bydd_trd' },
 ] as const
 
-export function parseKrxDailyBackfillArgs(argv: string[]): { apply: boolean } {
+export function parseKrxDailyBackfillArgs(argv: string[]): { apply: boolean; sessions: number } {
   let apply = false
-  for (const arg of argv) {
+  let sessions = DEFAULT_KRX_BACKFILL_SESSIONS
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
     if (arg === '--apply') apply = true
     if (arg === '--dry-run') apply = false
+    const match = arg.match(/^--sessions=(\d+)$/)
+    if (match) {
+      sessions = Number(match[1])
+    } else if (arg === '--sessions' && i + 1 < argv.length && /^\d+$/.test(argv[i + 1])) {
+      sessions = Number(argv[i + 1])
+      i += 1
+    }
   }
-  return { apply }
+  return { apply, sessions }
 }
 
 export function planKrxDailyCalls(isoDate: string): { label: string }[] {
@@ -48,14 +57,14 @@ export async function runKrxDailyBackfill(
   argv: string[] = process.argv.slice(2),
   io: KrxDailyBackfillIo = {},
 ): Promise<void> {
-  const { apply } = parseKrxDailyBackfillArgs(argv)
+  const { apply, sessions } = parseKrxDailyBackfillArgs(argv)
   const dryRun = !apply
   const log = io.log ?? ((message: string) => console.log(message))
   const last = lastCompletedKrxSession((io.now ?? (() => new Date()))())
   if (!last.ok) {
     throw new Error(`cannot backfill: ${last.reason}`)
   }
-  const dates = lastNKrxSessionDates(last.date, SESSIONS)
+  const dates = lastNKrxSessionDates(last.date, sessions)
   log(
     `KRX daily backfill: ${dates[0]} → ${dates[dates.length - 1]} (${dates.length} sessions) ${dryRun ? 'dry-run' : 'APPLY'}`,
   )
