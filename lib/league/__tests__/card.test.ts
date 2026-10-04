@@ -169,6 +169,20 @@ describe('buildCardData', () => {
     expect(card.campSplit.other).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
   })
 
+  it('shows a scout row as soon as that prediction exists, before the rest of the tier', () => {
+    const card = buildCardData(round(), [
+      pred({
+        model_id: 'sonar',
+        brand: 'Perplexity',
+        league_tier: 'scout',
+        predicted_direction: 'up',
+        predicted_value: 61,
+      }),
+    ])
+    expect(card.models).toHaveLength(1)
+    expect(card.models[0]).toMatchObject({ model_id: 'sonar', league_tier: 'scout', direction: 'up' })
+  })
+
   it('splits direction tallies per league tier', () => {
     const rows: PredictionRow[] = [
       pred({ model_id: 'a', league_tier: 'premier', predicted_direction: 'up' }),

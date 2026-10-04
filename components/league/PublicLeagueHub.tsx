@@ -164,18 +164,25 @@ function CardsPanel() {
   // Guards against a slower, now-superseded fetch overwriting the result of a
   // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
+  // Quiet generation polls must not overlap. Starting the next one bumps
+  // requestId and drops the in-flight body, so a scout row that landed
+  // mid-tick never reaches the card until polling stops at job end.
+  const quietInFlightRef = useRef(false)
 
   // The SERVER'S response is the only decision this panel trusts — locked vs
   // full card, jurisdiction, everything. `quiet` polls (while a generation
   // job runs) skip the loading flash but share the same supersede guard.
   const loadCard = useCallback(
     async (instrument: string, horizonArg: UiHorizon, opts?: { quiet?: boolean }) => {
+      const quiet = opts?.quiet === true
+      if (quiet && quietInFlightRef.current) return
       const requestId = (requestIdRef.current += 1)
-      if (!opts?.quiet) setView({ kind: 'loading' })
+      if (quiet) quietInFlightRef.current = true
+      if (!quiet) setView({ kind: 'loading' })
       try {
         const res = await fetch(
           `/api/league/card?instrument=${encodeURIComponent(instrument)}&horizon=${encodeURIComponent(horizonArg)}`,
-          { credentials: 'include' }
+          { credentials: 'include', cache: 'no-store' }
         )
         const body = (await res.json()) as
           | CardData
@@ -207,6 +214,8 @@ function CardsPanel() {
         setView({ kind: 'card', card: body as CardData })
       } catch {
         if (requestId === requestIdRef.current && !opts?.quiet) setView({ kind: 'error' })
+      } finally {
+        if (quiet) quietInFlightRef.current = false
       }
     },
     []

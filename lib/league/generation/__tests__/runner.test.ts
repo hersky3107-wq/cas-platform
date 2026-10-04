@@ -3,7 +3,9 @@ import type { LeagueGenerationJob } from '../job-store'
 import { LEAGUE_JOB_MAX_ATTEMPTS, LEAGUE_JOB_MAX_RUNNING } from '../policy'
 import { generationClaimBudget, coalesceRoundPacketBuild } from '../parallel-policy'
 import { createProviderCallGate } from '../provider-gate'
-import { claimNextLaunchableIndex } from '../launch-gate'
+import { claimNextLaunchableIndex, orderLongestTimeoutFirst } from '../launch-gate'
+import { buildExtraCompareView } from '@/lib/league/extra-compare'
+import type { CardModelPrediction, ConsensusSummary } from '@/lib/league/card-types'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 import { officialRowsForConsensus } from '@/lib/league/extra/seats'
 import {
@@ -527,51 +529,125 @@ describe('LEAGUE_PARALLEL_TIERS off (default)', () => {
 })
 
 describe('LEAGUE_PARALLEL_TIERS on', () => {
-  it('builds the packet once and starts all four official tiers before any finishes', async () => {
+  it('packet-only tick launches no models and the next sweep can claim it immediately', async () => {
     const fake = makeStore([makeJob()])
     let packetBuilds = 0
+    const logs: string[] = []
+    const original = console.log
+    console.log = ((message?: unknown, ...rest: unknown[]) => {
+      if (typeof message === 'string' && message.startsWith('[league-parallel]')) logs.push(message)
+      original(message, ...rest)
+    }) as typeof console.log
+    try {
+      const bundle = makeDeps(fake, {
+        parallelTiers: true,
+        ensurePacket: async () => {
+          packetBuilds += 1
+          return { built: true, packetMs: 50_000 }
+        },
+      })
+      await advanceLeagueGenerationJob('job-1', bundle.deps)
+      await bundle.runScheduled()
+      const job = fake.byId.get('job-1')!
+      expect(packetBuilds).toBe(1)
+      expect(bundle.generateCalls).toEqual([])
+      expect(bundle.finalized).toEqual([])
+      expect(job.status).toBe('running')
+      expect(job.stage).toBe('packet')
+      expect(job.lease_until).toBeNull()
+      expect(job.last_heartbeat_at).toBeNull()
+      expect(job.attempt_count).toBe(0)
+      expect(logs.some((line) => line.includes('packet_tick=true'))).toBe(true)
+
+      const summary = await sweepLeagueGenerationJobs(bundle.deps)
+      expect(summary.claimed).toBe(1)
+    } finally {
+      console.log = original
+    }
+  })
+
+  it('next tick launches official seats and extras together, then finalizes extra-vs-crowd', async () => {
+    const fake = makeStore([makeJob()])
+    let packetBuilds = 0
+    let text: string | null = null
     let started = 0
     let release: () => void = () => {}
     const allStarted = new Promise<void>((resolve) => {
       release = resolve
     })
-    const finishedTiers: string[] = []
+    let comparedDuringExtra = false
+    const logs: string[] = []
+    const original = console.log
+    console.log = ((message?: unknown, ...rest: unknown[]) => {
+      if (typeof message === 'string' && message.startsWith('[league-parallel]')) logs.push(message)
+      original(message, ...rest)
+    }) as typeof console.log
     const bundle = makeDeps(fake, {
       parallelTiers: true,
+      tierModelIds: (tier) => (tier === 'extra' ? ['crow'] : [...TIERS[tier]]),
       ensurePacket: async () => {
+        if (text) return { built: false, packetMs: 0 }
         packetBuilds += 1
-        return { built: true, packetMs: 5 }
+        text = 'closed-book'
+        return { built: true, packetMs: 50_000 }
       },
       generate: async ({ tier, onModelResult }) => {
         started += 1
-        if (started === 4) release()
+        if (started === 5) release()
         await allStarted
         if (tier === 'extra') {
-          finishedTiers.push(tier)
+          comparedDuringExtra = bundle.finalized.length > 0
+          fake.rows.push({ model_id: 'crow', predicted_direction: 'down', predicted_at: new Date().toISOString() })
+          onModelResult('crow')
           return { deferred: 0, http429: 0 }
         }
         for (const id of TIERS[tier as keyof typeof TIERS]) {
           fake.rows.push({ model_id: id, predicted_direction: 'up', predicted_at: new Date().toISOString() })
           onModelResult(id)
         }
-        finishedTiers.push(tier)
         return { deferred: 0, http429: 0 }
       },
     })
+    const originalFinalize = bundle.deps.finalizeConsensus
+    bundle.deps.finalizeConsensus = async (roundId) => {
+      expect(fake.rows.some((row) => row.model_id === 'p1')).toBe(true)
+      expect(fake.rows.some((row) => row.model_id === 'crow')).toBe(true)
+      const view = buildExtraCompareView(
+        [
+          { model_id: 'p1', league_tier: 'premier', direction: 'up' },
+          { model_id: 'crow', league_tier: 'extra', direction: 'down' },
+        ] as CardModelPrediction[],
+        { majorityDirection: 'up', aggregateDirection: 'up', totalModels: 40 } as ConsensusSummary,
+      )
+      expect(view.seats.find((seat) => seat.id === 'crow')?.vsCrowd).toBe('diverge')
+      await originalFinalize(roundId)
+    }
 
-    await advanceLeagueGenerationJob('job-1', bundle.deps)
-    await bundle.runScheduled()
+    try {
+      await advanceLeagueGenerationJob('job-1', bundle.deps)
+      await bundle.runScheduled()
+      expect(bundle.generateCalls).toEqual([])
+
+      await advanceLeagueGenerationJob('job-1', bundle.deps)
+      await bundle.runScheduled()
+    } finally {
+      console.log = original
+    }
 
     expect(packetBuilds).toBe(1)
-    expect(bundle.generateCalls.slice(0, 4).map((c) => c.tier)).toEqual(['premier', 'challenger', 'world', 'scout'])
-    expect(bundle.generateCalls.slice(0, 4).every((c) => c.reuse && c.skipConsensus)).toBe(true)
-    expect(finishedTiers.indexOf('extra')).toBe(-1)
-    expect(bundle.generateCalls.some((c) => c.tier === 'extra')).toBe(false)
+    expect(started).toBe(5)
+    expect(bundle.generateCalls.map((call) => call.tier)).toEqual(['premier', 'challenger', 'world', 'scout', 'extra'])
+    expect(bundle.generateCalls.every((call) => call.reuse && call.skipConsensus)).toBe(true)
+    expect(comparedDuringExtra).toBe(false)
     expect(bundle.finalized).toEqual(['round-1'])
     expect(fake.byId.get('job-1')!.stage).toBe('done')
+    expect(logs.some((line) => line.includes('packet_tick=false'))).toBe(true)
+    expect(logs.some((line) => line.includes('extras=start'))).toBe(true)
+    expect(logs.some((line) => line.includes('extras=end'))).toBe(true)
+    expect(logs.some((line) => line.includes('tier=scout') && line.includes('start_ms='))).toBe(true)
   })
 
-  it('defers an over-budget seat and resumes it on the next chunk before extras', async () => {
+  it('defers an over-budget seat while extras still start in that model tick', async () => {
     const premier = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9']
     const fake = makeStore([makeJob()])
     const tierModelIds: LeagueRunnerDeps['tierModelIds'] = (tier) => {
@@ -625,7 +701,8 @@ describe('LEAGUE_PARALLEL_TIERS on', () => {
     await first.runScheduled()
 
     expect(fake.rows.some((r) => r.model_id === 'p6')).toBe(false)
-    expect(first.generateCalls.some((c) => c.tier === 'extra')).toBe(false)
+    expect(fake.rows.some((r) => r.model_id === 'crow')).toBe(true)
+    expect(first.generateCalls.map((c) => c.tier)).toEqual(['premier', 'challenger', 'world', 'scout', 'extra'])
     expect(fake.byId.get('job-1')!.stage).toBe('packet')
     expect(first.finalized).toEqual([])
 
@@ -634,11 +711,55 @@ describe('LEAGUE_PARALLEL_TIERS on', () => {
     await second.runScheduled()
 
     expect(fake.rows.some((r) => r.model_id === 'p6')).toBe(true)
-    const extraAt = second.generateCalls.findIndex((c) => c.tier === 'extra')
-    const official = second.generateCalls.filter((c) => c.tier !== 'extra')
-    expect(official.length).toBeGreaterThan(0)
-    expect(extraAt).toBe(official.length)
+    expect(second.generateCalls.map((c) => c.tier)).toContain('premier')
+    expect(second.generateCalls.map((c) => c.tier)).toContain('extra')
     expect(second.finalized).toEqual(['round-1'])
+    expect(fake.byId.get('job-1')!.status).toBe('done')
+  })
+
+  it('starts a 240s seat in the first model tick when the tick budget is full', async () => {
+    const fake = makeStore([makeJob()])
+    const premier = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6']
+    const tickBudgetMs = 300_000
+    const claimed: string[] = []
+    const bundle = makeDeps(fake, {
+      parallelTiers: true,
+      tickBudgetMs,
+      ensurePacket: async () => ({ built: false, packetMs: 0 }),
+      tierModelIds: (tier) => (tier === 'premier' ? [...premier] : tier === 'extra' ? ['crow'] : [...TIERS[tier]]),
+      generate: async ({ tier, excludeModelIds, deadlineAtMs, onModelResult }) => {
+        const ids = (tier === 'premier' ? premier : tier === 'extra' ? ['crow'] : [...TIERS[tier]]).filter(
+          (id) => !excludeModelIds.includes(id),
+        )
+        const roster = orderLongestTimeoutFirst(
+          ids.map((model_id) => ({ model_id, timeoutMs: model_id === 'p6' ? 240_000 : 1_000 })),
+          1_000,
+        )
+        if (tier === 'premier') expect(roster[0]?.model_id).toBe('p6')
+        const cursor = { nextIndex: 0 }
+        const launchedThisChunk = { launched: 0 }
+        for (;;) {
+          const i = claimNextLaunchableIndex(roster, cursor, {
+            nowMs: Date.now(),
+            deadlineAtMs,
+            defaultTimeoutMs: 1_000,
+            tickBudgetMs,
+            launchedThisChunk,
+          })
+          if (i === null) return { deferred: 0, http429: 0 }
+          const id = roster[i]!.model_id
+          if (tier === 'premier' && claimed.length === 0) claimed.push(id)
+          fake.rows.push({ model_id: id, predicted_direction: 'up', predicted_at: new Date().toISOString() })
+          onModelResult(id)
+        }
+      },
+    })
+    await advanceLeagueGenerationJob('job-1', bundle.deps)
+    await bundle.runScheduled()
+    expect(claimed[0]).toBe('p6')
+    expect(fake.rows.some((row) => row.model_id === 'p6')).toBe(true)
+    expect(fake.rows.some((row) => row.model_id === 'crow')).toBe(true)
+    expect(bundle.finalized).toEqual(['round-1'])
     expect(fake.byId.get('job-1')!.status).toBe('done')
   })
 

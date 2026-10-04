@@ -4,6 +4,7 @@ import { LEAGUE_JOB_TICK_BUDGET_MS } from '../policy'
 import {
   claimNextLaunchableIndex,
   LAUNCH_GATE_FRESH_CHUNK_MS,
+  orderLongestTimeoutFirst,
   seatCanLaunch,
 } from '../launch-gate'
 
@@ -177,6 +178,49 @@ describe('claimNextLaunchableIndex (generatePredictions worker gate)', () => {
         launchedThisChunk: { launched: 0 },
       })
     ).toBe(false)
+  })
+})
+
+describe('orderLongestTimeoutFirst', () => {
+  it('claims a 240s seat first on a full tick and defers it if shorter seats run first after overhead', () => {
+    const start = 1_000_000
+    const tickBudgetMs = 300_000
+    const deadlineAtMs = start + tickBudgetMs
+    const roster = [
+      { model_id: 'short-a', timeoutMs: 1_000 },
+      { model_id: 'short-b', timeoutMs: 5_000 },
+      { model_id: 'deepseek-v4-pro', timeoutMs: 240_000 },
+    ]
+    const ordered = orderLongestTimeoutFirst(roster, 60_000)
+    expect(ordered.map((entry) => entry.model_id)).toEqual(['deepseek-v4-pro', 'short-b', 'short-a'])
+
+    const fresh = claimNextLaunchableIndex(ordered, { nextIndex: 0 }, {
+      nowMs: start,
+      deadlineAtMs,
+      defaultTimeoutMs: 60_000,
+      tickBudgetMs,
+      launchedThisChunk: { launched: 0 },
+    })
+    expect(fresh).toBe(0)
+    expect(ordered[fresh!]!.model_id).toBe('deepseek-v4-pro')
+
+    const lateCursor = { nextIndex: 0 }
+    const launched: string[] = []
+    const deferred: string[] = []
+    for (;;) {
+      const i = claimNextLaunchableIndex(roster, lateCursor, {
+        nowMs: start + 70_000,
+        deadlineAtMs,
+        defaultTimeoutMs: 60_000,
+        tickBudgetMs,
+        launchedThisChunk: { launched: launched.length },
+        onDeferred: (index) => deferred.push(roster[index]!.model_id),
+      })
+      if (i === null) break
+      launched.push(roster[i]!.model_id)
+    }
+    expect(launched).toEqual(['short-a', 'short-b'])
+    expect(deferred).toEqual(['deepseek-v4-pro'])
   })
 })
 

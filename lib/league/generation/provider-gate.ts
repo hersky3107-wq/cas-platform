@@ -22,10 +22,11 @@ export function rosterProviderRoute(entry: ProviderRouteEntry): string {
   return entry.provider_key
 }
 
-type Waiter = { route: string; resolve: () => void }
+type Waiter = { route: string; priority: number; resolve: () => void }
 
 export type ProviderCallGate = {
-  acquire(route: string): Promise<void>
+  /** `priority` is the seat timeout. Higher waits jump the queue when a slot frees. */
+  acquire(route: string, priority?: number): Promise<void>
   release(route: string): void
   readonly inFlight: number
   readonly openRouterInFlight: number
@@ -59,14 +60,17 @@ export function createProviderCallGate(limits?: {
   }
 
   function pump(): void {
+    let best = -1
     for (let i = 0; i < waiters.length; i++) {
       const waiter = waiters[i]!
       if (!fits(waiter.route)) continue
-      waiters.splice(i, 1)
-      grant(waiter.route)
-      waiter.resolve()
-      return
+      if (best === -1 || waiter.priority > waiters[best]!.priority) best = i
     }
+    if (best === -1) return
+    const waiter = waiters[best]!
+    waiters.splice(best, 1)
+    grant(waiter.route)
+    waiter.resolve()
   }
 
   return {
@@ -82,13 +86,13 @@ export function createProviderCallGate(limits?: {
     get maxOpenRouterSeen() {
       return maxOpenRouterSeen
     },
-    acquire(route: string) {
+    acquire(route: string, priority = 0) {
       if (fits(route)) {
         grant(route)
         return Promise.resolve()
       }
       return new Promise<void>((resolve) => {
-        waiters.push({ route, resolve })
+        waiters.push({ route, priority, resolve })
       })
     },
     release(route: string) {

@@ -32,7 +32,7 @@ import {
 import { persistAnchorPrice } from '@/lib/league/price-anchor'
 import { generateExtraSeats } from '@/lib/league/extra/run'
 import { extraSeatIds, officialRowsForConsensus } from '@/lib/league/extra/seats'
-import { claimNextLaunchableIndex, LAUNCH_GATE_FRESH_CHUNK_MS } from '@/lib/league/generation/launch-gate'
+import { claimNextLaunchableIndex, entryTimeoutMs, LAUNCH_GATE_FRESH_CHUNK_MS } from '@/lib/league/generation/launch-gate'
 import { coalesceRoundPacketBuild } from '@/lib/league/generation/parallel-policy'
 import { rosterProviderRoute, type ProviderCallGate } from '@/lib/league/generation/provider-gate'
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
@@ -553,7 +553,7 @@ async function callOncePermitted(
 ): Promise<RawCall> {
   if (!gate) return callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
   const route = rosterProviderRoute(entry)
-  await gate.acquire(route)
+  await gate.acquire(route, timeoutMs)
   try {
     return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
   } finally {
@@ -1121,11 +1121,28 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   onRoundResolved?.({ id: round.id, created, rosterSize: roster.length + extraPending.length })
 
   if (!wantsOfficial) {
+    const deferredModelIds: string[] = []
+    const fullBudgetDeferralIds: string[] = []
     const extraResults = extraPending.length
       ? await generateExtraSeats({
           roundId: round.id,
           excludeModelIds: opts.excludeModelIds,
           onSeatResult: (result) => onModelResult?.(result as ModelRunResult),
+          // Gate, deadline, and longest-first apply only when the parallel
+          // runner passed a call gate. Flag-off extra stage omits it, so the
+          // sequential seat loop below is unchanged.
+          ...(opts.callGate
+            ? {
+                callGate: opts.callGate,
+                deadlineAtMs: opts.deadlineAtMs,
+                tickBudgetMs:
+                  opts.tickBudgetMs && opts.tickBudgetMs > 0 ? opts.tickBudgetMs : LEAGUE_JOB_TICK_BUDGET_MS,
+                onDeferredSeat: (modelId: string, fullBudget: boolean) => {
+                  deferredModelIds.push(modelId)
+                  if (fullBudget) fullBudgetDeferralIds.push(modelId)
+                },
+              }
+            : {}),
         })
       : []
     const extraCost = extraResults.reduce((sum, row) => sum + row.cost_usd, 0)
@@ -1146,6 +1163,14 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       total_cost_usd: Number(extraCost.toFixed(6)),
       capped: false,
       cost_cap_usd: costCap,
+      ...(opts.callGate && opts.trackChunkStats
+        ? {
+            deferredSeats: deferredModelIds.length,
+            http429: 0,
+            deferredModelIds,
+            fullBudgetDeferralIds,
+          }
+        : {}),
     }
   }
   const adapter = adapterForLedgerCategory(round.category)
@@ -1166,6 +1191,11 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
     ? await loadOrBuildPersistedPacket(round, costCap)
     : await buildAndPersistRoundPacket(round, costCap)
   const prompts = buildRoundPrompts(contract, round, pkt.injection, pkt.dataPacket.error)
+
+  // Parallel only. Flag-off (no call gate) keeps getRoster order.
+  if (opts.callGate) {
+    roster.sort((a, b) => entryTimeoutMs(b, timeoutMs) - entryTimeoutMs(a, timeoutMs))
+  }
 
   const results: ModelRunResult[] = []
   let runningCost = pkt.researchCostUsd

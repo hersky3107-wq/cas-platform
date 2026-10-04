@@ -137,7 +137,9 @@ export async function GET(req: Request) {
 
     const generation = await generationStateFor(card)
     const payload: CardData = { ...card, generation }
-    return NextResponse.json(payload)
+    return NextResponse.json(payload, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
   } catch (e: unknown) {
     if (e instanceof CardNotFoundError) {
       // Admin chip+horizon with no row used to 404 (empty "카드 없음"). Mirror

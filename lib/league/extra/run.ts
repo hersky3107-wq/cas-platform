@@ -76,7 +76,13 @@ import {
   type ConsensusCaller,
   type ConsensusLeagueInput,
 } from './consensus'
-import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeatId } from './seats'
+import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeat, type ExtraSeatId } from './seats'
+import {
+  claimNextLaunchableIndex,
+  LAUNCH_GATE_FRESH_CHUNK_MS,
+  orderLongestTimeoutFirst,
+} from '../generation/launch-gate'
+import { rosterProviderRoute, type ProviderCallGate } from '../generation/provider-gate'
 import { visibleLeagueText } from '../visible-disclosure'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isRealEstateLedgerCategory } from './real-estate-category'
@@ -174,6 +180,14 @@ export type GenerateExtraSeatsOpts = {
    * Never pass research / TIPS / consensus here. Sentiment must not use this.
    */
   priceSeries?: ExtraPriceSeries | null
+  /**
+   * Parallel model tick only. Absent on the flag-off extra stage, which keeps
+   * the sequential seat loop.
+   */
+  callGate?: ProviderCallGate
+  deadlineAtMs?: number
+  tickBudgetMs?: number
+  onDeferredSeat?: (modelId: string, fullBudget: boolean) => void
 }
 
 async function loadRound(roundId: string): Promise<ExtraRoundRow> {
@@ -1032,22 +1046,114 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
   const sentimentCall = opts.sentimentCaller ?? defaultSentimentCaller()
   const consensusCall = opts.consensusCaller ?? defaultConsensusCaller()
   const crowCall = opts.crowCaller ?? defaultCrowCaller()
-  const out: ExtraSeatOutcome[] = []
+  const runSeat = (seat: ExtraSeat): Promise<ExtraSeatOutcome> =>
+    seat.kind === 'divination'
+      ? runDivinationSeat(round, read)
+      : seat.kind === 'history'
+        ? runHistorySeat(round, historyCall, opts.priceSeries)
+        : seat.kind === 'sentiment'
+          ? runSentimentSeat(round, sentimentCall)
+          : seat.kind === 'consensus'
+            ? runConsensusSeat(round, consensusCall)
+            : runCrowSeat(round, crowCall, opts.priceSeries)
 
+  if (opts.callGate) {
+    return runExtraSeatsOnSharedGate(opts, pending, runSeat)
+  }
+
+  const out: ExtraSeatOutcome[] = []
   for (const seat of pending) {
-    const result =
-      seat.kind === 'divination'
-        ? await runDivinationSeat(round, read)
-        : seat.kind === 'history'
-          ? await runHistorySeat(round, historyCall, opts.priceSeries)
-          : seat.kind === 'sentiment'
-            ? await runSentimentSeat(round, sentimentCall)
-            : seat.kind === 'consensus'
-              ? await runConsensusSeat(round, consensusCall)
-              : await runCrowSeat(round, crowCall, opts.priceSeries)
+    const result = await runSeat(seat)
     out.push(result)
     opts.onSeatResult?.(result)
   }
+  return out
+}
+
+function extraSeatTimeoutMs(seat: ExtraSeat): number {
+  if (seat.model_id === 'crow') return CROW_TIMEOUT_MS
+  if (seat.model_id === 'divination') return 30_000
+  const engine =
+    seat.model_id === 'history'
+      ? HISTORY_ENGINE_MODEL_ID
+      : seat.model_id === 'sentiment'
+        ? SENTIMENT_ENGINE_MODEL_ID
+        : seat.model_id === 'consensus'
+          ? CONSENSUS_ENGINE_MODEL_ID
+          : null
+  if (!engine) return 60_000
+  const entry = lookupRosterEntry(engine)
+  return entry?.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : 60_000
+}
+
+function extraSeatRoute(seat: ExtraSeat): string {
+  if (seat.model_id === 'divination') return 'divination'
+  const engine =
+    seat.model_id === 'history'
+      ? HISTORY_ENGINE_MODEL_ID
+      : seat.model_id === 'sentiment'
+        ? SENTIMENT_ENGINE_MODEL_ID
+        : seat.model_id === 'consensus'
+          ? CONSENSUS_ENGINE_MODEL_ID
+          : seat.model_id === 'crow'
+            ? CROW_ENGINE_MODEL_ID
+            : null
+  const entry = engine ? lookupRosterEntry(engine) : undefined
+  return entry ? rosterProviderRoute(entry) : seat.model_id
+}
+
+/**
+ * Parallel tick: extra seats share the official call gate and start longest
+ * timeout first. Flag-off never reaches this.
+ */
+async function runExtraSeatsOnSharedGate(
+  opts: GenerateExtraSeatsOpts,
+  pending: ExtraSeat[],
+  runSeat: (seat: ExtraSeat) => Promise<ExtraSeatOutcome>,
+): Promise<ExtraSeatOutcome[]> {
+  const gate = opts.callGate
+  if (!gate) return []
+  const ordered = orderLongestTimeoutFirst(
+    pending.map((seat) => ({ seat, timeoutMs: extraSeatTimeoutMs(seat) })),
+    60_000,
+  )
+  const cursor = { nextIndex: 0 }
+  const launchedThisChunk = { launched: 0 }
+  const out: ExtraSeatOutcome[] = []
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = claimNextLaunchableIndex(ordered, cursor, {
+        nowMs: Date.now(),
+        deadlineAtMs: opts.deadlineAtMs,
+        defaultTimeoutMs: 60_000,
+        tickBudgetMs: opts.tickBudgetMs,
+        launchedThisChunk,
+        onDeferred: (index) => {
+          const skipped = ordered[index]
+          if (!skipped || !opts.onDeferredSeat) return
+          let fullBudget = false
+          if (opts.deadlineAtMs !== undefined && opts.tickBudgetMs !== undefined && opts.tickBudgetMs > 0) {
+            const elapsed = opts.tickBudgetMs - (opts.deadlineAtMs - Date.now())
+            if (elapsed >= 0 && elapsed <= LAUNCH_GATE_FRESH_CHUNK_MS) fullBudget = true
+          }
+          opts.onDeferredSeat(skipped.seat.model_id, fullBudget)
+        },
+      })
+      if (i === null) return
+      const seat = ordered[i]!.seat
+      const route = extraSeatRoute(seat)
+      await gate.acquire(route, extraSeatTimeoutMs(seat))
+      try {
+        const result = await runSeat(seat)
+        out.push(result)
+        opts.onSeatResult?.(result)
+      } finally {
+        gate.release(route)
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.max(1, ordered.length) }, () => worker())
+  await Promise.all(workers)
   return out
 }
 

@@ -32,7 +32,6 @@ import {
   generationClaimBudget,
   isOfficialGenerationStage,
   OFFICIAL_GENERATION_TIERS,
-  type OfficialGenerationTier,
 } from './parallel-policy'
 import type { ProviderCallGate } from './provider-gate'
 import {
@@ -237,12 +236,28 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
 
   // Renew lease + heartbeat every 20s while model calls run, so a slow chunk
   // is never mistaken for dead (oracle's runParallelWithLeaseHeartbeat).
+  // A packet-only tick sets `packetTickReleased` so an in-flight renewal
+  // cannot put the lease back after we null the heartbeat for an immediate
+  // re-claim. Flag-off never sets the flag, so its renewal write is unchanged.
+  let packetTickReleased = false
   const heartbeat = setInterval(() => {
+    if (packetTickReleased) return
     const at = now()
-    void deps.store.updateJob(job.id, {
+    const patch = {
       last_heartbeat_at: at.toISOString(),
       lease_until: new Date(at.getTime() + LEAGUE_JOB_LEASE_SECONDS * 1_000).toISOString(),
-    })
+    }
+    if (deps.parallelTiers === true) {
+      void (async () => {
+        if (packetTickReleased) return
+        await deps.store.updateJob(job.id, patch)
+        if (packetTickReleased) {
+          await deps.store.updateJob(job.id, { lease_until: null, last_heartbeat_at: null })
+        }
+      })()
+      return
+    }
+    void deps.store.updateJob(job.id, patch)
   }, LEAGUE_JOB_HEARTBEAT_SECONDS * 1_000)
 
   let produced = 0
@@ -274,6 +289,21 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
     packetMs = loaded.packetMs
     reusedPacket = loaded.reused
 
+    // Flag-on only. A just-built packet ends this tick with no model calls so
+    // the next claim gets a full tick budget. Null heartbeat (not "now") is
+    // what listClaimableGenerationJobs already treats as immediately claimable
+    // — a fresh heartbeat would wait LEAGUE_JOB_STALE_HEARTBEAT_SECONDS.
+    if (deps.parallelTiers === true && loaded.justBuilt) {
+      packetTickReleased = true
+      clearInterval(heartbeat)
+      console.log(`[league-parallel] round=${job.round_id} packet_tick=true`)
+      await endChunk({ stage: job.stage, last_heartbeat_at: null, attempt_count: 0 })
+      return
+    }
+    if (deps.parallelTiers === true) {
+      console.log(`[league-parallel] round=${job.round_id} packet_tick=false`)
+    }
+
     const rows = await deps.store.listRoundModelRows(job.round_id)
     const written = excludedModelIds(rows, job.created_at)
 
@@ -297,7 +327,7 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
           await endChunk({ stage })
           return
         }
-        stage = 'extra'
+        stage = 'finalize'
         await deps.store.updateJob(job.id, { stage, last_heartbeat_at: now().toISOString() })
         if (Date.now() - startedAtMs > tickBudgetMs) {
           await endChunk({ stage })
@@ -392,12 +422,15 @@ export async function runLeagueGenerationChunk(job: LeagueGenerationJob, deps: L
 async function loadClosedBookPacket(
   roundId: string,
   deps: LeagueRunnerDeps,
-): Promise<{ reused: boolean; packetMs: number }> {
-  if (!deps.ensurePacket) return { reused: false, packetMs: 0 }
+): Promise<{ reused: boolean; packetMs: number; justBuilt: boolean }> {
+  if (!deps.ensurePacket) return { reused: false, packetMs: 0, justBuilt: false }
   const info = await deps.ensurePacket(roundId)
-  if (info && info.built === false) return { reused: true, packetMs: 0 }
+  if (info && info.built === false) return { reused: true, packetMs: 0, justBuilt: false }
   const packetMs = info && typeof info.packetMs === 'number' ? info.packetMs : 0
-  return { reused: false, packetMs }
+  // `built: true` is the only signal that this tick persisted the packet.
+  // A missing return (or no ensurePacket) must not look like a fresh build,
+  // or a parallel chunk with no packet hook would launch zero models.
+  return { reused: false, packetMs, justBuilt: info?.built === true }
 }
 
 function uniqueIds(ids: readonly string[]): string[] {
@@ -410,10 +443,13 @@ function fullBudgetDeferralLabel(jobId: string, ids: readonly string[]): string 
   return unique.map((id) => `${id}:${recordFullBudgetDeferral(jobId, id)}`).join(',')
 }
 
+/** Official tiers plus extra. Extra-vs-crowd stays in finalize, not here. */
+const PARALLEL_LAUNCH_TIERS = [...OFFICIAL_GENERATION_TIERS, 'extra'] as const
+
 /**
- * Flag-on official phase: packet once, then premier/challenger/world/scout
- * together. Returns true when every official seat has a row (answer or
- * terminal 결번). Extras stay on the sequential path after this returns.
+ * Flag-on model tick: premier/challenger/world/scout/extra together, one
+ * gate. Returns true when every one of those seats has a row (answer or
+ * terminal 결번). Comparison against the 40 is finalize's job.
  */
 async function runOfficialTiersInParallel(
   job: LeagueGenerationJob,
@@ -424,8 +460,8 @@ async function runOfficialTiersInParallel(
   onModelResult: (modelId: string) => void,
   absorbStats: (stats: void | TierChunkStats) => void,
 ): Promise<boolean> {
-  const officialIds = OFFICIAL_GENERATION_TIERS.flatMap((tier) => deps.tierModelIds(tier))
-  const outstanding = () => officialIds.filter((id) => !written.has(id))
+  const seatIds = PARALLEL_LAUNCH_TIERS.flatMap((tier) => deps.tierModelIds(tier))
+  const outstanding = () => seatIds.filter((id) => !written.has(id))
   if (outstanding().length === 0) return true
 
   const phaseStart = Date.now()
@@ -433,9 +469,12 @@ async function runOfficialTiersInParallel(
   let deferred = 0
   let http429 = 0
   const settled = await Promise.allSettled(
-    OFFICIAL_GENERATION_TIERS.map((tier: OfficialGenerationTier) => {
+    PARALLEL_LAUNCH_TIERS.map((tier) => {
       const start = Date.now()
       console.log(`[league-parallel] round=${job.round_id} tier=${tier} start_ms=${start - phaseStart}`)
+      if (tier === 'extra') {
+        console.log(`[league-parallel] round=${job.round_id} extras=start`)
+      }
       return deps
         .generate({
           roundId: job.round_id,
@@ -459,6 +498,11 @@ async function runOfficialTiersInParallel(
           console.log(
             `[league-parallel] round=${job.round_id} tier=${tier} end_ms=${end - phaseStart} elapsed_ms=${end - start} deferred=${tierDeferred} http_429=${tier429}`,
           )
+          if (tier === 'extra') {
+            console.log(
+              `[league-parallel] round=${job.round_id} extras=end elapsed_ms=${end - start} deferred=${tierDeferred}`,
+            )
+          }
         })
     }),
   )
@@ -467,7 +511,7 @@ async function runOfficialTiersInParallel(
   )
 
   const rejected = settled.filter((item) => item.status === 'rejected')
-  if (rejected.length === OFFICIAL_GENERATION_TIERS.length) {
+  if (rejected.length === PARALLEL_LAUNCH_TIERS.length) {
     const reason = rejected[0]
     const message =
       reason && reason.status === 'rejected' && reason.reason instanceof Error

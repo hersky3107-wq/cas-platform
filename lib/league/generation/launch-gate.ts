@@ -96,3 +96,21 @@ export function claimNextLaunchableIndex(
   }
   return null
 }
+
+/**
+ * Parallel launch order. Longer configured timeouts go first so a 240s seat
+ * is claimed while the tick budget is still full. Equal timeouts keep the
+ * incoming order (stable).
+ */
+export function orderLongestTimeoutFirst<T extends LaunchGateEntry>(
+  roster: readonly T[],
+  defaultTimeoutMs: number,
+): T[] {
+  return roster
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const delta = entryTimeoutMs(b.entry, defaultTimeoutMs) - entryTimeoutMs(a.entry, defaultTimeoutMs)
+      return delta !== 0 ? delta : a.index - b.index
+    })
+    .map((row) => row.entry)
+}
