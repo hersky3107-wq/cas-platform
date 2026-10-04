@@ -9,10 +9,15 @@ import {
   addUtcDaysYmd,
   baseRateFromHistory,
   brandHeldQueriedPosition,
-  formatShrunkBaseRate,
+  formatOverlappingBaseRate,
   nearestOnOrBefore,
   type SnapshotBrandRow,
 } from './grade'
+import {
+  BRAND_TABLE_OTHER,
+  candidateListFromRanking,
+  isBrandTableParts,
+} from './brand-table'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 
 export type AirankNewsFinding = {
@@ -104,9 +109,11 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
     rank1?.score != null && rank2?.score != null ? Number((rank1.score - rank2.score).toFixed(2)) : null
 
   const rates = baseRateFromHistory({ parts, horizon, datedBrandRanks: rankingsByDate })
-  const changeLine = formatShrunkBaseRate(rates.rank1Changes, rates.nPairs)
+  const changeLine = formatOverlappingBaseRate(rates.rank1Changes, rates.nPairs, rates.effectiveN)
   const holdLine =
-    parts.kind === 'model_rank1' ? 'none measured' : formatShrunkBaseRate(rates.subjectHeld, rates.subjectObserved)
+    parts.kind === 'model_rank1' || isBrandTableParts(parts)
+      ? 'none measured'
+      : formatOverlappingBaseRate(rates.subjectHeld, rates.subjectObserved, rates.effectiveN)
 
   const yesBits: string[] = []
   const noBits: string[] = []
@@ -130,6 +137,17 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
       ? input.news.map((n) => `NEWS (${n.query}): ${none(n.summary)}`)
       : ['NEWS: none measured']
 
+  const candidates = candidateListFromRanking(sorted)
+  const baselineTop = top.slice(0, 5).map((r) => r.brand)
+  const candidateBlock = isBrandTableParts(parts)
+    ? [
+        '',
+        `CANDIDATES (choose exactly 5 distinct, in rank order, from this list only): ${candidates.join(' | ')}`,
+        `  Include "${BRAND_TABLE_OTHER}" only for a brand that is not among the current top 12.`,
+        `BASELINE TOP5 (persistence at open — current ranking if it held): ${baselineTop.join(' | ')}`,
+      ]
+    : []
+
   const lines = [
     `ATTRIBUTION: ${airankAttributionLine(input.locale ?? 'ko')} / ${LMARENA_ATTRIBUTION}`,
     `FIELD: ${parts.arena} / ${parts.category} as of ${current?.date ?? asOfYmd}`,
@@ -138,6 +156,7 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
     'BRAND RANKING (top 15 — best model per brand; score gaps AI input only):',
     top.length ? rankingLines(top).join('\n') : '  none measured',
     queriedExtras.length ? rankingLines(queriedExtras).join('\n') : null,
+    ...candidateBlock,
     '',
     'RANK TREND:',
     `  ${trendLine(parts.subject, rankingsByDate, current?.date ?? asOfYmd, 4)}`,
@@ -155,6 +174,7 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
     `BASE RATE (6-month history, horizon ${horizon}, overlapping daily windows):`,
     `  #1 brand changed within horizon: ${changeLine}`,
     `  subject held queried position: ${holdLine}`,
+    `  base rate, windows=${rates.nPairs}, effective n=${rates.effectiveN}, shrunk toward 50%`,
     '',
     ...newsLines,
     '',

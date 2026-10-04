@@ -19,6 +19,7 @@ import { LEAGUE_JOB_SWEEP_BATCH_SIZE } from '@/lib/league/generation/policy'
 import { sweepLeagueDeepRuns } from '@/lib/league/generation/deep-runner'
 import { sweepLeagueGenerationJobs } from '@/lib/league/generation/runner'
 import { refreshAiLeaderboardDaily } from '@/lib/league/ai-ranking/ingest'
+import { ensureAirankTableRounds } from '@/lib/league/ai-ranking/schedule'
 import { refreshKrxDailyData } from '@/lib/league/krx-daily-refresh-live'
 import { dispatchKrElectionAlerts } from '@/lib/league/politics/kr-election-alerts'
 import { supabaseKrElectionAlertStore } from '@/lib/league/politics/kr-election-store'
@@ -52,8 +53,12 @@ export async function GET(req: Request) {
       console.log('[league-generate] ai-leaderboard skipped reason=error')
       return { action: 'skip' as const, reason: 'error' as const }
     })
+    const airankTable = await ensureAirankTableRounds().catch((e: unknown) => {
+      console.log('[league-generate] airank-table skipped reason=error')
+      return { due: 0, created: 0, existing: 0, errors: [e instanceof Error ? e.message : 'error'] }
+    })
 
-    return NextResponse.json({ ok: true, summary: { generation, deep, electionAlerts, krxRefresh, aiLeaderboard } })
+    return NextResponse.json({ ok: true, summary: { generation, deep, electionAlerts, krxRefresh, aiLeaderboard, airankTable } })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })

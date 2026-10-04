@@ -5,7 +5,8 @@ import { fetchDailyCloses, mapInstrumentToTwelveData } from '@/lib/league/market
 import { adapterForInstrument, adapterForLedgerCategory } from '@/lib/league/gateway/adapters/registry.server'
 import { gradePlanFor } from '@/lib/league/gateway/grade-plan'
 import { gradeKrBoxOfficeInstrument } from '@/lib/league/entertainment/kobis'
-import { resolveAirankOfficial } from '@/lib/league/ai-ranking/grade.server'
+import { gradeBrandTableChildren, resolveAirankOfficial } from '@/lib/league/ai-ranking/grade.server'
+import { isBrandTableInstrument } from '@/lib/league/ai-ranking/brand-table'
 import { VOID_UNRESOLVABLE_REASON } from '@/lib/league/manual-grade/types'
 import { parkRoundForManual } from '@/lib/league/manual-grade/queue'
 import { decodeKrStockInstrument } from '@/lib/league/korea-equity-catalog'
@@ -295,6 +296,14 @@ export const supabaseGradingStore: GradingStore = {
    * judge.
    */
   async gradeChildren(roundId, direction: ResolutionDirection) {
+    const { data: instRow } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select('instrument')
+      .eq('id', roundId)
+      .maybeSingle()
+    if (instRow && isBrandTableInstrument(String((instRow as { instrument?: string }).instrument))) {
+      return gradeBrandTableChildren(roundId)
+    }
     const kind = await roundPropositionKind(roundId)
     const { winner, loser } = gradedSidesFor(kind, direction)
     const hit = await supabaseAdmin

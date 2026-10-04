@@ -412,4 +412,6 @@ export type CardData = {
    * non-sports card. Computed at read time from consensus + fixture cache.
    */
   sportsMarket?: import('./sports-market').SportsMarketView | null
+  /** AIRANK brand_table: Borda table, current vs actual, persistence baseline. */
+  brandTable?: import('./ai-ranking/brand-table').BrandTableView | null
 }

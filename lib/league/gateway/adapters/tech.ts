@@ -277,10 +277,10 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
         const locale = airankLocale(slots)
         const fromDeadline = airankHorizonFromDeadline(parts.deadlineYmd, now)
         const horizon =
-          fromDeadline.ok
-            ? fromDeadline.horizon
-            : slots.horizon && isAirankHorizon(slots.horizon)
-              ? slots.horizon
+          slots.horizon && isAirankHorizon(slots.horizon)
+            ? slots.horizon
+            : fromDeadline.ok
+              ? fromDeadline.horizon
               : '1m'
         return {
           proposition_text: airankPropositionText(parts, locale),

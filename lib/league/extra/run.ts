@@ -86,6 +86,12 @@ import { rosterProviderRoute, type ProviderCallGate } from '../generation/provid
 import { visibleLeagueText } from '../visible-disclosure'
 import { selfVendorFlags } from '../ai-ranking/self-vendor'
 import { isAirankInstrument, parseAirankInstrument } from '../ai-ranking/instrument'
+import {
+  extractBrandTableCandidates,
+  isBrandTableInstrument,
+  parseBrandTablePick,
+} from '../ai-ranking/brand-table'
+import { BRAND_TABLE_PICK_PROMPT } from '../ai-ranking/brand-table-prompts'
 import { leaderboardStoreArena, LMARENA_SOURCE } from '../ai-ranking/ingest'
 import { brandsInCamp, isAirankCamp } from '../ai-ranking/brands'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
@@ -266,6 +272,92 @@ async function upsertExtraPrediction(row: {
     { onConflict: 'round_id,model_id' },
   )
   if (error) throw new Error(`extra seat upsert ${row.model_id}: ${error.message}`)
+}
+
+async function silentBrandTableAbstain(
+  round: ExtraRoundRow,
+  modelId: ExtraSeatId,
+): Promise<ExtraSeatOutcome> {
+  const seat = lookupExtraSeat(modelId)!
+  await upsertExtraPrediction({
+    roundId: round.id,
+    category: round.category,
+    model_id: modelId,
+    brand: seat.brand,
+    direction: null,
+    probability: null,
+    qualifier_text: null,
+    reasoning_snippet: null,
+    cost_usd: 0,
+    estimated_cost_usd: 0,
+  })
+  return { ...baseOutcome(modelId, seat.brand), status: 'abstain' }
+}
+
+async function runBrandTablePickSeat(
+  round: ExtraRoundRow,
+  modelId: 'consensus' | 'crow',
+  call: (args: { systemPrompt: string; userPrompt: string }) => Promise<{
+    text: string | null
+    costUsd?: number | null
+    promptTokens?: number | null
+    completionTokens?: number | null
+    error?: string
+  }>,
+): Promise<ExtraSeatOutcome> {
+  const seat = lookupExtraSeat(modelId)!
+  const candidates = extractBrandTableCandidates(round.closed_book_packet_text)
+  if (candidates.length < 2) return silentBrandTableAbstain(round, modelId)
+  try {
+    const raw = await call({
+      systemPrompt: BRAND_TABLE_PICK_PROMPT,
+      userPrompt: `${round.proposition_text}\nCANDIDATES: ${candidates.join(' | ')}\n${BRAND_TABLE_PICK_PROMPT}`,
+    })
+    if (raw.error) throw new Error(raw.error)
+    const parsed = parseBrandTablePick(raw.text, candidates)
+    if (!parsed.ok) return silentBrandTableAbstain(round, modelId)
+    const costUsd = Number((raw.costUsd ?? 0).toFixed(6))
+    await upsertExtraPrediction({
+      roundId: round.id,
+      category: round.category,
+      model_id: modelId,
+      brand: seat.brand,
+      direction: 'yes',
+      probability: parsed.probability,
+      qualifier_text: parsed.pick,
+      reasoning_snippet: parsed.rationale,
+      cost_usd: costUsd,
+      estimated_cost_usd: costUsd,
+      prompt_tokens: raw.promptTokens,
+      completion_tokens: raw.completionTokens,
+    })
+    return {
+      ...baseOutcome(modelId, seat.brand),
+      direction: 'yes',
+      probability: parsed.probability,
+      qualifier_text: parsed.pick,
+      reasoning_snippet: parsed.rationale,
+      cost_usd: costUsd,
+      estimated_cost_usd: costUsd,
+      status: 'ok',
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'brand_table pick failed'
+    await upsertExtraPrediction({
+      roundId: round.id,
+      category: round.category,
+      model_id: modelId,
+      brand: seat.brand,
+      direction: null,
+      probability: null,
+      qualifier_text: null,
+      reasoning_snippet: null,
+      cost_usd: 0,
+      estimated_cost_usd: 0,
+      error: message,
+    })
+    return { ...baseOutcome(modelId, seat.brand), status: 'error', error: message.slice(0, 500) }
+  }
 }
 
 function baseOutcome(id: ExtraSeatId, brand: string): ExtraSeatOutcome {
@@ -1128,8 +1220,13 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
   const sentimentCall = opts.sentimentCaller ?? defaultSentimentCaller()
   const consensusCall = opts.consensusCaller ?? defaultConsensusCaller()
   const crowCall = opts.crowCaller ?? defaultCrowCaller()
-  const runSeat = (seat: ExtraSeat): Promise<ExtraSeatOutcome> =>
-    seat.kind === 'divination'
+  const runSeat = (seat: ExtraSeat): Promise<ExtraSeatOutcome> => {
+    if (isBrandTableInstrument(round.instrument)) {
+      if (seat.kind === 'consensus') return runBrandTablePickSeat(round, 'consensus', consensusCall)
+      if (seat.kind === 'crow') return runBrandTablePickSeat(round, 'crow', crowCall)
+      return silentBrandTableAbstain(round, seat.model_id)
+    }
+    return seat.kind === 'divination'
       ? runDivinationSeat(round, read)
       : seat.kind === 'history'
         ? runHistorySeat(round, historyCall, opts.priceSeries)
@@ -1138,6 +1235,7 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
           : seat.kind === 'consensus'
             ? runConsensusSeat(round, consensusCall)
             : runCrowSeat(round, crowCall, opts.priceSeries)
+  }
 
   if (opts.callGate) {
     return runExtraSeatsOnSharedGate(opts, pending, runSeat)

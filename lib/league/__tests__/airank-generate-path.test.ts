@@ -88,6 +88,15 @@ describe('generate / gateway error UX', () => {
   })
 })
 
+describe('tech hub ranking-table button', () => {
+  it('renders the picker above the free prompt and generate-on-miss', () => {
+    expect(HUB).toContain('AirankRankingPicker')
+    expect(HUB.indexOf('<AirankRankingPicker')).toBeLessThan(HUB.indexOf('<FreeformPromptBox'))
+    expect(HUB).toContain("result?.missing")
+    expect(HUB).toContain('/api/league/generate')
+  })
+})
+
 describe('tech hub freeform panel copy', () => {
   it('has no 준비 중 on the tech panel', () => {
     const ko = getLeagueUiPack('ko').catalog.freeformPanel.tech

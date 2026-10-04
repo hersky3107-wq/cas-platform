@@ -18,6 +18,18 @@ import {
   decodeAirankInstrument,
   airankAllPropositions,
 } from './ai-ranking/instrument'
+import {
+  buildBrandTableView,
+  candidateListFromRanking,
+  decodeActualTableOutcome,
+  decodeBrandTableRanking,
+  gradeBrandTableRanking,
+  isBrandTableInstrument,
+  mapActualBrandsToCandidates,
+} from './ai-ranking/brand-table'
+import { nearestOnOrBefore } from './ai-ranking/grade'
+import { brandRankingFromStore, listLeaderboardPublishDates, LMARENA_SOURCE } from './ai-ranking/ingest'
+import { officialRowsForConsensus } from './extra/seats'
 import { backfillTechPropositions } from './proposition-i18n'
 
 /**
@@ -407,7 +419,60 @@ export async function fetchCardData(
       buildSportsMarketView({ consensus: card.consensus, marketBaselinePct: null }),
     )
   }
+  if (isBrandTableInstrument(round.instrument)) {
+    card.brandTable = await loadBrandTableCardView(round, card.models).catch(() => null)
+  }
   return card
+}
+
+async function loadBrandTableCardView(
+  round: RoundRow,
+  models: CardData['models'],
+): Promise<CardData['brandTable']> {
+  const parts = decodeAirankInstrument(round.instrument)
+  if (!parts) return null
+  const dates = await listLeaderboardPublishDates(parts.arena, parts.category)
+  const latest = dates.slice().sort().at(-1)
+  const openedYmd = String(round.opened_at ?? '').slice(0, 10)
+  const current = latest
+    ? await brandRankingFromStore(LMARENA_SOURCE, parts.arena, parts.category, latest)
+    : []
+  const baselineDate = openedYmd ? nearestOnOrBefore(dates, openedYmd) : null
+  const baseline = baselineDate
+    ? await brandRankingFromStore(LMARENA_SOURCE, parts.arena, parts.category, baselineDate)
+    : []
+  const official = officialRowsForConsensus(models)
+    .map((m) => decodeBrandTableRanking(m.qualifierText))
+    .filter((r) => r.length >= 5)
+  const decodedActual = decodeActualTableOutcome(round.actual_outcome)
+  const candidates = baseline.length ? candidateListFromRanking(baseline) : candidateListFromRanking(current)
+  const actualNames = decodedActual.ranking.length
+    ? mapActualBrandsToCandidates(decodedActual.ranking, candidates)
+    : []
+  const actualRows = actualNames.map((brand, i) => ({
+    brand: brand as import('./ai-ranking/brands').MappedVendorBrand,
+    model: '',
+    rank: i + 1,
+    score: null,
+  }))
+  const seatGrades =
+    actualNames.length > 0
+      ? officialRowsForConsensus(models)
+          .map((m) => {
+            const ranking = decodeBrandTableRanking(m.qualifierText)
+            const predicted = ranking.length ? ranking : m.qualifierText ? [m.qualifierText] : []
+            if (!predicted.length) return null
+            return gradeBrandTableRanking(predicted, actualNames)
+          })
+          .filter((g): g is NonNullable<typeof g> => g != null)
+      : null
+  return buildBrandTableView({
+    officialRankings: official,
+    current,
+    actual: actualRows.length ? actualRows : null,
+    baseline: baseline.length ? baseline : null,
+    seatGrades,
+  })
 }
 
 async function loadSportsMarket(card: CardData, instrument: string) {

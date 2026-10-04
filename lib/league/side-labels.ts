@@ -287,6 +287,22 @@ export function sideLabelsFor(
       let noWord = pack.rank1.no
       let named = false
 
+      if (parts?.kind === 'brand_table') {
+        const tableWord =
+          locale === 'ko' ? '순위표' : locale === 'ja' ? '順位表' : locale === 'zh-TW' ? '排名表' : 'Top 5'
+        const badge = (side: ModelSide | null): string => (slot(side) === 'a' ? tableWord : t.direction.noCallBadge)
+        return {
+          kind,
+          sides,
+          glyphs,
+          slot,
+          glyph,
+          badge,
+          answer: () => tableWord,
+          tallyWord: (side) => (slot(side) === 'none' ? t.direction.noCallTally : tableWord),
+          namedSides: true,
+        }
+      }
       if (parts?.kind === 'brand_above') {
         const subject = airankSideSubject(parts.subject, locale)
         const other = airankSideSubject(parts.param ?? '', locale)

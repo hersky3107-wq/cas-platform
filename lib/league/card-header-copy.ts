@@ -21,6 +21,7 @@ import {
   fieldLabel,
   airankPropositionText,
 } from './ai-ranking/instrument'
+import { brandTableHeader, isBrandTableParts } from './ai-ranking/brand-table'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
 export function localeTag(locale: LeagueLocale): string {
@@ -190,6 +191,10 @@ export function airankInstrumentDisplay(
   const field = fieldLabel(parts, locale)
   const horizonLabel = formatAirankHorizonLabel(horizon ?? parts.horizon ?? '1m', locale, t)
   const rankWord = RANK_WORD[locale] ?? RANK_WORD.en
+
+  if (isBrandTableParts(parts)) {
+    return brandTableHeader(parts, horizon ?? '1m', locale)
+  }
 
   if (parts.kind === 'brand_above') {
     const other = airankHeaderSubject(parts.param ?? '', locale)

@@ -1,0 +1,238 @@
+import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import { LMARENA_ATTRIBUTION } from './meta'
+import type { BrandTableFieldId } from './brand-table'
+
+export type BrandTableCopy = {
+  sectionTitle: string
+  periodWeek: string
+  periodMonth: string
+  viewButton: string
+  fields: Record<BrandTableFieldId, string>
+  headline: (n: number, brand: string, total: number) => string
+  predictedTable: string
+  currentTable: string
+  actualTable: string
+  colRank: string
+  colBrand: string
+  colModel: string
+  colVotes: string
+  top1Hits: (hits: number, graded: number) => string
+  persistence: string
+  persistenceBeat: (n: number, graded: number) => string
+  attribution: string
+}
+
+const PACK: Record<LeagueLocale, BrandTableCopy> = {
+  ko: {
+    sectionTitle: 'AI 순위 예측',
+    periodWeek: '이번 주',
+    periodMonth: '이번 달',
+    viewButton: '순위 예측 보기',
+    fields: {
+      overall: '종합',
+      coding: '코딩',
+      math: '수학',
+      writing: '작문',
+      image: '이미지 생성',
+      video: '영상 생성',
+    },
+    headline: (n, brand, total) => `AI ${total}개 중 ${n}개가 ${brand}를 1위로 예상`,
+    predictedTable: 'AI 예상 순위표',
+    currentTable: '현재 실제 순위',
+    actualTable: '실제 결과 순위',
+    colRank: '순위',
+    colBrand: '브랜드',
+    colModel: '대표 모델',
+    colVotes: '1위 표',
+    top1Hits: (hits, graded) => `1위 적중 ${hits}/${graded}`,
+    persistence: '현재 순위 그대로',
+    persistenceBeat: (n, graded) => `${graded}석 중 ${n}석이 현재 순위 그대로보다 나았습니다`,
+    attribution: LMARENA_ATTRIBUTION,
+  },
+  en: {
+    sectionTitle: 'AI ranking forecast',
+    periodWeek: 'This week',
+    periodMonth: 'This month',
+    viewButton: 'View ranking forecast',
+    fields: {
+      overall: 'Overall',
+      coding: 'Coding',
+      math: 'Math',
+      writing: 'Writing',
+      image: 'Image generation',
+      video: 'Video generation',
+    },
+    headline: (n, brand, total) => `${n} of ${total} AIs pick ${brand} at #1`,
+    predictedTable: 'AI predicted table',
+    currentTable: 'Current actual ranking',
+    actualTable: 'Official result',
+    colRank: 'Rank',
+    colBrand: 'Brand',
+    colModel: 'Best model',
+    colVotes: '#1 votes',
+    top1Hits: (hits, graded) => `#1 hits ${hits}/${graded}`,
+    persistence: 'If current ranking held',
+    persistenceBeat: (n, graded) => `${n} of ${graded} seats beat “keep current ranking”`,
+    attribution: 'Ranking data: LMArena (CC BY 4.0)',
+  },
+  ja: {
+    sectionTitle: 'AI順位予測',
+    periodWeek: '今週',
+    periodMonth: '今月',
+    viewButton: '順位予測を見る',
+    fields: {
+      overall: '総合',
+      coding: 'コーディング',
+      math: '数学',
+      writing: '作文',
+      image: '画像生成',
+      video: '動画生成',
+    },
+    headline: (n, brand, total) => `AI ${total}件中 ${n}件が${brand}を1位と予想`,
+    predictedTable: 'AI予想順位表',
+    currentTable: '現在の実際順位',
+    actualTable: '確定順位',
+    colRank: '順位',
+    colBrand: 'ブランド',
+    colModel: '代表モデル',
+    colVotes: '1位票',
+    top1Hits: (hits, graded) => `1位的中 ${hits}/${graded}`,
+    persistence: '現順位のまま',
+    persistenceBeat: (n, graded) => `${graded}席中 ${n}席が現順位据え置きを上回りました`,
+    attribution: '順位データ: LMArena (CC BY 4.0)',
+  },
+  'zh-TW': {
+    sectionTitle: 'AI排名預測',
+    periodWeek: '本週',
+    periodMonth: '本月',
+    viewButton: '查看排名預測',
+    fields: {
+      overall: '綜合',
+      coding: '程式編寫',
+      math: '數學',
+      writing: '寫作',
+      image: '圖片生成',
+      video: '影片生成',
+    },
+    headline: (n, brand, total) => `${total}個AI中有${n}個預測${brand}為第1名`,
+    predictedTable: 'AI預測排名表',
+    currentTable: '目前實際排名',
+    actualTable: '實際結果',
+    colRank: '排名',
+    colBrand: '品牌',
+    colModel: '代表模型',
+    colVotes: '第1名票數',
+    top1Hits: (hits, graded) => `第1名命中 ${hits}/${graded}`,
+    persistence: '若維持目前排名',
+    persistenceBeat: (n, graded) => `${graded}席中有${n}席勝過「維持目前排名」`,
+    attribution: '排名資料：LMArena (CC BY 4.0)',
+  },
+  fr: {
+    sectionTitle: 'Pronostic de classement IA',
+    periodWeek: 'Cette semaine',
+    periodMonth: 'Ce mois',
+    viewButton: 'Voir le classement prévu',
+    fields: {
+      overall: 'Général',
+      coding: 'Code',
+      math: 'Maths',
+      writing: 'Écriture',
+      image: 'Images',
+      video: 'Vidéo',
+    },
+    headline: (n, brand, total) => `${n} IA sur ${total} placent ${brand} n°1`,
+    predictedTable: 'Tableau prédit par les IA',
+    currentTable: 'Classement actuel',
+    actualTable: 'Résultat officiel',
+    colRank: 'Rang',
+    colBrand: 'Marque',
+    colModel: 'Meilleur modèle',
+    colVotes: 'Voix n°1',
+    top1Hits: (hits, graded) => `Réussites n°1 ${hits}/${graded}`,
+    persistence: 'Si le classement actuel tenait',
+    persistenceBeat: (n, graded) => `${n} sièges sur ${graded} battent « garder le classement actuel »`,
+    attribution: 'Données de classement : LMArena (CC BY 4.0)',
+  },
+  es: {
+    sectionTitle: 'Pronóstico de ranking IA',
+    periodWeek: 'Esta semana',
+    periodMonth: 'Este mes',
+    viewButton: 'Ver pronóstico de ranking',
+    fields: {
+      overall: 'General',
+      coding: 'Código',
+      math: 'Matemáticas',
+      writing: 'Escritura',
+      image: 'Imagen',
+      video: 'Vídeo',
+    },
+    headline: (n, brand, total) => `${n} de ${total} IAs eligen a ${brand} como n.° 1`,
+    predictedTable: 'Tabla prevista por las IA',
+    currentTable: 'Ranking actual',
+    actualTable: 'Resultado oficial',
+    colRank: 'Puesto',
+    colBrand: 'Marca',
+    colModel: 'Mejor modelo',
+    colVotes: 'Votos n.° 1',
+    top1Hits: (hits, graded) => `Aciertos n.° 1 ${hits}/${graded}`,
+    persistence: 'Si se mantuviera el ranking actual',
+    persistenceBeat: (n, graded) => `${n} de ${graded} asientos superan «mantener el ranking actual»`,
+    attribution: 'Datos de ranking: LMArena (CC BY 4.0)',
+  },
+  pt: {
+    sectionTitle: 'Previsão de ranking de IA',
+    periodWeek: 'Esta semana',
+    periodMonth: 'Este mês',
+    viewButton: 'Ver previsão de ranking',
+    fields: {
+      overall: 'Geral',
+      coding: 'Código',
+      math: 'Matemática',
+      writing: 'Escrita',
+      image: 'Imagem',
+      video: 'Vídeo',
+    },
+    headline: (n, brand, total) => `${n} de ${total} IAs escolhem ${brand} em 1º`,
+    predictedTable: 'Tabela prevista pelas IAs',
+    currentTable: 'Ranking atual',
+    actualTable: 'Resultado oficial',
+    colRank: 'Posição',
+    colBrand: 'Marca',
+    colModel: 'Melhor modelo',
+    colVotes: 'Votos de 1º',
+    top1Hits: (hits, graded) => `Acertos de 1º ${hits}/${graded}`,
+    persistence: 'Se o ranking atual se mantivesse',
+    persistenceBeat: (n, graded) => `${n} de ${graded} assentos superam «manter o ranking atual»`,
+    attribution: 'Dados de ranking: LMArena (CC BY 4.0)',
+  },
+  ar: {
+    sectionTitle: 'توقع ترتيب الذكاء الاصطناعي',
+    periodWeek: 'هذا الأسبوع',
+    periodMonth: 'هذا الشهر',
+    viewButton: 'عرض توقع الترتيب',
+    fields: {
+      overall: 'عام',
+      coding: 'برمجة',
+      math: 'رياضيات',
+      writing: 'كتابة',
+      image: 'توليد الصور',
+      video: 'توليد الفيديو',
+    },
+    headline: (n, brand, total) => `${n} من ${total} نماذج تتوقع ${brand} في المركز الأول`,
+    predictedTable: 'جدول توقع الذكاء الاصطناعي',
+    currentTable: 'الترتيب الحالي',
+    actualTable: 'النتيجة الرسمية',
+    colRank: 'الترتيب',
+    colBrand: 'العلامة',
+    colModel: 'أفضل نموذج',
+    colVotes: 'أصوات المركز الأول',
+    top1Hits: (hits, graded) => `إصابات المركز الأول ${hits}/${graded}`,
+    persistence: 'لو بقي الترتيب الحالي',
+    persistenceBeat: (n, graded) => `${n} من ${graded} مقاعد تفوقت على «الإبقاء على الترتيب الحالي»`,
+    attribution: 'بيانات الترتيب: LMArena (CC BY 4.0)',
+  },
+}
+
+export function brandTableCopy(locale: LeagueLocale): BrandTableCopy {
+  return PACK[locale] ?? PACK.en
+}

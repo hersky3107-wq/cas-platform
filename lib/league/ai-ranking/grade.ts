@@ -51,6 +51,18 @@ export function gradeAirankSnapshot(parts: AirankParts, input: {
   models: readonly SnapshotModelRow[]
   publishDate: string
 }): AirankGrade {
+  if (parts.kind === 'brand_table') {
+    const top = [...input.brands]
+      .sort((a, b) => a.rank - b.rank || a.brand.localeCompare(b.brand))
+      .filter((row, i, all) => all.findIndex((r) => r.brand === row.brand) === i)
+      .slice(0, 5)
+    const names = top.map((r) => r.brand)
+    return {
+      verdict: 'YES',
+      direction: 'up',
+      rawOutcome: `table:${names.map((n) => n.replace(/\|/g, '/')).join('|')} @ ${input.publishDate}`,
+    }
+  }
   const date = input.publishDate
   if (parts.kind === 'brand_rank1') {
     const hit = bestOf(input.brands, parts.subject)
@@ -190,8 +202,41 @@ export function formatShrunkBaseRate(successes: number, n: number): string {
   return `${successes}/${n} (${rawPct}%); n=${n}, shrunk toward 50% → ${shrunkPct}%`
 }
 
+export function shrinkRateToward50(
+  rawRate: number | null,
+  effectiveN: number,
+): { rawPct: number | null; shrunkPct: number | null } {
+  if (rawRate == null || !Number.isFinite(rawRate) || effectiveN <= 0) {
+    return { rawPct: rawRate == null ? null : Math.round(100 * rawRate), shrunkPct: null }
+  }
+  const weight = effectiveN / (effectiveN + BASE_RATE_SHRINK_PRIOR)
+  const shrunk = weight * rawRate + (1 - weight) * 0.5
+  return { rawPct: Math.round(100 * rawRate), shrunkPct: Math.round(100 * shrunk) }
+}
+
+/** Overlapping windows counted; shrinkage uses effective n = floor(days / horizon). */
+export function formatOverlappingBaseRate(
+  successes: number,
+  windows: number,
+  effectiveN: number,
+): string {
+  if (windows <= 0) return 'none measured'
+  const rawRate = successes / windows
+  const { rawPct, shrunkPct } = shrinkRateToward50(rawRate, effectiveN)
+  if (effectiveN <= 0 || shrunkPct == null) {
+    return `${successes}/${windows}; windows=${windows}, effective n=0`
+  }
+  if (windows < 10) {
+    return `${successes}/${windows}; windows=${windows}, effective n=${effectiveN}, shrunk toward 50% → ${shrunkPct}%`
+  }
+  return `${successes}/${windows} (${rawPct}%); windows=${windows}, effective n=${effectiveN}, shrunk toward 50% → ${shrunkPct}%`
+}
+
 export type BaseRateFromHistory = {
   nPairs: number
+  /** floor(total_days_in_history / horizon_days) — used for shrinkage. */
+  effectiveN: number
+  totalDays: number
   rank1Changes: number
   subjectHeld: number
   subjectObserved: number
@@ -236,10 +281,18 @@ export function baseRateFromHistory(args: {
     }
   }
 
-  const change = shrinkToward50(rank1Changes, nPairs)
-  const hold = shrinkToward50(subjectHeld, subjectObserved)
+  const first = sorted.length ? sorted[0].date : ''
+  const last = sorted.length ? sorted[sorted.length - 1].date : ''
+  const totalDays = first && last ? utcDaySpan(first, last) : 0
+  const effectiveN = days > 0 ? Math.floor(totalDays / days) : 0
+  const changeRaw = nPairs > 0 ? rank1Changes / nPairs : null
+  const holdRaw = subjectObserved > 0 ? subjectHeld / subjectObserved : null
+  const change = shrinkRateToward50(changeRaw, effectiveN)
+  const hold = shrinkRateToward50(holdRaw, effectiveN)
   return {
     nPairs,
+    effectiveN,
+    totalDays,
     rank1Changes,
     subjectHeld,
     subjectObserved,
@@ -248,6 +301,14 @@ export function baseRateFromHistory(args: {
     holdRawPct: hold.rawPct,
     holdShrunkPct: hold.shrunkPct,
   }
+}
+
+function utcDaySpan(firstYmd: string, lastYmd: string): number {
+  const [fy, fm, fd] = firstYmd.split('-').map(Number)
+  const [ly, lm, ld] = lastYmd.split('-').map(Number)
+  const a = Date.UTC(fy, fm - 1, fd)
+  const b = Date.UTC(ly, lm - 1, ld)
+  return Math.max(0, Math.round((b - a) / 86_400_000) + 1)
 }
 
 function bestRank1Brand(rows: readonly SnapshotBrandRow[]): string | null {

@@ -17,6 +17,8 @@ import type { CategoryPacket, PacketBuildContext } from '@/lib/league/gateway/ty
 import { extractAnswerJsonSupplement, sanitizeRationale } from '@/lib/league/prediction-parse'
 import { visibleLeagueText } from '@/lib/league/visible-disclosure'
 import { selfVendorFlags, stripSelfVendorMarkers } from '@/lib/league/ai-ranking/self-vendor'
+import { extractBrandTableCandidates, isBrandTableInstrument } from '@/lib/league/ai-ranking/brand-table'
+import { buildBrandTablePrompts, makeBrandTableContract } from '@/lib/league/ai-ranking/brand-table-prompts'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 import { aggregateMagnitude } from '@/lib/league/magnitude'
@@ -1209,13 +1211,18 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
     : adapter
       ? adapter.slotsForRound(round).proposition_kind
       : 'binary_close_higher'
-  const contract = answerContractFor(propositionKind)
+  let contract = answerContractFor(propositionKind)
   // Job chunks pass reusePersistedPacket so a round that already has
   // closed_book_packet_text never rebuilds research. First chunk builds.
   const pkt: CategoryPacket = opts.reusePersistedPacket
     ? await loadOrBuildPersistedPacket(round, costCap)
     : await buildAndPersistRoundPacket(round, costCap)
-  const prompts = buildRoundPrompts(contract, round, pkt.injection, pkt.dataPacket.error)
+  if (isBrandTableInstrument(round.instrument)) {
+    contract = makeBrandTableContract(extractBrandTableCandidates(pkt.injection))
+  }
+  const prompts = isBrandTableInstrument(round.instrument)
+    ? buildBrandTablePrompts(round, pkt.injection, pkt.dataPacket.error)
+    : buildRoundPrompts(contract, round, pkt.injection, pkt.dataPacket.error)
 
   // Parallel only. Flag-off (no call gate) keeps getRoster order.
   if (opts.callGate) {

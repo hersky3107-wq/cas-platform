@@ -37,6 +37,7 @@ import { generateErrorMessage, tryAgainSoonMessage } from '@/lib/league/generate
 import { formatSessionDate } from '@/lib/league/card-header-copy'
 import { publicFacingLabel } from '@/lib/league/public-label'
 import type { FreeformRecentItem } from '@/lib/league/freeform-recent'
+import { AirankRankingPicker } from '@/components/league/AirankRankingPicker'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -181,7 +182,11 @@ function CardsPanel() {
   // full card, jurisdiction, everything. `quiet` polls (while a generation
   // job runs) skip the loading flash but share the same supersede guard.
   const loadCard = useCallback(
-    async (instrument: string, horizonArg: UiHorizon, opts?: { quiet?: boolean; roundId?: string }) => {
+    async (
+      instrument: string,
+      horizonArg: UiHorizon,
+      opts?: { quiet?: boolean; roundId?: string },
+    ): Promise<{ missing: boolean } | undefined> => {
       const quiet = opts?.quiet === true
       if (quiet && quietInFlightRef.current) return
       const requestId = (requestIdRef.current += 1)
@@ -202,7 +207,7 @@ function CardsPanel() {
           const refusal = krStockRefusalMessage(errBody.code ?? errBody.error)
           if (refusal) {
             setView({ kind: 'krNotice', text: refusal })
-            return
+            return { missing: false }
           }
           if ('code' in body && body.code === 'kr_election_manual_close') {
             setView({ kind: 'electionClosed' })
@@ -210,23 +215,26 @@ function CardsPanel() {
             setView({ kind: 'blocked' })
           } else if (res.status === 404 || ('code' in body && body.code === 'no_round')) {
             setView({ kind: 'none' })
+            return { missing: true }
           } else {
             setView({
               kind: 'error',
               text: generateErrorMessage(errBody.code, locale, res.status),
             })
           }
-          return
+          return { missing: false }
         }
         if ('locked' in body && body.locked) {
           setView({ kind: 'locked', locked: body })
-          return
+          return { missing: false }
         }
         setView({ kind: 'card', card: body as CardData })
+        return { missing: false }
       } catch {
         if (requestId === requestIdRef.current && !opts?.quiet) {
           setView({ kind: 'error', text: tryAgainSoonMessage(locale) })
         }
+        return { missing: false }
       } finally {
         if (quiet) quietInFlightRef.current = false
       }
@@ -428,6 +436,36 @@ function CardsPanel() {
             </button>
           ))}
         </div>
+      ) : null}
+
+      {selectedCategory === 'tech' ? (
+        <AirankRankingPicker
+          locale={locale}
+          onOpen={(instrument, nextHorizon) => {
+            setHorizon(nextHorizon)
+            setSelectedInstrument(instrument)
+            setSelectedRoundId(null)
+            void (async () => {
+              const result = await loadCard(instrument, nextHorizon)
+              if (!result?.missing) return
+              const res = await fetch('/api/league/generate', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instrument, horizon: nextHorizon, locale }),
+              })
+              if (res.ok) {
+                void loadCard(instrument, nextHorizon)
+                return
+              }
+              const detail = (await res.json().catch(() => null)) as { code?: string } | null
+              setView({
+                kind: 'error',
+                text: generateErrorMessage(detail?.code, locale, res.status),
+              })
+            })()
+          }}
+        />
       ) : null}
 
       {selectedCategory && showPrompt ? (

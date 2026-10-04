@@ -224,7 +224,8 @@ describe('AIRANK packet + disclosure', () => {
     expect(text).toContain('gap vs below')
     expect(text).toContain('gap vs below (OpenAI): 20')
     expect(text).toContain('shrunk toward 50%')
-    expect(text).not.toMatch(/100%/)
+    expect(text).toContain('windows=')
+    expect(text).toContain('effective n=')
     expect(airankAttributionLine('ko')).toBe('순위 데이터: LMArena (CC BY 4.0)')
     expect(brandScoreGapLine(now[0], null, now[1])).toContain('gap vs below (OpenAI): 20')
   })
@@ -245,13 +246,14 @@ describe('AIRANK packet + disclosure', () => {
     // Daily step from 2026-01-01 through 2026-01-30 (last − 30d). Jan 1 window
     // has no later snapshot; Jan 2–30 = 29 overlapping 1m windows.
     expect(rates.nPairs).toBe(29)
+    expect(rates.effectiveN).toBe(2)
     expect(rates.rank1Changes).toBe(29)
     expect(rates.subjectObserved).toBe(29)
     expect(rates.subjectHeld).toBe(0)
     expect(rates.rank1ChangeRawPct).toBe(100)
-    expect(rates.rank1ChangeShrunkPct).toBe(66)
+    expect(rates.rank1ChangeShrunkPct).toBe(52)
     expect(rates.holdRawPct).toBe(0)
-    expect(rates.holdShrunkPct).toBe(34)
+    expect(rates.holdShrunkPct).toBe(48)
 
     const tiny = shrinkToward50(3, 3)
     expect(tiny.rawPct).toBe(100)

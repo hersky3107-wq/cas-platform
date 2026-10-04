@@ -30,6 +30,7 @@ export const AIRANK_KINDS = [
   'model_rank1',
   'camp_rank1',
   'camp_topn',
+  'brand_table',
 ] as const
 export type AirankKind = (typeof AIRANK_KINDS)[number]
 
@@ -207,6 +208,21 @@ function parseAirankParts(
     return { ok: false, reason: 'bad_deadline' }
   }
 
+  if (input.kind === 'brand_table') {
+    const subject = input.subject.trim().toLowerCase()
+    if (subject !== 'top5') return { ok: false, reason: 'bad_subject' }
+    return {
+      ok: true,
+      parts: {
+        arena: input.arena,
+        category: input.category,
+        kind: input.kind,
+        subject: 'top5',
+        deadlineYmd: input.deadlineYmd,
+      },
+    }
+  }
+
   if (input.kind === 'model_rank1') {
     const subject = input.subject.trim()
     if (subject.length < 2) return { ok: false, reason: 'bad_subject' }
@@ -357,7 +373,7 @@ const FIELD_LABEL: Record<string, Record<LeagueLocale, string>> = {
     ar: 'رياضيات',
   },
   'text/creative_writing': {
-    ko: '글쓰기',
+    ko: '작문',
     en: 'creative writing',
     ja: '文章作成',
     'zh-TW': '創意寫作',
@@ -508,6 +524,7 @@ function iGa(name: string | null | undefined): '이' | '가' {
 }
 
 export function airankSubjectLabel(parts: AirankParts, locale: LeagueLocale = 'en'): string {
+  if (parts.kind === 'brand_table') return fieldLabel(parts, locale)
   if (parts.kind === 'camp_rank1' || parts.kind === 'camp_topn') {
     const camp = isAirankCamp(parts.subject) ? CAMP_LABEL[parts.subject] : null
     return camp ? camp[locale] ?? camp.en : parts.subject
@@ -535,6 +552,9 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
   const deadline = parts.deadlineYmd
 
   if (locale === 'ko') {
+    if (parts.kind === 'brand_table') {
+      return `${deadline} 이후 처음 발표되는 LMArena ${field} 순위의 상위 5개 브랜드는?`
+    }
     const particle = iGa(subject)
     if (parts.kind === 'brand_rank1' || parts.kind === 'model_rank1' || parts.kind === 'camp_rank1') {
       return `${subject}${particle} ${deadline} 이후 처음 발표되는 LMArena ${field} 순위에서 1위일까?`
@@ -547,6 +567,9 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
   }
 
   if (locale === 'ja') {
+    if (parts.kind === 'brand_table') {
+      return `${deadline}以降に最初に発表されるLMArena ${field}ランキングの上位5ブランドは？`
+    }
     const first = `${deadline}以降に最初に発表されるLMArena ${field}ランキング`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
       return `${subject}は${first}で1位になるか？`
@@ -562,6 +585,9 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
   }
 
   if (locale === 'zh-TW') {
+    if (parts.kind === 'brand_table') {
+      return `${deadline}之後首次發布的LMArena ${field}排名前5品牌是哪些？`
+    }
     const first = `${deadline}之後首次發布的LMArena ${field}排名`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
       return `${subject}在${first}中會是第1名嗎？`
@@ -577,6 +603,9 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
   }
 
   if (locale === 'fr') {
+    if (parts.kind === 'brand_table') {
+      return `Quelles seront les 5 premières marques du premier classement LMArena ${field} publié à partir du ${deadline} ?`
+    }
     const first = `le premier classement LMArena ${field} publié à partir du ${deadline}`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
       return `${subject} sera-t-il n°1 dans ${first} ?`
@@ -592,6 +621,9 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
   }
 
   if (locale === 'es') {
+    if (parts.kind === 'brand_table') {
+      return `¿Cuáles serán las 5 primeras marcas del primer ranking LMArena de ${field} publicado a partir del ${deadline}?`
+    }
     const first = `el primer ranking LMArena de ${field} publicado a partir del ${deadline}`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
       return `¿Será ${subject} el n.° 1 en ${first}?`
@@ -607,6 +639,9 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
   }
 
   if (locale === 'pt') {
+    if (parts.kind === 'brand_table') {
+      return `Quais serão as 5 primeiras marcas do primeiro ranking LMArena de ${field} publicado a partir de ${deadline}?`
+    }
     const first = `o primeiro ranking LMArena de ${field} publicado a partir de ${deadline}`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
       return `O ${subject} será o nº 1 em ${first}?`
@@ -622,6 +657,9 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
   }
 
   if (locale === 'ar') {
+    if (parts.kind === 'brand_table') {
+      return `ما هي أفضل 5 علامات في أول تصنيف LMArena لـ ${field} يصدر في أو بعد ${deadline}؟`
+    }
     const first = `أول تصنيف LMArena لـ ${field} يصدر في أو بعد ${deadline}`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
       return `هل سيحتل ${subject} المركز الأول في ${first}؟`
@@ -637,6 +675,9 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
   }
 
   // Default English ('en')
+  if (parts.kind === 'brand_table') {
+    return `What are the top 5 brands on the first LMArena ${field} ranking published on or after ${deadline}?`
+  }
   const first = `the first LMArena ${field} ranking published on or after ${deadline}`
   if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
     return `Will ${subject} be #1 on ${first}?`
