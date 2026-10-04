@@ -123,15 +123,15 @@ describe('krDeepPolicyForInstrument', () => {
     expect(krDeepPolicyForInstrument('commodity_energy', 'UNG')).toBe('hide')
     expect(krDeepPolicyForInstrument('fx', 'EUR/USD')).toBe('hide')
     expect(krDeepPolicyForInstrument('macro_econ', 'MACRO:US:CPI:1')).toBe('hide')
-    expect(krDeepPolicyForInstrument('ai_models', 'MODEL:gpt:1')).toBe('hide')
     expect(krDeepPolicyForInstrument('memecoin', 'DOGE/USD')).toBe('hide')
     expect(krDeepPolicyForInstrument('not_a_category', 'ZZZ')).toBe('hide')
   })
 
-  it('allows crypto, sports, politics, entertainment, real_estate, and tech', () => {
+  it('allows crypto, sports, politics, entertainment, real_estate, tech, and ai_models', () => {
     expect(krDeepPolicyForInstrument('crypto_spot', 'BTC/USD')).toBe('allow')
     expect(krDeepPolicyForInstrument('crypto', 'ETH/USD')).toBe('allow')
     expect(krDeepPolicyForInstrument('tech', 'CHIP:nvda:1')).toBe('allow')
+    expect(krDeepPolicyForInstrument('ai_models', 'AIRANK:text:overall:brand_rank1:OpenAI:20261104')).toBe('allow')
     for (const round of ALLOW_ROUNDS) {
       expect(krDeepPolicyForInstrument(round.category, round.instrument), round.category).toBe('allow')
     }

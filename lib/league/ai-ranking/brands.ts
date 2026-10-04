@@ -34,6 +34,23 @@ export const AI_VENDOR_BRANDS = [
   'IBM',
   'AllenAI',
   'Thinking Machines',
+  'Black Forest Labs',
+  'Ideogram',
+  'Recraft',
+  'Leonardo',
+  'Krea',
+  'HiDream',
+  'Reve',
+  'Sber (Kandinsky)',
+  'Runway',
+  'Pika',
+  'Luma',
+  'Kuaishou (Kling)',
+  'Genmo',
+  'Perplexity',
+  'Poolside',
+  'Diffbot',
+  'Inception',
 ] as const
 
 export type AiVendorBrand = (typeof AI_VENDOR_BRANDS)[number]
@@ -89,6 +106,38 @@ const ORG_ALIASES: Record<string, AiVendorBrand> = {
   thinky: 'Thinking Machines',
   'thinking machines': 'Thinking Machines',
   thinkingmachines: 'Thinking Machines',
+  bfl: 'Black Forest Labs',
+  'black forest labs': 'Black Forest Labs',
+  'black forest': 'Black Forest Labs',
+  flux: 'Black Forest Labs',
+  ideogram: 'Ideogram',
+  recraft: 'Recraft',
+  'leonardo-ai': 'Leonardo',
+  'leonardo ai': 'Leonardo',
+  leonardo: 'Leonardo',
+  krea: 'Krea',
+  hidream: 'HiDream',
+  'hi dream': 'HiDream',
+  reve: 'Reve',
+  kandinsky: 'Sber (Kandinsky)',
+  sber: 'Sber (Kandinsky)',
+  runway: 'Runway',
+  'runway ml': 'Runway',
+  pika: 'Pika',
+  'pika labs': 'Pika',
+  'luma-ai': 'Luma',
+  'luma ai': 'Luma',
+  luma: 'Luma',
+  kling: 'Kuaishou (Kling)',
+  kuaishou: 'Kuaishou (Kling)',
+  genmo: 'Genmo',
+  wan: 'Alibaba/Qwen',
+  perplexity: 'Perplexity',
+  poolside: 'Poolside',
+  diffbot: 'Diffbot',
+  'inception-ai': 'Inception',
+  'inception ai': 'Inception',
+  inception: 'Inception',
 }
 
 function fold(value: string): string {
@@ -146,6 +195,24 @@ export function brandFromModelName(model: string): AiVendorBrand | null {
   if (/(^|[\s_-])(ling|ring)[-_]/.test(key)) return 'Ant Group'
   if (key.includes('granite')) return 'IBM'
   if (key.includes('olmo') || key.includes('tulu')) return 'AllenAI'
+  if (key.includes('flux')) return 'Black Forest Labs'
+  if (key.includes('ideogram')) return 'Ideogram'
+  if (key.includes('recraft')) return 'Recraft'
+  if (key.includes('leonardo')) return 'Leonardo'
+  if (key.includes('krea')) return 'Krea'
+  if (key.includes('hidream')) return 'HiDream'
+  if (/\breve\b/.test(key)) return 'Reve'
+  if (key.includes('kandinsky')) return 'Sber (Kandinsky)'
+  if (key.includes('runway')) return 'Runway'
+  if (/\bpika\b/.test(key)) return 'Pika'
+  if (key.includes('luma') || key.includes('dream machine')) return 'Luma'
+  if (key.includes('kling')) return 'Kuaishou (Kling)'
+  if (key.includes('genmo') || key.includes('mochi')) return 'Genmo'
+  if (/^wan[-_\s]/.test(key) || key.includes('wanxiang')) return 'Alibaba/Qwen'
+  if (key.includes('sonar') || key.includes('perplexity')) return 'Perplexity'
+  if (key.includes('poolside')) return 'Poolside'
+  if (key.includes('diffbot')) return 'Diffbot'
+  if (key.includes('mercury') || key.includes('inception')) return 'Inception'
   return null
 }
 

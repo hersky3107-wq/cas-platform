@@ -16,6 +16,7 @@ import { LIVE_PRICE_SERIES_IO } from '@/lib/league/gateway/adapters/price-series
 import type { CategoryPacket, PacketBuildContext } from '@/lib/league/gateway/types'
 import { extractAnswerJsonSupplement, sanitizeRationale } from '@/lib/league/prediction-parse'
 import { visibleLeagueText } from '@/lib/league/visible-disclosure'
+import { formatSelfVendorMarker, selfVendorFlags } from '@/lib/league/ai-ranking/self-vendor'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 import { aggregateMagnitude } from '@/lib/league/magnitude'
@@ -658,6 +659,7 @@ async function runOneModel(
   category?: string,
   gate?: ProviderCallGate,
   http429?: { n: number },
+  instrument?: string,
 ): Promise<ModelRunResult> {
   let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429)
   let totalCostUsd = 0
@@ -842,7 +844,11 @@ async function runOneModel(
   // Visible reasoning block (everything before the final answer JSON). Stored
   // for every tier — scout's pre-JSON prose (citations) is raw material too.
   // reasoning_snippet stays the one-line display rationale; this is the full text.
-  const reasoningText = contract.splitReasoning(raw.text)
+  const vendorNote =
+    category === 'ai_models' && instrument
+      ? formatSelfVendorMarker(selfVendorFlags(entry, instrument))
+      : null
+  const reasoningText = [contract.splitReasoning(raw.text), vendorNote].filter(Boolean).join('\n')
   let probability = answer!.probability ?? null
   if (probability == null && jsonSupplement?.probability != null) probability = jsonSupplement.probability
   // LEDGER SHAPE: predicted_direction stores the contract-neutral side token
@@ -1272,6 +1278,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
         round.category,
         opts.callGate,
         http429,
+        round.instrument,
       )
       runningCost += outcome.cost_usd
       results.push(outcome)

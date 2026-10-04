@@ -338,6 +338,27 @@ describe('header honesty', () => {
     expect(html).not.toContain('₩')
   })
 
+  it('ai_models cards show the localized LMArena attribution line', () => {
+    const html = renderToStaticMarkup(
+      createElement(CardHeader, {
+        round: roundMeta({
+          category: 'ai_models',
+          instrument: 'AIRANK:text:overall:brand_rank1:OpenAI:20261104',
+          proposition_kind: 'binary_subject_outcome',
+          subject_label: 'OpenAI',
+          proposition_text: 'Will OpenAI hold rank 1?',
+          anchorPrice: null,
+          livePrice: null,
+        }),
+        hitRate,
+        tone,
+        t: ko,
+        locale: 'ko',
+      }),
+    )
+    expect(html).toContain('순위 데이터: LMArena (CC BY 4.0)')
+  })
+
   it('rankedPropositionDisplay decodes politics when stored proposition is the instrument id', () => {
     const instrument = encodePoliticsInstrument({
       jurisdiction: 'US',

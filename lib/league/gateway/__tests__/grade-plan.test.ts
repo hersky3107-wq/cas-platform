@@ -112,6 +112,24 @@ describe('gradePlanFor — resolution asks the adapter', () => {
       tier1Kind: 'official_api',
     })
   })
+
+  it('lmarena official_api tier-1 is the AIRANK auto-grade path, never operator_manual', () => {
+    const airankAdapter = {
+      ...stocks,
+      category_id: 'ai_models',
+      ledger_category: 'ai_models',
+      gradeSources: () =>
+        [
+          { tier: 1, kind: 'official_api', endpoint: 'lmarena:leaderboard' },
+          { tier: 2, kind: 'perplexity_sourced', require_url: true },
+          { tier: 3, kind: 'operator_manual', require_url: true },
+        ] as const,
+    } as unknown as CategoryAdapter
+    expect(gradePlanFor(airankAdapter, 'AIRANK:text:overall:brand_rank1:OpenAI:20261104')).toEqual({
+      source: 'lmarena',
+      tier1: { tier: 1, kind: 'official_api', endpoint: 'lmarena:leaderboard' },
+    })
+  })
 })
 
 describe('the reconciliation engine actually consults the plan (consumption proof)', () => {
@@ -119,7 +137,9 @@ describe('the reconciliation engine actually consults the plan (consumption proo
 
   it('fetchSeries and isPriceInstrument both route through gradePlanFor', () => {
     expect(src).toContain('fetchSeries: fetchSeriesViaGradePlan')
-    expect(src.match(/gradePlanFor\(/g)!.length).toBeGreaterThanOrEqual(2)
+    expect(src).toContain('planForInstrument')
+    expect(src.match(/gradePlanFor\(/g)!.length).toBeGreaterThanOrEqual(1)
+    expect(src.match(/planForInstrument\(/g)!.length).toBeGreaterThanOrEqual(2)
   })
 
   it('the twelve_data executor is still the hardened fetchDailyCloses — no new price path', () => {
@@ -131,5 +151,12 @@ describe('the reconciliation engine actually consults the plan (consumption proo
     expect(src).toContain('parkRoundForManual')
     expect(src).toContain('return engine.gradeRoundOnRead(roundId)')
     expect(src).toContain("grading_status: 'graded'")
+  })
+
+  it('AIRANK official path is wired and never parks on the manual queue', () => {
+    expect(src).toContain("plan.source === 'lmarena'")
+    expect(src).toContain('resolveAirankOfficial')
+    const queue = readFileSync(join(__dirname, '../../manual-grade/queue.ts'), 'utf8')
+    expect(queue).toContain("plan.source === 'lmarena'")
   })
 })

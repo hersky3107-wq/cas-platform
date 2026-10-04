@@ -65,6 +65,8 @@ export type GradingRoundRecord = {
   unresolvable_reason: string | null
   /** Default 'auto'. Freeform rounds are parked as 'needs_grading'. */
   grading_status?: GradingStatus
+  opened_at?: string | null
+  created_at?: string | null
 }
 
 /** Why a grading attempt was refused BEFORE any price data was considered. */
@@ -99,6 +101,7 @@ export type RoundGradingResult =
       newlyQueued: boolean
     }
   | { outcome: 'rejected'; roundId: string; instrument: string | null; reason: GradingRejection; state: GradingState | null }
+  | { outcome: 'voided'; roundId: string; instrument: string; detail: string }
   | { outcome: 'error'; roundId: string; instrument: string; error: string }
 
 export type GradingSweepReport = {
@@ -143,8 +146,26 @@ export type GradingStore = {
    * any market API.
    */
   parkForManual(roundId: string, nowIso: string): Promise<{ newlyQueued: boolean }>
+  /**
+   * Auto-VOID (both AIRANK brands absent). Leaves actual_outcome null so the
+   * voided row never enters the leaderboard denominator. Optional: older
+   * fakes may omit it.
+   */
+  saveVoided?(roundId: string, rawOutcome: string, nowIso: string): Promise<{ ok: true } | { ok: false; error: string }>
   /** Grades the round's up/down children. Returns how many rows were graded. */
   gradeChildren(roundId: string, direction: ResolutionDirection): Promise<number>
+}
+
+export type OfficialOutcomeResolution =
+  | { status: 'resolved'; outcome: ResolvedOutcome }
+  | { status: 'pending'; detail: string }
+  | { status: 'voided'; rawOutcome: string }
+
+function asOfficialResolution(
+  value: OfficialOutcomeResolution | ResolvedOutcome,
+): OfficialOutcomeResolution {
+  if ('status' in value) return value
+  return { status: 'resolved', outcome: value }
 }
 
 export type GradingDeps = {
@@ -154,10 +175,14 @@ export type GradingDeps = {
   /** False for handles with no price symbol (e.g. 'MATCH:…') — refused without a feed call. */
   isPriceInstrument: (instrument: string) => boolean
   /**
-   * Official-list grade (KOBIS weekend box office). Return null to park for
-   * the operator instead of guessing.
+   * Official-list grade (KOBIS / LMArena). `null` parks for the operator.
+   * Tagged pending stays `auto` for the next sweep. Tagged voided does not
+   * grade children.
    */
-  resolveOfficialOutcome?: (instrument: string) => Promise<ResolvedOutcome | null>
+  resolveOfficialOutcome?: (
+    instrument: string,
+    round: GradingRoundRecord,
+  ) => Promise<OfficialOutcomeResolution | ResolvedOutcome | null>
   /**
    * Optional hook after claim, before the price/manual decision. Used by
    * KRSTOCK to verify a Twelve Data fallback anchor against official KRX.
@@ -272,10 +297,25 @@ export function createGradingEngine(deps: GradingDeps) {
 
     if (!deps.isPriceInstrument(round.instrument)) {
       if (deps.resolveOfficialOutcome) {
-        const official = await deps.resolveOfficialOutcome(round.instrument)
-        if (official) {
-          const childrenGraded = await deps.store.gradeChildren(round.id, official.actualDirection)
-          const saved = await deps.store.saveGraded(round.id, official, nowDate().toISOString())
+        const officialRaw = await deps.resolveOfficialOutcome(round.instrument, round)
+        if (officialRaw) {
+          const official = asOfficialResolution(officialRaw)
+          if (official.status === 'pending') {
+            return recordUnresolvable(round, 'series_unavailable', official.detail)
+          }
+          if (official.status === 'voided') {
+            if (!deps.store.saveVoided) {
+              return recordUnresolvable(round, 'equal_close', official.rawOutcome)
+            }
+            const saved = await deps.store.saveVoided(round.id, official.rawOutcome, nowDate().toISOString())
+            if (!saved.ok) {
+              await deps.store.releaseClaim(round.id)
+              return { outcome: 'error', roundId: round.id, instrument: round.instrument, error: saved.error }
+            }
+            return { outcome: 'voided', roundId: round.id, instrument: round.instrument, detail: official.rawOutcome }
+          }
+          const childrenGraded = await deps.store.gradeChildren(round.id, official.outcome.actualDirection)
+          const saved = await deps.store.saveGraded(round.id, official.outcome, nowDate().toISOString())
           if (!saved.ok) {
             await deps.store.releaseClaim(round.id)
             return { outcome: 'error', roundId: round.id, instrument: round.instrument, error: saved.error }
@@ -284,9 +324,9 @@ export function createGradingEngine(deps: GradingDeps) {
             outcome: 'graded',
             roundId: round.id,
             instrument: round.instrument,
-            direction: official.actualDirection,
-            resolutionPrice: official.resolutionPrice,
-            resolutionSessionDate: official.resolutionSessionDate,
+            direction: official.outcome.actualDirection,
+            resolutionPrice: official.outcome.resolutionPrice,
+            resolutionSessionDate: official.outcome.resolutionSessionDate,
             childrenGraded,
           }
         }
@@ -430,7 +470,7 @@ export function createGradingEngine(deps: GradingDeps) {
     return {
       scanned: due.length,
       graded: rounds.filter((r) => r.outcome === 'graded').length,
-      unresolvable: rounds.filter((r) => r.outcome === 'unresolvable').length,
+      unresolvable: rounds.filter((r) => r.outcome === 'unresolvable' || r.outcome === 'voided').length,
       queuedManual: rounds.filter((r) => r.outcome === 'queued_manual').length,
       rejected: rounds.filter((r) => r.outcome === 'rejected').length,
       failed: rounds.filter((r) => r.outcome === 'error').length,

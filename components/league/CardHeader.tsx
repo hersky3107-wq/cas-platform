@@ -11,6 +11,7 @@ import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { formatPropertyGradeLine, formatPropertyHorizonLabel } from '@/lib/league/real-estate-display'
 import type { ToneTokens } from '@/lib/league/tone'
 import { KrDataNotice } from '@/components/league/KrLaneDisclosureBlocks'
+import { airankAttributionLine } from '@/lib/league/ai-ranking/instrument'
 
 /**
  * Header: the ROUND's opened date + instrument + ANCHOR (or "unavailable"),
@@ -102,6 +103,9 @@ export function CardHeader({
         </p>
       ) : null}
       {showKrDataNotice ? <KrDataNotice /> : null}
+      {round.category === 'ai_models' ? (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-league-fg-muted">{airankAttributionLine(locale)}</p>
+      ) : null}
       {round.category === 'gold_metal' ? (
         <p className="mt-1.5 text-[11px] leading-relaxed text-league-fg-muted">
           {t.header.metalsSpotNote}

@@ -20,11 +20,14 @@ import path from 'node:path'
 import { parquetMetadataAsync, parquetReadObjects } from 'hyparquet'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { mapVendorBrand, OTHER_VENDOR_BRAND, type MappedVendorBrand } from './brands'
+import {
+  LMARENA_ATTRIBUTION,
+  LMARENA_DATASET,
+  LMARENA_LICENSE,
+  LMARENA_SOURCE,
+} from './meta'
 
-export const LMARENA_DATASET = 'lmarena-ai/leaderboard-dataset'
-export const LMARENA_SOURCE = 'lmarena'
-export const LMARENA_LICENSE = 'cc-by-4.0'
-export const LMARENA_ATTRIBUTION = '순위 데이터: LMArena (CC BY 4.0)'
+export { LMARENA_ATTRIBUTION, LMARENA_DATASET, LMARENA_LICENSE, LMARENA_SOURCE }
 
 /**
  * Artificial Analysis has a public API (x-api-key; free tier ~100–1,000
@@ -758,6 +761,17 @@ export async function ingestAiLeaderboard(args: {
     downloads,
     unmappedOrganizations: [...unmappedOrgs].sort((a, b) => a.localeCompare(b)),
   }
+}
+
+export async function listLeaderboardPublishDates(arena: string, category: string): Promise<string[]> {
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .select('publish_date')
+    .eq('source', LMARENA_SOURCE)
+    .eq('arena', arena)
+    .eq('category', category)
+  if (error) throw new Error(`league_ai_leaderboard dates read failed: ${error.message}`)
+  return [...new Set((data ?? []).map((row) => String(row.publish_date).slice(0, 10)))].sort()
 }
 
 export async function brandRankingFromStore(

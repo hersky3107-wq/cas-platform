@@ -2,9 +2,11 @@ import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { fetchDailyCloses, mapInstrumentToTwelveData } from '@/lib/league/market-data'
-import { adapterForInstrument } from '@/lib/league/gateway/adapters/registry.server'
+import { adapterForInstrument, adapterForLedgerCategory } from '@/lib/league/gateway/adapters/registry.server'
 import { gradePlanFor } from '@/lib/league/gateway/grade-plan'
 import { gradeKrBoxOfficeInstrument } from '@/lib/league/entertainment/kobis'
+import { resolveAirankOfficial } from '@/lib/league/ai-ranking/grade.server'
+import { VOID_UNRESOLVABLE_REASON } from '@/lib/league/manual-grade/types'
 import { parkRoundForManual } from '@/lib/league/manual-grade/queue'
 import { decodeKrStockInstrument } from '@/lib/league/korea-equity-catalog'
 import { getOfficialClose, getOfficialClosesBetween } from '@/lib/league/korea-market-data'
@@ -14,6 +16,7 @@ import {
   GRADING_SWEEP_SCAN_CAP,
   type GradingRoundRecord,
   type GradingStore,
+  type OfficialOutcomeResolution,
 } from './grading-core'
 import { gradingStateOf, type GradingState } from './grading-state'
 import { formatOutcomeForKind, gradedSidesFor } from './graded-sides'
@@ -60,7 +63,7 @@ export { GRADING_SWEEP_SCAN_CAP } from './grading-core'
  */
 
 const ROUND_COLUMNS =
-  'id, instrument, category, resolves_at, anchor_price, anchor_price_at, actual_outcome, resolved_at, ' +
+  'id, instrument, category, resolves_at, opened_at, created_at, anchor_price, anchor_price_at, actual_outcome, resolved_at, ' +
   'grading_busy_until, grading_attempted_at, unresolvable_reason, grading_status'
 
 function asRecord(row: Record<string, unknown>): GradingRoundRecord {
@@ -83,6 +86,8 @@ function asRecord(row: Record<string, unknown>): GradingRoundRecord {
       row.grading_status === 'auto'
         ? row.grading_status
         : 'auto',
+    opened_at: typeof row.opened_at === 'string' ? row.opened_at : null,
+    created_at: typeof row.created_at === 'string' ? row.created_at : null,
   }
 }
 
@@ -237,6 +242,28 @@ export const supabaseGradingStore: GradingStore = {
     await supabaseAdmin.from('prediction_rounds').update({ grading_busy_until: null }).eq('id', roundId)
   },
 
+  async saveVoided(roundId, rawOutcome, nowIso) {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .update({
+        grading_status: 'voided',
+        unresolvable_reason: VOID_UNRESOLVABLE_REASON,
+        unresolvable_detail: rawOutcome.slice(0, 500),
+        grading_attempted_at: nowIso,
+        grading_busy_until: null,
+      })
+      .eq('id', roundId)
+      .is('actual_outcome', null)
+      .neq('grading_status', 'voided')
+      .neq('grading_status', 'graded')
+      .select('id')
+    if (error) return { ok: false as const, error: migrationHint(error.message) }
+    if (!data || data.length === 0) {
+      return { ok: false as const, error: 'round was graded or voided by another pass' }
+    }
+    return { ok: true as const }
+  },
+
   async parkForManual(roundId, nowIso) {
     const { data: row } = await supabaseAdmin
       .from('prediction_rounds')
@@ -361,24 +388,34 @@ async function fetchKrxOfficialCloses(instrument: string, startDate: string, end
   return { ok: true as const, bars }
 }
 
+function planForInstrument(instrument: string, category?: string) {
+  const adapter = adapterForInstrument(instrument) ?? (category ? adapterForLedgerCategory(category) : null)
+  return gradePlanFor(adapter, instrument)
+}
+
 async function fetchSeriesViaGradePlan(instrument: string, startDate: string, endDate: string) {
-  const plan = gradePlanFor(adapterForInstrument(instrument), instrument)
+  const plan = planForInstrument(instrument)
   if (plan.source === 'price_series') {
     if (decodeKrStockInstrument(instrument)) {
       return fetchKrxOfficialCloses(instrument, startDate, endDate)
     }
     return fetchDailyCloses(instrument, startDate, endDate)
   }
-  // operator_manual is a real grade source, not a missing executor. The
-  // price engine never fetches a series for it (isPriceInstrument is false).
-  if (plan.source === 'operator_manual' || plan.source === 'kobis') {
-    return { ok: false as const, error: 'operator_manual: awaiting published evidence' }
+  // operator_manual / official lists are not price executors.
+  if (plan.source === 'operator_manual' || plan.source === 'kobis' || plan.source === 'lmarena') {
+    return { ok: false as const, error: `${plan.source}: awaiting official snapshot` }
   }
   return { ok: false as const, error: `no grading executor for tier-1 source '${plan.tier1Kind}' yet` }
 }
 
-async function resolveOfficialOutcome(instrument: string): Promise<ResolvedOutcome | null> {
-  const plan = gradePlanFor(adapterForInstrument(instrument), instrument)
+async function resolveOfficialOutcome(
+  instrument: string,
+  round: GradingRoundRecord,
+): Promise<OfficialOutcomeResolution | ResolvedOutcome | null> {
+  const plan = planForInstrument(instrument, round.category)
+  if (plan.source === 'lmarena') {
+    return resolveAirankOfficial(instrument, round.opened_at ?? round.created_at ?? null)
+  }
   if (plan.source !== 'kobis') return null
   const grade = await gradeKrBoxOfficeInstrument(instrument)
   if (!grade) return null
@@ -396,7 +433,7 @@ const engine = createGradingEngine({
   store: supabaseGradingStore,
   fetchSeries: fetchSeriesViaGradePlan,
   isPriceInstrument: (instrument) =>
-    gradePlanFor(adapterForInstrument(instrument), instrument).source === 'price_series' &&
+    planForInstrument(instrument).source === 'price_series' &&
     (decodeKrStockInstrument(instrument) !== null || mapInstrumentToTwelveData(instrument) !== null),
   resolveOfficialOutcome,
   beforeGrade: beforeGradeKrStock,

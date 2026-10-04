@@ -32,7 +32,7 @@ const KR_DEEP_CATEGORY_TABLE: Record<string, KrDeepPolicy> = {
   // pending product meeting after KR stocks
   macro_econ: 'hide',
   macro: 'hide',
-  ai_models: 'hide',
+  ai_models: 'allow',
 
   crypto: 'allow',
   crypto_spot: 'allow',

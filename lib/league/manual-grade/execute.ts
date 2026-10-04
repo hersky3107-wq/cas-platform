@@ -43,8 +43,8 @@ export async function applyManualGrade(input: ManualGradeInput): Promise<ManualG
   }
 
   const plan = planForRound(String(data.instrument), String(data.category))
-  if (plan.source === 'price_series') {
-    return { ok: false, error: 'price rounds are auto-graded; refuse manual overwrite', status: 400 }
+  if (plan.source === 'price_series' || plan.source === 'lmarena' || plan.source === 'kobis') {
+    return { ok: false, error: 'auto-graded rounds refuse manual overwrite', status: 400 }
   }
 
   const nowIso = new Date().toISOString()

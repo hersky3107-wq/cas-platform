@@ -89,7 +89,7 @@ export type RefusalCode =
  * Cards tab yet. Do not add a public chip by putting a value here — that
  * lives in `PUBLIC_CATEGORY_IDS`.
  */
-export type AdapterCategoryId = PublicCategoryId | 'tech'
+export type AdapterCategoryId = PublicCategoryId | 'tech' | 'ai_models'
 
 /** Structured, validated normalization result. NEVER contains freeform model prose. */
 export type NormalizeSlots = {

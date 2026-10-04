@@ -6,6 +6,7 @@
  */
 
 import { scrubAnalystDisclosure, scrubsAnalystDisclosure } from './analyst-disclosure'
+import { scrubAirankDisclosure, scrubsAirankDisclosure } from './ai-ranking/disclosure'
 import { scrubSportsDisclosure, scrubsSportsDisclosure } from './sports-disclosure'
 
 export function visibleLeagueText(
@@ -19,6 +20,9 @@ export function visibleLeagueText(
   }
   if (scrubsAnalystDisclosure(category)) {
     out = scrubAnalystDisclosure(out)
+  }
+  if (scrubsAirankDisclosure(category)) {
+    out = scrubAirankDisclosure(out)
   }
   return out
 }
@@ -42,6 +46,8 @@ function scrubDeepValue(category: string, key: string, value: unknown): unknown 
 /** Scrub user-visible strings on a deep-open / deep-debate state blob before persist or return. */
 export function scrubVisibleDeepState(state: Record<string, unknown>): Record<string, unknown> {
   const category = typeof state.category === 'string' ? state.category : ''
-  if (!scrubsSportsDisclosure(category) && !scrubsAnalystDisclosure(category)) return state
+  if (!scrubsSportsDisclosure(category) && !scrubsAnalystDisclosure(category) && !scrubsAirankDisclosure(category)) {
+    return state
+  }
   return scrubDeepValue(category, '', state) as Record<string, unknown>
 }

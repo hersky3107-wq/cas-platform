@@ -8,6 +8,8 @@ import { createSportsAdapter } from './sports'
 import { LIVE_SPORTS_IO } from './sports-io.server'
 import { createStocksAdapter } from './stocks'
 import { createTechAdapter } from './tech'
+import { createAiModelsAdapter } from './ai-models'
+import { LIVE_AIRANK_IO } from './ai-models-io.server'
 import {
   createCommodityEnergyAdapter,
   createCryptoAdapter,
@@ -41,6 +43,7 @@ export const techAdapter: CategoryAdapter = createTechAdapter({
   getResearchPacket: ({ round, budgetRemainingUsd, tier }) =>
     getResearchPacket({ round, budgetRemainingUsd, tier }),
 })
+export const aiModelsAdapter: CategoryAdapter = createAiModelsAdapter(LIVE_AIRANK_IO)
 export const sportsAdapter: CategoryAdapter = createSportsAdapter(LIVE_SPORTS_IO)
 export const politicsAdapter: CategoryAdapter = createPoliticsAdapter(LIVE_POLITICS_IO)
 export const entertainmentAdapter: CategoryAdapter = createEntertainmentAdapter(LIVE_ENTERTAINMENT_IO)
@@ -55,6 +58,7 @@ const ADAPTERS: readonly CategoryAdapter[] = [
   memecoinAdapter,
   realEstateAdapter,
   techAdapter,
+  aiModelsAdapter,
   sportsAdapter,
   politicsAdapter,
   entertainmentAdapter,
@@ -77,6 +81,7 @@ export function adapterForLedgerCategory(category: string): CategoryAdapter | nu
  */
 export function adapterForInstrument(instrument: string): CategoryAdapter | null {
   if (instrument.startsWith('TECH:')) return adapterForLedgerCategory('tech')
+  if (instrument.startsWith('AIRANK:')) return adapterForLedgerCategory('ai_models')
   if (instrument.startsWith('MATCH:')) return adapterForLedgerCategory('sports')
   if (instrument.startsWith('ELECTION:')) return adapterForLedgerCategory('politics_election')
   if (instrument.startsWith('SHOW:')) return adapterForLedgerCategory('entertainment_awards')
