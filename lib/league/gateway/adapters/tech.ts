@@ -43,10 +43,10 @@ import {
   claimFromOpenInstrument,
   decodeOpenTechInstrument,
   formatOpenTechProposition,
-  formatOpenTechPropositionAllLocales,
   openTechResolutionRule,
   parseOpenTechPrompt,
 } from './tech-resolve'
+import { formatOpenTechPropositionAllLocales } from '@/lib/league/proposition-i18n.server'
 import {
   AIRANK_LEDGER_CATEGORY,
   airankAllPropositions,

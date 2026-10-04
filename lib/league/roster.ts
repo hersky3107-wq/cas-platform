@@ -1,4 +1,4 @@
-import type { ExtendedAiProviderName } from '@/lib/ai/router'
+import type { ExtendedAiProviderName } from '@/lib/ai/provider-names'
 import { extraSeatIds, lookupExtraSeat } from './extra/seats'
 
 /**

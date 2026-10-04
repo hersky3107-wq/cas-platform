@@ -85,7 +85,7 @@ export function CardHeader({
             <p className="text-sm font-bold leading-snug text-league-fg md:text-lg">{headline}</p>
             {round.category === 'ai_models' ? null : (
               <p className="mt-0.5 text-[11px] text-league-fg-muted">
-                {propertyHorizon ?? t.horizon?.[round.horizon as '1d' | '1w' | '1m' | '3m'] ?? round.horizon} · {formatCategory(round.category)}
+                {propertyHorizon ?? t.catalog.horizons[round.horizon as '1d' | '1w' | '1m' | '3m'] ?? round.horizon} · {formatCategory(round.category)}
               </p>
             )}
           </div>

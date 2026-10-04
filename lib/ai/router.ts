@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { decryptText } from '@/lib/db/crypto'
 import { recordProviderCost } from '@/lib/ai/cost-span'
@@ -17,29 +19,8 @@ const DEEPSEEK_ENGLISH_ONLY_REINFORCEMENT =
 const DEEPSEEK_MATCH_EXACT_LANGUAGE_REINFORCEMENT =
   "[CRITICAL] You MUST respond in the EXACT same language as the user's message. Match the language exactly. This is mandatory."
 
-/**
- * The core provider set. This is the default 6-AI roster every mode renders and
- * compares. Exhaustive `Record<AiProviderName, …>` maps across the app rely on
- * this staying exactly six — do NOT add opt-in providers here.
- */
-export type AiProviderName =
-  | 'openai'
-  | 'anthropic'
-  | 'google'
-  | 'xai'
-  | 'deepseek'
-  | 'mistral'
-
-/**
- * OPT-IN ONLY providers (cost control). These are deliberately kept OUT of
- * `AiProviderName` so they never leak into any default set or selectable-UI map.
- *
- * Perplexity search billing comes out of our platform credit, so a caller must
- * explicitly pass `'perplexity'` / `'meta'` to `runSingleAiProvider`
- * (or another router entry typed to `ExtendedAiProviderName`) to invoke them.
- * No code iterates provider keys to auto-include them, so they stay opt-in.
- */
-export type ExtendedAiProviderName = AiProviderName | 'perplexity' | 'meta'
+export type { AiProviderName, ExtendedAiProviderName } from './provider-names'
+import type { AiProviderName, ExtendedAiProviderName } from './provider-names'
 
 export type RouterInput = {
   prompt: string

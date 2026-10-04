@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
@@ -487,6 +489,15 @@ describe('airank card fixes & proposition localization', () => {
   })
 
   describe('6. Proposition localization & zh-TW recent list', () => {
+    it('client proposition-i18n has no server or lib/ai imports', () => {
+      const src = readFileSync(join(__dirname, '../proposition-i18n.ts'), 'utf8')
+      expect(src).not.toMatch(/@\/lib\/ai/)
+      expect(src).not.toMatch(/supabase\/server/)
+      expect(src).not.toMatch(/runSingleAiProvider/)
+      expect(src).not.toMatch(/from ['"]node:/)
+      expect(src).not.toContain("import 'server-only'")
+    })
+
     it('renders AIRANK propositions from codec for all 8 locales without LLM', () => {
       const parts = {
         arena: 'text' as const,

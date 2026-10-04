@@ -54,7 +54,7 @@ export function DisclaimerFooter({
     )
   }
 
-  const prominent = tone.disclaimerWeight === 'prominent'
+  const prominent = weight === 'prominent'
   if (omitLegacyDisclaimer && !extra && !scope) return null
   return (
     <div

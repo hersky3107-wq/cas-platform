@@ -30,7 +30,7 @@ import {
 import { nearestOnOrBefore } from './ai-ranking/grade'
 import { brandRankingFromStore, listLeaderboardPublishDates, LMARENA_SOURCE } from './ai-ranking/ingest'
 import { officialRowsForConsensus } from './extra/seats'
-import { backfillTechPropositions } from './proposition-i18n'
+import { backfillTechPropositions } from './proposition-i18n.server'
 
 /**
  * AI Prediction League — CARD DATA CONTRACT (Layer 1), DB read path.

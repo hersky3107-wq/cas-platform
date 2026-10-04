@@ -139,8 +139,9 @@ export function formatAirankHorizonLabel(
   t?: LeagueUiPack,
 ): string {
   const hz = horizon?.trim() || '1m'
-  if (t?.horizon?.[hz as '1d' | '1w' | '1m' | '3m']) {
-    return t.horizon[hz as '1d' | '1w' | '1m' | '3m']
+  const catalogHz = hz as '1d' | '1w' | '1m' | '3m'
+  if (t?.catalog.horizons[catalogHz]) {
+    return t.catalog.horizons[catalogHz]
   }
   const HORIZONS: Record<LeagueLocale, Record<string, string>> = {
     ko: { '1w': '1주일', '1m': '1개월', '3m': '3개월' },
