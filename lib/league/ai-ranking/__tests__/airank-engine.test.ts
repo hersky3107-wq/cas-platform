@@ -11,10 +11,12 @@ import {
   firstSnapshotOnOrAfter,
   gradeAirankSnapshot,
   baseRateFromHistory,
+  formatShrunkBaseRate,
+  shrinkToward50,
   type SnapshotBrandRow,
   type SnapshotModelRow,
 } from '../grade'
-import { assembleAirankInjection } from '../packet'
+import { assembleAirankInjection, brandScoreGapLine } from '../packet'
 import { scrubAirankDisclosure } from '../disclosure'
 import { selfVendorFlags } from '../self-vendor'
 import { mapVendorBrand, OTHER_VENDOR_BRAND } from '../brands'
@@ -218,19 +220,58 @@ describe('AIRANK packet + disclosure', () => {
     expect(text).toMatch(/argues YES:/)
     expect(text).toMatch(/argues NO:/)
     expect(text).toContain('raw score gap:')
+    expect(text).toContain('gap vs above')
+    expect(text).toContain('gap vs below')
+    expect(text).toContain('gap vs below (OpenAI): 20')
+    expect(text).toContain('shrunk toward 50%')
+    expect(text).not.toMatch(/100%/)
     expect(airankAttributionLine('ko')).toBe('순위 데이터: LMArena (CC BY 4.0)')
+    expect(brandScoreGapLine(now[0], null, now[1])).toContain('gap vs below (OpenAI): 20')
+  })
 
+  it('uses overlapping horizon windows and shrinks small-n base rates toward 50%', () => {
+    const parts = decodeAirankInstrument('AIRANK:text:overall:brand_rank1:OpenAI:20261104')!
+    const openaiLead = [brand('OpenAI', 'gpt-4', 1, 1400), brand('Google', 'gemini-2', 2, 1390)]
+    const googleLead = [brand('Google', 'gemini-3', 1, 1450), brand('OpenAI', 'gpt-5', 2, 1430)]
     const rates = baseRateFromHistory({
       parts,
       horizon: '1m',
       datedBrandRanks: [
-        { date: '2026-07-01', brands: earlier },
-        { date: '2026-08-01', brands: earlier },
-        { date: '2026-10-04', brands: now },
+        { date: '2026-01-01', brands: openaiLead },
+        { date: '2026-02-01', brands: googleLead },
+        { date: '2026-03-01', brands: googleLead },
       ],
     })
-    expect(rates.nPairs).toBeGreaterThan(0)
-    expect(rates.rank1Changes).toBeGreaterThan(0)
+    // Daily step from 2026-01-01 through 2026-01-30 (last − 30d). Jan 1 window
+    // has no later snapshot; Jan 2–30 = 29 overlapping 1m windows.
+    expect(rates.nPairs).toBe(29)
+    expect(rates.rank1Changes).toBe(29)
+    expect(rates.subjectObserved).toBe(29)
+    expect(rates.subjectHeld).toBe(0)
+    expect(rates.rank1ChangeRawPct).toBe(100)
+    expect(rates.rank1ChangeShrunkPct).toBe(66)
+    expect(rates.holdRawPct).toBe(0)
+    expect(rates.holdShrunkPct).toBe(34)
+
+    const tiny = shrinkToward50(3, 3)
+    expect(tiny.rawPct).toBe(100)
+    expect(tiny.shrunkPct).toBe(52)
+    const printed = formatShrunkBaseRate(3, 3)
+    expect(printed).toContain('n=3, shrunk toward 50%')
+    expect(printed).not.toMatch(/100%/)
+    expect(formatShrunkBaseRate(0, 0)).toBe('none measured')
+
+    const shortHistory = baseRateFromHistory({
+      parts,
+      horizon: '1m',
+      datedBrandRanks: [
+        { date: '2026-09-25', brands: openaiLead },
+        { date: '2026-09-30', brands: openaiLead },
+        { date: '2026-10-02', brands: openaiLead },
+      ],
+    })
+    expect(shortHistory.nPairs).toBe(0)
+    expect(formatShrunkBaseRate(shortHistory.subjectHeld, shortHistory.subjectObserved)).toBe('none measured')
   })
 
   it('scrubs Elo / score figures on ai_models cards and leaves other categories alone', () => {

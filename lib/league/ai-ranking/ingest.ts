@@ -19,15 +19,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parquetMetadataAsync, parquetReadObjects } from 'hyparquet'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { mapVendorBrand, OTHER_VENDOR_BRAND, type MappedVendorBrand } from './brands'
+import { AI_VENDOR_BRANDS, mapVendorBrand, OTHER_VENDOR_BRAND, type AiVendorBrand, type MappedVendorBrand } from './brands'
 import {
   LMARENA_ATTRIBUTION,
   LMARENA_DATASET,
   LMARENA_LICENSE,
   LMARENA_SOURCE,
+  leaderboardStoreArena,
 } from './meta'
 
-export { LMARENA_ATTRIBUTION, LMARENA_DATASET, LMARENA_LICENSE, LMARENA_SOURCE }
+export { LMARENA_ATTRIBUTION, LMARENA_DATASET, LMARENA_LICENSE, LMARENA_SOURCE, leaderboardStoreArena }
 
 /**
  * Artificial Analysis has a public API (x-api-key; free tier ~100–1,000
@@ -38,12 +39,12 @@ export { LMARENA_ATTRIBUTION, LMARENA_DATASET, LMARENA_LICENSE, LMARENA_SOURCE }
 export const ARTIFICIAL_ANALYSIS_INGEST = 'not ingested' as const
 
 export const BACKFILL_ARENAS = [
-  'text',
+  'text_style_control',
   'webdev',
-  'vision',
+  'vision_style_control',
   'text_to_image',
   'text_to_video',
-  'search',
+  'search_style_control',
 ] as const
 
 export type BackfillArena = (typeof BACKFILL_ARENAS)[number]
@@ -274,15 +275,25 @@ export function brandRanking(
   date: string,
   rows: readonly AiLeaderboardRow[],
 ): BrandRank[] {
+  const storeArena = leaderboardStoreArena(arena)
   const best = new Map<MappedVendorBrand, BrandRank>()
   for (const row of rows) {
-    if (row.source !== source || row.arena !== arena || row.category !== category || row.publish_date !== date) {
+    const rowArena = leaderboardStoreArena(row.arena)
+    if (row.source !== source || rowArena !== storeArena || row.category !== category || row.publish_date !== date) {
       continue
     }
-    const next: BrandRank = { brand: row.brand, model: row.model, rank: row.rank, score: row.score }
-    const prev = best.get(row.brand)
+    const mapped = mapVendorBrand(row.organization, row.model).brand
+    const stored = row.brand as AiVendorBrand
+    const brand: MappedVendorBrand =
+      mapped !== OTHER_VENDOR_BRAND
+        ? mapped
+        : AI_VENDOR_BRANDS.includes(stored)
+          ? stored
+          : OTHER_VENDOR_BRAND
+    const next: BrandRank = { brand, model: row.model, rank: row.rank, score: row.score }
+    const prev = best.get(brand)
     if (!prev || next.rank < prev.rank || (next.rank === prev.rank && next.model.localeCompare(prev.model) < 0)) {
-      best.set(row.brand, next)
+      best.set(brand, next)
     }
   }
   return [...best.values()].sort((a, b) => a.rank - b.rank || a.brand.localeCompare(b.brand))
@@ -543,33 +554,44 @@ async function defaultUpsertRows(rows: AiLeaderboardRow[]): Promise<void> {
   }
 }
 
+const STORE_PAGE = 1000
+
 async function defaultLoadRows(
   source: string,
   arena: string,
   category: string,
   date: string,
 ): Promise<AiLeaderboardRow[]> {
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .select('source,arena,category,publish_date,model,organization,brand,rank,score,votes')
-    .eq('source', source)
-    .eq('arena', arena)
-    .eq('category', category)
-    .eq('publish_date', date)
-    .order('rank', { ascending: true })
-  if (error) throw new Error(`league_ai_leaderboard read failed: ${error.message}`)
-  return (data ?? []).map((row) => ({
-    source: String(row.source),
-    arena: String(row.arena),
-    category: String(row.category),
-    publish_date: String(row.publish_date).slice(0, 10),
-    model: String(row.model),
-    organization: row.organization == null ? null : String(row.organization),
-    brand: (row.brand == null ? OTHER_VENDOR_BRAND : String(row.brand)) as MappedVendorBrand,
-    rank: Number(row.rank),
-    score: row.score == null ? null : Number(row.score),
-    votes: row.votes == null ? null : Number(row.votes),
-  }))
+  const out: AiLeaderboardRow[] = []
+  for (let from = 0; ; from += STORE_PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from(TABLE)
+      .select('source,arena,category,publish_date,model,organization,brand,rank,score,votes')
+      .eq('source', source)
+      .eq('arena', leaderboardStoreArena(arena))
+      .eq('category', category)
+      .eq('publish_date', date)
+      .order('rank', { ascending: true })
+      .range(from, from + STORE_PAGE - 1)
+    if (error) throw new Error(`league_ai_leaderboard read failed: ${error.message}`)
+    const page = data ?? []
+    for (const row of page) {
+      out.push({
+        source: String(row.source),
+        arena: String(row.arena),
+        category: String(row.category),
+        publish_date: String(row.publish_date).slice(0, 10),
+        model: String(row.model),
+        organization: row.organization == null ? null : String(row.organization),
+        brand: (row.brand == null ? OTHER_VENDOR_BRAND : String(row.brand)) as MappedVendorBrand,
+        rank: Number(row.rank),
+        score: row.score == null ? null : Number(row.score),
+        votes: row.votes == null ? null : Number(row.votes),
+      })
+    }
+    if (page.length < STORE_PAGE) break
+  }
+  return out
 }
 
 async function defaultLastFetchedAt(): Promise<string | null> {
@@ -764,14 +786,21 @@ export async function ingestAiLeaderboard(args: {
 }
 
 export async function listLeaderboardPublishDates(arena: string, category: string): Promise<string[]> {
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .select('publish_date')
-    .eq('source', LMARENA_SOURCE)
-    .eq('arena', arena)
-    .eq('category', category)
-  if (error) throw new Error(`league_ai_leaderboard dates read failed: ${error.message}`)
-  return [...new Set((data ?? []).map((row) => String(row.publish_date).slice(0, 10)))].sort()
+  const dates = new Set<string>()
+  for (let from = 0; ; from += STORE_PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from(TABLE)
+      .select('publish_date')
+      .eq('source', LMARENA_SOURCE)
+      .eq('arena', leaderboardStoreArena(arena))
+      .eq('category', category)
+      .range(from, from + STORE_PAGE - 1)
+    if (error) throw new Error(`league_ai_leaderboard dates read failed: ${error.message}`)
+    const page = data ?? []
+    for (const row of page) dates.add(String(row.publish_date).slice(0, 10))
+    if (page.length < STORE_PAGE) break
+  }
+  return [...dates].sort()
 }
 
 export async function brandRankingFromStore(

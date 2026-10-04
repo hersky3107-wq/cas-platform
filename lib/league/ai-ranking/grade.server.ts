@@ -9,9 +9,11 @@ import 'server-only'
 import { VOID_UNRESOLVABLE_REASON } from '@/lib/league/manual-grade/types'
 import type { ResolvedOutcome } from '@/lib/prediction/resolution'
 import { brandRankingFromStore, listLeaderboardPublishDates, LMARENA_SOURCE } from './ingest'
+import { leaderboardStoreArena } from './meta'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { firstSnapshotOnOrAfter, gradeAirankSnapshot, type SnapshotModelRow } from './grade'
 import { decodeAirankInstrument, isAirankInstrument } from './instrument'
+import { mapVendorBrand } from './brands'
 
 export type AirankOfficialResult =
   | { status: 'resolved'; outcome: ResolvedOutcome }
@@ -46,9 +48,9 @@ export async function resolveAirankOfficial(
 
   const { data, error } = await supabaseAdmin
     .from('league_ai_leaderboard')
-    .select('model,brand,rank,score')
+    .select('model,brand,organization,rank,score')
     .eq('source', LMARENA_SOURCE)
-    .eq('arena', parts.arena)
+    .eq('arena', leaderboardStoreArena(parts.arena))
     .eq('category', parts.category)
     .eq('publish_date', publishDate)
     .order('rank', { ascending: true })
@@ -57,7 +59,10 @@ export async function resolveAirankOfficial(
   const brands = await brandRankingFromStore(LMARENA_SOURCE, parts.arena, parts.category, publishDate)
   const models: SnapshotModelRow[] = (data ?? []).map((row) => ({
     model: String(row.model),
-    brand: String(row.brand) as SnapshotModelRow['brand'],
+    brand: mapVendorBrand(
+      row.organization == null ? null : String(row.organization),
+      String(row.model),
+    ).brand,
     rank: Number(row.rank),
     score: row.score == null ? null : Number(row.score),
   }))

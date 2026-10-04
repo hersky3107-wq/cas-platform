@@ -167,43 +167,87 @@ export function brandHeldQueriedPosition(
   return false
 }
 
+export const BASE_RATE_SHRINK_PRIOR = 60
+
+export function shrinkToward50(
+  successes: number,
+  n: number,
+): { rawPct: number | null; shrunkPct: number | null } {
+  if (n <= 0) return { rawPct: null, shrunkPct: null }
+  const raw = successes / n
+  const weight = n / (n + BASE_RATE_SHRINK_PRIOR)
+  const shrunk = weight * raw + (1 - weight) * 0.5
+  return { rawPct: Math.round(100 * raw), shrunkPct: Math.round(100 * shrunk) }
+}
+
+/** Never print a raw 100% when n<10; always name n and the shrinkage. */
+export function formatShrunkBaseRate(successes: number, n: number): string {
+  const { rawPct, shrunkPct } = shrinkToward50(successes, n)
+  if (n <= 0 || shrunkPct == null) return 'none measured'
+  if (n < 10) {
+    return `${successes}/${n}; n=${n}, shrunk toward 50% → ${shrunkPct}%`
+  }
+  return `${successes}/${n} (${rawPct}%); n=${n}, shrunk toward 50% → ${shrunkPct}%`
+}
+
+export type BaseRateFromHistory = {
+  nPairs: number
+  rank1Changes: number
+  subjectHeld: number
+  subjectObserved: number
+  rank1ChangeRawPct: number | null
+  rank1ChangeShrunkPct: number | null
+  holdRawPct: number | null
+  holdShrunkPct: number | null
+}
+
 export function baseRateFromHistory(args: {
   parts: AirankParts
   horizon: AirankHorizon
   datedBrandRanks: ReadonlyArray<{ date: string; brands: readonly SnapshotBrandRow[] }>
-}): { nPairs: number; rank1Changes: number; subjectHeld: number; subjectObserved: number } {
+}): BaseRateFromHistory {
   const days = horizonDays(args.horizon)
   const sorted = [...args.datedBrandRanks].sort((a, b) => a.date.localeCompare(b.date))
+  const byDate = new Map(sorted.map((r) => [r.date, r]))
   const dates = sorted.map((r) => r.date)
   let nPairs = 0
   let rank1Changes = 0
   let subjectHeld = 0
   let subjectObserved = 0
-  for (const row of sorted) {
-    const laterDate = addUtcDaysYmd(row.date, days)
-    const laterKey = firstSnapshotOnOrAfter(dates, laterDate)
-    const later = laterKey ? sorted.find((r) => r.date === laterKey) : null
-    if (later && later.date > row.date) {
+
+  if (sorted.length >= 1) {
+    const first = sorted[0].date
+    const last = sorted[sorted.length - 1].date
+    const lastStart = addUtcDaysYmd(last, -days)
+    for (let day = first; day <= lastStart; day = addUtcDaysYmd(day, 1)) {
+      const startKey = nearestOnOrBefore(dates, day)
+      const endKey = nearestOnOrBefore(dates, addUtcDaysYmd(day, days))
+      if (!startKey || !endKey || endKey <= startKey) continue
+      const start = byDate.get(startKey)
+      const end = byDate.get(endKey)
+      if (!start || !end) continue
       nPairs += 1
-      const a = bestOf(row.brands, bestRank1Brand(row.brands) ?? '')
-      const b = bestOf(later.brands, bestRank1Brand(later.brands) ?? '')
-      if ((a?.brand ?? '') !== (b?.brand ?? '')) rank1Changes += 1
-    }
-    if (args.parts.kind === 'model_rank1') continue
-    if (args.parts.kind === 'camp_rank1' || args.parts.kind === 'camp_topn') {
-      const camp = isAirankCamp(args.parts.subject) ? args.parts.subject : null
-      if (camp && row.brands.some((r) => campOfBrand(r.brand) === camp)) {
+      if ((bestRank1Brand(start.brands) ?? '') !== (bestRank1Brand(end.brands) ?? '')) rank1Changes += 1
+      if (args.parts.kind === 'model_rank1') continue
+      if (brandHeldQueriedPosition(args.parts, start.brands)) {
         subjectObserved += 1
-        if (brandHeldQueriedPosition(args.parts, row.brands)) subjectHeld += 1
+        if (brandHeldQueriedPosition(args.parts, end.brands)) subjectHeld += 1
       }
-      continue
-    }
-    if (bestOf(row.brands, args.parts.subject)) {
-      subjectObserved += 1
-      if (brandHeldQueriedPosition(args.parts, row.brands)) subjectHeld += 1
     }
   }
-  return { nPairs, rank1Changes, subjectHeld, subjectObserved }
+
+  const change = shrinkToward50(rank1Changes, nPairs)
+  const hold = shrinkToward50(subjectHeld, subjectObserved)
+  return {
+    nPairs,
+    rank1Changes,
+    subjectHeld,
+    subjectObserved,
+    rank1ChangeRawPct: change.rawPct,
+    rank1ChangeShrunkPct: change.shrunkPct,
+    holdRawPct: hold.rawPct,
+    holdShrunkPct: hold.shrunkPct,
+  }
 }
 
 function bestRank1Brand(rows: readonly SnapshotBrandRow[]): string | null {

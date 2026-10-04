@@ -16,6 +16,7 @@ import {
   ARTIFICIAL_ANALYSIS_INGEST,
   BACKFILL_ARENAS,
   brandRanking,
+  leaderboardStoreArena,
   cacheKeyForUrl,
   createRateLimitedFetch,
   downloadParquetFileWithCache,
@@ -60,7 +61,18 @@ describe('LMArena license + Artificial Analysis', () => {
     expect(LMARENA_HAS_KOREAN_CATEGORY).toBe(true)
     expect(LMARENA_TEXT_CATEGORIES).toContain('korean')
     expect(LMARENA_TEXT_CATEGORIES).toContain('overall')
-    expect(BACKFILL_ARENAS).toEqual(['text', 'webdev', 'vision', 'text_to_image', 'text_to_video', 'search'])
+    expect(leaderboardStoreArena('text')).toBe('text_style_control')
+    expect(leaderboardStoreArena('vision')).toBe('vision_style_control')
+    expect(leaderboardStoreArena('search')).toBe('search_style_control')
+    expect(leaderboardStoreArena('webdev')).toBe('webdev')
+    expect(BACKFILL_ARENAS).toEqual([
+      'text_style_control',
+      'webdev',
+      'vision_style_control',
+      'text_to_image',
+      'text_to_video',
+      'search_style_control',
+    ])
   })
 })
 
@@ -138,6 +150,15 @@ describe('vendor brand mapping (including additions)', () => {
     expect(mapVendorBrand(null, 'olmo-7b').brand).toBe('AllenAI')
     expect(mapVendorBrand(null, 'inkling-small').brand).toBe('Thinking Machines')
     expect(mapVendorBrand(null, 'unknown-model-xyz').brand).toBe(OTHER_VENDOR_BRAND)
+
+    // GPT-6-style names map to OpenAI even when the org is missing or unknown
+    expect(mapVendorBrand('unknown-lab', 'gpt-6-astra').brand).toBe('OpenAI')
+    expect(mapVendorBrand('mystery', 'gpt-6-astra-max').brand).toBe('OpenAI')
+    expect(mapVendorBrand(null, 'GPT-6 Astra').brand).toBe('OpenAI')
+    expect(mapVendorBrand('', 'chatgpt-5').brand).toBe('OpenAI')
+    expect(mapVendorBrand('odd-org', 'o3-mini').brand).toBe('OpenAI')
+    expect(mapVendorBrand('odd-org', 'o1-preview').brand).toBe('OpenAI')
+    expect(mapVendorBrand(null, 'codestral-latest').brand).toBe('Mistral')
   })
 
   it('exports a vendor brand for every official roster seat and maps Thinking Machines seat', () => {
@@ -432,6 +453,37 @@ describe('brandRanking', () => {
     ])
     expect(ranked).toEqual([{ brand: 'OpenAI', model: 'gpt-a', rank: 3, score: null }])
   })
+
+  it('remaps GPT-6-style names onto OpenAI and picks the brand-best model', () => {
+    const ranked = brandRanking('lmarena', 'text', 'overall', '2026-10-02', [
+      row({
+        organization: 'unknown-lab',
+        brand: OTHER_VENDOR_BRAND,
+        model: 'gpt-6-astra-max',
+        rank: 2,
+        score: 1510,
+      }),
+      row({
+        organization: 'openai',
+        brand: 'OpenAI',
+        model: 'gpt-5.4-high',
+        rank: 28,
+        score: 1497,
+      }),
+      row({
+        arena: 'text_style_control',
+        organization: 'anthropic',
+        brand: 'Anthropic',
+        model: 'claude-fable-5.1-max',
+        rank: 1,
+        score: 1520,
+      }),
+    ])
+    expect(ranked.map((item) => `${item.brand}:${item.model}:${item.rank}`)).toEqual([
+      'Anthropic:claude-fable-5.1-max:1',
+      'OpenAI:gpt-6-astra-max:2',
+    ])
+  })
 })
 
 describe('dry-run makes no network calls and prints planned files', () => {
@@ -464,7 +516,7 @@ describe('dry-run makes no network calls and prints planned files', () => {
     expect(lines[0]).toContain('No request sent')
     expect(lines[0]).toContain('2026-04-04')
     expect(lines[0]).toContain('Planned parquet files:')
-    expect(lines[0]).toContain('text/full/0.parquet')
+    expect(lines[0]).toContain('text_style_control/full/0.parquet')
     expect(lines[0]).toContain('webdev/full/0.parquet')
     vi.unstubAllGlobals()
   })
@@ -497,7 +549,7 @@ describe('ingest idempotency on fixtures', () => {
     const io = {
       now: () => new Date('2026-10-04T03:00:00.000Z'),
       log: () => {},
-      listParquetFiles: async () => ({ text: { latest: ['https://example.com/text.parquet'] } }),
+      listParquetFiles: async () => ({ text_style_control: { latest: ['https://example.com/text.parquet'] } }),
       downloadParquetFile: async () => ({ buffer: new ArrayBuffer(0), cacheHit: false }),
       parseParquetRows: async () => fixture,
       upsertRows: async (rows: AiLeaderboardRow[]) => {
@@ -515,8 +567,8 @@ describe('ingest idempotency on fixtures', () => {
     expect(store.size).toBe(2)
     expect(first.unmappedOrganizations).toEqual([])
     expect([...store.keys()].sort()).toEqual([
-      'lmarena|text|overall|2026-10-02|claude-fable-5.1-max',
-      'lmarena|text|overall|2026-10-02|gpt-6-astra',
+      'lmarena|text_style_control|overall|2026-10-02|claude-fable-5.1-max',
+      'lmarena|text_style_control|overall|2026-10-02|gpt-6-astra',
     ])
   })
 })

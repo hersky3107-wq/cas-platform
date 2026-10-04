@@ -9,6 +9,7 @@ import {
   addUtcDaysYmd,
   baseRateFromHistory,
   brandHeldQueriedPosition,
+  formatShrunkBaseRate,
   nearestOnOrBefore,
   type SnapshotBrandRow,
 } from './grade'
@@ -52,6 +53,16 @@ function rankOf(brands: readonly SnapshotBrandRow[], name: string): SnapshotBran
   return hits.reduce((a, b) => (b.rank < a.rank ? b : a))
 }
 
+export function brandScoreGapLine(row: SnapshotBrandRow, above: SnapshotBrandRow | null, below: SnapshotBrandRow | null): string {
+  const gap = (neighbor: SnapshotBrandRow | null): string => {
+    if (!neighbor || row.score == null || neighbor.score == null) return 'none measured'
+    return String(Number((row.score - neighbor.score).toFixed(2)))
+  }
+  const aboveBit = above ? `gap vs above (${above.brand}): ${gap(above)}` : 'gap vs above: none measured'
+  const belowBit = below ? `gap vs below (${below.brand}): ${gap(below)}` : 'gap vs below: none measured'
+  return `  ${row.rank}. ${row.brand} — ${row.model} | ${aboveBit} | ${belowBit}`
+}
+
 function trendLine(
   label: string,
   rankings: ReadonlyArray<{ date: string; brands: readonly SnapshotBrandRow[] }>,
@@ -74,7 +85,18 @@ function trendLine(
 export function assembleAirankInjection(input: AirankPacketInput): string {
   const { parts, horizon, asOfYmd, rankingsByDate } = input
   const current = rankingsByDate.find((r) => r.date === asOfYmd) ?? rankingsByDate.at(-1)
-  const top = (current?.brands ?? []).slice().sort((a, b) => a.rank - b.rank || a.brand.localeCompare(b.brand)).slice(0, 15)
+  const sorted = (current?.brands ?? []).slice().sort((a, b) => a.rank - b.rank || a.brand.localeCompare(b.brand))
+  const top = sorted.slice(0, 15)
+  const queriedExtras = [parts.subject, parts.param]
+    .filter((name): name is string => Boolean(name) && !top.some((r) => r.brand === name))
+    .map((name) => sorted.find((r) => r.brand === name))
+    .filter((row): row is SnapshotBrandRow => Boolean(row))
+
+  const rankingLines = (rows: readonly SnapshotBrandRow[]) =>
+    rows.map((r) => {
+      const i = sorted.findIndex((row) => row.brand === r.brand && row.model === r.model)
+      return brandScoreGapLine(r, i > 0 ? sorted[i - 1] ?? null : null, i >= 0 ? sorted[i + 1] ?? null : null)
+    })
 
   const rank1 = top.find((r) => r.rank === 1) ?? null
   const rank2 = top.find((r) => r.rank === 2) ?? top.filter((r) => r.brand !== rank1?.brand)[1] ?? null
@@ -82,8 +104,9 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
     rank1?.score != null && rank2?.score != null ? Number((rank1.score - rank2.score).toFixed(2)) : null
 
   const rates = baseRateFromHistory({ parts, horizon, datedBrandRanks: rankingsByDate })
-  const changePct = rates.nPairs ? Math.round((100 * rates.rank1Changes) / rates.nPairs) : null
-  const heldPct = rates.subjectObserved ? Math.round((100 * rates.subjectHeld) / rates.subjectObserved) : null
+  const changeLine = formatShrunkBaseRate(rates.rank1Changes, rates.nPairs)
+  const holdLine =
+    parts.kind === 'model_rank1' ? 'none measured' : formatShrunkBaseRate(rates.subjectHeld, rates.subjectObserved)
 
   const yesBits: string[] = []
   const noBits: string[] = []
@@ -94,9 +117,12 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
       else noBits.push(`${parts.subject} does not currently hold the queried position`)
     }
   }
-  if (rates.nPairs && changePct != null) {
-    if (changePct >= 40) yesBits.push(`#1 brand changed in ${changePct}% of ${horizon} windows`)
-    else noBits.push(`#1 brand held in ${100 - changePct}% of ${horizon} windows`)
+  if (rates.nPairs && rates.rank1ChangeShrunkPct != null) {
+    if (rates.rank1ChangeShrunkPct >= 40) {
+      yesBits.push(`#1 brand change base rate ${rates.rank1ChangeShrunkPct}% (n=${rates.nPairs}, shrunk toward 50%)`)
+    } else {
+      noBits.push(`#1 brand hold base rate ${100 - rates.rank1ChangeShrunkPct}% (n=${rates.nPairs}, shrunk toward 50%)`)
+    }
   }
 
   const newsLines =
@@ -109,10 +135,9 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
     `FIELD: ${parts.arena} / ${parts.category} as of ${current?.date ?? asOfYmd}`,
     `KIND: ${parts.kind} subject=${parts.subject}${parts.param ? ` param=${parts.param}` : ''} horizon=${horizon} (${horizonDays(horizon)}d)`,
     '',
-    'BRAND RANKING (top 15 — best model per brand):',
-    top.length
-      ? top.map((r) => `  ${r.rank}. ${r.brand} — ${r.model}`).join('\n')
-      : '  none measured',
+    'BRAND RANKING (top 15 — best model per brand; score gaps AI input only):',
+    top.length ? rankingLines(top).join('\n') : '  none measured',
+    queriedExtras.length ? rankingLines(queriedExtras).join('\n') : null,
     '',
     'RANK TREND:',
     `  ${trendLine(parts.subject, rankingsByDate, current?.date ?? asOfYmd, 4)}`,
@@ -127,11 +152,9 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
     'GAP rank1 vs rank2 (AI input only — do not quote Elo/score to the user):',
     `  qualitative: ${qualitativeGap(scoreGap)}; raw score gap: ${scoreGap == null ? 'none measured' : String(scoreGap)}`,
     '',
-    `BASE RATE (6-month history, horizon ${horizon}):`,
-    `  #1 brand changed within horizon: ${rates.nPairs ? `${rates.rank1Changes}/${rates.nPairs}` : 'none measured'}${changePct == null ? '' : ` (${changePct}%)`}`,
-    parts.kind === 'model_rank1'
-      ? '  subject held queried position: none measured'
-      : `  subject held queried position: ${rates.subjectObserved ? `${rates.subjectHeld}/${rates.subjectObserved}` : 'none measured'}${heldPct == null ? '' : ` (${heldPct}%)`}`,
+    `BASE RATE (6-month history, horizon ${horizon}, overlapping daily windows):`,
+    `  #1 brand changed within horizon: ${changeLine}`,
+    `  subject held queried position: ${holdLine}`,
     '',
     ...newsLines,
     '',

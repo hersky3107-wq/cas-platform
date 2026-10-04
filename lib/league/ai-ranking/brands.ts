@@ -265,14 +265,20 @@ export function brandFromOrganization(organization: string | null | undefined): 
 }
 
 /**
- * Model-name fallback used only when organization is empty. Do not apply this
- * to an unknown organization — those stay 기타 and are listed in the ingest
- * report.
+ * Model-name fallback. Used when organization is empty OR the organization
+ * string is not in the closed alias list (so gpt-6* under an odd org still
+ * maps to OpenAI). Unknown org + unknown model stays 기타.
  */
 export function brandFromModelName(model: string): AiVendorBrand | null {
   const key = fold(model)
   if (!key) return null
-  if (/^(gpt|chatgpt|o1|o3|o4)\b/.test(key) || key.includes('chatgpt')) return 'OpenAI'
+  if (
+    /^(gpt|chatgpt|o1|o3|o4)\b/.test(key) ||
+    key.includes('chatgpt') ||
+    /(^| )gpt[- ]?\d/.test(key)
+  ) {
+    return 'OpenAI'
+  }
   if (key.includes('claude')) return 'Anthropic'
   if (key.includes('gemini') || key.includes('gemma') || key.includes('palm')) return 'Google'
   if (key.includes('grok')) return 'xAI'
@@ -284,7 +290,13 @@ export function brandFromModelName(model: string): AiVendorBrand | null {
   if (key.includes('kimi')) return 'Moonshot'
   if (key.includes('glm') || key.includes('chatglm')) return 'Zhipu/GLM'
   if (key.includes('minimax')) return 'MiniMax'
-  if (key.includes('mistral') || key.includes('mixtral') || key.includes('magistral') || key.includes('ministral')) {
+  if (
+    key.includes('mistral') ||
+    key.includes('mixtral') ||
+    key.includes('magistral') ||
+    key.includes('ministral') ||
+    key.includes('codestral')
+  ) {
     return 'Mistral'
   }
   if (key.includes('phi-') || key.startsWith('phi ')) return 'Microsoft'
@@ -335,9 +347,11 @@ export type BrandMapping = {
 export function mapVendorBrand(organization: string | null | undefined, model: string): BrandMapping {
   const fromOrg = brandFromOrganization(organization)
   if (fromOrg) return { brand: fromOrg, unmappedOrganization: null }
+  const fromModel = brandFromModelName(model)
   const org = organization?.trim() ?? ''
+  if (fromModel) return { brand: fromModel, unmappedOrganization: org || null }
   if (org) return { brand: OTHER_VENDOR_BRAND, unmappedOrganization: org }
-  return { brand: brandFromModelName(model) ?? OTHER_VENDOR_BRAND, unmappedOrganization: null }
+  return { brand: OTHER_VENDOR_BRAND, unmappedOrganization: null }
 }
 
 export type RosterSeatVendor = {
