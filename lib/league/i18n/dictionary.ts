@@ -442,6 +442,8 @@ export type LeagueUiPack = {
     originalLabel: string
     /** Shown on a tile while view-time translation is in flight. Tile still shows the original. */
     translating: string
+    /** Callable seat with no stored rationale (never raw answer JSON). */
+    noRationale: string
   }
   /**
    * Cards-tab board chrome (division headers + final-verdict label).
@@ -1121,6 +1123,7 @@ const en: LeagueUiPack = {
     hideOriginal: 'Hide English original',
     originalLabel: 'Original',
     translating: 'Translating…',
+    noRationale: 'No rationale provided',
   },
   bracket: {
     finalVerdict: 'Final verdict',
@@ -1699,6 +1702,7 @@ const ko: LeagueUiPack = {
     hideOriginal: '영어 원문 숨기기',
     originalLabel: '원문',
     translating: '번역 중…',
+    noRationale: '근거 없음',
   },
   bracket: {
     finalVerdict: '최종 판정',
@@ -2274,6 +2278,7 @@ const ja: LeagueUiPack = {
     hideOriginal: '英語の原文を隠す',
     originalLabel: '原文',
     translating: '翻訳中…',
+    noRationale: '根拠なし',
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -2843,6 +2848,7 @@ const zhTW: LeagueUiPack = {
     hideOriginal: '隱藏英文原文',
     originalLabel: '原文',
     translating: '翻譯中…',
+    noRationale: '無依據',
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -3419,6 +3425,7 @@ const fr: LeagueUiPack = {
     hideOriginal: 'Masquer l\u2019original anglais',
     originalLabel: 'Original',
     translating: 'Traduction…',
+    noRationale: 'Aucune justification',
   },
   bracket: {
     finalVerdict: 'Verdict final',
@@ -4006,6 +4013,7 @@ const es: LeagueUiPack = {
     hideOriginal: 'Ocultar original en inglés',
     originalLabel: 'Original',
     translating: 'Traduciendo…',
+    noRationale: 'Sin justificación',
   },
   bracket: {
     finalVerdict: 'Veredicto final',
@@ -4590,6 +4598,7 @@ const ar: LeagueUiPack = {
     hideOriginal: 'إخفاء الأصل الإنجليزي',
     originalLabel: 'الأصل',
     translating: 'جارٍ الترجمة…',
+    noRationale: 'لا توجد مبررات',
   },
   bracket: {
     finalVerdict: 'الحكم النهائي',
@@ -5172,6 +5181,7 @@ const pt: LeagueUiPack = {
     hideOriginal: 'Ocultar original em inglês',
     originalLabel: 'Original',
     translating: 'Traduzindo…',
+    noRationale: 'Sem justificativa',
   },
   bracket: {
     finalVerdict: 'Veredito final',

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { answerContractFor } from '../answer-contract'
 import {
+  coerceStoredRationaleSnippet,
+  extractAnswerJsonSupplement,
   isPlaceholderRationale,
+  looksLikeAnswerJsonText,
   parsePrediction,
   sanitizeRationale,
   sanitizeReasoningText,
@@ -193,6 +196,34 @@ describe('sanitizeReasoningText', () => {
     expect(sanitizeReasoningText('   ')).toBeNull()
     expect(sanitizeReasoningText('<one line, max 200 chars>')).toBeNull()
     expect(sanitizeReasoningText(null)).toBeNull()
+  })
+})
+
+describe('coerceStoredRationaleSnippet — JSON-shaped leaks', () => {
+  it('never returns raw direction-only JSON', () => {
+    expect(looksLikeAnswerJsonText('{"direction":"down"}')).toBe(true)
+    expect(coerceStoredRationaleSnippet('{"direction":"down"}')).toBeNull()
+    expect(sanitizeRationale('{"direction":"down"}')).toBeNull()
+  })
+
+  it('extracts rationale prose from a JSON answer blob', () => {
+    const raw =
+      '{"direction":"up","probability":58,"magnitude":1.8,"rationale":"주가는 실적 모멘텀으로 상승할 가능성이 큽니다."}'
+    expect(coerceStoredRationaleSnippet(raw)).toBe('주가는 실적 모멘텀으로 상승할 가능성이 큽니다.')
+    const sup = extractAnswerJsonSupplement(raw)
+    expect(sup?.probability).toBe(58)
+    expect(sup?.magnitude).toBe(1.8)
+  })
+
+  it('extracts rationale from truncated JSON stored in the ledger', () => {
+    const partial = '{"direction":"up","probability":58,"magnitude":1.8,"rationale":"주가는 반등'
+    expect(coerceStoredRationaleSnippet(partial)).toBe('주가는 반등')
+  })
+
+  it('reads reason as an alias for rationale', () => {
+    expect(coerceStoredRationaleSnippet('{"direction":"up","reason":"Flows turned positive."}')).toBe(
+      'Flows turned positive.',
+    )
   })
 })
 

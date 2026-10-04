@@ -181,7 +181,9 @@ function UsChip({
 /** Uniform responsive grid: 2–3 cols mobile, 4 tablet, 6 desktop. */
 const GRID_CLASS = 'grid grid-cols-2 gap-2 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-6'
 
-/** Horizontally scrollable group filter with hidden scrollbar and edge fades. */
+const KR_GROUP_FILTER_SCROLL_STEP = 160
+
+/** Horizontally scrollable group filter with hidden scrollbar, edge fades, arrows, and wheel scroll. */
 function GroupFilterScrollRow({
   children,
   className = '',
@@ -203,6 +205,10 @@ function GroupFilterScrollRow({
     })
   }, [])
 
+  const scrollByStep = useCallback((delta: number) => {
+    scrollRef.current?.scrollBy({ left: delta, behavior: 'smooth' })
+  }, [])
+
   useEffect(() => {
     updateFade()
     const el = scrollRef.current
@@ -210,25 +216,58 @@ function GroupFilterScrollRow({
     const ro = new ResizeObserver(() => updateFade())
     ro.observe(el)
     el.addEventListener('scroll', updateFade, { passive: true })
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+      el.scrollLeft += event.deltaY
+      event.preventDefault()
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
     return () => {
       ro.disconnect()
       el.removeEventListener('scroll', updateFade)
+      el.removeEventListener('wheel', onWheel)
     }
   }, [updateFade, children])
 
   return (
     <div className={`relative ${className}`}>
       {fade.left ? (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute left-0 top-0 z-10 h-full w-8 bg-gradient-to-r from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80"
-        />
+        <>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-0 z-10 h-full w-10 bg-gradient-to-r from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80"
+          />
+          <button
+            type="button"
+            data-testid="kr-group-filter-scroll-left"
+            aria-label="이전 분야"
+            onClick={() => scrollByStep(-KR_GROUP_FILTER_SCROLL_STEP)}
+            className="absolute left-0 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/80 bg-white/95 text-slate-700 shadow-sm hover:bg-white dark:border-slate-600 dark:bg-slate-800/95 dark:text-slate-100"
+          >
+            <span aria-hidden className="text-sm leading-none">
+              ‹
+            </span>
+          </button>
+        </>
       ) : null}
       {fade.right ? (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80"
-        />
+        <>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute right-0 top-0 z-10 h-full w-10 bg-gradient-to-l from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80"
+          />
+          <button
+            type="button"
+            data-testid="kr-group-filter-scroll-right"
+            aria-label="다음 분야"
+            onClick={() => scrollByStep(KR_GROUP_FILTER_SCROLL_STEP)}
+            className="absolute right-0 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/80 bg-white/95 text-slate-700 shadow-sm hover:bg-white dark:border-slate-600 dark:bg-slate-800/95 dark:text-slate-100"
+          >
+            <span aria-hidden className="text-sm leading-none">
+              ›
+            </span>
+          </button>
+        </>
       ) : null}
       <div
         ref={scrollRef}

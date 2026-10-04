@@ -89,10 +89,96 @@ export function isPlaceholderRationale(text: string): boolean {
   return false
 }
 
+const ANSWER_JSON_KEY = /"direction"\s*:|"side"\s*:/
+
+/** True when text looks like a league answer JSON blob, not prose. */
+export function looksLikeAnswerJsonText(text: string): boolean {
+  const trimmed = text.trim()
+  return trimmed.startsWith('{') && ANSWER_JSON_KEY.test(trimmed)
+}
+
+export type AnswerJsonSupplement = {
+  rationale: string | null
+  probability: number | null
+  magnitude: number | null
+}
+
+function fieldsFromAnswerObject(obj: Record<string, unknown>): AnswerJsonSupplement {
+  const rationaleRaw =
+    typeof obj.rationale === 'string' ? obj.rationale : typeof obj.reason === 'string' ? obj.reason : null
+  let probability: number | null = null
+  const p = Number(obj.probability)
+  if (Number.isFinite(p)) probability = Math.max(0, Math.min(100, Math.round(p)))
+  let magnitude: number | null = null
+  if (typeof obj.magnitude === 'number' || typeof obj.magnitude === 'string') {
+    const m = Number(obj.magnitude)
+    if (Number.isFinite(m)) magnitude = m
+  }
+  return { rationale: rationaleRaw, probability, magnitude }
+}
+
+function partialFieldsFromAnswerText(text: string): AnswerJsonSupplement {
+  const probMatch = text.match(/"probability"\s*:\s*(\d+)/i)
+  const magnitudeMatch = text.match(/"magnitude"\s*:\s*(-?\d+(?:\.\d+)?)/i)
+  const rationaleMatch =
+    text.match(/"rationale"\s*:\s*"((?:\\.|[^"\\])*)"/i) ??
+    text.match(/"reason"\s*:\s*"((?:\\.|[^"\\])*)"/i) ??
+    text.match(/"rationale"\s*:\s*"([\s\S]+)$/i) ??
+    text.match(/"reason"\s*:\s*"([\s\S]+)$/i)
+  let rationale: string | null = null
+  if (rationaleMatch?.[1]) {
+    rationale = rationaleMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n')
+  }
+  return {
+    rationale,
+    probability: probMatch ? Number(probMatch[1]) : null,
+    magnitude: magnitudeMatch ? Number(magnitudeMatch[1]) : null,
+  }
+}
+
+/**
+ * Parse direction/side JSON (full or truncated) for rationale and numeric
+ * fields. Used on write when the contract omitted them and on read cleanup.
+ */
+export function extractAnswerJsonSupplement(raw: string | null | undefined): AnswerJsonSupplement | null {
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (!trimmed || !looksLikeAnswerJsonText(trimmed)) return null
+  try {
+    const obj = JSON.parse(trimmed) as Record<string, unknown>
+    if (obj && typeof obj === 'object' && ('direction' in obj || 'side' in obj)) {
+      return fieldsFromAnswerObject(obj)
+    }
+  } catch {
+    // truncated JSON — fall through
+  }
+  const last = findLastAnswerJson(trimmed)
+  if (last) return fieldsFromAnswerObject(last.obj)
+  return partialFieldsFromAnswerText(trimmed)
+}
+
+/**
+ * Display/storage snippet: never return raw answer JSON. Extracts
+ * rationale/reason when present; otherwise null.
+ */
+export function coerceStoredRationaleSnippet(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  if (looksLikeAnswerJsonText(trimmed)) {
+    const sup = extractAnswerJsonSupplement(trimmed)
+    return sanitizeRationale(sup?.rationale ?? null)
+  }
+  const clean = sanitizeRationale(trimmed)
+  if (clean && looksLikeAnswerJsonText(clean)) return null
+  return clean
+}
+
 export function sanitizeRationale(raw: string | null | undefined): string | null {
   if (typeof raw !== 'string') return null
   const trimmed = raw.trim().slice(0, RATIONALE_SNIPPET_MAX_CHARS)
   if (!trimmed || isPlaceholderRationale(trimmed) || hasReasoningTrace(trimmed)) return null
+  if (looksLikeAnswerJsonText(trimmed)) return coerceStoredRationaleSnippet(trimmed)
   return trimmed
 }
 
@@ -299,7 +385,8 @@ function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction |
     if (Number.isFinite(m)) magnitude = m
   }
 
-  const rationaleRaw = typeof obj.rationale === 'string' ? obj.rationale : null
+  const rationaleRaw =
+    typeof obj.rationale === 'string' ? obj.rationale : typeof obj.reason === 'string' ? obj.reason : null
   if (rationaleRaw && hasReasoningTrace(rationaleRaw)) return leakedPrediction()
   const rationale = sanitizeRationale(rationaleRaw)
 

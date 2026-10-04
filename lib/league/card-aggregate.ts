@@ -23,6 +23,7 @@ import { gradingStateOf, type GradingState } from '../prediction/grading-state'
 import { isExtraSeat, officialRowsForConsensus } from './extra/seats'
 import { droppedRosterModelIds } from './generation-progress'
 import { lookupRosterDisplay, lookupRosterEntry, LEAGUE_ROSTER } from './roster'
+import { coerceStoredRationaleSnippet, extractAnswerJsonSupplement } from './prediction-parse'
 import { isDisplayableWinRate, winRatePctForDisplay } from './win-rate'
 import { roundHitRecord } from './round-hit'
 import { normalizeSessionDate } from '../prediction/resolution'
@@ -315,6 +316,11 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
   const tier = row.league_tier as CardModelPrediction['league_tier']
   const camp = row.camp as CardModelPrediction['camp']
   const roster = lookupRosterDisplay(row.model_id)
+  const supplement = row.reasoning_snippet ? extractAnswerJsonSupplement(row.reasoning_snippet) : null
+  let probability = row.predicted_value
+  if (probability == null && supplement?.probability != null) probability = supplement.probability
+  let magnitude = row.predicted_magnitude_pct ?? null
+  if (magnitude == null && supplement?.magnitude != null) magnitude = supplement.magnitude
   return {
     prediction_id: row.id ?? null,
     model_id: row.model_id,
@@ -325,10 +331,10 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
     // toSideToken, not the old up/down/flat gate: yes/no/above/below rows
     // must land as answers, never as abstentions.
     direction: toSideToken(row.predicted_direction),
-    probability: row.predicted_value,
-    magnitude: row.predicted_magnitude_pct ?? null,
+    probability,
+    magnitude,
     qualifierText: row.predicted_qualifier_text ?? null,
-    reasoning_snippet: row.reasoning_snippet,
+    reasoning_snippet: coerceStoredRationaleSnippet(row.reasoning_snippet),
     is_correct: row.is_correct,
     cost_usd: row.cost_usd,
     predicted_at: row.predicted_at,

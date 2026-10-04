@@ -426,6 +426,7 @@ describe('dictionary completeness', () => {
       expect(pack.grading.reason.equal_close.trim().length).toBeGreaterThan(0)
       expect(pack.grading.reason.unknown.trim().length).toBeGreaterThan(0)
       expect(pack.modelTile.showWhy.trim().length).toBeGreaterThan(0)
+      expect(pack.modelTile.noRationale.trim().length).toBeGreaterThan(0)
       expect(pack.modelTile.hideWhy.trim().length).toBeGreaterThan(0)
     }
   })

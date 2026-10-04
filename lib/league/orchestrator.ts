@@ -14,7 +14,7 @@ import { adapterForLedgerCategory } from '@/lib/league/gateway/adapters/registry
 import { buildPriceSeriesPacket } from '@/lib/league/gateway/adapters/price-series-packet'
 import { LIVE_PRICE_SERIES_IO } from '@/lib/league/gateway/adapters/price-series-io.server'
 import type { CategoryPacket, PacketBuildContext } from '@/lib/league/gateway/types'
-import { sanitizeRationale } from '@/lib/league/prediction-parse'
+import { extractAnswerJsonSupplement, sanitizeRationale } from '@/lib/league/prediction-parse'
 import { visibleLeagueText } from '@/lib/league/visible-disclosure'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
@@ -834,15 +834,17 @@ async function runOneModel(
     }
   }
 
+  const rawText = raw.text?.trim() ?? ''
+  const jsonSupplement = rawText ? extractAnswerJsonSupplement(rawText) : null
   const rawRationale =
-    sanitizeRationale(answer!.rationale) ??
-    sanitizeRationale(raw.text ? raw.text.trim().slice(0, 500) : null)
+    sanitizeRationale(answer!.rationale) ?? sanitizeRationale(jsonSupplement?.rationale ?? null)
   const rationale = visibleLeagueText(category, rawRationale)
   // Visible reasoning block (everything before the final answer JSON). Stored
   // for every tier — scout's pre-JSON prose (citations) is raw material too.
   // reasoning_snippet stays the one-line display rationale; this is the full text.
   const reasoningText = contract.splitReasoning(raw.text)
-  const probability = answer!.probability ?? null
+  let probability = answer!.probability ?? null
+  if (probability == null && jsonSupplement?.probability != null) probability = jsonSupplement.probability
   // LEDGER SHAPE: predicted_direction stores the contract-neutral side token
   // (CHECK: up|down|yes|no|above|below). The two qualifier columns split by
   // contract: predicted_magnitude_pct is close_higher's signed % (unchanged
@@ -850,6 +852,8 @@ async function runOneModel(
   // display-only detail. Neither is read by grading.
   const direction = validation.side
   const ledger_fields = contract.ledgerFields(validation)
+  let magnitudePct = ledger_fields.magnitudePct
+  if (magnitudePct == null && jsonSupplement?.magnitude != null) magnitudePct = jsonSupplement.magnitude
   const seatId = seatIdForModel(entry.model_id, entry.league_tier)
 
   await supabaseAdmin
@@ -864,7 +868,7 @@ async function runOneModel(
         league_tier: entry.league_tier,
         predicted_direction: direction,
         predicted_value: probability,
-        predicted_magnitude_pct: ledger_fields.magnitudePct,
+        predicted_magnitude_pct: magnitudePct,
         predicted_qualifier_text: ledger_fields.qualifierText,
         reasoning_snippet: rationale,
         reasoning_text: reasoningText,
@@ -892,7 +896,7 @@ async function runOneModel(
     actual_model: raw.actualModel,
     direction,
     probability,
-    magnitude: ledger_fields.magnitudePct,
+    magnitude: magnitudePct,
     qualifier_text: ledger_fields.qualifierText,
     reasoning_snippet: rationale,
     reasoning_text: reasoningText,

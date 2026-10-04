@@ -1,4 +1,8 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { ModelTile } from '@/components/league/ModelTile'
+import { getLeagueUiPack } from '../i18n/dictionary'
 import { buildCardData } from '../card-aggregate'
 import { combinedTrackLine, buildConsensusHero, consensusHeadline, directionBadgeLabel, groupTallyLine, predictionAxisLine } from '../compliance'
 import { LEAGUE_UI } from '../i18n/dictionary'
@@ -167,6 +171,33 @@ describe('buildCardData', () => {
     expect(card.campSplit.us).toEqual({ up: 2, down: 0, flat: 0, abstain: 0 })
     expect(card.campSplit.china).toEqual({ up: 0, down: 1, flat: 0, abstain: 0 })
     expect(card.campSplit.other).toEqual({ up: 0, down: 0, flat: 0, abstain: 0 })
+  })
+
+  it('cleans JSON-shaped reasoning_snippet on read and fills probability from the blob', () => {
+    const rows: PredictionRow[] = [
+      pred({
+        model_id: 'mimo-v2.5',
+        predicted_direction: 'down',
+        predicted_value: null,
+        reasoning_snippet: '{"direction":"down"}',
+      }),
+      pred({
+        model_id: 'claude-sonnet-5-websearch',
+        league_tier: 'scout',
+        predicted_direction: 'up',
+        predicted_value: null,
+        predicted_magnitude_pct: null,
+        reasoning_snippet:
+          '{"direction":"up","probability":58,"magnitude":1.8,"rationale":"주가는 실적 모멘텀으로 상승할 가능성이 큽니다."}',
+      }),
+    ]
+    const card = buildCardData(round(), rows)
+    const mimo = card.models.find((m) => m.model_id === 'mimo-v2.5')
+    const scout = card.models.find((m) => m.model_id === 'claude-sonnet-5-websearch')
+    expect(mimo?.reasoning_snippet).toBeNull()
+    expect(scout?.reasoning_snippet).toBe('주가는 실적 모멘텀으로 상승할 가능성이 큽니다.')
+    expect(scout?.probability).toBe(58)
+    expect(scout?.magnitude).toBe(1.8)
   })
 
   it('shows a scout row as soon as that prediction exists, before the rest of the tier', () => {
@@ -577,5 +608,34 @@ describe('card-types groupings stay in sync with model rows (sanity)', () => {
     const card = buildCardData(round(), rows)
     expect(card.models[0]!.brand).toBe('OpenAI (ChatGPT)')
     expect(card.models[0]!.model_identifier).toBe('gpt-5.6-luna')
+  })
+})
+
+describe('ModelTile rationale display', () => {
+  it('shows localized no-rationale copy instead of JSON answer leaks', () => {
+    const t = getLeagueUiPack('ko')
+    const html = renderToStaticMarkup(
+      createElement(ModelTile, {
+        model: {
+          prediction_id: null,
+          model_id: 'mimo-v2.5',
+          brand: 'Mimo',
+          model_identifier: 'mimo-v2.5',
+          camp: 'china',
+          league_tier: 'premier',
+          direction: 'down',
+          probability: 55,
+          magnitude: null,
+          qualifierText: null,
+          reasoning_snippet: '{"direction":"down"}',
+          is_correct: null,
+          cost_usd: 0,
+          predicted_at: null,
+        },
+        t,
+      }),
+    )
+    expect(html).toContain('근거 없음')
+    expect(html).not.toContain('"direction"')
   })
 })

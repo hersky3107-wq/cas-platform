@@ -7,8 +7,9 @@ import type { CardModelPrediction } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { SideLabels, SideSlot } from '@/lib/league/side-labels'
 import { formatSignedPercent } from '@/lib/league/magnitude'
-import { sanitizeScoutRationaleDisplay } from '@/lib/league/prediction-parse'
+import { coerceStoredRationaleSnippet, sanitizeScoutRationaleDisplay } from '@/lib/league/prediction-parse'
 import { visibleLeagueText } from '@/lib/league/visible-disclosure'
+import { hasCallableSide } from '@/lib/league/side-labels'
 import { CountryFlag } from '@/components/league/CountryFlag'
 import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
 
@@ -63,15 +64,14 @@ export function ModelTile({
 }) {
   const [open, setOpen] = useState(false)
   const isScout = model.league_tier === 'scout'
-  const original = visibleLeagueText(
-    category,
-    isScout ? sanitizeScoutRationaleDisplay(model.reasoning_snippet) : model.reasoning_snippet,
-  )
-  const translated = visibleLeagueText(
-    category,
-    isScout ? sanitizeScoutRationaleDisplay(translatedRationale) : translatedRationale,
-  )
+  const snippetForDisplay = (text: string | null | undefined) => {
+    const coerced = coerceStoredRationaleSnippet(text)
+    return isScout ? sanitizeScoutRationaleDisplay(coerced) : coerced
+  }
+  const original = visibleLeagueText(category, snippetForDisplay(model.reasoning_snippet))
+  const translated = visibleLeagueText(category, snippetForDisplay(translatedRationale))
   const rationale = translated || original
+  const showNoRationale = !rationale && hasCallableSide(model.direction)
   const hasReasoning = Boolean(rationale)
   const slot: SideSlot = labels
     ? labels.slot(model.direction)
@@ -232,6 +232,8 @@ export function ModelTile({
           <p className={`text-[11px] leading-snug italic text-league-fg-muted ${open ? '' : 'line-clamp-2'}`}>
             &ldquo;{rationale}&rdquo;
           </p>
+        ) : showNoRationale ? (
+          <p className="text-[11px] leading-snug text-league-fg-muted">{t.modelTile.noRationale}</p>
         ) : null}
 
         {open && showOriginal && translated && original && translated !== original ? (

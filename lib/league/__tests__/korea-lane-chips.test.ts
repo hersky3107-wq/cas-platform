@@ -250,6 +250,22 @@ describe('Korean-lane chip browser (redesign)', () => {
     expect(filterBlock).not.toContain('flex-wrap')
   })
 
+  it('group filter row adds directional scroll arrows and horizontal wheel scroll', () => {
+    const filterBlock = browserSrc.slice(
+      browserSrc.indexOf('function GroupFilterScrollRow'),
+      browserSrc.indexOf('function SkeletonBrowser'),
+    )
+    expect(filterBlock).toContain('data-testid="kr-group-filter-scroll-left"')
+    expect(filterBlock).toContain('data-testid="kr-group-filter-scroll-right"')
+    expect(filterBlock).toContain('aria-label="이전 분야"')
+    expect(filterBlock).toContain('aria-label="다음 분야"')
+    expect(filterBlock).toContain('fade.left')
+    expect(filterBlock).toContain('fade.right')
+    expect(filterBlock).toContain("addEventListener('wheel'")
+    expect(filterBlock).toContain('el.scrollLeft += event.deltaY')
+    expect(filterBlock).toContain('passive: false')
+  })
+
   it('group sections show 8 chips then expand via "더보기 (+N)"; active filter expands fully', () => {
     expect(browserSrc).toContain('GROUP_PREVIEW_COUNT = 8')
     expect(browserSrc).toContain('groupRows.slice(0, GROUP_PREVIEW_COUNT)')
