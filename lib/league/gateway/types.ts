@@ -78,6 +78,11 @@ export type RefusalCode =
   | 'vague_show'
   | 'past_show'
   | 'unsupported_show'
+  | 'rumor_only'
+  | 'subjective_claim'
+  | 'ai_ranking'
+  | 'deadline_too_far'
+  | 'already_resolved'
 
 /**
  * Adapter id: public chips plus ledger-only adapters that are not on the

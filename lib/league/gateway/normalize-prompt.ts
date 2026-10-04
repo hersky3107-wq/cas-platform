@@ -25,7 +25,7 @@ export const CATEGORY_PROPOSITION_KIND: Record<PublicCategoryId, PropositionKind
   entertainment: 'binary_subject_outcome',
   memecoin: PRICE_KIND,
   real_estate: 'binary_subject_outcome',
-  macro_econ: 'binary_threshold',
+  tech: 'binary_subject_outcome',
 }
 
 const SLOT_HINT: Record<PublicCategoryId, string> = {
@@ -41,7 +41,7 @@ const SLOT_HINT: Record<PublicCategoryId, string> = {
   entertainment: 'entity_mention = the ONE named work, artist, or nominee. A subjective hit question (대박/흥행) still names that subject. Never a nominee list as the output.',
   memecoin: 'entity_mention = doge, shib, pepe, wif, or bonk. Empty if they named none.',
   real_estate: 'entity_mention = a published housing region (강남구, 서울, Case-Shiller city, London borough). Never a complex name, address, or dong.',
-  macro_econ: 'entity_mention = the named indicator. Empty if they named none.',
+  tech: 'entity_mention = the ONE company or organization (any company worldwide). slots.event = launch|announce|ship|release|approve|file|acquire|publish. slots.object = the product or event. slots.deadline = YYYY-MM-DD when the user named a date inside 3 months, else null. Price moves, AI leaderboard ranks, and subjective hits (흥행/혁신/잘 팔릴) are still extracted; the server refuses them.',
 }
 
 export function propositionKindFor(categoryId: PublicCategoryId): PropositionKind {

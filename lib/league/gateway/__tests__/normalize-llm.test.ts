@@ -40,7 +40,7 @@ describe('llm normalizer', () => {
   it('does not call the model for a non-public category', async () => {
     const call = vi.fn()
     const n = createLlmNormalizer(call)
-    await expect(n.normalize({ raw_text: 'openai ships gpt-6', category_id: 'tech', locale: 'en' })).resolves.toBeNull()
+    await expect(n.normalize({ raw_text: 'openai ships gpt-6', category_id: 'ai_models', locale: 'en' })).resolves.toBeNull()
     expect(call).not.toHaveBeenCalled()
   })
 })

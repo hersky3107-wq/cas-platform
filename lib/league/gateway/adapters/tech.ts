@@ -30,7 +30,6 @@ import {
   isTechVenue,
   objectById,
   objectsFor,
-  resolveCompanyMention,
   type TechClaimKind,
 } from './tech-catalog'
 import {
@@ -40,6 +39,13 @@ import {
   techResolutionRule,
 } from './tech-compose'
 import { buildTechPacket, type TechPacketIo } from './tech-packet'
+import {
+  claimFromOpenInstrument,
+  decodeOpenTechInstrument,
+  formatOpenTechProposition,
+  openTechResolutionRule,
+  parseOpenTechPrompt,
+} from './tech-resolve'
 
 /**
  * TECH adapter — first binary_subject_outcome CategoryAdapter.
@@ -51,12 +57,14 @@ import { buildTechPacket, type TechPacketIo } from './tech-packet'
  */
 
 const TECH_REFUSALS: readonly RefusalCode[] = [
-  'unsupported_entity',
-  'ambiguous_entity',
-  'missing_slot',
   'vague_claim',
+  'rumor_only',
+  'subjective_claim',
   'price_or_earnings',
-  'no_result_source',
+  'ai_ranking',
+  'deadline_too_far',
+  'already_resolved',
+  'missing_slot',
   'ungradeable',
   'jurisdiction_blocked',
   'low_confidence',
@@ -95,7 +103,7 @@ function isDecidableSlots(slots: NormalizeSlots): boolean {
   return true
 }
 
-export function createTechAdapter(io: TechPacketIo): CategoryAdapter {
+export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => new Date()): CategoryAdapter {
   return {
     category_id: 'tech',
     ledger_category: 'tech',
@@ -103,43 +111,47 @@ export function createTechAdapter(io: TechPacketIo): CategoryAdapter {
     observation_shape: 'occurrence',
 
     async resolveEntity(raw: string, _locale: string, _viewer?: GatewayViewer): Promise<EntityResolution> {
-      const hit = resolveCompanyMention(raw)
-      if (!hit) {
+      const trimmed = raw.trim()
+      const legacy = decodeTechInstrument(trimmed)
+      if (legacy) {
+        const company = companyById(legacy.companyId)
         return {
-          ok: false,
-          refuse: refuse('unsupported_entity', {
-            supported: TECH_COMPANIES.map((c) => c.label_en).join(', '),
-          }),
+          ok: true,
+          entity_id: trimmed,
+          entity_kind: 'company',
+          label: company?.label_en ?? legacy.companyId,
+          skip_confirm: true,
         }
       }
-      if (Array.isArray(hit)) {
-        if (hit.length === 1) {
-          return {
-            ok: false,
-            need: {
-              slot: 'entity_id',
-              prompt_i18n_key: 'league.gateway.clarify.entity',
-              options: hit.map((c) => ({ id: c.id, label_i18n_key: `league.gateway.tech.company.${c.id}` })),
-            },
-          }
-        }
+      const openExisting = decodeOpenTechInstrument(trimmed)
+      if (openExisting) {
         return {
-          ok: false,
-          need: {
-            slot: 'entity_id',
-            prompt_i18n_key: 'league.gateway.clarify.entity',
-            options: hit.map((c) => ({ id: c.id, label_i18n_key: `league.gateway.tech.company.${c.id}` })),
-          },
+          ok: true,
+          entity_id: trimmed,
+          entity_kind: 'company',
+          label: openExisting.subjectSlug,
+          skip_confirm: true,
         }
       }
-      return { ok: true, entity_id: hit.id, entity_kind: 'company', label: hit.label_en }
+      const parsed = parseOpenTechPrompt(trimmed, nowFn())
+      if (!parsed.ok) return { ok: false, refuse: refuse(parsed.code) }
+      return {
+        ok: true,
+        entity_id: parsed.claim.instrument,
+        entity_kind: 'company',
+        label: parsed.claim.subjectLabel,
+      }
     },
 
-    requiredSlots(_entity): readonly string[] {
+    requiredSlots(entity): readonly string[] {
+      if (decodeOpenTechInstrument(entity.entity_id) || decodeTechInstrument(entity.entity_id)) return []
       return ['claim_kind', 'object_id', 'artifact_id', 'venue_id', 'resolve_by']
     },
 
     clarifyingQuestions(partial: Partial<NormalizeSlots>): ClarifyingQuestion[] {
+      if (partial.entity_id && (decodeOpenTechInstrument(partial.entity_id) || decodeTechInstrument(partial.entity_id))) {
+        return []
+      }
       const questions: ClarifyingQuestion[] = []
       if (!partial.entity_id) {
         questions.push({
@@ -212,6 +224,22 @@ export function createTechAdapter(io: TechPacketIo): CategoryAdapter {
     },
 
     composeProposition(slots: NormalizeSlots, now: Date = new Date()): ComposedRound {
+      const open = claimFromOpenInstrument(slots.entity_id, slots.entity_label, now)
+      if (open) {
+        return {
+          proposition_text: formatOpenTechProposition(open),
+          category: 'tech',
+          instrument: open.instrument,
+          horizon: open.horizon,
+          resolution_rule: openTechResolutionRule(open),
+          resolves_at: `${open.deadline}T23:59:59.999Z`,
+          item_type: 'ranked',
+          cache_key: `tech|${open.instrument}|${open.deadline}`,
+          proposition_kind: 'binary_subject_outcome',
+          subject_label: open.subjectLabel,
+          observation_shape: 'occurrence',
+        }
+      }
       if (isPriceOrEarningsKind(claimKindOf(slots))) {
         throw new Error('tech.composeProposition: price/earnings claims belong on the stocks chip')
       }
@@ -249,10 +277,32 @@ export function createTechAdapter(io: TechPacketIo): CategoryAdapter {
     },
 
     isDecidable(slots: NormalizeSlots): boolean {
+      if (decodeOpenTechInstrument(slots.entity_id)) return true
+      if (decodeTechInstrument(slots.entity_id)) return true
       return isDecidableSlots(slots)
     },
 
     slotsForRound(round: PacketRound): NormalizeSlots {
+      const open = decodeOpenTechInstrument(round.instrument)
+      if (open) {
+        const date = open.deadline
+        return {
+          category_id: 'tech',
+          entity_id: round.instrument,
+          entity_kind: 'company',
+          entity_label: open.subjectSlug,
+          horizon: isUiHorizon(round.horizon) ? round.horizon : horizonForResolveDate(date, new Date(0)),
+          resolve_by: date,
+          proposition_kind: 'binary_subject_outcome',
+          slots: {
+            event: open.event,
+            object: open.objectSlug,
+            verification: open.verification,
+            resolve_by: date,
+          },
+          confidence: 1,
+        }
+      }
       const decoded = decodeTechInstrument(round.instrument)
       const object = decoded ? objectById(decoded.objectId) : null
       const company = decoded ? companyById(decoded.companyId) : null

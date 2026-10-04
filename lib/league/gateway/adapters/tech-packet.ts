@@ -26,6 +26,7 @@ import {
   decodeTechInstrument,
   objectById,
 } from './tech-catalog'
+import { catalogCompanyForText, decodeOpenTechInstrument } from './tech-resolve'
 
 /**
  * Tech packet IO. No price series, no Twelve Data. Research is Perplexity
@@ -120,26 +121,47 @@ export function parseNormalizedDate(raw?: string | null): string | null {
     }
   }
 
-  // 5. Year-Month path in URL or string: /2026/09/ or /2026-09/
-  const yearMonthPathMatch = str.match(/(?:^|[\s/._-])(20\d{2})[/_-](0?[1-9]|1[0-2])(?:[/_-]|$)/)
-  if (yearMonthPathMatch) {
-    const [, y, m] = yearMonthPathMatch
-    return `${y}-${m.padStart(2, '0')}-01`
-  }
-
-  // 6. Month Year (e.g. September 2026) -> default to 01
-  const monthYearMatch = str.match(
-    /(?:^|[\s/._-])(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))\s*\.?,?\s+(20\d{2})(?:$|[\s/._-])/i
-  )
-  if (monthYearMatch) {
-    const [, monthStr, yearStr] = monthYearMatch
-    const m = MONTH_MAP[monthStr.toLowerCase()]
-    if (m) {
-      return `${yearStr}-${m}-01`
-    }
-  }
-
   return null
+}
+
+const REPUTABLE_DOMAINS = [
+  'reuters.com',
+  'bloomberg.com',
+  'wsj.com',
+  'ft.com',
+  'nytimes.com',
+  'bbc.com',
+  'bbc.co.uk',
+  'apnews.com',
+  'theverge.com',
+  'techcrunch.com',
+  'wired.com',
+  'arstechnica.com',
+  'cnbc.com',
+  'yonhapnews.co.kr',
+  'yna.co.kr',
+  'hankyung.com',
+  'mk.co.kr',
+  'apple.com',
+  'nvidia.com',
+  'samsung.com',
+  'openai.com',
+  'spacex.com',
+  'microsoft.com',
+  'blog.google',
+  'about.fb.com',
+  'sec.gov',
+  'anthropic.com',
+]
+
+/** Host match only. A missing day is left null — never invented. */
+export function isReputableTechUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+    return REPUTABLE_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`))
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -242,7 +264,7 @@ export function sourceFinding(
     date = parseNormalizedDate(url)
   }
 
-  const usable = Boolean(url && date)
+  const usable = Boolean(url && (date || isReputableTechUrl(url)))
 
   return {
     query,
@@ -253,41 +275,57 @@ export function sourceFinding(
   }
 }
 
+const DOES_NOT_OCCUR = /no product|not yet|hasn'?t|have not|will not|won'?t|postponed|denied|아직|없다|미발표|미공개/i
+
+function sideLine(findings: SourcedFinding[]): string {
+  if (findings.length === 0) return 'none measured'
+  return findings
+    .map((f) => `${f.date ?? 'date unavailable'} | ${f.url} | ${f.summary.slice(0, 160)}`)
+    .join(' ; ')
+}
+
 export function assembleTechInjection(args: {
   round: PacketRound
   research: TechResearchPacket
 }): string {
   const decoded = decodeTechInstrument(args.round.instrument)
-  const company = decoded ? companyById(decoded.companyId) : null
+  const open = decodeOpenTechInstrument(args.round.instrument)
+  const company =
+    (decoded ? companyById(decoded.companyId) : null) ??
+    (open ? catalogCompanyForText(open.subjectSlug) : null)
   const object = decoded ? objectById(decoded.objectId) : null
   const base = company ? TECH_BASE_RATES[company.id] : undefined
   const related = company ? TECH_RELATED[company.id] ?? [] : []
+  const subject = company?.label_en ?? open?.subjectSlug ?? 'UNAVAILABLE'
+  const objectLabel = object?.label_en ?? (open ? open.objectSlug.replace(/_/g, ' ') : 'UNAVAILABLE')
 
   const sourced = args.research.findings.map((f) => sourceFinding(f))
   const usable = sourced.filter((f) => f.usable)
   const dropped = sourced.filter((f) => !f.usable)
+  const occurs = usable.filter((f) => !DOES_NOT_OCCUR.test(f.summary))
+  const absent = usable.filter((f) => DOES_NOT_OCCUR.test(f.summary))
 
   const lines: string[] = [
     'TECH PACKET — numbers first, prose last. No price series.',
     `Proposition: ${args.round.proposition_text}`,
-    `Subject: ${company?.label_en ?? 'UNAVAILABLE'}`,
-    `Object: ${object?.label_en ?? 'UNAVAILABLE'}`,
+    `Subject: ${subject}`,
+    `Object: ${objectLabel}`,
     `Deadline: ${args.round.resolves_at.slice(0, 10)}`,
     `Resolution rule: ${args.round.resolution_rule}`,
     '',
-    'BASE RATE (catalog, not a live feed)',
+    'BASE RATE (catalog prior when the subject is known; not a short-window trend)',
   ]
   if (base) {
     lines.push(`Official posts last 12 months: ${base.officialPostsLast12m} (as of ${base.asOf})`)
     lines.push(formatSameClassOfficialPostsLine(base.sameClassOfficialPostsLast12m, base.asOf))
   } else {
-    lines.push('Official posts last 12 months: UNAVAILABLE')
-    lines.push('Same-class official posts last 12 months: UNAVAILABLE')
+    lines.push('Official posts last 12 months: none measured')
+    lines.push('Same-class official posts last 12 months: none measured')
   }
 
   lines.push('', 'RELATED COMPANY SIGNALS')
   if (related.length === 0) {
-    lines.push('Related: UNAVAILABLE')
+    lines.push('Related: none measured')
   } else {
     for (const rel of related) {
       const peer = companyById(rel.id)
@@ -297,19 +335,25 @@ export function assembleTechInjection(args: {
     }
   }
 
-  lines.push('', 'SOURCED FINDINGS (https URL + YYYY-MM-DD required; others dropped)')
+  lines.push('', 'SOURCED FINDINGS (https URL plus a parsed date, or a reputable domain; dates are never invented)')
   if (!args.research.available) {
     lines.push(`Research: UNAVAILABLE${args.research.error ? ` (${args.research.error})` : ''}`)
   } else if (usable.length === 0) {
     lines.push('Usable findings: 0')
   } else {
     for (const f of usable) {
-      lines.push(`${f.date} | ${f.url} | ${f.summary.slice(0, 220)}`)
+      lines.push(`${f.date ?? 'date unavailable'} | ${f.url} | ${f.summary.slice(0, 220)}`)
     }
   }
   if (dropped.length) {
-    lines.push(`Dropped (missing url or date): ${dropped.length}`)
+    lines.push(`Dropped (missing url, or url without a date on an unknown domain): ${dropped.length}`)
   }
+  lines.push(
+    '',
+    'BOTH SIDES — evidence for occurs / does not occur. Do not invent balance.',
+    `  argues occurs: ${sideLine(occurs)}`,
+    `  argues does not occur: ${sideLine(absent)}`,
+  )
   return lines.join('\n')
 }
 

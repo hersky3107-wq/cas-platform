@@ -261,8 +261,9 @@ export type LeagueUiPack = {
     koreaStocksHint: string
     stockLaneAdminGlobal: string
     stockLaneAdminKorea: string
-    /** Academic framing for the macro_econ coming-soon panel. */
-    macroEconHint: string
+    /** Free-prompt tech panel: one hint and two sample questions. No chips. */
+    techHint: string
+    techSamples: readonly [string, string]
     noCardYet: string
     /** Horizon selector chips shown next to the instrument chips. Default '1d'. */
     horizons: { '1d': string; '1w': string; '1m': string; '3m': string }
@@ -953,7 +954,7 @@ const en: LeagueUiPack = {
       entertainment: 'Entertainment',
       memecoin: 'Memecoin',
       real_estate: 'Real estate',
-      macro_econ: 'Macro',
+      tech: 'Tech',
     },
     instruments: {
       AAPL: 'Apple (AAPL)',
@@ -1012,7 +1013,8 @@ const en: LeagueUiPack = {
     koreaStocksHint: 'Korean listings are not open yet. This lane has no search box.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Korea',
-    macroEconHint: 'Expert market outlook — rates, inflation, bonds. Depth, not dopamine.',
+    techHint: 'Yes or no on a company, product, or event. Type a question — there are no chips.',
+    techSamples: ['Will Apple announce a new iPad in October?', 'Will Samsung ship a tri-fold phone by year-end?'],
     noCardYet: 'No prediction card for this instrument yet.',
     horizons: { '1d': '1 day', '1w': '1 week', '1m': '1 month', '3m': '3 months' },
     spotVsEtfNote:
@@ -1354,7 +1356,7 @@ const en: LeagueUiPack = {
       entertainment: 'e.g. Chiikawa opening weekend #1, NewJeans Melon #1, Game of the Year',
       memecoin: 'Will Dogecoin close higher tomorrow?',
       real_estate: 'Will the Seoul apartment price index rise next print?',
-      macro_econ: 'Will US CPI print above 3% this month?',
+      tech: 'Will Apple announce a new iPad in October?',
     },
     submit: 'Ask',
     retry: 'Edit and retry',
@@ -1531,7 +1533,7 @@ const ko: LeagueUiPack = {
       entertainment: '엔터테인먼트',
       memecoin: '밈코인',
       real_estate: '부동산',
-      macro_econ: '거시경제',
+      tech: '테크',
     },
     instruments: {
       AAPL: '애플 (AAPL)',
@@ -1590,7 +1592,8 @@ const ko: LeagueUiPack = {
     koreaStocksHint: '한국 상장 종목 칩은 준비 중입니다. 이 화면에는 검색창이 없습니다.',
     stockLaneAdminGlobal: '글로벌',
     stockLaneAdminKorea: '한국',
-    macroEconHint: '금리·물가·채권 등 전문가용 시장 전망. 자극이 아니라 깊이입니다.',
+    techHint: '기업·제품·이벤트의 예 또는 아니오. 칩 없이 질문만 입력합니다.',
+    techSamples: ['애플이 10월 안에 새 아이패드를 발표할까?', '삼성이 연말까지 3단 폴더블을 출시할까?'],
     noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
     horizons: { '1d': '1일', '1w': '1주', '1m': '1개월', '3m': '3개월' },
     spotVsEtfNote:
@@ -1929,7 +1932,7 @@ const ko: LeagueUiPack = {
       entertainment: '예: 치이카와 첫 주말 1위, 뉴진스 멜론 1위, 올해의 게임',
       memecoin: '도지코인 내일 오를까?',
       real_estate: '서울 아파트 가격지수 오를까?',
-      macro_econ: '이번 달 미국 CPI가 3%를 넘을까?',
+      tech: '애플이 10월 안에 새 아이패드를 발표할까?',
     },
     submit: '질문하기',
     retry: '고쳐서 다시',
@@ -2105,7 +2108,7 @@ const ja: LeagueUiPack = {
       entertainment: 'エンタメ',
       memecoin: 'ミームコイン',
       real_estate: '不動産',
-      macro_econ: 'マクロ経済',
+      tech: 'テック',
     },
     instruments: {
       AAPL: 'アップル (AAPL)',
@@ -2164,7 +2167,8 @@ const ja: LeagueUiPack = {
     koreaStocksHint: '韓国上場銘柄のチップは準備中です。この画面に検索欄はありません。',
     stockLaneAdminGlobal: 'グローバル',
     stockLaneAdminKorea: '韓国',
-    macroEconHint: '金利・物価・債券など、専門家向けの市場見通し。刺激ではなく深さです。',
+    techHint: '企業・製品・イベントのはい/いいえ。チップはなく、質問だけ入力します。',
+    techSamples: ['アップルは10月中に新しいiPadを発表する？', 'サムスンは年末までに3つ折りを発売する？'],
     noCardYet: 'この銘柄の予測カードはまだありません。',
     horizons: { '1d': '1日', '1w': '1週間', '1m': '1か月', '3m': '3か月' },
     spotVsEtfNote:
@@ -2501,7 +2505,7 @@ const ja: LeagueUiPack = {
       entertainment: 'この作品は最優秀作品賞を取る？',
       memecoin: 'ドージコインは明日上がる？',
       real_estate: 'ソウルの住宅価格指数は上がる？',
-      macro_econ: '今月の米CPIは3%を超える？',
+      tech: 'アップルは10月中に新しいiPadを発表する？',
     },
     submit: '質問する',
     retry: '直して再試行',
@@ -2676,7 +2680,7 @@ const zhTW: LeagueUiPack = {
       entertainment: '娛樂',
       memecoin: '迷因幣',
       real_estate: '不動產',
-      macro_econ: '總體經濟',
+      tech: '科技',
     },
     instruments: {
       AAPL: '蘋果 (AAPL)',
@@ -2735,7 +2739,8 @@ const zhTW: LeagueUiPack = {
     koreaStocksHint: '韓國上市股票籌碼準備中。此畫面沒有搜尋框。',
     stockLaneAdminGlobal: '全球',
     stockLaneAdminKorea: '韓國',
-    macroEconHint: '利率、通膨、債券等專業市場展望。重深度，不重刺激。',
+    techHint: '公司、產品或事件的是／否。沒有固定標的，只輸入問題。',
+    techSamples: ['蘋果會在10月內發表新iPad嗎？', '三星會在年底前推出三摺手機嗎？'],
     noCardYet: '此標的尚無預測卡。',
     horizons: { '1d': '1天', '1w': '1週', '1m': '1個月', '3m': '3個月' },
     spotVsEtfNote:
@@ -3069,7 +3074,7 @@ const zhTW: LeagueUiPack = {
       entertainment: '這部作品會拿最佳影片嗎？',
       memecoin: '狗狗幣明天會漲嗎？',
       real_estate: '首爾房價指數會漲嗎？',
-      macro_econ: '這個月美國CPI會高於3%嗎？',
+      tech: '蘋果會在10月內發表新iPad嗎？',
     },
     submit: '提問',
     retry: '修改後重試',
@@ -3246,7 +3251,7 @@ const fr: LeagueUiPack = {
       entertainment: 'Divertissement',
       memecoin: 'Memecoin',
       real_estate: 'Immobilier',
-      macro_econ: 'Macro',
+      tech: 'Tech',
     },
     instruments: {
       AAPL: 'Apple (AAPL)',
@@ -3305,7 +3310,8 @@ const fr: LeagueUiPack = {
     koreaStocksHint: 'Les actions coréennes ne sont pas encore ouvertes. Cette voie n’a pas de champ de recherche.',
     stockLaneAdminGlobal: 'Monde',
     stockLaneAdminKorea: 'Corée',
-    macroEconHint: 'Perspectives de marché pour experts — taux, inflation, obligations. De la profondeur, pas du spectacle.',
+    techHint: 'Oui ou non sur une entreprise, un produit ou un événement. Une question, pas de puces.',
+    techSamples: ['Apple annoncera-t-il un nouvel iPad en octobre ?', 'Samsung lancera-t-il un tri-fold d’ici la fin de l’année ?'],
     noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
     horizons: { '1d': '1 jour', '1w': '1 semaine', '1m': '1 mois', '3m': '3 mois' },
     spotVsEtfNote:
@@ -3653,7 +3659,7 @@ const fr: LeagueUiPack = {
       entertainment: 'Ce film va-t-il gagner l\u2019Oscar ?',
       memecoin: 'Dogecoin va-t-il monter demain ?',
       real_estate: 'L’indice des prix à Séoul va-t-il monter ?',
-      macro_econ: 'L\u2019IPC US d\u00e9passera-t-il 3 % ce mois-ci ?',
+      tech: 'Apple annoncera-t-il un nouvel iPad en octobre ?',
     },
     submit: 'Demander',
     retry: 'Corriger et r\u00e9essayer',
@@ -3832,7 +3838,7 @@ const es: LeagueUiPack = {
       entertainment: 'Entretenimiento',
       memecoin: 'Memecoin',
       real_estate: 'Inmuebles',
-      macro_econ: 'Macro',
+      tech: 'Tech',
     },
     instruments: {
       AAPL: 'Apple (AAPL)',
@@ -3891,7 +3897,8 @@ const es: LeagueUiPack = {
     koreaStocksHint: 'Las acciones coreanas aún no están abiertas. Este carril no tiene búsqueda.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Corea',
-    macroEconHint: 'Perspectiva de mercado para expertos: tipos, inflación, bonos. Profundidad, no dopamina.',
+    techHint: 'Sí o no sobre una empresa, un producto o un evento. Una pregunta, sin fichas.',
+    techSamples: ['¿Apple anunciará un iPad nuevo en octubre?', '¿Samsung lanzará un plegable triple antes de fin de año?'],
     noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
     horizons: { '1d': '1 día', '1w': '1 semana', '1m': '1 mes', '3m': '3 meses' },
     spotVsEtfNote:
@@ -4239,7 +4246,7 @@ const es: LeagueUiPack = {
       entertainment: '\u00bfGanar\u00e1 esta pel\u00edcula el Oscar?',
       memecoin: '\u00bfSubir\u00e1 Dogecoin ma\u00f1ana?',
       real_estate: '¿Subirá el índice de precios de Seúl?',
-      macro_econ: '\u00bfEl IPC de EE. UU. superar\u00e1 el 3% este mes?',
+      tech: '¿Apple anunciará un iPad nuevo en octubre?',
     },
     submit: 'Preguntar',
     retry: 'Editar y reintentar',
@@ -4417,7 +4424,7 @@ const ar: LeagueUiPack = {
       entertainment: 'ترفيه',
       memecoin: 'ميم كوين',
       real_estate: 'عقارات',
-      macro_econ: 'اقتصاد كلي',
+      tech: 'تقنية',
     },
     instruments: {
       AAPL: 'أبل (AAPL)',
@@ -4476,7 +4483,8 @@ const ar: LeagueUiPack = {
     koreaStocksHint: 'أسهم كوريا غير جاهزة بعد. هذا المسار بلا مربع بحث.',
     stockLaneAdminGlobal: 'عالمي',
     stockLaneAdminKorea: 'كوريا',
-    macroEconHint: 'نظرة سوقية للخبراء — أسعار الفائدة والتضخم والسندات. عمق لا إثارة.',
+    techHint: 'نعم أو لا عن شركة أو منتج أو حدث. اكتب سؤالاً — لا شرائح ثابتة.',
+    techSamples: ['هل تعلن آبل عن آيباد جديد في أكتوبر؟', 'هل تطلق سامسونغ هاتفًا ثلاثي الطي قبل نهاية العام؟'],
     noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
     horizons: { '1d': 'يوم واحد', '1w': 'أسبوع واحد', '1m': 'شهر واحد', '3m': '3 أشهر' },
     spotVsEtfNote:
@@ -4813,7 +4821,7 @@ const ar: LeagueUiPack = {
       entertainment: 'هل سيفوز هذا العمل بجائزة الفيلم؟',
       memecoin: 'هل سترتفع دوجكوين غدًا؟',
       real_estate: 'هل يرتفع مؤشر أسعار سيول؟',
-      macro_econ: 'هل سيتجاوز تضخم أمريكا 3% هذا الشهر؟',
+      tech: 'هل تعلن آبل عن آيباد جديد في أكتوبر؟',
     },
     submit: 'اسأل',
     retry: 'عدّل وأعد المحاولة',
@@ -4997,7 +5005,7 @@ const pt: LeagueUiPack = {
       entertainment: 'Entretenimento',
       memecoin: 'Memecoin',
       real_estate: 'Imóveis',
-      macro_econ: 'Macro',
+      tech: 'Tech',
     },
     instruments: {
       AAPL: 'Apple (AAPL)',
@@ -5056,7 +5064,8 @@ const pt: LeagueUiPack = {
     koreaStocksHint: 'As ações coreanas ainda não estão abertas. Esta faixa não tem busca.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Coreia',
-    macroEconHint: 'Visão de mercado para especialistas — juros, inflação, títulos. Profundidade, não dopamina.',
+    techHint: 'Sim ou não sobre uma empresa, um produto ou um evento. Uma pergunta, sem fichas.',
+    techSamples: ['A Apple anuncia um novo iPad em outubro?', 'A Samsung lança um dobrável triplo até o fim do ano?'],
     noCardYet: 'Ainda não há cartão de previsão para este instrumento.',
     horizons: { '1d': '1 dia', '1w': '1 semana', '1m': '1 mês', '3m': '3 meses' },
     spotVsEtfNote:
@@ -5403,7 +5412,7 @@ const pt: LeagueUiPack = {
       entertainment: 'Esse filme leva o Oscar?',
       memecoin: 'A Dogecoin sobe amanhã?',
       real_estate: 'O índice de preços de Seul sobe?',
-      macro_econ: 'O CPI dos EUA fica acima de 3% neste mês?',
+      tech: 'A Apple anuncia um novo iPad em outubro?',
     },
     submit: 'Perguntar',
     retry: 'Editar e tentar de novo',

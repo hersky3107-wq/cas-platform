@@ -22,7 +22,7 @@ export const LEAGUE_ORACLE_CATEGORY_IDS = [
   'entertainment',
   'memecoin',
   'real_estate',
-  'macro_econ',
+  'tech',
 ] as const
 
 export type LeagueOracleCategoryId = (typeof LEAGUE_ORACLE_CATEGORY_IDS)[number]

@@ -91,26 +91,65 @@ const EXAMPLES = [
   },
 ] as const
 
-describe('tech adapter — entity resolution', () => {
-  it('resolves Apple / 애플 to the company catalog, not a ticker close', async () => {
-    expect(await adapter.resolveEntity('애플', 'ko')).toEqual({
-      ok: true,
-      entity_id: 'AAPL',
-      entity_kind: 'company',
-      label: 'Apple',
-    })
-    expect(await adapter.resolveEntity('nvidia', 'en')).toMatchObject({ ok: true, entity_id: 'NVDA' })
+const OPEN_NOW = new Date('2026-10-04T03:00:00.000Z')
+const openAdapter = createTechAdapter(DEAD_IO, () => OPEN_NOW)
+
+describe('tech adapter — open-world resolution', () => {
+  it('resolves a Korean company outside the old 7-name requirement', async () => {
+    const r = await openAdapter.resolveEntity('엔비디아가 이번 달 안에 새 GPU를 발표할까?', 'ko')
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('expected a resolution')
+    expect(r.label).toBe('엔비디아')
+    expect(r.entity_id).toMatch(/^TECH:OPEN:nvidia:announce:/)
+    expect(r.entity_id).toContain('20261031')
+    expect(r.entity_kind).toBe('company')
+    const composed = openAdapter.composeProposition(
+      slots({ entity_id: r.entity_id, entity_label: r.label, horizon: null }),
+      OPEN_NOW,
+    )
+    expect(composed.proposition_kind).toBe('binary_subject_outcome')
+    expect(composed.observation_shape).toBe('occurrence')
+    expect(composed.proposition_text).toContain('엔비디아')
+    expect(composed.proposition_text).toContain('2026-10-31')
+    expect(composed.resolution_rule).toMatch(/official newsroom|company blog/)
+    expect(composed.proposition_text).not.toMatch(/주가|순위/)
   })
 
-  it('refuses an unknown company and lists the supported set', async () => {
-    const r = await adapter.resolveEntity('한화오션', 'ko')
-    expect(r.ok).toBe(false)
-    if (!r.ok && 'refuse' in r) {
-      expect(r.refuse.code).toBe('unsupported_entity')
-      expect(r.refuse.safe_facts?.supported).toContain('Apple')
-    } else {
-      throw new Error('expected a refusal')
+  it('resolves an English company that was never in the catalog', async () => {
+    const r = await openAdapter.resolveEntity('Will SpaceX launch Starship again before Nov 1?', 'en')
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('expected a resolution')
+    expect(r.label).toBe('SpaceX')
+    expect(r.entity_id).toMatch(/^TECH:OPEN:spacex:launch:starship:20261031:official_newsroom$/)
+    const composed = openAdapter.composeProposition(
+      slots({ entity_id: r.entity_id, entity_label: r.label }),
+      OPEN_NOW,
+    )
+    expect(composed.proposition_text).toBe('Will SpaceX launch starship by 2026-10-31?')
+    expect(composed.horizon).toBe('1m')
+    expect(composed.observation_shape).toBe('occurrence')
+  })
+
+  it('refuses rumor, subjective, price, rankings, far deadlines, and resolved events', async () => {
+    const cases: Array<[string, string]> = [
+      ['애플 폴더블은 루머일 뿐일까?', 'rumor_only'],
+      ['아이폰이 혁신적일까?', 'subjective_claim'],
+      ['엔비디아 주가가 오를까?', 'price_or_earnings'],
+      ['GPT가 이번 달 LMArena 1위일까?', 'ai_ranking'],
+      ['삼성이 2027년 6월에 폴더블을 출시할까?', 'deadline_too_far'],
+      ['애플이 2024년 9월에 아이폰을 발표했을까?', 'already_resolved'],
+    ]
+    for (const [text, code] of cases) {
+      const r = await openAdapter.resolveEntity(text, 'ko')
+      expect(r.ok, text).toBe(false)
+      if (r.ok || !('refuse' in r)) throw new Error(`expected refusal for ${text}`)
+      expect(r.refuse.code, text).toBe(code)
+      const ko = refusalMessageForKey(r.refuse.message_i18n_key, 'ko')
+      expect(ko).toMatch(/[\uAC00-\uD7A3]/)
+      assertApprovedCopy(ko)
     }
+    expect(refusalMessageForKey('league.gateway.refusal.price_or_earnings', 'ko')).toContain('주식')
+    expect(refusalMessageForKey('league.gateway.refusal.ai_ranking', 'ko')).toContain('AI 순위')
   })
 })
 
@@ -225,12 +264,14 @@ describe('tech adapter — side pair, grade ladder, refusals', () => {
   it('every declared refusal code has Korean copy that passes compliance', () => {
     const taxonomy = adapter.refusalTaxonomy()
     expect(taxonomy.map((t) => t.code)).toEqual([
-      'unsupported_entity',
-      'ambiguous_entity',
-      'missing_slot',
       'vague_claim',
+      'rumor_only',
+      'subjective_claim',
       'price_or_earnings',
-      'no_result_source',
+      'ai_ranking',
+      'deadline_too_far',
+      'already_resolved',
+      'missing_slot',
       'ungradeable',
       'jurisdiction_blocked',
       'low_confidence',
@@ -291,15 +332,23 @@ describe('tech packet — no numeric feed, URLs required, cost reported', () => 
     expect(findingWithSearchResults.url).toBe('https://www.apple.com/newsroom/mac-mini')
     expect(findingWithSearchResults.date).toBe('2026-08-25')
 
-    // Missing date even with citation -> dropped
+    // Reputable domain without a day stays usable, and the date is not invented.
     const noDate = sourceFinding({
       query: 'Apple newsroom',
       summary: 'No date mentioned anywhere in this text.',
       citations: ['https://www.apple.com/newsroom/'],
     })
-    expect(noDate.usable).toBe(false)
+    expect(noDate.usable).toBe(true)
     expect(noDate.url).toBe('https://www.apple.com/newsroom/')
     expect(noDate.date).toBeNull()
+
+    const unknownHost = sourceFinding({
+      query: 'blog',
+      summary: 'A personal blog post with no date.',
+      citations: ['https://random-blog.example/post'],
+    })
+    expect(unknownHost.usable).toBe(false)
+    expect(unknownHost.date).toBeNull()
 
     // Missing citation/URL even with date -> dropped
     const noUrl = sourceFinding({
@@ -346,7 +395,9 @@ describe('tech packet — no numeric feed, URLs required, cost reported', () => 
     expect(injection).not.toMatch(/Same-class official posts last 12 months: 0/)
     expect(injection).toContain('Samsung (foldable peer): official posts last 12m = 16')
     expect(injection).toContain('https://www.apple.com/newsroom/')
-    expect(injection).toContain('Dropped (missing url or date): 1')
+    expect(injection).toContain('Dropped (missing url, or url without a date on an unknown domain): 1')
+    expect(injection).toContain('argues occurs: none measured')
+    expect(injection).toContain('argues does not occur:')
     expect(injection).not.toMatch(/latestClose|Twelve Data/)
   })
 
@@ -384,10 +435,75 @@ describe('tech packet — no numeric feed, URLs required, cost reported', () => 
   })
 })
 
-describe('tech adapter — no public chip in this pass', () => {
-  it('does not appear in PUBLIC_CATEGORY_IDS', async () => {
-    const { PUBLIC_CATEGORY_IDS } = await import('../../catalog')
-    expect(PUBLIC_CATEGORY_IDS).not.toContain('tech')
-    expect(PUBLIC_CATEGORY_IDS).toHaveLength(12)
+describe('tech adapter — public free-prompt category', () => {
+  it('replaces macro on the hub and keeps tech freeform with no chips', async () => {
+    const { PUBLIC_CATEGORY_IDS, PUBLIC_CATALOG, isFreeformSearchCategory } = await import('../../catalog')
+    expect(PUBLIC_CATEGORY_IDS).toContain('tech')
+    expect(PUBLIC_CATEGORY_IDS).not.toContain('macro_econ')
+    expect(isFreeformSearchCategory('tech')).toBe(true)
+    expect(PUBLIC_CATALOG.find((c) => c.id === 'tech')?.instruments).toEqual([])
+    expect(getLeagueUiPack('ko').catalog.categories.tech).toBe('테크')
+    expect(getLeagueUiPack('en').catalog.categories.tech).toBe('Tech')
+    expect(getLeagueUiPack('ko').catalog.techSamples).toEqual([
+      '애플이 10월 안에 새 아이패드를 발표할까?',
+      '삼성이 연말까지 3단 폴더블을 출시할까?',
+    ])
+    for (const locale of LEAGUE_LOCALES) {
+      const pack = getLeagueUiPack(locale)
+      expect(pack.catalog.categories.tech.trim().length).toBeGreaterThan(0)
+      expect(pack.catalog.techHint.trim().length).toBeGreaterThan(0)
+      expect(pack.catalog.techSamples).toHaveLength(2)
+      expect(pack.gateway.placeholder.tech.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps September-style citations that have a date or a reputable domain', () => {
+    const research: TechResearchPacket = {
+      available: true,
+      cached: false,
+      cacheKey: 'sep',
+      queries: [
+        'Apple foldable iPhone rumors latest news September 2026',
+        'Apple Newsroom new product announcements September 2026',
+        'analyst expectations Apple foldable phone release date 2026 2027',
+      ],
+      findings: [
+        {
+          query: 'Apple Newsroom',
+          summary: 'Apple has not posted a foldable product page.',
+          citations: ['https://www.reuters.com/technology/apple-foldable'],
+        },
+        {
+          query: 'rumors',
+          summary: 'Supply chain notes from September 9, 2026 still call the phone unannounced.',
+          citations: ['https://www.theverge.com/2026/09/09/apple-foldable'],
+        },
+        {
+          query: 'forum',
+          summary: 'Someone on a forum said it ships this month.',
+          citations: ['https://random-blog.example/foldable'],
+        },
+      ],
+      costUsd: 0.016,
+      tier: 'normal',
+    }
+    const injection = assembleTechInjection({
+      round: {
+        proposition_text: 'Will Apple publish a product page for a foldable iPhone by 2026-09-30?',
+        category: 'tech',
+        instrument: 'TECH:AAPL:product_launch:foldable_iphone',
+        horizon: '1m',
+        resolution_rule: 'official newsroom',
+        resolves_at: '2026-09-30T23:59:59.999Z',
+      },
+      research,
+    })
+    expect(injection).toContain('https://www.reuters.com/technology/apple-foldable')
+    expect(injection).toContain('date unavailable')
+    expect(injection).toContain('2026-09-09')
+    expect(injection).not.toContain('random-blog.example')
+    expect(injection).toContain('Dropped (missing url, or url without a date on an unknown domain): 1')
+    expect(injection).toContain('none measured')
+    expect(injection).not.toMatch(/2026-09-01 \| https:\/\/www\.reuters\.com/)
   })
 })

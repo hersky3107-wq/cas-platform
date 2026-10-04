@@ -28,10 +28,10 @@ import type { JurisdictionGroup } from './jurisdiction/types'
  * Schema leftovers that are NOT a top-level chip:
  *  - esports never existed — absorbed into `sports`
  *  - `crypto_perps` / extra memecoins live under `crypto` / `memecoin`
- *  - `bond_rate` folds into `macro_econ` (coming-soon, no chips)
+ *  - `bond_rate` and `macro_econ` stay on the ledger CHECK only (not a public chip)
  *  - `futures_derivatives` is schema-only (not a public chip)
  *  - `entertainment_awards` is the ledger key for public `entertainment`
- *  - `tech` / `ai_models` are ledger-only this pass (no public chip yet)
+ *  - `tech` is a public free-prompt category (no chips). `ai_models` stays ledger-only.
  */
 
 export const PUBLIC_CATEGORY_IDS = [
@@ -46,7 +46,7 @@ export const PUBLIC_CATEGORY_IDS = [
   'entertainment',
   'memecoin',
   'real_estate',
-  'macro_econ',
+  'tech',
 ] as const
 
 export type PublicCategoryId = (typeof PUBLIC_CATEGORY_IDS)[number]
@@ -62,6 +62,7 @@ export const FREEFORM_SEARCH_CATEGORY_IDS = [
   'politics_election',
   'entertainment',
   'real_estate',
+  'tech',
 ] as const
 
 export function isFreeformSearchCategory(id: string): boolean {
@@ -280,9 +281,9 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
     instruments: [],
   },
   {
-    id: 'macro_econ',
-    ledgerCategory: 'macro_econ',
-    tone: 'green',
+    id: 'tech',
+    ledgerCategory: 'tech',
+    tone: 'yellow',
     kind: 'coming_soon',
     instruments: [],
   },

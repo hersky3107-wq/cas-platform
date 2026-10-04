@@ -42,7 +42,7 @@ export const CATEGORY_TO_LIUQIN: Record<LeagueOracleCategoryId, SixRelative> = {
   sports: '官鬼',
   politics_election: '官鬼',
   real_estate: '父母',
-  macro_econ: '父母',
+  tech: '父母',
   entertainment: '子孙',
 }
 
@@ -53,7 +53,7 @@ export const CATEGORY_TO_LIUQIN: Record<LeagueOracleCategoryId, SixRelative> = {
  *
  * 12 chips into the 10 천간 buckets, so two pairs share a 천간:
  *   stocks + gold_metals → 庚 (listed equity and bullion, both 금 재물)
- *   index_etf + macro_econ → 戊 (broad market / economy-as-ground)
+ *   index_etf + tech → 戊 (broad market / published-event ground)
  */
 export const CATEGORY_TO_TAEIL_YONGSHEN: Record<
   LeagueOracleCategoryId,
@@ -64,7 +64,7 @@ export const CATEGORY_TO_TAEIL_YONGSHEN: Record<
   commodities_energy: { element: 'fire', yinYang: 'yang' },
   politics_election: { element: 'fire', yinYang: 'yin' },
   index_etf: { element: 'earth', yinYang: 'yang' },
-  macro_econ: { element: 'earth', yinYang: 'yang' },
+  tech: { element: 'earth', yinYang: 'yang' },
   real_estate: { element: 'earth', yinYang: 'yin' },
   stocks: { element: 'metal', yinYang: 'yang' },
   gold_metals: { element: 'metal', yinYang: 'yang' },

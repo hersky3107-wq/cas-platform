@@ -821,8 +821,15 @@ function ComingSoonPanel({ categoryId }: { categoryId: PublicCategoryId }) {
     <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
       <p className="text-sm font-semibold text-slate-800">{t.catalog.comingSoon}</p>
       <p className="mt-1 text-xs leading-relaxed text-slate-500">{t.catalog.comingSoonHint}</p>
-      {categoryId === 'macro_econ' ? (
-        <p className="mt-2 text-xs leading-relaxed text-slate-600">{t.catalog.macroEconHint}</p>
+      {categoryId === 'tech' ? (
+        <>
+          <p className="mt-2 text-xs leading-relaxed text-slate-600">{t.catalog.techHint}</p>
+          {t.catalog.techSamples.map((sample) => (
+            <p key={sample} className="mt-1 text-xs leading-relaxed text-slate-500">
+              {sample}
+            </p>
+          ))}
+        </>
       ) : null}
     </div>
   )

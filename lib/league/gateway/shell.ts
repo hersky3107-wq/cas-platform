@@ -60,6 +60,7 @@ const SLATE_BACKED_CATEGORIES = new Set<string>([
   'entertainment',
   'real_estate',
   'stocks',
+  'tech',
 ])
 
 export function isSlateBackedCategory(id: string): boolean {
@@ -98,6 +99,13 @@ function entityRefusalIsImmediate(code: RefusalCode): boolean {
     code === 'vague_show' ||
     code === 'past_show' ||
     code === 'unsupported_show' ||
+    code === 'rumor_only' ||
+    code === 'subjective_claim' ||
+    code === 'ai_ranking' ||
+    code === 'deadline_too_far' ||
+    code === 'already_resolved' ||
+    code === 'price_or_earnings' ||
+    code === 'vague_claim' ||
     code === 'no_result_source' ||
     code === 'specific_property' ||
     code === 'brokerage_advice' ||

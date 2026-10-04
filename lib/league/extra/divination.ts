@@ -56,8 +56,9 @@ const LEDGER_TO_ORACLE: Record<string, LeagueOracleCategoryId> = {
   entertainment_awards: 'entertainment',
   memecoin: 'memecoin',
   real_estate: 'real_estate',
-  macro_econ: 'macro_econ',
-  bond_rate: 'macro_econ',
+  tech: 'tech',
+  macro_econ: 'index_etf',
+  bond_rate: 'index_etf',
 }
 
 const PICK_ONE_CATEGORIES = new Set<LeagueOracleCategoryId>([

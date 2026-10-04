@@ -161,6 +161,26 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     ko: '3개월 안에 결과가 나오는 박스오피스·차트·시상식만 열 수 있습니다. 예: 치이카와 첫 주말 1위, 헝거게임 오프닝 1위, 게임 어워드 올해의 게임.',
     en: 'Only box office, charts, and awards with a result inside 3 months can be opened. e.g. Chiikawa opening #1, Hunger Games opening #1, Game Awards Game of the Year.',
   },
+  rumor_only: {
+    ko: '루머만으로는 열 수 없습니다. 발표·출시·승인처럼 날짜와 함께 검증할 수 있는 사건을 적어 주세요.',
+    en: 'A rumor-only claim cannot be opened. Name a dated event that can be verified, such as an announcement, a shipment, or an approval.',
+  },
+  subjective_claim: {
+    ko: '흥행·혁신·판매 호조처럼 기준이 없는 평가는 판정할 수 없습니다. 발표·출시·승인처럼 예 또는 아니오로 갈리는 사건을 적어 주세요.',
+    en: 'Subjective outcomes such as a hit, an innovation, or selling well cannot be graded. Name a yes-or-no event such as an announcement, a release, or an approval.',
+  },
+  ai_ranking: {
+    ko: 'AI 모델 순위는 테크에서 열 수 없습니다. 곧 열리는 AI 순위 영역에서 예측해 주세요.',
+    en: 'AI model leaderboard rankings cannot be opened in Tech. Use the upcoming AI rankings area.',
+  },
+  deadline_too_far: {
+    ko: '3개월을 넘는 마감은 열 수 없습니다. 1일, 1주, 1개월, 3개월 안의 날짜로 적어 주세요.',
+    en: 'A deadline beyond 3 months cannot be opened. Use a date inside 1 day, 1 week, 1 month, or 3 months.',
+  },
+  already_resolved: {
+    ko: '이미 끝난 사건은 예측할 수 없습니다. 아직 확인되지 않은 앞으로의 사건만 열 수 있습니다.',
+    en: 'An event that has already resolved cannot be predicted. Only a future event that is still open can be opened.',
+  },
 }
 
 /** Clarify prompts + option labels, keyed by full i18n key. */

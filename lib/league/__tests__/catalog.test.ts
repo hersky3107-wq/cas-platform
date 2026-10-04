@@ -30,7 +30,7 @@ const FINANCIAL = [
   'memecoin',
 ] as const
 
-const COMING_SOON = ['sports', 'politics_election', 'entertainment', 'macro_econ', 'real_estate'] as const
+const COMING_SOON = ['sports', 'politics_election', 'entertainment', 'real_estate', 'tech'] as const
 
 describe('PUBLIC_CATALOG', () => {
   it('is exactly the 12 final public categories, in the product order', () => {
@@ -45,7 +45,9 @@ describe('PUBLIC_CATALOG', () => {
     expect(PUBLIC_CATALOG.find((c) => c.id === 'index_etf')?.ledgerCategory).toBe('etf_index')
     expect(PUBLIC_CATALOG.find((c) => c.id === 'entertainment')?.ledgerCategory).toBe('entertainment_awards')
     expect(PUBLIC_CATALOG.find((c) => c.id === 'real_estate')?.ledgerCategory).toBe('real_estate')
-    expect(PUBLIC_CATALOG.find((c) => c.id === 'macro_econ')?.tone).toBe('green')
+    expect(PUBLIC_CATALOG.find((c) => c.id === 'tech')?.tone).toBe('yellow')
+    expect(PUBLIC_CATALOG.find((c) => c.id === 'tech')?.ledgerCategory).toBe('tech')
+    expect(PUBLIC_CATEGORY_IDS).not.toContain('macro_econ')
     expect(PUBLIC_CATALOG.find((c) => c.id === 'sports')?.tone).toBe('red')
     expect(PUBLIC_CATALOG.find((c) => c.id === 'politics_election')?.tone).toBe('yellow')
   })
@@ -69,6 +71,7 @@ describe('PUBLIC_CATALOG', () => {
     expect(isFreeformSearchCategory('sports')).toBe(true)
     expect(isFreeformSearchCategory('politics_election')).toBe(true)
     expect(isFreeformSearchCategory('entertainment')).toBe(true)
+    expect(isFreeformSearchCategory('tech')).toBe(true)
     expect(isFreeformSearchCategory('gold_metals')).toBe(false)
     expect(isFreeformSearchCategory('crypto')).toBe(false)
     expect(usesHorizonChipRow('real_estate')).toBe(false)
