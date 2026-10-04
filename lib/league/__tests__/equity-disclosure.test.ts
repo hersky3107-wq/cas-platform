@@ -168,6 +168,30 @@ describe('equity display-layer scrub — whole tokens, ranges, outlets, residue'
     expect(readable(scrubAnalystDisclosure('₩유상증자'))).toBe('유상증자')
     expect(readable(scrubAnalystDisclosure('$ 매수세'))).toBe('매수세')
   })
+
+  it('broad rules: flow amounts, packet jargon, bare domains, source residue, English brokers', () => {
+    const flow = readable(scrubAnalystDisclosure('기관 일간 -76B KRW, bp pct 91.3'))
+    expect(flow).not.toMatch(/\d/)
+    expect(flow).not.toMatch(/pct|KRW|bp/i)
+    expect(flow).toContain('기관')
+    expect(flow).toMatch(/순매도/)
+
+    const broker = readable(scrubAnalystDisclosure('Korea Investment & Securities의 애널리스트들'))
+    expect(broker).toBe('일부 증권사의 애널리스트들')
+    expect(broker).not.toMatch(/Korea Investment/i)
+
+    const domain = readable(scrubAnalystDisclosure('상승 alphasquare.co.krhome)) 압력'))
+    expect(domain).not.toMatch(/alphasquare|co\.kr|home/i)
+    expect(domain).not.toMatch(/\){2}/)
+    expect(domain).toContain('상승')
+    expect(domain).toContain('압력')
+
+    expect(readable(scrubAnalystDisclosure('추가 상승을 시사합니다; 출처:.'))).toBe('추가 상승을 시사합니다.')
+    expect(readable(scrubAnalystDisclosure('예정된 1.2조 유상증자'))).toBe('예정된 1.2조 유상증자')
+    expect(readable(scrubAnalystDisclosure('5,000억 원 규모 자사주 매입'))).toBe('5,000억 원 규모 자사주 매입')
+    expect(scrubAnalystDisclosure('외국인의 5d 순매수')).toBe('외국인의 5d 순매수')
+    expect(readable(scrubAnalystDisclosure('20 거래일 동안 -5.5%'))).toBe('20 거래일 동안 -5.5%')
+  })
 })
 
 describe('equity qualitative prompt line', () => {

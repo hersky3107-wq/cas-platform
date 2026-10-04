@@ -19,6 +19,8 @@ export const BROKER_STANDIN = '일부 증권사'
 
 export const TARGET_UPSIDE_STANDIN = '목표가 컨센서스가 현재가보다 높음'
 
+export const CROWDING_STANDIN = '쏠림이 큰 편'
+
 export function scrubsAnalystDisclosure(category: string | null | undefined): boolean {
   return EQUITY_DISPLAY_CATEGORIES.has((category ?? '').trim().toLowerCase())
 }
@@ -27,15 +29,45 @@ const NUM = String.raw`[$€£¥₩]?\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:USD|달러|�
 const ANALYST_AMT = String.raw`[$€£¥₩]?\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:USD|달러|원|KRW|won|만원|[TBMK]|bn|mn|tn|trillion|billion|million)|%|x|X)?`
 const RANGE_AMT = String.raw`[$€£¥₩]?\s*\d[\d,]*(?:\.\d+)?\s*(?:k|K|만|만원|원)?`
 const RANGE = String.raw`${RANGE_AMT}\s*[~\-–—〜]\s*${RANGE_AMT}`
-const KR_AMOUNT = String.raw`\d[\d,]*(?:\.\d+)?\s*(?:억|조)(?:\s*(?:원|KRW|won))?`
-const EN_WON_AMOUNT = String.raw`\d[\d,]*(?:\.\d+)?\s*(?:B|bn|billion|T|tn|trillion|M|mn|million)\s*(?:won|KRW|원)?`
-const FLOW_NEXT = String.raw`(?=.{0,24}(?:순매수|순매도|매수세|매도세|net[\s-]?buy|net[\s-]?sell|외국인|기관|개인|연기금|금융투자|short))`
-const FLOW_PREV = String.raw`(?:순매수|순매도|매수세|매도세|net[\s-]?buy|net[\s-]?sell|외국인(?:의)?|기관|개인|연기금|금융투자)`
+
 /** 5d / 20d / 1w stay intact — never treat the leading digit as a flow amount. */
-const WINDOW_LABEL = String.raw`\d+[dDwWmMyY]\b`
-const FLOW_AMT = String.raw`(?:${KR_AMOUNT}|${EN_WON_AMOUNT}|${NUM})`
+const WINDOW_LABEL = String.raw`^\d+[dDwWmMyY]$`
+
+const INVESTOR_TERM =
+  /기관|외국인|개인|연기금|금융투자|순매수|순매도|매수세|매도세|\binstitution(?:al)?s?\b|\bforeign(?:ers?)?\b|\bretail\b|\bpension(?:s)?\b|\bfinancial\s+investment\b|\bnet[\s-]?buys?\b|\bnet[\s-]?sells?\b|\binflows?\b|\boutflows?\b/gi
+
+const COMPANY_DISCLOSURE =
+  /유상증자|자사주|자기주식|rights[\s-]?issues?|buybacks?|공개매수|수주(?:계약)?|계약\s*규모/gi
+
+const ANALYST_CTX =
+  /애널리스트|analyst|목표가|투자의견|리포트|price\s+targets?|\bPT\b|rating/gi
+
+/**
+ * Monetary amounts only (signed or unsigned). Requires a money unit or
+ * currency — not a bare count, not a % price move, not 5d/20d/1w.
+ */
+const FLOW_MONEY =
+  /[+\-−–]?\s*[$₩]?\s*\d[\d,]*(?:\.\d+)?\s*(?:조|억|만|[Tt](?:n|rillion)?|[Bb](?:n|illion)?|[Mm](?:n|illion)?|[Kk])\s*(?:KRW|won|원|₩)?|[+\-−–]?\s*(?:[$₩]|KRW|won|원)\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:KRW|won|원|₩)/gi
 
 const LATIN_BROKERS = [
+  'Korea Investment(?:\\s+&\\s+Securities)?',
+  'Mirae Asset Securities',
+  'Samsung Securities',
+  'NH Investment(?:\\s+&\\s+Securities)?',
+  'KB Securities',
+  'Kiwoom Securities',
+  'Hana Securities',
+  'Shinhan Investment(?:\\s+&\\s+Securities)?',
+  'Shinhan Securities',
+  'Daishin Securities',
+  'Meritz Securities',
+  'Yuanta Securities',
+  'Hanwha Investment(?:\\s+&\\s+Securities)?',
+  'Kyobo Securities',
+  'Hyundai Motor Securities',
+  'IBK Securities',
+  'DB Financial Investment',
+  'Eugene Investment(?:\\s+&\\s+Securities)?',
   'JPMorgan',
   'J\\.?P\\.?\\s*Morgan',
   'Goldman(?:\\s+Sachs)?',
@@ -68,6 +100,9 @@ const HANGUL_BROKERS = [
   '메리츠(?:증권)?',
   '유안타(?:증권)?',
   '한화투자(?:증권)?',
+  '교보(?:증권)?',
+  '현대차증권',
+  'IBK투자증권',
 ].join('|')
 
 const LATIN_OUTLETS = [
@@ -100,6 +135,7 @@ const HANGUL_NAME = String.raw`(?<![가-힣A-Za-z])(?:${HANGUL_BROKERS})(?![가-
 const LATIN_OUTLET = String.raw`\b(?:${LATIN_OUTLETS})\b`
 const HANGUL_OUTLET = String.raw`(?<![가-힣A-Za-z])(?:${HANGUL_OUTLETS})(?![가-힣A-Za-z])`
 const NAVER_OUTLET = String.raw`\bNaver\s+증권`
+const GENERIC_FIRM = String.raw`\b[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*){0,4}\s+(?:Investment\s+&\s+Securities|Securities)\b`
 
 const RULES: Array<[RegExp, string]> = [
   // Broken / leftover markdown links before other punctuation work
@@ -115,10 +151,8 @@ const RULES: Array<[RegExp, string]> = [
   [/\b(?:according to|per|from|via)\s+twelve\s*data\b,?\s*/gi, ''],
   [/\btwelve\s*data(?:'s)?\b/gi, 'consensus data'],
   [/\/(?:price_target|recommendations|eps_trend|earnings|statistics|analyst_ratings(?:\/light)?)\b/gi, ''],
-  // Parenthetical source pages and outlet domains
+  // Parenthetical source pages — domains (any position) run in scrubBareDomains
   [/\([^)]*(?:시세\s*페이지|증권\s*페이지)[^)]*\)/gi, ''],
-  [/\(\s*(?:https?:\/\/)?(?:www\.)?[\w.-]+\.(?:com|co\.kr|kr|net|io|org)\s*\)/gi, ''],
-  [/\b(?:https?:\/\/)?(?:www\.)?[\w.-]+\.(?:com|co\.kr|kr|net|io|org)\b/gi, ''],
   [new RegExp(`(?:${LATIN_OUTLET}|${HANGUL_OUTLET}|${NAVER_OUTLET})`, 'gi'), ''],
   // Broker / bank names → one Korean stand-in (whole tokens only)
   [new RegExp(`(?:${LATIN_NAME}|${HANGUL_NAME})`, 'gi'), BROKER_STANDIN],
@@ -151,11 +185,80 @@ const RULES: Array<[RegExp, string]> = [
   [/\(\s*\d[\d.]*(?:\s*vs\.?\s*\d[\d.]*\s*(?:avg|average)?)\s*\)/gi, ''],
   [/공매도\s*비중\s*(?:상승|하락|스파이크)?(?:\s*(?:은|이|가)?)?\s*\d[\d.]*%?/gi, '공매도 비중 상승'],
   [/외국인\s*보유율(?:\s*(?:은|이|가)?)?\s*\d[\d.]*%?/gi, '외국인 보유 비중'],
-  // KRW/USD flow amounts next to who-traded language; 유상증자 / rights-issue sizes stay
-  [new RegExp(String.raw`(?!${WINDOW_LABEL})(?:${KR_AMOUNT}|${EN_WON_AMOUNT}|${NUM})\s*규모의?\s*${FLOW_NEXT}`, 'gi'), ''],
-  [new RegExp(String.raw`(${FLOW_PREV}(?:\s+of\s+|\s+))(?!${WINDOW_LABEL})${FLOW_AMT}\s*`, 'gi'), '$1'],
-  [new RegExp(String.raw`(?:${KR_AMOUNT}|${EN_WON_AMOUNT})\s*(?=KOSPI|KOSDAQ|${FLOW_PREV})`, 'gi'), ''],
 ]
+
+const JARGON_RULES: Array<[RegExp, string]> = [
+  [/\bcrowdingLevel\b/gi, CROWDING_STANDIN],
+  [/\b(?:very\s+)?(?:high|low|medium|elevated)\s+crowding\b/gi, CROWDING_STANDIN],
+  [/\bbp\s+of\s+mktcap\b/gi, ''],
+  [/\bbp\s*pct(?:\s*[+\-]?\d[\d.]*)?/gi, ''],
+  [/\bpct\s*[+\-]?\d[\d.]*/gi, ''],
+  [/\bpercentile\s*[+\-]?\d[\d.]*/gi, ''],
+  [/백분위\s*[+\-]?\d[\d.]*/gi, ''],
+  [/\bz[- ]?score\s*[+\-]?\d[\d.]*/gi, ''],
+  [/\bz\s+[+\-]?\d[\d.]+/gi, ''],
+]
+
+function hasMatch(re: RegExp, text: string): boolean {
+  re.lastIndex = 0
+  return re.test(text)
+}
+
+function nearby(text: string, index: number, length: number, span: number): string {
+  return text.slice(Math.max(0, index - span), Math.min(text.length, index + length + span))
+}
+
+/**
+ * Any money unit within ~40 characters of an investor term is packet flow,
+ * not a public filing. Filings (유상증자 / 자사주) and window labels stay.
+ */
+function scrubInvestorFlowAmounts(text: string): string {
+  if (!hasMatch(INVESTOR_TERM, text)) return text
+  return text.replace(FLOW_MONEY, (match, offset: number) => {
+    const token = match.trim()
+    if (new RegExp(WINDOW_LABEL).test(token)) return match
+    const window = nearby(text, offset, match.length, 40)
+    if (!hasMatch(INVESTOR_TERM, window)) return match
+    const filingWindow = nearby(text, offset, match.length, 24)
+    if (hasMatch(COMPANY_DISCLOSURE, filingWindow)) return match
+    const signedNeg = /^[−–-]/.test(token)
+    const signedPos = token.startsWith('+')
+    const hasSell = hasMatch(/순매도|매도세|\bnet[\s-]?sells?\b|\boutflows?\b/gi, window)
+    const hasBuy = hasMatch(/순매수|매수세|\bnet[\s-]?buys?\b|\binflows?\b/gi, window)
+    const ko = /[가-힣]/.test(window)
+    if (signedNeg && !hasSell) return ko ? '순매도' : 'net sell'
+    if (signedPos && !hasBuy) return ko ? '순매수' : 'net buy'
+    return ''
+  }).replace(/\s*규모의?\s*(?=기관|외국인|개인|연기금|금융투자|\binstitution|\bforeign|\bretail)/gi, ' ')
+}
+
+function scrubGenericEnglishBrokers(text: string): string {
+  return text.replace(new RegExp(GENERIC_FIRM, 'gi'), (match, offset: number) => {
+    if (new RegExp(LATIN_NAME, 'i').test(match)) return BROKER_STANDIN
+    const window = nearby(text, offset, match.length, 40)
+    if (!hasMatch(ANALYST_CTX, window)) return match
+    return BROKER_STANDIN
+  })
+}
+
+/** Domains in any position, including glued residue like `co.krhome))`. */
+function scrubBareDomains(text: string): string {
+  return text
+    .replace(
+      /(?:https?:\/\/)?(?:www\.)?[a-z0-9][\w.-]*\.(?:com|co\.kr|net|io|org|kr)[a-z0-9]*/gi,
+      '',
+    )
+    .replace(/[)\/]{2,}/g, '')
+    .replace(/\/\)/g, '')
+}
+
+function scrubSourceResidue(text: string): string {
+  return text
+    .replace(/;\s*(?:출처|source)\s*[:.]*\s*$/gi, '.')
+    .replace(/\(\s*(?:출처|source)\s*[:.]?\s*\)/gi, '')
+    .replace(/(?:출처|source)\s*[:.]\s*\.?\s*$/gi, '')
+    .replace(/(?:출처|source)\s*[:.]\s*(?=[,.;]|$)/gi, '')
+}
 
 function tidyPass(text: string): string {
   return text
@@ -165,10 +268,15 @@ function tidyPass(text: string): string {
     .replace(/\[\s*\]/g, '')
     .replace(/\(\[/g, '')
     .replace(/\]\(/g, '')
+    .replace(/[)\/]{2,}/g, '')
+    .replace(/\/\)/g, '')
     .replace(/\bof\s*([,.;]|$)/gi, '$1')
     .replace(/\s+(?:및|and|&|,)\s*(?=[.!?…]|$)/gi, '')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\s+([,.;:)])/g, '$1')
+    .replace(/,\s*([.!?])/g, '$1')
+    .replace(/;\s*([.!?])/g, '$1')
+    .replace(/[,\s]+$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim()
 }
@@ -186,7 +294,12 @@ function tidy(text: string): string {
 export function scrubAnalystDisclosure(text: string | null | undefined): string | null {
   if (typeof text !== 'string') return null
   let out = text
+  out = scrubBareDomains(out)
   for (const [re, rep] of RULES) out = out.replace(re, rep)
+  out = scrubGenericEnglishBrokers(out)
+  out = scrubInvestorFlowAmounts(out)
+  for (const [re, rep] of JARGON_RULES) out = out.replace(re, rep)
+  out = scrubSourceResidue(out)
   out = tidy(out)
   return out || null
 }
