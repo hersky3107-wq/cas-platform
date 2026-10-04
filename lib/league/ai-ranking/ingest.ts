@@ -17,7 +17,7 @@ import 'server-only'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parquetReadObjects } from 'hyparquet'
+import { parquetMetadataAsync, parquetReadObjects } from 'hyparquet'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { mapVendorBrand, OTHER_VENDOR_BRAND, type MappedVendorBrand } from './brands'
 
@@ -45,7 +45,7 @@ export const BACKFILL_ARENAS = [
 
 export type BackfillArena = (typeof BACKFILL_ARENAS)[number]
 export const BACKFILL_MONTHS = 6
-export const UPSERT_CHUNK = 200
+export const UPSERT_CHUNK = 500
 
 export const RATE_LIMIT_MIN_GAP_MS = 1000
 export const BACKOFF_DELAYS_MS = [2000, 4000, 8000, 16000] as const
@@ -134,6 +134,18 @@ export type IngestReport = {
 
 export type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
+export interface ParquetBatchChunk {
+  rows: Record<string, unknown>[]
+  readCount: number
+  skippedCount: number
+}
+
+export interface ParquetBatchOptions {
+  batchSize?: number
+  sinceDate?: string
+  untilDate?: string
+}
+
 export type AiLeaderboardIo = {
   now?: () => Date
   fetch?: FetchFn
@@ -143,6 +155,10 @@ export type AiLeaderboardIo = {
   listParquetFiles?: () => Promise<Record<string, Record<string, string[]>>>
   downloadParquetFile?: (url: string, io: AiLeaderboardIo) => Promise<{ buffer: ArrayBuffer; cacheHit: boolean }>
   parseParquetRows?: (file: ArrayBuffer | Uint8Array) => Promise<Record<string, unknown>[]>
+  parseParquetBatches?: (
+    file: ArrayBuffer | Uint8Array,
+    opts?: ParquetBatchOptions,
+  ) => AsyncIterable<Record<string, unknown>[] | ParquetBatchChunk>
   upsertRows?: (rows: AiLeaderboardRow[]) => Promise<void>
   loadRows?: (source: string, arena: string, category: string, date: string) => Promise<AiLeaderboardRow[]>
   lastFetchedAt?: () => Promise<string | null>
@@ -410,9 +426,78 @@ export async function downloadParquetFileWithCache(
   return { buffer: arrayBuffer, cacheHit: false }
 }
 
+function toArrayBuffer(file: ArrayBuffer | Uint8Array): ArrayBuffer {
+  if (file instanceof Uint8Array) {
+    return file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer
+  }
+  return file
+}
+
 export async function parseParquetRows(file: ArrayBuffer | Uint8Array): Promise<Record<string, unknown>[]> {
-  const rows = await parquetReadObjects({ file })
+  const ab = toArrayBuffer(file)
+  const rows = await parquetReadObjects({ file: ab })
   return rows as Record<string, unknown>[]
+}
+
+export async function* readParquetRowBatches(
+  file: ArrayBuffer | Uint8Array,
+  options?: ParquetBatchOptions,
+): AsyncGenerator<ParquetBatchChunk> {
+  const ab = toArrayBuffer(file)
+
+  let metadata: any
+  try {
+    metadata = await parquetMetadataAsync(ab)
+  } catch {
+    // If metadata parsing fails, fall back to whole-file read
+  }
+
+  if (metadata?.row_groups && metadata.row_groups.length > 0) {
+    let currentRow = 0
+    for (const rg of metadata.row_groups) {
+      const count = Number(rg.num_rows)
+      const rowStart = currentRow
+      const rowEnd = currentRow + count
+      currentRow = rowEnd
+
+      // Check statistics on date column if available to skip row group
+      const dateCol = rg.columns?.find((c: any) =>
+        c.meta_data?.path_in_schema?.some((p: string) => {
+          const lower = p.toLowerCase()
+          return lower.includes('publish_date') || lower.includes('date')
+        }),
+      )
+      const maxVal = dateCol?.meta_data?.statistics?.max_value ?? dateCol?.meta_data?.statistics?.max
+      const minVal = dateCol?.meta_data?.statistics?.min_value ?? dateCol?.meta_data?.statistics?.min
+
+      if (typeof maxVal === 'string' && options?.sinceDate && maxVal < options.sinceDate) {
+        yield { rows: [], readCount: count, skippedCount: count }
+        continue
+      }
+      if (typeof minVal === 'string' && options?.untilDate && minVal > options.untilDate) {
+        yield { rows: [], readCount: count, skippedCount: count }
+        continue
+      }
+
+      const rows = (await parquetReadObjects({
+        file: ab,
+        metadata,
+        rowStart,
+        rowEnd,
+      })) as Record<string, unknown>[]
+
+      yield { rows, readCount: count, skippedCount: 0 }
+    }
+    return
+  }
+
+  // Fallback for files without row_groups metadata
+  const allRows = (await parquetReadObjects({ file: ab })) as Record<string, unknown>[]
+  const chunkSize = options?.batchSize ?? 1000
+  for (let i = 0; i < allRows.length; i += chunkSize) {
+    const chunk = allRows.slice(i, i + chunkSize)
+    yield { rows: chunk, readCount: chunk.length, skippedCount: 0 }
+  }
 }
 
 async function defaultListParquetFiles(
@@ -424,9 +509,20 @@ async function defaultListParquetFiles(
   return res.json()
 }
 
+export function dedupeLeaderboardRows(rows: readonly AiLeaderboardRow[]): AiLeaderboardRow[] {
+  const map = new Map<string, AiLeaderboardRow>()
+  for (const row of rows) {
+    const key = `${row.source}|${row.arena}|${row.category}|${row.publish_date}|${row.model}`
+    map.set(key, row)
+  }
+  return [...map.values()]
+}
+
 async function defaultUpsertRows(rows: AiLeaderboardRow[]): Promise<void> {
   for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
-    const chunk = rows.slice(i, i + UPSERT_CHUNK).map((row) => ({
+    const rawChunk = rows.slice(i, i + UPSERT_CHUNK)
+    const dedupedChunk = dedupeLeaderboardRows(rawChunk)
+    const chunk = dedupedChunk.map((row) => ({
       source: row.source,
       arena: row.arena,
       category: row.category,
@@ -505,11 +601,43 @@ function bindIo(io: AiLeaderboardIo = {}) {
     downloadParquetFile:
       io.downloadParquetFile ?? ((url: string) => downloadParquetFileWithCache(url, rateLimitedFetch, io)),
     parseParquetRows: io.parseParquetRows ?? parseParquetRows,
+    parseParquetBatches: io.parseParquetBatches,
+    hasCustomParseParquetRows: Boolean(io.parseParquetRows && io.parseParquetRows !== parseParquetRows),
     upsertRows: io.upsertRows ?? defaultUpsertRows,
     loadRows: io.loadRows ?? defaultLoadRows,
     lastFetchedAt: io.lastFetchedAt ?? defaultLastFetchedAt,
     log: io.log ?? ((message: string) => console.log(message)),
   }
+}
+
+async function* getRowBatches(
+  buffer: ArrayBuffer,
+  bound: ReturnType<typeof bindIo>,
+  sinceDate?: string,
+  untilDate?: string,
+): AsyncGenerator<ParquetBatchChunk> {
+  if (bound.parseParquetBatches) {
+    for await (const batch of bound.parseParquetBatches(buffer, { sinceDate, untilDate })) {
+      if (Array.isArray(batch)) {
+        yield { rows: batch, readCount: batch.length, skippedCount: 0 }
+      } else {
+        yield batch
+      }
+    }
+    return
+  }
+
+  if (bound.hasCustomParseParquetRows) {
+    const rawRows = await bound.parseParquetRows(buffer)
+    const chunkSize = 1000
+    for (let i = 0; i < rawRows.length; i += chunkSize) {
+      const chunk = rawRows.slice(i, i + chunkSize)
+      yield { rows: chunk, readCount: chunk.length, skippedCount: 0 }
+    }
+    return
+  }
+
+  yield* readParquetRowBatches(buffer, { sinceDate, untilDate })
 }
 
 export async function ingestAiLeaderboard(args: {
@@ -540,58 +668,86 @@ export async function ingestAiLeaderboard(args: {
   let skipped = 0
   let cacheHits = 0
   let downloads = 0
-  const allRows: AiLeaderboardRow[] = []
+  const unmappedOrgs = new Set<string>()
 
   for (const arena of targetArenas) {
     const urls = listing[arena]?.[split] ?? [standardParquetUrl(arena, split, 0)]
     let arenaUpserted = 0
     let arenaSkipped = 0
+    let arenaRead = 0
+    let arenaInWindow = 0
 
     for (const url of urls) {
       const { buffer, cacheHit } = await io.downloadParquetFile(url, args.io ?? {})
       if (cacheHit) cacheHits += 1
       else downloads += 1
 
-      const rawRows = await io.parseParquetRows(buffer)
-      const mappedBatch: AiLeaderboardRow[] = []
+      let pendingUpsert: AiLeaderboardRow[] = []
+      let lastProgressReport = 0
 
-      for (const raw of rawRows) {
-        const pubDate = publishDateOf(raw.leaderboard_publish_date) ?? publishDateOf(raw.publish_date)
-        if (args.sinceDate && pubDate && pubDate < args.sinceDate) {
-          arenaSkipped += 1
-          continue
-        }
-        if (args.untilDate && pubDate && pubDate > args.untilDate) {
-          arenaSkipped += 1
-          continue
-        }
+      for await (const batch of getRowBatches(buffer, io, args.sinceDate, args.untilDate)) {
+        arenaRead += batch.readCount
+        arenaSkipped += batch.skippedCount
 
-        const mapped = mapLmarenaRow(arena, raw, fetchedAt)
-        if (!mapped) {
-          arenaSkipped += 1
-          continue
+        for (const raw of batch.rows) {
+          const pubDate = publishDateOf(raw.leaderboard_publish_date) ?? publishDateOf(raw.publish_date)
+          if (args.sinceDate && pubDate && pubDate < args.sinceDate) {
+            arenaSkipped += 1
+            continue
+          }
+          if (args.untilDate && pubDate && pubDate > args.untilDate) {
+            arenaSkipped += 1
+            continue
+          }
+
+          const mapped = mapLmarenaRow(arena, raw, fetchedAt)
+          if (!mapped) {
+            arenaSkipped += 1
+            continue
+          }
+          if (args.sinceDate && mapped.publish_date < args.sinceDate) {
+            arenaSkipped += 1
+            continue
+          }
+          if (args.untilDate && mapped.publish_date > args.untilDate) {
+            arenaSkipped += 1
+            continue
+          }
+
+          arenaInWindow += 1
+          if (mapped.brand === OTHER_VENDOR_BRAND && mapped.organization?.trim()) {
+            unmappedOrgs.add(mapped.organization.trim())
+          }
+
+          pendingUpsert.push(mapped)
+
+          if (pendingUpsert.length >= UPSERT_CHUNK) {
+            await io.upsertRows(pendingUpsert)
+            arenaUpserted += pendingUpsert.length
+            pendingUpsert = []
+
+            if (arenaUpserted - lastProgressReport >= 25000) {
+              lastProgressReport = arenaUpserted
+              io.log(
+                `[ai-leaderboard] arena=${arena} split=${split} progress: read=${arenaRead} in_window=${arenaInWindow} upserted=${arenaUpserted}`,
+              )
+            }
+          }
         }
-        if (args.sinceDate && mapped.publish_date < args.sinceDate) {
-          arenaSkipped += 1
-          continue
-        }
-        if (args.untilDate && mapped.publish_date > args.untilDate) {
-          arenaSkipped += 1
-          continue
-        }
-        mappedBatch.push(mapped)
       }
 
-      if (mappedBatch.length > 0) {
-        await io.upsertRows(mappedBatch)
-        arenaUpserted += mappedBatch.length
-        allRows.push(...mappedBatch)
+      if (pendingUpsert.length > 0) {
+        await io.upsertRows(pendingUpsert)
+        arenaUpserted += pendingUpsert.length
+        pendingUpsert = []
       }
     }
 
     upserted += arenaUpserted
     skipped += arenaSkipped
-    io.log(`[ai-leaderboard] arena=${arena} split=${split} upserted=${arenaUpserted} skipped=${arenaSkipped}`)
+    io.log(
+      `[ai-leaderboard] arena=${arena} split=${split} read=${arenaRead} in_window=${arenaInWindow} upserted=${arenaUpserted} skipped=${arenaSkipped}`,
+    )
   }
 
   return {
@@ -600,7 +756,7 @@ export async function ingestAiLeaderboard(args: {
     arenas: targetArenas,
     cacheHits,
     downloads,
-    unmappedOrganizations: collectUnmappedOrganizations(allRows),
+    unmappedOrganizations: [...unmappedOrgs].sort((a, b) => a.localeCompare(b)),
   }
 }
 

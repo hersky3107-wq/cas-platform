@@ -52,7 +52,7 @@ export async function runAiLeaderboardBackfill(
 const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('scripts/league/ai-leaderboard-backfill.ts')
 if (isMain) {
   runAiLeaderboardBackfill().catch((err) => {
-    console.error(err instanceof Error ? err.message : 'ai leaderboard backfill failed')
+    console.error(err instanceof Error ? err.stack ?? err.message : String(err))
     process.exit(1)
   })
 }

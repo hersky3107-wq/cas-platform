@@ -519,3 +519,56 @@ describe('daily refresh in cron', () => {
     expect(cron).toContain('refreshAiLeaderboardDaily')
   })
 })
+
+describe('large batch regression', () => {
+  it('processes a synthetic 200,000-row in-memory batch without Maximum call stack size exceeded', async () => {
+    const TOTAL_ROWS = 200_000
+    const syntheticRows = Array.from({ length: TOTAL_ROWS }, (_, i) => ({
+      model: `synthetic-model-${i}`,
+      organization: i % 20 === 0 ? 'unknown-lab-ai' : 'openai',
+      category: 'overall',
+      leaderboard_publish_date: i % 2 === 0 ? '2026-06-01' : '2024-01-01',
+      rating: 1200 + (i % 100),
+      rank: (i % 50) + 1,
+    }))
+
+    const batchLengths: number[] = []
+    let totalUpserted = 0
+    const logs: string[] = []
+
+    const io: AiLeaderboardIo = {
+      listParquetFiles: async () => ({
+        text: { full: ['https://example.com/synthetic.parquet'] },
+      }),
+      downloadParquetFile: async () => ({
+        buffer: new ArrayBuffer(8),
+        cacheHit: true,
+      }),
+      parseParquetRows: async () => syntheticRows,
+      upsertRows: async (rows) => {
+        expect(rows.length).toBeLessThanOrEqual(500)
+        batchLengths.push(rows.length)
+        totalUpserted += rows.length
+      },
+      log: (msg) => logs.push(msg),
+    }
+
+    const report = await ingestAiLeaderboard({
+      arenas: ['text'],
+      split: 'full',
+      sinceDate: '2026-05-01',
+      untilDate: '2026-09-01',
+      io,
+    })
+
+    expect(report.upserted).toBe(100_000)
+    expect(totalUpserted).toBe(100_000)
+    expect(report.skipped).toBe(100_000)
+    expect(batchLengths.length).toBe(200) // 100,000 / 500 = 200 batches
+    expect(batchLengths.every((len) => len === 500)).toBe(true)
+    expect(report.unmappedOrganizations).toEqual(['unknown-lab-ai'])
+    // Confirms progress logs were emitted
+    expect(logs.some((l) => l.includes('progress:'))).toBe(true)
+    expect(logs.some((l) => l.includes('read=200000 in_window=100000 upserted=100000'))).toBe(true)
+  })
+})
